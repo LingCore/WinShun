@@ -6,7 +6,6 @@
 #include "Query.h"
 #include "platform/ComWorker.h"
 #include "platform/ContentReportPrint.h"
-#include "platform/PreviewHost.h"
 #include "platform/Shell.h"
 
 #include <QCache>
@@ -222,17 +221,11 @@ struct ContentPane::Worker {
 
 ContentPane::ContentPane(IndexService* index, QObject* parent)
     : QObject(parent), m_index(index), m_detailState(std::make_shared<Worker>()), m_reportState(std::make_shared<Worker>()),
-      m_preview(std::make_unique<PreviewHost>())
+      m_filePreview(std::make_unique<FilePreview>(u"panepreview"_s, true))
 {
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(80);
     connect(&m_debounce, &QTimer::timeout, this, &ContentPane::load);
-    connect(m_preview.get(), &PreviewHost::failed, this, [this](quint64 ticket) {
-        if (ticket != m_previewTicket) return;
-        m_preview->hide();
-        m_previewMessage = tr("此文件的预览处理程序不可用，可查看文本或打开文件");
-        emit previewChanged();
-    });
 }
 ContentPane::~ContentPane()
 {
@@ -327,9 +320,8 @@ void ContentPane::update(SearchEngine::Request request, const QString& words, co
         m_current = -1;
         m_message = current.message;
         showRows();
-        closePreview();
         schedule();
-        startPreview();
+        startPreview(); // the tab follows to the new row (no flash of nothing between)
     }
     m_snapshotComplete = complete && !searching;
     m_summary = tr("当前命中文件：%1\n已处理候选：%2 / %3（含索引排除）\n状态：%4\n内容索引：%5")
@@ -832,63 +824,52 @@ void ContentPane::printReport()
 
 void ContentPane::setPreviewArea(QQuickItem* area, bool dark)
 {
-    if (m_previewArea != area || m_dark != dark) closePreview();
+    if (m_previewArea != area || m_dark != dark) closePreview(); // a document's handler draws in the colours it was made with
     m_previewArea = area;
     m_dark = dark;
+    m_filePreview->setDark(dark);
     startPreview();
 }
+void ContentPane::setTextExtensions(const QStringList& extensions)
+{
+    m_filePreview->setTextExtensions(extensions);
+}
+bool ContentPane::previewShown() const
+{
+    return m_active && m_opened && m_tab == PreviewTab && m_previewArea && m_previewArea->isVisible() && m_previewArea->window()
+        && m_previewArea->window()->isVisible();
+}
+// The 预览 tab shows what the launcher's own preview would (FilePreview):
+// a file's picture, text or document; a plugin's text, or why there is none.
 void ContentPane::startPreview()
 {
-    if (!m_active || !m_opened || m_tab != 3 || !m_previewArea || !m_previewArea->isVisible()
-        || !m_previewArea->window() || !m_previewArea->window()->isVisible()) return;
-    if (m_path.isEmpty()) {
-        const QString message = m_subject.text ? tr("插件提供的是文字，可在“文本”页查看")
-            : !m_subject.message.isEmpty() ? m_subject.message : QString();
-        if (!message.isEmpty() && message != m_previewMessage) {
-            m_previewMessage = message;
-            emit previewChanged();
-        }
+    if (!previewShown()) return;
+    std::optional<FilePreview::Item> item;
+    if (!m_path.isEmpty())
+        item = FilePreview::Item {m_path, QFileInfo(m_path).fileName()};
+    else if (m_subject.text || !m_subject.message.isEmpty())
+        item = FilePreview::Item {m_subject.key, m_subject.title, false, m_subject.text, m_subject.message};
+    if (!m_filePreview->isOpen()) {
+        if (item) m_filePreview->show(*item);
         return;
     }
-    if (m_previewPath == m_path) { movePreview(); return; }
-    const auto handler = PreviewHost::handlerFor(m_path);
-    m_previewMessage = handler ? tr("正在加载文件预览…") : tr("此文件没有可用的预览处理程序，可查看文本或打开文件");
-    emit previewChanged();
-    if (!handler) return;
-    m_previewPath = m_path;
-    const auto rect = m_previewArea->mapRectToScene(m_previewArea->boundingRect());
-    const auto* window = m_previewArea->window();
-    POINT origin {};
-    ::ClientToScreen(reinterpret_cast<HWND>(window->winId()), &origin);
-    const qreal dpr = window->devicePixelRatio();
-    m_preview->show(++m_previewTicket, m_path, *handler, origin.x + qRound(rect.left() * dpr), origin.y + qRound(rect.top() * dpr),
-        origin.x + qRound(rect.right() * dpr), origin.y + qRound(rect.bottom() * dpr),
-        reinterpret_cast<HWND>(window->winId()), m_dark);
+    m_filePreview->follow(item);
 }
 void ContentPane::movePreview()
 {
-    if (!m_previewArea || !m_previewArea->isVisible() || !m_previewArea->window()
-        || !m_previewArea->window()->isVisible() || !m_active || !m_opened || m_tab != 3) { closePreview(); return; }
-    if (m_previewPath.isEmpty()) { startPreview(); return; }
-    const auto rect = m_previewArea->mapRectToScene(m_previewArea->boundingRect());
-    const auto* window = m_previewArea->window();
-    POINT origin {};
-    ::ClientToScreen(reinterpret_cast<HWND>(window->winId()), &origin);
-    const qreal dpr = window->devicePixelRatio();
-    m_preview->move(origin.x + qRound(rect.left() * dpr), origin.y + qRound(rect.top() * dpr),
-        origin.x + qRound(rect.right() * dpr), origin.y + qRound(rect.bottom() * dpr));
+    if (!previewShown()) { closePreview(); return; }
+    if (!m_filePreview->isOpen()) { startPreview(); return; }
+    m_filePreview->placeHandler();
 }
 void ContentPane::closePreview()
 {
-    ++m_previewTicket;
-    m_preview->hide();
-    m_previewPath.clear();
+    m_filePreview->close();
 }
-std::optional<QRect> ContentPane::previewRect() const { return m_preview->visibleRect(); }
+std::optional<QRect> ContentPane::previewRect() const { return m_filePreview->handlerRect(); }
 
 bool ContentPane::ownsForeground() const
 {
-    return m_active && m_opened && m_tab == 3 && m_preview->owns(::GetForegroundWindow());
+    return m_active && m_opened && m_tab == PreviewTab && m_filePreview->ownsForeground();
 }
 
 } // namespace ws

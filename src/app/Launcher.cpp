@@ -511,6 +511,11 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     };
     connect(m_contentPane.get(), &ContentPane::preferencesChanged, this, paneShown);
     connect(m_contentPane.get(), &ContentPane::activeChanged, this, paneShown);
+    // Into the panel's details and out again: the preview window gives way to
+    // their 预览 tab, and comes back after (GitHub #224).
+    connect(this, &Launcher::panelChanged, this, &Launcher::handOverPreview);
+    connect(this, &Launcher::scopeChanged, this, &Launcher::handOverPreview);
+    connect(m_contentPane.get(), &ContentPane::preferencesChanged, this, &Launcher::handOverPreview);
     m_detailsTimer.setSingleShot(true);
     m_detailsTimer.setInterval(120ms); // as a once plugin's queries: not for each row the keys pass
     connect(&m_detailsTimer, &QTimer::timeout, this, &Launcher::askDetails);
@@ -1267,6 +1272,7 @@ void Launcher::setContentOptions(
     if (extensions.isEmpty())
         extensions = {u"txt"_s};
     m_contentExtensions = extensions;
+    m_contentPane->setTextExtensions(extensions); // its 预览 shows them as text, as the content search reads them
     m_contentSizeLimits = sizeLimits;
     if (!enabled && m_scope == Content) {
         setScope(All);
@@ -1728,6 +1734,7 @@ void Launcher::handleHidden()
     closePreview(); // the wish to have it stays (m_previewWanted)
     dropServerWait();
     m_previewResume = false;
+    m_previewHandedOver = false; // back with the launcher as left (m_previewWanted), wherever it opens
     m_index->contentIndexer()->setSearchBoxOpen(false);
     m_systemCommand = false;
     m_results.setSelection({});
@@ -3783,6 +3790,16 @@ void Launcher::togglePreview(int row)
     const SearchResult* r = m_results.at(row);
     const std::optional<FilePreview::Item> item = previewItem(r);
     m_preview->forgetClosedExternal(); // QuickLook or Seer closed on its own meanwhile
+    // The panel's details: their 预览 tab, and back to the tab it came from.
+    if (detailsShown()) {
+        if (m_contentPane->tab() == ContentPane::PreviewTab) {
+            m_contentPane->setTab(m_tabBeforePreview);
+        } else {
+            m_tabBeforePreview = m_contentPane->tab();
+            m_contentPane->setTab(ContentPane::PreviewTab);
+        }
+        return;
+    }
     // Open: the same key closes it, unless it was pressed for another file
     // (the row under the pointer), which it then shows.
     if (m_preview->isOpen()) {
@@ -3810,7 +3827,9 @@ void Launcher::previewHover(int row)
 
 bool Launcher::copyPreviewSelection()
 {
-    const QString text = m_preview && m_preview->isOpen() ? m_preview->selectedText() : QString();
+    const QString text = m_preview && m_preview->isOpen() ? m_preview->selectedText()
+        : detailsShown() && m_contentPane->tab() == ContentPane::PreviewTab ? m_contentPane->filePreview()->selectedText()
+                                                                           : QString();
     if (text.isEmpty())
         return false;
     shell::copyText(text);
@@ -3844,6 +3863,13 @@ void Launcher::followPreview()
         m_preview->follow(previewItem(m_results.at(m_currentRow)));
         return;
     }
+    // In the panel's details their 预览 tab is the preview: the window waits
+    // until they go (handOverPreview).
+    if (detailsShown()) {
+        if (m_previewWanted && std::exchange(m_previewResume, false))
+            m_previewHandedOver = true;
+        return;
+    }
     // Left open last time: back with the launcher, on the first row that
     // has a file to show. Ours only: QuickLook's or Seer's window popping up
     // while one types is in the way (GitHub #131); Alt+P brings it.
@@ -3855,6 +3881,38 @@ void Launcher::followPreview()
             m_preview->show(*item);
         }
     }
+}
+
+bool Launcher::detailsShown() const
+{
+    return m_panel && m_scope == Content && m_contentPane && m_contentPane->opened();
+}
+
+void Launcher::handOverPreview()
+{
+    if (!m_preview)
+        return;
+    if (detailsShown()) {
+        // In: the window goes, what it showed is on the 预览 tab now.
+        m_preview->forgetClosedExternal();
+        if (!m_preview->isOpen())
+            return;
+        m_preview->close(); // not by the user: still wanted (m_previewWanted)
+        m_previewHandedOver = true;
+        if (m_contentPane->tab() != ContentPane::PreviewTab) {
+            m_tabBeforePreview = m_contentPane->tab();
+            m_contentPane->setTab(ContentPane::PreviewTab);
+        }
+        return;
+    }
+    // Out: the window again, on the current row, if the tab still showed
+    // it (left for another tab, the preview was put away). Ours only, as when
+    // the launcher opens (followPreview): QuickLook or Seer popping up is in the way.
+    if (!std::exchange(m_previewHandedOver, false) || m_contentPane->tab() != ContentPane::PreviewTab || !m_window
+        || !m_window->isVisible() || m_preview->showsElsewhere())
+        return;
+    if (const std::optional<FilePreview::Item> item = previewItem(m_results.at(m_currentRow)))
+        m_preview->show(*item);
 }
 
 void Launcher::keyboardMoved()

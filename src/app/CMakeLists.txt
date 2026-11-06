@@ -170,6 +170,7 @@ set(qml_files
     qml/DropPieWindow.qml
     qml/SoftShadow.qml
     qml/PreviewWindow.qml
+    qml/PreviewBody.qml
     qml/HoverTip.qml
     qml/ShortcutTip.qml
     qml/Shortcuts.qml

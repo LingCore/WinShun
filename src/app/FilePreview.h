@@ -95,11 +95,18 @@ public:
     explicit FilePreview(QObject* parent = nullptr);
     ~FilePreview() override;
 
+    // Shown inside another window's page (the search panel's 预览 tab,
+    // GitHub #224) rather than a window of its own: never QuickLook or
+    // Seer, no window made or placed; a document's handler goes over the
+    // area of the page it is given (setHandlerArea), in that page's window.
+    // Its pictures under "image://<scheme>/".
+    explicit FilePreview(QString imageScheme, bool embedded, QObject* parent = nullptr);
+
     // The app's part: the window (made the first time it is wanted, with
     // its frame ready), the launcher it goes beside, the settings.
     void setWindowFactory(std::function<QQuickWindow*()> factory) { m_makeWindow = std::move(factory); }
     void setLauncherWindow(QWindow* launcher);
-    void setBuiltInOnly(bool on) { m_builtInOnly = on; } // 预览方式: 内置
+    void setBuiltInOnly(bool on) { m_builtInOnly = on || m_embedded; } // 预览方式: 内置
     void setDark(bool dark);
     // Text files besides the usual ones (the content search's kinds).
     void setTextExtensions(QStringList extensions);
@@ -145,8 +152,12 @@ public:
     bool slow() const { return m_slow; }
 
     Q_INVOKABLE void openFile(); // 打开 in the header: as Enter on the row
-    // The content area, where a preview handler draws (PreviewWindow.qml).
+    // The content area, where a preview handler draws (PreviewBody.qml).
     Q_INVOKABLE void setHandlerArea(QQuickItem* area);
+    // The window holding the area moved: the handler's window goes along.
+    void placeHandler();
+    // Where a handler draws on the screen now (physical), if one does.
+    std::optional<QRect> handlerRect() const;
 
     // "image://preview/<n>": the picture, or the thumbnail, of the file shown.
     QQuickImageProvider* imageProvider();
@@ -165,7 +176,6 @@ private:
     void apply(quint64 generation, std::shared_ptr<Loaded> loaded);
     void showWindow(QSize wanted); // logical
     QRect placeBeside(QSize wanted); // the window's place by the launcher (logical)
-    void placeHandler();
     void startHandler(quint64 generation, const QUuid& handler);
     void handlerFailed(quint64 generation);
     bool screenRect(QQuickItem* item, int* left, int* top, int* right, int* bottom) const; // physical
@@ -176,6 +186,8 @@ private:
     QPointer<QQuickWindow> m_window;
     QPointer<QWindow> m_launcher;
     QPointer<QQuickItem> m_handlerArea;
+    const QString m_imageScheme = QStringLiteral("preview");
+    const bool m_embedded = false;
     bool m_builtInOnly = false;
     bool m_dark = false;
     QStringList m_textExtensions;

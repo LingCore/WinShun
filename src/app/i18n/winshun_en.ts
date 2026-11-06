@@ -3862,6 +3862,13 @@
     </message>
 </context>
 <context>
+    <name>PreviewBody</name>
+    <message>
+        <source>正在读取…</source>
+        <translation>Reading…</translation>
+    </message>
+</context>
+<context>
     <name>PreviewWindow</name>
     <message>
         <source>预览</source>
@@ -3870,10 +3877,6 @@
     <message>
         <source>打开</source>
         <translation>Open</translation>
-    </message>
-    <message>
-        <source>正在读取…</source>
-        <translation>Reading…</translation>
     </message>
 </context>
 <context>
@@ -9342,10 +9345,6 @@ Right: center window · Drag: move window</translation>
         <translation>The file changed while being read. Refresh to try again.</translation>
     </message>
     <message>
-        <source>此文件的预览处理程序不可用，可查看文本或打开文件</source>
-        <translation>The preview handler is unavailable. View the text or open the file.</translation>
-    </message>
-    <message>
         <source>正在向插件获取详情…</source>
         <translation>Asking the plugin for details…</translation>
     </message>
@@ -9622,18 +9621,6 @@ Content index: %5</translation>
     <message>
         <source>打印失败，请检查打印机后重试</source>
         <translation>Printing failed. Check the printer and try again.</translation>
-    </message>
-    <message>
-        <source>插件提供的是文字，可在“文本”页查看</source>
-        <translation>The plugin gave text; see it on the Text tab</translation>
-    </message>
-    <message>
-        <source>正在加载文件预览…</source>
-        <translation>Loading file preview…</translation>
-    </message>
-    <message>
-        <source>此文件没有可用的预览处理程序，可查看文本或打开文件</source>
-        <translation>No preview handler is available. View the text or open the file.</translation>
     </message>
 </context>
 <context>

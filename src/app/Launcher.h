@@ -929,6 +929,10 @@ private:
     void refreshStatus();
     void refreshFrequentApps();
     void followPreview(); // the current row's file into the open preview
+    // The search panel's details on show (内容, the panel, the pane open):
+    // their 预览 tab is the preview there, never a window beside them (GitHub #224).
+    bool detailsShown() const;
+    void handOverPreview(); // the preview window into the details' 预览 tab, and back out of them
     // What a row shows in the preview (none: nothing to); `ask`: a plugin's
     // details are asked for if not known (GitHub #202).
     std::optional<FilePreview::Item> previewItem(const SearchResult* r, bool ask = true);
@@ -1175,6 +1179,8 @@ private:
     QString m_stateFile; // state.ini
     bool m_previewWanted = false; // the preview was left open by the user: it comes back with the launcher
     bool m_previewResume = false; // shown now, and the preview not yet back
+    bool m_previewHandedOver = false; // the window gave way to the details' 预览 tab: back when they go
+    int m_tabBeforePreview = 1; // the details' tab Alt+P left for 预览 (匹配 at first): Alt+P again goes back
     void setPreviewWanted(bool on);
     bool m_switchPageTold = false; // "要打开设置页：Ctrl+Enter", said once for good (state.ini)
     // Toggles waiting for their state (Switches::Outcome::Waiting), by switch id.

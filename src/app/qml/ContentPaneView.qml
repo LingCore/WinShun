@@ -148,6 +148,6 @@ Rectangle {
     Component { id: summaryPage; ContentSummaryView { pane: root.pane; launcher: root.launcher } }
     Component { id: hitsPage; ContentMatchesView { pane: root.pane; dpr: root.pixelRatio } }
     Component { id: textPage; ContentMatchesView { pane: root.pane; textView: true; dpr: root.pixelRatio } }
-    Component { id: previewPage; ContentPreviewView { pane: root.pane } }
+    Component { id: previewPage; ContentPreviewView { pane: root.pane; dpr: root.pixelRatio } }
     Component { id: reportPage; ContentReportView { pane: root.pane; dpr: root.pixelRatio } }
 }

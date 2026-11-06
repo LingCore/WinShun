@@ -193,8 +193,15 @@ private:
 };
 
 FilePreview::FilePreview(QObject* parent)
+    : FilePreview(u"preview"_s, false, parent)
+{
+}
+
+FilePreview::FilePreview(QString imageScheme, bool embedded, QObject* parent)
     : QObject(parent)
-    , m_worker(new ComWorker)
+    , m_imageScheme(std::move(imageScheme))
+    , m_embedded(embedded)
+    , m_builtInOnly(embedded)
     , m_host(std::make_unique<PreviewHost>())
     , m_images(std::make_shared<Images>())
 {
@@ -204,7 +211,7 @@ FilePreview::FilePreview(QObject* parent)
     connect(&m_slowTimer, &QTimer::timeout, this, [this] {
         setSlow(true);
         // Taking a while: the window now, saying so, rather than nothing at all.
-        if (m_open && !m_external && m_kind == Loading && (!m_window || !m_window->isVisible()))
+        if (m_open && !m_external && m_kind == Loading && !m_embedded && (!m_window || !m_window->isVisible()))
             showWindow({});
     });
     // Seer 2.8 has the window Win顺 talks to, takes the file and shows
@@ -391,11 +398,16 @@ void FilePreview::close()
     if (m_window)
         m_window->hide();
     m_item = {};
+    m_kind = Loading;
+    m_summary.clear();
+    m_facts.clear();
+    m_message.clear();
     m_lines.setStringList({});
     m_lineNumbers.clear();
     setSelection(0, 0, 0, 0);
     m_images->set({}, {});
     m_imageUrl.clear();
+    setSlow(false);
     emit contentChanged();
 }
 
@@ -489,6 +501,8 @@ void FilePreview::load(const Item& item)
         }
         return count;
     };
+    if (!m_worker)
+        m_worker = new ComWorker; // made when first wanted: a page that never shows a preview has no thread for it
     m_worker->post([self, item, textTypes, noHandler, generation, stale, split] {
         if (stale())
             return;
@@ -635,7 +649,7 @@ void FilePreview::apply(quint64 generation, std::shared_ptr<Loaded> loaded)
     m_textRows = loaded->rows;
     m_lines.setStringList(loaded->lines);
     const QString id = QString::number(generation);
-    m_imageUrl = loaded->image.isNull() ? QString() : u"image://preview/"_s + id;
+    m_imageUrl = loaded->image.isNull() ? QString() : u"image://%1/%2"_s.arg(m_imageScheme, id);
     m_images->set(id, std::move(loaded->image));
     QSize wanted;
     if (m_kind == Picture)
@@ -650,6 +664,8 @@ void FilePreview::apply(quint64 generation, std::shared_ptr<Loaded> loaded)
 
 void FilePreview::showWindow(QSize wanted)
 {
+    if (m_embedded)
+        return; // in its host's page, which is already there
     if (!m_window) {
         if (!m_makeWindow)
             return;
@@ -752,14 +768,15 @@ QRect FilePreview::placeBeside(QSize wanted)
 
 bool FilePreview::screenRect(QQuickItem* item, int* left, int* top, int* right, int* bottom) const
 {
-    if (!item || !m_window)
+    QQuickWindow* window = item ? item->window() : nullptr; // ours, or the page's that holds it (embedded)
+    if (!window || !window->isVisible())
         return false;
     // Logical within the window to physical on the screen, by the window's
     // own scale (its monitor's), from where its client area is.
     POINT origin {0, 0};
-    if (!::ClientToScreen(reinterpret_cast<HWND>(m_window->winId()), &origin))
+    if (!::ClientToScreen(reinterpret_cast<HWND>(window->winId()), &origin))
         return false;
-    const qreal dpr = m_window->devicePixelRatio();
+    const qreal dpr = window->devicePixelRatio();
     const QPointF at = item->mapToScene(QPointF(0, 0));
     *left = origin.x + qRound(at.x() * dpr);
     *top = origin.y + qRound(at.y() * dpr);
@@ -781,23 +798,30 @@ void FilePreview::placeHandler()
         m_host->move(left, top, right, bottom);
 }
 
+std::optional<QRect> FilePreview::handlerRect() const
+{
+    return m_open && m_kind == Handler ? m_host->visibleRect() : std::nullopt;
+}
+
 void FilePreview::startHandler(quint64 generation, const QUuid& handler)
 {
-    int left, top, right, bottom;
-    if (!m_window || !screenRect(m_handlerArea, &left, &top, &right, &bottom)) {
-        // The area is laid out a moment later (the window just resized): then.
-        QMetaObject::invokeMethod(this, [this, generation, handler] {
-            if (generation != m_generation.load() || m_kind != Handler)
-                return;
-            int l, t, r, b;
-            if (screenRect(m_handlerArea, &l, &t, &r, &b))
-                m_host->show(generation, m_item.path, handler, l, t, r, b, reinterpret_cast<HWND>(m_window->winId()), m_dark);
-            else
-                handlerFailed(generation);
-        }, Qt::QueuedConnection);
+    // Over the area, owned by the window that holds it (ours, or the page's).
+    const auto start = [this, generation, handler] {
+        int left, top, right, bottom;
+        if (!screenRect(m_handlerArea, &left, &top, &right, &bottom))
+            return false;
+        m_host->show(generation, m_item.path, handler, left, top, right, bottom, reinterpret_cast<HWND>(m_handlerArea->window()->winId()), m_dark);
+        return true;
+    };
+    if (start())
         return;
-    }
-    m_host->show(generation, m_item.path, handler, left, top, right, bottom, reinterpret_cast<HWND>(m_window->winId()), m_dark);
+    // The area is laid out a moment later (the window just resized): then.
+    QMetaObject::invokeMethod(this, [this, generation, start] {
+        if (generation != m_generation.load() || m_kind != Handler)
+            return;
+        if (!start())
+            handlerFailed(generation);
+    }, Qt::QueuedConnection);
 }
 
 // The handler could not be made, would not take the file, or did not answer

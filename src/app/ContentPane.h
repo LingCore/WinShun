@@ -2,6 +2,7 @@
 
 #include "ContentDetails.h"
 #include "ContentReport.h"
+#include "FilePreview.h"
 #include "SearchEngine.h"
 
 #include <QAbstractListModel>
@@ -18,7 +19,6 @@ class QQuickItem;
 namespace ws {
 class ComWorker;
 class IndexService;
-class PreviewHost;
 
 class ContentLines final : public QAbstractListModel {
     Q_OBJECT
@@ -74,7 +74,9 @@ class ContentPane final : public QObject {
     Q_PROPERTY(QString reportStatus READ reportStatus NOTIFY reportChanged FINAL)
     Q_PROPERTY(QString reportPreview READ reportPreview NOTIFY reportChanged FINAL)
     Q_PROPERTY(QVariantMap reportOptions READ reportOptions NOTIFY reportChanged FINAL)
-    Q_PROPERTY(QString previewMessage READ previewMessage NOTIFY previewChanged FINAL)
+    // The 预览 tab's: what the launcher's own preview shows, here in the
+    // page (a picture, text, a document's handler, or what is known; GitHub #224).
+    Q_PROPERTY(ws::FilePreview* filePreview READ filePreview CONSTANT FINAL)
     Q_PROPERTY(QColor highlightColor READ highlightColor WRITE setHighlightColor NOTIFY changed FINAL)
     // The style's match weight (Theme.matchWeight): bold from DemiBold up.
     Q_PROPERTY(int highlightWeight READ highlightWeight WRITE setHighlightWeight NOTIFY changed FINAL)
@@ -102,6 +104,7 @@ public:
     void update(SearchEngine::Request request, const QString& words, const QString& key,
         SearchResults files, SearchResults selected, const Subject& current,
         int scanned, int total, bool complete, bool searching, const ContentLeftOut& leftOut, int pluginRows = 0);
+    static constexpr int PreviewTab = 3; // the tabs: 摘要, 匹配, 文本, 预览, 报告
     bool opened() const { return m_opened; }
     void setOpened(bool value);
     int preferredWidth() const { return m_width; }
@@ -131,7 +134,9 @@ public:
     QString reportPreview() const { return m_reportPreview; }
     std::shared_ptr<const contentreport::Report> reportSnapshot() const { return m_report; }
     QVariantMap reportOptions() const;
-    QString previewMessage() const { return m_previewMessage; }
+    FilePreview* filePreview() const { return m_filePreview.get(); }
+    // Text files besides the usual ones, shown as text (the content search's kinds).
+    void setTextExtensions(const QStringList& extensions);
     // Shows a file's matches, text or preview now (a plugin's details are asked for then).
     bool showsDetails() const { return m_active && m_opened && m_tab >= 1 && m_tab <= 3; }
     QColor highlightColor() const { return m_color; }
@@ -156,10 +161,12 @@ public:
     Q_INVOKABLE void copyReport();
     Q_INVOKABLE void saveReport(int format);
     Q_INVOKABLE void printReport();
-    // Called only by the preview tab, with the actual clipped viewport.
+    // Called only by the preview tab: its page, while it is there.
     Q_INVOKABLE void setPreviewArea(QQuickItem* area, bool dark);
     Q_INVOKABLE void movePreview();
     void closePreview();
+    // The 预览 tab is on show (the page laid out, its window visible).
+    bool previewShown() const;
     bool ownsForeground() const;
     std::optional<QRect> previewRect() const;
     bool modalOperation() const { return m_dialogOpen; }
@@ -171,7 +178,6 @@ signals:
     void changed();
     void summaryChanged();
     void reportChanged();
-    void previewChanged();
     void positionRequested(int hitRow, int textRow);
     // `key`: the Subject's, whose row it is (a plugin's opens as its permissions allow).
     void openRequested(const QString& key, const QString& path, int line);
@@ -223,11 +229,9 @@ private:
     quint64 m_auditId = 0;
     SearchResults m_auditFiles;
     std::shared_ptr<Worker> m_detailState, m_reportState;
-    std::unique_ptr<PreviewHost> m_preview;
+    std::unique_ptr<FilePreview> m_filePreview;
     QPointer<QQuickItem> m_previewArea;
     bool m_dark = false;
-    QString m_previewPath, m_previewMessage;
-    quint64 m_previewTicket = 0;
     // Last: destroyed before the states and models tasks may use.
     std::unique_ptr<ComWorker> m_detailWorker, m_reportWorker;
 };

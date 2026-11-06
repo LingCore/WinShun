@@ -1229,6 +1229,7 @@ bool App::createWindow()
     m_qml->addImageProvider(u"thumbnail"_s, new ThumbnailProvider); // result rows' pictures, videos, PDFs
     m_qml->addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider); // clipboard rows' pictures
     m_qml->addImageProvider(u"preview"_s, m_preview->imageProvider()); // the picture in the preview (Alt+P)
+    m_qml->addImageProvider(u"panepreview"_s, m_launcher->contentPane()->filePreview()->imageProvider()); // the search panel's 预览 tab
     m_placement = std::make_unique<Placement>(Settings::dataDir() + u"\\state.ini"_s, u"Launcher"_s);
     m_frame = std::make_unique<WindowFrame>(false);
     m_qml->setInitialProperties({

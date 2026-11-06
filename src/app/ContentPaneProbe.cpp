@@ -3,6 +3,7 @@
 #include "Clipboard.h"
 #include "ContentPane.h"
 #include "ContentIndexer.h"
+#include "FilePreview.h"
 #include "History.h"
 #include "IndexService.h"
 #include "Launcher.h"
@@ -89,6 +90,11 @@ bool checkContentPane(QQmlEngine* qml, const QDir& output)
     SearchEngine search(&index, &apps, &places);
     Launcher launcher(&index, &apps, &places, &search, &history);
     launcher.setContentOptions(true, {u"txt"_s}, ContentSizeLimits{}, false, true);
+    qml->addImageProvider(u"panepreview"_s, launcher.contentPane()->filePreview()->imageProvider());
+    // The launcher's own preview, beside the box (no window here: made by the app).
+    FilePreview side;
+    side.setBuiltInOnly(true); // never QuickLook or Seer, should one run here
+    launcher.setPreview(&side);
     ClipStore store(temp.filePath(u"clipboard"_s));
     if (!store.open(QDateTime::currentMSecsSinceEpoch())) return false;
     ClipboardWatcher watcher({}, {});
@@ -257,20 +263,74 @@ bool checkContentPane(QQmlEngine* qml, const QDir& output)
     check(u"cancel_does_not_publish_partial_report"_s, !pane->reporting() && !pane->reportReady());
     pane->setTab(3);
     if (resultList) resultList->setProperty("currentIndex", launcher.results()->indexOf(sheet));
+    FilePreview* tabPreview = pane->filePreview();
+    // A document: through its handler, or (none here, or it failed) a thumbnail and what is known.
     const bool previewSettled = until([&] {
-        return pane->previewRect().has_value() || pane->previewMessage() == ContentPane::tr("此文件的预览处理程序不可用，可查看文本或打开文件")
-            || pane->previewMessage() == ContentPane::tr("此文件没有可用的预览处理程序，可查看文本或打开文件");
+        return tabPreview->path() == sheet
+            && ((tabPreview->kind() == FilePreview::Handler && pane->previewRect().has_value()) || tabPreview->kind() == FilePreview::Facts);
     }, 15000);
     check(u"real_handler_or_explicit_fallback"_s, previewSettled);
     results.insert(u"real_xlsx_preview_visible"_s, pane->previewRect().has_value());
     if (const auto bounds = pane->previewRect()) {
-        check(u"preview_viewport_width"_s, std::abs(bounds->width() - qRound(pane->preferredWidth() * window->devicePixelRatio())) < 4);
+        // The page's width, less the area's margins (8 each side, PreviewBody.qml).
+        check(u"preview_viewport_width"_s, std::abs(bounds->width() - qRound((pane->preferredWidth() - 16) * window->devicePixelRatio())) < 4);
         pane->setTab(2);
         check(u"preview_hidden_on_tab_change"_s, until([&] { return !pane->previewRect(); }));
         pane->setTab(3);
     }
     check(u"preview_tab_screenshot"_s, snap(u"preview"_s));
     results.insert(u"xlsx_handler_installed"_s, PreviewHost::handlerFor(sheet).has_value());
+
+    // GitHub #224: the 预览 tab shows what the launcher's own preview does: a
+    // Markdown file (no handler for it here, as on most PCs) as its text.
+    launcher.setContentOptions(true, {u"txt"_s, u"md"_s}, ContentSizeLimits{}, false, true);
+    const QString markdown = write(u"说明.md"_s, QStringList {u"# 标题"_s, {}, u"mdneedle 第一段"_s, {}, u"- 一"_s, u"- 二"_s, {}}
+        .join(QChar::LineFeed).toUtf8());
+    launcher.setQuery(u"mdneedle"_s);
+    check(u"markdown_found"_s, until([&] { return !launcher.searching() && launcher.results()->indexOf(markdown) >= 0; }));
+    if (resultList) resultList->setProperty("currentIndex", launcher.results()->indexOf(markdown));
+    check(u"markdown_selected"_s, until([&] { return pane->path() == markdown && !pane->busy(); })); // 预览: no matches read
+    check(u"markdown_preview_as_text"_s, until([&] {
+        return tabPreview->path() == markdown && tabPreview->kind() == FilePreview::Text && tabPreview->lineCount() == 6;
+    }));
+    check(u"markdown_preview_summary"_s, tabPreview->summary().contains(u"UTF-8"_s));
+    auto* previewBody = named(window->contentItem(), u"contentPreviewBody"_s);
+    auto* previewLines = named(window->contentItem(), u"previewTextLines"_s);
+    check(u"markdown_preview_drawn"_s, previewBody && previewBody->isVisible() && previewLines && previewLines->isVisible()
+        && previewLines->property("count").toInt() == 6 && previewLines->width() > 200);
+    check(u"markdown_preview_screenshot"_s, snap(u"preview-markdown"_s));
+    // The current row moves: the tab follows, no window of its own anywhere.
+    if (resultList) resultList->setProperty("currentIndex", launcher.results()->indexOf(markdown));
+    check(u"tab_preview_has_no_window"_s, tabPreview->window() == nullptr);
+
+    // GitHub #224: the preview window beside the box gives way to the 预览
+    // tab when the panel's details come, and comes back when they go.
+    const int mdRow = launcher.results()->indexOf(markdown);
+    pane->setTab(1);
+    launcher.setPanel(false);
+    launcher.togglePreview(mdRow);
+    check(u"box_preview_opens"_s, side.isOpen() && pane->tab() == 1);
+    launcher.setPanel(true);
+    check(u"panel_takes_over_preview"_s, !side.isOpen() && pane->tab() == ContentPane::PreviewTab);
+    check(u"taken_over_preview_in_tab"_s, until([&] { return tabPreview->path() == markdown && tabPreview->kind() == FilePreview::Text; }));
+    launcher.togglePreview(mdRow); // Alt+P in the details: back to the tab before
+    check(u"alt_p_in_details_toggles_tab"_s, !side.isOpen() && pane->tab() == 1);
+    launcher.setPanel(false);
+    check(u"preview_put_away_in_details_not_back"_s, !side.isOpen());
+    launcher.togglePreview(mdRow);
+    launcher.setPanel(true);
+    check(u"panel_takes_over_again"_s, !side.isOpen() && pane->tab() == ContentPane::PreviewTab);
+    launcher.togglePreview(mdRow);
+    launcher.togglePreview(mdRow);
+    check(u"alt_p_in_details_shows_tab"_s, !side.isOpen() && pane->tab() == ContentPane::PreviewTab);
+    launcher.setPanel(false);
+    check(u"box_gets_preview_back"_s, side.isOpen() && side.path() == markdown);
+    launcher.togglePreview(mdRow); // closed by the user in the box: not back in the panel either
+    launcher.setPanel(true);
+    check(u"closed_preview_stays_closed"_s, !side.isOpen() && pane->tab() == ContentPane::PreviewTab);
+    launcher.setPanel(false);
+    check(u"closed_preview_not_back"_s, !side.isOpen());
+    launcher.setPanel(true);
     check(u"line_aware_code_args"_s, contentopen::arguments(u"C:\\Code\\Code.exe"_s, text, 42)
         == std::optional(u"--goto \"%1:42\""_s.arg(text)));
     check(u"line_aware_notepadpp_args"_s, contentopen::arguments(u"notepad++.exe"_s, text, 42)
