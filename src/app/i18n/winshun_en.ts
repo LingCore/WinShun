@@ -727,6 +727,22 @@
         <translation>Square</translation>
     </message>
     <message>
+        <source>界面风格</source>
+        <translation>Interface style</translation>
+    </message>
+    <message>
+        <source>精修原生</source>
+        <translation>Refined native</translation>
+    </message>
+    <message>
+        <source>品牌色彩</source>
+        <translation>Brand colours</translation>
+    </message>
+    <message>
+        <source>轻拟物质感</source>
+        <translation>Soft tactile</translation>
+    </message>
+    <message>
         <source>界面大小</source>
         <translation>Size</translation>
     </message>
@@ -2442,7 +2458,7 @@
     </message>
     <message>
         <source>总数和任务管理器里 Win顺 那一行的“内存”是同一个数；后台服务在那里单独一行，不算在内。</source>
-        <translation>The total is the same number as the Memory column of WinShun's row in Task Manager; the background service has a row of its own there and is not counted.</translation>
+        <translation>The total is the same number as the Memory column of WinShun&apos;s row in Task Manager; the background service has a row of its own there and is not counted.</translation>
     </message>
     <message>
         <source>读磁盘、建索引；任务管理器里单独一行，不算在总数里</source>
@@ -4746,7 +4762,7 @@ Right: center window · Drag: move window</translation>
     </message>
     <message>
         <source>当前界面风格的窗口不透明；“精修原生”和“品牌色彩”风格才有透明效果</source>
-        <translation>Windows are opaque in this interface style; the “精修原生” (Refined native) and “品牌色彩” (Brand colours) styles have transparency</translation>
+        <translation>Windows are opaque in this interface style; the Refined native and Brand colours styles have transparency</translation>
     </message>
     <message>
         <source>窗口背景透出桌面壁纸的颜色（云母效果）</source>
@@ -6522,6 +6538,30 @@ Right: center window · Drag: move window</translation>
     <message>
         <source>未设置</source>
         <translation>Not set</translation>
+    </message>
+    <message>
+        <source>界面风格</source>
+        <translation>Interface style</translation>
+    </message>
+    <message>
+        <source>风格;外观;样式;皮肤;精修原生;品牌色彩;轻拟物;拟物;质感;Fluent;style;skin;look</source>
+        <translation>style;interface style;look;skin;appearance;refined native;brand colours;soft tactile;tactile;fluent;风格;皮肤</translation>
+    </message>
+    <message>
+        <source>所有窗口的样子；浅色、深色仍按上面的主题</source>
+        <translation>How every window looks; light or dark still follows the theme above</translation>
+    </message>
+    <message>
+        <source>精修原生</source>
+        <translation>Refined native</translation>
+    </message>
+    <message>
+        <source>品牌色彩</source>
+        <translation>Brand colours</translation>
+    </message>
+    <message>
+        <source>轻拟物质感</source>
+        <translation>Soft tactile</translation>
     </message>
     <message>
         <source>搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。剪贴板可在“剪贴板”页单独设置</source>
@@ -10258,14 +10298,6 @@ Content index: %5</translation>
     <message>
         <source>列表和剪贴板里的小图，再看时不用重读</source>
         <translation>small pictures in the lists and the clipboard, kept so they are not read again</translation>
-    </message>
-    <message>
-        <source>用过空着的</source>
-        <translation>Used, now free</translation>
-    </message>
-    <message>
-        <source>刚才用过、已经不用的，归还后就没了</source>
-        <translation>used a moment ago, no longer needed; gone after a give-back</translation>
     </message>
     <message>
         <source>程序本身</source>
