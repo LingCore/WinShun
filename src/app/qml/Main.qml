@@ -423,7 +423,10 @@ Window {
         target: window
         property: "height"
         value: layout.implicitHeight
-        when: !window.panel
+        // Once the panel's minimumHeight has gone too: both follow `panel` in
+        // no set order, and set while it still held, a box shorter than the
+        // panel stayed 360 tall, empty under its footer.
+        when: !window.panel && window.minimumHeight === 0
         restoreMode: Binding.RestoreNone
     }
     minimumWidth: panel ? 640 : 0
