@@ -2217,6 +2217,22 @@ void App::setUpAppTools()
             } else
                 done({});
         }});
+    // GitHub #225: open_item opens files and folders only, so a link the
+    // screenshot plugin read (a QR code) did nothing. Web and mail links,
+    // as a plugin row's open allows them, with the user's normal rights.
+    tools.push_back({u"open_url"_s, plugin::Permission::WinshunOpen,
+        [](const QString&, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            const QString text = arguments.value(u"url"_s).toString().trimmed();
+            const QUrl url(text, QUrl::StrictMode);
+            const QString scheme = url.scheme().toLower();
+            if (text.size() > 8192 || !url.isValid() || (scheme != u"http" && scheme != u"https" && scheme != u"mailto")
+                || (scheme != u"mailto" && url.host().isEmpty())) {
+                done(toolError(u"url must be an http, https or mailto link"_s));
+                return;
+            }
+            shell::openUrl(text);
+            done({});
+        }});
     tools.push_back({u"show_ocr_setup"_s, plugin::Permission::Ui,
         [this](const QString&, const QString&, const QJsonObject&, std::function<void(mcp::ToolResult)> done) {
             showSettings([](QQuickWindow* window) {
