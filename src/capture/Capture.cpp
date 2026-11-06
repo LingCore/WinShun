@@ -48,6 +48,11 @@ constexpr qint64 kFlyoutSettleMs = 500;
 // Hiding waits for a frame drawn without the pictures (their textures go
 // with it); one that does not come does not hold the windows up.
 constexpr auto kHideTimeout = 200ms;
+// With more than one monitor, where the pointer is looked at, and how many
+// looks in a row on another monitor move the warm overlay there (GitHub
+// #221): passing through does not.
+constexpr auto kWarmLook = 1000ms;
+constexpr int kWarmMoveLooks = 3;
 
 HMONITOR monitorOf(QScreen* screen)
 {
@@ -227,6 +232,8 @@ Capture::Capture(QQmlEngine* engine, Callbacks callbacks, QObject* parent)
     });
     connect(qApp, &QGuiApplication::screenAdded, this, &Capture::screensChanged);
     connect(qApp, &QGuiApplication::screenRemoved, this, &Capture::screensChanged);
+    m_warmWatch.setInterval(kWarmLook);
+    connect(&m_warmWatch, &QTimer::timeout, this, &Capture::watchWarm);
     buildOverlays();
 }
 
@@ -279,18 +286,87 @@ void Capture::buildOverlays()
         follow();
         connect(window, &QQuickWindow::frameSwapped, this, [this, window] { frameDrawn(window); }, Qt::QueuedConnection);
         window->create();
+        m_overlays.push_back(overlay);
+    }
+    // Each overlay's graphics are a D3D11 device of their own, ~35 MB while
+    // hidden (measured 2026-11-06, NVIDIA, GitHub #221): with more than one
+    // monitor only the pointer's keeps them; the others are never set up
+    // until a capture shows them.
+    POINT cursor {};
+    ::GetCursorPos(&cursor);
+    const HMONITOR here = ::MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+    const auto first = std::ranges::find(m_overlays, here, &Overlay::monitor);
+    const Overlay* warm = first != m_overlays.end() ? &*first : m_overlays.empty() ? nullptr : &m_overlays.front();
+    for (Overlay& overlay : m_overlays) {
+        overlay.warm = &overlay == warm;
+        if (!overlay.warm) {
+            overlay.window->setPersistentGraphics(false);
+            overlay.window->setPersistentSceneGraph(false);
+            continue;
+        }
         // Its graphics set up now, out of sight: a first show costs 130–170 ms,
         // later ones 3–6 ms (stage 0).
         overlay.warming = true;
         overlay.cloaked = true;
+        win::setCloaked(overlay.window, true);
+        overlay.window->show();
+    }
+    m_warmNext = nullptr;
+    m_warmNextLooks = 0;
+    if (m_overlays.size() > 1)
+        m_warmWatch.start();
+}
+
+void Capture::setWarm(Overlay& overlay, bool warm)
+{
+    overlay.warm = warm;
+    QQuickWindow* window = overlay.window;
+    if (!window)
+        return;
+    window->setPersistentGraphics(warm);
+    window->setPersistentSceneGraph(warm);
+    if (window->isVisible())
+        return; // shown (a warm-up): settled once it is hidden
+    if (warm) {
+        overlay.warming = true; // set up again out of sight, as in buildOverlays
+        overlay.cloaked = true;
         win::setCloaked(window, true);
         window->show();
-        m_overlays.push_back(overlay);
+    } else {
+        window->releaseResources();
     }
+}
+
+void Capture::watchWarm()
+{
+    if (m_state != State::Idle || m_overlays.size() < 2) {
+        m_warmNextLooks = 0;
+        return;
+    }
+    POINT cursor {};
+    ::GetCursorPos(&cursor);
+    const HMONITOR here = ::MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+    const auto warm = std::ranges::find_if(m_overlays, [](const Overlay& o) { return o.warm; });
+    const auto next = std::ranges::find(m_overlays, here, &Overlay::monitor);
+    if (next == m_overlays.end() || next == warm || !next->window) {
+        m_warmNextLooks = 0;
+        return;
+    }
+    if (here != m_warmNext) {
+        m_warmNext = here;
+        m_warmNextLooks = 0;
+    }
+    if (++m_warmNextLooks < kWarmMoveLooks)
+        return;
+    m_warmNextLooks = 0;
+    setWarm(*next, true); // before the old one goes: never none
+    if (warm != m_overlays.end())
+        setWarm(*warm, false);
 }
 
 void Capture::destroyOverlays()
 {
+    m_warmWatch.stop();
     for (Overlay& overlay : m_overlays) {
         delete overlay.window;
         delete overlay.model;
@@ -439,6 +515,29 @@ void Capture::start(bool ocrOnly)
     show();
 }
 
+void Capture::showOverlay(Overlay& overlay)
+{
+    const QRect rect = overlay.model->rect();
+    // Exactly the monitor, in physical pixels: Qt's logical geometry
+    // would reach a pixel into the next monitor at 150% (1707 logical
+    // is 2561 pixels).
+    ::SetWindowPos(reinterpret_cast<HWND>(overlay.window->winId()), HWND_TOPMOST, rect.x(), rect.y(), rect.width(),
+        rect.height(), SWP_NOACTIVATE);
+    overlay.model->setGeometry(rect, overlay.window->devicePixelRatio(), overlay.window->size());
+    overlay.pending = false;
+    overlay.cloaked = true;
+    overlay.warming = false;
+    win::setCloaked(overlay.window, true); // until its first frame with the picture
+    overlay.window->show();
+}
+
+void Capture::showPending()
+{
+    for (Overlay& overlay : m_overlays)
+        if (overlay.pending && overlay.window && !overlay.model->image().isNull())
+            showOverlay(overlay);
+}
+
 void Capture::show()
 {
     m_state = State::Showing;
@@ -447,26 +546,34 @@ void Capture::show()
     QQuickWindow* under = nullptr;
     int underIndex = -1;
     QPoint underAt;
+    // The pointer's overlay first when it is the warm one (up in ~20 ms): a
+    // cold one setting up its graphics holds this thread 130–250 ms, the warm
+    // one's first frame too when shown together (GitHub #221). The others
+    // follow its first frame (frameDrawn).
+    const auto pointers = std::ranges::find_if(m_overlays, [&cursor](const Overlay& o) {
+        return o.window && !o.model->image().isNull() && o.model->rect().contains(cursor.x, cursor.y);
+    });
+    const bool coldLater = pointers != m_overlays.end() && pointers->warm;
     for (Overlay& overlay : m_overlays) {
         if (!overlay.window || overlay.model->image().isNull())
             continue;
         const QRect rect = overlay.model->rect();
-        // Exactly the monitor, in physical pixels: Qt's logical geometry
-        // would reach a pixel into the next monitor at 150% (1707 logical
-        // is 2561 pixels).
-        ::SetWindowPos(reinterpret_cast<HWND>(overlay.window->winId()), HWND_TOPMOST, rect.x(), rect.y(), rect.width(),
-            rect.height(), SWP_NOACTIVATE);
-        overlay.model->setGeometry(rect, overlay.window->devicePixelRatio(), overlay.window->size());
-        overlay.cloaked = true;
-        overlay.warming = false;
-        win::setCloaked(overlay.window, true); // until its first frame with the picture
-        overlay.window->show();
+        if (coldLater && !overlay.warm) {
+            overlay.pending = true;
+            continue;
+        }
+        showOverlay(overlay);
         if (rect.contains(cursor.x, cursor.y)) {
             under = overlay.window;
             underIndex = overlay.model->index();
             underAt = QPoint(cursor.x, cursor.y) - rect.topLeft();
         }
     }
+    if (coldLater) // its first frame may not come (a lost device): the others all the same
+        QTimer::singleShot(300ms, this, [this] {
+            if (m_state == State::Showing)
+                showPending();
+        });
     if (!under) {
         for (const Overlay& overlay : m_overlays) {
             if (overlay.window && overlay.window->isVisible()) {
@@ -552,6 +659,7 @@ void Capture::recordCapture(CaptureSession::Action action, const QRect& rect)
     const QRect selected = !rect.isEmpty() ? rect : m_session.hasSelection() ? m_session.selectionRect() : QRect();
     QJsonObject details {{u"overlay_up_ms"_s, m_reported && m_upClock.isValid() ? m_clock.elapsed() - m_upClock.elapsed() : -1},
         {u"grab_ms"_s, m_grabMs}, {u"monitors"_s, static_cast<int>(m_overlays.size())}, {u"dpr"_s, dprs},
+        {u"cold_overlays"_s, static_cast<int>(std::ranges::count_if(m_overlays, [](const Overlay& o) { return !o.warm; }))},
         {u"wgc"_s, m_wgcShots}, {u"hdr"_s, m_hdrShots}, {u"magnifier"_s, m_magnifierOn},
         {u"smart_prescan"_s, m_callbacks.smart.prescan && m_callbacks.smart.prescan()},
         {u"first_since_start"_s, g_firstCapture}, {u"seconds_since_start"_s, diag::secondsSinceProcessStart()},
@@ -603,6 +711,8 @@ void Capture::frameDrawn(QQuickWindow* window)
         overlay->cloaked = false;
         window->hide();
         win::setCloaked(window, false);
+        if (!overlay->warm)
+            window->releaseResources(); // no longer the pointer's while it was set up
         return;
     }
     if (m_state == State::Closing) {
@@ -637,6 +747,8 @@ void Capture::frameDrawn(QQuickWindow* window)
                 front ? QString::fromWCharArray(name) : u"no window"_s, front ? foreground::programOf(front) : QString());
         }
     }
+    if (m_state == State::Showing)
+        showPending(); // the pointer's is up: the others now
 }
 
 void Capture::finish(CaptureSession::Action action, int screen, const QRect& rect)
@@ -1058,11 +1170,14 @@ void Capture::hideAll()
     m_hideTimeout.stop();
     for (Overlay& overlay : m_overlays) {
         overlay.closingFrames = 0;
+        overlay.pending = false;
         if (overlay.window && overlay.window->isVisible())
             overlay.window->hide();
         if (overlay.window && overlay.cloaked)
             win::setCloaked(overlay.window, false);
         overlay.cloaked = false;
+        if (overlay.window && !overlay.warm)
+            overlay.window->releaseResources(); // its device goes (setWarm)
     }
     m_state = State::Idle;
     if (m_callbacks.ended)
