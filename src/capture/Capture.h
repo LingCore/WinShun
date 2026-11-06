@@ -196,19 +196,10 @@ private:
         bool cloaked = false; // shown cloaked until its first frame is drawn
         bool warming = false; // the first, hidden show that sets up its graphics
         int closingFrames = 0; // frames to draw without the picture before hiding
-        // Keeps its graphics while hidden: the pointer's monitor's, with
-        // more than one (GitHub #221). The others set theirs up when a
-        // capture shows them, and give them back when it is over.
-        bool warm = true;
-        bool pending = false; // to be shown once the warm one has drawn (show)
     };
 
     void buildOverlays();
     void destroyOverlays();
-    void showOverlay(Overlay& overlay);
-    void showPending();
-    void setWarm(Overlay& overlay, bool warm);
-    void watchWarm(); // the pointer on another monitor a while: its overlay is the warm one
     void screensChanged(); // monitors came, went or changed: everything made again
     void start(bool ocrOnly = false);
     void show();
@@ -329,9 +320,6 @@ private:
     QTimer m_flyoutWait;
     QTimer m_hideTimeout;
     QTimer m_rebuild;
-    QTimer m_warmWatch; // with more than one monitor, while idle
-    HMONITOR m_warmNext = nullptr; // where the pointer has been, the last looks
-    int m_warmNextLooks = 0;
     std::jthread m_saver; // last: joined first
 };
 
