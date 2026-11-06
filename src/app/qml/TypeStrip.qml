@@ -165,12 +165,18 @@ Item {
                 return i
         return Math.max(0, chipRepeater.count - 1)
     }
+    // While the chips scroll their gaps follow (Translate in the delegate);
+    // chips made anew (文件 ↔ 内容) take theirs at once.
+    property bool moving: false
     function scrollTo(first: int, animated: bool) {
+        slide.stop()
+        moving = animated && SystemTheme.animations
         firstChip = scrolls ? Math.max(0, Math.min(lastFirst(), first)) : 0
         const to = restX
-        slide.stop()
-        if (to === view.contentX)
+        if (to === view.contentX) {
+            moving = false
             return
+        }
         if (!animated || !SystemTheme.animations) {
             view.contentX = to
             return
@@ -210,7 +216,11 @@ Item {
         if (slide.running)
             view.contentX = Math.round(slidePosition / scrollStep) * scrollStep
     }
-    NumberAnimation { id: slide; target: strip; property: "slidePosition"; duration: 150; easing.type: Easing.OutCubic }
+    NumberAnimation {
+        id: slide
+        target: strip; property: "slidePosition"; duration: 150; easing.type: Easing.OutCubic
+        onStopped: strip.moving = false
+    }
     onCurrentChanged: scheduleReveal()
     onChipsChanged: scheduleReveal()
 
@@ -304,7 +314,7 @@ Item {
                     transform: Translate {
                         x: chip.shift
                         Behavior on x {
-                            enabled: SystemTheme.animations
+                            enabled: strip.moving
                             NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
                         }
                     }
