@@ -316,10 +316,10 @@ private slots:
     // and the shared apiKey of 2.1.1 stays in use where a service has none.
     void eachServiceHasItsOwnKey()
     {
-        const QByteArray keys = "\"deeplKey\":\"d:fx\",\"openaiKey\":\" o \",\"apiKey\":\"shared\"";
-        const auto keyFor = [&](const char* provider) {
+        const std::string keys = "\"deeplKey\":\"d:fx\",\"openaiKey\":\" o \",\"apiKey\":\"shared\"";
+        const auto keyFor = [&](const char* provider) -> QString {
             return QString::fromStdString(
-                tr::settingsFrom(parse("{\"provider\":\"" + QByteArray(provider) + "\"," + keys + "}")).key);
+                tr::settingsFrom(parse("{\"provider\":\"" + std::string(provider) + "\"," + keys + "}")).key);
         };
         QCOMPARE(keyFor("deepl"), QString::fromUtf8("d:fx"));
         QCOMPARE(keyFor("openai"), QString::fromUtf8("o"));
