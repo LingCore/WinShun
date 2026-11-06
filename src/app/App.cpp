@@ -1,4 +1,5 @@
 #include "App.h"
+#include "AdminDialogHint.h"
 #include "AdminTapHint.h"
 #include "WebSearchProvider.h"
 #include "platform/OcrFiles.h"
@@ -1696,6 +1697,14 @@ void App::applyKeyListener(bool force)
             if (DropPie* pie = m_dropPie.get()) {
                 callbacks.dragMenu = [pie](POINT pt, HWND capture, DWORD pid) { pie->summoned(pt, capture, pid); };
                 callbacks.leftButtonUp = [pie] { pie->buttonReleased(); };
+                // Another program's hotkey has the key: the pie never comes (GitHub #150).
+                callbacks.dragKeyRefused = [this](unsigned, unsigned long error) {
+                    QMetaObject::invokeMethod(this, [this, error] {
+                        m_dropPieKeyRefused = error;
+                        if (error == ERROR_HOTKEY_ALREADY_REGISTERED && m_messages && keyTakenFirstTime())
+                            m_messages->showNotification(DropPie::keyTakenTitle(), DropPie::keyTakenText());
+                    }, Qt::QueuedConnection);
+                };
             }
             callbacks.log = [](const std::string& line) { qWarning().noquote() << QString::fromStdString(line); };
             m_keyListener = std::make_unique<KeyListener>(std::move(callbacks));
@@ -3447,7 +3456,7 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
                 {u"documents_enabled"_s, m_settings.contentDocuments},
                 {u"include_system_folders"_s, m_settings.contentInLowPriority}};
             const KeyboardRawInput pieKeyboard = keyboardRawInput();
-            context[u"drop_pie"_s] = QJsonObject {
+            QJsonObject pie {
                 {u"enabled"_s, m_settings.dropPie},
                 {u"runtime"_s, m_dropPie ? u"local"_s : m_dropPieHelper ? u"helper"_s : u"off"_s},
                 {u"local_drop_target_ready"_s, m_dropPie && m_dropPie->dropReady()},
@@ -3455,7 +3464,15 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
                 {u"local_keyboard_input"_s, !m_dropPie || !m_keyListener ? u"off"_s
                     : pieKeyboard.error ? u"unknown"_s : !pieKeyboard.registration ? u"none"_s
                     : pieKeyboard.registration->hwndTarget == m_keyListener->window() ? u"ok"_s : u"other"_s},
+                // Explorer elevated too (UAC off, the built-in Administrator):
+                // the helper is then as well (GitHub #150).
+                {u"shell_elevated"_s, integrity::elevated(::GetShellWindow())},
+                {u"uac"_s, QSettings(u"HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"_s,
+                    QSettings::NativeFormat).value(u"EnableLUA"_s, 1).toInt() != 0},
             };
+            if (m_dropPieKeyRefused)
+                pie.insert(u"local_key_refused"_s, qint64(m_dropPieKeyRefused));
+            context[u"drop_pie"_s] = pie;
             if (m_dropPieHelper)
                 context[u"drop_pie_helper"_s] = m_dropPieHelper->state();
             if (const auto service = std::dynamic_pointer_cast<ntfs::ServiceVolumeAccess>(m_index->volumeAccess()))
@@ -4216,6 +4233,20 @@ void App::applyFolderMenu()
     }
 }
 
+// The pie's key held by another program's hotkey: told the first time only,
+// ever; the diagnostics keep it (drop_pie, GitHub #150).
+bool App::keyTakenFirstTime()
+{
+    // No tray icon: nothing would show (MessageWindow), so not told yet.
+    if (m_settings.dropPieKeyTakenTold || !m_messages || !m_messages->trayVisible())
+        return false;
+    m_settings.dropPieKeyTakenTold = true;
+    m_settings.save();
+    if (m_settingsEditor)
+        m_settingsEditor->setSettings(m_settings); // its copy must not forget it with its next change
+    return true;
+}
+
 // 拖放圆盘: on unless switched off, and never while Win顺 runs as
 // administrator, where drops from the user's programs cannot reach it (UIPI).
 void App::applyDropPie()
@@ -4226,6 +4257,7 @@ void App::applyDropPie()
                 if (m_messages) m_messages->showNotification(title, text, std::move(retry));
             };
             m_dropPieHelper = std::make_unique<DropPieHelper>(m_favorites.get(), std::move(notify));
+            m_dropPieHelper->setKeyTakenGate([this] { return keyTakenFirstTime(); });
         }
         m_dropPieHelper->update(m_settings);
     } else {
@@ -4364,8 +4396,11 @@ void App::applyDialogs()
         callbacks.dialogChanged = [this](HWND dialog) {
             // An elevated dialog just came up: re-probe so the bar knows at
             // once whether it can jump or must fall back to copy.
-            if (dialog && m_serviceNav && integrity::higherThanOurs(dialog))
+            if (dialog && m_serviceNav && integrity::higherThanOurs(dialog)) {
                 m_serviceNav->refresh();
+                // Once that answer has come: a word if nothing can take it anywhere (GitHub #216).
+                QTimer::singleShot(1500ms, this, [this, dialog] { adminDialogFront(dialog); });
+            }
             if (m_dialogBar && (!dialog || m_barWindow || createBarWindow()))
                 m_dialogBar->setDialog(dialog);
         };
@@ -6114,6 +6149,75 @@ void App::adminTapCheck()
     if (who.isEmpty())
         who = f.program;
     m_messages->showNotification(tr("“%1”以管理员身份运行").arg(shortTitle(who)), text, std::move(onClick));
+}
+
+// A file dialog of a program run as administrator, in front a moment: when
+// nothing can take it anywhere (no service for this copy), said once per
+// program, a few at most, one a run (AdminDialogHint.h, GitHub #216). The
+// bar's own line says so too, but only with it on and only under it.
+void App::adminDialogFront(HWND dialog)
+{
+    using namespace admindialog;
+    if (!dialog || !::IsWindow(dialog) || !::IsWindowVisible(dialog) || !integrity::higherThanOurs(dialog)
+        || !m_dialogJump || m_dialogJump->dialog() != dialog)
+        return;
+    Facts f;
+    f.following = m_settings.dialogJump || m_settings.dialogBar || m_settings.dialogAutoJump;
+    const ServiceDialogNav::Reach reach = m_serviceNav ? m_serviceNav->reach() : ServiceDialogNav::Reach::NoService;
+    f.reach = reach == ServiceDialogNav::Reach::Available ? Reach::Service
+        : reach == ServiceDialogNav::Reach::OtherCopy     ? Reach::OtherCopy
+                                                          : Reach::NoService;
+    f.serviceInstalled = ntfs::ServiceVolumeAccess::state() != ntfs::ServiceState::NotInstalled;
+    // Only a portable copy's settings install the service (as for the double tap).
+    f.canInstall = userIsAdministrator() && !Settings::portableFolder().isEmpty()
+        && QFile::exists(QCoreApplication::applicationDirPath() + u"/WinShunService.exe"_s);
+    f.administrator = userIsAdministrator();
+    f.program = foreground::programOf(dialog);
+    f.shownThisRun = m_adminDialogShownThisRun;
+    f.trayShown = m_messages && m_messages->trayVisible();
+    f.shown = m_settings.adminDialogHinted;
+    const Verdict verdict = decide(f);
+    const Fix fix = fixFor(f);
+    if (const QString seen = f.program.toLower() + u' ' + QLatin1StringView(name(verdict)); !m_adminDialogLogged.contains(seen)) {
+        m_adminDialogLogged.push_back(seen);
+        diagnostics::record(u"admin-dialog-hint"_s,
+            {{u"program"_s, f.program}, {u"verdict"_s, QLatin1StringView(name(verdict))},
+                {u"fix"_s, QLatin1StringView(name(fix))}});
+        const QString line = u"File dialog of %1 (run as administrator): %2, fix %3"_s.arg(
+            f.program, QLatin1StringView(name(verdict)), QLatin1StringView(name(fix)));
+        if (verdict == Verdict::Show)
+            qWarning().noquote() << line;
+        else
+            qInfo().noquote() << line;
+    }
+    if (verdict != Verdict::Show)
+        return;
+    m_adminDialogShownThisRun = true;
+    m_settings.adminDialogHinted = remember(m_settings.adminDialogHinted, f.program);
+    m_settings.save();
+    if (m_settingsEditor)
+        m_settingsEditor->setSettings(m_settings); // its copy must not forget it with its next change
+    m_backup->soon();
+
+    QString text;
+    std::function<void()> onClick;
+    if (fix == Fix::Install) {
+        text = tr("它的对话框 Win顺 转不过去，只能复制路径。点这里装上索引服务（只要一次管理员权限），就能直接转过去；以管理员身份运行 Win顺 也行。");
+        onClick = [this] { // the row with the install button, under 索引方式
+            showSettings([this](QQuickWindow* window) {
+                refreshIndexAccess(); // a window made just now knows nothing yet of this copy (portable: that row shown)
+                QMetaObject::invokeMethod(window, "showPlace", Q_ARG(QVariant, QVariant(u"indexService"_s)));
+            });
+        };
+    } else if (fix == Fix::OtherCopy) {
+        text = tr("它的对话框 Win顺 转不过去，只能复制路径：这台电脑的索引服务属于另一份 Win顺。以管理员身份运行这一份 Win顺 就能转过去。");
+    } else {
+        text = tr("它的对话框 Win顺 转不过去，只能复制路径。以管理员身份运行 Win顺 就能转过去。");
+    }
+    QString who = programTitle(dialog);
+    if (who.isEmpty())
+        who = f.program;
+    m_messages->showNotification(tr("“%1”以管理员身份运行").arg(admintap::shortTitle(who)), text, std::move(onClick));
 }
 
 void App::logLauncherLostFront(HWND front)

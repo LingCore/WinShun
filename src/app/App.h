@@ -679,10 +679,13 @@ private:
     // program, in a notification (AdminTapHint), after it has stayed in
     // front a moment (kAdminTapDwell), so that Alt+Tab past it says nothing.
     void adminTapFront(HWND window);
+    void adminDialogFront(HWND dialog); // a file dialog of a program run as administrator came up (GitHub #216)
     void adminTapCheck();
     QTimer m_adminTapDwell;
     HWND m_adminTapWindow = nullptr; // what came to the front last
     bool m_adminTapShownThisRun = false;
+    bool m_adminDialogShownThisRun = false;
+    QStringList m_adminDialogLogged; // "program verdict", as m_adminTapLogged
     QStringList m_adminTapLogged; // "program verdict": each in the log and the journal once a run
     QElapsedTimer m_keyListenerMade; // the service's listener answers within this of the key listener's start
     bool m_hotkeyOverAdmin = false; // the hotkey is registered and has a modifier: it comes over administrator windows too
@@ -777,6 +780,8 @@ private:
     std::unique_ptr<DropPie> m_dropPie; // before the window: its view-model
     std::unique_ptr<DropPieHelper> m_dropPieHelper;
     QPointer<QQuickWindow> m_dropPieWindow;
+    unsigned long m_dropPieKeyRefused = 0; // its key's plain hotkey, refused (GitHub #150)
+    bool keyTakenFirstTime(); // whether to tell of that now: once ever (Favorites/DropPieKeyTakenTold)
     QStringList m_doubleCtrlIgnoredLogged; // "program reason", logged once each: a game gets many
     std::unique_ptr<DialogJump> m_dialogJump; // file dialogs: Ctrl+G, the bar; after m_messages, which has the hotkey
     std::unique_ptr<DialogBar> m_dialogBar; // the search bar under file dialogs

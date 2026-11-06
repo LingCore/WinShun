@@ -8030,6 +8030,18 @@ Right: center window · Drag: move window</translation>
         <translation>“%1” runs as administrator</translation>
     </message>
     <message>
+        <source>它的对话框 Win顺 转不过去，只能复制路径。点这里装上索引服务（只要一次管理员权限），就能直接转过去；以管理员身份运行 Win顺 也行。</source>
+        <translation>WinShun cannot take its dialogs to a folder, only copy the path. Click here to install the index service (administrator rights once) and they go straight there; running WinShun as administrator works too.</translation>
+    </message>
+    <message>
+        <source>它的对话框 Win顺 转不过去，只能复制路径：这台电脑的索引服务属于另一份 Win顺。以管理员身份运行这一份 Win顺 就能转过去。</source>
+        <translation>WinShun cannot take its dialogs to a folder, only copy the path: the index service on this PC belongs to another copy of WinShun. Run this copy as administrator and they go straight there.</translation>
+    </message>
+    <message>
+        <source>它的对话框 Win顺 转不过去，只能复制路径。以管理员身份运行 Win顺 就能转过去。</source>
+        <translation>WinShun cannot take its dialogs to a folder, only copy the path. Run WinShun as administrator and they go straight there.</translation>
+    </message>
+    <message>
         <source>正在加载索引…</source>
         <translation>Loading the index…</translation>
     </message>
@@ -9699,6 +9711,14 @@ Content index: %5</translation>
     <message>
         <source>暂时无法接收文件拖放，请松开鼠标后重试。</source>
         <translation>File drops are temporarily unavailable. Release the mouse button and try again.</translation>
+    </message>
+    <message>
+        <source>收藏圆盘打不开</source>
+        <translation>Favorites pie cannot open</translation>
+    </message>
+    <message>
+        <source>Esc 下面的 ` 键被另一个程序设成了快捷键，拖动文件时按它打不开圆盘。请在那个程序里换掉这个快捷键。</source>
+        <translation>Another program uses the ` key (below Esc) as its shortcut, so pressing it while dragging files cannot open the pie. Change that shortcut in the other program.</translation>
     </message>
 </context>
 <context>

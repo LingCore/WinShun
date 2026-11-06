@@ -808,6 +808,7 @@ void Settings::load()
     doubleCtrlExcludedApps = readOrDefault(s, u"Launcher/DoubleCtrlExcludedApps"_s, d.doubleCtrlExcludedApps);
     hotkey = readOrDefault(s, u"Launcher/Hotkey"_s, d.hotkey);
     adminTapHinted = readOrDefault(s, u"Launcher/AdminTapHinted"_s, d.adminTapHinted);
+    adminDialogHinted = readOrDefault(s, u"Launcher/AdminDialogHinted"_s, d.adminDialogHinted);
     shortcutAgain = readOrDefault(s, u"Launcher/ShortcutAgain"_s, d.shortcutAgain).trimmed().toLower();
     if (shortcutAgain != u"panel")
         shortcutAgain = d.shortcutAgain;
@@ -872,6 +873,7 @@ void Settings::load()
     folderMenuHotkey = readOrDefault(s, u"Launcher/FolderMenuHotkey"_s, d.folderMenuHotkey).trimmed();
     folderMenuOpusBefore = readOrDefault(s, u"Launcher/FolderMenuOpusBefore"_s, d.folderMenuOpusBefore);
     dropPie = readOrDefault(s, u"Favorites/DropPie"_s, d.dropPie);
+    dropPieKeyTakenTold = readOrDefault(s, u"Favorites/DropPieKeyTakenTold"_s, d.dropPieKeyTakenTold);
 
     foldersFirst = readOrDefault(s, u"Results/FoldersFirst"_s, d.foldersFirst);
     // In the file only when changed (save): one never changed follows the
@@ -1195,6 +1197,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/DoubleCtrlExcludedApps"_s, doubleCtrlExcludedApps);
     s.setValue(u"Launcher/Hotkey"_s, hotkey);
     s.setValue(u"Launcher/AdminTapHinted"_s, adminTapHinted);
+    s.setValue(u"Launcher/AdminDialogHinted"_s, adminDialogHinted);
     s.setValue(u"Launcher/ShortcutAgain"_s, shortcutAgain);
     s.setValue(u"Launcher/Renderer"_s, renderer);
     s.setValue(u"Proxy/Mode"_s, proxyMode);
@@ -1232,6 +1235,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FolderMenuHotkey"_s, folderMenuHotkey);
     s.setValue(u"Launcher/FolderMenuOpusBefore"_s, folderMenuOpusBefore);
     s.setValue(u"Favorites/DropPie"_s, dropPie);
+    s.setValue(u"Favorites/DropPieKeyTakenTold"_s, dropPieKeyTakenTold);
     s.setValue(u"Results/FoldersFirst"_s, foldersFirst);
     if (preferredTypes == defaultPreferredTypes())
         s.remove(kPreferredTypesKey);

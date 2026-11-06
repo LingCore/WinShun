@@ -94,6 +94,8 @@ struct Settings {
     // The programs run as administrator that were told of, once each, that
     // a double tap cannot be heard over them (AdminTapHint), lower case.
     QStringList adminTapHinted;
+    // ... and that their file dialogs cannot be taken anywhere (AdminDialogHint, GitHub #216).
+    QStringList adminDialogHinted;
     QString shortcutAgain = QStringLiteral("close"); // close | panel: what the shortcut does when the box is up and in front
     QString renderer; // software | d3d11; defaults() picks by memory (defaultRenderer)
     // 网络代理 (GitHub #84), for every request over WinHTTP: system (what Windows
@@ -178,6 +180,8 @@ struct Settings {
     // them in. Does nothing while Win顺 runs as administrator (drops cannot
     // reach it then).
     bool dropPie = true;
+    // Told that another program's hotkey has its key (GitHub #150): once, not every run.
+    bool dropPieKeyTakenTold = false;
 
     // [Results]
     bool foldersFirst = false; // 全部 and 文件 list the folders found before the files (else after)

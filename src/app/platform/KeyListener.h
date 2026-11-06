@@ -95,6 +95,11 @@ public:
         std::function<void(POINT pt, HWND captureWindow, DWORD sourcePid)> dragMenu;
         // The primary button let go (with dragMenu): the drag is over.
         std::function<void()> leftButtonUp;
+        // With dragMenu: the key's plain hotkey refused (its virtual key and
+        // Windows' error; ERROR_HOTKEY_ALREADY_REGISTERED: another program
+        // has it, and it alone hears the key then). Once per listener, on
+        // the listener thread (GitHub #150).
+        std::function<void(unsigned vk, unsigned long error)> dragKeyRefused;
         // Lines for the log (on the listener thread): that double Alt over
         // administrator windows needs the service updated, once; with
         // WINSHUN_KEYLOG=1 also every key event and what came of it, the
@@ -210,6 +215,7 @@ private:
     std::uint32_t m_dragLooked = 0; // when it was last looked for (message time)
     bool m_dragKeyGuarded = false; // the drop pie's key held back from the drag's source
     bool m_dragConflictLogged = false; // at most one hotkey-conflict note per primary-button press
+    bool m_dragKeyRefusedTold = false; // dragKeyRefused, once
     // The key pressed on a file still held, not dragged yet: the drag being
     // started for it (startDrag). Listener thread only.
     bool m_starting = false;
