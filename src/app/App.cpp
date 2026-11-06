@@ -1822,6 +1822,8 @@ void App::applySettings(bool initial)
     }
     m_backup->setFolder(m_settings.backupFolder);
     m_launcher->setRecordHistory(m_settings.recordHistory);
+    m_launcher->setMergeFileScope(m_settings.mergeFileScope);
+    m_launcher->setHistoryKeys(m_settings.queryHistoryKeys);
     m_launcher->setResultOptions(m_settings.foldersFirst ? KindOrder::FoldersFirst : KindOrder::FilesFirst,
         m_settings.showModified, m_settings.showFileSize, m_settings.thumbnails, m_settings.numberKeys);
     m_launcher->setDoubleClickToOpen(m_settings.doubleClickToOpen);
@@ -3684,7 +3686,7 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
             place(window);
     }
     // Cheap, and on the first page or the next: before the first frame.
-    m_settingsEditor->setHistoryCount(static_cast<int>(m_history->items().size()));
+    m_settingsEditor->setHistoryCount(static_cast<int>(m_history->items().size()) + m_launcher->queryHistoryCount());
     m_settingsEditor->setClipboardCount(m_clipStore->isOpen() ? static_cast<int>(m_clipStore->clips().size()) : -1);
     m_contentStatusTimer.start();
     hideLauncher();

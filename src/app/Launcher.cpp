@@ -474,9 +474,11 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     , m_places(places)
     , m_engine(engine)
     , m_history(history)
+    , m_queryHistory(QFileInfo(history->filePath()).dir().filePath(u"query-history.json"_s))
     , m_sink(std::make_unique<ModelSink>(*this))
 {
     m_columns.load(Settings::filePath());
+    m_queryHistory.load();
     m_panelSidebarVisible = QSettings(Settings::filePath(), QSettings::IniFormat).value(u"Panel/SidebarVisible"_s, true).toBool();
     m_contentPane = std::make_unique<ContentPane>(index);
     const auto syncPane = [this] { syncContentPane(); };
@@ -736,6 +738,8 @@ void Launcher::setQuery(const QString& query)
     if (query == m_query)
         return;
     m_query = query;
+    m_queryRecorded = false;
+    if (!m_recallingQuery) m_queryHistory.resetNavigation();
     // The folder typed in, edited: a path typed from now on (GitHub #110).
     if (!m_typingPrefix.isEmpty() && !m_query.startsWith(m_typingPrefix, Qt::CaseInsensitive))
         setTypingFolder({});
@@ -744,6 +748,60 @@ void Launcher::setQuery(const QString& query)
     m_results.setSelection({});
     m_held.reset(); // typed on: a key held for the rows before is not for these
     search();
+}
+
+void Launcher::setMergeFileScope(bool merged)
+{
+    if (m_mergeFileScope == merged) return;
+    m_mergeFileScope = merged;
+    if (merged && m_scope == Files && m_fileType < 0) setScope(All);
+    emit scopeChanged();
+}
+
+void Launcher::setHistoryKeys(const QString& keys)
+{
+    if (m_historyKeys == keys) return;
+    m_historyKeys = keys;
+    emit historyChanged();
+}
+
+void Launcher::rememberQuery()
+{
+    if (m_recordHistory && !m_queryRecorded && !m_keyword && !m_systemCommand && !m_folderSearch) {
+        m_queryRecorded = true;
+        if (m_queryHistory.record(m_query)) {
+            emit queryHistoryChanged();
+            emit historyChanged();
+        }
+    }
+}
+
+bool Launcher::navigateQueryHistory(int direction)
+{
+    if (!m_recordHistory) return false;
+    const auto query = m_queryHistory.step(m_query, direction);
+    if (!query) return false;
+    const QScopedValueRollback recalling(m_recallingQuery, true);
+    setQuery(*query);
+    emit caretRequested(static_cast<int>(m_query.size()), false);
+    return true;
+}
+
+void Launcher::recallQuery(int index)
+{
+    if (!m_recordHistory || index < 0 || index >= m_queryHistory.items().size()) return;
+    setQuery(m_queryHistory.items()[index]);
+    emit caretRequested(static_cast<int>(m_query.size()), false);
+}
+
+void Launcher::removeQuery(int index)
+{
+    if (index >= 0 && index < m_queryHistory.items().size() && m_queryHistory.items()[index] == m_query.trimmed())
+        m_queryRecorded = true;
+    if (m_queryHistory.remove(index)) {
+        emit queryHistoryChanged();
+        emit historyChanged();
+    }
 }
 
 void Launcher::setScope(Scope scope)
@@ -1667,6 +1725,7 @@ void Launcher::startOver()
 
 void Launcher::handleShown()
 {
+    m_queryHistory.resetNavigation();
     m_index->contentIndexer()->setSearchBoxOpen(true); // the files it searches are read before the indexer's
     m_statusPoll.start();
     m_apps->refresh(); // reads the list again only if apps were installed or removed
@@ -1740,6 +1799,7 @@ void Launcher::retranslate()
 
 void Launcher::handleHidden()
 {
+    rememberQuery();
     closePreview(); // the wish to have it stays (m_previewWanted)
     dropServerWait();
     m_previewResume = false;
@@ -3181,6 +3241,10 @@ void Launcher::copyFiles(const QStringList& files)
 
 void Launcher::cycleScope(int delta)
 {
+    if (m_mergeFileScope) {
+        if (m_contentEnabled) setScope(m_scope == Content ? All : Content);
+        return;
+    }
     static constexpr Scope kOrder[] {All, Files, Content}; // as the tabs show them (文件夹 within 文件)
     const int scopes = static_cast<int>(std::size(kOrder)) - (m_contentEnabled ? 0 : 1); // Content last
     const Scope tab = m_scope == Folders ? Files : m_scope;
@@ -3280,7 +3344,7 @@ void Launcher::toggleFileType(int type)
         types.removeAll(type);
     else
         types.append(type);
-    m_scope = Files;
+    m_scope = m_mergeFileScope && types.isEmpty() ? All : Files;
     m_foldersChosen = false;
     m_fileType = types.isEmpty() ? -1 : types.takeFirst();
     m_extraFileTypes = types;
@@ -3298,7 +3362,7 @@ void Launcher::chooseFileType(int type)
     const bool hadMultiple = !m_extraFileTypes.isEmpty();
     m_extraFileTypes.clear();
     const bool hadPrefix = clearQueryPrefix();
-    const Scope scope = type == kFoldersChip ? Folders : Files;
+    const Scope scope = type == kFoldersChip ? Folders : m_mergeFileScope && type == -1 ? All : Files;
     if (type < -1 || type >= m_fileTypes.size())
         type = -1;
     if (scope == m_scope && type == m_fileType && !hadMultiple) {
@@ -3325,7 +3389,7 @@ void Launcher::cycleFileType(int delta)
     QList<int> chips {-1, kFoldersChip};
     for (int i = 0; i < m_fileTypes.size(); ++i)
         chips.append(i);
-    const int at = std::max(0, static_cast<int>(chips.indexOf(m_scope == Folders ? kFoldersChip : m_fileType)));
+    const int at = std::max(0, static_cast<int>(chips.indexOf(m_scope == Folders ? kFoldersChip : m_scope == All ? -1 : m_fileType)));
     const int count = static_cast<int>(chips.size());
     chooseFileType(chips[((at + delta) % count + count) % count]);
 }
@@ -4849,6 +4913,9 @@ void Launcher::setRecordHistory(bool on)
     if (m_recordHistory == on)
         return;
     m_recordHistory = on;
+    m_queryRecorded = true;
+    m_queryHistory.resetNavigation();
+    emit queryHistoryChanged();
     emit historyChanged();
     refreshFrequentApps();
     if (m_window && m_window->isVisible())
@@ -4857,21 +4924,25 @@ void Launcher::setRecordHistory(bool on)
 
 bool Launcher::canClearHistory() const
 {
-    return m_recordHistory && !m_history->items().isEmpty();
+    return m_recordHistory && (!m_history->items().isEmpty() || !m_queryHistory.items().isEmpty());
 }
 
 void Launcher::clearHistory()
 {
     m_history->clear();
+    m_queryHistory.clear();
+    m_queryRecorded = true;
+    emit queryHistoryChanged();
     emit historyChanged();
     refreshFrequentApps();
     m_results.setSelection({});
     search(); // the list of recent ones empties, "最近" goes from the rest
-    flash(tr("已清除最近使用记录"));
+    flash(tr("已清除搜索和最近使用记录"));
 }
 
 void Launcher::remember(const QString& path, const QString& query)
 {
+    rememberQuery();
     if (m_recordHistory)
         m_history->record(path, query, QDateTime::currentMSecsSinceEpoch());
 }

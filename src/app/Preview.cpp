@@ -1,4 +1,5 @@
 #include "Preview.h"
+#include "NavigationProbe.h"
 #include "UiFont.h"
 
 #include "HealthMonitor.h"
@@ -1258,6 +1259,13 @@ int runSettings(const QStringList& args)
     }
     QMetaObject::invokeMethod(window, "loadAllPages");
     settle(window);
+
+    if (args.contains(u"--navigation-settings"_s))
+        return finish(window, checkNavigationSettings(window, editor, out));
+    if (args.contains(u"--search-experience-settings"_s))
+        return finish(window, checkSearchExperienceSettings(window, editor, out));
+    if (args.contains(u"--optimization-settings"_s))
+        return finish(window, checkOptimizationSettings(window, editor, out));
 
     // The three tables, side by side: a page without a keyword entry or a
     // tabs entry would read undefined.
@@ -5414,6 +5422,12 @@ int runResults(const QStringList& args)
         return checkStyleButtons(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-sizing"_s))
         return checkClipboardInteractions(&engine, out, {}, true) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--navigation-workflows"_s))
+        return checkNavigationWorkflows(&engine, out, args.contains(u"--flipped"_s)) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--search-experience"_s))
+        return checkSearchExperience(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--clipboard-alignment"_s))
+        return checkClipboardAlignment(&engine, out, args.contains(u"--flipped"_s)) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--content-pane"_s)) {
         engine.addImageProvider(u"thumbnail"_s, new ThumbnailProvider);
         return checkContentPane(&engine, out) ? std::min(g_warnings, 100) : 4;

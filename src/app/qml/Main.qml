@@ -543,7 +543,10 @@ Window {
     }
     Connections {
         target: window.searchBar
-        function onKeyReleased(event) { numberHints.release(event) }
+        function onKeyReleased(event) {
+            numberHints.release(event)
+            typeStrip.showKeywords = event.key !== Qt.Key_Control && (event.modifiers & Qt.ControlModifier) !== 0
+        }
     }
     onActiveFocusItemChanged: numberHints.reset()
     // A chord that is one of Win顺's own shortcuts stays that (Launcher.numberKeysLeft):
@@ -654,7 +657,7 @@ Window {
             nameTip.dismiss()
         }
     }
-    onActiveChanged: if (!active) nameTip.dismiss() // on its way out, or behind another window
+    onActiveChanged: if (!active) { nameTip.dismiss(); typeStrip.showKeywords = false }
 
     // The whole name and folder of a row that shows them cut, as the mouse
     // rests on it (NameTip; the box's rows and the panel's).
@@ -696,6 +699,7 @@ Window {
     }
 
     function handleKey(event) {
+        typeStrip.showKeywords = event.key === Qt.Key_Control || (event.modifiers & Qt.ControlModifier) !== 0
         numberHints.press(event)
         nameTip.dismiss() // as Windows' tips go on a key
         if (panel && !menuOpen && !panelPage.columnMenuOpen && panelPage.handleContentKey(event))
@@ -1047,6 +1051,7 @@ Window {
     // sight, for when it is back): its own bar and list.
     Panel {
         id: panelPage
+        showTypeKeywords: typeStrip.showKeywords
         anchors.fill: parent
         visible: window.panel
         launcher: window.launcher
@@ -1177,14 +1182,15 @@ Window {
 
             TypeStrip {
                 id: typeStrip
+                objectName: "searchTypeStrip"
                 y: boxBar.height
                 width: parent.width
                 launcher: window.launcher
                 frame: window.frame
                 dpr: window.dpr
-                shown: (window.launcher.scope === Launcher.Files || window.launcher.scope === Launcher.Folders
+                shown: (window.launcher.mergeFileScope || window.launcher.scope === Launcher.Files || window.launcher.scope === Launcher.Folders
                         || window.launcher.scope === Launcher.Content)
-                       && !window.clipboardBelow && !window.folderMode
+                       && !window.clipboardBelow && !window.folderMode && window.launcher.pluginKeyword.length === 0
             }
         }
 

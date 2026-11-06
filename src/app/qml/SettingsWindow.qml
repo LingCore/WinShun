@@ -76,6 +76,7 @@ Window {
             clipboardHotkey: window.editor.clipboardHotkey,
             panelHotkey: window.editor.panelHotkey,
             previewKey: window.editor.previewHotkey,
+            historyModifier: !window.editor.recordHistory || window.editor.queryHistoryKeys === "off" ? "" : window.editor.queryHistoryKeys === "alt" ? "Alt" : "Ctrl",
             numberModifier: window.editor.numberKeys === "alt" ? "Alt" : window.editor.numberKeys === "ctrl" ? "Ctrl" : "",
             holdKey: window.editor.clipboardHotkey,
             captureKeys: window.editor.screenshotHotkeys.join(" / "),
@@ -181,6 +182,7 @@ Window {
             pageSlots[i].item?.resetForReopen()
         editor.plugins.recordingHotkey = false
         updateDialog.close()
+        readmeDialog.close()
         if (pluginDialog.open)
             pluginDialog.reject()
         webEditing = -2
@@ -2594,9 +2596,9 @@ Window {
                 glyph: "\uE81C"
 
                 SettingRow {
-                    title: qsTr("记住打开过的项目")
+                    title: qsTr("记住搜索和打开过的项目")
                     keywords: qsTr("历史;最近;记录;history;recent").split(";")
-                    description: qsTr("没输入时列出最近打开的项目；搜索时，你输入同样的字常打开的排在前面")
+                    description: qsTr("记住打开过的项目和最近 100 条搜索词；同样的字常打开的项目排在前面。插件命令不记入搜索历史")
 
                     ToggleSwitch {
                         dpr: window.dpr
@@ -2606,10 +2608,24 @@ Window {
                 }
 
                 SettingRow {
-                    title: qsTr("清除最近使用记录")
+                    title: qsTr("搜索历史快捷键")
+                    description: qsTr("在搜索框中翻阅；回到最新位置时恢复未完成的输入，也可点时钟图标浏览和删除")
+                    keywords: qsTr("历史;上一个;下一个;history;Ctrl;Alt").split(";")
+                    ScopeTabs {
+                        objectName: "queryHistoryKeys"
+                        enabled: window.editor.recordHistory
+                        readonly property var choices: ["ctrl", "alt", "off"]
+                        labels: ["Ctrl+↑/↓", "Alt+↑/↓", qsTr("关闭")]
+                        current: choices.indexOf(window.editor.queryHistoryKeys)
+                        onActivated: (index) => window.editor.queryHistoryKeys = choices[index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("清除搜索和最近使用记录")
                     keywords: qsTr("历史;最近;删除;清空;history").split(";")
                     description: window.editor.historyCount > 0
-                                 ? qsTr("共 %1 项；在搜索框里右键一项可以单独移除").arg(window.editor.historyCount)
+                                 ? qsTr("共 %1 项；搜索词可在搜索历史中单独删除，打开记录可右键移除").arg(window.editor.historyCount)
                                  : qsTr("没有记录")
 
                     FlatButton {
@@ -3941,6 +3957,18 @@ Window {
                 width: parent.width
                 title: qsTr("未输入时的初始列表")
                 glyph: "\uE81C"
+
+                SettingRow {
+                    title: qsTr("合并“全部”和“文件”")
+                    description: qsTr("在“全部”下常驻文件类型筛选，应用仍优先显示；按住 Ctrl 查看类型关键词")
+                    keywords: qsTr("合并;全部;文件;类型;筛选;merge;scope").split(";")
+                    ToggleSwitch {
+                        objectName: "mergeFileScopeToggle"
+                        dpr: window.dpr
+                        checked: window.editor.mergeFileScope
+                        onToggled: (on) => window.editor.mergeFileScope = on
+                    }
+                }
 
                 SettingRow {
                     title: qsTr("不输入时显示")
@@ -5679,6 +5707,14 @@ Window {
         anchors.bottom: parent.bottom
         updater: window.updater
         icon: window.frame.icon
+    }
+
+    PluginReadmeDialog {
+        id: readmeDialog
+        z: 1
+        anchors.fill: parent
+        plugins: window.editor.plugins
+        frame: window.frame
     }
 
     PluginDialog { // the 插件 page's questions: permissions, versions, removal

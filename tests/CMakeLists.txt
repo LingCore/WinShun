@@ -1,5 +1,16 @@
 find_package(Qt6 6.8 REQUIRED COMPONENTS Test QuickTest)
 
+qt_add_executable(tst_queryhistory tst_queryhistory.cpp)
+target_link_libraries(tst_queryhistory PRIVATE wscore Qt6::Test)
+qt_add_executable(tst_pluginreadme tst_pluginreadme.cpp ${PROJECT_SOURCE_DIR}/src/app/PluginReadme.cpp)
+target_include_directories(tst_pluginreadme PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_pluginreadme PRIVATE winshun_options Qt6::Gui Qt6::Test)
+foreach(test IN ITEMS tst_queryhistory tst_pluginreadme)
+    set_target_properties(${test} PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+    add_test(NAME ${test} COMMAND ${test} -o -,txt)
+    set_tests_properties(${test} PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+endforeach()
+
 qt_add_executable(tst_paster tst_paster.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Paster.cpp)
 target_include_directories(tst_paster PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
 target_link_libraries(tst_paster PRIVATE winshun_options Qt6::Test user32 comctl32)

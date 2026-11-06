@@ -59,6 +59,7 @@ qt_add_executable(WinShun WIN32
     PieLabels.cpp PieLabels.h
     Phosphor.cpp Phosphor.h
     Preview.cpp Preview.h
+    NavigationProbe.cpp NavigationProbe.h
     ClipScrollBench.cpp ClipScrollBench.h
     ContentPaneProbe.cpp ContentPaneProbe.h
     RecentFolders.cpp RecentFolders.h
@@ -165,6 +166,8 @@ set(qml_files
     qml/ScrollPixelAlignment.qml
     qml/ListWheelScroll.qml
     qml/ContextMenu.qml
+    qml/QueryHistoryPicker.qml
+    qml/PluginReadmeDialog.qml
     qml/DialogBarWindow.qml
     qml/DialogBarRow.qml
     qml/FolderMenuWindow.qml
@@ -326,6 +329,7 @@ qt_add_qml_module(WinShun
         Placement.cpp Placement.h
         PluginGallery.cpp PluginGallery.h
         PluginSettings.cpp PluginSettings.h
+        PluginReadme.cpp PluginReadme.h
         PluginUpdates.cpp PluginUpdates.h # the installed plugins kept up to date in the background
         MovedPlugins.cpp MovedPlugins.h # the plugins that came with 0.16.0, from the library now (GitHub #138)
         platform/OcrPackage.cpp platform/OcrPackage.h

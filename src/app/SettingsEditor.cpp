@@ -666,6 +666,20 @@ void SettingsEditor::setPluginBuiltinsExpanded(bool expanded)
     commit();
 }
 
+void SettingsEditor::setMergeFileScope(bool merged)
+{
+    if (m_settings.mergeFileScope == merged) return;
+    m_settings.mergeFileScope = merged;
+    commit();
+}
+
+void SettingsEditor::setQueryHistoryKeys(const QString& keys)
+{
+    if (m_settings.queryHistoryKeys == keys || (keys != u"ctrl" && keys != u"alt" && keys != u"off")) return;
+    m_settings.queryHistoryKeys = keys;
+    commit();
+}
+
 void SettingsEditor::setShortcutAgain(const QString& what)
 {
     if (m_settings.shortcutAgain == what || (what != u"close" && what != u"panel"))

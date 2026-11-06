@@ -82,6 +82,18 @@ Item {
         input.forceActiveFocus()
         input.cursorPosition = input.length
     }
+    function handleKey(event) {
+        if (input.preeditText.length === 0 && historyPicker.handleKey(event)) { event.accepted = true; return }
+        const modifier = launcher.historyKeys === "alt" ? Qt.AltModifier : Qt.ControlModifier
+        if (!folderMode && launcher.queryHistoryEnabled && launcher.historyKeys !== "off" && input.preeditText.length === 0
+                && event.modifiers === modifier && (event.key === Qt.Key_Up || event.key === Qt.Key_Down)) {
+            launcher.navigateQueryHistory(event.key === Qt.Key_Up ? 1 : -1)
+            event.accepted = true
+            return
+        }
+        keyPressed(event)
+    }
+    onVisibleChanged: if (!visible) historyPicker.close()
 
     function reportField() {
         if (inBox)
@@ -111,6 +123,7 @@ Item {
         frame.addControl(compactScope)
         frame.addControl(expand)
         frame.addControl(sidebarToggle)
+        frame.addControl(historyButton)
         frame.addControl(regexChip)
         frame.addControl(boxPin)
         frame.addHandle(handle)
@@ -298,12 +311,12 @@ Item {
                 bar.launcher.query = bar.hiddenPrefix + text
             bar.reportField()
         }
-        onTextEdited: bar.typed()
+        onTextEdited: { historyPicker.close(); bar.typed() }
         onPreeditTextChanged: bar.reportField()
         onCursorPositionChanged: bar.reportField()
         onSelectionStartChanged: bar.reportField()
         onSelectionEndChanged: bar.reportField()
-        Keys.onPressed: (event) => bar.keyPressed(event)
+        Keys.onPressed: (event) => bar.handleKey(event)
         Keys.onReleased: (event) => bar.keyReleased(event)
 
         Text {
@@ -499,6 +512,31 @@ Item {
         }
     }
 
+    QueryHistoryPicker {
+        id: historyPicker
+        popupName: bar.panelMode ? "panelQueryHistoryPopup" : "queryHistoryPopup"
+        launcher: bar.launcher
+        frame: bar.frame
+        onChosen: bar.focusAtEnd()
+    }
+    RowAction {
+        id: historyButton
+        objectName: bar.panelMode ? "panelHistoryButton" : "queryHistoryButton"
+        visible: bar.launcher.queryHistoryEnabled && !bar.folderMode && !bar.inBox
+        anchors.right: sidebarToggle.visible ? sidebarToggle.left : expand.left
+        anchors.rightMargin: 6
+        anchors.verticalCenter: parent.verticalCenter
+        glyph: "\uE81C"
+        tip: qsTr("搜索历史")
+        dpr: bar.dpr
+        onClicked: historyPicker.toggle(bar)
+    }
+    HoverTip {
+        target: historyButton.tipWanted ? historyButton : null
+        text: historyButton.tip
+        shortcut: bar.launcher.historyKeys === "off" ? "" : (bar.launcher.historyKeys === "alt" ? "Alt" : "Ctrl") + "+↑/↓"
+    }
+
     Item {
         id: sidebarToggle
         objectName: "panelSidebarToggle"
@@ -605,18 +643,22 @@ Item {
         role: "scope"
         dpr: bar.dpr
         height: Math.min(tabs.implicitHeight, fieldPart.height - 2 * Math.min(bar.keyInset, Theme.tok("scopeKeyInset", bar.keyInset)))
-        anchors.right: sidebarToggle.visible ? sidebarToggle.left : expand.left
+        anchors.right: historyButton.visible ? historyButton.left : sidebarToggle.visible ? sidebarToggle.left : expand.left
         anchors.rightMargin: 6
         anchors.leftMargin: 16
         y: bar.onPixel((bar.height - height) / 2)
         // 文件夹 is a chip of the strip under the box (TypeStrip): 文件 stays current.
-        current: bar.launcher.scope === Launcher.Folders ? Launcher.Files : bar.launcher.scope
+        current: bar.launcher.mergeFileScope ? (bar.launcher.scope === Launcher.Content ? 1 : 0)
+            : bar.launcher.scope === Launcher.Folders ? Launcher.Files : bar.launcher.scope
         contentTab: bar.launcher.contentEnabled
+        labels: bar.launcher.mergeFileScope ? (contentTab ? [qsTranslate("ScopeTabs", "全部"), qsTranslate("ScopeTabs", "内容")] : [qsTranslate("ScopeTabs", "全部")])
+            : (contentTab ? [qsTranslate("ScopeTabs", "全部"), qsTranslate("ScopeTabs", "文件"), qsTranslate("ScopeTabs", "内容")] : [qsTranslate("ScopeTabs", "全部"), qsTranslate("ScopeTabs", "文件")])
         // 全部 › [icon] 结束进程 while a plugin's keyword has the list; the
         // chip (or 全部 itself) empties the box, which leaves the mode.
         pluginLabel: bar.launcher.pluginLabel
         pluginIcon: bar.launcher.pluginIcon
         onActivated: (scope) => {
+            if (bar.launcher.mergeFileScope) scope = scope === 1 ? Launcher.Content : Launcher.All
             if (scope === Launcher.All && bar.launcher.scope === Launcher.All && bar.launcher.pluginKeyword.length > 0)
                 bar.launcher.leaveKeyword()
             else if (scope !== Launcher.Files || bar.launcher.scope !== Launcher.Folders) // 文件 in 文件夹: stays

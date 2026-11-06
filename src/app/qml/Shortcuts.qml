@@ -29,6 +29,8 @@ QtObject {
         { where: "global", group: qsTr("打开"), keys: c => c.captureKeys, text: qsTr("截图"), setting: { page: 9, tab: 0 } },
         // the search box
         { where: "launcher", group: qsTr("移动"), brief: true, keys: "↑ ↓", text: qsTr("上下移动，PgUp PgDn 翻页") },
+        { where: "launcher", group: qsTr("移动"), brief: true, keys: c => c.historyModifier ? c.historyModifier + "+↑/↓" : "",
+          text: qsTr("翻阅搜索历史，回到最新时恢复未完成输入"), when: c => !!c.historyModifier, setting: { page: 0, tab: 3 } },
         { where: "launcher", group: qsTr("移动"), keys: "Ctrl+J / N · Ctrl+K / P", text: qsTr("向下 / 向上移动") },
         { where: "launcher", group: qsTr("移动"), keys: "Ctrl+U / D", text: qsTr("向上 / 向下翻页") },
         { where: "launcher", group: qsTr("移动"), brief: true, keys: "Shift+↑ ↓", text: qsTr("选中多行，也可 Ctrl+单击、Shift+单击") },

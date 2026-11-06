@@ -21,6 +21,7 @@ Item {
     required property Launcher launcher
     required property WindowFrame frame
     property bool shown: false
+    property bool showKeywords: false
 
     readonly property int fullHeight: Theme.stripHeight // 界面大小
     readonly property int targetHeight: shown ? fullHeight : 0
@@ -60,24 +61,24 @@ Item {
     }
     // hueIndex (Hook): -1 不限, -2 文件夹 (and a folder chip in 内容), 0.. the kinds in this order.
     readonly property var fileChips: {
-        const list = [{ type: -1, name: qsTr("不限"), tip: qsTr("所有文件和文件夹"), glyph: "", hue: -1 },
+        const list = [{ type: -1, name: qsTr("不限"), tip: launcher.mergeFileScope ? qsTr("所有应用、文件和文件夹") : qsTr("所有文件和文件夹"), glyph: "", hue: -1 },
                       { type: -2, name: qsTr("文件夹"), tip: qsTr("只找文件夹") + (launcher.folderKeyword.length > 0 ? " · :" + launcher.folderKeyword : ""),
-                        glyph: folderGlyph, hue: -2 }]
+                        glyph: folderGlyph, hue: -2, keyword: launcher.folderKeyword }]
         const types = launcher.fileTypes
         for (let i = 0; i < types.length; ++i) {
             const exts = types[i].extensions.split(" ")
             const listed = exts.slice(0, 10).map(e => "." + e).join(" ")
             list.push({ type: i, name: types[i].name, tip: (exts.length > 10 ? listed + " …" : listed)
                         + (types[i].keyword.length > 0 ? " · :" + types[i].keyword : ""),
-                        glyph: typeGlyph(exts), hue: i })
+                        glyph: typeGlyph(exts), hue: i, keyword: types[i].keyword })
         }
         return list
     }
     function updateChips() {
-        if (!launcher || launcher.scope === Launcher.All)
+        if (!launcher || (launcher.scope === Launcher.All && !launcher.mergeFileScope))
             return
         folders = launcher.scope === Launcher.Content
-        current = folders ? launcher.folderChip : launcher.scope === Launcher.Folders ? -2 : launcher.fileType
+        current = folders ? launcher.folderChip : launcher.scope === Launcher.All ? -1 : launcher.scope === Launcher.Folders ? -2 : launcher.fileType
         chips = folders ? launcher.folderChips : fileChips
         folderHint = launcher.folderHint
     }
@@ -293,16 +294,18 @@ Item {
                 // short line parts it from the real filters (outside its hit area).
                 delegate: Item {
                     id: chip
+                    objectName: "searchTypeChip" + modelData.type
 
                     required property int index
                     required property var modelData
                     readonly property bool active: !strip.folders && modelData.type >= 0
-                        ? strip.launcher.scope !== Launcher.Folders && strip.launcher.selectedFileTypes.includes(modelData.type)
+                        ? strip.launcher.scope === Launcher.Files && strip.launcher.selectedFileTypes.includes(modelData.type)
                         : modelData.type === strip.current
                     // 不限: in 内容 the chip without a folder's dot (Launcher.folderChips).
                     readonly property bool isAll: strip.folders ? !modelData.dot : modelData.type === -1
-                    readonly property string glyph: strip.folders ? (isAll ? "" : strip.folderGlyph) : modelData.glyph
-                    readonly property int hue: strip.folders ? (isAll ? -1 : -2) : modelData.hue
+                    // The mode changes before the delegate model is replaced.
+                    readonly property string glyph: strip.folders ? (isAll ? "" : strip.folderGlyph) : (modelData.glyph ?? "")
+                    readonly property int hue: strip.folders ? (isAll ? -1 : -2) : (modelData.hue ?? -1)
                     readonly property bool parted: isAll && index === 0 && strip.chips.length > 1
                     readonly property bool tipWanted: area.containsMouse
                     onTipWantedChanged: {
@@ -347,8 +350,11 @@ Item {
                     Item {
                         id: body
                         readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : (chip.glyph.length > 0 ? 10 : 12) // 0 (a key without a lamp) is no say; 10 with an icon: it then sits as far from the key's edge as the last word does
-                        width: strip.stepUp(Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + label.implicitWidth) + (chip.glyph.length > 0 ? 6 : 12))
+                        width: strip.stepUp(Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + Math.max(nameSize.width, keywordSize.width)) + (chip.glyph.length > 0 ? 6 : 12))
                         height: parent.height
+
+                        TextMetrics { id: nameSize; font: label.font; text: chip.modelData.name }
+                        TextMetrics { id: keywordSize; font: label.font; text: (chip.modelData.keyword ?? "").length > 0 ? ":" + chip.modelData.keyword : "" }
 
                         Hook {
                             id: surface
@@ -378,7 +384,7 @@ Item {
                             id: label
                             x: chip.glyph.length > 0 ? body.lead + icon.width + 4 : body.lead
                             y: strip.onPixel((body.height - height) / 2 + surface.out("contentOffsetY", 0))
-                            text: chip.modelData.name
+                            text: strip.showKeywords && (chip.modelData.keyword ?? "").length > 0 ? ":" + chip.modelData.keyword : chip.modelData.name
                             color: surface.out("foreground", chip.active && !chip.isAll ? Theme.accentText
                                                             : chip.active || area.containsMouse ? Theme.text : Theme.subtext)
                             font.pixelSize: Theme.uiCaption

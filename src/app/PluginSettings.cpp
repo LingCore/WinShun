@@ -1,4 +1,5 @@
 #include "PluginSettings.h"
+#include "PluginReadme.h"
 #include "WebSearchConfig.h"
 
 #include "AiBridge.h"
@@ -557,7 +558,7 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     const plugin::Host::State state = m_host->state(id);
     const bool dark = darkMode();
     c.bundled = e->source == plugin::Entry::Source::Bundled;
-    c.hasReadme = QFileInfo::exists(e->dir + u"\\README.md"_s) || QFileInfo::exists(e->dir + u"\\README.txt"_s);
+    c.hasReadme = readme::exists(e->dir);
     c.hasData = QFileInfo::exists(QDir(m_dataRoot).filePath(id + u".data"_s));
     c.enabled = config && config->enabled;
     if (!e->manifest) {
@@ -1344,13 +1345,14 @@ void PluginSettings::openReadme(const QString& id)
     const plugin::Entry* e = m_host->catalog().find(id);
     if (!e)
         return;
-    for (const QString& name : {u"README.md"_s, u"README.txt"_s}) {
-        if (QFileInfo::exists(e->dir + u'\\' + name)) {
-            shell::open(e->dir + u'\\' + name);
-            return;
-        }
-    }
-    shell::open(e->dir);
+    const auto document = readme::load(e->dir);
+    if (!document.error.isEmpty()) { setMessage(document.error); return; }
+    emit readmeRequested(pluginName(id), document.html);
+}
+
+void PluginSettings::openReadmeLink(const QString& link)
+{
+    if (readme::webLink(link)) shell::openUrl(link);
 }
 
 void PluginSettings::openHomepage(const QString& id)

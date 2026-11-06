@@ -51,6 +51,7 @@ public:
     void remove(const QString& path);
     void clear();
     const QStringList& items() const noexcept { return m_items; }
+    const QString& filePath() const noexcept { return m_filePath; }
     Use use(const QString& path) const; // count 0 when not there
 
     // The paths for what is being typed, best first: those opened for just

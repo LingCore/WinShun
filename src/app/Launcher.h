@@ -5,6 +5,7 @@
 #include "Favorites.h"
 #include "LauncherNavigation.h"
 #include "ResultModel.h"
+#include "QueryHistory.h"
 #include "PanelColumns.h"
 #include "ContentPane.h"
 #include "FilePreview.h"
@@ -60,6 +61,10 @@ class Launcher : public QObject {
     QML_UNCREATABLE("Provided by the application")
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged FINAL)
     Q_PROPERTY(Scope scope READ scope WRITE setScope NOTIFY scopeChanged FINAL)
+    Q_PROPERTY(bool mergeFileScope READ mergeFileScope NOTIFY scopeChanged FINAL)
+    Q_PROPERTY(QStringList queryHistory READ queryHistory NOTIFY queryHistoryChanged FINAL)
+    Q_PROPERTY(bool queryHistoryEnabled READ queryHistoryEnabled NOTIFY historyChanged FINAL)
+    Q_PROPERTY(QString historyKeys READ historyKeys NOTIFY historyChanged FINAL)
     Q_PROPERTY(ws::ResultModel* results READ results CONSTANT FINAL)
     Q_PROPERTY(ws::PanelColumns* panelColumns READ panelColumns CONSTANT FINAL)
     Q_PROPERTY(ws::ContentPane* contentPane READ contentPane CONSTANT FINAL)
@@ -493,6 +498,17 @@ public:
     // Off: nothing opened is remembered, and what was is not shown (it stays
     // until cleared in the settings).
     void setRecordHistory(bool on);
+    bool mergeFileScope() const { return m_mergeFileScope; }
+    void setMergeFileScope(bool merged);
+    QStringList queryHistory() const { return m_recordHistory ? m_queryHistory.items() : QStringList(); }
+    bool queryHistoryEnabled() const { return m_recordHistory; }
+    int queryHistoryCount() const { return int(m_queryHistory.items().size()); }
+    QString historyKeys() const { return m_historyKeys; }
+    void setHistoryKeys(const QString& keys);
+    Q_INVOKABLE bool navigateQueryHistory(int direction);
+    Q_INVOKABLE void recallQuery(int index);
+    Q_INVOKABLE void removeQuery(int index);
+    void rememberQuery();
     bool canClearHistory() const;
     Q_INVOKABLE void clearHistory();
     QVariantList frequentApps() const;
@@ -716,6 +732,7 @@ signals:
     // `system`: Shift+Menu or Ctrl+Shift+F10, the shell's menu (showSystemMenu).
     void contextMenuKeyPressed(bool system);
     void historyChanged();
+    void queryHistoryChanged();
     void contentIndexChanged();
     void contentIndexRequested(bool on);
     void frequentAppsChanged();
@@ -991,6 +1008,11 @@ private:
     SystemCatalog* m_places;
     SearchEngine* m_engine;
     History* m_history;
+    QueryHistory m_queryHistory;
+    bool m_recallingQuery = false;
+    bool m_queryRecorded = false;
+    bool m_mergeFileScope = false;
+    QString m_historyKeys = QStringLiteral("ctrl");
     ResultModel m_results;
     std::unique_ptr<ContentPane> m_contentPane;
     QPointer<QWindow> m_window;

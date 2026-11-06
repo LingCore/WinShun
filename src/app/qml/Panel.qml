@@ -26,6 +26,7 @@ Item {
     readonly property int gridColumns: launcher.gallery ? gallery.columns : 1
     // The rows are the last query's while a slow search has found nothing yet (Main.qml's dimRows).
     property bool dimmed: false
+    property bool showTypeKeywords: false
     // The window's device pixel ratio, read once there and passed down to
     // every row (GitHub #111).
     property real dpr: Screen.devicePixelRatio
@@ -242,6 +243,7 @@ Item {
         id: chip
 
         property string text
+        property string keyword
         property string tip
         property bool active: false
         property bool multi: false
@@ -252,7 +254,9 @@ Item {
 
         // Where the words start: after the lamp's room where the part has one (tactile's 不限), else 10.
         readonly property real lead: chipSurface.out("leadingInset", 0) > 0 ? chipSurface.out("leadingInset", 0) : 10
-        width: Math.ceil(chipLabel.implicitWidth) + lead + 10 // whole pixels: the labels after it stay sharp
+        width: Math.ceil(Math.max(nameWidth.width, prefixWidth.width)) + lead + 10
+        TextMetrics { id: nameWidth; font: chipLabel.font; text: chip.text }
+        TextMetrics { id: prefixWidth; font: chipLabel.font; text: chip.keyword.length > 0 ? ":" + chip.keyword : "" }
         height: Theme.chipHeight + 4
         Accessible.role: multi ? Accessible.CheckBox : Accessible.RadioButton
         Accessible.name: text
@@ -278,7 +282,7 @@ Item {
             id: chipLabel
             x: chip.lead
             y: panel.onPixel((chip.height - height) / 2 + chipSurface.out("contentOffsetY", 0))
-            text: chip.text
+            text: panel.showTypeKeywords && chip.keyword.length > 0 ? ":" + chip.keyword : chip.text
             color: chipSurface.out("foreground", chip.active && !chip.isAll ? Theme.accentText : chip.active || chipArea.containsMouse ? Theme.text : Theme.subtext)
             font.pixelSize: Theme.uiBody
             font.weight: chipSurface.out("fontWeight", chip.active ? Theme.fontStrong : Font.Normal)
@@ -369,16 +373,18 @@ Item {
                 Chips {
                     Chip {
                         text: qsTr("全部")
-                        active: panel.launcher.scope === Launcher.All
+                        active: panel.launcher.scope === Launcher.All || (panel.launcher.mergeFileScope && panel.launcher.scope === Launcher.Files)
                         onClicked: panel.launcher.scope = Launcher.All
                     }
                     Chip {
                         text: qsTr("文件")
+                        visible: !panel.launcher.mergeFileScope
                         active: panel.launcher.scope === Launcher.Files
                         onClicked: panel.launcher.scope = Launcher.Files
                     }
                     Chip {
                         text: qsTr("文件夹")
+                        keyword: panel.launcher.folderKeyword
                         active: panel.launcher.scope === Launcher.Folders
                         onClicked: panel.launcher.chooseFileType(-2) // Launcher.kFoldersChip
                     }
@@ -395,7 +401,7 @@ Item {
                     Chip {
                         text: qsTr("不限")
                         isAll: true
-                        active: panel.launcher.scope !== Launcher.Folders && panel.launcher.fileType < 0
+                        active: panel.launcher.scope === Launcher.All || (panel.launcher.scope !== Launcher.Folders && panel.launcher.fileType < 0)
                         onClicked: panel.launcher.chooseFileType(-1)
                     }
                     Repeater {
@@ -406,8 +412,9 @@ Item {
                             required property var modelData
                             multi: true
                             text: modelData.name
+                            keyword: modelData.keyword
                             tip: modelData.extensions.split(" ").slice(0, 12).map(e => "." + e).join(" ")
-                            active: panel.launcher.scope !== Launcher.Folders && panel.launcher.selectedFileTypes.includes(index)
+                            active: panel.launcher.scope === Launcher.Files && panel.launcher.selectedFileTypes.includes(index)
                             onClicked: panel.launcher.toggleFileType(index)
                         }
                     }

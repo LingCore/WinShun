@@ -220,6 +220,8 @@ struct Settings {
     // but the favorites (GitHub #24: nothing of what was done shows).
     QString startList = QStringLiteral("opened");
     int recentItems = 5; // how many recently opened items to list, 1..200 (GitHub #119)
+    bool mergeFileScope = false;
+    QString queryHistoryKeys = QStringLiteral("ctrl"); // ctrl | alt | off, local Up/Down navigation
     bool favoritesOnStart = true; // show favorites before typing; keywords always work (#135)
     // Each time the launcher opens, nothing is typed and the scope is 全部, as
     // at its first opening (GitHub #24); else it keeps the words, selected.

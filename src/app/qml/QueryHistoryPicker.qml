@@ -1,0 +1,134 @@
+pragma ComponentBehavior: Bound
+import QtQuick
+import WinShun
+
+Item {
+    id: picker
+    objectName: "queryHistoryPicker"
+    required property Launcher launcher
+    required property WindowFrame frame
+    property string popupName: "queryHistoryPopup"
+    readonly property bool opened: menu.visible
+    signal chosen()
+
+    function close() { menu.hide(); tip.target = null }
+    function toggle(anchor) {
+        if (opened) { close(); return }
+        const point = anchor.mapToGlobal(0, anchor.height + 6)
+        menu.area = launcher.screenArea(point)
+        menu.width = Math.min(440, Math.max(240, menu.area.width - 16))
+        menu.x = Math.max(menu.area.x + 8, Math.min(point.x, menu.area.x + menu.area.width - menu.width - 8))
+        menu.y = Math.max(menu.area.y + 8, Math.min(point.y, menu.area.y + menu.area.height - menu.height - 8))
+        list.currentIndex = list.count > 0 ? 0 : -1
+        launcher.prepareMenuWindow(menu)
+        menu.show()
+    }
+    function activate(index) {
+        if (index < 0 || index >= list.count) return
+        launcher.recallQuery(index)
+        close()
+        chosen()
+    }
+    function handleKey(event) {
+        if (!opened) return false
+        switch (event.key) {
+        case Qt.Key_Escape: close(); return true
+        case Qt.Key_Up: list.currentIndex = Math.max(0, list.currentIndex - 1); break
+        case Qt.Key_Down: list.currentIndex = Math.min(list.count - 1, list.currentIndex + 1); break
+        case Qt.Key_PageUp: list.currentIndex = Math.max(0, list.currentIndex - 8); break
+        case Qt.Key_PageDown: list.currentIndex = Math.min(list.count - 1, list.currentIndex + 8); break
+        case Qt.Key_Home: list.currentIndex = list.count > 0 ? 0 : -1; break
+        case Qt.Key_End: list.currentIndex = list.count - 1; break
+        case Qt.Key_Return:
+        case Qt.Key_Enter: activate(list.currentIndex); return true
+        case Qt.Key_Delete: launcher.removeQuery(list.currentIndex); break
+        default: close(); return false
+        }
+        if (list.currentIndex >= 0) list.positionViewAtIndex(list.currentIndex, ListView.Contain)
+        return true
+    }
+    Component.onCompleted: frame.addPopup(outside)
+    Connections {
+        target: picker.launcher
+        function onHistoryChanged() { if (!picker.launcher.queryHistoryEnabled) picker.close() }
+    }
+    Connections {
+        target: picker.Window.window
+        function onVisibleChanged() { if (!picker.Window.window.visible) picker.close() }
+        function onActiveChanged() { if (!picker.Window.window.active) picker.close() }
+    }
+    Item {
+        id: outside
+        parent: picker.Window.window ? picker.Window.window.contentItem : picker
+        anchors.fill: parent
+        z: 10000
+        visible: picker.opened
+        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; onPressed: picker.close() }
+    }
+    Window {
+        id: menu
+        objectName: picker.popupName
+        transientParent: picker.Window.window
+        flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
+        color: Theme.menuBackground
+        property rect area
+        readonly property real dpr: Screen.devicePixelRatio
+        width: 440
+        height: Math.min(440, 48 + Math.max(1, list.count) * 38, area.height > 0 ? area.height - 16 : 440)
+        Text {
+            x: 14; y: 12
+            text: qsTr("搜索历史 · %1").arg(list.count)
+            color: Theme.subtext
+            font.pixelSize: Theme.fontCaption
+        }
+        ListView {
+            id: list
+            objectName: "queryHistoryList"
+            x: 6; y: 40
+            width: parent.width - 12; height: parent.height - y - 6
+            clip: true
+            reuseItems: true
+            model: picker.launcher.queryHistory
+            boundsBehavior: Flickable.StopAtBounds
+            delegate: Item {
+                id: row
+                required property string modelData
+                required property int index
+                width: list.width; height: 38
+                Accessible.role: Accessible.ListItem
+                Accessible.name: modelData
+                Accessible.onPressAction: picker.activate(index)
+                Hook { anchors.fill: parent; part: Theme.rowHighlight; selected: list.currentIndex === row.index; hovered: mouse.containsMouse; role: "menu"; dpr: menu.dpr }
+                Text {
+                    x: 10; anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - 56
+                    text: row.modelData; textFormat: Text.PlainText
+                    color: Theme.text; font.pixelSize: Theme.fontBody; elide: Text.ElideRight
+                }
+                MouseArea {
+                    id: mouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: picker.activate(row.index)
+                    onContainsMouseChanged: {
+                        if (containsMouse) { tip.target = row; tip.text = row.modelData }
+                        else if (tip.target === row) tip.target = null
+                    }
+                }
+                RowAction {
+                    anchors.right: parent.right; anchors.rightMargin: 4; anchors.verticalCenter: parent.verticalCenter
+                    small: true; glyph: "\uE74D"; tip: qsTr("移除这条搜索记录")
+                    dpr: menu.dpr
+                    onClicked: picker.launcher.removeQuery(row.index)
+                }
+            }
+            ListScrollBar { flickable: list; anchors.right: parent.right; height: parent.height; dpr: menu.dpr }
+        }
+        Text {
+            anchors.centerIn: list; visible: list.count === 0
+            text: qsTr("还没有搜索记录")
+            color: Theme.faint; font.pixelSize: Theme.fontBody
+        }
+    }
+    MenuPathTip { id: tip; host: menu; availableArea: menu.area }
+}

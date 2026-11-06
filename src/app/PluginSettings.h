@@ -260,6 +260,7 @@ public:
     Q_INVOKABLE void reload(const QString& id);
     Q_INVOKABLE void openFolder(const QString& id);
     Q_INVOKABLE void openReadme(const QString& id);
+    Q_INVOKABLE void openReadmeLink(const QString& link);
     Q_INVOKABLE void showSettings(const QString& id); // the plugin's own settings window (settingsWindow)
     Q_INVOKABLE void openHomepage(const QString& id);
     Q_INVOKABLE void openLog();
@@ -280,6 +281,7 @@ public:
     Q_INVOKABLE QString permissionsNote() const;
 
 signals:
+    void readmeRequested(const QString& title, const QString& html);
     void webSettingsRequested();
     void listChanged();
     void logPluginsChanged();

@@ -1567,6 +1567,26 @@
         <source>点一下换一种：换行、空格、逗号、Tab、不分隔</source>
         <translation>Click for another: new line, space, comma, tab, nothing</translation>
     </message>
+    <message>
+        <source>输入分组名，回车进入</source>
+        <translation>Find a group, Enter to open</translation>
+    </message>
+    <message>
+        <source>在“%1”中搜索</source>
+        <translation>Search in “%1”</translation>
+    </message>
+    <message>
+        <source>返回内容搜索</source>
+        <translation>Back to content search</translation>
+    </message>
+    <message>
+        <source>查找分组</source>
+        <translation>Find a group</translation>
+    </message>
+    <message>
+        <source>↑ ↓ 选择 · Enter 进入 · Esc 返回</source>
+        <translation>↑ ↓ Select · Enter Open · Esc Back</translation>
+    </message>
 </context>
 <context>
     <name>ClipboardWindow</name>
@@ -2507,6 +2527,10 @@
     <message>
         <source>还没有什么事</source>
         <translation>Nothing yet</translation>
+    </message>
+    <message>
+        <source>主进程：工作集 %1 · 私有提交 %2</source>
+        <translation>Main process: working set %1 · private commit %2</translation>
     </message>
 </context>
 <context>
@@ -3860,6 +3884,22 @@
         <source>插件给搜索框加关键字命令，结果混进列表。它们用你的普通权限（要跟随 Win顺 管理员权限的，权限里会写明）；启用前会先列出权限，由你决定是否开启。</source>
         <translation>Plugins add keyword commands to the search box and mix their results into the list. They run with your normal rights (one that follows Win顺&apos;s administrator rights says so in its permissions); review the permissions and choose which ones to enable.</translation>
     </message>
+    <message>
+        <source>收起</source>
+        <translation>Collapse</translation>
+    </message>
+    <message>
+        <source>展开</source>
+        <translation>Expand</translation>
+    </message>
+    <message>
+        <source>收起内置功能</source>
+        <translation>Collapse built-in features</translation>
+    </message>
+    <message>
+        <source>展开内置功能</source>
+        <translation>Expand built-in features</translation>
+    </message>
 </context>
 <context>
     <name>PreviewBody</name>
@@ -4074,6 +4114,26 @@ Right: center window · Drag: move window</translation>
         <source>展开为搜索面板</source>
         <translation>Expand to the search panel</translation>
     </message>
+    <message>
+        <source>搜索 %1</source>
+        <translation>Search %1</translation>
+    </message>
+    <message>
+        <source>隐藏筛选侧栏</source>
+        <translation>Hide filter sidebar</translation>
+    </message>
+    <message>
+        <source>显示筛选侧栏</source>
+        <translation>Show filter sidebar</translation>
+    </message>
+    <message>
+        <source>显示筛选侧栏（筛选仍生效）</source>
+        <translation>Show filter sidebar (filters are still active)</translation>
+    </message>
+    <message>
+        <source>搜索历史</source>
+        <translation>Search history</translation>
+    </message>
 </context>
 <context>
     <name>SettingRow</name>
@@ -4197,6 +4257,30 @@ Right: center window · Drag: move window</translation>
 </context>
 <context>
     <name>SettingsWindow</name>
+    <message>
+        <source>界面字体</source>
+        <translation>Interface font</translation>
+    </message>
+    <message>
+        <source>字体;雅黑;普惠体;清晰;font;typeface;YaHei</source>
+        <translation>font;typeface;YaHei;Alibaba;clarity</translation>
+    </message>
+    <message>
+        <source>输入名称查找，示例即时预览；重启后应用</source>
+        <translation>Type a font name to preview it. Restart WinShun to apply.</translation>
+    </message>
+    <message>
+        <source>此电脑未安装“%1”，暂用默认字体</source>
+        <translation>“%1” is not installed on this PC. Using the default font.</translation>
+    </message>
+    <message>
+        <source>文件搜索 · 剪贴板 · 设置  WinShun 0123456789</source>
+        <translation>File search · Clipboard · Settings  WinShun 0123456789</translation>
+    </message>
+    <message>
+        <source>重启后应用</source>
+        <translation>Restart to apply</translation>
+    </message>
     <message>
         <source>键盘提示</source>
         <translation>Keyboard hints</translation>
@@ -7277,6 +7361,78 @@ Right: center window · Drag: move window</translation>
         <source>最近文件夹</source>
         <translation>Recent folders</translation>
     </message>
+    <message>
+        <source>直接打开搜索面板</source>
+        <translation>Open the full search panel</translation>
+    </message>
+    <message>
+        <source>一个组合键打开完整搜索面板并聚焦搜索框，例如 Ctrl+Alt+F</source>
+        <translation>Open the full search panel and focus its search field with one shortcut, such as Ctrl+Alt+F.</translation>
+    </message>
+    <message>
+        <source>完整窗口;面板;全局;热键;快捷键;full search;panel;hotkey</source>
+        <translation>full window;panel;global;shortcut;full search;hotkey</translation>
+    </message>
+    <message>
+        <source>直接显示最近的文件夹</source>
+        <translation>Recent folders shown directly</translation>
+    </message>
+    <message>
+        <source>直接显示已打开的文件夹</source>
+        <translation>Open folders shown directly</translation>
+    </message>
+    <message>
+        <source>0：收进二级菜单；1–10：直接显示前几个，其余放进“更多…”</source>
+        <translation>0: keep in a submenu. 1–10: show this many directly, with the rest under “More…”.</translation>
+    </message>
+    <message>
+        <source>文件夹菜单;最近;已打开;数量;更多;展开;inline;recent;folders</source>
+        <translation>folder menu;recent;open;count;more;expand;inline;folders</translation>
+    </message>
+    <message>
+        <source>启动时请求管理员权限，直接读取主文件表和变更日志；取消后本次用普通权限，保留选择。开机自启也以管理员身份</source>
+        <translation>Ask for administrator permission at startup to read the MFT and change journal directly. Cancelling uses normal permissions for this launch and keeps your choice. Login startup also uses administrator permissions.</translation>
+    </message>
+    <message>
+        <source>记住搜索和打开过的项目</source>
+        <translation>Remember searches and opened items</translation>
+    </message>
+    <message>
+        <source>记住打开过的项目和最近 100 条搜索词；同样的字常打开的项目排在前面。插件命令不记入搜索历史</source>
+        <translation>Remember opened items and up to 100 search queries. Frequently opened matches rank higher. Plugin commands are excluded from query history.</translation>
+    </message>
+    <message>
+        <source>搜索历史快捷键</source>
+        <translation>Query history shortcuts</translation>
+    </message>
+    <message>
+        <source>在搜索框中翻阅；回到最新位置时恢复未完成的输入，也可点时钟图标浏览和删除</source>
+        <translation>Browse previous queries in search; return to the newest position to restore your draft. The clock button lets you browse and delete entries.</translation>
+    </message>
+    <message>
+        <source>历史;上一个;下一个;history;Ctrl;Alt</source>
+        <translation>history;previous;next;Ctrl;Alt</translation>
+    </message>
+    <message>
+        <source>清除搜索和最近使用记录</source>
+        <translation>Clear searches and recent items</translation>
+    </message>
+    <message>
+        <source>共 %1 项；搜索词可在搜索历史中单独删除，打开记录可右键移除</source>
+        <translation>%1 entries. Delete queries in search history; right-click an opened item to remove it.</translation>
+    </message>
+    <message>
+        <source>合并“全部”和“文件”</source>
+        <translation>Combine All and Files</translation>
+    </message>
+    <message>
+        <source>在“全部”下常驻文件类型筛选，应用仍优先显示；按住 Ctrl 查看类型关键词</source>
+        <translation>Keep file-type filters visible in All, with apps ranked first. Hold Ctrl to show type keywords.</translation>
+    </message>
+    <message>
+        <source>合并;全部;文件;类型;筛选;merge;scope</source>
+        <translation>combine;All;Files;type;filter;merge;scope</translation>
+    </message>
 </context>
 <context>
     <name>ShareCard</name>
@@ -7549,6 +7705,18 @@ Right: center window · Drag: move window</translation>
         <source>关闭；选中了多条时先取消选择</source>
         <translation>Close; with several selected, unselect them first</translation>
     </message>
+    <message>
+        <source>直接打开完整搜索面板</source>
+        <translation>Open the full search panel directly</translation>
+    </message>
+    <message>
+        <source>查找分组：输入名称，Enter 进入，Esc 返回内容搜索</source>
+        <translation>Find a group: type its name, Enter to open, Esc to return to content search</translation>
+    </message>
+    <message>
+        <source>翻阅搜索历史，回到最新时恢复未完成输入</source>
+        <translation>Browse query history; return to the newest position to restore your draft</translation>
+    </message>
 </context>
 <context>
     <name>ShortcutsButton</name>
@@ -7609,6 +7777,10 @@ Right: center window · Drag: move window</translation>
     <message>
         <source>内容索引</source>
         <translation>Content index</translation>
+    </message>
+    <message>
+        <source>所有应用、文件和文件夹</source>
+        <translation>All applications, files and folders</translation>
     </message>
 </context>
 <context>
@@ -10295,10 +10467,6 @@ Content index: %5</translation>
         <translation>File index</translation>
     </message>
     <message>
-        <source>搜文件名用的；另有 %1 MB 已暂存到磁盘，用到时读回</source>
-        <translation>what name searches use; %1 MB more parked on disk, read back when needed</translation>
-    </message>
-    <message>
         <source>搜文件名用的</source>
         <translation>what name searches use</translation>
     </message>
@@ -10417,6 +10585,14 @@ Content index: %5</translation>
     <message>
         <source>约 3–5 分钟</source>
         <translation>about 3–5 minutes</translation>
+    </message>
+    <message>
+        <source>；映射文件另有 %1 MB 驻留，由系统按需缓存</source>
+        <translation>; %1 MB of mapped files are also resident, cached by Windows as needed</translation>
+    </message>
+    <message>
+        <source>；约 %1 MB 当前未驻留，不代表实际磁盘占用</source>
+        <translation>; about %1 MB is currently nonresident, not a measure of disk usage</translation>
     </message>
 </context>
 <context>
@@ -13726,6 +13902,87 @@ Content index: %5</translation>
     <message>
         <source>无法完成增强识别安装，原来的文件已保留。</source>
         <translation>Installation could not finish. Your existing recognition files have been kept.</translation>
+    </message>
+</context>
+<context>
+    <name>FontPicker</name>
+    <message>
+        <source>默认（阿里巴巴普惠体）</source>
+        <translation>Default (Alibaba PuHuiTi)</translation>
+    </message>
+    <message>
+        <source>界面字体</source>
+        <translation>Interface font</translation>
+    </message>
+</context>
+<context>
+    <name>ClipGroupPicker</name>
+    <message>
+        <source>%1，%2 项</source>
+        <translation>%1, %2 items</translation>
+    </message>
+    <message>
+        <source>没有匹配的分组</source>
+        <translation>No matching groups</translation>
+    </message>
+    <message>
+        <source>还没有分组</source>
+        <translation>No groups yet</translation>
+    </message>
+</context>
+<context>
+    <name>FolderMenu</name>
+    <message>
+        <source>更多…</source>
+        <translation>More…</translation>
+    </message>
+</context>
+<context>
+    <name>QueryHistoryPicker</name>
+    <message>
+        <source>搜索历史 · %1</source>
+        <translation>Search history · %1</translation>
+    </message>
+    <message>
+        <source>移除这条搜索记录</source>
+        <translation>Remove this query</translation>
+    </message>
+    <message>
+        <source>还没有搜索记录</source>
+        <translation>No search history yet</translation>
+    </message>
+</context>
+<context>
+    <name>PluginReadmeDialog</name>
+    <message>
+        <source>%1 · 使用说明</source>
+        <translation>%1 · User guide</translation>
+    </message>
+    <message>
+        <source>关闭说明（Esc / Q）</source>
+        <translation>Close guide (Esc / Q)</translation>
+    </message>
+</context>
+<context>
+    <name>PluginReadme</name>
+    <message>
+        <source>无法读取插件说明，请确认插件文件完整</source>
+        <translation>Cannot read the guide. Check that the plugin files are complete.</translation>
+    </message>
+    <message>
+        <source>插件说明超过 1 MB，暂时无法显示</source>
+        <translation>This guide is larger than 1 MB and cannot be displayed.</translation>
+    </message>
+    <message>
+        <source>读取插件说明失败</source>
+        <translation>Could not read the plugin guide.</translation>
+    </message>
+</context>
+<context>
+    <name>Launcher</name>
+    <message>
+        <source>已清除搜索和最近使用记录</source>
+        <translation>Searches and recent items cleared</translation>
     </message>
 </context>
 </TS>

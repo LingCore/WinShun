@@ -819,6 +819,10 @@ void Settings::load()
         proxyMode = d.proxyMode;
     proxyAddress = readOrDefault(s, u"Proxy/Address"_s, d.proxyAddress).trimmed();
     recordHistory = readOrDefault(s, u"Launcher/History"_s, d.recordHistory);
+    mergeFileScope = readOrDefault(s, u"Results/MergeFileScope"_s, d.mergeFileScope);
+    queryHistoryKeys = readOrDefault(s, u"Launcher/QueryHistoryKeys"_s, d.queryHistoryKeys);
+    if (queryHistoryKeys != u"ctrl" && queryHistoryKeys != u"alt" && queryHistoryKeys != u"off")
+        queryHistoryKeys = d.queryHistoryKeys;
     dialogJump = readOrDefault(s, u"Launcher/DialogJump"_s, d.dialogJump);
     // Off for new installs; an ini from before without the key had it on.
     dialogBar = readOrDefault(s, u"Launcher/DialogBar"_s, firstRun ? d.dialogBar : true);
@@ -1263,6 +1267,8 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/Sort"_s, sort);
     s.setValue(u"Results/StartList"_s, startList);
     s.setValue(u"Results/RecentItems"_s, recentItems);
+    s.setValue(u"Results/MergeFileScope"_s, mergeFileScope);
+    s.setValue(u"Launcher/QueryHistoryKeys"_s, queryHistoryKeys);
     s.setValue(u"Results/FavoritesOnStart"_s, favoritesOnStart);
     s.setValue(u"Launcher/ClearOnOpen"_s, clearOnOpen);
     s.setValue(u"Launcher/EnglishOnOpen"_s, englishOnOpen);

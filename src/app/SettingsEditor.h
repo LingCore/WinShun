@@ -195,6 +195,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString sort READ sort WRITE setSort NOTIFY changed FINAL) // match | newest | oldest | name | folder | type | largest | smallest (kSortNames)
     Q_PROPERTY(QString startList READ startList WRITE setStartList NOTIFY changed FINAL) // opened | modified | none
     Q_PROPERTY(int recentItems READ recentItems WRITE setRecentItems NOTIFY changed FINAL)
+    Q_PROPERTY(bool mergeFileScope READ mergeFileScope WRITE setMergeFileScope NOTIFY changed FINAL)
+    Q_PROPERTY(QString queryHistoryKeys READ queryHistoryKeys WRITE setQueryHistoryKeys NOTIFY changed FINAL)
     Q_PROPERTY(bool favoritesOnStart READ favoritesOnStart WRITE setFavoritesOnStart NOTIFY changed FINAL)
     Q_PROPERTY(bool clearOnOpen READ clearOnOpen WRITE setClearOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(bool englishOnOpen READ englishOnOpen WRITE setEnglishOnOpen NOTIFY changed FINAL)
@@ -947,6 +949,10 @@ public:
     // 插件 page
     PluginSettings* plugins() const { return m_plugins; }
     bool pluginBuiltinsExpanded() const { return m_settings.pluginBuiltinsExpanded; }
+    bool mergeFileScope() const { return m_settings.mergeFileScope; }
+    QString queryHistoryKeys() const { return m_settings.queryHistoryKeys; }
+    void setMergeFileScope(bool merged);
+    void setQueryHistoryKeys(const QString& keys);
     void setPluginBuiltinsExpanded(bool expanded);
     OcrPackage* ocrPackage() const { return m_ocrPackage; }
     void useOcrPackage(OcrPackage* package); // before the settings window is created
