@@ -170,6 +170,7 @@ set(qml_files
     qml/FolderMenuWindow.qml
     qml/MenuPathTip.qml
     qml/FontPicker.qml
+    qml/ClipGroupPicker.qml
     qml/DropPieWindow.qml
     qml/SoftShadow.qml
     qml/PreviewWindow.qml

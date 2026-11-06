@@ -78,6 +78,7 @@ signals:
     void stepped(int row);
     void browseStepRequested();
     void queryChanged();
+    void groupSearchRequested();
     void keysRoutedChanged();
     void contextMenuKeyPressed();
     void pinyinHintRequested();

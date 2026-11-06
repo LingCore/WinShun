@@ -119,6 +119,19 @@ class KeyRouterTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void groupSearchChordPolicy()
+    {
+        KeyRouter::Key key {.key = Qt::Key_G, .modifiers = Qt::ControlModifier, .vk = 'G'};
+        QVERIFY(KeyRouter::wantsKey(key));
+        QVERIFY(!KeyRouter::wantsKey(key, Qt::AltModifier, KeyRouter::Policy::Menu));
+        key.modifiers |= Qt::ShiftModifier;
+        QVERIFY(!KeyRouter::wantsKey(key));
+        key.modifiers = Qt::ControlModifier;
+        key.key = Qt::Key_W;
+        key.vk = 'W';
+        QVERIFY(!KeyRouter::wantsKey(key)); // unrelated app shortcuts still pass through
+    }
+
     // The names of the keys routed, and of those TypeToSearch hands over to
     // the launcher (GitHub #203): Qt's, as its own key events have them.
     void qtKeyNames()

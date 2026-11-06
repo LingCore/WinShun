@@ -174,7 +174,8 @@ public:
     // clear of `avoid`, in that corner within `avoid`'s client area: File
     // Explorer's file list (folderview::explorerFileList, GitHub #203).
     void showLauncher(const QString& query = {}, const std::optional<taskbar::Spot>& spot = {}, bool inBox = false,
-        QScreen* on = nullptr, HWND avoid = nullptr, bool inside = false, const RECT& orInto = {});
+        QScreen* on = nullptr, HWND avoid = nullptr, bool inside = false, const RECT& orInto = {}, bool asPanel = false);
+    void showSearchPanel();
     void showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder);
     void hideLauncher();
     // The launcher as the search panel (Launcher::panel): the window sized
@@ -182,7 +183,7 @@ public:
     // its spot (or over the taskbar it came from). Opening anew is always
     // the box: the panel is a mode its user asks for. Hidden as the panel,
     // it goes back quietly.
-    void setPanel(bool on);
+    void setPanel(bool on, bool opening = false);
     void togglePanel();
     // Launcher::pinned changed. Pinned over Win顺's box on the taskbar, the
     // field comes back into the window and the box goes idle (as for the

@@ -123,6 +123,7 @@ bool wanted(const KeyRouter::Key& key, Qt::KeyboardModifier numberKeys)
         case 'X':
         case 'Y':
         case 'P':
+        case 'G': // find a clipboard group
             return !shift; // Ctrl+Shift+V and the like stay free for other programs' hotkeys
         case 'Z':
             return true; // undo, redo
@@ -187,6 +188,11 @@ void sendMask(ULONG_PTR mark = kOwnInput)
 }
 
 } // namespace
+
+bool KeyRouter::wantsKey(const Key& key, Qt::KeyboardModifier numberKeys, Policy policy)
+{
+    return policy == Policy::Menu ? wantedByMenu(key) : wanted(key, numberKeys);
+}
 
 KeyRouter::KeyRouter(
     HWND target, HWND window, Callbacks callbacks, Qt::KeyboardModifier numberKeys, unsigned ownDigits, Policy policy)
@@ -418,7 +424,7 @@ LRESULT KeyRouter::handleKey(int code, WPARAM message, LPARAM lParam)
         return next();
     }
     const Key key = translate(event, true, false);
-    if (!(m_policy == Policy::Menu ? wantedByMenu(key) : wanted(key, m_numberKeys))) {
+    if (!wantsKey(key, m_numberKeys, m_policy)) {
         count(NotWanted);
         return next();
     }

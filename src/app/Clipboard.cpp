@@ -526,6 +526,25 @@ void Clipboard::cycleCategory(int delta)
     setCategory(((m_category + delta) % n + n) % n);
 }
 
+bool Clipboard::enterGroup(qint64 group)
+{
+    if (group <= 0 || !m_store->group(group))
+        return false;
+    const auto categories = categoryList();
+    const auto found = std::ranges::find(categories, group, &Category::group);
+    if (found == categories.end())
+        return false;
+    m_category = static_cast<int>(found - categories.begin());
+    m_categoryGroup = group;
+    m_query.clear();
+    m_model.clearSelection();
+    emit queryChanged();
+    emit categoryChanged();
+    refresh();
+    emit listChanged();
+    return true;
+}
+
 void Clipboard::refresh()
 {
     // A group tab stays on its group when groups before it come or go.

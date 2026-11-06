@@ -74,6 +74,7 @@ Window {
             all: true,
             openKeys: [window.editor.doubleCtrl ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.hotkey].filter(keys => keys.length > 0).join(" / "),
             clipboardHotkey: window.editor.clipboardHotkey,
+            panelHotkey: window.editor.panelHotkey,
             previewKey: window.editor.previewHotkey,
             numberModifier: window.editor.numberKeys === "alt" ? "Alt" : window.editor.numberKeys === "ctrl" ? "Ctrl" : "",
             holdKey: window.editor.clipboardHotkey,
@@ -1411,9 +1412,10 @@ Window {
                 content: Component { SettingsPage {
                     host: settingsContext
                     parts: ({ explorerTypingRow: explorerTypingRow, folderMenuRow: folderMenuRow, dialogBarRow: dialogBarRow })
-                    recordingHotkey: hotkeyRecorder.recording || folderMenuHotkeyRecorder.recording
+                    recordingHotkey: hotkeyRecorder.recording || panelHotkeyRecorder.recording || folderMenuHotkeyRecorder.recording
                     onResetForReopen: {
                         hotkeyRecorder.stop()
+                        panelHotkeyRecorder.stop()
                         folderMenuHotkeyRecorder.stop()
                         doubleCtrlAppInput.clear()
                         taskbarButtonRow.chosen = -1
@@ -1600,6 +1602,34 @@ Window {
                         visible: window.editor.hotkeyError.length > 0
                         width: parent.width
                         text: window.editor.hotkeyError
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("直接打开搜索面板")
+                    description: qsTr("一个组合键打开完整搜索面板并聚焦搜索框，例如 Ctrl+Alt+F")
+                    keywords: qsTr("完整窗口;面板;全局;热键;快捷键;full search;panel;hotkey").split(";")
+                    values: [window.editor.panelHotkey]
+                    FlatButton {
+                        dpr: window.dpr
+                        visible: window.editor.panelHotkey.length > 0 && !panelHotkeyRecorder.recording
+                        flat: true
+                        text: qsTr("清除")
+                        onClicked: window.editor.panelHotkey = ""
+                    }
+                    HotkeyRecorder {
+                        id: panelHotkeyRecorder
+                        objectName: "panelHotkeyRecorder"
+                        hotkey: window.editor.panelHotkey
+                        onRecorded: hotkey => window.editor.panelHotkey = hotkey
+                    }
+                    body: Text {
+                        visible: window.editor.panelHotkeyError.length > 0
+                        width: parent.width
+                        text: window.editor.panelHotkeyError
                         color: Theme.danger
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.Wrap
@@ -2136,6 +2166,37 @@ Window {
                     }
                 }
 
+                Repeater {
+                    model: 2
+                    delegate: SettingRow {
+                        id: inlineFoldersRow
+                        required property int index
+                        readonly property bool recent: index === 0
+                        readonly property int count: recent ? window.editor.folderMenuRecentInline : window.editor.folderMenuWindowsInline
+                        sub: true
+                        title: recent ? qsTr("直接显示最近的文件夹") : qsTr("直接显示已打开的文件夹")
+                        description: qsTr("0：收进二级菜单；1–10：直接显示前几个，其余放进“更多…”")
+                        keywords: qsTr("文件夹菜单;最近;已打开;数量;更多;展开;inline;recent;folders").split(";")
+                        InputBox {
+                            objectName: inlineFoldersRow.recent ? "folderMenuRecentInline" : "folderMenuWindowsInline"
+                            enabled: window.editor.folderMenu && (inlineFoldersRow.recent ? window.editor.folderMenuRecent : window.editor.folderMenuWindows)
+                            width: 72
+                            dpr: window.dpr
+                            horizontalAlignment: TextInput.AlignHCenter
+                            text: String(inlineFoldersRow.count)
+                            validator: IntValidator { bottom: 0; top: 10 }
+                            onEditingFinished: {
+                                const count = parseInt(text, 10)
+                                if (!isNaN(count) && count >= 0 && count <= 10) {
+                                    if (inlineFoldersRow.recent) window.editor.folderMenuRecentInline = count
+                                    else window.editor.folderMenuWindowsInline = count
+                                }
+                                text = Qt.binding(() => String(inlineFoldersRow.count))
+                            }
+                        }
+                    }
+                }
+
                 SettingRow { // GitHub #200
                     id: folderMenuActionsRow
                     sub: true
@@ -2143,27 +2204,30 @@ Window {
                     description: qsTr("菜单末尾的“在此搜索”“复制路径”“收藏这个文件夹”等；没勾选的不再出现")
                     keywords: qsTr("文件夹菜单;搜索;复制路径;复制地址;copy path;命令提示符;cmd;PowerShell;收藏;设置;隐藏;search;command prompt;favorites;settings").split(";")
 
-                    ScopeTabs {
-                        multiSelect: true
-                        disabled: window.editor.folderMenu ? [] : [0, 1, 2, 3, 4, 5]
-                        labels: [qsTr("搜索"), qsTr("复制路径"), qsTr("命令提示符"), qsTr("PowerShell"), qsTr("收藏"), qsTr("设置")]
-                        checkedIndices: {
-                            const list = []
-                            if (window.editor.folderMenuItemSearch) list.push(0)
-                            if (window.editor.folderMenuItemCopyPath) list.push(1)
-                            if (window.editor.folderMenuItemCmd) list.push(2)
-                            if (window.editor.folderMenuItemPowerShell) list.push(3)
-                            if (window.editor.folderMenuItemFavorite) list.push(4)
-                            if (window.editor.folderMenuItemSettings) list.push(5)
-                            return list
-                        }
-                        onToggled: (index, on) => {
-                            if (index === 0) window.editor.folderMenuItemSearch = on
-                            else if (index === 1) window.editor.folderMenuItemCopyPath = on
-                            else if (index === 2) window.editor.folderMenuItemCmd = on
-                            else if (index === 3) window.editor.folderMenuItemPowerShell = on
-                            else if (index === 4) window.editor.folderMenuItemFavorite = on
-                            else if (index === 5) window.editor.folderMenuItemSettings = on
+                    body: Flow {
+                        objectName: "folderMenuActionChoices"
+                        width: parent.width
+                        spacing: 4
+                        Repeater {
+                            model: [
+                                { title: qsTr("搜索"), setting: "folderMenuItemSearch" },
+                                { title: qsTr("复制路径"), setting: "folderMenuItemCopyPath" },
+                                { title: qsTr("命令提示符"), setting: "folderMenuItemCmd" },
+                                { title: qsTr("PowerShell"), setting: "folderMenuItemPowerShell" },
+                                { title: qsTr("收藏"), setting: "folderMenuItemFavorite" },
+                                { title: qsTr("设置"), setting: "folderMenuItemSettings" }
+                            ]
+                            delegate: ScopeTabs {
+                                required property var modelData
+                                required property int index
+                                objectName: "folderMenuAction" + index
+                                dpr: window.dpr
+                                multiSelect: true
+                                disabled: window.editor.folderMenu ? [] : [0]
+                                labels: [modelData.title]
+                                checkedIndices: window.editor[modelData.setting] ? [0] : []
+                                onToggled: (index, on) => window.editor[modelData.setting] = on
+                            }
                         }
                     }
                 }

@@ -110,6 +110,7 @@ Item {
         frame.addControl(tabs)
         frame.addControl(compactScope)
         frame.addControl(expand)
+        frame.addControl(sidebarToggle)
         frame.addControl(regexChip)
         frame.addControl(boxPin)
         frame.addHandle(handle)
@@ -499,6 +500,65 @@ Item {
     }
 
     Item {
+        id: sidebarToggle
+        objectName: "panelSidebarToggle"
+        visible: bar.panelMode
+        readonly property string tip: bar.launcher.panelSidebarVisible ? qsTr("隐藏筛选侧栏")
+            : bar.launcher.filtersActive ? qsTr("显示筛选侧栏（筛选仍生效）") : qsTr("显示筛选侧栏")
+        function activate() {
+            bar.launcher.panelSidebarVisible = !bar.launcher.panelSidebarVisible
+            bar.focusAtEnd()
+        }
+        anchors.right: expand.left
+        anchors.rightMargin: 6
+        y: bar.onPixel((bar.height - height) / 2)
+        width: height
+        height: bar.keyHeight
+        activeFocusOnTab: visible
+        Accessible.role: Accessible.Button
+        Accessible.name: tip
+        Accessible.checkable: true
+        Accessible.checked: bar.launcher.panelSidebarVisible
+        Accessible.onPressAction: activate()
+        Keys.onSpacePressed: activate()
+        Keys.onReturnPressed: activate()
+        FieldKey {
+            id: sidebarKey
+            dpr: bar.dpr
+            checked: bar.launcher.panelSidebarVisible
+            flat: !checked
+            hovered: sidebarArea.containsMouse
+            pressed: sidebarArea.pressed
+            focused: sidebarToggle.activeFocus
+        }
+        Glyph {
+            anchors.centerIn: parent
+            glyph: "\uE71C"
+            size: 16
+            color: bar.launcher.filtersActive && !sidebarKey.checked ? Theme.accent : sidebarKey.out("foreground", Theme.text)
+        }
+        Rectangle {
+            objectName: "panelActiveFiltersIndicator"
+            visible: bar.launcher.filtersActive && !bar.launcher.panelSidebarVisible
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 3
+            width: 5
+            height: 5
+            radius: 2.5
+            color: Theme.accent
+        }
+        MouseArea {
+            id: sidebarArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: sidebarToggle.activate()
+        }
+        HoverTip { target: sidebarArea.containsMouse ? sidebarToggle : null; text: sidebarToggle.tip }
+    }
+
+    Item {
         id: compactScope
         visible: bar.folderMode
         anchors.right: expand.left
@@ -545,7 +605,7 @@ Item {
         role: "scope"
         dpr: bar.dpr
         height: Math.min(tabs.implicitHeight, fieldPart.height - 2 * Math.min(bar.keyInset, Theme.tok("scopeKeyInset", bar.keyInset)))
-        anchors.right: expand.left
+        anchors.right: sidebarToggle.visible ? sidebarToggle.left : expand.left
         anchors.rightMargin: 6
         anchors.leftMargin: 16
         y: bar.onPixel((bar.height - height) / 2)

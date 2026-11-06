@@ -285,6 +285,7 @@ public:
     Q_INVOKABLE bool canMove(int from, int to) const;
     Q_INVOKABLE void moveRow(int from, int to);
     Q_INVOKABLE qint64 addGroup(const QString& name); // 0 if empty or not saved
+    Q_INVOKABLE bool enterGroup(qint64 group); // resolve by stable ID, then search only this group
     Q_INVOKABLE void renameGroup(qint64 group, const QString& name);
 
     Q_INVOKABLE void toggleSelected(int row);
@@ -344,6 +345,7 @@ signals:
     void stateChanged();
     void queryChanged();
     void categoryChanged();
+    void groupSearchRequested();
     void categoriesChanged();
     void listChanged(); // rows replaced: select the first
     void statusChanged();

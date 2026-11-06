@@ -46,6 +46,8 @@ class SettingsEditor : public QObject {
             NOTIFY changed FINAL)
     Q_PROPERTY(QStringList doubleCtrlExcludedApps READ doubleCtrlExcludedApps NOTIFY changed FINAL)
     Q_PROPERTY(QString hotkey READ hotkey WRITE setHotkey NOTIFY changed FINAL)
+    Q_PROPERTY(QString panelHotkey READ panelHotkey WRITE setPanelHotkey NOTIFY changed FINAL)
+    Q_PROPERTY(QString panelHotkeyError READ panelHotkeyError NOTIFY hotkeyErrorChanged FINAL)
     Q_PROPERTY(QString shortcutAgain READ shortcutAgain WRITE setShortcutAgain NOTIFY changed FINAL) // close | panel
     Q_PROPERTY(QString hotkeyError READ hotkeyError NOTIFY hotkeyErrorChanged FINAL)
     Q_PROPERTY(bool recordingHotkey READ recordingHotkey WRITE setRecordingHotkey NOTIFY recordingHotkeyChanged FINAL)
@@ -85,6 +87,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool folderMenuFavorites READ folderMenuFavorites WRITE setFolderMenuFavorites NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuRecent READ folderMenuRecent WRITE setFolderMenuRecent NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuWindows READ folderMenuWindows WRITE setFolderMenuWindows NOTIFY changed FINAL)
+    Q_PROPERTY(int folderMenuRecentInline READ folderMenuRecentInline WRITE setFolderMenuRecentInline NOTIFY changed FINAL)
+    Q_PROPERTY(int folderMenuWindowsInline READ folderMenuWindowsInline WRITE setFolderMenuWindowsInline NOTIFY changed FINAL)
     // The actions under the lists (GitHub #200).
     Q_PROPERTY(bool folderMenuItemSearch READ folderMenuItemSearch WRITE setFolderMenuItemSearch NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuItemCopyPath READ folderMenuItemCopyPath WRITE setFolderMenuItemCopyPath NOTIFY changed FINAL)
@@ -350,6 +354,10 @@ public:
     QString shortcutAgain() const { return m_settings.shortcutAgain; }
     void setShortcutAgain(const QString& what);
     void setHotkey(const QString& hotkey);
+    QString panelHotkey() const { return m_settings.panelHotkey; }
+    void setPanelHotkey(const QString& hotkey);
+    QString panelHotkeyError() const { return m_panelHotkeyError; }
+    void setPanelHotkeyError(const QString& error);
     QString hotkeyError() const { return m_hotkeyError; }
     void setHotkeyError(const QString& error);
     bool recordingHotkey() const { return m_recordingHotkey; }
@@ -411,6 +419,10 @@ public:
     void setFolderMenuRecent(bool on);
     bool folderMenuWindows() const { return m_settings.folderMenuWindows; }
     void setFolderMenuWindows(bool on);
+    int folderMenuRecentInline() const { return m_settings.folderMenuRecentInline; }
+    int folderMenuWindowsInline() const { return m_settings.folderMenuWindowsInline; }
+    void setFolderMenuRecentInline(int count);
+    void setFolderMenuWindowsInline(int count);
     bool folderMenuItemSearch() const { return m_settings.folderMenuItemSearch; }
     void setFolderMenuItemSearch(bool on);
     bool folderMenuItemCopyPath() const { return m_settings.folderMenuItemCopyPath; }
@@ -1010,6 +1022,7 @@ private:
     Settings m_settings;
     QString m_runningRenderer; // resolved: never "auto"
     QString m_hotkeyError;
+    QString m_panelHotkeyError;
     QString m_previewHotkeyError;
     QString m_numberKeysNote;
     QString m_clipboardNumberKeysNote;

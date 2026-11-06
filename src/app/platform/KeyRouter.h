@@ -94,6 +94,7 @@ public:
     // menu, GitHub #22): arrows, Home, End, Page Up and Down, Enter, Esc and
     // what types a character, without Ctrl or Alt.
     enum class Policy { Clipboard, Menu };
+    static bool wantsKey(const Key& key, Qt::KeyboardModifier numberKeys = Qt::AltModifier, Policy policy = Policy::Clipboard);
 
     // Keys are taken while `target` (top level) is in front and `window` is
     // shown. The callbacks run on the router's thread: post to the GUI thread.

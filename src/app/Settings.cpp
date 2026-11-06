@@ -807,6 +807,7 @@ void Settings::load()
         = readOrDefault(s, u"Launcher/DoubleCtrlPauseInFullScreen"_s, d.doubleCtrlPauseInFullScreen);
     doubleCtrlExcludedApps = readOrDefault(s, u"Launcher/DoubleCtrlExcludedApps"_s, d.doubleCtrlExcludedApps);
     hotkey = readOrDefault(s, u"Launcher/Hotkey"_s, d.hotkey);
+    panelHotkey = readOrDefault(s, u"Launcher/PanelHotkey"_s, d.panelHotkey).trimmed();
     adminTapHinted = readOrDefault(s, u"Launcher/AdminTapHinted"_s, d.adminTapHinted);
     adminDialogHinted = readOrDefault(s, u"Launcher/AdminDialogHinted"_s, d.adminDialogHinted);
     shortcutAgain = readOrDefault(s, u"Launcher/ShortcutAgain"_s, d.shortcutAgain).trimmed().toLower();
@@ -862,6 +863,8 @@ void Settings::load()
     folderMenuFavorites = readOrDefault(s, u"Launcher/FolderMenuFavorites"_s, d.folderMenuFavorites);
     folderMenuRecent = readOrDefault(s, u"Launcher/FolderMenuRecent"_s, d.folderMenuRecent);
     folderMenuWindows = readOrDefault(s, u"Launcher/FolderMenuWindows"_s, d.folderMenuWindows);
+    folderMenuRecentInline = std::clamp(readOrDefault(s, u"Launcher/FolderMenuRecentInline"_s, d.folderMenuRecentInline), 0, 10);
+    folderMenuWindowsInline = std::clamp(readOrDefault(s, u"Launcher/FolderMenuWindowsInline"_s, d.folderMenuWindowsInline), 0, 10);
     if (!folderMenuFavorites && !folderMenuRecent && !folderMenuWindows) // a menu of nothing: back to all (#51)
         folderMenuFavorites = folderMenuRecent = folderMenuWindows = true;
     folderMenuItemSearch = readOrDefault(s, u"Launcher/FolderMenuItemSearch"_s, d.folderMenuItemSearch);
@@ -1198,6 +1201,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/DoubleCtrlPauseInFullScreen"_s, doubleCtrlPauseInFullScreen);
     s.setValue(u"Launcher/DoubleCtrlExcludedApps"_s, doubleCtrlExcludedApps);
     s.setValue(u"Launcher/Hotkey"_s, hotkey);
+    s.setValue(u"Launcher/PanelHotkey"_s, panelHotkey);
     s.setValue(u"Launcher/AdminTapHinted"_s, adminTapHinted);
     s.setValue(u"Launcher/AdminDialogHinted"_s, adminDialogHinted);
     s.setValue(u"Launcher/ShortcutAgain"_s, shortcutAgain);
@@ -1228,6 +1232,8 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FolderMenuFavorites"_s, folderMenuFavorites);
     s.setValue(u"Launcher/FolderMenuRecent"_s, folderMenuRecent);
     s.setValue(u"Launcher/FolderMenuWindows"_s, folderMenuWindows);
+    s.setValue(u"Launcher/FolderMenuRecentInline"_s, folderMenuRecentInline);
+    s.setValue(u"Launcher/FolderMenuWindowsInline"_s, folderMenuWindowsInline);
     s.setValue(u"Launcher/FolderMenuItemSearch"_s, folderMenuItemSearch);
     s.setValue(u"Launcher/FolderMenuItemCopyPath"_s, folderMenuItemCopyPath);
     s.setValue(u"Launcher/FolderMenuItemCmd"_s, folderMenuItemCmd);

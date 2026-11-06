@@ -18,7 +18,8 @@ Window {
     readonly property real padding: Theme.menuPadding
     readonly property int itemHeight: Theme.menuItemHeight
     readonly property real dpr: Screen.devicePixelRatio
-    readonly property real listHeight: entries.reduce((height, entry) => height + (entry.separator === true ? 9 : itemHeight), 0)
+    readonly property int sectionHeight: Theme.fontCaption + 12
+    readonly property real listHeight: entries.reduce((height, entry) => height + (entry.separator === true ? 9 : entry.heading === true ? sectionHeight : itemHeight), 0)
     readonly property int headingHeight: page === null ? 0 : itemHeight + 5
     readonly property real maxHeight: Math.min(600, availableArea.height > 0 ? availableArea.height - 16 : 600)
 
@@ -194,7 +195,7 @@ Window {
             x: 42
             y: (menu.itemHeight - height) / 2
             width: heading.width - x - 12
-            text: menu.page === null ? "" : menu.page.text
+            text: menu.page === null ? "" : (menu.page.pageTitle ?? menu.page.text)
             font.pixelSize: Theme.fontBody
             font.weight: Font.DemiBold
             color: Theme.text
@@ -246,18 +247,19 @@ Window {
             required property int index
             readonly property bool separator: modelData.separator === true
             readonly property bool disabled: modelData.disabled === true
+            readonly property bool section: modelData.heading === true
             readonly property bool branch: modelData.children !== undefined
             readonly property string tooltip: modelData.tooltip ?? ""
             readonly property real trailingWidth: Math.min(detail.implicitWidth, 96) + (branch ? 20 : 0)
             objectName: "folderMenuEntry" + index
             width: flick.width
-            height: separator ? 9 : menu.itemHeight
+            height: separator ? 9 : section ? menu.sectionHeight : menu.itemHeight
             enabled: !disabled
             ListView.onPooled: {
                 if (menu.hoveredEntry === entry)
                     menu.hoveredEntry = null
             }
-            Accessible.role: Accessible.MenuItem
+            Accessible.role: section ? Accessible.Heading : Accessible.MenuItem
             Accessible.name: modelData.text ?? ""
             Accessible.description: tooltip
             Accessible.ignored: separator
@@ -284,7 +286,7 @@ Window {
                 fillMode: Image.PreserveAspectFit
             }
             Glyph {
-                visible: !entry.separator && !icon.visible
+                visible: !entry.separator && !entry.section && !icon.visible
                 x: 13
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: entry.modelData.glyph ?? ""
@@ -292,13 +294,13 @@ Window {
                 color: entry.disabled ? Theme.faint : Theme.text
             }
             Text {
-                x: 42
+                x: entry.section ? 12 : 42
                 width: Math.max(0, entry.width - x - 14 - entry.trailingWidth - 12)
                 anchors.verticalCenter: parent.verticalCenter
                 text: entry.modelData.text ?? ""
                 elide: Text.ElideRight
                 color: entry.disabled ? Theme.faint : Theme.text
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: entry.section ? Theme.fontCaption : Theme.fontBody
             }
             Text {
                 id: detail

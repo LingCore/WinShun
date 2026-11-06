@@ -83,6 +83,9 @@ public:
     void setOptions(bool yieldToListary, bool explorer, bool desktop);
     // Which groups it lists (GitHub #51); one left out is not even gathered.
     void setGroups(bool favorites, bool recent, bool windows);
+    void setInlineCounts(int recent, int windows);
+    // Pure menu presentation: keeps action IDs intact across the direct rows and More page.
+    static QVariantList groupEntries(const QString& title, const QString& glyph, const QVariantList& children, int inlineCount = 0);
     // Which actions it offers under the lists (GitHub #200).
     void setItems(bool search, bool copyPath, bool cmd, bool powerShell, bool favorite, bool settings);
     // Whether something else has the keys now (the clipboard over File
@@ -173,6 +176,8 @@ private:
     std::atomic<bool> m_listFavorites {true};
     std::atomic<bool> m_listRecent {true};
     std::atomic<bool> m_listWindows {true};
+    int m_recentInline = 0;
+    int m_windowsInline = 0;
     std::atomic<bool> m_itemSearch {true};
     std::atomic<bool> m_itemCopyPath {true};
     std::atomic<bool> m_itemCmd {true};

@@ -91,6 +91,7 @@ struct Settings {
     bool doubleCtrlPauseInFullScreen = false; // not over any full-screen window
     QStringList doubleCtrlExcludedApps; // program files ("TheFinals.exe") in front of which double Ctrl does nothing
     QString hotkey; // e.g. "Alt+Space"; empty = none
+    QString panelHotkey; // opens the full search panel directly; empty = none
     // The programs run as administrator that were told of, once each, that
     // a double tap cannot be heard over them (AdminTapHint), lower case.
     QStringList adminTapHinted;
@@ -160,6 +161,8 @@ struct Settings {
     bool folderMenuFavorites = true;
     bool folderMenuRecent = true;
     bool folderMenuWindows = true; // folders open in other windows
+    int folderMenuRecentInline = 0; // 0: submenu; 1..10: direct rows, then More
+    int folderMenuWindowsInline = 0;
     // Which actions the menu offers under the lists (GitHub #200): all on is
     // what it always did. Favorite covers both adding and removing.
     bool folderMenuItemSearch = true;

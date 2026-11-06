@@ -156,6 +156,7 @@ constexpr int kClipboardHotkeyId = 4; // another shortcut for the clipboard hist
 constexpr int kWinSHotkeyId = 5; // Win+S: the launcher over the taskbar, once Explorer gave it up (winv::)
 constexpr int kScreenClipHotkeyId = 6; // Win+Shift+S, which Explorer gives up with Win+S: the screen capture
 constexpr int kFolderMenuHotkeyId = 7; // the folder menu in the window in front (GitHub #25)
+constexpr int kPanelHotkeyId = 8; // directly open the full search panel (#206)
 constexpr int kQuickPasteHotkeyId = 20; // + 1…9: paste without opening the clipboard
 // For another program to tell where its text caret is: longer, and the
 // clipboard would open late; it opens by the mouse pointer then.
@@ -1036,10 +1037,16 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
             startScreenClip();
         else if (id == kFolderMenuHotkeyId)
             folderMenuHotkey();
+        else if (id == kPanelHotkeyId) {
+            beginTrigger(TriggerSource::Hotkey, pressedAt);
+            showSearchPanel();
+        }
         else if (id != kDialogJumpHotkeyId) {
             beginTrigger(TriggerSource::Hotkey, pressedAt);
             toggleLauncher(true, pressedAt);
-        } else if (m_dialogJump && m_settings.dialogJump)
+        } else if (clipboardInCharge())
+            emit m_clipboard->groupSearchRequested(); // Ctrl+G belongs to the visible clipboard, even above a file dialog
+        else if (m_dialogJump && m_settings.dialogJump)
             m_dialogJump->jump();
     };
     callbacks.shellRestarted = [this] { // Explorer let go of Win+V or Win+S, or took them back
@@ -1868,6 +1875,7 @@ void App::applySettings(bool initial)
 void App::applyHotkey()
 {
     m_messages->unregisterHotkey(kHotkeyId);
+    m_messages->unregisterHotkey(kPanelHotkeyId);
     if (m_settingsEditor && m_settingsEditor->recordingHotkey())
         return; // the keys being pressed must reach the settings window
     const QString hotkey = m_settings.hotkey.trimmed();
@@ -1891,6 +1899,20 @@ void App::applyHotkey()
         m_settingsEditor->setHotkeyError(hotkeyError); // shown next to the shortcut
     if (!settingsShown() && !hotkeyError.isEmpty() && !m_aiApplying)
         m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
+    const QString panelKey = m_settings.panelHotkey.trimmed();
+    QString panelError;
+    if (!panelKey.isEmpty() && !m_messages->registerHotkey(kPanelHotkeyId, panelKey)) {
+        UINT modifiers = 0;
+        UINT vk = 0;
+        panelError = MessageWindow::parseHotkey(panelKey, &modifiers, &vk)
+            ? tr("“%1” 已被其他程序或系统占用，请换一个。").arg(panelKey)
+            : tr("无法识别“%1”，请重新设置。").arg(panelKey);
+    }
+    noteApplyProblem(u"Launcher/PanelHotkey"_s, panelError);
+    if (m_settingsEditor)
+        m_settingsEditor->setPanelHotkeyError(panelError);
+    if (!settingsShown() && !panelError.isEmpty() && !m_aiApplying)
+        m_messages->showNotification(tr("快捷键不可用"), panelError);
 }
 
 // The folder menu's hotkey (GitHub #25). Over the launcher itself, the
@@ -3266,6 +3288,7 @@ void App::releaseWinChordsForExplorer()
 {
     const std::pair<int, QString> ours[] = {
         {kHotkeyId, m_settings.hotkey},
+        {kPanelHotkeyId, m_settings.panelHotkey},
         {kFolderMenuHotkeyId, m_settings.folderMenuHotkey},
         {kClipboardHotkeyId, m_settings.clipboardHotkey},
         {kWinVHotkeyId, u"Win+V"_s},
@@ -4238,6 +4261,7 @@ void App::applyFolderMenu()
     if (m_folderMenu) {
         m_folderMenu->setOptions(m_settings.folderMenu == u"auto", m_settings.folderMenuExplorer, m_settings.folderMenuDesktop);
         m_folderMenu->setGroups(m_settings.folderMenuFavorites, m_settings.folderMenuRecent, m_settings.folderMenuWindows);
+        m_folderMenu->setInlineCounts(m_settings.folderMenuRecentInline, m_settings.folderMenuWindowsInline);
         m_folderMenu->setItems(m_settings.folderMenuItemSearch, m_settings.folderMenuItemCopyPath, m_settings.folderMenuItemCmd, m_settings.folderMenuItemPowerShell,
             m_settings.folderMenuItemFavorite, m_settings.folderMenuItemSettings);
         m_folderMenu->setRecordHistory(m_settings.recordHistory);
@@ -4581,7 +4605,7 @@ unsigned App::ownNumberDigits(const QString& keys) const
 {
     if (keys != u"ctrl" && keys != u"alt")
         return 0;
-    QStringList own {m_settings.hotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey};
+    QStringList own {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey};
     for (const auto& [plugin, shortcuts] : m_pluginHotkeys) // the screenshot's, say
         own << shortcuts;
     const QString modifier = keys == u"ctrl" ? u"Ctrl"_s : u"Alt"_s;
@@ -4931,7 +4955,7 @@ const char* App::rawInputState() const
 }
 
 void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>& spot, bool inBox, QScreen* on, HWND avoid,
-    bool inside, const RECT& orInto)
+    bool inside, const RECT& orInto, bool asPanel)
 {
     if (!m_window)
         return;
@@ -4967,6 +4991,8 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
             m_launcherTarget = front;
     }
     if (m_launcher->pinned() && launcherShown()) {
+        if (asPanel)
+            setPanel(true, true);
         // Pinned and up already, without the focus (or under another topmost
         // window): to the front where it stands, the words as they are. Not
         // placed again: that would take a window dragged aside back to its
@@ -5001,6 +5027,8 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         m_searchBox->setText({.active = m_launcherOverBox});
     else if (m_searchBox && wasClosing && wasInBox) // the field has not changed, nor said so again
         m_searchBox->setText(m_fieldShown);
+    if (asPanel)
+        setPanel(true, true); // lay out the full panel before its first visible frame
     if (m_launcher->panel()) {
         // Up as the panel (asked for again while it is): as it is.
     } else if (spot) {
@@ -6324,6 +6352,11 @@ void App::finishHidingLauncher()
         setPanel(false); // the next opening is the box (hidden: nothing to see of it)
 }
 
+void App::showSearchPanel()
+{
+    showLauncher({}, {}, false, nullptr, nullptr, false, {}, true);
+}
+
 void App::togglePanel()
 {
     if (m_window && m_window->isVisible() && !m_launcherClosing)
@@ -6347,12 +6380,12 @@ void App::launcherPinnedChanged()
     m_launcherOverBox = false;
 }
 
-void App::setPanel(bool on)
+void App::setPanel(bool on, bool opening)
 {
     if (!m_window || on == m_launcher->panel())
         return;
     if (on) {
-        if (!m_window->isVisible() || m_launcherClosing || m_launcherReveal.pending() || m_prewarming.load())
+        if (!opening && (!m_window->isVisible() || m_launcherClosing || m_launcherReveal.pending() || m_prewarming.load()))
             return;
         // Over Win顺's box on the taskbar: the field comes back into the
         // window, the box goes idle (the panel is a window of its own).

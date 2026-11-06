@@ -253,7 +253,7 @@ QVariant DisplayReplica::invoke(const QString& name, const QVariantList& argumen
         if (!screen && m_window) screen = m_window->screen();
         return screen ? QRectF(screen->availableGeometry()) : QRectF();
     }
-    static const QStringList returnsValue {u"heldRow"_s, u"canMove"_s, u"addGroup"_s, u"selectAll"_s,
+    static const QStringList returnsValue {u"heldRow"_s, u"canMove"_s, u"addGroup"_s, u"enterGroup"_s, u"selectAll"_s,
         u"preview"_s, u"menuItems"_s, u"categoryMenuItems"_s};
     if (!returnsValue.contains(name)) {
         send({{u"type"_s, u"call"_s}, {u"id"_s, 0}, {u"name"_s, name}, {u"args"_s, QJsonArray::fromVariantList(arguments)}});
@@ -405,7 +405,7 @@ void DisplayReplica::dispatch(const QJsonObject& object)
         if (name == u"groupNameRequested" && args.size() == 2) emit groupNameRequested(args[0].toInt(), args[1].toInteger());
         else if (name == u"stepped" && args.size() == 1) emit stepped(args[0].toInt());
         else if (QStringList {u"shown"_s, u"placed"_s, u"listChanged"_s, u"browseStepRequested"_s,
-                     u"contextMenuKeyPressed"_s, u"pinyinHintRequested"_s}.contains(name))
+                     u"contextMenuKeyPressed"_s, u"groupSearchRequested"_s, u"pinyinHintRequested"_s}.contains(name))
             QMetaObject::invokeMethod(this, name.toUtf8().constData(), Qt::DirectConnection);
         m_applying = false;
     }

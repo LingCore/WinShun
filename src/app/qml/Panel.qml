@@ -39,7 +39,7 @@ Item {
     signal rowPreviewRequested(int index)
     signal rowHoverMoved(int index, point globalPos)
 
-    readonly property int sidebarWidth: 290
+    readonly property int sidebarWidth: launcher.panelSidebarVisible ? 290 : 0
     readonly property bool contentMode: launcher.scope === Launcher.Content
     readonly property bool detailsVisible: contentMode && launcher.contentPane.opened
     readonly property bool compactDetails: width - sidebarWidth < 720
@@ -307,7 +307,8 @@ Item {
 
     Item {
         id: sidebar
-        visible: !(panel.detailsVisible && panel.compactDetails)
+        objectName: "panelSidebar"
+        visible: panel.launcher.panelSidebarVisible && !(panel.detailsVisible && panel.compactDetails)
         anchors.top: topDivider.bottom
         anchors.bottom: footer.top
         width: panel.sidebarWidth
@@ -562,6 +563,7 @@ Item {
     }
 
     Rectangle { // between the filters and the rows
+        visible: sidebar.visible
         anchors.left: sidebar.right
         anchors.top: topDivider.bottom
         anchors.bottom: footer.top
@@ -971,9 +973,9 @@ Item {
         dpr: panel.dpr
         x: 12
         y: topDivider.y + topDivider.height + 6
-        width: panel.sidebarWidth - 24
+        width: Math.max(0, panel.sidebarWidth - 24)
         height: 32
-        visible: panel.contentMode && !(panel.detailsVisible && panel.compactDetails)
+        visible: panel.contentMode && sidebar.visible
         text: panel.launcher.contentPane.opened ? qsTr("收起内容详情") : qsTr("显示内容详情")
         flat: true
         onClicked: panel.launcher.contentPane.opened = !panel.launcher.contentPane.opened

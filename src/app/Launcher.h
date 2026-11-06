@@ -192,6 +192,7 @@ class Launcher : public QObject {
     // same way. The app sizes the window (App::setPanel) and then says so
     // here; togglePanel() asks it to.
     Q_PROPERTY(bool panel READ panel NOTIFY panelChanged FINAL)
+    Q_PROPERTY(bool panelSidebarVisible READ panelSidebarVisible WRITE setPanelSidebarVisible NOTIFY panelSidebarVisibleChanged FINAL)
     // Pinned (Ctrl+T, the pin at the box's corner; linux.do #157): it stays
     // up when it loses the focus or a result is opened, until Esc (or double
     // Ctrl while it is in front) hides it. Kept while hidden, until turned
@@ -661,6 +662,8 @@ public:
 
     // The search panel (see the properties above).
     bool panel() const { return m_panel; }
+    bool panelSidebarVisible() const { return m_panelSidebarVisible; }
+    void setPanelSidebarVisible(bool visible);
     PanelColumns* panelColumns() { return &m_columns; }
     void setPanel(bool on); // by the app, the window sized for it (App::setPanel)
     Q_INVOKABLE void togglePanel(); // panelToggleRequested: the app does it
@@ -755,6 +758,7 @@ signals:
     void typingFolderChanged();
     void folderSearchChanged();
     void panelChanged();
+    void panelSidebarVisibleChanged();
     void panelToggleRequested();
     void pinnedChanged();
     void settingsRequested();
@@ -1138,6 +1142,7 @@ private:
 
     // The search panel (see the properties).
     bool m_panel = false;
+    bool m_panelSidebarVisible = true;
     PanelColumns m_columns;
     bool m_pinned = false;
     int m_dateChoice = 0;

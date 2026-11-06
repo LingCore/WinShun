@@ -33,6 +33,41 @@ Item {
 
     property int previewWidth: 400 // as the window has it (ClipboardWindow.qml)
     property bool previewSizing: false // its edge is being dragged
+    property bool findingGroup: false
+    property string groupQuery
+    property bool syncingSearch: false
+    readonly property var currentCategory: clipboard.categories[clipboard.category] ?? ({})
+
+    function syncSearch() {
+        const text = findingGroup ? groupQuery : clipboard.query
+        if (input.text === text) return
+        syncingSearch = true
+        input.text = text
+        syncingSearch = false
+    }
+    function beginGroupSearch() {
+        previewClickTimer.stop()
+        clearHover()
+        closeContextMenu()
+        tabs.stopNaming()
+        groupQuery = clipboard.query
+        findingGroup = true
+        focusSearch()
+        input.selectAll()
+    }
+    function cancelGroupSearch() {
+        findingGroup = false
+        focusSearch()
+    }
+    function enterGroup(group) {
+        if (clipboard.enterGroup(group)) {
+            clipboard.query = "" // also update the independent display before its next state frame
+            findingGroup = false
+            focusSearch()
+        }
+    }
+    onFindingGroupChanged: syncSearch()
+    onGroupQueryChanged: if (findingGroup) syncSearch()
 
     signal previewOpening() // just before: the window sizes it (ClipboardWindow.qml)
     signal previewResizing(int wanted) // the edge dragged: the width asked for
@@ -95,6 +130,7 @@ Item {
         list.positionViewAtIndex(row, ListView.Contain)
     }
     function windowHidden() {
+        findingGroup = false
         previewClickTimer.stop()
         clearHover()
         list.stopScrolling()
@@ -222,7 +258,7 @@ Item {
         if (globalPos.x === hoverPos.x && globalPos.y === hoverPos.y)
             return
         hoverPos = globalPos
-        if (!previewOpen || previewSizing || list.rowDragging || (Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
+        if (findingGroup || !previewOpen || previewSizing || list.rowDragging || (Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
             return
         // Counted from entering the row, not from the last move: a hand
         // never holds quite still, so restarting on each move kept the
@@ -239,7 +275,7 @@ Item {
         id: hoverTimer
         interval: 60 // a sweep across rows (a row in well under that) shows none of them
         onTriggered: {
-            if (page.previewOpen && !page.previewSizing && !list.rowDragging && !(Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier))
+            if (!page.findingGroup && page.previewOpen && !page.previewSizing && !list.rowDragging && !(Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier))
                     && page.hoverCandidate >= 0 && page.hoverCandidate < list.count)
                 page.hoverIndex = page.hoverCandidate === list.currentIndex ? -1 : page.hoverCandidate
         }
@@ -336,6 +372,20 @@ Item {
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
         const shift = (event.modifiers & Qt.ShiftModifier) !== 0
         const alt = (event.modifiers & Qt.AltModifier) !== 0
+        if (ctrl && !alt && !shift && event.key === Qt.Key_G) {
+            findingGroup ? cancelGroupSearch() : beginGroupSearch()
+            event.accepted = true
+            return
+        }
+        if (findingGroup) {
+            if (event.key === Qt.Key_Escape) {
+                cancelGroupSearch()
+                event.accepted = true
+            } else {
+                groupPicker.handleKey(event)
+            }
+            return // editing stays in the field; clipboard actions cannot run on a group row
+        }
         if (event.key === Qt.Key_Alt) {
             event.accepted = true // alone, it would open the window menu
             return
@@ -479,6 +529,7 @@ Item {
         target: page.clipboard
         enabled: page.controllerEventsEnabled
         function onShown() {
+            page.findingGroup = false
             input.text = ""
             page.pinyinHint = false
             pinyinHintTimer.stop()
@@ -506,13 +557,13 @@ Item {
         }
         function onStepped(row) { page.selectHeld(row) }
         function onBrowseStepRequested() {
+            if (page.findingGroup) return
             if (list.count > 0)
                 page.selectHeld((list.currentIndex + 1) % list.count)
         }
         function onQueryChanged() {
             pinyinHintTimer.stop() // also for a paste, which goes past handleKey
-            if (input.text !== page.clipboard.query)
-                input.text = page.clipboard.query
+            if (!page.findingGroup) page.syncSearch()
         }
         // The keys back from the program in front (pinned, or unpinned):
         // what is typed now replaces the last search, not adds to it.
@@ -520,7 +571,8 @@ Item {
             if (page.clipboard.keysRouted)
                 input.selectAll()
         }
-        function onContextMenuKeyPressed() { page.openContextMenu(list.currentIndex) }
+        function onContextMenuKeyPressed() { if (!page.findingGroup) page.openContextMenu(list.currentIndex) }
+        function onGroupSearchRequested() { page.findingGroup ? page.cancelGroupSearch() : page.beginGroupSearch() }
         function onPinyinHintRequested() {
             if (input.text.length === 0)
                 page.pinyinHint = true
@@ -561,6 +613,7 @@ Item {
                 page.frame.addControl(input)
                 page.frame.addControl(pinButton)
                 page.frame.addControl(eyeButton)
+                page.frame.addControl(groupButton)
             }
 
             // The style's search field (Theme.searchField), as the launcher's
@@ -598,7 +651,7 @@ Item {
                 objectName: "clipboardSearchField"
                 anchors.left: icon.right
                 anchors.leftMargin: 14
-                anchors.right: pausedTag.visible ? pausedTag.left : eyeButton.left
+                anchors.right: pausedTag.visible ? pausedTag.left : groupButton.left
                 anchors.rightMargin: pausedTag.visible ? 16 : 8
                 anchors.verticalCenter: parent.verticalCenter
                 focus: true
@@ -617,7 +670,11 @@ Item {
                     id: caretPart
                     Caret { color: fieldPart.out("caretColor", Theme.text); dpr: page.dpr }
                 }
-                onTextChanged: page.clipboard.query = text
+                onTextChanged: {
+                    if (page.syncingSearch) return
+                    if (page.findingGroup) page.groupQuery = text
+                    else page.clipboard.query = text
+                }
                 Keys.onPressed: (event) => page.handleKey(event)
                 Keys.onReleased: (event) => {
                     numberHints.release(event)
@@ -629,7 +686,10 @@ Item {
                 Text {
                     anchors.fill: parent
                     verticalAlignment: Text.AlignVCenter
-                    text: page.pinyinHint ? page.pinyinHintText : qsTr("搜索剪贴板，支持拼音")
+                    text: page.findingGroup ? qsTr("输入分组名，回车进入")
+                        : (page.currentCategory.group ?? 0) > 0 ? qsTr("在“%1”中搜索").arg(page.currentCategory.title)
+                        : page.pinyinHint ? page.pinyinHintText : qsTr("搜索剪贴板，支持拼音")
+                    textFormat: Text.PlainText
                     color: fieldPart.out("placeholderColor", Theme.faint)
                     font: input.font
                     elide: Text.ElideRight
@@ -678,6 +738,7 @@ Item {
             RowAction {
                 dpr: page.dpr
                 id: eyeButton
+                enabled: !page.findingGroup
                 small: page.metrics.dense
                 anchors.right: pinButton.visible ? pinButton.left : parent.right
                 anchors.rightMargin: pinButton.visible ? 4 : Math.max(14, Theme.fieldInset + 6)
@@ -688,10 +749,25 @@ Item {
                 onClicked: page.togglePreview(list.currentIndex)
             }
 
+            RowAction {
+                id: groupButton
+                objectName: "clipboardGroupButton"
+                dpr: page.dpr
+                small: page.metrics.dense
+                anchors.right: eyeButton.left
+                anchors.rightMargin: 4
+                anchors.verticalCenter: parent.verticalCenter
+                glyph: "\uE8B7"
+                checked: page.findingGroup
+                tip: page.findingGroup ? qsTr("返回内容搜索") : qsTr("查找分组")
+                tipShortcut: "Ctrl+G"
+                onClicked: page.findingGroup ? page.cancelGroupSearch() : page.beginGroupSearch()
+            }
+
             Rectangle { // paused from the tray menu
                 id: pausedTag
                 visible: page.clipboard.paused
-                anchors.right: eyeButton.left
+                anchors.right: groupButton.left
                 anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
                 width: pausedText.implicitWidth + 20
@@ -711,6 +787,7 @@ Item {
 
         ClipTabs {
             id: tabs
+            visible: !page.findingGroup
             metrics: page.metrics
             y: page.placed(page.tabsFrom, height)
             width: parent.width
@@ -722,6 +799,18 @@ Item {
                 page.focusSearch()
             }
             onMenuRequested: (category, globalPos) => page.openCategoryMenu(category, globalPos)
+        }
+
+        Text {
+            visible: page.findingGroup
+            x: 18
+            y: tabs.y
+            height: tabs.height
+            width: parent.width - 36
+            text: qsTr("查找分组")
+            color: Theme.subtext
+            font.pixelSize: page.metrics.uiBody
+            verticalAlignment: Text.AlignVCenter
         }
 
         Hook { // between the categories and the history (the style's seam)
@@ -747,6 +836,7 @@ Item {
 
             Item {
                 id: listArea
+                visible: !page.findingGroup
                 width: page.previewOpen ? page.listWidth : parent.width
                 height: parent.height
                 readonly property real scrollbarInset: page.previewOpen ? 0 : page.frame.resizeMargin(Screen.devicePixelRatio)
@@ -982,7 +1072,7 @@ Item {
             }
 
             Hook { // between the list and the preview
-                visible: page.previewOpen
+                visible: page.previewOpen && !page.findingGroup
                 x: listArea.width
                 width: Theme.edge(page.dpr)
                 height: parent.height
@@ -994,7 +1084,7 @@ Item {
             ClipPreview {
                 id: preview
                 metrics: page.metrics
-                visible: page.previewOpen
+                visible: page.previewOpen && !page.findingGroup
                 onCopyRequested: (text, remember) => page.clipboard.copyText(text, remember)
                 x: listArea.width + 1
                 width: parent.width - x
@@ -1013,7 +1103,7 @@ Item {
             // default.
             MouseArea {
                 id: edge
-                visible: page.previewOpen
+                visible: page.previewOpen && !page.findingGroup
                 x: listArea.width // the line and 7 px of the preview; the scroll bar ends before it
                 width: 8
                 height: parent.height
@@ -1056,8 +1146,35 @@ Item {
             }
         }
 
+        ClipGroupPicker {
+            id: groupPicker
+            visible: page.findingGroup
+            x: body.x
+            y: body.y
+            width: body.width
+            height: body.height
+            groups: page.clipboard.categories
+            query: page.groupQuery
+            flipped: page.flipped
+            dpr: page.dpr
+            rowHeight: page.rowHeight
+            onChosen: group => page.enterGroup(group)
+        }
+        Text {
+            visible: page.findingGroup
+            y: footer.y
+            height: footer.height
+            width: parent.width
+            text: qsTr("↑ ↓ 选择 · Enter 进入 · Esc 返回")
+            color: Theme.faint
+            font.pixelSize: page.metrics.uiCaption
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+
         Item { // footer: status or how picked rows are joined, and key hints; drags the window
             id: footer
+            visible: !page.findingGroup
             y: page.placed(page.footerFrom, height)
             width: parent.width
             implicitHeight: page.metrics.footerHeight
@@ -1271,6 +1388,11 @@ Item {
     HoverTip {
         target: pinButton.tipWanted ? pinButton : null
         text: pinButton.tip
+    }
+    HoverTip {
+        target: groupButton.tipWanted ? groupButton : null
+        text: groupButton.tip
+        shortcut: groupButton.tipShortcut
     }
 
     HoverTip {

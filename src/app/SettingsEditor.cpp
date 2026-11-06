@@ -209,6 +209,7 @@ void SettingsEditor::setSettings(const Settings& settings)
     if (settings == m_settings)
         return;
     const bool keys = settings.numberKeys != m_settings.numberKeys || settings.hotkey != m_settings.hotkey
+        || settings.panelHotkey != m_settings.panelHotkey
         || settings.clipboardNumberKeys != m_settings.clipboardNumberKeys
         || settings.clipboardHotkey != m_settings.clipboardHotkey
         || settings.folderMenuHotkey != m_settings.folderMenuHotkey;
@@ -425,7 +426,7 @@ void SettingsEditor::setPreviewHotkey(const QString& shortcut)
     QString error;
     if (!shortcut.trimmed().isEmpty() && value.isEmpty())
         error = tr("这个快捷键用于输入或其他操作，请换一个");
-    if (previewkeys::usedGlobally(value, {m_settings.hotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey}))
+    if (previewkeys::usedGlobally(value, {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey}))
         error = tr("这个快捷键已用于全局操作，请换一个");
     m_previewHotkeyError = error;
     if (!error.isEmpty() || value == m_settings.previewHotkey) {
@@ -446,7 +447,7 @@ void SettingsEditor::setPreviewFollowsPointer(bool on)
 
 QString SettingsEditor::previewHotkeyError() const
 {
-    if (previewkeys::usedGlobally(m_settings.previewHotkey, {m_settings.hotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey}))
+    if (previewkeys::usedGlobally(m_settings.previewHotkey, {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey}))
         return tr("这个快捷键已用于全局操作，请换一个");
     return m_previewHotkeyError;
 }
@@ -496,6 +497,7 @@ QString describeNumberKeys(const QString& keys, const Settings& settings)
     for (int n = 1; n <= 9; ++n) {
         const QString c = chord(n);
         const bool mine = settings.hotkey.compare(c, Qt::CaseInsensitive) == 0
+            || settings.panelHotkey.compare(c, Qt::CaseInsensitive) == 0
             || settings.clipboardHotkey.compare(c, Qt::CaseInsensitive) == 0
             || settings.folderMenuHotkey.compare(c, Qt::CaseInsensitive) == 0;
         if (mine)
@@ -637,6 +639,23 @@ void SettingsEditor::setHotkey(const QString& hotkey)
         return;
     m_settings.hotkey = value;
     commit();
+}
+
+void SettingsEditor::setPanelHotkey(const QString& hotkey)
+{
+    const QString value = hotkey.trimmed();
+    if (m_settings.panelHotkey == value)
+        return;
+    m_settings.panelHotkey = value;
+    commit();
+}
+
+void SettingsEditor::setPanelHotkeyError(const QString& error)
+{
+    if (m_panelHotkeyError == error)
+        return;
+    m_panelHotkeyError = error;
+    emit hotkeyErrorChanged();
 }
 
 void SettingsEditor::setShortcutAgain(const QString& what)
@@ -1294,6 +1313,24 @@ void SettingsEditor::setFolderMenuWindows(bool on)
     if (m_settings.folderMenuWindows == on || (!on && !m_settings.folderMenuFavorites && !m_settings.folderMenuRecent))
         return;
     m_settings.folderMenuWindows = on;
+    commit();
+}
+
+void SettingsEditor::setFolderMenuRecentInline(int count)
+{
+    count = std::clamp(count, 0, 10);
+    if (m_settings.folderMenuRecentInline == count)
+        return;
+    m_settings.folderMenuRecentInline = count;
+    commit();
+}
+
+void SettingsEditor::setFolderMenuWindowsInline(int count)
+{
+    count = std::clamp(count, 0, 10);
+    if (m_settings.folderMenuWindowsInline == count)
+        return;
+    m_settings.folderMenuWindowsInline = count;
     commit();
 }
 

@@ -477,6 +477,7 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     , m_sink(std::make_unique<ModelSink>(*this))
 {
     m_columns.load(Settings::filePath());
+    m_panelSidebarVisible = QSettings(Settings::filePath(), QSettings::IniFormat).value(u"Panel/SidebarVisible"_s, true).toBool();
     m_contentPane = std::make_unique<ContentPane>(index);
     const auto syncPane = [this] { syncContentPane(); };
     connect(this, &Launcher::currentRowChanged, this, syncPane);
@@ -2574,6 +2575,15 @@ void Launcher::setPanel(bool on)
 void Launcher::togglePanel()
 {
     emit panelToggleRequested();
+}
+
+void Launcher::setPanelSidebarVisible(bool visible)
+{
+    if (m_panelSidebarVisible == visible)
+        return;
+    m_panelSidebarVisible = visible;
+    QSettings(Settings::filePath(), QSettings::IniFormat).setValue(u"Panel/SidebarVisible"_s, visible);
+    emit panelSidebarVisibleChanged();
 }
 
 void Launcher::setPinned(bool on)
