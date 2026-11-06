@@ -142,6 +142,22 @@ Item {
         return chip ? Math.floor(chip.x / scrollStep + 0.001) * scrollStep : 0
     }
     readonly property real restX: scrolls ? stopAt(firstChip) : 0
+    // The room left after the last whole chip, shared out between the chips
+    // shown: they then fill the width from edge to edge, + right after.
+    readonly property real spreadGap: {
+        if (!scrolls)
+            return 0
+        let last = null
+        let count = 0
+        for (let i = firstChip; i < chipRepeater.count; ++i) {
+            const chip = chipRepeater.itemAt(i)
+            if (!chip || chip.x + chip.keyWidth > restX + view.width + 0.5)
+                break
+            last = chip
+            ++count
+        }
+        return last && count > 1 ? Math.max(0, restX + view.width - last.x - last.keyWidth) / (count - 1) : 0
+    }
     // The first chip shown with the last one in full at the end.
     function lastFirst(): int {
         for (let i = 0; i < chipRepeater.count; ++i)
@@ -282,6 +298,16 @@ Item {
                         || (x >= strip.restX - 0.5 && x + body.width <= strip.restX + view.width + 0.5)
                     opacity: whole ? 1 : 0
                     enabled: whole
+                    // Its share of strip.spreadGap, whole device pixels.
+                    readonly property real shift: strip.scrolls && index > strip.firstChip
+                        ? strip.onPixel((index - strip.firstChip) * strip.spreadGap) : 0
+                    transform: Translate {
+                        x: chip.shift
+                        Behavior on x {
+                            enabled: SystemTheme.animations
+                            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                        }
+                    }
                     Behavior on opacity {
                         enabled: SystemTheme.animations
                         NumberAnimation { duration: 120 }
