@@ -5,14 +5,21 @@
 # it starts in milliseconds and runs in the strict sandbox (low integrity).
 # The pieces that compute (Calc, Units, Color, Codec) are plain C++ that
 # tests/tst_tools.cpp builds in again.
-add_executable(WinShunTools
-    main.cpp
+#
+# wstools: the plugin itself (Tools.cpp, tools::serve), which the plugin
+# host (src/plugin/runner) runs on a thread of its own; WinShunTools.exe
+# runs it alone when plugins are kept apart (WINSHUN_PLUGINS_APART=1).
+add_library(wstools STATIC
+    Tools.cpp Tools.h
     Calc.cpp Calc.h
     Codec.cpp Codec.h
     Color.cpp Color.h
     Units.cpp Units.h
-    ${PROJECT_SOURCE_DIR}/resources/WinShunTools.rc
 )
-target_include_directories(WinShunTools PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
-target_link_libraries(WinShunTools PRIVATE winshun_options bcrypt)
+target_include_directories(wstools PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+target_link_libraries(wstools PUBLIC winshun_options bcrypt)
+set_target_properties(wstools PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+add_executable(WinShunTools main.cpp ${PROJECT_SOURCE_DIR}/resources/WinShunTools.rc)
+target_link_libraries(WinShunTools PRIVATE wstools)
 set_target_properties(WinShunTools PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

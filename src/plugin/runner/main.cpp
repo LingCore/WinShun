@@ -14,13 +14,14 @@
 //
 //   Win顺 -> runner     "_ {control message}"     a JSON object, "op" says which:
 //                        start   {id, exe, args[], cwd, env[[name,value]…], memoryMB, processes,
-//                                 clipboardRead, clipboardWrite, ui, strict, encoding, stdin}
-//                        stop    {id}             TerminateJobObject
+//                                 clipboardRead, clipboardWrite, ui, strict, encoding, stdin,
+//                                 inProcess}   "tools" | "switches": on a thread here (InProcess.h)
+//                        stop    {id}             TerminateJobObject (in process: its input ends)
 //                        shutdown                 stop everything and exit
 //                       "<id> <line>"             a line for the plugin's stdin
 //   runner -> Win顺     "_ {control message}":
 //                        hello   {key, pid, …facts…}
-//                        started {id, pid, createUs} | failed {id, stage, error}
+//                        started {id, pid, createUs, inProcess} | failed {id, stage, error}
 //                        stderr  {id, text}
 //                        exited  {id, code, stderrTail[], overlong}
 //                        log     {text}
@@ -29,6 +30,7 @@
 // When the pipe breaks (Win顺 gone) it ends every plugin and exits; Win顺's
 // job (KILL_ON_JOB_CLOSE) does the same should it not get to.
 
+#include "InProcess.h"
 #include "Json.h"
 #include "Lite.h"
 #include "Sandbox.h"
@@ -195,13 +197,24 @@ void log(const std::string& text)
     sendControl({{"op", "log"}, {"text", text}});
 }
 
+// A plugin inside this process that will not stop: only ending the host
+// ends it (Win顺 sees the pipe break and starts everything again).
+[[noreturn]] void giveUp(unsigned long long id, const char* why)
+{
+    log("plugin " + std::to_string(id) + " runs inside the host and " + why + ": the host ends");
+    ::ExitProcess(4);
+}
+
 // One plugin process: its job, its three pipes, and the threads that read
-// its stdout and stderr and write its stdin.
+// its stdout and stderr and write its stdin. Or a plugin on a thread here
+// (`run`): the same pipes, no process, no job.
 struct Instance {
     unsigned long long id = 0;
     DWORD pid = 0;
     Handle process;
     Handle job;
+    std::shared_ptr<inprocess::Run> run;
+    bool closeInput = false; // under `mutex`: the writer then closes stdinWrite, and it returns
     Handle stdinWrite;
     Handle stdoutRead;
     Handle stderrRead;
@@ -231,16 +244,25 @@ struct Instance {
             g_uplink.send(prefix + decode(line));
         if (!line.empty() && !reader.overlong())
             g_uplink.send(prefix + decode(line)); // the last line without its newline
-        if (reader.overlong())
-            ::TerminateJobObject(job.get(), 2);
-        // Its stdout is closed: it has exited, or is about to (or keeps
-        // running with stdout closed, which is not a plugin: ended then).
-        if (::WaitForSingleObject(process.get(), 10000) != WAIT_OBJECT_0) {
-            ::TerminateJobObject(job.get(), 3);
-            ::WaitForSingleObject(process.get(), 5000);
-        }
         DWORD code = 0;
-        ::GetExitCodeProcess(process.get(), &code);
+        if (run) {
+            // It closes its output when it returns: done, or about to be.
+            if (reader.overlong())
+                stopInput();
+            if (::WaitForSingleObject(run->done.get(), 10000) != WAIT_OBJECT_0)
+                giveUp(id, reader.overlong() ? "wrote a line too long" : "closed its output but goes on");
+            code = run->code;
+        } else {
+            if (reader.overlong())
+                ::TerminateJobObject(job.get(), 2);
+            // Its stdout is closed: it has exited, or is about to (or keeps
+            // running with stdout closed, which is not a plugin: ended then).
+            if (::WaitForSingleObject(process.get(), 10000) != WAIT_OBJECT_0) {
+                ::TerminateJobObject(job.get(), 3);
+                ::WaitForSingleObject(process.get(), 5000);
+            }
+            ::GetExitCodeProcess(process.get(), &code);
+        }
         ::WaitForSingleObject(stderrDone.get(), 500); // the tail, if it is still coming
         json::Value::Array tail;
         {
@@ -286,8 +308,12 @@ struct Instance {
                 std::string line;
                 {
                     const std::lock_guard lock(mutex);
-                    if (inQueue.empty())
-                        break;
+                    if (inQueue.empty()) {
+                        if (!closeInput)
+                            break;
+                        stdinWrite.reset(); // its read ends: it returns
+                        return;
+                    }
                     line = std::move(inQueue.front());
                     inQueue.pop_front();
                 }
@@ -306,8 +332,44 @@ struct Instance {
         ::SetEvent(inEvent.get());
     }
 
-    void end()
+    // A plugin here: its input ends after what is queued (it returns then).
+    void stopInput()
     {
+        {
+            const std::lock_guard lock(mutex);
+            closeInput = true;
+        }
+        ::SetEvent(inEvent.get());
+    }
+
+    // `stop` from Win顺. A plugin here has 5 seconds to return.
+    void stop()
+    {
+        if (!run) {
+            ::TerminateJobObject(job.get(), 1);
+            return;
+        }
+        stopInput();
+        std::thread([run = run, id = id] {
+            if (::WaitForSingleObject(run->done.get(), 5000) != WAIT_OBJECT_0)
+                giveUp(id, "did not stop");
+        }).detach();
+    }
+
+    // False: a plugin here that did not return in time, its threads still
+    // using this (the caller leaves it to the end of the process).
+    bool end()
+    {
+        if (run && !done) {
+            stopInput();
+            if (::WaitForSingleObject(run->done.get(), 2000) != WAIT_OBJECT_0) {
+                for (std::thread* t : {&outThread, &errThread, &inThread}) {
+                    if (t->joinable())
+                        t->detach();
+                }
+                return false;
+            }
+        }
         if (job.valid())
             ::TerminateJobObject(job.get(), 1);
         ::SetEvent(stopEvent.get());
@@ -317,6 +379,7 @@ struct Instance {
             errThread.join();
         if (inThread.joinable())
             inThread.join();
+        return true;
     }
 };
 
@@ -337,6 +400,46 @@ bool makePipe(Handle& ours, Handle& theirs, bool ourEndReads)
         theirs.reset(read);
     }
     return ::SetHandleInformation(ours.get(), HANDLE_FLAG_INHERIT, 0) != 0;
+}
+
+void launched(std::unique_ptr<Instance> instance, DWORD pid, long long createUs, bool inProcess)
+{
+    Instance* raw = instance.get();
+    raw->outThread = std::thread([raw] { raw->readStdout(); });
+    raw->errThread = std::thread([raw] { raw->readStderr(); });
+    if (raw->stdinWrite.valid())
+        raw->inThread = std::thread([raw] { raw->writeStdin(); });
+    const unsigned long long id = raw->id;
+    g_instances[id] = std::move(instance);
+    sendControl({{"op", "started"}, {"id", id}, {"pid", static_cast<unsigned long>(pid)}, {"createUs", createUs},
+        {"inProcess", inProcess}});
+}
+
+// A plugin that comes with Win顺, on a thread here (InProcess.h). The
+// child's ends become its own: it closes them when it returns.
+void startInProcess(std::unique_ptr<Instance> instance, const std::string& kind, const std::wstring& exe, const std::wstring& appDir,
+    HANDLE in, HANDLE out, HANDLE err)
+{
+    const unsigned long long id = instance->id;
+    // Not inherited by the plugin processes started later.
+    for (const HANDLE h : {in, out, err})
+        ::SetHandleInformation(h, HANDLE_FLAG_INHERIT, 0);
+    if (!instance->stdinWrite.valid()) {
+        ::CloseHandle(in);
+        ::CloseHandle(out);
+        ::CloseHandle(err);
+        sendControl({{"op", "failed"}, {"id", id}, {"stage", "inProcess"}, {"error", static_cast<unsigned long>(ERROR_NOT_SUPPORTED)}});
+        return;
+    }
+    const LARGE_INTEGER started = lite::tick();
+    std::string problem;
+    instance->run = inprocess::start(kind, exe, appDir, in, out, err, &problem);
+    if (!instance->run) {
+        log("cannot run " + kind + " inside the host: " + problem);
+        sendControl({{"op", "failed"}, {"id", id}, {"stage", "inProcess"}, {"error", static_cast<unsigned long>(ERROR_MOD_NOT_FOUND)}});
+        return;
+    }
+    launched(std::move(instance), ::GetCurrentProcessId(), lite::microsecondsSince(started), true);
 }
 
 void start(const json::Value& m)
@@ -375,6 +478,17 @@ void start(const json::Value& m)
     }
     if (!makePipe(instance->stdoutRead, childStdout, true) || !makePipe(instance->stderrRead, childStderr, true)) {
         fail("CreatePipe", ::GetLastError());
+        return;
+    }
+    if (const std::string kind = m["inProcess"].toString(); !kind.empty()) {
+        std::wstring appDir;
+        for (const json::Value& pair : m["env"].toArray()) {
+            const json::Value::Array& kv = pair.toArray();
+            if (kv.size() == 2 && kv[0].toString() == "WS_APP_DIR")
+                appDir = lite::wide(kv[1].toString());
+        }
+        startInProcess(std::move(instance), kind, lite::wide(m["exe"].toString()), appDir, childStdin.release(),
+            childStdout.release(), childStderr.release());
         return;
     }
 
@@ -490,13 +604,7 @@ void start(const json::Value& m)
     }
     ::ResumeThread(info.hThread);
 
-    Instance* raw = instance.get();
-    raw->outThread = std::thread([raw] { raw->readStdout(); });
-    raw->errThread = std::thread([raw] { raw->readStderr(); });
-    if (stdinOpen)
-        raw->inThread = std::thread([raw] { raw->writeStdin(); });
-    g_instances[id] = std::move(instance);
-    sendControl({{"op", "started"}, {"id", id}, {"pid", static_cast<unsigned long>(info.dwProcessId)}, {"createUs", createUs}});
+    launched(std::move(instance), info.dwProcessId, createUs, false);
 }
 
 void reap()
@@ -512,8 +620,10 @@ void reap()
 
 void shutdown()
 {
-    for (auto& [id, instance] : g_instances)
-        instance->end();
+    for (auto& [id, instance] : g_instances) {
+        if (!instance->end())
+            instance.release(); // its threads still run: kept until the process ends
+    }
     g_instances.clear();
 }
 
@@ -531,7 +641,7 @@ void handleControl(const std::string& text)
     else if (op == "stop") {
         const auto it = g_instances.find(static_cast<unsigned long long>((*message)["id"].toInt()));
         if (it != g_instances.end())
-            ::TerminateJobObject(it->second->job.get(), 1);
+            it->second->stop();
     } else if (op == "shutdown") {
         shutdown();
         ::ExitProcess(0);

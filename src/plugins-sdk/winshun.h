@@ -722,6 +722,7 @@ namespace detail {
 class LineReader {
 public:
     explicit LineReader(HANDLE handle) : m_handle(handle) {}
+    void reset(HANDLE handle) { m_handle = handle; }
     bool next(std::string& line)
     {
         for (;;) {
@@ -753,12 +754,11 @@ private:
     bool m_eof = false;
 };
 
-inline bool writeLine(const std::string& text)
+inline bool writeLine(const std::string& text, HANDLE out = ::GetStdHandle(STD_OUTPUT_HANDLE))
 {
     const std::string line = text + "\n";
     const char* p = line.data();
     std::size_t n = line.size();
-    const HANDLE out = ::GetStdHandle(STD_OUTPUT_HANDLE);
     while (n > 0) {
         DWORD moved = 0;
         if (!::WriteFile(out, p, static_cast<DWORD>(n), &moved, nullptr) || moved == 0)
@@ -846,6 +846,14 @@ public:
             if (handle(line))
                 return 0;
         }
+    }
+    // The same over the given ends instead of stdin and stdout (a plugin
+    // that Win顺 runs inside its plugin host).
+    int serve(HANDLE in, HANDLE out)
+    {
+        m_reader.reset(in);
+        m_out = out;
+        return serve();
     }
 
     // What the plugin was told at initialize (the language and the theme
@@ -954,7 +962,7 @@ private:
         m.set("jsonrpc", "2.0");
         const std::string line = m.dump();
         const std::lock_guard lock(m_sendMutex); // a whole line at a time, whichever thread sends
-        detail::writeLine(line);
+        detail::writeLine(line, m_out);
     }
     void notify(const std::string& method, Json params) { send(Json::Object {{"method", method}, {"params", std::move(params)}}); }
     void respond(const Json& id, Json result) { send(Json::Object {{"id", id}, {"result", std::move(result)}}); }
@@ -1067,6 +1075,7 @@ private:
     }
 
     detail::LineReader m_reader {::GetStdHandle(STD_INPUT_HANDLE)};
+    HANDLE m_out = ::GetStdHandle(STD_OUTPUT_HANDLE);
     std::mutex m_sendMutex;
     std::deque<std::string> m_queued; // lines that came while a tool call waited
     long long m_nextId = 1;

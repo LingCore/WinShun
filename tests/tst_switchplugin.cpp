@@ -95,7 +95,8 @@ private:
 int serve(QCoreApplication& app)
 {
     QByteArray pending;
-    const auto first = switchplugin::Protocol::first(pending);
+    const HANDLE in = ::GetStdHandle(STD_INPUT_HANDLE);
+    const auto first = switchplugin::Protocol::first(in, pending);
     if (!first || first->value(u"method"_s) != u"initialize"_s)
         return 2;
     auto fake = std::make_unique<FakeBackend>();
@@ -103,7 +104,7 @@ int serve(QCoreApplication& app)
     switchplugin::Service* service = nullptr;
     bool badRead = false;
     switchplugin::Protocol* channel = nullptr;
-    switchplugin::Protocol protocol(std::move(pending),
+    switchplugin::Protocol protocol(in, ::GetStdHandle(STD_OUTPUT_HANDLE), std::move(pending),
         [&](const QJsonValue& id, const QString& method, const QJsonObject& params) {
             if (method == u"test/change") {
                 hardware->external(params.value(u"id"_s).toString(), params.value(u"on"_s).toInt());
@@ -131,10 +132,13 @@ struct Fixture {
     QTemporaryDir dir;
     std::unique_ptr<Host> host;
     std::vector<HANDLE> processes;
-    Fixture()
+    // `bundled`: plugins come from a folder of their own, as Win顺's own do.
+    explicit Fixture(bool bundled = false)
     {
         Host::Options options;
         options.userPluginDir = dir.path() + u"/plugins"_s;
+        if (bundled)
+            options.bundledPluginDir = dir.path() + u"/bundled"_s;
         options.dataRoot = dir.path() + u"/data"_s;
         options.runnerExe = QString::fromUtf8(WINSHUN_PLUGIN_HOST);
         options.appDir = QString::fromUtf8(WINSHUN_QT_BIN);
@@ -155,9 +159,9 @@ struct Fixture {
         }
         host.reset(); // no watcher can retain the temporary plugin folder
     }
-    bool install(bool native = false, const QString& id = kId)
+    bool install(bool native = false, const QString& id = kId, bool bundled = false)
     {
-        const QString folder = dir.path() + u"/plugins/"_s + id;
+        const QString folder = dir.path() + (bundled ? u"/bundled/"_s : u"/plugins/"_s) + id;
         if (!QDir().mkpath(folder))
             return false;
         QFile original(QString::fromUtf8(WINSHUN_SWITCH_MANIFEST));
@@ -417,6 +421,41 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(cache.state(u"keep-awake").on, Value::Off, 20000);
         f.host->setEnabled(kId, false);
         QTRY_VERIFY(f.host->state(kId).pid == 0);
+    }
+
+    // The copy that comes with Win顺 runs on the runner's Qt thread: reads,
+    // keeps awake, lets go when disabled (the runner stays), and its next
+    // start, on the same thread, reads again.
+    void nativeProviderInsideTheRunner()
+    {
+        Fixture f(true);
+        QVERIFY(f.install(true, kId, true));
+        QVERIFY(f.running());
+        const auto runnerPid = [&] { return static_cast<quint32>(f.host->runnerFacts().value(u"pid"_s).toDouble()); };
+        const quint32 runner = runnerPid();
+        QVERIFY(runner);
+        QCOMPARE(f.host->state(kId).pid, 0u); // inside the runner: no process of its own
+        {
+            SwitchPlugin bridge(f.host.get(), kId);
+            Switches cache(bridge.remote());
+            refreshOnChange(bridge, cache);
+            for (const QString& id : switchwire::ids())
+                QTRY_VERIFY_WITH_TIMEOUT(cache.state(id).availability != Availability::Unknown, 20000);
+            QCOMPARE(cache.apply(u"keep-awake", {Kind::On, 0}), Switches::Outcome::Started);
+            QTRY_VERIFY_WITH_TIMEOUT(!cache.state(u"keep-awake").busy, 20000);
+            QCOMPARE(cache.state(u"keep-awake").on, Value::On);
+        }
+        f.host->setEnabled(kId, false);
+        QTRY_VERIFY_WITH_TIMEOUT(f.host->state(kId).status != Host::State::Status::Running, 10000);
+        f.host->setEnabled(kId, true);
+        f.host->preload();
+        QVERIFY(f.running());
+        QCOMPARE(runnerPid(), runner);
+        SwitchPlugin bridge(f.host.get(), kId);
+        Switches cache(bridge.remote());
+        refreshOnChange(bridge, cache);
+        QTRY_VERIFY_WITH_TIMEOUT(cache.state(u"volume").availability != Availability::Unknown, 20000);
+        QTRY_COMPARE_WITH_TIMEOUT(cache.state(u"keep-awake").on, Value::Off, 20000); // the old run let it go
     }
 };
 

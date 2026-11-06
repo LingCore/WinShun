@@ -1,4 +1,7 @@
-// Qt is shared with the host, using the same loader pattern as capture.
+// WinShunSwitches.exe: winshun.switches on its own, when Win顺 keeps plugins
+// apart (WINSHUN_PLUGINS_APART=1); it otherwise runs inside the plugin host
+// (src/plugin/runner/InProcess.cpp). Qt is shared with the host, using the
+// same loader pattern as capture.
 #include <windows.h>
 
 #include <cstdio>

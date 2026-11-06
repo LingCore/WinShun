@@ -52,6 +52,9 @@ public:
         bool strict = false; // low integrity, restricted token
         bool oem = false; // its stdout is in the OEM code page
         bool stdinOpen = true; // false: its stdin is NUL (once plugins)
+        // "tools" | "switches": a plugin that comes with Win顺, run on a thread
+        // of the runner instead of `exe` (runner/InProcess.h); its pid is the runner's.
+        QString inProcess;
         bool elevated = false; // Host's: start it on the elevated runner (not sent)
         std::shared_ptr<void> hold; // Host's: kept until the process has started (elevation::Hold; not sent)
     };
