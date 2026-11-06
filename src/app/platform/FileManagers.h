@@ -12,7 +12,7 @@
 #include <vector>
 
 // The file managers Win顺 works with: File Explorer, Total Commander,
-// Directory Opus, XYplorer, Pulse and OneCommander. They are asked which
+// Directory Opus, XYplorer, Pulse, OneCommander and Tessoa. They are asked which
 // folders their windows show (for Open and Save dialogs: Ctrl+G, the bar
 // beside them, going there by themselves), and told to open a folder or to
 // show where an item is (Settings::fileManager, through shell::open and shell::reveal).
@@ -30,6 +30,8 @@
 // exposes CurrentPathGet/CurrentPathSet through UI Automation's ValuePattern.
 // Its other open tabs come from session panes only when the live tab counts,
 // selection and current path identify that saved window unambiguously.
+// Tessoa's read-only v1 pipe reports the active location of the exact window;
+// it is queried live, with no cached path for virtual pages or unavailable peers.
 namespace ws::filemanager {
 
 enum class Kind {
@@ -40,6 +42,7 @@ enum class Kind {
     Pulse,
     OneCommander,
     Custom,
+    Tessoa, // current-folder queries only; no default-open setting
 };
 
 // The names Settings::fileManager knows them by.

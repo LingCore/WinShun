@@ -5,11 +5,13 @@
 #include "platform/FolderViewHit.h"
 #include "platform/Shell.h"
 #include "platform/FileDialog.h"
+#include "platform/TessoaQuery.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -28,10 +30,45 @@
 #include <atomic>
 #include <cstdlib>
 #include <memory>
+#include <future>
 
 using namespace Qt::StringLiterals;
 
 namespace {
+int tessoaFixture(const QString& ready, const QString& folderFile)
+{
+    const HWND window = ::CreateWindowExW(WS_EX_NOACTIVATE, L"STATIC", L"Tessoa fixture", WS_OVERLAPPED,
+        0, 0, 100, 100, nullptr, nullptr, nullptr, nullptr);
+    if (!window) return 1;
+    const auto destroy = qScopeGuard([&] { ::DestroyWindow(window); });
+    const std::wstring name = L"\\\\.\\pipe\\tessoa.q." + std::to_wstring(::GetCurrentProcessId());
+    ws::win32::UniqueHandle pipe(::CreateNamedPipeW(name.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
+        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 4096, 4096, 0, nullptr));
+    if (!pipe.valid()) return 2;
+    QFile signal(ready);
+    if (!signal.open(QIODevice::WriteOnly)) return 3;
+    signal.write(QByteArray::number(reinterpret_cast<quintptr>(window)));
+    signal.close();
+    for (int i = 0; i < 2; ++i) {
+        if (!::ConnectNamedPipe(pipe.get(), nullptr) && ::GetLastError() != ERROR_PIPE_CONNECTED) return 4;
+        quint32 length = 0;
+        DWORD done = 0;
+        if (!::ReadFile(pipe.get(), &length, 4, &done, nullptr) || done != 4 || length > 256) return 5;
+        QByteArray request(length, Qt::Uninitialized);
+        if (!::ReadFile(pipe.get(), request.data(), length, &done, nullptr) || done != length) return 6;
+        if (request != QByteArray("v 1\nop query-cwd\nhwnd ") + QByteArray::number(reinterpret_cast<quintptr>(window)) + '\n') return 7;
+        QFile content(folderFile);
+        if (!content.open(QIODevice::ReadOnly)) return 8;
+        const QByteArray answer = content.readAll();
+        length = static_cast<quint32>(answer.size());
+        if (!::WriteFile(pipe.get(), &length, 4, &done, nullptr)) return 9;
+        if (length && !::WriteFile(pipe.get(), answer.data(), length, &done, nullptr)) return 10;
+        ::FlushFileBuffers(pipe.get());
+        ::DisconnectNamedPipe(pipe.get());
+    }
+    return 0;
+}
+
 int pickerProbe()
 {
     QTemporaryDir fixture;
@@ -127,6 +164,105 @@ class TestShellLaunch : public QObject {
     }
 
 private slots:
+    void tessoaProductionDiscovery()
+    {
+        QTemporaryDir fixture;
+        QVERIFY(fixture.isValid());
+        const QString executable = fixture.filePath(u"tessoa.exe"_s);
+        stage(fixture, executable, false);
+        const QString ready = fixture.filePath(u"ready"_s);
+        const QString path = fixture.filePath(u"path"_s);
+        const QString folder = QDir::toNativeSeparators(fixture.filePath(u"中文 空格"_s));
+        QVERIFY(QDir().mkpath(folder));
+        QFile state(path);
+        QVERIFY(state.open(QIODevice::WriteOnly));
+        state.write(folder.toUtf8());
+        state.close();
+        QProcess child;
+        const auto stop = qScopeGuard([&] { if (child.state() != QProcess::NotRunning) { child.kill(); child.waitForFinished(); } });
+        child.start(executable, {u"--tessoa-fixture"_s, ready, path});
+        QVERIFY(child.waitForStarted());
+        QTRY_VERIFY_WITH_TIMEOUT(QFileInfo(ready).size() > 0, 5000);
+        QFile handshake(ready);
+        QVERIFY(handshake.open(QIODevice::ReadOnly));
+        const HWND window = reinterpret_cast<HWND>(handshake.readAll().toULongLong());
+        QVERIFY(ws::filemanager::kindOf(window) == ws::filemanager::Kind::Tessoa);
+        QCOMPARE(QString::fromStdWString(ws::filemanager::frontFolder(window)), folder);
+        QVERIFY(state.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        state.close(); // Tessoa's next active tab is a virtual page.
+        QVERIFY(ws::filemanager::frontFolder(window).empty());
+        QVERIFY(child.waitForFinished(5000));
+        QCOMPARE(child.exitCode(), 0);
+    }
+
+    void tessoaProtocol_data()
+    {
+        QTest::addColumn<QByteArray>("answer");
+        QTest::addColumn<int>("mode"); // 1: partial header, 2: stall, 3: oversized
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("unicode-fragmented") << QStringLiteral("C:\\项目 资料\\2026").toUtf8() << 0 << QStringLiteral("C:\\项目 资料\\2026");
+        QTest::newRow("unc") << QByteArray("\\\\nas\\team") << 0 << QStringLiteral("\\\\nas\\team");
+        QTest::newRow("virtual-page") << QByteArray() << 0 << QString();
+        QTest::newRow("relative") << QByteArray("previous-folder") << 0 << QString();
+        QTest::newRow("invalid-utf8") << QByteArray("C:\\\xff", 4) << 0 << QString();
+        QTest::newRow("incomplete-utf8") << QByteArray("C:\\\xc3", 4) << 0 << QString();
+        QTest::newRow("embedded-nul") << QByteArray("C:\\good\0bad", 11) << 0 << QString();
+        QTest::newRow("partial-header") << QByteArray() << 1 << QString();
+        QTest::newRow("stalled-server") << QByteArray() << 2 << QString();
+        QTest::newRow("oversized") << QByteArray() << 3 << QString();
+    }
+
+    void tessoaProtocol()
+    {
+        QFETCH(QByteArray, answer);
+        QFETCH(int, mode);
+        QFETCH(QString, expected);
+        const HWND window = ::CreateWindowExW(0, L"STATIC", L"WinShun Tessoa protocol fixture", 0,
+            0, 0, 10, 10, HWND_MESSAGE, nullptr, nullptr, nullptr);
+        QVERIFY(window);
+        const auto destroy = qScopeGuard([&] { ::DestroyWindow(window); });
+        const std::wstring name = L"\\\\.\\pipe\\tessoa.q." + std::to_wstring(::GetCurrentProcessId());
+        ws::win32::UniqueHandle server(::CreateNamedPipeW(name.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 4096, 4096, 0, nullptr));
+        QVERIFY(server.valid());
+        auto worker = std::async(std::launch::async, [&] {
+            QByteArray received;
+            if (!::ConnectNamedPipe(server.get(), nullptr) && ::GetLastError() != ERROR_PIPE_CONNECTED) return received;
+            DWORD got = 0;
+            quint32 length = 0;
+            if (!::ReadFile(server.get(), &length, 4, &got, nullptr) || got != 4 || length > 256) return received;
+            received.resize(length);
+            if (!::ReadFile(server.get(), received.data(), length, &got, nullptr) || got != length) return QByteArray();
+            if (mode == 2) { ::Sleep(750); return received; }
+            length = mode == 3 ? (1u << 20) + 1 : static_cast<quint32>(answer.size());
+            QByteArray packet(reinterpret_cast<const char*>(&length), mode == 1 ? 2 : 4);
+            if (mode == 0) packet += answer;
+            for (const char byte : packet) {
+                if (!::WriteFile(server.get(), &byte, 1, &got, nullptr)) break;
+            }
+            // Let the client consume the complete response before closing.
+            if (mode == 1) ::DisconnectNamedPipe(server.get());
+            return received;
+        });
+        QElapsedTimer clock;
+        clock.start();
+        QCOMPARE(ws::tessoa::currentFolder(window), expected);
+        QVERIFY2(clock.elapsed() < 1500, "Tessoa must not block the folder worker indefinitely");
+        QCOMPARE(worker.get(), QByteArray("v 1\nop query-cwd\nhwnd ")
+            + QByteArray::number(reinterpret_cast<quintptr>(window)) + '\n');
+    }
+
+    void tessoaAbsentAndLookalike()
+    {
+        const HWND window = ::CreateWindowExW(0, L"STATIC", L"Tessoa", 0,
+            0, 0, 10, 10, nullptr, nullptr, nullptr, nullptr);
+        QVERIFY(window);
+        const auto destroy = qScopeGuard([&] { ::DestroyWindow(window); });
+        QVERIFY(!ws::filemanager::kindOf(window)); // title alone never identifies the executable
+        QVERIFY(ws::tessoa::currentFolder(window).isEmpty());
+        QVERIFY(ws::tessoa::currentFolder(nullptr).isEmpty());
+    }
+
     void nativePickerNavigation()
     {
         std::wstring name = (u"WinShun-picker-"_s + QUuid::createUuid().toString(QUuid::Id128)).toStdWString();
@@ -567,6 +703,8 @@ int main(int argc, char** argv)
         return hidden;
     QCoreApplication app(argc, argv);
     const QStringList args = app.arguments();
+    if (args.size() == 4 && args[1] == u"--tessoa-fixture")
+        return tessoaFixture(args[2], args[3]);
     if (args.contains(u"--picker-probe"_s))
         return pickerProbe();
     if (args.size() >= 4 && args[1] == u"--run-silent") { // a silent custom command, then its answer

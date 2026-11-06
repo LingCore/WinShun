@@ -3,6 +3,7 @@
 #include "FolderViewHit.h"
 #include "Integrity.h"
 #include "OneCommanderTabs.h"
+#include "TessoaQuery.h"
 #include "PathText.h"
 #include "Shell.h"
 #include "Unc.h"
@@ -949,6 +950,9 @@ std::optional<Kind> kindOf(HWND window)
     if (std::wstring_view(name).starts_with(L"HwndWrapper[") && !::GetWindow(window, GW_OWNER)
         && win32::equalsIgnoreCase(baseName(programOf(window)), L"OneCommander.exe"))
         return Kind::OneCommander;
+    if (::GetAncestor(window, GA_ROOT) == window && !::GetWindow(window, GW_OWNER)
+        && win32::equalsIgnoreCase(baseName(programOf(window)), L"tessoa.exe"))
+        return Kind::Tessoa;
     return std::nullopt;
 }
 
@@ -1013,6 +1017,9 @@ std::vector<Folder> openFolders()
             } else if (kind == Kind::OneCommander && ::IsWindowVisible(hwnd)) {
                 search.oneCommander.emplace_back(search.onTop.size(), hwnd);
                 search.onTop.push_back({{}, *kind}); // reserve its place in Z order
+            } else if (kind == Kind::Tessoa && ::IsWindowVisible(hwnd)) {
+                const auto path = tessoa::currentFolder(hwnd).toStdWString();
+                if (!path.empty()) search.onTop.push_back({path, *kind});
             }
             return TRUE;
         },
@@ -1165,6 +1172,7 @@ std::wstring program(Kind kind)
         return QDir::toNativeSeparators(customProgram(g_customOpen)).toStdWString();
     }
     case Kind::Explorer:
+    case Kind::Tessoa: // read-only current-folder integration
         break;
     }
     return {};
@@ -1221,6 +1229,7 @@ bool openFolder(Kind kind, const std::wstring& folder)
     }
     case Kind::Custom:
     case Kind::Explorer:
+    case Kind::Tessoa:
         break;
     }
     return false;
@@ -1310,6 +1319,8 @@ std::wstring frontFolder(HWND window)
         return {};
     case Kind::OneCommander:
         return OneCommanderAutomation(window).folder();
+    case Kind::Tessoa:
+        return tessoa::currentFolder(window).toStdWString();
     case Kind::Custom:
         break;
     }
@@ -1338,6 +1349,7 @@ bool goToInFront(Kind kind, const std::wstring& folder)
         return false;
     case Kind::Explorer:
     case Kind::Custom:
+    case Kind::Tessoa:
         break;
     }
     return false;
