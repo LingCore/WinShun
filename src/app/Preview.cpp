@@ -1430,6 +1430,12 @@ int runSettings(const QStringList& args)
         const double barLeft = bar ? bar->mapToScene({}).x() : 0.0;
         check(bar && rightmost > 0 && rightmost <= barLeft + 0.5,
             u"the scroll bar keeps clear of the page's controls (the rightmost ends at %1, the bar starts at %2)"_s.arg(rightmost).arg(barLeft));
+        // Nor in the window's resize edge: on a real screen a press there
+        // sizes the window, and the bar never widens (the system takes the mouse).
+        const double barRight = bar ? bar->mapToScene(QPointF(bar->width(), 0)).x() : 0.0;
+        const double edgeAt = window->width() - (frame ? frame->resizeMargin(window->devicePixelRatio()) : 0.0);
+        check(bar && frame && barRight <= edgeAt + 0.5,
+            u"the scroll bar keeps clear of the window's resize edge (it ends at %1, the edge starts at %2)"_s.arg(barRight).arg(edgeAt));
         show(0, 4); // 按键一览 again: long
         check(bar && bar->isVisible() && bar->width() >= 10, u"the page has a scroll bar to grab"_s);
         if (bar && bar->isVisible()) {

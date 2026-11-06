@@ -5522,6 +5522,7 @@ Window {
         flickable: flick
         visible: flick.visible && flick.contentHeight > flick.height
         anchors.right: flick.right
+        anchors.rightMargin: window.frame.resizeMargin(window.dpr) // clear of the resize edge, where a press sizes the window
         anchors.top: flick.top
         anchors.bottom: flick.bottom
     }

@@ -5193,6 +5193,12 @@
 
 - `Preview.cpp` 的 `named(window, id)` 只查 SettingsWindow.qml 自己的 id。按需建出来的页面、PluginDevSection 这类子组件里的对象，要给它设 `objectName`，再用 `visualNamed(window->contentItem(), …)` 按可见树查找。
 
+### 页面滚动条贴着窗口右边，抓不住
+
+- **现象**：离屏探针里悬停、拖动、点轨道都通过，真机 150% 下拖滚动条却没有反应，悬停也不变宽。
+- **原因**：设置窗口的缩放边框和系统边框一样粗（`SM_CXSIZEFRAME + SM_CXPADDEDBORDER`，150% 下 10 物理像素），而且在窗口里面。`ListScrollBar` 贴着右边，画出来的细线（物理 x 1960–1964，窗口右边 1970）整条落在边框里，`WM_NCHITTEST` 返回 `HTRIGHT`。按下去是在拖窗口边框，鼠标消息也到不了 QML。离屏探针不经过系统的命中测试，所以测不出来。
+- **做法**：和搜索面板的结果滚动条（Panel.qml）一样，加 `anchors.rightMargin: window.frame.resizeMargin(window.dpr)`。探针加了一条检查：滚动条右边不能进缩放边框。以后在可缩放窗口的右边放能点的东西，都要先让出 `resizeMargin`。
+
 ## 搜索面板的预览标签（GitHub #224，2026-11-06）
 
 ### 从预览窗口交给预览标签，Word 文档顶部被切掉
