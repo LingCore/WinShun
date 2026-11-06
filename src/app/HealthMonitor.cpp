@@ -102,7 +102,7 @@ HealthMonitor::HealthMonitor(Sources sources, QObject* parent)
     connect(&m_fine, &QTimer::timeout, this, [this] { take(true); });
     m_soon.setSingleShot(true);
     m_soon.setInterval(200);
-    connect(&m_soon, &QTimer::timeout, this, [this] { take(false); });
+    connect(&m_soon, &QTimer::timeout, this, [this] { take(false, true); }); // something began or ended: new processes too
     m_coarse.start();
     take(false); // the start: the index loading is seen from its first moment
 }
@@ -112,6 +112,7 @@ void HealthMonitor::setWatching(bool on)
     if (m_watching == on)
         return;
     m_watching = on;
+    qInfo("Health page: %s", on ? "watching, a reading every second" : "not watching");
     if (!m_demo) {
         if (on) {
             m_fineBase = {};
@@ -142,14 +143,11 @@ void HealthMonitor::noteGiveBack(qint64 megabytes, qint64 atMs)
     poke();
 }
 
-void HealthMonitor::rebase(Baseline& baseline, const std::vector<const memory::Process*>& a,
-    const std::vector<const memory::Process*>& b, std::int64_t nowFt)
+void HealthMonitor::rebase(Baseline& baseline, const std::vector<const memory::Process*>& procs, std::int64_t nowFt)
 {
     baseline.totals.clear();
-    for (const auto* list : {&a, &b}) {
-        for (const memory::Process* p : *list)
-            baseline.totals.push_back({p->pid, p->created, p->cpu, p->readBytes});
-    }
+    for (const memory::Process* p : procs)
+        baseline.totals.push_back({p->pid, p->created, p->cpu, p->readBytes});
     baseline.atNs = nowFt;
 }
 
@@ -172,25 +170,33 @@ HealthMonitor::Group HealthMonitor::since(const Baseline& baseline, const std::v
     return g;
 }
 
-void HealthMonitor::take(bool fine)
+void HealthMonitor::take(bool fine, bool whole)
 {
     if (m_demo)
         return;
-    m_wanted |= fine ? kFine : kCoarse;
+    m_wanted |= (fine ? kFine : kCoarse) | (whole || fine ? kWhole : 0);
     if (m_looking)
         return; // the one under way serves this one too
     m_looking = true;
-    // The process list off the GUI thread (~20 ms with 950 processes).
-    QThreadPool::globalInstance()->start([self = QPointer<HealthMonitor>(this), hint = m_sizeHint]() mutable {
-        memory::Look look = memory::look(hint);
+    const bool again = !(m_wanted & kWhole) && !m_known.empty()
+        && QDateTime::currentMSecsSinceEpoch() - m_lastWholeMs < kWholeMs;
+    // Off the GUI thread: the whole process list takes ~20 ms with 950
+    // processes; this one and its own again, by handle, a few microseconds.
+    QThreadPool::globalInstance()->start([self = QPointer<HealthMonitor>(this), hint = m_sizeHint,
+                                             known = again ? m_known : std::vector<memory::Process> {}]() mutable {
+        memory::Look look = known.empty() ? memory::Look {} : memory::again(known);
+        if (!look.ok)
+            look = memory::look(hint);
         QMetaObject::invokeMethod(qApp, [self, hint, look = std::move(look)]() mutable {
             if (!self)
                 return;
             self->m_sizeHint = hint;
             self->m_looking = false;
-            const int wanted = std::exchange(self->m_wanted, 0);
+            int wanted = std::exchange(self->m_wanted, 0);
             if (!look.ok || self->m_demo) // made up since it was asked (the previews)
                 return;
+            if ((wanted & kWhole) && !look.full)
+                self->take(false, true); // asked for while a partial one was under way
             if (wanted & kCoarse)
                 self->apply(look, false);
             if (wanted & kFine)
@@ -206,14 +212,20 @@ void HealthMonitor::apply(const memory::Look& look, bool fine)
     const std::vector<memory::Process>& all = look.processes;
     const std::vector<const memory::Process*> mine = memory::family(all, look.self);
     std::vector<const memory::Process*> service;
-    for (const memory::Process& p : all) {
-        if (named(p, L"WinShunService.exe") && std::find(mine.begin(), mine.end(), &p) == mine.end()) {
-            service = memory::family(all, p.pid);
-            break;
+    if (look.full) {
+        for (const memory::Process& p : all) {
+            if (named(p, L"WinShunService.exe") && std::find(mine.begin(), mine.end(), &p) == mine.end()) {
+                service = memory::family(all, p.pid);
+                break;
+            }
         }
+        m_known.clear();
+        for (const memory::Process* p : mine)
+            m_known.push_back(*p);
+        m_lastWholeMs = nowMs;
     }
 
-    std::uint64_t main = 0, plugins = 0, documents = 0, serviceBytes = 0;
+    std::uint64_t main = 0, plugins = 0, documents = 0;
     std::uint32_t biggestDocumentKb = 0;
     for (const memory::Process* p : mine) {
         if (p->pid == look.self) {
@@ -225,14 +237,10 @@ void HealthMonitor::apply(const memory::Look& look, bool fine)
             plugins += p->privateBytes;
         }
     }
-    for (const memory::Process* p : service) {
-        serviceBytes += p->privateBytes;
-        if (document(*p))
-            biggestDocumentKb = std::max(biggestDocumentKb, static_cast<std::uint32_t>(p->privateBytes / 1024));
-    }
     // The file index's pages in the working set, the same measure as the
     // total (~1.3 ms for 128 MB). Not under a writer's lock: the last reading stands.
-    if (m_sources.fileIndexBlocks && m_sources.fileIndexBlocks(m_blocks)) {
+    // Background readings between whole looks keep the last one.
+    if ((look.full || m_watching) && m_sources.fileIndexBlocks && m_sources.fileIndexBlocks(m_blocks)) {
         m_fileIndexHeld = 0;
         for (const auto& block : m_blocks)
             m_fileIndexHeld += block.second;
@@ -248,36 +256,62 @@ void HealthMonitor::apply(const memory::Look& look, bool fine)
     s.partKb[health::Other] = static_cast<std::uint32_t>((main - fileIndex) / 1024);
     s.partKb[health::Plugins] = static_cast<std::uint32_t>(plugins / 1024);
     s.partKb[health::Documents] = static_cast<std::uint32_t>(documents / 1024);
-    s.serviceKb = static_cast<std::uint32_t>(serviceBytes / 1024);
 
     Baseline& base = fine ? m_fineBase : m_coarseBase;
+    Baseline& serviceBase = fine ? m_fineServiceBase : m_coarseServiceBase;
     const bool first = base.atNs == 0;
-    const Group a = since(base, mine);
-    const Group b = since(base, service);
-    const double elapsed = first ? 0.0 : static_cast<double>(std::max<std::int64_t>(1, nowFt - base.atNs)); // 100 ns
-    const auto percent = [&](std::uint64_t cpu) {
+    const auto over = [nowFt](const Baseline& b) { // 100 ns since it; 0: no baseline yet
+        return b.atNs == 0 ? 0.0 : static_cast<double>(std::max<std::int64_t>(1, nowFt - b.atNs));
+    };
+    const auto percent = [this](std::uint64_t cpu, double elapsed) {
         return elapsed <= 0 ? std::uint16_t(0)
                             : static_cast<std::uint16_t>(std::min(10000.0, cpu * 10000.0 / (elapsed * m_processors)));
     };
-    const auto kbps = [&](std::uint64_t bytes) {
+    const auto kbps = [](std::uint64_t bytes, double elapsed) {
         return elapsed <= 0 ? 0u : static_cast<std::uint32_t>(bytes / 1024.0 / (elapsed / 1e7));
     };
-    s.cpu = percent(a.cpu);
-    s.serviceCpu = percent(b.cpu);
-    s.readKbps = kbps(a.read);
-    s.serviceReadKbps = kbps(b.read);
+    const double elapsed = over(base);
+    const Group a = since(base, mine);
+    s.cpu = percent(a.cpu, elapsed);
+    s.readKbps = kbps(a.read, elapsed);
+    const double serviceElapsed = over(serviceBase);
+    if (look.full) {
+        std::uint64_t serviceBytes = 0;
+        std::uint32_t serviceDocumentKb = 0; // a document's reader under the service
+        for (const memory::Process* p : service) {
+            serviceBytes += p->privateBytes;
+            if (document(*p))
+                serviceDocumentKb = std::max(serviceDocumentKb, static_cast<std::uint32_t>(p->privateBytes / 1024));
+        }
+        const Group b = since(serviceBase, service);
+        ServiceUse use {static_cast<std::uint32_t>(serviceBytes / 1024), kbps(b.read, serviceElapsed),
+            serviceDocumentKb, percent(b.cpu, serviceElapsed)};
+        if (!fine)
+            m_service = use;
+        s.serviceKb = use.kb;
+        s.serviceCpu = use.cpu;
+        s.serviceReadKbps = use.readKbps;
+        biggestDocumentKb = std::max(biggestDocumentKb, use.documentKb);
+    } else { // as last seen: its CPU and reads over the minute before
+        s.serviceKb = m_service.kb;
+        s.serviceCpu = m_service.cpu;
+        s.serviceReadKbps = m_service.readKbps;
+        biggestDocumentKb = std::max(biggestDocumentKb, m_service.documentKb);
+    }
 
     // The page's list of processes: each one's own share, over the last second.
     if (fine && !first) {
         m_processes.clear();
         const auto add = [&](const memory::Process* p, const QString& kind) {
-            const Group one = since(base, {p});
+            const bool ofService = std::find(service.begin(), service.end(), p) != service.end();
+            const Group one = since(ofService ? serviceBase : base, {p});
+            const double span = ofService ? serviceElapsed : elapsed;
             m_processes.push_back(QVariantMap {
                 {u"name"_s, processName(*p, p->pid == look.self)},
                 {u"kind"_s, kind},
                 {u"mb"_s, p->privateBytes / kMb},
-                {u"cpu"_s, percent(one.cpu) / 100.0},
-                {u"read"_s, kbps(one.read) / 1024.0},
+                {u"cpu"_s, percent(one.cpu, span) / 100.0},
+                {u"read"_s, kbps(one.read, span) / 1024.0},
             });
         };
         for (const memory::Process* p : mine)
@@ -285,7 +319,9 @@ void HealthMonitor::apply(const memory::Look& look, bool fine)
         for (const memory::Process* p : service)
             add(p, u"service"_s);
     }
-    rebase(base, mine, service, nowFt);
+    rebase(base, mine, nowFt);
+    if (look.full)
+        rebase(serviceBase, service, nowFt);
 
     if (!first) {
         // A 10-second reading also while watching: its CPU and reads over its own ten seconds.
@@ -335,10 +371,10 @@ void HealthMonitor::publish()
     };
     const double parked = std::max(0.0, (static_cast<double>(m_fileIndexHeld) - m_fileIndexBytes) / kMb);
     part(u"fileIndex"_s, tr("文件索引"), s.partKb[health::FileIndex],
-        parked >= 4 ? tr("另有 %1 MB 已暂存，用到时再读回").arg(qRound(parked)) : tr("搜索靠它"));
-    part(u"other"_s, tr("界面和其他"), s.partKb[health::Other], tr("窗口、剪贴板历史、内容索引的缓冲"));
+        parked >= 4 ? tr("另有 %1 MB 已暂存").arg(qRound(parked)) : QString());
+    part(u"other"_s, tr("界面和其他"), s.partKb[health::Other], QString());
     part(u"plugins"_s, tr("插件"), s.partKb[health::Plugins], QString());
-    part(u"documents"_s, tr("读文档"), s.partKb[health::Documents], tr("读完 30 秒后退出"));
+    part(u"documents"_s, tr("读文档"), s.partKb[health::Documents], QString());
     now[u"parts"_s] = parts;
     now[u"cpu"_s] = s.cpu / 100.0;
     now[u"read"_s] = s.readKbps / 1024.0;

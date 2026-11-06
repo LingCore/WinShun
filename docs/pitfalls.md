@@ -5065,3 +5065,5 @@
 - **现象**：“运行状况”页每秒刷新一次，量下来每次采样约 20 ms，放在界面线程上会一顿一顿的。
 - **原因**：`NtQuerySystemInformation(SystemProcessInformation)` 每次把所有进程连同每个线程一起交回来，这台电脑 955 个进程时是 2.6 MB、约 20 ms（`CreateToolhelp32Snapshot` 内部也用它，更慢，约 34 ms），哪怕只要其中几个 WinShun*。换成用进程句柄逐个读，又打不开 LocalSystem 的后台服务（`OpenProcess` 被拒），新起的读文档进程也发现不了。
 - **做法**：进程列表放到线程池里读（`HealthMonitor::take` → `memory::look`），读完回到界面线程再算；缓冲用 `VirtualAlloc` 拿、读完 `VirtualFree` 还掉，不在堆里常驻 2.6 MB。文件索引的驻留页（`QueryWorkingSetEx`，128 MB 约 1.3 ms）留在界面线程，要索引的读锁，用 `tryReadLock`，不等写锁。
+- **后台也别每 10 秒读整张表**：页面没开时每 10 秒一次整表，量下来后台 CPU 是旧版的 4～6 倍。现在后台只每分钟（或有事开始/结束时）读一次整表；中间的 10 秒读数只按句柄重读自己和自己起的进程（`memory::again`，`GetProcessMemoryInfo` 的 `PROCESS_MEMORY_COUNTERS_EX2.PrivateWorkingSetSize`，Windows 11 22H2 起才有，读不到就退回整表），后台服务沿用上次整表的数。另外整表的缓冲本身算在自己的私有工作集里（2.6 MB），读自己时要减掉。
+- **测试脚本**：`FindWindow(null, "设置 - Win顺")` 在 PowerShell 5.1 里拿不到窗口，WM_CLOSE 没发出去，量到的“关掉设置后”其实是开着的；按进程枚举窗口（`Win.cs` 的 `Find`）并确认 `MainWindowTitle` 变空。

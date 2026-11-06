@@ -2413,8 +2413,8 @@
         <translation>Now</translation>
     </message>
     <message>
-        <source>和任务管理器里 Win顺 那一行的“内存”是同一个数；后台服务在任务管理器里单独一行，不算在里面。</source>
-        <translation>The same number as the Memory column of WinShun's row in Task Manager; the background service has a row of its own there and is not counted in it.</translation>
+        <source>和任务管理器里 Win顺 那一行的“内存”是同一个数（后台服务在那里单独一行，不算在内）。文件索引是搜索要用的，暂存的部分用到时再读回；界面和其他包括窗口、剪贴板历史和内容索引的缓冲。</source>
+        <translation>The same number as the Memory column of WinShun's row in Task Manager (the background service has a row of its own there and is not counted). The file index is what searches use; parked parts are read back when needed. Interface and other covers the windows, the clipboard history and the content index's buffers.</translation>
     </message>
     <message>
         <source>Win顺 现在用了 %1</source>
@@ -10292,28 +10292,16 @@ Content index: %5</translation>
         <translation>File index</translation>
     </message>
     <message>
-        <source>另有 %1 MB 已暂存，用到时再读回</source>
-        <translation>another %1 MB is parked, read back when needed</translation>
-    </message>
-    <message>
-        <source>搜索靠它</source>
-        <translation>what searches use</translation>
+        <source>另有 %1 MB 已暂存</source>
+        <translation>%1 MB more parked</translation>
     </message>
     <message>
         <source>界面和其他</source>
         <translation>Interface and other</translation>
     </message>
     <message>
-        <source>窗口、剪贴板历史、内容索引的缓冲</source>
-        <translation>windows, clipboard history, content index buffers</translation>
-    </message>
-    <message>
         <source>插件</source>
         <translation>Plugins</translation>
-    </message>
-    <message>
-        <source>读完 30 秒后退出</source>
-        <translation>quits 30 seconds after it is done</translation>
     </message>
     <message>
         <source>还没有归还过</source>
@@ -10369,7 +10357,7 @@ Content index: %5</translation>
     </message>
     <message>
         <source>页面换出到系统的备用内存，用到时再读回</source>
-        <translation>Pages moved to Windows' standby memory, read back when needed</translation>
+        <translation>Pages moved to Windows&apos; standby memory, read back when needed</translation>
     </message>
     <message>
         <source>进行中，已经 %1，内存最高 %2</source>

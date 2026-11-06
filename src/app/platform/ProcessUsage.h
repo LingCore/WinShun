@@ -24,6 +24,7 @@ struct Process {
 
 struct Look {
     bool ok = false;
+    bool full = false; // the whole list (the service too), not just `known` again
     std::uint32_t self = 0;
     std::int64_t atMs = 0; // wall clock, ms since 1970
     std::int64_t atFt = 0; // the same as a FILETIME (100 ns)
@@ -35,6 +36,12 @@ struct Look {
 // buffer is the system's own pages, given back at once, not kept between
 // looks. `sizeHint`: the size the last one needed, to ask once, not twice.
 Look look(std::size_t& sizeHint);
+
+// The same numbers for these processes only, read by handle (a few
+// microseconds each, not the whole list): this one and its own, which it may
+// open. Not ok if one of them is gone, cannot be opened or Windows does not
+// tell its private working set (before Windows 11 22H2): then a whole look.
+Look again(const std::vector<Process>& known);
 
 // The family of `root`: it and the WinShun* processes under it, parents
 // first. A parent id may name a process that is gone and its number given to

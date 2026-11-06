@@ -144,22 +144,40 @@ void HealthChart::readout()
 {
     m_values.clear();
     m_valueTime = 0;
-    const int i = m_hoverTime > 0 ? indexAt(m_hoverTime) : static_cast<int>(m_series.size()) - 1;
-    if (i >= 0) {
-        m_valueTime = static_cast<qint64>(m_series.t[i]);
-        if (m_kind == 0) {
-            for (int p = 0; p < health::kParts; ++p)
-                m_values.push_back(m_series.partMb[p][i]);
-            m_values.push_back(m_series.serviceMb[i]);
-        } else if (m_kind == 1) {
-            m_values = {m_series.cpuMax[i], m_series.serviceCpuMax[i]};
-        } else {
-            m_values = {m_series.readMax[i], m_series.serviceReadMax[i]};
+    if (m_hoverTime > 0) { // the point under the pointer: its bucket's peak, as drawn
+        const int i = indexAt(m_hoverTime);
+        if (i >= 0) {
+            m_valueTime = static_cast<qint64>(m_series.t[i]);
+            if (m_kind == 0) {
+                for (int p = 0; p < health::kParts; ++p)
+                    m_values.push_back(m_series.partMb[p][i]);
+                m_values.push_back(m_series.serviceMb[i]);
+            } else if (m_kind == 1) {
+                m_values = {m_series.cpuMax[i], m_series.serviceCpuMax[i]};
+            } else {
+                m_values = {m_series.readMax[i], m_series.serviceReadMax[i]};
+            }
+        }
+    } else if (m_monitor) { // else now: the newest reading itself, not the last bucket's peak
+        const health::History& history = m_monitor->history();
+        const health::Ring& ring = history.fine().size() > 0 ? history.fine() : history.coarse();
+        if (ring.size() > 0) {
+            const health::Sample& s = ring.back();
+            m_valueTime = s.atMs;
+            const auto mb = [](std::uint32_t kb) { return kb / 1024.0; };
+            if (m_kind == 0) {
+                for (int p = 0; p < health::kParts; ++p)
+                    m_values.push_back(mb(s.partKb[p]));
+                m_values.push_back(mb(s.serviceKb));
+            } else if (m_kind == 1) {
+                m_values = {s.cpu / 100.0, s.serviceCpu / 100.0};
+            } else {
+                m_values = {s.readKbps / 1024.0, s.serviceReadKbps / 1024.0};
+            }
         }
     }
     emit readoutChanged();
 }
-
 void HealthChart::paint(QPainter* p)
 {
     const double w = width();

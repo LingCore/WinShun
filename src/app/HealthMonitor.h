@@ -84,11 +84,11 @@ private:
     struct Group { // a family's use since its baseline
         std::uint64_t cpu = 0, read = 0;
     };
-    void take(bool fine); // a reading: the process list looked at off the GUI thread, then apply()
+    void take(bool fine, bool whole = false); // a reading off the GUI thread, then apply()
     void apply(const memory::Look& look, bool fine);
     void publish(); // `now` for the page
     Group since(const Baseline& baseline, const std::vector<const memory::Process*>& procs) const;
-    static void rebase(Baseline& baseline, const std::vector<const memory::Process*>& a, const std::vector<const memory::Process*>& b, std::int64_t nowNs);
+    static void rebase(Baseline& baseline, const std::vector<const memory::Process*>& procs, std::int64_t nowNs);
 
     Sources m_sources;
     bool m_demo = false;
@@ -97,16 +97,25 @@ private:
     QTimer m_fine;
     QTimer m_soon; // poke(): a look in a moment
     std::int64_t m_lastCoarseMs = 0;
-    static constexpr int kCoarse = 1, kFine = 2;
-    int m_wanted = 0; // the readings the look under way is for
+    static constexpr int kCoarse = 1, kFine = 2, kWhole = 4;
+    // Between whole looks (a minute apart unless watching or poked) only this
+    // one and its own are read again, by handle; the service stands as last seen.
+    static constexpr std::int64_t kWholeMs = 60'000;
+    int m_wanted = 0; // the readings the look under way is for (and kWhole)
     bool m_looking = false;
     std::size_t m_sizeHint = 0; // memory::look's
 
     std::vector<std::pair<const void*, std::size_t>> m_blocks;
     std::uint64_t m_fileIndexBytes = 0;
     std::uint64_t m_fileIndexHeld = 0;
-    Baseline m_coarseBase;
-    Baseline m_fineBase;
+    std::vector<memory::Process> m_known; // the family at the last whole look
+    std::int64_t m_lastWholeMs = 0;
+    struct ServiceUse {
+        std::uint32_t kb = 0, readKbps = 0, documentKb = 0;
+        std::uint16_t cpu = 0;
+    } m_service; // the last whole coarse reading's, carried until the next
+    Baseline m_coarseBase, m_coarseServiceBase;
+    Baseline m_fineBase, m_fineServiceBase;
     unsigned m_processors = 1;
     health::History m_history;
     health::Events m_events;

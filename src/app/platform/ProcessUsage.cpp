@@ -74,7 +74,66 @@ bool winShun(const UnicodeString& name)
     return name.Buffer && name.Length / sizeof(wchar_t) >= kLength && ::_wcsnicmp(name.Buffer, kPrefix, kLength) == 0;
 }
 
+// PROCESS_MEMORY_COUNTERS_EX2 (Windows 11 22H2), spelled out: older SDKs lack it.
+struct MemoryCountersEx2 {
+    PROCESS_MEMORY_COUNTERS_EX base;
+    SIZE_T privateWorkingSetSize;
+    ULONG64 sharedCommitUsage;
+};
+
+std::uint64_t fileTime(const FILETIME& t)
+{
+    return (static_cast<std::uint64_t>(t.dwHighDateTime) << 32) | t.dwLowDateTime;
+}
+
+// One known process again; false if it is not the same one or a number is not told.
+bool readAgain(HANDLE h, Process& p)
+{
+    FILETIME created, exited, kernel, user;
+    if (!::GetProcessTimes(h, &created, &exited, &kernel, &user)
+        || static_cast<std::int64_t>(fileTime(created)) != p.created)
+        return false;
+    IO_COUNTERS io {};
+    MemoryCountersEx2 memory {};
+    memory.base.cb = sizeof(memory);
+    if (!::GetProcessIoCounters(h, &io)
+        || !::GetProcessMemoryInfo(h, reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof(memory))
+        || memory.privateWorkingSetSize == 0) // not told (older Windows): never really 0
+        return false;
+    p.cpu = fileTime(kernel) + fileTime(user);
+    p.readBytes = io.ReadTransferCount;
+    p.privateBytes = memory.privateWorkingSetSize;
+    return true;
+}
+
 } // namespace
+
+Look again(const std::vector<Process>& known)
+{
+    Look out;
+    out.self = ::GetCurrentProcessId();
+    FILETIME now;
+    ::GetSystemTimeAsFileTime(&now);
+    out.atFt = static_cast<std::int64_t>(fileTime(now));
+    out.atMs = (out.atFt - 116'444'736'000'000'000LL) / 10'000;
+    out.processes = known;
+    for (Process& p : out.processes) {
+        if (p.pid == out.self) {
+            if (!readAgain(::GetCurrentProcess(), p))
+                return {};
+            continue;
+        }
+        const HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, p.pid);
+        if (!h)
+            return {};
+        const bool read = readAgain(h, p);
+        ::CloseHandle(h);
+        if (!read)
+            return {};
+    }
+    out.ok = true;
+    return out;
+}
 
 Look look(std::size_t& sizeHint)
 {
@@ -111,6 +170,10 @@ Look look(std::size_t& sizeHint)
                     one.parent = static_cast<std::uint32_t>(reinterpret_cast<ULONG_PTR>(p->InheritedFromUniqueProcessId));
                     one.created = p->CreateTime.QuadPart;
                     one.privateBytes = static_cast<std::uint64_t>(p->WorkingSetPrivateSize.QuadPart);
+                    if (pid == out.self) { // not the list itself, in this process's pages only while looking
+                        const std::uint64_t list = (static_cast<std::uint64_t>(needed) + 4095) & ~std::uint64_t(4095);
+                        one.privateBytes -= std::min(one.privateBytes, list);
+                    }
                     one.cpu = static_cast<std::uint64_t>(p->UserTime.QuadPart + p->KernelTime.QuadPart);
                     one.readBytes = static_cast<std::uint64_t>(p->ReadTransferCount.QuadPart);
                     const std::size_t chars = std::min<std::size_t>(p->ImageName.Length / sizeof(wchar_t), std::size(one.exe) - 1);
@@ -124,6 +187,7 @@ Look look(std::size_t& sizeHint)
                 offset += p->NextEntryOffset;
             }
             out.ok = true;
+            out.full = true;
         }
         ::VirtualFree(buffer, 0, MEM_RELEASE);
         return out;

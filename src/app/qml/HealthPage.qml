@@ -50,7 +50,7 @@ SettingsPage {
         width: parent.width
         title: qsTr("现在")
         glyph: "" // Diagnostic: pulse
-        note: qsTr("和任务管理器里 Win顺 那一行的“内存”是同一个数；后台服务在任务管理器里单独一行，不算在里面。")
+        note: qsTr("和任务管理器里 Win顺 那一行的“内存”是同一个数（后台服务在那里单独一行，不算在内）。文件索引是搜索要用的，暂存的部分用到时再读回；界面和其他包括窗口、剪贴板历史和内容索引的缓冲。")
 
         SettingRow {
             title: healthPage.known ? qsTr("Win顺 现在用了 %1").arg(healthPage.mb(healthPage.h.total)) : qsTr("正在读取内存占用…")
@@ -110,6 +110,7 @@ SettingsPage {
                         delegate: Row {
                             required property int index
                             required property var modelData
+                            visible: index < 2 || modelData.mb > 0 // plugins, documents: only while there are some
                             spacing: 6
 
                             Rectangle {
