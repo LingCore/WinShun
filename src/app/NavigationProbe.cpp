@@ -32,6 +32,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
+#include <QInputMethodEvent>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickItem>
@@ -536,6 +537,107 @@ bool checkOptimizationSettings(QQuickWindow* window, SettingsEditor* editor, con
     QFile file(output.filePath(u"optimization-settings.json"_s));
     if (!file.open(QIODevice::WriteOnly)) return false;
     file.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
+    return check.passed;
+}
+
+bool checkPureSearch(QQmlEngine* engine, const QDir& output)
+{
+    Checks check;
+    QTemporaryDir profile;
+    IndexService index(profile.filePath(u"index"_s), {});
+    {
+        const auto lock = index.index()->writeLock();
+        const auto drive = index.index()->addRoot("D:");
+        index.index()->add(drive, "report.txt", 0);
+    }
+    AppCatalog apps;
+    apps.setApps(std::make_shared<const AppList>());
+    SystemCatalog places;
+    places.setPlaces(std::make_shared<const PlaceList>());
+    SearchEngine search(&index, &apps, &places);
+    History history(profile.filePath(u"history.txt"_s));
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    launcher.results()->setThumbnails(false);
+    launcher.setContentOptions(false, {}, {}, true, true);
+    ClipStore store(profile.filePath(u"clipboard"_s));
+    store.open(QDateTime::currentMSecsSinceEpoch());
+    ClipboardWatcher watcher({.record = false}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(profile.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> root(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    auto* window = qobject_cast<QQuickWindow*>(root.get());
+    check(window != nullptr, u"pure search loads production Main: "_s + component.errorString());
+    if (!window) return false;
+    window->create();
+    frame.setWindow(window);
+    launcher.setWindow(window);
+    placement.setWindow(window);
+    placement.rememberWidth(760, 640);
+    showOffscreen(window);
+    auto* field = item(window->contentItem(), u"searchField"_s);
+    auto* footer = item(window->contentItem(), u"launcherFooter"_s);
+    auto* tabs = item(window->contentItem(), u"searchScopeTabs"_s);
+    auto* expand = item(window->contentItem(), u"searchExpandButton"_s);
+    check(field && footer && tabs && expand, u"production controls are available"_s);
+    if (!field || !footer || !tabs || !expand) return false;
+    check(footer->isVisible() && tabs->isVisible() && expand->isVisible(), u"default keeps familiar controls"_s);
+    launcher.setPureSearch(true);
+    launcher.setQuery(u"   "_s);
+    settle(window);
+    check(window->property("pureEmpty").toBool() && !footer->isVisible() && !tabs->isVisible() && !expand->isVisible(),
+        u"whitespace-only query hides auxiliary controls"_s);
+    check(launcher.results()->count() == 0 && !launcher.searching(), u"empty pure search has no hidden actionable results or pending search"_s);
+    const int emptyHeight = window->height();
+    check(field->width() > window->width() * 0.8, u"input reclaims the controls' width"_s);
+    check(emptyHeight < 100, u"empty launcher keeps no results or footer gap"_s);
+    launcher.setQuery({});
+    settle(window);
+    check(window->grabWindow().save(output.filePath(u"pure-empty.png"_s)), u"capture empty pure search"_s);
+    QInputMethodEvent composing(u"zhong"_s, {});
+    QCoreApplication::sendEvent(field, &composing);
+    check(!window->property("pureEmpty").toBool(), u"IME composition restores controls before committing the query"_s);
+    QInputMethodEvent endComposition;
+    QCoreApplication::sendEvent(field, &endComposition);
+    launcher.setQuery(u"report"_s);
+    settle(window);
+    check(launcher.results()->count() == 1, u"typing searches the real index"_s);
+    check(!window->property("pureEmpty").toBool() && footer->isVisible() && tabs->isVisible() && expand->isVisible(),
+        u"typing restores all existing controls"_s);
+    check(window->height() > emptyHeight, u"results expand the window"_s);
+    check(window->grabWindow().save(output.filePath(u"pure-results.png"_s)), u"capture populated search"_s);
+    launcher.setQuery({});
+    settle(window);
+    check(window->height() == emptyHeight && launcher.results()->count() == 0, u"clearing returns to one input and removes stale results"_s);
+    bool dismissed = false;
+    const auto connection = QObject::connect(&launcher, &Launcher::dismissRequested, [&] { dismissed = true; });
+    key(field, Qt::Key_Return);
+    check(!dismissed, u"Enter on the empty input cannot open a hidden result"_s);
+    QObject::disconnect(connection);
+    key(field, Qt::Key_Tab);
+    check(launcher.scope() == Launcher::Files, u"hidden scope controls keep Tab navigation"_s);
+    launcher.setPanel(true);
+    settle(window);
+    check(!window->property("pureEmpty").toBool(), u"full search panel is not collapsed by pure mode"_s);
+    launcher.setPanel(false);
+    launcher.setFolderSearch(true);
+    settle(window);
+    check(!window->property("pureEmpty").toBool() && footer->isVisible(), u"folder search keeps its context and controls"_s);
+    launcher.setFolderSearch(false);
+    launcher.setInTaskbarBox(true);
+    settle(window);
+    check(!window->property("pureEmpty").toBool(), u"taskbar input keeps its existing presentation"_s);
+    launcher.setInTaskbarBox(false);
+    launcher.setPureSearch(false);
+    settle(window);
+    check(footer->isVisible() && tabs->isVisible(), u"switching off restores the original presentation"_s);
+    check(!window->isActive(), u"probe never activates the user's desktop"_s);
+    QFile report(output.filePath(u"pure-search.json"_s));
+    if (!report.open(QIODevice::WriteOnly)) return false;
+    report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
     return check.passed;
 }
 

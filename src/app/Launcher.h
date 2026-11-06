@@ -125,6 +125,7 @@ class Launcher : public QObject {
     Q_PROPERTY(QString numberHints READ numberHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool footerHints READ footerHints NOTIFY resultOptionsChanged FINAL)
+    Q_PROPERTY(bool pureSearch READ pureSearch NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString previewHotkey READ previewHotkey NOTIFY resultOptionsChanged FINAL)
     // Bits 1 << n of the digits n left to one of Win顺's own shortcuts
     // (App::ownNumberDigits): their rows show the chord struck through.
@@ -479,6 +480,8 @@ public:
     bool shortcutHelp() const { return m_shortcutHelp; }
     bool footerHints() const { return m_footerHints; }
     void setKeyboardHints(bool help, bool footer);
+    bool pureSearch() const { return m_pureSearch; }
+    void setPureSearch(bool on);
     int numberKeysLeft() const { return static_cast<int>(m_numberKeysLeft); }
     void setNumberKeysLeft(unsigned digits);
     bool inTaskbarBox() const { return m_inTaskbarBox; }
@@ -1193,6 +1196,7 @@ private:
     QString m_numberHints = QStringLiteral("always");
     bool m_shortcutHelp = true;
     bool m_footerHints = true;
+    bool m_pureSearch = false;
     QString m_previewHotkey = QStringLiteral("Alt+P");
     QKeySequence m_previewSequence {QStringLiteral("Alt+P")};
     unsigned m_numberKeysLeft = 0;

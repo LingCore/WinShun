@@ -7,6 +7,7 @@ class QQuickWindow;
 namespace ws { class SettingsEditor; }
 
 namespace ws::preview {
+bool checkPureSearch(QQmlEngine* engine, const QDir& output);
 // Production QML/controller checks on isolated data and non-activating,
 // offscreen windows. No global key injection or clipboard writes.
 bool checkNavigationWorkflows(QQmlEngine* engine, const QDir& output, bool flipped);

@@ -1161,6 +1161,10 @@ add_custom_command(OUTPUT "${shared_qt_dir}/deployed.stamp"
 add_custom_target(tst_plugin_qt_runtime DEPENDS "${shared_qt_dir}/deployed.stamp")
 target_compile_definitions(tst_plugin PRIVATE WINSHUN_PLUGIN_QT="$<TARGET_FILE:plugin_qt>" WINSHUN_SHARED_QT_DIR="${shared_qt_dir}")
 add_dependencies(tst_plugin tst_plugin_qt_runtime)
+add_test(NAME tst_puresearch COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/pure-search" --pure-search --renderer d3d11 --scale 1.5)
+set_tests_properties(tst_puresearch PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 target_include_directories(tst_plugin PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_plugin PRIVATE wsplugin miniz Qt6::Test) # miniz: the test writes zips to install
 target_compile_definitions(tst_plugin PRIVATE

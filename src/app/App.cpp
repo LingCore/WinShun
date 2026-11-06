@@ -1850,6 +1850,7 @@ void App::applySettings(bool initial)
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
     m_launcher->setKeyboardHints(m_settings.shortcutHelp, m_settings.footerHints);
+    m_launcher->setPureSearch(m_settings.pureSearch && !m_launcherOverBox);
     tellLauncherFolders();
     m_clipboard->setNumberHints(m_settings.numberHints);
     const QString clipboardSize = m_settings.clipboardUiSize == u"follow" ? m_settings.uiSize : m_settings.clipboardUiSize;
@@ -5068,6 +5069,9 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     // Pinned, it stays while the user works elsewhere: a window of its own,
     // with its own field, the box idle (see launcherPinnedChanged).
     m_launcherOverBox = inBox && m_searchBox && !m_launcher->pinned();
+    // A narrow taskbar box has its input inside the popup, but still keeps
+    // the taskbar's full start page. The preference itself stays unchanged.
+    m_launcher->setPureSearch(m_settings.pureSearch && !m_launcherOverBox);
     m_launcher->setInTaskbarBox(m_launcherOverBox && m_searchBox->wide());
     updateSearchBoxLook();
     if (m_searchBox && !m_launcher->inTaskbarBox()) // opened elsewhere: the box is idle; over it, it looks open
@@ -6426,6 +6430,7 @@ void App::launcherPinnedChanged()
         updateSearchBoxLook();
     }
     m_launcherOverBox = false;
+    m_launcher->setPureSearch(m_settings.pureSearch);
 }
 
 void App::setPanel(bool on, bool opening)

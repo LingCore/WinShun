@@ -238,6 +238,7 @@ struct Settings {
     QString numberHints = QStringLiteral("always");
     bool shortcutHelp = true;
     bool footerHints = true;
+    bool pureSearch = false; // empty floating launcher: just the input, without start results or chrome
     // auto | builtin: what Alt+P on a row shows the file with. auto: QuickLook
     // or Seer when one is running in the background (FilePreview), else
     // Win顺's own preview window; builtin: always that.

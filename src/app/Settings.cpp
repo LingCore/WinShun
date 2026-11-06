@@ -926,6 +926,7 @@ void Settings::load()
         numberHints = d.numberHints;
     shortcutHelp = readOrDefault(s, u"Results/ShortcutHelp"_s, d.shortcutHelp);
     footerHints = readOrDefault(s, u"Results/FooterHints"_s, d.footerHints);
+    pureSearch = readOrDefault(s, u"Results/PureSearch"_s, d.pureSearch);
     previewWith = readOrDefault(s, u"Results/PreviewWith"_s, d.previewWith).trimmed().toLower();
     if (previewWith != u"builtin")
         previewWith = d.previewWith;
@@ -1281,6 +1282,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/NumberHints"_s, numberHints);
     s.setValue(u"Results/ShortcutHelp"_s, shortcutHelp);
     s.setValue(u"Results/FooterHints"_s, footerHints);
+    s.setValue(u"Results/PureSearch"_s, pureSearch);
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
     s.setValue(u"Results/PreviewFollowsPointer"_s, previewFollowsPointer);

@@ -7450,6 +7450,18 @@ Right: center window · Drag: move window</translation>
         <translation>clipboard;screenshot;plugin;double tap;action</translation>
     </message>
     <message>
+        <source>纯净搜索模式</source>
+        <translation>Minimal search mode</translation>
+    </message>
+    <message>
+        <source>搜索框空着时只保留输入栏；输入后恢复结果和操作按钮。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响</source>
+        <translation>Keep only the input when the search box is empty. Results and controls return as you type. Full search, folder search and taskbar search keep their controls.</translation>
+    </message>
+    <message>
+        <source>纯净;极简;空白;底栏;最近;收藏;pure;minimal</source>
+        <translation>minimal;clean;empty;footer;recent;favorites;pure</translation>
+    </message>
+    <message>
         <source>每个双击键只执行一个动作。列表只显示支持此功能的已启用插件；原组合键仍可使用</source>
         <translation>Each gesture performs one action. Only enabled plugins that support this feature are listed. Their original shortcuts still work.</translation>
     </message>

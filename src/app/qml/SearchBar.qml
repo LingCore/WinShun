@@ -20,6 +20,7 @@ Item {
     // The search panel's own bar (Panel.qml): the button at the right
     // corner collapses the panel instead of expanding the box into it.
     property bool panelMode: false
+    property bool minimal: false
     readonly property bool folderMode: !panelMode && launcher.folderSearch
     readonly property string hiddenPrefix: folderMode ? launcher.typingPrefix : ""
     property bool syncingQuery: false
@@ -262,7 +263,7 @@ Item {
         readonly property real styleStart: fieldPart.out("leadingInset", 0)
         anchors.left: handle.right
         anchors.leftMargin: styleStart > 0 ? Theme.snap(Math.max(6, Theme.fieldInset + styleStart - handle.x - handle.width), bar.dpr) : 8
-        anchors.right: regexChip.visible ? regexChip.left : bar.folderMode ? compactScope.left : tabs.left
+        anchors.right: bar.minimal ? bar.right : regexChip.visible ? regexChip.left : bar.folderMode ? compactScope.left : tabs.left
         anchors.rightMargin: regexChip.visible ? 8 : 12
         y: bar.onPixel((bar.height - height) / 2 + fieldPart.out("contentOffsetY", 0))
         focus: true
@@ -378,7 +379,7 @@ Item {
     Item {
         id: regexChip
 
-        visible: bar.launcher.regexMode && bar.launcher.scope !== Launcher.Content && !bar.inBox
+        visible: !bar.minimal && bar.launcher.regexMode && bar.launcher.scope !== Launcher.Content && !bar.inBox
         anchors.right: bar.folderMode ? compactScope.left : tabs.left
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)
@@ -471,6 +472,8 @@ Item {
     // it: at the right corner (Ctrl+E too).
     Item {
         id: expand
+        objectName: bar.panelMode ? "panelCollapseButton" : "searchExpandButton"
+        visible: !bar.minimal
 
         readonly property bool tipWanted: expandArea.containsMouse
         readonly property string tip: bar.panelMode ? qsTr("收回搜索框") : qsTr("展开为搜索面板")
@@ -522,7 +525,7 @@ Item {
     RowAction {
         id: historyButton
         objectName: bar.panelMode ? "panelHistoryButton" : "queryHistoryButton"
-        visible: bar.launcher.queryHistoryEnabled && !bar.folderMode && !bar.inBox
+        visible: !bar.minimal && bar.launcher.queryHistoryEnabled && !bar.folderMode && !bar.inBox
         anchors.right: sidebarToggle.visible ? sidebarToggle.left : expand.left
         anchors.rightMargin: 6
         anchors.verticalCenter: parent.verticalCenter
@@ -638,7 +641,8 @@ Item {
 
     ScopeTabs {
         id: tabs
-        visible: !bar.folderMode
+        objectName: bar.panelMode ? "panelScopeTabs" : "searchScopeTabs"
+        visible: !bar.minimal && !bar.folderMode
         scaled: true
         role: "scope"
         dpr: bar.dpr

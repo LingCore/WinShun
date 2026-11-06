@@ -1529,6 +1529,16 @@ void Launcher::setKeyboardHints(bool help, bool footer)
     emit resultOptionsChanged();
 }
 
+void Launcher::setPureSearch(bool on)
+{
+    if (m_pureSearch == on)
+        return;
+    m_pureSearch = on;
+    emit resultOptionsChanged();
+    if (m_window && m_window->isVisible() && m_query.trimmed().isEmpty())
+        search();
+}
+
 void Launcher::setPreviewHotkey(const QString& shortcut)
 {
     const QString value = shortcut.isEmpty() ? QString() : previewkeys::normalized(shortcut);
@@ -1921,12 +1931,13 @@ void Launcher::search(bool more)
         return;
     }
 
-    if (m_scope == Content) {
+    const bool pureEmpty = m_pureSearch && !m_panel && !m_folderSearch && !m_inTaskbarBox && m_query.trimmed().isEmpty();
+    if (m_scope == Content || pureEmpty) {
         m_engine->cancel();
         m_requestId = 0;
         m_pending = false;
         m_contentRunning = false;
-        if (text.isEmpty()) {
+        if (text.isEmpty() || pureEmpty) {
             m_replacePending = false;
             m_results.clear();
             m_haveResults = false;

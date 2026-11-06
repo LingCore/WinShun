@@ -34,6 +34,8 @@ Window {
     readonly property int viewRowHeight: panel ? panelPage.rowHeight : rowHeight
 
     readonly property bool folderMode: !panel && launcher.folderSearch
+    readonly property bool pureEmpty: launcher.pureSearch && !panel && !folderMode && !launcher.inTaskbarBox
+                                      && launcher.query.trim().length === 0 && searchBar.composition.length === 0
     readonly property int rowHeight: folderMode ? 40 : Theme.rowHeight
     // Read once here for all the window's parts and rows (GitHub #111): every
     // item that reads Screen has an attached object of its own.
@@ -1174,6 +1176,7 @@ Window {
 
             SearchBar {
                 id: boxBar
+                minimal: window.pureEmpty
                 width: parent.width
                 launcher: window.launcher
                 placement: window.placement
@@ -1192,7 +1195,7 @@ Window {
                 dpr: window.dpr
                 shown: (window.launcher.mergeFileScope || window.launcher.scope === Launcher.Files || window.launcher.scope === Launcher.Folders
                         || window.launcher.scope === Launcher.Content)
-                       && !window.clipboardBelow && !window.folderMode && window.launcher.pluginKeyword.length === 0
+                       && !window.pureEmpty && !window.clipboardBelow && !window.folderMode && window.launcher.pluginKeyword.length === 0
             }
         }
 
@@ -1200,7 +1203,7 @@ Window {
             width: parent.width
             height: Theme.edge(window.dpr)
             color: Theme.layerEdge
-            visible: !window.clipboardBelow && (window.listRows > 0 || window.showEmptyState)
+            visible: !window.pureEmpty && !window.clipboardBelow && (window.listRows > 0 || window.showEmptyState)
         }
 
         Item {
@@ -1208,7 +1211,7 @@ Window {
             width: parent.width
             height: window.listRows > 0 ? window.listRows * window.rowHeight + 8 + window.hintSpace + window.captionSpace
                                           + (window.fullHeight ? -typeStrip.height : window.headingHeight + window.detailSpace) : 0
-            visible: window.listRows > 0 && !window.clipboardBelow
+            visible: !window.pureEmpty && window.listRows > 0 && !window.clipboardBelow
 
             Hook { // the style's tray under the rows (Theme.tray; none in fluent and brand)
                 anchors.fill: parent
@@ -1696,7 +1699,7 @@ Window {
             compact: window.folderMode
             objectName: "launcherFooter" // the previews read sortMenuOpen
             width: parent.width
-            visible: !window.clipboardBelow
+            visible: !window.pureEmpty && !window.clipboardBelow
             launcher: window.launcher
             frame: window.frame
             dpr: window.dpr

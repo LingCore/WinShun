@@ -414,6 +414,14 @@ void SettingsEditor::setFooterHints(bool on)
     commit();
 }
 
+void SettingsEditor::setPureSearch(bool on)
+{
+    if (m_settings.pureSearch == on)
+        return;
+    m_settings.pureSearch = on;
+    commit();
+}
+
 void SettingsEditor::setPreviewWith(const QString& with)
 {
     if (m_settings.previewWith == with || (with != u"auto" && with != u"builtin"))

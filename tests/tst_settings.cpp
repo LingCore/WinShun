@@ -33,6 +33,24 @@ class SettingsTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void pureSearchPreference()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(!settings.pureSearch);
+        settings.pureSearch = true;
+        QVERIFY(settings.saveChecked());
+        ws::Settings restored;
+        restored.load();
+        QVERIFY(restored.pureSearch);
+        restored.pureSearch = false;
+        QVERIFY(restored.saveChecked());
+        settings.load();
+        QVERIFY(!settings.pureSearch);
+    }
     void doubleTapActionPreference()
     {
         QTemporaryDir profile;

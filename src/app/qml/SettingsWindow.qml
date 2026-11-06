@@ -4107,6 +4107,19 @@ Window {
                 title: qsTr("键盘提示")
 
                 SettingRow {
+                    title: qsTr("纯净搜索模式")
+                    description: qsTr("搜索框空着时只保留输入栏；输入后恢复结果和操作按钮。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响")
+                    keywords: qsTr("纯净;极简;空白;底栏;最近;收藏;pure;minimal").split(";")
+                    ToggleSwitch {
+                        objectName: "pureSearchToggle"
+                        dpr: window.dpr
+                        checked: window.editor.pureSearch
+                        Accessible.name: qsTr("纯净搜索模式")
+                        onToggled: (on) => window.editor.pureSearch = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("显示快捷键帮助按钮")
                     description: qsTr("在搜索框右下角显示入口，点击查看常用快捷键")
                     keywords: qsTr("快捷键;帮助;提示;隐藏;极简").split(";")
