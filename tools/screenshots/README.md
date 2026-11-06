@@ -144,3 +144,12 @@ tools\screenshots\run.ps1 -Exe <要拍的 WinShun.exe，发布版，带拖放圆
 python tools/screenshots/release019.py --exe <独立部署目录>/WinShun.exe --capture <构建目录>/library-plugins/winshun.capture/WinShunCapture.exe --work <新的原图目录> --capture-only
 python tools/screenshots/release019.py --exe <独立部署目录>/WinShun.exe --work <原图目录> --export-only
 ```
+
+## 0.21.0 补拍
+
+`release021.py` 沿用 `release017.py` 的导出和方形品牌模板，只换两张：外观页（`settings/p01-t0.png`，最上面多了三种界面风格，标题改为“界面风格，三种任选”）和新增的运行状况页（`settings/p10-t0.png`，预览自带的演示读数：正在建内容索引）。两张都来自发布程序的 `--preview-settings`，200%、D3D11、独立配置，不动正在运行的 Win顺。`settings.jpg` 是设置搜索的图，左边列表少了“运行状况”一项，其余不变，沿用。
+
+```powershell
+python tools/screenshots/release021.py --exe <独立部署目录>/WinShun.exe --work <新的原图目录> --capture-only
+python tools/screenshots/release021.py --exe <独立部署目录>/WinShun.exe --work <原图目录> --export-only
+```
