@@ -202,6 +202,15 @@ add_test(NAME tst_admintaphint COMMAND tst_admintaphint)
 set_tests_properties(tst_admintaphint PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The same for file dialogs of such programs (GitHub #216).
+qt_add_executable(tst_admindialoghint tst_admindialoghint.cpp)
+target_include_directories(tst_admindialoghint PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_admindialoghint PRIVATE winshun_options Qt6::Test)
+set_target_properties(tst_admindialoghint PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_admindialoghint COMMAND tst_admindialoghint)
+set_tests_properties(tst_admindialoghint PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_wsl tst_wsl.cpp)
 target_link_libraries(tst_wsl PRIVATE wscore Qt6::Test)
 set_target_properties(tst_wsl PROPERTIES WIN32_EXECUTABLE FALSE)

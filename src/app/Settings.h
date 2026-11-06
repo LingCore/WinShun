@@ -94,6 +94,8 @@ struct Settings {
     // The programs run as administrator that were told of, once each, that
     // a double tap cannot be heard over them (AdminTapHint), lower case.
     QStringList adminTapHinted;
+    // ... and that their file dialogs cannot be taken anywhere (AdminDialogHint, GitHub #216).
+    QStringList adminDialogHinted;
     QString shortcutAgain = QStringLiteral("close"); // close | panel: what the shortcut does when the box is up and in front
     QString renderer; // software | d3d11; defaults() picks by memory (defaultRenderer)
     // 网络代理 (GitHub #84), for every request over WinHTTP: system (what Windows

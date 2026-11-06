@@ -97,6 +97,7 @@ DoubleCtrlPauseInFullScreen=false ; 任何程序铺满显示器时都不响应�
 DoubleCtrlExcludedApps=  ; 不响应双击 Ctrl 的程序，如 TheFinals.exe，逗号分隔
 Hotkey=                  ; 额外的全局快捷键，例如 Alt+Space、Ctrl+Shift+F
 AdminTapHinted=          ; 已提示过“它在前面时听不到双击”的管理员程序，如 regedit.exe（每个程序只提示一次，最多 3 个；删掉就会再提示）
+AdminDialogHinted=       ; 已提示过“它的对话框转不过去”的管理员程序，如 setup.exe（同上：每个程序一次，最多 3 个，删掉就会再提示）
 DialogJump=true          ; “打开”“另存为”对话框里按 Ctrl+G，转到文件管理器（资源管理器、Total Commander、Directory Opus、XYplorer、Pulse、OneCommander）正在显示的文件夹
 DialogBar=false          ; “打开”“另存为”对话框下方的搜索框；新装默认关，以前的设置文件里没有这一项时当开（升级不变）
 DialogAutoJump=false     ; 对话框出现时（以及从文件管理器换了文件夹再切回来时）自动转到文件管理器的文件夹

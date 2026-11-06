@@ -679,10 +679,13 @@ private:
     // program, in a notification (AdminTapHint), after it has stayed in
     // front a moment (kAdminTapDwell), so that Alt+Tab past it says nothing.
     void adminTapFront(HWND window);
+    void adminDialogFront(HWND dialog); // a file dialog of a program run as administrator came up (GitHub #216)
     void adminTapCheck();
     QTimer m_adminTapDwell;
     HWND m_adminTapWindow = nullptr; // what came to the front last
     bool m_adminTapShownThisRun = false;
+    bool m_adminDialogShownThisRun = false;
+    QStringList m_adminDialogLogged; // "program verdict", as m_adminTapLogged
     QStringList m_adminTapLogged; // "program verdict": each in the log and the journal once a run
     QElapsedTimer m_keyListenerMade; // the service's listener answers within this of the key listener's start
     bool m_hotkeyOverAdmin = false; // the hotkey is registered and has a modifier: it comes over administrator windows too

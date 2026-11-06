@@ -808,6 +808,7 @@ void Settings::load()
     doubleCtrlExcludedApps = readOrDefault(s, u"Launcher/DoubleCtrlExcludedApps"_s, d.doubleCtrlExcludedApps);
     hotkey = readOrDefault(s, u"Launcher/Hotkey"_s, d.hotkey);
     adminTapHinted = readOrDefault(s, u"Launcher/AdminTapHinted"_s, d.adminTapHinted);
+    adminDialogHinted = readOrDefault(s, u"Launcher/AdminDialogHinted"_s, d.adminDialogHinted);
     shortcutAgain = readOrDefault(s, u"Launcher/ShortcutAgain"_s, d.shortcutAgain).trimmed().toLower();
     if (shortcutAgain != u"panel")
         shortcutAgain = d.shortcutAgain;
@@ -1192,6 +1193,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/DoubleCtrlExcludedApps"_s, doubleCtrlExcludedApps);
     s.setValue(u"Launcher/Hotkey"_s, hotkey);
     s.setValue(u"Launcher/AdminTapHinted"_s, adminTapHinted);
+    s.setValue(u"Launcher/AdminDialogHinted"_s, adminDialogHinted);
     s.setValue(u"Launcher/ShortcutAgain"_s, shortcutAgain);
     s.setValue(u"Launcher/Renderer"_s, renderer);
     s.setValue(u"Proxy/Mode"_s, proxyMode);

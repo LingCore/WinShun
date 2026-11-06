@@ -1,4 +1,5 @@
 #include "App.h"
+#include "AdminDialogHint.h"
 #include "AdminTapHint.h"
 #include "WebSearchProvider.h"
 #include "platform/OcrFiles.h"
@@ -4351,8 +4352,11 @@ void App::applyDialogs()
         callbacks.dialogChanged = [this](HWND dialog) {
             // An elevated dialog just came up: re-probe so the bar knows at
             // once whether it can jump or must fall back to copy.
-            if (dialog && m_serviceNav && integrity::higherThanOurs(dialog))
+            if (dialog && m_serviceNav && integrity::higherThanOurs(dialog)) {
                 m_serviceNav->refresh();
+                // Once that answer has come: a word if nothing can take it anywhere (GitHub #216).
+                QTimer::singleShot(1500ms, this, [this, dialog] { adminDialogFront(dialog); });
+            }
             if (m_dialogBar && (!dialog || m_barWindow || createBarWindow()))
                 m_dialogBar->setDialog(dialog);
         };
@@ -6101,6 +6105,75 @@ void App::adminTapCheck()
     if (who.isEmpty())
         who = f.program;
     m_messages->showNotification(tr("“%1”以管理员身份运行").arg(shortTitle(who)), text, std::move(onClick));
+}
+
+// A file dialog of a program run as administrator, in front a moment: when
+// nothing can take it anywhere (no service for this copy), said once per
+// program, a few at most, one a run (AdminDialogHint.h, GitHub #216). The
+// bar's own line says so too, but only with it on and only under it.
+void App::adminDialogFront(HWND dialog)
+{
+    using namespace admindialog;
+    if (!dialog || !::IsWindow(dialog) || !::IsWindowVisible(dialog) || !integrity::higherThanOurs(dialog)
+        || !m_dialogJump || m_dialogJump->dialog() != dialog)
+        return;
+    Facts f;
+    f.following = m_settings.dialogJump || m_settings.dialogBar || m_settings.dialogAutoJump;
+    const ServiceDialogNav::Reach reach = m_serviceNav ? m_serviceNav->reach() : ServiceDialogNav::Reach::NoService;
+    f.reach = reach == ServiceDialogNav::Reach::Available ? Reach::Service
+        : reach == ServiceDialogNav::Reach::OtherCopy     ? Reach::OtherCopy
+                                                          : Reach::NoService;
+    f.serviceInstalled = ntfs::ServiceVolumeAccess::state() != ntfs::ServiceState::NotInstalled;
+    // Only a portable copy's settings install the service (as for the double tap).
+    f.canInstall = userIsAdministrator() && !Settings::portableFolder().isEmpty()
+        && QFile::exists(QCoreApplication::applicationDirPath() + u"/WinShunService.exe"_s);
+    f.administrator = userIsAdministrator();
+    f.program = foreground::programOf(dialog);
+    f.shownThisRun = m_adminDialogShownThisRun;
+    f.trayShown = m_messages && m_messages->trayVisible();
+    f.shown = m_settings.adminDialogHinted;
+    const Verdict verdict = decide(f);
+    const Fix fix = fixFor(f);
+    if (const QString seen = f.program.toLower() + u' ' + QLatin1StringView(name(verdict)); !m_adminDialogLogged.contains(seen)) {
+        m_adminDialogLogged.push_back(seen);
+        diagnostics::record(u"admin-dialog-hint"_s,
+            {{u"program"_s, f.program}, {u"verdict"_s, QLatin1StringView(name(verdict))},
+                {u"fix"_s, QLatin1StringView(name(fix))}});
+        const QString line = u"File dialog of %1 (run as administrator): %2, fix %3"_s.arg(
+            f.program, QLatin1StringView(name(verdict)), QLatin1StringView(name(fix)));
+        if (verdict == Verdict::Show)
+            qWarning().noquote() << line;
+        else
+            qInfo().noquote() << line;
+    }
+    if (verdict != Verdict::Show)
+        return;
+    m_adminDialogShownThisRun = true;
+    m_settings.adminDialogHinted = remember(m_settings.adminDialogHinted, f.program);
+    m_settings.save();
+    if (m_settingsEditor)
+        m_settingsEditor->setSettings(m_settings); // its copy must not forget it with its next change
+    m_backup->soon();
+
+    QString text;
+    std::function<void()> onClick;
+    if (fix == Fix::Install) {
+        text = tr("它的对话框 Win顺 转不过去，只能复制路径。点这里装上索引服务（只要一次管理员权限），就能直接转过去；以管理员身份运行 Win顺 也行。");
+        onClick = [this] { // the row with the install button, under 索引方式
+            showSettings([this](QQuickWindow* window) {
+                refreshIndexAccess(); // a window made just now knows nothing yet of this copy (portable: that row shown)
+                QMetaObject::invokeMethod(window, "showPlace", Q_ARG(QVariant, QVariant(u"indexService"_s)));
+            });
+        };
+    } else if (fix == Fix::OtherCopy) {
+        text = tr("它的对话框 Win顺 转不过去，只能复制路径：这台电脑的索引服务属于另一份 Win顺。以管理员身份运行这一份 Win顺 就能转过去。");
+    } else {
+        text = tr("它的对话框 Win顺 转不过去，只能复制路径。以管理员身份运行 Win顺 就能转过去。");
+    }
+    QString who = programTitle(dialog);
+    if (who.isEmpty())
+        who = f.program;
+    m_messages->showNotification(tr("“%1”以管理员身份运行").arg(admintap::shortTitle(who)), text, std::move(onClick));
 }
 
 void App::logLauncherLostFront(HWND front)
