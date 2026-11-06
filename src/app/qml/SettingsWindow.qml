@@ -32,6 +32,7 @@ Window {
         { title: qsTr("高级"), glyph: "" }, // Settings
         { title: qsTr("AI 助手"), glyph: "" }, // Robot
         { title: qsTr("插件"), glyph: "" }, // Puzzle
+        { title: qsTr("运行状况"), glyph: "\uE9D9" }, // Diagnostic: pulse
         { title: Gleaning.title, gleaning: true } // the author's works, set apart at the bottom of the list
     ]
     // Other names of each page, for the search; ";" between them. A word
@@ -47,6 +48,7 @@ Window {
         qsTr("其他;更多;advanced"),
         qsTr("MCP;人工智能;大模型;Claude;Cursor;ai"),
         qsTr("扩展;脚本;PowerShell;Python;内置功能;模块;网页搜索;搜索引擎;网址;web;plugin;extension;module"),
+        qsTr("资源;性能;走势;图表;进程;health;performance"),
         ""
     ]
     // The tabs of the pages too long for one screen, each a few sections
@@ -62,6 +64,7 @@ Window {
         [],
         window.editor.mcp ? [qsTr("权限"), qsTr("连接客户端"), qsTr("隐私与记录")] : [], // the others: nothing while off
         window.editor.plugins.developerMode ? [qsTr("已安装"), qsTr("插件库"), qsTr("开发者")] : [qsTr("已安装"), qsTr("插件库")], // 开发者: in developer mode only
+        [],
         []
     ]
     // 按键一览: every shortcut of the search box and the clipboard (Shortcuts),
@@ -96,13 +99,14 @@ Window {
         }
         return sections
     }
-    readonly property int gleaningPage: 10
+    readonly property int gleaningPage: 11
     readonly property int webPage: pluginsPage // compatibility for preview clients
     readonly property int favoritesPage: 5 // 收藏夹 (FavoritesSection)
     readonly property int clipboardPage: 6
     readonly property int advancedPage: 7 // where the updates are
     readonly property int aiPage: 8 // AI 助手: the MCP server and the command line (AiAccessSection, AiCommandLineSection, AiClientsSection, AiPrivacySection)
     readonly property int pluginsPage: 9 // 插件: 已安装 (PluginsSection), 插件库 (PluginGallerySection), 开发者 (PluginDevSection)
+    readonly property int healthPage: 10 // 运行状况 (HealthPage)
     readonly property string tapKey: editor.doubleTapKey === "alt" ? "Alt" : editor.doubleTapKey === "shift" ? "Shift" : "Ctrl" // the key tapped twice to open Win顺
     property int webEditing: -2
     property Item webReturnFocus: null
@@ -234,7 +238,7 @@ Window {
     // the box having the keyboard makes the filling go as fast as it can
     // (fillFast), something typed makes the rest one per turn (fillNow).
     property bool allPagesLoaded: false
-    readonly property list<PageSlot> pageSlots: [slot0, slot1, slot2, slot3, slot4, slot5, slot6, slot7, slot8, slot9]
+    readonly property list<PageSlot> pageSlots: [slot0, slot1, slot2, slot3, slot4, slot5, slot6, slot7, slot8, slot9, slot10]
     // 按键一览's sections made so far (its Repeater's model, one element each).
     ListModel { id: shortcutModel }
     function makeShortcuts(count: int): void {
@@ -5018,64 +5022,6 @@ Window {
             }
 
             SettingsSection {
-                id: healthSection
-
-                // Task Manager's Memory column, told apart; read every two
-                // seconds while this page is on screen, never otherwise.
-                readonly property var h: window.editor.health
-                readonly property bool known: h.total !== undefined
-                readonly property bool busy: known && h.busy
-                readonly property var tasks: known ? h.tasks : []
-                // Each part in the total's own measure (what is in memory now); a part
-                // smaller than 1 MB is said in words, never as "0 MB".
-                readonly property string fileIndexText: !known ? "" : h.fileIndex >= 1
-                    ? qsTr("文件索引 %1 MB（搜索靠它）").arg(h.fileIndex) + (h.fileIndexParked >= 4 ? "，" + qsTr("另有 %1 MB 已暂存，用到时再读回").arg(h.fileIndexParked) : "")
-                    : (h.fileIndexParked >= 1 ? qsTr("文件索引已暂存，用到时再读回") : qsTr("文件索引不到 1 MB"))
-                readonly property string otherText: !known ? "" : h.other >= 1 ? qsTr("界面和其他 %1 MB").arg(h.other) : qsTr("界面和其他不到 1 MB")
-
-                page: window.advancedPage
-                width: parent.width
-                title: qsTr("运行状况")
-                glyph: ""
-
-                Timer {
-                    interval: 2000
-                    repeat: true
-                    triggeredOnStart: true
-                    running: healthSection.visible && window.visible
-                    onTriggered: window.editor.refreshHealth()
-                }
-
-                SettingRow {
-                    title: healthSection.known ? qsTr("Win顺 现在用了 %1 MB").arg(healthSection.h.total) : qsTr("正在读取内存占用…")
-                    keywords: qsTr("内存;占用;任务管理器;归还;释放;卡;运行状况;memory;ram;task manager").split(";")
-                    description: !healthSection.known ? "" : healthSection.fileIndexText
-                                 + " · " + healthSection.otherText
-                                 + (healthSection.h.plugins > 0 ? "\n" + qsTr("插件 %1 MB").arg(healthSection.h.plugins) : "")
-                                 + (healthSection.h.documents > 0
-                                    ? (healthSection.h.plugins > 0 ? " · " : "\n") + qsTr("读文档的进程 %1 MB（读完 30 秒后退出）").arg(healthSection.h.documents) : "")
-                                 + (healthSection.known ? "\n" + healthSection.h.lastTrim : "")
-                                 + (healthSection.busy ? "\n" + qsTr("后台还在忙，归还后它会再用回一些") : "")
-
-                    FlatButton {
-                        text: qsTr("现在就归还")
-                        glyph: ""
-                        contentSpacing: 8
-                        onClicked: window.editor.giveMemoryBack()
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("现在在做什么")
-                    keywords: qsTr("后台;进度;剩余时间;建立索引;何时结束;progress;busy").split(";")
-                    description: !healthSection.known ? "" : healthSection.busy
-                        ? healthSection.tasks.map((task) => task.name + (task.count.length > 0 ? " " + task.count : "")
-                                                   + (task.remaining.length > 0 ? "，" + task.remaining : "")).join("\n")
-                        : healthSection.h.idleText
-                }
-            }
-
-            SettingsSection {
                 page: window.advancedPage
                 width: parent.width
                 title: qsTr("网络、存储与诊断")
@@ -5374,6 +5320,17 @@ Window {
                 plugins: window.editor.plugins
             }
             // </page 9>
+                } }
+            }
+
+            PageSlot {
+                id: slot10
+                index: 10
+                content: Component { HealthPage {
+                    host: settingsContext
+                    editor: window.editor
+                    pageIndex: window.healthPage
+                    shown: window.visible && window.currentPage === window.healthPage && !window.searching
                 } }
             }
         }

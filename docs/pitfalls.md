@@ -5059,3 +5059,9 @@
 - **现象**：插件窗口识别时，进度下面的当前文件只显示“C:”和下一行半截路径，没有省略号，文件名看不到。
 - **原因**：计数和路径放在同一个 `Text` 里，`wrapMode: Text.Wrap` 加 `maximumLineCount: 3` 和 `elide: Text.ElideMiddle`。Qt 只有 `ElideRight` 能和换行一起用，`ElideMiddle`／`ElideLeft` 只对单行有效（“多行文字粘贴进搜索框，灰色的字铺满整个窗口”一条也提到过），多出的行直接截掉。
 - **做法**：会很长的路径单独放一行不换行的 `Text`，用 `ElideMiddle`；要换行的说明另放一个 `Text`（`Controller::progressFile`）。
+
+### 读一次进程列表要 20 毫秒，界面每秒卡一下
+
+- **现象**：“运行状况”页每秒刷新一次，量下来每次采样约 20 ms，放在界面线程上会一顿一顿的。
+- **原因**：`NtQuerySystemInformation(SystemProcessInformation)` 每次把所有进程连同每个线程一起交回来，这台电脑 955 个进程时是 2.6 MB、约 20 ms（`CreateToolhelp32Snapshot` 内部也用它，更慢，约 34 ms），哪怕只要其中几个 WinShun*。换成用进程句柄逐个读，又打不开 LocalSystem 的后台服务（`OpenProcess` 被拒），新起的读文档进程也发现不了。
+- **做法**：进程列表放到线程池里读（`HealthMonitor::take` → `memory::look`），读完回到界面线程再算；缓冲用 `VirtualAlloc` 拿、读完 `VirtualFree` 还掉，不在堆里常驻 2.6 MB。文件索引的驻留页（`QueryWorkingSetEx`，128 MB 约 1.3 ms）留在界面线程，要索引的读锁，用 `tryReadLock`，不等写锁。

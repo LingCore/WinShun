@@ -1,0 +1,49 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+namespace ws::memory {
+
+// Every process of Win顺's, as Windows counts it, from one look at the
+// process list (NtQuerySystemInformation): no process is opened, so the
+// service, which runs as LocalSystem, is seen as well from an ordinary user's
+// Win顺, as Task Manager sees it. Only the processes whose program is named
+// WinShun* are kept (and this one, whatever its name).
+struct Process {
+    std::uint32_t pid = 0;
+    std::uint32_t parent = 0;
+    std::int64_t created = 0; // FILETIME, 100 ns
+    std::uint64_t privateBytes = 0; // the private working set: Task Manager's Memory column
+    std::uint64_t cpu = 0; // user + kernel time, 100 ns
+    std::uint64_t readBytes = 0; // all reads since it started (files, the volume, pipes)
+    wchar_t exe[40] {}; // "WinShunExtract.exe"; cut if longer
+};
+
+struct Look {
+    bool ok = false;
+    std::uint32_t self = 0;
+    std::int64_t atMs = 0; // wall clock, ms since 1970
+    std::int64_t atFt = 0; // the same as a FILETIME (100 ns)
+    std::vector<Process> processes;
+};
+
+// One look. Windows hands back the whole list (every process and thread: ~2.6 MB
+// and ~20 ms with 950 processes), so it is taken off the GUI thread; the
+// buffer is the system's own pages, given back at once, not kept between
+// looks. `sizeHint`: the size the last one needed, to ask once, not twice.
+Look look(std::size_t& sizeHint);
+
+// The family of `root`: it and the WinShun* processes under it, parents
+// first. A parent id may name a process that is gone and its number given to
+// another: a child is only one if it was made after its parent.
+std::vector<const Process*> family(const std::vector<Process>& all, std::uint32_t root);
+
+// How many bytes of these blocks (address, size) are in this process's
+// private working set now (QueryWorkingSetEx, page by page, in small steps;
+// ~1.3 ms for 128 MB).
+std::uint64_t residentBytes(const std::vector<std::pair<const void*, std::size_t>>& blocks);
+
+} // namespace ws::memory

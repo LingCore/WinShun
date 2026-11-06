@@ -2391,6 +2391,189 @@
     </message>
 </context>
 <context>
+    <name>HealthPage</name>
+    <message>
+        <source>%1 MB</source>
+        <translation>%1 MB</translation>
+    </message>
+    <message>
+        <source>不到 1 MB</source>
+        <translation>under 1 MB</translation>
+    </message>
+    <message>
+        <source>0 MB</source>
+        <translation>0 MB</translation>
+    </message>
+    <message>
+        <source>%1 MB/秒</source>
+        <translation>%1 MB/s</translation>
+    </message>
+    <message>
+        <source>现在</source>
+        <translation>Now</translation>
+    </message>
+    <message>
+        <source>和任务管理器里 Win顺 那一行的“内存”是同一个数；后台服务在任务管理器里单独一行，不算在里面。</source>
+        <translation>The same number as the Memory column of WinShun's row in Task Manager; the background service has a row of its own there and is not counted in it.</translation>
+    </message>
+    <message>
+        <source>Win顺 现在用了 %1</source>
+        <translation>WinShun is using %1</translation>
+    </message>
+    <message>
+        <source>正在读取内存占用…</source>
+        <translation>Reading memory use…</translation>
+    </message>
+    <message>
+        <source>内存;占用;任务管理器;归还;释放;卡;运行状况;CPU;磁盘;memory;ram;task manager</source>
+        <translation>memory;usage;task manager;give back;free;slow;health;CPU;disk;ram</translation>
+    </message>
+    <message>
+        <source>CPU %1 · 读取 %2</source>
+        <translation>CPU %1 · reading %2</translation>
+    </message>
+    <message>
+        <source>后台还在忙，归还后它会再用回一些</source>
+        <translation>The background is still busy and will take some back</translation>
+    </message>
+    <message>
+        <source>现在就归还</source>
+        <translation>Give back now</translation>
+    </message>
+    <message>
+        <source>走势</source>
+        <translation>Over time</translation>
+    </message>
+    <message>
+        <source>指向图表，看那一刻在做什么</source>
+        <translation>Point at a chart to see what was going on at that moment</translation>
+    </message>
+    <message>
+        <source>10 分钟</source>
+        <translation>10 min</translation>
+    </message>
+    <message>
+        <source>1 小时</source>
+        <translation>1 hour</translation>
+    </message>
+    <message>
+        <source>24 小时</source>
+        <translation>24 hours</translation>
+    </message>
+    <message>
+        <source>内存</source>
+        <translation>Memory</translation>
+    </message>
+    <message>
+        <source>CPU</source>
+        <translation>CPU</translation>
+    </message>
+    <message>
+        <source>读取</source>
+        <translation>Reads</translation>
+    </message>
+    <message>
+        <source>文件索引</source>
+        <translation>File index</translation>
+    </message>
+    <message>
+        <source>界面和其他</source>
+        <translation>Interface and other</translation>
+    </message>
+    <message>
+        <source>插件</source>
+        <translation>Plugins</translation>
+    </message>
+    <message>
+        <source>读文档</source>
+        <translation>Document reader</translation>
+    </message>
+    <message>
+        <source>后台服务</source>
+        <translation>Background service</translation>
+    </message>
+    <message>
+        <source>Win顺</source>
+        <translation>WinShun</translation>
+    </message>
+    <message>
+        <source>共 %1</source>
+        <translation>%1 in all</translation>
+    </message>
+    <message>
+        <source>还没有记录，稍等几秒</source>
+        <translation>Nothing recorded yet, give it a few seconds</translation>
+    </message>
+    <message>
+        <source>10 分钟前</source>
+        <translation>10 min ago</translation>
+    </message>
+    <message>
+        <source>1 小时前</source>
+        <translation>1 hour ago</translation>
+    </message>
+    <message>
+        <source>24 小时前</source>
+        <translation>24 hours ago</translation>
+    </message>
+    <message>
+        <source>5 分钟前</source>
+        <translation>5 min ago</translation>
+    </message>
+    <message>
+        <source>30 分钟前</source>
+        <translation>30 min ago</translation>
+    </message>
+    <message>
+        <source>12 小时前</source>
+        <translation>12 hours ago</translation>
+    </message>
+    <message>
+        <source>现在在做什么</source>
+        <translation>What it is doing now</translation>
+    </message>
+    <message>
+        <source>正在读取…</source>
+        <translation>Reading…</translation>
+    </message>
+    <message>
+        <source>后台;进度;剩余时间;建立索引;何时结束;progress;busy</source>
+        <translation>background;progress;time left;building the index;when done;busy</translation>
+    </message>
+    <message>
+        <source>各个进程</source>
+        <translation>Processes</translation>
+    </message>
+    <message>
+        <source>读磁盘、建索引；任务管理器里单独一行</source>
+        <translation>reads the disks, builds the index; its own row in Task Manager</translation>
+    </message>
+    <message>
+        <source>读完 30 秒后退出</source>
+        <translation>quits 30 seconds after it is done</translation>
+    </message>
+    <message>
+        <source>搜索框、剪贴板、设置都在这里</source>
+        <translation>the search box, clipboard and settings</translation>
+    </message>
+    <message>
+        <source>最近的事</source>
+        <translation>Recently</translation>
+    </message>
+    <message>
+        <source>这些记录只存在内存里，最多 24 小时，约 %1 KB；重启 Win顺 后重新开始。</source>
+        <translation>These records are kept in memory only, for up to 24 hours, about %1 KB; they start over when WinShun restarts.</translation>
+    </message>
+    <message>
+        <source>（进行中）</source>
+        <translation> (in progress)</translation>
+    </message>
+    <message>
+        <source>还没有什么事</source>
+        <translation>Nothing yet</translation>
+    </message>
+</context>
+<context>
     <name>HotkeyRecorder</name>
     <message>
         <source>正在录制快捷键</source>
@@ -6349,6 +6532,10 @@ Right: center window · Drag: move window</translation>
         <translation>What to index</translation>
     </message>
     <message>
+        <source>资源;性能;走势;图表;进程;health;performance</source>
+        <translation>resources;performance;chart;processes;health</translation>
+    </message>
+    <message>
         <source>按键一览</source>
         <translation>Keys at a glance</translation>
     </message>
@@ -6898,66 +7085,6 @@ Right: center window · Drag: move window</translation>
     <message>
         <source>运行状况</source>
         <translation>Health</translation>
-    </message>
-    <message>
-        <source>Win顺 现在用了 %1 MB</source>
-        <translation>WinShun is using %1 MB now</translation>
-    </message>
-    <message>
-        <source>正在读取内存占用…</source>
-        <translation>Reading memory use…</translation>
-    </message>
-    <message>
-        <source>内存;占用;任务管理器;归还;释放;卡;运行状况;memory;ram;task manager</source>
-        <translation>memory;ram;usage;task manager;give back;release;slow;health</translation>
-    </message>
-    <message>
-        <source>文件索引 %1 MB（搜索靠它）</source>
-        <translation>File index %1 MB (search runs on it)</translation>
-    </message>
-    <message>
-        <source>界面和其他 %1 MB</source>
-        <translation>Interface and the rest %1 MB</translation>
-    </message>
-    <message>
-        <source>另有 %1 MB 已暂存，用到时再读回</source>
-        <translation>another %1 MB is parked, read back when needed</translation>
-    </message>
-    <message>
-        <source>文件索引已暂存，用到时再读回</source>
-        <translation>File index is parked; read back when needed</translation>
-    </message>
-    <message>
-        <source>文件索引不到 1 MB</source>
-        <translation>File index under 1 MB</translation>
-    </message>
-    <message>
-        <source>界面和其他不到 1 MB</source>
-        <translation>Interface and the rest under 1 MB</translation>
-    </message>
-    <message>
-        <source>插件 %1 MB</source>
-        <translation>Plugins %1 MB</translation>
-    </message>
-    <message>
-        <source>读文档的进程 %1 MB（读完 30 秒后退出）</source>
-        <translation>Document readers %1 MB (they exit 30 s after reading)</translation>
-    </message>
-    <message>
-        <source>后台还在忙，归还后它会再用回一些</source>
-        <translation>The background is still busy and will take some back</translation>
-    </message>
-    <message>
-        <source>现在就归还</source>
-        <translation>Give back now</translation>
-    </message>
-    <message>
-        <source>现在在做什么</source>
-        <translation>What it is doing now</translation>
-    </message>
-    <message>
-        <source>后台;进度;剩余时间;建立索引;何时结束;progress;busy</source>
-        <translation>background;progress;time left;building the index;when done;busy</translation>
     </message>
     <message>
         <source>网络、存储与诊断</source>
@@ -7984,14 +8111,6 @@ Right: center window · Drag: move window</translation>
     <message>
         <source>、</source>
         <translation>, </translation>
-    </message>
-    <message>
-        <source>还没有归还过</source>
-        <translation>Nothing given back yet</translation>
-    </message>
-    <message>
-        <source>上次归还：%1，还了 %2 MB</source>
-        <translation>Last given back: %1, %2 MB</translation>
     </message>
     <message>
         <source>文件夹菜单</source>
@@ -10080,6 +10199,197 @@ Content index: %5</translation>
     <message>
         <source>未知</source>
         <translation>Unknown</translation>
+    </message>
+</context>
+<context>
+    <name>ws::HealthMonitor</name>
+    <message>
+        <source>Win顺 主程序</source>
+        <translation>WinShun</translation>
+    </message>
+    <message>
+        <source>后台服务</source>
+        <translation>Background service</translation>
+    </message>
+    <message>
+        <source>读文档</source>
+        <translation>Document reader</translation>
+    </message>
+    <message>
+        <source>插件运行环境</source>
+        <translation>Plugin host</translation>
+    </message>
+    <message>
+        <source>截图录屏</source>
+        <translation>Screenshot &amp; recording</translation>
+    </message>
+    <message>
+        <source>图片文字搜索</source>
+        <translation>Text in pictures</translation>
+    </message>
+    <message>
+        <source>语义搜索</source>
+        <translation>Semantic search</translation>
+    </message>
+    <message>
+        <source>翻译</source>
+        <translation>Translate</translation>
+    </message>
+    <message>
+        <source>书签</source>
+        <translation>Bookmarks</translation>
+    </message>
+    <message>
+        <source>休息提醒</source>
+        <translation>Break reminder</translation>
+    </message>
+    <message>
+        <source>LocalSend</source>
+        <translation>LocalSend</translation>
+    </message>
+    <message>
+        <source>资源管理器标签</source>
+        <translation>Explorer tabs</translation>
+    </message>
+    <message>
+        <source>系统开关</source>
+        <translation>System switches</translation>
+    </message>
+    <message>
+        <source>小工具</source>
+        <translation>Tools</translation>
+    </message>
+    <message>
+        <source>AI 助手连接</source>
+        <translation>AI assistant link</translation>
+    </message>
+    <message>
+        <source>更新程序</source>
+        <translation>Updater</translation>
+    </message>
+    <message>
+        <source>%1 MB</source>
+        <translation>%1 MB</translation>
+    </message>
+    <message>
+        <source>不到 1 MB</source>
+        <translation>under 1 MB</translation>
+    </message>
+    <message>
+        <source>%1 秒</source>
+        <translation>%1 s</translation>
+    </message>
+    <message>
+        <source>%1 分钟</source>
+        <translation>%1 minutes</translation>
+    </message>
+    <message>
+        <source>%1 小时 %2 分</source>
+        <translation>%1 h %2 min</translation>
+    </message>
+    <message>
+        <source>文件索引</source>
+        <translation>File index</translation>
+    </message>
+    <message>
+        <source>另有 %1 MB 已暂存，用到时再读回</source>
+        <translation>another %1 MB is parked, read back when needed</translation>
+    </message>
+    <message>
+        <source>搜索靠它</source>
+        <translation>what searches use</translation>
+    </message>
+    <message>
+        <source>界面和其他</source>
+        <translation>Interface and other</translation>
+    </message>
+    <message>
+        <source>窗口、剪贴板历史、内容索引的缓冲</source>
+        <translation>windows, clipboard history, content index buffers</translation>
+    </message>
+    <message>
+        <source>插件</source>
+        <translation>Plugins</translation>
+    </message>
+    <message>
+        <source>读完 30 秒后退出</source>
+        <translation>quits 30 seconds after it is done</translation>
+    </message>
+    <message>
+        <source>还没有归还过</source>
+        <translation>Nothing given back yet</translation>
+    </message>
+    <message>
+        <source>上次归还：%1，还了 %2 MB</source>
+        <translation>Last given back: %1, %2 MB</translation>
+    </message>
+    <message>
+        <source> · </source>
+        <translation> · </translation>
+    </message>
+    <message>
+        <source>加载文件索引</source>
+        <translation>Loaded the file index</translation>
+    </message>
+    <message>
+        <source>第一次建立文件索引</source>
+        <translation>Built the file index for the first time</translation>
+    </message>
+    <message>
+        <source>重建文件索引</source>
+        <translation>Rebuilt the file index</translation>
+    </message>
+    <message>
+        <source>读文件内容，%1 个文件</source>
+        <translation>Read file contents, %1 files</translation>
+    </message>
+    <message>
+        <source>读文件内容</source>
+        <translation>Read file contents</translation>
+    </message>
+    <message>
+        <source>读一个大文档</source>
+        <translation>Read a big document</translation>
+    </message>
+    <message>
+        <source>保存索引</source>
+        <translation>Saved the index</translation>
+    </message>
+    <message>
+        <source>搬索引文件夹</source>
+        <translation>Moved the index folder</translation>
+    </message>
+    <message>
+        <source>闲着时归还了 %1 MB</source>
+        <translation>Gave back %1 MB while idle</translation>
+    </message>
+    <message>
+        <source>手动归还了 %1 MB</source>
+        <translation>Gave back %1 MB on request</translation>
+    </message>
+    <message>
+        <source>页面换出到系统的备用内存，用到时再读回</source>
+        <translation>Pages moved to Windows' standby memory, read back when needed</translation>
+    </message>
+    <message>
+        <source>进行中，已经 %1，内存最高 %2</source>
+        <translation>In progress for %1, memory at most %2</translation>
+    </message>
+    <message>
+        <source>%1–%2，用了 %3，内存最高 %4</source>
+        <translation>%1–%2, took %3, memory at most %4</translation>
+    </message>
+    <message>
+        <source>（这个读文档的进程最多 %1）</source>
+        <translation> (the document reader at most %1)</translation>
+    </message>
+    <message>
+        <source>正在建立内容索引</source>
+        <translation>Building the content index</translation>
+    </message>
+    <message>
+        <source>约 3–5 分钟</source>
+        <translation>about 3–5 minutes</translation>
     </message>
 </context>
 <context>

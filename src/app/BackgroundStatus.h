@@ -42,6 +42,8 @@ public:
 
     // The user asked for the index to be built again (the tray's 重建索引).
     void rebuildRequested();
+    // Whether the index being refreshed was asked for again by the user.
+    bool rebuilding() const noexcept { return m_rebuilding; }
     void setMovePercent(int percent) { m_movePercent = percent; }
     // A job of more than two minutes ended: title and text for a notice.
     std::function<void(const QString& title, const QString& text)> onFinished;

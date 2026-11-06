@@ -228,6 +228,8 @@ public:
     FileIndex& operator=(const FileIndex&) = delete;
 
     [[nodiscard]] std::shared_lock<std::shared_mutex> readLock() const { return std::shared_lock(m_mutex); }
+    // The same if it can be had at once (owns_lock()), else none: for a look that may skip a turn.
+    [[nodiscard]] std::shared_lock<std::shared_mutex> tryReadLock() const { return std::shared_lock(m_mutex, std::try_to_lock); }
     [[nodiscard]] std::unique_lock<std::shared_mutex> writeLock()
     {
         const std::lock_guard gate(m_writerGate);
