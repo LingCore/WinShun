@@ -13,6 +13,7 @@ Item {
     property string kind // permissions | install | uninstall
     property var info: ({})
     property bool open: false
+    readonly property real dpr: Screen.devicePixelRatio
     property bool animated: true // false: shown at once (the offscreen preview, which renders no frames between)
     property bool fitToWindow: false // the first-run window can be shorter than the permissions list
     // 更新并允许: an upgrade of a plugin that is on, whose new version asks for more (the permissions shown, the new ones marked).
@@ -59,7 +60,7 @@ Item {
 
     Rectangle { // dims the window; clicks stay out of it
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, Theme.dark ? 0.5 : 0.3)
+        color: Theme.tok("scrim", Qt.rgba(0, 0, 0, Theme.dark ? 0.5 : 0.3))
 
         MouseArea {
             anchors.fill: parent
@@ -69,17 +70,13 @@ Item {
         }
     }
 
-    Rectangle {
+    Item {
         id: card
         objectName: "pluginDialogCard"
 
         anchors.centerIn: parent
         width: Math.min(560, parent.width - 48)
         height: dialog.fitToWindow ? Math.min(content.implicitHeight + 48, dialog.height - 32) : content.implicitHeight + 48
-        radius: Theme.largeCardRadius
-        color: Theme.menuBackground
-        border.width: 1
-        border.color: Theme.windowEdge
         scale: dialog.open ? 1 : 0.96
         Behavior on scale { enabled: dialog.animated; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
@@ -93,6 +90,12 @@ Item {
                 dialog.accept(false)
             else
                 primary.clicked()
+        }
+
+        Hook { // the style's floating box (Theme.menuFrame)
+            anchors.fill: parent
+            part: Theme.menuFrame
+            dpr: dialog.dpr
         }
 
         MouseArea { anchors.fill: parent } // a click on the card does not reach the dimmer
@@ -267,8 +270,10 @@ Item {
                     height: primary.implicitHeight
 
                     FlatButton { // uninstall: the plugin alone, its data kept
+                        dpr: dialog.dpr
                         visible: dialog.kind === "uninstall" && dialog.info.hasData === true && dialog.info.keepSettings !== true
                         anchors.left: parent.left
+                        role: "dialog"
                         flat: true
                         text: qsTr("只删插件，留下数据")
                         onClicked: dialog.accept(false)
@@ -279,12 +284,16 @@ Item {
                         spacing: 8
 
                         FlatButton {
+                            dpr: dialog.dpr
+                            role: "dialog"
                             text: qsTr("取消")
                             onClicked: dialog.reject()
                         }
                         FlatButton {
+                            dpr: dialog.dpr
                             id: primary
                             objectName: "pluginDialogAccept"
+                            role: "dialog"
                             highlighted: true
                             text: dialog.kind === "permissions" ? qsTr("打开")
                                 : dialog.allowing ? qsTr("更新并允许")
@@ -297,6 +306,7 @@ Item {
             }
         }
         ListScrollBar {
+            dpr: dialog.dpr
             visible: dialog.fitToWindow && dialogScroll.contentHeight > dialogScroll.height
             x: parent.width - width - 3
             y: 24

@@ -1200,6 +1200,17 @@ bool App::createWindow()
     const auto roots = m_qml->rootObjects();
     if (roots.isEmpty())
         return false;
+    // The Theme made now, whatever Main uses: it writes the look C++ draws
+    // by (SystemTheme::nativeLook) as it is made and as it changes. The
+    // plugins started before it get it at once, and every change after.
+    m_qml->singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
+    const auto nativeLookChanged = [this] {
+        if (m_pluginHost)
+            m_pluginHost->setAppearance(m_language, isDarkMode() ? u"dark"_s : u"light"_s, pluginLook());
+        updateSearchBoxLook();
+    };
+    nativeLookChanged();
+    SystemTheme::onNativeLookChanged(this, nativeLookChanged);
     m_window = qobject_cast<QQuickWindow*>(roots.constFirst());
     if (!m_window)
         return false;
@@ -1560,6 +1571,7 @@ void App::guardDarkFrames()
 void App::applyAppearance()
 {
     SystemTheme::setRoundedCorners(m_settings.corners == u"round");
+    SystemTheme::setUiStyle(m_settings.uiStyle);
     updateSearchBoxLook(); // the native child redraws on its own thread
     // 界面大小: QML follows SystemTheme; the bar by file dialogs is placed by its heights.
     if (SystemTheme::uiSize() != m_settings.uiSize) {
@@ -2098,8 +2110,13 @@ void App::prefetchTrayMenus()
 
 QJsonObject App::pluginLook() const
 {
-    return {{u"locale"_s, m_language}, {u"themeSetting"_s, m_settings.theme}, {u"corners"_s, m_settings.corners},
-        {u"uiSize"_s, m_settings.uiSize}, {u"transparency"_s, m_settings.transparency}, {u"renderer"_s, m_settings.renderer}};
+    QJsonObject look {{u"locale"_s, m_language}, {u"themeSetting"_s, m_settings.theme}, {u"corners"_s, m_settings.corners},
+        {u"uiStyle"_s, m_settings.uiStyle}, {u"uiSize"_s, m_settings.uiSize}, {u"transparency"_s, m_settings.transparency}, {u"renderer"_s, m_settings.renderer}};
+    // The style's colours and radii, for plugins that draw without QML (see
+    // docs/plugins.md, "外观"); none until the launcher's Theme is made.
+    if (const QJsonObject native = SystemTheme::nativeLookJson(); !native.isEmpty())
+        look.insert(u"nativeLook"_s, native);
+    return look;
 }
 
 void App::setUpAppTools()
@@ -2638,6 +2655,18 @@ void App::updateSearchBoxLook()
     look.placeholder = tr("想搜索什么…").toStdWString();
     look.label = tr("搜索").toStdWString();
     look.accent = RGB(accent.red(), accent.green(), accent.blue());
+    // A 界面风格 that marks its search field in colours of its own (a caret
+    // colour: brand, tactile) marks the box so too, its caret and selection;
+    // otherwise (fluent) the box keeps the accent at the taskbar's light or
+    // dark alpha, as Windows' own box.
+    const QColor caret = SystemTheme::nativeColor("caret", Qt::transparent);
+    look.caret = caret.rgba();
+    look.selection = caret.alpha() ? SystemTheme::nativeColor("textSelection", Qt::transparent).rgba() : 0;
+    // Its fill, edge and corner as the style's search field, where it has its own (brand, tactile).
+    look.fill = SystemTheme::nativeColor("searchBoxFill", Qt::transparent).rgba();
+    look.edge = SystemTheme::nativeColor("searchBoxEdge", Qt::transparent).rgba();
+    look.radius = SystemTheme::nativeReal("searchBoxRadius", -1);
+    look.styleDark = SystemTheme::nativeLook().value(u"dark"_s).toBool();
     look.monoIcon = m_settings.taskbarIcon == u"mono";
     look.roundedCorners = win::roundedCorners();
     using Style = taskbar::SearchBox::Style;

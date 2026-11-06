@@ -14,8 +14,8 @@ set_target_properties(WinShunCapture PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY
 # into this one, whose URI is WinShun too (another process, so no clash).
 set(app_dir ${PROJECT_SOURCE_DIR}/src/app)
 set(shared_qml
-    Theme.qml UiScale.qml WindowEdge.qml HoverTip.qml DropMenu.qml Glyph.qml TitleBar.qml ToggleSwitch.qml FlatButton.qml
-    InputBox.qml CenteredNumber.qml KeyCap.qml HotkeyRecorder.qml ListScrollBar.qml ListWheelScroll.qml
+    Theme.qml Hook.qml UiScale.qml WindowEdge.qml HoverTip.qml DropMenu.qml Glyph.qml TitleBar.qml ToggleSwitch.qml FlatButton.qml
+    InputBox.qml Caret.qml CenteredNumber.qml KeyCap.qml HotkeyRecorder.qml ListScrollBar.qml ListWheelScroll.qml
     ScrollPixelAlignment.qml SettingsSection.qml SettingRow.qml PageTabs.qml ScopeTabs.qml)
 set(capture_qml)
 foreach(name IN LISTS shared_qml)
@@ -30,6 +30,18 @@ set_source_files_properties("${app_dir}/qml/Theme.qml" PROPERTIES QT_QML_SINGLET
 foreach(file IN LISTS capture_qml)
     get_filename_component(name "${file}" NAME)
     set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${name}")
+endforeach()
+# The 界面风格, as WinShun's own module has them (src/app/CMakeLists.txt).
+file(GLOB theme_qml CONFIGURE_DEPENDS "${app_dir}/qml/themes/*/*.qml")
+foreach(file IN LISTS theme_qml)
+    file(RELATIVE_PATH alias "${app_dir}/qml" "${file}")
+    set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${alias}" QT_QML_SKIP_QMLDIR_ENTRY TRUE)
+endforeach()
+list(APPEND capture_qml ${theme_qml})
+file(GLOB theme_images CONFIGURE_DEPENDS "${app_dir}/qml/themes/*/*.png")
+foreach(file IN LISTS theme_images)
+    file(RELATIVE_PATH alias "${app_dir}/qml" "${file}")
+    set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${alias}")
 endforeach()
 
 qt_add_library(WinShunCaptureApp SHARED
@@ -68,7 +80,9 @@ qt_add_qml_module(WinShunCaptureApp
     VERSION 1.0
     NO_PLUGIN
     ${qml_import_scan}
+    NO_GENERATE_EXTRA_QMLDIRS
     QML_FILES ${capture_qml}
+    RESOURCES ${theme_images}
     SOURCES
         CaptureSettings.cpp CaptureSettings.h
         ${app_dir}/SystemTheme.cpp ${app_dir}/SystemTheme.h

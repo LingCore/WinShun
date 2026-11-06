@@ -63,6 +63,7 @@ Window {
             font.weight: Theme.fontStrong
         }
         FlatButton {
+            dpr: window.dpr
             id: closeButton
             anchors.right: parent.right
             anchors.rightMargin: 8
@@ -74,17 +75,19 @@ Window {
             onClicked: window.ocr.close()
             Component.onCompleted: window.frame.addControl(closeButton)
         }
-        Rectangle {
+        Hook { // the style's separator
             anchors.bottom: parent.bottom
             width: parent.width
-            height: Theme.edge(Screen.devicePixelRatio)
-            color: Theme.divider
+            height: Theme.edge(window.dpr)
+            part: Theme.separator
+            orientation: Qt.Horizontal
+            dpr: window.dpr
         }
     }
 
     // ---- the text ---------------------------------------------------------------------
 
-    Rectangle {
+    Item {
         id: field
         anchors.top: header.bottom
         anchors.topMargin: 12
@@ -93,10 +96,16 @@ Window {
         anchors.right: parent.right
         anchors.rightMargin: window.padding
         anchors.bottom: footer.top
-        radius: Theme.controlRadius
-        color: words.activeFocus ? Theme.inputFocused : Theme.control
-        border.width: 1
-        border.color: Theme.controlBorder
+
+        Hook { // the style's input field (Theme.inputField)
+            id: fieldPart
+            anchors.fill: parent
+            part: Theme.inputField
+            focused: words.activeFocus
+            hovered: fieldHover.hovered
+            dpr: window.dpr
+        }
+        HoverHandler { id: fieldHover }
 
         Flickable {
             id: flick
@@ -124,7 +133,7 @@ Window {
                 wrapMode: TextEdit.Wrap
                 selectByMouse: true
                 persistentSelection: true
-                color: Theme.text
+                color: fieldPart.out("textColor", Theme.text)
                 selectionColor: Theme.textSelection
                 selectedTextColor: Theme.text
                 font.pixelSize: Theme.uiBody
@@ -139,6 +148,7 @@ Window {
         }
 
         ListScrollBar {
+            dpr: window.dpr
             flickable: flick
             visible: flick.visible && flick.contentHeight > flick.height
             anchors.right: parent.right
@@ -160,6 +170,7 @@ Window {
                 font.pixelSize: Theme.uiBody
             }
             FlatButton {
+                dpr: window.dpr
                 objectName: "setupEnhancedOcr"
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: window.ocr.needsPackage
@@ -181,33 +192,41 @@ Window {
         spacing: 8
 
         FlatButton {
+            dpr: window.dpr
             text: qsTr("用它搜索")
             enabled: !window.ocr.busy && words.text.trim().length > 0
             onClicked: window.ocr.search(words.selectedText.length > 0 ? words.selectedText : words.text)
         }
         FlatButton { // a QR code that holds a web address: opened only by this click
+            dpr: window.dpr
             visible: window.ocr.link.length > 0
             highlighted: true
             text: qsTr("打开链接")
             onClicked: window.ocr.openLink(window.ocr.link)
         }
         FlatButton {
+            dpr: window.dpr
             visible: window.ocr.link.length === 0
             text: qsTr("网页搜索")
             enabled: !window.ocr.busy && words.text.trim().length > 0
             onClicked: window.ocr.webSearch(words.selectedText.length > 0 ? words.selectedText : words.text)
         }
         FlatButton {
+            dpr: window.dpr
             highlighted: window.ocr.link.length === 0
             text: qsTr("复制全部")
             enabled: !window.ocr.busy && words.text.length > 0
             onClicked: window.ocr.copyAll(words.text)
         }
         FlatButton {
+            dpr: window.dpr
             text: qsTr("关闭")
             onClicked: window.ocr.close()
         }
     }
 
-    WindowEdge {}
+    WindowEdge {
+        id: windowEdge
+        fill: Theme.background
+    }
 }

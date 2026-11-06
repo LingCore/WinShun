@@ -7,6 +7,13 @@ Item {
     id: pane
     required property Controller editor
     required property WindowFrame frame
+    readonly property real dpr: Screen.devicePixelRatio
+    // The style's line between two parts (Theme.separator), as thick as the style wants it.
+    component Divider: Hook {
+        id: seam
+        height: seam.out("thickness", Theme.edge(seam.dpr))
+        part: Theme.separator
+    }
     readonly property real indexBytes: editor.statistics.bytes ?? 0
     readonly property string indexSize: indexBytes < 1048576 ? qsTr("%1 KB").arg(Math.ceil(indexBytes / 1024)) : qsTr("%1 MB").arg((indexBytes / 1048576).toFixed(1))
     Flickable {
@@ -35,6 +42,7 @@ Item {
                 font.pixelSize: Theme.fontCaption
             }
             FlatButton {
+                dpr: pane.dpr
                 objectName: "addOcrFolder"
                 Layout.fillWidth: true
                 text: qsTr("添加文件夹")
@@ -45,6 +53,7 @@ Item {
             Repeater {
                 model: pane.editor.folders
                 delegate: OcrFolderRow {
+                    dpr: pane.dpr
                     required property int index
                     required property string modelData
                     Layout.fillWidth: true
@@ -62,6 +71,7 @@ Item {
                 font.pixelSize: Theme.fontCaption
             }
             FlatButton {
+                dpr: pane.dpr
                 Layout.fillWidth: true
                 text: qsTr("排除文件夹…")
                 flat: true
@@ -71,6 +81,7 @@ Item {
             Repeater {
                 model: pane.editor.excluded
                 delegate: OcrFolderRow {
+                    dpr: pane.dpr
                     required property int index
                     required property string modelData
                     Layout.fillWidth: true
@@ -79,7 +90,7 @@ Item {
                     onRemoved: pane.editor.removeFolder(index, true)
                 }
             }
-            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+            Divider { Layout.fillWidth: true; Layout.preferredHeight: out("thickness", Theme.edge(pane.dpr)); dpr: pane.dpr }
             Text { text: qsTr("索引"); color: Theme.text; font.pixelSize: Theme.fontBody; font.weight: Theme.fontStrong }
             Text {
                 Layout.fillWidth: true
@@ -91,6 +102,7 @@ Item {
                 lineHeight: 1.4
             }
             FlatButton {
+                dpr: pane.dpr
                 id: capacity
                 Layout.fillWidth: true
                 text: qsTr("容量上限：%1 MB").arg(pane.editor.capacityMB)
@@ -105,12 +117,14 @@ Item {
                 onActivated: (index) => pane.editor.capacityMB = [256, 512, 1024, 2048][index]
             }
             FlatButton {
+                dpr: pane.dpr
                 Layout.fillWidth: true
                 visible: pane.editor.setupNeeded
                 text: qsTr("安装增强识别组件…")
                 onClicked: pane.editor.setupRequested()
             }
             FlatButton {
+                dpr: pane.dpr
                 Layout.fillWidth: true
                 text: qsTr("重新检查所有文件")
                 flat: true
@@ -118,6 +132,7 @@ Item {
                 onClicked: pane.editor.start(true)
             }
             FlatButton {
+                dpr: pane.dpr
                 readonly property bool unfinished: pane.editor.errors.length > 0
                 readonly property bool textless: pane.editor.textless.length > 0
                 Layout.fillWidth: true
@@ -135,6 +150,7 @@ Item {
                 font.pixelSize: Theme.fontCaption
             }
             FlatButton {
+                dpr: pane.dpr
                 id: clearButton
                 Layout.fillWidth: true
                 text: qsTr("清空索引…")
@@ -150,7 +166,7 @@ Item {
             }
         }
     }
-    ListScrollBar { anchors.top: scroll.top; anchors.bottom: scroll.bottom; anchors.right: scroll.right; flickable: scroll; z: 2 }
+    ListScrollBar { dpr: pane.dpr; anchors.top: scroll.top; anchors.bottom: scroll.bottom; anchors.right: scroll.right; flickable: scroll; z: 2 }
     ColumnLayout {
         id: indexActions
         anchors.left: parent.left
@@ -162,6 +178,7 @@ Item {
             Layout.fillWidth: true
             Text { Layout.fillWidth: true; text: qsTr("自动更新"); color: Theme.subtext; font.pixelSize: Theme.fontCaption }
             ToggleSwitch {
+                dpr: pane.dpr
                 checked: pane.editor.autoUpdate
                 word: false
                 enabled: pane.editor.folders.length > 0 && !pane.editor.setupNeeded
@@ -200,6 +217,7 @@ Item {
             elide: Text.ElideMiddle
         }
         FlatButton {
+            dpr: pane.dpr
             objectName: "startOcrIndex"
             Layout.fillWidth: true
             highlighted: true

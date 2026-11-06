@@ -7,8 +7,16 @@ Rectangle {
     id: pane
     required property Controller editor
     property real zoom: 1
+    readonly property real dpr: Screen.devicePixelRatio
     color: Theme.background
-    Rectangle { width: 1; height: parent.height; color: Theme.divider }
+    Hook { // the style's line between the list and the picture (Theme.separator)
+        id: seam
+        height: parent.height
+        width: seam.out("thickness", Theme.edge(pane.dpr))
+        part: Theme.separator
+        orientation: Qt.Vertical
+        dpr: pane.dpr
+    }
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 16
@@ -16,9 +24,9 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Text { Layout.fillWidth: true; text: pane.editor.preview.location ?? qsTr("命中位置"); color: Theme.text; font.pixelSize: Theme.fontBody; font.weight: Theme.fontStrong; elide: Text.ElideRight }
-            FlatButton { glyph: "\uE738"; flat: true; enabled: pane.zoom > 1; Accessible.name: qsTr("缩小"); onClicked: pane.zoom = Math.max(1, pane.zoom - 0.5) }
-            FlatButton { text: qsTr("适合"); flat: true; onClicked: pane.zoom = 1 }
-            FlatButton { glyph: "\uE710"; flat: true; enabled: pane.zoom < 4; Accessible.name: qsTr("放大"); onClicked: pane.zoom = Math.min(4, pane.zoom + 0.5) }
+            FlatButton { dpr: pane.dpr; glyph: "\uE738"; flat: true; role: "toolbar"; enabled: pane.zoom > 1; Accessible.name: qsTr("缩小"); onClicked: pane.zoom = Math.max(1, pane.zoom - 0.5) }
+            FlatButton { dpr: pane.dpr; text: qsTr("适合"); flat: true; role: "toolbar"; onClicked: pane.zoom = 1 }
+            FlatButton { dpr: pane.dpr; glyph: "\uE710"; flat: true; role: "toolbar"; enabled: pane.zoom < 4; Accessible.name: qsTr("放大"); onClicked: pane.zoom = Math.min(4, pane.zoom + 0.5) }
         }
         Item {
             Layout.fillWidth: true
@@ -50,23 +58,22 @@ Rectangle {
                     height: image.paintedHeight
                     Repeater {
                         model: pane.editor.preview.boxes ?? []
-                        delegate: Rectangle {
+                        delegate: Item { // where the words are: a light accent wash and a thin accent line
                             required property var modelData
                             x: modelData.x * parent.width
                             y: modelData.y * parent.height
                             width: modelData.width * parent.width
                             height: modelData.height * parent.height
-                            color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
-                            border.color: Theme.accent
-                            border.width: 1
                             Accessible.ignored: true
+                            Rectangle { anchors.fill: parent; color: Theme.accent; opacity: 0.18 }
+                            Rectangle { anchors.fill: parent; color: "transparent"; border.color: Theme.accent; border.width: Theme.edge(pane.dpr) }
                         }
                     }
                 }
             }
                 ListWheelScroll { view: viewport; animate: SystemTheme.animations }
             }
-            ListScrollBar { anchors.top: viewport.top; anchors.bottom: viewport.bottom; anchors.right: viewport.right; flickable: viewport; z: 2 }
+            ListScrollBar { dpr: pane.dpr; anchors.top: viewport.top; anchors.bottom: viewport.bottom; anchors.right: viewport.right; flickable: viewport; z: 2 }
             Text {
                 anchors.centerIn: parent
                 width: parent.width - 32
@@ -91,9 +98,9 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             visible: (pane.editor.preview.path ?? "").length > 0
-            FlatButton { text: qsTr("打开文件"); onClicked: pane.editor.openFile(pane.editor.preview.path) }
-            FlatButton { text: qsTr("所在文件夹"); onClicked: pane.editor.showFolder(pane.editor.preview.path) }
-            FlatButton { text: qsTr("复制文字"); enabled: (pane.editor.preview.text ?? "").length > 0; onClicked: pane.editor.copyText() }
+            FlatButton { dpr: pane.dpr; text: qsTr("打开文件"); onClicked: pane.editor.openFile(pane.editor.preview.path) }
+            FlatButton { dpr: pane.dpr; text: qsTr("所在文件夹"); onClicked: pane.editor.showFolder(pane.editor.preview.path) }
+            FlatButton { dpr: pane.dpr; text: qsTr("复制文字"); enabled: (pane.editor.preview.text ?? "").length > 0; onClicked: pane.editor.copyText() }
         }
     }
     Connections {

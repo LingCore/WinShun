@@ -171,7 +171,7 @@ Item {
         Qt.callLater(() => { hints.instant = false })
     }
 
-    Rectangle {
+    Item {
         id: card
         objectName: "captureKeyHintsCard"
 
@@ -181,10 +181,6 @@ Item {
         y: hints.snap(hints.cornerY)
         width: hints.snapUp(innerWidth + 2 * hints.padX)
         height: hints.snapUp(grid.height + 2 * hints.footerGap + hints.edge + hints.capHeight + 2 * hints.padY)
-        radius: Theme.controlRadius
-        color: Theme.background
-        border.width: hints.edge
-        border.color: Theme.windowEdge
         opacity: hints.target
         visible: opacity > 0
         onOpacityChanged: if (opacity === 0) hints.place()
@@ -194,6 +190,12 @@ Item {
             id: fade
             enabled: SystemTheme.animations && !hints.instant
             NumberAnimation { duration: fade.targetValue === 0 ? hints.fadeOutMs : hints.fadeMs; easing.type: Easing.OutCubic }
+        }
+
+        Hook { // the style's floating panel (Theme.menuFrame)
+            anchors.fill: parent
+            part: Theme.menuFrame
+            dpr: hints.dpr
         }
 
         Grid {
@@ -256,12 +258,14 @@ Item {
             }
         }
 
-        Rectangle { // the line above the footer, one device pixel
+        Hook { // the line above the footer, one device pixel (the style's separator)
             x: grid.x
             y: hints.snap(grid.y + grid.height + hints.footerGap)
             width: hints.snap(card.innerWidth)
             height: hints.edge
-            color: Theme.controlBorder
+            part: Theme.separator
+            orientation: Qt.Horizontal
+            dpr: hints.dpr
         }
 
         Item {
@@ -310,10 +314,14 @@ Item {
                     hints.keyTarget.forceActiveFocus()
                 }
 
-                Rectangle {
+                Hook { // the style's key (Theme.keySurface)
                     anchors.fill: parent
-                    radius: Theme.controlRadius
-                    color: button.pressed ? Theme.controlPressed : button.containsMouse ? Theme.controlHover : "transparent"
+                    part: Theme.keySurface
+                    hovered: button.containsMouse
+                    pressed: button.pressed
+                    flat: true
+                    role: "footer"
+                    dpr: hints.dpr
                 }
                 Text {
                     id: buttonText
@@ -327,25 +335,28 @@ Item {
         }
     }
 
-    // A key, raised a little: the controls' fill and edge, one device pixel.
-    component Cap: Rectangle {
+    // A key that only tells (the style's key hint, never pressed).
+    component Cap: Item {
         id: cap
 
         property string label
 
         width: Math.max(height, hints.snapUp(capText.implicitWidth + 2 * hints.capPad))
         height: hints.capHeight
-        radius: Theme.smallControlRadius
-        color: Theme.control
-        border.width: hints.edge
-        border.color: Theme.controlBorder
+
+        Hook {
+            id: capPart
+            anchors.fill: parent
+            part: Theme.keyHint
+            dpr: hints.dpr
+        }
 
         Text {
             id: capText
             x: hints.snap((cap.width - width) / 2)
-            y: hints.snap((cap.height - height) / 2)
+            y: hints.snap((cap.height - height) / 2 + capPart.out("contentOffsetY", 0))
             text: cap.label
-            color: Theme.text
+            color: capPart.out("foreground", Theme.text)
             font.pixelSize: hints.capFont
         }
     }

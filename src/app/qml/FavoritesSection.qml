@@ -69,12 +69,14 @@ SettingsSection {
                      : qsTr("还没有收藏")
 
         FlatButton {
+            dpr: section.dpr
             flat: true
             text: qsTr("导入")
             glyph: "\uE8B5" // Import
             onClicked: section.favorites.importFile()
         }
         FlatButton {
+            dpr: section.dpr
             flat: true
             text: qsTr("导出")
             glyph: "\uEDE1" // Export
@@ -85,16 +87,19 @@ SettingsSection {
             spacing: 8
             bottomPadding: 8
             FlatButton {
+                dpr: section.dpr
                 text: qsTr("添加文件夹")
                 glyph: "\uE8B7"
                 onClicked: section.favorites.addFolder()
             }
             FlatButton {
+                dpr: section.dpr
                 text: qsTr("添加文件")
                 glyph: "\uE8A5"
                 onClicked: section.favorites.addFile()
             }
             FlatButton {
+                dpr: section.dpr
                 text: qsTr("添加命令")
                 glyph: "\uE756"
                 onClicked: {
@@ -278,7 +283,7 @@ SettingsSection {
                                 source: favRow.modelData.icon
                             }
                         }
-                        Rectangle { // the keyword, as keys to press; on the right, so the names line up
+                        Item { // the keyword, as keys to press; on the right, so the names line up
                             id: keycap
                             visible: !favRow.editing && favRow.modelData.keyword.length > 0
                             anchors.right: favButtons.left
@@ -286,15 +291,20 @@ SettingsSection {
                             anchors.verticalCenter: parent.verticalCenter
                             width: visible ? Math.max(36, keywordText.implicitWidth + 16) : 0
                             height: 26
-                            radius: Theme.controlRadius
-                            color: Theme.keycap
 
+                            Hook { // the style's key cap (Theme.keyHint): it only tells
+                                id: keycapPart
+                                anchors.fill: parent
+                                part: keycap.visible ? Theme.keyHint : null
+                                dpr: Screen.devicePixelRatio
+                            }
                             Text {
                                 id: keywordText
                                 anchors.centerIn: parent
+                                anchors.verticalCenterOffset: keycapPart.out("contentOffsetY", 0)
                                 text: favRow.modelData.keyword
                                 textFormat: Text.PlainText
-                                color: Theme.text
+                                color: keycapPart.out("foreground", Theme.text)
                                 font.pixelSize: Theme.fontCaption
                             }
                         }
@@ -335,6 +345,7 @@ SettingsSection {
                             spacing: 2
 
                             FlatButton {
+                                dpr: section.dpr
                                 visible: favRow.modelData.missing && (favRow.modelData.kind === "folder" || favRow.modelData.kind === "file")
                                 implicitHeight: 32
                                 flat: true
@@ -342,6 +353,7 @@ SettingsSection {
                                 onClicked: section.favorites.repick(favRow.index)
                             }
                             FlatButton {
+                                dpr: section.dpr
                                 visible: !favRow.modelData.missing
                                 implicitHeight: 32
                                 flat: true
@@ -349,6 +361,7 @@ SettingsSection {
                                 onClicked: section.favorites.open(favRow.index)
                             }
                             FlatButton {
+                                dpr: section.dpr
                                 implicitHeight: 32
                                 flat: true
                                 text: qsTr("编辑")
@@ -359,6 +372,7 @@ SettingsSection {
                                 }
                             }
                             FlatButton {
+                                dpr: section.dpr
                                 implicitHeight: 32
                                 flat: true
                                 text: qsTr("移除")

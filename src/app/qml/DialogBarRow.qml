@@ -76,24 +76,22 @@ Item {
     function onPixel(y) { return Math.round(y * Screen.devicePixelRatio) / Screen.devicePixelRatio }
     function upToPixel(y) { return Math.ceil(y * Screen.devicePixelRatio - 1e-6) / Screen.devicePixelRatio }
 
-    Rectangle {
+    // The style's highlight (Theme.rowHighlight). The current row's is the
+    // list's own, one for all its rows (DialogBarWindow); here only the hover.
+    // Made the first time it shows, then only hidden (docs/pitfalls.md, ClipRow).
+    readonly property real dpr: Screen.devicePixelRatio
+    Hook {
         anchors.fill: parent
-        anchors.leftMargin: 6
-        anchors.rightMargin: 6
-        anchors.topMargin: 1
-        anchors.bottomMargin: 1
-        radius: Theme.largeControlRadius
-        color: row.current ? Theme.selection : area.containsMouse ? Theme.hover : "transparent"
-    }
-
-    Rectangle { // accent pill on the current row, as in Windows 11 lists
-        visible: row.current
-        x: 7
-        anchors.verticalCenter: parent.verticalCenter
-        width: 3
-        height: 16
-        radius: Theme.smallRadius
-        color: Theme.accent
+        anchors.leftMargin: Theme.rowInset
+        anchors.rightMargin: Theme.rowInset
+        anchors.topMargin: Theme.edge(row.dpr)
+        anchors.bottomMargin: Theme.edge(row.dpr)
+        visible: !row.current && area.containsMouse
+        lazy: true
+        part: Theme.rowHighlight
+        hovered: true
+        role: "list"
+        dpr: row.dpr
     }
 
     Item {
@@ -144,7 +142,7 @@ Item {
                 readonly property real room: parent.width - (date.visible ? date.width + 10 : 0)
                 width: Math.min(implicitWidth, room)
                 // Shortened around its matches, its end kept (see ResultRow).
-                text: row.results ? row.results.elidedHtml(row.name, row.nameMatches, room, font, row.results.highlightColor)
+                text: row.results ? row.results.elidedHtml(row.name, row.nameMatches, room, font, row.results.highlightColor, row.results.highlightWeight)
                                   : row.nameHtml
                 textFormat: Text.StyledText
                 elide: Text.ElideRight
@@ -177,6 +175,7 @@ Item {
     }
 
     KeyCap {
+        dpr: row.dpr
         id: keycap
         visible: row.hint > 0
         anchors.right: parent.right

@@ -7,6 +7,7 @@ Window {
     id: window
     required property Controller editor
     required property WindowFrame frame
+    readonly property real dpr: Screen.devicePixelRatio
     objectName: "ocrSearchWindow"
     width: 1080
     height: 720
@@ -34,7 +35,14 @@ Window {
             Layout.preferredWidth: 270
             Layout.fillHeight: true
         }
-        Rectangle { Layout.fillHeight: true; Layout.preferredWidth: 1; color: Theme.divider }
+        Hook { // the style's line between the sidebar and the results (Theme.separator)
+            id: sideSeam
+            Layout.fillHeight: true
+            Layout.preferredWidth: sideSeam.out("thickness", Theme.edge(window.dpr))
+            part: Theme.separator
+            orientation: Qt.Vertical
+            dpr: window.dpr
+        }
         OcrSearchPane { editor: window.editor; Layout.fillWidth: true; Layout.fillHeight: true }
     }
     Rectangle {
@@ -44,7 +52,13 @@ Window {
         anchors.bottom: parent.bottom
         height: 38
         color: Theme.background
-        Rectangle { width: parent.width; height: 1; color: Theme.divider }
+        Hook {
+            id: footerSeam
+            width: parent.width
+            height: footerSeam.out("thickness", Theme.edge(window.dpr))
+            part: Theme.separator
+            dpr: window.dpr
+        }
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 16
@@ -62,5 +76,5 @@ Window {
             Text { text: qsTr("本机识别 · 原文件只读"); color: Theme.subtext; font.pixelSize: Theme.fontCaption }
         }
     }
-    WindowEdge { anchors.fill: parent }
+    WindowEdge { id: windowEdge; anchors.fill: parent; fill: Theme.page }
 }

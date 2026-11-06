@@ -8,6 +8,7 @@ FocusScope {
     required property Controller editor
     required property WindowFrame frame
     property bool open: false
+    readonly property real dpr: Screen.devicePixelRatio
     readonly property bool hasUnfinished: editor.errors.length > 0
     readonly property bool hasTextless: editor.textless.length > 0
     // Section titles only when both lists are shown; the window title names a single one.
@@ -15,15 +16,17 @@ FocusScope {
     anchors.fill: parent
     visible: open
     z: 100
-    Rectangle { anchors.fill: parent; color: "#60000000" }
+    Rectangle { anchors.fill: parent; color: Theme.tok("scrim", Qt.rgba(0, 0, 0, 0.38)) }
     MouseArea { anchors.fill: parent; onClicked: popup.open = false }
-    Rectangle {
+    Item {
         anchors.centerIn: parent
         width: Math.min(640, popup.width - 48)
         height: Math.min(460, popup.height - 64)
-        radius: Theme.largeCardRadius
-        color: Theme.page
-        border.color: Theme.windowEdge
+        Hook { // the style's floating box (Theme.menuFrame)
+            anchors.fill: parent
+            part: Theme.menuFrame
+            dpr: popup.dpr
+        }
         MouseArea { anchors.fill: parent }
         ColumnLayout {
             anchors.fill: parent
@@ -37,7 +40,7 @@ FocusScope {
                     color: Theme.text
                     font.pixelSize: Theme.fontTitle
                 }
-                FlatButton { id: closeButton; text: qsTr("关闭"); onClicked: popup.open = false }
+                FlatButton { dpr: popup.dpr; id: closeButton; role: "dialog"; text: qsTr("关闭"); onClicked: popup.open = false }
             }
             Item {
                 Layout.fillWidth: true
@@ -94,7 +97,7 @@ FocusScope {
                 }
                 ListWheelScroll { view: scroll; animate: SystemTheme.animations }
             }
-            ListScrollBar { anchors.top: scroll.top; anchors.bottom: scroll.bottom; anchors.right: scroll.right; flickable: scroll }
+            ListScrollBar { dpr: popup.dpr; anchors.top: scroll.top; anchors.bottom: scroll.bottom; anchors.right: scroll.right; flickable: scroll }
             }
         }
     }

@@ -10,6 +10,7 @@
 #include <QOperatingSystemVersion>
 #include <QPalette>
 #include <QStyleHints>
+#include <QTimer>
 
 #include <windows.h>
 
@@ -117,6 +118,80 @@ void SystemTheme::setBackdropOn(bool on)
 int SystemTheme::headerHeight()
 {
     return uisize::metrics(s_uiSize).header;
+}
+
+void SystemTheme::setUiStyle(const QString& style)
+{
+    const QString known = style == u"brand" || style == u"tactile" ? style : QStringLiteral("fluent");
+    if (s_uiStyle == known)
+        return;
+    s_uiStyle = known;
+    if (s_instance)
+        emit s_instance->changed();
+}
+
+namespace {
+
+// nativeLook's changes, told once the event loop turns: one style change
+// rewrites it once per token. A single-shot timer is both the coalescing
+// and the signal; it goes with the application.
+QTimer* nativeLookHub()
+{
+    static QPointer<QTimer> hub;
+    if (!hub && qApp) {
+        hub = new QTimer(qApp);
+        hub->setSingleShot(true);
+        hub->setInterval(0);
+    }
+    return hub;
+}
+
+} // namespace
+
+void SystemTheme::setNativeLook(const QVariantMap& look)
+{
+    if (look == s_nativeLook)
+        return;
+    s_nativeLook = look;
+    if (QTimer* hub = nativeLookHub())
+        hub->start();
+}
+
+QColor SystemTheme::nativeColor(const char* name, const QColor& fallback)
+{
+    const QVariant value = s_nativeLook.value(QString::fromLatin1(name));
+    const QColor color = value.metaType() == QMetaType::fromType<QColor>() ? value.value<QColor>() : QColor(value.toString());
+    return color.isValid() ? color : fallback;
+}
+
+qreal SystemTheme::nativeReal(const char* name, qreal fallback)
+{
+    bool ok = false;
+    const qreal value = s_nativeLook.value(QString::fromLatin1(name)).toReal(&ok);
+    return ok && std::isfinite(value) ? value : fallback;
+}
+
+QMetaObject::Connection SystemTheme::onNativeLookChanged(QObject* context, std::function<void()> slot)
+{
+    QTimer* hub = nativeLookHub();
+    return hub ? QObject::connect(hub, &QTimer::timeout, context, std::move(slot)) : QMetaObject::Connection();
+}
+
+QJsonObject SystemTheme::nativeLookJson()
+{
+    QJsonObject json;
+    for (auto it = s_nativeLook.cbegin(); it != s_nativeLook.cend(); ++it) {
+        const QVariant& value = it.value();
+        if (value.metaType() == QMetaType::fromType<QColor>())
+            json.insert(it.key(), value.value<QColor>().name(QColor::HexArgb));
+        else if (value.metaType() == QMetaType::fromType<bool>())
+            json.insert(it.key(), value.toBool());
+        else if (value.metaType() == QMetaType::fromType<QString>())
+            json.insert(it.key(), value.toString());
+        else if (value.canConvert<double>())
+            json.insert(it.key(), value.toDouble());
+    }
+    return json;
 }
 
 void SystemTheme::setUiSize(const QString& size)

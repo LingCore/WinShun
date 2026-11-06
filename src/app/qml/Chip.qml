@@ -2,7 +2,7 @@ import QtQuick
 import WinShun
 
 // A removable tag: "node_modules ×".
-Rectangle {
+Item {
     id: chip
 
     property string text
@@ -12,10 +12,21 @@ Rectangle {
 
     implicitWidth: Theme.snapUp(label.implicitWidth + 40, chip.dpr) // whole device pixels: the next chip's edge in a Flow
     implicitHeight: 32
-    radius: Theme.controlRadius
-    color: marked ? Theme.selection : Theme.control
-    border.width: 1
-    border.color: Theme.controlBorder
+
+    Hook { // the style's card (Theme.cardPart), small: a tag
+        anchors.fill: parent
+        part: Theme.cardPart
+        corner: Theme.controlRadius
+        extra: ({ inset: true, tag: true }) // fluent: a control's fill and edge
+        dpr: chip.dpr
+    }
+    Rectangle { // what the settings search found
+        visible: chip.marked
+        anchors.fill: parent
+        anchors.margins: Theme.edge(chip.dpr)
+        radius: Math.max(0, Theme.controlRadius - Theme.edge(chip.dpr))
+        color: Theme.selection
+    }
 
     Text {
         id: label
@@ -27,20 +38,31 @@ Rectangle {
         font.pixelSize: Theme.fontBody
     }
 
-    Rectangle {
+    Item {
         anchors.right: parent.right
         anchors.rightMargin: 4
         y: Theme.snap((parent.height - height) / 2, chip.dpr)
         width: 22
         height: 22
-        radius: Theme.smallControlRadius
-        color: area.pressed ? Theme.controlPressed : area.containsMouse ? Theme.chipHover : "transparent"
+
+        Hook { // the style's key, flat until hovered (Theme.keySurface)
+            id: removePart
+            anchors.fill: parent
+            part: Theme.keySurface
+            hovered: area.containsMouse
+            pressed: area.pressed
+            flat: true
+            corner: Theme.smallControlRadius
+            role: "toolbar"
+            dpr: chip.dpr
+        }
 
         Glyph {
             anchors.centerIn: parent
+            anchors.verticalCenterOffset: removePart.out("contentOffsetY", 0)
             glyph: "" // Cancel
             size: 12
-            color: area.containsMouse ? Theme.text : Theme.subtext
+            color: removePart.out("foreground", area.containsMouse ? Theme.text : Theme.subtext)
         }
 
         MouseArea {

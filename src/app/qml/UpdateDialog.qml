@@ -12,6 +12,7 @@ Item {
     required property Updater updater
     property string icon // the program's icon (image://fileicon/...)
     property bool open: false
+    readonly property real dpr: Screen.devicePixelRatio
 
     property bool copied: false // the Scoop command was copied
 
@@ -28,7 +29,7 @@ Item {
 
     Rectangle { // dims the window; clicks stay out of it
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, Theme.dark ? 0.5 : 0.3)
+        color: Theme.tok("scrim", Qt.rgba(0, 0, 0, Theme.dark ? 0.5 : 0.3))
 
         MouseArea {
             anchors.fill: parent
@@ -38,7 +39,7 @@ Item {
         }
     }
 
-    Rectangle {
+    Item {
         id: card
 
         readonly property bool newer: dialog.updater.available
@@ -48,16 +49,18 @@ Item {
         anchors.centerIn: parent
         width: Math.min(520, parent.width - 48)
         height: content.implicitHeight + 48
-        radius: Theme.largeCardRadius
-        color: Theme.menuBackground
-        border.width: 1
-        border.color: Theme.windowEdge
         scale: dialog.open ? 1 : 0.96
         Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
         Keys.onEscapePressed: dialog.close()
         Keys.onReturnPressed: primary.clicked()
         Keys.onEnterPressed: primary.clicked()
+
+        Hook { // the style's floating box (Theme.menuFrame)
+            anchors.fill: parent
+            part: Theme.menuFrame
+            dpr: dialog.dpr
+        }
 
         MouseArea { anchors.fill: parent } // a click on the card does not reach the dimmer
 
@@ -149,7 +152,7 @@ Item {
                             x: index * 11
                             width: 6
                             height: 6
-                            radius: 3
+                            radius: Theme.pillRadius(width)
                             color: Theme.accent
 
                             SequentialAnimation on opacity {
@@ -300,8 +303,10 @@ Item {
                 height: primary.implicitHeight
 
                 FlatButton { // not reminded of this version again; still shown when asked
+                    dpr: dialog.dpr
                     visible: card.newer && !dialog.updater.skipped && card.stage === ""
                     anchors.left: parent.left
+                    role: "dialog"
                     flat: true
                     text: qsTr("跳过这个版本")
                     onClicked: {
@@ -315,6 +320,8 @@ Item {
                     spacing: 8
 
                     FlatButton {
+                        dpr: dialog.dpr
+                        role: "dialog"
                         visible: !dialog.updater.checking && (card.stage === "" || card.cancellable)
                                  && (card.newer || dialog.updater.problem.length > 0)
                         text: card.cancellable ? qsTr("取消")
@@ -330,7 +337,9 @@ Item {
                         }
                     }
                     FlatButton {
+                        dpr: dialog.dpr
                         id: primary
+                        role: "dialog"
                         highlighted: true
                         enabled: !card.newer || card.stage === ""
                         glyph: card.newer && dialog.updater.scoop && !dialog.updater.scoopRuns ? ""

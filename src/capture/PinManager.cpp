@@ -80,6 +80,8 @@ void PinManager::pin(const QImage& image, QPoint origin, bool screenshot, QByteA
     };
     host.dark = m_callbacks.dark;
     host.accent = m_callbacks.accent;
+    host.edge = m_callbacks.edge;
+    host.pillRadius = m_callbacks.pillRadius;
     host.copyText = m_callbacks.copyText;
     host.readLines = m_callbacks.readLines;
     host.takenTabs = [this](const PinWindow* self) {
@@ -176,6 +178,12 @@ void PinManager::setAllHidden(bool hidden)
     m_hidden = hidden;
     for (const auto& p : m_pins)
         p->setAllHidden(hidden);
+}
+
+void PinManager::restyle()
+{
+    for (const auto& p : m_pins)
+        p->restyle();
 }
 
 bool PinManager::allTopmost() const

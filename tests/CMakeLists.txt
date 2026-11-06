@@ -268,6 +268,7 @@ set_tests_properties(tst_shelllaunch PROPERTIES
 # Folder-menu commands use the production shell worker and temporary files.
 qt_add_executable(tst_foldermenu tst_foldermenu.cpp
     ${PROJECT_SOURCE_DIR}/src/app/FolderMenu.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/WindowFrame.cpp
     ${PROJECT_SOURCE_DIR}/src/app/FileIconProvider.cpp
     ${PROJECT_SOURCE_DIR}/src/app/SiteIconImage.cpp
     ${PROJECT_SOURCE_DIR}/src/app/SvgIcon.cpp

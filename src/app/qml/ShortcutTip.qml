@@ -106,19 +106,24 @@ Window {
                     Component {
                         id: keysCell
 
-                        Rectangle { // a key cap, as the footer's (KeyHint)
+                        Item { // a key cap, as the footer's (KeyHint)
                             id: cap
                             width: keyText.implicitWidth + 10
                             height: Theme.keycapHeight
-                            radius: Theme.controlRadius
-                            color: Theme.keycap
+
+                            Hook { // the style's key cap (Theme.keyHint): it only tells, never pressed
+                                id: capPart
+                                anchors.fill: parent
+                                part: Theme.keyHint
+                                dpr: Screen.devicePixelRatio
+                            }
 
                             Text {
                                 id: keyText
                                 x: tip.onPixel((cap.width - width) / 2)
-                                y: tip.onPixel((cap.height - height) / 2)
+                                y: tip.onPixel((cap.height - height) / 2 + capPart.out("contentOffsetY", 0))
                                 text: cell.modelData.text
-                                color: Theme.subtext
+                                color: capPart.out("foreground", Theme.subtext)
                                 font.pixelSize: Theme.uiCaption
                             }
                         }
@@ -162,10 +167,11 @@ Window {
             }
         }
 
-        Rectangle {
+        Hook { // the style's seam
             width: grid.width
             height: Theme.edge(Screen.devicePixelRatio)
-            color: Theme.divider
+            part: Theme.separator
+            dpr: Screen.devicePixelRatio
         }
 
         Item { // all of them, in the settings

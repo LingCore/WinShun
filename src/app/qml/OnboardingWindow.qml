@@ -5,6 +5,8 @@ import WinShun
 
 Window {
     id: window
+    // The window's, read once (GitHub #111): the cards, the footer and every control take it.
+    readonly property real dpr: Screen.devicePixelRatio
 
     required property Onboarding setup
     required property WindowFrame frame
@@ -61,7 +63,14 @@ Window {
         textFormat: Text.PlainText
     }
 
-    component SetupCard: Rectangle {
+    // The style's line between two parts (Theme.separator), as thick as the style wants it.
+    component Divider: Hook {
+        id: seam
+        height: seam.out("thickness", Theme.edge(seam.dpr))
+        part: Theme.separator
+    }
+
+    component SetupCard: Item {
         id: card
         required property string heading
         required property string glyph
@@ -70,21 +79,25 @@ Window {
         property string switchName
         property bool checked: false
         default property alias body: extras.data
+        readonly property real dpr: window.dpr
         signal toggled(bool on)
 
         implicitHeight: contents.implicitHeight + 32
-        radius: Theme.largeCardRadius
-        color: Theme.card
-        border.width: Theme.edge(Screen.devicePixelRatio)
-        border.color: card.checked ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45) : Theme.cardBorder
 
-        Rectangle {
-            z: -1
-            y: 2
-            width: parent.width
-            height: parent.height
-            radius: parent.radius
-            color: Theme.dark ? Qt.rgba(0, 0, 0, 0.18) : Qt.rgba(0, 0, 0, 0.04)
+        Hook { // the style's card (Theme.cardPart)
+            anchors.fill: parent
+            part: Theme.cardPart
+            corner: Theme.largeCardRadius
+            dpr: card.dpr
+        }
+        Rectangle { // switched on: the card's edge in the accent
+            visible: card.checked
+            anchors.fill: parent
+            radius: Theme.largeCardRadius
+            color: "transparent"
+            border.width: Theme.edge(card.dpr)
+            border.color: Theme.accent
+            opacity: 0.45
         }
 
         Column {
@@ -118,6 +131,7 @@ Window {
                     wrapMode: Text.Wrap
                 }
                 ToggleSwitch {
+                    dpr: window.dpr
                     objectName: card.switchName
                     Layout.minimumWidth: implicitWidth
                     Layout.preferredWidth: implicitWidth
@@ -263,6 +277,7 @@ Window {
                     Repeater {
                         model: [qsTr("双击 Ctrl"), qsTr("双击 Alt"), qsTr("双击 Shift"), qsTr("自定义快捷键")]
                         FlatButton {
+                            dpr: window.dpr
                             required property string modelData
                             required property int index
                             text: modelData
@@ -274,6 +289,7 @@ Window {
                         }
                     }
                     FlatButton {
+                        dpr: window.dpr
                         objectName: "onboardingTestLaunch"
                         text: qsTr("试试按键")
                         flat: true
@@ -323,6 +339,7 @@ Window {
                         wrapMode: Text.Wrap
                     }
                     ToggleSwitch {
+                        dpr: window.dpr
                         objectName: "onboardingWinVToggle"
                         checked: window.setup.clipboardWinV
                         onToggled: (on) => window.setup.clipboardWinV = on
@@ -354,6 +371,7 @@ Window {
                         onRecordingChanged: window.setup.recording = recording || launchRecorder.recording
                     }
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("试试按键")
                         flat: true
                         onClicked: { window.clearRecording(); window.setup.beginTest(true) }
@@ -371,6 +389,7 @@ Window {
     }
 
     ListScrollBar {
+        dpr: window.dpr
         anchors.top: flick.top
         anchors.bottom: flick.bottom
         anchors.right: parent.right
@@ -380,12 +399,13 @@ Window {
 
     Rectangle {
         id: footer
+        readonly property real dpr: window.dpr
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: footerContents.implicitHeight + 28
         color: Theme.background
-        Rectangle { width: parent.width; height: Theme.edge(Screen.devicePixelRatio); color: Theme.divider }
+        Divider { width: parent.width; dpr: footer.dpr }
 
         Column {
             id: footerContents
@@ -428,7 +448,9 @@ Window {
                         : window.setup.committed ? qsTr("搜索已准备好，截图也可稍后安装。") : qsTr("默认：文件名搜索 · 双击 Ctrl")
                 }
                 FlatButton {
+                    dpr: window.dpr
                     objectName: "onboardingPrevious"
+                    role: "footer"
                     visible: window.page === 1 && !window.setup.committed
                     text: qsTr("上一步")
                     flat: true
@@ -437,7 +459,9 @@ Window {
                     Accessible.name: text
                 }
                 FlatButton {
+                    dpr: window.dpr
                     objectName: "onboardingRetry"
+                    role: "footer"
                     visible: window.setup.canRetry
                     text: qsTr("重试")
                     onClicked: window.setup.retryCapture()
@@ -445,7 +469,9 @@ Window {
                     Accessible.name: text
                 }
                 FlatButton {
+                    dpr: window.dpr
                     objectName: "onboardingLater"
+                    role: "footer"
                     flat: true
                     visible: !window.setup.captureReady
                     text: window.setup.committed ? qsTr("稍后安装") : qsTr("稍后设置")
@@ -454,8 +480,10 @@ Window {
                     Accessible.name: text
                 }
                 FlatButton {
+                    dpr: window.dpr
                     id: nextButton
                     objectName: "onboardingNext"
+                    role: "footer"
                     text: qsTr("下一步")
                     highlighted: true
                     visible: window.page === 0 && !window.setup.committed
@@ -464,8 +492,10 @@ Window {
                     Accessible.name: text
                 }
                 FlatButton {
+                    dpr: window.dpr
                     id: startButton
                     objectName: "onboardingStart"
+                    role: "footer"
                     text: qsTr("开始使用")
                     highlighted: true
                     visible: window.page === 1 && (!window.setup.committed || window.setup.captureReady)
@@ -487,5 +517,5 @@ Window {
             onOpenChanged: if (!open) window.setup.permissionClosed()
         }
     }
-    WindowEdge {}
+    WindowEdge { id: windowEdge; fill: Theme.page }
 }

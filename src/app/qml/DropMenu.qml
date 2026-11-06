@@ -17,6 +17,8 @@ Item {
     property var entries: []
     property real menuWidth: 200
     property bool open: false
+    property int hovered: -1 // the entry under the pointer
+    readonly property real dpr: Screen.devicePixelRatio
 
     // The window's WindowFrame, where it has one (ours keep it as `frame`; a
     // Window says nothing of it, hence the untyped step). Where the open box
@@ -34,6 +36,7 @@ Item {
     visible: open
 
     onOpenChanged: {
+        hovered = -1
         if (!open)
             return
         if (frame)
@@ -67,26 +70,80 @@ Item {
         }
     }
 
-    Rectangle {
+    Item {
         id: box
         // At least menuWidth, wider for a longer entry (an English one).
-        width: Math.max(dropMenu.menuWidth, Math.ceil(repeater.widest) + 8)
-        height: column.implicitHeight + 8
-        radius: Theme.cardRadius
-        color: Theme.menuBackground
-        border.width: 1
-        border.color: Theme.windowEdge
+        width: Math.max(dropMenu.menuWidth, Math.ceil(repeater.widest) + 2 * Theme.menuPadding)
+        height: column.implicitHeight + 2 * Theme.menuPadding
+
+        Hook { // the style's box (Theme.menuFrame): body, edge and shadow
+            anchors.fill: parent
+            part: Theme.menuFrame
+            dpr: dropMenu.dpr
+        }
 
         MouseArea { // the edge and gaps around the entries: a press there is the menu's, and goes no further
             anchors.fill: parent
             acceptedButtons: Qt.AllButtons
         }
 
+        // The highlight under the entry pointed at: one for the menu (the
+        // style's rowHighlight, role "menu"), jumping or sliding as the
+        // style says (Theme.rowSlide).
+        Hook {
+            id: highlight
+
+            readonly property real wantedY: dropMenu.hovered >= 0 ? column.y + dropMenu.hovered * Theme.menuItemHeight : 0
+            property bool placed: false // it stood under an entry before: slides from there
+            property real shownY: 0
+            // A part that knows the menu (declares `role`, or `inMenu` as
+            // brand's does) draws the fill; one that does not leaves it to
+            // the menu's own.
+            readonly property bool inMenu: item !== null && ("role" in item || "inMenu" in item)
+
+            visible: dropMenu.hovered >= 0
+            x: column.x
+            y: shownY
+            width: column.width
+            height: Theme.menuItemHeight
+            part: Theme.rowHighlight
+            hovered: inMenu
+            position: shownY
+            role: "menu"
+            dpr: dropMenu.dpr
+
+            Rectangle {
+                anchors.fill: parent
+                visible: !highlight.inMenu
+                radius: Theme.menuItemRadius
+                color: Theme.menuHover
+            }
+
+            onWantedYChanged: {
+                const had = placed
+                placed = dropMenu.hovered >= 0
+                if (had && placed && Theme.rowSlide > 0 && SystemTheme.animations) {
+                    slide.restart()
+                } else {
+                    slide.stop()
+                    shownY = wantedY
+                }
+            }
+            NumberAnimation {
+                id: slide
+                target: highlight
+                property: "shownY"
+                to: highlight.wantedY
+                duration: Theme.rowSlide
+                easing.type: Easing.OutCubic
+            }
+        }
+
         Column {
             id: column
-            x: 4
-            y: 4
-            width: parent.width - 8
+            x: Theme.menuPadding
+            y: Theme.menuPadding
+            width: parent.width - 2 * Theme.menuPadding
 
             Repeater {
                 id: repeater
@@ -107,7 +164,7 @@ Item {
                 onItemAdded: fit()
                 onItemRemoved: fit()
 
-                delegate: Rectangle {
+                delegate: Item {
                     id: entry
 
                     required property var modelData
@@ -116,9 +173,7 @@ Item {
 
                     width: column.width
                     onNaturalWidthChanged: repeater.fit()
-                    height: 34
-                    radius: Theme.controlRadius
-                    color: entryArea.containsMouse ? Theme.menuHover : "transparent"
+                    height: Theme.menuItemHeight
 
                     Glyph {
                         x: 10
@@ -139,6 +194,12 @@ Item {
                         id: entryArea
                         anchors.fill: parent
                         hoverEnabled: true
+                        onContainsMouseChanged: {
+                            if (containsMouse)
+                                dropMenu.hovered = entry.index
+                            else if (dropMenu.hovered === entry.index)
+                                dropMenu.hovered = -1
+                        }
                         onClicked: {
                             dropMenu.open = false
                             dropMenu.activated(entry.index)

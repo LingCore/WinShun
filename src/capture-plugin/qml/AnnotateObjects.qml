@@ -270,7 +270,7 @@ Item {
 
     // ---- a number being renumbered (double click) ----
 
-    Rectangle {
+    Item {
         id: numberBox
 
         readonly property var ne: over.annot ? over.annot.numberEdit : ({})
@@ -282,10 +282,6 @@ Item {
         y: over.snap(over.clampY(over.py(ne.y ?? 0) - height / 2, height))
         width: over.numberWidth
         height: over.numberHeight
-        radius: Theme.controlRadius
-        color: Theme.background
-        border.width: 1
-        border.color: Theme.windowEdge
         onEditKeyChanged: {
             if (editKey.length > 0) {
                 numberInput.text = String(ne.shown ?? "")
@@ -305,8 +301,19 @@ Item {
             numberInput.selectAll()
         }
 
-        MouseArea { // presses on the box stay with it
+        Hook { // the style's input field (Theme.inputField)
+            id: numberField
             anchors.fill: parent
+            part: Theme.inputField
+            focused: numberInput.activeFocus
+            hovered: numberArea.containsMouse
+            dpr: over.dpr
+        }
+
+        MouseArea { // presses on the box stay with it
+            id: numberArea
+            anchors.fill: parent
+            hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             cursorShape: Qt.IBeamCursor
             onPressed: numberInput.forceActiveFocus()
@@ -322,7 +329,7 @@ Item {
             validator: IntValidator { bottom: 0; top: 99999 }
             inputMethodHints: Qt.ImhDigitsOnly
             selectByMouse: true
-            color: Theme.text
+            color: numberField.out("textColor", Theme.text)
             selectionColor: Theme.textSelection
             selectedTextColor: Theme.text
             font.pixelSize: Theme.fontBody

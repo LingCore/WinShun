@@ -121,19 +121,29 @@ Window {
                 font.pixelSize: Theme.uiBody
                 font.weight: Theme.fontStrong
             }
-            Rectangle {
+            Item {
                 id: closeButton
                 anchors.right: parent.right
                 width: 24
                 height: 24
-                radius: Theme.smallControlRadius
-                color: closeArea.pressed ? Theme.controlPressed : closeArea.containsMouse ? Theme.controlHover : "transparent"
 
+                Hook { // the style's flat icon button (Theme.keySurface)
+                    id: closeSurface
+                    anchors.fill: parent
+                    part: Theme.keySurface
+                    flat: true
+                    corner: Theme.smallControlRadius
+                    role: "toolbar"
+                    hovered: closeArea.containsMouse
+                    pressed: closeArea.pressed
+                    dpr: notice.dpr
+                }
                 Glyph {
                     anchors.centerIn: parent
                     glyph: "" // Cancel
                     size: 10
-                    color: Theme.subtext
+                    anchors.verticalCenterOffset: closeSurface.out("contentOffsetY", 0)
+                    color: closeSurface.out("iconColor", Theme.subtext)
                 }
                 MouseArea {
                     id: closeArea
@@ -225,6 +235,8 @@ Window {
                 spacing: 8
 
                 FlatButton {
+                    dpr: notice.dpr
+                    role: "dialog"
                     visible: notice.needsRestart
                     text: qsTr("重启资源管理器")
                     onClicked: {
@@ -233,6 +245,8 @@ Window {
                     }
                 }
                 FlatButton {
+                    dpr: notice.dpr
+                    role: "dialog"
                     visible: notice.outcome.length === 0
                     text: qsTr("打开设置")
                     onClicked: {
@@ -241,6 +255,8 @@ Window {
                     }
                 }
                 FlatButton {
+                    dpr: notice.dpr
+                    role: "dialog"
                     visible: notice.outcome.length === 0
                     text: qsTr("撤销")
                     onClicked: notice.undo()
@@ -249,5 +265,5 @@ Window {
         }
     }
 
-    WindowEdge {}
+    WindowEdge { id: windowEdge; fill: Theme.background }
 }

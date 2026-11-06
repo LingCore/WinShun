@@ -11,6 +11,7 @@ import WinShun
 // leaving validation and actions visible on short screens.
 FocusScope {
     id: form
+    property real dpr: Screen.devicePixelRatio // the window's, passed by a host that has it (GitHub #111)
 
     required property SettingsEditor editor
     property int index: -1 // the one being changed; -1: a new one
@@ -200,6 +201,7 @@ FocusScope {
                 HoverHandler { id: labelHover }
             }
             InputBox {
+                dpr: form.dpr
                 id: box
                 width: field.width - field.labelWidth - parent.spacing
                 onAccepted: field.accepted()
@@ -224,7 +226,7 @@ FocusScope {
 
     Rectangle { // modal backdrop: page clicks and wheel events stay here
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, Theme.dark ? 0.5 : 0.3)
+        color: Theme.tok("scrim", Qt.rgba(0, 0, 0, Theme.dark ? 0.5 : 0.3))
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.AllButtons
@@ -233,17 +235,19 @@ FocusScope {
         }
     }
 
-    Rectangle {
+    Item {
         id: card
         objectName: "webFormCard"
         anchors.centerIn: parent
         width: Math.min(680, parent.width - 32)
         height: Math.min(parent.height - 24,
                          heading.height + fields.implicitHeight + footer.height + 2 * (form.inset + form.sectionGap))
-        radius: Theme.largeCardRadius
-        color: Theme.menuBackground
-        border.width: 1
-        border.color: Theme.windowEdge
+
+        Hook { // the style's floating box (Theme.menuFrame)
+            anchors.fill: parent
+            part: Theme.menuFrame
+            dpr: form.dpr
+        }
 
         Text {
             id: heading
@@ -385,6 +389,7 @@ FocusScope {
                         }
                     }
                     FlatButton {
+                        dpr: form.dpr
                         id: pickIconButton
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("选择图片")
@@ -396,6 +401,7 @@ FocusScope {
                         }
                     }
                     FlatButton {
+                        dpr: form.dpr
                         id: siteIconButton
                         objectName: "webFormSiteIcon"
                         visible: form.icon.length > 0
@@ -413,6 +419,7 @@ FocusScope {
                     // One line, as high as the buttons; the code pasted, or the
                     // saved icon's, is all there to be changed.
                     InputBox {
+                        dpr: form.dpr
                         id: svgInput
                         objectName: "webFormSvgInput"
                         width: iconControls.width - form.labelWidth - iconPreview.width - pickIconButton.width
@@ -420,7 +427,7 @@ FocusScope {
                                - iconControls.spacing * (siteIconButton.visible ? 4 : 3)
                         maximumLength: 1 << 20 // never cut: an SVG too large is refused with a reason
                         placeholder: qsTr("粘贴 SVG 代码（可不填）")
-                        border.color: form.svgError.length > 0 ? Theme.danger : Theme.controlBorder
+                        error: form.svgError.length > 0 // the style's error mark (Theme.inputField)
                         onAccepted: form.save()
                         onInputFocusedChanged: if (inputFocused) form.fillSvgFromClipboard()
                         onTextChanged: {
@@ -441,6 +448,7 @@ FocusScope {
         }
 
         ListScrollBar {
+            dpr: form.dpr
             flickable: viewport
             anchors.top: viewport.top
             anchors.bottom: viewport.bottom
@@ -472,11 +480,13 @@ FocusScope {
                 spacing: 8
 
                 FlatButton {
+                    dpr: form.dpr
                     objectName: "webFormCancel"
                     text: qsTr("取消")
                     onClicked: form.close()
                 }
                 FlatButton {
+                    dpr: form.dpr
                     id: saveButton
                     objectName: "webFormSave"
                     highlighted: true

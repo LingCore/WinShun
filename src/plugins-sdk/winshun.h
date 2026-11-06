@@ -853,7 +853,9 @@ public:
     const Json& settings() const { return m_settings; }
     const std::string& locale() const { return m_locale; } // zh | en
     const std::string& theme() const { return m_theme; } // light | dark
-    const Json& appearance() const { return m_appearance; } // "ui": themeSetting, corners, uiSize, transparency, renderer
+    // "ui": themeSetting, corners, uiStyle, uiSize, transparency, renderer, and
+    // nativeLook (the style's colours "#AARRGGBB" and radii; docs/plugins.md, 外观)
+    const Json& appearance() const { return m_appearance; }
     const std::string& pluginDir() const { return m_pluginDir; }
     const std::string& dataDir() const { return m_dataDir; }
     bool chinese() const { return m_locale != "en"; }

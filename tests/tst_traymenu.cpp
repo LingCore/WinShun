@@ -1,11 +1,15 @@
 #include "TrayMenu.h"
+#include "CountdownWindow.h"
 #include "PinManager.h"
 #include "Phosphor.h"
 #include "SystemTheme.h"
 #include "platform/WindowEffects.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFontDatabase>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QGuiApplication>
 #include <QQmlEngine>
 #include <QScopeGuard>
@@ -360,6 +364,171 @@ private slots:
         });
         QVERIFY(!timedOut);
         QCOMPARE(chosen, expected);
+    }
+
+    // Theme writes the look C++ draws by (SystemTheme::nativeLook): every
+    // style's, squared by the 直角 setting; fluent's the very colours the
+    // native surfaces had before it (the break notice, the pins' edge).
+    void nativeLook_data()
+    {
+        QTest::addColumn<QString>("style");
+        QTest::addColumn<bool>("dark");
+        QTest::addColumn<bool>("round");
+        for (const char* style : {"fluent", "brand", "tactile"}) {
+            for (const bool dark : {false, true}) {
+                QTest::addRow("%s-%s", style, dark ? "dark" : "light") << QString::fromLatin1(style) << dark << true;
+                QTest::addRow("%s-%s-square", style, dark ? "dark" : "light") << QString::fromLatin1(style) << dark << false;
+            }
+        }
+    }
+
+    void nativeLook()
+    {
+        QFETCH(QString, style);
+        QFETCH(bool, dark);
+        QFETCH(bool, round);
+        QGuiApplication::styleHints()->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+        SystemTheme::setRoundedCorners(round);
+        SystemTheme::setUiStyle(u"fluent"_s);
+        int told = 0;
+        QObject receiver;
+        SystemTheme::onNativeLookChanged(&receiver, [&] { ++told; });
+        QQmlEngine engine;
+        QObject* theme = engine.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
+        QVERIFY(theme);
+        QCOMPARE(SystemTheme::nativeLook().value(u"style"_s).toString(), u"fluent"_s);
+        SystemTheme::setUiStyle(style);
+        QCoreApplication::processEvents();
+        told = 0;
+        SystemTheme::setUiStyle(style == u"fluent" ? u"brand"_s : u"fluent"_s);
+        SystemTheme::setUiStyle(style); // one change and back: told once at most, after the loop turns
+        QVERIFY(told == 0);
+        QCoreApplication::processEvents();
+        QVERIFY(told <= 1);
+
+        const QVariantMap look = SystemTheme::nativeLook();
+        QCOMPARE(look.value(u"style"_s).toString(), style);
+        QCOMPARE(look.value(u"dark"_s).toBool(), dark);
+        QCOMPARE(look.value(u"rounded"_s).toBool(), round);
+        for (const char* radius : {"cardRadius", "controlRadius", "menuRadius", "menuItemRadius"}) {
+            const qreal value = SystemTheme::nativeReal(radius, -1);
+            QVERIFY2(value >= 0, radius);
+            if (!round)
+                QVERIFY2(value == 0, radius);
+        }
+        const auto rgb = [](const char* name) { return SystemTheme::nativeColor(name, QColor()).name(QColor::HexArgb); };
+        for (const char* name : {"background", "windowEdge", "text", "tagFill", "menuBackground", "menuHover", "accentFill",
+                 "accentText", "textSelection", "controlBorder"})
+            QVERIFY2(SystemTheme::nativeColor(name, QColor()).isValid(), name);
+        if (style == u"fluent") {
+            QCOMPARE(rgb("background"), dark ? u"#ff202020"_s : u"#fff9f9f9"_s);
+            QCOMPARE(rgb("windowEdge"), dark ? u"#ff6a6a6a"_s : u"#ffb4b4b4"_s);
+            QCOMPARE(rgb("text"), dark ? u"#fff3f3f3"_s : u"#ff1b1b1b"_s);
+            QCOMPARE(rgb("tagFill"), dark ? u"#12ffffff"_s : u"#0d000000"_s);
+            QCOMPARE(SystemTheme::nativeReal("menuItemRadius", -1), round ? 4.0 : 0.0);
+            QCOMPARE(SystemTheme::nativeReal("controlRadius", -1), round ? 4.0 : 0.0);
+            QCOMPARE(SystemTheme::nativeReal("menuRadius", -1), round ? 8.0 : 0.0);
+            QCOMPARE(SystemTheme::nativeReal("menuPadding", -1), 4.0);
+            QCOMPARE(SystemTheme::nativeColor("caret", Qt::red).alpha(), 0); // none of its own
+        } else {
+            // A menu window's corner is DWM's in every style.
+            QCOMPARE(SystemTheme::nativeReal("menuRadius", -1), round ? 8.0 : 0.0);
+            QCOMPARE(SystemTheme::nativeReal("menuItemRadius", -1), round ? 4.0 : 0.0);
+            QVERIFY(SystemTheme::nativeColor("caret", QColor()).alpha() > 0);
+        }
+        const QJsonObject json = SystemTheme::nativeLookJson();
+        QCOMPARE(json.value(u"background"_s).toString(), rgb("background"));
+        QCOMPARE(json.value(u"rounded"_s).toBool(), round);
+        if (const QString folder = qEnvironmentVariable("WINSHUN_NATIVE_LOOK_DUMP"); !folder.isEmpty()) {
+            QVERIFY(QDir().mkpath(folder));
+            QFile file(QDir(folder).filePath(QString::fromLatin1(QTest::currentDataTag()) + u".json"_s));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(QJsonDocument(json).toJson());
+        }
+        SystemTheme::setUiStyle(u"fluent"_s);
+        SystemTheme::setRoundedCorners(true);
+    }
+
+    // The menu in each style, drawn off screen (traymenu::render): the
+    // style's menu colours, its item radius and inset; a hover that would
+    // hardly show on the menu (tactile's key face) gets the key's rim.
+    void styledRows_data()
+    {
+        QTest::addColumn<QString>("style");
+        QTest::addColumn<bool>("dark");
+        QTest::addColumn<qreal>("scale");
+        for (const char* style : {"fluent", "brand", "tactile"}) {
+            for (const bool dark : {false, true}) {
+                for (const qreal scale : {1.0, 1.5})
+                    QTest::addRow("%s-%s-%d", style, dark ? "dark" : "light", int(scale * 100))
+                        << QString::fromLatin1(style) << dark << scale;
+            }
+        }
+    }
+
+    void styledRows()
+    {
+        QFETCH(QString, style);
+        QFETCH(bool, dark);
+        QFETCH(qreal, scale);
+        QGuiApplication::styleHints()->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+        SystemTheme::setUiStyle(style);
+        QQmlEngine engine;
+        QObject* theme = engine.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
+        QVERIFY(theme);
+        const QImage image = traymenu::render(entries(false), theme, scale, 1);
+        QVERIFY(!image.isNull());
+        if (const QString folder = qEnvironmentVariable("WINSHUN_TRAY_EVIDENCE"); !folder.isEmpty()) {
+            QVERIFY(QDir().mkpath(folder));
+            QVERIFY(image.save(QDir(folder).filePath(QString::fromLatin1(QTest::currentDataTag()) + u".png"_s)));
+        }
+        const QColor background = theme->property("menuBackground").value<QColor>();
+        const QColor hover = theme->property("menuHover").value<QColor>();
+        const auto opaque = [&background](const QColor& c) {
+            const double t = c.alphaF();
+            return QColor::fromRgbF(float(c.redF() * t + background.redF() * (1 - t)),
+                float(c.greenF() * t + background.greenF() * (1 - t)), float(c.blueF() * t + background.blueF() * (1 - t)));
+        };
+        const auto similar = [](const QColor& a, const QColor& b) {
+            return std::abs(a.red() - b.red()) <= 2 && std::abs(a.green() - b.green()) <= 2 && std::abs(a.blue() - b.blue()) <= 2;
+        };
+        // Row 2 (剪贴板历史) is highlighted: 6 px padding, then a 28 px row.
+        const int top = qRound(6 * scale), rowHeight = qRound(28 * scale);
+        const int middle = top + rowHeight + rowHeight / 2;
+        QVERIFY2(similar(image.pixelColor(1, middle), background), "the menu's own background left of the hover");
+        const int inset = qRound(theme->property("menuPadding").toReal() * scale);
+        QVERIFY2(similar(image.pixelColor(inset + qRound(2 * scale) + 1, middle), opaque(hover)), "the hover's fill");
+        QVERIFY2(similar(image.pixelColor(inset - 2, middle), background), "the hover starts at menuPadding");
+        SystemTheme::setUiStyle(u"fluent"_s);
+    }
+
+    // The delayed capture's countdown as the capture plugin makes it: the
+    // style's accentFill and menuRadius (0 in the 直角 setting).
+    void countdown_data() { nativeLook_data(); }
+
+    void countdown()
+    {
+        QFETCH(QString, style);
+        QFETCH(bool, dark);
+        QFETCH(bool, round);
+        QGuiApplication::styleHints()->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+        SystemTheme::setRoundedCorners(round);
+        SystemTheme::setUiStyle(style);
+        QQmlEngine engine;
+        QVERIFY(engine.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s));
+        const QColor fill = SystemTheme::nativeColor("accentFill", QColor());
+        const qreal radius = SystemTheme::nativeReal("menuRadius", -1);
+        QVERIFY(fill.isValid() && radius >= 0);
+        for (const double dpr : {1.0, 1.5}) {
+            const QImage image = capture::CountdownWindow::picture(3, fill, radius, dpr);
+            QCOMPARE(image.pixelColor(0, 0).alpha(), round ? 0 : 255); // the corner
+            const QColor middle = image.pixelColor(image.width() - 4, image.height() / 2);
+            QCOMPARE(middle.rgb(), fill.rgb());
+            if (const QString folder = qEnvironmentVariable("WINSHUN_TRAY_EVIDENCE"); !folder.isEmpty())
+                QVERIFY(image.save(QDir(folder).filePath(u"countdown-%1-%2.png"_s.arg(QString::fromLatin1(QTest::currentDataTag())).arg(int(dpr * 100)))));
+        }
+        SystemTheme::setUiStyle(u"fluent"_s);
+        SystemTheme::setRoundedCorners(true);
     }
 
     void cleanupTestCase()

@@ -32,7 +32,8 @@
 //   WinShun.exe --preview-results <folder> [--dark] [--scale 1.5] [--size compact|standard|roomy]
 //     The real result model and rows over made-up folders, with D3D11 native
 //     text; hint modes and local Qt modifier events. --rows-source <folder>
-//     compares a saved ResultRow.qml and IconNumber.qml from before an edit.
+//     compares a saved ResultRow.qml and IconNumber.qml from before an edit;
+//     --picked shoots rows 2 and 5 picked (the highlight of rows not current).
 //     --file-metadata --gallery-image <demo.png> also exports the production
 //     search panel and resized clipboard with demo entries for screenshots.
 //     --file-metadata --file-gallery checks the real Main.qml gallery with
@@ -64,6 +65,10 @@
 //     is tst_keyrouter.exe renamed SearchHost.exe; native uses the real Start
 //     menu. Neither mode writes the system clipboard or changes global hotkeys.
 //     [--runtime-plugins <folder>] [--settle-ms 3000] [--renderer d3d11]
+//     --live [--style …] [--dark] keeps it running on the real desktop at the
+//     screen's own scale, beside the user's Win顺, with a few made-up clips,
+//     taking commands from <folder>\cmd.txt until <folder>\stop exists
+//     (runLive in Preview.cpp): a real-window audit without stopping theirs.
 //     A separate production startup probe: real App::start, temporary profile,
 //     process-local HKCU redirection, no global shortcuts/service/shell setup.
 //     Optional clipboard recording reads but never changes the clipboard;

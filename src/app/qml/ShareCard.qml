@@ -37,8 +37,22 @@ Rectangle {
     implicitHeight: Theme.snap(headHeight + 24 + (card.kind === "share" ? contents.height + scanSettings.height + 18 : 0), card.dpr)
     radius: Theme.controlRadius
     color: "transparent"
-    border.width: 1
-    border.color: marked ? Theme.accent : Theme.cardBorder
+
+    Hook { // the style's card (Theme.cardPart), a plate inside the section's
+        anchors.fill: parent
+        part: Theme.cardPart
+        corner: Theme.controlRadius
+        extra: ({ inset: true })
+        dpr: card.dpr
+    }
+    Rectangle { // found by the settings search: the edge in the accent
+        visible: card.marked
+        anchors.fill: parent
+        radius: Theme.controlRadius
+        color: "transparent"
+        border.width: Theme.edge(card.dpr)
+        border.color: Theme.accent
+    }
 
     Glyph {
         id: icon
@@ -85,7 +99,7 @@ Rectangle {
                 y: Math.round(status.fontInfo.pixelSize * 0.62 - height / 2)
                 width: 8
                 height: 8
-                radius: 4
+                radius: Theme.pillRadius(width)
                 color: card.toneColor
 
                 SequentialAnimation on opacity { // read just now
@@ -119,6 +133,7 @@ Rectangle {
         spacing: 4
 
         FlatButton {
+            dpr: card.dpr
             visible: card.share.startable === true
             implicitHeight: 32
             highlighted: true
@@ -126,6 +141,7 @@ Rectangle {
             onClicked: card.startClicked()
         }
         FlatButton {
+            dpr: card.dpr
             visible: card.kind === "share" && card.share.signIn
             implicitHeight: 32
             highlighted: true
@@ -133,12 +149,14 @@ Rectangle {
             onClicked: card.signInClicked()
         }
         FlatButton {
+            dpr: card.dpr
             visible: card.kind === "share" && card.share.suspect
             implicitHeight: 32
             text: qsTr("按现在的内容更新")
             onClicked: card.acceptClicked()
         }
         FlatButton {
+            dpr: card.dpr
             visible: card.kind === "share" ? !card.share.signIn && card.share.startable !== true : card.share.verifiable === true
             enabled: !card.share.busy
             implicitHeight: 32
@@ -147,6 +165,7 @@ Rectangle {
             onClicked: card.verifyClicked()
         }
         FlatButton {
+            dpr: card.dpr
             implicitHeight: 32
             flat: true
             text: qsTr("移除")
@@ -191,6 +210,7 @@ Rectangle {
             }
         }
         ToggleSwitch {
+            dpr: card.dpr
             id: contentSwitch
             anchors.right: parent.right
             y: Theme.snap((parent.height - height) / 2, card.dpr) // not verticalCenter: the track's edges on whole pixels
@@ -201,6 +221,7 @@ Rectangle {
     }
 
     ShareScanControls {
+        dpr: card.dpr
         id: scanSettings
         visible: card.kind === "share"
         anchors.left: contents.left

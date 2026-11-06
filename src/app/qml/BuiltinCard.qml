@@ -19,7 +19,7 @@ Rectangle {
     property string linkText // shown while on; empty: no link
     property bool expanded: false
     property bool marked: false // what the settings search found
-    // The width kept right of the switch for 设置 or the link, the same on
+    // The width kept left of the switch for 设置 or the link, the same on
     // every card of 内置功能: the switches stay in one column, and still
     // when a card's button comes, goes or changes its words.
     property real buttonSlot: 0
@@ -31,10 +31,24 @@ Rectangle {
     signal linkActivated()
 
     implicitHeight: body.implicitHeight + 24
+    readonly property real dpr: Screen.devicePixelRatio // one Screen attached object for all its items (GitHub #111)
     radius: Theme.controlRadius
-    color: marked ? Theme.selection : "transparent"
-    border.width: 1
-    border.color: Theme.cardBorder
+    color: "transparent"
+
+    Hook { // the style's card (Theme.cardPart), a plate inside the section's
+        anchors.fill: parent
+        part: Theme.cardPart
+        corner: Theme.controlRadius
+        extra: ({ inset: true })
+        dpr: card.dpr
+    }
+    Rectangle { // found by the settings search: the card's face, marked
+        visible: card.marked
+        anchors.fill: parent
+        anchors.margins: Theme.edge(card.dpr)
+        radius: Math.max(0, Theme.controlRadius - Theme.edge(card.dpr))
+        color: Theme.selection
+    }
 
     Column {
         id: body
@@ -106,17 +120,6 @@ Rectangle {
                 anchors.right: parent.right
                 spacing: 12
 
-                ToggleSwitch {
-                    anchors.verticalCenter: parent.verticalCenter
-                    enabled: card.available
-                    opacity: enabled ? 1 : 0.5
-                    checked: card.checked
-                    Accessible.name: card.title
-                    onToggled: (on) => {
-                        card.toggled(on)
-                        card.expanded = on && card.hasOptions // its ways in, in sight as it comes on
-                    }
-                }
                 Item { // the button, right-aligned in buttonSlot
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.max(card.buttonSlot, foldButton.visible ? foldButton.implicitWidth : 0,
@@ -125,6 +128,7 @@ Rectangle {
                     visible: width > 0
 
                     FlatButton {
+                        dpr: card.dpr
                         id: foldButton
                         anchors.right: parent.right
                         visible: card.checked && card.hasOptions
@@ -140,6 +144,7 @@ Rectangle {
                         }
                     }
                     FlatButton {
+                        dpr: card.dpr
                         id: linkButton
                         anchors.right: parent.right
                         visible: card.checked && card.linkText.length > 0
@@ -152,6 +157,18 @@ Rectangle {
                         onClicked: card.linkActivated()
                     }
                 }
+                ToggleSwitch {
+                    dpr: card.dpr
+                    anchors.verticalCenter: parent.verticalCenter
+                    enabled: card.available
+                    opacity: enabled ? 1 : 0.5
+                    checked: card.checked
+                    Accessible.name: card.title
+                    onToggled: (on) => {
+                        card.toggled(on)
+                        card.expanded = on && card.hasOptions // its ways in, in sight as it comes on
+                    }
+                }
             }
         }
 
@@ -160,10 +177,12 @@ Rectangle {
             width: parent.width
             spacing: 12
 
-            Rectangle { // between the header and the options
+            Hook { // between the header and the options (Theme.separator)
                 width: parent.width
-                height: Theme.edge(Screen.devicePixelRatio)
-                color: Theme.cardBorder
+                height: Theme.edge(card.dpr)
+                part: Theme.separator
+                extra: ({ card: true })
+                dpr: card.dpr
             }
 
             Column {

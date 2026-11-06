@@ -112,6 +112,13 @@ public:
     bool isOpen() const noexcept { return m_open.load(); }
 
     QVariantList entries() const { return m_entries; }
+    // The off-screen preview (Preview.cpp, --style-windows): these entries,
+    // as a popup lists them; nothing to act on, nothing shown.
+    void previewEntries(QVariantList entries)
+    {
+        m_entries = std::move(entries);
+        emit entriesChanged();
+    }
 
     Q_INVOKABLE QRectF screenArea(QPointF globalPos) const;
     Q_INVOKABLE void prepareMenuWindow(QWindow* menu) const;

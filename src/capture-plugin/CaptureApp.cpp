@@ -185,6 +185,12 @@ CaptureApp::CaptureApp(Protocol& protocol, QString appDir, QString dataDir, QObj
     , m_settings(m_dataDir + u"/capture.ini"_s)
 {
     m_qml.addImportPath(m_appDir + u"/qml"_s); // QtQuick and the rest: Win顺's
+    // This process's own Theme works out the look the pins are drawn by (the
+    // same Look files as Win顺's, so an older Win顺 makes no difference).
+    SystemTheme::onNativeLookChanged(this, [this] {
+        if (m_pins)
+            m_pins->restyle();
+    });
     capture::CaptureOcr::setProgramFolder(m_appDir); // onnxruntime.dll and ocr\: Win顺's
     QString componentRoot = qEnvironmentVariable("WS_COMPONENTS_DIR");
     if (componentRoot.isEmpty())
@@ -507,7 +513,14 @@ void CaptureApp::apply()
                 keys.push_back({0, VK_SNAPSHOT});
             return keys;
         };
-        callbacks.accent = [] { return SystemTheme::accentColor(); };
+        callbacks.accent = [this] {
+            ensureTheme();
+            return SystemTheme::nativeColor("accentFill", SystemTheme::accentColor());
+        };
+        callbacks.panelRadius = [this] {
+            ensureTheme();
+            return SystemTheme::nativeReal("menuRadius", win::roundedCorners() ? 8 : 0);
+        };
         m_capture = std::make_unique<capture::Capture>(&m_qml, std::move(callbacks));
     }
     m_capture->setCopyOnSelect(o.copyOnSelect);
@@ -678,6 +691,14 @@ void CaptureApp::reportHotkeyProblems(const CaptureSettings::Problems& problems)
     }
 }
 
+void CaptureApp::ensureTheme()
+{
+    if (m_themeMade)
+        return;
+    m_themeMade = true;
+    m_qml.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
+}
+
 // Win顺's look, as it says it (initialize, then appearance as it changes).
 void CaptureApp::applyAppearance(const QJsonObject& a)
 {
@@ -685,6 +706,7 @@ void CaptureApp::applyAppearance(const QJsonObject& a)
         return;
     SystemTheme::setRoundedCorners(a.value(u"corners"_s).toString(u"round"_s) == u"round");
     SystemTheme::setUiSize(a.value(u"uiSize"_s).toString(u"standard"_s));
+    SystemTheme::setUiStyle(a.value(u"uiStyle"_s).toString());
     SystemTheme::setBackdropOn(a.value(u"transparency"_s).toString(u"on"_s) == u"on");
     const QString theme = a.value(u"themeSetting"_s).toString();
     QGuiApplication::styleHints()->setColorScheme(theme == u"dark" ? Qt::ColorScheme::Dark
@@ -1018,7 +1040,19 @@ capture::PinManager& CaptureApp::pins()
         callbacks.edit = [this](capture::PinWindow* pin) { editPin(pin); };
         callbacks.closed = [this] { m_idleTrim->poke(); }; // its pixels can go back to Windows
         callbacks.dark = [] { return isDarkMode(); };
-        callbacks.accent = [] { return SystemTheme::accentColor(); };
+        // The 界面风格's (Theme's nativeLook), as the launcher's.
+        callbacks.accent = [this] {
+            ensureTheme();
+            return SystemTheme::nativeColor("accentFill", SystemTheme::accentColor());
+        };
+        callbacks.edge = [this] {
+            ensureTheme();
+            return SystemTheme::nativeColor("windowEdge", QColor());
+        };
+        callbacks.pillRadius = [this] {
+            ensureTheme();
+            return SystemTheme::nativeReal("controlRadius", win::roundedCorners() ? 4 : 0);
+        };
         callbacks.popupMenu = [this](HWND owner, const std::vector<shell::MenuItem>& items, POINT at) {
             QObject* theme = m_qml.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
             return traymenu::popup(owner, items, at, theme);

@@ -23,6 +23,7 @@ SettingsSection {
         shown: privacySection.editor.mcp
 
         FlatButton {
+            dpr: privacySection.dpr
             text: qsTr("添加文件夹")
             glyph: "" // Add
             onClicked: privacySection.editor.addMcpExcludedFolder()
@@ -99,6 +100,7 @@ SettingsSection {
                             elide: Text.ElideMiddle
                         }
                         FlatButton {
+                            dpr: privacySection.dpr
                             id: removePath
                             anchors.right: parent.right
                             anchors.rightMargin: 6
@@ -123,6 +125,7 @@ SettingsSection {
         shown: privacySection.editor.mcp
 
         FlatButton {
+            dpr: privacySection.dpr
             text: qsTr("打开")
             glyph: "" // Document
             onClicked: privacySection.editor.openMcpLog()

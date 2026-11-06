@@ -35,6 +35,8 @@ class ResultModel : public QAbstractListModel {
     QML_UNCREATABLE("Provided by Launcher")
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
     Q_PROPERTY(QColor highlightColor READ highlightColor WRITE setHighlightColor NOTIFY highlightColorChanged FINAL)
+    // The style's match weight (Theme.matchWeight): bold from DemiBold up.
+    Q_PROPERTY(int highlightWeight READ highlightWeight WRITE setHighlightWeight NOTIFY highlightColorChanged FINAL)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged FINAL)
     // Typed in a folder's window (GitHub #110): the first row that is not in
     // that folder (ElsewhereRole), where the list's caption goes; -1: none.
@@ -129,8 +131,8 @@ public:
     // but around them: they stay in sight, with the start and the end of the
     // text. Without matches, in its middle: a name keeps its extension and
     // what is just before it (elide::shortenedHtml).
-    Q_INVOKABLE static QString elidedHtml(
-        const QString& text, const QVariantList& matches, qreal width, const QFont& font, const QColor& color);
+    Q_INVOKABLE static QString elidedHtml(const QString& text, const QVariantList& matches, qreal width, const QFont& font,
+        const QColor& color, int weight = QFont::Bold);
 
     void assign(SearchResults items, QStringList highlights); // changes only the rows that differ
     void update(int row, const SearchResult& item);
@@ -149,6 +151,8 @@ public:
 
     QColor highlightColor() const { return m_highlightColor; }
     void setHighlightColor(const QColor& color);
+    int highlightWeight() const { return m_highlightWeight; }
+    void setHighlightWeight(int weight);
     void setThumbnails(bool on); // ThumbnailRole: Settings::thumbnails
     // The rows of system switches take their state from it, and follow it.
     void setSwitches(Switches* switches);
@@ -181,6 +185,7 @@ private:
     SearchResults m_items;
     QStringList m_highlights;
     QColor m_highlightColor {0x00, 0x5F, 0xB8};
+    int m_highlightWeight = QFont::Bold;
     bool m_thumbnails = true;
     bool m_showModifiedTime = false;
     QSet<QString> m_selected; // paths

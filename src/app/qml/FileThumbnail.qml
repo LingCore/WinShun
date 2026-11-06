@@ -9,7 +9,8 @@ import QtQuick
 Image {
     id: thumbnail
 
-    readonly property real dpr: Screen.devicePixelRatio
+    // The window's, passed by a host that reads it once for all its rows (GitHub #111).
+    property real dpr: Screen.devicePixelRatio
     readonly property bool ready: status === Image.Ready && implicitWidth > 0
 
     visible: ready

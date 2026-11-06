@@ -99,6 +99,10 @@ public:
     // drop target here, then shown once out of sight so that its first
     // real showing is not slowed by the graphics' setting up.
     void setWindow(QQuickWindow* window);
+    // The off-screen preview (Preview.cpp, --style-windows): laid out as a
+    // drag at `pt` opens it, revealed, the pointer in sector `hovered` (-1:
+    // the middle); no drop site taken, the window left to the preview to show.
+    void preview(POINT pt, int hovered);
     bool dropReady() const noexcept { return m_hwnd && m_target; }
 
     // From the listener thread (KeyListener::Callbacks): during an OLE drag

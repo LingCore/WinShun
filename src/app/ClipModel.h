@@ -22,6 +22,8 @@ class ClipModel : public QAbstractListModel {
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged FINAL)
     Q_PROPERTY(QColor highlightColor READ highlightColor WRITE setHighlightColor NOTIFY highlightColorChanged FINAL)
+    // The style's match weight (Theme.matchWeight): bold from DemiBold up.
+    Q_PROPERTY(int highlightWeight READ highlightWeight WRITE setHighlightWeight NOTIFY highlightColorChanged FINAL)
 
 public:
     enum Role {
@@ -93,6 +95,8 @@ public:
 
     QColor highlightColor() const { return m_highlightColor; }
     void setHighlightColor(const QColor& color);
+    int highlightWeight() const { return m_highlightWeight; }
+    void setHighlightWeight(int weight);
 
     // "刚刚", "3 分钟前", "昨天 14:32", "9月30日"
     static QString when(qint64 ms, qint64 now);
@@ -119,6 +123,7 @@ private:
     ClipMatcher m_matcher {QString()}; // of m_query, for the titles
     QList<qint64> m_selected; // ids, in the order picked
     QColor m_highlightColor {0x00, 0x5F, 0xB8};
+    int m_highlightWeight = 700; // QFont::Bold
     bool m_pinnedFirst = false;
     bool m_marksPasted = false;
     Movable m_movable = Movable::None;

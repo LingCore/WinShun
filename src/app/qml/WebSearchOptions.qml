@@ -5,6 +5,7 @@ import WinShun
 // The declarative web plugin's settings, loaded only for its expanded card.
 Column {
     id: webSection
+    property real dpr: Screen.devicePixelRatio // the window's, passed by a host that has it (GitHub #111)
     required property SettingsEditor editor
     readonly property Item addButton: webAddButton
     property string message
@@ -30,6 +31,7 @@ Column {
         description: qsTranslate("SettingsWindow", "输入名称或拼音也能找到")
 
         FlatButton {
+            dpr: webSection.dpr
             flat: true
             text: qsTranslate("SettingsWindow", "导入")
             glyph: "\uE8B5" // Import
@@ -40,6 +42,7 @@ Column {
             }
         }
         FlatButton {
+            dpr: webSection.dpr
             flat: true
             text: qsTranslate("SettingsWindow", "导出")
             glyph: "\uEDE1" // Export
@@ -50,6 +53,7 @@ Column {
             }
         }
         FlatButton {
+            dpr: webSection.dpr
             id: webAddButton
         objectName: "webAddButton"
             text: qsTranslate("SettingsWindow", "添加")
@@ -107,7 +111,7 @@ Column {
                             visible: webRow.index > 0
                             x: 12
                             width: parent.width - 24
-                            height: Theme.edge(Screen.devicePixelRatio)
+                            height: Theme.edge(webSection.dpr)
                             color: Theme.divider
                         }
                         MouseArea {
@@ -142,22 +146,27 @@ Column {
                                         ? webSection.editor.webIconUrl(webRow.modelData.iconRef, Theme.dark) : ""
                             }
                         }
-                        Rectangle { // the keyword, as keys to press
+                        Item { // the keyword, as keys to press
                             id: keycap
                             anchors.left: siteIcon.right
                             anchors.leftMargin: 10
                             anchors.verticalCenter: parent.verticalCenter
                             width: Math.max(44, keywordText.implicitWidth + 16)
                             height: 26
-                            radius: Theme.controlRadius
-                            color: Theme.keycap
 
+                            Hook { // the style's key cap (Theme.keyHint): it only tells
+                                id: keycapPart
+                                anchors.fill: parent
+                                part: Theme.keyHint
+                                dpr: webSection.dpr
+                            }
                             Text {
                                 id: keywordText
                                 anchors.centerIn: parent
+                                anchors.verticalCenterOffset: keycapPart.out("contentOffsetY", 0)
                                 text: webRow.modelData.keyword
                                 textFormat: Text.PlainText
-                                color: Theme.text
+                                color: keycapPart.out("foreground", Theme.text)
                                 font.pixelSize: Theme.fontCaption
                             }
                         }
@@ -195,12 +204,14 @@ Column {
                             spacing: 2
 
                             FlatButton {
+                                dpr: webSection.dpr
                                 implicitHeight: 32
                                 flat: true
                                 text: qsTranslate("SettingsWindow", "打开")
                                 onClicked: webSection.editor.openWebShortcut(webRow.index)
                             }
                             FlatButton {
+                                dpr: webSection.dpr
                                 id: webEditButton
                                 objectName: "webEditButton"
                                 implicitHeight: 32
@@ -209,6 +220,7 @@ Column {
                                 onClicked: webSection.editRequested(webRow.index, webEditButton)
                             }
                             FlatButton {
+                                dpr: webSection.dpr
                                 implicitHeight: 32
                                 flat: true
                                 text: qsTranslate("SettingsWindow", "移除")
@@ -227,6 +239,7 @@ Column {
         description: qsTranslate("SettingsWindow", "在网站关键词后输入文字时，列出这个网站的搜索建议。只有这时才会把输入的文字发给那个网站")
 
         ToggleSwitch {
+            dpr: webSection.dpr
             checked: webSection.editor.webSuggestions
             onToggled: (on) => webSection.editor.webSuggestions = on
         }

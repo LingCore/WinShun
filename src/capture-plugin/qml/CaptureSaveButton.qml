@@ -80,11 +80,12 @@ Row {
             }
             enter: null
             exit: null
-            background: Rectangle {
-                color: Theme.menuBackground
-                radius: Theme.cardRadius
-                border.width: 1
-                border.color: Theme.windowEdge
+            background: Item {
+                Hook { // the style's menu box (Theme.menuFrame)
+                    anchors.fill: parent
+                    part: Theme.menuFrame
+                    dpr: Screen.devicePixelRatio
+                }
             }
             MenuItem {
                 id: previous
@@ -102,9 +103,15 @@ Row {
                     font.pixelSize: Theme.fontCaption
                     color: Theme.text
                 }
-                background: Rectangle {
-                    color: previous.highlighted ? Theme.menuHover : "transparent"
-                    radius: Theme.controlRadius
+                background: Item {
+                    Hook { // the style's row highlight (Theme.rowHighlight)
+                        anchors.fill: parent
+                        part: Theme.rowHighlight
+                        selected: previous.highlighted
+                        hovered: previous.hovered
+                        role: "menu"
+                        dpr: Screen.devicePixelRatio
+                    }
                 }
             }
         }

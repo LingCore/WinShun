@@ -18,7 +18,7 @@ Item {
             Layout.fillWidth: true
             spacing: 8
             Text { text: qsTr("画质"); color: Theme.subtext; font.pixelSize: Theme.fontCaption; Layout.preferredWidth: 38 }
-            Row {
+            ChoiceGroup {
                 spacing: 2
                 ChoiceButton {
                     objectName: "recordingSmallFile"
@@ -81,9 +81,9 @@ Item {
                     onClicked: options.recorder.countdown = !options.recorder.countdown
                 }
             }
-            Rectangle { implicitWidth: Theme.edge(Screen.devicePixelRatio); implicitHeight: 18; color: Theme.divider }
+            Hook { implicitWidth: Theme.edge(Screen.devicePixelRatio); implicitHeight: 18; part: Theme.separator; orientation: Qt.Vertical; dpr: Screen.devicePixelRatio }
             Glyph { glyph: "\uE765"; size: 16; Accessible.name: qsTr("显示按键") }
-            Row {
+            ChoiceGroup {
                 spacing: 2
                 ChoiceButton {
                     objectName: "recordingKeysOff"
@@ -141,6 +141,49 @@ Item {
             }
         }
     }
+    // A few choices side by side, one of them on (radio buttons): the style's
+    // segmented part is drawn behind them, the buttons (RecordingButton, checkable,
+    // autoExclusive) only draw their words. As in RecordingPanel.
+    component ChoiceGroup: Item {
+        id: choices
+
+        default property alias content: strip.data
+        property alias spacing: strip.spacing
+        readonly property bool isChoiceGroup: true
+        readonly property Item hook: track
+        // The buttons that take room now, in order.
+        readonly property var items: {
+            const list = []
+            const kids = strip.children
+            for (let i = 0; i < kids.length; ++i) {
+                if (kids[i].visible && kids[i].width > 0)
+                    list.push(kids[i])
+            }
+            return list
+        }
+
+        function indexOf(item: Item): int { return items.indexOf(item) }
+
+        implicitWidth: strip.implicitWidth
+        implicitHeight: strip.implicitHeight
+
+        Hook {
+            id: track
+            anchors.fill: parent
+            part: Theme.segmented
+            count: choices.items.length
+            currentIndex: choices.items.findIndex(item => item.checked)
+            hoveredIndex: choices.items.findIndex(item => item.hovered)
+            pressedIndex: choices.items.findIndex(item => item.down)
+            segments: choices.items.map(item => ({ x: item.x, width: item.width }))
+            role: "switch"
+            dpr: Screen.devicePixelRatio
+        }
+        Row {
+            id: strip
+            spacing: 2
+        }
+    }
     component ChoiceButton: RecordingButton {
         implicitHeight: 32
         checkable: true
@@ -164,7 +207,7 @@ Item {
             anchors.margins: 2
             glyph: "\uE73E"
             size: 8
-            color: Theme.accent
+            color: toggle.foreground
             Accessible.ignored: true
         }
     }

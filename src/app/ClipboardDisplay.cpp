@@ -298,6 +298,7 @@ void ClipboardDisplay::dispatch(const QJsonObject& message)
     }
     if (type == u"highlight") {
         m_clipboard->items()->setHighlightColor(QColor(message.value(u"color"_s).toString()));
+        m_clipboard->items()->setHighlightWeight(message.value(u"weight"_s).toInt(700));
         return;
     }
     if (type == u"image") {
@@ -362,7 +363,7 @@ void ClipboardDisplay::synchronize()
         {u"room"_s, m_placement->room()}, {u"above"_s, m_placement->above()},
         {u"dark"_s, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark},
         {u"uiSize"_s, SystemTheme::uiSize()}, {u"language"_s, QLocale().name()},
-        {u"rounded"_s, win::roundedCorners()}, {u"backdrop"_s, SystemTheme::backdrop()}});
+        {u"rounded"_s, win::roundedCorners()}, {u"uiStyle"_s, SystemTheme::uiStyle()}, {u"backdrop"_s, SystemTheme::backdrop()}});
     ClipModel* model = m_clipboard->items();
     const auto roles = model->roleNames();
     std::vector<QJsonObject> rows;

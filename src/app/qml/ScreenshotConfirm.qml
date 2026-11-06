@@ -33,6 +33,13 @@ Window {
 
     function onPixel(v) { return Math.round(v * dpr) / dpr }
 
+    // The style's line between two parts (Theme.separator), as thick as the style wants it.
+    component Divider: Hook {
+        id: seam
+        height: seam.out("thickness", Theme.edge(seam.dpr))
+        part: Theme.separator
+    }
+
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     color: Theme.backdrop && SystemTheme.materials ? "transparent" : Theme.background
     title: qsTr("AI 请求截屏") // Qt adds " - Win顺"
@@ -82,11 +89,10 @@ Window {
             font.pixelSize: Theme.uiTitle
             font.weight: Theme.fontStrong
         }
-        Rectangle {
+        Divider {
             anchors.bottom: parent.bottom
             width: parent.width
-            height: Theme.edge(Screen.devicePixelRatio)
-            color: Theme.divider
+            dpr: window.dpr
         }
     }
 
@@ -130,11 +136,15 @@ Window {
         spacing: 8
 
         FlatButton {
+            dpr: window.dpr
             id: denyButton
+            role: "dialog"
             text: qsTr("拒绝")
             onClicked: window.answer(0)
         }
         FlatButton {
+            dpr: window.dpr
+            role: "dialog"
             highlighted: true
             keyboardActivation: false
             text: qsTr("允许")
@@ -142,5 +152,5 @@ Window {
         }
     }
 
-    WindowEdge {}
+    WindowEdge { id: windowEdge; fill: Theme.background }
 }

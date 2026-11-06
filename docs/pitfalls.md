@@ -1,5 +1,21 @@
 # 踩坑记录
 
+## 界面风格：窗口圆角不能自己画（2026-11-05）
+
+- **现象**：brand、tactile 为了做出原型里 18 px 的窗口圆角，关掉了 DWM 的圆角（`DWMWCP_DONOTROUND`）、边和 Mica，窗口透明后在 QML 里画圆角和 1 px 边，阴影放在紧贴窗口下方的分层窗口里画。用户一眼看出“Windows 11 的圆角不是原生的”，禁止这样做。
+- **原因**：DWM 只给 8（默认）/ 4（小）/ 直角；更大的圆角只能整套自己来，还得自己补阴影窗口（跟随移动、淡入淡出、Z 序、遮挡、截图排除）、透明角的点击穿透、切回 DWM 时的系统标题栏残影。看起来始终和系统窗口不一样，代码也多了一千多行。
+- **做法**：所有风格、所有窗口（菜单、提示、插件窗口）都用 DWM 的圆角、边、阴影和 Mica，自绘框整套删掉（`win::setOwnFrame`、`OwnFrame`、`Theme.ownFrame`、阴影窗口）。风格只改窗口里面：`windowRadius` 和 fluent 一样是 DWM 的 8，靠近窗口角的东西按“内圆角 = max(8 − 间距, 4)”同心（搜索框离边 10 → 4）。要不要透明由 Look 的 `backdrop` / `backdropCapable` 决定，不按风格名判断。
+- **规则**：永远不要自绘窗口圆角、窗口边或窗口阴影；要改的是窗口里的东西。详见 `src/app/qml/themes/README.md` 第 4 节。
+
+## 界面风格：列表行里的部件随悬停造、毁，滚动时掉帧（2026-11-05）
+
+- **现象**：三种界面风格下剪贴板滚动掉帧都比 main 多（3 次中位数：main 约 67，fluent 88，tactile 94，brand 117），帧时间 p50/p95 不变、没有超过 33 ms 的帧；内存多 6–15 MB。
+- **原因**：每一行的悬停底是 `Loader { active: area.containsMouse; sourceComponent: Hook {…} }`。滚动时鼠标不动，行从它下面经过（Qt 每帧按新位置重发悬停），每经过一行就造一次、毁一次 Hook 和风格的 RowHighlight（brand 的带 RectangularShadow 和两个 Behavior，tactile 的更多）。此外每行一建出来就造齐 4 个按钮的 KeySurface、提示框的 MenuFrame（fluent 是 6 个矩形的阴影，brand 两个 RectangularShadow）和只有一行显示的分隔线，绝大多数从来不显示。Hook 用 `createObject` 加逐个 `Qt.binding` 造部件，比直接写同样的部件慢 5–10 倍（qml.exe 小测）；qmlprofiler 里 brand 滚动约 12 s 内 `Hook.rebuild` 142 次、共 82 ms、最长一次 4.6 ms（带分析器），240 Hz 下一帧只有 4.2 ms。
+- **做法**：`Hook` 加 `lazy: true`（第一次显示时才造，之后只隐藏不毁）。ClipRow 的悬停底改为常驻 Hook、用 `visible` 显示和隐藏；分隔线、RowAction 的键面、HoverTip 的框都 `lazy`；HoverTip 的 dpr 由宿主传，不再每行一个 Screen 附加对象。效果完全一样（三种风格 × 浅深 × 100/150 % 的 48 张截图逐像素相同），brand 滚动时 `Hook.rebuild` 降到 88 次、共 20 ms、最长 0.9 ms（剩下的是每行第一次悬停时造一次，之后复用），fluent、tactile 同样。
+- **规则**：随状态出现/消失的风格部件不要放进 `Loader { active: … }`，用 Hook 的 `visible`；列表行里大多不显示的 Hook 写 `lazy: true`。ResultRow、PanelRow、DialogBarRow 的悬停底已同样改好（`--preview-results --picked --rows-source` 新旧逐像素相同）。
+- **副作用及做法**：晚造的部件（lazy，或复用的行里第一次显示）若造出来时状态不是默认值（选中、当前、危险……），过去会先按默认值画出、再由 Behavior 用约 100 ms 渐变到真实状态（以前在隐藏时就渐变完了，看不到）。Hook 现在把当时的全部状态（和 `extra`）作为 `createObject` 的初始属性传入：Behavior 只对部件建成之后的变化起作用，所以第一次显示直接是最终状态，之后的状态变化照常有动画。
+- **测法**：`WinShun.exe --preview-results <dir> --clipboard-scroll --style brand` 现在按阶段给出悬停换行次数、行的新建/复用、每帧 GUI/渲染线程的 CPU 时间（`QueryThreadCycleTime`，不受别的程序负载影响）和悬停换行那几帧的 CPU；掉帧数受机器负载影响很大（同一构建 56–211），要隔轮交替跑多次比较。`--grab` 出顶部、下滚、回滚和按钮提示 4 张图，前后逐像素比。
+
 ## 以管理员身份运行插件：先校验再按路径启动是不够的（2026-11-03）
 
 - **原因**：插件文件夹是用户能写的。“比对哈希，一样就 `CreateProcess` 插件文件夹里的 exe”中间有空子：校验后、启动前可以换文件；就算一直拿着句柄不让改，插件运行中还会按需加载 DLL，往文件夹里**加**一个 `version.dll` 是挡不住的。开机自启的管理员 Win顺 就成了一个不用 UAC 的提权入口。

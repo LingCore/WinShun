@@ -45,6 +45,13 @@ Window {
 
     function onPixel(v) { return Math.round(v * dpr) / dpr }
 
+    // The style's line between two parts (Theme.separator), as thick as the style wants it.
+    component Divider: Hook {
+        id: seam
+        height: seam.out("thickness", Theme.edge(seam.dpr))
+        part: Theme.separator
+    }
+
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     color: Theme.backdrop && SystemTheme.materials ? "transparent" : Theme.background
     title: qsTr("AI 请求修改设置") // Qt adds " - Win顺"
@@ -105,11 +112,10 @@ Window {
                 font.pixelSize: Theme.uiTitle
                 font.weight: Theme.fontStrong
             }
-            Rectangle {
+            Divider {
                 anchors.bottom: parent.bottom
                 width: parent.width
-                height: Theme.edge(Screen.devicePixelRatio)
-                color: Theme.divider
+                dpr: window.dpr
             }
         }
 
@@ -166,18 +172,20 @@ Window {
                     color: Theme.subtext
                     font.pixelSize: Theme.uiCaption
                 }
-                Rectangle {
+                Item {
                     width: parent.width
-                    height: Math.min(list.contentHeight, 4.5 * Theme.rowHeight) + 2 * Theme.edge(Screen.devicePixelRatio)
-                    radius: Theme.cardRadius
-                    color: Theme.card
-                    border.width: 1
-                    border.color: Theme.cardBorder
+                    height: Math.min(list.contentHeight, 4.5 * Theme.rowHeight) + 2 * Theme.edge(window.dpr)
+
+                    Hook { // the style's card (Theme.cardPart)
+                        anchors.fill: parent
+                        part: Theme.cardPart
+                        dpr: window.dpr
+                    }
 
                     Flickable {
                         id: list
                         anchors.fill: parent
-                        anchors.margins: Theme.edge(Screen.devicePixelRatio) // inside the card's border
+                        anchors.margins: Theme.edge(window.dpr) // inside the card's border
                         clip: contentHeight > height
                         contentWidth: width
                         contentHeight: rows.implicitHeight
@@ -268,19 +276,19 @@ Window {
                                             }
                                         }
                                     }
-                                    Rectangle { // between two changes
+                                    Divider { // between two changes
                                         visible: change.index < window.shown.length - 1
                                         anchors.bottom: parent.bottom
                                         x: 12
                                         width: parent.width - 24
-                                        height: Theme.edge(Screen.devicePixelRatio)
-                                        color: Theme.divider
+                                        dpr: window.dpr
                                     }
                                 }
                             }
                         }
                     }
                     ListScrollBar {
+                        dpr: window.dpr
                         id: scrollBar
                         flickable: list
                         anchors.right: parent.right
@@ -323,23 +331,17 @@ Window {
                 width: parent.width
                 height: visible ? 28 : 0
 
-                Rectangle {
+                Hook { // the style's check box (Theme.toggle, kind "check")
                     id: mark
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 18
-                    height: 18
-                    radius: Theme.smallControlRadius
-                    color: box.checked ? Theme.accentFill : box.containsMouse ? Theme.controlHover : Theme.control
-                    border.width: box.checked ? 0 : 1
-                    border.color: Theme.controlBorder
-
-                    Glyph {
-                        anchors.centerIn: parent
-                        visible: box.checked
-                        glyph: "" // Accept
-                        size: 12
-                        color: Theme.accentText
-                    }
+                    width: Theme.tok("checkSize", 18)
+                    height: width
+                    part: Theme.toggle
+                    kind: "check"
+                    checked: box.checked
+                    hovered: box.containsMouse
+                    pressed: box.pressed
+                    dpr: window.dpr
                 }
                 Text {
                     anchors.left: mark.right
@@ -378,11 +380,15 @@ Window {
                     spacing: 8
 
                     FlatButton {
+                        dpr: window.dpr
                         id: denyButton
+                        role: "dialog"
                         text: qsTr("拒绝")
                         onClicked: window.answer(0)
                     }
                     FlatButton {
+                        dpr: window.dpr
+                        role: "dialog"
                         highlighted: true
                         enabled: window.armed
                         keyboardActivation: false
@@ -394,5 +400,5 @@ Window {
         }
     }
 
-    WindowEdge {}
+    WindowEdge { id: windowEdge; fill: Theme.background }
 }

@@ -22,7 +22,7 @@ Item {
 
     readonly property bool maximized: Window.visibility === Window.Maximized
     // Dimmed while the window is inactive, as Windows does.
-    readonly property color ink: Window.active ? foreground : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.4)
+    readonly property color ink: Window.active ? foreground : Qt.alpha(foreground, 0.4)
 
     height: 48
 
@@ -77,8 +77,8 @@ Item {
         width: 46
         height: bar.height
         color: red ? (pressed ? Theme.closePressed : Theme.closeHover)
-             : pressed ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.04)
-             : hovered ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.06)
+             : pressed ? Qt.alpha(bar.foreground, 0.04)
+             : hovered ? Qt.alpha(bar.foreground, 0.06)
              : "transparent"
 
         Glyph {
@@ -86,8 +86,8 @@ Item {
             glyph: button.glyph
             caption: true
             size: 10
-            color: button.red ? (button.pressed ? Qt.rgba(1, 1, 1, 0.7) : "white")
-                 : button.pressed ? Qt.rgba(bar.ink.r, bar.ink.g, bar.ink.b, bar.ink.a * 0.7)
+            color: button.red ? (button.pressed ? Qt.alpha(Theme.accentText, 0.7) : Theme.accentText)
+                 : button.pressed ? Qt.alpha(bar.ink, bar.ink.a * 0.7)
                  : bar.ink
         }
 

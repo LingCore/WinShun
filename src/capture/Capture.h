@@ -112,6 +112,9 @@ public:
         std::function<void(bool)> keyHintsKept;
         // A fill that carries white words (the countdown's).
         std::function<QColor()> accent;
+        // The countdown's corner, logical px (the 界面风格's menuRadius; 0 in
+        // the 直角 setting); empty: 8.
+        std::function<qreal()> panelRadius;
         // An overlay window was made (named "capture-overlay-<i>"), before it
         // shows: the app watches its graphics (diagnostics).
         std::function<void(QQuickWindow*, const QString& name)> windowCreated;

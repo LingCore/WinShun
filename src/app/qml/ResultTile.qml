@@ -20,6 +20,7 @@ Item {
     required property bool missing
     required property bool selected
     property NameTip nameTip: null
+    property real dpr: 1 // the window's, passed by the gallery (GitHub #111)
     readonly property bool current: GridView.isCurrentItem
     readonly property var results: GridView.view ? GridView.view.model : null
     readonly property int selectedCount: results ? results.selectedCount : 0
@@ -62,7 +63,7 @@ Item {
         radius: Theme.controlRadius
         color: tile.selected || (tile.current && tile.selectedCount === 0)
             ? Theme.selection : area.containsMouse ? Theme.hover : "transparent"
-        border.width: tile.current ? Theme.edge(Screen.devicePixelRatio) : 0
+        border.width: tile.current ? Theme.edge(tile.dpr) : 0
         border.color: Theme.accent
     }
 
@@ -100,7 +101,7 @@ Item {
         y: picture.y + picture.height + 6
         width: parent.width - 24
         text: tile.results && tile.nameMatches.length > 0
-            ? tile.results.elidedHtml(tile.name, tile.nameMatches, width, font, tile.results.highlightColor) : tile.name
+            ? tile.results.elidedHtml(tile.name, tile.nameMatches, width, font, tile.results.highlightColor, tile.results.highlightWeight) : tile.name
         textFormat: tile.nameMatches.length > 0 ? Text.StyledText : Text.PlainText
         elide: Text.ElideMiddle
         horizontalAlignment: Text.AlignHCenter

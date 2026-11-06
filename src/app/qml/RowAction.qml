@@ -17,8 +17,13 @@ Rectangle {
     property string tip
     property string tipShortcut
     readonly property bool tipWanted: area.containsMouse && !area.used && tip.length > 0
-    readonly property color foreground: danger ? Theme.accentText : checked ? Theme.accent
-                                        : area.containsMouse ? Theme.text : Theme.subtext
+    readonly property color foreground: surface.out("foreground", danger ? Theme.accentText : checked ? Theme.accent
+                                                    : area.containsMouse ? Theme.text : Theme.subtext)
+    property string role: "rowAction" // Hook.role
+    property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
+    // Screen.* only when no host passed it: a default binding to it would make a
+    // Screen object even where the host's value replaces it.
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
 
     // A handle to drag (a clipboard row in its group's order): held, every
     // move of the mouse is told, in this button's coordinates.
@@ -32,13 +37,28 @@ Rectangle {
     implicitWidth: text.length > 0 ? content.implicitWidth + 20 : small ? 24 : 32
     implicitHeight: small ? 24 : 32
     radius: Theme.controlRadius
-    color: danger
-           ? (area.pressed ? Qt.darker(Theme.dangerFill, 1.15) : area.containsMouse ? Qt.lighter(Theme.dangerFill, 1.08) : Theme.dangerFill)
-           : (area.pressed ? Theme.controlPressed : area.containsMouse || checked ? Theme.controlHover : "transparent")
+    color: "transparent"
+    opacity: enabled ? 1 : surface.out("disabledOpacity", 0.45)
+
+    Hook { // the style's key (Theme.keySurface): flat until hovered
+        id: surface
+        anchors.fill: parent
+        lazy: true // a list row's buttons show on its hover only
+        part: Theme.keySurface
+        hovered: area.containsMouse
+        pressed: area.pressed
+        current: button.checked // what it opens is open: marked, not a filled toggle
+        danger: button.danger
+        flat: true
+        role: button.role
+        extra: ({ corner: Theme.capsuleKeyRadius })
+        dpr: button.pixelRatio
+    }
 
     Row {
         id: content
         anchors.centerIn: parent
+        anchors.verticalCenterOffset: surface.out("contentOffsetY", 0)
         spacing: 6
 
         Glyph {

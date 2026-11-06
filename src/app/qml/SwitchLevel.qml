@@ -13,7 +13,8 @@ Item {
     property bool muted: false // the level stays, greyed: nothing is heard at it
     property bool animated: true // false: the bar jumps
 
-    function onPixel(v) { return Math.round(v * Screen.devicePixelRatio) / Screen.devicePixelRatio }
+    property real dpr: Screen.devicePixelRatio // the row passes the window's (GitHub #111)
+    function onPixel(v) { return Math.round(v * dpr) / dpr }
     function settle() {
         if (grow.running)
             grow.complete()

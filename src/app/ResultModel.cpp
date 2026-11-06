@@ -338,15 +338,15 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return r->isWeb() && !r->words.isEmpty() ? webSearchTitle(*r) : r->name;
     case NameHtmlRole: {
         if (r->suggestion) // what was typed stands out in it, as in a file's name
-            return highlighted(r->words, nameMatches(r->words, m_highlights), m_highlightColor);
+            return highlighted(r->words, nameMatches(r->words, m_highlights), m_highlightColor, elide::boldWeight(m_highlightWeight));
         if (const QString title = switchTitle(*r); !title.isEmpty())
-            return highlighted(title, nameMatches(title, m_highlights), m_highlightColor);
+            return highlighted(title, nameMatches(title, m_highlights), m_highlightColor, elide::boldWeight(m_highlightWeight));
         if (r->isWeb() && !r->words.isEmpty()) { // the words stand out, whatever the query's terms
             std::pair<qsizetype, qsizetype> words;
             const QString title = webSearchTitle(*r, &words);
-            return highlighted(title, {words}, m_highlightColor);
+            return highlighted(title, {words}, m_highlightColor, elide::boldWeight(m_highlightWeight));
         }
-        return highlighted(r->name, nameMatches(r->name, m_highlights), m_highlightColor);
+        return highlighted(r->name, nameMatches(r->name, m_highlights), m_highlightColor, elide::boldWeight(m_highlightWeight));
     }
     case NameMatchesRole: {
         QVariantList out;
@@ -405,7 +405,7 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
     case SnippetHtmlRole:
         if (r->snippet.isEmpty())
             return QString();
-        return highlighted(r->snippet, r->snippetMatches, m_highlightColor);
+        return highlighted(r->snippet, r->snippetMatches, m_highlightColor, elide::boldWeight(m_highlightWeight));
     case LineRole:
         return r->line;
     case LocationRole:
@@ -596,7 +596,7 @@ QStringList ResultModel::copyTexts() const
 }
 
 QString ResultModel::elidedHtml(
-    const QString& text, const QVariantList& matches, qreal width, const QFont& font, const QColor& color)
+    const QString& text, const QVariantList& matches, qreal width, const QFont& font, const QColor& color, int weight)
 {
     elide::Ranges ranges;
     for (qsizetype i = 0; i + 1 < matches.size(); i += 2) {
@@ -607,7 +607,7 @@ QString ResultModel::elidedHtml(
     }
     if (!ranges.isEmpty())
         diagnostics::watchHighlightFont(font); // GitHub #70: the highlights drawn as other characters
-    return elide::shortenedHtml(text, ranges, width, font, color);
+    return elide::shortenedHtml(text, ranges, width, font, color, elide::boldWeight(weight));
 }
 void ResultModel::assign(SearchResults items, QStringList highlights)
 {
@@ -887,6 +887,16 @@ void ResultModel::setHighlightColor(const QColor& color)
     m_highlightColor = color;
     emit highlightColorChanged();
     if (!m_items.isEmpty()) // a web search's title too, and where content matches are
+        emit dataChanged(index(0), index(count() - 1), {NameHtmlRole, SnippetHtmlRole});
+}
+
+void ResultModel::setHighlightWeight(int weight)
+{
+    if (weight == m_highlightWeight)
+        return;
+    m_highlightWeight = weight;
+    emit highlightColorChanged();
+    if (!m_items.isEmpty())
         emit dataChanged(index(0), index(count() - 1), {NameHtmlRole, SnippetHtmlRole});
 }
 

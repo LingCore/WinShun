@@ -64,6 +64,7 @@ Column {
 
         Glyph {
             id: pageGlyph
+            x: Theme.snap(-inkLeft, section.dpr) // the icon's ink, not its box, on the edge the card below starts at
             anchors.verticalCenter: parent.verticalCenter
             glyph: section.pageInfo?.glyph ?? ""
             size: 16
@@ -108,10 +109,12 @@ Column {
         height: 26
 
         Row {
+            x: sectionGlyph.visible ? Theme.snap(-sectionGlyph.inkLeft, section.dpr) : 0 // the icon's ink on the card's edge
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8
 
             Glyph {
+                id: sectionGlyph
                 visible: section.glyph.length > 0
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: section.glyph
@@ -138,13 +141,15 @@ Column {
         wrapMode: Text.Wrap
     }
 
-    Rectangle {
+    Item {
         width: parent.width
         height: Theme.snap(card.implicitHeight, section.dpr) // whole device pixels: the bottom edge as crisp as the top
-        radius: Theme.cardRadius
-        color: Theme.card
-        border.width: 1
-        border.color: Theme.cardBorder
+
+        Hook { // the style's card (Theme.cardPart): fill and 1 px edge
+            anchors.fill: parent
+            part: Theme.cardPart
+            dpr: section.dpr
+        }
 
         Column {
             id: card

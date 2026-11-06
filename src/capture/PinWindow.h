@@ -57,6 +57,10 @@ public:
         std::function<void(PinWindow*)> save; // Ctrl+S
         std::function<bool()> dark; // the border's grey
         std::function<QColor()> accent; // a fill that carries white words
+        // The 界面风格's (Theme.windowEdge, Theme.controlRadius in logical px);
+        // empty or invalid: the grey by `dark`, 4.
+        std::function<QColor()> edge;
+        std::function<qreal()> pillRadius;
         std::function<void(const QString&)> copyText; // the text picked
         // Reads the lines of the picture (their corners and characters' places,
         // in its pixels); `done` is called on the GUI thread, once, or never.
@@ -103,6 +107,7 @@ public:
     void setShown(bool shown);
     // Out of sight for 隐藏全部贴图, and back; independent of setShown.
     void setAllHidden(bool hidden);
+    void restyle(); // PinManager::restyle
     bool visibleNow() const { return m_shown && !m_allHidden; }
 
     void setTopmost(bool on);

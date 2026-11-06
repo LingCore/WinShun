@@ -29,7 +29,7 @@ Item {
     required property bool screenshot // a picture Win顺's capture took: tagged 截图 (when in no group)
     required property bool pasted // pasted from the list before, with 粘贴后保持位置 on (else the last pasted is on top): a check mark
     property int hint: 0 // the number that pastes this row (Alt+1...); 0 for none
-    property bool reserveHintSpace: false // keep icons aligned when hints fade or a row has no number
+    property bool reserveHintSpace: false // a numbered row keeps the number's room while hints fade; one without a number sits flush left
     property string hintModifier: "Alt" // ... with this held
     property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
     property real hintOpacity: 1
@@ -62,46 +62,50 @@ Item {
     signal actionRequested(int index, int action)
     signal hoverMoved(int index, point globalPos) // the mouse moved over it (not pressed)
 
-    // Text on whole device pixels (see ResultRow).
-    function onPixel(y) { return Math.round(y * Screen.devicePixelRatio) / Screen.devicePixelRatio }
-    function upToPixel(y) { return Math.ceil(y * Screen.devicePixelRatio - 1e-6) / Screen.devicePixelRatio }
+    // The window's, read once here (GitHub #111); text on whole device pixels (see ResultRow).
+    readonly property real dpr: Screen.devicePixelRatio
+    function onPixel(y) { return Math.round(y * dpr) / dpr }
+    function upToPixel(y) { return Math.ceil(y * dpr - 1e-6) / dpr }
 
-    Rectangle {
+    // The style's highlight (Theme.rowHighlight). The current row's is the
+    // list's own, one for all its rows (ClipboardPage); here only the hover
+    // and the picked rows it does not cover. Made the first time it shows,
+    // then only hidden: rows pass under a still mouse while the list
+    // scrolls, and making the part on each was most of the styles' cost
+    // there (a dropped frame at 240 Hz).
+    readonly property bool sharedSelected: current && (selectedCount === 0 || order > 0)
+    Hook {
         anchors.fill: parent
-        anchors.leftMargin: 6
-        anchors.rightMargin: 6
-        anchors.topMargin: 1
-        anchors.bottomMargin: 1
-        radius: Theme.largeControlRadius
-        color: row.order > 0 || (row.current && row.selectedCount === 0) ? Theme.selection
-               : area.containsMouse ? Theme.hover : "transparent"
+        anchors.leftMargin: Theme.rowInset
+        anchors.rightMargin: Theme.rowInset
+        anchors.topMargin: Theme.edge(row.dpr)
+        anchors.bottomMargin: Theme.edge(row.dpr)
+        visible: !row.sharedSelected && (row.order > 0 || area.containsMouse)
+        lazy: true
+        part: Theme.rowHighlight
+        selected: row.order > 0
+        hovered: area.containsMouse
+        role: "list"
+        dpr: row.dpr
     }
 
-    Rectangle { // "固定" listed first: a line where the rest begin
+    Hook { // "固定" listed first: a line where the rest begin (the style's seam)
         visible: row.afterPinned
+        lazy: true // one row has it
         x: 16
         // On the edge toward those: the bottom one in a list laid out bottom
         // to top (the clipboard turned over, GitHub #38).
         y: row.ListView.view?.verticalLayoutDirection === ListView.BottomToTop ? parent.height - height : 0
         width: parent.width - 32
-        height: Theme.edge(Screen.devicePixelRatio)
-        color: Theme.divider
-    }
-
-    Rectangle { // accent pill on the current row
-        visible: row.current
-        x: 7
-        anchors.verticalCenter: parent.verticalCenter
-        width: 3
-        height: 18
-        radius: Theme.smallRadius
-        color: Theme.accent
+        height: Theme.edge(row.dpr)
+        part: Theme.separator
+        dpr: row.dpr
     }
 
     Item {
         id: iconSlot
         objectName: "clipboardIconSlot"
-        x: 16 + (row.reserveHintSpace ? 28 : 0)
+        x: 16 + (row.reserveHintSpace && row.hint > 0 ? 28 : 0)
         anchors.verticalCenter: parent.verticalCenter
         // Pictures larger, on a taller row (ClipboardPage.pictureRowHeight):
         // what is in them shows (GitHub #9); 108 x 68 holds a 16:10 screen whole,
@@ -112,14 +116,14 @@ Item {
         Rectangle { // text and links: a sign on a soft tile
             anchors.fill: parent
             visible: row.kind <= 1 && row.swatch.length === 0
-            radius: 6
-            color: Theme.badge
+            radius: Theme.largeControlRadius
+            color: row.kind === 1 ? Theme.tok("clipLinkTint", Theme.badge) : Theme.tok("clipTextTint", Theme.badge) // a style may tint it as its file icons
 
             Glyph {
                 anchors.centerIn: parent
                 glyph: row.kind === 1 ? "" : "" // Link, Font
                 size: 16
-                color: Theme.accent
+                color: row.kind === 1 ? Theme.tok("clipLinkInk", Theme.accent) : Theme.tok("clipTextInk", Theme.accent)
             }
         }
 
@@ -181,7 +185,9 @@ Item {
                 width: ready ? implicitWidth : parent.width
                 height: ready ? implicitHeight : parent.height
                 visible: ready
-                source: row.image
+                // Not while it is pooled (the roles are undefined then, which a
+                // source takes for the file "undefined"): a source has a scheme.
+                source: row.image.indexOf(":") > 0 ? row.image : ""
                 // An image provider: sourceSize in logical pixels (Qt asks
                 // for it times the device pixel ratio); the implicit size is
                 // its pixels over the ratio.
@@ -311,7 +317,7 @@ Item {
         objectName: "clipboardNumberSlot"
         visible: row.reserveHintSpace && row.hint > 0
         opacity: row.hintOpacity
-        x: row.onPixel(14)
+        x: row.onPixel(Theme.tok("clipHintX", 14))
         width: 24
         height: row.height
 
@@ -380,6 +386,7 @@ Item {
             spacing: 2
 
             RowAction { // dragged up or down: to another place in its group
+                dpr: row.dpr
                 id: moveAction
                 small: row.metrics.dense
                 visible: row.movable
@@ -404,6 +411,7 @@ Item {
                 }
             }
             RowAction { // a click pastes already (clickToPaste): the preview here instead
+                dpr: row.dpr
                 id: pasteAction
                 small: row.metrics.dense
                 glyph: row.clickToPaste ? "" : "" // View, Paste
@@ -412,6 +420,7 @@ Item {
                 onClicked: row.clickToPaste ? row.previewRequested(row.index) : row.pasteRequested(row.index)
             }
             RowAction {
+                dpr: row.dpr
                 id: pinAction
                 small: row.metrics.dense
                 glyph: row.pinned ? "" : "" // Unpin, Pin
@@ -420,6 +429,7 @@ Item {
                 onClicked: row.actionRequested(row.index, Clipboard.Pin)
             }
             RowAction {
+                dpr: row.dpr
                 id: removeAction
                 small: row.metrics.dense
                 glyph: "" // Delete
@@ -431,6 +441,7 @@ Item {
     }
 
     HoverTip {
+        dpr: row.dpr
         readonly property RowAction hovered: moveAction.tipWanted ? moveAction
                                            : pasteAction.tipWanted ? pasteAction
                                            : pinAction.tipWanted ? pinAction

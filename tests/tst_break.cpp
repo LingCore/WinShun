@@ -4,9 +4,12 @@
 // Driven with made-up times; one tick a second unless a test says so. And
 // what its keyboard hook keeps from the program underneath (Keys.h).
 
+#include "Core.h"
 #include "Keys.h"
 #include "Schedule.h"
 
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTest>
 
 using namespace brk;
@@ -367,6 +370,54 @@ private slots:
         Run r(c);
         QCOMPARE(r.until(Phase::Pending), 20 * kMin);
     }
+
+    // The notice's look from Win顺's appearance (Core.h lookOf): the
+    // style's colours when sent for the theme in use, else its own; the
+    // corners setting either way.
+    void lookFromAppearance()
+    {
+        QCOMPARE(argbOf("#1B1B1B"), 0xFF1B1B1Bu);
+        QCOMPARE(argbOf("#0d000000"), 0x0D000000u);
+        QCOMPARE(argbOf("transparent"), 0u);
+        QCOMPARE(argbOf("#12345"), 0u);
+        QCOMPARE(argbOf("#GG0000"), 0u);
+
+        const auto parse = [](const char* json, bool light) {
+            return lookOf(Fake {QJsonDocument::fromJson(json).object()}, light);
+        };
+        // An older Win顺: the corners alone.
+        Look old = parse(R"({"corners":"square","uiStyle":"brand"})", true);
+        QVERIFY(!old.rounded);
+        QCOMPARE(old.background, 0u);
+        QVERIFY(parse(R"({"corners":"round"})", true).rounded);
+        QVERIFY(parse(R"({})", true).rounded);
+
+        const char* brandLight = R"({"corners":"round","nativeLook":{"dark":false,"rounded":true,
+            "background":"#fffdfcfd","windowEdge":"#ffb4b4b4","text":"#ff1b1b20","tagFill":"#0b000000"}})";
+        const Look look = parse(brandLight, true);
+        QVERIFY(look.rounded);
+        QCOMPARE(look.background, 0xFFFDFCFDu);
+        QCOMPARE(look.edge, 0xFFB4B4B4u);
+        QCOMPARE(look.ink, 0xFF1B1B20u);
+        QCOMPARE(look.button, 0x0B000000u);
+        // Sent for light while dark is in use (a moment before it changes): its own colours.
+        const Look other = parse(brandLight, false);
+        QCOMPARE(other.background, 0u);
+        QCOMPARE(other.ink, 0u);
+        // nativeLook's own rounded wins over corners.
+        QVERIFY(!parse(R"({"corners":"round","nativeLook":{"rounded":false,"dark":true}})", false).rounded);
+    }
+
+private:
+    // winshun::Json's few calls lookOf makes, over Qt's JSON.
+    struct Fake {
+        QJsonValue v;
+        Fake operator[](const char* key) const { return {v.toObject().value(QLatin1StringView(key))}; }
+        std::string toString() const { return v.toString().toStdString(); }
+        bool isObject() const { return v.isObject(); }
+        bool isBool() const { return v.isBool(); }
+        bool toBool() const { return v.toBool(); }
+    };
 };
 
 QTEST_GUILESS_MAIN(TestBreak)

@@ -22,7 +22,7 @@ Window {
     readonly property int labelSize: dropPie.labelPixelSize
     readonly property int smallSize: Math.max(12, labelSize - 1)
     readonly property real chipHeight: Theme.snap(dropPie.chipHeight, dpr)
-    readonly property real chipRadius: SystemTheme.roundedCorners ? chipHeight / 2 : 0
+    readonly property real chipRadius: Theme.pillRadius(chipHeight)
     readonly property int count: Math.max(1, dropPie.sectors.length)
     property real reveal: 0 // 0 → 1 as it appears; 0 at once when it goes
 

@@ -129,6 +129,7 @@ set(qml_files
     qml/Main.qml
     qml/SearchKeys.qml
     qml/Theme.qml
+    qml/Hook.qml
     qml/UiScale.qml
     qml/WindowEdge.qml
     qml/SearchBar.qml
@@ -190,6 +191,7 @@ set(qml_files
     qml/ToggleSwitch.qml
     qml/SwitchLevel.qml
     qml/FlatButton.qml
+    qml/Caret.qml
     qml/InputBox.qml
     qml/WebSearchOptions.qml
     qml/WebShortcutForm.qml
@@ -238,6 +240,23 @@ foreach(file IN LISTS qml_files)
     set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${name}")
 endforeach()
 
+# The 界面风格 (themes/README.md): each style's Look and parts, served at
+# ":/qt/qml/WinShun/themes/<style>/" and loaded by URL (Theme.qml). Not types
+# of the module: every style names its parts the same, so no qmldir entries,
+# and no qmldir per folder either (NO_GENERATE_EXTRA_QMLDIRS) or the folder
+# would defer to the module's and its parts not be found.
+file(GLOB theme_qml CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/qml/themes/*/*.qml")
+# Pictures a style's parts use (tactile's grain), beside its parts.
+file(GLOB theme_images CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/qml/themes/*/*.png")
+foreach(file IN LISTS theme_qml)
+    file(RELATIVE_PATH alias "${CMAKE_CURRENT_SOURCE_DIR}/qml" "${file}")
+    set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${alias}" QT_QML_SKIP_QMLDIR_ENTRY TRUE)
+endforeach()
+foreach(file IN LISTS theme_images)
+    file(RELATIVE_PATH alias "${CMAKE_CURRENT_SOURCE_DIR}/qml" "${file}")
+    set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${alias}")
+endforeach()
+
 # Pictures of the 拾穗计划 page, and the sound its avatar plays when pressed,
 # at ":/qt/qml/WinShun/gleaning/".
 set(gleaning_images
@@ -266,8 +285,9 @@ qt_add_qml_module(WinShun
     URI WinShun
     VERSION 1.0
     ${qml_import_scan}
-    QML_FILES ${qml_files}
-    RESOURCES ${gleaning_images}
+    NO_GENERATE_EXTRA_QMLDIRS
+    QML_FILES ${qml_files} ${theme_qml}
+    RESOURCES ${gleaning_images} ${theme_images}
     SOURCES
         ../core/KeepAwakeText.h
         AuthorMark.cpp AuthorMark.h

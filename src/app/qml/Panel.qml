@@ -26,6 +26,9 @@ Item {
     readonly property int gridColumns: launcher.gallery ? gallery.columns : 1
     // The rows are the last query's while a slow search has found nothing yet (Main.qml's dimRows).
     property bool dimmed: false
+    // The window's device pixel ratio, read once there and passed down to
+    // every row (GitHub #111).
+    property real dpr: Screen.devicePixelRatio
 
     signal keyPressed(var event)
     signal editingRequested()
@@ -129,7 +132,7 @@ Item {
         }
     }
 
-    function onPixel(v) { return Math.round(v * Screen.devicePixelRatio) / Screen.devicePixelRatio }
+    function onPixel(v) { return Math.round(v * panel.dpr) / panel.dpr }
 
     // Fades in as the window grows into it (the window is resized once;
     // the rows then come in over it).
@@ -143,9 +146,16 @@ Item {
     }
     NumberAnimation { id: fadeIn; target: panel; property: "opacity"; from: 0; to: 1; duration: 160; easing.type: Easing.OutCubic }
 
+    Rectangle { // the search row's layer (Theme.layer), round at the window's corners
+        width: parent.width
+        height: bar.height
+        color: Theme.layer
+    }
+
     SearchBar {
         id: bar
         width: parent.width
+        dpr: panel.dpr
         launcher: panel.launcher
         placement: panel.placement
         frame: panel.frame
@@ -158,8 +168,8 @@ Item {
         id: topDivider
         anchors.top: bar.bottom
         width: parent.width
-        height: Theme.edge(Screen.devicePixelRatio)
-        color: Theme.divider
+        height: Theme.edge(panel.dpr)
+        color: Theme.layerEdge
     }
 
     // ---- the filters -----------------------------------------------------------------
@@ -180,25 +190,21 @@ Item {
         Accessible.name: text
         Accessible.checked: active
 
-        Rectangle {
+        Hook { // chosen as the current row is: the style's row highlight
+            id: choiceHighlight
             anchors.fill: parent
             anchors.leftMargin: 8
             anchors.rightMargin: 8
-            radius: Theme.controlRadius
-            color: choice.active ? Theme.selection : choiceArea.containsMouse ? Theme.hover : "transparent"
-        }
-        Rectangle { // accent pill, as on the current row
-            visible: choice.active
-            x: 9
-            anchors.verticalCenter: parent.verticalCenter
-            width: 3
-            height: 14
-            radius: Theme.smallRadius
-            color: Theme.accent
+            part: Theme.rowHighlight
+            selected: choice.active
+            hovered: choiceArea.containsMouse
+            role: "panel"
+            dpr: panel.dpr
         }
         Text {
-            x: 20
-            width: parent.width - 32
+            // The words start where the style says a row's content does, from the highlight's edge (brand: as a result row's, 14 past its bar).
+            x: 8 + choiceHighlight.out("contentInset", 12)
+            width: parent.width - x - 12
             y: panel.onPixel((choice.height - height) / 2)
             text: choice.text
             textFormat: Text.PlainText
@@ -232,23 +238,22 @@ Item {
         spacing: 6
         bottomPadding: 6
     }
-    component Chip: Rectangle {
+    component Chip: Item {
         id: chip
 
         property string text
         property string tip
         property bool active: false
         property bool multi: false
+        property bool isAll: false // 不限: the resting choice, neutral when chosen (chipSurface isAll)
         readonly property bool tipWanted: chipArea.containsMouse && tip.length > 0
 
         signal clicked()
 
-        width: Math.ceil(chipLabel.implicitWidth) + 20 // whole pixels: the labels after it stay sharp
+        // Where the words start: after the lamp's room where the part has one (tactile's 不限), else 10.
+        readonly property real lead: chipSurface.out("leadingInset", 0) > 0 ? chipSurface.out("leadingInset", 0) : 10
+        width: Math.ceil(chipLabel.implicitWidth) + lead + 10 // whole pixels: the labels after it stay sharp
         height: Theme.chipHeight + 4
-        radius: Theme.pillRadius(height)
-        color: active ? Theme.chipActive : chipArea.containsMouse ? Theme.chipHover : "transparent"
-        border.width: active ? 1 : 0
-        border.color: Theme.chipBorder
         Accessible.role: multi ? Accessible.CheckBox : Accessible.RadioButton
         Accessible.name: text
         Accessible.checked: active
@@ -256,14 +261,27 @@ Item {
         Keys.onSpacePressed: chip.clicked()
         Keys.onReturnPressed: chip.clicked()
 
+        Hook { // the style's chip (role "filter"); the words are drawn here
+            id: chipSurface
+            anchors.fill: parent
+            part: Theme.chipSurface
+            checked: chip.active
+            isAll: chip.isAll
+            hovered: chipArea.containsMouse
+            pressed: chipArea.pressed
+            focused: chip.activeFocus
+            corner: Theme.pillRadius(chip.height)
+            role: "filter"
+            dpr: panel.dpr
+        }
         Text {
             id: chipLabel
-            x: 10
-            y: panel.onPixel((chip.height - height) / 2)
+            x: chip.lead
+            y: panel.onPixel((chip.height - height) / 2 + chipSurface.out("contentOffsetY", 0))
             text: chip.text
-            color: chip.active || chipArea.containsMouse ? Theme.text : Theme.subtext
+            color: chipSurface.out("foreground", chip.active && !chip.isAll ? Theme.accentText : chip.active || chipArea.containsMouse ? Theme.text : Theme.subtext)
             font.pixelSize: Theme.uiBody
-            font.weight: chip.active ? Theme.fontStrong : Font.Normal
+            font.weight: chipSurface.out("fontWeight", chip.active ? Theme.fontStrong : Font.Normal)
         }
         MouseArea {
             id: chipArea
@@ -375,6 +393,7 @@ Item {
                 Chips {
                     Chip {
                         text: qsTr("不限")
+                        isAll: true
                         active: panel.launcher.scope !== Launcher.Folders && panel.launcher.fileType < 0
                         onClicked: panel.launcher.chooseFileType(-1)
                     }
@@ -402,6 +421,7 @@ Item {
                             required property int index
                             required property string modelData
                             text: modelData
+                            isAll: index === 0
                             active: panel.launcher.dateChoice === index
                             onClicked: {
                                 panel.launcher.setDateChoice(index)
@@ -446,6 +466,7 @@ Item {
                             required property int index
                             required property string modelData
                             text: modelData
+                            isAll: index === 0
                             active: panel.launcher.sizeChoice === index
                             onClicked: {
                                 panel.launcher.setSizeChoice(index)
@@ -513,6 +534,7 @@ Item {
         }
 
         ListScrollBar {
+            dpr: panel.dpr
             flickable: filters
             anchors.right: parent.right
             anchors.top: parent.top
@@ -543,7 +565,7 @@ Item {
         anchors.left: sidebar.right
         anchors.top: topDivider.bottom
         anchors.bottom: footer.top
-        width: Theme.edge(Screen.devicePixelRatio)
+        width: Theme.edge(panel.dpr)
         color: Theme.divider
     }
 
@@ -695,9 +717,9 @@ Item {
 
             Rectangle {
                 anchors.centerIn: parent
-                width: resizeArea.containsMouse || resizeArea.pressed ? 2 : Theme.edge(Screen.devicePixelRatio)
+                width: resizeArea.containsMouse || resizeArea.pressed ? 2 : Theme.edge(panel.dpr)
                 height: parent.height - 12
-                radius: width / 2
+                radius: Theme.pillRadius(width)
                 color: resizeArea.containsMouse || resizeArea.pressed ? Theme.accent : Theme.faint
                 Accessible.ignored: true
             }
@@ -711,7 +733,7 @@ Item {
     Item {
         id: columns
         anchors.left: sidebar.right
-        anchors.leftMargin: 1
+        anchors.leftMargin: Theme.edge(panel.dpr) // past the divider: 1 logical pixel put the rows on half device ones at 150 %
         anchors.right: resultsBoundary.left
         anchors.top: topDivider.bottom
         height: panel.launcher.gallery ? 0 : Theme.labelRowHeight + 8
@@ -739,7 +761,7 @@ Item {
             anchors.bottom: parent.bottom
             x: 8
             width: parent.width - 16
-            height: Theme.edge(Screen.devicePixelRatio)
+            height: Theme.edge(panel.dpr)
             color: Theme.divider
         }
     }
@@ -749,7 +771,7 @@ Item {
         visible: !panel.launcher.gallery
         objectName: "panelResultList"
         anchors.left: sidebar.right
-        anchors.leftMargin: 1
+        anchors.leftMargin: Theme.edge(panel.dpr) // past the divider: 1 logical pixel put the rows on half device ones at 150 %
         anchors.right: resultsBoundary.left
         anchors.top: columns.bottom
         anchors.bottom: contentOffer.top
@@ -760,7 +782,35 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 150 } }
         model: visible ? panel.launcher.results : null
         boundsBehavior: Flickable.StopAtBounds
-        highlightMoveDuration: 0
+        // One highlight for the current row, the list's own (the others the
+        // mouse is on or that are chosen draw theirs, PanelRow.qml); it
+        // slides as long as the style says (Theme.rowSlide, 0: it jumps).
+        highlightMoveDuration: Theme.rowSlide
+        highlightMoveVelocity: -1
+        highlightResizeDuration: 0
+        highlightResizeVelocity: -1
+        highlightFollowsCurrentItem: true
+        highlight: Item {
+            id: panelHighlight
+            width: list.contentWidth
+            visible: list.currentItem !== null
+            transform: ScrollPixelAlignment {
+                view: list
+                viewY: list.y
+                itemY: panelHighlight.y
+            }
+            Hook {
+                anchors.fill: parent
+                anchors.leftMargin: Theme.rowInset
+                anchors.rightMargin: Theme.rowInset
+                part: Theme.rowHighlight
+                current: true
+                selected: list.currentItem !== null && (list.currentItem.selectedCount === 0 || list.currentItem.selected === true)
+                position: list.currentItem !== null ? list.currentItem.y : 0
+                role: "panel"
+                dpr: panel.dpr
+            }
+        }
         reuseItems: true
         contentWidth: Math.max(width, panel.columnsWidth)
         flickableDirection: Flickable.AutoFlickIfNeeded
@@ -805,6 +855,7 @@ Item {
             columns: panel.columnSpecs
             columnLayout: panel.columnLayout
             nameTip: panel.nameTip
+            dpr: panel.dpr
             // On whole device pixels, as the box's rows (see Main.qml).
             transform: ScrollPixelAlignment {
                 view: list
@@ -821,11 +872,12 @@ Item {
     }
 
     ListScrollBar {
+        dpr: panel.dpr
         id: listScrollBar
         objectName: "panelResultScrollBar"
         flickable: panel.view
         anchors.right: resultsBoundary.left
-        anchors.rightMargin: panel.frame.resizeMargin(Screen.devicePixelRatio)
+        anchors.rightMargin: panel.frame.resizeMargin(panel.dpr)
         anchors.top: list.top
         anchors.bottom: list.bottom
         // Leave the native resize border outside the scroll bar's hit area.
@@ -845,6 +897,7 @@ Item {
         anchors.bottom: contentOffer.top
         launcher: panel.launcher
         nameTip: panel.nameTip
+        dpr: panel.dpr
         opacity: panel.dimmed ? 0.45 : 1
         onRowClicked: (index, modifiers) => panel.rowClicked(index, modifiers)
         onRowDoubleClicked: (index, modifiers) => panel.rowDoubleClicked(index, modifiers)
@@ -896,6 +949,7 @@ Item {
             elide: Text.ElideRight
         }
         FlatButton {
+            dpr: panel.dpr
             id: contentAction
             objectName: "panelContentSearch"
             anchors.right: parent.right
@@ -914,6 +968,7 @@ Item {
     }
 
     FlatButton {
+        dpr: panel.dpr
         x: 12
         y: topDivider.y + topDivider.height + 6
         width: panel.sidebarWidth - 24
@@ -951,7 +1006,7 @@ Item {
         Keys.onRightPressed: panel.launcher.contentPane.preferredWidth = panel.paneWidth - 24
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
-            width: paneResize.containsMouse || paneResize.pressed || paneResize.activeFocus ? 2 : Theme.edge(Screen.devicePixelRatio)
+            width: paneResize.containsMouse || paneResize.pressed || paneResize.activeFocus ? 2 : Theme.edge(panel.dpr)
             height: parent.height
             color: paneResize.containsMouse || paneResize.pressed || paneResize.activeFocus ? Theme.accent : Theme.divider
         }
@@ -966,6 +1021,7 @@ Item {
         visible: active
         onXChanged: panel.launcher.contentPane.movePreview()
         sourceComponent: ContentPaneView {
+            dpr: panel.dpr
             pane: panel.launcher.contentPane
             launcher: panel.launcher
             compact: panel.compactDetails
@@ -978,6 +1034,7 @@ Item {
         width: parent.width
         launcher: panel.launcher
         frame: panel.frame
+        dpr: panel.dpr
         // The other view, on the same file where there is one.
         onGalleryRequested: gallery => {
             const path = panel.launcher.results.pathAt(panel.view.currentIndex)

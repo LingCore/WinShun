@@ -77,12 +77,14 @@ Window {
             }
         }
 
-        Rectangle { // once the options scroll under it
+        Hook { // once the options scroll under it (the style's separator)
             x: 24
             width: parent.width - 48
             anchors.bottom: parent.bottom
             height: Theme.edge(window.dpr)
-            color: Theme.divider
+            part: Theme.separator
+            orientation: Qt.Horizontal
+            dpr: window.dpr
             opacity: flick.contentY > 2 ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 120 } }
         }
@@ -128,5 +130,8 @@ Window {
         }
     }
 
-    WindowEdge {}
+    WindowEdge {
+        id: windowEdge
+        fill: Theme.page
+    }
 }

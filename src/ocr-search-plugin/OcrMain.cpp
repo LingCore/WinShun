@@ -87,7 +87,8 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
     QJsonObject params = first ? first->value(u"params"_s).toObject() : QJsonObject {};
     QJsonObject appearance = params.value(u"appearance"_s).toObject();
     if (preview)
-        appearance = {{u"themeSetting"_s, option(u"--theme"_s)}, {u"locale"_s, option(u"--locale"_s)}};
+        appearance = {{u"themeSetting"_s, option(u"--theme"_s)}, {u"locale"_s, option(u"--locale"_s)},
+                      {u"uiStyle"_s, option(u"--style"_s)}};
     const bool software
         = appearance.value(u"renderer"_s).toString() == u"software" || arguments.contains(u"--software"_s);
     qputenv("QT_QPA_PLATFORM", software ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
@@ -157,6 +158,7 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
                                                                        : Qt::ColorScheme::Unknown);
         ws::SystemTheme::setRoundedCorners(look.value(u"corners"_s).toString(u"round"_s) == u"round");
         ws::SystemTheme::setUiSize(look.value(u"uiSize"_s).toString(u"standard"_s));
+        ws::SystemTheme::setUiStyle(look.value(u"uiStyle"_s).toString());
         QCoreApplication::removeTranslator(&translator);
         if (look.value(u"locale"_s).toString() == u"en" && translator.load(u":/i18n/ocr-search_en.qm"_s))
             QCoreApplication::installTranslator(&translator);

@@ -189,7 +189,7 @@ Item {
         objectName: "captureToolbarRow1"
         y: bar.flipped ? second.height + bar.rowGap : 0
 
-        Rectangle {
+        Item {
             id: grip
             objectName: "captureToolbarGrip"
             property string tipText: qsTr("按住拖动工具条")
@@ -197,27 +197,38 @@ Item {
             visible: bar.movable
             width: bar.helpWidth
             height: bar.buttonHeight
-            radius: Theme.controlRadius
-            color: toolbarDrag.active ? Theme.controlPressed : gripHover.hovered ? Theme.controlHover : "transparent"
             activeFocusOnTab: true
             onVisibleChanged: if (!visible && activeFocus && bar.keyTarget) bar.keyTarget.forceActiveFocus()
             Accessible.role: Accessible.Button
             Accessible.name: qsTr("移动工具条")
             Accessible.description: qsTr("按住拖动；聚焦后可用方向键移动，Shift 加速")
             Accessible.onPressAction: forceActiveFocus()
-            border.width: activeFocus ? 1 : 0
-            border.color: Theme.text
+
+            KeyFace {
+                id: gripFace
+                hovered: gripHover.hovered
+                pressed: toolbarDrag.active
+            }
+            Rectangle { // keyboard focus
+                anchors.fill: parent
+                visible: grip.activeFocus
+                radius: Theme.controlRadius
+                color: "transparent"
+                border.width: 1
+                border.color: Theme.text
+            }
 
             Column {
                 anchors.centerIn: parent
+                anchors.verticalCenterOffset: gripFace.out("contentOffsetY", 0)
                 spacing: 3
                 Repeater {
                     model: 3
                     Rectangle {
                         width: 3
                         height: 3
-                        radius: 1.5
-                        color: gripHover.hovered || toolbarDrag.active ? Theme.text : Theme.subtext
+                        radius: Theme.pillRadius(3)
+                        color: gripFace.out("foreground", gripHover.hovered || toolbarDrag.active ? Theme.text : Theme.subtext)
                     }
                 }
             }
@@ -443,7 +454,7 @@ Item {
         onWheel: (wheel) => { wheel.accepted = true }
     }
 
-    Rectangle {
+    Item {
         id: keysCard
 
         readonly property real roomBelow: parent ? parent.height - (bar.blockRect.y + bar.blockRect.height) : 0
@@ -460,10 +471,13 @@ Item {
         y: parent ? bar.snap(Math.max(bar.popupMargin, Math.min(down ? bar.blockRect.y + bar.blockRect.height + bar.popupGap
                                                                       : bar.blockRect.y - bar.popupGap - height,
                                                                  parent.height - height - bar.popupMargin))) : 0
-        radius: Theme.controlRadius
-        color: Theme.background
-        border.width: 1
-        border.color: Theme.windowEdge
+
+        Hook { // the style's floating panel (Theme.menuFrame)
+            anchors.fill: parent
+            part: Theme.menuFrame
+            extra: ({ floating: true })
+            dpr: bar.dpr
+        }
 
         MouseArea { // clicks on the list keep it open
             anchors.fill: parent
@@ -508,30 +522,44 @@ Item {
 
     // ---- the parts ----
 
-    // A thin upright line between groups, on a whole device pixel.
+    // A thin upright line between groups (the style's separator), on whole device pixels.
     component Separator: Item {
         width: bar.separatorWidth
         height: bar.buttonHeight
 
-        Rectangle {
-            x: bar.snap(bar.separatorWidth / 2)
+        Hook {
             y: bar.snap((bar.buttonHeight - bar.separatorHeight) / 2)
-            width: Math.max(1, Math.round(bar.dpr)) / bar.dpr
+            width: bar.separatorWidth
             height: bar.separatorHeight
-            color: Theme.controlBorder
+            part: Theme.separator
+            orientation: Qt.Vertical
+            dpr: bar.dpr
         }
     }
 
+    // A toolbar key's face (Theme.keySurface): flat until the pointer is on it.
+    // The marks on it take the colour the face gives (`foreground`).
+    component KeyFace: Hook {
+        anchors.fill: parent
+        part: Theme.keySurface
+        flat: true
+        role: "toolbar"
+        dpr: bar.dpr
+    }
+
     // One card of the toolbar: its buttons go into the row inside.
-    component Card: Rectangle {
+    component Card: Item {
         default property alias content: cardRow.data
 
         implicitWidth: cardRow.width + 2 * bar.pad
         implicitHeight: bar.buttonHeight + 2 * bar.pad
-        radius: Theme.controlRadius
-        color: Theme.background
-        border.width: 1
-        border.color: Theme.windowEdge
+
+        Hook { // the style's floating panel (Theme.menuFrame)
+            anchors.fill: parent
+            part: Theme.menuFrame
+            extra: ({ floating: true })
+            dpr: bar.dpr
+        }
 
         MouseArea { // presses between the buttons stay here, not on the picture beneath
             anchors.fill: parent
@@ -559,7 +587,7 @@ Item {
     }
 
     // "?": every key, in a list by the toolbar.
-    component HelpButton: Rectangle {
+    component HelpButton: Item {
         id: help
 
         property string tipText: qsTr("全部按键")
@@ -573,15 +601,20 @@ Item {
 
         width: bar.helpWidth
         height: bar.buttonHeight
-        radius: Theme.controlRadius
-        color: helpArea.pressed ? Theme.controlPressed : helpArea.containsMouse || bar.keysOpen ? Theme.controlHover : "transparent"
         Accessible.role: Accessible.Button
         Accessible.name: qsTr("全部按键")
 
+        KeyFace {
+            id: helpFace
+            hovered: helpArea.containsMouse
+            pressed: helpArea.pressed
+            current: bar.keysOpen
+        }
         Text {
             anchors.centerIn: parent
+            anchors.verticalCenterOffset: helpFace.out("contentOffsetY", 0)
             text: "?"
-            color: helpArea.containsMouse || bar.keysOpen ? Theme.text : Theme.subtext
+            color: helpFace.out("foreground", helpArea.containsMouse || bar.keysOpen ? Theme.text : Theme.subtext)
             font.pixelSize: Theme.fontBody
         }
         MouseArea {
@@ -595,7 +628,7 @@ Item {
 
     // An icon-only action: flat, as wide as a tool; primary: accentFill and a
     // white mark. The tip (name, keys) is read by the one HoverTip.
-    component ActionButton: Rectangle {
+    component ActionButton: Item {
         id: action
 
         property string glyph
@@ -607,23 +640,26 @@ Item {
 
         width: bar.toolWidth
         height: bar.buttonHeight
-        radius: Theme.controlRadius
-        color: primary
-               ? (actionArea.pressed ? Qt.darker(Theme.accentFill, 1.15) : actionArea.containsMouse ? Qt.lighter(Theme.accentFill, 1.08) : Theme.accentFill)
-               : (actionArea.pressed ? Theme.controlPressed : actionArea.containsMouse ? Theme.controlHover : "transparent")
-        opacity: enabled ? 1 : 0.45
+        opacity: enabled ? 1 : actionFace.out("disabledOpacity", 0.45)
         Accessible.role: Accessible.Button
         Accessible.name: name
         Accessible.onPressAction: if (enabled) action.clicked()
 
+        KeyFace {
+            id: actionFace
+            hovered: actionArea.containsMouse
+            pressed: actionArea.pressed
+            highlighted: action.primary
+            flat: !action.primary // the primary one is a filled key at rest
+        }
         Glyph {
             x: bar.snap((bar.toolWidth - bar.iconSize) / 2)
-            y: bar.snap((bar.buttonHeight - bar.iconSize) / 2)
+            y: bar.snap((bar.buttonHeight - bar.iconSize) / 2 + actionFace.out("contentOffsetY", 0))
             width: bar.iconSize
             height: bar.iconSize
             glyph: action.glyph
             size: bar.iconSize
-            color: action.primary ? Theme.accentText : Theme.text
+            color: actionFace.out("foreground", action.primary ? Theme.accentText : Theme.text)
         }
 
         MouseArea {
@@ -637,7 +673,7 @@ Item {
 
     // A tool: accentFill and a white icon while it is on; a click turns it
     // on, or off again when it is on (the key that opens it closes it too).
-    component ToolButton: Rectangle {
+    component ToolButton: Item {
         id: tool
 
         required property int index
@@ -646,18 +682,20 @@ Item {
 
         width: bar.toolWidth
         height: bar.buttonHeight
-        radius: Theme.controlRadius
-        color: current
-               ? (toolArea.pressed ? Qt.darker(Theme.accentFill, 1.15) : toolArea.containsMouse ? Qt.lighter(Theme.accentFill, 1.08) : Theme.accentFill)
-               : (toolArea.pressed ? Theme.controlPressed : toolArea.containsMouse ? Theme.controlHover : "transparent")
         Accessible.role: Accessible.Button
         Accessible.name: modelData.name
 
+        KeyFace {
+            id: toolFace
+            hovered: toolArea.containsMouse
+            pressed: toolArea.pressed
+            checked: tool.current
+        }
         ToolIcon {
             x: bar.snap((bar.toolWidth - bar.iconSize) / 2)
-            y: bar.snap((bar.buttonHeight - bar.iconSize) / 2)
+            y: bar.snap((bar.buttonHeight - bar.iconSize) / 2 + toolFace.out("contentOffsetY", 0))
             kind: tool.modelData.kind
-            color: tool.current ? Theme.accentText : Theme.text
+            color: toolFace.out("foreground", tool.current ? Theme.accentText : Theme.text)
         }
 
         MouseArea {

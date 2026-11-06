@@ -117,6 +117,7 @@ protected:
     {
         m_core.chinese = chinese();
         m_core.light = theme() != "dark";
+        m_core.look = brk::lookOf(appearance(), m_core.light);
         m_core.log = [this](const std::string& text) { log("info", text); };
         apply(settings());
         loadPause();
@@ -135,6 +136,7 @@ protected:
             const std::lock_guard lock(m_core.mutex);
             m_core.chinese = chinese();
             m_core.light = theme() != "dark";
+            m_core.look = brk::lookOf(appearance(), m_core.light);
         }
         m_ui.wake();
     }

@@ -102,6 +102,10 @@ void PhosphorGlyph::layout()
     if (m_text.isEmpty() || m_em <= 0 || !font.isValid() || !window()) {
         m_path = {};
         m_pixels = 0;
+        if (m_inkLeft != 0) {
+            m_inkLeft = 0;
+            emit inkChanged();
+        }
         return;
     }
     const qreal dpr = window()->effectiveDevicePixelRatio();
@@ -130,6 +134,11 @@ void PhosphorGlyph::layout()
     place.scale(scale, scale);
     m_path = place.map(path);
     m_path.setFillRule(Qt::WindingFill);
+    const qreal inkLeft = x() + m_path.boundingRect().left() / dpr;
+    if (!qFuzzyCompare(1 + inkLeft, 1 + m_inkLeft)) {
+        m_inkLeft = inkLeft;
+        emit inkChanged();
+    }
 }
 
 QSGNode* PhosphorGlyph::updatePaintNode(QSGNode* old, UpdatePaintNodeData*)

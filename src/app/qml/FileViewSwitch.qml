@@ -15,9 +15,11 @@ Row {
 
     signal modeRequested(bool gallery)
 
+    property real dpr: Screen.devicePixelRatio // the window's, passed by the host (GitHub #111)
+
     spacing: 10
 
-    function onPixel(v) { return Math.round(v * Screen.devicePixelRatio) / Screen.devicePixelRatio }
+    function onPixel(v) { return Math.round(v * dpr) / dpr }
 
     Slider {
         id: size
@@ -41,13 +43,13 @@ Row {
             y: viewSwitch.onPixel(size.topPadding + (size.availableHeight - height) / 2)
             width: size.availableWidth - 14
             height: 4
-            radius: 2
+            radius: Theme.pillRadius(height)
             color: Theme.chipBorder
 
             Rectangle {
                 width: viewSwitch.onPixel(size.visualPosition * parent.width)
                 height: parent.height
-                radius: 2
+                radius: parent.radius
                 color: Theme.accent
             }
         }
@@ -56,9 +58,9 @@ Row {
             y: viewSwitch.onPixel(size.topPadding + (size.availableHeight - height) / 2)
             width: 14
             height: 14
-            radius: 7
+            radius: Theme.pillRadius(height)
             color: Theme.chipActive
-            border.width: 1
+            border.width: Theme.edge(viewSwitch.dpr)
             border.color: Theme.chipBorder
 
             Rectangle {
@@ -66,15 +68,16 @@ Row {
                 readonly property int across: size.pressed ? 6 : size.hovered ? 9 : 7
                 width: across
                 height: across
-                radius: across / 2
+                radius: Theme.pillRadius(across)
                 color: Theme.accent
             }
         }
     }
 
-    component ViewChip: Rectangle {
+    component ViewChip: Item {
         id: chip
 
+        required property int index
         required property bool gallery
         required property string glyph
         required property string name
@@ -83,20 +86,16 @@ Row {
 
         width: height + 6
         height: Theme.chipHeight - 4
-        radius: Theme.controlRadius
-        color: active ? Theme.chipActive : hovered ? Theme.chipHover : "transparent"
-        border.width: active ? 1 : 0
-        border.color: Theme.chipBorder
         Accessible.role: Accessible.RadioButton
         Accessible.name: name
         Accessible.checked: active
 
         Glyph {
             x: viewSwitch.onPixel((chip.width - width) / 2)
-            y: viewSwitch.onPixel((chip.height - height) / 2)
+            y: viewSwitch.onPixel((chip.height - height) / 2 + track.call("labelOffsetY", [chip.index], 0))
             glyph: chip.glyph
             size: 16
-            color: chip.active || chip.hovered ? Theme.text : Theme.subtext
+            color: track.call("labelColor", [chip.index], chip.active || chip.hovered ? Theme.text : Theme.subtext)
         }
 
         MouseArea {
@@ -108,12 +107,22 @@ Row {
         }
     }
 
-    Rectangle {
-        anchors.verticalCenter: parent.verticalCenter
+    Item {
+        y: viewSwitch.onPixel((viewSwitch.height - height) / 2)
         width: chips.implicitWidth + 4
         height: Theme.chipHeight
-        radius: Theme.cardRadius
-        color: Theme.track
+
+        Hook { // the style's segmented part (role "switch"); the icons are drawn here
+            id: track
+            anchors.fill: parent
+            part: Theme.segmented
+            count: 2
+            currentIndex: viewSwitch.launcher.gallery ? 1 : 0
+            hoveredIndex: listChip.hovered ? 0 : galleryChip.hovered ? 1 : -1
+            segments: [{ x: chips.x + listChip.x, width: listChip.width }, { x: chips.x + galleryChip.x, width: galleryChip.width }]
+            role: "switch"
+            dpr: viewSwitch.dpr
+        }
 
         Row {
             id: chips
@@ -124,6 +133,7 @@ Row {
             ViewChip {
                 id: listChip
                 objectName: "fileViewList"
+                index: 0
                 gallery: false
                 glyph: "\uE8FD" // BulletedList
                 name: qsTr("列表")
@@ -131,6 +141,7 @@ Row {
             ViewChip {
                 id: galleryChip
                 objectName: "fileViewGallery"
+                index: 1
                 gallery: true
                 glyph: "\uE8A9" // ViewAll
                 name: qsTr("大图")

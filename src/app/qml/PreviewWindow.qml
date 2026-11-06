@@ -80,6 +80,7 @@ Window {
             spacing: 4
 
             FlatButton {
+                dpr: window.dpr
                 id: openButton
                 visible: window.preview.path.length > 0
                 flat: true
@@ -90,6 +91,7 @@ Window {
                 Component.onCompleted: window.frame.addControl(openButton)
             }
             FlatButton {
+                dpr: window.dpr
                 id: closeButton
                 flat: true
                 width: 32
@@ -99,11 +101,12 @@ Window {
                 Component.onCompleted: window.frame.addControl(closeButton)
             }
         }
-        Rectangle {
+        Hook { // the style's seam
             anchors.bottom: parent.bottom
             width: parent.width
-            height: Theme.edge(Screen.devicePixelRatio)
-            color: Theme.divider
+            height: Theme.edge(window.dpr)
+            part: Theme.separator
+            dpr: window.dpr
         }
     }
 
@@ -354,6 +357,7 @@ Window {
             }
         }
         ListScrollBar {
+            dpr: window.dpr
             visible: lines.shown
             flickable: lines
             anchors.right: parent.right
@@ -441,5 +445,8 @@ Window {
         }
     }
 
-    WindowEdge {}
+    WindowEdge {
+        id: windowEdge
+        fill: Theme.background
+    }
 }

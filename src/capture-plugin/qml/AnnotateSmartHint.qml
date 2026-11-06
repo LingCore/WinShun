@@ -6,7 +6,7 @@ import WinShun
 // selection's text found places to hide, "发现 N 处 · 点此打码" stands by the
 // toolbar; one click hides all of them (one undo step). Nothing shows while
 // the scan runs or when it found nothing. Fades in; goes at once.
-Rectangle {
+Item {
     id: hint
 
     required property AnnotationModel annot
@@ -21,10 +21,6 @@ Rectangle {
     visible: found > 0
     width: snap(label.implicitWidth + 2 * padX)
     height: snap(32)
-    radius: Theme.controlRadius
-    color: area.pressed ? Theme.controlPressed : area.containsMouse ? Theme.controlHover : Theme.background
-    border.width: 1
-    border.color: Theme.windowEdge
     Accessible.role: Accessible.Button
     Accessible.name: label.text
 
@@ -46,12 +42,24 @@ Rectangle {
         easing.type: Easing.OutCubic
     }
 
+    Hook { // the style's key (Theme.keySurface): a floating button by the toolbar
+        id: face
+        anchors.fill: parent
+        part: Theme.keySurface
+        hovered: area.containsMouse
+        pressed: area.pressed
+        role: "toolbar"
+        dpr: hint.dpr
+    }
+
     Text {
         id: label
         anchors.centerIn: parent
+        anchors.verticalCenterOffset: face.out("contentOffsetY", 0)
         text: qsTr("发现 %1 处 · 点此打码").arg(hint.found)
-        color: Theme.text
+        color: face.out("foreground", Theme.text)
         font.pixelSize: Theme.fontCaption
+        font.weight: face.out("fontWeight", Font.Normal)
     }
 
     MouseArea {

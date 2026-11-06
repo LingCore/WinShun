@@ -103,6 +103,7 @@ Column {
         property string key
 
         ToggleSwitch {
+            dpr: card.dpr
             checked: card.editor[toggleRow.key]
             onToggled: (on) => card.editor[toggleRow.key] = on
         }
@@ -118,6 +119,7 @@ Column {
         signal recorded(string hotkey)
 
         FlatButton {
+            dpr: card.dpr
             visible: row.hotkey.length > 0 && !recorder.recording
             flat: true
             text: qsTr("清除")
@@ -153,6 +155,7 @@ Column {
 
         // A click takes no focus: the box goes on recording until it is done here.
         FlatButton {
+            dpr: card.dpr
             visible: keyRow.info.text.length > 0 && (keyRow.hovered || keyRecorder.recording || activeFocus)
             flat: true
             text: qsTr("清除")
@@ -163,6 +166,7 @@ Column {
             }
         }
         FlatButton {
+            dpr: card.dpr
             visible: keyRow.info.changed
             flat: true
             text: qsTr("恢复默认")
@@ -284,6 +288,7 @@ Column {
                         description: qsTr("按它开始截图，截图时再按一次取消")
 
                         FlatButton {
+                            dpr: card.dpr
                             visible: card.editor.captureHotkey.length > 0 && !hotkeyRecorder.recording
                             flat: true
                             text: qsTr("清除")
@@ -310,6 +315,7 @@ Column {
                         description: qsTr("让 PrtScn 不再打开 Windows 的截图工具，改用这里的截图。Win顺 退出时还给截图工具，下次启动再接管；关掉这项也恢复原来的设置")
 
                         ToggleSwitch {
+                            dpr: card.dpr
                             checked: card.editor.capturePrintScreen
                             onToggled: (on) => card.editor.capturePrintScreen = on
                         }
@@ -329,6 +335,7 @@ Column {
                         description: qsTr("其他程序全屏时，截图快捷键和 PrtScn 不弹出截图；仍能从菜单手动开始")
 
                         ToggleSwitch {
+                            dpr: card.dpr
                             objectName: "capturePauseFullScreen"
                             checked: card.editor.capturePauseInFullScreen
                             onToggled: (on) => card.editor.capturePauseInFullScreen = on
@@ -340,6 +347,7 @@ Column {
                         description: qsTr("停下来时在屏幕左下角列出此刻能用的按键，一按鼠标就消失，挡路时自动让开。关闭后截图时按 ? 仍可临时显示")
 
                         ToggleSwitch {
+                            dpr: card.dpr
                             objectName: "captureKeyHintsSwitch"
                             checked: card.editor.captureKeyHints
                             onToggled: (on) => card.editor.captureKeyHints = on
@@ -484,11 +492,13 @@ Column {
                         description: card.editor.captureSaveFolder.length > 0 ? card.editor.captureSaveFolder : qsTr("系统的“屏幕截图”文件夹")
 
                         FlatButton {
+                            dpr: card.dpr
                             text: qsTr("使用系统默认")
                             enabled: card.editor.captureSaveFolder.length > 0
                             onClicked: card.editor.captureSaveFolder = ""
                         }
                         FlatButton {
+                            dpr: card.dpr
                             text: qsTr("选择文件夹…")
                             onClicked: {
                                 const chosen = card.editor.pickFolder(qsTr("选择截图保存文件夹"))
@@ -578,6 +588,7 @@ Column {
                             title: modelData.title
 
                             FlatButton {
+                                dpr: card.dpr
                                 id: pick
                                 implicitWidth: card.pickWidth
                                 text: mouseRow.current >= 0 ? mouseRow.choices[mouseRow.current].text : ""
@@ -715,6 +726,7 @@ Column {
                         description: qsTr("图里出现这些词就打码，用逗号隔开，比如项目代号、客户名")
 
                         InputBox {
+                            dpr: card.dpr
                             id: wordsBox
                             objectName: "captureSmartWords"
                             width: 220

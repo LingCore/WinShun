@@ -140,9 +140,8 @@ Item {
         Component.onCompleted: if (notice.length > 0) words = notice
     }
 
-    // A short line of words in a small card (Theme.background, a 1 px grey
-    // edge): fades in over fadeInMs, out over fadeOutMs, the fade-out at once.
-    component FadeBar: Rectangle {
+    // A short line of words in a small floating card (the style's menuFrame): fades in over fadeInMs, out over fadeOutMs, the fade-out at once.
+    component FadeBar: Item {
         id: fade
 
         property string words
@@ -153,10 +152,6 @@ Item {
 
         width: Math.ceil((label.implicitWidth + 2 * over.barPad) / 4) * 4
         height: over.barHeight
-        radius: Theme.controlRadius
-        color: Theme.background
-        border.width: 1
-        border.color: Theme.windowEdge
         opacity: 0
         visible: opacity > 0 && allowed
         Component.onCompleted: if (shown) opacity = 1
@@ -172,6 +167,12 @@ Item {
 
         NumberAnimation { id: fadeIn; target: fade; property: "opacity"; to: 1; duration: over.fadeInMs }
         NumberAnimation { id: fadeOut; target: fade; property: "opacity"; to: 0; duration: over.fadeOutMs }
+
+        Hook { // the style's floating panel (Theme.menuFrame)
+            anchors.fill: parent
+            part: Theme.menuFrame
+            dpr: over.dpr
+        }
 
         Text {
             id: label

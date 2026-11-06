@@ -104,14 +104,17 @@ Window {
         id: column
         spacing: window.gap
 
-        Rectangle {
+        Item {
             id: bar
             width: Theme.snapUp(row.width + 2 * window.pad, window.dpr)
             height: Theme.snapUp(window.buttonHeight + 2 * window.pad, window.dpr)
-            radius: Theme.controlRadius
-            color: Theme.background
-            border.width: Theme.edge(window.dpr)
-            border.color: Theme.windowEdge
+
+            Hook { // the style's floating panel (Theme.menuFrame)
+                anchors.fill: parent
+                part: Theme.menuFrame
+                extra: ({ floating: true })
+                dpr: window.dpr
+            }
 
             MouseArea { // presses between the buttons stay here
                 anchors.fill: parent
@@ -124,22 +127,26 @@ Window {
                 y: window.pad
                 spacing: window.spacing
 
-                Rectangle { // the grip: drags the toolbar
+                Item { // the grip: drags the toolbar
                     id: grip
                     readonly property string name: qsTr("按住拖动工具条")
                     readonly property string keys: ""
                     width: window.gripWidth
                     height: window.buttonHeight
-                    radius: Theme.controlRadius
-                    color: gripArea.pressed ? Theme.controlPressed : gripArea.containsMouse ? Theme.controlHover : "transparent"
                     Accessible.role: Accessible.Grip
                     Accessible.name: grip.name
 
+                    KeyFace {
+                        id: gripFace
+                        hovered: gripArea.containsMouse
+                        pressed: gripArea.pressed
+                    }
                     Glyph {
                         anchors.centerIn: parent
+                        anchors.verticalCenterOffset: gripFace.out("contentOffsetY", 0)
                         glyph: String.fromCharCode(0xE76F) // GripperBarHorizontal
                         size: window.iconSize
-                        color: Theme.subtext
+                        color: gripFace.out("foreground", Theme.subtext)
                     }
 
                     MouseArea {
@@ -182,6 +189,7 @@ Window {
 
                         ToolIcon {
                             anchors.centerIn: parent
+                            anchors.verticalCenterOffset: toolButton.markOffsetY
                             kind: toolButton.modelData
                             color: toolButton.foreground
                         }
@@ -203,7 +211,7 @@ Window {
 
                     Rectangle {
                         x: window.centre(parent.width, width)
-                        y: window.centre(parent.height, height)
+                        y: window.centre(parent.height, height) + parent.markOffsetY
                         width: window.laserDot + 6
                         height: width
                         radius: width / 2
@@ -214,7 +222,7 @@ Window {
                     }
                     Rectangle {
                         x: window.centre(parent.width, width)
-                        y: window.centre(parent.height, height)
+                        y: window.centre(parent.height, height) + parent.markOffsetY
                         width: window.laserDot
                         height: width
                         radius: width / 2
@@ -233,7 +241,7 @@ Window {
 
                     Rectangle {
                         x: window.centre(parent.width, width)
-                        y: window.centre(parent.height, height)
+                        y: window.centre(parent.height, height) + parent.markOffsetY
                         width: window.dotSize
                         height: width
                         radius: width / 2
@@ -282,7 +290,7 @@ Window {
 
                     Rectangle {
                         x: window.centre(parent.width, width)
-                        y: window.centre(parent.height, height)
+                        y: window.centre(parent.height, height) + parent.markOffsetY
                         width: window.boardSize
                         height: window.boardSize
                         radius: Theme.smallControlRadius
@@ -301,7 +309,7 @@ Window {
 
                     Rectangle {
                         x: window.centre(parent.width, width)
-                        y: window.centre(parent.height, height)
+                        y: window.centre(parent.height, height) + parent.markOffsetY
                         width: window.boardSize
                         height: window.boardSize
                         radius: Theme.smallControlRadius
@@ -347,15 +355,17 @@ Window {
             picker: false
         }
 
-        Rectangle { // a name and key, or the hint
+        Item { // a name and key, or the hint
             id: line
             visible: window.lineText.length > 0
             width: Theme.snapUp(lineRow.width + 2 * window.linePadX, window.dpr)
             height: Theme.snapUp(window.lineHeight, window.dpr)
-            radius: Theme.controlRadius
-            color: Theme.background
-            border.width: Theme.edge(window.dpr)
-            border.color: Theme.windowEdge
+
+            Hook { // the style's floating panel (Theme.menuFrame)
+                anchors.fill: parent
+                part: Theme.menuFrame
+                dpr: window.dpr
+            }
 
             MouseArea { // a click puts the hint away
                 anchors.fill: parent
@@ -389,39 +399,55 @@ Window {
         width: window.separatorWidth
         height: window.buttonHeight
 
-        Rectangle {
-            x: window.snap(window.separatorWidth / 2)
+        Hook { // the style's separator
             y: window.snap((window.buttonHeight - window.separatorHeight) / 2)
-            width: Math.max(1, Math.round(window.dpr)) / window.dpr
+            width: window.separatorWidth
             height: window.separatorHeight
-            color: Theme.controlBorder
+            part: Theme.separator
+            orientation: Qt.Vertical
+            dpr: window.dpr
         }
     }
 
-    // A flat button; checked: accentFill with a white mark. A glyph, or what is put in it.
-    component BarButton: Rectangle {
+    // A toolbar key's face (Theme.keySurface): flat until the pointer is on it.
+    component KeyFace: Hook {
+        anchors.fill: parent
+        part: Theme.keySurface
+        flat: true
+        role: "toolbar"
+        dpr: window.dpr
+    }
+
+    // A flat button; checked: the style's chosen key (accentFill with a white mark in fluent). A glyph, or what is put in it.
+    component BarButton: Item {
         id: button
 
         property string glyph
         property string name
         property string keys
         property bool checked: false
-        readonly property color foreground: checked ? Theme.accentText : Theme.text
+        readonly property color foreground: face.out("foreground", checked ? Theme.accentText : Theme.text)
+        // How far the marks sit from the middle (a pressed key sinks a little).
+        readonly property real markOffsetY: face.out("contentOffsetY", 0)
         signal clicked()
 
         width: window.toolWidth
         height: window.buttonHeight
-        radius: Theme.controlRadius
-        color: checked
-               ? (area.pressed ? Qt.darker(Theme.accentFill, 1.15) : area.containsMouse ? Qt.lighter(Theme.accentFill, 1.08) : Theme.accentFill)
-               : (area.pressed ? Theme.controlPressed : area.containsMouse && enabled ? Theme.controlHover : "transparent")
-        opacity: enabled ? 1 : 0.45
+        opacity: enabled ? 1 : face.out("disabledOpacity", 0.45)
         Accessible.role: Accessible.Button
         Accessible.name: name
         Accessible.onPressAction: if (enabled) button.clicked()
 
+        KeyFace {
+            id: face
+            hovered: area.containsMouse && button.enabled
+            pressed: area.pressed
+            checked: button.checked
+        }
+
         Glyph {
             anchors.centerIn: parent
+            anchors.verticalCenterOffset: button.markOffsetY
             visible: button.glyph.length > 0
             glyph: button.glyph
             size: window.iconSize

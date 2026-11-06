@@ -31,18 +31,45 @@ Item {
     property var current: -1
     property var chips: []
     property string folderHint
-    // A dot for each, by place (any number of kinds of the user's own).
-    readonly property var dotColors: ["#4F9DFF", "#3FBF7F", "#A57CFF", "#FF8A5C", "#C9953A", "#7B8CFF", "#2FBFB4", "#E07BD0"]
+    // The window's, read once by the host (GitHub #111).
+    property real dpr: Screen.devicePixelRatio
+
+    // Each kind's line icon (a Segoe code point Glyph draws with Phosphor), by
+    // what its extensions mostly are: the kinds are the user's own, renamed,
+    // reordered or new, so not by name or place.
+    readonly property string folderGlyph: "" // Folder
+    function typeGlyph(extensions) {
+        const tally = {}
+        let best = null
+        for (const extension of extensions) {
+            const kind = SearchKeys.fileKind("x." + extension)
+            tally[kind] = (tally[kind] || 0) + 1
+            if (best === null || tally[kind] > tally[best])
+                best = kind
+        }
+        switch (best) {
+        case "image": return "" // Picture
+        case "video": return "" // Video
+        case "audio": return "" // Volume
+        case "zip": return "" // ZipFolder
+        case "": return "" // ViewAll: programs
+        case "ebook": return "" // ReadingMode
+        case "code": return "" // Code
+        default: return "" // Document
+        }
+    }
+    // hueIndex (Hook): -1 不限, -2 文件夹 (and a folder chip in 内容), 0.. the kinds in this order.
     readonly property var fileChips: {
-        const list = [{ type: -1, name: qsTr("不限"), tip: qsTr("所有文件和文件夹"), dot: "" },
-                      { type: -2, name: qsTr("文件夹"), tip: qsTr("只找文件夹") + (launcher.folderKeyword.length > 0 ? " · :" + launcher.folderKeyword : ""), dot: "#E8B84A" }]
+        const list = [{ type: -1, name: qsTr("不限"), tip: qsTr("所有文件和文件夹"), glyph: "", hue: -1 },
+                      { type: -2, name: qsTr("文件夹"), tip: qsTr("只找文件夹") + (launcher.folderKeyword.length > 0 ? " · :" + launcher.folderKeyword : ""),
+                        glyph: folderGlyph, hue: -2 }]
         const types = launcher.fileTypes
         for (let i = 0; i < types.length; ++i) {
             const exts = types[i].extensions.split(" ")
             const listed = exts.slice(0, 10).map(e => "." + e).join(" ")
             list.push({ type: i, name: types[i].name, tip: (exts.length > 10 ? listed + " …" : listed)
                         + (types[i].keyword.length > 0 ? " · :" + types[i].keyword : ""),
-                        dot: dotColors[i % dotColors.length] })
+                        glyph: typeGlyph(exts), hue: i })
         }
         return list
     }
@@ -66,7 +93,7 @@ Item {
     property Item hoveredChip: null
     property string hoveredTip
 
-    function onPixel(v) { return Math.round(v * Screen.devicePixelRatio) / Screen.devicePixelRatio }
+    function onPixel(v) { return Math.round(v * dpr) / dpr }
 
     // Whole logical pixels, also while it moves: the native window's height
     // and its contents use the same steps, without fractional layout slack.
@@ -99,10 +126,65 @@ Item {
         frame.addControl(indexSwitch) // in 内容 only: WindowFrame skips hidden items
     }
 
-    // Keeps the current chip in view (Tab past the right edge).
+    // Too many for the width, the chips scroll by whole chips: the first one
+    // shown starts at the left edge and only whole chips show, none cut off.
+    // Kept so that the current chip is in view (Ctrl+Tab past the end).
+    property int firstChip: 0
     property bool revealRequested: false
-    property bool writingScroll: false
     property real slidePosition: 0
+    readonly property bool scrolls: view.contentWidth > view.width
+    // Whole logical pixels that are whole device pixels too (150%: even
+    // ones): the words, icons and keys stay sharp and together as they move.
+    readonly property int scrollStep: { let n = 1; while (n < 4 && Math.abs(n * dpr - Math.round(n * dpr)) > 0.001) ++n; return n }
+    // Where the chips rest with chip `index` first.
+    function stopAt(index: int): real {
+        const chip = chipRepeater.itemAt(index)
+        return chip ? Math.floor(chip.x / scrollStep + 0.001) * scrollStep : 0
+    }
+    readonly property real restX: scrolls ? stopAt(firstChip) : 0
+    // The room left after the last whole chip, shared out between the chips
+    // shown: they then fill the width from edge to edge, + right after.
+    readonly property real spreadGap: {
+        if (!scrolls)
+            return 0
+        let last = null
+        let count = 0
+        for (let i = firstChip; i < chipRepeater.count; ++i) {
+            const chip = chipRepeater.itemAt(i)
+            if (!chip || chip.x + chip.keyWidth > restX + view.width + 0.5)
+                break
+            last = chip
+            ++count
+        }
+        return last && count > 1 ? Math.max(0, restX + view.width - last.x - last.keyWidth) / (count - 1) : 0
+    }
+    // The first chip shown with the last one in full at the end.
+    function lastFirst(): int {
+        for (let i = 0; i < chipRepeater.count; ++i)
+            if (view.contentWidth - stopAt(i) <= view.width + 0.5)
+                return i
+        return Math.max(0, chipRepeater.count - 1)
+    }
+    // While the chips scroll their gaps follow (Translate in the delegate);
+    // chips made anew (文件 ↔ 内容) take theirs at once.
+    property bool moving: false
+    function scrollTo(first: int, animated: bool) {
+        slide.stop()
+        moving = animated && SystemTheme.animations
+        firstChip = scrolls ? Math.max(0, Math.min(lastFirst(), first)) : 0
+        const to = restX
+        if (to === view.contentX) {
+            moving = false
+            return
+        }
+        if (!animated || !SystemTheme.animations) {
+            view.contentX = to
+            return
+        }
+        slide.from = view.contentX
+        slide.to = to
+        slide.start()
+    }
     function scheduleReveal() {
         revealRequested = true
         Qt.callLater(runReveal)
@@ -113,41 +195,59 @@ Item {
     }
     function cancelReveal() {
         revealRequested = false
-        slide.stop()
     }
     function reveal() {
         cancelReveal()
-        const chip = chipRepeater.itemAt(chips.findIndex(c => c.type === current))
-        if (!chip || view.contentWidth <= view.width)
-            return
-        const left = chip.x - 8
-        const right = chip.x + chip.width + 8
-        let to = view.contentX
-        if (left < view.contentX)
-            to = Math.max(0, left)
-        else if (right > view.contentX + view.width)
-            to = Math.min(view.contentWidth - view.width, right - view.width)
-        if (to !== view.contentX) {
-            view.cancelFlick()
-            if (!SystemTheme.animations) {
-                view.contentX = to
-                return
+        const index = chips.findIndex(c => c.type === current)
+        const chip = chipRepeater.itemAt(index)
+        let first = firstChip
+        if (chip) {
+            if (index < first) {
+                first = index
+            } else {
+                const right = chip.x + chip.keyWidth
+                while (first < index && right - stopAt(first) > view.width + 0.5)
+                    ++first
             }
-            slide.from = view.contentX
-            slide.to = to
-            slide.restart()
         }
+        scrollTo(first, true)
     }
     onSlidePositionChanged: {
-        if (slide.running) {
-            writingScroll = true
-            view.contentX = slidePosition
-            writingScroll = false
-        }
+        if (slide.running)
+            view.contentX = Math.round(slidePosition / scrollStep) * scrollStep
     }
-    NumberAnimation { id: slide; target: strip; property: "slidePosition"; duration: 150; easing.type: Easing.OutCubic }
+    NumberAnimation {
+        id: slide
+        target: strip; property: "slidePosition"; duration: 150; easing.type: Easing.OutCubic
+        onStopped: strip.moving = false
+    }
     onCurrentChanged: scheduleReveal()
     onChipsChanged: scheduleReveal()
+
+    // A mouse's wheel (or a touchpad's swipe) turns the chips a chip per
+    // notch. Over the chips, taking only the wheel (no buttons, no hover).
+    property real wheelRest: 0
+    MouseArea {
+        z: 5
+        x: view.x
+        y: view.y
+        width: view.width
+        height: view.height
+        acceptedButtons: Qt.NoButton
+        onWheel: (event) => {
+            if (!strip.scrolls) {
+                event.accepted = false
+                return
+            }
+            strip.wheelRest += event.angleDelta.y !== 0 ? event.angleDelta.y : event.angleDelta.x
+            const steps = strip.wheelRest > 0 ? Math.floor(strip.wheelRest / 120) : Math.ceil(strip.wheelRest / 120)
+            if (steps !== 0) {
+                strip.wheelRest -= steps * 120
+                strip.cancelReveal()
+                strip.scrollTo(strip.firstChip - steps, true)
+            }
+        }
+    }
 
     Flickable {
         id: view
@@ -158,26 +258,14 @@ Item {
         height: strip.fullHeight - 6
         contentWidth: row.width
         contentHeight: height
-        interactive: contentWidth > width
-        flickableDirection: Flickable.HorizontalFlick
-        boundsBehavior: Flickable.StopAtBounds
+        interactive: false // the wheel and Ctrl+Tab move it, by whole chips
         clip: true
-        onContentXChanged: if (!strip.writingScroll) strip.cancelReveal()
-        onDraggingChanged: if (dragging) strip.cancelReveal()
-        onMovementStarted: strip.cancelReveal()
+        onWidthChanged: Qt.callLater(() => strip.scrollTo(strip.firstChip, false))
         opacity: strip.shown ? 1 : 0
         Behavior on opacity {
             enabled: strip.animated && SystemTheme.animations
             NumberAnimation { duration: 150 }
         }
-        WheelHandler {
-            target: null
-            orientation: Qt.Horizontal
-            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-            blocking: false // observe, then let Flickable handle the event
-            onWheel: strip.cancelReveal()
-        }
-
         Row {
             id: row
             y: strip.onPixel((view.height - height) / 2)
@@ -187,13 +275,21 @@ Item {
                 id: chipRepeater
                 model: strip.chips
 
-                delegate: Rectangle {
+                // A chip on the style's chipSurface (role "type"); after 不限 a
+                // short line parts it from the real filters (outside its hit area).
+                delegate: Item {
                     id: chip
 
+                    required property int index
                     required property var modelData
                     readonly property bool active: !strip.folders && modelData.type >= 0
                         ? strip.launcher.scope !== Launcher.Folders && strip.launcher.selectedFileTypes.includes(modelData.type)
                         : modelData.type === strip.current
+                    // 不限: in 内容 the chip without a folder's dot (Launcher.folderChips).
+                    readonly property bool isAll: strip.folders ? !modelData.dot : modelData.type === -1
+                    readonly property string glyph: strip.folders ? (isAll ? "" : strip.folderGlyph) : modelData.glyph
+                    readonly property int hue: strip.folders ? (isAll ? -1 : -2) : modelData.hue
+                    readonly property bool parted: isAll && index === 0 && strip.chips.length > 1
                     readonly property bool tipWanted: area.containsMouse
                     onTipWantedChanged: {
                         if (tipWanted) {
@@ -205,50 +301,101 @@ Item {
                     }
 
                     // Whole pixels: a half one would leave the labels after it blurred.
-                    width: (modelData.dot.length > 0 ? 10 + 8 + 6 : 12) + Math.ceil(label.implicitWidth) + 12
-                    height: Theme.chipHeight
-                    radius: Theme.pillRadius(height)
-                    color: active ? Theme.chipActive : area.containsMouse ? Theme.chipHover : "transparent"
-                    border.width: active ? 1 : 0
-                    border.color: Theme.chipBorder
+                    width: body.width + (parted ? row.spacing + 9 : 0)
+                    readonly property real keyWidth: body.width
+                    // Whole or not at all where the chips scroll (strip.firstChip).
+                    readonly property bool whole: !strip.scrolls
+                        || (x >= strip.restX - 0.5 && x + body.width <= strip.restX + view.width + 0.5)
+                    opacity: whole ? 1 : 0
+                    enabled: whole
+                    // Its share of strip.spreadGap, whole device pixels.
+                    readonly property real shift: strip.scrolls && index > strip.firstChip
+                        ? strip.onPixel((index - strip.firstChip) * strip.spreadGap) : 0
+                    transform: Translate {
+                        x: chip.shift
+                        Behavior on x {
+                            enabled: strip.moving
+                            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                        }
+                    }
+                    Behavior on opacity {
+                        enabled: SystemTheme.animations
+                        NumberAnimation { duration: 120 }
+                    }
+                    height: Theme.typeChipHeight
                     Accessible.role: !strip.folders && modelData.type >= 0 ? Accessible.CheckBox : Accessible.RadioButton
                     Accessible.name: modelData.name
                     Accessible.checked: active
 
-                    Rectangle {
-                        visible: chip.modelData.dot.length > 0
-                        x: 10
-                        y: strip.onPixel((chip.height - height) / 2)
-                        width: 8
-                        height: 8
-                        radius: Theme.progressRadius
-                        color: chip.modelData.dot
+                    Item {
+                        id: body
+                        readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : (chip.glyph.length > 0 ? 10 : 12) // 0 (a key without a lamp) is no say; 10 with an icon: it then sits as far from the key's edge as the last word does
+                        width: Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + label.implicitWidth) + (chip.glyph.length > 0 ? 6 : 12)
+                        height: parent.height
+
+                        Hook {
+                            id: surface
+                            anchors.fill: parent
+                            part: Theme.chipSurface
+                            checked: chip.active
+                            hovered: area.containsMouse
+                            pressed: area.pressed
+                            isAll: chip.isAll
+                            hueIndex: chip.hue
+                            role: "type"
+                            dpr: strip.dpr
+                        }
+
+                        Glyph {
+                            id: icon
+                            visible: chip.glyph.length > 0
+                            x: body.lead
+                            y: strip.onPixel((body.height - height) / 2 + surface.out("contentOffsetY", 0))
+                            glyph: chip.glyph
+                            size: 16
+                            color: surface.out("iconColor", chip.active && !chip.isAll ? Theme.accentText
+                                                          : area.containsMouse ? Theme.subtext : Theme.faint)
+                        }
+
+                        Text {
+                            id: label
+                            x: chip.glyph.length > 0 ? body.lead + icon.width + 4 : body.lead
+                            y: strip.onPixel((body.height - height) / 2 + surface.out("contentOffsetY", 0))
+                            text: chip.modelData.name
+                            color: surface.out("foreground", chip.active && !chip.isAll ? Theme.accentText
+                                                            : chip.active || area.containsMouse ? Theme.text : Theme.subtext)
+                            font.pixelSize: Theme.uiCaption
+                            font.weight: surface.out("fontWeight", chip.active ? Theme.fontStrong : Font.Normal)
+                        }
+
+                        MouseArea {
+                            id: area
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: strip.folders ? strip.launcher.chooseFolderChip(chip.modelData.type)
+                                                     : strip.launcher.toggleFileType(chip.modelData.type)
+                        }
                     }
 
-                    Text {
-                        id: label
-                        x: chip.modelData.dot.length > 0 ? 24 : 12
+                    Loader { // 不限 | the filters
+                        active: chip.parted
+                        x: body.width + row.spacing
+                        width: 9
+                        height: 16
                         y: strip.onPixel((chip.height - height) / 2)
-                        text: chip.modelData.name
-                        color: chip.active || area.containsMouse ? Theme.text : Theme.subtext
-                        font.pixelSize: Theme.uiCaption
-                        font.weight: chip.active ? Theme.fontStrong : Font.Normal
-                    }
-
-                    MouseArea {
-                        id: area
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: strip.folders ? strip.launcher.chooseFolderChip(chip.modelData.type)
-                                                 : strip.launcher.toggleFileType(chip.modelData.type)
+                        sourceComponent: Hook {
+                            part: Theme.separator
+                            orientation: Qt.Vertical
+                            dpr: strip.dpr
+                        }
                     }
                 }
             }
         }
     }
 
-    Rectangle { // the kinds and their extensions, in the settings
+    Item { // the kinds and their extensions, in the settings
         id: edit
 
         readonly property string tip: strip.folders ? qsTr("收藏常搜的文件夹，它们会出现在这里") : qsTr("添加或修改类型")
@@ -256,19 +403,30 @@ Item {
 
         x: view.x + view.width + 4
         y: view.y + row.y
-        width: Theme.chipHeight
-        height: Theme.chipHeight
-        radius: Theme.pillRadius(height)
+        width: Theme.typeChipHeight
+        height: Theme.typeChipHeight
         opacity: view.opacity
-        color: editArea.pressed ? Theme.controlPressed : editArea.containsMouse ? Theme.chipHover : "transparent"
         Accessible.role: Accessible.Button
         Accessible.name: tip
 
+        Hook { // the style's key, flat until hovered, round as the chips
+            id: editKey
+            anchors.fill: parent
+            part: Theme.keySurface
+            hovered: editArea.containsMouse
+            pressed: editArea.pressed
+            flat: true
+            corner: Theme.pillRadius(edit.height)
+            role: "toolbar"
+            dpr: strip.dpr
+        }
+
         Glyph {
             anchors.centerIn: parent
+            anchors.verticalCenterOffset: editKey.out("contentOffsetY", 0)
             glyph: "\uE710" // Add
             size: 12
-            color: editArea.containsMouse ? Theme.text : Theme.subtext
+            color: editKey.out("foreground", editArea.containsMouse ? Theme.text : Theme.subtext)
         }
 
         MouseArea {
@@ -311,7 +469,7 @@ Item {
         x: strip.width - 12 - width
         y: edit.y
         width: indexToggle.x + indexToggle.width
-        height: Theme.chipHeight
+        height: Theme.typeChipHeight
         visible: strip.folders
         opacity: view.opacity
         Accessible.role: Accessible.CheckBox
@@ -340,6 +498,7 @@ Item {
         }
 
         ToggleSwitch {
+            dpr: strip.dpr
             id: indexToggle
             x: Math.ceil(indexLabel.implicitWidth) + 8
             height: indexSwitch.height // the track (20) centred on the chips' row

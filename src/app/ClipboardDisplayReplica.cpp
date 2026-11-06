@@ -144,7 +144,8 @@ DisplayReplica::DisplayReplica(QQmlEngine* engine) : QQmlPropertyMap(this, nullp
         if (!m_applying) send({{u"type"_s, u"set"_s}, {u"name"_s, name}, {u"value"_s, QJsonValue::fromVariant(value)}});
     });
     connect(&m_rows, &DisplayRows::highlightColorChanged, this, [this] {
-        send({{u"type"_s, u"highlight"_s}, {u"color"_s, m_rows.property("highlightColor").value<QColor>().name(QColor::HexArgb)}});
+        send({{u"type"_s, u"highlight"_s}, {u"color"_s, m_rows.property("highlightColor").value<QColor>().name(QColor::HexArgb)},
+            {u"weight"_s, m_rows.property("highlightWeight").toInt()}});
     });
     connect(this, &DisplayReplica::groupNameRequested, this, [this](int row, qint64 group) {
         if (!m_applying) invoke(u"groupNameRequested"_s, {row, group});
@@ -279,6 +280,7 @@ void DisplayReplica::applyState(const QJsonObject& object)
     QGuiApplication::styleHints()->setColorScheme(object.value(u"dark"_s).toBool() ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
     SystemTheme::setUiSize(object.value(u"uiSize"_s).toString());
     SystemTheme::setRoundedCorners(object.value(u"rounded"_s).toBool(true));
+    SystemTheme::setUiStyle(object.value(u"uiStyle"_s).toString());
     SystemTheme::setBackdropOn(object.value(u"backdrop"_s).toBool());
     const QString language = object.value(u"language"_s).toString();
     if (m_language != language) {

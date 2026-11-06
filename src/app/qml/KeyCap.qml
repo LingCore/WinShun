@@ -6,23 +6,30 @@ import WinShun
 // launcher's and the clipboard's rows have theirs on the icon, IconNumber).
 // `taken`: another program holds the chord as a global hotkey, so pressing it
 // goes there: faint and struck through.
-Rectangle {
+Item {
     id: cap
 
     property string keys
     property bool taken: false
+    property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
+    // Screen.* only when no host passed it: a default binding to it would make a
+    // Screen object even where the host's value replaces it.
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
 
     width: Math.max(height, Math.ceil(label.implicitWidth) + 12)
     height: Theme.keycapHeight + 4
-    radius: Theme.largeControlRadius
-    color: Theme.track
-    border.width: 1
-    border.color: Theme.chipBorder
+
+    Hook { // the style's key cap (Theme.keyHint)
+        id: capPart
+        anchors.fill: parent
+        part: Theme.keyHint
+        dpr: cap.pixelRatio
+    }
 
     CenteredNumber {
         id: label
         text: cap.keys
-        color: cap.taken ? Theme.faint : Theme.text
+        color: cap.taken ? Theme.faint : capPart.out("foreground", Theme.text)
         font.pixelSize: Theme.uiBody
         font.weight: Theme.fontStrong
         font.strikeout: cap.taken

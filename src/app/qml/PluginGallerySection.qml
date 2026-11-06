@@ -26,6 +26,7 @@ SettingsSection {
         shown: gallerySection.plugins.message.length > 0
 
         FlatButton {
+            dpr: gallerySection.dpr
             text: qsTr("知道了")
             flat: true
             onClicked: gallerySection.plugins.clearMessage()
@@ -41,6 +42,7 @@ SettingsSection {
         bodyShown: gallerySection.gallery.count > 0 || gallerySection.gallery.problem.length > 0
 
         FlatButton {
+            dpr: gallerySection.dpr
             objectName: "updateAllPlugins"
             visible: gallerySection.gallery.updatableCount > 0 || gallerySection.gallery.updatingAll
             highlighted: true
@@ -49,6 +51,7 @@ SettingsSection {
             onClicked: gallerySection.gallery.updateAll()
         }
         FlatButton {
+            dpr: gallerySection.dpr
             text: qsTr("刷新")
             glyph: "" // Refresh
             enabled: !gallerySection.gallery.fetching
@@ -67,6 +70,7 @@ SettingsSection {
                 wrapMode: Text.Wrap
             },
             FlatButton { // GitHub could not be reached: the way round it (GitHub #84)
+                dpr: gallerySection.dpr
                 visible: gallerySection.gallery.problemIsConnection
                 text: qsTr("设置网络代理…")
                 onClicked: gallerySection.showProxySettings()
@@ -135,6 +139,7 @@ SettingsSection {
         description: qsTr("做了好用的插件？可以投稿到插件库，给大家用")
 
         FlatButton {
+            dpr: gallerySection.dpr
             text: qsTr("看看怎么投稿")
             glyph: "" // Link
             onClicked: gallerySection.gallery.openRepository()
@@ -146,10 +151,12 @@ SettingsSection {
         keywords: qsTr("AI;开发;模板;创建;贡献;Python;PowerShell").split(";")
         description: qsTr("从能运行的模板开始，也可以把开发提示和模板一起交给 AI。创建后仍由你决定是否启用插件。")
         FlatButton {
+            dpr: gallerySection.dpr
             text: qsTr("复制 AI 开发提示")
             onClicked: gallerySection.plugins.copyDevelopmentPrompt()
         }
         FlatButton {
+            dpr: gallerySection.dpr
             text: qsTr("创建插件")
             highlighted: true
             onClicked: gallerySection.showDeveloper()

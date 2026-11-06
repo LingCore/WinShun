@@ -8,6 +8,7 @@ GridView {
     id: gallery
     required property Launcher launcher
     property NameTip nameTip: null
+    property real dpr: Screen.devicePixelRatio // the window's, passed by the panel; one for all the tiles
     readonly property int columns: Math.max(1, Math.floor(width / (launcher.thumbnailSize + 24)))
     signal rowClicked(int index, int modifiers)
     signal rowDoubleClicked(int index, int modifiers)
@@ -18,7 +19,7 @@ GridView {
 
     clip: true
     model: visible ? launcher.results : null
-    cellWidth: Math.floor(width * Screen.devicePixelRatio / columns) / Screen.devicePixelRatio
+    cellWidth: Math.floor(width * dpr / columns) / dpr
     cellHeight: launcher.thumbnailSize + 76
     boundsBehavior: Flickable.StopAtBounds
     highlightMoveDuration: 0
@@ -82,6 +83,7 @@ GridView {
         width: gallery.cellWidth
         height: gallery.cellHeight
         nameTip: gallery.nameTip
+        dpr: gallery.dpr
         onClicked: (index, modifiers) => gallery.rowClicked(index, modifiers)
         onDoubleClicked: (index, modifiers) => gallery.rowDoubleClicked(index, modifiers)
         onMenuRequested: (index, globalPos, modifiers) => gallery.rowMenuRequested(index, globalPos, modifiers)

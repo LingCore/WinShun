@@ -39,6 +39,8 @@ Item {
     signal previewResized() // ... let go
     signal previewWidthReset() // ... double clicked: the default
 
+    // The window's, read once here and passed down (GitHub #111).
+    readonly property real dpr: Screen.devicePixelRatio
     readonly property UiScale metrics: UiScale { size: page.clipboard.uiSize } // its own 界面大小 (Settings 剪贴板大小)
     readonly property int rowHeight: page.metrics.rowHeight // what the window's height is counted in
     // A picture's row: its thumbnail larger (ClipRow), larger still with largePictures.
@@ -549,6 +551,11 @@ Item {
             width: parent.width
             height: page.metrics.headerHeight
 
+            // The pointer over the header: Windows takes its drag area as a
+            // title bar, so QML hears of the pointer there only from the frame.
+            readonly property bool hovered: headerHover.hovered || contains(mapFromItem(null, page.frame.pointer))
+            HoverHandler { id: headerHover }
+
             Component.onCompleted: {
                 page.frame.addDragArea(header)
                 page.frame.addControl(input)
@@ -556,11 +563,26 @@ Item {
                 page.frame.addControl(eyeButton)
             }
 
+            // The style's search field (Theme.searchField), as the launcher's
+            // row: inset by fieldInset (0 in fluent, where the row is the
+            // field and nothing is drawn: flat), a box where the style has one.
+            Hook {
+                id: fieldPart
+                anchors.fill: parent
+                anchors.margins: Theme.fieldInset
+                part: Theme.searchField
+                flat: Theme.fieldInset <= 0
+                focused: input.activeFocus
+                hovered: header.hovered
+                corner: Theme.fieldRadius
+                dpr: page.dpr
+            }
+
             Image {
                 id: icon
                 objectName: "clipboardSearchLogo"
                 anchors.left: parent.left
-                anchors.leftMargin: 20
+                anchors.leftMargin: Math.max(20, Theme.fieldInset + 12)
                 anchors.verticalCenter: parent.verticalCenter
                 width: page.metrics.searchIconSize
                 height: width
@@ -584,11 +606,17 @@ Item {
                 // where, steady (it blinks only with the focus).
                 cursorVisible: activeFocus || page.clipboard.keysRouted
                 clip: true
-                color: Theme.text
+                color: fieldPart.out("textColor", Theme.text)
                 font.pixelSize: page.metrics.uiSearch
                 selectByMouse: true
                 selectionColor: Theme.textSelection
                 selectedTextColor: Theme.text
+                // The style's caret colour, where it has one (Qt's own caret otherwise).
+                cursorDelegate: fieldPart.out("caretColor", "transparent").a > 0 ? caretPart : null
+                Component {
+                    id: caretPart
+                    Caret { color: fieldPart.out("caretColor", Theme.text); dpr: page.dpr }
+                }
                 onTextChanged: page.clipboard.query = text
                 Keys.onPressed: (event) => page.handleKey(event)
                 Keys.onReleased: (event) => {
@@ -602,7 +630,7 @@ Item {
                     anchors.fill: parent
                     verticalAlignment: Text.AlignVCenter
                     text: page.pinyinHint ? page.pinyinHintText : qsTr("搜索剪贴板，支持拼音")
-                    color: Theme.faint
+                    color: fieldPart.out("placeholderColor", Theme.faint)
                     font: input.font
                     elide: Text.ElideRight
                     visible: input.text.length === 0 && input.preeditText.length === 0
@@ -629,11 +657,12 @@ Item {
             // Pinned: stays up, on top, through pastes and clicks elsewhere
             // (Clipboard.pinned). Not while pasting into a field of Win顺's.
             RowAction {
+                dpr: page.dpr
                 id: pinButton
                 small: page.metrics.dense
                 visible: !page.intoField
                 anchors.right: parent.right
-                anchors.rightMargin: 14
+                anchors.rightMargin: Math.max(14, Theme.fieldInset + 6)
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: page.clipboard.pinned ? "" : "" // PinnedFill, Pin
                 glyphOverlay: page.clipboard.pinned ? "" : "" // Pin: the needle (lines up with PinnedFill in Fluent and MDL2)
@@ -647,10 +676,11 @@ Item {
             // switch as Alt+P and →, so one state and one memory
             // (clipboard.previewOpen); it only makes it visible and clickable.
             RowAction {
+                dpr: page.dpr
                 id: eyeButton
                 small: page.metrics.dense
                 anchors.right: pinButton.visible ? pinButton.left : parent.right
-                anchors.rightMargin: pinButton.visible ? 4 : 14
+                anchors.rightMargin: pinButton.visible ? 4 : Math.max(14, Theme.fieldInset + 6)
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: page.previewOpen ? "" : "" // View, Hide
                 checked: page.previewOpen
@@ -694,11 +724,12 @@ Item {
             onMenuRequested: (category, globalPos) => page.openCategoryMenu(category, globalPos)
         }
 
-        Rectangle { // between the categories and the history
-            y: page.placed(page.lineFrom, Theme.edge(Screen.devicePixelRatio))
+        Hook { // between the categories and the history (the style's seam)
+            y: page.placed(page.lineFrom, Theme.edge(page.dpr))
             width: parent.width
-            height: Theme.edge(Screen.devicePixelRatio)
-            color: Theme.divider
+            height: Theme.edge(page.dpr)
+            part: Theme.separator
+            dpr: page.dpr
         }
 
         Item {
@@ -729,7 +760,37 @@ Item {
                     clip: true
                     model: page.clipboard.items
                     boundsBehavior: Flickable.StopAtBounds
-                    highlightMoveDuration: 0
+                    // The current row's highlight, one for the whole list: it
+                    // jumps, or slides as the style says (Theme.rowSlide).
+                    highlightMoveDuration: Theme.rowSlide
+                    highlightMoveVelocity: -1
+                    highlightResizeDuration: 0
+                    highlightResizeVelocity: -1
+                    highlight: Item {
+                        id: currentHighlight
+                        width: list.width
+                        visible: list.currentItem !== null
+                        transform: ScrollPixelAlignment { // on whole device pixels, as the rows
+                            view: list
+                            viewY: page.y + body.y + list.y
+                            itemY: currentHighlight.y
+                        }
+
+                        Hook {
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.rowInset
+                            anchors.rightMargin: Theme.rowInset
+                            anchors.topMargin: Theme.edge(page.dpr) // a device pixel apart: 1.5 at 150 % put its edges on half ones
+                            anchors.bottomMargin: Theme.edge(page.dpr)
+                            part: Theme.rowHighlight
+                            current: true
+                            // With rows picked, the current one is marked as picked only when it is.
+                            selected: page.selectedCount === 0 || (list.currentItem !== null && list.currentItem.order > 0)
+                            position: list.currentItem !== null ? list.currentItem.y : 0
+                            role: "list"
+                            dpr: page.dpr
+                        }
+                    }
                     reuseItems: true
                     // Upside down (page.flipped): the first row at the bottom,
                     // by the caret, the later ones up from it.
@@ -857,6 +918,7 @@ Item {
                 }
 
                 ListScrollBar {
+                    dpr: page.dpr
                     objectName: "clipboardListScrollBar"
                     flickable: list
                     anchors.right: parent.right
@@ -909,6 +971,7 @@ Item {
                         visible: parent.off
                     }
                     FlatButton {
+                        dpr: page.dpr
                         anchors.horizontalCenter: parent.horizontalCenter
                         visible: parent.off
                         highlighted: true
@@ -918,12 +981,14 @@ Item {
                 }
             }
 
-            Rectangle {
+            Hook { // between the list and the preview
                 visible: page.previewOpen
                 x: listArea.width
-                width: Theme.edge(Screen.devicePixelRatio)
+                width: Theme.edge(page.dpr)
                 height: parent.height
-                color: Theme.divider
+                part: Theme.separator
+                orientation: Qt.Vertical
+                dpr: page.dpr
             }
 
             ClipPreview {
@@ -1003,11 +1068,12 @@ Item {
                 page.frame.addControl(separatorChip)
             }
 
-            Rectangle { // on its inner edge
+            Hook { // on its inner edge
                 y: page.flipped ? parent.height - height : 0
                 width: parent.width
-                height: Theme.edge(Screen.devicePixelRatio)
-                color: Theme.divider
+                height: Theme.edge(page.dpr)
+                part: Theme.separator
+                dpr: page.dpr
             }
 
             Text {
@@ -1043,22 +1109,31 @@ Item {
                     color: Theme.subtext
                     font.pixelSize: page.metrics.uiBody
                 }
-                Rectangle {
+                Item {
                     id: separatorChip
                     visible: page.selectedCount >= 2
                     anchors.verticalCenter: parent.verticalCenter
                     width: separatorText.implicitWidth + 20
                     height: 26
-                    radius: Theme.pillRadius(height)
-                    color: separatorArea.containsMouse ? Theme.chipHover : Theme.track
-                    border.width: 1
-                    border.color: Theme.chipBorder
+
+                    Hook { // the style's key (a button in the footer), round as a chip
+                        id: separatorKey
+                        anchors.fill: parent
+                        part: Theme.keySurface
+                        hovered: separatorArea.containsMouse
+                        pressed: separatorArea.pressed
+                        flat: false
+                        corner: Theme.pillRadius(separatorChip.height)
+                        role: "footer"
+                        dpr: page.dpr
+                    }
 
                     Text {
                         id: separatorText
                         anchors.centerIn: parent
+                        anchors.verticalCenterOffset: separatorKey.out("contentOffsetY", 0)
                         text: page.clipboard.separatorName
-                        color: Theme.text
+                        color: separatorKey.out("foreground", Theme.text)
                         font.pixelSize: page.metrics.uiCaption
                     }
                     MouseArea {
@@ -1111,10 +1186,11 @@ Item {
                 readonly property bool previewFits: page.selectedCount === 0
                     && (tabFits ? spacing + tabHint.fullWidth : 0) + spacing + previewHint.fullWidth <= free
 
-                KeyHint { id: enterHint; metrics: page.metrics; keys: "Enter"; label: page.pasteLabel }
-                KeyHint { id: backHint; metrics: page.metrics; keys: "Esc"; label: qsTr("返回"); visible: page.intoField && hints.roomy }
-                KeyHint { id: tabHint; metrics: page.metrics; keys: "Tab"; label: qsTr("分类"); visible: hints.tabFits }
+                KeyHint { dpr: page.dpr; id: enterHint; metrics: page.metrics; keys: "Enter"; label: page.pasteLabel }
+                KeyHint { dpr: page.dpr; id: backHint; metrics: page.metrics; keys: "Esc"; label: qsTr("返回"); visible: page.intoField && hints.roomy }
+                KeyHint { dpr: page.dpr; id: tabHint; metrics: page.metrics; keys: "Tab"; label: qsTr("分类"); visible: hints.tabFits }
                 KeyHint {
+                    dpr: page.dpr
                     id: previewHint
                     metrics: page.metrics
                     keys: "→"
@@ -1161,8 +1237,8 @@ Item {
                 visible: opacity > 0
                 Behavior on opacity { enabled: SystemTheme.animations; NumberAnimation { id: holdFade; duration: 150 } }
 
-                KeyHint { id: holdReleaseHint; metrics: page.metrics; keys: page.clipboard.holdKeys; label: qsTr("松开粘贴") }
-                KeyHint { id: holdEscHint; metrics: page.metrics; keys: "Esc"; label: qsTr("取消"); visible: holdNote.escFits }
+                KeyHint { dpr: page.dpr; id: holdReleaseHint; metrics: page.metrics; keys: page.clipboard.holdKeys; label: qsTr("松开粘贴") }
+                KeyHint { dpr: page.dpr; id: holdEscHint; metrics: page.metrics; keys: "Esc"; label: qsTr("取消"); visible: holdNote.escFits }
             }
 
             // The other keys, when it is clicked.

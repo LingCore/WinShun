@@ -33,6 +33,7 @@ SettingsSection {
 
         title: qsTr("新建插件")
         FlatButton {
+            dpr: devSection.dpr
             text: qsTr("复制 AI 开发提示")
             glyph: "\uE8C8"
             onClicked: devSection.plugins.copyDevelopmentPrompt()
@@ -65,6 +66,7 @@ SettingsSection {
                     onAccepted: if (createButton.enabled) createButton.clicked()
                 }
                 FlatButton {
+                    dpr: devSection.dpr
                     id: createButton
                     implicitHeight: 32
                     text: qsTr("创建")
@@ -101,12 +103,14 @@ SettingsSection {
         shown: devSection.plugins.developerMode
 
         FlatButton {
+            dpr: devSection.dpr
             text: qsTr("清空")
             flat: true
             enabled: logList.count > 0
             onClicked: devSection.plugins.clearLog()
         }
         FlatButton {
+            dpr: devSection.dpr
             text: qsTr("打开 plugins.log")
             glyph: "" // Document
             onClicked: devSection.plugins.openLog()
@@ -242,6 +246,7 @@ SettingsSection {
                 }
 
                 ListScrollBar {
+                    dpr: devSection.dpr
                     flickable: logList
                     anchors.top: logList.top
                     anchors.bottom: logList.bottom

@@ -266,7 +266,7 @@ Window {
             }
         }
 
-        Rectangle { // a word for the user: the changes given up
+        Item { // a word for the user: the changes given up
             id: noticeBar
 
             property string words
@@ -275,14 +275,16 @@ Window {
             y: 12
             width: Math.ceil((label.implicitWidth + 20) / 4) * 4
             height: 28
-            radius: Theme.controlRadius
-            color: Theme.background
-            border.width: 1
-            border.color: Theme.windowEdge
             opacity: window.editor.notice.length > 0 ? 1 : 0
             visible: opacity > 0
 
             Behavior on opacity { NumberAnimation { duration: 120 } }
+
+            Hook { // the style's floating panel (Theme.menuFrame)
+                anchors.fill: parent
+                part: Theme.menuFrame
+                dpr: window.dpr
+            }
 
             Connections {
                 target: window.editor
@@ -311,10 +313,12 @@ Window {
         width: parent.width
         height: window.editor.bottomHeight
 
-        Rectangle { // between the picture and this row
+        Hook { // between the picture and this row (the style's separator)
             width: parent.width
-            height: Math.max(1, Math.round(window.dpr)) / window.dpr
-            color: Theme.divider
+            height: Theme.edge(window.dpr)
+            part: Theme.separator
+            orientation: Qt.Horizontal
+            dpr: window.dpr
         }
 
         AnnotateSmartHint { // 智能打码's offer, in the style panel's place while no tool is on
@@ -343,23 +347,33 @@ Window {
             spacing: 12
 
             Text {
+                anchors.verticalCenter: parent.verticalCenter // on the zoom key's line, not at its top
                 text: window.editor.sizeText
                 color: Theme.subtext
                 font.pixelSize: Theme.fontCaption
             }
 
-            Rectangle { // the zoom: a click is Z (the whole picture, or 100 %)
+            Item { // the zoom: a click is Z (the whole picture, or 100 %)
                 id: zoomButton
                 width: zoomLabel.implicitWidth + 16
                 height: 28
-                radius: Theme.controlRadius
-                color: zoomArea.pressed ? Theme.controlPressed : zoomArea.containsMouse ? Theme.controlHover : "transparent"
 
+                Hook { // the style's key (Theme.keySurface)
+                    id: zoomFace
+                    anchors.fill: parent
+                    part: Theme.keySurface
+                    hovered: zoomArea.containsMouse
+                    pressed: zoomArea.pressed
+                    flat: true
+                    role: "footer"
+                    dpr: window.dpr
+                }
                 Text {
                     id: zoomLabel
                     anchors.centerIn: parent
+                    anchors.verticalCenterOffset: zoomFace.out("contentOffsetY", 0)
                     text: window.editor.zoomText
-                    color: Theme.text
+                    color: zoomFace.out("foreground", Theme.text)
                     font.pixelSize: Theme.fontCaption
                 }
                 MouseArea {
@@ -404,5 +418,8 @@ Window {
         Keys.onReleased: (event) => handleRelease(event)
     }
 
-    WindowEdge {}
+    WindowEdge {
+        id: windowEdge
+        fill: Theme.page
+    }
 }

@@ -101,6 +101,7 @@ SettingsSection {
         Component.onCompleted: if (shown) pluginsSection.plugins.gallery.readList()
 
         FlatButton {
+            dpr: pluginsSection.dpr
             objectName: "viewPluginUpdates"
             text: qsTr("查看")
             onClicked: {
@@ -110,6 +111,7 @@ SettingsSection {
             }
         }
         FlatButton {
+            dpr: pluginsSection.dpr
             objectName: "updateAllFromNotice"
             visible: pluginsSection.plugins.gallery.updatableCount > 0 || pluginsSection.plugins.gallery.updatingAll
             highlighted: true
@@ -127,6 +129,7 @@ SettingsSection {
         shown: pluginsSection.plugins.recoveryMessage.length > 0
 
         FlatButton {
+            dpr: pluginsSection.dpr
             objectName: "retryPluginRecovery"
             text: pluginsSection.plugins.recovering ? qsTr("正在恢复…") : qsTr("重试恢复")
             enabled: !pluginsSection.plugins.recovering
@@ -138,6 +141,7 @@ SettingsSection {
             spacing: 8
 
             FlatButton {
+                dpr: pluginsSection.dpr
                 objectName: "installRecoveryArchive"
                 text: qsTr("从本地安装插件包…")
                 enabled: !pluginsSection.plugins.recovering
@@ -166,6 +170,7 @@ SettingsSection {
         shown: pluginsSection.plugins.message.length > 0
 
         FlatButton {
+            dpr: pluginsSection.dpr
             text: qsTr("知道了")
             flat: true
             onClicked: pluginsSection.plugins.clearMessage()
@@ -230,12 +235,14 @@ SettingsSection {
             spacing: 8
 
             FlatButton {
+                dpr: pluginsSection.dpr
                 id: foldMeasure
                 visible: false
                 text: qsTr("收起设置")
                 trailingGlyph: String.fromCharCode(0xE70E)
             }
             FlatButton {
+                dpr: pluginsSection.dpr
                 id: linkMeasure
                 visible: false
                 text: qsTr("更多设置")
@@ -361,6 +368,7 @@ SettingsSection {
                      : qsTr("还没有插件：点“添加插件”，或把插件文件夹、.zip / .wsplugin 拖到这里")
 
         FlatButton {
+            dpr: pluginsSection.dpr
             id: addButton
             text: qsTr("添加插件")
             glyph: "" // Add
@@ -463,6 +471,7 @@ SettingsSection {
         description: pluginsSection.plugins.userDir
 
         FlatButton {
+            dpr: pluginsSection.dpr
             text: qsTr("打开")
             glyph: "" // FolderOpen
             onClicked: pluginsSection.plugins.openUserDir()

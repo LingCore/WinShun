@@ -13,7 +13,8 @@ Rectangle {
     radius: Theme.smallControlRadius
     color: Theme.badge
 
-    function onPixel(v) { return Math.round(v * Screen.devicePixelRatio) / Screen.devicePixelRatio }
+    property real dpr: Screen.devicePixelRatio // a host with the window's can pass it (GitHub #111)
+    function onPixel(v) { return Math.round(v * dpr) / dpr }
 
     Text {
         id: label

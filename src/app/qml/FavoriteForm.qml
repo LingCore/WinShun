@@ -7,6 +7,7 @@ import WinShun
 // saves, Esc puts it away.
 Item {
     id: form
+    property real dpr: Screen.devicePixelRatio // the window's, passed by a host that has it (GitHub #111)
     objectName: "favoriteForm"
 
     required property FavoritesSettings favorites
@@ -119,6 +120,7 @@ Item {
             font.pixelSize: Theme.fontCaption
         }
         InputBox {
+            dpr: form.dpr
             id: box
             width: field.width
             onAccepted: field.accepted()
@@ -146,6 +148,7 @@ Item {
         spacing: 12
 
         ToggleSwitch {
+            dpr: form.dpr
             id: toggle
             word: false
             anchors.verticalCenter: parent.verticalCenter
@@ -250,6 +253,7 @@ Item {
                 onAccepted: form.save()
             }
             FlatButton {
+                dpr: form.dpr
                 id: pickButton
                 y: 24
                 text: qsTr("选择程序…")
@@ -307,13 +311,16 @@ Item {
                 width: parent.width
                 spacing: 12
 
-                Rectangle {
+                Item {
                     width: 44
                     height: 44
-                    radius: Theme.controlRadius
-                    color: Theme.card
-                    border.width: 1
-                    border.color: Theme.cardBorder
+
+                    Hook { // the style's card (Theme.cardPart), small: the icon's frame
+                        anchors.fill: parent
+                        part: Theme.cardPart
+                        corner: Theme.controlRadius
+                        dpr: form.dpr
+                    }
 
                     Image {
                         id: iconPreview
@@ -345,6 +352,7 @@ Item {
                         spacing: 8
 
                         FlatButton {
+                            dpr: form.dpr
                             objectName: "favoritePickIcon"
                             Accessible.role: Accessible.Button
                             Accessible.name: qsTr("选择图标…")
@@ -353,6 +361,7 @@ Item {
                             onClicked: form.iconRequest = form.favorites.pickCommandIcon()
                         }
                         FlatButton {
+                            dpr: form.dpr
                             objectName: "favoriteResetIcon"
                             Accessible.role: Accessible.Button
                             Accessible.name: qsTr("恢复自动")
@@ -394,12 +403,14 @@ Item {
                 spacing: 8
 
                 FlatButton {
+                    dpr: form.dpr
                     highlighted: true
                     enabled: !form.iconLoading
                     text: qsTr("保存")
                     onClicked: form.save()
                 }
                 FlatButton {
+                    dpr: form.dpr
                     text: qsTr("取消")
                     onClicked: form.finished()
                 }
@@ -410,6 +421,7 @@ Item {
                 spacing: 2
 
                 FlatButton {
+                    dpr: form.dpr
                     flat: true
                     enabled: form.index > 0 && !form.iconLoading
                     text: qsTr("上移")
@@ -417,6 +429,7 @@ Item {
                     onClicked: form.moveRequested(form.index - 1)
                 }
                 FlatButton {
+                    dpr: form.dpr
                     flat: true
                     enabled: form.index < form.count - 1 && !form.iconLoading
                     text: qsTr("下移")

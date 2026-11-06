@@ -14,7 +14,11 @@ Item {
     readonly property real position: maxY > minY ? Math.max(0, Math.min(1, (flickable.contentY - minY) / (maxY - minY))) : 0
 
     // A size in logical pixels as whole device pixels (3 is 4.5 at 150 %).
-    function pixels(v) { return Math.max(1, Math.round(v * Screen.devicePixelRatio)) / Screen.devicePixelRatio }
+    property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
+    // Screen.* only when no host passed it: a default binding to it would make a
+    // Screen object even where the host's value replaces it.
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
+    function pixels(v) { return Math.max(1, Math.round(v * bar.pixelRatio)) / bar.pixelRatio }
 
     function scrollTo(fraction) {
         flickable.cancelFlick()
@@ -34,7 +38,7 @@ Item {
         interval: 600
     }
 
-    Rectangle {
+    Hook { // the style's track and thumb (Theme.scrollBar)
         id: track
         anchors.right: parent.right
         anchors.rightMargin: bar.pixels(3)
@@ -43,23 +47,23 @@ Item {
         anchors.topMargin: 4
         anchors.bottomMargin: 4
         width: bar.expanded ? bar.pixels(8) : bar.pixels(3)
-        radius: Theme.pillRadius(width)
-        color: bar.expanded ? Theme.track : "transparent"
+        part: Theme.scrollBar
+        active: bar.expanded
+        hovered: area.overThumb
+        pressed: area.pressed
+        position: thumb.y - track.y
+        extent: thumb.height
+        dpr: bar.pixelRatio
 
         Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
     }
 
-    Rectangle {
+    Item { // where the thumb is (drawn by the part)
         id: thumb
         anchors.right: track.right
         width: track.width
         height: Math.max(24, track.height * bar.flickable.height / Math.max(1, bar.maxY - bar.minY + bar.flickable.height))
         y: track.y + bar.position * (track.height - height)
-        radius: Theme.pillRadius(width)
-        color: area.pressed ? Theme.text : area.overThumb ? Qt.lighter(Theme.subtext, 1.15) : bar.expanded ? Theme.subtext : Theme.faint
-        opacity: bar.expanded ? 1 : 0.6
-
-        Behavior on opacity { NumberAnimation { duration: 120 } }
     }
 
     MouseArea {

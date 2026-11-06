@@ -17,12 +17,14 @@
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QGuiApplication>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLoggingCategory>
 #include <QMouseEvent>
 #include <QMutex>
 #include <QPainter>
@@ -33,6 +35,7 @@
 #include <QQuickWindow>
 #include <QRandomGenerator>
 #include <QScreen>
+#include <QSet>
 #include <QSurfaceFormat>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -62,13 +65,13 @@ void report(const QString& line)
     std::fflush(stderr);
 }
 
+// The event loop for a while, the GUI thread asleep when it has nothing to
+// do (as in the app): its CPU time per frame is then the frame's own work.
 void pumpFor(int ms)
 {
-    QElapsedTimer timer;
-    timer.start();
-    do
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
-    while (timer.elapsed() < ms);
+    QEventLoop loop;
+    QTimer::singleShot(ms, Qt::PreciseTimer, &loop, &QEventLoop::quit);
+    loop.exec();
 }
 
 QQuickItem* findNamed(QQuickItem* item, const QString& name)
@@ -169,7 +172,37 @@ struct Sample {
     int blankIcons = 0; // file rows in view without their icon
     int anchor = -1; // the first row in view: its index and where it is drawn
     double anchorY = 0;
+    quint64 guiCycles = 0; // the GUI thread's CPU cycles so far (QueryThreadCycleTime): not counting time other programs had the core
 };
+
+// --gpu: the GPU time of each frame, as Qt's render loop logs it with
+// timestamps on (QSG_RHI_PROFILE): "last retrieved GPU frame time was N ms".
+QMutex g_gpuMutex;
+std::vector<std::pair<qint64, double>>* g_gpuTimes = nullptr; // when logged, ms
+QElapsedTimer* g_gpuClock = nullptr;
+QtMessageHandler g_gpuPrevious = nullptr;
+
+void gpuTimeHandler(QtMsgType type, const QMessageLogContext& context, const QString& message)
+{
+    static const QString marker = u"last retrieved GPU frame time was "_s;
+    if (const qsizetype at = message.indexOf(marker); at >= 0) {
+        QMutexLocker lock(&g_gpuMutex);
+        if (g_gpuTimes && g_gpuClock)
+            g_gpuTimes->emplace_back(g_gpuClock->nsecsElapsed(), message.mid(at + marker.size()).section(u' ', 0, 0).toDouble());
+        return;
+    }
+    if (QByteArrayView(context.category ? context.category : "").startsWith("qt.scenegraph"))
+        return;
+    if (g_gpuPrevious)
+        g_gpuPrevious(type, context, message);
+}
+
+quint64 threadCycles()
+{
+    ULONG64 cycles = 0;
+    QueryThreadCycleTime(GetCurrentThread(), &cycles);
+    return cycles;
+}
 
 } // namespace
 
@@ -181,6 +214,12 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
     };
     if (args.contains(u"--qml-debug"_s))
         QQmlDebuggingEnabler::enableDebugging(false);
+    const bool gpu = args.contains(u"--gpu"_s);
+    if (gpu) {
+        qputenv("QSG_RHI_PROFILE", "1");
+        QLoggingCategory::setFilterRules(u"qt.scenegraph.time.renderloop.debug=true"_s);
+        g_gpuPrevious = qInstallMessageHandler(gpuTimeHandler);
+    }
     const int clipCount = valueOf(u"--clips", u"1000"_s).toInt();
     const bool large = args.contains(u"--large-pictures"_s);
     const QString label = valueOf(u"--label", u"run"_s);
@@ -400,10 +439,51 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
     clock.start();
     QMutex mutex;
     std::vector<qint64> swaps;
+    // Each frame's stages, as the threaded render loop runs them: the GUI
+    // thread animates (afterAnimating), polishes (the list lays out, rows are
+    // made or reused), then waits while the render thread synchronizes;
+    // the render thread then renders and swaps.
+    std::vector<qint64> syncStarts, syncEnds, renderEnds;
+    std::vector<quint64> renderCycles; // the render thread's CPU cycles at each afterRendering
+    // Cycles per ms of this thread's CPU time, from a busy wait.
+    double cyclesPerMs = 0;
+    {
+        QElapsedTimer spin;
+        const quint64 c0 = threadCycles();
+        spin.start();
+        while (spin.nsecsElapsed() < 100'000'000) {
+        }
+        cyclesPerMs = double(threadCycles() - c0) / (spin.nsecsElapsed() / 1e6);
+    }
     std::vector<Sample> samples;
     std::map<QQuickItem*, qint64> waiting; // a picture row in view since, without its thumbnail
     std::vector<double> latencies; // ms from a picture row in view to its thumbnail shown
     bool recording = false;
+    // Where the mouse rests (over the list, as when a wheel is turned): the
+    // row under it changes as the rows move (a hover flip), and rows made
+    // while scrolling (the reuse pool ran dry) are counted, each with when.
+    const QPointF over = list->mapToScene(QPointF(list->width() * 0.6, list->height() / 2));
+    QQuickItem* underMouse = nullptr;
+    std::vector<qint64> flips, made, reused;
+    QSet<QQuickItem*> seenRows;
+    QHash<QQuickItem*, QString> rowNames; // a pooled row reused for another entry gets that one's name
+    QObject::connect(window, &QQuickWindow::beforeSynchronizing, window, [&] {
+        QMutexLocker lock(&mutex);
+        if (recording)
+            syncStarts.push_back(clock.nsecsElapsed());
+    }, Qt::DirectConnection);
+    QObject::connect(window, &QQuickWindow::afterSynchronizing, window, [&] {
+        QMutexLocker lock(&mutex);
+        if (recording)
+            syncEnds.push_back(clock.nsecsElapsed());
+    }, Qt::DirectConnection);
+    QObject::connect(window, &QQuickWindow::afterRendering, window, [&] {
+        QMutexLocker lock(&mutex);
+        if (recording) {
+            renderEnds.push_back(clock.nsecsElapsed());
+            renderCycles.push_back(threadCycles());
+        }
+    }, Qt::DirectConnection);
     QObject::connect(window, &QQuickWindow::frameSwapped, window, [&] {
         QMutexLocker lock(&mutex);
         if (recording)
@@ -411,14 +491,30 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
     }, Qt::DirectConnection);
     QQuickItem* content = list->property("contentItem").value<QQuickItem*>();
     QObject::connect(window, &QQuickWindow::afterAnimating, window, [&] {
+        for (QQuickItem* row : content->childItems()) {
+            if (!row->objectName().startsWith(u"clipboardRow-"))
+                continue;
+            if (!seenRows.contains(row)) {
+                seenRows.insert(row);
+                if (recording)
+                    made.push_back(clock.nsecsElapsed());
+            } else if (rowNames.value(row) != row->objectName() && recording) {
+                reused.push_back(clock.nsecsElapsed());
+            }
+            rowNames.insert(row, row->objectName());
+        }
         if (!recording)
             return;
         Sample sample {clock.nsecsElapsed(), list->property("contentY").toDouble()};
+        sample.guiCycles = threadCycles();
         const QRectF view = list->mapRectToScene(QRectF(0, 0, list->width(), list->height()));
+        QQuickItem* hit = nullptr;
         for (QQuickItem* row : content->childItems()) {
             if (!row->isVisible() || !row->objectName().startsWith(u"clipboardRow-"))
                 continue;
             const QRectF where = row->mapRectToScene(QRectF(0, 0, row->width(), row->height()));
+            if (where.contains(over))
+                hit = row;
             if (!where.intersects(view))
                 continue;
             const int index = row->objectName().mid(13).toInt();
@@ -450,12 +546,15 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
                 }
             }
         }
+        if (hit != underMouse) {
+            underMouse = hit;
+            flips.push_back(sample.ns);
+        }
         samples.push_back(sample);
     }, Qt::DirectConnection);
 
-    // The mouse rests over the list, as when a wheel is turned.
-    const QPointF over = list->mapToScene(QPointF(list->width() * 0.6, list->height() / 2));
-    {
+    // --no-hover: the mouse never comes over the window (the rows' hover off).
+    if (!args.contains(u"--no-hover"_s)) {
         QMouseEvent move(QEvent::MouseMove, over, window->mapToGlobal(over), Qt::NoButton, Qt::NoButton, {});
         QCoreApplication::sendEvent(window, &move);
     }
@@ -607,7 +706,31 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
         }
         pumpFor(1500);
         window->grabWindow().save(output.filePath(u"grab-%1-back.png"_s.arg(label)));
-        report(u"bench: grabs saved"_s);
+        // The mouse on the hovered row's first button: its tip shows.
+        QQuickItem* button = nullptr;
+        for (QQuickItem* row : content->childItems()) {
+            if (!row->isVisible() || !row->objectName().startsWith(u"clipboardRow-")
+                || !row->mapRectToScene(QRectF(0, 0, row->width(), row->height())).contains(over))
+                continue;
+            const std::function<QQuickItem*(QQuickItem*)> find = [&](QQuickItem* item) -> QQuickItem* {
+                if (item->isVisible() && QByteArray(item->metaObject()->className()).startsWith("RowAction"))
+                    return item;
+                for (QQuickItem* child : item->childItems()) {
+                    if (QQuickItem* found = find(child))
+                        return found;
+                }
+                return nullptr;
+            };
+            button = find(row);
+        }
+        if (button) {
+            const QPointF at = button->mapToScene(QPointF(button->width() / 2, button->height() / 2));
+            QMouseEvent move(QEvent::MouseMove, at, window->mapToGlobal(at), Qt::NoButton, Qt::NoButton, {});
+            QCoreApplication::sendEvent(window, &move);
+            pumpFor(1500);
+            window->grabWindow().save(output.filePath(u"grab-%1-tip.png"_s.arg(label)));
+        }
+        report(u"bench: grabs saved"_s + (button ? u""_s : u" (no button for the tip)"_s));
         return 0;
     }
 
@@ -633,195 +756,362 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
         report(u"bench: ready for input"_s);
     QJsonArray phaseResults;
     const double vsyncMs = 1000.0 / std::max(1.0, screen->refreshRate());
-    for (const Phase& phase : phases) {
-        {
-            QMutexLocker lock(&mutex);
-            swaps.clear();
-        }
-        samples.clear();
-        latencies.clear();
-        waiting.clear();
-        recording = true;
-        const qint64 phaseStart = clock.nsecsElapsed();
-        const qint64 privateBefore = privateBytes();
-        int sent = 0;
-        std::vector<qint64> notchAt; // when each notch was sent
-        QElapsedTimer timer;
-        timer.start();
-        while (sent < phase.notches) {
-            if (timer.elapsed() >= qint64(sent) * phase.intervalMs) {
-                if (phase.delta != 0) {
-                    notchAt.push_back(clock.nsecsElapsed());
-                    wheel(phase.delta);
-                }
-                ++sent;
-            }
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 1);
-        }
-        if (phase.delta == 0)
-            pumpFor(phase.intervalMs);
-        pumpFor(700); // the glide ends, the last thumbnails come
-        recording = false;
-        const int never = static_cast<int>(waiting.size()); // in view, its thumbnail never shown
-        std::vector<double> intervals;
-        {
-            QMutexLocker lock(&mutex);
-            for (std::size_t i = 1; i < swaps.size(); ++i)
-                intervals.push_back((swaps[i] - swaps[i - 1]) / 1e6);
-        }
-        // Frames while moving: from the first sample to the last one whose position changed.
-        qint64 movingUntil = phaseStart;
-        for (std::size_t i = 1; i < samples.size(); ++i) {
-            if (samples[i].contentY != samples[i - 1].contentY)
-                movingUntil = samples[i].ns;
-        }
-        int missed = 0, long33 = 0;
-        std::vector<double> moving;
-        {
-            QMutexLocker lock(&mutex);
-            for (std::size_t i = 1; i < swaps.size(); ++i) {
-                if (swaps[i] > movingUntil)
-                    break;
-                const double ms = (swaps[i] - swaps[i - 1]) / 1e6;
-                moving.push_back(ms);
-                if (ms > vsyncMs * 1.5)
-                    missed += static_cast<int>(std::lround(ms / vsyncMs)) - 1;
-                if (ms > 33)
-                    ++long33;
-            }
-        }
-        // Where the rows are drawn, along contentY: the first row in view
-        // followed from frame to frame (contentY alone also moves when the
-        // list re-estimates the rows above it).
-        std::vector<double> drawn(samples.size(), 0);
-        for (std::size_t i = 1; i < samples.size(); ++i) {
-            const bool same = samples[i].anchor >= 0 && samples[i].anchor == samples[i - 1].anchor;
-            drawn[i] = drawn[i - 1] + (same ? samples[i - 1].anchorY - samples[i].anchorY : samples[i].contentY - samples[i - 1].contentY);
-        }
-        // The motion: speed per frame (px/ms) in the middle of the phase,
-        // how even it is, how often it jumps up again (a new notch restarting
-        // the glide), and frames standing still in between.
-        std::vector<double> speeds;
-        {
-            const qint64 from = phaseStart + (movingUntil - phaseStart) / 5;
-            const qint64 to = movingUntil - (movingUntil - phaseStart) / 5;
-            for (std::size_t i = 1; i < samples.size(); ++i) {
-                if (samples[i].ns < from || samples[i].ns > to)
-                    continue;
-                speeds.push_back(std::abs(drawn[i] - drawn[i - 1]) / ((samples[i].ns - samples[i - 1].ns) / 1e6));
-            }
-        }
-        double mean = 0, deviation = 0;
-        for (const double v : speeds)
-            mean += v / std::max<std::size_t>(1, speeds.size());
-        for (const double v : speeds)
-            deviation += (v - mean) * (v - mean) / std::max<std::size_t>(1, speeds.size());
-        int surges = 0, still = 0;
-        for (std::size_t i = 1; i < speeds.size(); ++i) {
-            surges += speeds[i] > speeds[i - 1] * 1.3 && speeds[i] > 0.05 ? 1 : 0;
-            still += speeds[i] == 0 ? 1 : 0;
-        }
-        // The same over four frames (whole logical pixels make single frames
-        // jitter): its evenness while the wheel turns, and how often it speeds
-        // up again by a third or more; frames moving against the wheel.
-        std::vector<double> windowed;
-        {
-            const qint64 from = phaseStart + (movingUntil - phaseStart) / 5;
-            const qint64 to = movingUntil - (movingUntil - phaseStart) / 5;
-            for (std::size_t i = 4; i < samples.size(); i += 4) {
-                if (samples[i - 4].ns < from || samples[i].ns > to)
-                    continue;
-                windowed.push_back(std::abs(drawn[i] - drawn[i - 4]) / ((samples[i].ns - samples[i - 4].ns) / 1e6));
-            }
-        }
-        double mean4 = 0, deviation4 = 0;
-        for (const double v : windowed)
-            mean4 += v / std::max<std::size_t>(1, windowed.size());
-        for (const double v : windowed)
-            deviation4 += (v - mean4) * (v - mean4) / std::max<std::size_t>(1, windowed.size());
-        int surges4 = 0;
-        for (std::size_t i = 1; i < windowed.size(); ++i)
-            surges4 += windowed[i] > windowed[i - 1] * 1.3 && windowed[i] > 0.2 ? 1 : 0;
-        // How far behind the wheel it runs: against a staircase that takes
-        // the phase's mean step at each notch, the mean distance in ms of
-        // the mean speed.
-        double lagMs = 0;
-        if (!notchAt.empty() && samples.size() > 1) {
-            const double y0 = drawn.front();
-            const double step = std::abs(drawn.back() - y0) / double(notchAt.size());
-            double sum = 0, speedSum = 0;
-            int count = 0;
-            for (std::size_t i = 1; i < samples.size(); ++i) {
-                const auto sentBy = std::upper_bound(notchAt.begin(), notchAt.end(), samples[i].ns) - notchAt.begin();
-                if (sentBy == 0)
-                    continue;
-                sum += std::abs(double(sentBy) * step - std::abs(drawn[i] - y0));
-                speedSum += std::abs(drawn[i] - drawn[i - 1]) / ((samples[i].ns - samples[i - 1].ns) / 1e6);
-                ++count;
-            }
-            const double speed = speedSum / std::max(1, count);
-            lagMs = speed > 0 ? sum / std::max(1, count) / speed : 0;
-        }
-        // Against the wheel: rows drawn moving back (one row followed), and
-        // contentY moving back (also the list re-estimating rows above).
-        int backward = 0, backwardContentY = 0;
-        double backwardMost = 0;
-        const int way = phase.delta < 0 ? 1 : -1; // contentY grows as the wheel turns down
-        for (std::size_t i = 1; i < samples.size(); ++i) {
-            const bool same = samples[i].anchor >= 0 && samples[i].anchor == samples[i - 1].anchor;
-            const double back = same ? -(samples[i - 1].anchorY - samples[i].anchorY) * way : 0;
-            backward += back > 0 ? 1 : 0;
-            backwardMost = std::max(backwardMost, back);
-            backwardContentY += (samples[i].contentY - samples[i - 1].contentY) * way < 0 ? 1 : 0;
-        }
-        QJsonArray trajectory; // a single notch: ms from the notch, contentY
-        if (phase.notches == 1 && phase.delta != 0) {
-            for (std::size_t i = 0; i < samples.size(); ++i)
-                trajectory.append(QJsonArray {(samples[i].ns - phaseStart) / 1e6, drawn[i]});
-        }
-        int placeholderFrames = 0, blankIconFrames = 0;
-        for (const Sample& s : samples) {
-            placeholderFrames += s.placeholders;
-            blankIconFrames += s.blankIcons;
-        }
-        int late = 0;
-        for (const double l : latencies)
-            late += l > vsyncMs * 1.5 ? 1 : 0;
-        const QJsonObject phaseResult {
-            {u"phase"_s, phase.name},
-            {u"frames_moving"_s, int(moving.size())},
-            {u"moving_ms"_s, (movingUntil - phaseStart) / 1e6},
-            {u"frame_ms_p50"_s, percentile(moving, 0.5)},
-            {u"frame_ms_p95"_s, percentile(moving, 0.95)},
-            {u"frame_ms_p99"_s, percentile(moving, 0.99)},
-            {u"frame_ms_max"_s, percentile(moving, 1)},
-            {u"missed_vsyncs"_s, missed},
-            {u"frames_over_33ms"_s, long33},
-            {u"placeholder_row_frames"_s, placeholderFrames},
-            {u"blank_icon_row_frames"_s, blankIconFrames},
-            {u"thumbs_seen"_s, int(latencies.size())},
-            {u"thumbs_late"_s, late},
-            {u"thumbs_never"_s, never},
-            {u"thumb_ms_p50"_s, percentile(latencies, 0.5)},
-            {u"thumb_ms_p95"_s, percentile(latencies, 0.95)},
-            {u"thumb_ms_max"_s, percentile(latencies, 1)},
-            {u"private_ws_delta_mb"_s, (privateBytes() - privateBefore) / 1048576.0},
-            {u"speed_px_ms_mean"_s, mean},
-            {u"speed_cv"_s, mean > 0 ? std::sqrt(deviation) / mean : 0},
-            {u"speed_surges"_s, surges},
-            {u"still_frames_mid"_s, still},
-            {u"end_contentY"_s, list->property("contentY").toDouble()},
-            {u"speed4_cv"_s, mean4 > 0 ? std::sqrt(deviation4) / mean4 : 0},
-            {u"speed4_surges"_s, surges4},
-            {u"speed4_surges_per_notch"_s, double(surges4) / phase.notches},
-            {u"backward_frames"_s, backward},
-            {u"backward_contentY_frames"_s, backwardContentY},
-            {u"backward_px_max"_s, backwardMost},
-            {u"lag_ms"_s, lagMs},
-            {u"trajectory"_s, trajectory},
+    std::vector<std::pair<qint64, double>> gpuTimes;
+    if (gpu) {
+        QMutexLocker lock(&g_gpuMutex);
+        g_gpuClock = &clock;
+        g_gpuTimes = &gpuTimes;
+    }
+    // --ablate highlight|scrollbar: the phases four times, A B A B, with that
+    // part of the page taken out in the B halves: what it costs, measured
+    // in one process (the computer's other load hits both halves alike).
+    const QString ablate = valueOf(u"--ablate", QString());
+    const QVariant highlight = list->property("highlight");
+    QQuickItem* scrollBar = nullptr;
+    {
+        const std::function<void(QQuickItem*)> find = [&](QQuickItem* item) {
+            if (!scrollBar && QByteArray(item->metaObject()->className()).startsWith("ListScrollBar"))
+                scrollBar = item;
+            for (QQuickItem* child : item->childItems())
+                find(child);
         };
-        phaseResults.append(phaseResult);
-        report(u"bench: %1"_s.arg(QString::fromUtf8(QJsonDocument(phaseResult).toJson(QJsonDocument::Compact))));
+        find(window->contentItem());
+    }
+    const int halves = ablate.isEmpty() ? 1 : 4;
+    for (int half = 0; half < halves; ++half) {
+        const bool ablated = half % 2 == 1;
+        if (ablate == u"highlight")
+            list->setProperty("highlight", ablated ? QVariant::fromValue<QQmlComponent*>(nullptr) : highlight);
+        else if (ablate == u"scrollbar" && scrollBar)
+            scrollBar->setVisible(!ablated);
+        if (halves > 1)
+            pumpFor(300);
+        for (const Phase& phase : phases) {
+            const QString phaseName = halves > 1 ? phase.name + (ablated ? u"#B"_s : u"#A"_s) + QString::number(half / 2 + 1) : phase.name;
+            {
+                QMutexLocker lock(&g_gpuMutex);
+                gpuTimes.clear();
+            }
+            {
+                QMutexLocker lock(&mutex);
+                swaps.clear();
+                syncStarts.clear();
+                syncEnds.clear();
+                renderEnds.clear();
+                renderCycles.clear();
+            }
+            samples.clear();
+            latencies.clear();
+            waiting.clear();
+            flips.clear();
+            made.clear();
+            reused.clear();
+            recording = true;
+            const qint64 phaseStart = clock.nsecsElapsed();
+            const qint64 privateBefore = privateBytes();
+            int sent = 0;
+            std::vector<qint64> notchAt; // when each notch was sent
+            QElapsedTimer timer;
+            timer.start();
+            {
+                // Each notch when its time comes, checked every millisecond
+                // (not spinning: see pumpFor).
+                QEventLoop loop;
+                QTimer tick;
+                tick.setTimerType(Qt::PreciseTimer);
+                tick.setInterval(1);
+                const auto due = [&] {
+                    while (sent < phase.notches && timer.elapsed() >= qint64(sent) * phase.intervalMs) {
+                        if (phase.delta != 0) {
+                            notchAt.push_back(clock.nsecsElapsed());
+                            wheel(phase.delta);
+                        }
+                        ++sent;
+                    }
+                    if (sent >= phase.notches)
+                        loop.quit();
+                };
+                QObject::connect(&tick, &QTimer::timeout, &loop, due);
+                due();
+                if (sent < phase.notches) {
+                    tick.start();
+                    loop.exec();
+                }
+            }
+            if (phase.delta == 0)
+                pumpFor(phase.intervalMs);
+            pumpFor(700); // the glide ends, the last thumbnails come
+            recording = false;
+            const int never = static_cast<int>(waiting.size()); // in view, its thumbnail never shown
+            std::vector<double> intervals;
+            {
+                QMutexLocker lock(&mutex);
+                for (std::size_t i = 1; i < swaps.size(); ++i)
+                    intervals.push_back((swaps[i] - swaps[i - 1]) / 1e6);
+            }
+            // Frames while moving: from the first sample to the last one whose position changed.
+            qint64 movingUntil = phaseStart;
+            for (std::size_t i = 1; i < samples.size(); ++i) {
+                if (samples[i].contentY != samples[i - 1].contentY)
+                    movingUntil = samples[i].ns;
+            }
+            // A missed frame "near" an event: the event came in it or the one before
+            // (from a vsync before the previous swap to this swap; "near" is a Windows macro).
+            const auto within = [&](const std::vector<qint64>& events, qint64 from, qint64 to) {
+                const auto it = std::lower_bound(events.begin(), events.end(), from);
+                return it != events.end() && *it <= to;
+            };
+            int missedNearFlip = 0, missedNearMade = 0, missedNearReuse = 0, framesNearFlip = 0;
+            int missed = 0, long33 = 0;
+            std::vector<double> moving;
+            {
+                QMutexLocker lock(&mutex);
+                for (std::size_t i = 1; i < swaps.size(); ++i) {
+                    if (swaps[i] > movingUntil)
+                        break;
+                    const double ms = (swaps[i] - swaps[i - 1]) / 1e6;
+                    moving.push_back(ms);
+                    const qint64 from = swaps[i - 1] - qint64(vsyncMs * 1e6);
+                    const bool flipped = within(flips, from, swaps[i]);
+                    framesNearFlip += flipped ? 1 : 0;
+                    if (ms > vsyncMs * 1.5) {
+                        const int lost = static_cast<int>(std::lround(ms / vsyncMs)) - 1;
+                        missed += lost;
+                        missedNearFlip += flipped ? lost : 0;
+                        missedNearMade += within(made, from, swaps[i]) ? lost : 0;
+                        missedNearReuse += within(reused, from, swaps[i]) ? lost : 0;
+                    }
+                    if (ms > 33)
+                        ++long33;
+                }
+            }
+            // Where the rows are drawn, along contentY: the first row in view
+            // followed from frame to frame (contentY alone also moves when the
+            // list re-estimates the rows above it).
+            std::vector<double> drawn(samples.size(), 0);
+            for (std::size_t i = 1; i < samples.size(); ++i) {
+                const bool same = samples[i].anchor >= 0 && samples[i].anchor == samples[i - 1].anchor;
+                drawn[i] = drawn[i - 1] + (same ? samples[i - 1].anchorY - samples[i].anchorY : samples[i].contentY - samples[i - 1].contentY);
+            }
+            // The motion: speed per frame (px/ms) in the middle of the phase,
+            // how even it is, how often it jumps up again (a new notch restarting
+            // the glide), and frames standing still in between.
+            std::vector<double> speeds;
+            {
+                const qint64 from = phaseStart + (movingUntil - phaseStart) / 5;
+                const qint64 to = movingUntil - (movingUntil - phaseStart) / 5;
+                for (std::size_t i = 1; i < samples.size(); ++i) {
+                    if (samples[i].ns < from || samples[i].ns > to)
+                        continue;
+                    speeds.push_back(std::abs(drawn[i] - drawn[i - 1]) / ((samples[i].ns - samples[i - 1].ns) / 1e6));
+                }
+            }
+            double mean = 0, deviation = 0;
+            for (const double v : speeds)
+                mean += v / std::max<std::size_t>(1, speeds.size());
+            for (const double v : speeds)
+                deviation += (v - mean) * (v - mean) / std::max<std::size_t>(1, speeds.size());
+            int surges = 0, still = 0;
+            for (std::size_t i = 1; i < speeds.size(); ++i) {
+                surges += speeds[i] > speeds[i - 1] * 1.3 && speeds[i] > 0.05 ? 1 : 0;
+                still += speeds[i] == 0 ? 1 : 0;
+            }
+            // The same over four frames (whole logical pixels make single frames
+            // jitter): its evenness while the wheel turns, and how often it speeds
+            // up again by a third or more; frames moving against the wheel.
+            std::vector<double> windowed;
+            {
+                const qint64 from = phaseStart + (movingUntil - phaseStart) / 5;
+                const qint64 to = movingUntil - (movingUntil - phaseStart) / 5;
+                for (std::size_t i = 4; i < samples.size(); i += 4) {
+                    if (samples[i - 4].ns < from || samples[i].ns > to)
+                        continue;
+                    windowed.push_back(std::abs(drawn[i] - drawn[i - 4]) / ((samples[i].ns - samples[i - 4].ns) / 1e6));
+                }
+            }
+            double mean4 = 0, deviation4 = 0;
+            for (const double v : windowed)
+                mean4 += v / std::max<std::size_t>(1, windowed.size());
+            for (const double v : windowed)
+                deviation4 += (v - mean4) * (v - mean4) / std::max<std::size_t>(1, windowed.size());
+            int surges4 = 0;
+            for (std::size_t i = 1; i < windowed.size(); ++i)
+                surges4 += windowed[i] > windowed[i - 1] * 1.3 && windowed[i] > 0.2 ? 1 : 0;
+            // How far behind the wheel it runs: against a staircase that takes
+            // the phase's mean step at each notch, the mean distance in ms of
+            // the mean speed.
+            double lagMs = 0;
+            if (!notchAt.empty() && samples.size() > 1) {
+                const double y0 = drawn.front();
+                const double step = std::abs(drawn.back() - y0) / double(notchAt.size());
+                double sum = 0, speedSum = 0;
+                int count = 0;
+                for (std::size_t i = 1; i < samples.size(); ++i) {
+                    const auto sentBy = std::upper_bound(notchAt.begin(), notchAt.end(), samples[i].ns) - notchAt.begin();
+                    if (sentBy == 0)
+                        continue;
+                    sum += std::abs(double(sentBy) * step - std::abs(drawn[i] - y0));
+                    speedSum += std::abs(drawn[i] - drawn[i - 1]) / ((samples[i].ns - samples[i - 1].ns) / 1e6);
+                    ++count;
+                }
+                const double speed = speedSum / std::max(1, count);
+                lagMs = speed > 0 ? sum / std::max(1, count) / speed : 0;
+            }
+            // Against the wheel: rows drawn moving back (one row followed), and
+            // contentY moving back (also the list re-estimating rows above).
+            int backward = 0, backwardContentY = 0;
+            double backwardMost = 0;
+            const int way = phase.delta < 0 ? 1 : -1; // contentY grows as the wheel turns down
+            for (std::size_t i = 1; i < samples.size(); ++i) {
+                const bool same = samples[i].anchor >= 0 && samples[i].anchor == samples[i - 1].anchor;
+                const double back = same ? -(samples[i - 1].anchorY - samples[i].anchorY) * way : 0;
+                backward += back > 0 ? 1 : 0;
+                backwardMost = std::max(backwardMost, back);
+                backwardContentY += (samples[i].contentY - samples[i - 1].contentY) * way < 0 ? 1 : 0;
+            }
+            QJsonArray trajectory; // a single notch: ms from the notch, contentY
+            if (phase.notches == 1 && phase.delta != 0) {
+                for (std::size_t i = 0; i < samples.size(); ++i)
+                    trajectory.append(QJsonArray {(samples[i].ns - phaseStart) / 1e6, drawn[i]});
+            }
+            int placeholderFrames = 0, blankIconFrames = 0;
+            for (const Sample& s : samples) {
+                placeholderFrames += s.placeholders;
+                blankIconFrames += s.blankIcons;
+            }
+            int late = 0;
+            for (const double l : latencies)
+                late += l > vsyncMs * 1.5 ? 1 : 0;
+            // The stages of each frame while moving, in ms: polish (GUI thread,
+            // from its animation step to the render thread's sync), sync (GUI
+            // blocked) and render (render thread, up to the present call).
+            std::vector<double> polishMs, syncMs, renderMs, guiMs;
+            {
+                QMutexLocker lock(&mutex);
+                for (const qint64 start : syncStarts) {
+                    if (start > movingUntil)
+                        break;
+                    const auto anim = std::upper_bound(samples.begin(), samples.end(), start,
+                        [](qint64 t, const Sample& s) { return t < s.ns; });
+                    const auto end = std::lower_bound(syncEnds.begin(), syncEnds.end(), start);
+                    if (anim == samples.begin() || end == syncEnds.end())
+                        continue;
+                    const double polish = (start - std::prev(anim)->ns) / 1e6;
+                    const double sync = (*end - start) / 1e6;
+                    if (polish > 50)
+                        continue; // not this frame's animation step (an idle gap)
+                    polishMs.push_back(polish);
+                    syncMs.push_back(sync);
+                    guiMs.push_back(polish + sync);
+                    const auto rendered = std::lower_bound(renderEnds.begin(), renderEnds.end(), *end);
+                    if (rendered != renderEnds.end())
+                        renderMs.push_back((*rendered - *end) / 1e6);
+                }
+            }
+            const auto meanOf = [](const std::vector<double>& v) {
+                double sum = 0;
+                for (const double x : v)
+                    sum += x;
+                return v.empty() ? 0.0 : sum / double(v.size());
+            };
+            // CPU time per frame, ms: the GUI thread's from one animation step to
+            // the next (input, hover, animation, polish), the render thread's
+            // from one render to the next (sync, render). Robust to other load.
+            // Frames where the row under the mouse changed, and the one after
+            // (Qt delivers the hover with the next frame): what a flip costs.
+            std::vector<double> guiCpu, renderCpu, flipCpu, steadyCpu;
+            for (std::size_t i = 1; i < samples.size(); ++i) {
+                if (samples[i].ns > movingUntil)
+                    break;
+                const double ms = double(samples[i].guiCycles - samples[i - 1].guiCycles) / cyclesPerMs;
+                guiCpu.push_back(ms);
+                const bool flipped = std::binary_search(flips.begin(), flips.end(), samples[i].ns)
+                    || std::binary_search(flips.begin(), flips.end(), samples[i - 1].ns);
+                (flipped ? flipCpu : steadyCpu).push_back(ms);
+            }
+            {
+                QMutexLocker lock(&mutex);
+                for (std::size_t i = 1; i < renderCycles.size() && i < renderEnds.size(); ++i) {
+                    if (renderEnds[i] > movingUntil)
+                        break;
+                    renderCpu.push_back(double(renderCycles[i] - renderCycles[i - 1]) / cyclesPerMs);
+                }
+            }
+            const auto countOver = [](const std::vector<double>& v, double ms) {
+                return int(std::count_if(v.begin(), v.end(), [ms](double x) { return x > ms; }));
+            };
+            std::vector<double> gpuMs;
+            {
+                QMutexLocker lock(&g_gpuMutex);
+                for (const auto& [at, ms] : gpuTimes) {
+                    if (at <= movingUntil && ms > 0)
+                        gpuMs.push_back(ms);
+                }
+            }
+            const QJsonObject stages {
+                {u"gui_cpu_ms_mean"_s, meanOf(guiCpu)}, {u"gui_cpu_ms_p95"_s, percentile(guiCpu, 0.95)},
+                {u"gui_cpu_ms_p99"_s, percentile(guiCpu, 0.99)}, {u"gui_cpu_ms_max"_s, percentile(guiCpu, 1)},
+                {u"gui_cpu_frames_over_1ms"_s, countOver(guiCpu, 1)}, {u"gui_cpu_frames_over_2ms"_s, countOver(guiCpu, 2)},
+                {u"render_cpu_ms_mean"_s, meanOf(renderCpu)}, {u"render_cpu_ms_p95"_s, percentile(renderCpu, 0.95)},
+                {u"render_cpu_ms_p99"_s, percentile(renderCpu, 0.99)}, {u"render_cpu_frames_over_2ms"_s, countOver(renderCpu, 2)},
+                {u"cycles_per_ms"_s, cyclesPerMs},
+                {u"gpu_ms_mean"_s, meanOf(gpuMs)}, {u"gpu_ms_p95"_s, percentile(gpuMs, 0.95)}, {u"gpu_frames"_s, int(gpuMs.size())},
+                {u"gui_cpu_ms_flip_mean"_s, meanOf(flipCpu)}, {u"gui_cpu_ms_flip_p95"_s, percentile(flipCpu, 0.95)},
+                {u"gui_cpu_ms_steady_mean"_s, meanOf(steadyCpu)}, {u"gui_cpu_ms_steady_p95"_s, percentile(steadyCpu, 0.95)},
+                {u"flip_frames"_s, int(flipCpu.size())},
+                {u"polish_ms_mean"_s, meanOf(polishMs)}, {u"polish_ms_p95"_s, percentile(polishMs, 0.95)}, {u"polish_ms_p99"_s, percentile(polishMs, 0.99)},
+                {u"sync_ms_mean"_s, meanOf(syncMs)}, {u"sync_ms_p95"_s, percentile(syncMs, 0.95)}, {u"sync_ms_p99"_s, percentile(syncMs, 0.99)},
+                {u"gui_ms_mean"_s, meanOf(guiMs)}, {u"gui_ms_p95"_s, percentile(guiMs, 0.95)}, {u"gui_ms_p99"_s, percentile(guiMs, 0.99)},
+                {u"render_ms_mean"_s, meanOf(renderMs)}, {u"render_ms_p95"_s, percentile(renderMs, 0.95)}, {u"render_ms_p99"_s, percentile(renderMs, 0.99)},
+            };
+            const QJsonObject phaseResult {
+                {u"stages"_s, stages},
+                {u"phase"_s, phaseName},
+                {u"frames_moving"_s, int(moving.size())},
+                {u"moving_ms"_s, (movingUntil - phaseStart) / 1e6},
+                {u"frame_ms_p50"_s, percentile(moving, 0.5)},
+                {u"frame_ms_p95"_s, percentile(moving, 0.95)},
+                {u"frame_ms_p99"_s, percentile(moving, 0.99)},
+                {u"frame_ms_max"_s, percentile(moving, 1)},
+                {u"missed_vsyncs"_s, missed},
+                {u"frames_over_33ms"_s, long33},
+                {u"placeholder_row_frames"_s, placeholderFrames},
+                {u"blank_icon_row_frames"_s, blankIconFrames},
+                {u"thumbs_seen"_s, int(latencies.size())},
+                {u"thumbs_late"_s, late},
+                {u"thumbs_never"_s, never},
+                {u"thumb_ms_p50"_s, percentile(latencies, 0.5)},
+                {u"thumb_ms_p95"_s, percentile(latencies, 0.95)},
+                {u"thumb_ms_max"_s, percentile(latencies, 1)},
+                {u"private_ws_delta_mb"_s, (privateBytes() - privateBefore) / 1048576.0},
+                {u"speed_px_ms_mean"_s, mean},
+                {u"speed_cv"_s, mean > 0 ? std::sqrt(deviation) / mean : 0},
+                {u"speed_surges"_s, surges},
+                {u"still_frames_mid"_s, still},
+                {u"end_contentY"_s, list->property("contentY").toDouble()},
+                {u"speed4_cv"_s, mean4 > 0 ? std::sqrt(deviation4) / mean4 : 0},
+                {u"speed4_surges"_s, surges4},
+                {u"speed4_surges_per_notch"_s, double(surges4) / phase.notches},
+                {u"backward_frames"_s, backward},
+                {u"backward_contentY_frames"_s, backwardContentY},
+                {u"backward_px_max"_s, backwardMost},
+                {u"lag_ms"_s, lagMs},
+                {u"hover_flips"_s, int(flips.size())},
+                {u"frames_near_flip"_s, framesNearFlip},
+                {u"missed_near_flip"_s, missedNearFlip},
+                {u"rows_made"_s, int(made.size())},
+                {u"missed_near_made"_s, missedNearMade},
+                {u"rows_reused"_s, int(reused.size())},
+                {u"missed_near_reuse"_s, missedNearReuse},
+                {u"trajectory"_s, trajectory},
+            };
+            phaseResults.append(phaseResult);
+            report(u"bench: %1"_s.arg(QString::fromUtf8(QJsonDocument(phaseResult).toJson(QJsonDocument::Compact))));
+        }
+    }
+    if (gpu) {
+        QMutexLocker lock(&g_gpuMutex);
+        g_gpuTimes = nullptr;
     }
     result.insert(u"phases"_s, phaseResults);
     result.insert(u"private_ws_mb"_s, privateBytes() / 1048576.0);

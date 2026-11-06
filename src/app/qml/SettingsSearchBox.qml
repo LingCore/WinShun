@@ -27,12 +27,23 @@ Rectangle {
         input.selectAll()
     }
 
+    // The window's, for the style's field and the key hint on whole device pixels.
+    readonly property real dpr: Screen.devicePixelRatio
+
     implicitHeight: 36
     radius: Theme.controlRadius
-    color: warm ? WarmPalette.chip
-         : input.activeFocus ? Theme.inputFocused : area.containsMouse ? Theme.controlHover : Theme.control
-    border.width: warm ? 0 : 1
-    border.color: Theme.controlBorder
+    color: warm ? WarmPalette.chip : "transparent" // else the style's field draws it (below)
+
+    Hook { // the style's search field (Theme.searchField, boxed): fill, edge, the focus mark
+        id: fieldPart
+        anchors.fill: parent
+        visible: !box.warm
+        part: box.warm ? null : Theme.searchField
+        flat: false
+        focused: input.activeFocus
+        hovered: area.containsMouse
+        dpr: box.dpr
+    }
 
     MouseArea {
         id: area
@@ -50,7 +61,7 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         glyph: "" // Search
         size: 16
-        color: box.warm ? WarmPalette.inkSoft : Theme.subtext
+        color: box.warm ? WarmPalette.inkSoft : fieldPart.out("iconColor", Theme.subtext)
     }
 
     TextInput {
@@ -63,11 +74,17 @@ Rectangle {
         verticalAlignment: TextInput.AlignVCenter
         clip: true
         activeFocusOnTab: true
-        color: box.warm ? WarmPalette.ink : Theme.text
+        color: box.warm ? WarmPalette.ink : fieldPart.out("textColor", Theme.text)
         font.pixelSize: Theme.fontBody
         selectByMouse: true
         selectionColor: Theme.textSelection
         selectedTextColor: box.warm ? WarmPalette.ink : Theme.text
+        // The style's caret colour, where it has one (Qt's own caret otherwise).
+        cursorDelegate: !box.warm && fieldPart.out("caretColor", "transparent").a > 0 ? caretPart : null
+        Component {
+            id: caretPart
+            Caret { color: fieldPart.out("caretColor", Theme.text); dpr: box.dpr }
+        }
         maximumLength: 100
 
         Accessible.role: Accessible.EditableText
@@ -89,7 +106,7 @@ Rectangle {
             anchors.fill: parent
             verticalAlignment: Text.AlignVCenter
             text: qsTr("查找设置")
-            color: box.warm ? WarmPalette.inkSoft : Theme.faint
+            color: box.warm ? WarmPalette.inkSoft : fieldPart.out("placeholderColor", Theme.faint)
             font: input.font
             elide: Text.ElideRight
             visible: box.empty
@@ -105,14 +122,26 @@ Rectangle {
         width: 28
         height: 28
         radius: Theme.controlRadius
-        color: clearArea.pressed ? (box.warm ? WarmPalette.chip : Theme.controlPressed)
-             : clearArea.containsMouse ? (box.warm ? WarmPalette.chip : Theme.chipHover) : "transparent"
+        color: box.warm && (clearArea.pressed || clearArea.containsMouse) ? WarmPalette.chip : "transparent"
+
+        Hook { // the style's key, flat until hovered (Theme.keySurface)
+            id: clearPart
+            anchors.fill: parent
+            visible: !box.warm
+            part: box.warm ? null : Theme.keySurface
+            hovered: clearArea.containsMouse
+            pressed: clearArea.pressed
+            flat: true
+            role: "toolbar"
+            dpr: box.dpr
+        }
 
         Glyph {
             anchors.centerIn: parent
+            anchors.verticalCenterOffset: clearPart.out("contentOffsetY", 0)
             glyph: "" // Cancel
             size: 12
-            color: box.warm ? WarmPalette.ink : clearArea.containsMouse ? Theme.text : Theme.subtext
+            color: box.warm ? WarmPalette.ink : clearPart.out("foreground", clearArea.containsMouse ? Theme.text : Theme.subtext)
         }
 
         MouseArea {
@@ -127,33 +156,39 @@ Rectangle {
         }
     }
 
-    Rectangle { // the key that gets here, while nothing is typed
+    Item { // the key that gets here, while nothing is typed
         id: keyHint
         visible: box.empty && !input.activeFocus && !box.warm
         // On whole device pixels: a keycap on a half one is soft on its sides.
-        x: Theme.snap(parent.width - 7 - width, Screen.devicePixelRatio)
-        y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
-        width: Theme.snapUp(keyText.implicitWidth + 10, Screen.devicePixelRatio)
+        x: Theme.snap(parent.width - 7 - width, box.dpr)
+        y: Theme.snap((parent.height - height) / 2, box.dpr)
+        width: Theme.snapUp(keyText.implicitWidth + 10, box.dpr)
         height: 22
-        radius: Theme.controlRadius
-        color: Theme.keycap
+
+        Hook { // the style's key cap (Theme.keyHint): it only tells, never pressed
+            id: keyCap
+            anchors.fill: parent
+            part: keyHint.visible ? Theme.keyHint : null
+            dpr: box.dpr
+        }
 
         Text {
             id: keyText
-            anchors.centerIn: parent
+            x: Theme.snap((keyHint.width - width) / 2, box.dpr)
+            y: Theme.snap((keyHint.height - height) / 2 + keyCap.out("contentOffsetY", 0), box.dpr)
             text: "Ctrl+F"
-            color: Theme.faint
+            color: keyCap.out("foreground", Theme.faint)
             font.pixelSize: Theme.fontCaption
         }
     }
 
-    Rectangle { // the accent line of the field being typed into
-        visible: input.activeFocus
+    Rectangle { // the accent line of the field being typed into, on the warm scene (else the field's own mark)
+        visible: input.activeFocus && box.warm
         anchors.bottom: parent.bottom
-        x: Theme.edge(Screen.devicePixelRatio) // inside the field's border
+        x: Theme.edge(box.dpr)
         width: parent.width - 2 * x
-        height: Theme.snap(2, Screen.devicePixelRatio) // 2.5 device pixels at 125 %
+        height: Theme.snap(2, box.dpr) // 2.5 device pixels at 125 %
         radius: Theme.lineRadius
-        color: box.warm ? WarmPalette.accent : Theme.accent
+        color: WarmPalette.accent
     }
 }

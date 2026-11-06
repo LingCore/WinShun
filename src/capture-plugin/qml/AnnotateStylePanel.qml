@@ -8,7 +8,7 @@ import WinShun
 // and keys; a change goes back through setPanel() and the other calls. One
 // row of fixed height, so the toolbar never moves when it appears. Shown
 // with a short fade; hidden at once.
-Rectangle {
+Item {
     id: panel
 
     required property AnnotationModel annot
@@ -86,10 +86,6 @@ Rectangle {
 
     implicitWidth: row.width + 2 * pad
     implicitHeight: controlHeight + 2 * pad
-    radius: Theme.controlRadius
-    color: Theme.background
-    border.width: 1
-    border.color: Theme.windowEdge
     transform: Translate { id: shift }
 
     onVisibleChanged: {
@@ -106,6 +102,13 @@ Rectangle {
         id: showing
         NumberAnimation { target: panel; property: "opacity"; from: 0; to: 1; duration: panel.showMs; easing.type: Easing.OutCubic }
         NumberAnimation { target: shift; property: "y"; from: -panel.direction * panel.slide; to: 0; duration: panel.showMs; easing.type: Easing.OutCubic }
+    }
+
+    Hook { // the style's floating panel (Theme.menuFrame)
+        anchors.fill: parent
+        part: Theme.menuFrame
+        extra: ({ floating: true })
+        dpr: panel.dpr
     }
 
     MouseArea { // presses between the controls stay here, not on the picture beneath
@@ -262,6 +265,7 @@ Rectangle {
 
             Glyph {
                 anchors.centerIn: parent
+                anchors.verticalCenterOffset: parent.markOffsetY
                 glyph: String.fromCharCode(0xEF3C) // Eyedropper
                 size: panel.layerGlyph
                 color: pickerButton.foreground
@@ -359,6 +363,7 @@ Rectangle {
 
                 Glyph {
                     anchors.centerIn: parent
+                    anchors.verticalCenterOffset: parent.markOffsetY
                     glyph: String.fromCharCode(0xE8DD) // Bold
                     size: panel.boldGlyph
                     color: boldButton.foreground
@@ -457,9 +462,10 @@ Rectangle {
 
                 Glyph {
                     anchors.centerIn: parent
+                    anchors.verticalCenterOffset: parent.markOffsetY
                     glyph: String.fromCharCode(0xE738) // Remove
                     size: panel.stepGlyph
-                    color: Theme.text
+                    color: parent.foreground
                 }
             }
             WordLabel {
@@ -474,9 +480,10 @@ Rectangle {
 
                 Glyph {
                     anchors.centerIn: parent
+                    anchors.verticalCenterOffset: parent.markOffsetY
                     glyph: String.fromCharCode(0xE710) // Add
                     size: panel.stepGlyph
-                    color: Theme.text
+                    color: parent.foreground
                 }
             }
             WordButton {
@@ -525,6 +532,7 @@ Rectangle {
 
                 Glyph {
                     anchors.centerIn: parent
+                    anchors.verticalCenterOffset: parent.markOffsetY
                     glyph: String.fromCharCode(0xE74A) // Up
                     size: panel.layerGlyph
                     color: raiseButton.foreground
@@ -539,6 +547,7 @@ Rectangle {
 
                 Glyph {
                     anchors.centerIn: parent
+                    anchors.verticalCenterOffset: parent.markOffsetY
                     glyph: String.fromCharCode(0xE74B) // Down
                     size: panel.layerGlyph
                     color: lowerButton.foreground
@@ -552,6 +561,7 @@ Rectangle {
 
                 Glyph {
                     anchors.centerIn: parent
+                    anchors.verticalCenterOffset: parent.markOffsetY
                     glyph: String.fromCharCode(0xE74D) // Delete
                     size: panel.layerGlyph
                     color: deleteButton.foreground
@@ -567,6 +577,7 @@ Rectangle {
 
             Glyph {
                 anchors.centerIn: parent
+                anchors.verticalCenterOffset: parent.markOffsetY
                 glyph: String.fromCharCode(0xE777) // UpdateRestore
                 size: panel.layerGlyph
                 color: resetButton.foreground
@@ -584,25 +595,35 @@ Rectangle {
 
     // A square button: accentFill and white marks when checked. Its marks
     // are its children, coloured with `foreground`.
-    component PanelButton: Rectangle {
+    component PanelButton: Item {
         id: button
 
         property bool checked: false
         property string tip
         property string tipKeys
-        readonly property color foreground: checked ? Theme.accentText : Theme.text
+        readonly property color foreground: face.out("foreground", checked ? Theme.accentText : Theme.text)
+        // Where the marks on it sit (they go down a little when a key is pressed).
+        readonly property real markOffsetY: face.out("contentOffsetY", 0)
 
         signal clicked()
 
         width: panel.cellWidth
         height: panel.controlHeight
-        radius: Theme.controlRadius
-        opacity: enabled ? 1 : 0.45
-        color: checked
-               ? (area.pressed ? Qt.darker(Theme.accentFill, 1.15) : area.containsMouse ? Qt.lighter(Theme.accentFill, 1.08) : Theme.accentFill)
-               : (area.pressed ? Theme.controlPressed : area.containsMouse ? Theme.controlHover : "transparent")
+        opacity: enabled ? 1 : face.out("disabledOpacity", 0.45)
         Accessible.role: Accessible.Button
         Accessible.name: tip
+
+        Hook { // the style's key (Theme.keySurface)
+            id: face
+            anchors.fill: parent
+            part: Theme.keySurface
+            hovered: area.containsMouse
+            pressed: area.pressed
+            checked: button.checked
+            flat: true
+            role: "toolbar"
+            dpr: panel.dpr
+        }
 
         MouseArea {
             id: area
@@ -631,6 +652,7 @@ Rectangle {
         Text {
             id: wordText
             anchors.centerIn: parent
+            anchors.verticalCenterOffset: wordButton.markOffsetY
             text: wordButton.words
             color: wordButton.foreground
             font.pixelSize: Theme.fontCaption
@@ -668,17 +690,18 @@ Rectangle {
         strong: true
     }
 
-    // A thin upright line between groups, on a whole device pixel.
+    // A thin upright line between groups (the style's separator), on whole device pixels.
     component Separator: Item {
         width: panel.separatorWidth
         height: panel.controlHeight
 
-        Rectangle {
-            x: panel.snap(panel.separatorWidth / 2)
+        Hook {
             y: panel.snap((panel.controlHeight - panel.separatorHeight) / 2)
-            width: Math.max(1, Math.round(panel.dpr)) / panel.dpr
+            width: panel.separatorWidth
             height: panel.separatorHeight
-            color: Theme.controlBorder
+            part: Theme.separator
+            orientation: Qt.Vertical
+            dpr: panel.dpr
         }
     }
 }

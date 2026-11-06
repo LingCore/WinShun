@@ -17,6 +17,8 @@ Window {
 
     required property DialogBar bar
 
+    // The window's, read once here and passed down (GitHub #111).
+    readonly property real dpr: Screen.devicePixelRatio
     readonly property int listHeight: bar.rows > 0 ? bar.rows * bar.rowHeight + 9 : 0
     readonly property bool asking: bar.asking && bar.rows === 0
     // What is above or below the box: the list, or the line that asks.
@@ -60,7 +62,12 @@ Window {
     Binding {
         target: window.bar.results
         property: "highlightColor"
-        value: Theme.accent
+        value: Theme.matchColor
+    }
+    Binding {
+        target: window.bar.results
+        property: "highlightWeight"
+        value: Theme.matchWeight
     }
 
     function move(delta) {
@@ -343,7 +350,7 @@ Window {
                 font.pixelSize: Theme.uiCaption
             }
 
-            Rectangle {
+            Item {
                 id: chip
 
                 // After the dialog went to the file manager's folder by
@@ -354,12 +361,23 @@ Window {
                 anchors.verticalCenter: parent.verticalCenter
                 width: chipRow.implicitWidth + 16
                 height: 32
-                radius: Theme.largeControlRadius
-                color: chipArea.pressed ? Theme.controlPressed : chipArea.containsMouse ? Theme.hover : "transparent"
+
+                Hook { // the style's key, flat until hovered
+                    id: chipKey
+                    anchors.fill: parent
+                    part: Theme.keySurface
+                    hovered: chipArea.containsMouse
+                    pressed: chipArea.pressed
+                    flat: true
+                    corner: Theme.largeControlRadius
+                    role: "dialog"
+                    dpr: window.dpr
+                }
 
                 Row {
                     id: chipRow
                     anchors.centerIn: parent
+                    anchors.verticalCenterOffset: chipKey.out("contentOffsetY", 0)
                     spacing: 8
 
                     Glyph {
@@ -375,22 +393,28 @@ Window {
                         text: chip.toOrigin ? qsTr("回到“%1”").arg(window.bar.originName) : window.bar.explorerName
                         textFormat: Text.PlainText
                         elide: Text.ElideMiddle
-                        color: Theme.text
+                        color: chipKey.out("foreground", Theme.text)
                         font.pixelSize: Theme.uiCaption
                     }
-                    Rectangle { // the key that does the same; not where the box would be too short (beside the dialog)
+                    Item { // the key that does the same; not where the box would be too short (beside the dialog)
                         visible: !chip.toOrigin && window.width >= 560
                         anchors.verticalCenter: parent.verticalCenter
                         width: keyText.implicitWidth + 10
                         height: Theme.keycapHeight - 2
-                        radius: Theme.controlRadius
-                        color: Theme.keycap
+
+                        Hook { // the style's key cap (Theme.keyHint): it only tells, never pressed
+                            id: capPart
+                            anchors.fill: parent
+                            part: Theme.keyHint
+                            dpr: window.dpr
+                        }
 
                         Text {
                             id: keyText
                             anchors.centerIn: parent
+                            anchors.verticalCenterOffset: capPart.out("contentOffsetY", 0)
                             text: "Ctrl+G"
-                            color: Theme.subtext
+                            color: capPart.out("foreground", Theme.subtext)
                             font.pixelSize: Theme.uiSmall
                         }
                     }
@@ -417,15 +441,24 @@ Window {
                 }
             }
 
-            Rectangle {
+            Item {
                 id: moreButton
                 anchors.verticalCenter: parent.verticalCenter
                 width: 32
                 height: 32
-                radius: Theme.largeControlRadius
-                color: moreArea.pressed ? Theme.controlPressed
-                     : moreArea.containsMouse || (window.menuOpen && window.contextMenu.row < 0) ? Theme.hover
-                     : "transparent"
+
+                Hook { // the style's key, flat until hovered; lit too while its menu is open
+                    id: moreKey
+                    anchors.fill: parent
+                    part: Theme.keySurface
+                    hovered: moreArea.containsMouse
+                    pressed: moreArea.pressed
+                    flat: true
+                    corner: Theme.largeControlRadius
+                    role: "dialog"
+                    current: window.menuOpen && window.contextMenu.row < 0
+                    dpr: window.dpr
+                }
 
                 Glyph {
                     anchors.centerIn: parent
@@ -452,12 +485,13 @@ Window {
         }
     }
 
-    Rectangle {
+    Hook { // between the box and the list (the style's seam)
         visible: window.bar.rows > 0 || window.asking
         y: window.bar.listAbove ? window.extraHeight - height : window.bar.barHeight
         width: window.width
-        height: Theme.edge(Screen.devicePixelRatio)
-        color: Theme.divider
+        height: Theme.edge(window.dpr)
+        part: Theme.separator
+        dpr: window.dpr
     }
 
     Item { // asks once: go by itself as a dialog opens, as the user comes back to it, or not
@@ -491,22 +525,33 @@ Window {
                 // [what it says, the answer]: the first two turn it on
                 model: [[qsTr("打开时就转"), "open"], [qsTr("切回来时再转"), "back"], [qsTr("不用"), ""]]
 
-                Rectangle {
+                Item {
                     id: answer
 
                     required property var modelData
 
                     width: answerText.implicitWidth + 16
                     height: Theme.chipHeight
-                    radius: Theme.largeControlRadius
-                    color: answerArea.pressed ? Theme.controlPressed : answerArea.containsMouse ? Theme.hover : "transparent"
                     Accessible.role: Accessible.Button
                     Accessible.name: answerText.text
                     Accessible.onPressAction: window.bar.answerAutoJump(answer.modelData[1])
 
+                    Hook { // the style's key, flat until hovered
+                        id: answerKey
+                        anchors.fill: parent
+                        part: Theme.keySurface
+                        hovered: answerArea.containsMouse
+                        pressed: answerArea.pressed
+                        flat: true
+                        corner: Theme.largeControlRadius
+                        role: "dialog"
+                        dpr: window.dpr
+                    }
+
                     Text {
                         id: answerText
                         anchors.centerIn: parent
+                        anchors.verticalCenterOffset: answerKey.out("contentOffsetY", 0)
                         text: answer.modelData[0]
                         color: answer.modelData[1].length > 0 ? Theme.accent : Theme.subtext
                         font.pixelSize: Theme.uiCaption
@@ -536,7 +581,36 @@ Window {
         clip: true
         model: window.bar.results
         boundsBehavior: Flickable.StopAtBounds
-        highlightMoveDuration: 0
+        // The current row's highlight, one for the whole list: it jumps, or
+        // slides as the style says (Theme.rowSlide).
+        highlightMoveDuration: Theme.rowSlide
+        highlightMoveVelocity: -1
+        highlightResizeDuration: 0
+        highlightResizeVelocity: -1
+        highlight: Item {
+            id: currentHighlight
+            width: list.width
+            visible: list.currentItem !== null
+            transform: ScrollPixelAlignment { // on whole device pixels, as the rows
+                view: list
+                viewY: list.y
+                itemY: currentHighlight.y
+            }
+
+            Hook {
+                anchors.fill: parent
+                anchors.leftMargin: Theme.rowInset
+                anchors.rightMargin: Theme.rowInset
+                anchors.topMargin: Theme.edge(window.dpr)
+                anchors.bottomMargin: Theme.edge(window.dpr)
+                part: Theme.rowHighlight
+                current: true
+                selected: true
+                position: list.currentItem !== null ? list.currentItem.y : 0
+                role: "list"
+                dpr: window.dpr
+            }
+        }
         function stopScrolling() {
             wheelScroll.cancel()
             cancelFlick()
@@ -592,6 +666,7 @@ Window {
     }
 
     ListScrollBar {
+        dpr: window.dpr
         visible: window.bar.rows > 0
         flickable: list
         x: window.width - width
@@ -621,5 +696,8 @@ Window {
         }
     }
 
-    WindowEdge {}
+    WindowEdge {
+        id: windowEdge
+        fill: Theme.background
+    }
 }
