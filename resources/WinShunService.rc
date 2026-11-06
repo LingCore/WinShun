@@ -4,6 +4,8 @@
 // WinShunService.exe (src/service): the index service, which reads the NTFS
 // volumes' master file tables and change journals for a Win顺 that runs
 // with the user's normal rights.
+// Task Manager shows its description for both of its processes: the index
+// service and the key listener it starts in the user's session (--listen-keys).
 IDI_ICON1 ICON "app.ico"
 
 VS_VERSION_INFO VERSIONINFO
@@ -20,7 +22,7 @@ BEGIN
         BLOCK "080404b0"
         BEGIN
             VALUE "CompanyName", "WinShun"
-            VALUE "FileDescription", "Win顺 索引服务 · WinShun Index Service"
+            VALUE "FileDescription", "Win顺 后台服务 · WinShun background service"
             VALUE "FileVersion", WINSHUN_VERSION
             VALUE "InternalName", "WinShunService"
             VALUE "OriginalFilename", "WinShunService.exe"

@@ -18,7 +18,7 @@ qt_add_library(wsswitch_service STATIC SwitchProtocol.cpp SwitchProtocol.h Switc
 target_include_directories(wsswitch_service PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${app_dir} ${core_dir})
 target_link_libraries(wsswitch_service PUBLIC winshun_options Qt6::Core PRIVATE ole32 user32)
 
-add_executable(WinShunSwitches WIN32 stub.cpp)
+add_executable(WinShunSwitches WIN32 stub.cpp ${PROJECT_SOURCE_DIR}/resources/WinShunSwitches.rc)
 target_link_libraries(WinShunSwitches PRIVATE winshun_options)
 set_target_properties(WinShunSwitches PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 qt_add_library(WinShunSwitchesApp SHARED PluginMain.cpp)
