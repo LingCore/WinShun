@@ -2413,10 +2413,6 @@
         <translation>Now</translation>
     </message>
     <message>
-        <source>和任务管理器里 Win顺 那一行的“内存”是同一个数（后台服务在那里单独一行，不算在内）。文件索引是搜索要用的，暂存的部分用到时再读回；界面和其他包括窗口、剪贴板历史和内容索引的缓冲。</source>
-        <translation>The same number as the Memory column of WinShun's row in Task Manager (the background service has a row of its own there and is not counted). The file index is what searches use; parked parts are read back when needed. Interface and other covers the windows, the clipboard history and the content index's buffers.</translation>
-    </message>
-    <message>
         <source>Win顺 现在用了 %1</source>
         <translation>WinShun is using %1</translation>
     </message>
@@ -2441,92 +2437,16 @@
         <translation>Give back now</translation>
     </message>
     <message>
-        <source>走势</source>
-        <translation>Over time</translation>
-    </message>
-    <message>
-        <source>指向图表，看那一刻在做什么</source>
-        <translation>Point at a chart to see what was going on at that moment</translation>
-    </message>
-    <message>
-        <source>10 分钟</source>
-        <translation>10 min</translation>
-    </message>
-    <message>
-        <source>1 小时</source>
-        <translation>1 hour</translation>
-    </message>
-    <message>
-        <source>24 小时</source>
-        <translation>24 hours</translation>
-    </message>
-    <message>
-        <source>内存</source>
-        <translation>Memory</translation>
-    </message>
-    <message>
-        <source>CPU</source>
-        <translation>CPU</translation>
-    </message>
-    <message>
-        <source>读取</source>
-        <translation>Reads</translation>
-    </message>
-    <message>
-        <source>文件索引</source>
-        <translation>File index</translation>
-    </message>
-    <message>
-        <source>界面和其他</source>
-        <translation>Interface and other</translation>
-    </message>
-    <message>
-        <source>插件</source>
-        <translation>Plugins</translation>
-    </message>
-    <message>
-        <source>读文档</source>
-        <translation>Document reader</translation>
-    </message>
-    <message>
         <source>后台服务</source>
         <translation>Background service</translation>
     </message>
     <message>
-        <source>Win顺</source>
-        <translation>WinShun</translation>
+        <source>总数和任务管理器里 Win顺 那一行的“内存”是同一个数；后台服务在那里单独一行，不算在内。</source>
+        <translation>The total is the same number as the Memory column of WinShun's row in Task Manager; the background service has a row of its own there and is not counted.</translation>
     </message>
     <message>
-        <source>共 %1</source>
-        <translation>%1 in all</translation>
-    </message>
-    <message>
-        <source>还没有记录，稍等几秒</source>
-        <translation>Nothing recorded yet, give it a few seconds</translation>
-    </message>
-    <message>
-        <source>10 分钟前</source>
-        <translation>10 min ago</translation>
-    </message>
-    <message>
-        <source>1 小时前</source>
-        <translation>1 hour ago</translation>
-    </message>
-    <message>
-        <source>24 小时前</source>
-        <translation>24 hours ago</translation>
-    </message>
-    <message>
-        <source>5 分钟前</source>
-        <translation>5 min ago</translation>
-    </message>
-    <message>
-        <source>30 分钟前</source>
-        <translation>30 min ago</translation>
-    </message>
-    <message>
-        <source>12 小时前</source>
-        <translation>12 hours ago</translation>
+        <source>读磁盘、建索引；任务管理器里单独一行，不算在总数里</source>
+        <translation>reads the disk, builds the index; its own row in Task Manager, not in the total</translation>
     </message>
     <message>
         <source>现在在做什么</source>
@@ -2561,8 +2481,8 @@
         <translation>Recently</translation>
     </message>
     <message>
-        <source>这些记录只存在内存里，最多 24 小时，约 %1 KB；重启 Win顺 后重新开始。</source>
-        <translation>These records are kept in memory only, for up to 24 hours, about %1 KB; they start over when WinShun restarts.</translation>
+        <source>只记在内存里，重启 Win顺 后重新开始。</source>
+        <translation>Kept in memory only; starts over when WinShun restarts.</translation>
     </message>
     <message>
         <source>（进行中）</source>
@@ -10292,16 +10212,64 @@ Content index: %5</translation>
         <translation>File index</translation>
     </message>
     <message>
-        <source>另有 %1 MB 已暂存</source>
-        <translation>%1 MB more parked</translation>
+        <source>搜文件名用的；另有 %1 MB 已暂存到磁盘，用到时读回</source>
+        <translation>what name searches use; %1 MB more parked on disk, read back when needed</translation>
     </message>
     <message>
-        <source>界面和其他</source>
-        <translation>Interface and other</translation>
+        <source>搜文件名用的</source>
+        <translation>what name searches use</translation>
+    </message>
+    <message>
+        <source>窗口和数据</source>
+        <translation>Windows and data</translation>
+    </message>
+    <message>
+        <source>搜索框、设置、剪贴板历史等正在用的</source>
+        <translation>the search box, settings, clipboard history and the like, in use</translation>
+    </message>
+    <message>
+        <source>缩略图</source>
+        <translation>Thumbnails</translation>
+    </message>
+    <message>
+        <source>列表和剪贴板里的小图，再看时不用重读</source>
+        <translation>small pictures in the lists and the clipboard, kept so they are not read again</translation>
+    </message>
+    <message>
+        <source>用过空着的</source>
+        <translation>Used, now free</translation>
+    </message>
+    <message>
+        <source>刚才用过、已经不用的，归还后就没了</source>
+        <translation>used a moment ago, no longer needed; gone after a give-back</translation>
+    </message>
+    <message>
+        <source>程序本身</source>
+        <translation>The program itself</translation>
+    </message>
+    <message>
+        <source>Win顺、Qt 和系统的代码，各个线程</source>
+        <translation>code of WinShun, Qt and Windows, the threads</translation>
+    </message>
+    <message>
+        <source>主程序</source>
+        <translation>Main program</translation>
+    </message>
+    <message>
+        <source>正在细分…</source>
+        <translation>Telling the parts apart…</translation>
     </message>
     <message>
         <source>插件</source>
         <translation>Plugins</translation>
+    </message>
+    <message>
+        <source>各自一个进程，见下面</source>
+        <translation>each a process of its own, see below</translation>
+    </message>
+    <message>
+        <source>读完 30 秒后退出</source>
+        <translation>quits 30 seconds after it is done</translation>
     </message>
     <message>
         <source>还没有归还过</source>
@@ -10310,10 +10278,6 @@ Content index: %5</translation>
     <message>
         <source>上次归还：%1，还了 %2 MB</source>
         <translation>Last given back: %1, %2 MB</translation>
-    </message>
-    <message>
-        <source> · </source>
-        <translation> · </translation>
     </message>
     <message>
         <source>加载文件索引</source>

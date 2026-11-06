@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cwchar>
+#include <string>
 #include <utility>
 
 #include <windows.h>
@@ -212,6 +213,175 @@ std::vector<const Process*> family(const std::vector<Process>& all, std::uint32_
                 out.push_back(&p);
         }
     }
+    return out;
+}
+
+namespace {
+
+enum class Owner { Own, Qt, Graphics, System };
+
+Owner ownerOf(const void* allocationBase)
+{
+    wchar_t path[MAX_PATH];
+    const DWORD n = ::GetModuleFileNameW(static_cast<HMODULE>(const_cast<void*>(allocationBase)), path, MAX_PATH);
+    if (n == 0)
+        return Owner::System;
+    const wchar_t* name = path + n;
+    while (name > path && name[-1] != L'\\')
+        --name;
+    const auto starts = [name](const wchar_t* prefix) { return ::_wcsnicmp(name, prefix, std::wcslen(prefix)) == 0; };
+    if (starts(L"WinShun"))
+        return Owner::Own;
+    static const std::wstring folder = [] { // the program's folder: Qt and the rest it brings
+        wchar_t exe[MAX_PATH];
+        const DWORD length = ::GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        std::wstring s(exe, length);
+        return s.substr(0, s.find_last_of(L'\\') + 1);
+    }();
+    if (::_wcsnicmp(path, folder.c_str(), folder.size()) == 0)
+        return Owner::Qt; // Qt6*.dll, its QML modules and plugins, and what else came with Win顺
+    for (const wchar_t* prefix : {L"nv", L"amd", L"ati", L"ig", L"d3d", L"dxgi", L"dxcore", L"dcomp", L"D3DSCache"}) {
+        if (starts(prefix))
+            return Owner::Graphics;
+    }
+    return Owner::System;
+}
+
+} // namespace
+
+Map map(std::vector<std::pair<const void*, std::size_t>> fileIndex, bool heaps)
+{
+    Map out;
+    std::sort(fileIndex.begin(), fileIndex.end());
+    struct Region {
+        std::uintptr_t base;
+        std::size_t size;
+        DWORD state, protect, type;
+    };
+    constexpr std::size_t kPage = 4096;
+    constexpr std::size_t kStep = 4096;
+    static thread_local PSAPI_WORKING_SET_EX_INFORMATION info[kStep];
+    const HANDLE self = ::GetCurrentProcess();
+
+    // Pages of [from, to) private and in the working set; those in the file index's blocks apart.
+    const auto count = [&](std::uintptr_t from, std::uintptr_t to, std::uint64_t& into, bool index) {
+        for (std::uintptr_t at = from; at < to;) {
+            const std::size_t n = std::min<std::size_t>(kStep, (to - at) / kPage);
+            for (std::size_t i = 0; i < n; ++i)
+                info[i].VirtualAddress = reinterpret_cast<void*>(at + i * kPage);
+            if (::QueryWorkingSetEx(self, info, static_cast<DWORD>(n * sizeof(info[0])))) {
+                for (std::size_t i = 0; i < n; ++i) {
+                    const auto& a = info[i].VirtualAttributes;
+                    if (!a.Valid || a.Shared)
+                        continue;
+                    out.total += kPage;
+                    if (index) {
+                        const auto page = reinterpret_cast<const char*>(at + i * kPage);
+                        auto it = std::upper_bound(fileIndex.begin(), fileIndex.end(), std::pair<const void*, std::size_t>(page, SIZE_MAX));
+                        if (it != fileIndex.begin()) {
+                            --it;
+                            const auto* start = static_cast<const char*>(it->first);
+                            if (page + kPage > start && page < start + it->second) {
+                                out.fileIndex += kPage;
+                                continue;
+                            }
+                        }
+                    }
+                    into += kPage;
+                }
+            }
+            at += n * kPage;
+        }
+    };
+
+    std::vector<Region> allocation; // the regions of one allocation, then counted together
+    const auto flush = [&] {
+        if (allocation.empty())
+            return;
+        const DWORD type = allocation.front().type;
+        std::uint64_t* into = &out.other;
+        if (type == MEM_IMAGE) {
+            switch (ownerOf(reinterpret_cast<const void*>(allocation.front().base))) {
+            case Owner::Own: into = &out.ownProgram; break;
+            case Owner::Qt: into = &out.qt; break;
+            case Owner::Graphics: into = &out.graphics; break;
+            case Owner::System: into = &out.system; break;
+            }
+        } else if (std::any_of(allocation.begin(), allocation.end(), [](const Region& r) { return (r.protect & PAGE_GUARD) != 0; })) {
+            into = &out.stacks; // a thread's stack: reserved, with a guard page below what it uses
+        }
+        for (const Region& r : allocation) {
+            if (r.state == MEM_COMMIT && !(r.protect & PAGE_GUARD))
+                count(r.base, r.base + r.size, *into, type == MEM_PRIVATE && into == &out.other);
+        }
+        allocation.clear();
+    };
+
+    const void* lastAllocation = nullptr;
+    for (std::uintptr_t at = 0;;) {
+        MEMORY_BASIC_INFORMATION m;
+        if (::VirtualQuery(reinterpret_cast<const void*>(at), &m, sizeof(m)) == 0)
+            break;
+        if (m.State != MEM_FREE) {
+            if (m.AllocationBase != lastAllocation)
+                flush();
+            lastAllocation = m.AllocationBase;
+            allocation.push_back({reinterpret_cast<std::uintptr_t>(m.BaseAddress), m.RegionSize, m.State, m.Protect, m.Type});
+        }
+        const std::uintptr_t next = reinterpret_cast<std::uintptr_t>(m.BaseAddress) + m.RegionSize;
+        if (next <= at)
+            break;
+        at = next;
+    }
+    flush();
+
+    if (!heaps)
+        return out;
+    // Each heap block by block under its lock: what is handed out, and the
+    // free blocks' whole pages, noted in pages of the system's own (nothing
+    // may be allocated from a heap while it is walked). Whether those pages
+    // are in the working set is asked once the lock is let go.
+    using Range = std::pair<std::uintptr_t, std::uintptr_t>;
+    constexpr std::size_t kRanges = 64 * 1024; // 1 MB of them; more free blocks than that: the rest not counted
+    auto* free = static_cast<Range*>(::VirtualAlloc(nullptr, kRanges * sizeof(Range), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    if (!free)
+        return out;
+    std::size_t frees = 0;
+    HANDLE list[64];
+    const DWORD n = std::min<DWORD>(::GetProcessHeaps(static_cast<DWORD>(std::size(list)), list), static_cast<DWORD>(std::size(list)));
+    for (DWORD i = 0; i < n; ++i) {
+        if (!::HeapLock(list[i]))
+            continue;
+        PROCESS_HEAP_ENTRY e {};
+        while (::HeapWalk(list[i], &e)) {
+            if (e.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
+                out.heapHandedOut += e.cbData;
+            } else if (!(e.wFlags & (PROCESS_HEAP_REGION | PROCESS_HEAP_UNCOMMITTED_RANGE)) && frees < kRanges) {
+                const auto at = reinterpret_cast<std::uintptr_t>(e.lpData);
+                const std::uintptr_t from = (at + kPage - 1) & ~std::uintptr_t(kPage - 1);
+                const std::uintptr_t to = (at + e.cbData) & ~std::uintptr_t(kPage - 1);
+                if (to > from)
+                    free[frees++] = {from, to};
+            }
+        }
+        ::HeapUnlock(list[i]);
+        ++out.heaps;
+    }
+    for (std::size_t r = 0; r < frees; ++r) {
+        for (std::uintptr_t at = free[r].first; at < free[r].second;) {
+            const std::size_t pages = std::min<std::size_t>(kStep, (free[r].second - at) / kPage);
+            for (std::size_t i = 0; i < pages; ++i)
+                info[i].VirtualAddress = reinterpret_cast<void*>(at + i * kPage);
+            if (::QueryWorkingSetEx(self, info, static_cast<DWORD>(pages * sizeof(info[0])))) {
+                for (std::size_t i = 0; i < pages; ++i) {
+                    if (info[i].VirtualAttributes.Valid && !info[i].VirtualAttributes.Shared)
+                        out.heapSpare += kPage;
+                }
+            }
+            at += pages * kPage;
+        }
+    }
+    ::VirtualFree(free, 0, MEM_RELEASE);
     return out;
 }
 

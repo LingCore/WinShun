@@ -26,6 +26,8 @@ public:
     // a file apart (its time written; 0 for one never written again): a
     // file written since gets a new address, never the old picture.
     static QString url(const QString& path, qint64 stamp = 0);
+    // The clipboard history's pictures kept (at most 32 MB), in bytes; any thread.
+    static qint64 cachedBytes();
 };
 
 } // namespace ws

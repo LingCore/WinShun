@@ -92,7 +92,6 @@ qt_add_executable(WinShun WIN32
     BackgroundStatus.cpp BackgroundStatus.h
     HealthHistory.cpp HealthHistory.h
     HealthMonitor.cpp HealthMonitor.h
-    HealthChart.cpp HealthChart.h
     platform/ProcessUsage.cpp platform/ProcessUsage.h
     platform/InputMode.cpp platform/InputMode.h
     platform/Integrity.cpp platform/Integrity.h

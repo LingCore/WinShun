@@ -10,8 +10,6 @@
 
 #include <algorithm>
 #include <cwchar>
-#include <cmath>
-#include <random>
 
 #include <windows.h>
 
@@ -95,14 +93,14 @@ HealthMonitor::HealthMonitor(Sources sources, QObject* parent)
     , m_sources(std::move(sources))
 {
     m_processors = std::max<unsigned>(1, ::GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
-    m_coarse.setInterval(static_cast<int>(health::History::kCoarseMs));
+    m_coarse.setInterval(kCoarseMs);
     m_coarse.setTimerType(Qt::VeryCoarseTimer);
     connect(&m_coarse, &QTimer::timeout, this, [this] { take(false); });
-    m_fine.setInterval(static_cast<int>(health::History::kFineMs));
+    m_fine.setInterval(kFineMs);
     connect(&m_fine, &QTimer::timeout, this, [this] { take(true); });
     m_soon.setSingleShot(true);
     m_soon.setInterval(200);
-    connect(&m_soon, &QTimer::timeout, this, [this] { take(false, true); }); // something began or ended: new processes too
+    connect(&m_soon, &QTimer::timeout, this, [this] { take(false, true); });
     m_coarse.start();
     take(false); // the start: the index loading is seen from its first moment
 }
@@ -116,13 +114,15 @@ void HealthMonitor::setWatching(bool on)
     if (!m_demo) {
         if (on) {
             m_fineBase = {};
-            take(true); // the baseline; the next second is the first reading
+            m_fineServiceBase = {};
+            m_fineCount = 0;
+            m_mapsToHeaps = 1; // the second map: the window made by then
+            take(true); // the baseline (and the memory map); the next second is the first reading
             m_fine.start();
         } else {
             m_fine.stop();
-            m_history.clearFine();
-            m_processes.clear();
-            m_processes.squeeze();
+            m_processes = {};
+            m_mapped.reset();
         }
     }
     publish();
@@ -137,9 +137,10 @@ void HealthMonitor::poke()
 
 void HealthMonitor::noteGiveBack(qint64 megabytes, qint64 atMs)
 {
-    const std::uint32_t total = m_history.coarse().size() > 0 ? m_history.coarse().back().totalKb() : 0;
-    m_events.instant(health::EventKind::ManualTrim, atMs, total, static_cast<std::uint32_t>(std::max<qint64>(0, megabytes)));
+    m_events.instant(health::EventKind::ManualTrim, atMs, m_reading.totalKb(), static_cast<std::uint32_t>(std::max<qint64>(0, megabytes)));
     m_lastTrimSeen = atMs;
+    m_fineCount = 0; // the memory map again at once: what was given back shows
+    m_mapsToHeaps = 0;
     poke();
 }
 
@@ -177,45 +178,70 @@ void HealthMonitor::take(bool fine, bool whole)
     m_wanted |= (fine ? kFine : kCoarse) | (whole || fine ? kWhole : 0);
     if (m_looking)
         return; // the one under way serves this one too
+    const std::int64_t nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (m_contentReading && nowMs - m_lastWholeMs >= kWholeMs)
+        m_wanted |= kWhole; // a document reader under the service may have grown
+    const bool again = !(m_wanted & kWhole) && !m_known.empty();
+
+    // The memory map every third second while watching. The file index's
+    // blocks are only addresses to it: asked for under the index's lock here,
+    // compared with (never read) on the pool thread.
+    std::optional<Mapped> wantMap;
+    Blocks blocks;
+    bool heaps = false;
+    if ((m_wanted & kFine) && m_fineCount++ % 3 == 0) {
+        std::uint64_t tables = 0;
+        if (!m_sources.fileIndex || m_sources.fileIndex(blocks, tables)) {
+            wantMap.emplace();
+            wantMap->fileIndexTables = tables;
+            heaps = m_mapsToHeaps-- <= 0;
+            if (heaps)
+                m_mapsToHeaps = kMapsPerHeaps;
+            m_fileIndexHeld = 0;
+            for (const auto& block : blocks)
+                m_fileIndexHeld += block.second;
+        }
+    }
     m_looking = true;
-    const bool again = !(m_wanted & kWhole) && !m_known.empty()
-        && QDateTime::currentMSecsSinceEpoch() - m_lastWholeMs < kWholeMs;
-    // Off the GUI thread: the whole process list takes ~20 ms with 950
-    // processes; this one and its own again, by handle, a few microseconds.
     QThreadPool::globalInstance()->start([self = QPointer<HealthMonitor>(this), hint = m_sizeHint,
-                                             known = again ? m_known : std::vector<memory::Process> {}]() mutable {
+                                             known = again ? m_known : std::vector<memory::Process> {},
+                                             wantMap = std::move(wantMap), blocks = std::move(blocks),
+                                             heaps, pictures = m_sources.cachedPictures]() mutable {
         memory::Look look = known.empty() ? memory::Look {} : memory::again(known);
         if (!look.ok)
             look = memory::look(hint);
-        QMetaObject::invokeMethod(qApp, [self, hint, look = std::move(look)]() mutable {
+        if (wantMap) {
+            wantMap->map = memory::map(std::move(blocks), heaps);
+            wantMap->pictures = pictures ? pictures() : 0;
+        }
+        QMetaObject::invokeMethod(qApp, [self, hint, look = std::move(look), wantMap = std::move(wantMap)]() mutable {
             if (!self)
                 return;
             self->m_sizeHint = hint;
             self->m_looking = false;
-            int wanted = std::exchange(self->m_wanted, 0);
+            const int wanted = std::exchange(self->m_wanted, 0);
             if (!look.ok || self->m_demo) // made up since it was asked (the previews)
                 return;
             if ((wanted & kWhole) && !look.full)
                 self->take(false, true); // asked for while a partial one was under way
             if (wanted & kCoarse)
-                self->apply(look, false);
+                self->apply(look, false, std::nullopt);
             if (wanted & kFine)
-                self->apply(look, true);
+                self->apply(look, true, std::move(wantMap));
         }, Qt::QueuedConnection);
     });
 }
 
-void HealthMonitor::apply(const memory::Look& look, bool fine)
+void HealthMonitor::apply(const memory::Look& look, bool fine, std::optional<Mapped> mapped)
 {
     const std::int64_t nowMs = look.atMs;
     const std::int64_t nowFt = look.atFt;
-    const std::vector<memory::Process>& all = look.processes;
-    const std::vector<const memory::Process*> mine = memory::family(all, look.self);
+    const std::vector<const memory::Process*> mine = memory::family(look.processes, look.self);
     std::vector<const memory::Process*> service;
     if (look.full) {
-        for (const memory::Process& p : all) {
+        for (const memory::Process& p : look.processes) {
             if (named(p, L"WinShunService.exe") && std::find(mine.begin(), mine.end(), &p) == mine.end()) {
-                service = memory::family(all, p.pid);
+                service = memory::family(look.processes, p.pid);
                 break;
             }
         }
@@ -225,163 +251,154 @@ void HealthMonitor::apply(const memory::Look& look, bool fine)
         m_lastWholeMs = nowMs;
     }
 
-    std::uint64_t main = 0, plugins = 0, documents = 0;
-    std::uint32_t biggestDocumentKb = 0;
+    Reading r;
     for (const memory::Process* p : mine) {
         if (p->pid == look.self) {
-            main = p->privateBytes;
+            r.main = p->privateBytes;
         } else if (document(*p)) {
-            documents += p->privateBytes;
-            biggestDocumentKb = std::max(biggestDocumentKb, static_cast<std::uint32_t>(p->privateBytes / 1024));
+            r.documents += p->privateBytes;
+            r.biggestDocumentKb = std::max(r.biggestDocumentKb, static_cast<std::uint32_t>(p->privateBytes / 1024));
         } else {
-            plugins += p->privateBytes;
+            r.plugins += p->privateBytes;
         }
     }
-    // The file index's pages in the working set, the same measure as the
-    // total (~1.3 ms for 128 MB). Not under a writer's lock: the last reading stands.
-    // Background readings between whole looks keep the last one.
-    if ((look.full || m_watching) && m_sources.fileIndexBlocks && m_sources.fileIndexBlocks(m_blocks)) {
-        m_fileIndexHeld = 0;
-        for (const auto& block : m_blocks)
-            m_fileIndexHeld += block.second;
-        m_fileIndexBytes = memory::residentBytes(m_blocks);
-        m_blocks.clear(); // the addresses only meant something under the lock
-        m_blocks.shrink_to_fit();
-    }
-    const std::uint64_t fileIndex = std::min(m_fileIndexBytes, main);
-
-    health::Sample s {};
-    s.atMs = nowMs;
-    s.partKb[health::FileIndex] = static_cast<std::uint32_t>(fileIndex / 1024);
-    s.partKb[health::Other] = static_cast<std::uint32_t>((main - fileIndex) / 1024);
-    s.partKb[health::Plugins] = static_cast<std::uint32_t>(plugins / 1024);
-    s.partKb[health::Documents] = static_cast<std::uint32_t>(documents / 1024);
-
-    Baseline& base = fine ? m_fineBase : m_coarseBase;
-    Baseline& serviceBase = fine ? m_fineServiceBase : m_coarseServiceBase;
-    const bool first = base.atNs == 0;
-    const auto over = [nowFt](const Baseline& b) { // 100 ns since it; 0: no baseline yet
-        return b.atNs == 0 ? 0.0 : static_cast<double>(std::max<std::int64_t>(1, nowFt - b.atNs));
-    };
-    const auto percent = [this](std::uint64_t cpu, double elapsed) {
-        return elapsed <= 0 ? std::uint16_t(0)
-                            : static_cast<std::uint16_t>(std::min(10000.0, cpu * 10000.0 / (elapsed * m_processors)));
-    };
-    const auto kbps = [](std::uint64_t bytes, double elapsed) {
-        return elapsed <= 0 ? 0u : static_cast<std::uint32_t>(bytes / 1024.0 / (elapsed / 1e7));
-    };
-    const double elapsed = over(base);
-    const Group a = since(base, mine);
-    s.cpu = percent(a.cpu, elapsed);
-    s.readKbps = kbps(a.read, elapsed);
-    const double serviceElapsed = over(serviceBase);
     if (look.full) {
-        std::uint64_t serviceBytes = 0;
-        std::uint32_t serviceDocumentKb = 0; // a document's reader under the service
+        Reading s;
         for (const memory::Process* p : service) {
-            serviceBytes += p->privateBytes;
+            s.service += p->privateBytes;
             if (document(*p))
-                serviceDocumentKb = std::max(serviceDocumentKb, static_cast<std::uint32_t>(p->privateBytes / 1024));
+                s.biggestDocumentKb = std::max(s.biggestDocumentKb, static_cast<std::uint32_t>(p->privateBytes / 1024));
         }
-        const Group b = since(serviceBase, service);
-        ServiceUse use {static_cast<std::uint32_t>(serviceBytes / 1024), kbps(b.read, serviceElapsed),
-            serviceDocumentKb, percent(b.cpu, serviceElapsed)};
-        if (!fine)
-            m_service = use;
-        s.serviceKb = use.kb;
-        s.serviceCpu = use.cpu;
-        s.serviceReadKbps = use.readKbps;
-        biggestDocumentKb = std::max(biggestDocumentKb, use.documentKb);
-    } else { // as last seen: its CPU and reads over the minute before
-        s.serviceKb = m_service.kb;
-        s.serviceCpu = m_service.cpu;
-        s.serviceReadKbps = m_service.readKbps;
-        biggestDocumentKb = std::max(biggestDocumentKb, m_service.documentKb);
+        m_lastService = s;
     }
+    r.service = m_lastService.service; // between whole looks: as last seen
+    r.biggestDocumentKb = std::max(r.biggestDocumentKb, m_lastService.biggestDocumentKb);
 
-    // The page's list of processes: each one's own share, over the last second.
-    if (fine && !first) {
-        m_processes.clear();
-        const auto add = [&](const memory::Process* p, const QString& kind) {
-            const bool ofService = std::find(service.begin(), service.end(), p) != service.end();
-            const Group one = since(ofService ? serviceBase : base, {p});
-            const double span = ofService ? serviceElapsed : elapsed;
-            m_processes.push_back(QVariantMap {
-                {u"name"_s, processName(*p, p->pid == look.self)},
-                {u"kind"_s, kind},
-                {u"mb"_s, p->privateBytes / kMb},
-                {u"cpu"_s, percent(one.cpu, span) / 100.0},
-                {u"read"_s, kbps(one.read, span) / 1024.0},
-            });
+    if (fine) { // CPU and reads over the last second, and each process's share
+        const bool first = m_fineBase.atNs == 0;
+        const auto over = [nowFt](const Baseline& b) { // 100 ns since it; 0: no baseline yet
+            return b.atNs == 0 ? 0.0 : static_cast<double>(std::max<std::int64_t>(1, nowFt - b.atNs));
         };
-        for (const memory::Process* p : mine)
-            add(p, p->pid == look.self ? u"main"_s : document(*p) ? u"document"_s : u"plugin"_s);
-        for (const memory::Process* p : service)
-            add(p, u"service"_s);
+        const auto percent = [this](std::uint64_t cpu, double elapsed) {
+            return elapsed <= 0 ? 0.0 : std::min(100.0, cpu * 100.0 / (elapsed * m_processors));
+        };
+        const auto rate = [](std::uint64_t bytes, double elapsed) { return elapsed <= 0 ? 0.0 : bytes / kMb / (elapsed / 1e7); };
+        const double elapsed = over(m_fineBase);
+        const double serviceElapsed = over(m_fineServiceBase);
+        const Group a = since(m_fineBase, mine);
+        const Group b = since(m_fineServiceBase, service);
+        r.cpu = percent(a.cpu, elapsed);
+        r.read = rate(a.read, elapsed);
+        r.serviceCpu = percent(b.cpu, serviceElapsed);
+        r.serviceRead = rate(b.read, serviceElapsed);
+        if (!first) {
+            m_processes.clear();
+            const auto add = [&](const memory::Process* p, const QString& kind, const Baseline& base, double span) {
+                const Group one = since(base, {p});
+                m_processes.push_back(QVariantMap {
+                    {u"name"_s, processName(*p, p->pid == look.self)},
+                    {u"kind"_s, kind},
+                    {u"mb"_s, p->privateBytes / kMb},
+                    {u"cpu"_s, percent(one.cpu, span)},
+                    {u"read"_s, rate(one.read, span)},
+                });
+            };
+            for (const memory::Process* p : mine)
+                add(p, p->pid == look.self ? u"main"_s : document(*p) ? u"document"_s : u"plugin"_s, m_fineBase, elapsed);
+            for (const memory::Process* p : service)
+                add(p, u"service"_s, m_fineServiceBase, serviceElapsed);
+        }
+        rebase(m_fineBase, mine, nowFt);
+        rebase(m_fineServiceBase, service, nowFt);
+        if (mapped) {
+            const memory::Map& m = mapped->map;
+            if (m.heaps > 0)
+                m_heapSpare = m.heapSpare;
+            m_mapped = std::move(mapped);
+        }
+    } else if (m_haveReading) { // CPU, reads: only ever the last second's
+        r.cpu = m_reading.cpu;
+        r.read = m_reading.read;
+        r.serviceCpu = m_reading.serviceCpu;
+        r.serviceRead = m_reading.serviceRead;
     }
-    rebase(base, mine, nowFt);
-    if (look.full)
-        rebase(serviceBase, service, nowFt);
+    m_reading = r;
+    m_haveReading = true;
 
-    if (!first) {
-        // A 10-second reading also while watching: its CPU and reads over its own ten seconds.
-        if (fine)
-            m_history.addFine(s);
-        else
-            m_history.addCoarse(s);
-    }
-
-    if (!fine) { // what happened: once per look, from the 10-second ones and pokes
+    if (!fine) { // what happened: from the 10-second looks and pokes
         health::Facts facts = m_sources.facts ? m_sources.facts() : health::Facts {};
-        facts.biggestDocumentKb = biggestDocumentKb;
-        m_tracker.observe(facts, nowMs, s.totalKb());
+        m_contentReading = facts.contentReading;
+        facts.biggestDocumentKb = r.biggestDocumentKb;
+        m_tracker.observe(facts, nowMs, r.totalKb());
         if (m_sources.lastTrim) {
             const auto [atMs, mb] = m_sources.lastTrim();
             if (atMs != 0 && atMs != m_lastTrimSeen) {
                 m_lastTrimSeen = atMs;
-                m_events.instant(health::EventKind::AutoTrim, atMs, s.totalKb(), static_cast<std::uint32_t>(std::max<qint64>(0, mb)));
+                m_events.instant(health::EventKind::AutoTrim, atMs, r.totalKb(), static_cast<std::uint32_t>(std::max<qint64>(0, mb)));
             }
         }
     }
-    if (fine || m_watching)
+    if (m_watching)
         publish();
 }
+
 void HealthMonitor::publish()
 {
-    ++m_revision;
-    if (!m_watching) {
+    if (!m_watching || !m_haveReading) {
         if (!m_now.isEmpty()) {
             m_now.clear(); // nothing kept for a page that is not there
             emit updated();
         }
         return;
     }
-    const health::Ring& ring = m_history.fine().size() > 0 ? m_history.fine() : m_history.coarse();
-    if (ring.size() == 0) {
-        emit updated();
-        return;
-    }
-    const health::Sample& s = ring.back();
+    const Reading& r = m_reading;
     QVariantMap now;
-    const auto mb = [](std::uint32_t kb) { return kb / 1024.0; };
-    now[u"total"_s] = mb(s.totalKb());
+    now[u"total"_s] = (r.main + r.plugins + r.documents) / kMb;
+    now[u"mainMb"_s] = r.main / kMb;
+
+    // The main process told apart (memory::map, at most two seconds old,
+    // scaled to the newest reading: what changed since is in the windows'
+    // part). Children: plugins, document readers.
     QVariantList parts;
-    const auto part = [&](const QString& key, const QString& name, std::uint32_t kb, const QString& note) {
-        parts.push_back(QVariantMap {{u"key"_s, key}, {u"name"_s, name}, {u"mb"_s, mb(kb)}, {u"note"_s, note}});
+    const auto part = [&](const QString& key, const QString& name, double bytes, const QString& note) {
+        parts.push_back(QVariantMap {{u"key"_s, key}, {u"name"_s, name}, {u"mb"_s, std::max(0.0, bytes) / kMb}, {u"note"_s, note}});
     };
-    const double parked = std::max(0.0, (static_cast<double>(m_fileIndexHeld) - m_fileIndexBytes) / kMb);
-    part(u"fileIndex"_s, tr("文件索引"), s.partKb[health::FileIndex],
-        parked >= 4 ? tr("另有 %1 MB 已暂存").arg(qRound(parked)) : QString());
-    part(u"other"_s, tr("界面和其他"), s.partKb[health::Other], QString());
-    part(u"plugins"_s, tr("插件"), s.partKb[health::Plugins], QString());
-    part(u"documents"_s, tr("读文档"), s.partKb[health::Documents], QString());
+    if (m_mapped) {
+        const memory::Map& m = m_mapped->map;
+        const double main = static_cast<double>(r.main);
+        // On the heap, resident or not: the tables, the pictures. Counted no
+        // further than what is resident of the heap (`other`).
+        double heap = static_cast<double>(m.other);
+        const double tables = std::min<double>(m_mapped->fileIndexTables, heap);
+        heap -= tables;
+        const double pictures = std::min<double>(m_mapped->pictures, heap);
+        heap -= pictures;
+        // Freed, kept by the heaps, in memory (the last walk): at most what is left.
+        const double spare = std::min<double>(m_heapSpare, heap);
+        heap -= spare;
+        const double program = static_cast<double>(m.ownProgram + m.qt + m.graphics + m.system + m.stacks);
+        const double fileIndex = static_cast<double>(m.fileIndex) + tables;
+        const double windows = std::max(0.0, main - fileIndex - pictures - spare - program);
+        const double parked = std::max(0.0, static_cast<double>(m_fileIndexHeld) - static_cast<double>(m.fileIndex)) / kMb;
+        part(u"fileIndex"_s, tr("文件索引"), fileIndex,
+            parked >= 4 ? tr("搜文件名用的；另有 %1 MB 已暂存到磁盘，用到时读回").arg(qRound(parked)) : tr("搜文件名用的"));
+        part(u"windows"_s, tr("窗口和数据"), windows, tr("搜索框、设置、剪贴板历史等正在用的"));
+        part(u"pictures"_s, tr("缩略图"), pictures, tr("列表和剪贴板里的小图，再看时不用重读"));
+        part(u"spare"_s, tr("用过空着的"), spare, tr("刚才用过、已经不用的，归还后就没了"));
+        part(u"program"_s, tr("程序本身"), program, tr("Win顺、Qt 和系统的代码，各个线程"));
+    } else {
+        part(u"windows"_s, tr("主程序"), static_cast<double>(r.main), tr("正在细分…"));
+    }
+    part(u"plugins"_s, tr("插件"), static_cast<double>(r.plugins), tr("各自一个进程，见下面"));
+    part(u"documents"_s, tr("读文档"), static_cast<double>(r.documents), tr("读完 30 秒后退出"));
     now[u"parts"_s] = parts;
-    now[u"cpu"_s] = s.cpu / 100.0;
-    now[u"read"_s] = s.readKbps / 1024.0;
-    now[u"serviceMb"_s] = mb(s.serviceKb);
-    now[u"serviceCpu"_s] = s.serviceCpu / 100.0;
-    now[u"serviceRead"_s] = s.serviceReadKbps / 1024.0;
-    now[u"hasService"_s] = s.serviceKb > 0;
+
+    now[u"cpu"_s] = r.cpu;
+    now[u"read"_s] = r.read;
+    now[u"serviceMb"_s] = r.service / kMb;
+    now[u"serviceCpu"_s] = r.serviceCpu;
+    now[u"serviceRead"_s] = r.serviceRead;
+    now[u"hasService"_s] = r.service > 0;
     now[u"processes"_s] = m_processes;
     const QVariantList tasks = m_sources.tasks ? m_sources.tasks() : QVariantList();
     now[u"tasks"_s] = tasks;
@@ -389,7 +406,6 @@ void HealthMonitor::publish()
     now[u"idleText"_s] = BackgroundStatus::idleText();
     const auto [atMs, freed] = m_sources.lastTrim ? m_sources.lastTrim() : std::pair<qint64, qint64>(0, 0);
     now[u"lastTrim"_s] = atMs == 0 ? tr("还没有归还过") : tr("上次归还：%1，还了 %2 MB").arg(clock(atMs)).arg(freed);
-    now[u"historyKb"_s] = static_cast<qint64>(m_history.bytes() / 1024);
     m_now = now;
     emit updated();
 }
@@ -405,22 +421,9 @@ QVariantList HealthMonitor::recent() const
             {u"detail"_s, eventDetail(e)},
             {u"time"_s, clock(e.startMs)},
             {u"running"_s, e.open()},
-            {u"trim"_s, e.instant()},
         });
     }
     return out;
-}
-
-QString HealthMonitor::eventsAt(qint64 ms) const
-{
-    QStringList titles;
-    // A give-back is a moment: near enough, within half a minute.
-    for (const health::Event& e : m_events.between(ms - 30'000, ms + 30'000)) {
-        const bool over = e.instant() ? std::abs(e.startMs - ms) <= 30'000 : (e.startMs <= ms && (e.open() || e.endMs >= ms));
-        if (over && !titles.contains(eventTitle(e)))
-            titles.push_back(eventTitle(e));
-    }
-    return titles.join(tr(" · "));
 }
 
 QString HealthMonitor::eventTitle(const health::Event& e)
@@ -459,69 +462,41 @@ HealthMonitor* HealthMonitor::demo(QObject* parent, bool idle)
     auto* m = new HealthMonitor(Sources {}, parent);
     m->m_demo = true;
     m->m_coarse.stop();
-    m->m_history.clear();
     m->m_events.clear();
     const std::int64_t end = QDateTime::currentMSecsSinceEpoch();
-    const std::int64_t start = end - 24 * 3600 * 1000LL;
-    std::mt19937 random(7);
-    std::uniform_real_distribution<double> jitter(0.0, 1.0);
-    // What happens when (ms before the end), as the readings will show it.
-    struct Job {
-        std::int64_t from, to;
-        double otherMb, docMb, cpu, read, serviceMb, serviceCpu, serviceRead;
-    };
-    const std::int64_t h = 3600 * 1000LL;
-    const std::int64_t mi = 60 * 1000LL;
-    std::vector<Job> jobs = {
-        {23 * h + 50 * mi, 23 * h + 49 * mi, 210, 0, 6, 120, 30, 2, 40}, // start: the index loads
-        {9 * h + 30 * mi, 9 * h + 18 * mi, 380, 160, 22, 45, 120, 18, 160}, // a content round
-        {9 * h + 26 * mi, 9 * h + 24 * mi, 0, 420, 9, 20, 0, 0, 0}, // a big PDF inside it
-        {4 * h + 10 * mi, 4 * h + 8 * mi, 120, 0, 3, 2, 0, 0, 0}, // the launcher, settings
-        {2 * h + 5 * mi, 2 * h + 2 * mi, 90, 30, 7, 25, 25, 4, 30}, // a small content round
-    };
-    if (!idle)
-        jobs.push_back({6 * mi, 0, 260, 120, 18, 38, 95, 14, 120}); // reading right now
-    const auto add = [&](std::int64_t step, std::int64_t from, bool fine) {
-        for (std::int64_t t = from; t <= end; t += step) {
-            const std::int64_t before = end - t;
-            if (!fine && before > 14 * h + 30 * mi && before < 15 * h) // asleep: a hole
-                continue;
-            health::Sample s {};
-            s.atMs = t;
-            double other = 12 + 3 * jitter(random), docs = 0, cpu = 0.05 + 0.1 * jitter(random), read = 0.01;
-            double serviceMb = 9, serviceCpu = 0.02, serviceRead = 0;
-            double fileIndex = 2;
-            for (const Job& j : jobs) {
-                if (before <= j.from && before >= j.to) {
-                    const double wave = 0.75 + 0.25 * std::sin(t / 23000.0) + 0.1 * jitter(random);
-                    other += j.otherMb * wave;
-                    docs += j.docMb * wave;
-                    cpu += j.cpu * wave;
-                    read += j.read * wave;
-                    serviceMb += j.serviceMb * wave;
-                    serviceCpu += j.serviceCpu * wave;
-                    serviceRead += j.serviceRead * wave;
-                    fileIndex = 96;
-                }
-            }
-            s.partKb[health::FileIndex] = static_cast<std::uint32_t>(fileIndex * 1024);
-            s.partKb[health::Other] = static_cast<std::uint32_t>(other * 1024);
-            s.partKb[health::Plugins] = static_cast<std::uint32_t>((before < 20 * h ? 13 : 0) * 1024);
-            s.partKb[health::Documents] = static_cast<std::uint32_t>(docs * 1024);
-            s.serviceKb = static_cast<std::uint32_t>(serviceMb * 1024);
-            s.cpu = static_cast<std::uint16_t>(std::min(100.0, cpu) * 100);
-            s.serviceCpu = static_cast<std::uint16_t>(std::min(100.0, serviceCpu) * 100);
-            s.readKbps = static_cast<std::uint32_t>(read * 1024);
-            s.serviceReadKbps = static_cast<std::uint32_t>(serviceRead * 1024);
-            if (fine)
-                m->m_history.addFine(s);
-            else
-                m->m_history.addCoarse(s);
-        }
-    };
-    add(health::History::kCoarseMs, start, false);
-    add(health::History::kFineMs, end - 10 * mi, true);
+    constexpr std::uint64_t mb = 1024 * 1024;
+
+    Reading r;
+    r.main = (idle ? 21 : 352) * mb;
+    r.plugins = 13 * mb;
+    r.documents = idle ? 0 : 118 * mb;
+    r.service = (idle ? 9 : 104) * mb;
+    r.cpu = idle ? 0.1 : 12.4;
+    r.read = idle ? 0 : 38;
+    r.serviceCpu = idle ? 0 : 13;
+    r.serviceRead = idle ? 0 : 120;
+    m->m_reading = r;
+    m->m_haveReading = true;
+    Mapped mapped;
+    mapped.map.total = r.main;
+    mapped.map.fileIndex = (idle ? 2 : 96) * mb;
+    mapped.map.ownProgram = 1 * mb;
+    mapped.map.qt = 2 * mb;
+    mapped.map.graphics = 2 * mb;
+    mapped.map.system = 3 * mb;
+    mapped.map.stacks = 4 * mb;
+    mapped.map.other = r.main - mapped.map.fileIndex - 12 * mb;
+    mapped.map.heapHandedOut = (idle ? 180 : 300) * mb;
+    mapped.map.heapSpare = (idle ? 1 : 14) * mb;
+    mapped.map.heaps = 5;
+    mapped.fileIndexTables = (idle ? 0 : 14) * mb;
+    mapped.pictures = (idle ? 0 : 9) * mb;
+    m->m_heapSpare = mapped.map.heapSpare;
+    m->m_mapped = mapped;
+    m->m_fileIndexHeld = 112 * mb;
+
     using K = health::EventKind;
+    constexpr std::int64_t h = 3600 * 1000LL, mi = 60 * 1000LL;
     const auto span = [&](K kind, std::int64_t from, std::int64_t to, double peakMb, std::uint64_t count) {
         const int id = m->m_events.begin(kind, end - from, static_cast<std::uint32_t>(peakMb * 1024));
         m->m_events.setCount(id, count);
@@ -538,17 +513,18 @@ HealthMonitor* HealthMonitor::demo(QObject* parent, bool idle)
     m->m_events.instant(K::AutoTrim, end - 2 * h - mi, 40 * 1024, 132);
     if (!idle)
         span(K::ContentRound, 6 * mi, 0, 520, 18'204);
+
     QVariantList processes;
-    const auto proc = [&](const QString& name, const QString& kind, double mb, double cpu) {
-        processes.push_back(QVariantMap {{u"name"_s, name}, {u"kind"_s, kind}, {u"mb"_s, mb}, {u"cpu"_s, cpu}, {u"read"_s, 0.0}});
+    const auto proc = [&](const QString& name, const QString& kind, double mbs, double cpu) {
+        processes.push_back(QVariantMap {{u"name"_s, name}, {u"kind"_s, kind}, {u"mb"_s, mbs}, {u"cpu"_s, cpu}, {u"read"_s, 0.0}});
     };
-    proc(tr("Win顺 主程序"), u"main"_s, idle ? 16 : 352, idle ? 0.1 : 12.4);
+    proc(tr("Win顺 主程序"), u"main"_s, r.main / kMb, idle ? 0.1 : 12.4);
     proc(tr("插件运行环境"), u"plugin"_s, 3, 0);
     proc(tr("截图录屏"), u"plugin"_s, 6, 0);
     proc(tr("图片文字搜索"), u"plugin"_s, 4, 0);
     if (!idle)
         proc(tr("读文档"), u"document"_s, 118, 4.2);
-    proc(tr("后台服务"), u"service"_s, idle ? 9 : 104, idle ? 0 : 13.0);
+    proc(tr("后台服务"), u"service"_s, r.service / kMb, idle ? 0 : 13.0);
     m->m_processes = processes;
     m->m_sources.tasks = [idle] {
         QVariantList tasks;
@@ -558,8 +534,6 @@ HealthMonitor* HealthMonitor::demo(QObject* parent, bool idle)
         return tasks;
     };
     m->m_sources.lastTrim = [end] { return std::pair<qint64, qint64>(end - 2 * 3600 * 1000LL - 60'000, 132); };
-    m->m_fileIndexHeld = static_cast<std::uint64_t>(idle ? 98 * kMb : 96 * kMb);
-    m->m_fileIndexBytes = static_cast<std::uint64_t>(idle ? 0 : 96 * kMb);
     return m;
 }
 

@@ -948,7 +948,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         f.moving = m_index->moving();
         return f;
     };
-    sources.fileIndexBlocks = [this](std::vector<std::pair<const void*, std::size_t>>& blocks) {
+    sources.fileIndex = [this](HealthMonitor::Blocks& blocks, std::uint64_t& tableBytes) {
         const auto index = m_index->index();
         if (!index)
             return true; // none: nothing held
@@ -956,7 +956,12 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         if (!lock.owns_lock())
             return false;
         blocks = index->memoryBlocks();
+        const FileIndex::MemoryUse use = index->memoryUse();
+        tableBytes = use.folderRecords + use.childTables + use.intern;
         return true;
+    };
+    sources.cachedPictures = [] {
+        return static_cast<std::uint64_t>(ThumbnailProvider::cachedBytes() + ClipThumbnailProvider::cachedBytes());
     };
     sources.tasks = [this] { return m_background->toVariant(); };
     sources.lastTrim = [this] {

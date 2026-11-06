@@ -5064,6 +5064,13 @@
 
 - **现象**：“运行状况”页每秒刷新一次，量下来每次采样约 20 ms，放在界面线程上会一顿一顿的。
 - **原因**：`NtQuerySystemInformation(SystemProcessInformation)` 每次把所有进程连同每个线程一起交回来，这台电脑 955 个进程时是 2.6 MB、约 20 ms（`CreateToolhelp32Snapshot` 内部也用它，更慢，约 34 ms），哪怕只要其中几个 WinShun*。换成用进程句柄逐个读，又打不开 LocalSystem 的后台服务（`OpenProcess` 被拒），新起的读文档进程也发现不了。
-- **做法**：进程列表放到线程池里读（`HealthMonitor::take` → `memory::look`），读完回到界面线程再算；缓冲用 `VirtualAlloc` 拿、读完 `VirtualFree` 还掉，不在堆里常驻 2.6 MB。文件索引的驻留页（`QueryWorkingSetEx`，128 MB 约 1.3 ms）留在界面线程，要索引的读锁，用 `tryReadLock`，不等写锁。
-- **后台也别每 10 秒读整张表**：页面没开时每 10 秒一次整表，量下来后台 CPU 是旧版的 4～6 倍。现在后台只每分钟（或有事开始/结束时）读一次整表；中间的 10 秒读数只按句柄重读自己和自己起的进程（`memory::again`，`GetProcessMemoryInfo` 的 `PROCESS_MEMORY_COUNTERS_EX2.PrivateWorkingSetSize`，Windows 11 22H2 起才有，读不到就退回整表），后台服务沿用上次整表的数。另外整表的缓冲本身算在自己的私有工作集里（2.6 MB），读自己时要减掉。
+- **做法**：进程列表放到线程池里读（`HealthMonitor::take` → `memory::look`），读完回到界面线程再算；缓冲用 `VirtualAlloc` 拿、读完 `VirtualFree` 还掉，不在堆里常驻 2.6 MB。文件索引的块地址在界面线程上拿（要索引的读锁，用 `tryReadLock`，不等写锁），逐页查驻留（`memory::map`）也在线程池里。
+- **后台也别每 10 秒读整张表**：页面没开时每 10 秒一次整表，量下来后台 CPU 是旧版的 4～6 倍。现在后台每 10 秒只按句柄重读自己和自己起的进程（`memory::again`，`GetProcessMemoryInfo` 的 `PROCESS_MEMORY_COUNTERS_EX2.PrivateWorkingSetSize`，Windows 11 22H2 起才有，读不到就退回整表），整表只在有事开始/结束时、以及读文件内容期间每分钟读一次（读文档的进程在后台服务下面）。另外整表的缓冲本身算在自己的私有工作集里（2.6 MB），读自己时要减掉。
+
+### “界面和其他”占了一大半，说不清是什么
+
+- **现象**：运行状况页把主程序分成文件索引和“界面和其他”，打开设置时后者 230 MB，用户问“为什么 300 多 MB”答不上来。
+- **原因**：主程序的私有工作集里，除了文件索引的块，其余几乎全在堆里。逐页查（`VirtualQuery` + `QueryWorkingSetEx`）可以分出程序文件（dll 的私有页）、线程栈（有 `PAGE_GUARD` 的分配），堆里谁申请的却分不出。用 xperf 的堆跟踪（`-heap -Pids … -stackwalk HeapAlloc`，`-a heap -images`）量第一次打开设置窗口：堆里多了 117 MB，Qt6Qml 40、Qt6Quick 27.5（约 10 万块）、Qt6Gui 27、Qt6Core 10、显卡驱动约 5——全是设置窗口：它在后台把 11 页和“按键一览”都建好（给设置里的搜索用），关掉也留着（下次秒开）。UMDH 在这里不好用：栈数据库满了（`StackTraceDatabaseSizeInMb` 设大也一样），只记下几千块。
+- **做法**：页面上按“是什么”分：文件索引（块的驻留页，加上它在堆上的表）、缩略图（两个缓存的字节数）、用过空着的、程序本身（dll 私有页 + 线程栈）、窗口和数据（剩下的）。“用过空着的”不能用 `HeapSummary` 的 committed − allocated：归还以后那些页早已换出，算出来还是 25 MB；要 `HeapWalk` 找空闲块，再查其中整页是否驻留。`HeapSummary` 和 `HeapWalk` 都要拿堆锁、逐块走（45 万块约 20–40 ms），这期间界面线程一分配内存就得等，所以只在打开页面 3 秒后、归还后和每分钟走一次；记空闲块的数组用 `VirtualAlloc` 拿，走堆时不能从这个堆里分配。
+- **QML**：`property var x: cond ? { a: 1 } : { a: 2 }` 里的 `{` 被当成代码块，加括号 `({ … })` 也一样拿到 undefined（qmlcachegen 编出来的）；改成数组加 `indexOf`。
 - **测试脚本**：`FindWindow(null, "设置 - Win顺")` 在 PowerShell 5.1 里拿不到窗口，WM_CLOSE 没发出去，量到的“关掉设置后”其实是开着的；按进程枚举窗口（`Win.cs` 的 `Find`）并确认 `MainWindowTitle` 变空。

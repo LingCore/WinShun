@@ -1,5 +1,9 @@
 #include "ActivityText.h"
 #include "HealthHistory.h"
+#include "platform/ProcessUsage.h"
+
+#include <cstring>
+#include <memory>
 
 #include <algorithm>
 
@@ -134,78 +138,28 @@ private slots:
         QCOMPARE(r.perSecond(), 0.0);
     }
 
-    // ---- the 运行状况 page's readings (HealthHistory) ----
+    // ---- the 运行状况 page's readings (HealthHistory, memory::map) ----
 
-    static ws::health::Sample reading(std::int64_t atMs, std::uint32_t otherMb, std::uint16_t cpu = 0)
+    void memoryMapTellsTheParts()
     {
-        ws::health::Sample s {};
-        s.atMs = atMs;
-        s.partKb[ws::health::Other] = otherMb * 1024;
-        s.cpu = cpu;
-        return s;
-    }
-
-    void ringDropsTheOldest()
-    {
-        ws::health::Ring ring(3);
-        for (int i = 1; i <= 5; ++i)
-            ring.push(reading(i, i));
-        QCOMPARE(ring.size(), std::size_t(3));
-        QCOMPARE(ring.at(0).atMs, std::int64_t(3));
-        QCOMPARE(ring.back().atMs, std::int64_t(5));
-    }
-
-    void seriesKeepsThePeak()
-    {
-        // A day in 10-second readings, one minute at 700 MB and 80 % in the middle:
-        // drawn in 100 buckets of 14 minutes, the peak is still there.
-        ws::health::History history;
-        const std::int64_t day = 24 * 3600 * 1000LL;
-        for (std::int64_t t = 0; t < day; t += ws::health::History::kCoarseMs) {
-            const bool spike = t >= day / 2 && t < day / 2 + 60'000;
-            history.addCoarse(reading(t, spike ? 700 : 20, spike ? 8000 : 10));
-        }
-        const ws::health::Series s = history.series(0, day, 100);
-        QCOMPARE(s.size(), std::size_t(100));
-        QCOMPARE(s.peakTotalMb, 700.0);
-        QCOMPARE(s.peakCpu, 80.0);
-        const auto at = std::max_element(s.totalMb.begin(), s.totalMb.end()) - s.totalMb.begin();
-        QVERIFY(s.cpuMean[at] < 10); // the mean thins it; the max keeps it
-        QCOMPARE(s.cpuMax[at], 80.0);
-        QVERIFY(std::none_of(s.breakBefore.begin() + 1, s.breakBefore.end(), [](std::uint8_t b) { return b != 0; }));
-    }
-
-    void seriesBreaksAtAHole()
-    {
-        // Asleep for an hour: the line stops and starts again.
-        ws::health::History history;
-        for (std::int64_t t = 0; t < 600'000; t += 10'000)
-            history.addCoarse(reading(t, 20));
-        for (std::int64_t t = 4'200'000; t < 4'800'000; t += 10'000)
-            history.addCoarse(reading(t, 20));
-        const ws::health::Series s = history.series(0, 4'800'000, 480);
-        int breaks = 0;
-        for (std::uint8_t b : s.breakBefore)
-            breaks += b;
-        QCOMPARE(breaks, 2); // the first point, and after the hole
-    }
-
-    void fineReadingsTakeOver()
-    {
-        // Where the page's 1-second readings begin, the 10-second ones give way.
-        ws::health::History history;
-        for (std::int64_t t = 0; t <= 600'000; t += 10'000)
-            history.addCoarse(reading(t, 20));
-        for (std::int64_t t = 300'000; t <= 600'000; t += 1'000)
-            history.addFine(reading(t, t == 450'000 ? 300 : 30));
-        const ws::health::Series s = history.series(0, 600'000, 600);
-        QCOMPARE(s.peakTotalMb, 300.0);
-        QCOMPARE(s.totalMb.front(), 20.0);
-        QCOMPARE(s.totalMb.back(), 30.0);
-        QCOMPARE(s.size(), std::size_t(30 + 300)); // the reading at the very end shares the last bucket
-        history.clearFine();
-        QCOMPARE(history.series(0, 600'000, 600).peakTotalMb, 20.0);
-        QVERIFY(history.bytes() < 400 * 1024);
+        // A 32 MB block on the heap, every page touched, given as the file
+        // index's: all of it is found there, none of it in the rest.
+        constexpr std::size_t kSize = 32u << 20;
+        auto block = std::make_unique<char[]>(kSize);
+        std::memset(block.get(), 1, kSize);
+        const ws::memory::Map with = ws::memory::map({{block.get(), kSize}}, true);
+        const ws::memory::Map without = ws::memory::map({}, false);
+        QVERIFY(with.fileIndex >= kSize - 8192 && with.fileIndex <= kSize + 8192);
+        QCOMPARE(without.fileIndex, std::uint64_t(0));
+        QVERIFY(without.other >= with.other + kSize - 8192);
+        QVERIFY(with.stacks > 0); // this thread's
+        QVERIFY(with.ownProgram + with.qt + with.system > 0); // the test's own pages, Qt's
+        const std::uint64_t parts = with.fileIndex + with.ownProgram + with.qt + with.graphics + with.system + with.stacks + with.other;
+        QCOMPARE(parts, with.total);
+        QVERIFY(with.heapHandedOut >= kSize);
+        QCOMPARE(without.heaps, 0); // not asked
+        QVERIFY(with.heaps > 0);
+        QVERIFY(with.heapSpare <= with.other);
     }
 
     void eventsFromFacts()
@@ -244,7 +198,6 @@ private slots:
         QCOMPARE(all[1].peakKb, std::uint32_t(500 * 1024));
         QCOMPARE(all[0].kind, EventKind::BigDocument);
         QCOMPARE(all[0].count, std::uint64_t(Events::kBigDocumentKb + 1024));
-        QCOMPARE(events.between(8500, 8600).size(), std::size_t(2));
         events.instant(EventKind::AutoTrim, 9500, 30 * 1024, 170);
         QVERIFY(events.recent(1).front().instant());
         QCOMPARE(events.recent(1).front().freedMb, std::uint32_t(170));

@@ -1,10 +1,9 @@
 import QtQuick
 import WinShun
 
-// 运行状况: what Win顺 uses now and over the last 10 minutes, hour or day,
-// what it was doing at each peak, each process, the latest happenings.
-// The monitor reads every second while this page is on screen (watching)
-// and every 10 seconds always (HealthMonitor).
+// 运行状况: what Win顺 uses now, its memory told apart by what holds it,
+// what it is doing, each process, the latest happenings. The monitor reads
+// every second while this page is on screen (watching; HealthMonitor).
 SettingsPage {
     id: healthPage
 
@@ -16,13 +15,16 @@ SettingsPage {
     readonly property var h: monitor ? monitor.now : ({})
     readonly property bool known: h.total !== undefined
     readonly property bool busy: known && h.busy
-    readonly property var ranges: [10 * 60 * 1000, 60 * 60 * 1000, 24 * 60 * 60 * 1000]
-    property int range: 0
-    property double hoverTime: 0
-    readonly property var partColors: Theme.dark ? ["#5AA9F5", "#A98BF0", "#45C2B6", "#F0A85A"]
-                                                 : ["#2F7FD8", "#8C6AD6", "#22958B", "#D9822B"]
+    // Each part's colour, by its key (HealthMonitor::publish).
+    readonly property var partKeys: ["fileIndex", "windows", "pictures", "spare", "program", "plugins", "documents"]
+    readonly property var partColors: Theme.dark ? ["#5AA9F5", "#A98BF0", "#E57FB8", "#8FA3B8", "#6E7F94", "#45C2B6", "#F0A85A"]
+                                                 : ["#2F7FD8", "#8C6AD6", "#C8508F", "#93A4B5", "#5F6F82", "#22958B", "#D9822B"]
+    function partColor(key: string): color {
+        return partColors[Math.max(0, partKeys.indexOf(key))]
+    }
     readonly property color serviceColor: Theme.dark ? "#A0A0A0" : "#767676"
-    readonly property string hoverEvents: monitor && hoverTime > 0 ? monitor.eventsAt(hoverTime) : ""
+    // The parts worth a line: the file index and the windows always, the rest while there is some.
+    readonly property var shownParts: known ? h.parts.filter(p => p.key === "fileIndex" || p.key === "windows" || p.mb >= 0.5) : []
 
     function mb(value: real): string {
         return value >= 10 ? qsTr("%1 MB").arg(Math.round(value))
@@ -34,9 +36,6 @@ SettingsPage {
     }
     function percent(value: real): string {
         return value >= 10 ? Math.round(value) + "%" : value.toFixed(1) + "%"
-    }
-    function clock(ms: real): string {
-        return Qt.formatDateTime(new Date(ms), healthPage.range === 0 ? "HH:mm:ss" : "HH:mm")
     }
 
     Binding {
@@ -50,7 +49,7 @@ SettingsPage {
         width: parent.width
         title: qsTr("现在")
         glyph: "" // Diagnostic: pulse
-        note: qsTr("和任务管理器里 Win顺 那一行的“内存”是同一个数（后台服务在那里单独一行，不算在内）。文件索引是搜索要用的，暂存的部分用到时再读回；界面和其他包括窗口、剪贴板历史和内容索引的缓冲。")
+        note: qsTr("总数和任务管理器里 Win顺 那一行的“内存”是同一个数；后台服务在那里单独一行，不算在内。")
 
         SettingRow {
             title: healthPage.known ? qsTr("Win顺 现在用了 %1").arg(healthPage.mb(healthPage.h.total)) : qsTr("正在读取内存占用…")
@@ -67,16 +66,16 @@ SettingsPage {
             }
         }
 
-        Item { // the parts, as one bar, and what each is
+        Item { // the parts: one bar, then a line each
             visible: healthPage.known
             width: parent.width
-            height: visible ? partsColumn.implicitHeight + 18 : 0
+            height: visible ? partsColumn.implicitHeight + 16 : 0
 
             Column {
                 id: partsColumn
                 x: 18
                 width: parent.width - 36
-                spacing: 10
+                spacing: 0
 
                 Row { // the bar
                     id: bar
@@ -86,244 +85,96 @@ SettingsPage {
                     spacing: 0
 
                     Repeater {
-                        model: healthPage.known ? healthPage.h.parts : []
+                        model: healthPage.shownParts
                         delegate: Rectangle {
                             required property int index
                             required property var modelData
+                            readonly property bool first: index === 0
+                            readonly property bool last: index === healthPage.shownParts.length - 1
                             width: Math.round(bar.width * modelData.mb / bar.total * healthPage.dpr) / healthPage.dpr
                             height: bar.height
-                            color: healthPage.partColors[index]
-                            topLeftRadius: index === 0 ? 4 : 0
-                            bottomLeftRadius: index === 0 ? 4 : 0
-                            topRightRadius: index === 3 ? 4 : 0
-                            bottomRightRadius: index === 3 ? 4 : 0
+                            color: healthPage.partColor(modelData.key)
+                            topLeftRadius: first ? 4 : 0
+                            bottomLeftRadius: first ? 4 : 0
+                            topRightRadius: last ? 4 : 0
+                            bottomRightRadius: last ? 4 : 0
                         }
                     }
                 }
 
-                Flow {
-                    width: parent.width
-                    spacing: 14
+                Item { width: 1; height: 8 }
 
-                    Repeater {
-                        model: healthPage.known ? healthPage.h.parts : []
-                        delegate: Row {
-                            required property int index
-                            required property var modelData
-                            visible: index < 2 || modelData.mb > 0 // plugins, documents: only while there are some
-                            spacing: 6
-
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 8
-                                height: 8
-                                radius: 2
-                                color: healthPage.partColors[parent.index]
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: parent.modelData.name + "  " + healthPage.mb(parent.modelData.mb)
-                                color: Theme.text
-                                font.pixelSize: Theme.fontCaption
-                            }
-                            Text {
-                                visible: text.length > 0
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: parent.modelData.note
-                                color: Theme.subtext
-                                font.pixelSize: Theme.fontCaption
-                            }
-                        }
+                Repeater {
+                    model: healthPage.shownParts
+                    delegate: PartLine {
+                        required property var modelData
+                        swatch: healthPage.partColor(modelData.key)
+                        name: modelData.name
+                        note: modelData.note
+                        amount: healthPage.mb(modelData.mb)
                     }
+                }
+
+                PartLine { // the service: its own row in Task Manager, not in the total
+                    visible: healthPage.known && healthPage.h.hasService
+                    swatch: healthPage.serviceColor
+                    line: true
+                    name: qsTr("后台服务")
+                    note: qsTr("读磁盘、建索引；任务管理器里单独一行，不算在总数里")
+                    amount: healthPage.mb(healthPage.h.serviceMb ?? 0)
                 }
             }
         }
     }
 
-    // ---- 走势 ----------------------------------------------------------------
-    SettingsSection {
-        id: trends
+    // One part: its colour, name and what it is, its size at the right.
+    component PartLine: Item {
+        property color swatch
+        property bool line: false // drawn as a line: not part of the bar
+        property string name
+        property string note
+        property string amount
 
-        page: healthPage.pageIndex
-        width: parent.width
-        title: qsTr("走势")
-        glyph: "" // History: clock-counter-clockwise
+        width: parent ? parent.width : 0
+        height: Math.max(28, nameText.y + nameText.height + 4)
 
-        Item {
-            width: parent.width
-            height: trendColumn.implicitHeight + 32
-
-            Column {
-                id: trendColumn
-                x: 18
-                y: 14
-                width: parent.width - 36
-                spacing: 14
-
-                Item { // the range, and what was going on under the pointer
-                    width: parent.width
-                    height: rangeTabs.height
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.right: rangeTabs.left
-                        anchors.rightMargin: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: healthPage.hoverTime > 0
-                              ? healthPage.clock(healthPage.hoverTime) + (healthPage.hoverEvents.length > 0 ? " · " + healthPage.hoverEvents : "")
-                              : qsTr("指向图表，看那一刻在做什么")
-                        color: healthPage.hoverTime > 0 ? Theme.text : Theme.subtext
-                        font.pixelSize: Theme.fontCaption
-                        elide: Text.ElideRight
-                    }
-                    ScopeTabs {
-                        id: rangeTabs
-                        anchors.right: parent.right
-                        labels: [qsTr("10 分钟"), qsTr("1 小时"), qsTr("24 小时")]
-                        current: healthPage.range
-                        onActivated: (scope) => healthPage.range = scope
-                    }
-                }
-
-                Repeater {
-                    model: [
-                        { kind: 0, title: qsTr("内存"), height: 120 },
-                        { kind: 1, title: qsTr("CPU"), height: 72 },
-                        { kind: 2, title: qsTr("读取"), height: 72 }
-                    ]
-
-                    delegate: Column {
-                        id: block
-
-                        required property var modelData
-                        readonly property bool memory: modelData.kind === 0
-                        readonly property var names: memory
-                            ? [qsTr("文件索引"), qsTr("界面和其他"), qsTr("插件"), qsTr("读文档"), qsTr("后台服务")]
-                            : [qsTr("Win顺"), qsTr("后台服务")]
-                        readonly property var colors: memory ? healthPage.partColors.concat([healthPage.serviceColor])
-                                                             : [healthPage.partColors[modelData.kind === 1 ? 0 : 2], healthPage.serviceColor]
-                        readonly property var values: chart.values
-
-                        function said(value: real): string {
-                            return modelData.kind === 0 ? healthPage.mb(value) : modelData.kind === 1 ? healthPage.percent(value) : healthPage.rate(value)
-                        }
-
-                        width: trendColumn.width
-                        spacing: 6
-
-                        Row { // its name, and the total at the pointer (or now)
-                            spacing: 8
-
-                            Text {
-                                id: blockTitle
-                                text: block.modelData.title
-                                color: Theme.text
-                                font.pixelSize: Theme.fontBody
-                                font.weight: Theme.fontStrong
-                            }
-                            Text {
-                                anchors.baseline: blockTitle.baseline
-                                visible: block.memory && block.values.length > 0
-                                text: block.values.length > 0
-                                      ? qsTr("共 %1").arg(healthPage.mb(block.values.slice(0, 4).reduce((a, b) => a + b, 0)))
-                                      : ""
-                                color: Theme.subtext
-                                font.pixelSize: Theme.fontCaption
-                            }
-                        }
-                        Flow { // each series and its value
-                            width: parent.width + 12 // the last one's gap (rightPadding) may hang outside
-                            spacing: 4
-
-                            Repeater {
-                                model: block.names.length
-                                delegate: Row {
-                                    id: key
-                                    required property int index
-                                    readonly property bool service: index === block.names.length - 1
-                                    spacing: 5
-                                    rightPadding: 12
-
-                                    Rectangle {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: key.service ? 10 : 8
-                                        height: key.service ? Theme.edge(healthPage.dpr) * 2 : 8
-                                        radius: key.service ? 0 : 2
-                                        color: block.colors[key.index]
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: block.names[key.index] + " " + (key.index < block.values.length ? block.said(block.values[key.index]) : "—")
-                                        color: Theme.subtext
-                                        font.pixelSize: Theme.fontCaption
-                                    }
-                                }
-                            }
-                        }
-                        Item {
-                            width: parent.width
-                            height: block.modelData.height
-
-                            HealthChart {
-                                id: chart
-                                anchors.fill: parent
-                                monitor: healthPage.monitor
-                                kind: block.modelData.kind
-                                rangeMs: healthPage.ranges[healthPage.range]
-                                hoverTime: healthPage.hoverTime
-                                colors: block.colors
-                                gridColor: Theme.divider
-                                eventColor: Theme.dark ? Qt.rgba(1, 1, 1, 0.055) : Qt.rgba(0, 0, 0, 0.045)
-                                hoverColor: Theme.subtext
-                            }
-                            Text { // the axis's top
-                                x: 4
-                                y: 3
-                                text: block.said(chart.axisMax)
-                                color: Theme.faint
-                                font.pixelSize: Theme.fontCaption - 1
-                            }
-                            Text {
-                                visible: chart.empty
-                                anchors.centerIn: parent
-                                text: qsTr("还没有记录，稍等几秒")
-                                color: Theme.subtext
-                                font.pixelSize: Theme.fontCaption
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                onPositionChanged: (mouse) => healthPage.hoverTime = chart.timeAt(mouse.x)
-                                onExited: healthPage.hoverTime = 0
-                            }
-                        }
-                    }
-                }
-
-                Item { // the time axis, under the last chart
-                    width: parent.width
-                    height: startLabel.implicitHeight
-
-                    Text {
-                        id: startLabel
-                        text: [qsTr("10 分钟前"), qsTr("1 小时前"), qsTr("24 小时前")][healthPage.range]
-                        color: Theme.faint
-                        font.pixelSize: Theme.fontCaption - 1
-                    }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: [qsTr("5 分钟前"), qsTr("30 分钟前"), qsTr("12 小时前")][healthPage.range]
-                        color: Theme.faint
-                        font.pixelSize: Theme.fontCaption - 1
-                    }
-                    Text {
-                        anchors.right: parent.right
-                        text: qsTr("现在")
-                        color: Theme.faint
-                        font.pixelSize: Theme.fontCaption - 1
-                    }
-                }
-            }
+        Rectangle {
+            id: mark
+            x: 0
+            y: Math.round(nameText.y + (nameText.height - height) / 2)
+            width: 8
+            height: parent.line ? Theme.edge(healthPage.dpr) * 2 : 8
+            radius: parent.line ? 0 : 2
+            color: parent.swatch
+        }
+        Text {
+            id: nameText
+            x: 16
+            y: 4
+            text: parent.name
+            color: Theme.text
+            font.pixelSize: Theme.fontBody
+        }
+        Text {
+            id: noteText
+            anchors.left: nameText.right
+            anchors.leftMargin: 10
+            anchors.right: amountText.left
+            anchors.rightMargin: 12
+            anchors.baseline: nameText.baseline
+            text: parent.note
+            color: Theme.subtext
+            font.pixelSize: Theme.fontCaption
+            elide: Text.ElideRight
+        }
+        Text {
+            id: amountText
+            anchors.right: parent.right
+            anchors.baseline: nameText.baseline
+            text: parent.amount
+            color: Theme.text
+            font.pixelSize: Theme.fontBody
+            font.features: { "tnum": 1 }
         }
     }
 
@@ -487,9 +338,7 @@ SettingsPage {
         width: parent.width
         title: qsTr("最近的事")
         glyph: "" // BulletedList
-        note: healthPage.known
-              ? qsTr("这些记录只存在内存里，最多 24 小时，约 %1 KB；重启 Win顺 后重新开始。").arg(healthPage.h.historyKb)
-              : ""
+        note: qsTr("只记在内存里，重启 Win顺 后重新开始。")
 
         Repeater {
             model: healthPage.monitor && healthPage.shown ? healthPage.monitor.recent : []

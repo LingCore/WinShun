@@ -108,6 +108,13 @@ ClipThumbnailProvider::ClipThumbnailProvider()
 {
 }
 
+qint64 ClipThumbnailProvider::cachedBytes()
+{
+    Store& s = store();
+    QMutexLocker lock(&s.mutex);
+    return s.images.totalCost();
+}
+
 QString ClipThumbnailProvider::url(const QString& path, qint64 stamp)
 {
     // One address for a file however its path is written (C:\a or C:/a).

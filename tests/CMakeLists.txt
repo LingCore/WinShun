@@ -654,9 +654,10 @@ endforeach()
 qt_add_executable(tst_core tst_core.cpp)
 target_link_libraries(tst_core PRIVATE wscore wsextract miniz Qt6::Test)
 
-qt_add_executable(tst_activity tst_activity.cpp ${PROJECT_SOURCE_DIR}/src/app/ActivityText.cpp ${PROJECT_SOURCE_DIR}/src/app/HealthHistory.cpp)
+qt_add_executable(tst_activity tst_activity.cpp ${PROJECT_SOURCE_DIR}/src/app/ActivityText.cpp ${PROJECT_SOURCE_DIR}/src/app/HealthHistory.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/ProcessUsage.cpp)
 target_include_directories(tst_activity PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
-target_link_libraries(tst_activity PRIVATE winshun_options Qt6::Test)
+target_link_libraries(tst_activity PRIVATE winshun_options Qt6::Test psapi)
 set_target_properties(tst_activity PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_activity COMMAND tst_activity -o -,txt)
 set_tests_properties(tst_activity PROPERTIES
