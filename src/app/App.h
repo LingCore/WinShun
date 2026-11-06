@@ -48,6 +48,8 @@ class QWinEventNotifier;
 
 namespace ws {
 
+namespace preview { struct DoubleTapActionsProbe; }
+
 namespace piedrop {
 class FileOperations;
 }
@@ -130,6 +132,7 @@ class Tools;
 // search engine, the QML window, tray icon and global hotkeys.
 class App : public QObject {
     Q_OBJECT
+    friend struct preview::DoubleTapActionsProbe;
 
 public:
     struct StartOptions {
@@ -485,6 +488,7 @@ private:
     void applyAppearance(); // the chosen theme and language
     QString trayTooltip() const;
     QString doubleCtrlName() const;
+    void updateDoubleTapActions();
     void armReveal();
     void revealLauncher(); // slides in (Placement::slideIn) unless it went away meanwhile
     void finishHidingLauncher(); // slid out (Placement::slideOut), or at once
@@ -847,6 +851,7 @@ private:
     // The plugins' tray submenus as they last answered trayMenu (prefetchTrayMenus): plugin id -> entries.
     std::map<QString, QJsonArray> m_trayMenus;
     std::map<QString, QStringList> m_pluginHotkeys; // the shortcuts plugins register themselves (winshun/hotkeys)
+    std::map<QString, QStringList> m_pluginTapActions; // register_hotkeys: plugins that accept host notifications
     struct ScreenshotAsk { // take_screenshot waiting for the user's answer: one at a time
         std::function<void(mcp::ScreenshotTaken)> done;
         HMONITOR monitor = nullptr;

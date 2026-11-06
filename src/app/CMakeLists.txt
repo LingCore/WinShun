@@ -36,6 +36,7 @@ foreach(model IN LISTS ocr_models)
 endforeach()
 
 qt_add_executable(WinShun WIN32
+    InteractionOptimizationProbe.cpp InteractionOptimizationProbe.h
     main.cpp
     DropPieHelper.cpp DropPieHelper.h
     AiSettings.cpp AiSettings.h

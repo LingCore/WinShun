@@ -1,4 +1,5 @@
 #include "SettingsEditor.h"
+#include "DoubleTapAction.h"
 #include "UiFont.h"
 
 #include "HealthMonitor.h"
@@ -219,6 +220,7 @@ void SettingsEditor::setSettings(const Settings& settings)
     m_settings = settings;
     m_previewHotkeyError.clear();
     emit changed();
+    emit doubleTapActionsChanged();
     if (shares)
         emit sharesChanged();
     if (drives)
@@ -544,6 +546,44 @@ void SettingsEditor::setDoubleTapKey(const QString& key)
     m_settings.doubleTapKey = key;
     commit();
     refreshDoubleCtrlClash();
+}
+
+QVariantList SettingsEditor::doubleTapActions() const
+{
+    QVariantList actions {
+        QVariantMap {{u"value"_s, u"launcher"_s}, {u"text"_s, tr("搜索框")}},
+        QVariantMap {{u"value"_s, u"clipboard"_s}, {u"text"_s, tr("剪贴板")}}};
+    actions.append(m_doubleTapPluginActions);
+    if (std::ranges::none_of(actions, [this](const QVariant& action) {
+            return action.toMap().value(u"value"_s).toString() == m_settings.doubleTapAction;
+        })) {
+        const auto plugin = doubletap::decode(m_settings.doubleTapAction);
+        actions.append(QVariantMap {{u"value"_s, m_settings.doubleTapAction},
+            {u"text"_s, tr("暂不可用：%1 · %2").arg(plugin.plugin, plugin.key)}});
+    }
+    return actions;
+}
+
+void SettingsEditor::setDoubleTapPluginActions(const QVariantList& actions)
+{
+    if (m_doubleTapPluginActions == actions)
+        return;
+    m_doubleTapPluginActions = actions;
+    emit doubleTapActionsChanged();
+}
+
+void SettingsEditor::setDoubleTapAction(const QString& action)
+{
+    if (action == m_settings.doubleTapAction || !doubletap::valid(action))
+        return;
+    const QVariantList available = doubleTapActions();
+    if (std::ranges::none_of(available, [&](const QVariant& item) {
+            return item.toMap().value(u"value"_s).toString() == action;
+        }))
+        return;
+    m_settings.doubleTapAction = action;
+    commit();
+    emit doubleTapActionsChanged();
 }
 
 void SettingsEditor::setDoubleCtrlKey(const QString& key)
@@ -3045,6 +3085,7 @@ void SettingsEditor::retranslateFolders()
 {
     m_knownFolders = Settings::knownFolders(); // 桌面 or Desktop: translated as they are read
     emit foldersChanged();
+    emit doubleTapActionsChanged();
 }
 
 QString SettingsEditor::addFolder(const QString& text)

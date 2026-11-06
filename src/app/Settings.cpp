@@ -1,4 +1,5 @@
 #include "Settings.h"
+#include "DoubleTapAction.h"
 #include "WebSearchConfig.h"
 #include "PreviewShortcut.h"
 #include "platform/HotkeyText.h"
@@ -796,6 +797,9 @@ void Settings::load()
     onboardingCapturePending = readOrDefault(s, u"Setup/CapturePending"_s, false);
 
     doubleCtrl = readOrDefault(s, u"Launcher/DoubleCtrl"_s, d.doubleCtrl);
+    doubleTapAction = readOrDefault(s, u"Launcher/DoubleTapAction"_s, d.doubleTapAction);
+    if (!doubletap::valid(doubleTapAction))
+        doubleTapAction = d.doubleTapAction;
     doubleTapKey = readOrDefault(s, u"Launcher/DoubleTapKey"_s, d.doubleTapKey).trimmed().toLower();
     if (doubleTapKey != u"alt" && doubleTapKey != u"shift")
         doubleTapKey = d.doubleTapKey;
@@ -1200,6 +1204,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Setup/Completed"_s, onboardingComplete);
     s.setValue(u"Setup/CapturePending"_s, onboardingCapturePending);
     s.setValue(u"Launcher/DoubleCtrl"_s, doubleCtrl);
+    s.setValue(u"Launcher/DoubleTapAction"_s, doubleTapAction);
     s.setValue(u"Launcher/DoubleTapKey"_s, doubleTapKey);
     s.setValue(u"Launcher/DoubleCtrlKey"_s, doubleCtrlKey);
     s.setValue(u"Launcher/DoubleCtrlPauseInGames"_s, doubleCtrlPauseInGames);

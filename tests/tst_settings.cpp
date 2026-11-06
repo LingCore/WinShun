@@ -1,4 +1,5 @@
 #include "Settings.h"
+#include "DoubleTapAction.h"
 #include "WebSearchConfig.h"
 #include "PreviewShortcut.h"
 #include "Query.h"
@@ -32,6 +33,32 @@ class SettingsTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void doubleTapActionPreference()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.doubleTapAction, u"launcher"_s);
+        for (const QString& action : {u"clipboard"_s, ws::doubletap::encode(u"winshun.capture"_s, u"Win+Shift+S"_s)}) {
+            settings.doubleTapAction = action;
+            QVERIFY(settings.saveChecked());
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.doubleTapAction, action);
+            QCOMPARE(restored.doubleTapKey, u"ctrl"_s);
+        }
+        const auto decoded = ws::doubletap::decode(settings.doubleTapAction);
+        QCOMPARE(decoded.plugin, u"winshun.capture"_s);
+        QCOMPARE(decoded.key, u"Win+Shift+S"_s);
+        for (const QString& invalid : {u"bad"_s, u"plugin:/Ctrl+A"_s, u"plugin:x/"_s, u"plugin:../Ctrl+A"_s}) {
+            settings.doubleTapAction = invalid;
+            QVERIFY(settings.saveChecked());
+            settings.load();
+            QCOMPARE(settings.doubleTapAction, u"launcher"_s);
+        }
+    }
     void searchHistoryAndScopePreferences()
     {
         QTemporaryDir profile;

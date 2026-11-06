@@ -1,0 +1,9 @@
+{
+  "manifest": 1,
+  "id": "test.tap",
+  "name": "Double-tap integration fixture",
+  "version": "1.0.0",
+  "runtime": {"mode": "resident", "program": "python", "script": "main.py", "start": "eager", "sandbox": "normal", "timeoutMs": 10000, "idleExitSec": 0},
+  "permissions": ["ui"],
+  "commands": [{"id": "echo", "keyword": "tapfixture", "title": "Test only"}]
+}

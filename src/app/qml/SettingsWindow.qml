@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls.Basic as Controls
 import WinShun
 
 // The settings window: categories on the left, the chosen one's options on the
@@ -72,8 +73,8 @@ Window {
     readonly property var shortcutSections: {
         const context = {
             all: true,
-            openKeys: [window.editor.doubleCtrl ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.hotkey].filter(keys => keys.length > 0).join(" / "),
-            clipboardHotkey: window.editor.clipboardHotkey,
+            openKeys: [window.editor.doubleCtrl && window.editor.doubleTapAction === "launcher" ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.hotkey].filter(keys => keys.length > 0).join(" / "),
+            clipboardHotkey: [window.editor.doubleCtrl && window.editor.doubleTapAction === "clipboard" ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.clipboardHotkey].filter(keys => keys.length > 0).join(" / "),
             panelHotkey: window.editor.panelHotkey,
             previewKey: window.editor.previewHotkey,
             historyModifier: !window.editor.recordHistory || window.editor.queryHistoryKeys === "off" ? "" : window.editor.queryHistoryKeys === "alt" ? "Alt" : "Ctrl",
@@ -1437,8 +1438,8 @@ Window {
                 SettingRow {
                     title: qsTr("双击 Ctrl、Alt 或 Shift 打开")
                     keywords: qsTr("双击;连按;呼出;唤出;double ctrl;double alt;double shift").split(";")
-                    unlocks: [doubleCtrlKeyRow, gamesRow, fullScreenRow, doubleCtrlAppsRow]
-                    description: qsTr("连按两下 %1，打开或关闭搜索框").arg(window.tapKey)
+                    unlocks: [doubleTapActionRow, doubleCtrlKeyRow, gamesRow, fullScreenRow, doubleCtrlAppsRow]
+                    description: qsTr("连按两下 %1，执行下方选择的动作").arg(window.tapKey)
                     tip: window.tapKey === "Shift"
                          ? qsTr("输入法用 Shift 切换中英文时，双击会切换两次并回到原状态。管理员或部分输入法窗口中需要 Win顺 服务支持")
                          : qsTr("管理员或部分输入法窗口中需要 Win顺 服务支持")
@@ -1450,6 +1451,82 @@ Window {
                             if (index < 3)
                                 window.editor.doubleTapKey = ["ctrl", "alt", "shift"][index]
                             window.editor.doubleCtrl = index < 3
+                        }
+                    }
+                }
+
+                SettingRow {
+                    id: doubleTapActionRow
+                    sub: true
+                    shown: window.editor.doubleCtrl
+                    title: qsTr("双击后做什么")
+                    description: qsTr("每个双击键只执行一个动作。列表只显示支持此功能的已启用插件；原组合键仍可使用")
+                    keywords: qsTr("剪贴板;截图;插件;双击;动作;clipboard;plugin;double tap").split(";")
+
+                    Controls.ComboBox {
+                        id: doubleTapActionPicker
+                        objectName: "doubleTapActionPicker"
+                        implicitWidth: 280
+                        implicitHeight: 36
+                        model: window.editor.doubleTapActions
+                        textRole: "text"
+                        valueRole: "value"
+                        currentIndex: window.editor.doubleTapActions.findIndex(action => action.value === window.editor.doubleTapAction)
+                        onActivated: window.editor.doubleTapAction = currentValue
+                        Accessible.name: qsTr("双击后做什么")
+                        font.pixelSize: Theme.fontBody
+                        palette.text: Theme.text
+                        palette.buttonText: Theme.text
+                        palette.base: Theme.menuBackground
+                        palette.button: Theme.control
+                        palette.highlight: Theme.accent
+                        palette.highlightedText: Theme.accentText
+                        rightPadding: 34
+                        indicator: Glyph {
+                            x: doubleTapActionPicker.width - width - 12
+                            y: (doubleTapActionPicker.height - height) / 2
+                            glyph: "\uE70D"
+                            size: 12
+                            color: Theme.faint
+                        }
+                        contentItem: Text {
+                            text: doubleTapActionPicker.displayText
+                            font: doubleTapActionPicker.font
+                            color: Theme.text
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        delegate: Controls.ItemDelegate {
+                            id: doubleTapOption
+                            required property int index
+                            required property var modelData
+                            width: doubleTapActionPicker.width
+                            height: Theme.menuItemHeight
+                            text: modelData.text
+                            highlighted: doubleTapActionPicker.highlightedIndex === index
+                            hoverEnabled: true
+                            contentItem: Text {
+                                text: doubleTapOption.text
+                                font.pixelSize: Theme.menuTextSize
+                                color: Theme.text
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+                            background: Rectangle {
+                                color: doubleTapOption.highlighted || doubleTapOption.hovered ? Theme.menuHover : "transparent"
+                                radius: Theme.menuItemRadius
+                            }
+                        }
+                        background: Hook {
+                            part: Theme.keySurface
+                            hovered: doubleTapActionPicker.hovered
+                            pressed: doubleTapActionPicker.down
+                        }
+                        popup.height: Math.min(280, doubleTapActionPicker.popup.contentItem.implicitHeight + doubleTapActionPicker.popup.topPadding + doubleTapActionPicker.popup.bottomPadding)
+                        popup.background: Hook { part: Theme.menuFrame }
+                        Connections {
+                            target: doubleTapActionPicker.popup
+                            function onOpened() { window.frame.addPopup(doubleTapActionPicker.popup.contentItem) }
                         }
                     }
                 }

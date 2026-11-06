@@ -7433,6 +7433,22 @@ Right: center window · Drag: move window</translation>
         <source>合并;全部;文件;类型;筛选;merge;scope</source>
         <translation>combine;All;Files;type;filter;merge;scope</translation>
     </message>
+    <message>
+        <source>连按两下 %1，执行下方选择的动作</source>
+        <translation>Tap %1 twice to perform the action selected below</translation>
+    </message>
+    <message>
+        <source>双击后做什么</source>
+        <translation>Double-tap action</translation>
+    </message>
+    <message>
+        <source>剪贴板;截图;插件;双击;动作;clipboard;plugin;double tap</source>
+        <translation>clipboard;screenshot;plugin;double tap;action</translation>
+    </message>
+    <message>
+        <source>每个双击键只执行一个动作。列表只显示支持此功能的已启用插件；原组合键仍可使用</source>
+        <translation>Each gesture performs one action. Only enabled plugins that support this feature are listed. Their original shortcuts still work.</translation>
+    </message>
 </context>
 <context>
     <name>ShareCard</name>
@@ -8788,6 +8804,14 @@ Right: center window · Drag: move window</translation>
     <message>
         <source>网页搜索插件未启用或没有可用的网站，请在设置 → 插件中安装并启用网页搜索</source>
         <translation>Web search is disabled or has no sites. Install and enable Web search in Settings → Plugins.</translation>
+    </message>
+    <message>
+        <source>双击动作暂不可用</source>
+        <translation>Double-tap action unavailable</translation>
+    </message>
+    <message>
+        <source>请启用对应插件，并在“打开 Win顺”的双击设置中重新选择动作。</source>
+        <translation>Enable the plugin, then select its action again in Open WinShun → Double-tap.</translation>
     </message>
 </context>
 <context>
@@ -13490,6 +13514,18 @@ Content index: %5</translation>
     <message>
         <source>这个快捷键已用于全局操作，请换一个</source>
         <translation>This shortcut is already used by a global action. Choose another.</translation>
+    </message>
+    <message>
+        <source>搜索框</source>
+        <translation>Search box</translation>
+    </message>
+    <message>
+        <source>剪贴板</source>
+        <translation>Clipboard</translation>
+    </message>
+    <message>
+        <source>暂不可用：%1 · %2</source>
+        <translation>Unavailable: %1 · %2</translation>
     </message>
 </context>
 <context>

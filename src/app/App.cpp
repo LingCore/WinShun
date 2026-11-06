@@ -1,4 +1,5 @@
 #include "App.h"
+#include "DoubleTapAction.h"
 #include "UiFont.h"
 #include "AdminDialogHint.h"
 #include "AdminTapHint.h"
@@ -1665,6 +1666,7 @@ void App::applyAppearance()
     if (!m_qml)
         return; // starting up: nothing shown yet
     m_qml->retranslate();
+    updateDoubleTapActions();
     m_launcher->retranslate();
     updateSearchBoxLook();
     m_clipboard->retranslate();
@@ -1681,7 +1683,8 @@ void App::applyAppearance()
 
 QString App::trayTooltip() const
 {
-    const QString name = m_settings.doubleCtrl ? tr("Win顺 — %1 打开").arg(doubleCtrlName()) : tr("Win顺");
+    const QString name = m_settings.doubleCtrl && m_settings.doubleTapAction == u"launcher"
+        ? tr("Win顺 — %1 打开").arg(doubleCtrlName()) : tr("Win顺");
     const SwitchState awake = m_switches ? m_switches->state(u"keep-awake") : SwitchState {};
     if (awake.on != SwitchState::Value::On)
         return name;
@@ -2219,7 +2222,18 @@ void App::setUpAppTools()
                 return;
             }
             // A key not allowed is reported in errors; the others still register.
-            done({{{u"errors"_s, m_pluginKeyRelay->replace(owner, keys)}}});
+            const QJsonObject errors = m_pluginKeyRelay->replace(owner, keys);
+            // Only plugins using the host's hotkey notification contract can
+            // be double-tap targets. A legacy plugin's informational list
+            // alone does not mean that it understands the `hotkey` message.
+            keys.removeIf([](const QString& key) { return !PluginHotkeys::allowed(key); });
+            keys.removeDuplicates();
+            if (keys.isEmpty())
+                m_pluginTapActions.erase(owner);
+            else
+                m_pluginTapActions[owner] = keys;
+            updateDoubleTapActions();
+            done({{{u"errors"_s, errors}}});
         }});
     // A picture into the clipboard history: the plugin's file in its own
     // data folder (and the annotations beside it), read off the GUI thread
@@ -3641,6 +3655,7 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         editor->favorites()->setStore(m_favorites.get());
         m_settingsWindow = window;
         m_settingsEditor = editor;
+        updateDoubleTapActions();
         // What the app tells the editor as it changes, from now on (hidden or not):
         // where it stands now.
         updateScreenshotPlugin();
@@ -4638,6 +4653,21 @@ void App::updateCompanions()
     m_dialogJump->setCompanions(std::move(windows));
 }
 
+void App::updateDoubleTapActions()
+{
+    if (!m_settingsEditor)
+        return;
+    QVariantList actions;
+    for (const auto& [id, keys] : m_pluginTapActions) {
+        const plugin::Entry* plugin = m_pluginHost ? m_pluginHost->catalog().find(id) : nullptr;
+        const QString name = plugin && plugin->manifest ? plugin->manifest->name.pick(m_language) : id;
+        for (const QString& key : keys)
+            actions.append(QVariantMap {{u"value"_s, doubletap::encode(id, key)},
+                {u"text"_s, name + u" · "_s + key}});
+    }
+    m_settingsEditor->setDoubleTapPluginActions(actions);
+}
+
 void App::onDoubleCtrl(const KeyListener::Tap& tap)
 {
     const std::uint64_t now = ::GetTickCount64();
@@ -4657,6 +4687,21 @@ void App::onDoubleCtrl(const KeyListener::Tap& tap)
     const IgnoreReason reason = doubleCtrlIgnoreReason(facts,
         {m_settings.doubleCtrlPauseInGames, m_settings.doubleCtrlPauseInFullScreen, m_settings.doubleCtrlExcludedApps});
     if (reason == IgnoreReason::None) {
+        if (m_settings.doubleTapAction == u"clipboard") {
+            toggleClipboard(tickTime(tap.firstPress.value_or(tap.time), now));
+            return;
+        }
+        if (m_settings.doubleTapAction != u"launcher") {
+            m_triggers->decided("plugin-action");
+            const auto action = doubletap::decode(m_settings.doubleTapAction);
+            const auto found = m_pluginTapActions.find(action.plugin);
+            if (!m_pluginHost || found == m_pluginTapActions.end() || !found->second.contains(action.key)
+                || !m_pluginHost->notify(action.plugin, u"hotkey"_s, {{u"key"_s, action.key}}, true)) {
+                m_messages->showNotification(tr("双击动作暂不可用"),
+                    tr("请启用对应插件，并在“打开 Win顺”的双击设置中重新选择动作。"));
+            }
+            return;
+        }
         // Pressed again or not by where it began (seenBy): a double tap made
         // again just before the launcher came, as nothing had, ends after it,
         // and judged by its release it closed what had just come (GitHub
@@ -6134,7 +6179,8 @@ void App::adminTapCheck()
     // 索引方式); an installed one's have no button for it.
     const bool canInstall = userIsAdministrator() && !Settings::portableFolder().isEmpty()
         && QFile::exists(QCoreApplication::applicationDirPath() + u"/WinShunService.exe"_s);
-    const Advice advice = advise(m_hotkeyOverAdmin, fixFor(f.listener, canInstall));
+    const Advice advice = advise(m_settings.doubleTapAction == u"launcher" && m_hotkeyOverAdmin,
+        fixFor(f.listener, canInstall));
     // Each program and verdict once a run, in the log and the journal.
     if (const QString seen = f.program.toLower() + u' ' + QLatin1StringView(name(verdict)); !m_adminTapLogged.contains(seen)) {
         m_adminTapLogged.push_back(seen);
@@ -6444,7 +6490,7 @@ void App::showTrayMenu()
                 : tr("正在加载索引…");
     const QString show = tr("打开 Win顺");
     std::vector<shell::MenuItem> items {
-        {ShowCommand, m_settings.doubleCtrl ? show + u'\t' + doubleCtrlName() : show, false, true, true},
+        {ShowCommand, m_settings.doubleCtrl && m_settings.doubleTapAction == u"launcher" ? show + u'\t' + doubleCtrlName() : show, false, true, true},
         {ClipboardCommand, m_clipboardShortcut.isEmpty() ? tr("剪贴板历史") : tr("剪贴板历史") + u'\t' + m_clipboardShortcut},
         {PauseClipboardCommand, tr("暂停记录剪贴板"), m_clipboardPaused, m_settings.clipboard},
         shell::MenuItem::separator(),
@@ -7420,12 +7466,15 @@ void App::createPluginHost()
             m_pluginHotkeys.erase(id);
         else
             m_pluginHotkeys[id] = keys;
+        updateDoubleTapActions();
         updateScreenshotPlugin();
         applyTaskbarHotkeys();
         applyQuickPasteHotkeys();
     });
     connect(m_pluginHost.get(), &plugin::Host::processExited, this, [this](const QString& id) {
         m_pluginKeyRelay->remove(id);
+        m_pluginTapActions.erase(id);
+        updateDoubleTapActions();
         m_trayMenus.erase(id);
     });
     connect(m_pluginHost.get(), &plugin::Host::disabledAfterCrashes, this, [this](const QString& id) {

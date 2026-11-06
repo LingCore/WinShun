@@ -35,6 +35,8 @@ class SettingsEditor : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the application")
     Q_PROPERTY(bool doubleCtrl READ doubleCtrl WRITE setDoubleCtrl NOTIFY changed FINAL)
+    Q_PROPERTY(QString doubleTapAction READ doubleTapAction WRITE setDoubleTapAction NOTIFY changed FINAL)
+    Q_PROPERTY(QVariantList doubleTapActions READ doubleTapActions NOTIFY doubleTapActionsChanged FINAL)
     Q_PROPERTY(QString doubleTapKey READ doubleTapKey WRITE setDoubleTapKey NOTIFY changed FINAL) // ctrl | alt | shift
     Q_PROPERTY(QString doubleCtrlKey READ doubleCtrlKey WRITE setDoubleCtrlKey NOTIFY changed FINAL) // both | left | right
     // The Ctrl PowerToys' Find My Mouse also opens on with a double tap,
@@ -342,6 +344,10 @@ public:
 
     bool doubleCtrl() const { return m_settings.doubleCtrl; }
     void setDoubleCtrl(bool on);
+    QString doubleTapAction() const { return m_settings.doubleTapAction; }
+    void setDoubleTapAction(const QString& action);
+    QVariantList doubleTapActions() const;
+    void setDoubleTapPluginActions(const QVariantList& actions);
     QString doubleTapKey() const { return m_settings.doubleTapKey; }
     void setDoubleTapKey(const QString& key);
     QString doubleCtrlKey() const { return m_settings.doubleCtrlKey; }
@@ -985,6 +991,7 @@ signals:
     void clipboardCountChanged();
     void numberKeysNoteChanged();
     void doubleCtrlClashChanged();
+    void doubleTapActionsChanged();
     void opusFolderMenuChanged();
     void opusRestarted(); // setOpusFolderMenu started Opus again: it came to the front
     void clipboardClearRequested();
@@ -1037,6 +1044,7 @@ private:
     QString m_clipboardNumberKeysNote;
     QString m_clipboardQuickPasteError;
     QString m_doubleCtrlClash;
+    QVariantList m_doubleTapPluginActions;
     QString m_folderMenuHotkeyError;
     bool m_screenshotInstalled = false;
     bool m_screenshotHistory = false;

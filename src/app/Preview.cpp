@@ -1,6 +1,7 @@
 #include "Preview.h"
 #include "PreviewInteractionProbe.h"
 #include "NavigationProbe.h"
+#include "InteractionOptimizationProbe.h"
 #include "UiFont.h"
 
 #include "HealthMonitor.h"
@@ -1265,6 +1266,8 @@ int runSettings(const QStringList& args)
 
     if (args.contains(u"--navigation-settings"_s))
         return finish(window, checkNavigationSettings(window, editor, out));
+    if (args.contains(u"--double-tap-settings"_s))
+        return finish(window, checkDoubleTapSettings(window, editor, out));
     if (args.contains(u"--search-experience-settings"_s))
         return finish(window, checkSearchExperienceSettings(window, editor, out));
     if (args.contains(u"--optimization-settings"_s))
@@ -8109,6 +8112,8 @@ int runRuntime(const QStringList& args)
         }
         report.insert(u"start_ms"_s, static_cast<double>(since.elapsed()));
         pump(std::clamp(valueAfter(args, u"--settle-ms", u"3000"_s).toInt(), 100, 60000));
+        if (args.contains(u"--double-tap-plugin"_s) && !checkDoubleTapPlugin(app, out))
+            return 4;
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
         if (args.contains(u"--clipboard-shell-probe"_s)) {

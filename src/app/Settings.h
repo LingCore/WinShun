@@ -84,8 +84,9 @@ struct Settings {
     bool onboardingComplete = true;
     bool onboardingCapturePending = false;
     // [Launcher]
-    bool doubleCtrl = true; // a double tap opens the launcher: of Ctrl, Alt or Shift (doubleTapKey)
+    bool doubleCtrl = true; // enable the Ctrl/Alt/Shift gesture (doubleTapKey), routed by doubleTapAction
     QString doubleTapKey = QStringLiteral("ctrl"); // ctrl | alt | shift
+    QString doubleTapAction = QStringLiteral("launcher"); // launcher | clipboard | plugin:<id>/<registered key>
     QString doubleCtrlKey = QStringLiteral("both"); // both | left | right: which of the two is tapped (twice the same one)
     bool doubleCtrlPauseInGames = true; // not while a game has the mouse or exclusive full screen (GameGuard)
     bool doubleCtrlPauseInFullScreen = false; // not over any full-screen window
