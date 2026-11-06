@@ -216,7 +216,7 @@ private:
     int m_lineCount = 0;
     int m_textRows = 0;
     PreviewSide m_side = PreviewSide::None; // placeBeside's side; None: not chosen yet
-    QRect m_sideFor; // the launcher's place when it was chosen
+    QRect m_sideArea; // reset the side only when the monitor/work area changes
     bool m_overLauncher = false; // no room beside it: in front of it
     QStringList m_facts;
     QString m_message;

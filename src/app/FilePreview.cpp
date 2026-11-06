@@ -768,22 +768,17 @@ QRect FilePreview::placeBeside(QSize wanted)
             .boundedTo(bounded);
     };
 
-    // The side: the one chosen when the preview opened, while the launcher
-    // is where it was (the window jumping from side to side as the arrows
-    // go through small and large files is hard to follow); else the one
-    // with the most room for a document (not for this file, which may be
-    // a small picture before a long text). GitHub #186: never over the
-    // list while there is room beside it.
-    // (Its height is not where it is: it changes with the number of rows.)
-    const bool moved = m_sideFor.topLeft() != launcher.topLeft() || m_sideFor.width() != launcher.width();
-    if (moved) {
+    // Keep the chosen side through small launcher moves and content-size
+    // changes. placePreview decides when there is no longer enough room;
+    // a different monitor/work area starts a fresh placement (#186).
+    if (m_sideArea != area) {
         m_side = PreviewSide::None;
-        m_sideFor = launcher;
+        m_sideArea = area;
     }
     const QSize document = QSize(820, tallest * 85 / 100).boundedTo(QSize(area.width() - 2 * kGap, tallest));
     const PreviewPlacement place = placePreview(area, launcher, m_side, document, fit);
     m_side = place.side;
-    m_overLauncher = place.side == PreviewSide::Over;
+    m_overLauncher = place.rect.intersects(launcher);
     return place.rect;
 }
 

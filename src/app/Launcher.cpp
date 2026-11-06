@@ -817,6 +817,14 @@ void Launcher::setScope(Scope scope)
             search();
         return;
     }
+    // A different search scope must not carry a floating preview of its
+    // old results over the new controls (#186).
+    const bool intoDetails = m_panel && scope == Content && m_contentPane && m_contentPane->opened();
+    if (m_preview && m_preview->isOpen() && !intoDetails) {
+        closePreview();
+        m_previewResume = false;
+        m_previewHandedOver = false;
+    }
     m_scope = scope;
     if ((scope == Files || scope == Folders) && m_foldersChosen != (scope == Folders)) {
         m_foldersChosen = scope == Folders;

@@ -90,7 +90,7 @@ private slots:
         QFETCH(QRect, launcher);
         QFETCH(bool, toRight);
         const auto [rect, side] = placePreview(area, launcher, PreviewSide::None, kText, fitting(kText));
-        QCOMPARE(side, PreviewSide::Over);
+        QCOMPARE(side, toRight ? PreviewSide::Over : PreviewSide::OverLeft);
         const QRect inner = area.adjusted(8, 8, -8, -8);
         QVERIFY(inner.contains(rect));
         QCOMPARE(rect.width(), 480); // readable, and no wider than that
@@ -127,6 +127,47 @@ private slots:
         QCOMPARE(side, PreviewSide::Right);
         QCOMPARE(rect.size(), facts);
         QCOMPARE(rect.top(), launcher.top());
+    }
+
+    void portraitBottomUsesSpaceAbove()
+    {
+        const QRect area(-1080, -120, 1080, 1880);
+        const QRect launcher(-1040, 1530, 1000, 220);
+        const auto [rect, side] = placePreview(area, launcher, PreviewSide::None, kText, fitting(kText));
+        QCOMPARE(side, PreviewSide::Above);
+        QVERIFY(area.adjusted(8, 8, -8, -8).contains(rect));
+        QVERIFY(!rect.intersects(launcher));
+        QCOMPARE(rect.bottom(), launcher.top() - 9);
+    }
+
+    void smallMovesDoNotFlipSides()
+    {
+        const QRect area(0, 0, 1920, 1040);
+        PreviewSide side = PreviewSide::Right;
+        // Cross the 360px room boundary repeatedly, as while dragging near
+        // an edge. A small overlap is allowed; the screen edge is not.
+        for (int x : {790, 800, 812, 799, 820, 800, 790}) {
+            const QRect launcher(x, 150, 755, 550);
+            const auto placed = placePreview(area, launcher, side, kText, fitting(kText));
+            QCOMPARE(placed.side, PreviewSide::Right);
+            QCOMPARE(placed.rect.width(), previewplacement::kSmallest.width());
+            QVERIFY(area.adjusted(8, 8, -8, -8).contains(placed.rect));
+            QVERIFY(placed.rect.intersected(launcher).width() <= previewplacement::kSideTolerance);
+            side = placed.side;
+        }
+        QCOMPARE(placePreview(area, QRect(1157, 150, 755, 550), side, kText, fitting(kText)).side, PreviewSide::Left);
+    }
+
+    void overlayKeepsItsEdge()
+    {
+        const QRect area(0, 0, 1280, 680);
+        PreviewSide side = PreviewSide::Over;
+        for (int x : {260, 270, 255, 275}) {
+            const auto placed = placePreview(area, QRect(x, 80, 755, 560), side, kText, fitting(kText));
+            QCOMPARE(placed.side, side);
+            QCOMPARE(placed.rect.right(), area.right() - 8);
+            QVERIFY(area.contains(placed.rect));
+        }
     }
 
     void noLauncherInTheMiddle()

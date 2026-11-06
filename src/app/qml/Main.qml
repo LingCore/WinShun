@@ -1128,6 +1128,8 @@ Window {
         previewHoverPos = globalPos
         if (Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier))
             return
+        if (index === previewHoverRow && previewHoverTimer.running)
+            return // dwell starts on entering the row, not on the last mouse movement
         if (index !== previewHoverRow)
             window.launcher.previewPointerMoved() // a Word file only passed over does not start Word
         previewHoverRow = index
