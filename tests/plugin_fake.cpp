@@ -228,6 +228,8 @@ struct Server {
     json::Value settings;
     json::Value appearance;
     int looks = 0; // appearance notifications
+    bool detailsHost = false; // initialize said capabilities.details
+    std::string dataDir;
     long long nextId = 1;
     lite::LineReader reader {::GetStdHandle(STD_INPUT_HANDLE)};
 
@@ -280,6 +282,8 @@ struct Server {
             if (method == "initialize") {
                 settings = params["settings"];
                 appearance = params["appearance"];
+                detailsHost = params["capabilities"]["details"].toBool();
+                dataDir = params["dataDir"].toString();
                 respond(id, json::Value::Object {{"protocolVersion", params["protocolVersion"].toString()}, {"name", "fake"}});
                 if (has(L"--hotkeys"))
                     notify("winshun/hotkeys", {{"keys", json::Value::Array {"Ctrl+Shift+9"}}});
@@ -376,6 +380,16 @@ struct Server {
                 respond(id, json::Value::Object {{"effects",
                     json::Value::Array {json::Value(json::Value::Object {{"type", "notify"}, {"text", said}}),
                         json::Value(json::Value::Object {{"type", "hide"}})}}});
+            } else if (method == "details") { // GitHub #202
+                if (has(L"--hang-details"))
+                    continue;
+                const std::string title = params["item"]["title"].toString();
+                if (has(L"--details-file")) // a name in the data folder, or a path as it is
+                    respond(id, json::Value::Object {{"file", has(L"--details-outside") ? lite::utf8(value(L"--details-file"))
+                        : dataDir + "\\" + lite::utf8(value(L"--details-file"))}});
+                else
+                    respond(id, json::Value::Object {{"text", std::string("From: fake\nSubject: ") + title + "\n\n" + params["text"].toString()
+                        + (detailsHost ? "\nhost knows details" : "")}});
             } else if (method == "settingsChanged") {
                 settings = params["settings"];
             } else if (method == "appearance") {

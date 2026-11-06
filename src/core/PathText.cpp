@@ -311,6 +311,28 @@ bool sameFolder(const QString& a, const QString& b)
     return !x.isEmpty() && x.compare(normalized(b), Qt::CaseInsensitive) == 0;
 }
 
+bool isDirectChild(const QString& folder, const QString& path)
+{
+    const auto plain = [](QString text) {
+        if (text.startsWith(u"\\\\?\\UNC\\"_s, Qt::CaseInsensitive))
+            text = u"\\\\"_s + text.mid(8);
+        else if (text.startsWith(u"\\\\?\\"_s))
+            text = text.mid(4);
+        return normalized(text);
+    };
+    const QString f = plain(folder);
+    const QString p = plain(path);
+    if (f.isEmpty() || p.isEmpty() || p.size() <= f.size())
+        return false;
+    // normalized() keeps a trailing backslash only on a drive's root.
+    const qsizetype cut = f.endsWith(u'\\') ? f.size() : f.size() + 1;
+    if (p.size() <= cut || (cut > f.size() && p[f.size()] != u'\\'))
+        return false;
+    if (p.indexOf(u'\\', cut) >= 0)
+        return false; // deeper
+    return pathKey(QStringView(p).left(f.size())) == pathKey(f);
+}
+
 QString folderFromTotalCommander(const QString& text)
 {
     QString path = text.trimmed();

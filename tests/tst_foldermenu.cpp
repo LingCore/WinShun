@@ -9,6 +9,9 @@
 #include "platform/WindowEffects.h"
 
 #include <QDir>
+#include <memory>
+#include <QGuiApplication>
+#include <QStandardPaths>
 #include <QFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -255,6 +258,76 @@ private slots:
         QVERIFY(notice.first().first().toString().contains(u"已移除"));
     }
 
+    // Copy path (GitHub #137): on the desktop the folder is the Desktop
+    // directory; the entry puts it on the clipboard as plain native text, and
+    // its switch hides it. Where there is no folder (the hotkey over a window
+    // that is not a file manager) the entry is not offered at all.
+    void copyPath()
+    {
+        const HWND previous = ::GetForegroundWindow();
+        const auto restore = qScopeGuard([&] {
+            if (::IsWindow(previous))
+                ::SetForegroundWindow(previous);
+        });
+        DesktopFixture desktop(L"WorkerW");
+        QVERIFY(desktop.root && desktop.view && desktop.list);
+        desktop.show(true);
+        const POINT pt = desktop.point();
+        const HWND clicked = ::WindowFromPoint(pt);
+        QCOMPARE(clicked, desktop.view);
+        // The menu only comes up where it was asked for: put the fixture in front.
+        std::unique_ptr<QWindow> wrapped(QWindow::fromWinId(reinterpret_cast<WId>(desktop.root)));
+        win::bringToFront(wrapped.get());
+        QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), desktop.root, 3000);
+
+        QWindow menuWindow;
+        FolderMenu menu(nullptr, nullptr);
+        menu.setWindow(&menuWindow);
+        menu.setRecordHistory(false);
+        QString copied; // never the real clipboard: it feeds Win+V and Win顺 history
+        menu.setClipboardWriter([&](const QString& text) { copied = text; });
+        menu.setOptions(false, false, true);
+        menu.setGroups(false, true, false);
+        QSignalSpy changed(&menu, &FolderMenu::entriesChanged);
+        const auto open = [&] {
+            changed.clear();
+            menu.doubleClicked(clicked, pt);
+            return changed.wait(5000);
+        };
+
+        QVERIFY(open());
+        const int copy = entry(menu, u"复制路径"_s);
+        QVERIFY(copy >= 0);
+        QVERIFY(entry(menu, u"Win顺 设置…"_s) > copy); // between search and the shells, above Settings
+        menu.trigger(copy);
+        QCOMPARE(copied,
+            QDir::toNativeSeparators(QStandardPaths::writableLocation(QStandardPaths::DesktopLocation)));
+
+        menu.setItems(true, false, true, true, true, true);
+        QVERIFY(open());
+        QCOMPARE(entry(menu, u"复制路径"_s), -1);
+        QVERIFY(entry(menu, u"Win顺 设置…"_s) >= 0);
+    }
+
+    void noFolderNoCopyPath()
+    {
+        QWindow source;
+        source.setTitle(u"WinShun folder menu test"_s);
+        source.resize(320, 160);
+        source.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&source));
+        win::bringToFront(&source);
+        QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), reinterpret_cast<HWND>(source.winId()), 3000);
+        QWindow menuWindow;
+        FolderMenu menu(nullptr, nullptr);
+        menu.setWindow(&menuWindow);
+        menu.setRecordHistory(false);
+        QSignalSpy changed(&menu, &FolderMenu::entriesChanged);
+        menu.hotkeyPressed();
+        QVERIFY(changed.wait(5000));
+        QCOMPARE(entry(menu, u"复制路径"_s), -1);
+        QVERIFY(entry(menu, u"Win顺 设置…"_s) >= 0);
+    }
     void pagesAndLongLists_data()
     {
         QTest::addColumn<bool>("dark");

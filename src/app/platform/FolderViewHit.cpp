@@ -369,6 +369,56 @@ bool isOpusFileDisplay(HWND root, HWND focus)
         && hasClass(::GetParent(focus), L"dopus.filedisplaycontainer");
 }
 
+RECT opusFileLists(HWND root)
+{
+    // dopus.lister > dopus.filedisplaycontainer > dopus.filedisplay, one per
+    // side of a dual display (each tab its own; the hidden ones left out).
+    RECT all {};
+    if (!isOpusLister(root))
+        return all;
+    const auto add = [](HWND window, LPARAM param) -> BOOL {
+        RECT bounds {};
+        if (hasClass(window, L"dopus.filedisplay") && hasClass(::GetParent(window), L"dopus.filedisplaycontainer")
+            && ::IsWindowVisible(window) && ::GetWindowRect(window, &bounds)) {
+            RECT& all = *reinterpret_cast<RECT*>(param);
+            ::UnionRect(&all, &all, &bounds);
+        }
+        return TRUE;
+    };
+    ::EnumChildWindows(root, add, reinterpret_cast<LPARAM>(&all));
+    return all;
+}
+
+RECT explorerFileList(HWND root, HWND tab)
+{
+    RECT list {};
+    if (!root || !::IsWindow(root))
+        return list;
+    const HWND within = tab && ::IsWindow(tab) ? tab : root;
+    const auto largest = [](HWND window, LPARAM param) -> BOOL {
+        RECT bounds {};
+        RECT& list = *reinterpret_cast<RECT*>(param);
+        const auto area = [](const RECT& r) { return static_cast<long long>(r.right - r.left) * (r.bottom - r.top); };
+        if (hasClass(window, L"SHELLDLL_DefView") && ::IsWindowVisible(window) && ::GetWindowRect(window, &bounds)
+            && !::IsRectEmpty(&bounds) && area(bounds) > area(list))
+            list = bounds;
+        return TRUE;
+    };
+    ::EnumChildWindows(within, largest, reinterpret_cast<LPARAM>(&list));
+    if (!::IsRectEmpty(&list))
+        return list;
+    if (within != root && ::IsWindowVisible(within) && ::GetWindowRect(within, &list) && !::IsRectEmpty(&list))
+        return list;
+    list = {};
+    if (::GetClientRect(root, &list)) {
+        ::MapWindowPoints(root, nullptr, reinterpret_cast<POINT*>(&list), 2);
+        if (!::IsRectEmpty(&list))
+            return list;
+    }
+    ::GetWindowRect(root, &list);
+    return list;
+}
+
 bool isBlank(const Hit& hit, BlankTrace* trace)
 {
     if (hit.surface == Surface::None || !::IsWindow(hit.view) || ::IsHungAppWindow(hit.root))

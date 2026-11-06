@@ -102,6 +102,18 @@ void CaptureOcr::showTexts(const QStringList& texts, const QString& title, const
     emit changed();
 }
 
+void CaptureOcr::showText(const QString& text)
+{
+    m_pendingImage = {};
+    ++m_round;
+    m_busy = false;
+    m_title.clear();
+    m_link.clear();
+    m_text = text;
+    m_message.clear();
+    emit changed();
+}
+
 void CaptureOcr::scan(const QImage& image, double dpr, std::function<void(QList<RedactLine>)> done)
 {
     enqueueScan(image, image.rect(), dpr, false, [done = std::move(done)](RedactScan scan) { done(std::move(scan.lines)); });

@@ -126,23 +126,118 @@ private slots:
         QVERIFY(covered(moved) < covered(QRect(home, capacity)));
     }
 
+    // Typed in File Explorer (GitHub #203): beside its window only when all
+    // of the box keeps clear of it there (GitHub #141), else into its file
+    // list's bottom right corner (inList), as in Opus.
+    void explorerTypedIn()
+    {
+        const QRect work(0, 0, 1920, 1032);
+        const QSize box(760, 600), least(640, 250);
+        const QPoint home(580, 206); // centred, a fifth of the way down
+        // A window too large to keep clear of, centred: least overlap ties at
+        // the four corners of the work area (500 x 484 each), two of them as
+        // far from home, and the first tried, its top left, won. That is
+        // where #203's box was.
+        const QRect centred(260, 116, 1400, 800);
+        QCOMPARE(windowavoidance::place(work, centred, box, home), work.topLeft());
+        QVERIFY(!windowavoidance::clearOf(work, centred, box, home));
+        // Into its file list instead (right of the navigation pane, above the
+        // status bar), within its client area.
+        const QRect client(centred.x() + 8, centred.y() + 31, centred.width() - 16, centred.height() - 39);
+        const QRect list(client.x() + 240, client.y() + 90, client.width() - 240, client.height() - 120);
+        const QRect into = windowavoidance::inList(work, list, {}, client, box, least);
+        QCOMPARE(into, QRect(list.right() + 1 - 12 - 760, list.bottom() + 1 - 12 - 600, 760, 600));
+        QVERIFY(client.contains(into));
+        // The --folder-typing probe's window, the left third of the screen:
+        // beside it, as before.
+        const QRect leftThird(8, 8, 640, 1016);
+        QVERIFY(windowavoidance::clearOf(work, leftThird, box, home));
+        QVERIFY(!QRect(windowavoidance::place(work, leftThird, box, home), box).intersects(leftThird));
+        // Maximized: into its list's corner, not at home over its middle.
+        QVERIFY(!windowavoidance::clearOf(work, work, box, home));
+        const QRect maxList(240, 120, 1680, 880);
+        QCOMPARE(windowavoidance::inList(work, maxList, {}, work, box, least),
+            QRect(maxList.right() + 1 - 12 - 760, maxList.bottom() + 1 - 12 - 600, 760, 600));
+        // A list narrower than the box (a narrow window, its navigation pane
+        // wide): as narrow as it gets, kept within the window, then the screen.
+        const QRect narrowClient(1000, 100, 700, 800);
+        const QRect narrowList(1200, 160, 500, 700);
+        const QRect squeezed = windowavoidance::inList(work, narrowList, {}, narrowClient, box, least);
+        QCOMPARE(squeezed.width(), least.width());
+        QVERIFY(work.contains(squeezed));
+        QCOMPARE(squeezed.right(), narrowList.right() - 12);
+        // Nothing found but the window: its corner, still within it.
+        QVERIFY(client.contains(windowavoidance::inList(work, client, {}, client, box, least)));
+    }
+
     void cornerOfFileList()
     {
-        const QSize box(760, 600);
+        // The launcher's width (its user's, at most) and least width; the room
+        // for its rows wanted (8 of them) and needed (3).
+        const QSize wanted(760, 560), least(640, 250);
         for (const auto& work : {QRect(0, 0, 1920, 1032), QRect(-2560, -200, 2560, 1400)}) {
-            // A file list well inside the work area: the box in its bottom right, 12 px in.
+            // A file list well inside the work area: the box in its bottom right, 12 px in, as wide and tall as wanted.
             const QRect list(work.topLeft() + QPoint(300, 100), QSize(1400, 800));
-            QCOMPARE(windowavoidance::corner(work, list, box), QPoint(list.right() + 1 - 760 - 12, list.bottom() + 1 - 600 - 12));
+            QCOMPARE(windowavoidance::inList(work, list, list, {}, wanted, least),
+                QRect(list.right() + 1 - 760 - 12, list.bottom() + 1 - 560 - 12, 760, 560));
             // A maximized one: the same corner, off the taskbar (the work area ends there).
-            QCOMPARE(windowavoidance::corner(work, work, box), QPoint(work.right() + 1 - 760 - 12, work.bottom() + 1 - 600 - 12));
-            // A list smaller than the box: from its top left, still inside the work area.
-            const QRect small(work.topLeft() + QPoint(40, 60), QSize(500, 400));
-            QCOMPARE(windowavoidance::corner(work, small, box), small.topLeft());
+            QCOMPARE(windowavoidance::inList(work, work, {}, {}, wanted, least),
+                QRect(work.right() + 1 - 760 - 12, work.bottom() + 1 - 560 - 12, 760, 560));
+            // Narrower and shorter than wanted: as wide and tall as the list leaves, inside it.
+            const QRect mid(work.topLeft() + QPoint(200, 150), QSize(700, 420));
+            QCOMPARE(windowavoidance::inList(work, mid, {}, {}, wanted, least),
+                QRect(mid.x() + 12, mid.y() + 12, 700 - 24, 420 - 24));
             // A list partly off the work area: pulled back onto it.
             const QRect off(work.right() - 300, work.bottom() - 200, 800, 500);
-            const QRect placed(windowavoidance::corner(work, off, box), box);
-            QVERIFY(work.contains(placed));
+            QVERIFY(work.contains(windowavoidance::inList(work, off, {}, {}, wanted, least)));
         }
+    }
+
+    void fileListOfOpusLayout()
+    {
+        // GitHub #82's screenshot, in Qt's pixels at 150 %: a lister with the
+        // folder tree, two file lists side by side, typed in the right one,
+        // and the viewer at its right; the box is wider than that list.
+        const QRect work(0, 0, 1656, 1010);
+        const QRect frame(0, 0, 1656, 1010); // maximized
+        const QRect left(300, 120, 537, 830), right(840, 120, 537, 830);
+        const QRect lists = left.united(right);
+        const QSize wanted(760, 560), least(640, 250);
+        const QRect box = windowavoidance::inList(work, right, lists, frame, wanted, least);
+        // As narrow as it gets, its right edge 12 px in from the list's, over
+        // the other list rather than the viewer; its rows end 12 px above the list's bottom.
+        QCOMPARE(box, QRect(right.right() + 1 - 12 - 640, right.bottom() + 1 - 12 - 560, 640, 560));
+        QVERIFY(lists.contains(box));
+        // Typed in the left one: over the right list, not the folder tree.
+        const QRect fromLeft = windowavoidance::inList(work, left, lists, frame, wanted, least);
+        QCOMPARE(fromLeft, QRect(left.x(), left.bottom() + 1 - 12 - 560, 640, 560));
+        QVERIFY(lists.contains(fromLeft));
+        // One list only, narrower than the box: from its bottom right corner
+        // still, over the tree beside it, and inside the lister.
+        const QRect lister(100, 50, 1200, 950);
+        const QRect single(600, 120, 500, 830);
+        QCOMPARE(windowavoidance::inList(work, single, single, lister, wanted, least),
+            QRect(single.right() + 1 - 12 - 640, single.bottom() + 1 - 12 - 560, 640, 560));
+        // Near the lister's left edge: kept inside it.
+        const QRect edge(120, 120, 500, 830);
+        QCOMPARE(windowavoidance::inList(work, edge, edge, lister, wanted, least).x(), lister.x());
+        // A list shorter than the room wanted: the rows end 12 px above its bottom.
+        const QRect low(840, 600, 537, 300);
+        QCOMPARE(windowavoidance::inList(work, low, {}, frame, wanted, least), QRect(725, 612, 640, 276));
+        // Shorter than the room needed: over the toolbars above it, not past the lister's bottom.
+        const QRect flat(840, 700, 537, 200);
+        QCOMPARE(windowavoidance::inList(work, flat, {}, frame, wanted, least), QRect(725, 638, 640, 250));
+    }
+
+    void fileListOnSecondMonitor()
+    {
+        // A second monitor to the left and above, at 150 %: Qt's pixels there
+        // start at its native origin, so the list is in those too.
+        const QRect work(-1707, -300, 1707, 912);
+        const QRect list(-1500, -200, 600, 700);
+        const QRect box = windowavoidance::inList(work, list, list, work, {760, 560}, {640, 250});
+        QCOMPARE(box, QRect(list.right() + 1 - 12 - 640, list.bottom() + 1 - 12 - 560, 640, 560));
+        QVERIFY(work.contains(box));
     }
 
     void clipboardBesideShellPanel()

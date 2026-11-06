@@ -51,6 +51,16 @@ public:
     // The same, without asking (for the diagnostics journal's "trigger").
     bool trimmed() const noexcept { return m_trimmed.load(); }
 
+    // The last time the working set was emptied (here or by noteTrim()):
+    // when (ms since 1970, 0: never since the start) and how many MB it gave back.
+    struct LastTrim {
+        qint64 atMs = 0;
+        qint64 megabytes = 0;
+    };
+    LastTrim lastTrim() const noexcept { return {m_lastTrimAtMs.load(), m_lastTrimMb.load()}; }
+    // An emptying done by someone else (the settings' button): remembered as the last.
+    void noteTrim(qint64 megabytes) noexcept;
+
 private:
     void check();
     bool inUse() const; // a window of Win顺's has the focus, or is up and in use (m_up)
@@ -69,6 +79,8 @@ private:
     QTimer m_timer;
     QElapsedTimer m_inactive; // since the last window lost the focus
     std::atomic<bool> m_trimmed {false};
+    std::atomic<qint64> m_lastTrimAtMs {0};
+    std::atomic<qint64> m_lastTrimMb {0};
     // "idle-trim" entries: the first few, then one every ten minutes; each
     // resume's hold (notable) up to 30 an hour.
     diagnostics::JournalBudget m_journal;

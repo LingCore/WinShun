@@ -689,6 +689,11 @@ void Host::setPluginSettings(const QString& id, const QJsonObject& settings)
         it->second->session->notify(u"settingsChanged"_s, {{u"settings"_s, pluginSettings(id)}});
 }
 
+QString Host::dataDir(const QString& id) const
+{
+    return QDir::toNativeSeparators(QDir(m_options.dataRoot).filePath(id + u".data"_s));
+}
+
 QString Host::dataDirFor(const Entry& e)
 {
     const QString dir = QDir::toNativeSeparators(QDir(m_options.dataRoot).filePath(e.id + u".data"_s));
@@ -1391,7 +1396,7 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
         return tool.name == u"register_hotkeys" && bool(tool.run);
     });
     const QJsonObject params {{u"protocolVersion"_s, QString::fromLatin1(kProtocolVersion)}, {u"winshun"_s, m_options.version},
-        {u"capabilities"_s, QJsonObject {{u"hostHotkeys"_s, hostHotkeys}}},
+        {u"capabilities"_s, QJsonObject {{u"hostHotkeys"_s, hostHotkeys}, {u"details"_s, true}}},
         {u"pluginDir"_s, e->dir}, {u"dataDir"_s, dataDirFor(*e)}, {u"locale"_s, m_options.locale}, {u"theme"_s, m_options.theme},
         {u"appearance"_s, m_options.appearance}, {u"settings"_s, pluginSettings(p.id)}};
     p.session->request(u"initialize"_s, params, [this, id, instance](const jsonrpc::Message& response) {

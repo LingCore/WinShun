@@ -2,6 +2,7 @@
 
 #include "DiagnosticLog.h"
 
+#include <QDateTime>
 #include <QDebug>
 #include <QGuiApplication>
 #include <QJsonObject>
@@ -27,8 +28,10 @@ constexpr int kAfterUseMs = 20'000;
 constexpr int kSettleMs = 5'000; // after busy work ended (poke)
 constexpr int kBusyRecheckMs = 15'000; // while the index loads, catches up or reads content
 // While unused: background work brings pages back. The content indexer's
-// passes (30 s after start, then every 15 minutes and after changes) go
-// through the whole file index, ~90 MB; copies, journal changes and saves.
+// passes (30 s after start, then every 15 minutes and after changes) look
+// only at the files that changed; just a full one (the first pass, other
+// options, lost track, every 24 hours) goes through the whole file index,
+// ~90 MB; copies, journal changes and saves.
 // A check reads one number; only a working set above kTrimAbove is emptied.
 constexpr int kRecheckMs = 30'000;
 constexpr SIZE_T kTrimAbove = 32 * 1024 * 1024; // private working set; ~5 MB is what idling itself touches
@@ -147,6 +150,13 @@ bool IdleTrim::takeSlept()
     return passed - awakeFor > kSleptMs;
 }
 
+void IdleTrim::noteTrim(qint64 megabytes) noexcept
+{
+    m_lastTrimMb = megabytes;
+    m_trimmed = true; // the next opening brings the pages a search reads back (App)
+    m_lastTrimAtMs = QDateTime::currentMSecsSinceEpoch();
+}
+
 void IdleTrim::check()
 {
     if (takeSlept())
@@ -180,8 +190,10 @@ void IdleTrim::check()
         // ~10 ms per 100 MB (wsbench --trim): not on the GUI thread, so a
         // hotkey pressed meanwhile is not held up.
         m_trimmed = true;
-        std::thread([] {
+        std::thread([this, bytes] {
             ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
+            const SIZE_T after = privateWorkingSet();
+            noteTrim(static_cast<qint64>((bytes > after ? bytes - after : 0) / (1024 * 1024)));
         }).detach();
     }
     m_timer.start(kRecheckMs);

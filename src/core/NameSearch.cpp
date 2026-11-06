@@ -541,6 +541,8 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
                     continue;
                 if (!filter.folders.empty() && !under(e))
                     continue;
+                if (filter.directIn != kNoEntry && e.parent != filter.directIn)
+                    continue;
                 int score = matcher.match(index, e, seen, id);
                 if (score < 0)
                     continue;

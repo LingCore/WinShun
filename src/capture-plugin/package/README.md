@@ -12,6 +12,10 @@ The recording controls switch between Area and Full screen. Full screen includes
 
 Presenter and whiteboard (1.1.0): Screenshot › Presenter / whiteboard in the tray menu or `cap whiteboard`; record a hotkey for it under Shortcuts in the capture settings (none by default). It draws on the live desktop; `X` is a laser pointer, `Esc` or a right click hands the mouse and keyboard back to the programs below, `W` is a whiteboard and `K` a blackboard.
 
+识别屏幕文字（#198）：在截图设置的“快捷键”里另录一个“识别屏幕文字”的快捷键（默认不设），或用托盘菜单“截图 › 识别屏幕文字”、`cap` 搜索。按下后直接拖选一块或单击窗口，松开鼠标就识别并复制，不显示截图工具条，不写入截图历史，也不贴图、保存；选区旁的小卡片显示“已复制”和前几行字，“编辑”打开识别文字窗口。`Esc` 或右键取消。
+
+Read text on screen (#198): record a separate “Read text on screen” shortcut under Shortcuts in the capture settings (none by default), or use Screenshot › Read text on screen in the tray menu or `cap`. Drag over an area or click a window; when you let go its text is read and copied, with no capture toolbar, nothing in the screenshot history, no pin and no save. A small card beside the area says Copied and shows the first lines; Edit opens the OCR window. `Esc` or a right click cancels.
+
 1.1.0 的其他变化：贴图、保存、贴图窗口的按键可以在截图设置的“按键”里改；`WASD` 挪指针；截图时左下角有快捷键提示；工具条分两行；设置页改成卡片；共用的 PaddleOCR 文字识别读取部分有改动。
 
 Other changes in 1.1.0: the keys for pin, save and the pin window can be changed under Keys in the capture settings; `WASD` moves the pointer; shortcut hints at the bottom left while capturing; a two-row toolbar; the settings as cards; the shared PaddleOCR text reader changed.

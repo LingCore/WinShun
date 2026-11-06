@@ -43,7 +43,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: root.pane.tab === 0 || root.pane.tab === 4 ? qsTr("本次内容搜索")
-                    : root.pane.path.length > 0 ? root.pane.path.split(/[\\/]/).pop() : qsTr("内容详情")
+                    : root.pane.title.length > 0 ? root.pane.title : qsTr("内容详情")
                 textFormat: Text.PlainText
                 elide: Text.ElideMiddle
                 color: Theme.text
@@ -55,7 +55,7 @@ Rectangle {
                 flat: true
                 text: qsTr("打开")
                 visible: root.pane.tab > 0 && root.pane.tab < 4
-                enabled: root.pane.path.length > 0 && !root.pane.busy
+                enabled: root.pane.title.length > 0 && !root.pane.busy
                 onClicked: root.pane.openCurrent()
                 Accessible.role: Accessible.Button
                 Accessible.name: qsTr("打开当前文件")

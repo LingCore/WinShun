@@ -2098,6 +2098,7 @@ void ContentIndex::markEmptyChanged()
 void ContentIndex::remap(const FileIndex::Renumber& renumber)
 {
     std::unique_lock lock(m_mutex);
+    ++m_epoch;
     for (DocId d = 0; d < m_docEntry.size(); ++d) {
         if (!isDead(m_docState[d])) {
             m_docEntry[d] = renumber(m_docEntry[d]);
@@ -2120,6 +2121,7 @@ void ContentIndex::remap(const FileIndex::Renumber& renumber)
 void ContentIndex::resetLocked()
 {
     ++m_generation; // a flush running now leaves its segment out
+    ++m_epoch;
     for (const auto& s : m_segments)
         m_obsolete.push_back(s->number());
     m_segments.clear();
@@ -2160,16 +2162,44 @@ void ContentIndex::setChangeListener(std::function<void()> listener)
     m_listener = std::move(listener);
 }
 
+namespace {
+ContentIndex::Need needOf(std::uint8_t state) noexcept
+{
+    using Need = ContentIndex::Need;
+    return (state & kDirty) ? Need::Read : (state & kUnsure) ? Need::Check : Need::None;
+}
+} // namespace
+
 std::vector<ContentIndex::DocInfo> ContentIndex::documents() const
 {
     std::shared_lock lock(m_mutex);
     std::vector<DocInfo> out;
     out.reserve(m_order.size() + m_orderTail.size());
-    forEachOrdered([&](DocId d) {
-        const std::uint8_t state = m_docState[d];
-        const Need need = (state & kDirty) ? Need::Read : (state & kUnsure) ? Need::Check : Need::None;
-        out.push_back({m_docEntry[d], need, m_docStamp[d]});
-    });
+    forEachOrdered([&](DocId d) { out.push_back({m_docEntry[d], needOf(m_docState[d]), m_docStamp[d]}); });
+    return out;
+}
+
+std::vector<ContentIndex::DocInfo> ContentIndex::documentsOf(std::span<const EntryId> entries) const
+{
+    std::shared_lock lock(m_mutex);
+    std::vector<DocInfo> out;
+    for (const EntryId e : entries) {
+        if (const DocId d = findDoc(e); d != kNoDoc)
+            out.push_back({e, needOf(m_docState[d]), m_docStamp[d]});
+    }
+    return out;
+}
+
+std::vector<EntryId> ContentIndex::dueEntries() const
+{
+    std::shared_lock lock(m_mutex);
+    std::vector<EntryId> out;
+    for (DocId d = 0; d < m_docState.size(); ++d) {
+        if (const std::uint8_t state = m_docState[d]; !isDead(state) && needOf(state) != Need::None)
+            out.push_back(m_docEntry[d]);
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
     return out;
 }
 

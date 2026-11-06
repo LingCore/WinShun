@@ -57,6 +57,7 @@ class ContentPane final : public QObject {
     Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged FINAL)
     Q_PROPERTY(bool busy READ busy NOTIFY changed FINAL)
     Q_PROPERTY(QString path READ path NOTIFY changed FINAL)
+    Q_PROPERTY(QString title READ title NOTIFY changed FINAL)
     Q_PROPERTY(QString message READ message NOTIFY changed FINAL)
     Q_PROPERTY(QString matchStatus READ matchStatus NOTIFY changed FINAL)
     Q_PROPERTY(QVariantList terms READ terms NOTIFY changed FINAL)
@@ -79,12 +80,25 @@ class ContentPane final : public QObject {
     Q_PROPERTY(bool wholeWord READ wholeWord NOTIFY changed FINAL)
     Q_PROPERTY(bool regex READ regex NOTIFY changed FINAL)
 public:
+    // What the details are of: a file's row, or a plugin's (GitHub #202).
+    struct Subject {
+        QString key; // the row: a file's path, a plugin row's (winshun-plugin:…); empty: none
+        QString file; // what is read: the file's path, the file a plugin's row opens or names
+        QString title; // the header; empty: the file's name
+        // A plugin's details as text, in place of a file; `cut`: only the
+        // start of what it gave (plugin::kMaxDetailsText).
+        std::shared_ptr<const QString> text;
+        bool cut = false;
+        QString message; // nothing to read, and why (still asked for: `waiting`)
+        bool waiting = false;
+        friend bool operator==(const Subject&, const Subject&) = default;
+    };
     explicit ContentPane(IndexService* index, QObject* parent = nullptr);
     ~ContentPane() override;
     void loadPreferences(const QString& file);
     void update(SearchEngine::Request request, const QString& words, const QString& key,
-        SearchResults files, SearchResults selected, const QString& current,
-        int scanned, int total, bool complete, bool searching, const ContentLeftOut& leftOut);
+        SearchResults files, SearchResults selected, const Subject& current,
+        int scanned, int total, bool complete, bool searching, const ContentLeftOut& leftOut, int pluginRows = 0);
     bool opened() const { return m_opened; }
     void setOpened(bool value);
     int preferredWidth() const { return m_width; }
@@ -95,6 +109,7 @@ public:
     void setActive(bool value);
     bool busy() const { return m_busy; }
     QString path() const { return m_path; }
+    QString title() const;
     QString message() const { return m_message; }
     QString matchStatus() const;
     QVariantList terms() const;
@@ -114,6 +129,8 @@ public:
     std::shared_ptr<const contentreport::Report> reportSnapshot() const { return m_report; }
     QVariantMap reportOptions() const;
     QString previewMessage() const { return m_previewMessage; }
+    // Shows a file's matches, text or preview now (a plugin's details are asked for then).
+    bool showsDetails() const { return m_active && m_opened && m_tab >= 1 && m_tab <= 3; }
     QColor highlightColor() const { return m_color; }
     QString filterText() const { return m_filter.text; }
     bool matchCase() const { return m_filter.matchCase; }
@@ -151,7 +168,8 @@ signals:
     void reportChanged();
     void previewChanged();
     void positionRequested(int hitRow, int textRow);
-    void openRequested(const QString& path, int line);
+    // `key`: the Subject's, whose row it is (a plugin's opens as its permissions allow).
+    void openRequested(const QString& key, const QString& path, int line);
 private:
     struct Worker;
     void schedule();
@@ -170,6 +188,7 @@ private:
     int m_context = 1;
     bool m_busy = false;
     QString m_path, m_message, m_key;
+    Subject m_subject; // m_path: its file
     QStringList m_terms;
     std::vector<bool> m_enabled;
     contentdetails::Filter m_filter;

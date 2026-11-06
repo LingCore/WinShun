@@ -73,7 +73,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool explorerTyping READ explorerTyping WRITE setExplorerTyping NOTIFY changed FINAL)
     Q_PROPERTY(bool opusTyping READ opusTyping WRITE setOpusTyping NOTIFY changed FINAL)
     Q_PROPERTY(QString opusTypingScope READ opusTypingScope WRITE setOpusTypingScope NOTIFY changed FINAL) // folder | all (GitHub #82)
-    Q_PROPERTY(QString folderTyping READ folderTyping WRITE setFolderTyping NOTIFY changed FINAL) // first | only (GitHub #110)
+    Q_PROPERTY(QString folderTyping READ folderTyping WRITE setFolderTyping NOTIFY changed FINAL) // first | only | level (GitHub #110, #182)
     // The folder menu on a double click (Settings::folderMenu: on unless "off").
     Q_PROPERTY(bool folderMenu READ folderMenu WRITE setFolderMenu NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuDouble READ folderMenuDouble WRITE setFolderMenuDouble NOTIFY changed FINAL)
@@ -85,6 +85,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool folderMenuWindows READ folderMenuWindows WRITE setFolderMenuWindows NOTIFY changed FINAL)
     // The actions under the lists (GitHub #200).
     Q_PROPERTY(bool folderMenuItemSearch READ folderMenuItemSearch WRITE setFolderMenuItemSearch NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuItemCopyPath READ folderMenuItemCopyPath WRITE setFolderMenuItemCopyPath NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuItemCmd READ folderMenuItemCmd WRITE setFolderMenuItemCmd NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuItemPowerShell READ folderMenuItemPowerShell WRITE setFolderMenuItemPowerShell NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuItemFavorite READ folderMenuItemFavorite WRITE setFolderMenuItemFavorite NOTIFY changed FINAL)
@@ -167,6 +168,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool contentInLowPriority READ contentInLowPriority WRITE setContentInLowPriority NOTIFY changed FINAL)
     Q_PROPERTY(bool contentDocuments READ contentDocuments WRITE setContentDocuments NOTIFY changed FINAL)
     Q_PROPERTY(QString contentIndexStatus READ contentIndexStatus NOTIFY contentIndexStatusChanged FINAL)
+    // The 运行状况 card: memory by part, what runs, the last give-back (App::refreshHealth).
+    Q_PROPERTY(QVariantMap health READ health NOTIFY healthChanged FINAL)
     // 结果列表
     Q_PROPERTY(bool foldersFirst READ foldersFirst WRITE setFoldersFirst NOTIFY changed FINAL)
     // 优先显示的文件类型 as shown and typed: "exe; bat; cmd"; written, read as
@@ -188,6 +191,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(int recentItems READ recentItems WRITE setRecentItems NOTIFY changed FINAL)
     Q_PROPERTY(bool favoritesOnStart READ favoritesOnStart WRITE setFavoritesOnStart NOTIFY changed FINAL)
     Q_PROPERTY(bool clearOnOpen READ clearOnOpen WRITE setClearOnOpen NOTIFY changed FINAL)
+    Q_PROPERTY(bool englishOnOpen READ englishOnOpen WRITE setEnglishOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(QString numberKeys READ numberKeys WRITE setNumberKeys NOTIFY changed FINAL) // ctrl | alt | off
     Q_PROPERTY(QString numberHints READ numberHints WRITE setNumberHints NOTIFY changed FINAL) // held | always | off
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp WRITE setShortcutHelp NOTIFY changed FINAL)
@@ -400,6 +404,8 @@ public:
     void setFolderMenuWindows(bool on);
     bool folderMenuItemSearch() const { return m_settings.folderMenuItemSearch; }
     void setFolderMenuItemSearch(bool on);
+    bool folderMenuItemCopyPath() const { return m_settings.folderMenuItemCopyPath; }
+    void setFolderMenuItemCopyPath(bool on);
     bool folderMenuItemCmd() const { return m_settings.folderMenuItemCmd; }
     void setFolderMenuItemCmd(bool on);
     bool folderMenuItemPowerShell() const { return m_settings.folderMenuItemPowerShell; }
@@ -535,6 +541,12 @@ public:
     void setContentInLowPriority(bool on);
     bool contentDocuments() const { return m_settings.contentDocuments; }
     void setContentDocuments(bool on);
+    QVariantMap health() const { return m_health; }
+    void setHealth(const QVariantMap& health);
+    // The card is on screen: asked every two seconds by its timer, and once at
+    // its first showing. Nothing runs while it is not.
+    Q_INVOKABLE void refreshHealth() { emit healthRequested(); }
+    Q_INVOKABLE void giveMemoryBack() { emit giveBackMemoryRequested(); }
     QString contentIndexStatus() const { return m_contentIndexStatus; }
     void setContentIndexStatus(const QString& status); // "已收录 … 个文件"; set by the app
     QString renderer() const { return m_settings.renderer; }
@@ -669,6 +681,8 @@ public:
     void setFavoritesOnStart(bool on);
     bool clearOnOpen() const { return m_settings.clearOnOpen; }
     void setClearOnOpen(bool on);
+    bool englishOnOpen() const { return m_settings.englishOnOpen; }
+    void setEnglishOnOpen(bool on);
     QString numberKeys() const { return m_settings.numberKeys; }
     void setNumberKeys(const QString& keys);
     QString numberHints() const { return m_settings.numberHints; }
@@ -920,6 +934,9 @@ signals:
     void changed();
     void hotkeyErrorChanged();
     void contentIndexStatusChanged();
+    void healthChanged();
+    void healthRequested();
+    void giveBackMemoryRequested();
     void indexFolderChanged();
     void recordingHotkeyChanged(); // the app suspends its hotkeys meanwhile
     void autostartChanged();
@@ -995,6 +1012,7 @@ private:
     bool m_launcherWidthSet = false;
     int m_siteIconsArrived = 0;
     QString m_contentIndexStatus;
+    QVariantMap m_health;
     IndexFolderState m_indexFolderState;
     IndexAccessState m_indexAccessState;
     QStringList m_fileManagers {QStringLiteral("explorer")};

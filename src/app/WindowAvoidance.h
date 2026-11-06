@@ -38,16 +38,47 @@ inline QPoint place(const QRect& area, const QRect& obstacle, QSize size, QPoint
     return chosen;
 }
 
-// The bottom right corner of `target`, `gap` in from its edges, as Listary
-// opens its box over a file list; kept inside the work area, and where the
-// window is larger than the target, still from its top left.
-inline QPoint corner(const QRect& area, const QRect& target, QSize size, int gap = 12)
+// Whether `place` finds the window a spot clear of `obstacle`, not over any
+// of it. Typed in File Explorer, the box goes there only then (GitHub #141);
+// else into its file list (inList). Least overlap alone took a window too
+// large to keep clear of, centred, to a corner of the work area: the first
+// of four alike, its top left (GitHub #203, "at the top left of the screen").
+inline bool clearOf(const QRect& area, const QRect& obstacle, QSize size, QPoint preferred, int gap = 12)
 {
     size = size.boundedTo(area.size());
-    const int x = std::max(target.x(), target.x() + target.width() - size.width() - gap);
-    const int y = std::max(target.y(), target.y() + target.height() - size.height() - gap);
-    return {std::clamp(x, area.x(), area.x() + area.width() - size.width()),
-        std::clamp(y, area.y(), area.y() + area.height() - size.height())};
+    return !QRect(place(area, obstacle, size, preferred, gap), size).intersects(obstacle);
+}
+
+// Over the file list typed in (Directory Opus, GitHub #82), as Listary opens
+// its box: in the list's bottom right corner, `gap` in from its edges; as wide
+// and as tall (the room for rows) as the list leaves, between `least` and
+// `wanted`. The rectangle's size is the window's width and that room. Larger
+// than the list still, it reaches over the lister's other file lists (`lists`,
+// all of them together) before the rest of the lister (`frame`: its folder
+// tree, viewer, toolbars), from the same corner, and stays on the work area.
+// Empty `lists` or `frame`: not known.
+inline QRect inList(const QRect& area, const QRect& list, const QRect& lists, const QRect& frame, QSize wanted, QSize least,
+    int gap = 12)
+{
+    const auto span = [&](int want, int fewest, int room, int most) {
+        return std::min(most, std::max(fewest, std::min(want, room - 2 * gap)));
+    };
+    const int width = span(wanted.width(), least.width(), list.width(), area.width());
+    const int height = span(wanted.height(), least.height(), list.height(), area.height());
+    int x = list.x() + list.width() - gap - width;
+    int y = list.y() + list.height() - gap - height;
+    // Into each of these it fits in, the list first; where it does not, it
+    // stays at that corner.
+    const auto into = [](int pos, int size, int from, int extent) {
+        return size <= extent ? std::clamp(pos, from, from + extent - size) : pos;
+    };
+    for (const QRect& within : {list, lists.isEmpty() ? list : lists.united(list), frame, area}) {
+        if (within.isEmpty())
+            continue;
+        x = into(x, width, within.x(), within.width());
+        y = into(y, height, within.y(), within.height());
+    }
+    return {x, y, width, height};
 }
 
 } // namespace ws::windowavoidance

@@ -169,6 +169,7 @@ Item parseItem(const QJsonObject& o)
         item.previewText = preview.toString();
     item.actions = parseActions(o.value(u"actions"_s));
     item.valid = o.value(u"valid"_s).toBool(true);
+    item.details = o.value(u"details"_s).toBool();
     item.data = o.value(u"data"_s);
     const QJsonValue search = o.value(u"search"_s);
     if (search.isString())
@@ -316,6 +317,8 @@ QJsonObject itemToJson(const Item& item)
         o.insert(u"copy"_s, item.copy);
     if (!item.valid)
         o.insert(u"valid"_s, false);
+    if (item.details)
+        o.insert(u"details"_s, true);
     if (!item.data.isUndefined() && !item.data.isNull())
         o.insert(u"data"_s, item.data);
     return o;

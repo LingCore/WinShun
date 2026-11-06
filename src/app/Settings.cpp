@@ -843,7 +843,7 @@ void Settings::load()
     if (opusTypingScope != u"all")
         opusTypingScope = d.opusTypingScope;
     folderTyping = readOrDefault(s, u"Launcher/FolderTyping"_s, d.folderTyping).trimmed().toLower();
-    if (folderTyping != u"only")
+    if (folderTyping != u"only" && folderTyping != u"level")
         folderTyping = d.folderTyping; // the folder first (GitHub #110), for those who had nothing to set before too
     // Off for new installs, auto before (as dialogBar).
     const QString folderMenuBefore = firstRun ? d.folderMenu : u"auto"_s;
@@ -864,6 +864,7 @@ void Settings::load()
     if (!folderMenuFavorites && !folderMenuRecent && !folderMenuWindows) // a menu of nothing: back to all (#51)
         folderMenuFavorites = folderMenuRecent = folderMenuWindows = true;
     folderMenuItemSearch = readOrDefault(s, u"Launcher/FolderMenuItemSearch"_s, d.folderMenuItemSearch);
+    folderMenuItemCopyPath = readOrDefault(s, u"Launcher/FolderMenuItemCopyPath"_s, d.folderMenuItemCopyPath);
     folderMenuItemCmd = readOrDefault(s, u"Launcher/FolderMenuItemCmd"_s, d.folderMenuItemCmd);
     folderMenuItemPowerShell = readOrDefault(s, u"Launcher/FolderMenuItemPowerShell"_s, d.folderMenuItemPowerShell);
     folderMenuItemFavorite = readOrDefault(s, u"Launcher/FolderMenuItemFavorite"_s, d.folderMenuItemFavorite);
@@ -903,6 +904,7 @@ void Settings::load()
     if (startList != u"modified" && startList != u"none")
         startList = d.startList;
     clearOnOpen = readOrDefault(s, u"Launcher/ClearOnOpen"_s, d.clearOnOpen);
+    englishOnOpen = readOrDefault(s, u"Launcher/EnglishOnOpen"_s, d.englishOnOpen);
     numberKeys = readOrDefault(s, u"Results/NumberKeys"_s, d.numberKeys).trimmed().toLower();
     if (numberKeys != u"alt" && numberKeys != u"off")
         numberKeys = d.numberKeys;
@@ -1219,6 +1221,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FolderMenuRecent"_s, folderMenuRecent);
     s.setValue(u"Launcher/FolderMenuWindows"_s, folderMenuWindows);
     s.setValue(u"Launcher/FolderMenuItemSearch"_s, folderMenuItemSearch);
+    s.setValue(u"Launcher/FolderMenuItemCopyPath"_s, folderMenuItemCopyPath);
     s.setValue(u"Launcher/FolderMenuItemCmd"_s, folderMenuItemCmd);
     s.setValue(u"Launcher/FolderMenuItemPowerShell"_s, folderMenuItemPowerShell);
     s.setValue(u"Launcher/FolderMenuItemFavorite"_s, folderMenuItemFavorite);
@@ -1246,6 +1249,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/RecentItems"_s, recentItems);
     s.setValue(u"Results/FavoritesOnStart"_s, favoritesOnStart);
     s.setValue(u"Launcher/ClearOnOpen"_s, clearOnOpen);
+    s.setValue(u"Launcher/EnglishOnOpen"_s, englishOnOpen);
     s.setValue(u"Results/NumberKeys"_s, numberKeys);
     s.setValue(u"Results/NumberHints"_s, numberHints);
     s.setValue(u"Results/ShortcutHelp"_s, shortcutHelp);

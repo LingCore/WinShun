@@ -7,6 +7,7 @@
 #include "Win32Util.h"
 #include "platform/ClipboardWatcher.h"
 #include "platform/HoldWatch.h"
+#include "platform/InputMode.h"
 #include "platform/KeyListener.h"
 #include "platform/KeyRouter.h"
 #include "platform/NumberKeys.h"
@@ -92,6 +93,7 @@ class SwitchPlugin;
 class TypeToSearch;
 class LauncherKeysWatch;
 class Updater;
+class BackgroundStatus;
 class PluginUpdates;
 class Backup;
 class VolumeNotifier;
@@ -167,8 +169,11 @@ public:
     // `on`: the screen to open on (typed in an Explorer window there), else
     // the one under the mouse. `avoid`: the window typed in, which it opens
     // beside; `inside`: in its bottom right corner instead (Placement::avoidNative).
+    // `orInto` (screen pixels): where it goes instead when it cannot keep
+    // clear of `avoid`, in that corner within `avoid`'s client area: File
+    // Explorer's file list (folderview::explorerFileList, GitHub #203).
     void showLauncher(const QString& query = {}, const std::optional<taskbar::Spot>& spot = {}, bool inBox = false,
-        QScreen* on = nullptr, HWND avoid = nullptr, bool inside = false);
+        QScreen* on = nullptr, HWND avoid = nullptr, bool inside = false, const RECT& orInto = {});
     void showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder);
     void hideLauncher();
     // The launcher as the search panel (Launcher::panel): the window sized
@@ -261,6 +266,11 @@ private:
     void journalTapNote(const KeyListener::Note& note);
     // win::bringToFront for a window a press asked for: how, and how long, to the journal.
     win::Front toFront(QWindow* window);
+    // Refused: what Windows weighed, as the journal's "front-refused"
+    // (GitHub #203). Its own empty input, sent once more, says whether
+    // SendInput is what fails.
+    void recordFrontRefused(QWindow* window);
+    diagnostics::JournalBudget m_frontRefusals;
     const char* rawInputState() const; // the keyboard's Raw Input registration, for the journal
     // `launcherToo`: and the launcher, when the clipboard was under its
     // search box and the keyboard went elsewhere.
@@ -275,6 +285,28 @@ private:
     void stopKeyRouting();
     void routedKey(const KeyRouter::Key& key);
     void routedForeground(HWND window);
+    // Windows refused the launcher the front over another program's window
+    // (GitHub #203: every time over Explorer, on one Windows 10), and the
+    // keys typed again too: that window keeps the focus, the launcher takes
+    // its keys through a KeyRouter of its own, as the clipboard does, from
+    // the refusal until it goes, comes to the front after all (a click on
+    // it) or another window does; a press elsewhere is as when it loses the
+    // focus. The keys TypeToSearch held for it are handed over to it
+    // (deliverTyping). Not over the taskbar, the Start menu or another
+    // flyout of the shell (they keep their own ways), nor over a program of
+    // higher rights (its keys never reach the hook).
+    bool startLauncherRouting();
+    void stopLauncherRouting();
+    bool launcherRouted() const noexcept { return m_launcherRouting.router != nullptr; }
+    void launcherRoutedKey(const KeyRouter::Key& key);
+    void launcherRoutedForeground();
+    void launcherClickedAway();
+    // A developer's switch (WINSHUN_TEST_REFUSE_FRONT): the launcher refused
+    // the front as on that Windows 10, to try the above where Windows lets
+    // it there. "1": never active; "active": the active window of its thread
+    // in the background, as a refused SetForegroundWindow leaves it.
+    enum class RefuseFront { No, Never, ActiveHere };
+    static RefuseFront refuseFrontForTest();
     // The clipboard's hotkey held after it opened the window (GitHub #107,
     // Settings::clipboardHoldToStep, hotkeysteps): its key again moves to an
     // older row, letting go pastes it. Watched (HoldWatch) from the opening
@@ -376,6 +408,11 @@ private:
     // GitHub #103). Looked at again as each part of that comes (activeChanged,
     // the focus object, revealLauncher) and at the cap.
     void deliverTyping();
+    // The launcher just opened, its field focused: the input method into its
+    // English mode (Settings::englishOnOpen), once an opening; put back as it
+    // was on hiding unless the user changed it meanwhile (GitHub #201).
+    void lettersOnOpen();
+    void restoreLauncherInputMode();
     void beginHandoff(const QString& surface); // typed in "start", "explorer" or "opus": the launcher comes for the keys
     void endHandoff(); // its diagnostics recorded (one entry each, times alone), its watch over
     void explorerRestarted(bool back); // `back`: the taskbar is
@@ -453,6 +490,8 @@ private:
     void prewarmLauncher();
     void finishPrewarm();
     void refreshContentIndexStatus(); // shown in the settings window
+    void refreshHealth(); // the 运行状况 card: memory by part, what runs, the last give-back
+    void giveMemoryBack(); // its button
     void refreshShareStatuses(); // network shares: in the settings window, and told once read
     void signInToServer(const QString& path, unsigned long error = 0, const QString& user = {});
     // 索引位置: the index files go where [Index] Folder says, moved in the
@@ -668,6 +707,8 @@ private:
     std::unique_ptr<PointerWatch> m_pointerWatch;
     bool m_launcherClosing = false; // sliding out (hideLauncher)
     bool m_launcherOpening = false; // query/focus/caret still being prepared; no typing replay yet (#140)
+    bool m_lettersPending = false; // opened with englishOnOpen, its field not yet switched (lettersOnOpen)
+    win::LettersSwitch m_lettersSwitch; // what that did, to put back on hiding
     std::unique_ptr<ComWorker> m_typingWorker; // queries a file display's folder (folderTyped); before m_typing
     std::unique_ptr<TypeToSearch> m_typing; // while StartMenuTyping, ExplorerTyping, OpusTyping or PasteFile is on
     // The launcher is up from typing in this Explorer or Opus window and tab:
@@ -705,11 +746,15 @@ private:
     // part came, from App's side; the hook's and the window's are added then.
     struct TypingHandoff {
         QString surface; // "start", "explorer", "opus"; empty: none
-        std::chrono::steady_clock::time_point asked, active, focused, revealed, delivered;
-        QString outcome; // ready, cap, hidden, hidden-before-active, never-active, replaced
+        // routed: its keys routed to it, refused the front (GitHub #203)
+        std::chrono::steady_clock::time_point asked, active, focused, revealed, delivered, routed;
+        QString outcome; // ready, cap, routed, hidden, hidden-before-active, never-active, replaced
         QString missing; // what was not ready when they went (cap)
         bool inFront = false; // the launcher was the window in front when they went
         quint32 layout = 0; // the keyboard layout (HKL) then
+        // Typed in a folder: where the box went by that window (GitHub #203:
+        // "at the top left of the screen"). Rectangles only.
+        QJsonObject placed;
     };
     TypingHandoff m_handoff;
     std::unique_ptr<LauncherKeysWatch> m_keysWatch; // the launcher's window, a moment after the keys went
@@ -722,6 +767,7 @@ private:
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<NetworkNotifier> m_network; // after m_index, whose shares it tells
     std::unique_ptr<IdleTrim> m_idleTrim; // gives the memory back while nothing is in use
+    std::unique_ptr<BackgroundStatus> m_background; // what runs in the background, in words (after m_index, m_updater)
     std::vector<std::wstring> m_sharesBuilding; // being read for the first time: told when done
     std::unique_ptr<KeyListener> m_keyListener; // double Ctrl, double clicks for the folder menu
     std::unique_ptr<ServiceKeyListener> m_serviceKeyListener; // destroyed before its target KeyListener
@@ -753,6 +799,17 @@ private:
     std::uint64_t m_keyRouterRun = 0; // which routing its posted keys belong to
     std::unique_ptr<KeyRouter> m_drainingRouter; // done, until the keys it took are let go (KeyRouter::drain)
     std::uint64_t m_drainingRun = 0;
+    // The launcher's (startLauncherRouting): its router, the window that
+    // keeps the focus, which routing posted keys belong to; one done, until
+    // the keys it took are let go.
+    struct LauncherRouting {
+        std::unique_ptr<KeyRouter> router;
+        HWND target = nullptr;
+        std::uint64_t run = 0;
+        std::unique_ptr<KeyRouter> draining;
+        std::uint64_t drainingRun = 0;
+    };
+    LauncherRouting m_launcherRouting;
     // The clipboard's hotkey held (armClipboardHold): the watch, what its
     // notes came to, which hotkey (its id) and keys.
     std::unique_ptr<HoldWatch> m_holdWatch;

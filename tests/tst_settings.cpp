@@ -5,6 +5,7 @@
 #include "SettingsCommand.h"
 
 #include "ServiceVolumeAccess.h"
+#include "platform/InputMode.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -290,6 +291,57 @@ private slots:
         }
     }
 
+    void englishOnOpen()
+    {
+        // Off unless set: the input method as the user left it (GitHub #201).
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(!settings.englishOnOpen);
+        settings.englishOnOpen = true;
+        settings.save();
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        QCOMPARE(ini.value(u"Launcher/EnglishOnOpen"_s).toBool(), true);
+        ws::Settings restored;
+        restored.load();
+        QVERIFY(restored.englishOnOpen);
+        ini.setValue(u"Launcher/EnglishOnOpen"_s, false);
+        ini.sync();
+        restored.load();
+        QVERIFY(!restored.englishOnOpen);
+
+        // What it sets, and when it is still the user's untouched state.
+        using ws::win::InputMode;
+        const InputMode chinese {.open = true, .conversion = IME_CMODE_NATIVE | IME_CMODE_SYMBOL, .sentence = 8};
+        const InputMode letters = ws::win::lettersMode(chinese);
+        QVERIFY(!letters.open);
+        QCOMPARE(letters.conversion, DWORD {IME_CMODE_SYMBOL});
+        QCOMPARE(letters.sentence, DWORD {8});
+        QVERIFY(ws::win::sameLetters(letters, {.open = false, .conversion = IME_CMODE_ROMAN, .sentence = 0}));
+        QVERIFY(!ws::win::sameLetters(letters, {.open = true, .conversion = IME_CMODE_SYMBOL, .sentence = 8}));
+        QVERIFY(!ws::win::sameLetters(letters, {.open = false, .conversion = IME_CMODE_NATIVE, .sentence = 8}));
+        QVERIFY(!ws::win::lettersMode({.open = true, .conversion = IME_CMODE_FULLSHAPE}).open);
+        QCOMPARE(ws::win::lettersMode({.open = true, .conversion = IME_CMODE_FULLSHAPE}).conversion, DWORD {0});
+
+        // WeChat's input method, as read in the box (the native bit does not
+        // follow Shift): every opening switches, whatever it reads.
+        const auto opening = [](const InputMode& before) {
+            const InputMode after = ws::win::lettersMode(before); // what switchToLetters sets
+            return std::pair {after, !ws::win::sameLetters(after, before)};
+        };
+        const auto [first, firstChanged] = opening({.open = true, .conversion = IME_CMODE_NATIVE});
+        QVERIFY(firstChanged);
+        QCOMPARE(first, (InputMode {.open = false, .conversion = 0}));
+        const InputMode shifted {.open = true, .conversion = 0}; // Chinese again by Shift in the box
+        QVERIFY(!ws::win::sameLetters(shifted, first)); // the user's: not put back on closing
+        const auto [second, secondChanged] = opening(shifted); // the next opening
+        QVERIFY(secondChanged);
+        QCOMPARE(second, (InputMode {.open = false, .conversion = 0}));
+        QVERIFY(!opening({.open = false, .conversion = 0}).second); // English already: nothing to put back
+    }
+
     void startListOptions()
     {
         QTemporaryDir profile;
@@ -504,6 +556,14 @@ private slots:
         ini.sync();
         read.load();
         QCOMPARE(read.folderTyping, u"only"_s);
+        settings.folderTyping = u"level"_s; // this level only (GitHub #182)
+        settings.save();
+        read.load();
+        QCOMPARE(read.folderTyping, u"level"_s);
+        ini.setValue(u"Launcher/FolderTyping"_s, u" LEVEL "_s);
+        ini.sync();
+        read.load();
+        QCOMPARE(read.folderTyping, u"level"_s);
         for (const QString& value : {u"everywhere"_s, QString()}) {
             ini.setValue(u"Launcher/FolderTyping"_s, value);
             ini.sync();
@@ -814,15 +874,16 @@ private slots:
         ws::Settings::useProfile(profile.path());
         ws::Settings fresh;
         fresh.load();
-        QVERIFY(fresh.folderMenuItemSearch && fresh.folderMenuItemCmd && fresh.folderMenuItemPowerShell
+        QVERIFY(fresh.folderMenuItemSearch && fresh.folderMenuItemCopyPath && fresh.folderMenuItemCmd && fresh.folderMenuItemPowerShell
             && fresh.folderMenuItemFavorite && fresh.folderMenuItemSettings);
 
+        fresh.folderMenuItemCopyPath = false;
         fresh.folderMenuItemCmd = false;
         fresh.folderMenuItemSettings = false;
         fresh.save();
         ws::Settings again;
         again.load();
-        QVERIFY(again.folderMenuItemSearch && !again.folderMenuItemCmd && again.folderMenuItemPowerShell
+        QVERIFY(again.folderMenuItemSearch && !again.folderMenuItemCopyPath && !again.folderMenuItemCmd && again.folderMenuItemPowerShell
             && again.folderMenuItemFavorite && !again.folderMenuItemSettings);
     }
 

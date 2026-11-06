@@ -7,12 +7,15 @@
 #include "ResultModel.h"
 #include "PanelColumns.h"
 #include "ContentPane.h"
+#include "FilePreview.h"
 #include "SearchEngine.h"
 #include "SearchTypes.h"
 #include "WebShortcut.h"
 #include "WebSuggester.h"
 
+#include <QCache>
 #include <QElapsedTimer>
+#include <QJsonObject>
 #include <QObject>
 #include <QKeySequence>
 #include <QPointer>
@@ -40,6 +43,7 @@ class SystemCatalog;
 namespace plugin {
 class Host;
 class Merge;
+struct DetailsAnswer;
 struct Effect;
 struct Item;
 struct Open;
@@ -124,6 +128,10 @@ class Launcher : public QObject {
     // what is typed shows there, its own field is out of sight (SearchBar.qml
     // reports the field, the app draws it in the box).
     Q_PROPERTY(bool inTaskbarBox READ inTaskbarBox NOTIFY inTaskbarBoxChanged FINAL)
+    // Windows refused it the front, its keys come through a hook while the
+    // window in front keeps the focus (App's launcher routing, GitHub #203):
+    // typed into without the focus, its field shows the caret all the same.
+    Q_PROPERTY(bool keysRouted READ keysRouted NOTIFY keysRoutedChanged FINAL)
     // The row the keyboard is on (Main.qml's), -1 for none: content matches
     // coming in are placed by how well they match, but only below it.
     Q_PROPERTY(int currentRow READ currentRow WRITE setCurrentRow NOTIFY currentRowChanged FINAL)
@@ -225,6 +233,8 @@ class Launcher : public QObject {
     // then the rest, under a caption (ResultModel::elsewhereRow).
     Q_PROPERTY(QString typingFolder READ typingFolder NOTIFY typingFolderChanged FINAL)
     Q_PROPERTY(bool typingFolderOnly READ typingFolderOnly NOTIFY typingFolderChanged FINAL)
+    // With typingFolderOnly: not its subfolders either (GitHub #182).
+    Q_PROPERTY(bool typingFolderLevel READ typingFolderLevel NOTIFY typingFolderChanged FINAL)
 
 public:
     // As ws::Scope. 文件夹 is shown within 文件, as a chip of its strip
@@ -369,14 +379,20 @@ public:
     // Edited, it is a path typed: only that folder, as ever. Empty: none
     // (the window opened for anything else).
     void setTypingFolder(const QString& prefix);
-    // FolderTyping: "only" set (only the folder), else its rows first.
-    void setFolderTypingOnly(bool only);
+    // FolderTyping: "only" (only the folder and below), "level" (only what
+    // lies directly in it), else its rows first and then the rest.
+    void setFolderTyping(const QString& how);
     QString typingFolder() const;
     bool typingFolderOnly() const { return !m_typingPrefix.isEmpty() && m_typingOnly; }
-    // Ctrl+Shift+D, or the caption's or hint's link: this time only the folder
-    // typed in, or its rows first and then the rest (not the setting).
-    // False when the box is not for a folder typed in (nothing to switch).
+    bool typingFolderLevel() const { return typingFolderOnly() && m_typingLevel; }
+    // Ctrl+Shift+D: this time the next of: its rows first and then the rest,
+    // only the folder typed in (and below), only its own level (not the
+    // setting). False when the box is not for a folder typed in (nothing to
+    // switch).
     Q_INVOKABLE bool switchTypingFolder();
+    // The caption's and the hints' links: straight to one of them.
+    enum class TypingScope : std::uint8_t { Everywhere, Folder, Level };
+    bool setTypingScope(TypingScope scope);
     // How long the name search behind the rows shown took (--dump, for tests).
     qint64 elapsedUs() const noexcept { return m_elapsedUs; }
     // More results for the query are on the way. Not while quietly
@@ -455,6 +471,8 @@ public:
     void setNumberKeysLeft(unsigned digits);
     bool inTaskbarBox() const { return m_inTaskbarBox; }
     void setInTaskbarBox(bool on);
+    bool keysRouted() const { return m_keysRouted; }
+    void setKeysRouted(bool routed);
     // The search field changed (text, caret, selection, composition): fieldReported.
     Q_INVOKABLE void reportField(
         const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition);
@@ -708,6 +726,7 @@ signals:
     void regexModeChanged();
     void resultOptionsChanged();
     void inTaskbarBoxChanged();
+    void keysRoutedChanged();
     void fieldReported(const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition);
     // Pressed in the box on the taskbar: the field's caret goes there, or
     // its word is selected; dragged there, the text from `anchor` is selected.
@@ -910,6 +929,37 @@ private:
     void refreshStatus();
     void refreshFrequentApps();
     void followPreview(); // the current row's file into the open preview
+    // What a row shows in the preview (none: nothing to); `ask`: a plugin's
+    // details are asked for if not known (GitHub #202).
+    std::optional<FilePreview::Item> previewItem(const SearchResult* r, bool ask = true);
+
+    // GitHub #202: a plugin's details of a row of its that is no file
+    // ("details": true): asked as the content pane or the preview shows the
+    // row, one request at a time (the newest row wanted goes next), answers
+    // kept by plugin, item and words; one that failed is not asked again
+    // until another row is, or new rows come.
+    struct RowDetails {
+        QString file; // a file of the plugin's data folder (plugin::fileInFolder)
+        std::shared_ptr<const QString> text;
+        bool cut = false;
+        QString message; // none to show: why (still asked for: `waiting`)
+        bool waiting = false;
+    };
+    std::optional<RowDetails> pluginDetails(const SearchResult& row, bool ask); // none: not such a row
+    QString detailsKey(const SearchResult& row) const;
+    void askDetails();
+    void detailsAnswered(const QString& key, bool ok, const plugin::DetailsAnswer& answer);
+    struct DetailsWant {
+        QString key;
+        QString pluginId;
+        QJsonObject item;
+        QString text;
+    };
+    QCache<QString, RowDetails> m_details {16384}; // KiB of answers
+    DetailsWant m_detailsWant; // the newest row to ask about
+    QString m_detailsAsking; // the key of the request on its way
+    QString m_detailsFailed, m_detailsFailedWhy;
+    QTimer m_detailsTimer; // a pause in the keys before asking
 
     struct FrequentApp {
         QString name;
@@ -1011,7 +1061,9 @@ private:
     QString m_typingPrefix;
     QString m_typingFolder;
     bool m_typingOnly = false;
+    bool m_typingLevel = false; // with m_typingOnly: not the subfolders either
     bool m_typingOnlyDefault = false;
+    bool m_typingLevelDefault = false;
     QString m_shownTyping; // typingKey() of the rows on screen, as m_shownText
     // The box is for the folder typed in: it still starts with it, and the
     // list is the names' (not 内容, which takes the folder as a path typed;
@@ -1103,6 +1155,7 @@ private:
     QKeySequence m_previewSequence {QStringLiteral("Alt+P")};
     unsigned m_numberKeysLeft = 0;
     bool m_inTaskbarBox = false;
+    bool m_keysRouted = false;
     bool m_systemMenuOpen = false; // the shell's menu is up (its loop runs inside runSystemMenu)
     bool m_systemCommand = false; // see systemCommandRunning
     QElapsedTimer m_systemMenuAsked; // since showSystemMenu was last called

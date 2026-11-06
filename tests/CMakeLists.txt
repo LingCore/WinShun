@@ -129,6 +129,14 @@ add_test(NAME tst_opusfocus COMMAND tst_opusfocus)
 set_tests_properties(tst_opusfocus PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+qt_add_executable(tst_explorerview tst_explorerview.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/FolderViewHit.cpp)
+target_include_directories(tst_explorerview PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_explorerview PRIVATE winshun_options Qt6::Test oleacc oleaut32 ole32 user32)
+set_target_properties(tst_explorerview PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_explorerview COMMAND tst_explorerview)
+set_tests_properties(tst_explorerview PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_previewplacement tst_previewplacement.cpp)
 target_include_directories(tst_previewplacement PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_previewplacement PRIVATE Qt6::Core Qt6::Test)
@@ -645,6 +653,14 @@ endforeach()
 
 qt_add_executable(tst_core tst_core.cpp)
 target_link_libraries(tst_core PRIVATE wscore wsextract miniz Qt6::Test)
+
+qt_add_executable(tst_activity tst_activity.cpp ${PROJECT_SOURCE_DIR}/src/app/ActivityText.cpp)
+target_include_directories(tst_activity PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_activity PRIVATE winshun_options Qt6::Test)
+set_target_properties(tst_activity PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_activity COMMAND tst_activity -o -,txt)
+set_tests_properties(tst_activity PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 qt_add_executable(tst_diagnostics tst_diagnostics.cpp ${PROJECT_SOURCE_DIR}/src/app/Diagnostics.cpp
     ${PROJECT_SOURCE_DIR}/src/service/Log.cpp)

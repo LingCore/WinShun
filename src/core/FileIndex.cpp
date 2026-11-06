@@ -137,6 +137,21 @@ FileIndex::MemoryUse FileIndex::memoryUse() const noexcept
     return use;
 }
 
+std::vector<std::pair<const void*, std::size_t>> FileIndex::memoryBlocks() const
+{
+    std::vector<std::pair<const void*, std::size_t>> blocks;
+    blocks.reserve(m_chunks.size() * 3 + m_names.size());
+    for (const auto& c : m_chunks)
+        blocks.emplace_back(c.get(), kChunkSize * sizeof(Entry));
+    for (const auto& t : m_times)
+        blocks.emplace_back(t.get(), kChunkSize * sizeof(FileTime));
+    for (const auto& t : m_created)
+        blocks.emplace_back(t.get(), kChunkSize * sizeof(FileTime));
+    for (const auto& n : m_names)
+        blocks.emplace_back(n.get(), kNameChunkSize + text::kReadPastEnd);
+    return blocks;
+}
+
 void FileIndex::warm() const noexcept
 {
     std::vector<WIN32_MEMORY_RANGE_ENTRY> ranges;
@@ -337,6 +352,8 @@ std::size_t FileIndex::compact(bool always, const std::function<void(const Renum
     m_created.resize(m_chunks.size());
     m_created.shrink_to_fit();
     m_childTables = decltype(m_childTables)(); // by old ids; rebuilt on demand
+    if (m_tracking)
+        loseChanges(); // by old ids too
     m_generation.fetch_add(1, std::memory_order_release);
     if (renumbered)
         renumbered([&](EntryId id) { return id < oldCount ? renumber(id) : kNoEntry; });
@@ -499,6 +516,8 @@ EntryId FileIndex::addStored(EntryId parent, std::uint32_t nameOffset, std::uint
     } else {
         e.flags = static_cast<std::uint8_t>((flags & ~(EntryFlag::Deleted | EntryFlag::Root | EntryFlag::Han)) | hanFlag(*this, nameOffset));
         link(parent, id);
+        if (!e.isDir())
+            noteChanged(id);
     }
     m_live.fetch_add(1, std::memory_order_relaxed);
     return id;
@@ -524,7 +543,9 @@ std::size_t FileIndex::remove(EntryId id)
             continue;
         e.flags |= EntryFlag::Deleted;
         ++removed;
-        if (e.isDir() && !m_childTables.empty())
+        if (!e.isDir())
+            noteChanged(cur);
+        else if (!m_childTables.empty())
             m_childTables.erase(cur);
         for (EntryId c = e.firstChild(); c != kNoEntry; c = entry(c).nextSibling)
             stack.push_back(c);
@@ -543,6 +564,10 @@ bool FileIndex::move(EntryId id, EntryId newParent, std::string_view newName)
         if (p == id)
             return false; // would move a folder into itself
     }
+    if (!entry(id).isDir())
+        noteChanged(id);
+    else if (m_tracking && !m_changesLost && rootOf(id) != rootOf(newParent))
+        loseChanges(); // the files in it are on another volume now
     unlink(id); // under the old name
     if (name(id) != newName) {
         const std::uint32_t offset = storeName(newName);
@@ -559,7 +584,34 @@ void FileIndex::setFlags(EntryId id, std::uint8_t flags)
     Entry& e = mut(id);
     // What the index itself tracks stays; the rest comes from the caller.
     constexpr std::uint8_t kOwn = EntryFlag::Deleted | EntryFlag::Root | EntryFlag::Directory | EntryFlag::Han;
+    const std::uint8_t before = e.flags;
     e.flags = static_cast<std::uint8_t>((e.flags & kOwn) | (flags & ~kOwn));
+    if (e.flags != before && !e.isDir())
+        noteChanged(id);
+}
+
+EntryId FileIndex::rootOf(EntryId id) const noexcept
+{
+    while (entry(id).parent != kNoEntry)
+        id = entry(id).parent;
+    return id;
+}
+
+FileIndex::Changes FileIndex::takeChanges()
+{
+    const std::lock_guard taking(m_changesTaking);
+    Changes out;
+    out.complete = m_tracking && !m_changesLost;
+    if (out.complete) {
+        out.files.swap(m_changes);
+        std::sort(out.files.begin(), out.files.end());
+        out.files.erase(std::unique(out.files.begin(), out.files.end()), out.files.end());
+    } else {
+        std::vector<EntryId>().swap(m_changes);
+    }
+    m_tracking = true;
+    m_changesLost = false;
+    return out;
 }
 
 void FileIndex::setFolderRecord(EntryId root, std::uint32_t record, EntryId folder)

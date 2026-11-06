@@ -253,11 +253,12 @@ class Plugin:
     """The resident loop. Given to the handlers so they can send partial
     results, log, notify, show progress and call Win顺's tools."""
 
-    def __init__(self, on_query, on_action=None, on_settings=None, on_cancel=None, name="plugin"):
+    def __init__(self, on_query, on_action=None, on_settings=None, on_cancel=None, name="plugin", on_details=None):
         self._on_query = on_query
         self._on_action = on_action
         self._on_settings = on_settings
         self._on_cancel = on_cancel
+        self._on_details = on_details
         self._name = name
         self._next_id = 1
         self._queued = []
@@ -380,6 +381,15 @@ class Plugin:
                     self._send({"id": msg_id, "error": {"code": -32000, "message": str(e)}})
                     return False
             self._send({"id": msg_id, "result": {"effects": list(result or [hide()])}})
+        elif method == "details" and self._on_details is not None:
+            try:
+                result = self._on_details(params.get("item") or {}, params.get("text", ""), self)
+            except Exception as e:
+                self._send({"id": msg_id, "error": {"code": -32000, "message": str(e)}})
+                return False
+            if isinstance(result, str):
+                result = {"text": result}
+            self._send({"id": msg_id, "result": result or {}})
         elif method == "cancel":
             if self._on_cancel:
                 self._on_cancel(params.get("queryId", 0), self)
@@ -395,10 +405,13 @@ class Plugin:
         return False
 
 
-def serve(on_query, on_action=None, on_settings=None, on_cancel=None, name="plugin"):
+def serve(on_query, on_action=None, on_settings=None, on_cancel=None, name="plugin", on_details=None):
     """Runs a resident plugin: on_query(query, plugin) returns a list of
     items (or {"items": [...], "rerun": s, "cache": s}); on_action(request,
     plugin) returns a list of effects (default: copy the item); on_settings
     (settings, plugin) hears the user's changes; on_cancel(query_id, plugin)
-    hears a query Win顺 no longer wants. Returns when Win顺 says shutdown."""
-    return Plugin(on_query, on_action, on_settings, on_cancel, name).serve()
+    hears a query Win顺 no longer wants; on_details(item, text, plugin)
+    answers for an item(..., details=True) that is no file: {"text": "..."},
+    {"file": a file in plugin.data_dir}, or a string (the text). Returns
+    when Win顺 says shutdown."""
+    return Plugin(on_query, on_action, on_settings, on_cancel, name, on_details).serve()

@@ -100,7 +100,7 @@ ListView {
         anchors.centerIn: parent
         width: parent.width - 32
         visible: view.count === 0 && !view.pane.busy
-        text: view.pane.path.length > 0 ? qsTr("没有可显示的内容，请检查筛选条件或读取提示") : qsTr("选择左侧文件查看详情")
+        text: view.pane.title.length > 0 ? qsTr("没有可显示的内容，请检查筛选条件或读取提示") : qsTr("选择左侧文件查看详情")
         wrapMode: Text.Wrap
         horizontalAlignment: Text.AlignHCenter
         color: Theme.subtext

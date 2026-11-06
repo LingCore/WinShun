@@ -87,12 +87,16 @@ qt_add_executable(WinShun WIN32
     platform/HoldWatch.cpp platform/HoldWatch.h
     platform/Http.cpp platform/Http.h
     platform/IdleTrim.cpp platform/IdleTrim.h
+    platform/MemoryReport.cpp platform/MemoryReport.h
+    ActivityText.cpp ActivityText.h
+    BackgroundStatus.cpp BackgroundStatus.h
+    platform/InputMode.cpp platform/InputMode.h
     platform/Integrity.cpp platform/Integrity.h
     platform/KeyListener.cpp platform/KeyListener.h
     platform/PieDrop.cpp platform/PieDrop.h
     platform/ServiceDialogNav.cpp platform/ServiceDialogNav.h
     platform/ServiceKeyListener.cpp platform/ServiceKeyListener.h
-    platform/KeyRouter.cpp platform/KeyRouter.h
+    platform/KeyRouter.cpp platform/KeyRouter.h platform/QtKeys.h
     platform/MessageWindow.cpp platform/MessageWindow.h platform/NotificationTurns.h
     platform/MonoLogo.cpp platform/MonoLogo.h
     platform/NetworkNotifier.cpp platform/NetworkNotifier.h

@@ -330,6 +330,16 @@ public:
     };
     // Documents that are not dead, ascending by entry.
     std::vector<DocInfo> documents() const;
+    // The same of these entries only (ascending); those without one are left out.
+    std::vector<DocInfo> documentsOf(std::span<const EntryId> entries) const;
+    // The entries whose document is to be read again or checked (Need other
+    // than None), ascending: with the files changed since the last pass
+    // (FileIndex::takeChanges), what a pass has to look at.
+    std::vector<EntryId> dueEntries() const;
+    // Goes up when documents go other than by retire() or being replaced
+    // (clear, restore, remap): a pass that looks only at what changed looks
+    // at every file again.
+    std::uint64_t epoch() const noexcept { return m_epoch.load(); }
     void retire(std::span<const EntryId> entries); // no longer to be indexed
     void confirm(EntryId entry); // checked: the file is unchanged
 
@@ -499,6 +509,7 @@ private:
     std::vector<std::uint64_t> m_obsoleteTexts; // as m_obsolete
 
     std::atomic<std::uint64_t> m_changeSequence {0};
+    std::atomic<std::uint64_t> m_epoch {0}; // epoch()
     int m_reads = 0;
     std::unordered_map<EntryId, std::uint64_t> m_changedWhileReading;
     std::function<void()> m_listener;

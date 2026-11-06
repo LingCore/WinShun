@@ -6,6 +6,7 @@
 #include "KeyListener.h" // KeyboardRawInputAside
 #include "KeyRouter.h" // kOwnInput
 #include "PasteOffer.h"
+#include "QtKeys.h"
 #include "SearchTyping.h"
 
 #include <commctrl.h>
@@ -18,6 +19,7 @@
 #include <QtLogging>
 
 #include <algorithm>
+#include <array>
 #include <cwchar>
 #include <format>
 #include <latch>
@@ -35,6 +37,8 @@ constexpr UINT kDeliverMessage = WM_APP + 1; // to the hook's thread (deliver)
 constexpr UINT kGiveBackMessage = WM_APP + 2; // to the hook's thread (giveBack)
 constexpr UINT kPassedMessage = WM_APP + 3; // to the hook's thread: the keys typed again have gone by
 constexpr UINT kLookAgainMessage = WM_APP + 4; // to the hook's thread: the front changed while keys wait for it
+constexpr UINT kHandOverMessage = WM_APP + 5; // to the hook's thread (handOver)
+constexpr UINT kToUnicodeKeepState = 0x4; // ToUnicodeEx: leave the dead key state alone (Windows 10 1607)
 // Keys for the launcher wait while Win顺 is not in front (GitHub #66): how often
 // to look again, besides at each foreground event.
 constexpr UINT kFrontPollMs = 20;
@@ -83,16 +87,29 @@ void sendMask()
     ::SendInput(static_cast<UINT>(std::size(keys)), keys, sizeof(INPUT));
 }
 
-// The strokes of a Step, typed as Win顺's own: how many went in.
-std::size_t sendStrokes(const std::vector<searchtyping::Stroke>& strokes)
+// The strokes of a Step, typed as Win顺's own: how many went in. Not all:
+// where they were going and what was in front (GitHub #203: 0 of them, every
+// time, with Explorer in front on one Windows 10). The error is cleared
+// first: SendInput sets none for a UIPI drop, and an older one showed.
+std::size_t sendStrokes(const std::vector<searchtyping::Stroke>& strokes, bool intoLauncher)
 {
     std::vector<INPUT> inputs;
     inputs.reserve(strokes.size());
     for (const searchtyping::Stroke& stroke : strokes)
         inputs.push_back(inputOf(stroke));
+    ::SetLastError(0);
     const UINT inserted = ::SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
-    if (inserted < inputs.size())
-        qWarning("TypeToSearch: %u of %zu keys typed again went in (error %lu)", inserted, inputs.size(), ::GetLastError());
+    if (inserted < inputs.size()) {
+        const DWORD error = ::GetLastError();
+        const HWND front = ::GetForegroundWindow();
+        wchar_t className[128] {};
+        if (front)
+            ::GetClassNameW(front, className, static_cast<int>(std::size(className)));
+        const QString program = front ? foreground::programOf(front) : QString();
+        qWarning("TypeToSearch: %u of %zu keys typed again went in (error %lu), %s, %ls (%s) in front", inserted,
+            inputs.size(), error, intoLauncher ? "into the launcher" : "not into the launcher", className,
+            qUtf8Printable(program));
+    }
     return inserted;
 }
 
@@ -133,6 +150,57 @@ std::u16string altGrChars(const searchtyping::Hold::KeyEvent& key, searchtyping:
     if (std::ranges::any_of(text, [](char16_t c) { return c < 0x20 || c == 0x7F; }))
         return {};
     return text;
+}
+
+// The keys held for the launcher as KeyRouter routes keys (handOver, GitHub
+// #203): each press with the Shift it was made with, typing what Windows
+// would make of it on the keyboard layout of the window in front, with that
+// Shift and Caps Lock as it will be (each press of it held flips it for the
+// keys after: they go to the window as they came, Hold::stop). A program's
+// characters as they came. Caps Lock is no key for the launcher.
+std::vector<KeyRouter::Key> routedKeys(const std::vector<searchtyping::HeldKey>& held)
+{
+    const HKL layout = ::GetKeyboardLayout(::GetWindowThreadProcessId(::GetForegroundWindow(), nullptr));
+    bool capsLock = (::GetKeyState(VK_CAPITAL) & 1) != 0;
+    const bool numLock = (::GetKeyState(VK_NUMLOCK) & 1) != 0;
+    std::vector<KeyRouter::Key> keys;
+    keys.reserve(held.size());
+    for (const searchtyping::HeldKey& key : held) {
+        if (key.vk == searchtyping::kVkCapital) {
+            capsLock = !capsLock;
+            continue;
+        }
+        KeyRouter::Key routed;
+        routed.vk = key.vk;
+        routed.scanCode = key.scanCode;
+        if (key.vk == searchtyping::kVkPacket) {
+            routed.text = QString(QChar(static_cast<char16_t>(key.scanCode)));
+        } else {
+            if (key.shift)
+                routed.modifiers |= Qt::ShiftModifier;
+            if (key.vk >= VK_NUMPAD0 && key.vk <= VK_DIVIDE)
+                routed.modifiers |= Qt::KeypadModifier;
+            std::array<BYTE, 256> state {};
+            if (key.shift)
+                state[VK_SHIFT] = state[VK_LSHIFT] = 0x80;
+            state[VK_CAPITAL] = capsLock ? 1 : 0;
+            state[VK_NUMLOCK] = numLock ? 1 : 0;
+            std::array<wchar_t, 8> chars {};
+            const int count = ::ToUnicodeEx(key.vk, key.scanCode & 0xFF, state.data(), chars.data(),
+                static_cast<int>(chars.size()), kToUnicodeKeepState, layout);
+            if (count > 0)
+                routed.text = QString::fromWCharArray(chars.data(), count);
+        }
+        routed.key = qtKeyOf(key.vk, key.extended, key.shift);
+        if (routed.key == 0) { // named after its character, upper case, as Qt does (KeyRouter::translate)
+            const QChar c = !routed.text.isEmpty()
+                ? routed.text.at(0)
+                : QChar(static_cast<char16_t>(::MapVirtualKeyExW(key.vk, MAPVK_VK_TO_CHAR, layout)));
+            routed.key = c.isNull() ? int(Qt::Key_unknown) : int(c.toUpper().unicode());
+        }
+        keys.push_back(std::move(routed));
+    }
+    return keys;
 }
 
 // This thread's lines, KeyboardRawInputAside's among them: info ones (the
@@ -198,6 +266,8 @@ TypeToSearch::TypeToSearch(Surfaces surfaces, Callbacks callbacks)
                     apply(m_hold.giveBack(front(), ::GetTickCount()));
             } else if (msg.hwnd == nullptr && msg.message == kPassedMessage)
                 apply(m_hold.passed(front(), ::GetTickCount()));
+            else if (msg.hwnd == nullptr && msg.message == kHandOverMessage)
+                handOverHeld();
             else if (msg.hwnd == nullptr
                 && ((msg.message == WM_TIMER && m_frontTimer && msg.wParam == m_frontTimer)
                     || (msg.message == kLookAgainMessage && m_frontTimer)))
@@ -213,7 +283,7 @@ TypeToSearch::TypeToSearch(Surfaces surfaces, Callbacks callbacks)
         const searchtyping::Hold::Step last = m_hold.stop();
         setHooked(false);
         if (!last.send.empty())
-            sendStrokes(last.send);
+            sendStrokes(last.send, false);
         m_rawInputAside.reset();
         if (foreground)
             ::UnhookWinEvent(foreground);
@@ -236,6 +306,29 @@ void TypeToSearch::deliver(bool ready)
 void TypeToSearch::giveBack(RequestId request)
 {
     ::PostThreadMessageW(m_threadId.load(), kGiveBackMessage, static_cast<WPARAM>(request), 0);
+}
+
+void TypeToSearch::handOver()
+{
+    ::PostThreadMessageW(m_threadId.load(), kHandOverMessage, 0, 0);
+}
+
+// The keys held go to the launcher as they are (handedOver), the hold ends as
+// Hold::stop ends it. Keys typed after them come to its KeyRouter: the hook's
+// calls are this thread's too, so none slips in ahead of them.
+void TypeToSearch::handOverHeld()
+{
+    searchtyping::Hold::HandOver handed = m_hold.handOver();
+    if (!handed.keys.empty()) {
+        std::vector<KeyRouter::Key> keys = routedKeys(handed.keys);
+        if (m_sentAt.load() == 0) { // the timing of the diagnostics, as if typed again
+            m_sentPresses = static_cast<int>(keys.size());
+            m_sentAt = std::chrono::steady_clock::now().time_since_epoch().count();
+        }
+        if (m_callbacks.handedOver)
+            m_callbacks.handedOver(std::move(keys));
+    }
+    apply(std::move(handed.step));
 }
 
 TypeToSearch::Timing TypeToSearch::timing() const noexcept
@@ -473,8 +566,9 @@ bool TypeToSearch::handleKey(WPARAM message, const KBDLLHOOKSTRUCT& event)
     const UINT vk = event.vkCode;
     const bool press = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
     // Ours too: the clipboard panel's paste, an entry picked with a folder in
-    // front, is a paste into it all the same.
-    if (vk == 'V' && m_surfaces.pasteFile && !m_hold.holding() && !m_startInFront
+    // front, is a paste into it all the same. Not while the launcher's keys
+    // are routed to it over the folder: Ctrl+V pastes into its search box.
+    if (vk == 'V' && m_surfaces.pasteFile && !m_hold.holding() && !m_startInFront && !m_launcherRouted.load()
         && (m_pasteTaken
             || (press && held(VK_CONTROL) && !held(VK_SHIFT) && !held(VK_MENU) && !held(VK_LWIN) && !held(VK_RWIN)))
         && handlePaste(press))
@@ -506,8 +600,12 @@ bool TypeToSearch::handleKey(WPARAM message, const KBDLLHOOKSTRUCT& event)
 }
 
 // No hold on: whether the key starts one (begun then; handleKey takes the key).
+// None while the launcher's keys are routed to it: typed over that folder,
+// they are its (its KeyRouter, called first, asks the hooks after it first).
 bool TypeToSearch::startsHold(UINT vk, bool press)
 {
+    if (m_launcherRouted.load())
+        return false;
     if (searchtyping::isModifier(vk)) {
         if (press && vk == VK_LMENU && m_startInFront)
             m_windowsSearch = true;
@@ -638,7 +736,7 @@ void TypeToSearch::apply(searchtyping::Hold::Step step)
         // Not all went in (blocked: the secure desktop, a window of higher
         // integrity in front): what went down among those is let go, and
         // Shift set right, tried once (searchtyping::Hold::sent).
-        if (const std::size_t inserted = sendStrokes(step.send); inserted < step.send.size())
+        if (const std::size_t inserted = sendStrokes(step.send, step.intoLauncher); inserted < step.send.size())
             apply(m_hold.sent(inserted));
     }
     if (step.ended)

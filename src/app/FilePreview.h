@@ -78,9 +78,18 @@ public:
     Q_ENUM(Kind)
 
     struct Item {
-        QString path;
+        QString path; // the file; a plugin's row with none of its own: that row's (winshun-plugin:…)
         QString name;
         bool isDir = false;
+        // A plugin's details in place of a file (GitHub #202): its text, or
+        // why there is none (yet).
+        std::shared_ptr<const QString> text;
+        QString message;
+        bool inPlace() const { return text || !message.isEmpty(); }
+        bool same(const Item& other) const
+        {
+            return path.compare(other.path, Qt::CaseInsensitive) == 0 && text == other.text && message == other.message;
+        }
     };
 
     explicit FilePreview(QObject* parent = nullptr);

@@ -110,8 +110,8 @@ Start-WinShunPlugin -Name 'me.ps' -OnQuery {
 
 | 文件 | 一次性 | 常驻 |
 |---|---|---|
-| `winshun.py` | `query()`、`settings()`、`item(...)`、`reply(items)`、`is_action()` / `action_request()` / `effects(...)` | `serve(on_query, on_action=None, on_settings=None)`；处理函数收到 `(q, plugin)`，`plugin.partial()`、`plugin.log()`、`plugin.notify_user()`、`plugin.toast()`、`plugin.progress()`、`plugin.refresh()`、`plugin.tool(name, **args)`、`plugin.settings` |
-| `WinShun.psm1` | `Get-WinShunQuery`、`Get-WinShunSettings`、`New-WinShunItem`、`Send-WinShunReply`、`Send-WinShunEffects` | `Start-WinShunPlugin -OnQuery {…} -OnAction {…}`、`Send-WinShunPartial`、`Write-WinShunLog`、`Send-WinShunNotify`、`Send-WinShunToast`、`Send-WinShunProgress`、`Invoke-WinShunTool` |
+| `winshun.py` | `query()`、`settings()`、`item(...)`、`reply(items)`、`is_action()` / `action_request()` / `effects(...)` | `serve(on_query, on_action=None, on_settings=None, on_details=None)`；处理函数收到 `(q, plugin)`，`plugin.partial()`、`plugin.log()`、`plugin.notify_user()`、`plugin.toast()`、`plugin.progress()`、`plugin.refresh()`、`plugin.tool(name, **args)`、`plugin.settings` |
+| `WinShun.psm1` | `Get-WinShunQuery`、`Get-WinShunSettings`、`New-WinShunItem`、`Send-WinShunReply`、`Send-WinShunEffects` | `Start-WinShunPlugin -OnQuery {…} -OnAction {…} -OnDetails {…}`、`Send-WinShunPartial`、`Write-WinShunLog`、`Send-WinShunNotify`、`Send-WinShunToast`、`Send-WinShunProgress`、`Invoke-WinShunTool` |
 | `winshun.h` | `winshun::onceQuery()`、`onceSettings()`、`once(items)`、`onceAction()` / `onceEffects()` | 派生 `winshun::Plugin`，重写 `query()`（和 `queryResult()`、`action()`、`settingsChanged()`、`initialized()`、`shuttingDown()`、`appearanceChanged()`），`serve()`；成员 `partial()`、`log()`、`notifyUser()`、`toast()`、`progress()`、`refresh()`、`tool()`、`settings()`；这些成员可以在别的线程里调（发送有锁） |
 
 effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) / set_query(text) / open_path(path) / open_url(url) / replace(items)`；PowerShell `New-WinShunEffect -Hide / -Keep / -Notify / -Copy / -SetQuery / -OpenPath / -OpenUrl / -Replace`；C++ `winshun::effect::hide()` 等。
@@ -211,6 +211,8 @@ Win顺 → 插件：
 {"jsonrpc":"2.0","id":3,"method":"action","params":{"command":"kill","action":"kill","item":{…原样…},"text":"note"}}
 ← {"jsonrpc":"2.0","id":3,"result":{"effects":[{"type":"notify","text":"已结束 notepad"},{"type":"hide"}]}}
 {"jsonrpc":"2.0","id":4,"method":"action","params":{"command":"send","action":"files","trigger":"files","files":["C:\\…\\a.jpg","D:\\相册"],"item":{},"text":""}}   （右键菜单的 files 触发）
+{"jsonrpc":"2.0","id":6,"method":"details","params":{"item":{…原样…},"text":"invoice"}}   （内容详情、预览要看不是文件的行，见下面“内容详情与预览”）
+← {"jsonrpc":"2.0","id":6,"result":{"text":"From: …\nSubject: …\n\n…"}}  或  {"result":{"file":"C:\\…\\<id>.data\\details\\mail.msg"}}
 {"jsonrpc":"2.0","method":"settingsChanged","params":{"settings":{…}}}
 {"jsonrpc":"2.0","id":5,"method":"shutdown"}  ← {"jsonrpc":"2.0","id":5,"result":{}} 然后退出
 ```
@@ -303,6 +305,7 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
   "preview": {"text": "…"},          // 悬停提示
   "actions": [{"id": "kill", "title": "结束", "key": "Enter"}],   // 覆盖命令级的
   "valid": true,                     // false：Enter 无效（提示行）
+  "details": true,                   // 不是文件的行：内容详情和预览要看它时，Win顺 发 details 来问（只对常驻插件；见“内容详情与预览”）
   "data": {"pid": 1234}              // 不透明，随 action 原样回来；AI 看不到它
 }
 ```
@@ -333,6 +336,32 @@ item 可选提供 `modified`、`created`（带时区的 ISO 8601 字符串或 Un
 在命令中声明 `"contentSearch": true`，可同时保留 `keyword`。宿主只在“内容”，或已开启内容检索的“全部”中派发 `query`，此时 `trigger` 为 `content`，`text` 为内容关键词；文件／文件夹搜索和独占的关键词列表不派发。关键词查询仍按原协议执行。此接口在 0.17.0 之后的版本才有；旧宿主不派发内容查询，只能用命令关键词。官方图片文字搜索插件打包时把 `minWinShun` 设为构建它的主程序版本。
 
 `filters` 除面板条件外，还包含 `contentEnabled`、`contentWords`、`contentPick`（选定目录）、`excludedExtensions`、`excludedFileNames`（通配符）。提供者应按整个文件验证关键词，返回稳定 id、原文件的 `open.path`、日期／大小及命中摘要。内容结果在“内容”里排在原生结果之后；在“全部”里，所有提供者的前 3 行排在前 5 个名称结果之后（最近、收藏和与输入完全同名的应用之后），其余仍在最后；重复应答或名称列表增长时，已有行的位置不变。每个提供者最多 200 行，不占普通推送的 3／6 行配额；已有原生文件结果会去重。空结果返回空数组，避免把设置提示混进内容列表。可参考 [图片文字搜索插件](../src/ocr-search-plugin/package/README.md)。
+
+### 内容详情与预览（#202）
+
+“内容”面板右侧的内容详情（摘要、匹配、文本、预览、报告）和预览窗（Alt+P、空格）也显示插件的行。
+
+**会打开文件的行**：`open.path` 是普通文件（盘符或 `\\服务器\共享` 开头的完整路径，没有 `args`、`cwd`）时，窗格和预览就把这一行当成这个文件，和文件自己的行一样：匹配高亮、文本、预览，摘要和报告也算它（列表里已有同一个文件时不重复）。内容检索提供者的行本来就是这样，不用改。在窗格或预览里点“打开”和在这一行按 Enter 一样，照样受 `processes` 权限约束。
+
+**不是文件的行**（一封邮件、一条记录）：常驻插件在 item 里写 `"details": true`。内容详情开着（匹配、文本、预览页）或预览窗开着、选中这一行时，Win顺 发一次请求：
+
+```
+{"jsonrpc":"2.0","id":7,"method":"details","params":{"item":{…原样…},"text":"invoice"}}
+← {"jsonrpc":"2.0","id":7,"result":{"text":"From: …\nSubject: …\n\n…"}}
+← {"jsonrpc":"2.0","id":7,"result":{"file":"C:\\Users\\…\\<id>.data\\details\\mail.msg"}}
+```
+
+`item` 是这一行的 item（和 `action` 里的一样），`text` 是输入的文字（和 `action` 的一样；内容搜索里是内容关键词）。回答到了，匹配、文本、预览照常显示，标题是这一行的标题。
+
+- `text`：最多用前 1,000,000 个字符，多的截掉，窗格标明“仅显示部分内容”。预览页提示到“文本”页看；预览窗显示开头的文字。
+- `file`：必须是插件自己数据文件夹（`initialize` 的 `dataDir`，即 `<id>.data`）里的普通文件。Win顺 打开它看它真正在哪里：相对路径、`..`、共享、设备路径、文件夹、指到文件夹外面的符号链接或 junction、还有别的硬链接的文件，都不认。读取照样受内容大小上限约束；预览用系统的预览处理程序（比如 .msg 用 Outlook 装的那个）。文件别马上删：同一行再选中时 Win顺 直接用上次的回答。
+- 两个都给时先用 `file`，`file` 不合格再用 `text`。都没有、回答出错（包括 SDK 回的“方法不存在”）或超过 `timeoutMs` 没回答时，窗格写“无法获取详情”，界面不等它；再选中这一行、或列表换了新结果时重问。
+- 节奏：键盘停下 120 毫秒才问；一次只有一个请求在路上，答完再问最新选中的那一行，过时的回答不会顶掉当前行（它留着备用）。回答按插件、item 和文字记在内存里（合计约 16 MB）。插件没在运行时不会为此启动它，直接显示“无法获取详情”。
+- 只认常驻插件；一次性和零代码插件的 `details` 忽略。同时有 `open.path` 和 `"details": true` 的行，以 `details` 为准。窗格里点“打开”或双击匹配行，等于在这一行按 Enter。摘要另外写“插件结果（不是文件，不计入报告）：N”。
+- 内容检索提供者（`contentSearch`）的结果原本只保留有 `open.path` 的行；声明了 `"details": true` 的行在“内容”里也保留（排序、去重照旧），别的没有文件的行（设置提示之类）仍不显示。
+- 不要新权限：Win顺 只读插件自己数据文件夹里的文件，显示给用户，不交给别的程序。
+- 兼容：宿主会发 `details` 时，`initialize` 的 `capabilities.details` 是 true。旧版 Win顺 不认识 `details` 字段，照常显示这一行，不会来问，不用为它写 `minWinShun`。
+- SDK：Python `item(..., details=True)`，`serve(on_query, on_details=…)`，`on_details(item, text, plugin)` 返回 `{"text": …}`、`{"file": …}` 或一个字符串（就是文字）；PowerShell `New-WinShunItem -Details`，`Start-WinShunPlugin -OnDetails { param($d, $plugin) … }`（`$d.item`、`$d.text`），返回值同上。
 
 ### 图标
 

@@ -246,6 +246,8 @@ public:
     // far each is read. A change is told by sharesChanged().
     std::vector<remotecontent::Indexer::Status> shareContent() const { return m_shareContent->statuses(); }
     bool isRefreshing() const noexcept { return m_refreshing.load(); }
+    // The snapshot is being written (every 30 minutes at most, and on exit).
+    bool saving() const noexcept { return m_saving.load(); }
     std::size_t itemCount() const;
     // A volume being read from disk now: its MFT, or walked.
     struct Reading {
@@ -257,6 +259,9 @@ public:
 
 signals:
     void stateChanged();
+    // A pass of the content indexer started or ended, or the snapshot's save:
+    // the "what is it doing" summary may differ (queued; GUI thread).
+    void activityChanged();
     void volumesChanged(); // volumeRoots() differs
     void moveProgress(int percent); // of the bytes copied
     // 0 once the files are in the new folder (and the old ones deleted), else
@@ -432,6 +437,7 @@ private:
     std::mutex m_filesMutex;
     QString m_folder; // guarded by m_filesMutex
     std::atomic<bool> m_moving {false};
+    std::atomic<bool> m_saving {false};
     std::stop_source m_shutdown;
     std::unique_ptr<ChangeWatcher> m_watcher; // worker thread, or GUI thread while no worker runs
     // What m_watcher was last asked to watch (ensureWatcher), like it.

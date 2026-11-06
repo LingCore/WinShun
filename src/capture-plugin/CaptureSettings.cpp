@@ -8,6 +8,9 @@
 #include <QSettings>
 #include <QWindow>
 
+#include <utility>
+#include <vector>
+
 using namespace Qt::StringLiterals;
 
 namespace ws::captureplugin {
@@ -58,6 +61,26 @@ const capture::keys::ActionInfo* actionById(const QString& id)
             return &a;
     }
     return nullptr;
+}
+
+QString settingsTr(const char* text)
+{
+    return QCoreApplication::translate("ws::captureplugin::CaptureSettings", text);
+}
+
+// The plugin's global hotkeys with their names for the user (untranslated),
+// 识别屏幕文字's last: it is registered after the others.
+std::vector<std::pair<QString, const char*>> ownHotkeys(const CaptureOptions& o)
+{
+    return {
+        {o.hotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "开始截图")},
+        {o.printScreen ? u"PrintScreen"_s : QString(), QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "用 PrtScn 键截图")},
+        {o.lastPinHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "贴图")},
+        {o.pinsHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "隐藏 / 显示全部贴图")},
+        {o.pinsRestoreHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "找回穿透贴图")},
+        {o.presentHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "演示 / 白板")},
+        {o.ocrHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "识别屏幕文字")},
+    };
 }
 
 } // namespace
@@ -134,6 +157,7 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.pinsRestoreHotkey = readOrDefault(s, u"Capture/PinsRestoreHotkey"_s, d.pinsRestoreHotkey).trimmed();
     o.lastPinHotkey = readOrDefault(s, u"Capture/LastPinHotkey"_s, d.lastPinHotkey).trimmed();
     o.presentHotkey = readOrDefault(s, u"Capture/PresentHotkey"_s, d.presentHotkey).trimmed();
+    o.ocrHotkey = readOrDefault(s, u"Capture/OcrHotkey"_s, d.ocrHotkey).trimmed();
     o.saveFolder = readOrDefault(s, u"Capture/SaveFolder"_s, d.saveFolder).trimmed();
     o.recordingFolder = readOrDefault(s, u"Capture/RecordingFolder"_s, d.recordingFolder).trimmed();
     o.recordingSystemAudio = readOrDefault(s, u"Capture/RecordingSystemAudio"_s, d.recordingSystemAudio);
@@ -204,6 +228,7 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/PinsRestoreHotkey"_s, pinsRestoreHotkey);
     s.setValue(u"Capture/LastPinHotkey"_s, lastPinHotkey);
     s.setValue(u"Capture/PresentHotkey"_s, presentHotkey);
+    s.setValue(u"Capture/OcrHotkey"_s, ocrHotkey);
     s.setValue(u"Capture/SaveFolder"_s, saveFolder);
     s.setValue(u"Capture/RecordingFolder"_s, recordingFolder);
     s.setValue(u"Capture/RecordingSystemAudio"_s, recordingSystemAudio);
@@ -269,13 +294,15 @@ void CaptureSettings::setCapturePinDoubleClick(const QString& action)
 void CaptureSettings::setProblems(const Problems& p)
 {
     if (p.hotkey == m_hotkeyError && p.pinsHotkey == m_pinsHotkeyError && p.pinsRestoreHotkey == m_pinsRestoreHotkeyError
-        && p.lastPinHotkey == m_lastPinHotkeyError && p.presentHotkey == m_presentHotkeyError && p.note == m_note)
+        && p.lastPinHotkey == m_lastPinHotkeyError && p.presentHotkey == m_presentHotkeyError
+        && p.ocrHotkey == m_ocrHotkeyError && p.note == m_note)
         return;
     m_hotkeyError = p.hotkey;
     m_pinsHotkeyError = p.pinsHotkey;
     m_pinsRestoreHotkeyError = p.pinsRestoreHotkey;
     m_lastPinHotkeyError = p.lastPinHotkey;
     m_presentHotkeyError = p.presentHotkey;
+    m_ocrHotkeyError = p.ocrHotkey;
     m_note = p.note;
     emit problemsChanged();
 }
@@ -355,19 +382,10 @@ void CaptureSettings::setKey(const QString& id, const std::function<QKeyCombinat
 
 QString CaptureSettings::hotkeyConflict(QKeyCombination key, bool askSystem) const
 {
-    const auto tr = [](const char* text) { return QCoreApplication::translate("ws::captureplugin::CaptureSettings", text); };
+    const auto tr = settingsTr;
     const QString normal = hotkeys::normalized(QKeySequence(key).toString(QKeySequence::PortableText));
     if (!normal.isEmpty()) {
-        const CaptureOptions& o = m_options;
-        const std::pair<QString, const char*> own[] {
-            {o.hotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "开始截图")},
-            {o.printScreen ? u"PrintScreen"_s : QString(), QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "用 PrtScn 键截图")},
-            {o.lastPinHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "贴图")},
-            {o.pinsHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "隐藏 / 显示全部贴图")},
-            {o.pinsRestoreHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "找回穿透贴图")},
-            {o.presentHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "演示 / 白板")},
-        };
-        for (const auto& [hotkey, name] : own) {
+        for (const auto& [hotkey, name] : ownHotkeys(m_options)) {
             if (!hotkey.isEmpty() && hotkeys::normalized(hotkey) == normal)
                 return tr("和“%1”的快捷键相同，按下时会先被它用掉").arg(tr(name));
         }
@@ -375,6 +393,20 @@ QString CaptureSettings::hotkeyConflict(QKeyCombination key, bool askSystem) con
     if (askSystem && m_probe) {
         if (const auto vk = capture::CaptureKeys::toVirtualKey(key); vk && !m_probe(vk->modifiers, vk->vk))
             return tr("其他程序或 Win顺 已把它设为全局快捷键，按下时这里收不到");
+    }
+    return {};
+}
+
+QString CaptureSettings::ocrHotkeyClash() const
+{
+    const QString normal = hotkeys::normalized(m_options.ocrHotkey);
+    if (normal.isEmpty())
+        return {};
+    auto own = ownHotkeys(m_options);
+    own.pop_back(); // itself
+    for (const auto& [hotkey, name] : own) {
+        if (!hotkey.isEmpty() && hotkeys::normalized(hotkey) == normal)
+            return tr("和“%1”的快捷键相同，请换一个。").arg(settingsTr(name));
     }
     return {};
 }

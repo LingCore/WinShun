@@ -1679,52 +1679,64 @@ private slots:
         QCOMPARE(width(), 4); // half a notch
         QVERIFY(m.wheel(60, 1010));
         QCOMPARE(width(), 5); // a notch: one step
-        QVERIFY(m.wheel(120, 1100));
-        QCOMPARE(width(), 5); // within 200 ms of the last one
-        QVERIFY(m.wheel(120, 1250));
-        QCOMPARE(width(), 6);
+        QVERIFY(m.wheel(120, 1020));
+        QCOMPARE(width(), 6); // a mouse's whole notch is a step at once, no waiting (#164)
+        QVERIFY(m.wheel(120, 1030));
+        QCOMPARE(width(), 7);
         QVERIFY(m.wheel(-120, 1500));
-        QCOMPARE(width(), 5);
+        QCOMPARE(width(), 6);
         QVERIFY(m.wheel(-40, 1800));
         QVERIFY(m.wheel(80, 1810)); // turned back: counted again from there
-        QCOMPARE(width(), 5);
-        QVERIFY(m.wheel(480, 2500)); // a flick: one step
         QCOMPARE(width(), 6);
+        QVERIFY(m.wheel(60, 1820));
+        QCOMPARE(width(), 7); // a touchpad's pieces: one step ...
+        QVERIFY(m.wheel(120 + 30, 1830)); // (not a whole number of notches)
+        QCOMPARE(width(), 7); // ... and the next one waits 60 ms
+        QVERIFY(m.wheel(150, 1900));
+        QCOMPARE(width(), 8);
+        QVERIFY(m.wheel(480, 2500)); // a spin: its notches
+        QCOMPARE(width(), 12);
         // [ and ] step the same ladder.
         QVERIFY(m.key(Qt::Key_BracketRight, {}));
-        QCOMPARE(width(), 7);
-        QVERIFY(m.key(Qt::Key_BracketRight, {}));
-        QCOMPARE(width(), 8);
-        QVERIFY(m.key(Qt::Key_BracketRight, {}));
-        QCOMPARE(width(), 10);
+        QCOMPARE(width(), 13);
         QVERIFY(m.key(Qt::Key_BracketLeft, {}));
-        QCOMPARE(width(), 8);
+        QCOMPARE(width(), 12);
         m.setTool(toolIndex(Kind::Number));
+        const int numberSize = m.panel().value(u"size"_s).toInt();
         QVERIFY(m.wheel(120, 3000));
-        QCOMPARE(m.panel().value(u"size"_s).toInt(), 20);
+        QCOMPARE(m.panel().value(u"size"_s).toInt(), numberSize + 1);
         m.setTool(toolIndex(Kind::Redact));
+        const int cell = m.panel().value(u"cell"_s).toInt();
         QVERIFY(m.wheel(-120, 4000));
-        QCOMPARE(m.panel().value(u"cell"_s).toInt(), 10);
-        // The ladder's ends hold.
+        QCOMPARE(m.panel().value(u"cell"_s).toInt(), cell - 1);
+        // The ladder's ends hold, and it has a step for every value in between.
         m.setTool(toolIndex(Kind::Line));
-        for (int i = 0; i < 30; ++i)
+        for (int i = 0; i < 80; ++i)
             m.key(Qt::Key_BracketRight, {});
-        QCOMPARE(width(), 40);
+        QCOMPARE(width(), 64);
+        QVERIFY(m.wheel(1200, 4500));
+        QCOMPARE(width(), 64);
+        for (int i = 0; i < 80; ++i)
+            m.key(Qt::Key_BracketLeft, {});
+        QCOMPARE(width(), 1);
+        QVERIFY(m.wheel(-1200, 4600));
+        QCOMPARE(width(), 1);
         // A selected object: its own size, one undo step for the run.
         m.setTool(toolIndex(Kind::Rect));
         drag(m, QPoint(40, 40), QPoint(100, 100));
         const quint32 id = selectedId(m);
+        const int drawn = findItem(m.document(), id)->style.width;
         m.setTool(-1);
         QVERIFY(m.wheel(120, 10000));
         QVERIFY(m.wheel(120, 10300));
-        QCOMPARE(findItem(m.document(), id)->style.width, 12);
+        QCOMPARE(findItem(m.document(), id)->style.width, drawn + 2);
         m.undo();
-        QCOMPARE(findItem(m.document(), id)->style.width, 8);
+        QCOMPARE(findItem(m.document(), id)->style.width, drawn);
         // Mid-drag the wheel is still the model's, and changes nothing.
         press(m, pointOn(m, id));
         QVERIFY(m.wheel(120, 20000));
         m.release(pointOn(m, id));
-        QCOMPARE(findItem(m.document(), id)->style.width, 8);
+        QCOMPARE(findItem(m.document(), id)->style.width, drawn);
     }
 
     void redactionsStayFirst()

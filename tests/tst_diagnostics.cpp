@@ -17,6 +17,7 @@
 #include <thread>
 
 #include <miniz.h>
+#include <windows.h>
 
 using namespace Qt::StringLiterals;
 using namespace ws;
@@ -169,21 +170,26 @@ private slots:
         QVERIFY(log.append(u"content-progress"_s, {{u"done"_s, 12}}));
         write(data + u"/WinShun.log"_s, "app warning");
         write(service + u"/service.log"_s, "service warning");
+        write(data + u"/plugins.log"_s, QByteArray(300 * 1024, 'p') + "plugin log tail");
         for (const QString& name : {u"WinShun.ini"_s, u"clipboard/clipboard.db"_s, u"history.txt"_s, u"mcp.log"_s,
-                 u"plugins.log"_s, u"content/document.texts"_s})
+                 u"content/document.texts"_s})
             write(data + u'/' + name, "PRIVATE_DATA_DO_NOT_EXPORT");
         const QJsonObject clipboard {{u"max_read_records"_s, 16},
             {u"recent_reads"_s, QJsonArray {QJsonObject {{u"outcome"_s, u"captured"_s}, {u"sequence_after"_s, 42}}}}};
         const auto first = diagnostics::exportArchive(log, data, service, {{u"run"_s, 1}, {u"clipboard"_s, clipboard}});
         QVERIFY2(first.error.isEmpty(), qPrintable(first.error));
         auto files = unpack(first.path);
-        QCOMPARE(files.size(), 4);
+        QCOMPARE(files.size(), 5);
+        QVERIFY(files.contains(u"app/plugins.log"_s));
+        QVERIFY(files[u"app/plugins.log"_s].endsWith("plugin log tail"));
+        QCOMPARE(files[u"app/plugins.log"_s].size(), 256 * 1024); // only its newest part
         QVERIFY(files.contains(u"summary.json"_s));
         QVERIFY(files.contains(u"events.jsonl"_s));
         QVERIFY(files.contains(u"app/WinShun.log"_s));
         QVERIFY(files.contains(u"service/service.log"_s));
         const auto summary = QJsonDocument::fromJson(files[u"summary.json"_s]).object();
         QCOMPARE(summary[u"clipboard"_s].toObject(), clipboard);
+        QVERIFY(summary[u"privacy"_s].toString().contains(u"256 KB"));
         QVERIFY(summary[u"privacy"_s].toString().contains(u"without payloads or content hashes"));
         for (const auto& bytes : files)
             QVERIFY(!bytes.contains("PRIVATE_DATA_DO_NOT_EXPORT"));
@@ -193,6 +199,20 @@ private slots:
         files = unpack(second.path);
         QCOMPARE(QJsonDocument::fromJson(files[u"summary.json"_s]).object().value(u"run"_s).toInt(), 2);
         QCOMPARE(QDir(log.folder()).entryList({u"*.zip"_s}, QDir::Files).size(), 1);
+    }
+    // GitHub #203: what this copy runs with, as UIPI weighs it, for the
+    // summary and the journal's "front-refused".
+    void rightsSayWhatACopyRunsWith()
+    {
+        const QJsonObject own = diagnostics::rightsOf(0);
+        static const QStringList levels {u"low"_s, u"medium"_s, u"medium-plus"_s, u"high"_s, u"system"_s};
+        QVERIFY2(levels.contains(own.value(u"integrity"_s).toString()), qPrintable(own.value(u"integrity"_s).toString()));
+        QVERIFY(own.value(u"elevated"_s).isBool());
+        QVERIFY(own.value(u"ui_access"_s).isBool());
+        QCOMPARE(diagnostics::rightsOf(::GetCurrentProcessId()), own);
+        QCOMPARE(diagnostics::environment().value(u"rights"_s).toObject(), own);
+        // A process that cannot be asked (gone): just that, nothing made up.
+        QCOMPARE(diagnostics::rightsOf(0xFFFFFFF0), (QJsonObject {{u"integrity"_s, u"unknown"_s}}));
     }
     void serviceLogRotationAndLockedFileStayBounded()
     {

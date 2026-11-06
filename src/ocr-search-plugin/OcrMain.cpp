@@ -4,6 +4,7 @@
 #include "Phosphor.h"
 #include "SystemTheme.h"
 #include "WindowFrame.h"
+#include "platform/IdleTrim.h"
 #include "platform/OcrFiles.h"
 #include "platform/WindowEffects.h"
 
@@ -164,7 +165,20 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
     applyAppearance(appearance);
     ws::WindowFrame frame(true);
     QQuickWindow* window = nullptr;
+    // The scan's walk, recognition results and the search's pages stay in the
+    // working set long after the work; given back to Windows while idle (the
+    // recognition itself runs in a worker process of its own per pass, gone
+    // when the pass is over). Not in the preview or the worker.
+    std::unique_ptr<ws::IdleTrim> idleTrim;
+    if (!preview) {
+        idleTrim = std::make_unique<ws::IdleTrim>(
+            [&editor]() -> const char* { return editor.working(); },
+            [&window] { return window && window->isVisible(); });
+        QObject::connect(&editor, &Controller::refreshRequested, &app, [&idleTrim] { idleTrim->poke(); });
+    }
     const auto showWindow = [&] {
+        if (idleTrim)
+            idleTrim->used();
         if (!window) {
             QQmlComponent component(&engine, QUrl(u"qrc:/qt/qml/WinShun/OcrSearchWindow.qml"_s));
             QObject* object = component.createWithInitialProperties(
@@ -181,8 +195,11 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
                     return;
                 if (preview)
                     app.quit();
-                else
+                else {
                     editor.releasePreview(); // up to 64 MB of decoded picture
+                    if (idleTrim)
+                        idleTrim->poke();
+                }
             });
         }
         editor.wake();
@@ -206,9 +223,11 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
             });
         QObject::connect(protocol.get(), &ws::captureplugin::Protocol::requested, &app,
             [&](const QJsonValue& id, const QString& method, const QJsonObject& p) {
-                if (method == u"query")
+                if (method == u"query") {
+                    if (idleTrim)
+                        idleTrim->used(); // the pages of the search: kept while queries come
                     editor.externalQuery(p, [&, id](const QJsonObject& answer) { protocol->respond(id, answer); });
-                else if (method == u"showSettings") {
+                } else if (method == u"showSettings") {
                     if (showWindow())
                         protocol->respond(id, QJsonObject {});
                     else

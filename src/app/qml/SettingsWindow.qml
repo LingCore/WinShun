@@ -1991,12 +1991,12 @@ Window {
                     title: qsTr("在文件夹里打字时")
                     keywords: qsTr("打字;当前文件夹;优先;只搜;其他位置;子文件夹;Listary;Ctrl+Shift+D;current folder;type to search").split(";")
                     description: qsTr("搜索时可按 Ctrl+Shift+D 临时切换范围")
-                    tip: qsTr("当前文件夹优先：先列出当前文件夹及子文件夹的结果，再列出其他位置的结果，与 Listary 一致")
+                    tip: qsTr("当前文件夹优先：先列出当前文件夹及子文件夹的结果，再列出其他位置的结果，与 Listary 一致。只搜这一层：只列当前文件夹里直接放着的，不含子文件夹")
 
                     ScopeTabs {
-                        labels: [qsTr("当前文件夹优先"), qsTr("只搜当前文件夹")]
-                        current: window.editor.folderTyping === "only" ? 1 : 0
-                        onActivated: (index) => window.editor.folderTyping = index === 1 ? "only" : "first"
+                        labels: [qsTr("当前文件夹优先"), qsTr("只搜当前文件夹"), qsTr("只搜这一层")]
+                        current: window.editor.folderTyping === "level" ? 2 : window.editor.folderTyping === "only" ? 1 : 0
+                        onActivated: (index) => window.editor.folderTyping = index === 2 ? "level" : index === 1 ? "only" : "first"
                     }
                 }
             }
@@ -2101,32 +2101,33 @@ Window {
                     id: folderMenuActionsRow
                     sub: true
                     title: qsTr("菜单里的操作")
-                    description: qsTr("菜单末尾的“在此搜索”“收藏这个文件夹”等；没勾选的不再出现")
-                    keywords: qsTr("文件夹菜单;搜索;命令提示符;cmd;PowerShell;收藏;设置;隐藏;search;command prompt;favorites;settings").split(";")
+                    description: qsTr("菜单末尾的“在此搜索”“复制路径”“收藏这个文件夹”等；没勾选的不再出现")
+                    keywords: qsTr("文件夹菜单;搜索;复制路径;复制地址;copy path;命令提示符;cmd;PowerShell;收藏;设置;隐藏;search;command prompt;favorites;settings").split(";")
 
                     ScopeTabs {
                         multiSelect: true
-                        disabled: window.editor.folderMenu ? [] : [0, 1, 2, 3, 4]
-                        labels: [qsTr("搜索"), qsTr("命令提示符"), qsTr("PowerShell"), qsTr("收藏"), qsTr("设置")]
+                        disabled: window.editor.folderMenu ? [] : [0, 1, 2, 3, 4, 5]
+                        labels: [qsTr("搜索"), qsTr("复制路径"), qsTr("命令提示符"), qsTr("PowerShell"), qsTr("收藏"), qsTr("设置")]
                         checkedIndices: {
                             const list = []
                             if (window.editor.folderMenuItemSearch) list.push(0)
-                            if (window.editor.folderMenuItemCmd) list.push(1)
-                            if (window.editor.folderMenuItemPowerShell) list.push(2)
-                            if (window.editor.folderMenuItemFavorite) list.push(3)
-                            if (window.editor.folderMenuItemSettings) list.push(4)
+                            if (window.editor.folderMenuItemCopyPath) list.push(1)
+                            if (window.editor.folderMenuItemCmd) list.push(2)
+                            if (window.editor.folderMenuItemPowerShell) list.push(3)
+                            if (window.editor.folderMenuItemFavorite) list.push(4)
+                            if (window.editor.folderMenuItemSettings) list.push(5)
                             return list
                         }
                         onToggled: (index, on) => {
                             if (index === 0) window.editor.folderMenuItemSearch = on
-                            else if (index === 1) window.editor.folderMenuItemCmd = on
-                            else if (index === 2) window.editor.folderMenuItemPowerShell = on
-                            else if (index === 3) window.editor.folderMenuItemFavorite = on
-                            else if (index === 4) window.editor.folderMenuItemSettings = on
+                            else if (index === 1) window.editor.folderMenuItemCopyPath = on
+                            else if (index === 2) window.editor.folderMenuItemCmd = on
+                            else if (index === 3) window.editor.folderMenuItemPowerShell = on
+                            else if (index === 4) window.editor.folderMenuItemFavorite = on
+                            else if (index === 5) window.editor.folderMenuItemSettings = on
                         }
                     }
                 }
-
                 SettingRow {
                     id: opusMenuRow
                     sub: true
@@ -3950,6 +3951,17 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("打开时切换为英文输入")
+                    keywords: qsTr("输入法;英文;字母;中文;拼音首字母;IME;English").split(";")
+                    description: qsTr("中文输入法在搜索框里先用英文，直接打字母和拼音首字母；在框里切回中文照常可用，关掉后恢复原样")
+
+                    ToggleSwitch {
+                        checked: window.editor.englishOnOpen
+                        onToggled: (on) => window.editor.englishOnOpen = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("用数字键直接打开")
                     unlocks: [resultNumberHintsRow]
                     keywords: qsTr("快捷键;数字键;序号;Ctrl+1;Alt+1;冲突;hotkey").split(";")
@@ -5002,6 +5014,64 @@ Window {
                         text: qsTr("从备份恢复…")
                         onClicked: window.backup.restore(window)
                     }
+                }
+            }
+
+            SettingsSection {
+                id: healthSection
+
+                // Task Manager's Memory column, told apart; read every two
+                // seconds while this page is on screen, never otherwise.
+                readonly property var h: window.editor.health
+                readonly property bool known: h.total !== undefined
+                readonly property bool busy: known && h.busy
+                readonly property var tasks: known ? h.tasks : []
+                // Each part in the total's own measure (what is in memory now); a part
+                // smaller than 1 MB is said in words, never as "0 MB".
+                readonly property string fileIndexText: !known ? "" : h.fileIndex >= 1
+                    ? qsTr("文件索引 %1 MB（搜索靠它）").arg(h.fileIndex) + (h.fileIndexParked >= 4 ? "，" + qsTr("另有 %1 MB 已暂存，用到时再读回").arg(h.fileIndexParked) : "")
+                    : (h.fileIndexParked >= 1 ? qsTr("文件索引已暂存，用到时再读回") : qsTr("文件索引不到 1 MB"))
+                readonly property string otherText: !known ? "" : h.other >= 1 ? qsTr("界面和其他 %1 MB").arg(h.other) : qsTr("界面和其他不到 1 MB")
+
+                page: window.advancedPage
+                width: parent.width
+                title: qsTr("运行状况")
+                glyph: ""
+
+                Timer {
+                    interval: 2000
+                    repeat: true
+                    triggeredOnStart: true
+                    running: healthSection.visible && window.visible
+                    onTriggered: window.editor.refreshHealth()
+                }
+
+                SettingRow {
+                    title: healthSection.known ? qsTr("Win顺 现在用了 %1 MB").arg(healthSection.h.total) : qsTr("正在读取内存占用…")
+                    keywords: qsTr("内存;占用;任务管理器;归还;释放;卡;运行状况;memory;ram;task manager").split(";")
+                    description: !healthSection.known ? "" : healthSection.fileIndexText
+                                 + " · " + healthSection.otherText
+                                 + (healthSection.h.plugins > 0 ? "\n" + qsTr("插件 %1 MB").arg(healthSection.h.plugins) : "")
+                                 + (healthSection.h.documents > 0
+                                    ? (healthSection.h.plugins > 0 ? " · " : "\n") + qsTr("读文档的进程 %1 MB（读完 30 秒后退出）").arg(healthSection.h.documents) : "")
+                                 + (healthSection.known ? "\n" + healthSection.h.lastTrim : "")
+                                 + (healthSection.busy ? "\n" + qsTr("后台还在忙，归还后它会再用回一些") : "")
+
+                    FlatButton {
+                        text: qsTr("现在就归还")
+                        glyph: ""
+                        contentSpacing: 8
+                        onClicked: window.editor.giveMemoryBack()
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("现在在做什么")
+                    keywords: qsTr("后台;进度;剩余时间;建立索引;何时结束;progress;busy").split(";")
+                    description: !healthSection.known ? "" : healthSection.busy
+                        ? healthSection.tasks.map((task) => task.name + (task.count.length > 0 ? " " + task.count : "")
+                                                   + (task.remaining.length > 0 ? "，" + task.remaining : "")).join("\n")
+                        : healthSection.h.idleText
                 }
             }
 

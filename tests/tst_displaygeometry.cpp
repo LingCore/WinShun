@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include <cmath>
+#include <memory>
 
 using namespace Qt::StringLiterals;
 
@@ -102,6 +103,71 @@ private slots:
         QVERIFY(!QSettings(statePath, QSettings::IniFormat).contains(u"Launcher/CenterX"_s));
         placement.placeOn(screen);
         QCOMPARE(window.position(), home);
+    }
+
+    // Typed in File Explorer (GitHub #203): a window the launcher cannot keep
+    // clear of puts it in the corner of its file list, within the window, and
+    // more rows wanted later keep it there; one it can keep clear of, beside
+    // it as before (GitHub #141), its list given or not.
+    void explorerTooLargeToKeepClearOf()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        auto* screen = QGuiApplication::primaryScreen();
+        const QRect area = screen->availableGeometry();
+        if (area.width() < 1400 || area.height() < 700)
+            QSKIP("This layout needs room for a 760-pixel launcher in its own fixture's file list");
+        const auto fixture = [](const QRect& at) {
+            auto window = std::make_unique<QWindow>();
+            window->setFlags(Qt::FramelessWindowHint);
+            window->setGeometry(at);
+            window->create(); // hidden: the user's desktop stays as it was
+            return window;
+        };
+        const auto native = [](const QWindow& window) {
+            RECT r {};
+            ::GetWindowRect(reinterpret_cast<HWND>(window.winId()), &r);
+            return QRect(r.left, r.top, r.right - r.left, r.bottom - r.top);
+        };
+        // Centred, three quarters of the screen; its list right of the
+        // navigation pane, above the status bar.
+        const auto centred = fixture({area.x() + area.width() / 8, area.y() + area.height() / 8, area.width() * 3 / 4,
+            area.height() * 3 / 4});
+        const QRect source = centred->geometry();
+        const auto list = fixture({source.x() + source.width() / 5, source.y() + 80, source.width() - source.width() / 5,
+            source.height() - 110});
+        QWindow window;
+        window.resize(760, 400);
+        window.create();
+        ws::Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+        placement.setRoomNeeded(240);
+        placement.setRoomWanted(400);
+        placement.rememberWidth(760, 520);
+        placement.setWindow(&window);
+        QCoreApplication::processEvents();
+        placement.avoidNative(native(*centred), screen, false, {}, native(*centred), native(*list));
+        QCoreApplication::processEvents();
+        const QRect in = list->geometry();
+        const auto inCorner = [&] {
+            const QRect box = window.geometry();
+            return source.contains(box) && std::abs(in.right() - 12 - box.right()) <= 2 && box.bottom() <= in.bottom() - 12 + 2
+                && box.bottom() >= in.bottom() - 12 - 2;
+        };
+        QCOMPARE(window.width(), 760);
+        QVERIFY2(inCorner(), qPrintable(u"box %1,%2 %3x%4"_s.arg(window.x()).arg(window.y()).arg(window.width()).arg(window.height())));
+        placement.setRoomWanted(450);
+        window.resize(760, 450);
+        QCoreApplication::processEvents();
+        QVERIFY(inCorner());
+        // The left third: beside it.
+        const auto leftThird = fixture({area.x() + 4, area.y() + 4, area.width() / 3, area.height() - 8});
+        const auto leftList = fixture({area.x() + 100, area.y() + 100, area.width() / 3 - 100, area.height() - 140});
+        placement.setRoomWanted(400);
+        window.resize(760, 400);
+        placement.avoidNative(native(*leftThird), screen, false, {}, native(*leftThird), native(*leftList));
+        QCoreApplication::processEvents();
+        QVERIFY(!window.geometry().intersects(leftThird->geometry()));
+        QVERIFY(area.contains(window.geometry()));
     }
 
     void userDropAfterDpiChangeKeepsItsNewPosition()

@@ -74,6 +74,7 @@
 #include <windows.h>
 #include <psapi.h>
 #include <sddl.h>
+#include <tlhelp32.h>
 #include <winioctl.h>
 
 #include <algorithm>
@@ -178,6 +179,102 @@ std::vector<EntryId> knownOf(const ContentIndex& content, const QString& phrase)
         out.push_back(k & ~ContentIndex::Lookup::kMatch);
     return out;
 }
+
+// A bulk session whose files' bytes are made up, by their names: larger
+// files than a test should write, delivered as fast as memory can, so that
+// the bulk way's queue fills. With a Meeting, each session's first batch
+// waits (a while at most) until every session has one under way, as on
+// disks slow to start: batches let through at once then land at once.
+class MadeUpBulk final : public ntfs::BulkSource {
+public:
+    struct Made {
+        std::uint64_t size;
+        std::string text; // repeated to the size
+    };
+    using Maker = std::function<Made(std::u16string_view name)>;
+    struct Meeting {
+        explicit Meeting(int sessions) : sessions(sessions) { }
+        const int sessions;
+        std::mutex mutex;
+        std::condition_variable met;
+        int arrived = 0;
+    };
+    explicit MadeUpBulk(Maker maker, std::shared_ptr<Meeting> meeting = nullptr)
+        : m_maker(std::move(maker))
+        , m_meeting(std::move(meeting))
+    {
+    }
+    bool valid() const noexcept override { return true; }
+    const std::wstring& error() const noexcept override { return m_error; }
+    bool want(std::span<const ntfs::BulkWant> wants) override
+    {
+        m_wants.insert(m_wants.end(), wants.begin(), wants.end());
+        return true;
+    }
+    bool scan(std::vector<ntfs::BulkFile>& out) override
+    {
+        for (std::uint32_t t = 0; t < m_wants.size(); ++t) {
+            const std::uint64_t size = m_maker(m_wants[t].name).size;
+            out.push_back({t, size > m_wants[t].maxBytes ? ntfs::BulkStatus::TooLarge : ntfs::BulkStatus::Data,
+                ntfs::BulkSkip::None, size, 0});
+        }
+        return true;
+    }
+    bool fetch(std::span<const std::uint32_t> tickets,
+        const std::function<void(std::uint32_t, std::vector<std::byte>&&)>& sink) override
+    {
+        if (const auto meeting = std::exchange(m_meeting, nullptr)) {
+            std::unique_lock lock(meeting->mutex);
+            ++meeting->arrived;
+            meeting->met.notify_all();
+            meeting->met.wait_for(lock, std::chrono::milliseconds(300), [&] { return meeting->arrived >= meeting->sessions; });
+        }
+        for (const std::uint32_t t : tickets) {
+            const Made made = m_maker(m_wants[t].name);
+            std::vector<std::byte> bytes(static_cast<std::size_t>(made.size));
+            std::size_t filled = std::min(made.text.size(), bytes.size());
+            std::memcpy(bytes.data(), made.text.data(), filled);
+            while (filled < bytes.size()) { // doubled: a few copies, as fast as memory
+                const std::size_t n = std::min(filled, bytes.size() - filled);
+                std::memcpy(bytes.data() + filled, bytes.data(), n);
+                filled += n;
+            }
+            sink(t, std::move(bytes));
+        }
+        return true;
+    }
+
+private:
+    Maker m_maker;
+    std::shared_ptr<Meeting> m_meeting;
+    std::vector<ntfs::BulkWant> m_wants;
+    std::wstring m_error;
+};
+
+class MadeUpAccess final : public ntfs::VolumeAccess {
+public:
+    explicit MadeUpAccess(MadeUpBulk::Maker maker, std::shared_ptr<MadeUpBulk::Meeting> meeting = nullptr)
+        : m_maker(std::move(maker))
+        , m_meeting(std::move(meeting))
+    {
+    }
+    Kind kind() const noexcept override { return Kind::Service; }
+    std::unique_ptr<ntfs::RecordSource> openMft(std::wstring_view, std::uint32_t, bool) override { return nullptr; }
+    std::optional<ntfs::JournalInfo> queryJournal(std::wstring_view, std::uint32_t) override { return std::nullopt; }
+    std::unique_ptr<ntfs::JournalSource> openJournal(std::wstring_view, std::uint32_t, std::uint64_t) override
+    {
+        return nullptr;
+    }
+    void closeVolume(std::wstring_view) override { }
+    std::unique_ptr<ntfs::BulkSource> openBulkRead(std::wstring_view, std::uint32_t, bool) override
+    {
+        return std::make_unique<MadeUpBulk>(m_maker, m_meeting);
+    }
+
+private:
+    MadeUpBulk::Maker m_maker;
+    std::shared_ptr<MadeUpBulk::Meeting> m_meeting;
+};
 
 // ---- documents ------------------------------------------------------------------
 
@@ -925,6 +1022,15 @@ public:
         apply(hold.stop());
         run();
     }
+    // The launcher takes the keys held as they are, its keys routed to it
+    // (Windows refused it the front, GitHub #203): those keys.
+    std::vector<searchtyping::HeldKey> handOver()
+    {
+        Hold::HandOver handed = hold.handOver();
+        apply(std::move(handed.step));
+        run();
+        return handed.keys;
+    }
     // The timer comes when due.
     void fire()
     {
@@ -1413,6 +1519,42 @@ private slots:
         QVERIFY(pathtext::sameFolder(u"c:\\users\\ME\\"_s, u"C:\\Users\\me"_s));
         QVERIFY(!pathtext::sameFolder(u"C:\\Users"_s, u"C:\\Users\\me"_s));
         QVERIFY(!pathtext::sameFolder({}, {}));
+    }
+
+    // GitHub #182: "this level only" asks whether a path lies directly in a folder.
+    void directChild()
+    {
+        using pathtext::isDirectChild;
+        QVERIFY(isDirectChild(u"C:\\abc"_s, u"C:\\abc\\x.txt"_s));
+        QVERIFY(isDirectChild(u"c:\\ABC\\"_s, u"C:\\abc\\sub"_s)); // case, a trailing backslash
+        QVERIFY(isDirectChild(u"C:/abc"_s, u"C:\\abc\\x"_s));
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, u"C:\\abc\\sub\\x.txt"_s)); // deeper
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, u"C:\\abc"_s)); // itself
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, u"C:\\abc\\"_s));
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, u"C:\\abcd\\x.txt"_s)); // a sibling with the same start
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, u"C:\\abcd"_s));
+        QVERIFY(!isDirectChild(u"C:\\abc\\sub"_s, u"C:\\abc\\x.txt"_s)); // the parent's file
+        QVERIFY(!isDirectChild(u"C:\\abcd"_s, u"C:\\abc\\x.txt"_s));
+        QVERIFY(!isDirectChild(u"D:\\abc"_s, u"C:\\abc\\x.txt"_s));
+        // A drive's root holds its first level.
+        QVERIFY(isDirectChild(u"C:\\"_s, u"C:\\x.txt"_s));
+        QVERIFY(isDirectChild(u"C:"_s, u"C:\\x.txt"_s));
+        QVERIFY(!isDirectChild(u"C:\\"_s, u"C:\\abc\\x.txt"_s));
+        QVERIFY(!isDirectChild(u"C:\\"_s, u"C:\\"_s));
+        QVERIFY(!isDirectChild(u"C:\\"_s, u"D:\\x.txt"_s));
+        // Shares.
+        QVERIFY(isDirectChild(u"\\\\nas\\photos"_s, u"\\\\nas\\photos\\a.jpg"_s));
+        QVERIFY(isDirectChild(u"\\\\NAS\\Photos\\"_s, u"\\\\nas\\photos\\2024"_s));
+        QVERIFY(!isDirectChild(u"\\\\nas\\photos"_s, u"\\\\nas\\photos\\2024\\a.jpg"_s));
+        QVERIFY(!isDirectChild(u"\\\\nas\\photos"_s, u"\\\\nas\\photos2\\a.jpg"_s));
+        QVERIFY(!isDirectChild(u"\\\\nas\\photos"_s, u"\\\\nas2\\photos\\a.jpg"_s));
+        // A long-path prefix.
+        QVERIFY(isDirectChild(u"C:\\abc"_s, u"\\\\?\\C:\\abc\\x.txt"_s));
+        QVERIFY(isDirectChild(u"\\\\?\\UNC\\nas\\photos"_s, u"\\\\nas\\photos\\a.jpg"_s));
+        // Nothing, or no absolute path: not in anything.
+        QVERIFY(!isDirectChild({}, u"C:\\x"_s));
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, {}));
+        QVERIFY(!isDirectChild(u"abc"_s, u"abc\\x"_s));
     }
 
     // What Total Commander and Directory Opus say they show (filemanager::).
@@ -4309,6 +4451,60 @@ private slots:
         QCOMPARE(t.index.liveCount(), std::size_t {2});
         QCOMPARE(t.index.findPath(L"C:\\Users"), kNoEntry);
         QVERIFY(t.index.entry(t.notes).isDeleted());
+    }
+
+    // The files a content pass looks at besides its due documents: those
+    // added, removed, renamed, moved or flagged anew; never folders. When it
+    // cannot be told, not complete: every file is looked at then.
+    void indexChangesForContent()
+    {
+        SampleTree t;
+        using Files = std::vector<EntryId>;
+        QVERIFY(!t.index.takeChanges().complete); // not recorded before
+        auto none = t.index.takeChanges();
+        QVERIFY(none.complete && none.files.empty());
+
+        const EntryId added = t.index.add(t.docs, "plan.md", 0);
+        t.index.add(t.docs, "new folder", EntryFlag::Directory);
+        QVERIFY(t.index.move(t.notes, t.me, "notes.md"));
+        QVERIFY(t.index.move(t.notes, t.me, "notes.md")); // twice: once in the list
+        t.index.setFlags(t.report, EntryFlag::Hidden);
+        t.index.setFlags(added, 0); // the same flags: no change
+        t.index.setFlags(t.windows, EntryFlag::Hidden); // a folder
+        auto changes = t.index.takeChanges();
+        QVERIFY(changes.complete);
+        QCOMPARE(changes.files, (Files {t.report, t.notes, added}));
+
+        // A folder moved on its volume: its files' decisions are their own
+        // (flags set anew are in the list); removed: each of its files.
+        QVERIFY(t.index.move(t.docs, t.users, "Documents"));
+        QCOMPARE(t.index.takeChanges().files, Files {});
+        t.index.remove(t.users);
+        changes = t.index.takeChanges();
+        QVERIFY(changes.complete);
+        QCOMPARE(changes.files, (Files {t.report, t.notes, added}));
+
+        // Onto another root: not complete.
+        const EntryId d = t.index.addRoot("D:");
+        const EntryId moved = t.index.add(t.root, "moved", EntryFlag::Directory);
+        t.index.add(moved, "a.txt", 0);
+        t.index.takeChanges();
+        QVERIFY(t.index.move(moved, d, "moved"));
+        QVERIFY(!t.index.takeChanges().complete);
+        QVERIFY(t.index.takeChanges().complete);
+
+        // Renumbered: not complete, and the list starts again.
+        t.index.add(t.root, "b.txt", 0);
+        t.index.compact();
+        QVERIFY(!t.index.takeChanges().complete);
+        const EntryId c = t.index.add(t.root, "c.txt", 0);
+        QCOMPARE(t.index.takeChanges().files, Files {c});
+
+        // Too many: not complete.
+        for (std::size_t i = 1; i <= FileIndex::kMaxChanges + 1; ++i)
+            t.index.setFlags(c, (i & 1) ? EntryFlag::Hidden : 0); // a change each time
+        QVERIFY(!t.index.takeChanges().complete);
+        QVERIFY(t.index.takeChanges().complete);
     }
 
     void indexPaths()
@@ -8205,6 +8401,78 @@ private slots:
         QVERIFY(std::ranges::none_of(drive.rows, &SearchResult::elsewhere));
     }
 
+    // GitHub #182: typed in a folder's window with only its own level asked
+    // for: what lies directly in it, no subfolder's rows and nothing elsewhere,
+    // from the index, in a count, and among the recent items.
+    void folderTypedInThisLevelOnly()
+    {
+        QTemporaryDir dir;
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.path() + u"/index"_s, options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId top = index->add(index->addRoot("F:"), "ws182", EntryFlag::Directory);
+            const EntryId work = index->add(top, "work", EntryFlag::Directory);
+            index->add(work, "report-a.txt", 0);
+            index->add(work, "report-plan", EntryFlag::Directory);
+            index->add(work, "notes.md", 0);
+            index->add(index->add(work, "sub", EntryFlag::Directory), "report-deep.txt", 0);
+            index->add(index->add(top, "workshop", EntryFlag::Directory), "report-shop.txt", 0); // "work" at its start: not in it
+            index->add(top, "report-top.txt", 0);
+            index->add(index->add(top, "other", EntryFlag::Directory), "report-b.txt", 0);
+            index->add(index->addRoot("G:"), "report-g.txt", 0); // a drive's root level
+        }
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        struct Found {
+            QStringList names;
+            qint64 total = -1;
+        };
+        const auto search = [&](const QString& text, const QString& folder, bool level, const QStringList& history = {}) {
+            spy.clear();
+            SearchEngine::Request request;
+            request.text = text;
+            request.currentFolder = folder;
+            request.currentFolderOnly = level;
+            request.currentFolderLevel = level;
+            request.history = history;
+            request.limit = 100;
+            engine.submit(std::move(request));
+            Found found;
+            if (!spy.wait(5000)) {
+                found.names = {u"(no results)"_s};
+                return found;
+            }
+            for (const SearchResult& r : spy.at(0).at(1).value<SearchResults>())
+                found.names.append(r.elsewhere ? u'~' + r.name : r.name);
+            found.names.sort();
+            found.total = spy.at(0).at(2).toLongLong();
+            return found;
+        };
+        using L = QStringList;
+        const QString work = u"F:\\ws182\\work"_s;
+        const Found level = search(u"report"_s, work, true);
+        QCOMPARE(level.names, (L {u"report-a.txt"_s, u"report-plan"_s}));
+        QCOMPARE(level.total, qint64 {2});
+        // As the folder is written: a trailing backslash, case.
+        QCOMPARE(search(u"report"_s, work + u"\\"_s, true).names, level.names);
+        QCOMPARE(search(u"report"_s, u"f:\\WS182\\Work"_s, true).names, level.names);
+        // Not asked for: the folder and below, then the rest, as before.
+        QCOMPARE(search(u"report"_s, work, false).names, (L {u"report-a.txt"_s, u"report-deep.txt"_s, u"report-plan"_s,
+                                                                  u"~report-b.txt"_s, u"~report-g.txt"_s, u"~report-shop.txt"_s,
+                                                                  u"~report-top.txt"_s}));
+        // Recent items: the one in a subfolder stays out, the one at this level is in.
+        const L recent {u"F:\\ws182\\work\\sub\\report-deep.txt"_s, u"F:\\ws182\\work\\report-a.txt"_s,
+            u"F:\\ws182\\other\\report-b.txt"_s};
+        QCOMPARE(search(u"report"_s, work, true, recent).names, level.names);
+        // A folder one level above, a drive's root, a folder not in the index.
+        QCOMPARE(search(u"report"_s, u"F:\\ws182"_s, true).names, (L {u"report-top.txt"_s}));
+        QCOMPARE(search(u"report"_s, u"G:\\"_s, true).names, (L {u"report-g.txt"_s}));
+        QCOMPARE(search(u"report"_s, u"F:\\ws182\\gone"_s, true).names, L {});
+    }
+
     void newestFiles()
     {
         constexpr FileTime T = 1'700'000'000;
@@ -8939,6 +9207,65 @@ private slots:
         };
         QCOMPARE(names(windows), (QStringList {u"Code"_s, u"计算器"_s, u"Word"_s}));
         QCOMPARE(names(windows, 1), QStringList {u"Code"_s});
+    }
+
+    void goneAppsLeftOut() // #207
+    {
+        // On the disk: there, deleted, its folder deleted. Elsewhere: a drive
+        // letter not in use, a share, a shell object. Only the first two
+        // deleted ones are gone.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString there = QDir::toNativeSeparators(dir.filePath(u"there.exe"_s));
+        const QString deleted = QDir::toNativeSeparators(dir.filePath(u"deleted.exe"_s));
+        const QString noFolder = QDir::toNativeSeparators(dir.filePath(u"gone\\bin\\app.exe"_s));
+        for (const QString& path : {there, deleted}) {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(QFile::remove(deleted));
+        if (::GetDriveTypeW(reinterpret_cast<LPCWSTR>(there.left(3).utf16())) != DRIVE_FIXED)
+            QSKIP("the temporary folder is not on a fixed disk");
+        QVERIFY(!appTargetGone(there));
+        QVERIFY(appTargetGone(deleted));
+        QVERIFY(appTargetGone(noFolder));
+        QString freeLetter;
+        const DWORD drives = ::GetLogicalDrives();
+        for (int i = 25; i >= 3 && freeLetter.isEmpty(); --i) {
+            if (!(drives & (1u << i)))
+                freeLetter = QChar(u'A' + i) + u":\\app\\app.exe"_s;
+        }
+        if (!freeLetter.isEmpty())
+            QVERIFY(!appTargetGone(freeLetter));
+        QVERIFY(!appTargetGone(uR"(\\server\share\app.exe)"_s));
+        QVERIFY(!appTargetGone(u"shell:::{26EE0668-A00A-44D7-9371-BEB064C98683}"_s));
+        QVERIFY(!appTargetGone(QString()));
+
+        // Only desktop apps are asked; a packaged one's install folder never.
+        const auto app = [](const QString& name, const QString& target, AppKind kind = AppKind::Desktop) {
+            AppInfo a;
+            a.name = name;
+            a.id = target.isEmpty() ? name : target;
+            a.target = target;
+            a.kind = kind;
+            return a;
+        };
+        const AppList apps {app(u"There"_s, there), app(u"Deleted"_s, deleted), app(u"Control Panel"_s, QString()),
+            app(u"Store app"_s, noFolder, AppKind::Store), app(u"No folder"_s, noFolder)};
+        QStringList names;
+        for (const AppInfo& a : presentApps(apps))
+            names.append(a.name);
+        QCOMPARE(names, (QStringList {u"There"_s, u"Control Panel"_s, u"Store app"_s}));
+
+        // Asked of the disk at most every few minutes; at once after a read
+        // or a failed open, and the first time.
+        using namespace std::chrono_literals;
+        QVERIFY(programsCheckDue(std::nullopt, false, false));
+        QVERIFY(!programsCheckDue(10s, false, false));
+        QVERIFY(!programsCheckDue(kProgramsCheckEvery - 1s, false, false));
+        QVERIFY(programsCheckDue(kProgramsCheckEvery, false, false));
+        QVERIFY(programsCheckDue(10s, true, false));
+        QVERIFY(programsCheckDue(10s, false, true));
     }
 
     void settingsIndexParsing()
@@ -10689,16 +11016,18 @@ private slots:
             && write(u"d.bin"_s, u"合同"_s));
         const std::string rootName = wtf8::fromUtf16(wtf8::view(QDir::toNativeSeparators(tmp.path())));
         auto index = std::make_shared<FileIndex>();
+        EntryId root = kNoEntry;
         EntryId a = kNoEntry;
         EntryId b = kNoEntry;
         EntryId c = kNoEntry;
+        EntryId bin = kNoEntry;
         {
             auto lock = index->writeLock();
-            const EntryId root = index->addRoot(rootName);
+            root = index->addRoot(rootName);
             a = index->add(root, "a.txt", 0);
             b = index->add(root, "b.md", 0);
             c = index->add(root, "c.log", 0);
-            index->add(root, "d.bin", 0);
+            bin = index->add(root, "d.bin", 0);
         }
         auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
         ContentIndexer::Source source;
@@ -10730,6 +11059,28 @@ private slots:
         indexer.setOptions(options);
         QVERIFY(waitFor([&] { return content->stats().documents == 2; }));
         QCOMPARE(knownOf(*content, u"报告"_s), (std::vector<EntryId> {a, c}));
+
+        // The passes after the first look at what changed (Lookout): a file
+        // added is read; one removed, and one a search handed over that is
+        // no candidate, lose their documents.
+        QVERIFY(write(u"e.txt"_s, u"新的文件"_s));
+        EntryId e = kNoEntry;
+        {
+            auto lock = index->writeLock();
+            e = index->add(root, "e.txt", 0);
+        }
+        indexer.wake();
+        QVERIFY(waitFor([&] { return matchesOf(*content, u"文件"_s) == std::vector<EntryId> {e}; }));
+        {
+            auto lock = index->writeLock();
+            index->remove(c);
+        }
+        {
+            ContentIndexer::Intake intake(&indexer); // wakes the indexer as it goes
+            QVERIFY(intake.take(bin, {ContentIndexer::Outcome::Indexed, grams::ofPhrase(u"合同"_s), 1}, intake.since()));
+        }
+        QVERIFY(waitFor([&] { return !content->knows(c) && !content->knows(bin); }));
+        QCOMPARE(knownOf(*content, u"报告"_s), (std::vector<EntryId> {a, e}));
         options.enabled = false;
         indexer.setOptions(options);
         QCOMPARE(content->stats().documents, std::size_t {0});
@@ -10887,6 +11238,121 @@ private slots:
         QVERIFY(content->knows(files[3]) && content->knows(pdf) && !content->knows(files[2]));
     }
 
+    // One file larger than the bulk way's queue (ContentIndexer::kBulkQueueBytes)
+    // is read too, alone once nothing else waits: it used to wait for room
+    // for good, and its volume's files after it with it (2026-11-05: a text
+    // limit raised over the queue, a 300 MB .txt).
+    void contentBulkFileOverQueue()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const std::string rootName = wtf8::fromUtf16(wtf8::view(QDir::toNativeSeparators(tmp.path())));
+        constexpr int kFiles = 2100; // above the bulk way's threshold
+        constexpr std::uint64_t kLarge = ContentIndexer::kBulkQueueBytes + (1u << 20);
+        auto index = std::make_shared<FileIndex>();
+        EntryId large = kNoEntry;
+        {
+            auto lock = index->writeLock();
+            const EntryId r = index->addRoot(rootName);
+            index->setFolderRecord(r, 5, r);
+            for (int i = 0; i < kFiles; ++i) {
+                index->add(r, "f" + std::to_string(i) + ".txt", 0);
+                if (i == kFiles / 2) // files to read after it, too
+                    large = index->add(r, "large.txt", 0);
+            }
+        }
+        const auto access = std::make_shared<MadeUpAccess>([](std::u16string_view name) {
+            return name == u"large.txt" ? MadeUpBulk::Made {kLarge, "large words "} : MadeUpBulk::Made {64, "tiny words "};
+        });
+        auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
+        ContentIndexer::Source source;
+        source.index = [&] { return index; };
+        source.volumes = [&] { return std::vector<ContentIndexer::Volume> {{rootName, false}}; };
+        source.ready = [] { return true; };
+        source.access = [&] { return access; };
+        ContentIndexer::Options options;
+        options.extensions = {u"txt"_s};
+        options.sizeLimits.bytes[ContentSizeLimits::Text] = 2 * static_cast<std::int64_t>(kLarge);
+        using namespace std::chrono_literals;
+        ContentIndexer indexer(content, source, options, {0ms, 0ms, 1h, 0ms});
+        const auto waitFor = [](const auto& done) {
+            for (int i = 0; i < 3000 && !done(); ++i)
+                std::this_thread::sleep_for(10ms);
+            return done();
+        };
+        QVERIFY(waitFor([&] { return content->stats().documents == kFiles + 1 && !indexer.reading(); }));
+        const ContentIndexer::BulkStats bulk = indexer.bulkStats();
+        QCOMPARE(bulk.files, std::size_t {kFiles + 1});
+        QVERIFY(bulk.mostQueued >= kLarge); // it waited alone
+        QCOMPARE(matchesOf(*content, u"large words"_s), std::vector<EntryId> {large});
+        QCOMPARE(matchesOf(*content, u"tiny words"_s).size(), std::size_t {kFiles});
+    }
+
+    // What waits for a reader, and what is on its way, stays within the bulk
+    // way's queue (ContentIndexer::kBulkQueueBytes) for all volumes together.
+    // Each session used to check for room and count its batch only once it
+    // came: batches let through at once landed together on top of the queue
+    // (2026-11-05: 310-385 MB waited, the limit being 256 MB). Here every
+    // session's first batch waits for the others' (MadeUpBulk::Meeting):
+    // counted only once they came, all eight would land at once.
+    void contentBulkQueueBound()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        constexpr int kVolumes = 8;
+        constexpr int kFiles = 300; // a volume's, a batch and a bit; 2400 in all, above the bulk way's threshold
+        constexpr std::uint64_t kSize = 64u << 10; // 150 MB in all, 18.75 MB a volume
+        static_assert(kVolumes * ContentIndexer::kBulkBatchBytes > ContentIndexer::kBulkQueueBytes);
+        static_assert(kFiles * kSize > ContentIndexer::kBulkBatchBytes);
+        auto index = std::make_shared<FileIndex>();
+        std::vector<ContentIndexer::Volume> volumes;
+        {
+            auto lock = index->writeLock();
+            for (int v = 0; v < kVolumes; ++v) {
+                const QString root = QDir::toNativeSeparators(tmp.filePath(u"v%1"_s.arg(v)));
+                volumes.push_back({wtf8::fromUtf16(wtf8::view(root)), false});
+                const EntryId r = index->addRoot(volumes.back().root);
+                index->setFolderRecord(r, 5, r);
+                for (int i = 0; i < kFiles; ++i)
+                    index->add(r, "f" + std::to_string(i) + ".txt", 0);
+            }
+        }
+        // Words enough that taking the grams costs more than making the bytes.
+        std::string words;
+        for (std::uint32_t seed = 1; words.size() < 2000;) {
+            for (int letters = 3 + static_cast<int>(seed % 5); letters > 0; --letters) {
+                seed = seed * 1103515245u + 12345u;
+                words += static_cast<char>('a' + (seed >> 16) % 26);
+            }
+            words += ' ';
+        }
+        const auto access = std::make_shared<MadeUpAccess>(
+            [words](std::u16string_view) { return MadeUpBulk::Made {kSize, words}; },
+            std::make_shared<MadeUpBulk::Meeting>(kVolumes));
+        auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
+        ContentIndexer::Source source;
+        source.index = [&] { return index; };
+        source.volumes = [&] { return volumes; };
+        source.ready = [] { return true; };
+        source.access = [&] { return access; };
+        ContentIndexer::Options options;
+        options.extensions = {u"txt"_s};
+        using namespace std::chrono_literals;
+        ContentIndexer indexer(content, source, options, {0ms, 0ms, 1h, 0ms});
+        const auto waitFor = [](const auto& done) {
+            for (int i = 0; i < 3000 && !done(); ++i)
+                std::this_thread::sleep_for(10ms);
+            return done();
+        };
+        QVERIFY(waitFor([&] { return content->stats().documents == kVolumes * kFiles && !indexer.reading(); }));
+        const ContentIndexer::BulkStats bulk = indexer.bulkStats();
+        QCOMPARE(bulk.sessions, std::size_t {kVolumes});
+        QCOMPARE(bulk.files, std::size_t {kVolumes * kFiles});
+        const QString most = u"%1 MB waited at most"_s.arg(static_cast<double>(bulk.mostQueued) / 1048576.0);
+        QVERIFY2(bulk.mostQueued <= ContentIndexer::kBulkQueueBytes, qPrintable(most));
+        QVERIFY2(bulk.mostQueued > ContentIndexer::kBulkBatchBytes, qPrintable(most)); // batches waited together
+    }
+
     // Folders that directly hold many candidates, nearly all of one
     // extension, are read last; nothing else is.
     void contentCrowdedFolders()
@@ -10931,6 +11397,261 @@ private slots:
         QCOMPARE(ContentIndexer::orderOf(true, false, true), O::kCrowded);
         QCOMPARE(ContentIndexer::orderOf(false, true, true), O::kCrowded);
         QVERIFY(O::kKnown < O::kProfile && O::kProfile < O::kOther && O::kOther < O::kHidden && O::kHidden < O::kCrowded);
+    }
+
+    // A pass that looks only at the files the Lookout lists (changed since
+    // the last pass, documents due, the last pass's first reads, what
+    // searches handed over) decides what a look at every file decides
+    // (ContentIndexer::plan): random changes to files, folders and documents,
+    // pass after pass, some files left unread each time.
+    void contentPlanLooksAtChangesOnly()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        // The user's own folder, for the order of first reads.
+        wchar_t oldProfile[MAX_PATH] {};
+        const bool hadProfile = ::GetEnvironmentVariableW(L"USERPROFILE", oldProfile, MAX_PATH) > 0;
+        ::SetEnvironmentVariableW(L"USERPROFILE", L"C:\\home");
+        const auto restoreProfile
+            = qScopeGuard([&] { ::SetEnvironmentVariableW(L"USERPROFILE", hadProfile ? oldProfile : nullptr); });
+
+        using Work = ContentIndexer::Work;
+        const std::string share = "\\\\nas\\docs";
+        // D: is being ejected (suspended), E: is not followed.
+        const std::vector<ContentIndexer::Volume> volumes {{"C:", false}, {"D:", true}, {share, false, 0, true}};
+        ContentIndexer::Options options;
+        options.extensions = {u"txt"_s, u"md"_s, u"log"_s};
+        auto index = std::make_shared<FileIndex>();
+        ContentIndex content(tmp.filePath(u"content"_s));
+        ContentIndexer::Lookout lookout;
+        const std::vector<grams::Key> keys = grams::ofPhrase(u"word"_s);
+        std::mt19937 random(20261105);
+        const auto chance = [&](unsigned perMille) { return random() % 1000 < perMille; };
+
+        std::array<EntryId, 4> roots {}; // C:, D:, E:, the share
+        std::vector<EntryId> dirs; // folders, roots too
+        std::vector<EntryId> files;
+        EntryId home = kNoEntry;
+        EntryId gen = kNoEntry; // grows crowded, then not
+        std::vector<EntryId> genFiles;
+        int named = 0;
+        const auto rootOf = [&](EntryId id) {
+            while (index->entry(id).parent != kNoEntry)
+                id = index->entry(id).parent;
+            return id;
+        };
+        const auto inherited = [&](EntryId folder) { // what a file or folder in it has from it
+            return static_cast<std::uint8_t>((index->entry(folder).flags & EntryFlag::Inherited)
+                | (rootOf(folder) == roots[3] ? EntryFlag::Remote : 0));
+        };
+        const auto newName = [&] {
+            static const char* const kinds[] = {"txt", "md", "log", "docx", "pdf", "exe", "png", "TXT"};
+            const std::string n = "f" + std::to_string(++named);
+            if (chance(40))
+                return "~$" + n + ".docx"; // an Office lock file
+            if (chance(40))
+                return n; // no extension
+            return n + "." + kinds[random() % std::size(kinds)];
+        };
+        const auto addFile = [&](EntryId folder) {
+            std::uint8_t flags = inherited(folder);
+            if (chance(80))
+                flags |= EntryFlag::Hidden;
+            if (chance(80))
+                flags |= EntryFlag::LowPriority;
+            if (chance(40))
+                flags |= EntryFlag::Offline;
+            files.push_back(index->add(folder, newName(), flags));
+        };
+        const auto addDir = [&](EntryId parent) {
+            std::uint8_t flags = EntryFlag::Directory | inherited(parent);
+            if (chance(100))
+                flags |= EntryFlag::LowPriority;
+            if (chance(100))
+                flags |= EntryFlag::Hidden;
+            dirs.push_back(index->add(parent, "d" + std::to_string(++named), flags));
+        };
+        // A random one that is still there; kNoEntry when none was found.
+        const auto pick = [&](std::vector<EntryId>& ids) -> EntryId {
+            for (int tries = 0; tries < 8 && !ids.empty(); ++tries) {
+                const std::size_t at = random() % ids.size();
+                if (!index->entry(ids[at]).isDeleted())
+                    return ids[at];
+                ids[at] = ids.back();
+                ids.pop_back();
+            }
+            return kNoEntry;
+        };
+        {
+            auto lock = index->writeLock();
+            roots = {index->addRoot("C:"), index->addRoot("D:"), index->addRoot("E:"), index->addRoot(share)};
+            dirs.assign(roots.begin(), roots.end());
+            home = index->add(roots[0], "home", EntryFlag::Directory);
+            dirs.push_back(home);
+            for (int i = 0; i < 30; ++i)
+                addDir(dirs[random() % dirs.size()]);
+            for (int i = 0; i < 400; ++i)
+                addFile(dirs[random() % dirs.size()]);
+            gen = index->add(home, "gen", EntryFlag::Directory);
+            for (int i = 0; i < 499; ++i) // one short of crowded
+                genFiles.push_back(index->add(gen, "g" + std::to_string(i) + ".log", 0));
+        }
+
+        std::set<EntryId> recent; // read again lately (Timing::cooldown)
+        int compared = 0;
+        int everyFile = 0;
+        std::size_t firstReads = 0, again = 0, checks = 0, crowded = 0, own = 0, retired = 0, looked = 0;
+        for (int round = 0; round < 40; ++round) {
+            std::vector<EntryId> written; // reported after the lock is let go, as the journal's are
+            std::vector<EntryId> handedOver; // read by searches
+            bool unsure = false;
+            {
+                auto lock = index->writeLock();
+                if (round == 6) {
+                    for (int i = 0; i < 3; ++i) // crowded now: its files left to read go last
+                        genFiles.push_back(index->add(gen, "h" + std::to_string(i) + ".log", 0));
+                } else if (round == 12) {
+                    for (int i = 0; i < 60; ++i) // under 90% of one extension: no longer
+                        QVERIFY(index->move(genFiles[i], gen, "g" + std::to_string(i) + ".txt"));
+                }
+                const unsigned changes = round == 0 ? 0 : random() % 40;
+                for (unsigned c = 0; c < changes; ++c) {
+                    const unsigned what = random() % 1000;
+                    const EntryId file = pick(files);
+                    const EntryId dir = pick(dirs);
+                    const bool isRoot = dir != kNoEntry && (index->entry(dir).flags & EntryFlag::Root);
+                    if (what < 250) {
+                        if (dir != kNoEntry)
+                            addFile(dir);
+                    } else if (what < 300) {
+                        if (dir != kNoEntry)
+                            addDir(dir);
+                    } else if (what < 400) {
+                        if (file != kNoEntry)
+                            index->remove(file);
+                    } else if (what < 420) {
+                        if (dir != kNoEntry && !isRoot && dir != home && dir != gen)
+                            index->remove(dir);
+                    } else if (what < 520) {
+                        if (file != kNoEntry)
+                            QVERIFY(index->move(file, index->entry(file).parent, newName()));
+                    } else if (what < 600) {
+                        // Elsewhere on its volume; now and then onto another
+                        // (a share's files stay on it), its flags as there.
+                        if (file != kNoEntry && dir != kNoEntry
+                            && (rootOf(dir) == rootOf(file) || (rootOf(dir) != roots[3] && rootOf(file) != roots[3]))) {
+                            const std::uint8_t itsOwn = index->entry(file).flags & ~EntryFlag::Inherited;
+                            QVERIFY(index->move(file, dir, index->name(file)));
+                            index->setFlags(file, itsOwn | inherited(dir));
+                        }
+                    } else if (what < 630) {
+                        if (dir != kNoEntry && !isRoot && dir != home && dir != gen) {
+                            const EntryId to = pick(dirs);
+                            if (to != kNoEntry && rootOf(to) == rootOf(dir))
+                                index->move(dir, to, index->name(dir)); // false into its own subtree
+                        }
+                    } else if (what < 633) {
+                        // Onto another volume: not told file by file (every file is looked at).
+                        if (dir != kNoEntry && !isRoot && dir != home && dir != gen && rootOf(dir) != roots[3])
+                            index->move(dir, rootOf(dir) == roots[2] ? roots[0] : roots[2], index->name(dir));
+                    } else if (what < 730) {
+                        if (file != kNoEntry) {
+                            static constexpr std::uint8_t kFlags[] = {EntryFlag::Hidden, EntryFlag::LowPriority, EntryFlag::Offline};
+                            index->setFlags(file, index->entry(file).flags ^ kFlags[random() % 3]);
+                        }
+                    } else if (what < 760) {
+                        if (dir != kNoEntry && !isRoot)
+                            index->setFlags(dir, index->entry(dir).flags ^ EntryFlag::LowPriority); // not its files'
+                    } else if (what < 880) {
+                        if (file != kNoEntry)
+                            written.push_back(file);
+                    } else if (what < 890) {
+                        unsure = true;
+                    } else if (file != kNoEntry) {
+                        handedOver.push_back(file);
+                    }
+                }
+            }
+            content.markChanged(written);
+            if (unsure)
+                content.markUnsure([&](EntryId e) { return e % 5 == static_cast<EntryId>(round) % 5; });
+            for (const EntryId e : handedOver) {
+                QVERIFY(content.add(e, keys, false, 1, content.changeSequence()));
+                lookout.taken(e);
+            }
+            if (round == 20) { // ids renumbered: every file is looked at
+                auto lock = index->writeLock();
+                index->compact(true, [&](const FileIndex::Renumber& renumber) {
+                    content.remap(renumber);
+                    for (std::vector<EntryId>* ids : {&files, &dirs, &genFiles}) {
+                        std::vector<EntryId> kept;
+                        for (const EntryId id : *ids) {
+                            if (const EntryId to = renumber(id); to != kNoEntry)
+                                kept.push_back(to);
+                        }
+                        ids->swap(kept);
+                    }
+                    for (EntryId& r : roots)
+                        r = renumber(r);
+                    home = renumber(home);
+                    gen = renumber(gen);
+                });
+                recent.clear(); // as the indexer's (by the old ids)
+            }
+            if (round == 30)
+                options.documents = false; // every file again
+
+            const auto lock = index->longReadLock();
+            const ContentIndexer::Lookout::Look look
+                = lookout.next(index, content, options, volumes, std::chrono::steady_clock::now());
+            const auto readLately = [&](EntryId e) { return recent.contains(e); };
+            const ContentIndexer::Plan all = ContentIndexer::plan(*index, content, options, volumes, readLately);
+            if (look.everyFile) {
+                ++everyFile;
+            } else {
+                const ContentIndexer::Plan only
+                    = ContentIndexer::plan(*index, content, options, volumes, readLately, &look.files);
+                QCOMPARE(only.work.size(), all.work.size());
+                for (std::size_t i = 0; i < all.work.size(); ++i) {
+                    QVERIFY2(only.work[i] == all.work[i],
+                        qPrintable(u"pass %1: file %2 against %3"_s.arg(round).arg(only.work[i].entry).arg(all.work[i].entry)));
+                }
+                QCOMPARE(only.retired, all.retired);
+                ++compared;
+                looked += look.files.size();
+                retired += all.retired.size();
+                for (const Work& w : all.work) {
+                    firstReads += !w.checkOnly && !w.again;
+                    again += w.again;
+                    checks += w.checkOnly;
+                    crowded += w.crowded;
+                    own += w.order == ContentIndexer::kProfile;
+                }
+            }
+            lookout.planned(all.work);
+            content.retire(all.retired);
+            // The pass: most files read, some not (in use, cut short).
+            for (const Work& w : all.work) {
+                if (chance(200))
+                    continue;
+                if (w.checkOnly && chance(500)) {
+                    content.confirm(w.entry);
+                    continue;
+                }
+                QVERIFY(content.add(w.entry, keys, chance(100), static_cast<std::uint32_t>(round), content.changeSequence()));
+                if (w.again)
+                    recent.insert(w.entry);
+            }
+            if (round % 5 == 4)
+                recent.clear(); // the cooldown is over
+        }
+        // Every kind of decision was made, by looking at a fraction of the files.
+        qInfo("%d passes compared (%d looked at every file): %zu files looked at, %zu first reads, %zu again, "
+              "%zu checks, %zu crowded, %zu the user's, %zu retired",
+            compared, everyFile, looked, firstReads, again, checks, crowded, own, retired);
+        QVERIFY(compared >= 30);
+        QVERIFY(everyFile >= 3); // the first pass, renumbered, other options
+        QVERIFY(firstReads > 0 && again > 0 && checks > 0 && crowded > 0 && own > 0 && retired > 0);
     }
 
     // ---- documents -------------------------------------------------------------
@@ -11405,6 +12126,73 @@ private slots:
         QCOMPARE(ContentIndexer::readFile(pdf, 0, {}, nullptr).outcome, ContentIndexer::Outcome::Skipped);
         QCOMPARE(ContentIndexer::readFile(bad, 0, {}, &extractor).outcome, ContentIndexer::Outcome::Empty);
         extractor.closeIdle();
+    }
+
+    // Large documents are read one at a time, each by a process that ends
+    // after it (a large PDF's process keeps much of what it took); the
+    // others' processes wait for the next.
+    void docExtractorReadsLargeAlone()
+    {
+        if (!QFile::exists(QString::fromStdWString(DocExtractor::programPath())))
+            QSKIP("WinShunExtract.exe is not built with this preset");
+        QTemporaryDir dir;
+        const auto write = [&](const QString& name, const QByteArray& data) {
+            QFile f(dir.filePath(name));
+            if (!f.open(QIODevice::WriteOnly))
+                return std::wstring();
+            f.write(data);
+            return QDir::toNativeSeparators(f.fileName()).toStdWString();
+        };
+        const QByteArray smallPdf = makePdf({{"Contract", "number"}});
+        const QByteArray largePdf = makePdf({{"Contract", "number"}, {"Second", "page"}});
+        QVERIFY(largePdf.size() > smallPdf.size());
+        const std::wstring small = write(u"small.pdf"_s, smallPdf);
+        const std::wstring large = write(u"large.pdf"_s, largePdf);
+        // The extractor processes this one started that have not ended.
+        const auto running = [] {
+            int n = 0;
+            const win32::UniqueHandle snapshot(::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
+            PROCESSENTRY32W entry {sizeof entry};
+            for (BOOL more = ::Process32FirstW(snapshot.get(), &entry); more; more = ::Process32NextW(snapshot.get(), &entry)) {
+                if (entry.th32ParentProcessID != ::GetCurrentProcessId() || ::_wcsicmp(entry.szExeFile, L"WinShunExtract.exe") != 0)
+                    continue;
+                const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID));
+                DWORD code = 0;
+                n += process.valid() && ::GetExitCodeProcess(process.get(), &code) && code == STILL_ACTIVE;
+            }
+            return n;
+        };
+        QTRY_COMPARE(running(), 0);
+        DocExtractor extractor(2, DocExtractor::Priority::Normal, static_cast<std::uint64_t>(largePdf.size()));
+        QCOMPARE(extractor.extractFile(small, 1 << 20, {}).status, extractproto::Status::Ok);
+        QCOMPARE(running(), 1); // waits for the next
+        const DocExtractor::Result read = extractor.extractFile(large, 1 << 20, {});
+        QCOMPARE(read.status, extractproto::Status::Ok);
+        QVERIFY(read.text.text.find("Second page") != std::string::npos);
+        QCOMPARE(running(), 0); // ended after it
+
+        // Two threads reading large ones: never two processes at once.
+        std::atomic<bool> done {false};
+        std::atomic<int> most {0};
+        std::atomic<int> ok {0};
+        std::thread watch([&] {
+            while (!done.load())
+                most = std::max(most.load(), running());
+        });
+        {
+            std::vector<std::jthread> readers;
+            for (int r = 0; r < 2; ++r) {
+                readers.emplace_back([&] {
+                    for (int i = 0; i < 10; ++i)
+                        ok += extractor.extractFile(large, 1 << 20, {}).status == extractproto::Status::Ok;
+                });
+            }
+        }
+        done = true;
+        watch.join();
+        QCOMPARE(ok.load(), 20);
+        QCOMPARE(most.load(), 1);
+        QCOMPARE(running(), 0);
     }
 
     // Copies of a document (the same bytes) are not read again: they get
@@ -13150,6 +13938,89 @@ private slots:
         }
     }
 
+    // Windows refused the launcher the front, and SendInput every key typed
+    // again (GitHub #203): the launcher takes its keys from a hook, and the
+    // keys held are handed over to it as they are, never typed again. The
+    // window typed in gets only what changes the keyboard's state (releases,
+    // Caps Lock, Shift as the user holds it), the hold ends, and keys after
+    // that go on (in Win顺, to the launcher's router).
+    void typingHandOver()
+    {
+        using namespace searchtyping;
+        const Shifts none;
+        const Shifts left {.left = true};
+        const auto vks = [](const std::vector<HeldKey>& keys) {
+            QString text;
+            for (const HeldKey& key : keys)
+                text += key.vk == kVkPacket ? u"char("_s + QChar(static_cast<char16_t>(key.scanCode)) + u')'
+                    : key.vk == kVkCapital  ? u"<Caps>"_s
+                                            : QString(QChar(static_cast<char16_t>(key.vk))) + (key.shift ? u"^"_s : u""_s);
+            return text;
+        };
+        // "aB", Caps Lock, "c" in a folder, the launcher not in front: each
+        // press with its Shift (^), Caps Lock where it was pressed (the
+        // platform flips the case of what follows); no typing reaches the
+        // window, Shift ends as the user holds it, no tap made, none stuck.
+        {
+            HoldRun run;
+            run.front = {.ours = false, .sourceFocused = true};
+            run.start('A', true);
+            run.release('A');
+            run.press(kVkLShift);
+            run.tap('B');
+            run.release(kVkLShift);
+            run.tap(kVkCapital);
+            run.tap('C');
+            run.run();
+            run.deliver(); // in front it never is: they wait
+            QVERIFY(!run.ended);
+            const std::vector<HeldKey> keys = run.handOver();
+            QCOMPARE(vks(keys), u"AB^<Caps>C"_s);
+            QVERIFY(run.ended && !run.hold.holding());
+            QCOMPARE(run.typed(), QString());
+            QVERIFY(run.windowShift() == none && run.taps() == 0 && run.stuck().isEmpty());
+            run.letters("x"); // after the hold: goes on, Caps Lock on as the user pressed it
+            run.run();
+            QCOMPARE(run.typed(), u"X"_s);
+        }
+        // Shift still held as they go: left down for the user, whose release
+        // comes after; their capitals keep it.
+        {
+            HoldRun run;
+            run.front = {.ours = false, .sourceFocused = true};
+            run.before(kVkLShift, true);
+            run.start('M', true, left);
+            run.release('M');
+            run.tap('S');
+            run.run();
+            QCOMPARE(vks(run.handOver()), u"M^S^"_s);
+            QVERIFY(run.ended && run.windowShift() == left);
+            run.release(kVkLShift);
+            run.run();
+            QVERIFY(run.windowShift() == none && run.taps() == 0 && run.stuck().isEmpty());
+        }
+        // A character typed with AltGr goes as that character.
+        {
+            HoldRun run;
+            run.front = {.ours = false, .sourceFocused = true};
+            run.altGr = [](unsigned vk) { return vk == 'Z' ? std::u16string(u"ż") : std::u16string(); };
+            run.start('A', true);
+            run.release('A');
+            run.altGrKey(true);
+            run.tap('Z');
+            run.altGrKey(false);
+            run.run();
+            QCOMPARE(vks(run.handOver()), u"Achar(ż)"_s);
+            QVERIFY(run.ended && run.stuck().isEmpty() && run.windowShift() == none);
+        }
+        // Nothing held: nothing handed over, nothing ends.
+        {
+            Hold hold;
+            const Hold::HandOver handed = hold.handOver();
+            QVERIFY(handed.keys.empty() && handed.step.send.empty() && !handed.step.ended);
+        }
+    }
+
     // The keys held for the launcher go once it takes typing as it would a
     // user's (GitHub #103), or kHandoffCapMs after it first became active all
     // the same.
@@ -13190,6 +14061,20 @@ private slots:
         QCOMPARE(handoff(inactive, 30u), Handoff::Wait);
         QCOMPARE(handoff(inactive, kHandoffCapMs), Handoff::DeliverLate);
         QCOMPARE(handoff(LauncherState {}, kHandoffCapMs + 1), Handoff::DeliverLate);
+        // Refused the front, its keys routed to it (GitHub #203): never
+        // active nor focused for that, its first frame is all it waits for,
+        // the cap counted from the routing (App passes that); still not
+        // while showLauncher prepares it.
+        const LauncherState routed {.revealed = true, .routed = true};
+        QCOMPARE(handoff(routed, std::nullopt), Handoff::Deliver);
+        QCOMPARE(handoff(routed, 0u), Handoff::Deliver);
+        LauncherState routedCloaked = routed;
+        routedCloaked.revealed = false;
+        QCOMPARE(handoff(routedCloaked, 0u), Handoff::Wait);
+        QCOMPARE(handoff(routedCloaked, kHandoffCapMs), Handoff::DeliverLate);
+        LauncherState routedPreparing = routed;
+        routedPreparing.preparing = true;
+        QCOMPARE(handoff(routedPreparing, kHandoffCapMs + 1), Handoff::Wait);
     }
 
     // The folder menu's hotkey (GitHub #25): a press opens, closes or

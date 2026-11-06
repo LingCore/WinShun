@@ -77,6 +77,9 @@ public:
     void showHit(const Hit& hit, const QString& words);
     void releasePreview();
     void wake();
+    // What is under way that touches the pages all the time (a scan, a search,
+    // a preview, a launcher query), or null: the idle trim waits for it.
+    const char* working() const;
     void externalQuery(const QJsonObject& params, std::function<void(const QJsonObject&)> reply);
     void cancelQuery();
 signals:

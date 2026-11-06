@@ -81,6 +81,8 @@ public:
         // indexed: its documents are kept, and its own thread reads its
         // files (RemoteContent), not a pass. Suspended while offline.
         bool remote = false;
+
+        bool operator==(const Volume&) const = default;
     };
     struct Source {
         std::function<std::shared_ptr<FileIndex>()> index;
@@ -103,8 +105,19 @@ public:
         std::size_t confirmed = 0; // files to check that their records showed unchanged (not opened)
         std::size_t verified = 0; // WINSHUN_BULK_VERIFY: read the usual way too and compared
         std::size_t verifyMismatches = 0;
+        std::uint64_t mostQueued = 0; // the most bytes delivered and waiting for a reader at once
     };
     BulkStats bulkStats() const noexcept;
+    // A session's files are fetched in batches of up to kBulkBatchBytes; what
+    // waits in memory for a reader and what is on its way stays within
+    // kBulkQueueBytes, for all sessions together. A batch larger than that
+    // (one large file) goes alone once nothing waits: it would wait for good
+    // otherwise. Measured 2026-11-05 (wsbench --service --content, 4 volumes,
+    // 495k files): with 256 MB and 64 MB batches, counted only once delivered,
+    // 310-385 MB waited, the main part of a 660-810 MB high; 64 and 16 MB,
+    // batches counted from the moment they are asked for, are as fast.
+    static constexpr std::uint64_t kBulkBatchBytes = 16ull << 20;
+    static constexpr std::uint64_t kBulkQueueBytes = 64ull << 20;
     struct Timing {
         // From starting to the first pass, to let logging on settle; when
         // nothing has been read yet (the first run), no wait. Either way the
@@ -140,6 +153,22 @@ public:
     {
         return {m_passDone.load(), m_passTotal.load(), m_passCrowdedDone.load(), m_passCrowded.load()};
     }
+    // For the "what is it doing" summary (read only, any thread). `pause`
+    // says why a pass under way is not at full speed: 0 none, 1 the search box
+    // is open or just closed, 2 a content search reads, 3 battery saver, 4
+    // someone uses the computer (fewer readers, quieter reads).
+    struct Status {
+        bool reading = false; // a pass is under way (its tidy-up too); done and total are the last pass's once it is over
+        bool finishing = false; // ... and is in the last merge: done == total
+        int pause = 0;
+        std::size_t done = 0;
+        std::size_t total = 0;
+        std::int64_t startedMs = 0; // steady clock (steadyMs), of the pass
+    };
+    Status status() const noexcept;
+    // Called (from the reading thread) when a pass starts or ends; set before
+    // the first pass. Must not block.
+    void setActivityCallback(std::function<void()> callback) { m_onActivity = std::move(callback); }
     // Crowded folders: those that directly hold at least kCrowdedFiles of
     // `candidates` (files a content search looks in), kCrowdedShare of them
     // of one extension. Generated files, mostly (documentation, translation
@@ -263,7 +292,7 @@ public:
         std::atomic<std::size_t> m_taken {0};
     };
 
-private:
+    // A file a pass reads or checks.
     struct Work {
         EntryId entry;
         bool checkOnly; // compare the size and time; read only if they changed
@@ -272,14 +301,72 @@ private:
         bool document = false; // read by the DocExtractor
         std::uint8_t order = kKnown; // Order: files read before, then the user's own, others, hidden, crowded ones
         bool crowded = false; // in a crowded folder (read last but with WINSHUN_CROWDED=0)
-        std::size_t volume = 0; // in the volumes findWork() was given
+        std::size_t volume = 0; // in the volumes plan() was given
+        bool operator==(const Work&) const = default;
+    };
+    // What a pass does: the files to read or check, in the order they are
+    // best read, and the documents to let go of, ascending.
+    struct Plan {
+        std::vector<Work> work;
+        std::vector<EntryId> retired;
+    };
+    // Decided file by file, the same whether it looks at every file of the
+    // index (`only` null) or at `only` (ascending, each once): the files
+    // changed since the last pass and those whose document is due tell a
+    // pass all it would find (findWork). `readLately`: read within
+    // Timing::cooldown, not read again yet. The caller holds a read lock.
+    static Plan plan(const FileIndex& index, const ContentIndex& content, const Options& options,
+        const std::vector<Volume>& volumes, const std::function<bool(EntryId)>& readLately,
+        const std::vector<EntryId>* only = nullptr);
+
+    // The files a pass has to look at (plan()'s `only`), from one pass to the
+    // next: those changed since the last (FileIndex::takeChanges), those
+    // whose document is due (ContentIndex::dueEntries), those the last pass
+    // was to read for the first time (not all got a document: skipped, cut
+    // short) and those searches handed over (taken(): Intake). Every file
+    // when that cannot be told: the first pass, another file index or its
+    // ids renumbered, the content index cleared or restored, other options
+    // or volumes, too many changes; and once a day, should anything have
+    // been missed all the same.
+    class Lookout {
+    public:
+        static constexpr std::chrono::hours kEveryFile {24};
+        struct Look {
+            bool everyFile = true;
+            QString why; // ... and why (diagnostics)
+            std::vector<EntryId> files; // or these, ascending, each once
+        };
+        // The caller holds a read lock of the file index, and plans the pass
+        // under it; planned() is told what it found.
+        Look next(const std::shared_ptr<FileIndex>& index, const ContentIndex& content, const Options& options,
+            const std::vector<Volume>& volumes, std::chrono::steady_clock::time_point now);
+        void planned(const std::vector<Work>& work);
+        void taken(EntryId entry); // a search's read went into the index; any thread
+
+    private:
+        bool m_known = false; // the fields below are from the last pass
+        std::weak_ptr<FileIndex> m_index;
+        std::uint64_t m_generation = 0;
+        std::uint64_t m_epoch = 0;
+        Options m_options;
+        std::vector<Volume> m_volumes;
+        std::chrono::steady_clock::time_point m_everyFile; // last looked at
+        std::vector<EntryId> m_firstReads; // of the last pass, ascending
+        std::mutex m_takenMutex;
+        std::vector<EntryId> m_taken;
+        bool m_takenLost = false; // more than FileIndex::kMaxChanges
     };
 
+private:
     void run(std::stop_token stop);
     bool pass(const Options& options, std::stop_token stop); // false: cut short
-    std::vector<Work> findWork(const FileIndex& index, const Options& options, const std::vector<Volume>& volumes);
+    // plan(), with the files read lately and retiring what it says; `only`:
+    // these files (Lookout), or every one.
+    std::vector<Work> findWork(const FileIndex& index, const Options& options, const std::vector<Volume>& volumes,
+        const std::vector<EntryId>* only);
     bool interrupted(std::stop_token stop);
     static int documentProcesses() noexcept; // documents read at once, at most
+    static std::uint64_t largeDocumentBytes() noexcept; // documents this large are read one at a time
     void tidy(std::size_t added); // merges after `added` files were read (by passes or searches)
 
     std::shared_ptr<ContentIndex> m_content;
@@ -299,6 +386,9 @@ private:
     std::atomic<bool> m_stopping {false}; // stop() has begun: nothing more is taken
     std::atomic<bool> m_interrupt {false}; // checked before each file
     std::atomic<bool> m_reading {false};
+    std::atomic<bool> m_userHere {false}; // the pass under way found someone at the computer
+    std::atomic<bool> m_hardDiskPass {false}; // ... and reads from a mechanical disk (one file at a time then)
+    std::function<void()> m_onActivity;
     bool searchBoxHolds() const noexcept;
     std::atomic<bool> m_searchBoxOpen {false};
     std::atomic<std::int64_t> m_searchBoxClosed {0}; // steady clock, ms
@@ -313,14 +403,15 @@ private:
     struct BulkCounters {
         std::atomic<std::size_t> sessions {0}, sessionsFailed {0}, files {0}, tooLarge {0}, recent {0}, noRecord {0},
             notFound {0}, denied {0}, fallback {0}, confirmed {0}, verified {0}, verifyMismatches {0};
-        std::atomic<std::uint64_t> bytes {0};
+        std::atomic<std::uint64_t> bytes {0}, mostQueued {0};
     } m_bulk;
     // Files read lately, and when: one that keeps changing (a log being
     // written) is read at most every Timing::cooldown; meanwhile searches
     // read it themselves.
     std::unordered_map<EntryId, std::chrono::steady_clock::time_point> m_recentReads;
     std::uint64_t m_generation = 0; // of the FileIndex the ids above are from
-    DocExtractor m_documents {documentProcesses(), DocExtractor::Priority::Background};
+    Lookout m_lookout; // the files a pass looks at
+    DocExtractor m_documents {documentProcesses(), DocExtractor::Priority::Background, largeDocumentBytes()};
     std::jthread m_thread; // last: started once the members above exist
 };
 

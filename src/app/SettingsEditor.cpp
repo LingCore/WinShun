@@ -366,6 +366,14 @@ void SettingsEditor::setClearOnOpen(bool on)
     commit();
 }
 
+void SettingsEditor::setEnglishOnOpen(bool on)
+{
+    if (m_settings.englishOnOpen == on)
+        return;
+    m_settings.englishOnOpen = on;
+    commit();
+}
+
 void SettingsEditor::setNumberKeys(const QString& keys)
 {
     if (m_settings.numberKeys == keys || (keys != u"ctrl" && keys != u"alt" && keys != u"off"))
@@ -777,6 +785,14 @@ void SettingsEditor::setContentDocuments(bool on)
     commit();
 }
 
+void SettingsEditor::setHealth(const QVariantMap& health)
+{
+    if (m_health == health)
+        return;
+    m_health = health;
+    emit healthChanged();
+}
+
 void SettingsEditor::setContentIndexStatus(const QString& status)
 {
     if (m_contentIndexStatus == status)
@@ -1164,7 +1180,7 @@ void SettingsEditor::setOpusTypingScope(const QString& scope)
 
 void SettingsEditor::setFolderTyping(const QString& how)
 {
-    if (m_settings.folderTyping == how || (how != u"first" && how != u"only"))
+    if (m_settings.folderTyping == how || (how != u"first" && how != u"only" && how != u"level"))
         return;
     m_settings.folderTyping = how;
     commit();
@@ -1249,6 +1265,14 @@ void SettingsEditor::setFolderMenuItemSearch(bool on)
     if (m_settings.folderMenuItemSearch == on)
         return;
     m_settings.folderMenuItemSearch = on;
+    commit();
+}
+
+void SettingsEditor::setFolderMenuItemCopyPath(bool on)
+{
+    if (m_settings.folderMenuItemCopyPath == on)
+        return;
+    m_settings.folderMenuItemCopyPath = on;
     commit();
 }
 

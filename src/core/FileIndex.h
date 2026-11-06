@@ -122,10 +122,14 @@ struct EntryFilter {
     FileSize minSize = 0; // packed: at least this
     FileSize maxSize = kUnknownSize; // ... and at most this (kUnknownSize: none)
     std::vector<EntryId> folders;
+    // Only what lies directly in this folder, not deeper ("this level only"
+    // of a folder's window); kNoEntry: no such bound. A folder that is not in
+    // the index is kNoEntry - 1, which no entry has as its parent.
+    EntryId directIn = kNoEntry;
 
     bool byTime() const noexcept { return after != 0 || before != 0; }
     bool bySize() const noexcept { return minSize != 0 || maxSize != kUnknownSize; }
-    bool any() const noexcept { return byTime() || bySize() || !folders.empty(); }
+    bool any() const noexcept { return byTime() || bySize() || !folders.empty() || directIn != kNoEntry; }
     // Both filters at once: the narrower bounds.
     void merge(const EntryFilter& other)
     {
@@ -135,6 +139,8 @@ struct EntryFilter {
         maxSize = std::min(maxSize, other.maxSize);
         for (const EntryId f : other.folders)
             folders.push_back(f);
+        if (other.directIn != kNoEntry)
+            directIn = other.directIn;
     }
     // Whether an entry with these fits (folders aside); for a folder entry
     // the size is kUnknownSize.
@@ -284,6 +290,11 @@ public:
         std::size_t intern = 0;
     };
     MemoryUse memoryUse() const noexcept;
+    // The big blocks the memoryUse() numbers are made of (entries, times,
+    // names): address and size, so how much of them is in the working set
+    // right now can be asked of Windows (memory::residentBytes). The rest
+    // (tables on the general heap) is not in the list. Caller holds a read lock.
+    std::vector<std::pair<const void*, std::size_t>> memoryBlocks() const;
 
     // Brings the pages a name search reads (entries, times, names) back into
     // the working set after it was emptied (IdleTrim), so the search that
@@ -382,6 +393,23 @@ public:
     [[nodiscard]] IdPin pinIds() const noexcept { return IdPin(*this); }
     bool idsPinned() const noexcept { return m_pins.load() > 0; }
 
+    // ---- files changed, for the content indexer --------------------------
+    // The files added, removed, renamed or moved, or whose flags changed,
+    // since the last call: all a content pass has to look at besides the
+    // documents it knows are due (ContentIndexer::findWork), instead of every
+    // file. Recorded from the first call on. Not `complete` when that cannot
+    // be told: the first call, more than kMaxChanges of them, ids renumbered
+    // by compact(), a folder moved onto another root; every file is looked at
+    // then. Folders are never in it: what a content pass decides is per file.
+    // The caller holds a read lock (writers record under the write lock); one
+    // caller at a time.
+    struct Changes {
+        std::vector<EntryId> files; // ascending, each once
+        bool complete = false;
+    };
+    Changes takeChanges();
+    static constexpr std::size_t kMaxChanges = std::size_t {1} << 19; // 2 MB of ids
+
     // Name storage, for bulk readers that collect names before adding the
     // entries (the MFT reader). Offsets stay valid until compact().
     //
@@ -464,6 +492,21 @@ private:
     void internInsert(std::uint64_t slot, std::size_t hash) noexcept;
     void link(EntryId parent, EntryId child);
     void unlink(EntryId child);
+    EntryId rootOf(EntryId id) const noexcept;
+    void noteChanged(EntryId file)
+    {
+        if (!m_tracking || m_changesLost)
+            return;
+        if (m_changes.size() >= kMaxChanges)
+            loseChanges();
+        else
+            m_changes.push_back(file);
+    }
+    void loseChanges() noexcept
+    {
+        m_changesLost = true;
+        std::vector<EntryId>().swap(m_changes);
+    }
 
     mutable std::shared_mutex m_mutex;
     mutable std::shared_mutex m_writerGate; // see longReadLock()
@@ -481,6 +524,11 @@ private:
     std::size_t m_internCount = 0;
     std::vector<std::pair<EntryId, RecordTable>> m_folderRecords; // by volume root
     std::unordered_map<EntryId, ChildTable> m_childTables; // by folder; compact() drops them all
+    // takeChanges(): written under the write lock, taken under a read lock.
+    std::vector<EntryId> m_changes;
+    bool m_tracking = false; // since the first takeChanges()
+    bool m_changesLost = false;
+    std::mutex m_changesTaking; // one caller at a time
 };
 
 std::uint8_t extensionLength(std::string_view name, bool isDir) noexcept;

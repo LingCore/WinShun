@@ -12,5 +12,5 @@ add_executable(WinShunSemantic
     ${PROJECT_SOURCE_DIR}/resources/WinShunSemantic.rc
 )
 target_include_directories(WinShunSemantic PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
-target_link_libraries(WinShunSemantic PRIVATE winshun_options winhttp)
+target_link_libraries(WinShunSemantic PRIVATE winshun_options winhttp psapi)
 set_target_properties(WinShunSemantic PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

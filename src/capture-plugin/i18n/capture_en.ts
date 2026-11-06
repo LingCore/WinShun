@@ -901,6 +901,14 @@
         <translation>PrtScn takes a screenshot here instead of opening the Windows Snipping Tool. It goes back to the Snipping Tool when WinShun quits and is taken again at the next start; turning this off restores the previous setting too</translation>
     </message>
     <message>
+        <source>识别屏幕文字</source>
+        <translation>Read text on screen</translation>
+    </message>
+    <message>
+        <source>按下后直接拖选区域或单击窗口，松开鼠标就识别文字并复制，没有截图工具条，也不留截图。Esc 或右键取消。不设时可从托盘菜单或搜索“识别屏幕文字”使用</source>
+        <translation>Press it, then drag over an area or click a window: when you let go, its text is read and copied. No screenshot toolbar, and no screenshot is kept. Esc or a right click cancels. Without a shortcut, use the tray menu or search for “Read text on screen”</translation>
+    </message>
+    <message>
         <source>截图时</source>
         <translation>While capturing</translation>
     </message>
@@ -1386,6 +1394,33 @@
     <message>
         <source>长图预览</source>
         <translation>Long image preview</translation>
+    </message>
+</context>
+<context>
+    <name>OcrBubble</name>
+    <message>
+        <source>识别文字</source>
+        <translation>Recognize text</translation>
+    </message>
+    <message>
+        <source>正在识别…</source>
+        <translation>Reading…</translation>
+    </message>
+    <message>
+        <source>已复制识别的文字</source>
+        <translation>Copied the text that was read</translation>
+    </message>
+    <message>
+        <source>没识别到文字</source>
+        <translation>No text found</translation>
+    </message>
+    <message>
+        <source>编辑</source>
+        <translation>Edit</translation>
+    </message>
+    <message>
+        <source>关闭</source>
+        <translation>Close</translation>
     </message>
 </context>
 <context>
@@ -1882,6 +1917,10 @@ The unfinished recording is kept at: %1</translation>
         <translation>Could not save to %1</translation>
     </message>
     <message>
+        <source>识别文字：拖选区域，或单击窗口 · Esc 取消</source>
+        <translation>Read text: drag over an area, or click a window · Esc cancels</translation>
+    </message>
+    <message>
         <source>没有保存之前的画面，可在设置 › 截图里打开</source>
         <translation>Earlier pictures are not being kept; turn this on in Settings › Screenshot</translation>
     </message>
@@ -2235,6 +2274,10 @@ click here to cancel</translation>
         <source>识别文字中…</source>
         <translation>Reading text…</translation>
     </message>
+    <message>
+        <source>透明度 %1%</source>
+        <translation>Opacity %1%</translation>
+    </message>
 </context>
 <context>
     <name>ws::capture::Presenter</name>
@@ -2389,6 +2432,14 @@ Original video kept at: %2</translation>
     <message>
         <source>快捷键 %1</source>
         <translation>Shortcut %1</translation>
+    </message>
+    <message>
+        <source>识别屏幕文字</source>
+        <translation>Read text on screen</translation>
+    </message>
+    <message>
+        <source>框选一块屏幕，识别出的文字直接复制</source>
+        <translation>Select part of the screen; the text in it is copied</translation>
     </message>
     <message>
         <source>%1 秒后截图</source>
@@ -2586,12 +2637,20 @@ Original video kept at: %2</translation>
         <translation>Present / Whiteboard</translation>
     </message>
     <message>
+        <source>识别屏幕文字</source>
+        <translation>Read text on screen</translation>
+    </message>
+    <message>
         <source>和“%1”的快捷键相同，按下时会先被它用掉</source>
         <translation>Same as the “%1” shortcut, which takes it first</translation>
     </message>
     <message>
         <source>其他程序或 Win顺 已把它设为全局快捷键，按下时这里收不到</source>
         <translation>Another program or WinShun holds it as a global shortcut, so it never gets here</translation>
+    </message>
+    <message>
+        <source>和“%1”的快捷键相同，请换一个。</source>
+        <translation>Same as the “%1” shortcut. Please choose another.</translation>
     </message>
 </context>
 </TS>

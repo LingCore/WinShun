@@ -85,6 +85,12 @@ public:
         // 识别文字并复制 / 搜索 / 网页搜索 (the mouse buttons' choices): read, then go
         // on at once with `then` (OcrCopy, OcrSearch or OcrWeb) without the window.
         std::function<void(const QImage&, double dpr, const QRect& where, CaptureSession::Action then)> ocrThen;
+        // 识别屏幕文字 (triggerOcr, #198): the region picked, to be read and its
+        // words copied; it is in no history and is not the last capture.
+        std::function<void(const QImage&, double dpr, const QRect& where)> readText;
+        // The screens are about to be frozen: what of the app's own is on
+        // them and should not be in the picture goes now.
+        std::function<void()> starting;
         // How the annotation reads the selection's text and what it hides
         // (SmartRedact.h): 智能打码 and its pre-scan.
         Recorder::Hooks recording;
@@ -156,6 +162,11 @@ public:
     // under way (what a key opened, the same key closes; a long screenshot
     // is finished).
     void trigger();
+    // 识别屏幕文字 (#198): the frozen screens with only the shade, the outline
+    // and the magnifier; a drag or a click on a window reads its words
+    // (Callbacks::readText). Again while it is up: it ends. While a capture,
+    // a recording, a countdown or a long screenshot is under way: nothing.
+    void triggerOcr();
     bool busy() const { return m_state != State::Idle || m_countdown || (m_long && m_long->running()) || (m_recorder && m_recorder->active()); }
 
     // 贴上最近一次截图 (the tray menu).
@@ -190,7 +201,7 @@ private:
     void buildOverlays();
     void destroyOverlays();
     void screensChanged(); // monitors came, went or changed: everything made again
-    void start();
+    void start(bool ocrOnly = false);
     void show();
     void frameDrawn(QQuickWindow* window);
     void finish(CaptureSession::Action action, int screen, const QRect& rect);
@@ -250,6 +261,7 @@ private:
     bool m_delayAfter = false; // Ctrl+Shift+D in the overlay: countdown once it is gone
     std::unique_ptr<CountdownWindow> m_countdown;
     bool m_quietStart = false; // start() by the countdown: no key hints by themselves
+    bool m_ocrOnly = false; // this capture is triggerOcr()'s
     QElapsedTimer m_countClock;
     QTimer m_countTimer;
     int m_countTotal = 0;

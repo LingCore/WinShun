@@ -37,6 +37,7 @@
 #include "platform/SiteIcons.h"
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
+#include "platform/FolderViewHit.h"
 #include "platform/WindowEffects.h"
 #include "platform/Foreground.h"
 #include "platform/MessageWindow.h"
@@ -1126,6 +1127,29 @@ int runSettings(const QStringList& args)
     indexState.size = u"112 MB"_s;
     editor->setIndexFolderState(indexState);
     editor->setContentIndexStatus(u"已收录 337,215 个文件，其中 5,815 个文档"_s);
+    // The 运行状况 card (settings page 7): busy reading the content index, or (--health-idle) at rest.
+    // --health-grow: it starts with one job and gets the second just before the picture, as live.
+    QVariantMap healthTwoJobs;
+    {
+        const bool idle = args.contains(u"--health-idle"_s);
+        QVariantList tasks;
+        if (!idle) {
+            tasks.push_back(QVariantMap {{u"name"_s, u"正在建立内容索引"_s}, {u"count"_s, u"182,340 / 337,215"_s},
+                {u"remaining"_s, u"约 3–5 分钟"_s}, {u"fraction"_s, 0.54}});
+            tasks.push_back(QVariantMap {{u"name"_s, u"正在保存索引"_s}, {u"count"_s, QString()}, {u"remaining"_s, QString()},
+                {u"fraction"_s, -1}});
+        }
+        QVariantList firstOnly = tasks;
+        if (args.contains(u"--health-grow"_s) && !firstOnly.isEmpty())
+            firstOnly.resize(1);
+        const auto healthWith = [&](const QVariantList& shown) -> QVariantMap { return {{u"total"_s, idle ? 14 : 412}, {u"fileIndex"_s, idle ? 0 : 96}, {u"fileIndexParked"_s, idle ? 88 : 0}, {u"other"_s, idle ? 14 : 143},
+            {u"plugins"_s, idle ? 0 : 118}, {u"pluginProcesses"_s, idle ? 0 : 3}, {u"documents"_s, idle ? 0 : 55},
+            {u"documentProcesses"_s, idle ? 0 : 4}, {u"tasks"_s, shown}, {u"busy"_s, !idle},
+            {u"idleText"_s, QCoreApplication::translate("ws::BackgroundStatus", "现在没有在忙，闲着时会把内存还给系统")},
+            {u"lastTrim"_s, u"上次归还：14:32，还了 187 MB"_s}}; };
+        healthTwoJobs = healthWith(tasks);
+        editor->setHealth(healthWith(firstOnly));
+    }
     editor->setHistoryCount(128);
     editor->setClipboardCount(args.contains(u"--clipboard-disabled"_s) ? -1 : 57);
     editor->setHotkeyError({});
@@ -1787,6 +1811,10 @@ int runSettings(const QStringList& args)
                 pump(3600); // the avatar's greeting (AuthorClock) has played out
             }
             pump(400); // the sliding marker, the asynchronous icons
+            if (args.contains(u"--health-grow"_s) && !healthTwoJobs.isEmpty()) {
+                editor->setHealth(healthTwoJobs); // the card must grow with its second line
+                pump(300);
+            }
             const QString file = out.filePath(u"p%1-t%2.png"_s.arg(page, 2, 10, u'0').arg(tab));
             say(u"page %1 tab %2 (%3): window %4x%5 asked %6, current %7/%8, content %9"_s.arg(page).arg(tab).arg(title)
                     .arg(window->width()).arg(window->height()).arg(height).arg(window->property("currentPage").toInt())
@@ -2253,10 +2281,15 @@ void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& 
             const bool only = launcher.typingFolderOnly();
             key(Qt::Key_D, Qt::ControlModifier);
             check(launcher.typingFolderOnly() == only, mode + u"Ctrl+D pages without changing the folder filter"_s);
+            const bool level = launcher.typingFolderLevel();
             key(Qt::Key_D, Qt::ControlModifier | Qt::ShiftModifier);
-            check(launcher.typingFolderOnly() != only, mode + u"Ctrl+Shift+D switches the current folder filter"_s);
+            const bool onlyThen = launcher.typingFolderOnly();
+            const bool levelThen = launcher.typingFolderLevel();
+            check(onlyThen != only || levelThen != level, mode + u"Ctrl+Shift+D switches the current folder filter"_s);
             key(Qt::Key_D, Qt::ControlModifier | Qt::ShiftModifier);
-            check(launcher.typingFolderOnly() == only, mode + u"Ctrl+Shift+D switches it back"_s);
+            key(Qt::Key_D, Qt::ControlModifier | Qt::ShiftModifier);
+            check(launcher.typingFolderOnly() == only && launcher.typingFolderLevel() == level,
+                mode + u"Ctrl+Shift+D comes round to the start again (everywhere, folder, this level)"_s);
             launcher.setTypingFolder({});
             launcher.setQuery(query);
             timeout.restart();
@@ -5437,6 +5470,38 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
             && QDir::fromNativeSeparators(selected()).compare(QDir::fromNativeSeparators(nestedFile), Qt::CaseInsensitive) == 0,
         "Ctrl+Enter took the second tab to the subfolder and selected the file");
 
+    // A window too large to keep clear of, centred (GitHub #203: the box went
+    // to the top left of the screen): in the bottom right corner of the file
+    // list of the tab typed in, within the window.
+    app.hideLauncher();
+    pump(300);
+    ::SetWindowPos(root, nullptr, area.left + (area.right - area.left) / 8, area.top + (area.bottom - area.top) / 8,
+        (area.right - area.left) * 3 / 4, (area.bottom - area.top) * 3 / 4, SWP_NOZORDER | SWP_NOACTIVATE);
+    pump(500);
+    ::SetForegroundWindow(root);
+    app.showFolderSearch(root, secondTab, false, QString::fromStdWString(filemanager::explorerFolder(secondTab)));
+    pump(600);
+    settle(window, 3);
+    {
+        const RECT list = folderview::explorerFileList(root, secondTab);
+        RECT box {}, client {};
+        ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
+        ::GetClientRect(root, &client);
+        ::MapWindowPoints(root, nullptr, reinterpret_cast<POINT*>(&client), 2);
+        const int gap = qRound(12 * (window->screen() ? window->screen()->devicePixelRatio() : 1.0));
+        check(box.left >= client.left && box.top >= client.top && box.right <= client.right && box.bottom <= client.bottom,
+            "too large to keep clear of: the box is inside the Explorer window");
+        check(std::abs(list.right - box.right - gap) <= 2 && box.bottom <= list.bottom - gap + 2,
+            "too large to keep clear of: 12 px in from the right of its file list, the rows ending above its bottom");
+        check(box.left != area.left || box.top != area.top, "too large to keep clear of: not at the top left of the screen");
+        report.insert(u"centred_explorer_list"_s, QJsonArray {int(list.left), int(list.top), int(list.right - list.left),
+            int(list.bottom - list.top)});
+        report.insert(u"centred_explorer_box"_s, QJsonArray {int(box.left), int(box.top), int(box.right - box.left),
+            int(box.bottom - box.top)});
+    }
+    app.hideLauncher();
+    pump(300);
+
     // Typed in Directory Opus (GitHub #82), by a window of its class standing
     // in for a lister (production needs the real one only to read its folder):
     // the box in the bottom right corner of the file list, the folder before
@@ -5485,6 +5550,37 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     check(everywhere ? launcher->typingFolder().isEmpty()
                      : launcher->query() == prefix && !launcher->typingFolder().isEmpty(),
         everywhere ? "the whole PC: no folder before the words" : "the tab's folder before the words");
+
+    // One side of a dual display at 150 % is narrower than the launcher
+    // (the screenshot in GitHub #82): as narrow as it gets (640), its right
+    // edge and its rows' end 12 px inside the list, reaching left over the
+    // rest of the lister; the next opening elsewhere has the user's width.
+    const int userWidth = window->width();
+    app.hideLauncher();
+    pump(300);
+    ::MoveWindow(list, 700, 120, qRound(540 * scale), client.bottom - 140, TRUE);
+    app.showFolderSearch(lister, list, true, folder);
+    pump(600);
+    settle(window, 3);
+    ::GetWindowRect(list, &listRect);
+    ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &boxRect);
+    RECT clientOnScreen = client;
+    ::MapWindowPoints(lister, nullptr, reinterpret_cast<POINT*>(&clientOnScreen), 2);
+    check(std::abs(int(boxRect.right - boxRect.left) - qRound(640 * scale)) <= 2, "over a narrow list the Opus box is 640 px wide");
+    check(std::abs(listRect.right - boxRect.right - gap) <= 2 && boxRect.bottom <= listRect.bottom - gap + 2
+            && boxRect.left < listRect.left && boxRect.left >= clientOnScreen.left,
+        "over a narrow list: 12 px in from its right, rows ending above its bottom, over the lister to its left");
+    report.insert(u"opus_narrow_list"_s, QJsonArray {int(listRect.left), int(listRect.top), int(listRect.right - listRect.left),
+        int(listRect.bottom - listRect.top)});
+    report.insert(u"opus_narrow_box"_s, QJsonArray {int(boxRect.left), int(boxRect.top), int(boxRect.right - boxRect.left),
+        int(boxRect.bottom - boxRect.top)});
+    app.hideLauncher();
+    pump(300);
+    app.showLauncher();
+    pump(600);
+    settle(window, 3);
+    check(std::abs(window->width() - userWidth) <= 1, "opened elsewhere afterwards: the user's width again");
+    app.hideLauncher();
     // The tab and the stand-in come to the front as the launcher goes: the
     // warnings about its losing the front that this makes are no fault.
     pump(500);

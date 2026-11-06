@@ -68,6 +68,9 @@
 #include "platform/Foreground.h"
 #include "platform/Http.h"
 #include "platform/IdleTrim.h"
+#include "platform/MemoryReport.h"
+#include "BackgroundStatus.h"
+#include "ActivityText.h"
 #include "platform/Integrity.h"
 #include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
@@ -443,9 +446,11 @@ App::~App()
     m_clipImport.reset(); // its thread joined before the history it fills goes
     siteicons::shutdown(); // an icon arriving now would be told to no one
     m_keyRouter.reset(); // no keys taken from here on
+    m_launcherRouting.router.reset();
     m_numberKeyHook.reset();
     m_drainingNumberKeyHook.reset();
     m_drainingRouter.reset();
+    m_launcherRouting.draining.reset();
     m_holdWatch.reset();
     m_drainingWatch.reset();
     m_keyListenerMode = -1; // recorder teardown must not recreate input listeners
@@ -640,6 +645,8 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     m_index = std::make_unique<IndexService>(startIndexFolder(), std::move(indexStart));
     connect(m_index.get(), &IndexService::moveProgress, this, [this](int percent) {
         m_indexMoveProgress = percent;
+        if (m_background)
+            m_background->setMovePercent(percent);
         refreshIndexFolder();
     });
     connect(m_index.get(), &IndexService::moveFinished, this, &App::indexMoved);
@@ -918,6 +925,12 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     });
 
     m_updater = std::make_unique<Updater>();
+    m_background = std::make_unique<BackgroundStatus>(m_index.get(), m_updater.get());
+    // A big job (more than two minutes) is over: told once, as a tray notice.
+    m_background->onFinished = [this](const QString& title, const QString& text) {
+        if (m_messages)
+            m_messages->showNotification(title, text);
+    };
     m_backup = std::make_unique<Backup>();
     connect(m_backup.get(), &Backup::restartRequested, this, [this] { restart({u"--settings"_s}); });
     m_updater->setChinese(m_language == u"zh");
@@ -1232,8 +1245,11 @@ bool App::createWindow()
         if (m_window && !m_window->isActive()) {
             launcherLostFront();
         } else if (m_window && m_window->isActive()) {
+            if (::GetForegroundWindow() == reinterpret_cast<HWND>(m_window->winId()))
+                stopLauncherRouting(); // in front after all (a click on it): its keys are its own
             m_launcher->systemCommandDone();
             m_boxPressGrace.stop();
+            lettersOnOpen();
             deliverTyping(); // asked for by typing elsewhere: the keys, if it is ready for them now
         }
         updateNumberKeys();
@@ -1257,7 +1273,10 @@ bool App::createWindow()
     }, Qt::DirectConnection);
     // Keys typed elsewhere wait for it (deliverTyping): its field becoming
     // the focus object (Qt has given the window its input method context by
-    // then), and the cap. Then a moment's watch of what came of them.
+    // then), and the cap. Then a moment's watch of what came of them. The
+    // input method into English first, should that be set (the keys go
+    // through it).
+    connect(qGuiApp, &QGuiApplication::focusObjectChanged, this, &App::lettersOnOpen);
     connect(qGuiApp, &QGuiApplication::focusObjectChanged, this, &App::deliverTyping);
     m_typingCap.setSingleShot(true);
     m_typingCap.setTimerType(Qt::PreciseTimer);
@@ -1738,7 +1757,7 @@ void App::applySettings(bool initial)
     m_launcher->setTabEntersFavoriteFolder(m_settings.tabEntersFavoriteFolder);
     m_launcher->setSearchKinds(m_settings.searchApps, m_settings.searchSystem);
     m_launcher->setRegexMode(m_settings.regexMode);
-    m_launcher->setFolderTypingOnly(m_settings.folderTyping == u"only");
+    m_launcher->setFolderTyping(m_settings.folderTyping);
     m_launcher->results()->setShowModifiedTime(m_settings.showModifiedTime);
     m_launcher->setPreferredTypes(m_settings.preferredTypes);
     m_launcher->setFolderKeyword(m_settings.folderKeyword);
@@ -2497,7 +2516,17 @@ void App::applyTypeToSearch()
     callbacks.pastedInto = [this](HWND view) {
         QMetaObject::invokeMethod(this, [this, view] { pasteAsFile(view); }, Qt::QueuedConnection);
     };
+    // The keys held for a launcher whose keys are routed to it (GitHub
+    // #203): into it as the router's would go, ahead of those, which come
+    // after them from the router's thread. Gone meanwhile: to no one.
+    callbacks.handedOver = [this](std::vector<KeyRouter::Key> keys) {
+        QMetaObject::invokeMethod(this, [this, keys = std::move(keys)] {
+            for (const KeyRouter::Key& key : keys)
+                launcherRoutedKey(key);
+        }, Qt::QueuedConnection);
+    };
     m_typing = std::make_unique<TypeToSearch>(wanted, std::move(callbacks));
+    m_typing->setLauncherRouted(launcherRouted());
 }
 
 void App::pasteAsFile(HWND view)
@@ -2736,6 +2765,7 @@ void App::deliverTyping()
         .fieldFocused = focus && (focus == m_searchField || focus->objectName() == u"panelSearchField"),
         .revealed = m_window->isVisible() && !m_launcherReveal.pending() && !m_prewarming.load() && !isCloaked(window),
         .preparing = m_launcherOpening,
+        .routed = launcherRouted(),
     };
     const auto note = [now](Clock::time_point& at, bool came) {
         if (came && at == Clock::time_point {})
@@ -2744,15 +2774,18 @@ void App::deliverTyping()
     note(m_handoff.active, state.active);
     note(m_handoff.focused, state.active && state.fieldFocused);
     note(m_handoff.revealed, state.revealed);
-    const bool wasActive = m_handoff.active != Clock::time_point {};
+    note(m_handoff.routed, state.routed);
+    // Since it took typing: active, or (refused the front) its keys routed to it.
+    const Clock::time_point took = state.routed ? m_handoff.routed : m_handoff.active;
+    const bool wasActive = took != Clock::time_point {};
     std::optional<unsigned> sinceActive;
     if (wasActive)
-        sinceActive = static_cast<unsigned>(std::chrono::duration_cast<milliseconds>(now - m_handoff.active).count());
+        sinceActive = static_cast<unsigned>(std::chrono::duration_cast<milliseconds>(now - took).count());
     const searchtyping::Handoff handoff = searchtyping::handoff(state, sinceActive);
     if (handoff == searchtyping::Handoff::Wait) {
         // Never active: the hook's hold has dropped the keys by then.
         const Clock::time_point until
-            = wasActive ? m_handoff.active + milliseconds(searchtyping::kHandoffCapMs)
+            = wasActive ? took + milliseconds(searchtyping::kHandoffCapMs)
                         : m_handoff.asked + milliseconds(searchtyping::kWaitForLauncherMs);
         if (!wasActive && now >= until) {
             m_deliverTyping = false;
@@ -2766,7 +2799,7 @@ void App::deliverTyping()
     m_typingCap.stop();
     m_deliverTyping = false;
     m_handoff.delivered = now;
-    m_handoff.outcome = handoff == searchtyping::Handoff::Deliver ? u"ready"_s : u"cap"_s;
+    m_handoff.outcome = state.routed ? u"routed"_s : handoff == searchtyping::Handoff::Deliver ? u"ready"_s : u"cap"_s;
     QStringList missing;
     if (!state.active)
         missing << u"active"_s;
@@ -2776,8 +2809,18 @@ void App::deliverTyping()
         missing << u"revealed"_s;
     m_handoff.missing = missing.join(u',');
     m_handoff.inFront = ::GetForegroundWindow() == window;
-    m_handoff.layout = static_cast<quint32>(reinterpret_cast<quintptr>(::GetKeyboardLayout(0)));
-    m_typing->deliver();
+    // Routed, the keys go as the layout of the window in front types them.
+    m_handoff.layout = static_cast<quint32>(reinterpret_cast<quintptr>(::GetKeyboardLayout(
+        state.routed ? ::GetWindowThreadProcessId(::GetForegroundWindow(), nullptr) : 0)));
+    if (state.routed) {
+        // Refused the front, its keys come through its router: the keys held
+        // go to it as they are, never typed again (refused too, GitHub #203).
+        // No input method composes them, nor the ones after (KeyRouter).
+        m_typing->handOver();
+    } else {
+        lettersOnOpen(); // ahead of the keys, which go through the input method (at the cap, maybe not focused yet)
+        m_typing->deliver();
+    }
     m_keysWatch->start(window);
     m_handoffWatch.start();
 }
@@ -2813,6 +2856,7 @@ void App::endHandoff()
         {u"activeMs"_s, ms(m_handoff.active)},
         {u"focusedMs"_s, ms(m_handoff.focused)},
         {u"revealedMs"_s, ms(m_handoff.revealed)},
+        {u"routedMs"_s, ms(m_handoff.routed)},
         {u"deliveredMs"_s, ms(m_handoff.delivered)},
         {u"sentMs"_s, ms(sameHold ? timing.sent : Clock::time_point {})},
         {u"keyMs"_s, ms(seen.key)},
@@ -2824,8 +2868,45 @@ void App::endHandoff()
         {u"textMs"_s, ms(seen.text)},
         {u"drawnMs"_s, ms(seen.drawn)},
     };
+    if (!m_handoff.placed.isEmpty())
+        details.insert(u"placed"_s, m_handoff.placed);
     m_handoff = {};
     diagnostics::record(u"typing-handoff"_s, details);
+}
+
+// Once an opening, when its field (the box's or the panel's) has the focus:
+// Qt has given the window its input method context by then. The user
+// switching back to Chinese in the box is not undone. Set however it reads
+// (WeChat's Chinese can read as letters). Only Win顺's own context (this thread's):
+// the program it came from keeps its input method as it was.
+void App::lettersOnOpen()
+{
+    if (!m_lettersPending || !m_window || !m_window->isActive())
+        return;
+    const QObject* focus = QGuiApplication::focusObject();
+    if (!focus || (focus != m_searchField && focus->objectName() != u"panelSearchField"))
+        return;
+    const win::LettersSwitch done = win::switchToLetters(reinterpret_cast<HWND>(m_window->winId()));
+    if (!done.context)
+        return; // none yet: when it has one
+    m_lettersPending = false;
+    if (!done.changed)
+        return;
+    // Asked for again while up (pinned): put back, on hiding, as it was first.
+    const win::InputMode before = m_lettersSwitch.changed ? m_lettersSwitch.before : done.before;
+    m_lettersSwitch = done;
+    m_lettersSwitch.before = before;
+    qInfo().noquote() << u"Input method to English on opening: open %1 -> %2, conversion 0x%3 -> 0x%4"_s
+                             .arg(int(done.before.open))
+                             .arg(int(done.after.open))
+                             .arg(done.before.conversion, 0, 16)
+                             .arg(done.after.conversion, 0, 16);
+}
+
+void App::restoreLauncherInputMode()
+{
+    m_lettersPending = false;
+    win::restoreInputMode(std::exchange(m_lettersSwitch, {}));
 }
 
 void App::folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request)
@@ -2879,8 +2960,40 @@ void App::showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder
     // does) rather than over it, and may search the whole PC (GitHub #82).
     const bool everywhere = opus && m_settings.opusTypingScope == u"all";
     const QString prefix = everywhere ? QString() : folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s;
-    showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST)), opus ? tab : root, opus);
+    // On the monitor of the list typed in (a lister over two may have the other on the other).
+    // Typed in Explorer, beside its window, as long as all of the box keeps
+    // clear of it there (GitHub #141); else, as in Opus, in the bottom right
+    // corner of its file list, never in a corner of the screen (GitHub #203).
+    const RECT list = opus ? RECT {} : folderview::explorerFileList(root, tab);
+    // Pinned and up, or the panel: where it is (showLauncher).
+    const QString kept = m_launcher->pinned() && launcherShown() ? u"pinned"_s : m_launcher->panel() ? u"panel"_s : QString();
+    showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(opus ? tab : root, MONITOR_DEFAULTTONEAREST)), opus ? tab : root, opus,
+        list);
     m_typingOrigin = {root, tab, opus, folder}; // after showLauncher, which clears it
+    // For the journal's typing-handoff: how it was placed, the window typed
+    // in, its file list and the work area (screen pixels), the box where Qt
+    // put it (its pixels on that screen). No titles, no folders.
+    const auto rectOf = [](const RECT& r) {
+        return QJsonArray {int(r.left), int(r.top), int(r.right - r.left), int(r.bottom - r.top)};
+    };
+    QJsonObject placed {{u"by"_s, !kept.isEmpty()   ? kept
+                                 : !m_placement->avoiding() ? u"home"_s
+                                 : m_placement->avoidingInside() ? u"list"_s
+                                                                 : u"beside"_s}};
+    RECT bounds {};
+    if (::GetWindowRect(root, &bounds))
+        placed.insert(u"window"_s, rectOf(bounds));
+    if (!opus)
+        placed.insert(u"list"_s, rectOf(list));
+    MONITORINFO monitor {sizeof monitor};
+    if (::GetMonitorInfoW(::MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST), &monitor))
+        placed.insert(u"work"_s, rectOf(monitor.rcWork));
+    if (m_window) {
+        const QRect box = m_window->geometry();
+        placed.insert(u"box"_s, QJsonArray {box.x(), box.y(), box.width(), box.height()});
+        placed.insert(u"scale"_s, m_window->devicePixelRatio());
+    }
+    m_handoff.placed = placed;
     // What is found in that folder first, then elsewhere (or there alone, as
     // set: Launcher::setFolderTypingOnly), as Listary lists it (GitHub #110).
     // After showLauncher too, which forgets the folder typed in before.
@@ -3202,6 +3315,8 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         editor->setWindow(window);
         editor->setPlaces(m_places.get()); // Windows' settings, when its search finds none of its own
         connect(editor, &SettingsEditor::edited, this, &App::settingsEdited);
+        connect(editor, &SettingsEditor::healthRequested, this, &App::refreshHealth);
+        connect(editor, &SettingsEditor::giveBackMemoryRequested, this, &App::giveMemoryBack);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyHotkey);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyClipboardHotkeys);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyTaskbarHotkeys);
@@ -3333,6 +3448,14 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
             context[u"display"_s] = diagnostics::display(m_renderer, SystemTheme::backdropAvailable()); // fonts: this thread's
             if (m_clipWatcher)
                 context[u"clipboard"_s] = m_clipWatcher->diagnosticStatus();
+            // Installed plugins: id, version, switched on (nothing else: no settings, no paths).
+            if (m_pluginHost) {
+                QJsonArray plugins;
+                for (const plugin::Entry& e : m_pluginHost->catalog().entries())
+                    plugins.append(QJsonObject {{u"id"_s, e.id}, {u"version"_s, e.manifest ? e.manifest->version : QString()},
+                        {u"enabled"_s, m_pluginHost->catalog().enabled(e.id)}, {u"usable"_s, e.usable()}});
+                context[u"plugins"_s] = plugins;
+            }
             const QString dataFolder = Settings::dataDir();
             const QString serviceFolder = QDir(QString::fromStdWString(win32::expandEnvironment(L"%ProgramData%")))
                                               .filePath(u"WinShun"_s);
@@ -3557,6 +3680,67 @@ void App::refreshContentIndexStatus()
             status += tr("；%Ln 个文件有改动，稍后更新", nullptr, static_cast<int>(stats.pending));
     }
     m_settingsEditor->setContentIndexStatus(status);
+}
+
+// The settings' 运行状况 card, while it is on screen: its own timer asks every
+// two seconds. Reads each process's private working set (what Task Manager's
+// Memory column counts) and what the background is doing.
+void App::refreshHealth()
+{
+    if (!m_settingsEditor)
+        return;
+    const auto megabytes = [](std::uint64_t bytes) { return static_cast<qint64>(bytes / (1024 * 1024)); };
+    const memory::Use use = memory::measure();
+    // The file index's big blocks (entries, times, names: what searches live
+    // on), as much of them as is in the working set now, the same measure as
+    // the total. Right after a give-back most of them are parked on the
+    // standby list, and the card says so: what is held is not what is resident.
+    std::uint64_t fileIndex = 0;
+    std::uint64_t fileIndexHeld = 0;
+    if (const auto index = m_index->index()) {
+        const auto lock = index->readLock();
+        const auto blocks = index->memoryBlocks();
+        for (const auto& block : blocks)
+            fileIndexHeld += block.second;
+        fileIndex = memory::residentBytes(blocks);
+    }
+    fileIndex = std::min(fileIndex, use.main);
+    fileIndexHeld = std::max(fileIndexHeld, fileIndex);
+    QVariantMap health;
+    health[u"total"_s] = megabytes(use.total());
+    health[u"fileIndex"_s] = megabytes(fileIndex);
+    health[u"fileIndexParked"_s] = megabytes(fileIndexHeld - fileIndex); // held, but out of the working set
+    health[u"other"_s] = megabytes(use.main) - megabytes(fileIndex); // the interface and all that is not told apart; never above the total
+    health[u"plugins"_s] = megabytes(use.plugins);
+    health[u"pluginProcesses"_s] = use.pluginProcesses;
+    health[u"documents"_s] = megabytes(use.documents);
+    health[u"documentProcesses"_s] = use.documentProcesses;
+    const QVariantList tasks = m_background->toVariant();
+    health[u"tasks"_s] = tasks;
+    health[u"busy"_s] = !tasks.isEmpty();
+    health[u"idleText"_s] = BackgroundStatus::idleText();
+    const IdleTrim::LastTrim last = m_idleTrim->lastTrim();
+    health[u"lastTrim"_s] = last.atMs == 0
+        ? tr("还没有归还过")
+        : tr("上次归还：%1，还了 %2 MB")
+              .arg(QDateTime::fromMSecsSinceEpoch(last.atMs).toString(u"HH:mm"_s)).arg(last.megabytes);
+    m_settingsEditor->setHealth(health);
+}
+
+// 〔现在就归还〕: this process and Win顺's own under it, busy or not (what the
+// background reads next comes back by itself). Off the GUI thread: ~10 ms per
+// 100 MB, a little more with several processes.
+void App::giveMemoryBack()
+{
+    std::thread([self = QPointer<App>(this)] {
+        const qint64 megabytes = memory::trimAll();
+        QMetaObject::invokeMethod(qApp, [self, megabytes] {
+            if (!self)
+                return;
+            self->m_idleTrim->noteTrim(megabytes);
+            self->refreshHealth();
+        }, Qt::QueuedConnection);
+    }).detach();
 }
 
 void App::refreshShareStatuses()
@@ -3886,6 +4070,7 @@ void App::dumpLauncher(const QString& file) const
     // is searched, where 其他位置 begins, and the hint rows under the list.
     state[u"typingFolder"_s] = m_launcher->typingFolder();
     state[u"typingFolderOnly"_s] = m_launcher->typingFolderOnly();
+    state[u"typingFolderLevel"_s] = m_launcher->typingFolderLevel();
     state[u"elsewhereRow"_s] = m_launcher->results()->elsewhereRow();
     state[u"leftOutHints"_s] = QJsonArray::fromVariantList(m_launcher->leftOutHints());
     state[u"elapsedUs"_s] = static_cast<double>(m_launcher->elapsedUs());
@@ -3980,7 +4165,7 @@ void App::applyFolderMenu()
     if (m_folderMenu) {
         m_folderMenu->setOptions(m_settings.folderMenu == u"auto", m_settings.folderMenuExplorer, m_settings.folderMenuDesktop);
         m_folderMenu->setGroups(m_settings.folderMenuFavorites, m_settings.folderMenuRecent, m_settings.folderMenuWindows);
-        m_folderMenu->setItems(m_settings.folderMenuItemSearch, m_settings.folderMenuItemCmd, m_settings.folderMenuItemPowerShell,
+        m_folderMenu->setItems(m_settings.folderMenuItemSearch, m_settings.folderMenuItemCopyPath, m_settings.folderMenuItemCmd, m_settings.folderMenuItemPowerShell,
             m_settings.folderMenuItemFavorite, m_settings.folderMenuItemSettings);
         m_folderMenu->setRecordHistory(m_settings.recordHistory);
     }
@@ -4426,7 +4611,8 @@ void App::toggleLauncher(bool byShortcut, std::optional<std::uint64_t> pressedAt
     case ShortcutAction::Raise:
         // Coming, or up already: to the front as it is, neither placed again nor closed.
         toFront(m_window);
-        m_window->requestActivate();
+        if (refuseFrontForTest() == RefuseFront::No)
+            m_window->requestActivate();
         decided("raise");
         break;
     case ShortcutAction::Show:
@@ -4499,13 +4685,101 @@ win::Front App::toFront(QWindow* window)
 {
     QElapsedTimer timer;
     timer.start();
-    const win::Front front = win::bringToFront(window,
-        window == m_clipWindow ? win::ShellFlyout::Preserve : win::ShellFlyout::Dismiss);
+    win::Front front = win::Front::Refused;
+    if (const RefuseFront refuse = window == m_window ? refuseFrontForTest() : RefuseFront::No; refuse == RefuseFront::No) {
+        front = win::bringToFront(window, window == m_clipWindow ? win::ShellFlyout::Preserve : win::ShellFlyout::Dismiss);
+    } else if (const HWND hwnd = reinterpret_cast<HWND>(window->winId()); ::GetForegroundWindow() == hwnd) {
+        front = win::Front::Already; // clicked into meanwhile: Windows let it
+    } else {
+        // Shown, not in front; with "active", the active window of this
+        // thread all the same, as a refused SetForegroundWindow leaves it.
+        if (!::IsWindowVisible(hwnd))
+            ::ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        if (refuse == RefuseFront::ActiveHere)
+            ::SetActiveWindow(hwnd);
+        qWarning() << "Could not bring the window to the front (WINSHUN_TEST_REFUSE_FRONT)";
+    }
     if (m_triggers && m_triggers->open())
         m_triggers->front(front, static_cast<double>(timer.nsecsElapsed()) / 1e6);
-    if (window == m_window && front == win::Front::Refused)
+    if (front == win::Front::Refused)
+        recordFrontRefused(window);
+    if (window == m_window && front == win::Front::Refused) {
         watchStrandedLauncher();
+        startLauncherRouting(); // GitHub #203: its keys through a hook of its own meanwhile
+    } else if (window == m_window) {
+        stopLauncherRouting(); // in front: its keys are its own again
+    }
     return front;
+}
+
+App::RefuseFront App::refuseFrontForTest()
+{
+    static const RefuseFront refuse = [] {
+        const QByteArray value = qgetenv("WINSHUN_TEST_REFUSE_FRONT");
+        return value.isEmpty() || value == "0" ? RefuseFront::No
+            : value == "active"                ? RefuseFront::ActiveHere
+                                               : RefuseFront::Never;
+    }();
+    return refuse;
+}
+
+// GitHub #203 (Windows 10, Explorer in front): the hotkey's grant, the empty
+// input and the keys typed again were all refused there, and the log said
+// only that. The rights of the program in front and Win顺's own (UIPI: a
+// higher one there drops what Win顺 sends, SendInput telling nothing), a
+// menu or move of its on (GUITHREADINFO's flags), its window hung, the
+// foreground lock and how long since the last input; whether Win顺 may set
+// the foreground now; and one more input that does nothing, sent now, with
+// SendInput's word on it (the error cleared first) and whether it gave that
+// right. No keys, titles, folders or file names.
+void App::recordFrontRefused(QWindow* window)
+{
+    if (!m_frontRefusals.take(true, ::GetTickCount64()))
+        return;
+    const HWND front = ::GetForegroundWindow();
+    DWORD pid = 0;
+    const DWORD thread = front ? ::GetWindowThreadProcessId(front, &pid) : 0;
+    wchar_t className[256] {};
+    if (front)
+        ::GetClassNameW(front, className, static_cast<int>(std::size(className)));
+    GUITHREADINFO info {sizeof info};
+    const bool infoRead = thread && ::GetGUIThreadInfo(thread, &info);
+    DWORD lockTimeout = 0;
+    const bool lockRead = ::SystemParametersInfoW(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &lockTimeout, 0);
+    LASTINPUTINFO last {sizeof last};
+    const bool lastRead = ::GetLastInputInfo(&last);
+    const DWORD now = ::GetTickCount();
+    const HWND hwnd = window ? reinterpret_cast<HWND>(window->winId()) : nullptr;
+    ::SetLastError(0);
+    const bool may = ::AllowSetForegroundWindow(::GetCurrentProcessId());
+    const DWORD mayError = may ? 0 : ::GetLastError();
+    INPUT nothing {};
+    nothing.type = INPUT_MOUSE;
+    nothing.mi.dwExtraInfo = kOwnInput;
+    ::SetLastError(0);
+    const UINT inserted = ::SendInput(1, &nothing, sizeof nothing);
+    const DWORD insertError = ::GetLastError();
+    const bool mayAfter = ::AllowSetForegroundWindow(::GetCurrentProcessId());
+    QJsonObject details {
+        {u"window"_s, window == m_window ? u"launcher"_s : window == m_clipWindow ? u"clipboard"_s : u"other"_s},
+        {u"front_class"_s, QString::fromWCharArray(className)},
+        {u"front_program"_s, front ? foreground::programOf(front) : QString()},
+        {u"front_rights"_s, pid ? diagnostics::rightsOf(pid) : QJsonObject()},
+        {u"own_rights"_s, diagnostics::rightsOf(0)},
+        {u"front_hung"_s, front && ::IsHungAppWindow(front)},
+        {u"front_flags"_s, infoRead ? u"0x%1"_s.arg(info.flags, 0, 16) : u"unknown"_s},
+        {u"active_here"_s, hwnd && ::GetActiveWindow() == hwnd}, // refused, but the active window of its thread
+        {u"lock_timeout_ms"_s, lockRead ? static_cast<qint64>(lockTimeout) : -1},
+        {u"idle_ms"_s, lastRead ? static_cast<qint64>(now - last.dwTime) : -1},
+        {u"may_set_front"_s, may},
+        {u"may_set_front_error"_s, static_cast<qint64>(mayError)},
+        {u"nothing_inserted"_s, static_cast<qint64>(inserted)},
+        {u"nothing_error"_s, static_cast<qint64>(insertError)},
+        {u"may_set_front_after"_s, mayAfter},
+    };
+    if (m_frontRefusals.skipped() > 0)
+        details.insert(u"skipped"_s, m_frontRefusals.skipped());
+    diagnostics::record(u"front-refused"_s, details);
 }
 
 void App::watchStrandedLauncher()
@@ -4544,6 +4818,7 @@ void App::checkStrandedLauncher()
         return;
     m_strandedWatch.stop();
     qWarning().noquote() << "Launcher: not in front (Windows refused), a press elsewhere: as if it lost the focus";
+    stopLauncherRouting(); // its router tells of the press too, unless Windows dropped its hook
     launcherLostFront();
     updateNumberKeys();
 }
@@ -4565,7 +4840,7 @@ const char* App::rawInputState() const
 }
 
 void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>& spot, bool inBox, QScreen* on, HWND avoid,
-    bool inside)
+    bool inside, const RECT& orInto)
 {
     if (!m_window)
         return;
@@ -4587,6 +4862,9 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         }).detach();
     }
     hideClipboard(false); // from under its search box: searching again
+    // Each time it is asked for, pinned and up already too: English once its
+    // field has the focus (lettersOnOpen). A click into it is not asked for.
+    m_lettersPending = m_settings.englishOnOpen;
     m_boxPressGrace.stop();
     m_launcherShown.start();
     m_idleTrim->used();
@@ -4604,10 +4882,12 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         if (!query.isEmpty())
             m_launcher->setQuery(query);
         toFront(m_window);
-        m_window->requestActivate();
+        if (refuseFrontForTest() == RefuseFront::No)
+            m_window->requestActivate();
         m_launcher->handleShown(); // refreshed (something was opened meanwhile), all typed selected
         if (!query.isEmpty())
             emit m_launcher->caretRequested(static_cast<int>(query.size()), false);
+        lettersOnOpen(); // active and focused already, nothing else to come
         return;
     }
     const bool wasClosing = std::exchange(m_launcherClosing, false); // back from on its way out
@@ -4639,9 +4919,20 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         QScreen* screen = on ? on : QGuiApplication::screenAt(QCursor::pos());
         screen = screen ? screen : QGuiApplication::primaryScreen();
         RECT bounds {};
-        if (avoid && ::GetWindowRect(avoid, &bounds))
-            m_placement->avoidNative(QRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top), screen, inside);
-        else
+        const auto native = [](const RECT& r) { return QRect(r.left, r.top, r.right - r.left, r.bottom - r.top); };
+        if (avoid && ::GetWindowRect(avoid, &bounds)) {
+            // Over an Opus file list: its lister's other lists and client
+            // area are where it may reach when the list is too small for it.
+            // Into Explorer's (orInto): within its window's client area.
+            const bool orIntoList = !inside && !::IsRectEmpty(&orInto);
+            const HWND root = inside || orIntoList ? ::GetAncestor(avoid, GA_ROOT) : nullptr;
+            RECT client {};
+            const bool framed = root && ::GetClientRect(root, &client)
+                && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.left))
+                && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.right));
+            m_placement->avoidNative(native(bounds), screen, inside, inside ? native(folderview::opusFileLists(root)) : QRect(),
+                framed ? native(client) : QRect(), orIntoList ? native(orInto) : QRect());
+        } else
             m_placement->placeOn(screen);
     }
     if (!query.isEmpty())
@@ -4661,12 +4952,14 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     m_window->show();
     toFront(m_window);
     m_launcherFrontTick = ::GetTickCount(); // input after this is not its own empty one (logLauncherLostFront)
-    m_window->requestActivate();
+    if (refuseFrontForTest() == RefuseFront::No)
+        m_window->requestActivate();
     m_launcher->handleShown(); // selects all that is typed
     if (!query.isEmpty()) // typed for the user (a folder, --query): words go after it
         emit m_launcher->caretRequested(static_cast<int>(query.size()), false);
     if (m_launcherReveal.pending() && !m_launcher->waitingForNames())
         armReveal(); // nothing to wait for (内容 refreshes in the background)
+    lettersOnOpen(); // back from on its way out: it may have kept its focus
 }
 
 void App::showClipboard()
@@ -4902,6 +5195,149 @@ void App::routedForeground(HWND window)
         return;
     }
     hideClipboard(); // another program in front: as a menu
+}
+
+bool App::startLauncherRouting()
+{
+    const HWND front = ::GetForegroundWindow();
+    const HWND target = front ? ::GetAncestor(front, GA_ROOT) : nullptr;
+    if (launcherRouted() && m_launcherRouting.target == target)
+        return true; // there already (asked for again)
+    stopLauncherRouting();
+    DWORD pid = 0;
+    if (target)
+        ::GetWindowThreadProcessId(target, &pid);
+    // Nothing in front, or a window of Win顺's: nothing to route from. The
+    // taskbar (a press on Win顺's box: it comes back with that press), the
+    // Start menu (its keys wait for the launcher, which it gives way to) and
+    // the shell's other flyouts keep their own ways.
+    if (!m_window || !target || pid == ::GetCurrentProcessId() || taskbar::isTaskbar(target) || win::isShellFlyout(target))
+        return false;
+    // An elevated program while Win顺 is not: Windows keeps the keys typed
+    // there from the hook (UIPI).
+    if (integrity::higherThanOurs(target)) {
+        diagnostics::record(u"launcher-key-routing-skipped"_s, {{u"reason"_s, u"higher-integrity"_s}});
+        return false;
+    }
+    const std::uint64_t run = ++m_launcherRouting.run;
+    // From the router's thread, in order; a key still on its way when the
+    // routing has ended goes nowhere.
+    const auto post = [this, run](auto call) {
+        QMetaObject::invokeMethod(this, [this, run, call = std::move(call)] {
+            if (m_launcherRouting.router && m_launcherRouting.run == run)
+                call();
+        }, Qt::QueuedConnection);
+    };
+    KeyRouter::Callbacks callbacks;
+    callbacks.key = [this, post](const KeyRouter::Key& key) { post([this, key] { launcherRoutedKey(key); }); };
+    callbacks.clickedAway = [this, post] { post([this] { launcherClickedAway(); }); };
+    callbacks.foregroundChanged = [this, post](HWND) { post([this] { launcherRoutedForeground(); }); };
+    callbacks.drained = [this, run] {
+        QMetaObject::invokeMethod(this, [this, run] {
+            if (m_launcherRouting.drainingRun == run)
+                m_launcherRouting.draining.reset();
+        }, Qt::QueuedConnection);
+    };
+    const Qt::KeyboardModifier numberKeys = m_settings.numberKeys == u"ctrl" ? Qt::ControlModifier
+        : m_settings.numberKeys == u"alt"                                     ? Qt::AltModifier
+                                                                              : Qt::NoModifier;
+    auto router = std::make_unique<KeyRouter>(target, reinterpret_cast<HWND>(m_window->winId()), std::move(callbacks),
+        numberKeys, ownNumberDigits(m_settings.numberKeys));
+    const QString program = foreground::programOf(target);
+    diagnostics::record(u"launcher-key-routing-start"_s,
+        {{u"session"_s, static_cast<qint64>(run)}, {u"front_program"_s, program},
+            {u"router"_s, router->diagnosticStatus()}});
+    if (!router->isActive()) {
+        qWarning() << "Launcher: keyboard routing is unavailable";
+        return false;
+    }
+    m_launcherRouting.router = std::move(router);
+    m_launcherRouting.target = target;
+    if (m_typing)
+        m_typing->setLauncherRouted(true);
+    m_launcher->setKeysRouted(true);
+    qWarning().noquote() << "Launcher: refused the front, its keys routed to it while" << program << "keeps the focus";
+    return true;
+}
+
+void App::stopLauncherRouting()
+{
+    if (m_typing)
+        m_typing->setLauncherRouted(false);
+    m_launcherRouting.target = nullptr;
+    if (!m_launcherRouting.router)
+        return;
+    // No key is taken any more; the releases of those it took still are its
+    // own, for a moment.
+    m_launcherRouting.router->drain();
+    diagnostics::record(u"launcher-key-routing-stop"_s,
+        {{u"session"_s, static_cast<qint64>(m_launcherRouting.run)},
+            {u"router"_s, m_launcherRouting.router->diagnosticStatus()}});
+    m_launcherRouting.draining = std::move(m_launcherRouting.router);
+    m_launcherRouting.drainingRun = m_launcherRouting.run;
+    QTimer::singleShot(2s, this, [this, run = m_launcherRouting.drainingRun] {
+        if (m_launcherRouting.drainingRun == run)
+            m_launcherRouting.draining.reset(); // a key held that long is the program's again
+    });
+    m_launcher->setKeysRouted(false);
+}
+
+// A key routed to the launcher, or held for it and handed over: as the
+// clipboard's (routedKey), to the item that has the focus in it (the window
+// has no active focus, or only in this thread), then up its parents until
+// one takes it.
+void App::launcherRoutedKey(const KeyRouter::Key& key)
+{
+    if (!m_window || !m_window->isVisible() || m_launcherClosing)
+        return;
+    if (key.press && key.vk == VK_F4 && key.modifiers.testFlag(Qt::AltModifier)) {
+        hideLauncher(); // closes it, not the program behind
+        return;
+    }
+    if (key.press && (key.vk == VK_APPS || (key.vk == VK_F10 && key.modifiers == Qt::ShiftModifier))) {
+        // As the window's ContextMenu event (eventFilter): Shift+Menu asks for the shell's menu.
+        if (!m_launcher->systemMenuBusy())
+            emit m_launcher->contextMenuKeyPressed(key.vk == VK_APPS && key.modifiers.testFlag(Qt::ShiftModifier));
+        return;
+    }
+    QQuickItem* item = m_window->contentItem();
+    while (item->isFocusScope() && item->scopedFocusItem() && item->scopedFocusItem()->isEnabled())
+        item = item->scopedFocusItem();
+    QKeyEvent event(key.press ? QEvent::KeyPress : QEvent::KeyRelease, key.key, key.modifiers, key.scanCode, key.vk, 0,
+                    key.text, key.autoRepeat);
+    if (key.press && event.matches(QKeySequence::Paste) && textfield::pasteOneLine(item))
+        return; // as eventFilter does for the window's own keys
+    for (; item; item = item->parentItem()) {
+        event.setAccepted(true);
+        QCoreApplication::sendEvent(item, &event);
+        if (event.isAccepted())
+            break;
+    }
+}
+
+// Another window came to the front while the launcher's keys were routed to
+// it (its router's event; looked at as of now, the event may be old).
+void App::launcherRoutedForeground()
+{
+    const HWND front = ::GetForegroundWindow();
+    const HWND root = front ? ::GetAncestor(front, GA_ROOT) : nullptr;
+    if (!root || root == m_launcherRouting.target)
+        return; // that window still (told again after the refusal), or none for a moment
+    stopLauncherRouting();
+    // In front itself after all (a click on it): as any window with the
+    // focus from now on. Anything else: as when it loses the focus.
+    if (m_window && root != reinterpret_cast<HWND>(m_window->winId()))
+        launcherLostFront();
+}
+
+// A button pressed outside Win顺's windows while the launcher's keys were
+// routed to it: the window it went to had the front all along, no change of
+// the front tells of it. As when the launcher loses the focus: it goes,
+// unless pinned (it stays, the keys that window's again).
+void App::launcherClickedAway()
+{
+    stopLauncherRouting();
+    launcherLostFront();
 }
 
 namespace {
@@ -5395,6 +5831,12 @@ void App::launcherLostFront()
     // after it opened.
     if (!m_window || !m_window->isVisible() || clipboardUnderLauncher())
         return;
+    // Its keys routed to it, the window it was refused over still in front
+    // (GitHub #203): nothing was lost. Qt can say so all the same (active
+    // only in Win顺), and Windows 10 tells of that window coming to the front
+    // again after the refusal. A press elsewhere is the router's to tell.
+    if (launcherRouted() && ::GetAncestor(::GetForegroundWindow(), GA_ROOT) == m_launcherRouting.target)
+        return;
     if (m_launcher->contentPane()->modalOperation() || m_launcher->contentPane()->ownsForeground())
         return;
     // The preview (Alt+P) took the focus for a moment: a handler's
@@ -5464,6 +5906,8 @@ void CALLBACK App::foregroundChanged(HWINEVENTHOOK, DWORD, HWND window, LONG, LO
         const HWND front = ::GetForegroundWindow();
         if (!front || (::GetWindowThreadProcessId(front, &pid), pid == ::GetCurrentProcessId()))
             return;
+        if (app->launcherRouted() && ::GetAncestor(front, GA_ROOT) == app->m_launcherRouting.target)
+            return; // the window it was refused over, its keys routed to it (GitHub #203): nothing lost
         if (!app->m_launcher->pinned())
             qWarning().noquote() << "Launcher: active only in Win顺, another program's window in front: as if it lost the focus";
         app->launcherLostFront();
@@ -5649,12 +6093,14 @@ void App::hideLauncher()
 {
     cancelTypingSelection();
     m_typingOrigin = {}; // whatever opened it, that opening is over
+    stopLauncherRouting(); // the keys are the window's in front again
     if (!m_window || !m_window->isVisible() || m_launcherClosing)
         return;
     if (m_launcher->systemMenuOpen())
         ::EndMenu(); // the shell's menu over it (Shift+right-click) goes with it: double Ctrl, say
     m_launcherHidden.start();
     m_boxPressGrace.stop();
+    restoreLauncherInputMode(); // while it may still have the focus (an input method shared by all programs follows)
     if (std::exchange(m_deliverTyping, false)) {
         // Going before the keys typed for it went (they wait for it to be
         // ready, deliverTyping): once it was active, the hook has them as it
@@ -5794,8 +6240,12 @@ void App::showTrayMenu()
     ::GetLastInputInfo(&input);
     const DWORD asked = ::GetTickCount();
     const bool ready = m_index->state() == IndexService::State::Ready;
-    const QString info = ready ? tr("已索引 %Ln 项", nullptr, static_cast<int>(m_index->itemCount()))
-                               : tr("正在建立索引…");
+    // What is going on, in the words the settings' 运行状况 card uses (loading
+    // is not building: the snapshot is read, nothing is built).
+    const QStringList doing = m_background->lines(2);
+    const QString info = !doing.isEmpty() ? doing.first()
+        : ready ? tr("已索引 %Ln 项", nullptr, static_cast<int>(m_index->itemCount()))
+                : tr("正在加载索引…");
     const QString show = tr("打开 Win顺");
     std::vector<shell::MenuItem> items {
         {ShowCommand, m_settings.doubleCtrl ? show + u'\t' + doubleCtrlName() : show, false, true, true},
@@ -5812,16 +6262,10 @@ void App::showTrayMenu()
         {RestartCommand, tr("重新启动")},
         {QuitCommand, tr("退出")},
     };
-    // Files being read for the content index: how far (the disk is busy meanwhile).
-    if (ready && m_index->readingContent()) {
-        const ContentIndexer::Progress progress = m_index->contentIndexer()->progress();
+    // A second job (content being read while the snapshot is saved, say).
+    if (doing.size() > 1) {
         const auto at = std::ranges::find_if(items, [](const shell::MenuItem& i) { return i.id == IndexInfo; });
-        items.insert(at + 1,
-            {ContentInfo,
-                tr("正在建立内容索引 %1 / %2")
-                    .arg(QLocale().toString(static_cast<qulonglong>(progress.done)),
-                        QLocale().toString(static_cast<qulonglong>(progress.total))),
-                false, false});
+        items.insert(at + 1, {ContentInfo, doing.at(1), false, false});
     }
     // The index service not reached (GitHub #21): said here, the reason in the settings.
     if (m_serviceWanted && m_index->volumeAccessKind() == ntfs::VolumeAccess::Kind::None) {
@@ -5942,6 +6386,8 @@ void App::showTrayMenu()
         break;
     case RebuildCommand:
         m_index->rebuild();
+        m_background->rebuildRequested();
+        m_apps->refresh(true); // the apps too: what people mean by it (#207)
         m_messages->showNotification(tr("正在重建索引"), tr("可以照常搜索，完成后结果会自动更新。"));
         break;
     case AutostartCommand:
