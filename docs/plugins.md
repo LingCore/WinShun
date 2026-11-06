@@ -276,6 +276,7 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
 | `clipboard_copy_entry` | `clipboard:write` | `id` | 剪贴板历史里的一条重新放到剪贴板，并移到最前 |
 | `show_launcher` | `ui` | `text` | 打开搜索框并填上这段文字 |
 | `web_search` | `winshun:open` | `text` | 用 Win顺 的默认网页搜索搜这段文字 |
+| `open_url` | `winshun:open` | `url` | 用默认浏览器（或邮件程序）以用户的普通权限打开一个 `http`、`https` 或 `mailto` 链接；`open_item` 只开文件和文件夹。0.21.0 起 |
 
 ### 系统开关提供者
 

@@ -754,8 +754,9 @@ capture::CaptureOcr& CaptureApp::captureOcr()
         connect(m_captureOcr.get(), &capture::CaptureOcr::webSearchRequested, this, [this](const QString& query) { searchText(query, true); });
         connect(m_captureOcr.get(), &capture::CaptureOcr::closeRequested, this, [this] { closeCaptureOcr(); });
         connect(m_captureOcr.get(), &capture::CaptureOcr::openLinkRequested, this, [this](const QString& url) {
-            // Only ever from a click on 打开链接; opened by Win顺 (no programs started here).
-            m_protocol.tool(u"open_item"_s, {{u"path"_s, url}});
+            // Only ever from a click on 打开链接; opened by Win顺 (no programs started
+            // here). open_item takes files and folders only (GitHub #225).
+            m_protocol.tool(u"open_url"_s, {{u"url"_s, url}});
         });
     }
     return *m_captureOcr;

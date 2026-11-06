@@ -272,6 +272,7 @@ When `initialize.capabilities.hostHotkeys` is true, a resident plugin with `ui` 
 | `clipboard_copy_entry` | `clipboard:write` | `id` | an entry of the clipboard history onto the clipboard again, moved to the top |
 | `show_launcher` | `ui` | `text` | opens the search box with this text |
 | `web_search` | `winshun:open` | `text` | searches the web for this text with Win顺's default web search |
+| `open_url` | `winshun:open` | `url` | opens an `http`, `https` or `mailto` link in the default browser (or mail program) with the user's normal rights; `open_item` opens files and folders only. Since 0.21.0 |
 
 ### Item fields
 
