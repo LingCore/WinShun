@@ -153,6 +153,17 @@ std::optional<Index> parse(const QByteArray& json, const QString& source, QStrin
                 item.permissions.push_back(name);
         }
         item.program = programOf(o.value(u"runtime"_s));
+        const QJsonValue review = o.value(u"review"_s);
+        if (review == u"official"_s)
+            item.review = Review::Official;
+        else if (review == u"reviewed"_s)
+            item.review = Review::Reviewed;
+        else if (review == u"unreviewed-native"_s)
+            item.review = Review::UnreviewedNative;
+        else if (!review.isUndefined()) {
+            ++index.skipped;
+            continue;
+        }
         item.minWinShun = o.value(u"minWinShun"_s).toString();
         item.bundled = o.value(u"bundled"_s).toBool();
         index.items.push_back(std::move(item));

@@ -3131,6 +3131,27 @@ private slots:
         QVERIFY(!signing::importable(QByteArray(63, '\x01')));
     }
 
+    void galleryReviewClassification()
+    {
+        QJsonObject entry {{u"id"_s, u"test.native"_s}, {u"version"_s, u"1.0.0"_s}, {u"size"_s, 1},
+            {u"url"_s, u"https://example.test/test.wsplugin"_s}, {u"sha256"_s, QString(64, u'a')},
+            {u"runtime"_s, QJsonObject {{u"mode"_s, u"once"_s}, {u"program"_s, u"tool.exe"_s}}}};
+        const auto parse = [&] { return gallery::parse(toJson({{u"schema"_s, 1}, {u"plugins"_s, QJsonArray {entry}}}),
+            u"https://example.test/index.json"_s, nullptr); };
+        QVERIFY(parse()->items.front().needsReviewConsent()); // legacy native entries do not imply a review
+        for (const QString& value : {u"official"_s, u"reviewed"_s, u"unreviewed-native"_s}) {
+            entry.insert(u"review"_s, value);
+            const auto parsed = parse();
+            QCOMPARE(parsed->items.size(), 1u);
+            QCOMPARE(parsed->items.front().needsReviewConsent(), value == u"unreviewed-native");
+        }
+        for (const QJsonValue& value : {QJsonValue(u"trusted"_s), QJsonValue(true), QJsonValue(QJsonValue::Null)}) {
+            entry.insert(u"review"_s, value);
+            QCOMPARE(parse()->items.size(), 0u);
+            QCOMPARE(parse()->skipped, 1);
+        }
+    }
+
     void galleryReadsBundled()
     {
         const auto entry = [](const QString& id, const QJsonValue& bundled) {
@@ -3182,6 +3203,14 @@ private slots:
         const auto action = [&] { return up::decide(item, have, policy, history, now).action; };
 
         QVERIFY(action() == up::Action::Install); // 11
+        item.review = gallery::Review::UnreviewedNative;
+        QVERIFY(action() == up::Action::Ask);
+        QVERIFY(!up::decide(item, have, policy, history, now).needsConsent); // do not announce nonexistent new permissions
+        item.review = gallery::Review::Unspecified;
+        item.program = Program::Exe;
+        QVERIFY(action() == up::Action::Ask); // old unclassified native entries are conservative too
+        item.program.reset();
+        QVERIFY(action() == up::Action::Install);
         have.local.userCopy = false; // 1
         QVERIFY(action() == up::Action::None);
         have.local.userCopy = true;

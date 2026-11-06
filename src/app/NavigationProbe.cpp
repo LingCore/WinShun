@@ -38,6 +38,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 
 #include <cmath>
@@ -636,6 +637,133 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     check(footer->isVisible() && tabs->isVisible(), u"switching off restores the original presentation"_s);
     check(!window->isActive(), u"probe never activates the user's desktop"_s);
     QFile report(output.filePath(u"pure-search.json"_s));
+    if (!report.open(QIODevice::WriteOnly)) return false;
+    report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
+    return check.passed;
+}
+
+bool checkPluginReviewSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output)
+{
+    Checks check;
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 3), Q_ARG(QVariant, 1),
+        Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "纯净搜索模式")));
+    settle(window);
+    auto* toggle = item(window->contentItem(), u"pureSearchToggle"_s);
+    check(toggle && toggle->isVisible(), u"pure mode has a searchable settings entry"_s);
+    if (!toggle) return false;
+    QMetaObject::invokeMethod(toggle, "toggled", Q_ARG(bool, true));
+    Settings restored;
+    restored.load();
+    check(restored.pureSearch && editor->pureSearch(), u"the real toggle saves pure mode"_s);
+    check(window->grabWindow().save(output.filePath(u"pure-setting.png"_s)), u"capture pure mode setting"_s);
+    QTemporaryDir temporary;
+    plugin::Host host({.userPluginDir = temporary.filePath(u"installed"_s), .dataRoot = temporary.filePath(u"data"_s),
+        .elevatedHost = false, .elevationRoot = temporary.filePath(u"elevated"_s), .elevationProtected = false});
+    editor->plugins()->setHost(&host);
+    const auto detach = qScopeGuard([&] { editor->plugins()->setHost(nullptr); });
+    const QString candidate = temporary.filePath(u"candidate"_s);
+    QDir().mkpath(candidate);
+    const auto manifest = [&](const QString& version) {
+        QFile file(QDir(candidate).filePath(u"plugin.json"_s));
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+        file.write(QJsonDocument(QJsonObject {{u"manifest"_s, 1}, {u"id"_s, u"probe.native"_s},
+            {u"name"_s, u"社区原生工具 / Community native tool"_s}, {u"version"_s, version},
+            {u"homepage"_s, u"https://example.test/native"_s},
+            {u"runtime"_s, QJsonObject {{u"mode"_s, u"once"_s}, {u"program"_s, u"tool.exe"_s}}},
+            {u"commands"_s, QJsonArray {QJsonObject {{u"id"_s, u"go"_s}, {u"keyword"_s, u"probe"_s}}}}}).toJson());
+        return true;
+    };
+    check(manifest(u"1.0.0"_s), u"create isolated native candidate"_s);
+    QFile executable(QDir(candidate).filePath(u"tool.exe"_s));
+    if (!executable.open(QIODevice::WriteOnly)) return false;
+    executable.write("MZ not executable: this probe must never run a plugin");
+    executable.close();
+    const auto request = [&] { editor->plugins()->installFrom(candidate, u"probe.native"_s, u"Native"_s, false, true); settle(window); };
+    request();
+    auto* warning = item(window->contentItem(), u"unreviewedPluginWarning"_s);
+    auto* accept = item(window->contentItem(), u"pluginDialogAccept"_s);
+    auto* card = item(window->contentItem(), u"pluginDialogCard"_s);
+    check(warning && warning->isVisible() && accept && card, u"first install shows the real risk confirmation"_s);
+    if (!warning || !accept || !card) return false;
+    auto* source = item(window->contentItem(), u"pluginInstallSource"_s);
+    check(source && source->isVisible(), u"the confirmation provides an explicit web-source action"_s);
+    check(!host.catalog().find(u"probe.native"_s), u"nothing installed before confirmation"_s);
+    check(window->grabWindow().save(output.filePath(u"native-confirm.png"_s)), u"capture native installation warning"_s);
+    key(card, Qt::Key_Escape);
+    settle(window);
+    check(!warning->isVisible() && !host.catalog().find(u"probe.native"_s), u"Escape cancels without installing"_s);
+    request();
+    QMetaObject::invokeMethod(accept, "clicked");
+    settle(window);
+    const auto installedVersion = [&] {
+        const auto* entry = host.catalog().find(u"probe.native"_s);
+        return entry && entry->manifest ? entry->manifest->version : QString();
+    };
+    check(installedVersion() == u"1.0.0", u"explicit confirmation installs the candidate"_s);
+    check(!host.catalog().enabled(u"probe.native"_s), u"installation does not enable or execute the native plugin"_s);
+    check(manifest(u"1.1.0"_s), u"prepare an update with identical permissions"_s);
+    request();
+    check(warning->isVisible() && installedVersion() == u"1.0.0", u"same-permission update still requires confirmation"_s);
+    key(card, Qt::Key_Escape);
+    settle(window);
+    check(installedVersion() == u"1.0.0", u"rejecting an update preserves the old version"_s);
+    request();
+    QMetaObject::invokeMethod(accept, "clicked");
+    settle(window);
+    check(installedVersion() == u"1.1.0", u"confirmed update reaches the installed catalog"_s);
+    // Read a local index through the production gallery. Preview sample rows
+    // cannot prove that new model roles reach the actual delegate.
+    const QString indexPath = temporary.filePath(u"index.json"_s);
+    QFile indexFile(indexPath);
+    if (!indexFile.open(QIODevice::WriteOnly)) return false;
+    indexFile.write(QJsonDocument(QJsonObject {{u"schema"_s, 1}, {u"plugins"_s, QJsonArray {QJsonObject {
+        {u"id"_s, u"probe.native"_s}, {u"name"_s, u"Community native tool"_s}, {u"version"_s, u"1.2.0"_s},
+        {u"description"_s, u"An open-source native utility. Review its source before installing."_s},
+        {u"runtime"_s, QJsonObject {{u"mode"_s, u"once"_s}, {u"program"_s, u"tool.exe"_s}}},
+        {u"review"_s, u"unreviewed-native"_s}, {u"url"_s, temporary.filePath(u"unused.wsplugin"_s)},
+        {u"size"_s, 1}, {u"sha256"_s, QString(64, u'a')}}}}}).toJson());
+    indexFile.close();
+    const QByteArray oldIndex = qgetenv("WINSHUN_PLUGIN_INDEX");
+    const bool hadIndex = qEnvironmentVariableIsSet("WINSHUN_PLUGIN_INDEX");
+    qputenv("WINSHUN_PLUGIN_INDEX", indexPath.toUtf8());
+    const auto restoreIndex = qScopeGuard([&] { if (hadIndex) qputenv("WINSHUN_PLUGIN_INDEX", oldIndex); else qunsetenv("WINSHUN_PLUGIN_INDEX"); });
+    Settings gallerySettings;
+    SettingsEditor galleryEditor(gallerySettings, u"software"_s);
+    galleryEditor.plugins()->setHost(&host);
+    auto* gallery = galleryEditor.plugins()->gallery();
+    gallery->refresh();
+    QElapsedTimer fetchTime;
+    fetchTime.start();
+    while (gallery->fetching() && fetchTime.elapsed() < 5000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+    auto* model = gallery->list();
+    check(model->rowCount() == 1, u"production gallery loads the unreviewed native index entry"_s);
+    check(gallery->updatableCount() == 0, u"unreviewed update is excluded from Update all"_s);
+    QVariantMap properties {{u"gallery"_s, QVariant::fromValue(gallery)}};
+    const auto roles = model->roleNames();
+    for (auto it = roles.begin(); it != roles.end(); ++it)
+        properties.insert(QString::fromUtf8(it.value()), model->data(model->index(0), it.key()));
+    check(properties.value(u"unreviewed"_s).toBool() && !properties.value(u"reviewLabel"_s).toString().isEmpty(),
+        u"gallery exposes the real risk flag and readable label"_s);
+    QQmlComponent entry(qmlEngine(window), u"WinShun"_s, u"PluginGalleryEntry"_s);
+    std::unique_ptr<QObject> entryObject(entry.createWithInitialProperties(properties));
+    auto* entryItem = qobject_cast<QQuickItem*>(entryObject.get());
+    check(entryItem != nullptr, u"production gallery delegate accepts the actual model roles: "_s + entry.errorString());
+    if (entryItem) {
+        QQuickWindow galleryWindow;
+        galleryWindow.setColor(window->color()); // the card's transparent surface belongs on the current theme
+        galleryWindow.setWidth(640);
+        entryItem->setParentItem(galleryWindow.contentItem());
+        entryItem->setPosition({20, 20});
+        entryItem->setWidth(600);
+        galleryWindow.setHeight(static_cast<int>(std::ceil(entryItem->implicitHeight())) + 40);
+        showOffscreen(&galleryWindow);
+        check(galleryWindow.grabWindow().save(output.filePath(u"native-gallery-card.png"_s)), u"capture native classification on the real card"_s);
+        entryItem->setParentItem(nullptr);
+    }
+    galleryEditor.plugins()->setHost(nullptr);
+    check(!window->isActive(), u"settings checks leave desktop focus untouched"_s);
+    QFile report(output.filePath(u"plugin-review-settings.json"_s));
     if (!report.open(QIODevice::WriteOnly)) return false;
     report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
     return check.passed;

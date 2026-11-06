@@ -85,6 +85,8 @@ QVariant PluginGalleryModel::data(const QModelIndex& index, int role) const
     case IdRole: return r.id;
     case NameRole: return r.name;
     case DescriptionRole: return r.description;
+    case ReviewLabelRole: return r.reviewLabel;
+    case UnreviewedRole: return r.unreviewed;
     case AuthorRole: return r.author;
     case VersionRole: return r.version;
     case IconRole: return r.icon;
@@ -112,7 +114,7 @@ QHash<int, QByteArray> PluginGalleryModel::roleNames() const
         {IconRole, "icon"}, {KeywordsRole, "keywords"}, {PermissionsRole, "permissions"}, {NeedsRole, "needs"}, {NeedsMissingRole, "needsMissing"},
         {StageRole, "stage"}, {InstalledVersionRole, "installedVersion"}, {MinWinShunRole, "minWinShun"}, {BusyRole, "busy"},
         {ProgressRole, "progress"}, {ProblemRole, "problem"}, {ShownRole, "shown"}, {StagedRole, "staged"},
-        {MorePermissionsRole, "morePermissions"}};
+        {MorePermissionsRole, "morePermissions"}, {ReviewLabelRole, "reviewLabel"}, {UnreviewedRole, "unreviewed"}};
 }
 
 void PluginGalleryModel::setRows(std::vector<Row> rows)
@@ -137,6 +139,8 @@ void PluginGalleryModel::setRows(std::vector<Row> rows)
         };
         differs(old.name != now.name, NameRole);
         differs(old.description != now.description, DescriptionRole);
+        differs(old.reviewLabel != now.reviewLabel, ReviewLabelRole);
+        differs(old.unreviewed != now.unreviewed, UnreviewedRole);
         differs(old.author != now.author, AuthorRole);
         differs(old.version != now.version, VersionRole);
         differs(old.icon != now.icon, IconRole);
@@ -174,6 +178,7 @@ void PluginGalleryModel::setProgress(const QString& id, double progress)
 // ---- the tab's view-model ---------------------------------------------------------
 
 struct PluginGallery::Download {
+    bool unreviewed = false;
     bool enableAfterInstall = false;
     bool bulk = false; // 全部更新's: put over the installed one without a question
     int status = 0;
@@ -385,6 +390,13 @@ void PluginGallery::rebuild()
             r.id = item.id;
             r.name = item.name.pick(locale);
             r.description = item.description.pick(locale);
+            r.unreviewed = item.needsReviewConsent();
+            switch (item.review) {
+            case gallery::Review::Official: r.reviewLabel = tr("官方插件"); break;
+            case gallery::Review::Reviewed: r.reviewLabel = tr("已审核源码"); break;
+            case gallery::Review::UnreviewedNative: r.reviewLabel = tr("未审核的原生插件"); break;
+            case gallery::Review::Unspecified: r.reviewLabel = r.unreviewed ? tr("原生插件 · 审核状态未标注") : tr("审核状态未标注"); break;
+            }
             r.author = item.author;
             r.version = item.version;
             r.keywords = item.keywords;
@@ -415,7 +427,7 @@ void PluginGallery::rebuild()
                     }
                 }
                 r.morePermissions = added.join(u"、"_s);
-                r.allUpdate = r.staged.isEmpty() && added.isEmpty();
+                r.allUpdate = r.staged.isEmpty() && added.isEmpty() && !r.unreviewed;
                 // The same set as the badge's number: asked of the service, which also knows what was refused.
                 r.needsYou = m_updates ? m_updates->waiting(item.id) : r.staged.isEmpty();
             }
@@ -440,7 +452,7 @@ void PluginGallery::rebuild()
             r.busy = item.id == m_downloadId;
             r.progress = r.busy ? m_progress : 0;
             r.problem = m_problems.value(item.id);
-            r.words = QStringList {item.id, item.name.zh, item.name.en, item.description.zh, item.description.en, item.keywords.join(u' ')}
+            r.words = QStringList {item.id, item.name.zh, item.name.en, item.description.zh, item.description.en, item.keywords.join(u' '), r.reviewLabel}
                           .join(u'\n')
                           .toLower();
             rows.push_back(std::move(r));
@@ -481,6 +493,8 @@ void PluginGallery::beginInstall(const QString& id, bool enableAfterInstall, boo
     const gallery::Item* found = m_index.find(id);
     if (!found)
         return;
+    if (bulk && found->needsReviewConsent())
+        return;
     const auto& rows = m_list.rows();
     const auto row = std::ranges::find_if(rows, [&](const PluginGalleryModel::Row& r) { return r.id == id; });
     if (row == rows.end() || (row->stage != u"install" && row->stage != u"update"))
@@ -505,7 +519,7 @@ void PluginGallery::beginInstall(const QString& id, bool enableAfterInstall, boo
     // package does it become the confirmed copy.
     const plugin::Host* host = m_settings->m_host;
     const std::optional<plugin::gallery::Item> signedItem = m_updates ? m_updates->signedItem(id) : std::nullopt;
-    const bool elevated = host && host->hostElevated() && signedItem && signedItem->version == found->version
+    const bool elevated = !found->needsReviewConsent() && host && host->hostElevated() && signedItem && signedItem->version == found->version
         && signedItem->sha256 == found->sha256 && signedItem->size == found->size;
     const plugin::elevation::Store store = host ? host->elevationStore() : plugin::elevation::Store {};
     const QString pluginDir = QDir::toNativeSeparators(QDir(m_settings->m_userDir).filePath(found->id));
@@ -531,6 +545,7 @@ void PluginGallery::beginInstall(const QString& id, bool enableAfterInstall, boo
         gallery::Fetched fetched = gallery::fetch(item.url, item.size + 1, webFetcher(kPackageTimeoutMs), progress,
             [&](const QByteArray& bytes) { return gallery::check(item, bytes) == gallery::Problem::None; });
         Download d;
+        d.unreviewed = item.needsReviewConsent();
         d.enableAfterInstall = enableAfterInstall;
         d.bulk = bulk;
         d.status = fetched.status;
@@ -615,7 +630,7 @@ void PluginGallery::finishDownload(const QString& id, const Download& d)
     // run events meanwhile (a plugin's program let go of): nothing of the
     // rows is held across it.
     const gallery::Item* item = m_index.find(id);
-    m_settings->installFrom(d.path, id, item ? item->name.pick(m_settings->m_locale) : id, d.enableAfterInstall);
+    m_settings->installFrom(d.path, id, item ? item->name.pick(m_settings->m_locale) : id, d.enableAfterInstall, d.unreviewed);
     QFile::remove(d.path);
 }
 

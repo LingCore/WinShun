@@ -1266,6 +1266,8 @@ int runSettings(const QStringList& args)
 
     if (args.contains(u"--navigation-settings"_s))
         return finish(window, checkNavigationSettings(window, editor, out));
+    if (args.contains(u"--plugin-review-settings"_s))
+        return finish(window, checkPluginReviewSettings(window, editor, out));
     if (args.contains(u"--double-tap-settings"_s))
         return finish(window, checkDoubleTapSettings(window, editor, out));
     if (args.contains(u"--search-experience-settings"_s))

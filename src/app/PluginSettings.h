@@ -225,7 +225,7 @@ public:
     static QString permissionText(plugin::Permission p);
     // install(), for a package downloaded from the 插件库: it must be
     // `expectedId`, and is called `name` in what is said of it.
-    void installFrom(const QString& path, const QString& expectedId, const QString& name, bool enableAfterInstall = false);
+    void installFrom(const QString& path, const QString& expectedId, const QString& name, bool enableAfterInstall = false, bool unreviewed = false);
     // 全部更新's: the package at `path` put over the installed `id` without a question, when the list's `version` is not
     // wider than what the user allowed (plugin::updates::review). Empty on success, else why not.
     QString installUpdate(const QString& path, const QString& id, const QString& version);
@@ -263,6 +263,7 @@ public:
     Q_INVOKABLE void openReadmeLink(const QString& link);
     Q_INVOKABLE void showSettings(const QString& id); // the plugin's own settings window (settingsWindow)
     Q_INVOKABLE void openHomepage(const QString& id);
+    Q_INVOKABLE void openInstallSource();
     Q_INVOKABLE void openLog();
     Q_INVOKABLE void openUserDir();
     Q_INVOKABLE void clearLog();

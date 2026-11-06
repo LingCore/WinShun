@@ -3478,6 +3478,26 @@
         <source>卸载网页搜索插件后，网站、关键词和图标会保留，重新安装后可继续使用。</source>
         <translation>Your sites, keywords and icons will be kept when the web search plugin is uninstalled, ready to use after reinstalling.</translation>
     </message>
+    <message>
+        <source>安装“%1”？</source>
+        <translation>Install “%1”?</translation>
+    </message>
+    <message>
+        <source>仍要安装</source>
+        <translation>Install anyway</translation>
+    </message>
+    <message>
+        <source>查看来源</source>
+        <translation>View source</translation>
+    </message>
+    <message>
+        <source>将安装 %1；启用前仍需确认它申请的权限。</source>
+        <translation>Version %1 will be installed. Its requested permissions still need your approval before enabling it.</translation>
+    </message>
+    <message>
+        <source>这是未审核的原生插件，包含可执行程序或动态库。校验值只能核对下载是否完整，不代表代码安全。请自行查看来源并判断是否信任；此类插件每次更新都需要确认。</source>
+        <translation>This unreviewed native plugin contains executable code or libraries. A matching checksum verifies the download, not the safety of its code. Check the source and decide whether you trust it. Every update requires confirmation.</translation>
+    </message>
 </context>
 <context>
     <name>PluginGalleryEntry</name>
@@ -11962,6 +11982,26 @@ Content index: %5</translation>
     <message>
         <source>连不上 GitHub。网络没问题的话，要设置网络代理才能访问。</source>
         <translation>Cannot reach GitHub. If the network is fine, a network proxy is needed to reach it.</translation>
+    </message>
+    <message>
+        <source>官方插件</source>
+        <translation>Official plugin</translation>
+    </message>
+    <message>
+        <source>已审核源码</source>
+        <translation>Source reviewed</translation>
+    </message>
+    <message>
+        <source>未审核的原生插件</source>
+        <translation>Unreviewed native plugin</translation>
+    </message>
+    <message>
+        <source>原生插件 · 审核状态未标注</source>
+        <translation>Native plugin · review status unspecified</translation>
+    </message>
+    <message>
+        <source>审核状态未标注</source>
+        <translation>Review status unspecified</translation>
     </message>
 </context>
 <context>

@@ -1,6 +1,6 @@
 # Win顺 插件开发
 
-官方原生可选插件的最低宿主版本各自写在清单的 `minWinShun` 里（比如截图 0.18.0、资源管理器标签页 0.19.0），由主仓库发布脚本生成 `.wsplugin`，继续在现有 WinShun-plugins 仓库分发，条目为 `bundled: false`。内容提供者在“全部”里的前几行排在第一屏（前 3 条排在前 5 个名称结果之后），从 Win顺 0.19.0 起。插件库只对该仓库中逐一指定的入口程序及截图 DLL 开放原生包规则，社区投稿限制不变。已发布同版本包不得替换内容，改动时升插件版本，详见插件仓库的[维护者说明](https://github.com/LingCore/WinShun-plugins/blob/main/CONTRIBUTING.md#维护者)。
+官方原生可选插件的最低宿主版本各自写在清单的 `minWinShun` 里（比如截图 0.18.0、资源管理器标签页 0.19.0），由主仓库发布脚本生成 `.wsplugin`，继续在现有 WinShun-plugins 仓库分发，条目为 `bundled: false`。内容提供者在“全部”里的前几行排在第一屏（前 3 条排在前 5 个名称结果之后），从 Win顺 0.19.0 起。官方原生包继续按该仓库的入口白名单分发；社区 exe/dll 包按本文的未审核原生类别收录（待配套版本发布）。已发布同版本包不得替换内容，改动时升插件版本，详见插件仓库的[维护者说明](https://github.com/LingCore/WinShun-plugins/blob/main/CONTRIBUTING.md#维护者)。
 
 Win顺 的插件给搜索框加关键字命令、把结果混进列表。界面和插件一般都以普通用户权限运行（只有带 `elevated` 的插件，在 Win顺 以管理员身份运行、且你确认过时，才以管理员身份运行，见“权限”），读取 NTFS 索引的是独立服务；插件崩了、慢了都不拖累主程序。三种写法，一份协议：
 
@@ -207,6 +207,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 - 不要在包内混入另一版 Qt DLL、平台插件、QML 模块或覆盖共享路径的 `qt.conf`；Windows 优先搜索 exe 自身目录。自有的非 Qt 依赖照常放入插件目录。
 - 启动前检查版本及宿主部署是否完整；不兼容时显示具体原因和更新/重装建议，不尝试启动后再等待崩溃。
 - 首版不支持 `elevated` 与共享 Qt 同时使用，清单会明确报错。需要管理员权限的插件继续自带运行时；这里不静默降权，也不从可写便携目录加载管理员代码。
+- 社区 exe/dll 包可按“未审核的原生插件”投稿。插件库标明审核状态，安装及每次更新需确认；签名或 SHA256 校验只证明分发完整性，不代表代码已审核。
 
 契约参考：[Qt Windows 部署](https://doc.qt.io/qt-6/windows-deployment.html)、[Qt 插件版本检查](https://doc.qt.io/qt-6/deployment-plugins.html)、[Windows DLL 搜索顺序](https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order)。
 

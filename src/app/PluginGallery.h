@@ -44,6 +44,8 @@ public:
         QString id;
         QString name;
         QString description;
+        QString reviewLabel;
+        bool unreviewed = false;
         QString author;
         QString version; // the list's
         QString icon; // an image URL: the installed copy's icon, else the plugins' glyph
@@ -70,6 +72,8 @@ public:
         IdRole = Qt::UserRole + 1,
         NameRole,
         DescriptionRole,
+        ReviewLabelRole,
+        UnreviewedRole,
         AuthorRole,
         VersionRole,
         IconRole,

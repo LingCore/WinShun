@@ -76,7 +76,7 @@ Item {
 
         anchors.centerIn: parent
         width: Math.min(560, parent.width - 48)
-        height: dialog.fitToWindow ? Math.min(content.implicitHeight + 48, dialog.height - 32) : content.implicitHeight + 48
+        height: dialog.fitToWindow || dialog.info.unreviewed === true ? Math.min(content.implicitHeight + 48, dialog.height - 32) : content.implicitHeight + 48
         scale: dialog.open ? 1 : 0.96
         Behavior on scale { enabled: dialog.animated; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
@@ -124,7 +124,8 @@ Item {
                           ? (dialog.info.more ? qsTr("“%1” 的新版本要更多权限").arg(dialog.info.name) : qsTr("打开“%1”？").arg(dialog.info.name))
                         : dialog.allowing ? qsTr("“%1” 的新版本要更多权限").arg(dialog.info.name)
                         : dialog.kind === "install"
-                          ? (dialog.info.same ? qsTr("重新安装“%1”？").arg(dialog.info.name)
+                          ? (dialog.info.newInstall ? qsTr("安装“%1”？").arg(dialog.info.name)
+                           : dialog.info.same ? qsTr("重新安装“%1”？").arg(dialog.info.name)
                            : dialog.info.downgrade ? qsTr("把“%1”换成旧版本？").arg(dialog.info.name)
                            : qsTr("升级“%1”？").arg(dialog.info.name))
                         : qsTr("卸载“%1”？").arg(dialog.info.name)
@@ -151,7 +152,8 @@ Item {
                 Text {
                     visible: dialog.kind === "install"
                     width: parent.width
-                    text: dialog.allowing
+                    text: dialog.info.newInstall ? qsTr("将安装 %1；启用前仍需确认它申请的权限。").arg(dialog.info.newVersion ?? "")
+                        : dialog.allowing
                           ? qsTr("已装的是 %1，要装的是 %2。新版本还要下面标出的权限；不同意的话，已装的版本照常用。")
                               .arg(dialog.info.installedVersion ?? "").arg(dialog.info.newVersion ?? "")
                           : qsTr("已装的是 %1，要装的是 %2。它的设置和关键字保留；装好后如果它要的权限变多，打开时会再问一次。")
@@ -160,6 +162,18 @@ Item {
                     font.pixelSize: Theme.fontCaption
                     wrapMode: Text.Wrap
                     lineHeight: 1.15
+                }
+
+                Text {
+                    objectName: "unreviewedPluginWarning"
+                    visible: dialog.kind === "install" && dialog.info.unreviewed === true
+                    width: parent.width
+                    text: qsTr("这是未审核的原生插件，包含可执行程序或动态库。校验值只能核对下载是否完整，不代表代码安全。请自行查看来源并判断是否信任；此类插件每次更新都需要确认。")
+                        + (dialog.info.homepage ? "\n" + dialog.info.homepage : "")
+                    textFormat: Text.PlainText
+                    color: Theme.caution
+                    font.pixelSize: Theme.fontCaption
+                    wrapMode: Text.Wrap
                 }
 
                 Text {
@@ -269,6 +283,17 @@ Item {
                     width: parent.width
                     height: primary.implicitHeight
 
+                    FlatButton {
+                        objectName: "pluginInstallSource"
+                        dpr: dialog.dpr
+                        visible: dialog.kind === "install" && dialog.info.unreviewed === true && dialog.info.sourceAvailable === true
+                        anchors.left: parent.left
+                        role: "dialog"
+                        flat: true
+                        text: qsTr("查看来源")
+                        onClicked: dialog.plugins.openInstallSource()
+                    }
+
                     FlatButton { // uninstall: the plugin alone, its data kept
                         dpr: dialog.dpr
                         visible: dialog.kind === "uninstall" && dialog.info.hasData === true && dialog.info.keepSettings !== true
@@ -297,7 +322,7 @@ Item {
                             highlighted: true
                             text: dialog.kind === "permissions" ? qsTr("打开")
                                 : dialog.allowing ? qsTr("更新并允许")
-                                : dialog.kind === "install" ? qsTr("安装")
+                                : dialog.kind === "install" ? (dialog.info.unreviewed === true ? qsTr("仍要安装") : qsTr("安装"))
                                 : dialog.info.hasData === true && dialog.info.keepSettings !== true ? qsTr("连数据一起删") : qsTr("卸载")
                             onClicked: dialog.accept(dialog.info.keepSettings !== true)
                         }
@@ -307,7 +332,7 @@ Item {
         }
         ListScrollBar {
             dpr: dialog.dpr
-            visible: dialog.fitToWindow && dialogScroll.contentHeight > dialogScroll.height
+            visible: (dialog.fitToWindow || dialog.info.unreviewed === true) && dialogScroll.contentHeight > dialogScroll.height
             x: parent.width - width - 3
             y: 24
             height: dialogScroll.height

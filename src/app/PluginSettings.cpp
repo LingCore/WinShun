@@ -1087,7 +1087,7 @@ void PluginSettings::install(const QString& given)
     installFrom(given, {}, {});
 }
 
-void PluginSettings::installFrom(const QString& given, const QString& expectedId, const QString& name, bool enableAfterInstall)
+void PluginSettings::installFrom(const QString& given, const QString& expectedId, const QString& name, bool enableAfterInstall, bool unreviewed)
 {
     if (!m_host)
         return;
@@ -1122,6 +1122,9 @@ void PluginSettings::installFrom(const QString& given, const QString& expectedId
         const int compared = plugin::compareVersions(candidate->manifest->version, e->manifest->version);
         QVariantMap info {{u"id"_s, id}, {u"name"_s, candidate->manifest->name.pick(m_locale)}, {u"installedVersion"_s, e->manifest->version},
             {u"newVersion"_s, candidate->manifest->version}, {u"downgrade"_s, compared < 0}, {u"same"_s, compared == 0}};
+        info.insert(u"unreviewed"_s, unreviewed);
+        info.insert(u"homepage"_s, candidate->manifest->homepage);
+        info.insert(u"sourceAvailable"_s, readme::webLink(candidate->manifest->homepage));
         // On, and the new version wants a yes to more: one question, 更新并允许 (the old version runs on if it is declined).
         const PluginConfig* config = m_editor->m_settings.plugin(id);
         const QStringList more = compared > 0
@@ -1134,6 +1137,17 @@ void PluginSettings::installFrom(const QString& given, const QString& expectedId
             info.insert(u"permissions"_s, permissionRows(*candidate->manifest));
         }
         m_pendingAllow = !more.isEmpty();
+        m_pendingFromLibrary = !expectedId.isEmpty();
+        m_pendingInstall = std::move(candidate);
+        m_pendingEnable = enableAfterInstall;
+        emit installQuestion(info);
+        return;
+    }
+    if (unreviewed) {
+        const auto& manifest = *candidate->manifest;
+        const QVariantMap info {{u"id"_s, id}, {u"name"_s, manifest.name.pick(m_locale)}, {u"newVersion"_s, manifest.version},
+            {u"newInstall"_s, true}, {u"unreviewed"_s, true}, {u"homepage"_s, manifest.homepage},
+            {u"sourceAvailable"_s, readme::webLink(manifest.homepage)}};
         m_pendingFromLibrary = !expectedId.isEmpty();
         m_pendingInstall = std::move(candidate);
         m_pendingEnable = enableAfterInstall;
@@ -1353,6 +1367,12 @@ void PluginSettings::openReadme(const QString& id)
 void PluginSettings::openReadmeLink(const QString& link)
 {
     if (readme::webLink(link)) shell::openUrl(link);
+}
+
+void PluginSettings::openInstallSource()
+{
+    if (m_pendingInstall && m_pendingInstall->manifest && readme::webLink(m_pendingInstall->manifest->homepage))
+        shell::openUrl(m_pendingInstall->manifest->homepage);
 }
 
 void PluginSettings::openHomepage(const QString& id)

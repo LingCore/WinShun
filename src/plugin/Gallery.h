@@ -32,6 +32,7 @@ inline constexpr qint64 kMaxIndexBytes = 4LL << 20;
 inline constexpr qint64 kMaxPackageBytes = 64LL << 20;
 
 // One plugin of the list.
+enum class Review { Unspecified, Official, Reviewed, UnreviewedNative };
 struct Item {
     QString id;
     Text name;
@@ -47,6 +48,11 @@ struct Item {
     QString sha256; // lower-case hex
     qint64 size = 0;
     bool bundled = false; // comes with Win顺 and is updated with it
+    Review review = Review::Unspecified;
+    bool needsReviewConsent() const noexcept
+    {
+        return review == Review::UnreviewedNative || (review == Review::Unspecified && program == Program::Exe && !bundled);
+    }
 };
 
 struct Index {

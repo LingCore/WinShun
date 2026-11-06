@@ -1,6 +1,6 @@
 # 用 AI 开发 Win顺 插件
 
-原生 Qt 插件（待发布契约，最低 Win顺 0.22.0）：可以在 `runtime` 中声明 `"qt": "host", "qtVersion": "6.12.0"`，复用宿主的 Qt Core/Gui/Qml/Quick、Basic Controls 和 Layouts。只支持普通权限、MSVC x64 Release；不和 `elevated` 同用。宿主在进程创建前配置 DLL/QML 路径；插件不需要延迟加载 Qt，也不要混入其他 Qt 运行时。详见主仓库 `docs/plugins.md` 的共享 Qt 契约。
+原生 Qt 插件（待发布契约，最低 Win顺 0.22.0）：可以在 `runtime` 中声明 `"qt": "host", "qtVersion": "6.12.0"`，复用宿主的 Qt Core/Gui/Qml/Quick、Basic Controls 和 Layouts。只支持普通权限、MSVC x64 Release；不和 `elevated` 同用。宿主在进程创建前配置 DLL/QML 路径；插件不需要延迟加载 Qt，也不要混入其他 Qt 运行时。详见主仓库 `docs/plugins.md` 的共享 Qt 契约。社区 exe/dll 包通过插件库的 `--unreviewed-native` 流程投稿，每次安装或更新由用户确认。
 
 先在 Win顺 的“设置 → 插件 → 开发者”创建模板，再把这个文件和同目录的 `plugin.json`、脚本、SDK 一起交给编程助手。模板已经能运行，先保留它的协议接入，再实现功能。
 

@@ -140,6 +140,12 @@ Decision decide(const gallery::Item& item, const Installed& installed, const Pol
         return d;
     }
     d.more = moreThan(item.permissions, installed.manifest->permissions.names());
+    if (item.needsReviewConsent()) {
+        d.action = Action::Ask;
+        d.needsConsent = installed.enabled && !moreThan(item.permissions, installed.confirmed).isEmpty();
+        d.why = u"unreviewed native package requires confirmation for each version"_s;
+        return d;
+    }
     if (!d.more.isEmpty()) {
         d.action = Action::Ask;
         d.needsConsent = installed.enabled && !moreThan(item.permissions, installed.confirmed).isEmpty();

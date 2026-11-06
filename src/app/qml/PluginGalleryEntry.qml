@@ -18,6 +18,8 @@ Rectangle {
     required property string pluginId
     required property string name
     required property string description
+    required property string reviewLabel
+    required property bool unreviewed
     required property string author
     required property string version
     required property string icon
@@ -121,6 +123,15 @@ Rectangle {
                         color: Theme.faint
                         font.pixelSize: Theme.fontCaption
                     }
+                }
+                Text {
+                    objectName: "pluginReviewLabel"
+                    width: parent.width
+                    text: entry.reviewLabel
+                    textFormat: Text.PlainText
+                    color: entry.unreviewed ? Theme.caution : Theme.subtext
+                    font.pixelSize: Theme.fontCaption
+                    wrapMode: Text.Wrap
                 }
                 Text { // what it does
                     width: parent.width
