@@ -189,7 +189,7 @@ void HealthMonitor::take(bool fine)
             self->m_sizeHint = hint;
             self->m_looking = false;
             const int wanted = std::exchange(self->m_wanted, 0);
-            if (!look.ok)
+            if (!look.ok || self->m_demo) // made up since it was asked (the previews)
                 return;
             if (wanted & kCoarse)
                 self->apply(look, false);
