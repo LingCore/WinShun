@@ -8,6 +8,7 @@ Item {
     id: lamp
 
     property bool lit: false
+    property bool animated: true
     property real dpr: 1
     property QtObject look // injected by Look.qml
     readonly property bool ready: look !== null
@@ -40,6 +41,6 @@ Item {
         color: !lamp.ready ? "transparent" : lamp.lit ? (lamp.look?.led ?? Qt.rgba(0, 0, 0, 0)) : (lamp.look?.keySideColor ?? Qt.rgba(0, 0, 0, 0))
         border.width: lamp.lit || !lamp.ready ? 0 : (lamp.look?.hair(lamp.dpr) ?? 1)
         border.color: lamp.ready ? (lamp.look?.keyRim ?? Qt.rgba(0, 0, 0, 0)) : "transparent"
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { enabled: lamp.animated; ColorAnimation { duration: 120 } }
     }
 }

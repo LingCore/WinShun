@@ -44,6 +44,11 @@ Item {
     readonly property real disabledOpacity: 1
 
     property QtObject look // injected by Look.qml
+    // A key shows as it is when made: its state can still change in the same
+    // turn (TypeStrip's chips, made anew for 文件 or 内容, are checked just
+    // after), which must not play as a press. Changes after that animate.
+    property bool settled: false
+    Component.onCompleted: Qt.callLater(() => key.settled = true)
     readonly property real hair: look ? look.hair(dpr) : 1
     readonly property real innerRadius: Math.max(0, radius - hair)
     readonly property real bodyHeight: height - 2 * hair
@@ -123,8 +128,8 @@ Item {
                     GradientStop { position: 0; color: key.faceTop }
                     GradientStop { position: 1; color: key.faceBottom }
                 }
-                Behavior on y { NumberAnimation { duration: (key.look?.animFast ?? 0); easing.type: Easing.OutCubic } }
-                Behavior on height { NumberAnimation { duration: (key.look?.animFast ?? 0); easing.type: Easing.OutCubic } }
+                Behavior on y { enabled: key.settled; NumberAnimation { duration: (key.look?.animFast ?? 0); easing.type: Easing.OutCubic } }
+                Behavior on height { enabled: key.settled; NumberAnimation { duration: (key.look?.animFast ?? 0); easing.type: Easing.OutCubic } }
             }
 
             // indicator lamp, on the face (it travels with it)
@@ -134,6 +139,7 @@ Item {
                 y: (key.look?.snap(face.y + (face.height - key.look.ledSize) / 2, key.dpr) ?? 0)
                 sourceComponent: Lamp {
                     lit: key.checked
+                    animated: key.settled
                     dpr: key.dpr
                     look: key.look
                 }
