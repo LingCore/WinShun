@@ -165,10 +165,16 @@ Item {
                 return i
         return Math.max(0, chipRepeater.count - 1)
     }
-    // While the chips scroll their gaps follow (Translate in the delegate);
-    // chips made anew (文件 ↔ 内容) take theirs at once.
+    // While the chips scroll their gaps go along with them, step for step
+    // (slideProgress; each chip from where it was, see the delegate's shift),
+    // so a chip's key, icon and words stay on the same whole pixels; chips
+    // made anew (文件 ↔ 内容) take theirs at once.
     property bool moving: false
+    signal scrollStarting()
+    readonly property real slideProgress: slide.running && slide.to !== slide.from
+        ? (slidePosition - slide.from) / (slide.to - slide.from) : 1
     function scrollTo(first: int, animated: bool) {
+        scrollStarting() // the chips keep where they are shown now
         slide.stop()
         moving = animated && SystemTheme.animations
         firstChip = scrolls ? Math.max(0, Math.min(lastFirst(), first)) : 0
@@ -308,16 +314,18 @@ Item {
                         || (x >= strip.restX - 0.5 && x + body.width <= strip.restX + view.width + 0.5)
                     opacity: whole ? 1 : 0
                     enabled: whole
-                    // Its share of strip.spreadGap, whole device pixels.
-                    readonly property real shift: strip.scrolls && index > strip.firstChip
-                        ? strip.onPixel((index - strip.firstChip) * strip.spreadGap) : 0
-                    transform: Translate {
-                        x: chip.shift
-                        Behavior on x {
-                            enabled: strip.moving
-                            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
-                        }
+                    // Its share of strip.spreadGap; while the chips scroll, on its
+                    // way there from where it was, with them. Whole device pixels.
+                    readonly property real targetShift: strip.scrolls && index > strip.firstChip
+                        ? (index - strip.firstChip) * strip.spreadGap : 0
+                    property real fromShift: 0
+                    readonly property real rawShift: strip.moving
+                        ? fromShift + (targetShift - fromShift) * strip.slideProgress : targetShift
+                    Connections {
+                        target: strip
+                        function onScrollStarting() { chip.fromShift = chip.rawShift }
                     }
+                    transform: Translate { x: strip.onPixel(chip.rawShift) }
                     Behavior on opacity {
                         enabled: SystemTheme.animations
                         NumberAnimation { duration: 120 }
