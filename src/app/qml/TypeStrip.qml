@@ -135,6 +135,7 @@ Item {
     readonly property bool scrolls: view.contentWidth > view.width
     // Whole logical pixels that are whole device pixels too (150%: even
     // ones): the words, icons and keys stay sharp and together as they move.
+    function stepUp(v: real): real { return Math.ceil(v / scrollStep - 0.001) * scrollStep }
     readonly property int scrollStep: { let n = 1; while (n < 4 && Math.abs(n * dpr - Math.round(n * dpr)) > 0.001) ++n; return n }
     // Where the chips rest with chip `index` first.
     function stopAt(index: int): real {
@@ -156,7 +157,8 @@ Item {
             last = chip
             ++count
         }
-        return last && count > 1 ? Math.max(0, restX + view.width - last.x - last.keyWidth) / (count - 1) : 0
+        // Whole device pixels each, so the gaps come out equal (the rest, under a pixel each, stays at the end).
+        return last && count > 1 ? Math.floor(Math.max(0, restX + view.width - last.x - last.keyWidth) / (count - 1) * dpr) / dpr : 0
     }
     // The first chip shown with the last one in full at the end.
     function lastFirst(): int {
@@ -307,7 +309,8 @@ Item {
                     }
 
                     // Whole pixels: a half one would leave the labels after it blurred.
-                    width: body.width + (parted ? row.spacing + 9 : 0)
+                    // Whole device pixels too (150%: even), so the chips after it stay on them.
+                    width: strip.stepUp(body.width + (parted ? row.spacing + 9 : 0))
                     readonly property real keyWidth: body.width
                     // Whole or not at all where the chips scroll (strip.firstChip).
                     readonly property bool whole: !strip.scrolls
@@ -338,7 +341,7 @@ Item {
                     Item {
                         id: body
                         readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : (chip.glyph.length > 0 ? 10 : 12) // 0 (a key without a lamp) is no say; 10 with an icon: it then sits as far from the key's edge as the last word does
-                        width: Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + label.implicitWidth) + (chip.glyph.length > 0 ? 6 : 12)
+                        width: strip.stepUp(Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + label.implicitWidth) + (chip.glyph.length > 0 ? 6 : 12))
                         height: parent.height
 
                         Hook {
