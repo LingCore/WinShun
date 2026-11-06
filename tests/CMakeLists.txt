@@ -703,7 +703,7 @@ endforeach()
 qt_add_executable(tst_core tst_core.cpp)
 target_link_libraries(tst_core PRIVATE wscore wsextract miniz Qt6::Test)
 
-qt_add_executable(tst_activity tst_activity.cpp ${PROJECT_SOURCE_DIR}/src/app/ActivityText.cpp ${PROJECT_SOURCE_DIR}/src/app/HealthHistory.cpp
+qt_add_executable(tst_activity tst_activity.cpp ${PROJECT_SOURCE_DIR}/src/app/ActivityText.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/ProcessUsage.cpp)
 target_include_directories(tst_activity PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_activity PRIVATE winshun_options Qt6::Test psapi)

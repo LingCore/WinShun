@@ -95,7 +95,6 @@ qt_add_executable(WinShun WIN32
     platform/MemoryReport.cpp platform/MemoryReport.h
     ActivityText.cpp ActivityText.h
     BackgroundStatus.cpp BackgroundStatus.h
-    HealthHistory.cpp HealthHistory.h
     HealthMonitor.cpp HealthMonitor.h
     platform/ProcessUsage.cpp platform/ProcessUsage.h
     platform/InputMode.cpp platform/InputMode.h

@@ -936,23 +936,9 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     m_background->onFinished = [this](const QString& title, const QString& text) {
         if (m_messages)
             m_messages->showNotification(title, text);
-    };    // The 运行状况 page's readings: every 10 seconds from now on (the index
-    // loading is the first thing it sees), every second while it is shown.
-    HealthMonitor::Sources sources;
-    sources.facts = [this] {
-        health::Facts f;
-        using State = IndexService::State;
-        const State state = m_index->state();
-        f.loading = state == State::Idle || state == State::Loading;
-        f.building = state == State::Building;
-        f.rebuilding = state == State::Ready && m_index->isRefreshing() && m_background->rebuilding();
-        const ContentIndexer::Status content = m_index->contentIndexer()->status();
-        f.contentReading = content.reading;
-        f.contentDone = content.done;
-        f.saving = m_index->saving();
-        f.moving = m_index->moving();
-        return f;
     };
+    // The 运行状况 page samples only while it is shown.
+    HealthMonitor::Sources sources;
     sources.fileIndex = [this](HealthMonitor::Blocks& blocks, std::uint64_t& tableBytes) {
         const auto index = m_index->index();
         if (!index)
@@ -3852,7 +3838,7 @@ void App::giveMemoryBack()
             if (!self)
                 return;
             self->m_idleTrim->noteTrim(megabytes);
-            self->m_health->noteGiveBack(megabytes, self->m_idleTrim->lastTrim().atMs);
+            self->m_health->refreshMemory();
         }, Qt::QueuedConnection);
     }).detach();
 }

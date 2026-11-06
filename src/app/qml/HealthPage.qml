@@ -2,7 +2,7 @@ import QtQuick
 import WinShun
 
 // 运行状况: what Win顺 uses now, its memory told apart by what holds it,
-// what it is doing, each process, the latest happenings. The monitor reads
+// what it is doing and each process. The monitor reads
 // every second while this page is on screen (watching; HealthMonitor).
 SettingsPage {
     id: healthPage
@@ -331,76 +331,6 @@ SettingsPage {
         SettingRow {
             visible: healthPage.known && healthPage.h.processes.length === 0
             title: qsTr("正在读取…")
-        }
-    }
-
-    // ---- 最近的事 --------------------------------------------------------------
-    SettingsSection {
-        page: healthPage.pageIndex
-        width: parent.width
-        title: qsTr("最近的事")
-        glyph: "" // BulletedList
-        note: qsTr("只记在内存里，重启 Win顺 后重新开始。")
-
-        Repeater {
-            model: healthPage.monitor && healthPage.shown ? healthPage.monitor.recent : []
-
-            delegate: Item {
-                id: happening
-
-                required property int index
-                required property var modelData
-
-                width: parent ? parent.width : 0
-                height: happeningColumn.implicitHeight + 22
-
-                Rectangle {
-                    visible: happening.index > 0
-                    x: Theme.edge(healthPage.dpr)
-                    width: parent.width - 2 * x
-                    height: Theme.edge(healthPage.dpr)
-                    color: Theme.cardBorder
-                }
-                Text {
-                    id: happeningTime
-                    x: 18
-                    y: 11
-                    width: 44
-                    text: happening.modelData.time
-                    color: Theme.subtext
-                    font.pixelSize: Theme.fontCaption
-                    font.features: { "tnum": 1 }
-                }
-                Column {
-                    id: happeningColumn
-                    anchors.left: happeningTime.right
-                    anchors.leftMargin: 8
-                    anchors.right: parent.right
-                    anchors.rightMargin: 18
-                    y: 11
-                    spacing: 2
-
-                    Text {
-                        width: parent.width
-                        text: happening.modelData.title + (happening.modelData.running ? qsTr("（进行中）") : "")
-                        color: Theme.text
-                        font.pixelSize: Theme.fontBody
-                        elide: Text.ElideRight
-                    }
-                    Text {
-                        width: parent.width
-                        text: happening.modelData.detail
-                        color: Theme.subtext
-                        font.pixelSize: Theme.fontCaption
-                        wrapMode: Text.Wrap
-                    }
-                }
-            }
-        }
-
-        SettingRow {
-            visible: !healthPage.monitor || healthPage.monitor.recent.length === 0
-            title: qsTr("还没有什么事")
         }
     }
 }

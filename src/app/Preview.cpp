@@ -1186,8 +1186,9 @@ int runSettings(const QStringList& args)
     indexState.size = u"112 MB"_s;
     editor->setIndexFolderState(indexState);
     editor->setContentIndexStatus(u"已收录 337,215 个文件，其中 5,815 个文档"_s);
-    // The 运行状况 page (settings page 10): made-up readings of a day, reading the content index now, or (--health-idle) at rest.
-    editor->setMonitor(HealthMonitor::demo(editor, args.contains(u"--health-idle"_s)));
+    // The 运行状况 page (settings page 10): made-up current readings, indexing content or (--health-idle) at rest.
+    editor->setMonitor(args.contains(u"--health-monitor"_s) ? new HealthMonitor({}, editor)
+        : HealthMonitor::demo(editor, args.contains(u"--health-idle"_s)));
     editor->setHistoryCount(128);
     editor->setClipboardCount(args.contains(u"--clipboard-disabled"_s) ? -1 : 57);
     editor->setHotkeyError({});
@@ -1263,6 +1264,53 @@ int runSettings(const QStringList& args)
     }
     QMetaObject::invokeMethod(window, "loadAllPages");
     settle(window);
+
+    if (args.contains(u"--health-monitor"_s)) {
+        bool ok = true;
+        const auto check = [&](bool condition, const char* message) {
+            if (!condition) {
+                ok = false;
+                qWarning("health monitor: %s", message);
+            }
+        };
+        auto* monitor = editor->monitor();
+        int updates = 0;
+        QObject::connect(monitor, &HealthMonitor::updated, monitor, [&] { ++updates; });
+        const auto show = [&](int page) {
+            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, page), Q_ARG(QVariant, 0));
+            settle(window);
+        };
+        const auto waitForProcesses = [&] {
+            QElapsedTimer timer;
+            timer.start();
+            while (monitor->now().value(u"processes"_s).toList().isEmpty() && timer.elapsed() < 5000)
+                pump(50);
+            check(!monitor->now().value(u"processes"_s).toList().isEmpty(), "live process readings did not arrive");
+        };
+        check(!monitor->watching() && monitor->now().isEmpty(), "hidden page started monitoring");
+        show(window->property("healthPage").toInt());
+        check(monitor->watching(), "opening the page did not start monitoring");
+        waitForProcesses();
+        check(monitor->now().value(u"total"_s).toDouble() > 0, "live memory reading is empty");
+        check(saveGrab(window, out.filePath(u"health-live.png"_s)), "health page did not render");
+        monitor->refreshMemory();
+        show(0); // leave while the delayed refresh may still be pending
+        const int hiddenUpdates = updates;
+        monitor->poke();
+        monitor->refreshMemory();
+        pump(1200);
+        check(!monitor->watching() && monitor->now().isEmpty() && updates == hiddenUpdates,
+            "hidden page kept publishing readings");
+        show(window->property("healthPage").toInt());
+        waitForProcesses();
+        check(monitor->watching() && updates > hiddenUpdates, "reopening did not resume monitoring");
+        const int beforeRefresh = updates;
+        monitor->refreshMemory();
+        pump(400);
+        check(updates > beforeRefresh, "memory refresh did not publish a reading");
+        show(0);
+        return finish(window, ok);
+    }
 
     if (args.contains(u"--navigation-settings"_s))
         return finish(window, checkNavigationSettings(window, editor, out));

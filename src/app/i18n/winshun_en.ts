@@ -2513,22 +2513,6 @@
         <translation>the search box, clipboard and settings</translation>
     </message>
     <message>
-        <source>最近的事</source>
-        <translation>Recently</translation>
-    </message>
-    <message>
-        <source>只记在内存里，重启 Win顺 后重新开始。</source>
-        <translation>Kept in memory only; starts over when WinShun restarts.</translation>
-    </message>
-    <message>
-        <source>（进行中）</source>
-        <translation> (in progress)</translation>
-    </message>
-    <message>
-        <source>还没有什么事</source>
-        <translation>Nothing yet</translation>
-    </message>
-    <message>
         <source>主进程：工作集 %1 · 私有提交 %2</source>
         <translation>Main process: working set %1 · private commit %2</translation>
     </message>
@@ -10503,26 +10487,6 @@ Content index: %5</translation>
         <translation>Updater</translation>
     </message>
     <message>
-        <source>%1 MB</source>
-        <translation>%1 MB</translation>
-    </message>
-    <message>
-        <source>不到 1 MB</source>
-        <translation>under 1 MB</translation>
-    </message>
-    <message>
-        <source>%1 秒</source>
-        <translation>%1 s</translation>
-    </message>
-    <message>
-        <source>%1 分钟</source>
-        <translation>%1 minutes</translation>
-    </message>
-    <message>
-        <source>%1 小时 %2 分</source>
-        <translation>%1 h %2 min</translation>
-    </message>
-    <message>
         <source>文件索引</source>
         <translation>File index</translation>
     </message>
@@ -10581,62 +10545,6 @@ Content index: %5</translation>
     <message>
         <source>上次归还：%1，还了 %2 MB</source>
         <translation>Last given back: %1, %2 MB</translation>
-    </message>
-    <message>
-        <source>加载文件索引</source>
-        <translation>Loaded the file index</translation>
-    </message>
-    <message>
-        <source>第一次建立文件索引</source>
-        <translation>Built the file index for the first time</translation>
-    </message>
-    <message>
-        <source>重建文件索引</source>
-        <translation>Rebuilt the file index</translation>
-    </message>
-    <message>
-        <source>读文件内容，%1 个文件</source>
-        <translation>Read file contents, %1 files</translation>
-    </message>
-    <message>
-        <source>读文件内容</source>
-        <translation>Read file contents</translation>
-    </message>
-    <message>
-        <source>读一个大文档</source>
-        <translation>Read a big document</translation>
-    </message>
-    <message>
-        <source>保存索引</source>
-        <translation>Saved the index</translation>
-    </message>
-    <message>
-        <source>搬索引文件夹</source>
-        <translation>Moved the index folder</translation>
-    </message>
-    <message>
-        <source>闲着时归还了 %1 MB</source>
-        <translation>Gave back %1 MB while idle</translation>
-    </message>
-    <message>
-        <source>手动归还了 %1 MB</source>
-        <translation>Gave back %1 MB on request</translation>
-    </message>
-    <message>
-        <source>页面换出到系统的备用内存，用到时再读回</source>
-        <translation>Pages moved to Windows&apos; standby memory, read back when needed</translation>
-    </message>
-    <message>
-        <source>进行中，已经 %1，内存最高 %2</source>
-        <translation>In progress for %1, memory at most %2</translation>
-    </message>
-    <message>
-        <source>%1–%2，用了 %3，内存最高 %4</source>
-        <translation>%1–%2, took %3, memory at most %4</translation>
-    </message>
-    <message>
-        <source>（这个读文档的进程最多 %1）</source>
-        <translation> (the document reader at most %1)</translation>
     </message>
     <message>
         <source>正在建立内容索引</source>

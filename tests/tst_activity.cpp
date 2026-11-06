@@ -1,5 +1,4 @@
 #include "ActivityText.h"
-#include "HealthHistory.h"
 #include "platform/ProcessUsage.h"
 
 #include <cstring>
@@ -142,7 +141,7 @@ private slots:
         QCOMPARE(r.perSecond(), 0.0);
     }
 
-    // ---- the 运行状况 page's readings (HealthHistory, memory::map) ----
+    // ---- the 运行状况 page's readings (memory::map) ----
 
     void memoryMapTellsTheParts()
     {
@@ -218,47 +217,6 @@ private slots:
             QVERIFY(again.processes.front().workingSetBytes >= again.processes.front().privateBytes);
             QVERIFY(again.processes.front().privateCommitBytes > 0);
         }
-    }
-
-    void eventsFromFacts()
-    {
-        using namespace ws::health;
-        Events events;
-        EventTracker tracker(events);
-        Facts f;
-        f.loading = true;
-        tracker.observe(f, 1000, 100 * 1024);
-        tracker.observe(f, 3000, 250 * 1024); // its peak
-        f.loading = false;
-        f.saving = true; // a short save: not kept
-        tracker.observe(f, 4000, 120 * 1024);
-        f.saving = false;
-        f.contentReading = true; // a round that reads nothing: not kept
-        tracker.observe(f, 4500, 120 * 1024);
-        f.contentReading = false;
-        tracker.observe(f, 6000, 120 * 1024);
-        f.contentReading = true; // one that reads: kept, with how many
-        f.contentDone = 10;
-        tracker.observe(f, 7000, 300 * 1024);
-        f.contentDone = 0; // starts over at its end
-        f.biggestDocumentKb = Events::kBigDocumentKb + 1024;
-        tracker.observe(f, 8000, 500 * 1024);
-        f.contentReading = false;
-        f.biggestDocumentKb = 0;
-        tracker.observe(f, 9000, 200 * 1024);
-        const std::vector<Event> all = events.recent(10);
-        QCOMPARE(all.size(), std::size_t(3));
-        QCOMPARE(all[2].kind, EventKind::IndexLoad);
-        QCOMPARE(all[2].peakKb, std::uint32_t(250 * 1024));
-        QCOMPARE(all[2].endMs, std::int64_t(4000));
-        QCOMPARE(all[1].kind, EventKind::ContentRound);
-        QCOMPARE(all[1].count, std::uint64_t(10));
-        QCOMPARE(all[1].peakKb, std::uint32_t(500 * 1024));
-        QCOMPARE(all[0].kind, EventKind::BigDocument);
-        QCOMPARE(all[0].count, std::uint64_t(Events::kBigDocumentKb + 1024));
-        events.instant(EventKind::AutoTrim, 9500, 30 * 1024, 170);
-        QVERIFY(events.recent(1).front().instant());
-        QCOMPARE(events.recent(1).front().freedMb, std::uint32_t(170));
     }
 };
 QTEST_GUILESS_MAIN(ActivityTest)
