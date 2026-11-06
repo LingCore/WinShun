@@ -4,6 +4,9 @@
 
 #include <cstring>
 #include <memory>
+#include <vector>
+
+#include <windows.h>
 
 #include <algorithm>
 
@@ -147,8 +150,8 @@ private slots:
         constexpr std::size_t kSize = 32u << 20;
         auto block = std::make_unique<char[]>(kSize);
         std::memset(block.get(), 1, kSize);
-        const ws::memory::Map with = ws::memory::map({{block.get(), kSize}}, true);
-        const ws::memory::Map without = ws::memory::map({}, false);
+        const ws::memory::Map with = ws::memory::map({{block.get(), kSize}});
+        const ws::memory::Map without = ws::memory::map({});
         QVERIFY(with.fileIndex >= kSize - 8192 && with.fileIndex <= kSize + 8192);
         QCOMPARE(without.fileIndex, std::uint64_t(0));
         QVERIFY(without.other >= with.other + kSize - 8192);
@@ -156,10 +159,32 @@ private slots:
         QVERIFY(with.ownProgram + with.qt + with.system > 0); // the test's own pages, Qt's
         const std::uint64_t parts = with.fileIndex + with.ownProgram + with.qt + with.graphics + with.system + with.stacks + with.other;
         QCOMPARE(parts, with.total);
-        QVERIFY(with.heapHandedOut >= kSize);
-        QCOMPARE(without.heaps, 0); // not asked
-        QVERIFY(with.heaps > 0);
-        QVERIFY(with.heapSpare <= with.other);
+    }
+
+    void memoryMapBringsNoPageBack()
+    {
+        // The page shows Win顺's memory; looking must not grow it. Many small
+        // blocks on the heap (a HeapWalk reads each one's header: a trimmed
+        // Win顺 went from 11 to 270 MB with the page open), given back, then
+        // mapped: they stay out.
+        constexpr int kBlocks = 16'000;
+        constexpr std::size_t kBlock = 1000;
+        std::vector<std::unique_ptr<char[]>> small;
+        std::vector<std::pair<const void*, std::size_t>> ranges;
+        small.reserve(kBlocks);
+        ranges.reserve(kBlocks);
+        for (int i = 0; i < kBlocks; ++i) {
+            small.push_back(std::make_unique<char[]>(kBlock));
+            std::memset(small.back().get(), 1, kBlock);
+            ranges.push_back({small.back().get(), kBlock});
+        }
+        const std::uint64_t before = ws::memory::residentBytes(ranges);
+        QVERIFY(before > 8u << 20);
+        QVERIFY(::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0));
+        const ws::memory::Map m = ws::memory::map({});
+        QVERIFY(m.total > 0);
+        const std::uint64_t back = ws::memory::residentBytes(ranges);
+        QVERIFY2(back < before / 20, qPrintable(QStringLiteral("%1 of %2 KB back").arg(back / 1024).arg(before / 1024)));
     }
 
     void eventsFromFacts()

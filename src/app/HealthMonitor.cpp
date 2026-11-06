@@ -116,7 +116,6 @@ void HealthMonitor::setWatching(bool on)
             m_fineBase = {};
             m_fineServiceBase = {};
             m_fineCount = 0;
-            m_mapsToHeaps = 1; // the second map: the window made by then
             take(true); // the baseline (and the memory map); the next second is the first reading
             m_fine.start();
         } else {
@@ -140,7 +139,6 @@ void HealthMonitor::noteGiveBack(qint64 megabytes, qint64 atMs)
     m_events.instant(health::EventKind::ManualTrim, atMs, m_reading.totalKb(), static_cast<std::uint32_t>(std::max<qint64>(0, megabytes)));
     m_lastTrimSeen = atMs;
     m_fineCount = 0; // the memory map again at once: what was given back shows
-    m_mapsToHeaps = 0;
     poke();
 }
 
@@ -188,15 +186,11 @@ void HealthMonitor::take(bool fine, bool whole)
     // compared with (never read) on the pool thread.
     std::optional<Mapped> wantMap;
     Blocks blocks;
-    bool heaps = false;
     if ((m_wanted & kFine) && m_fineCount++ % 3 == 0) {
         std::uint64_t tables = 0;
         if (!m_sources.fileIndex || m_sources.fileIndex(blocks, tables)) {
             wantMap.emplace();
             wantMap->fileIndexTables = tables;
-            heaps = m_mapsToHeaps-- <= 0;
-            if (heaps)
-                m_mapsToHeaps = kMapsPerHeaps;
             m_fileIndexHeld = 0;
             for (const auto& block : blocks)
                 m_fileIndexHeld += block.second;
@@ -206,12 +200,12 @@ void HealthMonitor::take(bool fine, bool whole)
     QThreadPool::globalInstance()->start([self = QPointer<HealthMonitor>(this), hint = m_sizeHint,
                                              known = again ? m_known : std::vector<memory::Process> {},
                                              wantMap = std::move(wantMap), blocks = std::move(blocks),
-                                             heaps, pictures = m_sources.cachedPictures]() mutable {
+                                             pictures = m_sources.cachedPictures]() mutable {
         memory::Look look = known.empty() ? memory::Look {} : memory::again(known);
         if (!look.ok)
             look = memory::look(hint);
         if (wantMap) {
-            wantMap->map = memory::map(std::move(blocks), heaps);
+            wantMap->map = memory::map(std::move(blocks));
             wantMap->pictures = pictures ? pictures() : 0;
         }
         QMetaObject::invokeMethod(qApp, [self, hint, look = std::move(look), wantMap = std::move(wantMap)]() mutable {
@@ -310,12 +304,8 @@ void HealthMonitor::apply(const memory::Look& look, bool fine, std::optional<Map
         }
         rebase(m_fineBase, mine, nowFt);
         rebase(m_fineServiceBase, service, nowFt);
-        if (mapped) {
-            const memory::Map& m = mapped->map;
-            if (m.heaps > 0)
-                m_heapSpare = m.heapSpare;
+        if (mapped)
             m_mapped = std::move(mapped);
-        }
     } else if (m_haveReading) { // CPU, reads: only ever the last second's
         r.cpu = m_reading.cpu;
         r.read = m_reading.read;
@@ -372,19 +362,14 @@ void HealthMonitor::publish()
         const double tables = std::min<double>(m_mapped->fileIndexTables, heap);
         heap -= tables;
         const double pictures = std::min<double>(m_mapped->pictures, heap);
-        heap -= pictures;
-        // Freed, kept by the heaps, in memory (the last walk): at most what is left.
-        const double spare = std::min<double>(m_heapSpare, heap);
-        heap -= spare;
         const double program = static_cast<double>(m.ownProgram + m.qt + m.graphics + m.system + m.stacks);
         const double fileIndex = static_cast<double>(m.fileIndex) + tables;
-        const double windows = std::max(0.0, main - fileIndex - pictures - spare - program);
+        const double windows = std::max(0.0, main - fileIndex - pictures - program);
         const double parked = std::max(0.0, static_cast<double>(m_fileIndexHeld) - static_cast<double>(m.fileIndex)) / kMb;
         part(u"fileIndex"_s, tr("文件索引"), fileIndex,
             parked >= 4 ? tr("搜文件名用的；另有 %1 MB 已暂存到磁盘，用到时读回").arg(qRound(parked)) : tr("搜文件名用的"));
         part(u"windows"_s, tr("窗口和数据"), windows, tr("搜索框、设置、剪贴板历史等正在用的"));
         part(u"pictures"_s, tr("缩略图"), pictures, tr("列表和剪贴板里的小图，再看时不用重读"));
-        part(u"spare"_s, tr("用过空着的"), spare, tr("刚才用过、已经不用的，归还后就没了"));
         part(u"program"_s, tr("程序本身"), program, tr("Win顺、Qt 和系统的代码，各个线程"));
     } else {
         part(u"windows"_s, tr("主程序"), static_cast<double>(r.main), tr("正在细分…"));
@@ -486,12 +471,8 @@ HealthMonitor* HealthMonitor::demo(QObject* parent, bool idle)
     mapped.map.system = 3 * mb;
     mapped.map.stacks = 4 * mb;
     mapped.map.other = r.main - mapped.map.fileIndex - 12 * mb;
-    mapped.map.heapHandedOut = (idle ? 180 : 300) * mb;
-    mapped.map.heapSpare = (idle ? 1 : 14) * mb;
-    mapped.map.heaps = 5;
     mapped.fileIndexTables = (idle ? 0 : 14) * mb;
     mapped.pictures = (idle ? 0 : 9) * mb;
-    m->m_heapSpare = mapped.map.heapSpare;
     m->m_mapped = mapped;
     m->m_fileIndexHeld = 112 * mb;
 

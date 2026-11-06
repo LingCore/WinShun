@@ -249,7 +249,7 @@ Owner ownerOf(const void* allocationBase)
 
 } // namespace
 
-Map map(std::vector<std::pair<const void*, std::size_t>> fileIndex, bool heaps)
+Map map(std::vector<std::pair<const void*, std::size_t>> fileIndex)
 {
     Map out;
     std::sort(fileIndex.begin(), fileIndex.end());
@@ -334,54 +334,6 @@ Map map(std::vector<std::pair<const void*, std::size_t>> fileIndex, bool heaps)
         at = next;
     }
     flush();
-
-    if (!heaps)
-        return out;
-    // Each heap block by block under its lock: what is handed out, and the
-    // free blocks' whole pages, noted in pages of the system's own (nothing
-    // may be allocated from a heap while it is walked). Whether those pages
-    // are in the working set is asked once the lock is let go.
-    using Range = std::pair<std::uintptr_t, std::uintptr_t>;
-    constexpr std::size_t kRanges = 64 * 1024; // 1 MB of them; more free blocks than that: the rest not counted
-    auto* free = static_cast<Range*>(::VirtualAlloc(nullptr, kRanges * sizeof(Range), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-    if (!free)
-        return out;
-    std::size_t frees = 0;
-    HANDLE list[64];
-    const DWORD n = std::min<DWORD>(::GetProcessHeaps(static_cast<DWORD>(std::size(list)), list), static_cast<DWORD>(std::size(list)));
-    for (DWORD i = 0; i < n; ++i) {
-        if (!::HeapLock(list[i]))
-            continue;
-        PROCESS_HEAP_ENTRY e {};
-        while (::HeapWalk(list[i], &e)) {
-            if (e.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
-                out.heapHandedOut += e.cbData;
-            } else if (!(e.wFlags & (PROCESS_HEAP_REGION | PROCESS_HEAP_UNCOMMITTED_RANGE)) && frees < kRanges) {
-                const auto at = reinterpret_cast<std::uintptr_t>(e.lpData);
-                const std::uintptr_t from = (at + kPage - 1) & ~std::uintptr_t(kPage - 1);
-                const std::uintptr_t to = (at + e.cbData) & ~std::uintptr_t(kPage - 1);
-                if (to > from)
-                    free[frees++] = {from, to};
-            }
-        }
-        ::HeapUnlock(list[i]);
-        ++out.heaps;
-    }
-    for (std::size_t r = 0; r < frees; ++r) {
-        for (std::uintptr_t at = free[r].first; at < free[r].second;) {
-            const std::size_t pages = std::min<std::size_t>(kStep, (free[r].second - at) / kPage);
-            for (std::size_t i = 0; i < pages; ++i)
-                info[i].VirtualAddress = reinterpret_cast<void*>(at + i * kPage);
-            if (::QueryWorkingSetEx(self, info, static_cast<DWORD>(pages * sizeof(info[0])))) {
-                for (std::size_t i = 0; i < pages; ++i) {
-                    if (info[i].VirtualAttributes.Valid && !info[i].VirtualAttributes.Shared)
-                        out.heapSpare += kPage;
-                }
-            }
-            at += pages * kPage;
-        }
-    }
-    ::VirtualFree(free, 0, MEM_RELEASE);
     return out;
 }
 

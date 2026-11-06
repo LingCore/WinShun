@@ -16,7 +16,7 @@ SettingsPage {
     readonly property bool known: h.total !== undefined
     readonly property bool busy: known && h.busy
     // Each part's colour, by its key (HealthMonitor::publish).
-    readonly property var partKeys: ["fileIndex", "windows", "pictures", "spare", "program", "plugins", "documents"]
+    readonly property var partKeys: ["fileIndex", "windows", "pictures", "program", "plugins", "documents"]
     readonly property var partColors: Theme.dark ? ["#5AA9F5", "#A98BF0", "#E57FB8", "#8FA3B8", "#6E7F94", "#45C2B6", "#F0A85A"]
                                                  : ["#2F7FD8", "#8C6AD6", "#C8508F", "#93A4B5", "#5F6F82", "#22958B", "#D9822B"]
     function partColor(key: string): color {

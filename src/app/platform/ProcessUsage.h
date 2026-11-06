@@ -56,9 +56,10 @@ std::uint64_t residentBytes(const std::vector<std::pair<const void*, std::size_t
 // This process's private working set (Task Manager's Memory), page by page,
 // by what the pages are: program files' own copies (code fixed up, their
 // data), the file index's blocks, thread stacks, the rest (heaps: objects of
-// the windows, caches, Qt's QML, the graphics driver's). Of that rest, when
-// asked: the heaps' free blocks still in the working set (freed, not yet
-// given back to Windows).
+// the windows, caches, Qt's QML, the graphics driver's). It only asks which
+// pages are in (QueryWorkingSetEx), never reads one: a page given back stays
+// out. No HeapWalk: it reads every block's header, and took a trimmed Win顺
+// from 11 to 270 MB, the health page showing its own walk (pitfalls).
 struct Map {
     std::uint64_t total = 0;
     std::uint64_t fileIndex = 0;
@@ -68,14 +69,9 @@ struct Map {
     std::uint64_t system = 0; // Windows' and others' dlls
     std::uint64_t stacks = 0;
     std::uint64_t other = 0;
-    std::uint64_t heapHandedOut = 0; // the heaps' blocks in use, resident or not
-    std::uint64_t heapSpare = 0; // free blocks' whole pages in the working set (part of `other`)
-    int heaps = 0; // walked; 0: not asked
 };
 // `fileIndex`: its blocks, any order. The walk ~20 ms with 600 MB
-// committed: off the GUI thread. `heaps`: the heaps walked too, each under
-// its lock (~40 ms with 450,000 blocks: the GUI thread waits for it if it
-// allocates meanwhile): seldom.
-Map map(std::vector<std::pair<const void*, std::size_t>> fileIndex, bool heaps);
+// committed: off the GUI thread.
+Map map(std::vector<std::pair<const void*, std::size_t>> fileIndex);
 
 } // namespace ws::memory

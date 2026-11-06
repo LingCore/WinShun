@@ -119,11 +119,6 @@ private:
     int m_wanted = 0; // the readings the look under way is for (and kWhole)
     bool m_looking = false;
     int m_fineCount = 0; // memory::map every third second
-    // The heaps walked (their lock held ~20 ms) with the second map after opening,
-    // the first after a give-back, then every 20th (a minute).
-    static constexpr int kMapsPerHeaps = 19;
-    int m_mapsToHeaps = 1;
-    std::uint64_t m_heapSpare = 0; // freed, kept by the heaps, in memory (the last walk)
     std::size_t m_sizeHint = 0; // memory::look's
 
     std::vector<memory::Process> m_known; // the family at the last whole look

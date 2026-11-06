@@ -5503,7 +5503,9 @@ Window {
                     host: settingsContext
                     editor: window.editor
                     pageIndex: window.healthPage
-                    shown: window.visible && window.currentPage === window.healthPage && !window.searching
+                    // Minimized it is still "visible": no readings then.
+                    shown: window.visible && window.visibility !== Window.Minimized
+                        && window.currentPage === window.healthPage && !window.searching
                 } }
             }
         }

@@ -6,6 +6,7 @@
 #include <QDebug>
 #include <QGuiApplication>
 #include <QJsonObject>
+#include <QWindow>
 
 #include <algorithm>
 #include <thread>
@@ -89,10 +90,16 @@ bool IdleTrim::inUse() const
     // the focus, or the foreground window (a native dialog too) is ours.
     if (QGuiApplication::applicationState() != Qt::ApplicationActive)
         return false;
-    if (QGuiApplication::focusWindow())
+    // Minimized, a window may stay the foreground one (and Qt's focus window,
+    // the application active) when Windows has no other to give it to: not in
+    // use. Measured 2026-11-06: the settings minimized kept ~120 MB for good.
+    const HWND foreground = ::GetForegroundWindow();
+    if (foreground && ::IsIconic(foreground))
+        return false;
+    if (const QWindow* focus = QGuiApplication::focusWindow(); focus && focus->visibility() != QWindow::Minimized)
         return true;
     DWORD owner = 0;
-    if (const HWND foreground = ::GetForegroundWindow())
+    if (foreground)
         ::GetWindowThreadProcessId(foreground, &owner);
     return owner == ::GetCurrentProcessId();
 }
