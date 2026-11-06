@@ -9696,6 +9696,14 @@ Content index: %5</translation>
         <source>暂时无法接收文件拖放，请松开鼠标后重试。</source>
         <translation>File drops are temporarily unavailable. Release the mouse button and try again.</translation>
     </message>
+    <message>
+        <source>收藏圆盘打不开</source>
+        <translation>Favorites pie cannot open</translation>
+    </message>
+    <message>
+        <source>Esc 下面的 ` 键被另一个程序设成了快捷键，拖动文件时按它打不开圆盘。请在那个程序里换掉这个快捷键。</source>
+        <translation>Another program uses the ` key (below Esc) as its shortcut, so pressing it while dragging files cannot open the pie. Change that shortcut in the other program.</translation>
+    </message>
 </context>
 <context>
     <name>ws::FavoritesSettings</name>

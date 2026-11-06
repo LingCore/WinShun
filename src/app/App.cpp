@@ -1684,6 +1684,14 @@ void App::applyKeyListener(bool force)
             if (DropPie* pie = m_dropPie.get()) {
                 callbacks.dragMenu = [pie](POINT pt, HWND capture, DWORD pid) { pie->summoned(pt, capture, pid); };
                 callbacks.leftButtonUp = [pie] { pie->buttonReleased(); };
+                // Another program's hotkey has the key: the pie never comes (GitHub #150).
+                callbacks.dragKeyRefused = [this](unsigned, unsigned long error) {
+                    QMetaObject::invokeMethod(this, [this, error] {
+                        m_dropPieKeyRefused = error;
+                        if (error == ERROR_HOTKEY_ALREADY_REGISTERED && m_messages)
+                            m_messages->showNotification(DropPie::keyTakenTitle(), DropPie::keyTakenText());
+                    }, Qt::QueuedConnection);
+                };
             }
             callbacks.log = [](const std::string& line) { qWarning().noquote() << QString::fromStdString(line); };
             m_keyListener = std::make_unique<KeyListener>(std::move(callbacks));
@@ -3418,7 +3426,7 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
                 {u"documents_enabled"_s, m_settings.contentDocuments},
                 {u"include_system_folders"_s, m_settings.contentInLowPriority}};
             const KeyboardRawInput pieKeyboard = keyboardRawInput();
-            context[u"drop_pie"_s] = QJsonObject {
+            QJsonObject pie {
                 {u"enabled"_s, m_settings.dropPie},
                 {u"runtime"_s, m_dropPie ? u"local"_s : m_dropPieHelper ? u"helper"_s : u"off"_s},
                 {u"local_drop_target_ready"_s, m_dropPie && m_dropPie->dropReady()},
@@ -3426,7 +3434,15 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
                 {u"local_keyboard_input"_s, !m_dropPie || !m_keyListener ? u"off"_s
                     : pieKeyboard.error ? u"unknown"_s : !pieKeyboard.registration ? u"none"_s
                     : pieKeyboard.registration->hwndTarget == m_keyListener->window() ? u"ok"_s : u"other"_s},
+                // Explorer elevated too (UAC off, the built-in Administrator):
+                // the helper is then as well (GitHub #150).
+                {u"shell_elevated"_s, integrity::elevated(::GetShellWindow())},
+                {u"uac"_s, QSettings(u"HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"_s,
+                    QSettings::NativeFormat).value(u"EnableLUA"_s, 1).toInt() != 0},
             };
+            if (m_dropPieKeyRefused)
+                pie.insert(u"local_key_refused"_s, qint64(m_dropPieKeyRefused));
+            context[u"drop_pie"_s] = pie;
             if (m_dropPieHelper)
                 context[u"drop_pie_helper"_s] = m_dropPieHelper->state();
             if (const auto service = std::dynamic_pointer_cast<ntfs::ServiceVolumeAccess>(m_index->volumeAccess()))

@@ -107,6 +107,10 @@ public:
     // button let go.
     void summoned(POINT pt, HWND captureWindow, DWORD sourcePid);
     void buttonReleased();
+    // The notice when another program's hotkey has the pie's key
+    // (KeyListener::Callbacks::dragKeyRefused, GitHub #150).
+    static QString keyTakenTitle();
+    static QString keyTakenText();
     // Inside a drop (the folder's drop target may run a dialog's loop): not
     // to be destroyed now.
     bool inDrop() const noexcept { return m_inDrop; }

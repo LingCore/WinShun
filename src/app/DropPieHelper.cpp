@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
+#include <mutex>
 
 using namespace Qt::StringLiterals;
 
@@ -95,6 +96,49 @@ qint64 startedAt(HWND window)
     return ticks / 10'000 - 11'644'473'600'000;
 }
 
+// The helper's own messages (GitHub #150). It has no WinShun.log (that is
+// the running copy's), and its profile goes with it: they go to helper.log
+// there, read into the launcher's log (DropPieHelper::relayLog). Info lines
+// too: why the pie was not shown is told at that level, and the helper says
+// something only when the pie is asked for or dropped on. A few hundred lines
+// a run at most, each on one line.
+constexpr int kHelperLogLines = 300;
+std::mutex g_helperLogMutex;
+QString g_helperLogPath; // set before the handler is installed
+int g_helperLogLines = 0; // under g_helperLogMutex
+QtMessageHandler g_helperLogPrevious = nullptr;
+thread_local bool g_inHelperLog = false; // a message from inside the handler: only to the debugger
+
+void logToHelperFile(QtMsgType type, const QMessageLogContext& context, const QString& message)
+{
+    if (type != QtDebugMsg && !g_inHelperLog) {
+        g_inHelperLog = true;
+        {
+            const std::lock_guard lock(g_helperLogMutex);
+            if (g_helperLogLines <= kHelperLogLines) {
+                const bool last = ++g_helperLogLines > kHelperLogLines;
+                QString line = last ? u"Drop pie helper: more lines, not written"_s : message.left(2000);
+                line.replace(u'\r', u' ').replace(u'\n', u' ');
+                const char* level = type == QtInfoMsg ? "info" : type == QtWarningMsg ? "warning" : "error";
+                QFile file(g_helperLogPath);
+                if (file.open(QIODevice::Append))
+                    file.write(QByteArray(level) + '\t' + line.toUtf8() + '\n');
+            }
+        }
+        g_inHelperLog = false;
+    }
+    if (g_helperLogPrevious)
+        g_helperLogPrevious(type, context, message);
+}
+
+// The keyboard's Raw Input in this process: the listener's window, another, none.
+QString keyboardInput(HWND listener)
+{
+    const KeyboardRawInput keyboard = keyboardRawInput();
+    return keyboard.error ? u"unknown"_s : !keyboard.registration ? u"none"_s
+        : keyboard.registration->hwndTarget == listener ? u"ok"_s : u"other"_s;
+}
+
 } // namespace
 
 DropPieHelper::DropPieHelper(Favorites* favorites, Notify notify, QObject* parent)
@@ -121,6 +165,7 @@ DropPieHelper::~DropPieHelper()
         // A drop's confirmation or file operation may still be running.
         // Never kill it or remove its snapshot while it is finishing.
         if (::WaitForSingleObject(m_process.get(), 750) != WAIT_OBJECT_0) m_profile.setAutoRemove(false);
+        relayLog();
     }
 }
 
@@ -179,6 +224,8 @@ void DropPieHelper::start()
     m_shellSince = startedAt(shell);
     QFile::remove(m_profile.filePath(u"stop"_s));
     QFile::remove(m_profile.filePath(u"ready"_s));
+    QFile::remove(m_profile.filePath(u"helper.log"_s)); // the last run's, read already
+    m_logRead = 0;
     const QString args = u"--drop-pie-helper %1 --profile \"%2\""_s.arg(::GetCurrentProcessId()).arg(m_profile.path());
     shell::StartFailure failure;
     m_process = shell::startUnelevated(
@@ -193,8 +240,31 @@ void DropPieHelper::start()
     m_poll.start();
 }
 
+// The lines the helper wrote since the last look, into this process's log
+// (and so the diagnostics), each under the helper's name (GitHub #150).
+void DropPieHelper::relayLog()
+{
+    QFile file(m_profile.filePath(u"helper.log"_s));
+    if (!file.open(QIODevice::ReadOnly) || file.size() <= m_logRead || !file.seek(m_logRead))
+        return;
+    const QByteArray bytes = file.read(64 * 1024);
+    const qsizetype end = bytes.lastIndexOf('\n');
+    if (end < 0)
+        return; // a line still being written
+    m_logRead += end + 1;
+    for (const QByteArray& line : bytes.first(end).split('\n')) {
+        const qsizetype tab = line.indexOf('\t');
+        if (tab <= 0)
+            continue;
+        ++m_relayed;
+        qWarning().noquote() << u"Drop pie helper (%1): %2"_s.arg(QString::fromLatin1(line.first(tab)),
+            QString::fromUtf8(line.sliced(tab + 1)));
+    }
+}
+
 void DropPieHelper::poll()
 {
+    relayLog();
     const QString noticePath = m_profile.filePath(u"notice.json"_s);
     const auto notice = QJsonDocument::fromJson(read(noticePath)).object();
     if (!notice.isEmpty()) {
@@ -210,6 +280,7 @@ void DropPieHelper::poll()
         ::GetExitCodeProcess(m_process.get(), &code);
         m_poll.stop();
         m_process = {};
+        relayLog(); // its last words
         if (m_ready && m_starting.elapsed() > 60'000) { // it worked: a new run of failures, if any
             m_failures = 0;
             m_reported = false;
@@ -220,6 +291,7 @@ void DropPieHelper::poll()
         ::TerminateProcess(m_process.get(), 1);
         m_poll.stop();
         m_process = {};
+        relayLog();
         failed(Failure::NoAnswer, u"no answer in 20 s"_s, 0);
     }
 }
@@ -267,6 +339,7 @@ QJsonObject DropPieHelper::state() const
     state.insert(u"ready"_s, running && !state.isEmpty());
     state.insert(u"running"_s, running);
     state.insert(u"failures"_s, m_failures);
+    state.insert(u"relayed_lines"_s, m_relayed);
     if (!m_failure.isEmpty()) state.insert(u"last_failure"_s, m_failure);
     return state;
 }
@@ -284,6 +357,11 @@ int runDropPieHelper(const QStringList& arguments)
     win32::UniqueHandle parent(valid ? ::OpenProcess(SYNCHRONIZE, FALSE, pid) : nullptr);
     if (!parent.valid()) return NoParent;
     const QString profile = Settings::profile();
+    g_helperLogPath = profile + u"/helper.log"_s;
+    g_helperLogPrevious = qInstallMessageHandler(logToHelperFile);
+    struct LogBack {
+        ~LogBack() { qInstallMessageHandler(g_helperLogPrevious); }
+    } logBack;
     QGuiApplication::setQuitOnLastWindowClosed(false);
     QQuickWindow::setGraphicsApi(Settings::resolveRenderer(Settings::storedRenderer()) == u"software"
         ? QSGRendererInterface::Software : QSGRendererInterface::Direct3D11);
@@ -319,21 +397,39 @@ int runDropPieHelper(const QStringList& arguments)
     if (!window) { qWarning().noquote() << component.errorString(); return NoWindow; }
     pie.setWindow(window);
     if (!pie.dropReady()) return NoDropTarget;
+    // The key's plain hotkey refused (GitHub #150): another program's
+    // hotkey hears it instead, and the pie never comes. Told once, and in
+    // the diagnostics (ready).
+    unsigned long keyRefused = 0;
+    std::function<void()> refresh;
     KeyListener::Callbacks callbacks;
     callbacks.dragMenu = [&pie](POINT pt, HWND capture, DWORD source) { pie.summoned(pt, capture, source); };
     callbacks.leftButtonUp = [&pie] { pie.buttonReleased(); };
     callbacks.log = [](const std::string& text) { qWarning().noquote() << QString::fromStdString(text); };
+    callbacks.dragKeyRefused = [&](unsigned, unsigned long error) {
+        QMetaObject::invokeMethod(&engine, [&, error] {
+            keyRefused = error;
+            if (error == ERROR_HOTKEY_ALREADY_REGISTERED)
+                notify(DropPie::keyTakenTitle(), DropPie::keyTakenText());
+            if (refresh) refresh();
+        }, Qt::QueuedConnection);
+    };
     KeyListener listener(std::move(callbacks));
     if (!listener.isActive()) return NoListener;
+    if (qEnvironmentVariableIsSet("WINSHUN_LOG_INFO")) // a test, a user asked to: the relay has a line to show
+        qInfo().noquote() << u"Drop pie helper: running, keyboard input %1"_s.arg(keyboardInput(listener.window()));
     // What the launcher reads to know it runs, with what. Written only when
     // it changes: writing it changes the folder watched below.
     QByteArray written;
     const auto ready = [&] {
-        const QByteArray next = QJsonDocument(QJsonObject {{u"pid"_s, qint64(::GetCurrentProcessId())},
+        QJsonObject state {{u"pid"_s, qint64(::GetCurrentProcessId())},
             {u"elevated"_s, integrity::processElevated()}, {u"folders"_s, pie.noFolders() ? 0 : pie.sectors().size()},
-            {u"theme"_s, settings.theme}}).toJson(QJsonDocument::Compact);
+            {u"theme"_s, settings.theme}, {u"keyboard_input"_s, keyboardInput(listener.window())}};
+        if (keyRefused) state.insert(u"key_refused"_s, qint64(keyRefused));
+        const QByteArray next = QJsonDocument(state).toJson(QJsonDocument::Compact);
         if (next != written && save(profile + u"/ready"_s, next)) written = next;
     };
+    refresh = ready;
     QFileSystemWatcher watcher({profile});
     QByteArray previous = read(profile + u"/favorites.json"_s);
     QObject::connect(&watcher, &QFileSystemWatcher::directoryChanged, &engine, [&] {

@@ -989,6 +989,8 @@ void KeyListener::guardDragKey(bool on)
         log(std::format("Drop pie input: its plain key could not be registered (vk 0x{:02X}, error {}); "
                         "another hotkey owner may receive it instead",
             vk, plainError));
+    if (plainError && m_callbacks.dragKeyRefused && !std::exchange(m_dragKeyRefusedTold, true))
+        m_callbacks.dragKeyRefused(vk, plainError);
     if (m_keyLog)
         log(std::format("Key log: a file list pressed or a drag begun: the drop pie's key (vk 0x{:02X}) held back as:{}", vk,
             held.empty() ? " nothing" : held));

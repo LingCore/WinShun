@@ -191,6 +191,10 @@ DropPie::DropPie(Favorites* favorites, SystemCatalog* places, piedrop::FileOpera
         ::GetCursorPos(&now);
         const bool moved = std::abs(now.x - m_shownAt.x) > 4 || std::abs(now.y - m_shownAt.y) > 4;
         if (moved || m_shownClock.elapsed() > 1000) {
+            // Nothing seen of it (unseen until DragEnter): a failure to the
+            // user, in the log at any level (GitHub #150).
+            qWarning().noquote() << u"Drop pie: shown, but the drag did not come over it in %1 ms (pointer moved %2)"_s
+                                        .arg(m_shownClock.elapsed()).arg(moved ? u"yes"_s : u"no"_s);
             hide("the drag did not come over it");
         } else {
             nudge();
@@ -289,6 +293,16 @@ void DropPie::summoned(POINT pt, HWND captureWindow, DWORD sourcePid)
     QMetaObject::invokeMethod(this, [this, pt, captureWindow, sourcePid] {
         onSummoned(pt, captureWindow, sourcePid);
     }, Qt::QueuedConnection);
+}
+
+QString DropPie::keyTakenTitle()
+{
+    return tr("收藏圆盘打不开");
+}
+
+QString DropPie::keyTakenText()
+{
+    return tr("Esc 下面的 ` 键被另一个程序设成了快捷键，拖动文件时按它打不开圆盘。请在那个程序里换掉这个快捷键。");
 }
 
 void DropPie::buttonReleased()

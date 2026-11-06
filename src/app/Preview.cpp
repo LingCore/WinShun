@@ -3296,6 +3296,10 @@ void checkDropPieHelper(const QDir& output)
     }
     QStringList notices;
     std::function<void()> clickRetry; // the last notification's 重试
+    // Each helper started says it runs (GitHub #150): its lines reach this
+    // process's log, one warning each, counted below.
+    const int before = g_warnings;
+    qputenv("WINSHUN_LOG_INFO", "1");
     auto helper = std::make_unique<DropPieHelper>(&favorites,
         [&](const QString& title, const QString& text, std::function<void()> retry) {
             notices.push_back(title + u": "_s + text);
@@ -3330,7 +3334,6 @@ void checkDropPieHelper(const QDir& output)
     });
     // Ended from outside (or crashed): started again by itself (GitHub #172).
     // Its two log lines (the exit, then running again) are expected here.
-    const int warnings = g_warnings;
     const qint64 first = helper->state().value(u"pid"_s).toInteger();
     QElapsedTimer restarting;
     restarting.start();
@@ -3365,8 +3368,14 @@ void checkDropPieHelper(const QDir& output)
         }, 15000) && toldOnce && (!noticeChecked || notices.size() == failures - 2);
     }
     toldOnce = toldOnce && (!noticeChecked || (notices.size() == 1 && clickRetry));
-    g_warnings = warnings + std::max(0, g_warnings - warnings - 5);
+    // Four started (the first, again after each of three ends): four lines,
+    // the last one's a poll after it was ready.
+    pump(600);
     state = helper->state();
+    const int relayed = state.value(u"relayed_lines"_s).toInt();
+    const bool relayedAll = relayed == 4;
+    qunsetenv("WINSHUN_LOG_INFO");
+    g_warnings = before + std::max(0, g_warnings - before - 5 - relayed);
     win32::UniqueHandle child(::OpenProcess(SYNCHRONIZE, FALSE, DWORD(state.value(u"pid"_s).toInteger())));
     QElapsedTimer stopping;
     stopping.start();
@@ -3375,7 +3384,8 @@ void checkDropPieHelper(const QDir& output)
     state.insert(u"stop_ms"_s, stopping.elapsed());
     if (clickRetry)
         clickRetry(); // the helper gone: nothing (it once was a use after free)
-    passed = passed && updatedFavorites && updatedAppearance && restarted && toldOnce && stopped;
+    passed = passed && updatedFavorites && updatedAppearance && restarted && toldOnce && stopped && relayedAll;
+    state.insert(u"relayedAll"_s, relayedAll);
     state.insert(u"updatedFavorites"_s, updatedFavorites);
     state.insert(u"updatedAppearance"_s, updatedAppearance);
     state.insert(u"restarted"_s, restarted);
@@ -3387,7 +3397,7 @@ void checkDropPieHelper(const QDir& output)
     QFile report(output.filePath(u"drop-pie-helper.json"_s));
     if (report.open(QIODevice::WriteOnly)) report.write(QJsonDocument(state).toJson());
     if (!passed) qWarning().noquote() << "Drop pie helper regression failed:" << notices << state;
-    else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite and appearance refresh, restart after it ends, the notice after three failures (its retry harmless once the helper is gone) and shutdown checked"_s);
+    else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite and appearance refresh, restart after it ends, the notice after three failures (its retry harmless once the helper is gone), its log lines relayed and shutdown checked"_s);
 }
 
 bool checkSwitchProvider(QQuickWindow* window, const QDir& output)
