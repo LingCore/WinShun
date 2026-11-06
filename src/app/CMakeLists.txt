@@ -90,6 +90,9 @@ qt_add_executable(WinShun WIN32
     platform/MemoryReport.cpp platform/MemoryReport.h
     ActivityText.cpp ActivityText.h
     BackgroundStatus.cpp BackgroundStatus.h
+    HealthHistory.cpp HealthHistory.h
+    HealthMonitor.cpp HealthMonitor.h
+    platform/ProcessUsage.cpp platform/ProcessUsage.h
     platform/InputMode.cpp platform/InputMode.h
     platform/Integrity.cpp platform/Integrity.h
     platform/KeyListener.cpp platform/KeyListener.h
@@ -134,6 +137,7 @@ set(qml_files
     qml/WindowEdge.qml
     qml/SearchBar.qml
     qml/ScopeTabs.qml
+    qml/HealthPage.qml
     qml/TypeStrip.qml
     qml/ResultRow.qml
     qml/ElsewhereCaption.qml

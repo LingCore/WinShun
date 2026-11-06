@@ -71,6 +71,7 @@
 #include "platform/IdleTrim.h"
 #include "platform/MemoryReport.h"
 #include "BackgroundStatus.h"
+#include "HealthMonitor.h"
 #include "ActivityText.h"
 #include "platform/Integrity.h"
 #include "platform/KeyListener.h"
@@ -931,7 +932,46 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     m_background->onFinished = [this](const QString& title, const QString& text) {
         if (m_messages)
             m_messages->showNotification(title, text);
+    };    // The 运行状况 page's readings: every 10 seconds from now on (the index
+    // loading is the first thing it sees), every second while it is shown.
+    HealthMonitor::Sources sources;
+    sources.facts = [this] {
+        health::Facts f;
+        using State = IndexService::State;
+        const State state = m_index->state();
+        f.loading = state == State::Idle || state == State::Loading;
+        f.building = state == State::Building;
+        f.rebuilding = state == State::Ready && m_index->isRefreshing() && m_background->rebuilding();
+        const ContentIndexer::Status content = m_index->contentIndexer()->status();
+        f.contentReading = content.reading;
+        f.contentDone = content.done;
+        f.saving = m_index->saving();
+        f.moving = m_index->moving();
+        return f;
     };
+    sources.fileIndex = [this](HealthMonitor::Blocks& blocks, std::uint64_t& tableBytes) {
+        const auto index = m_index->index();
+        if (!index)
+            return true; // none: nothing held
+        const auto lock = index->tryReadLock(); // never wait for a writer on the GUI thread
+        if (!lock.owns_lock())
+            return false;
+        blocks = index->memoryBlocks();
+        const FileIndex::MemoryUse use = index->memoryUse();
+        tableBytes = use.folderRecords + use.childTables + use.intern;
+        return true;
+    };
+    sources.cachedPictures = [] {
+        return static_cast<std::uint64_t>(ThumbnailProvider::cachedBytes() + ClipThumbnailProvider::cachedBytes());
+    };
+    sources.tasks = [this] { return m_background->toVariant(); };
+    sources.lastTrim = [this] {
+        const IdleTrim::LastTrim last = m_idleTrim->lastTrim();
+        return std::pair<qint64, qint64>(last.atMs, last.megabytes);
+    };
+    m_health = std::make_unique<HealthMonitor>(std::move(sources));
+    connect(m_index.get(), &IndexService::stateChanged, m_health.get(), &HealthMonitor::poke);
+    connect(m_index.get(), &IndexService::activityChanged, m_health.get(), &HealthMonitor::poke);
     m_backup = std::make_unique<Backup>();
     connect(m_backup.get(), &Backup::restartRequested, this, [this] { restart({u"--settings"_s}); });
     m_updater->setChinese(m_language == u"zh");
@@ -3369,7 +3409,7 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         editor->setWindow(window);
         editor->setPlaces(m_places.get()); // Windows' settings, when its search finds none of its own
         connect(editor, &SettingsEditor::edited, this, &App::settingsEdited);
-        connect(editor, &SettingsEditor::healthRequested, this, &App::refreshHealth);
+        editor->setMonitor(m_health.get());
         connect(editor, &SettingsEditor::giveBackMemoryRequested, this, &App::giveMemoryBack);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyHotkey);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyClipboardHotkeys);
@@ -3744,51 +3784,6 @@ void App::refreshContentIndexStatus()
     m_settingsEditor->setContentIndexStatus(status);
 }
 
-// The settings' 运行状况 card, while it is on screen: its own timer asks every
-// two seconds. Reads each process's private working set (what Task Manager's
-// Memory column counts) and what the background is doing.
-void App::refreshHealth()
-{
-    if (!m_settingsEditor)
-        return;
-    const auto megabytes = [](std::uint64_t bytes) { return static_cast<qint64>(bytes / (1024 * 1024)); };
-    const memory::Use use = memory::measure();
-    // The file index's big blocks (entries, times, names: what searches live
-    // on), as much of them as is in the working set now, the same measure as
-    // the total. Right after a give-back most of them are parked on the
-    // standby list, and the card says so: what is held is not what is resident.
-    std::uint64_t fileIndex = 0;
-    std::uint64_t fileIndexHeld = 0;
-    if (const auto index = m_index->index()) {
-        const auto lock = index->readLock();
-        const auto blocks = index->memoryBlocks();
-        for (const auto& block : blocks)
-            fileIndexHeld += block.second;
-        fileIndex = memory::residentBytes(blocks);
-    }
-    fileIndex = std::min(fileIndex, use.main);
-    fileIndexHeld = std::max(fileIndexHeld, fileIndex);
-    QVariantMap health;
-    health[u"total"_s] = megabytes(use.total());
-    health[u"fileIndex"_s] = megabytes(fileIndex);
-    health[u"fileIndexParked"_s] = megabytes(fileIndexHeld - fileIndex); // held, but out of the working set
-    health[u"other"_s] = megabytes(use.main) - megabytes(fileIndex); // the interface and all that is not told apart; never above the total
-    health[u"plugins"_s] = megabytes(use.plugins);
-    health[u"pluginProcesses"_s] = use.pluginProcesses;
-    health[u"documents"_s] = megabytes(use.documents);
-    health[u"documentProcesses"_s] = use.documentProcesses;
-    const QVariantList tasks = m_background->toVariant();
-    health[u"tasks"_s] = tasks;
-    health[u"busy"_s] = !tasks.isEmpty();
-    health[u"idleText"_s] = BackgroundStatus::idleText();
-    const IdleTrim::LastTrim last = m_idleTrim->lastTrim();
-    health[u"lastTrim"_s] = last.atMs == 0
-        ? tr("还没有归还过")
-        : tr("上次归还：%1，还了 %2 MB")
-              .arg(QDateTime::fromMSecsSinceEpoch(last.atMs).toString(u"HH:mm"_s)).arg(last.megabytes);
-    m_settingsEditor->setHealth(health);
-}
-
 // 〔现在就归还〕: this process and Win顺's own under it, busy or not (what the
 // background reads next comes back by itself). Off the GUI thread: ~10 ms per
 // 100 MB, a little more with several processes.
@@ -3800,7 +3795,7 @@ void App::giveMemoryBack()
             if (!self)
                 return;
             self->m_idleTrim->noteTrim(megabytes);
-            self->refreshHealth();
+            self->m_health->noteGiveBack(megabytes, self->m_idleTrim->lastTrim().atMs);
         }, Qt::QueuedConnection);
     }).detach();
 }

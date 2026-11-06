@@ -1,4 +1,6 @@
 #include "SettingsEditor.h"
+
+#include "HealthMonitor.h"
 #include "PreviewShortcut.h"
 #include "platform/OcrFiles.h"
 #include "platform/OcrPackage.h"
@@ -785,12 +787,12 @@ void SettingsEditor::setContentDocuments(bool on)
     commit();
 }
 
-void SettingsEditor::setHealth(const QVariantMap& health)
+void SettingsEditor::setMonitor(HealthMonitor* monitor)
 {
-    if (m_health == health)
+    if (m_monitor == monitor)
         return;
-    m_health = health;
-    emit healthChanged();
+    m_monitor = monitor;
+    emit monitorChanged();
 }
 
 void SettingsEditor::setContentIndexStatus(const QString& status)

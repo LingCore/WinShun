@@ -37,6 +37,8 @@ public:
     // since gets a new address, never the old picture.
     static QString url(const QString& path, std::uint32_t modified);
     static bool hasThumbnailType(const QString& path); // by its extension
+    // The thumbnails kept for the lists (at most 48 MB), in bytes; any thread.
+    static qint64 cachedBytes();
 };
 
 } // namespace ws

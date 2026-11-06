@@ -1,4 +1,11 @@
 #include "ActivityText.h"
+#include "HealthHistory.h"
+#include "platform/ProcessUsage.h"
+
+#include <cstring>
+#include <memory>
+
+#include <algorithm>
 
 #include <QtTest>
 
@@ -130,7 +137,71 @@ private slots:
         QCOMPARE(r.sampleMs(), qint64(0));
         QCOMPARE(r.perSecond(), 0.0);
     }
-};
 
+    // ---- the 运行状况 page's readings (HealthHistory, memory::map) ----
+
+    void memoryMapTellsTheParts()
+    {
+        // A 32 MB block on the heap, every page touched, given as the file
+        // index's: all of it is found there, none of it in the rest.
+        constexpr std::size_t kSize = 32u << 20;
+        auto block = std::make_unique<char[]>(kSize);
+        std::memset(block.get(), 1, kSize);
+        const ws::memory::Map with = ws::memory::map({{block.get(), kSize}}, true);
+        const ws::memory::Map without = ws::memory::map({}, false);
+        QVERIFY(with.fileIndex >= kSize - 8192 && with.fileIndex <= kSize + 8192);
+        QCOMPARE(without.fileIndex, std::uint64_t(0));
+        QVERIFY(without.other >= with.other + kSize - 8192);
+        QVERIFY(with.stacks > 0); // this thread's
+        QVERIFY(with.ownProgram + with.qt + with.system > 0); // the test's own pages, Qt's
+        const std::uint64_t parts = with.fileIndex + with.ownProgram + with.qt + with.graphics + with.system + with.stacks + with.other;
+        QCOMPARE(parts, with.total);
+        QVERIFY(with.heapHandedOut >= kSize);
+        QCOMPARE(without.heaps, 0); // not asked
+        QVERIFY(with.heaps > 0);
+        QVERIFY(with.heapSpare <= with.other);
+    }
+
+    void eventsFromFacts()
+    {
+        using namespace ws::health;
+        Events events;
+        EventTracker tracker(events);
+        Facts f;
+        f.loading = true;
+        tracker.observe(f, 1000, 100 * 1024);
+        tracker.observe(f, 3000, 250 * 1024); // its peak
+        f.loading = false;
+        f.saving = true; // a short save: not kept
+        tracker.observe(f, 4000, 120 * 1024);
+        f.saving = false;
+        f.contentReading = true; // a round that reads nothing: not kept
+        tracker.observe(f, 4500, 120 * 1024);
+        f.contentReading = false;
+        tracker.observe(f, 6000, 120 * 1024);
+        f.contentReading = true; // one that reads: kept, with how many
+        f.contentDone = 10;
+        tracker.observe(f, 7000, 300 * 1024);
+        f.contentDone = 0; // starts over at its end
+        f.biggestDocumentKb = Events::kBigDocumentKb + 1024;
+        tracker.observe(f, 8000, 500 * 1024);
+        f.contentReading = false;
+        f.biggestDocumentKb = 0;
+        tracker.observe(f, 9000, 200 * 1024);
+        const std::vector<Event> all = events.recent(10);
+        QCOMPARE(all.size(), std::size_t(3));
+        QCOMPARE(all[2].kind, EventKind::IndexLoad);
+        QCOMPARE(all[2].peakKb, std::uint32_t(250 * 1024));
+        QCOMPARE(all[2].endMs, std::int64_t(4000));
+        QCOMPARE(all[1].kind, EventKind::ContentRound);
+        QCOMPARE(all[1].count, std::uint64_t(10));
+        QCOMPARE(all[1].peakKb, std::uint32_t(500 * 1024));
+        QCOMPARE(all[0].kind, EventKind::BigDocument);
+        QCOMPARE(all[0].count, std::uint64_t(Events::kBigDocumentKb + 1024));
+        events.instant(EventKind::AutoTrim, 9500, 30 * 1024, 170);
+        QVERIFY(events.recent(1).front().instant());
+        QCOMPARE(events.recent(1).front().freedMb, std::uint32_t(170));
+    }
+};
 QTEST_GUILESS_MAIN(ActivityTest)
 #include "tst_activity.moc"

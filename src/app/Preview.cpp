@@ -1,4 +1,6 @@
 #include "Preview.h"
+
+#include "HealthMonitor.h"
 #include "ClipScrollBench.h"
 #include "ContentPaneProbe.h"
 
@@ -1133,29 +1135,8 @@ int runSettings(const QStringList& args)
     indexState.size = u"112 MB"_s;
     editor->setIndexFolderState(indexState);
     editor->setContentIndexStatus(u"已收录 337,215 个文件，其中 5,815 个文档"_s);
-    // The 运行状况 card (settings page 7): busy reading the content index, or (--health-idle) at rest.
-    // --health-grow: it starts with one job and gets the second just before the picture, as live.
-    QVariantMap healthTwoJobs;
-    {
-        const bool idle = args.contains(u"--health-idle"_s);
-        QVariantList tasks;
-        if (!idle) {
-            tasks.push_back(QVariantMap {{u"name"_s, u"正在建立内容索引"_s}, {u"count"_s, u"182,340 / 337,215"_s},
-                {u"remaining"_s, u"约 3–5 分钟"_s}, {u"fraction"_s, 0.54}});
-            tasks.push_back(QVariantMap {{u"name"_s, u"正在保存索引"_s}, {u"count"_s, QString()}, {u"remaining"_s, QString()},
-                {u"fraction"_s, -1}});
-        }
-        QVariantList firstOnly = tasks;
-        if (args.contains(u"--health-grow"_s) && !firstOnly.isEmpty())
-            firstOnly.resize(1);
-        const auto healthWith = [&](const QVariantList& shown) -> QVariantMap { return {{u"total"_s, idle ? 14 : 412}, {u"fileIndex"_s, idle ? 0 : 96}, {u"fileIndexParked"_s, idle ? 88 : 0}, {u"other"_s, idle ? 14 : 143},
-            {u"plugins"_s, idle ? 0 : 118}, {u"pluginProcesses"_s, idle ? 0 : 3}, {u"documents"_s, idle ? 0 : 55},
-            {u"documentProcesses"_s, idle ? 0 : 4}, {u"tasks"_s, shown}, {u"busy"_s, !idle},
-            {u"idleText"_s, QCoreApplication::translate("ws::BackgroundStatus", "现在没有在忙，闲着时会把内存还给系统")},
-            {u"lastTrim"_s, u"上次归还：14:32，还了 187 MB"_s}}; };
-        healthTwoJobs = healthWith(tasks);
-        editor->setHealth(healthWith(firstOnly));
-    }
+    // The 运行状况 page (settings page 10): made-up readings of a day, reading the content index now, or (--health-idle) at rest.
+    editor->setMonitor(HealthMonitor::demo(editor, args.contains(u"--health-idle"_s)));
     editor->setHistoryCount(128);
     editor->setClipboardCount(args.contains(u"--clipboard-disabled"_s) ? -1 : 57);
     editor->setHotkeyError({});
@@ -1817,10 +1798,6 @@ int runSettings(const QStringList& args)
                 pump(3600); // the avatar's greeting (AuthorClock) has played out
             }
             pump(400); // the sliding marker, the asynchronous icons
-            if (args.contains(u"--health-grow"_s) && !healthTwoJobs.isEmpty()) {
-                editor->setHealth(healthTwoJobs); // the card must grow with its second line
-                pump(300);
-            }
             const QString file = out.filePath(u"p%1-t%2.png"_s.arg(page, 2, 10, u'0').arg(tab));
             say(u"page %1 tab %2 (%3): window %4x%5 asked %6, current %7/%8, content %9"_s.arg(page).arg(tab).arg(title)
                     .arg(window->width()).arg(window->height()).arg(height).arg(window->property("currentPage").toInt())

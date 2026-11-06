@@ -148,6 +148,13 @@ bool ThumbnailProvider::hasThumbnailType(const QString& path)
     return kTypes.contains(suffix) || isVideo(suffix);
 }
 
+qint64 ThumbnailProvider::cachedBytes()
+{
+    Store& s = store();
+    QMutexLocker lock(&s.mutex);
+    return s.images.totalCost();
+}
+
 QString ThumbnailProvider::url(const QString& path, std::uint32_t modified)
 {
     if (path.startsWith(u"\\\\") || !hasThumbnailType(path))

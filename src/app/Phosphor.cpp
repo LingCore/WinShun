@@ -120,6 +120,7 @@ constexpr auto kMappings = std::to_array<Mapping>({
     {0xE968, 0xE2A0, false}, // Network: hard-drives
     {0xE99A, 0xE762, false}, // Robot: robot
     {0xE9D5, 0xEB7A, false}, // CheckList: scroll
+    {0xE9D9, 0xE000, false}, // Diagnostic: pulse
     {0xEA3A, 0xE18A, false}, // CircleRing: circle
     {0xEA86, 0xE596, false}, // Puzzle: puzzle-piece
     {0xEB9F, 0xE2CA, false}, // Picture: image
