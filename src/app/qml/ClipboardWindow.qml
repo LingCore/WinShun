@@ -125,6 +125,10 @@ Window {
         if (!visible)
             page.windowHidden()
     }
+    onXChanged: page.clearHover()
+    onYChanged: page.clearHover()
+    onWidthChanged: page.clearHover()
+    onHeightChanged: page.clearHover()
 
     Connections {
         target: window.placement

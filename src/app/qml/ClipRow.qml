@@ -55,6 +55,7 @@ Item {
     signal clicked(int index, int modifiers)
     signal pasteRequested(int index) // its paste button, a double click
     signal previewRequested(int index) // that button, with clickToPaste; a middle click
+    signal hoverLeft(int index)
     signal dragRequested(int index)
     signal moveRequested(int from, int to) // its handle dragged over row `to`
     signal moveHeld(bool held) // its handle pressed, let go
@@ -350,6 +351,7 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+        onExited: row.hoverLeft(row.index)
         onPressed: (mouse) => {
             draggedOut = false
             pressedAt = Qt.point(mouse.x, mouse.y)

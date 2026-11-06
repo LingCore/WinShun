@@ -25,6 +25,8 @@ Item {
     }
     property real parentTop // where the parent's top is in the window: to draw on whole device pixels
     property real resizeMargin: 0
+    property bool compact: false
+    readonly property real naturalHeight: content.implicitHeight + meta.implicitHeight + 34
     signal copyRequested(string text, bool remember) // one of a colour's notations, a picture's words
 
     // A picture's words: those selected with the mouse, or all of them, copied
@@ -43,6 +45,7 @@ Item {
 
     Flickable {
         id: flick
+        objectName: "clipboardPreviewContent"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
@@ -176,7 +179,7 @@ Item {
                 id: picture
 
                 readonly property real fit: Math.min(1, parent.width / Math.max(1, preview.info.width ?? 1),
-                                                     (flick.height - 4) / Math.max(1, preview.info.height ?? 1))
+                                                     (preview.compact ? 280 : flick.height - 4) / Math.max(1, preview.info.height ?? 1))
                 readonly property bool animated: preview.info.animated ?? false
                 readonly property string imageSource: preview.info.image ?? ""
                 readonly property Image loadedImage: viewer.status === Loader.Ready ? viewer.item as Image : null
@@ -503,7 +506,8 @@ Item {
             width: parent.width
             text: [preview.info.time ?? "", preview.info.size ?? ""].filter(s => s.length > 0).join(" · ")
             textFormat: Text.PlainText
-            elide: Text.ElideRight
+            wrapMode: preview.compact ? Text.Wrap : Text.NoWrap
+            elide: preview.compact ? Text.ElideNone : Text.ElideRight
             color: Theme.faint
             font.pixelSize: preview.metrics.uiCaption
         }

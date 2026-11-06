@@ -6,7 +6,7 @@ import WinShun
 // The clipboard window's page (Win+V, ClipboardWindow.qml): a search field,
 // the categories and groups, the history, hints below; the current entry in
 // full on the right when asked for (a click on the row, Alt+P, → at the end
-// of the search), and again the next time if left open. A row's paste
+// of the search). A brief hover opens a separate, temporary preview. A row's paste
 // button or a double click pastes it into the program that was in front,
 // as Enter does; Shift+Enter as plain text, Alt+1…9 the first nine rows, Ctrl/Shift pick
 // several, Tab switches categories. Opened from a field of Win顺's own (a
@@ -131,8 +131,7 @@ Item {
     }
     function windowHidden() {
         findingGroup = false
-        previewClickTimer.stop()
-        clearHover()
+        closePreview()
         list.stopScrolling()
         numberHints.reset()
         closeContextMenu()
@@ -197,8 +196,7 @@ Item {
     }
 
     // The preview, of the row asked about; asked about the row it shows (or
-    // with nothing to show), it closes. Opened or closed so, it is so the
-    // next time the window opens too (clipboard.previewOpen).
+    // with nothing to show), it closes. Explicit previews last this opening.
     function togglePreview(index) {
         previewClickTimer.stop()
         if (previewOpen && (index === list.currentIndex || index < 0 || index >= list.count)) {
@@ -210,6 +208,7 @@ Item {
         }
     }
     function showPreview() {
+        clearHover()
         if (!previewOpen)
             previewOpening()
         previewOpen = true
@@ -240,16 +239,19 @@ Item {
         }
     }
 
-    // An open preview shows the row the mouse rests on for a moment (GitHub
-    // #47), the current row stays where it is. It never opens or closes the
-    // preview: the window's width must not jump under the mouse.
+    // Hover follows a manual preview or opens a separate compact window.
+    // The list and keyboard selection never move under the pointer (#174).
     property int hoverIndex: -1 // -1: the current row
     property int hoverCandidate: -1
+    property bool hoverShown: false
+    property rect hoverRect: Qt.rect(0, 0, 0, 0)
     property point hoverPos: Qt.point(-1, -1) // the last real mouse move, global
     // The row the preview shows; out of range (rows went) counts as none.
     readonly property int previewIndex: hoverIndex >= 0 && hoverIndex < list.count ? hoverIndex : list.currentIndex
     function clearHover() {
         hoverTimer.stop()
+        hoverLeaveTimer.stop()
+        hoverShown = false
         hoverIndex = -1
         hoverCandidate = -1
     }
@@ -258,7 +260,8 @@ Item {
         if (globalPos.x === hoverPos.x && globalPos.y === hoverPos.y)
             return
         hoverPos = globalPos
-        if (findingGroup || !previewOpen || previewSizing || list.rowDragging || (Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
+        hoverLeaveTimer.stop()
+        if (findingGroup || menuOpen || previewSizing || list.rowDragging || (Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
             return
         // Counted from entering the row, not from the last move: a hand
         // never holds quite still, so restarting on each move kept the
@@ -266,18 +269,47 @@ Item {
         if (index === hoverCandidate && hoverTimer.running)
             return
         hoverCandidate = index
-        if (index === previewIndex)
+        if (index === previewIndex && (previewOpen || hoverShown))
             hoverTimer.stop()
         else
             hoverTimer.restart()
     }
     Timer {
         id: hoverTimer
-        interval: 60 // a sweep across rows (a row in well under that) shows none of them
+        interval: page.previewOpen ? 60 : 200
         onTriggered: {
-            if (!page.findingGroup && page.previewOpen && !page.previewSizing && !list.rowDragging && !(Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier))
-                    && page.hoverCandidate >= 0 && page.hoverCandidate < list.count)
+            if (!page.findingGroup && !page.menuOpen && !page.previewSizing && !list.rowDragging
+                    && !(Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier))
+                    && page.hoverCandidate >= 0 && page.hoverCandidate < list.count) {
                 page.hoverIndex = page.hoverCandidate === list.currentIndex ? -1 : page.hoverCandidate
+                const row = list.itemAtIndex(page.hoverCandidate)
+                if (!page.previewOpen && row) {
+                    const p = row.mapToGlobal(0, 0)
+                    const left = listArea.mapToGlobal(0, 0).x
+                    page.hoverRect = Qt.rect(left, p.y, listArea.width, row.height)
+                    page.hoverShown = true
+                }
+            }
+        }
+    }
+    Timer {
+        id: hoverLeaveTimer
+        interval: 120 // let the pointer cross the gap to scroll/read the preview
+        onTriggered: if (!(hoverLoader.item?.hovered ?? false)) page.clearHover()
+    }
+    Loader {
+        id: hoverLoader
+        active: page.hoverShown && !page.previewOpen && !page.findingGroup
+        sourceComponent: Component {
+            ClipHoverPreview {
+                host: page.Window.window
+                anchorRect: page.hoverRect
+                availableArea: page.frame.availableArea(page)
+                metrics: page.metrics
+                info: page.previewRevision >= 0 ? page.clipboard.preview(page.previewIndex) : ({})
+                onCopyRequested: (text, remember) => page.clipboard.copyText(text, remember)
+                onHoveredChanged: if (!hovered) hoverLeaveTimer.restart()
+            }
         }
     }
 
@@ -290,6 +322,7 @@ Item {
     // caret, as the window is).
     function openContextMenu(index, globalPos) {
         previewClickTimer.stop()
+        clearHover()
         if (index < 0 || index >= list.count)
             return
         if (!clipboard.items.isSelected(index))
@@ -307,6 +340,7 @@ Item {
                    fromKeyboard && flipped)
     }
     function openCategoryMenu(category, globalPos) {
+        clearHover()
         const entries = clipboard.categoryMenuItems(category)
         if (entries.length === 0)
             return
@@ -446,7 +480,7 @@ Item {
         case Qt.Key_Escape:
             if (selectedCount > 0)
                 clipboard.clearSelection()
-            else // an open preview stays (clipboard.previewOpen): it is there next time
+            else
                 clipboard.dismiss()
             break
         case Qt.Key_Tab: clipboard.cycleCategory(1); break
@@ -529,6 +563,7 @@ Item {
         target: page.clipboard
         enabled: page.controllerEventsEnabled
         function onShown() {
+            page.closePreview()
             page.findingGroup = false
             input.text = ""
             page.pinyinHint = false
@@ -540,12 +575,10 @@ Item {
             page.selectFirst()
             page.focusSearch()
         }
-        function onPlaced() { // ... then the preview, if it was left open
+        function onPlaced() {
             // Placed only now (over the caret, maybe upside down, its rows):
             // at the first row as it ends up.
             page.selectFirst()
-            if (page.clipboard.previewOpen && list.count > 0)
-                page.showPreview()
         }
         function onListChanged() {
             page.selectionAnchor = -1
@@ -831,7 +864,7 @@ Item {
             // current row's again. Into the preview it stays (to scroll it,
             // pick words in it).
             HoverHandler {
-                onHoveredChanged: if (!hovered) page.clearHover()
+                onHoveredChanged: if (!hovered) hoverLeaveTimer.restart()
             }
 
             Item {
@@ -843,6 +876,7 @@ Item {
 
                 ListView {
                     id: list
+                    onContentYChanged: page.clearHover()
                     objectName: "clipboardEntries"
                     anchors.fill: parent
                     topMargin: 4
@@ -892,6 +926,7 @@ Item {
                     // Any transition declared here, enabled or not, makes Qt
                     // leave some pooled rows drawn after removals (ClipRow hides them).
                     property bool rowDragging: false
+                    onRowDraggingChanged: if (rowDragging) page.clearHover()
                     move: Transition {
                         enabled: SystemTheme.animations && !list.rowDragging
                         NumberAnimation { property: "y"; duration: 150; easing.type: Easing.OutCubic }
@@ -975,6 +1010,10 @@ Item {
                             itemY: clipRow.y
                         }
                         onHoverMoved: (index, globalPos) => page.hoverRow(index, globalPos)
+                        onHoverLeft: (index) => {
+                            if (!page.previewOpen && page.hoverCandidate === index)
+                                hoverLeaveTimer.restart()
+                        }
                         onClicked: (index, modifiers) => {
                             previewClickTimer.stop()
                             page.clearHover()
@@ -1094,7 +1133,7 @@ Item {
                 // Re-read when the rows change. The revision is part of the
                 // condition: a bare read of it would be dropped by the QML
                 // compiler, and the binding would not depend on it.
-                info: page.previewRevision >= 0 && list.count > 0 && page.previewIndex >= 0
+                info: page.previewOpen && page.previewRevision >= 0 && list.count > 0 && page.previewIndex >= 0
                       ? page.clipboard.preview(page.previewIndex) : ({})
             }
 

@@ -1,4 +1,5 @@
 #include "Preview.h"
+#include "PreviewInteractionProbe.h"
 #include "NavigationProbe.h"
 #include "UiFont.h"
 
@@ -148,7 +149,9 @@ void say(const QString& line)
 
 void countWarnings(QtMsgType type, const QMessageLogContext& context, const QString& message)
 {
-    if (type == QtWarningMsg || type == QtCriticalMsg || type == QtFatalMsg)
+    const bool offscreenSizeHint = QGuiApplication::platformName() == u"offscreen"
+        && message == u"This plugin does not support propagateSizeHints()";
+    if (!offscreenSizeHint && (type == QtWarningMsg || type == QtCriticalMsg || type == QtFatalMsg))
         ++g_warnings;
     if (g_previous)
         g_previous(type, context, message);
@@ -5418,6 +5421,8 @@ int runResults(const QStringList& args)
     QQmlApplicationEngine engine;
     engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
     engine.addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider); // the clipboard rows' pictures
+    if (args.contains(u"--preview-interactions"_s))
+        return checkPreviewInteractions(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--style-buttons"_s))
         return checkStyleButtons(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-sizing"_s))
@@ -8359,6 +8364,12 @@ void prepare(const QStringList& args)
     else
         qputenv("QT_QUICK_BACKEND", "software"); // renders without a window on screen
     qputenv("QT_QPA_PLATFORM", resultsMode || nativeWeb ? "windows:fontengine=freetype" : "windows:fontengine=gdi");
+    if (args.contains(u"--preview-interactions"_s)) {
+        if (!args.contains(u"--native-ui-probe"_s))
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+        qputenv("QT_QUICK_BACKEND", "software");
+        qputenv("QT_QPA_FONTDIR", qgetenv("WINDIR") + "/Fonts");
+    }
     // Nothing of the user's is read or written: a profile folder of its own.
     Settings::useProfile(QDir::temp().filePath(u"WinShun-preview-"_s + QUuid::createUuid().toString(QUuid::WithoutBraces).left(8)));
 }

@@ -59,6 +59,7 @@ qt_add_executable(WinShun WIN32
     PieLabels.cpp PieLabels.h
     Phosphor.cpp Phosphor.h
     Preview.cpp Preview.h
+    PreviewInteractionProbe.cpp PreviewInteractionProbe.h
     NavigationProbe.cpp NavigationProbe.h
     ClipScrollBench.cpp ClipScrollBench.h
     ContentPaneProbe.cpp ContentPaneProbe.h
@@ -161,6 +162,7 @@ set(qml_files
     qml/ClipTabs.qml
     qml/ClipRow.qml
     qml/ClipPreview.qml
+    qml/ClipHoverPreview.qml
     qml/RowAction.qml
     qml/ListScrollBar.qml
     qml/ScrollPixelAlignment.qml

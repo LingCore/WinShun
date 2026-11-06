@@ -56,6 +56,7 @@ public:
     // The native sizing border in logical pixels; controls beside it keep
     // their hit areas inside this inset, including at fractional scale.
     Q_INVOKABLE qreal resizeMargin(qreal devicePixelRatio) const;
+    Q_INVOKABLE QRect availableArea(QQuickItem* item) const;
     // Laid over the window while it is shown (an open menu: DropMenu.qml, the
     // editor's key list): the window's own, ahead of everything here (drag
     // areas, the maximise button, resizing edges), so a press on it is its

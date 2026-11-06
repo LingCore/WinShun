@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QGuiApplication>
+#include <QScreen>
 #include <QQuickWindow>
 #include <QStyleHints>
 #include <QWindow>
@@ -419,6 +420,12 @@ int WindowFrame::hitTest(int screenX, int screenY) const
     if (anyCovers(m_dragAreas, pos))
         return HTCAPTION;
     return HTCLIENT;
+}
+
+QRect WindowFrame::availableArea(QQuickItem* item) const
+{
+    QScreen* screen = item && item->window() ? item->window()->screen() : QGuiApplication::primaryScreen();
+    return screen ? screen->availableGeometry() : QRect();
 }
 
 qreal WindowFrame::resizeMargin(qreal devicePixelRatio) const

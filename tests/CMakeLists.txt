@@ -163,6 +163,12 @@ set_tests_properties(tst_explorerview PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 qt_add_executable(tst_previewplacement tst_previewplacement.cpp)
+add_test(NAME tst_previewinteractions COMMAND WinShun --preview-results
+    "${CMAKE_CURRENT_BINARY_DIR}/preview-interactions" --preview-interactions)
+add_test(NAME tst_previewinteractions_scaled COMMAND WinShun --preview-results
+    "${CMAKE_CURRENT_BINARY_DIR}/preview-interactions-scaled" --preview-interactions --scale 1.5 --english)
+set_tests_properties(tst_previewinteractions tst_previewinteractions_scaled PROPERTIES TIMEOUT 40 RUN_SERIAL TRUE
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 target_include_directories(tst_previewplacement PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_previewplacement PRIVATE Qt6::Core Qt6::Test)
 set_target_properties(tst_previewplacement PROPERTIES WIN32_EXECUTABLE FALSE)
