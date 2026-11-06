@@ -658,6 +658,14 @@ void SettingsEditor::setPanelHotkeyError(const QString& error)
     emit hotkeyErrorChanged();
 }
 
+void SettingsEditor::setPluginBuiltinsExpanded(bool expanded)
+{
+    if (m_settings.pluginBuiltinsExpanded == expanded)
+        return;
+    m_settings.pluginBuiltinsExpanded = expanded;
+    commit();
+}
+
 void SettingsEditor::setShortcutAgain(const QString& what)
 {
     if (m_settings.shortcutAgain == what || (what != u"close" && what != u"panel"))

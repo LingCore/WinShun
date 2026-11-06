@@ -480,6 +480,7 @@ struct Settings {
 
     // [Plugins]: the plugin system's own (the plugin design, §5.5).
     bool pluginDeveloperMode = false; // DeveloperMode=: the log pane, scripts reloaded as they change
+    bool pluginBuiltinsExpanded = false; // BuiltinsExpanded=: keep installed plugins within reach
 
     // [Plugin.<id>]: one section per plugin the user set anything for.
     QList<PluginConfig> plugins;

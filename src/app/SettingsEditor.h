@@ -328,6 +328,7 @@ class SettingsEditor : public QObject {
     // 插件: the page's own view-model (PluginSettings), which edits the
     // [Plugin.<id>] sections here.
     Q_PROPERTY(ws::PluginSettings* plugins READ plugins CONSTANT FINAL)
+    Q_PROPERTY(bool pluginBuiltinsExpanded READ pluginBuiltinsExpanded WRITE setPluginBuiltinsExpanded NOTIFY changed FINAL)
     Q_PROPERTY(ws::OcrPackage* ocrPackage READ ocrPackage CONSTANT FINAL)
     // 收藏夹: the page's own view-model (FavoritesSettings), on the app's
     // favorites (not in the INI: 恢复默认设置 leaves them).
@@ -945,6 +946,8 @@ public:
 
     // 插件 page
     PluginSettings* plugins() const { return m_plugins; }
+    bool pluginBuiltinsExpanded() const { return m_settings.pluginBuiltinsExpanded; }
+    void setPluginBuiltinsExpanded(bool expanded);
     OcrPackage* ocrPackage() const { return m_ocrPackage; }
     void useOcrPackage(OcrPackage* package); // before the settings window is created
 

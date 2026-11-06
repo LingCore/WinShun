@@ -29,7 +29,7 @@ Item {
     required property bool screenshot // a picture Win顺's capture took: tagged 截图 (when in no group)
     required property bool pasted // pasted from the list before, with 粘贴后保持位置 on (else the last pasted is on top): a check mark
     property int hint: 0 // the number that pastes this row (Alt+1...); 0 for none
-    property bool reserveHintSpace: false // a numbered row keeps the number's room while hints fade; one without a number sits flush left
+    property bool reserveHintSpace: false // keep one shared gutter, including rows beyond the nine numbered entries
     property string hintModifier: "Alt" // ... with this held
     property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
     property real hintOpacity: 1
@@ -102,10 +102,20 @@ Item {
         dpr: row.dpr
     }
 
+    Rectangle {
+        objectName: "clipboardRowSeparator"
+        visible: row.ListView.view !== null && row.index < row.ListView.view.count - 1
+        x: iconSlot.x
+        y: row.ListView.view?.verticalLayoutDirection === ListView.BottomToTop ? 0 : parent.height - height
+        width: Math.max(0, parent.width - x - 16)
+        height: Theme.edge(row.dpr)
+        color: Theme.divider
+    }
+
     Item {
         id: iconSlot
         objectName: "clipboardIconSlot"
-        x: 16 + (row.reserveHintSpace && row.hint > 0 ? 28 : 0)
+        x: 16 + (row.reserveHintSpace ? 28 : 0)
         anchors.verticalCenter: parent.verticalCenter
         // Pictures larger, on a taller row (ClipboardPage.pictureRowHeight):
         // what is in them shows (GitHub #9); 108 x 68 holds a 16:10 screen whole,
@@ -180,7 +190,7 @@ Item {
                 // set, the aspect kept), then drawn pixel for pixel, on whole
                 // pixels: sharp. Kept scaled (ClipThumbnailProvider), so a row
                 // scrolled back to shows its picture at once.
-                x: Math.round((parent.width - width) / 2 * dpr) / dpr
+                x: 0 // the image's leading edge follows the same gutter as text/file icons
                 y: Math.round((parent.height - height) / 2 * dpr) / dpr
                 width: ready ? implicitWidth : parent.width
                 height: ready ? implicitHeight : parent.height

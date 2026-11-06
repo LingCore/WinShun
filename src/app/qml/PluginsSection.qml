@@ -11,6 +11,7 @@ import WinShun
 // install or removal shows over the cards.
 SettingsSection {
     id: pluginsSection
+    objectName: "pluginsSection"
 
     required property PluginSettings plugins
     // Rows on the 开发者 tab shown only in developer mode (PluginDevSection.lockedRows).
@@ -18,6 +19,7 @@ SettingsSection {
     // The built-in features drawn as cards here (PasteFileCard, BuiltinCard);
     // null in a preview without one.
     property SettingsEditor editor: null
+    property bool builtinRevealed: false // search navigation may reveal a card without changing the saved preference
 
     // The cards unfolded, by plugin id: here, not in the cards, for the list
     // is reset (the cards made again) when a plugin comes or goes. Until the
@@ -64,6 +66,7 @@ SettingsSection {
     // The settings window hidden (SettingsWindow.resetForReopen): every card
     // folded, as in a window made anew; the menus are closed by the window.
     function resetForReopen() {
+        builtinRevealed = false
         expandedIds = []
         revealTimer.stop()
         revealed = ""
@@ -191,6 +194,9 @@ SettingsSection {
     // open_settings does), the row on the feature's own page comes first.
     SettingRow {
         id: builtinRow
+        objectName: "pluginBuiltinsRow"
+        readonly property bool expanded: searching || pluginsSection.builtinRevealed || (pluginsSection.editor?.pluginBuiltinsExpanded ?? false)
+        bodyShown: expanded
 
         // The names and words of the cards, and whether the words searched fit each.
         readonly property var pasteTerms: pasteCard.item ? pasteCard.item.searchTerms : []
@@ -226,11 +232,29 @@ SettingsSection {
         description: qsTr("随 Win顺 一起提供，用到哪个开哪个；关闭后停止对应功能，暂不支持单独卸载")
         shown: pluginsSection.editor !== null
         onRevealRequested: {
+            pluginsSection.builtinRevealed = true
             if (pasteFound && pasteCard.item && pluginsSection.editor.pasteFileEnabled)
                 pasteCard.item.expanded = true
         }
 
+        FlatButton {
+            objectName: "pluginBuiltinsToggle"
+            dpr: pluginsSection.dpr
+            flat: true
+            text: builtinRow.expanded ? qsTr("收起") : qsTr("展开")
+            trailingGlyph: builtinRow.expanded ? "\uE70E" : "\uE70D"
+            enabled: !builtinRow.searching
+            Accessible.name: builtinRow.expanded ? qsTr("收起内置功能") : qsTr("展开内置功能")
+            onClicked: {
+                const expand = !builtinRow.expanded
+                pluginsSection.builtinRevealed = false
+                pluginsSection.editor.pluginBuiltinsExpanded = expand
+            }
+        }
+
         body: Column {
+            objectName: "pluginBuiltinCards"
+            visible: builtinRow.expanded
             width: parent.width
             spacing: 8
 
@@ -343,6 +367,7 @@ SettingsSection {
 
     SettingRow {
         id: listRow
+        objectName: "installedPluginsRow"
 
         title: qsTr("已安装的插件")
         keywords: qsTr("插件;扩展;关键字;命令;安装;plugin;extension").split(";")

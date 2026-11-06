@@ -1129,6 +1129,7 @@ void Settings::load()
         mcpSettings = d.mcpSettings;
 
     pluginDeveloperMode = readOrDefault(s, u"Plugins/DeveloperMode"_s, d.pluginDeveloperMode);
+    pluginBuiltinsExpanded = readOrDefault(s, u"Plugins/BuiltinsExpanded"_s, d.pluginBuiltinsExpanded);
     plugins = readPlugins(s);
     // The former built-in and the old URL sample become one optional plugin.
     // Keep the old section for rollback, but read it only during this migration.
@@ -1357,6 +1358,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Mcp/PluginActions"_s, mcpPluginActions);
     s.setValue(u"Mcp/Settings"_s, mcpSettings);
     s.setValue(u"Plugins/DeveloperMode"_s, pluginDeveloperMode);
+    s.setValue(u"Plugins/BuiltinsExpanded"_s, pluginBuiltinsExpanded);
     auto pluginConfigs = plugins;
     auto web = std::find_if(pluginConfigs.begin(), pluginConfigs.end(), [](const PluginConfig& c) { return c.id == webplugin::kId; });
     if (web == pluginConfigs.end()) {

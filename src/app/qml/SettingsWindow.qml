@@ -1038,6 +1038,7 @@ Window {
 
         SettingsSearchBox {
             id: searchBox
+            objectName: "settingsSearchBox"
             x: 12
             y: 8
             width: parent.width - 24
@@ -3467,7 +3468,7 @@ Window {
                             what = qsTr("通过索引服务读取磁盘的主文件表和变更日志，Win顺 以普通权限运行")
                             break
                         case "direct":
-                            what = qsTr("Win顺 以管理员身份运行，自己读取主文件表和变更日志；开机自启也以管理员身份")
+                            what = qsTr("启动时请求管理员权限，直接读取主文件表和变更日志；取消后本次用普通权限，保留选择。开机自启也以管理员身份")
                             break
                         case "walk":
                             what = qsTr("不需要任何权限，逐个文件夹遍历，建索引慢一些")
@@ -3508,6 +3509,7 @@ Window {
 
                 SettingRow {
                     id: indexServiceRow
+                    objectName: "indexServiceRow"
                     sub: true
 
                     // A portable copy has no installer to register the service:
@@ -3515,7 +3517,7 @@ Window {
                     // An account that cannot install it (not an administrator's,
                     // GitHub #52) gets the reason instead of the buttons.
                     shown: window.editor.isPortable
-                    title: qsTr("便携版的索引服务")
+                    title: qsTr("索引服务")
                     keywords: qsTr("便携;安装服务;卸载服务;索引服务;没有管理员权限;装不了;portable;service").split(";")
                     description: window.editor.indexServiceInstalled && window.editor.indexServiceUnsafeLocation
                                  ? (window.editor.indexServiceInstallable
