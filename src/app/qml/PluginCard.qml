@@ -51,6 +51,7 @@ Rectangle {
     // 确认; "unavailable" and "confirming" (the copy being made) the line alone.
     required property string elevation
     required property string elevationNote
+    required property string elevationProblem // why the last 确认 did not work: under the note, here where it was clicked
     property bool marked: false // what the settings search found
     property bool expanded: false
     property bool animated: true // not in the offscreen preview: it draws no frames to run them
@@ -305,17 +306,14 @@ Rectangle {
                         }
                     }
                 }
-                Item { // `elevated` waits for the user (or cannot be): why, and the one click
+                Column { // `elevated` waits for the user (or cannot be): why, what the last 确认 came to, and the one click
                     visible: card.elevation === "unconfirmed" || card.elevation === "changed" || card.elevation === "unavailable"
                              || card.elevation === "confirming"
                     width: parent.width
-                    height: visible ? elevationText.implicitHeight + (confirmButton.visible ? 6 + confirmButton.height : 0) : 0
+                    spacing: 6
 
                     Text {
-                        id: elevationText
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
+                        width: parent.width
                         text: card.elevationNote
                         textFormat: Text.PlainText
                         color: Theme.caution
@@ -323,14 +321,24 @@ Rectangle {
                         wrapMode: Text.Wrap
                         lineHeight: 1.15
                     }
+                    Text {
+                        objectName: "elevationProblem"
+                        visible: card.elevationProblem.length > 0
+                        width: parent.width
+                        text: card.elevationProblem
+                        textFormat: Text.PlainText
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                        lineHeight: 1.15
+                    }
                     FlatButton {
                         dpr: card.dpr
-                        id: confirmButton
+                        objectName: "elevationConfirm"
                         visible: card.elevation === "unconfirmed" || card.elevation === "changed"
                         anchors.right: parent.right
-                        anchors.bottom: parent.bottom
                         implicitHeight: 28
-                        text: qsTr("确认")
+                        text: card.elevationProblem.length > 0 ? qsTr("再试一次") : qsTr("确认")
                         onClicked: card.plugins.confirmElevation(card.pluginId)
                     }
                 }

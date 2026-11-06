@@ -136,6 +136,7 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const
     case AiNoteRole: return c.aiNote;
     case ElevationRole: return c.elevation;
     case ElevationNoteRole: return c.elevationNote;
+    case ElevationProblemRole: return c.elevationProblem;
     }
     return {};
 }
@@ -147,7 +148,7 @@ QHash<int, QByteArray> PluginListModel::roleNames() const
         {StatusRole, "status"}, {ToneRole, "tone"}, {ErrorRole, "error"}, {ResidentRole, "resident"}, {KeywordsRole, "keywords"},
         {PermissionsRole, "permissions"}, {SettingsRole, "settings"}, {HasReadmeRole, "hasReadme"}, {SettingsWindowRole, "settingsWindow"}, {HasDataRole, "hasData"},
         {AiExposeRole, "aiExpose"}, {AiEnabledRole, "aiEnabled"}, {AiNoteRole, "aiNote"}, {WebSearchRole, "webSearch"},
-        {ElevationRole, "elevation"}, {ElevationNoteRole, "elevationNote"}};
+        {ElevationRole, "elevation"}, {ElevationNoteRole, "elevationNote"}, {ElevationProblemRole, "elevationProblem"}};
 }
 
 bool PluginListModel::setCards(std::vector<Card> cards)
@@ -734,6 +735,8 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
         if (m_confirming.contains(id)) {
             c.elevation = u"confirming"_s;
             c.elevationNote = tr("正在确认，复制插件的文件……");
+        } else if (elevation.verdict != V::Elevated) {
+            c.elevationProblem = confirmProblem(id, m.version);
         }
     }
 
@@ -767,7 +770,11 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
 void PluginSettings::rebuild()
 {
     if (m_preview) {
-        if (m_list.setCards(m_preview->cards))
+        std::vector<PluginListModel::Card> cards = m_preview->cards;
+        for (PluginListModel::Card& c : cards)
+            if (c.elevation != u"elevated")
+                c.elevationProblem = m_confirmProblems.value(c.id).text;
+        if (m_list.setCards(std::move(cards)))
             emit listChanged();
         return;
     }
@@ -904,6 +911,10 @@ void PluginSettings::confirmEnable(const QString& id)
 
 void PluginSettings::confirmElevation(const QString& id)
 {
+    if (m_preview) { // the sample's 确认 is refused, as a folder that is a link is (GitHub #230)
+        finishConfirm(id, false, u"插件文件夹是一个链接（%1），不能以管理员身份运行"_s.arg(m_userDir + u'\\' + id));
+        return;
+    }
     if (!m_host || m_confirming.contains(id))
         return;
     const plugin::Entry* e = m_host->catalog().find(id);
@@ -915,9 +926,11 @@ void PluginSettings::confirmElevation(const QString& id)
     // development): their folder as it is now.
     const std::optional<plugin::gallery::Item> item = m_updates ? m_updates->signedItem(id) : std::nullopt;
     if (item && item->version != e->manifest->version) {
-        setMessage(tr("插件库里现在是 %1 版，先把它更新到这一版，再确认").arg(item->version));
+        setConfirmProblem(id, tr("插件库里现在是 %1 版，先把它更新到这一版，再确认").arg(item->version));
+        rebuild();
         return;
     }
+    m_confirmProblems.remove(id);
     m_confirming.insert(id);
     rebuild();
     const plugin::elevation::Store store = m_host->elevationStore();
@@ -945,12 +958,25 @@ void PluginSettings::confirmElevation(const QString& id)
 void PluginSettings::finishConfirm(const QString& id, bool ok, const QString& error)
 {
     m_confirming.remove(id);
-    if (ok && m_host) {
+    // Said on the card that was clicked (its shield, or why not and the
+    // button again), not over the cards, out of sight and pushing them down.
+    if (ok && m_host)
         m_host->elevationConfirmed(id);
-        setMessage(tr("已确认，%1 以后以管理员身份运行").arg(pluginName(id)));
-    } else
-        setMessage(tr("没能确认以管理员身份运行：%1").arg(error));
+    else
+        setConfirmProblem(id, error.isEmpty() ? tr("没能确认，再试一次") : tr("没能确认：%1").arg(error));
     rebuild();
+}
+
+void PluginSettings::setConfirmProblem(const QString& id, const QString& text)
+{
+    const plugin::Entry* e = m_host ? m_host->catalog().find(id) : nullptr;
+    m_confirmProblems.insert(id, {e && e->manifest ? e->manifest->version : QString(), text});
+}
+
+QString PluginSettings::confirmProblem(const QString& id, const QString& version) const
+{
+    const auto it = m_confirmProblems.constFind(id);
+    return it != m_confirmProblems.cend() && it->version == version ? it->text : QString();
 }
 
 void PluginSettings::setAiEnabled(const QString& id, bool on)

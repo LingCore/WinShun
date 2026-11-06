@@ -69,6 +69,12 @@ add_test(NAME tst_settingsscroll COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_settingsscroll PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# #230: a plugin's 管理员 确认 that fails says why on its card, with 再试一次 there.
+add_test(NAME tst_pluginconfirm COMMAND $<TARGET_FILE:WinShun>
+    --preview-plugins "${CMAKE_CURRENT_BINARY_DIR}/plugin-confirm.png" --elevated --confirm)
+set_tests_properties(tst_pluginconfirm PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The screenshot hotkey row and its 按键一览 entry follow the capture plugin's state.
 add_test(NAME tst_settingscapturehotkey COMMAND $<TARGET_FILE:WinShun>
     --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/settings-capture-hotkey" --capture-hotkey --scale 1.5)

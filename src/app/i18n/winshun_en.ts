@@ -3226,6 +3226,10 @@
         <translation>Keywords</translation>
     </message>
     <message>
+        <source>再试一次</source>
+        <translation>Try again</translation>
+    </message>
+    <message>
         <source>设置</source>
         <translation>Settings</translation>
     </message>
@@ -11951,6 +11955,14 @@ Content index: %5</translation>
         <translation>Your plugins folder</translation>
     </message>
     <message>
+        <source>没能确认，再试一次</source>
+        <translation>Couldn&apos;t confirm. Try again.</translation>
+    </message>
+    <message>
+        <source>没能确认：%1</source>
+        <translation>Couldn&apos;t confirm: %1</translation>
+    </message>
+    <message>
         <source>选择文件夹</source>
         <translation>Choose a folder</translation>
     </message>
@@ -12161,14 +12173,6 @@ Content index: %5</translation>
     <message>
         <source>不能以管理员身份运行：%1</source>
         <translation>Cannot run as administrator: %1</translation>
-    </message>
-    <message>
-        <source>没能确认以管理员身份运行：%1</source>
-        <translation>Could not confirm running as administrator: %1</translation>
-    </message>
-    <message>
-        <source>已确认，%1 以后以管理员身份运行</source>
-        <translation>Confirmed: %1 runs as administrator from now on</translation>
     </message>
     <message>
         <source>插件的文件被改过，和你确认时不一样，现在用普通权限运行。不确定是谁改的就别确认</source>

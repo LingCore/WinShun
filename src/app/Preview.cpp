@@ -383,12 +383,47 @@ int runPlugins(const QStringList& args)
         if (!first || second || !third)
             return finish(window, false);
     }
+    // GitHub #230 (with --elevated): 确认 on the card not confirmed yet,
+    // clicked as a user does; the sample's is refused: why, and 再试一次,
+    // right there on that card.
+    bool confirmed = true;
+    if (args.contains(u"--confirm"_s)) {
+        const std::function<QQuickItem*(QQuickItem*, const QString&)> shown = [&](QQuickItem* item, const QString& name) -> QQuickItem* {
+            if (item->objectName() == name && item->isVisible())
+                return item;
+            for (QQuickItem* child : item->childItems())
+                if (QQuickItem* found = shown(child, name))
+                    return found;
+            return nullptr;
+        };
+        QQuickItem* button = shown(window->contentItem(), u"elevationConfirm"_s);
+        const QString before = button ? button->property("text").toString() : QString();
+        if (button) {
+            const QPointF at = button->mapToScene(QPointF(button->width() / 2, button->height() / 2));
+            QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+            QCoreApplication::sendEvent(window, &press);
+            QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+            QCoreApplication::sendEvent(window, &release);
+            pump(300);
+            settle(window);
+        }
+        QQuickItem* problem = shown(window->contentItem(), u"elevationProblem"_s);
+        button = shown(window->contentItem(), u"elevationConfirm"_s);
+        const QString why = problem ? problem->property("text").toString() : QString();
+        // Both on the one card, in its 管理员 part: the problem above the button.
+        const bool together = problem && button && problem->parentItem() == button->parentItem()
+            && button->mapToScene({}).y() > problem->mapToScene({}).y();
+        confirmed = before == u"确认" && why.startsWith(u"没能确认：插件文件夹是一个链接") && button
+            && button->property("text").toString() == u"再试一次" && together;
+        say(u"#230 确认: before '%1', problem '%2', button '%3', together %4"_s
+                .arg(before, why, button ? button->property("text").toString() : QString()).arg(together));
+    }
     say(u"grabbing"_s);
     if (args.contains(u"--tree"_s))
         writeTree(window, out + u".tree.txt"_s);
     const bool saved = saveGrab(window, out);
     say(u"dpr %1"_s.arg(window->devicePixelRatio()));
-    return finish(window, saved);
+    return finish(window, saved && confirmed);
 }
 
 // ---- --preview-settings -----------------------------------------------------------------

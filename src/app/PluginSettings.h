@@ -72,6 +72,9 @@ public:
         // 确认), "unavailable" (the note); empty otherwise.
         QString elevation;
         QString elevationNote;
+        // Why the last 确认 did not work, on the card that was clicked
+        // (GitHub #230: said only over the cards, it went unseen).
+        QString elevationProblem;
         friend bool operator==(const Card&, const Card&) = default;
     };
     enum Role {
@@ -101,6 +104,7 @@ public:
         WebSearchRole,
         ElevationRole,
         ElevationNoteRole,
+        ElevationProblemRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -312,6 +316,15 @@ private:
     QPointer<plugin::Host> m_host;
     QPointer<PluginUpdates> m_updates;
     QSet<QString> m_confirming; // confirmElevation's copies being made
+    // By plugin: why its last 确认 failed (Card::elevationProblem), said
+    // while it is still the version that was clicked (an update since: gone).
+    struct ConfirmProblem {
+        QString version;
+        QString text;
+    };
+    QHash<QString, ConfirmProblem> m_confirmProblems;
+    void setConfirmProblem(const QString& id, const QString& text);
+    QString confirmProblem(const QString& id, const QString& version) const;
     void finishConfirm(const QString& id, bool ok, const QString& error);
     QString m_installClaim; // the plugin of m_pendingInstall, or being installed
     QString m_locale = QStringLiteral("zh");
