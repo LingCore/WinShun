@@ -102,6 +102,7 @@ public:
         // row (PluginRow::subtitleAway); empty: the folder line as ever.
         FolderAwayRole,
         SettingsActionRole, // WinShun's own settings; no file or command to copy
+        WindowResultRole,
     };
 
     explicit ResultModel(QObject* parent = nullptr);

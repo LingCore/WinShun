@@ -70,6 +70,7 @@ enum class AppKind : quint8 {
     Security, // a page of Windows Security
     Tool, // a system tool or folder (WinShun's own list)
     Web, // a web page or a search on it, by keyword or name (WebShortcut)
+    Window, // a live top-level window; never a persistent file or launch command
 };
 
 // What a plugin said about a row of its own (the plugin system, src/plugin):
@@ -207,9 +208,14 @@ struct SearchResult {
     // row otherwise (Win顺's own: Launcher::screenshotRows).
     qint64 clipId = 0;
 
+    quintptr windowHandle = 0;
+    quint32 windowProcess = 0;
+    quint32 windowThread = 0;
+
     // An app or a place: something to start, not a file (no deleting it).
     bool isApp() const noexcept { return app != AppKind::None; }
-    bool isPlace() const noexcept { return app >= AppKind::Setting; }
+    bool isPlace() const noexcept { return app >= AppKind::Setting && app != AppKind::Window; }
+    bool isWindow() const noexcept { return app == AppKind::Window; }
     bool isCommand() const noexcept { return path.startsWith(u"winshun-command:"); }
     bool isSettings() const noexcept { return app == AppKind::Tool && path == u"winshun-place:winshun/settings"; }
     bool isWeb() const noexcept { return app == AppKind::Web; }

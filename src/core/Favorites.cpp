@@ -84,7 +84,7 @@ QString lastName(const QString& path)
 
 std::optional<Favorite> favoriteOf(const SearchResult& row)
 {
-    if (row.path.isEmpty() || row.isWeb() || row.isPlugin())
+    if (row.path.isEmpty() || row.isWeb() || row.isPlugin() || row.isWindow())
         return std::nullopt;
     Favorite f;
     f.path = row.path;

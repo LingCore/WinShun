@@ -20,6 +20,7 @@
 #include "KeepAwakeText.h"
 
 #include <QGuiApplication>
+#include <QFileInfo>
 #include <QLocale>
 #include <QStyleHints>
 #include <QTime>
@@ -116,6 +117,9 @@ QString webSearchTitle(const SearchResult& r, std::pair<qsizetype, qsizetype>* w
 // shortcut's: the address it opens, and for its site the keyword.
 QString appOrigin(const SearchResult& r)
 {
+    if (r.isWindow())
+        return ResultModel::tr("切换到窗口 · %1").arg(r.target.isEmpty()
+            ? ResultModel::tr("正在运行") : QFileInfo(r.target).completeBaseName());
     if (r.isSettings())
         return ResultModel::tr("外观、快捷键与插件");
     if (r.isCommand())
@@ -372,11 +376,16 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return r->isApp() ? appOrigin(*r) : parentFolder(r->path);
     case PathRole:
         return r->path;
+    case WindowResultRole:
+        return r->isWindow();
     case IsDirRole:
         return r->isDir;
     case IconRole:
         if (r->isWeb() || r->isApp()) {
             const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+            if (r->isWindow())
+                return r->target.isEmpty() ? FileIconProvider::pluginIconUrl(QString(), u"glyph:U+E8A7"_s, dark)
+                                          : FileIconProvider::iconUrl(r->target, false);
             if (r->isSettings())
                 return FileIconProvider::pluginIconUrl(QString(), u"glyph:U+E713"_s, dark);
             if (r->isCommand())
@@ -426,7 +435,7 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return !r->missing && !r->offline && (r->isApp() ? r->elevatable
             : !r->isDir && shell::canRunAsAdministrator(r->path));
     case RevealableRole:
-        return !r->isApp() || (!r->isPlace() && !r->target.isEmpty());
+        return !r->isApp() || (!r->isWindow() && !r->isPlace() && !r->target.isEmpty());
     case CopyableRole:
         return !r->isApp() || r->hasCopyableTarget();
     case SettingsActionRole:
@@ -555,6 +564,7 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {OfflineRole, "offline"},
         {PluginRole, "plugin"},
         {SourceRole, "source"},
+        {WindowResultRole, "windowResult"},
         {FavoriteRole, "favorite"},
         {FavoriteKeywordRole, "favoriteKeyword"},
         {MissingRole, "missing"},

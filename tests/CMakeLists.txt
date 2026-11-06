@@ -1,5 +1,13 @@
 find_package(Qt6 6.8 REQUIRED COMPONENTS Test QuickTest)
 
+qt_add_executable(tst_windowsearch tst_windowsearch.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/WindowSearch.cpp)
+target_include_directories(tst_windowsearch PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_windowsearch PRIVATE wscore Qt6::Test user32 dwmapi)
+set_target_properties(tst_windowsearch PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_windowsearch COMMAND tst_windowsearch -o -,txt)
+set_tests_properties(tst_windowsearch PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_queryhistory tst_queryhistory.cpp)
 target_link_libraries(tst_queryhistory PRIVATE wscore Qt6::Test)
 qt_add_executable(tst_pluginreadme tst_pluginreadme.cpp ${PROJECT_SOURCE_DIR}/src/app/PluginReadme.cpp)

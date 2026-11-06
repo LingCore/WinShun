@@ -4016,6 +4016,10 @@
         <source>复制网址</source>
         <translation>Copy address</translation>
     </message>
+    <message>
+        <source>复制窗口标题</source>
+        <translation>Copy window title</translation>
+    </message>
 </context>
 <context>
     <name>ResultTile</name>
@@ -11583,6 +11587,26 @@ Content index: %5</translation>
         <source>Win顺 设置</source>
         <translation>WinShun Settings</translation>
     </message>
+    <message>
+        <source>切换到窗口</source>
+        <translation>Switch to window</translation>
+    </message>
+    <message>
+        <source>复制窗口标题</source>
+        <translation>Copy window title</translation>
+    </message>
+    <message>
+        <source>窗口已关闭或内容已改变，请重新搜索</source>
+        <translation>The window closed or its content changed. Search again.</translation>
+    </message>
+    <message>
+        <source>无法切换到此窗口，请从任务栏打开</source>
+        <translation>Could not switch to this window. Open it from the taskbar.</translation>
+    </message>
+    <message>
+        <source>复制路径或窗口标题</source>
+        <translation>Copy paths or window titles</translation>
+    </message>
 </context>
 <context>
     <name>ws::OcrPackage</name>
@@ -12619,6 +12643,22 @@ Content index: %5</translation>
     <message>
         <source>外观、快捷键与插件</source>
         <translation>Appearance, shortcuts and plugins</translation>
+    </message>
+    <message>
+        <source>切换到窗口 · %1</source>
+        <translation>Switch to window · %1</translation>
+    </message>
+    <message>
+        <source>正在运行</source>
+        <translation>Running</translation>
+    </message>
+    <message>
+        <source>已打开</source>
+        <translation>Open</translation>
+    </message>
+    <message>
+        <source>窗口</source>
+        <translation>Window</translation>
     </message>
 </context>
 <context>

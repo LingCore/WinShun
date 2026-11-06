@@ -8,6 +8,8 @@ namespace ws {
 
 inline QString resultFolder(const SearchResult& row)
 {
+    if (row.isWindow())
+        return {};
     QString path = row.isPlugin()
         ? (row.plugin->openKind == PluginRow::OpenKind::Path ? row.plugin->openTarget : QString())
         : row.path;
@@ -25,6 +27,8 @@ inline QString resultFolderName(const SearchResult& row)
 
 inline QString resultType(const SearchResult& row)
 {
+    if (row.isWindow())
+        return QCoreApplication::translate("ws::ResultModel", "窗口");
     if (row.isDir)
         return QCoreApplication::translate("ws::ResultModel", "文件夹");
     const qsizetype dot = row.name.lastIndexOf(u'.');
@@ -35,7 +39,8 @@ inline QString resultSource(const SearchResult& row)
 {
     if (row.isPlugin())
         return row.plugin->source;
-    const char* source = row.line > 0 ? QT_TRANSLATE_NOOP("ws::ResultModel", "内容")
+    const char* source = row.isWindow() ? QT_TRANSLATE_NOOP("ws::ResultModel", "已打开")
+        : row.line > 0 ? QT_TRANSLATE_NOOP("ws::ResultModel", "内容")
         : row.isWeb()                 ? QT_TRANSLATE_NOOP("ws::ResultModel", "网页")
         : row.isPlace()               ? QT_TRANSLATE_NOOP("ws::ResultModel", "系统")
         : row.isApp()                 ? QT_TRANSLATE_NOOP("ws::ResultModel", "应用")

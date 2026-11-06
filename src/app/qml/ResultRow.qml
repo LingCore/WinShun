@@ -67,6 +67,7 @@ Item {
     required property string size // "1.2 MB", for the tip
     required property bool offline // on a network share that cannot be reached now: dimmed, tagged
     required property bool plugin // a plugin's row
+    required property bool windowResult
     required property string source // ... the plugin's name
     required property bool pluginCopies // ... with its own text to copy, or Enter copies: its copy button
     required property string folderAway // ... its second line while the keyboard is on another row; "": the folder line
@@ -410,7 +411,7 @@ Item {
             text: row.plugin ? row.source : row.missing ? qsTr("已不存在")
                 : row.favorite ? (row.favoriteKeyword.length > 0 ? qsTr("收藏 · %1").arg(row.favoriteKeyword) : qsTr("收藏"))
                 : row.recent ? qsTr("最近") : row.suggestion ? qsTr("建议") : row.web ? qsTr("网页")
-                : row.place ? qsTr("系统") : qsTr("应用")
+                : row.place ? qsTr("系统") : row.source
             color: Theme.accent
             font.pixelSize: row.compact ? 12 : Theme.uiCaption
         }
@@ -599,8 +600,8 @@ Item {
                 dpr: row.dpr
                 id: copyPathAction
                 visible: !row.settingsAction && !row.switchReady && (!row.plugin || row.pluginCopies)
-                glyph: row.plugin ? "" : "copyPath" // Copy; else drawn by Glyph: a box holding "\\.."
-                tip: row.plugin ? qsTr("复制") : row.web ? qsTr("复制网址") : row.place ? qsTr("复制打开命令") : qsTr("复制完整路径")
+                glyph: row.plugin || row.windowResult ? "" : "copyPath" // Copy; else drawn by Glyph: a box holding "\\.."
+                tip: row.windowResult ? qsTr("复制窗口标题") : row.plugin ? qsTr("复制") : row.web ? qsTr("复制网址") : row.place ? qsTr("复制打开命令") : qsTr("复制完整路径")
                 tipShortcut: row.plugin ? "Ctrl+C" : "Ctrl+Shift+C"
                 onClicked: row.actionRequested(row.index, Launcher.CopyPath)
             }

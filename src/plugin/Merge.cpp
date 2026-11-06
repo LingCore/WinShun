@@ -334,7 +334,7 @@ int Merge::floorRow() const
     int floor = current > 0 ? current + 1 : 0;
     for (int i = 0; i < m_sink.count(); ++i) {
         const SearchResult& r = m_sink.row(i);
-        if (r.recent || r.favorite || (r.exact && r.isApp()))
+        if (r.isWindow() || r.recent || r.favorite || (r.exact && r.isApp()))
             floor = std::max(floor, i + 1);
     }
     return std::min(floor, m_sink.count());

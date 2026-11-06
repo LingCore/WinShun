@@ -1949,6 +1949,16 @@ void SearchEngine::runNameSearch(const Job& job)
         results = std::move(rows);
     }
 
+    if (request.openWindows && request.scope == Scope::All && !query.isEmpty()
+        && !query.hasFilters() && query.extensions.empty() && !listing && request.currentFolder.isEmpty()
+        && request.extensions.isEmpty() && request.folders.isEmpty() && !request.filter.any()
+        && request.order.key == SortKey::Rank && request.rankBy == RankBy::Match && !isStale(job.id)) {
+        SearchResults windows = request.openWindows();
+        total += windows.size();
+        windows.append(std::move(results));
+        results = std::move(windows);
+    }
+
     // The rows of the query before stay on screen (dimmed) until these come.
     const auto ms = [](Clock::duration d) {
         return static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(d).count());

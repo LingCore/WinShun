@@ -29,6 +29,7 @@
 #include "platform/Shell.h"
 #include "platform/ShellContextMenu.h"
 #include "platform/WindowEffects.h"
+#include "platform/WindowSearch.h"
 
 #include <QCursor>
 #include <QDateTime>
@@ -1996,6 +1997,11 @@ void Launcher::search(bool more)
     }
     request.web = m_web;
     request.apps = m_searchApps;
+    if (m_searchApps && !m_folderSearch && !typedKeyword(m_web, m_query)) {
+        request.openWindows = [query = request.text, regex = regexTerms()] {
+            return windowsearch::matching(windowsearch::snapshot(), query, regex);
+        };
+    }
     request.places = m_searchPlaces;
     request.settingsName = tr("Win顺 设置");
     request.regex = regexTerms();
@@ -3084,6 +3090,8 @@ void Launcher::refreshKeyHints()
                                                               : tr("复制"); // the plugin's default action copies the row's text
             }
         }
+    } else if (r->isWindow()) {
+        enter = tr("切换到窗口");
     } else if (r->isWeb()) {
         enter = r->words.isEmpty() ? tr("打开网站") : tr("搜索");
     } else if (r->isPlace()) {
@@ -4203,6 +4211,25 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
     const SearchResult r = result; // the model may change underneath us
     if (!fileChecked)
         dropServerWait(); // a server still being waited for no longer matters
+    if (r.isWindow()) {
+        if (action == Open || action == Alternate) {
+            switch (windowsearch::activate(r)) {
+            case windowsearch::Activation::Switched:
+                emit dismissRequested();
+                break;
+            case windowsearch::Activation::Gone:
+                flash(tr("窗口已关闭或内容已改变，请重新搜索"));
+                break;
+            case windowsearch::Activation::Refused:
+                flash(tr("无法切换到此窗口，请从任务栏打开"));
+                break;
+            }
+        } else if (action == CopyItem || action == CopyName || action == CopyPath) {
+            shell::copyText(r.name);
+            flash(tr("已复制名称"));
+        }
+        return;
+    }
     if (r.isSettings()) {
         if (action == Open || action == Alternate || action == Reveal || action == RunAsAdmin)
             openSettings();
@@ -4773,6 +4800,11 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
         const bool admin = action == RunAsAdmin;
         int started = 0;
         for (const SearchResult& r : items) {
+            if (r.isWindow()) {
+                if (!admin && windowsearch::activate(r) == windowsearch::Activation::Switched)
+                    ++started;
+                continue;
+            }
             if (r.isPlugin()) { // its own default action (which may close the window itself)
                 if (admin)
                     continue;
@@ -4815,7 +4847,7 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
         int shown = 0;
         for (const SearchResult& r : items) {
             const QString& place = r.isApp() ? r.target : r.path;
-            if (r.isPlace() || place.isEmpty() || !exists(place))
+            if (r.isWindow() || r.isPlace() || place.isEmpty() || !exists(place))
                 continue;
             remember(r.path, m_shownText);
             if (r.isPackagedApp())
@@ -4851,7 +4883,9 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
     case CopyPath: {
         QStringList paths;
         for (const SearchResult& r : items) {
-            if (r.isPlugin())
+            if (r.isWindow())
+                paths.append(r.name);
+            else if (r.isPlugin())
                 paths.append(r.plugin->copy.isEmpty() ? r.name : r.plugin->copy);
             else
                 paths.append(r.isApp() && !r.target.isEmpty() ? r.target : r.path);
@@ -5082,13 +5116,14 @@ QVariantList Launcher::menuItems(int row) const
         const auto any = [&](auto test) { return std::any_of(selection.cbegin(), selection.cend(), test); };
         QVariantList items;
         items.append(entry(Open, tr("打开 %Ln 项", nullptr, static_cast<int>(selection.size())), u"Enter"_s, u"\uE8E5"_s));
-        if (any([](const SearchResult& r) { return !r.isApp() || (!r.isPlace() && !r.target.isEmpty()); }))
+        if (any([](const SearchResult& r) { return !r.isApp() || (!r.isWindow() && !r.isPlace() && !r.target.isEmpty()); }))
             items.append(entry(Reveal, tr("打开所在位置"), u"Ctrl+Enter"_s, u"\uE8DA"_s));
         fileCommandItems(items);
         items.append(separator);
         if (any([](const SearchResult& r) { return !r.isApp() || r.hasCopyableTarget(); }))
             items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
-        items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
+        items.append(entry(CopyPath, any([](const SearchResult& r) { return r.isWindow(); })
+            ? tr("复制路径或窗口标题") : tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
         items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
         if (any([](const SearchResult& r) { return r.recent; })) {
             items.append(separator);
@@ -5135,6 +5170,11 @@ QVariantList Launcher::menuItems(int row) const
             items.append(entry(FavoriteFolder, tr("收藏所在的文件夹"), QString(), u"\uE8B7"_s)); // Folder
         }
     };
+    if (r->isWindow()) {
+        items.append(entry(Open, tr("切换到窗口"), u"Enter"_s, u"\uE8A7"_s));
+        items.append(entry(CopyName, tr("复制窗口标题"), u"Ctrl+C"_s, u"\uE8AC"_s));
+        return items;
+    }
     if (r->clipId > 0) { // a screenshot of the history
         items.append(entry(Open, tr("复制并粘贴"), u"Enter"_s, u"\uE77F"_s)); // Paste
         if (m_pictureVerbs.pin)

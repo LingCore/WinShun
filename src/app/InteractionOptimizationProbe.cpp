@@ -147,6 +147,99 @@ bool checkDoubleTapSettings(QQuickWindow* window, SettingsEditor* editor, const 
     return check.save(output, u"double-tap-settings.json"_s);
 }
 
+bool checkWindowSearchAndMenu(QQmlEngine* engine, const QDir& output)
+{
+    Checks check;
+    const QString originalStyle = SystemTheme::uiStyle();
+    const auto restore = qScopeGuard([&] { SystemTheme::setUiStyle(originalStyle); });
+    for (const QString& style : {u"fluent"_s, u"brand"_s, u"tactile"_s}) {
+        SystemTheme::setUiStyle(style);
+        FolderMenu menu(nullptr, nullptr);
+        QQmlComponent component(engine, u"WinShun"_s, u"FolderMenuWindow"_s);
+        std::unique_ptr<QObject> root(component.createWithInitialProperties({{u"folderMenu"_s, QVariant::fromValue(&menu)}}));
+        auto* window = qobject_cast<QQuickWindow*>(root.get());
+        check(window != nullptr, style + u": folder menu loads: "_s + component.errorString());
+        if (!window) return false;
+        menu.setWindow(window);
+        QVariantList entries;
+        for (int i = 0; i < 25; ++i)
+            entries.append(QVariantMap {{u"text"_s, u"项目资料 %1 · 客户交付和年度报告"_s.arg(i + 1)},
+                {u"glyph"_s, u"\uE8B7"_s}, {u"action"_s, i}});
+        menu.previewEntries(entries);
+        window->setProperty("availableArea", QRectF(0, 0, 640, 340));
+        offscreen(window);
+        const int height = window->property("itemHeight").toInt();
+        const bool compact = SystemTheme::uiSize() == u"compact";
+        check(height == (style == u"fluent" ? 36 : 34) + (compact ? -6 : 0), style + u": menu density follows the selected size"_s);
+        check(window->width() == (compact ? 300 : 360) && window->height() <= 324,
+            style + u": compact width and bounded scrolling fit the work area"_s);
+        QMetaObject::invokeMethod(window, "handleKey", Q_ARG(QVariant, Qt::Key_End), Q_ARG(QVariant, QString()));
+        settle();
+        check(window->property("highlighted").toInt() == 24, style + u": keyboard reaches the last item"_s);
+        auto* last = find(window->contentItem(), u"folderMenuEntry24"_s);
+        check(last && last->mapToItem(window->contentItem(), QPointF()).y() + last->height() <= window->height() + 1,
+            style + u": last row is fully visible after scrolling"_s);
+        check(window->grabWindow().save(output.filePath(style + u"-compact-menu.png"_s)), style + u": capture menu"_s);
+        check(!window->isActive(), style + u": menu stays inactive"_s);
+        window->hide();
+    }
+    SystemTheme::setUiStyle(originalStyle);
+    QTemporaryDir profile;
+    IndexService index(profile.filePath(u"index"_s), {});
+    AppCatalog apps;
+    apps.setApps(std::make_shared<const AppList>());
+    SystemCatalog places;
+    places.setPlaces(std::make_shared<const PlaceList>());
+    SearchEngine search(&index, &apps, &places);
+    History history(profile.filePath(u"history.txt"_s));
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    launcher.setContentOptions(false, {}, {}, true, true);
+    launcher.results()->setThumbnails(false);
+    ClipStore store(profile.filePath(u"clipboard"_s));
+    store.open(QDateTime::currentMSecsSinceEpoch());
+    ClipboardWatcher watcher({.record = false}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(profile.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> root(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    auto* window = qobject_cast<QQuickWindow*>(root.get());
+    check(window != nullptr, u"production launcher loads: "_s + component.errorString());
+    if (!window) return false;
+    window->create();
+    frame.setWindow(window);
+    launcher.setWindow(window);
+    offscreen(window);
+    SearchResult active;
+    active.app = AppKind::Window;
+    active.name = u"年度报告.docx — 文档编辑器"_s;
+    active.path = u"winshun-window:0/0/0"_s;
+    active.target = QCoreApplication::applicationFilePath();
+    SearchResult file;
+    file.name = u"年度报告.docx"_s;
+    file.path = u"D:\\项目资料\\年度报告.docx"_s;
+    launcher.results()->assign({active, file}, {u"报告"_s});
+    launcher.setCurrentRow(1);
+    launcher.setCurrentRow(0);
+    settle();
+    const auto at = launcher.results()->index(0);
+    check(launcher.results()->data(at, ResultModel::SourceRole).toString()
+        == QCoreApplication::translate("ws::ResultModel", "已打开"), u"live results have an explicit already-open badge"_s);
+    check(!launcher.results()->data(at, ResultModel::RevealableRole).toBool()
+        && !launcher.results()->data(at, ResultModel::ElevatableRole).toBool(),
+        u"live windows offer no misleading file reveal or administrator action"_s);
+    check(launcher.keyHints().value(u"enter"_s).toString() == Launcher::tr("切换到窗口"),
+        u"Enter describes switching instead of launching a duplicate"_s);
+    check(window->grabWindow().save(output.filePath(u"open-window-results.png"_s)), u"capture open-window results"_s);
+    launcher.trigger(0, Launcher::Open);
+    check(launcher.statusText() == Launcher::tr("窗口已关闭或内容已改变，请重新搜索"),
+        u"stale window activation stays in the launcher with actionable feedback"_s);
+    check(!window->isActive(), u"launcher validation never activates a user window"_s);
+    return check.save(output, u"window-search-menu.json"_s);
+}
+
 struct DoubleTapActionsProbe {
     static bool run(App& app, const QDir& output)
     {
