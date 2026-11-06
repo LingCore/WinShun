@@ -142,11 +142,40 @@ SettingsSection {
 
                 ListView {
                     id: logList
+
+                    // Whether the newest stays in view (GitHub #232): taken before a
+                    // message is added; a message clicked open ends it.
+                    property bool followEnd: true
+                    function keepNewest() { if (followEnd) positionViewAtEnd() }
+
+                    objectName: "pluginLogList"
                     anchors.fill: parent
                     anchors.margins: Theme.edge(Screen.devicePixelRatio) // inside the border
                     model: devSection.plugins.log
                     boundsBehavior: Flickable.StopAtBounds
-                    onCountChanged: positionViewAtEnd()
+                    // Scrolls only when the lines do not fit: then the wheel
+                    // over it is its own, never handed on to the page at an
+                    // end (GitHub #232); else the page scrolls as anywhere.
+                    interactive: contentHeight > height
+
+                    ListWheelScroll {
+                        view: logList
+                        animate: SystemTheme.animations
+                        logicalPixelSteps: true // rows of any height (an opened message)
+                    }
+
+                    // A new message comes into view only for someone looking at
+                    // the newest; scrolled up to read, the list stays put.
+                    // Later, not here: the list itself hears of the row after this.
+                    Connections {
+                        target: logList.model
+                        function onRowsAboutToBeInserted() { logList.followEnd = logList.atYEnd || !logList.interactive }
+                        function onRowsInserted() { Qt.callLater(logList.keepNewest) }
+                        function onModelReset() { logList.followEnd = true; Qt.callLater(logList.keepNewest) } // another plugin's, or cleared
+                    }
+                    // The box grows with its lines (up to its most): still at the newest.
+                    onHeightChanged: Qt.callLater(keepNewest)
+                    Component.onCompleted: Qt.callLater(keepNewest)
 
                     delegate: Item {
                         id: logLine
@@ -240,7 +269,14 @@ SettingsSection {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: logLine.open = !logLine.open
+                            // The one clicked stays in view, all of it once
+                            // opened: no longer carried off to the newest.
+                            onClicked: {
+                                logList.followEnd = false
+                                logLine.open = !logLine.open
+                                const row = logLine.index
+                                Qt.callLater(() => logList.positionViewAtIndex(row, ListView.Contain))
+                            }
                         }
                     }
                 }

@@ -1367,6 +1367,133 @@ int runSettings(const QStringList& args)
             settle(window, 2);
             check(inView(tabbable.first()), u"Tab to a control above scrolls it whole into view, below the header"_s);
         }
+
+        // The mouse, as the user's: moves, presses and the wheel through the window.
+        const auto mouse = [&](QEvent::Type type, QPointF at, Qt::MouseButtons buttons) {
+            QMouseEvent event(type, at, window->mapToGlobal(at), type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton, buttons, {});
+            QCoreApplication::sendEvent(window, &event);
+        };
+        const auto wheel = [&](QPointF at, int notches) {
+            for (int i = 0; i < std::abs(notches); ++i) {
+                QWheelEvent event(at, window->mapToGlobal(at), {}, QPoint(0, notches < 0 ? 120 : -120), Qt::NoButton, {}, Qt::NoScrollPhase, false);
+                QCoreApplication::sendEvent(window, &event);
+            }
+            pump(400); // the glides (SystemTheme.animations)
+            settle(window, 2);
+        };
+        const auto centre = [&](QQuickItem* item) { return item->mapToItem(window->contentItem(), QPointF(item->width() / 2, item->height() / 2)); };
+
+        // GitHub #229: the page's scroll bar is one to use: it widens under
+        // the mouse, its thumb drags the page, a click beside it pages.
+        auto* bar = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"settingsScrollBar"_s));
+        // Never over a control at the page's right: the bar's whole width (all
+        // of it takes the mouse) right of every switch on 剪贴板 › 记录.
+        double rightmost = 0;
+        for (QQuickItem* item : std::as_const(tabbable))
+            if (item->isVisible())
+                rightmost = std::max(rightmost, item->mapToScene(QPointF(item->width(), 0)).x());
+        const double barLeft = bar ? bar->mapToScene({}).x() : 0.0;
+        check(bar && rightmost > 0 && rightmost <= barLeft + 0.5,
+            u"the scroll bar keeps clear of the page's controls (the rightmost ends at %1, the bar starts at %2)"_s.arg(rightmost).arg(barLeft));
+        show(0, 4); // 按键一览 again: long
+        check(bar && bar->isVisible() && bar->width() >= 10, u"the page has a scroll bar to grab"_s);
+        if (bar && bar->isVisible()) {
+            flick->setProperty("contentY", 0.0);
+            settle(window, 2);
+            const QPointF thumbAt = bar->mapToItem(window->contentItem(), QPointF(bar->width() - 5, 4 + 12)); // the thumb's top, at rest
+            mouse(QEvent::MouseMove, thumbAt, Qt::NoButton);
+            settle(window, 2);
+            check(bar->property("expanded").toBool(), u"the scroll bar widens under the mouse"_s);
+            mouse(QEvent::MouseButtonPress, thumbAt, Qt::LeftButton);
+            for (int step = 1; step <= 6; ++step)
+                mouse(QEvent::MouseMove, thumbAt + QPointF(0, step * 30), Qt::LeftButton);
+            mouse(QEvent::MouseButtonRelease, thumbAt + QPointF(0, 180), Qt::NoButton);
+            settle(window, 2);
+            const double dragged = contentY();
+            check(dragged > 300, u"dragging the thumb scrolls the page (to %1)"_s.arg(dragged));
+            const QPointF below = bar->mapToItem(window->contentItem(), QPointF(bar->width() - 5, bar->height() - 8));
+            mouse(QEvent::MouseButtonPress, below, Qt::LeftButton);
+            mouse(QEvent::MouseButtonRelease, below, Qt::NoButton);
+            settle(window, 2);
+            check(contentY() > dragged + flick->height() / 2, u"a click below the thumb goes a page down"_s);
+            mouse(QEvent::MouseMove, centre(page), Qt::NoButton);
+        }
+
+        // GitHub #232: the wheel over the plugin message log scrolls the log,
+        // never the page around it, at its ends too; over a log that fits,
+        // the page as anywhere. A new message moves it only from the newest.
+        auto* plugins = editor->plugins();
+        if (!plugins->developerMode())
+            plugins->setDeveloperMode(true);
+        for (int i = 0; i < 40; ++i)
+            plugins->log()->append({u"14:1%1:00.000"_s.arg(i % 10), u"lingcore.kill"_s, i % 2 ? u"←"_s : u"→"_s,
+                u"result #%1"_s.arg(i), u"{\"jsonrpc\":\"2.0\",\"id\":%1}"_s.arg(i), 3});
+        const int fullHeight = window->height();
+        window->resize(window->width(), 560); // low enough that the page scrolls too
+        settle(window, 2);
+        show(window->property("pluginsPage").toInt(), 2); // 插件 › 开发者
+        auto* logList = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"pluginLogList"_s));
+        check(logList && logList->isVisible() && logList->property("interactive").toBool(), u"the plugin log is there, longer than its box"_s);
+        if (logList && logList->isVisible()) {
+            const auto logY = [&] { return logList->property("contentY").toDouble(); };
+            QMetaObject::invokeMethod(window, "revealRow", Q_ARG(QVariant, QVariant::fromValue<QObject*>(logList)));
+            settle(window, 2);
+            check(logList->property("atYEnd").toBool(), u"the log opens at the newest message"_s);
+            const double pageAt = contentY();
+            say(u"page at %1 of %2, the log %3 of %4"_s.arg(pageAt).arg(flick->property("contentHeight").toDouble() - flick->height())
+                    .arg(logY()).arg(logList->property("contentHeight").toDouble() - logList->height()));
+            check(pageAt > 0, u"the page can scroll up from where the log is"_s);
+            const QPointF over = centre(logList);
+            wheel(over, -3); // up: the log moves, the page stays
+            check(!logList->property("atYEnd").toBool() && qFuzzyCompare(contentY() + 1, pageAt + 1),
+                u"the wheel up over the log scrolls the log only (page %1 → %2)"_s.arg(pageAt).arg(contentY()));
+            wheel(over, -60); // far past its top
+            check(logList->property("atYBeginning").toBool() && qFuzzyCompare(contentY() + 1, pageAt + 1),
+                u"at the log's top more wheel leaves the page where it is (page %1 → %2)"_s.arg(pageAt).arg(contentY()));
+            wheel(over, 60); // and past its bottom
+            check(logList->property("atYEnd").toBool() && qFuzzyCompare(contentY() + 1, pageAt + 1),
+                u"at the log's bottom more wheel leaves the page where it is (page %1 → %2)"_s.arg(pageAt).arg(contentY()));
+            wheel(over, -3);
+            const double reading = logY();
+            plugins->log()->append({u"14:20:00.000"_s, u"lingcore.kill"_s, u"→"_s, u"query #new"_s, u"{}"_s, -1});
+            settle(window, 2);
+            check(qFuzzyCompare(logY() + 1, reading + 1), u"a new message leaves a log scrolled up to read where it is"_s);
+            wheel(over, 60);
+            plugins->log()->append({u"14:20:01.000"_s, u"lingcore.kill"_s, u"←"_s, u"result #new"_s, u"{}"_s, 2});
+            settle(window, 2);
+            check(logList->property("atYEnd").toBool(), u"a new message comes into view at the newest"_s);
+            saveGrab(window, out.filePath(u"plugin-log.png"_s));
+            // A log that fits: the wheel over it scrolls the page.
+            plugins->clearLog();
+            settle(window, 2);
+            check(!logList->property("interactive").toBool(), u"an empty log has nothing to scroll"_s);
+            QMetaObject::invokeMethod(window, "revealRow", Q_ARG(QVariant, QVariant::fromValue<QObject*>(logList)));
+            settle(window, 2);
+            const double before = contentY();
+            check(before > 0, u"the page can scroll up from the empty log"_s);
+            wheel(centre(logList), -2);
+            check(contentY() < before, u"the wheel over a log that fits scrolls the page (%1 → %2)"_s.arg(before).arg(contentY()));
+            // A message clicked open in a short log: the box grows to its
+            // most, and the message stays where it was clicked, whole.
+            for (int i = 0; i < 12; ++i)
+                plugins->log()->append({u"14:3%1:00.000"_s.arg(i % 10), u"lingcore.kill"_s, u"→"_s, u"query #%1"_s.arg(i),
+                    u"{\"jsonrpc\":\"2.0\",\"id\":%1,\"method\":\"query\",\"params\":{\"text\":\"%2\"}}"_s.arg(i).arg(QString(160, u'x')), -1});
+            settle(window, 2);
+            QMetaObject::invokeMethod(window, "revealRow", Q_ARG(QVariant, QVariant::fromValue<QObject*>(logList)));
+            settle(window, 2);
+            QQuickItem* first = nullptr;
+            QMetaObject::invokeMethod(logList, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, first), Q_ARG(int, 0));
+            check(first && !logList->property("interactive").toBool(), u"twelve messages fit the log"_s);
+            if (first) {
+                mouse(QEvent::MouseButtonPress, centre(first), Qt::LeftButton);
+                mouse(QEvent::MouseButtonRelease, centre(first), Qt::NoButton);
+                settle(window, 2);
+                check(first->property("open").toBool() && logList->property("interactive").toBool() && logY() < 1
+                        && first->height() <= logList->height(),
+                    u"the first message opened stays in view, whole (log at %1, row %2 of %3)"_s.arg(logY()).arg(first->height()).arg(logList->height()));
+            }
+        }
+        window->resize(window->width(), fullHeight);
         return finish(window, ok);
     }
 

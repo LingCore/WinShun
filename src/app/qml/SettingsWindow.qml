@@ -5516,15 +5516,14 @@ Window {
         }
     }
 
-    Rectangle { // scroll position
+    ListScrollBar { // the page's: widens under the mouse, drag the thumb or click the track (GitHub #229)
+        objectName: "settingsScrollBar"
+        dpr: window.dpr
+        flickable: flick
         visible: flick.visible && flick.contentHeight > flick.height
-        x: parent.width - 7
-        y: flick.y + flick.visibleArea.yPosition * flick.height
-        width: 3
-        height: Math.max(24, flick.visibleArea.heightRatio * flick.height)
-        radius: Theme.smallRadius
-        color: Theme.faint
-        opacity: 0.6
+        anchors.right: flick.right
+        anchors.top: flick.top
+        anchors.bottom: flick.bottom
     }
 
     Loader { // outside the page's Flickable: always in the visible window

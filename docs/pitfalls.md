@@ -5174,3 +5174,21 @@
   - 设置窗口只建打开的那一页，其余页面等用户去看时再建；搜索框拿到键盘时，才在后台把其余页面补齐（`fillInBackground`）。现在冷打开 +23 MB。
   - 最小化的前台窗口不算在用（`IdleTrim::inUse`），最小化后约 13 秒归还；运行状况页最小化时也停止读数。
 - **没改的**：搜索本身就要逐条扫一遍文件名，一次会读回 150–230 MB。不预读的话，第一次搜索 155–190 MB，预读也只多 30–60 MB。这部分关掉启动器 20 秒后归还。
+
+## 设置页里的滚动（GitHub #229、#232，2026-11-06）
+
+### 插件日志滚到头，滚轮带着整页一起滚
+
+- **现象**：在“插件 › 开发者”的消息日志上滚滚轮，日志滚到顶或底后，再滚就变成整页在动，正在看的日志跟着跑出视野。
+- **原因**：日志是放在页面 Flickable 里的 ListView。Flickable 到了边界就不再接收滚轮，事件交给外层页面去滚。
+- **做法**：日志内容超出框时（`interactive: contentHeight > height`）挂上 `ListWheelScroll`，它的 WheelHandler 在 `interactive` 时接收所有滚轮，到了边界也不交给页面。内容不超出时不接收，滚轮照常滚整页。
+
+### 新消息来了，`positionViewAtEnd()` 差一行
+
+- **现象**：停在最底部的日志来了新消息，视图停在倒数第二行；第一次打开日志也差一行。
+- **原因**：在 QML 里用 `Connections` 接模型的 `rowsInserted`，它比 ListView 自己更早收到这个信号，这时调用 `positionViewAtEnd()`，ListView 还不知道新的这一行。打开时 `Component.onCompleted` 里定位，框的高度还没长到最终值。
+- **做法**：在 `rowsAboutToBeInserted` 时记下“是否停在最底部”，到 `rowsInserted` 再 `Qt.callLater(positionViewAtEnd)`；框长高（`onHeightChanged`）时同样处理。用户点开某条消息后就不再跟随，否则框变高时会把刚点开的那条挤出视野。
+
+### 测试：`named()` 找不到子组件里的对象
+
+- `Preview.cpp` 的 `named(window, id)` 只查 SettingsWindow.qml 自己的 id。按需建出来的页面、PluginDevSection 这类子组件里的对象，要给它设 `objectName`，再用 `visualNamed(window->contentItem(), …)` 按可见树查找。
