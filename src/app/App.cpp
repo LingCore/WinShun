@@ -1689,7 +1689,7 @@ void App::applyKeyListener(bool force)
                 callbacks.dragKeyRefused = [this](unsigned, unsigned long error) {
                     QMetaObject::invokeMethod(this, [this, error] {
                         m_dropPieKeyRefused = error;
-                        if (error == ERROR_HOTKEY_ALREADY_REGISTERED && m_messages)
+                        if (error == ERROR_HOTKEY_ALREADY_REGISTERED && m_messages && keyTakenFirstTime())
                             m_messages->showNotification(DropPie::keyTakenTitle(), DropPie::keyTakenText());
                     }, Qt::QueuedConnection);
                 };
@@ -4204,6 +4204,20 @@ void App::applyFolderMenu()
     }
 }
 
+// The pie's key held by another program's hotkey: told the first time only,
+// ever; the diagnostics keep it (drop_pie, GitHub #150).
+bool App::keyTakenFirstTime()
+{
+    // No tray icon: nothing would show (MessageWindow), so not told yet.
+    if (m_settings.dropPieKeyTakenTold || !m_messages || !m_messages->trayVisible())
+        return false;
+    m_settings.dropPieKeyTakenTold = true;
+    m_settings.save();
+    if (m_settingsEditor)
+        m_settingsEditor->setSettings(m_settings); // its copy must not forget it with its next change
+    return true;
+}
+
 // 拖放圆盘: on unless switched off, and never while Win顺 runs as
 // administrator, where drops from the user's programs cannot reach it (UIPI).
 void App::applyDropPie()
@@ -4214,6 +4228,7 @@ void App::applyDropPie()
                 if (m_messages) m_messages->showNotification(title, text, std::move(retry));
             };
             m_dropPieHelper = std::make_unique<DropPieHelper>(m_favorites.get(), std::move(notify));
+            m_dropPieHelper->setKeyTakenGate([this] { return keyTakenFirstTime(); });
         }
         m_dropPieHelper->update(m_settings);
     } else {

@@ -30,6 +30,9 @@ public:
     ~DropPieHelper() override;
     void update(const Settings& settings);
     void retry(); // now, not at the next try: the shell is back (TaskbarCreated), or 重试
+    // The helper's word that another program has the pie's key: shown only
+    // when this says so (once ever, App::keyTakenFirstTime).
+    void setKeyTakenGate(std::function<bool()> gate) { m_keyTakenGate = std::move(gate); }
     QJsonObject state() const;
 private:
     enum class Failure { Start, Exit, NoAnswer };
@@ -40,6 +43,7 @@ private:
     void failed(Failure kind, const QString& detail, unsigned long code);
     Favorites* m_favorites;
     Notify m_notify;
+    std::function<bool()> m_keyTakenGate;
     QTemporaryDir m_profile;
     win32::UniqueHandle m_process;
     QTimer m_poll; // while it runs

@@ -180,6 +180,8 @@ struct Settings {
     // them in. Does nothing while Win顺 runs as administrator (drops cannot
     // reach it then).
     bool dropPie = true;
+    // Told that another program's hotkey has its key (GitHub #150): once, not every run.
+    bool dropPieKeyTakenTold = false;
 
     // [Results]
     bool foldersFirst = false; // 全部 and 文件 list the folders found before the files (else after)

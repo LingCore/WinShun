@@ -269,7 +269,9 @@ void DropPieHelper::poll()
     const auto notice = QJsonDocument::fromJson(read(noticePath)).object();
     if (!notice.isEmpty()) {
         QFile::remove(noticePath);
-        if (m_notify) m_notify(notice.value(u"title"_s).toString(), notice.value(u"text"_s).toString(), {});
+        const bool keyTaken = notice.value(u"kind"_s).toString() == u"key-taken";
+        if (m_notify && (!keyTaken || !m_keyTakenGate || m_keyTakenGate()))
+            m_notify(notice.value(u"title"_s).toString(), notice.value(u"text"_s).toString(), {});
     }
     if (!m_ready && QFile::exists(m_profile.filePath(u"ready"_s))) {
         m_ready = true;
@@ -385,11 +387,15 @@ int runDropPieHelper(const QStringList& arguments)
     places.refresh(true);
     piedrop::FileOperations operations;
     QQmlEngine engine;
-    const auto notify = [profile](const QString& title, const QString& text) {
-        QMetaObject::invokeMethod(qApp, [profile, title, text] {
-            save(profile + u"/notice.json"_s, QJsonDocument(QJsonObject {{u"title"_s, title}, {u"text"_s, text}}).toJson(QJsonDocument::Compact));
+    // `kind`: for the launcher to tell some apart (key-taken: once ever, its call).
+    const auto notice = [profile](const QString& title, const QString& text, const QString& kind) {
+        QMetaObject::invokeMethod(qApp, [profile, title, text, kind] {
+            QJsonObject json {{u"title"_s, title}, {u"text"_s, text}};
+            if (!kind.isEmpty()) json.insert(u"kind"_s, kind);
+            save(profile + u"/notice.json"_s, QJsonDocument(json).toJson(QJsonDocument::Compact));
         }, Qt::QueuedConnection);
     };
+    const auto notify = [notice](const QString& title, const QString& text) { notice(title, text, {}); };
     DropPie pie(&favorites, &places, &operations, notify);
     QQmlComponent component(&engine, u"WinShun"_s, u"DropPieWindow"_s);
     std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"dropPie"_s, QVariant::fromValue(&pie)}}));
@@ -410,7 +416,7 @@ int runDropPieHelper(const QStringList& arguments)
         QMetaObject::invokeMethod(&engine, [&, error] {
             keyRefused = error;
             if (error == ERROR_HOTKEY_ALREADY_REGISTERED)
-                notify(DropPie::keyTakenTitle(), DropPie::keyTakenText());
+                notice(DropPie::keyTakenTitle(), DropPie::keyTakenText(), u"key-taken"_s);
             if (refresh) refresh();
         }, Qt::QueuedConnection);
     };

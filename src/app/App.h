@@ -781,6 +781,7 @@ private:
     std::unique_ptr<DropPieHelper> m_dropPieHelper;
     QPointer<QQuickWindow> m_dropPieWindow;
     unsigned long m_dropPieKeyRefused = 0; // its key's plain hotkey, refused (GitHub #150)
+    bool keyTakenFirstTime(); // whether to tell of that now: once ever (Favorites/DropPieKeyTakenTold)
     QStringList m_doubleCtrlIgnoredLogged; // "program reason", logged once each: a game gets many
     std::unique_ptr<DialogJump> m_dialogJump; // file dialogs: Ctrl+G, the bar; after m_messages, which has the hotkey
     std::unique_ptr<DialogBar> m_dialogBar; // the search bar under file dialogs
