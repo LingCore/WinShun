@@ -4641,6 +4641,11 @@
 - **原因**：没细查。ctest 注册测试时带着 `QT_QPA_PLATFORM=offscreen`，测试是照这个写的。
 - **做法**：手动跑测试时，照 `tests/CMakeLists.txt` 里那个测试的 `ENVIRONMENT` 设好环境变量。
 
+### 录屏：驱动没有 D3D11 视频功能，一开始就“录屏失败：D3D11 device（0x887a0004）”（GitHub #214）
+- **现象**：Win10 LTSC 1809 上一录屏就报这句，截图正常。
+- **原因**：录屏建设备时带 `D3D11_CREATE_DEVICE_VIDEO_SUPPORT`（GPU 的视频处理器把 BGRA 转成编码器要的 NV12），虚拟机、基本显示适配器、远程桌面和老驱动不支持，`D3D11CreateDevice` 直接返回 `DXGI_ERROR_UNSUPPORTED`；软件编码那条路也要先过这一步，所以根本走不到。截图建设备不带这个标志，所以不受影响。
+- **做法**：先带视频功能建，不行就不带再建（`Graphics::video` 为假）。这时不建 `Converter` 和 `MFDXGIDeviceManager`，不试硬件编码：画面拷进 BGRA 暂存纹理读回来，`bgraToNv12` 在 CPU 上按 BT.709 有限范围转成 NV12，交给软件编码器（`Writer::video`）。日志里编码器名后面会加 `(no D3D11 video: NV12 on the CPU)`。`tst_recording` 的 `cpuNv12` 测转换本身，`encodedVideo` 的 `no-video-device-*` 用 `Options::noVideoDevice` 模拟这种驱动，连同所有行一起核对解码后的蓝色块颜色。
+
 ## 文件名搜索排在内容扫描后面（GitHub #115，2026-10-28）
 
 ### 打新词要等好几秒，打过的词马上出来
