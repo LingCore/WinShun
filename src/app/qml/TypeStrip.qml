@@ -176,6 +176,12 @@ Item {
     readonly property real slideProgress: slide.running && slide.to !== slide.from
         ? (slidePosition - slide.from) / (slide.to - slide.from) : 1
     function scrollTo(first: int, animated: bool) {
+        // Already there or on the way: a wheel turned on and on past the
+        // end must not start the slide over (it crept on, eased again and
+        // again, a pixel back at each start).
+        const target = scrolls ? Math.max(0, Math.min(lastFirst(), first)) : 0
+        if (target === firstChip && (slide.running || view.contentX === restX))
+            return
         scrollStarting() // the chips keep where they are shown now
         slide.stop()
         moving = animated && SystemTheme.animations
