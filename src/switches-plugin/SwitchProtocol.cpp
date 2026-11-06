@@ -22,13 +22,13 @@ bool takeLine(QByteArray& pending, QByteArray& line)
 }
 } // namespace
 
-std::optional<QJsonObject> Protocol::first(QByteArray& pending)
+std::optional<QJsonObject> Protocol::first(void* in, QByteArray& pending)
 {
     char chunk[16384];
     QByteArray line;
     while (!takeLine(pending, line)) {
         DWORD got = 0;
-        if (!::ReadFile(::GetStdHandle(STD_INPUT_HANDLE), chunk, sizeof chunk, &got, nullptr) || got == 0)
+        if (!::ReadFile(in, chunk, sizeof chunk, &got, nullptr) || got == 0)
             return std::nullopt;
         pending.append(chunk, got);
         if (pending.size() > kMaxLine)
@@ -40,11 +40,11 @@ std::optional<QJsonObject> Protocol::first(QByteArray& pending)
     return document.object();
 }
 
-Protocol::Protocol(QByteArray pending, Request request, std::function<void()> closed)
-    : m_request(std::move(request)), m_closed(std::move(closed))
+Protocol::Protocol(void* in, void* out, QByteArray pending, Request request, std::function<void()> closed)
+    : m_request(std::move(request)), m_closed(std::move(closed)), m_out(out)
 {
     const QPointer self(this);
-    m_reader = std::jthread([self, pending = std::move(pending)](std::stop_token stop) mutable {
+    m_reader = std::jthread([self, in, pending = std::move(pending)](std::stop_token stop) mutable {
         char chunk[16384];
         while (!stop.stop_requested()) {
             QByteArray line;
@@ -62,7 +62,7 @@ Protocol::Protocol(QByteArray pending, Request request, std::function<void()> cl
             if (stop.stop_requested())
                 break;
             DWORD got = 0;
-            if (!::ReadFile(::GetStdHandle(STD_INPUT_HANDLE), chunk, sizeof chunk, &got, nullptr) || got == 0)
+            if (!::ReadFile(in, chunk, sizeof chunk, &got, nullptr) || got == 0)
                 break;
             pending.append(chunk, got);
             if (pending.size() > kMaxLine)
@@ -106,7 +106,7 @@ void Protocol::write(QJsonObject message)
     qsizetype at = 0;
     while (at < line.size()) {
         DWORD put = 0;
-        if (!::WriteFile(::GetStdHandle(STD_OUTPUT_HANDLE), line.constData() + at,
+        if (!::WriteFile(m_out, line.constData() + at,
                 static_cast<DWORD>(line.size() - at), &put, nullptr) || put == 0) {
             m_closed();
             return;

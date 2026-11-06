@@ -303,6 +303,7 @@ struct Host::Plugin {
     QElapsedTimer lastToast; // monotonic: a clock set back must not hold toasts back
     bool toastRefusedLogged = false;
     bool elevated = false; // the resident process is the elevated runner's
+    bool inProcess = false; // it runs inside the runner (pid: the runner's)
 };
 
 Host::Host(Options options, QObject* parent)
@@ -1179,6 +1180,23 @@ void Host::cancelAll()
 
 // ---- resident plugins -------------------------------------------------------
 
+// The two small plugins that come with Win顺 and stay running run inside
+// the runner, on threads of its own (runner/InProcess.h): two processes
+// fewer. Only the bundled copies, resident, with the user's normal rights;
+// WINSHUN_PLUGINS_APART=1 starts them as programs again (to tell a fault
+// of theirs from the runner's).
+static QString inProcessKind(const Entry& e, bool elevated)
+{
+    if (elevated || e.source != Entry::Source::Bundled || !e.manifest || !e.manifest->runtime
+        || e.manifest->runtime->mode != RunMode::Resident || qEnvironmentVariableIntValue("WINSHUN_PLUGINS_APART") == 1)
+        return {};
+    if (e.id == u"winshun.tools")
+        return u"tools"_s;
+    if (e.id == u"winshun.switches")
+        return u"switches"_s;
+    return {};
+}
+
 Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pending* q, QString* error)
 {
     Runner::Spec spec;
@@ -1272,6 +1290,7 @@ Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pendin
     spec.strict = runtime.sandbox == SandboxLevel::Strict;
     spec.oem = runtime.encoding == Encoding::Oem;
     spec.stdinOpen = runtime.mode == RunMode::Resident;
+    spec.inProcess = inProcessKind(e, spec.elevated);
     (void)p;
     return spec;
 }
@@ -1324,11 +1343,12 @@ void Host::startResident(Plugin& p)
     evictIfCrowded(p.id);
     p.instance = launchSpec(spec);
     p.elevated = p.instance >= kElevatedInstances;
+    p.inProcess = !spec.inProcess.isEmpty();
     p.phase = Plugin::Phase::Starting;
     p.restartAfterStop = false;
     p.timeouts = 0;
     m_owners[p.instance] = p.id;
-    log(u"%1: 启动 %2"_s.arg(p.id, spec.exe));
+    log(spec.inProcess.isEmpty() ? u"%1: 启动 %2"_s.arg(p.id, spec.exe) : u"%1: 在插件进程里启动"_s.arg(p.id));
     emit stateChanged(p.id);
 }
 
@@ -2375,7 +2395,7 @@ Host::State Host::state(const QString& id) const
     if (it == m_plugins.end())
         return s;
     const Plugin& p = *it->second;
-    s.pid = p.pid;
+    s.pid = p.inProcess ? 0 : p.pid; // the runner's own memory is not this plugin's
     s.error = p.error;
     s.timeouts = p.timeouts;
     s.elevated = p.elevated && (p.phase == Plugin::Phase::Starting || p.phase == Plugin::Phase::Ready);

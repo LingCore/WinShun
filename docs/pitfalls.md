@@ -63,6 +63,18 @@
 - **副作用及做法**：晚造的部件（lazy，或复用的行里第一次显示）若造出来时状态不是默认值（选中、当前、危险……），过去会先按默认值画出、再由 Behavior 用约 100 ms 渐变到真实状态（以前在隐藏时就渐变完了，看不到）。Hook 现在把当时的全部状态（和 `extra`）作为 `createObject` 的初始属性传入：Behavior 只对部件建成之后的变化起作用，所以第一次显示直接是最终状态，之后的状态变化照常有动画。
 - **测法**：`WinShun.exe --preview-results <dir> --clipboard-scroll --style brand` 现在按阶段给出悬停换行次数、行的新建/复用、每帧 GUI/渲染线程的 CPU 时间（`QueryThreadCycleTime`，不受别的程序负载影响）和悬停换行那几帧的 CPU；掉帧数受机器负载影响很大（同一构建 56–211），要隔轮交替跑多次比较。`--grab` 出顶部、下滚、回滚和按钮提示 4 张图，前后逐像素比。
 
+## 任务管理器里 Win顺 的进程太多：随包小插件放进插件进程（2026-11-06）
+
+- **现象**：任务管理器的 Win顺 组里有 8 行：主程序、插件进程、小工具插件、`WinShunSwitches.exe`（没有说明文字）、截图、按意思找、“索引服务”两行。用户：“太多了，能不能集中成几个？”
+- **原因**：每个插件一个进程（隔离、作业限制、崩溃不连累别人）。小工具（计算器等，纯计算）和系统开关是 Win顺 自己的、常驻、从不退出，单独一个进程只多占一行和几 MB。第二个“索引服务”是服务在用户会话里起的按键监听（`--listen-keys`，UIAccess），和服务同一个 exe，所以显示同一个说明。
+- **做法**：Win顺 对随包（`Entry::Source::Bundled`）、常驻、非管理员的 `winshun.tools` 和 `winshun.switches`，在 start 消息里加 `inProcess`，runner 不起进程，在自己的线程上跑（`runner/InProcess.cpp`）：tools 编进 runner（静态库 wstools），switches 加载 `WinShunSwitchesApp.dll`（从 `WS_APP_DIR` 找 Qt，和 stub 一样）。两者照旧经管道说插件协议（SDK 的 `Plugin::serve(in, out)`、`switchplugin::Protocol(in, out, …)`），Win顺 这边其余一切不变；`started` 报 runner 的 pid，设置页不显示它的内存（那是 runner 的）。`WINSHUN_PLUGINS_APART=1` 恢复成单独的进程。服务的说明改成“Win顺 后台服务”，两个用途都对；`WinShunSwitches.exe` 补了版本信息。
+- **坑**：
+  - Qt 的 `QCoreApplication` 可以在同一线程上建了又拆、再建，但第一个用 Qt 的线程就是 Qt 的主线程；换个新线程再建会出警告、行为没保证。所以 switches 每次启动都放到同一条一直不退的线程（QtLane）上，DLL 加载后不卸载。
+  - 线程不能像进程那样杀掉。停：关掉它的输入管道（读到 EOF 就返回）；5 秒还没返回，或输出关了还在跑，runner 自己退出（`giveUp`，退出码 4），Win顺 照常把 runner 和所有插件重新起来。退出时等不到的就留给进程结束（不 join、不释放，免得线程用已释放的对象）。
+  - 标准句柄是整个进程的：插件代码里不能再用 `GetStdHandle`，要用传进来的管道端；Qt 的消息处理函数也写到传进来的 stderr。
+  - 进程内就没有作业限制和 strict 沙箱（低完整性）了。只对 Win顺 自己的、随包装在 Program Files 里的这两个这样做；第三方插件永远单独进程。
+- **验证**：`tst_plugin::builtInToolsRunInsideTheRunner`（随包 tools 答 `= 1+2*3`，pid 是 runner 的，停用后 runner 不变、再启用照样答），`tst_switchplugin::nativeProviderInsideTheRunner`（真 DLL 读七种状态、保持唤醒，停用再启用在同一 Qt 线程上又能读，旧一轮的保持唤醒已放掉）；真机 stage：WinShun 下只有一个 `WinShunPluginHost.exe`（模块里有 `WinShunSwitchesApp.dll`、`Qt6Core.dll`，私有 7.9 MB），日志“在插件进程里启动”，退出干净。
+
 ## 以管理员身份运行插件：先校验再按路径启动是不够的（2026-11-03）
 
 - **原因**：插件文件夹是用户能写的。“比对哈希，一样就 `CreateProcess` 插件文件夹里的 exe”中间有空子：校验后、启动前可以换文件；就算一直拿着句柄不让改，插件运行中还会按需加载 DLL，往文件夹里**加**一个 `version.dll` 是挡不住的。开机自启的管理员 Win顺 就成了一个不用 UAC 的提权入口。

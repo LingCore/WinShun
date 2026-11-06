@@ -21,8 +21,11 @@ set_target_properties(wsplugin_lite PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY 
 
 # WinShunPluginHost.exe: the runner (runner/main.cpp). The linker's default
 # manifest runs it as the invoker; Win顺 gives it Explorer's token.
-add_executable(WinShunPluginHost WIN32 runner/main.cpp ${PROJECT_SOURCE_DIR}/resources/WinShunPluginHost.rc)
-target_link_libraries(WinShunPluginHost PRIVATE wsplugin_lite shell32)
+# It also runs two plugins that come with Win顺 on threads of its own
+# (runner/InProcess.cpp): winshun.tools built in, winshun.switches from its DLL.
+add_executable(WinShunPluginHost WIN32 runner/main.cpp runner/InProcess.cpp runner/InProcess.h
+    ${PROJECT_SOURCE_DIR}/resources/WinShunPluginHost.rc)
+target_link_libraries(WinShunPluginHost PRIVATE wsplugin_lite wstools shell32)
 set_target_properties(WinShunPluginHost PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 install(TARGETS WinShunPluginHost RUNTIME DESTINATION .)

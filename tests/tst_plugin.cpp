@@ -2702,6 +2702,40 @@ private slots:
         QCOMPARE(f.actions.size(), 1u);
     }
 
+    // winshun.tools as it comes with Win顺 runs on a thread of the runner, not
+    // as a process: answers, stops when disabled (the runner stays) and
+    // starts there again.
+    void builtInToolsRunInsideTheRunner()
+    {
+        Fixture f([](Host::Options& o) { o.bundledPluginDir = o.dataRoot + u"/../bundled"_s; });
+        const QString folder = f.dir.path() + u"/bundled/winshun.tools"_s;
+        QVERIFY(QDir().mkpath(folder));
+        QVERIFY(QFile::copy(QString::fromUtf8(WINSHUN_SOURCE_PLUGINS) + u"/winshun.tools/plugin.json"_s, folder + u"/plugin.json"_s));
+        QVERIFY(QFile::copy(kFake, folder + u"/WinShunTools.exe"_s)); // would answer nothing like a calculator
+        f.host->catalog().scan();
+        f.host->setEnabled(u"winshun.tools"_s, true);
+        const auto sum = [&](std::uint64_t id) -> QString {
+            if (!f.host->query(u"= 1+2*3"_s, Scope::All, id) || !f.waitFinal(id))
+                return u"no answer: "_s + f.logs.join(u'\n');
+            const Result* r = f.finalFor(id);
+            return r->items.empty() ? u"no rows"_s : r->items.front().title;
+        };
+        QCOMPARE(sum(1), u"7"_s);
+        const quint32 runner = static_cast<quint32>(f.host->runnerFacts().value(u"pid"_s).toDouble());
+        QVERIFY(runner);
+        QCOMPARE(f.startedPids, std::vector<quint32> {runner});
+        QCOMPARE(f.host->state(u"winshun.tools"_s).pid, 0u); // the runner's memory is not the plugin's
+
+        f.host->setEnabled(u"winshun.tools"_s, false);
+        QVERIFY2(QTest::qWaitFor([&] { return f.exitCodes.size() == 1; }, 5000), qPrintable(f.logs.join(u'\n')));
+        QCOMPARE(f.exitCodes.front(), 0u);
+        f.host->setEnabled(u"winshun.tools"_s, true);
+        QCOMPARE(sum(2), u"7"_s);
+        QCOMPARE(static_cast<quint32>(f.host->runnerFacts().value(u"pid"_s).toDouble()), runner);
+        QCOMPARE(f.startedPids.size(), 2u);
+        QCOMPARE(f.startedPids.back(), runner);
+    }
+
     void runnerCrashReleasesHotkeysAndWork()
     {
         Fixture f;

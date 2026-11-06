@@ -1101,6 +1101,7 @@ target_compile_definitions(tst_plugin PRIVATE
     WINSHUN_PLUGIN_HOST="$<TARGET_FILE:WinShunPluginHost>"
     WINSHUN_PLUGIN_FAKE="$<TARGET_FILE:plugin_fake>"
     WINSHUN_TEST_PLUGINS="${CMAKE_CURRENT_SOURCE_DIR}/plugins"
+    WINSHUN_SOURCE_PLUGINS="${PROJECT_SOURCE_DIR}/plugins"
     WINSHUN_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 add_dependencies(tst_plugin WinShunPluginHost plugin_fake)
 
