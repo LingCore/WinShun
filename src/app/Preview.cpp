@@ -694,8 +694,9 @@ bool previewCommandIcons(QQuickWindow* window, SettingsEditor* editor, Favorites
 // ---- --preview-settings --lazy-pages ------------------------------------------------------
 // The settings window makes a page when first needed (SettingsWindow.loadPage,
 // PageSlot): with the window only the page on show; a way in from elsewhere only
-// its own; a word typed all of them (the search needs every row); after the first
-// frame (refreshAfterOpen) the rest one at a time (fillTimer).
+// its own; a word typed all of them (the search needs every row); the search box
+// taking the keyboard the rest one at a time (fillInBackground, fillTimer).
+// Nothing more after the first frame (refreshAfterOpen): pages cost memory.
 
 constexpr int kSettingsPages = 10; // SettingsWindow.pageSlots
 
@@ -954,6 +955,9 @@ bool previewLazyPages(QQuickWindow* window, const std::function<QQuickWindow*()>
         settle(w);
         check(madePages(w) == QList<int>({0, 4}) && g_warnings == warned, u"shown again: nothing more made"_s);
         QMetaObject::invokeMethod(w, "refreshAfterOpen");
+        pump(400);
+        check(madePages(w) == QList<int>({0, 4}) && g_warnings == warned, u"after the first frame: nothing more made"_s);
+        QMetaObject::invokeMethod(w, "fillInBackground");
         pump(250);
         const QList<int> partly = madePages(w);
         w->hide();
@@ -963,9 +967,10 @@ bool previewLazyPages(QQuickWindow* window, const std::function<QQuickWindow*()>
         showOffScreen(w);
         settle(w);
         QMetaObject::invokeMethod(w, "refreshAfterOpen");
+        QMetaObject::invokeMethod(w, "fillInBackground");
         qint64 took = 0;
         const qint64 block = longestBlock(4000, [&] { return w->property("searchReady").toBool(); }, &took);
-        check(madePages(w) == all && g_warnings == warned, u"shown again: the rest made after the first frame (%1 ms, longest block %2 ms)"_s
+        check(madePages(w) == all && g_warnings == warned, u"shown again, filled: the rest made in the background (%1 ms, longest block %2 ms)"_s
             .arg(took).arg(block));
         close(w);
     }
@@ -978,6 +983,7 @@ bool previewLazyPages(QQuickWindow* window, const std::function<QQuickWindow*()>
         showOffScreen(w);
         settle(w);
         QMetaObject::invokeMethod(w, "refreshAfterOpen");
+        QMetaObject::invokeMethod(w, "fillInBackground");
         qint64 took = 0;
         const qint64 block = longestBlock(5000, [&] { return w->property("searchReady").toBool(); }, &took);
         QStringList times;
@@ -7006,6 +7012,15 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         const bool allFirst = valueAfter(args, u"--settings-first-open") == u"all";
         if (!allFirst)
             check(madeFirst == js(w, u"String(currentPage)"_s).toString(), u"first_frame_made_one_page"_s);
+        // After the first frame nothing more by itself (refreshAfterOpen): the
+        // pages cost ~20 MB each. The search box taking the keyboard makes the
+        // rest (fillInBackground); a letter typed (--settings-type-at) does too.
+        pump(500);
+        if (!allFirst)
+            check(js(w, u"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(i => pageItem(i) !== null).join(',')"_s).toString() == madeFirst,
+                u"nothing_made_after_first_frame"_s);
+        if (valueAfter(args, u"--settings-type-at").isEmpty())
+            js(w, u"fillInBackground()"_s);
         // --settings-fill-interval 16: as fast as while the search box has the keyboard.
         if (const int interval = valueAfter(args, u"--settings-fill-interval").toInt(); interval > 0)
             js(w, u"fillTimer.interval = %1"_s.arg(interval));

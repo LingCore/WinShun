@@ -224,19 +224,18 @@ Window {
     function refreshAfterOpen() {
         for (let i = 0; i < pageSlots.length; ++i)
             pageSlots[i].item?.opened()
-        // The pages not made yet, one after another in the background (fillTimer).
-        if (!searchReady)
-            fillTimer.start()
+        // The pages not looked at stay unmade: each costs ~20 MB, all ten
+        // ~250 MB (2026-11-06). Made when gone to, or for the search (fillFast).
     }
 
     // ---- The pages, made when needed (PageSlot) -----------------------------
-    // Opening makes only the page shown (onVisibleChanged); after the first
-    // frame the others are made one at a time between frames (fillTimer), then
-    // 按键一览's sections one by one. Whatever needs a page not made yet makes
-    // it at once: going to it (showPage, part), showSetting (loadAllPages).
-    // The search waits for them all (searchReady), never makes them all at once:
-    // the box having the keyboard makes the filling go as fast as it can
-    // (fillFast), something typed makes the rest one per turn (fillNow).
+    // Opening makes only the page shown (onVisibleChanged). Whatever needs a
+    // page not made yet makes it at once: going to it (showPage, part),
+    // showSetting (loadAllPages). The search waits for them all (searchReady),
+    // never makes them all at once: the box taking the keyboard starts making
+    // the others one at a time between frames (fillTimer, fillFast), then
+    // 按键一览's sections one by one; something typed makes the rest one per
+    // turn (fillNow).
     property bool allPagesLoaded: false
     readonly property list<PageSlot> pageSlots: [slot0, slot1, slot2, slot3, slot4, slot5, slot6, slot7, slot8, slot9, slot10]
     // 按键一览's sections made so far (its Repeater's model, one element each).
@@ -299,9 +298,15 @@ Window {
     readonly property bool fillFast: !searchReady && (searchBox.editing || searchBox.query.length > 0)
     onFillFastChanged: {
         if (fillFast && visible) {
-            fillTimer.start()
+            fillInBackground()
             Qt.callLater(window.fillStep)
         }
+    }
+    // The pages not made yet, one after another in the background (fillTimer;
+    // it stops once all are made, or the window is hidden).
+    function fillInBackground(): void {
+        if (visible && !searchReady)
+            fillTimer.start()
     }
     // Something typed waits for searchReady: the rest made now, a page (or a
     // few of 按键一览's sections) per turn of the event loop (fillNow), keys
