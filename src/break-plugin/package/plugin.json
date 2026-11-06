@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.break",
   "name": {"zh": "休息提醒", "en": "Break reminder"},
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": {"zh": "定时提醒休息：小休看看远处，大休起来走走，可以设成必须休完", "en": "Reminds you to take breaks: look away for a short one, get up for a long one; can be made strict"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",

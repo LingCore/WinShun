@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.translate",
   "name": {"zh": "翻译", "en": "Translate"},
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": {"zh": "tr 翻译、dict AI 词典，支持 DeepL、微软翻译及 OpenAI 兼容模型服务；使用自己的密钥", "en": "tr translation and dict AI dictionary with your own DeepL, Microsoft Translator or OpenAI-compatible service key"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",

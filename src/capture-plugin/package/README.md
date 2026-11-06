@@ -24,6 +24,10 @@ Other changes in 1.1.0: the keys for pin, save and the pin window can be changed
 
 Version 1.1.2: the capture settings no longer freeze with “Not responding” the first time they open; they open promptly even on a busy computer. Permissions are unchanged.
 
+1.1.3：“识别屏幕文字”有了自己的快捷键（#198）；贴图缩放步子更细并显示百分比，`Ctrl`+滚轮显示透明度，标注的粗细、字号、马赛克格子用滚轮或 `[` `]` 细调（#164）；显卡没有 D3D11 视频功能时录屏改用 CPU 转换画面（#214）；二维码的“打开链接”直接用浏览器打开（需要 Win顺 0.21.0，#225）；窗口跟着 Win顺 设置里的界面风格变；闲着时把内存还给系统。权限不变。
+
+Version 1.1.3: Read text on screen has a hotkey of its own (#198); pin zoom steps are finer and show the percentage, `Ctrl`+wheel shows the opacity, and the wheel or `[` `]` set annotation width, text size and mosaic cell finely (#164); without D3D11 video support recording converts frames on the CPU (#214); Open link on a QR code opens the browser (needs WinShun 0.21.0, #225); the windows follow the interface style chosen in WinShun; idle memory goes back to Windows. Permissions are unchanged.
+
 ## 权限 / Permissions
 
 - `ui`：显示截图、编辑、贴图及录屏窗口，注册快捷键。Display capture, editing, pin and recording windows and register shortcuts.
