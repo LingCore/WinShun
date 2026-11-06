@@ -126,7 +126,7 @@ Item {
         readonly property bool pointed: contains(mapFromItem(null, bar.frame.pointer))
         readonly property bool held: bar.placement.moving
 
-        visible: !bar.inBox
+        visible: !bar.inBox && Theme.tok("grip", true)
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
         width: 72 // easier to find than the pill itself
