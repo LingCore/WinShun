@@ -1123,7 +1123,7 @@ SearchResults favoriteRows(const QList<const Favorite*>& favorites, const AppLis
 // hold (a folder left out of it) looked for on disk; with `types` (a type
 // chosen), only files of it. Adds to `total` what it adds.
 void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine::Request& request,
-    const NameMatcher& matcher, bool promote, const AppList& apps, const PlaceList& places, RecentOnDisk& onDisk,
+    const NameMatcher& matcher, bool promote, bool learnedFirst, const AppList& apps, const PlaceList& places, RecentOnDisk& onDisk,
     const IndexService* index, const std::vector<std::string>& types)
 {
     const FavoriteList& favorites = request.favorites;
@@ -1200,6 +1200,31 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
     const qsizetype at = !results.isEmpty() && results.first().isWeb() && results.first().score == kTypedKeywordScore ? 1 : 0;
     for (qsizetype i = 0; i < put.size(); ++i)
         results.insert(at + i, std::move(put[i]));
+    if (learnedFirst) {
+        // A favorite is a useful default, not a permanent pin above actual
+        // choices (GitHub #161). Reuse the same decaying affinity as search;
+        // explicit keywords and switch commands remain deliberate actions.
+        std::stable_sort(results.begin(), results.end(), [&](const SearchResult& a, const SearchResult& b) {
+            const bool aExplicit = a.score == kTypedKeywordScore;
+            const bool bExplicit = b.score == kTypedKeywordScore;
+            if (aExplicit || bExplicit)
+                return aExplicit && !bExplicit;
+            const auto aa = History::affinity(request.historyAffinity, a.path);
+            const auto ba = History::affinity(request.historyAffinity, b.path);
+            // Guessed switches must keep their conservative placement.
+            const bool aLearned = aa.learned() && (a.switchId.isEmpty() || a.recent);
+            const bool bLearned = ba.learned() && (b.switchId.isEmpty() || b.recent);
+            if (aLearned != bLearned)
+                return aLearned;
+            if (!aLearned)
+                return false;
+            if (aa.group != ba.group)
+                return aa.group < ba.group;
+            if (aa.preferenceWeight() != ba.preferenceWeight())
+                return aa.preferenceWeight() > ba.preferenceWeight();
+            return aa.last > ba.last;
+        });
+    }
     if (results.size() > request.limit)
         results.resize(request.limit);
 }
@@ -1816,7 +1841,8 @@ void SearchEngine::runNameSearch(const Job& job)
         // among rows ranked by time (marked there only).
         const bool promote = rankBy == RankBy::Match && typedPath.folder.isEmpty() && !listing
             && relative().names.isEmpty();
-        promoteFavorites(results, total, request, matcher, promote, *apps, *places, *m_onDisk, m_index, types);
+        const bool learnedFirst = promote && request.order.key == SortKey::Rank && !filtered && !insideFirst;
+        promoteFavorites(results, total, request, matcher, promote, learnedFirst, *apps, *places, *m_onDisk, m_index, types);
 
         // Nothing at all is named as typed (no file or folder, no app, place
         // or favorite either): the query read aloud, for the names that sound

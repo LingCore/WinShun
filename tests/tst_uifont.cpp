@@ -1,3 +1,4 @@
+#include "UiFont.h"
 #include <QFontDatabase>
 #include <QFile>
 #include <QFontInfo>
@@ -5,6 +6,8 @@
 #include <QPainter>
 #include <QTextLayout>
 #include <QtTest>
+#include <QQmlComponent>
+#include <QQmlEngine>
 
 using namespace Qt::StringLiterals;
 
@@ -31,14 +34,37 @@ class TestUiFont : public QObject {
 private slots:
     void initTestCase()
     {
-        const QString path = QCoreApplication::applicationDirPath() + u"/fonts/AlibabaPuHuiTi-3-55-Regular.ttf"_s;
-        QFile file(path);
-        QVERIFY(file.open(QIODevice::ReadOnly));
-        const int id = QFontDatabase::addApplicationFontFromData(file.readAll());
-        QVERIFY(id >= 0);
-        const auto families = QFontDatabase::applicationFontFamilies(id);
-        QVERIFY(!families.isEmpty());
-        m_family = families.first();
+        const auto loaded = ws::uifont::initialize();
+        m_family = loaded.value(u"family"_s).toString();
+        QVERIFY(m_family.contains(u"Alibaba"));
+    }
+
+    void startupFamilyAndFallback()
+    {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\nText { text: '文件搜索 WinShun 123'; font.pixelSize: 18 }", QUrl());
+        std::unique_ptr<QObject> label(component.create());
+        QVERIFY2(label, qPrintable(component.errorString()));
+        const auto font = [&] { return label->property("font").value<QFont>(); };
+        QCOMPARE(font().family(), m_family);
+        QVERIFY(ws::uifont::available(u"Microsoft YaHei UI"_s));
+        ws::uifont::apply(u"Microsoft YaHei UI"_s);
+        // Plain Text keeps its construction-time font: the settings provide
+        // a bound preview and explicitly apply the whole UI after restart.
+        QCOMPARE(font().family(), m_family);
+        label.reset(component.create());
+        QCOMPARE(font().family(), u"Microsoft YaHei UI"_s);
+        QCOMPARE(font().pixelSize(), 18); // a family preference never changes layout sizing
+        QVERIFY(ink(font()) > 0);
+        QVERIFY(!ws::uifont::available(u"Missing-WinShun-Test-Font"_s));
+        ws::uifont::apply(u"Missing-WinShun-Test-Font"_s);
+        label.reset(component.create());
+        QCOMPARE(font().family(), m_family);
+        ws::uifont::apply(u"Microsoft YaHei UI"_s);
+        ws::uifont::apply({});
+        label.reset(component.create());
+        QCOMPARE(font().family(), m_family);
     }
 
     void mixedTextAndFallbackHaveGlyphs()

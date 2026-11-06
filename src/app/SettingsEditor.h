@@ -280,6 +280,11 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString transparency READ transparency WRITE setTransparency NOTIFY changed FINAL)
     Q_PROPERTY(QString taskbarIcon READ taskbarIcon WRITE setTaskbarIcon NOTIFY changed FINAL) // color | mono
     Q_PROPERTY(QString uiSize READ uiSize WRITE setUiSize NOTIFY changed FINAL) // compact | standard | roomy
+    Q_PROPERTY(QString uiFont READ uiFont WRITE setUiFont NOTIFY changed FINAL)
+    Q_PROPERTY(QStringList uiFonts READ uiFonts CONSTANT FINAL)
+    Q_PROPERTY(bool uiFontAvailable READ uiFontAvailable NOTIFY changed FINAL)
+    Q_PROPERTY(QString uiFontPreview READ uiFontPreview NOTIFY changed FINAL)
+    Q_PROPERTY(bool fontRestartRequired READ fontRestartRequired NOTIFY changed FINAL)
     Q_PROPERTY(QString corners READ corners WRITE setCorners NOTIFY changed FINAL) // round | square
     Q_PROPERTY(QString uiStyle READ uiStyle WRITE setUiStyle NOTIFY changed FINAL) // fluent | brand | tactile
     Q_PROPERTY(bool autoUpdate READ autoUpdate WRITE setAutoUpdate NOTIFY changed FINAL)
@@ -567,6 +572,12 @@ public:
     QString taskbarIcon() const { return m_settings.taskbarIcon; }
     void setTaskbarIcon(const QString& style);
     QString uiSize() const { return m_settings.uiSize; }
+    QString uiFont() const { return m_settings.uiFont; }
+    QStringList uiFonts() const;
+    bool uiFontAvailable() const;
+    QString uiFontPreview() const;
+    bool fontRestartRequired() const;
+    void setUiFont(const QString& family);
     void setUiSize(const QString& size);
     QString corners() const { return m_settings.corners; }
     void setCorners(const QString& corners);

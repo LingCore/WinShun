@@ -939,6 +939,7 @@ void Settings::load()
     if (taskbarIcon != u"mono")
         taskbarIcon = d.taskbarIcon;
     uiSize = readOrDefault(s, u"Appearance/UiSize"_s, d.uiSize).trimmed().toLower();
+    uiFont = readOrDefault(s, u"Appearance/UiFont"_s, d.uiFont).trimmed();
     if (uiSize != u"compact" && uiSize != u"roomy")
         uiSize = d.uiSize;
     corners = readOrDefault(s, u"Appearance/Corners"_s, d.corners).trimmed().toLower();
@@ -1271,6 +1272,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Appearance/TaskbarIcon"_s, taskbarIcon);
     s.remove(u"Appearance/SearchLogo"_s); // retired exterior decoration; inline logos are always present
     s.setValue(u"Appearance/UiSize"_s, uiSize);
+    s.setValue(u"Appearance/UiFont"_s, uiFont);
     s.setValue(u"Appearance/Corners"_s, corners);
     s.setValue(u"Appearance/UiStyle"_s, uiStyle);
     s.setValue(u"Update/Automatic"_s, autoUpdate);

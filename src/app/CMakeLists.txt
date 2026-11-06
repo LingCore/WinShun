@@ -63,6 +63,7 @@ qt_add_executable(WinShun WIN32
     ContentPaneProbe.cpp ContentPaneProbe.h
     RecentFolders.cpp RecentFolders.h
     Settings.cpp Settings.h
+    UiFont.cpp UiFont.h
     SiteIconImage.cpp SiteIconImage.h
     SvgIcon.cpp SvgIcon.h
     Switches.cpp Switches.h SwitchBackend.h
@@ -167,6 +168,8 @@ set(qml_files
     qml/DialogBarWindow.qml
     qml/DialogBarRow.qml
     qml/FolderMenuWindow.qml
+    qml/MenuPathTip.qml
+    qml/FontPicker.qml
     qml/DropPieWindow.qml
     qml/SoftShadow.qml
     qml/PreviewWindow.qml

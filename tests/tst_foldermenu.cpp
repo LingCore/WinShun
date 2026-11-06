@@ -107,8 +107,9 @@ private slots:
         qmlRegisterType<PhosphorGlyph>("WinShun", 1, 0, "PhosphorGlyph");
         const QUrl folder = QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR) + u'/');
         qmlRegisterSingletonType(folder.resolved(QUrl(u"Theme.qml"_s)), "WinShun", 1, 0, "Theme");
-        const int font = QFontDatabase::addApplicationFont(
-            QCoreApplication::applicationDirPath() + u"/fonts/AlibabaPuHuiTi-3-55-Regular.ttf"_s);
+        QFile data(QCoreApplication::applicationDirPath() + u"/fonts/AlibabaPuHuiTi-3-55-Regular.ttf"_s);
+        QVERIFY(data.open(QIODevice::ReadOnly));
+        const int font = QFontDatabase::addApplicationFontFromData(data.readAll());
         if (font >= 0)
             QGuiApplication::setFont(QFont(QFontDatabase::applicationFontFamilies(font).first()));
     }

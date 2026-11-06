@@ -1,4 +1,5 @@
 #include "DropPieHelper.h"
+#include "UiFont.h"
 
 #include "DropPie.h"
 #include "DropPieText.h"
@@ -194,6 +195,7 @@ void DropPieHelper::update(const Settings& settings)
         config.setValue(u"Appearance/Theme"_s, settings.theme);
         config.setValue(u"Appearance/Language"_s, settings.language);
         config.setValue(u"Appearance/UiSize"_s, settings.uiSize);
+        config.setValue(u"Appearance/UiFont"_s, QGuiApplication::font().family());
         config.setValue(u"Appearance/Corners"_s, settings.corners);
         config.setValue(u"Appearance/UiStyle"_s, settings.uiStyle);
         config.setValue(u"Launcher/Renderer"_s, Settings::resolveRenderer(settings.renderer));
@@ -379,6 +381,7 @@ int runDropPieHelper(const QStringList& arguments)
         QGuiApplication::styleHints()->setColorScheme(settings.theme == u"dark" ? Qt::ColorScheme::Dark
             : settings.theme == u"light" ? Qt::ColorScheme::Light : Qt::ColorScheme::Unknown);
         SystemTheme::setUiSize(settings.uiSize);
+        uifont::apply(settings.uiFont);
         SystemTheme::setRoundedCorners(settings.corners != u"square");
         SystemTheme::setUiStyle(settings.uiStyle);
     };

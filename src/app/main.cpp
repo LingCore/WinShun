@@ -1,3 +1,4 @@
+#include "UiFont.h"
 #include "App.h"
 #include "ClipboardDisplay.h"
 #include "ContextMenuGuard.h"
@@ -155,54 +156,6 @@ bool raiseStreamLimit()
     return _setmaxstdio(8192) == 8192;
 }
 
-// UI font: complete Alibaba PuHuiTi 3.0 Regular from fonts\ next to the
-// exe. It covers Latin and CJK, so no fallback is needed for normal text.
-// Without the files, the system UI font (Microsoft YaHei UI) is kept;
-// never "Segoe UI Variable", whose CJK fallback costs ~35 MB of memory.
-//
-// Given by file name, FreeType (the engine of the GPU renderer) opens the
-// file through the C runtime, which cannot take a path outside the ANSI
-// code page (F:\电脑便捷工具\…, D:\软件\WinShun): the font silently stayed
-// unloaded and the window came up in Microsoft YaHei UI. Such a path is
-// read here and handed over as data (the ~8 MB of each file stay in
-// memory then; by name the face is read from disk as needed). What came of
-// it, for the diagnostics record.
-QJsonObject applyUiFont()
-{
-    QString uiFamily;
-    QJsonArray files;
-    const QString fontDir = QCoreApplication::applicationDirPath() + u"/fonts/"_s;
-    bool ascii = true;
-    for (const QChar c : fontDir)
-        ascii = ascii && c.unicode() < 128;
-    for (const QString& file : {u"AlibabaPuHuiTi-3-55-Regular.ttf"_s}) {
-        int id = -1;
-        if (ascii) {
-            id = QFontDatabase::addApplicationFont(fontDir + file);
-        } else {
-            QFile data(fontDir + file);
-            if (data.open(QIODevice::ReadOnly))
-                id = QFontDatabase::addApplicationFontFromData(data.readAll());
-        }
-        const QStringList families = QFontDatabase::applicationFontFamilies(id);
-        if (uiFamily.isEmpty() && !families.isEmpty())
-            uiFamily = families.first(); // Qt synthesizes heavier weights from the complete regular font
-        files.append(QJsonObject {{u"file"_s, file}, {u"loaded"_s, id >= 0}});
-    }
-    QJsonObject loaded {{u"by"_s, ascii ? u"file"_s : u"data"_s}, {u"files"_s, files}};
-    if (uiFamily.isEmpty()) {
-        qWarning("UI font: nothing loaded from %s, using the system font", qUtf8Printable(QDir::toNativeSeparators(fontDir)));
-        loaded[u"family"_s] = QGuiApplication::font().family();
-        return loaded;
-    }
-    QFont font(uiFamily);
-    // Vertical only: full hinting also moves glyphs sideways ("you ng").
-    font.setHintingPreference(QFont::PreferVerticalHinting);
-    QGuiApplication::setFont(font);
-    loaded[u"family"_s] = uiFamily;
-    return loaded;
-}
-
 // The program's icon in the title bars (TitleBar.qml), from the file's own.
 // Native separators: the shell does not parse "F:/..." and the generic
 // program icon would come back.
@@ -316,7 +269,7 @@ int main(int argc, char* argv[])
         QGuiApplication previewApp(argc, argv);
         QGuiApplication::setApplicationDisplayName(u"Win顺"_s);
         ws::preview::note(u"loading the font"_s);
-        applyUiFont();
+        ws::uifont::initialize();
         ws::phosphor::loadFonts();
         setWindowIcon();
         if (clipboardDisplay) return ws::runClipboardDisplay(wideArgs);
@@ -448,7 +401,7 @@ int main(int argc, char* argv[])
     if (!manyStreams)
         qWarning("Fonts: only %d C runtime streams; with many fonts installed, text may turn into boxes", _getmaxstdio());
 
-    QJsonObject uiFont = applyUiFont(); // the UI font (see above)
+    QJsonObject uiFont = ws::uifont::initialize(); // bundled fallback and font-loading diagnostics
     ws::phosphor::loadFonts(); // the icons
     setWindowIcon();
     uiFont[u"platform"_s] = platform;

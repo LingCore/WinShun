@@ -337,7 +337,9 @@ Window {
             }
         }
     }
-    HoverTip {
+    MenuPathTip {
+        host: menu
+        availableArea: menu.availableArea
         target: menu.hoveredText.length > 0 ? menu.hoveredEntry : null
         text: menu.hoveredText
     }

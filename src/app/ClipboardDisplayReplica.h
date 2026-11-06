@@ -126,6 +126,7 @@ private:
     qint64 m_serial = 0;
     bool m_applying = false;
     bool m_failed = false;
+    bool m_fontReady = false;
 };
 
 } // namespace ws

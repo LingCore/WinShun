@@ -213,6 +213,9 @@ void ClipboardDisplay::accept()
         m_decoder = {};
         connect(socket, &QLocalSocket::readyRead, this, &ClipboardDisplay::receive);
         connect(socket, &QLocalSocket::disconnected, this, &ClipboardDisplay::disconnectPeer);
+        // Text takes its default font when QML is constructed. Send this
+        // before the child builds its window, rather than in later state updates.
+        send({{u"type"_s, u"font"_s}, {u"family"_s, QGuiApplication::font().family()}});
         receive();
     }
 }

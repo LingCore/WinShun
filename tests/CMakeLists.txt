@@ -937,8 +937,10 @@ qt_add_resources(tst_ocrpackage "ocr_package_test"
         "${PROJECT_SOURCE_DIR}/third_party/ppocr/LICENSE")
 add_test(NAME tst_ocrpackage COMMAND tst_ocrpackage)
 
-qt_add_executable(tst_uifont tst_uifont.cpp)
-target_link_libraries(tst_uifont PRIVATE winshun_options Qt6::Gui Qt6::Test)
+qt_add_executable(tst_uifont tst_uifont.cpp ${PROJECT_SOURCE_DIR}/src/app/UiFont.cpp)
+target_include_directories(tst_uifont PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+set_target_properties(tst_uifont PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+target_link_libraries(tst_uifont PRIVATE winshun_options Qt6::Quick Qt6::Test)
 add_test(NAME tst_uifont_freetype COMMAND tst_uifont)
 set_tests_properties(tst_uifont_freetype PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=windows:fontengine=freetype")
 add_test(NAME tst_uifont_gdi COMMAND tst_uifont)

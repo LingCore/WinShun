@@ -1,4 +1,5 @@
 #include "SettingsEditor.h"
+#include "UiFont.h"
 
 #include "HealthMonitor.h"
 #include "PreviewShortcut.h"
@@ -40,6 +41,7 @@
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QGuiApplication>
+#include <QFont>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
@@ -896,6 +898,23 @@ void SettingsEditor::setUiSize(const QString& size)
     if (m_settings.uiSize == size || (size != u"compact" && size != u"standard" && size != u"roomy"))
         return;
     m_settings.uiSize = size;
+    commit();
+}
+
+QStringList SettingsEditor::uiFonts() const { return uifont::families(); }
+bool SettingsEditor::uiFontAvailable() const { return uifont::available(m_settings.uiFont); }
+QString SettingsEditor::uiFontPreview() const { return uifont::resolvedFamily(m_settings.uiFont); }
+bool SettingsEditor::fontRestartRequired() const
+{
+    return uiFontPreview().compare(QGuiApplication::font().family(), Qt::CaseInsensitive) != 0;
+}
+
+void SettingsEditor::setUiFont(const QString& family)
+{
+    const QString trimmed = family.trimmed();
+    if (m_settings.uiFont == trimmed || !uifont::available(trimmed))
+        return;
+    m_settings.uiFont = trimmed;
     commit();
 }
 

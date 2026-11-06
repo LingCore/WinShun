@@ -1,4 +1,7 @@
 #include "ClipboardDisplayReplica.h"
+#include "UiFont.h"
+#include <QFont>
+#include <cstdio>
 
 #include "Clipboard.h"
 #include "ClipThumbnailProvider.h"
@@ -171,6 +174,15 @@ bool DisplayReplica::connectTo(const QString& pipe, DWORD parentPid)
     ULONG actual = 0;
     if (!::GetNamedPipeServerProcessId(reinterpret_cast<HANDLE>(m_socket.socketDescriptor()), &actual) || actual != parentPid)
         return false;
+    QElapsedTimer deadline;
+    deadline.start();
+    while (!m_failed && !m_fontReady && deadline.elapsed() < 3000) {
+        receive();
+        if (!m_fontReady)
+            m_socket.waitForReadyRead(std::max(1, 3000 - int(deadline.elapsed())));
+    }
+    if (m_failed || !m_fontReady)
+        return false;
     m_watch.start();
     return true;
 }
@@ -330,7 +342,10 @@ void DisplayReplica::deliverKey(const QJsonObject& object)
 void DisplayReplica::dispatch(const QJsonObject& object)
 {
     const QString type = object.value(u"type"_s).toString();
-    if (type == u"reply") {
+    if (type == u"font" && !m_fontReady) {
+        uifont::apply(object.value(u"family"_s).toString());
+        m_fontReady = true;
+    } else if (type == u"reply") {
         if (!object.value(u"ok"_s).toBool()) { failed(); return; }
         m_replies.insert(object.value(u"id"_s).toInteger(), object.value(u"value"_s).toVariant());
     } else if (type == u"state") {
@@ -463,6 +478,13 @@ int runClipboardDisplay(const QStringList& args)
     win::styleFramelessWindow(window.get(), SystemTheme::backdropAvailable());
     win::keepDarkFrameOnShow(window.get());
     replica.setWindow(window.get(), &placement, &frame);
+    if (probe) {
+        win::setCloaked(window.get(), true); // probes exercise input/state without displaying on the user's desktop
+        const auto* field = window->findChild<QQuickItem*>(u"clipboardSearchField"_s);
+        const QString family = field ? field->property("font").value<QFont>().family() : QString();
+        std::fprintf(stderr, "clipboard-display-font: %s\n", qUtf8Printable(family));
+        std::fflush(stderr);
+    }
     ContextMenuGuard guard;
     QGuiApplication::instance()->installEventFilter(&guard);
     using GetBand = BOOL(WINAPI*)(HWND, DWORD*);

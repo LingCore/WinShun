@@ -2700,6 +2700,45 @@ Window {
                 glyph: "\uE740"
 
                 SettingRow {
+                    title: qsTr("界面字体")
+                    stackControl: width < 600
+                    keywords: qsTr("字体;雅黑;普惠体;清晰;font;typeface;YaHei").split(";")
+                    values: [window.editor.uiFont]
+                    description: window.editor.uiFontAvailable
+                        ? qsTr("输入名称查找，示例即时预览；重启后应用")
+                        : qsTr("此电脑未安装“%1”，暂用默认字体").arg(window.editor.uiFont)
+                    FontPicker {
+                        frame: window.frame
+                        families: window.editor.uiFonts
+                        selectedFamily: window.editor.uiFont
+                        onChosen: family => window.editor.uiFont = family
+                    }
+                    body: Item {
+                        width: parent.width
+                        height: Math.max(fontSample.implicitHeight, fontRestart.visible ? fontRestart.height : 0)
+                        Text {
+                            id: fontSample
+                            objectName: "uiFontSample"
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - (fontRestart.visible ? fontRestart.width + 16 : 0)
+                            text: qsTr("文件搜索 · 剪贴板 · 设置  WinShun 0123456789")
+                            color: Theme.text
+                            font.pixelSize: Theme.fontBody
+                            font.family: window.editor.uiFontPreview
+                            wrapMode: Text.Wrap
+                        }
+                        FlatButton {
+                            id: fontRestart
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: window.editor.fontRestartRequired
+                            text: qsTr("重启后应用")
+                            onClicked: window.editor.restart()
+                        }
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("界面大小")
                     keywords: qsTr("缩放;大小;字号;字体大小;行高;紧凑;宽松;scale;size;zoom;font").split(";")
                     description: qsTr("搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。剪贴板可在“剪贴板”页单独设置")

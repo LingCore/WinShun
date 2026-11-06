@@ -1,4 +1,5 @@
 #include "App.h"
+#include "UiFont.h"
 #include "AdminDialogHint.h"
 #include "AdminTapHint.h"
 #include "WebSearchProvider.h"
@@ -497,6 +498,7 @@ bool App::start(const StartOptions& options)
     // Updated from a version without the clipboard history: tell about it once.
     const bool clipboardIsNew = !firstRun && !Settings::hasClipboardSettings();
     m_settings.load();
+    uifont::apply(m_settings.uiFont); // before QML text items take their default font
     applyAutostartLevel(); // may set the mode (an old elevated task): before the index is made
     applyAppearance(); // before any window: the first frame is already in the chosen theme and language
     m_ocrPackage = std::make_unique<OcrPackage>();
@@ -2162,7 +2164,9 @@ void App::prefetchTrayMenus()
 QJsonObject App::pluginLook() const
 {
     QJsonObject look {{u"locale"_s, m_language}, {u"themeSetting"_s, m_settings.theme}, {u"corners"_s, m_settings.corners},
-        {u"uiStyle"_s, m_settings.uiStyle}, {u"uiSize"_s, m_settings.uiSize}, {u"transparency"_s, m_settings.transparency}, {u"renderer"_s, m_settings.renderer}};
+        {u"uiStyle"_s, m_settings.uiStyle}, {u"uiSize"_s, m_settings.uiSize},
+        {u"uiFont"_s, m_settings.uiFont}, {u"resolvedUiFont"_s, QGuiApplication::font().family()},
+        {u"transparency"_s, m_settings.transparency}, {u"renderer"_s, m_settings.renderer}};
     // The style's colours and radii, for plugins that draw without QML (see
     // docs/plugins.md, "外观"); none until the launcher's Theme is made.
     if (const QJsonObject native = SystemTheme::nativeLookJson(); !native.isEmpty())

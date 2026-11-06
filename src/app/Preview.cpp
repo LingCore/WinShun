@@ -1,4 +1,5 @@
 #include "Preview.h"
+#include "UiFont.h"
 
 #include "HealthMonitor.h"
 #include "ClipScrollBench.h"
@@ -1096,6 +1097,10 @@ int runSettings(const QStringList& args)
     SystemTheme::setRoundedCorners(settings.corners == u"round");
     settings.uiStyle = SystemTheme::uiStyle();
     settings.uiSize = valueAfter(args, u"--size", settings.uiSize);
+    settings.uiFont = valueAfter(args, u"--font", settings.uiFont);
+    uifont::apply(settings.uiFont);
+    if (args.contains(u"--font-picker"_s))
+        settings.save(); // the probe starts from a persisted choice, including an unchanged selection
     SystemTheme::setUiSize(settings.uiSize);
     settings.mcp = true;
     settings.mcpPlugins = true;
@@ -1873,6 +1878,78 @@ int runSettings(const QStringList& args)
         settle(window, 3);
         saved = saveGrab(window, out.filePath(u"file-types-bottom.png"_s)) && saved;
         return finish(window, saved);
+    }
+
+    if (args.contains(u"--font-picker"_s)) {
+        bool ok = true;
+        const auto check = [&](bool condition, const QString& message) {
+            say((condition ? u"ok: "_s : u"FAILED: "_s) + message);
+            ok = condition && ok;
+        };
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(1)), Q_ARG(QVariant, QVariant(0)));
+        settle(window, 3);
+        auto* picker = visualNamed(window->contentItem(), u"uiFontPicker"_s);
+        auto* sample = visualNamed(window->contentItem(), u"uiFontSample"_s);
+        if (!picker || !sample)
+            return finish(window, false);
+        const QString running = QGuiApplication::font().family();
+        check(running == uifont::resolvedFamily(settings.uiFont)
+                && input->property("font").value<QFont>().family() == running,
+            u"startup preference reaches the real settings search field"_s);
+        const QString family = u"Microsoft YaHei UI"_s;
+        check(editor->uiFonts().contains(family), u"YaHei UI is selectable"_s);
+        picker->setProperty("editText", family);
+        check(QMetaObject::invokeMethod(picker, "accepted"), u"typed font accepted by the production picker"_s);
+        settle(window, 2);
+        Settings saved;
+        saved.load();
+        check(saved.uiFont == family && editor->uiFont() == family, u"font preference persisted in the isolated profile"_s);
+        check(sample->property("font").value<QFont>().family() == family, u"sample previews the selected font"_s);
+        check(QGuiApplication::font().family() == running && editor->fontRestartRequired() == (running != family),
+            u"existing windows stay consistent until explicit restart"_s);
+        const qreal y = picker->mapToItem(qobject_cast<QQuickItem*>(flick), QPointF()).y();
+        flick->setProperty("contentY", std::max(0.0, flick->property("contentY").toDouble() + y - 130));
+        settle(window, 2);
+        check(saveGrab(window, out.filePath(u"font-picker.png"_s)), u"font preview captured"_s);
+        auto* popup = picker->property("popup").value<QObject*>();
+        check(popup && QMetaObject::invokeMethod(popup, "open"), u"font list opens"_s);
+        settle(window, 2);
+        check(popup && popup->property("height").toReal() <= 280, u"long font list stays within its scrollable menu"_s);
+        check(saveGrab(window, out.filePath(u"font-list.png"_s)), u"font list captured"_s);
+        if (popup)
+            QMetaObject::invokeMethod(popup, "close");
+        picker->setProperty("editText", u"Missing-WinShun-Test-Font"_s);
+        QMetaObject::invokeMethod(picker, "accepted");
+        check(editor->uiFont() == family, u"unknown typed font does not replace the preference"_s);
+        QMetaObject::invokeMethod(picker, "activated", Q_ARG(int, 0));
+        settle(window, 2);
+        saved.load();
+        check(editor->uiFont().isEmpty() && saved.uiFont.isEmpty(), u"default font can be restored"_s);
+        check(sample->property("font").value<QFont>().family() == uifont::resolvedFamily({}), u"default preview restored"_s);
+        {
+            // Exercise the real helper handshake with a hidden owned window.
+            // No clipboard watcher, show(), global keys or service lease.
+            QTemporaryDir clipProfile;
+            ClipStore store(clipProfile.filePath(u"clipboard"_s));
+            store.open(QDateTime::currentMSecsSinceEpoch());
+            ClipboardWatcher watcher({}, {});
+            Clipboard clipboard(&store, &watcher);
+            Placement placement(clipProfile.filePath(u"placement.ini"_s), u"Clipboard"_s);
+            ClipboardDisplay display(&clipboard, window, &placement, true);
+            display.start();
+            QElapsedTimer deadline;
+            deadline.start();
+            while (!display.ready() && deadline.elapsed() < 6000)
+                pump(25);
+            check(display.ready(), u"hidden clipboard display completes the authenticated font handshake"_s);
+            pump(50);
+            const QString output = display.probeOutput();
+            say(output);
+            check(output.contains(u"clipboard-display-font: "_s + running),
+                u"independent clipboard search field inherits the running font"_s);
+            check(!display.handle() || !::IsWindowVisible(display.handle()), u"clipboard font test never shows its window"_s);
+        }
+        return finish(window, ok);
     }
 
     // Every page, every tab: the window as tall as the page, so the

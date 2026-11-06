@@ -280,6 +280,7 @@ struct Settings {
     QString transparency; // off | on: Mica behind the windows, where Windows 11 has it; defaults() picks by memory
     QString taskbarIcon = QStringLiteral("color"); // color | mono: the tray's and the taskbar box's icon (monologo)
     QString uiSize = QStringLiteral("standard"); // compact | standard | roomy: type and row heights (uisize::)
+    QString uiFont; // empty: bundled default; otherwise an installed font family
     QString corners; // round | square: defaults() picks by Windows version
     QString uiStyle = QStringLiteral("fluent"); // fluent | brand | tactile: 界面风格 (Theme.style, themes/)
 
