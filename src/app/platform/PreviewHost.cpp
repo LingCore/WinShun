@@ -338,6 +338,17 @@ struct PreviewHost::Worker {
         HRESULT hr = handler->SetWindow(hwnd, &client);
         if (SUCCEEDED(hr))
             hr = handler->DoPreview();
+        // Word's handler, started as another goes that showed the file at its
+        // own size (the preview window's, handed to the search panel's 预览
+        // tab), may lay the page out for that one's: its top cut off (GitHub
+        // #224). A size it did not have makes it lay out for this one; the
+        // popup is still hidden.
+        if (SUCCEEDED(hr)) {
+            RECT other = client;
+            ++other.bottom;
+            handler->SetRect(&other);
+            handler->SetRect(&client);
+        }
         busy = false;
         return SUCCEEDED(hr);
     }
