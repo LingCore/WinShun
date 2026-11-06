@@ -52,7 +52,7 @@ ComboBox {
         width: picker.width
         height: Theme.menuItemHeight
         text: modelData
-        font.pixelSize: Theme.fontBody
+        font.pixelSize: Theme.menuTextSize
         font.weight: picker.currentIndex === index ? Font.DemiBold : Font.Normal
         highlighted: picker.highlightedIndex === index
         hoverEnabled: true

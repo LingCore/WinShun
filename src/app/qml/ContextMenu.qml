@@ -225,7 +225,7 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     text: entry.modelData.text ?? ""
                     color: entry.disabled ? Theme.faint : Theme.text
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.menuTextSize
                 }
 
                 Text {
@@ -236,7 +236,7 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     text: entry.modelData.shortcut ?? ""
                     color: Theme.faint
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.menuCaptionSize
                 }
 
                 MouseArea {

@@ -18,7 +18,7 @@ Window {
     readonly property real padding: Theme.menuPadding
     readonly property int itemHeight: Theme.menuItemHeight
     readonly property real dpr: Screen.devicePixelRatio
-    readonly property int sectionHeight: Theme.fontCaption + 12
+    readonly property int sectionHeight: Theme.menuCaptionSize + 12
     readonly property real listHeight: entries.reduce((height, entry) => height + (entry.separator === true ? 9 : entry.heading === true ? sectionHeight : itemHeight), 0)
     readonly property int headingHeight: page === null ? 0 : itemHeight + 5
     readonly property real maxHeight: Math.min(600, availableArea.height > 0 ? availableArea.height - 16 : 600)
@@ -26,7 +26,8 @@ Window {
     objectName: "folderMenuWindow"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     color: Theme.menuBackground
-    width: availableArea.width > 0 ? Math.min(360, availableArea.width - 16) : 360
+    readonly property int preferredWidth: Theme.metrics.size === "compact" ? 300 : Theme.metrics.size === "roomy" ? 400 : 360
+    width: availableArea.width > 0 ? Math.min(preferredWidth, availableArea.width - 16) : preferredWidth
     height: Math.min(listHeight + 2 * padding + headingHeight, maxHeight)
     onHeightChanged: if (visible) place()
     onHighlightedChanged: {
@@ -196,7 +197,7 @@ Window {
             y: (menu.itemHeight - height) / 2
             width: heading.width - x - 12
             text: menu.page === null ? "" : (menu.page.pageTitle ?? menu.page.text)
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.menuTextSize
             font.weight: Font.DemiBold
             color: Theme.text
             elide: Text.ElideRight
@@ -300,7 +301,7 @@ Window {
                 text: entry.modelData.text ?? ""
                 elide: Text.ElideRight
                 color: entry.disabled ? Theme.faint : Theme.text
-                font.pixelSize: entry.section ? Theme.fontCaption : Theme.fontBody
+                font.pixelSize: entry.section ? Theme.menuCaptionSize : Theme.menuTextSize
             }
             Text {
                 id: detail
@@ -311,7 +312,7 @@ Window {
                 text: entry.modelData.detail ?? ""
                 elide: Text.ElideRight
                 color: Theme.faint
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.menuCaptionSize
             }
             Glyph {
                 visible: entry.branch

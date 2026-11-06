@@ -136,7 +136,10 @@ QtObject {
     readonly property color menuEdge: pick("menuEdge")
     readonly property color menuShadow: pick("menuShadow")
     readonly property int menuShadowSpread: pick("menuShadowSpread")
-    readonly property int menuItemHeight: pick("menuItemHeight")
+    // Density belongs to the host, shared by every menu style (#205).
+    readonly property int menuItemHeight: pick("menuItemHeight") + (metrics.size === "compact" ? -6 : metrics.size === "roomy" ? 4 : 0)
+    readonly property int menuTextSize: metrics.uiBody
+    readonly property int menuCaptionSize: metrics.uiCaption
     readonly property real menuPadding: pick("menuPadding")
     readonly property color danger: pick("danger") // words and glyphs
     readonly property color dangerFill: pick("dangerFill") // under white words (an armed delete button)

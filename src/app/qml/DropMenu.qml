@@ -188,7 +188,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: entry.modelData.text
                         color: entry.modelData.danger ? Theme.danger : Theme.text
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.menuCaptionSize
                     }
                     MouseArea {
                         id: entryArea
