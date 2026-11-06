@@ -3821,8 +3821,14 @@ void Launcher::togglePreview(int row)
 
 void Launcher::previewHover(int row)
 {
-    if (m_preview && m_preview->isOpen() && row >= 0 && row < m_results.count())
+    if (m_previewFollowsPointer && m_preview && m_preview->isOpen() && row >= 0 && row < m_results.count())
         m_preview->follow(previewItem(m_results.at(row)));
+}
+
+void Launcher::previewPointerMoved()
+{
+    if (m_previewFollowsPointer && m_preview)
+        m_preview->postponeHandler();
 }
 
 bool Launcher::copyPreviewSelection()

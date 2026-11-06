@@ -6858,6 +6858,34 @@ Right: center window · Drag: move window</translation>
         <translation>Use QuickLook or Seer when running; otherwise use WinShun&apos;s built-in preview</translation>
     </message>
     <message>
+        <source>预览跟随</source>
+        <translation>Preview follows</translation>
+    </message>
+    <message>
+        <source>预览;跟随;鼠标;悬停;指向;划过;选中;大文件;卡;hover;preview</source>
+        <translation>preview;follow;mouse;hover;pointer;selected;selection;large files;lag;slow</translation>
+    </message>
+    <message>
+        <source>预览开着时，鼠标停在哪一行就预览哪一行；Word、PPT、PDF 这类文件要停稳一下才打开</source>
+        <translation>While the preview is open, it shows the row the mouse rests on; Word, PowerPoint and PDF files open once the mouse holds still for a moment</translation>
+    </message>
+    <message>
+        <source>只预览选中的行：单击或用方向键选中。鼠标划过时不切换，大文件不会被一个个打开</source>
+        <translation>Only the selected row is previewed: select it with a click or the arrow keys. Moving the mouse over rows does not switch, so large files are not opened one after another</translation>
+    </message>
+    <message>
+        <source>只预览选中的行：用方向键选中，或用鼠标中键点一行。鼠标划过时不切换，大文件不会被一个个打开</source>
+        <translation>Only the selected row is previewed: select it with the arrow keys, or middle-click a row. Moving the mouse over rows does not switch, so large files are not opened one after another</translation>
+    </message>
+    <message>
+        <source>鼠标所指</source>
+        <translation>Under the mouse</translation>
+    </message>
+    <message>
+        <source>选中的行</source>
+        <translation>Selected row</translation>
+    </message>
+    <message>
         <source>预览快捷键</source>
         <translation>Preview shortcut</translation>
     </message>

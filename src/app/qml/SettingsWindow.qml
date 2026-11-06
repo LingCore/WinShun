@@ -4035,6 +4035,23 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("预览跟随")
+                    keywords: qsTr("预览;跟随;鼠标;悬停;指向;划过;选中;大文件;卡;hover;preview").split(";")
+                    description: window.editor.previewFollowsPointer
+                                 ? qsTr("预览开着时，鼠标停在哪一行就预览哪一行；Word、PPT、PDF 这类文件要停稳一下才打开")
+                                 : window.editor.doubleClickToOpen
+                                   ? qsTr("只预览选中的行：单击或用方向键选中。鼠标划过时不切换，大文件不会被一个个打开")
+                                   : qsTr("只预览选中的行：用方向键选中，或用鼠标中键点一行。鼠标划过时不切换，大文件不会被一个个打开")
+
+                    ScopeTabs {
+                        objectName: "previewFollowChoice"
+                        labels: [qsTr("鼠标所指"), qsTr("选中的行")]
+                        current: window.editor.previewFollowsPointer ? 0 : 1
+                        onActivated: (index) => window.editor.previewFollowsPointer = index === 0
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("预览快捷键")
                     keywords: qsTr("预览;快捷键;空格;Space;Alt+P;QuickLook;preview;shortcut").split(";")
                     values: [window.editor.previewHotkey]

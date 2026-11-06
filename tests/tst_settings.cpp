@@ -971,17 +971,20 @@ private slots:
         fresh.load();
         QCOMPARE(fresh.sort, u"match"_s);
         QVERIFY(!fresh.doubleClickToOpen);
+        QVERIFY(fresh.previewFollowsPointer);
 
         for (const QStringView name : ws::kSortNames) {
             ws::Settings s;
             s.load();
             s.sort = name.toString();
             s.doubleClickToOpen = true;
+            s.previewFollowsPointer = false;
             s.save();
             ws::Settings back;
             back.load();
             QCOMPARE(back.sort, name.toString());
             QVERIFY(back.doubleClickToOpen);
+            QVERIFY(!back.previewFollowsPointer);
         }
         QCOMPARE(ws::sortIndex(u"newest"), 1);
         QCOMPARE(ws::sortIndex(u"smallest"), 7);

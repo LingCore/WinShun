@@ -462,6 +462,7 @@ public:
     QString numberHints() const { return m_numberHints; }
     QString previewHotkey() const { return m_previewHotkey; }
     void setPreviewHotkey(const QString& shortcut);
+    void setPreviewFollowsPointer(bool on) { m_previewFollowsPointer = on; } // Settings::previewFollowsPointer
     Q_INVOKABLE bool isPreviewKey(int key, int modifiers) const;
     void setNumberHints(const QString& hints);
     bool shortcutHelp() const { return m_shortcutHelp; }
@@ -632,6 +633,9 @@ public:
     // The mouse rests on a row: an open preview shows its file, the current
     // row keeps the selection (the next move of it shows its file again).
     Q_INVOKABLE void previewHover(int row);
+    // The mouse went on to another row: the file followed last, if its
+    // handler has not started yet, did not stay (FilePreview::postponeHandler).
+    Q_INVOKABLE void previewPointerMoved();
     // Ctrl+C with text picked in the preview: true when it was copied.
     Q_INVOKABLE bool copyPreviewSelection();
     Q_INVOKABLE bool closePreview();
@@ -1178,6 +1182,7 @@ private:
     QPointer<Switches> m_switches;
     QString m_stateFile; // state.ini
     bool m_previewWanted = false; // the preview was left open by the user: it comes back with the launcher
+    bool m_previewFollowsPointer = true; // previewHover: the row the mouse rests on; off: the current row only
     bool m_previewResume = false; // shown now, and the preview not yet back
     bool m_previewHandedOver = false; // the window gave way to the details' 预览 tab: back when they go
     int m_tabBeforePreview = 1; // the details' tab Alt+P left for 预览 (匹配 at first): Alt+P again goes back

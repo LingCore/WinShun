@@ -237,6 +237,10 @@ struct Settings {
     // Win顺's own preview window; builtin: always that.
     QString previewWith = QStringLiteral("auto");
     QString previewHotkey = QStringLiteral("Alt+P"); // local; empty disables keyboard preview
+    // An open preview shows the row the mouse rests on; off: only the current
+    // row (big files are not opened one after another by a passing pointer,
+    // GitHub #224).
+    bool previewFollowsPointer = true;
 
     // [FileTypes]: what 文件 can be narrowed to, in the strip under the
     // search box (图片: jpg, png…), in its user's order. Written as an

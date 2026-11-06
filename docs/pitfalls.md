@@ -3240,6 +3240,18 @@
 - **现象**：预览窗口压到搜索面板上面时（`HWND_TOPMOST`），Word 的内容不见了，只剩空白的预览窗口；另一种情形里弹出窗口跑到了启动器上面。
 - **原因**：弹出窗口只在开始时插到预览窗口上面，之后挪动用了 `SWP_NOZORDER`；预览窗口自己换到最前面后，弹出窗口就被压在下面。另外“预览窗口上面那个窗口就是弹出窗口自己”时误用了 `HWND_TOPMOST`，把它提到了所有窗口最前面。
 - **做法**：每次挪动都按 `GetWindow(预览窗口, GW_HWNDPREV)` 重新插（已经紧挨着就 `SWP_NOZORDER`），预览窗口每次摆好后也让弹出窗口跟一次（`FilePreview::showWindow` 末尾的 `placeHandler`）。
+
+### 预览开着时鼠标划过大文件，Word、PowerPoint、Excel 一个个被启动（GitHub #224，2026-11-06）
+
+- **现象**：用户说预览开着、鼠标划过结果就跟着预览，遇到大文件会卡。实测（0.21.0，`size:huge ext:pdf,pptx,docx,xlsx` 八行，真鼠标每行停 400 ms 来回划 20 秒）：启动器自己不卡（另一个进程每 4 ms 给它发 `WM_NULL`，最长 48 ms 才回）；但 PowerPoint、Excel、Word 都被启动了，三个进程共用了约 10.7 秒 CPU、820 MB 内存，预览窗口有 5.5 秒一直是空的。每行停 250 ms 时，Office 已经开着，约 15 次装入，仍用了 5.3 秒 CPU。
+- **原因**：鼠标在一行上停 100 ms 就 `follow` 那一行，Office、PDF 这类文件马上 `DoPreview`。这个调用取消不了，后面的文件排在它后面；一个 84 MB 的 .pptx 要好几秒。卡的是整台电脑和预览，不是启动器的 GUI 线程。
+- **做法**：`follow` 来的文件（鼠标停留、方向键经过）要用预览程序时，等这一行停够 300 ms 才开始（加上启动器自己的 100 ms，约等于 Windows 的悬停时间）；文字、图片照旧马上显示；`show`（Alt+P、鼠标中键）不等。只从 `follow` 起算还不够：第一次改完再量，Office 照样被启动了——鼠标在 A 上停了 100 多 ms 就 `follow(A)`，接着往下移时 QML 的 100 ms 计时器一直被重置，下一行的 `follow` 还没来，A 的 300 ms 先到了。所以鼠标一移到别的行（`rowHoverMoved` 里行号变了）就 `Launcher::previewPointerMoved` → `FilePreview::postponeHandler`，没开始的那个再等 300 ms。改后同样每行 250 ms 来回划：Office 一个也没启动，预览程序共 16 ms CPU，最后停住的那行 PDF 约 0.5 秒出来；停在 84 MB 的 .pptx 上，连 PowerPoint 冷启动约 1.2 秒出来。设置里加“预览跟随：鼠标所指 / 选中的行”，选后者时鼠标划过不切换（`Launcher::previewHover` 直接返回），每行 400 ms 划也是 0 次切换、0 CPU。量法：`SendInput` 绝对坐标移动加 `SendMessageTimeout(WM_NULL)` 计时，`INPUT` 在 x64 是 40 字节，多写两个填充成 48 字节时 `SendInput` 静静地返回 0，鼠标根本没动，第一次量出的“一点都不卡”是假的。
+
+### 鼠标中键点另一行，预览关了而不是换成那一行
+
+- **现象**：预览开着、显示 A 时，鼠标中键点 B 行（鼠标刚移过去，还没停够 100 ms），预览直接关了。只预览选中行时，每次中键点别的行都这样。
+- **原因**：`rowPreviewRequested` 先 `view.currentIndex = index`，这一步通过 `Binding` 同步改了 `Launcher.currentRow`，`followPreview` 已经把预览换成 B；接着 `togglePreview(B)` 看到“正在显示 B”，按“再按一次关闭”关掉了。
+- **做法**：先 `togglePreview(index)`，再选中那一行；选中时 `follow` 看到已经是同一个文件，什么也不做。
 ## 网页搜索建议和 SVG 图标
 
 ### 百度的 JSONP 不是 JSON，而且是 GBK

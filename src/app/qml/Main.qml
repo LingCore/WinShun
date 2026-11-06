@@ -1104,14 +1104,17 @@ Window {
         if (panel && launcher.gallery)
             galleryNavigation = true
         window.launcher.clearSelection()
+        // Before the row is selected: that brings an open preview to it
+        // (followPreview), and the click then closed it as for the file shown.
+        window.launcher.togglePreview(index)
         view.currentIndex = index
         window.launcher.keyboardMoved() // the pointer is on this row, as on the keyboard's
-        window.launcher.togglePreview(index)
     }
     // An open preview shows the row the mouse rests on for a moment (as the
     // clipboard's, GitHub #47 and #186), the current row stays where it is.
     // It never opens or closes the preview. Moving the selection brings the
-    // preview back to the current row (Launcher.followPreview).
+    // preview back to the current row (Launcher.followPreview). Off in the
+    // settings (预览跟随: 选中的行), Launcher.previewHover does nothing.
     property point previewHoverPos: Qt.point(-1, -1) // the last real mouse move, global
     property int previewHoverRow: -1
     function rowHoverMoved(index, globalPos) {
@@ -1121,6 +1124,8 @@ Window {
         previewHoverPos = globalPos
         if (Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier))
             return
+        if (index !== previewHoverRow)
+            window.launcher.previewPointerMoved() // a Word file only passed over does not start Word
         previewHoverRow = index
         previewHoverTimer.restart()
     }

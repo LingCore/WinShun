@@ -40,6 +40,10 @@ constexpr qsizetype kPieceChars = 2000; // a longer line goes in pieces (one row
 constexpr int kLargestPicture = 4096; // pixels on the longer side; larger ones are scaled down as decoded
 constexpr int kThumbnailPx = 512;
 constexpr int kFolderItemsCounted = 10000;
+// How long a followed row (the pointer on it, the arrow keys on it) stays
+// before a preview handler starts on its file: with the launcher's own 100 ms
+// for the pointer (Main.qml), about Windows' hover time.
+constexpr std::chrono::milliseconds kFollowedHandlerWait {300};
 
 // Kinds Windows Imaging Component reads, with the codecs it comes with or a
 // common add-on (HEIF, WebP, AVIF, RAW image extensions from the Store).
@@ -377,7 +381,15 @@ void FilePreview::follow(const std::optional<Item>& item)
         return;
     }
     if (!m_item.same(*item))
-        load(*item);
+        load(*item, true);
+}
+
+void FilePreview::postponeHandler()
+{
+    // The pointer went on to another row before the one followed started its
+    // handler: it did not stay; the row it rests on next is followed instead.
+    if (!m_handlerNotBefore.hasExpired())
+        m_handlerNotBefore = QDeadlineTimer(kFollowedHandlerWait);
 }
 
 void FilePreview::close()
@@ -459,9 +471,10 @@ void FilePreview::setSlow(bool slow)
     emit slowChanged();
 }
 
-void FilePreview::load(const Item& item)
+void FilePreview::load(const Item& item, bool followed)
 {
     const quint64 generation = ++m_generation;
+    m_handlerNotBefore = followed ? QDeadlineTimer(kFollowedHandlerWait) : QDeadlineTimer();
     m_item = item;
     m_kind = Loading;
     m_message.clear();
@@ -636,6 +649,14 @@ void FilePreview::apply(quint64 generation, std::shared_ptr<Loaded> loaded)
 {
     if (generation != m_generation.load() || !m_open)
         return;
+    // A row only passed over does not start Word, PowerPoint or Excel on its
+    // file: going over big ones kept the PC busy and the preview behind
+    // (GitHub #224). Its handler once the row stayed; text and pictures at once.
+    if (loaded->kind == Handler && !m_handlerNotBefore.hasExpired()) {
+        QTimer::singleShot(m_handlerNotBefore.remainingTimeAsDuration(), this,
+            [this, generation, loaded] { apply(generation, loaded); });
+        return;
+    }
     m_slowTimer.stop();
     setSlow(false);
     m_kind = loaded->kind;

@@ -1831,6 +1831,7 @@ void App::applySettings(bool initial)
     m_launcher->setStartOptions(m_settings.recentItems, m_settings.favoritesOnStart);
     m_preview->setBuiltInOnly(m_settings.previewWith == u"builtin");
     m_launcher->setPreviewHotkey(m_settings.previewHotkey);
+    m_launcher->setPreviewFollowsPointer(m_settings.previewFollowsPointer);
     m_preview->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);

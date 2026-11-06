@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDeadlineTimer>
 #include <QElapsedTimer>
 #include <QImage>
 #include <QMutex>
@@ -122,6 +123,9 @@ public:
     void show(const Item& item);
     // Open: the current row's file now (none: a row that is not a file).
     void follow(const std::optional<Item>& item);
+    // The pointer went on to another row: a followed file's handler that has
+    // not started yet waits again (load).
+    void postponeHandler();
     Q_INVOKABLE void close();
     // The × in the header: closes, and says so (the launcher then does not
     // bring the preview back the next time it opens).
@@ -172,7 +176,7 @@ private:
     struct Loaded; // what the worker found out
     class Images;
 
-    void load(const Item& item);
+    void load(const Item& item, bool followed = false); // followed: a handler waits until the row stayed
     void apply(quint64 generation, std::shared_ptr<Loaded> loaded);
     void showWindow(QSize wanted); // logical
     QRect placeBeside(QSize wanted); // the window's place by the launcher (logical)
@@ -197,6 +201,7 @@ private:
     QElapsedTimer m_externalSince; // its window comes a moment after it is asked
     Item m_item;
     std::atomic<quint64> m_generation {0};
+    QDeadlineTimer m_handlerNotBefore; // load(followed): when its handler may start (expired: at once)
     ComWorker* m_worker = nullptr; // never deleted: a shell call may still be running at exit
     std::unique_ptr<PreviewHost> m_host;
     std::shared_ptr<Images> m_images;

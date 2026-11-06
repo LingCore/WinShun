@@ -918,6 +918,7 @@ void Settings::load()
     previewWith = readOrDefault(s, u"Results/PreviewWith"_s, d.previewWith).trimmed().toLower();
     if (previewWith != u"builtin")
         previewWith = d.previewWith;
+    previewFollowsPointer = readOrDefault(s, u"Results/PreviewFollowsPointer"_s, d.previewFollowsPointer);
     previewHotkey = readOrDefault(s, u"Results/PreviewHotkey"_s, d.previewHotkey).trimmed();
     if (!previewHotkey.isEmpty()) {
         previewHotkey = previewkeys::normalized(previewHotkey);
@@ -1263,6 +1264,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/FooterHints"_s, footerHints);
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
+    s.setValue(u"Results/PreviewFollowsPointer"_s, previewFollowsPointer);
     s.setValue(u"Appearance/Theme"_s, theme);
     s.setValue(u"Appearance/Language"_s, language);
     s.setValue(u"Appearance/Transparency"_s, transparency);
