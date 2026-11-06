@@ -14,6 +14,7 @@ Item {
     property bool hovered: false
     property bool pressed: false
     property bool checked: false
+    property bool current: false // the preview/menu opened by this key remains open
     property bool highlighted: false // a primary button: an orange key, white words
     property bool danger: false      // an armed delete: a red key, white words
     property bool flat: false        // a toolbar icon button: nothing at rest, a key under the pointer
@@ -29,14 +30,14 @@ Item {
     readonly property real radius: corner >= 0 ? corner : !look ? 0 : role === "fieldKey" ? look.grooveKeyRadius : look.keyRadius
 
     // for the host
-    readonly property bool down: pressed || checked
+    readonly property bool down: pressed || checked || current
     readonly property bool bare: flat && !hovered && !down // a disabled one too: faint words on nothing, as the other styles' flat keys
     readonly property real contentOffsetY: bare || !look ? 0 : down ? look.keyTravel / 2 : -look.keyTravel / 2
     // A solid colour key: primary, armed delete, or a coloured key held down.
     readonly property color solid: !look ? "transparent" : danger ? look.dangerFillColor : highlighted ? look.accentFillColor
                                    : downFill.a > 0 && down ? downFill : "transparent"
     readonly property bool tinted: solid.a > 0 && enabled
-    readonly property color foreground: !look ? "transparent" : !enabled ? look.ink3 : tinted ? "#FFFFFF" : (down || hovered) ? look.ink : look.keyInk
+    readonly property color foreground: !look ? "transparent" : !enabled ? look.ink3 : tinted ? "#FFFFFF" : current ? look.accent : (down || hovered) ? look.ink : look.keyInk
     readonly property color iconColor: foreground
     readonly property int fontWeight: checked && !tinted ? Font.Bold : Font.Normal
     readonly property real leadingInset: indicator && look ? look.ledInset + look.ledSize + look.ledGap : 0

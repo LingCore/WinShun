@@ -20,6 +20,7 @@ Item {
     property var segments: []
     property int hoveredIndex: -1
     property int pressedIndex: -1
+    property bool iconOnly: false
     property string role           // "" | scope | sort | tabs | switch
     property real corner: -1       // the keys' (knob's) radius; -1: 2 in the groove, 6 on a switch
     property real dpr: 1
@@ -49,15 +50,17 @@ Item {
     }
     readonly property real leadingInset: keyedMode && look ? look.ledInset + look.ledSize + look.ledGap : 0
     function labelOffsetY(i: int): real {
+        if (!look) return 0
         if (!keyedMode)
-            return -look.keyTravel / 2 // labels sit on the knob's face, above its side
+            return i !== currentIndex ? 0 : (enabled && i === pressedIndex ? look.keyTravel / 2 : -look.keyTravel / 2)
         return (i === currentIndex || i === pressedIndex) ? look.keyTravel / 2 : -look.keyTravel / 2
     }
     function labelColor(i: int): color {
+        if (!look) return "transparent"
         if (!enabled)
             return look.ink3
         if (i === currentIndex)
-            return look.ink
+            return iconOnly ? look.accent : look.ink
         if (keyedMode)
             return i === hoveredIndex || i === pressedIndex ? look.ink : look.keyInk
         return i === hoveredIndex ? look.ink : look.ink3
@@ -88,6 +91,7 @@ Item {
         height: seg.height - 2 * seg.pad
         corner: seg.keyRadius
         hovered: seg.hoveredIndex === seg.currentIndex
+        pressed: seg.pressedIndex === seg.currentIndex
         enabled: seg.enabled
         dpr: seg.dpr
         look: seg.look

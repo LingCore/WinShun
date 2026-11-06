@@ -16,6 +16,7 @@ Item {
     property bool hovered: false
     property bool pressed: false
     property bool checked: false
+    property bool current: false // the preview/menu opened by this key remains open
     property bool highlighted: false
     property bool danger: false
     property bool flat: true
@@ -27,11 +28,12 @@ Item {
 
     readonly property real radius: look ? (corner >= 0 ? corner : look.keyRadius) : 0
     readonly property bool filled: highlighted || danger
-    readonly property bool pill: raised && enabled && (hovered || checked || pressed) && !filled
+    readonly property bool pill: raised && enabled && (hovered || checked || current || pressed) && !filled
     // Nothing at rest: flat keys, the row actions (on their capsule), the field's keys.
     readonly property bool bare: flat || raised || role === "fieldKey"
     // For the host's glyph and words (Hook.out): bare keys rest in ink2, firm under the pointer.
     readonly property color ink: !look ? "transparent" : filled ? look.accentText : !enabled ? look.ink3
+                               : current ? look.accent
                                : !bare || hovered || checked || pressed ? look.ink : look.ink2
     readonly property int weight: checked && !raised ? Font.Bold : Font.Normal
     readonly property color foreground: ink
@@ -60,7 +62,7 @@ Item {
              : !key.enabled ? (key.bare ? "transparent" : key.look.control)
              : key.pressed ? (key.bare ? key.look.pressedFill : key.look.controlPressed)
              : key.hovered ? (key.bare ? key.look.hoverFill : key.look.controlHover)
-             : key.checked ? key.look.segTrack
+             : key.checked || key.current ? key.look.segTrack
              : key.bare ? Qt.rgba(key.look.hoverFill.r, key.look.hoverFill.g, key.look.hoverFill.b, 0) : key.look.control
         border.width: key.look ? ((key.pill && !key.look.dark) || (!key.bare && !key.filled && !key.pill) ? key.look.edge(key.dpr) : 0) : 0
         border.color: key.look ? (key.pill ? key.look.segRing : key.look.controlBorder) : "transparent"

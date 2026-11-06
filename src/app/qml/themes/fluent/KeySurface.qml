@@ -22,6 +22,9 @@ Rectangle {
 
     readonly property bool filled: highlighted || danger || checked
     readonly property color base: !look ? "transparent" : danger ? look.dangerFill : look.accentFill
+    // Keep each host's normal ink, but never leave its dark glyph on a filled
+    // checked key (e.g. the panel sidebar or a recording option).
+    readonly property var foreground: !look ? undefined : filled ? look.accentText : current ? look.accent : undefined
 
     radius: corner >= 0 || !look ? Math.max(0, corner) : look.controlRadius
     color: !look ? "transparent"

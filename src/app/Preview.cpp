@@ -4991,6 +4991,143 @@ bool checkSearchWorkload(QQmlEngine* qml, const QDir& output)
     return passed;
 }
 
+// --style-buttons: production controls, process-local input and temporary data.
+// Keeps icon choices distinct from text tabs and an open action marked after hover.
+bool checkStyleButtons(QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    IndexService index(temporary.path(), IndexService::Options{});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    QQmlComponent component(engine);
+    component.setData(R"(
+        import QtQuick
+        import WinShun
+        Window {
+            id: fixture
+            required property Launcher launcher
+            width: 560; height: 280; color: Theme.page
+            property alias views: views
+            property alias preview: preview
+            property alias tabs: tabs
+            property alias primary: primary
+            property alias checkedFace: checkedFace
+            property color accent: Theme.accent
+            property color whiteInk: Theme.accentText
+            Text { x: 24; y: 14; text: "图标切换 / 文字分页"; color: Theme.text; font.pixelSize: 16 }
+            FileViewSwitch {
+                id: views; x: 24; y: 48
+                launcher: fixture.launcher
+                onModeRequested: gallery => fixture.launcher.gallery = gallery
+            }
+            PageTabs { id: tabs; x: 272; y: 42; labels: ["常规", "高级"]; onActivated: i => current = i }
+            Text { x: 24; y: 108; text: "普通操作 / 预览已打开 / 主操作 / 已开启 / 禁用"; color: Theme.subtext; font.pixelSize: 14 }
+            RowAction { x: 24; y: 144; glyph: "\uE8A7" }
+            RowAction { id: preview; x: 104; y: 144; glyph: "\uE8A7"; checked: true }
+            FlatButton { id: primary; x: 184; y: 142; text: "确认"; highlighted: true }
+            Item {
+                x: 304; y: 144; width: 32; height: 32
+                Hook { id: checkedFace; anchors.fill: parent; part: Theme.keySurface; checked: true; flat: true; role: "toolbar"; dpr: Screen.devicePixelRatio }
+                Glyph { anchors.centerIn: parent; anchors.verticalCenterOffset: checkedFace.out("contentOffsetY", 0); glyph: "\uE71C"; size: 16; color: checkedFace.out("foreground", Theme.text) }
+            }
+            FlatButton { x: 400; y: 142; glyph: "\uE713"; enabled: false }
+            Text { x: 24; y: 216; text: "当前项靠图标颜色与底面区分；鼠标移开仍保留状态。"; color: Theme.subtext; font.pixelSize: 14 }
+        }
+    )", QUrl(u"qrc:/qt/qml/WinShun/StyleButtons.qml"_s));
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"launcher"_s, QVariant::fromValue(&launcher)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) {
+        qWarning().noquote() << "style buttons:" << component.errorString();
+        return false;
+    }
+    showOffScreen(window);
+    settle(window);
+    QJsonArray checks;
+    bool passed = true;
+    const auto check = [&](bool okay, const QString& name) {
+        checks.append(QJsonObject {{u"name"_s, name}, {u"passed"_s, okay}});
+        passed = passed && okay;
+        if (!okay) qWarning("style buttons: %s", qUtf8Printable(name));
+    };
+    const auto evaluate = [&](QObject* target, const QString& expression) {
+        QQmlExpression run(qmlContext(target), target, expression);
+        const QVariant result = run.evaluate();
+        check(!run.hasError(), expression);
+        if (run.hasError()) say(run.error().toString());
+        return result;
+    };
+    auto* views = window->property("views").value<QObject*>();
+    auto* preview = window->property("preview").value<QObject*>();
+    auto* tabs = window->property("tabs").value<QObject*>();
+    // A component's private ids are not in its caller's QQmlContext. Inspect
+    // the actual visual Hook instead of evaluating "track" from that context.
+    std::function<QObject*(QQuickItem*)> findHook = [&](QQuickItem* item) -> QObject* {
+        if (item->property("built").isValid() && item->property("names").isValid()) return item;
+        for (QQuickItem* child : item->childItems())
+            if (QObject* found = findHook(child)) return found;
+        return nullptr;
+    };
+    auto* viewHook = findHook(qobject_cast<QQuickItem*>(views));
+    auto* tabHook = findHook(qobject_cast<QQuickItem*>(tabs));
+    check(viewHook && tabHook, u"production segmented parts exist"_s);
+    if (!viewHook || !tabHook) return false;
+    const auto colour = [&](QObject* target, const QString& expression) {
+        return evaluate(target, expression).value<QColor>();
+    };
+    const QColor accent = window->property("accent").value<QColor>();
+    check(colour(viewHook, u"call('labelColor', [0], 'transparent')"_s) == accent, u"selected list icon uses accent ink"_s);
+    check(colour(preview, u"foreground"_s) == accent, u"open preview stays marked without hover"_s);
+    check(colour(window->property("primary").value<QObject*>(), u"foreground"_s) == window->property("whiteInk").value<QColor>(),
+        u"primary action keeps white ink"_s);
+    if (SystemTheme::uiStyle() == u"fluent") {
+        check(colour(window->property("checkedFace").value<QObject*>(), u"out('foreground', 'transparent')"_s)
+                == window->property("whiteInk").value<QColor>(), u"filled checked key keeps white ink"_s);
+        check(!evaluate(viewHook, u"item.children.some(c => c.visible && c.height <= 4 && c.width === 16)"_s).toBool(),
+            u"icon choices have no underline"_s);
+        check(evaluate(tabHook, u"item.children.some(c => c.visible && c.height <= 4 && c.width === 16)"_s).toBool(),
+            u"text tabs retain their selection indicator"_s);
+    }
+    check(saveGrab(window, output.filePath(u"buttons-list.png"_s)), u"list state screenshot"_s);
+    auto* gallery = visualNamed(window->contentItem(), u"fileViewGallery"_s);
+    check(gallery, u"production gallery button exists"_s);
+    if (gallery) {
+        const QPointF at = gallery->mapToScene({gallery->width() / 2, gallery->height() / 2});
+        const auto mouse = [&](QEvent::Type type, QPointF point, Qt::MouseButtons buttons) {
+            QMouseEvent event(type, point, window->mapToGlobal(point), type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton, buttons, {});
+            QCoreApplication::sendEvent(window, &event);
+            settle(window, 2);
+        };
+        mouse(QEvent::MouseMove, at, {});
+        check(saveGrab(window, output.filePath(u"buttons-hover.png"_s)), u"hover screenshot"_s);
+        mouse(QEvent::MouseButtonPress, at, Qt::LeftButton);
+        check(viewHook->property("pressedIndex").toInt() == 1, u"pointer press reaches the segmented part"_s);
+        check(saveGrab(window, output.filePath(u"buttons-pressed.png"_s)), u"pressed screenshot"_s);
+        mouse(QEvent::MouseButtonRelease, at, {});
+        mouse(QEvent::MouseMove, {-20, -20}, {});
+        check(launcher.gallery(), u"click changes the real launcher's view mode"_s);
+        check(colour(viewHook, u"call('labelColor', [1], 'transparent')"_s) == accent, u"selected gallery icon stays coloured after pointer leaves"_s);
+        check(colour(viewHook, u"call('labelColor', [0], 'transparent')"_s) != accent, u"previous choice loses its accent"_s);
+        check(saveGrab(window, output.filePath(u"buttons-gallery.png"_s)), u"gallery state screenshot"_s);
+    }
+    preview->setProperty("checked", false);
+    settle(window, 2);
+    check(colour(preview, u"foreground"_s) != accent, u"closing preview clears its mark"_s);
+    auto* primary = qobject_cast<QQuickItem*>(window->property("primary").value<QObject*>());
+    primary->forceActiveFocus(Qt::TabFocusReason);
+    check(primary->hasActiveFocus(), u"keyboard focus remains available"_s);
+    check(saveGrab(window, output.filePath(u"buttons-focus.png"_s)), u"focus screenshot"_s);
+    window->hide();
+    QFile report(output.filePath(u"buttons.json"_s));
+    if (!report.open(QIODevice::WriteOnly)) return false;
+    report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"checks"_s, checks}}).toJson());
+    return passed;
+}
+
 // --style-windows: the small windows of every 界面风格 (themes/README.md),
 // each as the app makes it, off the screen: a menu dropped from a button and
 // a field with its caret (style-controls), the screenshot question
@@ -5196,6 +5333,8 @@ int runResults(const QStringList& args)
     QQmlApplicationEngine engine;
     engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
     engine.addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider); // the clipboard rows' pictures
+    if (args.contains(u"--style-buttons"_s))
+        return checkStyleButtons(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-sizing"_s))
         return checkClipboardInteractions(&engine, out, {}, true) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--content-pane"_s)) {

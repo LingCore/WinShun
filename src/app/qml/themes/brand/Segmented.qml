@@ -19,6 +19,7 @@ Item {
     property int pressedIndex: -1
     property var segments: []
     property bool inField: false
+    property bool iconOnly: false
     property real dpr: 1
 
     readonly property real padding: look ? look.segPad : 0
@@ -29,6 +30,12 @@ Item {
     // Hook.call("segmentX", [i]): segment i's left edge in the Hook (the
     // host lays its words out on these).
     function segmentX(i: int): real { return boxOf(i).x }
+    function labelColor(i: int): color {
+        if (!look) return "transparent"
+        if (!enabled) return look.ink3
+        if (iconOnly && i === currentIndex) return look.accent
+        return i === currentIndex || i === hoveredIndex || i === pressedIndex ? look.ink : look.ink2
+    }
 
     function boxOf(i: int): var {
         const s = segments
@@ -80,7 +87,7 @@ Item {
         Rectangle { // the 1 px ring sits inside the pill, so its gap to the track is a true 2
             anchors.fill: parent
             radius: seg.pillRadius
-            color: seg.look ? seg.look.segPill : "transparent"
+            color: !seg.look ? "transparent" : seg.enabled && seg.pressedIndex === seg.currentIndex ? seg.look.controlPressed : seg.look.segPill
             border.width: seg.look ? (seg.look.dark ? 0 : seg.look.edge(seg.dpr)) : 0
             border.color: seg.look ? seg.look.segRing : "transparent"
         }

@@ -104,7 +104,7 @@ Hook {
 | `searchField` | `SearchField.qml` | 启动器搜索行（`flat: true`）、设置搜索框、剪贴板搜索、插件搜索框（`flat: false`） | flat, focused, hovered, dpr |
 | `inputField` | `InputField.qml` | InputBox、表单输入框 | focused, hovered, enabled, error, dpr |
 | `keySurface` | `KeySurface.qml` | FlatButton、RowAction、钉住/展开、底栏按钮、工具条按钮…… | hovered, pressed, checked, current（打开着的东西：行的预览键）, enabled（Item 自带，部件不要重新声明）, highlighted（主按钮）, danger（确认删除）, flat（静止时无底）, corner（宿主要求的圆角，-1 用自己的）, role, dpr |
-| `segmented` | `Segmented.qml` | 范围（role "scope"）、底栏排序（"sort"）、FileViewSwitch（"switch"）、PageTabs 和设置里的分段（"tabs"） | count, currentIndex, hoveredIndex, pressedIndex, segments（`[{x, width}]`，各段在 Hook 内的位置）, role, dpr。文字由宿主画；部件可给 segmentX(i) 等自己排 |
+| `segmented` | `Segmented.qml` | 范围（role "scope"）、底栏排序（"sort"）、FileViewSwitch（"switch"）、PageTabs 和设置里的分段（"tabs"） | count, currentIndex, hoveredIndex, pressedIndex, iconOnly（全部选项只有图标）, segments（`[{x, width}]`，各段在 Hook 内的位置）, role, dpr。文字由宿主画；部件可给 segmentX(i) 等自己排 |
 | `chipSurface` | `ChipSurface.qml` | 类型条（role "type"）、剪贴板分组（"group"）、筛选胶囊（"filter"） | checked, hovered, pressed, hueIndex（-2 文件夹、-1 不限、0..n 按 TypeStrip 的类型顺序，超出调色板取模）, isAll, role, dpr |
 | `rowHighlight` | `RowHighlight.qml` | 结果行、剪贴板行、面板行（role "list"/"panel"）、菜单项（"menu"）的选中/悬停底；一个列表共用一个跟着当前行走的高亮 | selected, hovered, current（键盘所在行，未选中）, pressed, role, position（宿主高亮的 y，变化时可做落位动画）, dpr |
 | `matchStyle` | —（token） | StyledText 里的匹配字 | `matchColor`、`matchWeight` |
@@ -122,6 +122,8 @@ Hook {
 `segment` 的选中字用 `text` + `fontStrong`，其余 `subtext`。
 
 ### 3.1 role 和 extra
+- 纯图标分段选择传 `iconOnly: true`，选中图标用当前风格的 `accent`，配中性选中底面，不画文字标签式下划线。不能按 `role: "switch"` 推断是否纯图标：录屏的文字选项也用这个 role。宿主同时传悬停、按下状态。
+- `keySurface.current` 表示入口对应的预览／菜单仍打开。三套风格都须保留图标标识和底面，不能只在 hover 时显示；关闭后恢复。强调色实心按钮（含 `checked`）由部件提供白色 `foreground`，不依赖宿主碰巧选对颜色。
 - `role`（字符串）告诉部件它在哪：keySurface `"rowAction"|"fieldKey"|"toolbar"|"footer"|"dialog"`；segmented `"scope"|"sort"|"tabs"|"switch"`；
   rowHighlight `"list"|"menu"|"panel"`；chipSurface `"type"|"group"|"filter"`。Hook 还派生旧名：raised（rowAction）、inField（scope/fieldKey）、
   bar（不是 menu）、inMenu、keyed（scope）、checkbox（kind "check"）。部件不要把这些名字声明成 readonly（Hook 要赋值）。
@@ -166,3 +168,5 @@ Hook {
 
 `WinShun.exe --preview-results <dir> --search-logo --style brand [--dark] [--scale 1.5]`、
 `--preview-settings <dir> --style tactile` 等离屏出图（不碰正在运行的 WinShun）。离屏图里没有 DWM 的圆角、边和阴影。
+
+`--preview-results <dir> --style-buttons --style fluent|brand|tactile [--dark] [--scale 1.5]` 检查真实按钮部件：图标选中、文字分页、打开预览、主操作、选中工具按钮、禁用、键盘焦点，以及用窗口内鼠标事件切换列表／大图。输出各状态 PNG 与 `buttons.json`；数据在临时目录，不操作系统剪贴板。

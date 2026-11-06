@@ -83,6 +83,7 @@ Row {
         required property string name
         readonly property bool active: gallery === viewSwitch.launcher.gallery
         readonly property bool hovered: area.containsMouse
+        readonly property bool pressed: area.pressed
 
         width: height + 6
         height: Theme.chipHeight - 4
@@ -119,6 +120,8 @@ Row {
             count: 2
             currentIndex: viewSwitch.launcher.gallery ? 1 : 0
             hoveredIndex: listChip.hovered ? 0 : galleryChip.hovered ? 1 : -1
+            pressedIndex: listChip.pressed ? 0 : galleryChip.pressed ? 1 : -1
+            iconOnly: true
             segments: [{ x: chips.x + listChip.x, width: listChip.width }, { x: chips.x + galleryChip.x, width: galleryChip.width }]
             role: "switch"
             dpr: viewSwitch.dpr

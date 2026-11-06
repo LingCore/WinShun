@@ -34,6 +34,7 @@ Item {
     property bool highlighted: false // a primary button: accent fill, white words
     property bool danger: false // an armed delete: danger fill, white words
     property bool flat: false // no fill at rest (a toolbar's icon button)
+    property bool iconOnly: false // segmented choices with glyphs, not text tabs
     property bool maximized: false // windowFrame: no corners, no edge
     property bool mixed: false // toggle: part on (the knob in the middle)
     property int hueIndex: -1 // chipSurface/typeIcon: -2 folder, -1 不限, 0.. the file types
@@ -72,7 +73,7 @@ Item {
 
     readonly property var names: ["hovered", "pressed", "checked", "focused", "selected", "current", "active", "error", "isAll",
         "highlighted", "danger", "maximized", "mixed", "hueIndex", "count", "currentIndex", "hoveredIndex", "pressedIndex",
-        "segments", "kind", "paint", "size", "orientation", "position", "extent", "corner", "fill", "dpr", "flat", "role",
+        "segments", "kind", "paint", "size", "orientation", "position", "extent", "corner", "fill", "dpr", "flat", "iconOnly", "role",
         "raised", "inField", "bar", "inMenu", "keyed", "checkbox"]
 
     property Item built: null
