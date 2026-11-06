@@ -60,6 +60,7 @@ QtObject {
     readonly property int menuPadding: 6
     readonly property int menuItemRadius: r(Math.max(4, 8 - menuPadding)) // concentric: 4
     readonly property int menuItemHeight: 34
+    readonly property real pageTabsPad: switchPadding // the knob's room from the groove's ends, as from its top and bottom
     readonly property real pageTabsInset: 0 // the page tabs have a track: it starts at the cards' edge
     readonly property int capRadius: r(5)           // key hints
     readonly property int seamThickness: 2

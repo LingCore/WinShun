@@ -308,6 +308,7 @@ QtObject {
     readonly property color menuBackground: menuFill
     readonly property color menuHover: hoverFill
     readonly property int menuItemHeight: 34
+    readonly property real pageTabsPad: segPad // the pill's room from the track's ends, as from its top and bottom
     readonly property real pageTabsInset: 0 // the page tabs have a track: it starts at the cards' edge
     readonly property color danger: dark ? "#FF7A80" : "#D2363E"
     readonly property color dangerFill: "#C42F38" // white 5.5:1

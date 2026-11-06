@@ -19,6 +19,11 @@ Item {
     // no track, so the first one stands under the page's title (-12 for its
     // padding); a style with a track starts it at the cards' edge.
     readonly property real inset: Theme.tok("pageTabsInset", -12)
+    // A style with a track (inset >= 0): the knob keeps the same room from
+    // the track's ends as from its top and bottom, and the labels are centred
+    // on the track (fluent's stand 2 higher, clear of the bar under them).
+    readonly property bool tracked: inset >= 0
+    readonly property real pad: tracked ? Theme.tok("pageTabsPad", 0) : 0
     property int hoveredIndex: -1
     property int pressedIndex: -1
     property var segments: [] // [{x, width}] of each label in the part, laid out here
@@ -35,7 +40,7 @@ Item {
 
     signal activated(int index)
 
-    implicitWidth: row.width + row.x
+    implicitWidth: row.x + row.width + pad
     implicitHeight: 40
     activeFocusOnTab: true
 
@@ -46,7 +51,7 @@ Item {
         id: track
         y: 2
         width: bar.width
-        height: bar.height - 3
+        height: bar.height - (bar.tracked ? 4 : 3) // a track: centred on the bar
         part: Theme.segmented
         count: bar.labels.length
         currentIndex: bar.current
@@ -59,7 +64,7 @@ Item {
 
     Row {
         id: row
-        x: bar.inset
+        x: bar.inset + bar.pad
         height: parent.height
         onPositioningComplete: bar.placeSegments()
         onXChanged: bar.placeSegments()
@@ -90,8 +95,14 @@ Item {
                     font.weight: Theme.fontStrong
                 }
                 Text {
+                    id: label
+                    // On a track the label is centred on the knob by its ink:
+                    // the line box centred leaves CJK ink 1 px high (measured
+                    // at 150%, bold and regular alike). Fluent's stand 2
+                    // higher, clear of the bar under them.
+                    readonly property real inkShift: bar.tracked ? 1 : -2
                     anchors.centerIn: parent
-                    anchors.verticalCenterOffset: -2 + track.call("labelOffsetY", [item.index], 0) // clear of the bar under it
+                    anchors.verticalCenterOffset: inkShift + track.call("labelOffsetY", [item.index], 0)
                     text: item.modelData
                     color: track.call("labelColor", [item.index],
                                       item.selected || area.containsMouse && !area.pressed ? Theme.text : Theme.subtext)
