@@ -8,6 +8,10 @@ import WinShun
 // of neighbours: when `target` moves to another item while the tip is up, it
 // glides over and takes the new text instead of hiding and showing again. It
 // lives on the window's content item, so a clipping list cannot cut it off.
+//
+// The bubble is made the first time the tip shows, then kept: most tips (one
+// in every result and clipboard row, one per button) never show, and until
+// then a tip is only this item and its timer.
 Item {
     id: tip
 
@@ -25,18 +29,15 @@ Item {
     property string shownText
     property string shownShortcut
 
+    // Where the bubble settles (it glides there from the last target).
+    property real bubbleX: 0
+    property real bubbleY: 0
+    readonly property Item bubble: body.item
+    readonly property real fullWidth: bubble ? bubble.fullWidth : 0
+
     parent: anchor ? anchor.Window.contentItem : null
     z: 1000
-    // The size it settles at; `width` follows it with an animation.
-    readonly property real keysWidth: shownShortcut.length > 0 ? 10 + keys.implicitWidth : 0
-    // The label: its one-line width, but no wider than the window leaves (8 px each side, 10 px padding each side); beyond that it wraps.
-    readonly property real labelWidth: Math.min(probe.implicitWidth, Math.max(40, (parent ? parent.width : 100000) - 16 - 20 - keysWidth))
-    readonly property real fullWidth: labelWidth + keysWidth + 20
-
-    width: bubble.width
-    height: Math.max(label.implicitHeight, keys.implicitHeight) + 12
-    opacity: shown ? 1 : 0
-    visible: opacity > 0
+    visible: bubble !== null && bubble.opacity > 0
 
     // `target` and the texts usually change together; settle once they all have.
     onTargetChanged: Qt.callLater(sync)
@@ -46,17 +47,22 @@ Item {
 
     function sync() {
         if (target) {
-            hideTimer.stop()
+            if (timer.hiding)
+                timer.stop()
             if (shown) {
                 latch()
                 place()
-            } else if (!delayTimer.running) {
-                delayTimer.restart()
+            } else if (!timer.running) {
+                timer.hiding = false
+                timer.restart()
             }
         } else {
-            delayTimer.stop()
-            if (shown && !hideTimer.running)
-                hideTimer.restart()
+            if (!timer.hiding)
+                timer.stop()
+            if (shown && !timer.running) {
+                timer.hiding = true
+                timer.restart()
+            }
         }
     }
 
@@ -64,21 +70,28 @@ Item {
         anchor = target
         shownText = text
         shownShortcut = shortcut
+        body.active = true // made now with the texts, measured by place()
     }
 
     function place() {
-        if (!parent || !anchor)
+        if (!parent || !anchor || !bubble)
             return
         const gap = 6
         const p = anchor.mapToItem(parent, 0, 0)
-        x = Math.max(8, Math.min(p.x + (anchor.width - fullWidth) / 2, parent.width - fullWidth - 8))
-        y = p.y - height - gap >= 4 ? p.y - height - gap : p.y + anchor.height + gap
+        bubbleX = Math.max(8, Math.min(p.x + (anchor.width - fullWidth) / 2, parent.width - fullWidth - 8))
+        bubbleY = p.y - bubble.height - gap >= 4 ? p.y - bubble.height - gap : p.y + anchor.height + gap
     }
 
+    // The wait before showing, or after the mouse left before hiding.
     Timer {
-        id: delayTimer
-        interval: tip.delay
+        id: timer
+        property bool hiding: false
+        interval: hiding ? tip.linger : tip.delay
         onTriggered: {
+            if (hiding) {
+                tip.shown = false
+                return
+            }
             if (!tip.target)
                 return
             tip.latch()
@@ -87,71 +100,85 @@ Item {
         }
     }
 
-    Timer {
-        id: hideTimer
-        interval: tip.linger
-        onTriggered: tip.shown = false
-    }
+    Loader {
+        id: body
+        active: false
+        sourceComponent: Item {
+            id: face
 
-    // Glide only between targets; the first placement jumps straight there.
-    Behavior on x {
-        enabled: tip.shown
-        NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-    }
-    Behavior on y {
-        enabled: tip.shown
-        NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-    }
-    Behavior on opacity { NumberAnimation { duration: 120 } }
+            // The size it settles at; `width` follows it with an animation.
+            readonly property real keysWidth: tip.shownShortcut.length > 0 ? 10 + keys.implicitWidth : 0
+            // The label: its one-line width, but no wider than the window leaves (8 px each side, 10 px padding each side); beyond that it wraps.
+            readonly property real labelWidth: Math.min(probe.implicitWidth, Math.max(40, (tip.parent ? tip.parent.width : 100000) - 16 - 20 - keysWidth))
+            readonly property real fullWidth: labelWidth + keysWidth + 20
 
-    transform: Translate {
-        y: tip.shown ? 0 : 4
-        Behavior on y { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-    }
+            x: tip.bubbleX
+            y: tip.bubbleY
+            width: box.width
+            height: Math.max(label.implicitHeight, keys.implicitHeight) + 12
+            opacity: tip.shown ? 1 : 0
 
-    Text { // the text on one line, only to measure it: wrapping the label does not feed back
-        id: probe
-        visible: false
-        text: tip.shownText
-        font.pixelSize: Theme.fontCaption
-    }
+            // Glide only between targets; the first placement jumps straight there.
+            Behavior on x {
+                enabled: tip.shown
+                NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+            }
+            Behavior on y {
+                enabled: tip.shown
+                NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+            }
+            Behavior on opacity { NumberAnimation { duration: 120 } }
 
-    Item {
-        id: bubble
-        width: tip.fullWidth
-        height: tip.height
+            transform: Translate {
+                y: tip.shown ? 0 : 4
+                Behavior on y { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            }
 
-        Hook { // the style's box (Theme.menuFrame): body, edge and shadow
-            anchors.fill: parent
-            lazy: true // a tip per list row, most never shown
-            part: Theme.menuFrame
-            // Screen.* only when no host passed it: each item that reads it has an object of its own.
-            dpr: tip.dpr > 0 ? tip.dpr : Screen.devicePixelRatio
-        }
-
-        Behavior on width {
-            enabled: tip.shown
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
-
-        Row {
-            anchors.centerIn: parent
-            spacing: 10
-
-            Text {
-                id: label
-                width: tip.labelWidth
+            Text { // the text on one line, only to measure it: wrapping the label does not feed back
+                id: probe
+                visible: false
                 text: tip.shownText
-                wrapMode: Text.Wrap
-                color: Theme.text
                 font.pixelSize: Theme.fontCaption
             }
-            Text {
-                id: keys
-                visible: tip.shownShortcut.length > 0
-                text: tip.shownShortcut
-                color: Theme.faint
-                font.pixelSize: Theme.fontCaption
+
+            Item {
+                id: box
+                width: face.fullWidth
+                height: face.height
+
+                Hook { // the style's box (Theme.menuFrame): body, edge and shadow
+                    anchors.fill: parent
+                    lazy: true
+                    part: Theme.menuFrame
+                    // Screen.* only when no host passed it: each item that reads it has an object of its own.
+                    dpr: tip.dpr > 0 ? tip.dpr : Screen.devicePixelRatio
+                }
+
+                Behavior on width {
+                    enabled: tip.shown
+                    NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+                }
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 10
+
+                    Text {
+                        id: label
+                        width: face.labelWidth
+                        text: tip.shownText
+                        wrapMode: Text.Wrap
+                        color: Theme.text
+                        font.pixelSize: Theme.fontCaption
+                    }
+                    Text {
+                        id: keys
+                        visible: tip.shownShortcut.length > 0
+                        text: tip.shownShortcut
+                        color: Theme.faint
+                        font.pixelSize: Theme.fontCaption
+                    }
+                }
             }
         }
     }

@@ -1252,6 +1252,10 @@ bool App::createWindow()
     m_window = qobject_cast<QQuickWindow*>(roots.constFirst());
     if (!m_window)
         return false;
+    // The full panel made ahead while the launcher is hidden, a little at a
+    // time between other events, so that its first expanding is as quick as
+    // the later ones (Main.qml preloadPanel).
+    m_window->setProperty("preloadPanel", true);
 
     // This window changes height on every frame of the scope strip's
     // animation. A vsync-throttled D3D11 swapchain can hold its first resize

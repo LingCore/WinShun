@@ -878,7 +878,10 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
     check(launcher.query() == u"keyboard navigation off", u"disabled history shortcut leaves input alone"_s);
     launcher.setHistoryKeys(u"ctrl"_s);
     // Cloak the native popup before showing it; it calculates a real monitor's
-    // bounds and must never cover another agent's or the user's window.
+    // bounds and must never cover another agent's or the user's window. The
+    // pickers make their windows on first use: made here, still hidden.
+    for (QObject* picker : window->findChildren<QObject*>(u"queryHistoryPicker"_s))
+        QMetaObject::invokeMethod(picker, "prepare");
     auto* popup = window->findChild<QQuickWindow*>(u"queryHistoryPopup"_s);
     check(popup != nullptr, u"native history popup is available"_s);
     if (popup) {

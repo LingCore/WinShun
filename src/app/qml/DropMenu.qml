@@ -18,6 +18,9 @@ Item {
     property real menuWidth: 200
     property bool open: false
     property int hovered: -1 // the entry under the pointer
+    // Its entries are made the first time it opens, then kept: most menus
+    // (the sort menu, every plugin card's) are never opened.
+    property bool made: false
     readonly property real dpr: Screen.devicePixelRatio
 
     // The window's WindowFrame, where it has one (ours keep it as `frame`; a
@@ -39,6 +42,10 @@ Item {
         hovered = -1
         if (!open)
             return
+        if (!made) {
+            made = true // the entries now, laid out for place() to measure
+            column.forceLayout()
+        }
         if (frame)
             frame.addPopup(box)
         place()
@@ -78,6 +85,7 @@ Item {
 
         Hook { // the style's box (Theme.menuFrame): body, edge and shadow
             anchors.fill: parent
+            lazy: true
             part: Theme.menuFrame
             dpr: dropMenu.dpr
         }
@@ -102,6 +110,7 @@ Item {
             readonly property bool inMenu: item !== null && ("role" in item || "inMenu" in item)
 
             visible: dropMenu.hovered >= 0
+            lazy: true
             x: column.x
             y: shownY
             width: column.width
@@ -160,7 +169,7 @@ Item {
                     widest = w
                 }
 
-                model: dropMenu.entries
+                model: dropMenu.made ? dropMenu.entries : []
                 onItemAdded: fit()
                 onItemRemoved: fit()
 

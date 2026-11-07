@@ -51,6 +51,11 @@
 //     checks the continuation in the box, panel and gallery without busy waits.
 //     --content-pane checks all five detail tabs with real text/spreadsheet
 //     fixtures, selection races, filtering, report scopes and native preview.
+//     --foreground-memory measures private bytes, working sets, object counts,
+//     search and panel-opening times using Main.qml and 2,000 fixture names.
+//     --require-lazy-panel also checks deferred creation and reuse;
+//     --preload-panel makes the panel ahead, hidden, as the app does. Windows
+//     stay offscreen and inactive; no global input or working-set trimming.
 //
 //   WinShun.exe --preview-ai-cards <folder> [--dark] [--scale 1.5]
 //     The screens for AI changing settings (SettingsConfirm.qml, SettingsNotice.qml)

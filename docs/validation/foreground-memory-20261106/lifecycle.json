@@ -1,0 +1,184 @@
+{
+    "checks": [
+        {
+            "check": "isolated clipboard opens",
+            "passed": true
+        },
+        {
+            "check": "production Main loads: ",
+            "passed": true
+        },
+        {
+            "check": "compact launcher does not instantiate the full panel",
+            "passed": true
+        },
+        {
+            "check": "real name search completes",
+            "passed": true
+        },
+        {
+            "check": "real name search completes",
+            "passed": true
+        },
+        {
+            "check": "real name search completes",
+            "passed": true
+        },
+        {
+            "check": "real name search completes",
+            "passed": true
+        },
+        {
+            "check": "compact launcher renders",
+            "passed": true
+        },
+        {
+            "check": "panel opening produces a frame before timeout",
+            "passed": true
+        },
+        {
+            "check": "panel search bar preserves the current query",
+            "passed": true
+        },
+        {
+            "check": "panel is retained for fast repeat openings",
+            "passed": true
+        },
+        {
+            "check": "full panel renders",
+            "passed": true
+        },
+        {
+            "check": "return to compact launcher",
+            "passed": true
+        },
+        {
+            "check": "panel opening produces a frame before timeout",
+            "passed": true
+        },
+        {
+            "check": "panel search bar preserves the current query",
+            "passed": true
+        },
+        {
+            "check": "panel is retained for fast repeat openings",
+            "passed": true
+        },
+        {
+            "check": "return to compact launcher",
+            "passed": true
+        },
+        {
+            "check": "panel opening produces a frame before timeout",
+            "passed": true
+        },
+        {
+            "check": "panel search bar preserves the current query",
+            "passed": true
+        },
+        {
+            "check": "panel is retained for fast repeat openings",
+            "passed": true
+        },
+        {
+            "check": "return to compact launcher",
+            "passed": true
+        },
+        {
+            "check": "panel opening produces a frame before timeout",
+            "passed": true
+        },
+        {
+            "check": "panel search bar preserves the current query",
+            "passed": true
+        },
+        {
+            "check": "panel is retained for fast repeat openings",
+            "passed": true
+        },
+        {
+            "check": "return to compact launcher",
+            "passed": true
+        },
+        {
+            "check": "probe never takes desktop focus",
+            "passed": true
+        },
+        {
+            "check": "initially expanded launcher creates its panel with the current query",
+            "passed": true
+        }
+    ],
+    "creation_ms": 431.4809,
+    "panel_openings": [
+        {
+            "dispatch_ms": 43.5979,
+            "frame_ms": 53.0949
+        },
+        {
+            "dispatch_ms": 7.8204,
+            "frame_ms": 14.5276
+        },
+        {
+            "dispatch_ms": 7.5754,
+            "frame_ms": 13.7799
+        },
+        {
+            "dispatch_ms": 9.3466,
+            "frame_ms": 15.8551
+        }
+    ],
+    "passed": true,
+    "queries": [
+        {
+            "ms": 32.2295,
+            "rows": 256
+        },
+        {
+            "ms": 47.0098,
+            "rows": 111
+        },
+        {
+            "ms": 2.955,
+            "rows": 111
+        },
+        {
+            "ms": 2.4469,
+            "rows": 256
+        }
+    ],
+    "samples": [
+        {
+            "memory_known": true,
+            "private_bytes": 132198400,
+            "private_working_set_bytes": 54472704,
+            "qml_objects": 852,
+            "stage": "compact_empty",
+            "working_set_bytes": 118575104
+        },
+        {
+            "memory_known": true,
+            "private_bytes": 165601280,
+            "private_working_set_bytes": 80539648,
+            "qml_objects": 870,
+            "stage": "compact_results",
+            "working_set_bytes": 150786048
+        },
+        {
+            "memory_known": true,
+            "private_bytes": 188829696,
+            "private_working_set_bytes": 95977472,
+            "qml_objects": 1828,
+            "stage": "panel_first",
+            "working_set_bytes": 167260160
+        },
+        {
+            "memory_known": true,
+            "private_bytes": 192057344,
+            "private_working_set_bytes": 105639936,
+            "qml_objects": 1819,
+            "stage": "compact_after_panel",
+            "working_set_bytes": 176951296
+        }
+    ]
+}

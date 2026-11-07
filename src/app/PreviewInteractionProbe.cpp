@@ -92,8 +92,9 @@ bool checkPreviewInteractions(QQmlEngine* engine, const QDir& output)
     picture.save(&encoded, "PNG");
     store.add(ClipCapture {.kind = ClipKind::Image, .imageData = png, .hash = QByteArrayLiteral("hover-fixture"),
         .width = picture.width(), .height = picture.height()}, now - 1);
-    store.add(ClipCapture {.kind = ClipKind::Text, .text = QStringLiteral("一段完整的长文本 / Long clipboard content.\n").repeated(80)}, now);
-    store.add(ClipCapture {.kind = ClipKind::Text, .text = u"短文本 / Short note"_s}, now + 1);
+    const qint64 longId = store.add(ClipCapture {.kind = ClipKind::Text,
+        .text = QStringLiteral("一段完整的长文本 / Long clipboard content.\n").repeated(80)}, now);
+    const qint64 shortId = store.add(ClipCapture {.kind = ClipKind::Text, .text = u"短文本 / Short note"_s}, now + 1);
     ClipboardWatcher watcher({.record = false}, {});
     Clipboard clipboard(&store, &watcher);
     clipboard.setRowOptions(false, false, SystemTheme::uiSize());
@@ -201,6 +202,54 @@ bool checkPreviewInteractions(QQmlEngine* engine, const QDir& output)
     clipboard.handlePlaced();
     wait(70);
     check(!page->property("previewOpen").toBool() && !hoverWindow(), u"reopening does not restore either preview"_s);
+    // A pinned row's handle, dragged onto the next row, moves it there in its
+    // group's own order. The row's buttons are lent (RowActionsPool): they
+    // stay on it while the handle is held, though the mouse leaves the row.
+    {
+        const qint64 pinned[] {longId, shortId};
+        store.setGroup(pinned, ClipStore::kPinned);
+        clipboard.setPinnedFirst(true);
+        wait(150);
+        QQuickItem* first = named(window->contentItem(), u"clipboardRow-0");
+        QQuickItem* second = named(window->contentItem(), u"clipboardRow-1");
+        const int movedId = first ? first->property("clipId").toInt() : -1;
+        const auto send = [&](QEvent::Type type, QPointF at, Qt::MouseButton button, Qt::MouseButtons buttons) {
+            QMouseEvent event(type, at, window->mapToGlobal(at), button, buttons, {});
+            QCoreApplication::sendEvent(window, &event);
+        };
+        const auto handleOf = [](QQuickItem* row) {
+            QList<QQuickItem*> pending {row};
+            while (!pending.isEmpty()) {
+                QQuickItem* item = pending.takeFirst();
+                if (item->isVisible() && item->property("draggable").toBool()) return item;
+                pending.append(item->childItems());
+            }
+            return static_cast<QQuickItem*>(nullptr);
+        };
+        if (first && second)
+            send(QEvent::MouseMove, first->mapToScene({first->width() / 2, first->height() / 2}), Qt::NoButton, Qt::NoButton);
+        wait(60);
+        QQuickItem* handle = first ? handleOf(first) : nullptr;
+        check(handle && first->property("movable").toBool(), u"a pinned row under the mouse shows its handle"_s);
+        if (handle && second) {
+            const QPointF from = handle->mapToScene({handle->width() / 2, handle->height() / 2});
+            const qreal to = second->mapToScene({0, second->height() - 4}).y();
+            send(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+            bool kept = true;
+            for (int step = 1; step <= 8; ++step) {
+                send(QEvent::MouseMove, {from.x(), from.y() + (to - from.y()) * step / 8}, Qt::NoButton, Qt::LeftButton);
+                wait(30);
+                kept = kept && handle->isVisible() && list->property("rowDragging").toBool();
+            }
+            QQuickItem* moved = named(window->contentItem(), u"clipboardRow-1");
+            check(moved && moved->property("clipId").toInt() == movedId, u"dragging the handle moves the row to the next place"_s);
+            check(kept, u"the dragged row keeps its buttons while the handle is held"_s);
+            send(QEvent::MouseButtonRelease, {from.x(), to}, Qt::LeftButton, Qt::NoButton);
+            wait(80);
+            check(!list->property("rowDragging").toBool(), u"letting the handle go ends the drag"_s);
+            check(window->grabWindow().save(output.filePath(u"clipboard-moved.png"_s)), u"moved row screenshot"_s);
+        }
+    }
     window->hide();
 
     IndexService index(profile.filePath(u"index"_s), {});

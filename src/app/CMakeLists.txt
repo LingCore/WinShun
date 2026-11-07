@@ -63,6 +63,7 @@ qt_add_executable(WinShun WIN32
     Preview.cpp Preview.h
     PreviewInteractionProbe.cpp PreviewInteractionProbe.h
     NavigationProbe.cpp NavigationProbe.h
+    ForegroundMemoryProbe.cpp ForegroundMemoryProbe.h
     ClipScrollBench.cpp ClipScrollBench.h
     ContentPaneProbe.cpp ContentPaneProbe.h
     RecentFolders.cpp RecentFolders.h
@@ -165,6 +166,9 @@ set(qml_files
     qml/ClipPreview.qml
     qml/ClipHoverPreview.qml
     qml/RowAction.qml
+    qml/RowActionsPool.qml
+    qml/ResultActions.qml
+    qml/ClipActions.qml
     qml/ListScrollBar.qml
     qml/ScrollPixelAlignment.qml
     qml/ListWheelScroll.qml

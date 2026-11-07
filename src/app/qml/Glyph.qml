@@ -78,10 +78,16 @@ Item {
     // Made only where wanted (a settings window has over a thousand icons,
     // nearly all one Phosphor glyph): the overlay, or the drawn icon.
     readonly property bool overlaid: !drawn && !phosphor && overlay.length > 0 && SystemTheme.hasGlyph(overlay)
+    // A shared button's (RowAction.shared) drawn icon stays once made, hidden
+    // while it shows another glyph: the next row it is lent to may want it.
+    property bool keep: false
+    property bool drawnKept: false
     Loader {
         anchors.centerIn: parent
-        active: icon.drawn || icon.overlaid
-        sourceComponent: icon.drawn ? drawnIcon : overlayGlyph
+        active: icon.drawn || icon.overlaid || icon.drawnKept
+        visible: icon.drawn || icon.overlaid
+        sourceComponent: icon.drawn || (icon.drawnKept && !icon.overlaid) ? drawnIcon : overlayGlyph
+        onLoaded: if (icon.keep && icon.drawn) icon.drawnKept = true
     }
 
     Component {

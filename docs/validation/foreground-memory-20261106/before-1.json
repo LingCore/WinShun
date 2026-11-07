@@ -1,0 +1,144 @@
+{
+    "checks": [
+        {
+            "check": "isolated clipboard opens",
+            "passed": true
+        },
+        {
+            "check": "production Main loads: ",
+            "passed": true
+        },
+        {
+            "check": "real name search completes",
+            "passed": true
+        },
+        {
+            "check": "real name search completes",
+            "passed": true
+        },
+        {
+            "check": "real name search completes",
+            "passed": true
+        },
+        {
+            "check": "real name search completes",
+            "passed": true
+        },
+        {
+            "check": "compact launcher renders",
+            "passed": true
+        },
+        {
+            "check": "panel search bar preserves the current query",
+            "passed": true
+        },
+        {
+            "check": "full panel renders",
+            "passed": true
+        },
+        {
+            "check": "return to compact launcher",
+            "passed": true
+        },
+        {
+            "check": "panel search bar preserves the current query",
+            "passed": true
+        },
+        {
+            "check": "return to compact launcher",
+            "passed": true
+        },
+        {
+            "check": "panel search bar preserves the current query",
+            "passed": true
+        },
+        {
+            "check": "return to compact launcher",
+            "passed": true
+        },
+        {
+            "check": "panel search bar preserves the current query",
+            "passed": true
+        },
+        {
+            "check": "return to compact launcher",
+            "passed": true
+        },
+        {
+            "check": "probe never takes desktop focus",
+            "passed": true
+        }
+    ],
+    "creation_ms": 350.3788,
+    "panel_openings": [
+        {
+            "dispatch_ms": 12.8336,
+            "frame_ms": 23.667
+        },
+        {
+            "dispatch_ms": 8.5813,
+            "frame_ms": 16.2116
+        },
+        {
+            "dispatch_ms": 8.8761,
+            "frame_ms": 15.953
+        },
+        {
+            "dispatch_ms": 7.8222,
+            "frame_ms": 16.5408
+        }
+    ],
+    "passed": true,
+    "queries": [
+        {
+            "ms": 25.6696,
+            "rows": 256
+        },
+        {
+            "ms": 43.6713,
+            "rows": 111
+        },
+        {
+            "ms": 5.2418,
+            "rows": 111
+        },
+        {
+            "ms": 5.7658,
+            "rows": 256
+        }
+    ],
+    "samples": [
+        {
+            "memory_known": true,
+            "private_bytes": 142000128,
+            "private_working_set_bytes": 64184320,
+            "qml_objects": 1715,
+            "stage": "compact_empty",
+            "working_set_bytes": 131850240
+        },
+        {
+            "memory_known": true,
+            "private_bytes": 172019712,
+            "private_working_set_bytes": 87429120,
+            "qml_objects": 1733,
+            "stage": "compact_results",
+            "working_set_bytes": 161202176
+        },
+        {
+            "memory_known": true,
+            "private_bytes": 186683392,
+            "private_working_set_bytes": 94973952,
+            "qml_objects": 1745,
+            "stage": "panel_first",
+            "working_set_bytes": 169156608
+        },
+        {
+            "memory_known": true,
+            "private_bytes": 192491520,
+            "private_working_set_bytes": 101003264,
+            "qml_objects": 1736,
+            "stage": "compact_after_panel",
+            "working_set_bytes": 175202304
+        }
+    ]
+}

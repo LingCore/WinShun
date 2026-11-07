@@ -1,0 +1,144 @@
+{
+ "checks": [
+  {
+   "check": "isolated clipboard opens",
+   "passed": true
+  },
+  {
+   "check": "production Main loads: ",
+   "passed": true
+  },
+  {
+   "check": "real name search completes",
+   "passed": true
+  },
+  {
+   "check": "real name search completes",
+   "passed": true
+  },
+  {
+   "check": "real name search completes",
+   "passed": true
+  },
+  {
+   "check": "real name search completes",
+   "passed": true
+  },
+  {
+   "check": "compact launcher renders",
+   "passed": true
+  },
+  {
+   "check": "panel search bar preserves the current query",
+   "passed": true
+  },
+  {
+   "check": "full panel renders",
+   "passed": true
+  },
+  {
+   "check": "return to compact launcher",
+   "passed": true
+  },
+  {
+   "check": "panel search bar preserves the current query",
+   "passed": true
+  },
+  {
+   "check": "return to compact launcher",
+   "passed": true
+  },
+  {
+   "check": "panel search bar preserves the current query",
+   "passed": true
+  },
+  {
+   "check": "return to compact launcher",
+   "passed": true
+  },
+  {
+   "check": "panel search bar preserves the current query",
+   "passed": true
+  },
+  {
+   "check": "return to compact launcher",
+   "passed": true
+  },
+  {
+   "check": "probe never takes desktop focus",
+   "passed": true
+  }
+ ],
+ "creation_ms": 398.3084,
+ "panel_openings": [
+  {
+   "dispatch_ms": 11.9745,
+   "frame_ms": 21.0256
+  },
+  {
+   "dispatch_ms": 8.8905,
+   "frame_ms": 16.4181
+  },
+  {
+   "dispatch_ms": 8.7395,
+   "frame_ms": 18.5655
+  },
+  {
+   "dispatch_ms": 7.4724,
+   "frame_ms": 19.4319
+  }
+ ],
+ "passed": true,
+ "queries": [
+  {
+   "ms": 29.1638,
+   "rows": 256
+  },
+  {
+   "ms": 38.3301,
+   "rows": 111
+  },
+  {
+   "ms": 8.1221,
+   "rows": 111
+  },
+  {
+   "ms": 2.3381,
+   "rows": 256
+  }
+ ],
+ "samples": [
+  {
+   "memory_known": true,
+   "private_bytes": 141193216,
+   "private_working_set_bytes": 64135168,
+   "qml_objects": 1715,
+   "stage": "compact_empty",
+   "working_set_bytes": 128679936
+  },
+  {
+   "memory_known": true,
+   "private_bytes": 170147840,
+   "private_working_set_bytes": 86986752,
+   "qml_objects": 1733,
+   "stage": "compact_results",
+   "working_set_bytes": 157667328
+  },
+  {
+   "memory_known": true,
+   "private_bytes": 186839040,
+   "private_working_set_bytes": 95518720,
+   "qml_objects": 1745,
+   "stage": "panel_first",
+   "working_set_bytes": 166617088
+  },
+  {
+   "memory_known": true,
+   "private_bytes": 192958464,
+   "private_working_set_bytes": 101449728,
+   "qml_objects": 1736,
+   "stage": "compact_after_panel",
+   "working_set_bytes": 172564480
+  }
+ ]
+}

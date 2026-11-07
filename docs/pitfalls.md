@@ -1,5 +1,26 @@
 # 踩坑记录
 
+## 界面内存：平时不显示的提示、菜单一上来就全建；行内按钮按需建会卡，改为整张列表借用（2026-11-06、11-07）
+
+- **现象**：搜索框出结果后私有工作集比空搜索多约 25 MiB，用过面板后再多约 20 MiB。按组件数对象（探针 `--foreground-memory` 的 `*_breakdown`，同时沿 QObject 树和可视树走；列表的行没有 QObject 父对象，只按 `findChildren` 数会漏掉）：每个结果行 187 个对象，其中只在当前行、悬停时才显示的 7 个按钮占约 110 个，开关和音量条每行都有；每个 HoverTip 约 25 个；历史下拉常驻两个隐藏窗口；下拉菜单的条目和外框常驻。
+- **做法**：提示气泡、历史下拉、下拉菜单的条目放进 `Loader`，第一次显示时才建，之后保留（`active: made || shown`，别随显示、隐藏反复建和毁，见下面“列表行里的部件随悬停造、毁”一条）；开关和音量条只在开关行里建（只看数据，不在悬停时发生）。像素与改动前一致，出结果后私有工作集约少 10 MiB。
+- **坑**：
+  - **行内按钮不要等到悬停、成为当前行时才建**。试过把结果行的 7 个按钮、剪贴板行的 4 个按钮改成每行第一次显示时才建：出结果时能再省约 12 MiB，但方向键第一次移到某行要 2.2–3.5 ms（第二次 0.3 ms）；剪贴板第一遍滚动时，界面线程超过 2 ms 的帧从 6–7 帧增到 16–19 帧，掉帧从 3 增到 15（brand 风格）。240 Hz 一帧只有 4.2 ms，所以改回了。
+  - **现在的做法：整张列表只建 3 套按钮，借给正在显示按钮的行**（`RowActionsPool` 加 `ResultActions` / `ClipActions`）。行本身只剩约 37 个对象；出结果后私有工作集再少约 9 MiB，剪贴板滚动时约 6 MiB；像素与原来一致，逐行移动和滚动都不比原来慢。要点：
+    - **要 3 套**：Qt 6 先给新行发悬停进入、再给旧行发离开，某一刻当前行、旧悬停行、新悬停行都要按钮。借的顺序：这一行自己的、空闲的、借走它的行已不显示按钮的，最后才新建。
+    - **第一次借时 3 套一起建**：启动就建，空搜索多约 3.6 MiB；用到一套建一套，建的时间又落进悬停里。
+    - **借来的按钮在行间换来换去时什么都不新建**：按钮里的 Hook 不再 `lazy`，`Glyph` 画过的图形（复制路径）保留（`keep`）。探针检查换行前后对象总数不变。
+    - **池子要用隐藏的 `Item`**，借出时改 `parent` 到行里的鼠标区（悬停按钮仍算悬停这一行）。用 `QtObject` 当池子，`createObject` 报 “Created graphical object was not placed in the graphics scene”。
+    - **列表开着 `reuseItems`**：`onPooled` 时还回去，`onReused` 时再借。
+    - **行的 `showActions` 不能读借来的那套的属性**（如拖动柄的 `held`）：借、还发生在 `onShowActionsChanged` 里，会同步改掉 `actions`，结果是绑定循环。改由按钮写行自己的普通属性（`ClipRow.handleHeld`）；写之前先把 `host` 记下，因为一写行可能当场把这套还回去。
+    - 文案搬到新文件后，用 `qsTranslate("ResultRow", …)` 保留原来的翻译上下文。
+  - **探针点行内按钮前，先把复制、打开换成空操作**（`Launcher::setFileCopier`、`setFolderOpener`），按 `objectName` 找按钮，只点一次。有一次按位置点错，点到“复制”，把 `D:/work/notes.txt` 写进了真实剪贴板。类名后缀会叠两层（`RowAction_QMLTYPE_54_QML_60`），要用 `(_QML(TYPE)?_\d+)+$` 去掉。
+  - 提示气泡第一次显示时才建没问题：鼠标停 250 ms 后才建，约 0.5 ms，之后约 0.1 ms。
+  - 同一文件里的 `component X: …`（内联组件）看不到外层的 id；要用外层 id 就写 `Loader { sourceComponent: Item { … } }`（`pragma ComponentBehavior: Bound` 下可以）。
+  - 第一次打开时才建条目、又要马上量尺寸定位的（`DropMenu.place()`），先 `column.forceLayout()`：Column/Row 要等 polish 才更新 implicitHeight。
+  - `--preview-results` 的探针进程里引擎默认**没有**增量创建控制器（`engine->incubationController()` 为空），`asynchronous: true` 会退化成同步；正式程序用 `QQmlApplicationEngine::loadFromModule` 加载 Main，引擎带有控制器。测后台预建时探针要先 `setIncubationController(window->incubationController())`。
+- **取舍**：完整面板只在首次展开时才建，第一次展开会从约 21 ms 变成约 50 ms。所以现在启动后趁搜索框隐藏、在后台分片预建（`App::createWindow` 设 `preloadPanel`），单次占界面线程不超过 3.8 ms，首次展开约 16 ms。代价是空搜索时多约 6 MiB。数据见 `docs/validation/foreground-memory-20261106/`。
+
 ## 界面风格：类型按钮条滚动时文字、图标抖动（2026-11-06）
 
 用户反复反馈「滚动后文字会抖」「连续滚动还是有问题」。前几轮靠推断改、只用 Ctrl+Tab 模拟、拿截图比对，几次都没找到根因；最后在 QML 里逐帧记录位置、用真实滚轮测，才一条条查清。

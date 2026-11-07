@@ -874,6 +874,14 @@ Item {
                 height: parent.height
                 readonly property real scrollbarInset: page.previewOpen ? 0 : page.frame.resizeMargin(Screen.devicePixelRatio)
 
+                // The rows' buttons: a few sets, lent to the rows that show them.
+                RowActionsPool {
+                    id: clipActions
+                    bar: Component {
+                        ClipActions {}
+                    }
+                }
+
                 ListView {
                     id: list
                     onContentYChanged: page.clearHover()
@@ -992,6 +1000,7 @@ Item {
                         clickToPaste: page.clipboard.clickToPaste
                         largePictures: page.clipboard.largePictures
                         metrics: page.metrics
+                        actionsPool: clipActions
                         onDragRequested: (index) => page.clipboard.dragOut(index)
                         onMoveHeld: (held) => {
                             list.rowDragging = held

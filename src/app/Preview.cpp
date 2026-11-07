@@ -1,6 +1,7 @@
 #include "Preview.h"
 #include "PreviewInteractionProbe.h"
 #include "NavigationProbe.h"
+#include "ForegroundMemoryProbe.h"
 #include "InteractionOptimizationProbe.h"
 #include "UiFont.h"
 
@@ -5474,6 +5475,9 @@ int runResults(const QStringList& args)
     QQmlApplicationEngine engine;
     engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
     engine.addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider); // the clipboard rows' pictures
+    if (args.contains(u"--foreground-memory"_s))
+        return checkForegroundMemory(&engine, out, args.contains(u"--require-lazy-panel"_s), args.contains(u"--preload-panel"_s))
+            ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--preview-interactions"_s))
         return checkPreviewInteractions(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--style-buttons"_s))

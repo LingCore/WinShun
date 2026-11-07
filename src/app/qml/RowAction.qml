@@ -29,6 +29,10 @@ Rectangle {
     // move of the mouse is told, in this button's coordinates.
     property bool draggable: false
     property bool small: false // a smaller box and icon (the clipboard's 密集 rows)
+    // One of the few sets a list lends to its rows (RowActionsPool): its
+    // surface made with it rather than when it first shows, and a drawn icon
+    // kept while it shows another, for the next row it is lent to.
+    property bool shared: false
     readonly property bool held: area.pressed
 
     signal clicked()
@@ -43,7 +47,7 @@ Rectangle {
     Hook { // the style's key (Theme.keySurface): flat until hovered
         id: surface
         anchors.fill: parent
-        lazy: true // a list row's buttons show on its hover only
+        lazy: !button.shared // a list row's own buttons show on its hover only
         part: Theme.keySurface
         hovered: area.containsMouse
         pressed: area.pressed
@@ -65,6 +69,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             glyph: button.glyph
             overlay: button.glyphOverlay
+            keep: button.shared
             size: button.small ? 16 : 64 / 3 // 32 device pixels at 150%
             color: button.foreground
         }

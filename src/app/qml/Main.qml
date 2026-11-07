@@ -25,13 +25,24 @@ Window {
     // the rows' list and the search bar are the panel's own, and everything
     // here that works a list or the bar goes through `view` and `searchBar`.
     readonly property bool panel: launcher.panel
-    readonly property var view: panel ? panelPage.view : boxList
-    readonly property int gridColumns: panel ? panelPage.gridColumns : 1
+    // Made ahead, a little at a time without holding anything up, when the
+    // app asks (App::createWindow); else on the first expanding. Kept from
+    // then on.
+    property bool preloadPanel: false
+    onPreloadPanelChanged: if (preloadPanel) panelLoader.active = true
+    function makePanel() { // now, all of it (a preload under way is finished)
+        panelLoader.asynchronous = false
+        panelLoader.active = true
+    }
+    readonly property Panel panelPage: panelLoader.item as Panel
+    readonly property bool columnMenuOpen: panelPage !== null && panelPage.columnMenuOpen
+    readonly property var view: panel && panelPage ? panelPage.view : boxList
+    readonly property int gridColumns: panel && panelPage ? panelPage.gridColumns : 1
     // Keep the input method in the text field while arrows browse the grid.
     // Typing or clicking the field returns horizontal arrows to its caret.
     property bool galleryNavigation: false
-    readonly property SearchBar searchBar: panel ? panelPage.searchBar : boxBar
-    readonly property int viewRowHeight: panel ? panelPage.rowHeight : rowHeight
+    readonly property SearchBar searchBar: panel && panelPage ? panelPage.searchBar : boxBar
+    readonly property int viewRowHeight: panel && panelPage ? panelPage.rowHeight : rowHeight
 
     readonly property bool folderMode: !panel && launcher.folderSearch
     readonly property bool pureEmpty: launcher.pureSearch && !panel && !folderMode && !launcher.inTaskbarBox
@@ -614,7 +625,8 @@ Window {
     function closeContextMenu() {
         if (contextMenu)
             contextMenu.dismiss()
-        panelPage.closeColumns() // the panel's columns menu goes with it
+        if (panelPage)
+            panelPage.closeColumns() // the panel's columns menu goes with it
     }
 
     function openKeyboardMenu(repeated) {
@@ -704,13 +716,13 @@ Window {
         typeStrip.showKeywords = event.key === Qt.Key_Control || (event.modifiers & Qt.ControlModifier) !== 0
         numberHints.press(event)
         nameTip.dismiss() // as Windows' tips go on a key
-        if (panel && !menuOpen && !panelPage.columnMenuOpen && panelPage.handleContentKey(event))
+        if (panel && panelPage && !menuOpen && !columnMenuOpen && panelPage.handleContentKey(event))
             return
         if (menuOpen && contextMenu.handleKey(event)) {
             event.accepted = true
             return
         }
-        if (panelPage.columnMenuOpen && panelPage.columnMenu.handleKey(event)) {
+        if (columnMenuOpen && panelPage.columnMenu.handleKey(event)) {
             event.accepted = true
             return
         }
@@ -998,9 +1010,12 @@ Window {
             window.galleryNavigation = false
             nameTip.dismiss() // typed: the keys go to the field, not handleKey
             boxBar.syncQuery()
-            panelPage.searchBar.syncQuery()
+            if (window.panelPage)
+                window.panelPage.searchBar.syncQuery()
         }
         function onPanelChanged() { // the other bar has the keyboard now, the words as they were
+            if (window.launcher.panel)
+                window.makePanel()
             window.galleryNavigation = false
             nameTip.dismiss()
             window.closeContextMenu()
@@ -1049,27 +1064,39 @@ Window {
             closeContextMenu()
     }
 
-    // The panel over everything of the box (which keeps its layout, out of
-    // sight, for when it is back): its own bar and list.
-    Panel {
-        id: panelPage
-        showTypeKeywords: typeStrip.showKeywords
+    // The full panel's filters and fields are only needed after expanding.
+    // Keep it after its first use so subsequent switches retain their speed.
+    // A preload still under way when the panel opens is finished at once.
+    Loader {
+        id: panelLoader
         anchors.fill: parent
         visible: window.panel
-        launcher: window.launcher
-        placement: window.placement
-        frame: window.frame
-        dimmed: window.dimRows
-        onKeyPressed: (event) => window.handleKey(event)
-        onEditingRequested: window.galleryNavigation = false
-        onRowClicked: (index, modifiers) => window.rowClicked(index, modifiers)
-        onRowDoubleClicked: (index, modifiers) => window.rowDoubleClicked(index, modifiers)
-        onRowMenuRequested: (index, globalPos, modifiers) => window.rowMenuRequested(index, globalPos, modifiers)
-        onRowDragRequested: (index) => window.launcher.dragOut(index)
-        onRowPreviewRequested: (index) => window.rowPreviewRequested(index)
-        onRowHoverMoved: (index, globalPos) => window.rowHoverMoved(index, globalPos)
-        nameTip: nameTip
-        dpr: window.dpr
+        active: false
+        asynchronous: true // for a preload; makePanel() makes it at once
+        Component.onCompleted: {
+            if (window.panel)
+                window.makePanel()
+            else if (window.preloadPanel)
+                active = true
+        }
+        onLoaded: (item as Panel).searchBar.syncQuery()
+        sourceComponent: Panel {
+            showTypeKeywords: typeStrip.showKeywords
+            launcher: window.launcher
+            placement: window.placement
+            frame: window.frame
+            dimmed: window.dimRows
+            onKeyPressed: (event) => window.handleKey(event)
+            onEditingRequested: window.galleryNavigation = false
+            onRowClicked: (index, modifiers) => window.rowClicked(index, modifiers)
+            onRowDoubleClicked: (index, modifiers) => window.rowDoubleClicked(index, modifiers)
+            onRowMenuRequested: (index, globalPos, modifiers) => window.rowMenuRequested(index, globalPos, modifiers)
+            onRowDragRequested: (index) => window.launcher.dragOut(index)
+            onRowPreviewRequested: (index) => window.rowPreviewRequested(index)
+            onRowHoverMoved: (index, globalPos) => window.rowHoverMoved(index, globalPos)
+            nameTip: nameTip
+            dpr: window.dpr
+        }
     }
 
     // A row clicked (the box's or the panel's): Ctrl toggles it in the
@@ -1343,6 +1370,16 @@ Window {
                 }
             }
 
+            // The rows' buttons: a few sets, lent to the rows that show them.
+            RowActionsPool {
+                id: resultActions
+                bar: Component {
+                    ResultActions {
+                        dpr: window.dpr
+                    }
+                }
+            }
+
             ListView {
                 id: boxList
                 anchors.fill: parent
@@ -1540,6 +1577,7 @@ Window {
                     hintTaken: resultRow.hint > 0 && !window.numberUsable(resultRow.hint)
                     nameTip: nameTip
                     dpr: window.dpr
+                    actionsPool: resultActions
                     // Drawn on whole device pixels, wherever the list has
                     // scrolled to (ResultRow puts its text on whole device
                     // pixels within). Between them (at 150 % most scroll
@@ -1710,11 +1748,11 @@ Window {
     // (a right click on a row then opens it again there).
     MouseArea {
         anchors.fill: parent
-        enabled: window.menuOpen || panelPage.columnMenuOpen
+        enabled: window.menuOpen || window.columnMenuOpen
         acceptedButtons: Qt.AllButtons
         onPressed: (mouse) => {
             // The columns menu is closed by any click, a right click on the header included
-            const columns = panelPage.columnMenuOpen
+            const columns = window.columnMenuOpen
             window.closeContextMenu()
             mouse.accepted = columns || mouse.button !== Qt.RightButton
         }

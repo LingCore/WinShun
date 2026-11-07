@@ -208,6 +208,16 @@ add_test(NAME tst_searchnavigation COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_searchnavigation PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+add_test(NAME tst_foregroundmemory COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/foreground-memory" --foreground-memory --require-lazy-panel --renderer d3d11 --scale 1.5)
+set_tests_properties(tst_foregroundmemory PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# The same, with the panel made ahead in the background, as the app does.
+add_test(NAME tst_foregroundpreload COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/foreground-preload" --foreground-memory --require-lazy-panel --preload-panel --renderer d3d11 --scale 1.5)
+set_tests_properties(tst_foregroundpreload PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # #153: production Main.qml/Launcher/SearchEngine over temporary OOXML/text
 # files and content indexes, including the explicit continuation action.
 add_test(NAME tst_searchworkload COMMAND $<TARGET_FILE:WinShun>

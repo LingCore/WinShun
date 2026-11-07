@@ -1,0 +1,1283 @@
+{
+ "checks": [
+  {
+   "check": "isolated clipboard opens",
+   "passed": true
+  },
+  {
+   "check": "production Main loads: ",
+   "passed": true
+  },
+  {
+   "check": "compact launcher does not instantiate the full panel",
+   "passed": true
+  },
+  {
+   "check": "panel preload does not make it all at once",
+   "passed": true
+  },
+  {
+   "check": "panel preload completes in the background while hidden",
+   "passed": true
+  },
+  {
+   "check": "panel preload holds the event loop under 25 ms at a time (6.2 ms)",
+   "passed": true
+  },
+  {
+   "check": "preloading keeps the compact launcher",
+   "passed": true
+  },
+  {
+   "check": "real name search completes",
+   "passed": true
+  },
+  {
+   "check": "real name search completes",
+   "passed": true
+  },
+  {
+   "check": "real name search completes",
+   "passed": true
+  },
+  {
+   "check": "real name search completes",
+   "passed": true
+  },
+  {
+   "check": "result rows share three sets of buttons (3)",
+   "passed": true
+  },
+  {
+   "check": "compact launcher renders",
+   "passed": true
+  },
+  {
+   "check": "panel opening produces a frame before timeout",
+   "passed": true
+  },
+  {
+   "check": "panel search bar preserves the current query",
+   "passed": true
+  },
+  {
+   "check": "panel is retained for fast repeat openings",
+   "passed": true
+  },
+  {
+   "check": "full panel renders",
+   "passed": true
+  },
+  {
+   "check": "return to compact launcher",
+   "passed": true
+  },
+  {
+   "check": "panel opening produces a frame before timeout",
+   "passed": true
+  },
+  {
+   "check": "panel search bar preserves the current query",
+   "passed": true
+  },
+  {
+   "check": "panel is retained for fast repeat openings",
+   "passed": true
+  },
+  {
+   "check": "return to compact launcher",
+   "passed": true
+  },
+  {
+   "check": "panel opening produces a frame before timeout",
+   "passed": true
+  },
+  {
+   "check": "panel search bar preserves the current query",
+   "passed": true
+  },
+  {
+   "check": "panel is retained for fast repeat openings",
+   "passed": true
+  },
+  {
+   "check": "return to compact launcher",
+   "passed": true
+  },
+  {
+   "check": "panel opening produces a frame before timeout",
+   "passed": true
+  },
+  {
+   "check": "panel search bar preserves the current query",
+   "passed": true
+  },
+  {
+   "check": "panel is retained for fast repeat openings",
+   "passed": true
+  },
+  {
+   "check": "return to compact launcher",
+   "passed": true
+  },
+  {
+   "check": "a tooltip makes its bubble when it first shows",
+   "passed": true
+  },
+  {
+   "check": "handing the buttons on to rows of every kind makes nothing (2702, 2702 objects)",
+   "passed": true
+  },
+  {
+   "check": "each row shows its own buttons whichever set it is lent",
+   "passed": true
+  },
+  {
+   "check": "the current row and the one under the mouse show their buttons at once",
+   "passed": true
+  },
+  {
+   "check": "hovered buttons render",
+   "passed": true
+  },
+  {
+   "check": "the hovered row's delete button is found",
+   "passed": true
+  },
+  {
+   "check": "a lent delete button arms its own row",
+   "passed": true
+  },
+  {
+   "check": "armed delete renders",
+   "passed": true
+  },
+  {
+   "check": "the row the mouse left gives its buttons back, disarmed",
+   "passed": true
+  },
+  {
+   "check": "probe never takes desktop focus",
+   "passed": true
+  },
+  {
+   "check": "initially expanded launcher creates its panel with the current query",
+   "passed": true
+  }
+ ],
+ "compact_breakdown": {
+  "classes": [
+   {
+    "class": "QQmlComponent",
+    "count": 66
+   },
+   {
+    "class": "QQuickText",
+    "count": 54
+   },
+   {
+    "class": "QQuickRectangle",
+    "count": 49
+   },
+   {
+    "class": "QQuickBehavior",
+    "count": 40
+   },
+   {
+    "class": "QQmlComponentAttached",
+    "count": 37
+   },
+   {
+    "class": "QQuickItem",
+    "count": 34
+   },
+   {
+    "class": "QQuickLoader",
+    "count": 31
+   },
+   {
+    "class": "QQuickMouseArea",
+    "count": 28
+   },
+   {
+    "class": "QQmlDelegateModelGroup",
+    "count": 26
+   },
+   {
+    "class": "QQmlConnections",
+    "count": 21
+   },
+   {
+    "class": "Hook",
+    "count": 21
+   },
+   {
+    "class": "QQmlTimer",
+    "count": 21
+   },
+   {
+    "class": "QQuickPen",
+    "count": 21
+   },
+   {
+    "class": "QQuickAccessibleAttached",
+    "count": 19
+   },
+   {
+    "class": "Glyph",
+    "count": 17
+   },
+   {
+    "class": "ws::PhosphorGlyph",
+    "count": 17
+   },
+   {
+    "class": "QQuickNumberAnimation",
+    "count": 15
+   },
+   {
+    "class": "QQmlDelegateModel",
+    "count": 13
+   },
+   {
+    "class": "QQuickRepeater",
+    "count": 12
+   },
+   {
+    "class": "QQmlBind",
+    "count": 10
+   }
+  ],
+  "reachable": 716,
+  "subtrees": [
+   {
+    "id": "layout",
+    "objects": 647,
+    "parent": "Main window",
+    "type": "QQuickColumn"
+   },
+   {
+    "id": "chrome",
+    "objects": 333,
+    "parent": "QQuickColumn layout",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "boxBar",
+    "objects": 263,
+    "parent": "QQuickItem chrome",
+    "type": "SearchBar"
+   },
+   {
+    "id": "footer",
+    "objects": 211,
+    "parent": "QQuickColumn layout",
+    "type": "Footer"
+   },
+   {
+    "id": "tabs",
+    "objects": 106,
+    "parent": "SearchBar boxBar",
+    "type": "ScopeTabs"
+   },
+   {
+    "id": "listArea",
+    "objects": 91,
+    "parent": "QQuickColumn layout",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "row",
+    "objects": 86,
+    "parent": "ScopeTabs tabs",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "typeStrip",
+    "objects": 68,
+    "parent": "QQuickItem chrome",
+    "type": "TypeStrip"
+   },
+   {
+    "id": "viewSwitch",
+    "objects": 52,
+    "parent": "Footer footer",
+    "type": "FileViewSwitch"
+   },
+   {
+    "id": "",
+    "objects": 48,
+    "parent": "Main window",
+    "type": "QQuickRootItem"
+   },
+   {
+    "id": "order",
+    "objects": 44,
+    "parent": "Footer footer",
+    "type": "Choices"
+   },
+   {
+    "id": "tab",
+    "objects": 40,
+    "parent": "QQuickRow row",
+    "type": "QQuickRectangle"
+   },
+   {
+    "id": "tab",
+    "objects": 40,
+    "parent": "QQuickRow row",
+    "type": "QQuickRectangle"
+   },
+   {
+    "id": "",
+    "objects": 39,
+    "parent": "FileViewSwitch viewSwitch",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "",
+    "objects": 34,
+    "parent": "Choices order",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "indexSwitch",
+    "objects": 34,
+    "parent": "TypeStrip typeStrip",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "sortMenu",
+    "objects": 31,
+    "parent": "Footer footer",
+    "type": "DropMenu"
+   },
+   {
+    "id": "indexToggle",
+    "objects": 29,
+    "parent": "QQuickItem indexSwitch",
+    "type": "ToggleSwitch"
+   },
+   {
+    "id": "box",
+    "objects": 28,
+    "parent": "DropMenu sortMenu",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "boxList",
+    "objects": 28,
+    "parent": "QQuickItem listArea",
+    "type": "QQuickListView"
+   },
+   {
+    "id": "hints",
+    "objects": 26,
+    "parent": "Footer footer",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "nameTip",
+    "objects": 23,
+    "parent": "QQuickRootItem ",
+    "type": "NameTip"
+   },
+   {
+    "id": "row",
+    "objects": 22,
+    "parent": "ToggleSwitch indexToggle",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "info",
+    "objects": 21,
+    "parent": "Footer footer",
+    "type": "ShortcutsButton"
+   },
+   {
+    "id": "sidebarToggle",
+    "objects": 20,
+    "parent": "SearchBar boxBar",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "chips",
+    "objects": 19,
+    "parent": "QQuickItem ",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "track",
+    "objects": 19,
+    "parent": "QQuickItem ",
+    "type": "Hook"
+   },
+   {
+    "id": "track",
+    "objects": 19,
+    "parent": "QQuickItem ",
+    "type": "Hook"
+   },
+   {
+    "id": "track",
+    "objects": 19,
+    "parent": "ScopeTabs tabs",
+    "type": "Hook"
+   },
+   {
+    "id": "pluginSub",
+    "objects": 18,
+    "parent": "QQuickRectangle tab",
+    "type": "QQuickItem"
+   }
+  ]
+ },
+ "creation_ms": 305.7894,
+ "lending": [
+  [
+   {
+    "buttons": [
+     "打开所在位置",
+     "在终端中打开",
+     "复制",
+     "复制完整路径",
+     "删除（点两次，移到回收站）"
+    ],
+    "row": "report.docx"
+   },
+   {
+    "buttons": [
+     "打开所在位置",
+     "在终端中打开",
+     "复制",
+     "复制完整路径",
+     "删除（点两次，移到回收站）"
+    ],
+    "row": "work"
+   },
+   {
+    "buttons": [
+     "打开所在位置",
+     "在终端中打开",
+     "复制",
+     "复制完整路径",
+     "删除（点两次，移到回收站）"
+    ],
+    "row": "notes.txt"
+   },
+   {
+    "buttons": [
+     "以管理员身份运行",
+     "打开所在位置",
+     "复制",
+     "复制完整路径"
+    ],
+    "row": "Demo"
+   },
+   {
+    "buttons": [
+     "复制窗口标题"
+    ],
+    "row": "Notes - Editor"
+   },
+   {
+    "buttons": [
+     "复制打开命令"
+    ],
+    "row": "显示"
+   },
+   {
+    "buttons": [
+     "复制网址"
+    ],
+    "row": "Example"
+   }
+  ],
+  [
+   {
+    "buttons": [
+     "打开所在位置",
+     "在终端中打开",
+     "复制",
+     "复制完整路径",
+     "删除（点两次，移到回收站）"
+    ],
+    "row": "report.docx"
+   },
+   {
+    "buttons": [
+     "打开所在位置",
+     "在终端中打开",
+     "复制",
+     "复制完整路径",
+     "删除（点两次，移到回收站）"
+    ],
+    "row": "work"
+   },
+   {
+    "buttons": [
+     "打开所在位置",
+     "在终端中打开",
+     "复制",
+     "复制完整路径",
+     "删除（点两次，移到回收站）"
+    ],
+    "row": "notes.txt"
+   },
+   {
+    "buttons": [
+     "以管理员身份运行",
+     "打开所在位置",
+     "复制",
+     "复制完整路径"
+    ],
+    "row": "Demo"
+   },
+   {
+    "buttons": [
+     "复制窗口标题"
+    ],
+    "row": "Notes - Editor"
+   },
+   {
+    "buttons": [
+     "复制打开命令"
+    ],
+    "row": "显示"
+   },
+   {
+    "buttons": [
+     "复制网址"
+    ],
+    "row": "Example"
+   }
+  ]
+ ],
+ "panel_breakdown": {
+  "classes": [
+   {
+    "class": "QQuickText",
+    "count": 399
+   },
+   {
+    "class": "QQmlComponent",
+    "count": 297
+   },
+   {
+    "class": "QQmlComponentAttached",
+    "count": 185
+   },
+   {
+    "class": "QQuickLoader",
+    "count": 177
+   },
+   {
+    "class": "QQuickMouseArea",
+    "count": 148
+   },
+   {
+    "class": "QQuickRectangle",
+    "count": 136
+   },
+   {
+    "class": "QQuickItem",
+    "count": 129
+   },
+   {
+    "class": "Hook",
+    "count": 118
+   },
+   {
+    "class": "QQuickBehavior",
+    "count": 117
+   },
+   {
+    "class": "QQmlDelegateModelGroup",
+    "count": 94
+   },
+   {
+    "class": "QQuickAccessibleAttached",
+    "count": 91
+   },
+   {
+    "class": "QQmlTimer",
+    "count": 71
+   },
+   {
+    "class": "QQuickPen",
+    "count": 70
+   },
+   {
+    "class": "ws::PhosphorGlyph",
+    "count": 62
+   },
+   {
+    "class": "Glyph",
+    "count": 62
+   },
+   {
+    "class": "QQuickTextMetrics",
+    "count": 56
+   },
+   {
+    "class": "QQmlConnections",
+    "count": 49
+   },
+   {
+    "class": "QQmlDelegateModel",
+    "count": 47
+   },
+   {
+    "class": "QQuickRepeater",
+    "count": 44
+   },
+   {
+    "class": "QQuickRow",
+    "count": 43
+   }
+  ],
+  "reachable": 3099,
+  "subtrees": [
+   {
+    "id": "layout",
+    "objects": 1558,
+    "parent": "Main window",
+    "type": "QQuickColumn"
+   },
+   {
+    "id": "panelLoader",
+    "objects": 1474,
+    "parent": "Main window",
+    "type": "QQuickLoader"
+   },
+   {
+    "id": "panelPage",
+    "objects": 1471,
+    "parent": "QQuickLoader panelLoader",
+    "type": "Panel"
+   },
+   {
+    "id": "listArea",
+    "objects": 990,
+    "parent": "QQuickColumn layout",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "boxList",
+    "objects": 685,
+    "parent": "QQuickItem listArea",
+    "type": "QQuickListView"
+   },
+   {
+    "id": "",
+    "objects": 667,
+    "parent": "QQuickListView boxList",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "list",
+    "objects": 454,
+    "parent": "Panel panelPage",
+    "type": "QQuickListView"
+   },
+   {
+    "id": "",
+    "objects": 431,
+    "parent": "QQuickListView list",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "chrome",
+    "objects": 333,
+    "parent": "QQuickColumn layout",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "sidebar",
+    "objects": 332,
+    "parent": "Panel panelPage",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "filters",
+    "objects": 316,
+    "parent": "QQuickItem sidebar",
+    "type": "QQuickFlickable"
+   },
+   {
+    "id": "filterColumn",
+    "objects": 314,
+    "parent": "QQuickFlickable filters",
+    "type": "QQuickColumn"
+   },
+   {
+    "id": "bar",
+    "objects": 263,
+    "parent": "Panel panelPage",
+    "type": "SearchBar"
+   },
+   {
+    "id": "boxBar",
+    "objects": 263,
+    "parent": "QQuickItem chrome",
+    "type": "SearchBar"
+   },
+   {
+    "id": "resultActions",
+    "objects": 244,
+    "parent": "QQuickItem listArea",
+    "type": "RowActionsPool"
+   },
+   {
+    "id": "footer",
+    "objects": 223,
+    "parent": "QQuickColumn layout",
+    "type": "Footer"
+   },
+   {
+    "id": "footer",
+    "objects": 223,
+    "parent": "Panel panelPage",
+    "type": "Footer"
+   },
+   {
+    "id": "resultRow",
+    "objects": 158,
+    "parent": "QQuickItem ",
+    "type": "ResultRow"
+   },
+   {
+    "id": "area",
+    "objects": 126,
+    "parent": "ResultRow resultRow",
+    "type": "QQuickMouseArea"
+   },
+   {
+    "id": "",
+    "objects": 121,
+    "parent": "RowActionsPool resultActions",
+    "type": "ResultActions"
+   },
+   {
+    "id": "",
+    "objects": 121,
+    "parent": "QQuickMouseArea area",
+    "type": "ResultActions"
+   },
+   {
+    "id": "",
+    "objects": 121,
+    "parent": "RowActionsPool resultActions",
+    "type": "ResultActions"
+   },
+   {
+    "id": "actions",
+    "objects": 118,
+    "parent": "ResultActions ",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "actions",
+    "objects": 118,
+    "parent": "ResultActions ",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "actions",
+    "objects": 118,
+    "parent": "ResultActions ",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "tabs",
+    "objects": 106,
+    "parent": "SearchBar boxBar",
+    "type": "ScopeTabs"
+   },
+   {
+    "id": "tabs",
+    "objects": 106,
+    "parent": "SearchBar bar",
+    "type": "ScopeTabs"
+   },
+   {
+    "id": "columns",
+    "objects": 103,
+    "parent": "Panel panelPage",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "row",
+    "objects": 86,
+    "parent": "ScopeTabs tabs",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "row",
+    "objects": 86,
+    "parent": "ScopeTabs tabs",
+    "type": "QQuickRow"
+   }
+  ]
+ },
+ "panel_openings": [
+  {
+   "dispatch_ms": 10.9943,
+   "frame_ms": 14.1505
+  },
+  {
+   "dispatch_ms": 8.033,
+   "frame_ms": 14.7519
+  },
+  {
+   "dispatch_ms": 11.2915,
+   "frame_ms": 17.9379
+  },
+  {
+   "dispatch_ms": 7.8757,
+   "frame_ms": 14.5796
+  }
+ ],
+ "passed": true,
+ "preload_longest_block_ms": 6.2301,
+ "preload_ms": 33.5459,
+ "queries": [
+  {
+   "ms": 34.3103,
+   "rows": 256
+  },
+  {
+   "ms": 4.0998,
+   "rows": 111
+  },
+  {
+   "ms": 4.7548,
+   "rows": 111
+  },
+  {
+   "ms": 6.8103,
+   "rows": 256
+  }
+ ],
+ "results_breakdown": {
+  "classes": [
+   {
+    "class": "QQuickText",
+    "count": 279
+   },
+   {
+    "class": "QQmlComponent",
+    "count": 257
+   },
+   {
+    "class": "QQuickLoader",
+    "count": 157
+   },
+   {
+    "class": "QQmlComponentAttached",
+    "count": 144
+   },
+   {
+    "class": "QQuickRectangle",
+    "count": 135
+   },
+   {
+    "class": "QQuickMouseArea",
+    "count": 128
+   },
+   {
+    "class": "QQuickItem",
+    "count": 128
+   },
+   {
+    "class": "QQuickBehavior",
+    "count": 116
+   },
+   {
+    "class": "Hook",
+    "count": 97
+   },
+   {
+    "class": "QQuickAccessibleAttached",
+    "count": 91
+   },
+   {
+    "class": "QQmlTimer",
+    "count": 71
+   },
+   {
+    "class": "QQuickPen",
+    "count": 69
+   },
+   {
+    "class": "ws::PhosphorGlyph",
+    "count": 62
+   },
+   {
+    "class": "Glyph",
+    "count": 62
+   },
+   {
+    "class": "QQuickTextMetrics",
+    "count": 56
+   },
+   {
+    "class": "QQmlDelegateModelGroup",
+    "count": 54
+   },
+   {
+    "class": "QQmlConnections",
+    "count": 49
+   },
+   {
+    "class": "QQuickRow",
+    "count": 43
+   },
+   {
+    "class": "HoverTip",
+    "count": 42
+   },
+   {
+    "class": "KeySurface",
+    "count": 37
+   }
+  ],
+  "reachable": 2667,
+  "subtrees": [
+   {
+    "id": "layout",
+    "objects": 1558,
+    "parent": "Main window",
+    "type": "QQuickColumn"
+   },
+   {
+    "id": "panelLoader",
+    "objects": 1042,
+    "parent": "Main window",
+    "type": "QQuickLoader"
+   },
+   {
+    "id": "panelPage",
+    "objects": 1039,
+    "parent": "QQuickLoader panelLoader",
+    "type": "Panel"
+   },
+   {
+    "id": "listArea",
+    "objects": 990,
+    "parent": "QQuickColumn layout",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "boxList",
+    "objects": 685,
+    "parent": "QQuickItem listArea",
+    "type": "QQuickListView"
+   },
+   {
+    "id": "",
+    "objects": 667,
+    "parent": "QQuickListView boxList",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "chrome",
+    "objects": 333,
+    "parent": "QQuickColumn layout",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "sidebar",
+    "objects": 332,
+    "parent": "Panel panelPage",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "filters",
+    "objects": 316,
+    "parent": "QQuickItem sidebar",
+    "type": "QQuickFlickable"
+   },
+   {
+    "id": "filterColumn",
+    "objects": 314,
+    "parent": "QQuickFlickable filters",
+    "type": "QQuickColumn"
+   },
+   {
+    "id": "boxBar",
+    "objects": 263,
+    "parent": "QQuickItem chrome",
+    "type": "SearchBar"
+   },
+   {
+    "id": "bar",
+    "objects": 260,
+    "parent": "Panel panelPage",
+    "type": "SearchBar"
+   },
+   {
+    "id": "resultActions",
+    "objects": 244,
+    "parent": "QQuickItem listArea",
+    "type": "RowActionsPool"
+   },
+   {
+    "id": "footer",
+    "objects": 223,
+    "parent": "QQuickColumn layout",
+    "type": "Footer"
+   },
+   {
+    "id": "footer",
+    "objects": 223,
+    "parent": "Panel panelPage",
+    "type": "Footer"
+   },
+   {
+    "id": "resultRow",
+    "objects": 158,
+    "parent": "QQuickItem ",
+    "type": "ResultRow"
+   },
+   {
+    "id": "area",
+    "objects": 126,
+    "parent": "ResultRow resultRow",
+    "type": "QQuickMouseArea"
+   },
+   {
+    "id": "",
+    "objects": 121,
+    "parent": "RowActionsPool resultActions",
+    "type": "ResultActions"
+   },
+   {
+    "id": "",
+    "objects": 121,
+    "parent": "RowActionsPool resultActions",
+    "type": "ResultActions"
+   },
+   {
+    "id": "",
+    "objects": 121,
+    "parent": "QQuickMouseArea area",
+    "type": "ResultActions"
+   },
+   {
+    "id": "actions",
+    "objects": 118,
+    "parent": "ResultActions ",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "actions",
+    "objects": 118,
+    "parent": "ResultActions ",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "actions",
+    "objects": 118,
+    "parent": "ResultActions ",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "tabs",
+    "objects": 106,
+    "parent": "SearchBar bar",
+    "type": "ScopeTabs"
+   },
+   {
+    "id": "tabs",
+    "objects": 106,
+    "parent": "SearchBar boxBar",
+    "type": "ScopeTabs"
+   },
+   {
+    "id": "columns",
+    "objects": 103,
+    "parent": "Panel panelPage",
+    "type": "QQuickItem"
+   },
+   {
+    "id": "row",
+    "objects": 86,
+    "parent": "ScopeTabs tabs",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "row",
+    "objects": 86,
+    "parent": "ScopeTabs tabs",
+    "type": "QQuickRow"
+   },
+   {
+    "id": "",
+    "objects": 72,
+    "parent": "QQuickColumn filterColumn",
+    "type": "Chips"
+   },
+   {
+    "id": "",
+    "objects": 72,
+    "parent": "QQuickColumn filterColumn",
+    "type": "Chips"
+   }
+  ]
+ },
+ "row_stepping": [
+  [
+   {
+    "frame_ms": 4.8299,
+    "scrolled": false,
+    "set_ms": 0.4239
+   },
+   {
+    "frame_ms": 3.4384,
+    "scrolled": false,
+    "set_ms": 0.4729
+   },
+   {
+    "frame_ms": 1.3426,
+    "scrolled": false,
+    "set_ms": 0.4417
+   },
+   {
+    "frame_ms": 3.92,
+    "scrolled": false,
+    "set_ms": 0.416
+   },
+   {
+    "frame_ms": 3.0563,
+    "scrolled": false,
+    "set_ms": 0.4121
+   },
+   {
+    "frame_ms": 3.5729,
+    "scrolled": false,
+    "set_ms": 0.4026
+   },
+   {
+    "frame_ms": 3.6213,
+    "scrolled": false,
+    "set_ms": 0.385
+   },
+   {
+    "frame_ms": 3.9222,
+    "scrolled": true,
+    "set_ms": 0.7668
+   }
+  ],
+  [
+   {
+    "frame_ms": 2.5947,
+    "scrolled": false,
+    "set_ms": 0.4158
+   },
+   {
+    "frame_ms": 3.0355,
+    "scrolled": false,
+    "set_ms": 0.4043
+   },
+   {
+    "frame_ms": 4.1333,
+    "scrolled": false,
+    "set_ms": 0.447
+   },
+   {
+    "frame_ms": 2.5216,
+    "scrolled": false,
+    "set_ms": 0.4004
+   },
+   {
+    "frame_ms": 3.8018,
+    "scrolled": false,
+    "set_ms": 0.4331
+   },
+   {
+    "frame_ms": 3.429,
+    "scrolled": false,
+    "set_ms": 0.4219
+   },
+   {
+    "frame_ms": 2.8674,
+    "scrolled": false,
+    "set_ms": 0.3703
+   },
+   {
+    "frame_ms": 4.2161,
+    "scrolled": false,
+    "set_ms": 0.4217
+   }
+  ]
+ ],
+ "samples": [
+  {
+   "memory_known": true,
+   "private_bytes": 38100992,
+   "private_working_set_bytes": 18870272,
+   "qml_objects": 0,
+   "stage": "before_main",
+   "working_set_bytes": 48009216
+  },
+  {
+   "memory_known": true,
+   "private_bytes": 61140992,
+   "private_working_set_bytes": 33181696,
+   "qml_objects": 604,
+   "stage": "created",
+   "working_set_bytes": 75149312
+  },
+  {
+   "memory_known": true,
+   "private_bytes": 129564672,
+   "private_working_set_bytes": 53022720,
+   "qml_objects": 609,
+   "stage": "compact_empty",
+   "working_set_bytes": 117084160
+  },
+  {
+   "memory_known": true,
+   "private_bytes": 135303168,
+   "private_working_set_bytes": 58957824,
+   "qml_objects": 1303,
+   "stage": "compact_preloaded",
+   "working_set_bytes": 123777024
+  },
+  {
+   "memory_known": true,
+   "private_bytes": 156696576,
+   "private_working_set_bytes": 71847936,
+   "qml_objects": 1684,
+   "stage": "compact_results",
+   "working_set_bytes": 142721024
+  },
+  {
+   "memory_known": true,
+   "private_bytes": 174747648,
+   "private_working_set_bytes": 81403904,
+   "qml_objects": 1696,
+   "stage": "panel_first",
+   "working_set_bytes": 152772608
+  },
+  {
+   "memory_known": true,
+   "private_bytes": 183095296,
+   "private_working_set_bytes": 90628096,
+   "qml_objects": 1687,
+   "stage": "compact_after_panel",
+   "working_set_bytes": 162025472
+  }
+ ],
+ "tip_showing": [
+  {
+   "frame_ms": 3.5571,
+   "set_ms": 0.5664
+  },
+  {
+   "frame_ms": 2.279,
+   "set_ms": 0.0557
+  }
+ ]
+}

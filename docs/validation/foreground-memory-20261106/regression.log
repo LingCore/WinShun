@@ -1,0 +1,30 @@
+Test project F:/电脑便捷工具/build/foreground-memory-20261106
+    Start   8: tst_contentpane
+1/4 Test   #8: tst_contentpane ..................***Failed   64.08 sec
+preparing
+making the application
+loading the font
+WARNING: content pane failed: real_search
+WARNING: content pane failed: spreadsheet_load
+WARNING: content pane failed: real_sheets
+WARNING: content pane failed: sheet_filter
+WARNING: content pane failed: real_row_number
+WARNING: content pane failed: separated_cells
+WARNING: content pane failed: report_has_every_match
+WARNING: content pane failed: selected_report_scope
+WARNING: content pane failed: real_handler_or_explicit_fallback
+
+    Start  26: tst_shortcutpanel
+2/4 Test  #26: tst_shortcutpanel ................   Passed   23.61 sec
+    Start  27: tst_searchnavigation
+3/4 Test  #27: tst_searchnavigation .............   Passed   17.84 sec
+    Start 118: tst_puresearch
+4/4 Test #118: tst_puresearch ...................   Passed   12.51 sec
+
+75% tests passed, 1 tests failed out of 4
+
+Total Test time (real) = 118.05 sec
+
+The following tests FAILED:
+	  8 - tst_contentpane (Failed)
+Errors while running CTest

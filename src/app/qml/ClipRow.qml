@@ -43,14 +43,65 @@ Item {
     readonly property bool picture: kind === 4 || image.length > 0
     readonly property bool current: ListView.isCurrentItem
     readonly property int selectedCount: ListView.view ? ListView.view.model.selectedCount : 0
-    readonly property bool showActions: current || area.containsMouse || moveAction.held
+    // ... also while its handle is held: dragged, the row keeps them. Told by
+    // the lent buttons (not read from them: which set the row has follows this).
+    property bool handleHeld: false
+    readonly property bool showActions: current || area.containsMouse || handleHeld
+
+    // The buttons: a set the list lends while the row shows them
+    // (RowActionsPool, ClipActions), not one made in every row.
+    property RowActionsPool actionsPool: null
+    property Item borrowed: null
+    readonly property Item actions: borrowed !== null && borrowed.host === row ? borrowed : null
+    readonly property Item actionsArea: area // where a lent set sits
+    onShowActionsChanged: borrowActions()
+    function borrowActions() {
+        if (!actionsPool)
+            return
+        if (showActions) {
+            borrowed = actionsPool.take(row)
+        } else {
+            actionsPool.give(row)
+            borrowed = null
+        }
+    }
+    function giveActions() {
+        if (actionsPool)
+            actionsPool.give(row)
+        borrowed = null
+        handleHeld = false
+    }
+    Component.onCompleted: borrowActions()
+    Component.onDestruction: giveActions()
 
     // Out of sight while in the view's reuse pool. Qt (6.12) leaves a pooled
     // row drawn where it was, and taking the mouse, when a search drops rows
     // in several separate runs and the list declares a transition
     // (docs/pitfalls.md: 搜索后列表下方留着旧行). Shown again when reused.
-    ListView.onPooled: row.visible = false
-    ListView.onReused: row.visible = true
+    ListView.onPooled: {
+        row.visible = false
+        giveActions()
+    }
+    ListView.onReused: {
+        row.visible = true
+        borrowActions()
+    }
+
+    // Its handle (ClipActions) dragged to `position`, in the handle's coordinates.
+    function handleDragged(handle: Item, position: point) {
+        const view = row.ListView.view
+        if (!view)
+            return
+        const p = handle.mapToItem(view.contentItem, position.x, position.y)
+        const to = view.indexAt(row.width / 2, p.y)
+        const over = to >= 0 && to !== row.index ? view.itemAtIndex(to) : null
+        // Only where the mouse would be on this row once moved:
+        // rows of other heights (pictures) would swap it back.
+        // Below it or above it on the screen, whichever way the
+        // list is laid out.
+        if (over && (over.y > row.y ? p.y >= over.y + over.height - row.height : p.y < over.y + row.height))
+            row.moveRequested(row.index, to)
+    }
 
     signal clicked(int index, int modifiers)
     signal pasteRequested(int index) // its paste button, a double click
@@ -261,7 +312,7 @@ Item {
         anchors.left: iconSlot.right
         anchors.leftMargin: 12
         anchors.right: parent.right
-        anchors.rightMargin: (row.showActions ? actions.width + actions.anchors.rightMargin
+        anchors.rightMargin: (row.showActions ? (row.actions !== null ? row.actions.actionsWidth : 0) + 14
                               : badge.visible ? badge.width + badge.anchors.rightMargin : 8) + 8
         spacing: 4
 
@@ -388,76 +439,11 @@ Item {
             else if (mouse.button === Qt.MiddleButton)
                 row.previewRequested(row.index)
         }
-
-        Row {
-            id: actions
-            visible: row.showActions
-            anchors.right: parent.right
-            anchors.rightMargin: 14
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 2
-
-            RowAction { // dragged up or down: to another place in its group
-                dpr: row.dpr
-                id: moveAction
-                small: row.metrics.dense
-                visible: row.movable
-                draggable: true
-                glyph: "" // GripperBarHorizontal
-                tip: qsTr("拖动调整顺序")
-                tipShortcut: "Ctrl+↑/↓"
-                onHeldChanged: row.moveHeld(held)
-                onDragMoved: (position) => {
-                    const view = row.ListView.view
-                    if (!view)
-                        return
-                    const p = moveAction.mapToItem(view.contentItem, position.x, position.y)
-                    const to = view.indexAt(row.width / 2, p.y)
-                    const over = to >= 0 && to !== row.index ? view.itemAtIndex(to) : null
-                    // Only where the mouse would be on this row once moved:
-                    // rows of other heights (pictures) would swap it back.
-                    // Below it or above it on the screen, whichever way the
-                    // list is laid out.
-                    if (over && (over.y > row.y ? p.y >= over.y + over.height - row.height : p.y < over.y + row.height))
-                        row.moveRequested(row.index, to)
-                }
-            }
-            RowAction { // a click pastes already (clickToPaste): the preview here instead
-                dpr: row.dpr
-                id: pasteAction
-                small: row.metrics.dense
-                glyph: row.clickToPaste ? "" : "" // View, Paste
-                tip: row.clickToPaste ? qsTr("预览") : row.pasteTip
-                tipShortcut: row.clickToPaste ? "Alt+P" : "Enter"
-                onClicked: row.clickToPaste ? row.previewRequested(row.index) : row.pasteRequested(row.index)
-            }
-            RowAction {
-                dpr: row.dpr
-                id: pinAction
-                small: row.metrics.dense
-                glyph: row.pinned ? "" : "" // Unpin, Pin
-                tip: row.pinned ? qsTr("取消固定") : qsTr("固定（不会过期）")
-                tipShortcut: "Ctrl+P"
-                onClicked: row.actionRequested(row.index, Clipboard.Pin)
-            }
-            RowAction {
-                dpr: row.dpr
-                id: removeAction
-                small: row.metrics.dense
-                glyph: "" // Delete
-                tip: qsTr("删除")
-                tipShortcut: "Delete"
-                onClicked: row.actionRequested(row.index, Clipboard.Remove)
-            }
-        }
     }
 
     HoverTip {
         dpr: row.dpr
-        readonly property RowAction hovered: moveAction.tipWanted ? moveAction
-                                           : pasteAction.tipWanted ? pasteAction
-                                           : pinAction.tipWanted ? pinAction
-                                           : removeAction.tipWanted ? removeAction : null
+        readonly property RowAction hovered: row.actions !== null ? row.actions.hovered : null
         readonly property bool onKeys: !hovered && numberSlot.visible && numberSlot.opacity > 0 && row.hintTaken && area.containsMouse // (a hover handler under the area gets no hover)
                                           && numberSlot.contains(numberSlot.mapFromItem(area, area.mouseX, area.mouseY))
         readonly property bool onMark: !hovered && !onKeys && pastedMark.visible && area.containsMouse

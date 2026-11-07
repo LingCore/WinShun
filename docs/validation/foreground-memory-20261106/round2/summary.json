@@ -1,0 +1,169 @@
+{
+ "baseline": {
+  "compact_empty": [
+   135.5,
+   61.2
+  ],
+  "compact_empty_objects": 1715,
+  "compact_results": [
+   165.2,
+   84.0
+  ],
+  "compact_results_objects": 1733,
+  "panel_first": [
+   180.3,
+   91.7
+  ],
+  "panel_first_objects": 1745,
+  "compact_after_panel": [
+   190.6,
+   101.4
+  ],
+  "compact_after_panel_objects": 1736,
+  "creation_ms": 395.7,
+  "first_panel_ms": 21.0,
+  "first_dispatch_ms": 11.6,
+  "repeat_panel_ms": 18.2,
+  "query_ms": 7.94
+ },
+ "lazy": {
+  "compact_empty": [
+   124.0,
+   50.4
+  ],
+  "compact_empty_objects": 607,
+  "compact_results": [
+   153.5,
+   73.6
+  ],
+  "compact_results_objects": 626,
+  "panel_first": [
+   177.6,
+   89.3
+  ],
+  "panel_first_objects": 1331,
+  "compact_after_panel": [
+   186.1,
+   98.0
+  ],
+  "compact_after_panel_objects": 1322,
+  "creation_ms": 342.2,
+  "first_panel_ms": 49.9,
+  "first_dispatch_ms": 34.7,
+  "repeat_panel_ms": 18.7,
+  "query_ms": 8.08,
+  "row_step_pass1_ms": [
+   0.82,
+   0.89,
+   0.85,
+   0.31,
+   0.82,
+   0.39,
+   0.36,
+   3.36
+  ],
+  "row_step_pass2_ms": [
+   0.32,
+   0.32,
+   0.33,
+   0.26,
+   0.27,
+   0.39,
+   0.31,
+   0.31
+  ],
+  "tip_show_ms": [
+   0.39,
+   0.06
+  ],
+  "result_row_objects": [
+   136,
+   155
+  ]
+ },
+ "preload": {
+  "compact_empty": [
+   123.4,
+   50.2
+  ],
+  "compact_empty_objects": 607,
+  "compact_preloaded": [
+   129.1,
+   56.2
+  ],
+  "compact_preloaded_objects": 1301,
+  "compact_results": [
+   158.5,
+   77.3
+  ],
+  "compact_results_objects": 1319,
+  "panel_first": [
+   176.2,
+   86.7
+  ],
+  "panel_first_objects": 1331,
+  "compact_after_panel": [
+   179.2,
+   96.2
+  ],
+  "compact_after_panel_objects": 1322,
+  "creation_ms": 357.8,
+  "first_panel_ms": 16.4,
+  "first_dispatch_ms": 11.1,
+  "repeat_panel_ms": 15.1,
+  "query_ms": 8.83,
+  "preload_ms": 30.7,
+  "preload_block_ms": 3.8,
+  "row_step_pass1_ms": [
+   2.0,
+   0.91,
+   0.81,
+   0.26,
+   0.74,
+   0.34,
+   0.34,
+   0.71
+  ],
+  "row_step_pass2_ms": [
+   0.32,
+   0.34,
+   0.38,
+   0.27,
+   0.28,
+   0.37,
+   0.32,
+   0.37
+  ],
+  "tip_show_ms": [
+   0.39,
+   0.06
+  ],
+  "result_row_objects": [
+   136,
+   155
+  ]
+ },
+ "gpt": {
+  "compact_empty": [
+   125.9,
+   52.3
+  ],
+  "compact_results": [
+   157.4,
+   77.7
+  ],
+  "panel_first": [
+   178.2,
+   91.4
+  ],
+  "compact_after_panel": [
+   187.1,
+   101.1
+  ],
+  "creation_ms": 316.2,
+  "first_panel_ms": 52.4,
+  "first_dispatch_ms": 43.1,
+  "repeat_panel_ms": 15.8,
+  "query_ms": 6.71
+ }
+}

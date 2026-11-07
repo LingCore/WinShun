@@ -1,0 +1,9 @@
+Test project F:/电脑便捷工具/build/foreground-memory-20261106
+    Start  8: tst_contentpane
+1/2 Test  #8: tst_contentpane ..................   Passed    5.45 sec
+    Start 28: tst_foregroundmemory
+2/2 Test #28: tst_foregroundmemory .............   Passed    5.14 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =  10.60 sec

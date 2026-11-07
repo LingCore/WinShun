@@ -1,0 +1,88 @@
+{
+  "environment": {
+    "qt": "6.12.0",
+    "configuration": "MSVC Release x64",
+    "renderer": "d3d11",
+    "scale": 1.5,
+    "fixture_names": 2000,
+    "runs_per_version": 3
+  },
+  "versions": {
+    "before": {
+      "creation_ms_median": 387.9081,
+      "first_panel_frame_ms_median": 23.667,
+      "repeated_panel_frame_ms_median": 16.2116,
+      "query_ms_median": 7.673649999999999,
+      "samples": [
+        {
+          "stage": "compact_empty",
+          "private_bytes": 142036992,
+          "private_working_set_bytes": 64249856,
+          "working_set_bytes": 128876544,
+          "qml_objects": 1715
+        },
+        {
+          "stage": "compact_results",
+          "private_bytes": 172220416,
+          "private_working_set_bytes": 87429120,
+          "working_set_bytes": 159240192,
+          "qml_objects": 1733
+        },
+        {
+          "stage": "panel_first",
+          "private_bytes": 187756544,
+          "private_working_set_bytes": 95297536,
+          "working_set_bytes": 167313408,
+          "qml_objects": 1745
+        },
+        {
+          "stage": "compact_after_panel",
+          "private_bytes": 192716800,
+          "private_working_set_bytes": 104570880,
+          "working_set_bytes": 175579136,
+          "qml_objects": 1736
+        }
+      ]
+    },
+    "after": {
+      "creation_ms_median": 316.2294,
+      "first_panel_frame_ms_median": 52.4143,
+      "repeated_panel_frame_ms_median": 15.8168,
+      "query_ms_median": 6.7115,
+      "samples": [
+        {
+          "stage": "compact_empty",
+          "private_bytes": 132026368,
+          "private_working_set_bytes": 54853632,
+          "working_set_bytes": 118898688,
+          "qml_objects": 852
+        },
+        {
+          "stage": "compact_results",
+          "private_bytes": 165093376,
+          "private_working_set_bytes": 81453056,
+          "working_set_bytes": 151617536,
+          "qml_objects": 870
+        },
+        {
+          "stage": "panel_first",
+          "private_bytes": 186818560,
+          "private_working_set_bytes": 95825920,
+          "working_set_bytes": 167034880,
+          "qml_objects": 1828
+        },
+        {
+          "stage": "compact_after_panel",
+          "private_bytes": 196235264,
+          "private_working_set_bytes": 106004480,
+          "working_set_bytes": 177233920,
+          "qml_objects": 1819
+        }
+      ]
+    }
+  },
+  "main_qml_sha256": {
+    "before": "59e981e333fa48e97d83d349b08e932f1b8e4c2eed52872e9730b5ca73cde57a",
+    "after": "bec863c3424086705e3d836a6a36726432cd1693a6edfaa52d9ed2d2f5ed2546"
+  }
+}

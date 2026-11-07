@@ -108,15 +108,28 @@ Item {
     // The narrow folder panel keeps filenames stable. Its actions remain
     // available from the context menu and keyboard shortcuts.
     readonly property bool showActions: !compact && (current || area.containsMouse)
+    // The buttons: a set the list lends while the row shows them
+    // (RowActionsPool, ResultActions), not one made in every row.
+    property RowActionsPool actionsPool: null
+    property Item borrowed: null
+    readonly property Item actions: borrowed !== null && borrowed.host === row ? borrowed : null
+    readonly property Item actionsArea: area // where a lent set sits
+    readonly property real actionsRightMargin: switchReady ? switchControl.width + Theme.actionsInset + 4 + levelSpace : Theme.actionsInset
     // ... and it has some: a plugin's row may have none, its badge then stays (GitHub #113).
-    readonly property bool actionsShown: showActions && actions.visibleChildren.length > 0
+    readonly property bool actionsShown: showActions && actions !== null && actions.count > 0
     // The volume's number and bar, left of its switch (their room kept before the level is read).
     readonly property bool levelShown: switchReady && switchId === "volume"
     readonly property real levelSpace: levelShown ? levelControl.width + levelControl.anchors.rightMargin : 0
+    // The switch and the volume bar are made the first time this row shows
+    // one, then kept: a reused row may well show one again.
+    property bool switchMade: false
+    property bool levelMade: false
+    onSwitchReadyChanged: if (switchReady) switchMade = true
+    onLevelShownChanged: if (levelShown) levelMade = true
     // Room kept on the right for the buttons, the badge or the label.
     readonly property real trailingSpace: (switchReady ? switchControl.width + switchControl.anchors.rightMargin + levelSpace
-                                                         + (showActions ? actions.width + 2 : 0)
-                                           : actionsShown ? actions.width + actions.anchors.rightMargin
+                                                         + (showActions && actions !== null ? actions.actionsWidth + 2 : 0)
+                                           : actionsShown ? actions.actionsWidth + actionsRightMargin
                                            : isApp ? badge.width + badge.anchors.rightMargin
                                            : trailing.width + trailing.anchors.rightMargin) + 10
     property bool deleteArmed: false // first click on delete; the second one deletes
@@ -137,21 +150,57 @@ Item {
     function onPixel(y) { return Math.round(y * dpr) / dpr }
     function upToPixel(y) { return Math.ceil(y * dpr - 1e-6) / dpr }
 
-    onShowActionsChanged: if (!showActions) deleteArmed = false
+    onShowActionsChanged: {
+        if (!showActions)
+            deleteArmed = false
+        borrowActions()
+    }
+    function borrowActions() {
+        if (!actionsPool)
+            return
+        if (showActions) {
+            borrowed = actionsPool.take(row)
+        } else {
+            actionsPool.give(row)
+            borrowed = null
+        }
+    }
+    function giveActions() {
+        if (actionsPool)
+            actionsPool.give(row)
+        borrowed = null
+    }
+    Component.onCompleted: borrowActions()
+    ListView.onReused: borrowActions()
+    function deleteClicked() { // its delete button: the first click arms it, the second deletes
+        if (deleteArmed) {
+            deleteArmed = false
+            actionRequested(index, Launcher.Recycle)
+        } else {
+            deleteArmed = true
+            disarmTimer.restart()
+        }
+    }
     // Taken for another switch, the new one is there from the first frame: nothing slides between two.
     onSwitchIdChanged: {
-        switchControl.animated = false
-        levelControl.animated = false
+        const toggle = switchControl.item as ToggleSwitch
+        const level = levelControl.item as SwitchLevel
+        if (toggle)
+            toggle.animated = false
+        if (level)
+            level.animated = false
         Qt.callLater(() => {
-            switchControl.animated = true
-            levelControl.animated = true
+            if (toggle)
+                toggle.animated = true
+            if (level)
+                level.animated = true
         })
     }
     Connections {
         target: row.results
         function onSwitchNudged(id: string) {
             if (id === row.switchId)
-                switchControl.pulse()
+                (switchControl.item as ToggleSwitch)?.pulse()
         }
     }
     onPathChanged: { // delegate reused for another result
@@ -187,8 +236,14 @@ Item {
         if (nameTip && nameTip.source === row)
             nameTip.dismiss()
     }
-    ListView.onPooled: dropTip()
-    Component.onDestruction: dropTip()
+    ListView.onPooled: {
+        dropTip()
+        giveActions()
+    }
+    Component.onDestruction: {
+        dropTip()
+        giveActions()
+    }
 
     Timer {
         id: disarmTimer
@@ -497,133 +552,42 @@ Item {
 
         // Inside the MouseArea so that hovering a button still hovers the row.
         // A system switch, always there, at the same width in every state.
-        ToggleSwitch {
-            dpr: row.dpr
+        // Made only for a switch's row (nearly all rows have none).
+        Loader {
             id: switchControl
+            active: row.switchReady || row.switchMade
             visible: row.switchReady
             anchors.right: parent.right
             anchors.rightMargin: Theme.actionsInset
             anchors.verticalCenter: parent.verticalCenter
-            // The volume is never "自定义": its word ("开", "关") right against
-            // the bar's gap, not 自定义's width further.
-            mixable: !row.levelShown
-            wordAlign: Text.AlignRight
-            activeFocusOnTab: false
-            checked: row.switchOn === 1
-            mixed: row.switchOn === 2
-            unknown: row.switchOn < 0
-            busy: row.switchBusy
-            onToggled: row.switchClicked(row.index)
+            sourceComponent: ToggleSwitch {
+                dpr: row.dpr
+                // The volume is never "自定义": its word ("开", "关") right against
+                // the bar's gap, not 自定义's width further.
+                mixable: !row.levelShown
+                wordAlign: Text.AlignRight
+                activeFocusOnTab: false
+                checked: row.switchOn === 1
+                mixed: row.switchOn === 2
+                unknown: row.switchOn < 0
+                busy: row.switchBusy
+                onToggled: row.switchClicked(row.index)
+            }
         }
 
-        SwitchLevel { // the volume: its number and bar
+        Loader { // the volume: its number and bar
             id: levelControl
+            active: row.levelShown || row.levelMade
             visible: row.levelShown
             anchors.right: switchControl.left
             anchors.rightMargin: 12
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            value: row.switchLevel
-            muted: row.switchOn === 0
-            dpr: row.dpr
-            opacity: switchControl.opacity // dimmed with the switch while a write takes long
-        }
-
-        // The style's capsule round the buttons (Theme.actionCapsule; none in fluent).
-        Loader {
-            anchors.fill: actions
-            anchors.margins: -Theme.capsulePadding
-            active: Theme.actionCapsule !== null && row.actionsShown
-            sourceComponent: Hook {
-                part: Theme.actionCapsule
-                count: actions.visibleChildren.length
-                role: "rowAction"
+            opacity: switchControl.item ? switchControl.item.opacity : 1 // dimmed with the switch while a write takes long
+            sourceComponent: SwitchLevel {
+                value: row.switchLevel
+                muted: row.switchOn === 0
                 dpr: row.dpr
-            }
-        }
-
-        Row {
-            id: actions
-            visible: row.showActions
-            anchors.right: parent.right
-            anchors.rightMargin: row.switchReady ? switchControl.width + Theme.actionsInset + 4 + row.levelSpace : Theme.actionsInset
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 2
-
-            RowAction {
-                dpr: row.dpr
-                id: switchPageAction
-                visible: row.switchReady
-                glyph: "" // Settings (gear)
-                tip: qsTr("打开设置")
-                tipShortcut: "Ctrl+Enter"
-                onClicked: row.actionRequested(row.index, Launcher.Reveal)
-            }
-
-            RowAction {
-                dpr: row.dpr
-                id: adminAction
-                objectName: "adminAction"
-                visible: row.elevatable && !row.switchReady
-                glyph: "" // Admin (shield)
-                tip: qsTr("以管理员身份运行")
-                tipShortcut: "Ctrl+Shift+Enter"
-                onClicked: row.actionRequested(row.index, Launcher.RunAsAdmin)
-            }
-            RowAction {
-                dpr: row.dpr
-                id: revealAction
-                visible: !row.switchReady && (!row.isApp || row.revealable)
-                glyph: "" // OpenFolder
-                tip: row.packagedApp ? qsTr("打开安装文件夹") : qsTr("打开所在位置")
-                tipShortcut: "Ctrl+Enter"
-                onClicked: row.actionRequested(row.index, Launcher.Reveal)
-            }
-            RowAction {
-                dpr: row.dpr
-                id: terminalAction
-                visible: !row.isApp // a file's or folder's: its folder in cmd
-                glyph: "" // CommandPrompt
-                tip: qsTr("在终端中打开")
-                onClicked: row.actionRequested(row.index, Launcher.OpenTerminal)
-            }
-            RowAction {
-                dpr: row.dpr
-                id: copyAction
-                visible: row.copyable && !row.switchReady // a desktop app copies its program; a packaged one has none
-                glyph: "" // Copy
-                tip: qsTr("复制")
-                tipShortcut: "Ctrl+C"
-                onClicked: row.actionRequested(row.index, Launcher.CopyItem)
-            }
-            RowAction {
-                dpr: row.dpr
-                id: copyPathAction
-                visible: !row.settingsAction && !row.switchReady && (!row.plugin || row.pluginCopies)
-                glyph: row.plugin || row.windowResult ? "" : "copyPath" // Copy; else drawn by Glyph: a box holding "\\.."
-                tip: row.windowResult ? qsTr("复制窗口标题") : row.plugin ? qsTr("复制") : row.web ? qsTr("复制网址") : row.place ? qsTr("复制打开命令") : qsTr("复制完整路径")
-                tipShortcut: row.plugin ? "Ctrl+C" : "Ctrl+Shift+C"
-                onClicked: row.actionRequested(row.index, Launcher.CopyPath)
-            }
-            RowAction {
-                dpr: row.dpr
-                id: deleteAction
-                visible: !row.isApp // uninstalling is for Windows Settings
-                glyph: "" // Delete
-                tip: row.deleteArmed ? "" : qsTr("删除（点两次，移到回收站）")
-                text: !row.deleteArmed ? ""
-                      : row.selected && row.selectedCount > 1 ? qsTr("确认删除 %1 项").arg(row.selectedCount)
-                      : qsTr("确认删除")
-                danger: row.deleteArmed
-                onClicked: {
-                    if (row.deleteArmed) {
-                        row.deleteArmed = false
-                        row.actionRequested(row.index, Launcher.Recycle)
-                    } else {
-                        row.deleteArmed = true
-                        disarmTimer.restart()
-                    }
-                }
             }
         }
     }
@@ -631,13 +595,7 @@ Item {
     // One tip for all the buttons: it glides from one to the next. The date
     // has one too: the time in full.
     HoverTip {
-        readonly property RowAction hovered: switchPageAction.tipWanted ? switchPageAction
-                                           : adminAction.tipWanted ? adminAction
-                                           : revealAction.tipWanted ? revealAction
-                                           : terminalAction.tipWanted ? terminalAction
-                                           : copyAction.tipWanted ? copyAction
-                                           : copyPathAction.tipWanted ? copyPathAction
-                                           : deleteAction.tipWanted ? deleteAction : null
+        readonly property RowAction hovered: row.actions !== null ? row.actions.hovered : null
         // Hover handlers on items under the row's mouse area get no hover: asked of the area instead.
         function under(item: Item): bool {
             return area.containsMouse && item.contains(item.mapFromItem(area, area.mouseX, area.mouseY))
