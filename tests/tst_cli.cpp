@@ -26,6 +26,7 @@
 #include "Skill.h"
 #include "Text.h"
 #include "Win.h"
+#include "KnownFolderOverride.h"
 
 #include "IndexService.h"
 #include "Launch.h"
@@ -717,6 +718,45 @@ private slots:
         QFile::remove(m_marker);
         QFile::remove(m_opened);
         cli::setLanguage(cli::Lang::En);
+    }
+
+    void configFollowsRoamingFolder()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString roaming = temporary.filePath(u"迁移后的 Roaming"_s);
+        const QString expected = QDir::toNativeSeparators(roaming + u"/WinShun/WinShun.ini"_s);
+        KnownFolderOverride folders({{&FOLDERID_RoamingAppData, roaming}});
+        QVERIFY(folders.installed());
+        const QByteArray settingsBefore = qgetenv("WS_SETTINGS");
+        const QByteArray profileBefore = qgetenv("USERPROFILE");
+        const QByteArray appDataBefore = qgetenv("APPDATA");
+        const auto restore = qScopeGuard([&] {
+            _wputenv_s(L"WS_SETTINGS", QString::fromLocal8Bit(settingsBefore).toStdWString().c_str());
+            _wputenv_s(L"USERPROFILE", QString::fromLocal8Bit(profileBefore).toStdWString().c_str());
+            _wputenv_s(L"APPDATA", QString::fromLocal8Bit(appDataBefore).toStdWString().c_str());
+        });
+        _wputenv_s(L"WS_SETTINGS", L"");
+        _wputenv_s(L"USERPROFILE", L"");
+        _wputenv_s(L"APPDATA", L"");
+        QCOMPARE(QString::fromStdWString(cli::configFile()), expected);
+        QVERIFY(QDir().mkpath(QFileInfo(expected).absolutePath()));
+        QFile file(expected);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QVERIFY(file.write("[Mcp]\nEnabled=true\n[Appearance]\nLanguage=en\n") > 0);
+        file.close();
+        const cli::Config config = cli::readConfig();
+        QVERIFY(config.found);
+        QVERIFY(config.connectionOn);
+        QCOMPARE(config.language, std::wstring(L"en"));
+        _wputenv_s(L"APPDATA", L"X:\\stale-appdata");
+        QCOMPARE(QString::fromStdWString(cli::configFile()), expected);
+        const QString forced = temporary.filePath(u"explicit.ini"_s);
+        _wputenv_s(L"WS_SETTINGS", forced.toStdWString().c_str());
+        QCOMPARE(QString::fromStdWString(cli::configFile()), forced);
+        _wputenv_s(L"WS_SETTINGS", L"");
+        folders.folders[0].path.clear();
+        QVERIFY(cli::configFile().empty());
     }
 
     // ---- the pieces ------------------------------------------------------------

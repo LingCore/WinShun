@@ -4,11 +4,14 @@
 // ones), and Claude Code's Skill installed through a stand-in ws.exe.
 #include "CommandLine.h"
 #include "McpClients.h"
+#include "KnownFolderOverride.h"
 #include "platform/Integrity.h"
 
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QScopeGuard>
 #include <QSet>
 #include <QTemporaryDir>
@@ -569,6 +572,84 @@ private slots:
         QVERIFY(!cli::hasEntry(u"C:\\A;"_s + share, kBin));
         QVERIFY(cli::hasEntry(u"C:\\A;"_s + share, share));
         QVERIFY2(timer.elapsed() < 2000, "a PATH entry on a share was asked of the file system");
+    }
+
+    void clientPathsFollowWindowsFolders()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString profile = temporary.filePath(u"迁移后的用户目录"_s);
+        const QString roaming = temporary.filePath(u"迁移后的 Roaming"_s);
+        const QString local = temporary.filePath(u"迁移后的 Local"_s);
+        KnownFolderOverride folders({{&FOLDERID_Profile, profile}, {&FOLDERID_RoamingAppData, roaming}, {&FOLDERID_LocalAppData, local}});
+        QVERIFY(folders.installed());
+        const QString oldProfile = qEnvironmentVariable("USERPROFILE");
+        const QString oldRoaming = qEnvironmentVariable("APPDATA");
+        const QString oldConfig = qEnvironmentVariable("CLAUDE_CONFIG_DIR");
+        const auto restore = qScopeGuard([&] {
+            setEnvironment(L"USERPROFILE", oldProfile);
+            setEnvironment(L"APPDATA", oldRoaming);
+            setEnvironment(L"CLAUDE_CONFIG_DIR", oldConfig);
+        });
+        setEnvironment(L"USERPROFILE", {});
+        setEnvironment(L"APPDATA", {});
+        setEnvironment(L"CLAUDE_CONFIG_DIR", {});
+        QCOMPARE(ws::mcpclients::skillPath(), QDir::toNativeSeparators(profile + u"/.claude/skills/winshun/SKILL.md"_s));
+        const std::pair<QString, QString> clients[] {
+            {u"cursor"_s, profile + u"/.cursor/mcp.json"_s},
+            {u"claude-desktop"_s, roaming + u"/Claude/claude_desktop_config.json"_s},
+            {u"vscode"_s, roaming + u"/Code/User/mcp.json"_s},
+        };
+        for (const auto& [id, path] : clients) {
+            // Validate the destination before invoking a writer, including
+            // when this regression is run against an older implementation.
+            const auto detected = ws::mcpclients::detect();
+            const auto detectedClient = std::ranges::find(detected, id, &ws::mcpclients::Client::id);
+            QVERIFY(detectedClient != detected.end());
+            QCOMPARE(detectedClient->configPath, QDir::toNativeSeparators(path));
+            QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
+            QFile original(path);
+            QVERIFY(original.open(QIODevice::WriteOnly));
+            const QByteArray contents = R"({"keep":true,"mcpServers":{"other":{"command":"keep.exe"}}})";
+            QCOMPARE(original.write(contents), contents.size());
+            original.close();
+            bool completed = false;
+            ws::mcpclients::connect(id, this, [&](const ws::mcpclients::Result& result) {
+                QVERIFY2(result.ok, qPrintable(result.message));
+                completed = true;
+            });
+            QVERIFY(completed);
+            QVERIFY(original.open(QIODevice::ReadOnly));
+            const QJsonObject saved = QJsonDocument::fromJson(original.readAll()).object();
+            QVERIFY(saved.value(u"keep"_s).toBool());
+            QCOMPARE(saved.value(u"mcpServers"_s).toObject().value(u"other"_s).toObject().value(u"command"_s).toString(), u"keep.exe"_s);
+            const QString servers = id == u"vscode" ? u"servers"_s : u"mcpServers"_s;
+            QCOMPARE(saved.value(servers).toObject().value(u"winshun"_s).toObject().value(u"command"_s).toString(), ws::mcpclients::relayPath());
+            for (const auto& client : ws::mcpclients::detect()) {
+                if (client.id == id) {
+                    QCOMPARE(client.configPath, QDir::toNativeSeparators(path));
+                    QVERIFY(client.connected);
+                }
+            }
+        }
+        setEnvironment(L"USERPROFILE", u"X:\\stale-profile"_s);
+        setEnvironment(L"APPDATA", u"X:\\stale-appdata"_s);
+        QCOMPARE(ws::mcpclients::skillPath(), QDir::toNativeSeparators(profile + u"/.claude/skills/winshun/SKILL.md"_s));
+        for (const QString& relative : {u"relative-config"_s, u"C:claude"_s, u"\\claude"_s, u"/claude"_s}) {
+            setEnvironment(L"CLAUDE_CONFIG_DIR", relative);
+            QVERIFY2(ws::mcpclients::skillPath().isEmpty(), qPrintable(relative));
+        }
+        const QString custom = temporary.filePath(u"custom-claude"_s);
+        setEnvironment(L"CLAUDE_CONFIG_DIR", custom);
+        QCOMPARE(ws::mcpclients::skillPath(), QDir::toNativeSeparators(custom + u"/skills/winshun/SKILL.md"_s));
+        setEnvironment(L"CLAUDE_CONFIG_DIR", {});
+        for (auto& folder : folders.folders)
+            folder.path.clear();
+        for (const auto& [id, path] : clients) {
+            bool rejected = false;
+            ws::mcpclients::connect(id, this, [&](const ws::mcpclients::Result& result) { rejected = !result.ok; });
+            QVERIFY(rejected);
+        }
     }
 
     void claudeCodesSkill()

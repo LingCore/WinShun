@@ -2646,6 +2646,10 @@
 <context>
     <name>McpClients</name>
     <message>
+        <source>无法确定用户配置目录</source>
+        <translation>Cannot determine the user configuration folder</translation>
+    </message>
+    <message>
         <source>读不了 %1</source>
         <translation>Cannot read %1</translation>
     </message>

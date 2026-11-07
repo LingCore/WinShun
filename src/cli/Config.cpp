@@ -4,6 +4,7 @@
 #include "Win.h"
 
 #include <windows.h>
+#include <shlobj.h>
 
 namespace ws::cli {
 
@@ -73,12 +74,13 @@ std::wstring configFile()
         install.resize(slash);
     if (!install.empty() && isFolder(install + L"\\data"))
         return install + L"\\data\\WinShun\\WinShun.ini";
-    // QSettings' user scope: the roaming application data folder. From the
-    // environment, not SHGetFolderPath: no shell32.dll on every run.
-    std::wstring appData = environment(L"APPDATA");
-    if (appData.empty())
-        appData = environment(L"USERPROFILE") + L"\\AppData\\Roaming";
-    return appData + L"\\WinShun\\WinShun.ini";
+    // Match QSettings even when the inherited environment is stale or empty.
+    PWSTR folder = nullptr;
+    std::wstring appData;
+    if (SUCCEEDED(::SHGetKnownFolderPath(FOLDERID_RoamingAppData, KF_FLAG_DONT_VERIFY, nullptr, &folder)) && folder)
+        appData = folder;
+    ::CoTaskMemFree(folder);
+    return appData.empty() ? std::wstring() : appData + L"\\WinShun\\WinShun.ini";
 }
 
 Config readConfig()

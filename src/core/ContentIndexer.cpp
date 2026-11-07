@@ -352,15 +352,19 @@ private:
     std::unordered_map<EntryId, std::shared_ptr<Doc>> m_reading; // ... that are being read
 };
 
-// The volume root an entry is on, and whether it is in the user's profile
-// folder, with a small cache by parent folder (files next to each other
+// The volume root an entry is on, and whether it is in a personal folder,
+// with a small cache by parent folder (files next to each other
 // share it).
 class RootFinder {
 public:
-    RootFinder(const FileIndex& index, EntryId profile)
+    RootFinder(const FileIndex& index, const std::vector<std::wstring>& folders)
         : m_index(index)
-        , m_profile(profile)
     {
+        for (const std::wstring& path : folders) {
+            const EntryId id = index.findPath(path);
+            if (id != kNoEntry)
+                m_folders.push_back(id);
+        }
         m_cache.fill({kNoEntry, kNoEntry, false});
     }
     struct Place {
@@ -375,10 +379,10 @@ public:
         Slot& slot = m_cache[parent & (m_cache.size() - 1)];
         if (slot.parent != parent) {
             EntryId cur = parent;
-            bool inProfile = m_profile != kNoEntry && cur == m_profile;
+            bool inProfile = contains(cur);
             while (m_index.entry(cur).parent != kNoEntry) {
                 cur = m_index.entry(cur).parent;
-                inProfile = inProfile || (m_profile != kNoEntry && cur == m_profile);
+                inProfile = inProfile || contains(cur);
             }
             slot = {parent, cur, inProfile};
         }
@@ -386,13 +390,14 @@ public:
     }
 
 private:
+    bool contains(EntryId id) const { return std::ranges::find(m_folders, id) != m_folders.end(); }
     struct Slot {
         EntryId parent;
         EntryId root;
         bool inProfile;
     };
     const FileIndex& m_index;
-    EntryId m_profile;
+    std::vector<EntryId> m_folders;
     std::array<Slot, 4096> m_cache {};
 };
 
@@ -712,7 +717,7 @@ ContentIndexer::Plan ContentIndexer::plan(const FileIndex& index, const ContentI
     std::vector<Work>& work = out.work;
     std::vector<EntryId>& retired = out.retired;
     std::vector<EntryId> candidates; // on the volumes followed, read before or not: what makes a folder crowded
-    RootFinder finder(index, index.findPath(win32::expandEnvironment(L"%USERPROFILE%")));
+    RootFinder finder(index, win32::userFolders());
     std::size_t k = 0;
     // A file a search looks in, on a volume followed: what to do with it.
     // Documents of the files passed over on the way are retired.

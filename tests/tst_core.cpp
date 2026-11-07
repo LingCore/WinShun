@@ -51,6 +51,7 @@
 #include "WebShortcut.h"
 #include "WebSuggest.h"
 #include "Win32Util.h"
+#include "KnownFolderOverride.h"
 
 #include <QRegularExpression>
 #include "Writer.h"
@@ -11521,6 +11522,101 @@ private slots:
         QCOMPARE(ContentIndexer::orderOf(true, false, true), O::kCrowded);
         QCOMPARE(ContentIndexer::orderOf(false, true, true), O::kCrowded);
         QVERIFY(O::kKnown < O::kProfile && O::kProfile < O::kOther && O::kOther < O::kHidden && O::kHidden < O::kCrowded);
+    }
+
+    void relocatedPersonalFoldersKeepPriority()
+    {
+        QTemporaryDir tree;
+        QTemporaryDir store;
+        QVERIFY(tree.isValid() && store.isValid());
+        const QString profile = QDir::toNativeSeparators(tree.filePath(u"profile"_s));
+        const QString documents = QDir::toNativeSeparators(tree.filePath(u"relocated/docs"_s));
+        const QString ordinary = QDir::toNativeSeparators(tree.filePath(u"ordinary/docs"_s));
+        KnownFolderOverride folders({{&FOLDERID_Profile, profile}, {&FOLDERID_Documents, documents}});
+        QVERIFY(folders.installed());
+        const QByteArray oldProfile = qgetenv("USERPROFILE");
+        ::SetEnvironmentVariableW(L"USERPROFILE", profile.toStdWString().c_str());
+        const auto restore = qScopeGuard([&] {
+            ::SetEnvironmentVariableW(L"USERPROFILE", QString::fromLocal8Bit(oldProfile).toStdWString().c_str());
+        });
+        const QDateTime modified = QDateTime::currentDateTimeUtc().addDays(-1);
+        for (const QString& directory : {profile, documents, ordinary}) {
+            QVERIFY(QDir().mkpath(directory));
+            QFile file(directory + u"\\needle.txt"_s);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QCOMPARE(file.write("needle\n"), qint64(7));
+            QVERIFY(file.setFileTime(modified, QFileDevice::FileModificationTime));
+        }
+        IndexService service(store.path(), walkedOptions(std::vector {QDir::toNativeSeparators(tree.path()).toStdWString()}));
+        service.start();
+        QTRY_VERIFY_WITH_TIMEOUT(allReady(service), 30'000);
+        auto index = service.index();
+        QVERIFY(index);
+        ContentIndex emptyContent(store.filePath(u"empty-content"_s));
+        {
+            const auto lock = index->readLock();
+            std::vector<ContentIndexer::Volume> volumes;
+            for (const EntryId root : index->roots())
+                volumes.push_back({std::string(index->name(root)), false});
+            ContentIndexer::Options options;
+            options.extensions = {u"txt"_s};
+            const auto plan = ContentIndexer::plan(*index, emptyContent, options, volumes, [](EntryId) { return false; });
+            for (const QString& directory : {profile, documents, ordinary}) {
+                const EntryId id = index->findPath((directory + u"\\needle.txt"_s).toStdWString());
+                QVERIFY(id != kNoEntry);
+                const auto work = std::ranges::find(plan.work, id, &ContentIndexer::Work::entry);
+                QVERIFY(work != plan.work.end());
+                const auto expected = directory == ordinary ? ContentIndexer::kOther : ContentIndexer::kProfile;
+                QCOMPARE(work->order, expected);
+            }
+        }
+        SearchEngine engine(&service);
+        quint64 asked = 0;
+        SearchResults results;
+        bool complete = false;
+        QObject::connect(&engine, &SearchEngine::contentResults, this,
+            [&](quint64 id, const SearchResults& rows) {
+                if (id == asked)
+                    results += rows;
+            });
+        QObject::connect(&engine, &SearchEngine::contentProgress, this,
+            [&](quint64 id, quint64, quint64, bool done) {
+                if (id == asked && done)
+                    complete = true;
+            });
+        SearchEngine::Request request;
+        request.scope = Scope::Content;
+        request.text = u"needle"_s;
+        request.contentExtensions = {u"txt"_s};
+        request.contentThreads = 1;
+        for (const auto set : {SearchEngine::ContentSet::Listed, SearchEngine::ContentSet::Given}) {
+            complete = false;
+            results.clear();
+            request.contentSet = set;
+            request.contentOnly = {profile + u"\\needle.txt"_s, documents + u"\\needle.txt"_s, ordinary + u"\\needle.txt"_s};
+            asked = engine.submit(request);
+            QTRY_VERIFY_WITH_TIMEOUT(complete, 15'000);
+            QCOMPARE(results.size(), qsizetype(3));
+            const auto personal = std::ranges::find(results, documents + u"\\needle.txt"_s, &SearchResult::path);
+            const auto other = std::ranges::find(results, ordinary + u"\\needle.txt"_s, &SearchResult::path);
+            QVERIFY(personal != results.end() && other != results.end());
+            QVERIFY(personal->relevance > other->relevance);
+        }
+        ContentScope scope;
+        QObject::connect(&engine, &SearchEngine::contentScope, this, [&](quint64 id, const ContentScope& value) {
+            if (id == asked)
+                scope = value;
+        });
+        complete = false;
+        results.clear();
+        request.contentSet = SearchEngine::ContentSet::Listed;
+        request.text = u"docs/ needle"_s;
+        asked = engine.submit(request);
+        QTRY_VERIFY_WITH_TIMEOUT(complete, 15'000);
+        QCOMPARE(results.size(), qsizetype(2));
+        QCOMPARE(scope.places.size(), 1);
+        QCOMPARE(scope.places[0].folders.size(), 2);
+        QCOMPARE(scope.places[0].folders[0], documents);
     }
 
     // A pass that looks only at the files the Lookout lists (changed since

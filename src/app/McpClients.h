@@ -45,7 +45,8 @@ QString snippet(const QString& id);
 
 // Claude Code's Skill: a SKILL.md that teaches it the command line ws (and
 // saves the context an MCP server's tools cost). It lives in
-// %CLAUDE_CONFIG_DIR%\skills\winshun, else in %USERPROFILE%\.claude\skills\winshun.
+// %CLAUDE_CONFIG_DIR%\skills\winshun, else .claude\skills\winshun under the
+// Windows profile folder. A custom directory must be an absolute path.
 // The file, native: where the last install put it, as ws printed it (ws runs with
 // the user's own environment, which this program's may be older than), else
 // where this program expects it.

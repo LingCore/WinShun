@@ -18,6 +18,8 @@
 #include <algorithm>
 #include <thread>
 
+#include <shlobj.h>
+
 using namespace Qt::StringLiterals;
 
 namespace ws::mcpclients {
@@ -38,27 +40,37 @@ QString env(const char* name)
 
 QString home()
 {
-    return env("USERPROFILE");
+    return QDir::fromNativeSeparators(QString::fromStdWString(win32::knownFolder(FOLDERID_Profile)));
+}
+
+QString under(const QString& folder, const QString& relative)
+{
+    return folder.isEmpty() ? QString() : QDir(folder).filePath(relative);
+}
+
+QString appData(const GUID& id)
+{
+    return QDir::fromNativeSeparators(QString::fromStdWString(win32::knownFolder(id)));
 }
 
 QString claudeDesktopConfig()
 {
-    return env("APPDATA") + u"/Claude/claude_desktop_config.json"_s;
+    return under(appData(FOLDERID_RoamingAppData), u"Claude/claude_desktop_config.json"_s);
 }
 
 QString cursorConfig()
 {
-    return home() + u"/.cursor/mcp.json"_s;
+    return under(home(), u".cursor/mcp.json"_s);
 }
 
 QString vsCodeConfig()
 {
-    return env("APPDATA") + u"/Code/User/mcp.json"_s;
+    return under(appData(FOLDERID_RoamingAppData), u"Code/User/mcp.json"_s);
 }
 
 QString claudeCodeConfig()
 {
-    return home() + u"/.claude.json"_s;
+    return under(home(), u".claude.json"_s);
 }
 
 // The relay's entry as the file wants it.
@@ -96,6 +108,8 @@ bool namesRelay(const QString& path, const QString& key)
 // allows them) is left alone.
 Result mergeInto(const QString& path, const QString& key, const QJsonObject& entry, const QString& restart)
 {
+    if (path.isEmpty())
+        return {false, Tr::tr("无法确定用户配置目录")};
     QJsonObject root;
     QFile file(path);
     const bool existed = file.exists();
@@ -138,11 +152,14 @@ QString claudeCommand()
                 return QDir::toNativeSeparators(candidate);
         }
     }
-    const QString local = home() + u"/.local/bin/claude.exe"_s;
+    const QString profile = home();
+    if (profile.isEmpty())
+        return {};
+    const QString local = under(profile, u".local/bin/claude.exe"_s);
     if (QFileInfo::exists(local))
         return QDir::toNativeSeparators(local);
     QStringList bundled;
-    QDirIterator it(home() + u"/.vscode/extensions"_s, {u"anthropic.claude-code-*"_s}, QDir::Dirs | QDir::NoDotAndDotDot);
+    QDirIterator it(under(profile, u".vscode/extensions"_s), {u"anthropic.claude-code-*"_s}, QDir::Dirs | QDir::NoDotAndDotDot);
     while (it.hasNext()) {
         const QString exe = it.next() + u"/resources/native-binary/claude.exe"_s;
         if (QFileInfo::exists(exe))
@@ -171,7 +188,12 @@ QString skillPath()
     if (!g_installedSkill.isEmpty())
         return g_installedSkill;
     const QString config = env("CLAUDE_CONFIG_DIR");
-    return QDir::toNativeSeparators((config.isEmpty() ? home() + u"/.claude"_s : config) + u"/skills/winshun/SKILL.md"_s);
+    const bool drive = config.size() >= 3 && config[1] == u':' && config[2] == u'/'
+        && ((config[0] >= u'A' && config[0] <= u'Z') || (config[0] >= u'a' && config[0] <= u'z'));
+    const bool share = config.size() > 2 && config.startsWith(u"//");
+    if (!config.isEmpty() && !drive && !share)
+        return {};
+    return QDir::toNativeSeparators(under(config.isEmpty() ? under(home(), u".claude"_s) : config, u"skills/winshun/SKILL.md"_s));
 }
 
 QString relayPath()
@@ -185,7 +207,8 @@ std::vector<Client> detect()
     std::vector<Client> clients;
     {
         Client c {u"claude-desktop"_s, u"Claude Desktop"_s};
-        c.installed = QFileInfo(env("APPDATA") + u"/Claude"_s).isDir() || QFileInfo(env("LOCALAPPDATA") + u"/AnthropicClaude"_s).isDir();
+        c.installed = QFileInfo(under(appData(FOLDERID_RoamingAppData), u"Claude"_s)).isDir()
+            || QFileInfo(under(appData(FOLDERID_LocalAppData), u"AnthropicClaude"_s)).isDir();
         c.configPath = QDir::toNativeSeparators(claudeDesktopConfig());
         c.connected = namesRelay(claudeDesktopConfig(), u"mcpServers"_s);
         c.note = Tr::tr("完全退出并重新打开 Claude Desktop 后生效");
@@ -193,7 +216,7 @@ std::vector<Client> detect()
     }
     {
         Client c {u"claude-code"_s, u"Claude Code"_s};
-        c.installed = !claudeCommand().isEmpty() || QFileInfo(home() + u"/.claude"_s).isDir()
+        c.installed = !claudeCommand().isEmpty() || QFileInfo(under(home(), u".claude"_s)).isDir()
             || (!env("CLAUDE_CONFIG_DIR").isEmpty() && QFileInfo(env("CLAUDE_CONFIG_DIR")).isDir());
         c.configPath = QDir::toNativeSeparators(claudeCodeConfig());
         c.connected = namesRelay(claudeCodeConfig(), u"mcpServers"_s);
@@ -204,7 +227,8 @@ std::vector<Client> detect()
     }
     {
         Client c {u"cursor"_s, u"Cursor"_s};
-        c.installed = QFileInfo(home() + u"/.cursor"_s).isDir() || QFileInfo(env("LOCALAPPDATA") + u"/Programs/cursor"_s).isDir();
+        c.installed = QFileInfo(under(home(), u".cursor"_s)).isDir()
+            || QFileInfo(under(appData(FOLDERID_LocalAppData), u"Programs/cursor"_s)).isDir();
         c.configPath = QDir::toNativeSeparators(cursorConfig());
         c.connected = namesRelay(cursorConfig(), u"mcpServers"_s);
         c.note = Tr::tr("Cursor 的设置 → MCP 里能看到它，马上可用");
@@ -212,8 +236,8 @@ std::vector<Client> detect()
     }
     {
         Client c {u"vscode"_s, u"VS Code"_s};
-        c.installed = QFileInfo(env("APPDATA") + u"/Code/User"_s).isDir()
-            || QFileInfo(env("LOCALAPPDATA") + u"/Programs/Microsoft VS Code"_s).isDir();
+        c.installed = QFileInfo(under(appData(FOLDERID_RoamingAppData), u"Code/User"_s)).isDir()
+            || QFileInfo(under(appData(FOLDERID_LocalAppData), u"Programs/Microsoft VS Code"_s)).isDir();
         c.configPath = QDir::toNativeSeparators(vsCodeConfig());
         c.connected = namesRelay(vsCodeConfig(), u"servers"_s);
         c.note = Tr::tr("VS Code 的 Copilot 聊天（代理模式）里能用；“MCP: 列出服务器”可以查看");
