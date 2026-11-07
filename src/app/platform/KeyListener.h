@@ -108,6 +108,12 @@ public:
         // What came to nothing (Note), on the listener thread; as often as
         // the user presses keys: the receiver keeps count.
         std::function<void(const Note&)> note;
+        // A hotkey of the UI's with no modifier (F1, PrintScreen), pressed
+        // over a window run as administrator: the service's UIAccess listener
+        // held it back from that window and tells of it (keyproto::kHotkey,
+        // GitHub #243; the UI's own RegisterHotKey does not fire there). Its
+        // virtual key, and whether a program sent it. On the listener thread.
+        std::function<void(std::uint32_t vk, bool sent)> plainHotkey;
     };
 
     // Whose double taps count: the key set, or all for the UIAccess

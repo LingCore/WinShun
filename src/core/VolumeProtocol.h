@@ -47,7 +47,11 @@ constexpr std::uint16_t kMajor = 1; // different on the two ends: they cannot ta
 // for that copy's hint.
 // Minor 5 adds a leased UIAccess clipboard renderer for the protected GUI
 // beside the service. Older/portable copies keep the ordinary-window path.
-constexpr std::uint16_t kMinor = 5;
+// Minor 6 (GitHub #243): for Win顺's own UI (as the navigator), the key
+// listener also holds back the UI's hotkeys with no modifier over windows run
+// as administrator and tells of them (kCapabilityHotkeyRelay; OpenKeyListener's
+// payload then ends with the keys, keyproto::relayable ones only).
+constexpr std::uint16_t kMinor = 6;
 constexpr std::uint16_t kMinorSizes = 2;
 constexpr std::uint16_t kMinorCreated = 3;
 constexpr std::uint32_t kCapabilityBulkRead = 1; // HelloOk::capabilities
@@ -55,6 +59,7 @@ constexpr std::uint32_t kCapabilityKeyListener = 2; // UIAccess listener, on the
 constexpr std::uint32_t kCapabilityDialogNav = 4; // minor 4: navigate an elevated file dialog (GitHub #104)
 constexpr std::uint32_t kCapabilityDialogNavBesideOnly = 8; // minor 4: has it, for Win顺's own UI only
 constexpr std::uint32_t kCapabilityClipboardDisplay = 16; // minor 5: authenticated UIAccess display peer
+constexpr std::uint32_t kCapabilityHotkeyRelay = 32; // minor 6: the key listener relays the UI's plain hotkeys (#243)
 constexpr std::size_t kMaxBulkWants = 4u << 20; // files one bulk session may ask about
 constexpr wchar_t kPipeName[] = L"WinShun.Volumes"; // one service for the whole machine
 constexpr wchar_t kPipeEnvironment[] = L"WINSHUN_PIPE"; // another pipe's name, for tests (--console --pipe)
@@ -93,7 +98,7 @@ enum class Type : std::uint16_t {
     BulkFetch = 76,
     BulkData = 77,
     BulkFetched = 78,
-    OpenKeyListener = 80, // u64: caller's KeyListener HWND; no path or session supplied by the client
+    OpenKeyListener = 80, // u64: caller's KeyListener HWND; minor 6: then optionally u32 n, n x u32 key to relay
     KeyListenerReady = 81, // u32: child PID; connection owns the child's lifetime
     KeyListenerPing = 82, // empty request and reply, once a second
     OpenDialogNav = 83, // { u64 dialog HWND, string folder }: navigate a higher-integrity file dialog (#104)

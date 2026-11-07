@@ -1,0 +1,27 @@
+********* Start testing of KeyListenerTest *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : KeyListenerTest::initTestCase()
+PASS   : KeyListenerTest::routingAndHandover()
+PASS   : KeyListenerTest::serviceTapFirstPress()
+PASS   : KeyListenerTest::altTaps()
+PASS   : KeyListenerTest::shiftTaps()
+PASS   : KeyListenerTest::recordingShortcutPausesRemoteTaps()
+PASS   : KeyListenerTest::stalledWorkerFallsBack()
+PASS   : KeyListenerTest::noServiceDoesNotBlockOrDisableLocalListener()
+PASS   : KeyListenerTest::ordinaryServiceRefusesWorker()
+PASS   : KeyListenerTest::workerCannotBeStartedWithoutUiAccess()
+PASS   : KeyListenerTest::workerRelaysPlainKeysOnly()
+PASS   : KeyListenerTest::plainKeysRegistry()
+PASS   : KeyListenerTest::plainHotkeyFromTheListener()
+SKIP   : KeyListenerTest::serviceWorker() Set WINSHUN_KEY_TEST_PIPE to an isolated SYSTEM --console service for the real launch test.
+F:\电脑便捷工具\.worktrees\issue243\tests\tst_keylistener.cpp(410) : failure location
+SKIP   : KeyListenerTest::elevatedForegroundInput() Live desktop test: needs the isolated SYSTEM service and an elevated input sender.
+F:\电脑便捷工具\.worktrees\issue243\tests\tst_keylistener.cpp(451) : failure location
+SKIP   : KeyListenerTest::elevatedForegroundPlainHotkey() Live desktop test: needs the isolated SYSTEM services and an elevated sender.
+F:\电脑便捷工具\.worktrees\issue243\tests\tst_keylistener.cpp(500) : failure location
+PASS   : KeyListenerTest::numberKeyHookDrainsAtOnce()
+SKIP   : KeyListenerTest::numberKeyHookDrainsAHeldDigit() Opt-in desktop test: injects Alt+5 into its own window only.
+F:\电脑便捷工具\.worktrees\issue243\tests\tst_keylistener.cpp(602) : failure location
+PASS   : KeyListenerTest::cleanupTestCase()
+Totals: 15 passed, 0 failed, 4 skipped, 0 blacklisted, 3335ms
+********* Finished testing of KeyListenerTest *********

@@ -319,9 +319,21 @@ LRESULT CALLBACK KeyListener::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
         }
         return 0;
     case keyproto::kTap:
-        if (self && static_cast<DWORD>(wParam >> 32) == self->m_servicePid.load())
+        // None wanted: the listener is there for plainHotkey alone.
+        if (self && self->m_callbacks.doubleCtrl && static_cast<DWORD>(wParam >> 32) == self->m_servicePid.load())
             self->onServiceTap(static_cast<std::uint32_t>(wParam & 0xFF), keyproto::tapTime(lParam),
                 keyproto::tapSpan(lParam), (wParam & 0x100) != 0);
+        return 0;
+    case keyproto::kHotkey:
+        if (self && self->m_callbacks.plainHotkey && static_cast<DWORD>(wParam >> 32) == self->m_servicePid.load()) {
+            const auto vk = static_cast<std::uint32_t>(wParam & 0xFF);
+            if (self->m_keyLog)
+                self->log(std::format("Key log: UIAccess listener: plain hotkey vk {:#x} over an administrator's window, "
+                                      "{} ms ago{}",
+                    vk, static_cast<DWORD>(::GetTickCount()) - static_cast<DWORD>(lParam),
+                    (wParam & 0x100) ? ", sent by a program" : ""));
+            self->m_callbacks.plainHotkey(vk, (wParam & 0x100) != 0);
+        }
         return 0;
     case WM_INPUT:
         if (self)

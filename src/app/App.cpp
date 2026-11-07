@@ -13,6 +13,7 @@
 #include "Grabber.h" // take_screenshot (MCP)
 #include "CliSetup.h"
 #include "ScoopInstall.h"
+#include "ServiceUpdate.h"
 #include "ClipImportJob.h"
 #include "ClipStore.h"
 #include "Clipboard.h"
@@ -78,6 +79,7 @@
 #include "platform/Integrity.h"
 #include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
+#include "platform/PlainHotkeys.h"
 #include "platform/PluginHotkeys.h"
 #include "platform/NetworkNotifier.h"
 #include "platform/Paster.h"
@@ -459,6 +461,7 @@ App::~App()
     m_holdWatch.reset();
     m_drainingWatch.reset();
     m_keyListenerMode = -1; // recorder teardown must not recreate input listeners
+    plainkeys::setChanged(nullptr); // hotkeys let go of from here on change nothing
     m_serviceKeyListener.reset();
     m_keyListener.reset(); // no double click told to the folder menu
     // DialogJump's worker may be asking m_serviceNav about an elevated dialog,
@@ -1102,6 +1105,14 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     };
     callbacks.drawingMessage = [](UINT message, WPARAM wParam) { diagnostics::noteSystemMessage(message, wParam); };
     m_messages = std::make_unique<MessageWindow>(std::move(callbacks));
+    // Its hotkeys and the plugins' with no modifier: the listener that holds
+    // them back over administrators' windows is told (GitHub #243). Once for
+    // all the changes of a moment: a plugin's start registers several.
+    plainkeys::setChanged([this] {
+        if (std::exchange(m_plainHotkeysPending, true))
+            return;
+        QMetaObject::invokeMethod(this, &App::plainHotkeysChanged, Qt::QueuedConnection);
+    });
 
     // Drives: let go of one being ejected or locked; index new ones, drop gone ones.
     VolumeNotifier::Callbacks volumeCallbacks;
@@ -1156,8 +1167,15 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     if (m_serviceWanted) {
         if (m_index->volumeAccessKind() == ntfs::VolumeAccess::Kind::None)
             startServiceRetry(); // the index waits for it meanwhile (accessWaitMs)
-        else
+        else {
             m_serviceRetry.start(kServiceRecheck); // in use: looked at now and then, in case it goes away
+            // Its version from the handshake at start; older than this copy (just
+            // updated), it is said once the tray is up (ServiceUpdate.h).
+            if (const auto service = std::dynamic_pointer_cast<ntfs::ServiceVolumeAccess>(m_index->volumeAccess())) {
+                m_serviceVersionSeen = QString::fromStdWString(service->serviceVersion());
+                QTimer::singleShot(std::chrono::seconds(5), this, &App::serviceUpdateHint);
+            }
+        }
     }
     m_apps->refresh(true); // in the background; about half a second
     m_places->refresh(true); // likewise
@@ -1703,7 +1721,12 @@ void App::applyKeyListener(bool force)
         && (m_settings.folderMenuExplorer || m_settings.folderMenuDesktop);
     const bool doubleClicks = clickMenu && m_settings.folderMenuDouble;
     const bool middleClicks = clickMenu && m_settings.folderMenuMiddle;
-    const int listenTo = (m_settings.doubleCtrl ? 1 : 0) | (doubleClicks ? 2 : 0) | (m_dropPie ? 4 : 0) | (middleClicks ? 8 : 0);
+    // Plain hotkeys (F1, PrintScreen alone) of Win顺's or a plugin's: the
+    // service's UIAccess listener holds them back over administrators'
+    // windows and tells this one (GitHub #243), double tap or not.
+    const std::vector<std::uint32_t> plainKeys = plainkeys::relayed();
+    const int listenTo = (m_settings.doubleCtrl ? 1 : 0) | (doubleClicks ? 2 : 0) | (m_dropPie ? 4 : 0) | (middleClicks ? 8 : 0)
+        | (plainKeys.empty() ? 0 : 16);
     if (force || listenTo != m_keyListenerMode) {
         m_serviceKeyListener.reset();
         m_keyListener.reset(); // the process's one mouse registration goes with it first
@@ -1750,12 +1773,15 @@ void App::applyKeyListener(bool force)
                     }, Qt::QueuedConnection);
                 };
             }
+            callbacks.plainHotkey = [this](std::uint32_t vk, bool sent) {
+                QMetaObject::invokeMethod(this, [this, vk, sent] { onPlainHotkey(vk, sent); }, Qt::QueuedConnection);
+            };
             callbacks.log = [](const std::string& line) { qWarning().noquote() << QString::fromStdString(line); };
             m_keyListener = std::make_unique<KeyListener>(std::move(callbacks));
             m_keyListenerMade.start();
-            if (m_settings.doubleCtrl && m_keyListener->isActive())
+            if ((m_settings.doubleCtrl || !plainKeys.empty()) && m_keyListener->isActive())
                 m_serviceKeyListener = std::make_unique<ServiceKeyListener>(m_keyListener->window(),
-                    [listener = m_keyListener.get()](DWORD pid) { listener->setServiceProcess(pid); });
+                    [listener = m_keyListener.get()](DWORD pid) { listener->setServiceProcess(pid); }, plainKeys);
         }
     }
     if (m_keyListener) {
@@ -1775,6 +1801,34 @@ void App::applyKeyListener(bool force)
             });
     } else {
         m_pointerWatch.reset();
+    }
+}
+
+void App::plainHotkeysChanged()
+{
+    m_plainHotkeysPending = false;
+    if (m_keyListenerMode < 0)
+        return;
+    // Keys where there were none, or none left: the listener made, or let
+    // go of, as applyKeyListener has it. Other keys: started anew with them.
+    const std::vector<std::uint32_t> keys = plainkeys::relayed();
+    if (keys.empty() == ((m_keyListenerMode & 16) == 0) && m_serviceKeyListener)
+        m_serviceKeyListener->setKeys(keys);
+    else
+        applyKeyListener();
+}
+
+void App::onPlainHotkey(std::uint32_t vk, bool sent)
+{
+    const bool delivered = plainkeys::deliver(vk);
+    // Which key, for "the screenshot key does nothing over that program"; a few times a run.
+    static int logged = 0;
+    if (logged < 10 || !delivered) {
+        ++logged;
+        qInfo().noquote() << u"Plain hotkey vk 0x%1 over an administrator's window, from the service's listener%2%3"_s
+                                 .arg(vk, 2, 16, QChar(u'0'))
+                                 .arg(sent ? u" (sent by a program)"_s : QString())
+                                 .arg(delivered ? QString() : u": no longer registered here"_s);
     }
 }
 
@@ -6812,6 +6866,7 @@ void App::serviceProbed(std::shared_ptr<ntfs::ServiceVolumeAccess> service, bool
     if (!m_serviceWanted || !m_index)
         return;
     if (reached) {
+        m_serviceVersionSeen = QString::fromStdWString(service->serviceVersion()); // a restarted (updated) one too
         // Not in use yet (it came up after us), or in use but failing of late
         // (away for a while: its journals were given up, those volumes
         // walked): taken from now on, the walked volumes read from their MFT.
@@ -6838,6 +6893,53 @@ void App::serviceProbed(std::shared_ptr<ntfs::ServiceVolumeAccess> service, bool
         && m_serviceRetrySince.elapsed() < std::chrono::milliseconds(kServiceWait).count();
     m_serviceRetry.start(soon ? kServiceRetry : kServiceRecheck);
     applyIndexScope(true);
+    if (reached)
+        serviceUpdateHint();
+}
+
+bool App::serviceUpdateDue() const
+{
+    if (m_serviceVersionSeen.isEmpty())
+        return false;
+    const QString appDir = QCoreApplication::applicationDirPath();
+    serviceupdate::Facts f;
+    f.portable = !Settings::portableFolder().isEmpty();
+    f.installable = userIsAdministrator() && QFile::exists(appDir + u"/WinShunService.exe"_s);
+    if (f.portable && f.installable) { // the SCM asked only when it can matter
+        const std::wstring from = ntfs::ServiceVolumeAccess::installedFrom();
+        f.ownCopy = !from.empty() && scoop::sameCopy(QString::fromStdWString(from), appDir + u"/WinShun.exe"_s);
+    }
+    f.serviceVersion = m_serviceVersionSeen;
+    f.appVersion = QStringLiteral(WINSHUN_VERSION);
+    return serviceupdate::due(f);
+}
+
+// Said once a version, the first time this copy finds its own service older
+// (after an in-app update, a new zip, scoop update): a click opens the row and
+// starts the update there (UAC asks once), so nobody has to know to look.
+void App::serviceUpdateHint()
+{
+    const QString version = QStringLiteral(WINSHUN_VERSION);
+    if (m_serviceUpdateHintShown || m_serviceBusy || m_settings.serviceUpdateHinted == version || !serviceUpdateDue())
+        return;
+    m_serviceUpdateHintShown = true;
+    m_settings.serviceUpdateHinted = version;
+    m_settings.save();
+    if (m_settingsEditor)
+        m_settingsEditor->setSettings(m_settings); // its copy must not forget it with its next change
+    if (m_backup)
+        m_backup->soon();
+    qWarning().noquote() << u"The index service (%1) is older than this Win顺 (%2), which installed it: offered to update it"_s.arg(
+        m_serviceVersionSeen, version);
+    m_messages->showNotification(tr("索引服务可以更新了"),
+        tr("索引服务还是 %1 版，比这份 Win顺 旧。点这里更新，Windows 会请你确认一次。").arg(m_serviceVersionSeen), [this] {
+            showSettings([this](QQuickWindow* window) {
+                refreshIndexAccess(); // a window made just now knows nothing yet of this copy
+                QMetaObject::invokeMethod(window, "showPlace", Q_ARG(QVariant, QVariant(u"indexService"_s)));
+            });
+            if (serviceUpdateDue())
+                installIndexService(true);
+        });
 }
 
 bool App::foldersInEffect(bool walked) const
@@ -6960,6 +7062,8 @@ void App::refreshIndexAccess()
     state.serviceUnsafeLocation = state.serviceInstalled && ntfs::ServiceVolumeAccess::registeredInUnsafeLocation();
     state.serviceBusy = m_serviceBusy;
     state.serviceMessage = m_serviceMessage;
+    state.serviceUpdate = state.serviceInstalled && !state.serviceUnsafeLocation && serviceUpdateDue();
+    state.serviceVersion = m_serviceVersionSeen;
     switch (kind) {
     case ntfs::VolumeAccess::Kind::Direct:
         state.effective = u"direct"_s;
@@ -6967,8 +7071,11 @@ void App::refreshIndexAccess()
         break;
     case ntfs::VolumeAccess::Kind::Service: {
         state.effective = u"service"_s;
+        // The last look's: the one in use keeps the version it was made with (an updated service restarted under it).
         const auto service = std::dynamic_pointer_cast<ntfs::ServiceVolumeAccess>(m_index->volumeAccess());
-        const QString version = service ? QString::fromStdWString(service->serviceVersion()) : QString();
+        const QString version = !m_serviceVersionSeen.isEmpty() ? m_serviceVersionSeen
+            : service                                           ? QString::fromStdWString(service->serviceVersion())
+                                                                : QString();
         state.status = version.isEmpty() ? tr("现在：通过索引服务读取磁盘的主文件表和变更日志")
                                          : tr("现在：通过索引服务读取磁盘的主文件表和变更日志（服务版本 %1）").arg(version);
         break;
@@ -7019,23 +7126,31 @@ void App::installIndexService(bool install)
         return;
     }
     m_serviceBusy = true;
-    m_serviceMessage = install ? tr("正在安装索引服务…") : tr("正在卸载索引服务…");
+    // Over this copy's own older one, --install upgrades it in place (stops it,
+    // copies the new executable into the protected folder, starts it).
+    const bool update = install && serviceUpdateDue();
+    m_serviceMessage = update ? tr("正在更新索引服务…") : install ? tr("正在安装索引服务…") : tr("正在卸载索引服务…");
     refreshIndexAccess();
     // Registered from where this copy is: moved, it has to be installed again.
     shell::runElevated(exe.toStdWString(), install ? L"--install" : L"--uninstall",
-        [this, install](std::optional<unsigned long> code) {
+        [this, install, update](std::optional<unsigned long> code) {
             QMetaObject::invokeMethod(
                 this,
-                [this, install, code] {
+                [this, install, update, code] {
                     m_serviceBusy = false;
                     if (!code) {
                         m_serviceMessage = tr("没有进行：需要管理员权限（在 UAC 里选“是”）");
                     } else if (*code != 0) {
-                        m_serviceMessage = (install ? tr("安装索引服务失败（错误 %1）") : tr("卸载索引服务失败（错误 %1）"))
+                        m_serviceMessage = (update ? tr("更新索引服务失败（错误 %1）")
+                                : install          ? tr("安装索引服务失败（错误 %1）")
+                                                   : tr("卸载索引服务失败（错误 %1）"))
                                                .arg(*code);
                     } else if (install) {
-                        m_serviceMessage = tr("索引服务已安装并启动。换了新版本的 Win顺 后，在这里再装一次，服务也会跟着更新。");
-                        probeService(); // taken into use as soon as it answers
+                        m_serviceMessage = update ? tr("索引服务已更新。")
+                                                  : tr("索引服务已安装并启动。以后换了新版本的 Win顺，会提醒你点一下更新它。");
+                        if (update)
+                            m_serviceVersionSeen.clear(); // the old one's: the next look says the new one
+                        probeService(); // taken into use as soon as it answers; the new version seen
                     } else {
                         m_serviceMessage = tr("索引服务已卸载。");
                         m_serviceState = ntfs::ServiceVolumeAccess::state();

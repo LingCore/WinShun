@@ -1,0 +1,10 @@
+﻿18:21:16.913 pipe True
+18:21:17.031 elevated window pid 38696
+18:21:27.127 service 9432: "C:\Program Files\WinShun\WinShunService.exe"
+18:21:27.129 service 16200: "F:\电脑便捷工具\build\issue243\build\WinShunService.exe" --console --pipe WinShun.Test.E2E.ea104158 --installed-from "F:\鐢佃剳渚挎嵎宸ュ叿\dist\issue243\WinShun\WinShun.exe"
+18:21:27.192 sender started
+18:21:28.149 stopping
+18:21:30.819 kill 38696 F:\电脑便捷工具\build\issue243\probe\relaysend.exe
+18:21:30.832 kill 28416 F:\电脑便捷工具\build\issue243\probe\relaysend.exe
+18:21:30.838 kill 16656 F:\电脑便捷工具\build\issue243\probe\hkpmissing.exe
+18:21:30.845 cleaned

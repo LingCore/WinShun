@@ -98,6 +98,9 @@ struct Settings {
     QStringList adminTapHinted;
     // ... and that their file dialogs cannot be taken anywhere (AdminDialogHint, GitHub #216).
     QStringList adminDialogHinted;
+    // The Win顺 version that last said its index service is older and can be
+    // updated in one click (a portable copy, ServiceUpdate.h): once a version.
+    QString serviceUpdateHinted;
     QString shortcutAgain = QStringLiteral("close"); // close | panel: what the shortcut does when the box is up and in front
     QString renderer; // software | d3d11; defaults() picks by memory (defaultRenderer)
     // 网络代理 (GitHub #84), for every request over WinHTTP: system (what Windows

@@ -791,7 +791,7 @@ std::vector<Entry> buildCatalog()
 
     // ---- never seen: paths and shares (what leaves the PC), AI's own switches, plugins, bookkeeping ----
     for (const char* key : {"Backup/Folder", "Index/Folder", "Capture/PrintScreenBefore", "Launcher/DialogAutoJumpAsked", "Index/FolderHintDismissed",
-             "Launcher/AdminTapHinted", "Launcher/AdminDialogHinted", "Favorites/DropPieKeyTakenTold",
+             "Launcher/AdminTapHinted", "Launcher/AdminDialogHinted", "Launcher/ServiceUpdateHinted", "Favorites/DropPieKeyTakenTold",
              "Launcher/FolderMenuOpusBefore", "Mcp/Enabled", "Mcp/AllowOpen", "Mcp/Clipboard", "Mcp/Screenshot",
              "Mcp/ExcludedPaths", "Mcp/Plugins", "Mcp/PluginActions", "Mcp/Settings", "Plugins/DeveloperMode",
              "Proxy/Mode", "Proxy/Address"}) // where every request goes: not for AI to turn

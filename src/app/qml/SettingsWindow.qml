@@ -3619,7 +3619,7 @@ Window {
                     // GitHub #52) gets the reason instead of the buttons.
                     shown: window.editor.isPortable
                     title: qsTr("索引服务")
-                    keywords: qsTr("便携;安装服务;卸载服务;索引服务;没有管理员权限;装不了;portable;service").split(";")
+                    keywords: qsTr("便携;安装服务;更新服务;卸载服务;索引服务;没有管理员权限;装不了;portable;service").split(";")
                     description: window.editor.indexServiceInstalled && window.editor.indexServiceUnsafeLocation
                                  ? (window.editor.indexServiceInstallable
                                     ? qsTr("索引服务装在一个别的程序能改动的位置，有安全风险。点“修复”把它移到受保护的位置（需要管理员权限一次）")
@@ -3630,6 +3630,8 @@ Window {
                                     : window.editor.foldersInEffect
                                     ? qsTr("你在这台电脑上没有管理员权限，装不了索引服务。Win顺 会索引你选的文件夹，并定时核对")
                                     : qsTr("你在这台电脑上没有管理员权限，装不了索引服务。Win顺 按文件夹遍历整个磁盘"))
+                                 : window.editor.indexServiceUpdatable
+                                 ? qsTr("索引服务还是 %1 版，比这份 Win顺 旧，有些功能用不上。点“更新索引服务”，Windows 会请你确认一次").arg(window.editor.indexServiceVersion)
                                  : window.editor.indexServiceInstalled
                                  ? qsTr("已安装 Windows 服务“Win顺 索引服务”，它替普通权限的 Win顺 读取主文件表")
                                  : qsTr("安装一个 Windows 服务，替普通权限的 Win顺 读取主文件表，建索引快得多；需要管理员权限一次")
@@ -3643,6 +3645,14 @@ Window {
                                  && (!window.editor.indexServiceInstalled || window.editor.indexServiceUnsafeLocation)
                         text: window.editor.indexServiceInstalled && window.editor.indexServiceUnsafeLocation
                               ? qsTr("修复") : qsTr("安装索引服务…")
+                        enabled: !window.editor.indexServiceBusy
+                        onClicked: window.editor.installIndexService()
+                    }
+                    FlatButton {
+                        dpr: window.dpr
+                        // This copy's own service, older than it: --install upgrades it in place.
+                        visible: window.editor.indexServiceUpdatable
+                        text: qsTr("更新索引服务")
                         enabled: !window.editor.indexServiceBusy
                         onClicked: window.editor.installIndexService()
                     }

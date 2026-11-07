@@ -1,0 +1,3 @@
+2026-11-07T18:21:20.666 info: Hotkeys with no modifier: this index service does not hold them back over administrators' windows (an older one, or not the one installed with this Win顺)
+2026-11-07T18:24:35.273 info: Plain hotkey vk 0x84 over an administrator's window, from the service's listener (sent by a program)
+2026-11-07T18:24:38.828 info: Plain hotkey vk 0x84 over an administrator's window, from the service's listener (sent by a program)

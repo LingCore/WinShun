@@ -2751,7 +2751,7 @@
 - **原因**：UIPI。2026-10-14 用 scratchpad `uipi` 探针实测（管理员窗口在前，按键由管理员进程注入）：普通进程收不到键盘和鼠标 Raw Input、收不到低级钩子事件、收不到 `RegisterHotKey` 热键；`AttachThreadInput` 失败（1314），`WM_COPYDATA` 被挡（5），`SendInput` 往里送键不报错但对方收不到。可以的：`OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `OpenProcessToken(TOKEN_QUERY)` 读对方完整性级别（0x3000）、`SetForegroundWindow`、进程外 WinEvent `EVENT_SYSTEM_FOREGROUND`。
 - **做法**：`platform/Integrity` 的 `higherThanOurs(hwnd)`：Win顺 自己提权时总是 false；读不出的当成更高。剪贴板不对这种窗口接管键盘（`App::startKeyRouting` 返回 false，窗口自己拿焦点），粘贴只复制并提示“回到它那里按 Ctrl+V”（`Clipboard::onWritten`），对话框栏不贴这种程序的文件对话框（`DialogJump`）。
 - **还没量的**：用户亲手按的键（不是注入的）在管理员窗口在前时，普通进程的低级钩子和 `RegisterHotKey` 收不收得到。探针的对照组没做成（普通进程的窗口抢不到前台），要人按。
-- **后来量清的**：带 Ctrl、Alt、Shift 或 Win 的 `RegisterHotKey` 热键照样触发，只有不带修饰键的收不到（2026-10-22，见“管理员窗口在前时，不带修饰键的全局热键收不到”）。双击 Ctrl 收不到时的一次性通知（`AdminTapHint`）就是让用户改按这种组合键。
+- **后来量清的**：带 Ctrl、Alt、Shift 或 Win 的 `RegisterHotKey` 热键照样触发，只有不带修饰键的收不到（2026-10-22，见“管理员窗口在前时，不带修饰键的全局热键收不到”）。双击 Ctrl 收不到时的一次性通知（`AdminTapHint`）就是让用户改按这种组合键。单独的 F1–F24、PrintScreen 从 #243 起由索引服务的按键助手转发（见“单键全局热键在管理员窗口前：由索引服务的按键助手转发”）。
 
 ### 不提权时启动程序：别再借资源管理器的令牌
 
@@ -4076,7 +4076,16 @@
 
 - **现象**：目标是管理员程序时，长截图临时注册的 Enter、Esc 按了没反应，Enter 进了那个程序。
 - **原因**：（实测 2026-10-22，`hk6listen` / `hk6send`）前台是高完整性级别的窗口时，普通权限进程用 `RegisterHotKey` 注册的热键只有带 Ctrl、Alt、Shift 或 Win 的才触发；单独的 Enter、Esc、F13 都不触发。
-- **做法**：这时的提示是“这个程序以管理员身份运行，请手动滚动，滚完点‘完成’”；截图快捷键（带修饰键）照样能结束。别指望单键热键在管理员窗口前生效。
+- **做法**：这时的提示是“这个程序以管理员身份运行，请手动滚动，滚完点‘完成’”；截图快捷键（带修饰键）照样能结束。长截图的 Enter、Esc 这类临时键仍不转发（见下一条，只放行 F1–F24 和 PrintScreen）。
+- **补充**（#243，2026-11-07）：截图快捷键设成 F1 这类单键时，在管理员程序前按了没反应。基线实测（`e2e-ea104158`）：普通权限的 Win顺 收不到，管理员窗口只收到按键抬起，按下被系统吃掉。修法见下一条。
+
+### 单键全局热键在管理员窗口前：由索引服务的按键助手转发
+
+- **做法**：注册热键都经 `platform/PlainHotkeys`（`MessageWindow`、插件热键 `PluginHotkeys`），照常 `RegisterHotKey`（错误同步返回，没有服务时照旧可用），另把不带修饰键的 F1–F24、PrintScreen 记下来。`App` 把这份清单随 `OpenKeyListener` 交给服务；服务在命令行里传给 `--listen-keys` 助手（High + UIAccess，用户令牌），不开运行时的通道。助手只在前台窗口完整性级别高于 Win顺（或读不出，比如 csrss 的系统错误框）时装 `WH_KEYBOARD_LL`，跟踪前台用进程外 `EVENT_SYSTEM_FOREGROUND` 加 2 秒复查；命中的键按下、连发、抬起都吞掉，按着 Shift、Ctrl、Alt、Win 时放过，自己注入的不算；`AllowSetForegroundWindow` 给 Win顺 后投递 `keyproto::kHotkey`。Win顺 的 `KeyListener` 收到后向注册那个键的窗口投递 `WM_HOTKEY(id, MAKELPARAM(0, vk))`，原来的处理照常走（插件热键也一样）。清单变了就断开重连（`ServiceKeyListener::setKeys`，`ERROR_ALREADY_EXISTS` 时快速重试）。
+- **安全**：能力位 `kCapabilityHotkeyRelay`（协议 minor 6）只给 Win顺 自己的界面（`mayNavigateDialogs`：服务旁边的 `WinShun.exe` 或 `--installed-from`）；别的客户端带清单打开按键助手得到 `ERROR_ACCESS_DENIED`。只收 F1–F24 和 `VK_SNAPSHOT`，最多 32 个，不重复。普通字母、Enter、Esc 不转发，免得变成键盘记录。
+- **实测**（2026-11-07，隔离的 SYSTEM 控制台服务 + High 窗口 + System 完整性的发送端注入 F21，`build/issue243/probe`）：`run-a5c3155c`：管理员窗口在前 3 次都转发，约 7 ms 到 `WM_HOTKEY`，Win顺 拿到前台；管理员窗口一个键事件也没收到；Win顺 自己的窗口在前时只走自己的 `RegisterHotKey`，没有重复；csrss 错误框在前同样转发；非自家客户端被拒。`e2e-2d154c5b`：真截图插件，管理员窗口在前按 F21 弹出截图层并拿到焦点，Esc 关掉，管理员窗口没收到键。只测了注入的键，没测真键盘。
+- **还没解决**：csrss 的系统错误框（System 完整性、置顶）在前时热键能触发、冻结的画面里也有它，但它的 Z 序仍在截图层上面，挡住选区（`e2e-2d154c5b` 的 z 序记录）。要盖住它得把截图层放进 UIAccess 层级，这次没做。
+- **要新服务**：转发在服务里，只换 `WinShun.exe` 不换服务时没有能力位，日志里记一次“Hotkeys with no modifier: this index service does not hold them back…”，行为同旧版。安装版的安装程序会更新服务；便携版以前只能先卸载再装（设置里装好后只有“卸载”按钮），没人知道要这么做。现在 `ServiceUpdate.h`：便携版或 Scoop 版、账户能装、服务的 `--installed-from` 就是这一份、握手报的版本比自己旧，设置那一行显示“更新索引服务”，并且每个版本弹一次通知（`[Launcher] ServiceUpdateHinted`），点了直接走 `--install`（UAC 一次，原地升级：停服务、把新文件复制进受保护的文件夹、同样的 `--installed-from` 重新登记、启动；帮手进程在服务的 kill-on-close job 里，跟着服务退出，不占着 exe）。服务是别的副本装的（比如安装版）时不提示：从便携版 `--install` 会把唯一的 “WinShun” 服务指到便携版的文件夹。启动时服务已在用就直接用、5 分钟后才再探一次，所以启动时从在用的服务取版本，5 秒后再判断要不要提示。
 
 ### 自己的通知被当成吸底栏拍进长图
 

@@ -12,6 +12,8 @@ namespace ws {
 // Register on the host's integrity level: unmodified function keys registered
 // by an ordinary plugin do not fire over an elevated foreground application.
 // Only a notification crosses back to the plugin; it keeps its normal rights.
+// With Win顺 itself at normal rights, the service's UIAccess listener holds
+// such keys back from an administrator's window for it (plainkeys, #243).
 class PluginHotkeys {
 public:
     using Pressed = std::function<void(const QString& owner, const QString& key)>;

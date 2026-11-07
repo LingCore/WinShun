@@ -5,11 +5,14 @@
 #include "KeyListenerProtocol.h"
 #include "NumberKeys.h"
 #include "OwnInput.h"
+#include "PlainHotkeys.h"
 #include "ServiceKeyListener.h"
 #include "VolumeProtocol.h"
 #include "Win32Util.h"
 
+#include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QProcess>
 #include <QScopeGuard>
 #include <QTest>
@@ -26,6 +29,60 @@
 
 using namespace ws;
 using namespace ws::volproto;
+using namespace Qt::StringLiterals;
+
+namespace {
+// A message-only window counting WM_HOTKEY, for plainkeys.
+struct HotkeyWindow {
+    static LRESULT CALLBACK proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+    {
+        if (msg == WM_HOTKEY) {
+            auto* self = reinterpret_cast<HotkeyWindow*>(::GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+            if (self) {
+                ++self->count;
+                self->lastId = static_cast<int>(wParam);
+                self->lastVk = HIWORD(lParam);
+                if (self->pressed)
+                    self->pressed();
+            }
+            return 0;
+        }
+        return ::DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
+    HotkeyWindow()
+    {
+        WNDCLASSW type {};
+        type.lpfnWndProc = proc;
+        type.hInstance = ::GetModuleHandleW(nullptr);
+        type.lpszClassName = L"WinShun.Test.PlainHotkeys";
+        ::RegisterClassW(&type);
+        hwnd = ::CreateWindowExW(0, type.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, type.hInstance, nullptr);
+        ::SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+    }
+    ~HotkeyWindow()
+    {
+        plainkeys::unregisterAll(hwnd);
+        ::DestroyWindow(hwnd);
+    }
+    HWND hwnd = nullptr;
+    int count = 0;
+    int lastId = 0;
+    UINT lastVk = 0;
+    std::function<void()> pressed;
+};
+
+// A function key from F24 down that nobody holds alone, or 0.
+UINT freePlainKey()
+{
+    for (UINT vk = VK_F24; vk >= VK_F13; --vk) {
+        if (::RegisterHotKey(nullptr, 0x7243, MOD_NOREPEAT, vk)) {
+            ::UnregisterHotKey(nullptr, 0x7243);
+            return vk;
+        }
+    }
+    return 0;
+}
+} // namespace
 
 class KeyListenerTest : public QObject {
     Q_OBJECT
@@ -243,6 +300,7 @@ private slots:
         HelloOk ok;
         QVERIFY(type == Type::HelloOk && decode(payload, ok));
         QCOMPARE(ok.capabilities & kCapabilityKeyListener, 0u);
+        QCOMPARE(ok.capabilities & kCapabilityHotkeyRelay, 0u);
         w.reset();
         w.u64(1);
         QVERIFY(channel.write(w.finish(Type::OpenKeyListener), 1000));
@@ -262,6 +320,87 @@ private slots:
             {QStringLiteral("--listen-keys"), QString::number(::GetCurrentProcessId()), QStringLiteral("1")});
         QVERIFY(child.waitForFinished());
         QCOMPARE(child.exitCode(), int(ERROR_ACCESS_DENIED));
+    }
+
+    // GitHub #243: only F1-F24 and PrintScreen, at most 32, each as the
+    // service checked it; the UIAccess check comes after.
+    void workerRelaysPlainKeysOnly()
+    {
+        const auto run = [](const QString& keys) {
+            QProcess child;
+            child.start(QString::fromUtf8(WINSHUN_SERVICE_EXE),
+                {QStringLiteral("--listen-keys"), QString::number(::GetCurrentProcessId()), QStringLiteral("1"), keys});
+            child.waitForFinished();
+            return child.exitCode();
+        };
+        QCOMPARE(run(QStringLiteral("112,44,135")), int(ERROR_ACCESS_DENIED)); // F1, PrintScreen, F24: no UIAccess here
+        QCOMPARE(run(QStringLiteral("65")), int(ERROR_INVALID_PARAMETER)); // A types
+        QCOMPARE(run(QStringLiteral("13")), int(ERROR_INVALID_PARAMETER)); // Enter
+        QCOMPARE(run(QStringLiteral("112,x")), int(ERROR_INVALID_PARAMETER));
+        QStringList many;
+        for (int i = 0; i < 33; ++i)
+            many << QString::number(VK_F1 + i % 24);
+        QCOMPARE(run(many.join(u',')), int(ERROR_INVALID_PARAMETER));
+        static_assert(keyproto::relayable(VK_F1) && keyproto::relayable(VK_F24) && keyproto::relayable(VK_SNAPSHOT));
+        static_assert(!keyproto::relayable('A') && !keyproto::relayable(VK_RETURN) && !keyproto::relayable(VK_ESCAPE)
+            && !keyproto::relayable(VK_SPACE) && !keyproto::relayable(VK_OEM_3));
+    }
+
+    // Registered through plainkeys: a plain function key is relayed, one with
+    // a modifier is not (Windows gives it over administrators' windows too);
+    // deliver() posts the WM_HOTKEY Windows would have, to its holder.
+    void plainKeysRegistry()
+    {
+        const UINT vk = freePlainKey();
+        if (!vk)
+            QSKIP("Every function key F13-F24 is held by some program here.");
+        HotkeyWindow window;
+        int changes = 0;
+        plainkeys::setChanged([&] { ++changes; });
+        auto cleanup = qScopeGuard([] { plainkeys::setChanged(nullptr); });
+        QVERIFY(plainkeys::registerHotkey(window.hwnd, 7, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, vk));
+        QCOMPARE(changes, 0);
+        QVERIFY(plainkeys::relayed().empty());
+        QVERIFY(plainkeys::registerHotkey(window.hwnd, 9, MOD_NOREPEAT, vk));
+        QCOMPARE(changes, 1);
+        QCOMPARE(plainkeys::relayed(), std::vector<std::uint32_t> {vk});
+        QVERIFY(!plainkeys::registerHotkey(window.hwnd, 10, MOD_NOREPEAT, vk)); // Windows: one holder
+        QCOMPARE(::GetLastError(), DWORD(ERROR_HOTKEY_ALREADY_REGISTERED));
+        QCOMPARE(changes, 1);
+        QVERIFY(plainkeys::deliver(vk));
+        QTRY_COMPARE(window.count, 1);
+        QCOMPARE(window.lastId, 9);
+        QCOMPARE(window.lastVk, vk);
+        QVERIFY(!plainkeys::deliver(vk == VK_F24 ? VK_F23 : VK_F24));
+        plainkeys::unregisterHotkey(window.hwnd, 9);
+        QCOMPARE(changes, 2);
+        QVERIFY(plainkeys::relayed().empty());
+        QVERIFY(!plainkeys::deliver(vk));
+        plainkeys::unregisterHotkey(window.hwnd, 7);
+        QCOMPARE(changes, 2);
+        QVERIFY(freePlainKey() != 0); // let go of
+    }
+
+    // The UIAccess listener's word of a plain hotkey: from the listener this
+    // process has now only, with the key and whether a program sent it.
+    void plainHotkeyFromTheListener()
+    {
+        std::vector<std::pair<std::uint32_t, bool>> told; // the listener's thread adds while the test waits in SendMessage
+        KeyListener listener({.plainHotkey = [&](std::uint32_t vk, bool sent) { told.emplace_back(vk, sent); }});
+        QVERIFY(listener.isActive());
+        constexpr DWORD pid = 12345, other = 54321;
+        ::SendMessageW(listener.window(), keyproto::kHotkey, keyproto::hotkeyWord(pid, VK_F1, false), ::GetTickCount());
+        QVERIFY(told.empty()); // no listener yet
+        ready(listener, pid);
+        ::SendMessageW(listener.window(), keyproto::kHotkey, keyproto::hotkeyWord(other, VK_F1, false), ::GetTickCount());
+        QVERIFY(told.empty());
+        ::SendMessageW(listener.window(), keyproto::kHotkey, keyproto::hotkeyWord(pid, VK_SNAPSHOT, true), ::GetTickCount());
+        QCOMPARE(told.size(), std::size_t {1});
+        QCOMPARE(told[0].first, std::uint32_t(VK_SNAPSHOT));
+        QVERIFY(told[0].second);
+        // No double tap wanted: the listener is there for the hotkeys alone.
+        ::SendMessageW(listener.window(), keyproto::kTap, keyproto::tapWord(pid, VK_LCONTROL, false), ::GetTickCount());
+        QCOMPARE(told.size(), std::size_t {1});
     }
 
     void serviceWorker()
@@ -340,6 +479,98 @@ private slots:
         QTest::qWait(250);
         QCOMPARE(count.load(), 3);
         qunsetenv("WINSHUN_PIPE");
+    }
+
+    // GitHub #243, live: a plain function key of this process's, pressed
+    // while a window run as administrator is in front, comes through the
+    // service's UIAccess listener (held back from that window), and this
+    // process may then take the front; over its own window its own
+    // RegisterHotKey hears it, never both. The sender (elevated) fronts its
+    // window and presses the key (WINSHUN_KEY_RELAY_VK) three times, then
+    // fronts this test's window once, then csrss's error box if it can, and
+    // logs what its own window got. WINSHUN_KEY_TEST_PIPE: a SYSTEM service
+    // installed-from this exe; WINSHUN_KEY_OTHER_PIPE: one that is not.
+    void elevatedForegroundPlainHotkey()
+    {
+        const QByteArray pipe = qgetenv("WINSHUN_KEY_TEST_PIPE");
+        const QString readyName = qEnvironmentVariable("WINSHUN_KEY_INPUT_EVENT");
+        const QString doneName = qEnvironmentVariable("WINSHUN_KEY_DONE_EVENT");
+        const UINT vk = qEnvironmentVariable("WINSHUN_KEY_RELAY_VK").toUInt(nullptr, 16);
+        if (pipe.isEmpty() || readyName.isEmpty() || doneName.isEmpty() || !keyproto::relayable(vk))
+            QSKIP("Live desktop test: needs the isolated SYSTEM services and an elevated sender.");
+        // Another client than Win顺's own: no relay offered, and refused when asked.
+        if (const QByteArray other = qgetenv("WINSHUN_KEY_OTHER_PIPE"); !other.isEmpty()) {
+            Channel channel(::CreateFileW(fullPipePath(QString::fromLatin1(other).toStdWString()).c_str(),
+                GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+                FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr));
+            QVERIFY(channel.valid());
+            Writer w;
+            encode(w, Hello {});
+            QVERIFY(channel.write(w.finish(Type::Hello), 1000));
+            Type type {};
+            std::vector<std::byte> payload;
+            HelloOk ok;
+            QVERIFY(channel.read(type, payload, 1000) && type == Type::HelloOk && decode(payload, ok));
+            QVERIFY(ok.capabilities & kCapabilityKeyListener);
+            QCOMPARE(ok.capabilities & kCapabilityHotkeyRelay, 0u);
+            const HWND target = ::CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, nullptr, nullptr);
+            w.reset();
+            w.u64(reinterpret_cast<std::uintptr_t>(target));
+            w.u32(1);
+            w.u32(vk);
+            QVERIFY(channel.write(w.finish(Type::OpenKeyListener), 1000));
+            Error error;
+            QVERIFY(channel.read(type, payload, 2000) && type == Type::Error && decode(payload, error));
+            QCOMPARE(error.code, DWORD(ERROR_ACCESS_DENIED));
+            ::DestroyWindow(target);
+        }
+        qputenv("WINSHUN_PIPE", pipe);
+        auto unset = qScopeGuard([] { qunsetenv("WINSHUN_PIPE"); });
+        const win32::UniqueHandle readyEvent(::CreateEventW(nullptr, TRUE, FALSE, readyName.toStdWString().c_str()));
+        const win32::UniqueHandle doneEvent(::CreateEventW(nullptr, TRUE, FALSE, doneName.toStdWString().c_str()));
+        QVERIFY(readyEvent.valid() && doneEvent.valid());
+        struct TestWindow {
+            HWND hwnd = ::CreateWindowExW(0, L"STATIC", L"WinShun issue #243 relay test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                120, 120, 420, 120, nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+            ~TestWindow()
+            {
+                if (hwnd)
+                    ::DestroyWindow(hwnd);
+            }
+        } shown;
+        QVERIFY(shown.hwnd);
+        HotkeyWindow hotkeys;
+        QVERIFY2(plainkeys::registerHotkey(hotkeys.hwnd, 1, MOD_NOREPEAT, vk), "the key is held by another program");
+        QStringList timeline;
+        QElapsedTimer clock;
+        clock.start();
+        int relayed = 0, fronted = 0;
+        hotkeys.pressed = [&] {
+            // As Win顺 does for a hotkey: to the front, over the administrator's window.
+            const bool front = ::SetForegroundWindow(shown.hwnd) && ::GetForegroundWindow() == shown.hwnd;
+            fronted += front ? 1 : 0;
+            timeline << u"%1 WM_HOTKEY front=%2"_s.arg(clock.elapsed()).arg(front);
+        };
+        KeyListener listener({.plainHotkey = [&](std::uint32_t key, bool) {
+            QMetaObject::invokeMethod(qApp, [&, key] {
+                ++relayed;
+                timeline << u"%1 relayed vk=%2"_s.arg(clock.elapsed()).arg(key, 0, 16);
+                plainkeys::deliver(key);
+            }, Qt::QueuedConnection);
+        }});
+        ServiceKeyListener service(listener.window(), [&](DWORD pid) { listener.setServiceProcess(pid); },
+            plainkeys::relayed());
+        QTRY_VERIFY_WITH_TIMEOUT(listener.serviceActive() && service.relaying(), 10000);
+        ::SetEvent(readyEvent.get());
+        QTRY_VERIFY_WITH_TIMEOUT(::WaitForSingleObject(doneEvent.get(), 0) == WAIT_OBJECT_0, 90000);
+        QTest::qWait(500);
+        const QString path = qEnvironmentVariable("WINSHUN_KEY_RELAY_LOG");
+        if (QFile file(path); !path.isEmpty() && file.open(QIODevice::WriteOnly | QIODevice::Text))
+            file.write(timeline.join(u'\n').toUtf8());
+        qInfo().noquote() << timeline.join(u"; "_s);
+        QVERIFY(relayed >= 3); // three over the administrator's window (four with csrss's box)
+        QCOMPARE(hotkeys.count, relayed + 1); // and one over this test's window, by its own registration
+        QVERIFY(fronted >= 3);
     }
 
     // The number keys' hook sets the keyboard's Raw Input aside while it

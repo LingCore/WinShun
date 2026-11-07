@@ -98,6 +98,7 @@ DoubleCtrlExcludedApps=  ; 不响应双击 Ctrl 的程序，如 TheFinals.exe，
 Hotkey=                  ; 额外的全局快捷键，例如 Alt+Space、Ctrl+Shift+F
 AdminTapHinted=          ; 已提示过“它在前面时听不到双击”的管理员程序，如 regedit.exe（每个程序只提示一次，最多 3 个；删掉就会再提示）
 AdminDialogHinted=       ; 已提示过“它的对话框转不过去”的管理员程序，如 setup.exe（同上：每个程序一次，最多 3 个，删掉就会再提示）
+ServiceUpdateHinted=     ; 便携版：已提示过“索引服务比这份 Win顺 旧，点一下更新”的 Win顺 版本，如 0.23.0（每个版本只提示一次，删掉就会再提示；见 ServiceUpdate.h）
 DialogJump=true          ; “打开”“另存为”对话框里按 Ctrl+G，转到文件管理器（资源管理器、Total Commander、Directory Opus、XYplorer、Pulse、OneCommander）正在显示的文件夹
 DialogBar=false          ; “打开”“另存为”对话框下方的搜索框；新装默认关，以前的设置文件里没有这一项时当开（升级不变）
 DialogAutoJump=false     ; 对话框出现时（以及从文件管理器换了文件夹再切回来时）自动转到文件管理器的文件夹
@@ -420,7 +421,7 @@ src/app/             界面与 Windows 集成
   platform/          双击 Ctrl（Raw Input）、托盘、Shell 操作、驱动器插拔、窗口效果、跟踪文件对话框、Ctrl+G 和自动转过去（DialogJump）、从外面操作文件对话框（FileDialog）、问文件管理器开着哪些文件夹并叫它们打开文件夹、让资源管理器的某个标签页转到别的文件夹（FileManagers）、双击落在资源管理器或桌面的哪里（FolderViewHit）、带 COM 的后台线程（ComWorker）、录快捷键时的键盘钩子（ShortcutCapture）、读写剪贴板（ClipboardWatcher）、把按键送回原窗口（Paster）、剪贴板不抢焦点时把按键转给它（KeyRouter）、找别的程序的输入光标（TextCaret）、接管 Win+V 和 Win+S（WinV）、任务栏搜索入口和可选的搜索接管（TaskbarSearch）、任务栏上 Win顺 自己的搜索框（TaskbarSearchBox）、登录网络服务器（Credentials）、网络变化（NetworkNotifier）、取网站的图标（SiteIcons）、把结果拖出去（DragOut）
   qml/               界面：Main / SearchBar / ResultRow / Footer / ClipboardPage / SettingsWindow …
 src/stub/            WinShunSearch.exe：用户固定到任务栏的按钮，不带 Qt、不提权，点一下通知 Win顺；也替它以普通权限打开截图；粘贴为文件也是它做（PasteAsFile，见下文）
-src/service/         WinShunService.exe：索引服务（Windows 服务 "WinShun"，LocalSystem，不带 Qt、静态 C 运行库），替普通权限的 Win顺 读 NTFS 的 MFT 和变更日志，见下文“权限分离”；Server（接受连接、每连接一线程、握手、限额、让出磁盘）、Volumes（OpenMft / QueryJournal / FollowJournal / CloseVolume 的服务端）、Log、InputListener（按客户端会话启动 UIAccess 双击 Ctrl 监听子进程和 #104 的提权对话框导航助手（导航只给服务同目录的 WinShun.exe），连接拥有其生命周期）、main（SERVICE_MAIN、--install / --uninstall / --console / --listen-keys / --navigate-dialog）
+src/service/         WinShunService.exe：索引服务（Windows 服务 "WinShun"，LocalSystem，不带 Qt、静态 C 运行库），替普通权限的 Win顺 读 NTFS 的 MFT 和变更日志，见下文“权限分离”；Server（接受连接、每连接一线程、握手、限额、让出磁盘）、Volumes（OpenMft / QueryJournal / FollowJournal / CloseVolume 的服务端）、Log、InputListener（按客户端会话启动 UIAccess 双击 Ctrl 监听子进程和 #104 的提权对话框导航助手（导航只给服务同目录的 WinShun.exe），连接拥有其生命周期；#243 起监听子进程还替 Win顺 自己的界面转发不带修饰键的 F1–F24、PrintScreen 热键：只在前台是更高完整性级别的窗口时装低级键盘钩子，吞下这个键、投给 Win顺，由它向注册该热键的窗口补发 `WM_HOTKEY`，见踩坑记录“单键全局热键在管理员窗口前”）、main（SERVICE_MAIN、--install / --uninstall / --console / --listen-keys / --navigate-dialog）
 src/updater/         WinShunUpdate.exe：软件内更新的助手（不带 Qt、静态 C 运行库，从 Updates 文件夹运行）；--portable 等 Win顺 退出后换便携版的文件（data 不动）并启动新版，失败就换回旧版；--watch-setup 在静默安装没把 Win顺 重新打开时打开它。Swap（换进、换回），tests/tst_updater.cpp 再编一遍
 src/mcp/             AI 助手：Win顺 作为 MCP 服务器（见下文“AI 助手”）
   JsonRpc / Pipe     每行一条 JSON-RPC 消息的解析和拼装；命名管道的安全描述符，客户端一端的 QByteArray 外壳（只依赖 Qt Core，中继也用）

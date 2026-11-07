@@ -814,6 +814,7 @@ void Settings::load()
     panelHotkey = readOrDefault(s, u"Launcher/PanelHotkey"_s, d.panelHotkey).trimmed();
     adminTapHinted = readOrDefault(s, u"Launcher/AdminTapHinted"_s, d.adminTapHinted);
     adminDialogHinted = readOrDefault(s, u"Launcher/AdminDialogHinted"_s, d.adminDialogHinted);
+    serviceUpdateHinted = readOrDefault(s, u"Launcher/ServiceUpdateHinted"_s, d.serviceUpdateHinted).trimmed();
     shortcutAgain = readOrDefault(s, u"Launcher/ShortcutAgain"_s, d.shortcutAgain).trimmed().toLower();
     if (shortcutAgain != u"panel")
         shortcutAgain = d.shortcutAgain;
@@ -1222,6 +1223,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/PanelHotkey"_s, panelHotkey);
     s.setValue(u"Launcher/AdminTapHinted"_s, adminTapHinted);
     s.setValue(u"Launcher/AdminDialogHinted"_s, adminDialogHinted);
+    s.setValue(u"Launcher/ServiceUpdateHinted"_s, serviceUpdateHinted);
     s.setValue(u"Launcher/ShortcutAgain"_s, shortcutAgain);
     s.setValue(u"Launcher/Renderer"_s, renderer);
     s.setValue(u"Proxy/Mode"_s, proxyMode);

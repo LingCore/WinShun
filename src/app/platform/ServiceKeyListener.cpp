@@ -9,6 +9,7 @@
 #include <QJsonObject>
 
 #include <string_view>
+#include <utility>
 
 using namespace Qt::StringLiterals;
 
@@ -43,10 +44,12 @@ private:
 
 } // namespace
 
-ServiceKeyListener::ServiceKeyListener(HWND window, Changed changed)
+ServiceKeyListener::ServiceKeyListener(HWND window, Changed changed, std::vector<std::uint32_t> keys)
     : m_stop(::CreateEventW(nullptr, TRUE, FALSE, nullptr))
+    , m_rekey(::CreateEventW(nullptr, TRUE, FALSE, nullptr))
+    , m_keys(std::move(keys))
 {
-    if (m_stop)
+    if (m_stop && m_rekey)
         m_thread = std::thread([this, window, changed = std::move(changed)] { run(window, changed); });
 }
 
@@ -56,8 +59,27 @@ ServiceKeyListener::~ServiceKeyListener()
         ::SetEvent(m_stop);
     if (m_thread.joinable())
         m_thread.join();
-    if (m_stop)
-        ::CloseHandle(m_stop);
+    for (HANDLE event : {m_stop, m_rekey})
+        if (event)
+            ::CloseHandle(event);
+}
+
+void ServiceKeyListener::setKeys(std::vector<std::uint32_t> keys)
+{
+    {
+        const std::lock_guard lock(m_keysMutex);
+        if (keys == m_keys)
+            return;
+        m_keys = std::move(keys);
+    }
+    if (m_rekey)
+        ::SetEvent(m_rekey);
+}
+
+std::vector<std::uint32_t> ServiceKeyListener::keys() const
+{
+    const std::lock_guard lock(m_keysMutex);
+    return m_keys;
 }
 
 void ServiceKeyListener::run(HWND window, const Changed& changed)
@@ -69,7 +91,13 @@ void ServiceKeyListener::run(HWND window, const Changed& changed)
     constexpr DWORD timeout = 1000;
     DWORD reportedError = 0;
     HelperJournal journal;
+    // Started anew for other keys: at once, also while the service still
+    // holds the old one for this process for a moment (ERROR_ALREADY_EXISTS).
+    int quickTries = 0;
+    bool relayLogged = false;
+    bool again = false;
     do {
+        again = false;
         // Identification only: even a squatted pipe cannot act as the UI.
         Channel channel(::CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
             FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr));
@@ -88,29 +116,59 @@ void ServiceKeyListener::run(HWND window, const Changed& changed)
             if (greeted && (ok.major != kMajor || !(ok.capabilities & kCapabilityKeyListener)))
                 journal.note("old-service");
             if (greeted && ok.major == kMajor && (ok.capabilities & kCapabilityKeyListener)) {
+                // The keys as they are when asked; a change after is a new start.
+                const bool relays = (ok.capabilities & kCapabilityHotkeyRelay) != 0;
+                ::ResetEvent(m_rekey);
+                const std::vector<std::uint32_t> wanted = keys();
+                const std::vector<std::uint32_t> relayed = relays ? wanted : std::vector<std::uint32_t>();
+                if (!relays && !wanted.empty() && !std::exchange(relayLogged, true))
+                    qInfo().noquote() << "Hotkeys with no modifier: this index service does not hold them back over "
+                                         "administrators' windows (an older one, or not the one installed with this Win顺)";
                 w.reset();
                 w.u64(reinterpret_cast<std::uintptr_t>(window));
+                if (!relayed.empty()) {
+                    w.u32(static_cast<std::uint32_t>(relayed.size()));
+                    for (const std::uint32_t vk : relayed)
+                        w.u32(vk);
+                }
                 if (channel.write(w.finish(Type::OpenKeyListener), timeout)
                     && channel.read(type, payload, timeout, m_stop) && type == Type::KeyListenerReady) {
                     Reader reader(payload);
                     std::uint32_t pid = 0;
                     if (reader.u32(pid) && pid && reader.done()) {
+                        quickTries = 0;
+                        m_relaying = !relayed.empty();
                         changed(pid); // the window also waits for the child's Ready heartbeat
                         journal.note("connected");
                         const ULONGLONG since = ::GetTickCount64();
-                        while (::WaitForSingleObject(m_stop, keyproto::kHeartbeatMs) == WAIT_TIMEOUT) {
-                            if (!channel.write(Type::KeyListenerPing, {}, timeout)
+                        const HANDLE events[] {m_stop, m_rekey};
+                        for (;;) {
+                            const DWORD woke = ::WaitForMultipleObjects(2, events, FALSE, keyproto::kHeartbeatMs);
+                            if (woke == WAIT_OBJECT_0 + 1 && relays) {
+                                again = true; // other keys: started anew with them
+                                break;
+                            }
+                            if (woke == WAIT_OBJECT_0 + 1) {
+                                ::ResetEvent(m_rekey); // none relayed by this service: nothing to change
+                                continue;
+                            }
+                            if (woke != WAIT_TIMEOUT || !channel.write(Type::KeyListenerPing, {}, timeout)
                                 || !channel.read(type, payload, timeout, m_stop) || type != Type::KeyListenerPing
                                 || !payload.empty())
                                 break;
                         }
+                        m_relaying = false;
                         changed(0);
-                        if (::WaitForSingleObject(m_stop, 0) == WAIT_TIMEOUT) // not us stopping it
+                        if (!again && ::WaitForSingleObject(m_stop, 0) == WAIT_TIMEOUT) // not us stopping it
                             journal.note("lost", {{u"after_s"_s, static_cast<qint64>((::GetTickCount64() - since) / 1000)}});
                     }
                 } else if (type == Type::Error) {
                     Error error;
-                    if (decode(payload, error) && error.code != reportedError) {
+                    const bool decoded = decode(payload, error);
+                    // The listener for the old keys not gone yet: a moment more.
+                    if (decoded && error.code == ERROR_ALREADY_EXISTS && quickTries > 0 && quickTries < 40)
+                        again = true;
+                    else if (decoded && error.code != reportedError) {
                         reportedError = error.code;
                         qWarning().noquote() << "Double Ctrl: UIAccess listener unavailable, using local input:"
                                              << QString::fromStdWString(error.message) << "(error" << error.code << ')';
@@ -119,8 +177,9 @@ void ServiceKeyListener::run(HWND window, const Changed& changed)
                 }
             }
         }
+        quickTries = again ? quickTries + 1 : 0;
         // Also recovers from a service starting later, an upgrade or a crash.
-    } while (::WaitForSingleObject(m_stop, 5000) == WAIT_TIMEOUT);
+    } while (::WaitForSingleObject(m_stop, again ? (quickTries > 1 ? 50 : 0) : 5000) == WAIT_TIMEOUT);
 }
 
 } // namespace ws

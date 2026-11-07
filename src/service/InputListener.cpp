@@ -4,6 +4,7 @@
 #include "KeyListener.h"
 #include "KeyListenerProtocol.h"
 #include "Log.h"
+#include "OwnInput.h"
 #include "Server.h"
 #include "ServiceLocation.h"
 #include "Win32Util.h"
@@ -16,11 +17,14 @@
 #include <algorithm>
 #include <array>
 #include <cwchar>
+#include <latch>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -308,6 +312,186 @@ bool launchSessionHelper(
     return true;
 }
 
+// A process's integrity level (SECURITY_MANDATORY_*_RID), or none when it
+// cannot be read: a protected process such as csrss.exe, whose error boxes
+// ("the program can't start because a DLL is missing") come to the front too.
+std::optional<DWORD> integrityOf(DWORD pid)
+{
+    const UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    HANDLE raw = nullptr;
+    if (!process.valid() || !::OpenProcessToken(process.get(), TOKEN_QUERY, &raw))
+        return std::nullopt;
+    const UniqueHandle token(raw);
+    const auto label = tokenInfo(token.get(), TokenIntegrityLevel);
+    if (label.empty())
+        return std::nullopt;
+    const PSID sid = reinterpret_cast<const TOKEN_MANDATORY_LABEL*>(label.data())->Label.Sid;
+    return *::GetSidSubAuthority(sid, *::GetSidSubAuthorityCount(sid) - 1);
+}
+
+bool held(int vk)
+{
+    return (::GetAsyncKeyState(vk) & 0x8000) != 0;
+}
+
+// GitHub #243: the UI's global hotkeys with no modifier (keyproto::relayable:
+// F1-F24, PrintScreen). Windows gives them to no normal-rights RegisterHotKey
+// while a window above the UI's integrity is in front (run as administrator;
+// docs/pitfalls.md). Over such a window this holds the key back from it, as
+// the UI's RegisterHotKey would have, and tells the UI. Over any other the
+// UI's own registration hears the key: the low-level hook is in only while
+// such a window is in front, so no key anyone types waits on this otherwise,
+// and a key is never told twice. One relay per listener, on its own thread.
+class PlainKeyRelay {
+public:
+    PlainKeyRelay(DWORD clientPid, HWND target, const std::vector<std::uint32_t>& keys)
+        : m_clientPid(clientPid)
+        , m_target(target)
+        , m_clientIntegrity(integrityOf(clientPid).value_or(SECURITY_MANDATORY_MEDIUM_RID))
+    {
+        for (const std::uint32_t vk : keys)
+            m_wanted[vk & 0xFF] = keyproto::relayable(vk);
+        std::latch ready(1);
+        m_thread = std::thread([this, &ready] {
+            MSG msg;
+            ::PeekMessageW(&msg, nullptr, WM_USER, WM_USER, PM_NOREMOVE); // the queue, for WM_QUIT
+            m_threadId = ::GetCurrentThreadId();
+            ready.count_down();
+            run();
+        });
+        ready.wait();
+    }
+    ~PlainKeyRelay()
+    {
+        ::PostThreadMessageW(m_threadId, WM_QUIT, 0, 0);
+        if (m_thread.joinable())
+            m_thread.join();
+    }
+    PlainKeyRelay(const PlainKeyRelay&) = delete;
+    PlainKeyRelay& operator=(const PlainKeyRelay&) = delete;
+
+private:
+    void run()
+    {
+        s_relay = this;
+        // A hook answering late holds up every key typed into that window.
+        ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+        const HWINEVENTHOOK events = ::SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
+            &PlainKeyRelay::onForeground, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+        // Looked at again now and then too: a missed change, or the hook
+        // Windows took away from a thread that once answered too late.
+        const UINT_PTR timer = ::SetTimer(nullptr, 0, 2000, &PlainKeyRelay::onTimer);
+        follow(::GetForegroundWindow(), false);
+        MSG msg;
+        while (::GetMessageW(&msg, nullptr, 0, 0) > 0)
+            ::DispatchMessageW(&msg);
+        ::KillTimer(nullptr, timer);
+        if (events)
+            ::UnhookWinEvent(events);
+        hook(false);
+        s_relay = nullptr;
+    }
+
+    // Whether the window in front is above the UI: Windows keeps the UI's
+    // plain hotkeys from it. One whose process cannot be read counts as above.
+    bool above(HWND window) const
+    {
+        DWORD pid = 0;
+        if (!window || !::GetWindowThreadProcessId(window, &pid) || !pid || pid == m_clientPid)
+            return false;
+        const std::optional<DWORD> integrity = integrityOf(pid);
+        return !integrity || *integrity > m_clientIntegrity;
+    }
+
+    // `again`: hooked already, hooked anew (the timer's; Windows drops a
+    // hook that answered too late without saying so), a key held still held.
+    void follow(HWND window, bool again)
+    {
+        m_front = window;
+        m_above = above(window);
+        if (again && m_above && m_hook) {
+            ::UnhookWindowsHookEx(m_hook);
+            m_hook = nullptr;
+        }
+        hook(m_above);
+    }
+
+    void hook(bool on)
+    {
+        if (on && !m_hook) {
+            m_hook = ::SetWindowsHookExW(WH_KEYBOARD_LL, &PlainKeyRelay::keyboard, ::GetModuleHandleW(nullptr), 0);
+            if (!m_hook && !std::exchange(m_hookRefused, true))
+                log::write(L"input listener: plain hotkeys over administrator windows: hook refused (%lu)", ::GetLastError());
+        } else if (!on && m_hook) {
+            ::UnhookWindowsHookEx(m_hook);
+            m_hook = nullptr;
+            m_held.fill(false); // their releases go wherever they go now
+        }
+    }
+
+    // True: held back from the window in front (told of, or its repeat or release).
+    bool onKey(const KBDLLHOOKSTRUCT& event, bool up)
+    {
+        const std::uint32_t vk = event.vkCode & 0xFF;
+        if (!m_wanted[vk] || isOwnInput(event.dwExtraInfo))
+            return false;
+        if (up)
+            return std::exchange(m_held[vk], false);
+        if (m_held[vk] && held(static_cast<int>(vk)))
+            return true; // a repeat (MOD_NOREPEAT)
+        m_held[vk] = false;
+        // Changed since the last event about it: as it is now, without
+        // hooking or unhooking from inside the hook.
+        const HWND front = ::GetForegroundWindow();
+        const bool over = front == m_front ? m_above : above(front);
+        if (!over || held(VK_SHIFT) || held(VK_CONTROL) || held(VK_MENU) || held(VK_LWIN) || held(VK_RWIN)
+            || !targetOf(m_target, m_clientPid))
+            return false; // with a modifier it is another hotkey, which reaches the UI by itself
+        m_held[vk] = true;
+        ::AllowSetForegroundWindow(m_clientPid); // as for a double tap: the UI may come to the front
+        ::PostMessageW(m_target, keyproto::kHotkey,
+            keyproto::hotkeyWord(::GetCurrentProcessId(), vk, (event.flags & LLKHF_INJECTED) != 0), event.time);
+        return true;
+    }
+
+    static LRESULT CALLBACK keyboard(int code, WPARAM wParam, LPARAM lParam)
+    {
+        if (code == HC_ACTION && s_relay) {
+            const auto& event = *reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
+            const bool up = wParam == WM_KEYUP || wParam == WM_SYSKEYUP;
+            if ((up || wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) && s_relay->onKey(event, up))
+                return 1;
+        }
+        return ::CallNextHookEx(nullptr, code, wParam, lParam);
+    }
+
+    static void CALLBACK onForeground(HWINEVENTHOOK, DWORD, HWND window, LONG, LONG, DWORD, DWORD)
+    {
+        if (s_relay)
+            s_relay->follow(window, false);
+    }
+
+    static void CALLBACK onTimer(HWND, UINT, UINT_PTR, DWORD)
+    {
+        if (s_relay)
+            s_relay->follow(::GetForegroundWindow(), true);
+    }
+
+    static inline PlainKeyRelay* s_relay = nullptr; // the relay thread's; one per listener
+    const DWORD m_clientPid;
+    const HWND m_target;
+    const DWORD m_clientIntegrity;
+    std::array<bool, 256> m_wanted {};
+    // The rest on the relay thread only.
+    std::array<bool, 256> m_held {}; // told of, not let go of yet
+    HWND m_front = nullptr;
+    bool m_above = false;
+    HHOOK m_hook = nullptr;
+    bool m_hookRefused = false;
+    DWORD m_threadId = 0;
+    std::thread m_thread;
+};
+
 std::wstring processImagePath(DWORD pid)
 {
     const UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
@@ -424,11 +608,39 @@ void serveInputListener(Server& server, Connection& conn, std::span<const std::b
     using namespace volproto;
     Reader r(payload);
     std::uint64_t value = 0;
-    if (!r.u64(value) || !r.done() || !value) {
+    if (!r.u64(value) || !value) {
         replyError(conn, ERROR_INVALID_PARAMETER, L"invalid listener window", 1000);
         return;
     }
-    // For any client the pipe lets in, unlike dialog navigation (Server::handshake says why).
+    // Minor 6 (#243): the UI's plain hotkeys to hold back over administrator
+    // windows, F1-F24 and PrintScreen alone.
+    std::vector<std::uint32_t> keys;
+    if (!r.done()) {
+        std::uint32_t count = 0;
+        if (!r.u32(count) || count > keyproto::kMaxRelayedKeys) {
+            replyError(conn, ERROR_INVALID_PARAMETER, L"invalid hotkeys to relay", 1000);
+            return;
+        }
+        for (std::uint32_t i = 0; i < count; ++i) {
+            std::uint32_t vk = 0;
+            if (!r.u32(vk) || !keyproto::relayable(vk) || std::ranges::find(keys, vk) != keys.end()) {
+                replyError(conn, ERROR_INVALID_PARAMETER, L"invalid hotkeys to relay", 1000);
+                return;
+            }
+            keys.push_back(vk);
+        }
+        if (!r.done()) {
+            replyError(conn, ERROR_INVALID_PARAMETER, L"invalid listener request", 1000);
+            return;
+        }
+    }
+    // Double taps for any client the pipe lets in, unlike dialog navigation
+    // (Server::handshake says why). Keys held back from an administrator's
+    // window only for Win顺's own UI, as the navigator acts there.
+    if (!keys.empty() && !mayNavigateDialogs(server, conn.pid)) {
+        replyError(conn, ERROR_ACCESS_DENIED, L"hotkeys are relayed for Win顺's own UI only", 1000);
+        return;
+    }
     const Claim claim(listeners, conn.pid);
     if (!claim.held) {
         replyError(conn, ERROR_ALREADY_EXISTS, L"already listening for this process", 1000);
@@ -443,7 +655,9 @@ void serveInputListener(Server& server, Connection& conn, std::span<const std::b
     UniqueHandle child;
     DWORD pid = 0;
     const wchar_t* operation = L"create listener job";
-    const std::wstring args = L"--listen-keys " + std::to_wstring(conn.pid) + L" " + std::to_wstring(value);
+    std::wstring args = L"--listen-keys " + std::to_wstring(conn.pid) + L" " + std::to_wstring(value);
+    for (std::size_t i = 0; i < keys.size(); ++i)
+        args += (i ? L"," : L" ") + std::to_wstring(keys[i]);
     if (!server.options().keyListener || !job.valid()
         || !::SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation, &limits, sizeof limits)
         || !launchSessionHelper(conn, args, job.get(), child, pid, operation)) {
@@ -456,7 +670,7 @@ void serveInputListener(Server& server, Connection& conn, std::span<const std::b
     w.u32(pid);
     if (!conn.channel.write(w.finish(Type::KeyListenerReady), 1000))
         return;
-    log::write(L"input listener %lu for pid %lu", pid, conn.pid);
+    log::write(L"input listener %lu for pid %lu, %zu plain hotkeys relayed", pid, conn.pid, keys.size());
     Type type {};
     std::vector<std::byte> next;
     while (conn.channel.read(type, next, keyproto::kLeaseMs, conn.abort)) {
@@ -466,7 +680,7 @@ void serveInputListener(Server& server, Connection& conn, std::span<const std::b
     }
 }
 
-int runInputListener(DWORD clientPid, HWND target)
+int runInputListener(DWORD clientPid, HWND target, const std::vector<std::uint32_t>& keys)
 {
     HANDLE raw = nullptr;
     if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &raw))
@@ -513,6 +727,9 @@ int runInputListener(DWORD clientPid, HWND target)
                 QUOTA_LIMITS_HARDWS_MIN_ENABLE | QUOTA_LIMITS_HARDWS_MAX_DISABLE))
             log::write(L"input listener: working set floor of %zu KB refused (%lu)", keep / 1024, ::GetLastError());
     }
+    std::optional<PlainKeyRelay> relay;
+    if (!keys.empty())
+        relay.emplace(clientPid, target, keys);
     do {
         if (!targetOf(target, clientPid))
             break;

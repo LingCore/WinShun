@@ -1,0 +1,14 @@
+3511328 send: ready
+3511328 send: elevated 0000000000B40C02 RelaySendWindow "relay-elevated" pid=11248, test 00000000001A0AB6 Static "WinShun issue #243 relay test" pid=37148
+3511531 elevated: press over 0000000000B40C02 RelaySendWindow "relay-elevated" pid=11248
+3512390 elevated: front after 00000000001A0AB6 Static "WinShun issue #243 relay test" pid=37148
+3512593 elevated: press over 0000000000B40C02 RelaySendWindow "relay-elevated" pid=11248
+3513437 elevated: front after 00000000001A0AB6 Static "WinShun issue #243 relay test" pid=37148
+3513640 elevated: press over 0000000000B40C02 RelaySendWindow "relay-elevated" pid=11248
+3514484 elevated: front after 00000000001A0AB6 Static "WinShun issue #243 relay test" pid=37148
+3514671 test: press over 00000000001A0AB6 Static "WinShun issue #243 relay test" pid=37148
+3515515 test: front after 00000000001A0AB6 Static "WinShun issue #243 relay test" pid=37148
+3515937 csrss: press over 0000000000330CB8 #32770 "hkpmissing.exe - 系统错误" pid=1972
+3516781 csrss: front after 00000000001A0AB6 Static "WinShun issue #243 relay test" pid=37148
+3517328 csrss: box still there: 0
+3517328 send: done

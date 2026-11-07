@@ -1,0 +1,8 @@
+********* Start testing of KeyListenerTest *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : KeyListenerTest::initTestCase()
+QINFO  : KeyListenerTest::elevatedForegroundPlainHotkey() 321 relayed vk=84; 328 WM_HOTKEY front=1; 1379 relayed vk=84; 1386 WM_HOTKEY front=1; 2422 relayed vk=84; 2428 WM_HOTKEY front=1; 3452 WM_HOTKEY front=1; 4722 relayed vk=84; 4727 WM_HOTKEY front=1
+PASS   : KeyListenerTest::elevatedForegroundPlainHotkey()
+PASS   : KeyListenerTest::cleanupTestCase()
+Totals: 3 passed, 0 failed, 0 skipped, 0 blacklisted, 6738ms
+********* Finished testing of KeyListenerTest *********

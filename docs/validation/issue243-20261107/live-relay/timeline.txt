@@ -1,0 +1,9 @@
+321 relayed vk=84
+328 WM_HOTKEY front=1
+1379 relayed vk=84
+1386 WM_HOTKEY front=1
+2422 relayed vk=84
+2428 WM_HOTKEY front=1
+3452 WM_HOTKEY front=1
+4722 relayed vk=84
+4727 WM_HOTKEY front=1

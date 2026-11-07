@@ -2,6 +2,7 @@
 #include "HotkeyText.h"
 
 #include "MonoLogo.h"
+#include "PlainHotkeys.h"
 
 #include <QDebug>
 #include <QDeadlineTimer>
@@ -275,12 +276,12 @@ bool MessageWindow::registerHotkey(int id, const QString& shortcut)
     UINT vk = 0;
     if (!parseHotkey(shortcut, &modifiers, &vk))
         return false;
-    return ::RegisterHotKey(m_hwnd, id, modifiers, vk);
+    return plainkeys::registerHotkey(m_hwnd, id, modifiers, vk); // F1 alone also over administrators' windows (#243)
 }
 
 void MessageWindow::unregisterHotkey(int id)
 {
-    ::UnregisterHotKey(m_hwnd, id);
+    plainkeys::unregisterHotkey(m_hwnd, id);
 }
 
 bool MessageWindow::sendToRunningInstance(const QString& command)

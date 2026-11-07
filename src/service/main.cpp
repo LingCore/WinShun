@@ -40,6 +40,7 @@
 #include "DialogNav.h"
 #include "Log.h"
 #include "InputListener.h"
+#include "KeyListenerProtocol.h"
 #include "Server.h"
 #include "ServiceLocation.h"
 #include "VolumeProtocol.h"
@@ -475,7 +476,7 @@ int wmain(int argc, wchar_t** argv)
     ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX); // never a dialog about a drive
     if (argc > 1) {
         const std::wstring_view option = argv[1];
-        if (option == L"--listen-keys" && argc == 4) {
+        if (option == L"--listen-keys" && (argc == 4 || argc == 5)) {
             wchar_t* end = nullptr;
             const unsigned long pid = std::wcstoul(argv[2], &end, 10);
             if (!pid || !end || *end)
@@ -483,7 +484,17 @@ int wmain(int argc, wchar_t** argv)
             const auto window = std::wcstoull(argv[3], &end, 10);
             if (!window || !end || *end)
                 return ERROR_INVALID_PARAMETER;
-            return ws::service::runInputListener(pid, reinterpret_cast<HWND>(window));
+            // The plain hotkeys to relay (GitHub #243), as the service checked them: "112,113".
+            std::vector<std::uint32_t> keys;
+            for (const wchar_t* at = argc == 5 ? argv[4] : L""; *at;) {
+                const unsigned long vk = std::wcstoul(at, &end, 10);
+                if (end == at || (*end && *end != L',') || !ws::keyproto::relayable(vk)
+                    || keys.size() >= ws::keyproto::kMaxRelayedKeys)
+                    return ERROR_INVALID_PARAMETER;
+                keys.push_back(vk);
+                at = *end ? end + 1 : end;
+            }
+            return ws::service::runInputListener(pid, reinterpret_cast<HWND>(window), keys);
         }
         if (option == L"--navigate-dialog" && argc == 4) {
             wchar_t* end = nullptr;

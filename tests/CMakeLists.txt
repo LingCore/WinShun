@@ -28,8 +28,9 @@ set_tests_properties(tst_paster PROPERTIES RUN_SERIAL TRUE
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 qt_add_executable(tst_pluginhotkeys tst_pluginhotkeys.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/platform/PluginHotkeys.cpp)
-target_include_directories(tst_pluginhotkeys PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+    ${PROJECT_SOURCE_DIR}/src/app/platform/PluginHotkeys.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/PlainHotkeys.cpp)
+target_include_directories(tst_pluginhotkeys PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
 target_link_libraries(tst_pluginhotkeys PRIVATE winshun_options Qt6::Test user32)
 set_target_properties(tst_pluginhotkeys PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_pluginhotkeys COMMAND tst_pluginhotkeys -o -,txt)
@@ -291,6 +292,15 @@ target_link_libraries(tst_admintaphint PRIVATE winshun_options Qt6::Test)
 set_target_properties(tst_admintaphint PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_admintaphint COMMAND tst_admintaphint)
 set_tests_properties(tst_admintaphint PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# When a portable copy offers to update the index service it installed (GitHub #243).
+qt_add_executable(tst_serviceupdate tst_serviceupdate.cpp)
+target_include_directories(tst_serviceupdate PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_serviceupdate PRIVATE winshun_options Qt6::Test)
+set_target_properties(tst_serviceupdate PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_serviceupdate COMMAND tst_serviceupdate)
+set_tests_properties(tst_serviceupdate PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The same for file dialogs of such programs (GitHub #216).
@@ -827,6 +837,7 @@ add_dependencies(tst_service WinShunService)
 qt_add_executable(tst_keylistener tst_keylistener.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/KeyListener.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/NumberKeys.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/PlainHotkeys.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/ServiceKeyListener.cpp)
 target_include_directories(tst_keylistener PRIVATE ${PROJECT_SOURCE_DIR}/src/app/platform)
 target_link_libraries(tst_keylistener PRIVATE wscore Qt6::Test user32 advapi32 shcore)

@@ -371,9 +371,12 @@ bool Server::handshake(Connection& conn)
     // Win顺's own UI gets it (the WinShun.exe beside this service, or the one
     // it was installed from: mayNavigateDialogs); another copy is told it is
     // kept from it, to say so instead of suggesting to install the service.
+    // Holding the UI's plain hotkeys back from an administrator's window
+    // (#243) acts on that window's input too: for Win顺's own UI likewise.
     if (m_options.keyListener) {
         ok.capabilities |= kCapabilityKeyListener;
-        ok.capabilities |= mayNavigateDialogs(*this, conn.pid) ? kCapabilityDialogNav : kCapabilityDialogNavBesideOnly;
+        const bool own = mayNavigateDialogs(*this, conn.pid);
+        ok.capabilities |= own ? kCapabilityDialogNav | kCapabilityHotkeyRelay : kCapabilityDialogNavBesideOnly;
         if (canStartClipboardDisplay(conn.pid))
             ok.capabilities |= kCapabilityClipboardDisplay;
     }

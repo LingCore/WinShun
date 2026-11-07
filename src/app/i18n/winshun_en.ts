@@ -5609,8 +5609,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Index service for the portable copy</translation>
     </message>
     <message>
-        <source>便携;安装服务;卸载服务;索引服务;没有管理员权限;装不了;portable;service</source>
-        <translation>portable;install service;uninstall service;index service;no administrator rights;cannot install</translation>
+        <source>便携;安装服务;更新服务;卸载服务;索引服务;没有管理员权限;装不了;portable;service</source>
+        <translation>portable;install service;update service;uninstall service;index service;no administrator rights;cannot install</translation>
     </message>
     <message>
         <source>已安装 Windows 服务“Win顺 索引服务”，它替普通权限的 Win顺 读取主文件表</source>
@@ -5643,6 +5643,14 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>修复</source>
         <translation>Repair</translation>
+    </message>
+    <message>
+        <source>索引服务还是 %1 版，比这份 Win顺 旧，有些功能用不上。点“更新索引服务”，Windows 会请你确认一次</source>
+        <translation>The index service is still version %1, older than this WinShun, so some features are not available. Click Update the index service; Windows asks you to confirm once</translation>
+    </message>
+    <message>
+        <source>更新索引服务</source>
+        <translation>Update the index service</translation>
     </message>
     <message>
         <source>卸载索引服务</source>
@@ -8486,6 +8494,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Installing the index service…</translation>
     </message>
     <message>
+        <source>正在更新索引服务…</source>
+        <translation>Updating the index service…</translation>
+    </message>
+    <message>
         <source>正在卸载索引服务…</source>
         <translation>Uninstalling the index service…</translation>
     </message>
@@ -8498,12 +8510,28 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Installing the index service failed (error %1)</translation>
     </message>
     <message>
+        <source>更新索引服务失败（错误 %1）</source>
+        <translation>Updating the index service failed (error %1)</translation>
+    </message>
+    <message>
         <source>卸载索引服务失败（错误 %1）</source>
         <translation>Uninstalling the index service failed (error %1)</translation>
     </message>
     <message>
-        <source>索引服务已安装并启动。换了新版本的 Win顺 后，在这里再装一次，服务也会跟着更新。</source>
-        <translation>The index service is installed and running. After updating WinShun, install it here once more so the service is updated too.</translation>
+        <source>索引服务已安装并启动。以后换了新版本的 Win顺，会提醒你点一下更新它。</source>
+        <translation>The index service is installed and running. When you update WinShun later, you will be reminded to update it with one click.</translation>
+    </message>
+    <message>
+        <source>索引服务已更新。</source>
+        <translation>The index service is updated.</translation>
+    </message>
+    <message>
+        <source>索引服务可以更新了</source>
+        <translation>The index service can be updated</translation>
+    </message>
+    <message>
+        <source>索引服务还是 %1 版，比这份 Win顺 旧。点这里更新，Windows 会请你确认一次。</source>
+        <translation>The index service is still version %1, older than this WinShun. Click here to update it; Windows asks you to confirm once.</translation>
     </message>
     <message>
         <source>索引服务已卸载。</source>

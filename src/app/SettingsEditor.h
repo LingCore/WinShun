@@ -145,6 +145,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool indexServiceInstallable READ indexServiceInstallable NOTIFY indexAccessStateChanged FINAL)
     Q_PROPERTY(bool indexServiceUnsafeLocation READ indexServiceUnsafeLocation NOTIFY indexAccessStateChanged FINAL)
     Q_PROPERTY(QString indexServiceMessage READ indexServiceMessage NOTIFY indexAccessStateChanged FINAL)
+    Q_PROPERTY(bool indexServiceUpdatable READ indexServiceUpdatable NOTIFY indexAccessStateChanged FINAL)
+    Q_PROPERTY(QString indexServiceVersion READ indexServiceVersion NOTIFY indexAccessStateChanged FINAL)
     // 索引哪些地方 (Settings::indexScope, GitHub #52): auto | drives | folders,
     // and, as the app has it (setIndexAccessState): only the chosen folders
     // are indexed now, they could be (not while the disks are read whole, by
@@ -503,6 +505,8 @@ public:
         bool serviceUnsafeLocation = false; // installed from a user-writable folder (an old portable copy): offer to repair
         bool serviceBusy = false; // --install / --uninstall running
         QString serviceMessage; // how the last install or uninstall went
+        bool serviceUpdate = false; // this copy's own service is older than it: one click updates it (ServiceUpdate.h)
+        QString serviceVersion; // the running service's, from its last handshake; empty when unknown
         bool foldersInEffect = false; // only the chosen folders are indexed (App::foldersInEffect)
         bool foldersPossible = true; // the disks are walked: choosing folders takes effect
         QString scopeStatus; // what is indexed now, said for the user
@@ -521,6 +525,8 @@ public:
     bool indexServiceInstallable() const { return m_indexAccessState.serviceInstallable; }
     bool indexServiceUnsafeLocation() const { return m_indexAccessState.serviceUnsafeLocation; }
     QString indexServiceMessage() const { return m_indexAccessState.serviceMessage; }
+    bool indexServiceUpdatable() const { return m_indexAccessState.serviceUpdate; }
+    QString indexServiceVersion() const { return m_indexAccessState.serviceVersion; }
     // The app restarts Win顺 as administrator (UAC asks once), installs or
     // uninstalls the index service (WinShunService.exe, elevated, UAC once).
     Q_INVOKABLE void restartAsAdministrator() { emit elevatedRestartRequested(); }

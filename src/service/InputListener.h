@@ -2,8 +2,10 @@
 
 #include <windows.h>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace ws::service {
 class Server;
@@ -26,7 +28,9 @@ void serveInputListener(Server& server, Connection& conn, std::span<const std::b
 void serveDialogNav(Server& server, Connection& conn, std::span<const std::byte> payload);
 // The same small, statically linked executable, in a user's session. No
 // service dispatcher, volume access or pipe server is started in this mode.
-int runInputListener(DWORD clientPid, HWND target);
+// `keys`: the UI's plain hotkeys to hold back over administrator windows and
+// tell of (keyproto::kHotkey, GitHub #243); none for any other client.
+int runInputListener(DWORD clientPid, HWND target, const std::vector<std::uint32_t>& keys = {});
 // The --navigate-dialog helper: validates the token, the window and the
 // folder, then navigates. 0 on success, else a Win32 error.
 int runDialogNav(HWND dialog, const std::wstring& folder);

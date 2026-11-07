@@ -1,0 +1,21 @@
+3923765 e2e: start
+3923953 elevated: press over 00000000000A085C RelaySendWindow "relay-elevated" pid=35860
+3925500 elevated: front after 00000000000507CA Qt6120QWindowToolSaveBits "截图 - Win顺" pid=25948 F:\电脑便捷工具\dist\issue243\profile\plugins\winshun.capture\WinShunCapture.exe capture=1
+3925500 elevated z0 topmost=1 rect=101,119,117,159 00000000000300C8 CursorVisualClass "" pid=20264 C:\Windows\System32\EoAExperiences.exe
+3925500 elevated z1 topmost=1 rect=0,0,1,1 000000000004045C ThumbnailDeviceHelperWnd "" pid=8232 C:\Windows\explorer.exe
+3925515 elevated z2 topmost=1 rect=0,0,1707,1067 00000000000507CA Qt6120QWindowToolSaveBits "截图 - Win顺" pid=25948 F:\电脑便捷工具\dist\issue243\profile\plugins\winshun.capture\WinShunCapture.exe
+3925515 elevated z3 topmost=1 rect=0,1019,1707,1067 0000000000010128 Shell_TrayWnd "" pid=8232 C:\Windows\explorer.exe
+3925515 elevated z4 topmost=0 rect=260,260,680,420 00000000000A085C RelaySendWindow "relay-elevated" pid=35860 F:\电脑便捷工具\build\issue243\probe\relaysend.exe
+3925546 shot 1707x1067 at 0,0
+3926296 elevated: after Esc front is 00000000000A085C RelaySendWindow "relay-elevated" pid=35860 F:\电脑便捷工具\build\issue243\probe\relaysend.exe
+3927515 csrss: press over 000000000007075A #32770 "hkpmissing.exe - 系统错误" pid=1972
+3929062 csrss: front after 00000000000507CA Qt6120QWindowToolSaveBits "截图 - Win顺" pid=25948 F:\电脑便捷工具\dist\issue243\profile\plugins\winshun.capture\WinShunCapture.exe capture=1
+3929062 csrss z0 topmost=1 rect=101,119,117,159 00000000000300C8 CursorVisualClass "" pid=20264 C:\Windows\System32\EoAExperiences.exe
+3929062 csrss z1 topmost=1 rect=0,0,1,1 000000000004045C ThumbnailDeviceHelperWnd "" pid=8232 C:\Windows\explorer.exe
+3929062 csrss z2 topmost=1 rect=623,453,1096,626 000000000007075A #32770 "hkpmissing.exe - 系统错误" pid=1972 C:\Windows\System32\csrss.exe
+3929062 csrss z3 topmost=1 rect=0,0,1707,1067 00000000000507CA Qt6120QWindowToolSaveBits "截图 - Win顺" pid=25948 F:\电脑便捷工具\dist\issue243\profile\plugins\winshun.capture\WinShunCapture.exe
+3929062 csrss z4 topmost=1 rect=0,1019,1707,1067 0000000000010128 Shell_TrayWnd "" pid=8232 C:\Windows\explorer.exe
+3929093 shot 1707x1067 at 0,0
+3929843 csrss: after Esc front is 000000000007075A #32770 "hkpmissing.exe - 系统错误" pid=1972 C:\Windows\System32\csrss.exe
+3930890 csrss: box still there: 0
+3930890 e2e: done

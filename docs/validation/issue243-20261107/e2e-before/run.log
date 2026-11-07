@@ -1,0 +1,11 @@
+18:21:13.485 quit installed WinShun
+18:21:14.770 WinShun left: 0
+18:21:17.101 harness up: True
+18:21:17.203 stage pid 8296
+18:21:20.555 capture plugin: 1640
+18:21:26.586 ERROR: 找不到路径“F:\电脑便捷工具\build\issue243\probe\e2e-ea104158\sender.log”，因为该路径不存在。
+18:21:26.595 quit stage
+18:21:30.888 harness cleaned: True
+18:21:30.919 installed WinShun restarted
+18:21:33.958 autostart task unchanged: True
+18:21:33.971 lock released; run dir F:\电脑便捷工具\build\issue243\probe\e2e-ea104158

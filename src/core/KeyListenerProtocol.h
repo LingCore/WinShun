@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <cstddef>
 #include <cstdint>
 
 namespace ws::keyproto {
@@ -44,6 +45,26 @@ constexpr std::uint32_t tapTime(LPARAM times) noexcept
 constexpr std::uint32_t tapSpan(LPARAM times) noexcept
 {
     return static_cast<std::uint32_t>(static_cast<std::uint64_t>(times) >> 32);
+}
+
+// GitHub #243: a global hotkey with no modifier (F1, PrintScreen) that a
+// normal-rights process registers never fires while a window run as
+// administrator is in front (UIPI; with Ctrl, Alt, Shift or Win it does,
+// docs/pitfalls.md). For Win顺's own UI the listener holds such keys of the
+// UI's back from that window and tells of them: kHotkey, wParam
+// hotkeyWord, lParam the key's time on the input's clock. Only these keys,
+// alone: none that types, so nothing typed can be read this way.
+constexpr UINT kHotkey = WM_APP + 74; // WM_APP + 73 is KeyListener's own (kHookedKey)
+constexpr std::size_t kMaxRelayedKeys = 32;
+constexpr bool relayable(std::uint32_t vk) noexcept
+{
+    return (vk >= VK_F1 && vk <= VK_F24) || vk == VK_SNAPSHOT;
+}
+// The sender PID in the upper half, the key in the lower, plus whether a
+// program sent it (SendInput).
+constexpr WPARAM hotkeyWord(DWORD pid, std::uint32_t vk, bool sent) noexcept
+{
+    return (static_cast<WPARAM>(pid) << 32) | (vk & 0xFF) | (sent ? 0x100 : 0);
 }
 
 } // namespace ws::keyproto

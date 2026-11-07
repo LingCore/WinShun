@@ -359,6 +359,12 @@ private:
     unsigned ownNumberDigits(const QString& keys) const;
     void applySettings(bool initial);
     void applyKeyListener(bool force = false);
+    // GitHub #243: Win顺's plain hotkeys (F1, PrintScreen alone) as the
+    // service's UIAccess listener tells of them over an administrator's
+    // window, and when which they are changes.
+    void onPlainHotkey(std::uint32_t vk, bool sent);
+    void plainHotkeysChanged();
+    bool m_plainHotkeysPending = false; // plainHotkeysChanged queued
     ClipboardWatcher::Options clipboardOptions() const;
     void applyClipboard(bool initial = false); // the [Clipboard] settings
     void applyClipboardHotkeys(); // Win+V and the other shortcut; where Win+V stands, for the settings
@@ -465,6 +471,10 @@ private:
     void refreshIndexAccess(); // shown in the settings window
     QString serviceProblem() const; // why the index service is not in use and what happens instead, a sentence for the user
     void installIndexService(bool install); // WinShunService.exe --install / --uninstall, elevated (a portable copy)
+    // A portable copy's own service older than it (ServiceUpdate.h, GitHub
+    // #243): offered in the settings row, and said once a version.
+    bool serviceUpdateDue() const;
+    void serviceUpdateHint();
     // 索引哪些地方 (Settings::indexScope, GitHub #52): only the chosen folders,
     // as the settings and the service have it, when the volumes are walked
     // (`walked`: no way to their MFT and journals, NoVolumeAccess).
@@ -607,6 +617,8 @@ private:
     // while not in use; the probe's thread goes before the index does.
     bool m_serviceWanted = false;
     QString m_serviceWhy; // why the last look found it unusable (English, from the pipe client)
+    QString m_serviceVersionSeen; // "0.22.0": the service's version at the last look that reached it
+    bool m_serviceUpdateHintShown = false; // said this run (ServiceUpdate.h)
     ntfs::ServiceState m_serviceState {}; // what the SCM said at the last look (Unknown at first)
     QTimer m_serviceRetry;
     QElapsedTimer m_serviceRetrySince; // the 30 s of frequent tries after start
@@ -780,7 +792,7 @@ private:
     std::vector<std::wstring> m_sharesBuilding; // being read for the first time: told when done
     std::unique_ptr<KeyListener> m_keyListener; // double Ctrl, double clicks for the folder menu
     std::unique_ptr<ServiceKeyListener> m_serviceKeyListener; // destroyed before its target KeyListener
-    int m_keyListenerMode = 0; // 1 double Ctrl, 2 double clicks, 4 drop pie; -1 shutting down
+    int m_keyListenerMode = 0; // 1 double Ctrl, 2 double clicks, 4 drop pie, 16 plain hotkeys relayed; -1 shutting down
     std::unique_ptr<FolderMenu> m_folderMenu; // before the window: its view-model
     QPointer<QQuickWindow> m_folderMenuWindow;
     std::unique_ptr<DropPie> m_dropPie; // before the window: its view-model

@@ -1,5 +1,6 @@
 #include "PluginHotkeys.h"
 #include "HotkeyText.h"
+#include "PlainHotkeys.h"
 
 #include <algorithm>
 #include <utility>
@@ -26,7 +27,7 @@ PluginHotkeys::~PluginHotkeys()
 {
     if (m_window) {
         for (const auto& [id, key] : m_keys)
-            ::UnregisterHotKey(m_window, id);
+            plainkeys::unregisterHotkey(m_window, id);
         ::DestroyWindow(m_window);
     }
 }
@@ -55,7 +56,7 @@ QJsonObject PluginHotkeys::replace(const QString& owner, const QStringList& keys
         wanted.append(allowed(key) ? hotkeys::normalized(key) : QString());
     for (auto it = m_keys.begin(); it != m_keys.end();) {
         if (it->second.owner == owner && !wanted.contains(it->second.normalized)) {
-            ::UnregisterHotKey(m_window, it->first);
+            plainkeys::unregisterHotkey(m_window, it->first);
             it = m_keys.erase(it);
         } else {
             ++it;
@@ -89,7 +90,8 @@ QJsonObject PluginHotkeys::replace(const QString& owner, const QStringList& keys
             m_nextId = m_nextId == 0xBFFF ? 1 : m_nextId + 1;
         const int id = m_nextId;
         m_nextId = m_nextId == 0xBFFF ? 1 : m_nextId + 1;
-        if (!m_window || !::RegisterHotKey(m_window, id, modifiers, vk)) {
+        // F1 or PrintScreen alone: also over administrators' windows (#243).
+        if (!m_window || !plainkeys::registerHotkey(m_window, id, modifiers, vk)) {
             errors.insert(keys[i], int(m_window ? ::GetLastError() : ERROR_INVALID_WINDOW_HANDLE));
         } else {
             m_keys.emplace(id, Key {owner, keys[i], wanted[i]});

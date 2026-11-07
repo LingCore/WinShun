@@ -1,0 +1,11 @@
+18:24:00.487 quit installed WinShun
+18:24:25.384 WinShun left: 0 
+18:24:27.391 harness up: True
+18:24:27.418 stage pid 27196
+18:24:28.412 capture plugin: 25948
+18:24:42.635 sender done: True
+18:24:42.644 quit stage
+18:24:46.902 harness cleaned: True
+18:24:46.923 installed WinShun restarted
+18:24:49.955 autostart task unchanged: True
+18:24:49.966 lock released; run dir F:\电脑便捷工具\build\issue243\probe\e2e-2d154c5b
