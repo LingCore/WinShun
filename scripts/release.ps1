@@ -39,6 +39,19 @@ $tag = "v$version"
 $notes = Join-Path $root "docs\release-notes\$tag.md"
 if ($Publish -and -not (Test-Path $notes)) { throw "Write the release notes first: $notes" }
 Write-Host "WinShun $version"
+if ($Publish) {
+    $releaseCommit = (git -C $root rev-parse HEAD).Trim()
+    if ($LASTEXITCODE) { throw 'Could not read the release commit.' }
+    git -C $root diff --quiet HEAD --
+    if ($LASTEXITCODE) { throw 'Commit tracked source changes before publishing.' }
+    $branch = (git -C $root rev-parse --abbrev-ref HEAD).Trim()
+    if ($branch -ne 'main') { throw 'Publish from main so the Scoop update can be committed there.' }
+    $remoteCommit = gh api "repos/LingCore/WinShun/commits/$releaseCommit" --jq .sha
+    if ($LASTEXITCODE -or $remoteCommit -ne $releaseCommit) { throw 'Push the release commit before publishing.' }
+    $existingTags = gh api repos/LingCore/WinShun/releases --paginate --jq '.[].tag_name'
+    if ($LASTEXITCODE) { throw 'Could not check existing releases.' }
+    if ($tag -in $existingTags) { throw "Release $tag already exists. Inspect it before continuing." }
+}
 
 # build.ps1 -Deploy replaces dist\WinShun, which a running copy holds on to.
 $running = Get-Process WinShun -ErrorAction SilentlyContinue | Where-Object {
@@ -138,8 +151,35 @@ Set-Content $sums ($lines -join "`n") -Encoding ascii -NoNewline
 Get-Content $sums
 
 if ($Publish) {
-    gh release create $tag $setup $portable $offlineSetup $ocrPackage $sums --repo LingCore/WinShun --title "Win顺 $version" --notes-file $notes --target main
+    if ((git -C $root rev-parse HEAD).Trim() -ne $releaseCommit) { throw 'The release commit changed during the build.' }
+    git -C $root diff --quiet HEAD --
+    if ($LASTEXITCODE) { throw 'Tracked source files changed during the build.' }
+    $assets = @($setup, $portable, $offlineSetup, $ocrPackage, $sums)
+    gh release create $tag @assets --repo LingCore/WinShun --title "Win顺 $version" --notes-file $notes --target $releaseCommit --draft
     if ($LASTEXITCODE) { throw 'gh release create failed' }
+    $draftJson = gh release view $tag --repo LingCore/WinShun --json isDraft,targetCommitish,assets
+    if ($LASTEXITCODE) { throw 'Could not inspect the uploaded draft.' }
+    $draft = $draftJson | ConvertFrom-Json
+    if (-not $draft.isDraft -or $draft.targetCommitish -ne $releaseCommit -or $draft.assets.Count -ne $assets.Count) {
+        throw 'Draft identity or attachment count does not match the verified build.'
+    }
+    foreach ($file in $assets) {
+        $localFile = Get-Item -LiteralPath $file
+        $remoteFile = @($draft.assets | Where-Object { $_.name -eq $localFile.Name })
+        $digest = 'sha256:' + (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($remoteFile.Count -ne 1 -or $remoteFile[0].size -ne $localFile.Length -or $remoteFile[0].digest -ne $digest) {
+            throw "Draft attachment failed size/SHA256 verification: $($localFile.Name)"
+        }
+    }
+    gh release edit $tag --repo LingCore/WinShun --draft=false --latest
+    if ($LASTEXITCODE) { throw 'Publishing the verified draft failed.' }
+    $latestJson = gh api repos/LingCore/WinShun/releases/latest
+    if ($LASTEXITCODE) { throw 'Could not verify the public release.' }
+    $latest = $latestJson | ConvertFrom-Json
+    $tagCommit = gh api "repos/LingCore/WinShun/git/ref/tags/$tag" --jq .object.sha
+    if ($LASTEXITCODE -or $latest.tag_name -ne $tag -or $latest.draft -or $tagCommit -ne $releaseCommit) {
+        throw 'Public release or tag does not match the verified commit.'
+    }
     Write-Host "Published $tag"
 
     # The Scoop bucket (bucket\winshun.json, `scoop bucket add winshun
