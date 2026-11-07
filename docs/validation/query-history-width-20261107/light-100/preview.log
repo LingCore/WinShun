@@ -1,0 +1,45 @@
+preparing
+making the application
+loading the font
+ok: production search window loads:
+ok: history and type controls exist
+ok: default keeps separate All and Files tabs
+ok: default Tab still reaches Files
+ok: merged All keeps the type strip visible
+ok: merged All finds both files and applications, with the application first
+ok: a document chip filters actual search results
+ok: clearing the last chip restores applications and files
+ok: merged Tab skips the redundant Files scope
+ok: merged Tab still reaches enabled content search
+ok: Shift+Tab returns from content to merged All
+ok: holding Ctrl exposes type prefixes
+FAILED: prefix hints preserve chip widths
+ok: capture merged type prefixes
+ok: releasing Ctrl restores type names
+ok: folder chip remains available
+ok: Ctrl+Up recalls the latest complete query
+ok: older query preserves case, spacing, quotes and prefix
+ok: Ctrl+Down restores unfinished input
+ok: configured Alt+Up recalls history
+ok: disabled history shortcut leaves input alone
+ok: native history popup is available
+ok: history popup is cloaked before opening
+ok: history button opens browsable query list
+ok: short query history shrinks to its content
+ok: capture the history list
+ok: long query history grows within the width limit while open
+ok: capture long history entries
+ok: open query history follows a narrower search bar
+ok: history width changes preserve screen edge clearance
+ok: capture narrow history popup
+ok: removing the longest history entry shrinks the open popup
+ok: popup arrows and Enter recall the selected query
+ok: Delete removes only the selected query
+ok: Escape closes only the history popup
+ok: full panel uses the same history-enabled search field
+ok: history recall also works in the full panel
+ok: full-panel recall also restores its draft
+ok: capture merged full-panel filters
+ok: clearing history is not undone when the search window hides
+ok: history disabled hides the control and saves no queries
+ok: search probes never activate the native window

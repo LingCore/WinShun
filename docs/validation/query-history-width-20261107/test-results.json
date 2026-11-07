@@ -1,0 +1,10 @@
+[
+  {
+    "exitCode": 4,
+    "scenario": "light-100"
+  },
+  {
+    "exitCode": 4,
+    "scenario": "dark-150"
+  }
+]

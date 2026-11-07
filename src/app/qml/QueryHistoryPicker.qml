@@ -60,10 +60,9 @@ Item {
             function close() { menu.hide(); tip.target = null }
             function open(anchor) {
                 const point = anchor.mapToGlobal(0, anchor.height + 6)
+                menu.anchor = anchor
+                menu.origin = point
                 menu.area = picker.launcher.screenArea(point)
-                menu.width = Math.min(440, Math.max(240, menu.area.width - 16))
-                menu.x = Math.max(menu.area.x + 8, Math.min(point.x, menu.area.x + menu.area.width - menu.width - 8))
-                menu.y = Math.max(menu.area.y + 8, Math.min(point.y, menu.area.y + menu.area.height - menu.height - 8))
                 list.currentIndex = list.count > 0 ? 0 : -1
                 picker.launcher.prepareMenuWindow(menu)
                 menu.show()
@@ -98,11 +97,26 @@ Item {
                 transientParent: picker.Window.window
                 flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
                 color: Theme.menuBackground
+                property Item anchor: null
+                property point origin
                 property rect area
                 readonly property real dpr: Screen.devicePixelRatio
-                width: 440
+                readonly property real naturalWidth: Math.max(240, measure.implicitWidth + 68,
+                    heading.implicitWidth + 28, list.count === 0 ? emptyLabel.implicitWidth + 28 : 0)
+                width: Math.max(1, Math.floor(Math.min(Math.ceil(naturalWidth), 440,
+                    anchor ? anchor.width : 440, area.width > 0 ? area.width - 16 : 440)))
                 height: Math.min(440, 48 + Math.max(1, list.count) * 38, area.height > 0 ? area.height - 16 : 440)
+                x: Math.max(area.x + 8, Math.min(origin.x, area.x + area.width - width - 8))
+                y: Math.max(area.y + 8, Math.min(origin.y, area.y + area.height - height - 8))
                 Text {
+                    id: measure
+                    visible: false
+                    text: picker.launcher.queryHistory.join("\n")
+                    textFormat: Text.PlainText
+                    font.pixelSize: Theme.fontBody
+                }
+                Text {
+                    id: heading
                     x: 14; y: 12
                     text: qsTr("搜索历史 · %1").arg(list.count)
                     color: Theme.subtext
@@ -152,6 +166,7 @@ Item {
                     ListScrollBar { flickable: list; anchors.right: parent.right; height: parent.height; dpr: menu.dpr }
                 }
                 Text {
+                    id: emptyLabel
                     anchors.centerIn: list; visible: list.count === 0
                     text: qsTr("还没有搜索记录")
                     color: Theme.faint; font.pixelSize: Theme.fontBody

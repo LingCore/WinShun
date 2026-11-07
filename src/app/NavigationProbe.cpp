@@ -901,7 +901,29 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
             QMetaObject::invokeMethod(button, "clicked");
             settle(popup);
             check(popup->isVisible(), u"history button opens browsable query list"_s);
+            const int shortWidth = popup->width();
+            check(shortWidth >= 240 && shortWidth < 440, u"short query history shrinks to its content"_s);
             check(popup->grabWindow().save(output.filePath(u"search-history.png"_s)), u"capture the history list"_s);
+            launcher.setQuery(u"查询包含很长的文件名、完整文件夹路径，以及需要省略显示的多组搜索条件 "_s.repeated(4));
+            launcher.rememberQuery();
+            settle(popup);
+            check(popup->isVisible() && popup->width() > shortWidth && popup->width() <= 440,
+                u"long query history grows within the width limit while open"_s);
+            check(popup->grabWindow().save(output.filePath(u"search-history-long.png"_s)), u"capture long history entries"_s);
+            const int originalWidth = window->width();
+            window->setWidth(320);
+            settle(popup);
+            auto* anchor = popup->property("anchor").value<QQuickItem*>();
+            check(anchor && anchor->width() <= 320 && popup->width() <= anchor->width(),
+                u"open query history follows a narrower search bar"_s);
+            const QRectF area = popup->property("area").toRectF();
+            check(popup->x() >= area.left() + 8 && popup->x() + popup->width() <= area.right() - 8,
+                u"history width changes preserve screen edge clearance"_s);
+            check(popup->grabWindow().save(output.filePath(u"search-history-narrow.png"_s)), u"capture narrow history popup"_s);
+            window->setWidth(originalWidth);
+            launcher.removeQuery(0);
+            settle(popup);
+            check(popup->width() == shortWidth, u"removing the longest history entry shrinks the open popup"_s);
             key(field, Qt::Key_Down);
             key(field, Qt::Key_Return);
             check(!popup->isVisible() && launcher.query() == u":doc \"Annual  Report\"", u"popup arrows and Enter recall the selected query"_s);

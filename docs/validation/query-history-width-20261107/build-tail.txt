@@ -1,0 +1,12 @@
+[777/788] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_themes_tactile_Separator_qml.cpp.obj
+[778/788] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_translations.cpp.obj
+[779/788] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_WinShun_raw_res_0.cpp.obj
+[780/788] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_ocr_component.cpp.obj
+[781/788] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_plugins_sdk.cpp.obj
+[782/788] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_branding.cpp.obj
+[783/788] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_phosphor.cpp.obj
+[784/788] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_themes_tactile_Toggle_qml.cpp.obj
+[785/788] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_themes_tactile_Tray_qml.cpp.obj
+[786/788] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_themes_tactile_WindowBody_qml.cpp.obj
+[787/788] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_themes_tactile_TypeIcon_qml.cpp.obj
+[788/788] Linking CXX executable WinShun.exe
