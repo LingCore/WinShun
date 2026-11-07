@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 
 using namespace Qt::StringLiterals;
 
@@ -205,7 +206,8 @@ extern "C" __declspec(dllexport) int winshunCapturePreview(const wchar_t* appDir
     preview::prepare(args);
     // The preview's exe lives in the plugin folder, while all Qt imports
     // live with the host. Cover every preview engine, as CaptureApp does.
-    qputenv("QML_IMPORT_PATH", (appDir + u"/qml"_s).toUtf8());
+    if (::_wputenv_s(L"QML_IMPORT_PATH", (appDir + u"/qml"_s).toStdWString().c_str()) != 0)
+        return 3;
     QCoreApplication::setLibraryPaths({appDir});
     QCoreApplication::setOrganizationName(u"WinShun"_s);
     QCoreApplication::setApplicationName(u"WinShun"_s);
