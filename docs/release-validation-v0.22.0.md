@@ -54,3 +54,11 @@ e09488a2873affc674fb2eb6dee69cb444a3391478490700d255c876586f7462  WinShun-0.22.0
 3320c6dd725ae6b9ce462814c87a29f4dd681e7dc5e30f0b543e2bc36572fd17  WinShun-0.22.0-x64-offline-setup.exe
 ccb82d77a545f183504edc51e6353370742d0423b71fa1cf7800db919494277e  WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip
 ```
+
+## 公开发布核对
+
+正式 Release `v0.22.0` 于 2026-11-07 02:44:30 UTC 发布，标签指向 `a7696f48028a0a0c898b506deed09846624af050`。先核对草稿的 5 个附件名称、大小与远端 SHA256，再公开为最新正式版。发布后再次核对公开附件和下载回来的校验文件。
+
+Scoop 清单在 Release 公开后以单文件提交 `a8fee31` 更新，相关测试通过，并用公开 `SHA256SUMS.txt` 验证自动更新规则只匹配便携 ZIP。lcstp.com 的安装版与便携版更新接口均已返回 `v0.22.0`，文件名、大小、摘要与正式附件一致。[公开发布记录](validation/release022/public-release.json)
+
+发布完成后清理了本次干净源码副本、1.76 GiB 构建输出、暂存目录和临时检查脚本。交付包集中保存在 `dist/release022`，截图原图与无损海报保存在截图项目的工作目录，验证摘要纳入版本管理。

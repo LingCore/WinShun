@@ -1,0 +1,68 @@
+{
+  "release": "https://github.com/LingCore/WinShun/releases/tag/v0.22.0",
+  "tagCommit": "a7696f48028a0a0c898b506deed09846624af050",
+  "publishedAt": "2026-11-07T02:44:30Z",
+  "assets": [
+    {
+      "digest": "sha256:2f2a8e3938974e912f8ca34eb1cb88e14ddc447d7d1134a62132b6862c8527b8",
+      "name": "SHA256SUMS.txt",
+      "size": 400
+    },
+    {
+      "digest": "sha256:3320c6dd725ae6b9ce462814c87a29f4dd681e7dc5e30f0b543e2bc36572fd17",
+      "name": "WinShun-0.22.0-x64-offline-setup.exe",
+      "size": 40036078
+    },
+    {
+      "digest": "sha256:e09488a2873affc674fb2eb6dee69cb444a3391478490700d255c876586f7462",
+      "name": "WinShun-0.22.0-x64-portable.zip",
+      "size": 43485656
+    },
+    {
+      "digest": "sha256:cded879e2cc60485bb8386067d24cd2f90c2a993778be67c3d8972f6af74cce7",
+      "name": "WinShun-0.22.0-x64-setup.exe",
+      "size": 30724056
+    },
+    {
+      "digest": "sha256:ccb82d77a545f183504edc51e6353370742d0423b71fa1cf7800db919494277e",
+      "name": "WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip",
+      "size": 11802525
+    }
+  ],
+  "updateEndpoints": [
+    {
+      "package": "installer",
+      "tag": "v0.22.0",
+      "asset": {
+        "name": "WinShun-0.22.0-x64-setup.exe",
+        "browser_download_url": "https://github.com/LingCore/WinShun/releases/download/v0.22.0/WinShun-0.22.0-x64-setup.exe",
+        "mirrors": [
+          "https://gh-proxy.com/https://github.com/LingCore/WinShun/releases/download/v0.22.0/WinShun-0.22.0-x64-setup.exe",
+          "https://ghfast.top/https://github.com/LingCore/WinShun/releases/download/v0.22.0/WinShun-0.22.0-x64-setup.exe"
+        ],
+        "size": 30724056,
+        "digest": "sha256:cded879e2cc60485bb8386067d24cd2f90c2a993778be67c3d8972f6af74cce7"
+      }
+    },
+    {
+      "package": "portable",
+      "tag": "v0.22.0",
+      "asset": {
+        "name": "WinShun-0.22.0-x64-portable.zip",
+        "browser_download_url": "https://github.com/LingCore/WinShun/releases/download/v0.22.0/WinShun-0.22.0-x64-portable.zip",
+        "mirrors": [
+          "https://gh-proxy.com/https://github.com/LingCore/WinShun/releases/download/v0.22.0/WinShun-0.22.0-x64-portable.zip",
+          "https://ghfast.top/https://github.com/LingCore/WinShun/releases/download/v0.22.0/WinShun-0.22.0-x64-portable.zip"
+        ],
+        "size": 43485656,
+        "digest": "sha256:e09488a2873affc674fb2eb6dee69cb444a3391478490700d255c876586f7462"
+      }
+    }
+  ],
+  "scoop": {
+    "version": "0.22.0",
+    "url": "https://github.com/LingCore/WinShun/releases/download/v0.22.0/WinShun-0.22.0-x64-portable.zip",
+    "hash": "e09488a2873affc674fb2eb6dee69cb444a3391478490700d255c876586f7462"
+  },
+  "publicChecksumMatchesLocal": true
+}
