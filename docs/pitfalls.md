@@ -5247,6 +5247,7 @@
 - **原因与适用范围** Windows 环境变量的字节接口受 ANSI 代码页影响。探针将中文索引路径转成 UTF-8 再调用 `qputenv`，在本机代码页下产生乱码，插件库随后读取失败。先前尝试的 `SetEnvironmentVariableW` 只更新进程环境，未同步 Qt 读取的 CRT 环境表，现已改用 `_wputenv_s` 设置和恢复，并断言 Qt 能读回同一路径。夹具索引文件名加入中文，覆盖英文临时根目录上的同类回归。[Microsoft CRT 文档](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/putenv-s-wputenv-s?view=msvc-170)
 - **验证方法** 使用生产插件库读取本地索引并实例化真实卡片，要求数据角色断言通过且日志无 QML 警告。将下载失败后的无效模型值送入卡片，只会增加次生警告，不能替代检查索引是否加载成功。
 - **前台权限** 后台测试进程可能没有初始前台权限。夹具准备阶段短暂连接当前前台线程的输入队列，取得自己窗口的前台后立即断开，随后才运行生产激活逻辑和原有断言。先切换到自己的另一个窗口再最小化后台目标，避免把前台交给其他应用。隐藏启动还可能影响首次 `ShowWindow`，夹具用 `SetWindowPos(SWP_SHOWWINDOW)` 并断言可见。禁止在生产激活断言期间保留输入队列连接，避免夹具替生产代码提供额外权限。[Windows 前台权限](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)、[输入队列接口](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-attachthreadinput)
+- **串行验证** 涉及前台、焦点和输入发送的测试与截图应串行执行。本轮并行截图期间粘贴测试失败，结束截图后完整测试连续三次通过。出现类似失败时先保留日志并排除同桌面的输入竞争，再判定生产逻辑问题。
 
 ## 从搜索面板回到小框，框下多出一截空白（2026-11-06）
 

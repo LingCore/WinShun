@@ -22,6 +22,8 @@
 
 原图按 150% 或 200% 真实渲染，采用 D3D11 和临时配置。16 张功能海报及封面沿用品牌模板，1440×1440、JPEG 质量 96、关闭色度抽样。README 使用包含“关注我”的封面，功能海报按功能分组放在截图文档，以 `width="49%"` 两列排列。海报的不可变图片提交为 `51d1a60cf02b30509206116878c3d2e375b33e6d`。原图与无损海报保存在忽略的 `tools/screenshots/work/release022/`，来源哈希与导出信息已归档。[截图规格](validation/release022/screenshot-check.json)、[二进制来源](validation/release022/capture.json)
 
+推送后在 GitHub 实际页面检查了新海报并排显示。16 张功能图均加载为 1440 像素原图且保留 `49%` 宽度，README 的图片内容为图标和新版封面。
+
 ## 插件库同步
 
 依据 CMake File API 的目标源码与递归依赖，逐一对比已发布源码提交，包含编译进去的共享界面和核心代码。全部原生包还使用主程序的版本资源。9 个插件均升级并从干净提交构建，实际 `.wsplugin` 归档通过官方包白名单检查。下载回来的公开归档逐文件匹配当前构建内容，发布的归档字节作为本地交付版本保存。[源码核对](validation/release022/plugin-source-audit.json)、[归档核对](validation/release022/plugin-package-check.json)
