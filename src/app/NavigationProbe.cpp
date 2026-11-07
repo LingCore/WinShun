@@ -713,7 +713,7 @@ bool checkPluginReviewSettings(QQuickWindow* window, SettingsEditor* editor, con
     check(installedVersion() == u"1.1.0", u"confirmed update reaches the installed catalog"_s);
     // Read a local index through the production gallery. Preview sample rows
     // cannot prove that new model roles reach the actual delegate.
-    const QString indexPath = temporary.filePath(u"index.json"_s);
+    const QString indexPath = temporary.filePath(u"插件库索引.json"_s);
     QFile indexFile(indexPath);
     if (!indexFile.open(QIODevice::WriteOnly)) return false;
     indexFile.write(QJsonDocument(QJsonObject {{u"schema"_s, 1}, {u"plugins"_s, QJsonArray {QJsonObject {
@@ -723,10 +723,15 @@ bool checkPluginReviewSettings(QQuickWindow* window, SettingsEditor* editor, con
         {u"review"_s, u"unreviewed-native"_s}, {u"url"_s, temporary.filePath(u"unused.wsplugin"_s)},
         {u"size"_s, 1}, {u"sha256"_s, QString(64, u'a')}}}}}).toJson());
     indexFile.close();
-    const QByteArray oldIndex = qgetenv("WINSHUN_PLUGIN_INDEX");
+    const std::wstring oldIndex = qEnvironmentVariable("WINSHUN_PLUGIN_INDEX").toStdWString();
     const bool hadIndex = qEnvironmentVariableIsSet("WINSHUN_PLUGIN_INDEX");
-    qputenv("WINSHUN_PLUGIN_INDEX", indexPath.toUtf8());
-    const auto restoreIndex = qScopeGuard([&] { if (hadIndex) qputenv("WINSHUN_PLUGIN_INDEX", oldIndex); else qunsetenv("WINSHUN_PLUGIN_INDEX"); });
+    // qputenv interprets bytes in the Windows ANSI code page. Keep the local
+    // index path Unicode even when that code page cannot represent its name.
+    check(::SetEnvironmentVariableW(L"WINSHUN_PLUGIN_INDEX", indexPath.toStdWString().c_str()),
+        u"configure a Unicode local plugin index"_s);
+    const auto restoreIndex = qScopeGuard([&] {
+        ::SetEnvironmentVariableW(L"WINSHUN_PLUGIN_INDEX", hadIndex ? oldIndex.c_str() : nullptr);
+    });
     Settings gallerySettings;
     SettingsEditor galleryEditor(gallerySettings, u"software"_s);
     galleryEditor.plugins()->setHost(&host);

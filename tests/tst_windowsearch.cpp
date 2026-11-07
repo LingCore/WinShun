@@ -178,8 +178,9 @@ private slots:
         QVERIFY(target != windows.end());
         QCOMPARE(windowsearch::activate(*target), windowsearch::Activation::Switched);
         QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), second, 1000);
-        ::ShowWindow(second, SW_MINIMIZE);
         QVERIFY(::SetForegroundWindow(first));
+        QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), first, 1000);
+        ::ShowWindow(second, SW_MINIMIZE);
         QCOMPARE(windowsearch::activate(*target), windowsearch::Activation::Switched);
         QTRY_VERIFY_WITH_TIMEOUT(!::IsIconic(second), 1000);
         QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), second, 1000);
