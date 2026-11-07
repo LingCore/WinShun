@@ -1,0 +1,49 @@
+preparing
+making the application
+loading the font
+starting (dark 0, scale 1)
+platform windows, plugins F:/电脑便捷工具/build/ui-preview/plugins, qml F:/电脑便捷工具/build/ui-preview/qml, library paths C:/Qt/6.12.0/msvc2022_64/plugins; F:/电脑便捷工具/build/ui-preview/plugins; F:/电脑便捷工具/build/ui-preview
+font 'Alibaba PuHuiTi 3.0' -> 'Alibaba PuHuiTi 3.0' 24px: ascent 25.4375, descent 8.15625, height 33.5938, line spacing 33.5938, hinting 2
+loading SettingsWindow.qml
+showing 760x720 (dpr 1), active 0
+ok: doubleTapActionPicker is visible
+ok: doubleTapActionPicker uses the theme input surface
+ok: doubleTapActionPicker has no nested native text-field background
+ok: doubleTapActionPicker preserves twelve-pixel text alignment
+ok: doubleTapActionPicker shows keyboard focus on the whole field
+saved F:/电脑便捷工具/build/liquid-controls-audit-20261107/english-760/doubleTapActionPicker-focused.png 760x720
+ok: doubleTapActionPicker focused captured
+ok: doubleTapActionPicker uses the theme's disabled appearance
+saved F:/电脑便捷工具/build/liquid-controls-audit-20261107/english-760/doubleTapActionPicker-disabled.png 760x720
+ok: doubleTapActionPicker disabled captured
+ok: doubleTapActionPicker opens
+ok: doubleTapActionPicker retains its field focus while the menu is open
+ok: doubleTapActionPicker follows the corner setting
+ok: doubleTapActionPicker leaves a gap beside its control
+ok: doubleTapActionPicker keeps rows inside the menu frame
+ok: doubleTapActionPicker has no rectangular overlay around the list
+ok: doubleTapActionPicker has no rectangular overlay around the list
+ok: doubleTapActionPicker fits its highlighted row
+saved F:/电脑便捷工具/build/liquid-controls-audit-20261107/english-760/doubleTapActionPicker.png 760x720
+ok: doubleTapActionPicker captured
+ok: uiFontPicker is visible
+ok: uiFontPicker uses the theme input surface
+ok: uiFontPicker has no nested native text-field background
+ok: uiFontPicker preserves twelve-pixel text alignment
+ok: uiFontPicker shows keyboard focus on the whole field
+saved F:/电脑便捷工具/build/liquid-controls-audit-20261107/english-760/uiFontPicker-focused.png 760x720
+ok: uiFontPicker focused captured
+ok: uiFontPicker uses the theme's disabled appearance
+saved F:/电脑便捷工具/build/liquid-controls-audit-20261107/english-760/uiFontPicker-disabled.png 760x720
+ok: uiFontPicker disabled captured
+ok: uiFontPicker opens
+ok: uiFontPicker retains its field focus while the menu is open
+ok: uiFontPicker follows the corner setting
+ok: uiFontPicker leaves a gap beside its control
+ok: uiFontPicker keeps rows inside the menu frame
+ok: uiFontPicker has no rectangular overlay around the list
+ok: uiFontPicker has no rectangular overlay around the list
+ok: uiFontPicker fits its highlighted row
+saved F:/电脑便捷工具/build/liquid-controls-audit-20261107/english-760/uiFontPicker.png 760x720
+ok: uiFontPicker captured
+0 warning(s)

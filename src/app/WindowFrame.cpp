@@ -103,15 +103,18 @@ struct WindowFrame::Hook {
                     ::IntersectRect(&rect, &window, &info.rcWork);
             }
             return 0;
-        case WM_NCACTIVATE:
+        case WM_NCACTIVATE: {
             // DWM learns from the default handling whether the frame is
             // active, which the Mica backdrop depends on; Qt keeps the
             // message from it for a frameless window. -1: nothing to repaint.
             // The frame's dark mode too, in case Qt has set it back (see
-            // win::setDarkFrame). Not activated, it looks active all the same.
+            // win::setDarkFrame). Acrylic and non-activating windows keep the
+            // visual frame state only; Qt and WM_ACTIVATE retain real focus.
             ::DefSubclassProc(hwnd, message, wParam, lParam);
             win::setDarkFrame(self->m_window, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
-            return ::DefWindowProcW(hwnd, message, self->m_noActivate ? TRUE : wParam, -1);
+            const LRESULT result = ::DefWindowProcW(hwnd, message, win::backdropFrameActive(hwnd, self->m_noActivate || wParam), -1);
+            return wParam ? result : TRUE; // always let another window receive activation
+        }
         case WM_MOUSEACTIVATE:
         case WM_POINTERACTIVATE: // touch and pen
             if (self->m_noActivate)
@@ -327,7 +330,7 @@ void WindowFrame::setNoActivate(bool on)
     const LONG_PTR exStyle = ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
     ::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, on ? exStyle | WS_EX_NOACTIVATE : exStyle & ~WS_EX_NOACTIVATE);
     // The frame drawn as active (see WM_NCACTIVATE above), or as it is again.
-    ::DefWindowProcW(hwnd, WM_NCACTIVATE, on || ::GetForegroundWindow() == hwnd, -1);
+    ::DefWindowProcW(hwnd, WM_NCACTIVATE, win::backdropFrameActive(hwnd, on || ::GetForegroundWindow() == hwnd), -1);
 }
 
 void WindowFrame::addDragArea(QQuickItem* item)

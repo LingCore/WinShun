@@ -1,6 +1,7 @@
 #include "SettingsEditor.h"
 #include "DoubleTapAction.h"
 #include "UiFont.h"
+#include "SystemTheme.h"
 
 #include "HealthMonitor.h"
 #include "PreviewShortcut.h"
@@ -971,6 +972,36 @@ void SettingsEditor::setTransparency(const QString& transparency)
     if (m_settings.transparency == transparency)
         return;
     m_settings.transparency = transparency;
+    commit();
+}
+
+void SettingsEditor::setGlassTransparency(int value)
+{
+    value = std::clamp(value, 0, 100);
+    if (m_settings.glassTransparency == value) return;
+    m_settings.glassTransparency = value;
+    commit();
+}
+
+void SettingsEditor::setGlassClarity(int value)
+{
+    value = std::clamp(value, 0, 100);
+    if (m_settings.glassClarity == value) return;
+    m_settings.glassClarity = value;
+    commit();
+}
+
+void SettingsEditor::previewGlassAppearance(int transparency, int clarity)
+{
+    SystemTheme::setGlassAppearance(transparency, clarity);
+}
+
+void SettingsEditor::resetGlassAppearance()
+{
+    const Settings defaults = Settings::defaults();
+    m_settings.glassTransparency = defaults.glassTransparency;
+    m_settings.glassClarity = defaults.glassClarity;
+    SystemTheme::setGlassAppearance(m_settings.glassTransparency, m_settings.glassClarity);
     commit();
 }
 

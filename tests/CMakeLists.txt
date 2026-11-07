@@ -102,6 +102,18 @@ add_test(NAME tst_pluginconfirm COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_pluginconfirm PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# Combo menus share the theme frame, corner setting, inner padding and control gap.
+foreach(combo_style IN ITEMS fluent brand tactile liquid)
+    foreach(combo_corners IN ITEMS round square)
+        set(combo_test "tst_combopopup_${combo_style}_${combo_corners}")
+        add_test(NAME ${combo_test} COMMAND $<TARGET_FILE:WinShun>
+            --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/${combo_test}" --combo-popup
+            --style ${combo_style} --corners ${combo_corners} --dark --scale 1.5 --renderer d3d11)
+        set_tests_properties(${combo_test} PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endforeach()
+endforeach()
+
 # #235: the fourth style is reachable, saved and keyboard-operable in the
 # actual settings view. Controls also run against the production launcher.
 foreach(liquid_mode IN ITEMS light dark square)
@@ -119,6 +131,17 @@ foreach(liquid_mode IN ITEMS light dark square)
     set_tests_properties(tst_liquid_buttons_${liquid_mode} tst_liquid_picker_${liquid_mode} PROPERTIES
         RUN_SERIAL TRUE TIMEOUT 90
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+endforeach()
+
+foreach(glass_mode IN ITEMS light dark_english)
+    set(glass_args --style liquid --renderer d3d11)
+    if(glass_mode STREQUAL "dark_english")
+        list(APPEND glass_args --dark --english --scale 1.5)
+    endif()
+    add_test(NAME tst_glass_controls_${glass_mode} COMMAND $<TARGET_FILE:WinShun>
+        --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/glass-controls-${glass_mode}" --glass-controls ${glass_args})
+    set_tests_properties(tst_glass_controls_${glass_mode} PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;QT_PLUGIN_PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>/../plugins")
 endforeach()
 
 # The screenshot hotkey row and its 按键一览 entry follow the capture plugin's state.

@@ -293,6 +293,7 @@ void DisplayReplica::applyState(const QJsonObject& object)
     SystemTheme::setUiSize(object.value(u"uiSize"_s).toString());
     SystemTheme::setRoundedCorners(object.value(u"rounded"_s).toBool(true));
     SystemTheme::setUiStyle(object.value(u"uiStyle"_s).toString());
+    SystemTheme::setGlassAppearance(object.value(u"glassTransparency"_s).toInt(50), object.value(u"glassClarity"_s).toInt(50));
     SystemTheme::setBackdropOn(object.value(u"backdrop"_s).toBool());
     const QString language = object.value(u"language"_s).toString();
     if (m_language != language) {

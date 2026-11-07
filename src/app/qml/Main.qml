@@ -453,7 +453,7 @@ Window {
     }
     minimumHeight: panel ? 360 : 0
     // See-through to Mica, as the settings window (see there).
-    color: Theme.backdrop && SystemTheme.materials && window.active ? "transparent" : Theme.background
+    color: Theme.backdrop && SystemTheme.materials && (window.active || SystemTheme.uiStyle === "liquid") ? "transparent" : Theme.background
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     title: qsTr("Win顺")
 

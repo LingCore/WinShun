@@ -54,6 +54,128 @@ class AppearanceTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void inactiveBackdrop()
+    {
+        if (!win::backdropSupported()) QSKIP("Native backdrop needs Windows 11 22H2");
+        const auto restore = qScopeGuard([] { win::setBackdropMaterial(win::BackdropMaterial::Mica); });
+        QQuickWindow window;
+        QQuickWindow plain;
+        window.setFlags(Qt::Window | Qt::FramelessWindowHint);
+        window.setColor(Qt::transparent);
+        const HWND hwnd = reinterpret_cast<HWND>(window.winId());
+        const HWND other = reinterpret_cast<HWND>(plain.winId());
+        const HWND foreground = ::GetForegroundWindow();
+        win::setBackdropMaterial(win::BackdropMaterial::Acrylic);
+        QVERIFY(!win::backdropFrameActive(hwnd, false)); // unregistered windows stay opaque
+        win::styleFramelessWindow(&window, true);
+        QCOMPARE(win::backdropFrameActive(hwnd, false), win::materialsEnabled());
+        QVERIFY(win::backdropFrameActive(hwnd, true));
+        QVERIFY(!win::backdropFrameActive(other, false));
+        int material = 0;
+        QCOMPARE(::DwmGetWindowAttribute(hwnd, 38, &material, sizeof material), S_OK);
+        QCOMPARE(material, 3);
+        win::setBackdropMaterial(win::BackdropMaterial::Mica);
+        QVERIFY(!win::backdropFrameActive(hwnd, false));
+        QCOMPARE(::DwmGetWindowAttribute(hwnd, 38, &material, sizeof material), S_OK);
+        QCOMPARE(material, 2);
+        win::setBackdropMaterial(win::BackdropMaterial::Acrylic);
+        QCOMPARE(win::backdropFrameActive(hwnd, false), win::materialsEnabled());
+        QCOMPARE(::GetForegroundWindow(), foreground);
+        QVERIFY(!window.isActive()); // visual activation never grants input focus
+        win::styleFramelessWindow(&window, false);
+        QVERIFY(!win::backdropFrameActive(hwnd, false));
+    }
+
+    void disabledFields_data()
+    {
+        QTest::addColumn<QString>("file");
+        QTest::newRow("input") << u"InputBox.qml"_s;
+        QTest::newRow("toggle") << u"ToggleSwitch.qml"_s;
+    }
+
+    void disabledFields()
+    {
+        QFETCH(QString, file);
+        QTest::failOnWarning();
+        const auto restore = qScopeGuard([] { SystemTheme::setUiStyle(u"fluent"_s); });
+        SystemTheme::setUiStyle(u"liquid"_s);
+        QQmlEngine engine;
+        {
+            QQmlComponent component(&engine, qmlFolder().resolved(QUrl(file)));
+            std::unique_ptr<QObject> object(component.create());
+            QVERIFY2(object, qPrintable(component.errorString()));
+            auto* item = qobject_cast<QQuickItem*>(object.get());
+            QVERIFY(item);
+            if (file.startsWith(u"Input")) object->setProperty("text", u"Saved value"_s);
+            else object->setProperty("checked", true);
+            QCOMPARE(item->opacity(), 1.0);
+            item->setEnabled(false);
+            QTRY_VERIFY_WITH_TIMEOUT(item->opacity() < 1.0, 500);
+            if (file.startsWith(u"Input")) QCOMPARE(object->property("text").toString(), u"Saved value"_s);
+            else QVERIFY(object->property("checked").toBool());
+            item->setEnabled(true);
+            QTRY_COMPARE_WITH_TIMEOUT(item->opacity(), 1.0, 500);
+        }
+    }
+
+    void glassAppearance()
+    {
+        QTest::failOnWarning();
+        QTemporaryDir profile;
+        Settings::useProfile(profile.path());
+        Settings original = Settings::defaults();
+        QCOMPARE(original.glassTransparency, 50);
+        QCOMPARE(original.glassClarity, 50);
+        original.glassTransparency = 81;
+        original.glassClarity = 23;
+        QVERIFY(original.saveChecked());
+        Settings restored;
+        restored.load();
+        QCOMPARE(restored.glassTransparency, 81);
+        QCOMPARE(restored.glassClarity, 23);
+        QSettings ini(Settings::filePath(), QSettings::IniFormat);
+        ini.setValue(u"Appearance/GlassTransparency"_s, -30);
+        ini.setValue(u"Appearance/GlassClarity"_s, 150);
+        ini.sync();
+        restored.load();
+        QCOMPARE(restored.glassTransparency, 0);
+        QCOMPARE(restored.glassClarity, 100);
+        const auto cleanup = qScopeGuard([] {
+            SystemTheme::setGlassAppearance(50, 50);
+            SystemTheme::setBackdropAvailable(false);
+        });
+        SystemTheme::setBackdropAvailable(true);
+        SystemTheme::setBackdropOn(true);
+        QQmlEngine engine;
+        QQmlComponent source(&engine, qmlFolder().resolved(QUrl(u"themes/liquid/Look.qml"_s)));
+        std::unique_ptr<QObject> look(source.create());
+        QVERIFY2(look, qPrintable(source.errorString()));
+        const QColor ink = look->property("text").value<QColor>();
+        SystemTheme::setGlassAppearance(0, 50);
+        QCOMPARE(look->property("windowTint").value<QColor>().alphaF(), 1.0);
+        SystemTheme::setGlassAppearance(50, 50);
+        const auto defaultTint = look->property("windowTint").value<QColor>();
+        QVERIFY(defaultTint.alphaF() > 0 && defaultTint.alphaF() < 1);
+        const auto defaultCard = look->property("cardFill").value<QColor>();
+        SystemTheme::setGlassAppearance(100, 50);
+        QCOMPARE(look->property("windowTint").value<QColor>().alphaF(), 0.0);
+        QCOMPARE(look->property("cardFill").value<QColor>(), defaultCard);
+        if (win::materialsEnabled()) {
+            SystemTheme::setGlassAppearance(100, 0);
+            const auto softCard = look->property("cardFill").value<QColor>();
+            SystemTheme::setGlassAppearance(100, 100);
+            QVERIFY(softCard.alphaF() < defaultCard.alphaF());
+            QCOMPARE(look->property("cardFill").value<QColor>().alphaF(), 1.0);
+        }
+        QCOMPARE(look->property("text").value<QColor>(), ink);
+        SystemTheme::setBackdropOn(false);
+        SystemTheme::setGlassAppearance(0, 0);
+        const auto solid = look->property("cardFill").value<QColor>();
+        SystemTheme::setGlassAppearance(100, 100);
+        QCOMPARE(look->property("cardFill").value<QColor>(), solid);
+        QCOMPARE(solid.alphaF(), 1.0);
+    }
+
     void styleRoundTrip()
     {
         QTemporaryDir profile;

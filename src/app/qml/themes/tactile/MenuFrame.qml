@@ -26,9 +26,9 @@ Item {
             RectangularShadow {
                 anchors.fill: parent
                 radius: menu.radius
-                offset.y: 8
-                spread: -6
-                blur: 21.6 // CSS 18 x 1.2
+                offset.y: 3
+                spread: -2
+                blur: 12
                 color: (menu.look?.menuShadow ?? Qt.rgba(0, 0, 0, 0))
             }
             Rectangle {

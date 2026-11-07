@@ -147,8 +147,8 @@ QtObject {
     readonly property color cardHighlight: dark ? white(0.075) : white(1)
     readonly property color cardShadowNear: dark ? black(0.18) : warm(0.05)
     readonly property color cardShadow: dark ? black(0.26) : warm(0.09)
-    readonly property color menuShadowNear: dark ? black(0.20) : warm(0.05)
-    readonly property color menuShadow: dark ? black(0.42) : warm(0.16)
+    readonly property color menuShadowNear: dark ? black(0.06) : warm(0.025)
+    readonly property color menuShadow: dark ? black(0.18) : warm(0.09)
     readonly property color rowHover: dark ? white(0.03) : warm(0.03)
     // a settings plate: flat (it cannot be clicked), a step lighter than the panel
     readonly property color plate: dark ? "#333336" : "#FCFAF7"

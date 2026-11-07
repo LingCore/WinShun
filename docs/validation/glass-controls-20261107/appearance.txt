@@ -1,0 +1,13 @@
+Test project F:/电脑便捷工具/build/ui-preview
+    Start 100: tst_appearance_1
+1/4 Test #100: tst_appearance_1 .................   Passed    0.89 sec
+    Start 101: tst_appearance_1.25
+2/4 Test #101: tst_appearance_1.25 ..............   Passed    0.91 sec
+    Start 102: tst_appearance_1.5
+3/4 Test #102: tst_appearance_1.5 ...............   Passed    0.88 sec
+    Start 103: tst_appearance_2
+4/4 Test #103: tst_appearance_2 .................   Passed    0.85 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Total Test time (real) =   3.53 sec

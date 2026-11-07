@@ -42,7 +42,7 @@ Item {
     activeFocusOnTab: true
 
     property bool dimmed: false // busy for over 150 ms
-    opacity: toggle.busy && toggle.dimmed ? 0.5 : 1
+    opacity: !enabled ? toggleHook.out("disabledOpacity", 0.4) : toggle.busy && toggle.dimmed ? 0.5 : 1
     Behavior on opacity { NumberAnimation { duration: 80 } }
     onBusyChanged: if (!busy) dimmed = false
 

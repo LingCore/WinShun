@@ -719,6 +719,14 @@
         <translation>Transparency effects</translation>
     </message>
     <message>
+        <source>透明程度</source>
+        <translation>Transparency level</translation>
+    </message>
+    <message>
+        <source>卡片清晰度</source>
+        <translation>Card clarity</translation>
+    </message>
+    <message>
         <source>圆角</source>
         <translation>Rounded</translation>
     </message>
@@ -4888,6 +4896,30 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>云母;Mica;毛玻璃;亚克力;半透明;壁纸;transparency</source>
         <translation>Mica;acrylic;frosted glass;translucent;wallpaper;transparency</translation>
+    </message>
+    <message>
+        <source>透明程度</source>
+        <translation>Transparency level</translation>
+    </message>
+    <message>
+        <source>卡片清晰度</source>
+        <translation>Card clarity</translation>
+    </message>
+    <message>
+        <source>越高，窗口背后的颜色越明显；文字和按钮保持清晰</source>
+        <translation>Higher reveals more background colour; text and buttons stay clear</translation>
+    </message>
+    <message>
+        <source>越高，卡片和工具栏的底色越实，更容易阅读</source>
+        <translation>Higher makes cards and toolbars more opaque and easier to read</translation>
+    </message>
+    <message>
+        <source>透明度;通透;玻璃;opacity;transparency;glass</source>
+        <translation>opacity;transparency;glass;透明度;玻璃</translation>
+    </message>
+    <message>
+        <source>清晰度;卡片;玻璃;clarity;surface;glass</source>
+        <translation>clarity;card;surface;glass;清晰度;卡片</translation>
     </message>
     <message>
         <source>需要把“高级”里的界面绘制方式设为“显卡加速”</source>

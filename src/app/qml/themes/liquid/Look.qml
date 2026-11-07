@@ -33,7 +33,16 @@ QtObject {
     readonly property color text: dark ? "#F5F5F5" : "#1A1A1A"
     readonly property color subtext: dark ? "#C5C5C5" : "#525252"
     readonly property color faint: dark ? "#A3A3A3" : "#686868"
-    readonly property color layer: backdrop ? (dark ? Qt.rgba(0.12, 0.12, 0.12, 0.40) : Qt.rgba(1, 1, 1, 0.50))
+    // The midpoint keeps the original light/dark balance; only surfaces move.
+    function backgroundAlpha(base: real): real {
+        const amount = SystemTheme.glassTransparency / 100
+        return amount <= 0.5 ? 1 - (1 - base) * amount * 2 : base * (1 - amount) * 2
+    }
+    function surfaceAlpha(base: real): real {
+        const amount = SystemTheme.glassClarity / 100
+        return amount <= 0.5 ? base * (0.65 + 0.7 * amount) : base + (1 - base) * (amount - 0.5) * 2
+    }
+    readonly property color layer: backdrop ? (dark ? Qt.rgba(0.12, 0.12, 0.12, surfaceAlpha(0.40)) : Qt.rgba(1, 1, 1, surfaceAlpha(0.50)))
                                           : dark ? "#272727" : "#FAFAFA"
     readonly property color layerEdge: dark ? Qt.rgba(0, 0, 0, 0.18) : Qt.rgba(0, 0, 0, 0.06)
     readonly property color divider: dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.07)
@@ -56,7 +65,7 @@ QtObject {
     readonly property color controlPressed: dark ? "#323232" : "#F0F0F0"
     readonly property color controlBorder: dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.14)
     readonly property color inputFocused: dark ? "#252525" : "#FFFFFF"
-    readonly property color cardFill: backdrop ? (dark ? Qt.rgba(0.19, 0.19, 0.19, 0.88) : Qt.rgba(1, 1, 1, 0.82))
+    readonly property color cardFill: backdrop ? (dark ? Qt.rgba(0.19, 0.19, 0.19, surfaceAlpha(0.88)) : Qt.rgba(1, 1, 1, surfaceAlpha(0.82)))
                                              : dark ? "#303030" : "#FFFFFF"
     readonly property color cardBorder: dark ? Qt.rgba(0, 0, 0, 0.18) : Qt.rgba(0, 0, 0, 0.06)
     // Menus need an opaque reading surface, including when over dense text.
@@ -66,7 +75,7 @@ QtObject {
     readonly property color menuShadow: Qt.rgba(0, 0, 0, dark ? 0.30 : 0.16)
     readonly property int menuShadowSpread: 8
 
-    readonly property color windowTint: dark ? Qt.rgba(0.12, 0.12, 0.12, 0.42) : Qt.rgba(0.98, 0.98, 0.98, 0.70)
+    readonly property color windowTint: dark ? Qt.rgba(0.12, 0.12, 0.12, backgroundAlpha(0.42)) : Qt.rgba(0.98, 0.98, 0.98, backgroundAlpha(0.70))
     readonly property color danger: dark ? "#FFABB3" : "#B4232F"
     readonly property color dangerFill: "#B4232F"
     readonly property string iconFont: SystemTheme.iconFont

@@ -85,6 +85,7 @@ ClipboardDisplay::ClipboardDisplay(Clipboard* clipboard, QQuickWindow* window, P
     m_icons.setMaxThreadCount(2);
     m_update.setSingleShot(true);
     connect(&m_update, &QTimer::timeout, this, &ClipboardDisplay::synchronize);
+    SystemTheme::onAppearanceChanged(this, [this] { schedule(); });
     connect(&m_server, &QLocalServer::newConnection, this, &ClipboardDisplay::accept);
     const QMetaMethod schedule = metaObject()->method(metaObject()->indexOfSlot("schedule()"));
     const QMetaObject* meta = clipboard->metaObject();
@@ -367,7 +368,8 @@ void ClipboardDisplay::synchronize()
         {u"room"_s, m_placement->room()}, {u"above"_s, m_placement->above()},
         {u"dark"_s, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark},
         {u"uiSize"_s, SystemTheme::uiSize()}, {u"language"_s, QLocale().name()},
-        {u"rounded"_s, win::roundedCorners()}, {u"uiStyle"_s, SystemTheme::uiStyle()}, {u"backdrop"_s, SystemTheme::backdrop()}});
+        {u"rounded"_s, win::roundedCorners()}, {u"uiStyle"_s, SystemTheme::uiStyle()}, {u"backdrop"_s, SystemTheme::backdrop()},
+        {u"glassTransparency"_s, SystemTheme::glassTransparency()}, {u"glassClarity"_s, SystemTheme::glassClarity()}});
     ClipModel* model = m_clipboard->items();
     const auto roles = model->roleNames();
     std::vector<QJsonObject> rows;

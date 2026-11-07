@@ -277,6 +277,25 @@ private slots:
         QCOMPARE(restored.uiStyle, u"liquid"_s);
     }
 
+    void glassChoices()
+    {
+        for (const QString& key : {u"Appearance/GlassTransparency"_s, u"Appearance/GlassClarity"_s}) {
+            for (const int value : {0, 50, 100}) {
+                State state = defaultState();
+                const Plan plan = makePlan(state, one(key, value), {});
+                QVERIFY2(plan.problems.isEmpty(), qPrintable(problemText(plan)));
+                QVERIFY(plan.result.settings.saveChecked());
+                Settings restored;
+                restored.load();
+                QCOMPARE(key.endsWith(u"Transparency") ? restored.glassTransparency : restored.glassClarity, value);
+            }
+            for (const int value : {-1, 101}) {
+                const Plan plan = makePlan(defaultState(), one(key, value), {});
+                QVERIFY(!plan.problems.isEmpty());
+            }
+        }
+    }
+
     void folderMenuKeepsOne()
     {
         State state = defaultState();

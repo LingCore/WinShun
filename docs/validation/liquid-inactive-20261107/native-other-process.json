@@ -1,0 +1,44 @@
+[
+    {
+        "active": false,
+        "class": "QQuickWindowQmlImpl",
+        "color": "#ffffffff",
+        "dpr": 1.5,
+        "foreground": false,
+        "h": 850,
+        "hwnd": "5771158",
+        "object": "",
+        "title": "WinShun backdrop fixture",
+        "w": 1200,
+        "x": 254,
+        "y": 85
+    },
+    {
+        "active": false,
+        "class": "QQuickWindowQmlImpl",
+        "color": "#ffe8e8e8",
+        "dpr": 1.5,
+        "foreground": false,
+        "h": 100,
+        "hwnd": "727626",
+        "object": "",
+        "title": "Backdrop focus target",
+        "w": 160,
+        "x": 20,
+        "y": 60
+    },
+    {
+        "active": false,
+        "class": "SettingsWindow_QMLTYPE_304",
+        "color": "#00000000",
+        "dpr": 1.5,
+        "foreground": false,
+        "h": 720,
+        "hwnd": "57807018",
+        "object": "",
+        "title": "设置",
+        "w": 920,
+        "x": 393,
+        "y": 149
+    }
+]

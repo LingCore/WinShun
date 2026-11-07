@@ -1,0 +1,18 @@
+preparing
+making the application
+loading the font
+starting (dark 0, scale 1)
+platform windows, plugins F:/电脑便捷工具/build/plugins, qml F:/电脑便捷工具/build/qml, library paths C:/Qt/6.12.0/msvc2022_64/plugins; F:/电脑便捷工具/build/liquid-inactive-20261107/runtime
+font 'Alibaba PuHuiTi 3.0' -> 'Alibaba PuHuiTi 3.0' 24px: ascent 25.4375, descent 8.15625, height 33.5938, line spacing 33.5938, hinting 2
+loading SettingsWindow.qml
+showing 920x720 (dpr 1), active 0
+ok: production settings window is inactive
+ok: liquid inactive background
+ok: liquid transparency off is opaque
+ok: fluent inactive background
+ok: fluent transparency off is opaque
+ok: brand inactive background
+ok: brand transparency off is opaque
+ok: tactile inactive background
+ok: tactile transparency off is opaque
+0 warning(s)

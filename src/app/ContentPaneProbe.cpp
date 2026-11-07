@@ -217,6 +217,20 @@ bool checkContentPane(QQmlEngine* qml, const QDir& output)
     pane->setTab(0);
     check(u"summary_screenshot"_s, snap(u"summary"_s));
     pane->setTab(4);
+    check(u"report_choices_loaded"_s, until([&] { return named(window->contentItem(), u"contentReportScope"_s) != nullptr; }));
+    for (const QString& name : {u"contentReportScope"_s, u"contentReportFormat"_s}) {
+        auto* choice = named(window->contentItem(), name);
+        check(name + u"_themed"_s, choice && choice->property("flat").toBool());
+        if (!choice) continue;
+        auto* content = choice->property("contentItem").value<QQuickItem*>();
+        auto* inner = content ? content->property("background").value<QQuickItem*>() : nullptr;
+        check(name + u"_single_surface"_s, !inner || !inner->isVisible());
+        auto* popup = choice->property("popup").value<QObject*>();
+        check(name + u"_opens"_s, popup && QMetaObject::invokeMethod(popup, "open"));
+        wait(120);
+        check(name + u"_screenshot"_s, snap(name));
+        if (popup) QMetaObject::invokeMethod(popup, "close");
+    }
     pane->prepareReport(false, false, true, true, true);
     check(u"current_report"_s, until([&] { return !pane->reporting() && pane->reportReady(); }));
     auto report = pane->reportSnapshot();

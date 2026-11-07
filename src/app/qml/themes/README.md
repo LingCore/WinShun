@@ -136,10 +136,12 @@ Hook {
 - keySurface / chipSurface：`foreground` `contentOffsetY` `fontWeight` `leadingInset` `iconColor` `disabledOpacity`
   （部件禁用时自己变淡就声明 `readonly property real disabledOpacity: 1`，宿主 `opacity: enabled ? 1 : out("disabledOpacity", 0.45)`）
 - segmented：`segmentX(i)` `segmentWidth(i)` `labelOffsetY(i)` `labelColor(i)` `labelWeight(i)` `leadingInset`
-- searchField / inputField：`textColor` `placeholderColor` `caretColor` `iconColor`（searchField 另有 `leadingInset` `contentOffsetY`）
+- searchField / inputField：`textColor` `placeholderColor` `caretColor` `iconColor`（searchField 另有 `leadingInset` `contentOffsetY`）；inputField 支持 `disabledOpacity`，部件自己处理禁用底色或文字时返回 1，避免宿主再次淡化。
 - keyHint：`foreground` `contentOffsetY`；toggle：`settle()`（宿主行被复用/窗口重新显示时调用；Behavior 里的动画 complete() 停不住，
   做法见 fluent/Toggle.qml：暂时关掉 Behavior 再把属性绑回终值）
 - 部件创建时 `look` 可能还没赋上、退出时可能先被置空：读 look 的绑定都要判空。
+
+下拉选择框统一使用 `ChoiceBox` 和 `ComboPopup`，输入区由 `Theme.inputField` 绘制。可编辑 ComboBox 必须关闭 Qt Basic 自带的内层编辑背景（`flat: true`），否则它会与主题外层叠成两块矩形；保留原生 contentItem，继续使用 Qt 的编辑、选择和校验行为。焦点及菜单展开状态由整框显示，禁用文字颜色和透明度遵循部件输出。需要自定义非编辑文本时，保持左侧 12 px 内距并处理长文本省略。
 
 ### 3.3 宿主读的几何 token（Theme.xxx；Look 缺的退回 fluent）
 `fieldInset` `fieldRadius` `fieldKeyInsetAt(dpr)` `rowInset` `rowRadius` `rowSlide`（ms，0 不滑） `iconInset` `textStart` `actionsInset`

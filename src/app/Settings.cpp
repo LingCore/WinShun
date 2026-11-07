@@ -945,6 +945,13 @@ void Settings::load()
     if (language != u"zh" && language != u"en")
         language = d.language;
     transparency = readOrDefault(s, u"Appearance/Transparency"_s, d.transparency).trimmed().toLower();
+    const auto glassPercent = [&s](const QString& key, int fallback) {
+        bool valid = false;
+        const int value = s.value(key, fallback).toInt(&valid);
+        return valid ? std::clamp(value, 0, 100) : fallback;
+    };
+    glassTransparency = glassPercent(u"Appearance/GlassTransparency"_s, d.glassTransparency);
+    glassClarity = glassPercent(u"Appearance/GlassClarity"_s, d.glassClarity);
     // It used to be a switch: "false" was turned off by hand, "true" was mostly
     // the default written back.
     taskbarIcon = readOrDefault(s, u"Appearance/TaskbarIcon"_s, d.taskbarIcon).trimmed().toLower();
@@ -1289,6 +1296,8 @@ bool Settings::saveChecked() const
     s.setValue(u"Appearance/Theme"_s, theme);
     s.setValue(u"Appearance/Language"_s, language);
     s.setValue(u"Appearance/Transparency"_s, transparency);
+    s.setValue(u"Appearance/GlassTransparency"_s, glassTransparency);
+    s.setValue(u"Appearance/GlassClarity"_s, glassClarity);
     s.setValue(u"Appearance/TaskbarIcon"_s, taskbarIcon);
     s.remove(u"Appearance/SearchLogo"_s); // retired exterior decoration; inline logos are always present
     s.setValue(u"Appearance/UiSize"_s, uiSize);

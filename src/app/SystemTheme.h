@@ -36,6 +36,8 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     Q_PROPERTY(bool backdropSystem READ backdropSystem CONSTANT FINAL)
     // They do (the 透明效果 setting): their surfaces are translucent then.
     Q_PROPERTY(bool backdrop READ backdrop NOTIFY changed FINAL)
+    Q_PROPERTY(int glassTransparency READ glassTransparency NOTIFY changed FINAL)
+    Q_PROPERTY(int glassClarity READ glassClarity NOTIFY changed FINAL)
     // Transparency effects on and no high contrast: otherwise Windows draws
     // no Mica.
     Q_PROPERTY(bool materials READ materials NOTIFY changed FINAL)
@@ -84,6 +86,10 @@ public:
     static void setBackdropAvailable(bool on) { s_backdropAvailable = on; } // before the first window
     static bool backdrop() { return s_backdropAvailable && s_backdropOn; }
     static void setBackdropOn(bool on);
+    static int glassTransparency() { return s_glassTransparency; }
+    static int glassClarity() { return s_glassClarity; }
+    static void setGlassAppearance(int transparency, int clarity);
+    static QMetaObject::Connection onAppearanceChanged(QObject* context, std::function<void()> slot);
     static QString uiSize() { return s_uiSize; }
     static int headerHeight();
     static void setUiSize(const QString& size);
@@ -118,6 +124,8 @@ protected:
 private:
     static inline bool s_backdropAvailable = false;
     static inline bool s_backdropOn = true;
+    static inline int s_glassTransparency = 50;
+    static inline int s_glassClarity = 50;
     static inline QString s_uiSize = QStringLiteral("standard");
     static inline QString s_uiStyle = QStringLiteral("fluent");
     static inline QVariantMap s_nativeLook;

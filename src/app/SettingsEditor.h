@@ -287,6 +287,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY changed FINAL)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY changed FINAL)
     Q_PROPERTY(QString transparency READ transparency WRITE setTransparency NOTIFY changed FINAL)
+    Q_PROPERTY(int glassTransparency READ glassTransparency WRITE setGlassTransparency NOTIFY changed FINAL)
+    Q_PROPERTY(int glassClarity READ glassClarity WRITE setGlassClarity NOTIFY changed FINAL)
     Q_PROPERTY(QString taskbarIcon READ taskbarIcon WRITE setTaskbarIcon NOTIFY changed FINAL) // color | mono
     Q_PROPERTY(QString uiSize READ uiSize WRITE setUiSize NOTIFY changed FINAL) // compact | standard | roomy
     Q_PROPERTY(QString uiFont READ uiFont WRITE setUiFont NOTIFY changed FINAL)
@@ -591,6 +593,12 @@ public:
     void setLanguage(const QString& language);
     QString transparency() const { return m_settings.transparency; }
     void setTransparency(const QString& transparency);
+    int glassTransparency() const { return m_settings.glassTransparency; }
+    int glassClarity() const { return m_settings.glassClarity; }
+    void setGlassTransparency(int value);
+    void setGlassClarity(int value);
+    Q_INVOKABLE void previewGlassAppearance(int transparency, int clarity);
+    Q_INVOKABLE void resetGlassAppearance();
     QString taskbarIcon() const { return m_settings.taskbarIcon; }
     void setTaskbarIcon(const QString& style);
     QString uiSize() const { return m_settings.uiSize; }

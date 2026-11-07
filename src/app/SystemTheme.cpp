@@ -120,6 +120,21 @@ int SystemTheme::headerHeight()
     return uisize::metrics(s_uiSize).header;
 }
 
+void SystemTheme::setGlassAppearance(int transparency, int clarity)
+{
+    transparency = std::clamp(transparency, 0, 100);
+    clarity = std::clamp(clarity, 0, 100);
+    if (s_glassTransparency == transparency && s_glassClarity == clarity) return;
+    s_glassTransparency = transparency;
+    s_glassClarity = clarity;
+    if (s_instance) emit s_instance->changed();
+}
+
+QMetaObject::Connection SystemTheme::onAppearanceChanged(QObject* context, std::function<void()> slot)
+{
+    return s_instance ? QObject::connect(s_instance, &SystemTheme::changed, context, std::move(slot)) : QMetaObject::Connection{};
+}
+
 void SystemTheme::setUiStyle(const QString& style)
 {
     const QString known = style == u"brand" || style == u"tactile" || style == u"liquid" ? style : QStringLiteral("fluent");

@@ -1,0 +1,70 @@
+[0/2] Re-checking globbed directories...
+[1/393] Copying WinShunOcrSearchApp qml sources into build dir
+[2/393] Copying WinShunCaptureApp qml sources into build dir
+[3/393] Copying WinShun qml sources into build dir
+[4/393] Running rcc for resource WinShunOcrSearchApp_raw_qml_0
+[5/393] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_tactile_InputField_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_tactile_InputField_qml.cpp.aotstats
+[6/393] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_InputBox_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_InputBox_qml.cpp.aotstats
+[7/393] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_ToggleSwitch_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_ToggleSwitch_qml.cpp.aotstats
+[8/393] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_brand_InputField_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_brand_InputField_qml.cpp.aotstats
+[9/393] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_InputBox_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_InputBox_qml.cpp.aotstats
+[10/393] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_brand_InputField_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_brand_InputField_qml.cpp.aotstats
+[11/393] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_ToggleSwitch_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_ToggleSwitch_qml.cpp.aotstats
+[12/393] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_tactile_InputField_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_tactile_InputField_qml.cpp.aotstats
+[13/393] Running rcc for resource WinShunCaptureApp_raw_qml_0
+[14/393] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.qt\rcc\qrc_WinShunOcrSearchApp_raw_qml_0.cpp.obj
+[15/393] Automatic MOC and UIC for target WinShun
+[16/392] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_ToggleSwitch_qml.cpp.obj
+[17/392] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_brand_InputField_qml.cpp.obj
+[18/392] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_InputBox_qml.cpp.obj
+[19/392] Running AUTOMOC file extraction for target WinShun
+[20/43] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_tactile_InputField_qml.cpp.obj
+[21/43] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_InputBox_qml.cpp.obj
+[22/43] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_ToggleSwitch_qml.cpp.obj
+[23/43] Running rcc for resource WinShun_raw_qml_0
+[24/43] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_brand_InputField_qml.cpp.obj
+[25/43] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.qt\rcc\qrc_WinShunCaptureApp_raw_qml_0.cpp.obj
+[26/43] Generating .rcc/qmlcache/WinShun_qml_ToggleSwitch_qml.cpp, .rcc/qmlcache/WinShun_qml_ToggleSwitch_qml.cpp.aotstats
+[27/43] Generating .rcc/qmlcache/WinShun_qml_themes_brand_InputField_qml.cpp, .rcc/qmlcache/WinShun_qml_themes_brand_InputField_qml.cpp.aotstats
+[28/43] Generating .rcc/qmlcache/WinShun_qml_themes_tactile_InputField_qml.cpp, .rcc/qmlcache/WinShun_qml_themes_tactile_InputField_qml.cpp.aotstats
+[29/43] Generating .rcc/qmlcache/WinShun_qml_InputBox_qml.cpp, .rcc/qmlcache/WinShun_qml_InputBox_qml.cpp.aotstats
+[30/43] Linking CXX shared library WinShunOcrSearchApp.dll
+[31/43] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_tactile_InputField_qml.cpp.obj
+[32/43] Generating .rcc/qmlcache/WinShun_qml_ChoiceBox_qml.cpp, .rcc/qmlcache/WinShun_qml_ChoiceBox_qml.cpp.aotstats
+[33/43] Linking CXX shared library WinShunCaptureApp.dll
+[34/43] Generating .rcc/qmlcache/WinShun_qml_SettingsWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_SettingsWindow_qml.cpp.aotstats
+[35/43] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_WinShun_raw_qml_0.cpp.obj
+[36/43] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_themes_brand_InputField_qml.cpp.obj
+[37/43] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_themes_tactile_InputField_qml.cpp.obj
+[38/43] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_InputBox_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[39/43] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ChoiceBox_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[40/43] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ToggleSwitch_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[41/43] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_SettingsWindow_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(305) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(305) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[42/43] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+F:\电脑便捷工具\src\app\Preview.cpp(1678): warning C4456: “flick”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\Preview.cpp(1635): note: 参见“flick”的声明
+[43/43] Linking CXX executable WinShun.exe

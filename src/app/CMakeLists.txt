@@ -180,6 +180,9 @@ set(qml_files
     qml/FolderMenuWindow.qml
     qml/MenuPathTip.qml
     qml/FontPicker.qml
+    qml/ChoiceBox.qml
+    qml/SettingSlider.qml
+    qml/ComboPopup.qml
     qml/ClipGroupPicker.qml
     qml/DropPieWindow.qml
     qml/SoftShadow.qml

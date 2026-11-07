@@ -3,7 +3,7 @@ import QtQuick.Effects
 
 // menuFrame: ContextMenu, DropMenu, HoverTip. A plain white (dark: #2F2F35)
 // card, radius 8 (a menu window's, DWM's), a faint 1 px neutral edge and two
-// thin, close shadows (1 px + 4 px). Items sit `padding` (4) inside it with
+// light, close shadows. Items sit `padding` (4) inside it with
 // `itemRadius` 4: concentric (8 − 4).
 Item {
     id: menu
@@ -27,16 +27,17 @@ Item {
     RectangularShadow {
         anchors.fill: parent
         radius: menu.radius
-        offset.y: 4
-        blur: 14
-        spread: -1
+        offset.y: 3
+        blur: 12
+        spread: -2
         color: menu.look ? menu.look.menuShadowFar : "transparent"
     }
     RectangularShadow {
         anchors.fill: parent
         radius: menu.radius
         offset.y: 1
-        blur: 2.4
+        blur: 3
+        spread: -1
         color: menu.look ? menu.look.menuShadowNear : "transparent"
     }
     Rectangle {

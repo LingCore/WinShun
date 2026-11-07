@@ -1,0 +1,32 @@
+preparing
+making the application
+loading the font
+starting (dark 0, scale 1)
+platform windows, plugins F:/电脑便捷工具/build/ui-preview/plugins, qml F:/电脑便捷工具/build/ui-preview/qml, library paths C:/Qt/6.12.0/msvc2022_64/plugins; F:/电脑便捷工具/build/ui-preview/plugins; F:/电脑便捷工具/build/ui-preview
+font 'Alibaba PuHuiTi 3.0' -> 'Alibaba PuHuiTi 3.0' 24px: ascent 25.4375, descent 8.15625, height 33.5938, line spacing 33.5938, hinting 2
+loading SettingsWindow.qml
+showing 920x720 (dpr 1), active 0
+pages 12, pageKeywords 12, pageTabs 12
+ok: startup preference reaches the real settings search field
+ok: YaHei UI is selectable
+ok: typed font accepted by the production picker
+ok: font preference persisted in the isolated profile
+ok: sample previews the selected font
+ok: existing windows stay consistent until explicit restart
+saved F:/电脑便捷工具/build/liquid-controls-audit-20261107/font-light/font-picker.png 920x720
+ok: font preview captured
+ok: font list opens
+ok: long font list stays within its scrollable menu
+saved F:/电脑便捷工具/build/liquid-controls-audit-20261107/font-light/font-list.png 920x720
+ok: font list captured
+ok: unknown typed font does not replace the preference
+ok: default font can be restored
+ok: default preview restored
+ok: hidden clipboard display completes the authenticated font handshake
+making the application
+loading the font
+clipboard-display-font: Alibaba PuHuiTi 3.0
+
+ok: independent clipboard search field inherits the running font
+ok: clipboard font test never shows its window
+0 warning(s)

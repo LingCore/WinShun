@@ -285,6 +285,8 @@ struct Settings {
     QString theme = QStringLiteral("system"); // system | light | dark
     QString language = QStringLiteral("system"); // system | zh | en
     QString transparency; // off | on: Mica behind the windows, where Windows 11 has it; defaults() picks by memory
+    int glassTransparency = 50; // 0..100, liquid background; 50 preserves the theme's default
+    int glassClarity = 50; // 0..100, liquid reading surfaces; higher is more opaque
     QString taskbarIcon = QStringLiteral("color"); // color | mono: the tray's and the taskbar box's icon (monologo)
     QString uiSize = QStringLiteral("standard"); // compact | standard | roomy: type and row heights (uisize::)
     QString uiFont; // empty: bundled default; otherwise an installed font family

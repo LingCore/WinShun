@@ -132,8 +132,8 @@ QtObject {
 
     // ---- Shadows ----
     // Menus (RectangularShadow; blur = 1.2 × the CSS blur).
-    readonly property color menuShadowNear: dark ? Qt.rgba(0, 0, 0, 0.30) : Qt.rgba(0, 0, 0, 0.06)
-    readonly property color menuShadowFar: dark ? Qt.rgba(0, 0, 0, 0.30) : Qt.rgba(0, 0, 0, 0.10)
+    readonly property color menuShadowNear: dark ? Qt.rgba(0, 0, 0, 0.06) : Qt.rgba(0, 0, 0, 0.03)
+    readonly property color menuShadowFar: dark ? Qt.rgba(0, 0, 0, 0.14) : Qt.rgba(0, 0, 0, 0.08)
     readonly property color menuEdge: dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.08)
     readonly property color menuFill: dark ? "#2F2F35" : "#FFFFFF"
 
@@ -340,7 +340,7 @@ QtObject {
     readonly property color tagFill: capsuleFill
     readonly property color chipRest: neutralFill // 不限 chosen (words on it: neutralFillInk)
     readonly property color keyEdge: capEdge
-    readonly property color menuShadow: dark ? Qt.rgba(0, 0, 0, 0.30) : Qt.rgba(0, 0, 0, 0.10)
+    readonly property color menuShadow: dark ? Qt.rgba(0, 0, 0, 0.14) : Qt.rgba(0, 0, 0, 0.08)
     readonly property int menuShadowSpread: 6
     readonly property var typeHues: placeKinds.map(k => kinds[k].ink[dark ? 1 : 0])
     readonly property color folderHue: kinds.folder.ink[dark ? 1 : 0]

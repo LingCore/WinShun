@@ -31,6 +31,7 @@ Rectangle {
     implicitHeight: 36
     radius: Theme.controlRadius
     color: "transparent"
+    opacity: enabled ? 1 : field.out("disabledOpacity", 0.4)
 
     Hook { // the style's field (Theme.inputField), with its focus mark
         id: field

@@ -145,11 +145,10 @@ Window {
     height: 720
     minimumWidth: 760
     minimumHeight: 420
-    // See-through to Mica; while the window is inactive DWM draws a flat grey
-    // there instead, which the page covers. Transparent, not a translucent
-    // colour: Qt clears with it unpremultiplied, and a light one comes out
-    // white.
-    color: Theme.backdrop && SystemTheme.materials && window.active ? "transparent" : Theme.page
+    // Mica follows activation; liquid Acrylic keeps its background when inactive.
+    // Use transparent rather than a translucent clear colour (Qt clears it
+    // unpremultiplied, which makes a light colour appear white).
+    color: Theme.backdrop && SystemTheme.materials && (window.active || SystemTheme.uiStyle === "liquid") ? "transparent" : Theme.page
     title: qsTr("设置") // shown as "设置 - Win顺"
     flags: Qt.Window | Qt.FramelessWindowHint // the title bar is ours (see WindowFrame)
 
@@ -1463,7 +1462,7 @@ Window {
                     description: qsTr("每个双击键只执行一个动作。列表只显示支持此功能的已启用插件；原组合键仍可使用")
                     keywords: qsTr("剪贴板;截图;插件;双击;动作;clipboard;plugin;double tap").split(";")
 
-                    Controls.ComboBox {
+                    ChoiceBox {
                         id: doubleTapActionPicker
                         objectName: "doubleTapActionPicker"
                         implicitWidth: 280
@@ -1474,59 +1473,18 @@ Window {
                         currentIndex: window.editor.doubleTapActions.findIndex(action => action.value === window.editor.doubleTapAction)
                         onActivated: window.editor.doubleTapAction = currentValue
                         Accessible.name: qsTr("双击后做什么")
-                        font.pixelSize: Theme.fontBody
-                        palette.text: Theme.text
-                        palette.buttonText: Theme.text
-                        palette.base: Theme.menuBackground
-                        palette.button: Theme.control
-                        palette.highlight: Theme.accent
-                        palette.highlightedText: Theme.accentText
-                        rightPadding: 34
-                        indicator: Glyph {
-                            x: doubleTapActionPicker.width - width - 12
-                            y: (doubleTapActionPicker.height - height) / 2
-                            glyph: "\uE70D"
-                            size: 12
-                            color: Theme.faint
-                        }
+                        dpr: window.dpr
+                        leftPadding: 12
                         contentItem: Text {
                             text: doubleTapActionPicker.displayText
                             font: doubleTapActionPicker.font
-                            color: Theme.text
+                            color: doubleTapActionPicker.palette.buttonText
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                         }
-                        delegate: Controls.ItemDelegate {
-                            id: doubleTapOption
-                            required property int index
-                            required property var modelData
-                            width: doubleTapActionPicker.width
-                            height: Theme.menuItemHeight
-                            text: modelData.text
-                            highlighted: doubleTapActionPicker.highlightedIndex === index
-                            hoverEnabled: true
-                            contentItem: Text {
-                                text: doubleTapOption.text
-                                font.pixelSize: Theme.menuTextSize
-                                color: Theme.text
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                            }
-                            background: Rectangle {
-                                color: doubleTapOption.highlighted || doubleTapOption.hovered ? Theme.menuHover : "transparent"
-                                radius: Theme.menuItemRadius
-                            }
-                        }
-                        background: Hook {
-                            part: Theme.keySurface
-                            hovered: doubleTapActionPicker.hovered
-                            pressed: doubleTapActionPicker.down
-                        }
-                        popup.height: Math.min(280, doubleTapActionPicker.popup.contentItem.implicitHeight + doubleTapActionPicker.popup.topPadding + doubleTapActionPicker.popup.bottomPadding)
-                        popup.background: Hook { part: Theme.menuFrame }
                         Connections {
                             target: doubleTapActionPicker.popup
-                            function onOpened() { window.frame.addPopup(doubleTapActionPicker.popup.contentItem) }
+                            function onOpened() { window.frame.addPopup(doubleTapActionPicker.popup.background) }
                         }
                     }
                 }
@@ -2821,8 +2779,10 @@ Window {
                 }
 
                 SettingRow {
+                    id: transparencyRow
                     shown: SystemTheme.backdropSystem // not on Windows 10
                     title: qsTr("透明效果")
+                    unlocks: [glassTransparencyRow, glassClarityRow]
                     keywords: qsTr("云母;Mica;毛玻璃;亚克力;半透明;壁纸;transparency").split(";")
                     description: !Theme.backdropCapable
                                  ? qsTr("当前界面风格的窗口不透明；可切换到精修原生、品牌色彩或液态玻璃")
@@ -2840,6 +2800,48 @@ Window {
                         labels: [qsTr("关"), qsTr("开")]
                         current: Math.max(0, window.transparencies.indexOf(window.editor.transparency))
                         onActivated: (index) => window.editor.transparency = window.transparencies[index]
+                    }
+                    FlatButton {
+                        visible: window.editor.uiStyle === "liquid" && window.editor.transparency === "on"
+                        enabled: window.editor.glassTransparency !== 50 || window.editor.glassClarity !== 50
+                        text: qsTr("恢复默认")
+                        onClicked: window.editor.resetGlassAppearance()
+                    }
+                }
+
+                SettingRow {
+                    id: glassTransparencyRow
+                    objectName: "glassTransparencyRow"
+                    sub: true
+                    shown: SystemTheme.backdropSystem && window.editor.uiStyle === "liquid" && window.editor.transparency === "on"
+                    title: qsTr("透明程度")
+                    description: qsTr("越高，窗口背后的颜色越明显；文字和按钮保持清晰")
+                    keywords: qsTr("透明度;通透;玻璃;opacity;transparency;glass").split(";")
+                    SettingSlider {
+                        objectName: "glassTransparencyControl"
+                        label: glassTransparencyRow.title
+                        enabled: SystemTheme.backdropAvailable && SystemTheme.materials
+                        value: window.editor.glassTransparency
+                        onPreviewed: (value) => window.editor.previewGlassAppearance(value, window.editor.glassClarity)
+                        onCommitted: (value) => window.editor.glassTransparency = value
+                    }
+                }
+
+                SettingRow {
+                    id: glassClarityRow
+                    objectName: "glassClarityRow"
+                    sub: true
+                    shown: glassTransparencyRow.shown
+                    title: qsTr("卡片清晰度")
+                    description: qsTr("越高，卡片和工具栏的底色越实，更容易阅读")
+                    keywords: qsTr("清晰度;卡片;玻璃;clarity;surface;glass").split(";")
+                    SettingSlider {
+                        objectName: "glassClarityControl"
+                        label: glassClarityRow.title
+                        enabled: SystemTheme.backdropAvailable && SystemTheme.materials
+                        value: window.editor.glassClarity
+                        onPreviewed: (value) => window.editor.previewGlassAppearance(window.editor.glassTransparency, value)
+                        onCommitted: (value) => window.editor.glassClarity = value
                     }
                 }
 

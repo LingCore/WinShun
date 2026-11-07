@@ -1,0 +1,73 @@
+[0/2] Re-checking globbed directories...
+[1/790] Copying WinShun qml sources into build dir
+[2/790] Automatic MOC and UIC for target WinShunOcrSearchApp
+[3/789] Running AUTOMOC file extraction for target WinShunOcrSearchApp
+[4/622] Automatic MOC and UIC for target WinShunCaptureApp
+[5/621] Running AUTOMOC file extraction for target WinShunCaptureApp
+[6/414] Automatic MOC and UIC for target tst_appearance
+[7/413] Automatic MOC and UIC for target WinShun
+[8/413] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\__\app\platform\WindowEffects.cpp.obj
+[9/413] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\__\app\SystemTheme.cpp.obj
+[10/413] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\__\app\WindowFrame.cpp.obj
+[11/413] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\TrayMenu.cpp.obj
+[12/413] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\PluginMain.cpp.obj
+[13/413] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\PresenterHost.cpp.obj
+[14/413] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\OcrMain.cpp.obj
+[15/413] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\platform\WindowEffects.cpp.obj
+[16/413] Linking CXX shared library WinShunOcrSearchApp.dll
+[17/413] Running rcc for resource WinShun_raw_qml_0
+[18/413] Running AUTOMOC file extraction for target WinShun
+[19/413] Running moc --collect-json for target WinShun
+[20/55] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\SystemTheme.cpp.obj
+[21/55] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\WindowFrame.cpp.obj
+[22/55] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\CaptureApp.cpp.obj
+[23/55] Generating .rcc/qmlcache/WinShun_qml_SettingsWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_SettingsWindow_qml.cpp.aotstats
+[24/55] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\Recorder.cpp.obj
+[25/55] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\LongCapture.cpp.obj
+[26/55] Building CXX object tests\CMakeFiles\tst_appearance.dir\__\src\app\WindowFrame.cpp.obj
+[27/55] Building CXX object tests\CMakeFiles\tst_appearance.dir\__\src\app\platform\WindowEffects.cpp.obj
+[28/55] Building CXX object tests\CMakeFiles\tst_appearance.dir\__\src\app\SystemTheme.cpp.obj
+[29/55] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\Capture.cpp.obj
+[30/55] Linking CXX shared library WinShunCaptureApp.dll
+[31/55] Building CXX object tests\CMakeFiles\tst_appearance.dir\tst_appearance.cpp.obj
+[32/55] Building CXX object src\app\CMakeFiles\WinShun.dir\DialogBarVisibility.cpp.obj
+[33/55] Building CXX object src\app\CMakeFiles\WinShun.dir\main.cpp.obj
+[34/55] Building CXX object src\app\CMakeFiles\WinShun.dir\ClipboardDisplay.cpp.obj
+[35/55] Building CXX object src\app\CMakeFiles\WinShun.dir\ClipboardDisplayReplica.cpp.obj
+[36/55] Building CXX object src\app\CMakeFiles\WinShun.dir\InteractionOptimizationProbe.cpp.obj
+[37/55] Building CXX object src\app\CMakeFiles\WinShun.dir\TriggerJournal.cpp.obj
+[38/55] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\PreviewHost.cpp.obj
+[39/55] Building CXX object src\app\CMakeFiles\WinShun.dir\TrayMenu.cpp.obj
+[40/55] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\WindowEffects.cpp.obj
+[41/55] Building CXX object src\app\CMakeFiles\WinShun.dir\WinShun_autogen\mocs_compilation.cpp.obj
+[42/55] Building CXX object src\app\CMakeFiles\WinShun.dir\NavigationProbe.cpp.obj
+[43/55] Building CXX object src\app\CMakeFiles\WinShun.dir\ClipScrollBench.cpp.obj
+F:\电脑便捷工具\src\app\ClipScrollBench.cpp(674): warning C4456: “frame”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\ClipScrollBench.cpp(386): note: 参见“frame”的声明
+F:\电脑便捷工具\src\app\ClipScrollBench.cpp(991): warning C4456: “start”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\ClipScrollBench.cpp(257): note: 参见“start”的声明
+[44/55] Building CXX object src\app\CMakeFiles\WinShun.dir\Clipboard.cpp.obj
+[45/55] Building CXX object src\app\CMakeFiles\WinShun.dir\DialogBar.cpp.obj
+[46/55] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_WinShun_raw_qml_0.cpp.obj
+[47/55] Building CXX object src\app\CMakeFiles\WinShun.dir\SystemTheme.cpp.obj
+[48/55] Linking CXX executable tst_appearance.exe
+[49/55] Building CXX object src\app\CMakeFiles\WinShun.dir\FolderMenu.cpp.obj
+[50/55] Building CXX object src\app\CMakeFiles\WinShun.dir\App.cpp.obj
+[51/55] Building CXX object src\app\CMakeFiles\WinShun.dir\WindowFrame.cpp.obj
+[52/55] Building CXX object src\app\CMakeFiles\WinShun.dir\Launcher.cpp.obj
+[53/55] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+F:\电脑便捷工具\src\app\Preview.cpp(1698): warning C4456: “flick”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\Preview.cpp(1655): note: 参见“flick”的声明
+[54/55] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_SettingsWindow_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(305) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(305) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[55/55] Linking CXX executable F:\电脑便捷工具\build\liquid-inactive-20261107\runtime\WinShun.exe

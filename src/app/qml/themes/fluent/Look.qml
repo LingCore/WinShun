@@ -118,8 +118,8 @@ QtObject {
     property color menuBackground: dark ? "#2C2C2C" : "#F9F9F9"
     property color menuHover: dark ? "#3A3A3A" : "#ECECEC"
     property color menuEdge: dark ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(0, 0, 0, 0.10)
-    // The menu's shadow (SoftShadow-like rings): colour at its edge and reach.
-    property color menuShadow: dark ? Qt.rgba(0, 0, 0, 0.42) : Qt.rgba(0, 0, 0, 0.14)
+    // The menu's soft shadow: opacity and falloff reach.
+    property color menuShadow: dark ? Qt.rgba(0, 0, 0, 0.18) : Qt.rgba(0, 0, 0, 0.10)
     property int menuShadowSpread: 6
 
     // states

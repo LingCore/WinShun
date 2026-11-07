@@ -46,6 +46,9 @@ void applyBackdrop(HWND window)
 {
     const int value = g_backdropMaterial.load() == BackdropMaterial::Acrylic ? kBackdropAcrylic : kBackdropMica;
     ::DwmSetWindowAttribute(window, kSystemBackdropType, &value, sizeof value);
+    ::DefWindowProcW(window, WM_NCACTIVATE,
+        backdropFrameActive(window, ::GetForegroundWindow() == window
+            || (::GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_NOACTIVATE)), -1);
 }
 
 LRESULT CALLBACK nativeFrameProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR)
@@ -241,6 +244,12 @@ void setBackdropMaterial(BackdropMaterial material)
             applyBackdrop(window);
         return TRUE;
     }, 0);
+}
+
+bool backdropFrameActive(HWND window, bool active)
+{
+    return active || (g_backdropMaterial.load() == BackdropMaterial::Acrylic
+        && ::GetPropW(window, kBackdropWindow) && materialsEnabled());
 }
 
 void setDarkFrame(QWindow* window, bool dark)

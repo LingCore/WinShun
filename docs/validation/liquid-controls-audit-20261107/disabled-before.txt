@@ -1,0 +1,10 @@
+********* Start testing of AppearanceTest *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : AppearanceTest::initTestCase()
+FAIL!  : AppearanceTest::disabledFields(input) 'item->opacity() < 1.0' returned FALSE. ()
+F:\电脑便捷工具\tests\tst_appearance.cpp(81) : failure location
+FAIL!  : AppearanceTest::disabledFields(toggle) 'item->opacity() < 1.0' returned FALSE. ()
+F:\电脑便捷工具\tests\tst_appearance.cpp(81) : failure location
+PASS   : AppearanceTest::cleanupTestCase()
+Totals: 2 passed, 2 failed, 0 skipped, 0 blacklisted, 3844ms
+********* Finished testing of AppearanceTest *********

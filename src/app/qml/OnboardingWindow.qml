@@ -18,7 +18,7 @@ Window {
     minimumHeight: 480
     title: qsTr("欢迎使用 Win顺")
     flags: Qt.Window | Qt.FramelessWindowHint
-    color: Theme.backdrop && SystemTheme.materials && active ? "transparent" : Theme.page
+    color: Theme.backdrop && SystemTheme.materials && (active || SystemTheme.uiStyle === "liquid") ? "transparent" : Theme.page
 
     function clearRecording() {
         launchRecorder.stop()

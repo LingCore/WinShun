@@ -27,15 +27,11 @@ ScrollView {
     palette.highlight: Theme.accentFill
     palette.highlightedText: Theme.accentText
 
-    component ReportChoice: ComboBox {
+    component ReportChoice: ChoiceBox {
         id: choice
         implicitHeight: 34
-        background: Hook { // the style's field box (Theme.inputField)
-            part: Theme.inputField
-            hovered: choice.hovered
-            focused: choice.activeFocus
-            dpr: root.pixelRatio
-        }
+        font.pixelSize: Theme.uiBody
+        dpr: root.pixelRatio
     }
     component ReportCheck: CheckBox {
         implicitHeight: 32
@@ -50,6 +46,7 @@ ScrollView {
             wrapMode: Text.Wrap; color: Theme.subtext; font.pixelSize: Theme.uiBody
         }
         ReportChoice {
+            objectName: "contentReportScope"
             Layout.fillWidth: true; Layout.leftMargin: 12; Layout.rightMargin: 12
             model: [qsTr("当前结果"), qsTr("所选文件（未多选时为当前文件）"), qsTr("完整搜索")]
             enabled: !root.pane.reporting
@@ -86,6 +83,7 @@ ScrollView {
             selectionColor: Theme.textSelection; selectedTextColor: Theme.text
         }
         ReportChoice {
+            objectName: "contentReportFormat"
             Layout.fillWidth: true; Layout.leftMargin: 12; Layout.rightMargin: 12
             model: [qsTr("文本 (.txt)"), "CSV (.csv)", "HTML (.html)", "Excel (.xlsx)"]
             onActivated: index => root.format = index

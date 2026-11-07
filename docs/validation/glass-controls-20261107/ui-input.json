@@ -1,0 +1,97 @@
+{
+    "checks": [
+        {
+            "name": "two production controls exist",
+            "passed": true
+        },
+        {
+            "name": "pointer drag previews without committing or writing intermediate values",
+            "passed": true
+        },
+        {
+            "name": "pointer release persists the previewed setting",
+            "passed": true
+        },
+        {
+            "name": "slider is usable with materials available",
+            "passed": true
+        },
+        {
+            "name": "slider exposes its name and native accessibility role",
+            "passed": true
+        },
+        {
+            "name": "End applies the maximum",
+            "passed": true
+        },
+        {
+            "name": "Home applies the minimum",
+            "passed": true
+        },
+        {
+            "name": "Right adjusts by one",
+            "passed": true
+        },
+        {
+            "name": "slider is usable with materials available",
+            "passed": true
+        },
+        {
+            "name": "slider exposes its name and native accessibility role",
+            "passed": true
+        },
+        {
+            "name": "End applies the maximum",
+            "passed": true
+        },
+        {
+            "name": "Home applies the minimum",
+            "passed": true
+        },
+        {
+            "name": "Right adjusts by one",
+            "passed": true
+        },
+        {
+            "name": "keyboard adjustments persist",
+            "passed": true
+        },
+        {
+            "name": "live preview updates surfaces without saving intermediate values",
+            "passed": true
+        },
+        {
+            "name": "reset restores both persisted values and live appearance",
+            "passed": true
+        },
+        {
+            "name": "controls stay inside the window at width 760",
+            "passed": true
+        },
+        {
+            "name": "render controls at width 760",
+            "passed": true
+        },
+        {
+            "name": "controls stay inside the window at width 920",
+            "passed": true
+        },
+        {
+            "name": "render controls at width 920",
+            "passed": true
+        },
+        {
+            "name": "off hides both parameters",
+            "passed": true
+        },
+        {
+            "name": "Mica styles do not expose Acrylic tuning",
+            "passed": true
+        },
+        {
+            "name": "write control report",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

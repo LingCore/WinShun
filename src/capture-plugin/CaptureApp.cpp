@@ -707,6 +707,7 @@ void CaptureApp::applyAppearance(const QJsonObject& a)
     SystemTheme::setRoundedCorners(a.value(u"corners"_s).toString(u"round"_s) == u"round");
     SystemTheme::setUiSize(a.value(u"uiSize"_s).toString(u"standard"_s));
     SystemTheme::setUiStyle(a.value(u"uiStyle"_s).toString());
+    SystemTheme::setGlassAppearance(a.value(u"glassTransparency"_s).toInt(50), a.value(u"glassClarity"_s).toInt(50));
     SystemTheme::setBackdropOn(a.value(u"transparency"_s).toString(u"on"_s) == u"on");
     const QString theme = a.value(u"themeSetting"_s).toString();
     QGuiApplication::styleHints()->setColorScheme(theme == u"dark" ? Qt::ColorScheme::Dark

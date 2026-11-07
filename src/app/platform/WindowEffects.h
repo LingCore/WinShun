@@ -24,6 +24,9 @@ enum class BackdropMaterial { Mica, Acrylic };
 // Updates existing backdrop windows as well as windows created afterwards.
 // Opaque menus and windows never opt into a backdrop here.
 void setBackdropMaterial(BackdropMaterial material);
+// Visual activation only; never changes the foreground window or input focus.
+// Liquid Acrylic keeps its material while inactive; Mica follows activation.
+bool backdropFrameActive(HWND window, bool active);
 
 // Whether DWM rounds the corners (Windows 11), see styleFramelessWindow.
 bool nativeWindowCorners();
@@ -61,9 +64,9 @@ void keepDarkFrameOnShow(QWindow* window);
 // (DWMWA_SYSTEMBACKDROP_TYPE). It shows where the window's own pixels are
 // transparent, so the window needs an alpha channel, and DWM must see the
 // frame activate (WM_NCACTIVATE, see WindowFrame); its tint follows
-// setDarkFrame. While the window is inactive, or without materials (see
-// materialsEnabled), DWM draws a flat grey instead, so the window should
-// cover it then.
+// setDarkFrame. Inactive Mica falls back to grey and should be covered.
+// Acrylic keeps visual frame activation (backdropFrameActive), while actual
+// focus is unchanged. System material/power policies still control rendering.
 bool backdropSupported();
 
 // Whether Windows draws materials at all: transparency effects on (Settings >

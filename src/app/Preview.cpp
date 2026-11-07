@@ -1099,6 +1099,10 @@ bool previewLazyPages(QQuickWindow* window, const std::function<QQuickWindow*()>
 
 int runSettings(const QStringList& args)
 {
+    if (args.contains(u"--glass-controls"_s))
+        SystemTheme::setBackdropAvailable(true); // before the QML CONSTANT is read
+    if (args.contains(u"--inactive-backdrop"_s))
+        SystemTheme::setBackdropAvailable(valueAfter(args, u"--renderer") != u"software" && win::backdropSupported());
     const QDir out(valueAfter(args, kSettingsFlag));
     siteicons::setFolder(Settings::dataDir() + u"/icons/web"_s);
     const bool dark = args.contains(u"--dark"_s);
@@ -1155,6 +1159,8 @@ int runSettings(const QStringList& args)
     QObject::connect(editor, &SettingsEditor::changed, editor, [editor] {
         SystemTheme::setRoundedCorners(editor->corners() == u"round");
         SystemTheme::setUiStyle(editor->uiStyle());
+        SystemTheme::setGlassAppearance(editor->glassTransparency(), editor->glassClarity());
+        SystemTheme::setBackdropOn(editor->transparency() == u"on");
         SystemTheme::setUiSize(editor->uiSize());
     });
     auto* frame = new WindowFrame(true, editor);
@@ -1291,6 +1297,138 @@ int runSettings(const QStringList& args)
     QMetaObject::invokeMethod(window, "loadAllPages");
     settle(window);
 
+    if (args.contains(u"--inactive-backdrop"_s)) {
+        bool passed = true;
+        const auto check = [&](bool ok, const char* name) {
+            say(u"%1: %2"_s.arg(ok ? u"ok"_s : u"FAILED"_s, QString::fromLatin1(name)));
+            passed = passed && ok;
+        };
+        check(!window->isActive(), "production settings window is inactive");
+        for (const QString& style : {u"liquid"_s, u"fluent"_s, u"brand"_s, u"tactile"_s}) {
+            editor->setUiStyle(style);
+            editor->setTransparency(u"on"_s);
+            settle(window);
+            check((window->color().alpha() == 0) == (style == u"liquid" && SystemTheme::backdrop() && win::materialsEnabled()),
+                qPrintable(style + u" inactive background"));
+            editor->setTransparency(u"off"_s);
+            settle(window);
+            check(window->color().alpha() == 255, qPrintable(style + u" transparency off is opaque"));
+        }
+        return finish(window, passed);
+    }
+
+    if (args.contains(u"--glass-controls"_s)) {
+        bool passed = true;
+        QJsonArray checks;
+        const auto check = [&](bool ok, const QString& name) {
+            checks.append(QJsonObject {{u"name"_s, name}, {u"passed"_s, ok}});
+            passed = passed && ok;
+            if (!ok) qWarning().noquote() << "glass controls:" << name;
+        };
+        editor->setUiStyle(u"liquid"_s);
+        editor->setTransparency(u"on"_s);
+        editor->resetGlassAppearance();
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, 1), Q_ARG(QVariant, 0));
+        settle(window);
+        auto* transparencyRow = visualNamed(window->contentItem(), u"glassTransparencyRow"_s);
+        auto* clarityRow = visualNamed(window->contentItem(), u"glassClarityRow"_s);
+        auto* transparencyControl = visualNamed(window->contentItem(), u"glassTransparencyControl"_s);
+        auto* clarityControl = visualNamed(window->contentItem(), u"glassClarityControl"_s);
+        check(transparencyRow && clarityRow && transparencyControl && clarityControl, u"two production controls exist"_s);
+        if (transparencyRow && clarityRow && transparencyControl && clarityControl) {
+            if (auto* slider = visualNamed(transparencyControl, u"settingSlider"_s)) {
+                if (auto* pageView = qobject_cast<QQuickItem*>(named(window, "flick"))) {
+                    const qreal y = transparencyControl->mapToItem(pageView, QPointF()).y();
+                    pageView->setProperty("contentY", std::max(0.0, pageView->property("contentY").toDouble() + y - 220));
+                }
+                settle(window);
+                auto* handle = slider->property("handle").value<QQuickItem*>();
+                if (handle) {
+                    const QPointF start = handle->mapToScene({handle->width() / 2, handle->height() / 2});
+                    const QPointF end = slider->mapToScene({slider->width() - 20, slider->height() / 2});
+                    const auto mouse = [&](QEvent::Type type, const QPointF& at, Qt::MouseButton button, Qt::MouseButtons buttons) {
+                        QMouseEvent event(type, at, window->mapToGlobal(at), button, buttons, {});
+                        QCoreApplication::sendEvent(window, &event);
+                        settle(window);
+                    };
+                    mouse(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+                    mouse(QEvent::MouseMove, end, Qt::NoButton, Qt::LeftButton);
+                    Settings duringDrag;
+                    duringDrag.load();
+                    check(slider->property("pressed").toBool() && SystemTheme::glassTransparency() > 50
+                            && editor->glassTransparency() == 50 && duringDrag.glassTransparency == 50,
+                        u"pointer drag previews without committing or writing intermediate values"_s);
+                    mouse(QEvent::MouseButtonRelease, end, Qt::LeftButton, {});
+                    Settings afterDrag;
+                    afterDrag.load();
+                    check(editor->glassTransparency() > 50 && afterDrag.glassTransparency == editor->glassTransparency()
+                            && SystemTheme::glassTransparency() == editor->glassTransparency(),
+                        u"pointer release persists the previewed setting"_s);
+                } else check(false, u"slider handle exists for pointer input"_s);
+                editor->resetGlassAppearance();
+            }
+            for (auto* control : {transparencyControl, clarityControl}) {
+                auto* slider = visualNamed(control, u"settingSlider"_s);
+                check(slider && slider->isEnabled(), u"slider is usable with materials available"_s);
+                if (!slider) continue;
+                auto* accessible = QAccessible::queryAccessibleInterface(slider);
+                check(accessible && accessible->role() == QAccessible::Slider && !accessible->text(QAccessible::Name).isEmpty(),
+                    u"slider exposes its name and native accessibility role"_s);
+                if (auto* pageView = qobject_cast<QQuickItem*>(named(window, "flick"))) {
+                    const qreal y = control->mapToItem(pageView, QPointF()).y();
+                    pageView->setProperty("contentY", std::max(0.0, pageView->property("contentY").toDouble() + y - 220));
+                }
+                settle(window);
+                slider->forceActiveFocus(Qt::TabFocusReason);
+                const auto key = [&](int code) {
+                    QKeyEvent press(QEvent::KeyPress, code, {}), release(QEvent::KeyRelease, code, {});
+                    QCoreApplication::sendEvent(window, &press);
+                    QCoreApplication::sendEvent(window, &release);
+                    settle(window);
+                };
+                const bool background = control == transparencyControl;
+                key(Qt::Key_End);
+                check((background ? editor->glassTransparency() : editor->glassClarity()) == 100, u"End applies the maximum"_s);
+                key(Qt::Key_Home);
+                check((background ? editor->glassTransparency() : editor->glassClarity()) == 0, u"Home applies the minimum"_s);
+                key(Qt::Key_Right);
+                check((background ? editor->glassTransparency() : editor->glassClarity()) == 1, u"Right adjusts by one"_s);
+            }
+            Settings saved;
+            saved.load();
+            check(saved.glassTransparency == 1 && saved.glassClarity == 1, u"keyboard adjustments persist"_s);
+            editor->previewGlassAppearance(72, 37);
+            saved.load();
+            check(saved.glassTransparency == 1 && saved.glassClarity == 1
+                    && SystemTheme::glassTransparency() == 72 && SystemTheme::glassClarity() == 37,
+                u"live preview updates surfaces without saving intermediate values"_s);
+            editor->resetGlassAppearance();
+            saved.load();
+            check(saved.glassTransparency == 50 && saved.glassClarity == 50 && SystemTheme::glassTransparency() == 50
+                    && SystemTheme::glassClarity() == 50, u"reset restores both persisted values and live appearance"_s);
+            for (const int width : {760, 920}) {
+                window->setWidth(width);
+                settle(window);
+                check(transparencyControl->width() > 0 && clarityControl->width() > 0
+                        && transparencyControl->mapToItem(window->contentItem(), QPointF(transparencyControl->width(), 0)).x() <= width,
+                    u"controls stay inside the window at width %1"_s.arg(width));
+                check(saveGrab(window, out.filePath(u"glass-controls-%1.png"_s.arg(width))), u"render controls at width %1"_s.arg(width));
+            }
+            editor->setTransparency(u"off"_s);
+            settle(window);
+            check(!transparencyRow->property("shown").toBool() && !clarityRow->property("shown").toBool(), u"off hides both parameters"_s);
+            editor->setTransparency(u"on"_s);
+            editor->setUiStyle(u"fluent"_s);
+            settle(window);
+            check(!transparencyRow->property("shown").toBool(), u"Mica styles do not expose Acrylic tuning"_s);
+            editor->setUiStyle(u"liquid"_s);
+        }
+        QFile report(out.filePath(u"glass-controls.json"_s));
+        check(report.open(QIODevice::WriteOnly), u"write control report"_s);
+        if (report.isOpen()) report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"checks"_s, checks}}).toJson());
+        return finish(window, passed);
+    }
+
     if (args.contains(u"--style-picker"_s)) {
         QJsonArray checks;
         bool ok = true;
@@ -1358,6 +1496,82 @@ int runSettings(const QStringList& args)
         QFile report(out.filePath(u"picker.json"_s));
         check(report.open(QIODevice::WriteOnly), u"picker report opens"_s);
         if (report.isOpen()) report.write(QJsonDocument(QJsonObject {{u"passed"_s, ok}, {u"checks"_s, checks}}).toJson());
+        return finish(window, ok);
+    }
+
+    if (args.contains(u"--combo-popup"_s)) {
+        bool ok = true;
+        const auto check = [&](bool condition, const QString& message) {
+            say((condition ? u"ok: "_s : u"FAILED: "_s) + message);
+            ok = condition && ok;
+        };
+        const auto checkPicker = [&](const QString& name, int page) {
+            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, page), Q_ARG(QVariant, 0));
+            settle(window, 3);
+            auto* picker = visualNamed(window->contentItem(), name);
+            check(picker && picker->isVisible(), name + u" is visible"_s);
+            if (!picker)
+                return;
+            if (auto* pageView = qobject_cast<QQuickItem*>(named(window, "flick"))) {
+                const qreal y = picker->mapToItem(pageView, QPointF()).y();
+                pageView->setProperty("contentY", std::max(0.0, pageView->property("contentY").toDouble() + y - 130));
+                settle(window, 2);
+            }
+            auto* fieldFrame = picker->property("background").value<QQuickItem*>();
+            auto* field = fieldFrame ? fieldFrame->property("built").value<QQuickItem*>() : nullptr;
+            auto* content = picker->property("contentItem").value<QQuickItem*>();
+            const QVariant normalInk = content ? content->property("color") : QVariant{};
+            auto* innerBackground = content ? content->property("background").value<QQuickItem*>() : nullptr;
+            check(field && field->property("focused").isValid(), name + u" uses the theme input surface"_s);
+            check(!innerBackground || !innerBackground->isVisible(), name + u" has no nested native text-field background"_s);
+            check(content && std::abs(content->x() + content->property("leftPadding").toReal() - 12) <= 1 / window->devicePixelRatio(),
+                name + u" preserves twelve-pixel text alignment"_s);
+            picker->forceActiveFocus(Qt::TabFocusReason);
+            settle(window, 2);
+            check(field && field->property("focused").toBool(), name + u" shows keyboard focus on the whole field"_s);
+            check(saveGrab(window, out.filePath(name + u"-focused.png"_s)), name + u" focused captured"_s);
+            picker->setEnabled(false);
+            settle(window, 2);
+            check(picker->opacity() < 1 || (field && field->opacity() < 1)
+                    || (content && normalInk.isValid() && content->property("color") != normalInk),
+                name + u" uses the theme's disabled appearance"_s);
+            check(saveGrab(window, out.filePath(name + u"-disabled.png"_s)), name + u" disabled captured"_s);
+            picker->setEnabled(true);
+            auto* popup = picker->property("popup").value<QObject*>();
+            check(popup && QMetaObject::invokeMethod(popup, "open"), name + u" opens"_s);
+            settle(window, 3);
+            if (!popup)
+                return;
+            check(field && field->property("focused").toBool(), name + u" retains its field focus while the menu is open"_s);
+            auto* list = popup->property("contentItem").value<QQuickItem*>();
+            auto* background = popup->property("background").value<QQuickItem*>();
+            auto* surface = background ? background->property("built").value<QQuickItem*>() : nullptr;
+            check(surface && (surface->property("radius").toReal() > 0) == (settings.corners == u"round"),
+                name + u" follows the corner setting"_s);
+            if (list) {
+                const qreal menuTop = list->mapToScene(QPointF()).y() - popup->property("topPadding").toReal();
+                const qreal menuBottom = menuTop + popup->property("height").toReal();
+                const qreal gap = std::max(menuTop - picker->mapToScene(QPointF(0, picker->height())).y(),
+                    picker->mapToScene(QPointF()).y() - menuBottom);
+                check(gap >= 4 - 1 / window->devicePixelRatio(), name + u" leaves a gap beside its control"_s);
+            }
+            check(popup->property("padding").toReal() > 0 && list
+                    && list->width() < popup->property("width").toReal(),
+                name + u" keeps rows inside the menu frame"_s);
+            if (list) {
+                for (auto* child : list->childItems()) {
+                    check(!child->inherits("QQuickRectangle") || child->width() < list->width()
+                            || child->height() < list->height(),
+                        name + u" has no rectangular overlay around the list"_s);
+                }
+                auto* row = list->property("currentItem").value<QQuickItem*>();
+                check(row && row->width() <= list->width(), name + u" fits its highlighted row"_s);
+            }
+            check(saveGrab(window, out.filePath(name + u".png")), name + u" captured"_s);
+            QMetaObject::invokeMethod(popup, "close");
+        };
+        checkPicker(u"doubleTapActionPicker"_s, 0);
+        checkPicker(u"uiFontPicker"_s, 1);
         return finish(window, ok);
     }
 
@@ -8090,6 +8304,42 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
 // Each batch done is counted in <folder>\ack.txt.
 int runLive(App& app, const QDir& out)
 {
+    // Synthetic colours behind the real HWND make native blur/fallback visible.
+    // grabWindow() alone cannot capture DWM's backdrop or prove inactive Acrylic.
+    QQmlEngine backdropEngine;
+    std::unique_ptr<QObject> backdropFixture;
+    std::unique_ptr<QQuickWindow> backdropFocus;
+    if (QCoreApplication::arguments().contains(u"--backdrop-check"_s)) {
+        QQmlComponent fixture(&backdropEngine);
+        fixture.setData(R"(
+            import QtQuick
+            Window {
+                title: "WinShun backdrop fixture"
+                width: 1200; height: 850; visible: true
+                Rectangle {
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: "#E56138" }
+                        GradientStop { position: 0.5; color: "#3257CF" }
+                        GradientStop { position: 1; color: "#44BBA4" }
+                    }
+                }
+            }
+        )", QUrl());
+        backdropFixture.reset(fixture.create());
+        if (!backdropFixture) return 4;
+        if (auto* background = qobject_cast<QWindow*>(backdropFixture.get())) {
+            // STARTUPINFO may hide the process's first window, even with visible:true.
+            background->hide();
+            background->show();
+        }
+        backdropFocus = std::make_unique<QQuickWindow>();
+        backdropFocus->setTitle(u"WinShun backdrop focus"_s);
+        backdropFocus->setFlags(Qt::Window);
+        backdropFocus->setGeometry(20, 60, 160, 100);
+        backdropFocus->setColor(Qt::white);
+        backdropFocus->show();
+    }
     // A second start of the user's own copy (Explorer's verbs, --query) finds
     // the first message window in z order: never this one.
     for (HWND candidate = nullptr; (candidate = ::FindWindowExW(nullptr, candidate, L"WinShun.MessageWindow", nullptr));) {
@@ -8160,6 +8410,9 @@ int runLive(App& app, const QDir& out)
                     list.append(QJsonObject {{u"title"_s, window->title()}, {u"object"_s, window->objectName()},
                         {u"class"_s, QString::fromLatin1(window->metaObject()->className())},
                         {u"hwnd"_s, QString::number(window->winId())}, {u"dpr"_s, window->devicePixelRatio()},
+                        {u"active"_s, window->isActive()},
+                        {u"foreground"_s, ::GetForegroundWindow() == reinterpret_cast<HWND>(window->winId())},
+                        {u"color"_s, qobject_cast<QQuickWindow*>(window) ? qobject_cast<QQuickWindow*>(window)->color().name(QColor::HexArgb) : QString()},
                         {u"x"_s, r.x()}, {u"y"_s, r.y()}, {u"w"_s, r.width()}, {u"h"_s, r.height()}});
                 }
                 QFile json(out.filePath(u"windows.json"_s));

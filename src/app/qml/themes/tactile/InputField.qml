@@ -16,6 +16,7 @@ Item {
 
     // for the host
     readonly property color textColor: !look ? "transparent" : enabled ? look.ink : look.ink3
+    readonly property real disabledOpacity: 1 // disabled ink and flat shading already distinguish this state
     readonly property color placeholderColor: look ? look.ink3 : "transparent"
     readonly property color caretColor: look ? look.caret : "transparent"
 

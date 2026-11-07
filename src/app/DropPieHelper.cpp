@@ -384,6 +384,7 @@ int runDropPieHelper(const QStringList& arguments)
         uifont::apply(settings.uiFont);
         SystemTheme::setRoundedCorners(settings.corners != u"square");
         SystemTheme::setUiStyle(settings.uiStyle);
+        SystemTheme::setGlassAppearance(settings.glassTransparency, settings.glassClarity);
     };
     appearance();
     Favorites favorites(profile + u"/favorites.json"_s);

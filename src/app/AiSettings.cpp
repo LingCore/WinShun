@@ -399,6 +399,12 @@ std::vector<Entry> buildCatalog()
             {u"brand"_s, u"Win顺's brand colours"_s, QT_TRANSLATE_NOOP("AiSettings", "品牌色彩")},
             {u"tactile"_s, u"raised keys, light depth"_s, QT_TRANSLATE_NOOP("AiSettings", "轻拟物质感")},
             {u"liquid"_s, u"liquid glass, Acrylic backdrop, clear highlights"_s, QT_TRANSLATE_NOOP("AiSettings", "液态玻璃")}}));
+    add(integer({"Appearance/GlassTransparency", QT_TRANSLATE_NOOP("AiSettings", "透明程度"), "appearance", -1,
+                    "Liquid glass background transparency. 50 is the theme default; higher reveals more background. Requires transparency on."},
+        &Settings::glassTransparency, 0, 100));
+    add(integer({"Appearance/GlassClarity", QT_TRANSLATE_NOOP("AiSettings", "卡片清晰度"), "appearance", -1,
+                    "Liquid glass reading surface opacity. 50 is the theme default; higher makes cards more opaque."},
+        &Settings::glassClarity, 0, 100));
     add(choice({"Appearance/UiSize", QT_TRANSLATE_NOOP("AiSettings", "界面大小"), "appearance", -1,
                    "Type and row heights of the search box, the clipboard and the dialog bar (not the settings window)."},
         &Settings::uiSize,
