@@ -130,6 +130,7 @@ Window {
     readonly property Item current: highlighted >= 0 && highlighted < repeater.count ? repeater.itemAt(highlighted) : null
     Hook {
         id: highlight
+        objectName: "contextMenuHighlight"
 
         readonly property real wantedY: menu.current ? content.y + menu.current.y : 0
         property bool placed: false // it stood under an item before: slides from there
@@ -161,6 +162,7 @@ Window {
             const had = placed
             placed = menu.current !== null
             if (had && placed && Theme.rowSlide > 0 && SystemTheme.animations) {
+                slide.to = wantedY
                 slide.restart()
             } else {
                 slide.stop()
@@ -171,7 +173,6 @@ Window {
             id: slide
             target: highlight
             property: "shownY"
-            to: highlight.wantedY
             duration: Theme.rowSlide
             easing.type: Easing.OutCubic
         }
@@ -188,6 +189,7 @@ Window {
 
             delegate: Item {
                 id: entry
+                objectName: "contextMenuEntry-" + index
 
                 required property var modelData
                 required property int index

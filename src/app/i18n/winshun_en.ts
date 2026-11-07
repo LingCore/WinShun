@@ -4089,6 +4089,30 @@
 <context>
     <name>SearchBar</name>
     <message>
+        <source>靠上</source>
+        <translation>Near top</translation>
+    </message>
+    <message>
+        <source>居中</source>
+        <translation>Center</translation>
+    </message>
+    <message>
+        <source>恢复上次拖动位置</source>
+        <translation>Restore last dragged position</translation>
+    </message>
+    <message>
+        <source>保持显示</source>
+        <translation>Keep visible</translation>
+    </message>
+    <message>
+        <source>取消保持显示</source>
+        <translation>Stop keeping visible</translation>
+    </message>
+    <message>
+        <source>切换搜索范围</source>
+        <translation>Switch search scope</translation>
+    </message>
+    <message>
         <source>Win顺：设置</source>
         <translation>WinShun: Settings</translation>
     </message>
@@ -4102,9 +4126,11 @@
     </message>
     <message>
         <source>左键：设置 · 中键：%1
-右键：窗口居中 · 拖动：移动窗口</source>
+右键：位置菜单 · 拖动：移动窗口
+双击横条：展开／收回搜索面板</source>
         <translation>Left: settings · Middle: %1
-Right: center window · Drag: move window</translation>
+Right: position menu · Drag: move window
+Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
         <source>正则模式</source>

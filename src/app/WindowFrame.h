@@ -51,6 +51,9 @@ public:
 
     // Pressing here drags the window; a double click emits doubleClicked().
     Q_INVOKABLE void addDragArea(QQuickItem* item);
+    // A visible grip may occupy the native resize border; only its own
+    // rectangle moves the window there. Other edges continue to resize.
+    Q_INVOKABLE void addDragHandle(QQuickItem* item) { if (item) m_dragHandles.append(item); }
     // Inside a drag area, still the window's own (buttons, text fields).
     Q_INVOKABLE void addControl(QQuickItem* item);
     // The native sizing border in logical pixels; controls beside it keep
@@ -129,6 +132,7 @@ private:
     QPointer<QWindow> m_window;
     WId m_hwnd = 0;
     QList<QPointer<QQuickItem>> m_dragAreas;
+    QList<QPointer<QQuickItem>> m_dragHandles;
     QList<QPointer<QQuickItem>> m_controls;
     QList<QPointer<QQuickItem>> m_popups;
     QList<QPointer<QQuickItem>> m_handles;

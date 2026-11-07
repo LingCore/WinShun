@@ -1,0 +1,22 @@
+preparing
+making the application
+loading the font
+saved build/issue244/verified-200/always.png 1600x1080
+saved build/issue244/verified-200/held-idle.png 1600x1080
+saved build/issue244/verified-200/held-100ms.png 1600x1080
+saved build/issue244/verified-200/held-300ms.png 1600x1080
+saved build/issue244/verified-200/held-released.png 1600x1080
+saved build/issue244/verified-200/quick-taps.png 1600x1080
+saved build/issue244/verified-200/off.png 1600x1080
+saved build/issue244/verified-200/logo-box-pinned.png 1520x350
+saved build/issue244/verified-200/logo-box.png 1520x350
+saved build/issue244/verified-200/logo-box-hint.png 1520x350
+saved build/issue244/verified-200/logo-empty-hint.png 640x144
+saved build/issue244/verified-200/logo-panel-pinned.png 2200x1400
+saved build/issue244/verified-200/logo-panel.png 2200x1400
+saved build/issue244/verified-200/logo-panel-hint.png 2200x1400
+saved build/issue244/verified-200/appearance-logo-compact.png 1520x220
+saved build/issue244/verified-200/appearance-logo-standard.png 1520x252
+saved build/issue244/verified-200/appearance-logo-roomy.png 1520x284
+search logo: 161 checks, native WindowFrame and production Main, passed
+0 warning(s)

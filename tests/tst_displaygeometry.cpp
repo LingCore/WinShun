@@ -19,6 +19,67 @@ using namespace Qt::StringLiterals;
 class DisplayGeometryTest : public QObject {
     Q_OBJECT
 private slots:
+    void windowMayCloseBeforeQueuedMoveIsSaved()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        auto window = std::make_unique<QWindow>();
+        window->resize(640, 300);
+        window->create();
+        ws::Placement placement(temporary.filePath(u"closed.ini"_s), u"Launcher"_s);
+        placement.setWindow(window.get());
+        const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+        ::SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0);
+        ::SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
+        window.reset();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+    }
+
+    void draggedPositionSurvivesPresetsAndRestart()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString statePath = temporary.filePath(u"dragged.ini"_s);
+        auto* screen = QGuiApplication::primaryScreen();
+        const QRect area = screen->availableGeometry();
+        for (const bool panel : {false, true}) {
+            QWindow window;
+            window.resize(640, 300);
+            window.create();
+            ws::Placement placement(statePath, u"Launcher"_s);
+            placement.setWindow(&window);
+            placement.placeOn(screen);
+            if (panel) placement.enterPanel(screen);
+            const HWND hwnd = reinterpret_cast<HWND>(window.winId());
+            ::SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0);
+            window.setPosition(area.topLeft() + QPoint(120, 96));
+            ::SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
+            QTest::qWait(300);
+            const QPoint dragged = window.position();
+            const QString group = panel ? u"Panel"_s : u"Launcher"_s;
+            QSettings state(statePath, QSettings::IniFormat);
+            QVERIFY(state.contains(group + u"/DraggedCenterX"_s));
+            placement.centerOnScreen();
+            if (!panel) placement.moveHome();
+            QTest::qWait(300);
+            placement.restoreDraggedPosition();
+            QTest::qWait(300);
+            QVERIFY((window.position() - dragged).manhattanLength() <= 2);
+
+            QWindow reopened;
+            reopened.resize(window.size());
+            reopened.create();
+            ws::Placement restored(statePath, u"Launcher"_s);
+            restored.setWindow(&reopened);
+            restored.placeOn(screen);
+            if (panel) restored.enterPanel(screen);
+            restored.centerOnScreen();
+            restored.restoreDraggedPosition();
+            QTest::qWait(300);
+            QVERIFY((reopened.position() - dragged).manhattanLength() <= 2);
+        }
+    }
+
     void centeringKeepsSizeAndSavesEachMode()
     {
         QTemporaryDir temporary;

@@ -120,8 +120,6 @@ QtObject {
     readonly property int searchFontDelta: -4 // the query is 4 smaller than the interface size says: a 44 px field holds a 20 px line with room
     // A row's number sits mid-way between the ink bar (right edge 18) and the icon (52 / the clipboard's 44).
     readonly property real hintX: 23
-    // No grip over the search box: the field's own edge already marks the header, and the grip sat on it.
-    readonly property bool grip: false
     readonly property real clipHintX: 19
     // Result rows, from the list's own edges (as fluent's): the highlight 10 in,
     // the 32 px icon 14 inside it, the name 60 inside it, the action capsule

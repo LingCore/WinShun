@@ -84,8 +84,6 @@ QtObject {
     // further, the name 12 after it, the row keys 14 from the card's right.
     readonly property real rowInset: cardInset
     readonly property real hintX: 17 // the number mid-way between the card's edge (10) and the icon (48)
-    // No grip over the search box: the field's own edge already marks the header, and the grip sat on it.
-    readonly property bool grip: false
     readonly property real iconInset: cardInset + 10
     readonly property real textStart: cardInset + 10 + 34 + 12
     readonly property real actionsInset: cardInset + 14

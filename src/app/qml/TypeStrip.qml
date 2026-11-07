@@ -14,7 +14,7 @@ import WinShun
 // chips coming down from under the search box; the rows, footer and window
 // edge follow its current height (see Main.qml). Too
 // many for the width, they scroll, the current one kept in view and + after them. The rest
-// of it drags the window.
+// of it remains client area, so a miss cannot move the window.
 Item {
     id: strip
 
@@ -121,7 +121,6 @@ Item {
         opening = targetHeight
         animated = true
         updateChips()
-        frame.addDragArea(strip)
         frame.addControl(view)
         frame.addControl(edit)
         frame.addControl(indexSwitch) // in 内容 only: WindowFrame skips hidden items
@@ -238,6 +237,7 @@ Item {
     }
     onCurrentChanged: scheduleReveal()
     onChipsChanged: scheduleReveal()
+    onShowKeywordsChanged: scheduleReveal()
 
     // A mouse's wheel (or a touchpad's swipe) turns the chips a chip per
     // notch. Over the chips, taking only the wheel (no buttons, no hover).
@@ -350,11 +350,10 @@ Item {
                     Item {
                         id: body
                         readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : (chip.glyph.length > 0 ? 10 : 12) // 0 (a key without a lamp) is no say; 10 with an icon: it then sits as far from the key's edge as the last word does
-                        width: strip.stepUp(Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + Math.max(nameSize.width, keywordSize.width)) + (chip.glyph.length > 0 ? 6 : 12))
+                        width: strip.stepUp(Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + labelSize.width) + (chip.glyph.length > 0 ? 6 : 12))
                         height: parent.height
 
-                        TextMetrics { id: nameSize; font: label.font; text: chip.modelData.name }
-                        TextMetrics { id: keywordSize; font: label.font; text: (chip.modelData.keyword ?? "").length > 0 ? ":" + chip.modelData.keyword : "" }
+                        TextMetrics { id: labelSize; font: label.font; text: label.text }
 
                         Hook {
                             id: surface

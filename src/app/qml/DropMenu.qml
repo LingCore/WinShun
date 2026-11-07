@@ -100,6 +100,7 @@ Item {
         // style says (Theme.rowSlide).
         Hook {
             id: highlight
+            objectName: "dropMenuHighlight"
 
             readonly property real wantedY: dropMenu.hovered >= 0 ? column.y + dropMenu.hovered * Theme.menuItemHeight : 0
             property bool placed: false // it stood under an entry before: slides from there
@@ -132,6 +133,7 @@ Item {
                 const had = placed
                 placed = dropMenu.hovered >= 0
                 if (had && placed && Theme.rowSlide > 0 && SystemTheme.animations) {
+                    slide.to = wantedY
                     slide.restart()
                 } else {
                     slide.stop()
@@ -142,7 +144,6 @@ Item {
                 id: slide
                 target: highlight
                 property: "shownY"
-                to: highlight.wantedY
                 duration: Theme.rowSlide
                 easing.type: Easing.OutCubic
             }
@@ -175,6 +176,7 @@ Item {
 
                 delegate: Item {
                     id: entry
+                    objectName: "dropMenuEntry-" + index
 
                     required property var modelData
                     required property int index

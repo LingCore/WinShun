@@ -180,6 +180,7 @@ public:
     // Centre on the current monitor's work area, preserving size and content.
     // Also detaches temporary taskbar/file-manager placement; saved per mode.
     Q_INVOKABLE void centerOnScreen();
+    Q_INVOKABLE void restoreDraggedPosition();
     // Its rows and type changed size (界面大小): a window up now (the
     // clipboard, pinned) is fitted on its screen again.
     void resized();
@@ -269,6 +270,7 @@ private:
     void savePanel(); // the panel's size and spot, after a move or a resize
     void glideTo(const QPoint& target);
     void save() const;
+    void saveDraggedPosition();
     void moveWindow(const QPoint& position); // to its place (logical pixels), keeping a slide's offset
     void beginSlide(); // where it rests now, unless it is on its way already
     void startSlide(Slide slide, std::function<void()> done);
@@ -281,6 +283,8 @@ private:
 
     QString m_stateFile;
     QString m_group;
+    QPointF m_draggedAnchor {0.5, 0.2};
+    QPointF m_draggedPanelAnchor {0.5, 0.2};
     QPointer<QWindow> m_window;
     QSize m_contentSize;
     QTimer m_displaySettle;

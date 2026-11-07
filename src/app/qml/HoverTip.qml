@@ -21,6 +21,8 @@ Item {
     property int delay: 250
     property int linger: 150 // after the mouse leaves: time to reach a neighbour
     property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
+    property QtObject host: null // permits a non-activating window when the host is too short
+    property bool detached: false
 
     property bool shown: false
 
@@ -44,6 +46,11 @@ Item {
     onTextChanged: Qt.callLater(sync)
     onShortcutChanged: Qt.callLater(sync)
     onFullWidthChanged: if (shown) place()
+    Connections {
+        target: tip.parent
+        function onHeightChanged() { if (tip.shown) tip.place() }
+        function onWidthChanged() { if (tip.shown) tip.place() }
+    }
 
     function sync() {
         if (target) {
@@ -78,8 +85,34 @@ Item {
             return
         const gap = 6
         const p = anchor.mapToItem(parent, 0, 0)
+        detached = host !== null && p.y - bubble.height - gap < 4 && p.y + anchor.height + gap + bubble.height > parent.height - 4
+        if (detached) {
+            const at = anchor.mapToGlobal(0, 0)
+            const area = host.screenArea(at)
+            const popup = detachedWindow.item
+            if (popup) {
+                popup.x = Math.round(Math.max(area.x, Math.min(at.x + (anchor.width - fullWidth) / 2, area.x + area.width - popup.width)))
+                const below = at.y + anchor.height + gap
+                popup.y = Math.round(Math.max(area.y, below + popup.height <= area.y + area.height ? below : at.y - popup.height - gap))
+            }
+            return
+        }
         bubbleX = Math.max(8, Math.min(p.x + (anchor.width - fullWidth) / 2, parent.width - fullWidth - 8))
         bubbleY = p.y - bubble.height - gap >= 4 ? p.y - bubble.height - gap : p.y + anchor.height + gap
+    }
+
+    Loader {
+        id: detachedWindow
+        active: tip.detached
+        sourceComponent: Window {
+            objectName: "hoverTipWindow"
+            flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput
+            color: Theme.menuBackground
+            width: Math.ceil(tip.fullWidth)
+            height: tip.bubble ? Math.ceil(tip.bubble.height) : 1
+            visible: tip.shown && tip.anchor !== null && tip.anchor.Window.window !== null && tip.anchor.Window.window.visible
+            Component.onCompleted: { tip.host.prepareMenuWindow(this); Qt.callLater(tip.place) }
+        }
     }
 
     // The wait before showing, or after the mouse left before hiding.
@@ -102,6 +135,7 @@ Item {
 
     Loader {
         id: body
+        parent: tip.detached && detachedWindow.item ? detachedWindow.item.contentItem : tip
         active: false
         sourceComponent: Item {
             id: face
@@ -112,8 +146,8 @@ Item {
             readonly property real labelWidth: Math.min(probe.implicitWidth, Math.max(40, (tip.parent ? tip.parent.width : 100000) - 16 - 20 - keysWidth))
             readonly property real fullWidth: labelWidth + keysWidth + 20
 
-            x: tip.bubbleX
-            y: tip.bubbleY
+            x: tip.detached ? 0 : tip.bubbleX
+            y: tip.detached ? 0 : tip.bubbleY
             width: box.width
             height: Math.max(label.implicitHeight, keys.implicitHeight) + 12
             opacity: tip.shown ? 1 : 0

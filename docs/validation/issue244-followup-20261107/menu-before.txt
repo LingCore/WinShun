@@ -1,0 +1,14 @@
+preparing
+making the application
+loading the font
+starting (dark 1, dialog 0)
+loading the page
+showing 900x4460
+clicks on the button: open, closed, open
+menu pointer probe: 6 entries, highlight 1
+menu pointer row 5: hit=1 painted=1
+menu pointer row 0: hit=1 painted=0
+menu pointer row 1: hit=1 painted=0
+menu pointer row 5: hit=1 painted=0
+menu pointer row 0: hit=1 painted=0
+0 warning(s)

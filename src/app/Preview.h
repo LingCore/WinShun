@@ -7,14 +7,20 @@
 //   WinShun.exe --preview-plugins <file.png> [--dark] [--scale 1.5] [--dialog] [--page ai]
 //     The 插件 page on its own (PluginsPreview.qml) over made-up plugins
 //     (PluginSettings::loadPreview), or the AI 助手 page.
+//     --menu card --pointer-check checks pointer hit/highlight alignment
+//     through repeated menu-row changes, including first/last-row jumps.
 //
 //   WinShun.exe --preview-settings <folder> [--dark] [--scale 1.5] [--tree]
 //     [--corners round|square] [--page 1]: one appearance for a selected page.
 //     [--web-form] [--compact]: exercise adding/editing web shortcuts, focus,
 //     validation and scrolling at 920x720 or the minimum 760x420 window.
 //     Add --renderer d3d11 for the GPU path (default: software).
+//     --combo-popup checks the action and font menus' corners, control gap,
+//     inner padding and delegate width, and captures both open menus.
 //     --style-picker checks all four styles, keyboard/pointer selection,
 //     persistence, and the minimum/default/wide settings layouts.
+//     --glass-controls checks liquid sliders, drag preview versus persistence,
+//     keyboard/accessibility, reset, visibility and narrow/default layouts.
 //     --composited-frame shows Windows 10's square frame on any OS.
 //     --wsl-folders checks WSL folder identity and renders stopped/running
 //     cards; --english and --compact cover translation and minimum size.

@@ -161,6 +161,14 @@ Placement::Placement(QString stateFile, QString group, QObject* parent)
         if (w >= 400 && h >= 300 && w <= 20000 && h <= 20000)
             m_panelSize = {w, h};
     }
+    const auto dragged = [&state](const QString& group, QPointF fallback) {
+        bool xOk = false, yOk = false;
+        const double x = state.value(group + u"/DraggedCenterX"_s).toDouble(&xOk);
+        const double y = state.value(group + u"/DraggedTop"_s).toDouble(&yOk);
+        return xOk && yOk && x >= 0 && x <= 1 && y >= 0 && y <= 1 ? QPointF(x, y) : fallback;
+    };
+    m_draggedAnchor = dragged(m_group, m_anchor);
+    m_draggedPanelAnchor = dragged(u"Panel"_s, m_panelAnchor);
 
     m_glide.setDuration(kGlideMs);
     m_glide.setEasingCurve(QEasingCurve::OutCubic);
@@ -290,8 +298,13 @@ struct Placement::Hook {
             self->m_displaySettle.stop();
             self->m_displayRestorePending = false;
             // Qt updates the window's screen on this message too, after us.
-            QMetaObject::invokeMethod(self, self->m_panel ? &Placement::savePanel : &Placement::rememberSpot,
-                Qt::QueuedConnection);
+            QMetaObject::invokeMethod(self, [self] {
+                if (!self->m_window) return;
+                if (self->m_panel) self->savePanel();
+                else self->rememberSpot();
+                if (self->m_window->position() != self->m_moveStart && !self->m_box && !self->m_avoid && !self->m_taskbar && !self->m_dropped)
+                    self->saveDraggedPosition();
+            }, Qt::QueuedConnection);
             break;
         case WM_DPICHANGED:
         case WM_DISPLAYCHANGE:
@@ -893,6 +906,39 @@ void Placement::setMoving(bool moving)
         return;
     m_moving = moving;
     emit movingChanged();
+}
+
+void Placement::saveDraggedPosition()
+{
+    QPointF& anchor = m_panel ? m_draggedPanelAnchor : m_draggedAnchor;
+    anchor = m_panel ? m_panelAnchor : m_anchor;
+    QSettings state(m_stateFile, QSettings::IniFormat);
+    const QString group = m_panel ? u"Panel"_s : m_group;
+    state.setValue(group + u"/DraggedCenterX"_s, anchor.x());
+    state.setValue(group + u"/DraggedTop"_s, anchor.y());
+}
+
+void Placement::restoreDraggedPosition()
+{
+    if (!m_window || m_moving || m_sizing || m_windowSizing) return;
+    m_glide.stop();
+    settleSlide();
+    m_box.reset();
+    m_avoid.reset();
+    setTaskbar({});
+    m_taskbarSpot.reset();
+    m_taskbarScreen.clear();
+    m_dropped = false;
+    setAbove(false);
+    if (m_panel) {
+        m_panelAnchor = m_draggedPanelAnchor;
+        if (auto* screen = m_window->screen()) moveWindow(panelRect(screen).topLeft());
+        savePanel();
+    } else {
+        m_anchor = m_draggedAnchor;
+        save();
+        if (auto* screen = m_window->screen()) glideTo(settleOn(screen));
+    }
 }
 
 void Placement::rememberSpot()

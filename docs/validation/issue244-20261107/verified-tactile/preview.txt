@@ -1,0 +1,22 @@
+preparing
+making the application
+loading the font
+saved build/issue244/verified-tactile/always.png 800x540
+saved build/issue244/verified-tactile/held-idle.png 800x540
+saved build/issue244/verified-tactile/held-100ms.png 800x540
+saved build/issue244/verified-tactile/held-300ms.png 800x540
+saved build/issue244/verified-tactile/held-released.png 800x540
+saved build/issue244/verified-tactile/quick-taps.png 800x540
+saved build/issue244/verified-tactile/off.png 800x540
+saved build/issue244/verified-tactile/logo-box-pinned.png 760x175
+saved build/issue244/verified-tactile/logo-box.png 760x175
+saved build/issue244/verified-tactile/logo-box-hint.png 760x175
+saved build/issue244/verified-tactile/logo-empty-hint.png 320x72
+saved build/issue244/verified-tactile/logo-panel-pinned.png 1100x700
+saved build/issue244/verified-tactile/logo-panel.png 1100x700
+saved build/issue244/verified-tactile/logo-panel-hint.png 1100x700
+saved build/issue244/verified-tactile/appearance-logo-compact.png 760x110
+saved build/issue244/verified-tactile/appearance-logo-standard.png 760x126
+saved build/issue244/verified-tactile/appearance-logo-roomy.png 760x142
+search logo: 161 checks, native WindowFrame and production Main, passed
+0 warning(s)

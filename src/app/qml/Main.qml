@@ -623,6 +623,7 @@ Window {
     }
 
     function closeContextMenu() {
+        if (searchBar) searchBar.closeMenu()
         if (contextMenu)
             contextMenu.dismiss()
         if (panelPage)
@@ -713,6 +714,7 @@ Window {
     }
 
     function handleKey(event) {
+        if (searchBar.menuKey(event)) { event.accepted = true; return }
         typeStrip.showKeywords = event.key === Qt.Key_Control || (event.modifiers & Qt.ControlModifier) !== 0
         numberHints.press(event)
         nameTip.dismiss() // as Windows' tips go on a key
@@ -1035,12 +1037,12 @@ Window {
 
     Connections {
         target: window.frame
-        function onDoubleClicked() { window.placement.moveHome() } // on the header or footer
+        function onDoubleClicked() { window.launcher.togglePanel() } // the visible grip
         function onHandleClicked(button) {
             if (button === Qt.MiddleButton)
                 window.launcher.togglePin()
             else if (button === Qt.RightButton)
-                window.placement.centerOnScreen()
+                window.searchBar.showPositionMenu()
             else if (button === Qt.LeftButton)
                 window.launcher.openSettings()
         }
@@ -1748,7 +1750,7 @@ Window {
     // (a right click on a row then opens it again there).
     MouseArea {
         anchors.fill: parent
-        enabled: window.menuOpen || window.columnMenuOpen
+        enabled: window.menuOpen || window.columnMenuOpen || window.searchBar.menuOpen
         acceptedButtons: Qt.AllButtons
         onPressed: (mouse) => {
             // The columns menu is closed by any click, a right click on the header included

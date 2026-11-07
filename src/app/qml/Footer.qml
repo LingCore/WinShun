@@ -11,7 +11,7 @@ import WinShun
 // right (the three used most; the info button after them lists the rest),
 // then a button that clears the recent items (while there are some to clear),
 // and in the panel at the very right its 列表 / 大图 switch. The divider above
-// shows work going on. Dragging it moves the window.
+// shows work going on. Window movement belongs to the visible header handles.
 Item {
     id: footer
 
@@ -52,7 +52,6 @@ Item {
     }
     Component.onCompleted: {
         showBusy = busy
-        frame.addDragArea(footer)
     }
     Timer {
         id: busyDelay
@@ -367,7 +366,7 @@ Item {
 
         KeyHint { dpr: footer.dpr; id: enterHint; visible: hints.given < 1 && label.length > 0; keys: "Enter"; label: hints.keyHints.enter ?? "" }
         KeyHint { dpr: footer.dpr; id: secondHint; visible: hints.given < 2 && label.length > 0; keys: hints.keyHints.secondKeys ?? ""; label: hints.keyHints.second ?? "" }
-        KeyHint { dpr: footer.dpr; id: tabHint; objectName: "footerTabHint"; visible: label.length > 0; keys: hints.keyHints.tabKeys || "Tab"; label: hints.keyHints.tab ?? "" }
+        KeyHint { dpr: footer.dpr; id: tabHint; objectName: "footerTabHint"; visible: label.length > 0 && label !== qsTranslate("ws::Launcher", "切换范围"); keys: hints.keyHints.tabKeys || "Tab"; label: hints.keyHints.tab ?? "" }
     }
 
     // The launcher's other shortcuts, when it is clicked.

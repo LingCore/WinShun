@@ -378,6 +378,8 @@ int WindowFrame::hitTest(int screenX, int screenY) const
         return HTCLIENT; // an open menu over a drag area or the title bar: the press is the menu's
     const bool onMaximize = m_ownFrame && covers(m_maximizeButton, pos);
     const bool onControl = onMaximize || anyCovers(m_controls, pos);
+    if (!onControl && anyCovers(m_dragHandles, pos))
+        return HTCAPTION;
     if ((m_ownFrame || m_resizable) && !::IsZoomed(hwnd)) {
         // Resize edges as thick as the system frame, inside the window.
         POINT point {screenX, screenY};

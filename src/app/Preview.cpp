@@ -306,6 +306,8 @@ int finish(QQuickWindow* window, bool saved, QObject* controller = nullptr)
 
 // ---- --preview-plugins ------------------------------------------------------------------
 
+QQuickItem* visualNamed(QQuickItem* item, const QString& name);
+
 int runPlugins(const QStringList& args)
 {
     const QString out = valueAfter(args, kFlag);
@@ -391,6 +393,27 @@ int runPlugins(const QStringList& args)
                                                        third ? u"open"_s : u"closed"_s));
         if (!first || second || !third)
             return finish(window, false);
+        if (args.contains(u"--pointer-check"_s)) {
+            auto* menuItem = qobject_cast<QQuickItem*>(chosen);
+            auto* highlight = chosen->findChild<QQuickItem*>(u"dropMenuHighlight"_s);
+            const int count = engine.newQObject(chosen).property(u"entries"_s).property(u"length"_s).toInt();
+            say(u"menu pointer probe: %1 entries, highlight %2"_s.arg(count).arg(highlight != nullptr));
+            bool aligned = menuItem && highlight && count >= 2;
+            for (const int index : {count - 1, 0, 1, count - 1, 0}) {
+                auto* entry = visualNamed(menuItem, u"dropMenuEntry-%1"_s.arg(index));
+                if (!entry || !highlight) { aligned = false; break; }
+                const QPointF entryAt = entry->mapToScene({entry->width() / 2, entry->height() / 2});
+                QMouseEvent move(QEvent::MouseMove, entryAt, window->mapToGlobal(entryAt), Qt::NoButton, {}, {});
+                QCoreApplication::sendEvent(window, &move);
+                pump(350);
+                settle(window);
+                const bool hit = chosen->property("hovered").toInt() == index;
+                const bool painted = std::abs(entry->mapToScene({0, 0}).y() - highlight->mapToScene({0, 0}).y()) < 1;
+                say(u"menu pointer row %1: hit=%2 painted=%3"_s.arg(index).arg(hit).arg(painted));
+                aligned = aligned && hit && painted;
+            }
+            if (!aligned) return finish(window, false);
+        }
     }
     // GitHub #230 (with --elevated): 确认 on the card not confirmed yet,
     // clicked as a user does; the sample's is refused: why, and 再试一次,
@@ -3186,6 +3209,8 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
     launcher.setQuery(u"Logo 测试"_s);
     launcher.results()->assign({SearchResult{.name = u"Example.txt"_s, .path = u"T:\\Example.txt"_s}}, {});
     int settingsRequests = 0;
+    int panelRequests = 0;
+    QObject::connect(&launcher, &Launcher::panelToggleRequested, window, [&] { ++panelRequests; });
     QObject::connect(&launcher, &Launcher::settingsRequested, window, [&] { ++settingsRequests; });
     QJsonArray checks;
     bool passed = true;
@@ -3197,6 +3222,7 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
     const HWND hwnd = reinterpret_cast<HWND>(window->winId());
     for (const bool panel : {false, true}) {
         launcher.setPanel(panel);
+        frame.setResizable(panel);
         if (panel) placement.enterPanel(window->screen());
         else placement.placeOn(window->screen());
         settle(window);
@@ -3324,16 +3350,53 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
         check(settingsRequests == before + 2, mode + u"keyboard activation opens settings"_s);
         field->forceActiveFocus();
         const QRect area = window->screen()->availableGeometry();
+        ::SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0);
         window->setPosition(area.topLeft() + QPoint(24, 36));
+        ::SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
         settle(window);
+        pump(300);
+        const QPoint draggedPosition = window->position();
         const QSize size = window->size();
         click(WM_NCRBUTTONDOWN, WM_NCRBUTTONUP);
+        auto* positionMenu = window->findChild<QQuickWindow*>(panel ? u"panelHeaderMenu"_s : u"searchHeaderMenu"_s);
+        check(positionMenu && positionMenu->isVisible(), mode + u"right click opens the position menu"_s);
+        if (positionMenu) {
+            auto* highlight = visualNamed(positionMenu->contentItem(), u"contextMenuHighlight"_s);
+            for (const int rowIndex : {2, 1, 2, 1}) {
+                auto* entry = visualNamed(positionMenu->contentItem(), u"contextMenuEntry-%1"_s.arg(rowIndex));
+                if (!entry || !highlight) { check(false, mode + u"position menu exposes its entries"_s); break; }
+                const QPointF at = entry->mapToScene({entry->width() / 2, entry->height() / 2});
+                QMouseEvent move(QEvent::MouseMove, at, positionMenu->mapToGlobal(at), Qt::NoButton, {}, {});
+                QCoreApplication::sendEvent(positionMenu, &move);
+                pump(350);
+                settle(positionMenu);
+                check(positionMenu->property("highlighted").toInt() == rowIndex
+                    && std::abs(entry->mapToScene({0, 0}).y() - highlight->mapToScene({0, 0}).y()) < 1,
+                    mode + u"position menu paint follows pointer row %1"_s.arg(rowIndex));
+            }
+        }
+        click(WM_NCRBUTTONDOWN, WM_NCRBUTTONUP);
+        check(positionMenu && !positionMenu->isVisible(), mode + u"second Logo right click closes the menu"_s);
+        click(WM_NCRBUTTONDOWN, WM_NCRBUTTONUP);
+        check(positionMenu && positionMenu->isVisible(), mode + u"third Logo right click reopens the menu"_s);
+        QKeyEvent closePosition(QEvent::KeyPress, Qt::Key_Escape, {});
+        QCoreApplication::sendEvent(window, &closePosition);
+        check(positionMenu && !positionMenu->isVisible() && window->isVisible(), mode + u"Escape closes only the position menu"_s);
+        click(WM_NCRBUTTONDOWN, WM_NCRBUTTONUP);
+        if (positionMenu) {
+            QMetaObject::invokeMethod(positionMenu, "activate", Q_ARG(QVariant, 1));
+            settle(window);
+        }
         const QPoint wanted(area.x() + (area.width() - size.width()) / 2,
             area.y() + (area.height() - size.height()) / 2);
         check((window->position() - wanted).manhattanLength() <= 2,
-            mode + u"native right click centers on the current monitor work area"_s);
+            mode + u"position menu centers on the current monitor work area"_s);
         check(window->size() == size && launcher.query() == query && !launcher.pinned() && settingsRequests == before + 2,
             mode + u"centering retains size, query and pin state without opening settings"_s);
+        placement.restoreDraggedPosition();
+        pump(300);
+        check((window->position() - draggedPosition).manhattanLength() <= 2,
+            mode + u"restore returns to the dragged position after centering"_s);
         check(saveGrab(window, output.filePath(panel ? u"logo-panel.png"_s : u"logo-box.png"_s)), mode + u"unpinned state screenshot"_s);
         ::SendMessageW(hwnd, WM_NCMOUSEMOVE, HTCAPTION, point());
         // Keep the user's real cursor where it is: the synthetic hover owns
@@ -3352,6 +3415,110 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
                 .arg(logo->property("pointed").toBool()).arg(hint ? hint->property("shown").toBool() : false));
         check(saveGrab(window, output.filePath(panel ? u"logo-panel-hint.png"_s : u"logo-box-hint.png"_s)), mode + u"hint screenshot"_s);
         ::SendMessageW(hwnd, WM_NCMOUSELEAVE, 0, 0);
+        // #244: native hit regions and actual text selection, including the
+        // whitespace that used to be interpreted as the window's title bar.
+        auto* bar = field->parentItem();
+        const auto hit = [&](QPointF scene) {
+            const qreal dpr = window->devicePixelRatio();
+            RECT bounds {};
+            ::GetWindowRect(hwnd, &bounds);
+            const QPoint local(qRound(scene.x() * dpr), qRound(scene.y() * dpr));
+            return ::SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(bounds.left + local.x(), bounds.top + local.y()));
+        };
+        for (const qreal y : {1.0, field->height() / 2, field->height() - 1})
+            check(hit(field->mapToScene({field->width() / 2, y})) == HTCLIENT,
+                mode + u"field and vertical padding keep client hit testing at y=%1"_s.arg(y));
+        check(hit(bar->mapToScene({bar->width() / 2 + 90, bar->height() - 2})) == HTCLIENT,
+            mode + u"header whitespace does not move the window"_s);
+        auto* modeGrip = visualNamed(window->contentItem(), panel ? u"panelSearchGrip"_s : u"searchGrip"_s);
+        check(modeGrip && modeGrip->isVisible(), mode + u"every theme has a visible window movement grip"_s);
+        const LRESULT gripHit = modeGrip ? hit(modeGrip->mapToScene({modeGrip->width() / 2, modeGrip->height() / 2})) : HTNOWHERE;
+        check(modeGrip && (modeGrip->isVisible() ? gripHit == HTCAPTION : gripHit != HTCAPTION),
+            mode + u"visible grip moves the window; hidden grip leaves no caption hotspot"_s);
+        const QPoint beforeDrag = window->position();
+        const QPointF from = field->mapToScene({3, field->height() / 2});
+        const QPointF to = field->mapToScene({field->width() - 3, field->height() / 2});
+        QMouseEvent press(QEvent::MouseButtonPress, from, window->mapToGlobal(from), Qt::LeftButton, Qt::LeftButton, {});
+        QCoreApplication::sendEvent(window, &press);
+        QMouseEvent move(QEvent::MouseMove, to, window->mapToGlobal(to), Qt::NoButton, Qt::LeftButton, {});
+        QCoreApplication::sendEvent(window, &move);
+        QMouseEvent release(QEvent::MouseButtonRelease, to, window->mapToGlobal(to), Qt::LeftButton, {}, {});
+        QCoreApplication::sendEvent(window, &release);
+        check(!field->property("selectedText").toString().isEmpty() && window->position() == beforeDrag,
+            mode + u"drag selects real text without moving the window"_s);
+        auto* scopes = visualNamed(window->contentItem(), panel ? u"panelScopeTabs"_s : u"searchScopeTabs"_s);
+        if (scopes) {
+            const auto selectScope = [&](int index) {
+                const QVariantList segments = scopes->property("segments").toList();
+                if (index >= segments.size()) return;
+                const QVariantMap segment = segments[index].toMap();
+                const QPointF at = scopes->mapToScene({segment.value(u"x"_s).toReal() + segment.value(u"width"_s).toReal() / 2, scopes->height() / 2});
+                QMouseEvent scopePress(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+                QCoreApplication::sendEvent(window, &scopePress);
+                QMouseEvent scopeRelease(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+                QCoreApplication::sendEvent(window, &scopeRelease);
+                settle(window);
+            };
+            selectScope(1);
+            check(launcher.scope() == Launcher::Files, mode + u"Files tab selects Files in one click"_s);
+            selectScope(2);
+            check(launcher.scope() == Launcher::Content, mode + u"Content tab selects Content in one click"_s);
+            selectScope(0);
+            check(launcher.scope() == Launcher::All, mode + u"All tab selects All in one click"_s);
+            launcher.setScope(Launcher::All);
+            launcher.results()->assign({}, {});
+            field->forceActiveFocus();
+            QKeyEvent tab(QEvent::KeyPress, Qt::Key_Tab, {});
+            QCoreApplication::sendEvent(window, &tab);
+            check(launcher.scope() == Launcher::Files, mode + u"Tab still advances the search scope"_s);
+            QKeyEvent backTab(QEvent::KeyPress, Qt::Key_Backtab, Qt::ShiftModifier);
+            QCoreApplication::sendEvent(window, &backTab);
+            check(launcher.scope() == Launcher::All, mode + u"Shift+Tab still returns to All"_s);
+            auto* rangeHint = visualNamed(window->contentItem(), u"footerTabHint"_s);
+            check(rangeHint && !rangeHint->property("label").toString().isEmpty() && !rangeHint->isVisible(),
+                mode + u"footer omits the duplicated scope-switch hint"_s);
+        }
+        if (!panel) {
+            launcher.setPureSearch(true);
+            launcher.setQuery({});
+            settle(window);
+            ::SendMessageW(hwnd, WM_NCMOUSEMOVE, HTCAPTION, point());
+            ::TrackMouseEvent(&tracking);
+            while (::PeekMessageW(&leave, hwnd, WM_NCMOUSELEAVE, WM_NCMOUSELEAVE, PM_REMOVE)) {}
+            pump(400);
+            settle(window);
+            auto* tip = visualNamed(window->contentItem(), u"searchLogoHint"_s);
+            auto* popup = tip ? tip->findChild<QQuickWindow*>(u"hoverTipWindow"_s) : nullptr;
+            check(tip && tip->property("detached").toBool() && popup && popup->isVisible()
+                && popup->height() > 20 && popup->width() > 150,
+                u"empty short window shows complete logo help in a separate window"_s);
+            check(popup && popup->flags().testFlag(Qt::WindowDoesNotAcceptFocus)
+                && popup->flags().testFlag(Qt::WindowTransparentForInput), u"detached help takes neither focus nor mouse input"_s);
+            if (popup) check(saveGrab(popup, output.filePath(u"logo-empty-hint.png"_s)), u"empty-window help screenshot"_s);
+            launcher.setQuery(query);
+            settle(window);
+            check(tip && !tip->property("detached").toBool(), u"help returns inside when the host grows while hovered"_s);
+            launcher.setQuery({});
+            settle(window);
+            check(tip && tip->property("detached").toBool(), u"help detaches again when the host shrinks while hovered"_s);
+            ::SendMessageW(hwnd, WM_NCMOUSELEAVE, 0, 0);
+            launcher.setPureSearch(false);
+            launcher.setQuery(query);
+            auto* grip = visualNamed(window->contentItem(), u"searchGrip"_s);
+            check(grip && (grip->isVisible() ? hit(grip->mapToScene({grip->width() / 2, grip->height() / 2})) == HTCAPTION
+                : hit(grip->mapToScene({grip->width() / 2, grip->height() / 2})) != HTCAPTION), u"grip hit testing follows actual visibility"_s);
+            if (grip && grip->isVisible()) {
+                const int previousRequests = panelRequests;
+                const QPointF at = grip->mapToScene({grip->width() / 2, grip->height() / 2});
+                RECT bounds {};
+                ::GetWindowRect(hwnd, &bounds);
+                ::SendMessageW(hwnd, WM_NCLBUTTONDBLCLK, HTCAPTION,
+                    MAKELPARAM(bounds.left + qRound(at.x() * window->devicePixelRatio()), bounds.top + qRound(at.y() * window->devicePixelRatio())));
+                settle(window);
+                check(panelRequests == previousRequests + 1, u"double click on the grip requests panel expansion"_s);
+                launcher.setPanel(false);
+            }
+        }
     }
     window->hide();
     QQuickWindow appearance;

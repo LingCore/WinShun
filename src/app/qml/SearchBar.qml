@@ -1,8 +1,7 @@
 import QtQuick
 import WinShun
 
-// Logo controls, the input field and the scope switcher. The rest of it drags
-// the window (see WindowFrame).
+// Only the visible logo and grip move the window; the field owns its whitespace.
 Item {
     id: bar
 
@@ -21,6 +20,42 @@ Item {
     // corner collapses the panel instead of expanding the box into it.
     property bool panelMode: false
     property bool minimal: false
+    readonly property bool menuOpen: headerMenu.item !== null && headerMenu.item.visible
+    function closeMenu() { if (headerMenu.item) headerMenu.item.dismiss() }
+    function menuKey(event) { return menuOpen && headerMenu.item.handleKey(event) }
+    function showPositionMenu() {
+        if (menuOpen) { closeMenu(); return }
+        headerMenu.active = true
+        const items = [
+            { text: qsTr("靠上"), action: 0, enabled: !bar.panelMode },
+            { text: qsTr("居中"), action: 1 },
+            { text: qsTr("恢复上次拖动位置"), action: 2 }
+        ]
+        headerMenu.item.popup(-1, "", items, handle.mapToGlobal(0, handle.height + 4), false)
+    }
+    Loader {
+        id: headerMenu
+        active: false
+        sourceComponent: ContextMenu {
+            objectName: bar.panelMode ? "panelHeaderMenu" : "searchHeaderMenu"
+            host: bar.launcher
+            onTriggered: (row, action) => {
+                if (action === 0) bar.placement.moveHome()
+                else if (action === 1) bar.placement.centerOnScreen()
+                else bar.placement.restoreDraggedPosition()
+                bar.focusAtEnd()
+            }
+        }
+    }
+    Connections {
+        target: bar.placement
+        function onMovingChanged() { if (bar.placement.moving) bar.closeMenu() }
+    }
+    Connections {
+        target: bar.Window.window
+        function onVisibleChanged() { if (!bar.Window.window.visible) bar.closeMenu() }
+    }
+    onVisibleChanged: if (!visible) { historyPicker.close(); closeMenu() }
     readonly property bool folderMode: !panelMode && launcher.folderSearch
     readonly property string hiddenPrefix: folderMode ? launcher.typingPrefix : ""
     property bool syncingQuery: false
@@ -94,7 +129,6 @@ Item {
         }
         keyPressed(event)
     }
-    onVisibleChanged: if (!visible) historyPicker.close()
 
     function reportField() {
         if (inBox)
@@ -118,7 +152,8 @@ Item {
     implicitHeight: folderMode ? 44 : Theme.headerHeight
 
     Component.onCompleted: {
-        frame.addDragArea(bar)
+        frame.addDragArea(handle)
+        frame.addDragHandle(grip)
         frame.addControl(input)
         frame.addControl(tabs)
         frame.addControl(compactScope)
@@ -154,24 +189,26 @@ Item {
     // moves, it takes the accent colour.
     Item {
         id: grip
+        objectName: bar.panelMode ? "panelSearchGrip" : "searchGrip"
 
         readonly property bool pointed: contains(mapFromItem(null, bar.frame.pointer))
         readonly property bool held: bar.placement.moving
 
-        visible: !bar.inBox && Theme.tok("grip", true)
+        visible: !bar.inBox
         anchors.top: parent.top
+        anchors.topMargin: Theme.fieldInset > 0 ? 0 : 4
         anchors.horizontalCenter: parent.horizontalCenter
-        width: 72 // easier to find than the pill itself
-        height: 14
+        width: 48
+        height: 10
 
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
-            y: 6 // even: on whole device pixels at 150 %
+            y: 4
             width: grip.held || grip.pointed ? 48 : 36
             height: 4
             radius: Theme.progressRadius
             color: grip.held ? Theme.accent : grip.pointed ? Theme.subtext : Theme.faint
-            opacity: grip.held || grip.pointed ? 1 : bar.hovered ? 0.7 : 0
+            opacity: grip.held || grip.pointed ? 1 : 0.5
             Behavior on width { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
             Behavior on color { ColorAnimation { duration: 150 } }
             Behavior on opacity { NumberAnimation { duration: 150 } }
@@ -186,8 +223,8 @@ Item {
 
         readonly property bool pointed: visible && contains(mapFromItem(null, bar.frame.pointer))
         readonly property bool checked: bar.launcher.pinned
-        readonly property string help: qsTr("左键：设置 · 中键：%1\n右键：窗口居中 · 拖动：移动窗口")
-            .arg(checked ? qsTr("取消钉住") : qsTr("钉住"))
+        readonly property string help: qsTr("左键：设置 · 中键：%1\n右键：位置菜单 · 拖动：移动窗口\n双击横条：展开／收回搜索面板")
+            .arg(checked ? qsTr("取消保持显示") : qsTr("保持显示"))
 
         visible: !bar.inBox
         anchors.left: parent.left
@@ -249,9 +286,10 @@ Item {
 
     HoverTip {
         objectName: bar.panelMode ? "panelSearchLogoHint" : "searchLogoHint"
-        target: handle.pointed && !bar.placement.moving ? handle : null
+        target: handle.pointed && !bar.placement.moving && !bar.menuOpen ? handle : null
         text: handle.help
         shortcut: "Ctrl+, · Ctrl+T"
+        host: bar.launcher
     }
 
     TextInput {
@@ -265,7 +303,9 @@ Item {
         anchors.leftMargin: styleStart > 0 ? Theme.snap(Math.max(6, Theme.fieldInset + styleStart - handle.x - handle.width), bar.dpr) : 8
         anchors.right: bar.minimal ? bar.right : regexChip.visible ? regexChip.left : bar.folderMode ? compactScope.left : tabs.left
         anchors.rightMargin: regexChip.visible ? 8 : 12
-        y: bar.onPixel((bar.height - height) / 2 + fieldPart.out("contentOffsetY", 0))
+        height: bar.height - grip.y - 2 * grip.height
+        y: grip.y + grip.height
+        verticalAlignment: TextInput.AlignVCenter
         focus: true
         // Typed into without the focus (keysRouted, GitHub #203): the caret
         // shows where, steady (it blinks only with the focus).
@@ -530,6 +570,7 @@ Item {
         anchors.rightMargin: 6
         anchors.verticalCenter: parent.verticalCenter
         glyph: "\uE81C"
+        iconSize: 24 / bar.dpr
         tip: qsTr("搜索历史")
         dpr: bar.dpr
         onClicked: historyPicker.toggle(bar)
@@ -641,6 +682,8 @@ Item {
 
     ScopeTabs {
         id: tabs
+        HoverHandler { id: scopeHover }
+        HoverTip { target: scopeHover.hovered ? tabs : null; text: qsTr("切换搜索范围"); shortcut: "Tab / Shift+Tab"; host: bar.launcher }
         objectName: bar.panelMode ? "panelScopeTabs" : "searchScopeTabs"
         visible: !bar.minimal && !bar.folderMode
         scaled: true
