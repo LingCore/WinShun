@@ -353,7 +353,7 @@ std::wstring downloadsFolder()
 {
     PWSTR path = nullptr;
     std::wstring out;
-    if (SUCCEEDED(::SHGetKnownFolderPath(FOLDERID_Downloads, KF_FLAG_DEFAULT, nullptr, &path)) && path)
+    if (SUCCEEDED(::SHGetKnownFolderPath(FOLDERID_Downloads, KF_FLAG_DONT_VERIFY, nullptr, &path)) && path)
         out = path;
     ::CoTaskMemFree(path);
     return out;

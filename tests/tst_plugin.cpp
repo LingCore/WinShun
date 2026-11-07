@@ -28,6 +28,7 @@
 #include "WebShortcut.h"
 #include "WebSearchProvider.h"
 #include "ZeroCode.h"
+#include "KnownFolderOverride.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -50,6 +51,7 @@
 #include <windows.h>
 #include <aclapi.h>
 #include <sddl.h>
+#include <shlobj.h>
 
 #include <algorithm>
 #include <functional>
@@ -1942,7 +1944,11 @@ private slots:
         QVERIFY(f.host->query(u"dl "_s, Scope::All, 3));
         r = f.finalFor(3);
         QVERIFY(r);
-        QVERIFY(r->items[0].open.target.endsWith(u"\\Downloads"_s));
+        PWSTR downloads = nullptr;
+        const HRESULT result = ::SHGetKnownFolderPath(FOLDERID_Downloads, KF_FLAG_DONT_VERIFY, nullptr, &downloads);
+        const auto freeDownloads = qScopeGuard([&] { ::CoTaskMemFree(downloads); });
+        QVERIFY(SUCCEEDED(result));
+        QCOMPARE(r->items[0].open.target, QString::fromWCharArray(downloads));
         QVERIFY(f.host->query(u"pdf 报告"_s, Scope::All, 4));
         r = f.finalFor(4);
         QVERIFY(r);
@@ -1964,6 +1970,116 @@ private slots:
         QCOMPARE(f.actions.size(), 1);
         QVERIFY(f.actions[0].ok);
         QCOMPARE(f.actions[0].effects[0].kind, Effect::Kind::Hide);
+    }
+
+    void zeroCodeKnownFolders()
+    {
+        // Use the real Windows API and a stale profile variable to distinguish
+        // shell locations from concatenating a path under %USERPROFILE%.
+        const bool hadProfile = qEnvironmentVariableIsSet("USERPROFILE");
+        const QByteArray profile = qgetenv("USERPROFILE");
+        const auto restoreProfile = qScopeGuard([&] {
+            if (hadProfile)
+                qputenv("USERPROFILE", profile);
+            else
+                qunsetenv("USERPROFILE");
+        });
+        QVERIFY(qputenv("USERPROFILE", "D:\\WinShun-test-stale-profile"));
+        struct Folder {
+            QString name;
+            const KNOWNFOLDERID* id;
+        };
+        const Folder folders[] {
+            {u"Desktop"_s, &FOLDERID_Desktop},
+            {u"Documents"_s, &FOLDERID_Documents},
+            {u"Downloads"_s, &FOLDERID_Downloads},
+            {u"Pictures"_s, &FOLDERID_Pictures},
+            {u"Music"_s, &FOLDERID_Music},
+            {u"Videos"_s, &FOLDERID_Videos},
+        };
+        QHash<QString, QString> targets;
+        for (const Folder& folder : folders) {
+            PWSTR location = nullptr;
+            const HRESULT result = ::SHGetKnownFolderPath(*folder.id, KF_FLAG_DONT_VERIFY, nullptr, &location);
+            const auto freeLocation = qScopeGuard([&] { ::CoTaskMemFree(location); });
+            QVERIFY(SUCCEEDED(result));
+            const QString target = QDir::toNativeSeparators(QDir::cleanPath(QString::fromWCharArray(location)));
+            targets.insert(folder.name.toLower(), target);
+            Command command;
+            command.title.zh = u"文件夹"_s;
+            command.run.kind = Run::Kind::Folder;
+            for (const QString& prefix : {u"%USERPROFILE%\\"_s, u"%userprofile%/"_s}) {
+                command.run.folder = prefix + folder.name;
+                const Items items = runZeroCode(command, {}, u"zh"_s);
+                QCOMPARE(items.size(), 1);
+                QCOMPARE(items[0].open.target, target);
+                QCOMPARE(items[0].subtitle, target);
+                QCOMPARE(items[0].copy, target);
+            }
+            command.run.folder = u"%USERPROFILE%\\"_s + folder.name + u"\\子目录\\文件.txt"_s;
+            QCOMPARE(runZeroCode(command, {}, u"zh"_s)[0].open.target, target + u"\\子目录\\文件.txt"_s);
+            // Explicit addresses and similarly named ordinary folders keep
+            // their usual environment-expansion behavior.
+            command.run.folder = u"C:\\Users\\original\\"_s + folder.name;
+            QCOMPARE(runZeroCode(command, {}, u"zh"_s)[0].open.target, command.run.folder);
+            command.run.folder = u"%USERPROFILE%\\"_s + folder.name + u"-backup"_s;
+            QCOMPARE(runZeroCode(command, {}, u"zh"_s)[0].open.target,
+                u"D:\\WinShun-test-stale-profile\\"_s + folder.name + u"-backup"_s);
+            command.run.kind = Run::Kind::Program;
+            command.run.program = u"%USERPROFILE%\\"_s + folder.name + u"\\app.exe"_s;
+            command.run.cwd = u"%USERPROFILE%\\"_s + folder.name;
+            const Item program = runZeroCode(command, {}, u"zh"_s)[0];
+            QCOMPARE(program.open.target, target + u"\\app.exe"_s);
+            QCOMPARE(program.open.cwd, target);
+        }
+
+        Fixture f;
+        const QString pluginDir = f.dir.path() + u"/plugins/winshun.go"_s;
+        QVERIFY(QDir().mkpath(pluginDir));
+        QVERIFY(QFile::copy(QString::fromUtf8(WINSHUN_SOURCE_PLUGINS) + u"/winshun.go/plugin.json"_s, pluginDir + u"/plugin.json"_s));
+        f.host->catalog().scan();
+        f.host->setEnabled(u"winshun.go"_s, true);
+        const std::pair<QString, QString> queries[] {
+            {u"desk "_s, targets.value(u"desktop"_s)},
+            {u"dl "_s, targets.value(u"downloads"_s)},
+            {u"go desktop"_s, targets.value(u"desktop"_s)},
+            {u"go documents"_s, targets.value(u"documents"_s)},
+            {u"go downloads"_s, targets.value(u"downloads"_s)},
+            {u"go pictures"_s, targets.value(u"pictures"_s)},
+        };
+        std::uint64_t queryId = 1;
+        for (const auto& [query, target] : queries) {
+            QVERIFY(f.host->query(query, Scope::All, queryId));
+            const Result* result = f.finalFor(queryId++);
+            QVERIFY(result);
+            QCOMPARE(result->items.size(), 1);
+            QCOMPARE(result->items[0].open.kind, Open::Kind::Path);
+            QCOMPARE(result->items[0].open.target, target);
+            QCOMPARE(result->items[0].subtitle, target);
+        }
+        QVERIFY(f.startedPids.empty());
+    }
+
+    void zeroCodeRedirectedStartup()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString startup = QDir::toNativeSeparators(temporary.filePath(u"自定义启动目录"_s));
+        KnownFolderOverride folders({{&FOLDERID_Startup, startup}});
+        QVERIFY(folders.installed());
+        Fixture f;
+        const QString pluginDir = f.dir.path() + u"/plugins/winshun.go"_s;
+        QVERIFY(QDir().mkpath(pluginDir));
+        QVERIFY(QFile::copy(QString::fromUtf8(WINSHUN_SOURCE_PLUGINS) + u"/winshun.go/plugin.json"_s, pluginDir + u"/plugin.json"_s));
+        f.host->catalog().scan();
+        f.host->setEnabled(u"winshun.go"_s, true);
+        QVERIFY(f.host->query(u"go startup"_s, Scope::All, 1));
+        const Result* result = f.finalFor(1);
+        QVERIFY(result);
+        QCOMPARE(result->items.size(), 1);
+        QCOMPARE(result->items[0].open.target, startup);
+        QCOMPARE(result->items[0].subtitle, startup);
+        QVERIFY(!QFileInfo::exists(startup)); // querying a location does not create it
     }
 
     // ---- keywords ------------------------------------------------------------

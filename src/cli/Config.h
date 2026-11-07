@@ -21,7 +21,7 @@ struct Config {
 // The settings file Win顺 uses for this ws: WS_SETTINGS (the tests'), else
 // the portable copy's (<install>\data\WinShun\WinShun.ini when there is a
 // <install>\data folder; ws.exe sits in <install>\bin), else the user's
-// (%APPDATA%\WinShun\WinShun.ini).
+// (the current Windows Roaming AppData folder\WinShun\WinShun.ini).
 std::wstring configFile();
 
 Config readConfig();

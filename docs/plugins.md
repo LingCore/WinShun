@@ -48,6 +48,8 @@ English version: [plugins.en.md](plugins.en.md).
 
 输入 `npm lodash`，Enter 打开搜索页；只输入 `npm `（带空格）打开首页。`run` 还可以是 `{"program": "C:\\…\\code.exe", "args": "%s"}`、`{"folder": "%USERPROFILE%\\Downloads"}`、`{"search": {"query": "ext:pdf %s", "scope": "files"}}`（等于在搜索框里输入它），或 `{"items": [{"id": …, "title": …, "open": {"path": …}}]}`（固定清单，输入的词用来筛选）。
 
+零代码路径以 `%USERPROFILE%\Desktop`、`Documents`、`Downloads`、`Pictures`、`Music`、`Videos` 开头时，按 Windows 已知文件夹解析到当前设置的位置，支持迁移到其他盘、OneDrive 和网络目录，也支持后接子路径。`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup` 同样读取 Windows 当前的启动文件夹。`run.folder`、`run.program`、工作目录和固定清单的 `open.path`、含变量的副标题使用相同规则。直接填写的绝对路径按填写的地址打开。
+
 ### 2. Python 一次性：几行脚本
 
 `me.hello\plugin.json`：

@@ -5,6 +5,8 @@
 
 #include <QDir>
 
+#include <shlobj.h>
+
 using namespace Qt::StringLiterals;
 
 namespace ws::plugin {
@@ -23,6 +25,35 @@ namespace {
 
 QString expanded(const QString& path)
 {
+    // Older zero-code manifests name these folders below %USERPROFILE%.
+    // Resolve the symbolic prefix before expanding the environment so moved
+    // and OneDrive-managed folders follow the user's current Windows settings.
+    const QString native = QDir::toNativeSeparators(path);
+    struct KnownFolder {
+        QString prefix;
+        const KNOWNFOLDERID* id;
+    };
+    static const KnownFolder folders[] {
+        {u"%USERPROFILE%\\Desktop"_s, &FOLDERID_Desktop},
+        {u"%USERPROFILE%\\Documents"_s, &FOLDERID_Documents},
+        {u"%USERPROFILE%\\Downloads"_s, &FOLDERID_Downloads},
+        {u"%USERPROFILE%\\Pictures"_s, &FOLDERID_Pictures},
+        {u"%USERPROFILE%\\Music"_s, &FOLDERID_Music},
+        {u"%USERPROFILE%\\Videos"_s, &FOLDERID_Videos},
+        {u"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"_s, &FOLDERID_Startup},
+    };
+    for (const KnownFolder& folder : folders) {
+        if (!native.startsWith(folder.prefix, Qt::CaseInsensitive)
+            || (native.size() > folder.prefix.size() && native[folder.prefix.size()] != u'\\'))
+            continue;
+        // Avoid checking redirected network folders or creating missing ones.
+        const QString target = QString::fromStdWString(win32::knownFolder(*folder.id));
+        if (!target.isEmpty()) {
+            const QString suffix = QString::fromStdWString(win32::expandEnvironment(native.mid(folder.prefix.size()).toStdWString()));
+            return QDir::toNativeSeparators(QDir::cleanPath(target + suffix));
+        }
+        break;
+    }
     return QString::fromStdWString(win32::expandEnvironment(path.toStdWString()));
 }
 

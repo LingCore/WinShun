@@ -1,5 +1,7 @@
 # 局域网传输 · LAN transfer
 
+默认保存位置跟随 Windows 当前的下载文件夹。目录尚未创建且上级位置可用时，在接收文件时创建目标目录。
+
 Win顺 0.17.0 或更新版本的官方可选 C++ 常驻插件（`WinShunLocalSend.exe`，源码在 `src/localsend-plugin`）。在设置 → 插件 → 插件库中“安装并启用”，确认权限后使用。和同一个网络里开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件和文字，不经过任何服务器，也不用登录。
 
 **收**
@@ -18,6 +20,8 @@ Win顺 0.17.0 或更新版本的官方可选 C++ 常驻插件（`WinShunLocalSen
 **安全**：每次接收都先问你，没有“自动接收”。Windows 把网络设成“公用”时（咖啡馆、机场），先不接收；在 `传` 里说明原因，家里或公司的网络按一下 Enter 就在这个网络上接收（只记住这一个）。只是其中一个网络是公用的（比如 Wi-Fi 能收、网线是公用网络）时，状态照常，下面另有一行说那个网络上收不到。卡片上可以设接收密码。通知标题先写发生了什么，再写对方的名字（最多 20 个字），别人改名字冒充不了系统提示。连接是加密的（TLS），对方的身份用证书指纹核对。安装版会在 Windows 防火墙里加一条只对本地子网开放的规则（TCP 53317–53320、UDP 53317），卸载时删掉。这台电脑上也开着 LocalSend 时，它用 53317，插件用 53318；LocalSend 关了以后，没在传东西的时候换回 53317。
 
 ---
+
+The default destination follows the current Windows Downloads folder. If the directory is missing and its parent location is available, it is created when receiving a file.
 
 Clipboard history also has **Send over LAN…**: choose one or more entries, then a device, without changing the system clipboard. Short text goes as a text message; text over 64 KB goes as a file. Images keep their original format, and mixed selections go as files. Requires a WinShun version with this menu and LAN transfer plugin 1.0.1 or newer.
 

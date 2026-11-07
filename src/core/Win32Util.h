@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace ws::win32 {
 
@@ -104,6 +105,11 @@ std::wstring longPath(std::wstring_view path);
 
 // Expands %VAR% references, e.g. "%WINDIR%\WinSxS".
 std::wstring expandEnvironment(std::wstring_view text);
+
+// Current Windows locations, without checking disks or creating directories.
+std::wstring knownFolder(const GUID& id);
+// Profile plus the redirectable personal folders, for indexing/search priority.
+std::vector<std::wstring> userFolders();
 
 // Nobody has used the keyboard or mouse for two minutes, nothing runs full
 // screen (a film, a game, slides) and the computer is on mains power: work

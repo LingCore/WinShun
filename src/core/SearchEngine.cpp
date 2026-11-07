@@ -515,26 +515,37 @@ SearchResult fromDisk(const QString& path, const RecentOnDisk::Item& item)
 // recent items are taken in rounds, the paths of a round looked up together.
 using RecentItem = std::variant<SearchResult, QString>;
 
-// Whether entries lie under one folder, cached by parent folder (files next
+// Whether entries lie under given folders, cached by parent folder (files next
 // to each other share it).
 class UnderFolder {
 public:
     UnderFolder(const FileIndex& index, EntryId folder)
         : m_index(index)
-        , m_folder(folder)
     {
+        if (folder != kNoEntry)
+            m_folders.push_back(folder);
         m_cache.fill({kNoEntry, false});
     }
+    UnderFolder(const FileIndex& index, const std::vector<std::wstring>& folders)
+        : UnderFolder(index, kNoEntry)
+    {
+        for (const std::wstring& path : folders) {
+            const EntryId id = index.findPath(path);
+            if (id != kNoEntry)
+                m_folders.push_back(id);
+        }
+    }
+    bool contains(EntryId id) const { return std::ranges::find(m_folders, id) != m_folders.end(); }
     bool operator()(EntryId id)
     {
         const EntryId parent = m_index.entry(id).parent;
-        if (m_folder == kNoEntry || parent == kNoEntry)
+        if (m_folders.empty() || parent == kNoEntry)
             return false;
         Slot& slot = m_cache[parent & (m_cache.size() - 1)];
         if (slot.parent != parent) {
             bool under = false;
             for (EntryId cur = parent; cur != kNoEntry && !under; cur = m_index.entry(cur).parent)
-                under = cur == m_folder;
+                under = contains(cur);
             slot = {parent, under};
         }
         return slot.under;
@@ -546,7 +557,7 @@ private:
         bool under;
     };
     const FileIndex& m_index;
-    EntryId m_folder;
+    std::vector<EntryId> m_folders;
     std::array<Slot, 4096> m_cache {};
 };
 
@@ -657,13 +668,12 @@ ContentScope::Place resolvePlace(const FileIndex& index, const ContentFolderSpec
 
     // Your own first, then elsewhere, hidden ones, system and program
     // folders; the shallowest first in each.
-    const EntryId profile = index.findPath(win32::expandEnvironment(L"%USERPROFILE%"));
-    UnderFolder inProfile(index, profile);
+    UnderFolder inProfile(index, win32::userFolders());
     const auto rank = [&](EntryId id) {
         const Entry& e = index.entry(id);
         const int kind = (e.flags & EntryFlag::LowPriority) ? 3
             : (e.flags & EntryFlag::Hidden)                  ? 2
-            : (id == profile || inProfile(id))               ? 0
+            : (inProfile.contains(id) || inProfile(id))       ? 0
                                                              : 1;
         return std::tuple {kind, index.depth(id), id};
     };
@@ -2217,11 +2227,12 @@ void SearchEngine::runContentSearch(const Job& job)
             return 2;
         return inProfile(id) ? 0 : 1;
     };
+    const auto personalFolders = win32::userFolders();
     if (set == ContentSet::Given) {
         // The files asked for, as they are now; none as the content index
         // knows it (as too large, or as it was when it fit the limit).
         const auto lock = index->readLock();
-        UnderFolder inProfile(*index, index->findPath(win32::expandEnvironment(L"%USERPROFILE%")));
+        UnderFolder inProfile(*index, personalFolders);
         for (const QString& file : request.contentOnly) {
             const EntryId id = index->findPath(file.toStdWString());
             if (id == kNoEntry || index->entry(id).isDeleted())
@@ -2237,7 +2248,6 @@ void SearchEngine::runContentSearch(const Job& job)
         // each kind of those on its own (the hint names the most numerous).
         const auto lock = index->readLock();
         constexpr std::uint32_t kMatch = ContentIndex::Lookup::kMatch;
-        const EntryId profile = index->findPath(win32::expandEnvironment(L"%USERPROFILE%"));
         std::vector<std::vector<Candidate>> found(index->chunkCount());
         std::vector<int> ruledOutOf(index->chunkCount(), 0);
         std::vector<std::vector<EntryId>> largeOf(index->chunkCount());
@@ -2249,7 +2259,7 @@ void SearchEngine::runContentSearch(const Job& job)
         m_pool.parallelFor(index->chunkCount(), [&](std::size_t c) {
             if (isStale(job.id))
                 return;
-            UnderFolder inProfile(*index, profile);
+            UnderFolder inProfile(*index, personalFolders);
             UnderFolders inScope(*index, scope);
             const auto first = static_cast<EntryId>(c << FileIndex::kChunkBits);
             auto k = static_cast<std::size_t>(std::lower_bound(lookup.known.begin(), lookup.known.end(), first,

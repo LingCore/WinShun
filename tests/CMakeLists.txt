@@ -335,7 +335,7 @@ target_include_directories(tst_commandline PRIVATE ${PROJECT_SOURCE_DIR}/src/app
 target_link_libraries(tst_commandline PRIVATE wscore Qt6::Gui Qt6::Test
     ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd userenv)
 target_compile_definitions(tst_commandline PRIVATE WINSHUN_FAKE_WS="$<TARGET_FILE:fake_ws>")
-add_dependencies(tst_commandline fake_ws)
+add_dependencies(tst_commandline fake_ws WinShunMcp)
 set_target_properties(tst_commandline PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_commandline COMMAND tst_commandline)
 set_tests_properties(tst_commandline PROPERTIES

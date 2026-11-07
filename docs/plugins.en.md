@@ -44,6 +44,8 @@ A plugin is a folder under `%LOCALAPPDATA%\WinShun\plugins\<id>\` with a `plugin
 
 `npm lodash` and Enter opens the search; `npm ` alone (with the space) opens the home page. `run` may also be `{"program": "C:\\…\\code.exe", "args": "%s"}`, `{"folder": "%USERPROFILE%\\Downloads"}`, `{"search": {"query": "ext:pdf %s", "scope": "files"}}` (as if typed into the box) or `{"items": [{"id": …, "title": …, "open": {"path": …}}]}` (a fixed list the words filter).
 
+Zero-code paths beginning with `%USERPROFILE%\Desktop`, `Documents`, `Downloads`, `Pictures`, `Music` or `Videos` resolve through Windows known folders to their current locations, including other drives, OneDrive and network shares. Subpaths are supported. `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup` also resolves to the current Windows Startup folder. This applies to `run.folder`, `run.program`, working directories, and fixed items' `open.path` and subtitles containing variables. Use an explicit absolute path to target a specific location.
+
 ### 2. Python, once: a few lines
 
 `me.hello\plugin.json`:

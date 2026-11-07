@@ -23,6 +23,7 @@
 #include "Server.h"
 #include "Tls.h"
 #include "Util.h"
+#include "KnownFolderOverride.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -1353,6 +1354,28 @@ private slots:
         QVERIFY(w.allow(t0 + 60s)); // the first is a minute old; refusals were not counted
         QVERIFY(!w.allow(t0 + 60s + 500ms));
         QVERIFY(w.allow(t0 + 62s));
+    }
+
+    void missingDefaultDownloadsCanReceive()
+    {
+        const QString destination = QDir::toNativeSeparators(m_dir.filePath(u"迁移后的下载/尚未创建"_s));
+        KnownFolderOverride folders({{&FOLDERID_Downloads, destination}});
+        QVERIFY(folders.installed());
+        QCOMPARE(qs(downloadsFolder()), destination);
+        QVERIFY(!QFileInfo::exists(destination));
+        QVERIFY(folderUsable(downloadsFolder()));
+        QVERIFY(startReceiver());
+        ReceiverConfig config = m_receiver->config();
+        config.folder = downloadsFolder();
+        m_folder = config.folder;
+        m_receiver->setConfig(config);
+        m_answer = true;
+        const Prepared request = prepare({meta("f1", "received.txt", 4)});
+        QCOMPARE(request.status, 200);
+        QCOMPARE(upload(request, "f1", "test"), 200);
+        QVERIFY(outcome());
+        QCOMPARE(readFile(m_folder + L"\\received.txt"), std::string("test"));
+        QVERIFY(marked(m_folder + L"\\received.txt"));
     }
 
     void folderChecked()

@@ -1,6 +1,9 @@
 #include "Win32Util.h"
 
 #include <shellapi.h>
+#include <shlobj.h>
+
+#include <algorithm>
 
 namespace ws::win32 {
 
@@ -46,6 +49,33 @@ std::wstring expandEnvironment(std::wstring_view text)
         return input;
     out.resize(needed - 1); // drop the terminator
     return out;
+}
+
+std::wstring knownFolder(const GUID& id)
+{
+    PWSTR path = nullptr;
+    std::wstring folder;
+    if (SUCCEEDED(::SHGetKnownFolderPath(id, KF_FLAG_DONT_VERIFY, nullptr, &path)) && path)
+        folder = path;
+    ::CoTaskMemFree(path);
+    return folder;
+}
+
+std::vector<std::wstring> userFolders()
+{
+    std::vector<std::wstring> folders;
+    const auto add = [&](std::wstring path) {
+        if (!path.empty() && std::ranges::none_of(folders, [&](const std::wstring& existing) { return equalsIgnoreCase(existing, path); }))
+            folders.push_back(std::move(path));
+    };
+    // Keep an explicitly supplied profile root useful to existing callers.
+    const std::wstring profile = expandEnvironment(L"%USERPROFILE%");
+    if (profile != L"%USERPROFILE%")
+        add(profile);
+    for (const GUID& id : {FOLDERID_Profile, FOLDERID_Desktop, FOLDERID_Documents, FOLDERID_Downloads,
+             FOLDERID_Pictures, FOLDERID_Music, FOLDERID_Videos})
+        add(knownFolder(id));
+    return folders;
 }
 
 } // namespace ws::win32
