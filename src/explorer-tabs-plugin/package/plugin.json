@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.explorer-tabs",
   "name": {"zh": "资源管理器标签页", "en": "Explorer tabs"},
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": {"zh": "新开的文件夹窗口并到已经开着的资源管理器里，成为一个标签页。需要 Windows 11 22H2 或更新", "en": "A folder that opens in a new File Explorer window becomes a tab of the window already open. Needs Windows 11 22H2 or newer"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",

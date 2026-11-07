@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.localsend",
   "name": {"zh": "局域网传输", "en": "LAN transfer"},
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": {"zh": "兼容 LocalSend，手机电脑互传文件", "en": "Works with LocalSend: send files between phones and computers"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
