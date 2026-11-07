@@ -22,6 +22,7 @@
 #include "platform/WindowEffects.h"
 
 #include <QCoreApplication>
+#include <cstdlib>
 #include <QBuffer>
 #include <QImage>
 #include <QDateTime>
@@ -727,10 +728,11 @@ bool checkPluginReviewSettings(QQuickWindow* window, SettingsEditor* editor, con
     const bool hadIndex = qEnvironmentVariableIsSet("WINSHUN_PLUGIN_INDEX");
     // qputenv interprets bytes in the Windows ANSI code page. Keep the local
     // index path Unicode even when that code page cannot represent its name.
-    check(::SetEnvironmentVariableW(L"WINSHUN_PLUGIN_INDEX", indexPath.toStdWString().c_str()),
+    check(::_wputenv_s(L"WINSHUN_PLUGIN_INDEX", indexPath.toStdWString().c_str()) == 0
+            && qEnvironmentVariable("WINSHUN_PLUGIN_INDEX") == indexPath,
         u"configure a Unicode local plugin index"_s);
     const auto restoreIndex = qScopeGuard([&] {
-        ::SetEnvironmentVariableW(L"WINSHUN_PLUGIN_INDEX", hadIndex ? oldIndex.c_str() : nullptr);
+        ::_wputenv_s(L"WINSHUN_PLUGIN_INDEX", hadIndex ? oldIndex.c_str() : L"");
     });
     Settings gallerySettings;
     SettingsEditor galleryEditor(gallerySettings, u"software"_s);

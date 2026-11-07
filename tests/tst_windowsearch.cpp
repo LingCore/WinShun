@@ -168,8 +168,12 @@ private slots:
             if (ownsForeground && ::IsWindow(previous)) ::SetForegroundWindow(previous);
         });
         QVERIFY(first && second);
-        ::ShowWindow(first, SW_SHOWNOACTIVATE);
-        ::ShowWindow(second, SW_SHOWNOACTIVATE);
+        // CTest starts the process hidden. ShowWindow's first call can use
+        // that inherited startup state instead of SW_SHOWNOACTIVATE.
+        const UINT showFlags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW;
+        QVERIFY(::SetWindowPos(first, nullptr, 0, 0, 0, 0, showFlags));
+        QVERIFY(::SetWindowPos(second, nullptr, 0, 0, 0, 0, showFlags));
+        QVERIFY(::IsWindowVisible(first) && ::IsWindowVisible(second));
         QVERIFY(::SetForegroundWindow(first));
         const auto windows = windowsearch::snapshot(0);
         const auto target = std::ranges::find_if(windows, [&](const auto& row) {
