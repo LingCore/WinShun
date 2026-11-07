@@ -7,8 +7,8 @@
     ./scripts/build.ps1 -Tests 'tst_capture' # and the tests this change touches
     ./scripts/build.ps1 -Config Debug
     ./scripts/build.ps1 -Deploy              # also produce dist/WinShun with all Qt DLLs
-    ./scripts/build.ps1 -DeployDir F:\wsstage\WinShun   # the same, into that folder (dist\WinShun untouched)
-    ./scripts/build.ps1 -BuildDir F:\wsstage\build -DeployDir F:\wsstage\WinShun
+    ./scripts/build.ps1 -DeployDir dist\preview\WinShun
+    ./scripts/build.ps1 -BuildDir build\preview -DeployDir dist\preview\WinShun
     ./scripts/build.ps1 -QtDir C:\Qt\6.12.0\msvc2022_64
 #>
 param(

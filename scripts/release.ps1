@@ -15,8 +15,8 @@
 .EXAMPLE
     ./scripts/release.ps1             # setup.exe and SHA256SUMS.txt in dist\
     ./scripts/release.ps1 -Publish    # and the GitHub release
-    ./scripts/release.ps1 -OutputDir F:\wsstage\release # leave other deployed copies running
-    ./scripts/release.ps1 -BuildDir F:\wsstage\build -OutputDir F:\wsstage\release
+    ./scripts/release.ps1 -OutputDir dist\release-preview # leave other deployed copies running
+    ./scripts/release.ps1 -BuildDir build\release-preview -OutputDir dist\release-preview
 #>
 param(
     [switch] $Publish,
@@ -80,11 +80,14 @@ $stageRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
 $stage = [IO.Path]::GetFullPath((Join-Path $stageRoot ("WinShun-portable-$version-" + [guid]::NewGuid().ToString('N'))))
 if (-not $stage.StartsWith($stageRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Portable staging path escaped the temporary directory.' }
 New-Item -ItemType Directory $stage | Out-Null
-Copy-Item (Join-Path $dist 'WinShun') $stage -Recurse
-New-Item -ItemType Directory (Join-Path $stage 'WinShun\data') | Out-Null
-Copy-Item (Join-Path $root 'installer\portable-data-README.txt') (Join-Path $stage 'WinShun\data\README.txt')
-Compress-Archive -Path (Join-Path $stage 'WinShun') -DestinationPath $portable -CompressionLevel Optimal
-Remove-Item $stage -Recurse -Force
+try {
+    Copy-Item (Join-Path $dist 'WinShun') $stage -Recurse
+    New-Item -ItemType Directory (Join-Path $stage 'WinShun\data') | Out-Null
+    Copy-Item (Join-Path $root 'installer\portable-data-README.txt') (Join-Path $stage 'WinShun\data\README.txt')
+    Compress-Archive -Path (Join-Path $stage 'WinShun') -DestinationPath $portable -CompressionLevel Optimal
+} finally {
+    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+}
 Write-Host "Packaged $portable"
 
 # The official plugins that are not in the setup (GitHub #138): one
