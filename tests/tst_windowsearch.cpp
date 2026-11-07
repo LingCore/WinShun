@@ -174,7 +174,20 @@ private slots:
         QVERIFY(::SetWindowPos(first, nullptr, 0, 0, 0, 0, showFlags));
         QVERIFY(::SetWindowPos(second, nullptr, 0, 0, 0, 0, showFlags));
         QVERIFY(::IsWindowVisible(first) && ::IsWindowVisible(second));
-        QVERIFY(::SetForegroundWindow(first));
+        {
+            // A background test runner has no initial foreground grant.
+            // Share the current input queue only while preparing the fixture,
+            // then detach before exercising the production activation path.
+            const DWORD foregroundThread = ::GetWindowThreadProcessId(::GetForegroundWindow(), nullptr);
+            const DWORD testThread = ::GetCurrentThreadId();
+            const bool attach = foregroundThread && foregroundThread != testThread;
+            if (attach) QVERIFY(::AttachThreadInput(testThread, foregroundThread, TRUE));
+            const auto detach = qScopeGuard([&] {
+                if (attach) ::AttachThreadInput(testThread, foregroundThread, FALSE);
+            });
+            QVERIFY(::SetForegroundWindow(first));
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), first, 1000);
         const auto windows = windowsearch::snapshot(0);
         const auto target = std::ranges::find_if(windows, [&](const auto& row) {
             return row.windowHandle == reinterpret_cast<quintptr>(second);
