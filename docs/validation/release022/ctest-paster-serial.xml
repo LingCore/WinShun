@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="1"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="1"
+	timestamp="2026-11-07T10:39:08"
+	>
+	<testcase name="tst_paster" classname="tst_paster" time="0.465535" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+</testsuite>

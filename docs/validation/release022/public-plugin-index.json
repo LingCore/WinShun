@@ -1,0 +1,72 @@
+{
+  "workflowRun": 42330070245,
+  "registryCommit": "127ec8b7f9e5fed59901d2c294d57f9fb8dc65bc",
+  "signatureVerified": true,
+  "key": "ws-index-2026a",
+  "indexSha256": "fe9bc953721a0198fb8d64007c663834f04868eaa642765212b0ad9bd38722cb",
+  "plugins": [
+    {
+      "id": "winshun.bookmarks",
+      "version": "2.0.3",
+      "sha256": "3d401e4f12d5f7a1f0f1582a24d1acc997c79f963395910491c9929105a76e30",
+      "size": 166275,
+      "minWinShun": "0.17.0"
+    },
+    {
+      "id": "winshun.break",
+      "version": "1.1.1",
+      "sha256": "cf4c0f2327ecef7ffc108bb01c6ef85b6f09e706ec31f37d9968714dd2b8d371",
+      "size": 240924,
+      "minWinShun": "0.17.0"
+    },
+    {
+      "id": "winshun.capture",
+      "version": "1.1.7",
+      "sha256": "5ebb9d10df2cd6d95260be9481ecac7fa9a46e2a7226d8d5772aec9a31a0d00c",
+      "size": 2743412,
+      "minWinShun": "0.18.0"
+    },
+    {
+      "id": "winshun.explorer-tabs",
+      "version": "1.0.2",
+      "sha256": "492feb45696a8e556bac561ca380202e3b768eca2f0af3562df2c7e22f66a47a",
+      "size": 249593,
+      "minWinShun": "0.22.0"
+    },
+    {
+      "id": "winshun.localsend",
+      "version": "1.0.6",
+      "sha256": "c1e0bbddf77f8d3c9e218a90170cd4d6c5cdd29e4d05ff1ec92c7f412d6b38a9",
+      "size": 463435,
+      "minWinShun": "0.17.0"
+    },
+    {
+      "id": "winshun.ocr-search",
+      "version": "1.0.8",
+      "sha256": "c7bb0715ce2092bde89a9007dafbf4924abd75c9f535328e08c10f8c89463e1b",
+      "size": 1272806,
+      "minWinShun": "0.22.0"
+    },
+    {
+      "id": "winshun.semantic",
+      "version": "1.0.4",
+      "sha256": "571b921d51ae5871e666a919e18a273d0282ccdd7fb24fafb1c12d2919cd9da7",
+      "size": 294737,
+      "minWinShun": "0.17.0"
+    },
+    {
+      "id": "winshun.translate",
+      "version": "2.2.1",
+      "sha256": "c7d1c41be70d6c6c3d2f2787a6faf62e40c06bf23ec2e6ac54762ce6ba6bf9e1",
+      "size": 197783,
+      "minWinShun": "0.17.0"
+    },
+    {
+      "id": "winshun.web",
+      "version": "2.0.1",
+      "sha256": "efed869bd266b0ada4658f5af4be064fca12d95647bd6732b9036b421ea56652",
+      "size": 1609,
+      "minWinShun": "0.22.0"
+    }
+  ]
+}

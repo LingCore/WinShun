@@ -173,6 +173,30 @@ Top level:
 
 Unknown fields are ignored. A validation error is a sentence, shown as is on the settings page.
 
+## Community native review
+
+Community packages containing executables or DLLs can be submitted with the registry's `--unreviewed-native` flow and `review: "unreviewed-native"`. They require WinShun 0.22.0 or newer. The library shows their review state, and installation and every update require individual user consent. Users can view the publisher's source page and retain the installed version when declining an update. These packages use individual update actions. Publishers retain the unreviewed marker when posting later versions.
+
+## Shared host Qt runtime
+
+Since WinShun 0.22.0, ordinary-privilege MSVC x64 Release executables can request the host Qt runtime in their manifest.
+
+```json
+{
+  "minWinShun": "0.22.0",
+  "runtime": {
+    "mode": "resident",
+    "program": "my-tool.exe",
+    "qt": "host",
+    "qtVersion": "6.12.0"
+  }
+}
+```
+
+The host and plugin require the same Qt major and minor version. A third component is the minimum patch version, and `6.12` accepts that major/minor line. The contract provides Core, Gui, Qml, Quick, QtQuick, Basic Controls and Layouts. Each plugin has its own process and QML engine. Plugins requesting administrator privileges supply their own runtime.
+
+Before creating the child process, the runner prepares its DLL, platform-plugin and QML paths and supplies `WS_QT_DIR` and `WS_QT_QML_DIR`. Ordinary static Qt imports work. Keep the package's own non-Qt dependencies beside its executable. The runner checks version and deployment requirements before starting it. Revalidate the plugin when the host changes Qt major/minor versions.
+
 ### Queries, caching and stopping
 
 A plugin process receives one launcher query per search: a keyword takes precedence, followed by the first matching regex in manifest order, then push. Zero-code commands do not occupy that process query slot. Overlapping triggers therefore cannot cancel the keyword list the user entered.

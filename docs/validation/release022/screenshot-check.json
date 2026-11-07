@@ -1,0 +1,108 @@
+{
+  "quality": 96,
+  "renderer": "d3d11",
+  "images": [
+    {
+      "file": "panel.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "clipboard-resize.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "appearance.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "health.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "plugin-library.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "foldermenu.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "capture.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "query-history.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "merged-search.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "pure-search.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "clipboard-groups.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "plugin-guide.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "open-windows.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "interface-font.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "double-tap.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "native-review.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    },
+    {
+      "file": "cover.jpg",
+      "width": 1440,
+      "height": 1440,
+      "chromaSubsampling": 0
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+[
+  {
+    "id": "winshun.bookmarks",
+    "officialNativePolicy": true,
+    "errors": [],
+    "warnings": []
+  },
+  {
+    "id": "winshun.break",
+    "officialNativePolicy": true,
+    "errors": [],
+    "warnings": []
+  },
+  {
+    "id": "winshun.capture",
+    "officialNativePolicy": true,
+    "errors": [],
+    "warnings": []
+  },
+  {
+    "id": "winshun.explorer-tabs",
+    "officialNativePolicy": true,
+    "errors": [],
+    "warnings": []
+  },
+  {
+    "id": "winshun.localsend",
+    "officialNativePolicy": true,
+    "errors": [],
+    "warnings": []
+  },
+  {
+    "id": "winshun.ocr-search",
+    "officialNativePolicy": true,
+    "errors": [],
+    "warnings": []
+  },
+  {
+    "id": "winshun.semantic",
+    "officialNativePolicy": true,
+    "errors": [],
+    "warnings": []
+  },
+  {
+    "id": "winshun.translate",
+    "officialNativePolicy": true,
+    "errors": [],
+    "warnings": []
+  },
+  {
+    "id": "winshun.web",
+    "officialNativePolicy": false,
+    "errors": [],
+    "warnings": []
+  }
+]

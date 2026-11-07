@@ -153,3 +153,14 @@ python tools/screenshots/release019.py --exe <独立部署目录>/WinShun.exe --
 python tools/screenshots/release021.py --exe <独立部署目录>/WinShun.exe --work <新的原图目录> --capture-only
 python tools/screenshots/release021.py --exe <独立部署目录>/WinShun.exe --work <原图目录> --export-only
 ```
+
+## 0.22.0 补拍
+
+`release022.py` 使用独立配置和生产预览，补拍搜索范围、搜索历史、纯净搜索、已打开窗口、面板、剪贴板分组、插件说明与审核、字体和双击动作等界面。结果预览按当前桌面的 150% 渲染，其余按 200%、D3D11 渲染。16 张功能海报和封面沿用方形品牌模板，1440×1440、JPEG 质量 96、关闭色度抽样。外观、运行状况和插件库的长页只取顶部视口，封面使用新版合并搜索窗口并保留“关注我”。
+
+```powershell
+python tools/screenshots/release022.py --exe <独立部署目录>/WinShun.exe --capture <构建目录>/library-plugins/winshun.capture/WinShunCapture.exe --work <新的原图目录> --capture-only
+python tools/screenshots/release022.py --exe <独立部署目录>/WinShun.exe --work <原图目录> --export-only
+```
+
+本版原图、程序哈希、探针日志和无损海报保存在 `work/release022/`，发布证据摘要在 `docs/validation/release022/`。截图插件使用修复中文宿主路径的 1.1.7。先检查原图和探针结果，再导出和逐张检查海报。

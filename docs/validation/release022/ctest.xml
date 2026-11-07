@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="38"
+	failures="1"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="273"
+	timestamp="2026-11-07T10:34:25"
+	>
+	<testcase name="tst_windowsearch" classname="tst_windowsearch" time="0.352397" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_queryhistory" classname="tst_queryhistory" time="0.0376598" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_pluginreadme" classname="tst_pluginreadme" time="0.067362" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_paster" classname="tst_paster" time="15.0719" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_ocrsearch" classname="tst_ocrsearch" time="32.5088" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_previewinteractions" classname="tst_previewinteractions" time="2.9471" status="run">
+		<properties/>
+		<system-out>preparing
+making the application
+loading the font
+ok: requested native probe uses the Windows platform
+ok: isolated clipboard database
+FT_New_Face failed with index 0 : 2
+ok: production clipboard QML loads: 
+ok: opening clipboard starts without a preview
+ok: dispatch row hover
+ok: a quick pass does not open a preview
+ok: dispatch row hover
+ok: 200ms dwell opens without requiring a click or a perfectly still hand
+ok: hover leaves the list geometry and keyboard selection unchanged
+ok: preview does not take keyboard focus
+ok: short entry content
+ok: short preview screenshot
+ok: dispatch row hover
+ok: long content grows within the height limit
+ok: moving rows shows the correct full text
+ok: long preview screenshot
+ok: preview scroll area exists
+ok: wheel scroll reads long content in the transient preview
+ok: scrolling preview does not move or resize the clipboard list
+ok: dispatch row hover
+ok: hover follows a real image entry
+ok: image height fits its content without a sizing loop
+ok: image preview screenshot
+ok...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="tst_previewinteractions_scaled" classname="tst_previewinteractions_scaled" time="2.90196" status="run">
+		<properties/>
+		<system-out>preparing
+making the application
+loading the font
+ok: requested native probe uses the Windows platform
+ok: isolated clipboard database
+FT_New_Face failed with index 0 : 2
+ok: production clipboard QML loads: 
+ok: opening clipboard starts without a preview
+ok: dispatch row hover
+ok: a quick pass does not open a preview
+ok: dispatch row hover
+ok: 200ms dwell opens without requiring a click or a perfectly still hand
+ok: hover leaves the list geometry and keyboard selection unchanged
+ok: preview does not take keyboard focus
+ok: short entry content
+ok: short preview screenshot
+ok: dispatch row hover
+ok: long content grows within the height limit
+ok: moving rows shows the correct full text
+ok: long preview screenshot
+ok: preview scroll area exists
+ok: wheel scroll reads long content in the transient preview
+ok: scrolling preview does not move or resize the clipboard list
+ok: dispatch row hover
+ok: hover follows a real image entry
+ok: image height fits its content without a sizing loop
+ok: image preview screenshot
+ok...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="tst_previewplacement" classname="tst_previewplacement" time="0.0160984" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_launchernavigation" classname="tst_launchernavigation" time="0.0213262" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_searchnavigation" classname="tst_searchnavigation" time="17.1322" status="run">
+		<properties/>
+		<system-out>preparing
+making the application
+loading the font
+saved F:/电脑便捷工具/build/release022/tests/search-navigation/always.png 800x540
+saved F:/电脑便捷工具/build/release022/tests/search-navigation/held-idle.png 800x540
+saved F:/电脑便捷工具/build/release022/tests/search-navigation/held-100ms.png 800x540
+saved F:/电脑便捷工具/build/release022/tests/search-navigation/held-300ms.png 800x540
+saved F:/电脑便捷工具/build/release022/tests/search-navigation/held-released.png 800x540
+saved F:/电脑便捷工具/build/release022/tests/search-navigation/quick-taps.png 800x540
+saved F:/电脑便捷工具/build/release022/tests/search-navigation/off.png 800x540
+preview placement (room beside): launcher 900,306 760x480, preview 1668,306 432x816 (physical)
+preview placement (no room): launcher 80,306 2400x1328, preview 80,8 360x290 (physical)
+saved F:/电脑便捷工具/build/release022/tests/search-navigation/search-menu-box.png 276x314
+saved F:/电脑便捷工具/build/release022/tests/search-n...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="tst_foregroundmemory" classname="tst_foregroundmemory" time="7.7019" status="run">
+		<properties/>
+		<system-out>preparing
+making the application
+loading the font
+ok: isolated clipboard opens
+ok: production Main loads: 
+ok: compact launcher does not instantiate the full panel
+ok: real name search completes
+ok: real name search completes
+ok: real name search completes
+ok: real name search completes
+ok: result rows share three sets of buttons (3)
+ok: compact launcher renders
+ok: panel opening produces a frame before timeout
+ok: panel search bar preserves the current query
+ok: panel is retained for fast repeat openings
+ok: full panel renders
+ok: return to compact launcher
+ok: panel opening produces a frame before timeout
+ok: panel search bar preserves the current query
+ok: panel is retained for fast repeat openings
+ok: return to compact launcher
+ok: panel opening produces a frame before timeout
+ok: panel search bar preserves the current query
+ok: panel is retained for fast repeat openings
+ok: return to compact launcher
+ok: panel opening produces a frame before timeout
+ok: panel search bar preserves the current query
+ok: pa...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="tst_foregroundpreload" classname="tst_foregroundpreload" time="8.10964" status="run">
+		<properties/>
+		<system-out>preparing
+making the application
+loading the font
+ok: isolated clipboard opens
+ok: production Main loads: 
+ok: compact launcher does not instantiate the full panel
+ok: panel preload does not make it all at once
+ok: panel preload completes in the background while hidden
+ok: panel preload holds the event loop under 25 ms at a time (5.8 ms)
+ok: preloading keeps the compact launcher
+ok: real name search completes
+ok: real name search completes
+ok: real name search completes
+ok: real name search completes
+ok: result rows share three sets of buttons (3)
+ok: compact launcher renders
+ok: panel opening produces a frame before timeout
+ok: panel search bar preserves the current query
+ok: panel is retained for fast repeat openings
+ok: full panel renders
+ok: return to compact launcher
+ok: panel opening produces a frame before timeout
+ok: panel search bar preserves the current query
+ok: panel is retained for fast repeat openings
+ok: return to compact launcher
+ok: panel opening produces a frame before timeout
+ok: panel sear...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="tst_shelllaunch" classname="tst_shelllaunch" time="6.55334" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_foldermenu" classname="tst_foldermenu" time="7.86741" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_commandline" classname="tst_commandline" time="0.26147" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_settings" classname="tst_settings" time="1.09561" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_capturesettings" classname="tst_capturesettings" time="0.124351" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_captureui_d3d11_1.5" classname="tst_captureui_d3d11_1.5" time="3.46329" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_appearance_1.5" classname="tst_appearance_1.5" time="0.736565" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_activity" classname="tst_activity" time="0.058003" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_keyrouter" classname="tst_keyrouter" time="0.039073" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_ocrpackage" classname="tst_ocrpackage" time="5.3476" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_uifont_freetype" classname="tst_uifont_freetype" time="0.617325" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_uifont_gdi" classname="tst_uifont_gdi" time="0.879957" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_localsend" classname="tst_localsend" time="8.20596" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_break" classname="tst_break" time="0.0158819" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_translate" classname="tst_translate" time="1.15705" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_puresearch" classname="tst_puresearch" time="8.57545" status="run">
+		<properties/>
+		<system-out>preparing
+making the application
+loading the font
+ok: pure search loads production Main: 
+ok: production controls are available
+ok: default keeps familiar controls
+ok: whitespace-only query hides auxiliary controls
+ok: empty pure search has no hidden actionable results or pending search
+ok: input reclaims the controls' width
+ok: empty launcher keeps no results or footer gap
+ok: capture empty pure search
+ok: IME composition restores controls before committing the query
+ok: typing searches the real index
+ok: typing restores all existing controls
+ok: results expand the window
+ok: capture populated search
+ok: clearing returns to one input and removes stale results
+ok: Enter on the empty input cannot open a hidden result
+ok: hidden scope controls keep Tab navigation
+ok: full search panel is not collapsed by pure mode
+ok: folder search keeps its context and controls
+ok: taskbar input keeps its existing presentation
+ok: switching off restores the original presentation
+ok: probe never activates the user's desktop
+</system-out>
+	</testcase>
+	<testcase name="tst_pluginreviewsettings" classname="tst_pluginreviewsettings" time="12.6495" status="run">
+		<properties/>
+		<system-out>preparing
+making the application
+loading the font
+starting (dark 0, scale 1.5)
+platform windows, plugins C:/Qt/6.12.0/msvc2022_64/plugins, qml C:/Qt/6.12.0/msvc2022_64/qml, library paths C:/Qt/6.12.0/msvc2022_64/plugins; F:/电脑便捷工具/build/release022
+font 'Alibaba PuHuiTi 3.0' -&gt; 'Alibaba PuHuiTi 3.0' 24px: ascent 25.4375, descent 8.15625, height 33.5938, line spacing 33.5938, hinting 2
+loading SettingsWindow.qml
+showing 920x720 (dpr 1.5), active 0
+ok: pure mode has a searchable settings entry
+ok: the real toggle saves pure mode
+ok: capture pure mode setting
+ok: create isolated native candidate
+ok: first install shows the real risk confirmation
+ok: the confirmation provides an explicit web-source action
+ok: nothing installed before confirmation
+ok: capture native installation warning
+ok: Escape cancels without installing
+ok: explicit confirmation installs the candidate
+ok: installation does not enable or execute the native plugin
+ok: prepare an update with identical permissions
+ok: same-permission up...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="tst_core" classname="tst_core" time="61.3554" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_clipboard" classname="tst_clipboard" time="0.614011" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_favorites" classname="tst_favorites" time="4.21871" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_placement" classname="tst_placement" time="0.0129643" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_cli" classname="tst_cli" time="22.0629" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_plugin" classname="tst_plugin" time="40.1195" status="run">
+		<properties/>
+		<system-out>Junction created for F:\??????\build\release022\temp\tst_plugin-Wuaqyw\linked &lt;&lt;===&gt;&gt; F:\??????\build\release022\temp\tst_plugin-Wuaqyw\plain
+Junction created for F:\??????\build\release022\temp\tst_plugin-DCtkwt\plugins\test.link &lt;&lt;===&gt;&gt; F:\??????\build\release022\temp\tst_plugin-DCtkwt\devsrc
+Junction created for F:\??????\build\release022\temp\tst_plugin-nEGqRT\plugins\.winshun-update-StUvWx\plugin &lt;&lt;===&gt;&gt; F:\??????\build\release022\temp\tst_plugin-nEGqRT\devsrc
+</system-out>
+	</testcase>
+	<testcase name="tst_updater" classname="tst_updater" time="0.192836" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="tst_scoopinstall" classname="tst_scoopinstall" time="0.0903072" status="run">
+		<properties/>
+		<system-out>Junction created for F:\??????\build\release022\temp\tst_scoopinstall-DWrkkl\scoop\apps\winshun\current &lt;&lt;===&gt;&gt; F:\??????\build\release022\temp\tst_scoopinstall-DWrkkl\scoop\apps\winshun\0.18.0
+Junction created for F:\??????\build\release022\temp\tst_scoopinstall-DWrkkl\scoop\apps\winshun\current &lt;&lt;===&gt;&gt; F:\??????\build\release022\temp\tst_scoopinstall-DWrkkl\scoop\apps\winshun\0.18.1
+Junction created for F:\??????\build\release022\temp\tst_scoopinstall-tDUdrc\tools\apps\thing\current &lt;&lt;===&gt;&gt; F:\??????\build\release022\temp\tst_scoopinstall-tDUdrc\tools\apps\thing\1.0
+</system-out>
+	</testcase>
+	<testcase name="tst_clipboarddisplay" classname="tst_clipboarddisplay" time="0.123169" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+</testsuite>

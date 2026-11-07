@@ -1,0 +1,92 @@
+[
+  {
+    "id": "winshun.bookmarks",
+    "version": "2.0.3",
+    "url": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.bookmarks-v2.0.3",
+    "asset": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.bookmarks-v2.0.3/winshun.bookmarks-2.0.3.wsplugin",
+    "sha256": "3d401e4f12d5f7a1f0f1582a24d1acc997c79f963395910491c9929105a76e30",
+    "size": 166275,
+    "sourceCommit": "6a9e10996aed5acc690177ee0505230cd71b4ee7",
+    "targetCommit": "b743d3ac39df110ae164d0411d6d1cfcd1a2beed"
+  },
+  {
+    "id": "winshun.break",
+    "version": "1.1.1",
+    "url": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.break-v1.1.1",
+    "asset": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.break-v1.1.1/winshun.break-1.1.1.wsplugin",
+    "sha256": "cf4c0f2327ecef7ffc108bb01c6ef85b6f09e706ec31f37d9968714dd2b8d371",
+    "size": 240924,
+    "sourceCommit": "6a9e10996aed5acc690177ee0505230cd71b4ee7",
+    "targetCommit": "b743d3ac39df110ae164d0411d6d1cfcd1a2beed"
+  },
+  {
+    "id": "winshun.capture",
+    "version": "1.1.7",
+    "url": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.capture-v1.1.7",
+    "asset": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.capture-v1.1.7/winshun.capture-1.1.7.wsplugin",
+    "sha256": "5ebb9d10df2cd6d95260be9481ecac7fa9a46e2a7226d8d5772aec9a31a0d00c",
+    "size": 2743412,
+    "sourceCommit": "67ddbab54bbfc33ea8c4c797cdbdd582a784dca7",
+    "targetCommit": "b743d3ac39df110ae164d0411d6d1cfcd1a2beed"
+  },
+  {
+    "id": "winshun.explorer-tabs",
+    "version": "1.0.2",
+    "url": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.explorer-tabs-v1.0.2",
+    "asset": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.explorer-tabs-v1.0.2/winshun.explorer-tabs-1.0.2.wsplugin",
+    "sha256": "492feb45696a8e556bac561ca380202e3b768eca2f0af3562df2c7e22f66a47a",
+    "size": 249593,
+    "sourceCommit": "6a9e10996aed5acc690177ee0505230cd71b4ee7",
+    "targetCommit": "b743d3ac39df110ae164d0411d6d1cfcd1a2beed"
+  },
+  {
+    "id": "winshun.localsend",
+    "version": "1.0.6",
+    "url": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.localsend-v1.0.6",
+    "asset": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.localsend-v1.0.6/winshun.localsend-1.0.6.wsplugin",
+    "sha256": "c1e0bbddf77f8d3c9e218a90170cd4d6c5cdd29e4d05ff1ec92c7f412d6b38a9",
+    "size": 463435,
+    "sourceCommit": "6a9e10996aed5acc690177ee0505230cd71b4ee7",
+    "targetCommit": "b743d3ac39df110ae164d0411d6d1cfcd1a2beed"
+  },
+  {
+    "id": "winshun.ocr-search",
+    "version": "1.0.8",
+    "url": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.ocr-search-v1.0.8",
+    "asset": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.ocr-search-v1.0.8/winshun.ocr-search-1.0.8.wsplugin",
+    "sha256": "c7bb0715ce2092bde89a9007dafbf4924abd75c9f535328e08c10f8c89463e1b",
+    "size": 1272806,
+    "sourceCommit": "6a9e10996aed5acc690177ee0505230cd71b4ee7",
+    "targetCommit": "b743d3ac39df110ae164d0411d6d1cfcd1a2beed"
+  },
+  {
+    "id": "winshun.semantic",
+    "version": "1.0.4",
+    "url": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.semantic-v1.0.4",
+    "asset": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.semantic-v1.0.4/winshun.semantic-1.0.4.wsplugin",
+    "sha256": "571b921d51ae5871e666a919e18a273d0282ccdd7fb24fafb1c12d2919cd9da7",
+    "size": 294737,
+    "sourceCommit": "6a9e10996aed5acc690177ee0505230cd71b4ee7",
+    "targetCommit": "b743d3ac39df110ae164d0411d6d1cfcd1a2beed"
+  },
+  {
+    "id": "winshun.translate",
+    "version": "2.2.1",
+    "url": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.translate-v2.2.1",
+    "asset": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.translate-v2.2.1/winshun.translate-2.2.1.wsplugin",
+    "sha256": "c7d1c41be70d6c6c3d2f2787a6faf62e40c06bf23ec2e6ac54762ce6ba6bf9e1",
+    "size": 197783,
+    "sourceCommit": "6a9e10996aed5acc690177ee0505230cd71b4ee7",
+    "targetCommit": "b743d3ac39df110ae164d0411d6d1cfcd1a2beed"
+  },
+  {
+    "id": "winshun.web",
+    "version": "2.0.1",
+    "url": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.web-v2.0.1",
+    "asset": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.web-v2.0.1/winshun.web-2.0.1.wsplugin",
+    "sha256": "efed869bd266b0ada4658f5af4be064fca12d95647bd6732b9036b421ea56652",
+    "size": 1609,
+    "sourceCommit": "6a9e10996aed5acc690177ee0505230cd71b4ee7",
+    "targetCommit": "b743d3ac39df110ae164d0411d6d1cfcd1a2beed"
+  }
+]

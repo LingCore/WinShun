@@ -1,0 +1,89 @@
+{
+    "checks": [
+        {
+            "check": "pure search loads production Main: ",
+            "passed": true
+        },
+        {
+            "check": "production controls are available",
+            "passed": true
+        },
+        {
+            "check": "default keeps familiar controls",
+            "passed": true
+        },
+        {
+            "check": "whitespace-only query hides auxiliary controls",
+            "passed": true
+        },
+        {
+            "check": "empty pure search has no hidden actionable results or pending search",
+            "passed": true
+        },
+        {
+            "check": "input reclaims the controls' width",
+            "passed": true
+        },
+        {
+            "check": "empty launcher keeps no results or footer gap",
+            "passed": true
+        },
+        {
+            "check": "capture empty pure search",
+            "passed": true
+        },
+        {
+            "check": "IME composition restores controls before committing the query",
+            "passed": true
+        },
+        {
+            "check": "typing searches the real index",
+            "passed": true
+        },
+        {
+            "check": "typing restores all existing controls",
+            "passed": true
+        },
+        {
+            "check": "results expand the window",
+            "passed": true
+        },
+        {
+            "check": "capture populated search",
+            "passed": true
+        },
+        {
+            "check": "clearing returns to one input and removes stale results",
+            "passed": true
+        },
+        {
+            "check": "Enter on the empty input cannot open a hidden result",
+            "passed": true
+        },
+        {
+            "check": "hidden scope controls keep Tab navigation",
+            "passed": true
+        },
+        {
+            "check": "full search panel is not collapsed by pure mode",
+            "passed": true
+        },
+        {
+            "check": "folder search keeps its context and controls",
+            "passed": true
+        },
+        {
+            "check": "taskbar input keeps its existing presentation",
+            "passed": true
+        },
+        {
+            "check": "switching off restores the original presentation",
+            "passed": true
+        },
+        {
+            "check": "probe never activates the user's desktop",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

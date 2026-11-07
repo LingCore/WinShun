@@ -1,0 +1,117 @@
+{
+    "checks": [
+        {
+            "check": "fluent: folder menu loads: ",
+            "passed": true
+        },
+        {
+            "check": "fluent: menu density follows the selected size",
+            "passed": true
+        },
+        {
+            "check": "fluent: compact width and bounded scrolling fit the work area",
+            "passed": true
+        },
+        {
+            "check": "fluent: keyboard reaches the last item",
+            "passed": true
+        },
+        {
+            "check": "fluent: last row is fully visible after scrolling",
+            "passed": true
+        },
+        {
+            "check": "fluent: capture menu",
+            "passed": true
+        },
+        {
+            "check": "fluent: menu stays inactive",
+            "passed": true
+        },
+        {
+            "check": "brand: folder menu loads: ",
+            "passed": true
+        },
+        {
+            "check": "brand: menu density follows the selected size",
+            "passed": true
+        },
+        {
+            "check": "brand: compact width and bounded scrolling fit the work area",
+            "passed": true
+        },
+        {
+            "check": "brand: keyboard reaches the last item",
+            "passed": true
+        },
+        {
+            "check": "brand: last row is fully visible after scrolling",
+            "passed": true
+        },
+        {
+            "check": "brand: capture menu",
+            "passed": true
+        },
+        {
+            "check": "brand: menu stays inactive",
+            "passed": true
+        },
+        {
+            "check": "tactile: folder menu loads: ",
+            "passed": true
+        },
+        {
+            "check": "tactile: menu density follows the selected size",
+            "passed": true
+        },
+        {
+            "check": "tactile: compact width and bounded scrolling fit the work area",
+            "passed": true
+        },
+        {
+            "check": "tactile: keyboard reaches the last item",
+            "passed": true
+        },
+        {
+            "check": "tactile: last row is fully visible after scrolling",
+            "passed": true
+        },
+        {
+            "check": "tactile: capture menu",
+            "passed": true
+        },
+        {
+            "check": "tactile: menu stays inactive",
+            "passed": true
+        },
+        {
+            "check": "production launcher loads: ",
+            "passed": true
+        },
+        {
+            "check": "live results have an explicit already-open badge",
+            "passed": true
+        },
+        {
+            "check": "live windows offer no misleading file reveal or administrator action",
+            "passed": true
+        },
+        {
+            "check": "Enter describes switching instead of launching a duplicate",
+            "passed": true
+        },
+        {
+            "check": "capture open-window results",
+            "passed": true
+        },
+        {
+            "check": "stale window activation stays in the launcher with actionable feedback",
+            "passed": true
+        },
+        {
+            "check": "launcher validation never activates a user window",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

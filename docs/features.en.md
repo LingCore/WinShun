@@ -6,6 +6,11 @@ On a fresh install some extras start switched off: the search bar beside Open / 
 
 ## File search
 
+- **Query history**. The clock button opens the last 100 completed queries. `Ctrl+Up` / `Ctrl+Down` browses them and restores the previous draft at the newest position. Settings can choose Alt with the arrows or disable the keys. Delete individual entries or clear the list. History follows the usage-recording switch.
+- **Open windows**. In All, sorted by relevance, matching current window titles and program names appear first. Enter activates the selected window, including a minimized one.
+- **Minimal empty search**. Enable Pure search mode under Result list › Display and preview › Keyboard hints to keep only the input bar when empty. Controls and results return as you type. The option starts off.
+- **Merged scopes and panel controls**. Optionally merge All and Files and filter file kinds in All. Hold Ctrl to see kind keywords. Assign a direct panel hotkey under Open WinShun › Shortcuts, and use the panel's filter button to collapse its sidebar while retaining active filters.
+
 - **Speed**: press Ctrl twice (or Alt or Shift twice, if you prefer); a search over three million files takes milliseconds.
 - **Pinyin**: `ndbg` finds 年度报告; a mistyped homophone (年度报高) is retried by sound. A setting can switch the input method to English each time the search box opens, so letters go straight in.
 - **Where**: all local drives, USB drives if you like (an unindexed one that is plugged in is offered at the end of the list), and **NAS / SMB network shares and WebDAV folders** (a NAS's WebDAV, cloud drives such as Jianguoyun), still searchable while their server is off and reconnected by themselves after it restarts; turn on “Search file contents” on a location's card to search inside its files. On a PC without administrator rights it indexes only the folders you choose (see Administrator rights below).
@@ -59,6 +64,10 @@ install and enable Web search from the plugin library. `zhihu 显卡`, `baidu �
 
 ## Plugins
 
+- **Read guides in the app**. The plugin card opens bundled documentation inside settings, with scrolling and selectable text. Esc returns to settings.
+- **Review status and consent**. The library shows official, source-reviewed, unreviewed native or unknown status. Unreviewed community native packages require individual consent on installation and every update. View source opens the publisher's page, and declining an update retains the installed version.
+- **Shared host Qt**. Native MSVC x64 Release plugins can opt into the versioned Qt runtime contract introduced in 0.22.0. See the plugin development documentation for supported modules and deployment requirements.
+
 - **Image text search** (optional plugin): searches images, scanned PDFs and embedded pictures in modern Word, Excel and PowerPoint files: once the index is built, type the words from a picture straight into the search box (in All, the first three picture rows follow the first five name rows), or use `ocr invoice` to list only picture and scan results. Selected folders are indexed offline with highlighted previews, pause and a storage limit. It shares the OCR component and keeps no image copies. Install from the plugin library; this package needs WinShun 0.20.0 (it is built with it). Since 1.0.2 it reads PDF pages whose text is drawn, upside-down pages and long pictures, also reads JFIF, GIF, HEIC and AVIF, and an installed plugin can read PDFs again. See [setup and format limits](../src/ocr-search-plugin/package/README.md).
 - **Bundled**: `= 1+2*3`, `12 inch to cm`, `#ff8800`, timestamps, UUID, Base64, hashes; `kill` processes.
 - **LAN transfer** (in the plugin library, to install when you want it): send files and text to and from phones and PCs on the same network that run [LocalSend](https://localsend.org), with no server or account. You are asked before anything is received; type `ls ` to send and receive, or right-click search results or clipboard history › Send over LAN… and choose a device. History selections, including multiple entries, send without changing the system clipboard (LAN transfer plugin 1.0.1 or newer).
@@ -80,6 +89,9 @@ install and enable Web search from the plugin library. `zhihu 显卡`, `baidu �
 
 ## In File Explorer
 
+- **Direct folder entries**. Under Open WinShun › Dialogs › Folder menu, set 0–10 recent or open folders to show directly. Zero uses the submenu, and overflow entries appear under More. Menu density follows the interface size and long paths have hover tips.
+- **Tessoa folders**. Ctrl+G can read the active folder of a specific Tessoa window using its v1 protocol, available in Tessoa 0.22.0 or newer.
+
 - **Folder menu**: double-click empty space in File Explorer or on the desktop, then choose Favorites, Recent folders or Open folders. Favorites include folders, files, apps, system places and custom commands, with names and icons; hover for the full path or command. Choose a folder to navigate the same window (the desktop opens a new one), or click a command to run it; `{query}` receives the current folder and an explicit working directory takes priority. Right enters a page; Left, Backspace or Esc returns; Esc on the home page closes it. Long lists scroll and the menu keeps the source window's focus. Each group can be switched off in settings, as can how it opens (double left click, middle click), where (File Explorer, desktop) and each action at the end of the menu (Search here, Copy path, Command Prompt, PowerShell, Add this folder to favorites, WinShun settings).
 - It never takes the focus: arrows, Enter, Esc and first letters work; a click elsewhere or another double click closes it. It stays out of the way while Listary runs.
 - **In Directory Opus too**: WinShun can add its command to Opus's settings for you (Opus restarts once), and puts the old one back when turned off or uninstalled.
@@ -90,6 +102,9 @@ install and enable Web search from the plugin library. `zhihu 显卡`, `baidu �
 - **Placement and selection (0.17.0)**: the search box opens beside the originating Explorer window when all of it fits there; otherwise (a large, centred or maximized window) it opens in the bottom right corner of the file list, as Listary's does, never in a corner of the screen. Neither changes its remembered position. On the few PCs where Windows will not let the search box to the front, Explorer keeps the focus and what is typed still goes into the box (past the input method: pinyin is searched as letters). Browsing a direct child selects and reveals it in the original tab while the search field keeps keyboard focus; nested and elsewhere results do not navigate Explorer.
 
 ## Clipboard history
+
+- **Find a group**. Press `Ctrl+G` or the folder button, search group names, select with the arrows and press Enter. Continue typing to search inside the group. Esc restores the earlier content query and scope.
+- **Hover preview**. Rest the pointer on an item for about 200 ms to see its text or picture. Move into the popup to keep reading. Scrolling or changing groups closes it, and Alt+P or the middle button can open the manual side preview.
 
 - **Resize**: drag any edge or corner to change the clipboard window's width and height, including with the preview open. Sizes are remembered; double-click an edge to reset. Limited screen space temporarily reduces the window without overwriting your preferred size. Text follows Settings › Appearance › UI size by default, or pick its own size in Settings › Clipboard › Clipboard size (including a dense one-line-per-entry step). Copied image files show thumbnails too.
 - **What**: text, pictures and files, opened with `Win+V` or your own shortcut, by the text cursor, without taking the focus.
@@ -141,6 +156,11 @@ WinShun's own search box on the Windows 11 taskbar, or a pinned WinShun icon ins
 - **Command line `ws`**: search from a terminal, like Everything's `es`: `ws report` (names), `ws grep invoice` (contents), `ws text plan.docx` (a document's text), `ws recent --days 7`. AI agents that run commands (Claude Code, Codex) need less context with it than with MCP; `ws skill --install claude` installs its instructions. It shares MCP's switch and safety settings.
 
 ## Looks and settings
+
+- **Interface font**. Choose a font in Appearance. It applies across the three interface styles, light and dark, while menus follow the interface size.
+- **Double-tap actions**. Choose search, clipboard history or a compatible enabled plugin action for a Ctrl, Alt or Shift double tap under Open WinShun › Shortcuts.
+- **Preview handoff**. The content pane's native Preview tab can take over the current floating preview with its document layout. Preview-follow behavior is configurable and placement is steadier near screen edges.
+- **On-demand UI**. The search panel and some row actions are created when needed, reducing the number of objects in ordinary search. Health focuses on current activity and memory use.
 
 - **Interface styles**: Settings › Appearance › Interface style offers three looks for every window: Refined native (精修原生, the default: Windows 11's own, following the accent colour), Brand colours (品牌色彩) and Soft tactile (轻拟物质感: raised keys, light depth), each in light and dark.
 - **Looks**: light and dark themes following Windows, see-through Mica on Windows 11 (in the Refined native and Brand colours styles), Windows' own rounded corners or square ones, sharp icons at any scaling; compact, standard or roomy sizes, and a monochrome tray and taskbar icon if you like; the app logo stays inside the search bar as its persistent action control.

@@ -1,0 +1,74 @@
+[
+  {
+    "probe": "double-tap",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 14
+  },
+  {
+    "probe": "experience",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 35
+  },
+  {
+    "probe": "experience-settings",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 17
+  },
+  {
+    "probe": "fonts",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 16
+  },
+  {
+    "probe": "optimization",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 14
+  },
+  {
+    "probe": "plugin-review",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 22
+  },
+  {
+    "probe": "pure",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 21
+  },
+  {
+    "probe": "results",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 0
+  },
+  {
+    "probe": "settings",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 0
+  },
+  {
+    "probe": "toolbar",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 0
+  },
+  {
+    "probe": "windows",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 28
+  },
+  {
+    "probe": "workflows",
+    "warnings": 0,
+    "failures": 0,
+    "okChecks": 43
+  }
+]

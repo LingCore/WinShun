@@ -1,0 +1,73 @@
+{
+    "checks": [
+        {
+            "check": "merged-scope preference is visible",
+            "passed": true
+        },
+        {
+            "check": "merged-scope setting persists",
+            "passed": true
+        },
+        {
+            "check": "history shortcut setting is visible",
+            "passed": true
+        },
+        {
+            "check": "history modifier choice persists",
+            "passed": true
+        },
+        {
+            "check": "capture query history settings",
+            "passed": true
+        },
+        {
+            "check": "real catalog discovers the isolated disabled plugin",
+            "passed": true
+        },
+        {
+            "check": "create isolated plugin documentation",
+            "passed": true
+        },
+        {
+            "check": "load real Markdown file with the production reader",
+            "passed": true
+        },
+        {
+            "check": "plugin documentation opens inside settings",
+            "passed": true
+        },
+        {
+            "check": "reader allows selection without editing",
+            "passed": true
+        },
+        {
+            "check": "long documentation is scrollable",
+            "passed": true
+        },
+        {
+            "check": "capture themed documentation reader",
+            "passed": true
+        },
+        {
+            "check": "PageDown scrolls the document",
+            "passed": true
+        },
+        {
+            "check": "Q closes the reader and keeps settings open",
+            "passed": true
+        },
+        {
+            "check": "reopening replaces the document and resets scrolling",
+            "passed": true
+        },
+        {
+            "check": "Escape closes only the reader",
+            "passed": true
+        },
+        {
+            "check": "reader probes never activate the native window",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

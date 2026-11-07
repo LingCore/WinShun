@@ -1,0 +1,61 @@
+{
+    "checks": [
+        {
+            "check": "production plugin fold controls load",
+            "passed": true
+        },
+        {
+            "check": "built-in cards start folded",
+            "passed": true
+        },
+        {
+            "check": "capture installed plugins within reach",
+            "passed": true
+        },
+        {
+            "check": "Space expands built-ins and persists the preference",
+            "passed": true
+        },
+        {
+            "check": "reopening settings retains an explicitly expanded group",
+            "passed": true
+        },
+        {
+            "check": "capture expanded built-ins",
+            "passed": true
+        },
+        {
+            "check": "Enter folds the group and restores the installed-plugin position",
+            "passed": true
+        },
+        {
+            "check": "search reveals matching built-ins without changing the preference",
+            "passed": true
+        },
+        {
+            "check": "clearing the search restores the folded preference",
+            "passed": true
+        },
+        {
+            "check": "jumping to a built-in reveals it without changing the preference",
+            "passed": true
+        },
+        {
+            "check": "temporary search reveal clears when settings reopen",
+            "passed": true
+        },
+        {
+            "check": "service management does not label an adjacent-data installation as a portable edition",
+            "passed": true
+        },
+        {
+            "check": "capture the startup-permission explanation",
+            "passed": true
+        },
+        {
+            "check": "settings probes keep the native window inactive",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

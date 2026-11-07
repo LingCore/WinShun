@@ -1,0 +1,198 @@
+{
+  "method": "CMake File API codemodel target sources and recursive target dependencies, package files, SDK header and global version definitions. Generated minWinShun is checked against staged packages after deployment.",
+  "plugins": [
+    {
+      "id": "winshun.web",
+      "publishedVersion": "2.0.0",
+      "publishedSourceCommit": "8aaac9f3468ee464ea68933b3e6f37e6fcec2609",
+      "publishedRelease": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.web-v2.0.0",
+      "candidateVersion": "2.0.1",
+      "candidateSourceCommit": "67ddbab54bbfc33ea8c4c797cdbdd582a784dca7",
+      "targets": [],
+      "sourceInputCount": 3,
+      "changedInputs": [
+        "CMakeLists.txt",
+        "src/web-plugin/package/plugin.json"
+      ],
+      "reasonForNewPackage": "The generated manifest targets WinShun 0.22.0"
+    },
+    {
+      "id": "winshun.ocr-search",
+      "publishedVersion": "1.0.7",
+      "publishedSourceCommit": "bb39500453390254ec0c7f5b92b22bd055c81a03",
+      "publishedRelease": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.ocr-search-v1.0.7",
+      "candidateVersion": "1.0.8",
+      "candidateSourceCommit": "67ddbab54bbfc33ea8c4c797cdbdd582a784dca7",
+      "targets": [
+        "WinShunOcrSearch",
+        "WinShunOcrSearchApp"
+      ],
+      "sourceInputCount": 266,
+      "changedInputs": [
+        "CMakeLists.txt",
+        "src/app/WindowFrame.cpp",
+        "src/app/WindowFrame.h",
+        "src/app/qml/DropMenu.qml",
+        "src/app/qml/Glyph.qml",
+        "src/app/qml/Hook.qml",
+        "src/app/qml/HoverTip.qml",
+        "src/app/qml/Theme.qml",
+        "src/app/qml/themes/brand/KeySurface.qml",
+        "src/app/qml/themes/brand/Segmented.qml",
+        "src/app/qml/themes/fluent/KeySurface.qml",
+        "src/app/qml/themes/fluent/Segmented.qml",
+        "src/app/qml/themes/tactile/KeySurface.qml",
+        "src/app/qml/themes/tactile/Segmented.qml",
+        "src/core/CMakeLists.txt",
+        "src/core/Favorites.cpp",
+        "src/core/FileIndex.cpp",
+        "src/core/FileIndex.h",
+        "src/core/History.h",
+        "src/core/NtfsIndexer.cpp",
+        "src/core/QueryHistory.cpp",
+        "src/core/QueryHistory.h",
+        "src/core/ResultColumns.h",
+        "src/core/SearchEngine.cpp",
+        "src/core/SearchEngine.h",
+        "src/core/SearchTypes.h",
+        "src/core/Snapshot.cpp",
+        "src/ocr-search-plugin/package/plugin.json"
+      ],
+      "reasonForNewPackage": "Shared application/QML and linked production sources, plus the 0.22.0 version resource"
+    },
+    {
+      "id": "winshun.semantic",
+      "publishedVersion": "1.0.3",
+      "publishedSourceCommit": "f5517b169e10169b96d16f17629d6937dc2d7322",
+      "publishedRelease": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.semantic-v1.0.3",
+      "candidateVersion": "1.0.4",
+      "candidateSourceCommit": "67ddbab54bbfc33ea8c4c797cdbdd582a784dca7",
+      "targets": [
+        "WinShunSemantic"
+      ],
+      "sourceInputCount": 14,
+      "changedInputs": [
+        "CMakeLists.txt",
+        "src/semantic-plugin/package/plugin.json"
+      ],
+      "reasonForNewPackage": "The executable version resource uses the host WINSHUN_VERSION definitions"
+    },
+    {
+      "id": "winshun.localsend",
+      "publishedVersion": "1.0.5",
+      "publishedSourceCommit": "bb39500453390254ec0c7f5b92b22bd055c81a03",
+      "publishedRelease": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.localsend-v1.0.5",
+      "candidateVersion": "1.0.6",
+      "candidateSourceCommit": "67ddbab54bbfc33ea8c4c797cdbdd582a784dca7",
+      "targets": [
+        "WinShunLocalSend"
+      ],
+      "sourceInputCount": 37,
+      "changedInputs": [
+        "CMakeLists.txt",
+        "src/localsend-plugin/package/plugin.json"
+      ],
+      "reasonForNewPackage": "The executable version resource uses the host WINSHUN_VERSION definitions"
+    },
+    {
+      "id": "winshun.break",
+      "publishedVersion": "1.1.0",
+      "publishedSourceCommit": "8bb8816a7981f3cf1f3e7151f1e5806109a7fc25",
+      "publishedRelease": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.break-v1.1.0",
+      "candidateVersion": "1.1.1",
+      "candidateSourceCommit": "67ddbab54bbfc33ea8c4c797cdbdd582a784dca7",
+      "targets": [
+        "WinShunBreak"
+      ],
+      "sourceInputCount": 15,
+      "changedInputs": [
+        "CMakeLists.txt",
+        "src/break-plugin/package/plugin.json"
+      ],
+      "reasonForNewPackage": "The executable version resource uses the host WINSHUN_VERSION definitions"
+    },
+    {
+      "id": "winshun.explorer-tabs",
+      "publishedVersion": "1.0.1",
+      "publishedSourceCommit": "f5517b169e10169b96d16f17629d6937dc2d7322",
+      "publishedRelease": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.explorer-tabs-v1.0.1",
+      "candidateVersion": "1.0.2",
+      "candidateSourceCommit": "67ddbab54bbfc33ea8c4c797cdbdd582a784dca7",
+      "targets": [
+        "WinShunExplorerTabs"
+      ],
+      "sourceInputCount": 16,
+      "changedInputs": [
+        "CMakeLists.txt",
+        "src/explorer-tabs-plugin/package/plugin.json"
+      ],
+      "reasonForNewPackage": "The executable version resource uses the host WINSHUN_VERSION definitions; generated minWinShun is also 0.22.0"
+    },
+    {
+      "id": "winshun.bookmarks",
+      "publishedVersion": "2.0.2",
+      "publishedSourceCommit": "f5517b169e10169b96d16f17629d6937dc2d7322",
+      "publishedRelease": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.bookmarks-v2.0.2",
+      "candidateVersion": "2.0.3",
+      "candidateSourceCommit": "67ddbab54bbfc33ea8c4c797cdbdd582a784dca7",
+      "targets": [
+        "WinShunBookmarks"
+      ],
+      "sourceInputCount": 10,
+      "changedInputs": [
+        "CMakeLists.txt",
+        "src/bookmarks-plugin/package/plugin.json"
+      ],
+      "reasonForNewPackage": "The executable version resource uses the host WINSHUN_VERSION definitions"
+    },
+    {
+      "id": "winshun.translate",
+      "publishedVersion": "2.2.0",
+      "publishedSourceCommit": "8bb8816a7981f3cf1f3e7151f1e5806109a7fc25",
+      "publishedRelease": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.translate-v2.2.0",
+      "candidateVersion": "2.2.1",
+      "candidateSourceCommit": "67ddbab54bbfc33ea8c4c797cdbdd582a784dca7",
+      "targets": [
+        "WinShunTranslate"
+      ],
+      "sourceInputCount": 12,
+      "changedInputs": [
+        "CMakeLists.txt",
+        "src/translate-plugin/package/plugin.json"
+      ],
+      "reasonForNewPackage": "The executable version resource uses the host WINSHUN_VERSION definitions"
+    },
+    {
+      "id": "winshun.capture",
+      "publishedVersion": "1.1.5",
+      "publishedSourceCommit": "bb39500453390254ec0c7f5b92b22bd055c81a03",
+      "publishedRelease": "https://github.com/LingCore/WinShun-plugins/releases/tag/winshun.capture-v1.1.5",
+      "candidateVersion": "1.1.7",
+      "candidateSourceCommit": "67ddbab54bbfc33ea8c4c797cdbdd582a784dca7",
+      "targets": [
+        "WinShunCapture",
+        "WinShunCaptureApp"
+      ],
+      "sourceInputCount": 507,
+      "changedInputs": [
+        "CMakeLists.txt",
+        "src/app/WindowFrame.cpp",
+        "src/app/WindowFrame.h",
+        "src/app/qml/DropMenu.qml",
+        "src/app/qml/Glyph.qml",
+        "src/app/qml/Hook.qml",
+        "src/app/qml/HoverTip.qml",
+        "src/app/qml/Theme.qml",
+        "src/app/qml/themes/brand/KeySurface.qml",
+        "src/app/qml/themes/brand/Segmented.qml",
+        "src/app/qml/themes/fluent/KeySurface.qml",
+        "src/app/qml/themes/fluent/Segmented.qml",
+        "src/app/qml/themes/tactile/KeySurface.qml",
+        "src/app/qml/themes/tactile/Segmented.qml",
+        "src/capture-plugin/PluginMain.cpp",
+        "src/capture-plugin/package/plugin.json"
+      ],
+      "reasonForNewPackage": "Shared application/QML and linked production sources, plus the 0.22.0 version resource"
+    }
+  ]
+}

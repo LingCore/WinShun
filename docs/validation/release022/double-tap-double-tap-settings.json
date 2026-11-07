@@ -1,0 +1,61 @@
+{
+    "checks": [
+        {
+            "check": "double-tap destination is reachable in production settings",
+            "passed": true
+        },
+        {
+            "check": "launcher, clipboard and registered plugin action are listed",
+            "passed": true
+        },
+        {
+            "check": "choosing clipboard saves through the real control and editor",
+            "passed": true
+        },
+        {
+            "check": "changing the tap key retains the destination and conventional shortcut",
+            "passed": true
+        },
+        {
+            "check": "plugin identity and original shortcut round trip",
+            "passed": true
+        },
+        {
+            "check": "capture double-tap settings",
+            "passed": true
+        },
+        {
+            "check": "destination uses a standard keyboard-accessible popup",
+            "passed": true
+        },
+        {
+            "check": "action menu opens with bounded height",
+            "passed": true
+        },
+        {
+            "check": "capture themed action menu",
+            "passed": true
+        },
+        {
+            "check": "unavailable plugin keeps the selection and displays its identity",
+            "passed": true
+        },
+        {
+            "check": "unregistered destinations cannot be selected",
+            "passed": true
+        },
+        {
+            "check": "keyboard selection uses the same save path",
+            "passed": true
+        },
+        {
+            "check": "destination control fits the settings width",
+            "passed": true
+        },
+        {
+            "check": "settings validation never activates the window",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

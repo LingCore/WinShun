@@ -1,0 +1,177 @@
+{
+    "checks": [
+        {
+            "check": "production clipboard window loads: ",
+            "passed": true
+        },
+        {
+            "check": "group picker and search field exist",
+            "passed": true
+        },
+        {
+            "check": "Ctrl+G opens groups and preserves the content query",
+            "passed": true
+        },
+        {
+            "check": "group names are searched independently",
+            "passed": true
+        },
+        {
+            "check": "Enter enters the group and clears only the group-name query",
+            "passed": true
+        },
+        {
+            "check": "subsequent content search excludes the same words in other groups",
+            "passed": true
+        },
+        {
+            "check": "Enter on an empty group search cannot paste a content row",
+            "passed": true
+        },
+        {
+            "check": "Escape restores the scoped content search",
+            "passed": true
+        },
+        {
+            "check": "group matching ignores Latin case",
+            "passed": true
+        },
+        {
+            "check": "arrow navigation follows the group's visual direction",
+            "passed": true
+        },
+        {
+            "check": "capture the group picker",
+            "passed": true
+        },
+        {
+            "check": "an empty group opens as an empty group",
+            "passed": true
+        },
+        {
+            "check": "a removed or unknown group cannot change the current scope",
+            "passed": true
+        },
+        {
+            "check": "capture searching within the chosen group",
+            "passed": true
+        },
+        {
+            "check": "clipboard checks keep the native window inactive",
+            "passed": true
+        },
+        {
+            "check": "independent clipboard display authenticates with the isolated controller",
+            "passed": true
+        },
+        {
+            "check": "test display is cloaked before it can show",
+            "passed": true
+        },
+        {
+            "check": "independent display opens without activation",
+            "passed": true
+        },
+        {
+            "check": "independent display stays cloaked and never takes foreground focus",
+            "passed": true
+        },
+        {
+            "check": "display-side group typing does not mutate the controller's content query",
+            "passed": true
+        },
+        {
+            "check": "display Enter reaches enterGroup over IPC and acknowledges the new scope",
+            "passed": true
+        },
+        {
+            "check": "display returns to content search after entering the group",
+            "passed": true
+        },
+        {
+            "check": "display Escape leaves group search without closing or losing the content query",
+            "passed": true
+        },
+        {
+            "check": "production full search window loads: ",
+            "passed": true
+        },
+        {
+            "check": "full-panel controls are available",
+            "passed": true
+        },
+        {
+            "check": "native title-bar hit testing treats the sidebar toggle as a control, not a drag area",
+            "passed": true
+        },
+        {
+            "check": "filter sidebar starts visible",
+            "passed": true
+        },
+        {
+            "check": "capture the expanded filter sidebar",
+            "passed": true
+        },
+        {
+            "check": "hiding filters gives their width to results",
+            "passed": true
+        },
+        {
+            "check": "hiding filters keeps the query and active criteria",
+            "passed": true
+        },
+        {
+            "check": "active filters remain visibly indicated while their sidebar is hidden",
+            "passed": true
+        },
+        {
+            "check": "the sidebar control returns keyboard focus to search",
+            "passed": true
+        },
+        {
+            "check": "sidebar visibility survives a new controller",
+            "passed": true
+        },
+        {
+            "check": "capture full-width results with the sidebar hidden",
+            "passed": true
+        },
+        {
+            "check": "showing the sidebar restores the layout",
+            "passed": true
+        },
+        {
+            "check": "the compact launcher does not show the panel-only control",
+            "passed": true
+        },
+        {
+            "check": "panel checks keep the native window inactive",
+            "passed": true
+        },
+        {
+            "check": "folder menu with direct rows loads: ",
+            "passed": true
+        },
+        {
+            "check": "keyboard navigation skips the inline section heading",
+            "passed": true
+        },
+        {
+            "check": "capture direct folders and More",
+            "passed": true
+        },
+        {
+            "check": "More opens the remaining folders under their original group title",
+            "passed": true
+        },
+        {
+            "check": "capture remaining folder rows",
+            "passed": true
+        },
+        {
+            "check": "production QML emits no warnings",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

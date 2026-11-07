@@ -1,0 +1,14 @@
+{
+  "exe": "F:\\\u7535\u8111\u4fbf\u6377\u5de5\u5177\\dist\\release022\\WinShun\\WinShun.exe",
+  "sha256": "fa0891bf31c3a955de0153626ef7f386fd6583cfcd663482fa1ce89092f679fd",
+  "capture": "F:\\\u7535\u8111\u4fbf\u6377\u5de5\u5177\\build\\release022\\library-plugins\\winshun.capture\\WinShunCapture.exe",
+  "capture_sha256": "403df6e4cf4128422bdb553aa8289b5c58780d470b54a044e654f6273b2edcfd",
+  "capture_app_sha256": "a3dfb5c63a201c6083bf9b514e2076f0fc67c3e126b2560c239f28db736e149d",
+  "capture_version": "1.1.7",
+  "renderer": "d3d11",
+  "profiles": "isolated production previews",
+  "scale": {
+    "results": 1.5,
+    "other": 2
+  }
+}

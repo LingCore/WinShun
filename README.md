@@ -29,7 +29,7 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/cover.jpg" width="640" alt="Win顺 WinShun：让你的电脑更好用，13 合 1，双击 Ctrl 全搞定，免费开源 / a free Windows search launcher, thirteen tools in one, press Ctrl twice">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/51d1a60cf02b30509206116878c3d2e375b33e6d/docs/images/cover.jpg" width="640" alt="Win顺 WinShun：让你的电脑更好用，13 合 1，双击 Ctrl 全搞定，免费开源 / a free Windows search launcher, thirteen tools in one, press Ctrl twice">
 </p>
 
 ---
@@ -63,13 +63,13 @@
 | 🗂️ | [搜索面板](docs/使用说明.md#搜索面板筛选和排序) | `Ctrl+E` 展开：按类型、时间、大小、位置筛选，按列排序，大图浏览 |
 | 👀 | [预览](docs/使用说明.md#预览文件) | `Alt+P` 看一眼图片、文档、PDF，不用打开 |
 | 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到 |
-| 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`：文字、图片、文件都记下来，图片里的字也能搜 |
+| 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找与悬停预览 |
 | 📂 | [“打开”“另存为”对话框](docs/使用说明.md#打开另存为对话框) ² | 对话框旁多一个搜索框；`Ctrl+G` 转到文件管理器正开着的文件夹 |
 | 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹；在文件列表里直接打字就搜 |
 | ⭐ | [收藏夹](docs/使用说明.md#收藏夹) | 给常用的文件、文件夹、应用起个关键词，一打就开；还能自定义命令 |
 | 🔎 | [任务栏搜索框](docs/使用说明.md#任务栏搜索框) ² | 在 Windows 11 任务栏上放一个 Win顺 的搜索框 |
 | 🤖 | [AI 助手和命令行](docs/使用说明.md#给-ai-助手用mcp) ² | 让 Claude、Cursor 等 AI 搜你的文件（默认只读）；终端里用 `ws` 命令搜 |
-| 🎨 | [外观和备份](docs/使用说明.md#外观设置和备份) | 三种界面风格，浅色和深色，中英文界面；设置自动备份，换电脑一键迁移 |
+| 🎨 | [外观和备份](docs/使用说明.md#外观设置和备份) | 三种界面风格，自选字体与界面大小；设置自动备份，换电脑一键迁移 |
 
 ¹ 在第一次启动的引导里选，或以后在设置里打开。　² 默认关着，用的话在设置里打开。
 
@@ -180,16 +180,16 @@ scoop install winshun
 
 ### 最近更新
 
-**0.21.0**
+**0.22.0**
 
-- 🎨 **三种界面风格**：在 **设置 › 外观 › 界面风格** 里选精修原生、品牌色彩或轻拟物质感，每种都有浅色和深色。
-- 🩺 **运行状况**：设置里新的一页，看 Win顺 用了多少内存、花在哪，点“现在就归还”马上还给系统。
-- 🧩 插件的结果也能在内容详情和预览里看。
-- ✂️ 截图插件 1.1.3：“识别屏幕文字”有了自己的快捷键；贴图和标注的滚轮缩放、调粗细更细更顺。
-- 📂 在文件夹里打字打开 Win顺 后，`Ctrl+Shift+D` 可以只搜这一层；新增“打开时切换为英文输入”（默认关）。
-- 🪶 **更省**：任务管理器里的 Win顺 进程更少；打开过设置、把窗口最小化后，内存会按时还给系统。
+- 🕘 **搜索历史与窗口切换** 时钟按钮找回搜索词，`Ctrl+↑` / `Ctrl+↓` 翻阅；匹配的已打开窗口优先显示，Enter 直接切换。
+- ✨ **纯净搜索模式** 空输入只留搜索栏；可合并“全部”和“文件”，直接按类型筛选。
+- 📋 **剪贴板分组与预览** `Ctrl+G` 找分组，鼠标停留在条目上查看文字或图片。
+- ⚙️ **操作自己定** 选择界面字体、双击修饰键后的动作，给完整面板分配快捷键，按需收起筛选侧栏。
+- 🧩 **插件管理** 在应用内阅读说明，查看审核状态，安装及更新未审核原生插件时确认来源；原生插件可声明复用宿主 Qt。
+- 🪶 **内存与兼容性** 搜索面板和部分行操作按需创建，修复预览交接、粘贴失败和 Windows 用户目录重定向。
 
-详见 [0.21.0 发布说明](docs/release-notes/v0.21.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
+详见 [0.22.0 发布说明](docs/release-notes/v0.22.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
 
 ### 常见问题
 
@@ -301,13 +301,13 @@ No installer, or Scoop? See [Download and install](#download-and-install).
 | 🗂️ | [Search panel](docs/features.en.md#file-search) | `Ctrl+E` expands it: filter by kind, date, size and folder, sort by column, large icons |
 | 👀 | [Preview](docs/features.en.md#file-search) | `Alt+P` shows a picture, document or PDF without opening it |
 | 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages |
-| 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V`: text, pictures and files, and the words in pictures are searchable |
+| 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search and hover previews |
 | 📂 | [Open / Save dialogs](docs/features.en.md#open-and-save-dialogs) ² | A search bar beside the dialog; `Ctrl+G` jumps to the folder open in your file manager |
 | 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders; type in a file list to search |
 | ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; your own commands too |
 | 🔎 | [Taskbar search box](docs/features.en.md#taskbar-search-box) ² | A WinShun search box on the Windows 11 taskbar |
 | 🤖 | [AI assistants and the command line](docs/features.en.md#ai-assistants-mcp) ² | Let Claude, Cursor and others search your files (read-only by default); `ws` searches from a terminal |
-| 🎨 | [Looks and backup](docs/features.en.md#looks-and-settings) | Three interface styles, light and dark; automatic backup of your settings, and a move to a new PC in one step |
+| 🎨 | [Looks and backup](docs/features.en.md#looks-and-settings) | Three interface styles, your font and interface size; settings backups and migration |
 
 ¹ Chosen during the first-start setup, or turned on later in the settings.　² Off by default; turn it on in the settings.
 
@@ -418,16 +418,16 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
-**0.21.0**
+**0.22.0**
 
-- 🎨 **Three interface styles**: pick Refined native, Brand colours or Soft tactile under **Settings › Appearance › Interface style**, each in light and dark.
-- 🩺 **Health**: a new settings page shows how much memory WinShun uses and where; “Give back now” returns it to Windows at once.
-- 🧩 Plugin results can be viewed in the content details and the preview.
-- ✂️ Capture plugin 1.1.3: Read text on screen has a hotkey of its own; wheel zoom on pins and annotation sizing are finer and smoother.
-- 📂 After opening WinShun by typing in a folder, `Ctrl+Shift+D` can search that level only; a new switch types in English each time the search box opens (off by default).
-- 🪶 **Lighter**: fewer WinShun processes in Task Manager; after the settings were open, or with a window minimized, memory goes back to Windows in time.
+- 🕘 **Query history and window switching** Revisit searches with the clock button or `Ctrl+Up` / `Ctrl+Down`. Matching open windows appear first, ready to activate with Enter.
+- ✨ **Minimal empty search** Keep just the input bar while empty. Optionally merge All and Files and filter by kind directly.
+- 📋 **Clipboard groups and previews** `Ctrl+G` finds a group. Hover over an item to read its text or view its picture.
+- ⚙️ **Your controls** Choose the interface font and double-tap action, assign a direct panel hotkey and collapse the filter sidebar.
+- 🧩 **Plugin management** Read guides inside the app, see review status and confirm installation or updates of unreviewed native packages. Native plugins can opt into the host Qt runtime.
+- 🪶 **Memory and compatibility** The panel and some row actions are created on demand, with fixes for preview handoff, failed pastes and redirected Windows user folders.
 
-See the [0.21.0 release notes](docs/release-notes/v0.21.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
+See the [0.22.0 release notes](docs/release-notes/v0.22.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
 
 ### FAQ
 

@@ -1,0 +1,93 @@
+{
+    "checks": [
+        {
+            "check": "pure mode has a searchable settings entry",
+            "passed": true
+        },
+        {
+            "check": "the real toggle saves pure mode",
+            "passed": true
+        },
+        {
+            "check": "capture pure mode setting",
+            "passed": true
+        },
+        {
+            "check": "create isolated native candidate",
+            "passed": true
+        },
+        {
+            "check": "first install shows the real risk confirmation",
+            "passed": true
+        },
+        {
+            "check": "the confirmation provides an explicit web-source action",
+            "passed": true
+        },
+        {
+            "check": "nothing installed before confirmation",
+            "passed": true
+        },
+        {
+            "check": "capture native installation warning",
+            "passed": true
+        },
+        {
+            "check": "Escape cancels without installing",
+            "passed": true
+        },
+        {
+            "check": "explicit confirmation installs the candidate",
+            "passed": true
+        },
+        {
+            "check": "installation does not enable or execute the native plugin",
+            "passed": true
+        },
+        {
+            "check": "prepare an update with identical permissions",
+            "passed": true
+        },
+        {
+            "check": "same-permission update still requires confirmation",
+            "passed": true
+        },
+        {
+            "check": "rejecting an update preserves the old version",
+            "passed": true
+        },
+        {
+            "check": "confirmed update reaches the installed catalog",
+            "passed": true
+        },
+        {
+            "check": "configure a Unicode local plugin index",
+            "passed": true
+        },
+        {
+            "check": "production gallery loads the unreviewed native index entry",
+            "passed": true
+        },
+        {
+            "check": "unreviewed update is excluded from Update all",
+            "passed": true
+        },
+        {
+            "check": "gallery exposes the real risk flag and readable label",
+            "passed": true
+        },
+        {
+            "check": "production gallery delegate accepts the actual model roles: ",
+            "passed": true
+        },
+        {
+            "check": "capture native classification on the real card",
+            "passed": true
+        },
+        {
+            "check": "settings checks leave desktop focus untouched",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

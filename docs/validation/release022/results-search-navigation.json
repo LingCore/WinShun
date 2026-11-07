@@ -1,0 +1,477 @@
+{
+    "checks": [
+        {
+            "name": "box: production search field and list",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+74 matches 16777237 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+74 matches 16777237 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+74 matches 16777237 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+78 matches 16777237 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+78 matches 16777237 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+78 matches 16777237 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+75 matches 16777235 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+75 matches 16777235 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+75 matches 16777235 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+80 matches 16777235 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+80 matches 16777235 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+80 matches 16777235 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+85 matches 16777238 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+85 matches 16777238 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+85 matches 16777238 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+68 matches 16777239 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+68 matches 16777239 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+68 matches 16777239 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "box: holding a navigation alias repeats",
+            "passed": true
+        },
+        {
+            "name": "box: AltGr is not navigation",
+            "passed": true
+        },
+        {
+            "name": "box: aliases do not move results during IME composition",
+            "passed": true
+        },
+        {
+            "name": "box: Right opens the selected row's menu",
+            "passed": true
+        },
+        {
+            "name": "box: menu starts on the first action for the selected file",
+            "passed": true
+        },
+        {
+            "name": "box: menu keeps focus in the search field",
+            "passed": true
+        },
+        {
+            "name": "box: render the production menu",
+            "passed": true
+        },
+        {
+            "name": "box: production menu entries are available to the probe",
+            "passed": true
+        },
+        {
+            "name": "box: Up wraps to the last available action",
+            "passed": true
+        },
+        {
+            "name": "box: Down wraps to the first action",
+            "passed": true
+        },
+        {
+            "name": "box: holding a menu shortcut keeps the menu open",
+            "passed": true
+        },
+        {
+            "name": "box: Down visits available actions and skips separators",
+            "passed": true
+        },
+        {
+            "name": "box: Left returns to the same result without editing the query",
+            "passed": true
+        },
+        {
+            "name": "box: holding Right to edit does not open a menu",
+            "passed": true
+        },
+        {
+            "name": "box: Right within the query moves the caret",
+            "passed": true
+        },
+        {
+            "name": "box: Right collapses a text selection",
+            "passed": true
+        },
+        {
+            "name": "box: modified Right stays out of the menu (33554432)",
+            "passed": true
+        },
+        {
+            "name": "box: modified Right stays out of the menu (67108864)",
+            "passed": true
+        },
+        {
+            "name": "box: modified Right stays out of the menu (134217728)",
+            "passed": true
+        },
+        {
+            "name": "box: modified Right stays out of the menu (268435456)",
+            "passed": true
+        },
+        {
+            "name": "box: IME fixture is composing",
+            "passed": true
+        },
+        {
+            "name": "box: Right does not open a menu during IME composition",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+O fixture is composing",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+O does not open a menu during IME composition",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+O opens the menu from any caret position",
+            "passed": true
+        },
+        {
+            "name": "box: Escape returns without moving the caret or clearing the query",
+            "passed": true
+        },
+        {
+            "name": "box: starting IME composition closes the menu",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+O requires its exact modifiers (100663296)",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+O requires its exact modifiers (201326592)",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+O requires its exact modifiers (335544320)",
+            "passed": true
+        },
+        {
+            "name": "box: the real file has a Preview action",
+            "passed": true
+        },
+        {
+            "name": "box: Enter executes the highlighted production action",
+            "passed": true
+        },
+        {
+            "name": "box: typing closes the menu and resumes search",
+            "passed": true
+        },
+        {
+            "name": "box: the real search recovers after editing",
+            "passed": true
+        },
+        {
+            "name": "box: no selected result opens no menu",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+D pages without changing the folder filter",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+Shift+D switches the current folder filter",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+Shift+D comes round to the start again (everywhere, folder, this level)",
+            "passed": true
+        },
+        {
+            "name": "panel: production search field and list",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+74 matches 16777237 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+74 matches 16777237 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+74 matches 16777237 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+78 matches 16777237 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+78 matches 16777237 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+78 matches 16777237 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+75 matches 16777235 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+75 matches 16777235 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+75 matches 16777235 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+80 matches 16777235 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+80 matches 16777235 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+80 matches 16777235 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+85 matches 16777238 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+85 matches 16777238 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+85 matches 16777238 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+68 matches 16777239 from row 0, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+68 matches 16777239 from row 2, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+68 matches 16777239 from row 17, retaining text and focus",
+            "passed": true
+        },
+        {
+            "name": "panel: holding a navigation alias repeats",
+            "passed": true
+        },
+        {
+            "name": "panel: AltGr is not navigation",
+            "passed": true
+        },
+        {
+            "name": "panel: aliases do not move results during IME composition",
+            "passed": true
+        },
+        {
+            "name": "panel: Right opens the selected row's menu",
+            "passed": true
+        },
+        {
+            "name": "panel: menu starts on the first action for the selected file",
+            "passed": true
+        },
+        {
+            "name": "panel: menu keeps focus in the search field",
+            "passed": true
+        },
+        {
+            "name": "panel: render the production menu",
+            "passed": true
+        },
+        {
+            "name": "panel: production menu entries are available to the probe",
+            "passed": true
+        },
+        {
+            "name": "panel: Up wraps to the last available action",
+            "passed": true
+        },
+        {
+            "name": "panel: Down wraps to the first action",
+            "passed": true
+        },
+        {
+            "name": "panel: holding a menu shortcut keeps the menu open",
+            "passed": true
+        },
+        {
+            "name": "panel: Down visits available actions and skips separators",
+            "passed": true
+        },
+        {
+            "name": "panel: Left returns to the same result without editing the query",
+            "passed": true
+        },
+        {
+            "name": "panel: holding Right to edit does not open a menu",
+            "passed": true
+        },
+        {
+            "name": "panel: Right within the query moves the caret",
+            "passed": true
+        },
+        {
+            "name": "panel: Right collapses a text selection",
+            "passed": true
+        },
+        {
+            "name": "panel: modified Right stays out of the menu (33554432)",
+            "passed": true
+        },
+        {
+            "name": "panel: modified Right stays out of the menu (67108864)",
+            "passed": true
+        },
+        {
+            "name": "panel: modified Right stays out of the menu (134217728)",
+            "passed": true
+        },
+        {
+            "name": "panel: modified Right stays out of the menu (268435456)",
+            "passed": true
+        },
+        {
+            "name": "panel: IME fixture is composing",
+            "passed": true
+        },
+        {
+            "name": "panel: Right does not open a menu during IME composition",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+O fixture is composing",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+O does not open a menu during IME composition",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+O opens the menu from any caret position",
+            "passed": true
+        },
+        {
+            "name": "panel: Escape returns without moving the caret or clearing the query",
+            "passed": true
+        },
+        {
+            "name": "panel: starting IME composition closes the menu",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+O requires its exact modifiers (100663296)",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+O requires its exact modifiers (201326592)",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+O requires its exact modifiers (335544320)",
+            "passed": true
+        },
+        {
+            "name": "panel: the real file has a Preview action",
+            "passed": true
+        },
+        {
+            "name": "panel: Enter executes the highlighted production action",
+            "passed": true
+        },
+        {
+            "name": "panel: typing closes the menu and resumes search",
+            "passed": true
+        },
+        {
+            "name": "panel: the real search recovers after editing",
+            "passed": true
+        },
+        {
+            "name": "panel: no selected result opens no menu",
+            "passed": true
+        },
+        {
+            "name": "settings are searchable with app and Windows place searches disabled",
+            "passed": true
+        },
+        {
+            "name": "settings have an action-only row and a user-facing description",
+            "passed": true
+        },
+        {
+            "name": "Enter on the settings result dispatches the internal settings action",
+            "passed": true
+        },
+        {
+            "name": "Ctrl+, opens settings once, ignoring auto-repeat",
+            "passed": true
+        },
+        {
+            "name": "settings expose only their applicable Open action",
+            "passed": true
+        },
+        {
+            "name": "render the settings entry",
+            "passed": true
+        },
+        {
+            "name": "write the regression report",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

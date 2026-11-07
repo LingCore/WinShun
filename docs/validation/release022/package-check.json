@@ -1,0 +1,32 @@
+{
+  "version": "0.22.0",
+  "portableFiles": 191,
+  "portableData": [
+    "WinShun/data/README.txt"
+  ],
+  "exeSha256": "fa0891bf31c3a955de0153626ef7f386fd6583cfcd663482fa1ce89092f679fd",
+  "portableMatchesDeployment": true,
+  "captureMatchesPortable": true,
+  "assets": [
+    {
+      "file": "WinShun-0.22.0-x64-setup.exe",
+      "sha256": "cded879e2cc60485bb8386067d24cd2f90c2a993778be67c3d8972f6af74cce7",
+      "size": 30724056
+    },
+    {
+      "file": "WinShun-0.22.0-x64-portable.zip",
+      "sha256": "e09488a2873affc674fb2eb6dee69cb444a3391478490700d255c876586f7462",
+      "size": 43485656
+    },
+    {
+      "file": "WinShun-0.22.0-x64-offline-setup.exe",
+      "sha256": "3320c6dd725ae6b9ce462814c87a29f4dd681e7dc5e30f0b543e2bc36572fd17",
+      "size": 40036078
+    },
+    {
+      "file": "WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip",
+      "sha256": "ccb82d77a545f183504edc51e6353370742d0423b71fa1cf7800db919494277e",
+      "size": 11802525
+    }
+  ]
+}

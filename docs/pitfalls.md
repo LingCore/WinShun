@@ -5241,6 +5241,13 @@
 - **做法**：`PreviewHost` 的 `start()` 在 `DoPreview()` 成功后，先用高 1 像素的矩形调一次 `SetRect`，再用原矩形调一次。尺寸变过，Word 就按当前尺寸重新排版。这时弹出窗口还没显示，看不到闪动。
 - **怎么复现**：开着预览窗口看 docx，先按 Ctrl+E 进入面板（全部范围），再点“内容”；或者直接在“内容”范围按 Ctrl+E。改之前两种都能稳定复现。
 
+## 发布探针的 Unicode 路径与前台权限（2026-11-07）
+
+- **现象** 本机把 MSVC 暂存目录设为项目内中文路径时，编译器配置报 D8050。同一目录改用已有的 8.3 短路径后配置和编译通过。维护项目整洁时，暂存目录仍须采用当前编译工具可处理的路径表示，验证编译器配置后再启动完整构建。
+- **原因与适用范围** Windows 环境变量的字节接口受 ANSI 代码页影响。探针将中文索引路径转成 UTF-8 再调用 `qputenv`，在本机代码页下产生乱码，插件库随后读取失败。先前尝试的 `SetEnvironmentVariableW` 只更新进程环境，未同步 Qt 读取的 CRT 环境表，现已改用 `_wputenv_s` 设置和恢复，并断言 Qt 能读回同一路径。夹具索引文件名加入中文，覆盖英文临时根目录上的同类回归。[Microsoft CRT 文档](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/putenv-s-wputenv-s?view=msvc-170)
+- **验证方法** 使用生产插件库读取本地索引并实例化真实卡片，要求数据角色断言通过且日志无 QML 警告。将下载失败后的无效模型值送入卡片，只会增加次生警告，不能替代检查索引是否加载成功。
+- **前台权限** 后台测试进程可能没有初始前台权限。夹具准备阶段短暂连接当前前台线程的输入队列，取得自己窗口的前台后立即断开，随后才运行生产激活逻辑和原有断言。先切换到自己的另一个窗口再最小化后台目标，避免把前台交给其他应用。隐藏启动还可能影响首次 `ShowWindow`，夹具用 `SetWindowPos(SWP_SHOWWINDOW)` 并断言可见。禁止在生产激活断言期间保留输入队列连接，避免夹具替生产代码提供额外权限。[Windows 前台权限](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)、[输入队列接口](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-attachthreadinput)
+
 ## 从搜索面板回到小框，框下多出一截空白（2026-11-06）
 
 - **现象**：结果少、小框不到 360 高时（比如“内容”范围只有两行），按 Ctrl+E 进面板再按 Ctrl+E 回来，框底下多出一截空白，窗口正好 360 逻辑像素高（150% 下 540 物理像素）。0.21.0 也是这样。

@@ -1,0 +1,38 @@
+[
+  {
+    "Case": "success",
+    "Passed": true,
+    "Published": true,
+    "MockedRemote": true
+  },
+  {
+    "Case": "bad-digest",
+    "Passed": true,
+    "Published": false,
+    "MockedRemote": true
+  },
+  {
+    "Case": "bad-size",
+    "Passed": true,
+    "Published": false,
+    "MockedRemote": true
+  },
+  {
+    "Case": "bad-target",
+    "Passed": true,
+    "Published": false,
+    "MockedRemote": true
+  },
+  {
+    "Case": "missing-asset",
+    "Passed": true,
+    "Published": false,
+    "MockedRemote": true
+  },
+  {
+    "Case": "upload-failure",
+    "Passed": true,
+    "Published": false,
+    "MockedRemote": true
+  }
+]

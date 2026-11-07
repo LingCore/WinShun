@@ -1,0 +1,145 @@
+{
+    "checks": [
+        {
+            "check": "production search window loads: ",
+            "passed": true
+        },
+        {
+            "check": "history and type controls exist",
+            "passed": true
+        },
+        {
+            "check": "default keeps separate All and Files tabs",
+            "passed": true
+        },
+        {
+            "check": "default Tab still reaches Files",
+            "passed": true
+        },
+        {
+            "check": "merged All keeps the type strip visible",
+            "passed": true
+        },
+        {
+            "check": "merged All finds both files and applications, with the application first",
+            "passed": true
+        },
+        {
+            "check": "a document chip filters actual search results",
+            "passed": true
+        },
+        {
+            "check": "clearing the last chip restores applications and files",
+            "passed": true
+        },
+        {
+            "check": "merged Tab skips the redundant Files scope",
+            "passed": true
+        },
+        {
+            "check": "merged Tab still reaches enabled content search",
+            "passed": true
+        },
+        {
+            "check": "Shift+Tab returns from content to merged All",
+            "passed": true
+        },
+        {
+            "check": "holding Ctrl exposes type prefixes",
+            "passed": true
+        },
+        {
+            "check": "prefix hints preserve chip widths",
+            "passed": true
+        },
+        {
+            "check": "capture merged type prefixes",
+            "passed": true
+        },
+        {
+            "check": "releasing Ctrl restores type names",
+            "passed": true
+        },
+        {
+            "check": "folder chip remains available",
+            "passed": true
+        },
+        {
+            "check": "Ctrl+Up recalls the latest complete query",
+            "passed": true
+        },
+        {
+            "check": "older query preserves case, spacing, quotes and prefix",
+            "passed": true
+        },
+        {
+            "check": "Ctrl+Down restores unfinished input",
+            "passed": true
+        },
+        {
+            "check": "configured Alt+Up recalls history",
+            "passed": true
+        },
+        {
+            "check": "disabled history shortcut leaves input alone",
+            "passed": true
+        },
+        {
+            "check": "native history popup is available",
+            "passed": true
+        },
+        {
+            "check": "history popup is cloaked before opening",
+            "passed": true
+        },
+        {
+            "check": "history button opens browsable query list",
+            "passed": true
+        },
+        {
+            "check": "capture the history list",
+            "passed": true
+        },
+        {
+            "check": "popup arrows and Enter recall the selected query",
+            "passed": true
+        },
+        {
+            "check": "Delete removes only the selected query",
+            "passed": true
+        },
+        {
+            "check": "Escape closes only the history popup",
+            "passed": true
+        },
+        {
+            "check": "full panel uses the same history-enabled search field",
+            "passed": true
+        },
+        {
+            "check": "history recall also works in the full panel",
+            "passed": true
+        },
+        {
+            "check": "full-panel recall also restores its draft",
+            "passed": true
+        },
+        {
+            "check": "capture merged full-panel filters",
+            "passed": true
+        },
+        {
+            "check": "clearing history is not undone when the search window hides",
+            "passed": true
+        },
+        {
+            "check": "history disabled hides the control and saves no queries",
+            "passed": true
+        },
+        {
+            "check": "search probes never activate the native window",
+            "passed": true
+        }
+    ],
+    "passed": true
+}
