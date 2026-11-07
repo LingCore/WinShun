@@ -18,6 +18,7 @@
 #include <QQuickWindow>
 #include <QSettings>
 #include <QScreen>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QStyleHints>
 #include <QTemporaryDir>
@@ -53,6 +54,115 @@ class AppearanceTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void styleRoundTrip()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        Settings::useProfile(profile.path());
+        for (const QString& style : {u"fluent"_s, u"brand"_s, u"tactile"_s, u"liquid"_s}) {
+            Settings settings = Settings::defaults();
+            settings.uiStyle = style;
+            QVERIFY(settings.saveChecked());
+            Settings restored;
+            restored.load();
+            QCOMPARE(restored.uiStyle, style);
+        }
+        for (const QString& value : {u" LIQUID "_s, u"invalid"_s}) {
+            QSettings ini(Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Appearance/UiStyle"_s, value);
+            ini.sync();
+            Settings restored;
+            restored.load();
+            QCOMPARE(restored.uiStyle, value == u" LIQUID " ? u"liquid"_s : u"fluent"_s);
+        }
+    }
+
+    void liveBackdropSwitch()
+    {
+        if (!win::backdropSupported())
+            QSKIP("Native materials require Windows 11 22H2 or later");
+        const auto restore = qScopeGuard([] { SystemTheme::setUiStyle(u"fluent"_s); });
+        QWindow translucent, opaque;
+        translucent.setFlags(Qt::Tool | Qt::FramelessWindowHint);
+        opaque.setFlags(translucent.flags());
+        SystemTheme::setUiStyle(u"fluent"_s);
+        win::styleFramelessWindow(&translucent, true);
+        win::styleFramelessWindow(&opaque, false);
+        const auto material = [](QWindow& window) {
+            int value = -1;
+            ::DwmGetWindowAttribute(reinterpret_cast<HWND>(window.winId()), 38, &value, sizeof value);
+            return value;
+        };
+        for (const QString& style : {u"liquid"_s, u"brand"_s, u"liquid"_s, u"tactile"_s, u"fluent"_s}) {
+            SystemTheme::setUiStyle(style);
+            QCOMPARE(SystemTheme::uiStyle(), style);
+            const int expected = style == u"liquid" ? 3 : 2;
+            QCOMPARE(material(translucent), expected);
+            QCOMPARE(material(opaque), 1);
+            QWindow createdAfter;
+            createdAfter.setFlags(translucent.flags());
+            win::styleFramelessWindow(&createdAfter, true);
+            QCOMPARE(material(createdAfter), expected);
+        }
+        // Reconfiguring an existing window as opaque must remove its opt-in.
+        win::styleFramelessWindow(&translucent, false);
+        SystemTheme::setUiStyle(u"liquid"_s);
+        QCOMPARE(material(translucent), 1);
+    }
+
+    void liquidParts_data()
+    {
+        QTest::addColumn<bool>("dark");
+        QTest::addColumn<bool>("round");
+        QTest::addColumn<bool>("backdrop");
+        for (const bool dark : {false, true})
+            for (const bool round : {false, true})
+                for (const bool backdrop : {false, true})
+                    QTest::addRow("%s-%s-%s", dark ? "dark" : "light", round ? "round" : "square", backdrop ? "native" : "solid")
+                        << dark << round << backdrop;
+    }
+
+    void liquidParts()
+    {
+        QFETCH(bool, dark);
+        QFETCH(bool, round);
+        QFETCH(bool, backdrop);
+        QTest::failOnWarning();
+        const auto restore = qScopeGuard([] {
+            SystemTheme::setUiStyle(u"fluent"_s);
+            SystemTheme::setRoundedCorners(true);
+            SystemTheme::setBackdropAvailable(false);
+        });
+        QGuiApplication::styleHints()->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+        SystemTheme::setRoundedCorners(round);
+        SystemTheme::setBackdropAvailable(backdrop);
+        SystemTheme::setBackdropOn(true);
+        QQmlEngine engine;
+        QQmlComponent source(&engine, qmlFolder().resolved(QUrl(u"themes/liquid/Look.qml"_s)));
+        std::unique_ptr<QObject> look(source.create());
+        QVERIFY2(look, qPrintable(source.errorString()));
+        QCOMPARE(look->property("name").toString(), u"liquid"_s);
+        QCOMPARE(look->property("backdrop").toBool(), backdrop && win::materialsEnabled());
+        for (const char* hook : {"windowFrame", "searchField", "inputField", "keySurface", "segmented", "chipSurface",
+                 "rowHighlight", "menuFrame", "toggle", "keyHint", "separator", "scrollBar", "card"}) {
+            auto* component = look->property(hook).value<QQmlComponent*>();
+            QVERIFY2(component, hook);
+            std::unique_ptr<QObject> part(component->create(component->creationContext()));
+            QVERIFY2(part, qPrintable(component->errorString()));
+            const auto checkRadii = [&](auto&& self, QObject* object) -> void {
+                if (!round && object->property("radius").isValid())
+                    QCOMPARE(object->property("radius").toReal(), 0.0);
+                for (QObject* child : object->children()) self(self, child);
+            };
+            checkRadii(checkRadii, part.get());
+            // Exercise live state changes, not just the default object.
+            for (const char* state : {"focused", "hovered", "pressed", "checked", "current", "error"})
+                if (part->metaObject()->indexOfProperty(state) >= 0)
+                    QVERIFY(part->setProperty(state, true));
+            checkRadii(checkRadii, part.get());
+        }
+    }
+
     void liveComposedOutline_data()
     {
         QTest::addColumn<int>("kind");

@@ -743,6 +743,10 @@
         <translation>Soft tactile</translation>
     </message>
     <message>
+        <source>液态玻璃</source>
+        <translation>Liquid glass</translation>
+    </message>
+    <message>
         <source>界面大小</source>
         <translation>Size</translation>
     </message>
@@ -4864,8 +4868,12 @@ Right: center window · Drag: move window</translation>
         <translation>Needs the “GPU” drawing method under Advanced</translation>
     </message>
     <message>
-        <source>当前界面风格的窗口不透明；“精修原生”和“品牌色彩”风格才有透明效果</source>
-        <translation>Windows are opaque in this interface style; the Refined native and Brand colours styles have transparency</translation>
+        <source>当前界面风格的窗口不透明；可切换到精修原生、品牌色彩或液态玻璃</source>
+        <translation>Windows are opaque in this style; switch to Refined native, Brand colours or Liquid glass for transparency</translation>
+    </message>
+    <message>
+        <source>使用系统亚克力模糊窗口背后的内容；关闭后保留实色玻璃质感</source>
+        <translation>Blur content behind windows with system Acrylic; turn off for solid glass surfaces</translation>
     </message>
     <message>
         <source>窗口背景透出桌面壁纸的颜色（云母效果）</source>
@@ -6647,8 +6655,8 @@ Right: center window · Drag: move window</translation>
         <translation>Interface style</translation>
     </message>
     <message>
-        <source>风格;外观;样式;皮肤;精修原生;品牌色彩;轻拟物;拟物;质感;Fluent;style;skin;look</source>
-        <translation>style;interface style;look;skin;appearance;refined native;brand colours;soft tactile;tactile;fluent;风格;皮肤</translation>
+        <source>风格;外观;样式;皮肤;精修原生;品牌色彩;轻拟物;拟物;质感;液态玻璃;玻璃;Fluent;Liquid Glass;style;skin;look</source>
+        <translation>style;interface style;look;skin;appearance;refined native;brand colours;soft tactile;tactile;fluent;liquid glass;glass;风格;皮肤;玻璃</translation>
     </message>
     <message>
         <source>所有窗口的样子；浅色、深色仍按上面的主题</source>
@@ -6665,6 +6673,10 @@ Right: center window · Drag: move window</translation>
     <message>
         <source>轻拟物质感</source>
         <translation>Soft tactile</translation>
+    </message>
+    <message>
+        <source>液态玻璃</source>
+        <translation>Liquid glass</translation>
     </message>
     <message>
         <source>搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。剪贴板可在“剪贴板”页单独设置</source>

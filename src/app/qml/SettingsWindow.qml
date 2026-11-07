@@ -2784,14 +2784,15 @@ Window {
 
                 SettingRow {
                     title: qsTr("界面风格")
-                    keywords: qsTr("风格;外观;样式;皮肤;精修原生;品牌色彩;轻拟物;拟物;质感;Fluent;style;skin;look").split(";")
+                    keywords: qsTr("风格;外观;样式;皮肤;精修原生;品牌色彩;轻拟物;拟物;质感;液态玻璃;玻璃;Fluent;Liquid Glass;style;skin;look").split(";")
                     description: qsTr("所有窗口的样子；浅色、深色仍按上面的主题")
 
-                    body: Row {
+                    body: Flow {
                         id: styleCards
 
-                        readonly property var styles: ["fluent", "brand", "tactile"]
-                        readonly property var labels: [qsTr("精修原生"), qsTr("品牌色彩"), qsTr("轻拟物质感")]
+                        readonly property var styles: ["fluent", "brand", "tactile", "liquid"]
+                        readonly property var labels: [qsTr("精修原生"), qsTr("品牌色彩"), qsTr("轻拟物质感"), qsTr("液态玻璃")]
+                        readonly property int columns: width >= 586 ? 4 : 2
 
                         width: parent.width
                         spacing: 14
@@ -2804,13 +2805,16 @@ Window {
                                 required property int index
                                 required property string modelData
 
-                                width: Math.min(196, (styleCards.width - styleCards.spacing * 2) / 3)
+                                objectName: "styleCard_" + modelData
+                                width: Math.min(196, (styleCards.width - styleCards.spacing * (styleCards.columns - 1)) / styleCards.columns)
                                 look: Theme.lookFor(modelData)
                                 label: styleCards.labels[index]
                                 selected: window.editor.uiStyle === modelData
                                 onActivated: if (!selected) window.changeAppearance(() => window.editor.uiStyle = modelData)
                                 Keys.onLeftPressed: styleRepeater.itemAt(Math.max(0, index - 1)).forceActiveFocus()
-                                Keys.onRightPressed: styleRepeater.itemAt(Math.min(2, index + 1)).forceActiveFocus()
+                                Keys.onRightPressed: styleRepeater.itemAt(Math.min(styleCards.styles.length - 1, index + 1)).forceActiveFocus()
+                                Keys.onUpPressed: styleRepeater.itemAt(Math.max(0, index - styleCards.columns)).forceActiveFocus()
+                                Keys.onDownPressed: styleRepeater.itemAt(Math.min(styleCards.styles.length - 1, index + styleCards.columns)).forceActiveFocus()
                             }
                         }
                     }
@@ -2821,11 +2825,13 @@ Window {
                     title: qsTr("透明效果")
                     keywords: qsTr("云母;Mica;毛玻璃;亚克力;半透明;壁纸;transparency").split(";")
                     description: !Theme.backdropCapable
-                                 ? qsTr("当前界面风格的窗口不透明；“精修原生”和“品牌色彩”风格才有透明效果")
+                                 ? qsTr("当前界面风格的窗口不透明；可切换到精修原生、品牌色彩或液态玻璃")
                                  : !SystemTheme.backdropAvailable
                                  ? qsTr("需要把“高级”里的界面绘制方式设为“显卡加速”")
                                  : !SystemTheme.materials
                                  ? qsTr("要先打开 Windows 设置里的“透明效果”")
+                                 : Theme.style === "liquid"
+                                 ? qsTr("使用系统亚克力模糊窗口背后的内容；关闭后保留实色玻璃质感")
                                  : qsTr("窗口背景透出桌面壁纸的颜色（云母效果）")
 
                     ScopeTabs {

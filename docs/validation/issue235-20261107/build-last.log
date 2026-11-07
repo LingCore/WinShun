@@ -1,0 +1,24 @@
+[0/2] Re-checking globbed directories...
+[1/377] Copying WinShunOcrSearchApp qml sources into build dir
+[2/377] Copying WinShunCaptureApp qml sources into build dir
+[3/377] Copying WinShun qml sources into build dir
+[4/377] Running rcc for resource WinShunOcrSearchApp_raw_qml_0
+[5/377] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_KeySurface_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_KeySurface_qml.cpp.aotstats
+[6/377] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_KeySurface_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_KeySurface_qml.cpp.aotstats
+[7/377] Running rcc for resource WinShunCaptureApp_raw_qml_0
+[8/377] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.qt\rcc\qrc_WinShunOcrSearchApp_raw_qml_0.cpp.obj
+[9/377] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.qt\rcc\qrc_WinShunCaptureApp_raw_qml_0.cpp.obj
+[10/377] Automatic MOC and UIC for target WinShun
+[11/376] Running AUTOMOC file extraction for target WinShun
+[12/21] Running rcc for resource WinShun_raw_qml_0
+[13/21] Generating .rcc/qmlcache/WinShun_qml_themes_liquid_KeySurface_qml.cpp, .rcc/qmlcache/WinShun_qml_themes_liquid_KeySurface_qml.cpp.aotstats
+[14/21] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_WinShun_raw_qml_0.cpp.obj
+[15/21] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_liquid_KeySurface_qml.cpp.obj
+[16/21] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_liquid_KeySurface_qml.cpp.obj
+[17/21] Linking CXX shared library WinShunOcrSearchApp.dll
+[18/21] Linking CXX shared library WinShunCaptureApp.dll
+[19/21] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_themes_liquid_KeySurface_qml.cpp.obj
+[20/21] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+F:\电脑便捷工具\src\app\Preview.cpp(1512): warning C4456: “flick”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\Preview.cpp(1469): note: 参见“flick”的声明
+[21/21] Linking CXX executable WinShun.exe

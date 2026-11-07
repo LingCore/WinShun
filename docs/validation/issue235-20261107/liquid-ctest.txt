@@ -1,0 +1,21 @@
+Test project F:/电脑便捷工具/build/ui-preview
+    Start 18: tst_combopopup_liquid_round
+1/8 Test #18: tst_combopopup_liquid_round ......   Passed    8.99 sec
+    Start 19: tst_combopopup_liquid_square
+2/8 Test #19: tst_combopopup_liquid_square .....   Passed    8.55 sec
+    Start 20: tst_liquid_buttons_light
+3/8 Test #20: tst_liquid_buttons_light .........   Passed    4.93 sec
+    Start 21: tst_liquid_picker_light
+4/8 Test #21: tst_liquid_picker_light ..........   Passed   12.96 sec
+    Start 22: tst_liquid_buttons_dark
+5/8 Test #22: tst_liquid_buttons_dark ..........   Passed    7.01 sec
+    Start 23: tst_liquid_picker_dark
+6/8 Test #23: tst_liquid_picker_dark ...........   Passed   22.04 sec
+    Start 24: tst_liquid_buttons_square
+7/8 Test #24: tst_liquid_buttons_square ........   Passed    6.67 sec
+    Start 25: tst_liquid_picker_square
+8/8 Test #25: tst_liquid_picker_square .........   Passed   18.25 sec
+
+100% tests passed, 0 tests failed out of 8
+
+Total Test time (real) =  89.40 sec

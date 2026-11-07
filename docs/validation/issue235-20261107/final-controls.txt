@@ -1,0 +1,19 @@
+Test project F:/电脑便捷工具/build/ui-preview
+    Start  20: tst_liquid_buttons_light
+1/7 Test  #20: tst_liquid_buttons_light .........   Passed    4.95 sec
+    Start  22: tst_liquid_buttons_dark
+2/7 Test  #22: tst_liquid_buttons_dark ..........   Passed    4.90 sec
+    Start  24: tst_liquid_buttons_square
+3/7 Test  #24: tst_liquid_buttons_square ........   Passed    4.97 sec
+    Start 100: tst_appearance_1
+4/7 Test #100: tst_appearance_1 .................   Passed    0.91 sec
+    Start 101: tst_appearance_1.25
+5/7 Test #101: tst_appearance_1.25 ..............   Passed    0.91 sec
+    Start 102: tst_appearance_1.5
+6/7 Test #102: tst_appearance_1.5 ...............   Passed    0.88 sec
+    Start 103: tst_appearance_2
+7/7 Test #103: tst_appearance_2 .................   Passed    0.90 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Total Test time (real) =  18.44 sec

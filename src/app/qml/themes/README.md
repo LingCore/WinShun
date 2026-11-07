@@ -1,6 +1,6 @@
 # 界面风格（themes/）
 
-设置“外观 › 主题与窗口质感 › 界面风格”选的风格，存在 `Appearance/UiStyle`（`fluent | brand | tactile`，默认 `fluent`）。
+设置“外观 › 主题与窗口质感 › 界面风格”选的风格，存在 `Appearance/UiStyle`（`fluent | brand | tactile | liquid`，默认 `fluent`）。
 C++ 里是 `SystemTheme::uiStyle()`，QML 里是 `Theme.style`。风格与浅/深色正交：每个风格都要有完整的浅色、深色两套。
 
 每个风格的全部实现只放在自己的目录：
@@ -10,13 +10,14 @@ themes/
   fluent/   精修原生（Windows 11，跟随系统强调色）  —— token 全集的定义处
   brand/    品牌色彩
   tactile/  轻拟物质感
+  liquid/   液态玻璃（原生 Acrylic 背景、中性平面控件）
 ```
 
 ## 1. 怎么加载
 
-- 三个目录都编进 WinShun 模块（以及截图录屏、图片文字搜索两个插件各自的 WinShun 模块），资源路径
+- 各风格目录都编进 WinShun 模块（以及截图录屏、图片文字搜索两个插件各自的 WinShun 模块），资源路径
   `qrc:/qt/qml/WinShun/themes/<style>/`。CMake 用 glob 收 `themes/*/*.qml`（`CONFIGURE_DEPENDS`，新加文件重新配置时自动收进来），
-  并设 `QT_QML_SKIP_QMLDIR_ENTRY` + 模块的 `NO_GENERATE_EXTRA_QMLDIRS`：它们**不是模块的类型**，所以三个目录里同名的部件不冲突。
+  并设 `QT_QML_SKIP_QMLDIR_ENTRY` + 模块的 `NO_GENERATE_EXTRA_QMLDIRS`：它们**不是模块的类型**，所以各风格目录里同名的部件不冲突。
 - **目录里不要放 qmldir**，也不要 `import WinShun.Themes.Xxx`。同一目录的文件按类型名互相引用（隐式目录导入）。
 - `Theme.qml` 用 `Qt.createComponent("themes/<style>/Look.qml")` 加载当前风格的 Look，第一次用到时才创建；
   创建失败（文件有错）会在日志里写 `Theme: style … could not be loaded` 并退回 fluent。
@@ -65,7 +66,7 @@ themes/
   - 类型色：`typeHues`（按 hueIndex 0..n）、`folderHue`、`hueFor(index)`
   - `iconFont`（Segoe/Phosphor 图标字体名，给画图标的部件用）
 
-`Theme.xxx` 的名字不变（100 多个文件在用），每个都改为 `look.xxx`；尺寸（字号、行高、搜索行高）仍由 `UiScale`（界面大小）决定，三种风格共用。
+`Theme.xxx` 的名字不变（100 多个文件在用），每个都改为 `look.xxx`；尺寸（字号、行高、搜索行高）仍由 `UiScale`（界面大小）决定，所有风格共用。
 
 ## 3. 部件（钩子）
 
@@ -169,4 +170,12 @@ Hook {
 `WinShun.exe --preview-results <dir> --search-logo --style brand [--dark] [--scale 1.5]`、
 `--preview-settings <dir> --style tactile` 等离屏出图（不碰正在运行的 WinShun）。离屏图里没有 DWM 的圆角、边和阴影。
 
-`--preview-results <dir> --style-buttons --style fluent|brand|tactile [--dark] [--scale 1.5]` 检查真实按钮部件：图标选中、文字分页、打开预览、主操作、选中工具按钮、禁用、键盘焦点，以及用窗口内鼠标事件切换列表／大图。输出各状态 PNG 与 `buttons.json`；数据在临时目录，不操作系统剪贴板。
+`--preview-results <dir> --style-buttons --style fluent|brand|tactile|liquid [--dark] [--scale 1.5]` 检查真实按钮部件：图标选中、文字分页、打开预览、主操作、选中工具按钮、禁用、键盘焦点，以及用窗口内鼠标事件切换列表／大图。输出各状态 PNG 与 `buttons.json`；数据在临时目录，不操作系统剪贴板。
+
+## 6. 液态玻璃
+
+`liquid` 沿用相同的主题与钩子契约。`GlassSurface` 只绘制单层平面和按需细边，不采样桌面、复制文字或添加持续动画；玻璃感由窗口原生 Acrylic 背景承担。主搜索栏不套边框，页签用短强调色标记，列表选中保持中性底色与左侧标记。`Look` 复用 fluent 的提示键、分隔线和滚动条，同时注入 liquid token。
+
+Windows 11 22H2 及以上、显卡加速且允许透明时，窗口背景使用 DWM Desktop Acrylic；切回其他风格即时恢复 Mica。`WindowEffects` 只更新已明确注册背景的本进程窗口，不给实色菜单增加透明。系统关闭透明或不支持原生背景、软件渲染、应用透明设置关闭时，仍有实色表面和清晰的边缘。外框、阴影和窗口圆角仍归 DWM。
+
+设计取舍与资料见 [液态玻璃设计](../../../../docs/design-liquid-glass.md)，初版验证见 `docs/validation/issue235-20261107/`，视觉修订验证见 `docs/validation/liquid-refine-20261107/`。

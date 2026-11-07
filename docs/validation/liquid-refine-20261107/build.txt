@@ -1,0 +1,55 @@
+[0/2] Re-checking globbed directories...
+[1/54] Copying WinShunOcrSearchApp qml sources into build dir
+[2/54] Copying WinShun qml sources into build dir
+[3/54] Copying WinShunCaptureApp qml sources into build dir
+[4/54] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_CardSurface_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_CardSurface_qml.cpp.aotstats
+[5/54] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_ChipSurface_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_ChipSurface_qml.cpp.aotstats
+[6/54] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_GlassSurface_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_GlassSurface_qml.cpp.aotstats
+[7/54] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_KeySurface_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_KeySurface_qml.cpp.aotstats
+[8/54] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_InputField_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_InputField_qml.cpp.aotstats
+[9/54] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_RowHighlight_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_RowHighlight_qml.cpp.aotstats
+[10/54] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_CardSurface_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_CardSurface_qml.cpp.aotstats
+[11/54] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_Look_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_Look_qml.cpp.aotstats
+[12/54] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_ChipSurface_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_ChipSurface_qml.cpp.aotstats
+[13/54] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_GlassSurface_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_GlassSurface_qml.cpp.aotstats
+[14/54] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_InputField_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_InputField_qml.cpp.aotstats
+[15/54] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_KeySurface_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_KeySurface_qml.cpp.aotstats
+[16/54] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_Look_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_Look_qml.cpp.aotstats
+[17/54] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_RowHighlight_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_RowHighlight_qml.cpp.aotstats
+[18/54] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_Segmented_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_Segmented_qml.cpp.aotstats
+[19/54] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_SearchField_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_SearchField_qml.cpp.aotstats
+[20/54] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_Toggle_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_themes_liquid_Toggle_qml.cpp.aotstats
+[21/54] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_SearchField_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_SearchField_qml.cpp.aotstats
+[22/54] Running rcc for resource WinShunCaptureApp_raw_qml_0
+[23/54] Running rcc for resource WinShunOcrSearchApp_raw_qml_0
+[24/54] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_Segmented_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_Segmented_qml.cpp.aotstats
+[25/54] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_Toggle_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_themes_liquid_Toggle_qml.cpp.aotstats
+[26/54] Running rcc for resource WinShun_raw_qml_0
+[27/54] Generating .rcc/qmlcache/WinShun_qml_themes_liquid_Look_qml.cpp, .rcc/qmlcache/WinShun_qml_themes_liquid_Look_qml.cpp.aotstats
+[28/54] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_liquid_CardSurface_qml.cpp.obj
+[29/54] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_liquid_GlassSurface_qml.cpp.obj
+[30/54] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_liquid_InputField_qml.cpp.obj
+[31/54] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_liquid_KeySurface_qml.cpp.obj
+[32/54] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_liquid_Look_qml.cpp.obj
+[33/54] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_liquid_ChipSurface_qml.cpp.obj
+[34/54] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_liquid_RowHighlight_qml.cpp.obj
+[35/54] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_liquid_SearchField_qml.cpp.obj
+[36/54] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.qt\rcc\qrc_WinShunCaptureApp_raw_qml_0.cpp.obj
+[37/54] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_liquid_Toggle_qml.cpp.obj
+[38/54] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_liquid_CardSurface_qml.cpp.obj
+[39/54] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_liquid_ChipSurface_qml.cpp.obj
+[40/54] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_liquid_GlassSurface_qml.cpp.obj
+[41/54] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_themes_liquid_Segmented_qml.cpp.obj
+[42/54] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_liquid_KeySurface_qml.cpp.obj
+[43/54] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_liquid_Look_qml.cpp.obj
+[44/54] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_liquid_InputField_qml.cpp.obj
+[45/54] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.qt\rcc\qrc_WinShunOcrSearchApp_raw_qml_0.cpp.obj
+[46/54] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_WinShun_raw_qml_0.cpp.obj
+[47/54] Linking CXX shared library WinShunCaptureApp.dll
+[48/54] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_liquid_SearchField_qml.cpp.obj
+[49/54] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_liquid_RowHighlight_qml.cpp.obj
+[50/54] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_liquid_Toggle_qml.cpp.obj
+[51/54] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_themes_liquid_Segmented_qml.cpp.obj
+[52/54] Linking CXX shared library WinShunOcrSearchApp.dll
+[53/54] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_themes_liquid_Look_qml.cpp.obj
+[54/54] Linking CXX executable WinShun.exe

@@ -1017,7 +1017,7 @@ void SettingsEditor::setCorners(const QString& corners)
 
 void SettingsEditor::setUiStyle(const QString& style)
 {
-    if (m_settings.uiStyle == style || (style != u"fluent" && style != u"brand" && style != u"tactile"))
+    if (m_settings.uiStyle == style || (style != u"fluent" && style != u"brand" && style != u"tactile" && style != u"liquid"))
         return;
     m_settings.uiStyle = style;
     commit();

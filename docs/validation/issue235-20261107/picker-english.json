@@ -1,0 +1,81 @@
+{
+    "checks": [
+        {
+            "name": "all style cards exist",
+            "passed": true
+        },
+        {
+            "name": "fourth card is readable at width 760",
+            "passed": true
+        },
+        {
+            "name": "fourth card stays inside its row at width 760",
+            "passed": true
+        },
+        {
+            "name": "picker screenshot 760",
+            "passed": true
+        },
+        {
+            "name": "fourth card is readable at width 920",
+            "passed": true
+        },
+        {
+            "name": "all four styles share one row at width 920",
+            "passed": true
+        },
+        {
+            "name": "fourth card stays inside its row at width 920",
+            "passed": true
+        },
+        {
+            "name": "picker screenshot 920",
+            "passed": true
+        },
+        {
+            "name": "fourth card is readable at width 1080",
+            "passed": true
+        },
+        {
+            "name": "all four styles share one row at width 1080",
+            "passed": true
+        },
+        {
+            "name": "fourth card stays inside its row at width 1080",
+            "passed": true
+        },
+        {
+            "name": "picker screenshot 1080",
+            "passed": true
+        },
+        {
+            "name": "Right reaches the fourth style",
+            "passed": true
+        },
+        {
+            "name": "Space applies Liquid glass",
+            "passed": true
+        },
+        {
+            "name": "Liquid glass survives settings reload",
+            "passed": true
+        },
+        {
+            "name": "Left returns to the previous style",
+            "passed": true
+        },
+        {
+            "name": "Enter restores the native style",
+            "passed": true
+        },
+        {
+            "name": "pointer click selects Liquid glass",
+            "passed": true
+        },
+        {
+            "name": "picker report opens",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

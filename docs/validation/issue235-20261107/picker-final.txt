@@ -1,0 +1,11 @@
+Test project F:/电脑便捷工具/build/ui-preview
+    Start 21: tst_liquid_picker_light
+1/3 Test #21: tst_liquid_picker_light ..........   Passed   14.96 sec
+    Start 23: tst_liquid_picker_dark
+2/3 Test #23: tst_liquid_picker_dark ...........   Passed   15.95 sec
+    Start 25: tst_liquid_picker_square
+3/3 Test #25: tst_liquid_picker_square .........   Passed   16.29 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Total Test time (real) =  47.20 sec

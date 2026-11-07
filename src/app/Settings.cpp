@@ -958,7 +958,7 @@ void Settings::load()
     if (corners != u"round" && corners != u"square")
         corners = d.corners;
     uiStyle = readOrDefault(s, u"Appearance/UiStyle"_s, d.uiStyle).trimmed().toLower();
-    if (uiStyle != u"brand" && uiStyle != u"tactile")
+    if (uiStyle != u"brand" && uiStyle != u"tactile" && uiStyle != u"liquid")
         uiStyle = d.uiStyle;
     if (transparency == u"false" || transparency == u"true") {
         transparency = transparency == u"false" ? u"off"_s : d.transparency;

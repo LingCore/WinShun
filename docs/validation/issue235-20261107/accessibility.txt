@@ -1,0 +1,17 @@
+Window: "设置", App: WinShun.exe.
+	0 窗口 (settable, string) 设置 Secondary Actions: Raise ID: QGuiApplication.SettingsWindow_QMLTYPE_263
+		1 编辑 (settable, string) 查找设置 ID: QGuiApplication.SettingsWindow_QMLTYPE_263.QQuickTextInput
+		4 单选按钮 (selectable, settable, string) 跟随系统 ID: QGuiApplication.SettingsWindow_QMLTYPE_263.ThemeCard_QMLTYPE_321_QML_426
+		5 单选按钮 (selectable, settable, string) 浅色 ID: QGuiApplication.SettingsWindow_QMLTYPE_263.ThemeCard_QMLTYPE_321_QML_426
+		6 单选按钮 (selectable, settable, string) 深色 ID: QGuiApplication.SettingsWindow_QMLTYPE_263.ThemeCard_QMLTYPE_321_QML_426
+		7 单选按钮 (selectable, settable, string) 精修原生 ID: QGuiApplication.SettingsWindow_QMLTYPE_263.styleCard_fluent
+		8 单选按钮 (selectable, settable, string) 品牌色彩 ID: QGuiApplication.SettingsWindow_QMLTYPE_263.styleCard_brand
+		9 单选按钮 (selectable, settable, string) 轻拟物质感 ID: QGuiApplication.SettingsWindow_QMLTYPE_263.styleCard_tactile
+		10 单选按钮 (selectable, settable, string) 液态玻璃 ID: QGuiApplication.SettingsWindow_QMLTYPE_263.styleCard_liquid
+		11 组合框 (settable, string) 界面字体 ID: QGuiApplication.SettingsWindow_QMLTYPE_263.uiFontPicker
+			12 编辑 (settable, string) Value: 默认（阿里巴巴普惠体） ID: QGuiApplication.SettingsWindow_QMLTYPE_263.uiFontPicker.QQuickTextField
+		13 文本 界面大小效果预览 ID: QGuiApplication.SettingsWindow_QMLTYPE_263.AppearancePreview_QMLTYPE_342
+
+Document text: ```
+默认（阿里巴巴普惠体）
+```

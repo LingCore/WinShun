@@ -122,10 +122,11 @@ int SystemTheme::headerHeight()
 
 void SystemTheme::setUiStyle(const QString& style)
 {
-    const QString known = style == u"brand" || style == u"tactile" ? style : QStringLiteral("fluent");
+    const QString known = style == u"brand" || style == u"tactile" || style == u"liquid" ? style : QStringLiteral("fluent");
     if (s_uiStyle == known)
         return;
     s_uiStyle = known;
+    win::setBackdropMaterial(known == u"liquid" ? win::BackdropMaterial::Acrylic : win::BackdropMaterial::Mica);
     if (s_instance)
         emit s_instance->changed();
 }

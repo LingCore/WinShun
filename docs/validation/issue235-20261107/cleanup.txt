@@ -1,0 +1,25 @@
+2026-11-07
+状态：验证证据已归档；临时目录清理被工具策略拒绝，尚未删除。
+
+检查结果：
+- 本轮 build/ui-preview/WinShun.exe 运行的验证实例均已通过 stop 文件正常退出。
+- 原有 dist/ui-popup/WinShun/WinShun.exe 及用户插件仍在运行，未停止。
+- 以下目录均已核对完整绝对路径；没有 reparse point / 目录链接。
+- 清理仅针对本轮可再生成产物；截图原件已归档到 screenshots-originals.zip。
+- 自动审批两次拒绝执行清理，返回 blocked by policy，未提供更具体原因。第二次使用已审计的明确绝对路径，仍被拒绝；未换用其他删除机制绕过。
+
+仍保留的本轮产物：
+F:\电脑便捷工具\build\issue235
+F:\电脑便捷工具\build\ui-preview\tests\liquid-buttons-dark
+F:\电脑便捷工具\build\ui-preview\tests\liquid-buttons-light
+F:\电脑便捷工具\build\ui-preview\tests\liquid-buttons-square
+F:\电脑便捷工具\build\ui-preview\tests\liquid-picker-dark
+F:\电脑便捷工具\build\ui-preview\tests\liquid-picker-light
+F:\电脑便捷工具\build\ui-preview\tests\liquid-picker-square
+F:\电脑便捷工具\build\ui-preview\tests\tst_combopopup_liquid_round
+F:\电脑便捷工具\build\ui-preview\tests\tst_combopopup_liquid_square
+C:\Users\young\AppData\Local\Temp\WinShun-preview-5da606c6
+C:\Users\young\AppData\Local\Temp\WinShun-preview-c9daacbf
+C:\Users\young\AppData\Local\Temp\WinShun-preview-fe4f6cc8
+
+复用了 build/ui-preview 编译配置，该目录及其中最终二进制保留。

@@ -12,7 +12,7 @@ QtObject {
     id: theme
 
     readonly property bool dark: SystemTheme.dark
-    // fluent | brand | tactile
+    // fluent | brand | tactile | liquid
     readonly property string style: SystemTheme.uiStyle
 
     // Each style's Look, made the first time it is the one in effect. One

@@ -20,6 +20,11 @@ namespace ws::win {
 // separate, see setDarkFrame.
 void styleFramelessWindow(QWindow* window, bool backdrop = false);
 
+enum class BackdropMaterial { Mica, Acrylic };
+// Updates existing backdrop windows as well as windows created afterwards.
+// Opaque menus and windows never opt into a backdrop here.
+void setBackdropMaterial(BackdropMaterial material);
+
 // Whether DWM rounds the corners (Windows 11), see styleFramelessWindow.
 bool nativeWindowCorners();
 // Developer preview only, before making any windows. Shows the Windows 10

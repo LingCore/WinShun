@@ -5,6 +5,8 @@
 #include "InteractionOptimizationProbe.h"
 #include "UiFont.h"
 
+#include <QAccessible>
+
 #include "HealthMonitor.h"
 #include "ClipScrollBench.h"
 #include "ContentPaneProbe.h"
@@ -1265,6 +1267,76 @@ int runSettings(const QStringList& args)
     }
     QMetaObject::invokeMethod(window, "loadAllPages");
     settle(window);
+
+    if (args.contains(u"--style-picker"_s)) {
+        QJsonArray checks;
+        bool ok = true;
+        const auto check = [&](bool condition, const QString& message) {
+            checks.append(QJsonObject {{u"name"_s, message}, {u"passed"_s, condition}});
+            ok = condition && ok;
+            if (!condition) qWarning().noquote() << "style picker:" << message;
+        };
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, 1), Q_ARG(QVariant, 0));
+        settle(window);
+        auto* liquid = visualNamed(window->contentItem(), u"styleCard_liquid"_s);
+        auto* tactile = visualNamed(window->contentItem(), u"styleCard_tactile"_s);
+        auto* fluent = visualNamed(window->contentItem(), u"styleCard_fluent"_s);
+        check(liquid && tactile && fluent, u"all style cards exist"_s);
+        if (liquid && tactile && fluent) {
+            auto* accessible = QAccessible::queryAccessibleInterface(liquid);
+            check(accessible && accessible->role() == QAccessible::RadioButton
+                    && !accessible->text(QAccessible::Name).isEmpty(), u"style card exposes a named radio option"_s);
+            for (const int width : {window->minimumWidth(), 920, 1080}) {
+                window->resize(width, baseHeight);
+                settle(window);
+                check(liquid->isVisible() && liquid->width() >= 136, u"fourth card is readable at width %1"_s.arg(width));
+                if (width >= 920)
+                    check(qFuzzyCompare(liquid->y(), fluent->y()), u"all four styles share one row at width %1"_s.arg(width));
+                check(liquid->x() >= 0 && liquid->x() + liquid->width() <= liquid->parentItem()->width() + 0.01,
+                    u"fourth card stays inside its row at width %1"_s.arg(width));
+                auto* flick = qobject_cast<QQuickItem*>(named(window, "flick"));
+                if (flick) {
+                    flick->setProperty("contentY", 0);
+                    settle(window, 2);
+                }
+                check(saveGrab(window, out.filePath(u"picker-%1.png"_s.arg(width))), u"picker screenshot %1"_s.arg(width));
+            }
+            editor->setUiStyle(u"fluent"_s);
+            settle(window);
+            const auto key = [&](int code) {
+                QKeyEvent press(QEvent::KeyPress, code, {}), release(QEvent::KeyRelease, code, {});
+                QCoreApplication::sendEvent(window, &press);
+                QCoreApplication::sendEvent(window, &release);
+                settle(window);
+            };
+            tactile->forceActiveFocus(Qt::TabFocusReason);
+            key(Qt::Key_Right);
+            check(liquid->hasActiveFocus(), u"Right reaches the fourth style"_s);
+            key(Qt::Key_Space);
+            check(editor->uiStyle() == u"liquid" && SystemTheme::uiStyle() == u"liquid"
+                    && liquid->property("selected").toBool(), u"Space applies Liquid glass"_s);
+            check(accessible && accessible->state().checked, u"assistive technology receives the selected state"_s);
+            Settings reloaded;
+            reloaded.load();
+            check(reloaded.uiStyle == u"liquid", u"Liquid glass survives settings reload"_s);
+            key(Qt::Key_Left);
+            check(tactile->hasActiveFocus(), u"Left returns to the previous style"_s);
+            fluent->forceActiveFocus(Qt::TabFocusReason);
+            key(Qt::Key_Return);
+            check(editor->uiStyle() == u"fluent", u"Enter restores the native style"_s);
+            const QPointF at = liquid->mapToScene({liquid->width() / 2, liquid->height() / 2});
+            QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+            QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+            QCoreApplication::sendEvent(window, &press);
+            QCoreApplication::sendEvent(window, &release);
+            settle(window);
+            check(editor->uiStyle() == u"liquid", u"pointer click selects Liquid glass"_s);
+        }
+        QFile report(out.filePath(u"picker.json"_s));
+        check(report.open(QIODevice::WriteOnly), u"picker report opens"_s);
+        if (report.isOpen()) report.write(QJsonDocument(QJsonObject {{u"passed"_s, ok}, {u"checks"_s, checks}}).toJson());
+        return finish(window, ok);
+    }
 
     if (args.contains(u"--health-monitor"_s)) {
         bool ok = true;
@@ -5159,6 +5231,7 @@ bool checkStyleButtons(QQmlEngine* engine, const QDir& output)
             property alias tabs: tabs
             property alias primary: primary
             property alias checkedFace: checkedFace
+            property alias disabledButton: disabledButton
             property color accent: Theme.accent
             property color whiteInk: Theme.accentText
             Text { x: 24; y: 14; text: "图标切换 / 文字分页"; color: Theme.text; font.pixelSize: 16 }
@@ -5177,7 +5250,7 @@ bool checkStyleButtons(QQmlEngine* engine, const QDir& output)
                 Hook { id: checkedFace; anchors.fill: parent; part: Theme.keySurface; checked: true; flat: true; role: "toolbar"; dpr: Screen.devicePixelRatio }
                 Glyph { anchors.centerIn: parent; anchors.verticalCenterOffset: checkedFace.out("contentOffsetY", 0); glyph: "\uE71C"; size: 16; color: checkedFace.out("foreground", Theme.text) }
             }
-            FlatButton { x: 400; y: 142; glyph: "\uE713"; enabled: false }
+            FlatButton { id: disabledButton; x: 400; y: 142; glyph: "\uE713"; enabled: false }
             Text { x: 24; y: 216; text: "当前项靠图标颜色与底面区分；鼠标移开仍保留状态。"; color: Theme.subtext; font.pixelSize: 14 }
         }
     )", QUrl(u"qrc:/qt/qml/WinShun/StyleButtons.qml"_s));
@@ -5226,6 +5299,9 @@ bool checkStyleButtons(QQmlEngine* engine, const QDir& output)
     check(colour(preview, u"foreground"_s) == accent, u"open preview stays marked without hover"_s);
     check(colour(window->property("primary").value<QObject*>(), u"foreground"_s) == window->property("whiteInk").value<QColor>(),
         u"primary action keeps white ink"_s);
+    if (SystemTheme::uiStyle() == u"liquid")
+        check(window->property("disabledButton").value<QObject*>()->property("opacity").toReal() < 1,
+            u"disabled action dims its surface and content together"_s);
     if (SystemTheme::uiStyle() == u"fluent") {
         check(colour(window->property("checkedFace").value<QObject*>(), u"out('foreground', 'transparent')"_s)
                 == window->property("whiteInk").value<QColor>(), u"filled checked key keeps white ink"_s);

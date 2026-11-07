@@ -22,6 +22,12 @@ Item {
     implicitWidth: 176
     implicitHeight: frame.height + caption.height
     activeFocusOnTab: true
+    Accessible.role: Accessible.RadioButton
+    Accessible.name: label
+    Accessible.checkable: true
+    Accessible.checked: selected
+    Accessible.focusable: true
+    Accessible.onPressAction: card.activated()
 
     Keys.onSpacePressed: card.activated()
     Keys.onReturnPressed: card.activated()

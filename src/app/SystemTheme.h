@@ -46,7 +46,7 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     // standard, roomy; see uisize::), and its header's height, as C++ places by.
     Q_PROPERTY(QString uiSize READ uiSize NOTIFY uiSizeChanged FINAL)
     Q_PROPERTY(int headerHeight READ headerHeight NOTIFY uiSizeChanged FINAL)
-    // 界面风格: fluent | brand | tactile (Theme.style; Settings::uiStyle).
+    // 界面风格: fluent | brand | tactile | liquid (Theme.style; Settings::uiStyle).
     Q_PROPERTY(QString uiStyle READ uiStyle NOTIFY changed FINAL)
     // How long the mouse rests before a tip shows (SPI_GETMOUSEHOVERTIME, ms).
     Q_PROPERTY(int hoverTime READ hoverTime NOTIFY changed FINAL)

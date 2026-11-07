@@ -13,6 +13,8 @@
 //     [--web-form] [--compact]: exercise adding/editing web shortcuts, focus,
 //     validation and scrolling at 920x720 or the minimum 760x420 window.
 //     Add --renderer d3d11 for the GPU path (default: software).
+//     --style-picker checks all four styles, keyboard/pointer selection,
+//     persistence, and the minimum/default/wide settings layouts.
 //     --composited-frame shows Windows 10's square frame on any OS.
 //     --wsl-folders checks WSL folder identity and renders stopped/running
 //     cards; --english and --compact cover translation and minimum size.

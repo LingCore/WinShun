@@ -1,0 +1,97 @@
+{
+    "checks": [
+        {
+            "name": "production segmented parts exist",
+            "passed": true
+        },
+        {
+            "name": "call('labelColor', [0], 'transparent')",
+            "passed": true
+        },
+        {
+            "name": "selected list icon uses accent ink",
+            "passed": true
+        },
+        {
+            "name": "foreground",
+            "passed": true
+        },
+        {
+            "name": "open preview stays marked without hover",
+            "passed": true
+        },
+        {
+            "name": "foreground",
+            "passed": true
+        },
+        {
+            "name": "primary action keeps white ink",
+            "passed": true
+        },
+        {
+            "name": "disabled action dims its surface and content together",
+            "passed": true
+        },
+        {
+            "name": "list state screenshot",
+            "passed": true
+        },
+        {
+            "name": "production gallery button exists",
+            "passed": true
+        },
+        {
+            "name": "hover screenshot",
+            "passed": true
+        },
+        {
+            "name": "pointer press reaches the segmented part",
+            "passed": true
+        },
+        {
+            "name": "pressed screenshot",
+            "passed": true
+        },
+        {
+            "name": "click changes the real launcher's view mode",
+            "passed": true
+        },
+        {
+            "name": "call('labelColor', [1], 'transparent')",
+            "passed": true
+        },
+        {
+            "name": "selected gallery icon stays coloured after pointer leaves",
+            "passed": true
+        },
+        {
+            "name": "call('labelColor', [0], 'transparent')",
+            "passed": true
+        },
+        {
+            "name": "previous choice loses its accent",
+            "passed": true
+        },
+        {
+            "name": "gallery state screenshot",
+            "passed": true
+        },
+        {
+            "name": "foreground",
+            "passed": true
+        },
+        {
+            "name": "closing preview clears its mark",
+            "passed": true
+        },
+        {
+            "name": "keyboard focus remains available",
+            "passed": true
+        },
+        {
+            "name": "focus screenshot",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

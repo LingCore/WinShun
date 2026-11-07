@@ -37,6 +37,17 @@ std::atomic<bool> g_round {true};
 std::mutex g_cornerMutex; // preview HWNDs are created on another thread
 constexpr COLORREF kColorDefault = 0xFFFFFFFF; // DWMWA_COLOR_DEFAULT
 constexpr int kBackdropMica = 2; // DWMSBT_MAINWINDOW
+constexpr int kBackdropAcrylic = 3; // DWMSBT_TRANSIENTWINDOW
+constexpr int kBackdropNone = 1; // DWMSBT_NONE
+constexpr wchar_t kBackdropWindow[] = L"WinShun.Backdrop";
+std::atomic<BackdropMaterial> g_backdropMaterial {BackdropMaterial::Mica};
+
+void applyBackdrop(HWND window)
+{
+    const int value = g_backdropMaterial.load() == BackdropMaterial::Acrylic ? kBackdropAcrylic : kBackdropMica;
+    ::DwmSetWindowAttribute(window, kSystemBackdropType, &value, sizeof value);
+}
+
 LRESULT CALLBACK nativeFrameProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR)
 {
     switch (message) {
@@ -210,8 +221,26 @@ void styleFramelessWindow(QWindow* window, bool backdrop)
     ::DwmExtendFrameIntoClientArea(hwnd, &margins);
     // The backdrop fills the whole window, frame extended or not; extended,
     // DWM would also draw its caption buttons on it, next to ours.
-    if (backdrop && backdropSupported())
-        ::DwmSetWindowAttribute(hwnd, kSystemBackdropType, &kBackdropMica, sizeof kBackdropMica);
+    if (backdrop && backdropSupported()) {
+        ::SetPropW(hwnd, kBackdropWindow, reinterpret_cast<HANDLE>(INT_PTR(1)));
+        applyBackdrop(hwnd);
+    } else {
+        ::RemovePropW(hwnd, kBackdropWindow);
+        ::DwmSetWindowAttribute(hwnd, kSystemBackdropType, &kBackdropNone, sizeof kBackdropNone);
+    }
+}
+
+void setBackdropMaterial(BackdropMaterial material)
+{
+    if (g_backdropMaterial.exchange(material) == material || !backdropSupported())
+        return;
+    ::EnumWindows([](HWND window, LPARAM) -> BOOL {
+        DWORD process = 0;
+        ::GetWindowThreadProcessId(window, &process);
+        if (process == ::GetCurrentProcessId() && ::GetPropW(window, kBackdropWindow))
+            applyBackdrop(window);
+        return TRUE;
+    }, 0);
 }
 
 void setDarkFrame(QWindow* window, bool dark)

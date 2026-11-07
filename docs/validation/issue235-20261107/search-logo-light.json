@@ -1,0 +1,497 @@
+{
+    "checks": [
+        {
+            "name": "box: production logo and field are visible",
+            "passed": true
+        },
+        {
+            "name": "box: application logo loads at the requested display size",
+            "passed": true
+        },
+        {
+            "name": "box: all pointer actions have a multiline hint",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: compact does not activate outside the logo at (-2,16)",
+            "passed": true
+        },
+        {
+            "name": "box: compact does not activate outside the logo at (34,16)",
+            "passed": true
+        },
+        {
+            "name": "box: compact does not activate outside the logo at (16,-2)",
+            "passed": true
+        },
+        {
+            "name": "box: compact does not activate outside the logo at (16,34)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: standard does not activate outside the logo at (-2,17)",
+            "passed": true
+        },
+        {
+            "name": "box: standard does not activate outside the logo at (36,17)",
+            "passed": true
+        },
+        {
+            "name": "box: standard does not activate outside the logo at (17,-2)",
+            "passed": true
+        },
+        {
+            "name": "box: standard does not activate outside the logo at (17,36)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy does not activate outside the logo at (-2,18)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy does not activate outside the logo at (38,18)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy does not activate outside the logo at (18,-2)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy does not activate outside the logo at (18,38)",
+            "passed": true
+        },
+        {
+            "name": "box: logo retains the system drag region",
+            "passed": true
+        },
+        {
+            "name": "box: native middle click pins and reveals the badge",
+            "passed": true
+        },
+        {
+            "name": "box: pinning keeps query and input focus",
+            "passed": true
+        },
+        {
+            "name": "box: pinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+T clears the same visible pin state",
+            "passed": true
+        },
+        {
+            "name": "box: repeated middle clicks toggle independently",
+            "passed": true
+        },
+        {
+            "name": "box: release without a logo press does nothing",
+            "passed": true
+        },
+        {
+            "name": "box: releasing outside cancels the logo action",
+            "passed": true
+        },
+        {
+            "name": "box: moving beyond the drag threshold cancels even after returning to the logo",
+            "passed": true
+        },
+        {
+            "name": "box: native left click requests settings exactly once",
+            "passed": true
+        },
+        {
+            "name": "box: keyboard activation opens settings",
+            "passed": true
+        },
+        {
+            "name": "box: native right click centers on the current monitor work area",
+            "passed": true
+        },
+        {
+            "name": "box: centering retains size, query and pin state without opening settings",
+            "passed": true
+        },
+        {
+            "name": "box: unpinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "box: native hover displays every logo action",
+            "passed": true
+        },
+        {
+            "name": "box: hint screenshot",
+            "passed": true
+        },
+        {
+            "name": "panel: production logo and field are visible",
+            "passed": true
+        },
+        {
+            "name": "panel: application logo loads at the requested display size",
+            "passed": true
+        },
+        {
+            "name": "panel: all pointer actions have a multiline hint",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact does not activate outside the logo at (-2,16)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact does not activate outside the logo at (34,16)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact does not activate outside the logo at (16,-2)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact does not activate outside the logo at (16,34)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard does not activate outside the logo at (-2,17)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard does not activate outside the logo at (36,17)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard does not activate outside the logo at (17,-2)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard does not activate outside the logo at (17,36)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy does not activate outside the logo at (-2,18)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy does not activate outside the logo at (38,18)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy does not activate outside the logo at (18,-2)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy does not activate outside the logo at (18,38)",
+            "passed": true
+        },
+        {
+            "name": "panel: logo retains the system drag region",
+            "passed": true
+        },
+        {
+            "name": "panel: native middle click pins and reveals the badge",
+            "passed": true
+        },
+        {
+            "name": "panel: pinning keeps query and input focus",
+            "passed": true
+        },
+        {
+            "name": "panel: pinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+T clears the same visible pin state",
+            "passed": true
+        },
+        {
+            "name": "panel: repeated middle clicks toggle independently",
+            "passed": true
+        },
+        {
+            "name": "panel: release without a logo press does nothing",
+            "passed": true
+        },
+        {
+            "name": "panel: releasing outside cancels the logo action",
+            "passed": true
+        },
+        {
+            "name": "panel: moving beyond the drag threshold cancels even after returning to the logo",
+            "passed": true
+        },
+        {
+            "name": "panel: native left click requests settings exactly once",
+            "passed": true
+        },
+        {
+            "name": "panel: keyboard activation opens settings",
+            "passed": true
+        },
+        {
+            "name": "panel: native right click centers on the current monitor work area",
+            "passed": true
+        },
+        {
+            "name": "panel: centering retains size, query and pin state without opening settings",
+            "passed": true
+        },
+        {
+            "name": "panel: unpinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "panel: native hover displays every logo action",
+            "passed": true
+        },
+        {
+            "name": "panel: hint screenshot",
+            "passed": true
+        },
+        {
+            "name": "appearance settings load the production size preview",
+            "passed": true
+        },
+        {
+            "name": "appearance preview shows the program logo at compact size",
+            "passed": true
+        },
+        {
+            "name": "appearance preview screenshot at compact size",
+            "passed": true
+        },
+        {
+            "name": "appearance preview shows the program logo at standard size",
+            "passed": true
+        },
+        {
+            "name": "appearance preview screenshot at standard size",
+            "passed": true
+        },
+        {
+            "name": "appearance preview shows the program logo at roomy size",
+            "passed": true
+        },
+        {
+            "name": "appearance preview screenshot at roomy size",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

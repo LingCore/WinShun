@@ -393,11 +393,12 @@ std::vector<Entry> buildCatalog()
         {{u"round"_s, u"round corners"_s, QT_TRANSLATE_NOOP("AiSettings", "圆角")},
             {u"square"_s, u"square corners"_s, QT_TRANSLATE_NOOP("AiSettings", "直角")}}));
     add(choice({"Appearance/UiStyle", QT_TRANSLATE_NOOP("AiSettings", "界面风格"), "appearance", -1,
-                   "The look of every window: Windows 11's own (follows the accent colour), Win顺's brand colours, or raised keys and a tray."},
+                   "The look of every window: Windows 11's own, Win顺's brand colours, raised keys, or liquid glass with an Acrylic backdrop."},
         &Settings::uiStyle,
         {{u"fluent"_s, u"Windows 11's own look"_s, QT_TRANSLATE_NOOP("AiSettings", "精修原生")},
             {u"brand"_s, u"Win顺's brand colours"_s, QT_TRANSLATE_NOOP("AiSettings", "品牌色彩")},
-            {u"tactile"_s, u"raised keys, light depth"_s, QT_TRANSLATE_NOOP("AiSettings", "轻拟物质感")}}));
+            {u"tactile"_s, u"raised keys, light depth"_s, QT_TRANSLATE_NOOP("AiSettings", "轻拟物质感")},
+            {u"liquid"_s, u"liquid glass, Acrylic backdrop, clear highlights"_s, QT_TRANSLATE_NOOP("AiSettings", "液态玻璃")}}));
     add(choice({"Appearance/UiSize", QT_TRANSLATE_NOOP("AiSettings", "界面大小"), "appearance", -1,
                    "Type and row heights of the search box, the clipboard and the dialog bar (not the settings window)."},
         &Settings::uiSize,

@@ -374,7 +374,7 @@ private slots:
         QTest::addColumn<QString>("style");
         QTest::addColumn<bool>("dark");
         QTest::addColumn<bool>("round");
-        for (const char* style : {"fluent", "brand", "tactile"}) {
+        for (const char* style : {"fluent", "brand", "tactile", "liquid"}) {
             for (const bool dark : {false, true}) {
                 QTest::addRow("%s-%s", style, dark ? "dark" : "light") << QString::fromLatin1(style) << dark << true;
                 QTest::addRow("%s-%s-square", style, dark ? "dark" : "light") << QString::fromLatin1(style) << dark << false;
@@ -457,7 +457,7 @@ private slots:
         QTest::addColumn<QString>("style");
         QTest::addColumn<bool>("dark");
         QTest::addColumn<qreal>("scale");
-        for (const char* style : {"fluent", "brand", "tactile"}) {
+        for (const char* style : {"fluent", "brand", "tactile", "liquid"}) {
             for (const bool dark : {false, true}) {
                 for (const qreal scale : {1.0, 1.5})
                     QTest::addRow("%s-%s-%d", style, dark ? "dark" : "light", int(scale * 100))

@@ -1,0 +1,8 @@
+{
+  "date": "2026-11-07",
+  "os": "10.0.26200",
+  "qt": "6.12.0 MSVC2022 x64",
+  "baseline": "c4381ddc4d2e2edddeb9b89a1199174946602e3f",
+  "executableSha256": "C00C4B0289B0D3291514167BCBE79B46F65BD9E9E526A9121CED72ADA8B4387B",
+  "uncommitted": true
+}

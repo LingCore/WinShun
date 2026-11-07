@@ -265,6 +265,18 @@ private slots:
     }
 
     // The menu keeps one way and one place on (GitHub #196), as its settings do.
+    void liquidStyleChoice()
+    {
+        State state = defaultState();
+        const Plan plan = makePlan(state, one(u"Appearance/UiStyle"_s, u"liquid"_s), {});
+        QVERIFY2(plan.problems.isEmpty(), qPrintable(problemText(plan)));
+        QCOMPARE(plan.result.settings.uiStyle, u"liquid"_s);
+        QVERIFY(plan.result.settings.saveChecked());
+        Settings restored;
+        restored.load();
+        QCOMPARE(restored.uiStyle, u"liquid"_s);
+    }
+
     void folderMenuKeepsOne()
     {
         State state = defaultState();

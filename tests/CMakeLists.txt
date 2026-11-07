@@ -102,6 +102,25 @@ add_test(NAME tst_pluginconfirm COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_pluginconfirm PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# #235: the fourth style is reachable, saved and keyboard-operable in the
+# actual settings view. Controls also run against the production launcher.
+foreach(liquid_mode IN ITEMS light dark square)
+    set(liquid_args --style liquid --renderer d3d11)
+    if(NOT liquid_mode STREQUAL "light")
+        list(APPEND liquid_args --dark --scale 1.5)
+    endif()
+    if(liquid_mode STREQUAL "square")
+        list(APPEND liquid_args --corners square)
+    endif()
+    add_test(NAME tst_liquid_buttons_${liquid_mode} COMMAND $<TARGET_FILE:WinShun>
+        --preview-results "${CMAKE_CURRENT_BINARY_DIR}/liquid-buttons-${liquid_mode}" --style-buttons ${liquid_args})
+    add_test(NAME tst_liquid_picker_${liquid_mode} COMMAND $<TARGET_FILE:WinShun>
+        --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/liquid-picker-${liquid_mode}" --style-picker ${liquid_args})
+    set_tests_properties(tst_liquid_buttons_${liquid_mode} tst_liquid_picker_${liquid_mode} PROPERTIES
+        RUN_SERIAL TRUE TIMEOUT 90
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+endforeach()
+
 # The screenshot hotkey row and its 按键一览 entry follow the capture plugin's state.
 add_test(NAME tst_settingscapturehotkey COMMAND $<TARGET_FILE:WinShun>
     --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/settings-capture-hotkey" --capture-hotkey --scale 1.5)
