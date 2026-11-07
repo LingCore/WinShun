@@ -1,0 +1,30 @@
+preparing
+making the application
+loading the font
+saved F:/电脑便捷工具/build/issue245/final-light/always.png 1000x675
+saved F:/电脑便捷工具/build/issue245/final-light/held-idle.png 1000x675
+saved F:/电脑便捷工具/build/issue245/final-light/held-100ms.png 1000x675
+saved F:/电脑便捷工具/build/issue245/final-light/held-300ms.png 1000x675
+saved F:/电脑便捷工具/build/issue245/final-light/held-released.png 1000x675
+saved F:/电脑便捷工具/build/issue245/final-light/quick-taps.png 1000x675
+saved F:/电脑便捷工具/build/issue245/final-light/off.png 1000x675
+preview placement (room beside): launcher 805,305 950x600, preview 1765,305 785x540 (physical)
+preview placement (no room): launcher 100,305 2360x1278, preview 1950,305 600x436 (physical)
+saved F:/电脑便捷工具/build/issue245/final-light/search-menu-box.png 345x393
+saved F:/电脑便捷工具/build/issue245/final-light/search-menu-panel.png 345x393
+saved F:/电脑便捷工具/build/issue245/final-light/search-settings-entry.png 1500x850
+search navigation: 118 checks, production Main.qml/Launcher/ContextMenu, local Qt key and IME events, passed
+saved F:/电脑便捷工具/build/issue245/final-light/dialog-search-logo.png 950x55
+saved F:/电脑便捷工具/build/issue245/final-light/dialog-result-spacing-compact.png 950x450
+saved F:/电脑便捷工具/build/issue245/final-light/dialog-result-spacing-standard.png 950x450
+saved F:/电脑便捷工具/build/issue245/final-light/dialog-result-spacing-roomy.png 950x450
+saved F:/电脑便捷工具/build/issue245/final-light/search-menu-dialog.png 306x201
+dialog search navigation: 35 checks, production DialogBarWindow/DialogBar, local Qt input, passed
+saved F:/电脑便捷工具/build/issue245/final-light/files-large-icons.png 1500x850
+saved F:/电脑便捷工具/build/issue245/final-light/preview-space.png 510x385
+preview hotkeys: production Main.qml + FilePreview; default, Space, IME preedit, repeat, Shift+Space, reassignment, modifiers, disabled
+preview mouse: middle click toggles, hover follows after 100 ms, arrows return to the current tile
+saved F:/电脑便捷工具/build/issue245/final-light/files-large-icons-compact.png 800x600
+saved F:/电脑便捷工具/build/issue245/final-light/files-large-icons-empty.png 800x600
+large icons: production QML/model, real temporary PNGs, Alt+wheel, viewport retention, minimum width
+0 warning(s)

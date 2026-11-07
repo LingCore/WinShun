@@ -1,0 +1,145 @@
+{
+    "checks": [
+        {
+            "name": "the dialog bar receives the real name search results",
+            "passed": true
+        },
+        {
+            "name": "production dialog field and result list",
+            "passed": true
+        },
+        {
+            "name": "the dialog search bar loads its inline program logo",
+            "passed": true
+        },
+        {
+            "name": "the program logo keeps the original input alignment and spacing",
+            "passed": true
+        },
+        {
+            "name": "render the dialog logo with the empty search field",
+            "passed": true
+        },
+        {
+            "name": "compact: production dialog text layout",
+            "passed": true
+        },
+        {
+            "name": "compact: dialog result spacing (inner 2, outer 15.6)",
+            "passed": true
+        },
+        {
+            "name": "compact: render dialog result spacing",
+            "passed": true
+        },
+        {
+            "name": "standard: production dialog text layout",
+            "passed": true
+        },
+        {
+            "name": "standard: dialog result spacing (inner 2, outer 20)",
+            "passed": true
+        },
+        {
+            "name": "standard: render dialog result spacing",
+            "passed": true
+        },
+        {
+            "name": "roomy: production dialog text layout",
+            "passed": true
+        },
+        {
+            "name": "roomy: dialog result spacing (inner 2, outer 23.6)",
+            "passed": true
+        },
+        {
+            "name": "roomy: render dialog result spacing",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+74 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+78 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+75 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+80 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+85 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+68 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "Right opens the selected dialog result's menu",
+            "passed": true
+        },
+        {
+            "name": "render the production dialog menu",
+            "passed": true
+        },
+        {
+            "name": "holding the shortcut keeps the dialog menu open",
+            "passed": true
+        },
+        {
+            "name": "Left returns to the same dialog result and query",
+            "passed": true
+        },
+        {
+            "name": "Right within the dialog query edits its caret",
+            "passed": true
+        },
+        {
+            "name": "Right collapses a dialog text selection",
+            "passed": true
+        },
+        {
+            "name": "modified Right does not open a dialog menu",
+            "passed": true
+        },
+        {
+            "name": "Ctrl+O opens the dialog menu from within the query",
+            "passed": true
+        },
+        {
+            "name": "IME composition closes the dialog menu",
+            "passed": true
+        },
+        {
+            "name": "Right does not open a dialog menu while composing",
+            "passed": true
+        },
+        {
+            "name": "the dialog Ctrl+O fixture is composing",
+            "passed": true
+        },
+        {
+            "name": "Ctrl+O does not open a dialog menu while composing",
+            "passed": true
+        },
+        {
+            "name": "Escape returns without clearing the dialog query",
+            "passed": true
+        },
+        {
+            "name": "a hidden dialog list opens no result menu",
+            "passed": true
+        },
+        {
+            "name": "write the dialog regression report",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

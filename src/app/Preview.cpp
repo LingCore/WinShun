@@ -2797,6 +2797,30 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
         list->setVisible(true);
         list->setHeight(5 * bar.rowHeight());
         settle(window);
+        // #245: two lines belong together; the gap to the next result must
+        // remain larger than the space between a name and its folder.
+        const QString previousSize = SystemTheme::uiSize();
+        for (const QString& size : {u"compact"_s, u"standard"_s, u"roomy"_s}) {
+            SystemTheme::setUiSize(size);
+            DialogBar::setUiSize(size);
+            list->setHeight(5 * bar.rowHeight());
+            settle(window);
+            auto* text = visualNamed(list, u"dialogResultText"_s);
+            auto* name = text ? visualNamed(text, u"dialogResultName"_s) : nullptr;
+            auto* folder = text ? visualNamed(text, u"dialogResultFolder"_s) : nullptr;
+            check(text && name && folder, size + u": production dialog text layout"_s);
+            if (text && name && folder) {
+                const qreal innerGap = folder->y() - name->parentItem()->height();
+                const qreal outerGap = bar.rowHeight() - text->height();
+                check(text->y() >= 4 && outerGap >= std::max(8.0, innerGap + 2),
+                    size + u": dialog result spacing (inner %1, outer %2)"_s.arg(innerGap).arg(outerGap));
+                check(saveGrab(window, output.filePath(u"dialog-result-spacing-%1.png"_s.arg(size))), size + u": render dialog result spacing"_s);
+            }
+        }
+        SystemTheme::setUiSize(previousSize);
+        DialogBar::setUiSize(previousSize);
+        list->setHeight(5 * bar.rowHeight());
+        settle(window);
         field->forceActiveFocus();
         field->setProperty("cursorPosition", query.size());
         list->setProperty("currentIndex", 2);

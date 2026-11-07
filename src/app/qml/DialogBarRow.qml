@@ -126,6 +126,7 @@ Item {
 
     Column {
         id: textColumn
+        objectName: "dialogResultText"
         y: row.onPixel((row.height - height) / 2)
         anchors.left: iconSlot.right
         anchors.leftMargin: 12
@@ -139,6 +140,7 @@ Item {
 
             Text {
                 id: nameText
+                objectName: "dialogResultName"
                 readonly property real room: parent.width - (date.visible ? date.width + 10 : 0)
                 width: Math.min(implicitWidth, room)
                 // Shortened around its matches, its end kept (see ResultRow).
@@ -148,6 +150,8 @@ Item {
                 elide: Text.ElideRight
                 color: Theme.text
                 font.pixelSize: Theme.uiBody
+                // Keep paired lines close without reducing result hit targets.
+                font.preferTypoLineMetrics: true
             }
 
             Text { // when it was last written; left out where the bar is narrow
@@ -164,6 +168,7 @@ Item {
         }
         Text {
             id: folderText
+            objectName: "dialogResultFolder"
             width: parent.width
             text: row.folder
             textFormat: Text.PlainText
@@ -171,6 +176,7 @@ Item {
             maximumLineCount: 1
             color: Theme.subtext
             font.pixelSize: Theme.uiCaption
+            font.preferTypoLineMetrics: true
         }
     }
 
