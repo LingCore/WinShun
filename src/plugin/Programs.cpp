@@ -59,16 +59,57 @@ bool inWindowsApps(const QString& path)
 
 // `name` in PATH's folders but the Store's: a python.exe after the Store's
 // stub is found (uv's bin folder often comes after it).
-QString onPath(const QString& name)
+QStringList onPaths(const QString& name)
 {
-    QStringList folders;
+    QStringList paths;
     for (QString folder : qEnvironmentVariable("PATH").split(u';', Qt::SkipEmptyParts)) {
         folder.remove(u'"');
-        if (!folder.trimmed().isEmpty() && !inWindowsApps(folder + u'\\'))
-            folders.push_back(folder);
+        if (folder.trimmed().isEmpty() || inWindowsApps(folder + u'\\'))
+            continue;
+        const QString found = QStandardPaths::findExecutable(name, {folder});
+        if (!found.isEmpty())
+            paths.push_back(native(found));
     }
-    const QString found = folders.isEmpty() ? QString() : QStandardPaths::findExecutable(name, folders);
-    return found.isEmpty() ? QString() : native(found);
+    return paths;
+}
+
+QString onPath(const QString& name)
+{
+    return onPaths(name).value(0);
+}
+
+// The install manager is also named python.exe. Read its VERSIONINFO without
+// running it. Discovery must never install Python or launch a child process.
+QString pythonLauncherDescription(const QString& exe)
+{
+    const auto* path = reinterpret_cast<LPCWSTR>(exe.utf16());
+    DWORD ignored = 0;
+    const DWORD size = ::GetFileVersionInfoSizeW(path, &ignored);
+    if (!size || size > 1024 * 1024)
+        return {};
+    QByteArray info(size, '\0');
+    if (!::GetFileVersionInfoW(path, 0, size, info.data()))
+        return {};
+    struct Translation {
+        WORD language;
+        WORD codePage;
+    };
+    Translation* translations = nullptr;
+    UINT length = 0;
+    if (!::VerQueryValueW(info.data(), L"\\VarFileInfo\\Translation", reinterpret_cast<void**>(&translations), &length))
+        return {};
+    const UINT count = length / sizeof(Translation);
+    for (UINT i = 0; i < count; ++i) {
+        wchar_t key[64];
+        ::swprintf_s(key, L"\\StringFileInfo\\%04x%04x\\FileDescription", translations[i].language, translations[i].codePage);
+        wchar_t* description = nullptr;
+        if (::VerQueryValueW(info.data(), key, reinterpret_cast<void**>(&description), &length) && length > 1) {
+            const QString text = QString::fromWCharArray(description, int(length - 1));
+            if (text.startsWith(u"Python Install Manager") || text.startsWith(u"Python launcher"))
+                return text;
+        }
+    }
+    return {};
 }
 
 // A registry key opened only to read. (QSettings opens the keys it reads
@@ -203,8 +244,10 @@ Found lookUpPython(const QString& chosen)
         if (take(r.exe))
             return found;
     }
-    if (take(onPath(u"python.exe"_s)))
-        return found;
+    for (const QString& path : onPaths(u"python.exe"_s)) {
+        if (take(path))
+            return found;
+    }
     found.hint = why.isEmpty() ? kPythonHint.toString() : u"需要 Python 3：%1"_s.arg(why);
     return found;
 }
@@ -418,6 +461,23 @@ std::optional<Python> resolvePython(const QString& path, QString* why)
             if (python.venvLauncher.isEmpty())
                 python.venvLauncher = exe;
             exe = base;
+            continue;
+        }
+
+        const QString launcher = pythonLauncherDescription(exe);
+        if (launcher.startsWith(u"Python Install Manager"))
+            return fail(u"%1 是 Python 安装管理器。请先在终端运行 py install 安装 Python，已安装时运行 py install --refresh，再重试插件"_s.arg(exe));
+        if (launcher.startsWith(u"Python launcher")) {
+            if (QFileInfo::exists(exe + u".__script__.py"_s))
+                return fail(u"%1 是 Python 脚本启动器，请选择实际解释器"_s.arg(exe));
+            QFile targetFile(exe + u".__target__"_s);
+            if (!targetFile.open(QIODevice::ReadOnly))
+                return fail(u"%1 是 Python 启动器，无法读取它的 .__target__。请运行 py install --refresh"_s.arg(exe));
+            const QByteArray bytes = targetFile.read(kMaxTrampolinePath + 1);
+            const QString target = QString::fromUtf8(bytes);
+            if (bytes.size() > kMaxTrampolinePath || target.contains(QChar::Null) || !QDir::isAbsolutePath(target))
+                return fail(u"%1 是 Python 启动器，它的 .__target__ 需要有效的绝对路径。请运行 py install --refresh"_s.arg(exe));
+            exe = native(target);
             continue;
         }
 

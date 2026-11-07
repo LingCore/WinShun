@@ -1,0 +1,13 @@
+test_bad_entry_and_old_client_rejected (test_community_native.CommunityNative.test_bad_entry_and_old_client_rejected) ... ok
+test_entry_and_index_keep_review (test_community_native.CommunityNative.test_entry_and_index_keep_review) ... ok
+test_explicit_category_required (test_community_native.CommunityNative.test_explicit_category_required) ... ok
+test_other_binary_types_and_path_traversal_stay_rejected (test_community_native.CommunityNative.test_other_binary_types_and_path_traversal_stay_rejected) ... ok
+test_registry_update_never_auto_accepts_native_release (test_community_native.CommunityNative.test_registry_update_never_auto_accepts_native_release) ... ok
+test_release_download_still_checks_digest (test_community_native.CommunityNative.test_release_download_still_checks_digest) ... ok
+test_review_cannot_disappear_in_author_pr (test_community_native.CommunityNative.test_review_cannot_disappear_in_author_pr) ... ok
+test_size_limit_remains (test_community_native.CommunityNative.test_size_limit_remains) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.183s
+
+OK

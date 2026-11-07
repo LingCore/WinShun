@@ -1,0 +1,3 @@
+警告：plugins/day.ocr.json：关键字 ocr 和 winshun.ocr-search 撞了（用户可以在设置里改，但最好换一个）
+警告：plugins/winshun.ocr-search.json：关键字 ocr 和 day.ocr 撞了（用户可以在设置里改，但最好换一个）
+检查了 16 个条目、3 个老插件：0 处有错误，2 条警告

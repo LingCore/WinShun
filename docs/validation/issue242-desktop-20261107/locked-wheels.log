@@ -1,0 +1,22 @@
+Looking in links: .\build\issue242-desktop-20261107\wheels
+Processing .\build\issue242-desktop-20261107\wheels\altgraph-0.17.5-py2.py3-none-any.whl (from -r F:\WinShun-plugins\tools\desktop-requirements.txt (line 2))
+Processing .\build\issue242-desktop-20261107\wheels\customtkinter-6.0.0-py3-none-any.whl (from -r F:\WinShun-plugins\tools\desktop-requirements.txt (line 3))
+Processing .\build\issue242-desktop-20261107\wheels\darkdetect-0.8.0-py3-none-any.whl (from -r F:\WinShun-plugins\tools\desktop-requirements.txt (line 4))
+Processing .\build\issue242-desktop-20261107\wheels\packaging-26.3-py3-none-any.whl (from -r F:\WinShun-plugins\tools\desktop-requirements.txt (line 5))
+Processing .\build\issue242-desktop-20261107\wheels\pefile-2024.8.26-py3-none-any.whl (from -r F:\WinShun-plugins\tools\desktop-requirements.txt (line 6))
+Processing .\build\issue242-desktop-20261107\wheels\pillow-12.3.0-cp315-cp315-win_amd64.whl (from -r F:\WinShun-plugins\tools\desktop-requirements.txt (line 7))
+Processing .\build\issue242-desktop-20261107\wheels\pyinstaller-6.22.3-py3-none-win_amd64.whl (from -r F:\WinShun-plugins\tools\desktop-requirements.txt (line 8))
+Processing .\build\issue242-desktop-20261107\wheels\pyinstaller_hooks_contrib-2026.9-py3-none-any.whl (from -r F:\WinShun-plugins\tools\desktop-requirements.txt (line 9))
+Processing .\build\issue242-desktop-20261107\wheels\pywin32_ctypes-0.2.3-py3-none-any.whl (from -r F:\WinShun-plugins\tools\desktop-requirements.txt (line 10))
+Processing .\build\issue242-desktop-20261107\wheels\setuptools-84.2.1-py3-none-any.whl (from -r F:\WinShun-plugins\tools\desktop-requirements.txt (line 11))
+Saved .\build\issue242-desktop-20261107\hash-check\altgraph-0.17.5-py2.py3-none-any.whl
+Saved .\build\issue242-desktop-20261107\hash-check\customtkinter-6.0.0-py3-none-any.whl
+Saved .\build\issue242-desktop-20261107\hash-check\darkdetect-0.8.0-py3-none-any.whl
+Saved .\build\issue242-desktop-20261107\hash-check\packaging-26.3-py3-none-any.whl
+Saved .\build\issue242-desktop-20261107\hash-check\pefile-2024.8.26-py3-none-any.whl
+Saved .\build\issue242-desktop-20261107\hash-check\pillow-12.3.0-cp315-cp315-win_amd64.whl
+Saved .\build\issue242-desktop-20261107\hash-check\pyinstaller-6.22.3-py3-none-win_amd64.whl
+Saved .\build\issue242-desktop-20261107\hash-check\pyinstaller_hooks_contrib-2026.9-py3-none-any.whl
+Saved .\build\issue242-desktop-20261107\hash-check\pywin32_ctypes-0.2.3-py3-none-any.whl
+Saved .\build\issue242-desktop-20261107\hash-check\setuptools-84.2.1-py3-none-any.whl
+Successfully downloaded altgraph customtkinter darkdetect packaging pefile pillow pyinstaller pyinstaller-hooks-contrib pywin32-ctypes setuptools

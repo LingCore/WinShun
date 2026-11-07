@@ -19,8 +19,8 @@ namespace ws::plugin::programs {
 // The program's path; empty when it is not installed (`hint` says what
 // to install, or why the python.exe found cannot run). `python` is
 // python.exe itself, never a launcher that starts it as a child -- py.exe,
-// a venv's python.exe, uv's trampolines: a job allowing one process
-// forbids the child (docs/pitfalls.md, "uv 装的 Python").
+// a venv's python.exe, uv's trampolines, Python Install Manager. A job allowing
+// one process forbids the child (docs/pitfalls.md, "uv 装的 Python").
 QString find(Program program, QString* hint = nullptr);
 void setOverride(Program program, const QString& path); // the settings' choice; empty: look again
 
@@ -49,8 +49,9 @@ struct Python {
 };
 
 // What `path` (a python.exe from the registry, PATH or the settings) comes
-// down to through venvs (pyvenv.cfg's home) and uv's trampolines; nothing,
-// with `why`, when it leads to no interpreter a plugin's job can run.
+// down to through venvs (pyvenv.cfg's home), uv's trampolines and the install
+// manager's .__target__ aliases. Returns nothing, with `why`, when it leads
+// to no interpreter a plugin's job can run.
 // Paths stay as written: uv's links to a minor version are junctions that
 // survive `uv python upgrade`, the folders behind them do not.
 std::optional<Python> resolvePython(const QString& path, QString* why = nullptr);

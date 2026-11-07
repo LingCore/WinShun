@@ -1,0 +1,31 @@
+test_endpoint_validation (test_ocr.ApiTests.test_endpoint_validation) ... ok
+test_exact_multimodal_request_and_text (test_ocr.ApiTests.test_exact_multimodal_request_and_text) ... ok
+test_no_key_no_network (test_ocr.ApiTests.test_no_key_no_network) ... ok
+test_png_and_dimension_limit (test_ocr.ApiTests.test_png_and_dimension_limit) ... ok
+test_status_does_not_leak_response_or_key (test_ocr.ApiTests.test_status_does_not_leak_response_or_key) ... ok
+test_truncation_and_malformed_response (test_ocr.ApiTests.test_truncation_and_malformed_response) ... ok
+test_eof_and_malformed_input (test_ocr.ProtocolTests.test_eof_and_malformed_input) ... ok
+test_lifecycle_without_network_or_ui_calls (test_ocr.ProtocolTests.test_lifecycle_without_network_or_ui_calls) ... ok
+test_clipboard_race_is_retried (test_system_capture.CaptureTests.test_clipboard_race_is_retried) ... F:\电脑便捷工具\build\issue242-desktop-20261107\python\Lib\tempfile.py:538: ResourceWarning: Implicitly cleaning up <HTTPError 401: 'secret-response'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+ok
+test_file_list_is_not_treated_as_image (test_system_capture.CaptureTests.test_file_list_is_not_treated_as_image) ... ok
+test_locked_clipboard_is_retried (test_system_capture.CaptureTests.test_locked_clipboard_is_retried) ... ok
+test_new_image_keeps_exact_pixels (test_system_capture.CaptureTests.test_new_image_keeps_exact_pixels) ... ok
+test_old_clipboard_image_is_never_read (test_system_capture.CaptureTests.test_old_clipboard_image_is_never_read) ... ok
+test_pointer_sized_bindings_and_shortcut_key_releases (test_system_capture.CaptureTests.test_pointer_sized_bindings_and_shortcut_key_releases) ... ok
+test_shutdown_cancels_and_timeout_is_visible (test_system_capture.CaptureTests.test_shutdown_cancels_and_timeout_is_visible) ... ok
+test_controls_fit_small_window_at_common_dpi_scales (test_ui.LayoutTests.test_controls_fit_small_window_at_common_dpi_scales) ... skipped 'Visible DPI test is opt-in'
+test_auto_ocr_waits_for_canceled_worker_and_cancel_discards_it (test_ui.UiTests.test_auto_ocr_waits_for_canceled_worker_and_cancel_discards_it) ... ok
+test_canceled_capture_does_not_recognize (test_ui.UiTests.test_canceled_capture_does_not_recognize) ... ok
+test_canceled_result_never_replaces_text (test_ui.UiTests.test_canceled_result_never_replaces_text) ... ok
+test_error_remains_visible_after_dialog_closes (test_ui.UiTests.test_error_remains_visible_after_dialog_closes) ... ok
+test_loading_does_not_upload (test_ui.UiTests.test_loading_does_not_upload) ... ok
+test_result_and_character_count (test_ui.UiTests.test_result_and_character_count) ... ok
+test_system_capture_automatically_recognizes (test_ui.UiTests.test_system_capture_automatically_recognizes) ... ok
+test_upload_automatically_recognizes (test_ui.UiTests.test_upload_automatically_recognizes) ... ok
+
+----------------------------------------------------------------------
+Ran 24 tests in 2.213s
+
+OK (skipped=1)

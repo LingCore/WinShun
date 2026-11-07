@@ -1,0 +1,15 @@
+********* Start testing of TestPlugin *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : TestPlugin::initTestCase()
+PASS   : TestPlugin::pythonInstallManager()
+PASS   : TestPlugin::installPreservesNeighborAndDataFolders()
+PASS   : TestPlugin::installFromFolder()
+PASS   : TestPlugin::installFromZip()
+PASS   : TestPlugin::galleryReviewClassification()
+PASS   : TestPlugin::updateDecisions()
+QWARN  : TestPlugin::updateWidening() "commands[0] ?? run,????? runtime:???????"
+QWARN  : TestPlugin::updateWidening() "commands[0] ?? run,????? runtime:???????"
+PASS   : TestPlugin::updateWidening()
+PASS   : TestPlugin::cleanupTestCase()
+Totals: 9 passed, 0 failed, 0 skipped, 0 blacklisted, 81ms
+********* Finished testing of TestPlugin *********

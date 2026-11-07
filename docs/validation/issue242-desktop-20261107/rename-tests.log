@@ -1,0 +1,30 @@
+test_bad_count_is_rejected_without_file_changes (test_rename.RenameAiTests.test_bad_count_is_rejected_without_file_changes) ... ok
+test_only_names_and_instruction_are_uploaded (test_rename.RenameAiTests.test_only_names_and_instruction_are_uploaded) ... ok
+test_resident_protocol_has_correct_identity_and_data_directory (test_rename.RenameAiTests.test_resident_protocol_has_correct_identity_and_data_directory) ... ok
+test_chinese_and_alphabet_numbering (test_rename.RenameTests.test_chinese_and_alphabet_numbering) ... ok
+test_crash_can_be_recovered_in_next_process (test_rename.RenameTests.test_crash_can_be_recovered_in_next_process) ... ok
+test_failure_rolls_back_and_retains_unrelated_files (test_rename.RenameTests.test_failure_rolls_back_and_retains_unrelated_files) ... ok
+test_insert_sequence_and_file_information_are_local (test_rename.RenameTests.test_insert_sequence_and_file_information_are_local) ... ok
+test_invalid_names_duplicates_existing_and_nested (test_rename.RenameTests.test_invalid_names_duplicates_existing_and_nested) ... ok
+test_journal_and_temporary_journal_cannot_be_renamed (test_rename.RenameTests.test_journal_and_temporary_journal_cannot_be_renamed) ... ok
+test_journal_directory_and_ancestors_are_rejected_before_any_rename (test_rename.RenameTests.test_journal_directory_and_ancestors_are_rejected_before_any_rename) ... ok
+test_local_smart_rules_and_regex (test_rename.RenameTests.test_local_smart_rules_and_regex) ... ok
+test_racing_destination_is_never_overwritten (test_rename.RenameTests.test_racing_destination_is_never_overwritten) ... ok
+test_restore_rejects_moving_its_own_journal_directory (test_rename.RenameTests.test_restore_rejects_moving_its_own_journal_directory) ... ok
+test_rules_and_extension_preservation (test_rename.RenameTests.test_rules_and_extension_preservation) ... ok
+test_sibling_of_journal_directory_can_be_renamed_and_restored (test_rename.RenameTests.test_sibling_of_journal_directory_can_be_renamed_and_restored) ... ok
+test_swap_and_case_only_and_undo_preserve_contents (test_rename.RenameTests.test_swap_and_case_only_and_undo_preserve_contents) ... ok
+test_undo_refuses_occupied_original (test_rename.RenameTests.test_undo_refuses_occupied_original) ... ok
+test_ai_generates_preview_without_mutating_files (test_rename_ui.RenameUiTests.test_ai_generates_preview_without_mutating_files) ... ok
+test_execute_once_and_undo_with_same_file_content (test_rename_ui.RenameUiTests.test_execute_once_and_undo_with_same_file_content) ... ok
+test_footer_fits_minimum_window_at_common_scaling (test_rename_ui.RenameUiTests.test_footer_fits_minimum_window_at_common_scaling) ... skipped 'Visible DPI test is opt-in to avoid disturbing the desktop'
+test_manual_paste_fills_down_without_renaming_files (test_rename_ui.RenameUiTests.test_manual_paste_fills_down_without_renaming_files) ... ok
+test_metadata_date_format_prefix_suffix_preserve_original (test_rename_ui.RenameUiTests.test_metadata_date_format_prefix_suffix_preserve_original) ... ok
+test_natural_and_insertion_sort (test_rename_ui.RenameUiTests.test_natural_and_insertion_sort) ... ok
+test_preview_is_local_and_does_not_rename (test_rename_ui.RenameUiTests.test_preview_is_local_and_does_not_rename) ... ok
+test_reference_insert_and_number_options_reach_preview (test_rename_ui.RenameUiTests.test_reference_insert_and_number_options_reach_preview) ... ok
+
+----------------------------------------------------------------------
+Ran 25 tests in 7.718s
+
+OK (skipped=1)

@@ -1,0 +1,81 @@
+{
+    "ok": true,
+    "scenarios": [
+        {
+            "runs": [
+                {
+                    "confirmationRequired": false,
+                    "elapsedMs": 565,
+                    "error": "",
+                    "height": 757,
+                    "id": "day.ocr",
+                    "program": "OCRStudio.exe",
+                    "pythonUnavailable": true,
+                    "queryAnswered": true,
+                    "queryTaken": true,
+                    "running": true,
+                    "settingsForwarded": true,
+                    "upgrade": false,
+                    "width": 1055,
+                    "windowVisible": true
+                },
+                {
+                    "confirmationRequired": false,
+                    "elapsedMs": 1020,
+                    "error": "",
+                    "height": 737,
+                    "id": "day.rename",
+                    "program": "BatchRename.exe",
+                    "pythonUnavailable": true,
+                    "queryAnswered": true,
+                    "queryTaken": true,
+                    "running": true,
+                    "settingsForwarded": true,
+                    "upgrade": false,
+                    "width": 1015,
+                    "windowVisible": true
+                }
+            ],
+            "settingsPreserved": true,
+            "upgrade": false
+        },
+        {
+            "runs": [
+                {
+                    "confirmationRequired": true,
+                    "elapsedMs": 606,
+                    "error": "",
+                    "height": 757,
+                    "id": "day.ocr",
+                    "program": "OCRStudio.exe",
+                    "pythonUnavailable": true,
+                    "queryAnswered": true,
+                    "queryTaken": true,
+                    "running": true,
+                    "settingsForwarded": true,
+                    "upgrade": true,
+                    "width": 1055,
+                    "windowVisible": true
+                },
+                {
+                    "confirmationRequired": true,
+                    "elapsedMs": 905,
+                    "error": "",
+                    "height": 737,
+                    "id": "day.rename",
+                    "program": "BatchRename.exe",
+                    "pythonUnavailable": true,
+                    "queryAnswered": true,
+                    "queryTaken": true,
+                    "running": true,
+                    "settingsForwarded": true,
+                    "upgrade": true,
+                    "width": 1015,
+                    "windowVisible": true
+                }
+            ],
+            "settingsPreserved": true,
+            "upgrade": true
+        }
+    ]
+}

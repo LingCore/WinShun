@@ -467,6 +467,39 @@ bool makeOldUvTrampoline(const QString& path, const QByteArray& magic, const QSt
     return file.write(tail) == tail.size();
 }
 
+// The VERSIONINFO identifying Python's install manager and global aliases.
+bool makePythonLauncher(const QString& path, const QString& description)
+{
+    if (!copyFake(path))
+        return false;
+    const auto block = [](const QString& key, const QByteArray& value, const QByteArray& children, bool text) {
+        QByteArray bytes(6, '\0');
+        bytes.append(reinterpret_cast<const char*>(key.utf16()), (key.size() + 1) * 2);
+        while (bytes.size() % 4)
+            bytes.append('\0');
+        bytes.append(value);
+        while (bytes.size() % 4)
+            bytes.append('\0');
+        bytes.append(children);
+        qToLittleEndian<quint16>(quint16(bytes.size()), bytes.data());
+        qToLittleEndian<quint16>(quint16(text ? value.size() / 2 : value.size()), bytes.data() + 2);
+        qToLittleEndian<quint16>(text ? 1 : 0, bytes.data() + 4);
+        return bytes;
+    };
+    const QByteArray value(reinterpret_cast<const char*>(description.utf16()), (description.size() + 1) * 2);
+    const QByteArray strings = block(u"040904b0"_s, {}, block(u"FileDescription"_s, value, {}, true), true);
+    const QByteArray variables = block(u"Translation"_s, QByteArray::fromHex("0904b004"), {}, false);
+    const VS_FIXEDFILEINFO fixed {0xFEEF04BD, 0x10000};
+    QByteArray resource = block(u"VS_VERSION_INFO"_s, QByteArray(reinterpret_cast<const char*>(&fixed), sizeof fixed),
+        block(u"StringFileInfo"_s, {}, strings, true) + block(u"VarFileInfo"_s, {}, variables, true), false);
+    const HANDLE update = ::BeginUpdateResourceW(reinterpret_cast<LPCWSTR>(path.utf16()), FALSE);
+    if (!update)
+        return false;
+    const bool ok = ::UpdateResourceW(update, MAKEINTRESOURCEW(16), MAKEINTRESOURCEW(1), 0x409,
+        resource.data(), DWORD(resource.size()));
+    return ::EndUpdateResourceW(update, !ok) && ok;
+}
+
 // HKCU\Software\WinShunTest-<pid>: registrations made up for a test,
 // removed however it ends.
 struct ScratchKey {
@@ -1706,6 +1739,71 @@ private slots:
         ::CloseHandle(held);
         QVERIFY(!resolved);
         QVERIFY2(why.contains(u"读不了"_s), qPrintable(why));
+    }
+
+    void pythonInstallManager()
+    {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        const QString root = QDir::toNativeSeparators(temp.path());
+        const QString manager = root + u"\\PyManager\\python.exe"_s;
+        QVERIFY(makePythonLauncher(manager, u"Python Install Manager"_s));
+        QString why;
+        QVERIFY(!programs::resolvePython(manager, &why));
+        QVERIFY2(why.contains(u"Python 安装管理器"_s) && why.contains(u"py install"_s), qPrintable(why));
+
+        const QString real = root + u"\\解释器\\python.exe"_s;
+        QVERIFY(copyFake(real));
+        const QString oldPath = qEnvironmentVariable("PATH");
+        const QByteArray oldCompanies = qgetenv("WINSHUN_TEST_PYTHON_COMPANIES");
+        const auto restore = qScopeGuard([&] {
+            ::_wputenv_s(L"PATH", reinterpret_cast<const wchar_t*>(oldPath.utf16()));
+            if (oldCompanies.isNull())
+                qunsetenv("WINSHUN_TEST_PYTHON_COMPANIES");
+            else
+                qputenv("WINSHUN_TEST_PYTHON_COMPANIES", oldCompanies);
+        });
+        const PythonOverride reset;
+        qputenv("WINSHUN_TEST_PYTHON_COMPANIES", "none");
+        const QString searchPath = QFileInfo(manager).path() + u';' + QFileInfo(real).path();
+        ::_wputenv_s(L"PATH", reinterpret_cast<const wchar_t*>(searchPath.utf16()));
+        programs::setOverride(Program::Python, {});
+        QCOMPARE(programs::find(Program::Python, &why), real);
+
+        // With only the manager available, explain what to install instead of
+        // starting an installer inside a plugin's one-process job.
+        ::_wputenv_s(L"PATH", reinterpret_cast<const wchar_t*>(QFileInfo(manager).path().utf16()));
+        programs::setOverride(Program::Python, {});
+        QVERIFY(programs::find(Program::Python, &why).isEmpty());
+        QVERIFY2(why.contains(u"py install"_s), qPrintable(why));
+
+        const QString alias = root + u"\\bin\\python.exe"_s;
+        QVERIFY(makePythonLauncher(alias, u"Python launcher"_s));
+        const QString targetFile = alias + u".__target__"_s;
+        QVERIFY(writeFile(targetFile, real.toUtf8()));
+        const auto python = programs::resolvePython(alias, &why);
+        QVERIFY2(python, qPrintable(why));
+        QCOMPARE(python->exe, real);
+        QVERIFY(python->venvLauncher.isEmpty());
+        QVERIFY(QFile::remove(targetFile));
+        QVERIFY(!programs::resolvePython(alias, &why));
+        QVERIFY2(why.contains(u"启动器"_s), qPrintable(why));
+        QVERIFY(writeFile(targetFile, (root + u"\\gone\\python.exe"_s).toUtf8()));
+        QVERIFY(!programs::resolvePython(alias, &why));
+        QVERIFY2(why.contains(u"不存在"_s), qPrintable(why));
+        QVERIFY(writeFile(targetFile, "relative\\python.exe"));
+        QVERIFY(!programs::resolvePython(alias, &why));
+        QVERIFY2(why.contains(u"绝对路径"_s), qPrintable(why));
+        QVERIFY(writeFile(targetFile, QByteArray(32 * 1024 + 1, 'x')));
+        QVERIFY(!programs::resolvePython(alias, &why));
+        QVERIFY2(why.contains(u"绝对路径"_s), qPrintable(why));
+        QVERIFY(writeFile(targetFile, alias.toUtf8()));
+        QVERIFY(!programs::resolvePython(alias, &why));
+        QVERIFY2(why.contains(u"太多"_s), qPrintable(why));
+        QVERIFY(writeFile(targetFile, real.toUtf8()));
+        QVERIFY(writeFile(alias + u".__script__.py"_s, "print('tool')\n"));
+        QVERIFY(!programs::resolvePython(alias, &why));
+        QVERIFY2(why.contains(u"脚本"_s), qPrintable(why));
     }
 
     void pythonRefusals()

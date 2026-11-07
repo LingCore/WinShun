@@ -60,4 +60,4 @@ target_include_directories(wsplugin PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_C
 # their passwords (Secrets.cpp).
 # bcrypt: the plugin list's signature (IndexSignature.cpp).
 # shlwapi: AssocIsDangerous, for the open policy (OpenPolicy.cpp).
-target_link_libraries(wsplugin PUBLIC wscore wsmcp wsmcp_proto PRIVATE miniz advapi32 bcrypt userenv user32 shlwapi shell32 ole32)
+target_link_libraries(wsplugin PUBLIC wscore wsmcp wsmcp_proto PRIVATE miniz advapi32 bcrypt userenv user32 shlwapi shell32 ole32 version)
