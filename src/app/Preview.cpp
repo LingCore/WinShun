@@ -315,6 +315,8 @@ int runPlugins(const QStringList& args)
     const bool dialog = args.contains(u"--dialog"_s);
     const bool aiPage = valueAfter(args, u"--page") == u"ai"; // the AI 助手 page instead (its plugin switches)
     const bool allow = args.contains(u"--dialog-allow"_s); // the 更新并允许 question instead
+    const bool aside = args.contains(u"--dialog-aside"_s); // the question over a folder that is no plugin (GitHub #253)
+    const bool manyLogs = args.contains(u"--log-many"_s); // the developer log with lines from more plugins than fit a row of tabs (GitHub #256)
     const bool updatesOnly = args.contains(u"--updates"_s); // the 插件库 tab as the badge leads to it
 
     say(u"starting (dark %1, dialog %2)"_s.arg(dark).arg(dialog));
@@ -327,7 +329,7 @@ int runPlugins(const QStringList& args)
     }
     auto* editor = new SettingsEditor(settings, u"software"_s, &engine);
     editor->plugins()->setLocale(u"zh"_s);
-    editor->plugins()->loadPreview(args.contains(u"--elevated"_s)); // the `elevated` shield and 确认 note
+    editor->plugins()->loadPreview(args.contains(u"--elevated"_s), manyLogs ? 8 : 2); // the `elevated` shield and 确认 note
     if (updatesOnly)
         editor->plugins()->gallery()->setUpdatesOnly(true);
     if (aiPage)
@@ -340,6 +342,7 @@ int runPlugins(const QStringList& args)
         {u"editor"_s, QVariant::fromValue(editor)},
         {u"dialogShown"_s, dialog},
         {u"allowShown"_s, allow},
+        {u"asideShown"_s, aside},
         {u"aiPage"_s, aiPage},
     });
     auto* window = qobject_cast<QQuickWindow*>(object);
@@ -8976,7 +8979,7 @@ int run(const QStringList& args)
             QDir(profile).removeRecursively();
     });
     if (valueAfter(args, runtimeMode ? kRuntimeFlag : resultsMode ? kResultsFlag : cardsMode ? kAiCardsFlag : settingsMode ? kSettingsFlag : kFlag).isEmpty()) {
-        std::fprintf(stderr, "usage: WinShun --preview-plugins <file.png> [--dark] [--scale 1.5] [--dialog | --dialog-allow] [--updates] [--page ai] [--elevated]\n"
+        std::fprintf(stderr, "usage: WinShun --preview-plugins <file.png> [--dark] [--scale 1.5] [--dialog | --dialog-allow | --dialog-aside] [--updates] [--log-many] [--page ai] [--elevated]\n"
                              "       WinShun --preview-settings <folder> [--dark] [--scale 1.5] [--tree] [--edges] [--renderer d3d11]\n");
         return 2;
     }

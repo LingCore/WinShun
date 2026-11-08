@@ -1143,11 +1143,20 @@ void PluginSettings::installFrom(const QString& given, const QString& expectedId
         emit installQuestion(info);
         return;
     }
-    if (unreviewed) {
+    // A folder of its name that is no installed plugin (an uninstall its
+    // program's files survived, the user's own): not put over unasked. The
+    // question offers to rename it beside, which deletes nothing (GitHub #253).
+    const bool foreign = plugin::install::obstacle(m_userDir, id) == plugin::install::Obstacle::Foreign;
+    if (unreviewed || foreign) {
         const auto& manifest = *candidate->manifest;
-        const QVariantMap info {{u"id"_s, id}, {u"name"_s, manifest.name.pick(m_locale)}, {u"newVersion"_s, manifest.version},
-            {u"newInstall"_s, true}, {u"unreviewed"_s, true}, {u"homepage"_s, manifest.homepage},
+        QVariantMap info {{u"id"_s, id}, {u"name"_s, manifest.name.pick(m_locale)}, {u"newVersion"_s, manifest.version},
+            {u"newInstall"_s, true}, {u"unreviewed"_s, unreviewed}, {u"homepage"_s, manifest.homepage},
             {u"sourceAvailable"_s, readme::webLink(manifest.homepage)}};
+        if (foreign) {
+            m_pendingAside = plugin::install::asideName(m_userDir, id);
+            info.insert(u"foreignFolder"_s, QDir::toNativeSeparators(QDir(m_userDir).filePath(id)));
+            info.insert(u"asideName"_s, m_pendingAside);
+        }
         m_pendingFromLibrary = !expectedId.isEmpty();
         m_pendingInstall = std::move(candidate);
         m_pendingEnable = enableAfterInstall;
@@ -1157,13 +1166,19 @@ void PluginSettings::installFrom(const QString& given, const QString& expectedId
     finishInstall(std::move(*candidate), enableAfterInstall);
 }
 
+void PluginSettings::openPendingFolder()
+{
+    if (m_pendingInstall && m_pendingInstall->manifest && !m_pendingAside.isEmpty())
+        shell::open(QDir::toNativeSeparators(QDir(m_userDir).filePath(m_pendingInstall->manifest->id)));
+}
+
 void PluginSettings::confirmInstall()
 {
     if (!m_pendingInstall)
         return;
     plugin::install::Candidate candidate = std::move(*m_pendingInstall);
     m_pendingInstall.reset();
-    finishInstall(std::move(candidate), std::exchange(m_pendingEnable, false), std::exchange(m_pendingAllow, false));
+    finishInstall(std::move(candidate), std::exchange(m_pendingEnable, false), std::exchange(m_pendingAllow, false), std::exchange(m_pendingAside, {}));
 }
 
 void PluginSettings::declineInstall()
@@ -1184,26 +1199,29 @@ void PluginSettings::cancelInstall()
     m_pendingEnable = false;
     m_pendingAllow = false;
     m_pendingFromLibrary = false;
+    m_pendingAside.clear();
 }
 
-void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall, bool allow)
+void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall, bool allow, const QString& asideForeignTo)
 {
     const auto releaseIt = qScopeGuard([this] { releaseClaim(); });
     if (!m_host)
         return;
     const QString id = candidate.manifest->id;
     const QString name = candidate.manifest->name.pick(m_locale);
-    const QString error = plugin::updates::replace(*m_host, candidate, m_userDir);
+    const QString error = plugin::updates::replace(*m_host, candidate, m_userDir, 2500, asideForeignTo);
     if (!error.isEmpty()) {
         setMessage(tr("没有安装 %1：%2").arg(name, error));
         return;
     }
+    // Where the folder that was no plugin went, said with the result (GitHub #253).
+    const QString asideNote = asideForeignTo.isEmpty() ? QString() : tr("。原来的文件夹改名为 %1，留在旁边").arg(asideForeignTo);
     m_host->catalog().scan();
     if (m_updates)
         m_updates->forget(id); // what was kept for the old version (after the scan: the new one is what is judged)
     if (allow) { // the yes was given with the question: on as before, and allowed what the new version names
         confirmEnable(id);
-        setMessage(tr("已安装 %1 %2").arg(name, candidate.manifest->version));
+        setMessage(tr("已安装 %1 %2").arg(name, candidate.manifest->version) + asideNote);
         rebuild();
         return;
     }
@@ -1213,9 +1231,9 @@ void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool en
     const PluginConfig* config = m_editor->m_settings.plugin(id);
     const QString version = candidate.manifest->version;
     if (!m_host->catalog().awaitingConsent(id).isEmpty())
-        setMessage(tr("已安装 %1 %2。新版本要更多权限，先停着；打开它的开关、同意后才能用").arg(name, version));
+        setMessage(tr("已安装 %1 %2。新版本要更多权限，先停着；打开它的开关、同意后才能用").arg(name, version) + asideNote);
     else
-        setMessage(config && config->enabled ? tr("已安装 %1 %2").arg(name, version) : tr("已安装 %1 %2，打开它的开关就能用").arg(name, version));
+        setMessage((config && config->enabled ? tr("已安装 %1 %2").arg(name, version) : tr("已安装 %1 %2，打开它的开关就能用").arg(name, version)) + asideNote);
     rebuild();
     if (enableAfterInstall)
         setEnabled(id, true); // the normal permission dialog still applies
@@ -1616,7 +1634,7 @@ QString PluginSettings::createFromTemplate(const QString& kind, const QString& g
 
 // ---- the preview (no host) ---------------------------------------------------------
 
-void PluginSettings::loadPreview(bool elevated)
+void PluginSettings::loadPreview(bool elevated, int logPlugins)
 {
     m_preview = std::make_unique<Preview>();
     m_userDir = u"C:\\Users\\me\\AppData\\Local\\WinShun\\plugins"_s;
@@ -1764,8 +1782,14 @@ void PluginSettings::loadPreview(bool elevated)
     m_editor->m_settings.pluginDeveloperMode = true; // the log pane and the templates on show
     emit developerModeChanged();
     m_restrictedNote = tr("插件看不到你在资源管理器里登录的网络位置：资源管理器以管理员身份运行或没有运行，插件只能用 Win顺 自己降权后的身份，它和资源管理器不在同一个登录会话里。");
-    for (int i = 0; i < 6; ++i) {
-        m_log.append({u"14:0%1:12.%2"_s.arg(i).arg(100 + i * 37), i % 2 ? u"lingcore.translate"_s : u"lingcore.kill"_s, i % 3 == 0 ? u"→"_s : i % 3 == 1 ? u"←"_s : u"stderr"_s,
+    // Lines from `logPlugins` plugins: two as a developer's usual page has, or
+    // (--log-many) more than a row of tabs holds (GitHub #256).
+    const QStringList logIds {u"lingcore.kill"_s, u"lingcore.translate"_s, u"ra9fael.binarylab"_s, u"ra9fael.brightness"_s, u"ra9fael.wifi"_s,
+        u"winshun.break"_s, u"winshun.capture"_s, u"winshun.localsend"_s};
+    const int lines = std::max(6, 3 * std::clamp(logPlugins, 1, static_cast<int>(logIds.size())));
+    for (int i = 0; i < lines; ++i) {
+        m_log.append({u"14:0%1:12.%2"_s.arg(i % 10).arg(100 + i * 37), logIds[i % std::clamp(logPlugins, 1, static_cast<int>(logIds.size()))],
+            i % 3 == 0 ? u"→"_s : i % 3 == 1 ? u"←"_s : u"stderr"_s,
             i % 3 == 0 ? u"query #%1"_s.arg(i) : i % 3 == 1 ? u"result #%1"_s.arg(i - 1) : u"Warning: slow"_s,
             i % 3 == 0 ? u"{\"jsonrpc\":\"2.0\",\"id\":%1,\"method\":\"query\",\"params\":{\"queryId\":17,\"command\":\"kill\",\"text\":\"note\"}}"_s.arg(i)
                        : u"{\"jsonrpc\":\"2.0\",\"id\":%1,\"result\":{\"items\":[{\"title\":\"notepad.exe\"}]}}"_s.arg(i - 1),

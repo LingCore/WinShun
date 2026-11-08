@@ -77,6 +77,10 @@ void removeFolder(const QString& dir)
 void repairInterruptedSwaps(const QString& userDir)
 {
     const QDir user(userDir);
+    // What install::remove() could not delete after moving it out of the way
+    // (a file held open then): its program has had a restart to let go.
+    for (const QString& name : user.entryList({u".winshun-remove-*"_s}, QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot))
+        removeFolder(user.filePath(name));
     for (const QString& name : user.entryList({u".winshun-update-*"_s}, QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot)) {
         const QString holder = user.filePath(name);
         const QString aside = holder + u"/plugin"_s;
@@ -294,7 +298,7 @@ SignedList fetchSigned(const QString& source, const gallery::Fetcher& web, const
     return out;
 }
 
-QString replace(Host& host, install::Candidate& candidate, const QString& userDir, int waitMs)
+QString replace(Host& host, install::Candidate& candidate, const QString& userDir, int waitMs, const QString& asideForeignTo)
 {
     if (!candidate.manifest)
         return candidate.error.isEmpty() ? u"不是可用的插件"_s : candidate.error;
@@ -309,7 +313,7 @@ QString replace(Host& host, install::Candidate& candidate, const QString& userDi
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
     }
     QString error;
-    const QString placed = install::place(candidate, userDir, &error);
+    const QString placed = install::place(candidate, userDir, &error, asideForeignTo);
     install::discard(candidate);
     return placed.isEmpty() ? error : QString();
 }

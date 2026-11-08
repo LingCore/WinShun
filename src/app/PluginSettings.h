@@ -196,7 +196,7 @@ public:
     // Without a host: five made-up plugins in every state, for the
     // offscreen preview of the page (main.cpp --preview-plugins). `elevated`:
     // as if Win顺 ran as administrator, the first two asking for `elevated`.
-    void loadPreview(bool elevated = false);
+    void loadPreview(bool elevated = false, int logPlugins = 2); // `logPlugins`: how many plugins the made-up developer log has lines from
 
     PluginListModel* list() { return &m_list; }
     int count() const { return m_list.rowCount(); }
@@ -250,8 +250,9 @@ public:
     // Installing: a folder or an archive chosen, or dropped on the page.
     Q_INVOKABLE void installFromFolder();
     Q_INVOKABLE void installFromArchive();
-    Q_INVOKABLE void install(const QString& path); // installQuestion() when the id is installed already
+    Q_INVOKABLE void install(const QString& path); // installQuestion() when the id is installed already, or a folder of its name is no plugin
     Q_INVOKABLE void confirmInstall();
+    Q_INVOKABLE void openPendingFolder(); // the question's folder (foreignFolder), for a look before answering
     Q_INVOKABLE void cancelInstall();
     Q_INVOKABLE void declineInstall(); // the answer no to 更新并允许: the installed version stays, and this one stops being counted
     // Removing: uninstallQuestion() first (whether to take its data too).
@@ -296,7 +297,8 @@ signals:
     void recordingHotkeyChanged();
     // The dialogs: {id, name, version, author, homepage, source, permissions: [{name, text, enforced, note}], more: bool (asked again for new ones)}.
     void confirmationNeeded(const QVariantMap& info);
-    // {id, name, installedVersion, newVersion, downgrade: bool}
+    // {id, name, installedVersion, newVersion, downgrade: bool}; or, for a folder of the id's name that is no installed
+    // plugin (GitHub #253), {id, name, newVersion, newInstall: true, foreignFolder: path, asideName: what it is renamed to}
     void installQuestion(const QVariantMap& info);
     // {id, name, hasData}
     void uninstallQuestion(const QVariantMap& info);
@@ -308,7 +310,7 @@ private:
     PluginListModel::Card cardFor(const QString& id) const;
     void setMessage(const QString& message);
     void readMemory(); // the resident processes' working sets, into the status lines
-    void finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall = false, bool allow = false);
+    void finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall = false, bool allow = false, const QString& asideForeignTo = {});
     void releaseClaim(); // the plugin an install here has been changing
     QString pluginName(const QString& id) const;
     QVariantList permissionRows(const QString& id) const; // [{name, text, enforced, note}]
@@ -347,6 +349,7 @@ private:
     bool m_pendingEnable = false;
     bool m_pendingAllow = false; // ... and the question is 更新并允许 (a yes also confirms the new permissions)
     bool m_pendingFromLibrary = false; // ... for a package the 插件库 downloaded: a no also stops that version being counted
+    QString m_pendingAside; // ... over a folder that is no plugin: the name it is renamed to on a yes (install::asideName)
     std::unique_ptr<Preview> m_preview; // loadPreview(): no host
     PluginGallery m_gallery {this};
 };

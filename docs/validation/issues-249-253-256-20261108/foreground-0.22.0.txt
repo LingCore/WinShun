@@ -1,0 +1,22 @@
+harness old start 2026-11-08T18:49:54.9201805+08:00 exe=F:\电脑便捷工具\dist\release022\WinShun\WinShun.exe
+stage exe sha256 FA0891BF31C3A955DE0153626EF7F386FD6583CFCD663482FA1CE89092F679FD; runner 8E302D613BF6
+app pid 39332 up
+fgt launcher foreground: pid=39332 cls=Qt6120QWindowToolSaveBits (app 39332)
+fgt Enter sent (2) at 2026-11-08T18:50:03.8016453+08:00
+fgt result:
+resident query 'go' pid=20600 2026-11-08T18:50:00.8480681+08:00
+resident action start pid=20600 2026-11-08T18:50:03.8124037+08:00
+resident foreground=False atShow=False handle=921282 pid=20600 2026-11-08T18:50:05.1517129+08:00
+fgt foreground after: pid=38040 cls=Chrome_WidgetWin_1
+fgo launcher foreground: pid=39332 cls=Qt6120QWindowToolSaveBits (app 39332)
+fgo Enter sent (2) at 2026-11-08T18:50:11.4686844+08:00
+fgo result:
+once query 'go' pid=3116 2026-11-08T18:50:08.4888879+08:00
+once action start pid=11684 2026-11-08T18:50:12.3496929+08:00
+once foreground=True atShow=True handle=1773258 pid=11684 2026-11-08T18:50:13.8542164+08:00
+fgo foreground after: pid=38040 cls=Chrome_WidgetWin_1
+registry restored: "C:\Program Files\WinShun\WinShunSearch.exe" --search-here "%V"
+autostart task:       <Command>C:\Program Files\WinShun\WinShun.exe</Command>
+--- plugins.log (lines about test.fg)
+2026-11-08 18:49:59.718 test.fgt: 启动 C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+--- WinShun.log (lines about test.fg)

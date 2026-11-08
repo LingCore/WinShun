@@ -105,8 +105,9 @@ SignedList fetchSigned(const QString& source, const gallery::Fetcher& web, const
 // program is asked to leave (up to `waitMs`, the event loop running), then
 // install::place(), then the candidate's folder is discarded. Empty on
 // success, else why not (what was there is left as it was). The caller holds
-// the plugin's claim: this runs an event loop.
-QString replace(Host& host, install::Candidate& candidate, const QString& userDir, int waitMs = 2500);
+// the plugin's claim: this runs an event loop. `asideForeignTo`: as
+// install::place()'s, for a folder there that is no installed plugin.
+QString replace(Host& host, install::Candidate& candidate, const QString& userDir, int waitMs = 2500, const QString& asideForeignTo = {});
 
 // The candidate (unpacked into its own folder under the staging root,
 // inspect(path, <root>\<id>)) is kept for the next start: `fromVersion` is

@@ -2768,6 +2768,99 @@ private slots:
         QVERIFY(QFileInfo::exists(userDir + u"/test.other/valuable.txt"_s));
     }
 
+    // GitHub #253: a folder of the id's name that is no installed plugin is
+    // refused unasked, as before; told the name to put it aside under, the
+    // install renames it beside and deletes nothing.
+    void installOverForeignFolderRenamesItAside()
+    {
+        Fixture f;
+        const QString userDir = f.dir.path() + u"/plugins"_s;
+        const QString source = f.dir.path() + u"/source"_s;
+        QVERIFY(writeFile(source + u"/plugin.json"_s, zeroManifest(u"test.foreign"_s, u"1.0.0"_s)));
+        // What an uninstall its program's files survived looks like: no plugin.json, the rest there.
+        QVERIFY(writeFile(userDir + u"/test.foreign/leftover.exe"_s, "held"));
+        QVERIFY(writeFile(userDir + u"/test.foreign/notes/data.txt"_s, "mine"));
+        QCOMPARE(install::obstacle(userDir, u"test.foreign"_s), install::Obstacle::Foreign);
+        QCOMPARE(install::obstacle(userDir, u"test.none"_s), install::Obstacle::None);
+        const auto candidate = install::inspect(source);
+        QVERIFY(candidate && candidate->manifest);
+        QString error;
+        QVERIFY(install::place(*candidate, userDir, &error).isEmpty());
+        QVERIFY2(error.contains(u"不是已安装的插件文件夹"_s), qPrintable(error));
+        QVERIFY(QFileInfo::exists(userDir + u"/test.foreign/leftover.exe"_s));
+        // A path for the name is no name: nothing moves out of the plugins folder.
+        QVERIFY(install::place(*candidate, userDir, &error, u"../elsewhere"_s).isEmpty());
+        QVERIFY(install::place(*candidate, userDir, &error, u"sub\\dir"_s).isEmpty());
+        QVERIFY(QFileInfo::exists(userDir + u"/test.foreign/leftover.exe"_s));
+        QVERIFY(!QFileInfo::exists(f.dir.path() + u"/elsewhere"_s));
+        // The name offered: beside the plugin, not taken; another when that one is.
+        const QString aside = install::asideName(userDir, u"test.foreign"_s);
+        QVERIFY2(aside.startsWith(u"test.foreign.old-"_s) && !aside.contains(u'/') && !aside.contains(u'\\'), qPrintable(aside));
+        QVERIFY(!QFileInfo::exists(userDir + u'/' + aside));
+        QVERIFY(QDir().mkpath(userDir + u'/' + aside + u"/taken"_s));
+        const QString another = install::asideName(userDir, u"test.foreign"_s);
+        QVERIFY2(another != aside && !QFileInfo::exists(userDir + u'/' + another), qPrintable(another));
+        QVERIFY(QDir(userDir + u'/' + aside).removeRecursively());
+        // A name already there is not written into either.
+        QVERIFY(QDir().mkpath(userDir + u'/' + another));
+        QVERIFY(install::place(*candidate, userDir, &error, another).isEmpty());
+        QVERIFY2(error.contains(u"已经存在"_s), qPrintable(error));
+        QVERIFY(QDir(userDir + u'/' + another).removeRecursively());
+        // Asked and answered yes: renamed beside with everything in it, the plugin in its place.
+        const QString placed = install::place(*candidate, userDir, &error, aside);
+        QVERIFY2(!placed.isEmpty(), qPrintable(error));
+        QVERIFY(QFileInfo::exists(userDir + u"/test.foreign/plugin.json"_s));
+        QVERIFY(!QFileInfo::exists(userDir + u"/test.foreign/leftover.exe"_s));
+        QVERIFY(QFileInfo::exists(userDir + u'/' + aside + u"/leftover.exe"_s));
+        QVERIFY(QFileInfo::exists(userDir + u'/' + aside + u"/notes/data.txt"_s));
+        QCOMPARE(install::obstacle(userDir, u"test.foreign"_s), install::Obstacle::None);
+        f.host->catalog().scan();
+        QVERIFY(f.host->catalog().find(u"test.foreign"_s));
+        QVERIFY(!f.host->catalog().find(aside)); // what was put aside is no plugin to the catalog
+        // A link in the way is its own obstacle, not a foreign folder.
+        QVERIFY(QDir().mkpath(f.dir.path() + u"/elsewhere/code"_s));
+        QVERIFY2(makeJunction(userDir + u"/test.linked"_s, f.dir.path() + u"/elsewhere/code"_s), "mklink /J");
+        QCOMPARE(install::obstacle(userDir, u"test.linked"_s), install::Obstacle::Link);
+        QVERIFY(QDir().rmdir(userDir + u"/test.linked"_s));
+    }
+
+    // GitHub #253: removing a plugin whose program still holds a file deletes
+    // nothing (before, plugin.json went and the rest stayed: a folder that
+    // was no plugin and could not be installed over). What could not be
+    // deleted after moving out of the way is swept at the next start.
+    void removeIsAllOrNothing()
+    {
+        Fixture f;
+        const QString userDir = f.dir.path() + u"/plugins"_s;
+        const QString folder = userDir + u"/test.held"_s;
+        QVERIFY(writeFile(folder + u"/plugin.json"_s, zeroManifest(u"test.held"_s, u"1.0.0"_s)));
+        QVERIFY(writeFile(folder + u"/bin/held.exe"_s, "held"));
+        // Its program running: a file in the folder held open, as a loaded image is.
+        const std::wstring heldPath = QDir::toNativeSeparators(folder + u"/bin/held.exe"_s).toStdWString();
+        HANDLE held = ::CreateFileW(heldPath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+        QVERIFY(held != INVALID_HANDLE_VALUE);
+        const QString why = install::remove(userDir, {}, u"test.held"_s, false);
+        QVERIFY2(why.contains(u"删不掉"_s), qPrintable(why));
+        QVERIFY(QFileInfo::exists(folder + u"/plugin.json"_s)); // whole: still a plugin, to be removed again later
+        QVERIFY(QFileInfo::exists(folder + u"/bin/held.exe"_s));
+        QCOMPARE(install::obstacle(userDir, u"test.held"_s), install::Obstacle::None);
+        QVERIFY(QDir(userDir).entryList({u".winshun-remove-*"_s}, QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot).isEmpty());
+        ::CloseHandle(held);
+        QVERIFY2(install::remove(userDir, {}, u"test.held"_s, false).isEmpty(), "remove after the file was let go");
+        QVERIFY(!QFileInfo::exists(folder));
+        QVERIFY(QDir(userDir).entryList({u".winshun-remove-*"_s}, QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot).isEmpty());
+        // A holder a removal left (deleting after the move failed): gone at the next start, the plugins beside it untouched.
+        QVERIFY(writeFile(userDir + u"/.winshun-remove-abc123/plugin/plugin.json"_s, zeroManifest(u"test.gone"_s, u"1.0.0"_s)));
+        QVERIFY(writeFile(userDir + u"/.winshun-remove-abc123/plugin/bin/x.exe"_s, "x"));
+        QVERIFY(writeFile(userDir + u"/test.stays/plugin.json"_s, zeroManifest(u"test.stays"_s, u"1.0.0"_s)));
+        QSettings state(f.dir.path() + u"/state.ini"_s, QSettings::IniFormat);
+        updates::prepare(f.dir.path() + u"/plugin-updates"_s, userDir, state, u"0.0-test"_s, [](const QString&) { return std::pair<bool, QStringList>(); });
+        QVERIFY(!QFileInfo::exists(userDir + u"/.winshun-remove-abc123"_s));
+        QVERIFY(QFileInfo::exists(userDir + u"/test.stays/plugin.json"_s));
+        f.host->catalog().scan();
+        QVERIFY(!f.host->catalog().find(u"test.gone"_s));
+    }
+
     void keywordWinsOverOtherTriggers_data()
     {
         QTest::addColumn<QString>("mode");

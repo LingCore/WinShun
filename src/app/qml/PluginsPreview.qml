@@ -15,6 +15,7 @@ Window {
     required property SettingsEditor editor
     property bool dialogShown: false
     property bool allowShown: false // 更新并允许
+    property bool asideShown: false // a folder of the id's name that is no plugin (GitHub #253)
     property bool aiPage: false
 
     width: 900
@@ -100,6 +101,13 @@ Window {
                     { name: "processes", text: qsTr("启动程序（起子进程，或打开程序、非网页链接）"), enforced: true, note: "" },
                     { name: "network", text: qsTr("联网"), enforced: false, note: qsTr("Win顺 不能阻止它联网") }
                 ]
+            })
+        }
+        if (preview.asideShown && !preview.aiPage) {
+            dialog.ask("install", {
+                id: "ra9fael.findmouse", name: qsTr("晃动找鼠标"), newVersion: "0.2.0", newInstall: true,
+                foreignFolder: "C:\\Users\\me\\AppData\\Local\\WinShun\\plugins\\ra9fael.findmouse",
+                asideName: "ra9fael.findmouse.old-20261108-183000"
             })
         }
         if (preview.dialogShown && !preview.aiPage) {

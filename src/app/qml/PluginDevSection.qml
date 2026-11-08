@@ -117,11 +117,45 @@ SettingsSection {
         }
 
         body: [
-            ScopeTabs { // which plugin's lines
+            Item { // which plugin's lines: tabs while they fit the row; past that a list to pick from, never a row running off the card (GitHub #256)
+                id: filterSlot
+
+                readonly property var labels: logRow.filterChoices.map(c => c.name)
+                readonly property int current: Math.max(0, logRow.filterChoices.findIndex(c => c.id === devSection.plugins.logFilter))
+                readonly property bool asList: filterTabs.implicitWidth > width
+                function choose(index) { devSection.plugins.logFilter = logRow.filterChoices[index].id }
+
                 visible: logRow.filterChoices.length > 2
-                labels: logRow.filterChoices.map(c => c.name)
-                current: Math.max(0, logRow.filterChoices.findIndex(c => c.id === devSection.plugins.logFilter))
-                onActivated: (index) => devSection.plugins.logFilter = logRow.filterChoices[index].id
+                width: parent.width
+                height: visible ? (asList ? filterBox.height : filterTabs.height) : 0
+
+                ScopeTabs {
+                    id: filterTabs
+                    visible: !filterSlot.asList
+                    labels: filterSlot.labels
+                    current: filterSlot.current
+                    onActivated: (index) => filterSlot.choose(index)
+                }
+                ChoiceBox {
+                    id: filterBox
+                    objectName: "pluginLogFilterBox"
+                    visible: filterSlot.asList
+                    width: Math.min(parent.width, 280)
+                    implicitHeight: 36
+                    dpr: devSection.dpr
+                    model: filterSlot.labels
+                    currentIndex: filterSlot.current
+                    onActivated: (index) => filterSlot.choose(index)
+                    Accessible.name: logRow.title
+                    leftPadding: 12
+                    contentItem: Text {
+                        text: filterBox.displayText
+                        font: filterBox.font
+                        color: filterBox.palette.buttonText
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                    }
+                }
             },
             Rectangle {
                 width: parent.width
@@ -230,8 +264,13 @@ SettingsSection {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 44
                                 text: logLine.direction
-                                color: logLine.direction === "stderr" ? Theme.caution : Theme.subtext
+                                // Each way its own colour, told apart at a glance (GitHub #256): to the plugin the
+                                // accent, back from it green; an event stays quiet, its stderr a caution.
+                                color: logLine.direction === "stderr" ? Theme.caution
+                                     : logLine.direction === "→" ? Theme.accent
+                                     : logLine.direction === "←" ? Theme.success : Theme.subtext
                                 font.pixelSize: 12
+                                font.weight: logLine.direction === "→" || logLine.direction === "←" ? Theme.fontStrong : Font.Normal
                             }
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter

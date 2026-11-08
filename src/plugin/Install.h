@@ -39,15 +39,27 @@ std::optional<Candidate> inspect(const QString& path, const QString& unpackParen
 // inspect() does, but `archive` is set, so place() moves it in and
 // discard() removes it. Nothing when `dir` is no folder.
 std::optional<Candidate> adopt(const QString& dir);
+// What stands at `<userDir>\<id>` that place() will not put the plugin over
+// (looked at before the user is asked): a link (a plugin in development), or
+// a folder that is no installed plugin -- no plugin.json in it: an uninstall
+// whose program held its files, the user's own files (GitHub #253).
+enum class Obstacle { None, Link, Foreign };
+Obstacle obstacle(const QString& userDir, const QString& id);
+// A name beside `<userDir>\<id>` to rename such a folder to, not yet taken:
+// `<id>.old-<date>-<time>`. No installed plugin is ever read from it.
+QString asideName(const QString& userDir, const QString& id);
 // Puts the candidate into `<userDir>\<id>`, replacing what is there (the
 // caller has asked the user). The folder it went to, or empty with `error`.
 // A target that is a link (junction, symlink: a plugin in development) is
-// not replaced.
-QString place(const Candidate& candidate, const QString& userDir, QString* error);
+// not replaced. A Foreign folder is left alone, unless `asideForeignTo`
+// names a folder (asideName()) in `userDir` to rename it to first: nothing
+// of it is deleted.
+QString place(const Candidate& candidate, const QString& userDir, QString* error, const QString& asideForeignTo = {});
 void discard(Candidate& candidate); // the temporary folder of an archive, if any
 
 // Removes `<userDir>\<id>` and, when `data`, `<dataRoot>\<id>.data`. Why it
-// could not be, or empty.
+// could not be, or empty. All or nothing: a folder whose files are held open
+// (its program still running) stays whole, to be removed again later.
 QString remove(const QString& userDir, const QString& dataRoot, const QString& id, bool data);
 
 // The permissions `manifest` asks for that `confirmed` (the names the user

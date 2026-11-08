@@ -164,6 +164,19 @@ Item {
                     lineHeight: 1.15
                 }
 
+                Text { // a folder of the id's name that is no installed plugin: what happens to it (GitHub #253)
+                    objectName: "foreignFolderNote"
+                    visible: dialog.kind === "install" && !!dialog.info.foreignFolder
+                    width: parent.width
+                    text: qsTr("已经有一个同名文件夹，但它不是已安装的插件（可能是上次卸载时它的程序还在运行、没删干净，也可能是你自己放的文件）：\n%1\n安装会先把它改名为 %2，留在旁边，不删除任何文件。")
+                          .arg(dialog.info.foreignFolder ?? "").arg(dialog.info.asideName ?? "")
+                    textFormat: Text.PlainText
+                    color: Theme.text
+                    font.pixelSize: Theme.fontCaption
+                    wrapMode: Text.Wrap
+                    lineHeight: 1.15
+                }
+
                 Text {
                     objectName: "unreviewedPluginWarning"
                     visible: dialog.kind === "install" && dialog.info.unreviewed === true
@@ -283,25 +296,39 @@ Item {
                     width: parent.width
                     height: primary.implicitHeight
 
-                    FlatButton {
-                        objectName: "pluginInstallSource"
-                        dpr: dialog.dpr
-                        visible: dialog.kind === "install" && dialog.info.unreviewed === true && dialog.info.sourceAvailable === true
+                    Row { // the quiet choices, on the left: a look at something before answering, the gentler way out
                         anchors.left: parent.left
-                        role: "dialog"
-                        flat: true
-                        text: qsTr("查看来源")
-                        onClicked: dialog.plugins.openInstallSource()
-                    }
+                        spacing: 8
 
-                    FlatButton { // uninstall: the plugin alone, its data kept
-                        dpr: dialog.dpr
-                        visible: dialog.kind === "uninstall" && dialog.info.hasData === true && dialog.info.keepSettings !== true
-                        anchors.left: parent.left
-                        role: "dialog"
-                        flat: true
-                        text: qsTr("只删插件，留下数据")
-                        onClicked: dialog.accept(false)
+                        FlatButton {
+                            objectName: "pluginInstallSource"
+                            dpr: dialog.dpr
+                            visible: dialog.kind === "install" && dialog.info.unreviewed === true && dialog.info.sourceAvailable === true
+                            role: "dialog"
+                            flat: true
+                            text: qsTr("查看来源")
+                            onClicked: dialog.plugins.openInstallSource()
+                        }
+
+                        FlatButton { // the folder that is no plugin, in Explorer: what is in it, before it is renamed
+                            objectName: "pluginForeignFolder"
+                            dpr: dialog.dpr
+                            visible: dialog.kind === "install" && !!dialog.info.foreignFolder
+                            role: "dialog"
+                            flat: true
+                            glyph: "" // Folder
+                            text: qsTr("打开文件夹")
+                            onClicked: dialog.plugins.openPendingFolder()
+                        }
+
+                        FlatButton { // uninstall: the plugin alone, its data kept
+                            dpr: dialog.dpr
+                            visible: dialog.kind === "uninstall" && dialog.info.hasData === true && dialog.info.keepSettings !== true
+                            role: "dialog"
+                            flat: true
+                            text: qsTr("只删插件，留下数据")
+                            onClicked: dialog.accept(false)
+                        }
                     }
 
                     Row {
@@ -322,7 +349,7 @@ Item {
                             highlighted: true
                             text: dialog.kind === "permissions" ? qsTr("打开")
                                 : dialog.allowing ? qsTr("更新并允许")
-                                : dialog.kind === "install" ? (dialog.info.unreviewed === true ? qsTr("仍要安装") : qsTr("安装"))
+                                : dialog.kind === "install" ? (dialog.info.foreignFolder ? qsTr("改名并安装") : dialog.info.unreviewed === true ? qsTr("仍要安装") : qsTr("安装"))
                                 : dialog.info.hasData === true && dialog.info.keepSettings !== true ? qsTr("连数据一起删") : qsTr("卸载")
                             onClicked: dialog.accept(dialog.info.keepSettings !== true)
                         }

@@ -1,5 +1,6 @@
 #include "Install.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -233,7 +234,26 @@ std::optional<Candidate> adopt(const QString& dir)
     return c;
 }
 
-QString place(const Candidate& candidate, const QString& userDir, QString* error)
+Obstacle obstacle(const QString& userDir, const QString& id)
+{
+    const QString target = QDir(userDir).filePath(id);
+    if (const QFileInfo info(target); info.isJunction() || info.isSymLink())
+        return Obstacle::Link;
+    if (QFileInfo::exists(target) && !QFileInfo::exists(target + u"/plugin.json"_s))
+        return Obstacle::Foreign;
+    return Obstacle::None;
+}
+
+QString asideName(const QString& userDir, const QString& id)
+{
+    const QString base = u"%1.old-%2"_s.arg(id, QDateTime::currentDateTime().toString(u"yyyyMMdd-HHmmss"_s));
+    QString name = base;
+    for (int n = 2; QFileInfo::exists(QDir(userDir).filePath(name)); ++n)
+        name = u"%1-%2"_s.arg(base).arg(n);
+    return name;
+}
+
+QString place(const Candidate& candidate, const QString& userDir, QString* error, const QString& asideForeignTo)
 {
     const auto fail = [&](const QString& why) {
         if (error)
@@ -252,8 +272,17 @@ QString place(const Candidate& candidate, const QString& userDir, QString* error
     // swap must never reach what the link points to (the source code).
     if (const QFileInfo targetInfo(target); targetInfo.isJunction() || targetInfo.isSymLink())
         return fail(u"%1 是链接（开发中的插件？），没有替换；要更新先删掉这个链接"_s.arg(QDir::toNativeSeparators(target)));
-    if (QFileInfo::exists(target) && !QFileInfo::exists(target + u"/plugin.json"_s))
-        return fail(u"%1 不是已安装的插件文件夹，为保留其中的数据，没有覆盖"_s.arg(QDir::toNativeSeparators(target)));
+    if (QFileInfo::exists(target) && !QFileInfo::exists(target + u"/plugin.json"_s)) {
+        // Not an installed plugin: left alone, unless the user, asked, said
+        // to put it aside -- renamed beside, never deleted (GitHub #253).
+        if (asideForeignTo.isEmpty() || asideForeignTo.contains(u'/') || asideForeignTo.contains(u'\\'))
+            return fail(u"%1 不是已安装的插件文件夹，为保留其中的数据，没有覆盖"_s.arg(QDir::toNativeSeparators(target)));
+        const QString asideTo = QDir(userDir).filePath(asideForeignTo);
+        if (QFileInfo::exists(asideTo))
+            return fail(u"%1 已经存在，没有把原来的文件夹改成这个名字"_s.arg(QDir::toNativeSeparators(asideTo)));
+        if (!QDir().rename(target, asideTo))
+            return fail(u"改不了 %1 的名字：它里面的程序可能还在运行"_s.arg(QDir::toNativeSeparators(target)));
+    }
     // What is there goes aside first, and comes back if the new one cannot
     // be put in place.
     QTemporaryDir backup(QDir(userDir).filePath(u".winshun-update-XXXXXX"_s));
@@ -294,8 +323,22 @@ QString remove(const QString& userDir, const QString& dataRoot, const QString& i
     if (data && QFileInfo::exists(dataDir + u"/plugin.json"_s))
         return u"数据文件夹 %1 中有另一个插件，为保留它，没有删除"_s.arg(QDir::toNativeSeparators(dataDir));
     const QString folder = QDir(userDir).filePath(id);
-    if (QFileInfo::exists(folder) && !QDir(folder).removeRecursively())
-        return u"删不掉 %1：它的程序可能还在运行"_s.arg(QDir::toNativeSeparators(folder));
+    if (QFileInfo::exists(folder)) {
+        // Renamed out of the way first, then removed. Deleting in place
+        // stopped at a file held open (its program running, a library not
+        // unloaded yet), with plugin.json gone and the rest left: a folder
+        // that was no plugin and could not be installed over (GitHub #253).
+        // The rename fails as a whole instead, the plugin staying installed
+        // to be removed again later.
+        QTemporaryDir holder(QDir(userDir).filePath(u".winshun-remove-XXXXXX"_s));
+        if (!holder.isValid())
+            return u"建不了删插件的临时文件夹"_s;
+        const QString aside = holder.filePath(u"plugin"_s);
+        if (!QDir().rename(folder, aside))
+            return u"删不掉 %1：它的程序可能还在运行"_s.arg(QDir::toNativeSeparators(folder));
+        if (!QDir(aside).removeRecursively())
+            holder.setAutoRemove(false); // out of the way of a reinstall; swept at the next start (updates::prepare)
+    }
     if (data) {
         if (QFileInfo::exists(dataDir) && !QDir(dataDir).removeRecursively())
             return u"插件已删除，它的数据 %1 删不掉"_s.arg(QDir::toNativeSeparators(dataDir));

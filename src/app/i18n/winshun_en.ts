@@ -3498,6 +3498,22 @@
         <source>这是未审核的原生插件，包含可执行程序或动态库。校验值只能核对下载是否完整，不代表代码安全。请自行查看来源并判断是否信任；此类插件每次更新都需要确认。</source>
         <translation>This unreviewed native plugin contains executable code or libraries. A matching checksum verifies the download, not the safety of its code. Check the source and decide whether you trust it. Every update requires confirmation.</translation>
     </message>
+    <message>
+        <source>已经有一个同名文件夹，但它不是已安装的插件（可能是上次卸载时它的程序还在运行、没删干净，也可能是你自己放的文件）：
+%1
+安装会先把它改名为 %2，留在旁边，不删除任何文件。</source>
+        <translation>A folder of that name is already there, but it is not an installed plugin (an uninstall may have left it behind while its program was still running, or the files may be your own):
+%1
+Installing first renames it to %2, left beside the plugin; no file is deleted.</translation>
+    </message>
+    <message>
+        <source>打开文件夹</source>
+        <translation>Open folder</translation>
+    </message>
+    <message>
+        <source>改名并安装</source>
+        <translation>Rename and install</translation>
+    </message>
 </context>
 <context>
     <name>PluginGalleryEntry</name>
@@ -3690,6 +3706,10 @@
     <message>
         <source>Win顺 不能阻止它联网</source>
         <translation>WinShun cannot stop it going online</translation>
+    </message>
+    <message>
+        <source>晃动找鼠标</source>
+        <translation>Shake to find the mouse</translation>
     </message>
 </context>
 <context>
@@ -12490,6 +12510,10 @@ Content index: %5</translation>
     <message>
         <source>从插件库下载没成功，联网后再试</source>
         <translation>Could not download it from the library. Try again when you are online</translation>
+    </message>
+    <message>
+        <source>。原来的文件夹改名为 %1，留在旁边</source>
+        <translation>. The folder that was there is now %1, beside it</translation>
     </message>
 </context>
 <context>
