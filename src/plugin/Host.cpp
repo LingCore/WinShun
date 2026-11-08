@@ -1371,6 +1371,10 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
     Plugin& p = plugin(owner->second);
     if (const auto run = p.runs.find(instance); run != p.runs.end()) {
         run->second->pid = pid;
+        // Started for the user's choice: it may put its window in front, as
+        // a resident plugin's action may (GitHub #249).
+        if (run->second->kind == RunKind::Action)
+            ::AllowSetForegroundWindow(pid);
         emit processStarted(p.id, pid);
         traceEvent(p.id, u"进程 %1 启动（一次性）"_s.arg(pid));
         return;
@@ -2126,6 +2130,12 @@ void Host::action(std::uint64_t requestId, const QString& pluginId, const QStrin
         return;
     }
     touch(p);
+    // The user just chose it (Enter, a click on a row): the plugin may bring
+    // a window of its own to the front, as for a menu's or showSettings.
+    // Without this it depended on luck, Windows refusing a background
+    // process the foreground (GitHub #249).
+    if (p.pid)
+        ::AllowSetForegroundWindow(p.pid);
     QJsonObject params {{u"command"_s, commandId}, {u"action"_s, q.actionId}, {u"item"_s, q.item}, {u"text"_s, text}};
     if (!files.isEmpty()) {
         params.insert(u"trigger"_s, u"files"_s);
