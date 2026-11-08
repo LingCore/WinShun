@@ -16,8 +16,9 @@
   <img src="https://img.shields.io/badge/x64-64--bit-blue" alt="x64">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT"></a>
   <a href="https://linux.do"><img src="https://img.shields.io/badge/LINUX%20DO-%E7%A4%BE%E5%8C%BA%20Community-1f1f1f" alt="LINUX DO 社区"></a>
-  <a href="https://deepwiki.com/LingCore/WinShun"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+  <a href="https://deepwiki.com/LingCore/WinShun"><img src="https://devin.ai/assets/askdeepwiki.png" alt="Ask DeepWiki" height="20"></a>
 </p>
+
 
 <a id="screenshots"></a>
 
