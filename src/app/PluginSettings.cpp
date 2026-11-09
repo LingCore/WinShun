@@ -394,6 +394,21 @@ void PluginSettings::setDeveloperMode(bool on)
     emit developerModeChanged();
 }
 
+int PluginSettings::residentLimit() const
+{
+    return m_editor->m_settings.pluginMaxResident;
+}
+
+void PluginSettings::setResidentLimit(int limit)
+{
+    limit = std::clamp(limit, 0, 64);
+    if (m_editor->m_settings.pluginMaxResident == limit)
+        return;
+    m_editor->m_settings.pluginMaxResident = limit;
+    m_editor->commit(); // the host hears of it with the settings (App::applyPlugins)
+    emit residentLimitChanged();
+}
+
 void PluginSettings::setActive(bool on)
 {
     if (m_active == on)

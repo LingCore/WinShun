@@ -456,6 +456,14 @@ void SettingsEditor::setPreviewFollowsPointer(bool on)
     commit();
 }
 
+void SettingsEditor::setPreviewRestore(bool on)
+{
+    if (m_settings.previewRestore == on)
+        return;
+    m_settings.previewRestore = on;
+    commit();
+}
+
 QString SettingsEditor::previewHotkeyError() const
 {
     if (previewkeys::usedGlobally(m_settings.previewHotkey, {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey}))

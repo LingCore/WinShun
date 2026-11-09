@@ -251,6 +251,9 @@ struct Settings {
     // row (big files are not opened one after another by a passing pointer,
     // GitHub #224).
     bool previewFollowsPointer = true;
+    // A preview left open comes back with the launcher next time; off: it
+    // closes with the launcher, the preview key brings it again (GitHub #258).
+    bool previewRestore = true;
 
     // [FileTypes]: what 文件 can be narrowed to, in the strip under the
     // search box (图片: jpg, png…), in its user's order. Written as an
@@ -490,6 +493,7 @@ struct Settings {
     // [Plugins]: the plugin system's own (the plugin design, §5.5).
     bool pluginDeveloperMode = false; // DeveloperMode=: the log pane, scripts reloaded as they change
     bool pluginBuiltinsExpanded = false; // BuiltinsExpanded=: keep installed plugins within reach
+    int pluginMaxResident = 8; // MaxResident=: resident plugins running at once, the longest unused leaving past it; 0: no limit (GitHub #252)
 
     // [Plugin.<id>]: one section per plugin the user set anything for.
     QList<PluginConfig> plugins;

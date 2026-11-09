@@ -26,6 +26,7 @@
 #include "Unc.h"
 #include "WebDav.h"
 #include "platform/DragOut.h"
+#include "platform/FileManagers.h"
 #include "platform/Shell.h"
 #include "platform/ShellContextMenu.h"
 #include "platform/WindowEffects.h"
@@ -1819,7 +1820,9 @@ void Launcher::retranslate()
 void Launcher::handleHidden()
 {
     rememberQuery();
-    closePreview(); // the wish to have it stays (m_previewWanted)
+    closePreview(); // the wish to have it stays (m_previewWanted) ...
+    if (!m_previewRestore)
+        setPreviewWanted(false); // ... unless the user has it close with the launcher (GitHub #258)
     dropServerWait();
     m_previewResume = false;
     m_previewHandedOver = false; // back with the launcher as left (m_previewWanted), wherever it opens
@@ -4226,6 +4229,7 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         if (action == Open || action == Alternate) {
             switch (windowsearch::activate(r)) {
             case windowsearch::Activation::Switched:
+                rememberWindow(r);
                 emit dismissRequested();
                 break;
             case windowsearch::Activation::Gone:
@@ -4812,8 +4816,10 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
         int started = 0;
         for (const SearchResult& r : items) {
             if (r.isWindow()) {
-                if (!admin && windowsearch::activate(r) == windowsearch::Activation::Switched)
+                if (!admin && windowsearch::activate(r) == windowsearch::Activation::Switched) {
+                    rememberWindow(r);
                     ++started;
+                }
                 continue;
             }
             if (r.isPlugin()) { // its own default action (which may close the window itself)
@@ -4998,6 +5004,23 @@ void Launcher::remember(const QString& path, const QString& query)
     rememberQuery();
     if (m_recordHistory)
         m_history->record(path, query, QDateTime::currentMSecsSinceEpoch());
+}
+
+// A window switched to that shows a folder (Explorer, Total Commander, Opus:
+// filemanager::frontFolder): the folder is what the user went to, remembered
+// as one opened from here is, so it is among the recent ones next time
+// (GitHub #231). Other windows leave nothing: a program's window is not a
+// file to list.
+void Launcher::rememberWindow(const SearchResult& window)
+{
+    if (!m_recordHistory || !window.windowHandle)
+        return;
+    const std::wstring folder = filemanager::frontFolder(reinterpret_cast<HWND>(window.windowHandle));
+    if (folder.empty())
+        return;
+    const QString path = QDir::toNativeSeparators(QString::fromStdWString(folder));
+    if (QFileInfo(path).isDir())
+        remember(path, m_shownText);
 }
 
 void Launcher::forgetRecent(const QStringList& paths)

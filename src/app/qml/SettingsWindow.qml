@@ -4292,6 +4292,20 @@ Window {
                     }
                 }
 
+                SettingRow { // whether a preview left open comes back with the launcher (GitHub #258: some want it gone)
+                    title: qsTr("再次打开时恢复预览")
+                    keywords: qsTr("预览;恢复;记住;保留;关闭;下次;再次;restore;preview").split(";")
+                    description: window.editor.previewRestore
+                                 ? qsTr("预览开着时收起搜索框，下次打开搜索框预览也跟着回来")
+                                 : qsTr("搜索框收起，预览就一起关掉；下次要看再按预览快捷键")
+
+                    ToggleSwitch {
+                        objectName: "previewRestoreSwitch"
+                        checked: window.editor.previewRestore
+                        onToggled: (on) => window.editor.previewRestore = on
+                    }
+                }
+
                 SettingRow {
                     title: qsTr("预览快捷键")
                     keywords: qsTr("预览;快捷键;空格;Space;Alt+P;QuickLook;preview;shortcut").split(";")

@@ -25,6 +25,17 @@ constexpr UINT kEncoded = WM_APP + 1; // the PNG bytes of a collapsed pin are ma
 constexpr UINT_PTR kHintTimer = 1;
 constexpr qint64 kHintHoldMs = 900; // the zoom stays this long after the last notch ...
 constexpr qint64 kHintFadeMs = 240; // ... then fades out in this
+constexpr qint64 kPillHoldMs = 2200; // the text pick's pill: long enough to read, then off the words (GitHub #258)
+
+// 255 through `hold` ms of `age`, then down to 0 over kHintFadeMs.
+int fadedAlpha(qint64 age, qint64 hold)
+{
+    if (age < hold)
+        return 255;
+    if (age >= hold + kHintFadeMs)
+        return 0;
+    return static_cast<int>(255 * (hold + kHintFadeMs - age) / kHintFadeMs);
+}
 
 void registerClass()
 {
@@ -284,18 +295,26 @@ void PinWindow::showHint(const QString& text)
     ::SetTimer(m_hwnd, kHintTimer, 40, nullptr); // restarts the count while it runs
 }
 
+void PinWindow::showTextPill()
+{
+    if (!m_hwnd)
+        return;
+    m_pillSince = QDateTime::currentMSecsSinceEpoch();
+    m_pillAlpha = 255;
+    ::SetTimer(m_hwnd, kHintTimer, 40, nullptr);
+}
+
 void PinWindow::hintTick()
 {
-    const qint64 age = QDateTime::currentMSecsSinceEpoch() - m_hintSince;
-    if (age < kHintHoldMs)
-        return;
-    const int alpha = age >= kHintHoldMs + kHintFadeMs
-        ? 0
-        : static_cast<int>(255 * (kHintHoldMs + kHintFadeMs - age) / kHintFadeMs);
-    if (alpha <= 0)
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const int hint = m_hintSince ? fadedAlpha(now - m_hintSince, kHintHoldMs) : 0;
+    // The pill stays while the words are still being read: it says so.
+    const int pill = m_text == Text::Reading ? 255 : m_pillSince ? fadedAlpha(now - m_pillSince, kPillHoldMs) : 0;
+    if (hint <= 0 && pill <= 0)
         ::KillTimer(m_hwnd, kHintTimer);
-    if (alpha != m_hintAlpha) {
-        m_hintAlpha = std::max(0, alpha);
+    if (hint != m_hintAlpha || pill != m_pillAlpha) {
+        m_hintAlpha = hint;
+        m_pillAlpha = pill;
         render(); // at 0 the picture is as it was: at 100% its own pixels
     }
 }
@@ -324,9 +343,12 @@ void PinWindow::drawTextLayer(QImage& canvas, const QRect& picture)
         painter.setBrush(Qt::NoBrush);
         painter.drawRect(band.adjusted(0, 0, -1, -1));
     }
-    // What the pin is doing, in a pill at the lower left (white on the accent fill).
-    if (picture.width() < 150 * dpr() || picture.height() < 44 * dpr())
+    // What the pin is doing, in a pill at the lower left (white on the accent
+    // fill), for a moment (showTextPill): it sat over the bottom line of the
+    // words, in the way of picking them (GitHub #258). Not during a drag.
+    if (picture.width() < 150 * dpr() || picture.height() < 44 * dpr() || m_pillAlpha <= 0 || m_picking)
         return;
+    painter.setOpacity(m_pillAlpha / 255.0);
     const QString text = m_text == Text::Reading
         ? QCoreApplication::translate("ws::capture::PinWindow", "识别文字中…")
         : m_picked.isEmpty() ? QCoreApplication::translate("ws::capture::PinWindow", "拖选文字 · Esc 退出")
@@ -622,6 +644,7 @@ void PinWindow::beginTextPick()
     m_text = Text::Reading;
     m_lines.clear();
     m_picked.clear();
+    showTextPill(); // 识别文字中…, for as long as that takes
     render();
     const std::weak_ptr<bool> alive = m_alive;
     m_host.readLines(m_image, dpr(), [this, alive](QList<RedactLine> lines) {
@@ -630,6 +653,7 @@ void PinWindow::beginTextPick()
             return;
         m_lines = std::move(lines);
         m_text = Text::Ready;
+        showTextPill(); // 拖选文字 · Esc 退出, for a moment
         render();
     });
 }
@@ -643,6 +667,8 @@ void PinWindow::endTextPick()
     m_lines.clear();
     m_picked.clear();
     m_pickBand = {};
+    m_pillSince = 0;
+    m_pillAlpha = 0;
     if (m_hwnd && ::GetCapture() == m_hwnd)
         ::ReleaseCapture();
     render();
@@ -763,6 +789,7 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             const QString text = pickedText();
             if (!text.isEmpty() && m_host.copyText)
                 m_host.copyText(text);
+            showTextPill(); // 已复制文字, or the instruction again when nothing was under the drag
             render();
         }
         m_dragging = false;

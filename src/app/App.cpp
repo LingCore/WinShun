@@ -1891,6 +1891,7 @@ void App::applySettings(bool initial)
     m_preview->setBuiltInOnly(m_settings.previewWith == u"builtin");
     m_launcher->setPreviewHotkey(m_settings.previewHotkey);
     m_launcher->setPreviewFollowsPointer(m_settings.previewFollowsPointer);
+    m_launcher->setPreviewRestore(m_settings.previewRestore);
     m_preview->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
@@ -7509,6 +7510,7 @@ void App::createPluginHost()
     options.userPluginDir = dataDir + u"\\plugins"_s;
     if (QFileInfo::exists(appDir + u"\\plugins"_s))
         options.bundledPluginDir = appDir + u"\\plugins"_s;
+    options.maxResident = m_settings.pluginMaxResident; // the user's cap on resident plugins, 0 for none (GitHub #252)
     options.logPath = dataDir + u"\\plugins.log"_s;
     options.runnerExe = appDir + u"\\WinShunPluginHost.exe"_s;
     options.appDir = appDir;
@@ -7802,6 +7804,7 @@ void App::applyPlugins()
     if (!m_pluginHost)
         return;
     m_pluginHost->setDeveloperMode(m_settings.pluginDeveloperMode);
+    m_pluginHost->setMaxResident(m_settings.pluginMaxResident);
     if (m_pluginUpdates)
         m_pluginUpdates->setPolicy(m_settings.pluginDeveloperMode, m_settings.plugins);
     if (m_pluginTools)

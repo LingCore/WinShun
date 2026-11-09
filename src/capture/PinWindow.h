@@ -147,6 +147,9 @@ public:
     void beginTextPick(); // reads the picture's words, then a drag picks lines
     void endTextPick();
     QString pickedText() const; // the lines picked now
+    // The pill saying what the pick is doing: 255 while shown, 0 once it has
+    // faded off the words (GitHub #258). For tests.
+    int textHintAlpha() const { return m_pillAlpha; }
 
 private:
     enum class Text { Off, Reading, Ready };
@@ -173,7 +176,8 @@ private:
     void drawTextLayer(QImage& canvas, const QRect& picture);
     void drawHint(QImage& canvas, const QRect& picture); // the zoom or opacity, a moment after it changes
     void showHint(const QString& text); // (re)starts the moment
-    void hintTick(); // the moment's timer: fades the hint out
+    void showTextPill(); // the text pick's pill (drawTextLayer): (re)starts its moment
+    void hintTick(); // the moments' timer: fades the hint and the pill out
     void updatePicked(QPoint cursor);
     void finishEncode(const EncodeJob* job);
     QPoint toImage(QPoint screen) const; // a screen point in the picture's pixels
@@ -202,6 +206,11 @@ private:
     QString m_hint;
     qint64 m_hintSince = 0; // steady clock, ms
     int m_hintAlpha = 0; // 0: not drawn
+    // The text pick's pill ("拖选文字 · Esc 退出"): shown for a moment when the
+    // words are ready and after each pick, then out of the way of the words
+    // under it (GitHub #258); never while a drag is under way.
+    qint64 m_pillSince = 0;
+    int m_pillAlpha = 0;
     // Dragging a corner: which, and the picture as it was at the press.
     Corner m_corner = Corner::None;
     QRect m_resizeStart;

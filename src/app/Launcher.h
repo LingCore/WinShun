@@ -475,6 +475,7 @@ public:
     QString previewHotkey() const { return m_previewHotkey; }
     void setPreviewHotkey(const QString& shortcut);
     void setPreviewFollowsPointer(bool on) { m_previewFollowsPointer = on; } // Settings::previewFollowsPointer
+    void setPreviewRestore(bool on) { m_previewRestore = on; } // Settings::previewRestore
     Q_INVOKABLE bool isPreviewKey(int key, int modifiers) const;
     void setNumberHints(const QString& hints);
     bool shortcutHelp() const { return m_shortcutHelp; }
@@ -924,6 +925,7 @@ private:
     // Opened: into the history, if it is kept. `query`: the text the list it
     // was opened from is for (m_shownText); none when it was not found by typing.
     void remember(const QString& path, const QString& query = {});
+    void rememberWindow(const SearchResult& window); // switched to: the folder it shows, if it is a file manager's (GitHub #231)
     void forgetRecent(const QStringList& paths);
     // showSystemMenu's work, from the event loop; afterwards forgetGone drops
     // the rows whose files the command took away (删除, 剪切 and paste
@@ -1221,6 +1223,7 @@ private:
     QString m_stateFile; // state.ini
     bool m_previewWanted = false; // the preview was left open by the user: it comes back with the launcher
     bool m_previewFollowsPointer = true; // previewHover: the row the mouse rests on; off: the current row only
+    bool m_previewRestore = true; // off: a preview left open closes for good with the launcher (GitHub #258)
     bool m_previewResume = false; // shown now, and the preview not yet back
     bool m_previewHandedOver = false; // the window gave way to the details' 预览 tab: back when they go
     int m_tabBeforePreview = 1; // the details' tab Alt+P left for 预览 (匹配 at first): Alt+P again goes back

@@ -171,6 +171,8 @@ class PluginSettings : public QObject {
     Q_PROPERTY(QVariantList logPlugins READ logPlugins NOTIFY logPluginsChanged FINAL) // [{id, name}] for the filter
     Q_PROPERTY(QString logFilter READ logFilter WRITE setLogFilter NOTIFY logFilterChanged FINAL)
     Q_PROPERTY(bool developerMode READ developerMode WRITE setDeveloperMode NOTIFY developerModeChanged FINAL)
+    // How many resident plugins run at once before the longest unused leaves; 0: no limit (Settings::pluginMaxResident, GitHub #252).
+    Q_PROPERTY(int residentLimit READ residentLimit WRITE setResidentLimit NOTIFY residentLimitChanged FINAL)
     // Why plugins may not see the network places the user signed in to in
     // File Explorer (Runner::TokenSource::Restricted); empty when they do.
     Q_PROPERTY(QString restrictedNote READ restrictedNote NOTIFY stateChanged FINAL)
@@ -207,6 +209,8 @@ public:
     void setLogFilter(const QString& id);
     bool developerMode() const;
     void setDeveloperMode(bool on);
+    int residentLimit() const;
+    void setResidentLimit(int limit);
     QString restrictedNote() const { return m_restrictedNote; }
     QString message() const { return m_message; }
     QString recoveryMessage() const { return m_recoveryMessage; }
@@ -289,6 +293,7 @@ signals:
     void logPluginsChanged();
     void logFilterChanged();
     void developerModeChanged();
+    void residentLimitChanged();
     void stateChanged();
     void messageChanged();
     void recoveryChanged();

@@ -503,6 +503,22 @@ SettingsSection {
         }
     }
 
+    SettingRow { // the cap on resident plugins, for those who keep many (GitHub #252)
+        title: qsTr("同时常驻的插件")
+        keywords: qsTr("常驻;退出;上限;个数;内存;LRU;resident;limit").split(";")
+        description: pluginsSection.plugins.residentLimit > 0
+                     ? qsTr("常驻插件超过 %1 个时，最久没用的先退出，再用到时自动重新启动").arg(pluginsSection.plugins.residentLimit)
+                     : qsTr("常驻插件都留着不退出；每个都占内存，开得多就多")
+
+        ScopeTabs {
+            objectName: "residentLimitChoice"
+            readonly property var choices: [4, 8, 16, 0]
+            labels: [qsTr("4 个"), qsTr("8 个"), qsTr("16 个"), qsTr("不限")]
+            current: Math.max(0, choices.indexOf(pluginsSection.plugins.residentLimit))
+            onActivated: (index) => pluginsSection.plugins.residentLimit = choices[index]
+        }
+    }
+
     SettingRow {
         title: qsTr("开发者模式")
         keywords: qsTr("开发;调试;日志;协议;模板;developer;debug;log").split(";")

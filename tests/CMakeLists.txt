@@ -556,6 +556,17 @@ set_tests_properties(tst_keycaps PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The pin window's text pick (GitHub #258): the pill that says what to do
+# stays while the words are read, then fades off them. A real (Win32) pin
+# window for a few seconds.
+qt_add_executable(tst_pinwindow tst_pinwindow.cpp ${PROJECT_SOURCE_DIR}/src/capture/PinWindow.cpp) # built into the capture plugin, not wscapture
+target_link_libraries(tst_pinwindow PRIVATE wscapture Qt6::Test dwmapi gdi32 imm32 shcore user32)
+set_target_properties(tst_pinwindow PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_pinwindow COMMAND tst_pinwindow)
+set_tests_properties(tst_pinwindow PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Network shares, WSL and WebDAV: their files' contents (GitHub #114).
 qt_add_executable(tst_remotecontent tst_remotecontent.cpp)
 target_link_libraries(tst_remotecontent PRIVATE wscore Qt6::Test ws2_32)

@@ -1181,6 +1181,8 @@ private slots:
         QCOMPARE(fresh.sort, u"match"_s);
         QVERIFY(!fresh.doubleClickToOpen);
         QVERIFY(fresh.previewFollowsPointer);
+        QVERIFY(fresh.previewRestore); // GitHub #258: a preview left open comes back, unless turned off
+        QCOMPARE(fresh.pluginMaxResident, 8); // GitHub #252
 
         for (const QStringView name : ws::kSortNames) {
             ws::Settings s;
@@ -1188,12 +1190,30 @@ private slots:
             s.sort = name.toString();
             s.doubleClickToOpen = true;
             s.previewFollowsPointer = false;
+            s.previewRestore = false;
+            s.pluginMaxResident = 0; // no limit
             s.save();
             ws::Settings back;
             back.load();
             QCOMPARE(back.sort, name.toString());
             QVERIFY(back.doubleClickToOpen);
             QVERIFY(!back.previewFollowsPointer);
+            QVERIFY(!back.previewRestore);
+            QCOMPARE(back.pluginMaxResident, 0);
+        }
+        { // the cap is kept within reason, whatever the file says
+            QSettings raw(ws::Settings::filePath(), QSettings::IniFormat);
+            raw.setValue(u"Plugins/MaxResident"_s, 500);
+            raw.sync();
+            ws::Settings clamped;
+            clamped.load();
+            QCOMPARE(clamped.pluginMaxResident, 64);
+            raw.setValue(u"Plugins/MaxResident"_s, -3);
+            raw.sync();
+            clamped.load();
+            QCOMPARE(clamped.pluginMaxResident, 0);
+            raw.setValue(u"Plugins/MaxResident"_s, 8);
+            raw.sync();
         }
         QCOMPARE(ws::sortIndex(u"newest"), 1);
         QCOMPARE(ws::sortIndex(u"smallest"), 7);

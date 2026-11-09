@@ -1324,11 +1324,16 @@ void Host::evictIfCrowded(const QString& starting)
             if (!oldest || p->lastUsed < oldest->lastUsed)
                 oldest = p.get();
         }
-        if (running < m_options.maxResident || !oldest)
-            return;
+        if (m_options.maxResident <= 0 || running < m_options.maxResident || !oldest)
+            return; // no cap, or room under it
         log(u"%1: 常驻的太多，退出"_s.arg(oldest->id));
         stopResident(*oldest, false);
     }
+}
+
+void Host::setMaxResident(int limit)
+{
+    m_options.maxResident = std::max(0, limit);
 }
 
 void Host::startResident(Plugin& p)

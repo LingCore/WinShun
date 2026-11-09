@@ -5437,6 +5437,42 @@ private slots:
         QVERIFY(QTest::qWaitFor([&] { return f.host->state(u"test.b"_s).status == Host::State::Status::Running; }, 5000));
     }
 
+    // GitHub #252: the cap is the user's; 0 lifts it, and a change counts
+    // from the next start on (setMaxResident), nothing running stopped for it.
+    void residentCapLifted()
+    {
+        Fixture f;
+        Host::Options options = f.host->options();
+        options.maxResident = 1;
+        f.host = std::make_unique<Host>(options);
+        f.host->setBackoffScale(0.01);
+        int exits = 0;
+        QObject::connect(f.host.get(), &Host::processExited, [&](const QString&, quint32) { ++exits; });
+        Spec a;
+        a.id = u"test.a"_s;
+        a.keywords = {u"aa"_s};
+        Spec b;
+        b.id = u"test.b"_s;
+        b.keywords = {u"bb"_s};
+        QVERIFY(!f.install(a).isEmpty());
+        QVERIFY(!f.install(b).isEmpty());
+        f.host->setMaxResident(0); // 不限, before anything started
+        QVERIFY(f.host->query(u"aa x"_s, Scope::All, 1));
+        QVERIFY(QTest::qWaitFor([&] { return f.host->state(u"test.a"_s).status == Host::State::Status::Running; }, 5000));
+        QTest::qWait(50);
+        QVERIFY(f.host->query(u"bb x"_s, Scope::All, 2));
+        QVERIFY(QTest::qWaitFor([&] { return f.host->state(u"test.b"_s).status == Host::State::Status::Running; }, 5000));
+        QTest::qWait(300);
+        QCOMPARE(exits, 0); // both stay
+        QCOMPARE(f.host->state(u"test.a"_s).status, Host::State::Status::Running);
+        // Capped again at one: the next start is what applies it (the two running are left alone until then).
+        f.host->setMaxResident(1);
+        QTest::qWait(200);
+        QCOMPARE(exits, 0);
+        QCOMPARE(f.host->state(u"test.a"_s).status, Host::State::Status::Running);
+        QCOMPARE(f.host->state(u"test.b"_s).status, Host::State::Status::Running);
+    }
+
     // ---- encodings -------------------------------------------------------------
     void encodingOem()
     {

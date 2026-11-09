@@ -932,6 +932,7 @@ void Settings::load()
     if (previewWith != u"builtin")
         previewWith = d.previewWith;
     previewFollowsPointer = readOrDefault(s, u"Results/PreviewFollowsPointer"_s, d.previewFollowsPointer);
+    previewRestore = readOrDefault(s, u"Results/PreviewRestore"_s, d.previewRestore);
     previewHotkey = readOrDefault(s, u"Results/PreviewHotkey"_s, d.previewHotkey).trimmed();
     if (!previewHotkey.isEmpty()) {
         previewHotkey = previewkeys::normalized(previewHotkey);
@@ -1147,6 +1148,7 @@ void Settings::load()
 
     pluginDeveloperMode = readOrDefault(s, u"Plugins/DeveloperMode"_s, d.pluginDeveloperMode);
     pluginBuiltinsExpanded = readOrDefault(s, u"Plugins/BuiltinsExpanded"_s, d.pluginBuiltinsExpanded);
+    pluginMaxResident = std::clamp(readOrDefault(s, u"Plugins/MaxResident"_s, d.pluginMaxResident), 0, 64);
     plugins = readPlugins(s);
     // The former built-in and the old URL sample become one optional plugin.
     // Keep the old section for rollback, but read it only during this migration.
@@ -1295,6 +1297,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
     s.setValue(u"Results/PreviewFollowsPointer"_s, previewFollowsPointer);
+    s.setValue(u"Results/PreviewRestore"_s, previewRestore);
     s.setValue(u"Appearance/Theme"_s, theme);
     s.setValue(u"Appearance/Language"_s, language);
     s.setValue(u"Appearance/Transparency"_s, transparency);
@@ -1383,6 +1386,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Mcp/Settings"_s, mcpSettings);
     s.setValue(u"Plugins/DeveloperMode"_s, pluginDeveloperMode);
     s.setValue(u"Plugins/BuiltinsExpanded"_s, pluginBuiltinsExpanded);
+    s.setValue(u"Plugins/MaxResident"_s, pluginMaxResident);
     auto pluginConfigs = plugins;
     auto web = std::find_if(pluginConfigs.begin(), pluginConfigs.end(), [](const PluginConfig& c) { return c.id == webplugin::kId; });
     if (web == pluginConfigs.end()) {

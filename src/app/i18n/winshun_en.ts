@@ -3940,6 +3940,38 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <source>展开内置功能</source>
         <translation>Expand built-in features</translation>
     </message>
+    <message>
+        <source>同时常驻的插件</source>
+        <translation>Resident plugins at once</translation>
+    </message>
+    <message>
+        <source>常驻;退出;上限;个数;内存;LRU;resident;limit</source>
+        <translation>resident;exit;limit;count;memory;LRU</translation>
+    </message>
+    <message>
+        <source>常驻插件超过 %1 个时，最久没用的先退出，再用到时自动重新启动</source>
+        <translation>Past %1 resident plugins the longest unused one exits; it starts again when used</translation>
+    </message>
+    <message>
+        <source>常驻插件都留着不退出；每个都占内存，开得多就多</source>
+        <translation>Resident plugins all stay; each takes memory, the more the more</translation>
+    </message>
+    <message>
+        <source>4 个</source>
+        <translation>4</translation>
+    </message>
+    <message>
+        <source>8 个</source>
+        <translation>8</translation>
+    </message>
+    <message>
+        <source>16 个</source>
+        <translation>16</translation>
+    </message>
+    <message>
+        <source>不限</source>
+        <translation>No limit</translation>
+    </message>
 </context>
 <context>
     <name>PreviewBody</name>
@@ -7570,6 +7602,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>每个双击键只执行一个动作。列表只显示支持此功能的已启用插件；原组合键仍可使用</source>
         <translation>Each gesture performs one action. Only enabled plugins that support this feature are listed. Their original shortcuts still work.</translation>
+    </message>
+    <message>
+        <source>再次打开时恢复预览</source>
+        <translation>Restore the preview on reopening</translation>
+    </message>
+    <message>
+        <source>预览;恢复;记住;保留;关闭;下次;再次;restore;preview</source>
+        <translation>preview;restore;remember;keep;close;next time;reopen</translation>
+    </message>
+    <message>
+        <source>预览开着时收起搜索框，下次打开搜索框预览也跟着回来</source>
+        <translation>Close the search box with the preview open, and the preview comes back with it next time</translation>
+    </message>
+    <message>
+        <source>搜索框收起，预览就一起关掉；下次要看再按预览快捷键</source>
+        <translation>The preview closes with the search box; press the preview shortcut to see it again</translation>
     </message>
 </context>
 <context>

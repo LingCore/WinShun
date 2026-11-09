@@ -173,6 +173,9 @@ public:
     // plugin's folder restarts its resident process (reloaded() tells), and
     // every line to and from the plugins is traced().
     void setDeveloperMode(bool on);
+    // Options::maxResident changed by the user (GitHub #252): counts from the
+    // next resident start on; nothing running is stopped for it.
+    void setMaxResident(int limit);
     bool developerMode() const noexcept { return m_developerMode; }
 
     struct State {
