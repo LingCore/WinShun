@@ -1220,7 +1220,7 @@ void CaptureApp::editPin(capture::PinWindow* pin)
 // 贴到屏幕 on a picture file's row (the launcher) or a picture in the
 // clipboard history: read by Windows Imaging Component on a thread of its
 // own, pinned round the pointer within the work area of its monitor; larger
-// than 90 % of that area, scaled down to fit.
+// than 90 % of that area, shown fitted, its own pixels kept for a zoom.
 void CaptureApp::pinPicture(const QString& path, bool screenshot)
 {
     if (path.isEmpty())
@@ -1230,7 +1230,7 @@ void CaptureApp::pinPicture(const QString& path, bool screenshot)
         return;
     QPointer<CaptureApp> self(this);
     std::thread([self, path, placement = *placement, screenshot] {
-        auto prepared = pinimage::prepare(pinimage::readFile(path, placement), placement);
+        auto prepared = pinimage::prepare(pinimage::readFile(path), placement);
         QMetaObject::invokeMethod(qApp, [self, prepared = std::move(prepared), screenshot] {
             if (!self)
                 return;
@@ -1255,7 +1255,7 @@ void CaptureApp::pinCurrentImage()
     m_pinPending = true;
     QPointer<CaptureApp> self(this);
     std::thread([self, last, placement = *placement] {
-        auto picture = pinimage::readClipboard(last, placement);
+        auto picture = pinimage::readClipboard(last);
         auto prepared = pinimage::prepare(std::move(picture.image), placement);
         QMetaObject::invokeMethod(qApp, [self, last, status = picture.status, prepared = std::move(prepared)] {
             if (!self)

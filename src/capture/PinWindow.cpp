@@ -93,6 +93,7 @@ PinWindow::PinWindow(const QImage& image, QPoint origin, Host host)
     ::ImmAssociateContextEx(m_hwnd, nullptr, 0);
     m_dpi = std::max<UINT>(96, ::GetDpiForWindow(m_hwnd));
     m_frame = pinFrame(dpr());
+    fitToWorkArea();
     render();
     ::ShowWindow(m_hwnd, SW_SHOW);
     ::SetForegroundWindow(m_hwnd); // Esc closes it at once; Win顺 is in front (the overlay was)
@@ -151,6 +152,35 @@ QRect PinWindow::workArea() const
     if (::GetMonitorInfoW(::MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST), &info))
         return QRect(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top);
     return QRect(0, 0, 1920, 1080);
+}
+
+QRect PinWindow::workAreaAt(QPoint point) const
+{
+    const POINT at {point.x(), point.y()};
+    MONITORINFO info {sizeof info};
+    if (::GetMonitorInfoW(::MonitorFromPoint(at, MONITOR_DEFAULTTONEAREST), &info))
+        return QRect(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top);
+    return QRect(0, 0, 1920, 1080);
+}
+
+void PinWindow::fitToWorkArea()
+{
+    const QRect work = workAreaAt(m_origin);
+    m_fitZoom = fitZoom(m_imageSize, work.size());
+    if (m_fitZoom < 1.0)
+        m_zoom = m_fitZoom;
+    // The shown picture takes the middle of the place the whole one would
+    // have, and moves in from any edge it still hangs over.
+    const QSize shown = zoomedSize(m_imageSize, m_zoom);
+    m_origin += QPoint((m_imageSize.width() - shown.width()) / 2, (m_imageSize.height() - shown.height()) / 2);
+    m_origin.setX(std::clamp(m_origin.x(), work.left(), (std::max)(work.left(), work.right() + 1 - shown.width())));
+    m_origin.setY(std::clamp(m_origin.y(), work.top(), (std::max)(work.top(), work.bottom() + 1 - shown.height())));
+}
+
+double PinWindow::minZoom() const
+{
+    // A picture shown fitted has nothing to show smaller: the fit is the bottom.
+    return m_fitZoom < 1.0 ? m_fitZoom : zoomSteps().front();
 }
 
 std::optional<QRect> PinWindow::edgeTab() const
@@ -387,7 +417,7 @@ void PinWindow::setZoom(double zoom, QPoint cursor)
 {
     if (m_form != PinForm::Full)
         return;
-    zoom = std::clamp(zoom, zoomSteps().front(), maxZoom(fullSize(), kZoomBudget));
+    zoom = std::clamp(zoom, minZoom(), maxZoom(fullSize(), kZoomBudget));
     // The percent shows at the ends too, where the notch changes nothing.
     showHint(QString::number(static_cast<int>(std::lround(zoom * 100))) + u'%');
     if (std::abs(zoom - m_zoom) >= 1e-9) {
@@ -744,7 +774,7 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
                 if (m_moved)
                     moveTo(at - m_grab);
             } else if (m_corner != Corner::None) {
-                const Resized r = resizeFromCorner(m_corner, m_resizeStart, fullSize(), at, zoomSteps().front(),
+                const Resized r = resizeFromCorner(m_corner, m_resizeStart, fullSize(), at, minZoom(),
                     maxZoom(fullSize(), kZoomBudget));
                 if (r.origin != m_origin || std::abs(r.zoom - m_zoom) > 1e-9) {
                     m_origin = r.origin;
@@ -826,7 +856,7 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             }
         } else if (m_form == PinForm::Full) {
             const QPoint cursor(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)); // screen, physical
-            setZoom(nextZoom(m_zoom, steps, maxZoom(fullSize(), kZoomBudget)), cursor);
+            setZoom(nextZoom(m_zoom, steps, maxZoom(fullSize(), kZoomBudget), minZoom()), cursor);
         }
         return 0;
     }
@@ -903,12 +933,12 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         case VK_OEM_PLUS:
         case VK_ADD:
             if (m_form == PinForm::Full)
-                setZoom(nextZoom(m_zoom, 1, maxZoom(fullSize(), kZoomBudget)), pictureRect().center());
+                setZoom(nextZoom(m_zoom, 1, maxZoom(fullSize(), kZoomBudget), minZoom()), pictureRect().center());
             return 0;
         case VK_OEM_MINUS:
         case VK_SUBTRACT:
             if (m_form == PinForm::Full)
-                setZoom(nextZoom(m_zoom, -1, maxZoom(fullSize(), kZoomBudget)), pictureRect().center());
+                setZoom(nextZoom(m_zoom, -1, maxZoom(fullSize(), kZoomBudget), minZoom()), pictureRect().center());
             return 0;
         default:
             break;

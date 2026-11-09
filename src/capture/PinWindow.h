@@ -29,7 +29,10 @@ namespace ws::capture {
 //
 // It shows the picture where it was taken, at its size in screen pixels:
 // 100% is the picture's pixels copied as they are, so a pin over the place
-// it came from matches the screen pixel for pixel. Around it a border of one
+// it came from matches the screen pixel for pixel. A picture larger than the
+// screen (a long screenshot) is shown fitted instead - its own pixels are
+// kept, so zooming in shows detail rather than the blur of a stored fit.
+// Around it a border of one
 // logical pixel (neutral grey, the accent while it has the focus) and a soft
 // shadow drawn into the DIB (DWM draws none round a layered window). On a
 // monitor at another scale the picture keeps its physical size; only the
@@ -170,6 +173,12 @@ private:
     const QImage& shownImage() const; // what the window draws at the zoom shown: the picture, or the thumbnail
     double shownZoom() const { return m_form == PinForm::Full ? m_zoom : 1.0; }
     QRect workArea() const; // of the monitor nearest to the picture
+    QRect workAreaAt(QPoint point) const; // of the monitor nearest to a point
+    // A picture larger than the screen keeps its own pixels and is shown
+    // fitted to it (m_fitZoom): its middle stays where it was, and it comes
+    // in from an edge it still hangs over.
+    void fitToWorkArea();
+    double minZoom() const; // the fitted zoom of a picture shown fitted, else the smallest step
     void drawTextLayer(QImage& canvas, const QRect& picture);
     void drawHint(QImage& canvas, const QRect& picture); // the zoom or opacity, a moment after it changes
     void showHint(const QString& text); // (re)starts the moment
@@ -185,6 +194,7 @@ private:
     QSize m_imageSize; // the picture's size, whether or not m_image is there
     QPoint m_origin; // the picture's top left, physical (the tile's while collapsed)
     double m_zoom = 1.0;
+    double m_fitZoom = 1.0; // the zoom a picture larger than the screen was shown at
     double m_opacity = 1.0;
     UINT m_dpi = 96;
     PinFrame m_frame;

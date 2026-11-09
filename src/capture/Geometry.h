@@ -97,8 +97,9 @@ QString colorHex(QRgb color);
 // whole multiple (3x, 4x, 5x, 6x, 8x) is a step.
 const std::vector<double>& zoomSteps();
 // The step `steps` notches from `zoom` (positive: larger), no further than
-// `maxZoom`. A zoom between two steps goes to the next one in that direction.
-double nextZoom(double zoom, int steps, double maxZoom = 8.0);
+// `maxZoom`; at the bottom, `minZoom` when a pin is shown fitted under the
+// smallest step. A zoom between two steps goes to the next one that way.
+double nextZoom(double zoom, int steps, double maxZoom = 8.0, double minZoom = 0.0);
 // How far a picture of `image` pixels may be zoomed without its window
 // passing `budgetPixels` (a 2560x1600 pin at 800% would be 1 GB of window):
 // at most 8, never under 1.
@@ -106,6 +107,10 @@ double maxZoom(QSize image, qint64 budgetPixels);
 // The picture's size on the screen at `zoom`: exactly `image` at 1.0, never
 // under 1x1.
 QSize zoomedSize(QSize image, double zoom);
+// The zoom that shows all of `image` within 90% of `room`, never above 1.
+// A picture larger than the screen keeps its own pixels and is shown smaller:
+// scaling its pixels down instead loses the detail a zoom would show.
+double fitZoom(QSize image, QSize room);
 // Where the picture's top left goes when its zoom changes from `oldZoom` to
 // `newZoom` with the cursor at `cursor` (all physical, virtual desktop): the
 // picture's pixel under the cursor stays under it. Whole pixels.

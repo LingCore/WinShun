@@ -438,6 +438,27 @@ private slots:
         QCOMPARE(zoomedSize({5, 5}, 0.1), QSize(1, 1));
     }
 
+    void fitZoomKeepsPicturesSmallerThanTheRoomAtTheirSize()
+    {
+        QCOMPARE(fitZoom({1920, 1080}, {1920, 1200}), 0.9); // 90% of either side
+        QCOMPARE(fitZoom({800, 600}, {1920, 1040}), 1.0); // never above its own size
+        // A long screenshot: the side that runs over the room sets the zoom,
+        // and its pixels are what the pin keeps.
+        const double longShot = fitZoom({1200, 20000}, {1920, 1040});
+        QVERIFY(std::abs(longShot - 1040 * 0.9 / 20000) < 1e-9);
+        QCOMPARE(zoomedSize({1200, 20000}, longShot), QSize(56, 936));
+        QCOMPARE(fitZoom({1200, 20000}, {1900, 30000}), 1.0);
+        QCOMPARE(fitZoom({1200, 20000}, {}), 1.0);
+    }
+
+    void wheelDownReachesAZoomFittedUnderTheSmallestStep()
+    {
+        QCOMPARE(nextZoom(0.1, -1, 8.0, 0.047), 0.047); // the fitted long picture
+        QCOMPARE(nextZoom(0.047, -1, 8.0, 0.047), 0.047);
+        QCOMPARE(nextZoom(0.047, 1, 8.0, 0.047), 0.1); // and back up to the steps
+        QCOMPARE(nextZoom(1.0, -1), 0.9); // the editor's, with no floor
+    }
+
     void zoomAboutKeepsThePixelUnderTheCursor()
     {
         const QPoint origin(1000, 500);
