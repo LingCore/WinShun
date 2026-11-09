@@ -694,6 +694,9 @@ bool Launcher::clearQueryPrefix()
     m_filePrefix.reset();
     m_prefixWords.clear();
     emit queryChanged();
+    // The prefix's kinds stay on the strip as the user's own now; what is
+    // kept was the strip before the prefix (fileChoice) until here.
+    emit fileChoiceChanged();
     return true;
 }
 
@@ -3431,8 +3434,12 @@ void Launcher::chooseFileType(int type)
     if (type < -1 || type >= m_fileTypes.size())
         type = -1;
     if (scope == m_scope && type == m_fileType && !hadMultiple) {
-        if (hadPrefix)
+        if (hadPrefix) {
+            // The chip the prefix already showed, clicked: the user's own
+            // choice from here on (kept by clearQueryPrefix), its scope too.
+            rememberScope();
             search();
+        }
         return;
     }
     m_scope = scope;
@@ -3481,6 +3488,18 @@ int Launcher::fileTypeIndex(const QString& key) const
 
 QString Launcher::fileChoice() const
 {
+    // While a prefix is typed the strip shows the prefix's kinds, and those
+    // only pass: what is kept between runs is what the strip goes back to
+    // once the prefix is gone (m_filePrefix). Kept as shown, a quit with the
+    // prefix still typed left the strip on the prefix's kind at the next start.
+    if (m_filePrefix) {
+        const QStringList& keys = m_filePrefix->typeKeys;
+        if (m_filePrefix->folders)
+            return u"folders"_s;
+        if (keys.size() > 1)
+            return QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(keys)).toJson(QJsonDocument::Compact));
+        return keys.value(0);
+    }
     if (!m_foldersChosen && !m_extraFileTypes.isEmpty()) {
         QStringList keys;
         for (int type : selectedFileTypes())

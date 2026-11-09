@@ -4497,10 +4497,13 @@ bool checkScopeMemory(QQuickWindow* window, const QDir& output)
         launcher.setQuery(u":pictures"_s);
         check(launcher.scope() == Launcher::Files, u"the prefix typed did not take the scope to 文件"_s);
         check(kept() == u"all", u"while a prefix is typed, what is kept is \"%1\", not the user's 全部"_s.arg(kept()));
-        // Not this change's: while it is typed the strip's choice is the
-        // prefix's and is kept as such (App keeps fileChoiceChanged); it is
-        // put back when the prefix goes. Said in the report, not judged here.
+        // The strip shows the prefix's kind while it is typed; what is kept
+        // of the strip stays the user's own (不限 here), or a quit with the
+        // prefix still typed leaves the strip on that kind at the next start.
         typedChoiceKept = QSettings(stateFile, QSettings::IniFormat).value(u"Search/FileType"_s).toString();
+        check(launcher.selectedFileTypes().size() == 1, u"the prefix typed did not show its kind on the strip"_s);
+        check(typedChoiceKept.isEmpty(),
+            u"while a prefix is typed, the strip's choice kept is \"%1\", not the user's 不限"_s.arg(typedChoiceKept));
         launcher.setQuery({});
         check(launcher.scope() == Launcher::All, u"the prefix gone, the scope is not 全部 again"_s);
         check(kept() == u"all", u"the prefix gone, what is kept is \"%1\", not the user's 全部"_s.arg(kept()));
@@ -4558,6 +4561,30 @@ bool checkScopeMemory(QQuickWindow* window, const QDir& output)
     });
     start({}, [&](Launcher& launcher) {
         check(launcher.scope() == Launcher::Content, u"内容 did not come back once content search is on again"_s);
+    });
+    // A prefix typed, then a choice made: the prefix's kind is the user's own
+    // from there on, kept as the strip shows it.
+    QFile::remove(stateFile);
+    QList<int> prefixKind;
+    start({}, [&](Launcher& launcher) {
+        launcher.setQuery(u":pictures"_s);
+        prefixKind = launcher.selectedFileTypes();
+        check(prefixKind.size() == 1, u"the prefix typed did not show one kind"_s);
+        launcher.chooseFileType(prefixKind.value(0)); // the chip the prefix shows, clicked
+        const QString keptChoice = QSettings(stateFile, QSettings::IniFormat).value(u"Search/FileType"_s).toString();
+        check(launcher.query().isEmpty() && !keptChoice.isEmpty() && keptChoice == launcher.fileChoice() && kept() == u"files",
+            u"the prefix's chip clicked: kept \"%1\" in \"%2\", the strip shows \"%3\""_s.arg(keptChoice, kept(), launcher.fileChoice()));
+    });
+    start({}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::Files && launcher.selectedFileTypes() == prefixKind,
+            u"the kind chosen while its prefix was typed did not come back"_s);
+        launcher.chooseFileType(-1);
+        launcher.chooseScope(Launcher::All);
+        launcher.setQuery(u":pictures"_s);
+        launcher.chooseScope(Launcher::All); // a tab clicked: the prefix goes, its kind stays on the strip
+        const QString keptChoice = QSettings(stateFile, QSettings::IniFormat).value(u"Search/FileType"_s).toString();
+        check(keptChoice == launcher.fileChoice(),
+            u"a tab clicked while a prefix is typed: kept \"%1\", the strip shows \"%2\""_s.arg(keptChoice, launcher.fileChoice()));
     });
     // The strip's choice read at a start is not a choice of scope: nothing kept by it.
     QFile::remove(stateFile);
