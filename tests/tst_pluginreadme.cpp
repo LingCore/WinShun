@@ -69,6 +69,20 @@ private slots:
         for (const auto& link : {u"file:///run.exe"_s, u"javascript:run()"_s, u"shell:AppsFolder"_s, u"relative.md"_s, u"https:"_s, u"https://user:pass@example.org"_s})
             QVERIFY(!ws::readme::webLink(link));
     }
+    // A plugin's 主页 (the installed card's menu, the library's entry: GitHub
+    // #248) is offered and opened only for what webLink takes. A manifest's
+    // or the list's "homepage" is any string, and what is opened is handed to
+    // the shell, which starts a program as readily as a page: none of these.
+    void homepageIsOnlyAnAddressOfTheWeb()
+    {
+        QVERIFY(ws::readme::webLink(u"https://github.com/LingCore/WinShun-plugins"_s));
+        QVERIFY(ws::readme::webLink(u"HTTPS://Example.org/Plugin"_s)); // the scheme in capitals is the same scheme
+        for (const QString& homepage : {u"calc.exe"_s, u"C:/Windows/System32/calc.exe"_s, u"//server/share/tool.exe"_s,
+                 u"file:///C:/Users/Public/tool.bat"_s, u"ms-settings:display"_s, u"mailto:someone@example.org"_s,
+                 u"search-ms:query=x"_s, u"http:"_s, u"https:///no-host"_s, u" "_s, QString()}) {
+            QVERIFY2(!ws::readme::webLink(homepage), qPrintable(homepage));
+        }
+    }
 };
 QTEST_MAIN(PluginReadmeTest)
 #include "tst_pluginreadme.moc"

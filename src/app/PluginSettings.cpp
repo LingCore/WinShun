@@ -595,7 +595,11 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     c.name = m.name.pick(m_locale);
     c.version = m.version;
     c.author = m.author;
-    c.homepage = m.homepage;
+    // The manifest's is any string: 主页 is offered only for an address of
+    // the web (openHomepage). Anything else would be started as a program
+    // or a file is (shell::openUrl), which a plugin's own rows may not do
+    // without the processes permission (plugin/OpenPolicy).
+    c.homepage = readme::webLink(m.homepage) ? m.homepage : QString();
     // The AI: what the manifest offers, the card's switch, and what the AI
     // actually gets (the master switch on the AI page gates it all).
     c.aiExpose = m.aiExpose;
@@ -1410,7 +1414,7 @@ void PluginSettings::openInstallSource()
 
 void PluginSettings::openHomepage(const QString& id)
 {
-    if (const PluginListModel::Card* c = m_list.card(id); c && !c->homepage.isEmpty())
+    if (const PluginListModel::Card* c = m_list.card(id); c && readme::webLink(c->homepage)) // again here: see where the card gets it
         shell::openUrl(c->homepage);
 }
 

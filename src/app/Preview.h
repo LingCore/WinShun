@@ -9,6 +9,10 @@
 //     (PluginSettings::loadPreview), or the AI 助手 page.
 //     --menu card --pointer-check checks pointer hit/highlight alignment
 //     through repeated menu-row changes, including first/last-row jumps.
+//     --homepage-check checks the library entries' 主页 (GitHub #248): there
+//     for an address of the web, not for none or for anything else; the host
+//     its tip names; faint until the pointer is on it (put there, not pressed).
+//     --pointer-at <x>,<y> puts the pointer there before the picture is taken.
 //
 //   WinShun.exe --preview-settings <folder> [--dark] [--scale 1.5] [--tree]
 //     [--corners round|square] [--page 1]: one appearance for a selected page.

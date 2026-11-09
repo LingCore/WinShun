@@ -3581,6 +3581,14 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <source>安装并启用</source>
         <translation>Install and enable</translation>
     </message>
+    <message>
+        <source>主页</source>
+        <translation>Homepage</translation>
+    </message>
+    <message>
+        <source>主页：%1</source>
+        <translation>Homepage: %1</translation>
+    </message>
 </context>
 <context>
     <name>PluginGallerySection</name>

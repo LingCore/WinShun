@@ -453,12 +453,70 @@ int runPlugins(const QStringList& args)
         say(u"#230 确认: before '%1', problem '%2', button '%3', together %4"_s
                 .arg(before, why, button ? button->property("text").toString() : QString()).arg(together));
     }
+    // --pointer-at <x>,<y>: the pointer put there (the page's own units) before
+    // the picture is taken, never pressed: what the page looks like under it.
+    if (const QStringList at = valueAfter(args, u"--pointer-at").split(u','); at.size() == 2) {
+        const QPointF where(at[0].toDouble(), at[1].toDouble());
+        QMouseEvent move(QEvent::MouseMove, where, window->mapToGlobal(where), Qt::NoButton, {}, {});
+        QCoreApplication::sendEvent(window, &move);
+        pump(400); // what follows a pointer (a tip's delay) has come
+        say(u"pointer at %1,%2"_s.arg(where.x()).arg(where.y()));
+    }
+    // --homepage-check (GitHub #248): the library's entries offer 主页 where
+    // the list gives an address of the web, and not where it gives none; its
+    // tip would name where it leads; it is faint until the pointer is on it.
+    // Found by name: the tree (--tree) stops a level above it. The pointer is
+    // put over one and never pressed: pressed, it opens the browser.
+    bool homepages = true;
+    if (args.contains(u"--homepage-check"_s)) {
+        const QStringList ids {u"lingcore.translate"_s, u"lingcore.kill"_s, u"lingcore.todo"_s, u"lingcore.clock"_s,
+            u"winshun.bookmarks"_s, u"lingcore.clips"_s, u"lingcore.weather"_s, u"lingcore.timer"_s, u"lingcore.notes"_s};
+        // PluginGallery::loadPreview gives the first none, the second one that is not an address of the web.
+        const QStringList without {u"lingcore.clips"_s, u"lingcore.timer"_s};
+        QStringList wrong;
+        for (const QString& id : ids) {
+            QQuickItem* button = visualNamed(window->contentItem(), u"pluginHomepage-"_s + id);
+            if (!button)
+                wrong.append(id + u": no button"_s);
+            else if (button->isVisible() != !without.contains(id))
+                wrong.append(id + (button->isVisible() ? u": shown without an address"_s : u": not shown"_s));
+        }
+        QQuickItem* button = visualNamed(window->contentItem(), u"pluginHomepage-winshun.bookmarks"_s);
+        QString host;
+        qreal faint = -1;
+        qreal lit = -1;
+        QString surfaceHovered = u"not found"_s;
+        if (button) {
+            for (QQuickItem* item = button; item && host.isEmpty(); item = item->parentItem())
+                host = item->property("homepageHost").toString();
+            faint = button->opacity();
+            const QPointF at = button->mapToScene(QPointF(button->width() / 2, button->height() / 2));
+            QMouseEvent move(QEvent::MouseMove, at, window->mapToGlobal(at), Qt::NoButton, {}, {});
+            QCoreApplication::sendEvent(window, &move);
+            pump(100);
+            lit = button->opacity();
+            // Told, not judged: whether the button's own surface took the
+            // pointer too (its fill under the pointer is the style's to draw).
+            for (QQuickItem* child : button->childItems()) {
+                if (QString::fromLatin1(child->metaObject()->className()).startsWith(u"Hook"))
+                    surfaceHovered = child->property("hovered").toBool() ? u"yes"_s : u"no"_s;
+            }
+        }
+        homepages = wrong.isEmpty() && host == u"github.com" && qAbs(faint - 0.55) < 0.01 && qAbs(lit - 1) < 0.01;
+        say(u"#248 主页: %1 of %2 entries as they should be%3; the tip's host '%4'; opacity %5, with the pointer on it %6: %7"_s
+                .arg(ids.size() - wrong.size()).arg(ids.size())
+                .arg(wrong.isEmpty() ? QString() : u" ("_s + wrong.join(u"; "_s) + u')')
+                .arg(host).arg(faint).arg(lit).arg(homepages ? u"passed"_s : u"FAILED"_s));
+        say(u"#248 主页: the button's own surface hovered under that pointer: %1"_s.arg(surfaceHovered));
+        if (!homepages)
+            qWarning("plugin homepage check failed");
+    }
     say(u"grabbing"_s);
     if (args.contains(u"--tree"_s))
         writeTree(window, out + u".tree.txt"_s);
     const bool saved = saveGrab(window, out);
     say(u"dpr %1"_s.arg(window->devicePixelRatio()));
-    return finish(window, saved && confirmed);
+    return finish(window, saved && confirmed && homepages);
 }
 
 // ---- --preview-settings -----------------------------------------------------------------

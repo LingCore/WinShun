@@ -47,6 +47,7 @@ public:
         QString reviewLabel;
         bool unreviewed = false;
         QString author;
+        QString homepage; // its page on the web, to look at before installing; empty: none given, or not an http(s) address
         QString version; // the list's
         QString icon; // an image URL: the installed copy's icon, else the plugins' glyph
         QStringList keywords;
@@ -75,6 +76,7 @@ public:
         ReviewLabelRole,
         UnreviewedRole,
         AuthorRole,
+        HomepageRole,
         VersionRole,
         IconRole,
         KeywordsRole,
@@ -168,6 +170,7 @@ public:
     Q_INVOKABLE void updateAll(); // 全部更新: the ones that need no new permission, one after the other
     Q_INVOKABLE void applyNow(const QString& id); // 立即更新: a version kept aside for the next start, now
     Q_INVOKABLE void openRepository(); // 看看怎么投稿
+    Q_INVOKABLE void openHomepage(const QString& id); // the entry's 主页: the plugin's own page, in the browser (GitHub #248)
 
     // The rows again: the list, or what is installed (the catalog), or the
     // language changed.

@@ -103,6 +103,15 @@ add_test(NAME tst_pluginconfirm COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_pluginconfirm PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# #248: an entry of the plugin library offers 主页 beside its name where the
+# list gives an address of the web, and not where it gives none or something
+# else (a file, a program); its tip would name where it leads; it is faint
+# until the pointer is on it. The pointer is put over one, never pressed.
+add_test(NAME tst_pluginhomepage COMMAND $<TARGET_FILE:WinShun>
+    --preview-plugins "${CMAKE_CURRENT_BINARY_DIR}/plugin-homepage.png" --homepage-check --scale 1.5)
+set_tests_properties(tst_pluginhomepage PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Combo menus share the theme frame, corner setting, inner padding and control gap.
 foreach(combo_style IN ITEMS fluent brand tactile liquid)
     foreach(combo_corners IN ITEMS round square)

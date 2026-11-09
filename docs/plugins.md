@@ -129,7 +129,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 | `name` | 是 | 显示名；字符串，或 `{"zh": …, "en": …}` 按界面语言取（下同"文字"） |
 | `version` | 是 | 如 `1.2.0`；同 id 装更低版本时会问 |
 | `description` | 否 | 一句话（文字） |
-| `author`、`homepage`、`license` | 否 | 卡片上显示；`homepage` 是链接 |
+| `author`、`homepage`、`license` | 否 | 卡片上显示；`homepage` 是链接：要是 `http://` 或 `https://` 开头的完整网址，卡片“…”菜单和插件库条目上才会有「主页」（别的写法不当链接，也不会被打开） |
 | `icon` | 否 | 插件文件夹里的 PNG / JPG / ICO（深色主题有 `名字.dark.png` 就用它；**不支持 SVG**）；没有就用第一个命令的图标 |
 | `minWinShun` | 否 | 低于它不启用 |
 | `runtime` | 脚本 / 常驻必需 | 见下 |

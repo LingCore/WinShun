@@ -21,6 +21,7 @@ Rectangle {
     required property string reviewLabel
     required property bool unreviewed
     required property string author
+    required property string homepage // an address of the web, or empty: PluginGallery looks at it (GitHub #248)
     required property string version
     required property string icon
     required property var keywords
@@ -39,6 +40,8 @@ Rectangle {
 
     readonly property real dpr: Screen.devicePixelRatio
     readonly property bool installable: stage === "install" || stage === "update"
+    // Where 主页 leads, for its tip: "github.com" of "https://github.com/…".
+    readonly property string homepageHost: homepage.replace(/^https?:\/\/([^\/?#]+).*$/i, "$1")
     readonly property bool waiting: stage === "update" && staged.length > 0 && !busy // put in place at the next start, or now
 
     signal showInstalled() // 查看
@@ -112,7 +115,8 @@ Rectangle {
                         font.pixelSize: Theme.fontBody
                         font.weight: Theme.fontStrong
                         elide: Text.ElideRight
-                        width: Math.min(implicitWidth, parent.width - versionText.width - 8)
+                        width: Math.min(implicitWidth, parent.width - versionText.width - 8
+                                                        - (homepageSlot.visible ? homepageSlot.width + 8 : 0))
                         height: Theme.snapUp(implicitHeight, entry.dpr)
                     }
                     Text {
@@ -122,6 +126,38 @@ Rectangle {
                         textFormat: Text.PlainText
                         color: Theme.faint
                         font.pixelSize: Theme.fontCaption
+                    }
+                    // 主页 (GitHub #248): its own page, to look at before
+                    // installing, beside what it is the page of. Among what
+                    // can be done on the right it stood off from the button,
+                    // further the longer the words between them. No taller
+                    // than the name: the line, and all under it, as without.
+                    Item {
+                        id: homepageSlot
+                        visible: entry.homepage.length > 0
+                        width: 24
+                        height: nameText.height
+
+                        FlatButton {
+                            id: homepageButton
+                            dpr: entry.dpr
+                            objectName: "pluginHomepage-" + entry.pluginId
+                            y: Theme.snap((parent.height - height) / 2, entry.dpr) // on whole device pixels, as the rest
+                            implicitWidth: 24
+                            implicitHeight: 24
+                            flat: true // there, not asking to be pressed
+                            // Beside the name it is not to be read before it: as faint as
+                            // the version until the pointer or the keyboard is on it.
+                            opacity: homepageHover.hovered || activeFocus ? 1 : 0.55
+                            glyph: "\uE71B" // Link, as 主页 in the installed card's menu
+                            Accessible.name: qsTr("主页")
+                            onClicked: entry.gallery.openHomepage(entry.pluginId)
+                            HoverHandler { id: homepageHover }
+                            HoverTip { // where it leads, before the click: the list's words are not Win顺's own
+                                target: homepageHover.hovered ? homepageButton : null
+                                text: qsTr("主页：%1").arg(entry.homepageHost)
+                            }
+                        }
                     }
                 }
                 Text {

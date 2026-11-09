@@ -3,6 +3,7 @@
 #include "Catalog.h"
 #include "FileIconProvider.h"
 #include "Host.h"
+#include "PluginReadme.h"
 #include "PluginSettings.h"
 #include "PluginUpdates.h"
 #include "Programs.h"
@@ -52,6 +53,14 @@ bool darkMode()
     return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
 }
 
+// A plugin's page as the list gives it, if it is one to offer 主页 for: an
+// address of the web, else none. What 主页 opens is handed to the shell as
+// it is (shell::openUrl), which starts a program as readily as a page.
+QString offeredHomepage(const QString& homepage)
+{
+    return readme::webLink(homepage) ? homepage : QString();
+}
+
 // What a plugin may do that matters most: go online, take connections from
 // the network, write files, start programs, run as administrator.
 bool risky(plugin::Permission p)
@@ -88,6 +97,7 @@ QVariant PluginGalleryModel::data(const QModelIndex& index, int role) const
     case ReviewLabelRole: return r.reviewLabel;
     case UnreviewedRole: return r.unreviewed;
     case AuthorRole: return r.author;
+    case HomepageRole: return r.homepage;
     case VersionRole: return r.version;
     case IconRole: return r.icon;
     case KeywordsRole: return r.keywords;
@@ -110,7 +120,7 @@ QVariant PluginGalleryModel::data(const QModelIndex& index, int role) const
 QHash<int, QByteArray> PluginGalleryModel::roleNames() const
 {
     // Not "state" (an Item's own) nor "enabled": the delegates' required properties take these names.
-    return {{IdRole, "pluginId"}, {NameRole, "name"}, {DescriptionRole, "description"}, {AuthorRole, "author"}, {VersionRole, "version"},
+    return {{IdRole, "pluginId"}, {NameRole, "name"}, {DescriptionRole, "description"}, {AuthorRole, "author"}, {HomepageRole, "homepage"}, {VersionRole, "version"},
         {IconRole, "icon"}, {KeywordsRole, "keywords"}, {PermissionsRole, "permissions"}, {NeedsRole, "needs"}, {NeedsMissingRole, "needsMissing"},
         {StageRole, "stage"}, {InstalledVersionRole, "installedVersion"}, {MinWinShunRole, "minWinShun"}, {BusyRole, "busy"},
         {ProgressRole, "progress"}, {ProblemRole, "problem"}, {ShownRole, "shown"}, {StagedRole, "staged"},
@@ -142,6 +152,7 @@ void PluginGalleryModel::setRows(std::vector<Row> rows)
         differs(old.reviewLabel != now.reviewLabel, ReviewLabelRole);
         differs(old.unreviewed != now.unreviewed, UnreviewedRole);
         differs(old.author != now.author, AuthorRole);
+        differs(old.homepage != now.homepage, HomepageRole);
         differs(old.version != now.version, VersionRole);
         differs(old.icon != now.icon, IconRole);
         differs(old.keywords != now.keywords, KeywordsRole);
@@ -398,6 +409,7 @@ void PluginGallery::rebuild()
             case gallery::Review::Unspecified: r.reviewLabel = r.unreviewed ? tr("原生插件 · 审核状态未标注") : tr("审核状态未标注"); break;
             }
             r.author = item.author;
+            r.homepage = offeredHomepage(item.homepage); // from the list fetched
             r.version = item.version;
             r.keywords = item.keywords;
             r.minWinShun = item.minWinShun;
@@ -742,6 +754,16 @@ void PluginGallery::openRepository()
     shell::openUrl(QString(gallery::kRepositoryUrl));
 }
 
+void PluginGallery::openHomepage(const QString& id)
+{
+    const std::vector<PluginGalleryModel::Row>& rows = m_list.rows();
+    const auto row = std::ranges::find_if(rows, [&](const PluginGalleryModel::Row& r) { return r.id == id; });
+    // Looked at again here, whatever the row was given: shell::openUrl starts
+    // what it is handed, a program as readily as a page.
+    if (row != rows.end() && readme::webLink(row->homepage))
+        shell::openUrl(row->homepage);
+}
+
 void PluginGallery::loadPreview()
 {
     m_preview = true;
@@ -756,6 +778,7 @@ void PluginGallery::loadPreview()
         r.name = name;
         r.description = description;
         r.author = u"LingCore"_s;
+        r.homepage = offeredHomepage(QString(gallery::kRepositoryUrl)); // as a row of the real list gets it
         r.version = version;
         r.stage = stage;
         r.icon = glyph(u"U+EA86"_s);
@@ -810,6 +833,7 @@ void PluginGallery::loadPreview()
     {
         PluginGalleryModel::Row r = row(u"lingcore.clips"_s, tr("剪贴板存档"), tr("cb 词：把剪贴板记录存成每天一个文本文件"), u"0.3.0"_s, u"install"_s);
         r.keywords = {u"cb"_s};
+        r.homepage.clear(); // none given: this one's entry is without its 主页
         r.permissions = {permission(plugin::Permission::ClipboardRead), permission(plugin::Permission::FilesWrite)};
         r.needs = tr("需要 Node.js");
         r.needsMissing = true;
@@ -829,6 +853,8 @@ void PluginGallery::loadPreview()
         PluginGalleryModel::Row r = row(u"lingcore.timer"_s, tr("倒计时"), tr("ds 5m：五分钟后提醒"), u"2.0.0"_s, u"install"_s);
         r.icon = glyph(u"U+E916"_s);
         r.keywords = {u"ds"_s};
+        // Not an address of the web (and nothing that is there): 主页 is not offered for it.
+        r.homepage = offeredHomepage(u"file:///C:/no-such-folder/tool.exe"_s);
         r.problem = tr("下载的文件校验不对，没有安装。再试一次；还不行就过一会儿再试。");
         rows.push_back(r);
     }
