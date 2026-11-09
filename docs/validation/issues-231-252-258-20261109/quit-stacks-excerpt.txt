@@ -1,0 +1,49 @@
+# --quit after the launcher was used, before the fix (history on): the main thread joins a worker listing Windows' Recent shortcuts
+
+## main thread
+
+   0  Id: 9460.af74 Suspend: 1 Teb: 0000001b`adcb9000 Unfrozen
+Child-SP          RetAddr               Call Site
+0000001b`adb7dd08 00007ffd`6f4ec11f     ntdll!NtWaitForSingleObject+0x14
+0000001b`adb7dd10 00007ffc`c2eb260f     KERNELBASE!WaitForSingleObjectEx+0xaf
+*** WARNING: Unable to verify checksum for C:\Users\young\AppData\Local\Temp\claude\3d55f1abe82302be\146cf69c-a501-4736-91fc-041ab53f6e47\scratchpad\live\stage\WinShun.ex
+0000001b`adb7ddb0 00007ff6`dfbc617f     MSVCP140!_Thrd_join+0x1f
+0000001b`adb7dde0 00007ff6`dfdc596a     WinShun+0x5617f
+0000001b`adb7de20 00007ff6`dfedf5f9     WinShun+0x25596a
+0000001b`adb7de50 00007ff6`dfee1574     WinShun!qml_register_types_WinShun+0x68289
+0000001b`adb7de80 00007ff6`dfbf41d9     WinShun!qml_register_types_WinShun+0x6a204
+0000001b`adb7deb0 00007ff6`dfbc3eb9     WinShun+0x841d9
+0000001b`adb7df50 00007ff6`e0b3b6b0     WinShun+0x53eb9
+0000001b`adb7f6e0 00007ff6`e0b3add6     WinShun!qml_register_types_WinShun+0xcc4340
+0000001b`adb7f770 00007ffd`7115ccb7     WinShun!qml_register_types_WinShun+0xcc3a66
+0000001b`adb7f7b0 00007ffd`7236ad6c     KERNEL32!BaseThreadInitThunk+0x17
+0000001b`adb7f7e0 00000000`00000000     ntdll!RtlUserThreadStart+0x2c
+
+## the worker (thread 34): QDir::entryInfoList resolving a .lnk, CreateFileW on its target
+0000001b`b05ff850 00007ffd`70894baf     combase!CROIDTable::WorkerThreadLoop+0xae
+0000001b`b05ffac0 00007ffd`70894abf     combase!CRpcThread::WorkerLoop+0x5b
+0000001b`b05ffb30 00007ffd`7115ccb7     combase!CRpcThreadCache::RpcWorkerThreadEntry+0x4f
+0000001b`b05ffb60 00007ffd`7236ad6c     KERNEL32!BaseThreadInitThunk+0x17
+0000001b`b05ffb90 00000000`00000000     ntdll!RtlUserThreadStart+0x2c
+
+  34  Id: 9460.166c Suspend: 1 Teb: 0000001b`adcfd000 Unfrozen
+Child-SP          RetAddr               Call Site
+0000001b`b06fef58 00007ffd`6f4f427f     ntdll!NtQueryFullAttributesFile+0x14
+0000001b`b06fef60 00007ffc`30c490d8     KERNELBASE!GetFileAttributesExW+0xbf
+0000001b`b06ff040 00007ffc`30a65294     Qt6Core!QWaitCondition::wakeOne+0x21d8
+0000001b`b06ff3c0 00007ffc`30a6383d     Qt6Core!QDirListing::iteratorPath+0x4f4
+0000001b`b06ff460 00007ffc`30a65688     Qt6Core!QDirListing::DirEntry::absolutePath+0x34d
+0000001b`b06ff530 00007ffc`30a5b0e0     Qt6Core!QDirListing::next+0x18
+0000001b`b06ff560 00007ff6`dfd87ef4     Qt6Core!QDir::entryInfoList+0x220
+0000001b`b06ff620 00007ff6`dfd87bbb     WinShun+0x217ef4
+0000001b`b06ff7d0 00007ff6`dfee1caa     WinShun+0x217bbb
+0000001b`b06ff8e0 00007ff6`dfdc645a     WinShun!qml_register_types_WinShun+0x6a93a
+0000001b`b06ff930 00007ff6`dfdc50ec     WinShun+0x25645a
+0000001b`b06ffa50 00007ffd`6fdccd30     WinShun+0x2550ec
+0000001b`b06ffa80 00007ffd`7115ccb7     ucrtbase!thread_start<unsigned int (__cdecl*)(void *),1>+0x30
+0000001b`b06ffab0 00007ffd`7236ad6c     KERNEL32!BaseThreadInitThunk+0x17
+0000001b`b06ffae0 00000000`00000000     ntdll!RtlUserThreadStart+0x2c
+
+  35  Id: 9460.5ed8 Suspend: 1 Teb: 0000001b`adcff000 Unfrozen
+Child-SP          RetAddr               Call Site
+0000001b`b07ff658 00007ffd`7231fc6e     ntdll!NtWaitForAlertByThreadId+0x14

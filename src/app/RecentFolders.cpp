@@ -1,7 +1,6 @@
 #include "RecentFolders.h"
 
 #include <QDir>
-#include <QFileInfo>
 
 #include <shlobj.h>
 #include <shobjidl.h>
@@ -10,6 +9,7 @@
 #include <algorithm>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using Microsoft::WRL::ComPtr;
 using namespace Qt::StringLiterals;
@@ -41,13 +41,15 @@ QStringList windowsRecentFolders(int max, const LocalDrives& drives)
     if (FAILED(::CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&link)))
         || FAILED(link.As(&file)))
         return {};
-    const QFileInfoList shortcuts = QDir(recent).entryInfoList({u"*.lnk"_s}, QDir::Files, QDir::Time); // newest first
+    // Load and GetPath read the shortcut file alone (no Resolve): a target on
+    // a server that is gone costs nothing here, and folderOf looks only at
+    // local drives.
     std::wstring target(32768, L'\0');
     QStringList folders;
-    for (const QFileInfo& shortcut : shortcuts.first(std::min<qsizetype>(shortcuts.size(), 100))) {
+    for (const QString& shortcut : shortcutsNewestFirst(recent, 100)) {
         if (folders.size() >= max)
             break;
-        const std::wstring name = QDir::toNativeSeparators(shortcut.filePath()).toStdWString();
+        const std::wstring name = shortcut.toStdWString();
         if (FAILED(file->Load(name.c_str(), STGM_READ))
             || link->GetPath(target.data(), static_cast<int>(target.size()), nullptr, 0) != S_OK)
             continue; // S_FALSE: no file behind it (Control Panel and the like)
@@ -71,6 +73,36 @@ QStringList interleaved(const QStringList& a, const QStringList& b, int max)
 }
 
 } // namespace
+
+std::vector<QString> shortcutsNewestFirst(const QString& folder, int max)
+{
+    struct Shortcut {
+        std::wstring name;
+        FILETIME written;
+    };
+    std::vector<Shortcut> found;
+    const std::wstring base = QDir::toNativeSeparators(folder).toStdWString();
+    WIN32_FIND_DATAW data {};
+    const HANDLE find = ::FindFirstFileExW((base + L"\\*.lnk").c_str(), FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
+    if (find == INVALID_HANDLE_VALUE)
+        return {};
+    do {
+        // The pattern also matches "*.lnkx" and the like by the 8.3 rule: the ending checked.
+        const std::wstring_view name(data.cFileName);
+        if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY || name.size() < 5 || ::_wcsicmp(name.data() + name.size() - 4, L".lnk") != 0)
+            continue;
+        found.push_back({std::wstring(name), data.ftLastWriteTime});
+    } while (::FindNextFileW(find, &data));
+    ::FindClose(find);
+    std::stable_sort(found.begin(), found.end(), [](const Shortcut& a, const Shortcut& b) { return ::CompareFileTime(&a.written, &b.written) > 0; });
+    std::vector<QString> paths;
+    for (const Shortcut& s : found) {
+        if (static_cast<int>(paths.size()) >= std::max(0, max))
+            break;
+        paths.push_back(QString::fromStdWString(base + L"\\" + s.name));
+    }
+    return paths;
+}
 
 LocalDrives::LocalDrives()
 {

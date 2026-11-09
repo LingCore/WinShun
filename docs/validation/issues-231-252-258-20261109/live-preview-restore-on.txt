@@ -1,0 +1,18 @@
+r2 harness restore start 2026-11-09T08:47:05.3444997+08:00
+stage exe 217490A821C9
+app pid 44804 up
+explorer window for Zqxwvj231 : 200742 (others before: 3)
+231 launcher in front: pid=44804 cls=Qt6120QWindowToolSaveBits
+231 after Enter: foreground pid=25188 cls=CabinetWClass (explorer window hwnd 200742, got 200742)
+231 history has the folder: True
+231 history lines:
+C:\Users\young\AppData\Local\Temp\claude\3d55f1abe82302be\146cf69c-a501-4736-91fc-041ab53f6e47\scratchpad\live\Zqxwvj231	1	1794185234870	1	zqxwvj231	1	1794185234870
+258 launcher in front: pid=44804 cls=Qt6120QWindowToolSaveBits
+258 windows before Alt+P: Qt6120QWindowToolSaveBits|Win顺
+258 windows after Alt+P: Qt6120QWindowToolSaveBits|Win顺; Qt6120QWindowToolSaveBits|预览 - Win顺
+258 state.ini PreviewOpen after Esc: true
+258 windows after reopening: Qt6120QWindowToolSaveBits|Win顺
+app killed
+registry restored: "C:\Program Files\WinShun\WinShunSearch.exe" --search-here "%V"
+autostart task: <Command>C:\Program Files\WinShun\WinShun.exe</Command>
+--- WinShun.log (preview/history lines)

@@ -996,6 +996,16 @@ qt_add_executable(tst_placement tst_placement.cpp)
 target_include_directories(tst_placement PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_placement PRIVATE winshun_options Qt6::Core Qt6::Test)
 
+# The folders used lately (the dialog bar's and the folder menu's): Windows'
+# Recent shortcuts listed newest first without touching their targets.
+qt_add_executable(tst_recentfolders tst_recentfolders.cpp ${PROJECT_SOURCE_DIR}/src/app/RecentFolders.cpp)
+target_include_directories(tst_recentfolders PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_recentfolders PRIVATE winshun_options Qt6::Core Qt6::Test ole32 shell32)
+set_target_properties(tst_recentfolders PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_recentfolders COMMAND tst_recentfolders)
+set_tests_properties(tst_recentfolders PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Backups of the settings: what goes in, unchanged ones skipped, old ones
 # removed, and restoring (a path leaving the folder refused).
 qt_add_executable(tst_backup tst_backup.cpp ${PROJECT_SOURCE_DIR}/src/app/BackupFiles.cpp)
