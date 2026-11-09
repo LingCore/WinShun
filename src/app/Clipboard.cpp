@@ -1768,6 +1768,11 @@ void Clipboard::trigger(int row, int action)
             break;
         // What opens may come to the front only from the program in front.
         if (action == OpenLink) {
+            // Offered for a link only (the menu); asked again where it is
+            // opened: shell::openUrl starts whatever the text names, and any
+            // other clip's text may name a program.
+            if (c->kind != ClipKind::Link)
+                break;
             const QString url = c->text.trimmed();
             emit focusNeeded();
             shell::openUrl(url.startsWith(u"www.", Qt::CaseInsensitive) ? u"https://"_s + url : url);
