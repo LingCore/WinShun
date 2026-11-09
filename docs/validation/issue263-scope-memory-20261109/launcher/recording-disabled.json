@@ -1,0 +1,21 @@
+{
+    "failures": [
+        "文件 chosen by its tab was not kept",
+        "文件 did not come back",
+        "内容 chosen by its tab was not kept",
+        "内容 did not come back",
+        "全部 chosen by its tab was not kept",
+        "a scope set from inside was kept as the user's",
+        "a typed prefix's scope was kept as the user's",
+        "the prefix gone, the scope or what is kept is not as before",
+        "Tab into 文件 was not kept",
+        "Tab into 内容 was not kept",
+        "the 文件夹 chip was not kept under 文件",
+        "文件夹 did not come back (the strip's choice with the scope)",
+        "a kind's chip was not kept as 文件",
+        "文件 with its kind did not come back",
+        "merged tabs: 文件 with a kind chosen did not come back"
+    ],
+    "file_type_kept_while_prefix_typed": "pictures",
+    "passed": false
+}

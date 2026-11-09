@@ -56,6 +56,10 @@
 //     #150); --unrevealed as it waits for a drag, nothing of it drawn. Exit 0
 //     all of them, 4 some not, 6 not measured (hidden meanwhile, or not the
 //     renderer asked for). drop-pie-hit.json has the counts. No file drag.
+//     --scope-memory checks that the scope the user chose (a tab, Tab, a
+//     chip) is kept in state.ini and comes back in a new Launcher set up as
+//     App sets it up, and that a prefix typed or the scope set from inside
+//     is not kept (GitHub #263); scope-memory.json lists what failed.
 //     It also exercises configurable preview keys through Main.qml and the
 //     real FilePreview window, including held Space and Shift+Space input.
 //     --preview-hotkeys runs this production key/preview check on its own.
@@ -91,6 +95,10 @@
 //     (runLive in Preview.cpp): a real-window audit without stopping theirs.
 //     A separate production startup probe: real App::start, temporary profile,
 //     process-local HKCU redirection, no global shortcuts/service/shell setup.
+//     --scope-restore-check <all|files|content> [--clear-on-open] writes that
+//     scope into the profile's state.ini first and checks the started App's
+//     launcher is in it (in 全部 with 每次打开时清空搜索 on): runtime.json's
+//     scope_restore (GitHub #263).
 //     Optional clipboard recording reads but never changes the clipboard;
 //     --onboarding-probe fresh|later|apply|legacy|capture|decline|offline|incompatible|retry
 //     checks first-run gating and choices in the real guide. Capture cases use

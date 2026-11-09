@@ -60,7 +60,7 @@ class Launcher : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the application")
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged FINAL)
-    Q_PROPERTY(Scope scope READ scope WRITE setScope NOTIFY scopeChanged FINAL)
+    Q_PROPERTY(Scope scope READ scope WRITE chooseScope NOTIFY scopeChanged FINAL)
     Q_PROPERTY(bool mergeFileScope READ mergeFileScope NOTIFY scopeChanged FINAL)
     Q_PROPERTY(QStringList queryHistory READ queryHistory NOTIFY queryHistoryChanged FINAL)
     Q_PROPERTY(bool queryHistoryEnabled READ queryHistoryEnabled NOTIFY historyChanged FINAL)
@@ -348,6 +348,15 @@ public:
     void setQuery(const QString& query);
     Scope scope() const { return m_scope; }
     void setScope(Scope scope);
+    // The user's own choice of it (a tab of the strip or of the panel, Tab,
+    // a chip that goes with one): setScope, and kept between runs (state.ini
+    // Search/Scope, GitHub #263). What only passes sets it without that: a
+    // prefix typed, a plugin's row, a folder browsed or searched in.
+    void chooseScope(Scope scope);
+    // The one kept, once the kinds of file and the settings are known
+    // (after setFileChoice): 文件 as it was left there, 全部 where the
+    // tabs have no 文件 (mergeFileScope) or 内容 is not searched.
+    void restoreScope();
     int currentRow() const { return m_currentRow; }
     void setCurrentRow(int row);
     QVariantMap keyHints() const { return m_keyHints; }
@@ -1221,6 +1230,7 @@ private:
     QPointer<Favorites> m_favorites;
     QPointer<Switches> m_switches;
     QString m_stateFile; // state.ini
+    void rememberScope() const; // the tab the scope is under, into it (chooseScope)
     bool m_previewWanted = false; // the preview was left open by the user: it comes back with the launcher
     bool m_previewFollowsPointer = true; // previewHover: the row the mouse rests on; off: the current row only
     bool m_previewRestore = true; // off: a preview left open closes for good with the launcher (GitHub #258)

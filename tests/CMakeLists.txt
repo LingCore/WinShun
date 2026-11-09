@@ -1124,6 +1124,30 @@ add_test(NAME tst_switchprovider_ui COMMAND WinShun --preview-results
     "${CMAKE_CURRENT_BINARY_DIR}/switch-provider-ui" --switch-provider-probe)
 set_tests_properties(tst_switchprovider_ui PROPERTIES TIMEOUT 40 RUN_SERIAL TRUE
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# The scope the user chose comes back at the next start (GitHub #263): kept
+# when chosen by a tab (the property, as QML writes it), by Tab or by a chip;
+# not when a prefix typed or the program itself sets it. 文件夹 comes back with
+# the strip's choice; 全部 where the tabs have no 文件, or 内容 is not searched.
+# The real Launcher and a state.ini of the run, each "start" a new Launcher
+# set up in App's order.
+add_test(NAME tst_scopememory COMMAND $<TARGET_FILE:WinShun> --preview-results
+    "${CMAKE_CURRENT_BINARY_DIR}/scope-memory" --scope-memory)
+set_tests_properties(tst_scopememory PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# App's part of it: the real App, isolated (--probe-runtime), started on a
+# profile whose state.ini says where the scope was left, has the launcher
+# there; and in 全部 all the same with 每次打开时清空搜索 on.
+foreach(scope_left IN ITEMS files content)
+    add_test(NAME tst_scoperestore_${scope_left} COMMAND $<TARGET_FILE:WinShun>
+        --probe-runtime "${CMAKE_CURRENT_BINARY_DIR}/scope-restore-${scope_left}" --scope-restore-check ${scope_left}
+        --settle-ms 1500 --renderer d3d11)
+endforeach()
+add_test(NAME tst_scoperestore_clearonopen COMMAND $<TARGET_FILE:WinShun>
+    --probe-runtime "${CMAKE_CURRENT_BINARY_DIR}/scope-restore-clearonopen" --scope-restore-check files --clear-on-open
+    --settle-ms 1500 --renderer d3d11)
+set_tests_properties(tst_scoperestore_files tst_scoperestore_content tst_scoperestore_clearonopen PROPERTIES
+    RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # Win+S / Win+V and Explorer's DisabledHotkeys (platform/WinV): the decision and
 # the registry writes, in HKCU redirected to a scratch key (never the real one).

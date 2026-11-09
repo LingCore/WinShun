@@ -1140,6 +1140,11 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     // The launcher's strip of kinds of file as its user left it (after
     // applySettings: the kinds are known by then).
     m_launcher->setFileChoice(QSettings(statePath(), QSettings::IniFormat).value(u"Search/FileType"_s).toString());
+    // And the scope the user left it in (GitHub #263; after the strip's
+    // choice, which says 文件 or 文件夹). Not where every opening starts
+    // over in 全部 (clearOnOpen): there is nothing to come back to.
+    if (!m_settings.clearOnOpen)
+        m_launcher->restoreScope();
     {
         QSettings state(statePath(), QSettings::IniFormat);
         m_launcher->setGallery(state.value(u"Search/Gallery"_s, false).toBool());

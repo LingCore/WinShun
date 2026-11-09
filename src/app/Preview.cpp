@@ -4360,6 +4360,163 @@ void checkDropPieHelper(const QDir& output)
     else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite and appearance refresh, restart after it ends, the notice after three failures (its retry harmless once the helper is gone), its log lines relayed and shutdown checked"_s);
 }
 
+// --scope-memory: the scope the user chose comes back at the next start
+// (GitHub #263). The real Launcher over an empty index and a state.ini of
+// this run; a "start" is a new Launcher given what App gives it, in App's
+// order (the state file, the kinds and the options, the strip's choice, then
+// restoreScope). What only passes through a scope must not be kept: a prefix
+// typed, the scope set from inside (as a plugin's row or a hint sets it).
+bool checkScopeMemory(QQuickWindow* window, const QDir& output)
+{
+    QTemporaryDir temporary;
+    IndexService index(temporary.path(), IndexService::Options {});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine engine(&index, &apps, &places);
+    const QString stateFile = temporary.filePath(u"state.ini"_s);
+    Settings settings;
+    settings.fileTypes = Settings::defaultFileTypes();
+    bool passed = true;
+    QStringList failures;
+    QString typedChoiceKept; // Search/FileType while a prefix was typed: reported, see there
+    const auto check = [&](bool condition, const QString& message) {
+        if (condition)
+            return;
+        passed = false;
+        failures.append(message);
+        qWarning().noquote() << u"scope memory: "_s + message;
+    };
+    const auto kept = [&] { return QSettings(stateFile, QSettings::IniFormat).value(u"Search/Scope"_s).toString(); };
+    struct Options {
+        bool content = true;
+        bool merged = false;
+    };
+    // One run of the program: `body` is what the user does in it.
+    const auto start = [&](const Options& options, const std::function<void(Launcher&)>& body) {
+        Launcher launcher(&index, &apps, &places, &engine, &history);
+        launcher.setWindow(window);
+        launcher.setSwitches(nullptr, stateFile);
+        launcher.setMergeFileScope(options.merged);
+        launcher.setContentOptions(options.content, {u"txt"_s}, ContentSizeLimits {}, false, false);
+        launcher.setFileTypes(settings.namedFileTypes());
+        // The strip's choice is App's to keep (Search/FileType): as App does.
+        launcher.setFileChoice(QSettings(stateFile, QSettings::IniFormat).value(u"Search/FileType"_s).toString());
+        QObject::connect(&launcher, &Launcher::fileChoiceChanged, &launcher, [&launcher, &stateFile] {
+            QSettings(stateFile, QSettings::IniFormat).setValue(u"Search/FileType"_s, launcher.fileChoice());
+        });
+        launcher.restoreScope();
+        body(launcher);
+        QElapsedTimer settling; // a search under way ends before its launcher goes
+        settling.start();
+        while (launcher.searching() && settling.elapsed() < 2000)
+            pump(10);
+        check(!launcher.searching(), u"a search did not settle before the run ended"_s);
+        launcher.setSwitches(nullptr, {});
+    };
+
+    start({}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::All && kept().isEmpty(), u"a first start is not in 全部 with nothing kept"_s);
+        launcher.chooseScope(Launcher::Files);
+        check(kept() == u"files", u"文件 chosen by its tab was not kept"_s);
+    });
+    start({}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::Files, u"文件 did not come back"_s);
+        launcher.chooseScope(Launcher::Content);
+        check(kept() == u"content", u"内容 chosen by its tab was not kept"_s);
+    });
+    start({}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::Content, u"内容 did not come back"_s);
+        launcher.chooseScope(Launcher::All);
+        check(kept() == u"all", u"全部 chosen by its tab was not kept"_s);
+        // What only passes: set from inside, and a prefix typed and taken away.
+        launcher.setScope(Launcher::Content);
+        check(launcher.scope() == Launcher::Content, u"a scope set from inside did not take"_s);
+        check(kept() == u"all", u"after a scope set from inside, what is kept is \"%1\", not the user's 全部"_s.arg(kept()));
+        launcher.setScope(Launcher::All);
+        launcher.setQuery(u":pictures"_s);
+        check(launcher.scope() == Launcher::Files, u"the prefix typed did not take the scope to 文件"_s);
+        check(kept() == u"all", u"while a prefix is typed, what is kept is \"%1\", not the user's 全部"_s.arg(kept()));
+        // Not this change's: while it is typed the strip's choice is the
+        // prefix's and is kept as such (App keeps fileChoiceChanged); it is
+        // put back when the prefix goes. Said in the report, not judged here.
+        typedChoiceKept = QSettings(stateFile, QSettings::IniFormat).value(u"Search/FileType"_s).toString();
+        launcher.setQuery({});
+        check(launcher.scope() == Launcher::All, u"the prefix gone, the scope is not 全部 again"_s);
+        check(kept() == u"all", u"the prefix gone, what is kept is \"%1\", not the user's 全部"_s.arg(kept()));
+        check(QSettings(stateFile, QSettings::IniFormat).value(u"Search/FileType"_s).toString().isEmpty(),
+            u"the prefix gone, the strip's choice kept is not 不限 again"_s);
+    });
+    start({}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::All, u"全部 did not come back after scopes that only passed"_s);
+        // As a tab writes it: the property, through its WRITE (QML's launcher.scope = …).
+        check(launcher.setProperty("scope", QVariant::fromValue(Launcher::Files)), u"the scope property could not be written"_s);
+        check(launcher.scope() == Launcher::Files && kept() == u"files",
+            u"the scope written as a tab writes it was not kept (what is kept is \"%1\")"_s.arg(kept()));
+        launcher.chooseScope(Launcher::All);
+        // A chip of 内容's strip clicked while the strip is on its way out
+        // (TypeStrip keeps the departing chips a moment), the one without a
+        // folder: into 内容 by it, the user's own.
+        launcher.chooseFolderChip({});
+        check(launcher.scope() == Launcher::Content && kept() == u"content",
+            u"into 内容 by a chip of its strip was not kept (what is kept is \"%1\")"_s.arg(kept()));
+        launcher.chooseScope(Launcher::All);
+        // Tab goes 全部 → 文件 → 内容, each the user's.
+        launcher.cycleScope(1);
+        check(launcher.scope() == Launcher::Files && kept() == u"files", u"Tab into 文件 was not kept"_s);
+        launcher.cycleScope(1);
+        check(launcher.scope() == Launcher::Content && kept() == u"content", u"Tab into 内容 was not kept"_s);
+        // A chip of the strip takes it to 文件夹, kept under 文件's tab.
+        launcher.chooseFileType(Launcher::kFoldersChip);
+        check(launcher.scope() == Launcher::Folders && kept() == u"files", u"the 文件夹 chip was not kept under 文件"_s);
+    });
+    start({}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::Folders, u"文件夹 did not come back (the strip's choice with the scope)"_s);
+        launcher.chooseFileType(-1); // 不限: 文件
+        launcher.toggleFileType(1);
+        check(launcher.scope() == Launcher::Files && launcher.selectedFileTypes() == (QList<int> {1}) && kept() == u"files",
+            u"a kind's chip was not kept as 文件"_s);
+    });
+    start({}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::Files && launcher.selectedFileTypes() == (QList<int> {1}),
+            u"文件 with its kind did not come back"_s);
+    });
+    // Where the tabs have no 文件 (全部 and 内容 only): 文件 with a kind stays, without one it is 全部.
+    start({.merged = true}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::Files, u"merged tabs: 文件 with a kind chosen did not come back"_s);
+        launcher.chooseFileType(-1);
+        check(launcher.scope() == Launcher::All, u"merged tabs: 不限 did not go to 全部"_s);
+    });
+    QSettings(stateFile, QSettings::IniFormat).setValue(u"Search/Scope"_s, u"files"_s); // as left by a run with the three tabs
+    start({.merged = true}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::All, u"merged tabs: 文件 without a kind came back, where there is no such tab"_s);
+    });
+    // 内容 kept, then content search turned off in the settings: 全部.
+    QSettings(stateFile, QSettings::IniFormat).setValue(u"Search/Scope"_s, u"content"_s);
+    start({.content = false}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::All && kept() == u"content", u"内容 came back with content search off (or what is kept changed)"_s);
+    });
+    start({}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::Content, u"内容 did not come back once content search is on again"_s);
+    });
+    // The strip's choice read at a start is not a choice of scope: nothing kept by it.
+    QFile::remove(stateFile);
+    QSettings(stateFile, QSettings::IniFormat).setValue(u"Search/FileType"_s, u"pictures"_s);
+    start({}, [&](Launcher& launcher) {
+        check(launcher.scope() == Launcher::All && kept().isEmpty(), u"reading the strip's choice at a start kept a scope"_s);
+    });
+
+    QFile report(output.filePath(u"scope-memory.json"_s));
+    if (report.open(QIODevice::WriteOnly))
+        report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"failures"_s, QJsonArray::fromStringList(failures)},
+            {u"file_type_kept_while_prefix_typed"_s, typedChoiceKept}}).toJson());
+    say(passed ? u"scope memory: the scope chosen by tab, Tab or chip comes back at the next start; what only passes is not kept"_s
+               : u"scope memory: FAILED (%1)"_s.arg(failures.join(u"; "_s)));
+    return passed;
+}
+
 bool checkSwitchProvider(QQuickWindow* window, const QDir& output)
 {
     // Real Launcher, SearchEngine and ResultModel with asynchronous state;
@@ -6244,6 +6401,8 @@ int runResults(const QStringList& args)
     key(QEvent::KeyRelease);
     if (args.contains(u"--switch-provider-probe"_s))
         return finish(window, checkSwitchProvider(window, out) && saved);
+    if (args.contains(u"--scope-memory"_s))
+        return finish(window, checkScopeMemory(window, out) && saved);
     if (args.contains(u"--number-column"_s))
         return finish(window, checkNumberColumn(&engine, out, valueAfter(args, u"--width", u"760"_s).toInt()) && saved);
     if (args.contains(u"--clipboard-send"_s))
@@ -8737,7 +8896,20 @@ int runRuntime(const QStringList& args)
     const bool live = args.contains(u"--live"_s);
     if (live)
         settings.clipboard = true; // its window to look at; the history below, nothing of the user's shown
+    // --scope-restore-check <all|files|content> [--clear-on-open]: App's part
+    // of GitHub #263. state.ini of this run's profile says the scope was left
+    // there; the real App::start is to have the launcher in it (in 全部 with
+    // 每次打开时清空搜索 on). Read off the launcher the windows are given.
+    const QString scopeLeft = valueAfter(args, u"--scope-restore-check");
+    bool scopeRestoreOk = true;
+    if (!scopeLeft.isEmpty() && args.contains(u"--clear-on-open"_s))
+        settings.clearOnOpen = true;
     settings.save(); // prepared profiles normally skip onboarding
+    if (!scopeLeft.isEmpty()) {
+        QSettings state(Settings::dataDir() + u"/state.ini"_s, QSettings::IniFormat);
+        state.setValue(u"Search/Scope"_s, scopeLeft);
+        state.sync();
+    }
     if (args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s) || live) {
         ClipStore store(Settings::dataDir() + u"/clipboard"_s);
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
@@ -8826,6 +8998,30 @@ int runRuntime(const QStringList& args)
         }
         report.insert(u"start_ms"_s, static_cast<double>(since.elapsed()));
         pump(std::clamp(valueAfter(args, u"--settle-ms", u"3000"_s).toInt(), 100, 60000));
+        if (!scopeLeft.isEmpty()) {
+            // Not returned from here: the profile and what else this probe
+            // made are put away at its end.
+            QObject* launcher = nullptr;
+            for (QWindow* candidate : QGuiApplication::allWindows()) {
+                launcher = candidate->property("launcher").value<QObject*>();
+                if (launcher)
+                    break;
+            }
+            const int expected = settings.clearOnOpen || scopeLeft == u"all" ? Launcher::All
+                : scopeLeft == u"content" ? Launcher::Content : Launcher::Files;
+            const int scope = launcher ? launcher->property("scope").toInt() : -1;
+            scopeRestoreOk = launcher && scope == expected;
+            report.insert(u"scope_restore"_s, QJsonObject {{u"left"_s, scopeLeft}, {u"clear_on_open"_s, settings.clearOnOpen},
+                {u"state_file_says"_s, QSettings(Settings::dataDir() + u"/state.ini"_s, QSettings::IniFormat).value(u"Search/Scope"_s).toString()},
+                {u"launcher_found"_s, launcher != nullptr}, {u"scope"_s, scope}, {u"expected"_s, expected}, {u"passed"_s, scopeRestoreOk}});
+            if (!launcher)
+                qWarning("scope restore: NOT MEASURED, no window with the launcher was found");
+            else if (!scopeRestoreOk)
+                qWarning("scope restore: FAILED, the launcher is in scope %d, expected %d", scope, expected);
+            else
+                say(u"scope restore: left in %1%2, the started App's launcher is in scope %3"_s
+                        .arg(scopeLeft, settings.clearOnOpen ? u" with clear-on-open"_s : QString()).arg(scope));
+        }
         if (args.contains(u"--double-tap-plugin"_s) && !checkDoubleTapPlugin(app, out))
             return 4;
         if (args.contains(u"--settings-reopen-check"_s))
@@ -9035,6 +9231,8 @@ int runRuntime(const QStringList& args)
     QDir(Settings::profile()).removeRecursively();
     say(u"production App startup: isolated profile, %1 process(es), %2 MiB private, %3 warning(s)"_s
         .arg(report.value(u"processes"_s).toArray().size()).arg(report.value(u"total_private_bytes"_s).toDouble() / 1048576.0, 0, 'f', 1).arg(g_warnings));
+    if (!scopeRestoreOk)
+        return 4; // --scope-restore-check: said above, and in runtime.json
     return saved ? std::min(g_warnings, 100) : 4;
 }
 

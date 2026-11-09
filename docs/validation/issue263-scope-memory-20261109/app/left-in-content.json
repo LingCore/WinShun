@@ -1,0 +1,24 @@
+{
+    "clipboard": false,
+    "processes": [
+        {
+            "name": "WinShun.exe",
+            "pid": 46076,
+            "private_bytes": 161910784,
+            "working_set_bytes": 171601920
+        }
+    ],
+    "qt": "6.12.0",
+    "scope_restore": {
+        "clear_on_open": false,
+        "expected": 2,
+        "launcher_found": true,
+        "left": "content",
+        "passed": true,
+        "scope": 2,
+        "state_file_says": "content"
+    },
+    "start_ms": 748,
+    "total_private_bytes": 161910784,
+    "warnings": 0
+}

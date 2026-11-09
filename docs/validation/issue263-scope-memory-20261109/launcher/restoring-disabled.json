@@ -1,0 +1,12 @@
+{
+    "failures": [
+        "文件 did not come back",
+        "内容 did not come back",
+        "文件夹 did not come back (the strip's choice with the scope)",
+        "文件 with its kind did not come back",
+        "merged tabs: 文件 with a kind chosen did not come back",
+        "内容 did not come back once content search is on again"
+    ],
+    "file_type_kept_while_prefix_typed": "pictures",
+    "passed": false
+}

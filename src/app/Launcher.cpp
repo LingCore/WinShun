@@ -841,6 +841,40 @@ void Launcher::setScope(Scope scope)
     search();
 }
 
+void Launcher::chooseScope(Scope scope)
+{
+    setScope(scope);
+    rememberScope();
+}
+
+void Launcher::rememberScope() const
+{
+    if (m_stateFile.isEmpty())
+        return;
+    // By its tab: 文件夹 is under 文件 (which of the two, the strip's choice keeps: Search/FileType).
+    const QString tab = m_scope == Content ? u"content"_s : m_scope == All ? u"all"_s : u"files"_s;
+    QSettings(m_stateFile, QSettings::IniFormat).setValue(u"Search/Scope"_s, tab);
+}
+
+void Launcher::restoreScope()
+{
+    if (m_stateFile.isEmpty())
+        return;
+    const QString tab = QSettings(m_stateFile, QSettings::IniFormat).value(u"Search/Scope"_s).toString();
+    Scope scope = All;
+    if (tab == u"content" && m_contentEnabled)
+        scope = Content;
+    else if (tab == u"files" && !(m_mergeFileScope && m_fileType < 0 && !m_foldersChosen)) // as setMergeFileScope has it
+        scope = m_foldersChosen ? Folders : Files;
+    if (scope == m_scope)
+        return;
+    // Not through setScope: nothing is searched before the first showing,
+    // which searches itself (handleShown), as after startOver.
+    m_scope = scope;
+    emit scopeChanged();
+    refreshKeyHints();
+}
+
 bool Launcher::busy() const
 {
     const auto state = m_index->state();
@@ -3272,14 +3306,14 @@ void Launcher::copyFiles(const QStringList& files)
 void Launcher::cycleScope(int delta)
 {
     if (m_mergeFileScope) {
-        if (m_contentEnabled) setScope(m_scope == Content ? All : Content);
+        if (m_contentEnabled) chooseScope(m_scope == Content ? All : Content);
         return;
     }
     static constexpr Scope kOrder[] {All, Files, Content}; // as the tabs show them (文件夹 within 文件)
     const int scopes = static_cast<int>(std::size(kOrder)) - (m_contentEnabled ? 0 : 1); // Content last
     const Scope tab = m_scope == Folders ? Files : m_scope;
     const int at = static_cast<int>(std::find(std::begin(kOrder), std::end(kOrder), tab) - std::begin(kOrder));
-    setScope(kOrder[((at + delta) % scopes + scopes) % scopes]);
+    chooseScope(kOrder[((at + delta) % scopes + scopes) % scopes]);
 }
 
 QVariantList Launcher::fileTypes() const
@@ -3384,6 +3418,7 @@ void Launcher::toggleFileType(int type)
     m_results.setSelection({});
     m_held.reset();
     refreshKeyHints();
+    rememberScope(); // a chip of the strip: the user's own (chooseScope)
     search();
 }
 
@@ -3411,6 +3446,7 @@ void Launcher::chooseFileType(int type)
     m_results.setSelection({});
     m_held.reset();
     refreshKeyHints();
+    rememberScope(); // a chip, or Ctrl+Tab through them: the user's own (chooseScope)
     search(); // the rows stay until the new ones come (see setScope)
 }
 
@@ -3739,7 +3775,7 @@ void Launcher::chooseFolderChip(const QString& key)
     m_results.setSelection({});
     m_held.reset();
     if (m_scope != Content) {
-        setScope(Content);
+        chooseScope(Content); // by a chip of 内容's strip: the user's own
         return;
     }
     refreshKeyHints();
