@@ -888,6 +888,25 @@ add_test(NAME tst_droppiehelper COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/drop-pie-helper" --drop-pie-check --renderer d3d11)
 set_tests_properties(tst_droppiehelper PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# Whether Windows takes every point over the pie's window for the pie's
+# (GitHub #150): a drag reaches it only there. By both renderers, revealed
+# and as it waits for a drag with nothing of it drawn. Each shows the real
+# window at the middle of the primary screen for under a second, never
+# active, and sends no input; at 150 %, the scale it was measured at.
+# Skipped (5) while a mouse button is held; not measured (6) fails.
+foreach(renderer IN ITEMS d3d11 software)
+    foreach(state IN ITEMS revealed unrevealed)
+        set(test tst_droppiehit_${state}_${renderer})
+        set(arguments --preview-results "${CMAKE_CURRENT_BINARY_DIR}/drop-pie-hit/${state}-${renderer}"
+            --drop-pie-hit --renderer ${renderer} --scale 1.5)
+        if(state STREQUAL "unrevealed")
+            list(APPEND arguments --unrevealed)
+        endif()
+        add_test(NAME ${test} COMMAND $<TARGET_FILE:WinShun> ${arguments})
+        set_tests_properties(${test} PROPERTIES RUN_SERIAL TRUE TIMEOUT 60 SKIP_RETURN_CODE 5
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endforeach()
+endforeach()
 
 # The favorites: their file, the store, and the search's list with nothing typed.
 qt_add_executable(tst_favorites tst_favorites.cpp)

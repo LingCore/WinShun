@@ -1,0 +1,22 @@
+{
+    "beside_hub_ours": true,
+    "centre_ours": true,
+    "layered": true,
+    "measured": true,
+    "passed": true,
+    "points": 5400,
+    "points_ours": 5400,
+    "renderer": "d3d11",
+    "renderer_in_use": "d3d11",
+    "revealed": false,
+    "scale": 1.5,
+    "sectors": 5,
+    "state": "unrevealed",
+    "visible_when_measured": true,
+    "window": [
+        1010,
+        620,
+        540,
+        360
+    ]
+}

@@ -4107,6 +4107,137 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
     say(u"large icons: production QML/model, real temporary PNGs, Alt+wheel, viewport retention, minimum width"_s);
 }
 
+// --drop-pie-hit [--renderer software|d3d11]: where Windows takes the pie's
+// window to be (GitHub #150). The pie is see-through round its chips, and a
+// drag reaches it only where WindowFromPoint finds it: a layered window (what
+// the software renderer makes of one with an alpha channel) is not found
+// where its pixels are fully transparent. Shown at the middle of the primary
+// screen for a moment, never active, no input sent; drop-pie-hit.json says
+// whether it is layered and how many of the points over its rectangle are
+// its own. Another window above it there would count as a miss too: the two
+// renderers are to be compared under the same conditions.
+int checkDropPieHit(const QDir& output, const QStringList& args)
+{
+    const QString renderer = valueAfter(args, u"--renderer", u"d3d11"_s);
+    QQuickWindow::setGraphicsApi(renderer == u"software" ? QSGRendererInterface::Software : QSGRendererInterface::Direct3D11);
+    QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
+    QTemporaryDir temporary;
+    QQmlEngine engine;
+    Favorites favorites(temporary.filePath(u"pie-favorites.json"_s));
+    for (const QString& name : {u"项目资料"_s, u"年度报告"_s, u"设计素材"_s, u"客户合同"_s, u"归档备份"_s}) {
+        const QString folder = temporary.filePath(name);
+        QDir().mkpath(folder);
+        favorites.add({Favorite::Kind::Folder, QDir::toNativeSeparators(folder), name});
+    }
+    piedrop::FileOperations operations;
+    DropPie pie(&favorites, nullptr, &operations, {});
+    QQmlComponent component(&engine, u"WinShun"_s, u"DropPieWindow"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"dropPie"_s, QVariant::fromValue(&pie)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) {
+        qWarning().noquote() << u"drop pie hit: no window: "_s + component.errorString();
+        return 4;
+    }
+    pie.setWindow(window);
+    QElapsedTimer waiting;
+    waiting.start();
+    while (pie.sectors().size() < 5 && waiting.elapsed() < 5000)
+        pump(20);
+    QScreen* primary = QGuiApplication::primaryScreen();
+    const qreal scale = primary->devicePixelRatio();
+    const QPoint middle = primary->geometry().center();
+    // The window takes real drops while it is up, into folders that go with
+    // this run: never shown while a button is held (a drag of the user's
+    // could be under way).
+    for (const int button : {VK_LBUTTON, VK_RBUTTON, VK_MBUTTON}) {
+        if (::GetAsyncKeyState(button) & 0x8000) {
+            qWarning("drop pie hit: a mouse button is held; not shown");
+            return 5;
+        }
+    }
+    const POINT at {LONG(std::lround(middle.x() * scale)), LONG(std::lround(middle.y() * scale))};
+    // --unrevealed: the window as a summons leaves it until a drag comes
+    // over it, shown with nothing of it drawn yet (DropPieWindow's reveal at
+    // 0). Not through the summons itself: that waits for the drag where the
+    // pointer is, and hides the window 150 ms on when the pointer has moved
+    // (a person at the PC: the measure was of a hidden window, twice). Put
+    // at the middle of the screen as it would lie there, and shown; the
+    // pointer is not asked about, nor touched.
+    const bool unrevealed = args.contains(u"--unrevealed"_s);
+    if (unrevealed) {
+        // Never opened, the pie is not revealed and takes no drop
+        // (DropPie::dragEnter). About the size it has revealed.
+        const QSize size(360, 240);
+        window->setGeometry(QRect(middle - QPoint(size.width() / 2, size.height() / 2), size));
+    } else {
+        pie.preview(at, -1);
+    }
+    window->show();
+    window->raise();
+    pump(600); // its reveal if any, and the frame that carries it
+    const bool shownStill = window->isVisible(); // hidden meanwhile, the answer would be about nothing
+    const auto hwnd = reinterpret_cast<HWND>(window->winId());
+    RECT rect {};
+    ::GetWindowRect(hwnd, &rect);
+    const auto ours = [hwnd](POINT pt) {
+        const HWND under = ::WindowFromPoint(pt);
+        return under && ::GetAncestor(under, GA_ROOT) == hwnd;
+    };
+    int points = 0;
+    int hits = 0;
+    for (LONG y = rect.top + 3; y < rect.bottom; y += 6) {
+        for (LONG x = rect.left + 3; x < rect.right; x += 6) {
+            ++points;
+            hits += ours({x, y}) ? 1 : 0;
+        }
+    }
+    // Unrevealed, it has no middle laid out (and nothing drawn to tell one
+    // point from another): the middle of its rectangle.
+    const POINT centre = unrevealed ? POINT {(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2}
+        : POINT {rect.left + LONG(std::lround(pie.centre().x() * scale)), rect.top + LONG(std::lround(pie.centre().y() * scale))};
+    const POINT besideHub {centre.x + LONG(std::lround((pie.hubRadius() + 6) * scale)), centre.y};
+    // What the window draws with, as it says itself: asked for is not had.
+    const QSGRendererInterface* drawing = window->rendererInterface();
+    const auto api = drawing ? drawing->graphicsApi() : QSGRendererInterface::Unknown;
+    const QJsonObject report {
+        {u"renderer"_s, renderer},
+        {u"renderer_in_use"_s, api == QSGRendererInterface::Software ? u"software"_s
+                               : api == QSGRendererInterface::Direct3D11 ? u"d3d11"_s : u"other (%1)"_s.arg(int(api))},
+        {u"layered"_s, bool(::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_LAYERED)},
+        {u"state"_s, unrevealed ? u"unrevealed"_s : u"revealed"_s},
+        {u"revealed"_s, pie.revealed()},
+        {u"visible_when_measured"_s, shownStill && window->isVisible()},
+        {u"window"_s, QJsonArray {int(rect.left), int(rect.top), int(rect.right - rect.left), int(rect.bottom - rect.top)}},
+        {u"scale"_s, scale},
+        {u"sectors"_s, int(pie.sectors().size())},
+        {u"points"_s, points},
+        {u"points_ours"_s, hits},
+        {u"centre_ours"_s, ours(centre)},
+        {u"beside_hub_ours"_s, ours(besideHub)},
+    };
+    window->hide();
+    // All of it its own, in the state asked for and seen until measured, by
+    // the renderer asked for: anything less and a drag may miss it. A
+    // window of another program above it there fails this too (run again).
+    const bool measured = report.value(u"visible_when_measured"_s).toBool() && pie.sectors().size() >= 5
+        && report.value(u"renderer_in_use"_s).toString() == renderer && report.value(u"revealed"_s).toBool() != unrevealed;
+    const bool passed = measured && hits == points && points > 0 && report.value(u"centre_ours"_s).toBool();
+    QJsonObject written = report;
+    written.insert(u"measured"_s, measured);
+    written.insert(u"passed"_s, passed);
+    QFile file(output.filePath(u"drop-pie-hit.json"_s));
+    if (file.open(QIODevice::WriteOnly))
+        file.write(QJsonDocument(written).toJson());
+    say(u"drop pie hit (%1): layered %2, %3 of %4 points its own, centre %5, beside the hub %6"_s.arg(renderer)
+            .arg(report.value(u"layered"_s).toBool() ? u"yes"_s : u"no"_s).arg(hits).arg(points)
+            // From the report: asked again here, the window hidden by now, every point is another's.
+            .arg(report.value(u"centre_ours"_s).toBool() ? u"yes"_s : u"no"_s,
+                report.value(u"beside_hub_ours"_s).toBool() ? u"yes"_s : u"no"_s));
+    say(!measured ? u"drop pie hit: NOT MEASURED (hidden meanwhile, not the state or the renderer asked for)"_s
+            : passed ? u"drop pie hit: passed"_s : u"drop pie hit: FAILED"_s);
+    return passed ? 0 : measured ? 4 : 6;
+}
+
 void checkDropPieHelper(const QDir& output)
 {
     // Elevated, the helper gets the desktop user's environment, not this run's
@@ -5949,6 +6080,8 @@ int runResults(const QStringList& args)
     const QString corners = valueAfter(args, u"--corners", Settings::defaults().corners);
     if (corners == u"round" || corners == u"square")
         SystemTheme::setRoundedCorners(corners == u"round");
+    if (args.contains(u"--drop-pie-hit"_s)) // its own renderer, set before any window is made
+        return checkDropPieHit(out, args);
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
     QFont font = QGuiApplication::font();

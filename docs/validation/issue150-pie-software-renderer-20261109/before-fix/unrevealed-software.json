@@ -1,0 +1,22 @@
+{
+    "beside_hub_ours": false,
+    "centre_ours": false,
+    "layered": true,
+    "measured": true,
+    "passed": false,
+    "points": 5251,
+    "points_ours": 0,
+    "renderer": "software",
+    "renderer_in_use": "software",
+    "revealed": false,
+    "scale": 1.5,
+    "sectors": 5,
+    "state": "unrevealed",
+    "visible_when_measured": true,
+    "window": [
+        1632,
+        756,
+        537,
+        357
+    ]
+}

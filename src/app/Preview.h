@@ -49,6 +49,13 @@
 //     keyboard navigation, selection, mode switching, zoom and minimum width.
 //     --drop-pie-check checks the ordinary-user helper's real OLE registration,
 //     favorite refresh and shutdown on a temporary profile, with no file drag.
+//     --drop-pie-hit [--renderer software|d3d11] [--unrevealed] shows the
+//     real pie window at the middle of the primary screen for under a second
+//     (never active, no input sent, not while a mouse button is held: exit 5)
+//     and asks WindowFromPoint whether every point over it is its own (GitHub
+//     #150); --unrevealed as it waits for a drag, nothing of it drawn. Exit 0
+//     all of them, 4 some not, 6 not measured (hidden meanwhile, or not the
+//     renderer asked for). drop-pie-hit.json has the counts. No file drag.
 //     It also exercises configurable preview keys through Main.qml and the
 //     real FilePreview window, including held Space and Shift+Space input.
 //     --preview-hotkeys runs this production key/preview check on its own.

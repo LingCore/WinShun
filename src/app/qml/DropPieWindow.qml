@@ -62,6 +62,21 @@ Window {
         return Theme.snap(cy + centre * (0.8 + 0.2 * reveal) - chipHeight / 2, dpr)
     }
 
+    // Drawn by the software renderer, the window is one whose fully
+    // transparent pixels Windows passes over: a drag is not told it is
+    // there. Until a drag comes over it nothing of it is drawn (reveal 0),
+    // so no drag ever came over it and it never appeared (GitHub #150;
+    // measured: none of the points over it were its own, half of them once
+    // revealed, all of them either way with Direct3D). The least there can
+    // be of a colour everywhere, outside what fades in: not to be seen
+    // (a pixel under it darkens by 1 in 255 at most), but there.
+    Rectangle {
+        objectName: "pieHitFill"
+        anchors.fill: parent
+        visible: GraphicsInfo.api === GraphicsInfo.Software
+        color: Qt.rgba(0, 0, 0, 1 / 255)
+    }
+
     Item {
         anchors.fill: parent
         opacity: pie.reveal
