@@ -1,0 +1,18 @@
+pie run sw-fixed renderer software exe F:\电脑便捷工具\build\issues-249-253-256-20261108\WinShun.exe
+14:58:20.696 stage exe 4890FB266112 written 2026-11-09T14:41:01
+14:58:24.326 stage pid 43336 up
+14:58:29.046 explorer 3870238 'pie-src-sw-fixed - 文件资源管理器' [0,0 1792x1131]
+14:58:31.110 file item ControlType.ListItem at 455,253 1013x37; pressing at 495,272
+14:58:31.866 key under Esc sent with the button held
+14:58:32.001 pie window Qt6120QWindowToolSaveBits [285,102 420x309]; pointer 495,272; window under the pointer: Qt6120QWindowToolSaveBits (pid 43336)
+14:58:32.990 after moving up: pie window visible True; window under the pointer: Qt6120QWindowToolSaveBits
+14:58:33.157 released
+14:58:36.163 RESULT: in the favourite folder True, still in the source False => PASS (moved)
+14:58:36.877 search-here key: "C:\Program Files\WinShun\WinShunSearch.exe" --search-here "%V"
+14:58:36.912 autostart task: <Command>C:\Program Files\WinShun\WinShun.exe</Command> <Arguments>--background</Arguments>
+14:58:36.921 log: 2026-11-09T14:58:31.927 info: Drop pie: its key pressed at 495,272
+14:58:36.925 log: 2026-11-09T14:58:31.955 info: Drop pie: 1 files over it (read from the ID list) 22 ms after it was asked for
+14:58:36.936 log: 2026-11-09T14:58:33.048 info: Drop pie: dropped, moving 1 files by our own file operation, the source's asynchronous drop started
+14:58:36.947 log: 2026-11-09T14:58:33.205 info: Drop pie: hidden, dropped
+14:58:36.957 log: 2026-11-09T14:58:33.255 info: Drop pie: file operation done
+14:58:36.977 lock released True; WinShun.exe left 0

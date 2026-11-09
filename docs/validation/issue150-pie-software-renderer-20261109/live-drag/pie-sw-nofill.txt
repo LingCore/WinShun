@@ -1,0 +1,16 @@
+pie run sw-nofill renderer software exe F:\电脑便捷工具\build\live-82-150-20261109\nofill\WinShun.exe
+14:59:51.059 stage exe 0428D958AAE1 written 2026-11-09T14:59:35
+14:59:51.863 stage pid 46440 up
+14:59:56.581 explorer 24381352 'pie-src-sw-nofill - 文件资源管理器' [0,0 1792x1131]
+14:59:58.640 file item ControlType.ListItem at 455,253 1013x37; pressing at 495,272
+14:59:59.331 key under Esc sent with the button held
+14:59:59.457 pie window Qt6120QWindowToolSaveBits [285,102 420x309]; pointer 495,272; window under the pointer: CabinetWClass (pid 46960)
+15:00:00.441 after moving up: pie window visible False; window under the pointer: CabinetWClass
+15:00:00.594 released
+15:00:03.598 RESULT: in the favourite folder False, still in the source True => FAIL (not dropped)
+15:00:04.392 search-here key: "C:\Program Files\WinShun\WinShunSearch.exe" --search-here "%V"
+15:00:04.420 autostart task: <Command>C:\Program Files\WinShun\WinShun.exe</Command> <Arguments>--background</Arguments>
+15:00:04.423 log: 2026-11-09T14:59:59.391 info: Drop pie: its key pressed at 495,272
+15:00:04.431 log: 2026-11-09T14:59:59.555 warning: Drop pie: shown, but the drag did not come over it in 157 ms (pointer moved yes)
+15:00:04.442 log: 2026-11-09T14:59:59.557 info: Drop pie: hidden, the drag did not come over it
+15:00:04.461 lock released True; WinShun.exe left 0

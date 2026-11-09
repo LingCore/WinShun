@@ -1,0 +1,18 @@
+pie run d3d-fixed renderer d3d11 exe F:\电脑便捷工具\build\issues-249-253-256-20261108\WinShun.exe
+14:58:53.041 stage exe 4890FB266112 written 2026-11-09T14:41:01
+14:58:54.441 stage pid 11204 up
+14:58:59.181 explorer 462360 'pie-src-d3d-fixed - 文件资源管理器' [0,0 1792x1131]
+14:59:01.254 file item ControlType.ListItem at 455,253 1013x37; pressing at 495,272
+14:59:01.940 key under Esc sent with the button held
+14:59:02.053 pie window Qt6120QWindowToolSaveBits [285,102 420x309]; pointer 495,272; window under the pointer: Qt6120QWindowToolSaveBits (pid 11204)
+14:59:03.085 after moving up: pie window visible True; window under the pointer: Qt6120QWindowToolSaveBits
+14:59:03.241 released
+14:59:06.255 RESULT: in the favourite folder True, still in the source False => PASS (moved)
+14:59:07.108 search-here key: "C:\Program Files\WinShun\WinShunSearch.exe" --search-here "%V"
+14:59:07.138 autostart task: <Command>C:\Program Files\WinShun\WinShun.exe</Command> <Arguments>--background</Arguments>
+14:59:07.141 log: 2026-11-09T14:59:02.002 info: Drop pie: its key pressed at 495,272
+14:59:07.152 log: 2026-11-09T14:59:02.020 info: Drop pie: 1 files over it (read from the ID list) 14 ms after it was asked for
+14:59:07.161 log: 2026-11-09T14:59:03.131 info: Drop pie: dropped, moving 1 files by our own file operation, the source's asynchronous drop started
+14:59:07.172 log: 2026-11-09T14:59:03.209 info: Drop pie: file operation done
+14:59:07.183 log: 2026-11-09T14:59:03.283 info: Drop pie: hidden, dropped
+14:59:07.201 lock released True; WinShun.exe left 0
