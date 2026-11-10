@@ -24,6 +24,8 @@
 #include <QCoreApplication>
 #include <cstdlib>
 #include <QBuffer>
+#include <QGuiApplication>
+#include <QHash>
 #include <QImage>
 #include <QDateTime>
 #include <QDir>
@@ -42,6 +44,7 @@
 #include <QScopeGuard>
 #include <QTemporaryDir>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <dwmapi.h>
@@ -640,6 +643,126 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     QFile report(output.filePath(u"pure-search.json"_s));
     if (!report.open(QIODevice::WriteOnly)) return false;
     report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
+    return check.passed;
+}
+
+bool checkResultRowSpacing(QQmlEngine* engine, const QDir& output)
+{
+    Checks check;
+    QTemporaryDir profile;
+    IndexService index(profile.filePath(u"index"_s), {});
+    {
+        const auto lock = index.index()->writeLock();
+        const auto drive = index.index()->addRoot("D:");
+        const auto samples = index.index()->add(index.index()->add(drive, "Downloads", EntryFlag::Directory), "samples",
+            EntryFlag::Directory);
+        for (const char* name : {"ok.jpg", "ocr.txt", "ok2.jpg", "ocr-apostrophe-hyphen.png", "ocr-highlight-test.png"})
+            index.index()->add(samples, name, 0);
+    }
+    AppCatalog apps;
+    apps.setApps(std::make_shared<const AppList>());
+    SystemCatalog places;
+    places.setPlaces(std::make_shared<const PlaceList>());
+    SearchEngine search(&index, &apps, &places);
+    History history(profile.filePath(u"history.txt"_s));
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    launcher.results()->setThumbnails(false);
+    launcher.setContentOptions(false, {}, {}, true, true);
+    ClipStore store(profile.filePath(u"clipboard"_s));
+    store.open(QDateTime::currentMSecsSinceEpoch());
+    ClipboardWatcher watcher({.record = false}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(profile.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> root(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    auto* window = qobject_cast<QQuickWindow*>(root.get());
+    check(window != nullptr, u"row spacing loads production Main: "_s + component.errorString());
+    if (!window) return false;
+    window->create();
+    frame.setWindow(window);
+    launcher.setWindow(window);
+    placement.setWindow(window);
+    placement.rememberWidth(760, 640);
+    showOffscreen(window);
+
+    // The ink of each scanline of `area`: anything off the colour most of it has.
+    const auto inkLines = [](const QImage& picture, const QRect& area) {
+        QHash<QRgb, int> counts;
+        for (int y = area.top(); y <= area.bottom(); ++y)
+            for (int x = area.left(); x <= area.right(); ++x)
+                ++counts[picture.pixel(x, y)];
+        const QRgb ground = std::max_element(counts.cbegin(), counts.cend()).key();
+        std::vector<bool> lines;
+        for (int y = area.top(); y <= area.bottom(); ++y) {
+            bool ink = false;
+            for (int x = area.left(); x <= area.right() && !ink; ++x) {
+                const QRgb pixel = picture.pixel(x, y);
+                ink = std::max({std::abs(qRed(pixel) - qRed(ground)), std::abs(qGreen(pixel) - qGreen(ground)),
+                          std::abs(qBlue(pixel) - qBlue(ground))}) > 48;
+            }
+            lines.push_back(ink);
+        }
+        return lines;
+    };
+    QJsonObject report;
+    for (const bool folder : {true, false}) {
+        const QString mode = folder ? u"folder box"_s : u"launcher"_s;
+        launcher.setFolderSearch(folder);
+        launcher.setQuery(u"o"_s);
+        settle(window);
+        check(launcher.results()->count() >= 3, mode + u": rows to measure"_s);
+        const QImage picture = window->grabWindow().convertToFormat(QImage::Format_RGB32);
+        const qreal dpr = picture.devicePixelRatio();
+        // Per row, from the top: where its name's ink starts and ends, then its folder's.
+        struct Lines { int nameTop = -1, nameBottom = -1, folderTop = -1, folderBottom = -1; };
+        std::vector<Lines> rows;
+        for (int i = 0; i < 3; ++i) {
+            auto* row = item(window->contentItem(), u"resultRow-%1"_s.arg(i));
+            auto* text = row ? item(row, u"resultText"_s) : nullptr;
+            if (!row || !text) break;
+            const QPointF textAt = text->mapToScene({0, 0});
+            const QPointF rowAt = row->mapToScene({0, 0});
+            const QRect area = QRectF(textAt.x() * dpr, rowAt.y() * dpr, text->width() * dpr, row->height() * dpr)
+                                   .toAlignedRect().intersected(picture.rect());
+            const std::vector<bool> lines = inkLines(picture, area);
+            std::vector<std::pair<int, int>> runs; // [top, bottom] of each run of ink
+            for (int y = 0; y < int(lines.size()); ++y) {
+                if (!lines[y]) continue;
+                if (runs.empty() || runs.back().second != y - 1)
+                    runs.push_back({y, y});
+                else
+                    runs.back().second = y;
+            }
+            if (runs.size() != 2) {
+                check(false, mode + u": row %1 shows two lines of ink (%2)"_s.arg(i).arg(runs.size()));
+                break;
+            }
+            rows.push_back({area.top() + runs[0].first, area.top() + runs[0].second, area.top() + runs[1].first,
+                area.top() + runs[1].second});
+        }
+        check(rows.size() == 3, mode + u": three rows measured"_s);
+        if (rows.size() != 3) continue;
+        qreal inner = 0, outer = 1e9;
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+            inner = std::max<qreal>(inner, (rows[i].folderTop - rows[i].nameBottom - 1) / dpr);
+            if (i + 1 < rows.size())
+                outer = std::min<qreal>(outer, (rows[i + 1].nameTop - rows[i].folderBottom - 1) / dpr);
+        }
+        report.insert(folder ? u"folder"_s : u"launcher"_s, QJsonObject {{u"dpr"_s, dpr}, {u"name_to_folder"_s, inner},
+            {u"row_to_row"_s, outer}});
+        check(outer >= inner + 2, mode + u": name to folder %1, row to row %2 (logical px of ink)"_s.arg(inner).arg(outer));
+        check(picture.save(output.filePath(folder ? u"rows-folder-box.png"_s : u"rows-launcher.png"_s)), mode + u": saved"_s);
+    }
+    launcher.setFolderSearch(false);
+    QFile file(output.filePath(u"result-row-spacing.json"_s));
+    if (!file.open(QIODevice::WriteOnly)) return false;
+    report.insert(u"font"_s, QGuiApplication::font().family());
+    report.insert(u"passed"_s, check.passed);
+    report.insert(u"checks"_s, check.rows);
+    file.write(QJsonDocument(report).toJson());
     return check.passed;
 }
 

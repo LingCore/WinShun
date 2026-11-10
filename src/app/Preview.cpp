@@ -6399,6 +6399,8 @@ int runResults(const QStringList& args)
         return checkSearchExperience(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--pure-search"_s))
         return checkPureSearch(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--result-row-spacing"_s))
+        return checkResultRowSpacing(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--window-search-menu"_s))
         return checkWindowSearchAndMenu(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-alignment"_s))
