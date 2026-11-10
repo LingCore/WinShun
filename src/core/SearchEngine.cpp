@@ -1295,6 +1295,16 @@ SearchEngine::~SearchEngine()
     }
 }
 
+std::atomic<int> SearchEngine::s_namesRunning {0};
+std::atomic<int> SearchEngine::s_scansRunning {0};
+
+WorkerPool& SearchEngine::scanPool()
+{
+    if (!m_scanPool) // the scans thread only
+        m_scanPool = std::make_unique<WorkerPool>(WorkerPool::defaultThreadCount());
+    return *m_scanPool;
+}
+
 quint64 SearchEngine::submit(Request request)
 {
     std::lock_guard lock(m_mutex);
@@ -1349,6 +1359,9 @@ void SearchEngine::workerLoop(std::stop_token stop, Lane lane)
         }
         if (isStale(job.id))
             continue;
+        std::atomic<int>& running = scans ? s_scansRunning : s_namesRunning;
+        running.fetch_add(1, std::memory_order_relaxed);
+        const auto done = qScopeGuard([&] { running.fetch_sub(1, std::memory_order_relaxed); });
         if (!scans)
             runNameSearch(job);
         else if (job.request.scope == Scope::Content)
@@ -1398,9 +1411,34 @@ void SearchEngine::runNameSearch(const Job& job)
     using Clock = std::chrono::steady_clock;
     const auto began = Clock::now();
     const auto onDiskBefore = m_onDisk->waited();
+    const WorkerPool::Waits poolBefore = WorkerPool::waits();
     Clock::duration lockWait {};
     Clock::duration names {};
     Clock::duration alike {}; // the names that sound the same (homophoneQueries)
+    Clock::duration windowsTime {}; // the open windows (request.openWindows)
+    const char* phase = "starting"; // where it was when it ended (left behind: where it noticed)
+    // From its request on, 300 ms or more (the list is dimmed after 250 ms),
+    // left behind by a newer request too: said in the log, with what it
+    // waited for and where its time went. No words, no paths.
+    const auto slowLog = qScopeGuard([&] {
+        const auto end = Clock::now();
+        if (end - job.submitted < std::chrono::milliseconds(300))
+            return;
+        const auto ms = [](Clock::duration d) {
+            return static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(d).count());
+        };
+        const WorkerPool::Waits pool = WorkerPool::waits();
+        const auto onDisk = m_onDisk->waited() - onDiskBefore;
+        const auto rest = end - began - lockWait - names - onDisk - alike - windowsTime;
+        qWarning("WinShun: a name search took %lld ms%s (%lld queued behind the one before, %lld for the index, "
+                 "%lld finding names, %lld asking the disk about recent items and favorites, %lld names that sound the "
+                 "same, %lld listing the open windows, %lld the rest; its parallel loops waited %lld for their turn and "
+                 "%lld for the pool's threads; ended at: %s; running now in all of WinShun: %d name searches, %d content scans)",
+            ms(end - job.submitted), isStale(job.id) ? ", left behind by a newer request" : "", ms(began - job.submitted),
+            ms(lockWait), ms(names), ms(onDisk), ms(alike), ms(windowsTime), std::max(0LL, ms(rest)),
+            ms(pool.forTurn - poolBefore.forTurn), ms(pool.forThreads - poolBefore.forThreads), phase,
+            s_namesRunning.load(std::memory_order_relaxed), s_scansRunning.load(std::memory_order_relaxed));
+    });
 
     const bool foldersOnly = request.scope == Scope::Folders;
     // 文件 with a type chosen: only its files, whatever is typed or listed.
@@ -1423,8 +1461,10 @@ void SearchEngine::runNameSearch(const Job& job)
             .excludedExtensions = hidden.types,
             .excludedFileNames = hidden.names};
         const auto index = m_index->index();
+        phase = "waiting for the index";
         const auto lock = index->readLock();
         lockWait = Clock::now() - began;
+        phase = "listing the newest files";
         const NewestOutput out = newestFiles(*index, options, m_pool, [&] { return isStale(job.id); });
         if (out.cancelled || isStale(job.id))
             return;
@@ -1436,6 +1476,7 @@ void SearchEngine::runNameSearch(const Job& job)
         markRecent(results, request.history);
         total = results.size();
     } else if (query.isEmpty() && !listing) {
+        phase = "listing the recent items";
         const int recentLimit = std::min(std::max(0, request.limit), std::clamp(request.recentItems, 1, 200));
         qsizetype next = 0;
         while (results.size() < recentLimit && next < request.history.size() && !isStale(job.id)) {
@@ -1503,8 +1544,10 @@ void SearchEngine::runNameSearch(const Job& job)
         EntryFilter filter = request.filter;
         filter.merge(query.filter);
         {
+            phase = "waiting for the index";
             const auto lock = index->readLock();
             lockWait = Clock::now() - began;
+            phase = "finding names";
             // The folders to look under, as the index has them (one not in
             // it finds nothing: a folder of its own that is not there).
             for (const QString& folder : request.folders) {
@@ -1557,7 +1600,9 @@ void SearchEngine::runNameSearch(const Job& job)
             for (std::size_t i = 0; i < elsewhere.size(); ++i)
                 results[static_cast<qsizetype>(i)].elsewhere = elsewhere[i] != 0;
         }
+        phase = "putting recent items first";
         arrange(results, request, matcher, rankBy, *m_onDisk, typedPath.folder);
+        phase = "apps, places, typed paths, favorites";
 
         // A network folder is listed only when its server answers: one that
         // is not there would hold the search up for the half minute Windows
@@ -1862,6 +1907,7 @@ void SearchEngine::runNameSearch(const Job& job)
         // an entry found by several keeps its best score.
         if (results.isEmpty() && typedPath.folder.isEmpty() && relative().names.isEmpty()
             && !isStale(job.id)) {
+            phase = "names that sound the same";
             const auto alikeBegan = Clock::now();
             const auto alikeOnDisk = m_onDisk->waited(); // its recent items: counted with the others
             const auto counted = qScopeGuard([&] { alike = Clock::now() - alikeBegan - (m_onDisk->waited() - alikeOnDisk); });
@@ -1963,26 +2009,18 @@ void SearchEngine::runNameSearch(const Job& job)
         && !query.hasFilters() && query.extensions.empty() && !listing && request.currentFolder.isEmpty()
         && request.extensions.isEmpty() && request.folders.isEmpty() && !request.filter.any()
         && request.order.key == SortKey::Rank && request.rankBy == RankBy::Match && !isStale(job.id)) {
+        phase = "listing the open windows";
+        const auto windowsBegan = Clock::now();
         SearchResults windows = request.openWindows();
+        windowsTime = Clock::now() - windowsBegan;
         total += windows.size();
         windows.append(std::move(results));
         results = std::move(windows);
     }
 
-    // The rows of the query before stay on screen (dimmed) until these come.
-    const auto ms = [](Clock::duration d) {
-        return static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(d).count());
-    };
-    const auto end = Clock::now();
-    if (end - job.submitted > 2s) {
-        const auto onDisk = m_onDisk->waited() - onDiskBefore;
-        qWarning("WinShun: a search took %lld ms (%lld waiting for the name search before, %lld for the index, "
-                 "%lld finding names, %lld asking the disk about recent items and favorites, %lld names that "
-                 "sound the same, %lld the rest)",
-            ms(end - job.submitted), ms(began - job.submitted), ms(lockWait), ms(names), ms(onDisk), ms(alike),
-            ms(end - began - lockWait - names - onDisk - alike));
-    }
-
+    // The rows of the query before stay on screen (dimmed) until these come;
+    // how long that took goes in the log when it was long (slowLog).
+    phase = "done";
     if (isStale(job.id))
         return;
     emit resultsReady(job.id, results, total, timer.nsecsElapsed() / 1000);
@@ -2186,8 +2224,10 @@ void SearchEngine::runContentSearch(const Job& job)
     ScopeFolders scope;
     ContentScope where;
     {
-        const auto lock = index->readLock();
-        where = resolveScope(*index, request, m_pool, [&] { return isStale(job.id); }, scope);
+        // Long reads (FileIndex::longReadLock): a writer waiting meanwhile
+        // waits at its gate, not in front of the name searches typed now.
+        const auto lock = index->longReadLock();
+        where = resolveScope(*index, request, scanPool(), [&] { return isStale(job.id); }, scope);
     }
     if (isStale(job.id))
         return;
@@ -2285,7 +2325,7 @@ void SearchEngine::runContentSearch(const Job& job)
         // over is counted (ContentLeftOut): the files of listed types in
         // system and program folders, and the files of text types not listed,
         // each kind of those on its own (the hint names the most numerous).
-        const auto lock = index->readLock();
+        const auto lock = index->longReadLock(); // the whole index: see resolveScope above
         constexpr std::uint32_t kMatch = ContentIndex::Lookup::kMatch;
         std::vector<std::vector<Candidate>> found(index->chunkCount());
         std::vector<int> ruledOutOf(index->chunkCount(), 0);
@@ -2295,7 +2335,7 @@ void SearchEngine::runContentSearch(const Job& job)
         std::vector<int> deferredOf(index->chunkCount(), 0);
         std::vector<std::vector<int>> otherTypesOf(index->chunkCount()); // per kind (otherTypes.count()), made when first met
         const bool bounded = request.filter.byTime() || request.filter.bySize(); // the panel's: when written, how large
-        m_pool.parallelFor(index->chunkCount(), [&](std::size_t c) {
+        scanPool().parallelFor(index->chunkCount(), [&](std::size_t c) {
             if (isStale(job.id))
                 return;
             UnderFolder inProfile(*index, personalFolders);

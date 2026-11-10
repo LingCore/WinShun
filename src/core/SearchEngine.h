@@ -305,7 +305,17 @@ private:
     // read from the drive), the drives thread only.
     RemovableDrives m_removable;
     std::chrono::steady_clock::time_point m_removableAt {};
-    WorkerPool m_pool {WorkerPool::defaultThreadCount()}; // both lanes: one parallelFor at a time
+    WorkerPool m_pool {WorkerPool::defaultThreadCount()}; // the names lane's
+    // The scans lane's own, made at its first scan (most engines never scan):
+    // a scan's walk over the whole index must not keep a name search typed
+    // meanwhile from its parallel loops (one parallelFor at a time per pool).
+    std::unique_ptr<WorkerPool> m_scanPool;
+    WorkerPool& scanPool();
+    // In every engine of the process (the launcher's, MCP's, the file
+    // dialog's): how many name searches and content scans are running, for
+    // a slow search's log line.
+    static std::atomic<int> s_namesRunning;
+    static std::atomic<int> s_scansRunning;
     std::mutex m_mutex;
     std::condition_variable_any m_cv; // both lanes and the drives thread
     std::array<std::optional<Job>, 2> m_pending; // by Lane

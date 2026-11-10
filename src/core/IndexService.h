@@ -13,6 +13,7 @@
 #include <QString>
 #include <QTimer>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -376,7 +377,15 @@ private:
     void saveInBackground();
     void setState(State state);
     void setRefreshing(bool refreshing);
-    void notifyLater();
+    // stateChanged(), once for all told before it goes out. What told it is
+    // counted: told far more often than a minute should see, the log says
+    // by what (a user's index told of changes hundreds of times a second).
+    enum class Told { State, Refreshing, ShareReading, Count };
+    void notifyLater(Told why);
+    void reportTold(); // GUI thread
+    std::atomic<bool> m_notifyQueued {false};
+    std::array<std::atomic<int>, static_cast<std::size_t>(Told::Count)> m_told {};
+    std::chrono::steady_clock::time_point m_toldSince {}; // GUI thread
 
     Options m_options;
     // Never null; replaced whole by setVolumeAccess(). Each use loads it: a

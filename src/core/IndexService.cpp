@@ -679,7 +679,7 @@ IndexService::IndexService(QString folder, Options options, QObject* parent)
     };
     shareCallbacks.reading = [this](const std::wstring& path, bool reading) {
         setReading(path, reading);
-        notifyLater();
+        notifyLater(Told::ShareReading);
     };
     m_shares = std::make_unique<ShareIndexer>(std::move(shareSource), m_options.shares, std::move(shareCallbacks));
 
@@ -2689,7 +2689,7 @@ std::vector<ContentIndexer::Volume> IndexService::contentVolumes() const
 void IndexService::setState(State state)
 {
     if (m_state.exchange(state) != state) {
-        notifyLater();
+        notifyLater(Told::State);
         if (state == State::Ready)
             m_contentIndexer->wake(); // it waits for a complete index
     }
@@ -2698,15 +2698,43 @@ void IndexService::setState(State state)
 void IndexService::setRefreshing(bool refreshing)
 {
     if (m_refreshing.exchange(refreshing) != refreshing) {
-        notifyLater();
+        notifyLater(Told::Refreshing);
         if (!refreshing)
             m_contentIndexer->wake();
     }
 }
 
-void IndexService::notifyLater()
+void IndexService::notifyLater(Told why)
 {
-    QMetaObject::invokeMethod(this, [this] { emit stateChanged(); }, Qt::QueuedConnection);
+    m_told[static_cast<std::size_t>(why)].fetch_add(1, std::memory_order_relaxed);
+    if (m_notifyQueued.exchange(true))
+        return; // the one on its way tells of this too (its listeners look at the state then)
+    QMetaObject::invokeMethod(this, [this] {
+        m_notifyQueued = false;
+        reportTold();
+        emit stateChanged();
+    }, Qt::QueuedConnection);
+}
+
+void IndexService::reportTold()
+{
+    using namespace std::chrono;
+    const auto now = steady_clock::now();
+    if (m_toldSince == steady_clock::time_point {})
+        m_toldSince = now;
+    if (now - m_toldSince < 60s)
+        return;
+    const auto take = [this](Told why) { return m_told[static_cast<std::size_t>(why)].exchange(0); };
+    const int state = take(Told::State);
+    const int refreshing = take(Told::Refreshing);
+    const int share = take(Told::ShareReading);
+    const auto seconds = duration_cast<std::chrono::seconds>(now - m_toldSince).count();
+    m_toldSince = now;
+    if (state + refreshing + share >= 120) {
+        qWarning("WinShun: the index told of changes %d times in %lld s (%d its state, %d a read of the disks "
+                 "starting or ending, %d a share's read starting or ending)",
+            state + refreshing + share, static_cast<long long>(seconds), state, refreshing, share);
+    }
 }
 
 } // namespace ws

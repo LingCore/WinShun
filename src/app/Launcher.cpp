@@ -583,10 +583,16 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     connect(m_engine, &SearchEngine::removableDrives, this, &Launcher::onRemovableDrives);
     connect(m_engine, &SearchEngine::driveResults, this, &Launcher::onDriveResults);
     connect(m_engine, &SearchEngine::driveProgress, this, &Launcher::onDriveProgress);
+    m_indexSettled = m_index->state() == IndexService::State::Ready && !m_index->isRefreshing();
+    m_searchAgain.setSingleShot(true);
+    connect(&m_searchAgain, &QTimer::timeout, this, &Launcher::searchAgainNow);
     connect(m_index, &IndexService::stateChanged, this, [this] {
-        // A finished index can only improve the current results.
-        if (m_index->state() == IndexService::State::Ready && m_window && m_window->isVisible() && m_scope != Content)
-            search();
+        // A finished index (built, or read again) can only improve the
+        // current results: once, when it gets there, not at every word of it.
+        const bool settled = m_index->state() == IndexService::State::Ready && !m_index->isRefreshing();
+        if (settled && !std::exchange(m_indexSettled, settled) && m_window && m_window->isVisible() && m_scope != Content)
+            searchFor("the index's state changed");
+        m_indexSettled = settled;
         refreshStatus();
     });
     connect(m_index, &IndexService::sharesChanged, this, [this] {
@@ -612,13 +618,13 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     connect(m_apps, &AppCatalog::changed, this, [this] {
         // Apps installed or removed (or the first list arrived): 全部 shows them.
         if (m_window && m_window->isVisible() && m_scope == All)
-            search();
+            searchFor("the apps changed");
         refreshFrequentApps(); // one whose program was deleted goes from the row too (#207)
         refreshStatus();
     });
     connect(m_places, &SystemCatalog::changed, this, [this] {
         if (m_window && m_window->isVisible() && m_scope == All)
-            search();
+            searchFor("the settings places changed");
     });
     refreshStatus();
 }
@@ -1447,7 +1453,7 @@ void Launcher::setFavorites(Favorites* favorites)
             emit favoritesChanged();
             emit folderChipsChanged();
             if (m_window && m_window->isVisible() && !m_keyword && m_scope != Content)
-                search(); // the rows refreshed in place: 收藏 comes or goes
+                searchFor("the favorites changed"); // the rows refreshed in place: 收藏 comes or goes
         });
     }
     emit favoritesChanged();
@@ -1494,7 +1500,7 @@ void Launcher::setSwitches(Switches* switches, const QString& stateFile)
                 const SwitchState awake = m_switches->state(id);
                 const bool wanted = awake.ready() && awake.on == SwitchState::Value::On;
                 if (m_pending || pinned != wanted)
-                    search(); // async startup, expiry or a provider crash changed the status row
+                    searchFor("keep-awake changed"); // async startup, expiry or a provider crash changed the status row
             }
         }
     });
@@ -1885,6 +1891,8 @@ void Launcher::handleHidden()
     m_contentDebounce.stop();
     m_slowSearch.stop();
     m_searchSlow = false;
+    m_replaceClock.invalidate(); // nobody waits for those rows now
+    m_searchAgain.stop(); // showing the window searches again
     m_suggester.cancel(); // nobody is looking; shown again, the same words come from the cache
     if (m_contentRunning || m_pending || m_walkRunning) {
         m_engine->cancel();
@@ -1906,12 +1914,39 @@ void Launcher::handleHidden()
     m_loadingMore = false;
 }
 
+void Launcher::searchFor(const char* why)
+{
+    m_searchAgainWhy = why;
+    if (m_searchAgain.isActive())
+        return; // one on its way takes this too
+    constexpr qint64 kEvery = 1000;
+    const qint64 since = m_lastSearchAgain.isValid() ? m_lastSearchAgain.elapsed() : kEvery;
+    m_searchAgain.start(static_cast<int>(std::max<qint64>(0, kEvery - since)));
+}
+
+void Launcher::searchAgainNow()
+{
+    // What is under way searches the index as it is now: its rows come first
+    // (asked again, they would never come while the background keeps changing).
+    if (m_pending || m_contentRunning) {
+        m_searchAgain.start(100);
+        return;
+    }
+    if (!m_window || !m_window->isVisible())
+        return; // showing the window searches again anyway
+    m_lastSearchAgain.start();
+    m_searchWhy = std::exchange(m_searchAgainWhy, nullptr);
+    search();
+}
+
 // Nothing is cleared up front: the rows on screen stay until results replace
 // them. Searching what is already shown again (the window reopens, the index
 // changes) is a refresh: the rows are updated in place, and content matches
 // from the last scan stay until the new scan has had a chance to find them.
 void Launcher::search(bool more)
 {
+    const char* why = std::exchange(m_searchWhy, nullptr);
+    const bool wasReplacing = m_replacePending && m_replaceClock.isValid();
     m_flash.clear();
     m_contentDebounce.stop();
     m_slowSearch.stop();
@@ -1936,6 +1971,18 @@ void Launcher::search(bool more)
         && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey
         && typingKey() == m_shownTyping && regexTerms() == m_shownRegex;
     m_replacePending = !m_refresh;
+    if (m_replacePending) {
+        if (!wasReplacing) { // the rows on screen just became another query's
+            m_replaceClock.start();
+            m_replaceAsks = 0;
+            m_replaceWhy.clear();
+        } else { // asked again before the new rows came
+            ++m_replaceAsks;
+            const QString reason = why ? QString::fromLatin1(why) : u"typed on, or another choice"_s;
+            if (!m_replaceWhy.contains(reason))
+                m_replaceWhy.append(reason);
+        }
+    }
     // The text is the one shown (another scope, order, kind of file): nobody
     // is typing, so a content scan starts at once, without waiting for a pause.
     m_contentAtOnce = m_refresh || text == m_shownText;
@@ -2079,6 +2126,7 @@ void Launcher::search(bool more)
     }
     m_requestId = m_engine->submit(std::move(request)); // also stops a running content scan
     m_nameRequestId = m_requestId;
+    m_lastAsk.start();
     m_pending = true;
     m_contentRunning = false;
     if (m_replacePending)
@@ -2123,6 +2171,15 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
     m_shownRegex = regexTerms();
     m_haveResults = true;
     if (m_replacePending) {
+        if (m_replaceClock.isValid() && m_replaceClock.elapsed() >= 300) {
+            // Dimmed long enough to be seen (after 250 ms): why, in the log.
+            qWarning("WinShun: new rows %lld ms after the list asked for them (asked again %d times meanwhile%s%s; "
+                     "the last name search answered %lld ms after it was asked, %lld ms of it searching)",
+                static_cast<long long>(m_replaceClock.elapsed()), m_replaceAsks, m_replaceWhy.isEmpty() ? "" : ": ",
+                qUtf8Printable(m_replaceWhy.join(u", "_s)), static_cast<long long>(m_lastAsk.isValid() ? m_lastAsk.elapsed() : -1),
+                static_cast<long long>(m_elapsedUs / 1000));
+        }
+        m_replaceClock.invalidate();
         m_replacePending = false;
         m_slowSearch.stop();
         m_searchSlow = false;
