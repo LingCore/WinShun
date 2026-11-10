@@ -71,7 +71,6 @@ struct DelayedText {
 class TestPinClipboard : public QObject {
     Q_OBJECT
 
-    const pin::Placement m_placement {{-900, 300}, QRect(-1920, 0, 1920, 1040)};
     QImage m_image {32, 24, QImage::Format_ARGB32_Premultiplied};
 
     void write(ClipWrite data)
@@ -84,7 +83,7 @@ class TestPinClipboard : public QObject {
 
     pin::ClipboardPicture read(pin::LastCapture last = {})
     {
-        return std::async(std::launch::async, [this, last] { return pin::readClipboard(last, m_placement); }).get();
+        return std::async(std::launch::async, [this, last] { return pin::readClipboard(last); }).get();
     }
 
     void writeFormats(const std::vector<std::pair<UINT, QByteArray>>& formats)
@@ -447,7 +446,7 @@ private slots:
         data->setData(QString::fromLatin1(kImageOriginMime), QByteArray("qt-fallback\0", 12));
         QGuiApplication::clipboard()->setMimeData(data);
         auto result = std::async(std::launch::async, [this] {
-            return pin::readClipboard({u"qt-fallback"_s, 0}, m_placement);
+            return pin::readClipboard({u"qt-fallback"_s, 0});
         });
         // Pump Windows delayed-render messages while the worker reads Qt's offer.
         QTRY_VERIFY_WITH_TIMEOUT(result.wait_for(0ms) == std::future_status::ready, 3000);
@@ -530,13 +529,15 @@ private slots:
         const QRect work(-qRound(1920 * scale), -qRound(1200 * scale), qRound(1920 * scale), qRound(1160 * scale));
         QImage large(4000, 3000, QImage::Format_RGB888);
         large.fill(Qt::green);
+        // Its own pixels stay (#269): the pin shows a picture larger than the
+        // screen fitted, it is not stored fitted. Its middle is at the cursor.
         for (const QPoint cursor : {work.center(), work.topLeft(), work.bottomRight()}) {
             const auto placed = pin::prepare(large, {cursor, work});
             QVERIFY(!placed.image.isNull());
-            QVERIFY(placed.image.width() <= qRound(work.width() * 0.9));
-            QVERIFY(placed.image.height() <= qRound(work.height() * 0.9));
-            QVERIFY(work.contains(QRect(placed.origin, placed.image.size())));
-            QCOMPARE(placed.image.format(), QImage::Format_ARGB32_Premultiplied);
+            QCOMPARE(placed.image.size(), large.size());
+            QCOMPARE(placed.origin, cursor - QPoint(large.width() / 2, large.height() / 2));
+            QCOMPARE(placed.anchor, cursor);
+            QCOMPARE(placed.image.format(), QImage::Format_RGB32);
         }
         const auto small = pin::prepare(m_image, {work.center(), work});
         QCOMPARE(small.image.size(), m_image.size());
