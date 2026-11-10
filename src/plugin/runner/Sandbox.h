@@ -43,6 +43,9 @@ lite::Handle makeJob(bool limited, const JobLimits& limits, DWORD* error);
 std::vector<wchar_t> environmentFor(HANDLE token, const std::vector<std::pair<std::wstring, std::wstring>>& extra);
 // Applied to the child's final block only; preserves its PATH and overrides Qt discovery.
 std::vector<wchar_t> withHostQt(const std::vector<wchar_t>& environment, const std::wstring& folder);
+// `folder` is the one this program runs from (the runner's: Win顺's own),
+// compared as full paths, case aside.
+bool isOwnFolder(const std::wstring& folder);
 
 // For a process running as administrator (an `elevated` plugin, started by
 // the elevated runner): never the user's variables (HKCU\Environment and

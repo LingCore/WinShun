@@ -141,6 +141,40 @@ DWORD integrityRid(HANDLE token)
     return *::GetSidSubAuthority(label->Label.Sid, *::GetSidSubAuthorityCount(label->Label.Sid) - 1);
 }
 
+namespace {
+
+std::wstring fullFolder(const std::wstring& path)
+{
+    std::wstring full(MAX_PATH, L'\0');
+    DWORD n = ::GetFullPathNameW(path.c_str(), static_cast<DWORD>(full.size()), full.data(), nullptr);
+    if (n >= full.size()) {
+        full.resize(n);
+        n = ::GetFullPathNameW(path.c_str(), static_cast<DWORD>(full.size()), full.data(), nullptr);
+    }
+    full.resize(n < full.size() ? n : 0);
+    while (full.size() > 3 && (full.back() == L'\\' || full.back() == L'/'))
+        full.pop_back();
+    return full;
+}
+
+} // namespace
+
+bool isOwnFolder(const std::wstring& folder)
+{
+    std::wstring self(32768, L'\0');
+    const DWORD n = ::GetModuleFileNameW(nullptr, self.data(), static_cast<DWORD>(self.size()));
+    if (n == 0 || n >= self.size())
+        return false;
+    self.resize(n);
+    const std::size_t slash = self.find_last_of(L"\\/");
+    if (slash == std::wstring::npos)
+        return false;
+    const std::wstring own = fullFolder(self.substr(0, slash));
+    const std::wstring asked = fullFolder(folder);
+    return !own.empty() && !asked.empty()
+        && ::CompareStringOrdinal(own.c_str(), static_cast<int>(own.size()), asked.c_str(), static_cast<int>(asked.size()), TRUE) == CSTR_EQUAL;
+}
+
 bool tokenElevated(HANDLE token)
 {
     TOKEN_ELEVATION elevation {};

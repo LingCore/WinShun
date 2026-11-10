@@ -43,7 +43,7 @@ public:
         QString exe;
         QStringList args;
         QString cwd;
-        QString qtDir; // host-validated shared runtime; never accepted by an elevated runner
+        QString qtDir; // host-validated shared runtime; an elevated runner takes only its own folder
         QList<std::pair<QString, QString>> env; // added to the user's environment
         int memoryMB = 512;
         bool processes = false;

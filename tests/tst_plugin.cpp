@@ -939,9 +939,11 @@ private slots:
             QVERIFY(!Manifest::parse(manifestFor(spec), &error));
         }
         spec.runtimeExtra.insert(u"qtVersion"_s, u"6.12.0"_s);
-        spec.permissions = {u"elevated"_s};
-        QVERIFY(!Manifest::parse(manifestFor(spec), &error));
-        QVERIFY(error.contains(u"普通权限"_s));
+        spec.permissions = {u"elevated"_s}; // as administrator too (GitHub #255)
+        const auto elevated = Manifest::parse(manifestFor(spec), &error);
+        QVERIFY2(elevated, qPrintable(error));
+        QVERIFY(elevated->permissions.has(Permission::Elevated));
+        QCOMPARE(elevated->runtime->hostQtVersion, u"6.12.0"_s);
         spec.permissions.clear();
         spec.runtimeExtra.insert(u"program"_s, u"python"_s);
         QVERIFY(!Manifest::parse(manifestFor(spec), &error));

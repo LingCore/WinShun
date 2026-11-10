@@ -530,8 +530,11 @@ void start(const json::Value& m)
     std::vector<wchar_t> environment = sandbox::tokenElevated(ownToken.get()) ? sandbox::elevatedEnvironment(extra)
                                                                              : sandbox::environmentFor(ownToken.get(), extra);
     if (const std::wstring qtDir = lite::wide(m["qtDir"].toString()); !qtDir.empty()) {
-        if (sandbox::tokenElevated(ownToken.get())) {
-            fail("SharedQtRequiresNormalRights", ERROR_ACCESS_DENIED);
+        // As administrator only Win顺's own Qt, the folder this runner runs
+        // from (and the elevated Win顺 with it): nothing it does not load
+        // already (GitHub #255).
+        if (sandbox::tokenElevated(ownToken.get()) && !sandbox::isOwnFolder(qtDir)) {
+            fail("SharedQtNotOwnFolder", ERROR_ACCESS_DENIED);
             return;
         }
         environment = sandbox::withHostQt(environment, qtDir);

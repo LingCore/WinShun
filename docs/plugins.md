@@ -208,7 +208,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 - runner 在 `CreateProcess` 前为这个子进程配置 `PATH`、Qt 插件路径和 QML 导入路径，提供 `WS_QT_DIR`、`WS_QT_QML_DIR`，默认 Controls 样式为 Basic。普通静态导入 Qt 的 exe 也可直接启动，无需 `/DELAYLOAD`。不会修改系统、用户或 Win顺 主进程的环境变量。
 - 不要在包内混入另一版 Qt DLL、平台插件、QML 模块或覆盖共享路径的 `qt.conf`；Windows 优先搜索 exe 自身目录。自有的非 Qt 依赖照常放入插件目录。
 - 启动前检查版本及宿主部署是否完整；不兼容时显示具体原因和更新/重装建议，不尝试启动后再等待崩溃。
-- 首版不支持 `elevated` 与共享 Qt 同时使用，清单会明确报错。需要管理员权限的插件继续自带运行时；这里不静默降权，也不从可写便携目录加载管理员代码。
+- 带 `elevated` 的插件也能用共享 Qt（GitHub #255）。以管理员身份运行时，runner 只认它自己所在的文件夹，也就是以管理员身份运行的 Win顺 自己加载 Qt 的那个文件夹，不会因此多加载任何代码：安装版在 Program Files 里，普通权限改不了；便携版的文件夹本来就决定了以管理员身份运行的 Win顺 跑什么。插件自己的 exe 和 DLL 照旧来自确认过的副本（见“权限”里的 `elevated`）。
 - 社区 exe/dll 包可按“未审核的原生插件”投稿。插件库标明审核状态，安装及每次更新需确认；签名或 SHA256 校验只证明分发完整性，不代表代码已审核。
 
 契约参考：[Qt Windows 部署](https://doc.qt.io/qt-6/windows-deployment.html)、[Qt 插件版本检查](https://doc.qt.io/qt-6/deployment-plugins.html)、[Windows DLL 搜索顺序](https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order)。
@@ -426,7 +426,7 @@ manifest 的 `permissions` 是数组：`["processes", "clipboard:read", {"files:
 - 以管理员身份运行的 Win顺 从插件库更新确认过的插件时，只在**带签名的列表**（签名核对过，不是开发用的本地文件）里有同一个包（版本、大小、SHA-256 都一样）时，才把内存里的这份字节解压成新的确认副本，更新后不用再点；比确认过的版本旧的包不收。插件库页面自己的列表不验签名，单凭它不算数。以普通权限运行的 Win顺 装的更新、自己装的压缩包或文件夹，都要在 Win顺 以管理员身份运行时再确认一次。
 - 以管理员身份运行的插件拿到的环境变量是干净的：只有系统的变量（`HKLM`），去掉会让程序加载代码的（`COR_*`、`DOTNET_*`、`NODE_OPTIONS`、`PYTHON*`、`_NT_SYMBOL_PATH` 等），`PATH` 用系统的、只留普通权限改不了的文件夹（装在你用户文件夹里的 Python、VS Code 之类即使在系统 PATH 里也去掉），再加上你的几个文件夹（`USERPROFILE`、`APPDATA`、`LOCALAPPDATA`）和 `WS_*`；`TEMP`/`TMP` 是副本旁边受保护的文件夹。`HKCU\Environment` 里你自己设的变量不会传给它；也没有 `WS_COMPONENTS_DIR`（共享组件文件夹普通权限能改）。
 - Win顺 以管理员身份运行时，带 `elevated` 的插件不给 AI 和命令行用（它们的请求来自普通权限的程序）。
-- 插件自己要小心的：`WS_DATA_DIR`、`WS_SETTINGS` 和插件设置都是普通权限能改的，当作不可信的输入；不要从数据文件夹加载代码；找不到的 DLL 会按系统的 PATH 去找，需要的 DLL 都放在插件包里。
+- 插件自己要小心的：`WS_DATA_DIR`、`WS_SETTINGS` 和插件设置都是普通权限能改的，当作不可信的输入；不要从数据文件夹加载代码；找不到的 DLL 会按系统的 PATH 去找，需要的 DLL 都放在插件包里（Qt 可以用 Win顺 的，见“原生插件的共享 Qt 契约”）。
 
 清单这样写：`"permissions": ["elevated", "ui"]`，`"runtime": {"mode": "resident", "program": "bin\\tool.exe"}`。老版本的 Win顺 不认识 `elevated`，会整个拒绝这个插件，所以同时写上 `"minWinShun"`。
 

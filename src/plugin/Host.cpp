@@ -1221,10 +1221,12 @@ Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pendin
     const Runtime& runtime = *manifest->runtime;
     const QString appDir = QDir::toNativeSeparators(m_options.appDir.isEmpty() ? QFileInfo(m_options.runnerExe).absolutePath() : m_options.appDir);
     if (!runtime.hostQtVersion.isEmpty()) {
+        // Elevated too (GitHub #255): Win顺's own folder, which the elevated
+        // runner itself runs from (it takes no other for Qt).
         const QString problem = programs::hostQtProblem(runtime, appDir);
-        if (!problem.isEmpty() || spec.elevated) {
+        if (!problem.isEmpty()) {
             if (error)
-                *error = problem.isEmpty() ? u"共享宿主 Qt 只支持普通权限插件"_s : problem;
+                *error = problem;
             return {};
         }
         spec.qtDir = appDir;

@@ -607,13 +607,14 @@ std::optional<Manifest> Manifest::parse(const QByteArray& json, QString* error)
     // An interpreter could come from a folder the user can write to (a
     // per-user Python, node, pwsh; Windows PowerShell's modules from
     // Documents), and a strict sandbox is the opposite of what it asks.
+    // Win顺's own Qt (runtime.qt "host") is allowed with it (GitHub #255):
+    // it comes from the folder the elevated Win顺 and its runner already run
+    // from, so it adds nothing a plugin of its own could not.
     if (m.permissions.has(Permission::Elevated)) {
         if (!m.runtime || m.runtime->program != Program::Exe)
             check.fail(u"elevated 权限只给自带程序的插件（runtime.program 为 exe）"_s);
         else if (m.runtime->sandbox == SandboxLevel::Strict)
             check.fail(u"elevated 权限不能和 runtime.sandbox strict 一起用"_s);
-        else if (!m.runtime->hostQtVersion.isEmpty())
-            check.fail(u"共享宿主 Qt 只支持普通权限插件；请移除 elevated 权限或自带 Qt"_s);
     }
 
     if (o.contains(u"webSearch"_s) && !o.value(u"webSearch"_s).isBool())
