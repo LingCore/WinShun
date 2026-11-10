@@ -10,6 +10,7 @@
 #include <cwchar>
 #include <cwctype>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ws::winv {
@@ -161,6 +162,26 @@ bool giveBack(wchar_t key)
 bool canRestartExplorer()
 {
     return ::GetShellWindow() != nullptr;
+}
+
+bool folderWindowsOpen()
+{
+    bool open = false;
+    ::EnumWindows(
+        [](HWND window, LPARAM found) -> BOOL {
+            wchar_t type[32] {};
+            if (!::IsWindowVisible(window) || !::GetClassNameW(window, type, 32))
+                return TRUE;
+            // A copy's progress window counts too: it may be up without the folder's.
+            const std::wstring_view name(type);
+            if (name == L"CabinetWClass" || name == L"ExploreWClass" || name == L"OperationStatusWindow") {
+                *reinterpret_cast<bool*>(found) = true;
+                return FALSE;
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&open));
+    return open;
 }
 
 namespace {

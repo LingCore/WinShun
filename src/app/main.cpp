@@ -21,6 +21,7 @@
 #include "SystemCatalog.h"
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
+#include "platform/WinV.h"
 
 #include <QClipboard>
 #include <QCommandLineParser>
@@ -174,6 +175,19 @@ std::wstring commandLine(const QStringList& arguments)
     return ws::startupaccess::commandLine(arguments).toStdWString();
 }
 
+// "--restart-explorer" alone on the command line: the uninstaller, once it
+// has given Win+V or Win+S back to Windows (GitHub #270).
+bool explorerRestartAsked()
+{
+    int count = 0;
+    LPWSTR* args = ::CommandLineToArgvW(::GetCommandLineW(), &count);
+    if (!args)
+        return false;
+    const bool asked = count == 2 && std::wstring_view(args[1]) == L"--restart-explorer";
+    ::LocalFree(args);
+    return asked;
+}
+
 // Starts the new copy once this one has let go (see main): as this one ran,
 // as administrator (UAC asks; declined, as this one ran, so that Win顺 is
 // back at all), or with the user's normal rights (through the desktop
@@ -207,6 +221,11 @@ int main(int argc, char* argv[])
     // command (GitHub #112), before anything else is set up.
     if (const int hidden = ws::shell::hiddenHelper(); hidden >= 0)
         return hidden;
+    // Explorer reads DisabledHotkeys only when it starts: restarted the way
+    // the switch in the settings does it (back with the user's own rights,
+    // also from an elevated uninstaller). Nothing else is set up or read.
+    if (explorerRestartAsked())
+        return ws::winv::canRestartExplorer() && ws::winv::restartExplorer() ? 0 : 1;
     const bool manyStreams = raiseStreamLimit(); // before any font is read (see there)
     // Never show "insert a disk" dialogs while probing drives.
     ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);

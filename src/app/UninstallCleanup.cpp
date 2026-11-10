@@ -21,6 +21,7 @@
 #include <QFileInfo>
 #include <QLocale>
 #include <QSaveFile>
+#include <QStringList>
 
 #include <windows.h>
 #include <shellapi.h>
@@ -230,6 +231,7 @@ int cleanup()
         bool on;
         const char* name;
     } keys[] = {{L'V', settings.clipboardWinV, "Win+V"}, {L'S', settings.taskbarWinS, "Win+S"}};
+    QStringList givenBack;
     for (const auto& k : keys) {
         if (!k.on || !winv::recordedAsOurs(k.key))
             continue;
@@ -237,10 +239,21 @@ int cleanup()
             say(u"%1 留给另一份 Win顺 用，没动。"_s.arg(QLatin1StringView(k.name)),
                 u"%1 is left to another WinShun."_s.arg(QLatin1StringView(k.name)));
         } else if (winv::giveBack(k.key)) {
-            say(u"%1 已还给 Windows（下次登录或重启资源管理器后生效）。"_s.arg(QLatin1StringView(k.name)),
-                u"%1 was given back to Windows (after the next sign-in or an Explorer restart)."_s.arg(QLatin1StringView(k.name)));
+            givenBack << QLatin1StringView(k.name);
         } else {
             failed = true;
+        }
+    }
+    // Until Explorer starts again, the keys given back answer nothing at all
+    // (GitHub #270): restarted now, unless that would close folder windows.
+    if (!givenBack.isEmpty()) {
+        const QString names = givenBack.join(u" / "_s);
+        if (winv::canRestartExplorer() && !winv::folderWindowsOpen() && winv::restartExplorer()) {
+            say(u"%1 已还给 Windows，资源管理器已重启，现在就能用。"_s.arg(names),
+                u"%1 was given back to Windows; Explorer was restarted, it works now."_s.arg(names));
+        } else {
+            say(u"%1 已还给 Windows（重启资源管理器或下次登录后生效）。"_s.arg(names),
+                u"%1 was given back to Windows (after an Explorer restart or the next sign-in)."_s.arg(names));
         }
     }
 

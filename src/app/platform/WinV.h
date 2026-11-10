@@ -52,6 +52,9 @@ bool recordedAsOurs(wchar_t key);
 
 // Whether an Explorer runs the taskbar (one to restart).
 bool canRestartExplorer();
+// Whether a folder window of Explorer's is open: a restart would close it
+// (and a copy going on in it would stop).
+bool folderWindowsOpen();
 // Ends the Explorer that runs the taskbar and starts it again with the
 // user's rights, not ours (as administrator, everything started from the
 // taskbar would be too). Windows starts it again by itself only when it had

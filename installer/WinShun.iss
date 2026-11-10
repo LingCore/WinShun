@@ -101,6 +101,8 @@ english.AllUsersInstalled=WinShun is already installed for all users on this com
 chinesesimplified.AllUsersInstalled=这台电脑已经为所有用户装了 Win顺，直接用它即可，不用再装一份。
 english.RemoveData=Also delete WinShun's settings, file index and search history?%n%nKeep them if you are going to install WinShun again.
 chinesesimplified.RemoveData=要同时删除 Win顺 的设置、文件索引和搜索记录吗？%n%n如果还会再装 Win顺，可以保留它们。
+english.RestartExplorer=%1 now belongs to Windows again, but works only after Windows Explorer restarts.%n%nRestart Explorer now? Open folder windows will close. Choose No to have it back at your next sign-in.
+chinesesimplified.RestartExplorer=%1 已还给 Windows，但要重启资源管理器才能用。%n%n现在重启资源管理器吗？打开的文件夹窗口会关闭。选“否”的话，下次登录 Windows 后恢复。
 english.StillRunning=WinShun is still running, probably as administrator, and Setup cannot close it.%n%nRight-click WinShun in the notification area and choose Exit, then click Retry.
 chinesesimplified.StillRunning=Win顺 还在运行（可能是以管理员身份运行的），安装程序关不掉它。%n%n请在任务栏右下角右键 Win顺，点“退出”，然后点“重试”。
 english.NotClosed=WinShun is still running, so its files cannot be replaced. Exit WinShun and run Setup again.
@@ -1323,12 +1325,14 @@ end;
 // its search, if WinShun had taken them over: the letter it put into
 // Explorer's DisabledHotkeys goes (Explorer reads that when it starts). A
 // letter there without WinShun having taken the key belongs to someone else.
-procedure GiveBackKey(Section, Name, Key: String);
+// True when the letter was there and went.
+function GiveBackKey(Section, Name, Key: String): Boolean;
 var
   Keys, Recorded: String;
   I: Integer;
   Ours: Boolean;
 begin
+  Result := False;
   // Older versions kept no record of the letters they set: the ini says.
   Ours := CompareText(GetIniString(Section, Name, 'false', ExpandConstant('{userappdata}\WinShun\WinShun.ini')), 'true') = 0;
   if RegQueryStringValue(HKCU, 'Software\WinShun', 'ExplorerHotkeys', Recorded) then
@@ -1339,11 +1343,37 @@ begin
     exit;
   for I := Length(Keys) downto 1 do
     if Keys[I] = Key then
+    begin
       Delete(Keys, I, 1);
+      Result := True;
+    end;
+  if not Result then
+    exit;
   if Keys = '' then
     RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', 'DisabledHotkeys')
   else
     RegWriteStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', 'DisabledHotkeys', Keys);
+end;
+
+// Until Explorer starts again, a key given back answers nothing at all
+// (GitHub #270). Restarted by WinShun.exe (still there: before the files
+// go) as the switch in the settings does it: back with the user's own
+// rights, also from an elevated uninstaller. Open folder windows would
+// close: then asked first, and left to the next sign-in when there is
+// nobody to ask.
+procedure RestartExplorerFor(Keys: String);
+var
+  ResultCode: Integer;
+begin
+  if (FindWindowByClassName('CabinetWClass') <> 0) or (FindWindowByClassName('ExploreWClass') <> 0)
+    or (FindWindowByClassName('OperationStatusWindow') <> 0) then
+  begin
+    if UninstallSilent then
+      exit;
+    if MsgBox(FmtMessage(CustomMessage('RestartExplorer'), [Keys]), mbConfirmation, MB_YESNO) <> IDYES then
+      exit;
+  end;
+  Exec(ExpandConstant('{app}\{#AppExe}'), '--restart-explorer', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 // The folder the index was moved to in the settings ([Index] Folder), or ''
@@ -1415,6 +1445,7 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
+  GaveV, GaveS: Boolean;
 begin
   // Once the user has confirmed, before the files go.
   if CurUninstallStep = usUninstall then
@@ -1428,10 +1459,16 @@ begin
     RemoveWsFromPath(); // ChangesEnvironment tells the other programs when the uninstall ends
     // Directory Opus's double click on blank space, if Win顺 set it to run this copy.
     Exec(ExpandConstant('{app}\WinShunSearch.exe'), '--opus-menu-off', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    GiveBackKey('Clipboard', 'WinV', 'V');
-    GiveBackKey('Taskbar', 'WinS', 'S');
+    GaveV := GiveBackKey('Clipboard', 'WinV', 'V');
+    GaveS := GiveBackKey('Taskbar', 'WinS', 'S');
     RegDeleteValue(HKCU, 'Software\WinShun', 'ExplorerHotkeys');
     RegDeleteKeyIfEmpty(HKCU, 'Software\WinShun');
+    if GaveV and GaveS then
+      RestartExplorerFor('Win+V / Win+S')
+    else if GaveV then
+      RestartExplorerFor('Win+V')
+    else if GaveS then
+      RestartExplorerFor('Win+S');
   end;
   // Old versions' copies of WinShunTap.dll (RemoveTapCopies); the folder
   // itself only when nothing else is in it (the index service's log).
