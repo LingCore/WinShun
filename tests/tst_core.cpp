@@ -11552,7 +11552,9 @@ private slots:
 
     void relocatedPersonalFoldersKeepPriority()
     {
-        QTemporaryDir tree;
+        // Not under %TEMP%: that is in the hidden AppData, and a file below a
+        // hidden folder is ordered kHidden whatever profile it belongs to.
+        QTemporaryDir tree(QCoreApplication::applicationDirPath() + u"/relocated-XXXXXX"_s);
         QTemporaryDir store;
         QVERIFY(tree.isValid() && store.isValid());
         const QString profile = QDir::toNativeSeparators(tree.filePath(u"profile"_s));
