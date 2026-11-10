@@ -4872,6 +4872,9 @@
 - **做法**：图标改用随程序带的 Phosphor 字体（见下一节），不再靠系统图标字体。没有对应 Phosphor 图标的编号（窗口标题栏按钮、第三方插件的 `glyph:`）仍用系统字体：`SystemTheme::hasGlyph` 用 `QRawFont` 查图标字体自己有没有这个字（只查它自己，不算借来的），结果缓存；`Glyph.qml` 缺的不画，但仍占一个图标的位置；缺了哪个记进诊断日志（`the icon font (…) has no U+XXXX`）。插件图标（`FileIconProvider::glyphIcon`）用 `QFont::NoFontMerging`，不向别的字体借字。`tst_appearance` 的 `iconFontGlyphs` 测试。没有老机器实测。
 
 ### 图标换成 Phosphor（2026-10-29）
+
+> 2026-11-07 规则补充：用户明确要求，除“复制完整路径”保留现有自定义设计外，自有功能图标优先复用 PH；库里没有合适图标时，才按 PH 风格补绘。适用范围含主程序、官方插件和各主题，品牌 Logo、真实文件／应用图标及用户图片属于内容标识。混用字库或在各主题重复手绘同一动作，会造成线宽、留白和视觉重量不一致；新增、替换前应先查 PH 及项目现有映射，确认无合适图标后再补绘，并在实际使用位置验收。下文及后文“标题栏保留 Windows 字形”的表述记录当时实现，不再作为新增功能图标的例外；既有绕过路径尚未迁移完，不能据此声称全项目已统一。当前项目规则见 [AGENTS.md](../AGENTS.md#界面)。
+
 - **现象**：系统图标字体随 Windows 版本变，老 Win10 缺图标（上一节）；用户要求直接用 Phosphor Icons。
 - **原因**：Phosphor 的编号也在私用区（E000–F8FF），和 Segoe 的重叠，同一个编号在两个字体里是不同图标。
 - **做法**：`third_party/phosphor` 的 Phosphor.ttf 和 Phosphor-Fill.ttf（2.1.2，MIT）编进资源，启动时 `phosphor::loadFonts()` 用 `addApplicationFontFromData` 注册（字体名取注册返回的，不写死）。代码里照旧写 Segoe 编号，`Phosphor.cpp` 的对照表（按 Segoe 编号排序，注释写两边的名字）换成 Phosphor 编号和字体；Phosphor 编号只经这张表读，绝不当 Segoe 编号用。“开”的状态用 Fill（已固定 = push-pin 实心，取消收藏 = 实心星），这时 `overlay` 不画（Phosphor 一个字就是完整图标）。三处画图标都走这张表：`Glyph.qml`（`SystemTheme.phosphorIcon`）、`FileIconProvider::glyphIcon`（插件的 `glyph:U+XXXX`）、`IconBadge`。窗口标题栏的最小化/最大化/关闭（`Glyph.caption`）保留 Windows 自己的字形。Phosphor 的图形只占字身约 82%，Segoe 几乎占满：`phosphor::kScale`（1.125）把字放大、框不变，三处共用。Phosphor 的行高（hhea/win 960+64）正好是字身，但 typo lineGap 是 64（图标现在不用 Text 画了，见下一节；`phosphorIcons` 改查 `PhosphorGlyph` 的字身）。测试从资源读字体数据查每个映射的字都在（不按名字找，装了桌面版 Phosphor 会掩盖资源缺失）。新加图标：先在 phosphoricons.com 找名字，到 `@phosphor-icons/web` 的 `style.css` 查编号，加进表里。
