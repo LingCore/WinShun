@@ -6399,6 +6399,8 @@ int runResults(const QStringList& args)
         return checkSearchExperience(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--pure-search"_s))
         return checkPureSearch(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--result-row-spacing"_s))
+        return checkResultRowSpacing(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--window-search-menu"_s))
         return checkWindowSearchAndMenu(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-alignment"_s))
@@ -7191,6 +7193,94 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
             int(list.bottom - list.top)});
         report.insert(u"centred_explorer_box"_s, QJsonArray {int(box.left), int(box.top), int(box.right - box.left),
             int(box.bottom - box.top)});
+    }
+    app.hideLauncher();
+    pump(300);
+
+    // GitHub #234: more rows and wider columns than the list shows, so that
+    // Explorer shows both its scroll bars. The box keeps 12 px clear of them
+    // as it does of the edges of a list without any: as far from the one on
+    // the right as from the one at the bottom, over neither.
+    {
+        // The probe's own folder: rows enough for the bar on the right.
+        filemanager::goTo(secondTab, folder.toStdWString());
+        waiting.restart();
+        while (QString::fromStdWString(filemanager::explorerFolder(secondTab)) != folder && waiting.elapsed() < 5000)
+            pump(50);
+        pump(500);
+        const qreal scale = window->screen() ? window->screen()->devicePixelRatio() : 1.0;
+        if (ComPtr<IShellView> shellView; SUCCEEDED(second->QueryActiveShellView(&shellView))) {
+            if (ComPtr<IFolderView> folderView; SUCCEEDED(shellView.As(&folderView)))
+                folderView->SetCurrentViewMode(FVM_DETAILS);
+            // A name column wider than the list: the bar at the bottom.
+            UINT count = 0;
+            if (ComPtr<IColumnManager> columns; SUCCEEDED(shellView.As(&columns))
+                && SUCCEEDED(columns->GetColumnCount(CM_ENUM_VISIBLE, &count)) && count > 0) {
+                std::vector<PROPERTYKEY> keys(count);
+                CM_COLUMNINFO name {sizeof(CM_COLUMNINFO), CM_MASK_WIDTH};
+                name.uWidth = UINT(qRound(900 * scale));
+                if (SUCCEEDED(columns->GetColumns(CM_ENUM_VISIBLE, keys.data(), count)))
+                    columns->SetColumnInfo(keys.front(), &name);
+            }
+        }
+        struct Bars {
+            HWND view = nullptr;
+            RECT vertical {}, horizontal {};
+        };
+        const auto barsOf = [secondTab] {
+            Bars bars;
+            ::EnumChildWindows(secondTab, [](HWND child, LPARAM param) -> BOOL {
+                auto& bars = *reinterpret_cast<Bars*>(param);
+                wchar_t name[32] {};
+                ::GetClassNameW(child, name, 32);
+                RECT at {};
+                if (std::wstring_view(name) == L"SHELLDLL_DefView" && ::IsWindowVisible(child) && !bars.view)
+                    bars.view = child;
+                else if (std::wstring_view(name) == L"ScrollBar" && bars.view && ::IsChild(bars.view, child)
+                    && ::IsWindowVisible(child) && ::GetWindowRect(child, &at))
+                    (at.bottom - at.top > at.right - at.left ? bars.vertical : bars.horizontal) = at;
+                return TRUE;
+            }, reinterpret_cast<LPARAM>(&bars));
+            return bars;
+        };
+        // The list 560 px wide whatever the navigation pane takes: room for
+        // the box beside the bar on the right, too little for the columns.
+        const int height = qRound(600 * scale);
+        int width = qRound(760 * scale);
+        ::SetWindowPos(root, nullptr, area.left + 40, area.top + 40, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+        pump(500);
+        if (RECT view {}; ::GetWindowRect(barsOf().view, &view))
+            width += qRound(560 * scale) - (view.right - view.left);
+        ::SetWindowPos(root, nullptr, 0, 0, width, height, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE);
+        pump(800);
+        const Bars bars = barsOf();
+        const bool both = !::IsRectEmpty(&bars.vertical) && !::IsRectEmpty(&bars.horizontal);
+        check(both, "a folder of more rows and columns than fit: Explorer shows both scroll bars");
+        ::SetForegroundWindow(root);
+        app.showFolderSearch(root, secondTab, false, folder);
+        pump(600);
+        settle(window, 3);
+        RECT box {}, overlap {};
+        ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
+        const int gap = qRound(12 * scale);
+        if (both) {
+            check(!::IntersectRect(&overlap, &box, &bars.vertical) && !::IntersectRect(&overlap, &box, &bars.horizontal),
+                "with scroll bars: the box is over neither");
+            check(std::abs(bars.vertical.left - box.right - gap) <= 2 && std::abs(bars.horizontal.top - box.bottom - gap) <= 2,
+                "with scroll bars: 12 px from the one on the right and from the one at the bottom");
+        }
+        const auto rectOf = [](const RECT& r) { return QJsonArray {int(r.left), int(r.top), int(r.right - r.left), int(r.bottom - r.top)}; };
+        report.insert(u"scrollbars_vertical"_s, rectOf(bars.vertical));
+        report.insert(u"scrollbars_horizontal"_s, rectOf(bars.horizontal));
+        report.insert(u"scrollbars_box"_s, rectOf(box));
+        if (window->screen()) {
+            RECT frame {};
+            ::GetWindowRect(root, &frame);
+            const QRect region(frame.left - monitor.rcMonitor.left, frame.top - monitor.rcMonitor.top,
+                frame.right - frame.left, frame.bottom - frame.top);
+            check(window->screen()->grabWindow(0).copy(region).save(out.filePath(u"typing-scrollbars.png"_s)),
+                "with scroll bars: screenshot saved");
+        }
     }
     app.hideLauncher();
     pump(300);

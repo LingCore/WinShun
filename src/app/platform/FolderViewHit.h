@@ -67,10 +67,12 @@ bool isOpusFileDisplay(HWND root, HWND focus);
 RECT opusFileLists(HWND root);
 // The file list of the File Explorer tab `tab` (a Hit's) in its window
 // `root`: its folder view shown (SHELLDLL_DefView: the items, without the
-// navigation, details and preview panes; the largest, should two be there);
-// none, that tab; nor that, the window's client area. Screen pixels; empty
-// only for no window at all. Windows 10's one tab and the tabs of Windows 11
-// alike, the hidden ones never (GitHub #203). Class names only: any thread.
+// navigation, details and preview panes; the largest, should two be there),
+// less the scroll bars it shows (a box put in its corner keeps clear of
+// them as of its edges, GitHub #234); none, that tab; nor that, the window's
+// client area. Screen pixels; empty only for no window at all. Windows 10's
+// one tab and the tabs of Windows 11 alike, the hidden ones never (GitHub
+// #203). Class names only: any thread.
 RECT explorerFileList(HWND root, HWND tab);
 
 // What isBlank went by, for the diagnostics journal (GitHub #45): class

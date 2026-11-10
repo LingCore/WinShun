@@ -6,6 +6,7 @@
 #include <uiautomation.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <cwchar>
 #include <format>
 #include <iterator>
@@ -389,24 +390,62 @@ RECT opusFileLists(HWND root)
     return all;
 }
 
+namespace {
+
+// Where a folder view shows its items: `view`'s bounds less the scroll bars
+// shown along its edges. Explorer's are windows of their own in the view
+// (DirectUIHWND > CtrlNotifySink > ScrollBar), hidden while all fits.
+RECT itemsArea(HWND view, RECT bounds)
+{
+    struct Search {
+        RECT view;
+        RECT items;
+    } search {bounds, bounds};
+    const auto trim = [](HWND window, LPARAM param) -> BOOL {
+        auto& search = *reinterpret_cast<Search*>(param);
+        RECT bar {}, overlap {};
+        if (!hasClass(window, L"ScrollBar") || !::IsWindowVisible(window) || !::GetWindowRect(window, &bar)
+            || !::IntersectRect(&overlap, &bar, &search.view))
+            return TRUE;
+        RECT& items = search.items;
+        if (bar.bottom - bar.top > bar.right - bar.left) { // vertical: on the right, or on the left (right to left)
+            if (bar.left + bar.right > search.view.left + search.view.right)
+                items.right = std::min(items.right, bar.left);
+            else
+                items.left = std::max(items.left, bar.right);
+        } else if (bar.top + bar.bottom > search.view.top + search.view.bottom) {
+            items.bottom = std::min(items.bottom, bar.top);
+        }
+        return TRUE;
+    };
+    ::EnumChildWindows(view, trim, reinterpret_cast<LPARAM>(&search));
+    return ::IsRectEmpty(&search.items) ? bounds : search.items;
+}
+
+} // namespace
+
 RECT explorerFileList(HWND root, HWND tab)
 {
     RECT list {};
     if (!root || !::IsWindow(root))
         return list;
     const HWND within = tab && ::IsWindow(tab) ? tab : root;
-    const auto largest = [](HWND window, LPARAM param) -> BOOL {
+    struct Largest {
+        HWND view = nullptr;
         RECT bounds {};
-        RECT& list = *reinterpret_cast<RECT*>(param);
+    } largest;
+    const auto find = [](HWND window, LPARAM param) -> BOOL {
+        RECT bounds {};
+        auto& largest = *reinterpret_cast<Largest*>(param);
         const auto area = [](const RECT& r) { return static_cast<long long>(r.right - r.left) * (r.bottom - r.top); };
         if (hasClass(window, L"SHELLDLL_DefView") && ::IsWindowVisible(window) && ::GetWindowRect(window, &bounds)
-            && !::IsRectEmpty(&bounds) && area(bounds) > area(list))
-            list = bounds;
+            && !::IsRectEmpty(&bounds) && area(bounds) > area(largest.bounds))
+            largest = {window, bounds};
         return TRUE;
     };
-    ::EnumChildWindows(within, largest, reinterpret_cast<LPARAM>(&list));
-    if (!::IsRectEmpty(&list))
-        return list;
+    ::EnumChildWindows(within, find, reinterpret_cast<LPARAM>(&largest));
+    if (largest.view)
+        return itemsArea(largest.view, largest.bounds);
     if (within != root && ::IsWindowVisible(within) && ::GetWindowRect(within, &list) && !::IsRectEmpty(&list))
         return list;
     list = {};
