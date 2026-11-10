@@ -25,6 +25,7 @@
 #include "ToastPolicy.h"
 #include "Unc.h"
 #include "WebDav.h"
+#include "DragPicture.h"
 #include "platform/DragOut.h"
 #include "platform/FileManagers.h"
 #include "platform/Shell.h"
@@ -4252,7 +4253,8 @@ void Launcher::dragOut(int row)
     if (paths.isEmpty() || !m_window)
         return;
     const auto hwnd = reinterpret_cast<HWND>(m_window->winId());
-    dragout::drag(paths, hwnd);
+    const DragPicture picture = dragPicture(paths, m_window->devicePixelRatio());
+    dragout::drag(paths, hwnd, true, picture.image, picture.hotspot);
     // OLE's loop took the button's release: Qt still holds the press. Let it
     // go where the pointer is now (over another program, mostly).
     POINT p {};

@@ -1096,7 +1096,7 @@ add_test(NAME tst_download_cmake COMMAND ${CMAKE_COMMAND}
 # What a drop target gets when results are dragged out of Win顺.
 qt_add_executable(tst_dragout tst_dragout.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/DragOut.cpp)
 target_include_directories(tst_dragout PRIVATE ${PROJECT_SOURCE_DIR}/src/app/platform)
-target_link_libraries(tst_dragout PRIVATE winshun_options Qt6::Core Qt6::Test)
+target_link_libraries(tst_dragout PRIVATE winshun_options Qt6::Gui Qt6::Test)
 
 # The system switches' cache (Switches): toggles turned into On and Off, writes
 # coalesced, failures, changes made elsewhere, through a fake backend on the

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QImage>
+#include <QPoint>
 #include <QStringList>
 
 #include <windows.h>
@@ -31,9 +33,15 @@ enum class Outcome { Dropped, Cancelled, Failed };
 // Drags the items until the left button is let go: a modal loop on the
 // calling thread, which pumps its messages meanwhile (the GUI thread, with
 // the button down). Copy or link, never move: dropped on a folder of the same
-// disk, Explorer would otherwise move the user's file away. With the shell's
-// drag image, the items' thumbnails and their count. Set allowLink to false
-// for temporary exports: a shortcut would break when the export is removed.
-Outcome drag(const QStringList& paths, HWND source, bool allowLink = true);
+// disk, Explorer would otherwise move the user's file away. Set allowLink to
+// false for temporary exports: a shortcut would break when the export is
+// removed.
+//
+// `picture` (device pixels) is what follows the pointer, its `hotspot` under
+// the pointer's tip: in a window of its own, nearly solid (the shell's drag
+// image is see-through, and with none it shows a stand-in: the first item's
+// small icon in a dark square, which is what a drag without one still gets).
+Outcome drag(const QStringList& paths, HWND source, bool allowLink = true, const QImage& picture = {},
+             QPoint hotspot = {});
 
 } // namespace ws::dragout

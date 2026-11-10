@@ -55,6 +55,7 @@ qt_add_executable(WinShun WIN32
     FrameReveal.cpp FrameReveal.h
     Elide.cpp Elide.h
     FileIconProvider.cpp FileIconProvider.h
+    DragPicture.cpp DragPicture.h
     McpClients.cpp McpClients.h
     Migration.cpp Migration.h
     Onboarding.cpp Onboarding.h

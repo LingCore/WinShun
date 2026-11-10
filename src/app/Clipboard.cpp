@@ -7,6 +7,7 @@
 #include "HotkeySteps.h"
 #include "TextField.h"
 #include "platform/ComWorker.h"
+#include "DragPicture.h"
 #include "platform/DragOut.h"
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
@@ -1094,7 +1095,8 @@ void Clipboard::dragOut(int row)
     const auto hwnd = reinterpret_cast<HWND>(m_window->winId());
     m_dragging = true;
     emit focusNeeded(); // stop key routing so OLE receives Escape and Ctrl
-    const auto outcome = dragout::drag(paths, hwnd, !exported); // a shortcut to an export would break
+    const DragPicture picture = dragPicture(paths, m_window->devicePixelRatio());
+    const auto outcome = dragout::drag(paths, hwnd, !exported, picture.image, picture.hotspot); // a shortcut to an export would break
     // OLE consumes the release; clear Qt's pressed state without pasting.
     POINT p {};
     ::GetCursorPos(&p);

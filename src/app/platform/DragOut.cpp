@@ -1,6 +1,7 @@
 #include "DragOut.h"
 
 #include <QDir>
+#include <QImage>
 
 #include <shellapi.h>
 #include <shlobj.h>
@@ -66,6 +67,130 @@ void preferCopy(IDataObject* data)
     put(data, preferred, &copy, sizeof copy);
 }
 
+// The picture that follows the pointer: a window of its own, not the
+// shell's drag image, which Windows shows see-through (the words under it
+// showing through the icon, its shadow all but gone). Layered and
+// transparent to the mouse, so the drop goes to the window under it; never
+// active. In device pixels, as the picture was drawn.
+class Follower {
+public:
+    Follower(const QImage& picture, QPoint hotspot)
+        : m_hotspot(hotspot)
+    {
+        static const wchar_t* const name = L"WinShun.DragPicture";
+        static const bool registered = [] {
+            WNDCLASSEXW c {sizeof(WNDCLASSEXW)};
+            c.lpfnWndProc = ::DefWindowProcW;
+            c.hInstance = ::GetModuleHandleW(nullptr);
+            c.lpszClassName = name;
+            return ::RegisterClassExW(&c) != 0;
+        }();
+        if (!registered)
+            return;
+        const QImage image = picture.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+        m_size = {image.width(), image.height()};
+        m_window = ::CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
+                                     name, L"", WS_POPUP, 0, 0, m_size.cx, m_size.cy, nullptr, nullptr,
+                                     ::GetModuleHandleW(nullptr), nullptr);
+        if (!m_window)
+            return;
+        BITMAPINFO info {};
+        info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        info.bmiHeader.biWidth = image.width();
+        info.bmiHeader.biHeight = -image.height(); // top-down, as QImage
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        info.bmiHeader.biCompression = BI_RGB;
+        const HDC screen = ::GetDC(nullptr);
+        const HDC memory = ::CreateCompatibleDC(screen);
+        void* bits = nullptr;
+        const HBITMAP bitmap = ::CreateDIBSection(screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+        if (bitmap && bits) {
+            const std::size_t row = std::size_t(image.width()) * 4;
+            for (int y = 0; y < image.height(); ++y)
+                std::memcpy(static_cast<uchar*>(bits) + std::size_t(y) * row, image.constScanLine(y), row);
+            const HGDIOBJ old = ::SelectObject(memory, bitmap);
+            POINT at = place();
+            POINT origin {};
+            // Nearly solid: a light hint that it is on its way, never a ghost.
+            BLENDFUNCTION blend {AC_SRC_OVER, 0, 235, AC_SRC_ALPHA};
+            ::UpdateLayeredWindow(m_window, screen, &at, &m_size, memory, &origin, 0, &blend, ULW_ALPHA);
+            ::SelectObject(memory, old);
+            ::ShowWindow(m_window, SW_SHOWNOACTIVATE);
+        }
+        if (bitmap)
+            ::DeleteObject(bitmap);
+        ::DeleteDC(memory);
+        ::ReleaseDC(nullptr, screen);
+    }
+    ~Follower()
+    {
+        if (m_window)
+            ::DestroyWindow(m_window);
+    }
+    Follower(const Follower&) = delete;
+    Follower& operator=(const Follower&) = delete;
+
+    void follow()
+    {
+        if (!m_window)
+            return;
+        const POINT at = place();
+        ::SetWindowPos(m_window, HWND_TOPMOST, at.x, at.y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+
+private:
+    POINT place() const
+    {
+        POINT cursor {};
+        ::GetCursorPos(&cursor);
+        return {cursor.x - m_hotspot.x(), cursor.y - m_hotspot.y()};
+    }
+
+    HWND m_window = nullptr;
+    SIZE m_size {};
+    QPoint m_hotspot;
+};
+
+// The left button's drag, as OLE's own: Esc cancels, letting go drops; each
+// move takes the picture along, with the system's cursors (copy, link, no).
+class Source final : public IDropSource {
+public:
+    explicit Source(Follower& follower)
+        : m_follower(follower)
+    {
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** out) override
+    {
+        if (!out)
+            return E_POINTER;
+        if (id == IID_IUnknown || id == IID_IDropSource) {
+            *out = static_cast<IDropSource*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++m_refs; }
+    ULONG STDMETHODCALLTYPE Release() override { return --m_refs; } // on the caller's stack
+    HRESULT STDMETHODCALLTYPE QueryContinueDrag(BOOL escape, DWORD keys) override
+    {
+        if (escape)
+            return DRAGDROP_S_CANCEL;
+        return keys & MK_LBUTTON ? S_OK : DRAGDROP_S_DROP;
+    }
+    HRESULT STDMETHODCALLTYPE GiveFeedback(DWORD) override
+    {
+        m_follower.follow();
+        return DRAGDROP_S_USEDEFAULTCURSORS;
+    }
+
+private:
+    Follower& m_follower;
+    ULONG m_refs = 1;
+};
+
 } // namespace
 
 ComPtr<IDataObject> dataObject(const QStringList& paths)
@@ -118,14 +243,22 @@ ComPtr<IDataObject> fileNamesObject(const QStringList& paths)
     return data;
 }
 
-Outcome drag(const QStringList& paths, HWND source, bool allowLink)
+Outcome drag(const QStringList& paths, HWND source, bool allowLink, const QImage& picture, QPoint hotspot)
 {
     const ComPtr<IDataObject> data = dataObject(paths);
     if (!data)
         return Outcome::Failed;
     DWORD effect = DROPEFFECT_NONE;
     const DWORD allowed = DROPEFFECT_COPY | (allowLink ? DROPEFFECT_LINK : 0);
-    const HRESULT hr = ::SHDoDragDrop(source, data.Get(), nullptr, allowed, &effect);
+    HRESULT hr = E_FAIL;
+    if (picture.isNull()) {
+        hr = ::SHDoDragDrop(source, data.Get(), nullptr, allowed, &effect); // with the shell's stand-in picture
+    } else {
+        // OLE's own loop: the shell's would add its see-through stand-in.
+        Follower follower(picture, hotspot);
+        Source dropSource(follower);
+        hr = ::DoDragDrop(data.Get(), &dropSource, allowed, &effect);
+    }
     if (hr == DRAGDROP_S_DROP)
         return effect != DROPEFFECT_NONE ? Outcome::Dropped : Outcome::Cancelled;
     return hr == DRAGDROP_S_CANCEL ? Outcome::Cancelled : Outcome::Failed;
