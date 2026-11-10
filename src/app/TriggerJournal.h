@@ -41,6 +41,7 @@ public:
     struct Context {
         bool helper = false; // the service's key helper tells of double taps
         bool trimmed = false; // IdleTrim handed the memory back since the last opening
+        int hotMb = -1; // the pages read back ahead for it (HotPages), MB; 0: none recorded yet
         const char* rawInput = "off"; // ok, none, other, unknown; off without double tap
         std::optional<Told> told; // double taps only
     };

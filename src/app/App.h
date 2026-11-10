@@ -72,6 +72,7 @@ class SystemCatalog;
 class History;
 class IndexService;
 class IdleTrim;
+class HotPages;
 class KeyListener;
 class PointerWatch;
 class ServiceDialogNav;
@@ -271,6 +272,7 @@ private:
     // (the diagnostics journal's "trigger", TriggerJournal); a double tap's
     // also says which listener told of it, and when.
     void beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optional<TriggerJournal::Told> told = {});
+    void openingSeen(TriggerWindow window); // m_triggers->seen, and HotPages
     void journalTapNote(const KeyListener::Note& note);
     // win::bringToFront for a window a press asked for: how, and how long, to the journal.
     win::Front toFront(QWindow* window);
@@ -791,6 +793,11 @@ private:
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<NetworkNotifier> m_network; // after m_index, whose shares it tells
     std::unique_ptr<IdleTrim> m_idleTrim; // gives the memory back while nothing is in use
+    // GitHub #265, memory short: the pages an opening needs are read back ahead.
+    std::shared_ptr<HotPages> m_launcherPages;
+    std::shared_ptr<HotPages> m_clipPages;
+    std::shared_ptr<HotPages> m_recordPages; // of the opening under way, recorded once it is seen
+    qint64 m_lastOpeningSeenMs = 0; // ms since 1970, as IdleTrim::LastTrim
     std::unique_ptr<BackgroundStatus> m_background; // what runs in the background, in words (after m_index, m_updater)
     std::unique_ptr<HealthMonitor> m_health; // the 运行状况 page's readings (after m_background, m_idleTrim)
     std::vector<std::wstring> m_sharesBuilding; // being read for the first time: told when done

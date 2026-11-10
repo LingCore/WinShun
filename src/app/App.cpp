@@ -72,6 +72,7 @@
 #include "platform/FileManagers.h"
 #include "platform/Foreground.h"
 #include "platform/Http.h"
+#include "platform/HotPages.h"
 #include "platform/IdleTrim.h"
 #include "platform/MemoryReport.h"
 #include "BackgroundStatus.h"
@@ -690,6 +691,8 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     });
     // Loaded, caught up, done reading: emptied now, not at the next recheck.
     connect(m_index.get(), &IndexService::stateChanged, m_idleTrim.get(), &IdleTrim::poke);
+    m_launcherPages = std::make_shared<HotPages>();
+    m_clipPages = std::make_shared<HotPages>();
     m_apps = std::make_unique<AppCatalog>();
     m_places = std::make_unique<SystemCatalog>();
     m_engine = std::make_unique<SearchEngine>(m_index.get(), m_apps.get(), m_places.get());
@@ -4837,8 +4840,8 @@ void App::toggleLauncher(bool byShortcut, std::optional<std::uint64_t> pressedAt
     case ShortcutAction::Show:
         decided("show", TriggerWindow::Launcher);
         showLauncher();
-        if (m_triggers && !m_launcherReveal.pending()) // up already (behind a window, sliding out): seen now
-            m_triggers->seen(TriggerWindow::Launcher);
+        if (!m_launcherReveal.pending()) // up already (behind a window, sliding out): seen now
+            openingSeen(TriggerWindow::Launcher);
         break;
     }
 }
@@ -4857,8 +4860,8 @@ void App::toggleClipboard(std::optional<std::uint64_t> pressedAt)
     if (m_triggers) // in front and still coming: it comes, as it is
         m_triggers->decided(clipboardInCharge() ? "raise" : "show", TriggerWindow::Clipboard);
     showClipboard();
-    if (m_triggers && m_clipWindow && !m_clipReveal.pending()) // up already
-        m_triggers->seen(TriggerWindow::Clipboard);
+    if (m_clipWindow && !m_clipReveal.pending()) // up already
+        openingSeen(TriggerWindow::Clipboard);
 }
 
 void App::beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optional<TriggerJournal::Told> told)
@@ -4867,10 +4870,36 @@ void App::beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optio
         m_triggers = std::make_unique<TriggerJournal>();
     TriggerJournal::Context context;
     context.helper = m_keyListener && m_keyListener->serviceActive();
-    context.trimmed = m_idleTrim && m_idleTrim->trimmed();
+    // Emptied since a window was last seen (not just since the launcher's
+    // last warming: IdleTrim::trimmed()).
+    context.trimmed = m_idleTrim && m_idleTrim->lastTrim().atMs > m_lastOpeningSeenMs;
     context.rawInput = rawInputState();
     context.told = told;
+    // What the window's last opening after an emptying needed, read back
+    // while this one starts (GitHub #265): emptied here, or by Windows while
+    // memory was short, it is on the disk; still in memory, it costs next
+    // to nothing. Emptied since the last opening, this one's are recorded.
+    const bool clipboard = source == TriggerSource::ClipboardHotkey || source == TriggerSource::WinV;
+    const std::shared_ptr<HotPages>& pages = clipboard ? m_clipPages : m_launcherPages;
+    if (pages) {
+        context.hotMb = static_cast<int>(pages->bytes() >> 20);
+        if (context.hotMb > 0)
+            std::thread([pages] { pages->prefetch(); }).detach();
+    }
+    m_recordPages = context.trimmed ? pages : nullptr;
     m_triggers->begin(source, pressedAt, context);
+}
+
+void App::openingSeen(TriggerWindow window)
+{
+    if (m_triggers)
+        m_triggers->seen(window);
+    m_lastOpeningSeenMs = QDateTime::currentMSecsSinceEpoch(); // IdleTrim::LastTrim's clock
+    // The first opening after an emptying: what it brought back is what the
+    // next one will need (HotPages).
+    const std::shared_ptr<HotPages>& own = window == TriggerWindow::Clipboard ? m_clipPages : m_launcherPages;
+    if (m_recordPages && m_recordPages == own)
+        std::thread([pages = std::exchange(m_recordPages, nullptr)] { pages->record(); }).detach();
 }
 
 // A double tap that came to nothing (KeyListener::Note): in the journal, a
@@ -5874,7 +5903,7 @@ void App::uncloakClipboard()
         m_clipWindow->setProperty("controllerEventsEnabled", false);
         if (m_clipDisplay->show()) {
             m_clipRevealedAt = ::GetTickCount64();
-            if (m_triggers) m_triggers->seen(TriggerWindow::Clipboard);
+            openingSeen(TriggerWindow::Clipboard);
             return; // the ordinary-process scene stays cloaked behind the peer
         }
     }
@@ -5891,8 +5920,7 @@ void App::uncloakClipboard()
     win::setCloaked(m_clipWindow, false);
     if (m_clipWindow->isVisible() && !m_clipPrewarming.load()) {
         m_clipRevealedAt = ::GetTickCount64(); // there to be seen from now on (seenBy)
-        if (m_triggers)
-            m_triggers->seen(TriggerWindow::Clipboard);
+        openingSeen(TriggerWindow::Clipboard);
     }
 }
 
@@ -6001,8 +6029,7 @@ void App::revealLauncher()
     win::setCloaked(m_window, false);
     if (launcherShown()) {
         m_launcherRevealedAt = ::GetTickCount64(); // there to be seen from now on (seenBy)
-        if (m_triggers)
-            m_triggers->seen(TriggerWindow::Launcher);
+        openingSeen(TriggerWindow::Launcher);
     }
     deliverTyping(); // asked for by typing elsewhere: the keys, if they waited for its first frame
 }

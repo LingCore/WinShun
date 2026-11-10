@@ -159,6 +159,8 @@ void TriggerJournal::write(const Entry& entry)
         {u"helper"_s, entry.context.helper},
         {u"raw_input"_s, QString::fromLatin1(entry.context.rawInput)},
     };
+    if (entry.context.hotMb >= 0)
+        details.insert(u"hot_mb"_s, static_cast<qint64>(entry.context.hotMb));
     if (const std::optional<Told>& told = entry.context.told) {
         details.insert(u"tap_from"_s, QString::fromLatin1(told->from));
         details.insert(u"listener_ms"_s, static_cast<qint64>(told->listenerMs));
