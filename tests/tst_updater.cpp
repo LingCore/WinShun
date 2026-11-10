@@ -14,8 +14,11 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUuid>
 #include <QtEndian>
 
 #include <miniz.h>
@@ -156,6 +159,27 @@ QByteArray readFile(const QString& path)
 {
     QFile file(path);
     return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray("<missing>");
+}
+
+// An administrator working with normal rights (the split token UAC gives),
+// whom UAC raises without a prompt: a test may then start a program as
+// administrator without anyone having to answer.
+bool elevatesWithoutPrompt()
+{
+    HANDLE token = nullptr;
+    if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &token))
+        return false;
+    TOKEN_ELEVATION_TYPE type {};
+    DWORD size = 0;
+    const bool limited = ::GetTokenInformation(token, TokenElevationType, &type, sizeof(type), &size)
+        && type == TokenElevationTypeLimited;
+    ::CloseHandle(token);
+    DWORD consent = 1;
+    DWORD bytes = sizeof(consent);
+    const bool read = ::RegGetValueW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+                          L"ConsentPromptBehaviorAdmin", RRF_RT_REG_DWORD, nullptr, &consent, &bytes)
+        == ERROR_SUCCESS;
+    return limited && read && consent == 0;
 }
 
 // The service's answer for the Setup, as lcstp.com sends it (a mirror of
@@ -550,6 +574,66 @@ private slots:
         writeFile(dir.filePath(u"s/qml/a"_s), "x");
         const auto names = update::stagedNames(QDir::toNativeSeparators(dir.filePath(u"s"_s)).toStdWString());
         QCOMPARE(names, (std::vector<std::wstring> {L"WinShun.exe", L"qml"}));
+    }
+
+    // A whole run of WinShunUpdate.exe --portable, as Updater starts it once
+    // the old copy has ended (none to wait for here, and a mutex of the
+    // test's own in place of Win顺's): the new files go in, the new version
+    // comes up, nothing of the old is left. With "以管理员身份运行此程序"
+    // ticked in WinShun.exe's properties (RUNASADMIN, GitHub #274) a plain
+    // start of it fails (740): the new version must still come up, then as
+    // administrator, and not be swapped back for the old.
+    void helperStartsNewVersion_data()
+    {
+        QTest::addColumn<bool>("runAsAdministrator");
+        QTest::newRow("plain") << false;
+        QTest::newRow("run-as-administrator") << true;
+    }
+    void helperStartsNewVersion()
+    {
+        QFETCH(bool, runAsAdministrator);
+        if (runAsAdministrator && !elevatesWithoutPrompt())
+            QSKIP("needs an administrator account with normal rights here and UAC that elevates without asking "
+                  "(ConsentPromptBehaviorAdmin=0); elsewhere the prompt would wait for an answer");
+        QTemporaryDir dir;
+        const QString app = dir.filePath(u"app"_s);
+        QVERIFY(QDir().mkpath(app + u"/.stage"_s));
+        QVERIFY(QFile::copy(QStringLiteral(WINSHUN_FAKE_APP_EXE), app + u"/WinShun.exe"_s));
+        QVERIFY(QFile::copy(QStringLiteral(WINSHUN_FAKE_APP_EXE), app + u"/.stage/WinShun.exe"_s));
+        writeFile(app + u"/version.txt"_s, "old");
+        writeFile(app + u"/data/keep.txt"_s, "the user's");
+        writeFile(app + u"/.stage/version.txt"_s, "new");
+
+        const std::wstring exe = QDir::toNativeSeparators(app + u"/WinShun.exe"_s).toStdWString();
+        constexpr auto kLayers = L"Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers";
+        const auto unflag = qScopeGuard([&] { ::RegDeleteKeyValueW(HKEY_CURRENT_USER, kLayers, exe.c_str()); });
+        if (runAsAdministrator) {
+            const std::wstring flag = L"~ RUNASADMIN";
+            QCOMPARE(::RegSetKeyValueW(HKEY_CURRENT_USER, kLayers, exe.c_str(), REG_SZ, flag.c_str(),
+                         static_cast<DWORD>((flag.size() + 1) * sizeof(wchar_t))),
+                LSTATUS(ERROR_SUCCESS));
+        }
+
+        const QString log = dir.filePath(u"update.log"_s);
+        QProcess helper;
+        helper.start(QStringLiteral(WINSHUN_UPDATE_EXE),
+            {u"--portable"_s, u"--pid"_s, u"0"_s, u"--ready"_s, u"Local\\WinShun.Test.Ready.%1"_s.arg(QUuid::createUuid().toString(QUuid::Id128)),
+                u"--instance"_s, u"Local\\WinShun.Test.Instance.%1"_s.arg(QUuid::createUuid().toString(QUuid::Id128)),
+                u"--app"_s, QDir::toNativeSeparators(app), u"--stage"_s, QDir::toNativeSeparators(app + u"/.stage"_s),
+                u"--backup"_s, QDir::toNativeSeparators(app + u"/.backup"_s), u"--log"_s, QDir::toNativeSeparators(log)});
+        QVERIFY(helper.waitForFinished(90000));
+        qInfo().noquote() << u"helper log:\n"_s + QString::fromUtf8(readFile(log)).trimmed();
+        QCOMPARE(helper.exitCode(), 0);
+        QCOMPARE(readFile(app + u"/version.txt"_s), QByteArray("new"));
+        QCOMPARE(readFile(app + u"/data/ran.txt"_s), runAsAdministrator ? QByteArray("new elevated") : QByteArray("new normal"));
+        QCOMPARE(readFile(app + u"/data/keep.txt"_s), QByteArray("the user's"));
+        QVERIFY(!QFileInfo::exists(app + u"/.backup"_s));
+        QVERIFY(!QFileInfo::exists(app + u"/.stage"_s));
+        // The stand-in ends by itself (one running as administrator is not
+        // ours to end): the folder goes once it has. QTRY_ evaluates its
+        // expression again after the wait, so it must hold once the file is gone.
+        const QString exePath = QString::fromStdWString(exe);
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::remove(exePath) || !QFileInfo::exists(exePath), 15000);
     }
 
     // The real service and packages (WINSHUN_UPDATE_LIVE=1; ~150 MB): its

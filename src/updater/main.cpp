@@ -118,19 +118,49 @@ void endProcessesFrom(const std::wstring& folder)
     }
 }
 
-HANDLE start(const std::wstring& exe, const std::wstring& folder)
+// What came of starting a Win顺: its process, or none, and then whether
+// that was the user's "no" at the administrator prompt.
+struct Started {
+    HANDLE process = nullptr;
+    bool declined = false;
+};
+
+// Started as a double-click in its folder starts it. A WinShun.exe with
+// "以管理员身份运行此程序" ticked in its properties (the compatibility flag
+// RUNASADMIN, kept by its path and so over an update) cannot be started by
+// CreateProcess from this helper, which has the user's normal rights: error
+// 740 (GitHub #274). The shell starts it then, and Windows asks for
+// administrator rights as it does at every start of that copy.
+Started start(const std::wstring& exe, const std::wstring& folder)
 {
     std::wstring command = L"\"" + exe + L"\" --background";
     STARTUPINFOW startup {sizeof(startup)};
     PROCESS_INFORMATION info {};
-    if (!::CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr,
+    if (::CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr,
             folder.empty() ? nullptr : folder.c_str(), &startup, &info)) {
-        log(L"cannot start " + exe + L" (" + std::to_wstring(::GetLastError()) + L")");
-        return nullptr;
+        ::CloseHandle(info.hThread);
+        log(L"started " + exe + L" (pid " + std::to_wstring(info.dwProcessId) + L")");
+        return {info.hProcess};
     }
-    ::CloseHandle(info.hThread);
-    log(L"started " + exe + L" (pid " + std::to_wstring(info.dwProcessId) + L")");
-    return info.hProcess;
+    const DWORD error = ::GetLastError();
+    if (error != ERROR_ELEVATION_REQUIRED) {
+        log(L"cannot start " + exe + L" (" + std::to_wstring(error) + L")");
+        return {};
+    }
+    SHELLEXECUTEINFOW shell {sizeof(shell)};
+    shell.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
+    shell.lpFile = exe.c_str();
+    shell.lpParameters = L"--background";
+    shell.lpDirectory = folder.empty() ? nullptr : folder.c_str();
+    shell.nShow = SW_SHOWNORMAL;
+    if (!::ShellExecuteExW(&shell) || !shell.hProcess) {
+        const DWORD why = ::GetLastError();
+        log(L"cannot start " + exe + L" as administrator (" + std::to_wstring(why) + L")");
+        return {nullptr, why == ERROR_CANCELLED};
+    }
+    log(L"started " + exe + L" as administrator, as its properties ask (pid "
+        + std::to_wstring(::GetProcessId(shell.hProcess)) + L")");
+    return {shell.hProcess};
 }
 
 struct FindWindowOf {
@@ -188,23 +218,33 @@ int portable(DWORD pid, const std::wstring& app, const std::wstring& stage, cons
         ws::update::removeTree(stage);
         if (moves.backedUp.empty())
             ws::update::removeTree(backup);
-        if (const HANDLE old = start(exe, app))
+        if (const HANDLE old = start(exe, app).process)
             ::CloseHandle(old);
         return 3;
     }
-    const HANDLE fresh = start(exe, app);
-    if (fresh && cameUp(fresh)) {
-        ::CloseHandle(fresh);
+    const Started fresh = start(exe, app);
+    const auto keepNew = [&] {
         if (!ws::update::removeTree(backup))
             log(L"some of the backup was left: " + backup);
         ws::update::removeTree(stage);
+    };
+    if (fresh.process && cameUp(fresh.process)) {
+        ::CloseHandle(fresh.process);
+        keepNew();
         log(L"done");
         return 0;
     }
-    if (fresh) {
-        ::TerminateProcess(fresh, 1);
-        ::WaitForSingleObject(fresh, 10000);
-        ::CloseHandle(fresh);
+    // The new files are whole and in place; only "no" was answered at the
+    // prompt. Not the old ones back: the next start is the new version.
+    if (fresh.declined) {
+        keepNew();
+        log(L"the administrator prompt was declined: the new version starts next time");
+        return 0;
+    }
+    if (fresh.process) {
+        ::TerminateProcess(fresh.process, 1); // not one running as administrator: it ends by itself, or is left
+        ::WaitForSingleObject(fresh.process, 10000);
+        ::CloseHandle(fresh.process);
     }
     endProcessesFrom(app);
     if (ws::update::rollBack(plan, moves, log)) {
@@ -213,7 +253,7 @@ int portable(DWORD pid, const std::wstring& app, const std::wstring& stage, cons
     } else {
         log(L"kept " + backup + L" and " + stage + L" for a manual repair");
     }
-    if (const HANDLE old = start(exe, app))
+    if (const HANDLE old = start(exe, app).process)
         ::CloseHandle(old);
     return 4;
 }
@@ -231,7 +271,7 @@ int watchSetup(HANDLE setup, const std::wstring& exe)
     if (instanceRunning())
         return 0;
     log(L"no Win顺 runs after Setup: starting the installed one");
-    if (const HANDLE process = start(exe, {}))
+    if (const HANDLE process = start(exe, {}).process)
         ::CloseHandle(process);
     return 0;
 }
