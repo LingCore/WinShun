@@ -2059,7 +2059,9 @@
 - **PowerShell 的 `System.Windows.Automation` 有时读到的任务栏是空的**：2026-10-10 有一阵 `AutomationElement.FromHandle(Shell_TrayWnd)` 一个后代都没有，测试脚本找不到 `SearchButton`；同一时刻 Win顺 里用 COM 的 `IUIAutomation`（`CUIAutomation8`）照样找得到，过了一会儿 PowerShell 也恢复了。脚本找不到元素时，先换个时间或换用 COM 的接口再确认，别急着断定界面变了。
 - **截图脚本要先开 DPI 感知**：Windows PowerShell 5.1 不感知 DPI，150% 时 `GetWindowRect` 给的是换算后的逻辑坐标，`CopyFromScreen` 却按物理像素拍，拍到的是别处（2026-10-10 第一次拍任务栏，拍成了上面的 VS Code）。脚本开头先 `SetThreadDpiAwarenessContext(-4)`（每显示器 V2），窗口位置、鼠标位置和截图就都是物理像素了。
 - **前台窗口类名是 `GHOST_WindowClass`，不是程序卡死了**：那是 Blender 的窗口（它的窗口库叫 GHOST）。Windows 给没响应的程序换上的幽灵窗口，类名是 `Ghost`。
-- **Windows 自带的剪贴板面板不抢前台**：按 `Win+V` 后 `GetForegroundWindow()` 还是原来的窗口，判断面板是否打开要截图；前台换了它也不关，要点它的关闭按钮。
+- **Windows 自带的剪贴板面板不抢前台**：按 `Win+V` 后 `GetForegroundWindow()` 还是原来的窗口，`EnumWindows` 也看不出多了窗口（2026-11-10 比过：按键前后可见、没隐藏的顶层窗口一模一样），判断面板是否打开要比较按键前后的两张截图（面板那一块整片变了，`docs/validation/issues-266-270-274-20261110/scripts/Diff.cs`）；前台换了它也不关，往前台窗口按 Esc 也关不掉，要点它的关闭按钮，或者关掉前台那个窗口、重启资源管理器（`TextInputHost` 跟着重启）。
+- **前台是管理员身份的窗口时，Win+V 面板根本不弹出**：Windows 的输入面板不往高权限窗口上弹。提权的测试脚本自己开的窗口放在前台按 Win+V，什么也不出来（#270 的第一轮实测因此全判成“没弹出”，整轮作废）。前台那个窗口要由另一个普通权限的进程来开（`scripts/guard.ps1`），提权脚本再把它拉到前台、发按键。
+- **提权进程运行 `explorer.exe <文件夹>`，文件夹窗口开在单独的 explorer 进程里**：重启桌面那个资源管理器时它不关，测“重启会关掉文件夹窗口”时看不出来。要普通用户那样的窗口，从普通权限的进程去开。
 - **磁盘弹出和锁定不需要真硬件**：用 diskpart 建一个 VHD，挂上并格式化成 NTFS（挂上的 VHD 算固定磁盘，会被索引）。`FSCTL_LOCK_VOLUME` 模拟格式化、chkdsk 的锁定，`CM_Query_And_Remove_SubTreeW` 模拟弹出。弹出后 `diskpart detach vdisk` 会失败（0x80070057），改用 `Dismount-DiskImage`。
 - **PowerShell 把 `$null` 传给 .NET 的字符串参数时变成空串**：`FindWindowExW(0, $h, '#32770', $null)` 实际传的是 `""`，只找标题为空的窗口，一个对话框都找不到。要传真正的空指针，写 `[NullString]::Value`。
 - **PowerShell 字符串里 `"$h:"` 是语法错误**：冒号前的变量名被当成作用域（`$env:` 那种），整个脚本解析失败、一条命令都不执行。写成 `"${h}:"`。
