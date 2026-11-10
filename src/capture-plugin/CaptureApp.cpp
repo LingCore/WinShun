@@ -1220,7 +1220,7 @@ void CaptureApp::editPin(capture::PinWindow* pin)
 // 贴到屏幕 on a picture file's row (the launcher) or a picture in the
 // clipboard history: read by Windows Imaging Component on a thread of its
 // own, pinned round the pointer within the work area of its monitor; larger
-// than 90 % of that area, scaled down to fit.
+// than 90 % of that area, shown fitted, its own pixels kept for a zoom.
 void CaptureApp::pinPicture(const QString& path, bool screenshot)
 {
     if (path.isEmpty())
@@ -1230,7 +1230,7 @@ void CaptureApp::pinPicture(const QString& path, bool screenshot)
         return;
     QPointer<CaptureApp> self(this);
     std::thread([self, path, placement = *placement, screenshot] {
-        auto prepared = pinimage::prepare(pinimage::readFile(path, placement), placement);
+        auto prepared = pinimage::prepare(pinimage::readFile(path), placement);
         QMetaObject::invokeMethod(qApp, [self, prepared = std::move(prepared), screenshot] {
             if (!self)
                 return;
@@ -1238,7 +1238,7 @@ void CaptureApp::pinPicture(const QString& path, bool screenshot)
                 self->notify(tr("没能贴到屏幕"), tr("读不出这张图片。"));
                 return;
             }
-            self->pins().pin(prepared.image, prepared.origin, screenshot);
+            self->pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, screenshot);
         }, Qt::QueuedConnection);
     }).detach();
 }
@@ -1255,7 +1255,7 @@ void CaptureApp::pinCurrentImage()
     m_pinPending = true;
     QPointer<CaptureApp> self(this);
     std::thread([self, last, placement = *placement] {
-        auto picture = pinimage::readClipboard(last, placement);
+        auto picture = pinimage::readClipboard(last);
         auto prepared = pinimage::prepare(std::move(picture.image), placement);
         QMetaObject::invokeMethod(qApp, [self, last, status = picture.status, prepared = std::move(prepared)] {
             if (!self)
@@ -1269,7 +1269,7 @@ void CaptureApp::pinCurrentImage()
             switch (status) {
             case Status::Image:
                 if (!prepared.image.isNull())
-                    self->pins().pin(prepared.image, prepared.origin, false);
+                    self->pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, false);
                 else
                     self->notify(tr("贴图"), tr("剪贴板里的图片读不出来，请重新复制。"));
                 break;

@@ -65,6 +65,16 @@ PinManager::~PinManager()
 
 void PinManager::pin(const QImage& image, QPoint origin, bool screenshot, QByteArray project)
 {
+    add(image, origin, screenshot, std::move(project), std::nullopt);
+}
+
+void PinManager::pinFitted(const QImage& image, QPoint origin, QPoint anchor, bool screenshot)
+{
+    add(image, origin, screenshot, {}, anchor);
+}
+
+void PinManager::add(const QImage& image, QPoint origin, bool screenshot, QByteArray project, std::optional<QPoint> fitAbout)
+{
     if (image.isNull())
         return;
     PinWindow::Host host;
@@ -100,7 +110,7 @@ void PinManager::pin(const QImage& image, QPoint origin, bool screenshot, QByteA
     };
     if (m_hidden)
         setAllHidden(false); // a new pin: they are wanted back
-    auto pin = std::make_unique<PinWindow>(image, origin, std::move(host));
+    auto pin = std::make_unique<PinWindow>(image, origin, std::move(host), fitAbout);
     pin->setScreenshot(screenshot);
     pin->setProject(std::move(project));
     pin->setDoubleClick(m_doubleClick);

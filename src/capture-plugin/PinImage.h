@@ -16,7 +16,8 @@ struct Placement {
 
 struct Prepared {
     QImage image;
-    QPoint origin;
+    QPoint origin; // the whole picture's top left, its middle at the cursor
+    QPoint anchor; // the cursor: the pin starts on its monitor (PinManager::pinFitted)
 };
 
 struct LastCapture {
@@ -34,11 +35,14 @@ struct ClipboardPicture {
 // Snapshot on invocation; decoding must not move a pin to wherever the mouse
 // happens to be when a large picture finishes loading. Coordinates are physical.
 std::optional<Placement> cursorPlacement();
+// Its own pixels, the whole picture's middle at the cursor: the pin fits a
+// picture larger than the screen (PinManager::pinFitted), it is not stored
+// fitted.
 Prepared prepare(QImage image, const Placement& placement);
 
 // Worker-thread operations: copy clipboard bytes/paths under a short lock,
 // release it before decoding, then use the same WIC reader as file pinning.
-ClipboardPicture readClipboard(const LastCapture& last, const Placement& placement);
-QImage readFile(const QString& path, const Placement& placement);
+ClipboardPicture readClipboard(const LastCapture& last);
+QImage readFile(const QString& path);
 
 } // namespace ws::captureplugin::pinimage
