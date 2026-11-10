@@ -118,6 +118,26 @@ private slots:
         QCOMPARE(bounds(folderview::explorerFileList(root, nullptr)), bounds(shownView));
     }
 
+    // A list with more than fits: its scroll bars (each a ScrollBar window in
+    // a CtrlNotifySink of the items view) are left out, so that the box put
+    // in the list's corner keeps clear of them (GitHub #234); ones hidden
+    // while all fits are not.
+    void scrollBarsLeftOut()
+    {
+        const HWND root = window({0, 0, 1200, 800});
+        HWND folderView = nullptr;
+        const HWND items = tab(root, {0, 120, 1200, 680}, {260, 0, 940, 650}, true, &folderView);
+        QVERIFY(root && items);
+        const HWND vertical = make(L"ScrollBar", make(L"CtrlNotifySink", items, {923, 0, 17, 633}), {0, 0, 17, 633});
+        const HWND horizontal = make(L"ScrollBar", make(L"CtrlNotifySink", items, {0, 633, 923, 17}), {0, 0, 923, 17});
+        QVERIFY(vertical && horizontal);
+        const HWND hit = folderview::classify(items, {}).tab;
+        QCOMPARE(bounds(folderview::explorerFileList(root, hit)), QRect(kFar + 260, kFar + 120, 923, 633));
+        ::ShowWindow(::GetParent(horizontal), SW_HIDE); // the columns fit again
+        QCOMPARE(bounds(folderview::explorerFileList(root, hit)), QRect(kFar + 260, kFar + 120, 923, 650));
+        ::ShowWindow(::GetParent(vertical), SW_HIDE);
+        QCOMPARE(bounds(folderview::explorerFileList(root, hit)), bounds(folderView));
+    }
     // No folder view (none yet, or a page of another kind): the tab; no tab
     // either, the window's client area; no window, nothing.
     void noFileList()
