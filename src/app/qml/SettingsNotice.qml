@@ -143,6 +143,7 @@ Window {
                     glyph: "" // Cancel
                     size: 10
                     anchors.verticalCenterOffset: closeSurface.out("contentOffsetY", 0)
+                    inkScale: closeSurface.out("contentScale", 1)
                     color: closeSurface.out("iconColor", Theme.subtext)
                 }
                 MouseArea {

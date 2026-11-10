@@ -306,6 +306,7 @@ Item {
                             spacing: 6
 
                             Glyph {
+                                inkScale: copyWordsKey.out("contentScale", 1)
                                 anchors.verticalCenter: parent.verticalCenter
                                 glyph: "" // Copy
                                 size: 13

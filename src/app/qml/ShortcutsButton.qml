@@ -48,6 +48,7 @@ Rectangle {
     Glyph {
         anchors.centerIn: parent
         anchors.verticalCenterOffset: surface.out("contentOffsetY", 0)
+        inkScale: surface.out("contentScale", 1)
         glyph: "" // Info
         size: 16
         color: surface.out("foreground", infoArea.containsMouse || info.open ? Theme.text : Theme.subtext)

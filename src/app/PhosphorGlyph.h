@@ -27,6 +27,10 @@ class PhosphorGlyph : public QQuickItem {
     // item places and sizes itself (the em and a pixel spare).
     Q_PROPERTY(qreal em READ em WRITE setEm NOTIFY changed FINAL)
     Q_PROPERTY(QSizeF box READ box WRITE setBox NOTIFY changed FINAL)
+    // A pressed key's icon, a little smaller (Glyph.inkScale): the outline
+    // drawn afresh at a whole number of device pixels, on the same centre;
+    // a scaled picture would drop pixels (nearest filtering) and blur.
+    Q_PROPERTY(qreal inkScale READ inkScale WRITE setInkScale NOTIFY changed FINAL)
     // Where the drawn outline starts on the left, in the parent's (Glyph's) logical pixels: the em is
     // larger than the box, and an icon fills most of it, so the ink can lie outside the box (negative).
     Q_PROPERTY(qreal inkLeft READ inkLeft NOTIFY inkChanged FINAL)
@@ -44,6 +48,8 @@ public:
     void setEm(qreal em);
     QSizeF box() const { return m_box; }
     void setBox(const QSizeF& box);
+    qreal inkScale() const { return m_inkScale; }
+    void setInkScale(qreal scale);
     qreal inkLeft() const { return m_inkLeft; }
 
 signals:
@@ -62,6 +68,7 @@ private:
     QColor m_color;
     qreal m_em = 0;
     QSizeF m_box;
+    qreal m_inkScale = 1;
     QPainterPath m_path; // in the image's device pixels
     int m_pixels = 0;    // the image's side
     qreal m_inkLeft = 0;

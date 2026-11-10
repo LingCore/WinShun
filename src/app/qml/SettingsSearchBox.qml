@@ -139,6 +139,7 @@ Rectangle {
         Glyph {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: clearPart.out("contentOffsetY", 0)
+            inkScale: clearPart.out("contentScale", 1)
             glyph: "" // Cancel
             size: 12
             color: box.warm ? WarmPalette.ink : clearPart.out("foreground", clearArea.containsMouse ? Theme.text : Theme.subtext)

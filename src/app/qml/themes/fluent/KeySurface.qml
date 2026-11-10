@@ -34,5 +34,13 @@ Rectangle {
     border.width: filled || flat ? 0 : Math.max(1, Math.round(dpr)) / dpr
     border.color: look ? look.controlBorder : "transparent"
 
+    // Pressed, the host's icon shrinks a little and comes back on release
+    // (Hook.out "contentScale", as Glyph.inkScale: redrawn at each size, never
+    // a scaled picture): a flat key has no travel of its own, and a fill
+    // change alone is easy to miss under the pointer.
+    readonly property real pressScale: 0.84
+    property real contentScale: pressed ? pressScale : 1
+    Behavior on contentScale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+
     Behavior on color { ColorAnimation { duration: 100 } }
 }

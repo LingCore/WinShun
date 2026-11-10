@@ -206,6 +206,7 @@ Item {
                     glyph: "" // Add
                     size: tabs.metrics.dense ? 16 : 64 / 3 // as the header's pin button (RowAction): 32 device pixels at 150%
                     color: addKey.out("foreground", addArea.containsMouse ? Theme.text : Theme.subtext)
+                    inkScale: addKey.out("contentScale", 1)
                 }
 
                 MouseArea {
@@ -248,6 +249,7 @@ Item {
             glyph: "" // Sort
             size: tabs.metrics.dense ? 16 : 64 / 3 // as the header's pin button (RowAction): 32 device pixels at 150%
             color: orderKey.out("foreground", tabs.clipboard.pinnedFirst ? Theme.accentText : orderArea.containsMouse ? Theme.text : Theme.subtext)
+            inkScale: orderKey.out("contentScale", 1)
         }
 
         MouseArea {

@@ -67,6 +67,7 @@ Rectangle {
         spacing: 6
 
         Glyph {
+            inkScale: surface.out("contentScale", 1)
             anchors.verticalCenter: parent.verticalCenter
             glyph: button.glyph
             overlay: button.glyphOverlay

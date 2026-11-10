@@ -22,4 +22,12 @@ GlassSurface {
                : hovered || current ? (flat ? look.hover : look.controlHover)
                : flat ? "transparent" : look.control
     edgeColor: !look || flat || filled ? "transparent" : look.controlBorder
+
+    // Pressed, the host's icon shrinks a little and comes back on release
+    // (Hook.out "contentScale", as Glyph.inkScale: redrawn at each size, never
+    // a scaled picture): a flat key has no travel of its own, and a fill
+    // change alone is easy to miss under the pointer.
+    readonly property real pressScale: 0.84
+    property real contentScale: pressed ? pressScale : 1
+    Behavior on contentScale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
 }

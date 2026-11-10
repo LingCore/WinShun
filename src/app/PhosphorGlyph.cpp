@@ -87,6 +87,15 @@ void PhosphorGlyph::setBox(const QSizeF& box)
     emit changed();
 }
 
+void PhosphorGlyph::setInkScale(qreal scale)
+{
+    if (m_inkScale == scale)
+        return;
+    m_inkScale = scale;
+    layout();
+    emit changed();
+}
+
 void PhosphorGlyph::itemChange(ItemChange change, const ItemChangeData& value)
 {
     QQuickItem::itemChange(change, value);
@@ -109,13 +118,17 @@ void PhosphorGlyph::layout()
         return;
     }
     const qreal dpr = window()->effectiveDevicePixelRatio();
-    const qreal em = m_em * dpr; // device pixels; often not whole (18 at 125 %: 22.5)
+    const qreal full = m_em * dpr; // device pixels; often not whole (18 at 125 %: 22.5)
+    // Pressed (inkScale): whole device pixels smaller, so each step of the
+    // press is a size of its own, drawn as crisply as the full one.
+    const qreal em = m_inkScale == 1 ? full : std::max<qreal>(1, std::round(full * m_inkScale));
     // The icons are symmetric about the em's centre, so that goes on a pixel
     // centre or a pixel edge, the same one across and down: then an x, a plus
     // or a chevron comes out mirror- and diagonal-symmetric in pixels too.
     // Which of the two: the one that keeps a stroke through the centre (em/16
     // wide) crisp, a pixel centre for an odd width, an edge for an even one.
-    const qreal phase = qRound(em / 16) % 2 ? 0.5 : 0.0;
+    // The full size's, also while pressed: the centre stays where it was.
+    const qreal phase = qRound(full / 16) % 2 ? 0.5 : 0.0;
     const auto middle = [&](qreal box) { return std::round(box * dpr / 2 - phase) + phase; };
     const QPointF top = QPointF(middle(m_box.width()), middle(m_box.height())) - QPointF(em, em) / 2;
     const QPointF origin(std::floor(top.x() + 1e-6) - kSpare, std::floor(top.y() + 1e-6) - kSpare);
@@ -135,7 +148,7 @@ void PhosphorGlyph::layout()
     m_path = place.map(path);
     m_path.setFillRule(Qt::WindingFill);
     const qreal inkLeft = x() + m_path.boundingRect().left() / dpr;
-    if (!qFuzzyCompare(1 + inkLeft, 1 + m_inkLeft)) {
+    if (m_inkScale == 1 && !qFuzzyCompare(1 + inkLeft, 1 + m_inkLeft)) {
         m_inkLeft = inkLeft;
         emit inkChanged();
     }

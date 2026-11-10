@@ -48,7 +48,8 @@ QtObject {
     readonly property color divider: dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.07)
     readonly property color windowEdge: dark ? "#555555" : "#BEBEBE"
     readonly property color hover: dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.035)
-    readonly property color pressed: dark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.055)
+    // Firmer than hover, as Fluent's: a press must not look like letting go.
+    readonly property color pressed: dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.055)
     readonly property color selection: dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.055)
     readonly property color navHover: hover
     readonly property color navSelected: selection

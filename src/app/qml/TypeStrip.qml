@@ -446,6 +446,7 @@ Item {
         Glyph {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: editKey.out("contentOffsetY", 0)
+            inkScale: editKey.out("contentScale", 1)
             glyph: "\uE710" // Add
             size: 12
             color: editKey.out("foreground", editArea.containsMouse ? Theme.text : Theme.subtext)

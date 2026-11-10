@@ -16,6 +16,10 @@ Item {
     property string overlay
     property real size: 16
     property color color: Theme.subtext
+    // A pressed key's icon, a little smaller (KeySurface's contentScale): the
+    // box stays, so nothing beside it moves; a Phosphor icon is drawn afresh
+    // at the smaller size (PhosphorGlyph.inkScale), never a scaled picture.
+    property real inkScale: 1
     // A window's caption button: Windows' own glyph, as its own windows have.
     property bool caption: false
 
@@ -56,6 +60,7 @@ Item {
         family: used ? icon.phosphor.family : ""
         color: icon.color
         em: label.fontInfo.pixelSize // the font's own rounding of the size, as before
+        inkScale: icon.inkScale
         box: Qt.size(icon.width, icon.height)
     }
 
@@ -70,6 +75,7 @@ Item {
         // In points: font.pixelSize is a whole number of logical pixels, which
         // would round a size like 64/3 (32 device pixels at 150%) down.
         font.pointSize: icon.size * (icon.phosphor ? SystemTheme.iconScale : 1) * 72 / 96
+        scale: icon.inkScale // the system font's (an older Windows 10)
         color: icon.color
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
@@ -95,6 +101,7 @@ Item {
         Text {
             text: icon.overlay
             font: label.font
+            scale: icon.inkScale
             color: icon.color
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
@@ -107,7 +114,7 @@ Item {
             width: 256
             height: 256
             // Match the font's resolved em, including Windows' font DPI.
-            scale: label.fontInfo.pixelSize / 256
+            scale: label.fontInfo.pixelSize / 256 * icon.inkScale // a vector shape: crisp at any scale
             preferredRendererType: Shape.CurveRenderer
 
             ShapePath {

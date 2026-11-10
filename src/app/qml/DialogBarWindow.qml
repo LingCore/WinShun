@@ -381,6 +381,7 @@ Window {
                     spacing: 8
 
                     Glyph {
+                        inkScale: chipKey.out("contentScale", 1)
                         anchors.verticalCenter: parent.verticalCenter
                         glyph: chip.toOrigin ? "" : "" // Back, Folder
                         size: 16
@@ -463,6 +464,7 @@ Window {
                 Glyph {
                     anchors.centerIn: parent
                     glyph: "" // More
+                    inkScale: moreKey.out("contentScale", 1)
                     size: 16
                 }
 

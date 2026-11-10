@@ -55,6 +55,7 @@ Rectangle {
         spacing: button.contentSpacing
 
         Glyph {
+            inkScale: surface.out("contentScale", 1)
             anchors.verticalCenter: parent.verticalCenter
             visible: button.glyph.length > 0
             glyph: button.glyph
@@ -70,6 +71,7 @@ Rectangle {
             font.weight: surface.out("fontWeight", Font.Normal)
         }
         Glyph {
+            inkScale: surface.out("contentScale", 1)
             anchors.verticalCenter: parent.verticalCenter
             visible: button.trailingGlyph.length > 0
             glyph: button.trailingGlyph

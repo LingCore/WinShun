@@ -506,6 +506,7 @@ Item {
         Glyph {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: pinKey.out("contentOffsetY", 0)
+            inkScale: pinKey.out("contentScale", 1)
             glyph: "" // PinnedFill
             overlay: ""
             size: 12
@@ -555,6 +556,7 @@ Item {
             objectName: "searchExpandGlyph"
             anchors.centerIn: parent
             anchors.verticalCenterOffset: expandKey.out("contentOffsetY", 0)
+            inkScale: expandKey.out("contentScale", 1)
             glyph: bar.panelMode ? "\uE73F" : "\uE740" // BackToWindow, FullScreen
             size: Theme.searchIconSize * 0.8
             color: expandKey.out("foreground", expandArea.containsMouse ? Theme.text : Theme.subtext)
