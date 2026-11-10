@@ -1265,6 +1265,26 @@ private:
     // query's figures under its dimmed rows.
     QTimer m_slowSearch;
     bool m_searchSlow = false;
+    // For the log: since the query (or scope, order…) changed and the rows
+    // on screen became the last query's (dimmed after 250 ms), how long
+    // until new rows came, how often a search was asked again meanwhile and
+    // by what, and when the last name search was asked for.
+    QElapsedTimer m_replaceClock;
+    QElapsedTimer m_lastAsk;
+    int m_replaceAsks = 0;
+    QStringList m_replaceWhy;
+    const char* m_searchWhy = nullptr; // set by a background trigger just before search()
+    // Something in the background changed what the rows may show (the index,
+    // the apps, the favorites…): searched again, but never in place of a
+    // search under way, and at most once a second. A user's computer told of
+    // index changes hundreds of times a second (2026-11-10): each one started
+    // the typed query anew, and its rows stayed dimmed for seconds.
+    void searchFor(const char* why);
+    void searchAgainNow();
+    QTimer m_searchAgain;
+    QElapsedTimer m_lastSearchAgain;
+    const char* m_searchAgainWhy = nullptr;
+    bool m_indexSettled = false; // ready and not refreshing, as last told
 
     // Plugins. The query ids are the launcher's own (keyword mode has no
     // engine request); the merge places their rows (plugin::Merge).
