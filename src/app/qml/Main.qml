@@ -58,7 +58,7 @@ Window {
     // opening it does not change the row count. At the taskbar the list
     // gives the strip its room instead.
     readonly property int chromeHeight: searchBar.implicitHeight + (fullHeight || folderMode ? 0 : typeStrip.fullHeight) + 1 + 8
-                                        + footer.implicitHeight
+                                        + footer.implicitHeight + (showScopeBar ? scopeBar.implicitHeight : 0)
     // TypeStrip's animated height sizes this window through the column, so
     // its outer edge, rows and footer follow the same animation. At the
     // taskbar the list gives the strip its room and the window stays full height.
@@ -192,7 +192,15 @@ Window {
     // above), ↓ ↑ going along them. With no result at all, the empty state
     // lists them instead, and ↓ ↑ Enter work there too. The one running
     // shows how far it is; Enter or a click on it stops it.
-    readonly property var hints: launcher.leftOutHints
+    // Typed in a folder's window, that folder alone searched: where it looked
+    // and the ways to widen it ("everywhere", "level") in a bar held under
+    // the rows (ScopeBar, GitHub #246), not after the last of them. With no
+    // rows, under 没有找到 as before.
+    readonly property var scopeHints: launcher.leftOutHints.filter(h => h.kind === "everywhere" || h.kind === "level")
+    readonly property bool showScopeBar: scopeHints.length > 0 && view.count > 0 && !panel && !fullHeight
+                                         && !pureEmpty && !clipboardBelow
+    readonly property var hints: showScopeBar ? launcher.leftOutHints.filter(h => h.kind !== "everywhere" && h.kind !== "level")
+                                              : launcher.leftOutHints
     readonly property bool showHints: hints.length > 0 && view.count > 0 && !panel
     readonly property int hintHeight: Theme.hintRowHeight
     // Room for the rows after the last result: when every result is shown
@@ -1717,6 +1725,18 @@ Window {
                 font.pixelSize: Theme.uiBody
                 wrapMode: Text.Wrap
             }
+        }
+
+        ScopeBar {
+            id: scopeBar
+            objectName: "scopeBar" // the --folder-typing probe reads it
+            width: parent.width
+            height: visible ? implicitHeight : 0
+            visible: window.showScopeBar && listArea.visible
+            launcher: window.launcher
+            hints: window.scopeHints
+            compact: window.folderMode
+            dpr: window.dpr
         }
 
         Item {

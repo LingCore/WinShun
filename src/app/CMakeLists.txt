@@ -148,6 +148,7 @@ set(qml_files
     qml/TypeStrip.qml
     qml/ResultRow.qml
     qml/ElsewhereCaption.qml
+    qml/ScopeBar.qml
     qml/Panel.qml
     qml/ContentPaneView.qml
     qml/ContentChip.qml
