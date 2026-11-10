@@ -4,6 +4,15 @@
 
 namespace ws {
 
+namespace {
+thread_local WorkerPool::Waits t_waits;
+}
+
+WorkerPool::Waits WorkerPool::waits() noexcept
+{
+    return t_waits;
+}
+
 // A search goes over every name, the more threads the sooner, up to 16:
 // on 3.3 million items a one-letter query took 17 ms with 8 threads and 11
 // with 16 (24: 8); the threads sleep between searches.
@@ -61,7 +70,9 @@ void WorkerPool::parallelFor(std::size_t count, const std::function<void(std::si
 {
     if (count == 0)
         return;
+    const auto asked = std::chrono::steady_clock::now();
     std::lock_guard call(m_callMutex);
+    t_waits.forTurn += std::chrono::steady_clock::now() - asked;
     if (m_threads.empty() || count == 1) {
         for (std::size_t i = 0; i < count; ++i)
             fn(i);
@@ -79,9 +90,11 @@ void WorkerPool::parallelFor(std::size_t count, const std::function<void(std::si
     drain();
     // Every worker checks in once per round, so none can still be touching
     // `fn` when we return.
+    const auto drained = std::chrono::steady_clock::now();
     std::unique_lock lock(m_mutex);
     m_done.wait(lock, [&] { return m_finished == m_threads.size(); });
     m_fn = nullptr;
+    t_waits.forThreads += std::chrono::steady_clock::now() - drained;
 }
 
 } // namespace ws

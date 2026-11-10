@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <functional>
@@ -28,6 +29,16 @@ public:
     void parallelFor(std::size_t count, const std::function<void(std::size_t)>& fn);
 
     static int defaultThreadCount();
+
+    // How long parallelFor() kept the calling thread waiting so far, in all:
+    // for another caller's loop to end, and for the pool's threads to check in
+    // after the work ran out (a thread the system ran late holds the loop up).
+    // Per calling thread, for a search's log line.
+    struct Waits {
+        std::chrono::steady_clock::duration forTurn {};
+        std::chrono::steady_clock::duration forThreads {};
+    };
+    static Waits waits() noexcept;
 
 private:
     void work();
