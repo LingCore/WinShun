@@ -312,7 +312,7 @@ const std::vector<double>& zoomSteps()
     return steps;
 }
 
-double nextZoom(double zoom, int steps, double maxZoom)
+double nextZoom(double zoom, int steps, double maxZoom, double minZoom)
 {
     const std::vector<double>& all = zoomSteps();
     constexpr double eps = 1e-6;
@@ -325,8 +325,11 @@ double nextZoom(double zoom, int steps, double maxZoom)
     }
     for (; steps < 0; ++steps) {
         const auto down = std::ranges::find_if(all.rbegin(), all.rend(), [z](double s) { return s < z - eps; });
-        if (down == all.rend())
+        if (down == all.rend()) {
+            if (minZoom > 0 && minZoom < z - eps)
+                z = minZoom; // fitted below the smallest step: one notch reaches it
             break;
+        }
         z = *down;
     }
     return z;
@@ -346,6 +349,15 @@ QSize zoomedSize(QSize image, double zoom)
         std::max(1, static_cast<int>(std::lround(image.height() * zoom))));
 }
 
+double fitZoom(QSize image, QSize room)
+{
+    if (image.isEmpty() || room.isEmpty())
+        return 1.0;
+    const double roomWidth = room.width() * 0.9;
+    const double roomHeight = room.height() * 0.9;
+    return std::clamp((std::min)({1.0, roomWidth / image.width(), roomHeight / image.height()}), 0.01, 1.0);
+}
+
 QPoint zoomAbout(QPoint origin, QPoint cursor, double oldZoom, double newZoom)
 {
     if (oldZoom <= 0 || newZoom <= 0)
@@ -356,6 +368,15 @@ QPoint zoomAbout(QPoint origin, QPoint cursor, double oldZoom, double newZoom)
     const double py = (cursor.y() + 0.5 - origin.y()) / oldZoom;
     return QPoint(static_cast<int>(std::lround(cursor.x() + 0.5 - px * newZoom)),
         static_cast<int>(std::lround(cursor.y() + 0.5 - py * newZoom)));
+}
+
+QPoint fitOrigin(QPoint origin, QSize image, double zoom, QPoint anchor, const QRect& work)
+{
+    QPoint at = zoomAbout(origin, anchor, 1.0, zoom);
+    const QSize shown = zoomedSize(image, zoom);
+    at.setX(std::clamp(at.x(), work.left(), (std::max)(work.left(), work.right() + 1 - shown.width())));
+    at.setY(std::clamp(at.y(), work.top(), (std::max)(work.top(), work.bottom() + 1 - shown.height())));
+    return at;
 }
 
 double nextOpacity(double opacity, int steps)

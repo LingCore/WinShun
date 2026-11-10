@@ -29,7 +29,11 @@ namespace ws::capture {
 //
 // It shows the picture where it was taken, at its size in screen pixels:
 // 100% is the picture's pixels copied as they are, so a pin over the place
-// it came from matches the screen pixel for pixel. Around it a border of one
+// it came from matches the screen pixel for pixel. A pin made with
+// `fitAbout` (a long screenshot, a file, the clipboard's picture) instead
+// starts within the work area of the monitor at that point, and one larger
+// than 90% of it is shown fitted: its own pixels are kept, so zooming in
+// shows detail rather than the blur of a stored fit. Around it a border of one
 // logical pixel (neutral grey, the accent while it has the focus) and a soft
 // shadow drawn into the DIB (DWM draws none round a layered window). On a
 // monitor at another scale the picture keeps its physical size; only the
@@ -39,7 +43,8 @@ namespace ws::capture {
 // The mouse drags it; the wheel (and + / -) zooms about the cursor through
 // zoomSteps() (no larger than kZoomBudget pixels of window); a corner dragged
 // zooms freely, the aspect ratio kept; Ctrl+wheel changes the opacity; a
-// double click goes back to 100%; the arrow keys move it a pixel (Shift: ten).
+// double click goes back to the size it was pinned at (100%, or the fit);
+// the arrow keys move it a pixel (Shift: ten).
 // R and Shift+R turn it, H and V flip it (these keys are the user's to change). T picks text out of it (the words
 // are read once, then a drag takes the lines it touches and copies them).
 // Space, or the middle button, collapses it to a small tile; the menu also
@@ -76,7 +81,10 @@ public:
 
     // Shown at once, its picture's top left at `origin` (physical, virtual
     // desktop), with the focus.
-    PinWindow(const QImage& image, QPoint origin, Host host);
+    // `fitAbout`: the point (physical) whose monitor the pin starts on, the
+    // picture's pixel there kept in place when it is shown fitted; none: as
+    // it was taken, at 100% where `origin` says.
+    PinWindow(const QImage& image, QPoint origin, Host host, std::optional<QPoint> fitAbout = std::nullopt);
     ~PinWindow(); // destroys the window if it is still there
     PinWindow(const PinWindow&) = delete;
     PinWindow& operator=(const PinWindow&) = delete;
@@ -173,6 +181,12 @@ private:
     const QImage& shownImage() const; // what the window draws at the zoom shown: the picture, or the thumbnail
     double shownZoom() const { return m_form == PinForm::Full ? m_zoom : 1.0; }
     QRect workArea() const; // of the monitor nearest to the picture
+    QRect workAreaAt(QPoint point) const; // of the monitor nearest to a point
+    // Into the work area of the monitor at `anchor`, shown fitted
+    // (m_fitZoom) when larger than 90% of it; before the window is made, so
+    // it is made on that monitor.
+    void fitToWorkArea(QPoint anchor);
+    double minZoom() const; // the smallest step, or the fitted zoom below it
     void drawTextLayer(QImage& canvas, const QRect& picture);
     void drawHint(QImage& canvas, const QRect& picture); // the zoom or opacity, a moment after it changes
     void showHint(const QString& text); // (re)starts the moment
@@ -189,6 +203,7 @@ private:
     QSize m_imageSize; // the picture's size, whether or not m_image is there
     QPoint m_origin; // the picture's top left, physical (the tile's while collapsed)
     double m_zoom = 1.0;
+    double m_fitZoom = 1.0; // the zoom it was pinned at: below 1 for a picture shown fitted (复位 goes back to it)
     double m_opacity = 1.0;
     UINT m_dpi = 96;
     PinFrame m_frame;

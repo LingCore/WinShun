@@ -10,15 +10,44 @@
 #include <windows.h>
 #include <objbase.h>
 #include <shellapi.h>
+#include <wincodec.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
+#include <cmath>
 #include <string>
 #include <thread>
 
 namespace ws::captureplugin::pinimage {
 
 namespace {
+
+// The pixels a pin's picture keeps: the long capture's own limit
+// (ScrollStitcher::Limits), so what it stitches pins at its own resolution.
+constexpr qint64 kPinSourcePixels = 60'000'000;
+
+// The first frame's size as stored, from its header only. Windows Imaging
+// Component, as decodePictureFile: dist has no Qt image plugins, so
+// QImageReader knows PNG and BMP sizes but not a JPEG's.
+QSize storedSize(const QString& path)
+{
+    QString native = path;
+    native.replace(u'/', u'\\');
+    Microsoft::WRL::ComPtr<IWICImagingFactory> wic;
+    Microsoft::WRL::ComPtr<IWICBitmapDecoder> decoder;
+    Microsoft::WRL::ComPtr<IWICBitmapFrameDecode> frame;
+    UINT width = 0;
+    UINT height = 0;
+    if (FAILED(::CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic)))
+        || FAILED(wic->CreateDecoderFromFilename(
+            native.toStdWString().c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder))
+        || FAILED(decoder->GetFrame(0, &frame)) || FAILED(frame->GetSize(&width, &height))
+        || width > INT_MAX || height > INT_MAX)
+        return {};
+    return QSize(static_cast<int>(width), static_cast<int>(height));
+}
 
 QByteArray clipboardBytes(UINT format, SIZE_T limit)
 {
@@ -52,34 +81,39 @@ std::optional<Placement> cursorPlacement()
 
 Prepared prepare(QImage image, const Placement& placement)
 {
-    const QSize room = placement.work.size() * 0.9;
-    if (image.isNull() || room.isEmpty())
+    if (image.isNull() || placement.work.isEmpty())
         return {};
-    if (image.width() > room.width() || image.height() > room.height())
-        image = image.scaled(room, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    image = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    image = image.convertToFormat(QImage::Format_RGB32);
     if (image.isNull())
         return {};
-    QPoint origin = placement.cursor - QPoint(image.width() / 2, image.height() / 2);
-    origin.setX(std::clamp(origin.x(), placement.work.left(), (std::max)(placement.work.left(), placement.work.right() + 1 - image.width())));
-    origin.setY(std::clamp(origin.y(), placement.work.top(), (std::max)(placement.work.top(), placement.work.bottom() + 1 - image.height())));
-    return {std::move(image), origin};
+    // Its own pixels stay: the pin shows a picture larger than the screen
+    // fitted (PinManager::pinFitted), so a zoom still has the detail. This
+    // is where the whole picture would start, its middle at the cursor; the
+    // pin fits the shown picture about that middle and keeps it in the area.
+    const QPoint origin = placement.cursor - QPoint(image.width() / 2, image.height() / 2);
+    return {std::move(image), origin, placement.cursor};
 }
 
-QImage readFile(const QString& path, const Placement& placement)
+QImage readFile(const QString& path)
 {
     const HRESULT com = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
     const auto uninit = qScopeGuard([com] {
         if (SUCCEEDED(com))
             ::CoUninitialize();
     });
-    // Let WIC downsample while decoding; the final fit also handles narrow,
-    // tall pictures and converts their pixels, still on this worker.
-    const QSize room = placement.work.size() * 0.9;
-    return decodePictureFile(path, (std::max)(room.width(), room.height()));
+    // Read at its own size, not the screen's: a long picture shown fitted and
+    // zoomed in had nothing left to show. Only one past the pixels a pin is
+    // worth keeping is read smaller, so it can still be read at all.
+    int largest = 0;
+    if (const QSize stored = storedSize(path);
+        !stored.isEmpty() && qint64(stored.width()) * stored.height() > kPinSourcePixels) {
+        const double scale = std::sqrt(static_cast<double>(kPinSourcePixels) / (qint64(stored.width()) * stored.height()));
+        largest = static_cast<int>(std::lround((std::max)(stored.width(), stored.height()) * scale));
+    }
+    return decodePictureFile(path, largest);
 }
 
-ClipboardPicture readClipboard(const LastCapture& last, const Placement& placement)
+ClipboardPicture readClipboard(const LastCapture& last)
 {
     bool opened = false;
     for (int attempt = 0; attempt != 8 && !opened; ++attempt) {
@@ -141,7 +175,7 @@ ClipboardPicture readClipboard(const LastCapture& last, const Placement& placeme
     for (const QString& file : files) {
         // Decoding, rather than a different codec's canRead(), chooses the
         // first readable file. The caller fits it to the saved work area.
-        if (QImage image = readFile(file, placement); !image.isNull())
+        if (QImage image = readFile(file); !image.isNull())
             return {ClipboardStatus::Image, std::move(image)};
     }
     return {offeredImage ? ClipboardStatus::Unreadable : ClipboardStatus::Empty, {}};

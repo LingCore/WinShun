@@ -41,7 +41,7 @@ void registerClass()
 {
     static const bool registered = [] {
         WNDCLASSEXW wc {sizeof wc};
-        wc.style = CS_DBLCLKS; // a double click: back to 100%
+        wc.style = CS_DBLCLKS; // a double click: back to the size it was pinned at
         wc.lpfnWndProc = [](HWND h, UINT m, WPARAM w, LPARAM l) { return ::DefWindowProcW(h, m, w, l); };
         wc.hInstance = ::GetModuleHandleW(nullptr);
         wc.hCursor = ::LoadCursorW(nullptr, IDC_SIZEALL); // it moves where it is dragged
@@ -76,7 +76,7 @@ void copyOpaque(const QImage& picture, QImage& canvas, QPoint at)
 
 } // namespace
 
-PinWindow::PinWindow(const QImage& image, QPoint origin, Host host)
+PinWindow::PinWindow(const QImage& image, QPoint origin, Host host, std::optional<QPoint> fitAbout)
     : m_host(std::move(host))
     , m_image(image.convertToFormat(QImage::Format_RGB32))
     , m_imageSize(image.size())
@@ -86,8 +86,10 @@ PinWindow::PinWindow(const QImage& image, QPoint origin, Host host)
     // Per-monitor v2 whatever the thread's default: the picture must stay
     // in physical pixels, and WM_DPICHANGED must come.
     const DPI_AWARENESS_CONTEXT previous = ::SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    if (fitAbout)
+        fitToWorkArea(*fitAbout);
     m_hwnd = ::CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST, kClassName, L"Win顺 贴图", WS_POPUP,
-        origin.x(), origin.y(), 1, 1, nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+        m_origin.x(), m_origin.y(), 1, 1, nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
     if (previous)
         ::SetThreadDpiAwarenessContext(previous);
     if (!m_hwnd) {
@@ -162,6 +164,33 @@ QRect PinWindow::workArea() const
     if (::GetMonitorInfoW(::MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST), &info))
         return QRect(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top);
     return QRect(0, 0, 1920, 1080);
+}
+
+QRect PinWindow::workAreaAt(QPoint point) const
+{
+    const POINT at {point.x(), point.y()};
+    MONITORINFO info {sizeof info};
+    if (::GetMonitorInfoW(::MonitorFromPoint(at, MONITOR_DEFAULTTONEAREST), &info))
+        return QRect(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top);
+    return QRect(0, 0, 1920, 1080);
+}
+
+void PinWindow::fitToWorkArea(QPoint anchor)
+{
+    // The anchor's monitor, not the one nearest the whole picture's top
+    // left: a long picture's middle at the cursor starts thousands of pixels
+    // above it, nearer a monitor stacked on top.
+    const QRect work = workAreaAt(anchor);
+    m_fitZoom = fitZoom(m_imageSize, work.size());
+    m_zoom = m_fitZoom;
+    m_origin = fitOrigin(m_origin, m_imageSize, m_zoom, anchor, work);
+}
+
+double PinWindow::minZoom() const
+{
+    // Shrinking stays possible down to the smallest step; a picture fitted
+    // under it has the fit as its bottom.
+    return (std::min)(m_fitZoom, zoomSteps().front());
 }
 
 std::optional<QRect> PinWindow::edgeTab() const
@@ -409,7 +438,7 @@ void PinWindow::setZoom(double zoom, QPoint cursor)
 {
     if (m_form != PinForm::Full)
         return;
-    zoom = std::clamp(zoom, zoomSteps().front(), maxZoom(fullSize(), kZoomBudget));
+    zoom = std::clamp(zoom, minZoom(), maxZoom(fullSize(), kZoomBudget));
     // The percent shows at the ends too, where the notch changes nothing.
     showHint(QString::number(static_cast<int>(std::lround(zoom * 100))) + u'%');
     if (std::abs(zoom - m_zoom) >= 1e-9) {
@@ -770,7 +799,7 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
                 if (m_moved)
                     moveTo(at - m_grab);
             } else if (m_corner != Corner::None) {
-                const Resized r = resizeFromCorner(m_corner, m_resizeStart, fullSize(), at, zoomSteps().front(),
+                const Resized r = resizeFromCorner(m_corner, m_resizeStart, fullSize(), at, minZoom(),
                     maxZoom(fullSize(), kZoomBudget));
                 if (r.origin != m_origin || std::abs(r.zoom - m_zoom) > 1e-9) {
                     m_origin = r.origin;
@@ -823,7 +852,7 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         if (m_form != PinForm::Full || m_text != Text::Off || m_clickOpened)
             return 0;
         switch (m_doubleClick) {
-        case PinDoubleClick::Reset: setZoom(1.0, cursorNow()); break;
+        case PinDoubleClick::Reset: setZoom(m_fitZoom, cursorNow()); break; // the size it was pinned at
         case PinDoubleClick::Close: close(); break;
         case PinDoubleClick::Collapse:
             collapse(PinForm::Tile);
@@ -853,7 +882,7 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             }
         } else if (m_form == PinForm::Full) {
             const QPoint cursor(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)); // screen, physical
-            setZoom(nextZoom(m_zoom, steps, maxZoom(fullSize(), kZoomBudget)), cursor);
+            setZoom(nextZoom(m_zoom, steps, maxZoom(fullSize(), kZoomBudget), minZoom()), cursor);
         }
         return 0;
     }
@@ -930,12 +959,12 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         case VK_OEM_PLUS:
         case VK_ADD:
             if (m_form == PinForm::Full)
-                setZoom(nextZoom(m_zoom, 1, maxZoom(fullSize(), kZoomBudget)), pictureRect().center());
+                setZoom(nextZoom(m_zoom, 1, maxZoom(fullSize(), kZoomBudget), minZoom()), pictureRect().center());
             return 0;
         case VK_OEM_MINUS:
         case VK_SUBTRACT:
             if (m_form == PinForm::Full)
-                setZoom(nextZoom(m_zoom, -1, maxZoom(fullSize(), kZoomBudget)), pictureRect().center());
+                setZoom(nextZoom(m_zoom, -1, maxZoom(fullSize(), kZoomBudget), minZoom()), pictureRect().center());
             return 0;
         default:
             break;

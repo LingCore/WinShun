@@ -438,6 +438,50 @@ private slots:
         QCOMPARE(zoomedSize({5, 5}, 0.1), QSize(1, 1));
     }
 
+    void fitZoomKeepsPicturesSmallerThanTheRoomAtTheirSize()
+    {
+        QCOMPARE(fitZoom({1920, 1080}, {1920, 1200}), 0.9); // 90% of either side
+        QCOMPARE(fitZoom({800, 600}, {1920, 1040}), 1.0); // never above its own size
+        // A long screenshot: the side that runs over the room sets the zoom,
+        // and its pixels are what the pin keeps.
+        const double longShot = fitZoom({1200, 20000}, {1920, 1040});
+        QVERIFY(std::abs(longShot - 1040 * 0.9 / 20000) < 1e-9);
+        QCOMPARE(zoomedSize({1200, 20000}, longShot), QSize(56, 936));
+        QCOMPARE(fitZoom({1200, 20000}, {1900, 30000}), 1.0);
+        QCOMPARE(fitZoom({1200, 20000}, {}), 1.0);
+    }
+
+    void fitOriginKeepsTheAnchorPixelThenComesIntoTheWorkArea()
+    {
+        const QRect work(0, 0, 1920, 1040);
+        // A file pinned round the cursor: its middle stays at the cursor.
+        const QSize photo(4000, 3000);
+        const QPoint cursor(960, 520);
+        const double zoom = fitZoom(photo, work.size());
+        const QPoint at = fitOrigin(cursor - QPoint(2000, 1500), photo, zoom, cursor, work);
+        const QSize shown = zoomedSize(photo, zoom);
+        QVERIFY(std::abs(at.x() + shown.width() / 2 - cursor.x()) <= 1);
+        QVERIFY(std::abs(at.y() + shown.height() / 2 - cursor.y()) <= 1);
+        // A long screenshot keeps its top left where the scrolled region's was.
+        const QSize longShot(1200, 20000);
+        const QPoint region(300, 50);
+        QCOMPARE(fitOrigin(region, longShot, fitZoom(longShot, work.size()), region, work), region);
+        // Near an edge it comes in; at 100% that is all that changes.
+        QCOMPARE(fitOrigin(QPoint(1800, 950), QSize(300, 200), 1.0, QPoint(1950, 1050), work), QPoint(1620, 840));
+        // On a second monitor, within that monitor's area.
+        const QRect right(1920, 0, 2560, 1400);
+        const QPoint there = fitOrigin(QPoint(1700, -800), photo, fitZoom(photo, right.size()), QPoint(3700, 700), right);
+        QVERIFY(right.contains(QRect(there, zoomedSize(photo, fitZoom(photo, right.size())))));
+    }
+
+    void wheelDownReachesAZoomFittedUnderTheSmallestStep()
+    {
+        QCOMPARE(nextZoom(0.1, -1, 8.0, 0.047), 0.047); // the fitted long picture
+        QCOMPARE(nextZoom(0.047, -1, 8.0, 0.047), 0.047);
+        QCOMPARE(nextZoom(0.047, 1, 8.0, 0.047), 0.1); // and back up to the steps
+        QCOMPARE(nextZoom(1.0, -1), 0.9); // the editor's, with no floor
+    }
+
     void zoomAboutKeepsThePixelUnderTheCursor()
     {
         const QPoint origin(1000, 500);
