@@ -82,6 +82,8 @@ bool isExternalVolume(std::wstring_view root)
         || bytes < offsetof(STORAGE_DEVICE_DESCRIPTOR, RawPropertiesLength))
         return false;
     const auto* device = reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR*>(buffer);
+    // UASP enclosures (USB to SATA or NVMe) too: Windows' uaspstor.inf sets
+    // BusType 7, BusTypeUsb (stornvme.inf 17, storahci.inf 11).
     // Not SD or MMC: a tablet's own storage is eMMC, and cards say removable.
     // Nor NVMe in a Thunderbolt enclosure: it says nothing of where it is, and
     // the controllers above some laptops' own disks say they can be unplugged.

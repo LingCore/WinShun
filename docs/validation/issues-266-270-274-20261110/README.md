@@ -62,4 +62,8 @@
 
 - 报告人的截图：火绒“U 盘保护”列出 `WinShun.exe` 占用 `G:`（卷本身），解除失败；关开关、重启 Win顺 都无效，符合“这个 U 盘对 Windows 说自己是固定磁盘”。
 - `tst_core externalDisksFollowTheRemovableSwitch selectedDrivesRespectAnEmptySelection`：通过。本机 NVMe 上的 C: D: E: F: 都判为自带（`C: own D: own E: own F: own`）；`WINSHUN_EXTERNAL` 标成外接后，开关关时不列出、开时列出；系统盘不用测试开关时永远不算外接。
-- **没测**：真实的 USB 移动硬盘 / 固态 U 盘（手头没有）、火绒的弹出。
+- **没测**：真实的 USB 移动硬盘 / 固态 U 盘（手头没有）、火绒的弹出。用户决定不测，改为对照资料和别的开源项目审一遍（同日）：
+  - **UASP 硬盘盒报不报 USB**：微软文档没写，Windows 自己的设置写了。`C:\Windows\INF\uaspstor.inf` 第 63 行 `HKR,Parameters,BusType,0x00010001,0x0000007`，注册表 `Services\UASPStor\Parameters\BusType = 7`，即 `BusTypeUsb`；StorPort 驱动报的总线类型取自这里（`StorPortSetAdapterBusType` 只用来改它）。对照：`stornvme` 17（NVMe）、`storahci` 11（SATA）。所以 UASP 硬盘盒、USB 转 NVMe 盒都报 USB，雷电/USB4 的 NVMe 盒报 NVMe（认不出，有意：见代码注释）。旁证：Ventoy2Disk 默认只列 `BusType == BusTypeUsb` 的盘（`Ventoy2Disk.c` 的 `g_FilterUSB`），三星 T5/T7 这类 UASP 盘照样能装（ventoy/Ventoy #1975、#2494）；balena drivelist 认 UAS 的条件是“SCSI 枚举器 + 适配器总线 USB”。
+  - **别人怎么分**：Rufus 按驱动名单（`USBSTOR`、`UASPSTOR`……）；Chromium 只看 `GetDriveType`，报“固定”的 USB 硬盘算内置；Everything 默认也索引报“固定”的 USB 硬盘。CrystalDiskInfo 先看 `BusType == BusTypeUsb`，再按控制器名认 UASP 只为显示。
+  - **审出的问题**：只索引选定文件夹时，在没收录的外接硬盘上打一个文件夹路径，会同时出“这个文件夹不在索引范围内”和“U 盘 G: 没收录”两条提示；已改成有盘的提示时不出文件夹的（8371138，只编译验证）。
+  - **没改、待定**：开关关着时，以前一直被索引的 USB 硬盘（包括在“自己选择”里勾过的）升级后不再索引，要在发布说明里写；`indexfolder::onExternalDisk`（换索引存放位置时用）判法不同，且没排除装 Windows 的盘，eMMC 平板的 C: 会被当成外接（早就有，不是 #266 引入的）。
