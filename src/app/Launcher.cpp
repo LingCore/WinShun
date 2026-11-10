@@ -1147,6 +1147,11 @@ QVariantList Launcher::leftOutHints() const
         switch (pathtext::scopeNote(m_foldersOnly, !outside.isEmpty(), m_folderNoteDismissed, static_cast<int>(m_results.count()),
             kFewRows, searchText().size())) {
         case pathtext::ScopeNote::Outside:
+            // On an external hard disk the index leaves out (it says
+            // DRIVE_FIXED: GitHub #266), the drive's hint above says it.
+            if (std::any_of(m_drives.cbegin(), m_drives.cend(),
+                    [&](const RemovableDrive& drive) { return outside.startsWith(drive.root, Qt::CaseInsensitive); }))
+                break;
             if (!m_hintsTaken.contains(kFolderHint + outside))
                 add(kFolderHint + outside, tr("这个文件夹不在索引范围内"), tr("这次也搜它"), kAddFolderHint + outside, tr("加入索引"));
             else if (!m_hintsTaken.contains(kAddFolderHint + outside))
