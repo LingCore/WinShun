@@ -1,6 +1,6 @@
 # #244 Logo 右键归位与展开图标
 
-2026-11-07。本次为本地实现与定向验证，尚未提交或发布。对应 [新增回复](https://github.com/LingCore/WinShun/issues/244#issuecomment-6704655917)。
+2026-11-07。本次为本地实现与定向验证；2026-11-10 已在本地提交（2f4c89a），尚未推送或发布。对应 [新增回复](https://github.com/LingCore/WinShun/issues/244#issuecomment-6704655917)。
 
 ## 最终行为
 
