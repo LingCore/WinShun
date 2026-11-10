@@ -135,6 +135,7 @@ constexpr auto kSettingsFlag = u"--preview-settings";
 constexpr auto kResultsFlag = u"--preview-results";
 constexpr auto kAiCardsFlag = u"--preview-ai-cards";
 constexpr auto kRuntimeFlag = u"--probe-runtime";
+constexpr int kFolderTypingMany = 40; // --folder-typing's many_NN.txt: more rows than its box shows
 
 int g_warnings = 0;
 bool g_edges = false; // --edges (or --tree): every grab also writes <png>.edges.txt
@@ -6965,6 +6966,62 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         check(desktop.copy(region(searchRect)).save(out.filePath(u"typing-search.png"_s)), "production search screenshot saved");
         check(desktop.copy(region(sourceRect)).save(out.filePath(u"typing-explorer.png"_s)), "Explorer selection screenshot saved");
     }
+
+    // GitHub #246: only the folder searched, and more rows than the box
+    // shows. Where it looked and the ways to widen or narrow that stay in
+    // sight under the rows (ScopeBar), not after the last row; its link,
+    // clicked, searches everywhere.
+    const std::function<QQuickItem*(QQuickItem*, const QString&)> named = [&](QQuickItem* item, const QString& name) -> QQuickItem* {
+        if (item->objectName() == name)
+            return item;
+        for (QQuickItem* child : item->childItems())
+            if (QQuickItem* found = named(child, name))
+                return found;
+        return nullptr;
+    };
+    launcher->setTypingScope(Launcher::TypingScope::Folder);
+    if (search(u"many_"_s, kFolderTypingMany)) {
+        settle(window, 3);
+        const auto* rows = window->property("view").value<QQuickItem*>();
+        check(rows && rows->property("contentHeight").toReal() > rows->height(), "folder only: more rows than the box shows");
+        QQuickItem* bar = named(window->contentItem(), u"scopeBar"_s);
+        const QRectF barRect = bar ? bar->mapRectToScene(QRectF(0, 0, bar->width(), bar->height())) : QRectF();
+        check(bar && bar->isVisible() && barRect.height() > 0 && barRect.top() >= 0 && barRect.bottom() <= window->height(),
+            "the scope bar is in sight without scrolling");
+        const QVariantList footer = window->property("hints").toList();
+        check(std::none_of(footer.cbegin(), footer.cend(), [](const QVariant& hint) {
+            const QString kind = hint.toMap().value(u"kind"_s).toString();
+            return kind == u"everywhere" || kind == u"level";
+        }), "the scope links are not repeated after the last row");
+        report.insert(u"scope_bar"_s, QJsonArray {barRect.x(), barRect.y(), barRect.width(), barRect.height()});
+        if (window->screen()) {
+            RECT box {};
+            ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
+            const QPoint origin(box.left - monitor.rcMonitor.left, box.top - monitor.rcMonitor.top);
+            const QPixmap picture = window->screen()->grabWindow(0).copy(QRect(origin, QSize(box.right - box.left, box.bottom - box.top)));
+            check(picture.save(out.filePath(u"typing-scope.png"_s)), "scope bar screenshot saved");
+        }
+        QQuickItem* widen = named(window->contentItem(), u"scopeLink-everywhere"_s);
+        if (widen) {
+            const QPointF at = widen->mapToScene(QPointF(widen->width() / 2, widen->height() / 2));
+            QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+            QCoreApplication::sendEvent(window, &press);
+            QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+            QCoreApplication::sendEvent(window, &release);
+            pump(100);
+        }
+        waiting.restart();
+        while ((launcher->searching() || launcher->typingFolderOnly()) && waiting.elapsed() < 5000)
+            pump(20);
+        settle(window, 2);
+        check(widen && !launcher->typingFolderOnly() && !window->property("showScopeBar").toBool(),
+            "its link, clicked, searches everywhere and the bar goes");
+    } else {
+        check(false, "folder only: every row of a long list found");
+    }
+    launcher->setTypingScope(Launcher::TypingScope::Everywhere); // as the setting (FolderTyping=first)
+    check(search(u"follow_"_s, 3), "query restored after the scope bar");
+    settle(window, 3);
     check(search(u"follow_1"_s, 1) && launcher->currentRow() == 0 && follows(),
         "a unique result is selected in the source view");
     check(search(u"follow_2"_s, 1) && launcher->currentRow() == 0 && follows(),
@@ -8980,6 +9037,10 @@ int runRuntime(const QStringList& args)
         for (int i = 1; i <= 3; ++i) {
             QFile file(files.filePath(u"follow_%1.txt"_s.arg(i)));
             if (!file.open(QIODevice::WriteOnly) || file.write("isolated Explorer selection fixture\n") < 0) return 4;
+        }
+        for (int i = 1; i <= kFolderTypingMany; ++i) { // more rows than the box shows (GitHub #246)
+            QFile file(files.filePath(u"many_%1.txt"_s.arg(i, 2, 10, QChar(u'0'))));
+            if (!file.open(QIODevice::WriteOnly)) return 4;
         }
         files.mkdir(u"child"_s);
         QFile nested(files.filePath(u"child/nested-only.txt"_s));

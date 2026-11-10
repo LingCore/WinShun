@@ -94,6 +94,7 @@ qt_add_executable(WinShun WIN32
     platform/Foreground.cpp platform/Foreground.h
     platform/HoldWatch.cpp platform/HoldWatch.h
     platform/Http.cpp platform/Http.h
+    platform/HotPages.cpp platform/HotPages.h
     platform/IdleTrim.cpp platform/IdleTrim.h
     platform/MemoryReport.cpp platform/MemoryReport.h
     ActivityText.cpp ActivityText.h
@@ -148,6 +149,7 @@ set(qml_files
     qml/TypeStrip.qml
     qml/ResultRow.qml
     qml/ElsewhereCaption.qml
+    qml/ScopeBar.qml
     qml/Panel.qml
     qml/ContentPaneView.qml
     qml/ContentChip.qml

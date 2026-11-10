@@ -5056,6 +5056,71 @@ private slots:
         QCOMPARE(v5Loaded->index->folderByRecord(0, ntfs::kRootRecord), EntryId {0});
     }
 
+    // GitHub #227: the save numbers only the names more than one entry has.
+    // Names shared while interned, the same words stored again later (a name
+    // of its own), names only removed entries had, an entry moved under a
+    // folder made after it: each comes back as it was, sharing as before.
+    void snapshotNamesSharedAndOwn()
+    {
+        FileIndex index;
+        const EntryId root = index.addRoot("D:");
+        index.setInterning(true);
+        std::vector<EntryId> projects;
+        for (int i = 0; i < 3; ++i) {
+            const EntryId project = index.add(root, "project " + std::to_string(i), EntryFlag::Directory);
+            index.add(project, "index.js", 0);
+            index.add(project, "README.md", 0);
+            projects.push_back(project);
+        }
+        const EntryId gone = index.add(projects[0], "only a removed one had this", 0);
+        index.setInterning(false);
+        const EntryId again = index.add(projects[1], "lib", EntryFlag::Directory);
+        index.add(again, "index.js", 0); // stored again: a copy of its own
+        const EntryId mover = index.add(root, "moved here later.txt", 0);
+        const EntryId later = index.add(root, "made later", EntryFlag::Directory);
+        QVERIFY(index.move(mover, later, "moved here later.txt"));
+        index.remove(gone);
+        index.remove(index.findPath(L"D:\\project 2\\README.md"));
+
+        // The names of the live entries, by where they are stored.
+        const auto distinctNames = [](const FileIndex& i) {
+            std::set<std::uint32_t> offsets;
+            for (std::size_t c = 0; c < i.chunkCount(); ++c) {
+                for (const Entry& e : i.chunk(c)) {
+                    if (!e.isDeleted())
+                        offsets.insert(e.nameOffset);
+                }
+            }
+            return offsets.size();
+        };
+        QTemporaryDir dir;
+        const QString file = dir.filePath(u"index.bin"_s);
+        QVERIFY(snapshot::save(index, {}, {}, {}, file));
+        const auto contents = snapshot::load(file);
+        QVERIFY(contents && contents->index);
+        const FileIndex& loaded = *contents->index;
+        QCOMPARE(loaded.liveCount(), index.liveCount());
+        QCOMPARE(distinctNames(loaded), distinctNames(index)); // index.js: one shared, one of its own
+        for (const wchar_t* path : {L"D:\\project 0\\index.js", L"D:\\project 1\\lib\\index.js", L"D:\\project 2\\index.js",
+                 L"D:\\project 1\\README.md", L"D:\\made later\\moved here later.txt"}) {
+            QVERIFY2(loaded.findPath(path) != kNoEntry, qPrintable(QString::fromWCharArray(path)));
+        }
+        QCOMPARE(loaded.findPath(L"D:\\project 2\\README.md"), kNoEntry);
+        QCOMPARE(loaded.findPath(L"D:\\project 0\\only a removed one had this"), kNoEntry);
+        QCOMPARE(loaded.entry(loaded.findPath(L"D:\\project 0\\index.js")).nameOffset,
+            loaded.entry(loaded.findPath(L"D:\\project 2\\index.js")).nameOffset);
+        QVERIFY(loaded.entry(loaded.findPath(L"D:\\project 1\\lib\\index.js")).nameOffset
+            != loaded.entry(loaded.findPath(L"D:\\project 0\\index.js")).nameOffset);
+
+        // Saved again from what was loaded: the same file.
+        const QString resaved = dir.filePath(u"again.bin"_s);
+        QVERIFY(snapshot::save(loaded, {}, {}, {}, resaved));
+        QFile first(file);
+        QFile second(resaved);
+        QVERIFY(first.open(QIODevice::ReadOnly) && second.open(QIODevice::ReadOnly));
+        QCOMPARE(first.readAll(), second.readAll());
+    }
+
     void folderRecords()
     {
         // The table against a reference map, with many erases (backward shifts).
