@@ -16,7 +16,11 @@
 //                      reads in flight, leaving out free stretches or not
 //   wsbench [snapshot] --resave FILE
 //                      saves the snapshot again as the app does (packed), loads
-//                      it from there, and reports sizes and times
+//                      it from there, and reports sizes, times and the most
+//                      memory the save took on top of the index
+//   wsbench --synthetic COUNT FILE [--shared]
+//                      saves a made-up index of COUNT entries to FILE: names
+//                      of their own, or with --shared the same ones in every folder
 //   wsbench [snapshot] --content [--sample N] [--needle text] [--no-throughput]
 //                      what a content search costs: its candidates, and for a
 //                      random sample of them the time to open, read, close and
@@ -6549,6 +6553,49 @@ int runScrollReplay(QStringList args)
     return differ == 0 ? 0 : 3;
 }
 
+// ---- a made-up index (--synthetic) ------------------------------------------
+
+// `count` entries in folders of 1,000 files, saved to `file` (then --resave
+// it to measure a save). Names of their own each, as a long-running index
+// gets once names are stored again for every change (GitHub #227), or with
+// --shared the same thousand file names in every folder, interned as a walk
+// stores them.
+int runSynthetic(std::uint64_t count, const QString& file, bool shared)
+{
+    constexpr std::uint64_t kPerFolder = 1000;
+    ws::FileIndex index;
+    QElapsedTimer timer;
+    timer.start();
+    {
+        const auto lock = index.writeLock();
+        index.setInterning(shared);
+        const ws::EntryId root = index.addRoot("S:");
+        char name[32];
+        ws::EntryId folder = ws::kNoEntry;
+        for (std::uint64_t i = 0; i < count; ++i) {
+            if (i % (kPerFolder + 1) == 0) {
+                std::snprintf(name, sizeof name, "folder %08llu", static_cast<unsigned long long>(i));
+                folder = index.add(root, name, ws::EntryFlag::Directory);
+                continue;
+            }
+            if (shared)
+                std::snprintf(name, sizeof name, "file %03llu.txt", static_cast<unsigned long long>(i % kPerFolder));
+            else
+                std::snprintf(name, sizeof name, "IMG_%010llu.jpg", static_cast<unsigned long long>(i));
+            const ws::EntryId id = index.add(folder, name, 0);
+            index.setModified(id, 133'000'000'000'000'000ull + i * 10'000'000ull);
+            index.setSize(id, ws::packSize(i % 5'000'000));
+        }
+        index.setInterning(false);
+    }
+    const auto lock = index.readLock();
+    const bool saved = ws::snapshot::save(index, {}, {}, {}, file);
+    std::printf("synthetic    %s: %zu entries (%s names), %.1f MB, %.0f ms\n", saved ? "saved" : "FAILED",
+        index.liveCount(), shared ? "shared" : "own", static_cast<double>(QFileInfo(file).size()) / (1024.0 * 1024.0),
+        static_cast<double>(timer.nsecsElapsed()) / 1e6);
+    return saved ? 0 : 1;
+}
+
 // ---- the words in pictures (--ocr) ---------------------------------------------
 
 // Reads pictures as the clipboard history does (PaddleOcr, models and
@@ -6620,6 +6667,8 @@ int main(int argc, char* argv[])
         std::setvbuf(stdout, nullptr, _IONBF, 0); // keep what was written if it crashes
         args.remove(at, 2);
     }
+    if (const qsizetype at = args.indexOf(u"--synthetic"_s); at >= 0 && at + 2 < args.size())
+        return runSynthetic(args[at + 1].toULongLong(), args[at + 2], args.contains(u"--shared"_s));
     if (args.contains(u"--ocr"_s)) {
         args.removeAll(u"--ocr"_s);
         return runOcr(args);
@@ -6898,11 +6947,25 @@ int main(int argc, char* argv[])
         // Saved again as the app saves it (packed), and loaded from there.
         const QString out = args[at + 1];
         const auto lock = index->readLock();
+        // The most the save held on top of the index, sampled every
+        // millisecond (GitHub #227: the background save's tables).
+        const double held = privateMB();
+        std::atomic<bool> saving {true};
+        std::atomic<double> most {held};
+        std::thread sampler([&] {
+            while (saving.load()) {
+                most.store(std::max(most.load(), privateMB()));
+                ::Sleep(1);
+            }
+        });
         timer.restart();
         const bool saved = ws::snapshot::save(*index, contents->volumes, contents->journals,
             contents->rules.value_or(ws::CrawlRules {}), out,
             [&](const std::vector<ws::EntryId>&) { return contents->attachment; });
         const double saveMs = static_cast<double>(timer.nsecsElapsed()) / 1e6;
+        saving.store(false);
+        sampler.join();
+        std::printf("save peak    +%.1f MB private commit over the index (%.1f MB before)\n", most.load() - held, held);
         timer.restart();
         const auto again = ws::snapshot::load(out);
         const double againMs = static_cast<double>(timer.nsecsElapsed()) / 1e6;

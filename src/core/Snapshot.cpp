@@ -360,47 +360,70 @@ private:
     bool m_ok = true;
 };
 
-// Numbers for names, by where the index stores them (entries with the same
-// name mostly share its storage): open addressing over (offset + 1) << 32 |
-// number.
-class NameNumbers {
+// The stored names more than one saved entry has, by where the index stores
+// them (entries with the same name share its storage while names are
+// interned; a name stored again later has one entry), and the number each
+// gets. A name only one entry has needs no number kept: at that entry it is
+// always the next one listed. Counting takes two bits per byte of name
+// storage, the numbering one, a rank per 512 of them and 4 bytes per shared
+// name. Numbering every name in a hash table, with a pointer to an entry of
+// each, took 3.7 GB (more while the table doubled) for 182 million entries
+// with names stored one each (GitHub #227); this takes ~0.3 GB there.
+class SharedNames {
 public:
-    explicit NameNumbers(std::size_t expected)
-        : m_slots(std::bit_ceil(std::clamp<std::size_t>(expected, 1024, 65536)), 0)
+    static constexpr std::uint32_t kUnnumbered = std::numeric_limits<std::uint32_t>::max();
+
+    // Counts the names the live entries have: how many distinct ones.
+    std::size_t count(const FileIndex& index)
     {
-    }
-    // The name's number, and whether it got it just now.
-    std::pair<std::uint32_t, bool> number(std::uint32_t offset)
-    {
-        std::size_t s = slotOf(offset);
-        if (m_slots[s] != 0)
-            return {static_cast<std::uint32_t>(m_slots[s]), false};
-        if ((m_count + std::size_t {1}) * 4 > m_slots.size() * 3) {
-            std::vector<std::uint64_t> old(m_slots.size() * 2, 0);
-            old.swap(m_slots);
-            for (const std::uint64_t slot : old) {
-                if (slot != 0)
-                    m_slots[slotOf(static_cast<std::uint32_t>((slot >> 32) - 1))] = slot;
+        const std::size_t words = ((index.nameChunkCount() << FileIndex::kNameChunkBits) + 63) / 64;
+        std::vector<std::uint64_t> once(words, 0);
+        m_twice.assign(words, 0);
+        for (std::size_t c = 0; c < index.chunkCount(); ++c) {
+            for (const Entry& e : index.chunk(c)) {
+                if (e.isDeleted())
+                    continue;
+                const std::uint64_t bit = std::uint64_t {1} << (e.nameOffset & 63);
+                std::uint64_t& seen = once[e.nameOffset >> 6];
+                if (seen & bit)
+                    m_twice[e.nameOffset >> 6] |= bit;
+                seen |= bit;
             }
-            s = slotOf(offset);
         }
-        m_slots[s] = (std::uint64_t {offset} + 1) << 32 | m_count;
-        return {m_count++, true};
+        std::size_t distinct = 0;
+        for (const std::uint64_t w : once)
+            distinct += static_cast<std::size_t>(std::popcount(w));
+        once = {}; // gone before the numbers are made
+        m_rank.resize(words / kRankWords + 1);
+        std::uint32_t shared = 0;
+        for (std::size_t w = 0; w < words; ++w) {
+            if (w % kRankWords == 0)
+                m_rank[w / kRankWords] = shared;
+            shared += static_cast<std::uint32_t>(std::popcount(m_twice[w]));
+        }
+        m_numbers.assign(shared, kUnnumbered);
+        return distinct;
+    }
+
+    // The number of a shared name (kUnnumbered until it has one); nullptr
+    // for a name only one entry has.
+    std::uint32_t* number(std::uint32_t offset) noexcept
+    {
+        const std::size_t w = offset >> 6;
+        const std::uint64_t bit = std::uint64_t {1} << (offset & 63);
+        if (!(m_twice[w] & bit))
+            return nullptr;
+        std::size_t rank = m_rank[w / kRankWords];
+        for (std::size_t i = w - w % kRankWords; i < w; ++i)
+            rank += static_cast<std::size_t>(std::popcount(m_twice[i]));
+        return &m_numbers[rank + static_cast<std::size_t>(std::popcount(m_twice[w] & (bit - 1)))];
     }
 
 private:
-    std::size_t slotOf(std::uint32_t offset) const noexcept
-    {
-        const std::uint64_t key = std::uint64_t {offset} + 1;
-        const std::size_t mask = m_slots.size() - 1;
-        auto s = static_cast<std::size_t>((key * 0x9E37'79B9'7F4A'7C15ull) >> 32) & mask;
-        while (m_slots[s] != 0 && (m_slots[s] >> 32) != key)
-            s = (s + 1) & mask;
-        return s;
-    }
-
-    std::vector<std::uint64_t> m_slots;
-    std::uint32_t m_count = 0;
+    static constexpr std::size_t kRankWords = 8;
+    std::vector<std::uint64_t> m_twice; // a bit per byte of name storage: a name more than one entry has starts there
+    std::vector<std::uint32_t> m_rank; // shared names before each kRankWords words
+    std::vector<std::uint32_t> m_numbers; // by rank
 };
 
 // The four lists of CrawlRules, in a fixed order.
@@ -462,30 +485,39 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
             }
         }
     };
-    std::vector<EntryId> newId(index.slotCount(), kNoEntry);
-    std::uint32_t next = 0;
-    NameNumbers numbers(index.liveCount() / 2);
-    std::vector<const Entry*> named; // an entry with each name, by number
-    forEachEntry([&](EntryId id, const Entry& e) {
-        newId[id] = next++;
-        if (numbers.number(e.nameOffset).second)
-            named.push_back(&e);
-    });
-    w.put(static_cast<std::uint32_t>(named.size()));
-    for (std::size_t from = 0; from < named.size(); from += kGroup) {
-        const std::size_t to = std::min(named.size(), from + kGroup);
-        std::uint32_t bytes = 0;
-        for (std::size_t i = from; i < to; ++i)
-            bytes += static_cast<std::uint32_t>(index.name(*named[i]).size()) + 1;
-        w.put(bytes);
-        for (std::size_t i = from; i < to; ++i) {
-            const std::string_view name = index.name(*named[i]);
-            w.bytes(name.data(), name.size());
-            w.put('\0');
+    // The names, in the order the entries first have them: counted in one
+    // pass over the entries, listed in a walk, used in another.
+    SharedNames shared;
+    const std::size_t nameCount = shared.count(index);
+    w.put(static_cast<std::uint32_t>(nameCount));
+    std::uint32_t listed = 0;
+    std::uint32_t entryCount = 0;
+    std::string nameGroup;
+    std::size_t inGroup = 0;
+    const auto putNames = [&] {
+        w.put(static_cast<std::uint32_t>(nameGroup.size()));
+        w.bytes(nameGroup.data(), nameGroup.size());
+        nameGroup.clear();
+        inGroup = 0;
+    };
+    forEachEntry([&](EntryId, const Entry& e) {
+        ++entryCount;
+        if (std::uint32_t* number = shared.number(e.nameOffset)) {
+            if (*number != SharedNames::kUnnumbered)
+                return; // listed already
+            *number = listed;
         }
-    }
-    named = {};
-    w.put(next);
+        ++listed;
+        nameGroup.append(index.name(e));
+        nameGroup.push_back('\0');
+        if (++inGroup == kGroup)
+            putNames();
+    });
+    if (inGroup > 0)
+        putNames();
+    w.put(entryCount);
+    std::vector<EntryId> newId(index.slotCount(), kNoEntry); // by the folder tables and the attachment too
+    std::uint32_t next = 0;
     std::string backs;
     std::string flags;
     std::string names;
@@ -515,11 +547,15 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
     std::uint32_t firstUnused = 0; // the number of the first name no entry so far has
     FileTime timeBefore = 0;
     forEachEntry([&](EntryId id, const Entry& e) {
+        newId[id] = next++; // a parent's is set already: it comes first
         putLeb(backs, e.parent == kNoEntry ? 0 : newId[id] - newId[e.parent]);
         flags.push_back(static_cast<char>(e.flags & EntryFlag::Persistent));
-        const std::uint32_t number = numbers.number(e.nameOffset).first;
-        putLeb(names, number == firstUnused ? 0 : std::uint64_t {number} + 1);
-        firstUnused += number == firstUnused ? 1 : 0;
+        // A name only this entry has is the next one listed, as is a shared
+        // one the first time.
+        const std::uint32_t* number = shared.number(e.nameOffset);
+        const bool firstTime = !number || *number == firstUnused;
+        putLeb(names, firstTime ? 0 : std::uint64_t {*number} + 1);
+        firstUnused += firstTime ? 1 : 0;
         const FileTime time = index.modified(id);
         const std::int64_t step = std::int64_t {time} - timeBefore;
         putLeb(times, step < 0 ? (static_cast<std::uint64_t>(-step) << 1) - 1 : static_cast<std::uint64_t>(step) << 1);
@@ -534,6 +570,7 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
     });
     if (written % kGroup != 0)
         group();
+    shared = {};
 
     // Folder record numbers, for the folders that made it into the file.
     const auto saved = [&](EntryId id) { return id < newId.size() && newId[id] != kNoEntry && index.entry(id).isDir(); };
@@ -574,7 +611,8 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
     w.bytes(attached.data(), attached.size());
 
     w.put(kEndMarker);
-    if (!w.finish() || next != index.liveCount()) {
+    // Every live entry reached from a root, each name listed once.
+    if (!w.finish() || next != index.liveCount() || next != entryCount || listed != nameCount) {
         file.cancelWriting();
         return false;
     }
