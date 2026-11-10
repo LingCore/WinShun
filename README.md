@@ -19,7 +19,6 @@
   <a href="https://deepwiki.com/LingCore/WinShun"><img src="https://devin.ai/assets/askdeepwiki.png" alt="Ask DeepWiki" height="20"></a>
 </p>
 
-
 <a id="screenshots"></a>
 
 <p align="center">
