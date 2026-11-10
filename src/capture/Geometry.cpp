@@ -370,6 +370,15 @@ QPoint zoomAbout(QPoint origin, QPoint cursor, double oldZoom, double newZoom)
         static_cast<int>(std::lround(cursor.y() + 0.5 - py * newZoom)));
 }
 
+QPoint fitOrigin(QPoint origin, QSize image, double zoom, QPoint anchor, const QRect& work)
+{
+    QPoint at = zoomAbout(origin, anchor, 1.0, zoom);
+    const QSize shown = zoomedSize(image, zoom);
+    at.setX(std::clamp(at.x(), work.left(), (std::max)(work.left(), work.right() + 1 - shown.width())));
+    at.setY(std::clamp(at.y(), work.top(), (std::max)(work.top(), work.bottom() + 1 - shown.height())));
+    return at;
+}
+
 double nextOpacity(double opacity, int steps)
 {
     const long tenths = std::lround(opacity * 10) + steps;

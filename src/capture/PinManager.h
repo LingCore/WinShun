@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace ws::capture {
@@ -52,6 +53,11 @@ public:
     // desktop); `screenshot`: taken with the capture (PinWindow::screenshot);
     // `project`: its annotations, to edit again (empty: none).
     void pin(const QImage& image, QPoint origin, bool screenshot = true, QByteArray project = {});
+    // A picture not shown where it was taken (a long screenshot, a file, the
+    // clipboard's): its own pixels kept, it starts within the work area of
+    // the monitor at `anchor`, shown fitted when larger than 90% of it, its
+    // pixel at `anchor` kept in place (PinWindow).
+    void pinFitted(const QImage& image, QPoint origin, QPoint anchor, bool screenshot);
     int count() const { return static_cast<int>(m_pins.size()); }
     // `pin` is one of the pins on the screen (not closed since): for what
     // keeps a pointer to one meanwhile (the editing window).
@@ -80,6 +86,7 @@ public:
 private:
     void setWatching(); // starts or stops the watcher to match anyClickThrough()
     void watch(); // one tick: Ctrl and the cursor against every click-through pin
+    void add(const QImage& image, QPoint origin, bool screenshot, QByteArray project, std::optional<QPoint> fitAbout);
     void showMenu(PinWindow* pin, POINT at);
     void closed(PinWindow* pin);
 

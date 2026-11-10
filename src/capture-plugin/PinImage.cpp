@@ -4,16 +4,18 @@
 #include "ImageOrigin.h"
 #include "PictureFile.h"
 
-#include <QImageReader>
 #include <QScopeGuard>
 #include <QStringList>
 
 #include <windows.h>
 #include <objbase.h>
 #include <shellapi.h>
+#include <wincodec.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <string>
 #include <thread>
@@ -25,6 +27,27 @@ namespace {
 // The pixels a pin's picture keeps: the long capture's own limit
 // (ScrollStitcher::Limits), so what it stitches pins at its own resolution.
 constexpr qint64 kPinSourcePixels = 60'000'000;
+
+// The first frame's size as stored, from its header only. Windows Imaging
+// Component, as decodePictureFile: dist has no Qt image plugins, so
+// QImageReader knows PNG and BMP sizes but not a JPEG's.
+QSize storedSize(const QString& path)
+{
+    QString native = path;
+    native.replace(u'/', u'\\');
+    Microsoft::WRL::ComPtr<IWICImagingFactory> wic;
+    Microsoft::WRL::ComPtr<IWICBitmapDecoder> decoder;
+    Microsoft::WRL::ComPtr<IWICBitmapFrameDecode> frame;
+    UINT width = 0;
+    UINT height = 0;
+    if (FAILED(::CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic)))
+        || FAILED(wic->CreateDecoderFromFilename(
+            native.toStdWString().c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder))
+        || FAILED(decoder->GetFrame(0, &frame)) || FAILED(frame->GetSize(&width, &height))
+        || width > INT_MAX || height > INT_MAX)
+        return {};
+    return QSize(static_cast<int>(width), static_cast<int>(height));
+}
 
 QByteArray clipboardBytes(UINT format, SIZE_T limit)
 {
@@ -64,10 +87,11 @@ Prepared prepare(QImage image, const Placement& placement)
     if (image.isNull())
         return {};
     // Its own pixels stay: the pin shows a picture larger than the screen
-    // fitted (PinWindow::fitToWorkArea), so a zoom still has the detail. This
+    // fitted (PinManager::pinFitted), so a zoom still has the detail. This
     // is where the whole picture would start, its middle at the cursor; the
     // pin fits the shown picture about that middle and keeps it in the area.
-    return {std::move(image), placement.cursor - QPoint(image.width() / 2, image.height() / 2)};
+    const QPoint origin = placement.cursor - QPoint(image.width() / 2, image.height() / 2);
+    return {std::move(image), origin, placement.cursor};
 }
 
 QImage readFile(const QString& path)
@@ -81,8 +105,8 @@ QImage readFile(const QString& path)
     // zoomed in had nothing left to show. Only one past the pixels a pin is
     // worth keeping is read smaller, so it can still be read at all.
     int largest = 0;
-    if (const QSize stored = QImageReader(path).size();
-        stored.isValid() && qint64(stored.width()) * stored.height() > kPinSourcePixels) {
+    if (const QSize stored = storedSize(path);
+        !stored.isEmpty() && qint64(stored.width()) * stored.height() > kPinSourcePixels) {
         const double scale = std::sqrt(static_cast<double>(kPinSourcePixels) / (qint64(stored.width()) * stored.height()));
         largest = static_cast<int>(std::lround((std::max)(stored.width(), stored.height()) * scale));
     }

@@ -30,7 +30,7 @@ void registerClass()
 {
     static const bool registered = [] {
         WNDCLASSEXW wc {sizeof wc};
-        wc.style = CS_DBLCLKS; // a double click: back to 100%
+        wc.style = CS_DBLCLKS; // a double click: back to the size it was pinned at
         wc.lpfnWndProc = [](HWND h, UINT m, WPARAM w, LPARAM l) { return ::DefWindowProcW(h, m, w, l); };
         wc.hInstance = ::GetModuleHandleW(nullptr);
         wc.hCursor = ::LoadCursorW(nullptr, IDC_SIZEALL); // it moves where it is dragged
@@ -65,7 +65,7 @@ void copyOpaque(const QImage& picture, QImage& canvas, QPoint at)
 
 } // namespace
 
-PinWindow::PinWindow(const QImage& image, QPoint origin, Host host)
+PinWindow::PinWindow(const QImage& image, QPoint origin, Host host, std::optional<QPoint> fitAbout)
     : m_host(std::move(host))
     , m_image(image.convertToFormat(QImage::Format_RGB32))
     , m_imageSize(image.size())
@@ -75,8 +75,10 @@ PinWindow::PinWindow(const QImage& image, QPoint origin, Host host)
     // Per-monitor v2 whatever the thread's default: the picture must stay
     // in physical pixels, and WM_DPICHANGED must come.
     const DPI_AWARENESS_CONTEXT previous = ::SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    if (fitAbout)
+        fitToWorkArea(*fitAbout);
     m_hwnd = ::CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST, kClassName, L"Win顺 贴图", WS_POPUP,
-        origin.x(), origin.y(), 1, 1, nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+        m_origin.x(), m_origin.y(), 1, 1, nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
     if (previous)
         ::SetThreadDpiAwarenessContext(previous);
     if (!m_hwnd) {
@@ -93,7 +95,6 @@ PinWindow::PinWindow(const QImage& image, QPoint origin, Host host)
     ::ImmAssociateContextEx(m_hwnd, nullptr, 0);
     m_dpi = std::max<UINT>(96, ::GetDpiForWindow(m_hwnd));
     m_frame = pinFrame(dpr());
-    fitToWorkArea();
     render();
     ::ShowWindow(m_hwnd, SW_SHOW);
     ::SetForegroundWindow(m_hwnd); // Esc closes it at once; Win顺 is in front (the overlay was)
@@ -163,24 +164,22 @@ QRect PinWindow::workAreaAt(QPoint point) const
     return QRect(0, 0, 1920, 1080);
 }
 
-void PinWindow::fitToWorkArea()
+void PinWindow::fitToWorkArea(QPoint anchor)
 {
-    const QRect work = workAreaAt(m_origin);
+    // The anchor's monitor, not the one nearest the whole picture's top
+    // left: a long picture's middle at the cursor starts thousands of pixels
+    // above it, nearer a monitor stacked on top.
+    const QRect work = workAreaAt(anchor);
     m_fitZoom = fitZoom(m_imageSize, work.size());
-    if (m_fitZoom < 1.0)
-        m_zoom = m_fitZoom;
-    // The shown picture takes the middle of the place the whole one would
-    // have, and moves in from any edge it still hangs over.
-    const QSize shown = zoomedSize(m_imageSize, m_zoom);
-    m_origin += QPoint((m_imageSize.width() - shown.width()) / 2, (m_imageSize.height() - shown.height()) / 2);
-    m_origin.setX(std::clamp(m_origin.x(), work.left(), (std::max)(work.left(), work.right() + 1 - shown.width())));
-    m_origin.setY(std::clamp(m_origin.y(), work.top(), (std::max)(work.top(), work.bottom() + 1 - shown.height())));
+    m_zoom = m_fitZoom;
+    m_origin = fitOrigin(m_origin, m_imageSize, m_zoom, anchor, work);
 }
 
 double PinWindow::minZoom() const
 {
-    // A picture shown fitted has nothing to show smaller: the fit is the bottom.
-    return m_fitZoom < 1.0 ? m_fitZoom : zoomSteps().front();
+    // Shrinking stays possible down to the smallest step; a picture fitted
+    // under it has the fit as its bottom.
+    return (std::min)(m_fitZoom, zoomSteps().front());
 }
 
 std::optional<QRect> PinWindow::edgeTab() const
@@ -826,7 +825,7 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         if (m_form != PinForm::Full || m_text != Text::Off || m_clickOpened)
             return 0;
         switch (m_doubleClick) {
-        case PinDoubleClick::Reset: setZoom(1.0, cursorNow()); break;
+        case PinDoubleClick::Reset: setZoom(m_fitZoom, cursorNow()); break; // the size it was pinned at
         case PinDoubleClick::Close: close(); break;
         case PinDoubleClick::Collapse:
             collapse(PinForm::Tile);

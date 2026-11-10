@@ -1238,7 +1238,7 @@ void CaptureApp::pinPicture(const QString& path, bool screenshot)
                 self->notify(tr("没能贴到屏幕"), tr("读不出这张图片。"));
                 return;
             }
-            self->pins().pin(prepared.image, prepared.origin, screenshot);
+            self->pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, screenshot);
         }, Qt::QueuedConnection);
     }).detach();
 }
@@ -1269,7 +1269,7 @@ void CaptureApp::pinCurrentImage()
             switch (status) {
             case Status::Image:
                 if (!prepared.image.isNull())
-                    self->pins().pin(prepared.image, prepared.origin, false);
+                    self->pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, false);
                 else
                     self->notify(tr("贴图"), tr("剪贴板里的图片读不出来，请重新复制。"));
                 break;

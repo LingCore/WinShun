@@ -1105,8 +1105,10 @@ LongCapture& Capture::longCapture()
                     m_callbacks.record(picture, {});
                 break;
             case LongCapture::Output::Pin:
+                // Taller than the screen as a rule: shown fitted, its top
+                // left where the scrolled region's was.
                 if (PinManager* pins = m_callbacks.pins ? m_callbacks.pins() : nullptr)
-                    pins->pin(picture, origin);
+                    pins->pinFitted(picture, origin, origin, true);
                 if (m_callbacks.record)
                     m_callbacks.record(picture, {});
                 break;

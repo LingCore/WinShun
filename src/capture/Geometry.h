@@ -111,6 +111,10 @@ QSize zoomedSize(QSize image, double zoom);
 // A picture larger than the screen keeps its own pixels and is shown smaller:
 // scaling its pixels down instead loses the detail a zoom would show.
 double fitZoom(QSize image, QSize room);
+// Where a picture of `image` pixels with its top left at `origin` goes when
+// it is shown at `zoom` instead of 100%: its pixel at `anchor` stays there
+// (zoomAbout), then it moves in from any edge of `work` it hangs over.
+QPoint fitOrigin(QPoint origin, QSize image, double zoom, QPoint anchor, const QRect& work);
 // Where the picture's top left goes when its zoom changes from `oldZoom` to
 // `newZoom` with the cursor at `cursor` (all physical, virtual desktop): the
 // picture's pixel under the cursor stays under it. Whole pixels.
