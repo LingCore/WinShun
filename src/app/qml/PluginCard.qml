@@ -28,6 +28,7 @@ Rectangle {
     required property string version
     required property string author
     required property string homepage
+    required property string feedback // its author's issues (or homepage): 向作者反馈问题
     required property string description
     required property bool bundled
     required property string icon
@@ -875,6 +876,7 @@ Rectangle {
         entries: [
             { text: qsTr("说明"), glyph: "", act: () => card.plugins.openReadme(card.pluginId), shown: card.hasReadme, danger: false }, // Document
             { text: qsTr("主页"), glyph: "", act: () => card.plugins.openHomepage(card.pluginId), shown: card.homepage.length > 0, danger: false }, // Link
+            { text: qsTr("向作者反馈问题"), glyph: "", act: () => card.plugins.reportProblem(card.pluginId), shown: card.feedback.length > 0, danger: false }, // Message
             { text: qsTr("打开文件夹"), glyph: "", act: () => card.plugins.openFolder(card.pluginId), shown: true, danger: false }, // FolderOpen
             { text: qsTr("重新加载"), glyph: "", act: () => card.plugins.reload(card.pluginId), shown: true, danger: false }, // Refresh
             { text: qsTr("查看日志"), glyph: "", act: () => card.plugins.openLog(), shown: true, danger: false }, // Log

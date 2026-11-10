@@ -108,6 +108,57 @@ const Item* Index::find(QStringView id) const
     return nullptr;
 }
 
+namespace {
+
+bool asciiName(QStringView s, QStringView alsoAllowed)
+{
+    return !s.isEmpty() && s.size() <= 100 && std::ranges::all_of(s, [&](QChar c) {
+        return (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z') || (c >= u'0' && c <= u'9') || alsoAllowed.contains(c);
+    });
+}
+
+// "owner/name" of a GitHub repository: `path` is just that (`whole`), or
+// starts with it (a page in it); empty when it is none.
+QString githubRepository(QStringView path, bool whole)
+{
+    const QList<QStringView> parts = path.split(u'/', Qt::SkipEmptyParts);
+    if (parts.size() < 2 || (whole && (parts.size() != 2 || path.startsWith(u'/'))))
+        return {};
+    QStringView name = parts[1];
+    if (name.endsWith(u".git", Qt::CaseInsensitive))
+        name.chop(4);
+    if (!asciiName(parts[0], u"-") || !asciiName(name, u"-_.") || name == u"." || name == u"..")
+        return {};
+    return parts[0].toString() + u'/' + name.toString();
+}
+
+} // namespace
+
+QString repositoryAddress(const QString& repo)
+{
+    const QString listed = githubRepository(repo, true);
+    return listed.isEmpty() || listed.compare(u"LingCore/WinShun-plugins"_s, Qt::CaseInsensitive) == 0 ? QString() : u"https://github.com/"_s + listed;
+}
+
+QString issuesAddress(const QString& repo, const QString& homepage)
+{
+    const auto issues = [](const QString& ownerName) { return u"https://github.com/"_s + ownerName + u"/issues"_s; };
+    if (const QString own = repositoryAddress(repo); !own.isEmpty())
+        return own + u"/issues"_s;
+    const QString listed = githubRepository(repo, true);
+    const QString page = homepage.trimmed();
+    const QUrl url(page, QUrl::StrictMode);
+    if (url.isValid() && !url.host().isEmpty() && url.userInfo().isEmpty() && (url.scheme() == u"https" || url.scheme() == u"http")) {
+        const QString host = url.host().toLower();
+        if (host == u"github.com" || host == u"www.github.com") {
+            if (const QString onGithub = githubRepository(url.path(), false); !onGithub.isEmpty())
+                return issues(onGithub);
+        }
+        return page;
+    }
+    return listed.isEmpty() ? QString() : issues(listed);
+}
+
 std::optional<Index> parse(const QByteArray& json, const QString& source, QString* error)
 {
     const auto fail = [error](const QString& why) {
@@ -145,6 +196,7 @@ std::optional<Index> parse(const QByteArray& json, const QString& source, QStrin
         item.description = textOf(o.value(u"description"_s));
         item.author = o.value(u"author"_s).toString();
         item.homepage = o.value(u"homepage"_s).toString();
+        item.repo = o.value(u"repo"_s).toString();
         item.keywords = stringsOf(o.value(u"keywords"_s));
         // Names; a manifest's {"files:read": [paths]} by its name.
         for (const QJsonValue p : o.value(u"permissions"_s).toArray()) {

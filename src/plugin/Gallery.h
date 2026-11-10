@@ -40,6 +40,7 @@ struct Item {
     QString version;
     QString author;
     QString homepage;
+    QString repo; // "owner/name" on GitHub: where its packages come from, and its issues (issuesAddress)
     QStringList keywords;
     QStringList permissions; // as manifests name them: "network", "files:read" …
     std::optional<Program> program; // what it runs on; nothing: zero-code
@@ -66,6 +67,19 @@ struct Index {
 // package's relative address is taken from); nothing with `error` when it
 // is no list. An entry that makes no sense is left out, not the list.
 std::optional<Index> parse(const QByteArray& json, const QString& source, QString* error);
+
+// Where a problem with a plugin is reported: to its author, not to Win顺.
+// The issues of `repo` (its library entry's "owner/name"); else of the
+// GitHub repository `homepage` (its manifest's or entry's) is in; else
+// `homepage` itself when it is an address of the web. The library's own
+// repository holds Win顺's plugins (their homepage is Win顺's own) and a
+// few older plugins of others: its issues only when nothing else says
+// where. Empty: nowhere known.
+QString issuesAddress(const QString& repo, const QString& homepage);
+// The page of `repo` on GitHub, for a 主页 when the plugin gives none;
+// empty when it is no repository, or the library's own (which holds
+// packages, not their code).
+QString repositoryAddress(const QString& repo);
 
 enum class State {
     Install, // not here

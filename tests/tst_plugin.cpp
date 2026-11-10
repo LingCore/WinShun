@@ -3239,6 +3239,45 @@ private slots:
     }
 
     // ---- the plugin library (Gallery.h) ------------------------------------------
+    void galleryIssuesGoToTheAuthor()
+    {
+        namespace gallery = ws::plugin::gallery;
+        const QString gh = u"https:"_s + u"//github.com/"_s;
+        // A plugin of someone else's repository: there, even with no homepage.
+        QCOMPARE(gallery::issuesAddress(u"harafuhub/winshun-outlook"_s, {}), gh + u"harafuhub/winshun-outlook/issues"_s);
+        QCOMPARE(gallery::issuesAddress(u"iuuuuuuuu/winshun-screenshot-translate"_s, gh + u"iuuuuuuuu/winshun-screenshot-translate"_s),
+            gh + u"iuuuuuuuu/winshun-screenshot-translate/issues"_s);
+        // Win顺's own, published by the library: Win顺's issues (their homepage).
+        QCOMPARE(gallery::issuesAddress(u"LingCore/WinShun-plugins"_s, gh + u"LingCore/WinShun"_s), gh + u"LingCore/WinShun/issues"_s);
+        // An older plugin kept in the library: the repository its homepage is in, else the library's.
+        QCOMPARE(gallery::issuesAddress(u"LingCore/WinShun-plugins"_s, gh + u"crazy-zxx/WinShun-plugins/tree/main/plugins/x"_s),
+            gh + u"crazy-zxx/WinShun-plugins/issues"_s);
+        QCOMPARE(gallery::issuesAddress(u"LingCore/WinShun-plugins"_s, {}), gh + u"LingCore/WinShun-plugins/issues"_s);
+        // Not from the library: the homepage says where.
+        QCOMPARE(gallery::issuesAddress({}, gh + u"someone/tool.git"_s), gh + u"someone/tool/issues"_s);
+        QCOMPARE(gallery::issuesAddress({}, u"https:"_s + u"//example.com/tool"_s), u"https:"_s + u"//example.com/tool"_s);
+        QCOMPARE(gallery::issuesAddress({}, gh + u"someone"_s), gh + u"someone"_s); // no repository in it: the page itself
+        // Nothing that could be opened as a program or a file.
+        QVERIFY(gallery::issuesAddress({}, {}).isEmpty());
+        QVERIFY(gallery::issuesAddress({}, u"C:/tools/run.exe"_s).isEmpty());
+        QVERIFY(gallery::issuesAddress({}, u"file:"_s + u"///C:/x"_s).isEmpty());
+        QVERIFY(gallery::issuesAddress(u"https:"_s + u"//evil.example/a"_s, {}).isEmpty());
+        QVERIFY(gallery::issuesAddress(u"a/b/c"_s, {}).isEmpty());
+        QVERIFY(gallery::issuesAddress(u"owner/.."_s, {}).isEmpty());
+        // 主页 when the plugin gives none: its repository, not the library's.
+        QCOMPARE(gallery::repositoryAddress(u"harafuhub/winshun-outlook"_s), gh + u"harafuhub/winshun-outlook"_s);
+        QVERIFY(gallery::repositoryAddress(u"lingcore/winshun-plugins"_s).isEmpty());
+        QVERIFY(gallery::repositoryAddress(u"/x/y"_s).isEmpty());
+        QVERIFY(gallery::repositoryAddress({}).isEmpty());
+        // The library's entry carries it.
+        const QByteArray json = R"({"schema":1,"plugins":[{"id":"a.b","version":"1.0.0","url":"a.b-1.0.0.wsplugin",
+            "sha256":"0000000000000000000000000000000000000000000000000000000000000000","size":1,"repo":"someone/a-b"}]})";
+        QString error;
+        const std::optional<gallery::Index> index = gallery::parse(json, u"https:"_s + u"//example.com/index.json"_s, &error);
+        QVERIFY2(index && index->find(u"a.b"_s), qPrintable(error));
+        QCOMPARE(index->find(u"a.b"_s)->repo, u"someone/a-b"_s);
+    }
+
     void galleryListStatesAndPackage()
     {
         namespace gallery = ws::plugin::gallery;

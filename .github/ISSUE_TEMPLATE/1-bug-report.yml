@@ -8,8 +8,10 @@ body:
       value: |
         感谢反馈！提交前请先搜索 [已有 Issues](https://github.com/LingCore/WinShun/issues)，有相同问题时可直接补充信息。
         使用方法等问题请到 [使用问答 / Q&A](https://github.com/LingCore/WinShun/discussions/categories/q-a)。
+        别人写的插件由作者维护，出问题请找作者：设置 → 插件 → 插件卡片的“…” → 向作者反馈问题。这里只收 Win顺 本身和官方插件的问题。
 
         Please search existing issues first and add details to a matching report when possible. For usage questions, visit Q&A.
+        Plugins by others are maintained by their authors: use Settings → Plugins → the card's "…" → Report a problem to the author. This tracker is for WinShun and its official plugins.
   - type: input
     id: version
     attributes:
@@ -30,7 +32,7 @@ body:
     id: plugin
     attributes:
       label: 相关插件及版本（如有） / Plugin and version, if applicable
-      description: 插件问题请填写插件名称和版本；与插件无关可留空。 / For plugin issues, include its name and version.
+      description: 官方插件的问题请填写插件名称和版本；与插件无关可留空。 / For official plugin issues, include its name and version.
     validations:
       required: false
   - type: textarea

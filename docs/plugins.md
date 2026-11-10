@@ -20,6 +20,8 @@ Win顺 自己的另外几个插件不随安装包，在插件库里，要用时�
 
 别人写的插件、以及分享你自己的插件：[WinShun-plugins](https://github.com/LingCore/WinShun-plugins)（设置 → 插件 → 插件库 里直接安装和更新：下载后先核对大小和 sha256，再走和压缩包一样的安装；也可以自己下载 `.wsplugin`，在“已安装”里从压缩包安装；投稿见那里的 CONTRIBUTING）。插件库在打开这一页（十分钟内不重复取）、点“刷新”或安装时联网；开着“自动更新”、又装了插件库里的插件时，每天还会在后台检查一次更新。上次的列表存在数据文件夹的 `plugin-index.json`。
 
+**别人写的插件由作者维护。** 用着有问题，在插件卡片的“…”菜单点“向作者反馈问题”：打开作者仓库的 Issues（插件库登记的 `repo`；不是从插件库装的，按插件的 `homepage`：GitHub 仓库就开它的 Issues，别的网址就开那个网址）。插件没写主页时，“主页”打开插件库登记的仓库。Win顺 的 Issues 只管 Win顺 本身和官方插件（官方插件的“向作者反馈问题”就是 Win顺 的 Issues）。投稿时 `repo` 写你自己的仓库，并开着 Issues。
+
 **网页搜索**现在统一为插件库中的 `winshun.web` 2.0（源码和清单在 `src/web-plugin/package`）。它使用声明式宿主能力，不运行额外进程；展开插件卡片管理网站和搜索建议。旧内置网页搜索与已启用零代码示例的配置一次性合并，卸载保留配置。新用户默认不启用，旧用户通过现有插件恢复流程安装，离线时保留数据并可重试。
 
 English version: [plugins.en.md](plugins.en.md).
@@ -129,7 +131,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 | `name` | 是 | 显示名；字符串，或 `{"zh": …, "en": …}` 按界面语言取（下同"文字"） |
 | `version` | 是 | 如 `1.2.0`；同 id 装更低版本时会问 |
 | `description` | 否 | 一句话（文字） |
-| `author`、`homepage`、`license` | 否 | 卡片上显示；`homepage` 是链接：要是 `http://` 或 `https://` 开头的完整网址，卡片“…”菜单和插件库条目上才会有「主页」（别的写法不当链接，也不会被打开） |
+| `author`、`homepage`、`license` | 否 | 卡片上显示；`homepage` 是链接：要是 `http://` 或 `https://` 开头的完整网址，卡片“…”菜单和插件库条目上才会有「主页」（别的写法不当链接，也不会被打开）；不是从插件库装的插件，“向作者反馈问题”也按它找地方 |
 | `icon` | 否 | 插件文件夹里的 PNG / JPG / ICO（深色主题有 `名字.dark.png` 就用它；**不支持 SVG**）；没有就用第一个命令的图标 |
 | `minWinShun` | 否 | 低于它不启用 |
 | `runtime` | 脚本 / 常驻必需 | 见下 |

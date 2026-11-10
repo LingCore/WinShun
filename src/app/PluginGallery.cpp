@@ -222,6 +222,25 @@ bool PluginGallery::keeping() const
     return !m_preview && source() == gallery::kIndexUrl;
 }
 
+QString PluginGallery::repoOf(const QString& id) const
+{
+    if (m_hasIndex) {
+        const gallery::Item* item = m_index.find(id);
+        return item ? item->repo : QString();
+    }
+    if (!m_keptRepos) {
+        m_keptRepos.emplace();
+        QFile file(cachePath());
+        if (keeping() && file.open(QIODevice::ReadOnly)) {
+            if (const std::optional<gallery::Index> kept = gallery::parse(file.read(gallery::kMaxIndexBytes), source(), nullptr)) {
+                for (const gallery::Item& item : kept->items)
+                    m_keptRepos->insert(item.id, item.repo);
+            }
+        }
+    }
+    return m_keptRepos->value(id);
+}
+
 QString PluginGallery::cachePath() const
 {
     return Settings::dataDir() + u"\\plugin-index.json"_s;
@@ -410,6 +429,8 @@ void PluginGallery::rebuild()
             }
             r.author = item.author;
             r.homepage = offeredHomepage(item.homepage); // from the list fetched
+            if (r.homepage.isEmpty()) // none given: its repository
+                r.homepage = gallery::repositoryAddress(item.repo);
             r.version = item.version;
             r.keywords = item.keywords;
             r.minWinShun = item.minWinShun;

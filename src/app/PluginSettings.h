@@ -47,6 +47,9 @@ public:
         QString version;
         QString author;
         QString homepage;
+        // Where its problems go (plugin::gallery::issuesAddress): the issues of
+        // its author's repository, else its homepage; empty: nowhere known.
+        QString feedback;
         QString description;
         bool bundled = false;
         QString icon; // an image URL
@@ -105,6 +108,7 @@ public:
         ElevationRole,
         ElevationNoteRole,
         ElevationProblemRole,
+        FeedbackRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -268,6 +272,7 @@ public:
     Q_INVOKABLE void openReadmeLink(const QString& link);
     Q_INVOKABLE void showSettings(const QString& id); // the plugin's own settings window (settingsWindow)
     Q_INVOKABLE void openHomepage(const QString& id);
+    Q_INVOKABLE void reportProblem(const QString& id); // its author's issues (the card's feedback)
     Q_INVOKABLE void openInstallSource();
     Q_INVOKABLE void openLog();
     Q_INVOKABLE void openUserDir();

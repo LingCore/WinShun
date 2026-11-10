@@ -172,6 +172,11 @@ public:
     Q_INVOKABLE void openRepository(); // 看看怎么投稿
     Q_INVOKABLE void openHomepage(const QString& id); // the entry's 主页: the plugin's own page, in the browser (GitHub #248)
 
+    // The repository the library lists `id` from ("owner/name"), for where
+    // its problems go (PluginSettings, 向作者反馈问题): the list shown, else
+    // the copy kept from the last fetch (read once); empty: not listed.
+    QString repoOf(const QString& id) const;
+
     // The rows again: the list, or what is installed (the catalog), or the
     // language changed.
     void rebuild();
@@ -207,6 +212,7 @@ private:
     QDateTime m_listTime; // when the list shown was fetched (the kept copy's time until this run fetches it)
     QElapsedTimer m_fetchedThisRun; // invalid: not fetched in this run
     bool m_cacheRead = false;
+    mutable std::optional<QHash<QString, QString>> m_keptRepos; // repoOf before the list is read
     bool m_active = false;
     bool m_fetching = false;
     QString m_problem;

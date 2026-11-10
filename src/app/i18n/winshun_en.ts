@@ -3278,6 +3278,10 @@
         <translation>Homepage</translation>
     </message>
     <message>
+        <source>向作者反馈问题</source>
+        <translation>Report a problem to the author</translation>
+    </message>
+    <message>
         <source>打开文件夹</source>
         <translation>Open folder</translation>
     </message>

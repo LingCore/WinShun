@@ -138,6 +138,7 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const
     case ElevationRole: return c.elevation;
     case ElevationNoteRole: return c.elevationNote;
     case ElevationProblemRole: return c.elevationProblem;
+    case FeedbackRole: return c.feedback;
     }
     return {};
 }
@@ -149,7 +150,7 @@ QHash<int, QByteArray> PluginListModel::roleNames() const
         {StatusRole, "status"}, {ToneRole, "tone"}, {ErrorRole, "error"}, {ResidentRole, "resident"}, {KeywordsRole, "keywords"},
         {PermissionsRole, "permissions"}, {SettingsRole, "settings"}, {HasReadmeRole, "hasReadme"}, {SettingsWindowRole, "settingsWindow"}, {HasDataRole, "hasData"},
         {AiExposeRole, "aiExpose"}, {AiEnabledRole, "aiEnabled"}, {AiNoteRole, "aiNote"}, {WebSearchRole, "webSearch"},
-        {ElevationRole, "elevation"}, {ElevationNoteRole, "elevationNote"}, {ElevationProblemRole, "elevationProblem"}};
+        {ElevationRole, "elevation"}, {ElevationNoteRole, "elevationNote"}, {ElevationProblemRole, "elevationProblem"}, {FeedbackRole, "feedback"}};
 }
 
 bool PluginListModel::setCards(std::vector<Card> cards)
@@ -599,7 +600,13 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     // the web (openHomepage). Anything else would be started as a program
     // or a file is (shell::openUrl), which a plugin's own rows may not do
     // without the processes permission (plugin/OpenPolicy).
-    c.homepage = readme::webLink(m.homepage) ? m.homepage : QString();
+    // None given: its repository, as the library lists it.
+    const QString repo = m_gallery.repoOf(id);
+    c.homepage = readme::webLink(m.homepage) ? m.homepage : plugin::gallery::repositoryAddress(repo);
+    // Problems go to whoever made it, not to Win顺 (GitHub #255): its
+    // library entry's repository, else where its homepage is.
+    if (const QString feedback = plugin::gallery::issuesAddress(repo, c.homepage); readme::webLink(feedback))
+        c.feedback = feedback;
     // The AI: what the manifest offers, the card's switch, and what the AI
     // actually gets (the master switch on the AI page gates it all).
     c.aiExpose = m.aiExpose;
@@ -1418,6 +1425,12 @@ void PluginSettings::openHomepage(const QString& id)
         shell::openUrl(c->homepage);
 }
 
+void PluginSettings::reportProblem(const QString& id)
+{
+    if (const PluginListModel::Card* c = m_list.card(id); c && readme::webLink(c->feedback))
+        shell::openUrl(c->feedback);
+}
+
 void PluginSettings::openLog()
 {
     if (!m_logPath.isEmpty() && QFileInfo::exists(m_logPath))
@@ -1677,6 +1690,7 @@ void PluginSettings::loadPreview(bool elevated, int logPlugins)
         c.version = u"1.2.0"_s;
         c.author = u"LingCore"_s;
         c.homepage = u"https://github.com/LingCore/WinShun"_s;
+        c.feedback = u"https://github.com/LingCore/WinShun/issues"_s;
         c.description = tr("kill <进程名或 PID> 列出进程，Enter 结束，Ctrl+Enter 连同子进程");
         c.icon = glyph(u"U+E711"_s);
         c.enabled = true;
