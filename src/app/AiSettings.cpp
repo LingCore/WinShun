@@ -373,7 +373,7 @@ std::vector<Entry> buildCatalog()
         e.field = &State::autostart;
         add(std::move(e));
     }
-    add(boolean({"Launcher/History", QT_TRANSLATE_NOOP("AiSettings", "记住打开过的项目"), "startup", 3,
+    add(boolean({"Launcher/History", QT_TRANSLATE_NOOP("AiSettings", "记住搜索和打开过的项目"), "startup", 3,
                     "Remembers what was opened: listed when nothing is typed, and ranked first among matches."},
         &Settings::recordHistory));
 

@@ -695,8 +695,8 @@
         <translation>Start with Windows</translation>
     </message>
     <message>
-        <source>记住打开过的项目</source>
-        <translation>Remember what you open</translation>
+        <source>记住搜索和打开过的项目</source>
+        <translation>Remember searches and opened items</translation>
     </message>
     <message>
         <source>主题</source>
