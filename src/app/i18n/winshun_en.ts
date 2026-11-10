@@ -4194,10 +4194,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     </message>
     <message>
         <source>左键：设置 · 中键：%1
-右键：位置菜单 · 拖动：移动窗口
+右键：%2 · 拖动：移动窗口
 双击横条：展开／收回搜索面板</source>
         <translation>Left: settings · Middle: %1
-Right: position menu · Drag: move window
+Right: %2 · Drag: move window
 Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
@@ -4243,6 +4243,14 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>搜索历史</source>
         <translation>Search history</translation>
+    </message>
+    <message>
+        <source>回到靠上位置</source>
+        <translation>Move to top</translation>
+    </message>
+    <message>
+        <source>位置菜单</source>
+        <translation>Position menu</translation>
     </message>
 </context>
 <context>
@@ -7610,6 +7618,34 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>每个双击键只执行一个动作。列表只显示支持此功能的已启用插件；原组合键仍可使用</source>
         <translation>Each gesture performs one action. Only enabled plugins that support this feature are listed. Their original shortcuts still work.</translation>
+    </message>
+    <message>
+        <source>右键 Logo 的行为</source>
+        <translation>Right-click logo action</translation>
+    </message>
+    <message>
+        <source>“靠上”模式下，展开的搜索面板会居中</source>
+        <translation>Top centers the expanded search panel</translation>
+    </message>
+    <message>
+        <source>右键;Logo;位置;归位;靠上;居中;拖动;logo;position</source>
+        <translation>right click;logo;position;reset;top;center;drag</translation>
+    </message>
+    <message>
+        <source>位置菜单</source>
+        <translation>Position menu</translation>
+    </message>
+    <message>
+        <source>靠上</source>
+        <translation>Top</translation>
+    </message>
+    <message>
+        <source>居中</source>
+        <translation>Center</translation>
+    </message>
+    <message>
+        <source>上次拖动位置</source>
+        <translation>Last dragged</translation>
     </message>
     <message>
         <source>再次打开时恢复预览</source>

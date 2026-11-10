@@ -855,13 +855,22 @@ void Placement::refit()
 
 void Placement::moveHome()
 {
-    if (!m_window || m_moving || m_box || m_avoid || m_taskbar || m_dropped || m_panel) // temporary spot: no home to change
+    if (!m_window || m_moving || m_sizing || m_windowSizing || m_panel)
         return;
-    m_anchor = kHome;
-    save();
     QScreen* screen = m_window->screen();
     if (!screen)
         return;
+    m_glide.stop();
+    settleSlide();
+    m_box.reset();
+    m_avoid.reset();
+    setTaskbar({});
+    m_taskbarSpot.reset();
+    m_taskbarScreen.clear();
+    m_dropped = false;
+    setAbove(false);
+    m_anchor = kHome;
+    save();
     glideTo(settleOn(screen));
 }
 

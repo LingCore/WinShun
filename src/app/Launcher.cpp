@@ -770,6 +770,13 @@ void Launcher::setHistoryKeys(const QString& keys)
     emit historyChanged();
 }
 
+void Launcher::setLogoRightClick(const QString& action)
+{
+    if (m_logoRightClick == action) return;
+    m_logoRightClick = action;
+    emit logoRightClickChanged();
+}
+
 void Launcher::rememberQuery()
 {
     if (m_recordHistory && !m_queryRecorded && !m_keyword && !m_systemCommand && !m_folderSearch) {

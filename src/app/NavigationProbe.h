@@ -17,4 +17,5 @@ bool checkOptimizationSettings(QQuickWindow* window, SettingsEditor* editor, con
 bool checkClipboardAlignment(QQmlEngine* engine, const QDir& output, bool flipped);
 bool checkSearchExperience(QQmlEngine* engine, const QDir& output);
 bool checkSearchExperienceSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
+bool checkLogoPositionSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
 }

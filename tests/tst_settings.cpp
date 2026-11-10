@@ -103,6 +103,27 @@ private slots:
         QCOMPARE(settings.queryHistoryKeys, u"ctrl"_s);
     }
 
+    void logoRightClickPreference()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.logoRightClick, u"menu"_s);
+        for (const QString& action : {u"top"_s, u"center"_s, u"restore"_s, u"menu"_s}) {
+            settings.logoRightClick = action;
+            QVERIFY(settings.saveChecked());
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.logoRightClick, action);
+        }
+        settings.logoRightClick = u"unknown"_s;
+        QVERIFY(settings.saveChecked());
+        settings.load();
+        QCOMPARE(settings.logoRightClick, u"menu"_s);
+    }
+
     void startupArgumentsRoundTrip()
     {
         const QStringList original {u"--profile"_s, u"F:\\中文 profile\\"_s, u"--background"_s,

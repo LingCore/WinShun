@@ -1,0 +1,45 @@
+{
+    "checks": [
+        {
+            "check": "existing profiles keep the position menu by default",
+            "passed": true
+        },
+        {
+            "check": "logo position choices appear in interaction settings",
+            "passed": true
+        },
+        {
+            "check": "settings choice persists and updates the control: menu",
+            "passed": true
+        },
+        {
+            "check": "settings choice persists and updates the control: top",
+            "passed": true
+        },
+        {
+            "check": "settings choice persists and updates the control: center",
+            "passed": true
+        },
+        {
+            "check": "settings choice persists and updates the control: restore",
+            "passed": true
+        },
+        {
+            "check": "translated position choices fit inside the settings row",
+            "passed": true
+        },
+        {
+            "check": "capture logo position settings",
+            "passed": true
+        },
+        {
+            "check": "settings editor rejects unknown logo actions",
+            "passed": true
+        },
+        {
+            "check": "logo settings probe leaves desktop focus untouched",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

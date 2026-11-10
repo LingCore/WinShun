@@ -967,6 +967,40 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
     return check.passed;
 }
 
+bool checkLogoPositionSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output)
+{
+    Checks check;
+    check(editor->logoRightClick() == u"menu", u"existing profiles keep the position menu by default"_s);
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 3), Q_ARG(QVariant, 2),
+        Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "右键 Logo 的行为")));
+    settle(window);
+    auto* choices = item(window->contentItem(), u"logoRightClickChoice"_s);
+    auto* row = item(window->contentItem(), u"logoRightClickRow"_s);
+    check(choices && choices->isVisible() && row && row->isVisible(), u"logo position choices appear in interaction settings"_s);
+    if (!choices || !row) return false;
+    const QStringList actions {u"menu"_s, u"top"_s, u"center"_s, u"restore"_s};
+    for (int i = 0; i < actions.size(); ++i) {
+        QMetaObject::invokeMethod(choices, "activated", Q_ARG(int, i));
+        settle(window);
+        Settings saved;
+        saved.load();
+        check(saved.logoRightClick == actions[i] && editor->logoRightClick() == actions[i]
+            && choices->property("current").toInt() == i, u"settings choice persists and updates the control: "_s + actions[i]);
+    }
+    const QPointF start = choices->mapToItem(row, QPointF());
+    check(start.x() >= 0 && start.x() + choices->width() <= row->width() + 1,
+        u"translated position choices fit inside the settings row"_s);
+    check(window->grabWindow().save(output.filePath(u"logo-position-settings.png"_s)), u"capture logo position settings"_s);
+    QMetaObject::invokeMethod(choices, "activated", Q_ARG(int, 0));
+    editor->setLogoRightClick(u"invalid"_s);
+    check(editor->logoRightClick() == u"menu", u"settings editor rejects unknown logo actions"_s);
+    check(!window->isActive(), u"logo settings probe leaves desktop focus untouched"_s);
+    QFile report(output.filePath(u"logo-position-settings.json"_s));
+    if (!report.open(QIODevice::WriteOnly)) return false;
+    report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
+    return check.passed;
+}
+
 bool checkSearchExperienceSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output)
 {
     Checks check;

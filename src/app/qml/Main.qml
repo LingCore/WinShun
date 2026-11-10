@@ -1042,7 +1042,7 @@ Window {
             if (button === Qt.MiddleButton)
                 window.launcher.togglePin()
             else if (button === Qt.RightButton)
-                window.searchBar.showPositionMenu()
+                window.searchBar.activateLogoPosition()
             else if (button === Qt.LeftButton)
                 window.launcher.openSettings()
         }

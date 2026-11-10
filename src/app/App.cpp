@@ -1880,6 +1880,7 @@ void App::applySettings(bool initial)
     m_launcher->setRecordHistory(m_settings.recordHistory);
     m_launcher->setMergeFileScope(m_settings.mergeFileScope);
     m_launcher->setHistoryKeys(m_settings.queryHistoryKeys);
+    m_launcher->setLogoRightClick(m_settings.logoRightClick);
     m_launcher->setResultOptions(m_settings.foldersFirst ? KindOrder::FoldersFirst : KindOrder::FilesFirst,
         m_settings.showModified, m_settings.showFileSize, m_settings.thumbnails, m_settings.numberKeys);
     m_launcher->setDoubleClickToOpen(m_settings.doubleClickToOpen);

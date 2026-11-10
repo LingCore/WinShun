@@ -65,6 +65,7 @@ class Launcher : public QObject {
     Q_PROPERTY(QStringList queryHistory READ queryHistory NOTIFY queryHistoryChanged FINAL)
     Q_PROPERTY(bool queryHistoryEnabled READ queryHistoryEnabled NOTIFY historyChanged FINAL)
     Q_PROPERTY(QString historyKeys READ historyKeys NOTIFY historyChanged FINAL)
+    Q_PROPERTY(QString logoRightClick READ logoRightClick NOTIFY logoRightClickChanged FINAL)
     Q_PROPERTY(ws::ResultModel* results READ results CONSTANT FINAL)
     Q_PROPERTY(ws::PanelColumns* panelColumns READ panelColumns CONSTANT FINAL)
     Q_PROPERTY(ws::ContentPane* contentPane READ contentPane CONSTANT FINAL)
@@ -518,6 +519,8 @@ public:
     int queryHistoryCount() const { return int(m_queryHistory.items().size()); }
     QString historyKeys() const { return m_historyKeys; }
     void setHistoryKeys(const QString& keys);
+    QString logoRightClick() const { return m_logoRightClick; }
+    void setLogoRightClick(const QString& action);
     Q_INVOKABLE bool navigateQueryHistory(int direction);
     Q_INVOKABLE void recallQuery(int index);
     Q_INVOKABLE void removeQuery(int index);
@@ -746,6 +749,7 @@ signals:
     void contextMenuKeyPressed(bool system);
     void historyChanged();
     void queryHistoryChanged();
+    void logoRightClickChanged();
     void contentIndexChanged();
     void contentIndexRequested(bool on);
     void frequentAppsChanged();
@@ -1027,6 +1031,7 @@ private:
     bool m_queryRecorded = false;
     bool m_mergeFileScope = false;
     QString m_historyKeys = QStringLiteral("ctrl");
+    QString m_logoRightClick = QStringLiteral("menu");
     ResultModel m_results;
     std::unique_ptr<ContentPane> m_contentPane;
     QPointer<QWindow> m_window;

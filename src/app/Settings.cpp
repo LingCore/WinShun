@@ -828,6 +828,9 @@ void Settings::load()
     queryHistoryKeys = readOrDefault(s, u"Launcher/QueryHistoryKeys"_s, d.queryHistoryKeys);
     if (queryHistoryKeys != u"ctrl" && queryHistoryKeys != u"alt" && queryHistoryKeys != u"off")
         queryHistoryKeys = d.queryHistoryKeys;
+    logoRightClick = readOrDefault(s, u"Launcher/LogoRightClick"_s, d.logoRightClick);
+    if (logoRightClick != u"menu" && logoRightClick != u"top" && logoRightClick != u"center" && logoRightClick != u"restore")
+        logoRightClick = d.logoRightClick;
     dialogJump = readOrDefault(s, u"Launcher/DialogJump"_s, d.dialogJump);
     // Off for new installs; an ini from before without the key had it on.
     dialogBar = readOrDefault(s, u"Launcher/DialogBar"_s, firstRun ? d.dialogBar : true);
@@ -1286,6 +1289,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/RecentItems"_s, recentItems);
     s.setValue(u"Results/MergeFileScope"_s, mergeFileScope);
     s.setValue(u"Launcher/QueryHistoryKeys"_s, queryHistoryKeys);
+    s.setValue(u"Launcher/LogoRightClick"_s, logoRightClick);
     s.setValue(u"Results/FavoritesOnStart"_s, favoritesOnStart);
     s.setValue(u"Launcher/ClearOnOpen"_s, clearOnOpen);
     s.setValue(u"Launcher/EnglishOnOpen"_s, englishOnOpen);

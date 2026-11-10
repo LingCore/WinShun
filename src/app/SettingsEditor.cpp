@@ -738,6 +738,14 @@ void SettingsEditor::setQueryHistoryKeys(const QString& keys)
     commit();
 }
 
+void SettingsEditor::setLogoRightClick(const QString& action)
+{
+    if (m_settings.logoRightClick == action
+        || (action != u"menu" && action != u"top" && action != u"center" && action != u"restore")) return;
+    m_settings.logoRightClick = action;
+    commit();
+}
+
 void SettingsEditor::setShortcutAgain(const QString& what)
 {
     if (m_settings.shortcutAgain == what || (what != u"close" && what != u"panel"))

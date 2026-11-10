@@ -80,6 +80,42 @@ private slots:
         }
     }
 
+    void homeDetachesTemporaryPlacement()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        auto* screen = QGuiApplication::primaryScreen();
+        const QRect area = screen->availableGeometry();
+        QWindow window;
+        window.setFlags(Qt::FramelessWindowHint);
+        window.resize(640, 300);
+        window.create();
+        ws::Placement placement(temporary.filePath(u"home.ini"_s), u"Launcher"_s);
+        placement.setWindow(&window);
+        placement.setRoomNeeded(300);
+        placement.placeOn(screen);
+        const QPoint home = window.position();
+        const QSize size = window.size();
+        placement.attach(QRect(area.topLeft() + QPoint(20, 30), QSize(200, 40)), screen);
+        QVERIFY(window.position() != home);
+        placement.moveHome();
+        QTest::qWait(350);
+        QVERIFY((window.position() - home).manhattanLength() <= 2);
+        QCOMPARE(window.size(), size);
+        QVERIFY(!placement.above());
+        QWindow source;
+        source.setGeometry(area.x() + 20, area.y() + 30, 400, 500);
+        source.create();
+        RECT native {};
+        QVERIFY(::GetWindowRect(reinterpret_cast<HWND>(source.winId()), &native));
+        placement.avoidNative(QRect(native.left, native.top, native.right - native.left, native.bottom - native.top), screen);
+        QVERIFY(placement.avoiding());
+        placement.moveHome();
+        QTest::qWait(350);
+        QVERIFY(!placement.avoiding());
+        QVERIFY((window.position() - home).manhattanLength() <= 2);
+    }
+
     void centeringKeepsSizeAndSavesEachMode()
     {
         QTemporaryDir temporary;

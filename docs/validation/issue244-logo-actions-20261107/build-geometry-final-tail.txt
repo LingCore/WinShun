@@ -1,0 +1,4 @@
+[0/2] Re-checking globbed directories...
+[1/4] Automatic MOC and UIC for target tst_displaygeometry
+[2/3] Building CXX object tests\CMakeFiles\tst_displaygeometry.dir\tst_displaygeometry.cpp.obj
+[3/3] Linking CXX executable tst_displaygeometry.exe

@@ -201,6 +201,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(int recentItems READ recentItems WRITE setRecentItems NOTIFY changed FINAL)
     Q_PROPERTY(bool mergeFileScope READ mergeFileScope WRITE setMergeFileScope NOTIFY changed FINAL)
     Q_PROPERTY(QString queryHistoryKeys READ queryHistoryKeys WRITE setQueryHistoryKeys NOTIFY changed FINAL)
+    Q_PROPERTY(QString logoRightClick READ logoRightClick WRITE setLogoRightClick NOTIFY changed FINAL)
     Q_PROPERTY(bool favoritesOnStart READ favoritesOnStart WRITE setFavoritesOnStart NOTIFY changed FINAL)
     Q_PROPERTY(bool clearOnOpen READ clearOnOpen WRITE setClearOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(bool englishOnOpen READ englishOnOpen WRITE setEnglishOnOpen NOTIFY changed FINAL)
@@ -979,6 +980,8 @@ public:
     QString queryHistoryKeys() const { return m_settings.queryHistoryKeys; }
     void setMergeFileScope(bool merged);
     void setQueryHistoryKeys(const QString& keys);
+    QString logoRightClick() const { return m_settings.logoRightClick; }
+    void setLogoRightClick(const QString& action);
     void setPluginBuiltinsExpanded(bool expanded);
     OcrPackage* ocrPackage() const { return m_ocrPackage; }
     void useOcrPackage(OcrPackage* package); // before the settings window is created

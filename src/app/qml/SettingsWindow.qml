@@ -4346,6 +4346,21 @@ Window {
                 note: qsTr("在搜索框按 Tab、Shift+Tab 切换“全部”“文件”“内容”；Ctrl+Tab 在“文件”里切换文件类型，在“内容”里切换文件夹。")
 
                 SettingRow {
+                    objectName: "logoRightClickRow"
+                    title: qsTr("右键 Logo 的行为")
+                    description: qsTr("“靠上”模式下，展开的搜索面板会居中")
+                    keywords: qsTr("右键;Logo;位置;归位;靠上;居中;拖动;logo;position").split(";")
+
+                    ScopeTabs {
+                        objectName: "logoRightClickChoice"
+                        readonly property var choices: ["menu", "top", "center", "restore"]
+                        labels: [qsTr("位置菜单"), qsTr("靠上"), qsTr("居中"), qsTr("上次拖动位置")]
+                        current: Math.max(0, choices.indexOf(window.editor.logoRightClick))
+                        onActivated: (index) => window.editor.logoRightClick = choices[index]
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("每次打开时清空搜索")
                     keywords: qsTr("清空;清除;上次;保留;隐私;搜索框;clear;privacy").split(";")
                     description: qsTr("打开时搜索框是空的，回到“全部”；关掉时保留上次的文字并选中，直接输入就会替换")

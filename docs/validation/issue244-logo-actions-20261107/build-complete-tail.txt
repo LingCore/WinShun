@@ -1,0 +1,28 @@
+[5/26] Building CXX object tests\CMakeFiles\tst_displaygeometry.dir\__\src\app\Phosphor.cpp.obj
+[6/26] Building CXX object tests\CMakeFiles\tst_displaygeometry.dir\tst_displaygeometry_autogen\mocs_compilation.cpp.obj
+[7/26] Building CXX object tests\CMakeFiles\tst_displaygeometry.dir\__\src\app\SystemTheme.cpp.obj
+[8/26] Building CXX object tests\CMakeFiles\tst_displaygeometry.dir\__\src\app\Placement.cpp.obj
+[9/26] Building CXX object tests\CMakeFiles\tst_displaygeometry.dir\tst_displaygeometry.cpp.obj
+[10/26] Building CXX object src\app\CMakeFiles\WinShun.dir\ClipboardDisplay.cpp.obj
+[11/26] Building CXX object src\app\CMakeFiles\WinShun.dir\ClipboardDisplayReplica.cpp.obj
+[12/26] Building CXX object src\app\CMakeFiles\WinShun.dir\InteractionOptimizationProbe.cpp.obj
+[13/26] Building CXX object src\app\CMakeFiles\WinShun.dir\WinShun_autogen\mocs_compilation.cpp.obj
+[14/26] Building CXX object src\app\CMakeFiles\WinShun.dir\PreviewInteractionProbe.cpp.obj
+[15/26] Building CXX object src\app\CMakeFiles\WinShun.dir\NavigationProbe.cpp.obj
+[16/26] Building CXX object src\app\CMakeFiles\WinShun.dir\ForegroundMemoryProbe.cpp.obj
+[17/26] Building CXX object src\app\CMakeFiles\WinShun.dir\Placement.cpp.obj
+[18/26] Building CXX object src\app\CMakeFiles\WinShun.dir\App.cpp.obj
+[19/26] Building CXX object src\app\CMakeFiles\WinShun.dir\ContentPaneProbe.cpp.obj
+[20/26] Building CXX object tests\CMakeFiles\tst_displaygeometry.dir\__\src\app\platform\WindowEffects.cpp.obj
+[21/26] Building CXX object src\app\CMakeFiles\WinShun.dir\ClipScrollBench.cpp.obj
+F:\电脑便捷工具\src\app\ClipScrollBench.cpp(674): warning C4456: “frame”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\ClipScrollBench.cpp(386): note: 参见“frame”的声明
+F:\电脑便捷工具\src\app\ClipScrollBench.cpp(991): warning C4456: “start”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\ClipScrollBench.cpp(257): note: 参见“start”的声明
+[22/26] Building CXX object tests\CMakeFiles\tst_displaygeometry.dir\__\src\app\platform\Foreground.cpp.obj
+[23/26] Linking CXX executable tst_displaygeometry.exe
+[24/26] Building CXX object src\app\CMakeFiles\WinShun.dir\winshun_qmltyperegistrations.cpp.obj
+[25/26] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+F:\电脑便捷工具\src\app\Preview.cpp(1702): warning C4456: “flick”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\Preview.cpp(1659): note: 参见“flick”的声明
+[26/26] Linking CXX executable WinShun.exe

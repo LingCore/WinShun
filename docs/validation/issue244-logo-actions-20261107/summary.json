@@ -1,0 +1,32 @@
+[
+  {
+    "scenario": "fluent-100",
+    "checks": 196,
+    "passed": true
+  },
+  {
+    "scenario": "brand-200-serial",
+    "checks": 196,
+    "passed": true
+  },
+  {
+    "scenario": "liquid-150-en",
+    "checks": 196,
+    "passed": true
+  },
+  {
+    "scenario": "tactile-150",
+    "checks": 196,
+    "passed": true
+  },
+  {
+    "scenario": "settings-zh",
+    "checks": 10,
+    "passed": true
+  },
+  {
+    "scenario": "settings-en",
+    "checks": 10,
+    "passed": true
+  }
+]

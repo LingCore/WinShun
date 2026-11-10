@@ -1691,6 +1691,8 @@ int runSettings(const QStringList& args)
         return finish(window, checkDoubleTapSettings(window, editor, out));
     if (args.contains(u"--search-experience-settings"_s))
         return finish(window, checkSearchExperienceSettings(window, editor, out));
+    if (args.contains(u"--logo-position-settings"_s))
+        return finish(window, checkLogoPositionSettings(window, editor, out));
     if (args.contains(u"--optimization-settings"_s))
         return finish(window, checkOptimizationSettings(window, editor, out));
 
@@ -3696,6 +3698,53 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
         pump(300);
         check((window->position() - draggedPosition).manhattanLength() <= 2,
             mode + u"restore returns to the dragged position after centering"_s);
+        auto* positionBar = window->property("searchBar").value<QQuickItem*>();
+        auto* expand = visualNamed(window->contentItem(), panel ? u"panelCollapseButton"_s : u"searchExpandButton"_s);
+        auto* expandGlyph = expand ? visualNamed(expand, u"searchExpandGlyph"_s) : nullptr;
+        check(positionBar && expandGlyph && expandGlyph->width() < expand->width() && expandGlyph->height() < expand->height(),
+            mode + u"compact expand glyph retains the larger click target"_s);
+        if (positionBar && positionMenu) {
+            launcher.setLogoRightClick(u"center"_s);
+            click(WM_NCRBUTTONDOWN, WM_NCRBUTTONUP);
+            pump(350);
+            check(positionMenu && !positionMenu->isVisible() && (window->position() - wanted).manhattanLength() <= 2,
+                mode + u"configured center action returns in one native right click without a menu"_s);
+            check(logo->property("help").toString().contains(QCoreApplication::translate("SearchBar", "居中")),
+                mode + u"logo help reflects the configured center action"_s);
+            click(WM_NCRBUTTONDOWN, WM_NCRBUTTONUP);
+            pump(350);
+            check((window->position() - wanted).manhattanLength() <= 2 && !positionMenu->isVisible(),
+                mode + u"repeated direct right click keeps the chosen position"_s);
+            if (!panel) {
+                placement.attach(QRect(area.topLeft() + QPoint(24, 36), QSize(200, 40)), window->screen());
+                settle(window);
+            }
+            launcher.setLogoRightClick(u"top"_s);
+            click(WM_NCRBUTTONDOWN, WM_NCRBUTTONUP);
+            pump(350);
+            const QPoint home(area.x() + (area.width() - size.width()) / 2,
+                std::clamp(qRound(area.y() + area.height() * 0.2), area.top(), std::max(area.top(), area.y() + area.height() - size.height())));
+            check((window->position() - (panel ? wanted : home)).manhattanLength() <= 2 && !positionMenu->isVisible(),
+                mode + u"top action moves the search box up and centers the expanded panel"_s);
+            check(positionBar->property("positionAction").toString() == (panel ? u"center" : u"top"),
+                mode + u"effective position action matches the current window mode"_s);
+            check(saveGrab(window, output.filePath(panel ? u"logo-panel-quick-top.png"_s : u"logo-box-quick-top.png"_s)),
+                mode + u"capture compact expand icon and direct positioning"_s);
+            launcher.setLogoRightClick(u"restore"_s);
+            click(WM_NCRBUTTONDOWN, WM_NCRBUTTONUP);
+            pump(350);
+            check((window->position() - draggedPosition).manhattanLength() <= 2 && !positionMenu->isVisible(),
+                mode + u"direct restore returns to the separately remembered drag position"_s);
+            check(window->size() == size && launcher.query() == query && !launcher.pinned() && settingsRequests == before + 2,
+                mode + u"direct position actions preserve size, query, pin state and settings requests"_s);
+            launcher.setLogoRightClick(u"menu"_s);
+            click(WM_NCRBUTTONDOWN, WM_NCRBUTTONUP);
+            check(positionMenu->isVisible(), mode + u"switching back to menu mode restores its native right-click entry"_s);
+            launcher.setLogoRightClick(u"center"_s);
+            check(!positionMenu->isVisible(), mode + u"changing the right-click setting closes an existing menu"_s);
+            launcher.setLogoRightClick(u"menu"_s);
+            settle(window); // finish the native menu's hide before the next synthetic hover
+        }
         check(saveGrab(window, output.filePath(panel ? u"logo-panel.png"_s : u"logo-box.png"_s)), mode + u"unpinned state screenshot"_s);
         ::SendMessageW(hwnd, WM_NCMOUSEMOVE, HTCAPTION, point());
         // Keep the user's real cursor where it is: the synthetic hover owns

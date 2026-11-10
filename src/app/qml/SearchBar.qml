@@ -21,8 +21,20 @@ Item {
     property bool panelMode: false
     property bool minimal: false
     readonly property bool menuOpen: headerMenu.item !== null && headerMenu.item.visible
+    readonly property string positionAction: panelMode && launcher.logoRightClick === "top" ? "center" : launcher.logoRightClick
+    readonly property string positionActionLabel: positionAction === "top" ? qsTr("回到靠上位置")
+        : positionAction === "center" ? qsTr("居中")
+        : positionAction === "restore" ? qsTr("恢复上次拖动位置") : qsTr("位置菜单")
     function closeMenu() { if (headerMenu.item) headerMenu.item.dismiss() }
     function menuKey(event) { return menuOpen && headerMenu.item.handleKey(event) }
+    function activateLogoPosition() {
+        if (positionAction === "menu") { showPositionMenu(); return }
+        closeMenu()
+        if (positionAction === "top") placement.moveHome()
+        else if (positionAction === "center") placement.centerOnScreen()
+        else if (positionAction === "restore") placement.restoreDraggedPosition()
+        focusAtEnd()
+    }
     function showPositionMenu() {
         if (menuOpen) { closeMenu(); return }
         headerMenu.active = true
@@ -50,6 +62,10 @@ Item {
     Connections {
         target: bar.placement
         function onMovingChanged() { if (bar.placement.moving) bar.closeMenu() }
+    }
+    Connections {
+        target: bar.launcher
+        function onLogoRightClickChanged() { bar.closeMenu() }
     }
     Connections {
         target: bar.Window.window
@@ -223,8 +239,9 @@ Item {
 
         readonly property bool pointed: visible && contains(mapFromItem(null, bar.frame.pointer))
         readonly property bool checked: bar.launcher.pinned
-        readonly property string help: qsTr("左键：设置 · 中键：%1\n右键：位置菜单 · 拖动：移动窗口\n双击横条：展开／收回搜索面板")
+        readonly property string help: qsTr("左键：设置 · 中键：%1\n右键：%2 · 拖动：移动窗口\n双击横条：展开／收回搜索面板")
             .arg(checked ? qsTr("取消保持显示") : qsTr("保持显示"))
+            .arg(bar.positionActionLabel)
 
         visible: !bar.inBox
         anchors.left: parent.left
@@ -535,10 +552,11 @@ Item {
         }
 
         Glyph {
+            objectName: "searchExpandGlyph"
             anchors.centerIn: parent
             anchors.verticalCenterOffset: expandKey.out("contentOffsetY", 0)
             glyph: bar.panelMode ? "\uE73F" : "\uE740" // BackToWindow, FullScreen
-            size: (bar.folderMode ? 18 : 24) / bar.dpr
+            size: Theme.searchIconSize * 0.8
             color: expandKey.out("foreground", expandArea.containsMouse ? Theme.text : Theme.subtext)
         }
         MouseArea {

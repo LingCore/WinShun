@@ -1,0 +1,789 @@
+{
+    "checks": [
+        {
+            "name": "box: production logo and field are visible",
+            "passed": true
+        },
+        {
+            "name": "box: application logo loads at the requested display size",
+            "passed": true
+        },
+        {
+            "name": "box: all pointer actions have a multiline hint",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: compact logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: compact does not activate outside the logo at (-2,16)",
+            "passed": true
+        },
+        {
+            "name": "box: compact does not activate outside the logo at (34,16)",
+            "passed": true
+        },
+        {
+            "name": "box: compact does not activate outside the logo at (16,-2)",
+            "passed": true
+        },
+        {
+            "name": "box: compact does not activate outside the logo at (16,34)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: standard logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: standard does not activate outside the logo at (-2,17)",
+            "passed": true
+        },
+        {
+            "name": "box: standard does not activate outside the logo at (36,17)",
+            "passed": true
+        },
+        {
+            "name": "box: standard does not activate outside the logo at (17,-2)",
+            "passed": true
+        },
+        {
+            "name": "box: standard does not activate outside the logo at (17,36)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy does not activate outside the logo at (-2,18)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy does not activate outside the logo at (38,18)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy does not activate outside the logo at (18,-2)",
+            "passed": true
+        },
+        {
+            "name": "box: roomy does not activate outside the logo at (18,38)",
+            "passed": true
+        },
+        {
+            "name": "box: logo retains the system drag region",
+            "passed": true
+        },
+        {
+            "name": "box: native middle click pins and reveals the badge",
+            "passed": true
+        },
+        {
+            "name": "box: pinning keeps query and input focus",
+            "passed": true
+        },
+        {
+            "name": "box: pinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+T clears the same visible pin state",
+            "passed": true
+        },
+        {
+            "name": "box: repeated middle clicks toggle independently",
+            "passed": true
+        },
+        {
+            "name": "box: release without a logo press does nothing",
+            "passed": true
+        },
+        {
+            "name": "box: releasing outside cancels the logo action",
+            "passed": true
+        },
+        {
+            "name": "box: moving beyond the drag threshold cancels even after returning to the logo",
+            "passed": true
+        },
+        {
+            "name": "box: native left click requests settings exactly once",
+            "passed": true
+        },
+        {
+            "name": "box: keyboard activation opens settings",
+            "passed": true
+        },
+        {
+            "name": "box: right click opens the position menu",
+            "passed": true
+        },
+        {
+            "name": "box: position menu paint follows pointer row 2",
+            "passed": true
+        },
+        {
+            "name": "box: position menu paint follows pointer row 1",
+            "passed": true
+        },
+        {
+            "name": "box: position menu paint follows pointer row 2",
+            "passed": true
+        },
+        {
+            "name": "box: position menu paint follows pointer row 1",
+            "passed": true
+        },
+        {
+            "name": "box: second Logo right click closes the menu",
+            "passed": true
+        },
+        {
+            "name": "box: third Logo right click reopens the menu",
+            "passed": true
+        },
+        {
+            "name": "box: Escape closes only the position menu",
+            "passed": true
+        },
+        {
+            "name": "box: position menu centers on the current monitor work area",
+            "passed": true
+        },
+        {
+            "name": "box: centering retains size, query and pin state without opening settings",
+            "passed": true
+        },
+        {
+            "name": "box: restore returns to the dragged position after centering",
+            "passed": true
+        },
+        {
+            "name": "box: compact expand glyph retains the larger click target",
+            "passed": true
+        },
+        {
+            "name": "box: configured center action returns in one native right click without a menu",
+            "passed": true
+        },
+        {
+            "name": "box: logo help reflects the configured center action",
+            "passed": true
+        },
+        {
+            "name": "box: repeated direct right click keeps the chosen position",
+            "passed": true
+        },
+        {
+            "name": "box: top action moves the search box up and centers the expanded panel",
+            "passed": true
+        },
+        {
+            "name": "box: effective position action matches the current window mode",
+            "passed": true
+        },
+        {
+            "name": "box: capture compact expand icon and direct positioning",
+            "passed": true
+        },
+        {
+            "name": "box: direct restore returns to the separately remembered drag position",
+            "passed": true
+        },
+        {
+            "name": "box: direct position actions preserve size, query, pin state and settings requests",
+            "passed": true
+        },
+        {
+            "name": "box: switching back to menu mode restores its native right-click entry",
+            "passed": true
+        },
+        {
+            "name": "box: changing the right-click setting closes an existing menu",
+            "passed": true
+        },
+        {
+            "name": "box: unpinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "box: native hover displays every logo action",
+            "passed": true
+        },
+        {
+            "name": "box: hint screenshot",
+            "passed": true
+        },
+        {
+            "name": "box: field and vertical padding keep client hit testing at y=1",
+            "passed": true
+        },
+        {
+            "name": "box: field and vertical padding keep client hit testing at y=22",
+            "passed": true
+        },
+        {
+            "name": "box: field and vertical padding keep client hit testing at y=43",
+            "passed": true
+        },
+        {
+            "name": "box: header whitespace does not move the window",
+            "passed": true
+        },
+        {
+            "name": "box: every theme has a visible window movement grip",
+            "passed": true
+        },
+        {
+            "name": "box: visible grip moves the window; hidden grip leaves no caption hotspot",
+            "passed": true
+        },
+        {
+            "name": "box: drag selects real text without moving the window",
+            "passed": true
+        },
+        {
+            "name": "box: Files tab selects Files in one click",
+            "passed": true
+        },
+        {
+            "name": "box: Content tab selects Content in one click",
+            "passed": true
+        },
+        {
+            "name": "box: All tab selects All in one click",
+            "passed": true
+        },
+        {
+            "name": "box: Tab still advances the search scope",
+            "passed": true
+        },
+        {
+            "name": "box: Shift+Tab still returns to All",
+            "passed": true
+        },
+        {
+            "name": "box: footer omits the duplicated scope-switch hint",
+            "passed": true
+        },
+        {
+            "name": "empty short window shows complete logo help in a separate window",
+            "passed": true
+        },
+        {
+            "name": "detached help takes neither focus nor mouse input",
+            "passed": true
+        },
+        {
+            "name": "empty-window help screenshot",
+            "passed": true
+        },
+        {
+            "name": "help returns inside when the host grows while hovered",
+            "passed": true
+        },
+        {
+            "name": "help detaches again when the host shrinks while hovered",
+            "passed": true
+        },
+        {
+            "name": "grip hit testing follows actual visibility",
+            "passed": true
+        },
+        {
+            "name": "double click on the grip requests panel expansion",
+            "passed": true
+        },
+        {
+            "name": "panel: production logo and field are visible",
+            "passed": true
+        },
+        {
+            "name": "panel: application logo loads at the requested display size",
+            "passed": true
+        },
+        {
+            "name": "panel: all pointer actions have a multiline hint",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact does not activate outside the logo at (-2,16)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact does not activate outside the logo at (34,16)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact does not activate outside the logo at (16,-2)",
+            "passed": true
+        },
+        {
+            "name": "panel: compact does not activate outside the logo at (16,34)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard does not activate outside the logo at (-2,17)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard does not activate outside the logo at (36,17)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard does not activate outside the logo at (17,-2)",
+            "passed": true
+        },
+        {
+            "name": "panel: standard does not activate outside the logo at (17,36)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.1,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.1,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.1,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.5,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.5,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.5,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.9,0.1)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.9,0.5)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy logo hover and action cover (0.9,0.9)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy does not activate outside the logo at (-2,18)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy does not activate outside the logo at (38,18)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy does not activate outside the logo at (18,-2)",
+            "passed": true
+        },
+        {
+            "name": "panel: roomy does not activate outside the logo at (18,38)",
+            "passed": true
+        },
+        {
+            "name": "panel: logo retains the system drag region",
+            "passed": true
+        },
+        {
+            "name": "panel: native middle click pins and reveals the badge",
+            "passed": true
+        },
+        {
+            "name": "panel: pinning keeps query and input focus",
+            "passed": true
+        },
+        {
+            "name": "panel: pinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+T clears the same visible pin state",
+            "passed": true
+        },
+        {
+            "name": "panel: repeated middle clicks toggle independently",
+            "passed": true
+        },
+        {
+            "name": "panel: release without a logo press does nothing",
+            "passed": true
+        },
+        {
+            "name": "panel: releasing outside cancels the logo action",
+            "passed": true
+        },
+        {
+            "name": "panel: moving beyond the drag threshold cancels even after returning to the logo",
+            "passed": true
+        },
+        {
+            "name": "panel: native left click requests settings exactly once",
+            "passed": true
+        },
+        {
+            "name": "panel: keyboard activation opens settings",
+            "passed": true
+        },
+        {
+            "name": "panel: right click opens the position menu",
+            "passed": true
+        },
+        {
+            "name": "panel: position menu paint follows pointer row 2",
+            "passed": true
+        },
+        {
+            "name": "panel: position menu paint follows pointer row 1",
+            "passed": true
+        },
+        {
+            "name": "panel: position menu paint follows pointer row 2",
+            "passed": true
+        },
+        {
+            "name": "panel: position menu paint follows pointer row 1",
+            "passed": true
+        },
+        {
+            "name": "panel: second Logo right click closes the menu",
+            "passed": true
+        },
+        {
+            "name": "panel: third Logo right click reopens the menu",
+            "passed": true
+        },
+        {
+            "name": "panel: Escape closes only the position menu",
+            "passed": true
+        },
+        {
+            "name": "panel: position menu centers on the current monitor work area",
+            "passed": true
+        },
+        {
+            "name": "panel: centering retains size, query and pin state without opening settings",
+            "passed": true
+        },
+        {
+            "name": "panel: restore returns to the dragged position after centering",
+            "passed": true
+        },
+        {
+            "name": "panel: compact expand glyph retains the larger click target",
+            "passed": true
+        },
+        {
+            "name": "panel: configured center action returns in one native right click without a menu",
+            "passed": true
+        },
+        {
+            "name": "panel: logo help reflects the configured center action",
+            "passed": true
+        },
+        {
+            "name": "panel: repeated direct right click keeps the chosen position",
+            "passed": true
+        },
+        {
+            "name": "panel: top action moves the search box up and centers the expanded panel",
+            "passed": true
+        },
+        {
+            "name": "panel: effective position action matches the current window mode",
+            "passed": true
+        },
+        {
+            "name": "panel: capture compact expand icon and direct positioning",
+            "passed": true
+        },
+        {
+            "name": "panel: direct restore returns to the separately remembered drag position",
+            "passed": true
+        },
+        {
+            "name": "panel: direct position actions preserve size, query, pin state and settings requests",
+            "passed": true
+        },
+        {
+            "name": "panel: switching back to menu mode restores its native right-click entry",
+            "passed": true
+        },
+        {
+            "name": "panel: changing the right-click setting closes an existing menu",
+            "passed": true
+        },
+        {
+            "name": "panel: unpinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "panel: native hover displays every logo action",
+            "passed": true
+        },
+        {
+            "name": "panel: hint screenshot",
+            "passed": true
+        },
+        {
+            "name": "panel: field and vertical padding keep client hit testing at y=1",
+            "passed": true
+        },
+        {
+            "name": "panel: field and vertical padding keep client hit testing at y=22",
+            "passed": true
+        },
+        {
+            "name": "panel: field and vertical padding keep client hit testing at y=43",
+            "passed": true
+        },
+        {
+            "name": "panel: header whitespace does not move the window",
+            "passed": true
+        },
+        {
+            "name": "panel: every theme has a visible window movement grip",
+            "passed": true
+        },
+        {
+            "name": "panel: visible grip moves the window; hidden grip leaves no caption hotspot",
+            "passed": true
+        },
+        {
+            "name": "panel: drag selects real text without moving the window",
+            "passed": true
+        },
+        {
+            "name": "panel: Files tab selects Files in one click",
+            "passed": true
+        },
+        {
+            "name": "panel: Content tab selects Content in one click",
+            "passed": true
+        },
+        {
+            "name": "panel: All tab selects All in one click",
+            "passed": true
+        },
+        {
+            "name": "panel: Tab still advances the search scope",
+            "passed": true
+        },
+        {
+            "name": "panel: Shift+Tab still returns to All",
+            "passed": true
+        },
+        {
+            "name": "panel: footer omits the duplicated scope-switch hint",
+            "passed": true
+        },
+        {
+            "name": "appearance settings load the production size preview",
+            "passed": true
+        },
+        {
+            "name": "appearance preview shows the program logo at compact size",
+            "passed": true
+        },
+        {
+            "name": "appearance preview screenshot at compact size",
+            "passed": true
+        },
+        {
+            "name": "appearance preview shows the program logo at standard size",
+            "passed": true
+        },
+        {
+            "name": "appearance preview screenshot at standard size",
+            "passed": true
+        },
+        {
+            "name": "appearance preview shows the program logo at roomy size",
+            "passed": true
+        },
+        {
+            "name": "appearance preview screenshot at roomy size",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

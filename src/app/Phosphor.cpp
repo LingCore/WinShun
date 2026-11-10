@@ -48,8 +48,8 @@ constexpr auto kMappings = std::to_array<Mapping>({
     {0xE739, 0xE45E, false}, // Checkbox (the rectangle tool): square
     {0xE73A, 0xE186, false}, // CheckboxComposite: check-square
     {0xE73E, 0xE182, false}, // CheckMark: check
-    {0xE73F, 0xE09A, false}, // BackToWindow: arrows-in
-    {0xE740, 0xE0A2, false}, // FullScreen: arrows-out
+    {0xE73F, 0xE1CE, false}, // BackToWindow: corners-in
+    {0xE740, 0xE1D0, false}, // FullScreen: corners-out
     {0xE74A, 0xE08E, false}, // Up: arrow-up
     {0xE74B, 0xE03E, false}, // Down: arrow-down
     {0xE74D, 0xE4A6, false}, // Delete: trash
