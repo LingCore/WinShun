@@ -2012,13 +2012,16 @@ RemovableDrives SearchEngine::unindexedRemovableDrives()
         if (!(mask & (1u << i)))
             continue;
         const wchar_t root[] = {static_cast<wchar_t>(L'A' + i), L':', L'\\', 0};
-        // External hard disks say DRIVE_FIXED and are indexed as such: only
-        // what Windows calls removable (USB sticks, memory cards), and of
-        // those only the ones the index leaves out (Settings).
-        if (::GetDriveTypeW(root) != DRIVE_REMOVABLE)
+        // USB sticks, memory cards and external hard disks (isExternalVolume:
+        // these say DRIVE_FIXED), of those only the ones the index leaves out
+        // (Settings). Not a disk of the computer's own the user left out.
+        const UINT type = ::GetDriveTypeW(root);
+        if (type != DRIVE_REMOVABLE && type != DRIVE_FIXED)
             continue;
         const std::wstring_view letter(root, 2);
         if (std::any_of(indexed.begin(), indexed.end(), [&](const std::wstring& r) { return win32::equalsIgnoreCase(r, letter); }))
+            continue;
+        if (type == DRIVE_FIXED && !isExternalVolume(letter))
             continue;
         wchar_t label[MAX_PATH + 1] = {};
         if (!::GetVolumeInformationW(root, label, MAX_PATH + 1, nullptr, nullptr, nullptr, nullptr, 0))

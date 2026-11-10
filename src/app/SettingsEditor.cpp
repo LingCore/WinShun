@@ -12,6 +12,7 @@
 #include "CliSetup.h"
 #include "ScoopInstall.h"
 #include "CommandLine.h"
+#include "Crawler.h"
 #include "FavoritesSettings.h"
 #include "FileIconProvider.h"
 #include "IndexFolder.h"
@@ -2934,7 +2935,8 @@ QVariantList SettingsEditor::drives() const
         if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE)
             continue;
         present.insert(root);
-        const bool eligible = type == DRIVE_FIXED || m_settings.includeRemovableDrives;
+        // External hard disks say DRIVE_FIXED: the switch is about them too (GitHub #266).
+        const bool eligible = m_settings.includeRemovableDrives || !isExternalVolume(root.toStdWString());
         list.append(QVariantMap{{u"root"_s, root}, {u"selected"_s, allDrives() ? eligible : m_settings.selectedDrives->contains(root)},
             {u"enabled"_s, eligible}, {u"status"_s, eligible ? QString() : tr("先打开“包括 U 盘和移动硬盘”")}});
     }

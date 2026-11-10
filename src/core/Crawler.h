@@ -42,9 +42,17 @@ struct JournalPosition {
     bool operator==(const JournalPosition&) const = default;
 };
 
-// Local volumes worth indexing (fixed disks, optionally removable ones).
-// Drives in `untouched` are left out without being looked at: they may be
-// in the middle of being ejected.
+// A volume on a disk that is carried around: what Windows calls removable
+// (USB sticks, memory cards), and disks that say "fixed" but hang on USB or
+// FireWire (external hard disks, fast USB sticks: GitHub #266). Never one
+// on the disk Windows runs from (Windows To Go, a tablet's own storage).
+// "包括 U 盘和移动硬盘" decides about them (Settings::includeRemovableDrives).
+// For tests on a machine without one: WINSHUN_EXTERNAL=E:,F: counts those.
+bool isExternalVolume(std::wstring_view root);
+
+// Local volumes worth indexing (fixed disks, optionally external ones:
+// isExternalVolume). Drives in `untouched` are left out without being looked
+// at: they may be in the middle of being ejected.
 // Unset: all eligible disks. An empty selection means no local disks.
 bool volumeSelected(std::wstring_view root, const std::optional<std::vector<std::wstring>>& selected);
 std::vector<VolumeInfo> listLocalVolumes(bool includeRemovable, const std::vector<std::wstring>& untouched = {},

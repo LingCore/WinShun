@@ -149,10 +149,10 @@ std::wstring_view volumeOf(std::wstring_view path)
     return path.size() >= 2 && path[1] == L':' ? path.substr(0, 2) : std::wstring_view {};
 }
 
+// What "包括 U 盘和移动硬盘" is about: external hard disks too (GitHub #266).
 bool isRemovableDrive(std::wstring_view root)
 {
-    const std::wstring dir = std::wstring(root) + L'\\';
-    return ::GetDriveTypeW(dir.c_str()) == DRIVE_REMOVABLE;
+    return isExternalVolume(root);
 }
 
 std::int64_t secondsNow()

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <cstddef>
 #include <cwctype>
 #include <mutex>
 #include <string_view>
@@ -18,6 +19,86 @@
 #include <utility>
 
 namespace ws {
+
+namespace {
+
+// \\.\E: with no access rights: asking the drivers about it needs none.
+win32::UniqueHandle openVolume(wchar_t letter)
+{
+    const wchar_t path[] = {L'\\', L'\\', L'.', L'\\', letter, L':', 0};
+    return win32::UniqueHandle(::CreateFileW(
+        path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr));
+}
+
+// The one disk a volume is on; none for a volume across several.
+std::optional<DWORD> diskOf(HANDLE volume)
+{
+    VOLUME_DISK_EXTENTS extents {}; // room for one: a volume across disks fails with ERROR_MORE_DATA
+    DWORD bytes = 0;
+    if (::DeviceIoControl(volume, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, nullptr, 0, &extents, sizeof extents, &bytes,
+            nullptr)
+        && extents.NumberOfDiskExtents == 1)
+        return extents.Extents[0].DiskNumber;
+    return std::nullopt;
+}
+
+// "E:,F:" in an environment variable names that drive letter.
+bool listedIn(const wchar_t* variable, wchar_t letter)
+{
+    wchar_t value[256] {};
+    if (::GetEnvironmentVariableW(variable, value, 256) == 0)
+        return false;
+    const std::wstring_view listed(value);
+    for (std::size_t at = 0; (at = listed.find(L':', at)) != std::wstring_view::npos; ++at) {
+        if (at > 0 && std::towupper(listed[at - 1]) == letter)
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
+bool isExternalVolume(std::wstring_view root)
+{
+    if (root.size() < 2 || root[1] != L':')
+        return false;
+    const auto letter = static_cast<wchar_t>(std::towupper(root[0]));
+    if (listedIn(L"WINSHUN_EXTERNAL", letter))
+        return true;
+    const wchar_t dir[] = {letter, L':', L'\\', 0};
+    const UINT type = ::GetDriveTypeW(dir);
+    if (type == DRIVE_REMOVABLE)
+        return true;
+    if (type != DRIVE_FIXED)
+        return false;
+    const win32::UniqueHandle volume = openVolume(letter);
+    if (!volume.valid())
+        return false;
+    alignas(STORAGE_DEVICE_DESCRIPTOR) std::byte buffer[1024] {};
+    STORAGE_PROPERTY_QUERY query {StorageDeviceProperty, PropertyStandardQuery, {}};
+    DWORD bytes = 0;
+    if (!::DeviceIoControl(volume.get(), IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof query, buffer, sizeof buffer,
+            &bytes, nullptr)
+        || bytes < offsetof(STORAGE_DEVICE_DESCRIPTOR, RawPropertiesLength))
+        return false;
+    const auto* device = reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR*>(buffer);
+    // Not SD or MMC: a tablet's own storage is eMMC, and cards say removable.
+    // Nor NVMe in a Thunderbolt enclosure: it says nothing of where it is, and
+    // the controllers above some laptops' own disks say they can be unplugged.
+    if (device->BusType != BusTypeUsb && device->BusType != BusType1394 && !device->RemovableMedia)
+        return false;
+    wchar_t windows[MAX_PATH] {};
+    if (::GetSystemWindowsDirectoryW(windows, MAX_PATH) >= 2 && windows[1] == L':') {
+        const auto system = static_cast<wchar_t>(std::towupper(windows[0]));
+        if (system == letter)
+            return false;
+        const std::optional<DWORD> disk = diskOf(volume.get());
+        const win32::UniqueHandle systemVolume = openVolume(system);
+        if (disk && systemVolume.valid() && diskOf(systemVolume.get()) == disk)
+            return false;
+    }
+    return true;
+}
 
 bool volumeSelected(std::wstring_view root, const std::optional<std::vector<std::wstring>>& selected)
 {
@@ -40,8 +121,10 @@ std::vector<VolumeInfo> listLocalVolumes(bool includeRemovable, const std::vecto
                 [&](const std::wstring& u) { return win32::equalsIgnoreCase(u, std::wstring_view(root, 2)); }))
             continue;
         const UINT type = ::GetDriveTypeW(root);
-        if (type != DRIVE_FIXED && !(includeRemovable && type == DRIVE_REMOVABLE))
+        if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE)
             continue;
+        if (!includeRemovable && isExternalVolume(std::wstring_view(root, 2)))
+            continue; // nothing of ours holds it then: it ejects as it would without Win顺
         DWORD serial = 0;
         wchar_t fileSystem[MAX_PATH + 1] = {};
         if (!::GetVolumeInformationW(root, nullptr, 0, &serial, nullptr, nullptr, fileSystem, MAX_PATH + 1))

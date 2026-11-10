@@ -3259,6 +3259,32 @@ private slots:
         QCOMPARE(ChangeWatcher::bufferAfter(small, true, ERROR_SUCCESS), small);
     }
 
+    // GitHub #266: "包括 U 盘和移动硬盘" off leaves out external hard disks
+    // too (they say DRIVE_FIXED), so nothing of ours holds them; never the
+    // volume Windows runs from. WINSHUN_EXTERNAL stands in for a USB disk.
+    void externalDisksFollowTheRemovableSwitch()
+    {
+        wchar_t windows[MAX_PATH] {};
+        QVERIFY(::GetSystemWindowsDirectoryW(windows, MAX_PATH) >= 2 && windows[1] == L':');
+        const std::wstring system(windows, 2);
+        QVERIFY(!isExternalVolume(system));
+        QString seen;
+        for (const VolumeInfo& v : listLocalVolumes(true))
+            seen += QString::fromStdWString(v.root) + (isExternalVolume(v.root) ? u" external "_s : u" own "_s);
+        qInfo("%s", qPrintable(seen));
+        const auto listed = [&](bool includeExternal) {
+            const auto volumes = listLocalVolumes(includeExternal);
+            return std::any_of(volumes.begin(), volumes.end(),
+                [&](const VolumeInfo& v) { return win32::equalsIgnoreCase(v.root, system); });
+        };
+        QVERIFY(listed(false));
+        qputenv("WINSHUN_EXTERNAL", QString::fromStdWString(system).toLower().toLatin1());
+        const auto restore = qScopeGuard([] { qunsetenv("WINSHUN_EXTERNAL"); });
+        QVERIFY(isExternalVolume(system));
+        QVERIFY(!listed(false));
+        QVERIFY(listed(true));
+    }
+
     // ---- GitHub #52: only the chosen folders ---------------------------------
 
     // With no way to the journals and folders chosen, only they are indexed,
