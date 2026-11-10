@@ -15,6 +15,7 @@
 #include "StartupAccess.h"
 #include "platform/Integrity.h"
 #include "UninstallCleanup.h"
+#include "UpdatePackage.h"
 #include "WindowFrame.h"
 #include "SettingsCommand.h"
 #include "SystemCatalog.h"
@@ -393,8 +394,15 @@ int main(int argc, char* argv[])
     if (portable)
         ws::copyIntoPortable(); // its first start: what the usual places hold
     ws::Backup::applyRestored(); // a backup chosen to restore, before the settings are read
-    if (ws::startupaccess::needsElevation(ws::startupaccess::storedMode(ws::Settings::filePath()), ws::userIsAdministrator(),
-            ws::integrity::processElevated(), parser.isSet(unelevatedOnce))) {
+    const bool wantsElevation = ws::startupaccess::needsElevation(ws::startupaccess::storedMode(ws::Settings::filePath()),
+        ws::userIsAdministrator(), ws::integrity::processElevated(), parser.isSet(unelevatedOnce));
+    // Started by an in-app update's helper (WinShunUpdate.exe, each version's
+    // own): it waits for this very process to come up and puts the old
+    // version back when it ends at once, as one handing over to an elevated
+    // copy does (GitHub #274). So this one comes up as it was started, and
+    // App restarts it as administrator once the helper is done.
+    const bool elevateAfterUpdate = wantsElevation && ws::update::helperRunning();
+    if (wantsElevation && !elevateAfterUpdate) {
         // Honor the saved mode for manual starts too, before creating an
         // index or a window. The new copy must acquire the instance mutex.
         QStringList arguments = QCoreApplication::arguments().mid(1);
@@ -428,6 +436,7 @@ int main(int argc, char* argv[])
         options.query = parser.value(query);
         options.settings = parser.isSet(settings);
         options.settingsAt = parser.value(settingsAt);
+        options.elevateAfterUpdate = elevateAfterUpdate;
         if (application.start(options))
             code = QGuiApplication::exec();
         restart = application.restartArguments();

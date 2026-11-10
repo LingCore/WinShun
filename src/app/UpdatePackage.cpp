@@ -97,6 +97,14 @@ bool setupInstalled()
     return false;
 }
 
+bool helperRunning()
+{
+    const HANDLE mutex = ::OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\WinShun.Updating");
+    if (mutex)
+        ::CloseHandle(mutex);
+    return mutex || ::GetLastError() == ERROR_ACCESS_DENIED;
+}
+
 bool folderWritable(const QString& folder)
 {
     const QString probe = QDir(folder).filePath(u".winshun-write-test-"_s + QUuid::createUuid().toString(QUuid::Id128));

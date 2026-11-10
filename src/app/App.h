@@ -144,6 +144,9 @@ public:
         // Isolated runtime QA only: the settings window shown without being
         // activated or brought to the front (no input of any kind is sent).
         bool settingsProbe = false;
+        // 管理员直读 wants administrator rights, put off while an in-app
+        // update's helper waits for this copy (main.cpp, GitHub #274).
+        bool elevateAfterUpdate = false;
     };
     // How the settings window last opened (written to the diagnostics journal
     // as "settings-open", read by the runtime probe): made or shown again,
@@ -454,6 +457,7 @@ private:
     void settingsEdited(const Settings& settings);
     void showTrayMenu();
     void restart(const QStringList& arguments, Elevation elevation = Elevation::Same);
+    void elevateOnceUpdated(); // StartOptions::elevateAfterUpdate
     // 索引方式 (Settings::indexAccess, GitHub #21): where the volumes are
     // read from, the index service looked for again while it is wanted and
     // not there, the autostart task's run level kept with the mode.

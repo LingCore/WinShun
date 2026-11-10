@@ -24,6 +24,10 @@ Kind installKind(const QString& appDir, bool portable);
 // A copy made by Setup (for all users or this one) is installed.
 bool setupInstalled();
 
+// WinShunUpdate.exe is at work: it holds the mutex Local\WinShun.Updating
+// from its start to its end (each version's helper since 0.16).
+bool helperRunning();
+
 // Something can be created in `folder` (a portable copy in Program Files,
 // on a read-only share: not). Tried with a file that is gone at once.
 bool folderWritable(const QString& folder);

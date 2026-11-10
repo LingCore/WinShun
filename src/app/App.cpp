@@ -61,6 +61,7 @@
 #include "TriggerJournal.h"
 #include "Unc.h"
 #include "Updater.h"
+#include "UpdatePackage.h"
 #include "WebDav.h"
 #include "WindowFrame.h"
 #include "platform/ClipboardWatcher.h"
@@ -529,6 +530,8 @@ bool App::start(const StartOptions& options)
         QGuiApplication::setFont(font);
     }
 
+    if (options.elevateAfterUpdate)
+        elevateOnceUpdated();
     if (!m_settings.onboardingComplete)
         return showOnboarding(options);
     return startRuntime(options, firstRun, clipboardIsNew);
@@ -6734,6 +6737,35 @@ void App::restart(const QStringList& arguments, Elevation elevation)
             *m_restartArguments << u"--settings-at"_s << place.toString();
     }
     QCoreApplication::exit(0);
+}
+
+// Started by an in-app update's helper while 管理员直读 is set (main.cpp,
+// GitHub #274): restarted as administrator, as a manual start would have
+// been, once the helper is done (it has seen this copy come up and cleared
+// the old files away) and nothing of ours is open under the user's hands.
+// UAC asks; declined, Win顺 comes back with normal rights (startAgain).
+void App::elevateOnceUpdated()
+{
+    auto* timer = new QTimer(this);
+    timer->setInterval(1s);
+    const auto given = std::chrono::steady_clock::now() + 10min;
+    connect(timer, &QTimer::timeout, this, [this, timer, given] {
+        const bool helper = update::helperRunning();
+        if (helper && std::chrono::steady_clock::now() < given)
+            return;
+        // Still wanted: the mode may have been changed meanwhile.
+        const bool wanted = !helper && m_settings.indexAccess == u"direct" && userIsAdministrator()
+            && !integrity::processElevated();
+        if (wanted
+            && (launcherShown() || (m_settingsWindow && m_settingsWindow->isVisible())
+                || (m_clipWindow && m_clipWindow->isVisible())))
+            return; // once they are put away
+        timer->deleteLater();
+        diagnostics::record(u"elevation-after-update"_s, {{u"restart"_s, wanted}, {u"helper_still_running"_s, helper}});
+        if (wanted)
+            restart({u"--background"_s}, Elevation::Elevated);
+    });
+    timer->start();
 }
 
 // ---- 索引方式: how the volumes are read (GitHub #21) --------------------------
