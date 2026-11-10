@@ -240,6 +240,10 @@ private slots:
         placement.setRoomNeeded(240);
         placement.setRoomWanted(400);
         placement.rememberWidth(760, 520);
+        // As Main.qml sizes the window by Placement.boxWidth.
+        QObject::connect(&placement, &ws::Placement::boxWidthChanged, &window, [&] {
+            if (placement.boxWidth() > 0) window.resize(placement.boxWidth(), window.height());
+        });
         placement.setWindow(&window);
         QCoreApplication::processEvents();
         placement.avoidNative(native(*centred), screen, false, {}, native(*centred), native(*list));
@@ -250,17 +254,18 @@ private slots:
             return source.contains(box) && std::abs(in.right() - 12 - box.right()) <= 2 && box.bottom() <= in.bottom() - 12 + 2
                 && box.bottom() >= in.bottom() - 12 - 2;
         };
-        QCOMPARE(window.width(), 760);
+        // Over a file list it opens compact (GitHub #82), in the list's corner.
+        QCOMPARE(window.width(), 460);
         QVERIFY2(inCorner(), qPrintable(u"box %1,%2 %3x%4"_s.arg(window.x()).arg(window.y()).arg(window.width()).arg(window.height())));
         placement.setRoomWanted(450);
-        window.resize(760, 450);
+        window.resize(window.width(), 450);
         QCoreApplication::processEvents();
         QVERIFY(inCorner());
         // The left third: beside it.
         const auto leftThird = fixture({area.x() + 4, area.y() + 4, area.width() / 3, area.height() - 8});
         const auto leftList = fixture({area.x() + 100, area.y() + 100, area.width() / 3 - 100, area.height() - 140});
         placement.setRoomWanted(400);
-        window.resize(760, 400);
+        window.resize(window.width(), 400);
         placement.avoidNative(native(*leftThird), screen, false, {}, native(*leftThird), native(*leftList));
         QCoreApplication::processEvents();
         QVERIFY(!window.geometry().intersects(leftThird->geometry()));
