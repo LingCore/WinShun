@@ -1,0 +1,148 @@
+######## 最终版本：内存（热页预读）  [results-final]
+#### before
+== baseline
+open 1 ack_ms=0.0 seen_ms=51.9 faults=11001
+open 2 ack_ms=0.0 seen_ms=33.4 faults=200
+== memory 1 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=151.7 faults=8625
+== memory 2 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=146.2 faults=8988
+== memory 3 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=144.8 faults=9273
+#### after
+== baseline
+open 1 ack_ms=0.0 seen_ms=51.3 faults=10924
+open 2 ack_ms=0.0 seen_ms=35.1 faults=224
+== memory 1 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=89.9 faults=9017
+== memory 2 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=107.4 faults=9110
+== memory 3 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=96.1 faults=9068
+
+######## 第 2 轮：快捷键路径，CPU 负载 + 内存（含后来移除的实时关键提速）  [results]
+#### before
+== baseline
+open 1 ack_ms=0.0 seen_ms=49.7 faults=10936
+open 2 ack_ms=0.0 seen_ms=27.0 faults=257
+== cpu: 64 busy threads in the normal priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=28.1 faults=72
+open 2 ack_ms=0.0 seen_ms=30.2 faults=113
+open 3 ack_ms=0.0 seen_ms=26.4 faults=90
+open 4 ack_ms=0.0 seen_ms=24.8 faults=123
+open 5 ack_ms=0.0 seen_ms=27.5 faults=63
+== cpu: 64 busy threads in the above priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=65.8 faults=28
+open 2 ack_ms=0.0 seen_ms=521.7 faults=24
+open 3 ack_ms=0.0 seen_ms=520.7 faults=17
+open 4 ack_ms=0.0 seen_ms=211.0 faults=20
+open 5 ack_ms=0.0 seen_ms=532.3 faults=14
+== memory 1 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=147.9 faults=8344
+== memory 2 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=166.5 faults=8464
+== memory 3 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=141.5 faults=8810
+#### after
+== baseline
+open 1 ack_ms=0.0 seen_ms=47.7 faults=11209
+open 2 ack_ms=0.0 seen_ms=32.0 faults=184
+== cpu: 64 busy threads in the normal priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=28.4 faults=120
+open 2 ack_ms=0.0 seen_ms=27.6 faults=62
+open 3 ack_ms=0.0 seen_ms=25.8 faults=81
+open 4 ack_ms=0.0 seen_ms=26.8 faults=104
+open 5 ack_ms=0.0 seen_ms=27.3 faults=85
+== cpu: 64 busy threads in the above priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=54.2 faults=24
+open 2 ack_ms=0.0 seen_ms=533.4 faults=38
+open 3 ack_ms=0.0 seen_ms=1529.6 faults=27
+open 4 ack_ms=0.0 seen_ms=435.4 faults=30
+open 5 ack_ms=0.0 seen_ms=532.0 faults=18
+== memory 1 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=106.7 faults=8990
+== memory 2 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=104.2 faults=9267
+== memory 3 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=104.1 faults=9314
+
+######## 第 1 轮：快捷键路径，CPU 负载 + 内存（含后来移除的最高优先级提速和快捷键线程）  [results-run3]
+#### before
+== baseline
+open 1 ack_ms=0.0 seen_ms=48.5 faults=10218
+open 2 ack_ms=0.0 seen_ms=30.4 faults=239
+== cpu: 64 busy threads in the normal priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=61.9 faults=154
+open 2 ack_ms=0.0 seen_ms=29.8 faults=173
+open 3 ack_ms=0.0 seen_ms=25.1 faults=111
+open 4 ack_ms=0.0 seen_ms=29.7 faults=105
+open 5 ack_ms=0.0 seen_ms=31.5 faults=45
+== cpu: 64 busy threads in the above priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=43.9 faults=16
+open 2 ack_ms=0.0 seen_ms=71.6 faults=15
+open 3 ack_ms=0.0 seen_ms=527.9 faults=18
+open 4 ack_ms=0.0 seen_ms=533.3 faults=17
+open 5 ack_ms=0.0 seen_ms=521.7 faults=17
+== memory 1 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=219.8 faults=8733
+== memory 2 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=213.6 faults=8928
+== memory 3 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=192.9 faults=9006
+#### after
+== baseline
+open 1 ack_ms=0.0 seen_ms=50.0 faults=11081
+open 2 ack_ms=0.0 seen_ms=27.2 faults=215
+== cpu: 64 busy threads in the normal priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=29.3 faults=164
+open 2 ack_ms=0.0 seen_ms=27.8 faults=150
+open 3 ack_ms=0.0 seen_ms=28.0 faults=110
+open 4 ack_ms=0.0 seen_ms=27.3 faults=65
+open 5 ack_ms=0.0 seen_ms=26.4 faults=126
+== cpu: 64 busy threads in the above priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=73.4 faults=20
+open 2 ack_ms=0.0 seen_ms=279.3 faults=43
+open 3 ack_ms=0.0 seen_ms=521.2 faults=25
+open 4 ack_ms=0.0 seen_ms=529.7 faults=21
+open 5 ack_ms=0.0 seen_ms=530.9 faults=19
+== memory 1 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=100.9 faults=9133
+== memory 2 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=106.8 faults=9011
+== memory 3 (emptied=True, priv=True flush=0x0 purge=0x0)
+open 1 ack_ms=0.0 seen_ms=102.4 faults=8886
+
+######## 双击 Shift 路径：CPU 负载（含后来移除的提速代码）  [results-tap]
+#### before
+== baseline
+open 1 ack_ms=0.0 seen_ms=49.7 faults=10502
+open 2 ack_ms=0.0 seen_ms=36.5 faults=233
+== cpu: 64 busy threads in the normal priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=27.5 faults=113
+open 2 ack_ms=0.0 seen_ms=26.4 faults=67
+open 3 ack_ms=0.0 seen_ms=28.2 faults=79
+open 4 ack_ms=0.0 seen_ms=30.6 faults=97
+open 5 ack_ms=0.0 seen_ms=25.5 faults=44
+== cpu: 64 busy threads in the above priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=19.1 faults=25
+open 2 ack_ms=0.0 seen_ms=56.0 faults=17
+open 3 ack_ms=0.0 seen_ms=199.6 faults=17
+open 4 ack_ms=0.0 seen_ms=91.6 faults=25
+open 5 ack_ms=0.0 seen_ms=517.4 faults=17
+#### after
+== baseline
+open 1 ack_ms=0.0 seen_ms=50.9 faults=12134
+open 2 ack_ms=0.0 seen_ms=33.7 faults=263
+== cpu: 64 busy threads in the normal priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=28.0 faults=104
+open 2 ack_ms=0.0 seen_ms=27.2 faults=63
+open 3 ack_ms=0.0 seen_ms=28.0 faults=119
+open 4 ack_ms=0.0 seen_ms=28.7 faults=85
+open 5 ack_ms=0.0 seen_ms=28.9 faults=53
+== cpu: 64 busy threads in the above priority class, 32 logical CPUs
+open 1 ack_ms=0.0 seen_ms=25.3 faults=22
+open 2 ack_ms=0.0 seen_ms=523.1 faults=31
+open 3 ack_ms=0.0 seen_ms=572.4 faults=25
+open 4 ack_ms=0.0 seen_ms=546.1 faults=30
+open 5 ack_ms=0.0 seen_ms=251.6 faults=21
+
