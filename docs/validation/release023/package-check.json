@@ -1,0 +1,23 @@
+{
+  "portable_files": 191,
+  "mismatched": [],
+  "in_deploy_not_zip": [],
+  "data_folder": [
+    "data/README.txt"
+  ],
+  "sha256sums_match": true,
+  "sizes": {
+    "WinShun-0.23.0-x64-setup.exe": 30868219,
+    "WinShun-0.23.0-x64-portable.zip": 43725434,
+    "WinShun-0.23.0-x64-offline-setup.exe": 40181336,
+    "WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip": 11802525
+  },
+  "WinShun.exe_sha256": "a18eb3ff008bfbd0538499a01984795bbbafaed14a5105aa10bafac112c6070e",
+  "version": "0.23.0",
+  "source_commit": "27e695bdbb0e912f09a2de65d6e27100e73cad8a",
+  "data_readme": {
+    "from": "installer/portable-data-README.txt (added by release.ps1, not in the deployment)",
+    "matches": true
+  },
+  "note": "190 files match the deployment byte for byte; data/ holds only README.txt"
+}

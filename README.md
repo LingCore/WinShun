@@ -181,16 +181,16 @@ scoop install winshun
 
 ### 最近更新
 
-**0.22.0**
+**0.23.0**
 
-- 🕘 **搜索历史与窗口切换** 时钟按钮找回搜索词，`Ctrl+↑` / `Ctrl+↓` 翻阅；匹配的已打开窗口优先显示，Enter 直接切换。
-- ✨ **纯净搜索模式** 空输入只留搜索栏；可合并“全部”和“文件”，直接按类型筛选。
-- 📋 **剪贴板分组与预览** `Ctrl+G` 找分组，鼠标停留在条目上查看文字或图片。
-- ⚙️ **操作自己定** 选择界面字体、双击修饰键后的动作，给完整面板分配快捷键，按需收起筛选侧栏。
-- 🧩 **插件管理** 在应用内阅读说明，查看审核状态，安装及更新未审核原生插件时确认来源；原生插件可声明复用宿主 Qt。
-- 🪶 **内存与兼容性** 搜索面板和部分行操作按需创建，修复预览交接、粘贴失败和 Windows 用户目录重定向。
+- 🫧 **液态玻璃风格** 第四种界面风格：原生亚克力配玻璃表面，透明度和清晰度可调。
+- 🖱️ **右键 Logo 一键回位** 右键可直接靠上、居中或回到上次位置，不必再开菜单。
+- ⌨️ **管理员窗口前的单键快捷键** 管理员程序在前面时，F1–F24、PrintScreen 也能触发。
+- 🧭 **记住搜索范围** 选好的全部、文件、内容或类型在重启后保留。
+- 💽 **移动硬盘算外接盘** 自称固定磁盘的移动硬盘也受“包括 U 盘和移动硬盘”控制，关掉时不占用、不挡弹出。
+- 🧩 **插件问题找作者** 插件卡片“…”菜单可直接到作者仓库提问题；插件库放开社区原生插件收录。
 
-详见 [0.22.0 发布说明](docs/release-notes/v0.22.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
+详见 [0.23.0 发布说明](docs/release-notes/v0.23.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
 
 ### 常见问题
 
@@ -419,16 +419,16 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
-**0.22.0**
+**0.23.0**
 
-- 🕘 **Query history and window switching** Revisit searches with the clock button or `Ctrl+Up` / `Ctrl+Down`. Matching open windows appear first, ready to activate with Enter.
-- ✨ **Minimal empty search** Keep just the input bar while empty. Optionally merge All and Files and filter by kind directly.
-- 📋 **Clipboard groups and previews** `Ctrl+G` finds a group. Hover over an item to read its text or view its picture.
-- ⚙️ **Your controls** Choose the interface font and double-tap action, assign a direct panel hotkey and collapse the filter sidebar.
-- 🧩 **Plugin management** Read guides inside the app, see review status and confirm installation or updates of unreviewed native packages. Native plugins can opt into the host Qt runtime.
-- 🪶 **Memory and compatibility** The panel and some row actions are created on demand, with fixes for preview handoff, failed pastes and redirected Windows user folders.
+- 🫧 **Liquid Glass style** A fourth interface style: native Acrylic behind glass surfaces, with adjustable transparency and clarity.
+- 🖱️ **One-click logo actions** A right click on the logo can go straight to the top, the center or the last position instead of opening a menu.
+- ⌨️ **Plain hotkeys over administrators' windows** F1–F24 and PrintScreen fire while a program run as administrator is in front.
+- 🧭 **Search scope remembered** The All, Files, Content or kind you chose comes back after a restart.
+- 💽 **External disks count as external** Disks that report themselves as fixed follow the USB drives option, so with it off they are not held open and can be ejected.
+- 🧩 **Plugin problems go to their authors** A card's "…" menu opens the author's Issues, and the library now accepts community native plugins.
 
-See the [0.22.0 release notes](docs/release-notes/v0.22.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
+See the [0.23.0 release notes](docs/release-notes/v0.23.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
 
 ### FAQ
 
