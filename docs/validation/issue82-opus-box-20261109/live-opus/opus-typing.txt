@@ -1,0 +1,34 @@
+opus typing run, exe C:\Program Files\WinShun\WinShun.exe (0.22.0)
+12:37:15.582 lister [198,279 1934x1153] scale 1.5
+12:37:17.377 Win顺 pid 3792 up
+12:37:22.360 lister width 2110: left list [688,496 797x854], right list [1493,496 804x854]
+12:37:24.231 w2110-right: {"case":"w2110-right","box":true,"list":"[1493,496 804x854]","window":"[1590,965 690x368]","frame":"[1590,965 690x368]","list_logical_width":536.0,"box_logical_width":460.0,"right_gap":11.3,"bottom_gap":11.3,"left_gap":64.7,"top_gap":312.7,"inside":true,"foreground":"Qt6120QWindowToolSaveBits"}
+12:37:26.424 w2110-right: Esc, box hidden False
+12:37:28.595 w2110-left: {"case":"w2110-left","box":true,"list":"[688,496 797x854]","window":"[777,965 690x368]","frame":"[777,965 690x368]","list_logical_width":531.3,"box_logical_width":460.0,"right_gap":12.0,"bottom_gap":11.3,"left_gap":59.3,"top_gap":312.7,"inside":true,"foreground":"Qt6120QWindowToolSaveBits"}
+12:37:30.721 w2110-left: Esc, box hidden False
+12:37:32.090 lister width 1934: left list [688,496 709x854], right list [1405,496 716x854]
+12:37:33.802 w1934-right: {"case":"w1934-right","box":true,"list":"[1405,496 716x854]","window":"[1422,965 681x368]","frame":"[1422,965 681x368]","list_logical_width":477.3,"box_logical_width":454.0,"right_gap":12.0,"bottom_gap":11.3,"left_gap":11.3,"top_gap":312.7,"inside":true,"foreground":"Qt6120QWindowToolSaveBits"}
+12:37:35.916 w1934-right: Esc, box hidden False
+12:37:38.145 w1934-left: {"case":"w1934-left","box":true,"list":"[688,496 709x854]","window":"[705,965 675x368]","frame":"[705,965 675x368]","list_logical_width":472.7,"box_logical_width":450.0,"right_gap":11.3,"bottom_gap":11.3,"left_gap":11.3,"top_gap":312.7,"inside":true,"foreground":"Qt6120QWindowToolSaveBits"}
+12:37:40.264 w1934-left: Esc, box hidden False
+12:37:41.617 lister width 1400: left list [688,496 442x854], right list [1138,496 449x854]
+12:37:43.389 w1400-right: {"case":"w1400-right","box":true,"list":"[1138,496 449x854]","window":"[1089,965 480x368]","frame":"[1089,965 480x368]","list_logical_width":299.3,"box_logical_width":320.0,"right_gap":12.0,"bottom_gap":11.3,"left_gap":-32.7,"top_gap":312.7,"inside":false,"foreground":"Qt6120QWindowToolSaveBits"}
+12:37:45.537 w1400-right: Esc, box hidden False
+12:37:47.734 w1400-left: {"case":"w1400-left","box":true,"list":"[688,496 442x854]","window":"[687,965 480x368]","frame":"[687,965 480x368]","list_logical_width":294.7,"box_logical_width":320.0,"right_gap":-24.7,"bottom_gap":11.3,"left_gap":-0.7,"top_gap":312.7,"inside":false,"foreground":"Qt6120QWindowToolSaveBits"}
+12:37:49.836 w1400-left: Esc, box hidden False
+12:37:50.283 lister back to [198,279 1934x1153]
+12:37:50.908 search-here key: "C:\Program Files\WinShun\WinShunSearch.exe" --search-here "%V"
+12:37:50.924 autostart task: <Command>C:\Program Files\WinShun\WinShun.exe</Command> <Arguments>--background</Arguments>
+12:37:50.925 log: 2026-11-10T12:37:23.430 info: Opus typing: key 0x51 in window 0x170bc2, tab 0x190d4c
+12:37:50.926 log: 2026-11-10T12:37:23.448 info: Opus typing: folder "F:\电脑便捷工具\build\opus82-20261110\opus-right" 16 ms
+12:37:50.926 log: 2026-11-10T12:37:27.823 info: Opus typing: key 0x51 in window 0x170bc2, tab 0x70d76
+12:37:50.926 log: 2026-11-10T12:37:27.839 info: Opus typing: folder "F:\电脑便捷工具\build\opus82-20261110\opus-left" 15 ms
+12:37:50.927 log: 2026-11-10T12:37:33.100 info: Opus typing: key 0x51 in window 0x170bc2, tab 0x190d4c
+12:37:50.927 log: 2026-11-10T12:37:33.116 info: Opus typing: folder "F:\电脑便捷工具\build\opus82-20261110\opus-right" 15 ms
+12:37:50.927 log: 2026-11-10T12:37:37.350 info: Opus typing: key 0x51 in window 0x170bc2, tab 0x70d76
+12:37:50.928 log: 2026-11-10T12:37:37.368 info: Opus typing: folder "F:\电脑便捷工具\build\opus82-20261110\opus-left" 17 ms
+12:37:50.928 log: 2026-11-10T12:37:42.620 info: Opus typing: key 0x51 in window 0x170bc2, tab 0x190d4c
+12:37:50.928 log: 2026-11-10T12:37:42.635 info: Opus typing: folder "F:\电脑便捷工具\build\opus82-20261110\opus-right" 14 ms
+12:37:50.929 log: 2026-11-10T12:37:46.956 info: Opus typing: key 0x51 in window 0x170bc2, tab 0x70d76
+12:37:50.929 log: 2026-11-10T12:37:46.972 info: Opus typing: folder "F:\电脑便捷工具\build\opus82-20261110\opus-left" 15 ms
+12:37:50.938 lock released True; WinShun.exe left 0
