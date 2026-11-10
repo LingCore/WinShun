@@ -214,6 +214,19 @@ std::vector<Entry> parseFile(const std::string& content, const std::string& brow
     return out;
 }
 
+// Two paths that name the same file: Windows compares case-insensitively.
+static bool samePath(const std::string& a, const std::string& b)
+{
+    if (a.size() != b.size())
+        return false;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        if (::towlower(static_cast<wint_t>(static_cast<unsigned char>(a[i])))
+            != ::towlower(static_cast<wint_t>(static_cast<unsigned char>(b[i]))))
+            return false;
+    }
+    return true;
+}
+
 std::string readFile(const std::string& path)
 {
     const HANDLE file = ::CreateFileW(winshun::wide(path).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -247,15 +260,34 @@ std::vector<std::string> bookmarkFiles(const std::string& localAppData, const st
                 // Like a glob's "*": not the names that start with a dot.
                 if (found.cFileName[0] == L'.')
                     continue;
-                const std::wstring path = root + L"\\" + found.cFileName + L"\\Bookmarks";
-                if (isFile(path))
-                    files.push_back(winshun::utf8(path));
+                // Bookmarks is the local list; AccountBookmarks holds the
+                // account's after signing in (Chrome writes it beside the same
+                // profile, and it may be the only one there). Both are read;
+                // the same URL in both is shown once, by search().
+                for (const wchar_t* name : {L"\\Bookmarks", L"\\AccountBookmarks"}) {
+                    const std::wstring path = root + L"\\" + found.cFileName + name;
+                    if (isFile(path))
+                        files.push_back(winshun::utf8(path));
+                }
             } while (::FindNextFileW(find, &found));
             ::FindClose(find);
         }
     }
-    if (!extraFile.empty() && isFile(winshun::wide(extraFile)))
+    if (!extraFile.empty() && isFile(winshun::wide(extraFile))) {
         files.push_back(extraFile);
+        // The setting names one browser's Bookmarks file; its account list
+        // sits beside it under the same name. Reading only the first would
+        // lose the account's bookmarks there too. A bare file name (no
+        // separator) has no directory of its own: nothing to look beside it.
+        const std::size_t slash = extraFile.find_last_of("\\/");
+        if (slash != std::string::npos) {
+            const std::string beside = extraFile.substr(0, slash + 1) + "AccountBookmarks";
+            // Windows compares names without case: naming the account file
+            // itself must not read it twice.
+            if (!samePath(beside, extraFile) && isFile(winshun::wide(beside)))
+                files.push_back(beside);
+        }
+    }
     return files;
 }
 
