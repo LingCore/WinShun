@@ -124,6 +124,71 @@ private slots:
         QCOMPARE(bookmarkFiles(base, QDir::toNativeSeparators(dir.filePath(QStringLiteral("nope"))).toUtf8().toStdString()).size(), size_t(3));
         QCOMPARE(bookmarkFiles(std::string(), std::string()).size(), size_t(0));
     }
+    // The setting names one browser's Bookmarks file; the account list beside
+    // it is read too, or that browser loses its account bookmarks as well.
+    void extraFileWithAccountBeside()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString brave = dir.filePath(QStringLiteral("Brave"));
+        QVERIFY(QDir().mkpath(brave));
+        // The named file, its account list, and a decoy that is not it.
+        for (const QString& p : {brave + u"/Bookmarks", brave + u"/AccountBookmarks", brave + u"/NotBookmarks"}) {
+            QFile f(p);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        }
+
+        const std::string named = QDir::toNativeSeparators(brave + u"/Bookmarks").toUtf8().toStdString();
+        const auto files = bookmarkFiles(std::string(), named);
+        QCOMPARE(files.size(), size_t(2));
+        QCOMPARE(q(files[0]), QDir::toNativeSeparators(brave + u"/Bookmarks"));
+        QCOMPARE(q(files[1]), QDir::toNativeSeparators(brave + u"/AccountBookmarks"));
+
+        // Naming the account file itself must not read it twice, in any case:
+        // Windows compares names without case.
+        const std::string account = QDir::toNativeSeparators(brave + u"/AccountBookmarks").toUtf8().toStdString();
+        QCOMPARE(bookmarkFiles(std::string(), account).size(), size_t(1));
+        std::string upper = account;
+        for (char& c : upper) {
+            if (c >= 'a' && c <= 'z')
+                c = static_cast<char>(c - 'a' + 'A');
+        }
+        QCOMPARE(bookmarkFiles(std::string(), upper).size(), size_t(1));
+
+        // A bare file name has no directory to look in: nothing is read
+        // beside it, and it is not resolved against the working directory.
+        QCOMPARE(bookmarkFiles(std::string(), std::string("no-such-bookmarks-file-3f9a")).size(), size_t(0));
+
+        // No account list beside it: just the named file.
+        QFile::remove(brave + u"/AccountBookmarks");
+        QCOMPARE(bookmarkFiles(std::string(), named).size(), size_t(1));
+    }
+
+    // AccountBookmarks — sometimes with no Bookmarks at all.
+    void findsAccountBookmarks()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString chrome = dir.filePath(QStringLiteral("Google/Chrome/User Data"));
+        const QString edge = dir.filePath(QStringLiteral("Microsoft/Edge/User Data"));
+        for (const QString& p : {chrome + u"/Default", chrome + u"/Profile 1", edge + u"/Default"})
+            QVERIFY(QDir().mkpath(p));
+        // A signed-in profile whose local list is gone: the account's is the only one.
+        for (const QString& p : {chrome + u"/Default/AccountBookmarks", chrome + u"/Profile 1/Bookmarks", chrome + u"/Profile 1/AccountBookmarks", edge + u"/Default/AccountBookmarks"}) {
+            QFile f(p);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        }
+
+        const std::string base = QDir::toNativeSeparators(dir.path()).toUtf8().toStdString();
+        const auto files = bookmarkFiles(base, std::string());
+        QCOMPARE(files.size(), size_t(4));
+        QVERIFY(q(files[0]).endsWith(u"Default\\AccountBookmarks") && q(files[0]).contains(u"Chrome"));
+        QVERIFY(q(files[1]).endsWith(u"Profile 1\\Bookmarks")); // both of a profile, its list first
+        QVERIFY(q(files[2]).endsWith(u"Profile 1\\AccountBookmarks"));
+        QVERIFY(q(files[3]).contains(u"Edge") && q(files[3]).endsWith(u"AccountBookmarks"));
+        QCOMPARE(q(browserOf(files[0], true)), Q("Chrome"));
+        QCOMPARE(q(browserOf(files[3], true)), Q("Edge"));
+    }
     void browserNames()
     {
         QCOMPARE(q(browserOf("C:\\U\\a\\Local\\Google\\Chrome\\User Data\\Default\\Bookmarks", true)), Q("Chrome"));

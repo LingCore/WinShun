@@ -45,8 +45,9 @@ std::vector<Entry> parseFile(const std::string& content, const std::string& brow
 // open); empty when it cannot be read. Never writes.
 std::string readFile(const std::string& path);
 
-// Chrome's and Edge's Bookmarks of every profile under `localAppData`, then
-// `extraFile` when it is an existing file.
+// Chrome's and Edge's Bookmarks and AccountBookmarks of every profile under
+// `localAppData`, then `extraFile` when it is an existing file, and the
+// AccountBookmarks beside it.
 std::vector<std::string> bookmarkFiles(const std::string& localAppData, const std::string& extraFile);
 
 // The rows for the typed `text`: at most 50, title matches first. When
