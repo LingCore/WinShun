@@ -1,0 +1,9 @@
+﻿15:25:22.875 integrity: Mandatory Label\High Mandatory Level     标签   S-1-16-12288
+15:25:24.131 pipe True
+15:25:35.136 before the hotkey: front hwnd=11736010 powershell class=WindowsForms10.Window.8.app.0.4ec466_r8_ad1; own window 11736010
+15:25:37.178 after the hotkey: front hwnd=5572506 WinShun class=Qt6120QWindowToolSaveBits
+15:25:37.312 text box: [WinShun issue 277 e2e 43676]
+15:25:38.285 1 s after Enter: front hwnd=11736010 powershell class=WindowsForms10.Window.8.app.0.4ec466_r8_ad1
+15:25:40.245 after Enter: front hwnd=11736010 powershell class=WindowsForms10.Window.8.app.0.4ec466_r8_ad1; text box holds [WinShun issue 277 e2e 43676]
+15:25:42.564 stopping
+15:25:44.219 cleaned

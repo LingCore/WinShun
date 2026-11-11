@@ -1,0 +1,4 @@
+2026-11-11T15:25:35.166 info: Number keys: keyboard Raw Input set aside
+2026-11-11T15:25:37.182 info: Clipboard: paste asked for row 0: 1 entries, into 0xb313ca
+2026-11-11T15:25:37.204 info: Number keys: keyboard Raw Input put back
+2026-11-11T15:25:38.711 info: Double tap over powershell.exe (run as administrator): heard; service listener hears, fix none, hotkey none

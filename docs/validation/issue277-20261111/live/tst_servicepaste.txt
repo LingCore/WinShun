@@ -1,0 +1,13 @@
+********* Start testing of ServicePasteTest *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : ServicePasteTest::initTestCase()
+PASS   : ServicePasteTest::keysByWindowClass()
+PASS   : ServicePasteTest::theChordAsInput()
+PASS   : ServicePasteTest::outcomesByName()
+PASS   : ServicePasteTest::noServiceIsSaidAtOnce()
+QINFO  : ServicePasteTest::administratorWindowLive() paste through the service: pasted, error 0, 19 ms
+QINFO  : ServicePasteTest::administratorWindowLive() again: pasted, error 0, 23 ms
+PASS   : ServicePasteTest::administratorWindowLive()
+PASS   : ServicePasteTest::cleanupTestCase()
+Totals: 7 passed, 0 failed, 0 skipped, 0 blacklisted, 93ms
+********* Finished testing of ServicePasteTest *********

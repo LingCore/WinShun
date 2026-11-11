@@ -1,0 +1,3 @@
+tst_numberhints: Totals: 12 passed, 0 failed, 0 skipped, 0 blacklisted, 4322ms
+tst_settings: Totals: 55 passed, 0 failed, 0 skipped, 0 blacklisted, 1642ms
+tst_aisettings: Totals: 158 passed, 0 failed, 0 skipped, 0 blacklisted, 2528ms

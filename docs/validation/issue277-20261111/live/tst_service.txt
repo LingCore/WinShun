@@ -1,0 +1,3 @@
+PASS   : ServiceTest::pasteForOwnUiOnly()
+PASS   : ServiceTest::pasteRejectsBadRequest()
+Totals: 25 passed, 0 failed, 0 skipped, 0 blacklisted, 23944ms
