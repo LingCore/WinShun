@@ -1033,7 +1033,11 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
     heldAWhile();
     check(!strip->property("showKeywords").toBool(), u"a tap of Ctrl never brings the prefixes"_s);
     key(field, Qt::Key_Control, Qt::ControlModifier);
-    heldAWhile();
+    for (int i = 0; i < 3; ++i) { // held, the keyboard repeats it: no new press each time
+        QKeyEvent repeat(QEvent::KeyPress, Qt::Key_Control, Qt::ControlModifier, QString(), true);
+        QCoreApplication::sendEvent(field, &repeat);
+        settle(window);
+    }
     check(strip->property("showKeywords").toBool(), u"holding Ctrl exposes type prefixes"_s);
     check(window->grabWindow().save(output.filePath(u"merged-scope-prefixes.png"_s)), u"capture merged type prefixes"_s);
     QKeyEvent release(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
