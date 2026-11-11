@@ -1029,8 +1029,10 @@ bool Host::query(const QString& text, Scope scope, std::uint64_t queryId, const 
     if (scope != Scope::All && scope != Scope::Content)
         return false;
     std::vector<Match> matches = scope == Scope::All ? m_catalog.match(text) : std::vector<Match> {};
-    const bool keyword = std::any_of(
-        matches.begin(), matches.end(), [](const Match& match) { return match.kind == Match::Kind::Keyword; });
+    // A keyword takes the list, unless it is an instant command's typed
+    // alone: the word is searched for too (Match::alone).
+    const bool keyword = std::ranges::any_of(
+        matches, [](const Match& match) { return match.kind == Match::Kind::Keyword && !match.alone; });
     if (!keyword && (scope == Scope::Content || filters.value(u"contentEnabled"_s).toBool())) {
         auto providers = m_catalog.contentMatches(filters.value(u"contentWords"_s).toString(text));
         matches.insert(matches.end(), providers.begin(), providers.end());

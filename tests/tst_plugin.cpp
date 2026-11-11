@@ -2354,6 +2354,96 @@ private slots:
         QCOMPARE(quoted.rejected, u"\"fy\""_s);
     }
 
+    // An instant command's keyword typed alone (GitHub #242: "pl" listed the
+    // plugin's one row and nothing else): the list stays the search's, and
+    // the command's rows lead it.
+    void instantKeywordAlone()
+    {
+        Fixture f;
+        Spec spec;
+        spec.id = u"test.kw"_s;
+        spec.mode.clear();
+        spec.commands = QJsonArray {
+            QJsonObject {{u"id"_s, u"empty"_s}, {u"keyword"_s, u"empty"_s}, {u"title"_s, u"清空"_s}, {u"mode"_s, u"instant"_s},
+                {u"run"_s, QJsonObject {{u"items"_s, QJsonArray {QJsonObject {{u"title"_s, u"y"_s}}}}}}},
+        };
+        QVERIFY(!f.install(spec).isEmpty());
+        const Catalog& catalog = f.host->catalog();
+        std::vector<Match> matches = catalog.match(u"Empty"_s);
+        QCOMPARE(matches.size(), 1u);
+        QVERIFY(matches[0].alone);
+        QVERIFY(matches[0].text.isEmpty());
+        QVERIFY(!catalog.match(u"empty "_s)[0].alone); // the space: its own list
+        QVERIFY(!catalog.match(u"empty x"_s)[0].alone);
+        QVERIFY(f.host->query(u"empty"_s, Scope::All, 1)); // asked all the same
+
+        const auto item = [](const QString& id, const QString& title) {
+            Item i;
+            i.id = id;
+            i.title = title;
+            return i;
+        };
+        ListSink sink;
+        sink.current = 0;
+        Merge merge(sink, catalog);
+        merge.setHintText(u"按空格进入"_s);
+        // The names come first, the plugin has not answered: a row offering
+        // the command holds the first place (Enter must not open a file).
+        merge.begin(2, u"empty"_s);
+        QVERIFY(!merge.keywordMode());
+        sink.assign({fileRow(u"empty.txt"_s, true), appRow(u"Empty"_s, 90, false, true)});
+        merge.namesShown();
+        QCOMPARE(sink.names(), (QStringList {u"empty — 清空"_s, u"empty.txt"_s, u"Empty"_s}));
+        QVERIFY(isHintRow(sink.rows[0]));
+        QCOMPARE(sink.rows[0].plugin->setQuery, u"empty "_s); // Enter: into its own list
+        QVERIFY(merge.takeBetterFirstRow());
+        merge.namesShown(); // shown again: still one
+        QCOMPARE(sink.count(), 3);
+        // Its answer takes that place: every row (no quota), the plugin's
+        // order, above the recent rows and the app of that very name.
+        merge.results(2, u"test.kw"_s, u"empty"_s,
+            {item(u"1"_s, u"r1"_s), item(u"2"_s, u"r2"_s), item(u"3"_s, u"r3"_s), item(u"4"_s, u"r4"_s)}, false, true);
+        QCOMPARE(sink.names(), (QStringList {u"r1"_s, u"r2"_s, u"r3"_s, u"r4"_s, u"empty.txt"_s, u"Empty"_s}));
+        QVERIFY(merge.takeBetterFirstRow());
+        QVERIFY(merge.keywordAlone(sink.rows[0])); // its actions get no words, as in its own list
+        QVERIFY(!merge.keywordAlone(sink.rows[4]));
+        // Answering again: rewritten where they are, the ones gone removed, new ones after them.
+        merge.results(2, u"test.kw"_s, u"empty"_s, {item(u"1"_s, u"r1b"_s), item(u"3"_s, u"r3"_s), item(u"5"_s, u"r5"_s)}, false, true);
+        QCOMPARE(sink.names(), (QStringList {u"r1b"_s, u"r3"_s, u"r5"_s, u"empty.txt"_s, u"Empty"_s}));
+        // Answered before the names are shown: no row standing in.
+        merge.begin(3, u"empty"_s);
+        merge.results(3, u"test.kw"_s, u"empty"_s, {item(u"1"_s, u"r1"_s)}, false, true);
+        sink.assign({fileRow(u"empty.txt"_s)});
+        merge.namesShown();
+        QCOMPARE(sink.names(), (QStringList {u"r1"_s, u"empty.txt"_s}));
+        // The keyboard moved down meanwhile: the rows go below it.
+        merge.begin(4, u"empty"_s);
+        sink.assign({fileRow(u"f1"_s), fileRow(u"f2"_s), fileRow(u"f3"_s)});
+        sink.current = -1;
+        merge.namesShown();
+        QVERIFY(isHintRow(sink.rows[0]));
+        sink.current = 2; // f2
+        merge.results(4, u"test.kw"_s, u"empty"_s, {item(u"1"_s, u"r1"_s), item(u"2"_s, u"r2"_s)}, false, true);
+        QCOMPARE(sink.names(), (QStringList {u"f1"_s, u"f2"_s, u"r1"_s, u"r2"_s, u"f3"_s}));
+        QVERIFY(!merge.takeBetterFirstRow());
+        // An empty answer: the row standing in goes, the names are the list.
+        merge.begin(5, u"empty"_s);
+        sink.assign({fileRow(u"f1"_s)});
+        sink.current = 0;
+        merge.namesShown();
+        merge.results(5, u"test.kw"_s, u"empty"_s, {}, false, true);
+        QCOMPARE(sink.names(), (QStringList {u"f1"_s}));
+        // 文件 and 文件夹 (no keywords there), and the command's own list: as before.
+        merge.begin(6, u"empty"_s, {}, {}, false, false);
+        sink.assign({fileRow(u"f1"_s)});
+        merge.namesShown();
+        QCOMPARE(sink.count(), 1);
+        merge.begin(7, u"empty "_s, u"test.kw"_s, u"empty"_s);
+        QVERIFY(merge.keywordMode());
+        merge.results(7, u"test.kw"_s, u"empty"_s, {item(u"1"_s, u"r1"_s)}, false, true);
+        QCOMPARE(sink.names(), (QStringList {u"r1"_s}));
+    }
+
     // The space after a list command's keyword opens it; the keyword alone
     // searches names, with the command offered as a row (Merge::placeHint).
     // An instant command's keyword works alone.

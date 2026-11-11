@@ -999,6 +999,7 @@ private:
         bool waiting = false;
     };
     std::optional<RowDetails> pluginDetails(const SearchResult& row, bool ask); // none: not such a row
+    QString pluginWords(const SearchResult& row) const;
     QString detailsKey(const SearchResult& row) const;
     void askDetails();
     void detailsAnswered(const QString& key, bool ok, const plugin::DetailsAnswer& answer);

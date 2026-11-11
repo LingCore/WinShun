@@ -3928,9 +3928,19 @@ std::optional<FilePreview::Item> Launcher::previewItem(const SearchResult* r, bo
     return FilePreview::Item {r->path, r->name, r->isDir};
 }
 
+// The words a plugin's row is about, for its actions and details: those
+// after the keyword in a command's own list, none for the rows of an instant
+// command whose keyword was typed alone, else the text typed.
+QString Launcher::pluginWords(const SearchResult& row) const
+{
+    if (m_keyword)
+        return m_keyword->words;
+    return m_merge && m_merge->keywordAlone(row) ? QString() : searchText();
+}
+
 QString Launcher::detailsKey(const SearchResult& row) const
 {
-    const QString words = m_keyword ? m_keyword->words : searchText(); // as an action's
+    const QString words = pluginWords(row); // as an action's
     return row.plugin->pluginId + u'\n' + QString::fromUtf8(QJsonDocument(row.plugin->item).toJson(QJsonDocument::Compact))
         + u'\n' + words;
 }
@@ -3947,7 +3957,7 @@ std::optional<Launcher::RowDetails> Launcher::pluginDetails(const SearchResult& 
     if (ask) {
         m_detailsFailed.clear(); // another row: the failed one is asked again when it comes back
         if (m_detailsWant.key != key && m_detailsAsking != key) {
-            m_detailsWant = {key, row.plugin->pluginId, row.plugin->item, m_keyword ? m_keyword->words : searchText()};
+            m_detailsWant = {key, row.plugin->pluginId, row.plugin->item, pluginWords(row)};
             if (m_detailsAsking.isEmpty())
                 m_detailsTimer.start();
         }
@@ -5912,7 +5922,9 @@ std::optional<Launcher::KeywordMode> Launcher::matchKeyword(const QString& text)
     if (!m_plugins || !m_merge || (m_scope != All && !m_panel) || text.trimmed().isEmpty())
         return std::nullopt;
     for (const plugin::Match& m : m_plugins->catalog().match(text)) {
-        if (m.kind != plugin::Match::Kind::Keyword)
+        // An instant command's keyword alone leaves the list the search's:
+        // its rows lead it (plugin::Merge, GitHub #242).
+        if (m.kind != plugin::Match::Kind::Keyword || m.alone)
             continue;
         const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
         const QString locale = uiLocale();
@@ -6233,8 +6245,7 @@ void Launcher::performPlugin(const SearchResult& result, Action action)
     if (!m_plugins)
         return;
     const QString actionId = index < p.actions.size() ? p.actions[index].id : u"default"_s;
-    const QString words = m_keyword ? m_keyword->words : searchText();
-    m_plugins->action(++m_pluginRequest, p.pluginId, p.commandId, actionId, p.item, words);
+    m_plugins->action(++m_pluginRequest, p.pluginId, p.commandId, actionId, p.item, pluginWords(result));
 }
 
 void Launcher::onPluginActionDone(std::uint64_t requestId, const QString& pluginId, const QList<ws::plugin::Effect>& effects, bool ok, const QString& error)

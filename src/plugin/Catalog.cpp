@@ -374,8 +374,9 @@ std::vector<Match> Catalog::match(const QString& typed) const
                 m.kind = Match::Kind::Keyword;
                 m.keyword = space < 0 ? text : text.left(space);
                 m.text = space < 0 ? QString() : text.mid(space + 1).trimmed();
+                m.alone = space < 0;
+                keywordMode = !m.alone; // alone, the list stays the search's
                 out.push_back(std::move(m));
-                keywordMode = true;
             }
         }
     }

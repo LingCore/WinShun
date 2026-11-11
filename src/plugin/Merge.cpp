@@ -68,9 +68,10 @@ SearchResult hintRow(const Match& hint, const QString& subtitle, const QString& 
         p->icon = iconText(parseIcon(entry.manifest->icon));
     if (p->icon.isEmpty())
         p->icon = u"glyph:U+EA86"_s; // Puzzle
-    // The space after a list command's keyword opens it; an instant
-    // command's keyword works alone (Catalog::match).
-    p->autocomplete = command.mode == Command::Mode::Instant ? hint.keyword : hint.keyword + u' ';
+    // The space after a keyword opens its command's own list. A keyword an
+    // instant command's begins with: that keyword alone, which brings its
+    // rows to the top of the search (Catalog::match).
+    p->autocomplete = command.mode == Command::Mode::Instant && hint.partial ? hint.keyword : hint.keyword + u' ';
     p->setQuery = p->autocomplete;
     p->score = hint.partial ? kPrefixHintScore : 100;
 
@@ -151,6 +152,16 @@ void Merge::begin(std::uint64_t queryId, const QString& text, const QString& key
     m_keywordPlugin = keywordPlugin;
     m_keywordCommand = keywordCommand;
     m_namesReady = keywordMode(); // no name search to wait for
+    m_alonePlugin.clear();
+    m_aloneCommand.clear();
+    if (!keywordMode() && !contentOnly && hints) {
+        for (const Match& m : m_catalog.match(text)) {
+            if (m.kind == Match::Kind::Keyword && m.alone) {
+                m_alonePlugin = m.entry->id;
+                m_aloneCommand = m.command->id;
+            }
+        }
+    }
     m_assigned = false;
     m_keywordItemIndex = 0;
     m_held.clear();
@@ -160,8 +171,10 @@ void Merge::begin(std::uint64_t queryId, const QString& text, const QString& key
 void Merge::namesShown()
 {
     m_namesReady = true;
-    if (!keywordMode() && !m_contentOnly && m_hints)
+    if (!keywordMode() && !m_contentOnly && m_hints) {
         placeHint();
+        placeAloneHint();
+    }
     for (auto it = m_held.begin(); it != m_held.end();) {
         if (it->second.complete) {
             apply(it->second);
@@ -231,6 +244,35 @@ void Merge::placeHint()
         m_betterFirstRow = m_betterFirstRow || (!hint.partial && at == 0 && m_sink.currentRow() == 0);
         m_sink.insert(at, row);
     }
+}
+
+// An instant command's keyword typed alone, its answer still to come (a
+// plugin starting): a row offering the command, first and current, so that
+// Enter takes the user into its list instead of opening the first file
+// found. The answer takes its place (applyAlone).
+void Merge::placeAloneHint()
+{
+    if (m_alonePlugin.isEmpty())
+        return;
+    if (const auto held = m_held.find(m_alonePlugin + u'/' + m_aloneCommand); held != m_held.end() && held->second.complete)
+        return; // namesShown puts the answer itself in
+    for (int i = 0; i < m_sink.count(); ++i) {
+        if (keywordAlone(m_sink.row(i)))
+            return; // the row, or the answer, is there
+    }
+    for (const Match& m : m_catalog.match(m_text)) {
+        if (m.kind != Match::Kind::Keyword || !m.alone)
+            continue;
+        m_betterFirstRow = m_betterFirstRow || m_sink.currentRow() == 0;
+        m_sink.insert(0, hintRow(m, m_hintText, m_locale));
+        return;
+    }
+}
+
+bool Merge::keywordAlone(const SearchResult& row) const
+{
+    return !m_alonePlugin.isEmpty() && row.isPlugin() && row.plugin->pluginId == m_alonePlugin
+        && row.plugin->commandId == m_aloneCommand;
 }
 
 int Merge::pluginRows() const
@@ -376,6 +418,10 @@ void Merge::apply(const Batch& batch)
     const Command* command = entry && entry->manifest ? entry->manifest->command(batch.commandId) : nullptr;
     if (!command)
         return;
+    if (batch.pluginId == m_alonePlugin && batch.commandId == m_aloneCommand) {
+        applyAlone(batch);
+        return;
+    }
     SearchResults rows = rowsOf(*entry, *command, batch.items, true);
     const bool content = command->contentSearch;
     if (content) {
@@ -461,6 +507,52 @@ void Merge::apply(const Batch& batch)
         ++onList;
         m_betterFirstRow = m_betterFirstRow || (at == 0 && m_sink.currentRow() == 0);
         m_sink.insert(at, r);
+    }
+}
+
+// The answer of the instant command whose keyword was typed alone: its rows
+// as its own list would have them (every one, the plugin's order), at the
+// top of the search's rows; below the keyboard's row once the user has moved
+// it. Answering again, the rows still there are rewritten where they are.
+void Merge::applyAlone(const Batch& batch)
+{
+    const Entry* entry = m_catalog.find(batch.pluginId);
+    const Command* command = entry && entry->manifest ? entry->manifest->command(batch.commandId) : nullptr;
+    if (!command)
+        return;
+    const SearchResults rows = rowsOf(*entry, *command, batch.items, false);
+    QSet<QString> wanted;
+    for (const SearchResult& r : rows)
+        wanted.insert(r.path);
+    // The keyboard's row by what it is: the rows taken out below move it.
+    const int current = m_sink.currentRow();
+    const QString below = current > 0 && current < m_sink.count() ? m_sink.row(current).path : QString();
+    // What is not in the answer goes (the row that stood in for it too),
+    // from the end: the rows before keep their numbers.
+    for (int i = m_sink.count() - 1; i >= 0; --i) {
+        if (keywordAlone(m_sink.row(i)) && !wanted.contains(m_sink.row(i).path))
+            m_sink.remove(i);
+    }
+    int at = 0;
+    for (int i = 0; i < m_sink.count() && !below.isEmpty(); ++i) {
+        if (m_sink.row(i).path == below) {
+            at = i + 1;
+            break;
+        }
+    }
+    for (const SearchResult& r : rows) {
+        int was = -1;
+        for (int i = 0; i < m_sink.count() && was < 0; ++i) {
+            if (m_sink.row(i).path == r.path)
+                was = i;
+        }
+        if (was >= 0) {
+            m_sink.update(was, r);
+            at = was + 1;
+            continue;
+        }
+        m_betterFirstRow = m_betterFirstRow || (at == 0 && current == 0);
+        m_sink.insert(at++, r);
     }
 }
 
