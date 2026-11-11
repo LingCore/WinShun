@@ -43,6 +43,11 @@ Result evaluate(const std::string& text);
 // or a phone number does not qualify).
 bool looksLikeExpression(const std::string& text);
 
+// "2024-1987=": a sum typed as on a calculator, the "=" (or its full-width
+// form) after it. Taken off `text`, with the blanks before it; true if it
+// was there: the sum was asked for, whatever it looks like.
+bool takeTrailingEquals(std::string& text);
+
 // True for two years with the later one second, "1998-2003": a span of
 // years, searched for as it stands. The earlier one second, "2024-1987", is
 // a sum (an age), and so is anything spaced out or outside 1900 to 2099.

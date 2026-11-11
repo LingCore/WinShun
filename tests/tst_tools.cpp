@@ -14,6 +14,7 @@
 #include <QRegularExpression>
 #include <QTest>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -162,6 +163,26 @@ private slots:
         QVERIFY(!calc::looksLikeYearRange("1998-2003-1"));
         QVERIFY(!calc::looksLikeYearRange(""));
         QCOMPARE(value("2024-1987"), 37.0);
+        // "=" after the sum, as on a calculator: asked for, a span of years too.
+        const auto firesAsked = [&](const QString& text) {
+            return std::ranges::any_of(triggers, [&](const QRegularExpression& re) { return re.match(text).hasMatch(); });
+        };
+        for (const QString& yes : {u"2024-1985="_s, u"1985-2024="_s, u"1+2 ="_s, u"3*(4+5)="_s, u"10/4＝"_s, u"2026-10="_s, u"-5+3="_s})
+            QVERIFY2(firesAsked(yes), qPrintable(yes));
+        for (const QString& no : {u"report="_s, u"a=1"_s, u"2024="_s, u"x-1="_s, u"=="_s, u"1+2=="_s})
+            QVERIFY2(!firesAsked(no), qPrintable(no));
+        std::string typed = "1985-2024 =";
+        QVERIFY(calc::takeTrailingEquals(typed));
+        QCOMPARE(typed, std::string("1985-2024"));
+        typed = "10/4\xEF\xBC\x9D";
+        QVERIFY(calc::takeTrailingEquals(typed));
+        QCOMPARE(typed, std::string("10/4"));
+        typed = "1+2";
+        QVERIFY(!calc::takeTrailingEquals(typed));
+        QCOMPARE(typed, std::string("1+2"));
+        typed = "=";
+        QVERIFY(calc::takeTrailingEquals(typed));
+        QVERIFY(typed.empty());
         for (const QString& no : {u"2026-10"_s, u"2026-1"_s, u"2024-01-02"_s, u"1999-12"_s, u"2023-2024"_s, u"1998-2003"_s, u"400-800-1234"_s, u"2024-01-02 15:04"_s,
                  u"2024/01/02"_s, u"10/29/2026"_s, u"report-2"_s, u"99"_s, u"-5"_s, u"abc-9"_s})
             QVERIFY2(!fires(no), qPrintable(no));

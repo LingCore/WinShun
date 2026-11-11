@@ -490,6 +490,22 @@ bool looksLikeExpression(const std::string& text)
     return digit && op && depth == 0;
 }
 
+bool takeTrailingEquals(std::string& text)
+{
+    constexpr std::string_view kWide = "\xEF\xBC\x9D"; // ＝
+    std::size_t cut = 0;
+    if (text.ends_with('='))
+        cut = 1;
+    else if (text.ends_with(kWide))
+        cut = kWide.size();
+    else
+        return false;
+    text.erase(text.size() - cut);
+    while (!text.empty() && (text.back() == ' ' || text.back() == '\t'))
+        text.pop_back();
+    return true;
+}
+
 bool looksLikeYearRange(std::string_view text)
 {
     if (text.size() != 9 || text[4] != '-')

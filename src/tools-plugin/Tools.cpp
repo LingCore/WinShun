@@ -76,7 +76,9 @@ private:
 
     Items calc(const Query& q)
     {
-        const std::string text = winshun::trim(q.text);
+        std::string text = winshun::trim(q.text);
+        // "2024-1987=", as typed on a calculator: asked for, as after the keyword (GitHub #281).
+        const bool asked = tools::calc::takeTrailingEquals(text);
         Items items;
         if (text.empty()) {
             if (pushed(q))
@@ -105,7 +107,7 @@ private:
         }
         // Typed without "=", 1998-2003 is a span of years to search for; the
         // manifest's trigger cannot tell it from 2024-1987 (GitHub #281).
-        if (pushed(q) && tools::calc::looksLikeYearRange(text))
+        if (pushed(q) && !asked && tools::calc::looksLikeYearRange(text))
             return items;
         const tools::calc::Result result = tools::calc::evaluate(text);
         if (!result.ok()) {
