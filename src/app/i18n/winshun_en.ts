@@ -2607,6 +2607,10 @@
 <context>
     <name>Main</name>
     <message>
+        <source>新名字</source>
+        <translation>New name</translation>
+    </message>
+    <message>
         <source>Win顺</source>
         <translation>WinShun</translation>
     </message>
@@ -11394,6 +11398,42 @@ Content index: %5</translation>
     <message>
         <source>没有删除“%1”</source>
         <translation>“%1” was not deleted</translation>
+    </message>
+    <message>
+        <source>重命名</source>
+        <translation>Rename</translation>
+    </message>
+    <message>
+        <source>名字不能是空的</source>
+        <translation>The name cannot be empty</translation>
+    </message>
+    <message>
+        <source>名字里不能有 \ / : * ? &quot; &lt; &gt; |</source>
+        <translation>A name cannot have \ / : * ? &quot; &lt; &gt; | in it</translation>
+    </message>
+    <message>
+        <source>“%1”是 Windows 保留的名字，换一个</source>
+        <translation>“%1” is a name Windows keeps for itself; choose another</translation>
+    </message>
+    <message>
+        <source>名字不能以句点结尾</source>
+        <translation>A name cannot end with a dot</translation>
+    </message>
+    <message>
+        <source>名字太长了</source>
+        <translation>The name is too long</translation>
+    </message>
+    <message>
+        <source>这里已经有“%1”了，换一个名字</source>
+        <translation>There is a “%1” here already; choose another name</translation>
+    </message>
+    <message>
+        <source>没有重命名“%1”</source>
+        <translation>“%1” was not renamed</translation>
+    </message>
+    <message>
+        <source>已重命名为“%1”</source>
+        <translation>Renamed to “%1”</translation>
     </message>
     <message>
         <source>已将“%1”移到回收站</source>

@@ -65,6 +65,7 @@ qt_add_library(wscore STATIC
     PasteKeys.h
     ShortcutAgain.h
     Snapshot.cpp Snapshot.h
+    RenameCheck.h
     SearchTyping.h
     SwitchCommand.cpp SwitchCommand.h SwitchIntent.h
     TapTeller.h

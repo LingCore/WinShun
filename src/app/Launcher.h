@@ -284,6 +284,7 @@ public:
         SwitchOff,
         EditPicture, // 编辑: a screenshot's row, in the editing window (Shift+Enter)
         BrowseFolder, // list a folder in Win顺, then keep typing to search there
+        Rename, // 重命名: a file's or folder's row, in place (F2; Main.qml opens the box, see beginRename)
         PluginAction = 100,
         PluginFileAction = 200
     };
@@ -603,6 +604,18 @@ public:
     // stays open under it, and goes, as for 打开, once a command that opens
     // something was picked (shellcontext::keepsLauncher).
     Q_INVOKABLE bool hasSystemMenu(int row) const;
+    // Renaming a row's file or folder in place (GitHub #285): beginRename
+    // says whether the row is one to rename (a file or folder that is there;
+    // one row, not a selection) and what its box starts with (renameName,
+    // the first renameStem characters picked: not the extension);
+    // finishRename takes the name typed: false, with the reason flashed, when
+    // it is none Windows takes or is taken already (the box stays), else the
+    // shell is asked and the row follows.
+    Q_INVOKABLE bool beginRename(int row);
+    Q_INVOKABLE bool finishRename(const QString& name);
+    Q_INVOKABLE void cancelRename() { m_renaming.reset(); }
+    Q_INVOKABLE QString renameName() const { return m_renaming ? m_renaming->name : QString(); }
+    Q_INVOKABLE int renameStem() const;
     Q_INVOKABLE void showSystemMenu(int row, const QVariant& globalPos = {});
     bool systemMenuOpen() const { return m_systemMenuOpen; }
     // Open, or asked for a moment ago: the context-menu event the Menu
@@ -948,6 +961,7 @@ private:
     void runSystemMenu(const QStringList& paths, std::optional<QPointF> globalPos);
     void forgetGone(const QStringList& paths, int attempt);
     bool forgetRecycled(const SearchResult& result); // forgetRow, unless it is still there (then false)
+    void onRenamed(const SearchResult& was, const QString& newName, bool ok);
     void forgetRow(const SearchResult& result); // out of the list (its count) and the history
     void forgetMissing(const SearchResult& r, Action action); // an action's file not there: said so, out of the history
     std::function<void(bool)> reportFailure(const QString& name);
@@ -1224,6 +1238,7 @@ private:
     bool m_inTaskbarBox = false;
     bool m_keysRouted = false;
     bool m_systemMenuOpen = false; // the shell's menu is up (its loop runs inside runSystemMenu)
+    std::optional<SearchResult> m_renaming; // the row whose name is being typed (beginRename)
     bool m_systemCommand = false; // see systemCommandRunning
     QElapsedTimer m_systemMenuAsked; // since showSystemMenu was last called
     std::optional<std::pair<int, int>> m_held; // holdUntilShown(): action, number

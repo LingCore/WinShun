@@ -4390,6 +4390,64 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
         auto* view = window->property("view").value<QObject*>();
         check(!launcher.gallery() && view && launcher.results()->pathAt(view->property("currentIndex").toInt()) == chosen,
             "switching to list lost the current file");
+        // Renaming in place (GitHub #285): F2 opens a box over the row with
+        // the name up to its extension picked; a name Windows does not take
+        // keeps the box; Enter renames the file on the disk and the row; Esc
+        // leaves both alone. Put back afterwards (the checks below go by path).
+        if (view) {
+            const int row = view->property("currentIndex").toInt();
+            const QString was = launcher.results()->pathAt(row);
+            const QFileInfo file(was);
+            auto* field = visualNamed(window->contentItem(), u"searchField"_s);
+            const auto press = [&](int code) {
+                QKeyEvent down(QEvent::KeyPress, code, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &down);
+                QKeyEvent up(QEvent::KeyRelease, code, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &up);
+                pump(60);
+            };
+            const auto waitFor = [&](const QString& path) {
+                QElapsedTimer waited;
+                waited.start();
+                while (!QFileInfo::exists(path) && waited.elapsed() < 5000)
+                    pump(20);
+                pump(150); // the row follows on the GUI thread
+                return QFileInfo::exists(path);
+            };
+            if (field)
+                field->forceActiveFocus();
+            press(Qt::Key_F2);
+            auto* box = visualNamed(window->contentItem(), u"renameBox"_s);
+            check(file.exists() && box && box->isVisible() && box->property("text").toString() == file.fileName()
+                    && box->property("inputFocused").toBool(),
+                "F2 did not open the rename box with the file's name");
+            if (box && box->isVisible())
+                check(saveGrab(window, output.filePath(u"rename-box.png"_s)), "could not save the rename box's picture");
+            if (box && box->isVisible()) {
+                const QString renamed = file.absolutePath() + u"/renamed-"_s + file.fileName();
+                box->setProperty("text", u"bad:name"_s + u'.' + file.suffix());
+                press(Qt::Key_Return);
+                check(box->isVisible() && file.exists() && launcher.results()->pathAt(row) == was, "a name with a colon was taken");
+                box->setProperty("text", u"renamed-"_s + file.fileName());
+                press(Qt::Key_Return);
+                check(waitFor(renamed) && !QFileInfo::exists(was), "Enter did not rename the file on the disk");
+                check(!box->isVisible() && field && field->hasActiveFocus(), "the search box did not get the keyboard back after renaming");
+                check(QDir::cleanPath(launcher.results()->pathAt(row)) == QDir::cleanPath(renamed)
+                        && view->property("currentIndex").toInt() == row,
+                    "the row did not take the new name where it was");
+                press(Qt::Key_F2);
+                check(box->isVisible() && box->property("text").toString() == u"renamed-"_s + file.fileName(), "F2 on the renamed row shows its new name");
+                press(Qt::Key_Escape);
+                check(!box->isVisible() && QFileInfo::exists(renamed) && window->isVisible(), "Esc in the box did more than close it");
+                press(Qt::Key_F2);
+                box->setProperty("text", file.fileName());
+                press(Qt::Key_Return);
+                check(waitFor(was) && QDir::cleanPath(launcher.results()->pathAt(row)) == QDir::cleanPath(was), "renaming back did not work");
+                if (box->isVisible())
+                    press(Qt::Key_Escape);
+                say(u"rename in place: F2, a refused name, Enter (disk and row), Esc, and back"_s);
+            }
+        }
         click(visualNamed(window->contentItem(), u"fileViewGallery"_s));
         settle(window);
         check(launcher.gallery() && launcher.results()->pathAt(grid->property("currentIndex").toInt()) == chosen,

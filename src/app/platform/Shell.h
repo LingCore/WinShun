@@ -110,6 +110,10 @@ void launchApp(const QString& launchPath, bool asAdministrator = false, std::fun
 // permanently what cannot be recycled). `done` runs on the worker thread with
 // whether the shell reported success; `owner` parents any shell dialog.
 void recycle(const QStringList& paths, HWND owner, std::function<void(bool)> done);
+// Gives a file or folder another name where it is, as Explorer does (its
+// Ctrl+Z takes it back; the shell asks for administrator rights itself where
+// the folder needs them). `done` as recycle's.
+void rename(const QString& path, const QString& newName, HWND owner, std::function<void(bool)> done);
 
 void copyText(const QString& text);
 void copyFiles(const QStringList& paths); // the files, as Explorer copies them (no text)

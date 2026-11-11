@@ -2,6 +2,7 @@
 #include "platform/ContentOpen.h"
 #include "Phosphor.h"
 #include "PreviewShortcut.h"
+#include "RenameCheck.h"
 #include "ResultColumns.h"
 #include "Settings.h"
 #include "Wsl.h"
@@ -4608,7 +4609,8 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
     case FavoriteFolder:
     case EditFavorite:
     case SystemMenu:
-        break; // not for a file, or done above (SystemMenu: trigger)
+    case Rename:
+        break; // not for a file, or done above (SystemMenu: trigger; Rename: Main.qml's box)
     }
 }
 
@@ -5254,6 +5256,96 @@ void Launcher::onRecycledMany(const SearchResults& items, bool ok)
         flash(tr("已删除 %Ln 项", nullptr, gone));
 }
 
+// A file or folder of the user's that is there now: not an app, a place, a
+// web page, a plugin's or the clipboard's row, nor a drive or a share itself.
+static bool renamable(const SearchResult& r)
+{
+    return !r.isApp() && !r.isPlugin() && r.clipId == 0 && !r.missing && !r.offline && r.path.size() > 3
+        && r.path.lastIndexOf(u'\\') > 1 && !r.name.isEmpty();
+}
+
+bool Launcher::beginRename(int row)
+{
+    m_renaming.reset();
+    const SearchResult* r = m_results.at(row);
+    if (!r || !renamable(*r) || m_results.selectedCount() > 1)
+        return false;
+    m_renaming = *r;
+    return true;
+}
+
+int Launcher::renameStem() const
+{
+    return m_renaming ? static_cast<int>(renamecheck::stemLength(m_renaming->name, m_renaming->isDir)) : 0;
+}
+
+bool Launcher::finishRename(const QString& typed)
+{
+    if (!m_renaming)
+        return true;
+    using renamecheck::Problem;
+    const SearchResult was = *m_renaming;
+    const QString name = renamecheck::cleaned(typed);
+    switch (renamecheck::problem(was.name, typed)) {
+    case Problem::None: break;
+    case Problem::Same:
+        m_renaming.reset();
+        return true; // nothing to do
+    case Problem::Empty:
+        flash(tr("名字不能是空的"));
+        return false;
+    case Problem::Character:
+        flash(tr("名字里不能有 \\ / : * ? \" < > |"));
+        return false;
+    case Problem::Reserved:
+        flash(tr("“%1”是 Windows 保留的名字，换一个").arg(name));
+        return false;
+    case Problem::Ending:
+        flash(tr("名字不能以句点结尾"));
+        return false;
+    case Problem::Long:
+        flash(tr("名字太长了"));
+        return false;
+    }
+    const QString folder = was.path.left(was.path.lastIndexOf(u'\\') + 1);
+    // Another one of that name there (not this one in another case).
+    if (name.compare(was.name, Qt::CaseInsensitive) != 0 && QFileInfo::exists(folder + name)) {
+        flash(tr("这里已经有“%1”了，换一个名字").arg(name));
+        return false;
+    }
+    m_renaming.reset();
+    const auto owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    shell::rename(was.path, name, owner, [self = QPointer(this), was, name](bool ok) {
+        QMetaObject::invokeMethod(qApp, [self, was, name, ok] {
+            if (self)
+                self->onRenamed(was, name, ok);
+        }, Qt::QueuedConnection);
+    });
+    return true;
+}
+
+// The row takes the new name where it is (the index hears of it from the
+// disk a moment later); a recent or pinned entry of the old path goes with it.
+void Launcher::onRenamed(const SearchResult& was, const QString& newName, bool ok)
+{
+    const QString path = was.path.left(was.path.lastIndexOf(u'\\') + 1) + newName;
+    if (!ok || !QFileInfo::exists(path)) { // cancelled, in use, access denied…
+        flash(tr("没有重命名“%1”").arg(was.name));
+        return;
+    }
+    for (int row = 0; row < m_results.count(); ++row) {
+        const SearchResult* r = m_results.at(row);
+        if (r->path.compare(was.path, Qt::CaseInsensitive) != 0)
+            continue;
+        SearchResult renamed = *r;
+        renamed.name = newName;
+        renamed.path = path;
+        m_results.update(row, renamed);
+        break;
+    }
+    flash(tr("已重命名为“%1”").arg(newName));
+}
+
 bool Launcher::forgetRecycled(const SearchResult& result)
 {
     if (QFileInfo::exists(result.path))
@@ -5507,6 +5599,8 @@ QVariantList Launcher::menuItems(int row) const
     if (!r->isDir && !r->missing && !r->offline && shell::canRunAsAdministrator(r->path))
         items.append(entry(RunAsAdmin, tr("以管理员身份运行"), u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
     fileCommandItems(items);
+    if (renamable(*r) && m_results.selectedCount() <= 1)
+        items.append(entry(Rename, tr("重命名"), u"F2"_s, u"\uE70F"_s)); // Edit: Phosphor's pencil
     items.append(separator);
     items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
     items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));

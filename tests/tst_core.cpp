@@ -44,6 +44,7 @@
 #include "ShareReach.h"
 #include "Snapshot.h"
 #include "SwitchCommand.h"
+#include "RenameCheck.h"
 #include "SystemCatalog.h"
 #include "TextUtil.h"
 #include "Unc.h"
@@ -10274,6 +10275,33 @@ private slots:
         }
         // No switch in the list: nothing is one.
         QVERIFY(!parseSwitchCommand(u"关蓝牙", PlaceList {}));
+    }
+
+    // A name typed for a file renamed in place (GitHub #285).
+    void renameNames()
+    {
+        using renamecheck::Problem;
+        using renamecheck::problem;
+        QCOMPARE(problem(u"a.txt"_s, u"b.txt"_s), Problem::None);
+        QCOMPARE(problem(u"a.txt"_s, u"  b.txt  "_s), Problem::None); // the spaces around it go
+        QCOMPARE(renamecheck::cleaned(u"  b.txt  "_s), u"b.txt"_s);
+        QCOMPARE(problem(u"a.txt"_s, u"A.TXT"_s), Problem::None); // another case is another name to show
+        QCOMPARE(problem(u"a.txt"_s, u"a.txt"_s), Problem::Same);
+        QCOMPARE(problem(u"a.txt"_s, u"   "_s), Problem::Empty);
+        QCOMPARE(problem(u"a.txt"_s, u"报告 2026（终稿）.txt"_s), Problem::None);
+        for (const QString& bad : {u"a:b"_s, u"a/b"_s, u"a\b"_s, u"a*"_s, u"a?"_s, u"\"a\""_s, u"<a>"_s, u"a|b"_s, u"a	b"_s})
+            QVERIFY2(problem(u"x"_s, bad) == Problem::Character, qPrintable(bad));
+        for (const QString& reserved : {u"CON"_s, u"nul.txt"_s, u"Com1"_s, u"LPT9.tar.gz"_s})
+            QVERIFY2(problem(u"x"_s, reserved) == Problem::Reserved, qPrintable(reserved));
+        QCOMPARE(problem(u"x"_s, u"console.log"_s), Problem::None); // begins with one, is not one
+        QCOMPARE(problem(u"x"_s, u"name."_s), Problem::Ending);
+        QCOMPARE(problem(u"x"_s, QString(256, u'a')), Problem::Long);
+        QCOMPARE(problem(u"x"_s, QString(255, u'a')), Problem::None);
+        // What the box picks: up to the extension; all of a folder's, and of ".gitignore".
+        QCOMPARE(renamecheck::stemLength(u"report.final.pdf"_s, false), 12);
+        QCOMPARE(renamecheck::stemLength(u"README"_s, false), 6);
+        QCOMPARE(renamecheck::stemLength(u".gitignore"_s, false), 10);
+        QCOMPARE(renamecheck::stemLength(u"v1.2"_s, true), 4);
     }
 
     // Win顺's own pages (GitHub #254) and the restart as administrator (GitHub
