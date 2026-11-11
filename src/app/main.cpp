@@ -5,6 +5,7 @@
 #include "Diagnostics.h"
 #include "FileIconProvider.h"
 #include "DisplayDiagnostics.h"
+#include "DisplayProfile.h"
 #include "DropPieHelper.h"
 #include "Backup.h"
 #include "Migration.h"
@@ -35,7 +36,6 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QProcess>
-#include <QTemporaryDir>
 
 #include <windows.h>
 #include <shellapi.h>
@@ -244,9 +244,9 @@ int main(int argc, char* argv[])
         ::LocalFree(wide);
     }
     const bool clipboardDisplay = ws::clipboardDisplayRequested(wideArgs);
-    std::unique_ptr<QTemporaryDir> displayProfile;
+    std::unique_ptr<ws::DisplayProfile> displayProfile;
     if (clipboardDisplay) {
-        displayProfile = std::make_unique<QTemporaryDir>(QDir::tempPath() + u"/WinShun-display-XXXXXX"_s);
+        displayProfile = std::make_unique<ws::DisplayProfile>();
         if (!displayProfile->isValid()) return 4;
         ws::Settings::useProfile(displayProfile->path());
     }

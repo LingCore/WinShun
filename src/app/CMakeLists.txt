@@ -46,6 +46,7 @@ qt_add_executable(WinShun WIN32
     platform/PlainHotkeys.cpp platform/PlainHotkeys.h
     ClipboardDisplay.cpp ClipboardDisplay.h ClipboardDisplayProtocol.h
     ClipboardDisplayReplica.cpp ClipboardDisplayReplica.h
+    DisplayProfile.cpp DisplayProfile.h
     CommandLine.cpp CommandLine.h
     ColorText.cpp ColorText.h
     platform/ContentOpen.cpp platform/ContentOpen.h

@@ -11,6 +11,8 @@
 #include "ContextMenuGuard.h"
 #include "TextField.h"
 #include "ClipboardDisplay.h"
+#include "DisplayProfile.h"
+#include "Settings.h"
 #include "platform/WindowEffects.h"
 
 #include <QElapsedTimer>
@@ -29,7 +31,7 @@
 #include <QQuickWindow>
 #include <QScreen>
 #include <QStyleHints>
-#include <QTemporaryDir>
+#include <QThreadPool>
 #include <QTranslator>
 
 #include <algorithm>
@@ -462,8 +464,9 @@ int runClipboardDisplay(const QStringList& args)
     if (!replica.connectTo(pipe, parent)) return ERROR_ACCESS_DENIED;
     engine.addImageProvider(u"fileicon"_s, new DisplayImages(&replica));
     engine.addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider); // the pictures' own files, as before
-    QTemporaryDir profile;
-    Placement placement(profile.filePath(u"state.ini"_s), u"Clipboard"_s);
+    // Its own folder (DisplayProfile, main.cpp); the ones earlier runs left go now.
+    QThreadPool::globalInstance()->start([] { DisplayProfile::sweep(); });
+    Placement placement(Settings::dataDir() + u"/state.ini"_s, u"Clipboard"_s);
     WindowFrame frame(false);
     QQmlComponent component(&engine, u"WinShun"_s, u"ClipboardWindow"_s);
     QObject* root = component.createWithInitialProperties({{u"clipboard"_s, QVariant::fromValue<QObject*>(&replica)},

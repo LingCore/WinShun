@@ -1,4 +1,5 @@
 #include "ClipboardDisplayProtocol.h"
+#include "DisplayProfile.h"
 
 #include <QtTest>
 
@@ -62,6 +63,52 @@ private slots:
         Decoder decoder;
         QVERIFY(!decoder.append(QByteArray(3 * kMaxFrame + 1, 'x')));
         QVERIFY(decoder.failed());
+    }
+    // The display process is ended with its job and leaves its folder: the
+    // next one removes it, and never the folder of one still running.
+    void profileFoldersSwept()
+    {
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const QDir dir(root.path());
+        const auto file = [&dir](const QString& name) {
+            QFile made(dir.filePath(name));
+            return made.open(QIODevice::WriteOnly) && made.write("x") == 1;
+        };
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        QVERIFY(dir.mkpath(u"WinShun-display-killed"_s) && file(u"WinShun-display-killed/state.ini"_s));
+        QVERIFY(dir.mkpath(u"WinShun-AbCdEf"_s)); // the second folder of versions up to 0.23
+        QVERIFY(dir.mkpath(u"WinShun-InUse1"_s) && file(u"WinShun-InUse1/import.db"_s));
+        QVERIFY(dir.mkpath(u"WinShun-preview-12345678"_s) && dir.mkpath(u"Other-display-1"_s));
+        ws::DisplayProfile running(root.path());
+        QVERIFY(running.isValid());
+        QVERIFY(QFileInfo(running.path()).fileName().startsWith(u"WinShun-display-"));
+
+        // Just made, no lock file in it yet: another process is about to take it.
+        QCOMPARE(ws::DisplayProfile::sweep(root.path(), now), 0);
+        QCOMPARE(dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot).size(), 6);
+
+        // A day on: what was left goes, what is in use or another's stays.
+        QVERIFY(file(dir.relativeFilePath(running.path() + u"/state.ini"_s)));
+        QCOMPARE(ws::DisplayProfile::sweep(root.path(), now.addDays(2)), 2);
+        QVERIFY(!dir.exists(u"WinShun-display-killed"_s));
+        QVERIFY(!dir.exists(u"WinShun-AbCdEf"_s));
+        QVERIFY(dir.exists(u"WinShun-InUse1/import.db"_s));
+        QVERIFY(dir.exists(u"WinShun-preview-12345678"_s) && dir.exists(u"Other-display-1"_s));
+        QVERIFY(QFileInfo::exists(running.path() + u"/state.ini"_s));
+        QVERIFY(running.isValid());
+    }
+    void profileFolderGoesWithItsOwner()
+    {
+        QTemporaryDir root;
+        QString path;
+        {
+            const ws::DisplayProfile profile(root.path());
+            QVERIFY(profile.isValid());
+            path = profile.path();
+        }
+        QVERIFY(!QFileInfo::exists(path));
+        QVERIFY(!ws::DisplayProfile(root.path() + u"/missing"_s).isValid());
     }
 };
 
