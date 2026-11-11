@@ -287,7 +287,7 @@ QHash<QString, QByteArray> g_pluginData; // sha1 -> the bytes of a data: icon
 constexpr qsizetype kPluginDataKept = 64;
 
 // "U+E8E5" (or "E8E5"), a Segoe Fluent / MDL2 code point, drawn with Phosphor
-// where mapped (phosphor::forSegoe), else with the system icon font; in the
+// where mapped (phosphor::resolve), else with the system icon font; in the
 // subtext colour of the theme, about three quarters of the box, as Glyph.qml
 // shows them.
 QImage glyphIcon(const QString& code, int px, bool dark)
@@ -298,7 +298,7 @@ QImage glyphIcon(const QString& code, int px, bool dark)
     if (!ok || point == 0 || point > 0x10FFFF)
         return {};
     const QString text = QString::fromUcs4(reinterpret_cast<const char32_t*>(&point), 1);
-    const std::optional<phosphor::Icon> icon = phosphor::forSegoe(text);
+    const std::optional<phosphor::Icon> icon = phosphor::resolve(text);
     QFont font(icon ? icon->family : SystemTheme::iconFontName());
     font.setPixelSize(std::max(8, int(px * 3 / 4 * (icon ? phosphor::kScale : 1.0))));
     // Never a character from another font: where an older icon font lacks

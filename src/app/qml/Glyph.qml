@@ -3,13 +3,17 @@ import QtQuick
 import QtQuick.Shapes
 import WinShun
 
-// An icon named by its Segoe Fluent / MDL2 code point, e.g. "" (search),
-// drawn with Phosphor (see phosphor::forSegoe); or the name of one drawn here
-// (see `drawn`).
+// An icon by its Phosphor name (iconName), or by its legacy Segoe Fluent /
+// MDL2 code point (glyph), drawn with Phosphor (see phosphor::resolve); or
+// the name of one drawn here (see `drawn`).
 Item {
     id: icon
 
     property string glyph
+    // A Phosphor icon by name, e.g. "heart"; filled picks the Fill weight.
+    // Prefer this for new icons: the name is stable, a Segoe code is not.
+    property string iconName
+    property bool filled: false
     // A second font glyph drawn over the first, as MDL2 fills pair with their
     // outlines: PinnedFill is only the head, the needle is in Pin. Not for a
     // Phosphor icon, whole in one glyph.
@@ -29,14 +33,19 @@ Item {
 
     // {text, family}, or undefined: the system icon font draws it. The custom
     // path uses terminal-window's matching frame to resolve the same font em.
-    readonly property var phosphor: caption ? undefined : SystemTheme.phosphorIcon(drawn ? "\uE756" : glyph)
+    readonly property string spec: iconName.length > 0
+                                   ? (filled ? "ph-fill:" : "ph:") + iconName
+                                   : glyph
+    readonly property var phosphor: caption ? undefined : SystemTheme.phosphorIcon(drawn ? "\uE756" : spec)
     // Not in the system icon font (an older Windows 10; seen 2026-10-29):
     // nothing, never the character some other font has there (see
-    // SystemTheme.hasGlyph).
+    // SystemTheme.hasGlyph). An unknown name stays empty too: a "ph:..." spec
+    // must never reach the system font, as Phosphor and Segoe share the PUA.
     readonly property string shown: drawn ? glyph
                                   : phosphor ? phosphor.text
+                                  : iconName.length > 0 ? ""
                                   : SystemTheme.hasGlyph(glyph) ? glyph : ""
-    readonly property bool missing: shown.length === 0 && glyph.length > 0 // keeps its room
+    readonly property bool missing: shown.length === 0 && (glyph.length > 0 || iconName.length > 0) // keeps its room
 
     // The icon fonts' line box is exactly their em square, so drawn icons
     // line up with the glyphs. A Phosphor icon, drawn larger, stays in its box.
