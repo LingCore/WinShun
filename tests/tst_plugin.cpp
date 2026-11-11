@@ -2011,6 +2011,8 @@ private slots:
         QCOMPARE(parseIcon(u"ph-fill:heart"_s).kind, IconSpec::Kind::Phosphor);
         QCOMPARE(parseIcon(u"ph-fill:heart"_s).value, u"ph-fill:heart"_s);
         QCOMPARE(parseIcon(u"ph:Heart"_s).kind, IconSpec::Kind::None); // names are lowercase
+        QCOMPARE(parseIcon(u"PH-Fill:heart"_s).value, u"ph-fill:heart"_s); // the prefix in any case, kept in lower case
+        QCOMPARE(parseIcon(u"ph:"_s + QString(65, u'a')).kind, IconSpec::Kind::None); // longer than any name
         QCOMPARE(parseIcon(u"ph:"_s).kind, IconSpec::Kind::None);
         QCOMPARE(parseIcon(u"color:#ff8800"_s).kind, IconSpec::Kind::Color);
         QCOMPARE(parseIcon(u"color:#ff8800"_s).value, u"#ff8800"_s);

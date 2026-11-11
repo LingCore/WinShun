@@ -62,9 +62,12 @@ IconSpec parseIcon(const QString& text)
                     const char16_t ch = c.unicode();
                     return (ch >= u'a' && ch <= u'z') || (ch >= u'0' && ch <= u'9') || ch == u'-';
                 });
-                if (!named)
+                // No name of Phosphor's is longer than 40 characters. The
+                // prefix in lower case, as phosphor::resolve reads it
+                // ("PH:heart" is taken here, whatever its case).
+                if (!named || value.size() > 64)
                     return spec;
-                spec.value = text;
+                spec.value = text.toLower();
             } else
                 spec.value = value;
             spec.kind = p.kind;

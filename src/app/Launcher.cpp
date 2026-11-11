@@ -1,5 +1,6 @@
 #include "Launcher.h"
 #include "platform/ContentOpen.h"
+#include "Phosphor.h"
 #include "PreviewShortcut.h"
 #include "ResultColumns.h"
 #include "Settings.h"
@@ -5314,10 +5315,11 @@ QVariantList Launcher::menuItems(int row) const
             const uint code = icon.startsWith(u"glyph:U+", Qt::CaseInsensitive) ? icon.mid(8).toUInt(&ok, 16) : 0;
             // A named Phosphor icon stays a spec: the tray menu resolves it
             // when it draws the row (see phosphor::resolve).
-            const QString glyph = icon.startsWith(u"ph:"_s, Qt::CaseInsensitive)
-                                  || icon.startsWith(u"ph-fill:"_s, Qt::CaseInsensitive)
-                                      ? icon
-                                      : QString(QChar(static_cast<char16_t>(ok && code >= 0xE000 && code <= 0xF8FF ? code : 0xEA86)));
+            // A name Phosphor does not have is the puzzle, as a glyph not there is.
+            const QString named = icon.toLower();
+            const QString glyph = (named.startsWith(u"ph:"_s) || named.startsWith(u"ph-fill:"_s)) && phosphor::resolve(named)
+                ? named
+                : QString(QChar(static_cast<char16_t>(ok && code >= 0xE000 && code <= 0xF8FF ? code : 0xEA86)));
             if (i == 0)
                 into.append(separator);
             into.append(entry(static_cast<Action>(PluginFileAction + static_cast<int>(m_menuFileCommands.size())), text, QString(),

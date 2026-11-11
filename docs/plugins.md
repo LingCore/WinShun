@@ -397,7 +397,7 @@ item 可选提供 `modified`、`created`（带时区的 ISO 8601 字符串或 Un
 
 ### 图标
 
-`icon.png`（插件文件夹里的 PNG / JPG / ICO，相对路径；深色主题优先 `icon.dark.png`）、`ext:pdf`（扩展名的图标）、`file:C:\…`（某个文件的图标）、`app:<AUMID>`、`glyph:U+E8E5`（Segoe Fluent Icons 字形的编号；Win顺 自己用到的那些画成对应的 [Phosphor](https://phosphoricons.com) 图标，每台 Windows 都一样，其余用系统图标字体画，老 Win10 的字体里可能没有）、`ph:heart`（随程序带的 Phosphor 2.1.2 图标名，全套可用；`ph-fill:heart` 换成实心 Fill 字重；名字见 `third_party/phosphor/metadata/regular.css`，不认识的显示成拼图图标；不依赖 Windows 版本）、`color:#ff8800`（色块）、`data:image/png;base64,…`（≤ 64 KB）、`site:https://…`（网站自己的图标，和浏览器地址栏左边那个一样：Win顺 只向该网站首页取一次、存在本地、一个月更新；没取到前显示浏览器图标；网址的路径部分不会发出去）。插件文件夹以外的路径不认，SVG 不认。
+`icon.png`（插件文件夹里的 PNG / JPG / ICO，相对路径；深色主题优先 `icon.dark.png`）、`ext:pdf`（扩展名的图标）、`file:C:\…`（某个文件的图标）、`app:<AUMID>`、`glyph:U+E8E5`（Segoe Fluent Icons 字形的编号；Win顺 自己用到的那些画成对应的 [Phosphor](https://phosphoricons.com) 图标，每台 Windows 都一样，其余用系统图标字体画，老 Win10 的字体里可能没有）、`ph:heart`（随程序带的 Phosphor 2.1.2 图标名，全套可用；`ph-fill:heart` 换成实心 Fill 字重；名字见 `third_party/phosphor/metadata/regular.css`，不认识的显示成拼图图标；不依赖 Windows 版本。0.25.0 起可用，更早的 Win顺 不认识这种写法，会改用命令或插件的图标；只用于命令和结果条目的图标，清单最外层的 `icon` 仍然是文件）、`color:#ff8800`（色块）、`data:image/png;base64,…`（≤ 64 KB）、`site:https://…`（网站自己的图标，和浏览器地址栏左边那个一样：Win顺 只向该网站首页取一次、存在本地、一个月更新；没取到前显示浏览器图标；网址的路径部分不会发出去）。插件文件夹以外的路径不认，SVG 不认。
 
 ## 权限
 
