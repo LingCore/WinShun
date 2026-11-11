@@ -5057,6 +5057,239 @@ private slots:
     }
 
     // GitHub #227: the save numbers only the names more than one entry has.
+    // A share read again and again, with what is gone only noted (as the
+    // ShareIndexer reads it): a pass whose findings are dropped, read again
+    // with nothing changed, adds nothing; one believed leaves the index as
+    // the share is (GitHub #227).
+    void sharePassesNeverMultiply()
+    {
+        struct Node {
+            bool folder = false;
+            std::map<std::string, Node> children;
+        };
+        const std::wstring rootPath = L"\\\\nas\\share";
+        const Crawler crawler(CrawlRules {});
+        const auto listed = [](const Node& node, std::string prefix, std::multiset<std::string>& out, auto&& self) -> void {
+            for (const auto& [name, child] : node.children) {
+                out.insert(prefix + '/' + name + (child.folder ? "/" : ""));
+                if (child.folder)
+                    self(child, prefix + '/' + name, out, self);
+            }
+        };
+        const auto indexed = [](const FileIndex& index, EntryId id, std::string prefix, std::multiset<std::string>& out, auto&& self) -> void {
+            for (EntryId c = index.entry(id).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling) {
+                const std::string name(index.name(c));
+                out.insert(prefix + '/' + name + (index.entry(c).isDir() ? "/" : ""));
+                if (index.entry(c).isDir())
+                    self(index, c, prefix + '/' + name, out, self);
+            }
+        };
+        for (const unsigned seed : {11u, 12u, 13u, 14u, 15u, 16u}) {
+            std::mt19937 random(seed);
+            const auto pick = [&](std::size_t n) { return static_cast<std::size_t>(random() % n); };
+            Node share;
+            share.folder = true;
+            FileIndex index;
+            const EntryId root = index.addRoot("\\\\nas\\share");
+            const Crawler::Lister list = [&](const Crawler::Root& dir, DirListing& out) {
+                out.clear();
+                const Node* node = &share;
+                std::wstring_view rest = std::wstring_view(dir.path).substr(rootPath.size());
+                while (!rest.empty()) {
+                    rest.remove_prefix(1);
+                    const std::size_t end = std::min(rest.find(L'\\'), rest.size());
+                    const auto it = node->children.find(wtf8::fromUtf16(wtf8::view(rest.substr(0, end))));
+                    if (it == node->children.end() || !it->second.folder)
+                        return false; // gone since its parent was read
+                    node = &it->second;
+                    rest.remove_prefix(end);
+                }
+                for (const auto& [name, child] : node->children) {
+                    const std::wstring wide(name.begin(), name.end());
+                    crawler.addToListing(out, dir, name, wide,
+                        static_cast<std::uint8_t>(EntryFlag::Remote | (child.folder ? EntryFlag::Directory : 0)), child.folder, 0, 0);
+                }
+                return true;
+            };
+            // What a pass found gone is taken out (believed) or not (dropped).
+            const auto pass = [&](bool believed) {
+                std::vector<EntryId> gone;
+                Crawler::SyncStats stats;
+                if (!crawler.sync(index, {{root, rootPath, EntryFlag::Remote}}, 2, false, {}, list, &gone, &stats))
+                    return false;
+                for (const EntryId id : gone) {
+                    if (believed)
+                        index.remove(id);
+                }
+                return true;
+            };
+            const auto change = [&] {
+                static const char* const words[] = {"src", "Build", "build", "data", "a", "A", "x.tmp", "node", "out"};
+                Node* node = &share;
+                for (int depth = static_cast<int>(pick(4)); depth > 0; --depth) {
+                    std::vector<Node*> folders;
+                    for (auto& [name, child] : node->children) {
+                        if (child.folder)
+                            folders.push_back(&child);
+                    }
+                    if (folders.empty())
+                        break;
+                    node = folders[pick(folders.size())];
+                }
+                const std::string name = std::string(words[pick(std::size(words))]) + (pick(2) ? std::to_string(pick(6)) : std::string());
+                const auto it = node->children.find(name);
+                const std::size_t what = pick(10);
+                if (it == node->children.end()) {
+                    node->children[name].folder = pick(3) == 0;
+                } else if (what < 4) {
+                    node->children.erase(it);
+                } else if (what < 7) {
+                    Node other; // a file where a folder was, or back
+                    other.folder = !it->second.folder;
+                    it->second = other;
+                } else {
+                    Node moved = std::move(it->second); // renamed, perhaps in its case only
+                    node->children.erase(it);
+                    std::string to = name;
+                    if (pick(2))
+                        to[0] = static_cast<char>(std::isupper(static_cast<unsigned char>(to[0])) ? std::tolower(to[0]) : std::toupper(to[0]));
+                    else
+                        to += "r";
+                    node->children[to] = std::move(moved);
+                }
+            };
+            for (int round = 0; round < 400; ++round) {
+                for (std::size_t n = pick(12); n > 0; --n)
+                    change();
+                const bool believed = pick(4) == 0;
+                QVERIFY(pass(believed));
+                // Read again as it is: nothing more comes of it.
+                const std::size_t before = index.liveCount();
+                QVERIFY(pass(believed));
+                if (index.liveCount() > before) {
+                    QFAIL(qPrintable(u"seed %1 round %2: read again unchanged, %3 entries became %4"_s
+                            .arg(seed).arg(round).arg(before).arg(index.liveCount())));
+                }
+                if (believed) {
+                    std::multiset<std::string> there, have;
+                    listed(share, {}, there, listed);
+                    indexed(index, root, {}, have, indexed);
+                    if (there != have) {
+                        QFAIL(qPrintable(u"seed %1 round %2: the share has %3 items, the index %4"_s
+                                .arg(seed).arg(round).arg(there.size()).arg(have.size())));
+                    }
+                }
+            }
+        }
+    }
+
+    // Every entry that is not removed can be reached from a root, whatever
+    // was added, moved and removed, in folders small and big (GitHub #227:
+    // an index of 180 million entries for half a million files).
+    void everyLiveEntryReachable()
+    {
+        const auto check = [](const FileIndex& index, int step) {
+            std::size_t kept = 0;
+            for (std::size_t c = 0; c < index.chunkCount(); ++c) {
+                for (const Entry& e : index.chunk(c))
+                    kept += !e.isDeleted();
+            }
+            std::size_t reached = 0;
+            std::vector<EntryId> stack(index.roots().begin(), index.roots().end());
+            while (!stack.empty() && reached <= kept) {
+                const EntryId id = stack.back();
+                stack.pop_back();
+                ++reached;
+                if (index.entry(id).isDeleted())
+                    return QTest::qVerify(false, "live", qPrintable(u"a removed entry in a list, step %1"_s.arg(step)), __FILE__, __LINE__);
+                if (!index.entry(id).isDir())
+                    continue;
+                for (EntryId c = index.entry(id).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling) {
+                    if (index.entry(c).parent != id)
+                        return QTest::qVerify(false, "parent", qPrintable(u"a child of another folder, step %1"_s.arg(step)), __FILE__, __LINE__);
+                    stack.push_back(c);
+                }
+            }
+            if (reached != kept || kept != index.liveCount()) {
+                return QTest::qVerify(false, "reachable",
+                    qPrintable(u"step %1: %2 reached, %3 not removed, %4 counted"_s.arg(step).arg(reached).arg(kept).arg(index.liveCount())),
+                    __FILE__, __LINE__);
+            }
+            return true;
+        };
+        for (const unsigned seed : {1u, 2u}) {
+            std::mt19937 random(seed);
+            const auto pick = [&](std::size_t n) { return static_cast<std::size_t>(random() % n); };
+            auto index = std::make_unique<FileIndex>();
+            std::vector<EntryId> folders {index->addRoot("C:"), index->addRoot("D:")};
+            std::vector<EntryId> all;
+            const auto refresh = [&] { // after ids changed, or to forget the removed
+                folders.assign(index->roots().begin(), index->roots().end());
+                all.clear();
+                for (std::size_t i = 0; i < index->slotCount(); ++i) {
+                    const Entry& e = index->entry(static_cast<EntryId>(i));
+                    if (e.isDeleted() || (e.flags & EntryFlag::Root))
+                        continue;
+                    all.push_back(static_cast<EntryId>(i));
+                    if (e.isDir())
+                        folders.push_back(static_cast<EntryId>(i));
+                }
+            };
+            const auto name = [&] {
+                static const char* const words[] = {"index.js", "README.md", "src", "Build", "build", "a", "A", "数据", "x.tmp"};
+                std::string n = words[pick(std::size(words))];
+                if (pick(3))
+                    n += std::to_string(pick(400));
+                return n;
+            };
+            for (int step = 0; step < 20000; ++step) {
+                // A few folders get most of what is added: they grow big.
+                const EntryId folder = folders[pick(4) ? pick(std::min<std::size_t>(folders.size(), 6)) : pick(folders.size())];
+                const std::size_t op = pick(100);
+                if (index->entry(folder).isDeleted() || !index->entry(folder).isDir()) {
+                    refresh();
+                } else if (op < 55) {
+                    const std::string n = name();
+                    if (index->childForUpdate(folder, n, true) == kNoEntry) {
+                        const bool dir = pick(5) == 0;
+                        const EntryId id = index->add(folder, n, dir ? EntryFlag::Directory : 0);
+                        all.push_back(id);
+                        if (dir)
+                            folders.push_back(id);
+                    }
+                } else if (op < 75 && !all.empty()) {
+                    index->remove(all[pick(all.size())]);
+                } else if (op < 95 && !all.empty()) {
+                    const EntryId id = all[pick(all.size())];
+                    if (!index->entry(id).isDeleted()) {
+                        const std::string n = pick(3) ? name() : std::string(index->name(id));
+                        const EntryId there = index->childForUpdate(folder, n, true);
+                        if (there != kNoEntry && there != id)
+                            index->remove(there);
+                        index->move(id, folder, n);
+                    }
+                } else if (op < 97) {
+                    index->setInterning(pick(2) == 0);
+                } else if (op < 99) {
+                    index->compact(pick(2) == 0);
+                    refresh();
+                } else {
+                    QTemporaryDir dir;
+                    const QString file = dir.filePath(u"index.bin"_s);
+                    QVERIFY(snapshot::save(*index, {}, {}, {}, file));
+                    auto contents = snapshot::load(file);
+                    QVERIFY(contents && contents->index);
+                    QCOMPARE(contents->index->liveCount(), index->liveCount());
+                    index = std::move(contents->index);
+                    refresh();
+                }
+                if (step % 97 == 0 && !check(*index, step))
+                    return;
+            }
+            QVERIFY(check(*index, -1));
+        }
+    }
+
     // Names shared while interned, the same words stored again later (a name
     // of its own), names only removed entries had, an entry moved under a
     // folder made after it: each comes back as it was, sharing as before.

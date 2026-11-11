@@ -418,7 +418,8 @@ bool foldedLess(std::string_view a, std::string_view b) noexcept
 // ASCII case. One sorted array per walker thread, reused for every directory:
 // a node-based map allocated per child and left megabytes of freed nodes in
 // the heap after each walk. Names that differ only in case (case-sensitive
-// folders) each keep their own entry.
+// folders) each keep their own entry; so do a file and a folder of one name,
+// which a share has while what is gone from it is only noted (GitHub #227).
 class ChildMap {
 public:
     void assign(const FileIndex& index, EntryId dir, bool exactCase)
@@ -426,28 +427,19 @@ public:
         m_exactCase = exactCase;
         m_children.clear();
         for (EntryId c = index.entry(dir).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling)
-            m_children.push_back({index.name(c), c});
+            m_children.push_back({index.name(c), c, index.entry(c).isDir()});
         std::sort(m_children.begin(), m_children.end(), byName);
     }
 
-    // Takes the child called `name`: the exact spelling if there is one,
-    // otherwise one that differs only in case (renamed, case only).
-    EntryId take(std::string_view name)
-    {
-        const auto [first, last] = std::equal_range(m_children.begin(), m_children.end(), Child {name, kNoEntry}, byName);
-        auto pick = last;
-        for (auto it = first; it != last; ++it) {
-            if (it->id == kNoEntry)
-                continue; // taken already
-            if (it->name == name) {
-                pick = it;
-                break;
-            }
-            if (!m_exactCase && pick == last)
-                pick = it;
-        }
-        return pick == last ? kNoEntry : std::exchange(pick->id, kNoEntry);
-    }
+    // Takes the child that is `name`, a folder or a file as it is, in this
+    // very spelling: asked first for every name of a listing, so that none
+    // loses its entry to another name of the same listing (GitHub #227).
+    EntryId takeSame(std::string_view name, bool folder) { return take(name, folder, true); }
+
+    // Takes the child `name` has become: spelled otherwise in its case
+    // (renamed, case only), or a file where a folder was, or back. Never one
+    // that differs in both, which is another item.
+    EntryId takeChanged(std::string_view name, bool folder) { return take(name, folder, false); }
 
     template <typename F> void forEachLeft(F&& f) const
     {
@@ -461,8 +453,29 @@ private:
     struct Child {
         std::string_view name;
         EntryId id;
+        bool folder = false;
     };
     static bool byName(const Child& a, const Child& b) noexcept { return foldedLess(a.name, b.name); }
+
+    // Of several that fit (a share keeps what is gone from it until that is
+    // believed, so a name can be there twice), the same one every time: the
+    // oldest. Another one each time would be filled again at each reading.
+    EntryId take(std::string_view name, bool folder, bool same)
+    {
+        const auto [first, last] = std::equal_range(m_children.begin(), m_children.end(), Child {name, kNoEntry}, byName);
+        auto pick = last;
+        for (auto it = first; it != last; ++it) {
+            if (it->id == kNoEntry)
+                continue; // taken already
+            const bool spelled = it->name == name;
+            const bool kind = it->folder == folder;
+            const bool fits = same ? spelled && kind : spelled != kind && (spelled || !m_exactCase);
+            // A rename before a replacement: it keeps what the folder holds.
+            if (fits && (pick == last || kind > (pick->folder == folder) || (kind == (pick->folder == folder) && it->id < pick->id)))
+                pick = it;
+        }
+        return pick == last ? kNoEntry : std::exchange(pick->id, kNoEntry);
+    }
 
     std::vector<Child> m_children;
     bool m_exactCase = false;
@@ -493,16 +506,23 @@ void removeChildren(FileIndex& index, EntryId dir, const Remover& remove)
 
 // Applies one directory listing to the index. Caller holds the write lock.
 void reconcile(FileIndex& index, const Crawler::Root& dir, const DirListing& listing, ChildMap& existing,
-    std::vector<Crawler::Root>& subdirs, const Remover& remove)
+    std::vector<EntryId>& matched, std::vector<Crawler::Root>& subdirs, const Remover& remove)
 {
     if (dir.id >= index.slotCount() || index.entry(dir.id).isDeleted())
         return;
     existing.assign(index, dir.id, !unc::wslDistribution(dir.path).empty());
 
-    for (const auto& item : listing.items) {
+    // Each name's own entry first, then what a name has become.
+    matched.assign(listing.items.size(), kNoEntry);
+    for (std::size_t i = 0; i < listing.items.size(); ++i) {
+        const auto& item = listing.items[i];
+        matched[i] = existing.takeSame(listing.name(item), item.flags & EntryFlag::Directory);
+    }
+    for (std::size_t i = 0; i < listing.items.size(); ++i) {
+        const auto& item = listing.items[i];
         const std::string_view name = listing.name(item);
         const bool isDir = item.flags & EntryFlag::Directory;
-        EntryId id = existing.take(name);
+        EntryId id = matched[i] != kNoEntry ? matched[i] : existing.takeChanged(name, isDir);
         if (id != kNoEntry) {
             if (index.entry(id).isDir() != isDir) {
                 // A file became a folder or vice versa. With removals
@@ -563,6 +583,7 @@ bool Crawler::sync(FileIndex& index, std::vector<Root> roots, int threads, bool 
 
         DirListing listing;
         ChildMap existing;
+        std::vector<EntryId> matched; // scratch of reconcile(), kept for its capacity
         std::vector<Root> subdirs;
         for (;;) {
             Root task;
@@ -579,7 +600,7 @@ bool Crawler::sync(FileIndex& index, std::vector<Root> roots, int threads, bool 
             const bool listed = list ? list(task, listing) : listDirectory(task, listing);
             if (listed) {
                 auto lock = index.writeLock();
-                reconcile(index, task, listing, existing, subdirs, remove);
+                reconcile(index, task, listing, existing, matched, subdirs, remove);
             }
 
             {
