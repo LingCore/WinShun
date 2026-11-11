@@ -6,6 +6,7 @@
 #include "Win32Util.h"
 #include "Wtf8.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QHash>
@@ -936,6 +937,8 @@ PlaceList loadPlaces(const std::stop_token& stop)
     if (!userIsAdministrator() || processElevated())
         std::erase_if(places, [](const PlaceInfo& p) { return p.command == kRestartElevatedCommand; });
     for (PlaceInfo& p : places) {
+        if (p.icon == u"winshun") // Win顺's own pages (GitHub #254): its logo
+            p.icon = QCoreApplication::applicationFilePath();
         if (p.icon.isEmpty())
             p.icon = iconForCommand(p.command);
         p.prepare();

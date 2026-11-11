@@ -20,7 +20,7 @@
 #      open = %windir%\system32\mmc.exe %windir%\system32\diskmgmt.msc
 #      keywords = 分区; 格式化
 #      kind = tool                           （tool 默认 | settings | control | security）
-#      icon = %SystemRoot%\System32\shell32.dll,-16  （可省略：用打开命令所指文件的图标）
+#      icon = %SystemRoot%\System32\shell32.dll,-16  （可省略：用打开命令所指文件的图标；winshun：Win顺 自己的图标）
 #
 #    打开命令和清单里某一条相同时，搜索结果里只出现得分高的那一条。
 #    程序或管理单元（.msc）不存在的入口不显示（家庭版没有 gpedit.msc）。
@@ -368,6 +368,20 @@ name = 以管理员身份重新启动 Win顺 | Restart WinShun as administrator
 open = winshun:restart-as-administrator
 keywords = 管理员; 管理员身份; 管理员权限; 管理员运行; 提权; 提升权限; 重启 Win顺; run as administrator; administrator; admin; elevate; elevated
 icon = %SystemRoot%\System32\imageres.dll,-78
+
+# Win顺 自己的网页（GitHub #254）：搜 winshun、反馈、issue 就能到，不用翻书签。
+# icon = winshun 是 Win顺 自己的图标。项目主页已经有网页快捷方式 winshun。
+[winshun-issues]
+name = Win顺 反馈问题 | WinShun: report a problem
+open = https://github.com/LingCore/WinShun/issues
+keywords = winshun; 反馈; 反馈问题; 提问题; 提建议; 报告问题; issue; issues; bug; feedback; github
+icon = winshun
+
+[winshun-discussions]
+name = Win顺 讨论区 | WinShun: discussions
+open = https://github.com/LingCore/WinShun/discussions
+keywords = winshun; 讨论; 讨论区; 交流; 提问; discussion; discussions; github
+icon = winshun
 
 [shared-folders]
 name = 共享文件夹 | Shared Folders

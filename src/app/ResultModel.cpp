@@ -145,6 +145,8 @@ QString appOrigin(const SearchResult& r)
     case AppKind::Tool:
         if (r.target == ws::kRestartElevatedCommand) // Win顺's own (GitHub #288): what Enter leads to, not the command
             return ResultModel::tr("Windows 会请你确认一次");
+        if (r.target.startsWith(u"https://")) // a page of Win顺's own (GitHub #254): where it leads
+            return displayWebUrl(r.target);
         return describeCommand(r.target); // "diskmgmt.msc", the folder
     case AppKind::Plugin:
         return r.plugin ? r.plugin->subtitle : QString();

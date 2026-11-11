@@ -10176,6 +10176,36 @@ private slots:
         QVERIFY(!parseSwitchCommand(u"关蓝牙", PlaceList {}));
     }
 
+    // Win顺's own pages (GitHub #254) and the restart as administrator (GitHub
+    // #288), as places.txt ships them: found by the words people would type.
+    void ownPlaces()
+    {
+        const PlaceList places = switchPlaces();
+        const auto names = [&](const QString& text) {
+            const ParsedQuery query = ws::parseQuery(text);
+            const NameMatcher matcher(query);
+            QStringList out;
+            for (const PlaceHit& hit : searchPlaces(places, query, matcher, {}))
+                out.append(places[hit.index].name);
+            return out;
+        };
+        const QString issues = u"Win顺 反馈问题"_s;
+        const QString discussions = u"Win顺 讨论区"_s;
+        for (const QString& typed : {u"winshun"_s, u"反馈"_s, u"issue"_s, u"issues"_s, u"bug"_s})
+            QVERIFY2(names(typed).contains(issues), qPrintable(typed));
+        for (const QString& typed : {u"winshun"_s, u"讨论"_s, u"discussion"_s})
+            QVERIFY2(names(typed).contains(discussions), qPrintable(typed));
+        QCOMPARE(names(u"反馈问题"_s).value(0), issues);
+        for (const PlaceInfo& p : places) {
+            if (p.name == issues)
+                QCOMPARE(p.command, u"https://github.com/LingCore/WinShun/issues"_s);
+            if (p.name == discussions)
+                QCOMPARE(p.command, u"https://github.com/LingCore/WinShun/discussions"_s);
+        }
+        for (const QString& typed : {u"管理员"_s, u"提权"_s, u"admin"_s})
+            QVERIFY2(names(typed).contains(u"以管理员身份重新启动 Win顺"_s), qPrintable(typed));
+    }
+
     void switchPlaceSearch()
     {
         const PlaceList places = switchPlaces();
@@ -10461,7 +10491,12 @@ private slots:
             apps.setApps(list);
         };
         setApps({});
-        const auto places = std::make_shared<const PlaceList>(switchPlaces());
+        // Without Win顺's own "以管理员身份重新启动" (listed only with normal
+        // rights on an administrator's account): 理员 in its name is "ly", a
+        // page found as well as the switch guessed from "ly" below.
+        PlaceList listed = switchPlaces();
+        std::erase_if(listed, [](const PlaceInfo& p) { return p.command == kRestartElevatedCommand; });
+        const auto places = std::make_shared<const PlaceList>(std::move(listed));
         catalog.setPlaces(places);
         const QString bluetoothPage = (*places)[0].path();
         const auto keepAwake = std::find_if(places->begin(), places->end(), [](const PlaceInfo& p) { return p.switchId == u"keep-awake"_s; });
