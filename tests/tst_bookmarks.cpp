@@ -324,6 +324,36 @@ private slots:
         QCOMPARE(q(search({entry("A", "https://a.example/")}, "zzz", false)[0].title), Q("No matching bookmark"));
         QCOMPARE(q(miss[0].icon), Q("glyph:U+E734"));
     }
+    void pinyinMatching()
+    {
+        const std::vector<Entry> all {entry("西安交通大学", "https://xjtu.example/"), entry("在线视频", "https://video.example/"),
+                                      entry("Plain English", "https://english.example/")};
+        // Initials, whole syllables and mixes all find it ...
+        QCOMPARE(search(all, "xjtu", true).size(), size_t(1));
+        QCOMPARE(q(search(all, "xian", true).front().title), Q("西安交通大学"));
+        QCOMPARE(q(search(all, "xajt", true).front().title), Q("西安交通大学"));
+        // ... and a title that says the word outranks one that only spells it:
+        // 西安 literally reads "xian", 在线 is zai**xian**.
+        const auto rows = search(all, "xian", true);
+        QCOMPARE(rows.size(), size_t(2));
+        QCOMPARE(q(rows[0].title), Q("西安交通大学"));
+        QCOMPARE(rows[0].score, 76); // pinyin, and it starts the title
+        QCOMPARE(q(rows[1].title), Q("在线视频"));
+        QCOMPARE(rows[1].score, 70); // pinyin in the middle of the title
+        // Chinese typed as Chinese still matches literally and ranks first.
+        QCOMPARE(search(all, "西安", true).front().score, 80);
+        // English stays literal: "plain" is not the pinyin of anything.
+        QCOMPARE(search(all, "plain", true).size(), size_t(1));
+        // One letter is a literal search, so it does not turn into pinyin: "x"
+        // appears in every address here, and it never reads 西.
+        QCOMPARE(search(all, "x", true).size(), size_t(3));
+        // Pinyin only applies to text that has Chinese in it. "xian" is in the
+        // title, so it matches literally; "xa" only would as pinyin, which an
+        // ASCII name does not get. (The address must not contain "xa" itself.)
+        const std::vector<Entry> ascii {entry("xian", "https://q.test/")};
+        QCOMPARE(search(ascii, "xian", true).size(), size_t(1));
+        QCOMPARE(search(ascii, "xa", true).front().id, std::string("none"));
+    }
 };
 
 QTEST_APPLESS_MAIN(TstBookmarks)

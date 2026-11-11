@@ -110,13 +110,16 @@ Start-WinShunPlugin -Name 'me.ps' -OnQuery {
 
 ## SDK
 
-三个文件在仓库的 `src/plugins-sdk/`，"新建插件…"会复制进插件文件夹；用到它的随包插件（`winshun.kill` 的 `WinShun.psm1`）文件夹里也有。它们只是把协议包起来，不用也可以。
+三个文件在仓库的 `src/plugins-sdk/`，"新建插件…"会复制进插件文件夹；用到它的随包插件（`winshun.kill` 的 `WinShun.psm1`）文件夹里也有。它们只是把协议包起来，不用也可以。C++ 模板还会带上可选的 `winshun-pinyin.h` 和它的表。
 
 | 文件 | 一次性 | 常驻 |
 |---|---|---|
 | `winshun.py` | `query()`、`settings()`、`item(...)`、`reply(items)`、`is_action()` / `action_request()` / `effects(...)` | `serve(on_query, on_action=None, on_settings=None, on_details=None)`；处理函数收到 `(q, plugin)`，`plugin.partial()`、`plugin.log()`、`plugin.notify_user()`、`plugin.toast()`、`plugin.progress()`、`plugin.refresh()`、`plugin.tool(name, **args)`、`plugin.settings` |
 | `WinShun.psm1` | `Get-WinShunQuery`、`Get-WinShunSettings`、`New-WinShunItem`、`Send-WinShunReply`、`Send-WinShunEffects` | `Start-WinShunPlugin -OnQuery {…} -OnAction {…} -OnDetails {…}`、`Send-WinShunPartial`、`Write-WinShunLog`、`Send-WinShunNotify`、`Send-WinShunToast`、`Send-WinShunProgress`、`Invoke-WinShunTool` |
 | `winshun.h` | `winshun::onceQuery()`、`onceSettings()`、`once(items)`、`onceAction()` / `onceEffects()` | 派生 `winshun::Plugin`，重写 `query()`（和 `queryResult()`、`action()`、`settingsChanged()`、`initialized()`、`shuttingDown()`、`appearanceChanged()`、`details()`），`serve()`；成员 `partial()`、`log()`、`notifyUser()`、`toast()`、`progress()`、`refresh()`、`tool()`、`settings()`；这些成员可以在别的线程里调（发送有锁） |
+| `winshun-pinyin.h` | `winshun::pinyin::Matcher`（`matches(text)`、`findUtf8(text)`）、`readings(c)`、`hasHan(text)`、`isPinyinTerm(text)` | 同左 |
+
+拼音是 `winshun.h` 之外的可选头文件，不 include 就一点也不会编进插件；include 了二进制大约多 190 KB（`winshun-pinyin-table.h` 的读音表，由 `build/<任务名>/make_sdk_pinyin.py` 从 `tools/data` 生成，和主程序 `src/core/PinyinTable.cpp` 同一份读音）。规则和主程序一样：每个汉字匹配它某个读音的非空前缀，所以首字母、全拼、混着写都行（`bg`、`baogao`、`baog`、`bgao` 都能找到 报告）；其他字符按字面匹配，ASCII 不分大小写。只读 U+4E00..U+9FFF，ü 写作 v（`lv` 找 绿），`u` 也接受。程序自己决定什么时候用拼音：主程序和书签插件都只对含汉字的文本尝试，`Matcher` 对单个字母、带符号的词无效（`valid()` 为假），照旧走普通子串搜索。
 
 effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) / set_query(text) / open_path(path) / open_url(url) / replace(items)`；PowerShell `New-WinShunEffect -Hide / -Keep / -Notify / -Copy / -SetQuery / -OpenPath / -OpenUrl / -Replace`；C++ `winshun::effect::hide()` 等。
 

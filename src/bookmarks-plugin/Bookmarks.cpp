@@ -294,26 +294,69 @@ std::vector<std::string> bookmarkFiles(const std::string& localAppData, const st
 winshun::Items search(const std::vector<Entry>& entries, const std::string& text, bool chinese)
 {
     const std::vector<std::string> typed = words(text);
+    // A term that is only letters may be pinyin, so "xian" finds 西安. Built
+    // once per term, not once per bookmark.
+    std::vector<winshun::pinyin::Matcher> pinyin;
+    pinyin.reserve(typed.size());
+    for (const std::string& word : typed)
+        pinyin.emplace_back(word);
     winshun::Items rows;
     std::set<std::string> seen;
     for (const Entry& e : entries) {
         // Shown and matched decoded, opened as it is.
         const std::string shown = unquote(e.url);
         const std::string haystack = lower(e.title + "\n" + e.url + "\n" + shown + "\n" + e.folder);
-        const auto missing = [&haystack](const std::string& w) { return haystack.find(w) == std::string::npos; };
-        if (std::any_of(typed.begin(), typed.end(), missing))
+        // Typed letters match either literally or as the pinyin of a Chinese
+        // character, so 西安 answers to "xian" and "xa" as well as to itself.
+        // Pinyin is only tried on text that has Chinese in it, as the app does
+        // (Query.cpp): on an ASCII name it would only repeat the search above.
+        const bool han = winshun::pinyin::hasHan(haystack);
+        const auto missing = [&haystack, &pinyin, han](const std::string& w, std::size_t i) {
+            if (haystack.find(w) != std::string::npos)
+                return false;
+            const winshun::pinyin::Matcher& m = pinyin[i];
+            return !han || !m.valid() || !m.matches(haystack);
+        };
+        bool keep = true;
+        for (std::size_t i = 0; i < typed.size(); ++i) {
+            if (missing(typed[i], i)) {
+                keep = false;
+                break;
+            }
+        }
+        if (!keep)
             continue;
         if (!seen.insert(lower(e.url)).second)
             continue;
-        // Title matches rank above address-only matches.
+        // Title matches rank above address-only matches, and a title that says
+        // the words outranks one that only spells them in pinyin ("西安" before
+        // "在线" for "xian"), as the app ranks it. Among pinyin matches, one at
+        // the start of the title ranks higher still: "西安交通大学" opens with
+        // 西安, while "在线" only hides "xian" after 在.
         const std::string title = lower(e.title);
-        const bool inTitle = std::all_of(typed.begin(), typed.end(), [&title](const std::string& w) { return title.find(w) != std::string::npos; });
+        const bool titleHan = winshun::pinyin::hasHan(title);
+        bool allInTitle = true; // every term is in the title ...
+        bool allLiteral = true; // ... and says it without pinyin
+        bool spelledAtStart = true; // every spelled term starts the title
+        for (std::size_t i = 0; i < typed.size() && allInTitle; ++i) {
+            if (title.find(typed[i]) != std::string::npos)
+                continue;
+            allLiteral = false;
+            const winshun::pinyin::Matcher& m = pinyin[i];
+            if (!titleHan || !m.valid())
+                allInTitle = false;
+            else if (const auto span = m.findUtf8(title); span.has_value())
+                spelledAtStart = spelledAtStart && span->first == 0;
+            else
+                allInTitle = false;
+        }
+        const int inTitle = allInTitle ? (allLiteral ? 2 : spelledAtStart ? 1 : 0) : -1;
         const std::string low = lower(e.url);
         const bool web = startsWith(low, "https://") || startsWith(low, "http://");
         rows.push_back(winshun::Item("bm-" + std::to_string(rows.size()), e.title.empty() ? shown : e.title, join({&e.browser, &e.folder, &shown}))
                            // The site's own icon; Win顺 fetches and keeps it.
                            .withIcon(web ? "site:" + e.url : kGlyph)
-                           .withScore(inTitle ? 80 : 60)
+                           .withScore(inTitle == 2 ? 80 : inTitle == 1 ? 76 : inTitle == 0 ? 70 : 60)
                            .withUrl(e.url)
                            .withCopy(e.url));
         rows.back().match = e.title + " " + shown;
