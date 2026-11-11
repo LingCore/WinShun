@@ -2002,7 +2002,8 @@ QVariantList SettingsEditor::fileTypes() const
 {
     QVariantList list;
     for (const FileType& type : m_settings.namedFileTypes())
-        list.append(QVariantMap {{u"name"_s, type.name}, {u"extensions"_s, type.extensions}, {u"keyword"_s, type.keyword}});
+        list.append(QVariantMap {{u"name"_s, type.name}, {u"extensions"_s, type.extensions}, {u"keyword"_s, type.keyword},
+            {u"folder"_s, type.folder}});
     return list;
 }
 
@@ -2027,6 +2028,29 @@ QString SettingsEditor::setFileTypeKeyword(int index, const QString& text)
         commit();
     }
     return {};
+}
+
+QString SettingsEditor::setFileTypeFolder(int index, const QString& text)
+{
+    if (index < 0 || index >= m_settings.fileTypes.size())
+        return tr("类型已不存在");
+    const QString folder = pathtext::pathFromText(text);
+    if (!text.trimmed().isEmpty() && folder.isEmpty())
+        return tr("填写完整的文件夹路径，例如 H:\\__work__，留空则不限范围");
+    if (m_settings.fileTypes[index].folder != folder) {
+        m_settings.fileTypes[index].folder = folder;
+        commit();
+    }
+    return {};
+}
+
+QString SettingsEditor::chooseFileTypeFolder(int index)
+{
+    if (index < 0 || index >= m_settings.fileTypes.size())
+        return tr("类型已不存在");
+    const HWND owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    const QString folder = shell::pickFolder(owner, tr("选择这个文件类型的搜索范围（包含子文件夹）"));
+    return folder.isEmpty() ? QString() : setFileTypeFolder(index, folder);
 }
 
 QString SettingsEditor::addFileType(const QString& name, const QString& extensions)

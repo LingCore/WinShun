@@ -1060,6 +1060,7 @@ private:
     KindOrder m_shownKindOrder = KindOrder::FilesFirst;
     QStringList m_shownPreferredTypes;
     QStringList m_shownExtensions; // of the kind of file chosen (fileExtensions())
+    QStringList m_shownTypeFolders;
     // The command whose list the rows are ("<plugin>/<command>"; empty: the
     // name search's): "=" and "= " trim to the same text, but one lists
     // files, the other the calculator's answer, and that is a new list.
@@ -1172,6 +1173,7 @@ private:
     static QString fileTypeKey(const FileType& type); // as fileChoice names it
     int fileTypeIndex(const QString& key) const; // -1: none
     QStringList fileExtensions() const; // the kind chosen's, in 文件; none otherwise
+    QStringList fileTypeFolders() const;
     // 内容 in a folder chosen (a chip, a folder's row: SearchInFolder), as a
     // full path; empty: everywhere. Kept while the app runs, as the kind of
     // file is. A folder named among the words goes first (ContentFolderSpec).

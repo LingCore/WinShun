@@ -1260,6 +1260,7 @@ void Launcher::searchLeftOut(const QString& kind)
         request.text = kind.startsWith(kFolderHint) ? pathtext::splitTyped(searchText()).name.trimmed() : nameText();
         request.scope = m_scope == Folders ? ws::Scope::Folders : ws::Scope::Files; // 全部: its files and folders
         request.extensions = fileExtensions();
+        request.typeFolders = fileTypeFolders();
         request.limit = kPage;
         request.walkFolder = walkedPath(kind);
         request.regex = regexTerms();
@@ -1965,7 +1966,8 @@ void Launcher::search(bool more)
     const QString keywordKey = keyword ? keyword->pluginId + u'/' + keyword->commandId : QString();
     // The folder typed in, first or alone (typingKey), is a list of its own too.
     m_refresh = m_haveResults && !m_replacePending && text == m_shownText && m_scope == m_shownScope
-        && fileExtensions() == m_shownExtensions && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && m_kindOrder == m_shownKindOrder
+        && fileExtensions() == m_shownExtensions && fileTypeFolders() == m_shownTypeFolders
+        && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && m_kindOrder == m_shownKindOrder
         && m_preferredTypes == m_shownPreferredTypes && keywordKey == m_shownKeyword
         && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick))
         && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey
@@ -2082,6 +2084,7 @@ void Launcher::search(bool more)
     }
     request.scope = static_cast<ws::Scope>(m_scope);
     request.extensions = fileExtensions();
+    request.typeFolders = fileTypeFolders();
     request.kindOrder = m_kindOrder;
     request.rankBy = rankBy();
     request.preferredTypes = m_preferredTypes;
@@ -2158,6 +2161,7 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
     m_shownText = searchText();
     m_shownScope = m_scope;
     m_shownExtensions = fileExtensions();
+    m_shownTypeFolders = fileTypeFolders();
     m_shownRankBy = rankBy();
     m_shownOrder = nameOrder();
     m_shownStartList = m_startList;
@@ -3393,7 +3397,8 @@ QVariantList Launcher::fileTypes() const
 {
     QVariantList types;
     for (const FileType& type : m_fileTypes)
-        types.append(QVariantMap {{u"name"_s, type.name}, {u"extensions"_s, type.extensions.join(u' ')}, {u"keyword"_s, type.keyword}});
+        types.append(QVariantMap {{u"name"_s, type.name}, {u"extensions"_s, type.extensions.join(u' ')}, {u"keyword"_s, type.keyword},
+            {u"folder"_s, type.folder}});
     return types;
 }
 
@@ -3437,6 +3442,22 @@ QStringList Launcher::fileExtensions() const
     }
     extensions.removeDuplicates();
     return extensions;
+}
+
+QStringList Launcher::fileTypeFolders() const
+{
+    QStringList folders;
+    if (m_scope == Files) {
+        for (int type : selectedFileTypes()) {
+            const QString& folder = m_fileTypes[type].folder;
+            // 多选的类型和范围分别合并；有不限范围的类型时使用整个索引。
+            if (folder.isEmpty())
+                return {};
+            folders.append(folder);
+        }
+    }
+    folders.removeDuplicates();
+    return folders;
 }
 
 QList<int> Launcher::selectedFileTypes() const
@@ -6034,6 +6055,15 @@ void Launcher::onPluginResults(std::uint64_t queryId, const QString& pluginId, c
             before.append(m_results.at(i)->path);
     }
     plugin::Items filtered = items;
+    const QStringList typeFolders = fileTypeFolders();
+    if (!m_keyword && !typeFolders.isEmpty()) {
+        const QStringList extensions = fileExtensions();
+        filtered.removeIf([&](const plugin::Item& item) {
+            if (item.open.kind != plugin::Open::Kind::Path || !pathtext::inChosenFolders(typeFolders, item.open.target))
+                return true;
+            return !extensions.contains(QFileInfo(item.open.target).suffix(), Qt::CaseInsensitive);
+        });
+    }
     if (m_panel) {
         const EntryFilter filter = panelFilter();
         filtered.removeIf([&](const plugin::Item& item) {

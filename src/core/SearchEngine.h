@@ -137,6 +137,8 @@ public:
         // its folders as contentFolders.
         EntryFilter filter;
         QStringList folders;
+        // 文件类型绑定的范围；与面板位置和输入的路径取交集，不改变其他搜索。
+        QStringList typeFolders;
         // Typed in a folder's window (Explorer, Directory Opus: GitHub #110):
         // that folder, and `text` is what was typed after it. What it finds
         // in the folder comes first (its own files and folders from the

@@ -802,6 +802,8 @@ public:
     Q_INVOKABLE QString renameFileType(int index, const QString& name);
     Q_INVOKABLE QString setFileTypeExtensions(int index, const QString& text); // "jpg, .PNG *.gif"
     Q_INVOKABLE QString setFileTypeKeyword(int index, const QString& text); // -1: folders
+    Q_INVOKABLE QString setFileTypeFolder(int index, const QString& text);
+    Q_INVOKABLE QString chooseFileTypeFolder(int index);
     QString folderKeyword() const { return m_settings.folderKeyword; }
     Q_INVOKABLE void removeFileType(int index);
     Q_INVOKABLE void moveFileType(int index, int delta); // up (-1) or down (1) the strip

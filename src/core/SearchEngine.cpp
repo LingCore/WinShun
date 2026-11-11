@@ -870,7 +870,8 @@ void arrangePart(SearchResults& results, const SearchEngine::Request& request, c
     // Recent items first, as rows of their own (they need not be in the
     // index): not into a list narrowed by when, how large or where, which
     // the history knows nothing of (a recent file would show through the filter).
-    const bool filtered = request.filter.any() || !request.folders.isEmpty() || parseQuery(request.text, request.regex).hasFilters();
+    const bool filtered = request.filter.any() || !request.folders.isEmpty() || !request.typeFolders.isEmpty()
+        || parseQuery(request.text, request.regex).hasFilters();
     const qsizetype promoted = rankBy == RankBy::Match && !ordered && !filtered
         ? promoteHistory(results, request, matcher, onDisk, folder, part)
         : 0;
@@ -952,6 +953,8 @@ SearchEngine::Request resolveMappedPaths(SearchEngine::Request request)
             request.text = (folder.endsWith(u'\\') ? folder : folder + u'\\') + typed.name;
     }
     for (QString& folder : request.folders)
+        folder = resolve(pathtext::pathFromText(folder));
+    for (QString& folder : request.typeFolders)
         folder = resolve(pathtext::pathFromText(folder));
     QSet<QString> seen;
     QStringList history;
@@ -1152,7 +1155,7 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
     QList<const Favorite*> wanted;
     // Typed in a folder's window (GitHub #110), the words are looked for in
     // it, never a keyword: they need not end in a space there.
-    const bool keywords = request.currentFolder.isEmpty();
+    const bool keywords = request.currentFolder.isEmpty() && request.typeFolders.isEmpty();
     const qsizetype command = keywords ? typedCommandKeyword(favorites, request.text) : -1;
     const qsizetype keyword = command >= 0 ? command : keywords ? typedFavoriteKeyword(favorites, request.text) : -1;
     if (keyword >= 0 && favoriteShown(request.scope, favorites[keyword], types))
@@ -1447,7 +1450,7 @@ void SearchEngine::runNameSearch(const Job& job)
     // Narrowed by when, how large or where (the panel's filters, size: and
     // dm: typed): files and folders alone, in the index's own terms. Nothing
     // typed in the panel lists them all the same (browse).
-    const bool filtered = request.filter.any() || !request.folders.isEmpty() || query.hasFilters();
+    const bool filtered = request.filter.any() || !request.folders.isEmpty() || !request.typeFolders.isEmpty() || query.hasFilters();
     const bool listing = filtered || (request.browse && query.isEmpty());
     if (query.isEmpty() && request.startList == StartList::Modified && !listing) {
         // The files written last (in 文件夹, the folders they are in), newest first.
@@ -1543,6 +1546,7 @@ void SearchEngine::runNameSearch(const Job& job)
         const auto relative = [&] { return request.regex ? pathtext::RelativePath() : pathtext::splitRelative(request.text); };
         EntryFilter filter = request.filter;
         filter.merge(query.filter);
+        std::vector<EntryId> typeFolders;
         {
             phase = "waiting for the index";
             const auto lock = index->readLock();
@@ -1565,11 +1569,17 @@ void SearchEngine::runNameSearch(const Job& job)
             else if (!typedPath.folder.isEmpty() && (!typedIn || request.currentFolderOnly))
                 filter.folders.push_back(folder == kNoEntry ? kNoEntry - 1 : folder);
             std::ranges::sort(filter.folders);
+            for (const QString& path : request.typeFolders) {
+                const EntryId id = index->findPath(path.toStdWString());
+                typeFolders.push_back(id == kNoEntry ? kNoEntry - 1 : id);
+            }
+            std::ranges::sort(typeFolders);
             const NameSearchOptions options {.limit = static_cast<std::size_t>(request.limit),
                 .foldersOnly = foldersOnly,
                 .rankBy = rankBy,
                 .kindsApart = !request.browse || request.order.key == SortKey::Rank,
                 .filter = filter,
+                .typeFolders = typeFolders,
                 .insideFirst = insideFirst ? folder : kNoEntry, // one not in the index: everything is elsewhere
                 .order = request.order,
                 .trustedUntil = trustedUntil(),
@@ -1923,6 +1933,7 @@ void SearchEngine::runNameSearch(const Job& job)
                     .rankBy = rankBy,
                     .kindsApart = !request.browse || request.order.key == SortKey::Rank,
                     .filter = filter,
+                    .typeFolders = typeFolders,
                     .order = request.order,
                     .trustedUntil = trustedUntil(),
                     .preferred = preferred};
@@ -2156,6 +2167,8 @@ void SearchEngine::runDriveWalk(const Job& job)
             if (foldersOnly && !isDir)
                 continue;
             const QString qpath = QString::fromStdWString(path);
+            if (!request.typeFolders.isEmpty() && !pathtext::inChosenFolders(request.typeFolders, qpath))
+                continue;
             if (!hidden.empty() && !ofType(qpath, isDir, {}, hidden))
                 continue;
             const auto modified = knownTime(fileTimeOf(win32::ticks(fd.ftLastWriteTime)));

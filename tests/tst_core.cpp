@@ -8632,6 +8632,101 @@ private slots:
         QVERIFY(it->recent);
     }
 
+    void fileTypeFolderSearch()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.filePath(u"index"_s), options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId root = index->addRoot("H:");
+            const EntryId work = index->add(root, "__work__", EntryFlag::Directory);
+            index->add(work, "direct.csv", 0);
+            index->add(work, "not-a-csv.txt", 0);
+            const EntryId sub = index->add(work, "sub", EntryFlag::Directory);
+            index->add(sub, "nested.CSV", 0);
+            const EntryId similar = index->add(root, "__work__2", EntryFlag::Directory);
+            index->add(similar, "other.csv", 0);
+            index->add(root, "outside.csv", 0);
+            index->add(root, "年度报告.csv", 0);
+        }
+        SearchEngine engine(&service, nullptr, nullptr);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const auto search = [&](SearchEngine::Request request) {
+            spy.clear();
+            engine.submit(std::move(request));
+            if (spy.isEmpty() && !spy.wait(5000))
+                return SearchResults {};
+            return spy.front().at(1).value<SearchResults>();
+        };
+        const FileTypes types {{u"工作 CSV"_s, {u"csv"_s}, {}, u"cw"_s, u"H:\\__work__"_s}};
+        const auto parsed = splitFileTypeQuery(u"cw:"_s, types, u"folder");
+        QVERIFY(parsed.type);
+        QVERIFY(parsed.words.isEmpty());
+        SearchEngine::Request request;
+        request.text = parsed.words;
+        request.scope = Scope::Files;
+        request.extensions = types[*parsed.type].extensions;
+        request.typeFolders = {types[*parsed.type].folder};
+        request.browse = true;
+        request.limit = 100;
+        auto rows = search(request);
+        QCOMPARE(rows.size(), qsizetype {2});
+        QVERIFY(std::ranges::all_of(rows, [](const SearchResult& r) {
+            return r.path.startsWith(u"H:\\__work__\\"_s) && !r.isDir;
+        }));
+        QCOMPARE(spy.front().at(2).toLongLong(), qint64 {2});
+
+        // 范围在选取 top hits 前约束，翻页和排序不会被范围外的高排名挤占。
+        request.limit = 1;
+        request.order = {SortKey::Name, false};
+        QCOMPARE(search(request).size(), qsizetype {1});
+        QCOMPARE(spy.front().at(2).toLongLong(), qint64 {2});
+        request.limit = 100;
+        request.order = {};
+        request.text = u"nested"_s;
+        QCOMPARE(search(request).size(), qsizetype {1});
+        request.regex = true;
+        request.text = u"^nested"_s;
+        QCOMPARE(search(request).size(), qsizetype {1});
+        request.regex = false;
+        request.text.clear();
+
+        // 面板位置取交集，而不是把目录相并；邻近的同名前缀不是范围内。
+        request.folders = {u"H:\\__work__\\sub"_s};
+        QCOMPARE(search(request).size(), qsizetype {1});
+        request.folders = {u"H:\\__work__2"_s};
+        QVERIFY(search(request).isEmpty());
+        QVERIFY(!spy.isEmpty());
+        request.folders.clear();
+        request.text = u"H:\\__work__2\\"_s;
+        QVERIFY(search(request).isEmpty());
+        QVERIFY(!spy.isEmpty());
+        request.text = u"H:\\__work__\\sub\\"_s;
+        QCOMPARE(search(request).size(), qsizetype {1});
+        request.text.clear();
+
+        request.text = u"年度报高"_s;
+        QVERIFY(search(request).isEmpty()); // 同音近似搜索也不能绕过范围
+        QVERIFY(!spy.isEmpty());
+        request.favorites = {{Favorite::Kind::File, u"H:\\outside.csv"_s, u"外部收藏"_s, u"outside"_s}};
+        request.text = u"outside"_s;
+        QVERIFY(search(request).isEmpty()); // 收藏关键词不能插入范围外的文件
+        QVERIFY(!spy.isEmpty());
+        request.favorites.clear();
+        request.text.clear();
+        request.typeFolders = {u"H:\\missing"_s};
+        QVERIFY(search(request).isEmpty());
+        QVERIFY(!spy.isEmpty());
+        request.typeFolders = {u"H:\\__work__"_s, u"H:\\__work__2"_s};
+        QCOMPARE(search(request).size(), qsizetype {3});
+        request.typeFolders.clear();
+        QCOMPARE(search(request).size(), qsizetype {5}); // 旧配置仍搜索整个索引
+    }
+
     // #141: a remembered mapping and its UNC path are one search location.
     // Only a newly created key for an unused drive is touched; no connection
     // is made and no existing mapping or user file is changed.
@@ -8708,6 +8803,11 @@ private slots:
         const auto scoped = search(request);
         QCOMPARE(scoped.size(), qsizetype {3});
         QCOMPARE(spy.front().at(2).toLongLong(), qint64 {3});
+        auto preset = request;
+        preset.folders.clear();
+        preset.currentFolder.clear();
+        preset.typeFolders = {drive + u'\\'};
+        QCOMPARE(search(preset).size(), qsizetype {3});
         QVERIFY(std::ranges::all_of(scoped, [&](const SearchResult& row) {
             return row.path.startsWith(remote + u'\\') && !row.elsewhere;
         }));
