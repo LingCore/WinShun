@@ -398,7 +398,9 @@ qt_add_resources(WinShun "plugins_sdk"
     FILES "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun.py"
           "${PROJECT_SOURCE_DIR}/src/plugins-sdk/WinShun.psm1"
           "${PROJECT_SOURCE_DIR}/src/plugins-sdk/DEVELOPMENT.md"
-          "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun.h")
+          "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun.h"
+          "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun-pinyin.h"
+          "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun-pinyin-table.h")
 set_source_files_properties("${PROJECT_SOURCE_DIR}/resources/ocr/package.json" PROPERTIES QT_RESOURCE_ALIAS ocr.json)
 qt_add_resources(WinShun "ocr_component"
     PREFIX /components

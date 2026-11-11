@@ -1596,14 +1596,16 @@ std::vector<TemplateFile> templateFiles(const QString& kind, const QString& id, 
 }
 
 // The SDK file a template is written on: ":/sdk/<name>", copied beside it.
-QString sdkFileFor(const QString& kind)
+// More than one when the file has companions: winshun.h's pinyin matcher is
+// optional but a plugin that includes it must find it.
+QStringList sdkFilesFor(const QString& kind)
 {
     if (kind == u"powershell")
-        return u"WinShun.psm1"_s;
+        return {u"WinShun.psm1"_s};
     if (kind == u"python" || kind == u"python-resident")
-        return u"winshun.py"_s;
+        return {u"winshun.py"_s};
     if (kind == u"cpp")
-        return u"winshun.h"_s;
+        return {u"winshun.h"_s, u"winshun-pinyin.h"_s, u"winshun-pinyin-table.h"_s};
     return {};
 }
 
@@ -1646,8 +1648,7 @@ QString PluginSettings::createFromTemplate(const QString& kind, const QString& g
         file.write(f.text.toUtf8());
     }
     QStringList supportFiles{u"DEVELOPMENT.md"_s};
-    if (const QString sdk = sdkFileFor(kind); !sdk.isEmpty())
-        supportFiles.append(sdk);
+    supportFiles.append(sdkFilesFor(kind));
     for (const QString& sdk : supportFiles) {
         // Byte for byte (the .psm1 keeps its BOM); a copy from the resources is read-only, so not that.
         QFile from(u":/sdk/"_s + sdk);
