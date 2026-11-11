@@ -1,9 +1,9 @@
 ﻿18:37:01.998 WinShun 8B9875A62D78 pid 10768
-18:37:02.047 round 1 +   34 ms fg Tokline/GpuiFast::Window/visible=True launcher=0
+18:37:02.047 round 1 +   34 ms fg (another program)/(its window)/visible=True launcher=0
 18:37:02.091 round 1 +   78 ms fg WinShun/Qt6120QWindowToolSaveBits/visible=True launcher=1
 18:37:08.209 round 1: after 6 s launcher shown True, in front True, samples with it gone 0, plugin windows 0
 18:37:09.989 round 1: Enter -> plugin window True after 574 ms, in front True, launcher shown False
-18:37:12.025 round 2 +    5 ms fg Tokline/GpuiFast::Window/visible=True launcher=0
+18:37:12.025 round 2 +    5 ms fg (another program)/(its window)/visible=True launcher=0
 18:37:12.067 round 2 +   47 ms fg WinShun/Qt6120QWindowToolSaveBits/visible=True launcher=1
 18:37:18.215 round 2: after 6 s launcher shown True, in front True, samples with it gone 0, plugin windows 0
 18:37:19.735 round 2: Enter -> plugin window True after 308 ms, in front True, launcher shown False
