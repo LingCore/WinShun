@@ -20,3 +20,11 @@ python tools/gen_phosphor_icons.py --check  # verify header, aliases, fonts
 The generator also verifies `src/app/PhosphorAliases.h`: every Segoe alias
 must name a real icon present in both fonts. Run `--check` in CI and after
 editing either table. Do not edit the generated header by hand.
+
+`--check` cannot tell that the alias table is **complete**. Upstream adds
+Segoe-to-Phosphor mappings to the icon table over time, and rebasing this
+branch onto a new upstream release can silently drop them when a conflict is
+resolved in favour of the rewritten file. After every rebase, compare the
+alias count and the Segoe code points with upstream's icon table, then run
+`--check`. `tst_appearance::phosphorIcons` pins the filter keys from #279 as
+a regression test.

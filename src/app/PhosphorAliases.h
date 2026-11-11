@@ -16,6 +16,7 @@ struct Alias {
 };
 
 inline constexpr auto kAliases = std::to_array<Alias>({
+    {0xE16E, "funnel", true}, // Filter (MDL2's older one; here the filters shown): funnel
     {0xE70B, "notepad", false}, // QuickNote: notepad
     {0xE70D, "caret-down", false}, // ChevronDown: caret-down
     {0xE70E, "caret-up", false}, // ChevronUp: caret-up
@@ -30,6 +31,7 @@ inline constexpr auto kAliases = std::to_array<Alias>({
     {0xE719, "storefront", false}, // Shop: storefront
     {0xE71A, "square", false}, // Stop: square
     {0xE71B, "link", false}, // Link: link
+    {0xE71C, "funnel", false}, // Filter: funnel
     {0xE720, "microphone", false}, // Microphone: microphone
     {0xE721, "magnifying-glass", false}, // Search: magnifying-glass
     {0xE722, "camera", false}, // Camera: camera

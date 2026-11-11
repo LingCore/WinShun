@@ -610,6 +610,15 @@ private slots:
         }
         QCOMPARE(phosphor::forSegoe(QString(QChar(0xE841)))->family, fill.familyName()); // PinnedFill
         QCOMPARE(phosphor::forSegoe(QString(QChar(0xE718)))->family, regular.familyName()); // Pin
+        // SearchBar's filter keys (#279): the shown state is the filled funnel,
+        // the idle one the outline. Both are Segoe code points that resolve
+        // only through the alias table, so an upstream rebase must keep them.
+        const auto filterShown = phosphor::forSegoe(QString(QChar(0xE16E)));
+        const auto filterIdle = phosphor::forSegoe(QString(QChar(0xE71C)));
+        QVERIFY(filterShown && filterIdle);
+        QCOMPARE(filterShown->family, fill.familyName());
+        QCOMPARE(filterIdle->family, regular.familyName());
+        QCOMPARE(filterShown->text, filterIdle->text);
         QVERIFY(!phosphor::forSegoe(QString(2, QChar(0xE718))));
         QVERIFY(!phosphor::forSegoe(QString()));
 
