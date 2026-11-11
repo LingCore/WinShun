@@ -558,12 +558,11 @@ bool App::showOnboarding(const StartOptions& options)
     m_onboardingWindow = window;
     window->setObjectName(u"onboardingWindow"_s);
     m_onboardingFrame->setWindow(window);
-    m_onboardingFrame->setResizable(true);
+    m_onboardingFrame->setFixedSize(true); // as large as what it holds (OnboardingWindow.qml), within the screen
     m_onboarding->setWindow(window);
     styleWindow(window, SystemTheme::backdropAvailable());
     win::setDarkFrame(window, isDarkMode());
     const QRect area = QGuiApplication::primaryScreen()->availableGeometry();
-    window->resize(std::min(window->width(), area.width() - 32), std::min(window->height(), area.height() - 32));
     window->setPosition(area.center() - QPoint(window->width() / 2, window->height() / 2));
     connect(m_onboarding.get(), &Onboarding::accepted, this, [this, options] {
         m_settings = m_onboarding->settings();

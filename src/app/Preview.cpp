@@ -7635,6 +7635,24 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
     for (const QString& name : {u"onboardingSearch"_s, u"onboardingActivation"_s, u"onboardingClipboard"_s, u"onboardingCapture"_s})
         check(name, visualNamed(window->contentItem(), name));
     check(u"initial_screenshot"_s, saveGrab(window, out.filePath(u"onboarding.png"_s)));
+    {
+        // A window of one size (WindowFrame::setFixedSize), asked as Windows asks: its edges do not
+        // size it and nothing maximises it; its top drags it, but for the caption buttons.
+        const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+        RECT rect {};
+        ::GetWindowRect(hwnd, &rect);
+        const auto hit = [hwnd](long x, long y) { return ::SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(x, y)); };
+        const long midX = (rect.left + rect.right) / 2;
+        const long midY = (rect.top + rect.bottom) / 2;
+        const long inCaption = rect.top + std::lround(20 * window->effectiveDevicePixelRatio());
+        const long inCloseButton = rect.right - std::lround(20 * window->effectiveDevicePixelRatio());
+        check(u"edges_do_not_size"_s, hit(rect.left + 1, midY) == HTCLIENT && hit(rect.right - 2, midY) == HTCLIENT
+            && hit(midX, rect.bottom - 2) == HTCLIENT && hit(midX, rect.top + 1) == HTCAPTION
+            && hit(rect.left + 1, rect.top + 1) == HTCAPTION);
+        check(u"nothing_maximises"_s, !(::GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_MAXIMIZEBOX));
+        check(u"top_drags_the_window"_s, hit(midX, inCaption) == HTCAPTION && hit(rect.left + 40, inCaption) == HTCAPTION);
+        check(u"close_button_is_its_own"_s, hit(inCloseButton, inCaption) == HTCLIENT);
+    }
     check(u"page_one_groups"_s, setup->page() == 0 && visible(u"onboardingSearch"_s) && visible(u"onboardingActivation"_s)
         && !visible(u"onboardingClipboard"_s) && !visible(u"onboardingCapture"_s));
     check(u"next_button"_s, navigate(u"onboardingNext"_s));
@@ -7758,6 +7776,13 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
         && setup->property("clipboard").toBool() && setup->property("clipboardWinV").toBool()
         && setup->property("capture").toBool() && setup->property("captureHotkey").toString() == captureHotkey);
     check(u"navigation_releases_key_capture"_s, !setup->testing() && !setup->recording());
+    // The window is as tall as its taller step with everything on it: nothing is scrolled.
+    const auto wholeStepShown = [&] {
+        const auto* scroll = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"onboardingScroll"_s));
+        return scroll && !scroll->property("interactive").toBool()
+            && scroll->property("contentHeight").toDouble() <= scroll->height() + 0.5;
+    };
+    check(u"first_page_needs_no_scrolling"_s, wholeStepShown());
     check(u"first_page_choices_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-page1-choices.png"_s)));
     check(u"return_to_page_two"_s, navigate(u"onboardingNext"_s) && setup->page() == 1);
     setup->setProperty("clipboard", false); // layout/consent tests never record the user's clipboard
@@ -7784,7 +7809,7 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
     setup->setProperty("launchHotkey", launchHotkey);
     check(u"repair_first_page_and_continue"_s, navigate(u"onboardingNext"_s) && setup->page() == 1
         && setup->property("captureHotkey").toString() == captureHotkey);
-    const bool capturing = action == u"capture" || action == u"decline" || action == u"offline" || action == u"incompatible" || action == u"retry";
+    const bool capturing = action == u"capture" || action == u"offline" || action == u"incompatible" || action == u"retry";
     setup->setProperty("capture", capturing);
     {
         QTemporaryDir blocked;
@@ -7804,8 +7829,14 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
     setup->setProperty("clipboard", true);
     setup->setProperty("clipboardWinV", true);
     setup->setProperty("capture", true);
-    window->resize(660, 480);
     settle(window);
+    check(u"second_page_needs_no_scrolling"_s, wholeStepShown());
+    // A screen with less room than that: a shorter window, whose step scrolls.
+    const QVariant room = window->property("roomHeight");
+    const int shortRoom = 400;
+    window->setProperty("roomHeight", shortRoom);
+    settle(window);
+    check(u"short_screen_gets_short_window"_s, window->height() == shortRoom);
     auto* flick = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"onboardingScroll"_s));
     if (flick)
         flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble() - flick->height()));
@@ -7814,9 +7845,10 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
     check(u"last_feature_reachable_at_minimum_size"_s, capture && flick
         && capture->mapToItem(flick, QPointF(0, capture->height())).y() <= flick->height() + 1);
     check(u"compact_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-compact.png"_s)));
-    window->resize(guideSize);
+    window->setProperty("roomHeight", room);
     if (flick) flick->setProperty("contentY", 0);
     settle(window);
+    check(u"window_back_to_its_size"_s, window->size() == guideSize);
     check(u"choices_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-choices.png"_s)));
     setup->setProperty("clipboard", false);
     setup->setProperty("clipboardWinV", false);
@@ -7833,30 +7865,10 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
         bool retried = false;
         while (waiting.elapsed() < 30000) {
             pump(20);
-            auto* permissions = window->findChild<QObject*>(u"onboardingPermissions"_s);
-            if (permissions && permissions->property("open").toBool()) {
-                permissionSeen = true;
-                settle(window);
-                check(u"permission_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-permissions.png"_s)));
-                window->resize(660, 480);
-                settle(window);
-                auto* permissionCard = permissions->findChild<QQuickItem*>(u"pluginDialogCard"_s);
-                auto* permissionScroll = permissions->findChild<QQuickItem*>(u"pluginDialogScroll"_s);
-                auto* acceptButton = permissions->findChild<QQuickItem*>(u"pluginDialogAccept"_s);
-                check(u"compact_permission_card_fits"_s, permissionCard
-                    && QRectF(QPointF(), window->size()).contains(permissionCard->mapRectToItem(window->contentItem(), QRectF(QPointF(), permissionCard->size()))));
-                if (acceptButton) acceptButton->forceActiveFocus(Qt::TabFocusReason);
-                settle(window);
-                check(u"compact_permission_button_reachable"_s, acceptButton
-                    && QRectF(QPointF(), window->size()).contains(acceptButton->mapRectToItem(window->contentItem(), QRectF(QPointF(), acceptButton->size()))));
-                check(u"compact_permission_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-permissions-compact.png"_s)));
-                window->resize(guideSize);
-                if (permissionScroll) permissionScroll->setProperty("contentY", 0);
-                settle(window);
-                if (action == u"decline")
-                    QMetaObject::invokeMethod(permissions, "reject");
-                else
-                    QMetaObject::invokeMethod(permissions, "accept", Q_ARG(QVariant, QVariant(false)));
+            // Turning the screenshot on was the yes: no question over the setup.
+            for (QObject* asked : window->findChildren<QObject*>()) {
+                if (asked->objectName() == u"pluginDialogCard" && asked->property("visible").toBool())
+                    permissionSeen = true;
             }
             if (setup->canRetry() && action == u"retry" && !retried) {
                 check(u"offline_before_retry"_s, true);
@@ -7872,7 +7884,7 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
         }
         check(u"capture_committed"_s, setup->committed());
         const bool accepted = action == u"capture" || action == u"retry";
-        check(u"permission_is_explicit"_s, accepted || action == u"decline" ? permissionSeen : !permissionSeen);
+        check(u"no_second_permission_question"_s, !permissionSeen);
         check(u"capture_expected_state"_s, accepted ? setup->captureReady() : setup->canRetry());
         QSettings captureIni(Settings::dataDir() + u"/plugins/winshun.capture.data/capture.ini"_s, QSettings::IniFormat);
         check(u"capture_shortcut_saved"_s, captureIni.value(u"Capture/Hotkey"_s).toString() == captureHotkey);

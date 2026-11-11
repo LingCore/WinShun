@@ -204,6 +204,7 @@ set(qml_files
     qml/KeyHint.qml
     qml/Glyph.qml
     qml/SettingsWindow.qml
+    qml/OnboardingRail.qml
     qml/OnboardingWindow.qml
     qml/SettingsSearchBox.qml
     qml/TitleBar.qml

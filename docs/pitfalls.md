@@ -5382,3 +5382,9 @@
 - **现象**：提权的 PowerShell 测试脚本用 `Start-Process -WindowStyle Hidden` 启动，脚本里 `Show()` 的第一个窗体能拿到前台、`Visible` 也是 true，但 `IsWindowVisible` 是 false。#277 的实测里，Win顺 因此判定“没有可粘贴的窗口”，服务的助手回 `ERROR_INVALID_WINDOW_HANDLE`，看上去像产品的问题。
 - **原因**：进程带着“隐藏”的启动信息时，它第一次调用 `ShowWindow` 用的是启动信息里的显示方式，传进去的参数被忽略。
 - **做法**：测试脚本里把第一个窗口再显示一次（`Visible = false` 再 `true`，或 `Show(); Hide(); Show()`），并在日志里记下 `IsWindowVisible` 或前台窗口，别只信 `Visible`。
+
+## 测试：预览探针里的图标比真实程序大（2026-11-11）
+
+- **现象**：在缩放不是 100% 的显示器上跑 `--probe-runtime`、`--preview-*`，截图里 Phosphor 图标和标题栏字形是真实程序的 1.5 倍或 2 倍（文字正常），看上去像界面把图标画坏了。重做首次引导时，旧版和新版的截图都这样。
+- **原因**：探针关掉 Qt 的高 DPI 缩放、用 `--scale` 定倍率，这时 Qt 的逻辑 DPI 是显示器自己的（150% 是 144）。`Glyph` 的字号按磅（`font.pointSize`）给，磅换算成像素跟着逻辑 DPI 走；按像素给字号的文字不受影响。真实程序开着高 DPI 缩放，逻辑 DPI 恒为 96。
+- **做法**：跑探针前设环境变量 `QT_FONT_DPI=96`，图标大小就和真实程序一致。看探针截图判断图标大小前先确认设了它。

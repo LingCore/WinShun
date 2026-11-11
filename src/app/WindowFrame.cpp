@@ -68,14 +68,15 @@ void showWindowMenu(HWND hwnd, POINT pos)
     if (!menu)
         return;
     const bool maximized = ::IsZoomed(hwnd);
+    const bool sizable = ::GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_MAXIMIZEBOX; // not a window of one size (setFixedSize)
     const auto enable = [menu](UINT command, bool on) {
         ::EnableMenuItem(menu, command, MF_BYCOMMAND | (on ? MF_ENABLED : MF_GRAYED));
     };
     enable(SC_RESTORE, maximized);
     enable(SC_MOVE, !maximized);
-    enable(SC_SIZE, !maximized);
+    enable(SC_SIZE, sizable && !maximized);
     enable(SC_MINIMIZE, true);
-    enable(SC_MAXIMIZE, !maximized);
+    enable(SC_MAXIMIZE, sizable && !maximized);
     const UINT align = ::GetSystemMetrics(SM_MENUDROPALIGNMENT) ? TPM_RIGHTALIGN : TPM_LEFTALIGN;
     const BOOL command = ::TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | align, pos.x, pos.y, 0, hwnd, nullptr);
     if (command)
@@ -198,7 +199,7 @@ struct WindowFrame::Hook {
                 return 0;
             if (wParam == HTCAPTION) {
                 emit self->doubleClicked();
-                if (!self->m_ownFrame)
+                if (!self->m_ownFrame || self->m_fixedSize)
                     return 0; // nothing to maximise
             }
             break;
@@ -383,7 +384,7 @@ int WindowFrame::hitTest(int screenX, int screenY) const
     const bool onControl = onMaximize || anyCovers(m_controls, pos);
     if (!onControl && anyCovers(m_dragHandles, pos))
         return HTCAPTION;
-    if ((m_ownFrame || m_resizable) && !::IsZoomed(hwnd)) {
+    if ((m_ownFrame || m_resizable) && !m_fixedSize && !::IsZoomed(hwnd)) {
         // Resize edges as thick as the system frame, inside the window.
         POINT point {screenX, screenY};
         ::ScreenToClient(hwnd, &point);
@@ -438,6 +439,16 @@ qreal WindowFrame::resizeMargin(qreal devicePixelRatio) const
     const qreal dpr = std::max(qreal(1), devicePixelRatio);
     const UINT dpi = m_hwnd ? ::GetDpiForWindow(reinterpret_cast<HWND>(m_hwnd)) : ::GetDpiForSystem();
     return std::max(kSideEdge, resizeEdge(dpi) / dpr);
+}
+
+void WindowFrame::setFixedSize(bool on)
+{
+    if (on == m_fixedSize || !m_hwnd)
+        return;
+    m_fixedSize = on;
+    const HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
+    const LONG_PTR style = ::GetWindowLongPtrW(hwnd, GWL_STYLE);
+    ::SetWindowLongPtrW(hwnd, GWL_STYLE, on ? style & ~WS_MAXIMIZEBOX : style | WS_MAXIMIZEBOX);
 }
 
 void WindowFrame::setResizable(bool on)

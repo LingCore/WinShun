@@ -2872,114 +2872,109 @@
     </message>
 </context>
 <context>
-    <name>OnboardingWindow</name>
+    <name>OnboardingRail</name>
     <message>
-        <source>文件名索引自动保存并更新，无需每次重新建立。</source>
-        <translation>Your filename index is saved and kept up to date automatically.</translation>
+        <source>Win顺</source>
+        <translation>WinShun</translation>
     </message>
     <message>
-        <source>选择需要的功能，确认后生效。</source>
-        <translation>Choose what you need. Changes apply when you finish.</translation>
+        <source>识别成功</source>
+        <translation>Recognized</translation>
     </message>
     <message>
-        <source>文件内容搜索</source>
-        <translation>File content search</translation>
+        <source>现在按按看…</source>
+        <translation>Press them now…</translation>
     </message>
     <message>
-        <source>除了文件名，也能搜索文档里的文字。</source>
-        <translation>Search the text inside documents as well as filenames.</translation>
+        <source>连按两下 %1，呼出搜索框</source>
+        <translation>Tap %1 twice to open search</translation>
     </message>
     <message>
-        <source>首次在后台建立索引，会占用 CPU 和磁盘；索引仅保存在本机，之后更新变化的文件。</source>
-        <translation>The first background scan uses CPU and disk. The index stays on this PC; later scans update changed files.</translation>
+        <source>按下这组键，呼出搜索框</source>
+        <translation>Press these keys to open search</translation>
     </message>
     <message>
-        <source>暂不开启也能使用文件名搜索，或在“内容”页手动搜索。</source>
-        <translation>When off, search filenames or search Contents manually.</translation>
+        <source>还没有录制快捷键</source>
+        <translation>No shortcut recorded yet</translation>
     </message>
     <message>
-        <source>连续轻按两次同一侧的按键，即可呼出搜索框。</source>
-        <translation>Tap the same left or right modifier twice to open search.</translation>
-    </message>
-    <message>
-        <source>在本机保存复制过的文字、图片和文件，方便再次粘贴。</source>
-        <translation>Keep copied text, images and file references on this PC to paste again.</translation>
-    </message>
-    <message>
-        <source>默认最多保留 300 条、30 天，可随时清理。</source>
-        <translation>Keep up to 300 entries for 30 days by default. Clear them anytime.</translation>
-    </message>
-    <message>
-        <source>框选截图、标注和贴图。首次开启需下载组件，并确认权限。</source>
-        <translation>Select, annotate and pin screenshots. First use downloads a component and asks for permission.</translation>
-    </message>
-    <message>
-        <source>录制快捷键后即可使用；此处试用仅检测按键。</source>
-        <translation>Record a shortcut to use capture. This test only checks the keys.</translation>
-    </message>
-    <message>
-        <source>默认：文件名搜索 · 双击 Ctrl</source>
-        <translation>Defaults: filename search · double-tap Ctrl</translation>
-    </message>
-    <message>
-        <source>搜索与打开方式</source>
-        <translation>Search and activation</translation>
-    </message>
-    <message>
-        <source>剪贴板与截图</source>
-        <translation>Clipboard and screen capture</translation>
-    </message>
-    <message>
-        <source>第 %1 页，共 2 页</source>
+        <source>第 %1 步，共 2 步</source>
         <translation>Step %1 of 2</translation>
     </message>
     <message>
-        <source>上一步</source>
-        <translation>Back</translation>
+        <source>打开与搜索</source>
+        <translation>Open and search</translation>
     </message>
     <message>
-        <source>下一步</source>
-        <translation>Next</translation>
+        <source>剪贴板与截图</source>
+        <translation>Clipboard and capture</translation>
     </message>
-    <message>
-        <source>设置已保存，之后可随时调整。</source>
-        <translation>Settings saved. You can change them anytime.</translation>
-    </message>
+</context>
+<context>
+    <name>OnboardingWindow</name>
     <message>
         <source>欢迎使用 Win顺</source>
         <translation>Welcome to WinShun</translation>
     </message>
     <message>
-        <source>Win顺 · 首次设置</source>
-        <translation>WinShun · First-time setup</translation>
+        <source>先定下怎么打开</source>
+        <translation>First, how to open it</translation>
+    </message>
+    <message>
+        <source>再挑两样常用的</source>
+        <translation>Then, two handy extras</translation>
+    </message>
+    <message>
+        <source>文件名搜索装好就能用，索引会自动保存和更新。</source>
+        <translation>Filename search works right away; its index is saved and kept up to date.</translation>
+    </message>
+    <message>
+        <source>都可以先不开，需要时再到设置里打开。</source>
+        <translation>Both can stay off for now; turn them on in Settings whenever you like.</translation>
     </message>
     <message>
         <source>打开 Win顺</source>
         <translation>Open WinShun</translation>
     </message>
     <message>
+        <source>连续轻按两次同一侧的按键，或者用一组快捷键。</source>
+        <translation>Tap the same modifier twice (left or right), or use a shortcut.</translation>
+    </message>
+    <message>
         <source>双击 Ctrl</source>
-        <translation>Double-tap Ctrl</translation>
+        <translation>Ctrl ×2</translation>
     </message>
     <message>
         <source>双击 Alt</source>
-        <translation>Double-tap Alt</translation>
+        <translation>Alt ×2</translation>
     </message>
     <message>
         <source>双击 Shift</source>
-        <translation>Double-tap Shift</translation>
+        <translation>Shift ×2</translation>
     </message>
     <message>
-        <source>自定义快捷键</source>
-        <translation>Custom shortcut</translation>
+        <source>快捷键</source>
+        <translation>Shortcut</translation>
     </message>
     <message>
         <source>试试按键</source>
         <translation>Try the keys</translation>
     </message>
     <message>
+        <source>文件内容搜索</source>
+        <translation>File content search</translation>
+    </message>
+    <message>
+        <source>除了文件名，也能搜到文档里的文字。首次会在后台建立索引，占用一些 CPU 和磁盘；索引只保存在本机。</source>
+        <translation>Search the text inside documents as well as filenames. The first background scan uses some CPU and disk; the index stays on this PC.</translation>
+    </message>
+    <message>
         <source>剪贴板历史</source>
         <translation>Clipboard history</translation>
+    </message>
+    <message>
+        <source>在本机保存复制过的文字、图片和文件，方便再次粘贴。默认最多保留 300 条、30 天。</source>
+        <translation>Keep copied text, images and files on this PC to paste again. Up to 300 entries for 30 days by default.</translation>
     </message>
     <message>
         <source>用 Win+V 打开，替代 Windows 剪贴板历史</source>
@@ -2994,16 +2989,36 @@
         <translation>Screen capture</translation>
     </message>
     <message>
+        <source>框选截图、标注和贴图。首次开启会下载组件；打开即允许它读写剪贴板、保存图片。</source>
+        <translation>Select, annotate and pin screenshots. Turning it on downloads a component and lets it use the clipboard and save pictures.</translation>
+    </message>
+    <message>
         <source>试用截图快捷键</source>
         <translation>Try the capture shortcut</translation>
+    </message>
+    <message>
+        <source>都准备好了</source>
+        <translation>All set</translation>
+    </message>
+    <message>
+        <source>截图还没装好</source>
+        <translation>Screen capture isn't ready yet</translation>
+    </message>
+    <message>
+        <source>马上就好</source>
+        <translation>Almost there</translation>
+    </message>
+    <message>
+        <source>设置已保存，之后可随时调整。</source>
+        <translation>Settings saved. You can change them anytime.</translation>
     </message>
     <message>
         <source>搜索已准备好，截图也可稍后安装。</source>
         <translation>Search is ready. You can install capture later.</translation>
     </message>
     <message>
-        <source>重试</source>
-        <translation>Retry</translation>
+        <source>之后都能在设置里改。</source>
+        <translation>Change anytime in Settings.</translation>
     </message>
     <message>
         <source>稍后安装</source>
@@ -3012,6 +3027,18 @@
     <message>
         <source>稍后设置</source>
         <translation>Set up later</translation>
+    </message>
+    <message>
+        <source>上一步</source>
+        <translation>Back</translation>
+    </message>
+    <message>
+        <source>重试</source>
+        <translation>Retry</translation>
+    </message>
+    <message>
+        <source>下一步</source>
+        <translation>Next</translation>
     </message>
     <message>
         <source>开始使用</source>
@@ -11940,10 +11967,6 @@ Content index: %5</translation>
         <translation>Keys recognized. They will work after you get started.</translation>
     </message>
     <message>
-        <source>请确认截图组件所需的权限。</source>
-        <translation>Review the capture component&apos;s permissions.</translation>
-    </message>
-    <message>
         <source>无法创建截图配置目录。可稍后在“设置 → 插件”中安装。</source>
         <translation>Could not create the capture configuration folder. Install later in Settings → Plugins.</translation>
     </message>
@@ -11982,10 +12005,6 @@ Content index: %5</translation>
     <message>
         <source>正在安装截图组件…</source>
         <translation>Installing screen capture…</translation>
-    </message>
-    <message>
-        <source>截图尚未启用。可以重试，或稍后在“设置 → 插件”中开启。</source>
-        <translation>Capture is not enabled yet. Retry, or enable it later in Settings → Plugins.</translation>
     </message>
 </context>
 <context>

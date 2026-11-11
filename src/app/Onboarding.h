@@ -34,6 +34,8 @@ class Onboarding : public QObject {
     Q_PROPERTY(bool recording READ recording WRITE setRecording NOTIFY recordingChanged FINAL)
     Q_PROPERTY(bool testing READ testing NOTIFY stateChanged FINAL)
     Q_PROPERTY(QString testMessage READ testMessage NOTIFY stateChanged FINAL)
+    // The keys just tried were recognised: until another try, choice or page.
+    Q_PROPERTY(bool testPassed READ testPassed NOTIFY stateChanged FINAL)
     Q_PROPERTY(bool committed READ committed NOTIFY stateChanged FINAL)
     Q_PROPERTY(int page READ page NOTIFY stateChanged FINAL)
     Q_PROPERTY(QString message READ message NOTIFY stateChanged FINAL)
@@ -54,6 +56,7 @@ public:
     void setRecording(bool on);
     bool testing() const { return m_testing; }
     QString testMessage() const { return m_testMessage; }
+    bool testPassed() const { return m_testPassed; }
     bool committed() const { return m_committed; }
     int page() const { return m_page; }
     QString message() const { return m_message; }
@@ -69,7 +72,6 @@ public:
     Q_INVOKABLE void beginTest(bool capture = false);
     Q_INVOKABLE void stopTest();
     Q_INVOKABLE void retryCapture();
-    Q_INVOKABLE void permissionClosed();
     Q_INVOKABLE void finish();
 
 signals:
@@ -108,6 +110,7 @@ private:
     bool m_testing = false;
     bool m_testCapture = false;
     QString m_testMessage;
+    bool m_testPassed = false;
     bool m_committed = false;
     int m_page = 0;
     QString m_message;
@@ -117,7 +120,6 @@ private:
     double m_progress = -1;
     bool m_installRequested = false;
     bool m_enableRequested = false;
-    bool m_waitingPermission = false;
     QString m_captureFolder;
 };
 
