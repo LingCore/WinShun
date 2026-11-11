@@ -76,6 +76,11 @@ std::optional<Index> parse(const QByteArray& json, const QString& source, QStrin
 // few older plugins of others: its issues only when nothing else says
 // where. Empty: nowhere known.
 QString issuesAddress(const QString& repo, const QString& homepage);
+// Whether a plugin fits what was typed to filter a list of them (the
+// library's, the installed ones'): every word typed, parted by spaces, case
+// aside, is somewhere in `words`, the lower-cased text the plugin is found
+// by. Nothing typed fits them all.
+bool fitsFilter(const QString& words, const QString& filter);
 // The page of `repo` on GitHub, for a 主页 when the plugin gives none;
 // empty when it is no repository, or the library's own (which holds
 // packages, not their code).

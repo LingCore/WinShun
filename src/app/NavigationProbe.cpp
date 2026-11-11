@@ -527,6 +527,44 @@ bool checkOptimizationSettings(QQuickWindow* window, SettingsEditor* editor, con
     QMetaObject::invokeMethod(section, "resetForReopen");
     settle(window);
     check(!cards->isVisible(), u"temporary search reveal clears when settings reopen"_s);
+    // The installed plugins' own filter (GitHub #275): from a number of them
+    // on; the preview's few are under it.
+    auto* filter = item(window->contentItem(), u"installedPluginFilter"_s);
+    auto* noMatch = item(window->contentItem(), u"installedPluginNoMatch"_s);
+    check(filter && noMatch && !filter->isVisible(), u"a short list of plugins has no filter box"_s);
+    if (!filter || !noMatch) return false;
+    section->setProperty("installedFilter", u"lingcore.translate"_s);
+    settle(window);
+    const int all = section->property("installedShown").toInt();
+    check(all >= 6, u"a filter with no box to show it leaves the list whole"_s);
+    section->setProperty("filterFrom", 1);
+    settle(window);
+    check(filter->isVisible() && filter->property("text").toString() == u"lingcore.translate"
+            && section->property("installedShown").toInt() == 1,
+        u"the installed filter finds a plugin by its id"_s);
+    section->setProperty("installedFilter", u" Translate  LINGCORE "_s);
+    settle(window);
+    check(section->property("installedShown").toInt() == 1, u"every word typed counts, case and order aside"_s);
+    section->setProperty("installedFilter", u"lingcore"_s);
+    settle(window);
+    const int some = section->property("installedShown").toInt(); // by the id or anything else they are found by
+    check(some >= 2 && some < all && !noMatch->isVisible()
+            && installed->property("description").toString().contains(QString::number(all))
+            && installed->property("description").toString().contains(QString::number(some)),
+        u"the row says how many of the plugins fit"_s);
+    check(window->grabWindow().save(output.filePath(u"plugins-filter.png"_s)), u"capture the filtered installed plugins"_s);
+    section->setProperty("installedFilter", u"no-such-plugin"_s);
+    settle(window);
+    check(section->property("installedShown").toInt() == 0 && noMatch->isVisible(), u"nothing found is said, not left blank"_s);
+    QMetaObject::invokeMethod(search, "setText", Q_ARG(QVariant, QCoreApplication::translate("PluginsSection", "内置功能")));
+    settle(window);
+    check(section->property("installedShown").toInt() == all && !noMatch->isVisible(),
+        u"searching the settings sets the installed filter aside"_s);
+    QMetaObject::invokeMethod(search, "clear");
+    section->setProperty("installedFilter", QString());
+    section->setProperty("filterFrom", 8);
+    settle(window);
+    check(section->property("installedShown").toInt() == all && !filter->isVisible(), u"the filter cleared restores the list"_s);
     SettingsEditor::IndexAccessState access;
     access.administrator = access.portable = access.serviceInstalled = access.serviceInstallable = true;
     editor->setIndexAccessState(access);

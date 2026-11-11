@@ -140,6 +140,12 @@ QString repositoryAddress(const QString& repo)
     return listed.isEmpty() || listed.compare(u"LingCore/WinShun-plugins"_s, Qt::CaseInsensitive) == 0 ? QString() : u"https://github.com/"_s + listed;
 }
 
+bool fitsFilter(const QString& words, const QString& filter)
+{
+    const QStringList typed = filter.toLower().split(u' ', Qt::SkipEmptyParts);
+    return std::ranges::all_of(typed, [&](const QString& word) { return words.contains(word); });
+}
+
 QString issuesAddress(const QString& repo, const QString& homepage)
 {
     const auto issues = [](const QString& ownerName) { return u"https://github.com/"_s + ownerName + u"/issues"_s; };
