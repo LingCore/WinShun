@@ -8723,6 +8723,164 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
     return passed;
 }
 
+// QML trees need both walks: a Repeater's or Loader's items may not be
+// QObject children (runningInWindow reaches them through childItems too).
+QObject* findInWindowTree(QQuickWindow* window, const QString& name)
+{
+    QSet<QObject*> seen;
+    const std::function<QObject*(QObject*)> walk = [&](QObject* object) -> QObject* {
+        if (!object || seen.contains(object))
+            return nullptr;
+        seen.insert(object);
+        if (object->objectName() == name)
+            return object;
+        for (QObject* child : object->children())
+            if (auto* found = walk(child))
+                return found;
+        if (auto* item = qobject_cast<QQuickItem*>(object))
+            for (QQuickItem* child : item->childItems())
+                if (auto* found = walk(child))
+                    return found;
+        return nullptr;
+    };
+    return walk(window->contentItem());
+}
+
+QObject* findByWindowProperty(QQuickWindow* window, const QString& property, const QString& value)
+{
+    QSet<QObject*> seen;
+    const std::function<QObject*(QObject*)> walk = [&](QObject* object) -> QObject* {
+        if (!object || seen.contains(object))
+            return nullptr;
+        seen.insert(object);
+        if (object->property(property.toUtf8().constData()).toString() == value)
+            return object;
+        for (QObject* child : object->children())
+            if (auto* found = walk(child))
+                return found;
+        if (auto* item = qobject_cast<QQuickItem*>(object))
+            for (QQuickItem* child : item->childItems())
+                if (auto* found = walk(child))
+                    return found;
+        return nullptr;
+    };
+    return walk(window->contentItem());
+}
+
+// --keyword-check: the plugin card's keyword edit through the real QML, on a
+// zero-code fixture with two defaults (the translate card's "tr fy" shape):
+// several words saved and triggered, a refused edit said on the card, the
+// same value again clearing the mark, empty disabling, reset restoring.
+bool probeKeywordEdit(App& app, const QDir& out, QJsonObject& report)
+{
+    QJsonObject checks;
+    bool passed = true;
+    const auto check = [&](bool ok, const QString& key) {
+        checks.insert(key, ok);
+        if (!ok) {
+            qWarning().noquote() << "keyword check:" << key;
+            passed = false;
+        }
+        return ok;
+    };
+    app.showSettings();
+    pump(400);
+    QQuickWindow* window = nullptr;
+    SettingsEditor* editor = nullptr;
+    for (QWindow* candidate : QGuiApplication::allWindows()) {
+        if (auto* found = candidate->property("editor").value<SettingsEditor*>()) {
+            editor = found;
+            window = qobject_cast<QQuickWindow*>(candidate);
+            break;
+        }
+    }
+    if (!check(window && editor, u"settings_window"_s))
+        return false;
+    showOffScreen(window);
+    QMetaObject::invokeMethod(window, "showPluginPage", Q_ARG(QVariant, u"preview.keywords"_s));
+    const auto boxNow = [&] { return findInWindowTree(window, u"keywordBox-tr"_s); };
+    QElapsedTimer waited;
+    waited.start();
+    while (!boxNow() && waited.elapsed() < 5000)
+        pump(50);
+    if (!check(boxNow(), u"keyword_box"_s))
+        return false;
+    const auto rowNow = [&] {
+        QObject* card = findByWindowProperty(window, u"pluginId"_s, u"preview.keywords"_s);
+        return card ? card->property("keywords").toList().value(0).toMap() : QVariantMap {};
+    };
+    const auto iniKeyword = [&] {
+        QSettings ini(Settings::filePath(), QSettings::IniFormat);
+        ini.beginGroup(u"Plugin.preview.keywords"_s);
+        return ini.value(u"Keyword.tr"_s).toString();
+    };
+    const auto edit = [&](const QString& text) {
+        QObject* box = boxNow();
+        if (!box)
+            return false;
+        box->setProperty("text", text);
+        QMetaObject::invokeMethod(box, "editingFinished");
+        pump(300);
+        return true;
+    };
+    // Several words, the shape the defaults are shown in: saved and in use.
+    check(edit(u"try fy"_s), u"edit_several_words"_s);
+    check(iniKeyword() == u"try fy"_s, u"ini_saved"_s);
+    QVariantMap row = rowNow();
+    check(row.value(u"keyword"_s).toString() == u"try fy"_s && row.value(u"user"_s).toBool(), u"model_override"_s);
+    check(row.value(u"inUse"_s).toString() == u"try fy"_s, u"catalog_in_use"_s);
+    check(row.value(u"error"_s).toString().isEmpty(), u"no_error"_s);
+    check(boxNow() && boxNow()->property("text").toString() == u"try fy"_s, u"box_normalized"_s);
+    // A refused edit: said on the card, the saved value untouched.
+    check(edit(u"a\"b"_s), u"edit_refused_attempt"_s);
+    row = rowNow();
+    check(!row.value(u"error"_s).toString().isEmpty(), u"error_said"_s);
+    check(iniKeyword() == u"try fy"_s, u"refused_not_saved"_s);
+    check(boxNow() && boxNow()->property("error").toBool(), u"box_error_mark"_s);
+    saveGrab(window, out.filePath(u"keyword-card.png"_s));
+    // The same value submitted again clears the mark.
+    check(edit(u"try fy"_s), u"edit_again"_s);
+    check(rowNow().value(u"error"_s).toString().isEmpty(), u"error_cleared"_s);
+    // Empty: the command keeps no keyword.
+    check(edit(QString()), u"edit_empty"_s);
+    check(rowNow().value(u"inUse"_s).toString().isEmpty(), u"empty_disables"_s);
+    // Reset: the manifest's words back.
+    editor->plugins()->resetKeyword(u"preview.keywords"_s, u"tr"_s);
+    pump(300);
+    row = rowNow();
+    check(row.value(u"keyword"_s).toString() == u"tr fy"_s && !row.value(u"user"_s).toBool(), u"reset_defaults"_s);
+    // The words trigger the command; the replaced default does not.
+    check(edit(u"try fy"_s), u"edit_for_trigger"_s);
+    const auto rowsWith = [&](const QString& query) {
+        app.showLauncher(query);
+        for (QWindow* candidate : QGuiApplication::allWindows()) {
+            if (candidate->property("launcher").value<QObject*>())
+                if (auto* w = qobject_cast<QQuickWindow*>(candidate))
+                    showOffScreen(w);
+        }
+        pump(600);
+        const QString file = out.filePath(u"launcher-dump.json"_s);
+        app.dumpLauncher(file);
+        QFile dump(file);
+        if (!dump.open(QIODevice::ReadOnly))
+            return false;
+        const QJsonArray rows = QJsonDocument::fromJson(dump.readAll()).object().value(u"rows"_s).toArray();
+        for (const QJsonValue& r : rows)
+            if (r.toObject().value(u"name"_s).toString() == u"keyword probe result"_s)
+                return true;
+        return false;
+    };
+    check(rowsWith(u"try hello"_s), u"new_word_triggers"_s);
+    check(!rowsWith(u"tr hello"_s), u"old_default_gone"_s);
+    check(rowsWith(u"fy hello"_s), u"second_word_triggers"_s);
+    report.insert(u"checks"_s, checks);
+    report.insert(u"passed"_s, passed);
+    QFile json(out.filePath(u"keyword.json"_s));
+    if (json.open(QIODevice::WriteOnly))
+        json.write(QJsonDocument(report).toJson());
+    return passed;
+}
+
 // --probe-runtime <folder> --live: the production App on the real desktop, at
 // the screen's own scale, beside the Win顺 that runs (this one never took the
 // instance mutex), until <folder>\stop appears. Lines in <folder>\cmd.txt
@@ -8994,8 +9152,23 @@ int runRuntime(const QStringList& args)
     if (settings.dialogBar && !QFile::copy(valueAfter(args, u"--file-dialog-sample"), dialogSample))
         return 4;
 
-    const QDir plugins(valueAfter(args, u"--runtime-plugins"));
-    if (args.contains(u"--runtime-plugins"_s)) {
+    QTemporaryDir keywordFixture;
+    QString runtimePluginsDir = valueAfter(args, u"--runtime-plugins");
+    if (args.contains(u"--keyword-check"_s) && runtimePluginsDir.isEmpty()) {
+        if (!keywordFixture.isValid())
+            return 4;
+        const QDir dir(keywordFixture.path());
+        if (!dir.mkdir(u"preview.keywords"_s))
+            return 4;
+        QFile manifest(dir.filePath(u"preview.keywords/plugin.json"_s));
+        if (!manifest.open(QIODevice::WriteOnly))
+            return 4;
+        manifest.write(R"json({"manifest":1,"id":"preview.keywords","name":{"zh":"关键字探针","en":"Keyword probe"},"version":"1.0.0","description":"keyword edit probe","commands":[{"id":"tr","keyword":["tr","fy"],"title":{"zh":"翻译","en":"Translate"},"run":{"items":[{"title":"keyword probe result","match":"hello"}]}}]})json");
+        manifest.close();
+        runtimePluginsDir = keywordFixture.path();
+    }
+    const QDir plugins(runtimePluginsDir);
+    if (args.contains(u"--runtime-plugins"_s) || !runtimePluginsDir.isEmpty()) {
         for (const QFileInfo& folder : plugins.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
             auto candidate = plugin::install::inspect(folder.absoluteFilePath());
             if (!candidate || !candidate->manifest)
@@ -9158,6 +9331,8 @@ int runRuntime(const QStringList& args)
         }
         if (args.contains(u"--double-tap-plugin"_s) && !checkDoubleTapPlugin(app, out))
             return 4;
+        if (args.contains(u"--keyword-check"_s))
+            return probeKeywordEdit(app, out, report) ? 0 : 4;
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
         if (args.contains(u"--clipboard-shell-probe"_s)) {

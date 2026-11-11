@@ -338,6 +338,9 @@ private:
         QString text;
     };
     QHash<QString, ConfirmProblem> m_confirmProblems;
+    // "<id>/<command>" -> why the keyword edit was refused; the card shows it
+    // until the next edit or reset.
+    QHash<QString, QString> m_keywordErrors;
     void setConfirmProblem(const QString& id, const QString& text);
     QString confirmProblem(const QString& id, const QString& version) const;
     void finishConfirm(const QString& id, bool ok, const QString& error);

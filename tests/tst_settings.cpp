@@ -1192,6 +1192,24 @@ private slots:
         QCOMPARE(read(u"Content/MaxFileSizeMB"_s, u"lots"_s).contentMaxSizeMB[0], d.contentMaxSizeMB[0]);
     }
 
+    // The keyword override keeps several words as written: the card edits a
+    // command's keywords in one box, space-joined.
+    void pluginKeywordWordsRoundTrip()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings s;
+        s.load();
+        s.pluginConfig(u"winshun.translate"_s).keywords.append({u"tr"_s, u"try fy"_s});
+        s.save();
+        ws::Settings back;
+        back.load();
+        const ws::PluginConfig* c = back.plugin(u"winshun.translate"_s);
+        QVERIFY(c);
+        QCOMPARE(c->keywords, (QList<std::pair<QString, QString>> {{u"tr"_s, u"try fy"_s}}));
+    }
+
     void sortAndDoubleClick()
     {
         QTemporaryDir profile;

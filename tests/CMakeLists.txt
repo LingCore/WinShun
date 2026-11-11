@@ -170,6 +170,15 @@ add_test(NAME tst_settingsreopen COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_settingsreopen PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The plugin card's keyword edit (the translate card's "tr fy" shape): several
+# words saved and triggered, a refused edit said, empty and reset; the real App
+# and its real QML, an isolated zero-code fixture (--keyword-check).
+add_test(NAME tst_keywordedit COMMAND $<TARGET_FILE:WinShun>
+    --probe-runtime "${CMAKE_CURRENT_BINARY_DIR}/keyword-edit" --keyword-check --settle-ms 1500
+    --renderer d3d11)
+set_tests_properties(tst_keywordedit PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The settings pages are made when needed: opening makes the page on show only,
 # each way in from elsewhere its own, a word typed all of them (results in page
 # order, as many as before), and after the first frame the rest, one per tick.

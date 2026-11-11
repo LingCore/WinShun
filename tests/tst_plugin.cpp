@@ -2330,6 +2330,58 @@ private slots:
         QCOMPARE(catalog.match(u"bb q"_s).size(), 1u);
     }
 
+    // The user's override may carry several words, the shape the card shows
+    // the defaults in: each word becomes a keyword of the command.
+    void keywordOverrideWords()
+    {
+        bool ok = false;
+        QCOMPARE(normalizeKeywords(u"try fy"_s, &ok), u"try fy"_s);
+        QVERIFY(ok);
+        QCOMPARE(normalizeKeywords(u"  try　fy\t "_s, &ok), u"try fy"_s); // full-width space, tab
+        QVERIFY(ok);
+        QCOMPARE(normalizeKeywords(u"try TRY Try"_s, &ok), u"try"_s);
+        QVERIFY(ok);
+        QVERIFY(normalizeKeywords(u"a\"b"_s, &ok).isEmpty());
+        QVERIFY(!ok);
+        QCOMPARE(normalizeKeywords(u"   "_s, &ok), QString());
+        QVERIFY(ok);
+        QCOMPARE(keywordWords(u"try　fy"_s), (QStringList {u"try"_s, u"fy"_s}));
+
+        Fixture f;
+        Spec spec;
+        spec.id = u"test.w"_s;
+        spec.mode.clear();
+        spec.commands = QJsonArray {QJsonObject {{u"id"_s, u"tr"_s}, {u"keyword"_s, QJsonArray {u"tr"_s, u"fy"_s}}, {u"run"_s, QJsonObject {{u"url"_s, u"https://w.com/?q=%s"_s}}}}};
+        QVERIFY(!f.install(spec).isEmpty());
+        Catalog& catalog = f.host->catalog();
+        f.host->setKeywordOverrides({{u"test.w/tr"_s, u"try fy"_s}});
+        QCOMPARE(catalog.keywordsOf(u"test.w"_s, u"tr"_s), (QStringList {u"try"_s, u"fy"_s}));
+        std::vector<Match> matches = catalog.match(u"try hello"_s);
+        QCOMPARE(matches.size(), 1u);
+        QCOMPARE(matches[0].keyword, u"try"_s);
+        QCOMPARE(matches[0].text, u"hello"_s);
+        QCOMPARE(catalog.match(u"FY world"_s).size(), 1u);
+        QVERIFY(catalog.match(u"tr x"_s).empty()); // the defaults replaced
+        QVERIFY(catalog.match(u"try"_s).empty()); // a list command needs the space
+        // As a hand-edited INI may hold it: extra whitespace between words.
+        f.host->setKeywordOverrides({{u"test.w/tr"_s, u"try  fy"_s}});
+        QCOMPARE(catalog.keywordsOf(u"test.w"_s, u"tr"_s), (QStringList {u"try"_s, u"fy"_s}));
+        // One word taken: the other stays; the taken one is said on the card.
+        f.host->setWebKeywords({{u"fy"_s, u"网页"_s}});
+        QCOMPARE(catalog.keywordsOf(u"test.w"_s, u"tr"_s), QStringList {u"try"_s});
+        QCOMPARE(catalog.match(u"try x"_s).size(), 1u);
+        QVERIFY(catalog.match(u"fy x"_s).empty());
+        bool conflicted = false;
+        for (const KeywordConflict& c : catalog.conflicts())
+            conflicted = conflicted || (c.pluginId == u"test.w" && c.keyword == u"fy" && c.takenBy == u"web:网页");
+        QVERIFY(conflicted);
+        f.host->setWebKeywords({});
+        // Empty: the command keeps no keyword at all.
+        f.host->setKeywordOverrides({{u"test.w/tr"_s, QString()}});
+        QVERIFY(catalog.keywordsOf(u"test.w"_s, u"tr"_s).isEmpty());
+        QVERIFY(catalog.match(u"try x"_s).empty());
+    }
+
     // The space after a list command's keyword opens it; the keyword alone
     // searches names, with the command offered as a row (Merge::placeHint).
     // An instant command's keyword works alone.

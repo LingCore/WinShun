@@ -510,6 +510,7 @@ Rectangle {
                                 InputBox {
                                     dpr: card.dpr
                                     id: keywordBox
+                                    objectName: "keywordBox-" + keywordCell.modelData.command
                                     anchors.left: keywordLabel.right
                                     anchors.leftMargin: 8
                                     anchors.right: resetButton.visible ? resetButton.left : parent.right
@@ -518,8 +519,9 @@ Rectangle {
                                     implicitHeight: 32
                                     text: keywordCell.modelData.keyword
                                     placeholder: qsTr("无")
+                                    error: keywordCell.modelData.error.length > 0
                                     onEditingFinished: {
-                                        if (text !== keywordCell.modelData.keyword)
+                                        if (text !== keywordCell.modelData.keyword || keywordCell.modelData.error.length > 0)
                                             card.plugins.setKeyword(card.pluginId, keywordCell.modelData.command, text)
                                     }
                                 }
@@ -534,6 +536,15 @@ Rectangle {
                                     text: qsTr("默认")
                                     onClicked: card.plugins.resetKeyword(card.pluginId, keywordCell.modelData.command)
                                 }
+                            }
+                            Text { // the last edit was refused
+                                visible: keywordCell.modelData.error.length > 0
+                                width: parent.width
+                                text: keywordCell.modelData.error
+                                textFormat: Text.PlainText
+                                color: Theme.danger
+                                font.pixelSize: Theme.fontCaption
+                                wrapMode: Text.Wrap
                             }
                             Text { // who has it
                                 visible: keywordCell.modelData.conflict.length > 0

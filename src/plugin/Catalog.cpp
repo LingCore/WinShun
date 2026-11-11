@@ -12,6 +12,42 @@ using namespace Qt::StringLiterals;
 
 namespace ws::plugin {
 
+QStringList keywordWords(QStringView text)
+{
+    QStringList words;
+    QString word;
+    for (const QChar c : text) {
+        if (c.isSpace()) {
+            if (!word.isEmpty()) {
+                words.push_back(word);
+                word.clear();
+            }
+        } else {
+            word.append(c);
+        }
+    }
+    if (!word.isEmpty())
+        words.push_back(word);
+    return words;
+}
+
+QString normalizeKeywords(QStringView text, bool* ok)
+{
+    QStringList words;
+    for (const QString& word : keywordWords(text)) {
+        if (word.contains(u'"')) {
+            *ok = false;
+            return QString();
+        }
+        const QString lower = word.toLower();
+        if (std::any_of(words.cbegin(), words.cend(), [&](const QString& w) { return w.toLower() == lower; }))
+            continue;
+        words.push_back(word);
+    }
+    *ok = true;
+    return words.join(u' ');
+}
+
 Catalog::Catalog(QString userDir, QString bundledDir, QObject* parent)
     : QObject(parent)
     , m_userDir(QDir::toNativeSeparators(std::move(userDir)))
@@ -264,8 +300,8 @@ void Catalog::rebuildIndex()
         for (const Command& command : entry.manifest->commands) {
             const QString key = entry.id + u'/' + command.id;
             if (const auto it = m_overrides.find(key); it != m_overrides.end()) {
-                if (!it->isEmpty())
-                    claims.push_back({&entry, &command, *it, true});
+                for (const QString& word : keywordWords(*it))
+                    claims.push_back({&entry, &command, word, true});
                 continue; // the user's choice replaces the defaults, even with nothing
             }
             for (const QString& keyword : command.keywords)

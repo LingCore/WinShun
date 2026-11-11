@@ -730,7 +730,8 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
         const QString title = command.title.pick(m_locale).isEmpty() ? c.name : command.title.pick(m_locale);
         c.keywords.push_back(QVariantMap {{u"command"_s, command.id}, {u"title"_s, title},
             {u"keyword"_s, overridden ? user : command.keywords.join(u' ')}, {u"defaults"_s, command.keywords.join(u' ')},
-            {u"inUse"_s, catalog.keywordsOf(id, command.id).join(u' ')}, {u"conflict"_s, conflict}, {u"user"_s, overridden}});
+            {u"inUse"_s, catalog.keywordsOf(id, command.id).join(u' ')}, {u"conflict"_s, conflict}, {u"user"_s, overridden},
+            {u"error"_s, m_keywordErrors.value(id + u'/' + command.id)}});
     }
     c.permissions = permissionRows(id);
 
@@ -1017,14 +1018,23 @@ void PluginSettings::setAiEnabled(const QString& id, bool on)
 
 void PluginSettings::setKeyword(const QString& id, const QString& command, const QString& keyword)
 {
-    const QString word = keyword.trimmed();
-    if (word.contains(u' ') || word.contains(u'"'))
+    const QString key = id + u'/' + command;
+    bool ok = false;
+    const QString word = plugin::normalizeKeywords(keyword, &ok);
+    if (!ok) {
+        m_keywordErrors.insert(key, tr("关键字不能含引号"));
+        rebuild();
         return;
+    }
+    const bool hadError = m_keywordErrors.remove(key);
     PluginConfig& config = m_editor->m_settings.pluginConfig(id);
     for (auto& [cmd, k] : config.keywords) {
         if (cmd == command) {
-            if (k == word)
+            if (k == word) {
+                if (hadError)
+                    rebuild();
                 return;
+            }
             k = word;
             m_editor->commit();
             return;
@@ -1036,11 +1046,14 @@ void PluginSettings::setKeyword(const QString& id, const QString& command, const
 
 void PluginSettings::resetKeyword(const QString& id, const QString& command)
 {
+    const bool hadError = m_keywordErrors.remove(id + u'/' + command);
     PluginConfig& config = m_editor->m_settings.pluginConfig(id);
     const qsizetype had = config.keywords.size();
     config.keywords.removeIf([&](const std::pair<QString, QString>& k) { return k.first == command; });
     if (config.keywords.size() != had)
         m_editor->commit();
+    else if (hadError)
+        rebuild();
 }
 
 void PluginSettings::applyPluginSettings(const QString& id)
@@ -1680,7 +1693,7 @@ void PluginSettings::loadPreview(bool elevated, int logPlugins)
     const QVariantMap strict = permission({}, tr("在严格沙箱里运行：低完整性，不是管理员，写不了你的文件（只能写它自己的数据文件夹）；内存上限 %1 MB").arg(64), true);
     const auto keyword = [](const QString& command, const QString& title, const QString& kw, const QString& defaults, const QString& conflict, bool user) {
         return QVariantMap {{u"command"_s, command}, {u"title"_s, title}, {u"keyword"_s, kw}, {u"defaults"_s, defaults}, {u"inUse"_s, conflict.isEmpty() ? kw : QString()},
-            {u"conflict"_s, conflict}, {u"user"_s, user}};
+            {u"conflict"_s, conflict}, {u"user"_s, user}, {u"error"_s, QString()}};
     };
     std::vector<PluginListModel::Card> cards;
     {

@@ -48,6 +48,14 @@ struct KeywordConflict {
     QString takenBy;
 };
 
+// The words of a keyword override: split on any whitespace (full-width
+// included), empties skipped. The card shows a command's defaults joined
+// with spaces, so the user's edit keeps that several-words shape.
+QStringList keywordWords(QStringView text);
+// keywordWords deduplicated case-insensitively, joined with single spaces;
+// `ok` is false when a word carries a quote (no keyword may).
+QString normalizeKeywords(QStringView text, bool* ok);
+
 // One command triggered by a query.
 struct Match {
     enum class Kind { Keyword, Regex, Push, Content };
