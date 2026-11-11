@@ -3910,22 +3910,36 @@ void Launcher::dismiss()
 // plain file it opens, or what the plugin tells of it (GitHub #202).
 std::optional<FilePreview::Item> Launcher::previewItem(const SearchResult* r, bool ask)
 {
+    // With the words searched for, marked in a text file's lines (GitHub
+    // #291): those typed (a plugin's list: after its keyword), and in 内容
+    // the words looked for in the files. Not a regular expression's text.
+    const auto item = [this](FilePreview::Item item) {
+        if (!regexTerms()) {
+            item.words = ws::parseQuery(m_keyword ? m_keyword->words : searchText()).highlights;
+            const QString needle = m_scope == Content || m_withContent ? contentNeedle() : QString();
+            for (const QString& word : needle.split(u' ', Qt::SkipEmptyParts)) {
+                if (!item.words.contains(word, Qt::CaseInsensitive))
+                    item.words.append(word);
+            }
+        }
+        return item;
+    };
     if (r && r->clipId > 0 && !r->target.isEmpty()) // a screenshot: its picture
         return FilePreview::Item {r->target, r->name, false};
     if (r && r->isPlugin()) {
         if (const auto details = pluginDetails(*r, ask)) {
             if (!details->file.isEmpty())
-                return FilePreview::Item {details->file, r->name, false};
-            return FilePreview::Item {r->path, r->name, false, details->text, details->message};
+                return item({details->file, r->name, false});
+            return item({r->path, r->name, false, details->text, details->message});
         }
         const QString file = plugin::rowFile(*r->plugin);
         if (file.isEmpty())
             return std::nullopt;
-        return FilePreview::Item {file, file.mid(file.lastIndexOf(u'\\') + 1), false};
+        return item({file, file.mid(file.lastIndexOf(u'\\') + 1), false});
     }
     if (!r || r->isApp() || r->missing || r->offline || r->path.isEmpty())
         return std::nullopt;
-    return FilePreview::Item {r->path, r->name, r->isDir};
+    return item({r->path, r->name, r->isDir});
 }
 
 // The words a plugin's row is about, for its actions and details: those

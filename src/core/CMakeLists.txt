@@ -55,6 +55,7 @@ qt_add_library(wscore STATIC
     ServiceLocation.cpp ServiceLocation.h
     ServiceVolumeAccess.cpp ServiceVolumeAccess.h
     SettingsMatch.cpp SettingsMatch.h
+    SyntaxSpans.cpp SyntaxSpans.h
     ShareIndexer.cpp ShareIndexer.h
     ShareScan.h
     ShareLister.cpp ShareLister.h

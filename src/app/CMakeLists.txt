@@ -335,6 +335,7 @@ qt_add_qml_module(WinShun
         FileDropTarget.cpp FileDropTarget.h
         FileFacts.cpp FileFacts.h
         FilePreview.cpp FilePreview.h
+        LineHighlighter.cpp LineHighlighter.h
         ContentPane.cpp ContentPane.h
         PictureFile.cpp PictureFile.h
         FolderMenu.cpp FolderMenu.h

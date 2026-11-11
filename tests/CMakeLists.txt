@@ -225,6 +225,13 @@ add_test(NAME tst_querysyntax COMMAND tst_querysyntax)
 set_tests_properties(tst_querysyntax PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+qt_add_executable(tst_syntax tst_syntax.cpp)
+target_link_libraries(tst_syntax PRIVATE wscore Qt6::Test)
+set_target_properties(tst_syntax PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_syntax COMMAND tst_syntax)
+set_tests_properties(tst_syntax PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_panelcolumns tst_panelcolumns.cpp ${PROJECT_SOURCE_DIR}/src/app/PanelColumns.cpp)
 target_include_directories(tst_panelcolumns PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_panelcolumns PRIVATE wscore Qt6::Qml Qt6::Test)

@@ -150,16 +150,35 @@ Item {
         }
         Text { id: lineFont; visible: false; font.family: "Consolas"; font.pixelSize: Theme.uiCaption + 1 }
 
+        // The colours of code, data files and Markdown (GitHub #291), by
+        // syntax::Kind: comment, string, number, keyword, type, key, tag;
+        // Markdown's headings (three), strong, emphasis, code, link, quote
+        // and its marks. Each reads on the card in its theme (>= 4.5:1).
+        readonly property list<color> syntaxColors: Theme.dark
+            ? ["#8B949E", "#7EE787", "#FFA657", "#D2A8FF", "#79C0FF", "#79C0FF", "#D2A8FF",
+               Theme.text, Theme.text, Theme.text, Theme.text, Theme.text, "#FFA657", "#58A6FF", Theme.subtext, Theme.faint]
+            : ["#636C76", "#116329", "#953800", "#8250DF", "#0550AE", "#0550AE", "#8250DF",
+               Theme.text, Theme.text, Theme.text, Theme.text, Theme.text, "#953800", "#0969DA", Theme.subtext, Theme.faint]
+
         Connections {
             target: body.preview
-            function onContentChanged() { lines.pick(0, 0, 0, 0) }
+            function onContentChanged() {
+                lines.pick(0, 0, 0, 0)
+                // The first line with a word searched for in it, in sight.
+                const row = body.preview.firstMarkRow
+                if (lines.shown && row > 0)
+                    Qt.callLater(() => lines.positionViewAtIndex(Math.min(row, lines.count - 1), ListView.Center))
+            }
         }
 
         delegate: Item {
             id: line
-            required property string display
             required property int index
-            readonly property int number: body.preview.lineNumberAt(index)
+            // Asked of the preview by row, anew with every text (revision):
+            // a row kept for reuse and given the same number again in the
+            // next file's list keeps what the model told it before.
+            readonly property string content: (body.preview.revision, body.preview.lineAt(index))
+            readonly property int number: (body.preview.revision, body.preview.lineNumberAt(index))
             readonly property int length: lineText.length
             readonly property bool inPick: index >= lines.fromRow && index <= lines.toRow
             readonly property int pickFrom: inPick && index === lines.fromRow ? lines.fromPos : 0
@@ -193,7 +212,7 @@ Item {
                 id: lineText
                 x: lines.numberWidth + 12
                 width: lines.width - x - body.padding
-                text: line.display
+                text: line.content
                 textFormat: TextEdit.PlainText
                 wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
                 readOnly: true
@@ -203,6 +222,14 @@ Item {
                 selectedTextColor: Theme.text
                 color: Theme.text
                 font: lineFont.font
+            }
+            LineHighlighter {
+                textDocument: lineText.textDocument
+                spans: (body.preview.revision, body.preview.spansAt(line.index))
+                marks: (body.preview.revision, body.preview.marksAt(line.index))
+                colors: lines.syntaxColors
+                markColor: Theme.accent
+                basePixelSize: lineFont.font.pixelSize
             }
         }
     }

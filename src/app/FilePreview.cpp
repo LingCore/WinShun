@@ -1,4 +1,6 @@
 #include "FilePreview.h"
+
+#include "SyntaxSpans.h"
 #include "SystemTheme.h"
 
 #include "FileIconProvider.h"
@@ -162,6 +164,9 @@ struct FilePreview::Loaded {
     QStringList facts;
     QStringList lines;
     QVector<int> numbers;
+    QVector<QList<int>> spans; // by row: start, length, kind …
+    QVector<QList<int>> marks; // by row: start, length …
+    int firstMark = -1;
     int lineCount = 0;
     int rows = 0; // Text: lines as shown, long ones wrapped (about)
     QString message;
@@ -416,6 +421,9 @@ void FilePreview::close()
     m_message.clear();
     m_lines.setStringList({});
     m_lineNumbers.clear();
+    m_spans.clear();
+    m_marks.clear();
+    m_firstMarkRow = -1;
     setSelection(0, 0, 0, 0);
     m_images->set({}, {});
     m_imageUrl.clear();
@@ -493,12 +501,17 @@ void FilePreview::load(const Item& item, bool followed)
     const auto stale = [self, generation] { return !self || self->m_generation.load() != generation; };
     // Text as rows: a line a row, long ones in pieces (never splitting a
     // surrogate pair).
-    const auto split = [](const QString& text, Loaded& loaded) {
+    // Each row's colours by the kind of file it is, and where the words
+    // searched for are in it (GitHub #291).
+    const syntax::Language language = syntax::languageFor(item.name.isEmpty() ? item.path : item.name);
+    const QStringList words = item.words;
+    const auto split = [language, words](const QString& text, Loaded& loaded) {
         const QStringList lines = text.split(u'\n');
         int count = static_cast<int>(lines.size());
         if (count > 1 && lines.last().isEmpty())
             --count; // the end of the last line, not a line
         loaded.lineCount = count;
+        syntax::State state;
         for (int i = 0; i < count; ++i) {
             const QString& line = lines[i];
             qsizetype at = 0;
@@ -506,6 +519,17 @@ void FilePreview::load(const Item& item, bool followed)
                 qsizetype n = std::min(kPieceChars, line.size() - at);
                 if (at + n < line.size() && line[at + n - 1].isHighSurrogate())
                     --n;
+                const QStringView piece = QStringView(line).mid(at, n);
+                QList<int> spans;
+                for (const syntax::Span& span : syntax::highlight(language, piece, state))
+                    spans << span.start << span.length << static_cast<int>(span.kind);
+                QList<int> marks;
+                for (const syntax::Found& found : syntax::findWords(piece, words))
+                    marks << found.start << found.length;
+                if (!marks.isEmpty() && loaded.firstMark < 0)
+                    loaded.firstMark = static_cast<int>(loaded.lines.size());
+                loaded.spans.append(std::move(spans));
+                loaded.marks.append(std::move(marks));
                 loaded.lines.append(line.mid(at, n));
                 loaded.numbers.append(at == 0 ? i + 1 : 0);
                 loaded.rows += std::max<int>(1, static_cast<int>((n + 99) / 100));
@@ -665,6 +689,10 @@ void FilePreview::apply(quint64 generation, std::shared_ptr<Loaded> loaded)
     m_message = loaded->message;
     m_imageSize = loaded->imageSize;
     m_lineNumbers = loaded->numbers;
+    m_spans = loaded->spans;
+    m_marks = loaded->marks;
+    m_firstMarkRow = loaded->firstMark;
+    ++m_revision;
     setSelection(0, 0, 0, 0);
     m_lineCount = loaded->lineCount;
     m_textRows = loaded->rows;

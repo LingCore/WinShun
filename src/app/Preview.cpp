@@ -4263,6 +4263,78 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
                     check(filePreview.selectedText().isEmpty(), "the pick stayed after the preview closed");
                 }
             }
+            // Colours (GitHub #291): code, data and Markdown by the kind of
+            // file, the words searched for marked, the first of them in sight.
+            {
+                const auto showText = [&](const QString& name, const QByteArray& content, const QStringList& words) -> QQuickWindow* {
+                    QFile file(temporary.filePath(name));
+                    check(file.open(QIODevice::WriteOnly), "could not create a fixture for the colours");
+                    file.write(content);
+                    file.close();
+                    filePreview.show({.path = QDir::toNativeSeparators(file.fileName()), .name = name, .words = words});
+                    timeout.restart();
+                    while ((filePreview.kind() != FilePreview::Text || !filePreview.isShowing(QDir::toNativeSeparators(file.fileName())))
+                        && timeout.elapsed() < 3000)
+                        pump(10);
+                    pump(300);
+                    return qobject_cast<QQuickWindow*>(filePreview.window());
+                };
+                const auto kindsOf = [&](int row) {
+                    QList<int> kinds;
+                    const QList<int> spans = filePreview.spansAt(row);
+                    for (qsizetype i = 2; i < spans.size(); i += 3)
+                        kinds.append(spans[i]);
+                    return kinds;
+                };
+                QByteArray code = "// A sample: comments, keywords, strings, numbers.\n#include <vector>\n\n"
+                                  "/* A block comment\n   over two lines. */\nnamespace demo {\n\n"
+                                  "constexpr int kLimit = 0x40; // how many\n\n"
+                                  "bool contains(const std::vector<int>& values, int wanted)\n{\n"
+                                  "    for (const int value : values) {\n        if (value == wanted)\n            return true;\n    }\n"
+                                  "    return false;\n}\n\nconst char* name() { return \"Win\\\"shun\"; }\n\n";
+                for (int i = 0; i < 60; ++i)
+                    code += "int filler" + QByteArray::number(i) + "() { return " + QByteArray::number(i) + "; }\n";
+                code += "\n// The needle is down here, far below the first screen.\nint needle() { return 42; }\n} // namespace demo\n";
+                QQuickWindow* shown = showText(u"sample.cpp"_s, code, {u"needle"_s});
+                auto* lines = shown ? visualNamed(shown->contentItem(), u"previewTextLines"_s) : nullptr;
+                check(filePreview.kind() == FilePreview::Text && lines, "the code did not show as text");
+                check(kindsOf(0) == QList<int> {0} && kindsOf(7).contains(3) && kindsOf(7).contains(4) && kindsOf(7).contains(2),
+                    "the code's first lines have no colours (comment; keyword, type, number)");
+                check(kindsOf(4) == QList<int> {0}, "the second line of a block comment is not a comment");
+                check(filePreview.firstMarkRow() > 60 && filePreview.marksAt(filePreview.firstMarkRow()).size() == 2,
+                    "the word searched for was not found in the text");
+                check(lines && lines->property("contentY").toReal() > lines->property("originY").toReal(),
+                    "the first line with the word searched for was not brought into sight");
+                if (shown)
+                    check(saveGrab(shown, output.filePath(u"preview-code.png"_s)), "could not save the code's picture");
+                const QByteArray markdown = QString::fromUtf8(
+                    "# 使用说明\n\n这是一段**很重要**的话，也有 *轻一点* 的，还有 `inline code` 和 [链接](https://example.com)。\n\n"
+                    "## 第二章 安装\n\n- 第一步：下载\n- [x] 第二步：安装\n1. 有序的一项\n\n> 引用的一句话\n\n"
+                    "```powershell\n# 这不是标题\nGet-ChildItem -Recurse\n```\n\n### 更深的标题\n\n普通的一行，带 chapter 这个词。\n").toUtf8();
+                shown = showText(u"sample.md"_s, markdown, {u"chapter"_s});
+                check(kindsOf(0).contains(7) && kindsOf(4).contains(8) && kindsOf(13) == QList<int> {12},
+                    "Markdown's headings and fenced code are not told");
+                // After a long file scrolled down, the rows are this file's (rows kept for reuse told the last one's).
+                lines = shown ? visualNamed(shown->contentItem(), u"previewTextLines"_s) : nullptr;
+                QQuickItem* firstRow = nullptr;
+                if (lines)
+                    QMetaObject::invokeMethod(lines, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, firstRow), Q_ARG(int, 0));
+                check(firstRow && firstRow->property("content").toString() == QString::fromUtf8("# 使用说明"),
+                    "the rows show the last file's text");
+                if (shown)
+                    check(saveGrab(shown, output.filePath(u"preview-markdown.png"_s)), "could not save Markdown's picture");
+                const QByteArray json = "{\n  \"name\": \"Win顺\",\n  \"version\": 24,\n  \"plugins\": [\"ocr\", \"rename\"],\n  \"enabled\": true,\n  \"note\": null\n}\n";
+                shown = showText(u"sample.json"_s, QString::fromUtf8(json).toUtf8(), {});
+                check(kindsOf(1).contains(5) && kindsOf(2).contains(2) && kindsOf(4).contains(4), "JSON's keys, numbers and constants are not told");
+                check(filePreview.firstMarkRow() < 0, "words marked with none searched for");
+                if (shown)
+                    check(saveGrab(shown, output.filePath(u"preview-json.png"_s)), "could not save JSON's picture");
+                // A plain text file: no colours of its own, the words still marked.
+                shown = showText(u"plain.txt"_s, "int x = 1; // not code\nthe chapter here\n", {u"chapter"_s});
+                check(kindsOf(0).isEmpty() && filePreview.firstMarkRow() == 1, "a plain text file got colours, or lost its marks");
+                filePreview.close();
+                say(u"preview colours: code, Markdown, JSON by the file's kind; searched words marked and scrolled to"_s);
+            }
         }
         const auto click = [&](QQuickItem* item) {
             if (!item) { check(false, "click target missing"); return; }

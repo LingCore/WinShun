@@ -69,6 +69,11 @@ class FilePreview : public QObject {
     // that goes on from the row before).
     Q_PROPERTY(QStringListModel* lines READ lines CONSTANT FINAL)
     Q_PROPERTY(int lineCount READ lineCount NOTIFY contentChanged FINAL)
+    // Text (GitHub #291): changes with the text, for what QML asks row by
+    // row (spansAt, marksAt); the first row with a word searched for in it
+    // (-1: none), which the view brings into sight.
+    Q_PROPERTY(int revision READ revision NOTIFY contentChanged FINAL)
+    Q_PROPERTY(int firstMarkRow READ firstMarkRow NOTIFY contentChanged FINAL)
     // Facts: label, value, label, value …
     Q_PROPERTY(QStringList facts READ facts NOTIFY contentChanged FINAL)
     Q_PROPERTY(QString message READ message NOTIFY contentChanged FINAL) // Message: why nothing shows
@@ -86,10 +91,13 @@ public:
         // why there is none (yet).
         std::shared_ptr<const QString> text;
         QString message;
+        // The words searched for, marked in a text file's lines (GitHub #291).
+        QStringList words;
         bool inPlace() const { return text || !message.isEmpty(); }
         bool same(const Item& other) const
         {
-            return path.compare(other.path, Qt::CaseInsensitive) == 0 && text == other.text && message == other.message;
+            return path.compare(other.path, Qt::CaseInsensitive) == 0 && text == other.text && message == other.message
+                && words == other.words;
         }
     };
 
@@ -146,6 +154,13 @@ public:
     QStringListModel* lines() { return &m_lines; }
     int lineCount() const { return m_lineCount; }
     Q_INVOKABLE int lineNumberAt(int row) const { return row >= 0 && row < m_lineNumbers.size() ? m_lineNumbers[row] : 0; }
+    Q_INVOKABLE QString lineAt(int row) const { return m_lines.stringList().value(row); }
+    // A row's colours (start, length, syntax::Kind …) and where the words
+    // searched for are in it (start, length …): LineHighlighter draws them.
+    Q_INVOKABLE QList<int> spansAt(int row) const { return m_spans.value(row); }
+    Q_INVOKABLE QList<int> marksAt(int row) const { return m_marks.value(row); }
+    int revision() const { return m_revision; }
+    int firstMarkRow() const { return m_firstMarkRow; }
     // The text picked with the mouse, from a position in a row to one in a
     // later row (the window draws it); selectedText: as in the file, pieces
     // of one long line joined again. Gone with the content.
@@ -212,6 +227,10 @@ private:
     QSize m_imageSize;
     QStringListModel m_lines;
     QVector<int> m_lineNumbers;
+    QVector<QList<int>> m_spans; // by row; shorter than the rows when the last ones have none
+    QVector<QList<int>> m_marks;
+    int m_revision = 0;
+    int m_firstMarkRow = -1;
     int m_selFromRow = 0, m_selFromPos = 0, m_selToRow = 0, m_selToPos = 0; // empty when equal
     int m_lineCount = 0;
     int m_textRows = 0;
