@@ -111,12 +111,12 @@ def header_text(pairs: list[tuple[str, int]]) -> str:
         "};",
         "",
         f"// Sorted by name. {len(pairs)} names, {len(unique)} distinct icon code points.",
-        f"inline constexpr std::array<Entry, {len(pairs)}> kNames = {{",
+        f"inline constexpr std::array<Entry, {len(pairs)}> kNames = {{{{",
     ]
     for name, code in pairs:
         lines.append(f'    {{"{name}", char16_t(0x{code:04X})}},')
     lines += [
-        "};",
+        "}};",
         "",
         f"inline constexpr std::size_t kIconCount = {len(unique)};",
         "",

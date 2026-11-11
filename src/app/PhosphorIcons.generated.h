@@ -15,7 +15,7 @@ struct Entry {
 };
 
 // Sorted by name. 1530 names, 1512 distinct icon code points.
-inline constexpr std::array<Entry, 1530> kNames = {
+inline constexpr std::array<Entry, 1530> kNames = {{
     {"acorn", char16_t(0xEB9A)},
     {"activity", char16_t(0xE000)},
     {"address-book", char16_t(0xE6F8)},
@@ -1546,7 +1546,7 @@ inline constexpr std::array<Entry, 1530> kNames = {
     {"yarn", char16_t(0xED9A)},
     {"yin-yang", char16_t(0xE92A)},
     {"youtube-logo", char16_t(0xE4FC)},
-};
+}};
 
 inline constexpr std::size_t kIconCount = 1512;
 
