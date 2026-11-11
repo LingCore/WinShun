@@ -1,0 +1,18 @@
+﻿pie run before, build F:\电脑便捷工具\dist\release023\WinShun
+15:44:26.847 stage exe A18EB3FF008B written 2026-11-10T14:41:21
+15:44:26.893 flag set: ~ RUNASADMIN
+15:44:28.144 stage pid 6836 up: elevated
+15:44:34.472 WinShun.exe pid 6836 parent 39752: elevated; command line: 
+15:44:34.476 HELPER: none
+15:44:35.526 explorer 3478804 'pie-src-before - 文件资源管理器' [38,38 2088x1131]
+15:44:37.630 file item at 493,291 1013x37; pressing at 533,310
+15:44:38.321 key under Esc sent with the button held
+15:44:39.255 no pie window within 900 ms; pointer 533,310
+15:44:40.409 released
+15:44:43.423 RESULT: in the favourite folder False, still in the source True => FAIL (not dropped)
+15:44:43.432 flag left: []
+15:44:44.200 Explorer verbs as before: True
+15:44:44.204 log: 2026-11-11T15:44:27.678 warning: Drop pie helper: not started: CreateProcessWithTokenW, error 740 (1 in a row)
+15:44:44.204 log: 2026-11-11T15:44:28.684 warning: Drop pie helper: not started: CreateProcessWithTokenW, error 740 (2 in a row)
+15:44:44.205 log: 2026-11-11T15:44:34.688 warning: Drop pie helper: not started: CreateProcessWithTokenW, error 740 (4 in a row)
+15:44:44.221 lock released True; WinShun.exe left 0

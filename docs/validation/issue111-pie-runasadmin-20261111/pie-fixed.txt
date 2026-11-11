@@ -1,0 +1,21 @@
+﻿pie run fixed, build F:\电脑便捷工具\build\press-feedback
+15:44:01.779 stage exe C41A8000CC4A written 2026-11-11T15:40:28
+15:44:01.878 flag set: ~ RUNASADMIN
+15:44:03.068 stage pid 33992 up: elevated
+15:44:09.450 WinShun.exe pid 33992 parent 43572: elevated; command line: 
+15:44:09.451 WinShun.exe pid 26676 parent 33992: not elevated; command line: "F:\电脑便捷工具\dist\pie740\WinShun\WinShun.exe" --drop-pie-helper 33992 --profile "C:/Users/young/AppData/Local/Temp/WinShun-drop-pie-ansGcQ"
+15:44:09.462 HELPER: pid 26676, not elevated
+15:44:10.255 explorer 10294272 'pie-src-fixed - 文件资源管理器' [38,38 2088x1131]
+15:44:12.389 file item at 493,291 1013x37; pressing at 533,310
+15:44:13.074 key under Esc sent with the button held
+15:44:13.231 pie window Qt6120QWindowToolSaveBits [321,141 423x309] of pid 26676; pointer 533,310
+15:44:14.440 released
+15:44:17.455 RESULT: in the favourite folder True, still in the source False => PASS (moved)
+15:44:17.467 flag left: []
+15:44:18.280 Explorer verbs as before: True
+15:44:18.293 log: 2026-11-11T15:44:13.316 warning: Drop pie helper (info): Drop pie: its key pressed at 533,310
+15:44:18.293 log: 2026-11-11T15:44:13.316 warning: Drop pie helper (info): Drop pie: 1 files over it (read from the ID list) 18 ms after it was asked for
+15:44:18.294 log: 2026-11-11T15:44:14.564 warning: Drop pie helper (info): Drop pie: dropped, moving 1 files by our own file operation, the source's asynchronous drop started
+15:44:18.295 log: 2026-11-11T15:44:14.564 warning: Drop pie helper (info): Drop pie: file operation done
+15:44:18.296 log: 2026-11-11T15:44:14.564 warning: Drop pie helper (info): Drop pie: hidden, dropped
+15:44:18.304 lock released True; WinShun.exe left 0
