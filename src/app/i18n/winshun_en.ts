@@ -2166,8 +2166,8 @@
         <translation>type;extension;suffix;filter;prefix;shortcut;search scope;directory;folder</translation>
     </message>
     <message>
-        <source>前缀不区分大小写，留空停用。点击“范围”可绑定文件夹（含子文件夹）；例如 cw + csv，输入“cw:”直接列出该范围的 CSV。Ctrl+Tab 仍可切换类型。</source>
-        <translation>Prefixes are case-insensitive; leave blank to disable. Use Scope to bind a folder and its subfolders. For example, cw + csv lets “cw:” list CSV files in that scope. Ctrl+Tab still switches types.</translation>
+        <source>前缀不区分大小写，留空停用。点文件夹图标可绑定一个文件夹（含子文件夹）；例如 cw + csv，输入“cw:”直接列出该范围的 CSV。Ctrl+Tab 仍可切换类型。</source>
+        <translation>Prefixes are case-insensitive; leave blank to disable. Click the folder icon to bind a folder and its subfolders. For example, cw + csv lets “cw:” list CSV files in that scope. Ctrl+Tab still switches types.</translation>
     </message>
     <message>
         <source>恢复默认</source>

@@ -8,8 +8,8 @@ SettingsSection {
     property string problem
     readonly property int nameWidth: width < 560 ? 80 : 100
     readonly property int keywordWidth: width < 560 ? 96 : 115
-    readonly property int actionsWidth: width < 560 ? 166 : 174
-    readonly property real extensionsWidth: Math.max(80, width - 36 - nameWidth - keywordWidth - actionsWidth - 18)
+    readonly property int actionsWidth: 146 // four icon buttons of 32 and the gaps between them
+    readonly property real extensionsWidth: Math.max(100, width - 36 - nameWidth - keywordWidth - actionsWidth - 18)
     // The 文件类型 row, gone to from the launcher strip's + (SettingsWindow.showFileTypesPage).
     readonly property SettingRow typesRow: fileTypesRow
 
@@ -25,7 +25,7 @@ SettingsSection {
         title: qsTr("文件类型")
         keywords: qsTr("类型;扩展名;后缀;筛选;前缀;快捷键;搜索范围;目录;folder;filter;type;extension").split(";")
         values: section.editor.fileTypes.map(t => t.name + " :" + t.keyword + " " + t.folder)
-        description: qsTr("前缀不区分大小写，留空停用。点击“范围”可绑定文件夹（含子文件夹）；例如 cw + csv，输入“cw:”直接列出该范围的 CSV。Ctrl+Tab 仍可切换类型。")
+        description: qsTr("前缀不区分大小写，留空停用。点文件夹图标可绑定一个文件夹（含子文件夹）；例如 cw + csv，输入“cw:”直接列出该范围的 CSV。Ctrl+Tab 仍可切换类型。")
 
         FlatButton {
             dpr: section.dpr
@@ -121,12 +121,14 @@ SettingsSection {
                                 dpr: section.dpr
                                 flat: true
                                 objectName: "fileTypeScope_" + typeRow.index
-                                width: section.width < 560 ? 52 : 60
-                                text: qsTr("范围")
+                                // An icon like its neighbours (Phosphor's folder), lit while a folder is bound.
+                                glyph: ""
                                 highlighted: typeRow.modelData.folder.length > 0
                                 Accessible.name: qsTr("%1的搜索范围").arg(typeRow.modelData.name)
+                                // With no folder bound it opens the row below and, clicked again, puts
+                                // it away; a bound folder's row stays, and the click goes to its box.
                                 onClicked: {
-                                    typeRow.editingRange = !typeRow.editingRange
+                                    typeRow.editingRange = typeRow.modelData.folder.length > 0 || !typeRow.editingRange
                                     if (typeRow.editingRange)
                                         rangeInput.takeFocus()
                                 }
