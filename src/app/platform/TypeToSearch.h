@@ -191,6 +191,7 @@ private:
     HWND m_desktop = nullptr; // the desktop in front, when pasting there counts
     bool m_pasteTaken = false; // Ctrl+V taken, V not let go yet: its repeats and release are taken too
     bool m_windowsSearch = false; // Left Alt in the Start menu: its own search this time
+    bool m_capsLockHeld = false; // Caps Lock down, seen going by here: a chord, as CapsLock+ has it
     // The keys held back for the launcher (or the file display they were
     // typed in), the keys typed again, Shift, and how the hold ends.
     searchtyping::Hold m_hold;

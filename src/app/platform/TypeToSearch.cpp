@@ -465,6 +465,9 @@ void TypeToSearch::setHooked(bool hooked)
     } else {
         ::UnhookWindowsHookEx(m_hook);
         m_hook = nullptr;
+        // Nothing is seen go by now: a Caps Lock let go of while unhooked
+        // would never be seen coming up, and would keep every key a chord.
+        m_capsLockHeld = false;
     }
 }
 
@@ -579,6 +582,8 @@ bool TypeToSearch::handleKey(WPARAM message, const KBDLLHOOKSTRUCT& event)
     // keyboard).
     if (isOwnInput(event.dwExtraInfo))
         return false;
+    if (vk == VK_CAPITAL)
+        m_capsLockHeld = press;
     if (!m_hold.holding() && !startsHold(vk, press))
         return false;
     switch (m_hold.key(keyEvent(message, event), &altGrChars)) {
@@ -611,7 +616,18 @@ bool TypeToSearch::startsHold(UINT vk, bool press)
             m_windowsSearch = true;
         return false;
     }
-    const bool combination = held(VK_CONTROL) || held(VK_MENU) || held(VK_LWIN) || held(VK_RWIN);
+    // Caps Lock held down counts as a chord too: CapsLock+ (AutoHotkey) keeps
+    // it pressed for every key of its own (CapsLock+R is Delete, CapsLock+J the
+    // down arrow), and those letters would otherwise start a search here and
+    // leave the tool's key to Win顺. Held down, not toggled on: Caps Lock on
+    // while letters are typed is ordinary typing.
+    // Read as the hook saw it go by, not with GetAsyncKeyState: this hook is
+    // installed later than AutoHotkey's, so it is called first and does see
+    // Caps Lock, while a key another hook takes never reaches the async key
+    // state (nothing else in this file is read that way either, and
+    // docs/pitfalls.md warns about it).
+    const bool combination = held(VK_CONTROL) || held(VK_MENU) || held(VK_LWIN) || held(VK_RWIN)
+        || m_capsLockHeld;
     if (!press || combination)
         return false; // AltGr too: its left Ctrl is down
     HWND tab = nullptr;

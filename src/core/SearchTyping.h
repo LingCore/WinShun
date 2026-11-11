@@ -127,8 +127,10 @@ inline constexpr Focus focusOf(unsigned guiFlags, bool itemsViewFocused) noexcep
 }
 
 // Whether a key pressed in a File Explorer folder window starts a search with
-// Win顺 in that folder. `combination`: Ctrl, Alt or a Windows key held
-// (Ctrl+A, Alt+Enter, Win+E stay Explorer's; Shift alone types a capital).
+// Win顺 in that folder. `combination`: Ctrl, Alt, a Windows key or Caps Lock
+// held (Ctrl+A, Alt+Enter, Win+E stay Explorer's; Shift alone types a capital;
+// Caps Lock is held down the whole time by the key-remapping tools that use it
+// as their own modifier, CapsLock+ and its CapsLock+R, so its keys stay theirs).
 // `elevated`: the window belongs to a process of higher integrity than
 // Win顺's; Windows would let neither the hook see its keys nor Win顺 hand
 // them back, so nothing is taken from it.
