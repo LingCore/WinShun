@@ -2,9 +2,11 @@
 
 #include "ChangeWatcher.h"
 #include "Install.h"
+#include "WebShortcut.h"
 
 #include <QDir>
 #include <QFileInfo>
+#include <QStringTokenizer>
 
 #include <algorithm>
 
@@ -176,7 +178,20 @@ bool Catalog::enabled(QStringView id) const
     return m_enabled.contains(key) && !m_awaiting.contains(key);
 }
 
-void Catalog::setKeywordOverrides(QHash<QString, QString> overrides)
+TypedKeywords typedKeywords(QStringView typed)
+{
+    TypedKeywords result;
+    const QString spaced = typed.toString().simplified(); // a tab, an input method's wide space: spaces too
+    for (const QStringView word : QStringTokenizer {spaced, u' ', Qt::SkipEmptyParts}) {
+        if (!isValidWebKeyword(word))
+            return {{}, word.toString()};
+        if (!result.words.contains(word, Qt::CaseInsensitive))
+            result.words.push_back(word.toString());
+    }
+    return result;
+}
+
+void Catalog::setKeywordOverrides(QHash<QString, QStringList> overrides)
 {
     if (m_overrides == overrides)
         return;
@@ -264,8 +279,8 @@ void Catalog::rebuildIndex()
         for (const Command& command : entry.manifest->commands) {
             const QString key = entry.id + u'/' + command.id;
             if (const auto it = m_overrides.find(key); it != m_overrides.end()) {
-                if (!it->isEmpty())
-                    claims.push_back({&entry, &command, *it, true});
+                for (const QString& keyword : *it)
+                    claims.push_back({&entry, &command, keyword, true});
                 continue; // the user's choice replaces the defaults, even with nothing
             }
             for (const QString& keyword : command.keywords)

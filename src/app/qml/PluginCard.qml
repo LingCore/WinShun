@@ -455,7 +455,7 @@ Rectangle {
                 visible: card.keywords.length > 0
 
                 Text {
-                    text: qsTr("关键字")
+                    text: qsTr("关键字（多个用空格分开）")
                     color: Theme.subtext
                     font.pixelSize: Theme.fontCaption
                 }
@@ -476,6 +476,7 @@ Rectangle {
                             id: keywordCell
 
                             required property var modelData
+                            property string rejected // why what was typed is not taken (setKeyword)
 
                             function takeFocus() {
                                 if (card.pendingFocus.length > 0 && card.pendingFocus === modelData.command) {
@@ -510,6 +511,7 @@ Rectangle {
                                 InputBox {
                                     dpr: card.dpr
                                     id: keywordBox
+                                    objectName: "pluginKeyword-" + card.pluginId + "/" + keywordCell.modelData.command
                                     anchors.left: keywordLabel.right
                                     anchors.leftMargin: 8
                                     anchors.right: resetButton.visible ? resetButton.left : parent.right
@@ -518,14 +520,17 @@ Rectangle {
                                     implicitHeight: 32
                                     text: keywordCell.modelData.keyword
                                     placeholder: qsTr("无")
+                                    error: keywordCell.rejected.length > 0
+                                    onTextChanged: keywordCell.rejected = ""
                                     onEditingFinished: {
                                         if (text !== keywordCell.modelData.keyword)
-                                            card.plugins.setKeyword(card.pluginId, keywordCell.modelData.command, text)
+                                            keywordCell.rejected = card.plugins.setKeyword(card.pluginId, keywordCell.modelData.command, text)
                                     }
                                 }
                                 FlatButton { // the keyword was changed: back to the plugin's
                                     dpr: card.dpr
                                     id: resetButton
+                                    objectName: "pluginKeywordReset-" + card.pluginId + "/" + keywordCell.modelData.command
                                     visible: keywordCell.modelData.user
                                     anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
@@ -534,6 +539,16 @@ Rectangle {
                                     text: qsTr("默认")
                                     onClicked: card.plugins.resetKeyword(card.pluginId, keywordCell.modelData.command)
                                 }
+                            }
+                            Text { // not taken as typed
+                                objectName: "pluginKeywordRejected-" + card.pluginId + "/" + keywordCell.modelData.command
+                                visible: keywordCell.rejected.length > 0
+                                width: parent.width
+                                text: keywordCell.rejected
+                                textFormat: Text.PlainText
+                                color: Theme.danger
+                                font.pixelSize: Theme.fontCaption
+                                wrapMode: Text.Wrap
                             }
                             Text { // who has it
                                 visible: keywordCell.modelData.conflict.length > 0

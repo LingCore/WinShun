@@ -2293,7 +2293,7 @@ private slots:
         f.host->setFavoriteKeywords({}); // the favorite gone: bb the plugin's again
         QCOMPARE(catalog.keywordsOf(u"test.b"_s, u"two"_s), QStringList {u"bb"_s});
         // The user's keyword wins over a default, and replaces the plugin's own.
-        f.host->setKeywordOverrides({{u"test.b/two"_s, u"aa"_s}});
+        f.host->setKeywordOverrides({{u"test.b/two"_s, {u"aa"_s}}});
         std::vector<Match> matches = catalog.match(u"AA hello  world"_s);
         QCOMPARE(matches.size(), 1u);
         QCOMPARE(matches[0].entry->id, u"test.b"_s);
@@ -2318,16 +2318,40 @@ private slots:
         f.host->setEnabled(u"test.b"_s, true);
         QCOMPARE(catalog.match(u"aa "_s)[0].entry->id, u"test.b"_s);
         // An override round trip: the user's keyword, then none, then the manifest's again.
-        f.host->setKeywordOverrides({{u"test.b/two"_s, u"zz"_s}});
+        f.host->setKeywordOverrides({{u"test.b/two"_s, {u"zz"_s}}});
         QCOMPARE(catalog.keywordsOf(u"test.b"_s, u"two"_s), QStringList {u"zz"_s});
         QCOMPARE(catalog.match(u"zz q"_s).size(), 1u);
         QVERIFY(catalog.match(u"bb q"_s).empty());
-        f.host->setKeywordOverrides({{u"test.b/two"_s, QString()}}); // the user took the keyword away
+        f.host->setKeywordOverrides({{u"test.b/two"_s, QStringList()}}); // the user took the keyword away
         QVERIFY(catalog.keywordsOf(u"test.b"_s, u"two"_s).isEmpty());
         QVERIFY(catalog.match(u"zz q"_s).empty());
+        // Several of the user's for one command (GitHub #282): each opens it,
+        // in place of the manifest's; one a web search has stays the web's.
+        f.host->setKeywordOverrides({{u"test.b/two"_s, typedKeywords(u"  try\tFY\u3000gh try "_s).words}});
+        QCOMPARE(catalog.keywordsOf(u"test.b"_s, u"two"_s), (QStringList {u"try"_s, u"FY"_s}));
+        QCOMPARE(catalog.match(u"TRY q"_s).size(), 1u);
+        QCOMPARE(catalog.match(u"fy q"_s).size(), 1u);
+        QCOMPARE(catalog.match(u"fy q"_s)[0].entry->id, u"test.b"_s);
+        QVERIFY(catalog.match(u"bb q"_s).empty());
+        QVERIFY(std::ranges::any_of(catalog.conflicts(), [](const KeywordConflict& c) {
+            return c.pluginId == u"test.b" && c.keyword == u"gh" && c.takenBy.startsWith(u"web:");
+        }));
         f.host->setKeywordOverrides({});
         QCOMPARE(catalog.keywordsOf(u"test.b"_s, u"two"_s), QStringList {u"bb"_s}); // AA: a's default too, both set aside again
         QCOMPARE(catalog.match(u"bb q"_s).size(), 1u);
+    }
+
+    // What the settings take as a command's keywords (GitHub #282).
+    void typedKeywordsAreWords()
+    {
+        QCOMPARE(typedKeywords(u"try fy"_s).words, (QStringList {u"try"_s, u"fy"_s}));
+        QCOMPARE(typedKeywords(u" 翻译\u3000 fy\t"_s).words, (QStringList {u"翻译"_s, u"fy"_s})); // an input method's wide space, a tab
+        QCOMPARE(typedKeywords(u"Fy fy FY tr"_s).words, (QStringList {u"Fy"_s, u"tr"_s})); // once, as typed first
+        QVERIFY(typedKeywords(u"   "_s).words.isEmpty()); // none: the command has no keyword
+        QVERIFY(typedKeywords(u""_s).rejected.isEmpty());
+        const TypedKeywords quoted = typedKeywords(u"tr \"fy\" x"_s); // nothing of it is taken, and the word is named
+        QVERIFY(quoted.words.isEmpty());
+        QCOMPARE(quoted.rejected, u"\"fy\""_s);
     }
 
     // The space after a list command's keyword opens it; the keyword alone

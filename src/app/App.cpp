@@ -7877,14 +7877,11 @@ void App::applyPlugins()
         m_pluginTools->setPolicy(mcpPolicy());
     plugin::Catalog& catalog = m_pluginHost->catalog();
     QSet<QString> enabled;
-    QHash<QString, QString> overrides;
     QHash<QString, QStringList> confirmed;
     for (const PluginConfig& c : m_settings.plugins) {
         if (c.enabled)
             enabled.insert(c.id);
         confirmed.insert(c.id, c.confirmed);
-        for (const auto& [command, keyword] : c.keywords)
-            overrides.insert(c.id + u'/' + command, keyword);
     }
     // What the user said yes to, before the switches: a plugin of theirs
     // whose newer version asks for more waits for their OK from the moment
@@ -7903,7 +7900,7 @@ void App::applyPlugins()
             m_pluginHost->setEnabled(e.id, enabled.contains(e.id));
     }
     catalog.setEnabled(enabled); // the ones not installed yet count too
-    m_pluginHost->setKeywordOverrides(overrides);
+    m_pluginHost->setKeywordOverrides(PluginSettings::keywordOverrides(m_settings.plugins));
     applyWebSearch();
     m_pluginHost->setFavoriteKeywords(favoriteKeywords(*m_favorites)); // so do the favorites
     applyScreenshots(); // and the screenshot history's (Win顺's own)

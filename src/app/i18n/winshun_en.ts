@@ -3254,6 +3254,10 @@
         <translation>Keywords</translation>
     </message>
     <message>
+        <source>关键字（多个用空格分开）</source>
+        <translation>Keywords (several: put spaces between)</translation>
+    </message>
+    <message>
         <source>再试一次</source>
         <translation>Try again</translation>
     </message>
@@ -12394,6 +12398,10 @@ Content index: %5</translation>
     <message>
         <source>关键字 %1 已被%2占用，改一个</source>
         <translation>The keyword %1 is taken by %2; choose another</translation>
+    </message>
+    <message>
+        <source>关键字里不能有引号：%1</source>
+        <translation>A keyword cannot have a quotation mark in it: %1</translation>
     </message>
     <message>
         <source>插件看不到你在资源管理器里登录的网络位置：资源管理器以管理员身份运行或没有运行，插件只能用 Win顺 自己降权后的身份，它和资源管理器不在同一个登录会话里。</source>

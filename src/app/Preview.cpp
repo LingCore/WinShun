@@ -328,9 +328,44 @@ int runPlugins(const QStringList& args)
         settings.mcp = true;
         settings.mcpPlugins = true;
     }
+    // --keyword-check (GitHub #282): a real catalog over one plugin that
+    // starts nothing (its command opens an address), in the preview's own
+    // profile, so that what is typed in a card's keyword box is followed to
+    // the INI and to the index; told of the settings as App::applyPlugins does.
+    const bool keywordCheck = args.contains(u"--keyword-check"_s);
+    const QString wordsPlugin = u"test.words"_s;
+    std::unique_ptr<plugin::Host> wordsHost;
+    if (keywordCheck) {
+        const QString folder = Settings::profile() + u"/plugins/"_s + wordsPlugin;
+        QDir().mkpath(folder);
+        QFile manifest(folder + u"/plugin.json"_s);
+        const QJsonObject command {{u"id"_s, u"main"_s}, {u"title"_s, u"翻译"_s}, {u"keyword"_s, QJsonArray {u"tr"_s, u"fy"_s}},
+            {u"run"_s, QJsonObject {{u"url"_s, u"https://example.com/?q=%s"_s}}}};
+        const QJsonObject plugin {{u"manifest"_s, 1}, {u"id"_s, wordsPlugin}, {u"version"_s, u"1.0.0"_s},
+            {u"name"_s, QJsonObject {{u"zh"_s, u"翻译"_s}, {u"en"_s, u"Translate"_s}}}, {u"commands"_s, QJsonArray {command}}};
+        if (!manifest.open(QIODevice::WriteOnly) || manifest.write(QJsonDocument(plugin).toJson()) < 0) {
+            say(u"#282 keywords: the plugin could not be written"_s);
+            return 3;
+        }
+        manifest.close();
+        settings.pluginConfig(wordsPlugin).enabled = true;
+        plugin::Host::Options options;
+        options.userPluginDir = Settings::profile() + u"/plugins"_s;
+        options.version = QStringLiteral(WINSHUN_VERSION);
+        wordsHost = std::make_unique<plugin::Host>(options);
+        wordsHost->catalog().scan();
+        wordsHost->setEnabled(wordsPlugin, true);
+    }
     auto* editor = new SettingsEditor(settings, u"software"_s, &engine);
     editor->plugins()->setLocale(u"zh"_s);
-    editor->plugins()->loadPreview(args.contains(u"--elevated"_s), manyLogs ? 8 : 2); // the `elevated` shield and 确认 note
+    if (keywordCheck) {
+        editor->plugins()->setHost(wordsHost.get());
+        QObject::connect(editor, &SettingsEditor::edited, wordsHost.get(), [&wordsHost](const Settings& now) {
+            wordsHost->setKeywordOverrides(PluginSettings::keywordOverrides(now.plugins));
+        });
+    } else {
+        editor->plugins()->loadPreview(args.contains(u"--elevated"_s), manyLogs ? 8 : 2); // the `elevated` shield and 确认 note
+    }
     if (updatesOnly)
         editor->plugins()->gallery()->setUpdatesOnly(true);
     if (aiPage)
@@ -512,12 +547,75 @@ int runPlugins(const QStringList& args)
         if (!homepages)
             qWarning("plugin homepage check failed");
     }
+    // --keyword-check (GitHub #282): typed into the card's own box and left,
+    // as a user does; each time the box, 默认, the note under the box, the
+    // INI and the catalog's index are read.
+    bool keywords = true;
+    if (keywordCheck) {
+        const QString key = wordsPlugin + u"/main"_s;
+        if (QQuickItem* section = visualNamed(window->contentItem(), u"pluginsSection"_s))
+            QMetaObject::invokeMethod(section, "expand", Q_ARG(QVariant, wordsPlugin));
+        pump(600); // the card opens
+        struct Seen {
+            QString box;
+            bool marked = false; // the box's error mark
+            bool reset = false; // 默认 on show
+            QString note; // why it was not taken, under the box
+            QVariant kept; // the INI's Keyword.main; invalid: none
+            QStringList inUse; // the catalog's
+        };
+        const auto look = [&]() -> std::optional<Seen> {
+            QQuickItem* box = visualNamed(window->contentItem(), u"pluginKeyword-"_s + key);
+            QQuickItem* reset = visualNamed(window->contentItem(), u"pluginKeywordReset-"_s + key);
+            QQuickItem* note = visualNamed(window->contentItem(), u"pluginKeywordRejected-"_s + key);
+            if (!box || !reset || !note)
+                return std::nullopt;
+            const QSettings ini(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s);
+            return Seen {box->property("text").toString(), box->property("error").toBool(), reset->isVisible(),
+                note->isVisible() ? note->property("text").toString() : QString(),
+                ini.value(u"Plugin."_s + wordsPlugin + u"/Keyword.main"_s), wordsHost->catalog().keywordsOf(wordsPlugin, u"main")};
+        };
+        const auto type = [&](const QString& text) {
+            if (QQuickItem* box = visualNamed(window->contentItem(), u"pluginKeyword-"_s + key)) {
+                box->setProperty("text", text);
+                QMetaObject::invokeMethod(box, "editingFinished"); // the focus left it
+            }
+            pump(200);
+            return look();
+        };
+        const auto expect = [&](const char* what, const std::optional<Seen>& seen, const QString& box, bool marked, bool reset,
+                                bool noted, const QVariant& kept, const QStringList& inUse) {
+            const bool ok = seen && seen->box == box && seen->marked == marked && seen->reset == reset && seen->note.isEmpty() != noted
+                && seen->kept == kept && seen->kept.isValid() == kept.isValid() && seen->inUse == inUse;
+            say(u"#282 keywords, %1: box [%2] marked %3, reset %4, note [%5], INI %6, in use [%7]: %8"_s
+                    .arg(QString::fromUtf8(what), seen ? seen->box : u"?"_s)
+                    .arg(seen && seen->marked)
+                    .arg(seen && seen->reset)
+                    .arg(seen ? seen->note : QString(), seen && seen->kept.isValid() ? u'[' + seen->kept.toString() + u']' : u"none"_s,
+                        seen ? seen->inUse.join(u", "_s) : QString(), ok ? u"passed"_s : u"FAILED"_s));
+            keywords = keywords && ok;
+        };
+        const QStringList own {u"tr"_s, u"fy"_s};
+        const QString quoted = u"tr \"x\""_s;
+        expect("as installed", look(), u"tr fy"_s, false, false, false, {}, own);
+        expect("two words", type(u" try\u3000FY "_s), u"try FY"_s, false, true, false, u"try FY"_s, {u"try"_s, u"FY"_s});
+        expect("a quote", type(quoted), quoted, true, true, true, u"try FY"_s, {u"try"_s, u"FY"_s});
+        expect("the plugin's own again", type(u"TR  fy"_s), u"tr fy"_s, false, false, false, {}, own);
+        expect("none", type(QString()), QString(), false, true, false, QString(), {});
+        if (QQuickItem* reset = visualNamed(window->contentItem(), u"pluginKeywordReset-"_s + key))
+            QMetaObject::invokeMethod(reset, "clicked");
+        pump(200);
+        expect("reset", look(), u"tr fy"_s, false, false, false, {}, own);
+        expect("for the picture", type(quoted), quoted, true, false, true, {}, own);
+        if (!keywords)
+            qWarning("plugin keyword check failed");
+    }
     say(u"grabbing"_s);
     if (args.contains(u"--tree"_s))
         writeTree(window, out + u".tree.txt"_s);
     const bool saved = saveGrab(window, out);
     say(u"dpr %1"_s.arg(window->devicePixelRatio()));
-    return finish(window, saved && confirmed && homepages);
+    return finish(window, saved && confirmed && homepages && keywords);
 }
 
 // ---- --preview-settings -----------------------------------------------------------------

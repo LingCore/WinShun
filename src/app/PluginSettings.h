@@ -30,6 +30,7 @@ namespace ws {
 
 class SettingsEditor;
 class PluginUpdates;
+struct PluginConfig;
 
 namespace plugin {
 class Host;
@@ -254,7 +255,14 @@ public:
     // the signed list, which must be what is installed; any other from its
     // folder as it is now.
     Q_INVOKABLE void confirmElevation(const QString& id);
-    Q_INVOKABLE void setKeyword(const QString& id, const QString& command, const QString& keyword); // the user's; empty: none
+    // What the catalog is told of the keywords kept in the settings
+    // (Catalog::setKeywordOverrides): "plugin/command" -> the user's words.
+    static QHash<QString, QStringList> keywordOverrides(const QList<PluginConfig>& plugins);
+    // The user's keywords for a command: words apart by spaces, each one a
+    // keyword (plugin::typedKeywords); none: the command has no keyword.
+    // The manifest's own typed again is 默认 (resetKeyword). Says why when
+    // it is not taken, for the card to show under the box; empty: taken.
+    Q_INVOKABLE QString setKeyword(const QString& id, const QString& command, const QString& keyword);
     Q_INVOKABLE void resetKeyword(const QString& id, const QString& command); // back to the manifest's
     Q_INVOKABLE void setSettingValue(const QString& id, const QString& key, const QVariant& value);
     Q_INVOKABLE void pickFolderSetting(const QString& id, const QString& key);

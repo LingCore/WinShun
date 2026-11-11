@@ -13,6 +13,10 @@
 //     for an address of the web, not for none or for anything else; the host
 //     its tip names; faint until the pointer is on it (put there, not pressed).
 //     --pointer-at <x>,<y> puts the pointer there before the picture is taken.
+//     --keyword-check types a command's keywords into its card (GitHub #282)
+//     over a real catalog with one plugin that starts nothing: several words,
+//     a quote, the plugin's own again, none, 默认; the box, the note under
+//     it, the INI and the index are read each time.
 //
 //   WinShun.exe --preview-settings <folder> [--dark] [--scale 1.5] [--tree]
 //     [--corners round|square] [--page 1]: one appearance for a selected page.

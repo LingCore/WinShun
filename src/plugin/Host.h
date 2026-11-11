@@ -127,7 +127,7 @@ public:
     // keywords the user changed, the [WebSearch] keywords, each plugin's
     // settings (resident ones hear settingsChanged).
     void setEnabled(const QString& id, bool on);
-    void setKeywordOverrides(const QHash<QString, QString>& overrides) { m_catalog.setKeywordOverrides(overrides); }
+    void setKeywordOverrides(const QHash<QString, QStringList>& overrides) { m_catalog.setKeywordOverrides(overrides); }
     void setWebKeywords(const QList<std::pair<QString, QString>>& keywords) { m_catalog.setWebKeywords(keywords); }
     void setFavoriteKeywords(const QList<std::pair<QString, QString>>& keywords) { m_catalog.setFavoriteKeywords(keywords); }
     void setBuiltinKeywords(const QList<std::pair<QString, QString>>& keywords) { m_catalog.setBuiltinKeywords(keywords); }

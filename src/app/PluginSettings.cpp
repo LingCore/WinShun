@@ -1026,23 +1026,43 @@ void PluginSettings::setAiEnabled(const QString& id, bool on)
     m_editor->commit(); // App::applyPlugins tells the bridge
 }
 
-void PluginSettings::setKeyword(const QString& id, const QString& command, const QString& keyword)
+QHash<QString, QStringList> PluginSettings::keywordOverrides(const QList<PluginConfig>& plugins)
 {
-    const QString word = keyword.trimmed();
-    if (word.contains(u' ') || word.contains(u'"'))
-        return;
-    PluginConfig& config = m_editor->m_settings.pluginConfig(id);
-    for (auto& [cmd, k] : config.keywords) {
-        if (cmd == command) {
-            if (k == word)
-                return;
-            k = word;
-            m_editor->commit();
-            return;
+    QHash<QString, QStringList> overrides;
+    for (const PluginConfig& config : plugins) {
+        for (const auto& [command, keyword] : config.keywords)
+            overrides.insert(config.id + u'/' + command, plugin::typedKeywords(keyword).words);
+    }
+    return overrides;
+}
+
+QString PluginSettings::setKeyword(const QString& id, const QString& command, const QString& keyword)
+{
+    const plugin::TypedKeywords typed = plugin::typedKeywords(keyword);
+    if (!typed.rejected.isEmpty())
+        return tr("关键字里不能有引号：%1").arg(typed.rejected);
+    // The plugin's own, typed again: nothing of the user's to keep.
+    if (const plugin::Entry* entry = m_host ? m_host->catalog().find(id) : nullptr; entry && entry->manifest) {
+        const auto& commands = entry->manifest->commands;
+        const auto own = std::ranges::find(commands, command, &plugin::Command::id);
+        if (own != commands.end() && std::ranges::equal(own->keywords, typed.words, [](const QString& a, const QString& b) {
+                return a.compare(b, Qt::CaseInsensitive) == 0;
+            })) {
+            resetKeyword(id, command);
+            return {};
         }
     }
-    config.keywords.append({command, word});
+    const QString words = typed.words.join(u' ');
+    PluginConfig& config = m_editor->m_settings.pluginConfig(id);
+    const auto kept = std::ranges::find(config.keywords, command, &std::pair<QString, QString>::first);
+    if (kept == config.keywords.end())
+        config.keywords.append({command, words});
+    else if (kept->second != words)
+        kept->second = words;
+    else
+        return {};
     m_editor->commit();
+    return {};
 }
 
 void PluginSettings::resetKeyword(const QString& id, const QString& command)

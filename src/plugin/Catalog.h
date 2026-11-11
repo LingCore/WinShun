@@ -39,6 +39,17 @@ struct Entry {
 };
 
 // A plugin's keyword that cannot be used: what has it.
+// The keywords typed for a command in the settings (GitHub #282): words
+// apart by spaces, as the card lists a command's ("tr fy"), each of them
+// one keyword of the command. The same word twice (case aside) counts once.
+// A word no keyword can be (a quote in it: the search box reads quotes as
+// its own) is named in `rejected`, and nothing is taken.
+struct TypedKeywords {
+    QStringList words; // as typed, in order
+    QString rejected;
+};
+TypedKeywords typedKeywords(QStringView typed);
+
 struct KeywordConflict {
     QString pluginId;
     QString commandId;
@@ -101,7 +112,9 @@ public:
     // yes to, in Win顺's order of the permissions (Permissions::names()): it
     // waits for their OK on these. Empty when it waits for nothing.
     QStringList awaitingConsent(QStringView id) const { return m_awaiting.value(id.toString()); }
-    void setKeywordOverrides(QHash<QString, QString> overrides);
+    // "plugin/command" -> the user's keywords in place of the manifest's
+    // (typedKeywords); none: the command has no keyword.
+    void setKeywordOverrides(QHash<QString, QStringList> overrides);
     void setWebKeywords(QList<std::pair<QString, QString>> keywords);
     void setFavoriteKeywords(QList<std::pair<QString, QString>> keywords);
     // Win顺's own keywords (the screenshot history's jt), (keyword, name):
@@ -178,7 +191,7 @@ private:
     bool m_holdToConfirmed = false; // setConfirmed() was called: the user's plugins wait for their OK on more
     QHash<QString, QStringList> m_confirmed;
     QHash<QString, QStringList> m_awaiting; // id -> what it waits for the user's OK on (rebuildIndex)
-    QHash<QString, QString> m_overrides;
+    QHash<QString, QStringList> m_overrides;
     QList<std::pair<QString, QString>> m_web;
     QList<std::pair<QString, QString>> m_favorites;
     QList<std::pair<QString, QString>> m_builtin;

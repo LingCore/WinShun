@@ -121,6 +121,13 @@ add_test(NAME tst_pluginhomepage COMMAND $<TARGET_FILE:WinShun>
     --preview-plugins "${CMAKE_CURRENT_BINARY_DIR}/plugin-homepage.png" --homepage-check --scale 1.5)
 set_tests_properties(tst_pluginhomepage PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# A command's keywords typed in its card (GitHub #282): several words, a
+# quote refused with the reason under the box, the plugin's own typed again,
+# none, and 默认, each followed to the INI and to the catalog's index.
+add_test(NAME tst_pluginkeywords COMMAND $<TARGET_FILE:WinShun>
+    --preview-plugins "${CMAKE_CURRENT_BINARY_DIR}/plugin-keywords.png" --keyword-check --scale 1.5)
+set_tests_properties(tst_pluginkeywords PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # Combo menus share the theme frame, corner setting, inner padding and control gap.
 foreach(combo_style IN ITEMS fluent brand tactile liquid)
