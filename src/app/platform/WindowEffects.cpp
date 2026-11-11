@@ -136,6 +136,13 @@ bool isShellFlyout(HWND window)
     return window && foreground::isShellFlyout(programOf(window));
 }
 
+bool hiddenWindowInFront()
+{
+    const HWND front = ::GetForegroundWindow();
+    DWORD pid = 0;
+    return front && ::GetWindowThreadProcessId(front, &pid) && pid != ::GetCurrentProcessId() && !::IsWindowVisible(front);
+}
+
 QRect shellFlyoutBounds(HWND window)
 {
     if (!isShellFlyout(window))

@@ -1,0 +1,12 @@
+﻿18:33:47.796 WinShun 53BD77B605EE pid 37672
+18:33:47.935 round 1 +   65 ms fg Code/Chrome_WidgetWin_1/visible=True launcher=0
+18:33:48.002 round 1 +  132 ms fg WinShun/Qt6120QWindowToolSaveBits/visible=True launcher=1
+18:33:48.428 round 1 +  558 ms fg BatchRename/TkTopLevel/visible=False launcher=1
+18:33:48.563 round 1 +  694 ms fg BatchRename/TkTopLevel/visible=False launcher=0
+18:33:54.151 round 1: after 6 s launcher shown False, in front False, samples with it gone 114, plugin windows 0
+18:33:55.181 round 2 +   12 ms fg BatchRename/TkTopLevel/visible=False launcher=0
+18:33:55.365 round 2 +  197 ms fg WinShun/Qt6120QWindowToolSaveBits/visible=True launcher=1
+18:34:01.364 round 2: after 6 s launcher shown True, in front True, samples with it gone 0, plugin windows 0
+18:34:03.196 round 2: Enter -> plugin window True after 618 ms, in front True, launcher shown False
+18:34:07.306 click elsewhere: launcher shown before True, after False; foreground ws-front-click
+18:34:11.204 left button down: False; staged WinShun left: 0; search-here: "C:\Program Files\WinShun\WinShunSearch.exe" --search-here "%V"

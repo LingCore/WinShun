@@ -686,6 +686,10 @@ private:
     std::unique_ptr<QWinEventNotifier> m_taskbarNotifier; // waits on it; goes first
     QElapsedTimer m_launcherHidden; // since the launcher last went away
     QElapsedTimer m_launcherShown; // since it was last asked for
+    // The front taken back from a window nobody can see (launcherLostFront),
+    // this many times since it was asked for: one that insists gets it.
+    int m_frontTakenBack = 0;
+    bool m_takingFrontBack = false; // asked, not yet done (queued)
     // It lost the front right after it came: said in the log (GitHub #111).
     // The tick it was brought to the front: input after that is not its
     // own empty one (bringToFront).

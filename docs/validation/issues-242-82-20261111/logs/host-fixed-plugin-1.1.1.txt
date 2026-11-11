@@ -1,0 +1,15 @@
+﻿18:37:01.998 WinShun 8B9875A62D78 pid 10768
+18:37:02.047 round 1 +   34 ms fg Tokline/GpuiFast::Window/visible=True launcher=0
+18:37:02.091 round 1 +   78 ms fg WinShun/Qt6120QWindowToolSaveBits/visible=True launcher=1
+18:37:08.209 round 1: after 6 s launcher shown True, in front True, samples with it gone 0, plugin windows 0
+18:37:09.989 round 1: Enter -> plugin window True after 574 ms, in front True, launcher shown False
+18:37:12.025 round 2 +    5 ms fg Tokline/GpuiFast::Window/visible=True launcher=0
+18:37:12.067 round 2 +   47 ms fg WinShun/Qt6120QWindowToolSaveBits/visible=True launcher=1
+18:37:18.215 round 2: after 6 s launcher shown True, in front True, samples with it gone 0, plugin windows 0
+18:37:19.735 round 2: Enter -> plugin window True after 308 ms, in front True, launcher shown False
+18:37:23.801 click elsewhere: launcher shown before True, after False; foreground ws-front-click
+18:37:23.815 log: 2026-11-11T18:37:02.292 warning: Launcher: active only in Win顺, another program's window in front: as if it lost the focus
+18:37:23.815 log: 2026-11-11T18:37:02.293 info: Launcher: a hidden window of another program took the front; taking it back
+18:37:23.816 log: 2026-11-11T18:37:18.276 warning: Launcher: active only in Win顺, another program's window in front: as if it lost the focus
+18:37:23.816 log: 2026-11-11T18:37:22.668 warning: Launcher: lost the front 315 ms after it was asked for, to WindowsForms10.Window.8.app.0.152cc55_r8_ad1 (powershell.exe) - input since - it goes
+18:37:24.768 left button down: False; staged WinShun left: 0; search-here: "C:\Program Files\WinShun\WinShunSearch.exe" --search-here "%V"

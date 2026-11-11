@@ -89,6 +89,12 @@ bool isShellFlyout(HWND window);
 // Physical screen pixels; empty for non-flyouts.
 QRect shellFlyoutBounds(HWND window);
 
+// Another program's window is in front and cannot be seen: no click and no
+// switch of the user's put it there. A process just started may take the
+// front with a window it has not shown (Tk activates the first one it makes,
+// a withdrawn one too: GitHub #242).
+bool hiddenWindowInFront();
+
 // How bringToFront went: in front already; directly; after an input that
 // does nothing (Windows lets the process that sent the latest input set the
 // foreground); or refused (an administrator's window or a hung one's ghost

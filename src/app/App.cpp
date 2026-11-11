@@ -5125,6 +5125,7 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     m_lettersPending = m_settings.englishOnOpen;
     m_boxPressGrace.stop();
     m_launcherShown.start();
+    m_frontTakenBack = 0;
     m_idleTrim->used();
     m_index->shares().lookedAt(); // a WebDAV server stopped meanwhile shows as offline (GitHub #114)
     if (!launcherShown()) { // what a screenshot of the history pastes into (jt, Enter)
@@ -6111,6 +6112,35 @@ void App::launcherLostFront()
                 if (m_window && m_window->isVisible() && !m_window->isActive())
                     win::bringToFront(m_window);
             }, Qt::QueuedConnection);
+        return;
+    }
+    // A window nobody can see has the front: not a click elsewhere, not a
+    // switch to another program. A plugin's process, started as its keyword
+    // was typed, whose toolkit activated the window it made hidden (Tk does:
+    // GitHub #242). The launcher stays and takes the front back, after this
+    // thread has heard all of the change; should that window have shown
+    // itself by then, or Windows refuse, it is lost as to any other.
+    // Told of one loss twice (Qt's activeChanged, the foreground hook): once.
+    constexpr int kTakenBackMost = 3;
+    if (m_takingFrontBack)
+        return;
+    if (win::hiddenWindowInFront() && m_frontTakenBack < kTakenBackMost) {
+        ++m_frontTakenBack;
+        m_takingFrontBack = true;
+        qInfo() << "Launcher: a hidden window of another program took the front; taking it back";
+        QMetaObject::invokeMethod(this, [this] {
+            m_takingFrontBack = false;
+            if (!m_window || !m_window->isVisible() || ::GetForegroundWindow() == reinterpret_cast<HWND>(m_window->winId()))
+                return; // gone meanwhile, or in front again by itself
+            if (!win::hiddenWindowInFront()) {
+                launcherLostFront(); // a window to be seen by now, or another's: the user's doing after all
+                return;
+            }
+            if (win::bringToFront(m_window, win::ShellFlyout::Preserve) == win::Front::Refused) {
+                m_frontTakenBack = kTakenBackMost;
+                launcherLostFront();
+            }
+        }, Qt::QueuedConnection);
         return;
     }
     // A command of the shell's menu that keeps the launcher (删除,

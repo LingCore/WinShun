@@ -5,7 +5,7 @@
 - **现象**：OCR Studio、批量重命名（Python + Tk，PyInstaller 打包）重启 Win顺 后第一次输入关键字，搜索框没按 Enter 就消失，屏幕上什么都没有；第二次起正常。
 - **原因**：Win顺 在关键字第一次打出来时才起常驻插件的进程，这时搜索框在前台。Tk 给它建的第一个顶层窗口调 `SetActiveWindow`，**隐藏（withdraw）的也调**；由前台进程起的新进程有权拿前台，于是一个看不见的 `TkTopLevel` 成了前台窗口，搜索框失去焦点就按“点了别处”收起。逐 30 ms 记前台窗口（`build` 里的探测脚本）：输入后约 0.5 s 前台变成插件那个不可见窗口，再过约 0.2 s 搜索框收起。最朴素的 `tk.Tk(); root.withdraw(); root.mainloop()` 就能复现，和 CustomTkinter 无关。
 - **做法（插件这边）**：由 Win顺 起来、窗口先不显示时，建窗口那一段包在 `LockSetForegroundWindow(LSFW_LOCK)` … `LSFW_UNLOCK` 里（刚被前台进程起来的进程能调；`try/finally` 里解锁，锁没拿到就不解）。`action` 来了再显示、到前台（Win顺 0.23.0 起在发 `action` 前 `AllowSetForegroundWindow`）。两个插件 1.1.2 已这样改，`docs/plugins.md` 的“前台”一条写给了插件作者。
-- **没做的**：主程序没有加“插件起进程时锁前台”。那把锁是全局的，漏解一次就会挡住用户刚选的程序到前台；焦点这块改动要单独一轮、带自己的测试矩阵。真要做，候选是搜索框失去前台时发现前台是**不可见窗口**就拿回来、不收起。
+- **做法（主程序这边，同一天稍后）**：`App::launcherLostFront` 里，前台是**别的程序的、看不见的窗口**（`win::hiddenWindowInFront`）时不收起，排队调 `win::bringToFront` 把前台拿回来；一次打开最多 3 次，被 Windows 拒绝、或那个窗口这时已经显示出来，就照常收起。没有用 `LockSetForegroundWindow`：那把锁是全局的，漏解一次会挡住用户刚选的程序到前台。两个坑：同一次丢失会从 Qt 的 `activeChanged` 和前台钩子各报一次，要并成一次（`m_takingFrontBack`）；排队的那一步执行时前台可能已经是搜索框自己（Qt 还没来得及说 active），这时什么都不做，第一版在这里又把它当成丢失收起了。
 - **验证**：`docs/validation/issues-242-82-20261111/`：源码对照（改前丢前台，改后保住，`action` 后窗口在前台）、真实 Win顺 里装库里的 1.1.1（复现）和 1.1.2（三次启动）。
 - **测试时踩到的**：用 `--profile` 启动的测试副本照样会把右键“搜索这里”的注册表项（`HKCU\Software\Classes` 下三处 `WinShun.SearchHere`）改指到自己。测前记下、测后改回并用 `reg query … /s /f <测试目录> /d` 核对；11-10 那次用的是安装目录里的程序，所以当时没露出来。
 
