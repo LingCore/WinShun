@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace tools::calc {
 
@@ -41,6 +42,11 @@ Result evaluate(const std::string& text);
 // parenthesis, nothing but arithmetic characters (a date like 2024-01-02
 // or a phone number does not qualify).
 bool looksLikeExpression(const std::string& text);
+
+// True for two years with the later one second, "1998-2003": a span of
+// years, searched for as it stands. The earlier one second, "2024-1987", is
+// a sum (an age), and so is anything spaced out or outside 1900 to 2099.
+bool looksLikeYearRange(std::string_view text);
 
 // The value as text: integers in full with thousands separators (plain:
 // without them), others with up to 12 significant digits, very large or

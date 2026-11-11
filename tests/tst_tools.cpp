@@ -136,8 +136,11 @@ private slots:
         for (const QJsonValue t : commands.first().toObject().value(u"triggers"_s).toArray())
             triggers.append(QRegularExpression(t.toObject().value(u"regex"_s).toString()));
         QVERIFY(triggers.size() >= 3);
+        // A trigger lets the text through, and the plugin does not take it
+        // for a span of years (Tools.cpp, calc): the one thing it turns down
+        // that computes.
         const auto fires = [&](const QString& text) {
-            if (text.size() < 3 || text.size() > 64)
+            if (text.size() < 3 || text.size() > 64 || calc::looksLikeYearRange(text.toStdString()))
                 return false;
             for (const QRegularExpression& re : triggers) {
                 if (re.match(text).hasMatch())
@@ -146,8 +149,19 @@ private slots:
             return false;
         };
         for (const QString& yes : {u"99-9"_s, u"10 - 4"_s, u"10 -4"_s, u"5-3*2"_s, u"-5+3"_s, u"1+2"_s, u"3.5-1.5"_s, u"100 - 20 - 5"_s, u"2026 - 10"_s, u"1999-5000"_s, u"2024 - 2023"_s,
-                 u"500-498-1"_s, u"1/2/2"_s, u"10/2/5"_s, u"-5-3-2"_s, u"1+2*3/4-5"_s})
+                 u"500-498-1"_s, u"1/2/2"_s, u"10/2/5"_s, u"-5-3-2"_s, u"1+2*3/4-5"_s,
+                 u"2024-1987"_s, u"2026-1999"_s, u"2000-2000"_s, u"2023 - 2024"_s, u"2024-1987-3"_s, u"1850-1900"_s}) // an age: the earlier year second (#281)
             QVERIFY2(fires(yes), qPrintable(yes));
+        QVERIFY(calc::looksLikeYearRange("1998-2003"));
+        QVERIFY(calc::looksLikeYearRange("1999-2000"));
+        QVERIFY(!calc::looksLikeYearRange("2024-1987"));
+        QVERIFY(!calc::looksLikeYearRange("2024-2024"));
+        QVERIFY(!calc::looksLikeYearRange("2024-2100")); // no year of these two centuries
+        QVERIFY(!calc::looksLikeYearRange("-199-2003"));
+        QVERIFY(!calc::looksLikeYearRange("19a8-2003"));
+        QVERIFY(!calc::looksLikeYearRange("1998-2003-1"));
+        QVERIFY(!calc::looksLikeYearRange(""));
+        QCOMPARE(value("2024-1987"), 37.0);
         for (const QString& no : {u"2026-10"_s, u"2026-1"_s, u"2024-01-02"_s, u"1999-12"_s, u"2023-2024"_s, u"1998-2003"_s, u"400-800-1234"_s, u"2024-01-02 15:04"_s,
                  u"2024/01/02"_s, u"10/29/2026"_s, u"report-2"_s, u"99"_s, u"-5"_s, u"abc-9"_s})
             QVERIFY2(!fires(no), qPrintable(no));

@@ -1,10 +1,12 @@
 #include "Calc.h"
 
+#include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <vector>
 
 namespace tools::calc {
@@ -486,6 +488,23 @@ bool looksLikeExpression(const std::string& text)
             return false; // letters (dates, versions, pinyin) and the rest are names, not sums
     }
     return digit && op && depth == 0;
+}
+
+bool looksLikeYearRange(std::string_view text)
+{
+    if (text.size() != 9 || text[4] != '-')
+        return false;
+    const auto year = [](std::string_view digits) -> std::optional<int> {
+        int value = 0;
+        const char* const end = digits.data() + digits.size();
+        const auto [stopped, error] = std::from_chars(digits.data(), end, value);
+        if (error != std::errc {} || stopped != end || value < 1900 || value > 2099)
+            return std::nullopt;
+        return value;
+    };
+    const std::optional<int> from = year(text.substr(0, 4));
+    const std::optional<int> to = year(text.substr(5));
+    return from && to && *from < *to;
 }
 
 std::string format(double value, bool plain)
