@@ -291,7 +291,7 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
 - **托盘子菜单**（`trayMenu`）：右键按下托盘图标时，Win顺 发 `trayMenu`，松开时菜单弹出，所以要马上回答（几毫秒）；赶不上的，下次弹菜单时用。子菜单在剪贴板那几项下面，标题是 manifest 的 `trayMenu`。`items` 每项 `{id, title, checked, enabled, children}`，`{}` 是分隔线，最多两层；`title` 里 `\t` 后面的字靠右显示（快捷键）；没有项就不出这个子菜单。用户选了一项，Win顺 发 `menu` 通知，`id` 是那一项的。
 - **图片**（`pictures`）：用户在剪贴板历史的图片上、结果里的图片文件上选"贴到屏幕"（`pin`）或"编辑"（`edit`），Win顺 发 `picture`。`file` 是图片文件；来自剪贴板历史时还有 `clipId`，有标注工程时有 `project`，`screenshot` 表示它是截的图。这些文件是 Win顺 的：读，不要改、不要删。几个插件都声明同一项时，交给第一个开着的。
 - **设置窗口**（`settingsWindow`）：卡片上的"设置"按钮发 `showSettings`；插件没在运行时按钮提示稍后再试。
-- **前台**：`action`（用户在结果上按了 Enter 或点了动作，一次性插件为此起的进程也算）、`menu`、`picture`、`showSettings` 是用户刚点的，Win顺 发之前允许插件把自己的窗口放到前台（`AllowSetForegroundWindow`）；AI 和命令行发来的 `_run` 不算，插件别为它们抢前台。Win顺 发出的请求按插件的 `timeoutMs` 等回答，等不到就当失败。
+- **前台**：`action`（用户在结果上按了 Enter 或点了动作，一次性插件为此起的进程也算）、`menu`、`picture`、`showSettings` 是用户刚点的，Win顺 发之前允许插件把自己的窗口放到前台（`AllowSetForegroundWindow`）；AI 和命令行发来的 `_run` 不算，插件别为它们抢前台。常驻插件的进程是在用户第一次打出关键字时起的，那时搜索框在前台：**起进程时别让任何窗口拿到前台，隐藏的也不行**，否则搜索框会当成用户点了别处而收起。Tk 会激活它建的第一个窗口（`withdraw()` 过的也一样），Python + Tk 的插件要把建窗口那段包在 `LockSetForegroundWindow(1)` … `LockSetForegroundWindow(2)` 里（`try/finally`），等 `action` 来了再显示。Win顺 发出的请求按插件的 `timeoutMs` 等回答，等不到就当失败。
 - **快捷键**（`winshun/hotkeys`）：插件自己用 `RegisterHotKey` 注册的快捷键，变了就发一次全部（`[]` 是都放了）。Win顺 就把它们让出来：接管 Win+S 时的 Win+Shift+S、剪贴板的 Ctrl/Alt+数字。进程结束等于发了 `[]`。插件启动时 Win顺 可能还占着其中一个，所以注册失败也照样报上，过一会儿（300 毫秒）再注册一次。
 
 另有只给插件、不给 AI 的工具（照样用 `winshun/tool` 调，按权限放行）：

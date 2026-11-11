@@ -1,0 +1,6 @@
+18:15:07.915 WinShun pid 37156; BatchRename running: 0
+18:15:08.185 round 1 +  235 ms fg Code/Chrome_WidgetWin_1/'(编辑器窗口)' launcher=0 plugin=[]
+18:15:08.421 round 1 +  470 ms fg BatchRename/TkTopLevel/'批量重命名' launcher=1 plugin=[]
+18:15:08.637 round 1 +  687 ms fg BatchRename/TkTopLevel/'批量重命名' launcher=0 plugin=[]
+18:15:18.333 round 2 +  166 ms fg BatchRename/TkTopLevel/'批量重命名' launcher=0 plugin=[]
+18:15:18.527 round 2 +  359 ms fg WinShun/Qt6120QWindowToolSaveBits/'Win顺' launcher=1 plugin=[]

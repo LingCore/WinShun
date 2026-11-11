@@ -1,0 +1,11 @@
+﻿18:13:25.280 lister 0xa10f82 [-32000,-32000 237x39], started here: False
+18:13:26.222 lister was minimized; restored to [264,372 2579x1537]
+18:13:27.875 left list 0xac15c0 [915,670 948x1135] (This PC); right list 0x8f15da [1873,670 957x1135] (folder)
+18:13:34.572 WinShun 0.24.0 (53BD77B605EE) pid 39012 up; windows now: 
+18:13:37.300 opus-left-thispc: box shown False ; inside that list False; foreground dopus.lister (WinShun: False); Opus focus still the list: True
+18:13:37.625 opus-left-thispc: after Esc, box shown False
+18:13:40.309 opus-right-folder: box shown True [1896,1292 910x490]; inside that list True; foreground Qt6120QWindowToolSaveBits (WinShun: True); Opus focus still the list: False
+18:13:41.648 opus-right-folder: after Esc, box shown False
+18:13:41.681 ABORTED: 无法读取文件 F:\电脑便捷工具\build\issues-242-82\profile\WinShun.log: 未能找到文件“F:\电脑便捷工具\build\issues-242-82\profile\WinShun.log”。 @ 216
+18:13:43.462 lister minimized again
+18:13:43.471 left button down: False; staged WinShun left: 0

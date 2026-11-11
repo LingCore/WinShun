@@ -1,0 +1,34 @@
+﻿18:25:46.534 lister 0xa10f82 [-32000,-32000 237x39], started here: False
+18:25:47.429 lister was minimized; restored to [264,372 2579x1537]
+18:25:49.076 left list 0xac15c0 [915,670 948x1135] (This PC); right list 0x8f15da [1873,670 957x1135] (folder)
+18:25:55.754 WinShun 0.24.0 (05F7A32ED32B) pid 13692 up; windows now: 
+18:25:58.484 opus-left-thispc: box shown True [938,1622 902x152]; inside that list True; foreground Qt6120QWindowToolSaveBits (WinShun: True); Opus focus still the list: False
+18:25:59.819 opus-left-thispc: after Esc, box shown False
+18:26:02.499 opus-right-folder: box shown True [1896,1292 910x490]; inside that list True; foreground Qt6120QWindowToolSaveBits (WinShun: True); Opus focus still the list: False
+18:26:03.857 opus-right-folder: after Esc, box shown False
+18:26:07.111 plugin BatchRename-1: keyword typed, 3 s, no Enter: plugin windows 0; launcher windows 1
+18:26:09.046 plugin BatchRename-1: Enter -> plugin window True after 347 ms (批量重命名 [98,98 2026x1471]); launcher still shown False; foreground is the plugin True (TkTopLevel)
+18:26:10.283 plugin BatchRename-1: closed; plugin windows 0, launcher windows 0
+18:26:13.518 plugin BatchRename-2: keyword typed, 3 s, no Enter: plugin windows 0; launcher windows 1
+18:26:15.203 plugin BatchRename-2: Enter -> plugin window True after 124 ms (批量重命名 [98,98 2026x1471]); launcher still shown False; foreground is the plugin True (TkTopLevel)
+18:26:16.419 plugin BatchRename-2: closed; plugin windows 0, launcher windows 0
+18:26:19.831 plugin BatchRename-3: keyword typed, 3 s, no Enter: plugin windows 0; launcher windows 1
+18:26:21.888 plugin BatchRename-3: Enter -> plugin window True after 489 ms (批量重命名 [98,98 2026x1471]); launcher still shown False; foreground is the plugin True (TkTopLevel)
+18:26:23.100 plugin BatchRename-3: closed; plugin windows 0, launcher windows 0
+18:26:26.340 plugin OCRStudio-1: keyword typed, 3 s, no Enter: plugin windows 0; launcher windows 1
+18:26:28.033 plugin OCRStudio-1: Enter -> plugin window True after 123 ms (OCR Studio [294,294 2106x1511]); launcher still shown False; foreground is the plugin True (TkTopLevel)
+18:26:29.252 plugin OCRStudio-1: closed; plugin windows 0, launcher windows 0
+18:26:32.492 plugin OCRStudio-2: keyword typed, 3 s, no Enter: plugin windows 0; launcher windows 1
+18:26:34.171 plugin OCRStudio-2: Enter -> plugin window True after 108 ms (OCR Studio [294,294 2106x1511]); launcher still shown False; foreground is the plugin True (TkTopLevel)
+18:26:35.393 plugin OCRStudio-2: closed; plugin windows 0, launcher windows 0
+18:26:38.634 plugin OCRStudio-3: keyword typed, 3 s, no Enter: plugin windows 0; launcher windows 1
+18:26:40.311 plugin OCRStudio-3: Enter -> plugin window True after 106 ms (OCR Studio [294,294 2106x1511]); launcher still shown False; foreground is the plugin True (TkTopLevel)
+18:26:41.530 plugin OCRStudio-3: closed; plugin windows 0, launcher windows 0
+18:26:48.511 log: {"details":{"activeMs":64,"askedMs":17,"candidatesMs":91,"compositionMs":91,"deliveredMs":83,"drawnMs":122,"focusedMs":64,"hkl":"0x08040804","imeTook":true,"inFront":true,"keyDowns":1,"keyMs":91,"missing":"","outcome":"ready","placed":{"box":[948,538,455,106],"by":"list","scale":2,"window":[264,372,2579,1537],"work":[0,0,3840,2064]},"preeditMs":92,"presses":1,"revealedMs":83,"routedMs":-1,"sentMs":85,"surface":"opus","textMs":-1,"tip":"{86598FB9-66A2-463E-B9C2-AEB906D477AD}","tipName":"微信输入法"},"event":"typing-handoff","time":"2026-11-11T10:13:39.000Z"}
+18:26:48.512 log: {"details":{"activeMs":45,"askedMs":16,"candidatesMs":63,"compositionMs":64,"deliveredMs":57,"drawnMs":81,"focusedMs":45,"hkl":"0x08040804","imeTook":true,"inFront":true,"keyDowns":1,"keyMs":63,"missing":"","outcome":"ready","placed":{"box":[469,538,451,106],"by":"list","scale":2,"window":[264,372,2579,1537],"work":[0,0,3840,2064]},"preeditMs":67,"presses":1,"revealedMs":57,"routedMs":-1,"sentMs":57,"surface":"opus","textMs":-1,"tip":"{86598FB9-66A2-463E-B9C2-AEB906D477AD}","tipName":"微信输入法"},"event":"typing-handoff","time":"2026-11-11T10:14:04.813Z"}
+18:26:48.514 log: {"details":{"activeMs":46,"askedMs":18,"candidatesMs":104,"compositionMs":104,"deliveredMs":90,"drawnMs":129,"focusedMs":46,"hkl":"0x08040804","imeTook":true,"inFront":true,"keyDowns":1,"keyMs":104,"missing":"","outcome":"ready","placed":{"box":[948,538,455,76],"by":"list","scale":2,"window":[264,372,2579,1537],"work":[0,0,3840,2064]},"preeditMs":105,"presses":1,"revealedMs":90,"routedMs":-1,"sentMs":93,"surface":"opus","textMs":-1,"tip":"{86598FB9-66A2-463E-B9C2-AEB906D477AD}","tipName":"微信输入法"},"event":"typing-handoff","time":"2026-11-11T10:14:08.907Z"}
+18:26:48.515 log: {"details":{"activeMs":59,"askedMs":18,"candidatesMs":80,"compositionMs":80,"deliveredMs":73,"drawnMs":91,"focusedMs":59,"hkl":"0x08040804","imeTook":true,"inFront":true,"keyDowns":1,"keyMs":80,"missing":"","outcome":"ready","placed":{"box":[469,538,451,106],"by":"list","scale":2,"window":[264,372,2579,1537],"work":[0,0,3840,2064]},"preeditMs":81,"presses":1,"revealedMs":73,"routedMs":-1,"sentMs":74,"surface":"opus","textMs":-1,"tip":"{86598FB9-66A2-463E-B9C2-AEB906D477AD}","tipName":"微信输入法"},"event":"typing-handoff","time":"2026-11-11T10:25:57.127Z"}
+18:26:48.516 log: {"details":{"activeMs":46,"askedMs":21,"candidatesMs":88,"compositionMs":88,"deliveredMs":78,"drawnMs":99,"focusedMs":46,"hkl":"0x08040804","imeTook":true,"inFront":true,"keyDowns":1,"keyMs":88,"missing":"","outcome":"ready","placed":{"box":[948,538,455,76],"by":"list","scale":2,"window":[264,372,2579,1537],"work":[0,0,3840,2064]},"preeditMs":89,"presses":1,"revealedMs":78,"routedMs":-1,"sentMs":79,"surface":"opus","textMs":-1,"tip":"{86598FB9-66A2-463E-B9C2-AEB906D477AD}","tipName":"微信输入法"},"event":"typing-handoff","time":"2026-11-11T10:26:01.196Z"}
+18:26:52.678 tst_shelllaunch opusTypingNavigation: exit 0; PASS   : TestShellLaunch::initTestCase() | PASS   : TestShellLaunch::opusTypingNavigation() | PASS   : TestShellLaunch::cleanupTestCase() | Totals: 3 passed, 0 failed, 0 skipped, 0 blacklisted, 2394ms
+18:26:53.589 lister minimized again
+18:26:53.604 left button down: False; staged WinShun left: 0
