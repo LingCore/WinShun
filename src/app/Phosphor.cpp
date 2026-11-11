@@ -21,6 +21,7 @@ struct Mapping {
 // Sorted by the Segoe code point; the Segoe name, then Phosphor's.
 // Window caption buttons are not here: they keep Windows' own glyphs.
 constexpr auto kMappings = std::to_array<Mapping>({
+    {0xE16E, 0xE266, true}, // Filter (MDL2's older one; here the filters shown): funnel
     {0xE70B, 0xE63E, false}, // QuickNote: notepad
     {0xE70D, 0xE136, false}, // ChevronDown: caret-down
     {0xE70E, 0xE13C, false}, // ChevronUp: caret-up
@@ -35,6 +36,7 @@ constexpr auto kMappings = std::to_array<Mapping>({
     {0xE719, 0xE470, false}, // Shop: storefront
     {0xE71A, 0xE45E, false}, // Stop: square
     {0xE71B, 0xE2E2, false}, // Link: link
+    {0xE71C, 0xE266, false}, // Filter: funnel
     {0xE720, 0xE326, false}, // Microphone: microphone
     {0xE721, 0xE30C, false}, // Search: magnifying-glass
     {0xE722, 0xE10E, false}, // Camera: camera

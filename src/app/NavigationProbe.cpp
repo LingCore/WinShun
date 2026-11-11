@@ -978,13 +978,32 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
     launcher.setContentOptions(false, {}, {}, true, true);
     auto* documentChip = item(window->contentItem(), u"searchTypeChip0"_s);
     const qreal chipWidth = documentChip ? documentChip->width() : 0;
+    // Ctrl held by itself a moment, not each press of it (GitHub #279).
+    const auto heldAWhile = [window] {
+        for (int i = 0; i < 3; ++i) // over Main.qml's keywordPeek
+            settle(window);
+    };
     key(field, Qt::Key_Control, Qt::ControlModifier);
+    check(!strip->property("showKeywords").toBool(), u"a press of Ctrl leaves the type names"_s);
+    key(field, Qt::Key_F24, Qt::ControlModifier); // a shortcut: a key of no meaning here
+    heldAWhile();
+    check(!strip->property("showKeywords").toBool(), u"a shortcut with Ctrl never brings the prefixes"_s);
+    QKeyEvent tapEnd(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
+    QCoreApplication::sendEvent(field, &tapEnd);
+    key(field, Qt::Key_Control, Qt::ControlModifier);
+    QCoreApplication::sendEvent(field, &tapEnd);
+    heldAWhile();
+    check(!strip->property("showKeywords").toBool(), u"a tap of Ctrl never brings the prefixes"_s);
+    key(field, Qt::Key_Control, Qt::ControlModifier);
+    heldAWhile();
     check(strip->property("showKeywords").toBool(), u"holding Ctrl exposes type prefixes"_s);
-    check(documentChip && documentChip->width() == chipWidth, u"prefix hints preserve chip widths"_s);
     check(window->grabWindow().save(output.filePath(u"merged-scope-prefixes.png"_s)), u"capture merged type prefixes"_s);
     QKeyEvent release(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
     QCoreApplication::sendEvent(field, &release);
     check(!strip->property("showKeywords").toBool(), u"releasing Ctrl restores type names"_s);
+    settle(window);
+    // (A prefix is as wide as it is: the chips make room while it is read.)
+    check(documentChip && documentChip->width() == chipWidth, u"the chips are back at their widths with the names"_s);
     launcher.chooseFileType(-2);
     settle(window);
     check(launcher.scope() == Launcher::Folders && launcher.results()->count() == 1, u"folder chip remains available"_s);

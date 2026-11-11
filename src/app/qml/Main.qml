@@ -566,8 +566,26 @@ Window {
         target: window.searchBar
         function onKeyReleased(event) {
             numberHints.release(event)
-            typeStrip.showKeywords = event.key !== Qt.Key_Control && (event.modifiers & Qt.ControlModifier) !== 0
+            if (event.key === Qt.Key_Control)
+                window.peekKeywords(false)
         }
+    }
+    // The type chips say their prefixes (":doc") once Ctrl has been held by
+    // itself a moment. At every press of it they flickered, names to
+    // prefixes and back, and their widths with them: at each Ctrl+C, at each
+    // double tap that opens the window (GitHub #279).
+    Timer {
+        id: keywordPeek
+        interval: 400
+        onTriggered: typeStrip.showKeywords = true
+    }
+    function peekKeywords(held) {
+        if (held) {
+            keywordPeek.restart()
+            return
+        }
+        keywordPeek.stop()
+        typeStrip.showKeywords = false
     }
     onActiveFocusItemChanged: numberHints.reset()
     // A chord that is one of Win顺's own shortcuts stays that (Launcher.numberKeysLeft):
@@ -680,7 +698,7 @@ Window {
             nameTip.dismiss()
         }
     }
-    onActiveChanged: if (!active) { nameTip.dismiss(); typeStrip.showKeywords = false }
+    onActiveChanged: if (!active) { nameTip.dismiss(); peekKeywords(false) }
 
     // The whole name and folder of a row that shows them cut, as the mouse
     // rests on it (NameTip; the box's rows and the panel's).
@@ -723,7 +741,10 @@ Window {
 
     function handleKey(event) {
         if (searchBar.menuKey(event)) { event.accepted = true; return }
-        typeStrip.showKeywords = event.key === Qt.Key_Control || (event.modifiers & Qt.ControlModifier) !== 0
+        if (event.key !== Qt.Key_Control)
+            peekKeywords(false) // a shortcut, or typing: no time to read them
+        else if (!event.isAutoRepeat)
+            peekKeywords(true)
         numberHints.press(event)
         nameTip.dismiss() // as Windows' tips go on a key
         if (panel && panelPage && !menuOpen && !columnMenuOpen && panelPage.handleContentKey(event))
