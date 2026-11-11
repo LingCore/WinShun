@@ -1,0 +1,18 @@
+ 1/17 Test   #5: tst_servicepaste .................   Passed    0.01 sec
+ 2/17 Test   #6: tst_servicedialognav .............   Passed    0.01 sec
+ 3/17 Test  #14: tst_pluginhomepage ...............   Passed    3.50 sec
+ 4/17 Test  #15: tst_pluginkeywords ...............   Passed    4.26 sec
+ 5/17 Test  #61: tst_filedialog ...................   Passed    2.11 sec
+ 6/17 Test  #62: tst_filedialog_other_program .....   Passed    0.10 sec
+ 7/17 Test  #63: tst_dialognav ....................   Passed    2.14 sec
+ 8/17 Test  #64: tst_dialognav_cad ................   Passed    0.39 sec
+ 9/17 Test  #65: tst_shelllaunch ..................   Passed    5.36 sec
+10/17 Test  #81: tst_aisettings ...................   Passed    1.66 sec
+11/17 Test #133: tst_taskbarroom ..................   Passed    0.01 sec
+12/17 Test #155: tst_core .........................   Passed   70.14 sec
+13/17 Test #165: tst_dragout ......................   Passed    0.06 sec
+14/17 Test #169: tst_tools ........................   Passed    0.02 sec
+15/17 Test #173: tst_plugin .......................   Passed   40.38 sec
+16/17 Test #178: tst_updater ......................   Passed    4.44 sec
+17/17 Test #181: tst_clipboarddisplay .............   Passed    0.03 sec
+100% tests passed, 0 tests failed out of 17
