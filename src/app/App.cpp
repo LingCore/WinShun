@@ -437,6 +437,14 @@ App::~App()
     // (SettingsWindow.resetForReopen) then, never from inside its destructor.
     if (m_settingsWindow)
         m_settingsWindow->hide();
+    // The plugins told to go while all they may still ask for is here: a
+    // plugin's last call (the screenshot giving its keys back) reaches the
+    // tools of setUpAppTools. Left to the host's destructor, that came after
+    // the members those tools use were gone (a crash on the way out wherever
+    // aboutToQuit had not ended them first: the onboarding probe with the
+    // screenshot installed). Nothing more to do where aboutToQuit did.
+    if (m_pluginHost)
+        m_pluginHost->shutdown(::GetSystemMetrics(SM_SHUTTINGDOWN) == 0);
     m_clipDisplay.reset();
     delete m_onboardingWindow.data();
     m_onboardingQml.reset();
