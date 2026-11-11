@@ -5,6 +5,7 @@
 #include "KeyListenerProtocol.h"
 #include "Log.h"
 #include "OwnInput.h"
+#include "PasteInput.h"
 #include "Server.h"
 #include "ServiceLocation.h"
 #include "Win32Util.h"
@@ -89,6 +90,7 @@ public:
 std::mutex claimsMutex;
 std::set<DWORD> listeners;
 std::set<DWORD> navigators;
+std::set<DWORD> pasters;
 std::set<DWORD> displays;
 struct Claim {
     Claim(std::set<DWORD>& registry, DWORD pid)
@@ -799,24 +801,121 @@ void serveDialogNav(Server& server, Connection& conn, std::span<const std::byte>
     }
 }
 
-namespace {
-// runDialogNav's checks and its one job. May throw: what it reads (a control's
-// text, a UI Automation name, a module's path) is sized by other programs.
-int navigateDialog(HWND dialog, const std::wstring& folder)
+void servePaste(Server& server, Connection& conn, std::span<const std::byte> payload)
 {
-    // Must be the uiAccess + high-integrity helper the service launches: the
-    // same check as the input listener.
+    using namespace volproto;
+    Reader r(payload);
+    std::uint64_t window = 0;
+    if (!r.u64(window) || !r.done() || !window) {
+        replyError(conn, ERROR_INVALID_PARAMETER, L"invalid paste request", 1000);
+        return;
+    }
+    // As the navigator: an interactive session, and Win顺's own UI.
+    DWORD session = 0;
+    if (!::GetNamedPipeClientSessionId(conn.channel.handle(), &session) || session == 0
+        || !mayNavigateDialogs(server, conn.pid)) {
+        replyError(conn, ERROR_ACCESS_DENIED, L"not authorised to paste", 1000);
+        return;
+    }
+    const Claim claim(pasters, conn.pid); // one paste at a time per client
+    if (!claim.held) {
+        replyError(conn, ERROR_BUSY, L"already pasting for this process", 1000);
+        return;
+    }
+    const UniqueHandle job(::CreateJobObjectW(nullptr, nullptr));
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits {};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+    limits.BasicLimitInformation.ActiveProcessLimit = 1;
+    UniqueHandle child;
+    DWORD childPid = 0;
+    const wchar_t* operation = L"create paste job";
+    const std::wstring args = L"--paste-keys " + std::to_wstring(window);
+    if (!server.options().keyListener || !job.valid()
+        || !::SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation, &limits, sizeof limits)
+        || !launchSessionHelper(conn, args, job.get(), child, childPid, operation)) {
+        const DWORD error = server.options().keyListener ? ::GetLastError() : ERROR_NOT_SUPPORTED;
+        log::write(L"paste for pid %lu: %ls failed (%lu)", conn.pid, operation, error);
+        replyError(conn, error, operation, 1000);
+        return;
+    }
+    // A handful of keys and it is gone; the job closing here ends one that lingered.
+    DWORD code = static_cast<DWORD>(WAIT_TIMEOUT);
+    if (::WaitForSingleObject(child.get(), 3000) == WAIT_OBJECT_0) {
+        DWORD exitCode = 0;
+        code = ::GetExitCodeProcess(child.get(), &exitCode) ? exitCode : ERROR_PROCESS_ABORTED;
+    }
+    if (code == 0) {
+        log::write(L"paste %lu for pid %lu: keys pressed", childPid, conn.pid);
+        reply(conn, Type::PasteDone, 1000);
+    } else {
+        log::write(L"paste %lu for pid %lu: not pressed (exit %lu)", childPid, conn.pid, code);
+        replyError(conn, code, L"the paste keys were not pressed", 1000);
+    }
+}
+
+namespace {
+// This process is the uiAccess + high-integrity helper the service launches:
+// what each of its jobs checks before it acts on another program's window.
+bool isSessionHelper()
+{
     HANDLE raw = nullptr;
     if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &raw))
-        return ERROR_ACCESS_DENIED;
+        return false;
     const UniqueHandle token(raw);
     DWORD uiAccess = 0, size = 0;
     const auto integrity = tokenInfo(token.get(), TokenIntegrityLevel);
     if (!::GetTokenInformation(token.get(), TokenUIAccess, &uiAccess, sizeof uiAccess, &size) || !uiAccess
         || integrity.empty())
-        return ERROR_ACCESS_DENIED;
+        return false;
     const PSID sid = reinterpret_cast<const TOKEN_MANDATORY_LABEL*>(integrity.data())->Label.Sid;
-    if (*::GetSidSubAuthority(sid, *::GetSidSubAuthorityCount(sid) - 1) < SECURITY_MANDATORY_HIGH_RID)
+    return *::GetSidSubAuthority(sid, *::GetSidSubAuthorityCount(sid) - 1) >= SECURITY_MANDATORY_HIGH_RID;
+}
+
+// runPaste's checks and its one job: the one chord, into the window in front,
+// and only where the UI's own keys do not reach.
+int pasteInto(HWND window)
+{
+    if (!isSessionHelper())
+        return ERROR_ACCESS_DENIED;
+    // A top-level window of this very session, shown.
+    if (!window || !::IsWindow(window) || ::GetAncestor(window, GA_ROOT) != window || !::IsWindowVisible(window))
+        return ERROR_INVALID_WINDOW_HANDLE;
+    DWORD pid = 0, session = 0, ownSession = 0;
+    ::GetWindowThreadProcessId(window, &pid);
+    if (!pid || !::ProcessIdToSessionId(pid, &session) || !::ProcessIdToSessionId(::GetCurrentProcessId(), &ownSession)
+        || session != ownSession)
+        return ERROR_ACCESS_DENIED;
+    // A program run as administrator, no other: the UI presses its own keys
+    // in those at its level, and nothing is typed on request into a window
+    // of the system's (or one whose process cannot be read: csrss).
+    const std::optional<DWORD> level = integrityOf(pid);
+    if (!level || *level < SECURITY_MANDATORY_HIGH_RID || *level >= SECURITY_MANDATORY_SYSTEM_RID)
+        return ERROR_NOT_SUPPORTED;
+    // In front as the keys go: they reach whatever has the keyboard.
+    const auto inFront = [window] {
+        const HWND front = ::GetForegroundWindow();
+        return front && ::GetAncestor(front, GA_ROOT) == window;
+    };
+    if (!inFront())
+        return ERROR_NOT_READY;
+    wchar_t className[64] {};
+    ::GetClassNameW(window, className, static_cast<int>(std::size(className)));
+    const std::vector<pastekeys::Key> keys
+        = pastekeys::sequence(pastekeys::forWindowClass(className), pastekeys::heldSides(), false);
+    std::vector<INPUT> inputs = pastekeys::inputs(keys);
+    const auto count = static_cast<UINT>(inputs.size());
+    ::SetLastError(ERROR_SUCCESS);
+    if (::SendInput(count, inputs.data(), sizeof(INPUT)) == count)
+        return 0;
+    const DWORD error = ::GetLastError();
+    return static_cast<int>(error ? error : ERROR_ACCESS_DENIED);
+}
+
+// runDialogNav's checks and its one job. May throw: what it reads (a control's
+// text, a UI Automation name, a module's path) is sized by other programs.
+int navigateDialog(HWND dialog, const std::wstring& folder)
+{
+    if (!isSessionHelper())
         return ERROR_ACCESS_DENIED;
     // The window must be a supported file dialog in this very session.
     if (!dialog || !::IsWindow(dialog) || dialognav::classify(dialog) == dialognav::Kind::None)
@@ -851,6 +950,17 @@ int navigateDialog(HWND dialog, const std::wstring& folder)
     return went ? 0 : static_cast<int>(ERROR_NOT_FOUND);
 }
 } // namespace
+
+int runPaste(HWND window)
+{
+    try {
+        return pasteInto(window);
+    } catch (const std::bad_alloc&) {
+        return ERROR_NOT_ENOUGH_MEMORY;
+    } catch (...) {
+        return ERROR_GEN_FAILURE;
+    }
+}
 
 int runDialogNav(HWND dialog, const std::wstring& folder)
 {

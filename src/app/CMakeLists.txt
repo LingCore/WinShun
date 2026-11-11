@@ -107,6 +107,7 @@ qt_add_executable(WinShun WIN32
     platform/KeyListener.cpp platform/KeyListener.h
     platform/PieDrop.cpp platform/PieDrop.h
     platform/ServiceDialogNav.cpp platform/ServiceDialogNav.h
+    platform/ServicePaste.cpp platform/ServicePaste.h
     platform/ServiceKeyListener.cpp platform/ServiceKeyListener.h
     platform/KeyRouter.cpp platform/KeyRouter.h platform/QtKeys.h
     platform/MessageWindow.cpp platform/MessageWindow.h platform/NotificationTurns.h

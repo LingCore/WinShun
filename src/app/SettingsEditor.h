@@ -240,6 +240,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool clipboardPauseInFullScreen READ clipboardPauseInFullScreen WRITE setClipboardPauseInFullScreen NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardFlipAbove READ clipboardFlipAbove WRITE setClipboardFlipAbove NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardHoldToStep READ clipboardHoldToStep WRITE setClipboardHoldToStep NOTIFY changed FINAL)
+    Q_PROPERTY(bool clipboardPasteElevated READ clipboardPasteElevated WRITE setClipboardPasteElevated NOTIFY changed FINAL)
     Q_PROPERTY(QString clipboardSearchBoxSide READ clipboardSearchBoxSide WRITE setClipboardSearchBoxSide NOTIFY changed FINAL) // near | far
     Q_PROPERTY(QStringList clipboardExcludedApps READ clipboardExcludedApps NOTIFY changed FINAL)
     Q_PROPERTY(int clipboardCount READ clipboardCount NOTIFY clipboardCountChanged FINAL)
@@ -683,6 +684,8 @@ public:
     bool clipboardFlipAbove() const { return m_settings.clipboardFlipAbove; }
     void setClipboardFlipAbove(bool on);
     bool clipboardHoldToStep() const { return m_settings.clipboardHoldToStep; }
+    bool clipboardPasteElevated() const { return m_settings.clipboardPasteElevated; }
+    void setClipboardPasteElevated(bool on);
     void setClipboardHoldToStep(bool on);
     QString clipboardSearchBoxSide() const { return m_settings.clipboardSearchBoxSide; }
     void setClipboardSearchBoxSide(const QString& side);

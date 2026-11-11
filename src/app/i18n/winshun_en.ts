@@ -1063,6 +1063,10 @@
         <translation>Hold and press again, release to paste</translation>
     </message>
     <message>
+        <source>粘贴到以管理员身份运行的程序</source>
+        <translation>Paste into programs run as administrator</translation>
+    </message>
+    <message>
         <source>最多保留</source>
         <translation>Keep at most</translation>
     </message>
@@ -7512,6 +7516,22 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Hold modifier key and press hotkey to step through items, release to paste</translation>
     </message>
     <message>
+        <source>粘贴到以管理员身份运行的程序</source>
+        <translation>Paste into programs run as administrator</translation>
+    </message>
+    <message>
+        <source>管理员;权限;提权;粘贴不上;索引服务;admin;elevated</source>
+        <translation>administrator;admin;elevated;rights;UAC;paste fails;index service</translation>
+    </message>
+    <message>
+        <source>由索引服务代按粘贴键；关闭后只复制，要自己按 Ctrl+V</source>
+        <translation>The index service presses the paste keys there; off: the entry is only copied and you press Ctrl+V</translation>
+    </message>
+    <message>
+        <source>Win顺 以普通权限运行，Windows 不让它向管理员程序发按键。开启后，选中的内容先放上剪贴板，再由索引服务在那个窗口里按一次 Ctrl+V（终端里是 Shift+Insert）；它只按这一组键，只对正在最前面的管理员窗口。没有安装索引服务时，仍然要自己按 Ctrl+V</source>
+        <translation>WinShun runs with normal rights, and Windows keeps it from sending keys to a program run as administrator. On, the entry goes onto the clipboard and the index service presses Ctrl+V once in that window (Shift+Insert in terminals); it presses that one chord only, and only in the administrator window in front. Without the index service you still press Ctrl+V yourself</translation>
+    </message>
+    <message>
         <source>按住快捷键里的 Ctrl、Alt、Shift 或 Win，每再按一下就往下选一条，松开就粘贴；按住约一秒再松开，粘贴第一条；按住时按 Esc 不粘贴。开启后按住再按快捷键不再关闭窗口</source>
         <translation>Hold Ctrl, Alt, Shift or Win in the hotkey: each press moves down one item, and releasing pastes; holding for about 1 second then releasing pastes the first item; pressing Esc while held cancels. When enabled, holding and pressing the hotkey no longer closes the window</translation>
     </message>
@@ -9464,6 +9484,14 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>已复制。那个程序以管理员身份运行，Win顺 没法替它粘贴：回到它那里按 Ctrl+V</source>
         <translation>Copied. That program runs as administrator, so WinShun cannot paste into it: go back to it and press Ctrl+V</translation>
+    </message>
+    <message>
+        <source>已复制。那个程序以管理员身份运行，装上索引服务后 Win顺 才能替它粘贴；这次请按 Ctrl+V</source>
+        <translation>Copied. That program runs as administrator; WinShun can paste into it once the index service is installed. Press Ctrl+V this time</translation>
+    </message>
+    <message>
+        <source>已复制。那个程序以管理员身份运行，现在的索引服务还不能替这份 Win顺 粘贴；这次请按 Ctrl+V</source>
+        <translation>Copied. That program runs as administrator, and the index service here cannot paste for this copy of WinShun yet. Press Ctrl+V this time</translation>
     </message>
     <message>
         <source>%1里只能粘贴文字</source>

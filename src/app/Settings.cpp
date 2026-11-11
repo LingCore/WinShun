@@ -1088,6 +1088,7 @@ void Settings::load()
     clipboardPauseInFullScreen = readOrDefault(s, u"Clipboard/PauseInFullScreen"_s, d.clipboardPauseInFullScreen);
     clipboardFlipAbove = readOrDefault(s, u"Clipboard/FlipAbove"_s, d.clipboardFlipAbove);
     clipboardHoldToStep = readOrDefault(s, u"Clipboard/HoldToStep"_s, d.clipboardHoldToStep);
+    clipboardPasteElevated = readOrDefault(s, u"Clipboard/PasteElevated"_s, d.clipboardPasteElevated);
     clipboardSearchBoxSide = readOrDefault(s, u"Clipboard/SearchBoxSide"_s, d.clipboardSearchBoxSide).trimmed().toLower();
     if (clipboardSearchBoxSide != u"far")
         clipboardSearchBoxSide = d.clipboardSearchBoxSide;
@@ -1357,6 +1358,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/PauseInFullScreen"_s, clipboardPauseInFullScreen);
     s.setValue(u"Clipboard/FlipAbove"_s, clipboardFlipAbove);
     s.setValue(u"Clipboard/HoldToStep"_s, clipboardHoldToStep);
+    s.setValue(u"Clipboard/PasteElevated"_s, clipboardPasteElevated);
     s.setValue(u"Clipboard/SearchBoxSide"_s, clipboardSearchBoxSide);
     s.setValue(u"Clipboard/ExcludedApps"_s, clipboardExcludedApps);
     s.setValue(u"Clipboard/NumberKeys"_s, clipboardNumberKeys);

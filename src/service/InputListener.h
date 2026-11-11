@@ -26,6 +26,11 @@ void serveInputListener(Server& server, Connection& conn, std::span<const std::b
 // launches the same uiAccess helper, which drives the dialog with window
 // messages / UI Automation only. Replies DialogNavDone, or Error.
 void serveDialogNav(Server& server, Connection& conn, std::span<const std::byte> payload);
+// Presses the paste keys in a higher-integrity window for Win顺's UI, which
+// has put what to paste on the clipboard and that window in front (#277):
+// Windows drops the keys the UI sends there. The same uiAccess helper, for
+// the one chord. Replies PasteDone, or Error.
+void servePaste(Server& server, Connection& conn, std::span<const std::byte> payload);
 // The same small, statically linked executable, in a user's session. No
 // service dispatcher, volume access or pipe server is started in this mode.
 // `keys`: the UI's plain hotkeys to hold back over administrator windows and
@@ -34,4 +39,8 @@ int runInputListener(DWORD clientPid, HWND target, const std::vector<std::uint32
 // The --navigate-dialog helper: validates the token, the window and the
 // folder, then navigates. 0 on success, else a Win32 error.
 int runDialogNav(HWND dialog, const std::wstring& folder);
+// The --paste-keys helper: validates the token and the window, then presses
+// Ctrl+V (Shift+Insert where the window takes that). 0 on success, else a
+// Win32 error.
+int runPaste(HWND window);
 } // namespace ws::service

@@ -685,6 +685,10 @@ std::vector<Entry> buildCatalog()
                     "that entry. Held about a second without a further press, letting go pastes the first entry; Esc "
                     "while holding pastes nothing. On, pressing the shortcut again while holding no longer closes the panel."},
         &Settings::clipboardHoldToStep));
+    add(boolean({"Clipboard/PasteElevated", QT_TRANSLATE_NOOP("AiSettings", "粘贴到以管理员身份运行的程序"), "clipboard", 1,
+                    "Into a program run as administrator, the index service presses the paste keys (Windows drops the "
+                    "ones Win顺 sends there). Off: the entry is only copied and the user presses Ctrl+V. Needs the index service."},
+        &Settings::clipboardPasteElevated));
     add(choice({"Clipboard/NumberKeys", QT_TRANSLATE_NOOP("AiSettings", "面板内数字键粘贴"), "clipboard", 1,
                    "Which modifier with 1…9 pastes the nth row while the clipboard panel is open."},
         &Settings::clipboardNumberKeys,

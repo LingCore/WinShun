@@ -1,0 +1,9 @@
+15:25:20.870 user's WinShun running: 
+15:25:21.866 Windows clipboard history before: 1
+15:25:24.168 staged WinShun pid 5092
+15:25:40.444 the administrator window's text box: [WinShun issue 277 e2e 43676]
+15:25:40.445 PASS: pasted into the administrator window
+15:25:41.284 Windows clipboard history after: 1 (before: 1, plus the test's one line)
+15:25:44.376 elevated part cleaned: True
+15:25:44.376 clipboard text put back
+15:25:44.388 Explorer verbs as before: True

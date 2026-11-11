@@ -173,7 +173,7 @@ scoop install winshun
 - **便携版**：默认一个个文件夹走一遍来建索引，第一次慢一些，之后实时跟上改动。在设置 → 索引方式里可以装上索引服务，或以管理员身份重新启动。便携版装索引服务时，会把服务程序复制一份放进 `%ProgramFiles%\WinShun Service`，只有管理员能改，普通程序没法把它换掉；以前装过的，设置里会提醒并有“修复”按钮。
 - **没有管理员权限（“只为我安装”）**：安装时选“只为我安装”，不装索引服务，也不用管理员同意。这时 Win顺 只索引你选的文件夹（设置 › 搜索范围 › 文件夹 里改，默认是桌面、文档、下载、图片这些常用位置），可以从资源管理器把文件夹直接拖进去；改动实时跟上，每天再整个核对一遍（也可以改成每小时、每 4 小时或只在启动时）。输入的文件夹不在索引范围里时，搜索框会提示，点“这次也搜它”只搜这一次，点“加入索引”就长期收录。内容搜索照样能用，只是慢一些。
 - **管理员直读**：管理员账户可以在设置 → 索引方式里选“管理员直读”，像旧版一样整个程序以管理员身份运行、直接读盘。
-- **以管理员身份运行的程序**：Windows 不让普通权限的程序往它们里面打字。往这样的窗口里粘贴时，Win顺 只复制，提示你按 `Ctrl+V`；它们的“打开”“另存为”对话框旁也有搜索框：装了索引服务的安装版能像别的对话框一样直接转到选中的文件夹，`Ctrl+G` 也管用；便携版和“只为我安装”的版本只能复制选中的路径，要你自己粘贴到路径框里。
+- **以管理员身份运行的程序**：Windows 不让普通权限的程序往它们里面打字。往这样的窗口里粘贴时，装了索引服务的由服务替你按一次粘贴键（设置 › 剪贴板 › “粘贴到以管理员身份运行的程序”，默认开启）；没有索引服务或关掉这一项时，Win顺 只复制，提示你按 `Ctrl+V`。它们的“打开”“另存为”对话框旁也有搜索框：装了索引服务的安装版能像别的对话框一样直接转到选中的文件夹，`Ctrl+G` 也管用；便携版和“只为我安装”的版本只能复制选中的路径，要你自己粘贴到路径框里。
 - **它们在最前面时双击 Ctrl 没反应**：Windows 也不把发给它们的按键交给普通权限的程序，所以没装索引服务时，这种窗口在最前面，双击 Ctrl（Alt、Shift）没反应；带 Ctrl、Alt、Shift 或 Win 的组合键（比如 `Alt+Space`）照样能用。装了索引服务就没有这个问题（服务的助手听得到），Win顺 自己以管理员身份运行（管理员直读）时也没有。这种程序第一次在最前面停一会儿时，Win顺 会弹一次通知说明：设了组合键就提醒你改按它；便携版（含 Scoop 装的）能装索引服务时，点通知直接到 设置 › 索引方式，在下面一行装上。每个程序只说一次，最多说 3 个，一次运行只说一次。
 - **打开的东西是普通权限**：从 Win顺 打开的文件和应用都以普通权限运行，只有 `Ctrl+Shift+Enter` 才以管理员身份运行。
 
@@ -186,6 +186,7 @@ scoop install winshun
 - 🫧 **液态玻璃风格** 第四种界面风格：原生亚克力配玻璃表面，透明度和清晰度可调。
 - 🖱️ **右键 Logo 一键回位** 右键可直接靠上、居中或回到上次位置，不必再开菜单。
 - ⌨️ **管理员窗口前的单键快捷键** 管理员程序在前面时，F1–F24、PrintScreen 也能触发。
+- 📋 **粘贴到管理员程序** 剪贴板里选中的内容能直接粘贴进以管理员身份运行的程序（需要索引服务，可在设置 › 剪贴板里关闭）。
 - 🧭 **记住搜索范围** 选好的全部、文件、内容或类型在重启后保留。
 - 💽 **移动硬盘算外接盘** 自称固定磁盘的移动硬盘也受“包括 U 盘和移动硬盘”控制，关掉时不占用、不挡弹出。
 - 🧩 **插件问题找作者** 插件卡片“…”菜单可直接到作者仓库提问题；插件库放开社区原生插件收录。
@@ -411,7 +412,7 @@ Standard and portable packages install enhanced text recognition on demand. Open
 - **Portable version**: by default it walks the folders one by one, so the first index is slower; changes are followed live after that. Settings → Index access can install the index service or restart it as administrator. When a portable copy installs the service, it puts a copy of the service program in `%ProgramFiles%\WinShun Service`, where only administrators can change it, so no ordinary program can swap it; an older registration gets a warning and a Repair button in the settings.
 - **Without administrator rights (“for me only”)**: pick “for me only” in Setup: no index service, and no administrator needed. WinShun then indexes only the folders you choose (Settings › Search scope › Folders; the desktop, documents, downloads, pictures and the like to begin with), and you can drag folders in from File Explorer. Changes are followed live, and everything is checked again once a day (hourly, every 4 hours or only at start are options). When the folder you type is not indexed, the search box says so: “Search it this time” looks there once, “Add to the index” keeps it. Content search still works, only slower.
 - **Direct as administrator**: on an administrator account, Settings → Index access → “Direct (administrator)” runs the whole app as administrator and reads the drives itself, as earlier versions did.
-- **Programs running as administrator**: Windows doesn't let normal-rights programs type into them. Pasting into such a window only copies, and WinShun tells you to press `Ctrl+V`. The search bar beside their Open / Save dialogs appears too: the installed WinShun with the index service jumps to the chosen folder just as in other dialogs, and `Ctrl+G` works there; a portable copy, or one installed for you only, can only copy the chosen path for you to paste into the path box yourself.
+- **Programs running as administrator**: Windows doesn't let normal-rights programs type into them. Pasting into such a window, the index service presses the paste keys for you where it is installed (Settings › Clipboard › "Paste into programs run as administrator", on by default); without the service, or with that turned off, WinShun only copies and tells you to press `Ctrl+V`. The search bar beside their Open / Save dialogs appears too: the installed WinShun with the index service jumps to the chosen folder just as in other dialogs, and `Ctrl+G` works there; a portable copy, or one installed for you only, can only copy the chosen path for you to paste into the path box yourself.
 - **Double Ctrl does nothing while they are in front**: Windows doesn't give the keys typed into them to normal-rights programs either, so without the index service double Ctrl (Alt, Shift) does nothing while such a window is in front; a shortcut with Ctrl, Alt, Shift or Win (`Alt+Space`, say) still works. With the index service installed this doesn't happen (the service's helper hears the keys), nor when WinShun itself runs as administrator (Direct). The first time such a program stays in front for a moment, WinShun says why in one notification: it names your shortcut if you set one, and where a portable copy (Scoop's too) can install the index service, a click opens Settings › Index access, with the install button just below. Each program is mentioned once, three at most, and one per run.
 - **What you open is not elevated**: files and apps you open from WinShun run with your normal rights; only `Ctrl+Shift+Enter` runs one as administrator.
 
@@ -424,6 +425,7 @@ Standard and portable packages install enhanced text recognition on demand. Open
 - 🫧 **Liquid Glass style** A fourth interface style: native Acrylic behind glass surfaces, with adjustable transparency and clarity.
 - 🖱️ **One-click logo actions** A right click on the logo can go straight to the top, the center or the last position instead of opening a menu.
 - ⌨️ **Plain hotkeys over administrators' windows** F1–F24 and PrintScreen fire while a program run as administrator is in front.
+- 📋 **Paste into administrators' programs** An entry picked in the clipboard goes straight into a program run as administrator (needs the index service; can be turned off under Settings › Clipboard).
 - 🧭 **Search scope remembered** The All, Files, Content or kind you chose comes back after a restart.
 - 💽 **External disks count as external** Disks that report themselves as fixed follow the USB drives option, so with it off they are not held open and can be ejected.
 - 🧩 **Plugin problems go to their authors** A card's "…" menu opens the author's Issues, and the library now accepts community native plugins.

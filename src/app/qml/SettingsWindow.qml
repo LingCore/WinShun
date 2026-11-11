@@ -5046,6 +5046,19 @@ Window {
                         onToggled: (on) => window.editor.clipboardHoldToStep = on
                     }
                 }
+
+                SettingRow {
+                    title: qsTr("粘贴到以管理员身份运行的程序")
+                    keywords: qsTr("管理员;权限;提权;粘贴不上;索引服务;admin;elevated").split(";")
+                    description: qsTr("由索引服务代按粘贴键；关闭后只复制，要自己按 Ctrl+V")
+                    tip: qsTr("Win顺 以普通权限运行，Windows 不让它向管理员程序发按键。开启后，选中的内容先放上剪贴板，再由索引服务在那个窗口里按一次 Ctrl+V（终端里是 Shift+Insert）；它只按这一组键，只对正在最前面的管理员窗口。没有安装索引服务时，仍然要自己按 Ctrl+V")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.clipboardPasteElevated
+                        onToggled: (on) => window.editor.clipboardPasteElevated = on
+                    }
+                }
             }
 
             SettingsSection {

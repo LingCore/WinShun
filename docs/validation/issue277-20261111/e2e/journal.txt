@@ -1,0 +1,2 @@
+{"details":{"reason":"higher-integrity"},"event":"clipboard-key-routing-skipped","time":"2026-11-11T07:25:35.145Z"}
+{"details":{"error":0,"method":"service","outcome":"pasted"},"event":"clipboard-paste","time":"2026-11-11T07:25:37.306Z"}

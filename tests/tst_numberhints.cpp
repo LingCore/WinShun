@@ -169,7 +169,9 @@ private slots:
         QCOMPARE(settings.clipboardFlipAbove, true);
         QCOMPARE(settings.clipboardSearchBoxSide, u"near"_s);
         QCOMPARE(settings.clipboardHoldToStep, false); // GitHub #107: off at first
+        QCOMPARE(settings.clipboardPasteElevated, true); // GitHub #277: on at first
         settings.clipboardHoldToStep = true;
+        settings.clipboardPasteElevated = false;
         settings.clipboardFlipAbove = false;
         settings.clipboardSearchBoxSide = u"far"_s;
         settings.save();
@@ -178,6 +180,7 @@ private slots:
         QCOMPARE(read.clipboardFlipAbove, false);
         QCOMPARE(read.clipboardSearchBoxSide, u"far"_s);
         QCOMPARE(read.clipboardHoldToStep, true);
+        QCOMPARE(read.clipboardPasteElevated, false);
         QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
         QCOMPARE(ini.value(u"Clipboard/HoldToStep"_s).toBool(), true);
         QCOMPARE(ini.value(u"Clipboard/FlipAbove"_s).toBool(), false);

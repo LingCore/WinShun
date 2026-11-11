@@ -486,6 +486,57 @@ private slots:
         QCOMPARE(error.code, static_cast<std::uint32_t>(ERROR_NOT_SUPPORTED)); // cannot, not "not for you"
     }
 
+    void pasteForOwnUiOnly()
+    {
+        // GitHub #277: the paste keys pressed in an administrator's window
+        // are for Win顺's own UI, as the navigator. This test process is not:
+        // neither told of it nor given it, and nothing is read as a window
+        // before that is settled.
+        RawClient raw;
+        QVERIFY(raw.connect(m_pipe));
+        volproto::Type reply {};
+        std::vector<std::byte> payload;
+        QVERIFY(raw.hello(volproto::kMajor, reply, payload));
+        QCOMPARE(reply, volproto::Type::HelloOk);
+        volproto::HelloOk ok;
+        QVERIFY(decode(payload, ok));
+        QVERIFY(!(ok.capabilities & volproto::kCapabilityPasteRelay));
+        volproto::Writer w;
+        w.u64(0x1234);
+        QVERIFY(raw.channel.write(w.finish(volproto::Type::OpenPaste), 5000));
+        QVERIFY(raw.channel.read(reply, payload, 5000));
+        QCOMPARE(reply, volproto::Type::Error);
+        volproto::Error error;
+        QVERIFY(decode(payload, error));
+        QCOMPARE(error.code, static_cast<std::uint32_t>(ERROR_ACCESS_DENIED));
+    }
+
+    void pasteRejectsBadRequest()
+    {
+        // No window, or more than the one window: refused as it is read.
+        for (const int kind : {0, 1, 2}) {
+            RawClient raw;
+            QVERIFY(raw.connect(m_pipe));
+            volproto::Type reply {};
+            std::vector<std::byte> payload;
+            QVERIFY(raw.hello(volproto::kMajor, reply, payload));
+            QCOMPARE(reply, volproto::Type::HelloOk);
+            volproto::Writer w;
+            if (kind == 1)
+                w.u64(0);
+            if (kind == 2) {
+                w.u64(0x1234);
+                w.u64(0x5678);
+            }
+            QVERIFY(raw.channel.write(w.finish(volproto::Type::OpenPaste), 5000));
+            QVERIFY(raw.channel.read(reply, payload, 5000));
+            QCOMPARE(reply, volproto::Type::Error);
+            volproto::Error error;
+            QVERIFY(decode(payload, error));
+            QCOMPARE(error.code, static_cast<std::uint32_t>(ERROR_INVALID_PARAMETER));
+        }
+    }
+
     void dialogNavRejectsBadFolder()
     {
         // The folder is checked as a string before anything else, the caller

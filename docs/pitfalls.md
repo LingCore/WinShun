@@ -5346,3 +5346,16 @@
 - **原因**：`SHELLDLL_DefView` 的矩形包含滚动条。滚动条是 `ScrollBar` 子窗口，放在 `DirectUIHWND > CtrlNotifySink` 下面，内容放得下时隐藏。
 - **做法**：`folderview::explorerFileList` 扣掉列表里可见的滚动条：竖向的扣右边（从右到左的布局扣左边），下半部的横向扣下边。离边 12 逻辑像素的规则不变，现在从滚动条量起。
 - **测试**：真实资源管理器里要稳定地同时出现两个滚动条，不能靠缩小窗口：导航窗格宽度因人而异，窗口一小，列表比搜索框还窄。探针改为：先回到文件足够多的文件夹，切“详细信息”，用 `IColumnManager::SetColumnInfo` 把名称列设成很宽，再按实测的 `SHELLDLL_DefView` 宽度调整窗口，让列表正好宽 560。
+
+## 往管理员程序里粘贴：由索引服务的助手按粘贴键（GitHub #277，2026-11-11）
+
+- **现象**：剪贴板里选一条，目标是以管理员身份运行的程序时，只复制、不粘贴。
+- **原因**：界面以普通权限运行，Windows 把它发给更高完整性级别窗口的按键丢掉，`SendInput` 照样返回成功。把那个窗口带回前台不受这个限制，只有按键过不去。
+- **做法**：到按键那一步改请索引服务（`servicepaste::paste`），服务启动 UIAccess 助手 `--paste-keys <hwnd>`，只按一次粘贴键，只对最前面的管理员窗口，只认 Win顺 自己的界面。设计和限制见 architecture.md“往管理员程序里粘贴”。设置开关 `Clipboard/PasteElevated` 默认开。
+- **别做**：别让请求带上要按的键或要粘贴的内容；别对普通权限的窗口、System 级别的窗口或不在前台的窗口按键；别往管理员程序的文件对话框里粘贴文件（#57）。
+
+## 测试：隐藏启动的进程，第一个窗口其实没显示出来
+
+- **现象**：提权的 PowerShell 测试脚本用 `Start-Process -WindowStyle Hidden` 启动，脚本里 `Show()` 的第一个窗体能拿到前台、`Visible` 也是 true，但 `IsWindowVisible` 是 false。#277 的实测里，Win顺 因此判定“没有可粘贴的窗口”，服务的助手回 `ERROR_INVALID_WINDOW_HANDLE`，看上去像产品的问题。
+- **原因**：进程带着“隐藏”的启动信息时，它第一次调用 `ShowWindow` 用的是启动信息里的显示方式，传进去的参数被忽略。
+- **做法**：测试脚本里把第一个窗口再显示一次（`Visible = false` 再 `true`，或 `Show(); Hide(); Show()`），并在日志里记下 `IsWindowVisible` 或前台窗口，别只信 `Visible`。
