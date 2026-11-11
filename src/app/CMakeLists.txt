@@ -62,7 +62,7 @@ qt_add_executable(WinShun WIN32
     Onboarding.cpp Onboarding.h
     PieGeometry.cpp PieGeometry.h
     PieLabels.cpp PieLabels.h
-    Phosphor.cpp Phosphor.h
+    Phosphor.cpp Phosphor.h PhosphorAliases.h PhosphorIcons.generated.h
     Preview.cpp Preview.h
     PreviewInteractionProbe.cpp PreviewInteractionProbe.h
     NavigationProbe.cpp NavigationProbe.h

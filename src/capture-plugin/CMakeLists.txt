@@ -54,6 +54,7 @@ qt_add_library(WinShunCaptureApp SHARED
     PluginShell.cpp PluginShell.h
     PresenterHost.cpp PresenterHost.h
     ${app_dir}/Phosphor.cpp ${app_dir}/Phosphor.h
+    ${app_dir}/PhosphorAliases.h ${app_dir}/PhosphorIcons.generated.h
     ${app_dir}/TrayMenu.cpp ${app_dir}/TrayMenu.h
     ${app_dir}/PictureFile.cpp ${app_dir}/PictureFile.h
     ${app_dir}/ClipImage.cpp ${app_dir}/ClipImage.h
