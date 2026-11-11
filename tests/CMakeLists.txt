@@ -1059,6 +1059,14 @@ qt_add_executable(tst_placement tst_placement.cpp)
 target_include_directories(tst_placement PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_placement PRIVATE winshun_options Qt6::Core Qt6::Test)
 
+# Which end of the taskbar Win顺's search box goes to (TaskbarRoom.h, GitHub #271).
+qt_add_executable(tst_taskbarroom tst_taskbarroom.cpp)
+target_include_directories(tst_taskbarroom PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_taskbarroom PRIVATE winshun_options Qt6::Core Qt6::Test)
+add_test(NAME tst_taskbarroom COMMAND tst_taskbarroom)
+set_tests_properties(tst_taskbarroom PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The folders used lately (the dialog bar's and the folder menu's): Windows'
 # Recent shortcuts listed newest first without touching their targets.
 qt_add_executable(tst_recentfolders tst_recentfolders.cpp ${PROJECT_SOURCE_DIR}/src/app/RecentFolders.cpp)

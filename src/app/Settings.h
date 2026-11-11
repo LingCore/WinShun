@@ -419,6 +419,7 @@ struct Settings {
     bool taskbarStartTyping = false; // typing in the Start menu searches with Win顺 (TypeToSearch)
     bool taskbarSearchBox = false; // Win顺's own search box on the taskbar (taskbar::SearchBox)
     QString taskbarSearchBoxStyle = QStringLiteral("box"); // box | label | icon: the widest form it takes, as Windows' own
+    QString taskbarSearchBoxSide = QStringLiteral("auto"); // auto | tray: where on the taskbar (taskbar::Side, GitHub #271)
 
     // [Capture]: the screenshot is a plugin of the plugin library since
     // 0.17 (winshun.capture, GitHub #138), with its settings in its own

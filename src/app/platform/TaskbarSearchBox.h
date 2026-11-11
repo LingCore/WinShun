@@ -1,5 +1,7 @@
 #pragma once
 
+#include "TaskbarRoom.h"
+
 #include <windows.h>
 
 #include <cstdint>
@@ -95,6 +97,7 @@ public:
     // (Settings › Personalisation › Taskbar › Search): the box, its icon and
     // label, its icon alone. Narrower ones still where that one does not fit.
     enum class Style { Box, Label, Icon };
+    using Side = taskbar::Side; // which end of the taskbar it goes to (TaskbarRoom.h)
     struct Look {
         std::wstring name; // for screen readers and the tooltip: "Win顺 搜索"
         std::wstring placeholder;
@@ -118,6 +121,7 @@ public:
         bool monoIcon = false; // Win顺's icon in the taskbar's text colour (monologo), not its own colours
         bool roundedCorners = true;
         Style style = Style::Box;
+        Side side = Side::Auto;
     };
 
     // The callbacks run on the box's own thread.

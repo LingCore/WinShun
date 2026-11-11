@@ -149,7 +149,7 @@ The Screenshot and recording plugin: install it in Settings › Plugins › Plug
 
 ## Taskbar search box
 
-WinShun's own search box on the Windows 11 taskbar, or a pinned WinShun icon instead (the only way on Windows 10). The box has a fixed place the icons never push around: the taskbar's left end with centred icons, left of the tray icons with left-aligned ones; a whole box, its icon and label, or its icon alone, as Windows' own search, narrower by itself when the taskbar fills up. It works on its own or alongside Windows search; hiding Windows search, taking over `Win+S`, and searching as you type in the Start menu are all optional.
+WinShun's own search box on the Windows 11 taskbar, or a pinned WinShun icon instead (the only way on Windows 10). The box has a fixed place the icons never push around: the taskbar's left end with centred icons, left of the tray icons with left-aligned ones; a whole box, its icon and label, or its icon alone, as Windows' own search, narrower by itself when the taskbar fills up. Under Search box position you can keep it beside the tray with centred icons too. It works on its own or alongside Windows search; hiding Windows search, taking over `Win+S`, and searching as you type in the Start menu are all optional.
 
 ## AI assistants (MCP)
 

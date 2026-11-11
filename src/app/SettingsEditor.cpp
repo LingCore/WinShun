@@ -1644,6 +1644,14 @@ void SettingsEditor::setTaskbarSearchBoxStyle(const QString& style)
     commit();
 }
 
+void SettingsEditor::setTaskbarSearchBoxSide(const QString& side)
+{
+    if (m_settings.taskbarSearchBoxSide == side || (side != u"auto" && side != u"tray"))
+        return;
+    m_settings.taskbarSearchBoxSide = side;
+    commit();
+}
+
 bool SettingsEditor::searchBoxSupported() const
 {
     return taskbar::SearchBox::supported();

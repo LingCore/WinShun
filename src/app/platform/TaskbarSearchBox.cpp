@@ -660,7 +660,7 @@ struct SearchBox::Impl {
     struct Room {
         RECT bar {};
         UINT dpi = 96; // the taskbar's
-        bool centred = false; // the icons: the stretch left of them, the box at its left end; else right of them, at its right end
+        bool leftOfIcons = false; // the box at the stretch's left end; else right of the icons, at its right end (stretchFor)
         double from = 0, to = 0; // the stretch, the gaps at its ends kept
         LONG y = 0, h = 0; // the box's, and the label form's
         LONG buttonY = 0, buttonH = 0; // the icon form's plate
@@ -1150,7 +1150,7 @@ struct SearchBox::Impl {
         else
             hide(Hidden::NoRoom,
                 printed(L"%.0f px %ls the icons, box %ld px high; ", room.to - room.from,
-                    room.centred ? L"left of" : L"right of", room.h)
+                    room.leftOfIcons ? L"left of" : L"right of", room.h)
                     + because);
     }
 
@@ -1175,12 +1175,12 @@ struct SearchBox::Impl {
     }
 
     // The stretch the box goes in by `layout`, at an end of the taskbar out
-    // of the icons' way. Left of them when they are centred, from the
-    // taskbar's left end or what is there (the widgets' button; Start on a
-    // classic taskbar), the box at its left end; else right of them up to
-    // what is there (the tray, the widgets), the box at its right end.
-    // Never the other side, never between icons: icons coming and going
-    // leave the box where it is; only what is at its end moves it.
+    // of the icons' way (stretchFor). Left of them when they are centred and
+    // the user leaves the side to us, from the taskbar's left end or what is
+    // there (the widgets' button; Start on a classic taskbar), the box at
+    // its left end; else right of them up to what is there (the tray, the
+    // widgets), the box at its right end. Never between icons: icons coming
+    // and going leave the box where it is; only what is at its end moves it.
     Fit measureRoom(const Layout& layout, Room& room)
     {
         MONITORINFO monitor {sizeof monitor};
@@ -1202,25 +1202,11 @@ struct SearchBox::Impl {
         }
         if (barHeight > barWidth) // at a side: Windows 10's
             return Fit::None;
-        room.centred = layout.icons && layout.centred;
-        double from = bar.left;
-        double to = bar.right;
-        if (room.centred) {
-            to = layout.icons->left;
-            for (const RECT& o : layout.obstacles) {
-                if (o.right <= to)
-                    from = std::max<double>(from, o.right);
-            }
-        } else {
-            from = layout.icons ? layout.icons->right : bar.left;
-            for (const RECT& o : layout.obstacles) {
-                if (o.left >= from)
-                    to = std::min<double>(to, o.left);
-            }
-        }
+        const Stretch stretch = stretchFor(bar, layout.icons, layout.centred, layout.obstacles, drawnLook.side);
+        room.leftOfIcons = stretch.leftOfIcons;
         room.gap = kGap * s;
-        room.from = from + room.gap;
-        room.to = to - room.gap;
+        room.from = stretch.from + room.gap;
+        room.to = stretch.to - room.gap;
         room.h = std::lround(barHeight * 2.0 / 3.0); // as Windows' own box
         room.y = bar.top + (barHeight - room.h) / 2;
         // As tall as the taskbar's own buttons: 4 DIPs off its edges, smaller
@@ -1304,7 +1290,7 @@ struct SearchBox::Impl {
         const double into = ends(shape->form, room);
         const bool button = shape->form == Form::Icon;
         Target t;
-        t.x = std::round(room.centred ? room.from - into : room.to + into - shape->width);
+        t.x = std::round(room.leftOfIcons ? room.from - into : room.to + into - shape->width);
         t.w = shape->width;
         t.y = button ? room.buttonY : room.y;
         t.h = button ? room.buttonH : room.h;
@@ -1472,7 +1458,7 @@ struct SearchBox::Impl {
                 placeholderT.snap(0);
                 placeholderT.go(1, now, 200, kFastIn);
             }
-            relabelled = look.label != drawnLook.label || look.style != drawnLook.style;
+            relabelled = look.label != drawnLook.label || look.style != drawnLook.style || look.side != drawnLook.side;
             drawnLook = look;
             next = text;
         }

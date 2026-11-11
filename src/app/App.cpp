@@ -2843,6 +2843,7 @@ void App::updateSearchBoxLook()
     look.style = m_settings.taskbarSearchBoxStyle == u"icon" ? Style::Icon
         : m_settings.taskbarSearchBoxStyle == u"label"       ? Style::Label
                                                              : Style::Box;
+    look.side = m_settings.taskbarSearchBoxSide == u"tray" ? taskbar::Side::Tray : taskbar::Side::Auto;
     m_searchBox->setLook(std::move(look));
 }
 

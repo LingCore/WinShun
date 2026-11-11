@@ -126,6 +126,7 @@ qt_add_executable(WinShun WIN32
     platform/SettingBroadcast.cpp platform/SettingBroadcast.h
     platform/TypeToSearch.cpp platform/TypeToSearch.h
     platform/TaskbarSearch.cpp platform/TaskbarSearch.h
+    platform/TaskbarRoom.h
     platform/TaskbarSearchBox.cpp platform/TaskbarSearchBox.h
     platform/TextCaret.cpp platform/TextCaret.h
     platform/PaddleOcr.cpp platform/PaddleOcr.h

@@ -1106,6 +1106,9 @@ void Settings::load()
     taskbarSearchBoxStyle = readOrDefault(s, u"Taskbar/SearchBoxStyle"_s, d.taskbarSearchBoxStyle).trimmed().toLower();
     if (taskbarSearchBoxStyle != u"label" && taskbarSearchBoxStyle != u"icon")
         taskbarSearchBoxStyle = d.taskbarSearchBoxStyle;
+    taskbarSearchBoxSide = readOrDefault(s, u"Taskbar/SearchBoxSide"_s, d.taskbarSearchBoxSide).trimmed().toLower();
+    if (taskbarSearchBoxSide != u"tray")
+        taskbarSearchBoxSide = d.taskbarSearchBoxSide;
     // 0.7.1 to 0.11: the box right of Start (a DLL in Explorer made room
     // there). The box has one place now (taskbar::SearchBox).
     s.remove(u"Taskbar/StartGap"_s);
@@ -1367,6 +1370,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Taskbar/StartMenuTyping"_s, taskbarStartTyping);
     s.setValue(u"Taskbar/SearchBox"_s, taskbarSearchBox);
     s.setValue(u"Taskbar/SearchBoxStyle"_s, taskbarSearchBoxStyle);
+    s.setValue(u"Taskbar/SearchBoxSide"_s, taskbarSearchBoxSide);
     if (capturePrintScreenBefore.isEmpty())
         s.remove(u"Capture/PrintScreenBefore"_s);
     else

@@ -1821,6 +1821,28 @@ Window {
                 }
 
                 SettingRow {
+                    id: taskbarSideRow
+                    sub: true
+                    // Which end of the taskbar (GitHub #271): Windows lays
+                    // its icons out centred or at the left, and 自动 keeps
+                    // out of their way; 托盘旁 for a pointer that lives at
+                    // that end, with centred icons too.
+                    shown: taskbarStyleRow.shown
+                    title: qsTr("搜索框位置")
+                    keywords: qsTr("位置;停靠;左侧;最左;托盘;右侧;居中;任务栏对齐;position;tray").split(";")
+                    description: window.editor.taskbarSearchBoxSide === "tray"
+                                 ? qsTr("始终在托盘图标左边，任务栏图标居中时也是")
+                                 : qsTr("任务栏图标居中时在任务栏最左边，靠左时在托盘图标左边")
+
+                    ScopeTabs {
+                        readonly property var sides: ["auto", "tray"]
+                        labels: [qsTr("自动"), qsTr("托盘旁")]
+                        current: Math.max(0, sides.indexOf(window.editor.taskbarSearchBoxSide))
+                        onActivated: (index) => window.editor.taskbarSearchBoxSide = sides[index]
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("隐藏任务栏上的 Windows 搜索")
                     keywords: qsTr("隐藏;任务栏;搜索框;taskbar").split(";")
                     description: window.editor.windowsSearchShown

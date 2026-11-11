@@ -222,6 +222,12 @@ std::vector<Entry> buildCatalog()
         {{u"box"_s, u"a search box you can type in"_s, QT_TRANSLATE_NOOP("AiSettings", "搜索框")},
             {u"label"_s, u"an icon with the word 搜索"_s, QT_TRANSLATE_NOOP("AiSettings", "图标和标签")},
             {u"icon"_s, u"a search icon only, like a taskbar button"_s, QT_TRANSLATE_NOOP("AiSettings", "仅图标")}}));
+    add(choice({"Taskbar/SearchBoxSide", QT_TRANSLATE_NOOP("AiSettings", "搜索框位置"), "taskbar", 1,
+                   "Which end of the taskbar the search box goes to."},
+        &Settings::taskbarSearchBoxSide,
+        {{u"auto"_s, u"the taskbar's left end while its icons are centred, beside the tray while they are at the left"_s,
+             QT_TRANSLATE_NOOP("AiSettings", "自动")},
+            {u"tray"_s, u"always beside the tray, also with centred icons"_s, QT_TRANSLATE_NOOP("AiSettings", "托盘旁")}}));
     add(boolean({"Taskbar/WinS", QT_TRANSLATE_NOOP("AiSettings", "用 Win+S 打开 Win顺"), "taskbar", 1,
                     "Win+S opens Win顺 over the taskbar instead of Windows' search. Takes effect when File Explorer restarts."},
         &Settings::taskbarWinS, Effect::ExplorerRestart));

@@ -535,6 +535,10 @@
         <translation>Icon and label</translation>
     </message>
     <message>
+        <source>托盘旁</source>
+        <translation>Beside the tray</translation>
+    </message>
+    <message>
         <source>仅图标</source>
         <translation>Icon only</translation>
     </message>
@@ -4768,6 +4772,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>样式;仅图标;只显示图标;图标和标签;标签;放大镜;按钮;搜索框;icon;label</source>
         <translation>style;icon only;show icon only;icon and label;label;magnifier;button;search box;icon;label</translation>
+    </message>
+    <message>
+        <source>位置;停靠;左侧;最左;托盘;右侧;居中;任务栏对齐;position;tray</source>
+        <translation>position;place;dock;left;leftmost;tray;right;centred;centered;taskbar alignment</translation>
+    </message>
+    <message>
+        <source>始终在托盘图标左边，任务栏图标居中时也是</source>
+        <translation>Always left of the tray icons, also when the taskbar&apos;s icons are centred</translation>
+    </message>
+    <message>
+        <source>任务栏图标居中时在任务栏最左边，靠左时在托盘图标左边</source>
+        <translation>At the taskbar&apos;s left end while its icons are centred, left of the tray icons while they are at the left</translation>
+    </message>
+    <message>
+        <source>托盘旁</source>
+        <translation>Beside the tray</translation>
     </message>
     <message>
         <source>一个搜索图标，像任务栏上的按钮</source>
