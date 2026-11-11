@@ -158,6 +158,15 @@ public:
     static std::size_t dropUnknownRoots(FileIndex& index, const std::vector<ShareConfig>& shares);
     // The share root entry for `path`, made when missing. Write lock held.
     static EntryId ensureRoot(FileIndex& index, const std::wstring& path);
+    // Whether `missing` of a share's `live` items, found gone in one pass,
+    // are taken out of the index: not when it is much of the share at once
+    // (a mount not ready shows empty), and less still of a pass that failed.
+    enum class Read : std::uint8_t {
+        Whole,
+        Stopped, // outside its hours, or asked to: the share itself is well
+        Failed, // the server went away, or a folder would not be read
+    };
+    static bool believesGone(std::size_t missing, std::size_t live, Read read) noexcept;
 
 private:
     struct Share;

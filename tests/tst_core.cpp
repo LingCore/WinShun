@@ -6972,11 +6972,14 @@ private slots:
         {
             const auto lock = index->writeLock();
             QCOMPARE(index->findPath(path + L"\\folder\\deep.txt"), kNoEntry);
-            index->add(ShareIndexer::ensureRoot(*index, path), "keep.txt", EntryFlag::Remote);
+            index->add(ShareIndexer::ensureRoot(*index, path), "deleted.txt", EntryFlag::Remote);
+            index->add(index->findPath(path + L"\\folder"), "unread.txt", EntryFlag::Remote);
         }
 
-        // Automatic resume, then the window closes midway through a pass.
-        // Its deferred deletions and last-complete timestamp must survive.
+        // Automatic resume, then the window closes midway through a pass:
+        // what is gone from the folder it read is gone (GitHub #227), what
+        // is in the one it did not get to stays, and so does the time of the
+        // last pass that got to the end.
         const auto verified = status().lastVerified;
         minute = 23 * 60;
         crossBoundary = true;
@@ -6986,8 +6989,46 @@ private slots:
         QCOMPARE(status().lastVerified, verified);
         {
             const auto lock = index->readLock();
-            QVERIFY(index->findPath(path + L"\\keep.txt") != kNoEntry);
+            QCOMPARE(index->findPath(path + L"\\deleted.txt"), kNoEntry);
+            QVERIFY(index->findPath(path + L"\\folder\\unread.txt") != kNoEntry);
+            QVERIFY(index->findPath(path + L"\\new.txt") != kNoEntry);
         }
+        QCOMPARE(status().items, std::size_t {3}); // folder, new.txt, unread.txt
+        shares.stop();
+
+        // Much gone at once is not believed of a pass cut short either, and
+        // of one that failed only a tenth of the share.
+        using Read = ShareIndexer::Read;
+        QVERIFY(ShareIndexer::believesGone(1000, 1200, Read::Stopped)); // a small share: as a whole pass
+        QVERIFY(ShareIndexer::believesGone(50'000, 100'000, Read::Stopped));
+        QVERIFY(!ShareIndexer::believesGone(50'001, 100'000, Read::Stopped));
+        QVERIFY(ShareIndexer::believesGone(10'000, 100'000, Read::Failed));
+        QVERIFY(!ShareIndexer::believesGone(10'001, 100'000, Read::Failed));
+        QVERIFY(!ShareIndexer::believesGone(800, 900, Read::Failed)); // a small share emptied as its server left
+    }
+
+    // A pass the reading itself gives up (the share not there, the server
+    // gone halfway) says why; it is not one waiting for its hours.
+    void sharePassFailedSaysWhy()
+    {
+        using namespace std::chrono_literals;
+        using State = ShareIndexer::State;
+        const std::wstring path = L"\\\\127.0.0.1\\winshun-no-such-share";
+        auto index = std::make_shared<FileIndex>();
+        ShareIndexer::Source source;
+        source.index = [&] { return index; };
+        source.ready = [] { return true; };
+        source.reachable = [](const auto&, bool) { return true; }; // the server answers: read
+        source.openRoot = [](const std::wstring&) { return 0ul; };
+        ShareIndexer::Options o;
+        o.shares = {{path, {}}};
+        o.watch = false;
+        o.retry = {.first = 100ms, .last = 400ms, .windows = 1s, .answer = 300ms, .problem = 30s, .shown = 1ms};
+        ShareIndexer shares(source, o, {});
+        const auto status = [&] { return shares.statuses().front(); };
+        shares.start();
+        QTRY_COMPARE_WITH_TIMEOUT(status().state, State::Problem, 10000);
+        QVERIFY(status().error != 0);
         shares.stop();
     }
 

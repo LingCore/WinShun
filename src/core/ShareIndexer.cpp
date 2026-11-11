@@ -1050,6 +1050,13 @@ void ShareIndexer::run(std::stop_token stop, Share& share)
     end();
 }
 
+bool ShareIndexer::believesGone(std::size_t missing, std::size_t live, Read read) noexcept
+{
+    // A server going away may show a folder empty before it says so: of a
+    // pass that failed, only a little is believed.
+    return read == Read::Failed ? missing * 10 <= live : missing <= std::max(kSuspectMin, live / 2);
+}
+
 bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool manual)
 {
     const Options o = options();
@@ -1106,21 +1113,60 @@ bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool 
         }, &gone, &stats);
     if (m_callbacks.reading)
         m_callbacks.reading(path, false);
-    if (passStop.stop_requested()) {
-        if (!stop.stop_requested()) {
-            std::size_t kept = 0;
-            {
-                const auto lock = index->readLock();
-                kept = subtreeSize(*index, root) - 1;
+    std::size_t missing = 0; // items in what the pass found gone
+    std::size_t live = 0; // items of the share in the index
+    const auto count = [&] {
+        const auto lock = index->readLock();
+        missing = 0;
+        for (const EntryId id : gone)
+            missing += subtreeSize(*index, id);
+        live = subtreeSize(*index, root) - 1;
+    };
+    const auto removeGone = [&] {
+        for (std::size_t i = 0; i < gone.size(); i += kRemoveBatch) {
+            auto lock = index->writeLock();
+            for (std::size_t k = i; k < std::min(gone.size(), i + kRemoveBatch); ++k) {
+                const EntryId id = gone[k];
+                // Removed or moved away by a live change meanwhile: leave it be.
+                if (id < index->slotCount() && !index->entry(id).isDeleted() && isUnder(*index, id, root))
+                    index->remove(id);
             }
-            setStatus(share, [&](Status& s) { s.state = State::Waiting; s.items = kept; });
+        }
+        const auto lock = index->readLock();
+        live = subtreeSize(*index, root) - 1;
+    };
+    // A pass cut short read part of the share, and each folder of that part
+    // whole (one that fails, or that the stop comes in, counts as not read):
+    // what is gone from those is gone, and waits for no pass that gets to the
+    // end, which a large or unsteady share may not see for long (GitHub #227).
+    const auto removePartly = [&](Read read) {
+        count();
+        if (missing == 0)
+            return;
+        if (!believesGone(missing, live, read)) {
+            qWarning("WinShun: %ls has %zu of %zu items no more, in a pass cut short: left", path.c_str(), missing, live);
+            return;
+        }
+        removeGone();
+        if (m_callbacks.filesChanged)
+            m_callbacks.filesChanged(path);
+    };
+    if (passStop.stop_requested() && lister.firstError() == 0) {
+        if (!stop.stop_requested()) { // not while Win顺 quits
+            removePartly(Read::Stopped);
+            setStatus(share, [&](Status& s) { s.state = State::Waiting; s.items = live; });
             if (m_callbacks.dirty)
                 m_callbacks.dirty();
         }
         done();
-        return false; // what it added stays; nothing removed
+        return false; // what it added stays, and what it saw gone is gone
     }
     if (lister.firstError() != 0) {
+        if (!stop.stop_requested()) {
+            removePartly(Read::Failed);
+            if (m_callbacks.dirty)
+                m_callbacks.dirty();
+        }
         share::Problem problem = lister.problem();
         unsigned long error = lister.firstError();
         // Windows hangs up on an SMB 1 server (64, "no longer available")
@@ -1154,14 +1200,7 @@ bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool 
     }
 
     // Believe what is gone? Not when it is much of the share at once.
-    std::size_t missing = 0;
-    std::size_t live = 0;
-    {
-        const auto lock = index->readLock();
-        for (const EntryId id : gone)
-            missing += subtreeSize(*index, id);
-        live = subtreeSize(*index, root) - 1;
-    }
+    count();
     bool accept = false;
     {
         std::lock_guard lock(m_mutex);
@@ -1171,7 +1210,7 @@ bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool 
             && missing * 10 <= share.suspectMissing * 11;
         const bool agrees = same && Clock::now() - share.suspectAt >= kSuspectRetry - 5min;
         accept = std::exchange(share.acceptMissing, false) || building || agrees
-            || missing <= std::max(kSuspectMin, live / 2);
+            || believesGone(missing, live, Read::Whole);
         if (accept) {
             share.suspectMissing = 0;
         } else if (!same) {
@@ -1192,15 +1231,7 @@ bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool 
         return false;
     }
 
-    for (std::size_t i = 0; i < gone.size(); i += kRemoveBatch) {
-        auto lock = index->writeLock();
-        for (std::size_t k = i; k < std::min(gone.size(), i + kRemoveBatch); ++k) {
-            const EntryId id = gone[k];
-            // Removed or moved away by a live change meanwhile: leave it be.
-            if (id < index->slotCount() && !index->entry(id).isDeleted() && isUnder(*index, id, root))
-                index->remove(id);
-        }
-    }
+    removeGone();
     const FileTime verified = now();
     {
         auto lock = index->writeLock();
