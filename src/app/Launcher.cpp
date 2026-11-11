@@ -5262,11 +5262,16 @@ QVariantList Launcher::menuItems(int row) const
             const QString icon = !c.command->icon.isEmpty() ? c.command->icon : c.entry->manifest->icon;
             bool ok = false;
             const uint code = icon.startsWith(u"glyph:U+", Qt::CaseInsensitive) ? icon.mid(8).toUInt(&ok, 16) : 0;
-            const QChar glyph(static_cast<char16_t>(ok && code >= 0xE000 && code <= 0xF8FF ? code : 0xEA86));
+            // A named Phosphor icon stays a spec: the tray menu resolves it
+            // when it draws the row (see phosphor::resolve).
+            const QString glyph = icon.startsWith(u"ph:"_s, Qt::CaseInsensitive)
+                                  || icon.startsWith(u"ph-fill:"_s, Qt::CaseInsensitive)
+                                      ? icon
+                                      : QString(QChar(static_cast<char16_t>(ok && code >= 0xE000 && code <= 0xF8FF ? code : 0xEA86)));
             if (i == 0)
                 into.append(separator);
             into.append(entry(static_cast<Action>(PluginFileAction + static_cast<int>(m_menuFileCommands.size())), text, QString(),
-                QString(glyph)));
+                glyph));
             m_menuFileCommands.push_back({c.entry->id, c.command->id, paths});
         }
     };
