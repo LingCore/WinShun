@@ -4398,7 +4398,9 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
             const int row = view->property("currentIndex").toInt();
             const QString was = launcher.results()->pathAt(row);
             const QFileInfo file(was);
-            auto* field = visualNamed(window->contentItem(), u"searchField"_s);
+            // The search field in use: the panel's own while the panel is open.
+            auto* panelField = visualNamed(window->contentItem(), u"panelSearchField"_s);
+            auto* field = panelField && panelField->isVisible() ? panelField : visualNamed(window->contentItem(), u"searchField"_s);
             const auto press = [&](int code) {
                 QKeyEvent down(QEvent::KeyPress, code, Qt::NoModifier);
                 QCoreApplication::sendEvent(window, &down);
@@ -4431,7 +4433,8 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
                 box->setProperty("text", u"renamed-"_s + file.fileName());
                 press(Qt::Key_Return);
                 check(waitFor(renamed) && !QFileInfo::exists(was), "Enter did not rename the file on the disk");
-                check(!box->isVisible() && field && field->hasActiveFocus(), "the search box did not get the keyboard back after renaming");
+                check(!box->isVisible() && field && window->activeFocusItem() == field,
+                    "the search box did not get the keyboard back after renaming");
                 check(QDir::cleanPath(launcher.results()->pathAt(row)) == QDir::cleanPath(renamed)
                         && view->property("currentIndex").toInt() == row,
                     "the row did not take the new name where it was");
@@ -5838,6 +5841,25 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
                 "clipboard search logo must render in either header position");
         }
         clipboard.setLayoutOptions(true, false);
+        // An entry's note (GitHub #267): 备注 in its menu opens the box the
+        // groups are named in; the note then leads the entry's line.
+        if (!store.clips().empty()) {
+            const qint64 id = store.clips().front().id;
+            qint64 asked = 0;
+            const QMetaObject::Connection heard
+                = QObject::connect(&clipboard, &Clipboard::noteRequested, &clipboard, [&asked](qint64 entry) { asked = entry; });
+            clipboard.trigger(0, Clipboard::EditNote);
+            settle(window);
+            QObject::disconnect(heard);
+            check(asked == id, "备注 did not ask for the entry's note");
+            check(saveGrab(window, output.filePath(u"clipboard-note-box.png"_s)), "the note's box did not render");
+            clipboard.setNote(id, u"学校 收件地址"_s);
+            QMetaObject::invokeMethod(page, "focusSearch");
+            settle(window);
+            const QString title = clipboard.items()->data(clipboard.items()->index(0), ClipModel::TitleRole).toString();
+            check(title.startsWith(u"<b>学校 收件地址</b>"), "the note does not lead the entry's line");
+            check(saveGrab(window, output.filePath(u"clipboard-note.png"_s)), "the noted entry did not render");
+        }
         settle(window);
         say(u"clipboard search logo: shared SVG loaded; spacing, focus and both header positions checked"_s);
     } else {

@@ -499,6 +499,53 @@ private slots:
         QCOMPARE(store.groupOrder(ClipStore::kPinned), (std::vector<qint64> {a, c, b})); // a pasted last
     }
 
+    // An entry's note (GitHub #267): one line of the user's own, found by the
+    // search as the text is, kept over a restart and an undone removal.
+    void notes()
+    {
+        QTemporaryDir dir;
+        qint64 noted = 0;
+        qint64 other = 0;
+        {
+            ClipStore store(dir.path());
+            QVERIFY(store.open(kStart));
+            noted = store.add(text(u"张三 13800000000 北京市海淀区"_s), kStart);
+            other = store.add(text(u"会议纪要：周五发版"_s), kStart + 1);
+            store.setNote(noted, u"  学校\n收件地址\t"_s);
+            QCOMPARE(store.clip(noted)->note, u"学校 收件地址"_s); // one line, no spaces around it
+            QVERIFY(store.clip(other)->note.isEmpty());
+            // Found by the note, by the text, by one word in each, by the note's pinyin; not by another entry's words.
+            QVERIFY(ClipMatcher(u"学校"_s).matches(*store.clip(noted)));
+            QVERIFY(ClipMatcher(u"海淀"_s).matches(*store.clip(noted)));
+            QVERIFY(ClipMatcher(u"学校 138"_s).matches(*store.clip(noted)));
+            QVERIFY(ClipMatcher(u"xuexiao"_s).matches(*store.clip(noted)));
+            QVERIFY(!ClipMatcher(u"学校 周五"_s).matches(*store.clip(noted)));
+            QVERIFY(!ClipMatcher(u"学校"_s).matches(*store.clip(other)));
+            // No longer than a line of the list.
+            store.setNote(other, QString(200, u'注'));
+            QCOMPARE(store.clip(other)->note.size(), ClipStore::kNoteLength);
+            store.setNote(other, u"   "_s); // empty: none
+            QVERIFY(store.clip(other)->note.isEmpty());
+            store.setNote(987654, u"nobody's"_s); // no such entry: nothing happens
+            // Copied again, the entry (and its note) comes to the top; it is still one.
+            QCOMPARE(store.add(text(u"张三 13800000000 北京市海淀区"_s), kStart + 5), noted);
+            QCOMPARE(store.clip(noted)->note, u"学校 收件地址"_s);
+        }
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart + 10));
+        QCOMPARE(store.clip(noted)->note, u"学校 收件地址"_s);
+        QVERIFY(store.clip(other)->note.isEmpty());
+        // Removed and put back (undo): with its note, after a restart too.
+        std::vector<ClipRecord> removed = store.remove(std::span(&noted, 1));
+        QVERIFY(!store.clip(noted));
+        store.restore(std::move(removed));
+        QCOMPARE(store.clip(noted)->note, u"学校 收件地址"_s);
+        store.close();
+        ClipStore again(dir.path());
+        QVERIFY(again.open(kStart + 20));
+        QCOMPARE(again.clip(noted)->note, u"学校 收件地址"_s);
+    }
+
     void persistsAndRestores()
     {
         QTemporaryDir dir;

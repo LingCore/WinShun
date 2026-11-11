@@ -85,6 +85,9 @@ struct Clip {
     // Image: the words in it (Windows' text recognition), for searching;
     // `read` once it was looked at, words or none (GitHub #9).
     QString ocr;
+    // The user's own words for the entry (GitHub #267): shown before it, and
+    // found by the search as its text is. Empty: none.
+    QString note;
     bool read = false;
     // Image: taken with Win顺's own screen capture (src/capture), not copied
     // from a program: the screenshot history (jt, the 截图 tag, MCP's
@@ -312,6 +315,10 @@ public:
     void restore(std::vector<ClipRecord> records);
     void discardImages(std::span<const qint64> ids); // of entries no longer in the history
     void setGroup(std::span<const qint64> ids, qint64 group); // 0: out of any group; into one: at its top
+    // The entry's note (Clip::note), one line of at most kNoteLength
+    // characters; empty takes it away.
+    static constexpr qsizetype kNoteLength = 60;
+    void setNote(qint64 id, const QString& note);
     // Moves an entry of a group to where `target`, of the same group, is
     // (before it moving up, after it moving down); the rest keep their order.
     void moveInGroup(qint64 id, qint64 target);

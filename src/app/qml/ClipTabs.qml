@@ -12,6 +12,9 @@ Item {
 
     required property var clipboard
     property bool naming: false
+    // What the box is for: a group's name, or an entry's note (GitHub #267).
+    property string namePlaceholder: qsTr("分组名称")
+    property int nameLength: 40
     property string nameText // what the field starts with
     property real parentLeft // where the parent's left is in the window: to draw on whole device pixels
 
@@ -40,6 +43,9 @@ Item {
         anchors.leftMargin: 14
         anchors.rightMargin: 14 + orderChip.width + 6
         contentWidth: row.implicitWidth
+        // While a name is typed the box at the end stays in sight: the row is laid out
+        // a moment after the box grows, so this follows the width it comes to.
+        onContentWidthChanged: if (tabs.naming) contentX = Math.max(0, contentWidth - width)
         contentHeight: height
         flickableDirection: Flickable.HorizontalFlick
         boundsBehavior: Flickable.StopAtBounds
@@ -132,7 +138,14 @@ Item {
 
             Item { // naming a group
                 visible: tabs.naming
-                width: Math.max(120, field.contentWidth + 28)
+                // As wide as what is typed, or as the words that say what to type.
+                width: Math.max(120, Math.max(field.contentWidth, field.text.length === 0 ? hintMetrics.advanceWidth : 0) + 28)
+
+                TextMetrics { // measured apart from the items laid out in the box
+                    id: hintMetrics
+                    font: field.font
+                    text: tabs.namePlaceholder
+                }
                 height: tabs.metrics.chipHeight + 2
 
                 Hook { // the style's field, always focused here
@@ -155,7 +168,7 @@ Item {
                     selectByMouse: true
                     selectionColor: Theme.textSelection
                     selectedTextColor: Theme.text
-                    maximumLength: 40
+                    maximumLength: tabs.nameLength
                     Keys.onPressed: (event) => {
                         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                             tabs.nameCommitted(field.text.trim())
@@ -175,7 +188,7 @@ Item {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
                         visible: field.text.length === 0 && field.preeditText.length === 0
-                        text: qsTr("分组名称")
+                        text: tabs.namePlaceholder
                         color: namePart.out("placeholderColor", Theme.faint)
                         font: field.font
                     }

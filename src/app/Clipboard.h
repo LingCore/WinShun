@@ -149,6 +149,7 @@ public:
         SaveFiles, // 保存为文件: a file each, in a folder asked for (saveAsFiles)
         SaveMerged, // the words of all in one file
         SendLan, // this history selection, without replacing the system clipboard
+        EditNote, // 备注: a line of the user's own for the entry (noteRequested), found by the search
         MoveToGroup = 1000, // + the group's id
     };
     Q_ENUM(Action)
@@ -290,6 +291,9 @@ public:
     Q_INVOKABLE qint64 addGroup(const QString& name); // 0 if empty or not saved
     Q_INVOKABLE bool enterGroup(qint64 group); // resolve by stable ID, then search only this group
     Q_INVOKABLE void renameGroup(qint64 group, const QString& name);
+    // The entry's note (GitHub #267): what the user typed after 备注 in its
+    // menu; empty takes the note away.
+    Q_INVOKABLE void setNote(qint64 id, const QString& note);
 
     Q_INVOKABLE void toggleSelected(int row);
     Q_INVOKABLE void selectRange(int from, int to, bool add);
@@ -363,6 +367,7 @@ signals:
     // to switch to Chinese, which takes the focus; pinyin finds Chinese anyway.
     void pinyinHintRequested();
     void groupNameRequested(int row, qint64 group); // a name for a new group (group 0) for the row, or a new one for `group`
+    void noteRequested(qint64 id, const QString& note); // a note for the entry, starting from the one it has
     void fieldChanged();
     // The field the window goes back to: its own window in front again (App).
     void fieldRequested(QQuickItem* field);

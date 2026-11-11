@@ -134,6 +134,10 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
     case KindRole:
         return static_cast<int>(c->kind);
     case TitleRole:
+        // The user's note first, in bold (the words found in it marked as in the entry's own line).
+        if (!c->note.isEmpty())
+            return u"<b>"_s + highlighted(c->note, m_matcher.spans(c->note), m_highlightColor, m_highlightWeight >= 600)
+                + u"</b>\u2002"_s + title(*c);
         return title(*c);
     case DetailRole:
         return detail(*c);

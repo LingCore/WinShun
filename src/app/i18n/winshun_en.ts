@@ -1465,6 +1465,14 @@
 <context>
     <name>ClipboardPage</name>
     <message>
+        <source>备注，搜它也能找到这一条</source>
+        <translation>A note; searching for it finds this entry too</translation>
+    </message>
+    <message>
+        <source>分组名称</source>
+        <translation>Group name</translation>
+    </message>
+    <message>
         <source>搜索剪贴板，支持拼音</source>
         <translation>Search the clipboard</translation>
     </message>
@@ -9763,6 +9771,14 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>移到“%1”</source>
         <translation>Move to “%1”</translation>
+    </message>
+    <message>
+        <source>加备注…</source>
+        <translation>Add a note…</translation>
+    </message>
+    <message>
+        <source>改备注…</source>
+        <translation>Edit the note…</translation>
     </message>
     <message>
         <source>移到新分组…</source>
