@@ -27,6 +27,16 @@ add_test(NAME tst_paster COMMAND tst_paster -o -,txt)
 set_tests_properties(tst_paster PROPERTIES RUN_SERIAL TRUE
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The paste the index service presses in an administrator's window (GitHub
+# #277): the keys, and the request (its live part needs the elevated harness).
+qt_add_executable(tst_servicepaste tst_servicepaste.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/ServicePaste.cpp)
+target_include_directories(tst_servicepaste PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_servicepaste PRIVATE wscore Qt6::Test user32)
+set_target_properties(tst_servicepaste PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_servicepaste COMMAND tst_servicepaste)
+set_tests_properties(tst_servicepaste PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_pluginhotkeys tst_pluginhotkeys.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/PluginHotkeys.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/PlainHotkeys.cpp)

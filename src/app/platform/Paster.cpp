@@ -1,6 +1,7 @@
 #include "Paster.h"
 
 #include "KeyRouter.h"
+#include "PasteInput.h"
 
 #include <cstdint>
 #include <cwchar>
@@ -14,21 +15,6 @@ namespace {
 bool held(int vk)
 {
     return (::GetAsyncKeyState(vk) & 0x8000) != 0;
-}
-
-INPUT key(const pastekeys::Key& key)
-{
-    INPUT input {};
-    input.type = INPUT_KEYBOARD;
-    input.ki.wVk = key.vk;
-    // For programs that read scan codes; 0xE0 above it: an extended key.
-    const UINT scan = ::MapVirtualKeyW(key.vk, MAPVK_VK_TO_VSC_EX);
-    input.ki.wScan = static_cast<WORD>(scan & 0xFF);
-    const bool extended = key.extended || (scan & 0xFF00) != 0;
-    input.ki.dwFlags = (key.up ? KEYEVENTF_KEYUP : 0) | (extended ? KEYEVENTF_EXTENDEDKEY : 0);
-    // Past KeyRouter, should it still be taking keys (pastekeys::Key::mask).
-    input.ki.dwExtraInfo = key.mask ? kOwnMask : kOwnInput;
-    return input;
 }
 
 } // namespace
@@ -76,26 +62,17 @@ Result sendPasteKeys(HWND target, Guard* guard, InputSender send)
         return {.error = ERROR_INVALID_WINDOW_HANDLE};
     wchar_t className[64] {};
     ::GetClassNameW(target, className, static_cast<int>(std::size(className)));
-    const pastekeys::Keys keys = std::wcscmp(className, L"mintty") == 0 || std::wcscmp(className, L"PuTTY") == 0
-        ? pastekeys::Keys::ShiftInsert
-        : pastekeys::Keys::CtrlV;
+    const pastekeys::Keys keys = pastekeys::forWindowClass(className);
     // The modifiers right before the keys go: pressed again meanwhile, the
     // user keeps them (pastekeys::sequence). A press still on its way through
     // the low-level hooks is not in the key state yet: only the guard's hook
     // sees it come, in order with the keys.
-    unsigned sides = 0;
-    for (const std::uint16_t side : pastekeys::kSides) {
-        if (held(side))
-            sides |= pastekeys::sideBit(side);
-    }
+    const unsigned sides = pastekeys::heldSides();
     std::vector<pastekeys::Key> sequence = pastekeys::sequence(keys, sides, guard != nullptr);
     const bool watched = guard && guard->watch(sequence);
     if (guard && !watched)
         sequence = pastekeys::sequence(keys, sides, false); // its hook gone already
-    std::vector<INPUT> inputs;
-    inputs.reserve(sequence.size());
-    for (const pastekeys::Key& k : sequence)
-        inputs.push_back(key(k));
+    std::vector<INPUT> inputs = pastekeys::inputs(sequence);
     const auto count = static_cast<UINT>(inputs.size());
     ::SetLastError(ERROR_SUCCESS);
     const UINT sent = send(count, inputs.data(), sizeof(INPUT));

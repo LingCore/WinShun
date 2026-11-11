@@ -376,7 +376,8 @@ bool Server::handshake(Connection& conn)
     if (m_options.keyListener) {
         ok.capabilities |= kCapabilityKeyListener;
         const bool own = mayNavigateDialogs(*this, conn.pid);
-        ok.capabilities |= own ? kCapabilityDialogNav | kCapabilityHotkeyRelay : kCapabilityDialogNavBesideOnly;
+        // Pressing the paste keys there (#277) types into that window: its own UI only.
+        ok.capabilities |= own ? kCapabilityDialogNav | kCapabilityHotkeyRelay | kCapabilityPasteRelay : kCapabilityDialogNavBesideOnly;
         if (canStartClipboardDisplay(conn.pid))
             ok.capabilities |= kCapabilityClipboardDisplay;
     }
@@ -411,6 +412,9 @@ void Server::serve(std::shared_ptr<Connection> conn)
                 break;
             case Type::OpenDialogNav:
                 serveDialogNav(*this, *conn, payload);
+                break;
+            case Type::OpenPaste:
+                servePaste(*this, *conn, payload);
                 break;
             case Type::OpenClipboardDisplay:
                 serveClipboardDisplay(*this, *conn, payload);

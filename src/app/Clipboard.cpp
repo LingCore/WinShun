@@ -13,6 +13,7 @@
 #include "platform/FileManagers.h"
 #include "platform/Integrity.h"
 #include "platform/Paster.h"
+#include "platform/ServicePaste.h"
 #include "platform/Shell.h"
 #include "platform/WindowEffects.h"
 
@@ -172,6 +173,18 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
         // that folder. Leave Open to the user, as a normal paste would (#57).
         const auto dialogKind
             = front && !m_write.files.isEmpty() ? filedialog::kind(m_pasteWindow) : filedialog::Kind::None;
+        // A program run as administrator: Windows drops the keys Win顺 would
+        // press there, the index service's helper presses them (GitHub #277).
+        // Not its file dialogs' name field, which only that program may fill.
+        const bool elevated = front && integrity::higherThanOurs(m_pasteWindow);
+        if (elevated && dialogKind != filedialog::Kind::None) {
+            failPaste(elevatedHint());
+            return;
+        }
+        if (elevated) {
+            pasteThroughService(m_pasteWindow);
+            return;
+        }
         if (dialogKind == filedialog::Kind::Open || dialogKind == filedialog::Kind::Legacy) {
             const HWND target = m_pasteWindow;
             const QString names = clipfiles::fileNames(m_write.files);
@@ -201,8 +214,17 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
                      : result.method == paste::Result::Method::Keys ? u"keys"_s : u"failed"_s}});
             if (!result)
                 failPaste(tr("内容已复制，自动粘贴失败，请按 Ctrl+V 粘贴"));
-        } else
+        } else {
+            // Why, for the journal: which window has the front instead, by its
+            // class alone, and whether the one wanted is an administrator's.
+            wchar_t frontClass[64] {};
+            ::GetClassNameW(::GetForegroundWindow(), frontClass, static_cast<int>(std::size(frontClass)));
+            diagnostics::record(u"clipboard-paste"_s,
+                {{u"method"_s, u"failed"_s}, {u"reason"_s, u"not-in-front"_s},
+                 {u"front_class"_s, QString::fromWCharArray(frontClass)},
+                 {u"elevated"_s, integrity::higherThanOurs(m_pasteWindow)}});
             failPaste(tr("已复制。那个窗口没有回到前面，请自己按 Ctrl+V 粘贴"));
+        }
     });
     m_returnTimer.setInterval(10ms);
     connect(&m_returnTimer, &QTimer::timeout, this, [this] {
@@ -651,8 +673,52 @@ void Clipboard::flash(const QString& message)
     emit statusChanged();
 }
 
+QString Clipboard::elevatedHint()
+{
+    return tr("已复制。那个程序以管理员身份运行，Win顺 没法替它粘贴：回到它那里按 Ctrl+V");
+}
+
+void Clipboard::pasteThroughService(HWND target)
+{
+    if (!m_elevatedPasteWorker)
+        m_elevatedPasteWorker = std::make_unique<ComWorker>(ComWorker::Apartment::MultiThreaded);
+    // Still pasting until it answers: the helper is started and waited for.
+    m_elevatedPasteWorker->post([this, target] {
+        const servicepaste::Result result = servicepaste::paste(target);
+        QMetaObject::invokeMethod(
+            this,
+            [this, result] {
+                m_pasting = false;
+                diagnostics::record(u"clipboard-paste"_s,
+                    {{u"method"_s, u"service"_s},
+                     {u"outcome"_s, QString::fromLatin1(servicepaste::name(result.outcome))},
+                     {u"error"_s, qint64(result.error)}});
+                switch (result.outcome) {
+                case servicepaste::Outcome::Pasted:
+                    break;
+                case servicepaste::Outcome::NoService:
+                    failPaste(tr("已复制。那个程序以管理员身份运行，装上索引服务后 Win顺 才能替它粘贴；这次请按 Ctrl+V"));
+                    break;
+                case servicepaste::Outcome::NotOffered:
+                    failPaste(tr("已复制。那个程序以管理员身份运行，现在的索引服务还不能替这份 Win顺 粘贴；这次请按 Ctrl+V"));
+                    break;
+                case servicepaste::Outcome::Failed:
+                    failPaste(tr("内容已复制，自动粘贴失败，请按 Ctrl+V 粘贴"));
+                    break;
+                }
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void Clipboard::setPasteElevated(bool on)
+{
+    m_pasteElevated = on;
+}
+
 void Clipboard::failPaste(const QString& message)
 {
+    qInfo().noquote() << "Clipboard: paste not done:" << message; // what the user is told, nothing of what was copied
     m_keysTimer.stop();
     m_focusTimer.stop();
     m_pasteGuard.reset();
@@ -878,15 +944,18 @@ void Clipboard::onWritten(bool ok)
     if (m_into != Into::CurrentProgram)
         m_pasteWindow = paste::usableTarget(m_target);
     if (!m_pasteWindow) {
+        qInfo("Clipboard: paste not done: no window to paste into (the one in front as it opened: %p)", static_cast<void*>(m_target));
         m_pasting = false;
         m_pasteGuard.reset();
         flash(tr("已复制。没有找到要粘贴进去的窗口，可以自己按 Ctrl+V"));
         return;
     }
     // An elevated program while Win顺 is not: Windows drops the keys Win顺
-    // would press there (UIPI), SendInput says nothing. The user presses them.
-    if (integrity::higherThanOurs(m_pasteWindow)) {
-        failPaste(tr("已复制。那个程序以管理员身份运行，Win顺 没法替它粘贴：回到它那里按 Ctrl+V"));
+    // would press there (UIPI), SendInput says nothing. The index service
+    // presses them once the window is in front (pasteThroughService); with
+    // that turned off, the user does.
+    if (!m_pasteElevated && integrity::higherThanOurs(m_pasteWindow)) {
+        failPaste(elevatedHint());
         return;
     }
     if (m_into == Into::CurrentProgram) {

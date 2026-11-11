@@ -179,6 +179,9 @@ public:
     void setLayoutOptions(bool flipAbove, bool searchFar);
     bool holdToStep() const { return m_holdToStep; }
     void setHoldToStep(bool on);
+    // Into a program run as administrator, the index service presses the
+    // paste keys (GitHub #277); off: the user is told to press them.
+    void setPasteElevated(bool on);
     bool holdHint() const { return m_holdHint; }
     QString holdKeys() const { return m_holdKeys; }
     // The hold (App), on an entry rather than a row: a copy coming in moves
@@ -390,6 +393,8 @@ private:
     void refreshStatus();
     void flash(const QString& message);
     void failPaste(const QString& message);
+    static QString elevatedHint(); // the paste left to the user, into a program run as administrator
+    void pasteThroughService(HWND target); // the index service presses the keys there (GitHub #277)
     std::vector<const Clip*> targets(int row) const; // the row, or the picked ones it is one of
     ClipWrite writeFor(
         const std::vector<const Clip*>& clips, bool plainText, QString* problem, HWND target = nullptr) const;
@@ -448,6 +453,7 @@ private:
     bool m_flipAbove = true;
     bool m_searchFar = false;
     bool m_holdToStep = false;
+    bool m_pasteElevated = true;
     bool m_holding = false; // beginSteps .. endSteps
     bool m_holdHint = false;
     QString m_holdKeys;
@@ -485,6 +491,7 @@ private:
     QElapsedTimer m_returnClock;
     QTimer m_returnTimer; // waits for the field to have the keyboard
     std::unique_ptr<ComWorker> m_filePasteWorker;
+    std::unique_ptr<ComWorker> m_elevatedPasteWorker; // pasteThroughService: the pipe to the index service
     std::unique_ptr<ComWorker> m_saveWorker; // saveAsFiles: asks the file manager, copies the files
     std::unique_ptr<ComWorker> m_sendWorker; // exports a stable history selection, without copying source folders
     std::jthread m_imageEncoder; // copyImage's PNG; last, so joined first

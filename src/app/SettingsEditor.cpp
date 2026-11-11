@@ -1798,6 +1798,14 @@ void SettingsEditor::setClipboardLargePictures(bool on)
     commit();
 }
 
+void SettingsEditor::setClipboardPasteElevated(bool on)
+{
+    if (m_settings.clipboardPasteElevated == on)
+        return;
+    m_settings.clipboardPasteElevated = on;
+    commit();
+}
+
 void SettingsEditor::setClipboardAtPointer(bool on)
 {
     if (m_settings.clipboardAtPointer == on)

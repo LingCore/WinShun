@@ -410,6 +410,9 @@ struct Settings {
     // again moves to the next older entry, letting go pastes it. Off: Win+V
     // pressed again closes the window, as Windows' own (and Win顺) always did.
     bool clipboardHoldToStep = false;
+    // Into a program run as administrator, the index service's helper
+    // presses the paste keys (GitHub #277); needs that service.
+    bool clipboardPasteElevated = true;
 
     // [Taskbar]: Win顺 in the place of Windows' search (see taskbar::)
     bool taskbarWinS = false; // Win+S opens it over the taskbar, instead of Windows' search (see winv::)

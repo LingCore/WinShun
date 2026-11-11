@@ -51,7 +51,10 @@ constexpr std::uint16_t kMajor = 1; // different on the two ends: they cannot ta
 // listener also holds back the UI's hotkeys with no modifier over windows run
 // as administrator and tells of them (kCapabilityHotkeyRelay; OpenKeyListener's
 // payload then ends with the keys, keyproto::relayable ones only).
-constexpr std::uint16_t kMinor = 6;
+// Minor 7 (GitHub #277): for Win顺's own UI again, the paste keys pressed in
+// a window run as administrator, where Windows drops the UI's own
+// (kCapabilityPasteRelay, OpenPaste).
+constexpr std::uint16_t kMinor = 7;
 constexpr std::uint16_t kMinorSizes = 2;
 constexpr std::uint16_t kMinorCreated = 3;
 constexpr std::uint32_t kCapabilityBulkRead = 1; // HelloOk::capabilities
@@ -60,6 +63,7 @@ constexpr std::uint32_t kCapabilityDialogNav = 4; // minor 4: navigate an elevat
 constexpr std::uint32_t kCapabilityDialogNavBesideOnly = 8; // minor 4: has it, for Win顺's own UI only
 constexpr std::uint32_t kCapabilityClipboardDisplay = 16; // minor 5: authenticated UIAccess display peer
 constexpr std::uint32_t kCapabilityHotkeyRelay = 32; // minor 6: the key listener relays the UI's plain hotkeys (#243)
+constexpr std::uint32_t kCapabilityPasteRelay = 64; // minor 7: presses the paste keys in an administrator's window (#277)
 constexpr std::size_t kMaxBulkWants = 4u << 20; // files one bulk session may ask about
 constexpr wchar_t kPipeName[] = L"WinShun.Volumes"; // one service for the whole machine
 constexpr wchar_t kPipeEnvironment[] = L"WINSHUN_PIPE"; // another pipe's name, for tests (--console --pipe)
@@ -106,6 +110,8 @@ enum class Type : std::uint16_t {
     OpenClipboardDisplay = 85, // { u64 caller HWND, string private pipe name }; own protected WinShun.exe only
     ClipboardDisplayReady = 86, // u32 child PID; the connection leases the display process
     ClipboardDisplayPing = 87, // empty request/reply
+    OpenPaste = 88, // u64 window HWND: press its paste keys there, a higher-integrity window in front (#277)
+    PasteDone = 89, // empty reply: the helper pressed them (else Error)
 };
 
 std::wstring fullPipePath(std::wstring_view name); // "\\.\pipe\" + name

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace ws::pastekeys {
@@ -39,6 +40,13 @@ enum class Keys {
     CtrlV,
     ShiftInsert,
 };
+
+// Which of them a window takes, by its class: the UI's choice and the
+// service's helper's (a paste into a window run as administrator) are one.
+constexpr Keys forWindowClass(std::wstring_view className) noexcept
+{
+    return className == L"mintty" || className == L"PuTTY" ? Keys::ShiftInsert : Keys::CtrlV;
+}
 
 inline constexpr std::uint16_t kShift = 0x10; // VK_SHIFT
 inline constexpr std::uint16_t kControl = 0x11; // VK_CONTROL

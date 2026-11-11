@@ -1918,6 +1918,7 @@ void App::applySettings(bool initial)
         m_clipPlacement->resized(); // the rows have another height
     m_clipboard->setLayoutOptions(m_settings.clipboardFlipAbove, m_settings.clipboardSearchBoxSide == u"far");
     m_clipboard->setHoldToStep(m_settings.clipboardHoldToStep);
+    m_clipboard->setPasteElevated(m_settings.clipboardPasteElevated);
     if (!m_settings.clipboardHoldToStep && (m_hold || m_browseHotkey))
         endClipboardHold("setting-off");
     updateNumberKeys();
