@@ -3,8 +3,12 @@
 // quoting of the helper's command line. The UI-Automation tree walk needs real
 // elevated dialogs and is covered by the live test. Here: Inno Setup,
 // SHBrowseForFolder, the directory check, and the address-bar route against a
-// synthetic Open dialog (FakeFileDialog.h, shared with tst_filedialog).
+// synthetic Open dialog (FakeFileDialog.h, shared with tst_filedialog); and
+// the file-name-box route (GitHub #143) against the Windows XP style and, in
+// a copy of this test named acad.exe (ctest -R tst_dialognav_cad), against
+// the stand-in for AutoCAD's own window (FakeCustomFileDialog.h).
 #include "DialogNav.h"
+#include "FakeCustomFileDialog.h"
 #include "FakeFileDialog.h"
 #include "ServiceLocation.h"
 
@@ -67,6 +71,85 @@ void registerClass(const wchar_t* name, const wchar_t* base = nullptr)
     ::RegisterClassW(&wc);
 }
 
+// The Windows XP style as far as dialognav looks at it: the view, the file
+// name box (cmb13, a combo box with its edit field) and OK. OK does with the
+// box what the common dialog does: a folder there is gone to and the box
+// emptied; anything else is the dialog's answer. Or, `answersOnOk`, a window
+// that takes OK for its answer whatever the box holds, and closes.
+class LegacyDialog {
+public:
+    explicit LegacyDialog(bool answersOnOk = false)
+        : m_answersOnOk(answersOnOk)
+    {
+        m_window = make(L"#32770", nullptr, 0, 0);
+        make(L"SHELLDLL_DefView", m_window, 0, 0);
+        m_combo = make(L"ComboBox", m_window, CBS_DROPDOWN, 0x47C);
+        m_edit = ::FindWindowExW(m_combo, nullptr, L"Edit", nullptr);
+        m_ok = make(L"Button", m_window, 0, IDOK);
+        ::SetWindowTextW(m_edit, L"keep name.txt");
+        ::SetWindowLongPtrW(m_window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+        m_previous = reinterpret_cast<WNDPROC>(::SetWindowLongPtrW(m_window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&proc)));
+    }
+    ~LegacyDialog()
+    {
+        if (::IsWindow(m_window))
+            ::DestroyWindow(m_window);
+    }
+    LegacyDialog(const LegacyDialog&) = delete;
+    LegacyDialog& operator=(const LegacyDialog&) = delete;
+
+    HWND handle() const { return m_window; }
+    HWND ok() const { return m_ok; }
+    HWND combo() const { return m_combo; }
+    bool valid() const { return m_window && m_combo && m_edit && m_ok; }
+    QString fileName() const
+    {
+        wchar_t text[1024] {};
+        ::GetWindowTextW(m_edit, text, 1024);
+        return QString::fromWCharArray(text);
+    }
+    const QStringList& entered() const { return m_entered; }
+    int answers() const { return m_answers; }
+
+private:
+    static HWND make(const wchar_t* type, HWND parent, DWORD style, int id)
+    {
+        return ::CreateWindowExW(0, type, L"", (parent ? WS_CHILD : WS_POPUP) | WS_VISIBLE | style, -20000, -20000, 400, 200,
+            parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), ::GetModuleHandleW(nullptr), nullptr);
+    }
+    static LRESULT CALLBACK proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+    {
+        auto* self = reinterpret_cast<LegacyDialog*>(::GetWindowLongPtrW(window, GWLP_USERDATA));
+        if (message != WM_COMMAND || LOWORD(wParam) != IDOK)
+            return ::CallWindowProcW(self->m_previous, window, message, wParam, lParam);
+        const QString name = self->fileName();
+        const DWORD attributes = ::GetFileAttributesW(name.toStdWString().c_str());
+        if (!self->m_answersOnOk && attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            self->m_entered.push_back(name);
+            ::SetWindowTextW(self->m_edit, L"");
+            return 0;
+        }
+        ++self->m_answers;
+        if (self->m_answersOnOk)
+            ::DestroyWindow(window);
+        return 0;
+    }
+
+    bool m_answersOnOk;
+    HWND m_window = nullptr;
+    HWND m_combo = nullptr;
+    HWND m_edit = nullptr;
+    HWND m_ok = nullptr;
+    WNDPROC m_previous = nullptr;
+    QStringList m_entered;
+    int m_answers = 0;
+};
+
+bool runsAsCad()
+{
+    return QFileInfo(QCoreApplication::applicationFilePath()).fileName().compare(QStringLiteral("acad.exe"), Qt::CaseInsensitive) == 0;
+}
+
 struct Window {
     HWND handle = nullptr;
     Window(const wchar_t* type, HWND parent = nullptr, DWORD extra = 0, int id = 0)
@@ -88,7 +171,7 @@ private slots:
     void initTestCase()
     {
         for (const auto* name : {L"TSelectFolderForm", L"TSelectDirDlg", L"TFolderTreeView", L"TStartMenuFolderTreeView",
-                 L"SysTreeView32", L"SHBrowseForFolder ShellNameSpace Control"})
+                 L"SysTreeView32", L"SHBrowseForFolder ShellNameSpace Control", L"SHELLDLL_DefView"})
             registerClass(name);
         for (const auto* name : {L"TNewPathEdit", L"TNewEdit", L"TEdit"})
             registerClass(name, L"Edit");
@@ -365,6 +448,130 @@ private slots:
             QCOMPARE(argv.size(), 4);
             QCOMPARE(argv.at(3), folder);
         }
+    }
+
+    // The Windows XP style has no address bar: the folder goes through the
+    // file name box and OK, and the name that was there comes back (#143).
+    void legacyByName_data()
+    {
+        QTest::addColumn<QString>("leaf");
+        QTest::newRow("folder") << QStringLiteral("target");
+        QTest::newRow("a folder named as a file") << QStringLiteral("target.txt");
+        QTest::newRow("Chinese and spaces") << QStringLiteral("图纸 项目");
+    }
+
+    void legacyByName()
+    {
+        QFETCH(QString, leaf);
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        QVERIFY(QDir(root.path()).mkdir(leaf));
+        const QString target = QDir::toNativeSeparators(root.path() + QLatin1Char('/') + leaf);
+        LegacyDialog dialog;
+        QVERIFY(dialog.valid());
+        QCOMPARE(dn::classify(dialog.handle()), Kind::Legacy);
+        QVERIFY(dn::navigateToFolder(dialog.handle(), target.toStdWString()));
+        QCOMPARE(dialog.entered(), QStringList {target + QLatin1Char('\\')}); // with the backslash: a folder or nothing
+        QCOMPARE(dialog.fileName(), QStringLiteral("keep name.txt"));
+        QCOMPARE(dialog.answers(), 0);
+        QVERIFY(::IsWindow(dialog.handle()));
+    }
+
+    // Nothing is typed and OK never goes where it would not go to a folder.
+    void legacyLeftAlone()
+    {
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const std::wstring path = QDir::toNativeSeparators(root.path()).toStdWString();
+        {
+            LegacyDialog dialog; // the folder is gone
+            QVERIFY(!dn::navigateToFolder(dialog.handle(), path + L"\\gone"));
+            QCOMPARE(dialog.fileName(), QStringLiteral("keep name.txt"));
+        }
+        {
+            LegacyDialog dialog; // OK greyed out: the program is not taking one now
+            ::EnableWindow(dialog.ok(), FALSE);
+            QVERIFY(!dn::navigateToFolder(dialog.handle(), path));
+            QCOMPARE(dialog.fileName(), QStringLiteral("keep name.txt"));
+            QVERIFY(dialog.entered().isEmpty());
+            QCOMPARE(dialog.answers(), 0);
+        }
+        {
+            LegacyDialog dialog; // no file name box: a view and OK alone are no file dialog of ours
+            ::DestroyWindow(dialog.combo());
+            QCOMPARE(dn::classify(dialog.handle()), Kind::None);
+            QVERIFY(!dn::navigateToFolder(dialog.handle(), path));
+            QVERIFY(dialog.entered().isEmpty());
+            QCOMPARE(dialog.answers(), 0);
+        }
+    }
+
+    // A window that takes OK for its answer all the same is gone: not done,
+    // so the caller says so instead of "went there".
+    void legacyThatAnswersOnOk()
+    {
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        LegacyDialog dialog(true);
+        QVERIFY(dialog.valid());
+        QVERIFY(!dn::navigateToFolder(dialog.handle(), QDir::toNativeSeparators(root.path()).toStdWString()));
+        QCOMPARE(dialog.answers(), 1);
+        QVERIFY(!::IsWindow(dialog.handle()));
+    }
+
+    // AutoCAD's own file window (the stand-in keeps its file name as MFC
+    // does, told by CBN_EDITCHANGE): only in acad.exe / acadlt.exe.
+    void cadByName()
+    {
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        QVERIFY(QDir(root.path()).mkdir(QStringLiteral("图纸 项目.dwg")));
+        const std::wstring target = QDir::toNativeSeparators(root.path() + QStringLiteral("/图纸 项目.dwg")).toStdWString();
+        fakedialog::CustomFileDialog dialog;
+        QVERIFY(dialog.valid());
+        if (!runsAsCad()) { // another program's window that looks alike is left alone
+            QCOMPARE(dn::classify(dialog.handle()), Kind::None);
+            QVERIFY(!dn::navigateToFolder(dialog.handle(), target));
+            QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));
+            QCOMPARE(dialog.notifications(), 0);
+            return;
+        }
+        QCOMPARE(dn::classify(dialog.handle()), Kind::Legacy);
+        QVERIFY(dn::navigateToFolder(dialog.handle(), target));
+        QCOMPARE(dialog.entered(), std::vector<std::wstring> {target + L'\\'});
+        QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));
+        QVERIFY(dialog.notifications() >= 2); // the folder and the name put back both reached its own file name
+        QVERIFY(!dialog.accepted());
+        QVERIFY(::IsWindow(dialog.handle()));
+    }
+
+    void cadLeftAlone_data()
+    {
+        QTest::addColumn<int>("missing");
+        QTest::newRow("file type missing") << 0;
+        QTest::newRow("file list missing") << 1;
+        QTest::newRow("cancel missing") << 2;
+        QTest::newRow("two editable boxes") << 3;
+    }
+
+    void cadLeftAlone()
+    {
+        if (!runsAsCad())
+            QSKIP("ctest -R tst_dialognav_cad runs this in its copy named acad.exe");
+        QFETCH(int, missing);
+        fakedialog::CustomFileDialog dialog;
+        QVERIFY(dialog.valid());
+        switch (missing) {
+        case 0: dialog.withoutType(); break;
+        case 1: dialog.withoutList(); break;
+        case 2: dialog.withoutCancel(); break;
+        case 3: dialog.ambiguousName(); break;
+        }
+        QCOMPARE(dn::classify(dialog.handle()), Kind::None);
+        QVERIFY(!dn::navigateToFolder(dialog.handle(), L"C:\\"));
+        QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));
+        QCOMPARE(dialog.notifications(), 0);
+        QVERIFY(!dialog.accepted());
     }
 
     void navigateChecksFolder()

@@ -37,6 +37,16 @@ add_test(NAME tst_servicepaste COMMAND tst_servicepaste)
 set_tests_properties(tst_servicepaste PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The request that takes an administrator's file dialog to a folder (GitHub
+# #104, #143): with no service; its live part needs the elevated harness.
+qt_add_executable(tst_servicedialognav tst_servicedialognav.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/ServiceDialogNav.cpp)
+target_include_directories(tst_servicedialognav PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_servicedialognav PRIVATE wscore Qt6::Test user32)
+set_target_properties(tst_servicedialognav PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_servicedialognav COMMAND tst_servicedialognav)
+set_tests_properties(tst_servicedialognav PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_pluginhotkeys tst_pluginhotkeys.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/PluginHotkeys.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/PlainHotkeys.cpp)
@@ -382,7 +392,15 @@ qt_add_executable(tst_dialognav tst_dialognav.cpp)
 target_include_directories(tst_dialognav PRIVATE ${PROJECT_SOURCE_DIR}/src/core)
 target_link_libraries(tst_dialognav PRIVATE wscore Qt6::Test ole32 oleaut32 shell32 user32)
 add_test(NAME tst_dialognav COMMAND tst_dialognav)
-set_tests_properties(tst_dialognav PROPERTIES
+# AutoCAD's own file window is taken only in acad.exe / acadlt.exe (GitHub
+# #143): a copy of the test under that name, with the stand-in window. It
+# contains nothing of AutoCAD.
+set(cad_nav_fixture "$<TARGET_FILE_DIR:tst_dialognav>/cad-nav-fixture/acad.exe")
+add_custom_command(TARGET tst_dialognav POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:tst_dialognav>/cad-nav-fixture"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:tst_dialognav>" "${cad_nav_fixture}")
+add_test(NAME tst_dialognav_cad COMMAND "${cad_nav_fixture}" cadByName cadLeftAlone)
+set_tests_properties(tst_dialognav tst_dialognav_cad PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # Launch only a short-lived copy of this test, writing into QTemporaryDir.

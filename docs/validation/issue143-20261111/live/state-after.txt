@@ -1,0 +1,1 @@
+﻿alive=True visible=True lookIn=[ws143 图纸.dwg] fileName=[keep me.txt]

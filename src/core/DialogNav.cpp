@@ -1,6 +1,7 @@
 #include "DialogNav.h"
 
 #include "ServiceLocation.h"
+#include "Win32Util.h"
 
 #include <ole2.h> // before uiautomation.h
 #include <commctrl.h>
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -83,6 +85,85 @@ HWND browseTree(HWND dialog)
     return tree && hasClass(tree, L"SysTreeView32") ? tree : nullptr;
 }
 
+// The file name box of the Windows XP style: a combo box with an edit field,
+// or an edit field alone (FileDialog.cpp's fileNameBox, without the views of
+// the newer style).
+HWND legacyNameBox(HWND dialog)
+{
+    if (const HWND combo = ::GetDlgItem(dialog, kFileNameCombo)) {
+        const HWND list = hasClass(combo, L"ComboBoxEx32") ? ::FindWindowExW(combo, nullptr, L"ComboBox", nullptr) : combo;
+        if (const HWND edit = list ? ::FindWindowExW(list, nullptr, L"Edit", nullptr) : nullptr)
+            return edit;
+    }
+    return ::GetDlgItem(dialog, kFileNameEdit);
+}
+
+bool cadProgram(HWND window)
+{
+    DWORD pid = 0;
+    ::GetWindowThreadProcessId(window, &pid);
+    const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    wchar_t image[1024] {};
+    DWORD length = static_cast<DWORD>(std::size(image));
+    if (!process.valid() || !::QueryFullProcessImageNameW(process.get(), 0, image, &length))
+        return false;
+    const wchar_t* leaf = ::wcsrchr(image, L'\\');
+    return leaf && (::_wcsicmp(leaf + 1, L"acad.exe") == 0 || ::_wcsicmp(leaf + 1, L"acadlt.exe") == 0);
+}
+
+// AutoCAD's own file window (Autodesk's CNavDialog, GitHub #143), by the
+// roles of its controls as FileDialog.cpp's customFileBoxes tells it, kept in
+// step with that: a file list, one editable combo box below it (the file
+// name; two of them: none, rather than type into a filter), a file type list
+// below that, OK and Cancel; only in acad.exe / acadlt.exe. The edit field of
+// the file name box, or null.
+HWND cadNameBox(HWND dialog)
+{
+    if (!hasClass(dialog, L"#32770") || !::GetDlgItem(dialog, IDOK) || !::GetDlgItem(dialog, IDCANCEL)
+        || ::FindWindowExW(dialog, nullptr, L"DUIViewWndClassName", nullptr) || !cadProgram(dialog))
+        return nullptr;
+    std::vector<HWND> controls;
+    ::EnumChildWindows(dialog, [](HWND child, LPARAM data) -> BOOL {
+        reinterpret_cast<std::vector<HWND>*>(data)->push_back(child);
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&controls));
+    const auto usableCombo = [](HWND control) {
+        return hasClass(control, L"ComboBox") && ::IsWindowVisible(control) && ::IsWindowEnabled(control);
+    };
+    std::optional<LONG> listBottom;
+    for (HWND control : controls) {
+        RECT bounds {};
+        if (hasClass(control, L"SysListView32") && ::IsWindowVisible(control) && ::GetWindowRect(control, &bounds))
+            listBottom = listBottom ? std::max(*listBottom, bounds.bottom) : bounds.bottom;
+    }
+    if (!listBottom)
+        return nullptr;
+    HWND name = nullptr;
+    RECT nameBounds {};
+    for (HWND control : controls) {
+        if (!usableCombo(control))
+            continue;
+        const HWND edit = ::FindWindowExW(control, nullptr, L"Edit", nullptr);
+        RECT bounds {};
+        if (!edit || (::GetWindowLongPtrW(edit, GWL_STYLE) & ES_READONLY) || !::GetWindowRect(edit, &bounds)
+            || bounds.top < *listBottom)
+            continue;
+        if (name)
+            return nullptr;
+        name = edit;
+        nameBounds = bounds;
+    }
+    if (!name)
+        return nullptr;
+    int types = 0;
+    for (HWND control : controls) {
+        RECT bounds {};
+        types += usableCombo(control) && (::GetWindowLongPtrW(control, GWL_STYLE) & 3) == CBS_DROPDOWNLIST
+            && ::GetWindowRect(control, &bounds) && bounds.top >= nameBounds.bottom;
+    }
+    return types == 1 ? name : nullptr;
+}
+
 bool send(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     DWORD_PTR result = 0;
@@ -141,6 +222,64 @@ HWND focusedControl(HWND dialog)
     GUITHREADINFO info {sizeof(GUITHREADINFO)};
     const DWORD thread = ::GetWindowThreadProcessId(dialog, nullptr);
     return thread && ::GetGUIThreadInfo(thread, &info) ? info.hwndFocus : nullptr;
+}
+
+// All of a file name box, to put back after it held the folder: a name, or
+// the names of several files picked. None when its program says it is longer
+// than any such box holds (what could not be put back whole is not replaced).
+std::optional<std::wstring> wholeText(HWND hwnd)
+{
+    constexpr std::size_t kLimit = 32'767; // an edit control's own default limit
+    DWORD_PTR length = 0;
+    if (!::SendMessageTimeoutW(hwnd, WM_GETTEXTLENGTH, 0, 0, SMTO_ABORTIFHUNG, 2000, &length) || length > kLimit)
+        return std::nullopt;
+    std::wstring text(length + 1, L'\0');
+    DWORD_PTR copied = 0;
+    if (!::SendMessageTimeoutW(hwnd, WM_GETTEXT, text.size(), reinterpret_cast<LPARAM>(text.data()), SMTO_ABORTIFHUNG,
+            2000, &copied))
+        return std::nullopt;
+    text.resize(std::min<std::size_t>(copied, length));
+    return text;
+}
+
+// The Windows XP style and AutoCAD's own (GitHub #143): no address bar, so
+// the folder goes into the file name box and OK is sent, as their user does
+// it; then the name that was there goes back (FileDialog.cpp's goByName).
+// With a trailing backslash, and checked right before: what the box holds
+// when OK goes names a folder or nothing, never a file to open or to save
+// over. Such a window goes there and stays; one that closes on OK instead is
+// told as not done. AutoCAD keeps a file name of its own, changed when the
+// box says it was edited (MFC's CBN_EDITCHANGE), which WM_SETTEXT alone does
+// not say.
+bool goByName(HWND dialog, const std::wstring& folder)
+{
+    const HWND cad = cadNameBox(dialog);
+    const HWND box = cad ? cad : legacyNameBox(dialog);
+    const HWND ok = ::GetDlgItem(dialog, IDOK);
+    if (!box || !ok || !::IsWindowEnabled(ok))
+        return false;
+    const auto put = [&](const std::wstring& text) {
+        if (!setText(box, text))
+            return false;
+        if (!cad)
+            return true;
+        const HWND combo = ::GetParent(box);
+        return send(::GetParent(combo), WM_COMMAND, MAKEWPARAM(::GetDlgCtrlID(combo), CBN_EDITCHANGE),
+            reinterpret_cast<LPARAM>(combo));
+    };
+    const std::optional<std::wstring> typed = wholeText(box);
+    if (!typed)
+        return false;
+    const std::wstring target = folder.ends_with(L'\\') ? folder : folder + L'\\';
+    if (!isExistingDirectory(folder.c_str()))
+        return false;
+    // OK only over the folder just put there: never over what the box held.
+    const bool went = put(target) && controlText(box) == target
+        && send(dialog, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), reinterpret_cast<LPARAM>(ok));
+    if (!::IsWindow(dialog))
+        return false;
+    put(*typed);
+    return went;
 }
 
 // Types the folder into the address bar, as in Explorer. The address bar
@@ -565,11 +704,11 @@ Kind classify(HWND dialog)
             return Kind::Open;
         return ::GetDlgItem(dialog, kFileNameEdit) ? Kind::Folder : Kind::Save;
     }
-    if (::FindWindowExW(dialog, nullptr, L"SHELLDLL_DefView", nullptr) && ::GetDlgItem(dialog, IDOK)) {
-        // The Windows XP style: no address bar, so only the file-name box with
-        // OK would navigate -- left to the copy-only fallback (we never press OK).
+    // The Windows XP style, and AutoCAD's own: no address bar (goByName).
+    if (::FindWindowExW(dialog, nullptr, L"SHELLDLL_DefView", nullptr) && legacyNameBox(dialog) && ::GetDlgItem(dialog, IDOK))
         return Kind::Legacy;
-    }
+    if (cadNameBox(dialog))
+        return Kind::Legacy;
     if (browseTree(dialog) && ::GetDlgItem(dialog, IDOK))
         return Kind::Browse;
     return Kind::None;
@@ -700,6 +839,7 @@ bool navigateToFolder(HWND dialog, const std::wstring& folder)
     case Kind::Browse:
         return goByTreeUia(dialog, folder);
     case Kind::Legacy:
+        return goByName(dialog, folder);
     case Kind::None:
         return false;
     }

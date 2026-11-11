@@ -1,0 +1,5 @@
+﻿16:11:25.944 integrity: Mandatory Label\High Mandatory Level     标签   S-1-16-12288
+16:11:28.886 pipe True
+16:11:28.894 before: alive=True visible=True lookIn=[ws143-from] fileName=[keep me.txt]
+16:11:30.021 after: alive=True visible=True lookIn=[ws143 图纸.dwg] fileName=[keep me.txt]
+16:11:31.674 cleaned

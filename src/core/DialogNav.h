@@ -16,12 +16,21 @@
 // helper drives the dialog here.
 //
 // Nothing in this module reads or writes another process's memory, injects
-// code, presses OK / Open / Save, or types a file name: only window messages
-// the system marshals (WM_SETTEXT, a keyboard Enter in the address bar, an
-// Up / Down arrow pair to the folder tree) and UI Automation (ExpandCollapse /
-// SelectionItem on the folder tree) -- exactly the operations a uiAccess
-// accessibility tool is meant to perform. That keeps it off the
-// elevation-of-privilege path (docs/architecture.md 权限分离).
+// code, or types a file name: only window messages the system marshals
+// (WM_SETTEXT, a keyboard Enter in the address bar, an Up / Down arrow pair
+// to the folder tree) and UI Automation (ExpandCollapse / SelectionItem on
+// the folder tree) -- exactly the operations a uiAccess accessibility tool is
+// meant to perform. That keeps it off the elevation-of-privilege path
+// (docs/architecture.md 权限分离).
+//
+// OK is sent in one place only (GitHub #143): the Windows XP style and
+// AutoCAD's own file window have no address bar, and their user goes to a
+// folder by typing it in the file name box and pressing OK. There the box
+// gets the folder with a trailing backslash -- a path that names a folder or
+// nothing, never a file to open or save -- checked to be a directory right
+// before, OK goes once, and the name that was in the box is put back. A
+// window that takes OK for its answer all the same is gone by then, which is
+// told as not done. No other kind is ever sent OK, Open or Save.
 //
 // This is a deliberately elevated-only variant of platform/FileDialog.cpp's
 // navigation; keep the classification and the address-bar / Inno paths in
@@ -33,7 +42,7 @@ enum class Kind {
     Open, // IFileOpenDialog / GetOpenFileName without a hook
     Save,
     Folder, // a folder picker (FOS_PICKFOLDERS), or Inno Setup's destination picker
-    Legacy, // the Windows XP style (no address bar): left to the copy-only fallback
+    Legacy, // the Windows XP style and AutoCAD's own (no address bar): by the file name box and OK
     Browse, // SHBrowseForFolder's tree ("浏览文件夹"), old and new style
 };
 
@@ -79,9 +88,10 @@ std::wstring quoteArgument(std::wstring_view argument);
 // `folder` must pass isValidFolderRequest, and each route checks that it is
 // still a directory right before it acts (the address bar gets it with a
 // trailing backslash, so it can only resolve a folder).
-// False when it did not go: an unsupported kind (Legacy / None), a folder that
-// is gone, a tree segment the UI Automation walk could not match (a hidden
-// folder, say), or a new-style tree whose selection did not take. The caller
+// False when it did not go: no kind of ours (None), a folder that is gone, a
+// tree segment the UI Automation walk could not match (a hidden folder, say),
+// a new-style tree whose selection did not take, or a Legacy window whose
+// file name box did not take the folder (or that closed on OK). The caller
 // keeps the copy-and-paste fallback then.
 bool navigateToFolder(HWND dialog, const std::wstring& folder);
 

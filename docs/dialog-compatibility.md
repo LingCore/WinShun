@@ -12,7 +12,7 @@ Win顺保留标准识别优先级，增加结构匹配：`#32770`、确定/取�
 
 验证：`tst_filedialog` 用真实原生组合框、非标准控件 ID 和只在 `CBN_EDITCHANGE` 更新的宿主模型，覆盖普通目录、含扩展名目录、中文空格目录、恢复文件名、明确确认、缺失控件、多个输入框与不存在目录。**尚缺 AutoCAD 实机确认**。结构不同的版本仍可能需要依据诊断补适配。
 
-管理员权限的旧式/自定义窗口仍沿用既有复制路径回退；本次没有放宽服务端辅助程序「不发送 Open/Save」的权限约定。
+管理员权限的旧式/自定义窗口：2026-10-30 这一版仍沿用复制路径回退；2026-11-11 起由服务的助手代为跳转，见下文“管理员权限的 CAD 与旧式窗口”。
 
 需要真实 CAD 控件证据时，在 CAD 文件窗口打开后运行：
 
@@ -23,6 +23,25 @@ Win顺保留标准识别优先级，增加结构匹配：`#32770`、确定/取�
 倒计时内切回 CAD 文件窗口。脚本只读取窗口类、控件 ID、样式和相对位置，不读取窗口标题、文件名、文本框内容或用户路径，不修改目标窗口。
 
 AutoCAD 适配另有限制：只为 `acad.exe` / `acadlt.exe` 启用上述额外结构识别，避免把其他软件外观相似的设置窗口当成文件窗口。这两个进程名见 [Autodesk 支持文档](https://www.autodesk.com/support/technical/article/caas/sfdcarticles/sfdcarticles/Error-Windows-cannot-find-filename-dwg-when-a-DWG-file-is-double-clicked.html)。`ctest -R tst_filedialog` 在构建目录创建名为 `acad.exe` 的**测试程序副本**以覆盖此条件，另用原名执行否定用例；该副本不包含 AutoCAD。
+
+## 管理员权限的 CAD 与旧式窗口（2026-11-11）
+
+[#143 的后续反馈](https://github.com/LingCore/WinShun/issues/143#issuecomment-6681348712)：装了某些 CAD 插件后 AutoCAD 以管理员身份运行，这时 Ctrl+G、切回自动跳转都不动，把 Win顺 也用管理员身份运行才行。
+
+原因：管理员窗口的跳转由索引服务的助手代做（`core/DialogNav`，[#104](https://github.com/LingCore/WinShun/issues/104)）。它原先只认有地址栏的对话框、Inno 选择器和“浏览文件夹”；没有地址栏的旧式对话框（`Kind::Legacy`）和 AutoCAD 的窗口一律返回“没跳成”，因为那时约定助手从不发确定。界面端（普通权限的 AutoCAD）早就用“文件名框填文件夹 + 确定”跳转，报告者确认过可用。
+
+改动：助手也认这两类窗口并用同一办法跳转，识别条件与界面端 `platform/FileDialog.cpp` 保持一致（AutoCAD 仍只认 `acad.exe` / `acadlt.exe`，角色不全或有歧义就不认）。安全上的收口：
+
+- 填进文件名框的只会是以 `\` 结尾的文件夹路径；发确定之前再查一次它确实是目录，并且框里确实是刚填的这一串。
+- 确定只发一次；原来框里的文件名（长度不超过编辑框上限时）事后放回，放不回的不动手。
+- 确定按钮是灰的不发；发完窗口没了按“没跳成”上报。
+- 服务端对请求方和文件夹字符串的校验、助手对会话和完整性级别的校验都没有变。
+
+验证：
+
+- `tst_dialognav`：旧式窗口三种文件夹名（普通、形似文件名、中文加空格）跳转成功、文件名放回、未被当成回答；文件夹不存在、确定是灰的、没有文件名框都不动手；把确定当回答的窗口上报失败。`ctest -R tst_dialognav_cad` 用改名为 `acad.exe` 的测试副本覆盖 AutoCAD 替身窗口的正例和四个歧义反例，原名运行时同一窗口不被识别。
+- 实测（`docs/validation/issue143-20261111`）：管理员权限的真实旧式“打开”对话框（WinForms 关掉 `AutoUpgradeEnabled`，即带钩子的 `GetOpenFileName`）+ 隔离的 SYSTEM 测试服务，普通权限的 `tst_servicedialognav` 发请求。不存在的文件夹被拒且对话框原样；目标文件夹（名字形似文件、含中文和空格）跳转成功，“查找范围”从 `ws143-from` 变为目标文件夹，文件名框仍是 `keep me.txt`，对话框没有被关闭。
+- **仍缺管理员权限下的 AutoCAD 实机确认**：本机没有 AutoCAD，AutoCAD 这一路只有替身窗口的结果。
 
 ## Blender
 
