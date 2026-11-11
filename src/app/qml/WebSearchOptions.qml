@@ -102,23 +102,11 @@ Column {
                         height: 58
 
                         Rectangle {
-                            anchors.fill: parent
-                            anchors.margins: 1
-                            radius: Theme.smallControlRadius
-                            color: webArea.containsMouse ? Theme.navHover : "transparent"
-                        }
-                        Rectangle {
                             visible: webRow.index > 0
                             x: 12
                             width: parent.width - 24
                             height: Theme.edge(webSection.dpr)
                             color: Theme.divider
-                        }
-                        MouseArea {
-                            id: webArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            acceptedButtons: Qt.NoButton
                         }
 
                         Item { // its site's icon, as its rows show it in the launcher

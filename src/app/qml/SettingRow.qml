@@ -156,14 +156,14 @@ Item {
     HoverHandler { id: rowHover }
     readonly property bool hovered: rowHover.hovered // for controls shown only then
 
-    // Under the pointer, or the option Enter goes to while searching: the
-    // style's highlight (Theme.rowHighlight), made on the first need only.
+    // The option Enter goes to while searching: the style's highlight
+    // (Theme.rowHighlight), made on the first need only. Not under the
+    // pointer: a row is no button, only the controls on it are.
     readonly property bool current: searching && search.current === row
     Hook {
         anchors.fill: parent
         anchors.margins: row.edge
-        part: rowHover.hovered || row.current ? Theme.rowHighlight : null
-        hovered: rowHover.hovered
+        part: row.current ? Theme.rowHighlight : null
         selected: row.current
         role: "panel"
         dpr: row.dpr

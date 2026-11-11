@@ -3239,23 +3239,11 @@ Window {
                                     height: 42
 
                                     Rectangle {
-                                        anchors.fill: parent
-                                        anchors.margins: 1
-                                        radius: Theme.smallControlRadius
-                                        color: rowArea.containsMouse ? Theme.navHover : "transparent"
-                                    }
-                                    Rectangle {
                                         visible: pathRow.index > 0
                                         x: 12
                                         width: parent.width - 24
                                         height: Theme.edge(window.dpr)
                                         color: Theme.divider
-                                    }
-                                    MouseArea {
-                                        id: rowArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        acceptedButtons: Qt.NoButton
                                     }
                                     Glyph {
                                         id: folderIcon

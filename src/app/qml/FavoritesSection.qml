@@ -187,13 +187,13 @@ SettingsSection {
                         z: dragged ? 2 : 0
                         transform: Translate { y: favRow.dragged ? grip.drag.activeTranslation.y : favRow.offset }
 
-                        Rectangle {
-                            visible: !favRow.editing
+                        Rectangle { // lifted while dragged; no tint under the pointer: the row is no button
+                            visible: favRow.dragged
                             anchors.fill: parent
                             anchors.margins: 1
                             radius: Theme.smallControlRadius
-                            color: favRow.dragged ? Theme.card : favArea.containsMouse ? Theme.navHover : "transparent"
-                            border.width: favRow.dragged ? 1 : 0
+                            color: Theme.card
+                            border.width: 1
                             border.color: Theme.cardBorder
                         }
                         Rectangle {
@@ -202,12 +202,6 @@ SettingsSection {
                             width: parent.width - 24
                             height: Theme.edge(Screen.devicePixelRatio)
                             color: Theme.divider
-                        }
-                        MouseArea {
-                            id: favArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            acceptedButtons: Qt.NoButton
                         }
 
                         Item { // the grip: dragged into another place
