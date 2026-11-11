@@ -655,6 +655,65 @@ private slots:
         QCOMPARE(code, 7ul);
     }
 
+    // A program of ours with "以管理员身份运行此程序" ticked in its properties
+    // (error 740 for every start with normal rights) starts all the same, as
+    // the invoker; someone else's program so set is left to say 740 (GitHub
+    // #111: the drop pie's helper of such a copy never started).
+    void startsOurOwnProgramSetToRunAsAdministrator()
+    {
+        const QString comSpec = qEnvironmentVariable("ComSpec");
+        const QString ours = QDir(QCoreApplication::applicationDirPath())
+            .filePath(u"ws-invoker-%1.exe"_s.arg(QUuid::createUuid().toString(QUuid::Id128).left(8)));
+        const QTemporaryDir elsewhere;
+        const QString theirs = elsewhere.filePath(u"theirs.exe"_s);
+        QVERIFY(QFile::copy(comSpec, ours));
+        QVERIFY(QFile::copy(comSpec, theirs));
+        const wchar_t* const layers = L"Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers";
+        HKEY key = nullptr;
+        QCOMPARE(::RegCreateKeyExW(HKEY_CURRENT_USER, layers, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr),
+            LSTATUS(ERROR_SUCCESS));
+        const std::wstring ourPath = QDir::toNativeSeparators(ours).toStdWString();
+        const std::wstring theirPath = QDir::toNativeSeparators(theirs).toStdWString();
+        const auto cleanup = qScopeGuard([&] {
+            ::RegDeleteValueW(key, ourPath.c_str());
+            ::RegDeleteValueW(key, theirPath.c_str());
+            ::RegCloseKey(key);
+            QFile::remove(ours);
+        });
+        const wchar_t flag[] = L"~ RUNASADMIN";
+        for (const std::wstring& path : {ourPath, theirPath})
+            QCOMPARE(::RegSetValueExW(key, path.c_str(), 0, REG_SZ, reinterpret_cast<const BYTE*>(flag), sizeof flag),
+                LSTATUS(ERROR_SUCCESS));
+
+        // 7: started with the marker dropInvokerLayer looks for (the layer itself Windows
+        // hands on with the flag after it, "RunAsInvoker RunAsAdmin"), and not with an
+        // administrator's rights (S-1-16-12288, the high integrity level), also when this test has them.
+        const std::wstring says = L"/d /c if %WINSHUN_AS_INVOKER%==1 (whoami /groups | find \"S-1-16-12288\" >nul || exit 7)";
+        ws::shell::StartFailure failure;
+        const ws::win32::UniqueHandle started = ws::shell::startUnelevated(ourPath, says, {}, &failure);
+        QVERIFY2(started.valid(), qPrintable(u"%1, error %2"_s.arg(QLatin1StringView(failure.step)).arg(failure.error)));
+        QCOMPARE(::WaitForSingleObject(started.get(), 15000), DWORD(WAIT_OBJECT_0));
+        DWORD code = 0;
+        QVERIFY(::GetExitCodeProcess(started.get(), &code));
+        QCOMPARE(code, 7ul);
+
+        failure = {};
+        QVERIFY(!ws::shell::startUnelevated(theirPath, says, {}, &failure).valid());
+        QCOMPARE(failure.error, static_cast<unsigned long>(ERROR_ELEVATION_REQUIRED));
+
+        // What the program then does first: both gone, so that what it starts can ask for rights.
+        qputenv("WINSHUN_AS_INVOKER", "1");
+        qputenv("__COMPAT_LAYER", "RunAsInvoker");
+        ws::shell::dropInvokerLayer();
+        QVERIFY(!qEnvironmentVariableIsSet("WINSHUN_AS_INVOKER"));
+        QVERIFY(!qEnvironmentVariableIsSet("__COMPAT_LAYER"));
+        // Not ours to take out: a layer the user set themselves.
+        qputenv("__COMPAT_LAYER", "RunAsInvoker");
+        ws::shell::dropInvokerLayer();
+        QCOMPARE(qEnvironmentVariable("__COMPAT_LAYER"), u"RunAsInvoker"_s);
+        qunsetenv("__COMPAT_LAYER");
+    }
+
     // The program gets the user's environment as the registry has it now, not the one this
     // process started with: a variable set (setx) after Win顺 started is seen by ws.
     void getsTheUsersEnvironmentAsTheRegistryHasIt()

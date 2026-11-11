@@ -192,6 +192,55 @@ private:
     LPVOID m_block = nullptr;
 };
 
+// "以管理员身份运行此程序" ticked in a program's properties (the compatibility
+// flag RUNASADMIN, kept by its path) makes every start of it without
+// administrator rights fail with error 740. The compatibility layer
+// RunAsInvoker in the new process's environment takes that flag's place: it
+// starts with the rights it is given. For Win顺's own programs alone (GitHub
+// #111: the drop pie's helper never started for such a copy), and the marker
+// beside it has the program take both out again (shell::dropInvokerLayer), so
+// that nothing it starts in turn is kept from asking for administrator rights.
+constexpr wchar_t kCompatLayer[] = L"__COMPAT_LAYER";
+constexpr wchar_t kInvokerMarker[] = L"WINSHUN_AS_INVOKER";
+
+// `block` (an environment block; ours when null) with the two variables set.
+std::vector<wchar_t> asInvokerEnvironment(const wchar_t* block)
+{
+    LPWCH own = block ? nullptr : ::GetEnvironmentStringsW();
+    std::vector<wchar_t> result;
+    const auto named = [](std::wstring_view entry, std::wstring_view name) {
+        return entry.size() > name.size() && entry[name.size()] == L'='
+            && ::CompareStringOrdinal(entry.data(), int(name.size()), name.data(), int(name.size()), TRUE) == CSTR_EQUAL;
+    };
+    for (const wchar_t* at = block ? block : own; at && *at;) {
+        const std::wstring_view entry(at);
+        if (!named(entry, kCompatLayer) && !named(entry, kInvokerMarker))
+            result.insert(result.end(), at, at + entry.size() + 1);
+        at += entry.size() + 1;
+    }
+    if (own)
+        ::FreeEnvironmentStringsW(own);
+    for (const std::wstring_view entry : {std::wstring_view(L"WINSHUN_AS_INVOKER=1"), std::wstring_view(L"__COMPAT_LAYER=RunAsInvoker")}) {
+        result.insert(result.end(), entry.begin(), entry.end());
+        result.push_back(L'\0');
+    }
+    result.push_back(L'\0');
+    return result;
+}
+
+// Whether `program` is in Win顺's own folder.
+bool ownProgram(const std::wstring& program)
+{
+    wchar_t exe[MAX_PATH] = {};
+    const DWORD n = ::GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH)
+        return false;
+    const std::wstring_view own(exe, n);
+    const size_t folder = own.find_last_of(L'\\');
+    return folder != std::wstring_view::npos && program.size() > folder + 1 && program.find_last_of(L"\\/") == folder
+        && ::CompareStringOrdinal(program.data(), int(folder), own.data(), int(folder), TRUE) == CSTR_EQUAL;
+}
+
 // The standard handles of a console program started for its output
 // (runUnelevatedCaptured): what it reads, and where it writes (both streams).
 struct StdHandles {
@@ -203,9 +252,9 @@ struct StdHandles {
 // rights and environment. Invalid when there is no shell to take them from.
 // `io`: the program's standard handles, and no console window (a console
 // program started from a program of ours would open one). `failure`: which
-// step failed, for the log (GitHub #172).
+// step failed, for the log (GitHub #172). `asInvoker`: see asInvokerEnvironment.
 win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring& dir, DWORD flags = 0,
-    const StdHandles* io = nullptr, StartFailure* failure = nullptr)
+    const StdHandles* io = nullptr, StartFailure* failure = nullptr, bool asInvoker = false)
 {
     const auto failed = [failure](const char* step, DWORD error) {
         if (failure)
@@ -243,14 +292,20 @@ win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring
     // What it starts gets the user's own environment, from their token (their
     // variables as the registry has them now), not this process's, which is as
     // old as this process and may be an administrator's (another account's, even).
-    EnvironmentBlock environment;
-    if (environment.create(token.get(), false))
+    EnvironmentBlock users;
+    LPVOID environment = users.create(token.get(), false) ? users.get() : nullptr;
+    std::vector<wchar_t> invoker;
+    if (asInvoker) {
+        invoker = asInvokerEnvironment(static_cast<const wchar_t*>(environment));
+        environment = invoker.data();
+    }
+    if (environment)
         flags |= CREATE_UNICODE_ENVIRONMENT;
     PROCESS_INFORMATION started {};
     // WINSHUN_TEST_NO_SECLOGON (live tests): as if Secondary Logon were turned off.
     static const bool noSecondaryLogon = qEnvironmentVariableIsSet("WINSHUN_TEST_NO_SECLOGON");
     if (!noSecondaryLogon && ::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), flags,
-            environment.get(), dir.empty() ? nullptr : dir.c_str(), &startup, &started)) {
+            environment, dir.empty() ? nullptr : dir.c_str(), &startup, &started)) {
         ::CloseHandle(started.hThread);
         return win32::UniqueHandle(started.hProcess);
     }
@@ -287,7 +342,7 @@ win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring
     const bool ok = ::UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, &parentHandle,
                         sizeof parentHandle, nullptr, nullptr)
         && ::CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, flags | EXTENDED_STARTUPINFO_PRESENT,
-            environment.get(), dir.empty() ? nullptr : dir.c_str(), &extended.StartupInfo, &started);
+            environment, dir.empty() ? nullptr : dir.c_str(), &extended.StartupInfo, &started);
     ::DeleteProcThreadAttributeList(attributes);
     if (!ok)
         return failed("CreateProcessWithTokenW", error); // the first one's: what keeps it from the usual way
@@ -846,20 +901,43 @@ win32::UniqueHandle startUnelevated(
     std::wstring command = L'"' + program + L'"';
     if (!args.empty())
         command += L' ' + args;
-    if (integrity::processElevated())
-        return startWithShellToken(std::move(command), cwd, 0, nullptr, failure);
-    // Not elevated: our own rights are the user's (CreateProcessWithTokenW
-    // needs a privilege only administrators have, error 1314).
-    STARTUPINFOW startup {sizeof(STARTUPINFOW)};
-    PROCESS_INFORMATION started {};
-    if (!::CreateProcessW(program.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr,
-            cwd.empty() ? nullptr : cwd.c_str(), &startup, &started)) {
-        if (failure)
-            *failure = {"CreateProcessW", ::GetLastError()};
-        return {};
-    }
-    ::CloseHandle(started.hThread);
-    return win32::UniqueHandle(started.hProcess);
+    StartFailure why;
+    const auto start = [&](bool asInvoker) {
+        if (integrity::processElevated())
+            return startWithShellToken(command, cwd, 0, nullptr, &why, asInvoker);
+        // Not elevated: our own rights are the user's (CreateProcessWithTokenW
+        // needs a privilege only administrators have, error 1314).
+        std::vector<wchar_t> environment;
+        if (asInvoker)
+            environment = asInvokerEnvironment(nullptr);
+        std::wstring line = command; // CreateProcessW writes in it
+        STARTUPINFOW startup {sizeof(STARTUPINFOW)};
+        PROCESS_INFORMATION started {};
+        if (!::CreateProcessW(program.c_str(), line.data(), nullptr, nullptr, FALSE, asInvoker ? CREATE_UNICODE_ENVIRONMENT : 0,
+                asInvoker ? environment.data() : nullptr, cwd.empty() ? nullptr : cwd.c_str(), &startup, &started)) {
+            why = {"CreateProcessW", ::GetLastError()};
+            return win32::UniqueHandle();
+        }
+        ::CloseHandle(started.hThread);
+        return win32::UniqueHandle(started.hProcess);
+    };
+    win32::UniqueHandle process = start(false);
+    // A program of ours set to run as administrator: once more, as the
+    // invoker (asInvokerEnvironment).
+    if (!process.valid() && why.error == ERROR_ELEVATION_REQUIRED && ownProgram(program))
+        process = start(true);
+    if (!process.valid() && failure)
+        *failure = why;
+    return process;
+}
+
+void dropInvokerLayer()
+{
+    if (::GetEnvironmentVariableW(kInvokerMarker, nullptr, 0) == 0)
+        return;
+    // Out of the C runtime's copy too (what qgetenv reads), which takes them out of Windows' own.
+    ::_wputenv_s(kInvokerMarker, L"");
+    ::_wputenv_s(kCompatLayer, L"");
 }
 
 bool runsAsShellUser()

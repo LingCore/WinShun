@@ -5326,6 +5326,13 @@
 - **测试**：`tst_updater::helperStartsNewVersion` 用真实助手和替身 exe（`tst_updater_fakeapp`）完整走一遍，给替身加上 `RUNASADMIN` 后看它是否以管理员身份运行。只在“管理员账户、未提权、UAC 不提示”的机器上跑这一行，否则跳过，不弹窗。
 - **教训**：修在助手里的东西，要等下一个版本装上之后的那次更新才生效。回复用户时要说清楚这一次怎么办（手动下载，或先去掉勾）。
 
+## 勾了“以管理员身份运行”的 Win顺，拖放圆盘的助手一直起不来（GitHub #111 的日志，2026-11-11）
+
+- **现象**：用户日志里 `Drop pie helper: not started: CreateProcessWithTokenW, error 740`，连续两千多次；拖放时不出圆盘。
+- **原因**：圆盘助手是同一个 `WinShun.exe`，必须以普通权限运行（从普通权限的资源管理器拖过来）。`WinShun.exe` 带 `RUNASADMIN` 时，用外壳令牌的 `CreateProcessWithTokenW` 和普通的 `CreateProcess` 都返回 740。这里不能像上一条那样改用 `ShellExecuteEx`：那样助手会提权，收不到拖放。
+- **做法**：`shell::startUnelevated` 遇到 740 且目标在 Win顺 自己的文件夹里时，在子进程环境里加 `__COMPAT_LAYER=RunAsInvoker` 再启动一次，它压过 `RUNASADMIN`（实测子进程里看到的是 `RunAsInvoker RunAsAdmin`，Windows 把注册表的标记接在后面，仍按调用者权限运行）。这个变量会传给孙进程，让它们也不再提权，所以同时放一个标记 `WINSHUN_AS_INVOKER`，`main()` 第一行 `shell::dropInvokerLayer()` 见到标记就把两个变量都去掉（用 `_wputenv_s`，C 运行库和 Windows 两份环境一起清；只用 `SetEnvironmentVariableW` 时 `qgetenv` 还读得到）。别人的程序不这样处理：它要管理员权限就让它 740。
+- **测试**：`tst_shelllaunch::startsOurOwnProgramSetToRunAsAdministrator`，给复制到程序文件夹的 `cmd.exe` 加 `RUNASADMIN`（HKCU，不用提权）。普通权限和管理员权限各跑一次（后者走外壳令牌那条路），子进程都以非管理员权限启动。没有用真实的圆盘拖放验证（要退出用户正在运行的 Win顺）。
+
 ## 测试：`QTRY_VERIFY` 里的表达式不能有副作用（2026-11-10）
 
 - **现象**：`QTRY_VERIFY_WITH_TIMEOUT(::DeleteFileW(path), 15000)` 每次都失败，而且正好等 30 秒；另开脚本看，文件 2 秒内就删掉了。

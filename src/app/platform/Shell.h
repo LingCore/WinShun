@@ -37,13 +37,18 @@ filemanager::Kind fileManager(); // the one set
 // Win顺 is elevated, its own otherwise), never elevated, for a program to
 // wait for (see filemanager); the others start through open() and run().
 // `cwd`: its working folder; empty for ours. Invalid when Win顺 is elevated
-// and no shell runs to take them from; `failure` then says why.
+// and no shell runs to take them from; `failure` then says why. A program
+// of Win顺's own that is set to run as administrator in its properties
+// starts all the same, with those normal rights (GitHub #111).
 struct StartFailure {
     const char* step = nullptr; // the call that failed ("no desktop shell", "CreateProcessWithTokenW", ...)
     unsigned long error = 0; // its GetLastError()
 };
 win32::UniqueHandle startUnelevated(const std::wstring& program, const std::wstring& args, const std::wstring& cwd = {},
     StartFailure* failure = nullptr);
+// First thing in a program of ours: takes out of its environment what
+// startUnelevated put there to start it so, before it starts anything itself.
+void dropInvokerLayer();
 // Whether Win顺 runs as the account that is logged on at the desktop (the shell's). Not
 // when it was started as another one, an administrator's: its HKCU, environment and
 // profile are that account's, not the user's. True when that cannot be told.

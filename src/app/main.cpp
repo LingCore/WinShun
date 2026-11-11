@@ -217,6 +217,7 @@ bool startAgain(const QStringList& arguments, ws::App::Elevation elevation)
 
 int main(int argc, char* argv[])
 {
+    ws::shell::dropInvokerLayer(); // before anything is started from here
     // "--run-hidden <command line>": the elevated half of a silent custom
     // command (GitHub #112), before anything else is set up.
     if (const int hidden = ws::shell::hiddenHelper(); hidden >= 0)
