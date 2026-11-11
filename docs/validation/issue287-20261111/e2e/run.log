@@ -1,0 +1,17 @@
+18:52:21.933 user's WinShun running: 
+18:52:22.932 Windows clipboard history before: 1
+18:52:25.260 staged WinShun pid 31752
+18:53:22.240 ok  : tap        text box [] expected []
+18:53:22.241 ok  : step       text box [WinShun issue 287 line 2 of 46828] expected [WinShun issue 287 line 2 of 46828]
+18:53:22.242 ok  : two-steps  text box [WinShun issue 287 line 1 of 46828] expected [WinShun issue 287 line 1 of 46828]
+18:53:22.243 ok  : held       text box [WinShun issue 287 line 1 of 46828] expected [WinShun issue 287 line 1 of 46828]
+18:53:22.243 ok  : quick-step text box [WinShun issue 287 line 2 of 46828] expected [WinShun issue 287 line 2 of 46828]
+18:53:22.246 ok  : other-key  text box [] expected []
+18:53:22.246 ok  : part-up    text box [] expected []
+18:53:22.247 ok  : enter      text box [WinShun issue 287 line 2 of 46828] expected [WinShun issue 287 line 2 of 46828]
+18:53:22.248 PASS: all 8 ways of pressing
+18:53:22.254 profile file: \WinShun\WinShun.ini 7607
+18:53:23.073 Windows clipboard history after: 1 (before: 1, plus the test's three lines)
+18:53:26.159 elevated part cleaned: True
+18:53:26.159 clipboard text put back
+18:53:26.172 Explorer verbs as before: True

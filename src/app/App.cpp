@@ -1020,7 +1020,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
             beginTrigger(id == kWinVHotkeyId ? TriggerSource::WinV : TriggerSource::ClipboardHotkey, pressedAt);
             armClipboardHold(id, pressedAt); // before the window: the keys from the opening press on
             toggleClipboard(pressedAt);
-            if (m_hold && !m_keyRouter) { // own keyboard: browse without a hook or a paste on release
+            if (m_holdWatch && !m_keyRouter) { // own keyboard after all: browse without a hook or a paste on release
                 endClipboardHold("not-routed");
                 m_browseHotkey = m_holdHotkey;
                 m_browseModifiers = m_holdModifiers;
@@ -1519,6 +1519,18 @@ bool App::eventFilter(QObject* watched, QEvent* event)
     // mouse picks the row now, letting go pastes nothing.
     if (m_hold && watched == m_clipWindow && event->type() == QEvent::MouseButtonPress)
         endClipboardHold("click");
+    // Held over an administrator's program: the window's own keys tell what
+    // a hook would (m_ownWatch). Once Qt is through with this one.
+    if (m_ownWatch && watched == m_clipWindow) {
+        if (event->type() == QEvent::KeyRelease) {
+            QMetaObject::invokeMethod(this, &App::checkClipboardHold, Qt::QueuedConnection);
+        } else if (event->type() == QEvent::KeyPress) {
+            const auto* key = static_cast<QKeyEvent*>(event);
+            const unsigned vk = key->nativeVirtualKey();
+            if (!key->isAutoRepeat() && vk != m_ownWatch->vk() && hotkeysteps::modifierOf(vk) == 0)
+                clipboardHoldNote(m_ownWatch->other(), ::GetTickCount64()); // the key itself goes on to the window
+        }
+    }
     if (m_browseHotkey && watched == m_clipWindow) {
         bool done = event->type() == QEvent::MouseButtonPress;
         if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
@@ -5651,6 +5663,20 @@ void App::armClipboardHold(int hotkey, std::uint64_t pressedAt)
         diagnostics::record(u"clipboard-hold-skipped"_s, {{u"reason"_s, u"late"_s}, {u"ms"_s, static_cast<qint64>(late)}});
         return;
     }
+    // An administrator's program, pasted into through the index service:
+    // the window takes the keyboard there, and watches the keys itself.
+    if (target && integrity::higherThanOurs(target) && m_settings.clipboardPasteElevated) {
+        m_hold.emplace(pressedAt);
+        m_ownWatch.emplace(modifiers, vk);
+        m_holdPressedAt = pressedAt;
+        m_holdHotkey = hotkey;
+        m_holdModifiers = modifiers & hotkeysteps::kModifiers;
+        m_holdVk = vk;
+        m_holdLate = late;
+        m_clipboard->beginSteps(holdKeysOf(shortcut));
+        m_holdTimer.start();
+        return;
+    }
     if (!target || integrity::higherThanOurs(target)) {
         m_browseHotkey = hotkey;
         m_browseModifiers = modifiers & hotkeysteps::kModifiers;
@@ -5698,6 +5724,8 @@ bool App::clipboardStepPress(int hotkey)
     }
     if (!m_hold || hotkey != m_holdHotkey)
         return false;
+    if (m_ownWatch) // no hook to tell of it first
+        m_hold->note(m_ownWatch->pressed(), ::GetTickCount64());
     if (m_hold->press() == hotkeysteps::Hold::Press::Normal) {
         endClipboardHold("pressed-again"); // part of it let go first: closes, or raises, as ever
         return false;
@@ -5715,8 +5743,13 @@ void App::clipboardHoldNote(hotkeysteps::Note note, std::uint64_t at)
     case Outcome::None:
         return;
     case Outcome::Paste: { // as Enter on that row: the window goes, the paste keys to the program, past the hook
+        const bool own = m_ownWatch.has_value();
         const bool pasted = m_clipboard->finishSteps(m_holdWatch ? m_holdWatch->guardPaste() : nullptr);
         endClipboardHold(pasted ? "paste" : "gone");
+        // Let go before Windows let the window to the front: it has no
+        // focus to lose when the program gets the paste, and would stay up.
+        if (own && pasted)
+            hideClipboard();
         return;
     }
     case Outcome::Cancel: // nothing pasted; the window stays, on that row, until Esc again
@@ -5761,6 +5794,28 @@ void App::checkClipboardHold()
     }
     using Held = hotkeysteps::Hold::Held;
     using Poll = hotkeysteps::Hold::Poll;
+    if (m_ownWatch) {
+        const std::uint64_t now = ::GetTickCount64();
+        // The keys can be read once the window is in front, not while the
+        // administrator's program still is. Never in front: another window
+        // took it, nothing is held for this one.
+        if (!clipboardInCharge()) {
+            if (now > m_holdPressedAt + hotkeysteps::kDrainCapMs)
+                endClipboardHold("no-keyboard");
+            return;
+        }
+        const hotkeysteps::OwnWatch::Answer answer = m_ownWatch->keys(held, keyDown);
+        const std::uint64_t at = m_ownWatch->seen() ? now : m_holdPressedAt;
+        for (const hotkeysteps::Note note : {answer.note, answer.then}) {
+            if (note != hotkeysteps::Note::None)
+                clipboardHoldNote(note, at);
+            if (!m_hold)
+                return;
+        }
+        if (modifiers == m_holdModifiers && m_hold->poll(Held::Whole, now) == Poll::Hint)
+            m_clipboard->holdFirst();
+        return;
+    }
     // Whole: the modifiers, its key tapped or held (#199: Win held, V let go).
     switch (m_hold->poll(modifiers == m_holdModifiers ? Held::Whole
                          : keyDown || modifiers      ? Held::Part
@@ -5788,6 +5843,7 @@ void App::endClipboardHold(const char* why)
              {u"lateMs"_s, static_cast<qint64>(m_holdLate)}});
         m_hold.reset();
     }
+    m_ownWatch.reset();
     m_clipboard->endSteps();
     if (m_holdWatch) {
         // The keys as ever from here on; an Esc it took stays its own until

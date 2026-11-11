@@ -275,6 +275,66 @@ private:
     bool m_escTaken = false; // its release is taken too
 };
 
+// Watch's part where no hook hears the keys: the window has the keyboard
+// itself (over an administrator's program Windows keeps the keys from an
+// ordinary process's hook, so the clipboard takes the focus, GitHub #287).
+// Told what the window sees, on the GUI thread: its hotkey's WM_HOTKEY, the
+// keys as GetAsyncKeyState has them once it is in front, another key's press.
+// The same notes come of it. Esc is the window's own there (it closes).
+class OwnWatch {
+public:
+    OwnWatch(unsigned mask, unsigned vk) noexcept
+        : m_mask(mask & kModifiers)
+        , m_vk(vk)
+    {
+    }
+
+    unsigned vk() const noexcept { return m_vk; }
+    // The whole hotkey was seen down by the window itself: when it is let
+    // go is known from then on. Let go before that (while the window was on
+    // its way to the front), it was held for no time the window can vouch
+    // for: a step made still counts, a second's hold does not.
+    bool seen() const noexcept { return m_seen; }
+
+    // Its WM_HOTKEY again: Windows sends one only for the whole hotkey.
+    Note pressed() const noexcept { return m_done ? Note::None : m_lifted ? Note::Fresh : Note::Step; }
+
+    struct Answer {
+        Note note = Note::None;
+        Note then = Note::None; // after `note` (Lifted, then AllUp)
+    };
+    // The keys now: `held`, the modifiers down (k... bits); `keyDown`, the
+    // hotkey's key.
+    Answer keys(unsigned held, bool keyDown) noexcept
+    {
+        Answer answer;
+        if (m_done)
+            return answer;
+        held &= m_mask;
+        if (held == m_mask) {
+            if (!m_lifted)
+                m_seen = true;
+            return answer;
+        }
+        if (!std::exchange(m_lifted, true))
+            answer.note = Note::Lifted;
+        if (held == 0 && !keyDown) {
+            m_done = true;
+            (answer.note == Note::None ? answer.note : answer.then) = Note::AllUp;
+        }
+        return answer;
+    }
+    // A key's press in the window: not a modifier, not the hotkey's key.
+    Note other() noexcept { return std::exchange(m_done, true) ? Note::None : Note::Other; }
+
+private:
+    unsigned m_mask;
+    unsigned m_vk;
+    bool m_seen = false;
+    bool m_lifted = false; // one of the modifiers was let go
+    bool m_done = false;
+};
+
 // The GUI thread's side of one hold (App), on the 64-bit tick clock.
 class Hold {
 public:

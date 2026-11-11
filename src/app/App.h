@@ -855,11 +855,15 @@ private:
     std::unique_ptr<HoldWatch> m_drainingWatch; // done, until an Esc it took is let go (HoldWatch::drain)
     std::uint64_t m_drainingWatchRun = 0;
     std::optional<hotkeysteps::Hold> m_hold;
+    // No hook where the clipboard has the keyboard itself, over an
+    // administrator's program (GitHub #287): what its own window sees.
+    std::optional<hotkeysteps::OwnWatch> m_ownWatch;
+    std::uint64_t m_holdPressedAt = 0; // the opening press
     int m_holdHotkey = 0;
     unsigned m_holdModifiers = 0; // hotkeysteps::kAlt...
     unsigned m_holdVk = 0;
-    // Own windows keep their keyboard: browse by repeated hotkey without
-    // the external-target hook or a paste on release (GitHub #137).
+    // Nothing to paste into, or a field of Win顺's own: browse by repeated
+    // hotkey, without a paste on release (GitHub #137).
     int m_browseHotkey = 0;
     unsigned m_browseModifiers = 0;
     unsigned m_browseVk = 0;

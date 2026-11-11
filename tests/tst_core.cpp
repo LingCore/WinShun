@@ -15011,6 +15011,120 @@ private slots:
         QCOMPARE(stepRow(0, 0), -1);
     }
 
+    // The hold where the window has the keyboard itself (an administrator's
+    // program in front, GitHub #287): OwnWatch gives Hold the notes a hook
+    // would, from what the window sees.
+    void hotkeyStepsOwnWindow()
+    {
+        using namespace ws::hotkeysteps;
+        using N = Note;
+        using O = Hold::Outcome;
+        constexpr unsigned kV = 0x56;
+        constexpr std::uint64_t t0 = 10'000;
+        // App's part: a note at `now` if the window saw the hotkey down itself,
+        // else at the opening press (how long it was held is not known).
+        const auto tell = [](Hold& hold, const OwnWatch& watch, OwnWatch::Answer answer, std::uint64_t now) {
+            O outcome = O::None;
+            for (const Note note : {answer.note, answer.then}) {
+                if (note != N::None)
+                    outcome = hold.note(note, watch.seen() ? now : t0);
+            }
+            return outcome;
+        };
+        const auto step = [](Hold& hold, const OwnWatch& watch, std::uint64_t now) {
+            hold.note(watch.pressed(), now);
+            return hold.press();
+        };
+
+        { // Two more presses, then all of it let go: that row is pasted.
+            Hold hold(t0);
+            OwnWatch watch(kCtrl | kAlt, kV);
+            QCOMPARE(tell(hold, watch, watch.keys(kCtrl | kAlt, true), t0 + 120), O::None);
+            QVERIFY(watch.seen());
+            QCOMPARE(step(hold, watch, t0 + 300), Hold::Press::Step);
+            QCOMPARE(step(hold, watch, t0 + 500), Hold::Press::Step);
+            QCOMPARE(hold.steps(), 2);
+            const OwnWatch::Answer lifted = watch.keys(kCtrl, false); // Alt first
+            QCOMPARE(lifted.note, N::Lifted);
+            QCOMPARE(lifted.then, N::None);
+            QCOMPARE(tell(hold, watch, lifted, t0 + 600), O::None);
+            const OwnWatch::Answer up = watch.keys(0, false);
+            QCOMPARE(up.note, N::AllUp);
+            QCOMPARE(tell(hold, watch, up, t0 + 620), O::Paste);
+            QCOMPARE(watch.keys(0, false).note, N::None); // once
+        }
+        { // Both modifiers gone between two looks: Lifted, then AllUp.
+            Hold hold(t0);
+            OwnWatch watch(kCtrl | kAlt, kV);
+            watch.keys(kCtrl | kAlt, false);
+            QCOMPARE(step(hold, watch, t0 + 200), Hold::Press::Step);
+            const OwnWatch::Answer up = watch.keys(0, false);
+            QCOMPARE(up.note, N::Lifted);
+            QCOMPARE(up.then, N::AllUp);
+            QCOMPARE(tell(hold, watch, up, t0 + 400), O::Paste);
+        }
+        { // The modifiers up, its key still down: not over until that is up too.
+            Hold hold(t0);
+            OwnWatch watch(kCtrl, kV);
+            watch.keys(kCtrl, true);
+            QCOMPARE(step(hold, watch, t0 + 200), Hold::Press::Step);
+            QCOMPARE(tell(hold, watch, watch.keys(0, true), t0 + 300), O::None);
+            QCOMPARE(tell(hold, watch, watch.keys(0, false), t0 + 350), O::Paste);
+        }
+        { // A press and a quick release, seen or not: the window opens as ever.
+            Hold hold(t0);
+            OwnWatch watch(kCtrl, kV);
+            watch.keys(kCtrl, true);
+            QCOMPARE(tell(hold, watch, watch.keys(0, false), t0 + 200), O::End);
+        }
+        { // Held a second, seen by the window: the first row.
+            Hold hold(t0);
+            OwnWatch watch(kCtrl, kV);
+            watch.keys(kCtrl, false);
+            QCOMPARE(hold.poll(Hold::Held::Whole, t0 + 1050), Hold::Poll::Hint);
+            QCOMPARE(tell(hold, watch, watch.keys(0, false), t0 + 1200), O::Paste);
+        }
+        { // Let go before the window was in front, which took over a second
+          // (a slow opening): held for no time it can vouch for, no paste.
+            Hold hold(t0);
+            OwnWatch watch(kCtrl, kV);
+            const OwnWatch::Answer up = watch.keys(0, false);
+            QVERIFY(!watch.seen());
+            QCOMPARE(tell(hold, watch, up, t0 + 1500), O::End);
+        }
+        { // ... a step made meanwhile still counts (two quick presses).
+            Hold hold(t0);
+            OwnWatch watch(kCtrl, kV);
+            QCOMPARE(step(hold, watch, t0 + 60), Hold::Press::Step);
+            QCOMPARE(tell(hold, watch, watch.keys(0, false), t0 + 1500), O::Paste);
+        }
+        { // A modifier let go and the whole hotkey pressed again: a press as ever.
+            Hold hold(t0);
+            OwnWatch watch(kCtrl | kShift, kV);
+            watch.keys(kCtrl | kShift, true);
+            QCOMPARE(tell(hold, watch, watch.keys(kCtrl, false), t0 + 200), O::None);
+            watch.keys(kCtrl | kShift, false);
+            QCOMPARE(watch.pressed(), N::Fresh);
+            QCOMPARE(step(hold, watch, t0 + 400), Hold::Press::Normal);
+        }
+        { // Another key (an arrow, a letter of the search): the hold is over, letting go pastes nothing.
+            Hold hold(t0);
+            OwnWatch watch(kCtrl, kV);
+            watch.keys(kCtrl, true);
+            QCOMPARE(step(hold, watch, t0 + 200), Hold::Press::Step);
+            QCOMPARE(watch.other(), N::Other);
+            QCOMPARE(hold.note(N::Other, t0 + 300), O::End);
+            QCOMPARE(watch.other(), N::None);
+            QCOMPARE(watch.keys(0, false).note, N::None);
+            QCOMPARE(watch.pressed(), N::None);
+        }
+        { // More modifiers than the hotkey's are not its business.
+            OwnWatch watch(kCtrl, kV);
+            QCOMPARE(watch.keys(kCtrl | kShift, false).note, N::None);
+            QVERIFY(watch.seen());
+        }
+    }
+
     void pasteKeys()
     {
         namespace pk = ws::pastekeys;

@@ -1,0 +1,31 @@
+﻿18:52:23.975 integrity: Mandatory Label\High Mandatory Level     标签   S-1-16-12288
+18:52:25.167 pipe True
+18:52:37.887 --- tap
+18:52:38.771 front hwnd=7018340 powershell class=WindowsForms10.Window.8.app.0.25326a1_r8_ad1; own window 7018340
+18:52:41.305 tap: front hwnd=10753530 WinShun class=Qt6120QWindowToolSaveBits; text box holds []
+18:52:42.174 --- step
+18:52:43.931 held: front hwnd=10753530 WinShun class=Qt6120QWindowToolSaveBits
+18:52:44.480 text box: [WinShun issue 287 line 2 of 46828]
+18:52:46.895 step: front hwnd=7018340 powershell class=WindowsForms10.Window.8.app.0.25326a1_r8_ad1; text box holds [WinShun issue 287 line 2 of 46828]
+18:52:47.759 text box: []
+18:52:47.761 --- two-steps
+18:52:50.197 text box: [WinShun issue 287 line 1 of 46828]
+18:52:52.635 two-steps: front hwnd=7018340 powershell class=WindowsForms10.Window.8.app.0.25326a1_r8_ad1; text box holds [WinShun issue 287 line 1 of 46828]
+18:52:53.515 text box: []
+18:52:53.517 --- held
+18:52:56.008 text box: [WinShun issue 287 line 1 of 46828]
+18:52:58.395 held: front hwnd=7018340 powershell class=WindowsForms10.Window.8.app.0.25326a1_r8_ad1; text box holds [WinShun issue 287 line 1 of 46828]
+18:52:59.206 text box: []
+18:52:59.208 --- quick-step
+18:53:00.199 text box: [WinShun issue 287 line 2 of 46828]
+18:53:03.121 quick-step: front hwnd=7018340 powershell class=WindowsForms10.Window.8.app.0.25326a1_r8_ad1; text box holds [WinShun issue 287 line 2 of 46828]
+18:53:03.989 text box: []
+18:53:03.990 --- other-key
+18:53:08.753 other-key: front hwnd=10753530 WinShun class=Qt6120QWindowToolSaveBits; text box holds []
+18:53:09.624 --- part-up
+18:53:15.122 part-up: front hwnd=7018340 powershell class=WindowsForms10.Window.8.app.0.25326a1_r8_ad1; text box holds []
+18:53:15.990 --- enter
+18:53:19.210 text box: [WinShun issue 287 line 2 of 46828]
+18:53:21.641 enter: front hwnd=7018340 powershell class=WindowsForms10.Window.8.app.0.25326a1_r8_ad1; text box holds [WinShun issue 287 line 2 of 46828]
+18:53:24.345 stopping
+18:53:25.974 cleaned

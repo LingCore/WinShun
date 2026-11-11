@@ -1,0 +1,14 @@
+{"details":{"heldMs":0,"lateMs":0,"steps":0,"why":"browse"},"event":"clipboard-hold-end","time":"2026-11-11T10:52:38.844Z"}
+{"details":{"heldMs":1156,"lateMs":0,"steps":1,"why":"paste"},"event":"clipboard-hold-end","time":"2026-11-11T10:52:44.363Z"}
+{"details":{"error":0,"method":"service","outcome":"pasted"},"event":"clipboard-paste","time":"2026-11-11T10:52:44.477Z"}
+{"details":{"heldMs":1500,"lateMs":0,"steps":2,"why":"paste"},"event":"clipboard-hold-end","time":"2026-11-11T10:52:50.073Z"}
+{"details":{"error":0,"method":"service","outcome":"pasted"},"event":"clipboard-paste","time":"2026-11-11T10:52:50.196Z"}
+{"details":{"heldMs":1562,"lateMs":0,"steps":0,"why":"paste"},"event":"clipboard-hold-end","time":"2026-11-11T10:52:55.887Z"}
+{"details":{"error":0,"method":"service","outcome":"pasted"},"event":"clipboard-paste","time":"2026-11-11T10:52:56.018Z"}
+{"details":{"heldMs":0,"lateMs":0,"steps":1,"why":"paste"},"event":"clipboard-hold-end","time":"2026-11-11T10:53:00.093Z"}
+{"details":{"error":0,"method":"service","outcome":"pasted"},"event":"clipboard-paste","time":"2026-11-11T10:53:00.199Z"}
+{"details":{"heldMs":1078,"lateMs":0,"steps":1,"why":"other-key"},"event":"clipboard-hold-end","time":"2026-11-11T10:53:05.880Z"}
+{"details":{"heldMs":1031,"lateMs":0,"steps":1,"why":"pressed-again"},"event":"clipboard-hold-end","time":"2026-11-11T10:53:12.236Z"}
+{"details":{"action":"clipboard-back","faults":0,"helper":true,"hot_mb":0,"queue_ms":0,"raw_input":"none","skipped":1,"source":"clipboard-hotkey","trimmed":false},"event":"trigger","time":"2026-11-11T10:53:12.241Z"}
+{"details":{"heldMs":0,"lateMs":0,"steps":0,"why":"browse"},"event":"clipboard-hold-end","time":"2026-11-11T10:53:17.080Z"}
+{"details":{"error":0,"method":"service","outcome":"pasted"},"event":"clipboard-paste","time":"2026-11-11T10:53:19.214Z"}
