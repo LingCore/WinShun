@@ -114,6 +114,9 @@ struct OpusTab {
     quintptr tab = 0; // the file-display container HWND, parent of the focused file display in a dual lister
 };
 QList<OpusTab> opusTabs(const QByteArray& xml);
+// That answer is one (`<results ... result="1">`), whatever it lists: a tab
+// that shows no path (This PC) is left out of it (Opus 13.25, GitHub #82).
+bool opusAnswered(const QByteArray& xml);
 
 // A folder tab of XYplorer, from what its window answers when asked which
 // folders it shows (filemanager::, a script sent by WM_COPYDATA): a first

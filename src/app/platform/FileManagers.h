@@ -94,7 +94,11 @@ bool selectInExplorer(HWND tab, const std::wstring& folder, const std::wstring& 
     const std::function<bool()>& current);
 // The exact Opus file-display tab; not whichever pane became active since
 // its first key. Uses the existing bounded, unelevated dopusrt query.
-std::wstring opusFolder(HWND tab);
+// opusPlace: the folder on disk it shows; empty where it shows none (This
+// PC, a library, a collection, FTP, inside an archive: GitHub #82); nothing
+// when Opus did not answer or the window is no Opus file display.
+std::optional<std::wstring> opusPlace(HWND tab);
+std::wstring opusFolder(HWND tab); // empty for both of those
 bool goToInOpusView(HWND root, HWND tab, const std::wstring& folder, const std::wstring& select = {});
 bool goTo(HWND tab, const std::wstring& folder);
 // goTo, for a tab whose window was just handed the front with the keyboard

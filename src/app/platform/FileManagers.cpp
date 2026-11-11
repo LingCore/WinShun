@@ -751,35 +751,44 @@ std::vector<std::wstring> totalCommanderFolders(HWND window)
     return folders;
 }
 
-// The tabs of Directory Opus's windows; none while it has no window open:
+// What Directory Opus answers when asked which folders its windows show (the
+// XML of pathtext::opusTabs); nothing when it did not, or has no window open:
 // asking would start it.
-QList<pathtext::OpusTab> opusTabs(bool existingOnly = true)
+std::optional<QByteArray> opusPathsAnswer()
 {
     if (!::FindWindowW(L"dopus.lister", nullptr))
-        return {};
+        return std::nullopt;
     const std::wstring rt = opusProgram();
     wchar_t temp[MAX_PATH + 1] {};
     const DWORD n = ::GetTempPathW(MAX_PATH + 1, temp);
     if (rt.empty() || n == 0 || n > MAX_PATH)
-        return {};
+        return std::nullopt;
     static std::atomic<unsigned> asked {0};
     const std::wstring file = std::wstring(temp, n) + L"WinShun-opus-" + std::to_wstring(::GetCurrentProcessId()) + L'-'
         + std::to_wstring(++asked) + L".xml";
     // It answers in a file, written by the time dopusrt.exe ends (some 50 ms).
     const win32::UniqueHandle process = shell::startUnelevated(rt, L"/info " + quoted(file) + L",paths");
     if (!process.valid())
-        return {};
+        return std::nullopt;
     if (::WaitForSingleObject(process.get(), 3000) != WAIT_OBJECT_0) {
         ::TerminateProcess(process.get(), 1);
         ::DeleteFileW(file.c_str());
         qWarning() << "Directory Opus did not say which folders it shows";
-        return {};
+        return std::nullopt;
     }
     QFile answer(QString::fromStdWString(file));
-    const QByteArray xml = answer.open(QIODevice::ReadOnly) ? answer.readAll() : QByteArray();
+    std::optional<QByteArray> xml;
+    if (answer.open(QIODevice::ReadOnly))
+        xml = answer.readAll();
     answer.close();
     answer.remove();
-    QList<pathtext::OpusTab> tabs = pathtext::opusTabs(xml);
+    return xml;
+}
+
+// The tabs of Directory Opus's windows; none while it has no window open.
+QList<pathtext::OpusTab> opusTabs(bool existingOnly = true)
+{
+    QList<pathtext::OpusTab> tabs = pathtext::opusTabs(opusPathsAnswer().value_or({}));
     if (existingOnly)
         tabs.removeIf([](const pathtext::OpusTab& tab) { return !isFolder(tab.path.toStdWString()); }); // archives
     return tabs;
@@ -1241,19 +1250,33 @@ bool goToInOpus(const std::wstring& folder)
     return !exe.empty() && run(exe, L"/acmd Go " + quoted(folder), false);
 }
 
-std::wstring opusFolder(HWND view)
+std::optional<std::wstring> opusPlace(HWND view)
 {
     const HWND root = ::GetAncestor(view, GA_ROOT);
     if (!folderview::isOpusFileDisplay(root, view))
-        return {};
+        return std::nullopt;
     // DOpusRT's `tab` is the file-display container, while keyboard focus
     // belongs to its file-display child (measured with Opus 13.25).
     const quintptr container = reinterpret_cast<quintptr>(::GetParent(view));
-    for (const pathtext::OpusTab& tab : opusTabs(false)) {
-        if (tab.lister == reinterpret_cast<quintptr>(root) && tab.tab == container && isFolder(tab.path.toStdWString()))
-            return tab.path.toStdWString();
-    }
-    return {};
+    const std::optional<QByteArray> answer = opusPathsAnswer();
+    if (!answer || !pathtext::opusAnswered(*answer))
+        return std::nullopt;
+    const QList<pathtext::OpusTab> tabs = pathtext::opusTabs(*answer);
+    const auto shown = std::ranges::find_if(tabs, [&](const pathtext::OpusTab& tab) {
+        return tab.lister == reinterpret_cast<quintptr>(root) && tab.tab == container;
+    });
+    // Not among them: This PC, which Opus 13.25 leaves out of its answer (and
+    // what pathtext::opusTabs drops: FTP and the like). A library or the
+    // inside of an archive is named there, and is no folder.
+    if (shown == tabs.end())
+        return std::wstring();
+    std::wstring path = shown->path.toStdWString();
+    return isFolder(path) ? std::move(path) : std::wstring();
+}
+
+std::wstring opusFolder(HWND view)
+{
+    return opusPlace(view).value_or({});
 }
 
 bool goToInOpusView(HWND root, HWND tab, const std::wstring& folder, const std::wstring& select)

@@ -3120,28 +3120,34 @@ void App::folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request)
     m_typingWorker->post([this, root, tab, opus, request] {
         QElapsedTimer clock;
         clock.start();
-        const QString folder
-            = QString::fromStdWString(opus ? filemanager::opusFolder(tab) : filemanager::explorerFolder(tab));
+        // Opus's tab without a folder on disk (This PC, a library, FTP): known
+        // all the same, and searched as the whole PC (GitHub #82).
+        const std::optional<std::wstring> place
+            = opus ? filemanager::opusPlace(tab) : std::optional(filemanager::explorerFolder(tab));
+        const QString folder = QString::fromStdWString(place.value_or({}));
+        const bool known = place && (opus || !folder.isEmpty());
         qInfo().noquote() << (opus ? u"Opus typing:" : u"Explorer typing:")
-                          << u"folder \"%1\" %2 ms"_s.arg(folder).arg(clock.elapsed());
+                          << u"folder \"%1\"%2 %3 ms"_s.arg(folder, known ? QString() : u" (none)"_s).arg(clock.elapsed());
         QMetaObject::invokeMethod(
-            this, [this, root, tab, opus, request, folder] { typingFolderKnown(root, tab, opus, request, folder); },
+            this,
+            [this, root, tab, opus, request, known, folder] { typingFolderKnown(root, tab, opus, request, known, folder); },
             Qt::QueuedConnection);
     });
 }
 
-void App::typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t request, const QString& folder)
+void App::typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t request, bool known, const QString& folder)
 {
     if (!m_typing || !m_typing->pending(request))
         return;
     // No folder on disk there (Home, This PC, the Recycle Bin, a search): the
     // keys were Explorer's after all, which jumps by them as it would have.
+    // In Opus such a tab is `known` with no folder: the whole PC is searched.
     GUITHREADINFO focus {sizeof focus};
     const bool sameFocus = ::GetForegroundWindow() == root
         && ::GetGUIThreadInfo(::GetWindowThreadProcessId(root, nullptr), &focus)
         && searchtyping::focusOf(static_cast<unsigned>(focus.flags), true) == searchtyping::Focus::ItemsView
         && (opus ? focus.hwndFocus == tab : folderview::classify(focus.hwndFocus, {}).tab == tab);
-    if (folder.isEmpty() || !(opus ? m_settings.opusTyping : m_settings.explorerTyping) || !m_window || !sameFocus) {
+    if (!known || !(opus ? m_settings.opusTyping : m_settings.explorerTyping) || !m_window || !sameFocus) {
         qInfo() << "Folder typing: no folder or focus changed; give back to the original view only";
         m_typing->giveBack(request);
         return;
@@ -3158,7 +3164,8 @@ void App::showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder
 {
     // Typed in Opus, the box sits in the corner of its file list (as Listary's
     // does) rather than over it, and may search the whole PC (GitHub #82).
-    const bool everywhere = opus && m_settings.opusTypingScope == u"all";
+    // No folder there (This PC and the like, Opus only): the whole PC too.
+    const bool everywhere = folder.isEmpty() || (opus && m_settings.opusTypingScope == u"all");
     const QString prefix = everywhere ? QString() : folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s;
     // On the monitor of the list typed in (a lister over two may have the other on the other).
     // Folder typing uses a compact panel in the file list's bottom-right

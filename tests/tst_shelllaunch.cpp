@@ -473,6 +473,13 @@ private slots:
         QVERIFY(go(temporary.path(), fixture.fileName()));
         QCOMPARE(
             QDir::fromNativeSeparators(QString::fromStdWString(ws::filemanager::opusFolder(view))), temporary.path());
+        // This PC has no folder on disk: the tab is known, its folder empty
+        // (the whole PC is searched from there, GitHub #82). The wait for a
+        // folder to show cannot come true, so the call says false.
+        QVERIFY(!ws::filemanager::goToInOpusView(root, view, L"/mycomputer"));
+        QCOMPARE(ws::filemanager::opusPlace(view), std::optional<std::wstring>(std::wstring()));
+        QVERIFY(ws::filemanager::opusFolder(view).empty());
+        QVERIFY(!ws::filemanager::opusPlace(root)); // the lister itself is no file display
         QVERIFY(go(original));
         restore.dismiss();
     }

@@ -1595,6 +1595,16 @@ private slots:
         QCOMPARE(tabs[3].lister, quintptr(0x7f00a));
         QVERIFY(pathtext::opusTabs("<results command=\"paths\" result=\"0\"/>").isEmpty());
         QVERIFY(pathtext::opusTabs("not xml").isEmpty());
+        // An answer, whatever it lists: a lister on This PC alone lists nothing (GitHub #82).
+        QVERIFY(pathtext::opusAnswered(xml));
+        QVERIFY(pathtext::opusAnswered(QStringLiteral(R"(<?xml version="1.0"?>
+<results command="paths " result="1">
+</results>
+)").toUtf8()));
+        QVERIFY(pathtext::opusAnswered("<results command=\"paths\" result=\"1\"/>"));
+        QVERIFY(!pathtext::opusAnswered("<results command=\"paths\" result=\"0\"/>"));
+        QVERIFY(!pathtext::opusAnswered("not xml"));
+        QVERIFY(!pathtext::opusAnswered({}));
     }
 
     // What XYplorer answers (filemanager::), and what goes into its scripts.

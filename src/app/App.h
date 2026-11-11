@@ -395,7 +395,7 @@ private:
     // that window's screen, and the keys follow; with no folder there, the
     // keys go back to Explorer.
     void folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request);
-    void typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t request, const QString& folder);
+    void typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t request, bool known, const QString& folder);
     void followTypingSelection();
     void cancelTypingSelection();
     // A folder opened in the launcher (Launcher::setFolderOpener): up from

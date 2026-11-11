@@ -368,6 +368,12 @@ QList<OpusTab> opusTabs(const QByteArray& xml)
     return tabs;
 }
 
+bool opusAnswered(const QByteArray& xml)
+{
+    QXmlStreamReader reader(xml);
+    return reader.readNextStartElement() && reader.name() == u"results" && reader.attributes().value(u"result") == u"1";
+}
+
 QList<XYplorerTab> xyplorerTabs(const QString& reply)
 {
     QList<XYplorerTab> tabs;

@@ -711,7 +711,7 @@ tools/plugin-probe.cpp 插件系统阶段 0 的探针（无 Qt，静态 C 运行
 
 `Launcher/OpusTyping=false` 独立于资源管理器开关，设置页和内置功能卡片共用 `SettingsEditor::opusTyping`。`TypeToSearch` 仍只用原有的短时键盘钩子；前台必须是 `dopus.lister`，键盘焦点必须恰好是 `dopus.filedisplaycontainer` 下的 `dopus.filedisplay`，不把其子 Edit、路径栏、FAYT、目录树和菜单当作文件列表。`searchtyping::opusStarts` 仅允许字母和未按 Shift 的数字／数字小键盘，保留 Opus 的符号查找模式和组合键。中文拼音仍通过原来的暂存、重放和输入法流程进入启动器。
 
-路径在 `ComWorker` 上通过已有的普通权限 `dopusrt /info …,paths` 获取；`OpusTab::tab` 保存 `dopus.filedisplaycontainer` 的 HWND，焦点在其 `dopus.filedisplay` 子窗口；`filemanager::opusFolder` 用父子关系匹配，只校验这个标签的真实目录，不遍历探测其他标签的磁盘／网络路径。每次输入持有独立请求号，超时、开关重建或另一轮输入后的旧结果丢弃；打开搜索前再核对前台、焦点和菜单状态。失败时只允许把暂存按键还给原窗口的原焦点，避免输入落入后来切换的应用或编辑框。Esc 回到来源窗口；目录打开与定位复用来源记录和查询 worker，在同一 Opus 文件显示仍有焦点时才发送 `/acmd Go`，查询队列等它切换后再读路径。
+路径在 `ComWorker` 上通过已有的普通权限 `dopusrt /info …,paths` 获取；`OpusTab::tab` 保存 `dopus.filedisplaycontainer` 的 HWND，焦点在其 `dopus.filedisplay` 子窗口；`filemanager::opusFolder` 用父子关系匹配，只校验这个标签的真实目录，不遍历探测其他标签的磁盘／网络路径。没有磁盘文件夹的标签（此电脑、库、压缩包里；Opus 的应答里不列“此电脑”）由 `filemanager::opusPlace` 报成“已知、无文件夹”，搜索框照常弹出、不带前缀、搜整机（GitHub #82）；只有 Opus 没应答时才把按键还回去。每次输入持有独立请求号，超时、开关重建或另一轮输入后的旧结果丢弃；打开搜索前再核对前台、焦点和菜单状态。失败时只允许把暂存按键还给原窗口的原焦点，避免输入落入后来切换的应用或编辑框。Esc 回到来源窗口；目录打开与定位复用来源记录和查询 worker，在同一 Opus 文件显示仍有焦点时才发送 `/acmd Go`，查询队列等它切换后再读路径。
 
 ## 搜索面板（Ctrl+E）
 
