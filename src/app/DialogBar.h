@@ -83,6 +83,11 @@ class DialogBar : public QObject {
     Q_PROPERTY(bool elevatedJump READ elevatedJump NOTIFY dialogKindChanged FINAL)
     Q_PROPERTY(bool pathCopied READ pathCopied NOTIFY copyStateChanged FINAL)
     Q_PROPERTY(bool nothingFound READ nothingFound NOTIFY resultsReplaced FINAL)
+    // Searching only the folder the dialog shows and what lies in it (GitHub
+    // #286, Settings::dialogBarFolderOnly): that folder's name; empty while
+    // the whole index is searched (turned off, or the dialog is nowhere on a
+    // disk: This PC, a library).
+    Q_PROPERTY(QString scopeName READ scopeName NOTIFY scopeChanged FINAL)
     // The folder whose contents are listed for a path typed; empty while searching.
     Q_PROPERTY(QString browsedFolder READ browsedFolder NOTIFY browsedFolderChanged FINAL)
     Q_PROPERTY(int rows READ rows NOTIFY layoutChanged FINAL) // of the list; 0 while it is closed
@@ -120,6 +125,7 @@ public:
         PinFolder, // a file's row: the folder it is in into the favorites
         PinCurrent, // the bar's menu: the folder the dialog shows
         UnpinCurrent,
+        ToggleFolderOnly, // only the folder the dialog shows, or everywhere again (Ctrl+Shift+D)
         HideHere, // not under this dialog again
         HideInApp, // not under this program's dialogs (Settings)
         OpenSettings,
@@ -151,6 +157,9 @@ public:
     }
     void setExcludedApps(const QStringList& apps); // program files ("notepad.exe") whose dialogs go without
     void setPlace(const QString& name); // Settings::dialogBarPlace: "auto", "below", "left", "right"
+    void setFolderOnly(bool on); // Settings::dialogBarFolderOnly
+    QString scopeName() const;
+    Q_INVOKABLE void toggleFolderOnly(); // and asks for it to be kept (folderOnlyRequested)
     void setResultOptions(bool showModified, bool thumbnails, const QString& numberKeys); // Settings: "ctrl", "alt", "off"
     void setAskAutoJump(bool on); // not answered yet (Settings::dialogAutoJumpAsked)
     // Whether the index service can navigate elevated dialogs for us (#104):
@@ -241,6 +250,8 @@ signals:
     void resultsReplaced(); // select the first row
     void layoutChanged();
     void excludeAppRequested(const QString& app); // HideInApp
+    void scopeChanged();
+    void folderOnlyRequested(bool on); // ToggleFolderOnly: into the settings
     void settingsRequested();
     void contextMenuKeyPressed(); // Menu key / Shift+F10 (arrive as a context-menu event, not a key)
     void resultOptionsChanged();
@@ -298,6 +309,9 @@ private:
     HWND m_restoring = nullptr; // a maximised dialog makeRoom() restored: no bar till it is
     QTimer m_moveTimeout; // should it not get there (or not be restored)
     Place m_place = Place::Auto;
+    bool m_folderOnly = false;
+    QString m_scopeFolder; // the dialog's folder as last read, while m_folderOnly; see refreshScope()
+    void refreshScope();
     Place m_side = Place::Below; // where the bar is: not Auto
     HWND m_originDialog = nullptr;
     QString m_origin; // see originName

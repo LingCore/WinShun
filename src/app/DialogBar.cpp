@@ -607,10 +607,42 @@ bool DialogBar::holdUntilShown(int number, bool open)
     return true;
 }
 
+void DialogBar::setFolderOnly(bool on)
+{
+    if (m_folderOnly == on)
+        return;
+    m_folderOnly = on;
+    refreshScope();
+    if (m_dialog && !m_query.trimmed().isEmpty())
+        relist();
+}
+
+void DialogBar::toggleFolderOnly()
+{
+    setFolderOnly(!m_folderOnly);
+    emit folderOnlyRequested(m_folderOnly);
+}
+
+QString DialogBar::scopeName() const
+{
+    return m_scopeFolder.isEmpty() ? QString() : nameOf(m_scopeFolder);
+}
+
+// Where the dialog is now: it may have gone elsewhere since the last look.
+void DialogBar::refreshScope()
+{
+    const QString folder = m_folderOnly && m_dialog ? QString::fromStdWString(filedialog::currentFolder(m_dialog)) : QString();
+    if (folder == m_scopeFolder)
+        return;
+    m_scopeFolder = folder;
+    emit scopeChanged();
+}
+
 void DialogBar::relist()
 {
     ++m_listings; // one on its way is for what was typed before
     m_listPending = true;
+    refreshScope();
     const pathtext::TypedPath typed = pathtext::splitTyped(m_query);
     if (typed.folder != m_browsed) {
         m_browsed = typed.folder;
@@ -628,6 +660,12 @@ void DialogBar::search()
 {
     SearchEngine::Request request;
     request.text = m_query;
+    // Only where the dialog is (GitHub #286): as typing in a folder's window
+    // set to search only there.
+    if (!m_scopeFolder.isEmpty()) {
+        request.currentFolder = m_scopeFolder;
+        request.currentFolderOnly = true;
+    }
     // A folder picker: folders alone (each its own best, not those of the
     // best matches of all); where to save: folders first.
     request.scope = foldersOnly() ? Scope::Folders : Scope::Files;
@@ -1001,8 +1039,13 @@ QVariantList DialogBar::menuItems(int row) const
             const bool pinned = isPinned(current);
             items.append(pinned ? entry(UnpinCurrent, tr("从收藏夹移除“%1”").arg(nameOf(current)), {}, u"\uE8D9"_s)
                                 : entry(PinCurrent, tr("收藏“%1”").arg(nameOf(current)), {}, u"\uE734"_s));
-            items.append(separator);
         }
+        if (m_folderOnly)
+            items.append(entry(ToggleFolderOnly, tr("搜索整个电脑"), u"Ctrl+Shift+D"_s, u"\uE721"_s)); // Search
+        else if (!current.isEmpty())
+            items.append(entry(ToggleFolderOnly, tr("只搜“%1”里面").arg(nameOf(current)), u"Ctrl+Shift+D"_s, u"\uE8B7"_s)); // Folder
+        if (!items.isEmpty())
+            items.append(separator);
         items.append(entry(HideHere, tr("这次不显示"), {}, u"\uE711"_s)); // Cancel
         if (!m_dialogApp.isEmpty())
             items.append(entry(HideInApp, tr("在 %1 中不再显示").arg(m_dialogApp), {}, u"\uED1A"_s)); // Hide
@@ -1059,6 +1102,9 @@ void DialogBar::trigger(int row, int action)
     case UnpinCurrent:
         if (m_dialog)
             setFavorite(QString::fromStdWString(filedialog::currentFolder(m_dialog)), true, action == PinCurrent);
+        break;
+    case ToggleFolderOnly:
+        toggleFolderOnly();
         break;
     case HideHere:
         m_hiddenUnder = m_dialog;

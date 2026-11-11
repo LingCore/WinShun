@@ -1,0 +1,7 @@
+﻿19:06:01.833 user's WinShun running: 
+19:06:02.090 staged WinShun pid 16788
+19:06:12.368 dialog 7739282, box 27266846 at 1694,1026 1706x168
+19:06:14.599 shot 1-only-this-folder
+19:06:14.609 ini: DialogBarFolderOnly=true
+19:06:16.181 shot 2-everywhere
+19:06:16.184 ini after the click: DialogBarFolderOnly=false

@@ -223,6 +223,11 @@ Window {
             if (row >= 0)
                 window.bar.trigger(row, DialogBar.CopyPath)
             break
+        case Qt.Key_D: // only the folder the dialog shows, or everywhere again
+            if (!ctrl || !shift)
+                return
+            window.bar.toggleFolderOnly()
+            break
         case Qt.Key_Escape:
             if (input.text.length > 0)
                 input.text = ""
@@ -288,11 +293,37 @@ Window {
             Accessible.ignored: true
         }
 
+        Text { // searching only the folder the dialog shows: its name; a click searches everywhere again
+            id: scopeTag
+            objectName: "dialogScopeTag"
+            anchors.left: searchIcon.right
+            anchors.leftMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            visible: window.bar.scopeName.length > 0
+            width: Math.min(implicitWidth, Math.round(window.width * 0.3))
+            text: qsTr("%1 ›").arg(window.bar.scopeName)
+            textFormat: Text.PlainText
+            elide: Text.ElideMiddle
+            color: scopeArea.containsMouse ? Theme.text : Theme.accent
+            font.pixelSize: Theme.uiBody
+            Accessible.role: Accessible.Button
+            Accessible.name: qsTr("只搜“%1”里面，按下后搜索整个电脑").arg(window.bar.scopeName)
+            Accessible.onPressAction: window.bar.toggleFolderOnly()
+
+            MouseArea {
+                id: scopeArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: window.bar.toggleFolderOnly()
+            }
+        }
+
         TextInput {
             id: input
             objectName: "dialogSearchField"
-            anchors.left: searchIcon.right
-            anchors.leftMargin: 8
+            anchors.left: scopeTag.visible ? scopeTag.right : searchIcon.right
+            anchors.leftMargin: scopeTag.visible ? 6 : 8
             anchors.right: trailing.left
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
@@ -319,6 +350,7 @@ Window {
                                                : window.bar.copyOnlyHint === "service" ? qsTr("管理员窗口：搜索后复制路径再手动粘贴（装 Win顺 服务可直接跳转）")
                                                : qsTr("管理员窗口：搜索后复制路径再手动粘贴"))
                       : window.bar.elevatedJump ? qsTr("管理员窗口：直接跳转到文件夹")
+                      : window.bar.scopeName.length > 0 ? qsTr("只搜这个文件夹，Ctrl+Shift+D 搜索整个电脑")
                       : window.bar.foldersOnly ? qsTr("搜索文件夹，或输入路径") : qsTr("搜索文件或文件夹，或输入路径")
                 color: Theme.faint
                 font: input.font

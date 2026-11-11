@@ -5,8 +5,7 @@
 # presses the hotkey over an administrator's window the ways a hand would;
 # results.txt has what its text box held after each.
 #
-# Kept as they were: the user's WinShun (quit if it runs, started again),
-# the clipboard's text, the Explorer verbs under HKCU, Windows' clipboard
+# Not run while another WinShun is. Kept as they were: the clipboard's text, the Explorer verbs under HKCU, Windows' clipboard
 # history (counted before and after; not run when it is nearly full).
 #
 #   ./run-e2e.ps1 -Build <build dir> -Stage <a deployed WinShun folder to copy> -Root <work dir under dist> -Run <empty dir for the logs>
@@ -49,10 +48,8 @@ try {
         }
     }
     Note "user's WinShun running: $($running -join ', ')"
-    foreach ($path in $running) { & $path --quit }
-    $deadline = (Get-Date).AddSeconds(40)
-    while ((Get-Process WinShun -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 300 }
-    if (Get-Process WinShun -ErrorAction SilentlyContinue) { throw 'a WinShun is still running' }
+    # Not quit for the test: how it was started (which profile) is not known, so it could not be put back.
+    if ($running) { throw 'a WinShun is running: run this when none is' }
 
     # The staged copy: a deployed folder, with this build's programs over it.
     robocopy $Stage $app /E /NFL /NDL /NJH /NJS /NP | Out-Null
@@ -156,6 +153,5 @@ PasteElevated=true
     }
     Note "Explorer verbs as before: $(-not (Compare-Object @(VerbCommands) @($verbsBefore)))"
     # From this process, at normal rights: never from the elevated part.
-    foreach ($path in $running) { Start-Process $path -ArgumentList '--background' -WindowStyle Normal; Note "restarted $path" }
     if ($locked) { Remove-Item $lock -Force -ErrorAction SilentlyContinue }
 }

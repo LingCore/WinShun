@@ -1891,6 +1891,18 @@
         <source>Enter 转到所在文件夹</source>
         <translation>Enter to go to the containing folder</translation>
     </message>
+    <message>
+        <source>%1 ›</source>
+        <translation>%1 ›</translation>
+    </message>
+    <message>
+        <source>只搜“%1”里面，按下后搜索整个电脑</source>
+        <translation>Only inside “%1”; press to search the whole PC</translation>
+    </message>
+    <message>
+        <source>只搜这个文件夹，Ctrl+Shift+D 搜索整个电脑</source>
+        <translation>Only this folder; Ctrl+Shift+D searches the whole PC</translation>
+    </message>
 </context>
 <context>
     <name>DropPieHelper</name>
@@ -10222,6 +10234,14 @@ Content index: %5</translation>
     <message>
         <source>收藏所在的文件夹</source>
         <translation>Add its folder to favorites</translation>
+    </message>
+    <message>
+        <source>搜索整个电脑</source>
+        <translation>Search the whole PC</translation>
+    </message>
+    <message>
+        <source>只搜“%1”里面</source>
+        <translation>Only inside “%1”</translation>
     </message>
 </context>
 <context>

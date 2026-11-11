@@ -116,6 +116,9 @@ struct Settings {
     // an ini from before without the key keeps it on.
     bool dialogBar = false;
     QString dialogBarPlace = QStringLiteral("auto"); // auto | below | left | right: where it goes by the dialog
+    // It searches only the folder the dialog shows (GitHub #286): turned on
+    // and off in the bar itself (its menu, Ctrl+Shift+D), kept here.
+    bool dialogBarFolderOnly = false;
     bool dialogAutoJump = false; // file dialogs go to the folder open in a file manager by themselves
     // open | back: as a dialog comes up, or only when the user comes back to
     // it from the file manager (GitHub #14: it opens where Windows left it).

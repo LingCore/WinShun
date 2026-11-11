@@ -4484,6 +4484,13 @@ void App::applyDialogs()
                     m_dialogJump->go(dialog, std::move(path), isFile, open);
             });
         connect(m_dialogBar.get(), &DialogBar::excludeAppRequested, this, &App::excludeFromDialogBar);
+        connect(m_dialogBar.get(), &DialogBar::folderOnlyRequested, this, [this](bool on) {
+            if (std::exchange(m_settings.dialogBarFolderOnly, on) == on)
+                return;
+            m_settings.save();
+            if (m_settingsEditor)
+                m_settingsEditor->setSettings(m_settings);
+        });
         connect(m_dialogBar.get(), &DialogBar::settingsRequested, this, [this] { showSettings(); });
         connect(m_dialogBar.get(), &DialogBar::autoJumpAnswered, this, &App::answerAutoJump);
     } else if (!m_settings.dialogBar && m_dialogBar) {
@@ -4496,6 +4503,7 @@ void App::applyDialogs()
         m_dialogBar->setExcludedFiles(m_settings.excludedTypes, m_settings.excludedFileNames);
         m_dialogBar->setExcludedApps(m_settings.dialogBarExcludedApps);
         m_dialogBar->setPlace(m_settings.dialogBarPlace);
+        m_dialogBar->setFolderOnly(m_settings.dialogBarFolderOnly);
         m_dialogBar->setResultOptions(m_settings.showModified, m_settings.thumbnails, m_settings.numberKeys);
         m_dialogBar->results()->setShowModifiedTime(m_settings.showModifiedTime);
         m_dialogBar->setAskAutoJump(!m_settings.dialogAutoJump && !m_settings.dialogAutoJumpAsked);
