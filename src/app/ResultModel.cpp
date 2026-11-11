@@ -143,6 +143,8 @@ QString appOrigin(const SearchResult& r)
     case AppKind::Security:
         return ResultModel::tr("Windows 安全中心");
     case AppKind::Tool:
+        if (r.target == ws::kRestartElevatedCommand) // Win顺's own (GitHub #288): what Enter leads to, not the command
+            return ResultModel::tr("Windows 会请你确认一次");
         return describeCommand(r.target); // "diskmgmt.msc", the folder
     case AppKind::Plugin:
         return r.plugin ? r.plugin->subtitle : QString();

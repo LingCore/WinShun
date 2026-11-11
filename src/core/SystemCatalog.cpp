@@ -48,6 +48,18 @@ bool userIsAdministrator()
 
 namespace {
 
+// Win顺's own token is elevated.
+bool processElevated()
+{
+    HANDLE token = nullptr;
+    if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &token))
+        return false;
+    const win32::UniqueHandle owned(token);
+    TOKEN_ELEVATION elevation {};
+    DWORD size = 0;
+    return ::GetTokenInformation(token, TokenElevation, &elevation, sizeof elevation, &size) && elevation.TokenIsElevated;
+}
+
 constexpr QStringView kPathPrefix = u"winshun-place:";
 
 // HostID of the entries Windows Security shows. Their names resolve only in
@@ -921,6 +933,8 @@ PlaceList loadPlaces(const std::stop_token& stop)
     if (extras.open(QIODevice::ReadOnly | QIODevice::Text))
         applyPlaceExtras(places, QString::fromUtf8(extras.readAll()), displayLanguageIsChinese());
     std::erase_if(places, [](const PlaceInfo& p) { return p.key.startsWith(u"winshun/") && !commandRunsHere(p.command); });
+    if (!userIsAdministrator() || processElevated())
+        std::erase_if(places, [](const PlaceInfo& p) { return p.command == kRestartElevatedCommand; });
     for (PlaceInfo& p : places) {
         if (p.icon.isEmpty())
             p.icon = iconForCommand(p.command);

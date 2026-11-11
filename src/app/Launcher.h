@@ -765,6 +765,8 @@ signals:
     // The settings window, on the 插件 page at this plugin's card: a plugin
     // row opening "winshun:settings" (its own card only; performPlugin).
     void pluginSettingsRequested(const QString& pluginId);
+    // The place "以管理员身份重新启动 Win顺" (GitHub #288).
+    void elevatedRestartRequested();
     void currentRowChanged();
     void keyHintsChanged();
     void sortChanged();

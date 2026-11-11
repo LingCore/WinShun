@@ -787,6 +787,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_launcher.get(), &Launcher::fileTypeSettingsRequested, this, &App::showFileTypeSettings);
     connect(m_launcher.get(), &Launcher::favoriteSettingsRequested, this, &App::showFavoriteSettings);
     connect(m_launcher.get(), &Launcher::pluginSettingsRequested, this, &App::showPluginSettings);
+    connect(m_launcher.get(), &Launcher::elevatedRestartRequested, this, [this] { restart({}, Elevation::Elevated); });
     // The 内容 strip's switch: as the settings' 建立内容索引 (built or cleared a second later).
     connect(m_launcher.get(), &Launcher::contentIndexRequested, this, [this](bool on) {
         if (m_settings.contentIndex == on)
@@ -3732,6 +3733,9 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         editor->plugins()->setUpdates(m_pluginUpdates.get());
         editor->plugins()->setRecoveryState(m_pluginRecoveryMessage, m_pluginRecoveryBusy);
         connect(editor->plugins(), &PluginSettings::recoveryRequested, this, &App::installMovedPlugins);
+        // From a plugin's card (GitHub #288): the settings come back where they were.
+        connect(editor->plugins(), &PluginSettings::elevatedRestartRequested, this,
+            [this] { restart({u"--settings"_s}, Elevation::Elevated); });
         editor->favorites()->setCatalogs(m_apps.get(), m_places.get());
         editor->favorites()->setStore(m_favorites.get());
         m_settingsWindow = window;

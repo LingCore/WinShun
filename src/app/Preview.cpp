@@ -364,7 +364,7 @@ int runPlugins(const QStringList& args)
             wordsHost->setKeywordOverrides(PluginSettings::keywordOverrides(now.plugins));
         });
     } else {
-        editor->plugins()->loadPreview(args.contains(u"--elevated"_s), manyLogs ? 8 : 2); // the `elevated` shield and 确认 note
+        editor->plugins()->loadPreview(args.contains(u"--elevated"_s), manyLogs ? 8 : 2, args.contains(u"--host-normal"_s)); // the `elevated` shield and 确认 note
     }
     if (updatesOnly)
         editor->plugins()->gallery()->setUpdatesOnly(true);

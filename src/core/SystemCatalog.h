@@ -64,6 +64,11 @@ using PlaceList = std::vector<PlaceInfo>;
 // administrator" means anything here (the 管理员直读 mode, GitHub #21).
 bool userIsAdministrator();
 
+// What the place "以管理员身份重新启动 Win顺" of places.txt opens (GitHub
+// #288): no program, the launcher carries it out. Listed only where it does
+// something: an administrator's account, Win顺 running with normal rights.
+inline constexpr QStringView kRestartElevatedCommand = u"winshun:restart-as-administrator";
+
 // "winshun-place:<key>": stands for a place in History.
 QString placePath(const QString& key);
 bool isPlacePath(QStringView path) noexcept;

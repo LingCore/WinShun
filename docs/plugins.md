@@ -406,7 +406,7 @@ manifest 的 `permissions` 是数组：`["processes", "clipboard:read", {"files:
 | 权限 | 含义 | Windows 能否强制 | 怎么做到 |
 |---|---|---|---|
 | （总是）不是管理员 | 插件以你的普通权限运行；唯一的例外是下面的 `elevated` | **是** | 令牌去掉 Administrators 组和特权；`normal` 中完整性，`strict` 低完整性；内存上限、作业对象，Win顺 退出时一起结束 |
-| `elevated` | 跟随 Win顺 的管理员权限：Win顺 以管理员身份运行时，这个插件也以管理员身份运行，能操作以管理员身份打开的窗口（比如以管理员身份运行的文件管理器）。Win顺 不是管理员时，它和别的插件一样用普通权限，**从不为插件弹 UAC** | **是** | 只给自带 exe 的插件（`runtime.program` 是 exe；python、node、pwsh、powershell 的解释器或模块可能在你自己能改的文件夹里），不能和 `sandbox: "strict"` 一起用。以管理员身份运行的不是插件文件夹本身，而是你确认过的那份副本（见下）；作业、内存上限照旧 |
+| `elevated` | 跟随 Win顺 的管理员权限：Win顺 以管理员身份运行时，这个插件也以管理员身份运行，能操作以管理员身份打开的窗口（比如以管理员身份运行的文件管理器）。Win顺 不是管理员时，它和别的插件一样用普通权限，**从不为插件弹 UAC**（这时插件卡片上有一行说明和“以管理员身份重新启动”，搜索框里搜“管理员”也有同一项；想每次启动都以管理员身份运行，在“搜索范围 › 磁盘 › 索引方式”里选“管理员直读”） | **是** | 只给自带 exe 的插件（`runtime.program` 是 exe；python、node、pwsh、powershell 的解释器或模块可能在你自己能改的文件夹里），不能和 `sandbox: "strict"` 一起用。以管理员身份运行的不是插件文件夹本身，而是你确认过的那份副本（见下）；作业、内存上限照旧 |
 | `processes` | 起子进程，或让 Win顺 打开程序 / 非网页链接 | **是** | 没有它：作业 `ActiveProcessLimit = 1`，`CreateProcess` 报 1816；且 Win顺 不替它执行开程序、脚本、非网页 URL 或带 args/cwd 的 `open`（item 和 open 效果、`open_item` 都一样，只能开文件夹、普通文件和 http/https/mailto，拦下时底栏提示）。有它：子进程在作业里，`open` 不受限 |
 | `clipboard:read` / `clipboard:write` | 直接读写剪贴板 | **是** | 作业的 UI 限制；没有时 `GetClipboardData` 返回空（读到空或抛异常） |
 | `ui` | 开自己的窗口、找别的窗口 | 部分 | 没有时作业限制桌面和 USER 句柄，并禁用传统扩展点；有此权限的插件保留传统输入法扩展点，仍受其他进程缓解策略和作业限制 |

@@ -3246,6 +3246,10 @@
         <translation>Bundled</translation>
     </message>
     <message>
+        <source>以管理员身份重新启动</source>
+        <translation>Restart as administrator</translation>
+    </message>
+    <message>
         <source>无</source>
         <translation>None</translation>
     </message>
@@ -12676,6 +12680,10 @@ Content index: %5</translation>
         <translation>Confirm once to let it run as administrator. Until then it runs with normal rights</translation>
     </message>
     <message>
+        <source>Win顺 现在以普通权限运行，这个插件也一样。要让它以管理员身份运行，先以管理员身份重新启动 Win顺；想每次都这样，在“搜索范围 › 磁盘 › 索引方式”里选“管理员直读”</source>
+        <translation>WinShun is running with normal rights, and so is this plugin. To let it run as administrator, restart WinShun as administrator; to have that every time, choose “Direct (administrator)” under Search scope › Drives › Index access</translation>
+    </message>
+    <message>
         <source>不能以管理员身份运行：%1</source>
         <translation>Cannot run as administrator: %1</translation>
     </message>
@@ -12826,6 +12834,10 @@ Content index: %5</translation>
     <message>
         <source>%1 · 已静音，会同时取消静音</source>
         <translation>%1 · Muted; this unmutes it too</translation>
+    </message>
+    <message>
+        <source>Windows 会请你确认一次</source>
+        <translation>Windows asks you to confirm once</translation>
     </message>
     <message>
         <source>Microsoft Store 应用</source>

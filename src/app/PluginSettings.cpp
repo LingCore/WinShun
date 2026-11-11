@@ -10,6 +10,7 @@
 #include "Secrets.h"
 #include "Settings.h"
 #include "SettingsEditor.h"
+#include "SystemCatalog.h"
 #include "Updates.h"
 #include "platform/Shell.h"
 
@@ -765,6 +766,12 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
         } else if (elevation.verdict != V::Elevated) {
             c.elevationProblem = confirmProblem(id, m.version);
         }
+    } else if (m.permissions.has(plugin::Permission::Elevated) && c.enabled && c.usable && ws::userIsAdministrator()) {
+        // Win顺 runs with normal rights, and so does the plugin: said, with
+        // the one click that changes it (GitHub #288). Not on an account
+        // that is no administrator's: nothing to click there.
+        c.elevation = u"host"_s;
+        c.elevationNote = normalRightsNote();
     }
 
     // The declared settings and their values (a password's: whether one is kept).
@@ -945,6 +952,13 @@ void PluginSettings::confirmEnable(const QString& id)
     // normal rights).
     if (elevated)
         confirmElevation(id);
+}
+
+// The card of an `elevated` plugin while Win顺 runs with normal rights (GitHub #288).
+QString PluginSettings::normalRightsNote()
+{
+    return tr("Win顺 现在以普通权限运行，这个插件也一样。要让它以管理员身份运行，先以管理员身份重新启动 Win顺；"
+              "想每次都这样，在“搜索范围 › 磁盘 › 索引方式”里选“管理员直读”");
 }
 
 void PluginSettings::confirmElevation(const QString& id)
@@ -1697,7 +1711,7 @@ QString PluginSettings::createFromTemplate(const QString& kind, const QString& g
 
 // ---- the preview (no host) ---------------------------------------------------------
 
-void PluginSettings::loadPreview(bool elevated, int logPlugins)
+void PluginSettings::loadPreview(bool elevated, int logPlugins, bool hostNormal)
 {
     m_preview = std::make_unique<Preview>();
     m_userDir = u"C:\\Users\\me\\AppData\\Local\\WinShun\\plugins"_s;
@@ -1841,6 +1855,11 @@ void PluginSettings::loadPreview(bool elevated, int logPlugins)
             c.elevation = i == 0 ? u"elevated"_s : u"unconfirmed"_s;
             c.elevationNote = i == 0 ? tr("以管理员身份运行") : tr("要以管理员身份运行，需要你确认一次。确认前用普通权限运行");
         }
+    }
+    if (hostNormal && !cards.empty()) { // `elevated` while Win顺 runs with normal rights (GitHub #288): the line and its button
+        PluginListModel::Card& c = cards[0];
+        c.elevation = u"host"_s;
+        c.elevationNote = normalRightsNote();
     }
     m_preview->cards = std::move(cards);
     m_editor->m_settings.pluginDeveloperMode = true; // the log pane and the templates on show

@@ -1,0 +1,2 @@
+258:    Start 173: tst_plugin
+259:1/1 Test #173: tst_plugin .......................   Passed   50.83 sec

@@ -4642,6 +4642,11 @@ void Launcher::performPlace(const SearchResult& place, Action action)
     switch (action) {
     case Open:
     case RunAsAdmin:
+        if (place.target == ws::kRestartElevatedCommand) { // Win顺's own: nothing for the shell
+            emit dismissRequested();
+            emit elevatedRestartRequested();
+            return;
+        }
         remember(place.path, m_shownText);
         if (place.isCommand())
             shell::runCustom(place.target, place.workingDirectory, place.words, reportFailure(place.name),

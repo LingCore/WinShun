@@ -363,6 +363,12 @@ name = 本地用户和组 | Local Users and Groups
 open = %windir%\system32\mmc.exe %windir%\system32\lusrmgr.msc
 keywords = 本地用户; 用户组; 管理员组; administrators; lusrmgr; lusrmgr.msc
 
+[restart-as-administrator]
+name = 以管理员身份重新启动 Win顺 | Restart WinShun as administrator
+open = winshun:restart-as-administrator
+keywords = 管理员; 管理员身份; 管理员权限; 管理员运行; 提权; 提升权限; 重启 Win顺; run as administrator; administrator; admin; elevate; elevated
+icon = %SystemRoot%\System32\imageres.dll,-78
+
 [shared-folders]
 name = 共享文件夹 | Shared Folders
 open = %windir%\system32\mmc.exe %windir%\system32\fsmgmt.msc

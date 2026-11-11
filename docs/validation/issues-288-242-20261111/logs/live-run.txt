@@ -1,0 +1,18 @@
+﻿19:53:08.332 ABORTED: 无法将“Get-FileHash”项识别为 cmdlet、函数、脚本文件或可运行程序的名称。请检查名称的拼写，如果包括路径，请确保路径正确，然后再试一次。 @ 107
+19:53:09.098 left: WinShun processes ; autostart task unchanged True; search-here: "C:\Program Files\WinShun\WinShunSearch.exe" --search-here "%V"
+19:53:49.545 WinShun 19:51:23 pid 44000, rights: normal
+19:53:51.628 shot 242-keyword-alone: 876x158
+19:53:52.103 shot 242-keyword-alone-down2: 1140x893
+19:53:54.513 shot 242-keyword-space: 1140x353
+19:53:56.942 shot 242-keyword-partial: 1140x893
+19:53:59.363 shot 288-normal-rights: 1140x893
+19:54:01.767 shot 288-by-name: 1140x317
+19:54:10.783 after Enter: pid 44000 -> 42264, rights: elevated, command line readable: False
+19:54:12.796 shot 288-elevated: 1140x893
+19:54:14.269 left: WinShun processes 0; autostart task unchanged True; search-here: "C:\Program Files\WinShun\WinShunSearch.exe" --search-here "%V"
+19:55:22.160 WinShun 19:55:08 pid 46980, rights: normal
+19:55:24.222 shot 288-normal-rights: 1140x893
+19:55:26.654 shot 288-by-name: 1140x317
+19:55:35.664 after Enter: pid 46980 -> 46796, rights: elevated, command line readable: False
+19:55:37.683 shot 288-elevated: 1140x893
+19:55:39.891 left: WinShun processes 0; autostart task unchanged True; search-here: "C:\Program Files\WinShun\WinShunSearch.exe" --search-here "%V"
