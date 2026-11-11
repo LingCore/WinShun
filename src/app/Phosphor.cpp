@@ -3,6 +3,7 @@
 #include "PhosphorAliases.h"
 #include "PhosphorIcons.generated.h"
 
+#include <QByteArray>
 #include <QFile>
 #include <QFontDatabase>
 
@@ -29,40 +30,20 @@ QString load(const QString& path)
     return QFontDatabase::applicationFontFamilies(QFontDatabase::addApplicationFontFromData(file.readAll())).value(0);
 }
 
-// The generated table is sorted by name, which is plain Latin-1. Compare
-// without allocating: a settings window resolves hundreds of icons.
-int compareName(std::string_view a, std::string_view b)
-{
-    return a.compare(b);
-}
-
-int compareName(std::string_view a, const QString& b)
-{
-    const qsizetype asize = static_cast<qsizetype>(a.size());
-    const qsizetype bsize = b.size();
-    const qsizetype common = std::min(asize, bsize);
-    for (qsizetype i = 0; i < common; ++i) {
-        const int left = static_cast<unsigned char>(a[i]);
-        const int right = b.at(i).unicode();
-        if (left != right)
-            return left < right ? -1 : 1;
-    }
-    return asize == bsize ? 0 : (asize < bsize ? -1 : 1);
-}
-
-template <typename Key>
-const generated::Entry* find(const Key& name)
+// The generated table is sorted by name, which is plain Latin-1. One lookup
+// path for both callers: a name from C++ and an alias' string_view.
+const generated::Entry* find(std::string_view name)
 {
     std::size_t low = 0;
     std::size_t high = generated::kNames.size();
     while (low < high) {
         const std::size_t mid = low + (high - low) / 2;
-        if (compareName(generated::kNames[mid].name, name) < 0)
+        if (generated::kNames[mid].name.compare(name) < 0)
             low = mid + 1;
         else
             high = mid;
     }
-    if (low == generated::kNames.size() || compareName(generated::kNames[low].name, name) != 0)
+    if (low == generated::kNames.size() || generated::kNames[low].name != name)
         return nullptr;
     return &generated::kNames[low];
 }
@@ -91,7 +72,8 @@ void loadFonts()
 
 std::optional<Icon> forName(const QString& name, Weight weight)
 {
-    return make(find(name), weight);
+    const QByteArray latin = name.toLatin1();
+    return make(find(std::string_view(latin.constData(), static_cast<std::size_t>(latin.size()))), weight);
 }
 
 std::optional<Icon> resolve(const QString& spec)
