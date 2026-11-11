@@ -3517,6 +3517,13 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         if (!screen)
             screen = QGuiApplication::primaryScreen();
         const QRect area = screen->availableGeometry();
+        // Onto that screen first, as a window dragged there arrives: Windows
+        // tells Qt of the other scale and Qt sizes the window for it. Sent
+        // there by setPosition alone, Qt takes the size for one it scaled
+        // itself: made at 200% and opened next at 150%, the window came out
+        // too wide for good, its contents laid out for another width
+        // (docs/pitfalls.md).
+        win::moveToMonitorOf(window, screen->geometry().center());
         window->resize(window->width(), std::min(window->height(), area.height() - 40));
         window->setPosition(area.center() - QPoint(window->width() / 2, window->height() / 2));
     };
@@ -3747,6 +3754,9 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         editor->favorites()->setStore(m_favorites.get());
         m_settingsWindow = window;
         m_settingsEditor = editor;
+        // There at once when opened: without Windows' own fade and zoom for a
+        // window shown (it is kept hidden between openings, so each one had it).
+        win::disableTransitions(window);
         updateDoubleTapActions();
         // What the app tells the editor as it changes, from now on (hidden or not):
         // where it stands now.
@@ -3822,6 +3832,11 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         m_settingsWindow->setProperty("_q_showWithoutActivating", true);
         m_settingsWindow->show();
         return;
+    }
+    if (opening) {
+        // As it will look once in front, from its first frame (SettingsWindow.arriving).
+        m_settingsWindow->setProperty("arriving", true);
+        win::expectActivation(m_settingsWindow);
     }
     m_settingsWindow->show();
     m_settingsWindow->raise();

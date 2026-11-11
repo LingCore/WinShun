@@ -148,7 +148,12 @@ Window {
     // Mica follows activation; liquid Acrylic keeps its background when inactive.
     // Use transparent rather than a translucent clear colour (Qt clears it
     // unpremultiplied, which makes a light colour appear white).
-    color: Theme.backdrop && SystemTheme.materials && (window.active || SystemTheme.uiStyle === "liquid") ? "transparent" : Theme.page
+    // Opened to be put in front (App::showSettings): drawn as an active window
+    // from its first frame, not one frame as an inactive one and then changed.
+    // Until it is active, or for a second should it never be (another window kept the front).
+    property bool arriving: false
+    Timer { interval: 1000; running: window.arriving; onTriggered: window.arriving = false }
+    color: Theme.backdrop && SystemTheme.materials && (window.active || window.arriving || SystemTheme.uiStyle === "liquid") ? "transparent" : Theme.page
     title: qsTr("设置") // shown as "设置 - Win顺"
     flags: Qt.Window | Qt.FramelessWindowHint // the title bar is ours (see WindowFrame)
 
@@ -162,7 +167,12 @@ Window {
     // The taskbar button is pinned, Windows' search hidden, a file manager
     // installed, outside Win顺: looked at again when the user comes back
     // (SettingsEditor::windowActivated; on opening, after the first frame).
-    onActiveChanged: if (active) editor.windowActivated()
+    onActiveChanged: {
+        if (!active)
+            return
+        arriving = false
+        editor.windowActivated()
+    }
 
     // Closed (the title bar, Alt+F4, the taskbar): hidden and kept, not
     // destroyed; App::showSettings shows the same window again, at once.

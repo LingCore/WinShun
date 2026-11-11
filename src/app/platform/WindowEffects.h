@@ -80,6 +80,16 @@ void setCloaked(QWindow* window, bool cloaked);
 // No DWM fade as the window is shown or hidden: hidden, it is off the screen
 // in the next composition, not some 200 ms later (a capture must not catch it).
 void disableTransitions(QWindow* window);
+// A window (hidden or not) put on the monitor that has `logicalPoint` (Qt's
+// coordinates), where it is not on it yet: only moved, at the size it has,
+// so that a change of scale reaches Qt as WM_DPICHANGED does for a window
+// dragged across.
+void moveToMonitorOf(QWindow* window, const QPoint& logicalPoint);
+// A window about to be shown and put in front: its frame is active for DWM
+// already, so its backdrop is there with the first frame. Left to the
+// activation that follows, Windows fades the backdrop in over a quarter of
+// a second (measured on the settings window: docs/pitfalls.md).
+void expectActivation(QWindow* window);
 
 // Windows' Start menu, search, notification center or quick settings: they
 // stay above every other window while open.

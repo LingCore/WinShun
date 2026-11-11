@@ -5,6 +5,7 @@
 
 #include <QDebug>
 #include <QGuiApplication>
+#include <QScreen>
 #include <QOperatingSystemVersion>
 #include <QStyleHints>
 #include <QWindow>
@@ -350,6 +351,29 @@ void setCloaked(QWindow* window, bool cloaked)
         const BOOL value = cloaked;
         ::DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &value, sizeof value);
     }
+}
+
+void expectActivation(QWindow* window)
+{
+    if (const HWND hwnd = handleOf(window); hwnd && ::GetPropW(hwnd, kBackdropWindow))
+        ::DefWindowProcW(hwnd, WM_NCACTIVATE, TRUE, -1);
+}
+
+void moveToMonitorOf(QWindow* window, const QPoint& logicalPoint)
+{
+    const HWND hwnd = handleOf(window);
+    QScreen* screen = QGuiApplication::screenAt(logicalPoint);
+    if (!hwnd || !screen)
+        return;
+    // The screen's own corner in device pixels: its logical corner is the same point (Qt scales a screen about it).
+    const QPoint corner = screen->geometry().topLeft();
+    const POINT inside {corner.x() + 8, corner.y() + 8};
+    const HMONITOR target = ::MonitorFromPoint(inside, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO info {sizeof info};
+    if (target == ::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) || !::GetMonitorInfoW(target, &info))
+        return;
+    ::SetWindowPos(hwnd, nullptr, info.rcWork.left, info.rcWork.top, 0, 0,
+        SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
 }
 
 void disableTransitions(QWindow* window)
