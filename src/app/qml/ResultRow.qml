@@ -333,7 +333,9 @@ Item {
         anchors.leftMargin: row.compact ? 8 : Theme.textStart - Theme.iconInset - iconSlot.width
         anchors.right: parent.right
         anchors.rightMargin: row.trailingSpace + (metadata.visible ? metadata.width + 16 : 0)
-        spacing: 4
+        // The folder box's short rows: closer, so that with any 界面字体 a
+        // name is nearer its own folder than the next name's (GitHub #245).
+        spacing: row.compact ? 2 : 4
 
         Item {
             width: parent.width
@@ -353,11 +355,12 @@ Item {
                 elide: Text.ElideRight
                 color: Theme.text
                 font.pixelSize: row.compact ? 14 : Theme.uiTitle
-                // In the folder box's short rows the font's Windows line
-                // height (tall in the default font) pushed a name and its
-                // folder apart, and each folder against the next name
-                // (GitHub #245); its typographic one keeps the two together.
-                font.preferTypoLineMetrics: row.compact
+                // The font's Windows line height (tall in the default font)
+                // pushed a name and its folder apart, as far as a folder is
+                // from the next name: in the folder box's short rows, and in
+                // the launcher's at 紧凑 (GitHub #245). Its typographic one
+                // keeps the two together.
+                font.preferTypoLineMetrics: true
             }
 
             Text { // content search: where the file lives, next to its name
@@ -394,7 +397,7 @@ Item {
             maximumLineCount: 1
             color: row.switchError.length > 0 ? Theme.danger : Theme.subtext
             font.pixelSize: row.compact ? 12 : Theme.uiCaption
-            font.preferTypoLineMetrics: row.compact
+            font.preferTypoLineMetrics: true
         }
     }
 

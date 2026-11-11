@@ -6377,6 +6377,8 @@ int runResults(const QStringList& args)
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
     QFont font = QGuiApplication::font();
+    if (const QString family = valueAfter(args, u"--font"); !family.isEmpty())
+        font.setFamily(family); // 界面字体, as chosen in the settings
     font.setStyleStrategy(QFont::NoSubpixelAntialias);
     QGuiApplication::setFont(font);
     if (args.contains(u"--clipboard-scroll"_s)) // its own engine: --qml-debug comes before one exists

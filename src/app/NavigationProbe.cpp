@@ -753,7 +753,9 @@ bool checkResultRowSpacing(QQmlEngine* engine, const QDir& output)
         }
         report.insert(folder ? u"folder"_s : u"launcher"_s, QJsonObject {{u"dpr"_s, dpr}, {u"name_to_folder"_s, inner},
             {u"row_to_row"_s, outer}});
-        check(outer >= inner + 2, mode + u": name to folder %1, row to row %2 (logical px of ink)"_s.arg(inner).arg(outer));
+        // The folder box's short rows must tell clearly, with any font and
+        // scale; the launcher's roomy ones only must not be the other way round.
+        check(folder ? outer >= inner + 3 : outer > inner, mode + u": name to folder %1, row to row %2 (logical px of ink)"_s.arg(inner).arg(outer));
         check(picture.save(output.filePath(folder ? u"rows-folder-box.png"_s : u"rows-launcher.png"_s)), mode + u": saved"_s);
     }
     launcher.setFolderSearch(false);
