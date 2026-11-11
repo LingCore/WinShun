@@ -1,4 +1,5 @@
 #include "Phosphor.h"
+#include "PhosphorIcons.generated.h"
 #include "Settings.h"
 #include "PhosphorGlyph.h"
 #include "SystemTheme.h"
@@ -609,6 +610,15 @@ private slots:
         }
         QCOMPARE(phosphor::forSegoe(QString(QChar(0xE841)))->family, fill.familyName()); // PinnedFill
         QCOMPARE(phosphor::forSegoe(QString(QChar(0xE718)))->family, regular.familyName()); // Pin
+        // SearchBar's filter keys (#279): the shown state is the filled funnel,
+        // the idle one the outline. Both are Segoe code points that resolve
+        // only through the alias table, so an upstream rebase must keep them.
+        const auto filterShown = phosphor::forSegoe(QString(QChar(0xE16E)));
+        const auto filterIdle = phosphor::forSegoe(QString(QChar(0xE71C)));
+        QVERIFY(filterShown && filterIdle);
+        QCOMPARE(filterShown->family, fill.familyName());
+        QCOMPARE(filterIdle->family, regular.familyName());
+        QCOMPARE(filterShown->text, filterIdle->text);
         QVERIFY(!phosphor::forSegoe(QString(2, QChar(0xE718))));
         QVERIFY(!phosphor::forSegoe(QString()));
 
@@ -673,6 +683,66 @@ private slots:
         const int pinned = ink(0, half);
         const int outline = ink(half, pixels.width());
         QVERIFY2(outline > 0 && pinned > outline * 3 / 2, qPrintable(u"pinned %1, outline %2"_s.arg(pinned).arg(outline)));
+    }
+
+    // The generated name table is the whole bundled icon set: every name
+    // resolves in both weights, and a name nobody has never reaches the
+    // system icon font (Glyph.qml keeps the room but draws nothing).
+    void phosphorNames()
+    {
+        const QUrl folder = qmlFolder(); // loads the fonts
+        const auto fontFile = [](const QString& name) {
+            QFile file(u":/fonts/"_s + name);
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        };
+        const QRawFont regular(fontFile(u"Phosphor.ttf"_s), 16);
+        const QRawFont fill(fontFile(u"Phosphor-Fill.ttf"_s), 16);
+        QVERIFY(regular.isValid() && fill.isValid());
+
+        qsizetype named = 0;
+        for (const phosphor::generated::Entry& entry : phosphor::generated::kNames) {
+            const QString name = QString::fromLatin1(entry.name.data(), qsizetype(entry.name.size()));
+            const std::optional<phosphor::Icon> icon = phosphor::forName(name);
+            QVERIFY2(icon, qPrintable(name));
+            QCOMPARE(icon->text, QString(QChar(entry.code)));
+            QCOMPARE(icon->family, regular.familyName());
+            QVERIFY2(regular.supportsCharacter(icon->text.front()), qPrintable(name));
+            QVERIFY2(fill.supportsCharacter(icon->text.front()), qPrintable(name));
+            const std::optional<phosphor::Icon> filled = phosphor::forName(name, phosphor::Weight::Fill);
+            QVERIFY2(filled, qPrintable(name));
+            QCOMPARE(filled->family, fill.familyName());
+            QCOMPARE(filled->text, icon->text);
+            ++named;
+        }
+        QCOMPARE(named, qsizetype(phosphor::generated::kNames.size()));
+        QVERIFY(phosphor::generated::kIconCount == 1512);
+        QVERIFY(!phosphor::forName(u"no-such-icon"_s));
+        QVERIFY(!phosphor::forName(QString()));
+
+        const std::optional<phosphor::Icon> heart = phosphor::forName(u"heart"_s);
+        QVERIFY(heart);
+        const std::optional<phosphor::Icon> bySpec = phosphor::resolve(u"ph:heart"_s);
+        QVERIFY(bySpec);
+        QCOMPARE(bySpec->text, heart->text);
+        const std::optional<phosphor::Icon> filledSpec = phosphor::resolve(u"ph-fill:heart"_s);
+        QVERIFY(filledSpec);
+        QCOMPARE(filledSpec->family, fill.familyName());
+        QVERIFY(!phosphor::resolve(u"ph:no-such-icon"_s));
+        QVERIFY(!phosphor::resolve(u"ph:"_s));
+        QVERIFY(!phosphor::resolve(u"heart"_s)); // a bare name is not a spec
+        const QString pin(QChar(0xE718));
+        QCOMPARE(phosphor::resolve(pin)->text, phosphor::forSegoe(pin)->text);
+
+        QQmlEngine engine;
+        QQmlComponent glyph(&engine, folder.resolved(QUrl(u"Glyph.qml"_s)));
+        std::unique_ptr<QObject> byName(glyph.createWithInitialProperties({{u"iconName"_s, u"heart"_s}, {u"size"_s, 20}}));
+        QVERIFY2(byName, qPrintable(glyph.errorString()));
+        QCOMPARE(byName->property("shown").toString(), heart->text);
+        std::unique_ptr<QObject> unknown(glyph.createWithInitialProperties({{u"iconName"_s, u"no-such-icon"_s}, {u"size"_s, 20}}));
+        QVERIFY2(unknown, qPrintable(glyph.errorString()));
+        QCOMPARE(unknown->property("shown").toString(), QString());
+        QCOMPARE(unknown->property("missing").toBool(), true);
+        QCOMPARE(unknown->property("implicitWidth").toReal(), 20.0);
     }
 
     // A symmetric icon is drawn symmetric in pixels at this scale (the

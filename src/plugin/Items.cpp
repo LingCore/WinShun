@@ -26,6 +26,8 @@ IconSpec parseIcon(const QString& text)
         {u"ext:", IconSpec::Kind::Ext},
         {u"app:", IconSpec::Kind::App},
         {u"glyph:", IconSpec::Kind::Glyph},
+        {u"ph:", IconSpec::Kind::Phosphor},
+        {u"ph-fill:", IconSpec::Kind::Phosphor},
         {u"color:", IconSpec::Kind::Color},
         {u"data:", IconSpec::Kind::Data},
         {u"site:", IconSpec::Kind::Site},
@@ -52,6 +54,17 @@ IconSpec parseIcon(const QString& text)
                 home.setPort(url.port());
                 home.setPath(u"/"_s);
                 spec.value = home.toString();
+            } else if (p.kind == IconSpec::Kind::Phosphor) {
+                // Keep the whole spec: "ph:" and "ph-fill:" pick different
+                // fonts. Only a well-formed name is accepted; an unknown one
+                // is the provider's puzzle icon, as an unknown glyph is.
+                const bool named = std::ranges::all_of(value, [](QChar c) {
+                    const char16_t ch = c.unicode();
+                    return (ch >= u'a' && ch <= u'z') || (ch >= u'0' && ch <= u'9') || ch == u'-';
+                });
+                if (!named)
+                    return spec;
+                spec.value = text;
             } else
                 spec.value = value;
             spec.kind = p.kind;

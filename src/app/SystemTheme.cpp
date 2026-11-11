@@ -44,9 +44,9 @@ qreal SystemTheme::iconScale()
     return phosphor::kScale;
 }
 
-QVariant SystemTheme::phosphorIcon(const QString& glyph) const
+QVariant SystemTheme::phosphorIcon(const QString& spec) const
 {
-    const std::optional<phosphor::Icon> icon = phosphor::forSegoe(glyph);
+    const std::optional<phosphor::Icon> icon = phosphor::resolve(spec);
     if (!icon)
         return {};
     return QVariantMap {{u"text"_s, icon->text}, {u"family"_s, icon->family}};

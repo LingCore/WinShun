@@ -2005,6 +2005,13 @@ private slots:
         QCOMPARE(parseIcon(u"ext:pdf"_s).value, u"pdf"_s);
         QCOMPARE(parseIcon(u"app:Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"_s).kind, IconSpec::Kind::App);
         QCOMPARE(parseIcon(u"glyph:U+E8E5"_s).kind, IconSpec::Kind::Glyph);
+        // A named Phosphor icon, in either weight: the whole spec is kept.
+        QCOMPARE(parseIcon(u"ph:heart"_s).kind, IconSpec::Kind::Phosphor);
+        QCOMPARE(parseIcon(u"ph:heart"_s).value, u"ph:heart"_s);
+        QCOMPARE(parseIcon(u"ph-fill:heart"_s).kind, IconSpec::Kind::Phosphor);
+        QCOMPARE(parseIcon(u"ph-fill:heart"_s).value, u"ph-fill:heart"_s);
+        QCOMPARE(parseIcon(u"ph:Heart"_s).kind, IconSpec::Kind::None); // names are lowercase
+        QCOMPARE(parseIcon(u"ph:"_s).kind, IconSpec::Kind::None);
         QCOMPARE(parseIcon(u"color:#ff8800"_s).kind, IconSpec::Kind::Color);
         QCOMPARE(parseIcon(u"color:#ff8800"_s).value, u"#ff8800"_s);
         QCOMPARE(parseIcon(u"icon.png"_s).kind, IconSpec::Kind::PluginFile);
