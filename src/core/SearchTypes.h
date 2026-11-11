@@ -51,6 +51,7 @@ struct FileType {
     QList<QString> extensions; // without the dot, lower case
     QString id; // a built-in one's ("pictures"); empty for its user's own
     QString keyword; // :keyword narrows a query to this type; empty disables it
+    QString folder; // 搜索范围（含子文件夹）；留空使用整个索引
     bool operator==(const FileType&) const = default;
 };
 using FileTypes = QList<FileType>;

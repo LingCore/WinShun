@@ -968,6 +968,38 @@ private slots:
         QVERIFY(loaded.showModifiedTime);
     }
 
+    void fileTypeFolderSettings()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.fileTypes = {{u"工作 CSV"_s, {u"csv"_s}, {}, u"cw"_s, u"H:\\__work__"_s}};
+        settings.save();
+        ws::Settings loaded;
+        loaded.load();
+        QCOMPARE(loaded.fileTypes, settings.fileTypes);
+        const auto parsed = ws::splitFileTypeQuery(u"cw:"_s, loaded.fileTypes, u"folder");
+        QCOMPARE(parsed.type, std::optional<int>(0));
+        QVERIFY(parsed.words.isEmpty());
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"FileTypes/1/Folder"_s, u"\"H:/工作 目录/\""_s);
+        }
+        loaded.load();
+        QCOMPARE(loaded.fileTypes[0].folder, u"H:\\工作 目录"_s);
+        // 旧配置没有范围字段，维持原来的全索引搜索。
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.remove(u"FileTypes/1/Folder"_s);
+        }
+        loaded.load();
+        QVERIFY(loaded.fileTypes[0].folder.isEmpty());
+        loaded.save();
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        QVERIFY(!ini.contains(u"FileTypes/1/Folder"_s));
+    }
+
     // Limits still at the default of an older version take the new default;
     // ones the user set, and a list of extensions set by hand, stay.
     void contentDefaults_data()

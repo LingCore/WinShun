@@ -310,6 +310,8 @@ void writeFileTypes(QSettings& s, const FileTypes& types)
             s.setValue(u"Name"_s, types[i].name);
         s.setValue(u"Extensions"_s, types[i].extensions.join(u' '));
         s.setValue(u"Keyword"_s, types[i].keyword);
+        if (!types[i].folder.isEmpty())
+            s.setValue(u"Folder"_s, types[i].folder);
     }
     s.endArray();
 }
@@ -334,6 +336,7 @@ FileTypes readFileTypes(QSettings& s, const FileTypes& fallback)
         if (!builtIn)
             type.id.clear();
         type.keyword = normalizedTypeKeyword(s.value(u"Keyword"_s, type.id).toString()).value_or(QString());
+        type.folder = pathtext::pathFromText(s.value(u"Folder"_s).toString());
         if ((type.name.isEmpty() && !builtIn) || type.extensions.isEmpty())
             continue;
         types.append(type);

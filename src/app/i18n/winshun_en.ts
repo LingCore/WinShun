@@ -2142,12 +2142,12 @@
         <translation>File types</translation>
     </message>
     <message>
-        <source>类型;扩展名;后缀;筛选;前缀;快捷键;folder;filter;type;extension</source>
-        <translation>type;extension;suffix;filter;prefix;shortcut;folder</translation>
+        <source>类型;扩展名;后缀;筛选;前缀;快捷键;搜索范围;目录;folder;filter;type;extension</source>
+        <translation>type;extension;suffix;filter;prefix;shortcut;search scope;directory;folder</translation>
     </message>
     <message>
-        <source>输入“:folder 报告”只找文件夹；类型前缀可自定义，不区分大小写。留空可停用，Ctrl+Tab 仍可切换。</source>
-        <translation>Type “:folder report” to find folders. Prefixes are customizable and case-insensitive. Leave blank to disable; Ctrl+Tab still switches types.</translation>
+        <source>前缀不区分大小写，留空停用。点击“范围”可绑定文件夹（含子文件夹）；例如 cw + csv，输入“cw:”直接列出该范围的 CSV。Ctrl+Tab 仍可切换类型。</source>
+        <translation>Prefixes are case-insensitive; leave blank to disable. Use Scope to bind a folder and its subfolders. For example, cw + csv lets “cw:” list CSV files in that scope. Ctrl+Tab still switches types.</translation>
     </message>
     <message>
         <source>恢复默认</source>
@@ -2224,6 +2224,30 @@
     <message>
         <source>添加</source>
         <translation>Add</translation>
+    </message>
+    <message>
+        <source>范围</source>
+        <translation>Scope</translation>
+    </message>
+    <message>
+        <source>%1的搜索范围</source>
+        <translation>Search scope for %1</translation>
+    </message>
+    <message>
+        <source>搜索范围</source>
+        <translation>Search scope</translation>
+    </message>
+    <message>
+        <source>不限范围；可填写完整文件夹路径</source>
+        <translation>Anywhere; or enter a full folder path</translation>
+    </message>
+    <message>
+        <source>%1的范围路径（含子文件夹）</source>
+        <translation>Scope path for %1 (including subfolders)</translation>
+    </message>
+    <message>
+        <source>选择文件夹…</source>
+        <translation>Choose folder…</translation>
     </message>
 </context>
 <context>
@@ -13617,6 +13641,14 @@ Content index: %5</translation>
     <message>
         <source>类型已不存在</source>
         <translation>This file type no longer exists</translation>
+    </message>
+    <message>
+        <source>填写完整的文件夹路径，例如 H:\__work__，留空则不限范围</source>
+        <translation>Enter a full folder path, such as H:\__work__; leave blank to search anywhere</translation>
+    </message>
+    <message>
+        <source>选择这个文件类型的搜索范围（包含子文件夹）</source>
+        <translation>Choose the search folder for this file type (including subfolders)</translation>
     </message>
     <message>
         <source>前缀最多 32 个字符，只能包含文字、数字、下划线和连字符</source>

@@ -72,6 +72,8 @@ struct NameSearchOptions {
     bool kindsApart = false;
     // Besides the names: when written, how large, under which folders.
     EntryFilter filter;
+    // 类型范围的有序目录 ID；组内取并集，与 filter.folders 取交集。
+    std::vector<EntryId> typeFolders;
     // Typed in a folder's window (GitHub #110): the hits that lie in this
     // folder, at any depth, go before all the others, each part in the
     // order asked for (NameHit::inside tells them apart), so that one pass

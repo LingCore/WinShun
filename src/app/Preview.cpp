@@ -2297,7 +2297,9 @@ int runSettings(const QStringList& args)
     }
 
     if (args.contains(u"--file-types"_s)) {
-        const auto check = [](bool condition, const char* message) {
+        bool passed = true;
+        const auto check = [&](bool condition, const char* message) {
+            passed = passed && condition;
             if (!condition)
                 qWarning("file types: %s", message);
         };
@@ -2307,15 +2309,52 @@ int runSettings(const QStringList& args)
         check(editor->fileTypes().value(0).toMap().value(u"keyword"_s).toString() == u"doc", "prefix was not normalized");
         check(!editor->setFileTypeKeyword(-1, u"doc"_s).isEmpty(), "type prefix collision was accepted");
         check(editor->setFileTypeKeyword(0, {}).isEmpty(), "disabling a prefix failed");
+        check(editor->setFileTypeFolder(0, u"\"H:/工作 目录/\""_s).isEmpty(), "文件类型范围未接受完整路径");
+        check(editor->fileTypes().value(0).toMap().value(u"folder"_s).toString() == u"H:\\工作 目录"_s,
+            "文件类型范围未规范化或未暴露给界面");
+        check(!editor->setFileTypeFolder(0, u"relative/path"_s).isEmpty(), "范围接受了相对路径");
+        check(editor->fileTypes().value(0).toMap().value(u"folder"_s).toString() == u"H:\\工作 目录"_s,
+            "无效范围覆盖了原来的路径");
+        check(!editor->setFileTypeFolder(-1, {}).isEmpty(), "文件夹类型意外接受了文件类型范围");
+        check(editor->setFileTypeFolder(0, {}).isEmpty(), "清空文件类型范围失败");
+        check(editor->fileTypes().value(0).toMap().value(u"folder"_s).toString().isEmpty(), "范围未清空");
         editor->resetFileTypes();
+        check(editor->addFileType(u"工作 CSV"_s, u"csv"_s).isEmpty(), "新增范围示例失败");
+        const int csv = static_cast<int>(editor->fileTypes().size()) - 1;
+        check(editor->setFileTypeKeyword(csv, u"cw"_s).isEmpty(), "设置范围示例前缀失败");
+        check(editor->setFileTypeFolder(csv, u"H:\\__work__"_s).isEmpty(), "设置范围示例目录失败");
         QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(3)), Q_ARG(QVariant, QVariant(3)));
         window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
         settle(window, 3);
+        auto* scopeButton = visualNamed(window->contentItem(), u"fileTypeScope_0"_s);
+        check(scopeButton && scopeButton->isVisible(), "未显示范围按钮");
+        if (scopeButton) {
+            scopeButton->forceActiveFocus(Qt::TabFocusReason);
+            settle(window, 3);
+            const QPointF at = scopeButton->mapToScene({scopeButton->width() / 2, scopeButton->height() / 2});
+            QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+            QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+            QCoreApplication::sendEvent(window, &press);
+            QCoreApplication::sendEvent(window, &release);
+            settle(window, 3);
+            auto* input = visualNamed(window->contentItem(), u"fileTypeFolder_0"_s);
+            check(input && input->isVisible(), "点击范围按钮未展开路径输入框");
+        }
+        for (int i = 0; i <= csv; ++i) {
+            auto* row = visualNamed(window->contentItem(), u"fileTypeRow_%1"_s.arg(i));
+            check(row != nullptr, "文件类型行不存在");
+            if (row) {
+                for (auto* child : row->childItems()) {
+                    if (child->isVisible())
+                        check(child->x() + child->width() <= row->width() + 0.5, "类型或范围控件超出卡片宽度");
+                }
+            }
+        }
         bool saved = saveGrab(window, out.filePath(u"file-types-top.png"_s));
         flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble() - flick->property("height").toDouble()));
         settle(window, 3);
         saved = saveGrab(window, out.filePath(u"file-types-bottom.png"_s)) && saved;
-        return finish(window, saved);
+        return finish(window, saved && passed);
     }
 
     if (args.contains(u"--font-picker"_s)) {
@@ -4737,7 +4776,8 @@ bool checkSwitchProvider(QQuickWindow* window, const QDir& output)
     return passed;
 }
 
-void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDir& output, bool gallery, bool previewOnly = false)
+void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDir& output, bool gallery,
+    bool previewOnly = false, bool* folderScopePassed = nullptr)
 {
     QTemporaryDir temporary;
     IndexService index(temporary.path(), IndexService::Options{});
@@ -4768,10 +4808,17 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         files->setSize(empty, packSize(0));
         files->add(root, "假日视频.mp4", 0);
         files->add(root, "报告.txt", 0);
+        const auto work = files->add(root, "__work__", EntryFlag::Directory);
+        files->add(work, "direct.csv", 0);
+        files->add(files->add(work, "sub", EntryFlag::Directory), "nested.CSV", 0);
+        files->add(root, "outside.csv", 0);
     }
-    const auto check = [](bool condition, const char* reason) {
-        if (!condition)
+    const auto check = [folderScopePassed](bool condition, const char* reason) {
+        if (!condition) {
+            if (folderScopePassed)
+                *folderScopePassed = false;
             qWarning("launcher regression: %s", reason);
+        }
     };
     // #80: applying a preference updates the existing controller immediately,
     // independently of dates and without resetting the result model.
@@ -4827,6 +4874,34 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     query({});
     check(launcher.selectedFileTypes() == (QList<int>{1, 2}), "removing the prefix lost the previous multiple selection");
     launcher.chooseFileType(-1);
+    settings.fileTypes.append({u"工作 CSV"_s, {u"csv"_s}, {}, u"cw"_s, u"T:\\__work__"_s});
+    launcher.setFileTypes(settings.namedFileTypes());
+    query(u"cw:"_s);
+    check(launcher.scope() == Launcher::Files && launcher.results()->count() == 2,
+        "cw: 没有直接列出指定目录及子目录的 CSV");
+    query(u"cw: nested"_s);
+    check(launcher.results()->count() == 1, "范围前缀没有保留搜索文字");
+    query(u"cw:"_s);
+    settings.fileTypes.last().folder = u"T:\\missing"_s;
+    launcher.setFileTypes(settings.namedFileTypes());
+    query(u":cw"_s);
+    check(launcher.results()->count() == 0, "修改范围后仍显示旧目录的结果");
+    settings.fileTypes.last().folder = u"T:\\__work__"_s;
+    launcher.setFileTypes(settings.namedFileTypes());
+    query(u"cw:"_s);
+    check(launcher.results()->count() == 2, "改回范围没有更新结果");
+    query({});
+    launcher.chooseFileType(static_cast<int>(settings.fileTypes.size()) - 1);
+    query({});
+    check(launcher.results()->count() == 2, "点击类型没有使用绑定范围");
+    launcher.toggleFileType(1); // 同时选中不限范围的图片类型
+    query({});
+    check(launcher.results()->count() == 5, "不限范围的类型没有解除合并范围约束");
+    launcher.chooseFileType(-1);
+    settings.fileTypes = Settings::defaultFileTypes();
+    launcher.setFileTypes(settings.namedFileTypes());
+    if (folderScopePassed)
+        return; // 独立范围探针到此结束，不跑后面的网络、剪贴板等验证。
     query(u"regex:["_s);
     check(!launcher.queryError().isEmpty() && launcher.results()->count() == 0,
         "invalid regex was not reported or retained stale results");
@@ -6558,6 +6633,12 @@ int runResults(const QStringList& args)
         return finish(window, saved);
     }
     if (args.contains(u"--drop-pie-check"_s)) checkDropPieHelper(out);
+    if (args.contains(u"--file-type-folder"_s)) {
+        bool passed = true;
+        checkLauncherFilters(window, &engine, out, false, false, &passed);
+        say(passed ? u"文件类型范围：cw:、范围更新、直接选择和多选验证通过"_s : u"文件类型范围验证失败"_s);
+        return finish(window, passed && saved);
+    }
     if (args.contains(u"--file-metadata"_s)) {
         const QString galleryImage = valueAfter(args, u"--gallery-image");
         checkLauncherFilters(window, &engine, out, !galleryImage.isEmpty() || args.contains(u"--file-gallery"_s));
