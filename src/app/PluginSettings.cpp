@@ -844,6 +844,17 @@ void PluginSettings::readMemory()
         rebuild();
 }
 
+bool PluginSettings::fitsFilter(int row, const QString& filter) const
+{
+    if (filter.trimmed().isEmpty())
+        return true;
+    const auto* card = m_list.card(m_list.data(m_list.index(row, 0), PluginListModel::IdRole).toString());
+    if (!card)
+        return false;
+    const QString words = (QStringList {card->id, card->description} + searchTerms(row)).join(u'\n').toLower();
+    return plugin::gallery::fitsFilter(words, filter);
+}
+
 QStringList PluginSettings::searchTerms(int row) const
 {
     const auto* card = m_list.card(m_list.data(m_list.index(row, 0), PluginListModel::IdRole).toString());

@@ -31,8 +31,11 @@ SettingsSection {
             ids.push(pluginId)
         expandedIds = ids
     }
-    // Unfolds a plugin's card (SettingsWindow.showPluginPage).
-    function expand(pluginId) { setExpanded(pluginId, true) }
+    // Unfolds a plugin's card (SettingsWindow.showPluginPage), which the filter must not hide.
+    function expand(pluginId) {
+        installedFilter = ""
+        setExpanded(pluginId, true)
+    }
     // Unfolds the card at `index` (the offscreen previews).
     function expandAt(index) {
         const card = cardsRepeater.itemAt(index)
@@ -85,6 +88,36 @@ SettingsSection {
         function onRowsInserted() { pluginsSection.listRevision++ }
         function onRowsRemoved() { pluginsSection.listRevision++ }
         function onDataChanged() { pluginsSection.listRevision++ }
+    }
+
+    // The filter over the cards, from `filterFrom` plugins on: fewer are seen
+    // at a glance. Matched as the 插件库's is (PluginSettings.fitsFilter).
+    // Applied only while its box shows, so a list that shrank is not left
+    // filtered unseen; and not while the settings are searched, which finds
+    // its own cards.
+    property int filterFrom: 8
+    readonly property bool filterShown: plugins.count >= filterFrom
+    property string installedFilter
+    readonly property bool filtering: filterShown && installedFilter.trim().length > 0 && !listRow.searching
+    function filterFits(row) {
+        if (!filtering)
+            return true
+        listRevision // read again as the cards change
+        if (editor)
+            editor.webShortcuts // the editable sites are among the search terms
+        return plugins.fitsFilter(row, installedFilter)
+    }
+    // How many cards the filter leaves, from the cards' own verdicts (one not made yet is not counted).
+    readonly property int installedShown: {
+        if (!filtering)
+            return plugins.count
+        listRevision
+        let shown = 0
+        for (let i = 0; i < cardsRepeater.count; ++i) {
+            if (cardsRepeater.itemAt(i)?.filterHit)
+                ++shown
+        }
+        return shown
     }
 
     note: qsTr("插件给搜索框加关键字命令，结果混进列表。它们用你的普通权限（要跟随 Win顺 管理员权限的，权限里会写明）；启用前会先列出权限，由你决定是否开启。")
@@ -389,7 +422,9 @@ SettingsSection {
             return found
         }
         description: pluginsSection.plugins.count > 0
-                     ? qsTr("%n 个；文件夹或 .zip / .wsplugin 拖到这里也能安装", "", pluginsSection.plugins.count)
+                     ? (pluginsSection.filtering
+                        ? qsTr("%1 个中的 %2 个").arg(pluginsSection.plugins.count).arg(pluginsSection.installedShown)
+                        : qsTr("%n 个；文件夹或 .zip / .wsplugin 拖到这里也能安装", "", pluginsSection.plugins.count))
                      : qsTr("还没有插件：点“添加插件”，或把插件文件夹、.zip / .wsplugin 拖到这里")
 
         FlatButton {
@@ -418,76 +453,101 @@ SettingsSection {
             }
         }
 
-        body: Item {
-            id: dropZone
+        body: [
+            InputBox { // as the 插件库's (PluginGallerySection)
+                objectName: "installedPluginFilter"
+                visible: pluginsSection.filterShown
+                width: Math.min(parent.width, 320)
+                implicitHeight: 32
+                placeholder: qsTr("筛选：名称、关键字、说明")
+                text: pluginsSection.installedFilter
+                onTextChanged: pluginsSection.installedFilter = text
+            },
+            Item {
+                id: dropZone
 
-            width: parent.width
-            height: cards.implicitHeight + (dropHint.visible ? dropHint.height + 8 : 0)
-
-            Column {
-                id: cards
                 width: parent.width
-                spacing: 8
+                height: cards.implicitHeight + (dropHint.visible ? dropHint.height + 8 : 0)
 
-                Repeater {
-                    id: cardsRepeater
-                    model: pluginsSection.plugins.list
+                Column {
+                    id: cards
+                    width: parent.width
+                    spacing: 8
 
-                    delegate: PluginCard {
-                        id: pluginCard
+                    Repeater {
+                        id: cardsRepeater
+                        model: pluginsSection.plugins.list
 
-                        // The search found something inside it, not only its name: unfolded while it searches.
-                        readonly property bool foundInside: listRow.searching
-                            && (keywords.some(k => listRow.valueFound(k.title) || listRow.valueFound(k.keyword))
-                                || settings.some(s => listRow.valueFound(s.title))
-                                || (webSearch && pluginsSection.editor && pluginsSection.editor.webShortcuts.some(
-                                    site => listRow.valueFound(site.name) || listRow.valueFound(site.keyword) || listRow.valueFound(site.shownUrl)))
-                                || (aiExpose && listRow.valueFound(qsTr("给 AI 用"))))
+                        delegate: PluginCard {
+                            id: pluginCard
 
-                        width: cards.width
-                        editor: pluginsSection.editor
-                        onEditWebShortcut: (index, button) => pluginsSection.editWebShortcut(index, button)
-                        plugins: pluginsSection.plugins
-                        animated: !pluginsSection.plugins.preview
-                        expanded: pluginsSection.expandedIds.indexOf(pluginId) >= 0 || foundInside
-                        marked: listRow.valueFound(name) || foundInside
-                                || (pluginsSection.revealed.length > 0 && pluginId === pluginsSection.revealed)
-                        onExpandRequested: (on) => pluginsSection.setExpanded(pluginId, on)
+                            required property int index
+                            // The filter's verdict; a card it leaves out keeps its place in the list (and what is unfolded).
+                            readonly property bool filterHit: pluginsSection.filterFits(index)
+                            // The search found something inside it, not only its name: unfolded while it searches.
+                            readonly property bool foundInside: listRow.searching
+                                && (keywords.some(k => listRow.valueFound(k.title) || listRow.valueFound(k.keyword))
+                                    || settings.some(s => listRow.valueFound(s.title))
+                                    || (webSearch && pluginsSection.editor && pluginsSection.editor.webShortcuts.some(
+                                        site => listRow.valueFound(site.name) || listRow.valueFound(site.keyword) || listRow.valueFound(site.shownUrl)))
+                                    || (aiExpose && listRow.valueFound(qsTr("给 AI 用"))))
+
+                            visible: filterHit
+                            width: cards.width
+                            editor: pluginsSection.editor
+                            onEditWebShortcut: (index, button) => pluginsSection.editWebShortcut(index, button)
+                            plugins: pluginsSection.plugins
+                            animated: !pluginsSection.plugins.preview
+                            expanded: pluginsSection.expandedIds.indexOf(pluginId) >= 0 || foundInside
+                            marked: listRow.valueFound(name) || foundInside
+                                    || (pluginsSection.revealed.length > 0 && pluginId === pluginsSection.revealed)
+                            onExpandRequested: (on) => pluginsSection.setExpanded(pluginId, on)
+                        }
                     }
                 }
-            }
 
-            Rectangle { // where a dragged folder or archive may be let go of
-                id: dropHint
-                visible: dropArea.containsDrag
-                anchors.bottom: parent.bottom
+                Rectangle { // where a dragged folder or archive may be let go of
+                    id: dropHint
+                    visible: dropArea.containsDrag
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    height: 48
+                    radius: Theme.controlRadius
+                    color: Theme.selection
+                    border.width: 1
+                    border.color: Theme.cardBorder
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("松开就安装")
+                        color: Theme.text
+                        font.pixelSize: Theme.fontBody
+                    }
+                }
+
+                DropArea {
+                    id: dropArea
+                    anchors.fill: parent
+                    anchors.margins: -12
+                    keys: ["text/uri-list"]
+                    onDropped: (drop) => {
+                        for (const url of drop.urls)
+                            pluginsSection.plugins.install(String(url))
+                        drop.accept()
+                    }
+                }
+            },
+            Text {
+                objectName: "installedPluginNoMatch"
+                visible: pluginsSection.filtering && pluginsSection.installedShown === 0
                 width: parent.width
-                height: 48
-                radius: Theme.controlRadius
-                color: Theme.selection
-                border.width: 1
-                border.color: Theme.cardBorder
-
-                Text {
-                    anchors.centerIn: parent
-                    text: qsTr("松开就安装")
-                    color: Theme.text
-                    font.pixelSize: Theme.fontBody
-                }
+                text: qsTr("没有找到“%1”").arg(pluginsSection.installedFilter.trim())
+                textFormat: Text.PlainText
+                color: Theme.subtext
+                font.pixelSize: Theme.fontCaption
+                wrapMode: Text.Wrap
             }
-
-            DropArea {
-                id: dropArea
-                anchors.fill: parent
-                anchors.margins: -12
-                keys: ["text/uri-list"]
-                onDropped: (drop) => {
-                    for (const url of drop.urls)
-                        pluginsSection.plugins.install(String(url))
-                    drop.accept()
-                }
-            }
-        }
+        ]
     }
 
     SettingRow {

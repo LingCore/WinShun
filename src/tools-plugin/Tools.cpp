@@ -103,6 +103,10 @@ private:
             }
             return items;
         }
+        // Typed without "=", 1998-2003 is a span of years to search for; the
+        // manifest's trigger cannot tell it from 2024-1987 (GitHub #281).
+        if (pushed(q) && tools::calc::looksLikeYearRange(text))
+            return items;
         const tools::calc::Result result = tools::calc::evaluate(text);
         if (!result.ok()) {
             if (pushed(q))

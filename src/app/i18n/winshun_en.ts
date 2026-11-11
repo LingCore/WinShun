@@ -3841,6 +3841,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <source>给 AI 用</source>
         <translation>For AI</translation>
     </message>
+    <message>
+        <source>%1 个中的 %2 个</source>
+        <translation>%2 of %1 plugins</translation>
+    </message>
     <message numerus="yes">
         <source>%n 个；文件夹或 .zip / .wsplugin 拖到这里也能安装</source>
         <translation>
@@ -3885,8 +3889,16 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>Records every message to and from the plugins and reloads scripts when they change; adds a “Developer” tab</translation>
     </message>
     <message>
+        <source>筛选：名称、关键字、说明</source>
+        <translation>Filter: name, keyword, description</translation>
+    </message>
+    <message>
         <source>松开就安装</source>
         <translation>Drop to install</translation>
+    </message>
+    <message>
+        <source>没有找到“%1”</source>
+        <translation>Nothing matches “%1”</translation>
     </message>
     <message>
         <source>刚才的结果</source>

@@ -69,13 +69,6 @@ bool risky(plugin::Permission p)
         || p == plugin::Permission::Processes || p == plugin::Permission::Elevated;
 }
 
-// Every word typed is somewhere in the row.
-bool fits(const QString& words, const QString& filter)
-{
-    const QStringList typed = filter.toLower().split(u' ', Qt::SkipEmptyParts);
-    return std::ranges::all_of(typed, [&](const QString& word) { return words.contains(word); });
-}
-
 } // namespace
 
 // ---- the rows -------------------------------------------------------------------
@@ -492,7 +485,7 @@ void PluginGallery::rebuild()
         }
     }
     for (PluginGalleryModel::Row& r : rows)
-        r.shown = fits(r.words, m_filter) && (!m_updatesOnly || (m_preview ? r.updatable : r.needsYou));
+        r.shown = gallery::fitsFilter(r.words, m_filter) &&(!m_updatesOnly || (m_preview ? r.updatable : r.needsYou));
     m_list.setRows(std::move(rows));
     emit listChanged();
     if (const int count = updateCount(); count != m_announcedCount) {

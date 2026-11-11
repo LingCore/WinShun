@@ -433,6 +433,67 @@ Item {
         role: "fieldKey"
     }
 
+    // An icon key at the box's right end: the search history, the panel's
+    // filters, expand. One box, one icon size and one colour for them all at
+    // any scale (GitHub #279: the history's icon had a size of its own, the
+    // filters' key stood filled between two flat ones). `checked`: what it
+    // opens is open, told by the icon alone (`checkedGlyph`, in the accent
+    // colour); `marked`: at work though closed.
+    component IconKey: Item {
+        id: key
+
+        property real dpr: 1 // (an inline component cannot see bar)
+        property string glyph
+        property string checkedGlyph
+        property string glyphName // the icon's objectName
+        property bool checked: false
+        property bool marked: false
+        property string tip
+        property string shortcut
+        readonly property bool tipWanted: keyArea.containsMouse
+
+        signal clicked()
+        function activate() { clicked() }
+
+        width: height
+        Accessible.role: Accessible.Button
+        Accessible.name: tip
+        Accessible.onPressAction: activate()
+        Keys.onSpacePressed: activate()
+        Keys.onReturnPressed: activate()
+
+        FieldKey {
+            id: keySurface
+            dpr: key.dpr
+            flat: true
+            hovered: keyArea.containsMouse
+            pressed: keyArea.pressed
+            focused: key.activeFocus
+        }
+        Glyph {
+            objectName: key.glyphName
+            anchors.centerIn: parent
+            anchors.verticalCenterOffset: keySurface.out("contentOffsetY", 0)
+            inkScale: keySurface.out("contentScale", 1)
+            glyph: key.checked && key.checkedGlyph.length > 0 ? key.checkedGlyph : key.glyph
+            size: Theme.searchIconSize * 0.8
+            color: key.checked || key.marked ? Theme.accent
+                 : keySurface.out("foreground", keyArea.containsMouse ? Theme.text : Theme.subtext)
+        }
+        MouseArea {
+            id: keyArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: key.activate()
+        }
+        HoverTip {
+            target: key.tipWanted ? key : null
+            text: key.tip
+            shortcut: key.shortcut
+        }
+    }
+
     Item {
         id: regexChip
 
@@ -528,51 +589,20 @@ Item {
 
     // Expands the box into the search panel (Launcher.panel), or collapses
     // it: at the right corner (Ctrl+E too).
-    Item {
+    IconKey {
         id: expand
         objectName: bar.panelMode ? "panelCollapseButton" : "searchExpandButton"
         visible: !bar.minimal
-
-        readonly property bool tipWanted: expandArea.containsMouse
-        readonly property string tip: bar.panelMode ? qsTr("收回搜索框") : qsTr("展开为搜索面板")
-
         anchors.right: parent.right
         anchors.rightMargin: bar.keysRight
         y: bar.onPixel((bar.height - height) / 2)
-        width: height
         height: bar.keyHeight
-        Accessible.role: Accessible.Button
-        Accessible.name: tip
-
-        FieldKey {
-            id: expandKey
-            dpr: bar.dpr // (an inline component cannot see bar)
-            flat: true
-            hovered: expandArea.containsMouse
-            pressed: expandArea.pressed
-        }
-
-        Glyph {
-            objectName: "searchExpandGlyph"
-            anchors.centerIn: parent
-            anchors.verticalCenterOffset: expandKey.out("contentOffsetY", 0)
-            inkScale: expandKey.out("contentScale", 1)
-            glyph: bar.panelMode ? "\uE73F" : "\uE740" // BackToWindow, FullScreen
-            size: Theme.searchIconSize * 0.8
-            color: expandKey.out("foreground", expandArea.containsMouse ? Theme.text : Theme.subtext)
-        }
-        MouseArea {
-            id: expandArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: bar.launcher.togglePanel()
-        }
-        HoverTip {
-            target: expand.tipWanted ? expand : null
-            text: expand.tip
-            shortcut: "Ctrl+E"
-        }
+        dpr: bar.dpr
+        glyph: bar.panelMode ? "\uE73F" : "\uE740" // BackToWindow, FullScreen
+        glyphName: "searchExpandGlyph"
+        tip: bar.panelMode ? qsTr("收回搜索框") : qsTr("展开为搜索面板")
+        shortcut: "Ctrl+E"
+        onClicked: bar.launcher.togglePanel()
     }
 
     QueryHistoryPicker {
@@ -582,63 +612,46 @@ Item {
         frame: bar.frame
         onChosen: bar.focusAtEnd()
     }
-    RowAction {
+    IconKey {
         id: historyButton
         objectName: bar.panelMode ? "panelHistoryButton" : "queryHistoryButton"
         visible: !bar.minimal && bar.launcher.queryHistoryEnabled && !bar.folderMode && !bar.inBox
         anchors.right: sidebarToggle.visible ? sidebarToggle.left : expand.left
         anchors.rightMargin: 6
-        anchors.verticalCenter: parent.verticalCenter
-        glyph: "\uE81C"
-        iconSize: 24 / bar.dpr
-        tip: qsTr("搜索历史")
+        y: bar.onPixel((bar.height - height) / 2)
+        height: bar.keyHeight
         dpr: bar.dpr
+        glyph: "\uE81C" // History
+        tip: qsTr("搜索历史")
+        shortcut: bar.launcher.historyKeys === "off" ? "" : (bar.launcher.historyKeys === "alt" ? "Alt" : "Ctrl") + "+↑/↓"
         onClicked: historyPicker.toggle(bar)
     }
-    HoverTip {
-        target: historyButton.tipWanted ? historyButton : null
-        text: historyButton.tip
-        shortcut: bar.launcher.historyKeys === "off" ? "" : (bar.launcher.historyKeys === "alt" ? "Alt" : "Ctrl") + "+↑/↓"
-    }
 
-    Item {
+    // The panel's filters, shown or put away. Away with some of them set,
+    // it says so: the accent colour, and a dot.
+    IconKey {
         id: sidebarToggle
         objectName: "panelSidebarToggle"
         visible: bar.panelMode
-        readonly property string tip: bar.launcher.panelSidebarVisible ? qsTr("隐藏筛选侧栏")
-            : bar.launcher.filtersActive ? qsTr("显示筛选侧栏（筛选仍生效）") : qsTr("显示筛选侧栏")
-        function activate() {
-            bar.launcher.panelSidebarVisible = !bar.launcher.panelSidebarVisible
-            bar.focusAtEnd()
-        }
         anchors.right: expand.left
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)
-        width: height
         height: bar.keyHeight
+        dpr: bar.dpr
         activeFocusOnTab: visible
-        Accessible.role: Accessible.Button
-        Accessible.name: tip
+        glyph: "\uE71C" // Filter
+        checkedGlyph: "\uE16E" // the same, filled
+        checked: bar.launcher.panelSidebarVisible
+        marked: bar.launcher.filtersActive
+        tip: bar.launcher.panelSidebarVisible ? qsTr("隐藏筛选侧栏")
+            : bar.launcher.filtersActive ? qsTr("显示筛选侧栏（筛选仍生效）") : qsTr("显示筛选侧栏")
         Accessible.checkable: true
         Accessible.checked: bar.launcher.panelSidebarVisible
-        Accessible.onPressAction: activate()
-        Keys.onSpacePressed: activate()
-        Keys.onReturnPressed: activate()
-        FieldKey {
-            id: sidebarKey
-            dpr: bar.dpr
-            checked: bar.launcher.panelSidebarVisible
-            flat: !checked
-            hovered: sidebarArea.containsMouse
-            pressed: sidebarArea.pressed
-            focused: sidebarToggle.activeFocus
+        onClicked: {
+            bar.launcher.panelSidebarVisible = !bar.launcher.panelSidebarVisible
+            bar.focusAtEnd()
         }
-        Glyph {
-            anchors.centerIn: parent
-            glyph: "\uE71C"
-            size: 16
-            color: bar.launcher.filtersActive && !sidebarKey.checked ? Theme.accent : sidebarKey.out("foreground", Theme.text)
-        }
+
         Rectangle {
             objectName: "panelActiveFiltersIndicator"
             visible: bar.launcher.filtersActive && !bar.launcher.panelSidebarVisible
@@ -650,14 +663,6 @@ Item {
             radius: 2.5
             color: Theme.accent
         }
-        MouseArea {
-            id: sidebarArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: sidebarToggle.activate()
-        }
-        HoverTip { target: sidebarArea.containsMouse ? sidebarToggle : null; text: sidebarToggle.tip }
     }
 
     Item {

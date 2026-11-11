@@ -3243,6 +3243,16 @@ private slots:
     {
         namespace gallery = ws::plugin::gallery;
         const QString gh = u"https:"_s + u"//github.com/"_s;
+        // The lists' filter (the library's, the installed ones': GitHub #275):
+        // every word typed, anywhere in the plugin's words, case aside.
+        const QString words = u"winshun.translate\n翻译\ntranslate text between languages\nfy"_s;
+        QVERIFY(gallery::fitsFilter(words, {}));
+        QVERIFY(gallery::fitsFilter(words, u"   "_s));
+        QVERIFY(gallery::fitsFilter(words, u"翻译"_s));
+        QVERIFY(gallery::fitsFilter(words, u"FY"_s));
+        QVERIFY(gallery::fitsFilter(words, u" Text  translate "_s)); // each word, in any order
+        QVERIFY(!gallery::fitsFilter(words, u"translate 截图"_s)); // one of them nowhere
+        QVERIFY(!gallery::fitsFilter(words, u"ocr"_s));
         // A plugin of someone else's repository: there, even with no homepage.
         QCOMPARE(gallery::issuesAddress(u"harafuhub/winshun-outlook"_s, {}), gh + u"harafuhub/winshun-outlook/issues"_s);
         QCOMPARE(gallery::issuesAddress(u"iuuuuuuuu/winshun-screenshot-translate"_s, gh + u"iuuuuuuuu/winshun-screenshot-translate"_s),

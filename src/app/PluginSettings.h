@@ -207,6 +207,10 @@ public:
     PluginListModel* list() { return &m_list; }
     int count() const { return m_list.rowCount(); }
     Q_INVOKABLE QStringList searchTerms(int row) const;
+    // Whether the card at `row` fits the words typed over the installed
+    // ones, as the library's filter takes them (gallery::fitsFilter): looked
+    // for in its id, its description and searchTerms().
+    Q_INVOKABLE bool fitsFilter(int row, const QString& filter) const;
     PluginLogModel* log() { return &m_log; }
     QVariantList logPlugins() const;
     QString logFilter() const { return m_log.filter(); }
