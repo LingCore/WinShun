@@ -62,6 +62,7 @@ qt_add_library(WinShunCaptureApp SHARED
     ${app_dir}/platform/Foreground.cpp ${app_dir}/platform/Foreground.h
     ${app_dir}/platform/HotkeyText.h
     ${app_dir}/platform/IdleTrim.cpp ${app_dir}/platform/IdleTrim.h
+    ${app_dir}/platform/HotPages.cpp ${app_dir}/platform/HotPages.h
     ${app_dir}/platform/Integrity.cpp ${app_dir}/platform/Integrity.h
     ${app_dir}/platform/PaddleOcr.cpp ${app_dir}/platform/PaddleOcr.h
     ${app_dir}/platform/OcrFiles.cpp ${app_dir}/platform/OcrFiles.h

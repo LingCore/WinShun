@@ -91,6 +91,8 @@ public:
         // The screens are about to be frozen: what of the app's own is on
         // them and should not be in the picture goes now.
         std::function<void()> starting;
+        // The overlays are on the screen (once a capture).
+        std::function<void()> shown;
         // How the annotation reads the selection's text and what it hides
         // (SmartRedact.h): 智能打码 and its pre-scan.
         Recorder::Hooks recording;
@@ -197,7 +199,10 @@ private:
         CaptureScreen* model = nullptr;
         QPointer<QQuickWindow> window;
         bool cloaked = false; // shown cloaked until its first frame is drawn
-        bool warming = false; // the first, hidden show that sets up its graphics
+        // The first, hidden show that sets up its graphics: frames still to
+        // come, the first with a picture of the monitor (its texture, the
+        // swap chain at the monitor's size), the last without it again.
+        int warming = 0;
         int closingFrames = 0; // frames to draw without the picture before hiding
     };
 
@@ -221,6 +226,8 @@ private:
     // shows tells how long the GUI thread was held up and whether the pointer
     // over the overlay is hidden; recordCapture() writes the capture's summary.
     void startWatch();
+    void afterUp(); // what can wait until the overlays are on the screen
+    void warmed(); // every overlay's hidden first show is over
     void watchTick();
     bool pointerOverOverlay(POINT at) const;
     void recordCapture(CaptureSession::Action action, const QRect& rect);
@@ -271,8 +278,14 @@ private:
     qint64 m_grabMs = 0;
     qint64 m_listMs = 0;
     qint64 m_flyoutMs = -1;
+    qint64 m_beginMs = 0; // the session begun
+    qint64 m_showMs = 0; // show() back: the windows asked to show
+    quint64 m_faultsBefore = 0; // the process's page faults at the hotkey
+    qint64 m_upFaults = 0; // of them, until the overlays were up
     QString m_grabReport;
     bool m_reported = false;
+    QElapsedTimer m_warmClock; // since the overlays were made, until their hidden first shows are over
+    bool m_legacySwapSet = false; // QT_D3D_NO_FLIP set for the overlays being made
     HWND m_flyout = nullptr; // the Start menu or a shell flyout in front at the hotkey, closing
     HMONITOR m_flyoutMonitor = nullptr;
     QImage m_last; // the last capture taken (copied, saved, pinned, read), for 贴上最近一次截图
