@@ -1330,6 +1330,21 @@ add_test(NAME tst_translate COMMAND tst_translate)
 set_tests_properties(tst_translate PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The backup service (src/app/Backup) as Win顺's tools backup_export and
+# backup_restore use it for the cloud backup plugin (GitHub #276), on a
+# profile in a temporary folder.
+qt_add_executable(tst_backupservice tst_backupservice.cpp ${PROJECT_SOURCE_DIR}/src/app/Backup.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/BackupFiles.cpp ${PROJECT_SOURCE_DIR}/src/app/Settings.cpp)
+# Backup.h is a QML element: QtQml's headers for the macros, not the module
+# (linking it has CMake scan this target for QML imports, of which it has none).
+target_include_directories(tst_backupservice PRIVATE ${PROJECT_SOURCE_DIR}/src/app
+    $<TARGET_PROPERTY:Qt6::Qml,INTERFACE_INCLUDE_DIRECTORIES>)
+target_link_libraries(tst_backupservice PRIVATE wscore miniz Qt6::Gui Qt6::Test)
+set_target_properties(tst_backupservice PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_backupservice COMMAND tst_backupservice)
+set_tests_properties(tst_backupservice PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The plugin system (src/plugin): manifests, items, zero-code, the catalog,
 # and plugin processes started through the runner WinShunPluginHost.exe,
 # played by plugin_fake.exe (no Qt, as a plugin would be); both paths are

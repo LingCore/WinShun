@@ -76,6 +76,8 @@ std::optional<Permission> permissionFor(const QString& tool)
         return Permission::WinshunContent;
     if (tool == u"index_status")
         return std::nullopt;
+    if (tool == u"backup_export" || tool == u"backup_restore")
+        return Permission::WinshunBackup;
     return Permission::WinshunHistory; // unknown names: the strictest, and the bridge says "unknown" anyway
 }
 

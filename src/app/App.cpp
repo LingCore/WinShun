@@ -2437,6 +2437,24 @@ void App::setUpAppTools()
             });
             done({});
         }});
+    // The cloud backup plugin (GitHub #276; winshun:backup): a backup of the
+    // settings as 导出备份 makes it, into the plugin's data folder ({hash,
+    // when, written}; nothing written when it is what the plugin has, `unless`);
+    // and the backup in a file there checked, what there is now saved to this
+    // computer's "backups", and Win顺 restarted with it, as 从备份恢复 does.
+    const auto backupTool = [](std::function<void(mcp::ToolResult)> done) {
+        return [done = std::move(done)](const QJsonObject& result, const QString& error) {
+            done(error.isEmpty() ? mcp::ToolResult {result} : toolError(error));
+        };
+    };
+    tools.push_back({u"backup_export"_s, plugin::Permission::WinshunBackup,
+        [this, backupTool](const QString&, const QString& dataDir, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            m_backup->exportTool(dataDir, arguments, backupTool(std::move(done)));
+        }});
+    tools.push_back({u"backup_restore"_s, plugin::Permission::WinshunBackup,
+        [this, backupTool](const QString&, const QString& dataDir, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            m_backup->restoreTool(dataDir, arguments, backupTool(std::move(done)));
+        }});
     m_pluginHost->setAppTools(std::move(tools));
 }
 

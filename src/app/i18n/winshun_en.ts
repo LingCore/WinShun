@@ -9399,6 +9399,10 @@ Double-click grip: expand/collapse search panel</translation>
 <context>
     <name>ws::Backup</name>
     <message>
+        <source>另一个备份正在进行，稍后再试</source>
+        <translation>Another backup is under way; try again in a moment</translation>
+    </message>
+    <message>
         <source>导出设置备份</source>
         <translation>Export settings backup</translation>
     </message>
@@ -12552,6 +12556,10 @@ Content index: %5</translation>
     <message>
         <source>让 Win顺 打开文件和网址（以普通权限）</source>
         <translation>Have WinShun open files and URLs (with normal rights)</translation>
+    </message>
+    <message>
+        <source>取得 Win顺 的设置备份，并用备份恢复设置</source>
+        <translation>Get WinShun's settings backup and restore the settings from one</translation>
     </message>
     <message>
         <source>读最近打开的项目</source>

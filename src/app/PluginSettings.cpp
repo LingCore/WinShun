@@ -522,6 +522,8 @@ QVariantList PluginSettings::permissionRows(const plugin::Manifest& m) const
         row(u"winshun:history"_s, permissionText(P::WinshunHistory), true);
     if (m.permissions.has(P::WinshunContent))
         row(u"winshun:content"_s, permissionText(P::WinshunContent), true);
+    if (m.permissions.has(P::WinshunBackup))
+        row(u"winshun:backup"_s, permissionText(P::WinshunBackup), true);
     if (m.permissions.has(P::FilesWrite))
         row(u"files:write"_s, permissionText(P::FilesWrite), strict, strict ? tr("严格沙箱：只能写它自己的数据文件夹") : tr("和你自己一样能写"));
     if (m.permissions.has(P::FilesRead))
@@ -558,6 +560,7 @@ QString PluginSettings::permissionText(plugin::Permission p)
     case P::Notifications: return tr("弹出系统通知");
     case P::SystemSettings: return tr("更改 Windows 系统设置（主题、无线电、音量、资源管理器、保持唤醒）");
     case P::Elevated: return tr("跟随 Win顺 的管理员权限");
+    case P::WinshunBackup: return tr("取得 Win顺 的设置备份，并用备份恢复设置");
     }
     return plugin::permissionName(p);
 }
