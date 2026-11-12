@@ -228,6 +228,7 @@ struct Settings {
     QString startList = QStringLiteral("opened");
     int recentItems = 5; // how many recently opened items to list, 1..200 (GitHub #119)
     bool mergeFileScope = false;
+    bool appsTab = false; // 程序 among the launcher's tabs: the apps as a grid of icons (GitHub #296)
     QString queryHistoryKeys = QStringLiteral("ctrl"); // ctrl | alt | off, local Up/Down navigation
     QString logoRightClick = QStringLiteral("menu"); // menu | top | center | restore
     bool favoritesOnStart = true; // show favorites before typing; keywords always work (#135)

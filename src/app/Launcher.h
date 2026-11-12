@@ -62,6 +62,9 @@ class Launcher : public QObject {
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged FINAL)
     Q_PROPERTY(Scope scope READ scope WRITE chooseScope NOTIFY scopeChanged FINAL)
     Q_PROPERTY(bool mergeFileScope READ mergeFileScope NOTIFY scopeChanged FINAL)
+    // 程序 is among the tabs: asked for in the settings (GitHub #296), and the
+    // window is the box (the panel and a file dialog's bar have no grid).
+    Q_PROPERTY(bool appsTab READ appsTab NOTIFY scopeChanged FINAL)
     Q_PROPERTY(QStringList queryHistory READ queryHistory NOTIFY queryHistoryChanged FINAL)
     Q_PROPERTY(bool queryHistoryEnabled READ queryHistoryEnabled NOTIFY historyChanged FINAL)
     Q_PROPERTY(QString historyKeys READ historyKeys NOTIFY historyChanged FINAL)
@@ -106,6 +109,13 @@ class Launcher : public QObject {
     // typed: for each {name, icon}. Read again each time it is shown; none
     // while history is not kept.
     Q_PROPERTY(QVariantList frequentApps READ frequentApps NOTIFY frequentAppsChanged FINAL)
+    // 程序 (GitHub #296): the apps as a grid of icons, the strip under the box
+    // choosing which: those opened most, the favorites among them (in the
+    // favorites' order), or all the Start menu lists, by name. Each with how
+    // many it has (appCounts: in the order of AppsView). Words typed narrow
+    // the ones chosen, matched as 全部 matches apps.
+    Q_PROPERTY(AppsView appsView READ appsView WRITE setAppsView NOTIFY appsViewChanged FINAL)
+    Q_PROPERTY(QList<int> appCounts READ appCounts NOTIFY appCountsChanged FINAL)
     // Files and folders, and content matches: best match first, or by when
     // last written (the footer's switch, Ctrl+S). 全部 keeps its apps,
     // places and web shortcuts first.
@@ -263,8 +273,12 @@ public:
     // As ws::Scope. 文件夹 is shown within 文件, as a chip of its strip
     // (chooseFileType): Tab goes 全部, 文件, 内容 (cycleScope; Shift+Tab back), Ctrl+Tab
     // through the strip under the box (cycleFileType, cycleFolderChip).
-    enum Scope { All, Files, Content, Folders };
+    // Apps (应用) is the launcher's own: the last tab when the settings
+    // ask for it (appsTab), its rows the installed apps and nothing else.
+    enum Scope { All, Files, Content, Folders, Apps };
     Q_ENUM(Scope)
+    enum AppsView { FrequentApps, FavoriteApps, AllApps };
+    Q_ENUM(AppsView)
     // Alternate: Shift+Enter, a plugin row's third action (Open elsewhere).
     // FavoriteFolder: the folder a file is in into the favorites.
     // EditFavorite: the settings' 收藏夹 page, at the row's favorite.
@@ -542,6 +556,12 @@ public:
     Q_INVOKABLE void recallQuery(int index);
     Q_INVOKABLE void removeQuery(int index);
     void rememberQuery();
+    bool appsTab() const { return m_appsTabWanted && !m_panel && !m_folderSearch; }
+    void setAppsTab(bool wanted);
+    AppsView appsView() const { return m_appsView; }
+    void setAppsView(AppsView view);
+    Q_INVOKABLE void cycleAppsView(int delta); // Ctrl+Tab in 程序
+    QList<int> appCounts() const { return m_appCounts; }
     bool canClearHistory() const;
     Q_INVOKABLE void clearHistory();
     QVariantList frequentApps() const;
@@ -791,6 +811,8 @@ signals:
     void contentIndexChanged();
     void contentIndexRequested(bool on);
     void frequentAppsChanged();
+    void appsViewChanged();
+    void appCountsChanged();
     void webSettingsRequested(); // the settings window, on its 网页搜索 page
     void fileTypeSettingsRequested(); // ... on its 结果列表 page, at the file types
     void fileTypeChanged();
@@ -1284,6 +1306,14 @@ private:
     QElapsedTimer m_systemMenuAsked; // since showSystemMenu was last called
     std::optional<std::pair<int, int>> m_held; // holdUntilShown(): action, number
     std::vector<FrequentApp> m_frequent;
+    bool m_appsTabWanted = false; // the settings' 程序 tab
+    AppsView m_appsView = FrequentApps; // kept in the state file (Search/AppsView)
+    AppsView m_shownAppsView = FrequentApps; // of the rows on screen, as m_shownText
+    QList<int> m_appCounts {0, 0, 0};
+    bool m_appsLeft = false; // 程序 was left because its tab went for a while (the panel, a dialog's bar)
+    void showApps(); // search() in 程序
+    void appsTabMoved();
+    void readWindowsUses();
     std::vector<AppUse> m_windowsUses; // Windows' record of what was started, read at most every minute
     QElapsedTimer m_windowsUsesAge;
     QStringList m_contentExtensions {QStringLiteral("txt")};

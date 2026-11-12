@@ -200,6 +200,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString startList READ startList WRITE setStartList NOTIFY changed FINAL) // opened | modified | none
     Q_PROPERTY(int recentItems READ recentItems WRITE setRecentItems NOTIFY changed FINAL)
     Q_PROPERTY(bool mergeFileScope READ mergeFileScope WRITE setMergeFileScope NOTIFY changed FINAL)
+    Q_PROPERTY(bool appsTab READ appsTab WRITE setAppsTab NOTIFY changed FINAL)
     Q_PROPERTY(QString queryHistoryKeys READ queryHistoryKeys WRITE setQueryHistoryKeys NOTIFY changed FINAL)
     Q_PROPERTY(QString logoRightClick READ logoRightClick WRITE setLogoRightClick NOTIFY changed FINAL)
     Q_PROPERTY(bool favoritesOnStart READ favoritesOnStart WRITE setFavoritesOnStart NOTIFY changed FINAL)
@@ -1002,6 +1003,8 @@ public:
     bool mergeFileScope() const { return m_settings.mergeFileScope; }
     QString queryHistoryKeys() const { return m_settings.queryHistoryKeys; }
     void setMergeFileScope(bool merged);
+    bool appsTab() const { return m_settings.appsTab; }
+    void setAppsTab(bool on);
     void setQueryHistoryKeys(const QString& keys);
     QString logoRightClick() const { return m_settings.logoRightClick; }
     void setLogoRightClick(const QString& action);

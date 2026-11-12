@@ -756,6 +756,13 @@ void SettingsEditor::setMergeFileScope(bool merged)
     commit();
 }
 
+void SettingsEditor::setAppsTab(bool on)
+{
+    if (m_settings.appsTab == on) return;
+    m_settings.appsTab = on;
+    commit();
+}
+
 void SettingsEditor::setQueryHistoryKeys(const QString& keys)
 {
     if (m_settings.queryHistoryKeys == keys || (keys != u"ctrl" && keys != u"alt" && keys != u"off")) return;

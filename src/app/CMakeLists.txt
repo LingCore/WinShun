@@ -141,6 +141,7 @@ qt_add_executable(WinShun WIN32
 
 set(qml_files
     qml/Main.qml
+    qml/AppsGrid.qml
     qml/SearchKeys.qml
     qml/Theme.qml
     qml/Hook.qml

@@ -35,11 +35,13 @@
 #include "platform/WindowEffects.h"
 #include "platform/WindowSearch.h"
 
+#include <QCollator>
 #include <QCursor>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLocale>
@@ -51,6 +53,7 @@
 #include <QSettings>
 #include <QStyleHints>
 #include <QTimeZone>
+#include <QVarLengthArray>
 
 #include <windows.h>
 
@@ -627,7 +630,7 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     });
     connect(m_apps, &AppCatalog::changed, this, [this] {
         // Apps installed or removed (or the first list arrived): 全部 shows them.
-        if (m_window && m_window->isVisible() && m_scope == All)
+        if (m_window && m_window->isVisible() && (m_scope == All || m_scope == Apps))
             searchFor("the apps changed");
         refreshFrequentApps(); // one whose program was deleted goes from the row too (#207)
         refreshStatus();
@@ -839,6 +842,9 @@ void Launcher::setScope(Scope scope)
     const bool hadPrefix = clearQueryPrefix();
     if (scope == Content && !m_contentEnabled)
         scope = All; // a plugin's row may still ask for it
+    if (scope == Apps && !appsTab())
+        scope = All;
+    m_appsLeft = false; // chosen: nothing to come back to
     // Back in 文件: as it was left (文件夹, or the kind chosen kept meanwhile).
     if (scope == Files && m_scope != Folders && m_foldersChosen)
         scope = Folders;
@@ -880,7 +886,7 @@ void Launcher::rememberScope() const
     if (m_stateFile.isEmpty())
         return;
     // By its tab: 文件夹 is under 文件 (which of the two, the strip's choice keeps: Search/FileType).
-    const QString tab = m_scope == Content ? u"content"_s : m_scope == All ? u"all"_s : u"files"_s;
+    const QString tab = m_scope == Content ? u"content"_s : m_scope == Apps ? u"apps"_s : m_scope == All ? u"all"_s : u"files"_s;
     QSettings(m_stateFile, QSettings::IniFormat).setValue(u"Search/Scope"_s, tab);
 }
 
@@ -892,6 +898,8 @@ void Launcher::restoreScope()
     Scope scope = All;
     if (tab == u"content" && m_contentEnabled)
         scope = Content;
+    else if (tab == u"apps" && appsTab())
+        scope = Apps;
     else if (tab == u"files" && !(m_mergeFileScope && m_fileType < 0 && !m_foldersChosen)) // as setMergeFileScope has it
         scope = m_foldersChosen ? Folders : Files;
     if (scope == m_scope)
@@ -985,6 +993,7 @@ void Launcher::setFolderSearch(bool enabled)
         return;
     m_folderSearch = enabled;
     emit folderSearchChanged();
+    appsTabMoved();
 }
 
 void Launcher::setFolderTyping(const QString& how)
@@ -1094,6 +1103,8 @@ void Launcher::walkHereSoon()
 QVariantList Launcher::leftOutHints() const
 {
     QVariantList hints;
+    if (m_scope == Apps)
+        return hints; // nothing is passed over: the apps are all there
     // `action2`: a second link on the row, its own kind (clicked, not Enter).
     const auto add = [&](const QString& kind, const QString& text, const QString& action, const QString& kind2 = {},
                          const QString& action2 = {}) {
@@ -1370,6 +1381,8 @@ QString Launcher::contentFilesLabel() const
 QString Launcher::placeholder() const
 {
     switch (m_scope) {
+    case Apps:
+        return tr("搜索应用");
     case Files:
         if (m_fileType >= 0) {
             QStringList names;
@@ -1483,6 +1496,11 @@ void Launcher::setSwitches(Switches* switches, const QString& stateFile)
     m_switches = switches;
     m_switchWaiting.clear();
     m_stateFile = stateFile;
+    if (!stateFile.isEmpty()) {
+        const QString view = QSettings(stateFile, QSettings::IniFormat).value(u"Search/AppsView"_s).toString();
+        m_appsView = view == u"favorites" ? FavoriteApps : view == u"all" ? AllApps : FrequentApps;
+        emit appsViewChanged();
+    }
     m_contentPane->loadPreferences(stateFile);
     m_switchPageTold = !stateFile.isEmpty() && QSettings(stateFile, QSettings::IniFormat).value(u"Hints/SwitchPage"_s).toBool();
     m_previewWanted = !stateFile.isEmpty() && QSettings(stateFile, QSettings::IniFormat).value(u"Launcher/PreviewOpen"_s).toBool();
@@ -1729,7 +1747,7 @@ SortOrder Launcher::nameOrder() const
 
 bool Launcher::showsStartList() const
 {
-    return m_scope != Content && searchText().isEmpty() && !m_panel && !m_filePrefix;
+    return m_scope != Content && m_scope != Apps && searchText().isEmpty() && !m_panel && !m_filePrefix;
 }
 
 void Launcher::switchOrder()
@@ -1850,10 +1868,7 @@ void Launcher::refreshFrequentApps()
     std::vector<FrequentApp> picked;
     const std::shared_ptr<const AppList> apps = m_apps->apps();
     if (m_recordHistory && apps) {
-        if (!m_windowsUsesAge.isValid() || m_windowsUsesAge.hasExpired(60'000)) {
-            m_windowsUses = windowsAppUses(); // some 500 registry values: a few ms
-            m_windowsUsesAge.start();
-        }
+        readWindowsUses();
         const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
         const auto indexes
             = ws::frequentApps(*apps, *m_history, m_windowsUses, QDateTime::currentMSecsSinceEpoch(), kFrequentApps);
@@ -1867,6 +1882,179 @@ void Launcher::refreshFrequentApps()
         return;
     m_frequent = std::move(picked);
     emit frequentAppsChanged();
+}
+
+void Launcher::readWindowsUses()
+{
+    if (!m_windowsUsesAge.isValid() || m_windowsUsesAge.hasExpired(60'000)) {
+        m_windowsUses = windowsAppUses(); // some 500 registry values: a few ms
+        m_windowsUsesAge.start();
+    }
+}
+
+void Launcher::setAppsTab(bool wanted)
+{
+    if (m_appsTabWanted == wanted)
+        return;
+    m_appsTabWanted = wanted;
+    m_appsLeft = false;
+    appsTabMoved();
+}
+
+// The tab came or went (the setting, the panel, a file dialog's bar): 程序
+// cannot stay without it, and is come back to when it went only for a while.
+void Launcher::appsTabMoved()
+{
+    if (m_scope == Apps && !appsTab()) {
+        m_appsLeft = m_appsTabWanted;
+        m_scope = All;
+        m_results.setSelection({});
+        m_held.reset();
+        refreshKeyHints();
+        emit scopeChanged();
+        if (m_window && m_window->isVisible())
+            search();
+        return;
+    }
+    if (m_scope == All && m_appsLeft && appsTab()) {
+        m_appsLeft = false;
+        m_scope = Apps;
+        m_results.setSelection({});
+        m_held.reset();
+        refreshKeyHints();
+        emit scopeChanged();
+        if (m_window && m_window->isVisible())
+            search();
+        return;
+    }
+    emit scopeChanged(); // appsTab
+}
+
+void Launcher::setAppsView(AppsView view)
+{
+    if (view != FrequentApps && view != FavoriteApps && view != AllApps)
+        return;
+    if (m_appsView == view)
+        return;
+    m_appsView = view;
+    if (!m_stateFile.isEmpty()) {
+        QSettings(m_stateFile, QSettings::IniFormat)
+            .setValue(u"Search/AppsView"_s, view == FavoriteApps ? u"favorites"_s : view == AllApps ? u"all"_s : u"frequent"_s);
+    }
+    emit appsViewChanged();
+    if (m_scope == Apps) {
+        m_results.setSelection({});
+        m_held.reset();
+        search();
+    }
+}
+
+void Launcher::cycleAppsView(int delta)
+{
+    setAppsView(static_cast<AppsView>(((static_cast<int>(m_appsView) + delta) % 3 + 3) % 3));
+}
+
+// search() in 程序: the apps the strip chose, as rows; narrowed by what is
+// typed, matched and ranked as 全部 does apps (names, pinyin, other names,
+// abbreviations). Nothing else is asked: no file, no plugin, no site.
+void Launcher::showApps()
+{
+    constexpr std::size_t kFrequentShown = 60; // some six rows of the grid
+    m_engine->cancel();
+    m_requestId = 0;
+    m_pending = false;
+    m_contentRunning = false;
+    m_pluginPending.clear();
+    m_pluginWait.stop();
+    m_pluginSlow = false;
+    m_pluginProgress.clear();
+    ++m_pluginQueryId; // what an earlier search asked for is moot now
+    if (m_plugins)
+        m_plugins->cancelAll();
+    if (m_merge)
+        m_merge->begin(m_pluginQueryId, searchText(), {}, {}, false, false);
+    if (m_keyword) {
+        m_keyword.reset();
+        emit pluginChanged();
+    }
+    m_suggestRows.clear();
+    m_withContent = false;
+    m_unconfirmed.clear();
+    m_quiet = m_refresh;
+    m_scanComplete = true;
+
+    SearchResults rows;
+    QStringList highlights;
+    QList<int> counts {0, 0, 0};
+    if (const std::shared_ptr<const AppList> apps = m_apps->apps()) {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        std::vector<std::size_t> frequent;
+        if (m_recordHistory) {
+            readWindowsUses();
+            frequent = ws::frequentApps(*apps, *m_history, m_windowsUses, now, kFrequentShown);
+        }
+        std::vector<std::size_t> favorites; // in the favorites' own order: each keeps its place
+        if (m_favorites) {
+            QHash<QString, std::size_t> byPath;
+            byPath.reserve(static_cast<qsizetype>(apps->size()));
+            for (std::size_t i = 0; i < apps->size(); ++i)
+                byPath.insert((*apps)[i].launchPath(), i);
+            for (const Favorite& f : m_favorites->items()) {
+                if (f.kind != Favorite::Kind::App)
+                    continue;
+                if (const auto it = byPath.constFind(f.path); it != byPath.cend())
+                    favorites.push_back(*it);
+            }
+        }
+        std::vector<std::size_t> all; // uninstallers and manuals aside, by name
+        all.reserve(apps->size());
+        for (std::size_t i = 0; i < apps->size(); ++i) {
+            if (!(*apps)[i].auxiliary)
+                all.push_back(i);
+        }
+        QCollator byName;
+        byName.setCaseSensitivity(Qt::CaseInsensitive);
+        byName.setNumericMode(true);
+        std::stable_sort(all.begin(), all.end(),
+            [&](std::size_t a, std::size_t b) { return byName.compare((*apps)[a].name, (*apps)[b].name) < 0; });
+        counts = {static_cast<int>(frequent.size()), static_cast<int>(favorites.size()), static_cast<int>(all.size())};
+
+        const std::vector<std::size_t>& chosen = m_appsView == FavoriteApps ? favorites : m_appsView == AllApps ? all : frequent;
+        const QString text = searchText();
+        if (text.trimmed().isEmpty()) {
+            rows.reserve(static_cast<qsizetype>(chosen.size()));
+            for (const std::size_t i : chosen)
+                rows.push_back(ws::appResult((*apps)[i]));
+        } else if (const ParsedQuery query = parseQuery(text, regexTerms()); query.error.isEmpty()) {
+            const NameMatcher matcher(query);
+            const QSet<std::size_t> among(chosen.cbegin(), chosen.cend());
+            const QStringList history = m_recordHistory ? m_history->ranked(text, now) : QStringList();
+            const History::Affinities affinities = m_recordHistory ? m_history->affinities(text, now) : History::Affinities();
+            for (const AppHit& hit : searchApps(*apps, query, matcher, history, affinities)) {
+                if (!among.contains(hit.index))
+                    continue;
+                rows.push_back(ws::appResult((*apps)[hit.index], false, hit.otherName));
+                rows.back().exact = hit.exact;
+            }
+            highlights = query.highlights;
+        }
+        if (m_favorites) { // the tiles' stars
+            for (SearchResult& r : rows) {
+                if (const qsizetype at = m_favorites->indexOf(r.path); at >= 0) {
+                    r.favorite = true;
+                    r.favoriteKeyword = m_favorites->items()[at].keyword;
+                }
+            }
+        }
+    }
+    if (counts != m_appCounts) {
+        m_appCounts = counts;
+        emit appCountsChanged();
+    }
+    m_totalMatches = rows.size();
+    m_shownAppsView = m_appsView;
+    showRows(std::move(rows), std::move(highlights));
+    refreshStatus();
 }
 
 QVariantList Launcher::frequentApps() const
@@ -1983,7 +2171,7 @@ void Launcher::search(bool more)
     // Sorted another way, or the other start list, the rows are new ones
     // (the first is selected). So is a plugin command's list in place of
     // the names' (or back): "=" and "= " are the same text trimmed.
-    std::optional<KeywordMode> keyword = m_filePrefix ? std::nullopt : matchKeyword(m_query);
+    std::optional<KeywordMode> keyword = m_filePrefix || m_scope == Apps ? std::nullopt : matchKeyword(m_query);
     const QString error = m_scope == Content || keyword || typedKeyword(m_web, m_query)
         ? QString() : parseQuery(nameText(), regexTerms()).error;
     if (m_queryError != error) {
@@ -1998,7 +2186,8 @@ void Launcher::search(bool more)
         && m_preferredTypes == m_shownPreferredTypes && keywordKey == m_shownKeyword
         && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick))
         && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey
-        && typingKey() == m_shownTyping && regexTerms() == m_shownRegex;
+        && typingKey() == m_shownTyping && regexTerms() == m_shownRegex
+        && (m_scope != Apps || m_appsView == m_shownAppsView);
     m_replacePending = !m_refresh;
     if (m_replacePending) {
         if (!wasReplacing) { // the rows on screen just became another query's
@@ -2029,6 +2218,10 @@ void Launcher::search(bool more)
         m_hintsTaken.clear();
         m_leftOutFound.clear();
         m_approximate = false;
+    }
+    if (m_scope == Apps) {
+        showApps();
+        return;
     }
     // The plugins are asked first: a keyword makes the list theirs, and
     // then neither names nor contents are searched (nothing waits for them
@@ -2796,6 +2989,8 @@ void Launcher::setPanel(bool on)
     m_panel = on;
     m_results.setFolderSizesEnabled(on);
     emit panelChanged();
+    if (m_appsTabWanted)
+        appsTabMoved(); // 程序 is the box's
     refreshStatus();
     if (m_window && m_window->isVisible() && !m_keyword)
         search(); // the rows as the panel (or the box) lists them; the same ones stay where they are
@@ -3492,15 +3687,20 @@ void Launcher::copyFiles(const QStringList& files)
 
 void Launcher::cycleScope(int delta)
 {
-    if (m_mergeFileScope) {
-        if (m_contentEnabled) chooseScope(m_scope == Content ? All : Content);
+    // As the tabs show them (文件夹 within 文件): 全部, 文件, 内容, 程序.
+    QVarLengthArray<Scope, 4> order {All};
+    if (!m_mergeFileScope)
+        order.append(Files);
+    if (m_contentEnabled)
+        order.append(Content);
+    if (appsTab())
+        order.append(Apps);
+    const int scopes = static_cast<int>(order.size());
+    if (scopes < 2)
         return;
-    }
-    static constexpr Scope kOrder[] {All, Files, Content}; // as the tabs show them (文件夹 within 文件)
-    const int scopes = static_cast<int>(std::size(kOrder)) - (m_contentEnabled ? 0 : 1); // Content last
-    const Scope tab = m_scope == Folders ? Files : m_scope;
-    const int at = static_cast<int>(std::find(std::begin(kOrder), std::end(kOrder), tab) - std::begin(kOrder));
-    chooseScope(kOrder[((at + delta) % scopes + scopes) % scopes]);
+    const Scope tab = m_scope == Folders || (m_mergeFileScope && m_scope == Files) ? (m_mergeFileScope ? All : Files) : m_scope;
+    const int at = std::max(0, static_cast<int>(order.indexOf(tab)));
+    chooseScope(order[((at + delta) % scopes + scopes) % scopes]);
 }
 
 QVariantList Launcher::fileTypes() const
@@ -5977,6 +6177,8 @@ bool Launcher::completesWebKeyword(const SearchResult& r) const
 
 navigation::TabAction Launcher::tabAction(int row) const
 {
+    if (m_scope == Apps)
+        return navigation::TabAction::SwitchScope;
     return navigation::tabAction(static_cast<ws::Scope>(m_scope), bool(m_keyword), m_tabEntersFavoriteFolder,
         m_results.at(row), completionRow(row) != nullptr);
 }

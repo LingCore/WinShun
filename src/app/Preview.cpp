@@ -6142,6 +6142,173 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
     return ok;
 }
 
+// --apps-grid (GitHub #296): 应用 as the settings bring it, with this PC's own
+// apps: the tab last among the scopes and gone with the setting, the grid in
+// place of the rows, the strip's three choices, words typed matched as 全部
+// matches apps, the star, and the keys along the tiles.
+bool checkAppsGrid(QQmlEngine* qmlEngine, const QDir& output)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const QString& reason) {
+        ok = condition && ok;
+        if (!condition)
+            qWarning().noquote() << u"apps grid: "_s + reason;
+    };
+    QTemporaryDir temporary;
+    IndexService index(temporary.path(), IndexService::Options {});
+    AppCatalog apps;
+    SystemCatalog places;
+    std::stop_source stop;
+    apps.setApps(std::make_shared<const AppList>(loadInstalledApps(stop.get_token())));
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    Favorites favorites(temporary.filePath(u"favorites.json"_s));
+    SearchEngine search(&index, &apps, &places);
+    const QString stateFile = temporary.filePath(u"state.ini"_s);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    launcher.setFavorites(&favorites);
+    launcher.setSwitches(nullptr, stateFile);
+    launcher.setContentOptions(true, {u"txt"_s}, ContentSizeLimits {}, false, false);
+    Settings settings;
+    settings.fileTypes = Settings::defaultFileTypes();
+    launcher.setFileTypes(settings.namedFileTypes());
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    check(store.open(QDateTime::currentMSecsSinceEpoch()), u"could not open isolated history"_s);
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(stateFile, u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(qmlEngine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { qWarning().noquote() << component.errorString(); return false; }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    showOffScreen(window);
+    settle(window);
+    const auto key = [&](int code, Qt::KeyboardModifiers modifiers = {}) {
+        QKeyEvent event(QEvent::KeyPress, code, modifiers);
+        QCoreApplication::sendEvent(window, &event);
+        settle(window, 2);
+    };
+    const auto count = [&] { return launcher.results()->count(); };
+    const auto name = [&](int row) { return launcher.results()->data(launcher.results()->index(row), ResultModel::NameRole).toString(); };
+    const auto favorite = [&](int row) { return launcher.results()->data(launcher.results()->index(row), ResultModel::FavoriteRole).toBool(); };
+    auto* tabs = visualNamed(window->contentItem(), u"searchScopeTabs"_s);
+    auto* grid = visualNamed(window->contentItem(), u"appsGrid"_s);
+    auto* strip = visualNamed(window->contentItem(), u"searchTypeStrip"_s);
+    auto* field = visualNamed(window->contentItem(), u"searchField"_s);
+    check(tabs && grid && strip && field, u"the production tabs, grid, strip and field"_s);
+    if (!tabs || !grid || !strip || !field)
+        return false;
+    field->forceActiveFocus();
+
+    // Off, as it comes: no tab, Tab never reaches it, and it cannot be set.
+    check(tabs->property("labels").toList().size() == 3, u"without the setting there are not three tabs"_s);
+    launcher.setScope(Launcher::Apps);
+    check(launcher.scope() == Launcher::All, u"应用 could be chosen without its tab"_s);
+    for (int i = 0; i < 3; ++i)
+        launcher.cycleScope(1);
+    check(launcher.scope() == Launcher::All, u"Tab did not go 全部, 文件, 内容 and back without the tab"_s);
+
+    launcher.setAppsTab(true);
+    settle(window);
+    check(tabs->property("labels").toList().size() == 4 && tabs->property("labels").toList().last().toString() == u"应用",
+        u"应用 is not the fourth and last tab"_s);
+    launcher.cycleScope(-1); // Shift+Tab from 全部
+    settle(window, 6);
+    check(launcher.scope() == Launcher::Apps && tabs->property("current").toInt() == 3, u"Shift+Tab from 全部 is not 应用, shown current"_s);
+    check(grid->isVisible() && window->property("view").value<QObject*>() == grid, u"the grid is not the window's view"_s);
+    check(strip->property("shown").toBool() && strip->property("apps").toBool() && strip->property("chips").toList().size() == 3,
+        u"the strip does not show the apps' three choices"_s);
+    const QList<int> counts = launcher.appCounts();
+    say(u"apps: %1 frequent, %2 favorites, %3 in all; %4 columns"_s.arg(counts.value(0)).arg(counts.value(1)).arg(counts.value(2))
+            .arg(grid->property("columns").toInt()));
+    check(counts.value(2) > 10, u"this PC's apps were not read"_s);
+    check(launcher.appsView() == Launcher::FrequentApps && count() == counts.value(0), u"常用 does not list the frequent apps"_s);
+    check(saveGrab(window, output.filePath(u"apps-frequent.png"_s)), u"render 常用"_s);
+
+    key(Qt::Key_Tab, Qt::ControlModifier);
+    check(launcher.appsView() == Launcher::FavoriteApps && count() == 0, u"Ctrl+Tab did not go on to an empty 收藏"_s);
+    check(saveGrab(window, output.filePath(u"apps-favorites-empty.png"_s)), u"render 收藏, empty"_s);
+    key(Qt::Key_Tab, Qt::ControlModifier);
+    check(launcher.appsView() == Launcher::AllApps && count() == counts.value(2), u"全部 does not list every app"_s);
+    check(QSettings(stateFile, QSettings::IniFormat).value(u"Search/AppsView"_s).toString() == u"all", u"the strip's choice was not kept"_s);
+    check(grid->property("count").toInt() == count() && grid->property("currentIndex").toInt() == 0, u"the grid's tiles are not the rows, the first current"_s);
+    settle(window, 8);
+    check(saveGrab(window, output.filePath(u"apps-all.png"_s)), u"render 全部"_s);
+
+    // The keys along the tiles: nothing typed, so ← → move too.
+    const int columns = grid->property("columns").toInt();
+    key(Qt::Key_Right);
+    check(grid->property("currentIndex").toInt() == 1, u"→ did not go to the second tile"_s);
+    key(Qt::Key_Down);
+    check(grid->property("currentIndex").toInt() == 1 + columns, u"↓ did not go one row of tiles down"_s);
+    key(Qt::Key_Left);
+    check(grid->property("currentIndex").toInt() == columns, u"← did not go one tile back"_s);
+    key(Qt::Key_Up);
+    check(grid->property("currentIndex").toInt() == 0, u"↑ did not go one row of tiles up"_s);
+    key(Qt::Key_PageDown);
+    const int paged = grid->property("currentIndex").toInt();
+    check(paged > 0 && paged % columns == 0, u"Page Down did not go whole rows down (%1)"_s.arg(paged));
+    check(grid->property("contentY").toReal() > 0, u"the grid did not scroll to the current tile"_s);
+    check(saveGrab(window, output.filePath(u"apps-all-paged.png"_s)), u"render a page down"_s);
+
+    // The star: the row's own favorite action.
+    grid->setProperty("currentIndex", 0);
+    const QString starred = name(0);
+    launcher.trigger(0, Launcher::AddFavorite);
+    settle(window, 4);
+    check(favorite(0) && launcher.appCounts().value(1) == 1, u"the star did not make the first app a favorite"_s);
+    launcher.setAppsView(Launcher::FavoriteApps);
+    settle(window, 4);
+    check(count() == 1 && name(0) == starred && favorite(0), u"收藏 does not list the starred app"_s);
+    check(saveGrab(window, output.filePath(u"apps-favorites.png"_s)), u"render 收藏"_s);
+    launcher.trigger(0, Launcher::RemoveFavorite);
+    settle(window, 4);
+    check(count() == 0 && launcher.appCounts().value(1) == 0, u"the star taken away, the app is still in 收藏"_s);
+
+    // Words typed: as 全部 finds apps, among the ones chosen.
+    launcher.setAppsView(Launcher::AllApps);
+    launcher.setQuery(u"jsq"_s);
+    settle(window, 4);
+    say(u"jsq: %1 tile(s), first \"%2\""_s.arg(count()).arg(count() > 0 ? name(0) : QString()));
+    check(count() > 0 && count() < counts.value(2), u"the pinyin initials jsq did not narrow the apps"_s);
+    check(saveGrab(window, output.filePath(u"apps-typed.png"_s)), u"render the typed search"_s);
+    launcher.setQuery(u"zzzqqqxxx"_s);
+    settle(window, 4);
+    check(count() == 0 && !window->property("showEmptyState").toBool(), u"nothing found is not the grid's own line alone"_s);
+    check(saveGrab(window, output.filePath(u"apps-none.png"_s)), u"render nothing found"_s);
+    launcher.setQuery({});
+    settle(window, 4);
+    check(count() == counts.value(2), u"the words gone, the apps are not all back"_s);
+
+    // The panel has no grid: 应用 gives way to 全部 there, and is back with the box.
+    launcher.setPanel(true);
+    settle(window, 6);
+    check(launcher.scope() == Launcher::All && !launcher.appsTab(), u"应用 stayed in the panel"_s);
+    launcher.setPanel(false);
+    settle(window, 6);
+    check(launcher.scope() == Launcher::Apps, u"应用 did not come back with the box"_s);
+    launcher.cycleScope(1);
+    check(launcher.scope() == Launcher::All, u"Tab from 应用 is not 全部"_s);
+    launcher.setScope(Launcher::Apps);
+    launcher.setAppsTab(false);
+    settle(window, 4);
+    check(launcher.scope() == Launcher::All && tabs->property("labels").toList().size() == 3 && !grid->isVisible(),
+        u"the setting off, 应用 is still there"_s);
+    QElapsedTimer settling;
+    settling.start();
+    while (launcher.searching() && settling.elapsed() < 2000)
+        pump(10);
+    launcher.setSwitches(nullptr, {});
+    return ok;
+}
+
 bool checkNumberColumn(QQmlEngine* qmlEngine, const QDir& output, int width)
 {
     bool ok = true;
@@ -6908,6 +7075,8 @@ int runResults(const QStringList& args)
         return checkSearchExperience(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--pure-search"_s))
         return checkPureSearch(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--apps-grid"_s))
+        return checkAppsGrid(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--result-row-spacing"_s))
         return checkResultRowSpacing(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--window-search-menu"_s))

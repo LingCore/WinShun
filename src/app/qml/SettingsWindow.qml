@@ -4095,6 +4095,18 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("显示“应用”标签")
+                    description: qsTr("在范围标签的最后加一个“应用”：应用排成图标网格，可看常用的、收藏的或全部，点星标收藏")
+                    keywords: qsTr("程序;应用;图标;网格;启动台;apps;grid;launchpad").split(";")
+                    ToggleSwitch {
+                        objectName: "appsTabToggle"
+                        dpr: window.dpr
+                        checked: window.editor.appsTab
+                        onToggled: (on) => window.editor.appsTab = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("不输入时显示")
                     unlocks: [recentItemsRow]
                     keywords: qsTr("最近;最近打开;最近修改;最近使用;历史;recent").split(";")
