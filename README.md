@@ -181,17 +181,19 @@ scoop install winshun
 
 ### 最近更新
 
-**0.24.0**
+**0.25.0**
 
-- 📋 **粘贴到管理员程序** 剪贴板里选中的内容能直接粘贴进以管理员身份运行的程序（需要索引服务，可在设置 › 剪贴板里关闭）。
-- 📂 **管理员权限的 CAD 和旧式对话框也能跳转** AutoCAD 以管理员身份运行时，`Ctrl+G` 和自动跳转照样可用；没有地址栏的旧式“打开 / 另存为”也一样。
-- ⚡ **闲置后第一次呼出更快** 按下快捷键的同时把内存成批读回，固态硬盘上从 142–220 毫秒降到 90–107 毫秒。
-- 🧩 **插件关键字可以写多个** 用空格分开的每个词都能触发；写错了会说明原因；已装插件多了可以筛选。
-- 📌 **任务栏搜索框可以停在托盘旁** 任务栏图标居中时也能放在托盘图标左边。
-- 🖼️ **拖出文件时显示它的样子** 指针下是缩略图或图标，多个文件带数量；按键按下有反馈。
-- 🛠️ **修复** 搜索结果长时间发灰、保存大索引占内存、设了“以管理员身份运行”时更新后不启动和拖放圆盘不出来等。
+- 🔖 **快捷筛选** 把常用的搜索条件存起来（“排除回收站”“大 PDF”），面板里点一下套用，或在搜索框里打 `:前缀`；面板的筛选改成左侧窄列表或结果上方一行。
+- ✏️ **F2 就地重命名** 在结果上按 `F2` 直接改名，`Ctrl+Z` 可在资源管理器里撤销。
+- 🎨 **预览：代码上色，设计稿直接看** 代码和 Markdown 按语法上色、标出搜索的词；`.ai`、`.psd` 不装 Adobe 软件也能预览。
+- 📝 **剪贴板记录加备注** 给一条记录写一句自己的话，搜索时按备注就能找到。
+- ⌨️ **打开结果更顺手** 可以给 `Enter` 配一个备用键；只打一个字母也能找回打开过的应用。
+- 📂 **对话框搜索框只搜当前文件夹** `Ctrl+Shift+D` 切换；文件类型也可以绑定文件夹（`cw:`）。
+- 🧭 **首次启动的引导重做** 左右两栏，一眼看全，不用滚动。
+- 🧩 **插件** 图标可以写 Phosphor 图标名（`ph:heart`）；需要管理员权限的插件可一键“以管理员身份重新启动”。
+- 🛠️ **修复** Directory Opus 停在“此电脑”时打字不出搜索框、插件启动时搜索框被关掉、设置窗口在另一种缩放的屏幕上宽度出错等。
 
-详见 [0.24.0 发布说明](docs/release-notes/v0.24.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
+详见 [0.25.0 发布说明](docs/release-notes/v0.25.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
 
 ### 常见问题
 
@@ -420,17 +422,19 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
-**0.24.0**
+**0.25.0**
 
-- 📋 **Paste into administrators' programs** An entry picked in the clipboard goes straight into a program run as administrator (needs the index service; can be turned off under Settings › Clipboard).
-- 📂 **Administrators' CAD and old-style dialogs follow too** With AutoCAD run as administrator, `Ctrl+G` and going there on return work, as in Windows XP style Open / Save dialogs with no address bar.
-- ⚡ **A faster first opening after a quiet spell** Memory is read back in bulk as the hotkey goes down: 142–220 ms became 90–107 ms on an SSD.
-- 🧩 **Several keywords for a plugin command** Every word between spaces is a keyword, a refused one says why, and many installed plugins can be filtered.
-- 📌 **The taskbar search box beside the tray** Left of the tray icons with centred taskbar icons too.
-- 🖼️ **Files dragged out show their picture** A thumbnail or icon under the pointer, with a count for several; keys show a press.
-- 🛠️ **Fixes** Results staying dimmed, memory while saving a large index, no restart after an update and no drop pie when set to run as administrator, and more.
+- 🔖 **Quick filters** Save the conditions you keep typing ("no Recycle Bin", "big PDFs"): one click in the panel, or a `:prefix` in the box. The panel's filters are a narrow list at the left or one line over the rows.
+- ✏️ **Rename in place with F2** `F2` on a result renames it; `Ctrl+Z` in File Explorer takes it back.
+- 🎨 **Preview: coloured code, design files as pictures** Code and Markdown are coloured with the searched words marked; `.ai` and `.psd` preview without Adobe's software.
+- 📝 **Notes on clipboard entries** A line of your own on an entry, found by the search.
+- ⌨️ **Opening results with less reach** A second key for `Enter`; a single letter brings back apps opened before.
+- 📂 **The dialog bar can search only the dialog's folder** `Ctrl+Shift+D` switches; a file kind can be bound to folders (`cw:`).
+- 🧭 **A new first-run setup** Two panes, everything in sight, nothing scrolled.
+- 🧩 **Plugins** Icons by Phosphor name (`ph:heart`); a plugin that needs administrator rights offers Restart as administrator.
+- 🛠️ **Fixes** Typing in Directory Opus on This PC, the search box closing as a plugin starts, the settings window's width on a screen of another scale, and more.
 
-See the [0.24.0 release notes](docs/release-notes/v0.24.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
+See the [0.25.0 release notes](docs/release-notes/v0.25.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
 
 ### FAQ
 
