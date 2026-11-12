@@ -300,7 +300,10 @@ private slots:
         QCOMPARE(rows.size(), size_t(50));
         QCOMPARE(q(rows[49].title), Q("Mark 49"));
         QCOMPARE(rows[49].id, std::string("bm-49"));
-        // The cap counts the matches, in file order, before the sort.
+        // The cap applies to the ranking's own order: every match is ranked,
+        // then the first 50 are kept. These 200 all score the same, and
+        // stable_sort leaves them in file order, so "Mark 49" is still the
+        // 50th -- the cap is not what puts it there.
         many.push_back(entry("Mark Z", "https://z.example/", "Bar"));
         QCOMPARE(search(many, "z.example", true).size(), size_t(1));
         QCOMPARE(search(many, "mark", true).size(), size_t(50));
