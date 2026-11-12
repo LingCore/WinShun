@@ -4,12 +4,12 @@
 <context>
     <name>OcrFolderRow</name>
     <message>
-        <location filename="../qml/OcrFolderRow.qml" line="31"/>
+        <location filename="../qml/OcrFolderRow.qml" line="27"/>
         <source>移除目录</source>
         <translation>Remove folder</translation>
     </message>
     <message>
-        <location filename="../qml/OcrFolderRow.qml" line="33"/>
+        <location filename="../qml/OcrFolderRow.qml" line="29"/>
         <source>移除目录，保留原文件</source>
         <translation>Remove folder; keep original files</translation>
     </message>
@@ -17,27 +17,27 @@
 <context>
     <name>OcrIssuesPopup</name>
     <message>
-        <location filename="../qml/OcrIssuesPopup.qml" line="39"/>
+        <location filename="../qml/OcrIssuesPopup.qml" line="36"/>
         <source>未完成项</source>
         <translation>Unfinished files</translation>
     </message>
     <message>
-        <location filename="../qml/OcrIssuesPopup.qml" line="39"/>
+        <location filename="../qml/OcrIssuesPopup.qml" line="36"/>
         <source>未完成和没有文字的文件</source>
         <translation>Unfinished files and files without text</translation>
     </message>
     <message>
-        <location filename="../qml/OcrIssuesPopup.qml" line="39"/>
+        <location filename="../qml/OcrIssuesPopup.qml" line="36"/>
         <source>没有文字的文件</source>
         <translation>Files without text</translation>
     </message>
     <message>
-        <location filename="../qml/OcrIssuesPopup.qml" line="43"/>
+        <location filename="../qml/OcrIssuesPopup.qml" line="40"/>
         <source>关闭</source>
         <translation>Close</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/OcrIssuesPopup.qml" line="60"/>
+        <location filename="../qml/OcrIssuesPopup.qml" line="57"/>
         <source>未完成（%n 个文件）</source>
         <translation>
             <numerusform>Unfinished (%n file)</numerusform>
@@ -45,7 +45,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/OcrIssuesPopup.qml" line="80"/>
+        <location filename="../qml/OcrIssuesPopup.qml" line="77"/>
         <source>没有识别到文字（%n 个文件）</source>
         <translation>
             <numerusform>No text found (%n file)</numerusform>
@@ -56,79 +56,79 @@
 <context>
     <name>OcrLibraryPane</name>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="36"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="29"/>
         <source>识别范围</source>
         <translation>Search folders</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="39"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="32"/>
         <source>搜索图片、PDF 和 Office 图片中的文字。选择目录后，在后台识别一次。索引建好后，在搜索框直接输入图片里的文字就能搜到；输入 ocr 关键词只看图片和扫描件结果。</source>
         <translation>Search text in images, PDFs and Office pictures. Choose folders to recognize their contents in the background. Once the index is built, type the words from a picture straight into the search box; ocr followed by words lists only picture and scan results.</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="48"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="40"/>
         <source>添加文件夹</source>
         <translation>Add folder</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="68"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="59"/>
         <source>从工作文档、扫描件或截图目录开始。</source>
         <translation>Start with a folder of documents, scans or screenshots.</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="76"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="66"/>
         <source>排除文件夹…</source>
         <translation>Exclude folder…</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="94"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="83"/>
         <source>索引</source>
         <translation>Index</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="18"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="11"/>
         <source>%1 KB</source>
         <translation>%1 KB</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="18"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="11"/>
         <source>%1 MB</source>
         <translation>%1 MB</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="97"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="86"/>
         <source>%1 个文件 · %2 页／张
 %3 / %4 MB</source>
         <translation>%1 files · %2 pages/images
 %3 / %4 MB</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="108"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="96"/>
         <source>容量上限：%1 MB</source>
         <translation>Storage limit: %1 MB</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="139"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="124"/>
         <source>查看未完成和没有文字的文件</source>
         <translation>View unfinished files and files without text</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="140"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="125"/>
         <source>查看没有文字的文件</source>
         <translation>View files without text</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="179"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="163"/>
         <source>自动更新</source>
         <translation>Auto update</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="185"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="168"/>
         <source>每 5 分钟检查变化</source>
         <translation>Check for changes every 5 minutes</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/OcrLibraryPane.qml" line="195"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="178"/>
         <source>识别规则已更新：正在补认以前跳过的 PDF 页、超长图片和放反的页面（还剩 %n 个文件），期间照常可以搜索。</source>
         <translation>
             <numerusform>Recognition rules updated: reading the PDF pages, very long pictures and upside-down pages skipped before (%n file left). Search works as usual meanwhile.</numerusform>
@@ -136,7 +136,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/OcrLibraryPane.qml" line="197"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="180"/>
         <source>识别规则已更新：以前跳过的 PDF 页、超长图片和放反的页面要补认（%n 个文件），稍后自动进行，期间照常可以搜索。</source>
         <translation>
             <numerusform>Recognition rules updated: the PDF pages, very long pictures and upside-down pages skipped before will be read shortly (%n file). Search works as usual meanwhile.</numerusform>
@@ -144,7 +144,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/OcrLibraryPane.qml" line="198"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="181"/>
         <source>识别规则已更新：以前跳过的 PDF 页、超长图片和放反的页面要补认（%n 个文件），点“开始更新”即可，期间照常可以搜索。</source>
         <translation>
             <numerusform>Recognition rules updated: the PDF pages, very long pictures and upside-down pages skipped before still need reading (%n file). Click “Update index”; search works as usual meanwhile.</numerusform>
@@ -152,42 +152,42 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="224"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="200"/>
         <source>暂停识别</source>
         <translation>Pause indexing</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="224"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="200"/>
         <source>开始更新</source>
         <translation>Update index</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="123"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="110"/>
         <source>安装增强识别组件…</source>
         <translation>Install enhanced OCR…</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="129"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="115"/>
         <source>重新检查所有文件</source>
         <translation>Recheck all files</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="140"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="125"/>
         <source>查看未完成项</source>
         <translation>View unfinished files</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="147"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="132"/>
         <source>仅识别本机文件。加密、损坏和暂不支持的格式会列入未完成项。</source>
         <translation>Only local files are read. Encrypted, damaged or unsupported files appear in the unfinished list.</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="156"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="140"/>
         <source>清空索引…</source>
         <translation>Clear index…</translation>
     </message>
     <message>
-        <location filename="../qml/OcrLibraryPane.qml" line="164"/>
+        <location filename="../qml/OcrLibraryPane.qml" line="148"/>
         <source>清空识别数据，保留原文件</source>
         <translation>Clear recognition data; keep originals</translation>
     </message>
@@ -195,47 +195,47 @@
 <context>
     <name>OcrPreviewPane</name>
     <message>
-        <location filename="../qml/OcrPreviewPane.qml" line="26"/>
+        <location filename="../qml/OcrPreviewPane.qml" line="18"/>
         <source>命中位置</source>
         <translation>Match location</translation>
     </message>
     <message>
-        <location filename="../qml/OcrPreviewPane.qml" line="27"/>
+        <location filename="../qml/OcrPreviewPane.qml" line="19"/>
         <source>缩小</source>
         <translation>Zoom out</translation>
     </message>
     <message>
-        <location filename="../qml/OcrPreviewPane.qml" line="28"/>
+        <location filename="../qml/OcrPreviewPane.qml" line="20"/>
         <source>适合</source>
         <translation>Fit</translation>
     </message>
     <message>
-        <location filename="../qml/OcrPreviewPane.qml" line="29"/>
+        <location filename="../qml/OcrPreviewPane.qml" line="21"/>
         <source>放大</source>
         <translation>Zoom in</translation>
     </message>
     <message>
-        <location filename="../qml/OcrPreviewPane.qml" line="82"/>
+        <location filename="../qml/OcrPreviewPane.qml" line="75"/>
         <source>正在读取原图…</source>
         <translation>Loading original image…</translation>
     </message>
     <message>
-        <location filename="../qml/OcrPreviewPane.qml" line="82"/>
+        <location filename="../qml/OcrPreviewPane.qml" line="75"/>
         <source>选择结果，查看原图和命中文字</source>
         <translation>Select a result to preview the original image and highlighted text</translation>
     </message>
     <message>
-        <location filename="../qml/OcrPreviewPane.qml" line="101"/>
+        <location filename="../qml/OcrPreviewPane.qml" line="94"/>
         <source>打开文件</source>
         <translation>Open file</translation>
     </message>
     <message>
-        <location filename="../qml/OcrPreviewPane.qml" line="102"/>
+        <location filename="../qml/OcrPreviewPane.qml" line="95"/>
         <source>所在文件夹</source>
         <translation>Show in folder</translation>
     </message>
     <message>
-        <location filename="../qml/OcrPreviewPane.qml" line="103"/>
+        <location filename="../qml/OcrPreviewPane.qml" line="96"/>
         <source>复制文字</source>
         <translation>Copy text</translation>
     </message>
@@ -243,29 +243,29 @@
 <context>
     <name>OcrSearchPane</name>
     <message>
-        <location filename="../qml/OcrSearchPane.qml" line="95"/>
+        <location filename="../qml/OcrSearchPane.qml" line="18"/>
         <source>搜索图片中的文字…</source>
         <translation>Search text in images…</translation>
     </message>
     <message>
-        <location filename="../qml/OcrSearchPane.qml" line="100"/>
+        <location filename="../qml/OcrSearchPane.qml" line="23"/>
         <source>搜索中…</source>
         <translation>Searching…</translation>
     </message>
     <message>
-        <location filename="../qml/OcrSearchPane.qml" line="100"/>
+        <location filename="../qml/OcrSearchPane.qml" line="23"/>
         <source>%1 个结果</source>
         <translation>%1 results</translation>
     </message>
     <message>
-        <location filename="../qml/OcrSearchPane.qml" line="149"/>
+        <location filename="../qml/OcrSearchPane.qml" line="72"/>
         <source>输入关键词即可搜索
 在启动器里直接输入图片里的文字也能搜到；输入 ocr 关键词只看图片结果</source>
         <translation>Type words to search
 In the launcher, type the words from a picture directly; ocr followed by words lists only picture results</translation>
     </message>
     <message>
-        <location filename="../qml/OcrSearchPane.qml" line="149"/>
+        <location filename="../qml/OcrSearchPane.qml" line="72"/>
         <source>没有找到匹配的文字
 可检查识别范围和未完成项</source>
         <translation>No matching text
@@ -275,12 +275,12 @@ Check your folders and unfinished files</translation>
 <context>
     <name>OcrSearchWindow</name>
     <message>
-        <location filename="../qml/OcrSearchWindow.qml" line="18"/>
+        <location filename="../qml/OcrSearchWindow.qml" line="17"/>
         <source>图片文字搜索</source>
         <translation>Image text search</translation>
     </message>
     <message>
-        <location filename="../qml/OcrSearchWindow.qml" line="76"/>
+        <location filename="../qml/OcrSearchWindow.qml" line="62"/>
         <source>本机识别 · 原文件只读</source>
         <translation>Local OCR · Originals are read-only</translation>
     </message>
@@ -362,25 +362,25 @@ Check your folders and unfinished files</translation>
     </message>
     <message>
         <location filename="../OcrSource.cpp" line="465"/>
-        <location filename="../OcrStore.cpp" line="286"/>
+        <location filename="../OcrStore.cpp" line="283"/>
         <source>第 %1 张幻灯片 · 图片 %2</source>
         <translation>Slide %1 · Image %2</translation>
     </message>
     <message>
         <location filename="../OcrSource.cpp" line="467"/>
-        <location filename="../OcrStore.cpp" line="288"/>
+        <location filename="../OcrStore.cpp" line="285"/>
         <source>工作表「%1」· 图片 %2</source>
         <translation>Sheet “%1” · Image %2</translation>
     </message>
     <message>
         <location filename="../OcrSource.cpp" line="469"/>
-        <location filename="../OcrStore.cpp" line="290"/>
+        <location filename="../OcrStore.cpp" line="287"/>
         <source>正文第 %1 段 · 图片 %2</source>
         <translation>Paragraph %1 · Image %2</translation>
     </message>
     <message>
         <location filename="../OcrSource.cpp" line="471"/>
-        <location filename="../OcrStore.cpp" line="291"/>
+        <location filename="../OcrStore.cpp" line="288"/>
         <source>%1 · 图片 %2</source>
         <translation>%1 · Image %2</translation>
     </message>
@@ -393,8 +393,8 @@ Check your folders and unfinished files</translation>
     <message>
         <location filename="../OcrSource.cpp" line="664"/>
         <location filename="../OcrSource.cpp" line="714"/>
+        <location filename="../OcrStore.cpp" line="274"/>
         <location filename="../OcrStore.cpp" line="277"/>
-        <location filename="../OcrStore.cpp" line="280"/>
         <source>第 %1 页</source>
         <translation>Page %1</translation>
     </message>
@@ -425,7 +425,7 @@ Check your folders and unfinished files</translation>
     </message>
     <message>
         <location filename="../OcrSource.cpp" line="714"/>
-        <location filename="../OcrStore.cpp" line="281"/>
+        <location filename="../OcrStore.cpp" line="278"/>
         <source>图片</source>
         <translation>Image</translation>
     </message>
@@ -516,22 +516,22 @@ Check your folders and unfinished files</translation>
         <translation>Preview image is too large; open the original file</translation>
     </message>
     <message>
-        <location filename="../OcrStore.cpp" line="901"/>
+        <location filename="../OcrStore.cpp" line="884"/>
         <source>没有要识别的页面：字都在 PDF 的文字层里</source>
         <translation>No pages to recognize: the words are in the PDF’s text layer</translation>
     </message>
     <message>
-        <location filename="../OcrStore.cpp" line="902"/>
+        <location filename="../OcrStore.cpp" line="885"/>
         <source>文档里没有图片</source>
         <translation>No pictures in the document</translation>
     </message>
     <message>
-        <location filename="../OcrStore.cpp" line="906"/>
+        <location filename="../OcrStore.cpp" line="889"/>
         <source>识别过了，没有认出文字</source>
         <translation>Read, but no text was found</translation>
     </message>
     <message numerus="yes">
-        <location filename="../OcrStore.cpp" line="915"/>
+        <location filename="../OcrStore.cpp" line="898"/>
         <source>另有 %n 个文件</source>
         <translation>
             <numerusform>%n more file</numerusform>
@@ -539,7 +539,7 @@ Check your folders and unfinished files</translation>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../OcrStore.cpp" line="917"/>
+        <location filename="../OcrStore.cpp" line="900"/>
         <source>另有 %n 张图片识别过了，没有认出文字</source>
         <translation>
             <numerusform>%n more picture read, but no text was found</numerusform>
@@ -584,7 +584,7 @@ Check your folders and unfinished files</translation>
     </message>
     <message>
         <location filename="../OcrController.cpp" line="189"/>
-        <location filename="../OcrController.cpp" line="378"/>
+        <location filename="../OcrController.cpp" line="368"/>
         <source>已暂停</source>
         <translation>Paused</translation>
     </message>
@@ -594,82 +594,82 @@ Check your folders and unfinished files</translation>
         <translation>Tidying the index…</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="274"/>
+        <location filename="../OcrController.cpp" line="264"/>
         <source>目录已添加，点击开始更新</source>
         <translation>Folder added; click Update index</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="283"/>
+        <location filename="../OcrController.cpp" line="273"/>
         <source>选择不识别的文件夹</source>
         <translation>Choose a folder to exclude</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="283"/>
+        <location filename="../OcrController.cpp" line="273"/>
         <source>选择要搜索的文件夹</source>
         <translation>Choose a folder to search</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="309"/>
+        <location filename="../OcrController.cpp" line="299"/>
         <source>请先安装增强识别组件</source>
         <translation>Install the enhanced OCR component first</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="317"/>
+        <location filename="../OcrController.cpp" line="307"/>
         <source>正在更新索引</source>
         <translation>Updating index</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="342"/>
+        <location filename="../OcrController.cpp" line="331"/>
         <source>已检查 %1 个文件 · 新识别 %2 页／张</source>
         <translation>Checked %1 files · Recognized %2 new pages/images</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="359"/>
+        <location filename="../OcrController.cpp" line="348"/>
         <source>已暂停，下次从未完成的文件继续</source>
         <translation>Paused; the next update resumes unfinished files</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="360"/>
+        <location filename="../OcrController.cpp" line="349"/>
         <source>索引已更新，每 5 分钟检查文件变化</source>
         <translation>Index updated; checking for changes every 5 minutes</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="365"/>
+        <location filename="../OcrController.cpp" line="355"/>
         <source>索引已更新，%1 个文件未完成，可查看原因</source>
         <translation>Index updated; %1 files are unfinished. View their reasons.</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="378"/>
+        <location filename="../OcrController.cpp" line="368"/>
         <source>正在暂停，保留已完成的结果…</source>
         <translation>Pausing; completed results will be retained…</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="395"/>
+        <location filename="../OcrController.cpp" line="385"/>
         <source>索引已清空，原文件保持原样</source>
         <translation>Index cleared; original files are unchanged</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="484"/>
+        <location filename="../OcrController.cpp" line="474"/>
         <source>文件已变化，请更新索引后再预览</source>
         <translation>File has changed; update the index before previewing</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="569"/>
+        <location filename="../OcrController.cpp" line="559"/>
         <source>管理图片文字搜索</source>
         <translation>Manage image text search</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="615"/>
+        <location filename="../OcrController.cpp" line="605"/>
         <source>没有找到，查看索引状态</source>
         <translation>No matches; check index status</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="617"/>
+        <location filename="../OcrController.cpp" line="607"/>
         <source>先添加要搜索的文件夹</source>
         <translation>Add folders to search first</translation>
     </message>
     <message>
-        <location filename="../OcrController.cpp" line="617"/>
+        <location filename="../OcrController.cpp" line="607"/>
         <source>可检查目录范围、识别进度和失败项</source>
         <translation>Check folders, recognition progress and unfinished files</translation>
     </message>
