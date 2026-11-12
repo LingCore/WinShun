@@ -1345,6 +1345,20 @@ add_test(NAME tst_backupservice COMMAND tst_backupservice)
 set_tests_properties(tst_backupservice PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# winshun.cloudbackup (src/cloudbackup-plugin, GitHub #276), built in again:
+# the backups' names, WebDAV and GitHub against a local server that keeps the
+# files in memory, and WinShunCloudBackup.exe over its protocol with the test
+# as Win顺 (backup_export, backup_restore from the plugin's worker thread).
+qt_add_executable(tst_cloudbackup tst_cloudbackup.cpp ${PROJECT_SOURCE_DIR}/src/cloudbackup-plugin/Cloud.cpp
+    ${PROJECT_SOURCE_DIR}/src/cloudbackup-plugin/Http.cpp)
+add_dependencies(tst_cloudbackup WinShunCloudBackup)
+target_include_directories(tst_cloudbackup PRIVATE ${PROJECT_SOURCE_DIR}/src/cloudbackup-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+target_link_libraries(tst_cloudbackup PRIVATE winshun_options Qt6::Test Qt6::Network winhttp)
+set_target_properties(tst_cloudbackup PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_cloudbackup COMMAND tst_cloudbackup)
+set_tests_properties(tst_cloudbackup PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The plugin system (src/plugin): manifests, items, zero-code, the catalog,
 # and plugin processes started through the runner WinShunPluginHost.exe,
 # played by plugin_fake.exe (no Qt, as a plugin would be); both paths are
