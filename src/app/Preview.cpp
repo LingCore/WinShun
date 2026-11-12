@@ -109,6 +109,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
@@ -4560,6 +4561,68 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
                 check(kindsOf(0).isEmpty() && filePreview.firstMarkRow() == 1, "a plain text file got colours, or lost its marks");
                 filePreview.close();
                 say(u"preview colours: code, Markdown, JSON by the file's kind; searched words marked and scrolled to"_s);
+            }
+            // A file whose place does not answer (GitHub #307: the preview
+            // stayed at 正在读取… for good, for every file after it too). The
+            // reading thread is left to that file and the next one is read
+            // on another; the window says the place may not be answering.
+            {
+                const auto fixture = [&](const QString& name) {
+                    QFile file(temporary.filePath(name));
+                    check(file.open(QIODevice::WriteOnly) && file.write("# A chapter\n\nSome text.\n") > 0, "could not create a fixture for the stalled reading");
+                    file.close();
+                    return QDir::toNativeSeparators(file.fileName());
+                };
+                const QString stuck = fixture(u"stuck.md"_s);
+                const QString fine = fixture(u"fine.md"_s);
+                std::atomic<bool> answer {false};
+                std::atomic<int> held {0};
+                const int warned = g_warnings; // the log's two lines of it, wanted here
+                FilePreview::setReadProbe([&](const QString& path) {
+                    if (path.compare(stuck, Qt::CaseInsensitive) != 0)
+                        return;
+                    ++held;
+                    while (!answer.load())
+                        ::Sleep(10);
+                    --held;
+                });
+                // Shown until `done` or `ms` passed (the launcher's row may take the preview back once).
+                const auto showUntil = [&](const QString& path, int ms, const std::function<bool()>& done) {
+                    timeout.restart();
+                    do {
+                        if (!filePreview.isShowing(path))
+                            filePreview.show({.path = path, .name = QFileInfo(path).fileName()});
+                        pump(10);
+                    } while (!(filePreview.isShowing(path) && done()) && timeout.elapsed() < ms);
+                    return filePreview.isShowing(path) && done();
+                };
+                check(!showUntil(stuck, 2300, [&] { return filePreview.kind() != FilePreview::Loading; }) && filePreview.slow(),
+                    "a file that does not read is not shown as being read");
+                check(!filePreview.stalled(), "a file is said not to answer within its first seconds");
+                check(showUntil(fine, 2000, [&] { return filePreview.kind() == FilePreview::Text; }),
+                    "after a file that does not read, the next one is not shown");
+                check(held.load() == 1, "the file that does not read was asked for again behind itself");
+                // Back on it: seconds later the window says so (and the log where it stands).
+                check(showUntil(stuck, 6500, [&] { return filePreview.stalled(); }) && filePreview.kind() == FilePreview::Loading,
+                    "a file that does not read for seconds is not said to be one");
+                if (filePreview.window())
+                    check(saveGrab(filePreview.window(), output.filePath(u"preview-stalled.png"_s)), "could not save the stalled preview's picture");
+                // It answers at last: shown, and nothing said of waiting any more.
+                answer = true;
+                check(showUntil(stuck, 2000, [&] { return filePreview.kind() == FilePreview::Text; }) && !filePreview.slow() && !filePreview.stalled(),
+                    "a file that answered at last is not shown");
+                timeout.restart();
+                while (held.load() > 0 && timeout.elapsed() < 2000)
+                    pump(10);
+                FilePreview::setReadProbe({});
+                // Where the reading stood is in the log, for a report: the
+                // thread left to the file, and the wait of seconds (twice
+                // the first where the launcher's row took the preview back).
+                check(g_warnings - warned >= 2, "the log does not tell of the file that did not read");
+                g_warnings = warned;
+                check(showUntil(fine, 2000, [&] { return filePreview.kind() == FilePreview::Text; }), "the threads freed do not read the next file");
+                filePreview.close();
+                say(u"preview of a file that does not read: the next file shown on another thread, the wait said after seconds"_s);
             }
         }
         const auto click = [&](QQuickItem* item) {

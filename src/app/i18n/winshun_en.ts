@@ -4170,6 +4170,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <source>正在读取…</source>
         <translation>Reading…</translation>
     </message>
+    <message>
+        <source>读取时间比平时长，文件所在的磁盘或网络位置可能没有响应</source>
+        <translation>This is taking longer than usual: the disk or network location the file is on may not be responding</translation>
+    </message>
 </context>
 <context>
     <name>PreviewWindow</name>
