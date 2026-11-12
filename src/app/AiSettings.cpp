@@ -670,6 +670,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Clipboard/KeepPlace", QT_TRANSLATE_NOOP("AiSettings", "粘贴后保持位置"), "clipboard", 0,
                     "Pasting an entry from the history leaves it where it is in the list; off: it moves to the top."},
         &Settings::clipboardKeepPlace));
+    add(integer({"Appearance/MaxRows", QT_TRANSLATE_NOOP("AiSettings", "搜索框显示行数"), "appearance", -1,
+                    "The most result rows the search box shows before its list scrolls; fewer where the screen has no room below it."},
+        &Settings::maxRows, 4, 20, QT_TRANSLATE_NOOP("AiSettings", "行"), "rows"));
     add(choice({"Clipboard/UiSize", QT_TRANSLATE_NOOP("AiSettings", "剪贴板大小"), "clipboard", 0,
                    "Type and row heights of the clipboard window alone: follows the interface size, or its own (dense: one line per entry)."},
         &Settings::clipboardUiSize,

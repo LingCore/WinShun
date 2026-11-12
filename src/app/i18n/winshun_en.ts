@@ -1286,6 +1286,14 @@
         <translation>items</translation>
     </message>
     <message>
+        <source>搜索框显示行数</source>
+        <translation>Rows in the search box</translation>
+    </message>
+    <message>
+        <source>行</source>
+        <translation>rows</translation>
+    </message>
+    <message>
         <source>全屏时不响应剪贴板快捷键</source>
         <translation>Pause clipboard hotkeys in full screen</translation>
     </message>
@@ -7715,6 +7723,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>文件名仍显示不全时，鼠标悬停在该行上会显示完整名称和路径</source>
         <translation>When file names still do not fit, hovering the mouse over the row shows the full name and path</translation>
+    </message>
+    <message>
+        <source>搜索框显示行数</source>
+        <translation>Rows in the search box</translation>
+    </message>
+    <message>
+        <source>行数;高度;加高;变高;结果数;条数;显示更多;rows;height;results</source>
+        <translation>rows;height;taller;results;count;show more;lines</translation>
+    </message>
+    <message>
+        <source>结果超过这个行数时滚动查看，可填 4–20 行，默认 8 行；屏幕下方放不下时自动减少</source>
+        <translation>Past this many rows the list scrolls. 4–20, 8 by default; fewer where the screen has no room below.</translation>
     </message>
     <message>
         <source>在“全部”和“文件”里，每个词都按正则表达式匹配名字</source>

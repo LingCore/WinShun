@@ -308,6 +308,7 @@ struct Settings {
     int glassClarity = 50; // 0..100, liquid reading surfaces; higher is more opaque
     QString taskbarIcon = QStringLiteral("color"); // color | mono: the tray's and the taskbar box's icon (monologo)
     QString uiSize = QStringLiteral("standard"); // compact | standard | roomy: type and row heights (uisize::)
+    int maxRows = 8; // MaxRows=: the most rows the search box shows before its list scrolls, 4..20 (fewer where the screen has no room)
     QString uiFont; // empty: bundled default; otherwise an installed font family
     QString corners; // round | square: defaults() picks by Windows version
     QString uiStyle = QStringLiteral("fluent"); // fluent | brand | tactile | liquid: 界面风格 (Theme.style, themes/)

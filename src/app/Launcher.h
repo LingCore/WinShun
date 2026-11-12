@@ -127,6 +127,8 @@ class Launcher : public QObject {
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool footerHints READ footerHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool pureSearch READ pureSearch NOTIFY resultOptionsChanged FINAL)
+    // The most rows the search box shows before its list scrolls (Settings::maxRows).
+    Q_PROPERTY(int maxRows READ maxRows NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString previewHotkey READ previewHotkey NOTIFY resultOptionsChanged FINAL)
     // A second key for Enter on a result (Settings::openHotkey); "" for none.
     Q_PROPERTY(QString openHotkey READ openHotkey NOTIFY resultOptionsChanged FINAL)
@@ -510,6 +512,8 @@ public:
     void setKeyboardHints(bool help, bool footer);
     bool pureSearch() const { return m_pureSearch; }
     void setPureSearch(bool on);
+    int maxRows() const { return m_maxRows; }
+    void setMaxRows(int rows);
     int numberKeysLeft() const { return static_cast<int>(m_numberKeysLeft); }
     void setNumberKeysLeft(unsigned digits);
     bool inTaskbarBox() const { return m_inTaskbarBox; }
@@ -1271,6 +1275,7 @@ private:
     bool m_shortcutHelp = true;
     bool m_footerHints = true;
     bool m_pureSearch = false;
+    int m_maxRows = 8;
     QString m_previewHotkey = QStringLiteral("Alt+P");
     QKeySequence m_previewSequence {QStringLiteral("Alt+P")};
     QString m_openHotkey;

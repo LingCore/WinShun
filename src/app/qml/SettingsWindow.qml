@@ -2971,6 +2971,29 @@ Window {
                         onClicked: window.editor.resetLauncherWidth()
                     }
                 }
+
+                SettingRow {
+                    title: qsTr("搜索框显示行数")
+                    keywords: qsTr("行数;高度;加高;变高;结果数;条数;显示更多;rows;height;results").split(";")
+                    description: qsTr("结果超过这个行数时滚动查看，可填 4–20 行，默认 8 行；屏幕下方放不下时自动减少")
+
+                    InputBox {
+                        objectName: "maxRowsInput"
+                        dpr: window.dpr
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 80
+                        horizontalAlignment: TextInput.AlignHCenter
+                        text: String(window.editor.maxRows)
+                        Accessible.name: qsTr("搜索框显示行数")
+                        validator: IntValidator { bottom: 1; top: 20 }
+                        onEditingFinished: {
+                            const rows = parseInt(text, 10)
+                            if (rows > 0)
+                                window.editor.maxRows = rows
+                            text = Qt.binding(() => String(window.editor.maxRows))
+                        }
+                    }
+                }
             }
 
             SettingsSection {

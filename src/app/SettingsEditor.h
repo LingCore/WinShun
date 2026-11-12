@@ -199,6 +199,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString sort READ sort WRITE setSort NOTIFY changed FINAL) // match | newest | oldest | name | folder | type | largest | smallest (kSortNames)
     Q_PROPERTY(QString startList READ startList WRITE setStartList NOTIFY changed FINAL) // opened | modified | none
     Q_PROPERTY(int recentItems READ recentItems WRITE setRecentItems NOTIFY changed FINAL)
+    Q_PROPERTY(int maxRows READ maxRows WRITE setMaxRows NOTIFY changed FINAL) // Settings::maxRows, 4..20
     Q_PROPERTY(bool mergeFileScope READ mergeFileScope WRITE setMergeFileScope NOTIFY changed FINAL)
     Q_PROPERTY(QString queryHistoryKeys READ queryHistoryKeys WRITE setQueryHistoryKeys NOTIFY changed FINAL)
     Q_PROPERTY(QString logoRightClick READ logoRightClick WRITE setLogoRightClick NOTIFY changed FINAL)
@@ -736,6 +737,8 @@ public:
     void setStartList(const QString& list);
     int recentItems() const { return m_settings.recentItems; }
     void setRecentItems(int count);
+    int maxRows() const { return m_settings.maxRows; }
+    void setMaxRows(int rows);
     bool favoritesOnStart() const { return m_settings.favoritesOnStart; }
     void setFavoritesOnStart(bool on);
     bool clearOnOpen() const { return m_settings.clearOnOpen; }

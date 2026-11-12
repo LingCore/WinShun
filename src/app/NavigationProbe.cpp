@@ -793,6 +793,8 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
         const auto lock = index.index()->writeLock();
         const auto drive = index.index()->addRoot("D:");
         index.index()->add(drive, "report.txt", 0);
+        for (int i = 0; i < 25; ++i) // more than the most rows the box can be set to
+            index.index()->add(drive, QByteArray("ledger-") + QByteArray::number(i) + ".txt", 0);
     }
     AppCatalog apps;
     apps.setApps(std::make_shared<const AppList>());
@@ -878,6 +880,39 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     launcher.setPureSearch(false);
     settle(window);
     check(footer->isVisible() && tabs->isVisible(), u"switching off restores the original presentation"_s);
+    // 设置 › 外观 › 搜索框显示行数 (Settings::maxRows): the box is as tall as
+    // that many rows, where the screen has the room.
+    launcher.setScope(Launcher::All);
+    launcher.setQuery(u"ledger"_s);
+    settle(window);
+    const int rowHeight = window->property("rowHeight").toInt();
+    const auto rows = [&] { return window->property("listRows").toInt(); };
+    check(launcher.results()->count() == 25, u"rows: 25 found, got %1"_s.arg(launcher.results()->count()));
+    check(window->property("maxRows").toInt() == 8 && rows() == 8, u"rows: 8 by default, shows %1"_s.arg(rows()));
+    const int eightHeight = window->height();
+    launcher.setMaxRows(12);
+    settle(window);
+    const int fit = window->property("fitRows").toInt();
+    check(window->property("maxRows").toInt() == 12 && fit > 8 && rows() == fit,
+        u"rows: set to 12, fits %1, shows %2"_s.arg(fit).arg(rows()));
+    check(window->height() == eightHeight + (fit - 8) * rowHeight,
+        u"rows: the window grows by the rows added (%1 -> %2, rows of %3)"_s.arg(eightHeight).arg(window->height()).arg(rowHeight));
+    check(window->grabWindow().save(output.filePath(u"rows-12.png"_s)), u"capture 12 rows"_s);
+    launcher.setMaxRows(4);
+    settle(window);
+    check(rows() == 4 && window->height() == eightHeight - 4 * rowHeight, u"rows: set to 4, shows %1"_s.arg(rows()));
+    launcher.setFolderSearch(true);
+    settle(window);
+    check(window->property("maxRows").toInt() == 4, u"rows: a folder's box follows a setting under 6"_s);
+    launcher.setMaxRows(20);
+    settle(window);
+    check(window->property("maxRows").toInt() == 6, u"rows: a folder's box stays at 6"_s);
+    launcher.setFolderSearch(false);
+    launcher.setMaxRows(99);
+    check(launcher.maxRows() == 20, u"rows: never more than 20"_s);
+    launcher.setMaxRows(8);
+    launcher.setQuery({});
+    settle(window);
     check(!window->isActive(), u"probe never activates the user's desktop"_s);
     QFile report(output.filePath(u"pure-search.json"_s));
     if (!report.open(QIODevice::WriteOnly)) return false;

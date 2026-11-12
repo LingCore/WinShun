@@ -360,6 +360,15 @@ void SettingsEditor::setRecentItems(int count)
     commit();
 }
 
+void SettingsEditor::setMaxRows(int rows)
+{
+    rows = std::clamp(rows, 4, 20);
+    if (m_settings.maxRows == rows)
+        return;
+    m_settings.maxRows = rows;
+    commit();
+}
+
 void SettingsEditor::setFavoritesOnStart(bool on)
 {
     if (m_settings.favoritesOnStart == on)

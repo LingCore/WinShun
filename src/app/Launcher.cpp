@@ -122,7 +122,6 @@ QString walkedPath(const QString& kind)
 // Rows asked for at a time: names, content matches, files written lately.
 // Scrolled to the end, a page more (loadMore), up to kMaxPages.
 constexpr int kPage = 256;
-constexpr int kFewRows = 8; // fewer found than the window shows: the content scan's left-out hints
 constexpr int kMaxPages = 16;
 
 // Ranked by time: where a content match goes among `count` rows (`at(i)`
@@ -1131,7 +1130,7 @@ QVariantList Launcher::leftOutHints() const
     // The counts are of files not read, whatever was typed: offered under
     // every list they would be noise. Only when what was found does not fill
     // the window (Main.qml maxRows), where "is that all?" is the question.
-    if (m_scanComplete && !m_moreContent && m_results.count() < kFewRows) {
+    if (m_scanComplete && !m_moreContent && m_results.count() < m_maxRows) {
         if (!m_leftOut.large.isEmpty()) {
             add(kLargeHint, tr("另有 %Ln 个大文件超过大小上限没搜", nullptr, static_cast<int>(m_leftOut.large.size())),
                 tr("也搜这些"));
@@ -1170,7 +1169,7 @@ QVariantList Launcher::leftOutHints() const
     if (m_scope != Content && !m_moreNames) {
         const QString outside = outsideFolder();
         switch (pathtext::scopeNote(m_foldersOnly, !outside.isEmpty(), m_folderNoteDismissed, static_cast<int>(m_results.count()),
-            kFewRows, searchText().size())) {
+            m_maxRows, searchText().size())) {
         case pathtext::ScopeNote::Outside:
             // On an external hard disk the index leaves out (it says
             // DRIVE_FIXED: GitHub #266), the drive's hint above says it.
@@ -1595,6 +1594,15 @@ void Launcher::setKeyboardHints(bool help, bool footer)
         return;
     m_shortcutHelp = help;
     m_footerHints = footer;
+    emit resultOptionsChanged();
+}
+
+void Launcher::setMaxRows(int rows)
+{
+    rows = std::clamp(rows, 4, 20);
+    if (m_maxRows == rows)
+        return;
+    m_maxRows = rows;
     emit resultOptionsChanged();
 }
 

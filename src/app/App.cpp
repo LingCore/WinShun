@@ -1930,6 +1930,7 @@ void App::applySettings(bool initial)
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
     m_launcher->setKeyboardHints(m_settings.shortcutHelp, m_settings.footerHints);
+    m_launcher->setMaxRows(m_settings.maxRows);
     m_launcher->setPureSearch(m_settings.pureSearch && !m_launcherOverBox);
     tellLauncherFolders();
     m_clipboard->setNumberHints(m_settings.numberHints);

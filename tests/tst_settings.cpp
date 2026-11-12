@@ -597,6 +597,28 @@ private slots:
         }
     }
 
+    void searchBoxRows()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.maxRows, 8);
+        settings.maxRows = 14;
+        settings.save();
+        ws::Settings restored;
+        restored.load();
+        QCOMPARE(restored.maxRows, 14);
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        for (const int invalid : {-1, 0, 3, 21, 10000}) {
+            ini.setValue(u"Appearance/MaxRows"_s, invalid);
+            ini.sync();
+            restored.load();
+            QCOMPARE(restored.maxRows, std::clamp(invalid, 4, 20));
+        }
+    }
+
     void clipboardOpeningPosition()
     {
         QTemporaryDir profile;

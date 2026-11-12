@@ -1025,6 +1025,7 @@ void Settings::load()
     uiFont = readOrDefault(s, u"Appearance/UiFont"_s, d.uiFont).trimmed();
     if (uiSize != u"compact" && uiSize != u"roomy")
         uiSize = d.uiSize;
+    maxRows = std::clamp(readOrDefault(s, u"Appearance/MaxRows"_s, d.maxRows), 4, 20);
     corners = readOrDefault(s, u"Appearance/Corners"_s, d.corners).trimmed().toLower();
     if (corners != u"round" && corners != u"square")
         corners = d.corners;
@@ -1376,6 +1377,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Appearance/TaskbarIcon"_s, taskbarIcon);
     s.remove(u"Appearance/SearchLogo"_s); // retired exterior decoration; inline logos are always present
     s.setValue(u"Appearance/UiSize"_s, uiSize);
+    s.setValue(u"Appearance/MaxRows"_s, maxRows);
     s.setValue(u"Appearance/UiFont"_s, uiFont);
     s.setValue(u"Appearance/Corners"_s, corners);
     s.setValue(u"Appearance/UiStyle"_s, uiStyle);
