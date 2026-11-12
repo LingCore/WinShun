@@ -2643,8 +2643,24 @@
         <translation>Press Tab to switch scope</translation>
     </message>
     <message>
-        <source>常用应用</source>
-        <translation>Frequent apps</translation>
+        <source>最近使用</source>
+        <translation>Recently used</translation>
+    </message>
+    <message>
+        <source>最近使用 (%1)</source>
+        <translation>Recently used (%1)</translation>
+    </message>
+    <message>
+        <source>常用软件 (%1)</source>
+        <translation>Often used (%1)</translation>
+    </message>
+    <message>
+        <source>所有程序 (%1)</source>
+        <translation>All apps (%1)</translation>
+    </message>
+    <message>
+        <source>没有符合条件的程序</source>
+        <translation>No app matches</translation>
     </message>
     <message>
         <source>收藏</source>
@@ -4161,6 +4177,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>文件</source>
         <translation>Files</translation>
+    </message>
+    <message>
+        <source>程序</source>
+        <translation>Apps</translation>
     </message>
     <message>
         <source>内容</source>
@@ -14329,6 +14349,29 @@ Content index: %5</translation>
     <message>
         <source>已清除搜索和最近使用记录</source>
         <translation>Searches and recent items cleared</translation>
+    </message>
+</context>
+<context>
+    <name>AppsGrid</name>
+    <message>
+        <source>最近使用</source>
+        <translation>Recently used</translation>
+    </message>
+    <message>
+        <source>展开 (%1)</source>
+        <translation>Expand (%1)</translation>
+    </message>
+    <message>
+        <source>收起</source>
+        <translation>Collapse</translation>
+    </message>
+    <message>
+        <source>没有叫“%1”的程序</source>
+        <translation>No app named “%1”</translation>
+    </message>
+    <message>
+        <source>还没有常用的程序</source>
+        <translation>No apps used yet</translation>
     </message>
 </context>
 </TS>

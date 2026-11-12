@@ -721,16 +721,20 @@ Item {
         y: bar.onPixel((bar.height - height) / 2)
         // 文件夹 is a chip of the strip under the box (TypeStrip): 文件 stays current.
         current: bar.launcher.mergeFileScope ? (bar.launcher.scope === Launcher.Content ? 1 : 0)
-            : bar.launcher.scope === Launcher.Folders ? Launcher.Files : bar.launcher.scope
+            : bar.launcher.scope === Launcher.Content ? 3
+            : bar.launcher.scope === Launcher.Apps ? 0
+            : bar.launcher.scope === Launcher.Files || bar.launcher.scope === Launcher.Folders ? 2 : 1
         contentTab: bar.launcher.contentEnabled
         labels: bar.launcher.mergeFileScope ? (contentTab ? [qsTranslate("ScopeTabs", "全部"), qsTranslate("ScopeTabs", "内容")] : [qsTranslate("ScopeTabs", "全部")])
-            : (contentTab ? [qsTranslate("ScopeTabs", "全部"), qsTranslate("ScopeTabs", "文件"), qsTranslate("ScopeTabs", "内容")] : [qsTranslate("ScopeTabs", "全部"), qsTranslate("ScopeTabs", "文件")])
+            : (contentTab ? [qsTranslate("ScopeTabs", "程序"), qsTranslate("ScopeTabs", "全部"), qsTranslate("ScopeTabs", "文件"), qsTranslate("ScopeTabs", "内容")] : [qsTranslate("ScopeTabs", "程序"), qsTranslate("ScopeTabs", "全部"), qsTranslate("ScopeTabs", "文件")])
         // 全部 › [icon] 结束进程 while a plugin's keyword has the list; the
         // chip (or 全部 itself) empties the box, which leaves the mode.
         pluginLabel: bar.launcher.pluginLabel
         pluginIcon: bar.launcher.pluginIcon
-        onActivated: (scope) => {
-            if (bar.launcher.mergeFileScope) scope = scope === 1 ? Launcher.Content : Launcher.All
+        onActivated: (index) => {
+            // The tabs in order: 程序, 全部, 文件, 内容 (still 全部, 内容 when the file scopes are merged).
+            const scope = bar.launcher.mergeFileScope ? (index === 1 ? Launcher.Content : Launcher.All)
+                : index === 0 ? Launcher.Apps : index === 1 ? Launcher.All : index === 2 ? Launcher.Files : Launcher.Content
             if (scope === Launcher.All && bar.launcher.scope === Launcher.All && bar.launcher.pluginKeyword.length > 0)
                 bar.launcher.leaveKeyword()
             else if (scope !== Launcher.Files || bar.launcher.scope !== Launcher.Folders) // 文件 in 文件夹: stays

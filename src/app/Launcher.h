@@ -106,6 +106,16 @@ class Launcher : public QObject {
     // typed: for each {name, icon}. Read again each time it is shown; none
     // while history is not kept.
     Q_PROPERTY(QVariantList frequentApps READ frequentApps NOTIFY frequentAppsChanged FINAL)
+    // 程序's strip: 0 the apps used most, 1 the starred ones (常用软件), 2 all installed.
+    Q_PROPERTY(int appsView READ appsView WRITE setAppsView NOTIFY appsViewChanged FINAL)
+    // 程序's strip in its own order ("recent", "starred", "all"): dragged, kept.
+    Q_PROPERTY(QStringList appChips READ appChips NOTIFY appChipsChanged FINAL)
+    // The apps (their launch paths) kept as 常用软件: a favorite of the kind App.
+    Q_PROPERTY(QStringList starredApps READ starredApps NOTIFY starredChanged FINAL)
+    // 程序's strip: how many apps each choice has.
+    Q_PROPERTY(int recentAppCount READ recentAppCount NOTIFY frequentAppsChanged FINAL)
+    Q_PROPERTY(int starredAppCount READ starredAppCount NOTIFY starredChanged FINAL)
+    Q_PROPERTY(int allAppCount READ allAppCount NOTIFY frequentAppsChanged FINAL)
     // Files and folders, and content matches: best match first, or by when
     // last written (the footer's switch, Ctrl+S). 全部 keeps its apps,
     // places and web shortcuts first.
@@ -250,7 +260,7 @@ public:
     // As ws::Scope. 文件夹 is shown within 文件, as a chip of its strip
     // (chooseFileType): Tab goes 全部, 文件, 内容 (cycleScope; Shift+Tab back), Ctrl+Tab
     // through the strip under the box (cycleFileType, cycleFolderChip).
-    enum Scope { All, Files, Content, Folders };
+    enum Scope { All, Files, Content, Folders, Apps }; // 程序: the grid of apps, no file search
     Q_ENUM(Scope)
     // Alternate: Shift+Enter, a plugin row's third action (Open elsewhere).
     // FavoriteFolder: the folder a file is in into the favorites.
@@ -529,6 +539,15 @@ public:
     Q_INVOKABLE void clearHistory();
     QVariantList frequentApps() const;
     Q_INVOKABLE void openFrequentApp(int index);
+    int appsView() const { return m_appsView; }
+    void setAppsView(int view);
+    QStringList appChips() const { return m_appChips; }
+    Q_INVOKABLE void moveAppChip(int from, int to);
+    QStringList starredApps() const;
+    Q_INVOKABLE void toggleAppStar(const QString& path);
+    int recentAppCount() const { return static_cast<int>(m_appRows.size()); }
+    int starredAppCount() const;
+    int allAppCount() const { return static_cast<int>(m_allAppRows.size()); }
     // Nothing typed, 全部, no folder chosen in 内容: as at the first opening
     // (Settings::clearOnOpen); the search follows in handleShown.
     void startOver();
@@ -753,6 +772,9 @@ signals:
     void contentIndexChanged();
     void contentIndexRequested(bool on);
     void frequentAppsChanged();
+    void appsViewChanged();
+    void appChipsChanged();
+    void starredChanged();
     void webSettingsRequested(); // the settings window, on its 网页搜索 page
     void fileTypeSettingsRequested(); // ... on its 结果列表 page, at the file types
     void fileTypeChanged();
@@ -1223,6 +1245,10 @@ private:
     QElapsedTimer m_systemMenuAsked; // since showSystemMenu was last called
     std::optional<std::pair<int, int>> m_held; // holdUntilShown(): action, number
     std::vector<FrequentApp> m_frequent;
+    SearchResults m_appRows; // the frequent apps as result rows, for the 程序 grid and its menu
+    SearchResults m_allAppRows; // ... every installed app (the strip's 所有程序)
+    int m_appsView = 0; // 程序: 0 最近使用, 1 常用软件, 2 所有程序
+    QStringList m_appChips {QStringLiteral("recent"), QStringLiteral("starred"), QStringLiteral("all")}; // the strip's order
     std::vector<AppUse> m_windowsUses; // Windows' record of what was started, read at most every minute
     QElapsedTimer m_windowsUsesAge;
     QStringList m_contentExtensions {QStringLiteral("txt")};
