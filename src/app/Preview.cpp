@@ -9843,6 +9843,15 @@ int runRuntime(const QStringList& args)
         return passed && saved ? std::min(unexpected, 100) : 4;
     }
     {
+        // --idle-open-check: its profile goes once the App is gone. Removed
+        // while the App lived, the folder came back as it saved its index on
+        // the way out (15 MB a run, left in %TEMP%).
+        const auto idleOpenProfile = qScopeGuard([&args] {
+            const QFileInfo profile(Settings::profile());
+            if (args.contains(u"--idle-open-check"_s) && profile.fileName().startsWith(u"WinShun-preview-")
+                && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
+                QDir(profile.absoluteFilePath()).removeRecursively();
+        });
         App app;
         QElapsedTimer since;
         since.start();
@@ -9892,11 +9901,8 @@ int runRuntime(const QStringList& args)
         }
         if (args.contains(u"--double-tap-plugin"_s) && !checkDoubleTapPlugin(app, out))
             return 4;
-        if (args.contains(u"--idle-open-check"_s)) {
-            const bool ok = checkIdleOpen(app, args, out);
-            QDir(Settings::profile()).removeRecursively();
-            return ok ? 0 : 4;
-        }
+        if (args.contains(u"--idle-open-check"_s))
+            return checkIdleOpen(app, args, out) ? 0 : 4; // its profile goes after the App (idleOpenProfile)
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
         if (args.contains(u"--clipboard-shell-probe"_s)) {
