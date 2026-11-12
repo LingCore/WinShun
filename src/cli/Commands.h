@@ -43,6 +43,7 @@ Result<Exit> runText(Context& context);
 Result<Exit> runLs(Context& context);
 Result<Exit> runOpen(Context& context);
 Result<Exit> runClip(Context& context);
+Result<Exit> runPlugin(Context& context);
 Result<Exit> runStatus(Context& context);
 Result<Exit> runSkill(Context& context);
 Result<Exit> runHelp(Context& context);

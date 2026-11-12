@@ -4,7 +4,7 @@
 // ws.exe (src/cli): Win顺 on the command line. SKILL is the SKILL.md that
 // `ws skill` prints and installs.
 IDI_ICON1 ICON "app.ico"
-SKILL RCDATA "../src/cli/SKILL.md"
+SKILL RCDATA "../skills/winshun/SKILL.md"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION WINSHUN_VERSION_MAJOR,WINSHUN_VERSION_MINOR,WINSHUN_VERSION_PATCH,0

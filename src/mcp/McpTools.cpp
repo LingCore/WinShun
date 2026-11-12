@@ -939,6 +939,11 @@ struct ToolHost::Tool {
     Gate gate = Gate::None;
     Engine engine = Engine::None;
     bool offered = true; // the services it needs are there; external: what its owner says
+    // ws's alone (kPluginTools): not in the list, and no tool at all to a
+    // caller that is not ws. What it shows, not what it guards: any program
+    // may call itself ws, so such a tool does nothing the user's own
+    // programs could not, or asks the user on the screen.
+    bool cliOnly = false;
     std::function<void(const std::shared_ptr<Call>&)> run;
     // External tools (ExternalTool): their own handlers and words.
     bool external = false;
@@ -1109,7 +1114,7 @@ QJsonArray ToolHost::tools() const
 {
     QJsonArray out;
     for (const Tool& tool : m_tools) {
-        if (tool.allowed(m_policy))
+        if (tool.allowed(m_policy) && !tool.cliOnly)
             out.push_back(tool.json());
     }
     for (const auto& tool : m_external) {
@@ -1123,7 +1128,7 @@ QStringList ToolHost::toolNames() const
 {
     QStringList out;
     for (const Tool& tool : m_tools) {
-        if (tool.allowed(m_policy))
+        if (tool.allowed(m_policy) && !tool.cliOnly)
             out.push_back(tool.name);
     }
     for (const auto& tool : m_external) {
@@ -1146,10 +1151,10 @@ const ToolHost::Tool* ToolHost::find(const QString& name) const
     return nullptr;
 }
 
-ToolHost::Known ToolHost::known(const QString& name) const
+ToolHost::Known ToolHost::known(const QString& name, bool cli) const
 {
     const Tool* tool = find(name);
-    if (!tool)
+    if (!tool || (tool->cliOnly && (!cli || !tool->offered)))
         return Known::No;
     return tool->allowed(m_policy) ? Known::Yes : Known::Off;
 }
@@ -1244,7 +1249,7 @@ void ToolHost::call(std::uint64_t id, const QString& client, const QString& tool
             call->keep = t;
         }
     }
-    if (!call->tool || !call->tool->allowed(m_policy)) {
+    if (!call->tool || !call->tool->allowed(m_policy) || (call->tool->cliOnly && !call->cli)) {
         finish(call, {{}, true, u"Unknown tool: "_s + tool});
         return;
     }
@@ -2013,6 +2018,17 @@ void ToolHost::addTools()
     docs.gate = Tool::Gate::Documents;
     docs.run = [this](const std::shared_ptr<Call>& call) { listDocuments(call); };
     m_tools.push_back(std::move(docs));
+
+    // ws plugin: one handler in the app for them all (Services::plugins),
+    // which reads the arguments itself. No schema: they are never listed.
+    for (const char* name : kPluginTools) {
+        Tool plugins;
+        plugins.name = QString::fromLatin1(name);
+        plugins.cliOnly = true;
+        plugins.offered = static_cast<bool>(m_services.plugins);
+        plugins.run = [this](const std::shared_ptr<Call>& call) { pluginCommand(call); };
+        m_tools.push_back(std::move(plugins));
+    }
 }
 
 void ToolHost::searchFiles(const std::shared_ptr<Call>& call)
@@ -3039,6 +3055,24 @@ void ToolHost::applySettings(const std::shared_ptr<Call>& call, SettingsApply ap
     QPointer<ToolHost> self(this);
     std::weak_ptr<Call> weak = call;
     m_services.applySettings(apply, [self, weak](ToolResult result) {
+        QMetaObject::invokeMethod(qApp, [self, weak, result = std::move(result)]() mutable {
+            const std::shared_ptr<Call> c = weak.lock();
+            if (!self || !c || std::ranges::find(self->m_others, c) == self->m_others.end())
+                return; // cancelled
+            std::erase(self->m_others, c);
+            self->finish(c, std::move(result));
+        }, Qt::QueuedConnection);
+    });
+}
+
+// The app answers when it will (a package of the library is fetched first);
+// the call waits among the others so that cancel() finds it.
+void ToolHost::pluginCommand(const std::shared_ptr<Call>& call)
+{
+    m_others.push_back(call);
+    QPointer<ToolHost> self(this);
+    std::weak_ptr<Call> weak = call;
+    m_services.plugins(call->tool->name, call->arguments, [self, weak](ToolResult result) {
         QMetaObject::invokeMethod(qApp, [self, weak, result = std::move(result)]() mutable {
             const std::shared_ptr<Call> c = weak.lock();
             if (!self || !c || std::ranges::find(self->m_others, c) == self->m_others.end())

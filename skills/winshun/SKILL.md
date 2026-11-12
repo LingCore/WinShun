@@ -1,6 +1,6 @@
 ---
 name: winshun
-description: Find files on this Windows PC by name (pinyin too) or by the text inside them (Word, Excel, PowerPoint and PDF included), read a document's text, or list recently changed files, with WinShun's ws command. Use it whenever the user asks to find, locate or read a file on this computer.
+description: Find files on this Windows PC by name (pinyin too) or by the text inside them (Word, Excel, PowerPoint and PDF included), read a document's text, or list recently changed files, with WinShun's ws command; also list, find, install and switch WinShun's plugins. Use it whenever the user asks to find, locate or read a file on this computer, or to install or manage a WinShun (Win顺) plugin.
 ---
 
 # WinShun on the command line: ws
@@ -17,6 +17,7 @@ description: Find files on this Windows PC by name (pinyin too) or by the text i
 - `ws open "plan" --ext docx`: opens the best match as a double-click would; only when the user asks to open something
 - `ws clip -n 5`: the clipboard history, when the user allowed it
 - `ws status`: whether WinShun runs and its index is ready
+- `ws plugin list`, `ws plugin search translate`, `ws plugin install <id | package.wsplugin | folder>`, `ws plugin enable <id>` (also `disable`, `remove`): WinShun's plugins, see below
 
 ## Query syntax (find)
 
@@ -25,6 +26,12 @@ description: Find files on this Windows PC by name (pinyin too) or by the text i
 - `--in <folder>` keeps to a folder (repeatable; `--in .` is the current one); `--files` or `--folders`; `--ext pdf,docx`.
 - `--sort newest` (or `oldest`, `name`, `largest`…); by default the best matches come first.
 - People describe a file by what it is about: when nothing fits, try synonyms, shorter stems, Chinese and English (报销, 费用, reimbursement), then `ws grep`.
+
+## Plugins
+
+- `ws plugin search <words>` lists the plugin library (id, version, whether it is installed, `unreviewed` for packages nobody reviewed); `ws plugin install <id>` installs one, `ws plugin enable <id>` turns it on.
+- Exit code 1 from install, enable or remove means WinShun is asking the user in its own window (the permissions of a plugin turned on for the first time, an unreviewed package, a removal). Tell the user to answer there, never answer for them, then check with `ws plugin list`.
+- Install only what the user asked for; say which permissions a plugin asks for (`--json` lists them).
 
 ## Output
 

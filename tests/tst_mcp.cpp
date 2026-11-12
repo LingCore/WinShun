@@ -234,6 +234,7 @@ struct Fixture {
     QList<SettingsApply> settingsApplied;
     SettingsQuery lastSettingsQuery;
     QString openedAt; // "key|section"
+    QStringList pluginCalls; // ws plugin's tools, as the app would hear them: "tool {arguments}"
     // Shared with the host's services, which may outlive the test's frame
     // on the jobs' threads.
     std::shared_ptr<Hold> hold = std::make_shared<Hold>();
@@ -306,6 +307,10 @@ struct Fixture {
                     asker(request, std::move(done));
             };
         }
+        services.plugins = [this](const QString& tool, const QJsonObject& arguments, std::function<void(ToolResult)> done) {
+            pluginCalls.push_back(tool + u' ' + QString::fromUtf8(QJsonDocument(arguments).toJson(QJsonDocument::Compact)));
+            done({{{u"state"_s, u"done"_s}, {u"message"_s, u"好了"_s}}});
+        };
         services.getSettings = [this](const SettingsQuery& query) {
             lastSettingsQuery = query;
             QJsonArray list;
@@ -716,6 +721,37 @@ private slots:
         QVERIFY(!line.chopped(1).contains('\n'));
         const QJsonObject error = parseObject(line).value(u"error"_s).toObject();
         QCOMPARE(error.value(u"code"_s).toInt(), -32601);
+    }
+
+    // ws plugin's tools (GitHub #251): never among the tools on offer, no
+    // tools at all to a client that is not ws, and the app's to answer.
+    void pluginToolsAreKeptForWs()
+    {
+        Fixture f;
+        for (const char* name : kPluginTools) {
+            const QString tool = QString::fromLatin1(name);
+            QVERIFY2(!f.host->toolNames().contains(tool), name);
+            QCOMPARE(f.host->known(tool), ToolHost::Known::No);
+            QCOMPARE(f.host->known(tool, true), ToolHost::Known::Yes);
+        }
+        for (const QJsonValue& tool : f.host->tools())
+            QVERIFY(!tool.toObject().value(u"name"_s).toString().startsWith(u"plugins_"_s));
+        std::optional<ToolResult> got;
+        const auto run = [&](std::uint64_t id, bool cli) {
+            got.reset();
+            f.host->call(id, u"tst"_s, u"plugins_switch"_s, {{u"id"_s, u"me.hello"_s}, {u"on"_s, true}}, [&](ToolResult r) { got = std::move(r); },
+                {nullptr, cli, false});
+            return QTest::qWaitFor([&] { return got.has_value(); }, 5000);
+        };
+        QVERIFY(run(1, false));
+        QVERIFY(got->isError);
+        QCOMPARE(got->errorText, u"Unknown tool: plugins_switch"_s);
+        QVERIFY(f.pluginCalls.isEmpty());
+        QVERIFY(run(2, true));
+        QVERIFY(!got->isError);
+        QCOMPARE(got->structured.value(u"state"_s).toString(), u"done"_s);
+        QCOMPARE(f.pluginCalls, QStringList {u"plugins_switch {\"id\":\"me.hello\",\"on\":true}"_s});
+        QCOMPARE(f.host->pendingCalls(), 0);
     }
 
     void toolsOnOffer()

@@ -1161,34 +1161,36 @@ void PluginSettings::install(const QString& given)
     installFrom(given, {}, {});
 }
 
-void PluginSettings::installFrom(const QString& given, const QString& expectedId, const QString& name, bool enableAfterInstall, bool unreviewed)
+PluginInstalled PluginSettings::notInstalled(const QString& id, const QString& message)
+{
+    setMessage(message);
+    return {PluginInstalled::Step::Failed, id, {}, message};
+}
+
+PluginInstalled PluginSettings::installFrom(const QString& given, const QString& expectedId, const QString& name, bool enableAfterInstall,
+    bool unreviewed)
 {
     if (!m_host)
-        return;
+        return {};
     QString path = given;
     if (path.startsWith(u"file:", Qt::CaseInsensitive))
         path = QUrl(path).toLocalFile();
     cancelInstall();
     std::optional<plugin::install::Candidate> candidate = plugin::install::inspect(path);
-    if (!candidate) {
-        setMessage(tr("找不到 %1").arg(QDir::toNativeSeparators(path)));
-        return;
-    }
-    if (!candidate->manifest) {
-        setMessage(tr("不能安装 %1：%2").arg(name.isEmpty() ? QFileInfo(path).fileName() : name, candidate->error));
-        return;
-    }
+    if (!candidate)
+        return notInstalled(expectedId, tr("找不到 %1").arg(QDir::toNativeSeparators(path)));
+    if (!candidate->manifest)
+        return notInstalled(expectedId, tr("不能安装 %1：%2").arg(name.isEmpty() ? QFileInfo(path).fileName() : name, candidate->error));
     const QString id = candidate->manifest->id;
+    const QString version = candidate->manifest->version;
     if (!expectedId.isEmpty() && id != expectedId) {
         plugin::install::discard(*candidate);
-        setMessage(tr("没有安装 %1：下载来的是另一个插件（%2）").arg(name.isEmpty() ? expectedId : name, id));
-        return;
+        return notInstalled(expectedId, tr("没有安装 %1：下载来的是另一个插件（%2）").arg(name.isEmpty() ? expectedId : name, id));
     }
     if (m_updates) { // not while the background is changing it
         if (!m_updates->claim(id)) {
             plugin::install::discard(*candidate);
-            setMessage(tr("正在后台更新这个插件，稍后再试"));
-            return;
+            return notInstalled(id, tr("正在后台更新这个插件，稍后再试"));
         }
         m_installClaim = id;
     }
@@ -1215,7 +1217,7 @@ void PluginSettings::installFrom(const QString& given, const QString& expectedId
         m_pendingInstall = std::move(candidate);
         m_pendingEnable = enableAfterInstall;
         emit installQuestion(info);
-        return;
+        return {PluginInstalled::Step::Asking, id, version, {}};
     }
     // A folder of its name that is no installed plugin (an uninstall its
     // program's files survived, the user's own): not put over unasked. The
@@ -1235,9 +1237,9 @@ void PluginSettings::installFrom(const QString& given, const QString& expectedId
         m_pendingInstall = std::move(candidate);
         m_pendingEnable = enableAfterInstall;
         emit installQuestion(info);
-        return;
+        return {PluginInstalled::Step::Asking, id, version, {}};
     }
-    finishInstall(std::move(*candidate), enableAfterInstall);
+    return finishInstall(std::move(*candidate), enableAfterInstall);
 }
 
 void PluginSettings::openPendingFolder()
@@ -1276,18 +1278,18 @@ void PluginSettings::cancelInstall()
     m_pendingAside.clear();
 }
 
-void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall, bool allow, const QString& asideForeignTo)
+PluginInstalled PluginSettings::finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall, bool allow,
+    const QString& asideForeignTo)
 {
     const auto releaseIt = qScopeGuard([this] { releaseClaim(); });
     if (!m_host)
-        return;
+        return {};
     const QString id = candidate.manifest->id;
     const QString name = candidate.manifest->name.pick(m_locale);
     const QString error = plugin::updates::replace(*m_host, candidate, m_userDir, 2500, asideForeignTo);
-    if (!error.isEmpty()) {
-        setMessage(tr("没有安装 %1：%2").arg(name, error));
-        return;
-    }
+    if (!error.isEmpty())
+        return notInstalled(id, tr("没有安装 %1：%2").arg(name, error));
+    const auto installed = [&] { return PluginInstalled {PluginInstalled::Step::Done, id, candidate.manifest->version, m_message}; };
     // Where the folder that was no plugin went, said with the result (GitHub #253).
     const QString asideNote = asideForeignTo.isEmpty() ? QString() : tr("。原来的文件夹改名为 %1，留在旁边").arg(asideForeignTo);
     m_host->catalog().scan();
@@ -1297,7 +1299,7 @@ void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool en
         confirmEnable(id);
         setMessage(tr("已安装 %1 %2").arg(name, candidate.manifest->version) + asideNote);
         rebuild();
-        return;
+        return installed();
     }
     // Installed, and off until the user turns it on (the permissions are
     // shown then); a version put over one that is on and asking for more
@@ -1309,8 +1311,10 @@ void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool en
     else
         setMessage((config && config->enabled ? tr("已安装 %1 %2").arg(name, version) : tr("已安装 %1 %2，打开它的开关就能用").arg(name, version)) + asideNote);
     rebuild();
+    const PluginInstalled done = installed(); // before the switch below, which may ask and say more
     if (enableAfterInstall)
         setEnabled(id, true); // the normal permission dialog still applies
+    return done;
 }
 
 QString PluginSettings::installUpdate(const QString& path, const QString& id, const QString& version)

@@ -347,7 +347,9 @@ qt_add_qml_module(WinShun
         IconBadge.cpp IconBadge.h
         Launcher.cpp Launcher.h LauncherNavigation.h
         Placement.cpp Placement.h
+        PluginCommands.cpp PluginCommands.h
         PluginGallery.cpp PluginGallery.h
+        PluginInstalled.h
         PluginSettings.cpp PluginSettings.h
         PluginReadme.cpp PluginReadme.h
         PluginUpdates.cpp PluginUpdates.h # the installed plugins kept up to date in the background
