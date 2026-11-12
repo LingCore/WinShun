@@ -13,6 +13,7 @@
 // nothing kept.
 
 #include "Gallery.h"
+#include "PluginInstalled.h"
 
 #include <QAbstractListModel>
 #include <QDateTime>
@@ -25,6 +26,7 @@
 #include <QtQml/qqmlregistration.h>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -171,6 +173,11 @@ public:
     Q_INVOKABLE void applyNow(const QString& id); // 立即更新: a version kept aside for the next start, now
     Q_INVOKABLE void openRepository(); // 看看怎么投稿
     Q_INVOKABLE void openHomepage(const QString& id); // the entry's 主页: the plugin's own page, in the browser (GitHub #248)
+    // ws plugin install <id> (PluginCommands): as the row's 安装 or 更新到,
+    // on the page, where its progress and its questions show; the list is
+    // fetched first when this run has not fetched it lately. `done` once:
+    // installed, the page asking the user first, or why not.
+    void installFor(const QString& id, std::function<void(PluginInstalled)> done);
 
     // The repository the library lists `id` from ("owner/name"), for where
     // its problems go (PluginSettings, 向作者反馈问题): the list shown, else
@@ -194,6 +201,8 @@ signals:
 private:
     struct Download;
     void beginInstall(const QString& id, bool enableAfterInstall, bool bulk = false);
+    void startFor(const QString& id); // installFor, once the list is here
+    void settle(PluginInstalled outcome); // installFor's answer
     void nextUpdate(); // 全部更新's next plugin, or its summary
     void noteUpdate(const QString& id, const QString& problem); // one of them done; empty: updated
     QString source() const; // the list's address or file
@@ -234,6 +243,8 @@ private:
     quint64 m_generation = 0;
     double m_progress = 0;
     QHash<QString, QString> m_problems; // by plugin: why its last install from here did not happen
+    QString m_installFor; // installFor's plugin, until its answer is given
+    std::function<void(PluginInstalled)> m_installDone;
     bool m_preview = false;
     std::vector<PluginGalleryModel::Row> m_previewRows; // loadPreview()'s
     PluginGalleryModel m_list;

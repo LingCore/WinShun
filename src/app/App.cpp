@@ -42,6 +42,7 @@
 #include "MovedPlugins.h"
 #include "Pipe.h"
 #include "Placement.h"
+#include "PluginCommands.h"
 #include "PluginSettings.h"
 #include "PluginUpdates.h"
 #include "ProxyAddress.h"
@@ -509,6 +510,7 @@ bool App::start(const StartOptions& options)
 {
     m_clipDisplayProbe = options.clipboardDisplayProbe;
     m_settingsProbe = options.settingsProbe;
+    m_mcpPipe = options.mcpPipe;
     ocr::setComponentsRoot(Settings::dataDir() + u"/components"_s);
     const bool firstRun = !Settings::exists();
     // Updated from a version without the clipboard history: tell about it once.
@@ -7735,6 +7737,13 @@ void App::applyMcp()
             applyAiSettings(apply, std::move(done));
         };
         services.openSettings = [this](const QString& key, const QString& section) { return openAiSettings(key, section); };
+        // ws plugin, the command line's alone.
+        services.plugins = [this](const QString& tool, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            if (m_pluginCommands)
+                m_pluginCommands->run(tool, arguments, std::move(done));
+            else
+                done({{}, true, u"Win顺's plugins are not available."_s});
+        };
         m_mcpHost = std::make_unique<mcp::ToolHost>(std::move(services));
         m_mcpHost->setPolicy(mcpPolicy());
         m_mcpServer = std::make_unique<mcp::McpServer>(m_mcpHost.get(), QStringLiteral(WINSHUN_VERSION));
@@ -7747,7 +7756,7 @@ void App::applyMcp()
         });
         connect(m_mcpHost.get(), &mcp::ToolHost::toolsChanged, this, &App::writeMcpToolsCache);
         DWORD error = 0;
-        if (!m_mcpServer->listen(pipe::defaultName(), &error))
+        if (!m_mcpServer->listen(m_mcpPipe.isEmpty() ? pipe::defaultName() : m_mcpPipe.toStdWString(), &error))
             qWarning("MCP: cannot serve on the pipe (error %lu)", error);
         writeMcpToolsCache();
     } else {
@@ -7839,6 +7848,38 @@ void App::createPluginHost()
                     self->showPluginUpdates();
             });
         });
+    }
+    {
+        PluginCommands::Environment environment;
+        environment.host = m_pluginHost.get();
+        environment.updates = m_pluginUpdates.get();
+        environment.locale = [this] { return m_language; };
+        environment.configs = [this] { return m_settings.plugins; };
+        environment.setSwitch = [this](const QString& id, bool on) { setPluginSwitch(id, on); };
+        environment.askEnable = [this](const QString& id) {
+            PluginSettings* page = pluginPage(id);
+            if (page)
+                page->setEnabled(id, true);
+            return page != nullptr;
+        };
+        environment.askRemove = [this](const QString& id) {
+            PluginSettings* page = pluginPage(id);
+            if (page)
+                page->uninstall(id);
+            return page != nullptr;
+        };
+        environment.installFromLibrary = [this](const QString& id, std::function<void(PluginInstalled)> done) {
+            // The library's tab at this plugin: its download and its questions show there.
+            showSettings([&id](QQuickWindow* window) { QMetaObject::invokeMethod(window, "showPluginLibrary", Q_ARG(QVariant, QVariant(id))); });
+            if (m_settingsEditor)
+                m_settingsEditor->plugins()->gallery()->installFor(id, std::move(done));
+            else
+                done({PluginInstalled::Step::Failed, id, {}, tr("打不开 Win顺 的设置窗口")});
+        };
+        environment.librarySource = PluginUpdates::defaultSource();
+        environment.web = m_pluginUpdates->web();
+        environment.keptList = dataDir + u"\\plugin-index.json"_s;
+        m_pluginCommands = std::make_unique<PluginCommands>(std::move(environment));
     }
     connect(&m_pluginHost->catalog(), &plugin::Catalog::changed, this, &App::pluginsChanged);
     connect(m_pluginHost.get(), &plugin::Host::stateChanged, this, [this](const QString& id) {
@@ -8082,6 +8123,25 @@ void App::pluginsChanged()
     applyScreenshots();
     if (!m_pluginRecoveryBusy && moved::missing(m_pluginHost->catalog(), m_settings.plugins).isEmpty())
         setPluginRecoveryState({});
+}
+
+void App::setPluginSwitch(const QString& id, bool on)
+{
+    PluginConfig& config = m_settings.pluginConfig(id);
+    if (config.enabled == on)
+        return;
+    config.enabled = on;
+    m_settings.save();
+    if (m_settingsEditor)
+        m_settingsEditor->setSettings(m_settings); // its copy, and the card's switch
+    applyPlugins();
+    m_backup->soon();
+}
+
+PluginSettings* App::pluginPage(const QString& id)
+{
+    showPluginSettings(id);
+    return m_settingsEditor ? m_settingsEditor->plugins() : nullptr;
 }
 
 void App::applyPlugins()

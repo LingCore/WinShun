@@ -595,10 +595,68 @@ void PluginGallery::beginInstall(const QString& id, bool enableAfterInstall, boo
     });
 }
 
+void PluginGallery::installFor(const QString& id, std::function<void(PluginInstalled)> done)
+{
+    const auto failed = [&](const QString& why) { done({PluginInstalled::Step::Failed, id, {}, why}); };
+    if (m_preview || !m_settings->m_host)
+        return failed(tr("插件库现在用不了"));
+    if (m_installDone || !m_downloadId.isEmpty() || m_updatingAll)
+        return failed(tr("正在安装另一个插件，等它装完再试"));
+    m_installFor = id;
+    m_installDone = std::move(done);
+    if (!m_cacheRead)
+        readCache();
+    if (!m_fetching && m_fetchedThisRun.isValid() && !m_fetchedThisRun.hasExpired(kStaleMs)) {
+        startFor(id);
+        return;
+    }
+    refresh(); // nothing when the list is on its way already
+    const auto waiting = std::make_shared<QMetaObject::Connection>();
+    *waiting = connect(this, &PluginGallery::stateChanged, this, [this, id, waiting] {
+        if (m_fetching)
+            return;
+        disconnect(*waiting);
+        startFor(id);
+    });
+}
+
+void PluginGallery::startFor(const QString& id)
+{
+    if (id != m_installFor || !m_installDone)
+        return;
+    const auto failed = [&](const QString& why) { settle({PluginInstalled::Step::Failed, id, {}, why}); };
+    // The list just fetched; when it could not be, the one kept from last
+    // time will do: the package is checked against its entry either way.
+    const gallery::Item* item = m_index.find(id);
+    const auto& rows = m_list.rows();
+    const auto row = std::ranges::find_if(rows, [&](const PluginGalleryModel::Row& r) { return r.id == id; });
+    if (!item || row == rows.end())
+        return failed(m_problem.isEmpty() ? tr("插件库里没有 %1").arg(id) : m_problem);
+    const QString name = item->name.pick(m_settings->m_locale);
+    if (row->stage == u"installed")
+        return settle({PluginInstalled::Step::Done, id, row->installedVersion, tr("%1 已经是最新版（%2）").arg(name, row->installedVersion)});
+    if (row->stage == u"bundled")
+        return failed(tr("%1 随 Win顺 自带，不用安装").arg(name));
+    if (row->stage == u"app")
+        return failed(tr("%1 %2 要 Win顺 %3 或更新的版本，先更新 Win顺").arg(name, item->version, item->minWinShun));
+    beginInstall(id, false);
+    if (m_downloadId != id) // too big a package: the row says why
+        failed(m_problems.value(id, tr("现在装不了 %1").arg(name)));
+}
+
+void PluginGallery::settle(PluginInstalled outcome)
+{
+    m_installFor.clear();
+    if (const auto done = std::exchange(m_installDone, nullptr))
+        done(std::move(outcome));
+}
+
 void PluginGallery::cancel(const QString& id)
 {
     if (id.isEmpty() || id != m_downloadId)
         return;
+    if (id == m_installFor)
+        settle({PluginInstalled::Step::Failed, id, {}, tr("下载被取消了")});
     if (m_cancel)
         m_cancel->store(true);
     m_cancel.reset();
@@ -635,6 +693,8 @@ void PluginGallery::finishDownload(const QString& id, const Download& d)
         }
         rebuild();
         emit stateChanged();
+        if (id == m_installFor)
+            settle({PluginInstalled::Step::Failed, id, {}, problem});
         return;
     }
     if (d.bulk) { // 全部更新: no question; what asks for more than was allowed is left to be updated on its own
@@ -656,8 +716,10 @@ void PluginGallery::finishDownload(const QString& id, const Download& d)
     // run events meanwhile (a plugin's program let go of): nothing of the
     // rows is held across it.
     const gallery::Item* item = m_index.find(id);
-    m_settings->installFrom(d.path, id, item ? item->name.pick(m_settings->m_locale) : id, d.enableAfterInstall, d.unreviewed);
+    PluginInstalled outcome = m_settings->installFrom(d.path, id, item ? item->name.pick(m_settings->m_locale) : id, d.enableAfterInstall, d.unreviewed);
     QFile::remove(d.path);
+    if (id == m_installFor)
+        settle(std::move(outcome));
 }
 
 void PluginGallery::readList()

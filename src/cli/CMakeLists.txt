@@ -22,6 +22,7 @@ set(ws_sources
     Messages.h
     Open.cpp Open.h
     Output.cpp Output.h
+    Plugin.cpp
     Print.cpp Print.h
     Result.h
     Run.cpp Run.h
@@ -45,7 +46,7 @@ add_executable(ws
     ${PROJECT_SOURCE_DIR}/resources/ws.rc
     ${PROJECT_SOURCE_DIR}/resources/ws.manifest)
 # The resource compiler does not see that SKILL.md is part of ws.rc.
-set_source_files_properties(${PROJECT_SOURCE_DIR}/resources/ws.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/SKILL.md)
+set_source_files_properties(${PROJECT_SOURCE_DIR}/resources/ws.rc PROPERTIES OBJECT_DEPENDS ${PROJECT_SOURCE_DIR}/skills/winshun/SKILL.md)
 target_include_directories(ws PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src/mcp ${PROJECT_SOURCE_DIR}/src/core)
 # ntdll: the parent process (Encoding.cpp). shell32, ole32 and oleaut32 only
 # for `ws open` and starting Win顺: loaded when used, not on every run.

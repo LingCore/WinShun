@@ -847,7 +847,7 @@ private slots:
         QStringList names;
         for (const cli::Command& command : cli::commandTable())
             names << QString::fromStdWString(std::wstring(command.name));
-        QCOMPARE(names, (QStringList {u"find"_s, u"grep"_s, u"recent"_s, u"text"_s, u"ls"_s, u"open"_s, u"clip"_s, u"status"_s, u"skill"_s, u"help"_s}));
+        QCOMPARE(names, (QStringList {u"find"_s, u"grep"_s, u"recent"_s, u"text"_s, u"ls"_s, u"open"_s, u"clip"_s, u"plugin"_s, u"status"_s, u"skill"_s, u"help"_s}));
         QVERIFY(!cli::commandNamed(L"报告"));
 
         QCOMPARE(cli::editDistance(L"exts", L"ext"), std::size_t {1});
@@ -2167,6 +2167,128 @@ private slots:
         QVERIFY(r.out.contains('?'));
         const QString note = fromCodePage(r.err, acp);
         QVERIFY2(note.contains(u"2 行"_s) || note.contains(u"2 line(s)"_s), qPrintable(note));
+    }
+
+    // ws plugin (GitHub #251): which tool and arguments each action asks, how the
+    // answers are printed, and the exit codes (0 done, 1 Win顺 is asking the user,
+    // 6 no such plugin or file, 7 not done, 2 usage).
+    void plugin()
+    {
+        const std::wstring name = testPipeName("plugin");
+        const auto plugin = [](const char* id, const char* version, const char* state, const char* pluginName) {
+            return json::Value::Object {{"id", id}, {"version", version}, {"state", state}, {"name", pluginName}};
+        };
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            const std::string id = request.arguments["id"].toString();
+            if (request.tool == "plugins_list") {
+                return toolAnswer(request.id, json::Value::Object {{"state", "done"},
+                                                  {"plugins", json::Value::Array {plugin("winshun.tools", "1.2.0", "on", "小工具"),
+                                                                  plugin("me.hello", "0.1.0", "off", "Hello")}}});
+            }
+            if (request.tool == "plugins_search") {
+                json::Value::Array found;
+                if (request.arguments["query"].toString() != "没有的") {
+                    json::Value::Object translate = plugin("winshun.translate", "2.2.0", "update", "翻译");
+                    translate.emplace("installed", "2.1.0");
+                    translate.emplace("review", "official");
+                    translate.emplace("description", "tr 句子");
+                    found.emplace_back(std::move(translate));
+                }
+                return toolAnswer(request.id, json::Value::Object {{"state", "done"}, {"message", "连不上插件库，这是昨天存下的列表"},
+                                                  {"plugins", std::move(found)}});
+            }
+            if (request.tool == "plugins_install") {
+                if (id == "me.gone")
+                    return toolAnswer(request.id, json::Value::Object {{"state", "failed"}, {"code", "not_found"}, {"message", "插件库里没有 me.gone"}});
+                if (id == "me.native")
+                    return toolAnswer(request.id, json::Value::Object {{"state", "asking"}, {"message", "Win顺 正在问用户要不要装 me.native 1.0.0"}});
+                return toolAnswer(request.id, json::Value::Object {{"state", "done"}, {"message", "已安装 Hello 0.1.0，还关着"}});
+            }
+            if (request.tool == "plugins_switch") {
+                if (id == "me.broken")
+                    return toolAnswer(request.id, json::Value::Object {{"state", "failed"}, {"message", "Broken 用不了：缺少 name"}});
+                if (request.arguments["on"].toBool())
+                    return toolAnswer(request.id, json::Value::Object {{"state", "asking"}, {"message", "Win顺 正在请用户确认 Hello 要的权限"}});
+                return toolAnswer(request.id, json::Value::Object {{"state", "done"}, {"message", "已关闭 Hello"}});
+            }
+            if (request.tool == "plugins_remove")
+                return toolAnswer(request.id, json::Value::Object {{"state", "asking"}, {"message", "Win顺 正在问用户要不要卸载 Hello"}});
+            return std::string();
+        });
+        QVERIFY(fake.valid());
+        const auto run = [&](const QStringList& args) { return ws(QStringList {u"plugin"_s} + args, {}, name); };
+
+        Outcome r = run({u"list"_s});
+        QCOMPARE(r.code, 0);
+        QCOMPARE(r.lines(), (QStringList {u"winshun.tools  1.2.0  开着  小工具"_s, u"me.hello       0.1.0  关着  Hello"_s}));
+        r = run({u"list"_s, u"--json"_s});
+        QCOMPARE(r.code, 0);
+        QCOMPARE(QJsonDocument::fromJson(r.out).array().size(), 2);
+        QCOMPARE(run({u"list"_s, u"x"_s}).code, 2);
+
+        r = run({u"search"_s, u"翻"_s, u"译"_s});
+        QCOMPARE(r.code, 0);
+        QVERIFY(fake.saw("\"query\":\"翻 译\""));
+        QCOMPARE(r.lines(), QStringList {u"winshun.translate  2.2.0  可更新 (2.1.0)  官方  翻译：tr 句子"_s});
+        QVERIFY2(r.errors().contains(u"昨天存下的列表"_s), qPrintable(r.errors()));
+        r = run({u"search"_s, u"没有的"_s});
+        QCOMPARE(r.code, 1);
+        QVERIFY(r.out.isEmpty());
+
+        // What is there is a path, given whole; anything else an id of the library's.
+        fake.forget();
+        r = run({u"install"_s, at(u"notes.md"_s)});
+        QCOMPARE(r.code, 0);
+        QCOMPARE(r.text(), u"已安装 Hello 0.1.0，还关着\n"_s);
+        QVERIFY(fake.saw("\"path\":"));
+        QVERIFY(!fake.saw("\"id\":\""));
+        fake.forget();
+        r = run({u"install"_s, u"me.native"_s});
+        QCOMPARE(r.code, 1); // Win顺 is asking the user
+        QCOMPARE(r.text(), u"Win顺 正在问用户要不要装 me.native 1.0.0\n"_s);
+        QVERIFY(fake.saw("\"id\":\"me.native\""));
+        r = run({u"install"_s, u"me.gone"_s});
+        QCOMPARE(r.code, 6);
+        QVERIFY(r.out.isEmpty());
+        QVERIFY2(r.errors().contains(u"插件库里没有 me.gone"_s), qPrintable(r.errors()));
+        QCOMPARE(run({u"install"_s}).code, 2);
+        QCOMPARE(run({u"install"_s, u"a"_s, u"b"_s}).code, 2);
+
+        fake.forget();
+        r = run({u"enable"_s, u"me.hello"_s});
+        QCOMPARE(r.code, 1);
+        QVERIFY(fake.saw("\"on\":true"));
+        r = run({u"disable"_s, u"me.hello"_s});
+        QCOMPARE(r.code, 0);
+        QCOMPARE(r.text(), u"已关闭 Hello\n"_s);
+        r = run({u"enable"_s, u"me.broken"_s});
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"缺少 name"_s), qPrintable(r.errors()));
+        r = run({u"enable"_s, u"me.broken"_s, u"--json"_s}); // a program gets the answer whole, and the exit code
+        QCOMPARE(r.code, 7);
+        QCOMPARE(QJsonDocument::fromJson(r.out).object().value(u"state"_s).toString(), u"failed"_s);
+
+        r = run({u"remove"_s, u"me.hello"_s});
+        QCOMPARE(r.code, 1);
+        QVERIFY(fake.saw("plugins_remove"));
+
+        r = run({});
+        QCOMPARE(r.code, 2);
+        QVERIFY2(r.errors().contains(u"要一个动作"_s), qPrintable(r.errors()));
+        r = run({u"upgrade"_s});
+        QCOMPARE(r.code, 2);
+        QVERIFY2(r.errors().contains(u"没有 upgrade 这个动作"_s), qPrintable(r.errors()));
+    }
+
+    // A Win顺 from before ws plugin: said, with what to do.
+    void pluginNeedsNewerWinShun()
+    {
+        Outcome r = ws({u"plugin"_s, u"list"_s});
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"请更新 Win顺"_s), qPrintable(r.errors()));
     }
 
     void conflictingFormats()

@@ -62,6 +62,8 @@ class ClipStore;
 class Clipboard;
 class ClipboardDisplay;
 class OcrPackage;
+class PluginCommands;
+class PluginSettings;
 class ComWorker;
 class DialogBar;
 class DialogJump;
@@ -148,6 +150,9 @@ public:
         // Isolated runtime QA only: the settings window shown without being
         // activated or brought to the front (no input of any kind is sent).
         bool settingsProbe = false;
+        // Isolated runtime QA only: the pipe AI clients and ws are served on,
+        // in place of the user's (which their own Win顺 may be serving).
+        QString mcpPipe;
         // 管理员直读 wants administrator rights, put off while an in-app
         // update's helper waits for this copy (main.cpp, GitHub #274).
         bool elevateAfterUpdate = false;
@@ -548,6 +553,12 @@ private:
     void installMovedPlugins(); // the ones that came with 0.16.0, from the library (GitHub #138)
     void setPluginRecoveryState(const QString& message, bool busy = false);
     void pluginsChanged(); // the catalog's entries: the icon provider's folders
+    // ws plugin (PluginCommands): what it has the app do. The switch of a
+    // plugin that needs no answer from the user; the 插件 page in front of
+    // the user with the plugin's switch turned on there, or its 卸载
+    // clicked (false: no settings window); the library's install on that page.
+    void setPluginSwitch(const QString& id, bool on);
+    PluginSettings* pluginPage(const QString& id);
     // Win顺's tools for the plugins' winshun/tool (plugin::Tools): made
     // with the first call, whatever the AI switch says.
     plugin::Tools& pluginTools();
@@ -797,6 +808,7 @@ private:
     std::unique_ptr<MessageWindow> m_messages;
     std::unique_ptr<Updater> m_updater;
     std::unique_ptr<PluginUpdates> m_pluginUpdates; // after m_updater; goes before the plugin host
+    std::unique_ptr<PluginCommands> m_pluginCommands; // ws plugin; goes before the updates and the host
     std::unique_ptr<Backup> m_backup; // of the settings, into a folder chosen
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<NetworkNotifier> m_network; // after m_index, whose shares it tells
@@ -938,6 +950,7 @@ private:
     SettingsOpening m_settingsOpening;
     QElapsedTimer m_settingsOpenClock; // since the latest showSettings() that showed it
     bool m_settingsProbe = false; // StartOptions::settingsProbe
+    QString m_mcpPipe; // StartOptions::mcpPipe; empty: the user's
     QString m_pluginRecoveryMessage;
     bool m_pluginRecoveryBusy = false;
     QString m_renderer; // the one in use; changing it takes a restart

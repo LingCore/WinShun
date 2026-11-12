@@ -212,6 +212,14 @@ add_test(NAME tst_settingsreopen COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_settingsreopen PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# ws plugin (GitHub #251), end to end: the real ws.exe against the real App,
+# isolated (--probe-runtime) and on a pipe of the probe's own, through the
+# server, PluginCommands and the 插件 page's dialogs.
+add_test(NAME tst_wsplugin COMMAND $<TARGET_FILE:WinShun>
+    --probe-runtime "${CMAKE_CURRENT_BINARY_DIR}/ws-plugin" --ws-plugin-check $<TARGET_FILE:ws>)
+set_tests_properties(tst_wsplugin PROPERTIES RUN_SERIAL TRUE TIMEOUT 180
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The settings pages are made when needed: opening makes the page on show only,
 # each way in from elsewhere its own, a word typed all of them (results in page
 # order, as many as before), and after the first frame the rest, one per tick.
@@ -1016,6 +1024,18 @@ add_test(NAME tst_pluginupdates COMMAND tst_pluginupdates)
 set_tests_properties(tst_pluginupdates PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# ws plugin's side in the app (src/app/PluginCommands, GitHub #251), over a
+# real plugin host on folders of the test's own; the page it hands the user's
+# questions to is the test's.
+qt_add_executable(tst_plugincommands tst_plugincommands.cpp ${PROJECT_SOURCE_DIR}/src/app/PluginCommands.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/PluginUpdates.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
+target_include_directories(tst_plugincommands PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_plugincommands PRIVATE wscore wsmcp wsplugin miniz Qt6::Test winhttp ws2_32 bcrypt)
+set_target_properties(tst_plugincommands PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_plugincommands COMMAND tst_plugincommands -o -,txt)
+set_tests_properties(tst_plugincommands PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The proxy setting (GitHub #84): the address check, and WinHTTP going where
 # the setting says, against two small servers of the test's own.
 qt_add_executable(tst_proxy tst_proxy.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
@@ -1267,7 +1287,7 @@ target_include_directories(tst_cli PRIVATE ${PROJECT_SOURCE_DIR}/src/cli ${PROJE
 target_link_libraries(tst_cli PRIVATE wsmcp Qt6::Test ntdll shell32 ole32 oleaut32 uuid advapi32)
 target_compile_definitions(tst_cli PRIVATE
     WINSHUN_CLI="$<TARGET_FILE:ws>"
-    WINSHUN_CLI_SKILL="${PROJECT_SOURCE_DIR}/src/cli/SKILL.md")
+    WINSHUN_CLI_SKILL="${PROJECT_SOURCE_DIR}/skills/winshun/SKILL.md")
 add_dependencies(tst_cli ws)
 
 # The pieces of the tools plugin that compute (src/tools-plugin), built in

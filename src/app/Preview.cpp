@@ -69,6 +69,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QPixmap>
+#include <QCryptographicHash>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QJsonArray>
@@ -8383,6 +8384,231 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
 
 // Production App, launcher, settings model and plugin installation on the
 // runtime probe's isolated profile. Opens no browser and uses no user data.
+// --ws-plugin-check <ws.exe> (GitHub #251): the real ws.exe against this App
+// over a pipe of the probe's own, through everything between: the server,
+// the tools kept for ws, PluginCommands, the 插件 page and its dialogs. What
+// the user would click is answered here through the dialog's own accept and
+// reject. The library is a list and two packages made beside the report
+// (wsPluginFixture, before the App starts).
+const QString kWsPluginPipe = u"WinShun.Probe.WsPlugin.%1"_s.arg(QCoreApplication::applicationPid());
+
+QByteArray probePluginManifest(const QString& id, const QString& version, bool program = false)
+{
+    QJsonObject o {{u"manifest"_s, 1}, {u"id"_s, id}, {u"name"_s, QJsonObject {{u"zh"_s, u"探针插件"_s}, {u"en"_s, u"Probe plugin"_s}}},
+        {u"version"_s, version}, {u"permissions"_s, QJsonArray {u"network"_s}},
+        {u"commands"_s, QJsonArray {QJsonObject {{u"id"_s, u"list"_s}, {u"keyword"_s, u"zzprobe"_s}, {u"title"_s, u"List"_s},
+                            {u"run"_s, QJsonObject {{u"items"_s, QJsonArray {QJsonObject {{u"id"_s, u"a"_s}, {u"title"_s, u"Alpha"_s}}}}}}}}}};
+    if (program) { // a program of its own: the library lists it as nobody's review
+        o.insert(u"runtime"_s, QJsonObject {{u"mode"_s, u"once"_s}, {u"program"_s, u"probe.exe"_s}});
+        o.insert(u"minWinShun"_s, u"0.22.0"_s);
+        QJsonArray commands = o.value(u"commands"_s).toArray();
+        QJsonObject command = commands[0].toObject();
+        command.remove(u"run"_s);
+        commands[0] = command;
+        o.insert(u"commands"_s, commands);
+    }
+    return QJsonDocument(o).toJson();
+}
+
+bool wsPluginFixture(const QDir& out)
+{
+    const auto package = [&](const QString& id, const QString& review, bool program) -> QJsonObject {
+        mz_zip_archive zip {};
+        if (!mz_zip_writer_init_heap(&zip, 0, 0))
+            return {};
+        const QByteArray manifest = probePluginManifest(id, u"1.0.0"_s, program);
+        bool ok = mz_zip_writer_add_mem(&zip, "plugin.json", manifest.constData(), static_cast<size_t>(manifest.size()), MZ_DEFAULT_LEVEL);
+        if (program)
+            ok = ok && mz_zip_writer_add_mem(&zip, "probe.exe", "MZ", 2, MZ_DEFAULT_LEVEL);
+        void* buffer = nullptr;
+        size_t size = 0;
+        ok = ok && mz_zip_writer_finalize_heap_archive(&zip, &buffer, &size);
+        mz_zip_writer_end(&zip);
+        if (!ok)
+            return {};
+        const QByteArray bytes(static_cast<const char*>(buffer), static_cast<qsizetype>(size));
+        mz_free(buffer);
+        const QString name = id + u"-1.0.0.wsplugin"_s;
+        QFile file(out.filePath(name));
+        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size())
+            return {};
+        QJsonObject entry {{u"id"_s, id}, {u"name"_s, QJsonObject {{u"zh"_s, u"探针插件"_s}}}, {u"version"_s, u"1.0.0"_s},
+            {u"url"_s, name}, {u"sha256"_s, QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex())},
+            {u"size"_s, bytes.size()}, {u"review"_s, review}, {u"permissions"_s, QJsonArray {u"network"_s}}};
+        if (program)
+            entry.insert(u"runtime"_s, QJsonObject {{u"mode"_s, u"once"_s}, {u"program"_s, u"probe.exe"_s}});
+        return entry;
+    };
+    const QJsonObject listed = package(u"probe.listed"_s, u"reviewed"_s, false);
+    const QJsonObject native = package(u"probe.native"_s, u"unreviewed-native"_s, true);
+    if (listed.isEmpty() || native.isEmpty())
+        return false;
+    QFile index(out.filePath(u"ws-plugin-index.json"_s));
+    if (!index.open(QIODevice::WriteOnly)
+        || index.write(QJsonDocument(QJsonObject {{u"schema"_s, 1}, {u"plugins"_s, QJsonArray {listed, native}}}).toJson()) <= 0)
+        return false;
+    _wputenv_s(L"WINSHUN_PLUGIN_INDEX", QDir::toNativeSeparators(index.fileName()).toStdWString().c_str());
+    QSettings settings(Settings::filePath(), QSettings::IniFormat);
+    settings.setValue(u"Mcp/Enabled"_s, true); // the connection ws shares with AI clients
+    settings.sync();
+    return settings.status() == QSettings::NoError;
+}
+
+bool probeWsPlugin(App& app, const QStringList& args, const QDir& out, QJsonObject& report)
+{
+    Q_UNUSED(app);
+    QJsonObject checks;
+    QJsonArray runs;
+    bool passed = true;
+    const auto check = [&](bool ok, const QString& key) {
+        checks.insert(key, ok);
+        if (!ok) { qWarning().noquote() << "ws plugin:" << key; passed = false; }
+        return ok;
+    };
+    const auto finish = qScopeGuard([&] { report.insert(u"ws_plugin"_s, QJsonObject {{u"checks"_s, checks}, {u"runs"_s, runs}, {u"passed"_s, passed}}); });
+    const QString wsExe = valueAfter(args, u"--ws-plugin-check");
+    if (!check(QFileInfo::exists(wsExe), u"ws_exe_given"_s))
+        return false;
+
+    struct Ran {
+        int code = -1;
+        QString out;
+        QString err;
+    };
+    // ws as a person or an agent runs it, this App answering meanwhile.
+    const auto ws = [&](const QStringList& words) {
+        QProcess process;
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(u"WS_SETTINGS"_s, QDir::toNativeSeparators(Settings::filePath()));
+        environment.insert(u"WS_LANG"_s, u"zh"_s);
+        environment.insert(u"WS_ENCODING"_s, u"utf8"_s);
+        environment.remove(u"QT_QPA_PLATFORM"_s);
+        process.setProcessEnvironment(environment);
+        process.start(wsExe, QStringList {u"--pipe"_s, kWsPluginPipe, u"--no-start"_s, u"plugin"_s} + words);
+        QElapsedTimer timer;
+        timer.start();
+        while (process.state() != QProcess::NotRunning && timer.elapsed() < 60000)
+            pump(20);
+        Ran ran;
+        if (process.state() != QProcess::NotRunning)
+            process.kill();
+        else
+            ran.code = process.exitCode();
+        ran.out = QString::fromUtf8(process.readAllStandardOutput());
+        ran.err = QString::fromUtf8(process.readAllStandardError());
+        runs.push_back(QJsonObject {{u"ws"_s, words.join(u' ')}, {u"code"_s, ran.code}, {u"out"_s, ran.out}, {u"err"_s, ran.err}});
+        return ran;
+    };
+    const auto stateOf = [&](const QString& id) -> QString {
+        const Ran listed = ws({u"list"_s, u"--json"_s});
+        for (const QJsonValue plugin : QJsonDocument::fromJson(listed.out.toUtf8()).array()) {
+            if (plugin.toObject().value(u"id"_s).toString() == id)
+                return plugin.toObject().value(u"version"_s).toString() + u' ' + plugin.toObject().value(u"state"_s).toString();
+        }
+        return listed.code == 0 ? u"absent"_s : u"list failed"_s;
+    };
+    QQuickWindow* window = nullptr;
+    const auto settingsWindow = [&]() -> QQuickWindow* {
+        for (auto* candidate : QGuiApplication::allWindows()) {
+            if (candidate->property("editor").value<SettingsEditor*>())
+                return qobject_cast<QQuickWindow*>(candidate);
+        }
+        return nullptr;
+    };
+    // The page's question, as it stands over the settings window: its kind while it is up.
+    const auto question = [&]() -> QQuickItem* {
+        window = settingsWindow();
+        if (!window || !window->isVisible())
+            return nullptr;
+        settle(window, 2);
+        QQuickItem* card = visualNamed(window->contentItem(), u"pluginDialogCard"_s);
+        QQuickItem* dialog = card ? card->parentItem() : nullptr;
+        return dialog && dialog->property("open").toBool() ? dialog : nullptr;
+    };
+    const auto questionKind = [&] {
+        QQuickItem* dialog = question();
+        return dialog ? dialog->property("kind").toString() : QString();
+    };
+    const auto answer = [&](bool yes) {
+        QQuickItem* dialog = question();
+        if (!dialog)
+            return false;
+        const bool called = yes ? QMetaObject::invokeMethod(dialog, "accept", Q_ARG(QVariant, QVariant(false)))
+                                : QMetaObject::invokeMethod(dialog, "reject");
+        pump(300);
+        return called;
+    };
+    const QString userDir = Settings::dataDir() + u"/plugins"_s;
+    const QString source = out.filePath(u"ws-plugin-src"_s);
+    const auto writeSource = [&](const QString& version) {
+        QDir().mkpath(source);
+        QFile file(source + u"/plugin.json"_s);
+        return file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(probePluginManifest(u"probe.hello"_s, version)) > 0;
+    };
+
+    // A folder of one's own: installed at once, off, and no window comes up for it.
+    check(ws({u"list"_s}).code <= 1, u"list_answers"_s); // 1: a build folder without the plugins that come with Win顺
+    check(writeSource(u"1.0.0"_s), u"source_written"_s);
+    Ran ran = ws({u"install"_s, QDir::toNativeSeparators(source)});
+    check(ran.code == 0 && ran.out.contains(u"ws plugin enable probe.hello"_s), u"install_folder_done"_s);
+    check(QFileInfo::exists(userDir + u"/probe.hello/plugin.json"_s), u"install_folder_in_place"_s);
+    check(stateOf(u"probe.hello"_s) == u"1.0.0 off", u"installed_is_off"_s);
+    check(!settingsWindow() || !settingsWindow()->isVisible(), u"install_folder_shows_no_window"_s);
+
+    // Turned on for the first time: the user's to answer, in the settings window.
+    ran = ws({u"enable"_s, u"probe.hello"_s});
+    check(ran.code == 1, u"enable_first_time_asks"_s);
+    check(questionKind() == u"permissions", u"permission_dialog_up"_s);
+    check(window && saveGrab(window, out.filePath(u"ws-plugin-permissions.png"_s)), u"permission_screenshot"_s);
+    check(stateOf(u"probe.hello"_s) == u"1.0.0 off", u"off_until_answered"_s);
+    check(answer(false) && stateOf(u"probe.hello"_s) == u"1.0.0 off", u"declined_stays_off"_s);
+    check(ws({u"enable"_s, u"probe.hello"_s}).code == 1 && questionKind() == u"permissions", u"asks_again_after_no"_s);
+    check(answer(true) && stateOf(u"probe.hello"_s) == u"1.0.0 on", u"agreed_turns_on"_s);
+    check(ws({u"enable"_s, u"probe.hello"_s}).code == 0 && questionKind().isEmpty(), u"enable_again_asks_nothing"_s);
+
+    // The loop of someone writing a plugin: changed, installed again, still on.
+    check(writeSource(u"1.1.0"_s), u"source_changed"_s);
+    ran = ws({u"install"_s, QDir::toNativeSeparators(source)});
+    check(ran.code == 0 && questionKind().isEmpty(), u"reinstall_done_unasked"_s);
+    check(stateOf(u"probe.hello"_s) == u"1.1.0 on", u"reinstall_stays_on"_s);
+    check(ws({u"disable"_s, u"probe.hello"_s}).code == 0 && stateOf(u"probe.hello"_s) == u"1.1.0 off", u"disable"_s);
+    check(ws({u"enable"_s, u"probe.hello"_s}).code == 0 && stateOf(u"probe.hello"_s) == u"1.1.0 on", u"enable_once_agreed_unasked"_s);
+
+    // The library: found, installed on its page; a package nobody reviewed is asked about.
+    ran = ws({u"search"_s, u"probe"_s});
+    check(ran.code == 0 && ran.out.contains(u"probe.listed"_s) && ran.out.contains(u"probe.native"_s), u"search_lists_library"_s);
+    ran = ws({u"install"_s, u"probe.listed"_s});
+    check(ran.code == 0 && QFileInfo::exists(userDir + u"/probe.listed/plugin.json"_s), u"install_listed_done"_s);
+    check(stateOf(u"probe.listed"_s) == u"1.0.0 off", u"listed_is_off"_s);
+    check(ws({u"install"_s, u"probe.listed"_s}).code == 0, u"install_listed_again_is_done"_s);
+    ran = ws({u"install"_s, u"probe.native"_s});
+    check(ran.code == 1 && questionKind() == u"install", u"unreviewed_package_asks"_s);
+    check(window && saveGrab(window, out.filePath(u"ws-plugin-unreviewed.png"_s)), u"unreviewed_screenshot"_s);
+    check(answer(false) && !QFileInfo::exists(userDir + u"/probe.native"_s), u"unreviewed_declined_not_installed"_s);
+    check(ws({u"install"_s, u"probe.absent"_s}).code == 7, u"unknown_id_fails"_s);
+
+    // Removing: always the user's to answer.
+    ran = ws({u"remove"_s, u"probe.hello"_s});
+    check(ran.code == 1 && questionKind() == u"uninstall", u"remove_asks"_s);
+    check(window && saveGrab(window, out.filePath(u"ws-plugin-remove.png"_s)), u"remove_screenshot"_s);
+    check(QFileInfo::exists(userDir + u"/probe.hello/plugin.json"_s), u"there_until_answered"_s);
+    check(answer(true) && !QFileInfo::exists(userDir + u"/probe.hello"_s), u"confirmed_removes"_s);
+    check(stateOf(u"probe.hello"_s) == u"absent", u"removed_is_gone"_s);
+    check(ws({u"enable"_s, u"probe.hello"_s}).code == 6, u"gone_is_not_found"_s);
+    if (QQuickWindow* shown = settingsWindow()) { // put away as the user would
+        shown->close();
+        pump(300);
+    }
+    // The cards the list made again (a plugin came, went, changed) were left
+    // to deleteLater, which nothing runs here: this probe has no event loop,
+    // only pump(). Left alive, a card would outlive the theme at the App's
+    // end, and the glyph of its switch, its font's family then empty
+    // (Toggle.qml), has Qt look for its default "MS Sans Serif": a
+    // DirectWrite warning that is this probe's, not the App's.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    return passed;
+}
+
 bool probeWebPlugin(App& app, const QStringList& args, const QDir& out, QJsonObject& report)
 {
     QJsonObject checks;
@@ -9841,6 +10067,20 @@ int runRuntime(const QStringList& args)
         else
             return 4;
         return passed && saved ? std::min(unexpected, 100) : 4;
+    }
+    if (args.contains(u"--ws-plugin-check"_s)) { // a check of its own: none of the startup probe's other measurements
+        bool passed = wsPluginFixture(out);
+        if (passed) {
+            App app;
+            passed = app.start({.background = true, .settingsProbe = true, .mcpPipe = kWsPluginPipe}) && probeWsPlugin(app, args, out, report);
+        }
+        const int warnings = g_warnings; // the App's end included
+        report.insert(u"warnings"_s, warnings);
+        QFile json(out.filePath(u"ws-plugin.json"_s));
+        const bool saved = json.open(QIODevice::WriteOnly) && json.write(QJsonDocument(report).toJson()) > 0;
+        QDir(Settings::profile()).removeRecursively();
+        say(u"ws plugin: %1, %2 warning(s)"_s.arg(passed ? u"passed"_s : u"FAILED"_s).arg(warnings));
+        return passed && saved ? std::min(warnings, 100) : 4;
     }
     {
         // --idle-open-check: its profile goes once the App is gone. Removed

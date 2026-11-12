@@ -97,6 +97,10 @@
 //     is tst_keyrouter.exe renamed SearchHost.exe; native uses the real Start
 //     menu. Neither mode writes the system clipboard or changes global hotkeys.
 //     [--runtime-plugins <folder>] [--settle-ms 3000] [--renderer d3d11]
+//     --ws-plugin-check <ws.exe> runs the real ws.exe against this App on a
+//     pipe of the probe's own (ws plugin, GitHub #251): a folder installed,
+//     the permission dialog on the first enable, the library's install and
+//     its question about an unreviewed package, the removal's question.
 //     --live [--style …] [--dark] keeps it running on the real desktop at the
 //     screen's own scale, beside the user's Win顺, with a few made-up clips,
 //     taking commands from <folder>\cmd.txt until <folder>\stop exists

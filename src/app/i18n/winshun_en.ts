@@ -8527,6 +8527,10 @@ Double-click grip: expand/collapse search panel</translation>
 <context>
     <name>ws::App</name>
     <message>
+        <source>打不开 Win顺 的设置窗口</source>
+        <translation>WinShun&apos;s settings window could not be opened</translation>
+    </message>
+    <message>
         <source>截图尚未启用</source>
         <translation>Screen capture is not enabled yet</translation>
     </message>
@@ -12328,7 +12332,158 @@ Content index: %5</translation>
     </message>
 </context>
 <context>
+    <name>ws::PluginCommands</name>
+    <message>
+        <source>这个版本的 Win顺 不认这个命令，请更新 Win顺</source>
+        <translation>This WinShun does not know this command; update WinShun</translation>
+    </message>
+    <message>
+        <source>拿不到插件库的列表：连不上 GitHub。检查网络，或在 Win顺 的设置里搜“网络代理”，给它配一个</source>
+        <translation>Could not get the plugin library&apos;s list: GitHub cannot be reached. Check the network, or search WinShun&apos;s settings for &quot;Network proxy&quot; and set one</translation>
+    </message>
+    <message>
+        <source>连不上插件库，这是 %1 存下的列表</source>
+        <translation>The plugin library cannot be reached; this is the list kept on %1</translation>
+    </message>
+    <message>
+        <source>要装哪个插件：给一个插件包、插件文件夹，或插件库里的 id</source>
+        <translation>Which plugin: give a package, a plugin&apos;s folder, or an id of the library</translation>
+    </message>
+    <message>
+        <source>找不到 %1</source>
+        <translation>%1 was not found</translation>
+    </message>
+    <message>
+        <source>不能安装 %1：%2</source>
+        <translation>%1 cannot be installed: %2</translation>
+    </message>
+    <message>
+        <source>没有安装 %1：%2 已经是一个文件夹，但不是装好的插件。在 Win顺 的 设置 → 插件 里从压缩包安装，会先问你怎么处理它</source>
+        <translation>%1 was not installed: %2 is a folder already, but not an installed plugin. Install from an archive in WinShun&apos;s Settings &gt; Plugins, which asks you what to do with it first</translation>
+    </message>
+    <message>
+        <source>Win顺 正在更新这个插件，稍后再试</source>
+        <translation>WinShun is updating this plugin; try again in a moment</translation>
+    </message>
+    <message>
+        <source>没有安装 %1：%2</source>
+        <translation>%1 was not installed: %2</translation>
+    </message>
+    <message>
+        <source>已安装 %1 %2</source>
+        <translation>Installed %1 %2</translation>
+    </message>
+    <message>
+        <source>已安装 %1 %2（原来是 %3）</source>
+        <translation>Installed %1 %2 (was %3)</translation>
+    </message>
+    <message>
+        <source>。新版本要更多权限，先停着；请用户同意：ws plugin enable %1</source>
+        <translation>. The new version asks for more permissions and waits; have the user agree: ws plugin enable %1</translation>
+    </message>
+    <message>
+        <source>，开着，已经换上</source>
+        <translation>; it is on and in use</translation>
+    </message>
+    <message>
+        <source>，还关着；打开它：ws plugin enable %1</source>
+        <translation>; it is off. Turn it on: ws plugin enable %1</translation>
+    </message>
+    <message>
+        <source>找不到 %1：它不是文件或文件夹，也不是插件的 id</source>
+        <translation>%1 was not found: it is no file or folder, and no plugin id</translation>
+    </message>
+    <message>
+        <source>这里装不了插件库里的插件</source>
+        <translation>Plugins of the library cannot be installed here</translation>
+    </message>
+    <message>
+        <source>Win顺 正在问用户要不要装 %1 %2；用户在 Win顺 的窗口里回答之后才会装</source>
+        <translation>WinShun is asking the user whether to install %1 %2; it is installed once they answer in WinShun&apos;s window</translation>
+    </message>
+    <message>
+        <source>。打开它：ws plugin enable %1</source>
+        <translation>. Turn it on: ws plugin enable %1</translation>
+    </message>
+    <message>
+        <source>没有装 %1；ws plugin list 列出装了哪些</source>
+        <translation>%1 is not installed; ws plugin list shows what is</translation>
+    </message>
+    <message>
+        <source>已关闭 %1</source>
+        <translation>Turned %1 off</translation>
+    </message>
+    <message>
+        <source>%1 本来就关着</source>
+        <translation>%1 was off already</translation>
+    </message>
+    <message>
+        <source>%1 用不了：%2</source>
+        <translation>%1 cannot be used: %2</translation>
+    </message>
+    <message>
+        <source>%1 本来就开着</source>
+        <translation>%1 was on already</translation>
+    </message>
+    <message>
+        <source>已打开 %1</source>
+        <translation>Turned %1 on</translation>
+    </message>
+    <message>
+        <source>打不开 Win顺 的设置窗口，没法请用户确认 %1 的权限</source>
+        <translation>WinShun&apos;s settings window could not be opened to ask the user about %1&apos;s permissions</translation>
+    </message>
+    <message>
+        <source>Win顺 正在请用户确认 %1 要的权限；用户在 Win顺 的窗口里同意之后它才打开</source>
+        <translation>WinShun is asking the user to confirm the permissions %1 asks for; it turns on once they agree in WinShun&apos;s window</translation>
+    </message>
+    <message>
+        <source>%1 随 Win顺 自带，不能卸载；不想用就关掉：ws plugin disable %2</source>
+        <translation>%1 comes with WinShun and cannot be removed; turn it off instead: ws plugin disable %2</translation>
+    </message>
+    <message>
+        <source>打不开 Win顺 的设置窗口，没法请用户确认卸载 %1</source>
+        <translation>WinShun&apos;s settings window could not be opened to ask the user about removing %1</translation>
+    </message>
+    <message>
+        <source>Win顺 正在问用户要不要卸载 %1；用户在 Win顺 的窗口里确认之后才卸载</source>
+        <translation>WinShun is asking the user whether to remove %1; it is removed once they confirm in WinShun&apos;s window</translation>
+    </message>
+</context>
+<context>
     <name>ws::PluginGallery</name>
+    <message>
+        <source>插件库现在用不了</source>
+        <translation>The plugin library is not available now</translation>
+    </message>
+    <message>
+        <source>正在安装另一个插件，等它装完再试</source>
+        <translation>Another plugin is being installed; try again when it is done</translation>
+    </message>
+    <message>
+        <source>插件库里没有 %1</source>
+        <translation>The plugin library has no %1</translation>
+    </message>
+    <message>
+        <source>%1 已经是最新版（%2）</source>
+        <translation>%1 is up to date (%2)</translation>
+    </message>
+    <message>
+        <source>%1 随 Win顺 自带，不用安装</source>
+        <translation>%1 comes with WinShun; there is nothing to install</translation>
+    </message>
+    <message>
+        <source>%1 %2 要 Win顺 %3 或更新的版本，先更新 Win顺</source>
+        <translation>%1 %2 needs WinShun %3 or later; update WinShun first</translation>
+    </message>
+    <message>
+        <source>现在装不了 %1</source>
+        <translation>%1 cannot be installed now</translation>
+    </message>
+    <message>
+        <source>下载被取消了</source>
+        <translation>The download was cancelled</translation>
+    </message>
     <message>
         <source>正在更新 %1/%2…</source>
         <translation>Updating %1 of %2…</translation>

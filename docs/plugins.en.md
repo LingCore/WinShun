@@ -450,7 +450,9 @@ Actions are **not** exposed unless "Allow AI to run plugin actions" is on; then 
 ## Debugging
 
 - **Developer mode** (Settings → Plugins → Advanced): a changed script restarts its resident plugin; the message log shows every line (time, plugin, direction, method, milliseconds to the response), click one for the whole message; "open plugins.log" (`%LOCALAPPDATA%\WinShun\plugins.log`: stderr, protocol errors, crashes).
-- **Command line** (`build\release\wsbench.exe` from a source build; no window):
+- **`ws plugin`** (Win顺's own command line; enable it under Settings → AI assistants first): `ws plugin install <plugin folder or .wsplugin>` installs it (a new plugin stays off; put over a version that is on, it replaces it, so run it again after each change), `ws plugin enable <id>` turns it on (the first time you confirm its permissions in Win顺's window), `ws plugin list --json` shows its `state`, its program's `status` and `error` (a bad manifest, a missing program, the last crash). An AI assistant tries a plugin the same way.
+- **Let an AI write it**: `npx skills add LingCore/WinShun --skill winshun-plugin-dev` installs the plugin-writing skill for Claude Code, Codex, Cursor and others (the protocol's essentials, the loop above, how to publish), instead of copying the development prompt by hand.
+- **wsbench** (`build\release\wsbench.exe` from a source build; no window):
 
 ```powershell
 wsbench --plugin D:\my.plugin --query "hi 你好" --runs 20                 # validate the manifest, start through the runner, print the rows and the timings (cold start, first round trip, steady median) and the process's integrity level and job

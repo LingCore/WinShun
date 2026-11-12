@@ -12,6 +12,7 @@
 
 #include "Install.h"
 #include "PluginGallery.h"
+#include "PluginInstalled.h"
 
 #include <QAbstractListModel>
 #include <QObject>
@@ -238,7 +239,8 @@ public:
     static QString permissionText(plugin::Permission p);
     // install(), for a package downloaded from the 插件库: it must be
     // `expectedId`, and is called `name` in what is said of it.
-    void installFrom(const QString& path, const QString& expectedId, const QString& name, bool enableAfterInstall = false, bool unreviewed = false);
+    PluginInstalled installFrom(const QString& path, const QString& expectedId, const QString& name, bool enableAfterInstall = false,
+        bool unreviewed = false);
     // 全部更新's: the package at `path` put over the installed `id` without a question, when the list's `version` is not
     // wider than what the user allowed (plugin::updates::review). Empty on success, else why not.
     QString installUpdate(const QString& path, const QString& id, const QString& version);
@@ -336,7 +338,9 @@ private:
     PluginListModel::Card cardFor(const QString& id) const;
     void setMessage(const QString& message);
     void readMemory(); // the resident processes' working sets, into the status lines
-    void finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall = false, bool allow = false, const QString& asideForeignTo = {});
+    PluginInstalled finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall = false, bool allow = false,
+        const QString& asideForeignTo = {});
+    PluginInstalled notInstalled(const QString& id, const QString& message); // said on the page, and to who asked
     void releaseClaim(); // the plugin an install here has been changing
     QString pluginName(const QString& id) const;
     QVariantList permissionRows(const QString& id) const; // [{name, text, enforced, note}]
