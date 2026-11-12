@@ -423,6 +423,10 @@
 <context>
     <name>AiSettings</name>
     <message>
+        <source>打开结果的备用键</source>
+        <translation>Second key to open a result</translation>
+    </message>
+    <message>
         <source>任务栏上的 Win顺</source>
         <translation>WinShun on the taskbar</translation>
     </message>
@@ -4483,6 +4487,22 @@ Double-click grip: expand/collapse search panel</translation>
 <context>
     <name>SettingsWindow</name>
     <message>
+        <source>打开结果的备用键</source>
+        <translation>Second key to open a result</translation>
+    </message>
+    <message>
+        <source>打开;回车;Enter;备用;左手;快捷键;空格;open;shortcut</source>
+        <translation>open;enter;Enter;second;left hand;shortcut;hotkey;space</translation>
+    </message>
+    <message>
+        <source>和 Enter 一样打开选中的结果，Enter 照常可用。录一个左手顺手的键，比如 Alt+Q 或 F1；空格不行，它要用来分开几个词。Backspace 清除，Esc 取消。</source>
+        <translation>Opens the selected result as Enter does; Enter keeps working. Record a key your left hand reaches, such as Alt+Q or F1; not Space, which separates the words of a search. Backspace clears, Esc cancels.</translation>
+    </message>
+    <message>
+        <source>未设置</source>
+        <translation>Not set</translation>
+    </message>
+    <message>
         <source>界面字体</source>
         <translation>Interface font</translation>
     </message>
@@ -7902,6 +7922,10 @@ Double-click grip: expand/collapse search panel</translation>
 </context>
 <context>
     <name>Shortcuts</name>
+    <message>
+        <source>打开选中的结果，和 Enter 一样</source>
+        <translation>Open the selected result, as Enter does</translation>
+    </message>
     <message>
         <source>打开</source>
         <translation>Open</translation>
@@ -13091,6 +13115,18 @@ Content index: %5</translation>
 </context>
 <context>
     <name>ws::SettingsEditor</name>
+    <message>
+        <source>这个快捷键已用来打开结果，请换一个</source>
+        <translation>This shortcut already opens results; choose another</translation>
+    </message>
+    <message>
+        <source>空格要用来分开几个词，请换一个</source>
+        <translation>Space separates the words of a search; choose another</translation>
+    </message>
+    <message>
+        <source>这个快捷键已用于预览，请换一个</source>
+        <translation>This shortcut is the preview&apos;s; choose another</translation>
+    </message>
     <message>
         <source>选择不需要搜索的文件夹</source>
         <translation>Choose a folder to leave out of searches</translation>

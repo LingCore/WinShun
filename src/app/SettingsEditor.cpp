@@ -221,6 +221,7 @@ void SettingsEditor::setSettings(const Settings& settings)
     const bool drives = settings.selectedDrives != m_settings.selectedDrives;
     m_settings = settings;
     m_previewHotkeyError.clear();
+    m_openHotkeyError.clear();
     emit changed();
     emit doubleTapActionsChanged();
     if (shares)
@@ -440,12 +441,36 @@ void SettingsEditor::setPreviewHotkey(const QString& shortcut)
         error = tr("这个快捷键用于输入或其他操作，请换一个");
     if (previewkeys::usedGlobally(value, {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey}))
         error = tr("这个快捷键已用于全局操作，请换一个");
+    if (error.isEmpty() && !value.isEmpty() && value == m_settings.openHotkey)
+        error = tr("这个快捷键已用来打开结果，请换一个");
     m_previewHotkeyError = error;
     if (!error.isEmpty() || value == m_settings.previewHotkey) {
         emit changed();
         return;
     }
     m_settings.previewHotkey = value;
+    commit();
+}
+
+void SettingsEditor::setOpenHotkey(const QString& shortcut)
+{
+    const QString typed = shortcut.trimmed();
+    const QString value = previewkeys::normalizedOpen(typed);
+    QString error;
+    if (!typed.isEmpty() && value.isEmpty()) {
+        error = previewkeys::normalized(typed) == u"Space" ? tr("空格要用来分开几个词，请换一个")
+                                                           : tr("这个快捷键用于输入或其他操作，请换一个");
+    } else if (previewkeys::usedGlobally(value, {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey})) {
+        error = tr("这个快捷键已用于全局操作，请换一个");
+    } else if (!value.isEmpty() && value == m_settings.previewHotkey) {
+        error = tr("这个快捷键已用于预览，请换一个");
+    }
+    m_openHotkeyError = error;
+    if (!error.isEmpty() || value == m_settings.openHotkey) {
+        emit changed();
+        return;
+    }
+    m_settings.openHotkey = value;
     commit();
 }
 

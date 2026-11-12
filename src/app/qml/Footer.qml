@@ -379,6 +379,7 @@ Item {
         where: "launcher"
         context: ({
             previewKey: footer.launcher.previewHotkey,
+            openKey: footer.launcher.openHotkey,
             historyModifier: !footer.launcher.queryHistoryEnabled || footer.launcher.historyKeys === "off" ? "" : footer.launcher.historyKeys === "alt" ? "Alt" : "Ctrl",
             numberModifier: footer.launcher.numberKeys === "off" ? "" : modifier,
             // typed in a folder's window (GitHub #110): where switchTypingFolder takes it

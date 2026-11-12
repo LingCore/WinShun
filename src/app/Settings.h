@@ -251,6 +251,9 @@ struct Settings {
     // Win顺's own preview window; builtin: always that.
     QString previewWith = QStringLiteral("auto");
     QString previewHotkey = QStringLiteral("Alt+P"); // local; empty disables keyboard preview
+    // A second key that opens the result as Enter does (GitHub #293); local,
+    // empty: none. Never Space, nor the preview's (previewkeys::normalizedOpen).
+    QString openHotkey;
     // An open preview shows the row the mouse rests on; off: only the current
     // row (big files are not opened one after another by a passing pointer,
     // GitHub #224).

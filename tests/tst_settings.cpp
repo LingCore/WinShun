@@ -674,6 +674,38 @@ private slots:
         QCOMPARE(settings.previewHotkey, u"Alt+P"_s);
     }
 
+    // GitHub #293: a second key for Enter; none by default, never Space,
+    // nor the preview's.
+    void openHotkey()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(settings.openHotkey.isEmpty());
+        for (const QString& key : {u"Alt+Q"_s, u"F1"_s, u"Ctrl+Shift+O"_s, QString()}) {
+            settings.openHotkey = key;
+            settings.save();
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.openHotkey, key);
+        }
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        for (const QString& key : {u"Space"_s, u"Shift+Space"_s, u"Q"_s, u"Enter"_s, u"Tab"_s, u"Ctrl+C"_s, u"Ctrl+1"_s, u"Alt+P"_s}) {
+            ini.setValue(u"Results/OpenHotkey"_s, key); // Alt+P: the preview's
+            ini.sync();
+            settings.load();
+            QVERIFY2(settings.openHotkey.isEmpty(), qPrintable(key));
+        }
+        ini.setValue(u"Results/OpenHotkey"_s, u" alt + q "_s);
+        ini.sync();
+        settings.load();
+        QCOMPARE(settings.openHotkey, u"Alt+Q"_s);
+        QCOMPARE(ws::previewkeys::normalizedOpen(u"Space"_s), QString());
+        QCOMPARE(ws::previewkeys::normalizedOpen(u"alt+q"_s), u"Alt+Q"_s);
+    }
+
     void previewShortcutRules()
     {
         using namespace ws::previewkeys;

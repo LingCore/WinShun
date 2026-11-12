@@ -45,6 +45,15 @@ inline bool allowed(const QString& shortcut)
     return !normalized(shortcut).isEmpty();
 }
 
+// A second key for Enter on a result (GitHub #293: one the left hand has
+// without leaving the letters). As the preview's, but never Space: that
+// separates the words of every search.
+inline QString normalizedOpen(const QString& shortcut)
+{
+    const QString normal = normalized(shortcut);
+    return normal == u"Space" ? QString() : normal;
+}
+
 inline bool matches(const QKeySequence& sequence, int key, int modifiers) noexcept
 {
     const auto mods = Qt::KeyboardModifiers(modifiers) & ~Qt::KeypadModifier;

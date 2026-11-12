@@ -77,6 +77,7 @@ Window {
             clipboardHotkey: [window.editor.doubleCtrl && window.editor.doubleTapAction === "clipboard" ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.clipboardHotkey].filter(keys => keys.length > 0).join(" / "),
             panelHotkey: window.editor.panelHotkey,
             previewKey: window.editor.previewHotkey,
+            openKey: window.editor.openHotkey,
             historyModifier: !window.editor.recordHistory || window.editor.queryHistoryKeys === "off" ? "" : window.editor.queryHistoryKeys === "alt" ? "Alt" : "Ctrl",
             numberModifier: window.editor.numberKeys === "alt" ? "Alt" : window.editor.numberKeys === "ctrl" ? "Ctrl" : "",
             holdKey: window.editor.clipboardHotkey,
@@ -3940,9 +3941,10 @@ Window {
                 content: Component { SettingsPage {
                     host: settingsContext
                     parts: ({ fileTypesSection: fileTypesSection })
-                    recordingHotkey: previewHotkeyRecorder.recording
+                    recordingHotkey: previewHotkeyRecorder.recording || openHotkeyRecorder.recording
                     onResetForReopen: {
                         previewHotkeyRecorder.stop()
+                        openHotkeyRecorder.stop()
                         fileTypesSection.resetForReopen()
                     }
             // <page 3>
@@ -4400,6 +4402,31 @@ Window {
                     ToggleSwitch {
                         checked: window.editor.englishOnOpen
                         onToggled: (on) => window.editor.englishOnOpen = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("打开结果的备用键")
+                    keywords: qsTr("打开;回车;Enter;备用;左手;快捷键;空格;open;shortcut").split(";")
+                    values: [window.editor.openHotkey]
+                    description: qsTr("和 Enter 一样打开选中的结果，Enter 照常可用。录一个左手顺手的键，比如 Alt+Q 或 F1；空格不行，它要用来分开几个词。Backspace 清除，Esc 取消。")
+
+                    HotkeyRecorder {
+                        id: openHotkeyRecorder
+                        objectName: "openHotkeyRecorder"
+                        hotkey: window.editor.openHotkey
+                        previewShortcut: true
+                        placeholder: qsTr("未设置")
+                        onRecorded: (hotkey) => window.editor.openHotkey = hotkey
+                    }
+
+                    bodyShown: window.editor.openHotkeyError.length > 0
+                    body: Text {
+                        width: parent.width
+                        text: window.editor.openHotkeyError
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
                     }
                 }
 

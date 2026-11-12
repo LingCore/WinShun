@@ -781,6 +781,20 @@ Window {
             event.accepted = true
             return
         }
+        // The second key for Enter (GitHub #293): what Enter alone does,
+        // once a press.
+        if (searchBar.composition.length === 0 && window.launcher.isOpenKey(event.key, event.modifiers)) {
+            if (!event.isAutoRepeat) {
+                if (homeIndex >= 0)
+                    launcher.openFrequentApp(homeIndex)
+                else if (hintIndex >= 0 || (view.count === 0 && hints.length > 0))
+                    takeHint(Math.max(hintIndex, 0))
+                else if (!window.launcher.holdUntilShown(Launcher.Open, 0))
+                    act(Launcher.Open)
+            }
+            event.accepted = true
+            return
+        }
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
         const shift = (event.modifiers & Qt.ShiftModifier) !== 0
         if (event.key === Qt.Key_Comma && (event.modifiers & ~Qt.KeypadModifier) === Qt.ControlModifier
