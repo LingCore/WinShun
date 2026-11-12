@@ -1488,6 +1488,12 @@ void Clipboard::renameGroup(qint64 group, const QString& name)
     m_model.refreshTimes(); // the rows show the name
 }
 
+void Clipboard::setNote(qint64 id, const QString& note)
+{
+    m_store->setNote(id, note);
+    m_model.refreshTimes(); // the row shows it
+}
+
 void Clipboard::remove(int row)
 {
     const std::vector<const Clip*> clips = targets(row);
@@ -1703,6 +1709,8 @@ QVariantList Clipboard::menuItems(int row) const
         if (c.kind == ClipKind::Image)
             items.append(entry(OpenImage, tr("打开图片"), QString(), u""_s));
     }
+    if (!many) // a line of the user's own before it, found by the search
+        items.append(entry(EditNote, clips.front()->note.isEmpty() ? tr("加备注…") : tr("改备注…"), QString(), u"\uE70F"_s)); // Edit
     items.append(entry(SaveFiles, many ? tr("保存 %Ln 条为文件…", nullptr, n) : tr("保存为文件…"), QString(),
         u"\uE74E"_s));
     items.append(entry(SendLan, m_lanSendAvailable ? tr("用局域网发送…")
@@ -1783,6 +1791,10 @@ void Clipboard::trigger(int row, int action)
         break;
     case NewGroup:
         emit groupNameRequested(row, 0);
+        break;
+    case EditNote:
+        if (const std::vector<const Clip*> clips = targets(row); clips.size() == 1)
+            emit noteRequested(clips.front()->id, clips.front()->note);
         break;
     case LeaveGroup:
         moveToGroup(row, 0);

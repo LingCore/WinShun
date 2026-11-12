@@ -3,6 +3,7 @@
 #include "ContentScanner.h"
 #include "DiagnosticLog.h"
 
+#include <cstring>
 #include <sddl.h>
 
 #include <algorithm>
@@ -405,48 +406,34 @@ DocExtractor::Result DocExtractor::extractFile(
     return extract(file.get(), static_cast<std::uint64_t>(size.QuadPart), cancelled);
 }
 
-DocExtractor::Result DocExtractor::extract(HANDLE file, std::uint64_t size, const std::function<bool()>& cancelled)
+bool DocExtractor::ask(HANDLE file, std::uint64_t size, std::uint32_t magic, std::uint64_t argument,
+    std::uint64_t maxPayload, bool endAfter, const std::function<bool()>& cancelled, extractproto::Status& status,
+    std::string& payload, bool& retry)
 {
-    Result result;
-    // A large one waits for the one being read, before it takes a process.
-    const bool alone = m_alone > 0 && size >= m_alone;
-    if (alone && !takeAlone(cancelled)) {
-        result.retry = true;
-        return result;
-    }
-    const struct Alone {
-        DocExtractor* extractor;
-        bool on;
-        ~Alone()
-        {
-            if (on)
-                extractor->releaseAlone();
-        }
-    } aloneTaken {this, alone};
     auto p = acquire(cancelled);
     if (!p) {
-        result.retry = true;
-        return result;
+        retry = true;
+        return false;
     }
     HANDLE remote = nullptr;
     if (!::DuplicateHandle(::GetCurrentProcess(), file, p->process.get(), &remote, FILE_GENERIC_READ, FALSE, 0)) {
         release(std::move(p));
-        result.retry = true;
-        return result;
+        retry = true;
+        return false;
     }
     extractproto::Request request;
+    request.magic = magic;
     request.codePage = m_codePage;
     request.file = reinterpret_cast<std::uintptr_t>(remote);
     request.fileSize = size;
-    request.maxText = kMaxText;
+    request.maxText = argument;
     const auto deadline = std::chrono::steady_clock::now() + timeFor(size);
     extractproto::ResponseHeader header;
     header.magic = 0;
-    std::string payload;
     Io io = transfer(true, p->pipe.get(), p->event.get(), &request, sizeof request, deadline, cancelled);
     if (io == Io::Done)
         io = transfer(false, p->pipe.get(), p->event.get(), &header, sizeof header, deadline, cancelled);
-    if (io == Io::Done && (header.magic != extractproto::kResponseMagic || header.payloadBytes > kMaxPayload
+    if (io == Io::Done && (header.magic != extractproto::kResponseMagic || header.payloadBytes > maxPayload
                               || header.status > extractproto::Status::Broken))
         io = Io::Failed;
     if (io == Io::Done && header.payloadBytes > 0) {
@@ -468,20 +455,88 @@ DocExtractor::Result DocExtractor::extract(HANDLE file, std::uint64_t size, cons
         }
         p.reset(); // in the middle of something: ended, and replaced when needed
         release(nullptr);
-        result.retry = io == Io::Cancelled;
-        return result;
+        retry = io == Io::Cancelled;
+        return false;
     }
-    if (alone) {
-        // Ended: it would keep much of what it took (179 MB after a 46 MB
-        // PDF) while it reads the next ones. A fresh one is quick: a small
-        // document read in a process of its own took 29 ms at the median.
+    if (endAfter) {
         p.reset();
         release(nullptr);
     } else {
         release(std::move(p));
     }
-    result.status = header.status;
-    if (header.status == extractproto::Status::Ok) {
+    status = header.status;
+    return true;
+}
+
+DocExtractor::Rendered DocExtractor::renderFile(
+    std::wstring_view path, std::uint32_t largest, const std::function<bool()>& cancelled)
+{
+    Rendered result;
+    const win32::UniqueHandle file(::CreateFileW(win32::longPath(path).c_str(), GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_RANDOM_ACCESS, nullptr));
+    FILE_BASIC_INFO basic {};
+    LARGE_INTEGER size {};
+    if (!file.valid() || !::GetFileInformationByHandleEx(file.get(), FileBasicInfo, &basic, sizeof basic)
+        || !::GetFileSizeEx(file.get(), &size))
+        return result;
+    constexpr DWORD kNotHere = FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_OPEN
+        | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS;
+    if ((basic.FileAttributes & kNotHere) || size.QuadPart <= 0)
+        return result;
+    largest = std::min(largest, kLargestPicture);
+    std::string payload;
+    extractproto::Status status = extractproto::Status::Failed;
+    // The process is ended after it: a page of drawings can leave it with
+    // hundreds of megabytes, and previews come one at a time.
+    if (!ask(file.get(), static_cast<std::uint64_t>(size.QuadPart), extractproto::kRenderMagic, largest,
+            sizeof(extractproto::PictureHeader) + std::uint64_t {kLargestPicture} * kLargestPicture * 4, true, cancelled,
+            status, payload, result.retry))
+        return result;
+    result.status = status;
+    if (status != extractproto::Status::Ok)
+        return result;
+    result.status = extractproto::Status::Failed;
+    if (payload.size() < sizeof result.size)
+        return result;
+    std::memcpy(&result.size, payload.data(), sizeof result.size);
+    const std::uint64_t bytes = std::uint64_t {result.size.width} * result.size.height * 4;
+    if (result.size.width == 0 || result.size.height == 0 || result.size.width > largest || result.size.height > largest
+        || payload.size() != sizeof result.size + bytes)
+        return result;
+    payload.erase(0, sizeof result.size);
+    result.bgra = std::move(payload);
+    result.status = extractproto::Status::Ok;
+    return result;
+}
+
+DocExtractor::Result DocExtractor::extract(HANDLE file, std::uint64_t size, const std::function<bool()>& cancelled)
+{
+    Result result;
+    // A large one waits for the one being read, before it takes a process.
+    const bool alone = m_alone > 0 && size >= m_alone;
+    if (alone && !takeAlone(cancelled)) {
+        result.retry = true;
+        return result;
+    }
+    const struct Alone {
+        DocExtractor* extractor;
+        bool on;
+        ~Alone()
+        {
+            if (on)
+                extractor->releaseAlone();
+        }
+    } aloneTaken {this, alone};
+    std::string payload;
+    extractproto::Status status = extractproto::Status::Failed;
+    // A large one's process is ended: it would keep much of what it took
+    // (179 MB after a 46 MB PDF) while it reads the next ones. A fresh one
+    // is quick: a small document read in a process of its own took 29 ms at
+    // the median.
+    if (!ask(file, size, extractproto::kRequestMagic, kMaxText, kMaxPayload, alone, cancelled, status, payload, result.retry))
+        return result;
+    result.status = status;
+    if (status == extractproto::Status::Ok) {
         auto text = doctext::deserialize(payload, kMaxText);
         if (text)
             result.text = std::move(*text);

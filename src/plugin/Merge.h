@@ -18,6 +18,12 @@
 // after the first five name rows, the others last.
 // Answering again (a rerun, a refresh), rows with the same item id are
 // updated in place; rows that went are removed, new ones inserted.
+//
+// An instant command's keyword typed alone ("pl", Match::alone; GitHub
+// #242): the list stays the search's, and the command's rows lead it, all
+// of them, in the plugin's order (below the keyboard's row when that is not
+// the first). Until its answer comes a row offering the command holds the
+// first place, so that Enter never opens a file the user did not mean.
 
 #include "Catalog.h"
 #include "Items.h"
@@ -47,8 +53,9 @@ bool isHintRow(const SearchResult& row) noexcept;
 SearchResult toRow(const Entry& entry, const Command& command, const Item& item, int index, const QString& locale);
 // The row for a list command's keyword typed alone, or in part
 // (Catalog::hints): named "<keyword> — <title>", `subtitle` under it,
-// autocomplete and setQuery "<keyword> " (an instant command's keyword
-// alone). A partial one scores low: it goes among the rows, not first.
+// autocomplete and setQuery "<keyword> " (a keyword an instant command's
+// begins with: that keyword alone). A partial one scores low: it goes among
+// the rows, not first.
 SearchResult hintRow(const Match& hint, const QString& subtitle, const QString& locale);
 
 // The list the rows go into: ResultModel in the app, a QList in tests.
@@ -117,6 +124,11 @@ public:
     // An action's `replace` effect: these rows instead of the list.
     void replace(const QString& pluginId, const QString& commandId, const Items& items);
 
+    // The words an action or a details request of this row is about: none
+    // for a row of the command whose keyword was typed alone (as in its own
+    // list), else what was typed.
+    bool keywordAlone(const SearchResult& row) const;
+
     // A row went in at the top while the keyboard was on the first row,
     // since last asked.
     bool takeBetterFirstRow() noexcept { return std::exchange(m_betterFirstRow, false); }
@@ -131,7 +143,9 @@ private:
     };
     SearchResults rowsOf(const Entry& entry, const Command& command, const Items& items, bool sortByScore, int offset = 0) const;
     void apply(const Batch& batch);
+    void applyAlone(const Batch& batch);
     void placeHint();
+    void placeAloneHint();
     int floorRow() const;
     int firstScreenRow() const;
     int placeFor(int score) const;
@@ -149,6 +163,9 @@ private:
     bool m_namesReady = false;
     bool m_contentOnly = false;
     bool m_hints = true;
+    // The instant command whose keyword was typed alone (empty: none).
+    QString m_alonePlugin;
+    QString m_aloneCommand;
     bool m_assigned = false; // keyword mode: an answer has replaced the rows
     int m_keywordItemIndex = 0; // anonymous ids span every appended batch
     std::map<QString, Batch> m_held; // "<plugin>/<command>" -> its answer so far

@@ -51,9 +51,29 @@ struct FileType {
     QList<QString> extensions; // without the dot, lower case
     QString id; // a built-in one's ("pictures"); empty for its user's own
     QString keyword; // :keyword narrows a query to this type; empty disables it
+    QString folder; // 搜索范围（含子文件夹）；留空使用整个索引
     bool operator==(const FileType&) const = default;
 };
 using FileTypes = QList<FileType>;
+
+// A query saved under a name, to narrow any search with at a click (the
+// panel's 快捷筛选, as Everything's filters): "!$RECYCLE.BIN\" as 排除回收站.
+// Several on at once all apply. Its user's to name and change.
+struct QuickFilter {
+    QString name;
+    QString query; // as typed in the search box (parseQuery; never regex mode)
+    // :keyword (or keyword:) among what is typed switches it on for that
+    // search, in the box as in the panel; empty: by its chip only. No two
+    // filters, kinds of file or the folders' share one (FileType::keyword).
+    QString keyword;
+    bool operator==(const QuickFilter&) const = default;
+};
+using QuickFilters = QList<QuickFilter>;
+// What splitQuickFilterQuery (Query.h) reads from what is typed.
+struct QuickFilterQuery {
+    QString words;
+    QList<int> filters; // indexes, each once, in the order typed
+};
 
 // What kind of installed app a result is (see AppCatalog), or of place in
 // Windows (SystemCatalog), or None for a file or folder.

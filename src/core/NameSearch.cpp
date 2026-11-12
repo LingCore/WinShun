@@ -507,6 +507,9 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
         TopHits<decltype(order)> folders(apart ? limit : 0, most, order);
         NameMatcher::Folders seen;
         UnderAny under(index, filter.folders);
+        std::optional<UnderAny> typeScope;
+        if (!options.typeFolders.empty())
+            typeScope.emplace(index, options.typeFolders);
         // Each worker its own, as `under`: their caches are written as they are asked.
         std::optional<UnderAny> inside;
         if (!insideOf.empty())
@@ -540,6 +543,8 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
                 if (!filter.fits(modified, size, e.isDir()))
                     continue;
                 if (!filter.folders.empty() && !under(e))
+                    continue;
+                if (typeScope && !(*typeScope)(e))
                     continue;
                 if (filter.directIn != kNoEntry && e.parent != filter.directIn)
                     continue;

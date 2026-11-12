@@ -1109,6 +1109,28 @@ void recycle(const QStringList& paths, HWND owner, std::function<void(bool)> don
     });
 }
 
+void rename(const QString& path, const QString& newName, HWND owner, std::function<void(bool)> done)
+{
+    runOnShellThread([file = QDir::toNativeSeparators(path).toStdWString(), name = newName.toStdWString(), owner, done = std::move(done)] {
+        bool ok = false;
+        {
+            ComPtr<IFileOperation> op;
+            ComPtr<IShellItem> item;
+            if (SUCCEEDED(::CoCreateInstance(CLSID_FileOperation, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&op)))
+                && SUCCEEDED(::SHCreateItemFromParsingName(file.c_str(), nullptr, IID_PPV_ARGS(&item)))) {
+                // Asked for already, name and all: no progress, no "are you sure"; what goes wrong is still said.
+                op->SetOperationFlags(FOF_ALLOWUNDO | FOF_SILENT | FOF_NOCONFIRMATION);
+                if (owner)
+                    op->SetOwnerWindow(owner);
+                BOOL aborted = FALSE;
+                ok = SUCCEEDED(op->RenameItem(item.Get(), name.c_str(), nullptr)) && SUCCEEDED(op->PerformOperations())
+                    && SUCCEEDED(op->GetAnyOperationsAborted(&aborted)) && !aborted;
+            }
+        } // released before COM is uninitialised
+        done(ok);
+    });
+}
+
 bool canRunAsAdministrator(const QString& path)
 {
     static const QStringList kRunnable {u"exe"_s, u"bat"_s, u"cmd"_s, u"msi"_s, u"ps1"_s, u"lnk"_s, u"com"_s};

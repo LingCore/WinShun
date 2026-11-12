@@ -442,6 +442,7 @@ private:
     void showClipboardSettings(); // the settings window on its 剪贴板 page
     void showShortcutSettings(); // ... on its overview of all shortcuts (the shortcut panels' last row)
     void showWebSettings(); // ... on its 网页搜索 page (a web row's menu)
+    void showQuickFilterSettings(const QString& draft); // ... at the quick filters (the + of the panel's chips), `draft` as a new one's query
     void showFileTypeSettings(); // ... on its 结果列表 page, at the file types (the + of the launcher's strip)
     void showFavoriteSettings(const QString& path); // ... on its 收藏夹 page, at that favorite (a row's menu)
     void showPluginUpdates(); // 设置 › 插件库, only the ones with a newer version

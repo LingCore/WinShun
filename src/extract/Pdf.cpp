@@ -6,10 +6,13 @@
 // headings, justified text) are dropped too.
 
 #include "Formats.h"
+#include "Render.h"
 
 #include "fpdf_text.h"
 #include "fpdfview.h"
 
+#include <algorithm>
+#include <cmath>
 #include <mutex>
 
 namespace ws::extract {
@@ -31,6 +34,8 @@ bool loadPdfium()
 }
 
 namespace {
+
+std::mutex g_pdfium; // PDFium is not thread-safe (only tools read more than one file at once)
 
 void putPage(std::u16string_view text, Writer& out)
 {
@@ -63,8 +68,7 @@ void putPage(std::u16string_view text, Writer& out)
 
 Status extractPdf(Source& source, Writer& out)
 {
-    static std::mutex mutex; // PDFium is not thread-safe (only tools read more than one file at once)
-    const std::lock_guard lock(mutex);
+    const std::lock_guard lock(g_pdfium);
     if (!loadPdfium())
         return Status::Unsupported;
     if (source.size() > 0xFFFFFFFFu)
@@ -104,6 +108,111 @@ Status extractPdf(Source& source, Writer& out)
     }
     FPDF_CloseDocument(doc);
     return Status::Ok;
+}
+
+// The first page as a picture. An Illustrator drawing is often small on a
+// large artboard (a bag's pattern on a sheet of A1): the page is drawn small
+// first to see where anything is, and when that is well inside it, only
+// that part is drawn, as large as asked for.
+Status renderPdf(Source& source, std::uint32_t largest, Picture& out)
+{
+    const std::lock_guard lock(g_pdfium);
+    if (!loadPdfium())
+        return Status::Unsupported;
+    if (source.size() > 0xFFFFFFFFu)
+        return Status::Unsupported;
+    largest = std::clamp<std::uint32_t>(largest, 64, 8192);
+
+    FPDF_FILEACCESS access {};
+    access.m_FileLen = static_cast<unsigned long>(source.size());
+    access.m_GetBlock = [](void* param, unsigned long position, unsigned char* buffer, unsigned long size) -> int {
+        return static_cast<Source*>(param)->readExact(position, buffer, size) ? 1 : 0;
+    };
+    access.m_Param = &source;
+    FPDF_DOCUMENT doc = FPDF_LoadCustomDocument(&access, nullptr);
+    if (!doc) {
+        const unsigned long error = FPDF_GetLastError();
+        return error == FPDF_ERR_PASSWORD || error == FPDF_ERR_SECURITY ? Status::Encrypted : Status::Broken;
+    }
+    Status status = Status::Broken;
+    if (FPDF_PAGE page = FPDF_LoadPage(doc, 0)) {
+        const double pageWidth = FPDF_GetPageWidthF(page);
+        const double pageHeight = FPDF_GetPageHeightF(page);
+        // The page at `scale` pixels a point, the part from (left, top) of
+        // the size given: white paper, then what is drawn.
+        const auto draw = [&](double scale, int left, int top, int width, int height, std::string& pixels) {
+            FPDF_BITMAP bitmap = FPDFBitmap_Create(width, height, 0);
+            if (!bitmap)
+                return false;
+            FPDFBitmap_FillRect(bitmap, 0, 0, width, height, 0xFFFFFFFF);
+            FPDF_RenderPageBitmap(bitmap, page, -left, -top, std::max(1, static_cast<int>(std::lround(pageWidth * scale))),
+                std::max(1, static_cast<int>(std::lround(pageHeight * scale))), 0, FPDF_ANNOT);
+            const auto* from = static_cast<const unsigned char*>(FPDFBitmap_GetBuffer(bitmap));
+            const int stride = FPDFBitmap_GetStride(bitmap);
+            pixels.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4);
+            for (int y = 0; y < height; ++y) {
+                auto* to = reinterpret_cast<unsigned char*>(pixels.data()) + static_cast<std::size_t>(y) * width * 4;
+                std::copy_n(from + static_cast<std::size_t>(y) * stride, static_cast<std::size_t>(width) * 4, to);
+                for (int x = 0; x < width; ++x)
+                    to[x * 4 + 3] = 255;
+            }
+            FPDFBitmap_Destroy(bitmap);
+            return true;
+        };
+        if (pageWidth >= 1 && pageHeight >= 1 && pageWidth <= 200000 && pageHeight <= 200000) {
+            const double longer = std::max(pageWidth, pageHeight);
+            // Where anything is, in the page drawn 400 pixels long.
+            constexpr int kLook = 400;
+            const double lookScale = kLook / longer;
+            const int lookWidth = std::max(1, static_cast<int>(std::lround(pageWidth * lookScale)));
+            const int lookHeight = std::max(1, static_cast<int>(std::lround(pageHeight * lookScale)));
+            double left = 0; // the part to draw, in points
+            double top = 0;
+            double right = pageWidth;
+            double bottom = pageHeight;
+            std::string look;
+            if (draw(lookScale, 0, 0, lookWidth, lookHeight, look)) {
+                int x0 = lookWidth;
+                int y0 = lookHeight;
+                int x1 = -1;
+                int y1 = -1;
+                for (int y = 0; y < lookHeight; ++y) {
+                    const auto* p = reinterpret_cast<const unsigned char*>(look.data()) + static_cast<std::size_t>(y) * lookWidth * 4;
+                    for (int x = 0; x < lookWidth; ++x, p += 4) {
+                        if (p[0] < 245 || p[1] < 245 || p[2] < 245) {
+                            x0 = std::min(x0, x);
+                            x1 = std::max(x1, x);
+                            y0 = std::min(y0, y);
+                            y1 = std::max(y1, y);
+                        }
+                    }
+                }
+                // Only when the paper left out is worth it: what is drawn
+                // takes less than 70% of the page one way or the other.
+                if (x1 >= x0 && (x1 - x0 + 1 < lookWidth * 7 / 10 || y1 - y0 + 1 < lookHeight * 7 / 10)) {
+                    const int margin = std::max(4, std::max(x1 - x0, y1 - y0) / 25); // a little paper around it
+                    left = std::max(0, x0 - margin) / lookScale;
+                    top = std::max(0, y0 - margin) / lookScale;
+                    right = std::min(lookWidth, x1 + 1 + margin) / lookScale;
+                    bottom = std::min(lookHeight, y1 + 1 + margin) / lookScale;
+                }
+            }
+            // As large as asked for, but no finer than 600 dots an inch.
+            const double scale = std::min(largest / std::max(right - left, bottom - top), 600.0 / 72);
+            const int width = std::clamp(static_cast<int>(std::lround((right - left) * scale)), 1, static_cast<int>(largest));
+            const int height = std::clamp(static_cast<int>(std::lround((bottom - top) * scale)), 1, static_cast<int>(largest));
+            if (draw(scale, static_cast<int>(std::lround(left * scale)), static_cast<int>(std::lround(top * scale)), width, height, out.bgra)) {
+                out.width = static_cast<std::uint32_t>(width);
+                out.height = static_cast<std::uint32_t>(height);
+                out.fullWidth = static_cast<std::uint32_t>(std::lround(pageWidth));
+                out.fullHeight = static_cast<std::uint32_t>(std::lround(pageHeight));
+                status = Status::Ok;
+            }
+        }
+        FPDF_ClosePage(page);
+    }
+    FPDF_CloseDocument(doc);
+    return status;
 }
 
 } // namespace ws::extract

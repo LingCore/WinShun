@@ -63,9 +63,10 @@ public:
     QString iconFont() const { return m_iconFont; }
     static QString iconFontName(); // iconFont(), for C++ (FileIconProvider draws glyph icons)
     static qreal iconScale();
-    // The Phosphor icon drawn for a Segoe code point, as {text, family}, or
-    // undefined: the icon font draws it then (see phosphor::forSegoe).
-    Q_INVOKABLE QVariant phosphorIcon(const QString& glyph) const;
+    // The Phosphor icon for "ph:name", "ph-fill:name" or a legacy Segoe code
+    // point, as {text, family}, or undefined: the icon font draws it then
+    // (see phosphor::resolve).
+    Q_INVOKABLE QVariant phosphorIcon(const QString& spec) const;
     // The icon font has the glyph (every character of it). An older Windows
     // 10 has an older "Segoe MDL2 Assets", without the icons added since: the
     // text would then take the character from whatever font has it, a Chinese

@@ -70,6 +70,10 @@ struct Match {
     QStringList captures; // Regex: the groups
     int maxItems = 0; // Push: the trigger's cap
     bool partial = false; // hints(): the keyword only begins with what was typed
+    // Keyword: an instant command's keyword with nothing after it, not even
+    // a space ("pl"). Its rows lead the list, which stays the search's: the
+    // names found for the word follow (Merge; GitHub #242).
+    bool alone = false;
 };
 
 class Catalog : public QObject {
@@ -129,8 +133,9 @@ public:
     // match (first), then regex and push matches. Only "全部" asks. A list
     // command's keyword counts only with a space after it ("kill ": typed
     // alone, "kill" is a name to search for; see hint()); an instant
-    // command's counts alone too. Leading spaces are ignored, trailing ones
-    // are not: give it the text as typed.
+    // command's counts alone too (Match::alone: the word is searched for as
+    // well, so regex and push matches come with it). Leading spaces are
+    // ignored, trailing ones are not: give it the text as typed.
     std::vector<Match> match(const QString& text) const;
     std::vector<Match> contentMatches(const QString& text) const;
     // The list command whose keyword `text` is, with nothing after it: the

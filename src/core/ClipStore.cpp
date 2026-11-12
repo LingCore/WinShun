@@ -225,8 +225,8 @@ bool ClipMatcher::matches(const Clip& clip) const
             return false;
     }
     const QString& text = clip.searchText(); // a picture: the words in it
-    for (const Term& term : m_terms) {
-        if (!find(term, text, &start, &length))
+    for (const Term& term : m_terms) { // each in the entry, or in the user's note for it (GitHub #267)
+        if (!find(term, text, &start, &length) && (clip.note.isEmpty() || !find(term, clip.note, &start, &length)))
             return false;
     }
     return true;
@@ -422,6 +422,7 @@ bool ClipStore::open(qint64 now)
         bool hasImageFormat = false;
         bool hasAnimated = false;
         bool hasPasted = false;
+        bool hasNote = false;
         QSqlQuery columns(db);
         columns.prepare(u"PRAGMA table_info(clips)"_s);
         if (!run(columns, "Reading the columns"))
@@ -435,6 +436,7 @@ bool ClipStore::open(qint64 now)
             hasImageFormat = hasImageFormat || columns.value(1).toString() == u"imageFormat"_s;
             hasAnimated = hasAnimated || columns.value(1).toString() == u"animated"_s;
             hasPasted = hasPasted || columns.value(1).toString() == u"pasted"_s;
+            hasNote = hasNote || columns.value(1).toString() == u"note"_s;
         }
         columns.finish();
         if (!hasOcr && !run(db, u"ALTER TABLE clips ADD COLUMN ocr TEXT"_s))
@@ -474,6 +476,8 @@ bool ClipStore::open(qint64 now)
             return loaded;
 
         QSqlQuery groups(db);
+        if (!hasNote && !run(db, u"ALTER TABLE clips ADD COLUMN note TEXT NOT NULL DEFAULT ''"_s))
+            return loaded;
         groups.prepare(u"SELECT id, name FROM groups ORDER BY position, id"_s);
         if (!run(groups, "Reading the groups"))
             return loaded;
@@ -484,7 +488,7 @@ bool ClipStore::open(qint64 now)
         clips.setForwardOnly(true);
         clips.prepare(u"SELECT id, kind, substr(text, 1, %1), length, hash, created, used, source, sourcePath, groupId, "
                       u"width, height, bytes, html IS NOT NULL, rtf IS NOT NULL, ocr, rank, screenshot, project, "
-                      u"formats IS NOT NULL, imageFormat, animated, pasted FROM clips ORDER BY used DESC, id DESC"_s
+                      u"formats IS NOT NULL, imageFormat, animated, pasted, note FROM clips ORDER BY used DESC, id DESC"_s
                 .arg(kTextInMemory));
         if (!run(clips, "Reading the history"))
             return loaded;
@@ -514,6 +518,7 @@ bool ClipStore::open(qint64 now)
             clip.imageFormat = static_cast<ClipImageFormat>(std::clamp(clips.value(20).toInt(), 0, 2));
             clip.animated = clip.kind == ClipKind::Image && clips.value(21).toBool();
             clip.pasted = clips.value(22).toLongLong();
+            clip.note = clips.value(23).toString();
             loaded.clips.push_back(std::move(clip));
         }
         QSqlQuery last(db);
@@ -948,6 +953,23 @@ void ClipStore::restore(std::vector<ClipRecord> records)
         db.commit();
         return written;
     });
+    // Their notes with them (the row written above has none yet).
+    std::vector<std::pair<qint64, QString>> notes;
+    for (std::size_t i = 0; i < records.size(); ++i) {
+        if (written[i] && !records[i].clip.note.isEmpty())
+            notes.emplace_back(records[i].clip.id, records[i].clip.note);
+    }
+    if (!notes.empty()) {
+        m_writer->post([notes](QSqlDatabase& db) {
+            QSqlQuery query(db);
+            query.prepare(u"UPDATE clips SET note = ? WHERE id = ?"_s);
+            for (const auto& [id, note] : notes) {
+                query.addBindValue(text(note));
+                query.addBindValue(id);
+                run(query, "Restoring an entry's note");
+            }
+        });
+    }
     for (std::size_t i = 0; i < records.size(); ++i) {
         if (!written[i])
             continue;
@@ -1049,6 +1071,25 @@ void ClipStore::setGroup(std::span<const qint64> ids, qint64 groupId)
             run(query, "Moving an entry");
         }
         db.commit();
+    });
+}
+
+void ClipStore::setNote(qint64 id, const QString& note)
+{
+    const auto it = std::ranges::find(m_clips, id, &Clip::id);
+    if (!m_open || it == m_clips.end())
+        return;
+    // One line: what a line break or a tab was is a space.
+    const QString words = note.simplified().left(kNoteLength);
+    if (it->note == words)
+        return;
+    it->note = words;
+    m_writer->post([id, words](QSqlDatabase& db) {
+        QSqlQuery query(db);
+        query.prepare(u"UPDATE clips SET note = ? WHERE id = ?"_s);
+        query.addBindValue(text(words));
+        query.addBindValue(id);
+        run(query, "Saving an entry's note");
     });
 }
 

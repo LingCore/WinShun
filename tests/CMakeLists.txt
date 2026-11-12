@@ -104,6 +104,11 @@ add_test(NAME tst_contentpane COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_contentpane PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The file types and the quick filters: the editor's checks, the rows in the real window.
+add_test(NAME tst_settingsfilters COMMAND $<TARGET_FILE:WinShun>
+    --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/settings-filters" --file-types)
+set_tests_properties(tst_settingsfilters PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 # #111: the settings window keeps its Screen attached objects few; each one is
 # work on every move to another monitor (docs/pitfalls.md).
 add_test(NAME tst_settingsscreen COMMAND $<TARGET_FILE:WinShun>
@@ -223,6 +228,13 @@ target_link_libraries(tst_querysyntax PRIVATE wscore Qt6::Test)
 set_target_properties(tst_querysyntax PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_querysyntax COMMAND tst_querysyntax)
 set_tests_properties(tst_querysyntax PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+qt_add_executable(tst_syntax tst_syntax.cpp)
+target_link_libraries(tst_syntax PRIVATE wscore Qt6::Test)
+set_target_properties(tst_syntax PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_syntax COMMAND tst_syntax)
+set_tests_properties(tst_syntax PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 qt_add_executable(tst_panelcolumns tst_panelcolumns.cpp ${PROJECT_SOURCE_DIR}/src/app/PanelColumns.cpp)

@@ -364,7 +364,7 @@ int runPlugins(const QStringList& args)
             wordsHost->setKeywordOverrides(PluginSettings::keywordOverrides(now.plugins));
         });
     } else {
-        editor->plugins()->loadPreview(args.contains(u"--elevated"_s), manyLogs ? 8 : 2); // the `elevated` shield and 确认 note
+        editor->plugins()->loadPreview(args.contains(u"--elevated"_s), manyLogs ? 8 : 2, args.contains(u"--host-normal"_s)); // the `elevated` shield and 确认 note
     }
     if (updatesOnly)
         editor->plugins()->gallery()->setUpdatesOnly(true);
@@ -2395,7 +2395,9 @@ int runSettings(const QStringList& args)
     }
 
     if (args.contains(u"--file-types"_s)) {
-        const auto check = [](bool condition, const char* message) {
+        bool passed = true;
+        const auto check = [&](bool condition, const char* message) {
+            passed = passed && condition;
             if (!condition)
                 qWarning("file types: %s", message);
         };
@@ -2405,15 +2407,90 @@ int runSettings(const QStringList& args)
         check(editor->fileTypes().value(0).toMap().value(u"keyword"_s).toString() == u"doc", "prefix was not normalized");
         check(!editor->setFileTypeKeyword(-1, u"doc"_s).isEmpty(), "type prefix collision was accepted");
         check(editor->setFileTypeKeyword(0, {}).isEmpty(), "disabling a prefix failed");
+        check(editor->setFileTypeFolder(0, u"\"H:/工作 目录/\""_s).isEmpty(), "文件类型范围未接受完整路径");
+        check(editor->fileTypes().value(0).toMap().value(u"folder"_s).toString() == u"H:\\工作 目录"_s,
+            "文件类型范围未规范化或未暴露给界面");
+        check(!editor->setFileTypeFolder(0, u"relative/path"_s).isEmpty(), "范围接受了相对路径");
+        check(editor->fileTypes().value(0).toMap().value(u"folder"_s).toString() == u"H:\\工作 目录"_s,
+            "无效范围覆盖了原来的路径");
+        check(!editor->setFileTypeFolder(-1, {}).isEmpty(), "文件夹类型意外接受了文件类型范围");
+        check(editor->setFileTypeFolder(0, {}).isEmpty(), "清空文件类型范围失败");
+        check(editor->fileTypes().value(0).toMap().value(u"folder"_s).toString().isEmpty(), "范围未清空");
         editor->resetFileTypes();
+        check(editor->addFileType(u"工作 CSV"_s, u"csv"_s).isEmpty(), "新增范围示例失败");
+        const int csv = static_cast<int>(editor->fileTypes().size()) - 1;
+        check(editor->setFileTypeKeyword(csv, u"cw"_s).isEmpty(), "设置范围示例前缀失败");
+        check(editor->setFileTypeFolder(csv, u"H:\\__work__"_s).isEmpty(), "设置范围示例目录失败");
         QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(3)), Q_ARG(QVariant, QVariant(3)));
         window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
         settle(window, 3);
+        auto* scopeButton = visualNamed(window->contentItem(), u"fileTypeScope_0"_s);
+        check(scopeButton && scopeButton->isVisible(), "未显示范围按钮");
+        if (scopeButton) {
+            scopeButton->forceActiveFocus(Qt::TabFocusReason);
+            settle(window, 3);
+            const QPointF at = scopeButton->mapToScene({scopeButton->width() / 2, scopeButton->height() / 2});
+            QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+            QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+            QCoreApplication::sendEvent(window, &press);
+            QCoreApplication::sendEvent(window, &release);
+            settle(window, 3);
+            auto* input = visualNamed(window->contentItem(), u"fileTypeFolder_0"_s);
+            check(input && input->isVisible(), "点击范围按钮未展开路径输入框");
+        }
+        for (int i = 0; i <= csv; ++i) {
+            auto* row = visualNamed(window->contentItem(), u"fileTypeRow_%1"_s.arg(i));
+            check(row != nullptr, "文件类型行不存在");
+            if (row) {
+                for (auto* child : row->childItems()) {
+                    if (child->isVisible())
+                        check(child->x() + child->width() <= row->width() + 0.5, "类型或范围控件超出卡片宽度");
+                }
+            }
+        }
         bool saved = saveGrab(window, out.filePath(u"file-types-top.png"_s));
+        // The quick filters, below the types on the same tab.
+        check(editor->quickFilters().isEmpty(), "quick filters: some before any was added");
+        check(!editor->addQuickFilter(u" "_s, u"ext:pdf"_s).isEmpty(), "quick filters: one with no name was accepted");
+        check(!editor->addQuickFilter(u"坏的"_s, u"regex:("_s).isEmpty(), "quick filters: an unreadable query was accepted");
+        check(!editor->addQuickFilter(u"空的"_s, u"  "_s).isEmpty(), "quick filters: an empty query was accepted");
+        check(editor->addQuickFilter(u" 排除回收站 "_s, u" !$RECYCLE.BIN\\ "_s).isEmpty(), "quick filters: a good one was rejected");
+        check(!editor->addQuickFilter(u"排除回收站"_s, u"ext:pdf"_s).isEmpty(), "quick filters: a name was accepted twice");
+        check(editor->addQuickFilter(u"大 PDF"_s, u"ext:pdf size:>10mb"_s).isEmpty(), "quick filters: a second one was rejected");
+        check(editor->quickFilters().value(0).toMap().value(u"query"_s).toString() == u"!$RECYCLE.BIN\\", "quick filters: the query was not trimmed");
+        check(!editor->renameQuickFilter(1, u"排除回收站"_s).isEmpty(), "quick filters: renamed to a name taken");
+        check(!editor->setQuickFilterQuery(1, u"regex:("_s).isEmpty(), "quick filters: an unreadable query replaced a good one");
+        check(editor->quickFilters().value(1).toMap().value(u"query"_s).toString() == u"ext:pdf size:>10mb", "quick filters: a rejected query was kept");
+        check(!editor->setQuickFilterKeyword(0, u"two words"_s).isEmpty(), "quick filters: an unusable prefix was accepted");
+        check(!editor->setQuickFilterKeyword(0, u"cw"_s).isEmpty(), "quick filters: a kind's prefix was accepted");
+        check(!editor->setQuickFilterKeyword(0, editor->folderKeyword()).isEmpty(), "quick filters: the folders' prefix was accepted");
+        check(editor->setQuickFilterKeyword(0, u":NoBin"_s).isEmpty(), "quick filters: a good prefix was rejected");
+        check(editor->quickFilters().value(0).toMap().value(u"keyword"_s).toString() == u"nobin", "quick filters: the prefix was not normalized");
+        check(!editor->setQuickFilterKeyword(1, u"nobin"_s).isEmpty(), "quick filters: a prefix was accepted twice");
+        check(!editor->setFileTypeKeyword(0, u"nobin"_s).isEmpty(), "quick filters: a kind took a filter's prefix");
+        editor->moveQuickFilter(1, -1);
+        check(editor->quickFilters().value(0).toMap().value(u"name"_s).toString() == u"大 PDF", "quick filters: moving one up did nothing");
+        QMetaObject::invokeMethod(window, "showQuickFiltersPage", Q_ARG(QVariant, QVariant(u"!node_modules\\"_s)));
+        settle(window, 3);
+        auto* draft = visualNamed(window->contentItem(), u"quickFilterNewQuery"_s);
+        check(draft && draft->isVisible() && draft->property("text").toString() == u"!node_modules\\", "quick filters: the draft is not in the new row");
+        auto* newName = visualNamed(window->contentItem(), u"quickFilterNewName"_s);
+        check(newName && newName->property("inputFocused").toBool(), "quick filters: the name box did not take the keyboard");
+        for (int i = 0; i < 2; ++i) {
+            auto* row = visualNamed(window->contentItem(), u"quickFilterRow_%1"_s.arg(i));
+            check(row && row->isVisible(), "quick filters: a row is missing");
+            if (row && row->parentItem()) {
+                check(row->x() + row->width() <= row->parentItem()->width() + 0.5, "quick filters: a row is wider than its card");
+            }
+        }
+        saved = saveGrab(window, out.filePath(u"quick-filters.png"_s)) && saved;
+        editor->removeQuickFilter(0);
+        editor->removeQuickFilter(0);
+        check(editor->quickFilters().isEmpty(), "quick filters: removing them left some");
         flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble() - flick->property("height").toDouble()));
         settle(window, 3);
         saved = saveGrab(window, out.filePath(u"file-types-bottom.png"_s)) && saved;
-        return finish(window, saved);
+        return finish(window, saved && passed);
     }
 
     if (args.contains(u"--font-picker"_s)) {
@@ -3100,6 +3177,23 @@ void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& 
     key(Qt::Key_Comma, Qt::ControlModifier);
     key(Qt::Key_Comma, Qt::ControlModifier, {}, true);
     check(settingsOpened == 2, u"Ctrl+, opens settings once, ignoring auto-repeat"_s);
+    // The second key for Enter (GitHub #293): through Main.qml, what Enter
+    // does on the row; never Space; nothing with none set.
+    key(Qt::Key_Q, Qt::AltModifier);
+    check(settingsOpened == 2, u"Alt+Q does nothing with no open key set"_s);
+    launcher.setOpenHotkey(u"Space"_s);
+    check(launcher.openHotkey().isEmpty(), u"Space is refused as the open key"_s);
+    launcher.setOpenHotkey(u"Alt+Q"_s);
+    key(Qt::Key_Q, Qt::AltModifier | Qt::ShiftModifier);
+    check(settingsOpened == 2, u"the open key needs its exact modifiers"_s);
+    key(Qt::Key_Q, Qt::AltModifier);
+    key(Qt::Key_Q, Qt::AltModifier, {}, true);
+    check(settingsOpened == 3, u"the open key opens the row as Enter does, once a press"_s);
+    key(Qt::Key_Return);
+    check(settingsOpened == 4, u"Enter still opens with an open key set"_s);
+    launcher.setOpenHotkey({});
+    key(Qt::Key_Q, Qt::AltModifier);
+    check(settingsOpened == 4, u"clearing the open key disables it"_s);
     check(launcher.menuItems(0).size() == 1, u"settings expose only their applicable Open action"_s);
     settle(window, 3);
     check(saveGrab(window, output.filePath(u"search-settings-entry.png"_s)), u"render the settings entry"_s);
@@ -4263,6 +4357,176 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
                     check(filePreview.selectedText().isEmpty(), "the pick stayed after the preview closed");
                 }
             }
+            // Drawings and layered pictures (GitHub #297): an Illustrator
+            // file by its PDF part, a Photoshop one by its flattened picture,
+            // drawn in the document reader's process and shown as pictures
+            // (fitted, the wheel zooms). A small drawing on a large artboard
+            // comes without the empty paper. --preview-file <path>: that
+            // file too, for a look at a real one.
+            {
+                QTemporaryDir drawings; // of their own: the folder listed keeps its rows
+                check(drawings.isValid(), "could not create a folder for the drawings");
+                const auto showDrawn = [&](const QString& path, const char* grab) -> QSize {
+                    // The launcher's selected row may take the preview back
+                    // once (the preview follows it): shown again then.
+                    const QString native = QDir::toNativeSeparators(path);
+                    timeout.restart();
+                    for (;;) {
+                        if (!filePreview.isShowing(native))
+                            filePreview.show({.path = native, .name = QFileInfo(path).fileName()});
+                        pump(10);
+                        if ((filePreview.isShowing(native) && filePreview.kind() != FilePreview::Loading) || timeout.elapsed() >= 15000)
+                            break;
+                    }
+                    pump(300);
+                    if (filePreview.window())
+                        check(saveGrab(filePreview.window(), output.filePath(QString::fromLatin1(grab))), "could not render a drawn preview");
+                    return filePreview.kind() == FilePreview::Picture ? filePreview.imageSize() : QSize();
+                };
+                const auto big = [](QByteArray& to, quint64 value, int size) {
+                    for (int i = size - 1; i >= 0; --i)
+                        to.append(static_cast<char>(value >> (8 * i)));
+                };
+                // 320 x 200, RGB, raw: red grows to the right, green down.
+                QByteArray psd("8BPS");
+                big(psd, 1, 2);
+                psd.append(6, '\0');
+                big(psd, 3, 2);
+                big(psd, 200, 4);
+                big(psd, 320, 4);
+                big(psd, 8, 2);
+                big(psd, 3, 2);
+                big(psd, 0, 4);
+                big(psd, 0, 4);
+                big(psd, 0, 4);
+                big(psd, 0, 2);
+                for (int plane = 0; plane < 3; ++plane) {
+                    for (int y = 0; y < 200; ++y) {
+                        for (int x = 0; x < 320; ++x)
+                            psd.append(static_cast<char>(plane == 0 ? x * 255 / 319 : plane == 1 ? y * 255 / 199 : 64));
+                    }
+                }
+                QFile psdFile(drawings.filePath(u"layers.psd"_s));
+                check(psdFile.open(QIODevice::WriteOnly) && psdFile.write(psd) == psd.size(), "could not create the .psd fixture");
+                psdFile.close();
+                const QSize psdSize = showDrawn(psdFile.fileName(), "preview-psd.png");
+                check(psdSize == QSize(320, 200), "a .psd was not shown as its picture");
+                check(filePreview.summary().contains(u"320 × 200"), "a .psd's summary lacks its size");
+                // A bag 60 x 150 points in the middle of a sheet 2400 x 1700.
+                const std::string content = "0.29 0.33 0.19 rg 1170 775 60 150 re f";
+                const std::vector<std::string> objects {"<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2400 1700] /Contents 4 0 R >>",
+                    "<< /Length " + std::to_string(content.size()) + " >>\nstream\n" + content + "\nendstream"};
+                std::string pdf = "%PDF-1.4\n";
+                std::vector<std::size_t> offsets;
+                for (std::size_t i = 0; i < objects.size(); ++i) {
+                    offsets.push_back(pdf.size());
+                    pdf += std::to_string(i + 1) + " 0 obj\n" + objects[i] + "\nendobj\n";
+                }
+                const std::size_t xref = pdf.size();
+                pdf += "xref\n0 5\n0000000000 65535 f \n";
+                for (const std::size_t o : offsets) {
+                    char line[24];
+                    std::snprintf(line, sizeof line, "%010zu 00000 n \n", o);
+                    pdf += line;
+                }
+                pdf += "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n" + std::to_string(xref) + "\n%%EOF\n";
+                QFile aiFile(drawings.filePath(u"bag.ai"_s));
+                check(aiFile.open(QIODevice::WriteOnly) && aiFile.write(pdf.data(), static_cast<qint64>(pdf.size())) > 0,
+                    "could not create the .ai fixture");
+                aiFile.close();
+                const QSize aiSize = showDrawn(aiFile.fileName(), "preview-ai.png");
+                // The bag and a little paper: tall, not the sheet's wide shape, and large.
+                check(!aiSize.isEmpty() && aiSize.height() > aiSize.width() && aiSize.height() >= 1000,
+                    "an .ai was not shown as its drawing without the empty artboard");
+                // One that is no PDF (Illustrator 8 and before) is not a picture: it goes on as before.
+                QFile oldFile(drawings.filePath(u"old.ai"_s));
+                check(oldFile.open(QIODevice::WriteOnly) && oldFile.write("%!PS-Adobe-3.0\n%%Creator: Adobe Illustrator(R) 8.0\n") > 0,
+                    "could not create the old .ai fixture");
+                oldFile.close();
+                check(showDrawn(oldFile.fileName(), "preview-ai-old.png").isEmpty() && filePreview.kind() != FilePreview::Loading,
+                    "an .ai without a PDF part did not fall back");
+                say(u"drawn previews: .psd %1x%2, .ai %3x%4 (sheet 2400x1700), old .ai falls back"_s.arg(psdSize.width())
+                        .arg(psdSize.height()).arg(aiSize.width()).arg(aiSize.height()));
+                if (const QString real = valueAfter(QCoreApplication::arguments(), u"--preview-file"); !real.isEmpty()) {
+                    const QSize size = showDrawn(real, "preview-file.png");
+                    say(u"--preview-file %1: kind %2, picture %3x%4, %5"_s.arg(real).arg(int(filePreview.kind())).arg(size.width())
+                            .arg(size.height()).arg(filePreview.summary()));
+                }
+                filePreview.close();
+            }
+            // Colours (GitHub #291): code, data and Markdown by the kind of
+            // file, the words searched for marked, the first of them in sight.
+            {
+                const auto showText = [&](const QString& name, const QByteArray& content, const QStringList& words) -> QQuickWindow* {
+                    QFile file(temporary.filePath(name));
+                    check(file.open(QIODevice::WriteOnly), "could not create a fixture for the colours");
+                    file.write(content);
+                    file.close();
+                    filePreview.show({.path = QDir::toNativeSeparators(file.fileName()), .name = name, .words = words});
+                    timeout.restart();
+                    while ((filePreview.kind() != FilePreview::Text || !filePreview.isShowing(QDir::toNativeSeparators(file.fileName())))
+                        && timeout.elapsed() < 3000)
+                        pump(10);
+                    pump(300);
+                    return qobject_cast<QQuickWindow*>(filePreview.window());
+                };
+                const auto kindsOf = [&](int row) {
+                    QList<int> kinds;
+                    const QList<int> spans = filePreview.spansAt(row);
+                    for (qsizetype i = 2; i < spans.size(); i += 3)
+                        kinds.append(spans[i]);
+                    return kinds;
+                };
+                QByteArray code = "// A sample: comments, keywords, strings, numbers.\n#include <vector>\n\n"
+                                  "/* A block comment\n   over two lines. */\nnamespace demo {\n\n"
+                                  "constexpr int kLimit = 0x40; // how many\n\n"
+                                  "bool contains(const std::vector<int>& values, int wanted)\n{\n"
+                                  "    for (const int value : values) {\n        if (value == wanted)\n            return true;\n    }\n"
+                                  "    return false;\n}\n\nconst char* name() { return \"Win\\\"shun\"; }\n\n";
+                for (int i = 0; i < 60; ++i)
+                    code += "int filler" + QByteArray::number(i) + "() { return " + QByteArray::number(i) + "; }\n";
+                code += "\n// The needle is down here, far below the first screen.\nint needle() { return 42; }\n} // namespace demo\n";
+                QQuickWindow* shown = showText(u"sample.cpp"_s, code, {u"needle"_s});
+                auto* lines = shown ? visualNamed(shown->contentItem(), u"previewTextLines"_s) : nullptr;
+                check(filePreview.kind() == FilePreview::Text && lines, "the code did not show as text");
+                check(kindsOf(0) == QList<int> {0} && kindsOf(7).contains(3) && kindsOf(7).contains(4) && kindsOf(7).contains(2),
+                    "the code's first lines have no colours (comment; keyword, type, number)");
+                check(kindsOf(4) == QList<int> {0}, "the second line of a block comment is not a comment");
+                check(filePreview.firstMarkRow() > 60 && filePreview.marksAt(filePreview.firstMarkRow()).size() == 2,
+                    "the word searched for was not found in the text");
+                check(lines && lines->property("contentY").toReal() > lines->property("originY").toReal(),
+                    "the first line with the word searched for was not brought into sight");
+                if (shown)
+                    check(saveGrab(shown, output.filePath(u"preview-code.png"_s)), "could not save the code's picture");
+                const QByteArray markdown = QString::fromUtf8(
+                    "# 使用说明\n\n这是一段**很重要**的话，也有 *轻一点* 的，还有 `inline code` 和 [链接](https://example.com)。\n\n"
+                    "## 第二章 安装\n\n- 第一步：下载\n- [x] 第二步：安装\n1. 有序的一项\n\n> 引用的一句话\n\n"
+                    "```powershell\n# 这不是标题\nGet-ChildItem -Recurse\n```\n\n### 更深的标题\n\n普通的一行，带 chapter 这个词。\n").toUtf8();
+                shown = showText(u"sample.md"_s, markdown, {u"chapter"_s});
+                check(kindsOf(0).contains(7) && kindsOf(4).contains(8) && kindsOf(13) == QList<int> {12},
+                    "Markdown's headings and fenced code are not told");
+                // After a long file scrolled down, the rows are this file's (rows kept for reuse told the last one's).
+                lines = shown ? visualNamed(shown->contentItem(), u"previewTextLines"_s) : nullptr;
+                QQuickItem* firstRow = nullptr;
+                if (lines)
+                    QMetaObject::invokeMethod(lines, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, firstRow), Q_ARG(int, 0));
+                check(firstRow && firstRow->property("content").toString() == QString::fromUtf8("# 使用说明"),
+                    "the rows show the last file's text");
+                if (shown)
+                    check(saveGrab(shown, output.filePath(u"preview-markdown.png"_s)), "could not save Markdown's picture");
+                const QByteArray json = "{\n  \"name\": \"Win顺\",\n  \"version\": 24,\n  \"plugins\": [\"ocr\", \"rename\"],\n  \"enabled\": true,\n  \"note\": null\n}\n";
+                shown = showText(u"sample.json"_s, QString::fromUtf8(json).toUtf8(), {});
+                check(kindsOf(1).contains(5) && kindsOf(2).contains(2) && kindsOf(4).contains(4), "JSON's keys, numbers and constants are not told");
+                check(filePreview.firstMarkRow() < 0, "words marked with none searched for");
+                if (shown)
+                    check(saveGrab(shown, output.filePath(u"preview-json.png"_s)), "could not save JSON's picture");
+                // A plain text file: no colours of its own, the words still marked.
+                shown = showText(u"plain.txt"_s, "int x = 1; // not code\nthe chapter here\n", {u"chapter"_s});
+                check(kindsOf(0).isEmpty() && filePreview.firstMarkRow() == 1, "a plain text file got colours, or lost its marks");
+                filePreview.close();
+                say(u"preview colours: code, Markdown, JSON by the file's kind; searched words marked and scrolled to"_s);
+            }
         }
         const auto click = [&](QQuickItem* item) {
             if (!item) { check(false, "click target missing"); return; }
@@ -4279,6 +4543,67 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
         auto* view = window->property("view").value<QObject*>();
         check(!launcher.gallery() && view && launcher.results()->pathAt(view->property("currentIndex").toInt()) == chosen,
             "switching to list lost the current file");
+        // Renaming in place (GitHub #285): F2 opens a box over the row with
+        // the name up to its extension picked; a name Windows does not take
+        // keeps the box; Enter renames the file on the disk and the row; Esc
+        // leaves both alone. Put back afterwards (the checks below go by path).
+        if (view) {
+            const int row = view->property("currentIndex").toInt();
+            const QString was = launcher.results()->pathAt(row);
+            const QFileInfo file(was);
+            // The search field in use: the panel's own while the panel is open.
+            auto* panelField = visualNamed(window->contentItem(), u"panelSearchField"_s);
+            auto* field = panelField && panelField->isVisible() ? panelField : visualNamed(window->contentItem(), u"searchField"_s);
+            const auto press = [&](int code) {
+                QKeyEvent down(QEvent::KeyPress, code, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &down);
+                QKeyEvent up(QEvent::KeyRelease, code, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &up);
+                pump(60);
+            };
+            const auto waitFor = [&](const QString& path) {
+                QElapsedTimer waited;
+                waited.start();
+                while (!QFileInfo::exists(path) && waited.elapsed() < 5000)
+                    pump(20);
+                pump(150); // the row follows on the GUI thread
+                return QFileInfo::exists(path);
+            };
+            if (field)
+                field->forceActiveFocus();
+            press(Qt::Key_F2);
+            auto* box = visualNamed(window->contentItem(), u"renameBox"_s);
+            check(file.exists() && box && box->isVisible() && box->property("text").toString() == file.fileName()
+                    && box->property("inputFocused").toBool(),
+                "F2 did not open the rename box with the file's name");
+            if (box && box->isVisible())
+                check(saveGrab(window, output.filePath(u"rename-box.png"_s)), "could not save the rename box's picture");
+            if (box && box->isVisible()) {
+                const QString renamed = file.absolutePath() + u"/renamed-"_s + file.fileName();
+                box->setProperty("text", u"bad:name"_s + u'.' + file.suffix());
+                press(Qt::Key_Return);
+                check(box->isVisible() && file.exists() && launcher.results()->pathAt(row) == was, "a name with a colon was taken");
+                box->setProperty("text", u"renamed-"_s + file.fileName());
+                press(Qt::Key_Return);
+                check(waitFor(renamed) && !QFileInfo::exists(was), "Enter did not rename the file on the disk");
+                check(!box->isVisible() && field && window->activeFocusItem() == field,
+                    "the search box did not get the keyboard back after renaming");
+                check(QDir::cleanPath(launcher.results()->pathAt(row)) == QDir::cleanPath(renamed)
+                        && view->property("currentIndex").toInt() == row,
+                    "the row did not take the new name where it was");
+                press(Qt::Key_F2);
+                check(box->isVisible() && box->property("text").toString() == u"renamed-"_s + file.fileName(), "F2 on the renamed row shows its new name");
+                press(Qt::Key_Escape);
+                check(!box->isVisible() && QFileInfo::exists(renamed) && window->isVisible(), "Esc in the box did more than close it");
+                press(Qt::Key_F2);
+                box->setProperty("text", file.fileName());
+                press(Qt::Key_Return);
+                check(waitFor(was) && QDir::cleanPath(launcher.results()->pathAt(row)) == QDir::cleanPath(was), "renaming back did not work");
+                if (box->isVisible())
+                    press(Qt::Key_Escape);
+                say(u"rename in place: F2, a refused name, Enter (disk and row), Esc, and back"_s);
+            }
+        }
         click(visualNamed(window->contentItem(), u"fileViewGallery"_s));
         settle(window);
         check(launcher.gallery() && launcher.results()->pathAt(grid->property("currentIndex").toInt()) == chosen,
@@ -4835,7 +5160,8 @@ bool checkSwitchProvider(QQuickWindow* window, const QDir& output)
     return passed;
 }
 
-void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDir& output, bool gallery, bool previewOnly = false)
+void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDir& output, bool gallery,
+    bool previewOnly = false, bool* folderScopePassed = nullptr)
 {
     QTemporaryDir temporary;
     IndexService index(temporary.path(), IndexService::Options{});
@@ -4866,10 +5192,17 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         files->setSize(empty, packSize(0));
         files->add(root, "假日视频.mp4", 0);
         files->add(root, "报告.txt", 0);
+        const auto work = files->add(root, "__work__", EntryFlag::Directory);
+        files->add(work, "direct.csv", 0);
+        files->add(files->add(work, "sub", EntryFlag::Directory), "nested.CSV", 0);
+        files->add(root, "outside.csv", 0);
     }
-    const auto check = [](bool condition, const char* reason) {
-        if (!condition)
+    const auto check = [folderScopePassed](bool condition, const char* reason) {
+        if (!condition) {
+            if (folderScopePassed)
+                *folderScopePassed = false;
             qWarning("launcher regression: %s", reason);
+        }
     };
     // #80: applying a preference updates the existing controller immediately,
     // independently of dates and without resetting the result model.
@@ -4925,6 +5258,34 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     query({});
     check(launcher.selectedFileTypes() == (QList<int>{1, 2}), "removing the prefix lost the previous multiple selection");
     launcher.chooseFileType(-1);
+    settings.fileTypes.append({u"工作 CSV"_s, {u"csv"_s}, {}, u"cw"_s, u"T:\\__work__"_s});
+    launcher.setFileTypes(settings.namedFileTypes());
+    query(u"cw:"_s);
+    check(launcher.scope() == Launcher::Files && launcher.results()->count() == 2,
+        "cw: 没有直接列出指定目录及子目录的 CSV");
+    query(u"cw: nested"_s);
+    check(launcher.results()->count() == 1, "范围前缀没有保留搜索文字");
+    query(u"cw:"_s);
+    settings.fileTypes.last().folder = u"T:\\missing"_s;
+    launcher.setFileTypes(settings.namedFileTypes());
+    query(u":cw"_s);
+    check(launcher.results()->count() == 0, "修改范围后仍显示旧目录的结果");
+    settings.fileTypes.last().folder = u"T:\\__work__"_s;
+    launcher.setFileTypes(settings.namedFileTypes());
+    query(u"cw:"_s);
+    check(launcher.results()->count() == 2, "改回范围没有更新结果");
+    query({});
+    launcher.chooseFileType(static_cast<int>(settings.fileTypes.size()) - 1);
+    query({});
+    check(launcher.results()->count() == 2, "点击类型没有使用绑定范围");
+    launcher.toggleFileType(1); // 同时选中不限范围的图片类型
+    query({});
+    check(launcher.results()->count() == 5, "不限范围的类型没有解除合并范围约束");
+    launcher.chooseFileType(-1);
+    settings.fileTypes = Settings::defaultFileTypes();
+    launcher.setFileTypes(settings.namedFileTypes());
+    if (folderScopePassed)
+        return; // 独立范围探针到此结束，不跑后面的网络、剪贴板等验证。
     query(u"regex:["_s);
     check(!launcher.queryError().isEmpty() && launcher.results()->count() == 0,
         "invalid regex was not reported or retained stale results");
@@ -5546,6 +5907,16 @@ bool checkClipboardSizing(QQuickWindow* window, Clipboard& clipboard, Placement&
         RECT rect {};
         ::GetWindowRect(hwnd, &rect);
         const QSize before = window->size();
+        // The pointer goes to the corner first: where the user left it, it
+        // may be on a row, and that row's hover preview would lie over the
+        // corner and take the press. Until the corner is the window's own.
+        const POINT corner {rect.right - 2, rect.bottom - 2};
+        ::SetCursorPos(corner.x, corner.y);
+        QElapsedTimer clear;
+        clear.start();
+        while (::GetAncestor(::WindowFromPoint(corner), GA_ROOT) != hwnd && clear.elapsed() < 3000)
+            pump(50);
+        check("corner_is_the_windows_own", ::GetAncestor(::WindowFromPoint(corner), GA_ROOT) == hwnd);
         std::jthread input([rect] {
             const auto button = [](DWORD flags) {
                 INPUT event {};
@@ -5633,6 +6004,25 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
                 "clipboard search logo must render in either header position");
         }
         clipboard.setLayoutOptions(true, false);
+        // An entry's note (GitHub #267): 备注 in its menu opens the box the
+        // groups are named in; the note then leads the entry's line.
+        if (!store.clips().empty()) {
+            const qint64 id = store.clips().front().id;
+            qint64 asked = 0;
+            const QMetaObject::Connection heard
+                = QObject::connect(&clipboard, &Clipboard::noteRequested, &clipboard, [&asked](qint64 entry) { asked = entry; });
+            clipboard.trigger(0, Clipboard::EditNote);
+            settle(window);
+            QObject::disconnect(heard);
+            check(asked == id, "备注 did not ask for the entry's note");
+            check(saveGrab(window, output.filePath(u"clipboard-note-box.png"_s)), "the note's box did not render");
+            clipboard.setNote(id, u"学校 收件地址"_s);
+            QMetaObject::invokeMethod(page, "focusSearch");
+            settle(window);
+            const QString title = clipboard.items()->data(clipboard.items()->index(0), ClipModel::TitleRole).toString();
+            check(title.startsWith(u"<b>学校 收件地址</b>"), "the note does not lead the entry's line");
+            check(saveGrab(window, output.filePath(u"clipboard-note.png"_s)), "the noted entry did not render");
+        }
         settle(window);
         say(u"clipboard search logo: shared SVG loaded; spacing, focus and both header positions checked"_s);
     } else {
@@ -6576,7 +6966,10 @@ int runResults(const QStringList& args)
         return 3;
     }
     QTimer watchdog;
-    armWatchdog(watchdog, 90); // GitHub #116's readouts wait about 30 s for a server that never answers
+    // GitHub #116's readouts wait about 30 s for a server that never answers,
+    // and the file gallery's checks have grown past a minute and a half
+    // (cut short at 90 s, the clipboard's and the last rows' never ran).
+    armWatchdog(watchdog, 240);
     showOffScreen(window);
     settle(window);
     pump(500);
@@ -6656,6 +7049,12 @@ int runResults(const QStringList& args)
         return finish(window, saved);
     }
     if (args.contains(u"--drop-pie-check"_s)) checkDropPieHelper(out);
+    if (args.contains(u"--file-type-folder"_s)) {
+        bool passed = true;
+        checkLauncherFilters(window, &engine, out, false, false, &passed);
+        say(passed ? u"文件类型范围：cw:、范围更新、直接选择和多选验证通过"_s : u"文件类型范围验证失败"_s);
+        return finish(window, passed && saved);
+    }
     if (args.contains(u"--file-metadata"_s)) {
         const QString galleryImage = valueAfter(args, u"--gallery-image");
         checkLauncherFilters(window, &engine, out, !galleryImage.isEmpty() || args.contains(u"--file-gallery"_s));
@@ -6742,7 +7141,12 @@ int runResults(const QStringList& args)
                         if (meta->isVisible() && (text->width() < 0 || text->x() + text->width() + 15 > meta->x()
                             || meta->x() + meta->width() > row->width()))
                             qWarning("preview: metadata overlaps text or leaves row %d", i);
-                        if (sizeVisible && dateVisible && size->y() + size->height() > date->y())
+                        // Two lines set on the name's and the folder's baselines (ResultRow):
+                        // their boxes may touch, their letters must not. A line's letters
+                        // stand on its baseline, no taller than its font.
+                        const auto baseline = [](QQuickItem* label) { return label->y() + label->property("baselineOffset").toReal(); };
+                        if (sizeVisible && dateVisible
+                            && baseline(date) - baseline(size) < date->property("font").value<QFont>().pixelSize())
                             qWarning("preview: size and date overlap in row %d", i);
                     }
                 }
@@ -7635,6 +8039,24 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
     for (const QString& name : {u"onboardingSearch"_s, u"onboardingActivation"_s, u"onboardingClipboard"_s, u"onboardingCapture"_s})
         check(name, visualNamed(window->contentItem(), name));
     check(u"initial_screenshot"_s, saveGrab(window, out.filePath(u"onboarding.png"_s)));
+    {
+        // A window of one size (WindowFrame::setFixedSize), asked as Windows asks: its edges do not
+        // size it and nothing maximises it; its top drags it, but for the caption buttons.
+        const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+        RECT rect {};
+        ::GetWindowRect(hwnd, &rect);
+        const auto hit = [hwnd](long x, long y) { return ::SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(x, y)); };
+        const long midX = (rect.left + rect.right) / 2;
+        const long midY = (rect.top + rect.bottom) / 2;
+        const long inCaption = rect.top + std::lround(20 * window->effectiveDevicePixelRatio());
+        const long inCloseButton = rect.right - std::lround(20 * window->effectiveDevicePixelRatio());
+        check(u"edges_do_not_size"_s, hit(rect.left + 1, midY) == HTCLIENT && hit(rect.right - 2, midY) == HTCLIENT
+            && hit(midX, rect.bottom - 2) == HTCLIENT && hit(midX, rect.top + 1) == HTCAPTION
+            && hit(rect.left + 1, rect.top + 1) == HTCAPTION);
+        check(u"nothing_maximises"_s, !(::GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_MAXIMIZEBOX));
+        check(u"top_drags_the_window"_s, hit(midX, inCaption) == HTCAPTION && hit(rect.left + 40, inCaption) == HTCAPTION);
+        check(u"close_button_is_its_own"_s, hit(inCloseButton, inCaption) == HTCLIENT);
+    }
     check(u"page_one_groups"_s, setup->page() == 0 && visible(u"onboardingSearch"_s) && visible(u"onboardingActivation"_s)
         && !visible(u"onboardingClipboard"_s) && !visible(u"onboardingCapture"_s));
     check(u"next_button"_s, navigate(u"onboardingNext"_s));
@@ -7758,6 +8180,13 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
         && setup->property("clipboard").toBool() && setup->property("clipboardWinV").toBool()
         && setup->property("capture").toBool() && setup->property("captureHotkey").toString() == captureHotkey);
     check(u"navigation_releases_key_capture"_s, !setup->testing() && !setup->recording());
+    // The window is as tall as its taller step with everything on it: nothing is scrolled.
+    const auto wholeStepShown = [&] {
+        const auto* scroll = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"onboardingScroll"_s));
+        return scroll && !scroll->property("interactive").toBool()
+            && scroll->property("contentHeight").toDouble() <= scroll->height() + 0.5;
+    };
+    check(u"first_page_needs_no_scrolling"_s, wholeStepShown());
     check(u"first_page_choices_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-page1-choices.png"_s)));
     check(u"return_to_page_two"_s, navigate(u"onboardingNext"_s) && setup->page() == 1);
     setup->setProperty("clipboard", false); // layout/consent tests never record the user's clipboard
@@ -7784,7 +8213,7 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
     setup->setProperty("launchHotkey", launchHotkey);
     check(u"repair_first_page_and_continue"_s, navigate(u"onboardingNext"_s) && setup->page() == 1
         && setup->property("captureHotkey").toString() == captureHotkey);
-    const bool capturing = action == u"capture" || action == u"decline" || action == u"offline" || action == u"incompatible" || action == u"retry";
+    const bool capturing = action == u"capture" || action == u"offline" || action == u"incompatible" || action == u"retry";
     setup->setProperty("capture", capturing);
     {
         QTemporaryDir blocked;
@@ -7804,8 +8233,14 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
     setup->setProperty("clipboard", true);
     setup->setProperty("clipboardWinV", true);
     setup->setProperty("capture", true);
-    window->resize(660, 480);
     settle(window);
+    check(u"second_page_needs_no_scrolling"_s, wholeStepShown());
+    // A screen with less room than that: a shorter window, whose step scrolls.
+    const QVariant room = window->property("roomHeight");
+    const int shortRoom = 400;
+    window->setProperty("roomHeight", shortRoom);
+    settle(window);
+    check(u"short_screen_gets_short_window"_s, window->height() == shortRoom);
     auto* flick = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"onboardingScroll"_s));
     if (flick)
         flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble() - flick->height()));
@@ -7814,9 +8249,10 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
     check(u"last_feature_reachable_at_minimum_size"_s, capture && flick
         && capture->mapToItem(flick, QPointF(0, capture->height())).y() <= flick->height() + 1);
     check(u"compact_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-compact.png"_s)));
-    window->resize(guideSize);
+    window->setProperty("roomHeight", room);
     if (flick) flick->setProperty("contentY", 0);
     settle(window);
+    check(u"window_back_to_its_size"_s, window->size() == guideSize);
     check(u"choices_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-choices.png"_s)));
     setup->setProperty("clipboard", false);
     setup->setProperty("clipboardWinV", false);
@@ -7833,30 +8269,10 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
         bool retried = false;
         while (waiting.elapsed() < 30000) {
             pump(20);
-            auto* permissions = window->findChild<QObject*>(u"onboardingPermissions"_s);
-            if (permissions && permissions->property("open").toBool()) {
-                permissionSeen = true;
-                settle(window);
-                check(u"permission_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-permissions.png"_s)));
-                window->resize(660, 480);
-                settle(window);
-                auto* permissionCard = permissions->findChild<QQuickItem*>(u"pluginDialogCard"_s);
-                auto* permissionScroll = permissions->findChild<QQuickItem*>(u"pluginDialogScroll"_s);
-                auto* acceptButton = permissions->findChild<QQuickItem*>(u"pluginDialogAccept"_s);
-                check(u"compact_permission_card_fits"_s, permissionCard
-                    && QRectF(QPointF(), window->size()).contains(permissionCard->mapRectToItem(window->contentItem(), QRectF(QPointF(), permissionCard->size()))));
-                if (acceptButton) acceptButton->forceActiveFocus(Qt::TabFocusReason);
-                settle(window);
-                check(u"compact_permission_button_reachable"_s, acceptButton
-                    && QRectF(QPointF(), window->size()).contains(acceptButton->mapRectToItem(window->contentItem(), QRectF(QPointF(), acceptButton->size()))));
-                check(u"compact_permission_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-permissions-compact.png"_s)));
-                window->resize(guideSize);
-                if (permissionScroll) permissionScroll->setProperty("contentY", 0);
-                settle(window);
-                if (action == u"decline")
-                    QMetaObject::invokeMethod(permissions, "reject");
-                else
-                    QMetaObject::invokeMethod(permissions, "accept", Q_ARG(QVariant, QVariant(false)));
+            // Turning the screenshot on was the yes: no question over the setup.
+            for (QObject* asked : window->findChildren<QObject*>()) {
+                if (asked->objectName() == u"pluginDialogCard" && asked->property("visible").toBool())
+                    permissionSeen = true;
             }
             if (setup->canRetry() && action == u"retry" && !retried) {
                 check(u"offline_before_retry"_s, true);
@@ -7872,7 +8288,7 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
         }
         check(u"capture_committed"_s, setup->committed());
         const bool accepted = action == u"capture" || action == u"retry";
-        check(u"permission_is_explicit"_s, accepted || action == u"decline" ? permissionSeen : !permissionSeen);
+        check(u"no_second_permission_question"_s, !permissionSeen);
         check(u"capture_expected_state"_s, accepted ? setup->captureReady() : setup->canRetry());
         QSettings captureIni(Settings::dataDir() + u"/plugins/winshun.capture.data/capture.ini"_s, QSettings::IniFormat);
         check(u"capture_shortcut_saved"_s, captureIni.value(u"Capture/Hotkey"_s).toString() == captureHotkey);

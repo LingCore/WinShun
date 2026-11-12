@@ -17,6 +17,10 @@ Item {
     // empties itself first (EditWindow). Not by refusing the window's closing: that also stops
     // the application from quitting (Qt asks every window to close first).
     property bool closeIntercepted: false
+    // false: a window of one size (WindowFrame.setFixedSize) has no maximise button.
+    property bool maximizable: true
+    // false: only the caption buttons, over a window that shows its own name (the first-run setup).
+    property bool labelled: true
 
     signal closeRequested()
 
@@ -29,11 +33,13 @@ Item {
     Component.onCompleted: {
         frame.addDragArea(bar)
         frame.addControl(buttons)
-        frame.setMaximizeButton(maximize)
+        if (maximizable)
+            frame.setMaximizeButton(maximize)
     }
 
     Image {
         id: icon
+        visible: bar.labelled
 
         // On whole device pixels and sampled unsmoothed, so it stays sharp
         // (see ResultRow).
@@ -57,6 +63,7 @@ Item {
         anchors.right: buttons.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
+        visible: bar.labelled
         text: bar.title
         color: bar.ink
         font.pixelSize: Theme.fontCaption
@@ -109,6 +116,7 @@ Item {
         }
         CaptionButton {
             id: maximize
+            visible: bar.maximizable
             // Its mouse goes to Windows (Snap Layouts): the frame says how to draw it.
             glyph: bar.maximized ? "" : "" // ChromeRestore, ChromeMaximize
             hovered: bar.frame.maximizeHovered

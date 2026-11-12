@@ -310,8 +310,52 @@ void writeFileTypes(QSettings& s, const FileTypes& types)
             s.setValue(u"Name"_s, types[i].name);
         s.setValue(u"Extensions"_s, types[i].extensions.join(u' '));
         s.setValue(u"Keyword"_s, types[i].keyword);
+        if (!types[i].folder.isEmpty())
+            s.setValue(u"Folder"_s, types[i].folder);
     }
     s.endArray();
+}
+
+void writeQuickFilters(QSettings& s, const QuickFilters& filters)
+{
+    s.remove(u"QuickFilters"_s); // no entries left over from a longer list
+    if (filters.isEmpty())
+        return;
+    s.beginWriteArray(u"QuickFilters"_s, static_cast<int>(filters.size()));
+    for (int i = 0; i < filters.size(); ++i) {
+        s.setArrayIndex(i);
+        s.setValue(u"Name"_s, filters[i].name);
+        s.setValue(u"Query"_s, filters[i].query);
+        if (!filters[i].keyword.isEmpty())
+            s.setValue(u"Keyword"_s, filters[i].keyword);
+    }
+    s.endArray();
+}
+
+// Edited by hand perhaps: one with no name or no query left out, and a name
+// a second time (any case). A query that cannot be read stays, to be put
+// right in the settings; the search passes it over. A keyword that cannot
+// be one, or is taken (`keywords`: the kinds of file's and the folders',
+// and each filter's as it is read), is none.
+QuickFilters readQuickFilters(QSettings& s, QSet<QString> keywords)
+{
+    QuickFilters filters;
+    const int size = s.beginReadArray(u"QuickFilters"_s);
+    for (int i = 0; i < size; ++i) {
+        s.setArrayIndex(i);
+        QuickFilter filter {s.value(u"Name"_s).toString().simplified(), s.value(u"Query"_s).toString().trimmed(),
+            normalizedTypeKeyword(s.value(u"Keyword"_s).toString()).value_or(QString())};
+        if (keywords.contains(filter.keyword))
+            filter.keyword.clear();
+        const bool named = std::ranges::any_of(filters, [&](const QuickFilter& f) { return f.name.compare(filter.name, Qt::CaseInsensitive) == 0; });
+        if (!filter.name.isEmpty() && !filter.query.isEmpty() && !named) {
+            filters.append(filter);
+            if (!filter.keyword.isEmpty())
+                keywords.insert(filter.keyword);
+        }
+    }
+    s.endArray();
+    return filters;
 }
 
 // Edited by hand perhaps: extensions tidied (".JPG," is jpg), one with no
@@ -334,6 +378,7 @@ FileTypes readFileTypes(QSettings& s, const FileTypes& fallback)
         if (!builtIn)
             type.id.clear();
         type.keyword = normalizedTypeKeyword(s.value(u"Keyword"_s, type.id).toString()).value_or(QString());
+        type.folder = pathtext::pathFromText(s.value(u"Folder"_s).toString());
         if ((type.name.isEmpty() && !builtIn) || type.extensions.isEmpty())
             continue;
         types.append(type);
@@ -645,6 +690,16 @@ QString Settings::resolveLanguage(const QString& language)
     return explorerlang::windowsIsChinese() ? u"zh"_s : u"en"_s;
 }
 
+QString Settings::quickFilterProblem(const QString& query)
+{
+    const ParsedQuery parsed = parseQuery(query);
+    if (!parsed.error.isEmpty())
+        return parsed.error;
+    if (parsed.isEmpty())
+        return QCoreApplication::translate("ws::Settings", "请填写筛选条件，例如 !$RECYCLE.BIN\\ 或 ext:pdf size:>1mb");
+    return {};
+}
+
 FileTypes Settings::defaultFileTypes()
 {
     FileTypes types;
@@ -943,6 +998,9 @@ void Settings::load()
         if (previewHotkey.isEmpty())
             previewHotkey = d.previewHotkey;
     }
+    openHotkey = previewkeys::normalizedOpen(readOrDefault(s, u"Results/OpenHotkey"_s, d.openHotkey).trimmed());
+    if (openHotkey == previewHotkey)
+        openHotkey.clear();
 
     theme = readOrDefault(s, u"Appearance/Theme"_s, d.theme).trimmed().toLower();
     if (theme != u"light" && theme != u"dark")
@@ -1135,6 +1193,7 @@ void Settings::load()
             typeKeywords.insert(type.keyword);
     }
 
+    quickFilters = readQuickFilters(s, typeKeywords);
     shares = readShares(s);
     networkVerifyHours = std::clamp(readOrDefault(s, u"Network/VerifyHours"_s, d.networkVerifyHours), 0, 24 * 7);
     networkVerifyHoursUnwatched
@@ -1306,6 +1365,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/PureSearch"_s, pureSearch);
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
+    s.setValue(u"Results/OpenHotkey"_s, openHotkey);
     s.setValue(u"Results/PreviewFollowsPointer"_s, previewFollowsPointer);
     s.setValue(u"Results/PreviewRestore"_s, previewRestore);
     s.setValue(u"Appearance/Theme"_s, theme);
@@ -1382,6 +1442,7 @@ bool Settings::saveChecked() const
     s.setValue(u"PasteFile/CtrlV"_s, pasteFileCtrlV);
     s.setValue(u"PasteFile/Menu"_s, pasteFileMenu);
     writeFileTypes(s, fileTypes);
+    writeQuickFilters(s, quickFilters);
     writeShares(s, shares);
     s.setValue(u"Network/VerifyHours"_s, networkVerifyHours);
     s.setValue(u"Network/VerifyHoursUnwatched"_s, networkVerifyHoursUnwatched);

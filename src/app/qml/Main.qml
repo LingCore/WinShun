@@ -697,6 +697,7 @@ Window {
     // Hidden: also free the menu window until it is needed again.
     onVisibleChanged: {
         if (!visible) {
+            endRename(false)
             closeContextMenu()
             footer.sortMenuOpen = false // not still open when the launcher comes back
             menuLoader.active = false
@@ -782,6 +783,20 @@ Window {
                 && homeIndex < 0 && hintIndex < 0 && (event.key !== Qt.Key_Space || (spaceTogglesPreview && view.currentIndex >= 0))) {
             if (!event.isAutoRepeat)
                 togglePreview()
+            event.accepted = true
+            return
+        }
+        // The second key for Enter (GitHub #293): what Enter alone does,
+        // once a press.
+        if (searchBar.composition.length === 0 && window.launcher.isOpenKey(event.key, event.modifiers)) {
+            if (!event.isAutoRepeat) {
+                if (homeIndex >= 0)
+                    launcher.openFrequentApp(homeIndex)
+                else if (hintIndex >= 0 || (view.count === 0 && hints.length > 0))
+                    takeHint(Math.max(hintIndex, 0))
+                else if (!window.launcher.holdUntilShown(Launcher.Open, 0))
+                    act(Launcher.Open)
+            }
             event.accepted = true
             return
         }
@@ -961,6 +976,11 @@ Window {
             else if (window.launcher.pluginKeyword.length === 0)
                 window.launcher.cycleScope(-1)
             break
+        case Qt.Key_F2: // the row's file or folder under another name, in place
+            if (ctrl || shift || view.currentIndex < 0)
+                return
+            startRename(view.currentIndex)
+            break
         case Qt.Key_Delete:
             // The screenshot history (jt): the row goes from it (Ctrl+Z puts it
             // back), unless the box has words after the caret, or selected.
@@ -1045,6 +1065,7 @@ Window {
             searchBar.focusAndSelect()
         }
         function onResultsReplaced() {
+            window.endRename(false) // another list: the row is not where the box is
             nameTip.dismiss() // another row under the pointer, maybe
             window.launcher.keyboardMoved() // other rows under a pointer that did not move
             window.selectionAnchor = -1
@@ -1143,6 +1164,7 @@ Window {
         onLoaded: (item as Panel).searchBar.syncQuery()
         sourceComponent: Panel {
             showTypeKeywords: typeStrip.showKeywords
+            fileChips: typeStrip.fileChips
             launcher: window.launcher
             placement: window.placement
             frame: window.frame
@@ -1955,10 +1977,66 @@ Window {
             onTriggered: (row, action) => {
                 if (action === Launcher.SystemMenu) // 更多选项: the system's menu where this one was
                     window.openSystemMenu(row, Qt.point(x, y))
+                else if (action === Launcher.Rename)
+                    window.startRename(row)
                 else
                     window.launcher.trigger(row, action)
             }
         }
+    }
+
+    // A file's or folder's name typed anew over its row (GitHub #285): F2,
+    // or 重命名 in its menu. Enter takes it, Esc or a click elsewhere leaves
+    // the name as it was; the search box has the keyboard again afterwards.
+    InputBox {
+        id: renameBox
+        objectName: "renameBox"
+        parent: window.contentItem
+        visible: false
+        z: 900
+        dpr: window.dpr
+        implicitHeight: 32
+        Accessible.name: qsTr("新名字")
+        onAccepted: window.endRename(true)
+        onInputFocusedChanged: { // the keyboard went elsewhere
+            if (!inputFocused)
+                window.endRename(false)
+        }
+        Keys.onEscapePressed: window.endRename(false)
+    }
+    function startRename(index) {
+        if (index < 0 || index >= view.count || !window.launcher.beginRename(index))
+            return
+        view.currentIndex = index
+        view.positionViewAtIndex(index, ListView.Contain)
+        const item = view.currentItem
+        if (!item) {
+            window.launcher.cancelRename()
+            return
+        }
+        // Over the name, its text where the name's is: past the number and the icon in
+        // a row of the box, past the small icon in the panel's, the whole width of a tile.
+        const inset = item.width <= 360 ? 4 : window.panel ? 23 : 52
+        const at = item.mapToItem(window.contentItem, inset, 0)
+        renameBox.x = Math.round(at.x)
+        renameBox.width = Math.round(item.width - inset - 12)
+        renameBox.y = Math.round(at.y + (item.height > 80 ? item.height - renameBox.height - 6 : (item.height - renameBox.height) / 2))
+        renameBox.text = window.launcher.renameName()
+        renameBox.visible = true
+        renameBox.takeFocus()
+        renameBox.select(0, window.launcher.renameStem())
+    }
+    function endRename(take) {
+        if (!renameBox.visible)
+            return
+        if (take && !window.launcher.finishRename(renameBox.text)) {
+            renameBox.takeFocus() // the reason is in the footer; the name stays to be put right
+            return
+        }
+        if (!take)
+            window.launcher.cancelRename()
+        renameBox.visible = false
+        searchBar.field.forceActiveFocus()
     }
 
     WindowEdge {

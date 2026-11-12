@@ -411,4 +411,19 @@ QString unpackPortable(const QByteArray& zip, const QString& stage)
     return {};
 }
 
+QString setupBlockedBy(const QByteArray& log)
+{
+    static constexpr QByteArrayView mark = "Update blocked by: ";
+    const qsizetype at = log.lastIndexOf(mark);
+    if (at < 0)
+        return {};
+    qsizetype end = log.indexOf('\n', at);
+    if (end < 0)
+        end = log.size();
+    QString names = QString::fromUtf8(log.mid(at + mark.size(), end - at - mark.size())).simplified();
+    if (names.size() > 80)
+        names = names.left(79) + QChar(0x2026);
+    return names;
+}
+
 } // namespace ws::update

@@ -61,6 +61,18 @@ public:
     // file that is not on this computer is not downloaded: it comes back
     // Failed, as does one that cannot be opened.
     Result extractFile(std::wstring_view path, std::int64_t maxBytes, const std::function<bool()>& cancelled);
+    // A file as a picture, for the preview (GitHub #297): a PDF's first
+    // page (so an Illustrator .ai) or a Photoshop file's flattened picture,
+    // at most `largest` pixels on its longer side (extract::render). As
+    // extractFile for what cannot be opened or is not on this computer.
+    struct Rendered {
+        extractproto::Status status = extractproto::Status::Failed;
+        extractproto::PictureHeader size;
+        std::string bgra; // size.width * size.height * 4, opaque, top row first
+        bool retry = false;
+    };
+    static constexpr std::uint32_t kLargestPicture = 4096;
+    Rendered renderFile(std::wstring_view path, std::uint32_t largest, const std::function<bool()>& cancelled);
     void closeIdle(); // ends the extractor processes not reading now
 
     static std::wstring programPath(); // WinShunExtract.exe, next to this program
@@ -68,6 +80,12 @@ public:
 private:
     struct Process;
     std::unique_ptr<Process> start();
+    // One request and its answer. False: no answer (`retry`: not tried, or
+    // cancelled); the process that was asked is ended then, and after an
+    // answer too with `endAfter`.
+    bool ask(HANDLE file, std::uint64_t size, std::uint32_t magic, std::uint64_t argument, std::uint64_t maxPayload,
+        bool endAfter, const std::function<bool()>& cancelled, extractproto::Status& status, std::string& payload,
+        bool& retry);
     std::unique_ptr<Process> acquire(const std::function<bool()>& cancelled);
     void release(std::unique_ptr<Process> process); // null: it was ended
     void reap(std::stop_token stop);

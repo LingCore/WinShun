@@ -170,7 +170,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 | `icon` | 见"图标" |
 | `keyword` | 字符串或数组。输入**关键字 + 空格**进入关键字模式；单独输入关键字时列表第一行是这条命令的提示行（Enter 或 Tab 进入，↓ 到名字结果）；输入两个字以上、是关键字开头的（`uu` 对 `uuid`），也在应用之后、文件之前多一行（光标不动，按 Tab 就补全成 `uuid `；最多两行，候选太多就不出）；提示行只在“全部”范围出，“文件”“文件夹”里只有文件和文件夹；用户可以在设置里改 |
 | `triggers` | 关键字以外的触发方式：`{"regex": "…", "minLength": 1, "maxLength": 64}`（整个输入匹配时，结果推进"全部"；`match` 是捕获组）、`{"push": {"minLength": 2, "maxItems": 3}}`（每键都发，常驻 + eager 才合适）、`{"files": {"kind": "any", "max": 1000, "extensions": ["jpg"], "title": {"zh": "用局域网发送…", "en": "Send over LAN…"}}}`（文件、文件夹结果的右键菜单里多一项 `title`，多选时对整个选择；`kind` 是 `file` / `folder` / `any`，`max` 默认 20、最多 1000，`extensions` 只管文件。选了它：一次 `action`，`trigger` 是 `files`、`action` 是 `files`、`files` 是这些完整路径，没有 item） |
-| `mode` | `list`（默认）或 `instant`：单独输入关键字、不用加空格，就向插件发 `query` 并列出它返回的结果。打开窗口、改东西这类动作仍然放在 `action` 里（用户按 Enter 时）：`query` 在用户打字时就会来，他可能只是想找名字里有这几个字母的文件 |
+| `mode` | `list`（默认）或 `instant`：单独输入关键字、不用加空格，就向插件发 `query`，它返回的结果排在列表最前面，后面照常是按这个词找到的文件和程序（关键字后面加了空格，列表才只剩这个命令的结果；GitHub #242）。打开窗口、改东西这类动作仍然放在 `action` 里（用户按 Enter 时）：`query` 在用户打字时就会来，他可能只是想找名字里有这几个字母的文件 |
 | `contentSearch` | `true`：作为内容检索提供者，必须有 `runtime`；收到 `trigger: "content"`，见下面“内容检索提供者” |
 | `actions` | `[{"id": "kill", "title": "结束", "key": "Enter"}, …]`：顺序决定 Enter / Ctrl+Enter / Shift+Enter；右键菜单列全部；不写就只有一个 `default` |
 | `run` | 零代码专用：`url`（`%s` 是输入的文字，按网址规则编码；`home` 是单独输入关键字时开的）、`program`（`%VAR%` 会展开；`args` 里 `%s`）、`folder`、`search`（`{"query": "ext:pdf %s", "scope": "all | files | folders | content"}`）、`items`（item 数组，`open.path` 里的 `%VAR%` 会展开） |
@@ -397,7 +397,7 @@ item 可选提供 `modified`、`created`（带时区的 ISO 8601 字符串或 Un
 
 ### 图标
 
-`icon.png`（插件文件夹里的 PNG / JPG / ICO，相对路径；深色主题优先 `icon.dark.png`）、`ext:pdf`（扩展名的图标）、`file:C:\…`（某个文件的图标）、`app:<AUMID>`、`glyph:U+E8E5`（Segoe Fluent Icons 字形的编号；Win顺 自己用到的那些画成对应的 [Phosphor](https://phosphoricons.com) 图标，每台 Windows 都一样，其余用系统图标字体画，老 Win10 的字体里可能没有）、`color:#ff8800`（色块）、`data:image/png;base64,…`（≤ 64 KB）、`site:https://…`（网站自己的图标，和浏览器地址栏左边那个一样：Win顺 只向该网站首页取一次、存在本地、一个月更新；没取到前显示浏览器图标；网址的路径部分不会发出去）。插件文件夹以外的路径不认，SVG 不认。
+`icon.png`（插件文件夹里的 PNG / JPG / ICO，相对路径；深色主题优先 `icon.dark.png`）、`ext:pdf`（扩展名的图标）、`file:C:\…`（某个文件的图标）、`app:<AUMID>`、`glyph:U+E8E5`（Segoe Fluent Icons 字形的编号；Win顺 自己用到的那些画成对应的 [Phosphor](https://phosphoricons.com) 图标，每台 Windows 都一样，其余用系统图标字体画，老 Win10 的字体里可能没有）、`ph:heart`（随程序带的 Phosphor 2.1.2 图标名，全套可用；`ph-fill:heart` 换成实心 Fill 字重；名字见 `third_party/phosphor/metadata/regular.css`，不认识的显示成拼图图标；不依赖 Windows 版本。0.25.0 起可用，更早的 Win顺 不认识这种写法，会改用命令或插件的图标；只用于命令和结果条目的图标，清单最外层的 `icon` 仍然是文件）、`color:#ff8800`（色块）、`data:image/png;base64,…`（≤ 64 KB）、`site:https://…`（网站自己的图标，和浏览器地址栏左边那个一样：Win顺 只向该网站首页取一次、存在本地、一个月更新；没取到前显示浏览器图标；网址的路径部分不会发出去）。插件文件夹以外的路径不认，SVG 不认。
 
 ## 权限
 
@@ -406,7 +406,7 @@ manifest 的 `permissions` 是数组：`["processes", "clipboard:read", {"files:
 | 权限 | 含义 | Windows 能否强制 | 怎么做到 |
 |---|---|---|---|
 | （总是）不是管理员 | 插件以你的普通权限运行；唯一的例外是下面的 `elevated` | **是** | 令牌去掉 Administrators 组和特权；`normal` 中完整性，`strict` 低完整性；内存上限、作业对象，Win顺 退出时一起结束 |
-| `elevated` | 跟随 Win顺 的管理员权限：Win顺 以管理员身份运行时，这个插件也以管理员身份运行，能操作以管理员身份打开的窗口（比如以管理员身份运行的文件管理器）。Win顺 不是管理员时，它和别的插件一样用普通权限，**从不为插件弹 UAC** | **是** | 只给自带 exe 的插件（`runtime.program` 是 exe；python、node、pwsh、powershell 的解释器或模块可能在你自己能改的文件夹里），不能和 `sandbox: "strict"` 一起用。以管理员身份运行的不是插件文件夹本身，而是你确认过的那份副本（见下）；作业、内存上限照旧 |
+| `elevated` | 跟随 Win顺 的管理员权限：Win顺 以管理员身份运行时，这个插件也以管理员身份运行，能操作以管理员身份打开的窗口（比如以管理员身份运行的文件管理器）。Win顺 不是管理员时，它和别的插件一样用普通权限，**从不为插件弹 UAC**（这时插件卡片上有一行说明和“以管理员身份重新启动”，搜索框里搜“管理员”也有同一项；想每次启动都以管理员身份运行，在“搜索范围 › 磁盘 › 索引方式”里选“管理员直读”） | **是** | 只给自带 exe 的插件（`runtime.program` 是 exe；python、node、pwsh、powershell 的解释器或模块可能在你自己能改的文件夹里），不能和 `sandbox: "strict"` 一起用。以管理员身份运行的不是插件文件夹本身，而是你确认过的那份副本（见下）；作业、内存上限照旧 |
 | `processes` | 起子进程，或让 Win顺 打开程序 / 非网页链接 | **是** | 没有它：作业 `ActiveProcessLimit = 1`，`CreateProcess` 报 1816；且 Win顺 不替它执行开程序、脚本、非网页 URL 或带 args/cwd 的 `open`（item 和 open 效果、`open_item` 都一样，只能开文件夹、普通文件和 http/https/mailto，拦下时底栏提示）。有它：子进程在作业里，`open` 不受限 |
 | `clipboard:read` / `clipboard:write` | 直接读写剪贴板 | **是** | 作业的 UI 限制；没有时 `GetClipboardData` 返回空（读到空或抛异常） |
 | `ui` | 开自己的窗口、找别的窗口 | 部分 | 没有时作业限制桌面和 USER 句柄，并禁用传统扩展点；有此权限的插件保留传统输入法扩展点，仍受其他进程缓解策略和作业限制 |

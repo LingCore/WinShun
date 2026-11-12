@@ -437,6 +437,14 @@ App::~App()
     // (SettingsWindow.resetForReopen) then, never from inside its destructor.
     if (m_settingsWindow)
         m_settingsWindow->hide();
+    // The plugins told to go while all they may still ask for is here: a
+    // plugin's last call (the screenshot giving its keys back) reaches the
+    // tools of setUpAppTools. Left to the host's destructor, that came after
+    // the members those tools use were gone (a crash on the way out wherever
+    // aboutToQuit had not ended them first: the onboarding probe with the
+    // screenshot installed). Nothing more to do where aboutToQuit did.
+    if (m_pluginHost)
+        m_pluginHost->shutdown(::GetSystemMetrics(SM_SHUTTINGDOWN) == 0);
     m_clipDisplay.reset();
     delete m_onboardingWindow.data();
     m_onboardingQml.reset();
@@ -558,12 +566,11 @@ bool App::showOnboarding(const StartOptions& options)
     m_onboardingWindow = window;
     window->setObjectName(u"onboardingWindow"_s);
     m_onboardingFrame->setWindow(window);
-    m_onboardingFrame->setResizable(true);
+    m_onboardingFrame->setFixedSize(true); // as large as what it holds (OnboardingWindow.qml), within the screen
     m_onboarding->setWindow(window);
     styleWindow(window, SystemTheme::backdropAvailable());
     win::setDarkFrame(window, isDarkMode());
     const QRect area = QGuiApplication::primaryScreen()->availableGeometry();
-    window->resize(std::min(window->width(), area.width() - 32), std::min(window->height(), area.height() - 32));
     window->setPosition(area.center() - QPoint(window->width() / 2, window->height() / 2));
     connect(m_onboarding.get(), &Onboarding::accepted, this, [this, options] {
         m_settings = m_onboarding->settings();
@@ -785,8 +792,10 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     });
     connect(m_launcher.get(), &Launcher::webSettingsRequested, this, &App::showWebSettings);
     connect(m_launcher.get(), &Launcher::fileTypeSettingsRequested, this, &App::showFileTypeSettings);
+    connect(m_launcher.get(), &Launcher::quickFilterSettingsRequested, this, &App::showQuickFilterSettings);
     connect(m_launcher.get(), &Launcher::favoriteSettingsRequested, this, &App::showFavoriteSettings);
     connect(m_launcher.get(), &Launcher::pluginSettingsRequested, this, &App::showPluginSettings);
+    connect(m_launcher.get(), &Launcher::elevatedRestartRequested, this, [this] { restart({}, Elevation::Elevated); });
     // The 内容 strip's switch: as the settings' 建立内容索引 (built or cleared a second later).
     connect(m_launcher.get(), &Launcher::contentIndexRequested, this, [this](bool on) {
         if (m_settings.contentIndex == on)
@@ -1914,6 +1923,7 @@ void App::applySettings(bool initial)
     m_launcher->setStartOptions(m_settings.recentItems, m_settings.favoritesOnStart);
     m_preview->setBuiltInOnly(m_settings.previewWith == u"builtin");
     m_launcher->setPreviewHotkey(m_settings.previewHotkey);
+    m_launcher->setOpenHotkey(m_settings.openHotkey);
     m_launcher->setPreviewFollowsPointer(m_settings.previewFollowsPointer);
     m_launcher->setPreviewRestore(m_settings.previewRestore);
     m_preview->setTextExtensions(m_settings.contentExtensions);
@@ -1942,6 +1952,7 @@ void App::applySettings(bool initial)
         m_settings.contentSizeLimits(), m_settings.contentInLowPriority, m_settings.contentDocuments);
     m_launcher->setContentIndex(m_settings.contentIndex);
     m_launcher->setFileTypes(m_settings.namedFileTypes()); // after applyAppearance: the built-in ones' names
+    m_launcher->setQuickFilters(m_settings.quickFilters);
     applyPlugins();
     if (!initial) {
         m_indexOptionsApply.start();
@@ -3509,6 +3520,13 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         if (!screen)
             screen = QGuiApplication::primaryScreen();
         const QRect area = screen->availableGeometry();
+        // Onto that screen first, as a window dragged there arrives: Windows
+        // tells Qt of the other scale and Qt sizes the window for it. Sent
+        // there by setPosition alone, Qt takes the size for one it scaled
+        // itself: made at 200% and opened next at 150%, the window came out
+        // too wide for good, its contents laid out for another width
+        // (docs/pitfalls.md).
+        win::moveToMonitorOf(window, screen->geometry().center());
         window->resize(window->width(), std::min(window->height(), area.height() - 40));
         window->setPosition(area.center() - QPoint(window->width() / 2, window->height() / 2));
     };
@@ -3732,10 +3750,16 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         editor->plugins()->setUpdates(m_pluginUpdates.get());
         editor->plugins()->setRecoveryState(m_pluginRecoveryMessage, m_pluginRecoveryBusy);
         connect(editor->plugins(), &PluginSettings::recoveryRequested, this, &App::installMovedPlugins);
+        // From a plugin's card (GitHub #288): the settings come back where they were.
+        connect(editor->plugins(), &PluginSettings::elevatedRestartRequested, this,
+            [this] { restart({u"--settings"_s}, Elevation::Elevated); });
         editor->favorites()->setCatalogs(m_apps.get(), m_places.get());
         editor->favorites()->setStore(m_favorites.get());
         m_settingsWindow = window;
         m_settingsEditor = editor;
+        // There at once when opened: without Windows' own fade and zoom for a
+        // window shown (it is kept hidden between openings, so each one had it).
+        win::disableTransitions(window);
         updateDoubleTapActions();
         // What the app tells the editor as it changes, from now on (hidden or not):
         // where it stands now.
@@ -3812,6 +3836,11 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         m_settingsWindow->show();
         return;
     }
+    if (opening) {
+        // As it will look once in front, from its first frame (SettingsWindow.arriving).
+        m_settingsWindow->setProperty("arriving", true);
+        win::expectActivation(m_settingsWindow);
+    }
     m_settingsWindow->show();
     m_settingsWindow->raise();
     win::bringToFront(m_settingsWindow);
@@ -3862,6 +3891,13 @@ void App::showWebSettings()
 void App::showFileTypeSettings()
 {
     showSettings([](QQuickWindow* window) { QMetaObject::invokeMethod(window, "showFileTypesPage"); });
+}
+
+void App::showQuickFilterSettings(const QString& draft)
+{
+    showSettings([&draft](QQuickWindow* window) {
+        QMetaObject::invokeMethod(window, "showQuickFiltersPage", Q_ARG(QVariant, QVariant(draft)));
+    });
 }
 
 void App::showFavoriteSettings(const QString& path)
@@ -5494,10 +5530,21 @@ bool App::startLauncherRouting()
     if (target)
         ::GetWindowThreadProcessId(target, &pid);
     // Nothing in front, or a window of Win顺's: nothing to route from. The
-    // taskbar (a press on Win顺's box: it comes back with that press), the
     // Start menu (its keys wait for the launcher, which it gives way to) and
     // the shell's other flyouts keep their own ways.
-    if (!m_window || !target || pid == ::GetCurrentProcessId() || taskbar::isTaskbar(target) || win::isShellFlyout(target))
+    //
+    // The taskbar is a window as any other here (GitHub #299; it was left
+    // out, a press on Win顺's box "coming back with that press"). The Start
+    // menu, typed in and closed for the launcher, hands the front back to
+    // the window before it, and with everything minimized, or the taskbar
+    // clicked last, that is the taskbar. Over it Windows refuses a Win顺 run
+    // as administrator the front from then on (after an input sent, after
+    // Alt, with the lock taken off: all refused, measured 2026-11-12): the
+    // launcher went as for a click elsewhere 230 ms after it came, the
+    // letters with it, and shown again by a press on the box it took none.
+    // This is only come to once the front was refused; in front after all,
+    // the routing ends by itself (launcherRoutedForeground).
+    if (!m_window || !target || pid == ::GetCurrentProcessId() || win::isShellFlyout(target))
         return false;
     // An elevated program while Win顺 is not: Windows keeps the keys typed
     // there from the hook (UIPI).

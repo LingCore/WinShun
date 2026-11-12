@@ -1,4 +1,7 @@
 #include "FilePreview.h"
+
+#include "DocExtractor.h"
+#include "SyntaxSpans.h"
 #include "SystemTheme.h"
 
 #include "FileIconProvider.h"
@@ -53,6 +56,14 @@ bool isPicture(const QString& suffix)
         u"tif"_s, u"tiff"_s, u"ico"_s, u"webp"_s, u"heic"_s, u"heif"_s, u"avif"_s, u"jxl"_s, u"jxr"_s, u"wdp"_s, u"hdp"_s,
         u"dds"_s, u"dng"_s, u"cr2"_s, u"cr3"_s, u"nef"_s, u"arw"_s, u"orf"_s, u"rw2"_s, u"raf"_s};
     return kTypes.contains(suffix);
+}
+
+// Drawings and layered pictures no codec of Windows reads (GitHub #297):
+// drawn in the document reader's process (DocExtractor::renderFile), an
+// Illustrator file by its PDF part, a Photoshop one by its flattened picture.
+bool isDrawn(const QString& suffix)
+{
+    return suffix == u"ai" || suffix == u"psd" || suffix == u"psb";
 }
 
 // Text whatever handler a program may have put on it (an editor's, a web
@@ -162,6 +173,9 @@ struct FilePreview::Loaded {
     QStringList facts;
     QStringList lines;
     QVector<int> numbers;
+    QVector<QList<int>> spans; // by row: start, length, kind …
+    QVector<QList<int>> marks; // by row: start, length …
+    int firstMark = -1;
     int lineCount = 0;
     int rows = 0; // Text: lines as shown, long ones wrapped (about)
     QString message;
@@ -416,6 +430,9 @@ void FilePreview::close()
     m_message.clear();
     m_lines.setStringList({});
     m_lineNumbers.clear();
+    m_spans.clear();
+    m_marks.clear();
+    m_firstMarkRow = -1;
     setSelection(0, 0, 0, 0);
     m_images->set({}, {});
     m_imageUrl.clear();
@@ -493,12 +510,17 @@ void FilePreview::load(const Item& item, bool followed)
     const auto stale = [self, generation] { return !self || self->m_generation.load() != generation; };
     // Text as rows: a line a row, long ones in pieces (never splitting a
     // surrogate pair).
-    const auto split = [](const QString& text, Loaded& loaded) {
+    // Each row's colours by the kind of file it is, and where the words
+    // searched for are in it (GitHub #291).
+    const syntax::Language language = syntax::languageFor(item.name.isEmpty() ? item.path : item.name);
+    const QStringList words = item.words;
+    const auto split = [language, words](const QString& text, Loaded& loaded) {
         const QStringList lines = text.split(u'\n');
         int count = static_cast<int>(lines.size());
         if (count > 1 && lines.last().isEmpty())
             --count; // the end of the last line, not a line
         loaded.lineCount = count;
+        syntax::State state;
         for (int i = 0; i < count; ++i) {
             const QString& line = lines[i];
             qsizetype at = 0;
@@ -506,6 +528,17 @@ void FilePreview::load(const Item& item, bool followed)
                 qsizetype n = std::min(kPieceChars, line.size() - at);
                 if (at + n < line.size() && line[at + n - 1].isHighSurrogate())
                     --n;
+                const QStringView piece = QStringView(line).mid(at, n);
+                QList<int> spans;
+                for (const syntax::Span& span : syntax::highlight(language, piece, state))
+                    spans << span.start << span.length << static_cast<int>(span.kind);
+                QList<int> marks;
+                for (const syntax::Found& found : syntax::findWords(piece, words))
+                    marks << found.start << found.length;
+                if (!marks.isEmpty() && loaded.firstMark < 0)
+                    loaded.firstMark = static_cast<int>(loaded.lines.size());
+                loaded.spans.append(std::move(spans));
+                loaded.marks.append(std::move(marks));
                 loaded.lines.append(line.mid(at, n));
                 loaded.numbers.append(at == 0 ? i + 1 : 0);
                 loaded.rows += std::max<int>(1, static_cast<int>((n + 99) / 100));
@@ -574,6 +607,24 @@ void FilePreview::load(const Item& item, bool followed)
                     loaded->kind = Picture;
                     loaded->imageSize = image.size();
                     summary.insert(1, u"%1 × %2"_s.arg(original.width()).arg(original.height()));
+                    loaded->image = std::move(image);
+                    done = true;
+                }
+            } else if (!cloudOnly && isDrawn(suffix)) {
+                // One that cannot be drawn (an old .ai without a PDF part, a
+                // 32-bit .psd) goes on to whatever handler it has.
+                static auto* const drawer = new DocExtractor(1, DocExtractor::Priority::Normal); // as m_worker: never deleted
+                DocExtractor::Rendered drawn = drawer->renderFile(native, static_cast<std::uint32_t>(kLargestPicture), stale);
+                if (drawn.status == extractproto::Status::Ok) {
+                    // The picture keeps the bytes it came in (64 MB at the most: no second copy).
+                    auto* pixels = new std::string(std::move(drawn.bgra));
+                    QImage image(reinterpret_cast<const uchar*>(pixels->data()), static_cast<int>(drawn.size.width),
+                        static_cast<int>(drawn.size.height), static_cast<qsizetype>(drawn.size.width) * 4, QImage::Format_RGB32,
+                        [](void* bytes) { delete static_cast<std::string*>(bytes); }, pixels);
+                    loaded->kind = Picture;
+                    loaded->imageSize = image.size();
+                    if (suffix != u"ai") // a picture's pixels; a drawing has no size in them
+                        summary.insert(1, u"%1 × %2"_s.arg(drawn.size.fullWidth).arg(drawn.size.fullHeight));
                     loaded->image = std::move(image);
                     done = true;
                 }
@@ -665,6 +716,10 @@ void FilePreview::apply(quint64 generation, std::shared_ptr<Loaded> loaded)
     m_message = loaded->message;
     m_imageSize = loaded->imageSize;
     m_lineNumbers = loaded->numbers;
+    m_spans = loaded->spans;
+    m_marks = loaded->marks;
+    m_firstMarkRow = loaded->firstMark;
+    ++m_revision;
     setSelection(0, 0, 0, 0);
     m_lineCount = loaded->lineCount;
     m_textRows = loaded->rows;

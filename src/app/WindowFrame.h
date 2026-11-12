@@ -88,6 +88,10 @@ public:
     // client area as with ownFrame, so nothing looks different.
     void setResizable(bool on);
     bool resizable() const { return m_resizable; }
+    // With ownFrame, a window of one size (the first-run setup): its edges
+    // do not size it and nothing maximises it (a double click on the title
+    // bar, Win+Up, the window menu).
+    void setFixedSize(bool on);
     // Its left and right edges widen it (the launcher): there, but over a
     // control, hit testing answers HTLEFT / HTRIGHT, so the pointer is the
     // system's sizing arrow; a press emits sideGrabbed (the caller follows
@@ -143,6 +147,7 @@ private:
     bool m_maximizePressed = false;
     bool m_noActivate = false;
     bool m_resizable = false;
+    bool m_fixedSize = false;
     bool m_sideSizing = false;
     Qt::MouseButton m_handleButton = Qt::NoButton;
     QPoint m_handlePress;

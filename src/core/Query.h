@@ -25,6 +25,11 @@ struct FileTypeQuery {
 std::optional<QString> normalizedTypeKeyword(QStringView text);
 FileTypeQuery splitFileTypeQuery(const QString& text, const FileTypes& types, QStringView folderKeyword);
 
+// The quick filters named among what is typed, each by its keyword as a
+// kind of file is (":nobin 报告", "报告 nobin:"; any case, never quoted, a
+// drive's "C:" is none): any number of them, and what is left to search for.
+QuickFilterQuery splitQuickFilterQuery(const QString& text, const QuickFilters& filters);
+
 // One whitespace-separated piece of the query.
 //
 //   report          name contains "report"
@@ -66,6 +71,12 @@ struct ParsedQuery {
     // The same for Settings' skipped file names (GitHub #132): folded
     // wildcards ("~$*"), each against a file's whole name.
     std::vector<std::string> excludedFileNames;
+    // Set by the search too: queries of their own that a file or folder must
+    // fit as well, every one (the panel's quick filters, each saved as the
+    // text of a query: "!$RECYCLE.BIN\", "ext:pdf size:>1mb"). They narrow
+    // what the query finds and are nothing to find by: isEmpty() does not
+    // count them, and they neither rank nor highlight.
+    std::vector<ParsedQuery> conditions;
     EntryFilter filter; // size: and dm: (never folders)
     QStringList highlights; // plain terms to highlight in result names
 
@@ -127,6 +138,10 @@ ContentQuery splitContentQuery(const QString& text);
 // size:, dm:, ! and " | " still work, and a path typed is no path.
 ParsedQuery parseQuery(const QString& text, bool regexTerms = false);
 
+// Saved queries to narrow a search with (ParsedQuery::conditions), read: one
+// that says nothing or cannot be read (a broken regex:) is left out.
+std::vector<ParsedQuery> parseConditions(const QStringList& texts);
+
 // The query read aloud: each term with Chinese characters as pinyin
 // ("年度报高" → "niandubaogao"), for finding a name that sounds the same
 // (年度报告) when nothing is spelled that way (the name search tries these
@@ -159,6 +174,7 @@ public:
         static constexpr std::size_t kSlots = 1024;
         std::vector<Slot> m_slots; // made when first needed
         std::vector<Folders> m_alternatives;
+        std::vector<Folders> m_conditions;
     };
 
     // Whether an entry with this name (stored in the index, so padded) may
@@ -189,6 +205,7 @@ private:
     bool m_invalid = false;
     EntryFilter m_filter;
     std::vector<NameMatcher> m_alternatives;
+    std::vector<NameMatcher> m_conditions; // ParsedQuery::conditions: all of them, as well as this
     struct Positive {
         QueryTerm term;
         pinyin::Matcher pinyin; // valid() when the term can be read as pinyin

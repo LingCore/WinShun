@@ -5,6 +5,7 @@
 #include "platform/Shell.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -750,8 +751,17 @@ void Updater::reportLastUpdate()
     const QString current = currentVersion();
     if (release::sameVersion(current, pending) || release::isNewer(current, pending))
         emit notice(tr("Win顺 已更新到 %1").arg(current), tr("设置、索引和剪贴板记录都还在。"));
-    else
-        emit notice(tr("Win顺 没有更新到 %1").arg(pending), tr("现在仍是 %1，照常可用。可以稍后再试一次。").arg(current));
+    else {
+        // What held the files, when that was why (GitHub #300): the log of the
+        // Setup just run, not one left by an update long ago.
+        QString holders;
+        if (QFile log(updatesDir() + u"\\setup.log"_s);
+            QFileInfo(log).lastModified().secsTo(QDateTime::currentDateTime()) < 30 * 60 && log.open(QIODevice::ReadOnly))
+            holders = update::setupBlockedBy(log.readAll());
+        emit notice(tr("Win顺 没有更新到 %1").arg(pending),
+            holders.isEmpty() ? tr("现在仍是 %1，照常可用。可以稍后再试一次。").arg(current)
+                              : tr("%1 还占着 Win顺 的文件。关掉它（关不掉就重启电脑）再试；现在仍是 %2，照常可用。").arg(holders, current));
+    }
 }
 
 // What earlier updates left: downloads (their Setup may still be ending

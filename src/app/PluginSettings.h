@@ -203,7 +203,7 @@ public:
     // Without a host: five made-up plugins in every state, for the
     // offscreen preview of the page (main.cpp --preview-plugins). `elevated`:
     // as if Win顺 ran as administrator, the first two asking for `elevated`.
-    void loadPreview(bool elevated = false, int logPlugins = 2); // `logPlugins`: how many plugins the made-up developer log has lines from
+    void loadPreview(bool elevated = false, int logPlugins = 2, bool hostNormal = false); // `logPlugins`: how many plugins the made-up developer log has lines from
 
     PluginListModel* list() { return &m_list; }
     int count() const { return m_list.rowCount(); }
@@ -255,6 +255,9 @@ public:
     // the signed list, which must be what is installed; any other from its
     // folder as it is now.
     Q_INVOKABLE void confirmElevation(const QString& id);
+    // The card of an `elevated` plugin while Win顺 runs with normal rights
+    // (GitHub #288): Win顺 started again as administrator, UAC asks.
+    Q_INVOKABLE void restartAsAdministrator() { emit elevatedRestartRequested(); }
     // What the catalog is told of the keywords kept in the settings
     // (Catalog::setKeywordOverrides): "plugin/command" -> the user's words.
     static QHash<QString, QStringList> keywordOverrides(const QList<PluginConfig>& plugins);
@@ -315,6 +318,7 @@ signals:
     void messageChanged();
     void recoveryChanged();
     void recoveryRequested();
+    void elevatedRestartRequested();
     void activeChanged();
     void recordingHotkeyChanged();
     // The dialogs: {id, name, version, author, homepage, source, permissions: [{name, text, enforced, note}], more: bool (asked again for new ones)}.
@@ -342,6 +346,7 @@ private:
     SettingsEditor* m_editor;
     QPointer<plugin::Host> m_host;
     QPointer<PluginUpdates> m_updates;
+    static QString normalRightsNote();
     QSet<QString> m_confirming; // confirmElevation's copies being made
     // By plugin: why its last 确认 failed (Card::elevationProblem), said
     // while it is still the version that was clicked (an update since: gone).

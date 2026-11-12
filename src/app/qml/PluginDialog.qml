@@ -15,7 +15,6 @@ Item {
     property bool open: false
     readonly property real dpr: Screen.devicePixelRatio
     property bool animated: true // false: shown at once (the offscreen preview, which renders no frames between)
-    property bool fitToWindow: false // the first-run window can be shorter than the permissions list
     // 更新并允许: an upgrade of a plugin that is on, whose new version asks for more (the permissions shown, the new ones marked).
     readonly property bool allowing: kind === "install" && info.allow === true
     readonly property bool listsPermissions: kind === "permissions" || allowing
@@ -76,7 +75,7 @@ Item {
 
         anchors.centerIn: parent
         width: Math.min(560, parent.width - 48)
-        height: dialog.fitToWindow || dialog.info.unreviewed === true ? Math.min(content.implicitHeight + 48, dialog.height - 32) : content.implicitHeight + 48
+        height: dialog.info.unreviewed === true ? Math.min(content.implicitHeight + 48, dialog.height - 32) : content.implicitHeight + 48
         scale: dialog.open ? 1 : 0.96
         Behavior on scale { enabled: dialog.animated; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
@@ -359,7 +358,7 @@ Item {
         }
         ListScrollBar {
             dpr: dialog.dpr
-            visible: (dialog.fitToWindow || dialog.info.unreviewed === true) && dialogScroll.contentHeight > dialogScroll.height
+            visible: dialog.info.unreviewed === true && dialogScroll.contentHeight > dialogScroll.height
             x: parent.width - width - 3
             y: 24
             height: dialogScroll.height

@@ -22,7 +22,8 @@ inline constexpr int kMaxItems = 200; // per response; the rest is dropped
 // "icon.png" (in the plugin folder), "data:image/png;base64,…",
 // "site:https://example.com/page" (the site's own icon, as a browser shows it).
 struct IconSpec {
-    enum class Kind { None, File, Ext, App, Glyph, Color, PluginFile, Data, Site };
+    // Phosphor is appended so the existing kinds keep their values.
+    enum class Kind { None, File, Ext, App, Glyph, Color, PluginFile, Data, Site, Phosphor };
     Kind kind = Kind::None;
     QString value; // the part after the prefix; PluginFile: the relative path; Site: "https://host/"
     friend bool operator==(const IconSpec&, const IconSpec&) = default;

@@ -221,6 +221,7 @@ void SettingsEditor::setSettings(const Settings& settings)
     const bool drives = settings.selectedDrives != m_settings.selectedDrives;
     m_settings = settings;
     m_previewHotkeyError.clear();
+    m_openHotkeyError.clear();
     emit changed();
     emit doubleTapActionsChanged();
     if (shares)
@@ -440,12 +441,36 @@ void SettingsEditor::setPreviewHotkey(const QString& shortcut)
         error = tr("这个快捷键用于输入或其他操作，请换一个");
     if (previewkeys::usedGlobally(value, {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey}))
         error = tr("这个快捷键已用于全局操作，请换一个");
+    if (error.isEmpty() && !value.isEmpty() && value == m_settings.openHotkey)
+        error = tr("这个快捷键已用来打开结果，请换一个");
     m_previewHotkeyError = error;
     if (!error.isEmpty() || value == m_settings.previewHotkey) {
         emit changed();
         return;
     }
     m_settings.previewHotkey = value;
+    commit();
+}
+
+void SettingsEditor::setOpenHotkey(const QString& shortcut)
+{
+    const QString typed = shortcut.trimmed();
+    const QString value = previewkeys::normalizedOpen(typed);
+    QString error;
+    if (!typed.isEmpty() && value.isEmpty()) {
+        error = previewkeys::normalized(typed) == u"Space" ? tr("空格要用来分开几个词，请换一个")
+                                                           : tr("这个快捷键用于输入或其他操作，请换一个");
+    } else if (previewkeys::usedGlobally(value, {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey})) {
+        error = tr("这个快捷键已用于全局操作，请换一个");
+    } else if (!value.isEmpty() && value == m_settings.previewHotkey) {
+        error = tr("这个快捷键已用于预览，请换一个");
+    }
+    m_openHotkeyError = error;
+    if (!error.isEmpty() || value == m_settings.openHotkey) {
+        emit changed();
+        return;
+    }
+    m_settings.openHotkey = value;
     commit();
 }
 
@@ -2002,7 +2027,8 @@ QVariantList SettingsEditor::fileTypes() const
 {
     QVariantList list;
     for (const FileType& type : m_settings.namedFileTypes())
-        list.append(QVariantMap {{u"name"_s, type.name}, {u"extensions"_s, type.extensions}, {u"keyword"_s, type.keyword}});
+        list.append(QVariantMap {{u"name"_s, type.name}, {u"extensions"_s, type.extensions}, {u"keyword"_s, type.keyword},
+            {u"folder"_s, type.folder}});
     return list;
 }
 
@@ -2020,6 +2046,8 @@ QString SettingsEditor::setFileTypeKeyword(int index, const QString& text)
             if (i != index && *keyword == m_settings.fileTypes[i].keyword)
                 return tr("已有类型使用这个前缀");
         }
+        if (std::ranges::any_of(m_settings.quickFilters, [&](const QuickFilter& f) { return f.keyword == *keyword; }))
+            return tr("已有快捷筛选使用这个前缀");
     }
     QString& value = index == -1 ? m_settings.folderKeyword : m_settings.fileTypes[index].keyword;
     if (value != *keyword) {
@@ -2027,6 +2055,29 @@ QString SettingsEditor::setFileTypeKeyword(int index, const QString& text)
         commit();
     }
     return {};
+}
+
+QString SettingsEditor::setFileTypeFolder(int index, const QString& text)
+{
+    if (index < 0 || index >= m_settings.fileTypes.size())
+        return tr("类型已不存在");
+    const QString folder = pathtext::pathFromText(text);
+    if (!text.trimmed().isEmpty() && folder.isEmpty())
+        return tr("填写完整的文件夹路径，例如 H:\\__work__，留空则不限范围");
+    if (m_settings.fileTypes[index].folder != folder) {
+        m_settings.fileTypes[index].folder = folder;
+        commit();
+    }
+    return {};
+}
+
+QString SettingsEditor::chooseFileTypeFolder(int index)
+{
+    if (index < 0 || index >= m_settings.fileTypes.size())
+        return tr("类型已不存在");
+    const HWND owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    const QString folder = shell::pickFolder(owner, tr("选择这个文件类型的搜索范围（包含子文件夹）"));
+    return folder.isEmpty() ? QString() : setFileTypeFolder(index, folder);
 }
 
 QString SettingsEditor::addFileType(const QString& name, const QString& extensions)
@@ -2092,6 +2143,102 @@ void SettingsEditor::moveFileType(int index, int delta)
     if (index < 0 || index >= m_settings.fileTypes.size() || to < 0 || to >= m_settings.fileTypes.size())
         return;
     m_settings.fileTypes.move(index, to);
+    commit();
+}
+
+QVariantList SettingsEditor::quickFilters() const
+{
+    QVariantList filters;
+    for (const QuickFilter& f : m_settings.quickFilters)
+        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}, {u"keyword"_s, f.keyword}, {u"problem"_s, Settings::quickFilterProblem(f.query)}});
+    return filters;
+}
+
+QString SettingsEditor::addQuickFilter(const QString& name, const QString& query)
+{
+    const QString named = name.simplified();
+    if (named.isEmpty())
+        return tr("给筛选起个名字");
+    if (std::ranges::any_of(m_settings.quickFilters, [&](const QuickFilter& f) { return f.name.compare(named, Qt::CaseInsensitive) == 0; }))
+        return tr("已有这个名字");
+    const QString text = query.trimmed();
+    if (const QString problem = Settings::quickFilterProblem(text); !problem.isEmpty())
+        return problem;
+    m_settings.quickFilters.append({named, text, {}});
+    commit();
+    return {};
+}
+
+QString SettingsEditor::renameQuickFilter(int index, const QString& name)
+{
+    if (index < 0 || index >= m_settings.quickFilters.size())
+        return {};
+    const QString named = name.simplified();
+    if (named.isEmpty())
+        return tr("给筛选起个名字");
+    if (m_settings.quickFilters[index].name == named)
+        return {};
+    for (qsizetype i = 0; i < m_settings.quickFilters.size(); ++i) {
+        if (i != index && m_settings.quickFilters[i].name.compare(named, Qt::CaseInsensitive) == 0)
+            return tr("已有这个名字");
+    }
+    m_settings.quickFilters[index].name = named;
+    commit();
+    return {};
+}
+
+QString SettingsEditor::setQuickFilterQuery(int index, const QString& query)
+{
+    if (index < 0 || index >= m_settings.quickFilters.size())
+        return {};
+    const QString text = query.trimmed();
+    if (const QString problem = Settings::quickFilterProblem(text); !problem.isEmpty())
+        return problem;
+    if (m_settings.quickFilters[index].query != text) {
+        m_settings.quickFilters[index].query = text;
+        commit();
+    }
+    return {};
+}
+
+QString SettingsEditor::setQuickFilterKeyword(int index, const QString& text)
+{
+    if (index < 0 || index >= m_settings.quickFilters.size())
+        return {};
+    const auto keyword = normalizedTypeKeyword(text);
+    if (!keyword)
+        return tr("前缀最多 32 个字符，只能包含文字、数字、下划线和连字符");
+    if (!keyword->isEmpty()) {
+        if (*keyword == m_settings.folderKeyword)
+            return tr("这个前缀已用于文件夹");
+        if (std::ranges::any_of(m_settings.fileTypes, [&](const FileType& t) { return t.keyword == *keyword; }))
+            return tr("已有类型使用这个前缀");
+        for (qsizetype i = 0; i < m_settings.quickFilters.size(); ++i) {
+            if (i != index && m_settings.quickFilters[i].keyword == *keyword)
+                return tr("已有快捷筛选使用这个前缀");
+        }
+    }
+    if (m_settings.quickFilters[index].keyword != *keyword) {
+        m_settings.quickFilters[index].keyword = *keyword;
+        commit();
+    }
+    return {};
+}
+
+void SettingsEditor::removeQuickFilter(int index)
+{
+    if (index < 0 || index >= m_settings.quickFilters.size())
+        return;
+    m_settings.quickFilters.removeAt(index);
+    commit();
+}
+
+void SettingsEditor::moveQuickFilter(int index, int delta)
+{
+    const qsizetype to = index + delta;
+    if (index < 0 || index >= m_settings.quickFilters.size() || to < 0 || to >= m_settings.quickFilters.size())
+        return;
+    m_settings.quickFilters.move(index, to);
     commit();
 }
 

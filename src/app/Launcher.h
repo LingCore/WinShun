@@ -138,6 +138,8 @@ class Launcher : public QObject {
     Q_PROPERTY(bool footerHints READ footerHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool pureSearch READ pureSearch NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString previewHotkey READ previewHotkey NOTIFY resultOptionsChanged FINAL)
+    // A second key for Enter on a result (Settings::openHotkey); "" for none.
+    Q_PROPERTY(QString openHotkey READ openHotkey NOTIFY resultOptionsChanged FINAL)
     // Bits 1 << n of the digits n left to one of Win顺's own shortcuts
     // (App::ownNumberDigits): their rows show the chord struck through.
     Q_PROPERTY(int numberKeysLeft READ numberKeysLeft NOTIFY resultOptionsChanged FINAL)
@@ -210,6 +212,8 @@ class Launcher : public QObject {
     // here; togglePanel() asks it to.
     Q_PROPERTY(bool panel READ panel NOTIFY panelChanged FINAL)
     Q_PROPERTY(bool panelSidebarVisible READ panelSidebarVisible WRITE setPanelSidebarVisible NOTIFY panelSidebarVisibleChanged FINAL)
+    // The panel's filters as a strip over the rows, not the list down the left (Panel/FiltersOnTop).
+    Q_PROPERTY(bool panelFiltersOnTop READ panelFiltersOnTop WRITE setPanelFiltersOnTop NOTIFY panelFiltersOnTopChanged FINAL)
     // Pinned (Ctrl+T, the pin at the box's corner; linux.do #157): it stays
     // up when it loses the focus or a result is opened, until Esc (or double
     // Ctrl while it is in front) hides it. Kept while hidden, until turned
@@ -235,6 +239,15 @@ class Launcher : public QObject {
     Q_PROPERTY(QString sizeMax READ sizeMax NOTIFY filtersChanged FINAL)
     Q_PROPERTY(QString folderFilter READ folderFilter NOTIFY filtersChanged FINAL)
     Q_PROPERTY(bool filtersActive READ filtersActive NOTIFY filtersChanged FINAL)
+    // The quick filters (Settings' [QuickFilters]: a query saved under a
+    // name, as Everything's filters), a chip each in the side bar:
+    // [{name, query, keyword}], and the names of those on (activeQuickFilters: apart,
+    // so that a click leaves the chips as they are). Those on narrow whatever is typed, names and the
+    // files a content search reads, every one of them (never one or
+    // another); with the other filters they count as active and are
+    // cleared (clearFilters, and as the launcher is put away).
+    Q_PROPERTY(QVariantList quickFilters READ quickFilters NOTIFY quickFiltersChanged FINAL)
+    Q_PROPERTY(QStringList activeQuickFilters READ activeQuickFilters NOTIFY filtersChanged FINAL)
     // The favorite folders (Favorites), for 位置: [{name, path}].
     Q_PROPERTY(QVariantList favoriteFolders READ favoriteFolders NOTIFY favoritesChanged FINAL)
     // The panel's order: a column (ws::SortKey: 0 as ranked, 1 name, 2 path,
@@ -294,6 +307,7 @@ public:
         SwitchOff,
         EditPicture, // 编辑: a screenshot's row, in the editing window (Shift+Enter)
         BrowseFolder, // list a folder in Win顺, then keep typing to search there
+        Rename, // 重命名: a file's or folder's row, in place (F2; Main.qml opens the box, see beginRename)
         PluginAction = 100,
         PluginFileAction = 200
     };
@@ -497,6 +511,9 @@ public:
     void setPreviewFollowsPointer(bool on) { m_previewFollowsPointer = on; } // Settings::previewFollowsPointer
     void setPreviewRestore(bool on) { m_previewRestore = on; } // Settings::previewRestore
     Q_INVOKABLE bool isPreviewKey(int key, int modifiers) const;
+    QString openHotkey() const { return m_openHotkey; }
+    void setOpenHotkey(const QString& shortcut);
+    Q_INVOKABLE bool isOpenKey(int key, int modifiers) const;
     void setNumberHints(const QString& hints);
     bool shortcutHelp() const { return m_shortcutHelp; }
     bool footerHints() const { return m_footerHints; }
@@ -622,6 +639,18 @@ public:
     // stays open under it, and goes, as for 打开, once a command that opens
     // something was picked (shellcontext::keepsLauncher).
     Q_INVOKABLE bool hasSystemMenu(int row) const;
+    // Renaming a row's file or folder in place (GitHub #285): beginRename
+    // says whether the row is one to rename (a file or folder that is there;
+    // one row, not a selection) and what its box starts with (renameName,
+    // the first renameStem characters picked: not the extension);
+    // finishRename takes the name typed: false, with the reason flashed, when
+    // it is none Windows takes or is taken already (the box stays), else the
+    // shell is asked and the row follows.
+    Q_INVOKABLE bool beginRename(int row);
+    Q_INVOKABLE bool finishRename(const QString& name);
+    Q_INVOKABLE void cancelRename() { m_renaming.reset(); }
+    Q_INVOKABLE QString renameName() const { return m_renaming ? m_renaming->name : QString(); }
+    Q_INVOKABLE int renameStem() const;
     Q_INVOKABLE void showSystemMenu(int row, const QVariant& globalPos = {});
     bool systemMenuOpen() const { return m_systemMenuOpen; }
     // Open, or asked for a moment ago: the context-menu event the Menu
@@ -715,6 +744,8 @@ public:
     bool panel() const { return m_panel; }
     bool panelSidebarVisible() const { return m_panelSidebarVisible; }
     void setPanelSidebarVisible(bool visible);
+    bool panelFiltersOnTop() const { return m_panelFiltersOnTop; }
+    void setPanelFiltersOnTop(bool top);
     PanelColumns* panelColumns() { return &m_columns; }
     void setPanel(bool on); // by the app, the window sized for it (App::setPanel)
     Q_INVOKABLE void togglePanel(); // panelToggleRequested: the app does it
@@ -744,6 +775,13 @@ public:
     Q_INVOKABLE void setFolderFilter(const QString& path);
     Q_INVOKABLE void pickFolderFilter(); // the folder dialog
     Q_INVOKABLE void clearFilters();
+    QVariantList quickFilters() const;
+    QStringList activeQuickFilters() const { return m_quickFiltersOn; }
+    void setQuickFilters(const QuickFilters& filters); // one that is on stays on by its name
+    Q_INVOKABLE void toggleQuickFilter(int index);
+    // The chips' +: the settings at the quick filters, what is typed there
+    // already as a new one's query when it can be one (quickFilterSettingsRequested).
+    Q_INVOKABLE void editQuickFilters();
     int panelSortKey() const { return static_cast<int>(m_panelSort.key); }
     bool panelSortDescending() const { return m_panelSort.descending; }
     // A column's header clicked: by it (name and path up, size and time
@@ -781,12 +819,16 @@ signals:
     void galleryChanged();
     void queryErrorChanged();
     void fileTypesChanged();
+    void quickFiltersChanged();
+    void quickFilterSettingsRequested(const QString& draft); // ... at the quick filters, `draft` as a new one's query
     void fileChoiceChanged();
     void favoriteSettingsRequested(const QString& path); // ... on its 收藏夹 page, at this favorite
     void favoritesChanged();
     // The settings window, on the 插件 page at this plugin's card: a plugin
     // row opening "winshun:settings" (its own card only; performPlugin).
     void pluginSettingsRequested(const QString& pluginId);
+    // The place "以管理员身份重新启动 Win顺" (GitHub #288).
+    void elevatedRestartRequested();
     void currentRowChanged();
     void keyHintsChanged();
     void sortChanged();
@@ -815,6 +857,7 @@ signals:
     void folderSearchChanged();
     void panelChanged();
     void panelSidebarVisibleChanged();
+    void panelFiltersOnTopChanged();
     void panelToggleRequested();
     void pinnedChanged();
     void settingsRequested();
@@ -906,6 +949,7 @@ private:
     // and what of the panel the rows are for (as m_shownText is): the
     // filters, the order, and whether nothing typed lists everything.
     EntryFilter panelFilter() const;
+    QStringList quickConditions() const; // the queries of the quick filters on: by their chips (the panel), or named in the box
     QJsonObject pluginFilters() const;
     void sortShownPanel(const QString& currentPath = {});
     QString panelKey() const;
@@ -968,6 +1012,7 @@ private:
     void runSystemMenu(const QStringList& paths, std::optional<QPointF> globalPos);
     void forgetGone(const QStringList& paths, int attempt);
     bool forgetRecycled(const SearchResult& result); // forgetRow, unless it is still there (then false)
+    void onRenamed(const SearchResult& was, const QString& newName, bool ok);
     void forgetRow(const SearchResult& result); // out of the list (its count) and the history
     void forgetMissing(const SearchResult& r, Action action); // an action's file not there: said so, out of the history
     std::function<void(bool)> reportFailure(const QString& name);
@@ -1021,6 +1066,7 @@ private:
         bool waiting = false;
     };
     std::optional<RowDetails> pluginDetails(const SearchResult& row, bool ask); // none: not such a row
+    QString pluginWords(const SearchResult& row) const;
     QString detailsKey(const SearchResult& row) const;
     void askDetails();
     void detailsAnswered(const QString& key, bool ok, const plugin::DetailsAnswer& answer);
@@ -1079,6 +1125,7 @@ private:
     KindOrder m_shownKindOrder = KindOrder::FilesFirst;
     QStringList m_shownPreferredTypes;
     QStringList m_shownExtensions; // of the kind of file chosen (fileExtensions())
+    QStringList m_shownTypeFolders;
     // The command whose list the rows are ("<plugin>/<command>"; empty: the
     // name search's): "=" and "= " trim to the same text, but one lists
     // files, the other the calculator's answer, and that is a new list.
@@ -1179,7 +1226,13 @@ private:
     struct PrefixScope { Scope scope; QStringList typeKeys; bool folders; };
     std::optional<PrefixScope> m_filePrefix;
     QString m_prefixWords;
-    QString searchText() const { return m_filePrefix ? m_prefixWords : m_query.trimmed(); }
+    QString searchText() const { return m_filePrefix ? m_prefixWords : typedQuick().filters.isEmpty() ? m_query.trimmed() : typedQuick().words; }
+    // The quick filters named in the box by keyword (":nobin 报告"), and the
+    // words without them; read anew when the text or the filters changed.
+    const QuickFilterQuery& typedQuick() const;
+    mutable QuickFilterQuery m_typedQuick;
+    mutable QString m_typedQuickFor;
+    mutable bool m_typedQuickRead = false;
     void updateQueryPrefix();
     bool clearQueryPrefix(); // an explicit scope/type choice replaces the typed prefix
     int m_fileType = -1; // see fileType
@@ -1191,6 +1244,7 @@ private:
     static QString fileTypeKey(const FileType& type); // as fileChoice names it
     int fileTypeIndex(const QString& key) const; // -1: none
     QStringList fileExtensions() const; // the kind chosen's, in 文件; none otherwise
+    QStringList fileTypeFolders() const;
     // 内容 in a folder chosen (a chip, a folder's row: SearchInFolder), as a
     // full path; empty: everywhere. Kept while the app runs, as the kind of
     // file is. A folder named among the words goes first (ContentFolderSpec).
@@ -1206,6 +1260,7 @@ private:
     // The search panel (see the properties).
     bool m_panel = false;
     bool m_panelSidebarVisible = true;
+    bool m_panelFiltersOnTop = false;
     PanelColumns m_columns;
     bool m_pinned = false;
     int m_dateChoice = 0;
@@ -1215,6 +1270,8 @@ private:
     QString m_sizeMin;
     QString m_sizeMax;
     QString m_folderFilter;
+    QuickFilters m_quickFilters;
+    QStringList m_quickFiltersOn; // their names
     SortOrder m_panelSort;
 
     bool m_recordHistory = true;
@@ -1237,10 +1294,13 @@ private:
     bool m_pureSearch = false;
     QString m_previewHotkey = QStringLiteral("Alt+P");
     QKeySequence m_previewSequence {QStringLiteral("Alt+P")};
+    QString m_openHotkey;
+    QKeySequence m_openSequence;
     unsigned m_numberKeysLeft = 0;
     bool m_inTaskbarBox = false;
     bool m_keysRouted = false;
     bool m_systemMenuOpen = false; // the shell's menu is up (its loop runs inside runSystemMenu)
+    std::optional<SearchResult> m_renaming; // the row whose name is being typed (beginRename)
     bool m_systemCommand = false; // see systemCommandRunning
     QElapsedTimer m_systemMenuAsked; // since showSystemMenu was last called
     std::optional<std::pair<int, int>> m_held; // holdUntilShown(): action, number

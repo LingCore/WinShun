@@ -213,6 +213,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString previewWith READ previewWith WRITE setPreviewWith NOTIFY changed FINAL) // auto | builtin
     Q_PROPERTY(QString previewHotkey READ previewHotkey WRITE setPreviewHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString previewHotkeyError READ previewHotkeyError NOTIFY changed FINAL)
+    Q_PROPERTY(QString openHotkey READ openHotkey WRITE setOpenHotkey NOTIFY changed FINAL)
+    Q_PROPERTY(QString openHotkeyError READ openHotkeyError NOTIFY changed FINAL)
     Q_PROPERTY(bool previewFollowsPointer READ previewFollowsPointer WRITE setPreviewFollowsPointer NOTIFY changed FINAL)
     Q_PROPERTY(bool previewRestore READ previewRestore WRITE setPreviewRestore NOTIFY changed FINAL)
     // Which of the chosen number keys are other programs' hotkeys, or Win顺's
@@ -272,6 +274,7 @@ class SettingsEditor : public QObject {
     // The kinds of file 文件 narrows to: [{name, extensions: [..]}], named
     // in the language shown; fileTypesDefault while they are as they came.
     Q_PROPERTY(QVariantList fileTypes READ fileTypes NOTIFY changed FINAL)
+    Q_PROPERTY(QVariantList quickFilters READ quickFilters NOTIFY changed FINAL)
     Q_PROPERTY(bool fileTypesDefault READ fileTypesDefault NOTIFY changed FINAL)
     Q_PROPERTY(QString folderKeyword READ folderKeyword NOTIFY changed FINAL)
     // Counts the sites' icons that arrived: a binding on webIconUrl() reads it
@@ -755,6 +758,9 @@ public:
     QString previewHotkey() const { return m_settings.previewHotkey; }
     void setPreviewHotkey(const QString& shortcut);
     QString previewHotkeyError() const;
+    QString openHotkey() const { return m_settings.openHotkey; }
+    void setOpenHotkey(const QString& shortcut);
+    QString openHotkeyError() const { return m_openHotkeyError; }
     bool previewFollowsPointer() const { return m_settings.previewFollowsPointer; }
     void setPreviewFollowsPointer(bool on);
     bool previewRestore() const { return m_settings.previewRestore; }
@@ -802,10 +808,21 @@ public:
     Q_INVOKABLE QString renameFileType(int index, const QString& name);
     Q_INVOKABLE QString setFileTypeExtensions(int index, const QString& text); // "jpg, .PNG *.gif"
     Q_INVOKABLE QString setFileTypeKeyword(int index, const QString& text); // -1: folders
+    Q_INVOKABLE QString setFileTypeFolder(int index, const QString& text);
+    Q_INVOKABLE QString chooseFileTypeFolder(int index);
     QString folderKeyword() const { return m_settings.folderKeyword; }
     Q_INVOKABLE void removeFileType(int index);
     Q_INVOKABLE void moveFileType(int index, int delta); // up (-1) or down (1) the strip
     Q_INVOKABLE void resetFileTypes();
+    // The search panel's quick filters: [{name, query}]. Each returns what
+    // is wrong ("已有这个名字", a query that cannot be read), empty when done.
+    QVariantList quickFilters() const;
+    Q_INVOKABLE QString addQuickFilter(const QString& name, const QString& query);
+    Q_INVOKABLE QString renameQuickFilter(int index, const QString& name);
+    Q_INVOKABLE QString setQuickFilterQuery(int index, const QString& query);
+    Q_INVOKABLE QString setQuickFilterKeyword(int index, const QString& text); // ":NoBin" is nobin; empty: none
+    Q_INVOKABLE void removeQuickFilter(int index);
+    Q_INVOKABLE void moveQuickFilter(int index, int delta); // up (-1) or down (1) the chips
 
     QVariantList shares() const;
     QVariantList knownShares() const;
@@ -1069,6 +1086,7 @@ private:
     QString m_hotkeyError;
     QString m_panelHotkeyError;
     QString m_previewHotkeyError;
+    QString m_openHotkeyError;
     QString m_numberKeysNote;
     QString m_clipboardNumberKeysNote;
     QString m_clipboardQuickPasteError;

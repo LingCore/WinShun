@@ -58,7 +58,7 @@ Window {
         [qsTr("快捷键", "settings tab"), qsTr("任务栏"), qsTr("对话框"), qsTr("启动与历史"), qsTr("按键一览")],
         [],
         [qsTr("文件夹"), qsTr("名称和类型"), qsTr("磁盘"), qsTr("网络与 WSL")],
-        [qsTr("排序"), qsTr("显示与预览"), qsTr("操作习惯"), qsTr("文件类型")],
+        [qsTr("排序"), qsTr("显示与预览"), qsTr("操作习惯"), qsTr("类型与筛选")],
         window.editor.contentSearch ? [qsTr("常规"), qsTr("大小上限")] : [], // 大小上限: nothing while off
         [],
         [qsTr("记录"), qsTr("快捷键", "settings tab"), qsTr("保留")],
@@ -77,6 +77,7 @@ Window {
             clipboardHotkey: [window.editor.doubleCtrl && window.editor.doubleTapAction === "clipboard" ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.clipboardHotkey].filter(keys => keys.length > 0).join(" / "),
             panelHotkey: window.editor.panelHotkey,
             previewKey: window.editor.previewHotkey,
+            openKey: window.editor.openHotkey,
             historyModifier: !window.editor.recordHistory || window.editor.queryHistoryKeys === "off" ? "" : window.editor.queryHistoryKeys === "alt" ? "Alt" : "Ctrl",
             numberModifier: window.editor.numberKeys === "alt" ? "Alt" : window.editor.numberKeys === "ctrl" ? "Ctrl" : "",
             holdKey: window.editor.clipboardHotkey,
@@ -148,7 +149,12 @@ Window {
     // Mica follows activation; liquid Acrylic keeps its background when inactive.
     // Use transparent rather than a translucent clear colour (Qt clears it
     // unpremultiplied, which makes a light colour appear white).
-    color: Theme.backdrop && SystemTheme.materials && (window.active || SystemTheme.uiStyle === "liquid") ? "transparent" : Theme.page
+    // Opened to be put in front (App::showSettings): drawn as an active window
+    // from its first frame, not one frame as an inactive one and then changed.
+    // Until it is active, or for a second should it never be (another window kept the front).
+    property bool arriving: false
+    Timer { interval: 1000; running: window.arriving; onTriggered: window.arriving = false }
+    color: Theme.backdrop && SystemTheme.materials && (window.active || window.arriving || SystemTheme.uiStyle === "liquid") ? "transparent" : Theme.page
     title: qsTr("设置") // shown as "设置 - Win顺"
     flags: Qt.Window | Qt.FramelessWindowHint // the title bar is ours (see WindowFrame)
 
@@ -162,7 +168,12 @@ Window {
     // The taskbar button is pinned, Windows' search hidden, a file manager
     // installed, outside Win顺: looked at again when the user comes back
     // (SettingsEditor::windowActivated; on opening, after the first frame).
-    onActiveChanged: if (active) editor.windowActivated()
+    onActiveChanged: {
+        if (!active)
+            return
+        arriving = false
+        editor.windowActivated()
+    }
 
     // Closed (the title bar, Alt+F4, the taskbar): hidden and kept, not
     // destroyed; App::showSettings shows the same window again, at once.
@@ -652,6 +663,12 @@ Window {
     function showClipboardPage() { showPage(clipboardPage) } // App::showClipboardSettings
     function showWebPage() { showPluginPage("winshun.web") } // App::showWebSettings
     function showShortcutsPage() { showPage(0, 4) } // App::showShortcutSettings: the shortcut panels' last row
+    // App::showQuickFilterSettings: the + of the search panel's quick filters, what was typed there as a new one's query
+    function showQuickFiltersPage(draft) {
+        const section = part(3, "quickFiltersSection")
+        section.draft(draft)
+        goTo(section.filtersRow)
+    }
     function showFileTypesPage() { goTo(part(3, "fileTypesSection").typesRow) } // App::showFileTypeSettings: the launcher strip's +
     // Win顺 restarted from here (App::restart, --settings-at): back where it
     // was, "page,tab"; after 索引方式 changed the rights it runs with, that row.
@@ -3929,11 +3946,13 @@ Window {
                 index: 3
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ fileTypesSection: fileTypesSection })
-                    recordingHotkey: previewHotkeyRecorder.recording
+                    parts: ({ fileTypesSection: fileTypesSection, quickFiltersSection: quickFiltersSection })
+                    recordingHotkey: previewHotkeyRecorder.recording || openHotkeyRecorder.recording
                     onResetForReopen: {
                         previewHotkeyRecorder.stop()
+                        openHotkeyRecorder.stop()
                         fileTypesSection.resetForReopen()
+                        quickFiltersSection.resetForReopen()
                     }
             // <page 3>
             SettingsSection {
@@ -4394,6 +4413,31 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("打开结果的备用键")
+                    keywords: qsTr("打开;回车;Enter;备用;左手;快捷键;空格;open;shortcut").split(";")
+                    values: [window.editor.openHotkey]
+                    description: qsTr("和 Enter 一样打开选中的结果，Enter 照常可用。录一个左手顺手的键，比如 Alt+Q 或 F1；空格不行，它要用来分开几个词。Backspace 清除，Esc 取消。")
+
+                    HotkeyRecorder {
+                        id: openHotkeyRecorder
+                        objectName: "openHotkeyRecorder"
+                        hotkey: window.editor.openHotkey
+                        previewShortcut: true
+                        placeholder: qsTr("未设置")
+                        onRecorded: (hotkey) => window.editor.openHotkey = hotkey
+                    }
+
+                    bodyShown: window.editor.openHotkeyError.length > 0
+                    body: Text {
+                        width: parent.width
+                        text: window.editor.openHotkeyError
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("用数字键直接打开")
                     unlocks: [resultNumberHintsRow]
                     keywords: qsTr("快捷键;数字键;序号;Ctrl+1;Alt+1;冲突;hotkey").split(";")
@@ -4434,6 +4478,14 @@ Window {
 
             FileTypesSection {
                 id: fileTypesSection
+                page: 3
+                tab: 3
+                width: parent.width
+                editor: window.editor
+            }
+
+            QuickFiltersSection {
+                id: quickFiltersSection
                 page: 3
                 tab: 3
                 width: parent.width

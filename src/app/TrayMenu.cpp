@@ -274,7 +274,7 @@ struct Menu {
     {
         if (value.isEmpty())
             return;
-        const auto icon = phosphor::forSegoe(value);
+        const auto icon = phosphor::resolve(value);
         if (!icon)
             return;
         QFont font(icon->family);

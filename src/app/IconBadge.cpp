@@ -38,7 +38,7 @@ void IconBadge::paint(QPainter* painter)
     // it, and scaled down to half the badge. Icon fonts draw within their em
     // square, so that is what gets centred. Phosphor where it has the icon.
     constexpr qreal kOutlineSize = 256;
-    const std::optional<phosphor::Icon> icon = phosphor::forSegoe(m_glyph);
+    const std::optional<phosphor::Icon> icon = phosphor::resolve(m_glyph);
     const QString text = icon ? icon->text : m_glyph;
     QFont font(icon ? icon->family : m_iconFont);
     font.setPixelSize(int(kOutlineSize));

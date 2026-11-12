@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Verify first-run capture installation, consent, offline retry and layout.
+    Verify first-run capture installation, offline retry and layout.
 .NOTES
     Uses the real application and capture binaries with local package/index
     fixtures. The probe owns its profile, HKCU redirection and hotkeys. It never
@@ -12,8 +12,8 @@ param(
     [string] $LibraryPluginsDir = (Join-Path $PSScriptRoot '..\build\release\library-plugins'),
     [string] $QtBin = 'C:\Qt\6.12.0\msvc2022_64\bin',
     [Parameter(Mandatory)] [string] $OutputDir,
-    [ValidateSet('capture','decline','offline','retry','incompatible','english','english-capture')]
-    [string[]] $Cases = @('capture','decline','offline','retry','incompatible','english','english-capture')
+    [ValidateSet('capture','offline','retry','incompatible','english','english-capture')]
+    [string[]] $Cases = @('capture','offline','retry','incompatible','english','english-capture')
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest

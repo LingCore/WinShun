@@ -423,6 +423,10 @@
 <context>
     <name>AiSettings</name>
     <message>
+        <source>打开结果的备用键</source>
+        <translation>Second key to open a result</translation>
+    </message>
+    <message>
         <source>任务栏上的 Win顺</source>
         <translation>WinShun on the taskbar</translation>
     </message>
@@ -1329,6 +1333,21 @@
     </message>
 </context>
 <context>
+    <name>ClipGroupPicker</name>
+    <message>
+        <source>%1，%2 项</source>
+        <translation>%1, %2 items</translation>
+    </message>
+    <message>
+        <source>没有匹配的分组</source>
+        <translation>No matching groups</translation>
+    </message>
+    <message>
+        <source>还没有分组</source>
+        <translation>No groups yet</translation>
+    </message>
+</context>
+<context>
     <name>ClipImport</name>
     <message>
         <source>未命名</source>
@@ -1464,6 +1483,14 @@
 </context>
 <context>
     <name>ClipboardPage</name>
+    <message>
+        <source>备注，搜它也能找到这一条</source>
+        <translation>A note; searching for it finds this entry too</translation>
+    </message>
+    <message>
+        <source>分组名称</source>
+        <translation>Group name</translation>
+    </message>
     <message>
         <source>搜索剪贴板，支持拼音</source>
         <translation>Search the clipboard</translation>
@@ -2162,12 +2189,12 @@
         <translation>File types</translation>
     </message>
     <message>
-        <source>类型;扩展名;后缀;筛选;前缀;快捷键;folder;filter;type;extension</source>
-        <translation>type;extension;suffix;filter;prefix;shortcut;folder</translation>
+        <source>类型;扩展名;后缀;筛选;前缀;快捷键;搜索范围;目录;folder;filter;type;extension</source>
+        <translation>type;extension;suffix;filter;prefix;shortcut;search scope;directory;folder</translation>
     </message>
     <message>
-        <source>输入“:folder 报告”只找文件夹；类型前缀可自定义，不区分大小写。留空可停用，Ctrl+Tab 仍可切换。</source>
-        <translation>Type “:folder report” to find folders. Prefixes are customizable and case-insensitive. Leave blank to disable; Ctrl+Tab still switches types.</translation>
+        <source>前缀不区分大小写，留空停用。点文件夹图标可绑定一个文件夹（含子文件夹）；例如 cw + csv，输入“cw:”直接列出该范围的 CSV。Ctrl+Tab 仍可切换类型。</source>
+        <translation>Prefixes are case-insensitive; leave blank to disable. Click the folder icon to bind a folder and its subfolders. For example, cw + csv lets “cw:” list CSV files in that scope. Ctrl+Tab still switches types.</translation>
     </message>
     <message>
         <source>恢复默认</source>
@@ -2245,6 +2272,26 @@
         <source>添加</source>
         <translation>Add</translation>
     </message>
+    <message>
+        <source>%1的搜索范围</source>
+        <translation>Search scope for %1</translation>
+    </message>
+    <message>
+        <source>搜索范围</source>
+        <translation>Search scope</translation>
+    </message>
+    <message>
+        <source>不限范围；可填写完整文件夹路径</source>
+        <translation>Anywhere; or enter a full folder path</translation>
+    </message>
+    <message>
+        <source>%1的范围路径（含子文件夹）</source>
+        <translation>Scope path for %1 (including subfolders)</translation>
+    </message>
+    <message>
+        <source>选择文件夹…</source>
+        <translation>Choose folder…</translation>
+    </message>
 </context>
 <context>
     <name>FileViewSwitch</name>
@@ -2270,6 +2317,17 @@
     <message>
         <source>返回</source>
         <translation>Back</translation>
+    </message>
+</context>
+<context>
+    <name>FontPicker</name>
+    <message>
+        <source>默认（阿里巴巴普惠体）</source>
+        <translation>Default (Alibaba PuHuiTi)</translation>
+    </message>
+    <message>
+        <source>界面字体</source>
+        <translation>Interface font</translation>
     </message>
 </context>
 <context>
@@ -2583,6 +2641,26 @@
 <context>
     <name>Main</name>
     <message>
+        <source>最近使用 (%1)</source>
+        <translation>Recently used (%1)</translation>
+    </message>
+    <message>
+        <source>常用软件 (%1)</source>
+        <translation>Often used (%1)</translation>
+    </message>
+    <message>
+        <source>所有程序 (%1)</source>
+        <translation>All apps (%1)</translation>
+    </message>
+    <message>
+        <source>没有符合条件的程序</source>
+        <translation>No app matches</translation>
+    </message>
+    <message>
+        <source>新名字</source>
+        <translation>New name</translation>
+    </message>
+    <message>
         <source>Win顺</source>
         <translation>WinShun</translation>
     </message>
@@ -2643,24 +2721,8 @@
         <translation>Press Tab to switch scope</translation>
     </message>
     <message>
-        <source>最近使用</source>
-        <translation>Recently used</translation>
-    </message>
-    <message>
-        <source>最近使用 (%1)</source>
-        <translation>Recently used (%1)</translation>
-    </message>
-    <message>
-        <source>常用软件 (%1)</source>
-        <translation>Often used (%1)</translation>
-    </message>
-    <message>
-        <source>所有程序 (%1)</source>
-        <translation>All apps (%1)</translation>
-    </message>
-    <message>
-        <source>没有符合条件的程序</source>
-        <translation>No app matches</translation>
+        <source>常用应用</source>
+        <translation>Frequent apps</translation>
     </message>
     <message>
         <source>收藏</source>
@@ -2888,114 +2950,109 @@
     </message>
 </context>
 <context>
-    <name>OnboardingWindow</name>
+    <name>OnboardingRail</name>
     <message>
-        <source>文件名索引自动保存并更新，无需每次重新建立。</source>
-        <translation>Your filename index is saved and kept up to date automatically.</translation>
+        <source>Win顺</source>
+        <translation>WinShun</translation>
     </message>
     <message>
-        <source>选择需要的功能，确认后生效。</source>
-        <translation>Choose what you need. Changes apply when you finish.</translation>
+        <source>识别成功</source>
+        <translation>Recognized</translation>
     </message>
     <message>
-        <source>文件内容搜索</source>
-        <translation>File content search</translation>
+        <source>现在按按看…</source>
+        <translation>Press them now…</translation>
     </message>
     <message>
-        <source>除了文件名，也能搜索文档里的文字。</source>
-        <translation>Search the text inside documents as well as filenames.</translation>
+        <source>连按两下 %1，呼出搜索框</source>
+        <translation>Tap %1 twice to open search</translation>
     </message>
     <message>
-        <source>首次在后台建立索引，会占用 CPU 和磁盘；索引仅保存在本机，之后更新变化的文件。</source>
-        <translation>The first background scan uses CPU and disk. The index stays on this PC; later scans update changed files.</translation>
+        <source>按下这组键，呼出搜索框</source>
+        <translation>Press these keys to open search</translation>
     </message>
     <message>
-        <source>暂不开启也能使用文件名搜索，或在“内容”页手动搜索。</source>
-        <translation>When off, search filenames or search Contents manually.</translation>
+        <source>还没有录制快捷键</source>
+        <translation>No shortcut recorded yet</translation>
     </message>
     <message>
-        <source>连续轻按两次同一侧的按键，即可呼出搜索框。</source>
-        <translation>Tap the same left or right modifier twice to open search.</translation>
-    </message>
-    <message>
-        <source>在本机保存复制过的文字、图片和文件，方便再次粘贴。</source>
-        <translation>Keep copied text, images and file references on this PC to paste again.</translation>
-    </message>
-    <message>
-        <source>默认最多保留 300 条、30 天，可随时清理。</source>
-        <translation>Keep up to 300 entries for 30 days by default. Clear them anytime.</translation>
-    </message>
-    <message>
-        <source>框选截图、标注和贴图。首次开启需下载组件，并确认权限。</source>
-        <translation>Select, annotate and pin screenshots. First use downloads a component and asks for permission.</translation>
-    </message>
-    <message>
-        <source>录制快捷键后即可使用；此处试用仅检测按键。</source>
-        <translation>Record a shortcut to use capture. This test only checks the keys.</translation>
-    </message>
-    <message>
-        <source>默认：文件名搜索 · 双击 Ctrl</source>
-        <translation>Defaults: filename search · double-tap Ctrl</translation>
-    </message>
-    <message>
-        <source>搜索与打开方式</source>
-        <translation>Search and activation</translation>
-    </message>
-    <message>
-        <source>剪贴板与截图</source>
-        <translation>Clipboard and screen capture</translation>
-    </message>
-    <message>
-        <source>第 %1 页，共 2 页</source>
+        <source>第 %1 步，共 2 步</source>
         <translation>Step %1 of 2</translation>
     </message>
     <message>
-        <source>上一步</source>
-        <translation>Back</translation>
+        <source>打开与搜索</source>
+        <translation>Open and search</translation>
     </message>
     <message>
-        <source>下一步</source>
-        <translation>Next</translation>
+        <source>剪贴板与截图</source>
+        <translation>Clipboard and capture</translation>
     </message>
-    <message>
-        <source>设置已保存，之后可随时调整。</source>
-        <translation>Settings saved. You can change them anytime.</translation>
-    </message>
+</context>
+<context>
+    <name>OnboardingWindow</name>
     <message>
         <source>欢迎使用 Win顺</source>
         <translation>Welcome to WinShun</translation>
     </message>
     <message>
-        <source>Win顺 · 首次设置</source>
-        <translation>WinShun · First-time setup</translation>
+        <source>先定下怎么打开</source>
+        <translation>First, how to open it</translation>
+    </message>
+    <message>
+        <source>再挑两样常用的</source>
+        <translation>Then, two handy extras</translation>
+    </message>
+    <message>
+        <source>文件名搜索装好就能用，索引会自动保存和更新。</source>
+        <translation>Filename search works right away; its index is saved and kept up to date.</translation>
+    </message>
+    <message>
+        <source>都可以先不开，需要时再到设置里打开。</source>
+        <translation>Both can stay off for now; turn them on in Settings whenever you like.</translation>
     </message>
     <message>
         <source>打开 Win顺</source>
         <translation>Open WinShun</translation>
     </message>
     <message>
+        <source>连续轻按两次同一侧的按键，或者用一组快捷键。</source>
+        <translation>Tap the same modifier twice (left or right), or use a shortcut.</translation>
+    </message>
+    <message>
         <source>双击 Ctrl</source>
-        <translation>Double-tap Ctrl</translation>
+        <translation>Ctrl ×2</translation>
     </message>
     <message>
         <source>双击 Alt</source>
-        <translation>Double-tap Alt</translation>
+        <translation>Alt ×2</translation>
     </message>
     <message>
         <source>双击 Shift</source>
-        <translation>Double-tap Shift</translation>
+        <translation>Shift ×2</translation>
     </message>
     <message>
-        <source>自定义快捷键</source>
-        <translation>Custom shortcut</translation>
+        <source>快捷键</source>
+        <translation>Shortcut</translation>
     </message>
     <message>
         <source>试试按键</source>
         <translation>Try the keys</translation>
     </message>
     <message>
+        <source>文件内容搜索</source>
+        <translation>File content search</translation>
+    </message>
+    <message>
+        <source>除了文件名，也能搜到文档里的文字。首次会在后台建立索引，占用一些 CPU 和磁盘；索引只保存在本机。</source>
+        <translation>Search the text inside documents as well as filenames. The first background scan uses some CPU and disk; the index stays on this PC.</translation>
+    </message>
+    <message>
         <source>剪贴板历史</source>
         <translation>Clipboard history</translation>
+    </message>
+    <message>
+        <source>在本机保存复制过的文字、图片和文件，方便再次粘贴。默认最多保留 300 条、30 天。</source>
+        <translation>Keep copied text, images and files on this PC to paste again. Up to 300 entries for 30 days by default.</translation>
     </message>
     <message>
         <source>用 Win+V 打开，替代 Windows 剪贴板历史</source>
@@ -3010,16 +3067,36 @@
         <translation>Screen capture</translation>
     </message>
     <message>
+        <source>框选截图、标注和贴图。首次开启会下载组件；打开即允许它读写剪贴板、保存图片。</source>
+        <translation>Select, annotate and pin screenshots. Turning it on downloads a component and lets it use the clipboard and save pictures.</translation>
+    </message>
+    <message>
         <source>试用截图快捷键</source>
         <translation>Try the capture shortcut</translation>
+    </message>
+    <message>
+        <source>都准备好了</source>
+        <translation>All set</translation>
+    </message>
+    <message>
+        <source>截图还没装好</source>
+        <translation>Screen capture isn&apos;t ready yet</translation>
+    </message>
+    <message>
+        <source>马上就好</source>
+        <translation>Almost there</translation>
+    </message>
+    <message>
+        <source>设置已保存，之后可随时调整。</source>
+        <translation>Settings saved. You can change them anytime.</translation>
     </message>
     <message>
         <source>搜索已准备好，截图也可稍后安装。</source>
         <translation>Search is ready. You can install capture later.</translation>
     </message>
     <message>
-        <source>重试</source>
-        <translation>Retry</translation>
+        <source>之后都能在设置里改。</source>
+        <translation>Change anytime in Settings.</translation>
     </message>
     <message>
         <source>稍后安装</source>
@@ -3030,16 +3107,24 @@
         <translation>Set up later</translation>
     </message>
     <message>
+        <source>上一步</source>
+        <translation>Back</translation>
+    </message>
+    <message>
+        <source>重试</source>
+        <translation>Retry</translation>
+    </message>
+    <message>
+        <source>下一步</source>
+        <translation>Next</translation>
+    </message>
+    <message>
         <source>开始使用</source>
         <translation>Get started</translation>
     </message>
 </context>
 <context>
     <name>Panel</name>
-    <message>
-        <source>类型（可多选）</source>
-        <translation>Type (multiple allowed)</translation>
-    </message>
     <message>
         <source>筛选</source>
         <translation>Filters</translation>
@@ -3049,28 +3134,20 @@
         <translation>Clear all</translation>
     </message>
     <message>
-        <source>范围</source>
-        <translation>Scope</translation>
-    </message>
-    <message>
-        <source>全部</source>
-        <translation>All</translation>
-    </message>
-    <message>
-        <source>文件</source>
-        <translation>Files</translation>
-    </message>
-    <message>
         <source>文件夹</source>
         <translation>Folders</translation>
     </message>
     <message>
-        <source>内容</source>
-        <translation>Content</translation>
-    </message>
-    <message>
         <source>不限</source>
         <translation>Any</translation>
+    </message>
+    <message>
+        <source>快捷筛选</source>
+        <translation>Quick filters</translation>
+    </message>
+    <message>
+        <source>新建快捷筛选</source>
+        <translation>New quick filter</translation>
     </message>
     <message>
         <source>修改时间</source>
@@ -3095,6 +3172,18 @@
     <message>
         <source>自定义</source>
         <translation>Custom</translation>
+    </message>
+    <message>
+        <source>筛选放到左侧</source>
+        <translation>Filters at the left</translation>
+    </message>
+    <message>
+        <source>筛选放到顶部</source>
+        <translation>Filters at the top</translation>
+    </message>
+    <message>
+        <source>全部类型</source>
+        <translation>All kinds</translation>
     </message>
     <message>
         <source>起 2026-01-01</source>
@@ -3141,6 +3230,10 @@
         <translation>Choose a folder…</translation>
     </message>
     <message>
+        <source>时间</source>
+        <translation>Date</translation>
+    </message>
+    <message>
         <source>正在搜索文件内容…</source>
         <translation>Searching file contents…</translation>
     </message>
@@ -3155,10 +3248,6 @@
     <message>
         <source>没有符合筛选条件的文件</source>
         <translation>No files match the filters</translation>
-    </message>
-    <message>
-        <source>输入名称或拼音，或在左侧加筛选条件</source>
-        <translation>Type a name or pinyin, or add filters on the left</translation>
     </message>
     <message>
         <source>恢复默认列</source>
@@ -3177,12 +3266,20 @@
         <translation>Folder sizes are index estimates and exclude unindexed content; drag a separator to resize</translation>
     </message>
     <message>
+        <source>把常用的搜索条件存起来，点一下就套用，例如 %1 排除回收站</source>
+        <translation>Save a search you use often and apply it at a click, such as %1 to leave out the Recycle Bin</translation>
+    </message>
+    <message>
         <source>收起内容详情</source>
         <translation>Hide content details</translation>
     </message>
     <message>
         <source>显示内容详情</source>
         <translation>Show content details</translation>
+    </message>
+    <message>
+        <source>输入名称或拼音，或加筛选条件</source>
+        <translation>Type a name or pinyin, or add filters</translation>
     </message>
     <message>
         <source>内容详情宽度，左右方向键调整</source>
@@ -3262,6 +3359,10 @@
         <translation>Bundled</translation>
     </message>
     <message>
+        <source>以管理员身份重新启动</source>
+        <translation>Restart as administrator</translation>
+    </message>
+    <message>
         <source>无</source>
         <translation>None</translation>
     </message>
@@ -3280,10 +3381,6 @@
     <message>
         <source>未设置</source>
         <translation>Not set</translation>
-    </message>
-    <message>
-        <source>关键字</source>
-        <translation>Keywords</translation>
     </message>
     <message>
         <source>关键字（多个用空格分开）</source>
@@ -3722,6 +3819,32 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     </message>
 </context>
 <context>
+    <name>PluginReadme</name>
+    <message>
+        <source>无法读取插件说明，请确认插件文件完整</source>
+        <translation>Cannot read the guide. Check that the plugin files are complete.</translation>
+    </message>
+    <message>
+        <source>插件说明超过 1 MB，暂时无法显示</source>
+        <translation>This guide is larger than 1 MB and cannot be displayed.</translation>
+    </message>
+    <message>
+        <source>读取插件说明失败</source>
+        <translation>Could not read the plugin guide.</translation>
+    </message>
+</context>
+<context>
+    <name>PluginReadmeDialog</name>
+    <message>
+        <source>%1 · 使用说明</source>
+        <translation>%1 · User guide</translation>
+    </message>
+    <message>
+        <source>关闭说明（Esc / Q）</source>
+        <translation>Close guide (Esc / Q)</translation>
+    </message>
+</context>
+<context>
     <name>PluginsPreview</name>
     <message>
         <source>插件</source>
@@ -4063,6 +4186,96 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     </message>
 </context>
 <context>
+    <name>QueryHistoryPicker</name>
+    <message>
+        <source>搜索历史 · %1</source>
+        <translation>Search history · %1</translation>
+    </message>
+    <message>
+        <source>移除这条搜索记录</source>
+        <translation>Remove this query</translation>
+    </message>
+    <message>
+        <source>还没有搜索记录</source>
+        <translation>No search history yet</translation>
+    </message>
+</context>
+<context>
+    <name>QuickFiltersSection</name>
+    <message>
+        <source>快捷筛选</source>
+        <translation>Quick filters</translation>
+    </message>
+    <message>
+        <source>筛选器;过滤;排除;条件;保存;常用;回收站;面板;侧栏;filter;exclude;saved search</source>
+        <translation>filter;exclude;condition;saved search;recycle bin;panel;side bar;custom filter</translation>
+    </message>
+    <message>
+        <source>把常用的搜索条件存起来，在搜索面板的侧栏点一下就套用，再点一下取消；同时开几个就要全部满足。条件和搜索框里的写法一样：%1 排除回收站里的东西，%2 排除这类文件夹，%3 只看大 PDF。填了搜索前缀（例如 nobin），在搜索框里输入“:nobin 报告”也能套用，不用展开面板。</source>
+        <translation>Save searches you use often: a click in the search panel&apos;s side bar applies one, another click removes it, and with several on a file must fit them all. Written as in the search box: %1 leaves out what is in the Recycle Bin, %2 such folders, %3 shows large PDFs only. Give one a search prefix (say nobin) and ":nobin report" in the search box applies it too, without the panel.</translation>
+    </message>
+    <message>
+        <source>名称</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <source>条件</source>
+        <translation>Query</translation>
+    </message>
+    <message>
+        <source>搜索前缀（:）</source>
+        <translation>Prefix (:)</translation>
+    </message>
+    <message>
+        <source>筛选名称</source>
+        <translation>Filter name</translation>
+    </message>
+    <message>
+        <source>%1的条件</source>
+        <translation>Query of %1</translation>
+    </message>
+    <message>
+        <source>未设置</source>
+        <translation>Not set</translation>
+    </message>
+    <message>
+        <source>%1的搜索前缀</source>
+        <translation>Search prefix for %1</translation>
+    </message>
+    <message>
+        <source>上移</source>
+        <translation>Move up</translation>
+    </message>
+    <message>
+        <source>下移</source>
+        <translation>Move down</translation>
+    </message>
+    <message>
+        <source>删除</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>名称，例如 排除回收站</source>
+        <translation>Name, e.g. No Recycle Bin</translation>
+    </message>
+    <message>
+        <source>新筛选的名称</source>
+        <translation>Name of the new filter</translation>
+    </message>
+    <message>
+        <source>条件，例如 %1</source>
+        <translation>Query, e.g. %1</translation>
+    </message>
+    <message>
+        <source>新筛选的条件</source>
+        <translation>Query of the new filter</translation>
+    </message>
+    <message>
+        <source>添加</source>
+        <translation>Add</translation>
+    </message>
+</context>
+<context>
     <name>ResultRow</name>
     <message>
         <source>打开设置</source>
@@ -4095,10 +4308,6 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>建议</source>
         <translation>Suggestion</translation>
-    </message>
-    <message>
-        <source>应用</source>
-        <translation>App</translation>
     </message>
     <message>
         <source>系统</source>
@@ -4237,6 +4446,18 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>Stop keeping visible</translation>
     </message>
     <message>
+        <source>隐藏筛选</source>
+        <translation>Hide filters</translation>
+    </message>
+    <message>
+        <source>显示筛选（筛选仍生效）</source>
+        <translation>Show filters (still applied)</translation>
+    </message>
+    <message>
+        <source>显示筛选</source>
+        <translation>Show filters</translation>
+    </message>
+    <message>
         <source>切换搜索范围</source>
         <translation>Switch search scope</translation>
     </message>
@@ -4273,10 +4494,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Unpin</translation>
     </message>
     <message>
-        <source>钉住</source>
-        <translation>Pin</translation>
-    </message>
-    <message>
         <source>收回搜索框</source>
         <translation>Collapse to the search box</translation>
     </message>
@@ -4287,18 +4504,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>搜索 %1</source>
         <translation>Search %1</translation>
-    </message>
-    <message>
-        <source>隐藏筛选侧栏</source>
-        <translation>Hide filter sidebar</translation>
-    </message>
-    <message>
-        <source>显示筛选侧栏</source>
-        <translation>Show filter sidebar</translation>
-    </message>
-    <message>
-        <source>显示筛选侧栏（筛选仍生效）</source>
-        <translation>Show filter sidebar (filters are still active)</translation>
     </message>
     <message>
         <source>搜索历史</source>
@@ -4435,6 +4640,22 @@ Double-click grip: expand/collapse search panel</translation>
 </context>
 <context>
     <name>SettingsWindow</name>
+    <message>
+        <source>打开结果的备用键</source>
+        <translation>Second key to open a result</translation>
+    </message>
+    <message>
+        <source>打开;回车;Enter;备用;左手;快捷键;空格;open;shortcut</source>
+        <translation>open;enter;Enter;second;left hand;shortcut;hotkey;space</translation>
+    </message>
+    <message>
+        <source>和 Enter 一样打开选中的结果，Enter 照常可用。录一个左手顺手的键，比如 Alt+Q 或 F1；空格不行，它要用来分开几个词。Backspace 清除，Esc 取消。</source>
+        <translation>Opens the selected result as Enter does; Enter keeps working. Record a key your left hand reaches, such as Alt+Q or F1; not Space, which separates the words of a search. Backspace clears, Esc cancels.</translation>
+    </message>
+    <message>
+        <source>未设置</source>
+        <translation>Not set</translation>
+    </message>
     <message>
         <source>界面字体</source>
         <translation>Interface font</translation>
@@ -5733,10 +5954,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>The index service reads the disks&apos; master file tables and change journals; WinShun runs with your normal rights</translation>
     </message>
     <message>
-        <source>Win顺 以管理员身份运行，自己读取主文件表和变更日志；开机自启也以管理员身份</source>
-        <translation>WinShun runs as administrator and reads the master file tables and change journals itself; it starts at login as administrator too</translation>
-    </message>
-    <message>
         <source>不需要任何权限，逐个文件夹遍历，建索引慢一些</source>
         <translation>No rights needed: the folders are walked one by one, which builds the index more slowly</translation>
     </message>
@@ -5747,10 +5964,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>以管理员身份重新启动</source>
         <translation>Restart as administrator</translation>
-    </message>
-    <message>
-        <source>便携版的索引服务</source>
-        <translation>Index service for the portable copy</translation>
     </message>
     <message>
         <source>便携;安装服务;更新服务;卸载服务;索引服务;没有管理员权限;装不了;portable;service</source>
@@ -6365,14 +6578,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Restore</translation>
     </message>
     <message>
-        <source>记住打开过的项目</source>
-        <translation>Remember what you open</translation>
-    </message>
-    <message>
-        <source>清除最近使用记录</source>
-        <translation>Clear recent items</translation>
-    </message>
-    <message>
         <source>没有记录</source>
         <translation>None</translation>
     </message>
@@ -6501,10 +6706,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>共 %1 条，“固定”和分组里的会保留</source>
         <translation>%1 entries; pinned and grouped ones are kept</translation>
-    </message>
-    <message>
-        <source>共 %1 项；在搜索框里右键一项可以单独移除</source>
-        <translation>%1 items; right-click one in the search box to remove just that one</translation>
     </message>
     <message>
         <source>切换时资源管理器会重启，打开的文件夹窗口会关闭</source>
@@ -6668,10 +6869,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Add games that are not recognized by themselves</translation>
     </message>
     <message>
-        <source>没输入时列出最近打开的项目；搜索时，你输入同样的字常打开的排在前面</source>
-        <translation>Lists what you opened lately while nothing is typed; when searching, what you often open for the same text comes first</translation>
-    </message>
-    <message>
         <source>游戏全屏或藏起鼠标时不打开，免得蹲下时误触</source>
         <translation>Not while a game is full screen or hides the pointer, so crouching doesn’t open it</translation>
     </message>
@@ -6765,10 +6962,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Type a keyword and press Enter to open the page; when the address has %s, add a space and words after the keyword to search the site.</translation>
     </message>
     <message>
-        <source>文件类型</source>
-        <translation>File types</translation>
-    </message>
-    <message>
         <source>诊断日志</source>
         <translation>Diagnostic logs</translation>
     </message>
@@ -6799,6 +6992,10 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>按键一览</source>
         <translation>Keys at a glance</translation>
+    </message>
+    <message>
+        <source>类型与筛选</source>
+        <translation>Kinds and filters</translation>
     </message>
     <message>
         <source>双击 %1</source>
@@ -6855,10 +7052,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>所有快捷键都在这里；带“去设置”的可以自己改。</source>
         <translation>All shortcuts are here; the ones with “Go to settings” can be changed.</translation>
-    </message>
-    <message>
-        <source>未设置</source>
-        <translation>Not set</translation>
     </message>
     <message>
         <source>界面风格</source>
@@ -7408,10 +7601,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Network, storage and diagnostics</translation>
     </message>
     <message>
-        <source>连按两下 %1，打开或关闭搜索框</source>
-        <translation>Press %1 twice quickly to open or close the search box</translation>
-    </message>
-    <message>
         <source>输入法用 Shift 切换中英文时，双击会切换两次并回到原状态。管理员或部分输入法窗口中需要 Win顺 服务支持</source>
         <translation>When using Shift to switch IME language, double-pressing switches twice and returns to the initial state. Administrator windows or certain IMEs require the WinShun service.</translation>
     </message>
@@ -7855,6 +8044,10 @@ Double-click grip: expand/collapse search panel</translation>
 </context>
 <context>
     <name>Shortcuts</name>
+    <message>
+        <source>打开选中的结果，和 Enter 一样</source>
+        <translation>Open the selected result, as Enter does</translation>
+    </message>
     <message>
         <source>打开</source>
         <translation>Open</translation>
@@ -9726,6 +9919,14 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Move to “%1”</translation>
     </message>
     <message>
+        <source>加备注…</source>
+        <translation>Add a note…</translation>
+    </message>
+    <message>
+        <source>改备注…</source>
+        <translation>Edit the note…</translation>
+    </message>
+    <message>
         <source>移到新分组…</source>
         <translation>Move to a new group…</translation>
     </message>
@@ -10691,6 +10892,10 @@ Content index: %5</translation>
         <translation>Copy path</translation>
     </message>
     <message>
+        <source>更多…</source>
+        <translation>More…</translation>
+    </message>
+    <message>
         <source>在此打开命令提示符</source>
         <translation>Open Command Prompt here</translation>
     </message>
@@ -11361,6 +11566,42 @@ Content index: %5</translation>
         <translation>“%1” was not deleted</translation>
     </message>
     <message>
+        <source>重命名</source>
+        <translation>Rename</translation>
+    </message>
+    <message>
+        <source>名字不能是空的</source>
+        <translation>The name cannot be empty</translation>
+    </message>
+    <message>
+        <source>名字里不能有 \ / : * ? &quot; &lt; &gt; |</source>
+        <translation>A name cannot have \ / : * ? &quot; &lt; &gt; | in it</translation>
+    </message>
+    <message>
+        <source>“%1”是 Windows 保留的名字，换一个</source>
+        <translation>“%1” is a name Windows keeps for itself; choose another</translation>
+    </message>
+    <message>
+        <source>名字不能以句点结尾</source>
+        <translation>A name cannot end with a dot</translation>
+    </message>
+    <message>
+        <source>名字太长了</source>
+        <translation>The name is too long</translation>
+    </message>
+    <message>
+        <source>这里已经有“%1”了，换一个名字</source>
+        <translation>There is a “%1” here already; choose another name</translation>
+    </message>
+    <message>
+        <source>没有重命名“%1”</source>
+        <translation>“%1” was not renamed</translation>
+    </message>
+    <message>
+        <source>已重命名为“%1”</source>
+        <translation>Renamed to “%1”</translation>
+    </message>
+    <message>
         <source>已将“%1”移到回收站</source>
         <translation>Moved “%1” to the Recycle Bin</translation>
     </message>
@@ -11425,6 +11666,10 @@ Content index: %5</translation>
     <message>
         <source>正在等 %1…</source>
         <translation>Waiting for %1…</translation>
+    </message>
+    <message>
+        <source>已清除搜索和最近使用记录</source>
+        <translation>Searches and recent items cleared</translation>
     </message>
     <message>
         <source>复制并粘贴</source>
@@ -11775,10 +12020,6 @@ Content index: %5</translation>
         </translation>
     </message>
     <message>
-        <source>已清除最近使用记录</source>
-        <translation>Recent items cleared</translation>
-    </message>
-    <message>
         <source>已复制网址</source>
         <translation>Address copied</translation>
     </message>
@@ -11956,10 +12197,6 @@ Content index: %5</translation>
         <translation>Keys recognized. They will work after you get started.</translation>
     </message>
     <message>
-        <source>请确认截图组件所需的权限。</source>
-        <translation>Review the capture component&apos;s permissions.</translation>
-    </message>
-    <message>
         <source>无法创建截图配置目录。可稍后在“设置 → 插件”中安装。</source>
         <translation>Could not create the capture configuration folder. Install later in Settings → Plugins.</translation>
     </message>
@@ -11998,10 +12235,6 @@ Content index: %5</translation>
     <message>
         <source>正在安装截图组件…</source>
         <translation>Installing screen capture…</translation>
-    </message>
-    <message>
-        <source>截图尚未启用。可以重试，或稍后在“设置 → 插件”中开启。</source>
-        <translation>Capture is not enabled yet. Retry, or enable it later in Settings → Plugins.</translation>
     </message>
 </context>
 <context>
@@ -12696,6 +12929,10 @@ Content index: %5</translation>
         <translation>Confirm once to let it run as administrator. Until then it runs with normal rights</translation>
     </message>
     <message>
+        <source>Win顺 现在以普通权限运行，这个插件也一样。要让它以管理员身份运行，先以管理员身份重新启动 Win顺；想每次都这样，在“搜索范围 › 磁盘 › 索引方式”里选“管理员直读”</source>
+        <translation>WinShun is running with normal rights, and so is this plugin. To let it run as administrator, restart WinShun as administrator; to have that every time, choose “Direct (administrator)” under Search scope › Drives › Index access</translation>
+    </message>
+    <message>
         <source>不能以管理员身份运行：%1</source>
         <translation>Cannot run as administrator: %1</translation>
     </message>
@@ -12848,6 +13085,10 @@ Content index: %5</translation>
         <translation>%1 · Muted; this unmutes it too</translation>
     </message>
     <message>
+        <source>Windows 会请你确认一次</source>
+        <translation>Windows asks you to confirm once</translation>
+    </message>
+    <message>
         <source>Microsoft Store 应用</source>
         <translation>Microsoft Store app</translation>
     </message>
@@ -12946,10 +13187,6 @@ Content index: %5</translation>
         <source>已打开</source>
         <translation>Open</translation>
     </message>
-    <message>
-        <source>窗口</source>
-        <translation>Window</translation>
-    </message>
 </context>
 <context>
     <name>ws::Settings</name>
@@ -12997,9 +13234,25 @@ Content index: %5</translation>
         <source>音乐</source>
         <translation>Music</translation>
     </message>
+    <message>
+        <source>请填写筛选条件，例如 !$RECYCLE.BIN\ 或 ext:pdf size:&gt;1mb</source>
+        <translation>Enter a query, such as !$RECYCLE.BIN\ or ext:pdf size:&gt;1mb</translation>
+    </message>
 </context>
 <context>
     <name>ws::SettingsEditor</name>
+    <message>
+        <source>这个快捷键已用来打开结果，请换一个</source>
+        <translation>This shortcut already opens results; choose another</translation>
+    </message>
+    <message>
+        <source>空格要用来分开几个词，请换一个</source>
+        <translation>Space separates the words of a search; choose another</translation>
+    </message>
+    <message>
+        <source>这个快捷键已用于预览，请换一个</source>
+        <translation>This shortcut is the preview&apos;s; choose another</translation>
+    </message>
     <message>
         <source>选择不需要搜索的文件夹</source>
         <translation>Choose a folder to leave out of searches</translation>
@@ -13300,6 +13553,18 @@ Content index: %5</translation>
     <message>
         <source>。放在分组里，不会被自动删除</source>
         <translation>. They are in a group and are never deleted automatically</translation>
+    </message>
+    <message>
+        <source>已有快捷筛选使用这个前缀</source>
+        <translation>A quick filter already uses this prefix</translation>
+    </message>
+    <message>
+        <source>给筛选起个名字</source>
+        <translation>Give the filter a name</translation>
+    </message>
+    <message>
+        <source>已有这个名字</source>
+        <translation>That name is taken</translation>
     </message>
     <message>
         <source>还没有网页搜索可以导出</source>
@@ -13725,6 +13990,14 @@ Content index: %5</translation>
     <message>
         <source>类型已不存在</source>
         <translation>This file type no longer exists</translation>
+    </message>
+    <message>
+        <source>填写完整的文件夹路径，例如 H:\__work__，留空则不限范围</source>
+        <translation>Enter a full folder path, such as H:\__work__; leave blank to search anywhere</translation>
+    </message>
+    <message>
+        <source>选择这个文件类型的搜索范围（包含子文件夹）</source>
+        <translation>Choose the search folder for this file type (including subfolders)</translation>
     </message>
     <message>
         <source>前缀最多 32 个字符，只能包含文字、数字、下划线和连字符</source>
@@ -14168,6 +14441,10 @@ Content index: %5</translation>
         <source>现在仍是 %1，照常可用。可以稍后再试一次。</source>
         <translation>It is still %1 and works as before. You can try again later.</translation>
     </message>
+    <message>
+        <source>%1 还占着 Win顺 的文件。关掉它（关不掉就重启电脑）再试；现在仍是 %2，照常可用。</source>
+        <translation>%1 still holds WinShun’s files. Close it (or restart the PC if it won’t close) and try again; it is still %2 and works as before.</translation>
+    </message>
 </context>
 <context>
     <name>ws::backupfiles</name>
@@ -14268,110 +14545,6 @@ Content index: %5</translation>
     <message>
         <source>无法完成增强识别安装，原来的文件已保留。</source>
         <translation>Installation could not finish. Your existing recognition files have been kept.</translation>
-    </message>
-</context>
-<context>
-    <name>FontPicker</name>
-    <message>
-        <source>默认（阿里巴巴普惠体）</source>
-        <translation>Default (Alibaba PuHuiTi)</translation>
-    </message>
-    <message>
-        <source>界面字体</source>
-        <translation>Interface font</translation>
-    </message>
-</context>
-<context>
-    <name>ClipGroupPicker</name>
-    <message>
-        <source>%1，%2 项</source>
-        <translation>%1, %2 items</translation>
-    </message>
-    <message>
-        <source>没有匹配的分组</source>
-        <translation>No matching groups</translation>
-    </message>
-    <message>
-        <source>还没有分组</source>
-        <translation>No groups yet</translation>
-    </message>
-</context>
-<context>
-    <name>FolderMenu</name>
-    <message>
-        <source>更多…</source>
-        <translation>More…</translation>
-    </message>
-</context>
-<context>
-    <name>QueryHistoryPicker</name>
-    <message>
-        <source>搜索历史 · %1</source>
-        <translation>Search history · %1</translation>
-    </message>
-    <message>
-        <source>移除这条搜索记录</source>
-        <translation>Remove this query</translation>
-    </message>
-    <message>
-        <source>还没有搜索记录</source>
-        <translation>No search history yet</translation>
-    </message>
-</context>
-<context>
-    <name>PluginReadmeDialog</name>
-    <message>
-        <source>%1 · 使用说明</source>
-        <translation>%1 · User guide</translation>
-    </message>
-    <message>
-        <source>关闭说明（Esc / Q）</source>
-        <translation>Close guide (Esc / Q)</translation>
-    </message>
-</context>
-<context>
-    <name>PluginReadme</name>
-    <message>
-        <source>无法读取插件说明，请确认插件文件完整</source>
-        <translation>Cannot read the guide. Check that the plugin files are complete.</translation>
-    </message>
-    <message>
-        <source>插件说明超过 1 MB，暂时无法显示</source>
-        <translation>This guide is larger than 1 MB and cannot be displayed.</translation>
-    </message>
-    <message>
-        <source>读取插件说明失败</source>
-        <translation>Could not read the plugin guide.</translation>
-    </message>
-</context>
-<context>
-    <name>Launcher</name>
-    <message>
-        <source>已清除搜索和最近使用记录</source>
-        <translation>Searches and recent items cleared</translation>
-    </message>
-</context>
-<context>
-    <name>AppsGrid</name>
-    <message>
-        <source>最近使用</source>
-        <translation>Recently used</translation>
-    </message>
-    <message>
-        <source>展开 (%1)</source>
-        <translation>Expand (%1)</translation>
-    </message>
-    <message>
-        <source>收起</source>
-        <translation>Collapse</translation>
-    </message>
-    <message>
-        <source>没有叫“%1”的程序</source>
-        <translation>No app named “%1”</translation>
-    </message>
-    <message>
-        <source>还没有常用的程序</source>
-        <translation>No apps used yet</translation>
     </message>
 </context>
 </TS>

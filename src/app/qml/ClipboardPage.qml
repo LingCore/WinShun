@@ -358,8 +358,16 @@ Item {
     // ones), -2 a new empty one, -1 a new name for `group`.
     property int namingRow: -2
     property real namingGroup: 0
+    // The same box for an entry's note (GitHub #267): the entry's id, 0 while it names a group.
+    property real notingId: 0
     function commitName(name) {
         tabs.stopNaming()
+        if (notingId > 0) { // an empty one takes the note away
+            clipboard.setNote(notingId, name)
+            notingId = 0
+            focusSearch()
+            return
+        }
         if (name.length > 0) {
             if (namingGroup > 0) {
                 clipboard.renameGroup(namingGroup, name)
@@ -612,7 +620,16 @@ Item {
             else
                 pinyinHintTimer.restart()
         }
+        function onNoteRequested(id, note) {
+            page.notingId = id
+            tabs.namePlaceholder = qsTr("备注，搜它也能找到这一条")
+            tabs.nameLength = 60
+            tabs.startNaming(note)
+        }
         function onGroupNameRequested(row, group) {
+            page.notingId = 0
+            tabs.namePlaceholder = qsTr("分组名称")
+            tabs.nameLength = 40
             page.namingRow = row
             page.namingGroup = group
             let name = ""
@@ -828,6 +845,7 @@ Item {
             clipboard: page.clipboard
             onNameCommitted: (name) => page.commitName(name)
             onNameCancelled: {
+                page.notingId = 0
                 tabs.stopNaming()
                 page.focusSearch()
             }

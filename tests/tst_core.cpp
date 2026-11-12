@@ -13,6 +13,7 @@
 #include "MissingFiles.h"
 #include "DoubleTapDetector.h"
 #include "Extract.h"
+#include "Render.h"
 #include "GameGuard.h"
 #include "JournalBudget.h"
 #include "KeyListenerProtocol.h"
@@ -44,6 +45,7 @@
 #include "ShareReach.h"
 #include "Snapshot.h"
 #include "SwitchCommand.h"
+#include "RenameCheck.h"
 #include "SystemCatalog.h"
 #include "TextUtil.h"
 #include "Unc.h"
@@ -433,6 +435,45 @@ QByteArray makePdf(const std::vector<std::vector<std::string>>& pages)
     pdf += "trailer\n<< /Size " + std::to_string(objects.size() + 1) + " /Root 1 0 R >>\nstartxref\n"
         + std::to_string(xref) + "\n%%EOF\n";
     return QByteArray::fromStdString(pdf);
+}
+
+// A Photoshop file with nothing but its flattened picture: `planes` one
+// after another, raw or PackBits (each row as one literal run).
+std::string makePsd(int version, int mode, int depth, quint32 width, quint32 height,
+    const std::vector<std::string>& planes, bool packed, const std::string& palette = {})
+{
+    std::string psd = "8BPS";
+    const auto big = [&](quint64 value, int size) {
+        for (int i = size - 1; i >= 0; --i)
+            psd.push_back(static_cast<char>(value >> (8 * i)));
+    };
+    big(static_cast<quint64>(version), 2);
+    psd.append(6, '\0');
+    big(planes.size(), 2);
+    big(height, 4);
+    big(width, 4);
+    big(static_cast<quint64>(depth), 2);
+    big(static_cast<quint64>(mode), 2);
+    big(palette.size(), 4);
+    psd += palette;
+    big(0, 4); // resources
+    big(0, version == 2 ? 8 : 4); // layers
+    big(packed ? 1 : 0, 2);
+    const std::size_t row = width * static_cast<std::size_t>(depth / 8);
+    if (packed) {
+        for (std::size_t i = 0; i < planes.size() * height; ++i)
+            big(row + 1, version == 2 ? 4 : 2);
+        for (const std::string& plane : planes) {
+            for (quint32 y = 0; y < height; ++y) {
+                psd.push_back(static_cast<char>(row - 1)); // a literal run of `row` bytes
+                psd += plane.substr(y * row, row);
+            }
+        }
+    } else {
+        for (const std::string& plane : planes)
+            psd += plane;
+    }
+    return psd;
 }
 
 QByteArray le16(std::initializer_list<quint16> values)
@@ -4367,6 +4408,143 @@ private slots:
         QCOMPARE(underUsers.match(t.index, t.index.entry(t.report)), -1);
         QVERIFY(underUsers.match(t.index, t.index.entry(t.windows)) >= 0);
         QVERIFY(underUsers.match(t.index, t.index.entry(t.users)) >= 0); // the folder itself stays
+    }
+
+    // The panel's quick filters (ParsedQuery::conditions): queries of their
+    // own that a file or folder must fit as well, every one of them.
+    void quickFilterConditions()
+    {
+        const auto with = [](const QString& text, const QStringList& conditions, bool regex = false) {
+            ws::ParsedQuery query = ws::parseQuery(text, regex);
+            query.conditions = ws::parseConditions(conditions);
+            return query;
+        };
+        const QString bin = u"!$RECYCLE.BIN\\"_s;
+        const QString kept = u"D:\\work\\report.docx"_s;
+        const QString binned = u"D:\\$Recycle.Bin\\S-1-5-21\\report.docx"_s;
+
+        const NameMatcher matcher(with(u"report"_s, {bin}));
+        QCOMPARE(matcher.matchPath(binned, false), -1);
+        QVERIFY(matcher.matchPath(kept, false) >= 0);
+        // Narrowing only: what it lets through ranks as without it.
+        QCOMPARE(matcher.matchPath(kept, false), NameMatcher(ws::parseQuery(u"report"_s)).matchPath(kept, false));
+        QVERIFY(with(u"report"_s, {bin}).highlights == ws::parseQuery(u"report"_s).highlights);
+
+        // "a | b" typed: over every branch, not the last alone.
+        const NameMatcher either(with(u"report | notes"_s, {bin}));
+        QCOMPARE(either.matchPath(u"D:\\$RECYCLE.BIN\\report.txt"_s, false), -1);
+        QCOMPARE(either.matchPath(u"D:\\$RECYCLE.BIN\\notes.txt"_s, false), -1);
+        QVERIFY(either.matchPath(u"D:\\a\\report.txt"_s, false) >= 0);
+        QVERIFY(either.matchPath(u"D:\\a\\notes.txt"_s, false) >= 0);
+
+        // Regex mode reads what is typed, never the filter.
+        const NameMatcher regex(with(u"^rep.*x$"_s, {bin}, true));
+        QCOMPARE(regex.matchPath(binned, false), -1);
+        QVERIFY(regex.matchPath(kept, false) >= 0);
+
+        // Several: all of them, each with its own "|".
+        const NameMatcher both(with(u"report"_s, {bin, u"ext:pdf | ext:docx"_s}));
+        QVERIFY(both.matchPath(kept, false) >= 0);
+        QVERIFY(both.matchPath(u"D:\\work\\report.pdf"_s, false) >= 0);
+        QCOMPARE(both.matchPath(u"D:\\work\\report.txt"_s, false), -1);
+        QCOMPARE(both.matchPath(u"D:\\$Recycle.Bin\\report.pdf"_s, false), -1);
+        // With ext: typed as well: both, not either.
+        QCOMPARE(NameMatcher(with(u"report ext:txt"_s, {u"ext:pdf"_s})).matchPath(u"D:\\work\\report.txt"_s, false), -1);
+        // size: in one: files of that size, never a folder (as typed).
+        const NameMatcher large(with(u"report"_s, {u"size:>1mb"_s}));
+        QVERIFY(large.matchPath(kept, false, 0, packSize(5 << 20)) >= 0);
+        QCOMPARE(large.matchPath(kept, false, 0, packSize(100)), -1);
+        QCOMPARE(large.matchPath(u"D:\\work\\report"_s, true), -1);
+
+        // Nothing typed: nothing to find by, yet the filters hold for what is listed.
+        const ws::ParsedQuery none = with({}, {bin});
+        QVERIFY(none.isEmpty());
+        QVERIFY(!none.hasFilters());
+        const NameMatcher listing(none);
+        QVERIFY(listing.matchPath(kept, false) >= 0);
+        QCOMPARE(listing.matchPath(binned, false), -1);
+
+        // One that says nothing or cannot be read is none: the rest hold.
+        QCOMPARE(ws::parseConditions({u"regex:("_s, u"   "_s, bin}).size(), std::size_t(1));
+        QVERIFY(ws::parseConditions({}).empty());
+
+        // An app or a place is in no folder; ext: leaves it out, as typed.
+        QVERIFY(matcher.matchName("report") >= 0);
+        QCOMPARE(NameMatcher(with(u"report"_s, {u"ext:pdf"_s})).matchName("report"), -1);
+
+        // On the index; and a name is never ruled out ahead of an entry that fits.
+        SampleTree t;
+        const NameMatcher notUsers(with(u"report"_s, {u"!users\\"_s}));
+        QCOMPARE(notUsers.match(t.index, t.index.entry(t.report)), -1);
+        const NameMatcher notWindows(with(u"report"_s, {u"!windows\\"_s}));
+        QVERIFY(notWindows.match(t.index, t.index.entry(t.report)) >= 0);
+        QVERIFY(notWindows.nameMayMatch(t.index.name(t.index.entry(t.report)), 4, false));
+        const NameMatcher listed(with({}, {u"!users\\"_s}));
+        QCOMPARE(listed.match(t.index, t.index.entry(t.notes)), -1);
+        QVERIFY(listed.match(t.index, t.index.entry(t.windows)) >= 0);
+        QVERIFY(listed.match(t.index, t.index.entry(t.users)) >= 0); // the folder itself stays
+    }
+
+    // The same through the engine (Request::conditions): names typed, and the
+    // panel's list with nothing typed.
+    void quickFilterSearch()
+    {
+        const QString root = u"F:\\wsquick\\"_s;
+        QTemporaryDir dir;
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.path() + u"/index"_s, options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId f = index->addRoot("F:");
+            const EntryId top = index->add(f, "wsquick", EntryFlag::Directory);
+            const EntryId work = index->add(top, "work", EntryFlag::Directory);
+            const EntryId bin = index->add(top, "$RECYCLE.BIN", EntryFlag::Directory);
+            const EntryId sid = index->add(bin, "S-1-5-21", EntryFlag::Directory);
+            index->add(work, "report.docx", 0);
+            index->add(work, "report.pdf", 0);
+            index->add(bin, "report.docx", 0);
+            index->add(sid, "report.pdf", 0);
+            FileTime t = 1'700'000'000;
+            for (std::size_t i = 0; i < index->slotCount(); ++i)
+                index->setModified(static_cast<EntryId>(i), t += 100);
+        }
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const auto search = [&](const QString& text, const QStringList& conditions, bool regex = false) {
+            spy.clear();
+            SearchEngine::Request request;
+            request.text = text;
+            request.scope = Scope::Files;
+            request.conditions = conditions;
+            request.regex = regex;
+            request.browse = true; // the panel
+            request.limit = 100;
+            engine.submit(std::move(request));
+            QStringList names;
+            if (!spy.wait(5000))
+                return QStringList {u"(no results)"_s};
+            for (const SearchResult& r : spy.at(0).at(1).value<SearchResults>()) {
+                if (r.path.startsWith(root, Qt::CaseInsensitive) && !r.isDir)
+                    names.append(r.path.mid(root.size()));
+            }
+            names.sort();
+            return names;
+        };
+        const QString bin = u"!$recycle.bin\\"_s; // any case
+        const QStringList all {u"$RECYCLE.BIN\\S-1-5-21\\report.pdf"_s, u"$RECYCLE.BIN\\report.docx"_s, u"work\\report.docx"_s, u"work\\report.pdf"_s};
+        QCOMPARE(search(u"report"_s, {}), all);
+        QCOMPARE(search(u"report"_s, {bin}), (QStringList {u"work\\report.docx"_s, u"work\\report.pdf"_s}));
+        QCOMPARE(search(u"report"_s, {bin, u"ext:pdf"_s}), (QStringList {u"work\\report.pdf"_s}));
+        QCOMPARE(search(u"report | nothing"_s, {bin}), (QStringList {u"work\\report.docx"_s, u"work\\report.pdf"_s}));
+        QCOMPARE(search(u"^report"_s, {bin}, true), (QStringList {u"work\\report.docx"_s, u"work\\report.pdf"_s}));
+        // One that cannot be read is passed over, not a search that finds nothing.
+        QCOMPARE(search(u"report"_s, {u"regex:("_s}), all);
+        // Nothing typed: the list, narrowed.
+        QCOMPARE(search({}, {}), all);
+        QCOMPARE(search({}, {bin}), (QStringList {u"work\\report.docx"_s, u"work\\report.pdf"_s}));
+        QCOMPARE(search({}, {u"$recycle.bin\\ ext:pdf"_s}), (QStringList {u"$RECYCLE.BIN\\S-1-5-21\\report.pdf"_s}));
     }
 
     void pinyinBasics()
@@ -8632,6 +8810,101 @@ private slots:
         QVERIFY(it->recent);
     }
 
+    void fileTypeFolderSearch()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.filePath(u"index"_s), options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId root = index->addRoot("H:");
+            const EntryId work = index->add(root, "__work__", EntryFlag::Directory);
+            index->add(work, "direct.csv", 0);
+            index->add(work, "not-a-csv.txt", 0);
+            const EntryId sub = index->add(work, "sub", EntryFlag::Directory);
+            index->add(sub, "nested.CSV", 0);
+            const EntryId similar = index->add(root, "__work__2", EntryFlag::Directory);
+            index->add(similar, "other.csv", 0);
+            index->add(root, "outside.csv", 0);
+            index->add(root, "年度报告.csv", 0);
+        }
+        SearchEngine engine(&service, nullptr, nullptr);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const auto search = [&](SearchEngine::Request request) {
+            spy.clear();
+            engine.submit(std::move(request));
+            if (spy.isEmpty() && !spy.wait(5000))
+                return SearchResults {};
+            return spy.front().at(1).value<SearchResults>();
+        };
+        const FileTypes types {{u"工作 CSV"_s, {u"csv"_s}, {}, u"cw"_s, u"H:\\__work__"_s}};
+        const auto parsed = splitFileTypeQuery(u"cw:"_s, types, u"folder");
+        QVERIFY(parsed.type);
+        QVERIFY(parsed.words.isEmpty());
+        SearchEngine::Request request;
+        request.text = parsed.words;
+        request.scope = Scope::Files;
+        request.extensions = types[*parsed.type].extensions;
+        request.typeFolders = {types[*parsed.type].folder};
+        request.browse = true;
+        request.limit = 100;
+        auto rows = search(request);
+        QCOMPARE(rows.size(), qsizetype {2});
+        QVERIFY(std::ranges::all_of(rows, [](const SearchResult& r) {
+            return r.path.startsWith(u"H:\\__work__\\"_s) && !r.isDir;
+        }));
+        QCOMPARE(spy.front().at(2).toLongLong(), qint64 {2});
+
+        // 范围在选取 top hits 前约束，翻页和排序不会被范围外的高排名挤占。
+        request.limit = 1;
+        request.order = {SortKey::Name, false};
+        QCOMPARE(search(request).size(), qsizetype {1});
+        QCOMPARE(spy.front().at(2).toLongLong(), qint64 {2});
+        request.limit = 100;
+        request.order = {};
+        request.text = u"nested"_s;
+        QCOMPARE(search(request).size(), qsizetype {1});
+        request.regex = true;
+        request.text = u"^nested"_s;
+        QCOMPARE(search(request).size(), qsizetype {1});
+        request.regex = false;
+        request.text.clear();
+
+        // 面板位置取交集，而不是把目录相并；邻近的同名前缀不是范围内。
+        request.folders = {u"H:\\__work__\\sub"_s};
+        QCOMPARE(search(request).size(), qsizetype {1});
+        request.folders = {u"H:\\__work__2"_s};
+        QVERIFY(search(request).isEmpty());
+        QVERIFY(!spy.isEmpty());
+        request.folders.clear();
+        request.text = u"H:\\__work__2\\"_s;
+        QVERIFY(search(request).isEmpty());
+        QVERIFY(!spy.isEmpty());
+        request.text = u"H:\\__work__\\sub\\"_s;
+        QCOMPARE(search(request).size(), qsizetype {1});
+        request.text.clear();
+
+        request.text = u"年度报高"_s;
+        QVERIFY(search(request).isEmpty()); // 同音近似搜索也不能绕过范围
+        QVERIFY(!spy.isEmpty());
+        request.favorites = {{Favorite::Kind::File, u"H:\\outside.csv"_s, u"外部收藏"_s, u"outside"_s}};
+        request.text = u"outside"_s;
+        QVERIFY(search(request).isEmpty()); // 收藏关键词不能插入范围外的文件
+        QVERIFY(!spy.isEmpty());
+        request.favorites.clear();
+        request.text.clear();
+        request.typeFolders = {u"H:\\missing"_s};
+        QVERIFY(search(request).isEmpty());
+        QVERIFY(!spy.isEmpty());
+        request.typeFolders = {u"H:\\__work__"_s, u"H:\\__work__2"_s};
+        QCOMPARE(search(request).size(), qsizetype {3});
+        request.typeFolders.clear();
+        QCOMPARE(search(request).size(), qsizetype {5}); // 旧配置仍搜索整个索引
+    }
+
     // #141: a remembered mapping and its UNC path are one search location.
     // Only a newly created key for an unused drive is touched; no connection
     // is made and no existing mapping or user file is changed.
@@ -8708,6 +8981,11 @@ private slots:
         const auto scoped = search(request);
         QCOMPARE(scoped.size(), qsizetype {3});
         QCOMPARE(spy.front().at(2).toLongLong(), qint64 {3});
+        auto preset = request;
+        preset.folders.clear();
+        preset.currentFolder.clear();
+        preset.typeFolders = {drive + u'\\'};
+        QCOMPARE(search(preset).size(), qsizetype {3});
         QVERIFY(std::ranges::all_of(scoped, [&](const SearchResult& row) {
             return row.path.startsWith(remote + u'\\') && !row.elsewhere;
         }));
@@ -10176,6 +10454,63 @@ private slots:
         QVERIFY(!parseSwitchCommand(u"关蓝牙", PlaceList {}));
     }
 
+    // A name typed for a file renamed in place (GitHub #285).
+    void renameNames()
+    {
+        using renamecheck::Problem;
+        using renamecheck::problem;
+        QCOMPARE(problem(u"a.txt"_s, u"b.txt"_s), Problem::None);
+        QCOMPARE(problem(u"a.txt"_s, u"  b.txt  "_s), Problem::None); // the spaces around it go
+        QCOMPARE(renamecheck::cleaned(u"  b.txt  "_s), u"b.txt"_s);
+        QCOMPARE(problem(u"a.txt"_s, u"A.TXT"_s), Problem::None); // another case is another name to show
+        QCOMPARE(problem(u"a.txt"_s, u"a.txt"_s), Problem::Same);
+        QCOMPARE(problem(u"a.txt"_s, u"   "_s), Problem::Empty);
+        QCOMPARE(problem(u"a.txt"_s, u"报告 2026（终稿）.txt"_s), Problem::None);
+        for (const QString& bad : {u"a:b"_s, u"a/b"_s, u"a\b"_s, u"a*"_s, u"a?"_s, u"\"a\""_s, u"<a>"_s, u"a|b"_s, u"a	b"_s})
+            QVERIFY2(problem(u"x"_s, bad) == Problem::Character, qPrintable(bad));
+        for (const QString& reserved : {u"CON"_s, u"nul.txt"_s, u"Com1"_s, u"LPT9.tar.gz"_s})
+            QVERIFY2(problem(u"x"_s, reserved) == Problem::Reserved, qPrintable(reserved));
+        QCOMPARE(problem(u"x"_s, u"console.log"_s), Problem::None); // begins with one, is not one
+        QCOMPARE(problem(u"x"_s, u"name."_s), Problem::Ending);
+        QCOMPARE(problem(u"x"_s, QString(256, u'a')), Problem::Long);
+        QCOMPARE(problem(u"x"_s, QString(255, u'a')), Problem::None);
+        // What the box picks: up to the extension; all of a folder's, and of ".gitignore".
+        QCOMPARE(renamecheck::stemLength(u"report.final.pdf"_s, false), 12);
+        QCOMPARE(renamecheck::stemLength(u"README"_s, false), 6);
+        QCOMPARE(renamecheck::stemLength(u".gitignore"_s, false), 10);
+        QCOMPARE(renamecheck::stemLength(u"v1.2"_s, true), 4);
+    }
+
+    // Win顺's own pages (GitHub #254) and the restart as administrator (GitHub
+    // #288), as places.txt ships them: found by the words people would type.
+    void ownPlaces()
+    {
+        const PlaceList places = switchPlaces();
+        const auto names = [&](const QString& text) {
+            const ParsedQuery query = ws::parseQuery(text);
+            const NameMatcher matcher(query);
+            QStringList out;
+            for (const PlaceHit& hit : searchPlaces(places, query, matcher, {}))
+                out.append(places[hit.index].name);
+            return out;
+        };
+        const QString issues = u"Win顺 反馈问题"_s;
+        const QString discussions = u"Win顺 讨论区"_s;
+        for (const QString& typed : {u"winshun"_s, u"反馈"_s, u"issue"_s, u"issues"_s, u"bug"_s})
+            QVERIFY2(names(typed).contains(issues), qPrintable(typed));
+        for (const QString& typed : {u"winshun"_s, u"讨论"_s, u"discussion"_s})
+            QVERIFY2(names(typed).contains(discussions), qPrintable(typed));
+        QCOMPARE(names(u"反馈问题"_s).value(0), issues);
+        for (const PlaceInfo& p : places) {
+            if (p.name == issues)
+                QCOMPARE(p.command, u"https://github.com/LingCore/WinShun/issues"_s);
+            if (p.name == discussions)
+                QCOMPARE(p.command, u"https://github.com/LingCore/WinShun/discussions"_s);
+        }
+        for (const QString& typed : {u"管理员"_s, u"提权"_s, u"admin"_s})
+            QVERIFY2(names(typed).contains(u"以管理员身份重新启动 Win顺"_s), qPrintable(typed));
+    }
+
     void switchPlaceSearch()
     {
         const PlaceList places = switchPlaces();
@@ -10386,6 +10721,165 @@ private slots:
         }
     }
 
+    // GitHub #292: one letter is not read as pinyin, but it brings back an
+    // app opened before whose name has a character starting with it.
+    void oneLetterBringsBackOpenedApp()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auto programs = std::make_shared<AppList>();
+        const auto add = [&](const QString& name, const QString& id) {
+            AppInfo app;
+            app.name = name;
+            app.id = id;
+            app.prepare();
+            programs->push_back(app);
+            return app.launchPath();
+        };
+        const QString music = add(u"网易云音乐"_s, u"Test.CloudMusic"_s);
+        const QString term = add(u"NyaTerm"_s, u"Test.NyaTerm"_s);
+        add(u"语音识别"_s, u"Test.Speech"_s); // never opened
+        History history(dir.filePath(u"history.txt"_s));
+        constexpr qint64 now = 1'800'000'000'000;
+        const auto paths = [&](const QString& text) {
+            const ParsedQuery query = ws::parseQuery(text);
+            const NameMatcher matcher(query);
+            QStringList out;
+            for (const AppHit& hit : searchApps(*programs, query, matcher, history.ranked(text, now), history.affinities(text, now)))
+                out.append((*programs)[hit.index].launchPath());
+            return out;
+        };
+        QCOMPARE(paths(u"y"_s), (QStringList {term})); // as before: nothing opened yet
+        history.record(music, u"yy"_s, now - 1000);
+        QCOMPARE(paths(u"y"_s), (QStringList {music, term})); // learned from "yy", which has "y" in it
+        QCOMPARE(paths(u"Y"_s), (QStringList {music, term}));
+        QVERIFY(!paths(u"x"_s).contains(music)); // no character of it starts with x
+        QVERIFY(!paths(u"y ext:exe"_s).contains(music));
+        QCOMPARE(pinyin::findInitialUtf16(u"网易云音乐", 'y')->start, std::size_t {1});
+        QVERIFY(!pinyin::findInitialUtf16(u"NyaTerm", 'y'));
+    }
+
+    // GitHub #297: .psd and .ai drawn as pictures for the preview.
+    void renderPhotoshop()
+    {
+        const auto render = [](const std::string& bytes, quint32 largest, extract::Picture& out) {
+            extract::MemorySource source(bytes);
+            return extract::render(source, largest, out);
+        };
+        const auto rgb3 = [](int r, int g, int b) { return (r << 16) | (g << 8) | b; };
+        const auto pixel = [rgb3](const extract::Picture& p, quint32 x, quint32 y) {
+            const auto* at = reinterpret_cast<const uchar*>(p.bgra.data()) + (static_cast<std::size_t>(y) * p.width + x) * 4;
+            return rgb3(at[2], at[1], at[0]);
+        };
+        // 2 x 2, RGB: red, green / blue, white; raw and packed, PSD and PSB.
+        const std::vector<std::string> rgb {std::string("\xFF\x00\x00\xFF", 4), std::string("\x00\xFF\x00\xFF", 4),
+            std::string("\x00\x00\xFF\xFF", 4)};
+        for (const int version : {1, 2}) {
+            for (const bool packed : {false, true}) {
+                extract::Picture p;
+                QCOMPARE(render(makePsd(version, 3, 8, 2, 2, rgb, packed), 4096, p), extractproto::Status::Ok);
+                QCOMPARE(p.width, 2u);
+                QCOMPARE(p.height, 2u);
+                QCOMPARE(p.bgra.size(), std::size_t {16});
+                QCOMPARE(pixel(p, 0, 0), rgb3(255, 0, 0));
+                QCOMPARE(pixel(p, 1, 0), rgb3(0, 255, 0));
+                QCOMPARE(pixel(p, 0, 1), rgb3(0, 0, 255));
+                QCOMPARE(pixel(p, 1, 1), rgb3(255, 255, 255));
+            }
+        }
+        // A fourth plane of an RGB file is a mask of its own, not the picture's.
+        {
+            std::vector<std::string> more = rgb;
+            more.push_back(std::string(4, '\0'));
+            extract::Picture p;
+            QCOMPARE(render(makePsd(1, 3, 8, 2, 2, more, true), 4096, p), extractproto::Status::Ok);
+            QCOMPARE(pixel(p, 0, 0), rgb3(255, 0, 0));
+        }
+        // 16 bits: the high byte. Grey.
+        {
+            extract::Picture p;
+            QCOMPARE(render(makePsd(1, 1, 16, 2, 1, {std::string("\x80\x12\xFF\xFF", 4)}, false), 4096, p), extractproto::Status::Ok);
+            QCOMPARE(pixel(p, 0, 0), rgb3(128, 128, 128));
+            QCOMPARE(pixel(p, 1, 0), rgb3(255, 255, 255));
+        }
+        // CMYK is stored as 255 - ink: no ink is white, all black ink is black.
+        {
+            extract::Picture p;
+            QCOMPARE(render(makePsd(1, 4, 8, 2, 1, {std::string("\xFF\xFF", 2), std::string("\xFF\x00", 2),
+                std::string("\xFF\x00", 2), std::string("\xFF\x00", 2)}, false), 4096, p), extractproto::Status::Ok);
+            QCOMPARE(pixel(p, 0, 0), rgb3(255, 255, 255));
+            QCOMPARE(pixel(p, 1, 0), rgb3(0, 0, 0));
+        }
+        // Indexed: by the palette (256 reds, greens, blues).
+        {
+            std::string palette(768, '\0');
+            palette[1] = '\x10';
+            palette[256 + 1] = '\x20';
+            palette[512 + 1] = '\x30';
+            extract::Picture p;
+            QCOMPARE(render(makePsd(1, 2, 8, 2, 1, {std::string("\x01\x00", 2)}, false, palette), 4096, p), extractproto::Status::Ok);
+            QCOMPARE(pixel(p, 0, 0), rgb3(0x10, 0x20, 0x30));
+            QCOMPARE(pixel(p, 1, 0), rgb3(0, 0, 0));
+        }
+        // A large one comes scaled down, each box of pixels to their average.
+        {
+            std::string plane(200 * 100, '\0');
+            for (int y = 0; y < 100; ++y) {
+                for (int x = 0; x < 200; ++x)
+                    plane[static_cast<std::size_t>(y * 200 + x)] = (x / 2) % 2 ? '\xFF' : '\0'; // stripes two wide
+            }
+            extract::Picture p;
+            QCOMPARE(render(makePsd(1, 1, 8, 200, 100, {plane}, false), 64, p), extractproto::Status::Ok);
+            QCOMPARE(p.width, 50u);
+            QCOMPARE(p.height, 25u);
+            QCOMPARE(p.fullWidth, 200u);
+            QCOMPARE(p.fullHeight, 100u);
+            QCOMPARE(pixel(p, 7, 3), rgb3(127, 127, 127));
+        }
+        // What it does not read, and what is cut short or lies about itself.
+        extract::Picture p;
+        QCOMPARE(render(makePsd(1, 3, 32, 2, 2, rgb, false), 4096, p), extractproto::Status::Unsupported);
+        QCOMPARE(render(makePsd(1, 9, 8, 2, 2, rgb, false), 4096, p), extractproto::Status::Unsupported); // Lab
+        QCOMPARE(render("not a picture", 4096, p), extractproto::Status::Unsupported);
+        const std::string whole = makePsd(1, 3, 8, 2, 2, rgb, true);
+        for (std::size_t cut = 4; cut < whole.size(); ++cut)
+            QVERIFY2(render(whole.substr(0, cut), 4096, p) != extractproto::Status::Ok, qPrintable(QString::number(cut)));
+        std::string huge = makePsd(1, 3, 8, 2, 2, rgb, false);
+        huge[14] = '\x7F'; // a height of two thousand million rows
+        QVERIFY(render(huge, 4096, p) != extractproto::Status::Ok);
+        std::string runs = makePsd(1, 3, 8, 2, 2, rgb, true);
+        runs[runs.size() - 3] = '\x7F'; // a run longer than the row
+        QVERIFY(render(runs, 4096, p) != extractproto::Status::Ok);
+    }
+
+    void renderIllustrator()
+    {
+        if (!extract::loadPdfium())
+            QSKIP("pdfium.dll is not beside the test");
+        // A few letters in a corner of a page of 400 x 200 points (an .ai is
+        // a PDF): what comes back is the letters, not the paper.
+        const QByteArray pdf = makePdf({{"Hi"}});
+        extract::MemorySource source({pdf.constData(), static_cast<std::size_t>(pdf.size())});
+        extract::Picture p;
+        QCOMPARE(extract::render(source, 1024, p), extractproto::Status::Ok);
+        QCOMPARE(p.fullWidth, 400u);
+        QCOMPARE(p.fullHeight, 200u);
+        QVERIFY2(p.width >= 64 && p.width < 700 && p.height >= 32 && p.height <= 1024,
+            qPrintable(u"%1 x %2"_s.arg(p.width).arg(p.height)));
+        QCOMPARE(p.bgra.size(), std::size_t {p.width} * p.height * 4);
+        std::size_t dark = 0;
+        for (std::size_t i = 0; i < p.bgra.size(); i += 4)
+            dark += static_cast<uchar>(p.bgra[i]) < 128;
+        QVERIFY2(dark * 50 > p.bgra.size() / 4, "the letters fill little of the picture"); // over 2% of it: paper cut away
+        // A page drawn on all over stays whole, as long as asked for.
+        std::vector<std::string> lines(9, "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM");
+        const QByteArray full = makePdf({lines});
+        extract::MemorySource fullSource({full.constData(), static_cast<std::size_t>(full.size())});
+        QCOMPARE(extract::render(fullSource, 800, p), extractproto::Status::Ok);
+        QCOMPARE(p.width, 800u);
+        QCOMPARE(p.height, 400u);
+    }
+
     void historyContainsAndEntityFallback()
     {
         QTemporaryDir dir;
@@ -10461,7 +10955,12 @@ private slots:
             apps.setApps(list);
         };
         setApps({});
-        const auto places = std::make_shared<const PlaceList>(switchPlaces());
+        // Without Win顺's own "以管理员身份重新启动" (listed only with normal
+        // rights on an administrator's account): 理员 in its name is "ly", a
+        // page found as well as the switch guessed from "ly" below.
+        PlaceList listed = switchPlaces();
+        std::erase_if(listed, [](const PlaceInfo& p) { return p.command == kRestartElevatedCommand; });
+        const auto places = std::make_shared<const PlaceList>(std::move(listed));
         catalog.setPlaces(places);
         const QString bluetoothPage = (*places)[0].path();
         const auto keepAwake = std::find_if(places->begin(), places->end(), [](const PlaceInfo& p) { return p.switchId == u"keep-awake"_s; });
@@ -11994,6 +12493,15 @@ private slots:
         QCOMPARE(scope.places.size(), 1);
         QCOMPARE(scope.places[0].folders.size(), 2);
         QCOMPARE(scope.places[0].folders[0], documents);
+        // A quick filter on (Request::conditions): only the files it lets through are read.
+        complete = false;
+        results.clear();
+        request.text = u"needle"_s;
+        request.conditions = {u"!docs\\"_s};
+        asked = engine.submit(request);
+        QTRY_VERIFY_WITH_TIMEOUT(complete, 15'000);
+        QCOMPARE(results.size(), qsizetype(1));
+        QCOMPARE(results[0].path, profile + u"\\needle.txt"_s);
     }
 
     // A pass that looks only at the files the Lookout lists (changed since

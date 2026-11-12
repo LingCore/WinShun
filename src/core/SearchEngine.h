@@ -137,6 +137,14 @@ public:
         // its folders as contentFolders.
         EntryFilter filter;
         QStringList folders;
+        // The panel's quick filters that are on: each the text of a query
+        // ("!$RECYCLE.BIN\", "ext:pdf size:>1mb", never as regex mode reads
+        // it), and a file or folder must fit every one as well as `text`
+        // (ParsedQuery::conditions). Names, and the files a content search
+        // reads. One that cannot be read (a broken regex:) is left out.
+        QStringList conditions;
+        // 文件类型绑定的范围；与面板位置和输入的路径取交集，不改变其他搜索。
+        QStringList typeFolders;
         // Typed in a folder's window (Explorer, Directory Opus: GitHub #110):
         // that folder, and `text` is what was typed after it. What it finds
         // in the folder comes first (its own files and folders from the

@@ -674,6 +674,38 @@ private slots:
         QCOMPARE(settings.previewHotkey, u"Alt+P"_s);
     }
 
+    // GitHub #293: a second key for Enter; none by default, never Space,
+    // nor the preview's.
+    void openHotkey()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(settings.openHotkey.isEmpty());
+        for (const QString& key : {u"Alt+Q"_s, u"F1"_s, u"Ctrl+Shift+O"_s, QString()}) {
+            settings.openHotkey = key;
+            settings.save();
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.openHotkey, key);
+        }
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        for (const QString& key : {u"Space"_s, u"Shift+Space"_s, u"Q"_s, u"Enter"_s, u"Tab"_s, u"Ctrl+C"_s, u"Ctrl+1"_s, u"Alt+P"_s}) {
+            ini.setValue(u"Results/OpenHotkey"_s, key); // Alt+P: the preview's
+            ini.sync();
+            settings.load();
+            QVERIFY2(settings.openHotkey.isEmpty(), qPrintable(key));
+        }
+        ini.setValue(u"Results/OpenHotkey"_s, u" alt + q "_s);
+        ini.sync();
+        settings.load();
+        QCOMPARE(settings.openHotkey, u"Alt+Q"_s);
+        QCOMPARE(ws::previewkeys::normalizedOpen(u"Space"_s), QString());
+        QCOMPARE(ws::previewkeys::normalizedOpen(u"alt+q"_s), u"Alt+Q"_s);
+    }
+
     void previewShortcutRules()
     {
         using namespace ws::previewkeys;
@@ -966,6 +998,101 @@ private slots:
         QCOMPARE(loaded.fileTypes, types);
         QCOMPARE(loaded.folderKeyword, u"dir"_s);
         QVERIFY(loaded.showModifiedTime);
+    }
+
+    // [QuickFilters]: saved as written; a file edited by hand is tidied.
+    void quickFilterSettings()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        QVERIFY(settings.quickFilters.isEmpty());
+        settings.quickFilters = {{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s, u"nobin"_s}, {u"大 PDF"_s, u"ext:pdf size:>10mb"_s}};
+        settings.save();
+        ws::Settings loaded;
+        loaded.load();
+        QCOMPARE(loaded.quickFilters, settings.quickFilters);
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"QuickFilters/size"_s, 6);
+            ini.setValue(u"QuickFilters/3/Name"_s, u"  大   pdf "_s); // the second's name again, any case
+            ini.setValue(u"QuickFilters/3/Query"_s, u"ext:pdf"_s);
+            ini.setValue(u"QuickFilters/4/Name"_s, u"没有条件"_s);
+            ini.setValue(u"QuickFilters/5/Query"_s, u"!tmp\\"_s); // no name
+            ini.setValue(u"QuickFilters/6/Name"_s, u"坏的"_s);
+            ini.setValue(u"QuickFilters/6/Query"_s, u" regex:( "_s);
+        }
+        loaded.load();
+        QCOMPARE(loaded.quickFilters.size(), 3);
+        QCOMPARE(loaded.quickFilters[2], (ws::QuickFilter {u"坏的"_s, u"regex:("_s})); // kept, to be put right
+        // Keywords by hand: tidied as a kind of file's; one taken (the folders', a kind's, another filter's) or unusable is none.
+        loaded.fileTypes = {{u"文档"_s, {u"docx"_s}, {}, u"doc"_s, {}}};
+        loaded.save();
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"QuickFilters/size"_s, 5);
+            ini.setValue(u"QuickFilters/1/Keyword"_s, u" :NoBin "_s);
+            ini.setValue(u"QuickFilters/2/Keyword"_s, u"nobin"_s);
+            ini.setValue(u"QuickFilters/3/Keyword"_s, u"doc"_s);
+            ini.setValue(u"QuickFilters/4/Name"_s, u"第四个"_s);
+            ini.setValue(u"QuickFilters/4/Query"_s, u"ext:md"_s);
+            ini.setValue(u"QuickFilters/4/Keyword"_s, u"two words"_s);
+            ini.setValue(u"QuickFilters/5/Name"_s, u"第五个"_s);
+            ini.setValue(u"QuickFilters/5/Query"_s, u"ext:txt"_s);
+            ini.setValue(u"QuickFilters/5/Keyword"_s, loaded.folderKeyword);
+        }
+        loaded.load();
+        QCOMPARE(loaded.quickFilters.size(), 5);
+        QCOMPARE(loaded.fileTypes.value(0).keyword, u"doc"_s);
+        QCOMPARE(loaded.quickFilters[0].keyword, u"nobin"_s);
+        for (int i = 1; i < 5; ++i)
+            QVERIFY2(loaded.quickFilters[i].keyword.isEmpty(), qPrintable(loaded.quickFilters[i].name));
+        loaded.save(); // one with a keyword is written with it, and read back so
+        ws::Settings again;
+        again.load();
+        QCOMPARE(again.quickFilters, loaded.quickFilters);
+        QVERIFY(!ws::Settings::quickFilterProblem(u"regex:("_s).isEmpty());
+        QVERIFY(!ws::Settings::quickFilterProblem(u"  "_s).isEmpty());
+        QVERIFY(ws::Settings::quickFilterProblem(u"!$RECYCLE.BIN\\"_s).isEmpty());
+        QVERIFY(ws::Settings::quickFilterProblem(u"ext:pdf size:>10mb"_s).isEmpty());
+        // None left: the group goes from the file.
+        loaded.quickFilters.clear();
+        loaded.save();
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        QVERIFY(!ini.childGroups().contains(u"QuickFilters"_s));
+    }
+
+    void fileTypeFolderSettings()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.fileTypes = {{u"工作 CSV"_s, {u"csv"_s}, {}, u"cw"_s, u"H:\\__work__"_s}};
+        settings.save();
+        ws::Settings loaded;
+        loaded.load();
+        QCOMPARE(loaded.fileTypes, settings.fileTypes);
+        const auto parsed = ws::splitFileTypeQuery(u"cw:"_s, loaded.fileTypes, u"folder");
+        QCOMPARE(parsed.type, std::optional<int>(0));
+        QVERIFY(parsed.words.isEmpty());
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"FileTypes/1/Folder"_s, u"\"H:/工作 目录/\""_s);
+        }
+        loaded.load();
+        QCOMPARE(loaded.fileTypes[0].folder, u"H:\\工作 目录"_s);
+        // 旧配置没有范围字段，维持原来的全索引搜索。
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.remove(u"FileTypes/1/Folder"_s);
+        }
+        loaded.load();
+        QVERIFY(loaded.fileTypes[0].folder.isEmpty());
+        loaded.save();
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        QVERIFY(!ini.contains(u"FileTypes/1/Folder"_s));
     }
 
     // Limits still at the default of an older version take the new default;

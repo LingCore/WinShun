@@ -62,7 +62,7 @@ qt_add_executable(WinShun WIN32
     Onboarding.cpp Onboarding.h
     PieGeometry.cpp PieGeometry.h
     PieLabels.cpp PieLabels.h
-    Phosphor.cpp Phosphor.h
+    Phosphor.cpp Phosphor.h PhosphorAliases.h PhosphorIcons.generated.h
     Preview.cpp Preview.h
     PreviewInteractionProbe.cpp PreviewInteractionProbe.h
     NavigationProbe.cpp NavigationProbe.h
@@ -205,6 +205,7 @@ set(qml_files
     qml/KeyHint.qml
     qml/Glyph.qml
     qml/SettingsWindow.qml
+    qml/OnboardingRail.qml
     qml/OnboardingWindow.qml
     qml/SettingsSearchBox.qml
     qml/TitleBar.qml
@@ -213,6 +214,7 @@ set(qml_files
     qml/SettingsPage.qml
     qml/PageSlot.qml
     qml/FileTypesSection.qml
+    qml/QuickFiltersSection.qml
     qml/SettingRow.qml
     qml/PageTabs.qml
     qml/ThemeCard.qml
@@ -335,6 +337,7 @@ qt_add_qml_module(WinShun
         FileDropTarget.cpp FileDropTarget.h
         FileFacts.cpp FileFacts.h
         FilePreview.cpp FilePreview.h
+        LineHighlighter.cpp LineHighlighter.h
         ContentPane.cpp ContentPane.h
         PictureFile.cpp PictureFile.h
         FolderMenu.cpp FolderMenu.h

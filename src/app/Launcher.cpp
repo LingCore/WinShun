@@ -1,6 +1,8 @@
 #include "Launcher.h"
 #include "platform/ContentOpen.h"
+#include "Phosphor.h"
 #include "PreviewShortcut.h"
+#include "RenameCheck.h"
 #include "ResultColumns.h"
 #include "Settings.h"
 #include "Wsl.h"
@@ -495,6 +497,7 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     m_columns.load(Settings::filePath());
     m_queryHistory.load();
     m_panelSidebarVisible = QSettings(Settings::filePath(), QSettings::IniFormat).value(u"Panel/SidebarVisible"_s, true).toBool();
+    m_panelFiltersOnTop = QSettings(Settings::filePath(), QSettings::IniFormat).value(u"Panel/FiltersOnTop"_s, false).toBool();
     m_contentPane = std::make_unique<ContentPane>(index);
     const auto syncPane = [this] { syncContentPane(); };
     connect(this, &Launcher::currentRowChanged, this, syncPane);
@@ -553,7 +556,14 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
 
     m_contentDebounce.setSingleShot(true);
     m_contentDebounce.setInterval(300ms); // content search reads files: wait for a pause in typing
-    connect(&m_contentDebounce, &QTimer::timeout, this, &Launcher::startContentSearch);
+    connect(&m_contentDebounce, &QTimer::timeout, this, [this] {
+        // The pause waited for is no lateness: how long the rows take is
+        // counted from here (showRows' line in the log; it came with every
+        // search of 内容 otherwise).
+        if (m_replacePending && m_replaceClock.isValid())
+            m_replaceClock.restart();
+        startContentSearch();
+    });
 
     m_flashTimer.setSingleShot(true);
     m_flashTimer.setInterval(2s);
@@ -665,7 +675,8 @@ void Launcher::setPluginHost(plugin::Host* host)
 
 void Launcher::updateQueryPrefix()
 {
-    const FileTypeQuery parsed = splitFileTypeQuery(m_query, m_fileTypes, m_folderKeyword);
+    // Less the quick filters named in it: ":nobin :pic 报告" is both.
+    const FileTypeQuery parsed = splitFileTypeQuery(typedQuick().filters.isEmpty() ? m_query : typedQuick().words, m_fileTypes, m_folderKeyword);
     const Scope oldScope = m_scope;
     const int oldType = m_fileType;
     const auto oldExtra = m_extraFileTypes;
@@ -1281,6 +1292,7 @@ void Launcher::searchLeftOut(const QString& kind)
         request.text = kind.startsWith(kFolderHint) ? pathtext::splitTyped(searchText()).name.trimmed() : nameText();
         request.scope = m_scope == Folders ? ws::Scope::Folders : ws::Scope::Files; // 全部: its files and folders
         request.extensions = fileExtensions();
+        request.typeFolders = fileTypeFolders();
         request.limit = kPage;
         request.walkFolder = walkedPath(kind);
         request.regex = regexTerms();
@@ -1650,6 +1662,21 @@ bool Launcher::isPreviewKey(int key, int modifiers) const
     return previewkeys::matches(m_previewSequence, key, modifiers);
 }
 
+void Launcher::setOpenHotkey(const QString& shortcut)
+{
+    const QString value = previewkeys::normalizedOpen(shortcut);
+    if (m_openHotkey == value)
+        return;
+    m_openHotkey = value;
+    m_openSequence = QKeySequence::fromString(value, QKeySequence::PortableText);
+    emit resultOptionsChanged();
+}
+
+bool Launcher::isOpenKey(int key, int modifiers) const
+{
+    return previewkeys::matches(m_openSequence, key, modifiers);
+}
+
 void Launcher::setNumberKeysLeft(unsigned digits)
 {
     if (digits == m_numberKeysLeft)
@@ -1822,6 +1849,7 @@ void Launcher::startOver()
         m_sizeMin.clear();
         m_sizeMax.clear();
         m_folderFilter.clear();
+        m_quickFiltersOn.clear();
         emit filtersChanged();
     }
     if (m_scope != All) {
@@ -2096,7 +2124,8 @@ void Launcher::search(bool more)
     const QString keywordKey = keyword ? keyword->pluginId + u'/' + keyword->commandId : QString();
     // The folder typed in, first or alone (typingKey), is a list of its own too.
     m_refresh = m_haveResults && !m_replacePending && text == m_shownText && m_scope == m_shownScope
-        && fileExtensions() == m_shownExtensions && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && m_kindOrder == m_shownKindOrder
+        && fileExtensions() == m_shownExtensions && fileTypeFolders() == m_shownTypeFolders
+        && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && m_kindOrder == m_shownKindOrder
         && m_preferredTypes == m_shownPreferredTypes && keywordKey == m_shownKeyword
         && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick))
         && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey
@@ -2276,6 +2305,7 @@ void Launcher::search(bool more)
     }
     request.scope = static_cast<ws::Scope>(m_scope);
     request.extensions = fileExtensions();
+    request.typeFolders = fileTypeFolders();
     request.kindOrder = m_kindOrder;
     request.rankBy = rankBy();
     request.preferredTypes = m_preferredTypes;
@@ -2285,7 +2315,9 @@ void Launcher::search(bool more)
     request.recentItems = m_recentItems;
     request.favoritesOnStart = m_favoritesOnStart;
     request.limit = kPage * m_pages;
-    request.browse = m_filePrefix.has_value() || (m_scope == Files && m_fileType >= 0);
+    // A quick filter named alone (":nobin") lists what it lets through, as a kind of file does.
+    request.browse = m_filePrefix.has_value() || (m_scope == Files && m_fileType >= 0) || !typedQuick().filters.isEmpty();
+    request.conditions = quickConditions();
     if (m_panel) { // its filters and order; nothing typed lists everything
         request.filter = panelFilter();
         if (!m_folderFilter.isEmpty())
@@ -2352,6 +2384,7 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
     m_shownText = searchText();
     m_shownScope = m_scope;
     m_shownExtensions = fileExtensions();
+    m_shownTypeFolders = fileTypeFolders();
     m_shownRankBy = rankBy();
     m_shownOrder = nameOrder();
     m_shownStartList = m_startList;
@@ -2542,6 +2575,7 @@ SearchEngine::Request Launcher::contentRequest() const
         if (!m_folderFilter.isEmpty())
             request.contentFolders = {m_folderFilter};
     }
+    request.conditions = quickConditions();
     if (m_scope == Content) {
         // Asked for: system and program folders too if so set, and many
         // files at once (each open mostly waits for the antivirus).
@@ -2975,6 +3009,15 @@ void Launcher::setPanelSidebarVisible(bool visible)
     emit panelSidebarVisibleChanged();
 }
 
+void Launcher::setPanelFiltersOnTop(bool top)
+{
+    if (m_panelFiltersOnTop == top)
+        return;
+    m_panelFiltersOnTop = top;
+    QSettings(Settings::filePath(), QSettings::IniFormat).setValue(u"Panel/FiltersOnTop"_s, top);
+    emit panelFiltersOnTopChanged();
+}
+
 void Launcher::setPinned(bool on)
 {
     if (on == m_pinned)
@@ -2989,7 +3032,75 @@ void Launcher::setPinned(bool on)
 
 bool Launcher::filtersActive() const
 {
-    return m_dateChoice != 0 || m_sizeChoice != 0 || !m_folderFilter.isEmpty();
+    return m_dateChoice != 0 || m_sizeChoice != 0 || !m_folderFilter.isEmpty() || !m_quickFiltersOn.isEmpty();
+}
+
+QVariantList Launcher::quickFilters() const
+{
+    QVariantList filters;
+    for (const QuickFilter& f : m_quickFilters)
+        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}, {u"keyword"_s, f.keyword}});
+    return filters;
+}
+
+QStringList Launcher::quickConditions() const
+{
+    QStringList conditions;
+    const QList<int>& typed = typedQuick().filters;
+    for (qsizetype i = 0; i < m_quickFilters.size(); ++i) {
+        if ((m_panel && m_quickFiltersOn.contains(m_quickFilters[i].name)) || typed.contains(int(i)))
+            conditions.append(m_quickFilters[i].query);
+    }
+    return conditions;
+}
+
+const QuickFilterQuery& Launcher::typedQuick() const
+{
+    if (!m_typedQuickRead || m_typedQuickFor != m_query) {
+        m_typedQuick = splitQuickFilterQuery(m_query.trimmed(), m_quickFilters);
+        m_typedQuickFor = m_query;
+        m_typedQuickRead = true;
+    }
+    return m_typedQuick;
+}
+
+void Launcher::setQuickFilters(const QuickFilters& filters)
+{
+    if (filters == m_quickFilters)
+        return;
+    const QStringList before = quickConditions();
+    const QString words = searchText();
+    m_quickFilters = filters;
+    m_typedQuickRead = false; // a keyword given or taken away: what is typed reads otherwise
+    updateQueryPrefix();
+    // Renamed or removed: off, as nothing shows it any more.
+    m_quickFiltersOn.removeIf([&](const QString& name) {
+        return std::ranges::none_of(filters, [&](const QuickFilter& f) { return f.name == name; });
+    });
+    emit quickFiltersChanged();
+    emit filtersChanged();
+    if ((quickConditions() != before || searchText() != words) && m_window && m_window->isVisible())
+        search(); // one that is on was edited: its rows, in place
+}
+
+void Launcher::toggleQuickFilter(int index)
+{
+    if (index < 0 || index >= m_quickFilters.size())
+        return;
+    const QString name = m_quickFilters[index].name;
+    if (!m_quickFiltersOn.removeOne(name))
+        m_quickFiltersOn.append(name);
+    emit filtersChanged();
+    if (m_panel)
+        search();
+}
+
+void Launcher::editQuickFilters()
+{
+    // What is typed as the new one's query ("!node_modules\ ext:js"), as
+    // Everything's "Add to filters": names only, and only what can be one.
+    const QString typed = m_scope == Content || regexTerms() ? QString() : searchText().trimmed();
+    emit quickFilterSettingsRequested(Settings::quickFilterProblem(typed).isEmpty() ? typed : QString());
 }
 
 QVariantList Launcher::favoriteFolders() const
@@ -3095,11 +3206,13 @@ EntryFilter Launcher::panelFilter() const
 
 QString Launcher::panelKey() const
 {
-    if (!m_panel)
-        return {};
     // Only what changes the rows: the box's list is the panel's when nothing
     // narrows or reorders it, so expanding keeps the rows (and the selection).
     QString key;
+    if (const QStringList conditions = quickConditions(); !conditions.isEmpty())
+        key += u"q:"_s + conditions.join(QChar(0x1f)) + u';'; // in the box too: named by keyword
+    if (!m_panel)
+        return key;
     if (filtersActive()) {
         key += u"f:%1,%2,%3,%4,%5,%6,%7;"_s.arg(m_dateChoice).arg(m_dateFrom, m_dateTo).arg(m_sizeChoice).arg(m_sizeMin, m_sizeMax, m_folderFilter);
     }
@@ -3246,6 +3359,7 @@ void Launcher::clearFilters()
     m_sizeMin.clear();
     m_sizeMax.clear();
     m_folderFilter.clear();
+    m_quickFiltersOn.clear();
     emit filtersChanged();
     if (m_panel)
         search();
@@ -3587,7 +3701,8 @@ QVariantList Launcher::fileTypes() const
 {
     QVariantList types;
     for (const FileType& type : m_fileTypes)
-        types.append(QVariantMap {{u"name"_s, type.name}, {u"extensions"_s, type.extensions.join(u' ')}, {u"keyword"_s, type.keyword}});
+        types.append(QVariantMap {{u"name"_s, type.name}, {u"extensions"_s, type.extensions.join(u' ')}, {u"keyword"_s, type.keyword},
+            {u"folder"_s, type.folder}});
     return types;
 }
 
@@ -3631,6 +3746,22 @@ QStringList Launcher::fileExtensions() const
     }
     extensions.removeDuplicates();
     return extensions;
+}
+
+QStringList Launcher::fileTypeFolders() const
+{
+    QStringList folders;
+    if (m_scope == Files) {
+        for (int type : selectedFileTypes()) {
+            const QString& folder = m_fileTypes[type].folder;
+            // 多选的类型和范围分别合并；有不限范围的类型时使用整个索引。
+            if (folder.isEmpty())
+                return {};
+            folders.append(folder);
+        }
+    }
+    folders.removeDuplicates();
+    return folders;
 }
 
 QList<int> Launcher::selectedFileTypes() const
@@ -4104,27 +4235,51 @@ void Launcher::dismiss()
 // plain file it opens, or what the plugin tells of it (GitHub #202).
 std::optional<FilePreview::Item> Launcher::previewItem(const SearchResult* r, bool ask)
 {
+    // With the words searched for, marked in a text file's lines (GitHub
+    // #291): those typed (a plugin's list: after its keyword), and in 内容
+    // the words looked for in the files. Not a regular expression's text.
+    const auto item = [this](FilePreview::Item item) {
+        if (!regexTerms()) {
+            item.words = ws::parseQuery(m_keyword ? m_keyword->words : searchText()).highlights;
+            const QString needle = m_scope == Content || m_withContent ? contentNeedle() : QString();
+            for (const QString& word : needle.split(u' ', Qt::SkipEmptyParts)) {
+                if (!item.words.contains(word, Qt::CaseInsensitive))
+                    item.words.append(word);
+            }
+        }
+        return item;
+    };
     if (r && r->clipId > 0 && !r->target.isEmpty()) // a screenshot: its picture
         return FilePreview::Item {r->target, r->name, false};
     if (r && r->isPlugin()) {
         if (const auto details = pluginDetails(*r, ask)) {
             if (!details->file.isEmpty())
-                return FilePreview::Item {details->file, r->name, false};
-            return FilePreview::Item {r->path, r->name, false, details->text, details->message};
+                return item({details->file, r->name, false});
+            return item({r->path, r->name, false, details->text, details->message});
         }
         const QString file = plugin::rowFile(*r->plugin);
         if (file.isEmpty())
             return std::nullopt;
-        return FilePreview::Item {file, file.mid(file.lastIndexOf(u'\\') + 1), false};
+        return item({file, file.mid(file.lastIndexOf(u'\\') + 1), false});
     }
     if (!r || r->isApp() || r->missing || r->offline || r->path.isEmpty())
         return std::nullopt;
-    return FilePreview::Item {r->path, r->name, r->isDir};
+    return item({r->path, r->name, r->isDir});
+}
+
+// The words a plugin's row is about, for its actions and details: those
+// after the keyword in a command's own list, none for the rows of an instant
+// command whose keyword was typed alone, else the text typed.
+QString Launcher::pluginWords(const SearchResult& row) const
+{
+    if (m_keyword)
+        return m_keyword->words;
+    return m_merge && m_merge->keywordAlone(row) ? QString() : searchText();
 }
 
 QString Launcher::detailsKey(const SearchResult& row) const
 {
-    const QString words = m_keyword ? m_keyword->words : searchText(); // as an action's
+    const QString words = pluginWords(row); // as an action's
     return row.plugin->pluginId + u'\n' + QString::fromUtf8(QJsonDocument(row.plugin->item).toJson(QJsonDocument::Compact))
         + u'\n' + words;
 }
@@ -4141,7 +4296,7 @@ std::optional<Launcher::RowDetails> Launcher::pluginDetails(const SearchResult& 
     if (ask) {
         m_detailsFailed.clear(); // another row: the failed one is asked again when it comes back
         if (m_detailsWant.key != key && m_detailsAsking != key) {
-            m_detailsWant = {key, row.plugin->pluginId, row.plugin->item, m_keyword ? m_keyword->words : searchText()};
+            m_detailsWant = {key, row.plugin->pluginId, row.plugin->item, pluginWords(row)};
             if (m_detailsAsking.isEmpty())
                 m_detailsTimer.start();
         }
@@ -4756,7 +4911,8 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
     case FavoriteFolder:
     case EditFavorite:
     case SystemMenu:
-        break; // not for a file, or done above (SystemMenu: trigger)
+    case Rename:
+        break; // not for a file, or done above (SystemMenu: trigger; Rename: Main.qml's box)
     }
 }
 
@@ -4826,6 +4982,11 @@ void Launcher::performPlace(const SearchResult& place, Action action)
     switch (action) {
     case Open:
     case RunAsAdmin:
+        if (place.target == ws::kRestartElevatedCommand) { // Win顺's own: nothing for the shell
+            emit dismissRequested();
+            emit elevatedRestartRequested();
+            return;
+        }
         remember(place.path, m_shownText);
         if (place.isCommand())
             shell::runCustom(place.target, place.workingDirectory, place.words, reportFailure(place.name),
@@ -5397,6 +5558,96 @@ void Launcher::onRecycledMany(const SearchResults& items, bool ok)
         flash(tr("已删除 %Ln 项", nullptr, gone));
 }
 
+// A file or folder of the user's that is there now: not an app, a place, a
+// web page, a plugin's or the clipboard's row, nor a drive or a share itself.
+static bool renamable(const SearchResult& r)
+{
+    return !r.isApp() && !r.isPlugin() && r.clipId == 0 && !r.missing && !r.offline && r.path.size() > 3
+        && r.path.lastIndexOf(u'\\') > 1 && !r.name.isEmpty();
+}
+
+bool Launcher::beginRename(int row)
+{
+    m_renaming.reset();
+    const SearchResult* r = m_results.at(row);
+    if (!r || !renamable(*r) || m_results.selectedCount() > 1)
+        return false;
+    m_renaming = *r;
+    return true;
+}
+
+int Launcher::renameStem() const
+{
+    return m_renaming ? static_cast<int>(renamecheck::stemLength(m_renaming->name, m_renaming->isDir)) : 0;
+}
+
+bool Launcher::finishRename(const QString& typed)
+{
+    if (!m_renaming)
+        return true;
+    using renamecheck::Problem;
+    const SearchResult was = *m_renaming;
+    const QString name = renamecheck::cleaned(typed);
+    switch (renamecheck::problem(was.name, typed)) {
+    case Problem::None: break;
+    case Problem::Same:
+        m_renaming.reset();
+        return true; // nothing to do
+    case Problem::Empty:
+        flash(tr("名字不能是空的"));
+        return false;
+    case Problem::Character:
+        flash(tr("名字里不能有 \\ / : * ? \" < > |"));
+        return false;
+    case Problem::Reserved:
+        flash(tr("“%1”是 Windows 保留的名字，换一个").arg(name));
+        return false;
+    case Problem::Ending:
+        flash(tr("名字不能以句点结尾"));
+        return false;
+    case Problem::Long:
+        flash(tr("名字太长了"));
+        return false;
+    }
+    const QString folder = was.path.left(was.path.lastIndexOf(u'\\') + 1);
+    // Another one of that name there (not this one in another case).
+    if (name.compare(was.name, Qt::CaseInsensitive) != 0 && QFileInfo::exists(folder + name)) {
+        flash(tr("这里已经有“%1”了，换一个名字").arg(name));
+        return false;
+    }
+    m_renaming.reset();
+    const auto owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    shell::rename(was.path, name, owner, [self = QPointer(this), was, name](bool ok) {
+        QMetaObject::invokeMethod(qApp, [self, was, name, ok] {
+            if (self)
+                self->onRenamed(was, name, ok);
+        }, Qt::QueuedConnection);
+    });
+    return true;
+}
+
+// The row takes the new name where it is (the index hears of it from the
+// disk a moment later); a recent or pinned entry of the old path goes with it.
+void Launcher::onRenamed(const SearchResult& was, const QString& newName, bool ok)
+{
+    const QString path = was.path.left(was.path.lastIndexOf(u'\\') + 1) + newName;
+    if (!ok || !QFileInfo::exists(path)) { // cancelled, in use, access denied…
+        flash(tr("没有重命名“%1”").arg(was.name));
+        return;
+    }
+    for (int row = 0; row < m_results.count(); ++row) {
+        const SearchResult* r = m_results.at(row);
+        if (r->path.compare(was.path, Qt::CaseInsensitive) != 0)
+            continue;
+        SearchResult renamed = *r;
+        renamed.name = newName;
+        renamed.path = path;
+        m_results.update(row, renamed);
+        break;
+    }
+    flash(tr("已重命名为“%1”").arg(newName));
+}
+
 bool Launcher::forgetRecycled(const SearchResult& result)
 {
     if (QFileInfo::exists(result.path))
@@ -5456,11 +5707,17 @@ QVariantList Launcher::menuItems(int row) const
             const QString icon = !c.command->icon.isEmpty() ? c.command->icon : c.entry->manifest->icon;
             bool ok = false;
             const uint code = icon.startsWith(u"glyph:U+", Qt::CaseInsensitive) ? icon.mid(8).toUInt(&ok, 16) : 0;
-            const QChar glyph(static_cast<char16_t>(ok && code >= 0xE000 && code <= 0xF8FF ? code : 0xEA86));
+            // A named Phosphor icon stays a spec: the tray menu resolves it
+            // when it draws the row (see phosphor::resolve).
+            // A name Phosphor does not have is the puzzle, as a glyph not there is.
+            const QString named = icon.toLower();
+            const QString glyph = (named.startsWith(u"ph:"_s) || named.startsWith(u"ph-fill:"_s)) && phosphor::resolve(named)
+                ? named
+                : QString(QChar(static_cast<char16_t>(ok && code >= 0xE000 && code <= 0xF8FF ? code : 0xEA86)));
             if (i == 0)
                 into.append(separator);
             into.append(entry(static_cast<Action>(PluginFileAction + static_cast<int>(m_menuFileCommands.size())), text, QString(),
-                QString(glyph)));
+                glyph));
             m_menuFileCommands.push_back({c.entry->id, c.command->id, paths});
         }
     };
@@ -5644,6 +5901,8 @@ QVariantList Launcher::menuItems(int row) const
     if (!r->isDir && !r->missing && !r->offline && shell::canRunAsAdministrator(r->path))
         items.append(entry(RunAsAdmin, tr("以管理员身份运行"), u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
     fileCommandItems(items);
+    if (renamable(*r) && m_results.selectedCount() <= 1)
+        items.append(entry(Rename, tr("重命名"), u"F2"_s, u"\uE70F"_s)); // Edit: Phosphor's pencil
     items.append(separator);
     items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
     items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
@@ -6106,7 +6365,9 @@ std::optional<Launcher::KeywordMode> Launcher::matchKeyword(const QString& text)
     if (!m_plugins || !m_merge || (m_scope != All && !m_panel) || text.trimmed().isEmpty())
         return std::nullopt;
     for (const plugin::Match& m : m_plugins->catalog().match(text)) {
-        if (m.kind != plugin::Match::Kind::Keyword)
+        // An instant command's keyword alone leaves the list the search's:
+        // its rows lead it (plugin::Merge, GitHub #242).
+        if (m.kind != plugin::Match::Kind::Keyword || m.alone)
             continue;
         const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
         const QString locale = uiLocale();
@@ -6199,9 +6460,28 @@ void Launcher::onPluginResults(std::uint64_t queryId, const QString& pluginId, c
             before.append(m_results.at(i)->path);
     }
     plugin::Items filtered = items;
+    const QStringList typeFolders = fileTypeFolders();
+    if (!m_keyword && !typeFolders.isEmpty()) {
+        const QStringList extensions = fileExtensions();
+        filtered.removeIf([&](const plugin::Item& item) {
+            if (item.open.kind != plugin::Open::Kind::Path || !pathtext::inChosenFolders(typeFolders, item.open.target))
+                return true;
+            return !extensions.contains(QFileInfo(item.open.target).suffix(), Qt::CaseInsensitive);
+        });
+    }
     if (m_panel) {
         const EntryFilter filter = panelFilter();
+        // The quick filters, for a row that opens a file: by its path, as a
+        // file's own row. The rest (a note, a web page) are in no folder.
+        ws::ParsedQuery gate;
+        gate.conditions = ws::parseConditions(quickConditions());
+        const ws::NameMatcher quick(gate);
         filtered.removeIf([&](const plugin::Item& item) {
+            if (!gate.conditions.empty() && item.open.kind == plugin::Open::Kind::Path
+                && quick.matchPath(QDir::toNativeSeparators(item.open.target), false, item.modified,
+                       item.size >= 0 ? packSize(static_cast<std::uint64_t>(item.size)) : kUnknownSize)
+                    < 0)
+                return true;
             if (item.modified != 0 && filter.byTime()) {
                 EntryFilter time = filter;
                 time.minSize = 0;
@@ -6434,8 +6714,7 @@ void Launcher::performPlugin(const SearchResult& result, Action action)
     if (!m_plugins)
         return;
     const QString actionId = index < p.actions.size() ? p.actions[index].id : u"default"_s;
-    const QString words = m_keyword ? m_keyword->words : searchText();
-    m_plugins->action(++m_pluginRequest, p.pluginId, p.commandId, actionId, p.item, words);
+    m_plugins->action(++m_pluginRequest, p.pluginId, p.commandId, actionId, p.item, pluginWords(result));
 }
 
 void Launcher::onPluginActionDone(std::uint64_t requestId, const QString& pluginId, const QList<ws::plugin::Effect>& effects, bool ok, const QString& error)

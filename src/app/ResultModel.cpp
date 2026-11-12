@@ -143,6 +143,10 @@ QString appOrigin(const SearchResult& r)
     case AppKind::Security:
         return ResultModel::tr("Windows 安全中心");
     case AppKind::Tool:
+        if (r.target == ws::kRestartElevatedCommand) // Win顺's own (GitHub #288): what Enter leads to, not the command
+            return ResultModel::tr("Windows 会请你确认一次");
+        if (r.target.startsWith(u"https://")) // a page of Win顺's own (GitHub #254): where it leads
+            return displayWebUrl(r.target);
         return describeCommand(r.target); // "diskmgmt.msc", the folder
     case AppKind::Plugin:
         return r.plugin ? r.plugin->subtitle : QString();
@@ -350,7 +354,15 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
             const QString title = webSearchTitle(*r, &words);
             return highlighted(title, {words}, m_highlightColor, elide::boldWeight(m_highlightWeight));
         }
-        return highlighted(r->name, nameMatches(r->name, m_highlights), m_highlightColor, elide::boldWeight(m_highlightWeight));
+        auto matches = nameMatches(r->name, m_highlights);
+        // An app the one letter typed brought back (searchApps, GitHub
+        // #292): the character that starts with it.
+        if (matches.isEmpty() && r->isApp() && m_highlights.size() == 1 && m_highlights.front().size() == 1) {
+            const char16_t letter = m_highlights.front().front().toLower().unicode();
+            if (const auto span = letter < 0x80 ? pinyin::findInitialUtf16(wtf8::view(r->name), static_cast<char>(letter)) : std::nullopt)
+                matches.append({static_cast<qsizetype>(span->start), static_cast<qsizetype>(span->length)});
+        }
+        return highlighted(r->name, matches, m_highlightColor, elide::boldWeight(m_highlightWeight));
     }
     case NameMatchesRole: {
         QVariantList out;

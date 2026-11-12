@@ -13,6 +13,7 @@
 #include "DocText.h"
 #include "Extract.h"
 #include "Protocol.h"
+#include "Render.h"
 
 #include <windows.h>
 
@@ -69,9 +70,25 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR commandLine, int)
         ws::extractproto::Request request;
         if (!readExact(pipe, &request, sizeof request))
             return 0; // WinShun closed the pipe
-        if (request.magic != ws::extractproto::kRequestMagic)
+        if (request.magic != ws::extractproto::kRequestMagic && request.magic != ws::extractproto::kRenderMagic)
             return 3;
         const auto file = reinterpret_cast<HANDLE>(static_cast<std::uintptr_t>(request.file));
+        if (request.magic == ws::extractproto::kRenderMagic) { // the file as a picture
+            ws::extract::Picture picture;
+            ws::extract::HandleSource source(file, request.fileSize);
+            const ws::extractproto::Status status
+                = ws::extract::render(source, static_cast<std::uint32_t>(std::min<std::uint64_t>(request.maxText, 8192)), picture);
+            ::CloseHandle(file);
+            const ws::extractproto::PictureHeader size {picture.width, picture.height, picture.fullWidth, picture.fullHeight};
+            const bool ok = status == ws::extractproto::Status::Ok;
+            ws::extractproto::ResponseHeader header;
+            header.status = status;
+            header.payloadBytes = ok ? sizeof size + picture.bgra.size() : 0;
+            if (!writeExact(pipe, &header, sizeof header)
+                || (ok && (!writeExact(pipe, &size, sizeof size) || !writeExact(pipe, picture.bgra.data(), picture.bgra.size()))))
+                return 0;
+            continue;
+        }
         ws::extract::Options options;
         options.maxText = static_cast<std::size_t>(std::min<std::uint64_t>(request.maxText, 256u << 20));
         options.codePage = request.codePage;

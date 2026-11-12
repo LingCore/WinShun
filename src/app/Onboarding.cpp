@@ -70,6 +70,7 @@ Onboarding::Onboarding(const Settings& settings, QObject* parent)
     connect(this, &Onboarding::choicesChanged, this, [this] {
         stopTest();
         m_testMessage.clear();
+    m_testPassed = false;
         m_message.clear();
         emit stateChanged();
     });
@@ -123,6 +124,7 @@ void Onboarding::next()
     stopTest();
     setRecording(false);
     m_testMessage.clear();
+    m_testPassed = false;
     m_message = validateOpening();
     if (m_message.isEmpty())
         m_page = 1;
@@ -136,6 +138,7 @@ void Onboarding::previous()
     stopTest();
     setRecording(false);
     m_testMessage.clear();
+    m_testPassed = false;
     m_message.clear();
     m_page = 0;
     emit stateChanged();
@@ -210,6 +213,7 @@ void Onboarding::beginTest(bool capture)
         return;
     setRecording(false);
     m_testCapture = capture;
+    m_testPassed = false;
     const QString shortcut = capture ? m_captureHotkey : m_activation == 3 ? m_launchHotkey : QString();
     if ((capture || m_activation == 3) && !hotkeys::allowed(shortcut)) {
         m_testMessage = tr("请先录制快捷键。");
@@ -232,6 +236,7 @@ void Onboarding::stopTest()
         return;
     m_testing = false;
     m_testMessage.clear();
+    m_testPassed = false;
     updateKeyCapture();
     emit stateChanged();
 }
@@ -260,6 +265,7 @@ bool Onboarding::eventFilter(QObject* watched, QEvent* event)
     if (matched) {
         stopTest();
         m_testMessage = tr("识别成功，开始使用后即可生效。");
+        m_testPassed = true;
         emit stateChanged();
     }
     return true;
@@ -280,14 +286,17 @@ void Onboarding::attachPlugins(PluginSettings* plugins, plugin::Host* host)
     connect(plugins, &PluginSettings::messageChanged, this, [this] {
         QTimer::singleShot(0, this, &Onboarding::updateCaptureState);
     });
+    // Turning the screenshot on in the setup is the yes to what Win顺's own
+    // component asks for: no second question. On the next turn: the question
+    // can come from inside setEnabled.
     connect(plugins, &PluginSettings::confirmationNeeded, this, [this](const QVariantMap& info) {
-        if (info.value(u"id"_s).toString() == kCapture) {
-            m_waitingPermission = true;
-            m_enableRequested = true;
-            m_busy = false;
-            m_message = tr("请确认截图组件所需的权限。");
-            emit stateChanged();
-        }
+        if (info.value(u"id"_s).toString() != kCapture)
+            return;
+        m_enableRequested = true;
+        QTimer::singleShot(0, this, [this] {
+            m_plugins->confirmEnable(kCapture);
+            updateCaptureState();
+        });
     });
     auto* gallery = plugins->gallery();
     connect(gallery, &PluginGallery::stateChanged, this, &Onboarding::updateCaptureState);
@@ -323,7 +332,6 @@ void Onboarding::retryCapture()
     }
     m_canRetry = false;
     m_busy = true;
-    m_waitingPermission = false;
     m_installRequested = false;
     m_enableRequested = false;
     m_plugins->clearMessage();
@@ -339,7 +347,7 @@ void Onboarding::retryCapture()
 
 void Onboarding::updateCaptureState()
 {
-    if (!m_plugins || m_captureReady || m_waitingPermission || m_canRetry)
+    if (!m_plugins || m_captureReady || m_canRetry)
         return;
     const auto* card = m_plugins->list()->card(kCapture);
     if (card && card->usable) {
@@ -359,7 +367,7 @@ void Onboarding::updateCaptureState()
             }
             m_message = tr("正在启动截图组件…");
         } else if (!m_enableRequested && !m_installRequested) {
-            m_enableRequested = true; // setEnabled may synchronously ask for consent
+            m_enableRequested = true; // setEnabled may ask for consent at once (answered above)
             m_plugins->setEnabled(kCapture, true);
             return;
         }
@@ -398,27 +406,11 @@ void Onboarding::updateCaptureState()
         }
     }
     if (!card && m_installRequested && !m_plugins->gallery()->downloading()
-        && !m_plugins->message().isEmpty() && !m_waitingPermission) {
+        && !m_plugins->message().isEmpty()) {
         captureProblem(m_plugins->message());
         return;
     }
     emit stateChanged();
-}
-
-void Onboarding::permissionClosed()
-{
-    QTimer::singleShot(0, this, [this] {
-        if (!m_waitingPermission)
-            return;
-        m_waitingPermission = false;
-        const auto* card = m_plugins->list()->card(kCapture);
-        if (!card || !card->enabled)
-            captureProblem(tr("截图尚未启用。可以重试，或稍后在“设置 → 插件”中开启。"));
-        else {
-            m_busy = true;
-            updateCaptureState();
-        }
-    });
 }
 
 void Onboarding::finish()

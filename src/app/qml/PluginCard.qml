@@ -50,6 +50,8 @@ Rectangle {
     // `elevated` while Win顺 runs as administrator (PluginSettings' Card):
     // "elevated" a shield by the name; "unconfirmed" / "changed" a line with
     // 确认; "unavailable" and "confirming" (the copy being made) the line alone.
+    // "host": Win顺 itself runs with normal rights on an administrator's
+    // account, so the plugin does too: a line with 以管理员身份重新启动.
     required property string elevation
     required property string elevationNote
     required property string elevationProblem // why the last 确认 did not work: under the note, here where it was clicked
@@ -309,7 +311,7 @@ Rectangle {
                 }
                 Column { // `elevated` waits for the user (or cannot be): why, what the last 确认 came to, and the one click
                     visible: card.elevation === "unconfirmed" || card.elevation === "changed" || card.elevation === "unavailable"
-                             || card.elevation === "confirming"
+                             || card.elevation === "confirming" || card.elevation === "host"
                     width: parent.width
                     spacing: 6
 
@@ -317,7 +319,7 @@ Rectangle {
                         width: parent.width
                         text: card.elevationNote
                         textFormat: Text.PlainText
-                        color: Theme.caution
+                        color: card.elevation === "host" ? Theme.subtext : Theme.caution // nothing wrong: how it is
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.Wrap
                         lineHeight: 1.15
@@ -341,6 +343,15 @@ Rectangle {
                         implicitHeight: 28
                         text: card.elevationProblem.length > 0 ? qsTr("再试一次") : qsTr("确认")
                         onClicked: card.plugins.confirmElevation(card.pluginId)
+                    }
+                    FlatButton {
+                        dpr: card.dpr
+                        objectName: "elevationRestart"
+                        visible: card.elevation === "host"
+                        anchors.right: parent.right
+                        implicitHeight: 28
+                        text: qsTr("以管理员身份重新启动")
+                        onClicked: card.plugins.restartAsAdministrator()
                     }
                 }
             }

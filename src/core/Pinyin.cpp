@@ -91,6 +91,18 @@ bool hasHan(std::string_view s) noexcept
     return false;
 }
 
+std::optional<Span> findInitialUtf16(std::u16string_view text, char foldedLetter) noexcept
+{
+    if (!isAsciiLetter(foldedLetter))
+        return std::nullopt;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const Readings all = readings(text[i]); // the characters read are all in the BMP
+        if (all.count > 0 && all.items[0].front() == foldedLetter)
+            return Span {i, 1};
+    }
+    return std::nullopt;
+}
+
 bool isPinyinTerm(std::string_view folded) noexcept
 {
     if (folded.size() < 2 || folded.size() > kMaxTerm)

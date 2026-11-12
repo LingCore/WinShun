@@ -52,6 +52,12 @@ struct Span {
     std::size_t length;
 };
 
+// The first Chinese character whose most common reading starts with the
+// folded letter ("y": 易 in 网易云音乐), in UTF-16 units. One letter is not a
+// pinyin term (isPinyinTerm: it is in most Chinese names); this is for what
+// the user has opened before, which the letter may bring back (GitHub #292).
+std::optional<Span> findInitialUtf16(std::u16string_view text, char foldedLetter) noexcept;
+
 // Matches one folded query term against text, reading Chinese characters as
 // pinyin. Immutable: one per term, shared by search threads.
 class Matcher {

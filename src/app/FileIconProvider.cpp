@@ -287,7 +287,7 @@ QHash<QString, QByteArray> g_pluginData; // sha1 -> the bytes of a data: icon
 constexpr qsizetype kPluginDataKept = 64;
 
 // "U+E8E5" (or "E8E5"), a Segoe Fluent / MDL2 code point, drawn with Phosphor
-// where mapped (phosphor::forSegoe), else with the system icon font; in the
+// where mapped (phosphor::resolve), else with the system icon font; in the
 // subtext colour of the theme, about three quarters of the box, as Glyph.qml
 // shows them.
 QImage glyphIcon(const QString& code, int px, bool dark)
@@ -298,7 +298,7 @@ QImage glyphIcon(const QString& code, int px, bool dark)
     if (!ok || point == 0 || point > 0x10FFFF)
         return {};
     const QString text = QString::fromUcs4(reinterpret_cast<const char32_t*>(&point), 1);
-    const std::optional<phosphor::Icon> icon = phosphor::forSegoe(text);
+    const std::optional<phosphor::Icon> icon = phosphor::resolve(text);
     QFont font(icon ? icon->family : SystemTheme::iconFontName());
     font.setPixelSize(std::max(8, int(px * 3 / 4 * (icon ? phosphor::kScale : 1.0))));
     // Never a character from another font: where an older icon font lacks
@@ -314,6 +314,29 @@ QImage glyphIcon(const QString& code, int px, bool dark)
     painter.setFont(font);
     painter.setPen(dark ? QColor(0xA7, 0xA7, 0xA7) : QColor(0x66, 0x66, 0x66));
     painter.drawText(QRect(0, 0, px, px), Qt::AlignCenter, icon ? icon->text : text);
+    painter.end();
+    return image;
+}
+
+// "ph:name" / "ph-fill:name": any icon in the bundled Phosphor fonts, the
+// same on every Windows. An unknown name draws the puzzle, never the spec as
+// text: Phosphor and Segoe share the private use area.
+QImage phosphorImage(const QString& spec, int px, bool dark)
+{
+    const std::optional<phosphor::Icon> icon = phosphor::resolve(spec);
+    if (!icon)
+        return glyphIcon(u"U+EA86"_s, px, dark); // Puzzle
+    QFont font(icon->family);
+    font.setPixelSize(std::max(8, int(px * 3 / 4 * phosphor::kScale)));
+    font.setStyleStrategy(QFont::NoFontMerging);
+    QImage image(px, px, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    painter.setFont(font);
+    painter.setPen(dark ? QColor(0xA7, 0xA7, 0xA7) : QColor(0x66, 0x66, 0x66));
+    painter.drawText(QRect(0, 0, px, px), Qt::AlignCenter, icon->text);
     painter.end();
     return image;
 }
@@ -434,6 +457,8 @@ QString FileIconProvider::pluginIconUrl(const QString& pluginId, const QString& 
         return appIconUrl(spec.value, true, dark); // a packaged logo if it has one, else the program's icon
     case plugin::IconSpec::Kind::Glyph:
         return u"image://fileicon/glyph/"_s + encode(spec.value) + theme;
+    case plugin::IconSpec::Kind::Phosphor:
+        return u"image://fileicon/ph/"_s + encode(spec.value) + theme;
     case plugin::IconSpec::Kind::Color:
         return u"image://fileicon/color/"_s + encode(spec.value) + theme;
     case plugin::IconSpec::Kind::Data: {
@@ -468,13 +493,16 @@ void FileIconProvider::setPluginFolders(QHash<QString, QString> folders)
     g_pluginFolders = std::move(folders);
 }
 
-// "plugin/<id>/<file>/<dark|light>", "glyph/<code>/<theme>", "color/<text>/<theme>", "pdata/<hash>".
+// "plugin/<id>/<file>/<dark|light>", "glyph/<code>/<theme>", "ph/<spec>/<theme>",
+// "color/<text>/<theme>", "pdata/<hash>".
 QImage FileIconProvider::pluginImage(const QString& id, int px)
 {
     const QStringList parts = id.split(u'/');
     const bool dark = parts.last() == u"dark";
     if (parts.value(0) == u"glyph" && parts.size() == 3)
         return glyphIcon(decode(parts[1]), px, dark);
+    if (parts.value(0) == u"ph" && parts.size() == 3)
+        return phosphorImage(decode(parts[1]), px, dark);
     if (parts.value(0) == u"color" && parts.size() == 3)
         return colorIcon(decode(parts[1]), px, dark);
     if (parts.value(0) == u"pdata" && parts.size() == 2) {
