@@ -206,6 +206,7 @@ struct Options {
     std::string alias;
     std::wstring folder; // "" for Downloads
     bool receive = true;
+    bool autoAccept = false; // what comes is taken without the question (GitHub #303)
     std::string pin;
     ReceiveNetworks networks = ReceiveNetworks::Trusted;
 };
@@ -225,6 +226,7 @@ Options parseOptions(const Json& s)
     o.alias = cutUtf8(validUtf8(trimmed(s["alias"].toString())), 64); // never a character cut in two
     o.folder = expandEnv(wide(trimmed(s["folder"].toString())));
     o.receive = boolSetting(s["receive"], true);
+    o.autoAccept = boolSetting(s["auto"], false);
     o.pin = trimmed(s["pin"].toString());
     o.networks = s["networks"].toString() == "all" ? ReceiveNetworks::All : ReceiveNetworks::Trusted;
     return o;
@@ -711,6 +713,21 @@ void LocalSendPlugin::onAsked(const IncomingRequest& r)
 {
     logInfo("asked: " + std::to_string(r.files.size()) + " file(s), " + std::to_string(r.totalBytes) + " bytes"
         + (r.verified ? "" : ", sender unverified"));
+    // 自动接收 (off unless its user turned it on, GitHub #303): the answer is
+    // yes at once, nobody asked. What the receiver refuses before the
+    // question (the PIN, no room, no folder, a public network not allowed)
+    // never came this far, and the notification of what was received tells
+    // of it as ever.
+    bool autoAccept = false;
+    {
+        const std::lock_guard lock(m_mutex);
+        autoAccept = m_options.autoAccept;
+    }
+    if (autoAccept && m_receiver->decide(r.id, true)) {
+        logInfo("accepted by itself (the setting)");
+        refresh();
+        return;
+    }
     refresh(); // the receiver had it stored for pending() before it told
     // Who, how many, how much: never the names (a notification stays in the
     // Action Center). Our words first, the name after them and cut short
@@ -1152,6 +1169,8 @@ Items LocalSendPlugin::receiveRows(bool* problem)
     // Plain words: the name, the folder's own name, a PIN; no port (the
     // hint above says it when that is the trouble).
     std::string status = chinese() ? "收到的文件存到「" + folder + "」" : "Files received go to " + folder;
+    if (o.autoAccept)
+        status += t(" · 自动接收，不再问", " · taken without asking");
     if (!o.pin.empty())
         status += t(" · 要密码", " · PIN set");
     Item row("status", chinese() ? "别的设备看到的名字：" + alias : "Other devices see this PC as " + alias, status + t(" · Enter 改设置", " · Enter for settings"));
