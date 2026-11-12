@@ -13,6 +13,7 @@
 #include "MissingFiles.h"
 #include "DoubleTapDetector.h"
 #include "Extract.h"
+#include "Render.h"
 #include "GameGuard.h"
 #include "JournalBudget.h"
 #include "KeyListenerProtocol.h"
@@ -434,6 +435,45 @@ QByteArray makePdf(const std::vector<std::vector<std::string>>& pages)
     pdf += "trailer\n<< /Size " + std::to_string(objects.size() + 1) + " /Root 1 0 R >>\nstartxref\n"
         + std::to_string(xref) + "\n%%EOF\n";
     return QByteArray::fromStdString(pdf);
+}
+
+// A Photoshop file with nothing but its flattened picture: `planes` one
+// after another, raw or PackBits (each row as one literal run).
+std::string makePsd(int version, int mode, int depth, quint32 width, quint32 height,
+    const std::vector<std::string>& planes, bool packed, const std::string& palette = {})
+{
+    std::string psd = "8BPS";
+    const auto big = [&](quint64 value, int size) {
+        for (int i = size - 1; i >= 0; --i)
+            psd.push_back(static_cast<char>(value >> (8 * i)));
+    };
+    big(static_cast<quint64>(version), 2);
+    psd.append(6, '\0');
+    big(planes.size(), 2);
+    big(height, 4);
+    big(width, 4);
+    big(static_cast<quint64>(depth), 2);
+    big(static_cast<quint64>(mode), 2);
+    big(palette.size(), 4);
+    psd += palette;
+    big(0, 4); // resources
+    big(0, version == 2 ? 8 : 4); // layers
+    big(packed ? 1 : 0, 2);
+    const std::size_t row = width * static_cast<std::size_t>(depth / 8);
+    if (packed) {
+        for (std::size_t i = 0; i < planes.size() * height; ++i)
+            big(row + 1, version == 2 ? 4 : 2);
+        for (const std::string& plane : planes) {
+            for (quint32 y = 0; y < height; ++y) {
+                psd.push_back(static_cast<char>(row - 1)); // a literal run of `row` bytes
+                psd += plane.substr(y * row, row);
+            }
+        }
+    } else {
+        for (const std::string& plane : planes)
+            psd += plane;
+    }
+    return psd;
 }
 
 QByteArray le16(std::initializer_list<quint16> values)
@@ -10717,6 +10757,127 @@ private slots:
         QVERIFY(!paths(u"y ext:exe"_s).contains(music));
         QCOMPARE(pinyin::findInitialUtf16(u"网易云音乐", 'y')->start, std::size_t {1});
         QVERIFY(!pinyin::findInitialUtf16(u"NyaTerm", 'y'));
+    }
+
+    // GitHub #297: .psd and .ai drawn as pictures for the preview.
+    void renderPhotoshop()
+    {
+        const auto render = [](const std::string& bytes, quint32 largest, extract::Picture& out) {
+            extract::MemorySource source(bytes);
+            return extract::render(source, largest, out);
+        };
+        const auto rgb3 = [](int r, int g, int b) { return (r << 16) | (g << 8) | b; };
+        const auto pixel = [rgb3](const extract::Picture& p, quint32 x, quint32 y) {
+            const auto* at = reinterpret_cast<const uchar*>(p.bgra.data()) + (static_cast<std::size_t>(y) * p.width + x) * 4;
+            return rgb3(at[2], at[1], at[0]);
+        };
+        // 2 x 2, RGB: red, green / blue, white; raw and packed, PSD and PSB.
+        const std::vector<std::string> rgb {std::string("\xFF\x00\x00\xFF", 4), std::string("\x00\xFF\x00\xFF", 4),
+            std::string("\x00\x00\xFF\xFF", 4)};
+        for (const int version : {1, 2}) {
+            for (const bool packed : {false, true}) {
+                extract::Picture p;
+                QCOMPARE(render(makePsd(version, 3, 8, 2, 2, rgb, packed), 4096, p), extractproto::Status::Ok);
+                QCOMPARE(p.width, 2u);
+                QCOMPARE(p.height, 2u);
+                QCOMPARE(p.bgra.size(), std::size_t {16});
+                QCOMPARE(pixel(p, 0, 0), rgb3(255, 0, 0));
+                QCOMPARE(pixel(p, 1, 0), rgb3(0, 255, 0));
+                QCOMPARE(pixel(p, 0, 1), rgb3(0, 0, 255));
+                QCOMPARE(pixel(p, 1, 1), rgb3(255, 255, 255));
+            }
+        }
+        // A fourth plane of an RGB file is a mask of its own, not the picture's.
+        {
+            std::vector<std::string> more = rgb;
+            more.push_back(std::string(4, '\0'));
+            extract::Picture p;
+            QCOMPARE(render(makePsd(1, 3, 8, 2, 2, more, true), 4096, p), extractproto::Status::Ok);
+            QCOMPARE(pixel(p, 0, 0), rgb3(255, 0, 0));
+        }
+        // 16 bits: the high byte. Grey.
+        {
+            extract::Picture p;
+            QCOMPARE(render(makePsd(1, 1, 16, 2, 1, {std::string("\x80\x12\xFF\xFF", 4)}, false), 4096, p), extractproto::Status::Ok);
+            QCOMPARE(pixel(p, 0, 0), rgb3(128, 128, 128));
+            QCOMPARE(pixel(p, 1, 0), rgb3(255, 255, 255));
+        }
+        // CMYK is stored as 255 - ink: no ink is white, all black ink is black.
+        {
+            extract::Picture p;
+            QCOMPARE(render(makePsd(1, 4, 8, 2, 1, {std::string("\xFF\xFF", 2), std::string("\xFF\x00", 2),
+                std::string("\xFF\x00", 2), std::string("\xFF\x00", 2)}, false), 4096, p), extractproto::Status::Ok);
+            QCOMPARE(pixel(p, 0, 0), rgb3(255, 255, 255));
+            QCOMPARE(pixel(p, 1, 0), rgb3(0, 0, 0));
+        }
+        // Indexed: by the palette (256 reds, greens, blues).
+        {
+            std::string palette(768, '\0');
+            palette[1] = '\x10';
+            palette[256 + 1] = '\x20';
+            palette[512 + 1] = '\x30';
+            extract::Picture p;
+            QCOMPARE(render(makePsd(1, 2, 8, 2, 1, {std::string("\x01\x00", 2)}, false, palette), 4096, p), extractproto::Status::Ok);
+            QCOMPARE(pixel(p, 0, 0), rgb3(0x10, 0x20, 0x30));
+            QCOMPARE(pixel(p, 1, 0), rgb3(0, 0, 0));
+        }
+        // A large one comes scaled down, each box of pixels to their average.
+        {
+            std::string plane(200 * 100, '\0');
+            for (int y = 0; y < 100; ++y) {
+                for (int x = 0; x < 200; ++x)
+                    plane[static_cast<std::size_t>(y * 200 + x)] = (x / 2) % 2 ? '\xFF' : '\0'; // stripes two wide
+            }
+            extract::Picture p;
+            QCOMPARE(render(makePsd(1, 1, 8, 200, 100, {plane}, false), 64, p), extractproto::Status::Ok);
+            QCOMPARE(p.width, 50u);
+            QCOMPARE(p.height, 25u);
+            QCOMPARE(p.fullWidth, 200u);
+            QCOMPARE(p.fullHeight, 100u);
+            QCOMPARE(pixel(p, 7, 3), rgb3(127, 127, 127));
+        }
+        // What it does not read, and what is cut short or lies about itself.
+        extract::Picture p;
+        QCOMPARE(render(makePsd(1, 3, 32, 2, 2, rgb, false), 4096, p), extractproto::Status::Unsupported);
+        QCOMPARE(render(makePsd(1, 9, 8, 2, 2, rgb, false), 4096, p), extractproto::Status::Unsupported); // Lab
+        QCOMPARE(render("not a picture", 4096, p), extractproto::Status::Unsupported);
+        const std::string whole = makePsd(1, 3, 8, 2, 2, rgb, true);
+        for (std::size_t cut = 4; cut < whole.size(); ++cut)
+            QVERIFY2(render(whole.substr(0, cut), 4096, p) != extractproto::Status::Ok, qPrintable(QString::number(cut)));
+        std::string huge = makePsd(1, 3, 8, 2, 2, rgb, false);
+        huge[14] = '\x7F'; // a height of two thousand million rows
+        QVERIFY(render(huge, 4096, p) != extractproto::Status::Ok);
+        std::string runs = makePsd(1, 3, 8, 2, 2, rgb, true);
+        runs[runs.size() - 3] = '\x7F'; // a run longer than the row
+        QVERIFY(render(runs, 4096, p) != extractproto::Status::Ok);
+    }
+
+    void renderIllustrator()
+    {
+        if (!extract::loadPdfium())
+            QSKIP("pdfium.dll is not beside the test");
+        // A few letters in a corner of a page of 400 x 200 points (an .ai is
+        // a PDF): what comes back is the letters, not the paper.
+        const QByteArray pdf = makePdf({{"Hi"}});
+        extract::MemorySource source({pdf.constData(), static_cast<std::size_t>(pdf.size())});
+        extract::Picture p;
+        QCOMPARE(extract::render(source, 1024, p), extractproto::Status::Ok);
+        QCOMPARE(p.fullWidth, 400u);
+        QCOMPARE(p.fullHeight, 200u);
+        QVERIFY2(p.width >= 64 && p.width < 700 && p.height >= 32 && p.height <= 1024,
+            qPrintable(u"%1 x %2"_s.arg(p.width).arg(p.height)));
+        QCOMPARE(p.bgra.size(), std::size_t {p.width} * p.height * 4);
+        std::size_t dark = 0;
+        for (std::size_t i = 0; i < p.bgra.size(); i += 4)
+            dark += static_cast<uchar>(p.bgra[i]) < 128;
+        QVERIFY2(dark * 50 > p.bgra.size() / 4, "the letters fill little of the picture"); // over 2% of it: paper cut away
+        // A page drawn on all over stays whole, as long as asked for.
+        std::vector<std::string> lines(9, "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM");
+        const QByteArray full = makePdf({lines});
+        extract::MemorySource fullSource({full.constData(), static_cast<std::size_t>(full.size())});
+        QCOMPARE(extract::render(fullSource, 800, p), extractproto::Status::Ok);
+        QCOMPARE(p.width, 800u);
+        QCOMPARE(p.height, 400u);
     }
 
     void historyContainsAndEntityFallback()

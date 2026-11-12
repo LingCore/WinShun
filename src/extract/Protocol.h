@@ -5,7 +5,10 @@
 // says it is Ready; then one request at a time, the app sends a Request with
 // a read-only handle to the file already duplicated into the extractor, and
 // the extractor answers with a ResponseHeader followed by `payloadBytes` of
-// doctext::serialize() output. Qt-free.
+// doctext::serialize() output. A request with kRenderMagic asks for the file
+// as a picture instead (Render.h, the preview of .ai and .psd): `maxText` is
+// then the most pixels on its longer side, and the payload a PictureHeader
+// followed by width * height * 4 bytes (BGRA, opaque, top row first). Qt-free.
 
 #include <cstdint>
 
@@ -14,6 +17,7 @@ namespace ws::extractproto {
 inline constexpr std::uint32_t kRequestMagic = 0x51525857; // "WXRQ"
 inline constexpr std::uint32_t kResponseMagic = 0x53525857; // "WXRS"
 inline constexpr std::uint32_t kReadyMagic = 0x59525857; // "WXRY"
+inline constexpr std::uint32_t kRenderMagic = 0x50525857; // "WXRP": a Request for a picture
 
 enum class Status : std::uint8_t {
     Ok, // text found
@@ -45,6 +49,14 @@ struct ResponseHeader {
     std::uint64_t payloadBytes = 0;
 };
 
+struct PictureHeader {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t fullWidth = 0; // the page in points, or the picture as stored
+    std::uint32_t fullHeight = 0;
+};
+
+static_assert(sizeof(PictureHeader) == 16);
 static_assert(sizeof(Ready) == 8);
 static_assert(sizeof(Request) == 32);
 static_assert(sizeof(ResponseHeader) == 16);

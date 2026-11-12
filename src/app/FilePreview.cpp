@@ -1,5 +1,6 @@
 #include "FilePreview.h"
 
+#include "DocExtractor.h"
 #include "SyntaxSpans.h"
 #include "SystemTheme.h"
 
@@ -55,6 +56,14 @@ bool isPicture(const QString& suffix)
         u"tif"_s, u"tiff"_s, u"ico"_s, u"webp"_s, u"heic"_s, u"heif"_s, u"avif"_s, u"jxl"_s, u"jxr"_s, u"wdp"_s, u"hdp"_s,
         u"dds"_s, u"dng"_s, u"cr2"_s, u"cr3"_s, u"nef"_s, u"arw"_s, u"orf"_s, u"rw2"_s, u"raf"_s};
     return kTypes.contains(suffix);
+}
+
+// Drawings and layered pictures no codec of Windows reads (GitHub #297):
+// drawn in the document reader's process (DocExtractor::renderFile), an
+// Illustrator file by its PDF part, a Photoshop one by its flattened picture.
+bool isDrawn(const QString& suffix)
+{
+    return suffix == u"ai" || suffix == u"psd" || suffix == u"psb";
 }
 
 // Text whatever handler a program may have put on it (an editor's, a web
@@ -598,6 +607,24 @@ void FilePreview::load(const Item& item, bool followed)
                     loaded->kind = Picture;
                     loaded->imageSize = image.size();
                     summary.insert(1, u"%1 × %2"_s.arg(original.width()).arg(original.height()));
+                    loaded->image = std::move(image);
+                    done = true;
+                }
+            } else if (!cloudOnly && isDrawn(suffix)) {
+                // One that cannot be drawn (an old .ai without a PDF part, a
+                // 32-bit .psd) goes on to whatever handler it has.
+                static auto* const drawer = new DocExtractor(1, DocExtractor::Priority::Normal); // as m_worker: never deleted
+                DocExtractor::Rendered drawn = drawer->renderFile(native, static_cast<std::uint32_t>(kLargestPicture), stale);
+                if (drawn.status == extractproto::Status::Ok) {
+                    // The picture keeps the bytes it came in (64 MB at the most: no second copy).
+                    auto* pixels = new std::string(std::move(drawn.bgra));
+                    QImage image(reinterpret_cast<const uchar*>(pixels->data()), static_cast<int>(drawn.size.width),
+                        static_cast<int>(drawn.size.height), static_cast<qsizetype>(drawn.size.width) * 4, QImage::Format_RGB32,
+                        [](void* bytes) { delete static_cast<std::string*>(bytes); }, pixels);
+                    loaded->kind = Picture;
+                    loaded->imageSize = image.size();
+                    if (suffix != u"ai") // a picture's pixels; a drawing has no size in them
+                        summary.insert(1, u"%1 × %2"_s.arg(drawn.size.fullWidth).arg(drawn.size.fullHeight));
                     loaded->image = std::move(image);
                     done = true;
                 }

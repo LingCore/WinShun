@@ -4357,6 +4357,100 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
                     check(filePreview.selectedText().isEmpty(), "the pick stayed after the preview closed");
                 }
             }
+            // Drawings and layered pictures (GitHub #297): an Illustrator
+            // file by its PDF part, a Photoshop one by its flattened picture,
+            // drawn in the document reader's process and shown as pictures
+            // (fitted, the wheel zooms). A small drawing on a large artboard
+            // comes without the empty paper. --preview-file <path>: that
+            // file too, for a look at a real one.
+            {
+                QTemporaryDir drawings; // of their own: the folder listed keeps its rows
+                check(drawings.isValid(), "could not create a folder for the drawings");
+                const auto showDrawn = [&](const QString& path, const char* grab) -> QSize {
+                    const QString before = filePreview.summary(); // what was there is a picture too, until this one is read
+                    filePreview.show({.path = QDir::toNativeSeparators(path), .name = QFileInfo(path).fileName()});
+                    timeout.restart();
+                    while ((filePreview.kind() == FilePreview::Loading || !filePreview.isShowing(QDir::toNativeSeparators(path))
+                               || filePreview.summary() == before)
+                        && timeout.elapsed() < 15000)
+                        pump(10);
+                    pump(300);
+                    if (filePreview.window())
+                        check(saveGrab(filePreview.window(), output.filePath(QString::fromLatin1(grab))), "could not render a drawn preview");
+                    return filePreview.kind() == FilePreview::Picture ? filePreview.imageSize() : QSize();
+                };
+                const auto big = [](QByteArray& to, quint64 value, int size) {
+                    for (int i = size - 1; i >= 0; --i)
+                        to.append(static_cast<char>(value >> (8 * i)));
+                };
+                // 320 x 200, RGB, raw: red grows to the right, green down.
+                QByteArray psd("8BPS");
+                big(psd, 1, 2);
+                psd.append(6, '\0');
+                big(psd, 3, 2);
+                big(psd, 200, 4);
+                big(psd, 320, 4);
+                big(psd, 8, 2);
+                big(psd, 3, 2);
+                big(psd, 0, 4);
+                big(psd, 0, 4);
+                big(psd, 0, 4);
+                big(psd, 0, 2);
+                for (int plane = 0; plane < 3; ++plane) {
+                    for (int y = 0; y < 200; ++y) {
+                        for (int x = 0; x < 320; ++x)
+                            psd.append(static_cast<char>(plane == 0 ? x * 255 / 319 : plane == 1 ? y * 255 / 199 : 64));
+                    }
+                }
+                QFile psdFile(drawings.filePath(u"layers.psd"_s));
+                check(psdFile.open(QIODevice::WriteOnly) && psdFile.write(psd) == psd.size(), "could not create the .psd fixture");
+                psdFile.close();
+                const QSize psdSize = showDrawn(psdFile.fileName(), "preview-psd.png");
+                check(psdSize == QSize(320, 200), "a .psd was not shown as its picture");
+                check(filePreview.summary().contains(u"320 × 200"), "a .psd's summary lacks its size");
+                // A bag 60 x 150 points in the middle of a sheet 2400 x 1700.
+                const std::string content = "0.29 0.33 0.19 rg 1170 775 60 150 re f";
+                const std::vector<std::string> objects {"<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2400 1700] /Contents 4 0 R >>",
+                    "<< /Length " + std::to_string(content.size()) + " >>\nstream\n" + content + "\nendstream"};
+                std::string pdf = "%PDF-1.4\n";
+                std::vector<std::size_t> offsets;
+                for (std::size_t i = 0; i < objects.size(); ++i) {
+                    offsets.push_back(pdf.size());
+                    pdf += std::to_string(i + 1) + " 0 obj\n" + objects[i] + "\nendobj\n";
+                }
+                const std::size_t xref = pdf.size();
+                pdf += "xref\n0 5\n0000000000 65535 f \n";
+                for (const std::size_t o : offsets) {
+                    char line[24];
+                    std::snprintf(line, sizeof line, "%010zu 00000 n \n", o);
+                    pdf += line;
+                }
+                pdf += "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n" + std::to_string(xref) + "\n%%EOF\n";
+                QFile aiFile(drawings.filePath(u"bag.ai"_s));
+                check(aiFile.open(QIODevice::WriteOnly) && aiFile.write(pdf.data(), static_cast<qint64>(pdf.size())) > 0,
+                    "could not create the .ai fixture");
+                aiFile.close();
+                const QSize aiSize = showDrawn(aiFile.fileName(), "preview-ai.png");
+                // The bag and a little paper: tall, not the sheet's wide shape, and large.
+                check(!aiSize.isEmpty() && aiSize.height() > aiSize.width() && aiSize.height() >= 1000,
+                    "an .ai was not shown as its drawing without the empty artboard");
+                // One that is no PDF (Illustrator 8 and before) is not a picture: it goes on as before.
+                QFile oldFile(drawings.filePath(u"old.ai"_s));
+                check(oldFile.open(QIODevice::WriteOnly) && oldFile.write("%!PS-Adobe-3.0\n%%Creator: Adobe Illustrator(R) 8.0\n") > 0,
+                    "could not create the old .ai fixture");
+                oldFile.close();
+                check(showDrawn(oldFile.fileName(), "preview-ai-old.png").isEmpty() && filePreview.kind() != FilePreview::Loading,
+                    "an .ai without a PDF part did not fall back");
+                say(u"drawn previews: .psd %1x%2, .ai %3x%4 (sheet 2400x1700), old .ai falls back"_s.arg(psdSize.width())
+                        .arg(psdSize.height()).arg(aiSize.width()).arg(aiSize.height()));
+                if (const QString real = valueAfter(QCoreApplication::arguments(), u"--preview-file"); !real.isEmpty()) {
+                    const QSize size = showDrawn(real, "preview-file.png");
+                    say(u"--preview-file %1: kind %2, picture %3x%4, %5"_s.arg(real).arg(int(filePreview.kind())).arg(size.width())
+                            .arg(size.height()).arg(filePreview.summary()));
+                }
+                filePreview.close();
+            }
             // Colours (GitHub #291): code, data and Markdown by the kind of
             // file, the words searched for marked, the first of them in sight.
             {

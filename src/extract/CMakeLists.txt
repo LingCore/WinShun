@@ -42,6 +42,8 @@ add_library(wsextract STATIC
     Pdf.cpp
     Ppt.cpp
     Protocol.h
+    Psd.cpp
+    Render.h
     Source.h
     Writer.cpp Writer.h
     Xls.cpp
