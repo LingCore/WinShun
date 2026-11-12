@@ -688,7 +688,8 @@ QImage FileIconProvider::requestImage(const QString& id, QSize* size, const QSiz
         const QStringList parts = id.mid(7).split(u'/');
         const QImage kept = siteicons::loadCustom(decode(parts.value(0)));
         image = kept.isNull() ? schemeIcon(u"https"_s, px) : siteicon::drawn(kept, px, parts.value(1) == u"dark");
-    } else if (id.startsWith(u"plugin/") || id.startsWith(u"glyph/") || id.startsWith(u"color/") || id.startsWith(u"pdata/")) {
+    } else if (id.startsWith(u"plugin/") || id.startsWith(u"glyph/") || id.startsWith(u"ph/") || id.startsWith(u"color/")
+        || id.startsWith(u"pdata/")) {
         image = pluginImage(id, px);
         if (image.isNull()) // a picture that is not there, a colour that is none
             image = glyphIcon(u"U+EA86"_s, px, id.endsWith(u"/dark"));
