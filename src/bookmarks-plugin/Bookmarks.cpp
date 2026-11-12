@@ -291,6 +291,50 @@ std::vector<std::string> bookmarkFiles(const std::string& localAppData, const st
     return files;
 }
 
+// The two folders a browser makes for itself, at the top of the tree: the
+// bookmarks bar and the other bookmarks. Every profile has them under the same
+// name, so they say nothing about what is filed inside. Read as pinyin they are
+// pure noise: 书签栏 spells "sql" (shu-qian-lan) and 其他书签 starts "qt"
+// (qi-ta), so either one matches the whole bar for a query that has nothing to
+// do with it. Both the Chinese and the English names are listed, because the
+// file stores whichever the browser was installed in.
+bool isBuiltInFolder(const std::string& name)
+{
+    static const char* const kNames[] = {
+        "书签栏", "其他书签", "收藏夹栏", "其他收藏夹",
+        "bookmarks bar", "other bookmarks", "favorites bar", "other favorites",
+    };
+    const std::string low = lower(name);
+    for (const char* built : kNames) {
+        if (low == built)
+            return true;
+    }
+    return false;
+}
+
+// The folder as pinyin reads it: the browser's own folders left out, so a name
+// the user chose (网安 answers "wa") is still searched while the bar every
+// profile shares is not. A literal search still sees the whole folder text,
+// so typing 书签栏 finds the bar as before.
+std::string spelledFolder(const std::string& folder)
+{
+    std::string out;
+    const std::size_t step = std::strlen(kSeparator);
+    for (std::size_t at = 0; at <= folder.size();) {
+        const std::size_t sep = folder.find(kSeparator, at);
+        const std::string part = folder.substr(at, sep == std::string::npos ? std::string::npos : sep - at);
+        if (!part.empty() && !isBuiltInFolder(part)) {
+            if (!out.empty())
+                out += "\n"; // a term may not span two folders either
+            out += lower(part);
+        }
+        if (sep == std::string::npos)
+            break;
+        at = sep + step;
+    }
+    return out;
+}
+
 winshun::Items search(const std::vector<Entry>& entries, const std::string& text, bool chinese)
 {
     const std::vector<std::string> typed = words(text);
@@ -307,15 +351,16 @@ winshun::Items search(const std::vector<Entry>& entries, const std::string& text
         const std::string shown = unquote(e.url);
         const std::string haystack = lower(e.title + "\n" + e.url + "\n" + shown + "\n" + e.folder);
         // Typed letters match either literally, anywhere, or as the pinyin of a
-        // Chinese character in the title or in a folder: "wa" finds the
-        // bookmarks filed under 网安, as the app's own search reads folders
-        // (Query.cpp). The address is left out of the pinyin: it is ASCII
-        // nearly always, so reading it would cost a comparison per bookmark
-        // and find nothing, and an address is not something the user named.
-        // The newline keeps a match from spanning the two.
+        // Chinese character in the title or in a folder the user named: "wa"
+        // finds the bookmarks filed under 网安, as the app's own search reads
+        // folders (Query.cpp). The address is left out of the pinyin: it is
+        // ASCII nearly always, so reading it would cost a comparison per
+        // bookmark and find nothing, and an address is not something the user
+        // named. The browser's own two folders are left out too -- see
+        // spelledFolder(). The newline keeps a match from spanning two names.
         const std::string title = lower(e.title);
         const bool titleHan = winshun::pinyin::hasHan(title);
-        const std::string spelled = title + "\n" + lower(e.folder);
+        const std::string spelled = title + "\n" + spelledFolder(e.folder);
         const bool spelledHan = winshun::pinyin::hasHan(spelled);
         const auto missing = [&haystack, &spelled, &pinyin, spelledHan](const std::string& w, std::size_t i) {
             if (haystack.find(w) != std::string::npos)

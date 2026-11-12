@@ -382,6 +382,41 @@ private slots:
         // A term may not span the title and the folder: the newline stops it.
         QVERIFY(!search(all, "box书", true).front().valid);
     }
+    // The browser's own two folders are not read as pinyin. Every profile has
+    // them, under the same name, so they say nothing about what is inside --
+    // and 书签栏 spells "sql" (shu-qian-lan) while 其他书签 starts "qt"
+    // (qi-ta), so reading them matched the whole bar for unrelated queries.
+    void theBrowsersOwnFoldersAreNotSpelled()
+    {
+        const std::vector<Entry> all {
+            entry("Hack The Box", "https://hackthebox.example/", "书签栏"),
+            entry("CTF Wiki", "https://wiki.example/", "书签栏"),
+            entry("网易云音乐", "https://music.example/", "其他书签"),
+        };
+        // The complaint this fixes: "sql" is 书签栏's initials and "qt" is
+        // 其他书签's, and neither says anything about the bookmarks below.
+        QVERIFY(!search(all, "sql", true).front().valid);
+        QVERIFY(!search(all, "qt", true).front().valid);
+        QVERIFY(!search(all, "sqt", true).front().valid);
+        // Typing the name still finds them literally: the literal search reads
+        // the whole folder text, built-in names included.
+        QCOMPARE(search(all, "书签栏", true).size(), size_t(2));
+        QCOMPARE(search(all, "其他书签", true).size(), size_t(1));
+        // A folder the user named inside the bar is still spelled: 工具 is
+        // gong/ju, and the built-in parent above it stays out of the way.
+        const std::vector<Entry> inner {entry("知乎", "https://zhihu.example/", "书签栏 › 工具")};
+        QCOMPARE(search(inner, "gj", true).size(), size_t(1));
+        QCOMPARE(search(inner, "gongju", true).size(), size_t(1));
+        // The English names count too: the file stores whichever language the
+        // browser runs in.
+        const std::vector<Entry> english {entry("Hack The Box", "https://h.example/", "Bookmarks bar")};
+        QVERIFY(!search(english, "bb", true).front().valid);
+        QCOMPARE(search(english, "Bookmarks bar", true).size(), size_t(1));
+        // A built-in name only stops being spelled where it is a whole folder:
+        // a folder the user named 书签栏备份 is their own name and is read.
+        const std::vector<Entry> own {entry("X", "https://x.example/", "书签栏备份")};
+        QCOMPARE(search(own, "sqlbf", true).size(), size_t(1));
+    }
     // The rows are capped at 50, and the cap has to come after the ranking:
     // more bookmarks match than fit, and the one that says the word may be the
     // last of them in file order.
