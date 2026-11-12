@@ -1134,6 +1134,7 @@ Window {
         onLoaded: (item as Panel).searchBar.syncQuery()
         sourceComponent: Panel {
             showTypeKeywords: typeStrip.showKeywords
+            fileChips: typeStrip.fileChips
             launcher: window.launcher
             placement: window.placement
             frame: window.frame

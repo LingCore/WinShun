@@ -244,7 +244,7 @@ void panelSidebar(QQmlEngine* engine, const QDir& output, Checks& check)
     QMetaObject::invokeMethod(toggle, "activate");
     settle(window);
     check(!launcher.panelSidebarVisible() && !sidebar->isVisible() && sidebar->width() == 0
-        && results->width() >= shownWidth + 289, u"hiding filters gives their width to results"_s);
+        && results->width() >= shownWidth + 175, u"hiding filters gives their width to results"_s);
     check(launcher.query() == u"report" && launcher.filtersActive() && launcher.dateChoice() == 2,
         u"hiding filters keeps the query and active criteria"_s);
     auto* indicator = item(window->contentItem(), u"panelActiveFiltersIndicator"_s);
@@ -256,6 +256,16 @@ void panelSidebar(QQmlEngine* engine, const QDir& output, Checks& check)
     QMetaObject::invokeMethod(toggle, "activate");
     settle(window);
     check(sidebar->isVisible() && std::abs(results->width() - shownWidth) < 1, u"showing the sidebar restores the layout"_s);
+    auto* strip = item(window->contentItem(), u"panelFilterBar"_s);
+    launcher.setPanelFiltersOnTop(true);
+    settle(window);
+    check(strip && strip->isVisible() && strip->height() > 0 && !sidebar->isVisible() && results->width() >= shownWidth + 175,
+        u"filters on top leave the rows the whole width"_s);
+    check(window->grabWindow().save(output.filePath(u"panel-filters-top.png"_s)), u"capture the filters as a strip over the rows"_s);
+    launcher.setPanelFiltersOnTop(false);
+    settle(window);
+    check(strip && !strip->isVisible() && sidebar->isVisible() && std::abs(results->width() - shownWidth) < 1,
+        u"filters back at the left restore the layout"_s);
     launcher.setPanel(false);
     settle(window);
     check(!toggle->isVisible(), u"the compact launcher does not show the panel-only control"_s);

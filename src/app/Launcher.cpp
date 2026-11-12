@@ -485,6 +485,7 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     m_columns.load(Settings::filePath());
     m_queryHistory.load();
     m_panelSidebarVisible = QSettings(Settings::filePath(), QSettings::IniFormat).value(u"Panel/SidebarVisible"_s, true).toBool();
+    m_panelFiltersOnTop = QSettings(Settings::filePath(), QSettings::IniFormat).value(u"Panel/FiltersOnTop"_s, false).toBool();
     m_contentPane = std::make_unique<ContentPane>(index);
     const auto syncPane = [this] { syncContentPane(); };
     connect(this, &Launcher::currentRowChanged, this, syncPane);
@@ -2800,6 +2801,15 @@ void Launcher::setPanelSidebarVisible(bool visible)
     m_panelSidebarVisible = visible;
     QSettings(Settings::filePath(), QSettings::IniFormat).setValue(u"Panel/SidebarVisible"_s, visible);
     emit panelSidebarVisibleChanged();
+}
+
+void Launcher::setPanelFiltersOnTop(bool top)
+{
+    if (m_panelFiltersOnTop == top)
+        return;
+    m_panelFiltersOnTop = top;
+    QSettings(Settings::filePath(), QSettings::IniFormat).setValue(u"Panel/FiltersOnTop"_s, top);
+    emit panelFiltersOnTopChanged();
 }
 
 void Launcher::setPinned(bool on)

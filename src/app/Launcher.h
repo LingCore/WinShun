@@ -202,6 +202,8 @@ class Launcher : public QObject {
     // here; togglePanel() asks it to.
     Q_PROPERTY(bool panel READ panel NOTIFY panelChanged FINAL)
     Q_PROPERTY(bool panelSidebarVisible READ panelSidebarVisible WRITE setPanelSidebarVisible NOTIFY panelSidebarVisibleChanged FINAL)
+    // The panel's filters as a strip over the rows, not the list down the left (Panel/FiltersOnTop).
+    Q_PROPERTY(bool panelFiltersOnTop READ panelFiltersOnTop WRITE setPanelFiltersOnTop NOTIFY panelFiltersOnTopChanged FINAL)
     // Pinned (Ctrl+T, the pin at the box's corner; linux.do #157): it stays
     // up when it loses the focus or a result is opened, until Esc (or double
     // Ctrl while it is in front) hides it. Kept while hidden, until turned
@@ -714,6 +716,8 @@ public:
     bool panel() const { return m_panel; }
     bool panelSidebarVisible() const { return m_panelSidebarVisible; }
     void setPanelSidebarVisible(bool visible);
+    bool panelFiltersOnTop() const { return m_panelFiltersOnTop; }
+    void setPanelFiltersOnTop(bool top);
     PanelColumns* panelColumns() { return &m_columns; }
     void setPanel(bool on); // by the app, the window sized for it (App::setPanel)
     Q_INVOKABLE void togglePanel(); // panelToggleRequested: the app does it
@@ -813,6 +817,7 @@ signals:
     void folderSearchChanged();
     void panelChanged();
     void panelSidebarVisibleChanged();
+    void panelFiltersOnTopChanged();
     void panelToggleRequested();
     void pinnedChanged();
     void settingsRequested();
@@ -1208,6 +1213,7 @@ private:
     // The search panel (see the properties).
     bool m_panel = false;
     bool m_panelSidebarVisible = true;
+    bool m_panelFiltersOnTop = false;
     PanelColumns m_columns;
     bool m_pinned = false;
     int m_dateChoice = 0;
