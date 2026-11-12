@@ -79,6 +79,11 @@ void setCloaked(QWindow* window, bool cloaked);
 
 // No DWM fade as the window is shown or hidden: hidden, it is off the screen
 // in the next composition, not some 200 ms later (a capture must not catch it).
+// Not for a window that can be maximized or snapped: sized so with them off,
+// DWM leaves it without its backdrop, black where it is see-through, until it
+// is hidden and shown again, and turning them back on once it is on show does
+// not help (#301; measured on Windows 11 26200, reported on 26300). Such a
+// window is shown cloaked until its first frame instead (setCloaked).
 void disableTransitions(QWindow* window);
 // A window (hidden or not) put on the monitor that has `logicalPoint` (Qt's
 // coordinates), where it is not on it yet: only moved, at the size it has,
