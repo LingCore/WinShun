@@ -5530,10 +5530,21 @@ bool App::startLauncherRouting()
     if (target)
         ::GetWindowThreadProcessId(target, &pid);
     // Nothing in front, or a window of Win顺's: nothing to route from. The
-    // taskbar (a press on Win顺's box: it comes back with that press), the
     // Start menu (its keys wait for the launcher, which it gives way to) and
     // the shell's other flyouts keep their own ways.
-    if (!m_window || !target || pid == ::GetCurrentProcessId() || taskbar::isTaskbar(target) || win::isShellFlyout(target))
+    //
+    // The taskbar is a window as any other here (GitHub #299; it was left
+    // out, a press on Win顺's box "coming back with that press"). The Start
+    // menu, typed in and closed for the launcher, hands the front back to
+    // the window before it, and with everything minimized, or the taskbar
+    // clicked last, that is the taskbar. Over it Windows refuses a Win顺 run
+    // as administrator the front from then on (after an input sent, after
+    // Alt, with the lock taken off: all refused, measured 2026-11-12): the
+    // launcher went as for a click elsewhere 230 ms after it came, the
+    // letters with it, and shown again by a press on the box it took none.
+    // This is only come to once the front was refused; in front after all,
+    // the routing ends by itself (launcherRoutedForeground).
+    if (!m_window || !target || pid == ::GetCurrentProcessId() || win::isShellFlyout(target))
         return false;
     // An elevated program while Win顺 is not: Windows keeps the keys typed
     // there from the hook (UIPI).
