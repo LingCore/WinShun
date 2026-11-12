@@ -44,6 +44,8 @@ QtObject {
         { where: "launcher", group: qsTr("打开与操作"), keys: "← / Esc", text: qsTr("关闭操作菜单，返回结果列表") },
         { where: "launcher", group: qsTr("打开与操作"), brief: true, keys: c => c.previewKey, text: qsTr("预览文件（鼠标中键点一行也行）；再按一次关闭"),
           when: c => c.previewKey.length > 0, setting: { page: 3, tab: 1 } },
+        { where: "launcher", group: qsTr("打开与操作"), brief: true, keys: c => c.openKey ?? "", text: qsTr("打开选中的结果，和 Enter 一样"),
+          when: c => (c.openKey ?? "").length > 0, setting: { page: 3, tab: 2 } },
         { where: "launcher", group: qsTr("打开与操作"), brief: true, keys: c => c.numberModifier.length > 0 ? c.numberModifier + "+1…9" : "", text: qsTr("打开第几行（图标上标着快捷键）"),
           when: c => c.numberModifier.length > 0, setting: { page: 3, tab: 2 } },
         { where: "launcher", group: qsTr("打开与操作"), keys: "Ctrl+Shift+Enter", text: qsTr("以管理员身份运行") },

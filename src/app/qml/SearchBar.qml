@@ -643,8 +643,8 @@ Item {
         checkedGlyph: "\uE16E" // the same, filled
         checked: bar.launcher.panelSidebarVisible
         marked: bar.launcher.filtersActive
-        tip: bar.launcher.panelSidebarVisible ? qsTr("隐藏筛选侧栏")
-            : bar.launcher.filtersActive ? qsTr("显示筛选侧栏（筛选仍生效）") : qsTr("显示筛选侧栏")
+        tip: bar.launcher.panelSidebarVisible ? qsTr("隐藏筛选")
+            : bar.launcher.filtersActive ? qsTr("显示筛选（筛选仍生效）") : qsTr("显示筛选")
         Accessible.checkable: true
         Accessible.checked: bar.launcher.panelSidebarVisible
         onClicked: {

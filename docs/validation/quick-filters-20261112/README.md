@@ -18,10 +18,10 @@
 | `tst_core`：`relocatedPersonalFoldersKeepPriority` 末尾新增的内容搜索断言（被排除的文件不读） | 通过（把 exe 拷到不带 `.` 的路径下运行；在 `.worktrees` 里这条旧测试本身在更早的一行失败，与本次无关） |
 | `tst_settings`：`quickFilterSettings`（读写、手改 ini 的整理） | 通过 |
 | `tst_settingsfilters`（新增 ctest：真实设置窗口，增删改排、重名、读不了的条件、`+` 带过来的草稿） | 通过，`quick-filters.png` |
-| `--navigation-workflows` 的 `panelQuickFilters`（真实 Main.qml，鼠标事件点小片：开、叠加、关、清除全部、设置里改了立即生效、`+`） | 26 项全部通过，QML 无警告，`panel-quick-filters.png` |
+| `--navigation-workflows` 的 `panelQuickFilters`（真实 Main.qml，鼠标事件点小片：开、叠加、关、清除全部、设置里改了立即生效、`+`） | 全部通过，QML 无警告；左侧列表 `panel-quick-filters.png`，顶部一行 `panel-quick-filters-top.png` |
 | `tst_querysyntax` | 通过 |
 | `tst_searchnavigation` | 失败：1 条“new rows … ms after the list asked for them”计时警告。同一时刻用没有本次改动的构建（`build/press-feedback`）跑同一命令，同样的警告，同样失败，不是本次引入 |
 
 过程中发现并改掉的：点一下小片会让整组小片重建（离屏检查里表现为悬空指针崩溃，实际会是悬停闪一下、焦点丢失）——开关状态改成单独的 `activeQuickFilters`，列表只在设置改动时变。lupdate 会吃掉 QML 字符串里的 `\`，带反斜杠的例子改成 `%1` 参数。
 
-没做实机键鼠测试：主工作区另有会话正在改 `Panel.qml`，本分支没有合入、没有部署。
+合并了同日的面板改版（b58ddf4b：筛选改成左侧窄列表或结果上方一行）后重新构建、重跑以上检查，两种布局里各有一组快捷筛选。没做实机键鼠测试，没有部署。

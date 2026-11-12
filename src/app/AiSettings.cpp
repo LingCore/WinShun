@@ -578,6 +578,25 @@ std::vector<Entry> buildCatalog()
         };
         add(std::move(e));
     }
+    {
+        Entry e = base({"Results/OpenHotkey", QT_TRANSLATE_NOOP("AiSettings", "打开结果的备用键"), "results", 2,
+            "A second local shortcut that opens the selected result as Enter does. A function key or an unused Ctrl/Alt chord; never Space; empty (the default) for none."}, Type::Text);
+        e.field = &Settings::openHotkey;
+        e.check = [](const State& s, const QString& value, const Env&) {
+            if (value.isEmpty())
+                return QString();
+            const QString normal = previewkeys::normalizedOpen(value);
+            if (normal.isEmpty())
+                return u"Use a function key or an unused Ctrl/Alt chord; Space, navigation and editing shortcuts are reserved."_s;
+            if (previewkeys::usedGlobally(value, {s.settings.hotkey, s.settings.clipboardHotkey, s.settings.folderMenuHotkey}))
+                return u"This shortcut is already used by a global action."_s;
+            if (normal == s.settings.previewHotkey)
+                return u"This shortcut is the preview's."_s;
+            return QString();
+        };
+        e.after = [](State& s) { s.settings.openHotkey = previewkeys::normalizedOpen(s.settings.openHotkey); };
+        add(std::move(e));
+    }
     add(boolean({"Launcher/ClearOnOpen", QT_TRANSLATE_NOOP("AiSettings", "每次打开时清空搜索"), "results", 2,
                     "Each time the search box opens nothing is typed and the scope is 全部, instead of keeping the last words selected."},
         &Settings::clearOnOpen));

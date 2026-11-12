@@ -213,6 +213,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString previewWith READ previewWith WRITE setPreviewWith NOTIFY changed FINAL) // auto | builtin
     Q_PROPERTY(QString previewHotkey READ previewHotkey WRITE setPreviewHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString previewHotkeyError READ previewHotkeyError NOTIFY changed FINAL)
+    Q_PROPERTY(QString openHotkey READ openHotkey WRITE setOpenHotkey NOTIFY changed FINAL)
+    Q_PROPERTY(QString openHotkeyError READ openHotkeyError NOTIFY changed FINAL)
     Q_PROPERTY(bool previewFollowsPointer READ previewFollowsPointer WRITE setPreviewFollowsPointer NOTIFY changed FINAL)
     Q_PROPERTY(bool previewRestore READ previewRestore WRITE setPreviewRestore NOTIFY changed FINAL)
     // Which of the chosen number keys are other programs' hotkeys, or Win顺's
@@ -756,6 +758,9 @@ public:
     QString previewHotkey() const { return m_settings.previewHotkey; }
     void setPreviewHotkey(const QString& shortcut);
     QString previewHotkeyError() const;
+    QString openHotkey() const { return m_settings.openHotkey; }
+    void setOpenHotkey(const QString& shortcut);
+    QString openHotkeyError() const { return m_openHotkeyError; }
     bool previewFollowsPointer() const { return m_settings.previewFollowsPointer; }
     void setPreviewFollowsPointer(bool on);
     bool previewRestore() const { return m_settings.previewRestore; }
@@ -1080,6 +1085,7 @@ private:
     QString m_hotkeyError;
     QString m_panelHotkeyError;
     QString m_previewHotkeyError;
+    QString m_openHotkeyError;
     QString m_numberKeysNote;
     QString m_clipboardNumberKeysNote;
     QString m_clipboardQuickPasteError;

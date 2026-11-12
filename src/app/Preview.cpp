@@ -3170,6 +3170,23 @@ void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& 
     key(Qt::Key_Comma, Qt::ControlModifier);
     key(Qt::Key_Comma, Qt::ControlModifier, {}, true);
     check(settingsOpened == 2, u"Ctrl+, opens settings once, ignoring auto-repeat"_s);
+    // The second key for Enter (GitHub #293): through Main.qml, what Enter
+    // does on the row; never Space; nothing with none set.
+    key(Qt::Key_Q, Qt::AltModifier);
+    check(settingsOpened == 2, u"Alt+Q does nothing with no open key set"_s);
+    launcher.setOpenHotkey(u"Space"_s);
+    check(launcher.openHotkey().isEmpty(), u"Space is refused as the open key"_s);
+    launcher.setOpenHotkey(u"Alt+Q"_s);
+    key(Qt::Key_Q, Qt::AltModifier | Qt::ShiftModifier);
+    check(settingsOpened == 2, u"the open key needs its exact modifiers"_s);
+    key(Qt::Key_Q, Qt::AltModifier);
+    key(Qt::Key_Q, Qt::AltModifier, {}, true);
+    check(settingsOpened == 3, u"the open key opens the row as Enter does, once a press"_s);
+    key(Qt::Key_Return);
+    check(settingsOpened == 4, u"Enter still opens with an open key set"_s);
+    launcher.setOpenHotkey({});
+    key(Qt::Key_Q, Qt::AltModifier);
+    check(settingsOpened == 4, u"clearing the open key disables it"_s);
     check(launcher.menuItems(0).size() == 1, u"settings expose only their applicable Open action"_s);
     settle(window, 3);
     check(saveGrab(window, output.filePath(u"search-settings-entry.png"_s)), u"render the settings entry"_s);

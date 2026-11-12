@@ -27,6 +27,107 @@ Item {
     // The rows are the last query's while a slow search has found nothing yet (Main.qml's dimRows).
     property bool dimmed: false
     property bool showTypeKeywords: false
+
+    // The filters: a list down the left, or a strip over the rows (the key beside 筛选 moves them).
+    readonly property bool filtersOnTop: launcher.panelFiltersOnTop
+    // The kinds of file as the strip under the box has them (TypeStrip.fileChips: 不限, 文件夹,
+    // then the user's kinds, each with its icon); a host without the strip gets them plain.
+    property var fileChips: []
+    readonly property var typeChips: {
+        if (fileChips.length > 0)
+            return fileChips
+        const list = [{ type: -1, name: qsTr("不限") }, { type: -2, name: qsTr("文件夹"), keyword: launcher.folderKeyword }]
+        const types = launcher.fileTypes
+        for (let i = 0; i < types.length; ++i)
+            list.push({ type: i, name: types[i].name, keyword: types[i].keyword })
+        return list
+    }
+    function typeActive(type) {
+        if (type === -1)
+            return launcher.scope === Launcher.All || (launcher.scope !== Launcher.Folders && launcher.fileType < 0)
+        if (type === -2)
+            return launcher.scope === Launcher.Folders
+        return launcher.scope === Launcher.Files && launcher.selectedFileTypes.includes(type)
+    }
+    function chooseType(type) {
+        if (type < 0)
+            launcher.chooseFileType(type) // -1 不限, -2 Launcher.kFoldersChip
+        else
+            launcher.toggleFileType(type)
+    }
+    readonly property var dateLabels: [qsTr("不限"), qsTr("今天"), qsTr("最近 7 天"), qsTr("最近 30 天"), qsTr("今年"), qsTr("自定义")]
+    readonly property var sizeLabels: [qsTr("不限"), qsTr("小于 1 MB"), qsTr("1 MB – 100 MB"), qsTr("100 MB – 1 GB"), qsTr("大于 1 GB"), qsTr("自定义")]
+    // The folder the rows are kept to, by its favorite's name or its own; empty: anywhere.
+    readonly property string folderLabel: {
+        const folder = launcher.folderFilter
+        if (folder.length === 0)
+            return ""
+        const favorite = launcher.favoriteFolders.find(f => f.path.toLowerCase() === folder.toLowerCase())
+        if (favorite)
+            return favorite.name
+        const separator = c => c === 47 || c === 92 // a slash either way
+        let end = folder.length
+        while (end > 0 && separator(folder.charCodeAt(end - 1)))
+            --end
+        let start = end
+        while (start > 0 && !separator(folder.charCodeAt(start - 1)))
+            --start
+        return start < end ? folder.substring(start, end) : folder
+    }
+    // The filter the mouse rests on, for the one tooltip they share.
+    property Item tipItem: null
+    function offerTip(item, wanted) {
+        if (wanted)
+            tipItem = item
+        else if (tipItem === item)
+            tipItem = null
+    }
+    // 自定义 was picked from a menu: the keyboard to its first box.
+    signal customBoundsRequested(string kind)
+    readonly property int pickFolderAction: -2
+    // A filter's choices (时间, 大小, 位置), in the menu the columns use.
+    // What the + of the quick filters is for (the example as an argument: lupdate loses "\\" in a QML string).
+    readonly property string quickFilterTip: qsTr("把常用的搜索条件存起来，点一下就套用，例如 %1 排除回收站").arg("!$RECYCLE.BIN\\")
+
+    function openFilterMenu(kind, globalPos) {
+        if (columnMenuOpen) {
+            closeColumns()
+            return
+        }
+        let entries = []
+        if (kind === "date") {
+            entries = dateLabels.map((text, i) => ({ text: text, checked: launcher.dateChoice === i, action: i }))
+        } else if (kind === "size") {
+            entries = sizeLabels.map((text, i) => ({ text: text, checked: launcher.sizeChoice === i, action: i }))
+        } else {
+            const current = launcher.folderFilter.toLowerCase()
+            const favorites = launcher.favoriteFolders
+            entries.push({ text: qsTr("不限"), checked: current.length === 0, action: 0 })
+            for (let i = 0; i < favorites.length; ++i)
+                entries.push({ text: favorites[i].name, checked: favorites[i].path.toLowerCase() === current, action: i + 1 })
+            if (current.length > 0 && !favorites.some(f => f.path.toLowerCase() === current))
+                entries.push({ text: launcher.folderFilter, checked: true, action: pickFolderAction })
+            entries.push({ separator: true })
+            entries.push({ text: qsTr("选择文件夹…"), action: pickFolderAction })
+        }
+        columnLoader.active = true
+        columnMenu.popup(-1, kind, entries, globalPos, false)
+    }
+    function filterChosen(kind, action) {
+        if (kind === "date") {
+            launcher.setDateChoice(action)
+            if (action === 5)
+                customBoundsRequested(kind)
+        } else if (kind === "size") {
+            launcher.setSizeChoice(action)
+            if (action === 5)
+                customBoundsRequested(kind)
+        } else if (action === pickFolderAction) {
+            launcher.pickFolderFilter()
+        } else {
+            launcher.setFolderFilter(action === 0 ? "" : launcher.favoriteFolders[action - 1].path)
+        }
+    }
     // The window's device pixel ratio, read once there and passed down to
     // every row (GitHub #111).
     property real dpr: Screen.devicePixelRatio
@@ -40,7 +141,7 @@ Item {
     signal rowPreviewRequested(int index)
     signal rowHoverMoved(int index, point globalPos)
 
-    readonly property int sidebarWidth: launcher.panelSidebarVisible ? 290 : 0
+    readonly property int sidebarWidth: launcher.panelSidebarVisible && !filtersOnTop ? 176 : 0
     readonly property bool contentMode: launcher.scope === Launcher.Content
     readonly property bool detailsVisible: contentMode && launcher.contentPane.opened
     readonly property bool compactDetails: width - sidebarWidth < 720
@@ -121,11 +222,14 @@ Item {
         id: columnLoader
         active: false
         sourceComponent: ContextMenu {
+            id: panelMenu
             objectName: "panelColumnsMenu"
             host: panel.launcher
             // Like Explorer's header menu, one pick closes it.
             onTriggered: (row, action) => {
-                if (action === panel.resetColumnsAction)
+                if (panelMenu.key !== "columns")
+                    panel.filterChosen(panelMenu.key, action)
+                else if (action === panel.resetColumnsAction)
                     panel.launcher.panelColumns.reset()
                 else
                     panel.launcher.panelColumns.toggle(panel.launcher.panelColumns.availableColumns[action].id)
@@ -175,70 +279,6 @@ Item {
 
     // ---- the filters -----------------------------------------------------------------
 
-    component Choice: Item {
-        id: choice
-
-        property string text
-        property string tip
-        property bool active: false
-        readonly property bool tipWanted: choiceArea.containsMouse && tip.length > 0
-
-        signal clicked()
-
-        width: parent ? parent.width : 200
-        height: Theme.labelRowHeight + 6
-        Accessible.role: Accessible.RadioButton
-        Accessible.name: text
-        Accessible.checked: active
-
-        Hook { // chosen as the current row is: the style's row highlight
-            id: choiceHighlight
-            anchors.fill: parent
-            anchors.leftMargin: 8
-            anchors.rightMargin: 8
-            part: Theme.rowHighlight
-            selected: choice.active
-            hovered: choiceArea.containsMouse
-            role: "panel"
-            dpr: panel.dpr
-        }
-        Text {
-            // The words start where the style says a row's content does, from the highlight's edge (brand: as a result row's, 14 past its bar).
-            x: 8 + choiceHighlight.out("contentInset", 12)
-            width: parent.width - x - 12
-            y: panel.onPixel((choice.height - height) / 2)
-            text: choice.text
-            textFormat: Text.PlainText
-            elide: Text.ElideMiddle
-            color: choice.active || choiceArea.containsMouse ? Theme.text : Theme.subtext
-            font.pixelSize: Theme.uiBody
-            font.weight: choice.active ? Theme.fontStrong : Font.Normal
-        }
-        MouseArea {
-            id: choiceArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: choice.clicked()
-        }
-    }
-
-    component GroupTitle: Text {
-        x: 16
-        height: Theme.labelRowHeight
-        verticalAlignment: Text.AlignVCenter
-        color: Theme.faint
-        font.pixelSize: Theme.uiBody
-    }
-
-    // A row of chips that wraps: one choice of a filter each, as the strip
-    // under the box shows the kinds of file (TypeStrip).
-    component Chips: Flow {
-        x: 16
-        width: parent ? parent.width - 32 : 200
-        spacing: 6
-        bottomPadding: 6
-    }
     component Chip: Item {
         id: chip
 
@@ -248,13 +288,19 @@ Item {
         property bool active: false
         property bool multi: false
         property bool isAll: false // 不限: the resting choice, neutral when chosen (chipSurface isAll)
+        property string glyph // an icon before the words
+        property string iconName
+        property bool menu: false // opens its choices: a chevron after the words
+        readonly property real iconRoom: glyph.length > 0 || iconName.length > 0 ? 21 : 0
         readonly property bool tipWanted: chipArea.containsMouse && tip.length > 0
+        onTipWantedChanged: panel.offerTip(chip, tipWanted)
 
         signal clicked()
 
         // Where the words start: after the lamp's room where the part has one (tactile's 不限), else 10.
         readonly property real lead: chipSurface.out("leadingInset", 0) > 0 ? chipSurface.out("leadingInset", 0) : 10
-        width: Math.ceil(Math.max(nameWidth.width, prefixWidth.width)) + lead + 10
+        // As wide as what it says now: in a line of them, room kept for the other word is a gap.
+        width: Math.ceil(panel.showTypeKeywords && keyword.length > 0 ? prefixWidth.width : nameWidth.width) + lead + 10 + iconRoom + (menu ? 15 : 0)
         TextMetrics { id: nameWidth; font: chipLabel.font; text: chip.text }
         TextMetrics { id: prefixWidth; font: chipLabel.font; text: chip.keyword.length > 0 ? ":" + chip.keyword : "" }
         height: Theme.chipHeight + 4
@@ -278,9 +324,26 @@ Item {
             role: "filter"
             dpr: panel.dpr
         }
+        Glyph {
+            visible: chip.iconRoom > 0
+            x: chip.lead - 1
+            y: panel.onPixel((chip.height - height) / 2 + chipSurface.out("contentOffsetY", 0))
+            glyph: chip.glyph
+            iconName: chip.iconName
+            size: 15
+            color: chipLabel.color
+        }
+        Glyph {
+            visible: chip.menu
+            x: chip.width - 19
+            y: panel.onPixel((chip.height - height) / 2 + chipSurface.out("contentOffsetY", 0))
+            iconName: "caret-down"
+            size: 10
+            color: chipLabel.color
+        }
         Text {
             id: chipLabel
-            x: chip.lead
+            x: chip.lead + chip.iconRoom
             y: panel.onPixel((chip.height - height) / 2 + chipSurface.out("contentOffsetY", 0))
             text: panel.showTypeKeywords && chip.keyword.length > 0 ? ":" + chip.keyword : chip.text
             color: chipSurface.out("foreground", chip.active && !chip.isAll ? Theme.accentText : chip.active || chipArea.containsMouse ? Theme.text : Theme.subtext)
@@ -309,176 +372,221 @@ Item {
         Keys.onTabPressed: if (next) next.takeFocus(); else panel.searchBar.focusAtEnd()
     }
 
-    Item {
-        id: sidebar
-        objectName: "panelSidebar"
-        visible: panel.launcher.panelSidebarVisible && !(panel.detailsVisible && panel.compactDetails)
-        anchors.top: topDivider.bottom
-        anchors.bottom: footer.top
-        width: panel.sidebarWidth
+    // One line of the list down the left: a kind of file (its icon, its name), or a filter
+    // with what it is set to at the right (时间 · 最近 7 天), which opens its choices.
+    component FilterRow: Item {
+        id: row
 
-        Flickable {
-            id: filters
+        property string text
+        property string glyph
+        property string iconName
+        property string value
+        property string tip
+        property bool active: false // chosen: the row's highlight
+        property bool marked: false // set to something: the value in the accent colour
+        property bool multi: false
+        readonly property bool tipWanted: rowArea.containsMouse && tip.length > 0
+
+        signal clicked()
+
+        width: parent ? parent.width : 176
+        height: Theme.labelRowHeight + 6
+        Accessible.role: multi ? Accessible.CheckBox : Accessible.Button
+        Accessible.name: value.length > 0 ? text + " " + value : text
+        Accessible.checkable: multi
+        Accessible.checked: active
+        onTipWantedChanged: panel.offerTip(row, tipWanted)
+
+        Hook { // chosen as the current row is: the style's row highlight
+            id: rowHighlight
             anchors.fill: parent
-            anchors.topMargin: panel.contentMode ? 42 : 0
-            contentWidth: width
-            contentHeight: filterColumn.height + 12
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            flickableDirection: Flickable.VerticalFlick
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            part: Theme.rowHighlight
+            selected: row.active
+            hovered: rowArea.containsMouse
+            role: "panel"
+            dpr: panel.dpr
+        }
+        Glyph {
+            id: rowIcon
+            x: 8 + rowHighlight.out("contentInset", 12)
+            y: panel.onPixel((row.height - height) / 2)
+            glyph: row.glyph
+            iconName: row.iconName
+            size: 16
+            color: row.active ? Theme.accent : rowArea.containsMouse ? Theme.text : Theme.subtext
+        }
+        Text {
+            id: rowValue
+            visible: row.value.length > 0
+            anchors.right: parent.right
+            anchors.rightMargin: 18
+            y: panel.onPixel((row.height - height) / 2)
+            width: Math.min(implicitWidth, 86)
+            text: row.value
+            textFormat: Text.PlainText
+            elide: Text.ElideMiddle
+            color: row.marked ? Theme.accent : Theme.faint
+            font.pixelSize: Theme.uiBody
+        }
+        Text {
+            x: rowIcon.x + 24
+            width: (rowValue.visible ? rowValue.x - 8 : row.width - 18) - x
+            y: panel.onPixel((row.height - height) / 2)
+            text: row.text
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            color: row.active || rowArea.containsMouse ? Theme.text : Theme.subtext
+            font.pixelSize: Theme.uiBody
+            font.weight: row.active ? Theme.fontStrong : Font.Normal
+        }
+        MouseArea {
+            id: rowArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: row.clicked()
+        }
+    }
 
-            Column {
-                id: filterColumn
-                width: filters.width
-                topPadding: 6
+    // 清除全部: every filter off, shown while one is on.
+    component ClearLink: Text {
+        id: clear
+        height: Theme.labelRowHeight
+        verticalAlignment: Text.AlignVCenter
+        visible: panel.launcher.filtersActive
+        text: qsTr("清除全部")
+        color: Theme.accent
+        font.pixelSize: Theme.uiBody
+        font.underline: clearArea.containsMouse
+        Accessible.role: Accessible.Button
+        Accessible.name: text
 
-                Item { // "筛选", and the link that clears them all
-                    width: parent.width
-                    height: Theme.labelRowHeight
+        MouseArea {
+            id: clearArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: panel.launcher.clearFilters()
+        }
+    }
 
-                    Text {
-                        x: 20
-                        height: parent.height
-                        verticalAlignment: Text.AlignVCenter
-                        text: qsTr("筛选")
-                        color: Theme.subtext
-                        font.pixelSize: Theme.uiBody
-                        font.weight: Theme.fontStrong
-                    }
-                    Text {
-                        id: clearAll
-                        anchors.right: parent.right
-                        anchors.rightMargin: 16
-                        height: parent.height
-                        verticalAlignment: Text.AlignVCenter
-                        visible: panel.launcher.filtersActive
-                        text: qsTr("清除全部")
-                        color: Theme.accent
-                        font.pixelSize: Theme.uiBody
-                        font.underline: clearArea.containsMouse
-                        Accessible.role: Accessible.Button
-                        Accessible.name: text
+    // Moves the filters: the list down the left, or the strip over the rows.
+    component LayoutKey: FlatButton {
+        id: layoutKey
+        readonly property string tip: panel.filtersOnTop ? qsTr("筛选放到左侧") : qsTr("筛选放到顶部")
+        readonly property bool tipWanted: layoutHover.hovered
+        objectName: "panelFilterLayoutKey"
+        width: 28
+        height: Theme.labelRowHeight
+        dpr: panel.dpr
+        flat: true
+        keyboardActivation: false
+        glyph: panel.filtersOnTop ? "ph:sidebar-simple" : "ph:rows"
+        Accessible.role: Accessible.Button
+        Accessible.name: tip
+        onTipWantedChanged: panel.offerTip(layoutKey, tipWanted)
+        onClicked: {
+            panel.offerTip(layoutKey, false)
+            panel.launcher.panelFiltersOnTop = !panel.launcher.panelFiltersOnTop
+            panel.searchBar.focusAtEnd()
+        }
+        HoverHandler { id: layoutHover }
+    }
 
-                        MouseArea {
-                            id: clearArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: panel.launcher.clearFilters()
-                        }
-                    }
-                }
+    Item { // the filters over the rows (Launcher.panelFiltersOnTop)
+        id: filterTop
+        objectName: "panelFilterBar"
+        visible: panel.launcher.panelSidebarVisible && panel.filtersOnTop
+        anchors.top: topDivider.bottom
+        width: parent.width
+        height: visible && stripLoader.status === Loader.Ready ? stripLoader.item.implicitHeight + Theme.edge(panel.dpr) : 0
 
-                GroupTitle { text: qsTr("范围") }
-                Chips {
-                    Chip {
-                        text: qsTr("全部")
-                        active: panel.launcher.scope === Launcher.All || (panel.launcher.mergeFileScope && panel.launcher.scope === Launcher.Files)
-                        onClicked: panel.launcher.scope = Launcher.All
-                    }
-                    Chip {
-                        text: qsTr("文件")
-                        visible: !panel.launcher.mergeFileScope
-                        active: panel.launcher.scope === Launcher.Files
-                        onClicked: panel.launcher.scope = Launcher.Files
-                    }
-                    Chip {
-                        text: qsTr("文件夹")
-                        keyword: panel.launcher.folderKeyword
-                        active: panel.launcher.scope === Launcher.Folders
-                        onClicked: panel.launcher.chooseFileType(-2) // Launcher.kFoldersChip
-                    }
-                    Chip {
-                        visible: panel.launcher.contentEnabled
-                        text: qsTr("内容")
-                        active: panel.launcher.scope === Launcher.Content
-                        onClicked: panel.launcher.scope = Launcher.Content
-                    }
-                }
+        Loader {
+            id: stripLoader
+            active: filterTop.visible
+            width: parent.width
+            sourceComponent: filterStrip
+        }
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: Theme.edge(panel.dpr)
+            color: Theme.divider
+        }
+    }
 
-                GroupTitle { text: qsTr("类型（可多选）") }
-                Chips {
-                    Chip {
-                        text: qsTr("不限")
-                        isAll: true
-                        active: panel.launcher.scope === Launcher.All || (panel.launcher.scope !== Launcher.Folders && panel.launcher.fileType < 0)
-                        onClicked: panel.launcher.chooseFileType(-1)
-                    }
-                    Repeater {
-                        model: panel.launcher.fileTypes
+    Component {
+        id: filterStrip
 
-                        delegate: Chip {
-                            required property int index
-                            required property var modelData
-                            multi: true
-                            text: modelData.name
-                            keyword: modelData.keyword
-                            tip: modelData.extensions.split(" ").slice(0, 12).map(e => "." + e).join(" ")
-                            active: panel.launcher.scope === Launcher.Files && panel.launcher.selectedFileTypes.includes(index)
-                            onClicked: panel.launcher.toggleFileType(index)
-                        }
-                    }
-                }
+        Item {
+            id: strip
+            implicitHeight: stripFlow.height + 12
 
-                // The quick filters: queries saved under a name (Settings'
-                // [QuickFilters]), any number on at once, and all of them
-                // apply. The + is always there: with none yet it says what
-                // the group is for.
-                GroupTitle { text: panel.launcher.quickFilters.length > 0 ? qsTr("快捷筛选（可多选）") : qsTr("快捷筛选") }
-                Chips {
-                    objectName: "panelQuickFilters"
-                    Repeater {
-                        model: panel.launcher.quickFilters
+            // The kinds one click each; 时间, 大小 and 位置 open their choices. One line: what a narrow
+            // window has no room for is a wheel turn or a drag away.
+            Flickable {
+                id: stripView
+                x: 12
+                y: 6
+                width: strip.width - 24 - stripTools.width - 8
+                height: stripFlow.height
+                contentWidth: stripFlow.width
+                contentHeight: height
+                clip: contentWidth > width
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.HorizontalFlick
 
-                        delegate: Chip {
-                            required property int index
-                            required property var modelData
-                            objectName: "panelQuickFilter_" + index
-                            multi: true
-                            text: modelData.name
-                            tip: modelData.query
-                            active: panel.launcher.activeQuickFilters.includes(modelData.name)
-                            onClicked: panel.launcher.toggleQuickFilter(index)
-                        }
-                    }
-                    Chip {
-                        objectName: "panelQuickFilterAdd"
-                        text: panel.launcher.quickFilters.length > 0 ? "+" : qsTr("+ 新建")
-                        tip: qsTr("把常用的搜索条件存起来，点一下就套用，例如 %1 排除回收站").arg("!$RECYCLE.BIN\\")
-                        Accessible.name: qsTr("新建快捷筛选")
-                        onClicked: panel.launcher.editQuickFilters()
-                    }
-                }
-
-                GroupTitle { text: qsTr("修改时间") }
-                Chips {
-                    Repeater {
-                        model: [qsTr("不限"), qsTr("今天"), qsTr("最近 7 天"), qsTr("最近 30 天"), qsTr("今年"), qsTr("自定义")]
-
-                        delegate: Chip {
-                            required property int index
-                            required property string modelData
-                            text: modelData
-                            isAll: index === 0
-                            active: panel.launcher.dateChoice === index
-                            onClicked: {
-                                panel.launcher.setDateChoice(index)
-                                if (index === 5)
-                                    dateFrom.takeFocus()
-                            }
-                        }
+                WheelHandler {
+                    onWheel: (event) => {
+                        const turned = event.angleDelta.y !== 0 ? event.angleDelta.y : event.angleDelta.x
+                        stripView.contentX = Math.max(0, Math.min(stripView.contentWidth - stripView.width, stripView.contentX - turned))
                     }
                 }
-                Row { // 自定义: from and to, "yyyy-MM-dd"
-                    x: 16
-                    visible: panel.launcher.dateChoice === 5
+
+                Row {
+                    id: stripFlow
                     spacing: 6
-                    topPadding: 4
-                    bottomPadding: 4
 
-                    BoundBox {
+                    Repeater {
+                        model: panel.typeChips
+
+                        delegate: Chip {
+                            required property var modelData
+                            multi: modelData.type >= 0
+                            isAll: modelData.type === -1
+                            text: modelData.type === -1 ? qsTr("全部类型") : modelData.name
+                            keyword: modelData.keyword || ""
+                            glyph: modelData.glyph || ""
+                            tip: modelData.tip || ""
+                            active: panel.typeActive(modelData.type)
+                            onClicked: panel.chooseType(modelData.type)
+                        }
+                    }
+                    Item {
+                        width: 7
+                        height: Theme.chipHeight + 4
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: Theme.edge(panel.dpr)
+                            height: 16
+                            color: Theme.divider
+                        }
+                    }
+                    Chip {
+                        id: dateChip
+                        objectName: "panelFilterDate"
+                        iconName: "clock"
+                        menu: true
+                        text: panel.launcher.dateChoice > 0 ? panel.dateLabels[panel.launcher.dateChoice] : qsTr("修改时间")
+                        active: panel.launcher.dateChoice > 0
+                        onClicked: panel.openFilterMenu("date", dateChip.mapToGlobal(0, dateChip.height + 2))
+                    }
+                    BoundBox { // 自定义: from and to, "yyyy-MM-dd"
                         id: dateFrom
-                        implicitWidth: 126 // the placeholder fits; 16 + 126 + 6 + 126 leaves 16 on the right too
+                        visible: panel.launcher.dateChoice === 5
+                        implicitWidth: 126
                         next: dateTo
                         placeholder: qsTr("起 2026-01-01")
                         text: panel.launcher.dateFrom
@@ -487,42 +595,25 @@ Item {
                     }
                     BoundBox {
                         id: dateTo
+                        visible: panel.launcher.dateChoice === 5
                         implicitWidth: 126
                         placeholder: qsTr("止")
                         text: panel.launcher.dateTo
                         onEditingFinished: panel.launcher.setDateRange(dateFrom.text, text)
                         Component.onCompleted: panel.frame.addControl(dateTo)
                     }
-                }
-
-                GroupTitle { text: qsTr("大小") }
-                Chips {
-                    Repeater {
-                        model: [qsTr("不限"), qsTr("小于 1 MB"), qsTr("1 MB – 100 MB"), qsTr("100 MB – 1 GB"), qsTr("大于 1 GB"), qsTr("自定义")]
-
-                        delegate: Chip {
-                            required property int index
-                            required property string modelData
-                            text: modelData
-                            isAll: index === 0
-                            active: panel.launcher.sizeChoice === index
-                            onClicked: {
-                                panel.launcher.setSizeChoice(index)
-                                if (index === 5)
-                                    sizeMin.takeFocus()
-                            }
-                        }
+                    Chip {
+                        id: sizeChip
+                        objectName: "panelFilterSize"
+                        iconName: "ruler"
+                        menu: true
+                        text: panel.launcher.sizeChoice > 0 ? panel.sizeLabels[panel.launcher.sizeChoice] : qsTr("大小")
+                        active: panel.launcher.sizeChoice > 0
+                        onClicked: panel.openFilterMenu("size", sizeChip.mapToGlobal(0, sizeChip.height + 2))
                     }
-                }
-                Row { // 自定义: the least and the most, in MB
-                    x: 16
-                    visible: panel.launcher.sizeChoice === 5
-                    spacing: 6
-                    topPadding: 4
-                    bottomPadding: 4
-
-                    BoundBox {
+                    BoundBox { // 自定义: the least and the most, in MB
                         id: sizeMin
+                        visible: panel.launcher.sizeChoice === 5
                         next: sizeMax
                         placeholder: qsTr("最小 MB")
                         text: panel.launcher.sizeMin
@@ -531,72 +622,320 @@ Item {
                     }
                     BoundBox {
                         id: sizeMax
+                        visible: panel.launcher.sizeChoice === 5
                         placeholder: qsTr("最大 MB")
                         text: panel.launcher.sizeMax
                         onEditingFinished: panel.launcher.setSizeRange(sizeMin.text, text)
                         Component.onCompleted: panel.frame.addControl(sizeMax)
                     }
-                }
-
-                GroupTitle { text: qsTr("位置") }
-                Choice {
-                    text: qsTr("不限")
-                    active: panel.launcher.folderFilter.length === 0
-                    onClicked: panel.launcher.setFolderFilter("")
-                }
-                Repeater { // the favorite folders (the settings' 收藏夹)
-                    model: panel.launcher.favoriteFolders
-
-                    delegate: Choice {
-                        required property var modelData
-                        text: modelData.name
-                        tip: modelData.path
-                        active: panel.launcher.folderFilter.toLowerCase() === modelData.path.toLowerCase()
-                        onClicked: panel.launcher.setFolderFilter(modelData.path)
+                    Chip {
+                        id: folderChip
+                        objectName: "panelFilterFolder"
+                        iconName: "map-pin"
+                        menu: true
+                        text: panel.folderLabel.length > 0 ? panel.folderLabel : qsTr("位置")
+                        tip: panel.launcher.folderFilter
+                        active: panel.folderLabel.length > 0
+                        onClicked: panel.openFilterMenu("folder", folderChip.mapToGlobal(0, folderChip.height + 2))
                     }
-                }
-                Choice { // one picked with the folder dialog, while it is not a favorite
-                    readonly property bool isFavorite: panel.launcher.favoriteFolders.some(
-                        f => f.path.toLowerCase() === panel.launcher.folderFilter.toLowerCase())
-                    visible: panel.launcher.folderFilter.length > 0 && !isFavorite
-                    text: panel.launcher.folderFilter
-                    tip: panel.launcher.folderFilter
-                    active: true
-                    onClicked: panel.launcher.pickFolderFilter()
-                }
-                Choice {
-                    text: qsTr("选择文件夹…")
-                    onClicked: panel.launcher.pickFolderFilter()
-                }
-            }
-        }
-
-        ListScrollBar {
-            dpr: panel.dpr
-            flickable: filters
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-        }
-
-        HoverTip {
-            readonly property Item hovered: {
-                for (let i = 0; i < filterColumn.children.length; ++i) {
-                    const c = filterColumn.children[i]
-                    if (c.tipWanted)
-                        return c
-                    if (c instanceof Flow) {
-                        for (let k = 0; k < c.children.length; ++k) {
-                            if (c.children[k].tipWanted)
-                                return c.children[k]
+                    // The quick filters: queries saved under a name (Settings' [QuickFilters]),
+                    // any number on at once, and all of them apply. The + is always there.
+                    Item {
+                        width: 7
+                        height: Theme.chipHeight + 4
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: Theme.edge(panel.dpr)
+                            height: 16
+                            color: Theme.divider
                         }
                     }
+                    Repeater {
+                        model: panel.launcher.quickFilters
+
+                        delegate: Chip {
+                            required property int index
+                            required property var modelData
+                            objectName: "panelQuickFilter_" + index
+                            multi: true
+                            iconName: "funnel"
+                            text: modelData.name
+                            tip: modelData.query
+                            active: panel.launcher.activeQuickFilters.includes(modelData.name)
+                            onClicked: panel.launcher.toggleQuickFilter(index)
+                        }
+                    }
+                    Chip {
+                        objectName: "panelQuickFilterAdd"
+                        iconName: "plus"
+                        text: qsTr("快捷筛选")
+                        tip: panel.quickFilterTip
+                        Accessible.name: qsTr("新建快捷筛选")
+                        onClicked: panel.launcher.editQuickFilters()
+                    }
+                    Chip {
+                        visible: panel.contentMode
+                        iconName: "sidebar-simple"
+                        text: panel.launcher.contentPane.opened ? qsTr("收起内容详情") : qsTr("显示内容详情")
+                        onClicked: panel.launcher.contentPane.opened = !panel.launcher.contentPane.opened
+                    }
                 }
-                return null
             }
-            target: hovered
-            text: hovered ? hovered.tip : ""
+
+            Row {
+                id: stripTools
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                y: 6 + panel.onPixel((Theme.chipHeight + 4 - Theme.labelRowHeight) / 2)
+                spacing: 6
+
+                ClearLink {}
+                LayoutKey {}
+            }
+
+            Connections {
+                target: panel
+                function onCustomBoundsRequested(kind) {
+                    if (kind === "date")
+                        dateFrom.takeFocus()
+                    else
+                        sizeMin.takeFocus()
+                }
+            }
         }
+    }
+
+    Item {
+        id: sidebar
+        objectName: "panelSidebar"
+        visible: panel.launcher.panelSidebarVisible && !panel.filtersOnTop && !(panel.detailsVisible && panel.compactDetails)
+        anchors.top: topDivider.bottom
+        anchors.bottom: footer.top
+        width: panel.sidebarWidth
+
+        Loader {
+            anchors.fill: parent
+            active: panel.launcher.panelSidebarVisible && !panel.filtersOnTop
+            sourceComponent: filterList
+        }
+    }
+
+    Component {
+        id: filterList
+
+        Item {
+            // Everything fits a window of the usual height; a short one scrolls.
+            Flickable {
+                id: filters
+                anchors.fill: parent
+                anchors.topMargin: panel.contentMode ? 42 : 0
+                contentWidth: width
+                contentHeight: filterColumn.height + 12
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.VerticalFlick
+
+                Column {
+                    id: filterColumn
+                    width: filters.width
+                    topPadding: 6
+
+                    Item { // "筛选", the link that clears them all, and the key that moves them to the top
+                        width: parent.width
+                        height: Theme.labelRowHeight + 4
+
+                        Text {
+                            x: 20
+                            height: Theme.labelRowHeight
+                            verticalAlignment: Text.AlignVCenter
+                            text: qsTr("筛选")
+                            color: Theme.subtext
+                            font.pixelSize: Theme.uiBody
+                            font.weight: Theme.fontStrong
+                        }
+                        ClearLink {
+                            anchors.right: sideLayoutKey.left
+                            anchors.rightMargin: 4
+                        }
+                        LayoutKey {
+                            id: sideLayoutKey
+                            anchors.right: parent.right
+                            anchors.rightMargin: 10
+                        }
+                    }
+
+                    Repeater { // the kinds of file: one click each, several at once
+                        model: panel.typeChips
+
+                        delegate: FilterRow {
+                            required property var modelData
+                            readonly property string keyword: modelData.keyword || ""
+                            multi: modelData.type >= 0
+                            text: panel.showTypeKeywords && keyword.length > 0 ? ":" + keyword
+                                : modelData.type === -1 ? qsTr("全部类型") : modelData.name
+                            glyph: modelData.glyph || ""
+                            iconName: glyph.length > 0 ? "" : modelData.type === -1 ? "squares-four" : modelData.type === -2 ? "folder" : "file"
+                            tip: modelData.tip || ""
+                            active: panel.typeActive(modelData.type)
+                            onClicked: panel.chooseType(modelData.type)
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 9
+                        Rectangle {
+                            x: 16
+                            y: 4
+                            width: parent.width - 32
+                            height: Theme.edge(panel.dpr)
+                            color: Theme.divider
+                        }
+                    }
+
+                    FilterRow {
+                        id: dateRow
+                        objectName: "panelFilterDate"
+                        iconName: "clock"
+                        text: qsTr("时间")
+                        value: panel.dateLabels[panel.launcher.dateChoice]
+                        marked: panel.launcher.dateChoice > 0
+                        onClicked: panel.openFilterMenu("date", dateRow.mapToGlobal(dateRow.width - 4, 0))
+                    }
+                    Column { // 自定义: from and to, "yyyy-MM-dd"
+                        x: 12
+                        visible: panel.launcher.dateChoice === 5
+                        spacing: 4
+                        topPadding: 2
+                        bottomPadding: 6
+
+                        BoundBox {
+                            id: dateFrom
+                            width: filterColumn.width - 24
+                            next: dateTo
+                            placeholder: qsTr("起 2026-01-01")
+                            text: panel.launcher.dateFrom
+                            onEditingFinished: panel.launcher.setDateRange(text, dateTo.text)
+                            Component.onCompleted: panel.frame.addControl(dateFrom)
+                        }
+                        BoundBox {
+                            id: dateTo
+                            width: filterColumn.width - 24
+                            placeholder: qsTr("止")
+                            text: panel.launcher.dateTo
+                            onEditingFinished: panel.launcher.setDateRange(dateFrom.text, text)
+                            Component.onCompleted: panel.frame.addControl(dateTo)
+                        }
+                    }
+
+                    FilterRow {
+                        id: sizeRow
+                        objectName: "panelFilterSize"
+                        iconName: "ruler"
+                        text: qsTr("大小")
+                        value: panel.sizeLabels[panel.launcher.sizeChoice]
+                        marked: panel.launcher.sizeChoice > 0
+                        onClicked: panel.openFilterMenu("size", sizeRow.mapToGlobal(sizeRow.width - 4, 0))
+                    }
+                    Column { // 自定义: the least and the most, in MB
+                        x: 12
+                        visible: panel.launcher.sizeChoice === 5
+                        spacing: 4
+                        topPadding: 2
+                        bottomPadding: 6
+
+                        BoundBox {
+                            id: sizeMin
+                            width: filterColumn.width - 24
+                            next: sizeMax
+                            placeholder: qsTr("最小 MB")
+                            text: panel.launcher.sizeMin
+                            onEditingFinished: panel.launcher.setSizeRange(text, sizeMax.text)
+                            Component.onCompleted: panel.frame.addControl(sizeMin)
+                        }
+                        BoundBox {
+                            id: sizeMax
+                            width: filterColumn.width - 24
+                            placeholder: qsTr("最大 MB")
+                            text: panel.launcher.sizeMax
+                            onEditingFinished: panel.launcher.setSizeRange(sizeMin.text, text)
+                            Component.onCompleted: panel.frame.addControl(sizeMax)
+                        }
+                    }
+
+                    FilterRow {
+                        id: folderRow
+                        objectName: "panelFilterFolder"
+                        iconName: "map-pin"
+                        text: qsTr("位置")
+                        value: panel.folderLabel.length > 0 ? panel.folderLabel : qsTr("不限")
+                        tip: panel.launcher.folderFilter
+                        marked: panel.folderLabel.length > 0
+                        onClicked: panel.openFilterMenu("folder", folderRow.mapToGlobal(folderRow.width - 4, 0))
+                    }
+
+                    // The quick filters: queries saved under a name (Settings' [QuickFilters]),
+                    // any number on at once, and all of them apply. The + is always there.
+                    Item {
+                        width: parent.width
+                        height: 9
+                        Rectangle {
+                            x: 16
+                            y: 4
+                            width: parent.width - 32
+                            height: Theme.edge(panel.dpr)
+                            color: Theme.divider
+                        }
+                    }
+                    Repeater {
+                        model: panel.launcher.quickFilters
+
+                        delegate: FilterRow {
+                            required property int index
+                            required property var modelData
+                            objectName: "panelQuickFilter_" + index
+                            multi: true
+                            iconName: "funnel"
+                            text: modelData.name
+                            tip: modelData.query
+                            active: panel.launcher.activeQuickFilters.includes(modelData.name)
+                            onClicked: panel.launcher.toggleQuickFilter(index)
+                        }
+                    }
+                    FilterRow {
+                        objectName: "panelQuickFilterAdd"
+                        iconName: "plus"
+                        text: qsTr("快捷筛选")
+                        tip: panel.quickFilterTip
+                        Accessible.name: qsTr("新建快捷筛选")
+                        onClicked: panel.launcher.editQuickFilters()
+                    }
+                }
+            }
+
+            ListScrollBar {
+                dpr: panel.dpr
+                flickable: filters
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+            }
+
+            Connections {
+                target: panel
+                function onCustomBoundsRequested(kind) {
+                    if (kind === "date")
+                        dateFrom.takeFocus()
+                    else
+                        sizeMin.takeFocus()
+                }
+            }
+        }
+    }
+
+    HoverTip { // one for every filter: the row or chip the mouse rests on (offerTip)
+        target: panel.tipItem
+        text: panel.tipItem ? panel.tipItem.tip : ""
     }
 
     Rectangle { // between the filters and the rows
@@ -774,7 +1113,7 @@ Item {
         anchors.left: sidebar.right
         anchors.leftMargin: Theme.edge(panel.dpr) // past the divider: 1 logical pixel put the rows on half device ones at 150 %
         anchors.right: resultsBoundary.left
-        anchors.top: topDivider.bottom
+        anchors.top: filterTop.bottom
         height: panel.launcher.gallery ? 0 : Theme.labelRowHeight + 8
         visible: !panel.launcher.gallery
         clip: true
@@ -956,7 +1295,7 @@ Item {
             : panel.launcher.searching ? (panel.launcher.scope === Launcher.Content ? qsTr("正在搜索文件内容…") : qsTr("正在搜索…"))
             : query.length > 0 ? qsTr("没有找到“%1”").arg(query)
             : panel.launcher.filtersActive ? qsTr("没有符合筛选条件的文件")
-            : qsTr("输入名称或拼音，或在左侧加筛选条件")
+            : qsTr("输入名称或拼音，或加筛选条件")
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: Theme.faint
@@ -1024,7 +1363,7 @@ Item {
         objectName: "contentPaneResize"
         x: resultsBoundary.x
         width: 6
-        anchors.top: topDivider.bottom
+        anchors.top: filterTop.bottom
         anchors.bottom: footer.top
         visible: panel.detailsVisible && !panel.compactDetails
         cursorShape: Qt.SizeHorCursor
@@ -1053,7 +1392,7 @@ Item {
     Loader {
         id: details
         anchors.right: parent.right
-        anchors.top: topDivider.bottom
+        anchors.top: filterTop.bottom
         anchors.bottom: footer.top
         width: panel.paneWidth
         active: panel.detailsVisible

@@ -988,6 +988,9 @@ void Settings::load()
         if (previewHotkey.isEmpty())
             previewHotkey = d.previewHotkey;
     }
+    openHotkey = previewkeys::normalizedOpen(readOrDefault(s, u"Results/OpenHotkey"_s, d.openHotkey).trimmed());
+    if (openHotkey == previewHotkey)
+        openHotkey.clear();
 
     theme = readOrDefault(s, u"Appearance/Theme"_s, d.theme).trimmed().toLower();
     if (theme != u"light" && theme != u"dark")
@@ -1352,6 +1355,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/PureSearch"_s, pureSearch);
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
+    s.setValue(u"Results/OpenHotkey"_s, openHotkey);
     s.setValue(u"Results/PreviewFollowsPointer"_s, previewFollowsPointer);
     s.setValue(u"Results/PreviewRestore"_s, previewRestore);
     s.setValue(u"Appearance/Theme"_s, theme);

@@ -128,6 +128,8 @@ class Launcher : public QObject {
     Q_PROPERTY(bool footerHints READ footerHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool pureSearch READ pureSearch NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString previewHotkey READ previewHotkey NOTIFY resultOptionsChanged FINAL)
+    // A second key for Enter on a result (Settings::openHotkey); "" for none.
+    Q_PROPERTY(QString openHotkey READ openHotkey NOTIFY resultOptionsChanged FINAL)
     // Bits 1 << n of the digits n left to one of Win顺's own shortcuts
     // (App::ownNumberDigits): their rows show the chord struck through.
     Q_PROPERTY(int numberKeysLeft READ numberKeysLeft NOTIFY resultOptionsChanged FINAL)
@@ -499,6 +501,9 @@ public:
     void setPreviewFollowsPointer(bool on) { m_previewFollowsPointer = on; } // Settings::previewFollowsPointer
     void setPreviewRestore(bool on) { m_previewRestore = on; } // Settings::previewRestore
     Q_INVOKABLE bool isPreviewKey(int key, int modifiers) const;
+    QString openHotkey() const { return m_openHotkey; }
+    void setOpenHotkey(const QString& shortcut);
+    Q_INVOKABLE bool isOpenKey(int key, int modifiers) const;
     void setNumberHints(const QString& hints);
     bool shortcutHelp() const { return m_shortcutHelp; }
     bool footerHints() const { return m_footerHints; }
@@ -1261,6 +1266,8 @@ private:
     bool m_pureSearch = false;
     QString m_previewHotkey = QStringLiteral("Alt+P");
     QKeySequence m_previewSequence {QStringLiteral("Alt+P")};
+    QString m_openHotkey;
+    QKeySequence m_openSequence;
     unsigned m_numberKeysLeft = 0;
     bool m_inTaskbarBox = false;
     bool m_keysRouted = false;

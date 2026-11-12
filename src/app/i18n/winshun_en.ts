@@ -423,6 +423,10 @@
 <context>
     <name>AiSettings</name>
     <message>
+        <source>打开结果的备用键</source>
+        <translation>Second key to open a result</translation>
+    </message>
+    <message>
         <source>任务栏上的 Win顺</source>
         <translation>WinShun on the taskbar</translation>
     </message>
@@ -3106,10 +3110,6 @@
 <context>
     <name>Panel</name>
     <message>
-        <source>类型（可多选）</source>
-        <translation>Type (multiple allowed)</translation>
-    </message>
-    <message>
         <source>筛选</source>
         <translation>Filters</translation>
     </message>
@@ -3118,40 +3118,16 @@
         <translation>Clear all</translation>
     </message>
     <message>
-        <source>范围</source>
-        <translation>Scope</translation>
-    </message>
-    <message>
-        <source>全部</source>
-        <translation>All</translation>
-    </message>
-    <message>
-        <source>文件</source>
-        <translation>Files</translation>
-    </message>
-    <message>
         <source>文件夹</source>
         <translation>Folders</translation>
-    </message>
-    <message>
-        <source>内容</source>
-        <translation>Content</translation>
     </message>
     <message>
         <source>不限</source>
         <translation>Any</translation>
     </message>
     <message>
-        <source>快捷筛选（可多选）</source>
-        <translation>Quick filters (several at once)</translation>
-    </message>
-    <message>
         <source>快捷筛选</source>
         <translation>Quick filters</translation>
-    </message>
-    <message>
-        <source>+ 新建</source>
-        <translation>+ New</translation>
     </message>
     <message>
         <source>新建快捷筛选</source>
@@ -3180,6 +3156,18 @@
     <message>
         <source>自定义</source>
         <translation>Custom</translation>
+    </message>
+    <message>
+        <source>筛选放到左侧</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>筛选放到顶部</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>全部类型</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>起 2026-01-01</source>
@@ -3226,6 +3214,10 @@
         <translation>Choose a folder…</translation>
     </message>
     <message>
+        <source>时间</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>正在搜索文件内容…</source>
         <translation>Searching file contents…</translation>
     </message>
@@ -3240,10 +3232,6 @@
     <message>
         <source>没有符合筛选条件的文件</source>
         <translation>No files match the filters</translation>
-    </message>
-    <message>
-        <source>输入名称或拼音，或在左侧加筛选条件</source>
-        <translation>Type a name or pinyin, or add filters on the left</translation>
     </message>
     <message>
         <source>恢复默认列</source>
@@ -3272,6 +3260,10 @@
     <message>
         <source>显示内容详情</source>
         <translation>Show content details</translation>
+    </message>
+    <message>
+        <source>输入名称或拼音，或加筛选条件</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>内容详情宽度，左右方向键调整</source>
@@ -4422,6 +4414,18 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>Stop keeping visible</translation>
     </message>
     <message>
+        <source>隐藏筛选</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>显示筛选（筛选仍生效）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>显示筛选</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>切换搜索范围</source>
         <translation>Switch search scope</translation>
     </message>
@@ -4468,18 +4472,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>搜索 %1</source>
         <translation>Search %1</translation>
-    </message>
-    <message>
-        <source>隐藏筛选侧栏</source>
-        <translation>Hide filter sidebar</translation>
-    </message>
-    <message>
-        <source>显示筛选侧栏</source>
-        <translation>Show filter sidebar</translation>
-    </message>
-    <message>
-        <source>显示筛选侧栏（筛选仍生效）</source>
-        <translation>Show filter sidebar (filters are still active)</translation>
     </message>
     <message>
         <source>搜索历史</source>
@@ -4616,6 +4608,22 @@ Double-click grip: expand/collapse search panel</translation>
 </context>
 <context>
     <name>SettingsWindow</name>
+    <message>
+        <source>打开结果的备用键</source>
+        <translation>Second key to open a result</translation>
+    </message>
+    <message>
+        <source>打开;回车;Enter;备用;左手;快捷键;空格;open;shortcut</source>
+        <translation>open;enter;Enter;second;left hand;shortcut;hotkey;space</translation>
+    </message>
+    <message>
+        <source>和 Enter 一样打开选中的结果，Enter 照常可用。录一个左手顺手的键，比如 Alt+Q 或 F1；空格不行，它要用来分开几个词。Backspace 清除，Esc 取消。</source>
+        <translation>Opens the selected result as Enter does; Enter keeps working. Record a key your left hand reaches, such as Alt+Q or F1; not Space, which separates the words of a search. Backspace clears, Esc cancels.</translation>
+    </message>
+    <message>
+        <source>未设置</source>
+        <translation>Not set</translation>
+    </message>
     <message>
         <source>界面字体</source>
         <translation>Interface font</translation>
@@ -7014,10 +7022,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>All shortcuts are here; the ones with “Go to settings” can be changed.</translation>
     </message>
     <message>
-        <source>未设置</source>
-        <translation>Not set</translation>
-    </message>
-    <message>
         <source>界面风格</source>
         <translation>Interface style</translation>
     </message>
@@ -8008,6 +8012,10 @@ Double-click grip: expand/collapse search panel</translation>
 </context>
 <context>
     <name>Shortcuts</name>
+    <message>
+        <source>打开选中的结果，和 Enter 一样</source>
+        <translation>Open the selected result, as Enter does</translation>
+    </message>
     <message>
         <source>打开</source>
         <translation>Open</translation>
@@ -13201,6 +13209,18 @@ Content index: %5</translation>
 </context>
 <context>
     <name>ws::SettingsEditor</name>
+    <message>
+        <source>这个快捷键已用来打开结果，请换一个</source>
+        <translation>This shortcut already opens results; choose another</translation>
+    </message>
+    <message>
+        <source>空格要用来分开几个词，请换一个</source>
+        <translation>Space separates the words of a search; choose another</translation>
+    </message>
+    <message>
+        <source>这个快捷键已用于预览，请换一个</source>
+        <translation>This shortcut is the preview&apos;s; choose another</translation>
+    </message>
     <message>
         <source>选择不需要搜索的文件夹</source>
         <translation>Choose a folder to leave out of searches</translation>

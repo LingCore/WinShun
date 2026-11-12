@@ -1615,6 +1615,21 @@ bool Launcher::isPreviewKey(int key, int modifiers) const
     return previewkeys::matches(m_previewSequence, key, modifiers);
 }
 
+void Launcher::setOpenHotkey(const QString& shortcut)
+{
+    const QString value = previewkeys::normalizedOpen(shortcut);
+    if (m_openHotkey == value)
+        return;
+    m_openHotkey = value;
+    m_openSequence = QKeySequence::fromString(value, QKeySequence::PortableText);
+    emit resultOptionsChanged();
+}
+
+bool Launcher::isOpenKey(int key, int modifiers) const
+{
+    return previewkeys::matches(m_openSequence, key, modifiers);
+}
+
 void Launcher::setNumberKeysLeft(unsigned digits)
 {
     if (digits == m_numberKeysLeft)
