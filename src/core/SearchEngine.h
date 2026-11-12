@@ -22,6 +22,7 @@
 namespace ws {
 
 class AppCatalog;
+struct AppInfo;
 class DocExtractor;
 class IndexService;
 class RecentOnDisk;
@@ -347,6 +348,10 @@ private:
     std::jthread m_scanWorker;
     std::jthread m_nameWorker;
 };
+
+// An installed app as a row of results: shown by its name, or (found by
+// one of its other names) by otherNames[otherName].
+SearchResult appResult(const AppInfo& app, bool recent = false, int otherName = -1);
 
 } // namespace ws
 

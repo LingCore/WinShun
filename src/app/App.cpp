@@ -1909,6 +1909,7 @@ void App::applySettings(bool initial)
     m_backup->setFolder(m_settings.backupFolder);
     m_launcher->setRecordHistory(m_settings.recordHistory);
     m_launcher->setMergeFileScope(m_settings.mergeFileScope);
+    m_launcher->setAppsTab(m_settings.appsTab);
     m_launcher->setHistoryKeys(m_settings.queryHistoryKeys);
     m_launcher->setLogoRightClick(m_settings.logoRightClick);
     m_launcher->setResultOptions(m_settings.foldersFirst ? KindOrder::FoldersFirst : KindOrder::FilesFirst,

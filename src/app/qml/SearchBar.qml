@@ -720,17 +720,29 @@ Item {
         anchors.leftMargin: 16
         y: bar.onPixel((bar.height - height) / 2)
         // 文件夹 is a chip of the strip under the box (TypeStrip): 文件 stays current.
-        current: bar.launcher.mergeFileScope ? (bar.launcher.scope === Launcher.Content ? 1 : 0)
-            : bar.launcher.scope === Launcher.Folders ? Launcher.Files : bar.launcher.scope
+        // The tabs' scopes, in their order: 全部, 文件 (unless the two are one), 内容, and last 应用 where
+        // the settings ask for it (Launcher.appsTab): 全部 stays first, as its plugin chip needs it.
+        readonly property var scopes: {
+            const list = [Launcher.All]
+            if (!bar.launcher.mergeFileScope)
+                list.push(Launcher.Files)
+            if (contentTab)
+                list.push(Launcher.Content)
+            if (bar.launcher.appsTab)
+                list.push(Launcher.Apps)
+            return list
+        }
+        current: Math.max(0, scopes.indexOf(bar.launcher.scope === Launcher.Folders ? Launcher.Files : bar.launcher.scope))
         contentTab: bar.launcher.contentEnabled
-        labels: bar.launcher.mergeFileScope ? (contentTab ? [qsTranslate("ScopeTabs", "全部"), qsTranslate("ScopeTabs", "内容")] : [qsTranslate("ScopeTabs", "全部")])
-            : (contentTab ? [qsTranslate("ScopeTabs", "全部"), qsTranslate("ScopeTabs", "文件"), qsTranslate("ScopeTabs", "内容")] : [qsTranslate("ScopeTabs", "全部"), qsTranslate("ScopeTabs", "文件")])
+        labels: scopes.map(scope => scope === Launcher.Files ? qsTranslate("ScopeTabs", "文件")
+                                  : scope === Launcher.Content ? qsTranslate("ScopeTabs", "内容")
+                                  : scope === Launcher.Apps ? qsTranslate("ScopeTabs", "应用") : qsTranslate("ScopeTabs", "全部"))
         // 全部 › [icon] 结束进程 while a plugin's keyword has the list; the
         // chip (or 全部 itself) empties the box, which leaves the mode.
         pluginLabel: bar.launcher.pluginLabel
         pluginIcon: bar.launcher.pluginIcon
-        onActivated: (scope) => {
-            if (bar.launcher.mergeFileScope) scope = scope === 1 ? Launcher.Content : Launcher.All
+        onActivated: (index) => {
+            const scope = tabs.scopes[index]
             if (scope === Launcher.All && bar.launcher.scope === Launcher.All && bar.launcher.pluginKeyword.length > 0)
                 bar.launcher.leaveKeyword()
             else if (scope !== Launcher.Files || bar.launcher.scope !== Launcher.Folders) // 文件 in 文件夹: stays

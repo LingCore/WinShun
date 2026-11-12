@@ -74,9 +74,27 @@ Item {
         }
         return list
     }
+    // 应用 (GitHub #296): which apps its grid shows, each with how many in its tooltip.
+    property bool apps: false
+    readonly property var appChips: {
+        const counts = launcher.appCounts
+        const count = (view) => " · " + qsTr("%1 个").arg(counts[view] ?? 0)
+        return [{ type: Launcher.FrequentApps, name: qsTr("常用"), tip: qsTr("打开最多的应用") + count(Launcher.FrequentApps), glyph: "ph:clock-counter-clockwise" },
+                { type: Launcher.FavoriteApps, name: qsTr("收藏"), tip: qsTr("收藏夹里的应用") + count(Launcher.FavoriteApps), glyph: "ph:star" },
+                { type: Launcher.AllApps, name: qsTr("全部"), tip: qsTr("开始菜单里的所有应用") + count(Launcher.AllApps), glyph: "ph:squares-four" }]
+    }
+    onAppChipsChanged: updateChips()
     function updateChips() {
         if (!launcher || (launcher.scope === Launcher.All && !launcher.mergeFileScope))
             return
+        apps = launcher.scope === Launcher.Apps
+        if (apps) {
+            folders = false
+            current = launcher.appsView
+            chips = appChips
+            folderHint = ""
+            return
+        }
         folders = launcher.scope === Launcher.Content
         current = folders ? launcher.folderChip : launcher.scope === Launcher.All ? -1 : launcher.scope === Launcher.Folders ? -2 : launcher.fileType
         chips = folders ? launcher.folderChips : fileChips
@@ -88,6 +106,7 @@ Item {
         function onScopeChanged() { strip.updateChips() }
         function onFolderChipsChanged() { strip.updateChips() }
         function onFileTypeChanged() { strip.updateChips() }
+        function onAppsViewChanged() { strip.updateChips() }
     }
 
     // The chip the mouse rests on, for its tooltip.
@@ -298,11 +317,11 @@ Item {
 
                     required property int index
                     required property var modelData
-                    readonly property bool active: !strip.folders && modelData.type >= 0
+                    readonly property bool active: !strip.folders && !strip.apps && modelData.type >= 0
                         ? strip.launcher.scope === Launcher.Files && strip.launcher.selectedFileTypes.includes(modelData.type)
                         : modelData.type === strip.current
                     // 不限: in 内容 the chip without a folder's dot (Launcher.folderChips).
-                    readonly property bool isAll: strip.folders ? !modelData.dot : modelData.type === -1
+                    readonly property bool isAll: strip.apps ? false : strip.folders ? !modelData.dot : modelData.type === -1
                     // The mode changes before the delegate model is replaced.
                     readonly property string glyph: strip.folders ? (isAll ? "" : strip.folderGlyph) : (modelData.glyph ?? "")
                     readonly property int hue: strip.folders ? (isAll ? -1 : -2) : (modelData.hue ?? -1)
@@ -343,7 +362,7 @@ Item {
                         NumberAnimation { duration: 120 }
                     }
                     height: Theme.typeChipHeight
-                    Accessible.role: !strip.folders && modelData.type >= 0 ? Accessible.CheckBox : Accessible.RadioButton
+                    Accessible.role: !strip.folders && !strip.apps && modelData.type >= 0 ? Accessible.CheckBox : Accessible.RadioButton
                     Accessible.name: modelData.name
                     Accessible.checked: active
 
@@ -395,8 +414,14 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: strip.folders ? strip.launcher.chooseFolderChip(chip.modelData.type)
-                                                     : strip.launcher.toggleFileType(chip.modelData.type)
+                            onClicked: {
+                                if (strip.apps)
+                                    strip.launcher.appsView = chip.modelData.type
+                                else if (strip.folders)
+                                    strip.launcher.chooseFolderChip(chip.modelData.type)
+                                else
+                                    strip.launcher.toggleFileType(chip.modelData.type)
+                            }
                         }
                     }
 
@@ -425,8 +450,9 @@ Item {
 
         x: view.x + view.width + 4
         y: view.y + row.y
-        width: Theme.typeChipHeight
+        width: strip.apps ? 0 : Theme.typeChipHeight // nothing to add to the apps' three
         height: Theme.typeChipHeight
+        visible: !strip.apps
         opacity: view.opacity
         Accessible.role: Accessible.Button
         Accessible.name: tip

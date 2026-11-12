@@ -85,6 +85,8 @@ private slots:
         ws::Settings settings;
         settings.load();
         QVERIFY(!settings.mergeFileScope);
+        QVERIFY(!settings.appsTab);
+        settings.appsTab = true;
         QCOMPARE(settings.queryHistoryKeys, u"ctrl"_s);
         settings.mergeFileScope = true;
         settings.queryHistoryKeys = u"alt"_s;
@@ -92,6 +94,7 @@ private slots:
         ws::Settings restored;
         restored.load();
         QVERIFY(restored.mergeFileScope);
+        QVERIFY(restored.appsTab);
         QCOMPARE(restored.queryHistoryKeys, u"alt"_s);
         restored.queryHistoryKeys = u"off"_s;
         QVERIFY(restored.saveChecked());

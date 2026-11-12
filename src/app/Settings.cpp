@@ -880,6 +880,7 @@ void Settings::load()
     proxyAddress = readOrDefault(s, u"Proxy/Address"_s, d.proxyAddress).trimmed();
     recordHistory = readOrDefault(s, u"Launcher/History"_s, d.recordHistory);
     mergeFileScope = readOrDefault(s, u"Results/MergeFileScope"_s, d.mergeFileScope);
+    appsTab = readOrDefault(s, u"Results/AppsTab"_s, d.appsTab);
     queryHistoryKeys = readOrDefault(s, u"Launcher/QueryHistoryKeys"_s, d.queryHistoryKeys);
     if (queryHistoryKeys != u"ctrl" && queryHistoryKeys != u"alt" && queryHistoryKeys != u"off")
         queryHistoryKeys = d.queryHistoryKeys;
@@ -1354,6 +1355,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/StartList"_s, startList);
     s.setValue(u"Results/RecentItems"_s, recentItems);
     s.setValue(u"Results/MergeFileScope"_s, mergeFileScope);
+    s.setValue(u"Results/AppsTab"_s, appsTab);
     s.setValue(u"Launcher/QueryHistoryKeys"_s, queryHistoryKeys);
     s.setValue(u"Launcher/LogoRightClick"_s, logoRightClick);
     s.setValue(u"Results/FavoritesOnStart"_s, favoritesOnStart);

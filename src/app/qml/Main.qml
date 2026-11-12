@@ -36,16 +36,18 @@ Window {
     }
     readonly property Panel panelPage: panelLoader.item as Panel
     readonly property bool columnMenuOpen: panelPage !== null && panelPage.columnMenuOpen
-    readonly property var view: panel && panelPage ? panelPage.view : boxList
-    readonly property int gridColumns: panel && panelPage ? panelPage.gridColumns : 1
+    readonly property var view: panel && panelPage ? panelPage.view : appsMode ? appsGrid : boxList
+    readonly property int gridColumns: panel && panelPage ? panelPage.gridColumns : appsMode ? appsGrid.columns : 1
     // Keep the input method in the text field while arrows browse the grid.
     // Typing or clicking the field returns horizontal arrows to its caret.
     property bool galleryNavigation: false
     readonly property SearchBar searchBar: panel && panelPage ? panelPage.searchBar : boxBar
-    readonly property int viewRowHeight: panel && panelPage ? panelPage.rowHeight : rowHeight
+    readonly property int viewRowHeight: panel && panelPage ? panelPage.rowHeight : appsMode ? appsGrid.tileHeight : rowHeight
 
     readonly property bool folderMode: !panel && launcher.folderSearch
-    readonly property bool pureEmpty: launcher.pureSearch && !panel && !folderMode && !launcher.inTaskbarBox
+    // 应用 (GitHub #296): the rows are a grid of app icons (AppsGrid), there with nothing typed too.
+    readonly property bool appsMode: !panel && launcher.scope === Launcher.Apps
+    readonly property bool pureEmpty: launcher.pureSearch && !panel && !folderMode && !launcher.inTaskbarBox && !appsMode
                                       && launcher.query.trim().length === 0 && searchBar.composition.length === 0
     readonly property int rowHeight: folderMode ? 40 : Theme.rowHeight
     // Read once here for all the window's parts and rows (GitHub #111): every
@@ -160,7 +162,7 @@ Window {
     property var emptyShownHints: []
     property bool dimEmpty: false // held long enough to notice (as dimRows): it is the last query's
     function settleEmpty() {
-        if (trimmedQuery.length > 0 && view.count === 0 && !launcher.searching && shownRows === 0) {
+        if (trimmedQuery.length > 0 && view.count === 0 && !launcher.searching && shownRows === 0 && !appsMode) {
             emptyShownTitle = emptyTitle
             emptyShownHint = emptyHint
             emptyShownHints = hints
@@ -252,10 +254,10 @@ Window {
     // taskbar: the list area keeps the height of all the rows that fit, so
     // the search box stays where it is as results come and go.
     readonly property bool fullHeight: placement.atTaskbar && !clipboardBelow
-    readonly property int listRows: fullHeight ? fitRows : shownRows
+    readonly property int listRows: fullHeight || appsMode ? fitRows : shownRows // the grid keeps its room
     // There, with nothing typed: the apps opened most in a row over the
     // recent ones, as Windows' own search starts out.
-    readonly property bool showHome: fullHeight && trimmedQuery.length === 0 && launcher.frequentApps.length > 0
+    readonly property bool showHome: fullHeight && !appsMode && trimmedQuery.length === 0 && launcher.frequentApps.length > 0
     // The app the keyboard is on (↑ from the first row); -1: in the view.
     property int homeIndex: -1
     onShowHomeChanged: if (!showHome) homeIndex = -1
@@ -735,7 +737,9 @@ Window {
     function stepStrip(delta) {
         if (launcher.pluginKeyword.length > 0 || !typeStrip.shown)
             return
-        if (typeStrip.folders)
+        if (typeStrip.apps)
+            launcher.cycleAppsView(delta)
+        else if (typeStrip.folders)
             launcher.cycleFolderChip(delta)
         else
             launcher.cycleFileType(delta)
@@ -835,7 +839,7 @@ Window {
         }
         if (key === Qt.Key_Down || key === Qt.Key_Up || key === Qt.Key_PageDown || key === Qt.Key_PageUp) {
             window.launcher.keyboardMoved() // Alt+P is for this row now, not the one under a pointer left where it was
-            if (panel && launcher.gallery && searchBar.composition.length === 0)
+            if (((panel && launcher.gallery) || appsMode) && searchBar.composition.length === 0)
                 galleryNavigation = true
         }
         switch (key) {
@@ -846,11 +850,14 @@ Window {
             else
                 shift ? extendSelection(-gridColumns) : moveSelection(-gridColumns)
             break
-        case Qt.Key_PageDown: shift ? extendSelection(panel ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows) : moveSelection(panel ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows); break
-        case Qt.Key_PageUp: shift ? extendSelection(panel ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows) : moveSelection(panel ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows); break
+        case Qt.Key_PageDown: shift ? extendSelection(panel || appsMode ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows) : moveSelection(panel || appsMode ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows); break
+        case Qt.Key_PageUp: shift ? extendSelection(panel || appsMode ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows) : moveSelection(panel || appsMode ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows); break
         case Qt.Key_Left:
         case Qt.Key_Right: // In the gallery, arrows keep navigating its columns.
-            if (panel && launcher.gallery && galleryNavigation && !ctrl && !(event.modifiers & Qt.AltModifier)) {
+            // So do they among the apps' tiles, and there from the start while nothing is typed (no caret to move).
+            if (((panel && launcher.gallery && galleryNavigation)
+                 || (appsMode && searchBar.composition.length === 0 && (galleryNavigation || launcher.query.length === 0)))
+                    && !ctrl && !(event.modifiers & Qt.AltModifier)) {
                 const delta = event.key === Qt.Key_Right ? 1 : -1
                 shift ? extendSelection(delta) : moveSelection(delta)
                 break
@@ -1275,7 +1282,7 @@ Window {
                 frame: window.frame
                 dpr: window.dpr
                 shown: (window.launcher.mergeFileScope || window.launcher.scope === Launcher.Files || window.launcher.scope === Launcher.Folders
-                        || window.launcher.scope === Launcher.Content)
+                        || window.launcher.scope === Launcher.Content || window.appsMode)
                        && !window.pureEmpty && !window.clipboardBelow && !window.folderMode && window.launcher.pluginKeyword.length === 0
             }
         }
@@ -1434,11 +1441,42 @@ Window {
                 }
             }
 
+            AppsGrid { // 应用: the rows as tiles
+                id: appsGrid
+                objectName: "appsGrid"
+                anchors.fill: parent
+                visible: window.appsMode
+                model: window.appsMode ? window.launcher.results : null
+                launcher: window.launcher
+                dpr: window.dpr
+                viewY: layout.y + listArea.y
+                opacity: window.dimRows ? 0.45 : 1
+                onOpenRequested: (index) => {
+                    currentIndex = index
+                    window.launcher.clickRow(index)
+                }
+                onMenuRequested: (index, globalPos) => window.openContextMenu(index, globalPos)
+            }
+            Text { // 应用 with no tile: why, or what brings one
+                anchors.centerIn: parent
+                width: parent.width - 80
+                horizontalAlignment: Text.AlignHCenter
+                visible: window.appsMode && appsGrid.count === 0
+                text: window.trimmedQuery.length > 0 ? qsTr("没有找到应用")
+                    : window.launcher.appsView === Launcher.FavoriteApps ? qsTr("点应用图标右上角的星标，它就留在这里")
+                    : window.launcher.appsView === Launcher.FrequentApps ? qsTr("打开过的应用会出现在这里")
+                    : qsTr("没有找到应用")
+                color: Theme.faint
+                font.pixelSize: Theme.uiBody
+                wrapMode: Text.Wrap
+            }
+
             ListView {
                 id: boxList
                 anchors.fill: parent
                 anchors.topMargin: (window.showHome ? home.height : 0) + window.headingHeight
                 anchors.bottomMargin: window.detailSpace
+                visible: !window.appsMode
                 topMargin: 4
                 bottomMargin: 4
                 clip: true
@@ -1664,7 +1702,7 @@ Window {
             ListScrollBar {
                 dpr: window.dpr
                 id: boxScrollBar
-                flickable: boxList
+                flickable: window.appsMode ? appsGrid : boxList
                 anchors.right: parent.right
                 anchors.top: boxList.top
                 anchors.bottom: boxList.bottom
@@ -1741,7 +1779,7 @@ Window {
                 anchors.centerIn: parent
                 // A plugin's wait shows only once it has lasted a moment
                 // (pluginWaiting is empty before that), fading in.
-                visible: boxList.count === 0 && window.launcher.searching
+                visible: boxList.count === 0 && window.launcher.searching && !window.appsMode
                          && (!keywordMode || window.launcher.pluginWaiting.length > 0)
                 opacity: visible ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 100 } }
@@ -1764,7 +1802,7 @@ Window {
                 y: boxList.y + Math.round((boxList.height - height) / 2)
                 width: parent.width - 80
                 horizontalAlignment: Text.AlignHCenter
-                visible: window.fullHeight && window.trimmedQuery.length === 0 && boxList.count === 0
+                visible: window.fullHeight && window.trimmedQuery.length === 0 && boxList.count === 0 && !window.appsMode
                 text: qsTr("输入名称或拼音，搜索文件、应用和设置")
                 color: Theme.faint
                 font.pixelSize: Theme.uiBody
