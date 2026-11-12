@@ -97,6 +97,8 @@
 
 想自己写插件：零代码的 `plugin.json`、任意语言的脚本都行，附 Python / PowerShell / C++ SDK，见 [插件文档](docs/plugins.md)。
 
+交给 AI 助手：`npx skills add LingCore/WinShun` 给 Claude Code、Codex、Cursor 这类助手装上 Win顺 的 Skill，一共三个：`winshun`（用 `ws` 命令搜文件、装插件）、`winshun-plugin-dev`（写插件）、`winshun-dev`（改 Win顺 本身）。装插件也可以让它来：`ws plugin search 翻译`、`ws plugin install winshun.translate`，要你点头的地方（插件要的权限等）Win顺 会弹窗问你，见 [命令行 ws](docs/使用说明.md#命令行-ws)。
+
 ### 常用按键
 
 | 按键 | 作用 |
@@ -272,6 +274,8 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 
 也可以用 Qt Creator 或 VS Code（CMake Tools）打开，预设见 `CMakePresets.json`。源码结构和设计见 [docs/architecture.md](docs/architecture.md)，踩过的坑见 [docs/pitfalls.md](docs/pitfalls.md)。
 
+用 AI 助手改代码：在克隆下来的仓库里运行 `npx skills add LingCore/WinShun --skill winshun-dev`，它会先读到怎么编译、只跑哪些测试、界面规范和常见的坑（就是 [skills/winshun-dev](skills/winshun-dev/SKILL.md) 这份说明）。
+
 </details>
 
 ---
@@ -337,6 +341,8 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | Explorer tabs | New File Explorer windows open as tabs (Windows 11 22H2 or newer) | Plugin library |
 
 Write your own: a zero-code `plugin.json` or scripts in any language, with SDKs for Python, PowerShell and C++. See [docs/plugins.en.md](docs/plugins.en.md).
+
+Hand it to an AI assistant: `npx skills add LingCore/WinShun` installs WinShun's skills for Claude Code, Codex, Cursor and the like. There are three: `winshun` (search files and install plugins with the `ws` command), `winshun-plugin-dev` (write a plugin) and `winshun-dev` (work on WinShun itself). It can install plugins too: `ws plugin search translate`, `ws plugin install winshun.translate`; where your yes is needed (the permissions a plugin asks for), WinShun asks you in its own window.
 
 ### Keys
 
@@ -510,6 +516,8 @@ Needs Visual Studio 2022 (Desktop development with C++), Qt 6.8 or later (6.12 r
 ```
 
 Architecture, design notes and benchmarks (in Chinese) are in [docs/architecture.md](docs/architecture.md).
+
+With an AI assistant: run `npx skills add LingCore/WinShun --skill winshun-dev` in your clone. It tells the assistant how to build, which tests to run, the UI rules and the usual pitfalls ([skills/winshun-dev](skills/winshun-dev/SKILL.md)).
 
 </details>
 

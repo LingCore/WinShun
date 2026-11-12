@@ -456,7 +456,9 @@ manifest 写 `"ai": {"expose": true}`，并在设置 → AI 助手 打开"AI 可
 ## 调试
 
 - **开发者模式**（设置 → 插件 → 高级）：改了脚本自动重启常驻插件（底栏"已重新加载 X"）；"消息记录"记下每一条往来（时间、插件、方向 → ← stderr ·、方法、请求到响应的毫秒），点一条看整个消息；"打开 plugins.log"（`%LOCALAPPDATA%\WinShun\plugins.log`，插件的 stderr、协议错误、崩溃都在那）。
-- **命令行**（源码编译出的 `build\release\wsbench.exe`，不用开界面）：
+- **`ws plugin`**（Win顺 自带的命令行，先在 设置 → AI 助手 里启用命令行）：`ws plugin install <插件文件夹或 .wsplugin>` 把它装上（新装的先关着；盖在开着的版本上直接换成新的，改完再装一次就行），`ws plugin enable <id>` 打开（第一次要你在 Win顺 的窗口里确认权限），`ws plugin list --json` 看它的状态（`state`、进程的 `status`、`error`：manifest 的错、缺程序、上次崩溃）。AI 助手也这样装上试。
+- **让 AI 写**：`npx skills add LingCore/WinShun --skill winshun-plugin-dev` 给 Claude Code、Codex、Cursor 等装上写插件的 Skill（协议要点、上面这个循环、发布步骤），不用再手动复制开发提示。
+- **wsbench**（源码编译出的 `build\release\wsbench.exe`，不用开界面）：
 
 ```powershell
 wsbench --plugin D:\my.plugin --query "hi 你好" --runs 20                 # 校验 manifest、经 runner 起进程、打印结果 JSON 和耗时（冷启动 / 首次往返 / 稳态中位数），以及进程的完整性、是否在作业里
