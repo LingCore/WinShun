@@ -1,0 +1,50 @@
+{
+  "round": "again",
+  "before": {
+    "version": "0.25.0",
+    "exeSha": "72c732338ee41f4423bc00c5e72e730cbe61c0f6dec3882f0b81e013a80e2ce5",
+    "running": 2,
+    "runningFrom": [
+      null,
+      "C:\\Program Files\\WinShun\\WinShun.exe"
+    ],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "aside": [
+      "msvcp140_1.dll.wsold",
+      "msvcp140.dll.wsold",
+      "Qt6Core.dll.wsold",
+      "vcruntime140_1.dll.wsold",
+      "vcruntime140.dll.wsold"
+    ],
+    "uninstallVersion": "0.25.0",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "indexBytes": 30849862
+  },
+  "setupExit": 0,
+  "setupSeconds": 19.1,
+  "after": {
+    "version": "0.25.0",
+    "exeSha": "72c732338ee41f4423bc00c5e72e730cbe61c0f6dec3882f0b81e013a80e2ce5",
+    "running": 2,
+    "runningFrom": [
+      "C:\\Program Files\\WinShun\\WinShun.exe",
+      null
+    ],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "aside": [],
+    "uninstallVersion": "0.25.0",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "indexBytes": 30850777
+  },
+  "newVersionElevated": [
+    false,
+    false
+  ],
+  "logLines": []
+}

@@ -1,0 +1,64 @@
+{
+  "round": "upgrade",
+  "before": {
+    "version": "0.23.0",
+    "exeSha": "2a72353872c25fd907b14471923c0f1c4070f0a33f795c9d401e4f1b30ff7056",
+    "running": 2,
+    "runningFrom": [
+      null,
+      "C:\\Program Files\\WinShun\\WinShun.exe"
+    ],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "aside": [],
+    "uninstallVersion": "0.23.0",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "indexBytes": 30619711
+  },
+  "holderStarted": true,
+  "setupExit": 0,
+  "setupSeconds": 19.8,
+  "after": {
+    "version": "0.25.0",
+    "exeSha": "72c732338ee41f4423bc00c5e72e730cbe61c0f6dec3882f0b81e013a80e2ce5",
+    "running": 2,
+    "runningFrom": [
+      null,
+      "C:\\Program Files\\WinShun\\WinShun.exe"
+    ],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "aside": [
+      "msvcp140_1.dll.wsold",
+      "msvcp140.dll.wsold",
+      "Qt6Core.dll.wsold",
+      "vcruntime140_1.dll.wsold",
+      "vcruntime140.dll.wsold"
+    ],
+    "uninstallVersion": "0.25.0",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "indexBytes": 30849862
+  },
+  "newVersionElevated": [
+    false,
+    false
+  ],
+  "holderStillRunning": true,
+  "logLines": [
+    "Held, moved out of the way: C:\\Program Files\\WinShun\\msvcp140.dll -> msvcp140.dll.wsold",
+    "Held, moved out of the way: C:\\Program Files\\WinShun\\msvcp140_1.dll -> msvcp140_1.dll.wsold",
+    "Held, moved out of the way: C:\\Program Files\\WinShun\\Qt6Core.dll -> Qt6Core.dll.wsold",
+    "Held, moved out of the way: C:\\Program Files\\WinShun\\vcruntime140.dll -> vcruntime140.dll.wsold",
+    "Held, moved out of the way: C:\\Program Files\\WinShun\\vcruntime140_1.dll -> vcruntime140_1.dll.wsold",
+    "5 held file(s) moved out of the way (held by: PowerShell 7); installing",
+    "Still held, left for later: C:\\Program Files\\WinShun\\msvcp140.dll.wsold",
+    "Still held, left for later: C:\\Program Files\\WinShun\\msvcp140_1.dll.wsold",
+    "Still held, left for later: C:\\Program Files\\WinShun\\Qt6Core.dll.wsold",
+    "Still held, left for later: C:\\Program Files\\WinShun\\vcruntime140.dll.wsold",
+    "Still held, left for later: C:\\Program Files\\WinShun\\vcruntime140_1.dll.wsold"
+  ]
+}
