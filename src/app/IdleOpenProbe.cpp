@@ -33,8 +33,11 @@ namespace ws::preview {
 // hotkey opens them (beginTrigger, then the toggle), each opening timed from
 // that call until the window is there to be seen (uncloaked after its first
 // frame), with the page faults it took and the memory held just before.
-// Each cycle, for the launcher and then the clipboard: opened once and closed
-// (in use), then
+// First of all, once the memory was given back for the first time since the
+// start (waited for):
+//   first    each window's first opening
+// Then each cycle, for the launcher and then the clipboard: opened once and
+// closed (in use), then
 //   idle     after IdleTrim gave the memory back by itself (`trimmed`; waited
 //            for: --idle-open-after-use after the last use instead of 20 s,
 //            so that many openings can be timed), or found too little to;
@@ -196,10 +199,6 @@ struct IdleOpenProbe {
             std::fprintf(stderr, "%s\n", QJsonDocument(row).toJson(QJsonDocument::Compact).constData());
             rows.append(row);
         };
-        for (const bool clipboard : windows) {
-            for (int i = 0; i < 3; ++i) // the first openings make what later ones keep
-                open(app, clipboard, "first");
-        }
         const qsizetype pressureAt = args.indexOf(u"--idle-open-pressure"_s);
         const QDir pressure(pressureAt >= 0 && pressureAt + 1 < args.size() ? args[pressureAt + 1] : QString());
         const auto press = [&pressure] {
@@ -215,6 +214,17 @@ struct IdleOpenProbe {
             pump(500);
             return QFile::remove(pressure.filePath(u"purge.done"_s));
         };
+        {
+            const bool trimmed = waitForIdleTrim(app, 0, 40'000);
+            pump(4'000); // what the App does about it has ended
+            for (const bool clipboard : windows) {
+                const std::optional<bool> pressed = pressureAt >= 0 ? std::optional(press()) : std::nullopt;
+                QJsonObject row = open(app, clipboard, "first");
+                if (pressed)
+                    row.insert(u"pressed"_s, *pressed);
+                add(row, trimmed);
+            }
+        }
         for (int i = 0; i < cycles; ++i) {
             for (const bool clipboard : windows) {
                 open(app, clipboard, "use");

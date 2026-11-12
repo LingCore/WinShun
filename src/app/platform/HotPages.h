@@ -73,14 +73,20 @@ private:
 // never needs again (what it allocates anew, ~2 MB each time), and kept, that
 // would add up. The caller leaves out what the file index holds: a search
 // reads it on its own threads, and it is most of the memory.
+//
+// A window's very first opening after the start is not helped: nothing is
+// learnt yet, and most of what it touches it makes then. Drawing the window
+// once unseen after the first giving back, to learn from that, was tried:
+// short of memory 148 to 211 ms instead of 183 to 259, not worth its code.
 class HotPages {
 public:
     // At most this much is taken the first time: of more, the scattered
     // pages, which cost a fault each, while the large runs are left to
     // Windows and nothing is added later. Grown since by half (or by
-    // kSlackBytes, where that is more), they are learnt anew from the next
-    // opening: pages an opening no longer uses are never told apart from
-    // those it does, and a little is added every day.
+    // kSlackBytes, where that is more), what was added goes again: pages an
+    // opening no longer uses are never told apart from those it does, and a
+    // little is added every day. Those still used are back after two
+    // openings; the first ones stay, so that no opening starts from nothing.
     static constexpr std::size_t kMostBytes = std::size_t {96} << 20;
     static constexpr std::size_t kSlackBytes = std::size_t {16} << 20;
 
@@ -94,7 +100,7 @@ private:
     mutable std::mutex m_mutex;
     PageSet m_pages;
     PageSet m_once; // used at the last such opening, for the first time
-    std::size_t m_firstBytes = 0; // of m_pages as first taken
+    PageSet m_first; // m_pages as first taken
     bool m_whole = true; // all that was used then, not just kMostBytes of it
 };
 
