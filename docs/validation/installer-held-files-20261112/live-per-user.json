@@ -1,0 +1,155 @@
+{
+  "0-start": {
+    "folderThere": true,
+    "version": "0.25.1",
+    "running": 2,
+    "runningFrom": [
+      "C:\\Program Files\\WinShun\\WinShun.exe"
+    ],
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "uninstallHKLM": "0.25.1",
+    "uninstallHKCU": null,
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "clipboardFiles": 137
+  },
+  "1-uninstall-all-users": {
+    "seconds": 2.3,
+    "exit": 0
+  },
+  "1-after": {
+    "folderThere": false,
+    "version": null,
+    "running": 0,
+    "runningFrom": [],
+    "elevated": [],
+    "aside": [],
+    "service": "[SC] EnumQueryServicesStatus:OpenService FAILED 1060:",
+    "task": "",
+    "uninstallHKLM": null,
+    "uninstallHKCU": null,
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "clipboardFiles": 135
+  },
+  "2-install-for-me": {
+    "seconds": 15.2,
+    "exit": 0
+  },
+  "2-after": {
+    "folderThere": true,
+    "version": "0.25.0",
+    "running": 1,
+    "runningFrom": [
+      "C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\WinShun.exe"
+    ],
+    "elevated": [
+      false
+    ],
+    "aside": [],
+    "service": "[SC] EnumQueryServicesStatus:OpenService FAILED 1060:",
+    "task": "",
+    "uninstallHKLM": null,
+    "uninstallHKCU": "0.25.0",
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "clipboardFiles": 137
+  },
+  "3-in-app-update": {
+    "updated": true,
+    "seconds": 46.4,
+    "holderStillRunning": true,
+    "feed": [
+      "0.25.1 from F:\\电脑便捷工具\\dist\\updtest-b on http://127.0.0.1:47631/stable.json",
+      "\"GET /stable.json HTTP/1.1\" 200 -",
+      "\"GET /WinShun-0.25.1-x64-setup.exe HTTP/1.1\" 200 -"
+    ],
+    "setupLog": [
+      "Held, moved out of the way: C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\msvcp140.dll -> msvcp140.dll.wsold",
+      "Held, moved out of the way: C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\msvcp140_1.dll -> msvcp140_1.dll.wsold",
+      "Held, moved out of the way: C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\Qt6Core.dll -> Qt6Core.dll.wsold",
+      "Held, moved out of the way: C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\vcruntime140.dll -> vcruntime140.dll.wsold",
+      "Held, moved out of the way: C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\vcruntime140_1.dll -> vcruntime140_1.dll.wsold",
+      "5 held file(s) moved out of the way (held by: PowerShell 7); installing",
+      "Still held, left for later: C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\msvcp140.dll.wsold",
+      "Still held, left for later: C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\msvcp140_1.dll.wsold",
+      "Still held, left for later: C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\Qt6Core.dll.wsold",
+      "Still held, left for later: C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\vcruntime140.dll.wsold",
+      "Still held, left for later: C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\vcruntime140_1.dll.wsold"
+    ]
+  },
+  "3-after": {
+    "folderThere": true,
+    "version": "0.25.1",
+    "running": 1,
+    "runningFrom": [
+      "C:\\Users\\young\\AppData\\Local\\Programs\\WinShun\\WinShun.exe"
+    ],
+    "elevated": [
+      false
+    ],
+    "aside": [
+      "msvcp140_1.dll.wsold",
+      "msvcp140.dll.wsold",
+      "Qt6Core.dll.wsold",
+      "vcruntime140_1.dll.wsold",
+      "vcruntime140.dll.wsold"
+    ],
+    "service": "[SC] EnumQueryServicesStatus:OpenService FAILED 1060:",
+    "task": "",
+    "uninstallHKLM": null,
+    "uninstallHKCU": "0.25.1",
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "clipboardFiles": 137
+  },
+  "4-uninstall-for-me": {
+    "seconds": 1.8,
+    "exit": 0
+  },
+  "4-after": {
+    "folderThere": false,
+    "version": null,
+    "running": 0,
+    "runningFrom": [],
+    "elevated": [],
+    "aside": [],
+    "service": "[SC] EnumQueryServicesStatus:OpenService FAILED 1060:",
+    "task": "",
+    "uninstallHKLM": null,
+    "uninstallHKCU": null,
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "clipboardFiles": 135
+  },
+  "5-install-all-users-again": {
+    "seconds": 18.1,
+    "exit": 0
+  },
+  "5-after": {
+    "folderThere": true,
+    "version": "0.25.1",
+    "running": 2,
+    "runningFrom": [
+      "C:\\Program Files\\WinShun\\WinShun.exe"
+    ],
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "uninstallHKLM": "0.25.1",
+    "uninstallHKCU": null,
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "clipboardFiles": 137
+  }
+}
