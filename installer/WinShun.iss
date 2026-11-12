@@ -139,6 +139,11 @@ english.FilesCancel=&Cancel
 chinesesimplified.FilesCancel=取消安装(&C)
 english.FilesInUseAi=%1 (connected to WinShun)
 chinesesimplified.FilesInUseAi=%1（连着 Win顺）
+; Shown on the "Preparing to Install" page while a silent Setup (the in-app
+; update) waits for them, so that it does not look stuck (GitHub #300): %1
+; is the list, in one line.
+english.FilesWaiting=Waiting for these programs to let go of WinShun's files: %1
+chinesesimplified.FilesWaiting=正在等这些程序放开 Win顺 的文件：%1
 english.FilesNotFreed=Other programs are still using WinShun's files, so nothing was installed. Close them and run Setup again.
 chinesesimplified.FilesNotFreed=还有程序在用 Win顺 的文件，这次没有安装。关掉它们后再运行安装程序。
 ; The Start menu shortcut users pin to the taskbar (WinShunSearch.exe).
@@ -1085,6 +1090,14 @@ function RmGetList(Session: DWORD; var Needed, Count: DWORD; var Infos: TRmProce
 function RmEndSession(Session: DWORD): DWORD;
   external 'RmEndSession@rstrtmgr.dll stdcall delayload';
 
+function GetTickCount(): DWORD;
+  external 'GetTickCount@kernel32.dll stdcall';
+
+var
+  // FilesInUse: one of the programs it listed is Win顺's own (WinShun*.exe),
+  // which lets go by itself; any other may hold the files for good.
+  HoldersOwn: Boolean;
+
 function CharsText(const Chars: array of Char): String;
 var
   I: Integer;
@@ -1137,6 +1150,7 @@ var
   Key, Name, Image, Path, Command, Tool, Line: String;
 begin
   Result := '';
+  HoldersOwn := False;
   if not DirExists(ExpandConstant('{app}')) then
     exit;
   Files := TStringList.Create;
@@ -1194,6 +1208,8 @@ begin
             Name := FmtMessage(CustomMessage('FilesInUseAi'), [Tool]);
           end;
           Log(Format('In use by process %d (%s): %s', [Pid, Image, Name]));
+          if Pos('winshun', Lowercase(Image)) = 1 then
+            HoldersOwn := True;
           Line := '· ' + Name + #13#10;
           if Pos(Line, Result) = 0 then
             Result := Result + Line;
@@ -1219,10 +1235,19 @@ begin
     CustomMessage('AiInstallLater') + #13#10 + CustomMessage('AiInstallLaterNote')], 0) = IDOK;
 end;
 
+// The programs FilesInUse listed, in one line ("A、B").
+function HoldersInLine(Holders: String): String;
+begin
+  Result := Trim(Holders);
+  StringChangeEx(Result, #13#10 + '· ', '、', True);
+  StringChangeEx(Result, '· ', '', True);
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Tools, Holders: String;
   Tries, ResultCode, Choice: Integer;
+  Since, Waited: DWORD;
 begin
   // AI tools using Win顺 are asked about before anything is closed (GitHub
   // #97). A silent Setup (an update run by a script) goes on, as before.
@@ -1259,12 +1284,31 @@ begin
     Tries := Tries + 1;
     if Holders = '' then
       break;
-    // 90 s when silent: a WinShun.exe whose WebDAV read hung at exit is only
-    // let go when WebClient gives the request up (~61 s, see pitfalls.md).
-    if (Tries < 2) or (WizardSilent() and (Tries < 90)) then
+    // When silent, 90 s for Win顺's own programs: a WinShun.exe whose WebDAV
+    // read hung at exit is only let go when WebClient gives the request up
+    // (~61 s, see pitfalls.md). Another program gets 10 s, on the clock: one
+    // that never lets go (a plugin's process nothing can end, GitHub #300)
+    // had Setup go round 90 times, minutes with nothing said. What is waited
+    // for is on the page meanwhile, and in the log for Win顺 to tell
+    // ("Update blocked by", read by update::setupBlockedBy).
+    if Tries = 1 then
+      Since := GetTickCount();
+    Waited := GetTickCount() - Since;
+    if Tries < 2 then
       Sleep(1000)
+    else if WizardSilent() and (((HoldersOwn) and (Waited < 90000)) or (Waited < 10000)) then
+    begin
+      if Tries = 2 then
+        Log('Update blocked by: ' + HoldersInLine(Holders));
+      WizardForm.PageDescriptionLabel.Caption := FmtMessage(CustomMessage('FilesWaiting'), [HoldersInLine(Holders)]);
+      WizardForm.PageDescriptionLabel.Update;
+      Sleep(1000);
+    end
     else if WizardSilent() then
-      break
+    begin
+      Log('Update blocked by: ' + HoldersInLine(Holders));
+      break;
+    end
     else
     begin
       // Restart Manager also lists readers that allow replacement, such as

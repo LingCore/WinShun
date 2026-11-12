@@ -14421,6 +14421,10 @@ Content index: %5</translation>
         <source>现在仍是 %1，照常可用。可以稍后再试一次。</source>
         <translation>It is still %1 and works as before. You can try again later.</translation>
     </message>
+    <message>
+        <source>%1 还占着 Win顺 的文件。关掉它（关不掉就重启电脑）再试；现在仍是 %2，照常可用。</source>
+        <translation>%1 still holds WinShun’s files. Close it (or restart the PC if it won’t close) and try again; it is still %2 and works as before.</translation>
+    </message>
 </context>
 <context>
     <name>ws::backupfiles</name>

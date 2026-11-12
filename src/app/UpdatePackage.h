@@ -21,6 +21,12 @@ namespace ws::update {
 enum class Kind { None, AllUsers, CurrentUser, Portable, Scoop };
 Kind installKind(const QString& appDir, bool portable);
 
+// The programs a silent Setup found holding Win顺's files, as its log names
+// them in its last "Update blocked by: A、B" line (installer/WinShun.iss,
+// GitHub #300); empty when the log has none. For the notice of an update
+// that did not happen. Cut to a length a notice can show.
+QString setupBlockedBy(const QByteArray& log);
+
 // A copy made by Setup (for all users or this one) is installed.
 bool setupInstalled();
 

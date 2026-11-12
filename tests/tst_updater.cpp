@@ -205,6 +205,19 @@ class TestUpdater : public QObject {
     Q_OBJECT
 
 private slots:
+    // GitHub #300: what a silent Setup waited for, from its log.
+    void setupLogNamesWhatHeldTheFiles()
+    {
+        QCOMPARE(update::setupBlockedBy("2026-11-12 12:11:30.100   Starting the installation process.\r\n"), QString());
+        const QByteArray log = QByteArrayLiteral("\xEF\xBB\xBF"
+                                                 "2026-11-12 12:11:31.000   Update blocked by: old one\r\n"
+                                                 "2026-11-12 12:11:41.000   Update blocked by: tio \xE4\xB8\xB2\xE5\x8F\xA3\xE7\xBB\x88\xE7\xAB\xAF\xE3\x80\x81Notepad\r\n"
+                                                 "2026-11-12 12:11:41.100   Deinitializing Setup.\r\n");
+        QCOMPARE(update::setupBlockedBy(log), u"tio 串口终端、Notepad"_s);
+        QCOMPARE(update::setupBlockedBy("x Update blocked by: last line"), u"last line"_s);
+        QCOMPARE(update::setupBlockedBy("Update blocked by: " + QByteArray(200, 'a')).size(), 80);
+    }
+
     void parsesMirrorsAndDigest()
     {
         const auto info = release::parse(kFeed);
