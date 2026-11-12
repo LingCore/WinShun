@@ -1248,6 +1248,11 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
 
 } // namespace
 
+SearchResult appResult(const AppInfo& app, bool recent, int otherName)
+{
+    return fromApp(app, recent, otherName);
+}
+
 bool rankedBefore(const SearchResult& a, const SearchResult& b, RankBy by) noexcept
 {
     if (by != RankBy::Match) {

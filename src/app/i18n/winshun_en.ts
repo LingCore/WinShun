@@ -2641,20 +2641,16 @@
 <context>
     <name>Main</name>
     <message>
-        <source>最近使用 (%1)</source>
-        <translation>Recently used (%1)</translation>
+        <source>没有找到应用</source>
+        <translation>No apps found</translation>
     </message>
     <message>
-        <source>常用软件 (%1)</source>
-        <translation>Often used (%1)</translation>
+        <source>点应用图标右上角的星标，它就留在这里</source>
+        <translation>Click the star at the corner of an app's icon to keep it here</translation>
     </message>
     <message>
-        <source>所有程序 (%1)</source>
-        <translation>All apps (%1)</translation>
-    </message>
-    <message>
-        <source>没有符合条件的程序</source>
-        <translation>No app matches</translation>
+        <source>打开过的应用会出现在这里</source>
+        <translation>Apps you have opened will show up here</translation>
     </message>
     <message>
         <source>新名字</source>
@@ -4380,16 +4376,16 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
 <context>
     <name>ScopeTabs</name>
     <message>
+        <source>应用</source>
+        <translation>Apps</translation>
+    </message>
+    <message>
         <source>全部</source>
         <translation>All</translation>
     </message>
     <message>
         <source>文件</source>
         <translation>Files</translation>
-    </message>
-    <message>
-        <source>程序</source>
-        <translation>Apps</translation>
     </message>
     <message>
         <source>内容</source>
@@ -4640,6 +4636,18 @@ Double-click grip: expand/collapse search panel</translation>
 </context>
 <context>
     <name>SettingsWindow</name>
+    <message>
+        <source>显示“应用”标签</source>
+        <translation>Show the Apps tab</translation>
+    </message>
+    <message>
+        <source>在范围标签的最后加一个“应用”：应用排成图标网格，可看常用的、收藏的或全部，点星标收藏</source>
+        <translation>Adds Apps after the other scope tabs: your apps as a grid of icons, the most used, your favorites or all of them; click a star to add one to the favorites</translation>
+    </message>
+    <message>
+        <source>程序;应用;图标;网格;启动台;apps;grid;launchpad</source>
+        <translation>apps;programs;icons;grid;launchpad;launcher</translation>
+    </message>
     <message>
         <source>打开结果的备用键</source>
         <translation>Second key to open a result</translation>
@@ -8258,6 +8266,34 @@ Double-click grip: expand/collapse search panel</translation>
 <context>
     <name>TypeStrip</name>
     <message>
+        <source>常用</source>
+        <translation>Most used</translation>
+    </message>
+    <message>
+        <source>收藏</source>
+        <translation>Favorites</translation>
+    </message>
+    <message>
+        <source>全部</source>
+        <translation>All</translation>
+    </message>
+    <message>
+        <source>打开最多的应用</source>
+        <translation>The apps you open most</translation>
+    </message>
+    <message>
+        <source>收藏夹里的应用</source>
+        <translation>The apps in your favorites</translation>
+    </message>
+    <message>
+        <source>开始菜单里的所有应用</source>
+        <translation>Every app in the Start menu</translation>
+    </message>
+    <message>
+        <source>%1 个</source>
+        <translation>%1</translation>
+    </message>
+    <message>
         <source>不限</source>
         <translation>Any</translation>
     </message>
@@ -11092,6 +11128,10 @@ Content index: %5</translation>
 </context>
 <context>
     <name>ws::Launcher</name>
+    <message>
+        <source>搜索应用</source>
+        <translation>Search apps</translation>
+    </message>
     <message>
         <source>“%1”已停用</source>
         <translation>“%1” is off</translation>
@@ -14545,6 +14585,17 @@ Content index: %5</translation>
     <message>
         <source>无法完成增强识别安装，原来的文件已保留。</source>
         <translation>Installation could not finish. Your existing recognition files have been kept.</translation>
+    </message>
+</context>
+<context>
+    <name>AppsGrid</name>
+    <message>
+        <source>从收藏夹移除</source>
+        <translation>Remove from favorites</translation>
+    </message>
+    <message>
+        <source>加入收藏夹</source>
+        <translation>Add to favorites</translation>
     </message>
 </context>
 </TS>

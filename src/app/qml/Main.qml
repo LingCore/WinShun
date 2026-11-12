@@ -36,19 +36,19 @@ Window {
     }
     readonly property Panel panelPage: panelLoader.item as Panel
     readonly property bool columnMenuOpen: panelPage !== null && panelPage.columnMenuOpen
-    readonly property var view: panel && panelPage ? panelPage.view : boxList
-    readonly property int gridColumns: panel && panelPage ? panelPage.gridColumns : 1
+    readonly property var view: panel && panelPage ? panelPage.view : appsMode ? appsGrid : boxList
+    readonly property int gridColumns: panel && panelPage ? panelPage.gridColumns : appsMode ? appsGrid.columns : 1
     // Keep the input method in the text field while arrows browse the grid.
     // Typing or clicking the field returns horizontal arrows to its caret.
     property bool galleryNavigation: false
     readonly property SearchBar searchBar: panel && panelPage ? panelPage.searchBar : boxBar
-    readonly property int viewRowHeight: panel && panelPage ? panelPage.rowHeight : rowHeight
+    readonly property int viewRowHeight: panel && panelPage ? panelPage.rowHeight : appsMode ? appsGrid.tileHeight : rowHeight
 
     readonly property bool folderMode: !panel && launcher.folderSearch
-    readonly property bool appsMode: launcher.scope === Launcher.Apps
-    readonly property bool pureEmpty: launcher.pureSearch && !panel && !folderMode && !launcher.inTaskbarBox
+    // 应用 (GitHub #296): the rows are a grid of app icons (AppsGrid), there with nothing typed too.
+    readonly property bool appsMode: !panel && launcher.scope === Launcher.Apps
+    readonly property bool pureEmpty: launcher.pureSearch && !panel && !folderMode && !launcher.inTaskbarBox && !appsMode
                                       && launcher.query.trim().length === 0 && searchBar.composition.length === 0
-                                      && !appsMode
     readonly property int rowHeight: folderMode ? 40 : Theme.rowHeight
     // Read once here for all the window's parts and rows (GitHub #111): every
     // item that reads Screen has an attached object of its own.
@@ -161,7 +161,7 @@ Window {
     property var emptyShownHints: []
     property bool dimEmpty: false // held long enough to notice (as dimRows): it is the last query's
     function settleEmpty() {
-        if (trimmedQuery.length > 0 && view.count === 0 && !launcher.searching && shownRows === 0) {
+        if (trimmedQuery.length > 0 && view.count === 0 && !launcher.searching && shownRows === 0 && !appsMode) {
             emptyShownTitle = emptyTitle
             emptyShownHint = emptyHint
             emptyShownHints = hints
@@ -253,16 +253,13 @@ Window {
     // taskbar: the list area keeps the height of all the rows that fit, so
     // the search box stays where it is as results come and go.
     readonly property bool fullHeight: placement.atTaskbar && !clipboardBelow
-    readonly property int listRows: fullHeight || appsMode ? fitRows : shownRows
+    readonly property int listRows: fullHeight || appsMode ? fitRows : shownRows // the grid keeps its room
     // There, with nothing typed: the apps opened most in a row over the
     // recent ones, as Windows' own search starts out.
     readonly property bool showHome: fullHeight && !appsMode && trimmedQuery.length === 0 && launcher.frequentApps.length > 0
     // The app the keyboard is on (↑ from the first row); -1: in the view.
     property int homeIndex: -1
     onShowHomeChanged: if (!showHome) homeIndex = -1
-    // The tile the keyboard is on in 程序; -1: none.
-    property int appsIndex: 0
-    onAppsModeChanged: if (appsMode) appsIndex = 0
     function enterHome() {
         homeIndex = 0
         view.currentIndex = -1
@@ -739,7 +736,9 @@ Window {
     function stepStrip(delta) {
         if (launcher.pluginKeyword.length > 0 || !typeStrip.shown)
             return
-        if (typeStrip.folders)
+        if (typeStrip.apps)
+            launcher.cycleAppsView(delta)
+        else if (typeStrip.folders)
             launcher.cycleFolderChip(delta)
         else
             launcher.cycleFileType(delta)
@@ -823,35 +822,10 @@ Window {
             event.accepted = true
             return
         }
-        if (appsMode) { // 程序: the grid takes the arrows; typing narrows it
-            const cols = Math.max(1, apps.columns)
-            const last = apps.count - 1
-            let handled = true
-            switch (key) {
-            case Qt.Key_Left: appsIndex = Math.max(0, appsIndex - 1); break
-            case Qt.Key_Right: appsIndex = Math.min(last, appsIndex + 1); break
-            case Qt.Key_Up: if (appsIndex - cols >= 0) appsIndex -= cols; break
-            case Qt.Key_Down: if (appsIndex + cols <= last) appsIndex += cols; break
-            case Qt.Key_Home: appsIndex = 0; break
-            case Qt.Key_End: appsIndex = Math.max(0, last); break
-            case Qt.Key_Return:
-            case Qt.Key_Enter:
-                if (appsIndex >= 0 && appsIndex < apps.count)
-                    launcher.clickRow(appsIndex)
-                break
-            case Qt.Key_Escape: launcher.dismiss(); break
-            default: handled = false; break // Tab and typing go on to their own handling
-            }
-            if (handled) {
-                view.currentIndex = appsIndex // the Menu key's row too
-                event.accepted = true
-                return
-            }
-        }
         if (homeIndex >= 0) { // on the row of apps (nothing typed, so ← → move nothing else)
             switch (key) {
             case Qt.Key_Left: homeIndex = Math.max(0, homeIndex - 1); break
-            case Qt.Key_Right: homeIndex = Math.min(Math.min(6, launcher.frequentApps.length) - 1, homeIndex + 1); break
+            case Qt.Key_Right: homeIndex = Math.min(launcher.frequentApps.length - 1, homeIndex + 1); break
             case Qt.Key_Down: leaveHome(); break
             case Qt.Key_Up: break
             case Qt.Key_Return:
@@ -864,7 +838,7 @@ Window {
         }
         if (key === Qt.Key_Down || key === Qt.Key_Up || key === Qt.Key_PageDown || key === Qt.Key_PageUp) {
             window.launcher.keyboardMoved() // Alt+P is for this row now, not the one under a pointer left where it was
-            if (panel && launcher.gallery && searchBar.composition.length === 0)
+            if (((panel && launcher.gallery) || appsMode) && searchBar.composition.length === 0)
                 galleryNavigation = true
         }
         switch (key) {
@@ -875,11 +849,14 @@ Window {
             else
                 shift ? extendSelection(-gridColumns) : moveSelection(-gridColumns)
             break
-        case Qt.Key_PageDown: shift ? extendSelection(panel ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows) : moveSelection(panel ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows); break
-        case Qt.Key_PageUp: shift ? extendSelection(panel ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows) : moveSelection(panel ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows); break
+        case Qt.Key_PageDown: shift ? extendSelection(panel || appsMode ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows) : moveSelection(panel || appsMode ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows); break
+        case Qt.Key_PageUp: shift ? extendSelection(panel || appsMode ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows) : moveSelection(panel || appsMode ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows); break
         case Qt.Key_Left:
         case Qt.Key_Right: // In the gallery, arrows keep navigating its columns.
-            if (panel && launcher.gallery && galleryNavigation && !ctrl && !(event.modifiers & Qt.AltModifier)) {
+            // So do they among the apps' tiles, and there from the start while nothing is typed (no caret to move).
+            if (((panel && launcher.gallery && galleryNavigation)
+                 || (appsMode && searchBar.composition.length === 0 && (galleryNavigation || launcher.query.length === 0)))
+                    && !ctrl && !(event.modifiers & Qt.AltModifier)) {
                 const delta = event.key === Qt.Key_Right ? 1 : -1
                 shift ? extendSelection(delta) : moveSelection(delta)
                 break
@@ -1277,7 +1254,7 @@ Window {
         Item {
             id: chrome
             width: parent.width
-            height: boxBar.height + typeStrip.height + appsStrip.height
+            height: boxBar.height + typeStrip.height
 
             Rectangle {
                 anchors.fill: parent
@@ -1304,94 +1281,8 @@ Window {
                 frame: window.frame
                 dpr: window.dpr
                 shown: (window.launcher.mergeFileScope || window.launcher.scope === Launcher.Files || window.launcher.scope === Launcher.Folders
-                        || window.launcher.scope === Launcher.Content)
+                        || window.launcher.scope === Launcher.Content || window.appsMode)
                        && !window.pureEmpty && !window.clipboardBelow && !window.folderMode && window.launcher.pluginKeyword.length === 0
-            }
-
-            Item { // 程序: 最近使用 / 常用软件 / 所有程序, in the order they were dragged to
-                id: appsStrip
-                objectName: "appsStrip"
-                y: boxBar.height + typeStrip.height
-                width: parent.width
-                height: visible ? Theme.stripHeight : 0
-                visible: window.appsMode && !window.fullHeight && !window.clipboardBelow && !window.pureEmpty
-
-                Row {
-                    id: chipRow
-                    x: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 8
-
-                    Repeater {
-                        model: window.launcher.appChips
-
-                        delegate: Rectangle {
-                            id: chip
-                            required property int index
-                            required property string modelData
-                            readonly property int view: modelData === "starred" ? 1 : modelData === "all" ? 2 : 0
-                            readonly property bool active: window.launcher.appsView === view
-                            readonly property string label: view === 0 ? qsTr("最近使用 (%1)").arg(window.launcher.recentAppCount)
-                                : view === 1 ? qsTr("常用软件 (%1)").arg(window.launcher.starredAppCount)
-                                : qsTr("所有程序 (%1)").arg(window.launcher.allAppCount)
-
-                            width: chipLabel.implicitWidth + 24
-                            height: Theme.chipHeight
-                            radius: Theme.pillRadius(height)
-                            color: active ? Theme.selection : chipArea.containsMouse ? Theme.hover : "transparent"
-                            border.width: active ? 0 : Theme.edge(window.dpr)
-                            border.color: Theme.divider
-                            z: chipArea.pressed ? 1 : 0
-                            transform: Translate { x: chip.dragX }
-
-                            property real dragX: 0
-                            property real pressX: 0
-                            property bool dragged: false
-
-                            Text {
-                                id: chipLabel
-                                anchors.centerIn: parent
-                                text: chip.label
-                                color: chip.active ? Theme.text : Theme.subtext
-                                font.pixelSize: Theme.uiBody
-                            }
-                            MouseArea {
-                                id: chipArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onPressed: mouse => {
-                                    chip.dragX = 0
-                                    chip.pressX = mouse.x
-                                    chip.dragged = false
-                                }
-                                onPositionChanged: mouse => {
-                                    if (!chipArea.pressed)
-                                        return
-                                    chip.dragX = mouse.x - chip.pressX
-                                    if (Math.abs(chip.dragX) > chip.width / 2)
-                                        chip.dragged = true
-                                }
-                                onReleased: {
-                                    const step = chip.width / 2
-                                    let to = chip.index
-                                    if (chip.dragX > step)
-                                        to = Math.min(chipRow.children.length - 1, chip.index + 1)
-                                    else if (chip.dragX < -step)
-                                        to = Math.max(0, chip.index - 1)
-                                    chip.dragX = 0
-                                    if (to !== chip.index)
-                                        window.launcher.moveAppChip(chip.index, to)
-                                }
-                                onClicked: {
-                                    if (!chip.dragged)
-                                        window.launcher.appsView = chip.view
-                                    chip.dragged = false
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -1407,7 +1298,7 @@ Window {
             width: parent.width
             height: window.listRows > 0 ? window.listRows * window.rowHeight + 8 + window.hintSpace + window.captionSpace
                                           + (window.fullHeight ? -typeStrip.height : window.headingHeight + window.detailSpace) : 0
-            visible: !window.clipboardBelow && (window.appsMode || (!window.pureEmpty && window.listRows > 0))
+            visible: !window.pureEmpty && window.listRows > 0 && !window.clipboardBelow
 
             Hook { // the style's tray under the rows (Theme.tray; none in fluent and brand)
                 anchors.fill: parent
@@ -1427,34 +1318,6 @@ Window {
                 textFormat: Text.PlainText // holds what was typed
                 color: Theme.subtext
                 font.pixelSize: Theme.uiCaption
-            }
-
-            AppsGrid { // 程序: a grid of app icons, its rows the menu's and Enter's
-                id: apps
-                objectName: "appsGrid"
-                anchors.fill: parent
-                visible: window.appsMode
-                launcher: window.launcher
-                currentIndex: window.appsIndex
-                dpr: window.dpr
-                onOpenRequested: (index) => window.launcher.clickRow(index)
-                onMenuRequested: (index, globalPos) => window.openContextMenu(index, globalPos)
-            }
-            Text { // 程序 with nothing in it
-                anchors.centerIn: parent
-                width: parent.width - 48
-                horizontalAlignment: Text.AlignHCenter
-                visible: window.appsMode && apps.count === 0
-                text: qsTr("没有符合条件的程序")
-                color: Theme.faint
-                font.pixelSize: Theme.uiBody
-            }
-            Connections { // a word typed can leave fewer tiles than the keyboard's tile
-                target: apps
-                function onCountChanged() {
-                    if (window.appsIndex > apps.count - 1)
-                        window.appsIndex = Math.max(0, apps.count - 1)
-                }
             }
 
             Column { // the apps opened most (showHome), over the recent ones
@@ -1477,13 +1340,13 @@ Window {
                     x: 20 // tiles, icons and text on multiples of 4 logical pixels: whole device pixels at 125–200 %
 
                     Repeater {
-                        model: Math.min(6, window.launcher.frequentApps.length) // the row over the taskbar
+                        model: window.launcher.frequentApps
 
                         delegate: Item {
                             id: tile
 
                             required property int index
-                            readonly property var modelData: window.launcher.frequentApps[index]
+                            required property var modelData
                             readonly property bool current: window.homeIndex === index
 
                             width: 120
@@ -1575,6 +1438,36 @@ Window {
                         dpr: window.dpr
                     }
                 }
+            }
+
+            AppsGrid { // 应用: the rows as tiles
+                id: appsGrid
+                objectName: "appsGrid"
+                anchors.fill: parent
+                visible: window.appsMode
+                model: window.appsMode ? window.launcher.results : null
+                launcher: window.launcher
+                dpr: window.dpr
+                viewY: layout.y + listArea.y
+                opacity: window.dimRows ? 0.45 : 1
+                onOpenRequested: (index) => {
+                    currentIndex = index
+                    window.launcher.clickRow(index)
+                }
+                onMenuRequested: (index, globalPos) => window.openContextMenu(index, globalPos)
+            }
+            Text { // 应用 with no tile: why, or what brings one
+                anchors.centerIn: parent
+                width: parent.width - 80
+                horizontalAlignment: Text.AlignHCenter
+                visible: window.appsMode && appsGrid.count === 0
+                text: window.trimmedQuery.length > 0 ? qsTr("没有找到应用")
+                    : window.launcher.appsView === Launcher.FavoriteApps ? qsTr("点应用图标右上角的星标，它就留在这里")
+                    : window.launcher.appsView === Launcher.FrequentApps ? qsTr("打开过的应用会出现在这里")
+                    : qsTr("没有找到应用")
+                color: Theme.faint
+                font.pixelSize: Theme.uiBody
+                wrapMode: Text.Wrap
             }
 
             ListView {
@@ -1807,7 +1700,7 @@ Window {
             ListScrollBar {
                 dpr: window.dpr
                 id: boxScrollBar
-                flickable: window.appsMode ? apps : boxList // the one scrollbar, as ever
+                flickable: window.appsMode ? appsGrid : boxList
                 anchors.right: parent.right
                 anchors.top: boxList.top
                 anchors.bottom: boxList.bottom
@@ -1884,7 +1777,7 @@ Window {
                 anchors.centerIn: parent
                 // A plugin's wait shows only once it has lasted a moment
                 // (pluginWaiting is empty before that), fading in.
-                visible: boxList.count === 0 && window.launcher.searching
+                visible: boxList.count === 0 && window.launcher.searching && !window.appsMode
                          && (!keywordMode || window.launcher.pluginWaiting.length > 0)
                 opacity: visible ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 100 } }
@@ -1907,7 +1800,7 @@ Window {
                 y: boxList.y + Math.round((boxList.height - height) / 2)
                 width: parent.width - 80
                 horizontalAlignment: Text.AlignHCenter
-                visible: window.fullHeight && window.trimmedQuery.length === 0 && boxList.count === 0
+                visible: window.fullHeight && window.trimmedQuery.length === 0 && boxList.count === 0 && !window.appsMode
                 text: qsTr("输入名称或拼音，搜索文件、应用和设置")
                 color: Theme.faint
                 font.pixelSize: Theme.uiBody

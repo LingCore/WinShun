@@ -271,6 +271,7 @@ Item {
         objectName: "footerOrder" // the previews click its last chip
         // Not at the start with no start list (set so in the settings, GitHub #24).
         visible: footer.launcher.pluginKeyword.length === 0 && !footer.launcher.panel // the panel's columns order it
+                 && footer.launcher.scope !== Launcher.Apps // the apps' own order: by use, or by name
                  && !(footer.atStart && footer.launcher.startList === Launcher.NoStartList)
         anchors.left: parent.left
         anchors.leftMargin: 16
