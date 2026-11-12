@@ -315,6 +315,9 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString dataFolder READ dataFolder CONSTANT FINAL)
     Q_PROPERTY(QString diagnosticsStatus READ diagnosticsStatus NOTIFY diagnosticsChanged FINAL)
     Q_PROPERTY(bool diagnosticsBusy READ diagnosticsBusy NOTIFY diagnosticsChanged FINAL)
+    // Rules for file windows programs draw themselves (DialogRuleStore, GitHub #272).
+    Q_PROPERTY(QString dialogRuleStatus READ dialogRuleStatus NOTIFY dialogRuleStatusChanged FINAL)
+    Q_PROPERTY(bool dialogRuleLearning READ dialogRuleLearning NOTIFY dialogRuleStatusChanged FINAL)
     // 索引位置 (set by the app): where the index files are, and how moving them goes
     Q_PROPERTY(QString indexFolder READ indexFolder NOTIFY indexFolderChanged FINAL)
     Q_PROPERTY(bool indexFolderIsDefault READ indexFolderIsDefault NOTIFY indexFolderChanged FINAL)
@@ -635,6 +638,9 @@ public:
     QString dataFolder() const { return Settings::dataDir(); }
     QString diagnosticsStatus() const { return m_diagnosticsStatus; }
     bool diagnosticsBusy() const { return m_diagnosticsBusy; }
+    QString dialogRuleStatus() const { return m_dialogRuleStatus; }
+    bool dialogRuleLearning() const { return m_dialogRuleLearning; }
+    void setDialogRuleStatus(const QString& text, bool learning);
     void finishDiagnosticsExport(const QString& error);
 
     // 索引位置, as the app has it.
@@ -930,6 +936,8 @@ public:
     Q_INVOKABLE void resetLauncherWidth() { emit launcherWidthResetRequested(); }
     Q_INVOKABLE void openDataFolder();
     Q_INVOKABLE void exportDiagnostics();
+    Q_INVOKABLE void learnDialogRule(); // a rule for the window the user brings to the front next
+    Q_INVOKABLE void openDialogRules(); // dialogs.json in the editor
     // Automatic backups of the settings: into a folder asked for here; off.
     // Returns whether they are on now.
     Q_INVOKABLE bool chooseBackupFolder();
@@ -1019,6 +1027,9 @@ signals:
     void screenshotPluginChanged();
     void diagnosticsChanged();
     void diagnosticsExportRequested();
+    void dialogRuleStatusChanged();
+    void dialogRuleLearnRequested();
+    void dialogRulesFileRequested();
     void historyCountChanged();
     void historyClearRequested();
     void launcherWidthSetChanged();
@@ -1127,6 +1138,8 @@ private:
     QString m_pickedWebIcon; // chosen in a form not saved yet: kept from pruning
     QString m_diagnosticsStatus;
     bool m_diagnosticsBusy = false;
+    QString m_dialogRuleStatus;
+    bool m_dialogRuleLearning = false;
     std::vector<ShareIndexer::Status> m_shareStatuses;
     std::vector<remotecontent::Indexer::Status> m_shareContentStatuses;
     std::vector<unc::Known> m_knownShares; // read with the window, again as it opens (refreshKnownPlaces)

@@ -89,6 +89,8 @@ qt_add_executable(WinShun WIN32
     platform/DragOut.cpp platform/DragOut.h
     platform/ExternalPreview.cpp platform/ExternalPreview.h
     platform/FileDialog.cpp platform/FileDialog.h
+    platform/DialogRules.cpp platform/DialogRules.h
+    DialogRuleStore.cpp DialogRuleStore.h
     platform/BlenderFileDialog.cpp platform/BlenderFileDialog.h
     platform/FileManagers.cpp platform/FileManagers.h
     platform/FolderViewHit.cpp platform/FolderViewHit.h

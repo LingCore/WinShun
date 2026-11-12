@@ -3599,6 +3599,26 @@ void SettingsEditor::finishDiagnosticsExport(const QString& error)
     emit diagnosticsChanged();
 }
 
+void SettingsEditor::learnDialogRule()
+{
+    if (!m_dialogRuleLearning)
+        emit dialogRuleLearnRequested();
+}
+
+void SettingsEditor::openDialogRules()
+{
+    emit dialogRulesFileRequested();
+}
+
+void SettingsEditor::setDialogRuleStatus(const QString& text, bool learning)
+{
+    if (m_dialogRuleStatus == text && m_dialogRuleLearning == learning)
+        return;
+    m_dialogRuleStatus = text;
+    m_dialogRuleLearning = learning;
+    emit dialogRuleStatusChanged();
+}
+
 bool SettingsEditor::chooseBackupFolder()
 {
     const HWND owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;

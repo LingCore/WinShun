@@ -1792,6 +1792,8 @@ int runSettings(const QStringList& args)
         return finish(window, checkSearchExperienceSettings(window, editor, out));
     if (args.contains(u"--logo-position-settings"_s))
         return finish(window, checkLogoPositionSettings(window, editor, out));
+    if (args.contains(u"--dialog-rule-settings"_s)) // + --fixture tests\fixtures\wpf-file-window.ps1
+        return finish(window, checkDialogRuleSettings(window, editor, out, valueAfter(args, u"--fixture")));
     if (args.contains(u"--optimization-settings"_s))
         return finish(window, checkOptimizationSettings(window, editor, out));
 

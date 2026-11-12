@@ -68,6 +68,7 @@
 #include "platform/ComWorker.h"
 #include "platform/Credentials.h"
 #include "platform/DialogJump.h"
+#include "DialogRuleStore.h"
 #include "platform/ExternalPreview.h"
 #include "platform/FileManagers.h"
 #include "platform/Foreground.h"
@@ -3644,6 +3645,11 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         connect(editor, &SettingsEditor::elevatedRestartRequested, this,
             [this] { restart({u"--settings"_s, u"--settings-at"_s, u"indexAccess"_s}, Elevation::Elevated); });
         connect(editor, &SettingsEditor::indexServiceInstallRequested, this, &App::installIndexService);
+        connect(editor, &SettingsEditor::dialogRuleLearnRequested, this, [this] { dialogRules().learn(); });
+        connect(editor, &SettingsEditor::dialogRulesFileRequested, this, [this] {
+            const QString file = dialogRules().ensureFile();
+            shell::open(file.isEmpty() ? Settings::dataDir() : file);
+        });
         connect(editor, &SettingsEditor::diagnosticsExportRequested, this, [this] {
             if (m_diagnosticsExporting) {
                 m_settingsEditor->finishDiagnosticsExport(tr("诊断包正在生成，完成后会打开文件夹"));
@@ -4587,6 +4593,8 @@ void App::applyDialogs()
             }, Qt::QueuedConnection);
         });
     }
+    if (followDialogs)
+        dialogRules(); // before the first look at the window in front
     if (followDialogs && !m_dialogJump) {
         DialogJump::Callbacks callbacks;
         callbacks.setHotkey = [this](bool on) {
@@ -4789,6 +4797,24 @@ unsigned App::ownNumberDigits(const QString& keys) const
             digits |= 1u << n;
     }
     return digits;
+}
+
+DialogRuleStore& App::dialogRules()
+{
+    if (!m_dialogRules) {
+        m_dialogRules = std::make_unique<DialogRuleStore>(Settings::dataDir());
+        connect(m_dialogRules.get(), &DialogRuleStore::status, this, [this](const QString& text, bool done) {
+            if (m_settingsEditor)
+                m_settingsEditor->setDialogRuleStatus(text, !done);
+        });
+        // A window just learned is usually the one in front: taken now, not
+        // when it next comes to the front.
+        connect(m_dialogRules.get(), &DialogRuleStore::changed, this, [this] {
+            if (m_dialogJump)
+                m_dialogJump->lookAgain();
+        });
+    }
+    return *m_dialogRules;
 }
 
 void App::updateCompanions()

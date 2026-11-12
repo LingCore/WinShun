@@ -16,6 +16,8 @@
 // thread with COM only (probe(), goTo()…): they wait on the program.
 // Blender's separate file browser is available when its optional WinShun
 // extension is enabled; the extension uses Blender's own API (BlenderFileDialog).
+// File windows a program draws itself are driven by rules the user writes
+// (DialogRules), through UI Automation as well.
 namespace ws::filedialog {
 
 enum class Kind {
@@ -27,8 +29,15 @@ enum class Kind {
     Browse, // "浏览文件夹": SHBrowseForFolder's tree (VBA macros, Shell.Application.BrowseForFolder)
 };
 
-// A WPS Office dialog is one once probe() has said so.
+// A WPS Office dialog is one once probe() has said so. A window that is none
+// of these but that one of the user's rules names (DialogRules) is the kind
+// the rule says.
 Kind kind(HWND hwnd);
+
+// Driven by one of the user's rules: it has one box for a path and nothing
+// else is known of it, so a file goes in as its whole path (setFileName) and
+// a folder is typed and confirmed there (goTo).
+bool byRule(HWND hwnd);
 
 // Could the window be a WPS Office file dialog: a Qt window of one of its
 // programs, owned by another. Quick, for any thread; probe() tells.

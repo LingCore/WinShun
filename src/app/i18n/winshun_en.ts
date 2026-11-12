@@ -4629,6 +4629,30 @@ Double-click grip: expand/collapse search panel</translation>
 <context>
     <name>SettingsWindow</name>
     <message>
+        <source>程序自己的选文件窗口</source>
+        <translation>Programs’ own file windows</translation>
+    </message>
+    <message>
+        <source>规则;自定义;对话框;识别;添加数据;ArcGIS;CAD;dialogs.json</source>
+        <translation>rule;custom;dialog;learn;recognise;add data;ArcGIS;CAD;dialogs.json</translation>
+    </message>
+    <message>
+        <source>有的程序用自己画的窗口选文件，上面几项认不出它。打开那个窗口，回来点“识别窗口”，它就也能搜、能转</source>
+        <translation>Some programs pick files in a window of their own. Open it, then click “Learn a window” here, and the options above work there too</translation>
+    </message>
+    <message>
+        <source>等待中…</source>
+        <translation>Waiting…</translation>
+    </message>
+    <message>
+        <source>识别窗口</source>
+        <translation>Learn a window</translation>
+    </message>
+    <message>
+        <source>规则文件</source>
+        <translation>Rules file</translation>
+    </message>
+    <message>
         <source>打开结果的备用键</source>
         <translation>Second key to open a result</translation>
     </message>
@@ -10384,6 +10408,33 @@ Content index: %5</translation>
     <message>
         <source>打印失败，请检查打印机后重试</source>
         <translation>Printing failed. Check the printer and try again.</translation>
+    </message>
+</context>
+<context>
+    <name>ws::DialogRuleStore</name>
+    <message>
+        <source>%1 秒内切到那个窗口，光标点进填文件名的输入框…</source>
+        <translation>Within %1 s, switch to that window and click its file name box…</translation>
+    </message>
+    <message>
+        <source>没有切到别的程序的窗口，再点一次试试</source>
+        <translation>No other program's window came to the front. Click once more to try again</translation>
+    </message>
+    <message>
+        <source>这个窗口 Win顺 本来就认识，不用加规则</source>
+        <translation>Win顺 knows this window already: it needs no rule</translation>
+    </message>
+    <message>
+        <source>这个窗口里没找到能填路径的输入框（它可能是管理员权限的程序，或不支持辅助功能）</source>
+        <translation>No box for a path was found there (the program may run as administrator, or not support accessibility)</translation>
+    </message>
+    <message>
+        <source>规则文件写不进去：%1</source>
+        <translation>The rules file could not be written: %1</translation>
+    </message>
+    <message>
+        <source>已记下“%1”（%2），现在就能用。认错了输入框，点“规则文件”改</source>
+        <translation>Learned “%1” (%2); it works now. Wrong box? Change it in the rules file</translation>
     </message>
 </context>
 <context>

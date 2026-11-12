@@ -63,6 +63,7 @@ class OcrPackage;
 class ComWorker;
 class DialogBar;
 class DialogJump;
+class DialogRuleStore;
 class Favorites;
 class FilePreview;
 class DropPie;
@@ -819,6 +820,10 @@ private:
     QStringList m_doubleCtrlIgnoredLogged; // "program reason", logged once each: a game gets many
     std::unique_ptr<DialogJump> m_dialogJump; // file dialogs: Ctrl+G, the bar; after m_messages, which has the hotkey
     std::unique_ptr<DialogBar> m_dialogBar; // the search bar under file dialogs
+    // The user's rules for file windows programs draw themselves: made with
+    // the dialogs' following, or when the settings page asks for it.
+    std::unique_ptr<DialogRuleStore> m_dialogRules;
+    DialogRuleStore& dialogRules();
     std::unique_ptr<ServiceDialogNav> m_serviceNav; // navigates elevated dialogs via the service (#104)
     QDeadlineTimer m_barFocusDeadline; // gone back to from the clipboard: until then, it takes the keyboard as it shows
     std::unique_ptr<Placement> m_placement; // where the launcher opens; moving it

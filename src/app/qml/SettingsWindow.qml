@@ -2571,6 +2571,30 @@ Window {
                         }
                     }
                 }
+
+                SettingRow {
+                    id: dialogRulesRow
+                    objectName: "dialogRulesRow"
+                    title: qsTr("程序自己的选文件窗口")
+                    keywords: qsTr("规则;自定义;对话框;识别;添加数据;ArcGIS;CAD;dialogs.json").split(";")
+                    description: qsTr("有的程序用自己画的窗口选文件，上面几项认不出它。打开那个窗口，回来点“识别窗口”，它就也能搜、能转")
+                                 + (window.editor.dialogRuleStatus.length > 0 ? "\n" + window.editor.dialogRuleStatus : "")
+
+                    FlatButton {
+                        objectName: "dialogRuleLearnButton"
+                        dpr: window.dpr
+                        text: window.editor.dialogRuleLearning ? qsTr("等待中…") : qsTr("识别窗口")
+                        enabled: !window.editor.dialogRuleLearning
+                        onClicked: window.editor.learnDialogRule()
+                    }
+
+                    FlatButton {
+                        objectName: "dialogRuleFileButton"
+                        dpr: window.dpr
+                        text: qsTr("规则文件")
+                        onClicked: window.editor.openDialogRules()
+                    }
+                }
             }
 
             SettingsSection {
