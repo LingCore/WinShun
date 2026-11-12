@@ -3540,6 +3540,14 @@
 - **空闲清理之后**：和启动器一样用 `HotPages`，清理后的第一次截图记下用到的页，以后每次截图开始时另一个线程先让 Windows 读回来。本机空闲 50 秒后的截图本来就只有 60–90 ms（软缺页），几分钟以上、内存紧张时的慢（记录里 300–970 ms）本机没能复现，这一条没有实测收益。
 - **数字**（同一会话新旧交替各两轮，遮罩出现时间）：启动后第一次 95 → 84 ms，之后中位 53 → 46 ms。`capture` 记录多了 `begun_ms`、`shown_ms`、`page_faults`，报告者的日志能看出慢在哪一段。验证见 [记录](validation/capture-perf-20261112/README.md)。
 
+### 截图插件的记录不在导出的诊断包里（2026-11-12）
+
+- **现象**：让用户“导出诊断日志”查截图慢、黑屏、指针，包里没有一条 `capture`。
+- **原因**：截图插件是另一个进程，记录写在 `plugins/winshun.capture.data/diagnostics/events*.jsonl`；`diagnostics::exportArchive` 只按白名单收主程序和服务的文件。
+- **做法**：白名单加这两个文件，包里是 `capture/events.jsonl`、`capture/events.1.jsonl`（`tst_diagnostics` 同时验证插件的设置和历史图片不进包）。`capture` 另记显卡 `graphics`、刷新率 `refresh_hz`、遮罩呈现方式 `presented`（copy / flip / software）。
+- **以后**：新加一个独立进程的官方插件，它自己的记录要不要进诊断包，加的时候就定；查本机截图问题直接读上面那个文件，不是主程序的 `diagnostics/events.jsonl`。
+- **按住鼠标时的方向键**（同日）：框选前方向键挪指针，按住鼠标后被吞掉、只有 WASD 能用；现在按住时和 WASD 一样挪指针（`CaptureSession::keyPressed`，`tst_capture` 的 `arrowsMoveThePointerWhileAButtonIsHeld`）。松开后有选区时仍是移动选区。
+
 ### 开始菜单开着时，悬停框落在菜单后面的窗口上
 
 - **现象**（阶段 1 遗留，2026-10-19）：开着开始菜单按热键，冻结的图里有菜单，鼠标放在菜单上，框住的却是后面的窗口。
