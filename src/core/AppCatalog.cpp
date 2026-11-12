@@ -1,6 +1,7 @@
 #include "AppCatalog.h"
 
 #include "History.h"
+#include "Pinyin.h"
 #include "Query.h"
 #include "TextUtil.h"
 #include "Win32Util.h"
@@ -573,6 +574,16 @@ std::vector<AppHit> searchApps(
         }
     }
 
+    // One letter alone is not read as pinyin (it is in most Chinese names),
+    // but it brings back an app opened before whose name has a character
+    // starting with it: "y" after 网易云音乐 was opened from "yy" (GitHub #292).
+    char letter = 0;
+    if (query.terms.size() == 1 && query.extensions.empty() && !query.filter.any()) {
+        const QueryTerm& t = query.terms.front();
+        if (!t.negated && !t.wildcard && !t.regex && t.ancestors.empty() && t.text.size() == 1 && isAsciiAlnum(t.text.front()))
+            letter = t.text.front();
+    }
+
     for (std::size_t i = 0; i < apps.size(); ++i) {
         const AppInfo& app = apps[i];
         int score = matcher.matchName(app.nameUtf8);
@@ -604,6 +615,8 @@ std::vector<AppHit> searchApps(
             better(28, -1);
         if (!joined.empty())
             better(wordSpanScore(app, joined), -1);
+        if (score < 0 && letter != 0 && recent.contains(app.id) && pinyin::findInitialUtf16(wtf8::view(app.name), letter))
+            score = 20; // below what has the letter itself, until its use lifts it
         if (score < 0)
             continue;
         const auto typed = [&](const std::string& n) { return matcher.isExactName(n, false); };

@@ -10544,6 +10544,44 @@ private slots:
         }
     }
 
+    // GitHub #292: one letter is not read as pinyin, but it brings back an
+    // app opened before whose name has a character starting with it.
+    void oneLetterBringsBackOpenedApp()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auto programs = std::make_shared<AppList>();
+        const auto add = [&](const QString& name, const QString& id) {
+            AppInfo app;
+            app.name = name;
+            app.id = id;
+            app.prepare();
+            programs->push_back(app);
+            return app.launchPath();
+        };
+        const QString music = add(u"网易云音乐"_s, u"Test.CloudMusic"_s);
+        const QString term = add(u"NyaTerm"_s, u"Test.NyaTerm"_s);
+        add(u"语音识别"_s, u"Test.Speech"_s); // never opened
+        History history(dir.filePath(u"history.txt"_s));
+        constexpr qint64 now = 1'800'000'000'000;
+        const auto paths = [&](const QString& text) {
+            const ParsedQuery query = ws::parseQuery(text);
+            const NameMatcher matcher(query);
+            QStringList out;
+            for (const AppHit& hit : searchApps(*programs, query, matcher, history.ranked(text, now), history.affinities(text, now)))
+                out.append((*programs)[hit.index].launchPath());
+            return out;
+        };
+        QCOMPARE(paths(u"y"_s), (QStringList {term})); // as before: nothing opened yet
+        history.record(music, u"yy"_s, now - 1000);
+        QCOMPARE(paths(u"y"_s), (QStringList {music, term})); // learned from "yy", which has "y" in it
+        QCOMPARE(paths(u"Y"_s), (QStringList {music, term}));
+        QVERIFY(!paths(u"x"_s).contains(music)); // no character of it starts with x
+        QVERIFY(!paths(u"y ext:exe"_s).contains(music));
+        QCOMPARE(pinyin::findInitialUtf16(u"网易云音乐", 'y')->start, std::size_t {1});
+        QVERIFY(!pinyin::findInitialUtf16(u"NyaTerm", 'y'));
+    }
+
     void historyContainsAndEntityFallback()
     {
         QTemporaryDir dir;
