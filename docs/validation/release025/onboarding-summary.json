@@ -1,0 +1,18 @@
+[
+  {
+    "report": "F:\\电脑便捷工具\\build\\release025-onboarding\\capture\\onboarding.json",
+    "passed": true,
+    "warnings": 0,
+    "unexpected": 0,
+    "exit": 0,
+    "case": "capture"
+  },
+  {
+    "report": "F:\\电脑便捷工具\\build\\release025-onboarding\\english\\onboarding.json",
+    "passed": true,
+    "warnings": 0,
+    "unexpected": 0,
+    "exit": 0,
+    "case": "english"
+  }
+]

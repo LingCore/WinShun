@@ -1,0 +1,31 @@
+[2214/2214] Linking CXX executable tst_plugin.exe
+Test project F:/电脑便捷工具/build/release025
+      Start  11: tst_settingsfilters
+ 1/13 Test  #11: tst_settingsfilters ..............   Passed    7.31 sec
+      Start  38: tst_querysyntax
+ 2/13 Test  #38: tst_querysyntax ..................   Passed    0.06 sec
+      Start  39: tst_syntax
+ 3/13 Test  #39: tst_syntax .......................   Passed    0.06 sec
+      Start  67: tst_shelllaunch
+ 4/13 Test  #67: tst_shelllaunch ..................   Passed    7.15 sec
+      Start  83: tst_aisettings
+ 5/13 Test  #83: tst_aisettings ...................   Passed    6.86 sec
+      Start 111: tst_appearance_1
+ 6/13 Test #111: tst_appearance_1 .................   Passed    1.89 sec
+      Start 112: tst_appearance_1.25
+ 7/13 Test #112: tst_appearance_1.25 ..............   Passed    1.06 sec
+      Start 113: tst_appearance_1.5
+ 8/13 Test #113: tst_appearance_1.5 ...............   Passed    1.00 sec
+      Start 114: tst_appearance_2
+ 9/13 Test #114: tst_appearance_2 .................   Passed    1.00 sec
+      Start 153: tst_bookmarks
+10/13 Test #153: tst_bookmarks ....................   Passed    0.09 sec
+      Start 157: tst_core
+11/13 Test #157: tst_core .........................   Passed   76.46 sec
+      Start 160: tst_clipboard
+12/13 Test #160: tst_clipboard ....................   Passed    0.67 sec
+      Start 175: tst_plugin
+13/13 Test #175: tst_plugin .......................   Passed   50.46 sec
+
+100% tests passed, 0 tests failed out of 13
+
