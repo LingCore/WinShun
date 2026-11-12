@@ -5418,3 +5418,13 @@
 - **做法**：先用 `SetWindowPos`（只移动、不改大小）把窗口放到目标显示器上（`win::moveToMonitorOf`），这时走的是“窗口被拖到另一块屏幕”那条路，Qt 按新缩放调好大小；然后再照常 `resize`、`setPosition` 居中。
 - **怎么测**：脚本把鼠标放到某块屏幕上，用 `WinShun.exe --settings` 打开，读 `GetWindowRect` 和 `GetDpiForWindow` 算逻辑尺寸；顺序是主屏 → 副屏 → 副屏 → 主屏，四次都应是 920×720。只测“程序启动后第一次打开”复现不了，窗口必须先在另一块屏幕上建出来过。
 - **留意**：其它“隐藏后复用、每次按鼠标所在屏幕摆放”的窗口可能有同样的问题，改到它们时用同样的顺序测一遍。
+
+## 测试：运行时探针里 `deleteLater` 不会执行，退出时冒出字体警告（2026-11-12）
+
+`--probe-runtime` 的各项检查不进事件循环（没有 `exec()`），只用 `pump()` 手动 `processEvents()`。Qt 在这种情况下不处理“延迟删除”：检查里直接触发的 `deleteLater`（比如插件列表重置后 Repeater 换下来的旧 `PluginCard`）一直不删，对象没有父对象、也不在任何窗口里，活到 QML 引擎析构。
+
+`ws plugin` 的检查（`--ws-plugin-check`）装了又卸了插件，退出时就多出一条 `DirectWrite: CreateFontFaceFromHDC() failed … Family="MS Sans Serif"`：主题对象先销毁，旧卡片开关上的 `font.family: part.look ? part.look.iconFont : ""`（`themes/*/Toggle.qml`）重新求值成空字符串，Qt 去找默认的 “MS Sans Serif”，那是点阵字体，DirectWrite 建不出来。真实程序在事件循环里，旧卡片正常删除，没有这条警告，也没有泄漏。
+
+- 探针里做过“会让列表重建”的事（安装、卸载、启用插件等），收尾时调一次 `QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete)`。
+- 查这类“退出时才出现”的 Qt 警告：在消息处理函数里临时用 `CaptureStackBackTrace` + `SymFromAddrW` 打调用栈（Qt 没有 PDB 也能看到导出的函数名；带符号编 Win顺 要 `RelWithDebInfo` 加 `/bigobj`），再用 `RtlVirtualUnwind` 逐帧取保存的寄存器、和一个已知 `Text` 的虚表比对，就能拿到出问题的那个对象，打印它的 `qmlContext()->baseUrl()` 和父对象链。
+

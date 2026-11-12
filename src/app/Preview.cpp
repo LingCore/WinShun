@@ -8544,7 +8544,7 @@ bool probeWsPlugin(App& app, const QStringList& args, const QDir& out, QJsonObje
     };
 
     // A folder of one's own: installed at once, off, and no window comes up for it.
-    check(ws({u"list"_s}).code == 0, u"list_answers"_s);
+    check(ws({u"list"_s}).code <= 1, u"list_answers"_s); // 1: a build folder without the plugins that come with Win顺
     check(writeSource(u"1.0.0"_s), u"source_written"_s);
     Ran ran = ws({u"install"_s, QDir::toNativeSeparators(source)});
     check(ran.code == 0 && ran.out.contains(u"ws plugin enable probe.hello"_s), u"install_folder_done"_s);
@@ -8596,6 +8596,13 @@ bool probeWsPlugin(App& app, const QStringList& args, const QDir& out, QJsonObje
         shown->close();
         pump(300);
     }
+    // The cards the list made again (a plugin came, went, changed) were left
+    // to deleteLater, which nothing runs here: this probe has no event loop,
+    // only pump(). Left alive, a card would outlive the theme at the App's
+    // end, and the glyph of its switch, its font's family then empty
+    // (Toggle.qml), has Qt look for its default "MS Sans Serif": a
+    // DirectWrite warning that is this probe's, not the App's.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     return passed;
 }
 
@@ -10045,16 +10052,11 @@ int runRuntime(const QStringList& args)
     }
     if (args.contains(u"--ws-plugin-check"_s)) { // a check of its own: none of the startup probe's other measurements
         bool passed = wsPluginFixture(out);
-        int warnings = 0;
         if (passed) {
             App app;
             passed = app.start({.background = true, .settingsProbe = true, .mcpPipe = kWsPluginPipe}) && probeWsPlugin(app, args, out, report);
-            // Counted here, the App still up: taken down with the 插件 page and
-            // its library made, it has DirectWrite asked for "MS Sans Serif"
-            // once (CreateFontFaceFromHDC fails), in this isolated run at
-            // least. Not of ws plugin's doing: it comes with none of its steps.
-            warnings = g_warnings;
         }
+        const int warnings = g_warnings; // the App's end included
         report.insert(u"warnings"_s, warnings);
         QFile json(out.filePath(u"ws-plugin.json"_s));
         const bool saved = json.open(QIODevice::WriteOnly) && json.write(QJsonDocument(report).toJson()) > 0;
