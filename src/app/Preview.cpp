@@ -4061,6 +4061,36 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
             }
         }
     }
+    {
+        // The native window made anew (Qt can; the old handle takes the
+        // subclass with it): the logo and the grip still drag the window. A
+        // user's did not until the program was started again.
+        window->destroy();
+        window->create();
+        showOffScreen(window);
+        settle(window);
+        const HWND fresh = reinterpret_cast<HWND>(window->winId());
+        RECT client {};
+        ::GetClientRect(fresh, &client);
+        const auto hitOn = [&](const QString& boxName, const QString& panelName) {
+            auto* item = visualNamed(window->contentItem(), launcher.panel() ? panelName : boxName);
+            if (!item || !item->isVisible())
+                return LRESULT(HTNOWHERE);
+            const QPointF scene = item->mapToScene({item->width() / 2, item->height() / 2});
+            POINT native {qRound(scene.x() * client.right / window->width()), qRound(scene.y() * client.bottom / window->height())};
+            ::ClientToScreen(fresh, &native);
+            return ::SendMessageW(fresh, WM_NCHITTEST, 0, MAKELPARAM(native.x, native.y));
+        };
+        check(!::IsWindow(hwnd) && fresh && hitOn(u"searchLogo"_s, u"panelSearchLogo"_s) == HTCAPTION
+            && hitOn(u"searchGrip"_s, u"panelSearchGrip"_s) == HTCAPTION,
+            u"a native window made anew keeps the logo and the grip as drag regions"_s);
+        const bool wasMoving = placement.moving();
+        ::SendMessageW(fresh, WM_ENTERSIZEMOVE, 0, 0);
+        const bool moving = placement.moving();
+        ::SendMessageW(fresh, WM_EXITSIZEMOVE, 0, 0);
+        pump(1);
+        check(!wasMoving && moving && !placement.moving(), u"a native window made anew is still followed while it is moved"_s);
+    }
     window->hide();
     QQuickWindow appearance;
     QQmlComponent sample(engine, u"WinShun"_s, u"AppearancePreview"_s);

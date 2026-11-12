@@ -8,6 +8,7 @@
 #include <QEasingCurve>
 #include <QEvent>
 #include <QGuiApplication>
+#include <QPlatformSurfaceEvent>
 #include <QScreen>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -366,6 +367,16 @@ bool Placement::eventFilter(QObject* watched, QEvent* event)
 {
     if (watched == m_window && (event->type() == QEvent::DevicePixelRatioChange || event->type() == QEvent::Show))
         scheduleDisplayRestore();
+    // Qt made the window a new native one: the old handle took the subclass
+    // with it, and the window would be moved and sized without any of this.
+    if (watched == m_window && event->type() == QEvent::PlatformSurface
+        && static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated
+        && m_window->winId() != m_hwnd) {
+        qWarning("Placement: the window has a new native handle, hooked again");
+        setMoving(false); // no WM_EXITSIZEMOVE comes from a handle that is gone
+        m_hwnd = m_window->winId();
+        ::SetWindowSubclass(reinterpret_cast<HWND>(m_hwnd), &Hook::proc, 0, reinterpret_cast<DWORD_PTR>(this));
+    }
     return QObject::eventFilter(watched, event);
 }
 
