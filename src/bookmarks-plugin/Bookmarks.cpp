@@ -306,16 +306,22 @@ winshun::Items search(const std::vector<Entry>& entries, const std::string& text
         // Shown and matched decoded, opened as it is.
         const std::string shown = unquote(e.url);
         const std::string haystack = lower(e.title + "\n" + e.url + "\n" + shown + "\n" + e.folder);
-        // Typed letters match either literally or as the pinyin of a Chinese
-        // character, so 西安 answers to "xian" and "xa" as well as to itself.
-        // Pinyin is only tried on text that has Chinese in it, as the app does
-        // (Query.cpp): on an ASCII name it would only repeat the search above.
-        const bool han = winshun::pinyin::hasHan(haystack);
-        const auto missing = [&haystack, &pinyin, han](const std::string& w, std::size_t i) {
+        // Typed letters match either literally, anywhere, or as the pinyin of a
+        // Chinese character in the title or in a folder: "wa" finds the
+        // bookmarks filed under 网安, as the app's own search reads folders
+        // (Query.cpp). The address is left out of the pinyin: it is ASCII
+        // nearly always, so reading it would cost a comparison per bookmark
+        // and find nothing, and an address is not something the user named.
+        // The newline keeps a match from spanning the two.
+        const std::string title = lower(e.title);
+        const bool titleHan = winshun::pinyin::hasHan(title);
+        const std::string spelled = title + "\n" + lower(e.folder);
+        const bool spelledHan = winshun::pinyin::hasHan(spelled);
+        const auto missing = [&haystack, &spelled, &pinyin, spelledHan](const std::string& w, std::size_t i) {
             if (haystack.find(w) != std::string::npos)
                 return false;
             const winshun::pinyin::Matcher& m = pinyin[i];
-            return !han || !m.valid() || !m.matches(haystack);
+            return !spelledHan || !m.valid() || !m.matches(spelled);
         };
         bool keep = true;
         for (std::size_t i = 0; i < typed.size(); ++i) {
@@ -333,8 +339,6 @@ winshun::Items search(const std::vector<Entry>& entries, const std::string& text
         // "在线" for "xian"), as the app ranks it. Among pinyin matches, one at
         // the start of the title ranks higher still: "西安交通大学" opens with
         // 西安, while "在线" only hides "xian" after 在.
-        const std::string title = lower(e.title);
-        const bool titleHan = winshun::pinyin::hasHan(title);
         bool allInTitle = true; // every term is in the title ...
         bool allLiteral = true; // ... and says it without pinyin
         bool spelledAtStart = true; // every spelled term starts the title
@@ -360,10 +364,14 @@ winshun::Items search(const std::vector<Entry>& entries, const std::string& text
                            .withUrl(e.url)
                            .withCopy(e.url));
         rows.back().match = e.title + " " + shown;
-        if (rows.size() >= kMaxRows)
-            break;
     }
+    // These can run to every bookmark there is, so the cap belongs after the
+    // ranking, not before it: cutting the first 50 in file order would drop a
+    // title that says the word for one that only happens to sit earlier in the
+    // file. Over the whole list, the ranking decides which 50 they are.
     std::stable_sort(rows.begin(), rows.end(), [](const winshun::Item& a, const winshun::Item& b) { return a.score > b.score; });
+    if (rows.size() > kMaxRows)
+        rows.resize(kMaxRows);
     if (!rows.empty())
         return rows;
     if (entries.empty()) {

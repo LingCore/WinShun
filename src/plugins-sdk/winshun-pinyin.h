@@ -2,7 +2,8 @@
 //
 // An optional companion to winshun.h, kept out of it so that a plugin that
 // does not match Chinese names pays nothing for the table: including this
-// header adds about 100 KB of readings to the binary.
+// header adds about 195 KB of readings to the binary (measured with MSVC
+// 2022 x64, /O2).
 //
 //     #include "winshun.h"
 //     #include "winshun-pinyin.h"
@@ -18,7 +19,7 @@
 //
 // The table below is generated from pinyin-data
 // (https://github.com/mozillazg/pinyin-data, MIT licence) by
-// build/bm-pinyin/make_sdk_pinyin.py, with the same readings as the app's
+// tools/make_sdk_pinyin.py, with the same readings as the app's
 // src/core/PinyinTable.cpp. Do not edit it by hand; rerun the generator.
 
 #pragma once

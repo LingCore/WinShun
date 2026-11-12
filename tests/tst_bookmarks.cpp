@@ -354,6 +354,49 @@ private slots:
         QCOMPARE(search(ascii, "xian", true).size(), size_t(1));
         QCOMPARE(search(ascii, "xa", true).front().id, std::string("none"));
     }
+    // Pinyin is read from the title and from the folders, never from the
+    // address: a folder the user made is a name they chose (网安 answers "wa"),
+    // while an address is ASCII nearly always and was never named.
+    void pinyinIsReadFromTheTitleAndTheFolders()
+    {
+        const std::vector<Entry> all {
+            entry("Hack The Box", "https://hackthebox.example/", "书签栏 › 网安"),
+            entry("CTF Wiki", "https://wiki.example/", "书签栏 › 网安"),
+            entry("知乎", "https://zhihu.example/", "书签栏"),
+        };
+        // A folder the user named is pinyin-searchable: 网安 is wang/an.
+        QCOMPARE(search(all, "wa", true).size(), size_t(2));
+        QCOMPARE(search(all, "wangan", true).size(), size_t(2));
+        QCOMPARE(search(all, "书签栏", true).size(), size_t(3)); // literally, too
+        // The title is read as pinyin as before: 知乎 is zhi/hu.
+        QCOMPARE(q(search(all, "zh", true).front().title), Q("知乎"));
+        // The address is not: "hackthebox" matches literally, and no pinyin is
+        // tried on it, so a spelling that only the address could answer misses.
+        QCOMPARE(q(search(all, "hackthebox", true).front().title), Q("Hack The Box"));
+        // A miss still comes back as one row, the "no bookmark" message, so it
+        // is the row that has to be checked, not the size.
+        QVERIFY(!search(all, "htb", true).front().valid); // no ASCII initials
+        // A term may not span the title and the folder: the newline stops it.
+        QVERIFY(!search(all, "box书", true).front().valid);
+    }
+    // The rows are capped at 50, and the cap has to come after the ranking:
+    // more bookmarks match than fit, and the one that says the word may be the
+    // last of them in file order.
+    void theBestFiftyOutliveTheFileOrder()
+    {
+        std::vector<Entry> many;
+        for (int i = 1; i <= 60; ++i) // "xian" as pinyin inside the title: zai-xian
+            many.push_back(entry("在线工具" + std::to_string(i), "https://z" + std::to_string(i) + ".example/"));
+        many.push_back(entry("西安交通大学", "https://xjtu.example/")); // 61st: the one that counts
+        const auto rows = search(many, "xian", true);
+        QCOMPARE(rows.size(), size_t(50));
+        // Ranking over the whole list puts it first; cutting to the first 50
+        // in file order would have left it out entirely.
+        QCOMPARE(q(rows.front().title), Q("西安交通大学"));
+        QCOMPARE(rows.front().score, 76);
+        QCOMPARE(q(rows[1].title), Q("在线工具1")); // stable: file order within a score
+        QCOMPARE(rows[1].score, 70);
+    }
 };
 
 QTEST_APPLESS_MAIN(TstBookmarks)

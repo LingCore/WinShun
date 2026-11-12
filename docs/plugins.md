@@ -119,7 +119,7 @@ Start-WinShunPlugin -Name 'me.ps' -OnQuery {
 | `winshun.h` | `winshun::onceQuery()`、`onceSettings()`、`once(items)`、`onceAction()` / `onceEffects()` | 派生 `winshun::Plugin`，重写 `query()`（和 `queryResult()`、`action()`、`settingsChanged()`、`initialized()`、`shuttingDown()`、`appearanceChanged()`、`details()`），`serve()`；成员 `partial()`、`log()`、`notifyUser()`、`toast()`、`progress()`、`refresh()`、`tool()`、`settings()`；这些成员可以在别的线程里调（发送有锁） |
 | `winshun-pinyin.h` | `winshun::pinyin::Matcher`（`matches(text)`、`findUtf8(text)`）、`readings(c)`、`hasHan(text)`、`isPinyinTerm(text)` | 同左 |
 
-拼音是 `winshun.h` 之外的可选头文件，不 include 就一点也不会编进插件；include 了二进制大约多 190 KB（`winshun-pinyin-table.h` 的读音表，由 `build/<任务名>/make_sdk_pinyin.py` 从 `tools/data` 生成，和主程序 `src/core/PinyinTable.cpp` 同一份读音）。规则和主程序一样：每个汉字匹配它某个读音的非空前缀，所以首字母、全拼、混着写都行（`bg`、`baogao`、`baog`、`bgao` 都能找到 报告）；其他字符按字面匹配，ASCII 不分大小写。只读 U+4E00..U+9FFF，ü 写作 v（`lv` 找 绿），`u` 也接受。程序自己决定什么时候用拼音：主程序和书签插件都只对含汉字的文本尝试，`Matcher` 对单个字母、带符号的词无效（`valid()` 为假），照旧走普通子串搜索。
+拼音是 `winshun.h` 之外的可选头文件，不 include 就一点也不会编进插件；include 了二进制大约多 195 KB（`winshun-pinyin-table.h` 的读音表，由 `tools/make_sdk_pinyin.py` 从 `tools/data` 生成，和主程序 `src/core/PinyinTable.cpp` 同一份读音）。规则和主程序一样：每个汉字匹配它某个读音的非空前缀，所以首字母、全拼、混着写都行（`bg`、`baogao`、`baog`、`bgao` 都能找到 报告）；其他字符按字面匹配，ASCII 不分大小写。只读 U+4E00..U+9FFF，ü 写作 v（`lv` 找 绿），`u` 也接受。程序自己决定什么时候用拼音：主程序和书签插件都只对含汉字的文本尝试，`Matcher` 对单个字母、带符号的词无效（`valid()` 为假），照旧走普通子串搜索。
 
 effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) / set_query(text) / open_path(path) / open_url(url) / replace(items)`；PowerShell `New-WinShunEffect -Hide / -Keep / -Notify / -Copy / -SetQuery / -OpenPath / -OpenUrl / -Replace`；C++ `winshun::effect::hide()` 等。
 
