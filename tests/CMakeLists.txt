@@ -1296,7 +1296,8 @@ set_tests_properties(tst_break PROPERTIES
 # folder already open, Ctrl+Shift, a tab dragged out, Control Panel, the
 # integrity level and the test-root restriction, with made-up windows.
 qt_add_executable(tst_explorertabs tst_explorertabs.cpp ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Rules.cpp
-    ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Hider.cpp ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Closer.cpp)
+    ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Hider.cpp ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Closer.cpp
+    ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Session.cpp)
 target_include_directories(tst_explorertabs PRIVATE ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin)
 target_link_libraries(tst_explorertabs PRIVATE winshun_options Qt6::Test)
 set_target_properties(tst_explorertabs PROPERTIES WIN32_EXECUTABLE FALSE)

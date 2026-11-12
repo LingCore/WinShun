@@ -1,6 +1,7 @@
 #include "Engine.h"
 
 #include "Closer.h"
+#include "Explorer.h"
 #include "Hider.h"
 
 #include <windows.h>
@@ -33,12 +34,6 @@ using Microsoft::WRL::ComPtr;
 namespace tabs {
 
 namespace {
-
-// Explorer's own commands for a tab window (what Ctrl+T, Ctrl+W and
-// Ctrl+<n> send; ExplorerTabUtility uses the same).
-constexpr WPARAM kNewTab = 0xA21B;
-constexpr WPARAM kCloseTab = 0xA021;
-constexpr WPARAM kSelectTab = 0xA221; // lParam: 1-based position in the tab strip
 
 constexpr UINT kShown = WM_APP + 1; // lParam: a new Explorer window just shown (hidden or not)
 constexpr UINT kReconnect = WM_APP + 2;
@@ -90,57 +85,6 @@ std::string utf8(std::wstring_view w)
     return s;
 }
 
-std::wstring className(HWND w)
-{
-    wchar_t buffer[64] {};
-    ::GetClassNameW(w, buffer, 64);
-    return buffer;
-}
-
-// A window's text without a message to it: another process's window
-// answers from what the system keeps, so a busy Explorer cannot stall it.
-std::wstring textOf(HWND w)
-{
-    wchar_t buffer[512] {};
-    ::InternalGetWindowText(w, buffer, 512);
-    return buffer;
-}
-
-bool isExplorerTop(HWND w)
-{
-    return w && ::GetAncestor(w, GA_PARENT) == ::GetDesktopWindow() && className(w) == L"CabinetWClass";
-}
-
-// The tabs of an Explorer window in z-order: the active one first.
-std::vector<HWND> tabsOf(HWND top)
-{
-    std::vector<HWND> tabs;
-    for (HWND t = ::FindWindowExW(top, nullptr, L"ShellTabWindowClass", nullptr); t;
-        t = ::FindWindowExW(top, t, L"ShellTabWindowClass", nullptr))
-        tabs.push_back(t);
-    return tabs;
-}
-
-HWND activeTab(HWND top)
-{
-    return ::FindWindowExW(top, nullptr, L"ShellTabWindowClass", nullptr);
-}
-
-bool cloaked(HWND w)
-{
-    DWORD value = 0;
-    return SUCCEEDED(::DwmGetWindowAttribute(w, DWMWA_CLOAKED, &value, sizeof value)) && value != 0;
-}
-
-// Top-level Explorer windows in z-order (the one in front first).
-std::vector<HWND> explorerWindows()
-{
-    std::vector<HWND> windows;
-    for (HWND w = ::FindWindowExW(nullptr, nullptr, L"CabinetWClass", nullptr); w; w = ::FindWindowExW(nullptr, w, L"CabinetWClass", nullptr))
-        windows.push_back(w);
-    return windows;
-}
-
 class Handle {
 public:
     explicit Handle(HANDLE h = nullptr) : m_h(h) {}
@@ -176,108 +120,6 @@ DWORD ownIntegrity()
     if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, token.put()))
         return SECURITY_MANDATORY_MEDIUM_RID;
     return integrityOf(token.get());
-}
-
-struct PidlFree {
-    void operator()(void* p) const { ::CoTaskMemFree(p); }
-};
-using Pidl = std::unique_ptr<std::remove_pointer_t<PIDLIST_ABSOLUTE>, PidlFree>;
-using ChildPidl = std::unique_ptr<std::remove_pointer_t<PITEMID_CHILD>, PidlFree>;
-
-ComPtr<IShellBrowser> shellBrowserOf(IWebBrowser2* web)
-{
-    ComPtr<IServiceProvider> services;
-    ComPtr<IShellBrowser> browser;
-    if (web && SUCCEEDED(web->QueryInterface(IID_PPV_ARGS(&services))))
-        services->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&browser));
-    return browser;
-}
-
-ComPtr<IFolderView> folderViewOf(IWebBrowser2* web)
-{
-    ComPtr<IShellView> view;
-    ComPtr<IFolderView> folderView;
-    if (const ComPtr<IShellBrowser> browser = shellBrowserOf(web); browser && SUCCEEDED(browser->QueryActiveShellView(&view)) && view)
-        view.As(&folderView);
-    return folderView;
-}
-
-// The folder a tab shows, as an ID list; null while it has no view yet.
-Pidl folderOf(IWebBrowser2* web)
-{
-    ComPtr<IPersistFolder2> folder;
-    PIDLIST_ABSOLUTE pidl = nullptr;
-    if (const ComPtr<IFolderView> view = folderViewOf(web);
-        view && SUCCEEDED(view->GetFolder(IID_PPV_ARGS(&folder))) && SUCCEEDED(folder->GetCurFolder(&pidl)))
-        return Pidl(pidl);
-    return nullptr;
-}
-
-std::wstring parsingName(PCIDLIST_ABSOLUTE pidl, SIGDN form = SIGDN_DESKTOPABSOLUTEPARSING)
-{
-    std::wstring name;
-    PWSTR text = nullptr;
-    if (pidl && SUCCEEDED(::SHGetNameFromIDList(pidl, form, &text)) && text) {
-        name = text;
-        ::CoTaskMemFree(text);
-    }
-    return name;
-}
-
-std::wstring locationUrl(IWebBrowser2* web)
-{
-    BSTR url = nullptr;
-    std::wstring s;
-    if (web && SUCCEEDED(web->get_LocationURL(&url)) && url)
-        s.assign(url, ::SysStringLen(url));
-    ::SysFreeString(url);
-    return s;
-}
-
-// Where a tab is: its view's folder, else its address (a view not made yet).
-struct Place {
-    std::wstring name;
-    Pidl pidl;
-};
-Place placeOf(IWebBrowser2* web)
-{
-    Place place;
-    place.pidl = folderOf(web);
-    if (place.pidl)
-        place.name = parsingName(place.pidl.get());
-    if (place.name.empty()) {
-        place.name = normalized(locationUrl(web));
-        PIDLIST_ABSOLUTE pidl = nullptr;
-        if (!place.name.empty() && SUCCEEDED(::SHParseDisplayName(place.name.c_str(), nullptr, &pidl, 0, nullptr)))
-            place.pidl.reset(pidl);
-    }
-    return place;
-}
-
-// Navigate2 by ID list: no URL rules in the way ('#' in a name, ::{GUID}).
-HRESULT navigate(IWebBrowser2* web, PCIDLIST_ABSOLUTE pidl)
-{
-    const UINT size = ::ILGetSize(pidl);
-    SAFEARRAY* bytes = ::SafeArrayCreateVector(VT_UI1, 0, size);
-    if (!bytes)
-        return E_OUTOFMEMORY;
-    void* data = nullptr;
-    ::SafeArrayAccessData(bytes, &data);
-    std::memcpy(data, pidl, size);
-    ::SafeArrayUnaccessData(bytes);
-    VARIANT target {};
-    target.vt = VT_ARRAY | VT_UI1;
-    target.parray = bytes;
-    VARIANT empty {};
-    const HRESULT hr = web->Navigate2(&target, &empty, &empty, &empty, &empty);
-    ::VariantClear(&target);
-    return hr;
-}
-
-bool disconnected(HRESULT hr)
-{
-    return hr == RPC_E_DISCONNECTED || hr == HRESULT_FROM_WIN32(RPC_S_SERVER_UNAVAILABLE) || hr == HRESULT_FROM_WIN32(RPC_S_CALL_FAILED)
-        || hr == CO_E_OBJNOTCONNECTED;
 }
 
 bool keysForBypass()
@@ -427,6 +269,9 @@ struct Engine::Impl {
     std::set<HWND> knownTabs; // their tabs, under mutex
     std::map<DWORD, DWORD> levels; // process id -> integrity, under mutex
     std::atomic<bool> paused {false};
+    // The plugin itself is opening windows (Session restores them): they stay
+    // windows, as while paused.
+    std::atomic<bool> held {false};
     // The open windows are known (knownTops): until then no window counts as new.
     std::atomic<bool> connected {false};
     std::atomic<int> mergedCount {0};
@@ -595,7 +440,7 @@ struct Engine::Impl {
         e.bypass = b.bypass;
         e.requested = b.requested;
         e.movedTab = b.movedTab;
-        if (hideEarly(s, paused, options.restriction, b, others, named) && hider.hide(w))
+        if (hideEarly(s, paused || held, options.restriction, b, others, named) && hider.hide(w))
             e.hiddenAt = nowMs();
     }
 
@@ -1080,7 +925,7 @@ struct Engine::Impl {
             if (any)
                 others.push_back(std::move(w));
         }
-        const Decision d = decide(s, paused, options.restriction, candidate, others, closedTabs, tickMs());
+        const Decision d = decide(s, paused || held, options.restriction, candidate, others, closedTabs, tickMs());
         const double decided = nowMs();
         log("B " + utf8(candidate.place) + ": " + whyName(d.why));
         {
@@ -1231,28 +1076,6 @@ struct Engine::Impl {
         });
         if (goingBs.empty())
             ::KillTimer(shellWindow, kTimerBGone);
-    }
-
-    // Explorer selects a tab by its place in the strip (Ctrl+1…9), but
-    // its windows are in z-order: each place is tried until the wanted tab
-    // is the active one (ExplorerTabUtility does the same). One second in
-    // all, however many tabs.
-    static bool selectTab(HWND top, HWND wanted)
-    {
-        if (activeTab(top) == wanted)
-            return true;
-        const std::int64_t until = tickMs() + 1000;
-        const std::size_t n = tabsOf(top).size();
-        for (std::size_t i = 0; i < n; ++i) {
-            const std::int64_t left = until - tickMs();
-            if (left <= 0)
-                break;
-            DWORD_PTR result = 0;
-            ::SendMessageTimeoutW(top, WM_COMMAND, kSelectTab, static_cast<LPARAM>(i + 1), SMTO_ABORTIFHUNG, static_cast<UINT>(left), &result);
-            if (activeTab(top) == wanted)
-                return true;
-        }
-        return false;
     }
 
     // The target to the front. Explorer's window B (now invisible) is the
@@ -1846,6 +1669,11 @@ void Engine::setPaused(bool paused)
 bool Engine::paused() const
 {
     return m->paused;
+}
+
+void Engine::setHeld(bool held)
+{
+    m->held = held;
 }
 
 int Engine::merged() const

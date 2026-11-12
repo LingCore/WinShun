@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.explorer-tabs",
   "name": {"zh": "资源管理器标签页", "en": "Explorer tabs"},
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": {"zh": "新开的文件夹窗口并到已经开着的资源管理器里，成为一个标签页。需要 Windows 11 22H2 或更新", "en": "A folder that opens in a new File Explorer window becomes a tab of the window already open. Needs Windows 11 22H2 or newer"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
@@ -14,7 +14,7 @@
     "id": "tabs",
     "keyword": ["标签页", "tabs"],
     "title": {"zh": "资源管理器标签页", "en": "Explorer tabs"},
-    "description": {"zh": "新开的文件夹窗口是否并成标签页；暂停、恢复", "en": "Whether new folder windows become tabs; pause, resume"},
+    "description": {"zh": "新开的文件夹窗口是否并成标签页；暂停、恢复；打开上次的标签页", "en": "Whether new folder windows become tabs; pause, resume; open the tabs from last time"},
     "icon": "glyph:U+E838",
     "hint": {"zh": "Enter 暂停或恢复", "en": "Enter to pause or resume"}
   }],
@@ -25,6 +25,7 @@
       {"value": "first", "title": {"zh": "最早打开的", "en": "The one opened first"}}
     ], "default": "recent"},
     {"key": "reuse", "type": "bool", "title": {"zh": "文件夹已经开着就切过去", "en": "Go to a tab already showing the folder"}, "hint": {"zh": "不再多开一个一样的标签页", "en": "No second tab for the same folder"}, "default": true},
-    {"key": "windowsFor", "type": "text", "title": {"zh": "这些程序打开的仍是新窗口", "en": "Programs that still get a window"}, "hint": {"zh": "程序名用分号隔开，例如 WindowsTerminal.exe;cmd.exe。在资源管理器里按 Ctrl+N、选“在新窗口中打开”，本来就是新窗口", "en": "Program names separated by semicolons, e.g. WindowsTerminal.exe;cmd.exe. Ctrl+N and “Open in new window” in File Explorer always give a window"}, "default": ""}
+    {"key": "windowsFor", "type": "text", "title": {"zh": "这些程序打开的仍是新窗口", "en": "Programs that still get a window"}, "hint": {"zh": "程序名用分号隔开，例如 WindowsTerminal.exe;cmd.exe。在资源管理器里按 Ctrl+N、选“在新窗口中打开”，本来就是新窗口", "en": "Program names separated by semicolons, e.g. WindowsTerminal.exe;cmd.exe. Ctrl+N and “Open in new window” in File Explorer always give a window"}, "default": ""},
+    {"key": "restore", "type": "bool", "title": {"zh": "开机后打开上次的标签页", "en": "Open the tabs from last time after logon"}, "hint": {"zh": "关机时开着的文件夹窗口和标签页，下次登录后自动打开。不开这项也能随时输入“标签页”手动打开", "en": "The folder windows and tabs open at shutdown come back after the next logon. Without it, the keyword “tabs” still opens them on request"}, "default": false}
   ]
 }

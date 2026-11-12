@@ -45,6 +45,9 @@ public:
     void configure(const Settings& settings);
     void setPaused(bool paused);
     bool paused() const;
+    // While held, new folder windows stay windows (as while paused): the
+    // plugin is opening them itself (Session). Not kept, not shown to the user.
+    void setHeld(bool held);
     int merged() const; // windows turned into tabs since the start
 
     // Shows the windows a journal lists (left hidden by a process that ended).
