@@ -5374,6 +5374,25 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     showRow(suggestion);
     check(launcher.autocomplete(0) && launcher.query() == u"example report", "web suggestion completion changed");
     {
+        // GitHub #303: a site's own row (found by a part of its keyword, or
+        // by its name) takes Tab too: its keyword and a space, to type the
+        // words after. A page that searches nothing keeps Tab for the scopes.
+        launcher.setWebShortcuts({{.keyword = u"example"_s, .name = u"Example"_s, .url = u"https://example.com/?q=%s"_s},
+            {.keyword = u"page"_s, .name = u"Page"_s, .url = u"https://example.com/page"_s}});
+        const QString completeHint = QCoreApplication::translate("ws::Launcher", "补全");
+        const SearchResult site {.name = u"Example"_s, .app = AppKind::Web, .keyword = u"example"_s};
+        showRow(site);
+        check(tabHint() == completeHint && launcher.autocomplete(0) && launcher.query() == u"example ",
+            "Tab on a site's row did not put its keyword in the box");
+        launcher.results()->assign({site}, {});
+        launcher.setCurrentRow(-1);
+        launcher.setCurrentRow(0);
+        check(!launcher.autocomplete(0) && launcher.query() == u"example ", "Tab completed a site's keyword already in the box");
+        showRow(SearchResult {.name = u"Page"_s, .app = AppKind::Web, .keyword = u"page"_s});
+        check(tabHint().isEmpty() && !launcher.autocomplete(0), "Tab completed the keyword of a page that takes no words");
+        launcher.setWebShortcuts({});
+    }
+    {
         // GitHub #116: Enter on a file whose server does not answer
         // (TEST-NET-1, nothing there) says "正在连接 …" at once, the window
         // never waiting for the network; "连不上 …" once the probe and

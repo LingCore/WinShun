@@ -5949,7 +5949,7 @@ bool Launcher::clearToKeyword()
 const SearchResult* Launcher::completionRow(int row) const
 {
     const SearchResult* r = m_results.at(row);
-    if (r && ((r->isPlugin() && !r->plugin->autocomplete.isEmpty()) || r->suggestion))
+    if (r && ((r->isPlugin() && !r->plugin->autocomplete.isEmpty()) || r->suggestion || completesWebKeyword(*r)))
         return r;
     if (m_keyword)
         return nullptr;
@@ -5959,6 +5959,20 @@ const SearchResult* Launcher::completionRow(int row) const
             return h;
     }
     return nullptr;
+}
+
+// A site's own row, found by a part of its keyword or by its name ("b" or
+// "百度" for baidu, GitHub #303): Tab puts its keyword and a space in the
+// box, the words to search for typed on from there. Not for a page that
+// takes no words, nor once the box holds just that.
+bool Launcher::completesWebKeyword(const SearchResult& r) const
+{
+    if (!r.isWeb() || r.suggestion || !r.words.isEmpty() || r.keyword.isEmpty() || m_keyword)
+        return false;
+    const auto web = std::ranges::find_if(m_web, [&](const WebShortcut& w) { return w.keyword.compare(r.keyword, Qt::CaseInsensitive) == 0; });
+    if (web == m_web.end() || !web->searches())
+        return false;
+    return !(m_query.endsWith(u' ') && m_query.trimmed().compare(r.keyword, Qt::CaseInsensitive) == 0);
 }
 
 navigation::TabAction Launcher::tabAction(int row) const
@@ -5988,7 +6002,7 @@ bool Launcher::autocomplete(int row)
         return false;
     const SearchResult* r = completionRow(row);
     // A site's suggestion: into the box after its keyword, to type on from.
-    setQuery(r->suggestion ? r->keyword + u' ' + r->words : r->plugin->autocomplete);
+    setQuery(r->suggestion ? r->keyword + u' ' + r->words : r->isWeb() ? r->keyword + u' ' : r->plugin->autocomplete);
     return true;
 }
 

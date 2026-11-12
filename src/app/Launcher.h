@@ -879,6 +879,7 @@ private:
     void startPluginQuery(const QString& text, std::optional<KeywordMode> keyword);
     void refreshKeyHints(); // keyHints for the current row; keyHintsChanged when they differ
     const SearchResult* completionRow(int row) const; // what Tab completes from `row`, or null (see autocomplete)
+    bool completesWebKeyword(const SearchResult& row) const; // a site's own row: Tab gives "<keyword> "
     void onPluginTaken(std::uint64_t queryId, const QString& pluginId);
     void onPluginResults(std::uint64_t queryId, const QString& pluginId, const QString& commandId,
         const QList<ws::plugin::Item>& items, bool partial, bool replace);
