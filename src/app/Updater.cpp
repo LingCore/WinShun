@@ -293,6 +293,14 @@ void Updater::finishCheck(int status, const QByteArray& body, unsigned long erro
     }
     m_release = latest;
     emit changed();
+    // The whole chain without a click, for tools/verify-installed-upgrade.ps1:
+    // only from a fake service on this computer (WINSHUN_UPDATE_FEED on the
+    // loopback), never the real one.
+    if (loopbackHttpAllowed() && qEnvironmentVariableIsSet("WINSHUN_UPDATE_AUTOINSTALL")) {
+        qWarning().noquote() << "Update: installing" << latest->version << "at once (WINSHUN_UPDATE_AUTOINSTALL)";
+        install();
+        return;
+    }
     if (manual || shouldRemind(latest->version)) {
         QSettings s = state();
         s.setValue(u"PromptedVersion"_s, latest->version);

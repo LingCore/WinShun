@@ -78,6 +78,14 @@ if ($PSBoundParameters.ContainsKey('QtDir')) { $buildArgs.QtDir = $QtDir } # els
 
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $dist 'WinShun\LICENSE.txt')
 
+# The installer run for real against programs that hold its files (GitHub
+# #300; tools/verify-installer.ps1: a test build of the same script, which
+# touches no Win顺 installed or running here). No package without it.
+$installerTest = Join-Path $dist 'installer-test'
+if (Test-Path -LiteralPath $installerTest) { Remove-Item -LiteralPath $installerTest -Recurse -Force }
+& (Join-Path $root 'tools\verify-installer.ps1') -WorkDir $installerTest -Iscc $Iscc
+if ($LASTEXITCODE) { throw "The installer failed its tests: see $installerTest" }
+
 $setup = Join-Path $dist "WinShun-$version-x64-setup.exe"
 & $Iscc /Q "/DAppVersion=$version" "/DSourceDir=$(Join-Path $dist 'WinShun')" "/DOutputDir=$dist" (Join-Path $root 'installer\WinShun.iss')
 if ($LASTEXITCODE -or -not (Test-Path $setup)) { throw 'Inno Setup failed' }

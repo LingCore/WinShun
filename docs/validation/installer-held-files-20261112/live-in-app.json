@@ -1,0 +1,87 @@
+{
+  "mode": "InApp",
+  "hold": true,
+  "before": {
+    "version": "0.25.0",
+    "exeSha": "9ae6797322dbee5da83facc3456559690748a47c76c6f357f585144975525671",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [
+      "msvcp140_1.dll.wsold",
+      "msvcp140.dll.wsold",
+      "Qt6Core.dll.wsold",
+      "vcruntime140_1.dll.wsold",
+      "vcruntime140.dll.wsold"
+    ],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.25.0",
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "indexBytes": 32156312
+  },
+  "updated": true,
+  "seconds": 59.8,
+  "after": {
+    "version": "0.25.1",
+    "exeSha": "9502f67ade7788f5f91543f0d8336402812add85c1e9940cc1bc4e97d0d6ed08",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [
+      "msvcp140_1.dll.wsold",
+      "msvcp140.dll.wsold",
+      "Qt6Core.dll.wsold",
+      "vcruntime140_1.dll.wsold",
+      "vcruntime140.dll.wsold"
+    ],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.25.1",
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "indexBytes": 32159515
+  },
+  "holderStillRunning": true,
+  "feedRequests": [
+    "0.25.1 from F:\\电脑便捷工具\\dist\\updtest-b on http://127.0.0.1:47631/stable.json",
+    "\"GET /stable.json HTTP/1.1\" 200 -",
+    "\"GET /stable.json HTTP/1.1\" 200 -",
+    "\"GET /WinShun-0.25.1-x64-setup.exe HTTP/1.1\" 200 -"
+  ],
+  "setupLog": [
+    "Held, moved out of the way: C:\\Program Files\\WinShun\\msvcp140.dll -> msvcp140.dll.wsold",
+    "Held, moved out of the way: C:\\Program Files\\WinShun\\msvcp140_1.dll -> msvcp140_1.dll.wsold",
+    "Held, moved out of the way: C:\\Program Files\\WinShun\\Qt6Core.dll -> Qt6Core.dll.wsold",
+    "Held, moved out of the way: C:\\Program Files\\WinShun\\vcruntime140.dll -> vcruntime140.dll.wsold",
+    "Held, moved out of the way: C:\\Program Files\\WinShun\\vcruntime140_1.dll -> vcruntime140_1.dll.wsold",
+    "5 held file(s) moved out of the way (held by: PowerShell 7); installing",
+    "Still held, left for later: C:\\Program Files\\WinShun\\msvcp140.dll.wsold",
+    "Still held, left for later: C:\\Program Files\\WinShun\\msvcp140_1.dll.wsold",
+    "Still held, left for later: C:\\Program Files\\WinShun\\Qt6Core.dll.wsold",
+    "Still held, left for later: C:\\Program Files\\WinShun\\vcruntime140.dll.wsold",
+    "Still held, left for later: C:\\Program Files\\WinShun\\vcruntime140_1.dll.wsold"
+  ],
+  "helperLog": [
+    "2026-11-01 17:19:04 Setup ended (exit code 0)",
+    "2026-11-04 11:19:22 Setup ended (exit code 0)",
+    "2026-11-12 14:53:33 Setup ended (exit code 0)"
+  ],
+  "appLog": [
+    "warning: Update check failed: 403 0",
+    "warning: Update check failed: 0 12029",
+    "warning: Update check failed: 0 12002",
+    "warning: Update check failed: 0 12029",
+    "warning: Update: installing 0.25.1 at once (WINSHUN_UPDATE_AUTOINSTALL)"
+  ],
+  "runningAfterRestart": 1
+}

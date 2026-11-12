@@ -3757,9 +3757,11 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         editor->favorites()->setStore(m_favorites.get());
         m_settingsWindow = window;
         m_settingsEditor = editor;
-        // There at once when opened: without Windows' own fade and zoom for a
-        // window shown (it is kept hidden between openings, so each one had it).
-        win::disableTransitions(window);
+        // There at once when opened, without Windows' own fade and zoom for a
+        // window shown (it is kept hidden between openings, so each one had
+        // it): shown cloaked, on the screen with its first frame
+        // (settingsFirstFrame), and cloaked again as it is hidden. Not by
+        // win::disableTransitions, which costs a maximized window its backdrop (#301).
         updateDoubleTapActions();
         // What the app tells the editor as it changes, from now on (hidden or not):
         // where it stands now.
@@ -3780,6 +3782,7 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         place(window);
         connect(window, &QWindow::visibleChanged, this, [this, window](bool visible) {
             if (!visible) {
+                win::setCloaked(window, true); // before the native window goes: no fade out either
                 // Hidden under the pointer (its ✕ clicked): nothing left hovered for the next opening.
                 QEvent leave(QEvent::Leave);
                 QCoreApplication::sendEvent(window, &leave);
@@ -3840,6 +3843,7 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         // As it will look once in front, from its first frame (SettingsWindow.arriving).
         m_settingsWindow->setProperty("arriving", true);
         win::expectActivation(m_settingsWindow);
+        win::setCloaked(m_settingsWindow, true); // until that frame
     }
     m_settingsWindow->show();
     m_settingsWindow->raise();
@@ -3852,6 +3856,8 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
 void App::settingsFirstFrame(int opening)
 {
     const bool drawn = opening > 0;
+    if (m_settingsWindow && m_settingsWindow->isVisible())
+        win::setCloaked(m_settingsWindow, false); // shown cloaked (showSettings); whichever call comes first
     if (std::abs(opening) != m_settingsOpening.count || !m_settingsEditor || !m_settingsEditor->opening())
         return; // done already, or a later opening's
     const qint64 ms = m_settingsOpenClock.elapsed();

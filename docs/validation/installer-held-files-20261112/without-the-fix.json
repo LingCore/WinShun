@@ -1,0 +1,47 @@
+[
+  {
+    "case": "plain-update",
+    "passed": true,
+    "seconds": 11.5,
+    "exit": 0,
+    "failures": []
+  },
+  {
+    "case": "own-programs-running",
+    "passed": true,
+    "seconds": 39.5,
+    "exit": 0,
+    "failures": []
+  },
+  {
+    "case": "library-loaded-elsewhere",
+    "passed": false,
+    "seconds": 11.7,
+    "exit": 7,
+    "failures": [
+      "exit 7: the update did not go through",
+      "version 2 is not in place",
+      "expected the one old copy beside it, found 0",
+      "the log does not say what was moved"
+    ]
+  },
+  {
+    "case": "file-read-by-another",
+    "passed": false,
+    "seconds": 12.0,
+    "exit": 7,
+    "failures": [
+      "exit 7: the update did not go through",
+      "version 2 is not in place"
+    ]
+  },
+  {
+    "case": "file-nobody-may-touch",
+    "passed": false,
+    "seconds": 13.0,
+    "exit": 7,
+    "failures": [
+      "the update did not go through once the file was free"
+    ]
+  }
+]

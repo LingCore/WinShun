@@ -18,13 +18,28 @@
   #define PackageSuffix ""
 #endif
 
+; /DTestInstall: the script as it is, for tools/verify-installer.ps1 to run on a
+; PC where Win顺 itself is installed and running (GitHub #300). Its own AppId and
+; program name, so that nothing it closes, ends or asks for by name is the real
+; one; no shortcuts, no [Run], no uninstall entry, no PATH: all it leaves is in
+; the folder it is told to install to (/DIR=).
 #define AppName "Win顺"
-#define AppExe "WinShun.exe"
+#ifdef TestInstall
+  #define AppExe "WsSetupTest.exe"
+  #define AppGuid "7B1F5E0A-3C1D-4E55-9B7A-57E5740A0001"
+#else
+  #define AppExe "WinShun.exe"
+  #define AppGuid "C582F95C-EAF2-4AF2-961D-E35C4506652A"
+#endif
 #define Repository "https://github.com/LingCore/WinShun"
 
 [Setup]
 ; Never change the AppId: it is how a new version finds the old one.
-AppId={{C582F95C-EAF2-4AF2-961D-E35C4506652A}
+AppId={{{#AppGuid}}
+#ifdef TestInstall
+Uninstallable=no
+CreateUninstallRegKey=no
+#endif
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
@@ -47,7 +62,9 @@ VersionInfoCompany=LingCore
 ; suits the account first (InstallMode.iss: Inno's own dialog recommends the
 ; same one to everybody); /CURRENTUSER and /ALLUSERS choose without asking.
 PrivilegesRequired=lowest
+#ifndef TestInstall
 PrivilegesRequiredOverridesAllowed=commandline
+#endif
 ; Off (Inno Setup 6.7 turns it on by default, GitHub #50): the WinShun Setup
 ; starts in [Run] inherits it, and so does Explorer when WinShun restarts it;
 ; every program started from the desktop then fails on junctions (Scoop,
@@ -86,9 +103,14 @@ ShowLanguageDialog=no
 LanguageDetectionMethod=uilanguage
 
 OutputDir={#OutputDir}
+#ifdef TestInstall
+OutputBaseFilename=WsSetupTest-{#AppVersion}
+Compression=none
+#else
 OutputBaseFilename=WinShun-{#AppVersion}-x64{#PackageSuffix}-setup
 Compression=lzma2/ultra64
 SolidCompression=yes
+#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -144,6 +166,12 @@ chinesesimplified.FilesInUseAi=%1（连着 Win顺）
 ; is the list, in one line.
 english.FilesWaiting=Waiting for these programs to let go of WinShun's files: %1
 chinesesimplified.FilesWaiting=正在等这些程序放开 Win顺 的文件：%1
+; A file neither free nor to be moved out of the way (GitHub #300): %1 is the
+; list of files, one per line; %2 the programs Restart Manager names, or ''.
+english.FilesStuck=These files of WinShun are held by another program and cannot be replaced:%n%n%1%n%2Close that program (or restart the PC), then retry.
+chinesesimplified.FilesStuck=Win顺 的这些文件被别的程序占着，换不了：%n%n%1%n%2请关掉那个程序（关不掉就重启电脑），然后重试。
+english.FilesStuckBy=Programs using WinShun's files:%n%1%n
+chinesesimplified.FilesStuckBy=正在使用 Win顺 文件的程序：%n%1%n
 english.FilesNotFreed=Other programs are still using WinShun's files, so nothing was installed. Close them and run Setup again.
 chinesesimplified.FilesNotFreed=还有程序在用 Win顺 的文件，这次没有安装。关掉它们后再运行安装程序。
 ; The Start menu shortcut users pin to the taskbar (WinShunSearch.exe).
@@ -157,12 +185,14 @@ chinesesimplified.WsCommand=添加 ws 命令（在命令行里搜索文件）
 english.WsNewTerminal=To use the ws command, type ws in a newly opened terminal. Terminals that are already open do not see the change (restart VS Code for its terminal).
 chinesesimplified.WsNewTerminal=要用 ws 命令，请在新打开的终端里输入 ws。已经开着的终端看不到这个变化（VS Code 的终端要重开 VS Code）。
 
+#ifndef TestInstall
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 ; Checked, as asking costs a click and the command is no use unless it is on the PATH.
 ; Not a [Registry] entry: the PATH is one value that other programs write
 ; too, and it is only appended to (AddWsToPath), never replaced.
 Name: "wscommand"; Description: "{cm:WsCommand}"; GroupDescription: "{cm:WsGroup}"
+#endif
 
 [Files]
 ; Everything build.ps1 -Deploy put in dist\WinShun, the index service
@@ -191,6 +221,7 @@ Type: filesandordirs; Name: "{app}\plugins\winshun.translate"
 Type: filesandordirs; Name: "{app}\plugins\winshun.bookmarks"
 Type: filesandordirs; Name: "{app}\plugins\winshun.web"
 
+#ifndef TestInstall
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 ; The taskbar button. Its AppUserModelID, the one WinShunSearch.exe sets for
@@ -224,6 +255,7 @@ Filename: "{app}\{#AppExe}"; Parameters: "--take-autostart {code:TakeAutostartAr
 ; hide the first window it shows later on.
 Filename: "{app}\{#AppExe}"; Parameters: "--background"; Flags: nowait runasoriginaluser
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+#endif
 
 [UninstallRun]
 ; LAN transfer's firewall rules of 0.16.0 ([Run]), should an upgrade not have
@@ -514,8 +546,11 @@ begin
   ClosedWinShun := True;
   if FileExists(Exe) then
     Exec(Exe, '--quit', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+#ifndef TestInstall
   else
-    PostMessage(FindWindowByClassName(MessageWindowClass), WM_CLOSE, 0, 0);
+    PostMessage(FindWindowByClassName(MessageWindowClass), WM_CLOSE, 0, 0)
+#endif
+  ;
   Waited := 0;
   while WinShunRunning() and (Waited < 15000) do
   begin
@@ -910,6 +945,8 @@ begin
   end;
 end;
 
+procedure RemoveAsideFiles(Folder: String); forward; // with the files a program will not let go, below
+
 // Started in the tray as the files were in place ([Run]); "run Win顺" left
 // unticked on the last page, it goes again. A silent install leaves it
 // running, as it was before an update.
@@ -921,9 +958,14 @@ begin
   if CurStep = ssPostInstall then
   begin
     FilesInstalled := True;
+    RemoveAsideFiles(ExpandConstant('{app}')); // the old copies moved out of the way, where let go by now
     RemoveTapCopies();
     RemoveMovedRelay(True);
+#ifdef TestInstall
+    if False then
+#else
     if WizardIsTaskSelected('wscommand') then
+#endif
       AddWsToPath()
     else
       // Unticked on an update: the entry an earlier install added goes, from the
@@ -1014,7 +1056,7 @@ var
   HadAutostart: Boolean;
 
 const
-  UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{C582F95C-EAF2-4AF2-961D-E35C4506652A}_is1';
+  UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{' + '{#AppGuid}' + '}_is1';
 
 // Installed for all users and for one user at once would be two copies with
 // one set of settings (GitHub #52): the second kind is not started. As an
@@ -1134,6 +1176,198 @@ begin
     end;
 end;
 
+// ---- Files a program will not let go (GitHub #300) ---------------------------
+// A program that has one of Win顺's programs, libraries or fonts open, and
+// neither ends nor lets go, stopped every update: Setup waited, then gave up
+// (or, asked to go on, stopped at the first such file with "DeleteFile failed;
+// code 5"). Reported again and again (#68, #97, #274, #300): an AI tool's
+// relay, a plugin's process nothing could end, security software.
+//
+// Windows lets a file be renamed while it is loaded as a program or library,
+// or open with sharing for delete, which is how nearly every reader opens it.
+// So what is still held after the programs of {app} were closed and ended is
+// moved out of the way, under another name beside it: the program that holds
+// it goes on with its old copy, Setup writes the new file under the name, and
+// the update is done. The old copies go once they are let go: at the end of
+// this Setup, at the next one, at the uninstall, and (installed for all users)
+// at the next restart of Windows. Only a file that can be neither opened nor
+// renamed (open with no sharing at all) still stops Setup, and then it is
+// named, with the program if Restart Manager knows it.
+
+const
+  AsideMark = '.wsold'; // "name.dll.wsold", "name.dll.wsold2": a file moved out of the way
+
+var
+  AsideFrom, AsideTo: TStringList; // what was moved in this Setup: its name, and where it is now
+
+function WsCreateFile(Name: String; Access, Share: DWORD; Security: Integer; Disposition, Flags: DWORD; Template: Integer): Integer;
+  external 'CreateFileW@kernel32.dll stdcall';
+function WsCloseHandle(Handle: Integer): BOOL;
+  external 'CloseHandle@kernel32.dll stdcall';
+
+// Open by someone in a way that keeps it from being replaced: it cannot be
+// opened for writing with nothing shared. (A file nobody has open can.)
+function FileHeld(Name: String): Boolean;
+var
+  Handle: Integer;
+begin
+  Handle := WsCreateFile(Name, $C0000000, 0, 0, 3, 0, 0); // GENERIC_READ | GENERIC_WRITE, OPEN_EXISTING
+  Result := Handle = -1;
+  if not Result then
+    WsCloseHandle(Handle);
+end;
+
+function IsAsideName(Name: String): Boolean;
+begin
+  Result := Pos(AsideMark, Lowercase(ExtractFileName(Name))) > 0;
+end;
+
+// The files of {app} that are held now (CollectFiles: programs, libraries,
+// fonts), without those moved aside before and Setup's own uninstaller.
+procedure HeldFiles(Held: TStringList);
+var
+  Files: TStringList;
+  I: Integer;
+begin
+  Held.Clear;
+  if not DirExists(ExpandConstant('{app}')) then
+    exit;
+  Files := TStringList.Create;
+  try
+    CollectFiles(ExpandConstant('{app}'), Files);
+    for I := 0 to Files.Count - 1 do
+      if not IsAsideName(Files[I]) and (Pos('unins', Lowercase(ExtractFileName(Files[I]))) <> 1) and FileHeld(Files[I]) then
+        Held.Add(Files[I]);
+  finally
+    Files.Free;
+  end;
+end;
+
+// Moves the held files out of the way. Left: those that could not be moved.
+procedure MoveHeldAside(Held, Left: TStringList);
+var
+  I, N: Integer;
+  Target: String;
+begin
+  Left.Clear;
+  if AsideFrom = nil then
+  begin
+    AsideFrom := TStringList.Create;
+    AsideTo := TStringList.Create;
+  end;
+  for I := 0 to Held.Count - 1 do
+  begin
+    Target := Held[I] + AsideMark;
+    N := 1;
+    // A name an earlier Setup used and whose file is still held: the next one.
+    while FileExists(Target) and not DeleteFile(Target) and (N < 50) do
+    begin
+      N := N + 1;
+      Target := Held[I] + AsideMark + IntToStr(N);
+    end;
+    if RenameFile(Held[I], Target) then
+    begin
+      Log('Held, moved out of the way: ' + Held[I] + ' -> ' + ExtractFileName(Target));
+      AsideFrom.Add(Held[I]);
+      AsideTo.Add(Target);
+    end
+    else
+    begin
+      Log('Held, and it cannot be moved: ' + Held[I]);
+      Left.Add(Held[I]);
+    end;
+  end;
+end;
+
+// Setup ends without the new files: what was moved goes back under its name
+// (where a new file is there already, the old copy stays aside and goes later).
+procedure PutAsideBack();
+var
+  I: Integer;
+begin
+  if AsideFrom = nil then
+    exit;
+  for I := AsideFrom.Count - 1 downto 0 do
+    if not FileExists(AsideFrom[I]) then
+      if RenameFile(AsideTo[I], AsideFrom[I]) then
+        Log('Put back: ' + AsideFrom[I])
+      else
+        Log('Could not be put back: ' + AsideFrom[I]);
+  AsideFrom.Clear;
+  AsideTo.Clear;
+end;
+
+// The old copies moved out of the way, by this Setup or an earlier one: gone
+// where they are let go by now; the rest at the next restart of Windows when
+// Setup may ask for that (installed for all users), else at the next Setup.
+procedure RemoveAsideFiles(Folder: String);
+var
+  Find: TFindRec;
+  Name: String;
+begin
+  if FindFirst(Folder + '\*', Find) then
+    try
+      repeat
+        if (Find.Name = '.') or (Find.Name = '..') then
+          continue;
+        Name := Folder + '\' + Find.Name;
+        if (Find.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+          RemoveAsideFiles(Name)
+        else if IsAsideName(Name) and not DeleteFile(Name) then
+        begin
+          Log('Still held, left for later: ' + Name);
+          if IsAdminInstallMode then
+            MoveFileEx(Name, 0, MOVEFILE_DELAY_UNTIL_REBOOT);
+        end;
+      until not FindNext(Find);
+    finally
+      FindClose(Find);
+    end;
+end;
+
+// Ends every program that runs from {app} (a plugin's helper, a tool of
+// Win顺's left behind): by its path, so never another copy's. After Win顺
+// itself was asked to quit. True when there were some.
+function EndProgramsOfApp(): Boolean;
+var
+  Found, Item: Variant;
+  Root, Path: String;
+  I, ResultCode: Integer;
+begin
+  Result := False;
+  if not WmiReady() then
+    exit;
+  Root := Lowercase(AddBackslash(ExpandConstant('{app}')));
+  try
+    Found := Wmi.ExecQuery('SELECT ProcessId, ExecutablePath FROM Win32_Process');
+    for I := 0 to Found.Count - 1 do
+    begin
+      Item := Found.ItemIndex(I);
+      Path := Lowercase(VarText(Item.ExecutablePath));
+      if (Path <> '') and (Pos(Root, Path) = 1) then
+      begin
+        Log('Still running from the program folder, ended: ' + Path);
+        Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /PID ' + IntToStr(Item.ProcessId), '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+        Result := True;
+      end;
+    end;
+  except
+    Log('WMI: ' + GetExceptionMessage);
+  end;
+end;
+
+function LinesOf(Names: TStringList): String;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 0 to Names.Count - 1 do
+    if I < 8 then
+      Result := Result + '· ' + ExtractFileName(Names[I]) + #13#10
+    else if I = 8 then
+      Result := Result + '· …' + #13#10;
+end;
+
 // What has Win顺's files open: a line ("· name") for each program, the AI
 // tool's name for a relay; '' when nothing does. When Restart Manager itself
 // fails (no session, no answer) it is logged and '' is returned too: Setup
@@ -1245,9 +1479,10 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  Tools, Holders: String;
-  Tries, ResultCode, Choice: Integer;
-  Since, Waited: DWORD;
+  Tools, Holders, Programs: String;
+  Tries, ResultCode: Integer;
+  Since, Waited, Allowed: DWORD;
+  Held, Left: TStringList;
 begin
   // AI tools using Win顺 are asked about before anything is closed (GitHub
   // #97). A silent Setup (an update run by a script) goes on, as before.
@@ -1263,80 +1498,90 @@ begin
   RemoveRunAsAdmin(HKCU);
   if IsAdminInstallMode then
     RemoveRunAsAdmin(HKLM64);
-  // Closed, then checked that nothing holds the files any more. Retry closes
-  // everything again (a relay started again meanwhile goes too). A program
-  // ended just now may take a moment to let go: looked at once more first. A
-  // silent Setup has nobody to ask: it waits a while, then stops, the old
-  // version left as it was.
-  Tries := 0;
-  repeat
-    // The installed copy if there is one; a portable copy is ended.
-    if not CloseWinShun(ExpandConstant('{app}\{#AppExe}')) then
-    begin
-      PutRelayBack();
-      StartIndexService(); // stopped by an earlier round of this loop
-      Result := CustomMessage('NotClosed');
-      exit;
-    end;
-    if IsAdminInstallMode then
-      StopIndexService(); // there is no service when installed for the user alone
-    Holders := FilesInUse();
-    Tries := Tries + 1;
-    if Holders = '' then
-      break;
-    // When silent, 90 s for Win顺's own programs: a WinShun.exe whose WebDAV
-    // read hung at exit is only let go when WebClient gives the request up
-    // (~61 s, see pitfalls.md). Another program gets 10 s, on the clock: one
-    // that never lets go (a plugin's process nothing can end, GitHub #300)
-    // had Setup go round 90 times, minutes with nothing said. What is waited
-    // for is on the page meanwhile, and in the log for Win顺 to tell
-    // ("Update blocked by", read by update::setupBlockedBy).
-    if Tries = 1 then
-      Since := GetTickCount();
-    Waited := GetTickCount() - Since;
-    if Tries < 2 then
-      Sleep(1000)
-    else if WizardSilent() and (((HoldersOwn) and (Waited < 90000)) or (Waited < 10000)) then
-    begin
-      if Tries = 2 then
-        Log('Update blocked by: ' + HoldersInLine(Holders));
-      WizardForm.PageDescriptionLabel.Caption := FmtMessage(CustomMessage('FilesWaiting'), [HoldersInLine(Holders)]);
-      WizardForm.PageDescriptionLabel.Update;
-      Sleep(1000);
-    end
-    else if WizardSilent() then
-    begin
-      Log('Update blocked by: ' + HoldersInLine(Holders));
-      break;
-    end
-    else
-    begin
-      // Restart Manager also lists readers that allow replacement, such as
-      // antivirus software (#97). This choice bypasses only that advisory
-      // list: Inno Setup still handles real write/sharing failures normally.
-      Choice := TaskDialogMsgBox(CustomMessage('FilesInUseTitle'),
-        FmtMessage(CustomMessage('FilesInUse'), [Holders]), mbInformation, MB_ABORTRETRYIGNORE, [
-        CustomMessage('FilesRetry'), CustomMessage('FilesTryInstall'), CustomMessage('FilesCancel')], 0);
-      if Choice = IDIGNORE then
+  // Closed, the programs still running from {app} ended, then looked at
+  // whether a file is still held (FileHeld: the files themselves are asked,
+  // not Restart Manager, whose list also has readers that let a file be
+  // replaced, security software for one, GitHub #97). A program ended just now
+  // takes a moment to let go: a few seconds are waited, on the clock, 90 for
+  // Win顺's own (a WinShun.exe whose WebDAV read hung at exit is only let go
+  // when WebClient gives the request up, ~61 s, see pitfalls.md), with what is
+  // waited for on the page. What is held after that is moved out of the way
+  // (MoveHeldAside) and the install goes on. Only a file that cannot be moved
+  // either stops it: asked about (Retry closes everything again), or, silent,
+  // given up with the old version as it was and the reason in the log for
+  // Win顺 to tell ("Update blocked by", read by update::setupBlockedBy).
+  Held := TStringList.Create;
+  Left := TStringList.Create;
+  try
+    RemoveAsideFiles(ExpandConstant('{app}')); // an earlier Setup's, let go by now
+    Tries := 0;
+    Since := GetTickCount();
+    repeat
+      // The installed copy if there is one; a portable copy is ended.
+      if not CloseWinShun(ExpandConstant('{app}\{#AppExe}')) then
       begin
-        Log('User chose to attempt installation despite Restart Manager file users: ' + Holders);
-        Holders := '';
+        PutAsideBack();
+        PutRelayBack();
+        StartIndexService(); // stopped by an earlier round of this loop
+        Result := CustomMessage('NotClosed');
+        exit;
+      end;
+      if IsAdminInstallMode then
+        StopIndexService(); // there is no service when installed for the user alone
+      if EndProgramsOfApp() then
+        Sleep(500); // for the files to be let go
+      HeldFiles(Held);
+      Tries := Tries + 1;
+      if Held.Count = 0 then
+        break;
+      Holders := HoldersInLine(FilesInUse()); // who, for the page, the log and the question; sets HoldersOwn
+      if HoldersOwn then
+        Allowed := 90000
+      else
+        Allowed := 4000;
+      Waited := GetTickCount() - Since;
+      if Waited < Allowed then
+      begin
+        if Holders <> '' then
+        begin
+          WizardForm.PageDescriptionLabel.Caption := FmtMessage(CustomMessage('FilesWaiting'), [Holders]);
+          WizardForm.PageDescriptionLabel.Update;
+        end;
+        Sleep(1000);
+        continue;
+      end;
+      MoveHeldAside(Held, Left);
+      if Left.Count = 0 then
+      begin
+        Log(Format('%d held file(s) moved out of the way (held by: %s); installing', [Held.Count, Holders]));
         break;
       end;
-      if Choice <> IDRETRY then
+      Log('Update blocked by: ' + Holders + ' (' + ExtractFileName(Left[0]) + ')');
+      if WizardSilent() then
         break;
+      if Holders <> '' then
+        Programs := FmtMessage(CustomMessage('FilesStuckBy'), [Holders])
+      else
+        Programs := '';
+      if SuppressibleMsgBox(FmtMessage(CustomMessage('FilesStuck'), [LinesOf(Left), Programs]), mbError, MB_RETRYCANCEL, IDCANCEL) <> IDRETRY then
+        break;
+      Since := GetTickCount(); // asked to try again: the wait from the start
+    until False;
+    if Left.Count > 0 then
+    begin
+      PutAsideBack();
+      PutRelayBack();
+      // Nothing was replaced: the old version goes on, with its service (first,
+      // for WinShun looks for it when it starts), back in the tray.
+      StartIndexService();
+      if ClosedWinShun and not WinShunRunning() then
+        ExecAsOriginalUser(ExpandConstant('{app}\{#AppExe}'), '--background', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+      Result := CustomMessage('FilesNotFreed');
+      exit;
     end;
-  until False;
-  if Holders <> '' then
-  begin
-    PutRelayBack();
-    // Nothing was replaced: the old version goes on, with its service (first,
-    // for WinShun looks for it when it starts), back in the tray.
-    StartIndexService();
-    if ClosedWinShun and not WinShunRunning() then
-      ExecAsOriginalUser(ExpandConstant('{app}\{#AppExe}'), '--background', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
-    Result := CustomMessage('FilesNotFreed');
-    exit;
+  finally
+    Held.Free;
+    Left.Free;
   end;
   // This copy's autostart task of old (GitHub #21): registered elevated by
   // the version before, and by whoever answered UAC then, which for a
@@ -1356,6 +1601,9 @@ begin
   // (cancelled, failed, rolled back); [Run] starts it otherwise.
   if not FilesInstalled then
     StartIndexService();
+  // What was moved out of the way for files that did not come after all.
+  if not FilesInstalled then
+    PutAsideBack();
   // Nothing put aside, nothing to do. Also the only case where {app} may not
   // be set yet (Cancel on the folder page of a first install, or a refusal in
   // InitializeSetup): expanding it then raises an internal error.
@@ -1495,6 +1743,7 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     CloseWinShun(ExpandConstant('{app}\{#AppExe}'));
+    RemoveAsideFiles(ExpandConstant('{app}')); // old copies an update moved out of the way
     // The index service: stopped and removed (while its file is still there).
     if IsAdminInstallMode then
       Exec(ExpandConstant('{app}\WinShunService.exe'), '--uninstall', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
