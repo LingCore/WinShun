@@ -1976,6 +1976,38 @@ private slots:
         QCOMPARE(rig.session.annotation()->pinKeyText(), QString());
     }
 
+    // With a button held the arrows are the pointer too (they did nothing
+    // there, while moving it before the press): the drag goes along.
+    void arrowsMoveThePointerWhileAButtonIsHeld()
+    {
+        Rig rig(1.5);
+        rig.begin();
+        rig.session.pointerMove(0, {100, 100});
+        QSignalSpy cursor(&rig.session, &CaptureSession::cursorMoveRequested);
+        rig.session.pointerPress(0, {100, 100}, Qt::LeftButton);
+        QVERIFY(rig.session.key(Qt::Key_Right, Qt::ShiftModifier)); // pressed
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(110, 100));
+        rig.session.pointerMove(0, cursor.last()[0].toPoint());
+        QCOMPARE(rig.session.selectionRect(), QRect(100, 100, 11, 1));
+        QVERIFY(rig.session.key(Qt::Key_Down, Qt::NoModifier)); // dragging
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(110, 101));
+        rig.session.pointerMove(0, cursor.last()[0].toPoint());
+        QCOMPARE(rig.session.selectionRect(), QRect(100, 100, 11, 2));
+        QVERIFY(rig.session.key(Qt::Key_Left, Qt::NoModifier));
+        QVERIFY(rig.session.key(Qt::Key_Up, Qt::NoModifier));
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(110, 100));
+        const int moves = cursor.count();
+        QVERIFY(rig.session.key(Qt::Key_Right, Qt::ControlModifier)); // not with Ctrl
+        QCOMPARE(cursor.count(), moves);
+        rig.session.pointerMove(0, {150, 140});
+        rig.session.pointerRelease(0, {150, 140}, Qt::LeftButton);
+        // Released: the arrows move the area again, the pointer stays.
+        const QRect selected = rig.session.selectionRect();
+        QVERIFY(rig.session.key(Qt::Key_Right, Qt::NoModifier));
+        QCOMPARE(rig.session.selectionRect(), selected.translated(1, 0));
+        QCOMPARE(cursor.count(), moves);
+    }
+
     void wasdMovesThePointerInEveryPhaseAndStaysOnScreen()
     {
         Rig rig(1.5);

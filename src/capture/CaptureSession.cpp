@@ -1080,9 +1080,10 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
         case Qt::Key_Right:
         case Qt::Key_Up:
         case Qt::Key_Down:
-            if (!busy && plain && m_selection.screen < 0)
-                nudgeSelection(key == Qt::Key_Left ? -1 : key == Qt::Key_Right ? 1 : 0,
-                    key == Qt::Key_Up ? -1 : key == Qt::Key_Down ? 1 : 0, false);
+            // The pointer as WASD, with a button held too (the drag goes along).
+            if (plain && (busy || m_selection.screen < 0))
+                movePointer((key == Qt::Key_Left ? -1 : key == Qt::Key_Right ? 1 : 0) * step,
+                    (key == Qt::Key_Up ? -1 : key == Qt::Key_Down ? 1 : 0) * step);
             return true;
         case Qt::Key_C:
             if (busy || !plain)
@@ -1228,10 +1229,17 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
     case Qt::Key_Right:
     case Qt::Key_Up:
     case Qt::Key_Down: {
-        if (busy)
-            return true;
         const int dx = key == Qt::Key_Left ? -1 : key == Qt::Key_Right ? 1 : 0;
         const int dy = key == Qt::Key_Up ? -1 : key == Qt::Key_Down ? 1 : 0;
+        if (busy) {
+            // A button is held (dragging the selection out, an edge, a stroke):
+            // nothing to nudge, so the arrows are the pointer as WASD is, a
+            // pixel or ten with Shift, and the drag goes along. They did
+            // nothing here, while moving the pointer before the press.
+            if (plain && !m_annot.editingText() && !m_annot.editingNumber())
+                movePointer(dx * (shift ? 10 : 1), dy * (shift ? 10 : 1));
+            return true;
+        }
         nudgeSelection(dx, dy, shift);
         return true;
     }
