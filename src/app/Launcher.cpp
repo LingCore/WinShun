@@ -544,7 +544,14 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
 
     m_contentDebounce.setSingleShot(true);
     m_contentDebounce.setInterval(300ms); // content search reads files: wait for a pause in typing
-    connect(&m_contentDebounce, &QTimer::timeout, this, &Launcher::startContentSearch);
+    connect(&m_contentDebounce, &QTimer::timeout, this, [this] {
+        // The pause waited for is no lateness: how long the rows take is
+        // counted from here (showRows' line in the log; it came with every
+        // search of 内容 otherwise).
+        if (m_replacePending && m_replaceClock.isValid())
+            m_replaceClock.restart();
+        startContentSearch();
+    });
 
     m_flashTimer.setSingleShot(true);
     m_flashTimer.setInterval(2s);

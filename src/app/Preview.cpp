@@ -4367,13 +4367,17 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
                 QTemporaryDir drawings; // of their own: the folder listed keeps its rows
                 check(drawings.isValid(), "could not create a folder for the drawings");
                 const auto showDrawn = [&](const QString& path, const char* grab) -> QSize {
-                    const QString before = filePreview.summary(); // what was there is a picture too, until this one is read
-                    filePreview.show({.path = QDir::toNativeSeparators(path), .name = QFileInfo(path).fileName()});
+                    // The launcher's selected row may take the preview back
+                    // once (the preview follows it): shown again then.
+                    const QString native = QDir::toNativeSeparators(path);
                     timeout.restart();
-                    while ((filePreview.kind() == FilePreview::Loading || !filePreview.isShowing(QDir::toNativeSeparators(path))
-                               || filePreview.summary() == before)
-                        && timeout.elapsed() < 15000)
+                    for (;;) {
+                        if (!filePreview.isShowing(native))
+                            filePreview.show({.path = native, .name = QFileInfo(path).fileName()});
                         pump(10);
+                        if ((filePreview.isShowing(native) && filePreview.kind() != FilePreview::Loading) || timeout.elapsed() >= 15000)
+                            break;
+                    }
                     pump(300);
                     if (filePreview.window())
                         check(saveGrab(filePreview.window(), output.filePath(QString::fromLatin1(grab))), "could not render a drawn preview");
@@ -5903,6 +5907,16 @@ bool checkClipboardSizing(QQuickWindow* window, Clipboard& clipboard, Placement&
         RECT rect {};
         ::GetWindowRect(hwnd, &rect);
         const QSize before = window->size();
+        // The pointer goes to the corner first: where the user left it, it
+        // may be on a row, and that row's hover preview would lie over the
+        // corner and take the press. Until the corner is the window's own.
+        const POINT corner {rect.right - 2, rect.bottom - 2};
+        ::SetCursorPos(corner.x, corner.y);
+        QElapsedTimer clear;
+        clear.start();
+        while (::GetAncestor(::WindowFromPoint(corner), GA_ROOT) != hwnd && clear.elapsed() < 3000)
+            pump(50);
+        check("corner_is_the_windows_own", ::GetAncestor(::WindowFromPoint(corner), GA_ROOT) == hwnd);
         std::jthread input([rect] {
             const auto button = [](DWORD flags) {
                 INPUT event {};
@@ -6952,7 +6966,10 @@ int runResults(const QStringList& args)
         return 3;
     }
     QTimer watchdog;
-    armWatchdog(watchdog, 90); // GitHub #116's readouts wait about 30 s for a server that never answers
+    // GitHub #116's readouts wait about 30 s for a server that never answers,
+    // and the file gallery's checks have grown past a minute and a half
+    // (cut short at 90 s, the clipboard's and the last rows' never ran).
+    armWatchdog(watchdog, 240);
     showOffScreen(window);
     settle(window);
     pump(500);
@@ -7124,7 +7141,12 @@ int runResults(const QStringList& args)
                         if (meta->isVisible() && (text->width() < 0 || text->x() + text->width() + 15 > meta->x()
                             || meta->x() + meta->width() > row->width()))
                             qWarning("preview: metadata overlaps text or leaves row %d", i);
-                        if (sizeVisible && dateVisible && size->y() + size->height() > date->y())
+                        // Two lines set on the name's and the folder's baselines (ResultRow):
+                        // their boxes may touch, their letters must not. A line's letters
+                        // stand on its baseline, no taller than its font.
+                        const auto baseline = [](QQuickItem* label) { return label->y() + label->property("baselineOffset").toReal(); };
+                        if (sizeVisible && dateVisible
+                            && baseline(date) - baseline(size) < date->property("font").value<QFont>().pixelSize())
                             qWarning("preview: size and date overlap in row %d", i);
                     }
                 }
