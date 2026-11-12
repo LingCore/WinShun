@@ -104,6 +104,11 @@ Exported exportArchive(Log& log, const QString& dataFolder, const QString& servi
     add(dataFolder, u"WinShun.log"_s, u"app/WinShun.log"_s);
     add(dataFolder, u"WinShun.old.log"_s, u"app/WinShun.old.log"_s);
     add(dataFolder, u"plugins.log"_s, u"app/plugins.log"_s, kMaxPluginLogBytes);
+    // The screenshot plugin's own journal (its process's: capture, capture-stall,
+    // idle-trim, long-capture): times, sizes and pointer facts, nothing captured.
+    const QString captureJournal = QDir(dataFolder).filePath(u"plugins/winshun.capture.data/diagnostics"_s);
+    add(captureJournal, u"events.jsonl"_s, u"capture/events.jsonl"_s);
+    add(captureJournal, u"events.1.jsonl"_s, u"capture/events.1.jsonl"_s);
     add(serviceFolder, u"service.log"_s, u"service/service.log"_s);
     add(serviceFolder, u"service.old.log"_s, u"service/service.old.log"_s);
     context[u"schema_version"_s] = 1;

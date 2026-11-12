@@ -607,12 +607,26 @@ void Capture::recordCapture(CaptureSession::Action action, const QRect& rect)
 {
     m_watchTimer.stop();
     QJsonArray dprs;
-    for (const Overlay& overlay : m_overlays)
+    QJsonArray refresh; // with the graphics card and how the overlays are presented: what a black flash or a broken pointer depends on
+    for (const Overlay& overlay : m_overlays) {
         dprs.append(overlay.model->dpr());
+        refresh.append(overlay.screen ? qRound(overlay.screen->refreshRate()) : 0);
+    }
+    QJsonArray cards;
+    DISPLAY_DEVICEW device {};
+    device.cb = sizeof device;
+    for (DWORD i = 0; ::EnumDisplayDevicesW(nullptr, i, &device, 0); ++i) {
+        const QString name = QString::fromWCharArray(device.DeviceString);
+        if ((device.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) && !cards.contains(name))
+            cards.append(name);
+    }
+    const bool software = QQuickWindow::graphicsApi() == QSGRendererInterface::Software;
     const QRect selected = !rect.isEmpty() ? rect : m_session.hasSelection() ? m_session.selectionRect() : QRect();
     QJsonObject details {{u"overlay_up_ms"_s, m_reported && m_upClock.isValid() ? m_clock.elapsed() - m_upClock.elapsed() : -1},
         {u"grab_ms"_s, m_grabMs}, {u"begun_ms"_s, m_beginMs}, {u"shown_ms"_s, m_showMs},
-        {u"page_faults"_s, m_reported ? m_upFaults : -1}, {u"monitors"_s, static_cast<int>(m_overlays.size())}, {u"dpr"_s, dprs},
+        {u"page_faults"_s, m_reported ? m_upFaults : -1}, {u"refresh_hz"_s, refresh}, {u"graphics"_s, cards},
+        {u"presented"_s, software ? u"software"_s : qEnvironmentVariableIsSet("WINSHUN_CAPTURE_FLIP") ? u"flip"_s : u"copy"_s},
+        {u"monitors"_s, static_cast<int>(m_overlays.size())}, {u"dpr"_s, dprs},
         {u"wgc"_s, m_wgcShots}, {u"hdr"_s, m_hdrShots}, {u"magnifier"_s, m_magnifierOn},
         {u"smart_prescan"_s, m_callbacks.smart.prescan && m_callbacks.smart.prescan()},
         {u"first_since_start"_s, g_firstCapture}, {u"seconds_since_start"_s, diag::secondsSinceProcessStart()},
