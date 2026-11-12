@@ -2119,6 +2119,78 @@ void SettingsEditor::moveFileType(int index, int delta)
     commit();
 }
 
+QVariantList SettingsEditor::quickFilters() const
+{
+    QVariantList filters;
+    for (const QuickFilter& f : m_settings.quickFilters)
+        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}, {u"problem"_s, Settings::quickFilterProblem(f.query)}});
+    return filters;
+}
+
+QString SettingsEditor::addQuickFilter(const QString& name, const QString& query)
+{
+    const QString named = name.simplified();
+    if (named.isEmpty())
+        return tr("给筛选起个名字");
+    if (std::ranges::any_of(m_settings.quickFilters, [&](const QuickFilter& f) { return f.name.compare(named, Qt::CaseInsensitive) == 0; }))
+        return tr("已有这个名字");
+    const QString text = query.trimmed();
+    if (const QString problem = Settings::quickFilterProblem(text); !problem.isEmpty())
+        return problem;
+    m_settings.quickFilters.append({named, text});
+    commit();
+    return {};
+}
+
+QString SettingsEditor::renameQuickFilter(int index, const QString& name)
+{
+    if (index < 0 || index >= m_settings.quickFilters.size())
+        return {};
+    const QString named = name.simplified();
+    if (named.isEmpty())
+        return tr("给筛选起个名字");
+    if (m_settings.quickFilters[index].name == named)
+        return {};
+    for (qsizetype i = 0; i < m_settings.quickFilters.size(); ++i) {
+        if (i != index && m_settings.quickFilters[i].name.compare(named, Qt::CaseInsensitive) == 0)
+            return tr("已有这个名字");
+    }
+    m_settings.quickFilters[index].name = named;
+    commit();
+    return {};
+}
+
+QString SettingsEditor::setQuickFilterQuery(int index, const QString& query)
+{
+    if (index < 0 || index >= m_settings.quickFilters.size())
+        return {};
+    const QString text = query.trimmed();
+    if (const QString problem = Settings::quickFilterProblem(text); !problem.isEmpty())
+        return problem;
+    if (m_settings.quickFilters[index].query != text) {
+        m_settings.quickFilters[index].query = text;
+        commit();
+    }
+    return {};
+}
+
+void SettingsEditor::removeQuickFilter(int index)
+{
+    if (index < 0 || index >= m_settings.quickFilters.size())
+        return;
+    m_settings.quickFilters.removeAt(index);
+    commit();
+}
+
+void SettingsEditor::moveQuickFilter(int index, int delta)
+{
+    const qsizetype to = index + delta;
+    if (index < 0 || index >= m_settings.quickFilters.size() || to < 0 || to >= m_settings.quickFilters.size())
+        return;
+    m_settings.quickFilters.move(index, to);
+    commit();
+}
+
 void SettingsEditor::resetFileTypes()
 {
     m_settings.fileTypes = Settings::defaultFileTypes();

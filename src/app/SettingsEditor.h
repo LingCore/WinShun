@@ -272,6 +272,7 @@ class SettingsEditor : public QObject {
     // The kinds of file 文件 narrows to: [{name, extensions: [..]}], named
     // in the language shown; fileTypesDefault while they are as they came.
     Q_PROPERTY(QVariantList fileTypes READ fileTypes NOTIFY changed FINAL)
+    Q_PROPERTY(QVariantList quickFilters READ quickFilters NOTIFY changed FINAL)
     Q_PROPERTY(bool fileTypesDefault READ fileTypesDefault NOTIFY changed FINAL)
     Q_PROPERTY(QString folderKeyword READ folderKeyword NOTIFY changed FINAL)
     // Counts the sites' icons that arrived: a binding on webIconUrl() reads it
@@ -808,6 +809,14 @@ public:
     Q_INVOKABLE void removeFileType(int index);
     Q_INVOKABLE void moveFileType(int index, int delta); // up (-1) or down (1) the strip
     Q_INVOKABLE void resetFileTypes();
+    // The search panel's quick filters: [{name, query}]. Each returns what
+    // is wrong ("已有这个名字", a query that cannot be read), empty when done.
+    QVariantList quickFilters() const;
+    Q_INVOKABLE QString addQuickFilter(const QString& name, const QString& query);
+    Q_INVOKABLE QString renameQuickFilter(int index, const QString& name);
+    Q_INVOKABLE QString setQuickFilterQuery(int index, const QString& query);
+    Q_INVOKABLE void removeQuickFilter(int index);
+    Q_INVOKABLE void moveQuickFilter(int index, int delta); // up (-1) or down (1) the chips
 
     QVariantList shares() const;
     QVariantList knownShares() const;

@@ -56,6 +56,16 @@ struct FileType {
 };
 using FileTypes = QList<FileType>;
 
+// A query saved under a name, to narrow any search with at a click (the
+// panel's 快捷筛选, as Everything's filters): "!$RECYCLE.BIN\" as 排除回收站.
+// Several on at once all apply. Its user's to name and change.
+struct QuickFilter {
+    QString name;
+    QString query; // as typed in the search box (parseQuery; never regex mode)
+    bool operator==(const QuickFilter&) const = default;
+};
+using QuickFilters = QList<QuickFilter>;
+
 // What kind of installed app a result is (see AppCatalog), or of place in
 // Windows (SystemCatalog), or None for a file or folder.
 enum class AppKind : quint8 {

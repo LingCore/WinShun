@@ -485,6 +485,7 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     m_columns.load(Settings::filePath());
     m_queryHistory.load();
     m_panelSidebarVisible = QSettings(Settings::filePath(), QSettings::IniFormat).value(u"Panel/SidebarVisible"_s, true).toBool();
+    m_panelFiltersOnTop = QSettings(Settings::filePath(), QSettings::IniFormat).value(u"Panel/FiltersOnTop"_s, false).toBool();
     m_contentPane = std::make_unique<ContentPane>(index);
     const auto syncPane = [this] { syncContentPane(); };
     connect(this, &Launcher::currentRowChanged, this, syncPane);
@@ -1786,6 +1787,7 @@ void Launcher::startOver()
         m_sizeMin.clear();
         m_sizeMax.clear();
         m_folderFilter.clear();
+        m_quickFiltersOn.clear();
         emit filtersChanged();
     }
     if (m_scope != All) {
@@ -2101,6 +2103,7 @@ void Launcher::search(bool more)
         request.filter = panelFilter();
         if (!m_folderFilter.isEmpty())
             request.folders = {m_folderFilter};
+        request.conditions = quickConditions();
         request.browse = true;
     }
     if (m_panel || m_filePrefix || !text.isEmpty())
@@ -2353,6 +2356,7 @@ SearchEngine::Request Launcher::contentRequest() const
         request.filter = panelFilter();
         if (!m_folderFilter.isEmpty())
             request.contentFolders = {m_folderFilter};
+        request.conditions = quickConditions();
     }
     if (m_scope == Content) {
         // Asked for: system and program folders too if so set, and many
@@ -2787,6 +2791,15 @@ void Launcher::setPanelSidebarVisible(bool visible)
     emit panelSidebarVisibleChanged();
 }
 
+void Launcher::setPanelFiltersOnTop(bool top)
+{
+    if (m_panelFiltersOnTop == top)
+        return;
+    m_panelFiltersOnTop = top;
+    QSettings(Settings::filePath(), QSettings::IniFormat).setValue(u"Panel/FiltersOnTop"_s, top);
+    emit panelFiltersOnTopChanged();
+}
+
 void Launcher::setPinned(bool on)
 {
     if (on == m_pinned)
@@ -2801,7 +2814,61 @@ void Launcher::setPinned(bool on)
 
 bool Launcher::filtersActive() const
 {
-    return m_dateChoice != 0 || m_sizeChoice != 0 || !m_folderFilter.isEmpty();
+    return m_dateChoice != 0 || m_sizeChoice != 0 || !m_folderFilter.isEmpty() || !m_quickFiltersOn.isEmpty();
+}
+
+QVariantList Launcher::quickFilters() const
+{
+    QVariantList filters;
+    for (const QuickFilter& f : m_quickFilters)
+        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}});
+    return filters;
+}
+
+QStringList Launcher::quickConditions() const
+{
+    QStringList conditions;
+    for (const QuickFilter& f : m_quickFilters) {
+        if (m_quickFiltersOn.contains(f.name))
+            conditions.append(f.query);
+    }
+    return conditions;
+}
+
+void Launcher::setQuickFilters(const QuickFilters& filters)
+{
+    if (filters == m_quickFilters)
+        return;
+    const QStringList before = quickConditions();
+    m_quickFilters = filters;
+    // Renamed or removed: off, as nothing shows it any more.
+    m_quickFiltersOn.removeIf([&](const QString& name) {
+        return std::ranges::none_of(filters, [&](const QuickFilter& f) { return f.name == name; });
+    });
+    emit quickFiltersChanged();
+    emit filtersChanged();
+    if (m_panel && quickConditions() != before && m_window && m_window->isVisible())
+        search(); // one that is on was edited: its rows, in place
+}
+
+void Launcher::toggleQuickFilter(int index)
+{
+    if (index < 0 || index >= m_quickFilters.size())
+        return;
+    const QString name = m_quickFilters[index].name;
+    if (!m_quickFiltersOn.removeOne(name))
+        m_quickFiltersOn.append(name);
+    emit filtersChanged();
+    if (m_panel)
+        search();
+}
+
+void Launcher::editQuickFilters()
+{
+    // What is typed as the new one's query ("!node_modules\ ext:js"), as
+    // Everything's "Add to filters": names only, and only what can be one.
+    const QString typed = m_scope == Content || regexTerms() ? QString() : searchText().trimmed();
+    emit quickFilterSettingsRequested(Settings::quickFilterProblem(typed).isEmpty() ? typed : QString());
 }
 
 QVariantList Launcher::favoriteFolders() const
@@ -2915,6 +2982,8 @@ QString Launcher::panelKey() const
     if (filtersActive()) {
         key += u"f:%1,%2,%3,%4,%5,%6,%7;"_s.arg(m_dateChoice).arg(m_dateFrom, m_dateTo).arg(m_sizeChoice).arg(m_sizeMin, m_sizeMax, m_folderFilter);
     }
+    if (const QStringList conditions = quickConditions(); !conditions.isEmpty())
+        key += u"q:"_s + conditions.join(QChar(0x1f)) + u';';
     if (m_panelSort.key != SortKey::Rank)
         key += u"o:%1,%2;"_s.arg(static_cast<int>(m_panelSort.key)).arg(m_panelSort.descending ? 1 : 0);
     if (searchText().isEmpty())
@@ -3058,6 +3127,7 @@ void Launcher::clearFilters()
     m_sizeMin.clear();
     m_sizeMax.clear();
     m_folderFilter.clear();
+    m_quickFiltersOn.clear();
     emit filtersChanged();
     if (m_panel)
         search();
@@ -6162,7 +6232,17 @@ void Launcher::onPluginResults(std::uint64_t queryId, const QString& pluginId, c
     }
     if (m_panel) {
         const EntryFilter filter = panelFilter();
+        // The quick filters, for a row that opens a file: by its path, as a
+        // file's own row. The rest (a note, a web page) are in no folder.
+        ws::ParsedQuery gate;
+        gate.conditions = ws::parseConditions(quickConditions());
+        const ws::NameMatcher quick(gate);
         filtered.removeIf([&](const plugin::Item& item) {
+            if (!gate.conditions.empty() && item.open.kind == plugin::Open::Kind::Path
+                && quick.matchPath(QDir::toNativeSeparators(item.open.target), false, item.modified,
+                       item.size >= 0 ? packSize(static_cast<std::uint64_t>(item.size)) : kUnknownSize)
+                    < 0)
+                return true;
             if (item.modified != 0 && filter.byTime()) {
                 EntryFilter time = filter;
                 time.minSize = 0;

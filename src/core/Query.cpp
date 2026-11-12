@@ -833,6 +833,17 @@ std::vector<ParsedQuery> homophoneQueries(const ParsedQuery& query)
     return queries;
 }
 
+std::vector<ParsedQuery> parseConditions(const QStringList& texts)
+{
+    std::vector<ParsedQuery> conditions;
+    for (const QString& text : texts) {
+        ParsedQuery condition = parseQuery(text);
+        if (condition.error.isEmpty() && !condition.isEmpty())
+            conditions.push_back(std::move(condition));
+    }
+    return conditions;
+}
+
 NameMatcher::NameMatcher(const ParsedQuery& query)
     : m_extensions(query.extensions)
     , m_excluded(query.excludedExtensions)
@@ -842,6 +853,8 @@ NameMatcher::NameMatcher(const ParsedQuery& query)
     m_filter = query.filter;
     for (const ParsedQuery& branch : query.alternatives)
         m_alternatives.emplace_back(branch);
+    for (const ParsedQuery& condition : query.conditions)
+        m_conditions.emplace_back(condition);
     for (const std::string& e : m_excluded)
         m_excludedLongest = std::max(m_excludedLongest, e.size());
     for (const auto& t : query.terms) {
@@ -1089,6 +1102,13 @@ int NameMatcher::match(const FileIndex& index, const Entry& entry, Folders& fold
 {
     if (m_invalid)
         return -1;
+    if (!m_conditions.empty()) {
+        folders.m_conditions.resize(m_conditions.size());
+        for (std::size_t i = 0; i < m_conditions.size(); ++i) {
+            if (m_conditions[i].match(index, entry, folders.m_conditions[i], id) < 0)
+                return -1;
+        }
+    }
     if (!m_alternatives.empty()) {
         folders.m_alternatives.resize(m_alternatives.size());
         int best = -1;
@@ -1182,6 +1202,8 @@ int NameMatcher::matchPath(const QString& fullPath, bool isDir, FileTime modifie
 {
     if (m_invalid)
         return -1;
+    if (std::ranges::any_of(m_conditions, [&](const NameMatcher& m) { return m.matchPath(fullPath, isDir, modified, size) < 0; }))
+        return -1;
     if (!m_alternatives.empty()) {
         int best = -1;
         for (const NameMatcher& m : m_alternatives)
@@ -1246,6 +1268,10 @@ bool NameMatcher::isExactName(QStringView name, bool isDir) const
 int NameMatcher::matchName(std::string_view name) const
 {
     if (m_invalid)
+        return -1;
+    // As if typed: an app or a place is in no folder and has no size, so
+    // "!$RECYCLE.BIN\" leaves it be, and ext: or size: leaves it out.
+    if (std::ranges::any_of(m_conditions, [&](const NameMatcher& m) { return m.matchName(name) < 0; }))
         return -1;
     if (!m_alternatives.empty()) {
         int best = -1;

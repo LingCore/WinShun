@@ -420,6 +420,36 @@ Item {
                     }
                 }
 
+                // The quick filters: queries saved under a name (Settings'
+                // [QuickFilters]), any number on at once, and all of them
+                // apply. The + is always there: with none yet it says what
+                // the group is for.
+                GroupTitle { text: panel.launcher.quickFilters.length > 0 ? qsTr("快捷筛选（可多选）") : qsTr("快捷筛选") }
+                Chips {
+                    objectName: "panelQuickFilters"
+                    Repeater {
+                        model: panel.launcher.quickFilters
+
+                        delegate: Chip {
+                            required property int index
+                            required property var modelData
+                            objectName: "panelQuickFilter_" + index
+                            multi: true
+                            text: modelData.name
+                            tip: modelData.query
+                            active: panel.launcher.activeQuickFilters.includes(modelData.name)
+                            onClicked: panel.launcher.toggleQuickFilter(index)
+                        }
+                    }
+                    Chip {
+                        objectName: "panelQuickFilterAdd"
+                        text: panel.launcher.quickFilters.length > 0 ? "+" : qsTr("+ 新建")
+                        tip: qsTr("把常用的搜索条件存起来，点一下就套用，例如 %1 排除回收站").arg("!$RECYCLE.BIN\\")
+                        Accessible.name: qsTr("新建快捷筛选")
+                        onClicked: panel.launcher.editQuickFilters()
+                    }
+                }
+
                 GroupTitle { text: qsTr("修改时间") }
                 Chips {
                     Repeater {

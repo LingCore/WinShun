@@ -2449,6 +2449,37 @@ int runSettings(const QStringList& args)
             }
         }
         bool saved = saveGrab(window, out.filePath(u"file-types-top.png"_s));
+        // The quick filters, below the types on the same tab.
+        check(editor->quickFilters().isEmpty(), "quick filters: some before any was added");
+        check(!editor->addQuickFilter(u" "_s, u"ext:pdf"_s).isEmpty(), "quick filters: one with no name was accepted");
+        check(!editor->addQuickFilter(u"坏的"_s, u"regex:("_s).isEmpty(), "quick filters: an unreadable query was accepted");
+        check(!editor->addQuickFilter(u"空的"_s, u"  "_s).isEmpty(), "quick filters: an empty query was accepted");
+        check(editor->addQuickFilter(u" 排除回收站 "_s, u" !$RECYCLE.BIN\\ "_s).isEmpty(), "quick filters: a good one was rejected");
+        check(!editor->addQuickFilter(u"排除回收站"_s, u"ext:pdf"_s).isEmpty(), "quick filters: a name was accepted twice");
+        check(editor->addQuickFilter(u"大 PDF"_s, u"ext:pdf size:>10mb"_s).isEmpty(), "quick filters: a second one was rejected");
+        check(editor->quickFilters().value(0).toMap().value(u"query"_s).toString() == u"!$RECYCLE.BIN\\", "quick filters: the query was not trimmed");
+        check(!editor->renameQuickFilter(1, u"排除回收站"_s).isEmpty(), "quick filters: renamed to a name taken");
+        check(!editor->setQuickFilterQuery(1, u"regex:("_s).isEmpty(), "quick filters: an unreadable query replaced a good one");
+        check(editor->quickFilters().value(1).toMap().value(u"query"_s).toString() == u"ext:pdf size:>10mb", "quick filters: a rejected query was kept");
+        editor->moveQuickFilter(1, -1);
+        check(editor->quickFilters().value(0).toMap().value(u"name"_s).toString() == u"大 PDF", "quick filters: moving one up did nothing");
+        QMetaObject::invokeMethod(window, "showQuickFiltersPage", Q_ARG(QVariant, QVariant(u"!node_modules\\"_s)));
+        settle(window, 3);
+        auto* draft = visualNamed(window->contentItem(), u"quickFilterNewQuery"_s);
+        check(draft && draft->isVisible() && draft->property("text").toString() == u"!node_modules\\", "quick filters: the draft is not in the new row");
+        auto* newName = visualNamed(window->contentItem(), u"quickFilterNewName"_s);
+        check(newName && newName->property("inputFocused").toBool(), "quick filters: the name box did not take the keyboard");
+        for (int i = 0; i < 2; ++i) {
+            auto* row = visualNamed(window->contentItem(), u"quickFilterRow_%1"_s.arg(i));
+            check(row && row->isVisible(), "quick filters: a row is missing");
+            if (row && row->parentItem()) {
+                check(row->x() + row->width() <= row->parentItem()->width() + 0.5, "quick filters: a row is wider than its card");
+            }
+        }
+        saved = saveGrab(window, out.filePath(u"quick-filters.png"_s)) && saved;
+        editor->removeQuickFilter(0);
+        editor->removeQuickFilter(0);
+        check(editor->quickFilters().isEmpty(), "quick filters: removing them left some");
         flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble() - flick->property("height").toDouble()));
         settle(window, 3);
         saved = saveGrab(window, out.filePath(u"file-types-bottom.png"_s)) && saved;

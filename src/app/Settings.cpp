@@ -316,6 +316,38 @@ void writeFileTypes(QSettings& s, const FileTypes& types)
     s.endArray();
 }
 
+void writeQuickFilters(QSettings& s, const QuickFilters& filters)
+{
+    s.remove(u"QuickFilters"_s); // no entries left over from a longer list
+    if (filters.isEmpty())
+        return;
+    s.beginWriteArray(u"QuickFilters"_s, static_cast<int>(filters.size()));
+    for (int i = 0; i < filters.size(); ++i) {
+        s.setArrayIndex(i);
+        s.setValue(u"Name"_s, filters[i].name);
+        s.setValue(u"Query"_s, filters[i].query);
+    }
+    s.endArray();
+}
+
+// Edited by hand perhaps: one with no name or no query left out, and a name
+// a second time (any case). A query that cannot be read stays, to be put
+// right in the settings; the search passes it over.
+QuickFilters readQuickFilters(QSettings& s)
+{
+    QuickFilters filters;
+    const int size = s.beginReadArray(u"QuickFilters"_s);
+    for (int i = 0; i < size; ++i) {
+        s.setArrayIndex(i);
+        const QuickFilter filter {s.value(u"Name"_s).toString().simplified(), s.value(u"Query"_s).toString().trimmed()};
+        const bool named = std::ranges::any_of(filters, [&](const QuickFilter& f) { return f.name.compare(filter.name, Qt::CaseInsensitive) == 0; });
+        if (!filter.name.isEmpty() && !filter.query.isEmpty() && !named)
+            filters.append(filter);
+    }
+    s.endArray();
+    return filters;
+}
+
 // Edited by hand perhaps: extensions tidied (".JPG," is jpg), one with no
 // name to show or no extension left out.
 FileTypes readFileTypes(QSettings& s, const FileTypes& fallback)
@@ -646,6 +678,16 @@ QString Settings::resolveLanguage(const QString& language)
         return language;
     // The language Windows itself is shown in (core/ExplorerLanguage.h).
     return explorerlang::windowsIsChinese() ? u"zh"_s : u"en"_s;
+}
+
+QString Settings::quickFilterProblem(const QString& query)
+{
+    const ParsedQuery parsed = parseQuery(query);
+    if (!parsed.error.isEmpty())
+        return parsed.error;
+    if (parsed.isEmpty())
+        return QCoreApplication::translate("ws::Settings", "请填写筛选条件，例如 !$RECYCLE.BIN\\ 或 ext:pdf size:>1mb");
+    return {};
 }
 
 FileTypes Settings::defaultFileTypes()
@@ -1138,6 +1180,7 @@ void Settings::load()
             typeKeywords.insert(type.keyword);
     }
 
+    quickFilters = readQuickFilters(s);
     shares = readShares(s);
     networkVerifyHours = std::clamp(readOrDefault(s, u"Network/VerifyHours"_s, d.networkVerifyHours), 0, 24 * 7);
     networkVerifyHoursUnwatched
@@ -1385,6 +1428,7 @@ bool Settings::saveChecked() const
     s.setValue(u"PasteFile/CtrlV"_s, pasteFileCtrlV);
     s.setValue(u"PasteFile/Menu"_s, pasteFileMenu);
     writeFileTypes(s, fileTypes);
+    writeQuickFilters(s, quickFilters);
     writeShares(s, shares);
     s.setValue(u"Network/VerifyHours"_s, networkVerifyHours);
     s.setValue(u"Network/VerifyHoursUnwatched"_s, networkVerifyHoursUnwatched);

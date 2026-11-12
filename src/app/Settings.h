@@ -263,6 +263,12 @@ struct Settings {
     // search box (图片: jpg, png…), in its user's order. Written as an
     // array: size=, 1\Id=, 1\Name=, 1\Extensions=; a built-in one keeps
     // its Id and no Name until renamed, so it shows in either language.
+    // [QuickFilters]: queries saved under a name, switched on in the search
+    // panel's side bar to narrow whatever is typed (QuickFilter). An array:
+    // size=, 1\Name=, 1\Query=. None at first.
+    QuickFilters quickFilters;
+    // What is wrong with one's query, to say to its user; empty when it can be saved.
+    static QString quickFilterProblem(const QString& query);
     FileTypes fileTypes;
     static FileTypes defaultFileTypes();
     FileTypes namedFileTypes() const; // each with its name, a built-in one's in the language shown

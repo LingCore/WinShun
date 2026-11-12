@@ -200,6 +200,8 @@ class Launcher : public QObject {
     // here; togglePanel() asks it to.
     Q_PROPERTY(bool panel READ panel NOTIFY panelChanged FINAL)
     Q_PROPERTY(bool panelSidebarVisible READ panelSidebarVisible WRITE setPanelSidebarVisible NOTIFY panelSidebarVisibleChanged FINAL)
+    // The panel's filters as a strip over the rows, not the list down the left (Panel/FiltersOnTop).
+    Q_PROPERTY(bool panelFiltersOnTop READ panelFiltersOnTop WRITE setPanelFiltersOnTop NOTIFY panelFiltersOnTopChanged FINAL)
     // Pinned (Ctrl+T, the pin at the box's corner; linux.do #157): it stays
     // up when it loses the focus or a result is opened, until Esc (or double
     // Ctrl while it is in front) hides it. Kept while hidden, until turned
@@ -225,6 +227,15 @@ class Launcher : public QObject {
     Q_PROPERTY(QString sizeMax READ sizeMax NOTIFY filtersChanged FINAL)
     Q_PROPERTY(QString folderFilter READ folderFilter NOTIFY filtersChanged FINAL)
     Q_PROPERTY(bool filtersActive READ filtersActive NOTIFY filtersChanged FINAL)
+    // The quick filters (Settings' [QuickFilters]: a query saved under a
+    // name, as Everything's filters), a chip each in the side bar:
+    // [{name, query}], and the names of those on (activeQuickFilters: apart,
+    // so that a click leaves the chips as they are). Those on narrow whatever is typed, names and the
+    // files a content search reads, every one of them (never one or
+    // another); with the other filters they count as active and are
+    // cleared (clearFilters, and as the launcher is put away).
+    Q_PROPERTY(QVariantList quickFilters READ quickFilters NOTIFY quickFiltersChanged FINAL)
+    Q_PROPERTY(QStringList activeQuickFilters READ activeQuickFilters NOTIFY filtersChanged FINAL)
     // The favorite folders (Favorites), for 位置: [{name, path}].
     Q_PROPERTY(QVariantList favoriteFolders READ favoriteFolders NOTIFY favoritesChanged FINAL)
     // The panel's order: a column (ws::SortKey: 0 as ranked, 1 name, 2 path,
@@ -709,6 +720,8 @@ public:
     bool panel() const { return m_panel; }
     bool panelSidebarVisible() const { return m_panelSidebarVisible; }
     void setPanelSidebarVisible(bool visible);
+    bool panelFiltersOnTop() const { return m_panelFiltersOnTop; }
+    void setPanelFiltersOnTop(bool top);
     PanelColumns* panelColumns() { return &m_columns; }
     void setPanel(bool on); // by the app, the window sized for it (App::setPanel)
     Q_INVOKABLE void togglePanel(); // panelToggleRequested: the app does it
@@ -738,6 +751,13 @@ public:
     Q_INVOKABLE void setFolderFilter(const QString& path);
     Q_INVOKABLE void pickFolderFilter(); // the folder dialog
     Q_INVOKABLE void clearFilters();
+    QVariantList quickFilters() const;
+    QStringList activeQuickFilters() const { return m_quickFiltersOn; }
+    void setQuickFilters(const QuickFilters& filters); // one that is on stays on by its name
+    Q_INVOKABLE void toggleQuickFilter(int index);
+    // The chips' +: the settings at the quick filters, what is typed there
+    // already as a new one's query when it can be one (quickFilterSettingsRequested).
+    Q_INVOKABLE void editQuickFilters();
     int panelSortKey() const { return static_cast<int>(m_panelSort.key); }
     bool panelSortDescending() const { return m_panelSort.descending; }
     // A column's header clicked: by it (name and path up, size and time
@@ -772,6 +792,8 @@ signals:
     void galleryChanged();
     void queryErrorChanged();
     void fileTypesChanged();
+    void quickFiltersChanged();
+    void quickFilterSettingsRequested(const QString& draft); // ... at the quick filters, `draft` as a new one's query
     void fileChoiceChanged();
     void favoriteSettingsRequested(const QString& path); // ... on its 收藏夹 page, at this favorite
     void favoritesChanged();
@@ -808,6 +830,7 @@ signals:
     void folderSearchChanged();
     void panelChanged();
     void panelSidebarVisibleChanged();
+    void panelFiltersOnTopChanged();
     void panelToggleRequested();
     void pinnedChanged();
     void settingsRequested();
@@ -899,6 +922,7 @@ private:
     // and what of the panel the rows are for (as m_shownText is): the
     // filters, the order, and whether nothing typed lists everything.
     EntryFilter panelFilter() const;
+    QStringList quickConditions() const; // the queries of the quick filters that are on
     QJsonObject pluginFilters() const;
     void sortShownPanel(const QString& currentPath = {});
     QString panelKey() const;
@@ -1203,6 +1227,7 @@ private:
     // The search panel (see the properties).
     bool m_panel = false;
     bool m_panelSidebarVisible = true;
+    bool m_panelFiltersOnTop = false;
     PanelColumns m_columns;
     bool m_pinned = false;
     int m_dateChoice = 0;
@@ -1212,6 +1237,8 @@ private:
     QString m_sizeMin;
     QString m_sizeMax;
     QString m_folderFilter;
+    QuickFilters m_quickFilters;
+    QStringList m_quickFiltersOn; // their names
     SortOrder m_panelSort;
 
     bool m_recordHistory = true;

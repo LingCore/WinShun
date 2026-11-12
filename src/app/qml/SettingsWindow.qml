@@ -58,7 +58,7 @@ Window {
         [qsTr("快捷键", "settings tab"), qsTr("任务栏"), qsTr("对话框"), qsTr("启动与历史"), qsTr("按键一览")],
         [],
         [qsTr("文件夹"), qsTr("名称和类型"), qsTr("磁盘"), qsTr("网络与 WSL")],
-        [qsTr("排序"), qsTr("显示与预览"), qsTr("操作习惯"), qsTr("文件类型")],
+        [qsTr("排序"), qsTr("显示与预览"), qsTr("操作习惯"), qsTr("类型与筛选")],
         window.editor.contentSearch ? [qsTr("常规"), qsTr("大小上限")] : [], // 大小上限: nothing while off
         [],
         [qsTr("记录"), qsTr("快捷键", "settings tab"), qsTr("保留")],
@@ -662,6 +662,12 @@ Window {
     function showClipboardPage() { showPage(clipboardPage) } // App::showClipboardSettings
     function showWebPage() { showPluginPage("winshun.web") } // App::showWebSettings
     function showShortcutsPage() { showPage(0, 4) } // App::showShortcutSettings: the shortcut panels' last row
+    // App::showQuickFilterSettings: the + of the search panel's quick filters, what was typed there as a new one's query
+    function showQuickFiltersPage(draft) {
+        const section = part(3, "quickFiltersSection")
+        section.draft(draft)
+        goTo(section.filtersRow)
+    }
     function showFileTypesPage() { goTo(part(3, "fileTypesSection").typesRow) } // App::showFileTypeSettings: the launcher strip's +
     // Win顺 restarted from here (App::restart, --settings-at): back where it
     // was, "page,tab"; after 索引方式 changed the rights it runs with, that row.
@@ -3939,11 +3945,12 @@ Window {
                 index: 3
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ fileTypesSection: fileTypesSection })
+                    parts: ({ fileTypesSection: fileTypesSection, quickFiltersSection: quickFiltersSection })
                     recordingHotkey: previewHotkeyRecorder.recording
                     onResetForReopen: {
                         previewHotkeyRecorder.stop()
                         fileTypesSection.resetForReopen()
+                        quickFiltersSection.resetForReopen()
                     }
             // <page 3>
             SettingsSection {
@@ -4444,6 +4451,14 @@ Window {
 
             FileTypesSection {
                 id: fileTypesSection
+                page: 3
+                tab: 3
+                width: parent.width
+                editor: window.editor
+            }
+
+            QuickFiltersSection {
+                id: quickFiltersSection
                 page: 3
                 tab: 3
                 width: parent.width

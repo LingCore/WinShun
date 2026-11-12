@@ -968,6 +968,43 @@ private slots:
         QVERIFY(loaded.showModifiedTime);
     }
 
+    // [QuickFilters]: saved as written; a file edited by hand is tidied.
+    void quickFilterSettings()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        QVERIFY(settings.quickFilters.isEmpty());
+        settings.quickFilters = {{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s}, {u"大 PDF"_s, u"ext:pdf size:>10mb"_s}};
+        settings.save();
+        ws::Settings loaded;
+        loaded.load();
+        QCOMPARE(loaded.quickFilters, settings.quickFilters);
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"QuickFilters/size"_s, 6);
+            ini.setValue(u"QuickFilters/3/Name"_s, u"  大   pdf "_s); // the second's name again, any case
+            ini.setValue(u"QuickFilters/3/Query"_s, u"ext:pdf"_s);
+            ini.setValue(u"QuickFilters/4/Name"_s, u"没有条件"_s);
+            ini.setValue(u"QuickFilters/5/Query"_s, u"!tmp\\"_s); // no name
+            ini.setValue(u"QuickFilters/6/Name"_s, u"坏的"_s);
+            ini.setValue(u"QuickFilters/6/Query"_s, u" regex:( "_s);
+        }
+        loaded.load();
+        QCOMPARE(loaded.quickFilters.size(), 3);
+        QCOMPARE(loaded.quickFilters[2], (ws::QuickFilter {u"坏的"_s, u"regex:("_s})); // kept, to be put right
+        QVERIFY(!ws::Settings::quickFilterProblem(u"regex:("_s).isEmpty());
+        QVERIFY(!ws::Settings::quickFilterProblem(u"  "_s).isEmpty());
+        QVERIFY(ws::Settings::quickFilterProblem(u"!$RECYCLE.BIN\\"_s).isEmpty());
+        QVERIFY(ws::Settings::quickFilterProblem(u"ext:pdf size:>10mb"_s).isEmpty());
+        // None left: the group goes from the file.
+        loaded.quickFilters.clear();
+        loaded.save();
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        QVERIFY(!ini.childGroups().contains(u"QuickFilters"_s));
+    }
+
     void fileTypeFolderSettings()
     {
         QTemporaryDir profile;

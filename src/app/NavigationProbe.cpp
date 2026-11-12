@@ -263,6 +263,144 @@ void panelSidebar(QQmlEngine* engine, const QDir& output, Checks& check)
     window->hide();
 }
 
+// The panel's quick filters: the chips, a real click on one, the rows it
+// leaves, several at once, 清除全部, and the + with what is typed.
+void panelQuickFilters(QQmlEngine* engine, const QDir& output, Checks& check)
+{
+    QTemporaryDir profile;
+    IndexService index(profile.filePath(u"index"_s), {});
+    {
+        const auto files = index.index();
+        const auto lock = files->writeLock();
+        const EntryId drive = files->addRoot("Q:");
+        const EntryId work = files->add(drive, "work", EntryFlag::Directory);
+        const EntryId bin = files->add(drive, "$RECYCLE.BIN", EntryFlag::Directory);
+        files->add(work, "wsquick report.docx", 0);
+        files->add(work, "wsquick report.log", 0);
+        files->add(bin, "wsquick report.docx", 0);
+        files->add(bin, "wsquick report.log", 0);
+    }
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    SearchEngine search(&index, &apps, &places);
+    History history(profile.filePath(u"history.txt"_s));
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    launcher.setPanel(true);
+    launcher.setPanelSidebarVisible(true);
+    ClipStore store(profile.filePath(u"clipboard"_s));
+    store.open(QDateTime::currentMSecsSinceEpoch());
+    ClipboardWatcher watcher({.record = false}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(profile.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> root(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    auto* window = qobject_cast<QQuickWindow*>(root.get());
+    check(window != nullptr, u"quick filters: the search window loads: "_s + component.errorString());
+    if (!window) return;
+    window->create();
+    window->resize(1100, 650);
+    frame.setWindow(window);
+    launcher.setWindow(window);
+    showOffscreen(window);
+    const auto files = [&] {
+        QStringList paths;
+        for (int i = 0; i < launcher.results()->count(); ++i) {
+            if (const QString path = launcher.results()->pathAt(i); path.contains(u"wsquick"_s))
+                paths.append(path);
+        }
+        paths.sort();
+        return paths;
+    };
+    const auto click = [&](QQuickItem* target) {
+        const QPointF at = target->mapToScene({target->width() / 2, target->height() / 2});
+        QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+        QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+        QCoreApplication::sendEvent(window, &press);
+        QCoreApplication::sendEvent(window, &release);
+        settle(window);
+    };
+    const auto on = [&](int i) { return launcher.activeQuickFilters().contains(launcher.quickFilters().value(i).toMap().value(u"name"_s).toString()); };
+
+    // None yet: the group is there all the same, its + saying what it is for.
+    auto* add = item(window->contentItem(), u"panelQuickFilterAdd"_s);
+    check(add && add->isVisible() && add->property("text").toString().size() > 1, u"quick filters: with none saved the + names itself"_s);
+    check(item(window->contentItem(), u"panelQuickFilter_0"_s) == nullptr, u"quick filters: no chip before one is saved"_s);
+
+    launcher.setQuickFilters({{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s}, {u"只看日志"_s, u"ext:log"_s}});
+    launcher.setQuery(u"wsquick"_s);
+    settle(window);
+    auto* first = item(window->contentItem(), u"panelQuickFilter_0"_s);
+    auto* second = item(window->contentItem(), u"panelQuickFilter_1"_s);
+    add = item(window->contentItem(), u"panelQuickFilterAdd"_s);
+    check(first && second && add && first->isVisible() && second->isVisible(), u"quick filters: a chip for each saved filter"_s);
+    if (!first || !second || !add) return;
+    check(add->property("text").toString() == u"+", u"quick filters: the + is brief beside chips"_s);
+    auto* sidebar = item(window->contentItem(), u"panelSidebar"_s);
+    for (QQuickItem* chip : {first, second, add}) {
+        const qreal right = chip->mapToItem(sidebar, QPointF(chip->width(), 0)).x();
+        check(sidebar && right <= sidebar->width() - 8, u"quick filters: chips stay inside the side bar"_s);
+    }
+    check(files().size() == 4 && !launcher.filtersActive(), u"quick filters: off, every match is listed"_s);
+
+    click(first);
+    check(on(0) && !on(1) && launcher.filtersActive(), u"quick filters: a click switches one on"_s);
+    check(first->property("active").toBool(), u"quick filters: the chip shows it is on"_s);
+    check(files() == QStringList({u"Q:\\work\\wsquick report.docx"_s, u"Q:\\work\\wsquick report.log"_s}),
+        u"quick filters: what the filter excludes leaves the rows: "_s + files().join(u" | "_s));
+    check(launcher.query() == u"wsquick", u"quick filters: the search box keeps what was typed"_s);
+    click(second);
+    check(on(0) && on(1), u"quick filters: a second one goes on beside the first"_s);
+    check(files() == QStringList({u"Q:\\work\\wsquick report.log"_s}), u"quick filters: two on, both hold: "_s + files().join(u" | "_s));
+    check(window->grabWindow().save(output.filePath(u"panel-quick-filters.png"_s)), u"capture the quick filters, two on"_s);
+    click(first);
+    check(!on(0) && on(1), u"quick filters: a click on one that is on switches it off"_s);
+    check(files() == QStringList({u"Q:\\$RECYCLE.BIN\\wsquick report.log"_s, u"Q:\\work\\wsquick report.log"_s}),
+        u"quick filters: the rest holds alone: "_s + files().join(u" | "_s));
+
+    // Nothing typed: the panel's list, narrowed all the same.
+    launcher.setQuery({});
+    settle(window);
+    check(files() == QStringList({u"Q:\\$RECYCLE.BIN\\wsquick report.log"_s, u"Q:\\work\\wsquick report.log"_s}),
+        u"quick filters: with nothing typed the list is narrowed: "_s + files().join(u" | "_s));
+
+    // Edited in the settings while on: its rows, in place; removed: off.
+    launcher.setQuery(u"wsquick"_s);
+    launcher.setQuickFilters({{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s}, {u"只看日志"_s, u"ext:docx"_s}});
+    settle(window);
+    check(on(1) && files() == QStringList({u"Q:\\$RECYCLE.BIN\\wsquick report.docx"_s, u"Q:\\work\\wsquick report.docx"_s}),
+        u"quick filters: one edited while on takes effect at once: "_s + files().join(u" | "_s));
+    launcher.setQuickFilters({{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s}});
+    settle(window);
+    check(!launcher.filtersActive() && files().size() == 4, u"quick filters: one removed is off"_s);
+
+    // 清除全部 switches them off with the other filters.
+    launcher.toggleQuickFilter(0);
+    launcher.setSizeChoice(1);
+    settle(window);
+    check(launcher.filtersActive() && on(0), u"quick filters: on again"_s);
+    launcher.clearFilters();
+    settle(window);
+    check(!on(0) && !launcher.filtersActive() && launcher.sizeChoice() == 0 && files().size() == 4, u"quick filters: 清除全部 switches them off"_s);
+
+    // The +: the settings, with what is typed as a new one's query when it can be one.
+    QStringList drafts;
+    QObject::connect(&launcher, &Launcher::quickFilterSettingsRequested, window, [&](const QString& draft) { drafts.append(draft); });
+    launcher.setQuery(u"!node_modules\\ ext:js"_s);
+    settle(window);
+    click(item(window->contentItem(), u"panelQuickFilterAdd"_s));
+    launcher.setQuery(u"regex:("_s);
+    settle(window);
+    click(item(window->contentItem(), u"panelQuickFilterAdd"_s));
+    check(drafts == QStringList({u"!node_modules\\ ext:js"_s, QString()}), u"quick filters: the + hands over a usable query only: "_s + drafts.join(u" | "_s));
+    check(!window->isActive(), u"quick filter checks keep the native window inactive"_s);
+    window->hide();
+}
+
 void displayGroups(Checks& check)
 {
     QTemporaryDir profile;
@@ -371,6 +509,7 @@ bool checkNavigationWorkflows(QQmlEngine* engine, const QDir& output, bool flipp
     clipboardGroups(engine, output, flipped, check);
     displayGroups(check);
     panelSidebar(engine, output, check);
+    panelQuickFilters(engine, output, check);
     folderGroups(engine, output, check);
     check(warnings == 0, u"production QML emits no warnings"_s);
     QFile file(output.filePath(u"navigation-workflows.json"_s));

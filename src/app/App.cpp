@@ -792,6 +792,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     });
     connect(m_launcher.get(), &Launcher::webSettingsRequested, this, &App::showWebSettings);
     connect(m_launcher.get(), &Launcher::fileTypeSettingsRequested, this, &App::showFileTypeSettings);
+    connect(m_launcher.get(), &Launcher::quickFilterSettingsRequested, this, &App::showQuickFilterSettings);
     connect(m_launcher.get(), &Launcher::favoriteSettingsRequested, this, &App::showFavoriteSettings);
     connect(m_launcher.get(), &Launcher::pluginSettingsRequested, this, &App::showPluginSettings);
     connect(m_launcher.get(), &Launcher::elevatedRestartRequested, this, [this] { restart({}, Elevation::Elevated); });
@@ -1950,6 +1951,7 @@ void App::applySettings(bool initial)
         m_settings.contentSizeLimits(), m_settings.contentInLowPriority, m_settings.contentDocuments);
     m_launcher->setContentIndex(m_settings.contentIndex);
     m_launcher->setFileTypes(m_settings.namedFileTypes()); // after applyAppearance: the built-in ones' names
+    m_launcher->setQuickFilters(m_settings.quickFilters);
     applyPlugins();
     if (!initial) {
         m_indexOptionsApply.start();
@@ -3888,6 +3890,13 @@ void App::showWebSettings()
 void App::showFileTypeSettings()
 {
     showSettings([](QQuickWindow* window) { QMetaObject::invokeMethod(window, "showFileTypesPage"); });
+}
+
+void App::showQuickFilterSettings(const QString& draft)
+{
+    showSettings([&draft](QQuickWindow* window) {
+        QMetaObject::invokeMethod(window, "showQuickFiltersPage", Q_ARG(QVariant, QVariant(draft)));
+    });
 }
 
 void App::showFavoriteSettings(const QString& path)

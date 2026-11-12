@@ -4370,6 +4370,143 @@ private slots:
         QVERIFY(underUsers.match(t.index, t.index.entry(t.users)) >= 0); // the folder itself stays
     }
 
+    // The panel's quick filters (ParsedQuery::conditions): queries of their
+    // own that a file or folder must fit as well, every one of them.
+    void quickFilterConditions()
+    {
+        const auto with = [](const QString& text, const QStringList& conditions, bool regex = false) {
+            ws::ParsedQuery query = ws::parseQuery(text, regex);
+            query.conditions = ws::parseConditions(conditions);
+            return query;
+        };
+        const QString bin = u"!$RECYCLE.BIN\\"_s;
+        const QString kept = u"D:\\work\\report.docx"_s;
+        const QString binned = u"D:\\$Recycle.Bin\\S-1-5-21\\report.docx"_s;
+
+        const NameMatcher matcher(with(u"report"_s, {bin}));
+        QCOMPARE(matcher.matchPath(binned, false), -1);
+        QVERIFY(matcher.matchPath(kept, false) >= 0);
+        // Narrowing only: what it lets through ranks as without it.
+        QCOMPARE(matcher.matchPath(kept, false), NameMatcher(ws::parseQuery(u"report"_s)).matchPath(kept, false));
+        QVERIFY(with(u"report"_s, {bin}).highlights == ws::parseQuery(u"report"_s).highlights);
+
+        // "a | b" typed: over every branch, not the last alone.
+        const NameMatcher either(with(u"report | notes"_s, {bin}));
+        QCOMPARE(either.matchPath(u"D:\\$RECYCLE.BIN\\report.txt"_s, false), -1);
+        QCOMPARE(either.matchPath(u"D:\\$RECYCLE.BIN\\notes.txt"_s, false), -1);
+        QVERIFY(either.matchPath(u"D:\\a\\report.txt"_s, false) >= 0);
+        QVERIFY(either.matchPath(u"D:\\a\\notes.txt"_s, false) >= 0);
+
+        // Regex mode reads what is typed, never the filter.
+        const NameMatcher regex(with(u"^rep.*x$"_s, {bin}, true));
+        QCOMPARE(regex.matchPath(binned, false), -1);
+        QVERIFY(regex.matchPath(kept, false) >= 0);
+
+        // Several: all of them, each with its own "|".
+        const NameMatcher both(with(u"report"_s, {bin, u"ext:pdf | ext:docx"_s}));
+        QVERIFY(both.matchPath(kept, false) >= 0);
+        QVERIFY(both.matchPath(u"D:\\work\\report.pdf"_s, false) >= 0);
+        QCOMPARE(both.matchPath(u"D:\\work\\report.txt"_s, false), -1);
+        QCOMPARE(both.matchPath(u"D:\\$Recycle.Bin\\report.pdf"_s, false), -1);
+        // With ext: typed as well: both, not either.
+        QCOMPARE(NameMatcher(with(u"report ext:txt"_s, {u"ext:pdf"_s})).matchPath(u"D:\\work\\report.txt"_s, false), -1);
+        // size: in one: files of that size, never a folder (as typed).
+        const NameMatcher large(with(u"report"_s, {u"size:>1mb"_s}));
+        QVERIFY(large.matchPath(kept, false, 0, packSize(5 << 20)) >= 0);
+        QCOMPARE(large.matchPath(kept, false, 0, packSize(100)), -1);
+        QCOMPARE(large.matchPath(u"D:\\work\\report"_s, true), -1);
+
+        // Nothing typed: nothing to find by, yet the filters hold for what is listed.
+        const ws::ParsedQuery none = with({}, {bin});
+        QVERIFY(none.isEmpty());
+        QVERIFY(!none.hasFilters());
+        const NameMatcher listing(none);
+        QVERIFY(listing.matchPath(kept, false) >= 0);
+        QCOMPARE(listing.matchPath(binned, false), -1);
+
+        // One that says nothing or cannot be read is none: the rest hold.
+        QCOMPARE(ws::parseConditions({u"regex:("_s, u"   "_s, bin}).size(), std::size_t(1));
+        QVERIFY(ws::parseConditions({}).empty());
+
+        // An app or a place is in no folder; ext: leaves it out, as typed.
+        QVERIFY(matcher.matchName("report") >= 0);
+        QCOMPARE(NameMatcher(with(u"report"_s, {u"ext:pdf"_s})).matchName("report"), -1);
+
+        // On the index; and a name is never ruled out ahead of an entry that fits.
+        SampleTree t;
+        const NameMatcher notUsers(with(u"report"_s, {u"!users\\"_s}));
+        QCOMPARE(notUsers.match(t.index, t.index.entry(t.report)), -1);
+        const NameMatcher notWindows(with(u"report"_s, {u"!windows\\"_s}));
+        QVERIFY(notWindows.match(t.index, t.index.entry(t.report)) >= 0);
+        QVERIFY(notWindows.nameMayMatch(t.index.name(t.index.entry(t.report)), 4, false));
+        const NameMatcher listed(with({}, {u"!users\\"_s}));
+        QCOMPARE(listed.match(t.index, t.index.entry(t.notes)), -1);
+        QVERIFY(listed.match(t.index, t.index.entry(t.windows)) >= 0);
+        QVERIFY(listed.match(t.index, t.index.entry(t.users)) >= 0); // the folder itself stays
+    }
+
+    // The same through the engine (Request::conditions): names typed, and the
+    // panel's list with nothing typed.
+    void quickFilterSearch()
+    {
+        const QString root = u"F:\\wsquick\\"_s;
+        QTemporaryDir dir;
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.path() + u"/index"_s, options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId f = index->addRoot("F:");
+            const EntryId top = index->add(f, "wsquick", EntryFlag::Directory);
+            const EntryId work = index->add(top, "work", EntryFlag::Directory);
+            const EntryId bin = index->add(top, "$RECYCLE.BIN", EntryFlag::Directory);
+            const EntryId sid = index->add(bin, "S-1-5-21", EntryFlag::Directory);
+            index->add(work, "report.docx", 0);
+            index->add(work, "report.pdf", 0);
+            index->add(bin, "report.docx", 0);
+            index->add(sid, "report.pdf", 0);
+            FileTime t = 1'700'000'000;
+            for (std::size_t i = 0; i < index->slotCount(); ++i)
+                index->setModified(static_cast<EntryId>(i), t += 100);
+        }
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const auto search = [&](const QString& text, const QStringList& conditions, bool regex = false) {
+            spy.clear();
+            SearchEngine::Request request;
+            request.text = text;
+            request.scope = Scope::Files;
+            request.conditions = conditions;
+            request.regex = regex;
+            request.browse = true; // the panel
+            request.limit = 100;
+            engine.submit(std::move(request));
+            QStringList names;
+            if (!spy.wait(5000))
+                return QStringList {u"(no results)"_s};
+            for (const SearchResult& r : spy.at(0).at(1).value<SearchResults>()) {
+                if (r.path.startsWith(root, Qt::CaseInsensitive) && !r.isDir)
+                    names.append(r.path.mid(root.size()));
+            }
+            names.sort();
+            return names;
+        };
+        const QString bin = u"!$recycle.bin\\"_s; // any case
+        const QStringList all {u"$RECYCLE.BIN\\S-1-5-21\\report.pdf"_s, u"$RECYCLE.BIN\\report.docx"_s, u"work\\report.docx"_s, u"work\\report.pdf"_s};
+        QCOMPARE(search(u"report"_s, {}), all);
+        QCOMPARE(search(u"report"_s, {bin}), (QStringList {u"work\\report.docx"_s, u"work\\report.pdf"_s}));
+        QCOMPARE(search(u"report"_s, {bin, u"ext:pdf"_s}), (QStringList {u"work\\report.pdf"_s}));
+        QCOMPARE(search(u"report | nothing"_s, {bin}), (QStringList {u"work\\report.docx"_s, u"work\\report.pdf"_s}));
+        QCOMPARE(search(u"^report"_s, {bin}, true), (QStringList {u"work\\report.docx"_s, u"work\\report.pdf"_s}));
+        // One that cannot be read is passed over, not a search that finds nothing.
+        QCOMPARE(search(u"report"_s, {u"regex:("_s}), all);
+        // Nothing typed: the list, narrowed.
+        QCOMPARE(search({}, {}), all);
+        QCOMPARE(search({}, {bin}), (QStringList {u"work\\report.docx"_s, u"work\\report.pdf"_s}));
+        QCOMPARE(search({}, {u"$recycle.bin\\ ext:pdf"_s}), (QStringList {u"$RECYCLE.BIN\\S-1-5-21\\report.pdf"_s}));
+    }
+
     void pinyinBasics()
     {
         const auto readings = [](char32_t c) {
@@ -12195,6 +12332,15 @@ private slots:
         QCOMPARE(scope.places.size(), 1);
         QCOMPARE(scope.places[0].folders.size(), 2);
         QCOMPARE(scope.places[0].folders[0], documents);
+        // A quick filter on (Request::conditions): only the files it lets through are read.
+        complete = false;
+        results.clear();
+        request.text = u"needle"_s;
+        request.conditions = {u"!docs\\"_s};
+        asked = engine.submit(request);
+        QTRY_VERIFY_WITH_TIMEOUT(complete, 15'000);
+        QCOMPARE(results.size(), qsizetype(1));
+        QCOMPARE(results[0].path, profile + u"\\needle.txt"_s);
     }
 
     // A pass that looks only at the files the Lookout lists (changed since

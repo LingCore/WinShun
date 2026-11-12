@@ -213,6 +213,7 @@ set(qml_files
     qml/SettingsPage.qml
     qml/PageSlot.qml
     qml/FileTypesSection.qml
+    qml/QuickFiltersSection.qml
     qml/SettingRow.qml
     qml/PageTabs.qml
     qml/ThemeCard.qml

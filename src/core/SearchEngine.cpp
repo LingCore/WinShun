@@ -298,6 +298,7 @@ std::vector<std::string> foldedExtensions(const QStringList& extensions)
 struct Hidden {
     std::vector<std::string> types;
     std::vector<std::string> names;
+    std::vector<ParsedQuery> conditions; // Request::conditions, read: not hidden files, but narrowing as they do
     bool empty() const noexcept { return types.empty() && names.empty(); }
 };
 
@@ -331,7 +332,8 @@ Hidden hiddenOf(const SearchEngine::Request& request, const ParsedQuery& query, 
         };
         return look(look, query);
     };
-    Hidden hidden {foldedExtensions(request.excludedTypes), foldedExtensions(request.excludedFileNames)};
+    Hidden hidden {foldedExtensions(request.excludedTypes), foldedExtensions(request.excludedFileNames),
+        parseConditions(request.conditions)};
     std::erase_if(hidden.types, [&](const std::string& h) {
         return std::ranges::find(types, h) != types.end()
             || anywhere([&](const ParsedQuery& part) { return std::ranges::find(part.extensions, h) != part.extensions.end(); });
@@ -348,10 +350,12 @@ Hidden hiddenOf(const SearchEngine::Request& request, const ParsedQuery& query, 
 
 // The query with the type chosen: its extensions, or with ext: typed too,
 // those in both (none: an extension no name has, "/"); and the files skipped.
-ParsedQuery withTypes(ParsedQuery query, const std::vector<std::string>& types, const Hidden& hidden)
+ParsedQuery withTypes(ParsedQuery query, const std::vector<std::string>& types, const Hidden& hidden, bool whole = true)
 {
     for (ParsedQuery& branch : query.alternatives)
-        branch = withTypes(std::move(branch), types, hidden);
+        branch = withTypes(std::move(branch), types, hidden, false);
+    if (whole)
+        query.conditions = hidden.conditions; // once, over all its branches
     query.excludedExtensions = hidden.types;
     query.excludedFileNames = hidden.names;
     if (types.empty())
@@ -2283,6 +2287,11 @@ void SearchEngine::runContentSearch(const Job& job)
         request.contentInLowPriority || set == ContentSet::LowPriority};
     const ExtensionFilter skipped(request.excludedTypes); // packed once, asked of each candidate
     const std::vector<std::string> skippedNames = foldedExtensions(request.excludedFileNames);
+    // The quick filters: a file to read is one they let through, by its name,
+    // folders, size and time, as a name search would.
+    std::vector<NameMatcher> conditions;
+    for (const ParsedQuery& condition : parseConditions(request.conditions))
+        conditions.emplace_back(condition);
     const auto content = m_index->contentIndex();
     const ContentIndex::SearchGuard searching(content.get()); // the content indexer waits meanwhile
     std::vector<Candidate> candidates;
@@ -2353,6 +2362,7 @@ void SearchEngine::runContentSearch(const Job& job)
                 return;
             UnderFolder inProfile(*index, personalFolders);
             UnderFolders inScope(*index, scope);
+            std::vector<NameMatcher::Folders> conditionFolders(conditions.size());
             const auto first = static_cast<EntryId>(c << FileIndex::kChunkBits);
             auto k = static_cast<std::size_t>(std::lower_bound(lookup.known.begin(), lookup.known.end(), first,
                 [](std::uint32_t known, EntryId id) { return (known & ~kMatch) < id; }) - lookup.known.begin());
@@ -2406,6 +2416,11 @@ void SearchEngine::runContentSearch(const Job& job)
                 const auto id = static_cast<EntryId>(first + i);
                 if (bounded && !request.filter.fits(index->modified(id), index->size(id), false))
                     continue; // neither read nor counted as passed over
+                bool let = true;
+                for (std::size_t m = 0; let && m < conditions.size(); ++m)
+                    let = conditions[m].match(*index, e, conditionFolders[m], id) >= 0;
+                if (!let)
+                    continue; // the same
                 bool indexed = false;
                 bool likely = false;
                 while (k < lookup.known.size() && (lookup.known[k] & ~kMatch) < id)

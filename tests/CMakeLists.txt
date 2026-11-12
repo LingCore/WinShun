@@ -104,6 +104,11 @@ add_test(NAME tst_contentpane COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_contentpane PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The file types and the quick filters: the editor's checks, the rows in the real window.
+add_test(NAME tst_settingsfilters COMMAND $<TARGET_FILE:WinShun>
+    --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/settings-filters" --file-types)
+set_tests_properties(tst_settingsfilters PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 # #111: the settings window keeps its Screen attached objects few; each one is
 # work on every move to another monitor (docs/pitfalls.md).
 add_test(NAME tst_settingsscreen COMMAND $<TARGET_FILE:WinShun>
