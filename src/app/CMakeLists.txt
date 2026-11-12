@@ -38,6 +38,7 @@ endforeach()
 qt_add_executable(WinShun WIN32
     platform/WindowSearch.cpp platform/WindowSearch.h
     InteractionOptimizationProbe.cpp InteractionOptimizationProbe.h
+    IdleOpenProbe.cpp IdleOpenProbe.h
     main.cpp
     DropPieHelper.cpp DropPieHelper.h
     AiSettings.cpp AiSettings.h

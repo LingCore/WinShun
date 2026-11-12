@@ -22,10 +22,6 @@ namespace ws {
 
 namespace {
 
-// Since the last window lost the focus: one searches, opens what was found,
-// and often searches again within seconds; emptied in between, every open
-// would take the pages back.
-constexpr int kAfterUseMs = 20'000;
 constexpr int kSettleMs = 5'000; // after busy work ended (poke)
 constexpr int kBusyRecheckMs = 15'000; // while the index loads, catches up or reads content
 // While unused: background work brings pages back. The content indexer's
@@ -74,10 +70,10 @@ IdleTrim::IdleTrim(std::function<const char*()> busy, std::function<bool()> up, 
             m_heldAfterResume = false; // used: emptied a while after, as ever
         } else {
             m_inactive.restart();
-            m_timer.start(kAfterUseMs);
+            m_timer.start(m_afterUseMs);
         }
     });
-    m_timer.start(kAfterUseMs);
+    m_timer.start(m_afterUseMs);
 }
 
 bool IdleTrim::inUse() const
@@ -110,7 +106,7 @@ void IdleTrim::poke()
     // not have moved yet; check() asks again when the time is up.
     if (m_busy())
         return;
-    startAfter(static_cast<int>(std::max<qint64>(kSettleMs, kAfterUseMs - m_inactive.elapsed())));
+    startAfter(static_cast<int>(std::max<qint64>(std::min(kSettleMs, m_afterUseMs), m_afterUseMs - m_inactive.elapsed())));
 }
 
 void IdleTrim::startAfter(int ms)
@@ -123,7 +119,7 @@ void IdleTrim::used()
 {
     m_heldAfterResume = false;
     m_inactive.restart();
-    m_timer.start(kAfterUseMs);
+    m_timer.start(m_afterUseMs);
 }
 
 void IdleTrim::resumed()
@@ -170,7 +166,7 @@ void IdleTrim::check()
         resumed();
     if (inUse()) {
         m_heldAfterResume = false;
-        m_timer.start(kAfterUseMs);
+        m_timer.start(m_afterUseMs);
         return;
     }
     if (m_heldAfterResume) {

@@ -48,7 +48,7 @@ class QWinEventNotifier;
 
 namespace ws {
 
-namespace preview { struct DoubleTapActionsProbe; }
+namespace preview { struct DoubleTapActionsProbe; struct IdleOpenProbe; }
 
 namespace piedrop {
 class FileOperations;
@@ -135,6 +135,7 @@ class Tools;
 class App : public QObject {
     Q_OBJECT
     friend struct preview::DoubleTapActionsProbe;
+    friend struct preview::IdleOpenProbe;
 
 public:
     struct StartOptions {

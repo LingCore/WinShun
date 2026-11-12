@@ -2,6 +2,7 @@
 #include "PreviewInteractionProbe.h"
 #include "NavigationProbe.h"
 #include "ForegroundMemoryProbe.h"
+#include "IdleOpenProbe.h"
 #include "InteractionOptimizationProbe.h"
 #include "UiFont.h"
 
@@ -9686,6 +9687,17 @@ int runRuntime(const QStringList& args)
         settings.selectedDrives = QStringList {QDir::toNativeSeparators(QStorageInfo(dialogFiles->path()).rootPath())};
         settings.excludedPaths = {Settings::profile() + u"/excluded"_s}; // an empty list reloads the TEMP-excluding defaults
     }
+    // --idle-open-index: folders with enough in them for an index of a real size.
+    if (const QString folders = valueAfter(args, u"--idle-open-index"); !folders.isEmpty()) {
+        settings.indexFolders = folders.split(u';', Qt::SkipEmptyParts);
+        QStringList drives;
+        for (const QString& folder : std::as_const(settings.indexFolders)) {
+            const QString drive = QDir::toNativeSeparators(QStorageInfo(folder).rootPath());
+            if (!drives.contains(drive, Qt::CaseInsensitive))
+                drives.push_back(drive);
+        }
+        settings.selectedDrives = drives;
+    }
     QDir().mkpath(settings.indexFolders.front());
     if (typingProbe) {
         settings.opusTypingScope = args.contains(u"--opus-everywhere"_s) ? u"all"_s : u"folder"_s;
@@ -9703,7 +9715,10 @@ int runRuntime(const QStringList& args)
         QFile nested(files.filePath(u"child/nested-only.txt"_s));
         if (!nested.open(QIODevice::WriteOnly)) return 4;
     }
-    QFile fixture(settings.indexFolders.front() + u"/startup-probe.txt"_s);
+    // Not into a folder of the user's (--idle-open-index).
+    QDir().mkpath(Settings::profile());
+    QFile fixture(args.contains(u"--idle-open-index"_s) ? Settings::profile() + u"/startup-probe.txt"_s
+                                                        : settings.indexFolders.front() + u"/startup-probe.txt"_s);
     if (!fixture.open(QIODevice::WriteOnly))
         return 4;
     fixture.write("WinShun isolated startup probe\n");
@@ -9762,7 +9777,8 @@ int runRuntime(const QStringList& args)
         state.setValue(u"Search/Scope"_s, scopeLeft);
         state.sync();
     }
-    if (args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s) || live) {
+    if (args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s) || live
+        || args.contains(u"--idle-open-check"_s)) {
         ClipStore store(Settings::dataDir() + u"/clipboard"_s);
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (!store.open(now)) return 4;
@@ -9876,6 +9892,11 @@ int runRuntime(const QStringList& args)
         }
         if (args.contains(u"--double-tap-plugin"_s) && !checkDoubleTapPlugin(app, out))
             return 4;
+        if (args.contains(u"--idle-open-check"_s)) {
+            const bool ok = checkIdleOpen(app, args, out);
+            QDir(Settings::profile()).removeRecursively();
+            return ok ? 0 : 4;
+        }
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
         if (args.contains(u"--clipboard-shell-probe"_s)) {

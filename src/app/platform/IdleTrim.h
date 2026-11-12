@@ -60,6 +60,9 @@ public:
     LastTrim lastTrim() const noexcept { return {m_lastTrimAtMs.load(), m_lastTrimMb.load()}; }
     // An emptying done by someone else (the settings' button): remembered as the last.
     void noteTrim(qint64 megabytes) noexcept;
+    // How long after the last use the memory goes back; 20 s. Shorter for a
+    // probe that times many openings (--idle-open-check).
+    void setAfterUse(int ms) noexcept { m_afterUseMs = ms; }
 
 private:
     void check();
@@ -70,6 +73,10 @@ private:
 
     std::function<const char*()> m_busy;
     std::function<bool()> m_up;
+    // Since the last window lost the focus: one searches, opens what was found,
+    // and often searches again within seconds; emptied in between, every open
+    // would take the pages back.
+    int m_afterUseMs = 20'000;
     bool m_heldAfterResume = false;
     // At the last check, on clocks with and without the time asleep: when
     // they part, the system slept in between.
