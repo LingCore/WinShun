@@ -522,6 +522,16 @@ private slots:
         const Json confirm = rowOf(asked["effects"].toArray().at(0)["items"], "confirm");
         QVERIFY(confirm.isObject());
         QVERIFY(p.tools.empty());
+        // The launcher asking again meanwhile (a rerun) gets the same two
+        // rows, not the list back under the keyboard; "不恢复" brings the list
+        // back, and nothing was restored.
+        QCOMPARE(p.rows().toArray().size(), std::size_t(2));
+        QVERIFY(rowOf(p.rows(), "confirm").isObject());
+        const Json back = p.act(rowOf(p.rows(), "back"));
+        QVERIFY(rowOf(back["effects"].toArray().at(0)["items"], "status:github").isObject());
+        QVERIFY(rowOf(p.rows(), "backup:github:").isObject());
+        QVERIFY(p.tools.empty());
+        QVERIFY(p.act(newest).has("effects"));
         QVERIFY(p.act(confirm).has("effects"));
         QByteArray handed;
         QVERIFY(p.tool("backup_restore", [&](const Json& arguments) {

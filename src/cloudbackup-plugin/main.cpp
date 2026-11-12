@@ -36,6 +36,7 @@ constexpr auto kFirst = 2min; // after start: login settles, Win顺's own backup
 constexpr auto kEvery = 30min;
 constexpr auto kAfterSettings = 8s; // an address or a password being typed makes one try
 constexpr auto kListingFor = 60s; // how long a listing answers the launcher
+constexpr auto kAskingFor = 45s; // how long "restore this one?" stays in place of the list
 constexpr std::size_t kMaxRows = 40;
 
 // What is known of one place ("webdav", "github").
@@ -145,6 +146,10 @@ protected:
     Json queryResult(const winshun::Query& q) override
     {
         const std::lock_guard lock(m_mutex);
+        // Other words in the box: the question asked under the old ones is gone.
+        if (q.text != m_queryText)
+            m_asking.reset();
+        m_queryText = q.text;
         // A listing that is old (or none yet): read again, the rows follow.
         bool stale = false;
         for (const char* key : {"webdav", "github"}) {
@@ -173,22 +178,19 @@ protected:
         }
         if (what == "ask") {
             const Json& data = a.item["data"];
-            const auto parsed = cb::parseName(data["name"].toString());
-            const std::string when = parsed ? parsed->when : data["name"].toString();
-            Json restore = data;
-            restore.set("do", "restore");
-            Items confirm;
-            confirm.push_back(Item("confirm", zh ? "恢复 " + when + " 的备份？" : "Restore the backup of " + when + "?",
-                zh ? "Enter 确认：现在的设置先在这台电脑上存一份，然后 Win顺 重启，换成这份备份"
-                   : "Enter confirms: the settings of now are saved on this computer first, then Win顺 restarts with this backup")
-                .withIcon("ph:clock-counter-clockwise").withData(restore));
-            confirm.push_back(Item("back", zh ? "不恢复" : "Do not restore", zh ? "Enter 回到列表" : "Enter goes back to the list")
-                .withIcon("ph:arrow-u-up-left").withData(Json::Object {{"do", "back"}}));
-            return {winshun::effect::replace(confirm), winshun::effect::keep()};
+            // Kept while the launcher asks again (a rerun, the worker's
+            // refresh): the two rows must not turn back into the list under
+            // the keyboard.
+            m_asking = Wanted {data["place"].toString(), data["name"].toString(), data["sha"].toString()};
+            m_askedAt = Clock::now();
+            return {winshun::effect::replace(rows(m_queryText)), winshun::effect::keep()};
         }
-        if (what == "back")
-            return {winshun::effect::replace(rows({})), winshun::effect::keep()};
+        if (what == "back") {
+            m_asking.reset();
+            return {winshun::effect::replace(rows(m_queryText)), winshun::effect::keep()};
+        }
         if (what == "restore") {
+            m_asking.reset();
             const Json& data = a.item["data"];
             m_restore = Wanted {data["place"].toString(), data["name"].toString(), data["sha"].toString()};
             m_cv.notify_all();
@@ -218,8 +220,33 @@ private:
 
     bool configured(const std::string& key) const { return key == "webdav" ? m_config.webdav() : m_config.github(); }
 
+    // "Restore this one?": the backup asked about and the way back. The way
+    // back is where the keyboard lands (the row it was on is gone), so a
+    // second Enter by habit restores nothing.
+    Items askingRows() const
+    {
+        const bool zh = m_zh;
+        const auto parsed = cb::parseName(m_asking->name);
+        const std::string when = parsed ? parsed->when : m_asking->name;
+        Items confirm;
+        confirm.push_back(Item("confirm", zh ? "恢复 " + when + " 的备份？" : "Restore the backup of " + when + "?",
+            zh ? "Enter 确认：现在的设置先在这台电脑上存一份，然后 Win顺 重启，换成这份备份"
+               : "Enter confirms: the settings of now are saved on this computer first, then Win顺 restarts with this backup")
+            .withIcon("ph:clock-counter-clockwise")
+            .withData(Json::Object {{"do", "restore"}, {"place", m_asking->place}, {"name", m_asking->name}, {"sha", m_asking->sha}})
+            .withActions({{"restore", zh ? "确认恢复" : "Restore", "Enter"}}));
+        confirm.push_back(Item("back", zh ? "不恢复" : "Do not restore", zh ? "Enter 回到列表" : "Enter goes back to the list")
+            .withIcon("ph:arrow-u-up-left").withData(Json::Object {{"do", "back"}})
+            .withActions({{"back", zh ? "返回" : "Back", "Enter"}}));
+        return confirm;
+    }
+
     Items rows(const std::string& text)
     {
+        if (m_asking && Clock::now() - m_askedAt > kAskingFor)
+            m_asking.reset();
+        if (m_asking)
+            return askingRows();
         const bool zh = m_zh;
         Items items;
         if (!m_config.webdav() && !m_config.github()) {
@@ -227,7 +254,8 @@ private:
             items.push_back(Item("setup", zh ? "还没有设置云备份" : "Cloud backup is not set up",
                 zh ? "Enter 打开设置 → 插件 → 云备份：填 WebDAV 的地址和账号，或 GitHub 私有仓库和令牌；没填之前不联网"
                    : "Enter opens Settings → Plugins → Cloud Backup: a WebDAV address and account, or a private GitHub repository and a token; nothing is sent until then")
-                .withIcon("ph:cloud-slash").withUrl("winshun:settings"));
+                .withIcon("ph:cloud-slash").withUrl("winshun:settings")
+                .withActions({{"settings", zh ? "打开设置" : "Open settings", "Enter"}}));
             return items;
         }
         struct Row {
@@ -248,15 +276,16 @@ private:
                 items.push_back(Item(std::string("status:") + key, label + " · " + m_busyText).withIcon("ph:cloud-arrow-up").invalid());
             } else if (!place.error.empty()) {
                 items.push_back(Item(std::string("status:") + key, label + (zh ? " · 没备份成功" : " · the backup failed"),
-                    place.error + (zh ? " · Enter 再试一次" : " · Enter tries again")).withIcon("ph:cloud-warning").withData(data));
+                    place.error + (zh ? " · Enter 再试一次" : " · Enter tries again")).withIcon("ph:cloud-warning").withData(data)
+                    .withActions({{"backup", zh ? "再试一次" : "Try again", "Enter"}}));
             } else if (const auto last = cb::parseName(place.name)) {
                 items.push_back(Item(std::string("status:") + key, label + (zh ? " · 已备份（" + last->when + "）" : " · backed up (" + last->when + ")"),
                     again + (m_config.automatic ? (zh ? " · 设置变了会自动备份" : " · changed settings are backed up by themselves")
                                                 : (zh ? " · 自动备份关着" : " · automatic backup is off")))
-                    .withIcon("ph:cloud-check").withData(data));
+                    .withIcon("ph:cloud-check").withData(data).withActions({{"backup", zh ? "立即备份" : "Back up now", "Enter"}}));
             } else {
                 items.push_back(Item(std::string("status:") + key, label + (zh ? " · 还没有备份过" : " · no backup yet"), again)
-                    .withIcon("ph:cloud").withData(data));
+                    .withIcon("ph:cloud").withData(data).withActions({{"backup", zh ? "立即备份" : "Back up now", "Enter"}}));
             }
             reading = reading || (!place.listed && place.error.empty());
             for (const cb::Remote& backup : place.backups)
@@ -287,7 +316,8 @@ private:
                 continue;
             items.push_back(Item("backup:" + row.place + ":" + row.backup.name, title, subtitle)
                 .withIcon("ph:clock-counter-clockwise")
-                .withData(Json::Object {{"do", "ask"}, {"place", row.place}, {"name", row.backup.name}, {"sha", row.backup.sha}}));
+                .withData(Json::Object {{"do", "ask"}, {"place", row.place}, {"name", row.backup.name}, {"sha", row.backup.sha}})
+                .withActions({{"ask", zh ? "恢复" : "Restore", "Enter"}}));
         }
         if (reading && backups.empty())
             items.push_back(Item("reading", zh ? "正在读取云端的备份…" : "Reading the backups in the cloud…").withIcon("ph:cloud").invalid());
@@ -591,6 +621,9 @@ private:
     bool m_wantNow = false; // the user asked for a backup
     bool m_wantList = false; // the launcher shows a listing that is old
     std::optional<Wanted> m_restore;
+    std::optional<Wanted> m_asking; // "restore this one?" is shown instead of the list
+    Clock::time_point m_askedAt;
+    std::string m_queryText; // the words of the last query
     bool m_working = false;
     std::string m_busyPlace; // what the worker is at, for the rows
     std::string m_busyText;
