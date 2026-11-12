@@ -7,6 +7,7 @@
 #include "Win32Util.h"
 #include "platform/ClipboardWatcher.h"
 #include "platform/HoldWatch.h"
+#include "platform/HotPages.h"
 #include "platform/InputMode.h"
 #include "platform/KeyListener.h"
 #include "platform/KeyRouter.h"
@@ -27,6 +28,7 @@
 #include <QTranslator>
 #include <QVariantMap>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -73,7 +75,6 @@ class SystemCatalog;
 class History;
 class IndexService;
 class IdleTrim;
-class HotPages;
 class KeyListener;
 class PointerWatch;
 class ServiceDialogNav;
@@ -803,8 +804,8 @@ private:
     // GitHub #265, memory short: the pages an opening needs are read back ahead.
     std::shared_ptr<HotPages> m_launcherPages;
     std::shared_ptr<HotPages> m_clipPages;
-    std::shared_ptr<HotPages> m_recordPages; // of the opening under way, recorded once it is seen
-    qint64 m_lastOpeningSeenMs = 0; // ms since 1970, as IdleTrim::LastTrim
+    std::shared_ptr<HotPages> m_recordPages; // of the opening under way, told what it used once it is seen
+    std::array<qint64, 2> m_openingSeenMs {}; // by TriggerWindow, when each was last seen; ms since 1970, as IdleTrim::LastTrim
     std::unique_ptr<BackgroundStatus> m_background; // what runs in the background, in words (after m_index, m_updater)
     std::unique_ptr<HealthMonitor> m_health; // the 运行状况 page's readings (after m_background, m_idleTrim)
     std::vector<std::wstring> m_sharesBuilding; // being read for the first time: told when done

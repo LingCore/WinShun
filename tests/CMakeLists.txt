@@ -19,6 +19,16 @@ foreach(test IN ITEMS tst_queryhistory tst_pluginreadme)
     set_tests_properties(${test} PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endforeach()
 
+# The pages that stay in memory while Win顺 sits idle (GitHub #280): the
+# ranges' arithmetic, and Windows taking just those pages out, on this
+# process's own memory.
+qt_add_executable(tst_hotpages tst_hotpages.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/HotPages.cpp)
+target_include_directories(tst_hotpages PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_hotpages PRIVATE winshun_options Qt6::Test psapi)
+set_target_properties(tst_hotpages PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_hotpages COMMAND tst_hotpages -o -,txt)
+set_tests_properties(tst_hotpages PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_paster tst_paster.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Paster.cpp)
 target_include_directories(tst_paster PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
 target_link_libraries(tst_paster PRIVATE winshun_options Qt6::Test user32 comctl32)

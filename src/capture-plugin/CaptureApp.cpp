@@ -458,14 +458,14 @@ void CaptureApp::apply()
             // Windows may have given the pages away. Still in memory, it
             // costs next to nothing.
             if (m_hotPages->bytes() > 0)
-                std::thread([pages = m_hotPages] { pages->prefetch(); }).detach();
+                std::thread([pages = m_hotPages->pages()] { pages.prefetch(); }).detach();
             m_recordPages = m_idleTrim->takeTrimmed();
             if (closeOcrBubble())
                 ::DwmFlush();
         };
         callbacks.shown = [this] {
             if (std::exchange(m_recordPages, false))
-                std::thread([pages = m_hotPages] { pages->record(); }).detach();
+                std::thread([pages = m_hotPages] { pages->learn(PageSet::resident().without(pages->pages())); }).detach();
         };
         callbacks.pins = [this] { return &pins(); };
         callbacks.smart = smartHooks();

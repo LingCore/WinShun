@@ -696,6 +696,9 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         // it, the focus left where it was), a pinned launcher, a file dialog's bar.
         return (m_clipWindow && m_clipWindow->isVisible() && !m_clipPrewarming.load())
             || (m_launcher && m_launcher->pinned() && launcherShown()) || (m_dialogBar && m_dialogBar->isShown());
+    }, [this] {
+        // What the launcher and the clipboard need to come up stays (HotPages).
+        return m_launcherPages->pages().united(m_clipPages->pages());
     });
     // Loaded, caught up, done reading: emptied now, not at the next recheck.
     connect(m_index.get(), &IndexService::stateChanged, m_idleTrim.get(), &IdleTrim::poke);
@@ -4988,21 +4991,24 @@ void App::beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optio
     context.helper = m_keyListener && m_keyListener->serviceActive();
     // Emptied since a window was last seen (not just since the launcher's
     // last warming: IdleTrim::trimmed()).
-    context.trimmed = m_idleTrim && m_idleTrim->lastTrim().atMs > m_lastOpeningSeenMs;
+    const qint64 trimmedAt = m_idleTrim ? m_idleTrim->lastTrim().atMs : 0;
+    context.trimmed = trimmedAt > std::ranges::max(m_openingSeenMs);
     context.rawInput = rawInputState();
     context.told = told;
-    // What the window's last opening after an emptying needed, read back
-    // while this one starts (GitHub #265): emptied here, or by Windows while
-    // memory was short, it is on the disk; still in memory, it costs next
-    // to nothing. Emptied since the last opening, this one's are recorded.
+    // What the window needs to come up (HotPages) stayed when the rest was
+    // given back; read back while this opening starts all the same (GitHub
+    // #265): taken by Windows while memory was short, it is on the disk;
+    // still in memory, that costs next to nothing. This window's first
+    // opening since the memory was given back tells what else it uses, once
+    // it is seen.
     const bool clipboard = source == TriggerSource::ClipboardHotkey || source == TriggerSource::WinV;
     const std::shared_ptr<HotPages>& pages = clipboard ? m_clipPages : m_launcherPages;
     if (pages) {
         context.hotMb = static_cast<int>(pages->bytes() >> 20);
         if (context.hotMb > 0)
-            std::thread([pages] { pages->prefetch(); }).detach();
+            std::thread([kept = pages->pages()] { kept.prefetch(); }).detach();
     }
-    m_recordPages = context.trimmed ? pages : nullptr;
+    m_recordPages = trimmedAt > m_openingSeenMs[static_cast<std::size_t>(clipboard ? TriggerWindow::Clipboard : TriggerWindow::Launcher)] ? pages : nullptr;
     m_triggers->begin(source, pressedAt, context);
 }
 
@@ -5010,12 +5016,33 @@ void App::openingSeen(TriggerWindow window)
 {
     if (m_triggers)
         m_triggers->seen(window);
-    m_lastOpeningSeenMs = QDateTime::currentMSecsSinceEpoch(); // IdleTrim::LastTrim's clock
-    // The first opening after an emptying: what it brought back is what the
-    // next one will need (HotPages).
+    m_openingSeenMs[static_cast<std::size_t>(window)] = QDateTime::currentMSecsSinceEpoch(); // IdleTrim::LastTrim's clock
+    // The file index's pages back, before the first search needs them
+    // (IdleTrim, FileIndex::warm). Once the window is up, not while it
+    // comes: tens of thousands of page faults on another thread held up
+    // the window's own (measured 2026-11-12, 35 ms to be seen instead of 27).
+    if (window == TriggerWindow::Launcher && m_idleTrim->takeTrimmed() && m_index->index()) {
+        std::thread([index = m_index->index()] {
+            const auto lock = index->longReadLock();
+            index->warm();
+        }).detach();
+    }
+    // Its first opening since the memory was given back: what is in memory
+    // now and was not kept came back for it, or for what ran meanwhile
+    // (HotPages tells them apart). Not the file index's large blocks, which
+    // the search it started is reading on its threads.
     const std::shared_ptr<HotPages>& own = window == TriggerWindow::Clipboard ? m_clipPages : m_launcherPages;
-    if (m_recordPages && m_recordPages == own)
-        std::thread([pages = std::exchange(m_recordPages, nullptr)] { pages->record(); }).detach();
+    if (m_recordPages && m_recordPages == own) {
+        std::thread([pages = std::exchange(m_recordPages, nullptr), launcher = m_launcherPages, clipboard = m_clipPages,
+                        index = m_index->index()] {
+            PageSet used = PageSet::resident().without(launcher->pages()).without(clipboard->pages());
+            if (index) {
+                const auto lock = index->longReadLock();
+                used = used.without(PageSet::within(index->memoryBlocks()));
+            }
+            pages->learn(used);
+        }).detach();
+    }
 }
 
 // A double tap that came to nothing (KeyListener::Note): in the journal, a
@@ -5218,14 +5245,6 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     m_typingOrigin = {}; // opened anew: set again by typingFolderKnown when that is why
     if (!query.isEmpty())
         m_launcher->setTypingFolder({}); // a path given ("search here") is searched alone, as typed (GitHub #110)
-    if (m_idleTrim->takeTrimmed() && m_index->index()) {
-        // The index's pages back while the window comes up, before the first
-        // search needs them (IdleTrim, FileIndex::warm).
-        std::thread([index = m_index->index()] {
-            const auto lock = index->longReadLock();
-            index->warm();
-        }).detach();
-    }
     hideClipboard(false); // from under its search box: searching again
     // Each time it is asked for, pinned and up already too: English once its
     // field has the focus (lettersOnOpen). A click into it is not asked for.

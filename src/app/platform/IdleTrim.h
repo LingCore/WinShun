@@ -1,5 +1,6 @@
 #pragma once
 
+#include "HotPages.h"
 #include "JournalBudget.h"
 
 #include <QElapsedTimer>
@@ -17,10 +18,13 @@ namespace ws {
 // touches ~5 MB, yet everything it ever touched (the file index, the windows'
 // graphics) stays in its working set: Windows trims a process only when memory
 // runs short, so Task Manager shows ~230 MB. A while after the last window
-// lost the focus, the working set is emptied: the pages go to the standby
-// list, counted as available memory, and come back by soft faults when used
-// (measured 2026-10-12: a first name search ~10 ms instead of ~2.3 ms; the
-// launcher warms the index when shown, see FileIndex::warm).
+// lost the focus, the pages go out of the working set to the standby list,
+// counted as available memory, and come back by soft faults when used.
+// All but those a window needs to come up (`keep`, see HotPages): the next
+// opening finds them where they were and is as quick as any, while a search
+// brings the file index back on its own threads (the launcher warms it when
+// shown, see FileIndex::warm; measured 2026-10-12: a first name search ~10 ms
+// instead of ~2.3 ms without that).
 // Nothing is freed or rebuilt, so nothing has to load again.
 class IdleTrim : public QObject {
 public:
@@ -29,8 +33,10 @@ public:
     // returns null. `up`: a window of Win顺's is up and in use without the
     // focus (the clipboard, which leaves the keyboard focus where it was; a
     // pinned launcher), so not idle (GitHub #111: emptied 1.7 s after the
-    // clipboard came, while it was in use).
-    explicit IdleTrim(std::function<const char*()> busy, std::function<bool()> up, QObject* parent = nullptr);
+    // clipboard came, while it was in use). `keep`: the pages that stay;
+    // without it, or while it has none to name, everything goes.
+    explicit IdleTrim(std::function<const char*()> busy, std::function<bool()> up, std::function<PageSet()> keep = {},
+        QObject* parent = nullptr);
 
     // Work `busy` reports may have ended (the index is loaded, a catch-up is
     // done): emptied a few seconds later, not at the next recheck.
@@ -46,7 +52,7 @@ public:
     // from the disk again: seconds (GitHub #111, "the first hotkey after an
     // hour away took several seconds"). Speed before a few MB.
     void resumed();
-    // Whether the working set was emptied since last asked.
+    // Whether the memory was given back since last asked.
     bool takeTrimmed() noexcept { return m_trimmed.exchange(false); }
     // The same, without asking (for the diagnostics journal's "trigger").
     bool trimmed() const noexcept { return m_trimmed.load(); }
@@ -66,6 +72,7 @@ public:
 
 private:
     void check();
+    void gaveBack(qint64 megabytes) noexcept; // just now: remembered as the last time
     bool inUse() const; // a window of Win顺's has the focus, or is up and in use (m_up)
     void startAfter(int ms);
     bool takeSlept(); // since the call before; measured from now on
@@ -77,6 +84,10 @@ private:
     // and often searches again within seconds; emptied in between, every open
     // would take the pages back.
     int m_afterUseMs = 20'000;
+    std::function<PageSet()> m_keep;
+    // What stayed after the last time, private bytes: given back again once
+    // kTrimAbove more has come on top (0: all went, or not yet).
+    std::atomic<std::size_t> m_floor {0};
     bool m_heldAfterResume = false;
     // At the last check, on clocks with and without the time asleep: when
     // they part, the system slept in between.
