@@ -2461,6 +2461,13 @@ int runSettings(const QStringList& args)
         check(!editor->renameQuickFilter(1, u"排除回收站"_s).isEmpty(), "quick filters: renamed to a name taken");
         check(!editor->setQuickFilterQuery(1, u"regex:("_s).isEmpty(), "quick filters: an unreadable query replaced a good one");
         check(editor->quickFilters().value(1).toMap().value(u"query"_s).toString() == u"ext:pdf size:>10mb", "quick filters: a rejected query was kept");
+        check(!editor->setQuickFilterKeyword(0, u"two words"_s).isEmpty(), "quick filters: an unusable prefix was accepted");
+        check(!editor->setQuickFilterKeyword(0, u"cw"_s).isEmpty(), "quick filters: a kind's prefix was accepted");
+        check(!editor->setQuickFilterKeyword(0, editor->folderKeyword()).isEmpty(), "quick filters: the folders' prefix was accepted");
+        check(editor->setQuickFilterKeyword(0, u":NoBin"_s).isEmpty(), "quick filters: a good prefix was rejected");
+        check(editor->quickFilters().value(0).toMap().value(u"keyword"_s).toString() == u"nobin", "quick filters: the prefix was not normalized");
+        check(!editor->setQuickFilterKeyword(1, u"nobin"_s).isEmpty(), "quick filters: a prefix was accepted twice");
+        check(!editor->setFileTypeKeyword(0, u"nobin"_s).isEmpty(), "quick filters: a kind took a filter's prefix");
         editor->moveQuickFilter(1, -1);
         check(editor->quickFilters().value(0).toMap().value(u"name"_s).toString() == u"大 PDF", "quick filters: moving one up did nothing");
         QMetaObject::invokeMethod(window, "showQuickFiltersPage", Q_ARG(QVariant, QVariant(u"!node_modules\\"_s)));

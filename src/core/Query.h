@@ -25,6 +25,11 @@ struct FileTypeQuery {
 std::optional<QString> normalizedTypeKeyword(QStringView text);
 FileTypeQuery splitFileTypeQuery(const QString& text, const FileTypes& types, QStringView folderKeyword);
 
+// The quick filters named among what is typed, each by its keyword as a
+// kind of file is (":nobin 报告", "报告 nobin:"; any case, never quoted, a
+// drive's "C:" is none): any number of them, and what is left to search for.
+QuickFilterQuery splitQuickFilterQuery(const QString& text, const QuickFilters& filters);
+
 // One whitespace-separated piece of the query.
 //
 //   report          name contains "report"

@@ -89,6 +89,11 @@ Item {
     // What the + of the quick filters is for (the example as an argument: lupdate loses "\\" in a QML string).
     readonly property string quickFilterTip: qsTr("把常用的搜索条件存起来，点一下就套用，例如 %1 排除回收站").arg("!$RECYCLE.BIN\\")
 
+    // A quick filter's query, and the keyword that names it in the search box, when it has one.
+    function quickFilterRowTip(filter) {
+        return filter.keyword.length > 0 ? filter.query + "    :" + filter.keyword : filter.query
+    }
+
     function openFilterMenu(kind, globalPos) {
         if (columnMenuOpen) {
             closeColumns()
@@ -660,7 +665,8 @@ Item {
                             multi: true
                             iconName: "funnel"
                             text: modelData.name
-                            tip: modelData.query
+                            keyword: modelData.keyword
+                            tip: panel.quickFilterRowTip(modelData)
                             active: panel.launcher.activeQuickFilters.includes(modelData.name)
                             onClicked: panel.launcher.toggleQuickFilter(index)
                         }
@@ -896,8 +902,8 @@ Item {
                             objectName: "panelQuickFilter_" + index
                             multi: true
                             iconName: "funnel"
-                            text: modelData.name
-                            tip: modelData.query
+                            text: panel.showTypeKeywords && modelData.keyword.length > 0 ? ":" + modelData.keyword : modelData.name
+                            tip: panel.quickFilterRowTip(modelData)
                             active: panel.launcher.activeQuickFilters.includes(modelData.name)
                             onClicked: panel.launcher.toggleQuickFilter(index)
                         }

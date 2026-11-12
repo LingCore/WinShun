@@ -195,6 +195,39 @@ private slots:
         QCOMPARE(result.type.value_or(-1), type);
     }
 
+    // Quick filters named by keyword among what is typed (splitQuickFilterQuery).
+    void quickFilterKeywords()
+    {
+        const QuickFilters filters {{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s, u"nobin"_s}, {u"大 PDF"_s, u"ext:pdf size:>10mb"_s, u"bigpdf"_s},
+            {u"没有前缀"_s, u"ext:txt"_s, {}}};
+        const auto split = [&](const QString& text) { return splitQuickFilterQuery(text, filters); };
+        QCOMPARE(split(u":nobin 报告"_s).words, u"报告"_s);
+        QCOMPARE(split(u":nobin 报告"_s).filters, (QList<int> {0}));
+        QCOMPARE(split(u"报告 NoBin:"_s).words, u"报告"_s); // after, any case
+        QCOMPARE(split(u"报告 NoBin:"_s).filters, (QList<int> {0}));
+        // Several, anywhere, each once; the words between as typed.
+        const auto both = split(u":bigpdf 年度  报告 :nobin :bigpdf"_s);
+        QCOMPARE(both.filters, (QList<int> {1, 0}));
+        QCOMPARE(both.words, u"年度  报告"_s);
+        // Alone: nothing left to find by.
+        QCOMPARE(split(u":nobin"_s).words, QString());
+        QCOMPARE(split(u":nobin"_s).filters, (QList<int> {0}));
+        // The rest of the syntax stays for the query: a kind of file's keyword, ext:, a drive, a path.
+        QCOMPARE(split(u":nobin :pic 报告 ext:pdf"_s).words, u":pic 报告 ext:pdf"_s);
+        QCOMPARE(split(u"D:\\My Files\\ 报告 :nobin"_s).words, u"D:\\My Files\\ 报告"_s);
+        for (const QString& plain : {u"报告"_s, u"\":nobin\" 报告"_s, u":unknown 报告"_s, u"nobin 报告"_s, u"C: 报告"_s, u"a:nobin"_s, u":"_s, QString()}) {
+            QCOMPARE(split(plain).words, plain);
+            QVERIFY(split(plain).filters.isEmpty());
+        }
+        // No filter has a keyword: nothing is one.
+        QVERIFY(splitQuickFilterQuery(u":nobin 报告"_s, {{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s, {}}}).filters.isEmpty());
+        // With the kinds of file: both read, in either order.
+        const FileTypes types {{u"图片"_s, {u"png"_s}, u"pictures"_s, u"pic"_s}};
+        const auto kind = splitFileTypeQuery(split(u":pic :nobin 报告"_s).words, types, u"folder");
+        QCOMPARE(kind.type.value_or(-1), 0);
+        QCOMPARE(kind.words, u"报告"_s);
+    }
+
     void multipleTypePrefixes()
     {
         const FileTypes types {{u"图片"_s, {u"png"_s}, u"pictures"_s, u"pic"_s},

@@ -62,9 +62,18 @@ using FileTypes = QList<FileType>;
 struct QuickFilter {
     QString name;
     QString query; // as typed in the search box (parseQuery; never regex mode)
+    // :keyword (or keyword:) among what is typed switches it on for that
+    // search, in the box as in the panel; empty: by its chip only. No two
+    // filters, kinds of file or the folders' share one (FileType::keyword).
+    QString keyword;
     bool operator==(const QuickFilter&) const = default;
 };
 using QuickFilters = QList<QuickFilter>;
+// What splitQuickFilterQuery (Query.h) reads from what is typed.
+struct QuickFilterQuery {
+    QString words;
+    QList<int> filters; // indexes, each once, in the order typed
+};
 
 // What kind of installed app a result is (see AppCatalog), or of place in
 // Windows (SystemCatalog), or None for a file or folder.

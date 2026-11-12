@@ -268,7 +268,7 @@ struct Settings {
     // its Id and no Name until renamed, so it shows in either language.
     // [QuickFilters]: queries saved under a name, switched on in the search
     // panel's side bar to narrow whatever is typed (QuickFilter). An array:
-    // size=, 1\Name=, 1\Query=. None at first.
+    // size=, 1\Name=, 1\Query=, 1\Keyword= (when it has one). None at first.
     QuickFilters quickFilters;
     // What is wrong with one's query, to say to its user; empty when it can be saved.
     static QString quickFilterProblem(const QString& query);

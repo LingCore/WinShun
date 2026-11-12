@@ -3159,15 +3159,15 @@
     </message>
     <message>
         <source>筛选放到左侧</source>
-        <translation type="unfinished"></translation>
+        <translation>Filters at the left</translation>
     </message>
     <message>
         <source>筛选放到顶部</source>
-        <translation type="unfinished"></translation>
+        <translation>Filters at the top</translation>
     </message>
     <message>
         <source>全部类型</source>
-        <translation type="unfinished"></translation>
+        <translation>All kinds</translation>
     </message>
     <message>
         <source>起 2026-01-01</source>
@@ -3215,7 +3215,7 @@
     </message>
     <message>
         <source>时间</source>
-        <translation type="unfinished"></translation>
+        <translation>Date</translation>
     </message>
     <message>
         <source>正在搜索文件内容…</source>
@@ -3263,7 +3263,7 @@
     </message>
     <message>
         <source>输入名称或拼音，或加筛选条件</source>
-        <translation type="unfinished"></translation>
+        <translation>Type a name or pinyin, or add filters</translation>
     </message>
     <message>
         <source>内容详情宽度，左右方向键调整</source>
@@ -4195,8 +4195,8 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>filter;exclude;condition;saved search;recycle bin;panel;side bar;custom filter</translation>
     </message>
     <message>
-        <source>把常用的搜索条件存起来，在搜索面板的侧栏点一下就套用，再点一下取消；同时开几个就要全部满足。条件和搜索框里的写法一样：%1 排除回收站里的东西，%2 排除这类文件夹，%3 只看大 PDF。</source>
-        <translation>Save searches you use often: a click in the search panel&apos;s side bar applies one, another click removes it, and with several on a file must fit them all. Written as in the search box: %1 leaves out what is in the Recycle Bin, %2 such folders, %3 shows large PDFs only.</translation>
+        <source>把常用的搜索条件存起来，在搜索面板的侧栏点一下就套用，再点一下取消；同时开几个就要全部满足。条件和搜索框里的写法一样：%1 排除回收站里的东西，%2 排除这类文件夹，%3 只看大 PDF。填了搜索前缀（例如 nobin），在搜索框里输入“:nobin 报告”也能套用，不用展开面板。</source>
+        <translation>Save searches you use often: a click in the search panel&apos;s side bar applies one, another click removes it, and with several on a file must fit them all. Written as in the search box: %1 leaves out what is in the Recycle Bin, %2 such folders, %3 shows large PDFs only. Give one a search prefix (say nobin) and ":nobin report" in the search box applies it too, without the panel.</translation>
     </message>
     <message>
         <source>名称</source>
@@ -4207,12 +4207,24 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>Query</translation>
     </message>
     <message>
+        <source>搜索前缀（:）</source>
+        <translation>Prefix (:)</translation>
+    </message>
+    <message>
         <source>筛选名称</source>
         <translation>Filter name</translation>
     </message>
     <message>
         <source>%1的条件</source>
         <translation>Query of %1</translation>
+    </message>
+    <message>
+        <source>未设置</source>
+        <translation>Not set</translation>
+    </message>
+    <message>
+        <source>%1的搜索前缀</source>
+        <translation>Search prefix for %1</translation>
     </message>
     <message>
         <source>上移</source>
@@ -4415,15 +4427,15 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     </message>
     <message>
         <source>隐藏筛选</source>
-        <translation type="unfinished"></translation>
+        <translation>Hide filters</translation>
     </message>
     <message>
         <source>显示筛选（筛选仍生效）</source>
-        <translation type="unfinished"></translation>
+        <translation>Show filters (still applied)</translation>
     </message>
     <message>
         <source>显示筛选</source>
-        <translation type="unfinished"></translation>
+        <translation>Show filters</translation>
     </message>
     <message>
         <source>切换搜索范围</source>
@@ -13521,6 +13533,10 @@ Content index: %5</translation>
     <message>
         <source>。放在分组里，不会被自动删除</source>
         <translation>. They are in a group and are never deleted automatically</translation>
+    </message>
+    <message>
+        <source>已有快捷筛选使用这个前缀</source>
+        <translation>A quick filter already uses this prefix</translation>
     </message>
     <message>
         <source>给筛选起个名字</source>

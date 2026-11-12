@@ -326,23 +326,33 @@ void writeQuickFilters(QSettings& s, const QuickFilters& filters)
         s.setArrayIndex(i);
         s.setValue(u"Name"_s, filters[i].name);
         s.setValue(u"Query"_s, filters[i].query);
+        if (!filters[i].keyword.isEmpty())
+            s.setValue(u"Keyword"_s, filters[i].keyword);
     }
     s.endArray();
 }
 
 // Edited by hand perhaps: one with no name or no query left out, and a name
 // a second time (any case). A query that cannot be read stays, to be put
-// right in the settings; the search passes it over.
-QuickFilters readQuickFilters(QSettings& s)
+// right in the settings; the search passes it over. A keyword that cannot
+// be one, or is taken (`keywords`: the kinds of file's and the folders',
+// and each filter's as it is read), is none.
+QuickFilters readQuickFilters(QSettings& s, QSet<QString> keywords)
 {
     QuickFilters filters;
     const int size = s.beginReadArray(u"QuickFilters"_s);
     for (int i = 0; i < size; ++i) {
         s.setArrayIndex(i);
-        const QuickFilter filter {s.value(u"Name"_s).toString().simplified(), s.value(u"Query"_s).toString().trimmed()};
+        QuickFilter filter {s.value(u"Name"_s).toString().simplified(), s.value(u"Query"_s).toString().trimmed(),
+            normalizedTypeKeyword(s.value(u"Keyword"_s).toString()).value_or(QString())};
+        if (keywords.contains(filter.keyword))
+            filter.keyword.clear();
         const bool named = std::ranges::any_of(filters, [&](const QuickFilter& f) { return f.name.compare(filter.name, Qt::CaseInsensitive) == 0; });
-        if (!filter.name.isEmpty() && !filter.query.isEmpty() && !named)
+        if (!filter.name.isEmpty() && !filter.query.isEmpty() && !named) {
             filters.append(filter);
+            if (!filter.keyword.isEmpty())
+                keywords.insert(filter.keyword);
+        }
     }
     s.endArray();
     return filters;
@@ -1183,7 +1193,7 @@ void Settings::load()
             typeKeywords.insert(type.keyword);
     }
 
-    quickFilters = readQuickFilters(s);
+    quickFilters = readQuickFilters(s, typeKeywords);
     shares = readShares(s);
     networkVerifyHours = std::clamp(readOrDefault(s, u"Network/VerifyHours"_s, d.networkVerifyHours), 0, 24 * 7);
     networkVerifyHoursUnwatched

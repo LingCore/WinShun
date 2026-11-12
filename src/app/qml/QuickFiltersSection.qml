@@ -10,7 +10,8 @@ SettingsSection {
     property string problem
     readonly property int nameWidth: width < 560 ? 110 : 140
     readonly property int actionsWidth: 108 // three icon buttons of 32 and the gaps between them
-    readonly property real queryWidth: Math.max(120, width - 36 - nameWidth - actionsWidth - 12)
+    readonly property int keywordWidth: width < 560 ? 96 : 115
+    readonly property real queryWidth: Math.max(120, width - 36 - nameWidth - keywordWidth - actionsWidth - 18)
     // The row, gone to from the + of the panel's chips (SettingsWindow.showQuickFiltersPage).
     readonly property SettingRow filtersRow: quickFiltersRow
 
@@ -33,8 +34,8 @@ SettingsSection {
         objectName: "quickFiltersRow"
         title: qsTr("快捷筛选")
         keywords: qsTr("筛选器;过滤;排除;条件;保存;常用;回收站;面板;侧栏;filter;exclude;saved search").split(";")
-        values: section.editor.quickFilters.map(f => f.name + " " + f.query)
-        description: qsTr("把常用的搜索条件存起来，在搜索面板的侧栏点一下就套用，再点一下取消；同时开几个就要全部满足。条件和搜索框里的写法一样：%1 排除回收站里的东西，%2 排除这类文件夹，%3 只看大 PDF。").arg("!$RECYCLE.BIN\\").arg("!node_modules\\").arg("ext:pdf size:>10mb")
+        values: section.editor.quickFilters.map(f => f.name + " " + f.query + " :" + f.keyword)
+        description: qsTr("把常用的搜索条件存起来，在搜索面板的侧栏点一下就套用，再点一下取消；同时开几个就要全部满足。条件和搜索框里的写法一样：%1 排除回收站里的东西，%2 排除这类文件夹，%3 只看大 PDF。填了搜索前缀（例如 nobin），在搜索框里输入“:nobin 报告”也能套用，不用展开面板。").arg("!$RECYCLE.BIN\\").arg("!node_modules\\").arg("ext:pdf size:>10mb")
 
         body: [
             Row {
@@ -42,6 +43,7 @@ SettingsSection {
                 visible: section.editor.quickFilters.length > 0
                 Text { width: section.nameWidth; text: qsTr("名称"); color: Theme.subtext; font.pixelSize: Theme.fontCaption }
                 Text { width: section.queryWidth; text: qsTr("条件"); color: Theme.subtext; font.pixelSize: Theme.fontCaption }
+                Text { width: section.keywordWidth; text: qsTr("搜索前缀（:）"); color: Theme.subtext; font.pixelSize: Theme.fontCaption }
             },
             Column {
                 width: parent.width
@@ -76,6 +78,18 @@ SettingsSection {
                                 section.problem = section.editor.setQuickFilterQuery(filterRow.index, text)
                                 if (section.problem.length > 0)
                                     text = filterRow.modelData.query
+                            }
+                        }
+                        InputBox {
+                            objectName: "quickFilterKeyword_" + filterRow.index
+                            width: section.keywordWidth
+                            text: filterRow.modelData.keyword
+                            placeholder: qsTr("未设置")
+                            Accessible.name: qsTr("%1的搜索前缀").arg(filterRow.modelData.name)
+                            onEditingFinished: {
+                                section.problem = section.editor.setQuickFilterKeyword(filterRow.index, text)
+                                if (section.problem.length > 0)
+                                    text = filterRow.modelData.keyword
                             }
                         }
                         FlatButton {
@@ -120,7 +134,7 @@ SettingsSection {
                 InputBox {
                     id: newQuery
                     objectName: "quickFilterNewQuery"
-                    width: section.queryWidth
+                    width: section.queryWidth + section.keywordWidth + 6
                     placeholder: qsTr("条件，例如 %1").arg("!$RECYCLE.BIN\\")
                     Accessible.name: qsTr("新筛选的条件")
                     onAccepted: newName.text.trim().length > 0 ? addFilter.clicked() : newName.takeFocus()

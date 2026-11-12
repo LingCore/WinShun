@@ -231,7 +231,7 @@ class Launcher : public QObject {
     Q_PROPERTY(bool filtersActive READ filtersActive NOTIFY filtersChanged FINAL)
     // The quick filters (Settings' [QuickFilters]: a query saved under a
     // name, as Everything's filters), a chip each in the side bar:
-    // [{name, query}], and the names of those on (activeQuickFilters: apart,
+    // [{name, query, keyword}], and the names of those on (activeQuickFilters: apart,
     // so that a click leaves the chips as they are). Those on narrow whatever is typed, names and the
     // files a content search reads, every one of them (never one or
     // another); with the other filters they count as active and are
@@ -927,7 +927,7 @@ private:
     // and what of the panel the rows are for (as m_shownText is): the
     // filters, the order, and whether nothing typed lists everything.
     EntryFilter panelFilter() const;
-    QStringList quickConditions() const; // the queries of the quick filters that are on
+    QStringList quickConditions() const; // the queries of the quick filters on: by their chips (the panel), or named in the box
     QJsonObject pluginFilters() const;
     void sortShownPanel(const QString& currentPath = {});
     QString panelKey() const;
@@ -1204,7 +1204,13 @@ private:
     struct PrefixScope { Scope scope; QStringList typeKeys; bool folders; };
     std::optional<PrefixScope> m_filePrefix;
     QString m_prefixWords;
-    QString searchText() const { return m_filePrefix ? m_prefixWords : m_query.trimmed(); }
+    QString searchText() const { return m_filePrefix ? m_prefixWords : typedQuick().filters.isEmpty() ? m_query.trimmed() : typedQuick().words; }
+    // The quick filters named in the box by keyword (":nobin 报告"), and the
+    // words without them; read anew when the text or the filters changed.
+    const QuickFilterQuery& typedQuick() const;
+    mutable QuickFilterQuery m_typedQuick;
+    mutable QString m_typedQuickFor;
+    mutable bool m_typedQuickRead = false;
     void updateQueryPrefix();
     bool clearQueryPrefix(); // an explicit scope/type choice replaces the typed prefix
     int m_fileType = -1; // see fileType

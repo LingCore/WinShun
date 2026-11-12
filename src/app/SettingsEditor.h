@@ -820,6 +820,7 @@ public:
     Q_INVOKABLE QString addQuickFilter(const QString& name, const QString& query);
     Q_INVOKABLE QString renameQuickFilter(int index, const QString& name);
     Q_INVOKABLE QString setQuickFilterQuery(int index, const QString& query);
+    Q_INVOKABLE QString setQuickFilterKeyword(int index, const QString& text); // ":NoBin" is nobin; empty: none
     Q_INVOKABLE void removeQuickFilter(int index);
     Q_INVOKABLE void moveQuickFilter(int index, int delta); // up (-1) or down (1) the chips
 

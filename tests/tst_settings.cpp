@@ -1008,7 +1008,7 @@ private slots:
         ws::Settings::useProfile(profile.path());
         ws::Settings settings;
         QVERIFY(settings.quickFilters.isEmpty());
-        settings.quickFilters = {{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s}, {u"大 PDF"_s, u"ext:pdf size:>10mb"_s}};
+        settings.quickFilters = {{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s, u"nobin"_s}, {u"大 PDF"_s, u"ext:pdf size:>10mb"_s}};
         settings.save();
         ws::Settings loaded;
         loaded.load();
@@ -1026,6 +1026,32 @@ private slots:
         loaded.load();
         QCOMPARE(loaded.quickFilters.size(), 3);
         QCOMPARE(loaded.quickFilters[2], (ws::QuickFilter {u"坏的"_s, u"regex:("_s})); // kept, to be put right
+        // Keywords by hand: tidied as a kind of file's; one taken (the folders', a kind's, another filter's) or unusable is none.
+        loaded.fileTypes = {{u"文档"_s, {u"docx"_s}, {}, u"doc"_s, {}}};
+        loaded.save();
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"QuickFilters/size"_s, 5);
+            ini.setValue(u"QuickFilters/1/Keyword"_s, u" :NoBin "_s);
+            ini.setValue(u"QuickFilters/2/Keyword"_s, u"nobin"_s);
+            ini.setValue(u"QuickFilters/3/Keyword"_s, u"doc"_s);
+            ini.setValue(u"QuickFilters/4/Name"_s, u"第四个"_s);
+            ini.setValue(u"QuickFilters/4/Query"_s, u"ext:md"_s);
+            ini.setValue(u"QuickFilters/4/Keyword"_s, u"two words"_s);
+            ini.setValue(u"QuickFilters/5/Name"_s, u"第五个"_s);
+            ini.setValue(u"QuickFilters/5/Query"_s, u"ext:txt"_s);
+            ini.setValue(u"QuickFilters/5/Keyword"_s, loaded.folderKeyword);
+        }
+        loaded.load();
+        QCOMPARE(loaded.quickFilters.size(), 5);
+        QCOMPARE(loaded.fileTypes.value(0).keyword, u"doc"_s);
+        QCOMPARE(loaded.quickFilters[0].keyword, u"nobin"_s);
+        for (int i = 1; i < 5; ++i)
+            QVERIFY2(loaded.quickFilters[i].keyword.isEmpty(), qPrintable(loaded.quickFilters[i].name));
+        loaded.save(); // one with a keyword is written with it, and read back so
+        ws::Settings again;
+        again.load();
+        QCOMPARE(again.quickFilters, loaded.quickFilters);
         QVERIFY(!ws::Settings::quickFilterProblem(u"regex:("_s).isEmpty());
         QVERIFY(!ws::Settings::quickFilterProblem(u"  "_s).isEmpty());
         QVERIFY(ws::Settings::quickFilterProblem(u"!$RECYCLE.BIN\\"_s).isEmpty());

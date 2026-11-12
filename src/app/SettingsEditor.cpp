@@ -2046,6 +2046,8 @@ QString SettingsEditor::setFileTypeKeyword(int index, const QString& text)
             if (i != index && *keyword == m_settings.fileTypes[i].keyword)
                 return tr("已有类型使用这个前缀");
         }
+        if (std::ranges::any_of(m_settings.quickFilters, [&](const QuickFilter& f) { return f.keyword == *keyword; }))
+            return tr("已有快捷筛选使用这个前缀");
     }
     QString& value = index == -1 ? m_settings.folderKeyword : m_settings.fileTypes[index].keyword;
     if (value != *keyword) {
@@ -2148,7 +2150,7 @@ QVariantList SettingsEditor::quickFilters() const
 {
     QVariantList filters;
     for (const QuickFilter& f : m_settings.quickFilters)
-        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}, {u"problem"_s, Settings::quickFilterProblem(f.query)}});
+        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}, {u"keyword"_s, f.keyword}, {u"problem"_s, Settings::quickFilterProblem(f.query)}});
     return filters;
 }
 
@@ -2162,7 +2164,7 @@ QString SettingsEditor::addQuickFilter(const QString& name, const QString& query
     const QString text = query.trimmed();
     if (const QString problem = Settings::quickFilterProblem(text); !problem.isEmpty())
         return problem;
-    m_settings.quickFilters.append({named, text});
+    m_settings.quickFilters.append({named, text, {}});
     commit();
     return {};
 }
@@ -2194,6 +2196,30 @@ QString SettingsEditor::setQuickFilterQuery(int index, const QString& query)
         return problem;
     if (m_settings.quickFilters[index].query != text) {
         m_settings.quickFilters[index].query = text;
+        commit();
+    }
+    return {};
+}
+
+QString SettingsEditor::setQuickFilterKeyword(int index, const QString& text)
+{
+    if (index < 0 || index >= m_settings.quickFilters.size())
+        return {};
+    const auto keyword = normalizedTypeKeyword(text);
+    if (!keyword)
+        return tr("前缀最多 32 个字符，只能包含文字、数字、下划线和连字符");
+    if (!keyword->isEmpty()) {
+        if (*keyword == m_settings.folderKeyword)
+            return tr("这个前缀已用于文件夹");
+        if (std::ranges::any_of(m_settings.fileTypes, [&](const FileType& t) { return t.keyword == *keyword; }))
+            return tr("已有类型使用这个前缀");
+        for (qsizetype i = 0; i < m_settings.quickFilters.size(); ++i) {
+            if (i != index && m_settings.quickFilters[i].keyword == *keyword)
+                return tr("已有快捷筛选使用这个前缀");
+        }
+    }
+    if (m_settings.quickFilters[index].keyword != *keyword) {
+        m_settings.quickFilters[index].keyword = *keyword;
         commit();
     }
     return {};

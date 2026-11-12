@@ -656,7 +656,8 @@ void Launcher::setPluginHost(plugin::Host* host)
 
 void Launcher::updateQueryPrefix()
 {
-    const FileTypeQuery parsed = splitFileTypeQuery(m_query, m_fileTypes, m_folderKeyword);
+    // Less the quick filters named in it: ":nobin :pic 报告" is both.
+    const FileTypeQuery parsed = splitFileTypeQuery(typedQuick().filters.isEmpty() ? m_query : typedQuick().words, m_fileTypes, m_folderKeyword);
     const Scope oldScope = m_scope;
     const int oldType = m_fileType;
     const auto oldExtra = m_extraFileTypes;
@@ -2113,12 +2114,13 @@ void Launcher::search(bool more)
     request.recentItems = m_recentItems;
     request.favoritesOnStart = m_favoritesOnStart;
     request.limit = kPage * m_pages;
-    request.browse = m_filePrefix.has_value() || (m_scope == Files && m_fileType >= 0);
+    // A quick filter named alone (":nobin") lists what it lets through, as a kind of file does.
+    request.browse = m_filePrefix.has_value() || (m_scope == Files && m_fileType >= 0) || !typedQuick().filters.isEmpty();
+    request.conditions = quickConditions();
     if (m_panel) { // its filters and order; nothing typed lists everything
         request.filter = panelFilter();
         if (!m_folderFilter.isEmpty())
             request.folders = {m_folderFilter};
-        request.conditions = quickConditions();
         request.browse = true;
     }
     if (m_panel || m_filePrefix || !text.isEmpty())
@@ -2371,8 +2373,8 @@ SearchEngine::Request Launcher::contentRequest() const
         request.filter = panelFilter();
         if (!m_folderFilter.isEmpty())
             request.contentFolders = {m_folderFilter};
-        request.conditions = quickConditions();
     }
+    request.conditions = quickConditions();
     if (m_scope == Content) {
         // Asked for: system and program folders too if so set, and many
         // files at once (each open mostly waits for the antivirus).
@@ -2836,18 +2838,29 @@ QVariantList Launcher::quickFilters() const
 {
     QVariantList filters;
     for (const QuickFilter& f : m_quickFilters)
-        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}});
+        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}, {u"keyword"_s, f.keyword}});
     return filters;
 }
 
 QStringList Launcher::quickConditions() const
 {
     QStringList conditions;
-    for (const QuickFilter& f : m_quickFilters) {
-        if (m_quickFiltersOn.contains(f.name))
-            conditions.append(f.query);
+    const QList<int>& typed = typedQuick().filters;
+    for (qsizetype i = 0; i < m_quickFilters.size(); ++i) {
+        if ((m_panel && m_quickFiltersOn.contains(m_quickFilters[i].name)) || typed.contains(int(i)))
+            conditions.append(m_quickFilters[i].query);
     }
     return conditions;
+}
+
+const QuickFilterQuery& Launcher::typedQuick() const
+{
+    if (!m_typedQuickRead || m_typedQuickFor != m_query) {
+        m_typedQuick = splitQuickFilterQuery(m_query.trimmed(), m_quickFilters);
+        m_typedQuickFor = m_query;
+        m_typedQuickRead = true;
+    }
+    return m_typedQuick;
 }
 
 void Launcher::setQuickFilters(const QuickFilters& filters)
@@ -2855,14 +2868,17 @@ void Launcher::setQuickFilters(const QuickFilters& filters)
     if (filters == m_quickFilters)
         return;
     const QStringList before = quickConditions();
+    const QString words = searchText();
     m_quickFilters = filters;
+    m_typedQuickRead = false; // a keyword given or taken away: what is typed reads otherwise
+    updateQueryPrefix();
     // Renamed or removed: off, as nothing shows it any more.
     m_quickFiltersOn.removeIf([&](const QString& name) {
         return std::ranges::none_of(filters, [&](const QuickFilter& f) { return f.name == name; });
     });
     emit quickFiltersChanged();
     emit filtersChanged();
-    if (m_panel && quickConditions() != before && m_window && m_window->isVisible())
+    if ((quickConditions() != before || searchText() != words) && m_window && m_window->isVisible())
         search(); // one that is on was edited: its rows, in place
 }
 
@@ -2989,16 +3005,16 @@ EntryFilter Launcher::panelFilter() const
 
 QString Launcher::panelKey() const
 {
-    if (!m_panel)
-        return {};
     // Only what changes the rows: the box's list is the panel's when nothing
     // narrows or reorders it, so expanding keeps the rows (and the selection).
     QString key;
+    if (const QStringList conditions = quickConditions(); !conditions.isEmpty())
+        key += u"q:"_s + conditions.join(QChar(0x1f)) + u';'; // in the box too: named by keyword
+    if (!m_panel)
+        return key;
     if (filtersActive()) {
         key += u"f:%1,%2,%3,%4,%5,%6,%7;"_s.arg(m_dateChoice).arg(m_dateFrom, m_dateTo).arg(m_sizeChoice).arg(m_sizeMin, m_sizeMax, m_folderFilter);
     }
-    if (const QStringList conditions = quickConditions(); !conditions.isEmpty())
-        key += u"q:"_s + conditions.join(QChar(0x1f)) + u';';
     if (m_panelSort.key != SortKey::Rank)
         key += u"o:%1,%2;"_s.arg(static_cast<int>(m_panelSort.key)).arg(m_panelSort.descending ? 1 : 0);
     if (searchText().isEmpty())

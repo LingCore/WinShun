@@ -409,6 +409,40 @@ void panelQuickFilters(QQmlEngine* engine, const QDir& output, Checks& check)
     click(item(window->contentItem(), u"panelQuickFilterAdd"_s));
     check(drafts == QStringList({u"!node_modules\\ ext:js"_s, QString()}), u"quick filters: the + hands over a usable query only: "_s + drafts.join(u" | "_s));
 
+    // Named by keyword among what is typed: in the plain box too, with no chip.
+    launcher.setQuickFilters({{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s, u"nobin"_s}, {u"只看日志"_s, u"ext:log"_s, u"logs"_s}});
+    launcher.setPanel(false);
+    launcher.setQuery(u"wsquick"_s);
+    settle(window);
+    check(files().size() == 4, u"quick filter keywords: none typed, every match"_s);
+    launcher.setQuery(u":nobin wsquick"_s);
+    settle(window);
+    check(files() == QStringList({u"Q:\\work\\wsquick report.docx"_s, u"Q:\\work\\wsquick report.log"_s}),
+        u"quick filter keywords: one typed in the box narrows it: "_s + files().join(u" | "_s));
+    check(launcher.query() == u":nobin wsquick" && !launcher.filtersActive(), u"quick filter keywords: the box keeps what was typed, no chip goes on"_s);
+    launcher.setQuery(u"wsquick logs: :NOBIN"_s);
+    settle(window);
+    check(files() == QStringList({u"Q:\\work\\wsquick report.log"_s}), u"quick filter keywords: two typed, both hold: "_s + files().join(u" | "_s));
+    launcher.setQuery(u"wsquick"_s);
+    settle(window);
+    check(files().size() == 4, u"quick filter keywords: taken out of the box, the rows come back: "_s + files().join(u" | "_s));
+    // A keyword taken away in the settings: the word is text again.
+    launcher.setQuery(u":nobin wsquick"_s);
+    launcher.setQuickFilters({{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s}});
+    settle(window);
+    check(files().isEmpty(), u"quick filter keywords: without its keyword the word is searched for"_s);
+    launcher.setQuickFilters({{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s, u"nobin"_s}});
+    settle(window);
+    check(files().size() == 2, u"quick filter keywords: given back, it narrows at once"_s);
+    // In the panel a chip and a keyword together.
+    launcher.setPanel(true);
+    launcher.setQuickFilters({{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s, u"nobin"_s}, {u"只看日志"_s, u"ext:log"_s, u"logs"_s}});
+    launcher.toggleQuickFilter(1);
+    settle(window);
+    check(files() == QStringList({u"Q:\\work\\wsquick report.log"_s}), u"quick filter keywords: a chip and a keyword together: "_s + files().join(u" | "_s));
+    launcher.clearFilters();
+    settle(window);
+
     // The filters over the rows: the same as chips in the one line.
     launcher.setQuery(u"wsquick"_s);
     launcher.setPanelFiltersOnTop(true);

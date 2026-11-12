@@ -90,6 +90,51 @@ FileTypeQuery splitFileTypeQuery(const QString& text, const FileTypes& types, QS
     return result;
 }
 
+QuickFilterQuery splitQuickFilterQuery(const QString& text, const QuickFilters& filters)
+{
+    QuickFilterQuery result {text, {}};
+    if (std::ranges::none_of(filters, [](const QuickFilter& f) { return !f.keyword.isEmpty(); }) || !text.contains(u':'))
+        return result;
+    for (qsizetype start = 0; start < result.words.size();) {
+        const QStringView words(result.words);
+        while (start < words.size() && words[start].isSpace())
+            ++start;
+        qsizetype end = start;
+        bool quoted = false;
+        bool hasQuotes = false;
+        while (end < words.size() && (quoted || !words[end].isSpace())) {
+            if (words[end] == u'"') {
+                quoted = !quoted;
+                hasQuotes = true;
+            }
+            ++end;
+        }
+        const QStringView token = words.sliced(start, end - start);
+        QStringView keyword;
+        if (!hasQuotes && token.startsWith(u':'))
+            keyword = token.sliced(1);
+        else if (!hasQuotes && token.endsWith(u':') && !(token.size() == 2 && token.front().isLetter())) // a drive, "C:"
+            keyword = token.chopped(1);
+        int found = -1;
+        for (qsizetype i = 0; i < filters.size() && found < 0 && !keyword.isEmpty(); ++i) {
+            if (!filters[i].keyword.isEmpty() && keyword.compare(filters[i].keyword, Qt::CaseInsensitive) == 0)
+                found = int(i);
+        }
+        if (found < 0) {
+            start = end;
+            continue;
+        }
+        if (!result.filters.contains(found))
+            result.filters.append(found);
+        // The token goes, the words around it as they were typed.
+        const QString before = words.left(start).trimmed().toString();
+        const QString after = words.mid(end).trimmed().toString();
+        result.words = before.isEmpty() || after.isEmpty() ? before + after : before + u' ' + after;
+        start = before.size();
+    }
+    return result;
+}
+
 namespace {
 
 std::string foldedUtf8(const QString& s)
