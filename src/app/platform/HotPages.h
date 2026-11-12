@@ -82,13 +82,15 @@ class HotPages {
 public:
     // At most this much is taken the first time: of more, the scattered
     // pages, which cost a fault each, while the large runs are left to
-    // Windows and nothing is added later. Grown since by half (or by
+    // Windows and nothing is added later. Grown since to twice that (or by
     // kSlackBytes, where that is more), what was added goes again: pages an
     // opening no longer uses are never told apart from those it does, and a
     // little is added every day. Those still used are back after two
     // openings; the first ones stay, so that no opening starts from nothing.
+    // Twice: the first opening after the start shows an empty box, later
+    // ones the last search's rows as well (43 MB, then 64, measured).
     static constexpr std::size_t kMostBytes = std::size_t {96} << 20;
-    static constexpr std::size_t kSlackBytes = std::size_t {16} << 20;
+    static constexpr std::size_t kSlackBytes = std::size_t {32} << 20;
 
     // `used`: in the working set as the window was seen, the first time
     // since the memory was given back, and not among those kept. Any thread.

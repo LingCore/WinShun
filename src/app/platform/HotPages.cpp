@@ -211,7 +211,7 @@ void HotPages::learn(const PageSet& used)
         return; // what was left out then would come in now, and be too much again
     m_pages = m_pages.united(used.intersected(m_once));
     m_once = used.without(m_pages);
-    if (m_pages.bytes() > m_first.bytes() + std::max(m_first.bytes() / 2, kSlackBytes)) {
+    if (m_pages.bytes() > m_first.bytes() + std::max(m_first.bytes(), kSlackBytes)) {
         m_pages = m_first;
         m_once = {};
     }

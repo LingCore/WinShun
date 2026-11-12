@@ -260,14 +260,14 @@ private slots:
         QCOMPARE(hot.pages(), pages({{0, 100}, {300, 310}, {500, 502}}));
     }
 
-    void whatWasAddedGoesOnceGrownByHalf()
+    void whatWasAddedGoesOnceGrownToTwice()
     {
         const std::size_t slack = HotPages::kSlackBytes / kPage;
         const auto twice = [](HotPages& hot, const PageSet& used) {
             hot.learn(used);
             hot.learn(used);
         };
-        HotPages small; // 100 pages at first: the slack is more than half of that
+        HotPages small; // 100 pages at first: the slack is more than that
         small.learn(pages({{0, 100}}));
         twice(small, pages({{1'000, 1'000 + slack}}));
         QCOMPARE(small.pages(), pages({{0, 100}, {1'000, 1'000 + slack}}));
@@ -277,11 +277,11 @@ private slots:
         QCOMPARE(small.pages(), pages({{0, 100}, {50'000, 50'001}}));
 
         HotPages large;
-        const std::size_t first = 4 * slack;
+        const std::size_t first = 2 * slack;
         large.learn(pages({{0, first}}));
-        twice(large, pages({{100'000, 100'000 + first / 2}}));
-        QCOMPARE(large.pages(), pages({{0, first}, {100'000, 100'000 + first / 2}}));
-        twice(large, pages({{200'000, 200'001}}));
+        twice(large, pages({{100'000, 100'000 + first}}));
+        QCOMPARE(large.pages(), pages({{0, first}, {100'000, 100'000 + first}}));
+        twice(large, pages({{300'000, 300'001}}));
         QCOMPARE(large.pages(), pages({{0, first}}));
     }
 };
