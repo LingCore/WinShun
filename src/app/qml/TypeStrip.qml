@@ -79,7 +79,8 @@ Item {
     readonly property var appChips: {
         const counts = launcher.appCounts
         const count = (view) => " · " + qsTr("%1 个").arg(counts[view] ?? 0)
-        return [{ type: Launcher.FrequentApps, name: qsTr("常用"), tip: qsTr("打开最多的应用") + count(Launcher.FrequentApps), glyph: "ph:clock-counter-clockwise" },
+        return [{ type: Launcher.RunningApps, name: qsTr("运行"), tip: qsTr("正在运行的程序，Enter 切换过去") + count(Launcher.RunningApps), glyph: "ph:play-circle" },
+                { type: Launcher.FrequentApps, name: qsTr("常用"), tip: qsTr("打开最多的应用") + count(Launcher.FrequentApps), glyph: "ph:clock-counter-clockwise" },
                 { type: Launcher.FavoriteApps, name: qsTr("收藏"), tip: qsTr("收藏夹里的应用") + count(Launcher.FavoriteApps), glyph: "ph:star" },
                 { type: Launcher.AllApps, name: qsTr("全部"), tip: qsTr("开始菜单里的所有应用") + count(Launcher.AllApps), glyph: "ph:squares-four" }]
     }

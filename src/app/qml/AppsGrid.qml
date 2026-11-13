@@ -84,6 +84,7 @@ GridView {
         required property string name
         required property string icon
         required property bool favorite
+        required property bool windowResult
         readonly property bool current: GridView.isCurrentItem
 
         width: grid.tileWidth
@@ -158,7 +159,7 @@ GridView {
             y: 4
             width: 24
             height: 24
-            visible: tile.favorite || tileArea.containsMouse || starArea.containsMouse
+            visible: !tile.windowResult && (tile.favorite || tileArea.containsMouse || starArea.containsMouse)
             Accessible.role: Accessible.Button
             Accessible.name: tile.favorite ? qsTr("从收藏夹移除") : qsTr("加入收藏夹")
             Accessible.onPressAction: starArea.toggle()

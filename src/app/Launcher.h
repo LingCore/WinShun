@@ -286,7 +286,7 @@ public:
     // ask for it (appsTab), its rows the installed apps and nothing else.
     enum Scope { All, Files, Content, Folders, Apps };
     Q_ENUM(Scope)
-    enum AppsView { FrequentApps, FavoriteApps, AllApps };
+    enum AppsView { FrequentApps, FavoriteApps, AllApps, RunningApps };
     Q_ENUM(AppsView)
     // Alternate: Shift+Enter, a plugin row's third action (Open elsewhere).
     // FavoriteFolder: the folder a file is in into the favorites.
@@ -1369,7 +1369,8 @@ private:
     bool m_appsTabWanted = false; // the settings' 程序 tab
     AppsView m_appsView = FrequentApps; // kept in the state file (Search/AppsView)
     AppsView m_shownAppsView = FrequentApps; // of the rows on screen, as m_shownText
-    QList<int> m_appCounts {0, 0, 0};
+    QList<int> m_appCounts {0, 0, 0, 0};
+    quint64 m_appsRefreshToken = 0; // an earlier 运行 refresh is moot when it does not match
     bool m_appsLeft = false; // 程序 was left because its tab went for a while (the panel, a dialog's bar)
     void showApps(); // search() in 程序
     void appsTabMoved();
