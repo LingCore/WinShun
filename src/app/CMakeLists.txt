@@ -200,6 +200,7 @@ set(qml_files
     qml/PreviewWindow.qml
     qml/PreviewBody.qml
     qml/HoverTip.qml
+    qml/InfoDot.qml
     qml/ShortcutTip.qml
     qml/Shortcuts.qml
     qml/NameTip.qml

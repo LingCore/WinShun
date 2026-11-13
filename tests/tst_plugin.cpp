@@ -3487,6 +3487,31 @@ private slots:
         QCOMPARE(web->items[0].url, u"https:"_s + u"//example.com/dl/test.web-1.wsplugin"_s);
         QCOMPARE(web->skipped, 2);
 
+        // The README beside the list (GitHub #304): taken with an https address and a hash; without either, none.
+        const auto withReadme = [&](const QString& id, const QString& address, const QString& hash) {
+            QJsonObject o = entry(id, id + u"-1.wsplugin"_s, sha, 1);
+            o.insert(u"readme"_s, address);
+            o.insert(u"readmeSha256"_s, hash);
+            return o;
+        };
+        const QString readmeAt = u"https:"_s + u"//example.com/dl/readme-test.a-1.md"_s;
+        const QJsonArray readmeEntries {
+            withReadme(u"test.a"_s, readmeAt, sha.toUpper()),
+            withReadme(u"test.b"_s, u"http:"_s + u"//example.com/readme.md"_s, sha),
+            withReadme(u"test.c"_s, readmeAt, u"abc"_s),
+            entry(u"test.d"_s, u"test.d-1.wsplugin"_s, sha, 1),
+        };
+        const std::optional<gallery::Index> readmes = gallery::parse(
+            QJsonDocument(QJsonObject {{u"schema"_s, 1}, {u"plugins"_s, readmeEntries}}).toJson(), u"https:"_s + u"//example.com/dl/index.json"_s, &error);
+        QVERIFY2(readmes.has_value(), qPrintable(error));
+        QCOMPARE(readmes->items.size(), 4u); // a README that is not taken does not cost the plugin its place
+        QCOMPARE(readmes->items[0].readme, readmeAt);
+        QCOMPARE(readmes->items[0].readmeSha256, sha);
+        for (std::size_t i = 1; i < 4; ++i) {
+            QVERIFY(readmes->items[i].readme.isEmpty());
+            QVERIFY(readmes->items[i].readmeSha256.isEmpty());
+        }
+
         // What each is here.
         const QString userDir = root + u"/user"_s;
         const QString bundledDir = root + u"/bundled"_s;

@@ -120,8 +120,6 @@ SettingsSection {
         return shown
     }
 
-    note: qsTr("插件给搜索框加关键字命令，结果混进列表。它们用你的普通权限（要跟随 Win顺 管理员权限的，权限里会写明）；启用前会先列出权限，由你决定是否开启。")
-
     SettingRow { // what the number beside 插件 in the list on the left counts: newer versions waiting for a yes
         objectName: "pluginUpdatesRow"
         // While 全部更新 runs the count drops one by one (down to 0 before the last one is done): no number then.
@@ -260,9 +258,10 @@ SettingsSection {
         readonly property real buttonSlot: Math.max(foldMeasure.implicitWidth, linkMeasure.implicitWidth)
 
         title: qsTr("内置功能")
+        tip: qsTr("随 Win顺 一起提供；关闭后停止对应功能，暂不支持单独卸载")
         keywords: pasteTerms.concat([folderMenuTitle, dialogBarTitle, explorerTypingTitle, opusTypingTitle, dropPieTitle],
                                       folderMenuTerms, dialogBarTerms, explorerTypingTerms, opusTypingTerms, dropPieTerms)
-        description: qsTr("随 Win顺 一起提供，用到哪个开哪个；关闭后停止对应功能，暂不支持单独卸载")
+        description: qsTr("用到哪个开哪个")
         shown: pluginsSection.editor !== null
         onRevealRequested: {
             pluginsSection.builtinRevealed = true
@@ -403,7 +402,8 @@ SettingsSection {
         objectName: "installedPluginsRow"
 
         title: qsTr("已安装的插件")
-        keywords: qsTr("插件;扩展;关键字;命令;安装;plugin;extension").split(";")
+        tip: qsTr("插件给搜索框加关键字命令，结果混进列表。它们用你的普通权限（要跟随 Win顺 管理员权限的，权限里会写明）；启用前会先列出权限，由你决定是否开启。") + "\n\n" + qsTr("把插件文件夹或 .zip / .wsplugin 拖到这一页也能安装。")
+        keywords: qsTr("插件;扩展;关键字;命令;安装;位置;路径;文件夹;plugin;extension;folder;path").split(";")
         // What the cards hold, to be found by: the names, the commands and
         // their keywords, the titles of the plugins' settings, 给 AI 用.
         values: {
@@ -424,7 +424,7 @@ SettingsSection {
         description: pluginsSection.plugins.count > 0
                      ? (pluginsSection.filtering
                         ? qsTr("%1 个中的 %2 个").arg(pluginsSection.plugins.count).arg(pluginsSection.installedShown)
-                        : qsTr("%n 个；文件夹或 .zip / .wsplugin 拖到这里也能安装", "", pluginsSection.plugins.count))
+                        : qsTr("%n 个", "", pluginsSection.plugins.count))
                      : qsTr("还没有插件：点“添加插件”，或把插件文件夹、.zip / .wsplugin 拖到这里")
 
         FlatButton {
@@ -440,10 +440,13 @@ SettingsSection {
                 entries: [
                     { text: qsTr("插件文件夹"), glyph: "" }, // Folder
                     { text: qsTr("压缩包（.zip / .wsplugin）"), glyph: "" }, // ZipFolder
-                    { text: qsTr("从插件库挑选"), glyph: "" } // Shop
+                    { text: qsTr("从插件库挑选"), glyph: "" }, // Shop
+                    { text: qsTr("打开插件所在的文件夹"), glyph: "" } // FolderOpen
                 ]
                 onActivated: (index) => {
-                    if (index === 2)
+                    if (index === 3)
+                        pluginsSection.plugins.openUserDir()
+                    else if (index === 2)
                         pluginsSection.column.openPage(pluginsSection.page, 1)
                     else if (index === 1)
                         pluginsSection.plugins.installFromArchive()
@@ -548,19 +551,6 @@ SettingsSection {
                 wrapMode: Text.Wrap
             }
         ]
-    }
-
-    SettingRow {
-        title: qsTr("插件文件夹")
-        keywords: qsTr("位置;路径;文件夹;folder;path").split(";")
-        description: pluginsSection.plugins.userDir
-
-        FlatButton {
-            dpr: pluginsSection.dpr
-            text: qsTr("打开")
-            glyph: "" // FolderOpen
-            onClicked: pluginsSection.plugins.openUserDir()
-        }
     }
 
     SettingRow { // the cap on resident plugins, for those who keep many (GitHub #252)

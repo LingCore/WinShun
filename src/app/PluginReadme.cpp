@@ -55,10 +55,22 @@ Document load(const QString& directory)
     const QByteArray bytes = file.read(limit + 1);
     if (bytes.size() > limit || file.error() != QFileDevice::NoError)
         return {{}, QCoreApplication::translate("PluginReadme", "读取插件说明失败")};
+    return render(bytes, QFileInfo(file).suffix());
+}
+
+Document fromMarkdown(const QByteArray& bytes)
+{
+    constexpr qint64 limit = 1024 * 1024;
+    if (bytes.size() > limit)
+        return {{}, QCoreApplication::translate("PluginReadme", "插件说明超过 1 MB，暂时无法显示")};
+    return render(bytes, u"md"_s);
+}
+
+Document render(const QByteArray& bytes, const QString& extension)
+{
     QStringDecoder decoder(QStringConverter::encodingForData(bytes).value_or(QStringConverter::Utf8));
     const QString source = decoder(bytes);
     TextDocument doc;
-    const auto extension = QFileInfo(file).suffix();
     if (extension.compare(u"md", Qt::CaseInsensitive) == 0)
         doc.setMarkdown(source, QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub) | QTextDocument::MarkdownNoHTML);
     else if (extension.compare(u"txt", Qt::CaseInsensitive) == 0)

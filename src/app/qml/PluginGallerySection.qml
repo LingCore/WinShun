@@ -18,7 +18,6 @@ SettingsSection {
     signal showDeveloper()
     signal showProxySettings() // 设置网络代理: the row on 高级
 
-    note: qsTr("只安装你需要的功能。下载后先核对文件，安装并启用时会先列出它要的权限，同意后即可使用。")
 
     SettingRow { // what the install said: not seen on the 已安装 tab from here
         title: qsTr("刚才的结果")
@@ -37,6 +36,7 @@ SettingsSection {
         id: listRow
 
         title: qsTr("插件库")
+        tip: qsTr("只安装你需要的功能。下载后先核对文件，安装并启用时会先列出它要的权限，同意后即可使用。")
         keywords: qsTr("下载插件;安装插件;更新插件;商店;市场;store;gallery;download").split(";")
         description: gallerySection.gallery.status
         bodyShown: gallerySection.gallery.count > 0 || gallerySection.gallery.problem.length > 0
@@ -133,23 +133,19 @@ SettingsSection {
         ]
     }
 
-    SettingRow {
-        title: qsTr("分享你的插件")
-        keywords: qsTr("投稿;发布;提交;开发;share;publish;submit").split(";")
-        description: qsTr("做了好用的插件？可以投稿到插件库，给大家用")
+    SettingRow { // one row for making a plugin and sharing it
+        title: qsTr("自己做插件")
+        tip: qsTr("从能运行的模板开始，也可以把开发提示和模板一起交给 AI。创建后仍由你决定是否启用插件。做了好用的插件，可以投稿到插件库，给大家用。")
+        keywords: qsTr("投稿;发布;提交;开发;share;publish;submit;AI;模板;创建;贡献;Python;PowerShell").split(";")
+        description: qsTr("从模板开始，做好可以投稿")
 
         FlatButton {
             dpr: gallerySection.dpr
-            text: qsTr("看看怎么投稿")
+            flat: true
+            text: qsTr("怎么投稿")
             glyph: "" // Link
             onClicked: gallerySection.gallery.openRepository()
         }
-    }
-
-    SettingRow {
-        title: qsTr("做一个自己的插件")
-        keywords: qsTr("AI;开发;模板;创建;贡献;Python;PowerShell").split(";")
-        description: qsTr("从能运行的模板开始，也可以把开发提示和模板一起交给 AI。创建后仍由你决定是否启用插件。")
         FlatButton {
             dpr: gallerySection.dpr
             text: qsTr("复制 AI 开发提示")
@@ -158,7 +154,6 @@ SettingsSection {
         FlatButton {
             dpr: gallerySection.dpr
             text: qsTr("创建插件")
-            highlighted: true
             onClicked: gallerySection.showDeveloper()
         }
     }

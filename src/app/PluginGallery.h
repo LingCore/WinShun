@@ -68,6 +68,8 @@ public:
         bool allUpdate = false; // ... and 全部更新 may do it: nothing staged, no new permissions, not a copy in development
         QString staged; // a newer version kept aside for the next start (empty: none)
         QString morePermissions; // the permissions the list's version adds to the installed one, named; empty: none
+        bool hasReadme = false; // the list names its README: 说明 shows it before installing (GitHub #304)
+        bool readmeBusy = false; // ... and it is on its way
         QString words; // what the filter looks in: the id, the names, descriptions and keywords, lower-cased
         friend bool operator==(const Row&, const Row&) = default;
     };
@@ -94,6 +96,8 @@ public:
         ShownRole,
         StagedRole,
         MorePermissionsRole,
+        HasReadmeRole,
+        ReadmeBusyRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -172,6 +176,7 @@ public:
     Q_INVOKABLE void updateAll(); // 全部更新: the ones that need no new permission, one after the other
     Q_INVOKABLE void applyNow(const QString& id); // 立即更新: a version kept aside for the next start, now
     Q_INVOKABLE void openRepository(); // 看看怎么投稿
+    Q_INVOKABLE void openReadme(const QString& id); // the entry's 说明: its README, fetched and shown as the installed ones' is (GitHub #304)
     Q_INVOKABLE void openHomepage(const QString& id); // the entry's 主页: the plugin's own page, in the browser (GitHub #248)
     // ws plugin install <id> (PluginCommands): as the row's 安装 or 更新到,
     // on the page, where its progress and its questions show; the list is
@@ -243,6 +248,7 @@ private:
     quint64 m_generation = 0;
     double m_progress = 0;
     QHash<QString, QString> m_problems; // by plugin: why its last install from here did not happen
+    QString m_readmeId; // the plugin whose README is being fetched (one at a time); empty: none
     QString m_installFor; // installFor's plugin, until its answer is given
     std::function<void(PluginInstalled)> m_installDone;
     bool m_preview = false;

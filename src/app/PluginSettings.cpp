@@ -140,6 +140,7 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const
     case ElevationNoteRole: return c.elevationNote;
     case ElevationProblemRole: return c.elevationProblem;
     case FeedbackRole: return c.feedback;
+    case StagedRole: return c.staged;
     }
     return {};
 }
@@ -151,7 +152,7 @@ QHash<int, QByteArray> PluginListModel::roleNames() const
         {StatusRole, "status"}, {ToneRole, "tone"}, {ErrorRole, "error"}, {ResidentRole, "resident"}, {KeywordsRole, "keywords"},
         {PermissionsRole, "permissions"}, {SettingsRole, "settings"}, {HasReadmeRole, "hasReadme"}, {SettingsWindowRole, "settingsWindow"}, {HasDataRole, "hasData"},
         {AiExposeRole, "aiExpose"}, {AiEnabledRole, "aiEnabled"}, {AiNoteRole, "aiNote"}, {WebSearchRole, "webSearch"},
-        {ElevationRole, "elevation"}, {ElevationNoteRole, "elevationNote"}, {ElevationProblemRole, "elevationProblem"}, {FeedbackRole, "feedback"}};
+        {ElevationRole, "elevation"}, {ElevationNoteRole, "elevationNote"}, {ElevationProblemRole, "elevationProblem"}, {FeedbackRole, "feedback"}, {StagedRole, "staged"}};
 }
 
 bool PluginListModel::setCards(std::vector<Card> cards)
@@ -314,7 +315,11 @@ PluginSettings::~PluginSettings()
 
 void PluginSettings::setUpdates(PluginUpdates* updates)
 {
+    if (m_updates)
+        disconnect(m_updates, nullptr, this, nullptr);
     m_updates = updates;
+    if (updates) // a version kept for the next start, or put in place: the cards say it
+        connect(updates, &PluginUpdates::changed, this, &PluginSettings::rebuild);
     m_gallery.setUpdates(updates);
 }
 
@@ -600,6 +605,12 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     c.name = m.name.pick(m_locale);
     c.version = m.version;
     c.author = m.author;
+    // Downloaded while its program ran (a resident one runs all day): said on
+    // the card, with 立即更新, not only in the 插件库.
+    if (m_updates && !c.bundled) {
+        if (const QString staged = m_updates->stagedVersion(id); !staged.isEmpty() && plugin::compareVersions(staged, m.version) > 0)
+            c.staged = staged;
+    }
     // The manifest's is any string: 主页 is offered only for an address of
     // the web (openHomepage). Anything else would be started as a program
     // or a file is (shell::openUrl), which a plugin's own rows may not do
@@ -1757,6 +1768,8 @@ void PluginSettings::loadPreview(bool elevated, int logPlugins, bool hostNormal)
         c.aiExpose = true;
         c.aiEnabled = true;
         c.aiNote = tr("工具：%1").arg(u"plugin_lingcore_kill_kill"_s);
+        if (qEnvironmentVariableIsSet("WINSHUN_PREVIEW_STAGED")) // the card of a version waiting for the next start, to look at
+            c.staged = u"1.3.0"_s;
         cards.push_back(c);
     }
     {

@@ -80,6 +80,9 @@ public:
         // Why the last 确认 did not work, on the card that was clicked
         // (GitHub #230: said only over the cards, it went unseen).
         QString elevationProblem;
+        // A newer version already downloaded, put in place when Win顺 starts
+        // again or at 立即更新 (PluginUpdates: its program was running). Empty: none.
+        QString staged;
         friend bool operator==(const Card&, const Card&) = default;
     };
     enum Role {
@@ -111,6 +114,7 @@ public:
         ElevationNoteRole,
         ElevationProblemRole,
         FeedbackRole,
+        StagedRole,
     };
 
     using QAbstractListModel::QAbstractListModel;

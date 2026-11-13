@@ -19,6 +19,7 @@ Item {
     property string text
     property string shortcut
     property int delay: 250
+    property real maxWidth: 0 // the label wraps beyond this (0: only at the window's edges)
     property int linger: 150 // after the mouse leaves: time to reach a neighbour
     property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
     property QtObject host: null // permits a non-activating window when the host is too short
@@ -143,7 +144,7 @@ Item {
             // The size it settles at; `width` follows it with an animation.
             readonly property real keysWidth: tip.shownShortcut.length > 0 ? 10 + keys.implicitWidth : 0
             // The label: its one-line width, but no wider than the window leaves (8 px each side, 10 px padding each side); beyond that it wraps.
-            readonly property real labelWidth: Math.min(probe.implicitWidth, Math.max(40, (tip.parent ? tip.parent.width : 100000) - 16 - 20 - keysWidth))
+            readonly property real labelWidth: Math.min(probe.implicitWidth, tip.maxWidth > 0 ? tip.maxWidth : 100000, Math.max(40, (tip.parent ? tip.parent.width : 100000) - 16 - 20 - keysWidth))
             readonly property real fullWidth: labelWidth + keysWidth + 20
 
             x: tip.detached ? 0 : tip.bubbleX

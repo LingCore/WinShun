@@ -3363,6 +3363,30 @@
 <context>
     <name>PluginCard</name>
     <message>
+        <source>作者：%1</source>
+        <translation>Author: %1</translation>
+    </message>
+    <message>
+        <source>状态：%1</source>
+        <translation>Status: %1</translation>
+    </message>
+    <message>
+        <source>权限：</source>
+        <translation>Permissions:</translation>
+    </message>
+    <message>
+        <source>（仅声明）</source>
+        <translation> (declared only)</translation>
+    </message>
+    <message>
+        <source>更新到 %1</source>
+        <translation>Update to %1</translation>
+    </message>
+    <message>
+        <source>新版本已经下载好。现在更新会先停一下这个插件；不点的话，下次启动 Win顺 时自动换上</source>
+        <translation>The new version is downloaded. Updating now stops this plugin for a moment; otherwise it is put in place the next time WinShun starts</translation>
+    </message>
+    <message>
         <source>随包</source>
         <translation>Bundled</translation>
     </message>
@@ -3667,6 +3691,50 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
 <context>
     <name>PluginGalleryEntry</name>
     <message>
+        <source>说明</source>
+        <translation>Readme</translation>
+    </message>
+    <message>
+        <source>正在取说明…</source>
+        <translation>Fetching the readme…</translation>
+    </message>
+    <message>
+        <source>作者：%1</source>
+        <translation>Author: %1</translation>
+    </message>
+    <message>
+        <source>关键字：%1</source>
+        <translation>Keywords: %1</translation>
+    </message>
+    <message>
+        <source>权限：</source>
+        <translation>Permissions:</translation>
+    </message>
+    <message>
+        <source>自带</source>
+        <translation>Built in</translation>
+    </message>
+    <message>
+        <source>安装</source>
+        <translation>Install</translation>
+    </message>
+    <message>
+        <source>已安装</source>
+        <translation>Installed</translation>
+    </message>
+    <message>
+        <source>%1 已经下载好。现在更新会先停一下这个插件；不点的话，下次启动 Win顺 时自动换上</source>
+        <translation>%1 is downloaded. Updating now stops this plugin for a moment; otherwise it is put in place the next time WinShun starts</translation>
+    </message>
+    <message>
+        <source>在“已安装”里查看</source>
+        <translation>Show it under Installed</translation>
+    </message>
+    <message>
+        <source>现在装的是 %1</source>
+        <translation>Installed now: %1</translation>
+    </message>
+    <message>
         <source>重启 Win顺 后更新到 %1</source>
         <translation>Updates to %1 when WinShun restarts</translation>
     </message>
@@ -3741,6 +3809,26 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
 </context>
 <context>
     <name>PluginGallerySection</name>
+    <message>
+        <source>自己做插件</source>
+        <translation>Make your own plugin</translation>
+    </message>
+    <message>
+        <source>从能运行的模板开始，也可以把开发提示和模板一起交给 AI。创建后仍由你决定是否启用插件。做了好用的插件，可以投稿到插件库，给大家用。</source>
+        <translation>Start from a template that runs, or hand the development prompt and the template to an AI. Whether the plugin is switched on stays up to you. A plugin that turned out well can be submitted to the library for everyone.</translation>
+    </message>
+    <message>
+        <source>投稿;发布;提交;开发;share;publish;submit;AI;模板;创建;贡献;Python;PowerShell</source>
+        <translation>share;publish;submit;develop;AI;template;create;contribute;Python;PowerShell</translation>
+    </message>
+    <message>
+        <source>从模板开始，做好可以投稿</source>
+        <translation>Start from a template; submit it to the library when it is ready</translation>
+    </message>
+    <message>
+        <source>怎么投稿</source>
+        <translation>How to submit</translation>
+    </message>
     <message>
         <source>全部更新</source>
         <translation>Update all</translation>
@@ -3898,6 +3986,26 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
 <context>
     <name>PluginsSection</name>
     <message>
+        <source>随 Win顺 一起提供；关闭后停止对应功能，暂不支持单独卸载</source>
+        <translation>They come with WinShun; one switched off stops working, and they cannot be uninstalled one by one yet</translation>
+    </message>
+    <message>
+        <source>用到哪个开哪个</source>
+        <translation>Switch on the ones you use</translation>
+    </message>
+    <message>
+        <source>把插件文件夹或 .zip / .wsplugin 拖到这一页也能安装。</source>
+        <translation>A plugin folder or a .zip / .wsplugin dropped on this page installs too.</translation>
+    </message>
+    <message>
+        <source>插件;扩展;关键字;命令;安装;位置;路径;文件夹;plugin;extension;folder;path</source>
+        <translation>plugin;extension;keyword;command;install;location;folder;path</translation>
+    </message>
+    <message>
+        <source>打开插件所在的文件夹</source>
+        <translation>Open the plugins folder</translation>
+    </message>
+    <message>
         <source>Directory Opus 里打字搜索</source>
         <translation>Type to search in Directory Opus</translation>
     </message>
@@ -4017,10 +4125,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>%2 of %1 plugins</translation>
     </message>
     <message numerus="yes">
-        <source>%n 个；文件夹或 .zip / .wsplugin 拖到这里也能安装</source>
+        <source>%n 个</source>
         <translation>
-            <numerusform>%n plugin; a folder or a .zip / .wsplugin dropped here installs too</numerusform>
-            <numerusform>%n plugins; a folder or a .zip / .wsplugin dropped here installs too</numerusform>
+            <numerusform>%n plugin</numerusform>
+            <numerusform>%n plugins</numerusform>
         </translation>
     </message>
     <message>
@@ -12540,6 +12648,14 @@ Content index: %5</translation>
 </context>
 <context>
     <name>ws::PluginGallery</name>
+    <message>
+        <source>说明和插件列表对不上，已经在刷新列表，稍后再点一次。</source>
+        <translation>The readme does not match the plugin list. The list is being refreshed; try again in a moment.</translation>
+    </message>
+    <message>
+        <source>说明没能下载：%1</source>
+        <translation>The readme could not be downloaded: %1</translation>
+    </message>
     <message>
         <source>插件库现在用不了</source>
         <translation>The plugin library is not available now</translation>
