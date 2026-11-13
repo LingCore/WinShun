@@ -198,7 +198,7 @@ if(WINSHUN_ASAN AND MSVC)
     # into it again, instrumented for coverage, which steers the fuzzing.
     # Document readers too, all but PDF (PDFium is fuzzed upstream).
     add_executable(wsfuzz tools/wsfuzz.cpp
-        src/core/ContentIndex.cpp src/core/ContentScanner.cpp src/core/FileIndex.cpp src/core/Ntfs.cpp
+        src/core/ContentIndex.cpp src/core/ContentPattern.cpp src/core/ContentScanner.cpp src/core/FileIndex.cpp src/core/Ntfs.cpp
         src/core/Pinyin.cpp src/core/PinyinTable.cpp src/core/TextUtil.cpp src/core/Win32Util.cpp src/core/Wtf8.cpp
         src/extract/Cfb.cpp src/extract/Doc.cpp src/extract/Extract.cpp src/extract/Markup.cpp src/extract/Ooxml.cpp
         src/extract/Ppt.cpp src/extract/Writer.cpp src/extract/Xls.cpp src/extract/Xml.cpp src/extract/Zip.cpp)

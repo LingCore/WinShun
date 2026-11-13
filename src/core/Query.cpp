@@ -160,47 +160,6 @@ bool nameMatchesAny(std::string_view name, const std::vector<std::string>& folde
     return std::ranges::any_of(foldedPatterns, [&](const std::string& p) { return text::globMatch(name, p); });
 }
 
-QStringList queryWords(const QString& text)
-{
-    QStringList tokens;
-    QString current;
-    bool quoted = false;
-    for (const QChar c : text) {
-        if (c == u'"') {
-            quoted = !quoted;
-            continue;
-        }
-        if (!quoted && c.isSpace()) {
-            if (!current.isEmpty())
-                tokens.append(std::exchange(current, QString()));
-            continue;
-        }
-        current.append(c);
-    }
-    if (!current.isEmpty())
-        tokens.append(current);
-    return tokens;
-}
-
-bool looksLikeCode(QStringView text)
-{
-    static constexpr QStringView kSigns[] {u"=", u";", u"(", u")", u"{", u"}", u"<", u">", u"[", u"]", u"->", u"::", u"&&", u"||"};
-    return std::ranges::any_of(kSigns, [&](QStringView s) { return text.contains(s); });
-}
-
-QStringList contentTerms(const QString& text)
-{
-    const QString trimmed = text.trimmed();
-    if (trimmed.isEmpty())
-        return {};
-    if (!looksLikeCode(trimmed))
-        return queryWords(trimmed); // an unclosed quote: to the end
-    // Quotes around the whole line only make it one phrase, as for words.
-    if (trimmed.count(u'"') == 2 && trimmed.size() > 2 && trimmed.startsWith(u'"') && trimmed.endsWith(u'"'))
-        return {trimmed.mid(1, trimmed.size() - 2).trimmed()};
-    return {trimmed};
-}
-
 namespace {
 
 constexpr QChar kWideSlash(0xFF0F); // ／, as a Chinese keyboard layout types /
@@ -309,14 +268,14 @@ qsizetype folderPathAt(const QString& text, qsizetype from, QString& path)
 
 } // namespace
 
-ContentQuery splitContentQuery(const QString& text)
+ContentQuery splitContentQuery(const QString& text, bool regexMode)
 {
     ContentQuery query;
     if (text.trimmed().isEmpty()) {
         query.words = text;
         return query;
     }
-    if (looksLikeCode(text.trimmed())) {
+    if (regexMode || looksLikeCode(text.trimmed())) {
         // A folder first is where to look, whatever its name has in it
         // ("D:\Program Files (x86)\ 词", as Explorer's "search here" types it);
         // only the rest may be code.
@@ -330,7 +289,7 @@ ContentQuery splitContentQuery(const QString& text)
             return query;
         }
         const QString rest = text.sliced(lead + length);
-        if (looksLikeCode(rest.trimmed())) {
+        if (regexMode || looksLikeCode(rest.trimmed())) {
             query.folders.push_back({text.sliced(lead, length), path, {}});
             query.words = rest.trimmed();
             return query;

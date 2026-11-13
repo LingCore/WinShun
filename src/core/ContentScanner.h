@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ContentPattern.h"
+
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -41,19 +43,25 @@ struct ContentMatch {
     int termsOnLine = 0;
     std::uint32_t wordStarts = 0; // the terms in it at the start of a word ("fix", "fixed"; not "prefix"), one bit each
     bool longLine = false; // longer than is read around a match: packed code or data
+    int termCount = 0; // how many things the file had to have ("a b": 2, "a|b": 1)
 };
 
 // How well a file matches, higher first: its terms on one line and at the
 // start of words, in its name, in your own folders and lately written count
 // for it; a line too long to read (packed code, data) against it.
+// `words`: the words looked for (ContentPattern::words).
 // `priority`: 0 your own folders, 1 elsewhere, 2 hidden, 3 system and program folders.
-int contentRelevance(const ContentMatch& match, const QStringList& terms, QStringView fileName, int priority,
+int contentRelevance(const ContentMatch& match, const QStringList& words, QStringView fileName, int priority,
     std::int64_t ageSeconds);
 
-// Finds whether a text file contains every one of some terms ("报告 2025",
-// each a word or a phrase), anywhere in it, and the line to show for it: the
-// first with the most of them, its snippet pieced together with where the
-// others are, so every term shows.
+// Finds whether a text file has what a content search looks for
+// (ContentPattern: every one of some terms, "报告 2025", each a word or a
+// phrase; either of some, "马上|立即"; regular expressions), anywhere in it,
+// and the line to show for it: the first with the most of them, its snippet
+// pieced together with where the others are, so every term shows.
+//
+// A regular expression is matched within a line: on the text decoded, a
+// stretch of whole lines at a time.
 //
 // Files are streamed in chunks (memory stays flat regardless of file size).
 // The encoding is detected per file: BOM (UTF-8 / UTF-16 LE / UTF-16 BE),
@@ -66,17 +74,21 @@ public:
     using ReadFn = std::function<std::size_t(char* buffer, std::size_t capacity)>; // 0 = end of file
     using CancelFn = std::function<bool()>;
 
-    // At most kMaxTerms; empty ones are left out.
-    explicit ContentScanner(const QStringList& terms, unsigned ansiCodePage = 0 /* 0 = system */);
+    explicit ContentScanner(const ContentPattern& pattern, unsigned ansiCodePage = 0 /* 0 = system */);
+    // Every one of these, as they are. At most kMaxTerms; empty ones are left out.
+    explicit ContentScanner(const QStringList& terms, unsigned ansiCodePage = 0)
+        : ContentScanner(ContentPattern::allOf(terms), ansiCodePage)
+    {
+    }
     // One phrase, spaces and all.
     explicit ContentScanner(const QString& phrase, unsigned ansiCodePage = 0)
         : ContentScanner(QStringList {phrase}, ansiCodePage)
     {
     }
 
-    static constexpr std::size_t kMaxTerms = 32;
+    static constexpr std::size_t kMaxTerms = ContentPattern::kMaxNeedles;
 
-    bool isValid() const noexcept { return !m_terms.empty(); }
+    bool isValid() const noexcept { return !m_ways.empty(); }
     unsigned ansiCodePage() const noexcept { return m_codePage; }
 
     // Reads at low I/O priority: a scan reads many files, and other programs
@@ -97,6 +109,9 @@ public:
 private:
     struct Term {
         QString text;
+        bool regex = false;
+        QRegularExpression expression; // regex
+        // The words as bytes, to find them without decoding the file.
         ByteFinder utf8;
         ByteFinder utf16le;
         ByteFinder utf16be;
@@ -104,14 +119,21 @@ private:
     };
 
     QString decode(const char* data, std::size_t length, TextEncoding encoding) const;
+    // Where a term is in a text, from `from` on: f(at, length) for each
+    // place, one after another, until it returns false.
+    template <typename F> void forEachHit(const Term& term, QStringView text, qsizetype from, F&& f) const;
     // Which terms a line has, one bit each.
     std::uint32_t termsIn(const QString& line) const;
     // Of those, the ones there at the start of a word.
     std::uint32_t wordStartsIn(const QString& line, std::uint32_t terms) const;
-    // `others`: where the terms the line lacks first are.
-    ContentMatch matchIn(const QString& line, int lineNumber, const std::vector<QString>& others) const;
+    // `has`: the terms of the line; `others`: where the terms it lacks first are.
+    ContentMatch matchIn(const QString& line, int lineNumber, std::uint32_t has, const std::vector<QString>& others) const;
+    // The first way all of whose terms are among `seen`; 0 if none.
+    std::uint32_t wayIn(std::uint32_t seen, std::uint32_t dead = 0) const noexcept;
 
     std::vector<Term> m_terms;
+    std::vector<std::uint32_t> m_ways; // ContentPattern::ways
+    std::uint32_t m_regexTerms = 0; // which of the terms are expressions
     unsigned m_codePage = 0;
 };
 

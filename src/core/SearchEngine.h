@@ -237,7 +237,8 @@ public:
         // names and content only (a favorite app or place stays).
         bool apps = true;
         bool places = true;
-        // Every term of `text` is a regex (parseQuery's regexTerms; names only).
+        // Every term of `text` is a regex (parseQuery's regexTerms for names,
+        // contentPattern's regexMode for a content search).
         bool regex = false;
     };
 

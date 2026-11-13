@@ -1689,12 +1689,16 @@ void ToolHost::addTools()
     content.title = u"Search text inside files"_s;
     content.description = u"Find files whose text contains the given words: text files (txt, md, log, csv, json, code…) "
                           "and documents (Word, Excel, PowerPoint, PDF, WPS). Several words must all occur in the file; "
-                          "a \"quoted phrase\" is found as written; a line of code is found as it is. Each match comes "
+                          "a \"quoted phrase\" is found as written; a line of code is found as it is; a|b finds files "
+                          "with either word; regex:EXPR is a regular expression (PCRE, any case, matched within a "
+                          "line; regex=true makes every word one). An expression with some fixed text in it (three "
+                          "letters or more, or Chinese) is fast; one without (\\d+) has to read every file. Each match comes "
                           "with the matching line (or page, slide, sheet row) and a snippet. Slower than search_files: "
                           "returns what it found when timeout_ms runs out (complete=false). Files on network shares and "
                           "in WSL are found only where the user turned on their content search in Win顺's settings."_s;
     content.inputSchema = object(
-        {{u"query"_s, typed("string", u"Words that must all occur, a \"quoted phrase\", or a line of code"_s)},
+        {{u"query"_s, typed("string", u"Words that must all occur, a \"quoted phrase\", a|b for either, regex:EXPR, or a line of code"_s)},
+            {u"regex"_s, boolean(u"Every word of the query is a regular expression (a space still parts them; quote one that has spaces)"_s, false)},
             {u"limit"_s, integer(u"How many matching files at most"_s, 1, kMaxContent, kDefaultContent)},
             {u"timeout_ms"_s, integer(u"How long to search before returning what was found"_s, kMinTimeoutMs, kMaxTimeoutMs, kDefaultTimeoutMs)},
             {u"include_system"_s, boolean(u"Also look in system, program and tool folders (node_modules, .git…)"_s, false)},
@@ -2124,11 +2128,16 @@ void ToolHost::searchContent(const std::shared_ptr<Call>& call)
     const int limit = args.integer(u"limit"_s, kDefaultContent, 1, call->limits().content);
     const int timeout = args.integer(u"timeout_ms"_s, kDefaultTimeoutMs, kMinTimeoutMs, kMaxTimeoutMs);
     const bool system = args.boolean(u"include_system"_s, false);
+    const bool regex = args.boolean(u"regex"_s, false);
     QStringList folders = args.strings(u"folders"_s);
     if (!args.error().isEmpty())
         return finish(call, {{}, true, args.error()});
     if (query.isEmpty())
         return finish(call, {{}, true, u"query is empty"_s});
+    // An expression that cannot be read finds nothing: said, so that the
+    // caller writes it again rather than taking it that no file has it.
+    if (const ContentPattern pattern = contentPattern(splitContentQuery(query, regex).words, regex); !pattern.error.isEmpty())
+        return finish(call, {{}, true, u"The regular expression in the query cannot be read: "_s + pattern.errorReason});
     if (!m_policy.content)
         return finish(call, {{}, true, u"File content search is turned off in WinShun's settings"_s});
     // The timeout counts from the call's arrival: what it waited for the
@@ -2159,6 +2168,7 @@ void ToolHost::searchContent(const std::shared_ptr<Call>& call)
     SearchEngine::Request request;
     request.text = query;
     request.scope = Scope::Content;
+    request.regex = regex;
     request.contentExtensions = m_policy.contentExtensions;
     request.contentSizeLimits = m_policy.contentSizeLimits;
     request.contentDocuments = m_policy.contentDocuments;

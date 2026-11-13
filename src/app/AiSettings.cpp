@@ -543,7 +543,7 @@ std::vector<Entry> buildCatalog()
                     "All also finds Windows settings pages, Control Panel items and system switches (\"关蓝牙\", \"音量 30\"). Off: All finds files, folders and content only."},
         &Settings::searchSystem));
     add(boolean({"Results/RegexMode", QT_TRANSLATE_NOOP("AiSettings", "正则模式"), "results", 1,
-                    "Every word typed in All and Files is a regular expression on names (Ctrl+R in the search box toggles it). A single word can be one with regex: before it either way."},
+                    "Every word typed is a regular expression: on names in All and Files, on the text of files in Content (Ctrl+R in the search box toggles it). A single word can be one with regex: before it either way."},
         &Settings::regexMode));
     add(boolean({"Results/ShowModified", QT_TRANSLATE_NOOP("AiSettings", "显示修改日期"), "results", 1,
                     "Each result says when the file was last written."},

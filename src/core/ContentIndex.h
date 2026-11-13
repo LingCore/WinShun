@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ContentPattern.h"
 #include "DocText.h"
 #include "FileIndex.h"
 
@@ -289,8 +290,16 @@ public:
         // out rather than opening them.
         std::vector<EntryId> large;
     };
-    // For files that contain every one of `terms` (ContentScanner's), anywhere.
-    Lookup lookup(std::span<const QString> terms) const;
+    // For files that have what the pattern looks for (as ContentScanner
+    // finds it), anywhere: the grams of its words, and of the text its
+    // expressions cannot match without (RegexNeed). Not usable when one of
+    // its ways has neither ("ab", "\d+"): any file may match that one.
+    Lookup lookup(const ContentPattern& pattern) const;
+    // For files that contain every one of `terms`.
+    Lookup lookup(std::span<const QString> terms) const
+    {
+        return lookup(ContentPattern::allOf(QStringList(terms.begin(), terms.end())));
+    }
     Lookup lookup(const QString& phrase) const { return lookup(std::span(&phrase, 1)); }
     bool knows(EntryId entry) const; // its content is known (as Lookup::known)
     // The stamp (stampOf) its file had when that content was read; none: not known.
@@ -444,6 +453,14 @@ private:
     void rebuildOrder();
     template <typename F> void forEachOrdered(F&& f) const; // live documents by entry
     void contentsOf(grams::Key key, std::vector<ContentId>& out) const;
+    // The contents that may have something: these, ascending; or any of
+    // them (nothing is known that rules one out).
+    struct Contents {
+        bool any = true;
+        std::vector<ContentId> ids;
+    };
+    Contents contentsWithAll(std::vector<grams::Key> keys) const; // every one of the grams; none given: any
+    Contents contentsWith(const RegexNeed& need) const;
     ContentId findContent(const grams::Fingerprint& print) const noexcept; // kNoContent if there is none
     ContentId memoryBegin() const noexcept; // the first content not in a segment
     std::vector<bool> liveContents() const; // those that a document not dead has

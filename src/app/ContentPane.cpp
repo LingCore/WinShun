@@ -293,8 +293,12 @@ void ContentPane::update(SearchEngine::Request request, const QString& words, co
     SearchResults files, SearchResults selected, const Subject& current,
     int scanned, int total, bool complete, bool searching, const ContentLeftOut& leftOut, int pluginRows)
 {
-    const QStringList terms = contentTerms(words);
-    const bool queryChanged = key != m_key || terms != m_terms;
+    // Words, either of some, expressions: as the search read them.
+    std::vector<ContentNeedle> needles = contentPattern(words, request.regex).needles;
+    QStringList terms;
+    for (const ContentNeedle& needle : needles)
+        terms.append(needle.text);
+    const bool queryChanged = key != m_key || needles != m_needles;
     const bool fileChanged = current != m_subject;
     m_request = std::move(request);
     m_files = std::move(files);
@@ -304,6 +308,7 @@ void ContentPane::update(SearchEngine::Request request, const QString& words, co
         m_path = current.file;
         m_subject = current;
         m_terms = terms;
+        m_needles = std::move(needles);
         if (queryChanged) {
             m_countGroups.clear();
             m_enabled.assign(m_terms.size(), true);
@@ -374,7 +379,7 @@ void ContentPane::load()
     const QString path = m_path;
     const auto text = m_subject.text;
     const bool cut = m_subject.cut;
-    const auto terms = m_terms;
+    const auto terms = m_needles;
     const auto enabled = m_enabled;
     const auto filter = m_filter;
     const auto context = m_context;
@@ -591,14 +596,14 @@ void ContentPane::prepareReport(bool selectedOnly, bool allFiles, bool includeFi
         disconnect(m_audit.get(), nullptr, this, nullptr);
         m_auditFiles.clear();
         m_auditLeftOut = {};
-        m_auditTerms = m_terms;
+        m_auditNeedles = m_needles;
         connect(m_audit.get(), &SearchEngine::contentResults, this, [this](quint64 id, const SearchResults& rows) {
             if (id == m_auditId) {
                 for (const auto& row : rows) if (m_auditFiles.size() < 20000) m_auditFiles.append(row);
             }
         });
         connect(m_audit.get(), &SearchEngine::contentScope, this, [this](quint64 id, const ContentScope& scope) {
-            if (id == m_auditId) m_auditTerms = contentTerms(scope.words);
+            if (id == m_auditId) m_auditNeedles = contentPattern(scope.words, m_request.regex).needles;
         });
         connect(m_audit.get(), &SearchEngine::contentLeftOut, this, [this](quint64 id, const ContentLeftOut& leftOut) {
             if (id == m_auditId) m_auditLeftOut = leftOut;
@@ -648,7 +653,7 @@ void ContentPane::buildReport(SearchResults files, bool full, bool complete, boo
     const quint64 ticket = ++state->generation;
     const filetext::Sources sources {m_index ? m_index->index() : nullptr, m_index ? m_index->contentIndex() : nullptr};
     const auto limits = m_request.contentSizeLimits;
-    const auto terms = full ? m_auditTerms : m_terms;
+    const auto terms = full ? m_auditNeedles : m_needles;
     const auto leftOut = full ? m_auditLeftOut : ContentLeftOut{};
     const QString query = m_request.text;
     const int radius = m_context;
@@ -707,7 +712,7 @@ void ContentPane::buildReport(SearchResults files, bool full, bool complete, boo
                     payload += (value.size() + around.size() + file.path.size()) * 2;
                     if (hitTable.rows.size() >= 100000 || payload > (32ll << 20)) { limited = true; break; }
                     hitTable.rows.push_back({file.name, file.path, ContentLines::location(doc, match.line),
-                        terms[match.term], value, around});
+                        matches.terms.value(match.term), value, around});
                 }
             }
             ++done;

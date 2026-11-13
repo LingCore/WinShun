@@ -55,6 +55,10 @@ namespace {
 constexpr std::size_t kChunkBytes = ContentScanner::kChunkBytes;
 constexpr std::size_t kContextBytes = 600; // decoded around a candidate match
 constexpr std::size_t kLongLineBytes = 8 * 1024; // a line longer is packed code or data (ContentMatch::longLine)
+// The same for a regular expression's match, found in the text decoded.
+constexpr qsizetype kContextChars = 300;
+constexpr qsizetype kLongLineChars = 4096;
+constexpr std::size_t kRegexTailBytes = 64 * 1024; // of a line not yet whole, kept for the next chunk
 
 unsigned systemLegacyCodePage()
 {
@@ -137,16 +141,20 @@ unsigned ContentScanner::legacyCodePage()
     return codePage;
 }
 
-ContentScanner::ContentScanner(const QStringList& terms, unsigned ansiCodePage)
-    : m_codePage(ansiCodePage != 0 ? ansiCodePage : legacyCodePage())
+ContentScanner::ContentScanner(const ContentPattern& pattern, unsigned ansiCodePage)
+    : m_ways(pattern.ways)
+    , m_codePage(ansiCodePage != 0 ? ansiCodePage : legacyCodePage())
 {
-    for (const QString& text : terms) {
-        if (text.isEmpty() || m_terms.size() == kMaxTerms)
-            continue;
-        if (std::ranges::any_of(m_terms, [&](const Term& t) { return t.text.compare(text, Qt::CaseInsensitive) == 0; }))
-            continue; // typed twice
+    for (const ContentNeedle& needle : pattern.needles) {
+        const QString& text = needle.text;
         Term& term = m_terms.emplace_back();
         term.text = text;
+        if (needle.regex) {
+            term.regex = true;
+            term.expression = needle.expression;
+            m_regexTerms |= std::uint32_t {1} << (m_terms.size() - 1);
+            continue;
+        }
         term.utf8 = ByteFinder(text.toUtf8().toStdString());
 
         std::string le(static_cast<std::size_t>(text.size()) * 2, '\0');
@@ -175,14 +183,51 @@ ContentScanner::ContentScanner(const QStringList& terms, unsigned ansiCodePage)
     }
 }
 
+template <typename F> void ContentScanner::forEachHit(const Term& term, QStringView text, qsizetype from, F&& f) const
+{
+    if (!term.regex) {
+        for (qsizetype at = text.indexOf(term.text, from, Qt::CaseInsensitive); at >= 0;
+            at = text.indexOf(term.text, at + term.text.size(), Qt::CaseInsensitive)) {
+            if (!f(at, term.text.size()))
+                return;
+        }
+        return;
+    }
+    while (from <= text.size()) {
+        const QRegularExpressionMatch match = term.expression.matchView(text, from);
+        if (!match.hasMatch())
+            return;
+        const qsizetype at = match.capturedStart();
+        const qsizetype length = match.capturedLength();
+        if (length == 0) { // "x*" matches nothing everywhere: no place to show
+            from = at + 1;
+            continue;
+        }
+        if (!f(at, length))
+            return;
+        from = at + length;
+    }
+}
+
 std::uint32_t ContentScanner::termsIn(const QString& line) const
 {
     std::uint32_t found = 0;
     for (std::size_t i = 0; i < m_terms.size(); ++i) {
-        if (line.contains(m_terms[i].text, Qt::CaseInsensitive))
+        forEachHit(m_terms[i], line, 0, [&](qsizetype, qsizetype) {
             found |= std::uint32_t {1} << i;
+            return false;
+        });
     }
     return found;
+}
+
+std::uint32_t ContentScanner::wayIn(std::uint32_t seen, std::uint32_t dead) const noexcept
+{
+    for (const std::uint32_t way : m_ways) {
+        if ((way & seen) == way && !(way & dead))
+            return way;
+    }
+    return 0;
 }
 
 std::uint32_t ContentScanner::wordStartsIn(const QString& line, std::uint32_t terms) const
@@ -197,26 +242,20 @@ std::uint32_t ContentScanner::wordStartsIn(const QString& line, std::uint32_t te
         const std::uint32_t bit = std::uint32_t {1} << t;
         if (!(terms & bit))
             continue;
-        const QString& text = m_terms[t].text;
-        if (!wordChar(text.front())) {
+        forEachHit(m_terms[t], line, 0, [&](qsizetype at, qsizetype) {
+            if (wordChar(line[at]) && !startsWord(at))
+                return true;
             starts |= bit;
-            continue;
-        }
-        for (qsizetype i = line.indexOf(text, 0, Qt::CaseInsensitive); i >= 0;
-            i = line.indexOf(text, i + 1, Qt::CaseInsensitive)) {
-            if (startsWord(i)) {
-                starts |= bit;
-                break;
-            }
-        }
+            return false;
+        });
     }
     return starts;
 }
 
-int contentRelevance(const ContentMatch& match, const QStringList& terms, QStringView fileName, int priority,
+int contentRelevance(const ContentMatch& match, const QStringList& words, QStringView fileName, int priority,
     std::int64_t ageSeconds)
 {
-    const auto n = static_cast<int>(terms.size());
+    const int n = match.termCount > 0 ? match.termCount : static_cast<int>(words.size());
     if (n == 0)
         return 0;
     int score = 0;
@@ -225,9 +264,9 @@ int contentRelevance(const ContentMatch& match, const QStringList& terms, QStrin
         score += match.termsOnLine >= n ? 40 : 15 * std::max(match.termsOnLine - 1, 0) / (n - 1);
     score += 20 * std::popcount(match.wordStarts) / n;
     int named = 0;
-    for (const QString& t : terms)
+    for (const QString& t : words)
         named += fileName.contains(t, Qt::CaseInsensitive) ? 1 : 0;
-    score += 30 * named / n;
+    score += 30 * std::min(named, n) / n; // of "a|b", one in the name is all of it
     constexpr int kPlace[] = {15, 0, -5, -10};
     score += kPlace[std::clamp(priority, 0, 3)];
     constexpr std::int64_t kDay = 24 * 60 * 60;
@@ -258,8 +297,10 @@ int widthOf(QChar c)
 // it, each with a few words from where it first is (`others`): "弯管机用户手
 // 册…进行优化，如 … 折弯角度设定…". Terms on one line too far apart to fit
 // are pieces of their own too.
-ContentMatch ContentScanner::matchIn(const QString& line, int lineNumber, const std::vector<QString>& others) const
+ContentMatch ContentScanner::matchIn(
+    const QString& line, int lineNumber, std::uint32_t has, const std::vector<QString>& others) const
 {
+    constexpr int kExpressionWidth = 8; // what an expression's match is taken to be wide, before it is found
     constexpr int kWidth = 56; // what a result shows, in halves of an ideograph (28 of them)
     constexpr int kLeadMax = 24; // at most before the first term of a piece
     constexpr int kGap = 4; // " … " between pieces
@@ -283,10 +324,10 @@ ContentMatch ContentScanner::matchIn(const QString& line, int lineNumber, const 
         Source& s = sources.emplace_back();
         s.text = &text;
         for (std::size_t t = 0; t < m_terms.size(); ++t) {
-            const QString& term = m_terms[t].text;
-            for (qsizetype i = text.indexOf(term, 0, Qt::CaseInsensitive); i >= 0;
-                i = text.indexOf(term, i + term.size(), Qt::CaseInsensitive))
-                s.hits.push_back({i, i + term.size(), t});
+            forEachHit(m_terms[t], text, 0, [&](qsizetype at, qsizetype length) {
+                s.hits.push_back({at, at + length, t});
+                return s.hits.size() < 4096; // a line of nothing but it
+            });
         }
         std::ranges::sort(s.hits, {}, &Hit::at);
         s.widths.resize(static_cast<std::size_t>(text.size()) + 1);
@@ -298,9 +339,9 @@ ContentMatch ContentScanner::matchIn(const QString& line, int lineNumber, const 
         addSource(other);
     std::vector<int> termWidths;
     for (const Term& t : m_terms) {
-        int w = 0;
-        for (QChar c : t.text)
-            w += widthOf(c);
+        int w = t.regex ? kExpressionWidth : 0;
+        for (qsizetype i = 0; !t.regex && i < t.text.size(); ++i)
+            w += widthOf(t.text[i]);
         termWidths.push_back(w);
     }
 
@@ -425,18 +466,19 @@ ContentMatch ContentScanner::matchIn(const QString& line, int lineNumber, const 
         const qsizetype offset = match.snippet.size();
         match.snippet += QStringView(text).mid(piece.start, piece.end - piece.start);
         for (const Term& t : m_terms) {
-            for (qsizetype at = text.indexOf(t.text, piece.start, Qt::CaseInsensitive);
-                at >= 0 && at + t.text.size() <= piece.end;
-                at = text.indexOf(t.text, at + t.text.size(), Qt::CaseInsensitive))
-                match.matches.append({offset + at - piece.start, t.text.size()});
+            forEachHit(t, text, piece.start, [&](qsizetype at, qsizetype length) {
+                if (at + length > piece.end)
+                    return false;
+                match.matches.append({offset + at - piece.start, length});
+                return true;
+            });
         }
         if (i + 1 == shown.size() && piece.end < text.size())
             match.snippet += u"…"_s;
     }
     std::ranges::sort(match.matches);
-    const std::uint32_t terms = termsIn(line);
-    match.termsOnLine = std::popcount(terms);
-    match.wordStarts = wordStartsIn(line, terms);
+    match.termsOnLine = std::popcount(has);
+    match.wordStarts = wordStartsIn(line, has);
     return match;
 }
 
@@ -535,46 +577,67 @@ std::optional<ContentMatch> ContentScanner::scan(
     std::size_t longestNeedle = 0;
     for (const Term& t : m_terms)
         longestNeedle = std::max({longestNeedle, t.utf8.size(), t.utf16le.size(), t.ansi ? t.ansi->size() : 0});
+    // An expression is run on whole lines: what a chunk ends with of a line
+    // not yet whole waits for the next one, up to this much of it.
+    const std::size_t tailMax = m_regexTerms != 0 ? kRegexTailBytes : 0;
 
     thread_local std::vector<char> buffer;
-    buffer.resize(chunkSize + longestNeedle + 2);
+    buffer.resize(chunkSize + std::max(longestNeedle, tailMax) + 2);
     char* data = buffer.data();
 
     std::size_t windowLength = fill(read, data, chunkSize);
     if (windowLength == 0)
         return std::nullopt;
+    bool last = windowLength < chunkSize; // the window ends the file
 
     std::size_t bom = 0;
     const TextEncoding encoding = detect({data, windowLength}, &bom);
-    std::vector<const ByteFinder*> finders;
-    finders.reserve(m_terms.size());
-    for (const Term& t : m_terms) {
+    const auto bit = [](std::size_t t) { return std::uint32_t {1} << t; };
+    std::vector<const ByteFinder*> finders(m_terms.size(), nullptr); // none: an expression, or a term that cannot be
+    std::uint32_t dead = 0; // the terms that cannot be in this file
+    for (std::size_t t = 0; t < m_terms.size(); ++t) {
+        const Term& term = m_terms[t];
+        if (term.regex)
+            continue;
         switch (encoding) {
         case TextEncoding::Utf8:
-            finders.push_back(&t.utf8);
+            finders[t] = &term.utf8;
             break;
         case TextEncoding::Utf16LE:
-            finders.push_back(&t.utf16le);
+            finders[t] = &term.utf16le;
             break;
         case TextEncoding::Utf16BE:
-            finders.push_back(&t.utf16be);
+            finders[t] = &term.utf16be;
             break;
         case TextEncoding::Ansi:
-            if (!t.ansi)
-                return std::nullopt; // the term cannot occur in this code page
-            finders.push_back(&*t.ansi);
+            if (term.ansi)
+                finders[t] = &*term.ansi;
+            else
+                dead |= bit(t); // the code page cannot write it
             break;
         }
     }
+    // The terms of the ways that can still be: the only ones looked for.
+    std::uint32_t wanted = 0;
+    for (const std::uint32_t way : m_ways) {
+        if (!(way & dead))
+            wanted |= way;
+    }
+    if (wanted == 0)
+        return std::nullopt;
     const std::size_t unit = unitOf(encoding);
-    const std::size_t needleBytes = std::ranges::max(finders, {}, &ByteFinder::size)->size();
-    const std::uint32_t all = (std::uint64_t {1} << m_terms.size()) - 1;
+    std::size_t needleBytes = 0;
+    for (std::size_t t = 0; t < finders.size(); ++t) {
+        if (finders[t] && (wanted & bit(t)))
+            needleBytes = std::max(needleBytes, finders[t]->size());
+    }
 
     std::uint32_t seen = 0; // the terms found so far
     struct Best {
         QString line;
         int number = 0;
-        int terms = 0; // how many of them it has
+        std::uint32_t has = 0; // the terms it has
+        int terms = 0; // how many of them
         int starts = 0; // how many of those start a word
         bool longLine = false;
     } best;
@@ -587,6 +650,7 @@ std::optional<ContentMatch> ContentScanner::scan(
 
     std::uint64_t linesBeforeWindow = 0;
     std::size_t windowFloor = bom; // first byte that belongs to the text
+    std::size_t regexFloor = bom; // first byte no expression was run on yet (the start of a line)
     for (;;) {
         if (cancelled && cancelled())
             return std::nullopt;
@@ -600,6 +664,22 @@ std::optional<ContentMatch> ContentScanner::scan(
             countedLines += countNewlines(data + countedTo, pos - countedTo, encoding);
             countedTo = pos;
             return static_cast<int>(linesBeforeWindow + countedLines + 1);
+        };
+        // A line that has terms `has`, its number told by `number()` when asked for.
+        const auto note = [&](QString line, std::uint32_t has, bool longLine, const auto& number) {
+            if (const std::uint32_t fresh = has & ~seen)
+                firsts.push_back({line, number(), fresh});
+            seen |= has;
+            // The most terms, then the most at the start of a word, then the first.
+            if (const int count = std::popcount(has); count >= best.terms) {
+                const int starts = std::popcount(wordStartsIn(line, has));
+                if (count > best.terms || starts > best.starts) {
+                    best = {std::move(line), number(), has, count, starts, longLine};
+                } else if (starts == best.starts) {
+                    if (const int n = number(); n < best.number)
+                        best = {std::move(line), n, has, count, starts, longLine};
+                }
+            }
         };
         // The line around a candidate of term `t` at `pos`: whether the term is
         // really there, and if so which terms the line has. `next`: where to
@@ -645,28 +725,16 @@ std::optional<ContentMatch> ContentScanner::scan(
 
             QString line = cleanLine(decode(data + from, to - from, encoding));
             const std::uint32_t has = termsIn(line);
-            if (!(has & (std::uint32_t {1} << t)))
+            if (!(has & bit(t)))
                 return false; // byte-level false positive (e.g. a GBK trail byte)
             next = to;
-            if (const std::uint32_t fresh = has & ~seen)
-                firsts.push_back({line, lineNumberAt(pos), fresh});
-            seen |= has;
-            // The most terms, then the most at the start of a word, then the first.
-            if (const int count = std::popcount(has); count >= best.terms) {
-                const int starts = std::popcount(wordStartsIn(line, has));
-                if (count > best.terms || starts > best.starts) {
-                    best = {std::move(line), lineNumberAt(pos), count, starts, longLine};
-                } else if (starts == best.starts) {
-                    if (const int number = lineNumberAt(pos); number < best.number)
-                        best = {std::move(line), number, count, starts, longLine};
-                }
-            }
+            note(std::move(line), has, longLine, [&] { return lineNumberAt(pos); });
             return true;
         };
 
-        // Where each term not seen yet first is.
+        // Where each word not seen yet first is.
         for (std::size_t t = 0; t < finders.size(); ++t) {
-            if (seen & (std::uint32_t {1} << t))
+            if (!finders[t] || !(wanted & ~seen & bit(t)))
                 continue;
             for (std::size_t pos = finders[t]->find(data, windowLength, windowFloor), next = 0; pos != text::npos;
                 pos = finders[t]->find(data, windowLength, next)) {
@@ -674,43 +742,152 @@ std::optional<ContentMatch> ContentScanner::scan(
                     break;
             }
         }
-        if (seen == all) {
+
+        // The expressions, on the whole lines of the window, decoded: up to
+        // its last line break (the rest is seen with the next chunk), or all
+        // of it at the end of the file and of a line longer than is waited for.
+        std::size_t regexEnd = windowLength;
+        if (m_regexTerms != 0 && !last) {
+            std::size_t at = windowLength - (windowLength - windowFloor) % unit;
+            const std::size_t stop = at > regexFloor + unit && at - regexFloor > tailMax ? at - tailMax : regexFloor;
+            while (at >= stop + unit && !isNewline(data, at - unit, encoding))
+                at -= unit;
+            if (at >= stop + unit)
+                regexEnd = at;
+            else if (windowLength - regexFloor <= tailMax)
+                regexEnd = regexFloor; // one line so far: none of it yet
+        }
+        // The lines of the window read as text, and the line breaks counted in
+        // it up to a place, onward as above.
+        QString decoded;
+        bool haveDecoded = false;
+        qsizetype countedChars = 0;
+        std::uint64_t countedCharLines = 0;
+        const auto regexLineNumberAt = [&](qsizetype at) {
+            if (at < countedChars)
+                countedChars = countedCharLines = 0;
+            countedCharLines += static_cast<std::uint64_t>(QStringView(decoded).sliced(countedChars, at - countedChars).count(u'\n'));
+            countedChars = at;
+            return static_cast<int>(linesBeforeWindow + countNewlines(data, regexFloor, encoding) + countedCharLines + 1);
+        };
+        // A match of expression `t` in the text decoded: its line noted, as
+        // look() does. Where to look on: past the line.
+        const auto lookText = [&](std::size_t t, qsizetype at) {
+            const QStringView all(decoded);
+            qsizetype from = at;
+            while (from > 0 && at - from < kContextChars && all[from - 1] != u'\n')
+                --from;
+            const bool atLineStart = from == 0 || all[from - 1] == u'\n';
+            if (from < at && all[from].isLowSurrogate())
+                ++from;
+            qsizetype to = at;
+            while (to < all.size() && to - at < 2 * kContextChars && all[to] != u'\n')
+                ++to;
+            if (to > at && to < all.size() && all[to].isLowSurrogate())
+                --to;
+            qsizetype lineFrom = from;
+            if (!atLineStart) {
+                while (lineFrom > 0 && at - lineFrom < kLongLineChars && all[lineFrom - 1] != u'\n')
+                    --lineFrom;
+            }
+            qsizetype lineTo = to;
+            while (lineTo < all.size() && lineTo - at < kLongLineChars && all[lineTo] != u'\n')
+                ++lineTo;
+            const bool longLine = lineTo - lineFrom >= kLongLineChars;
+            QString line = cleanLine(all.sliced(from, to - from).toString());
+            // The expression matched there, whatever it makes of the piece
+            // cut out of a long line (a ^ or a lookbehind may not match it).
+            const std::uint32_t has = termsIn(line) | bit(t);
+            note(std::move(line), has, longLine, [&] { return regexLineNumberAt(at); });
+            return lineTo;
+        };
+        const auto decodeLines = [&] {
+            if (!haveDecoded && regexEnd > regexFloor)
+                decoded = decode(data + regexFloor, regexEnd - regexFloor, encoding);
+            haveDecoded = true;
+        };
+        for (std::size_t t = 0; t < m_terms.size(); ++t) {
+            if (!(m_regexTerms & wanted & ~seen & bit(t)))
+                continue;
+            decodeLines();
+            forEachHit(m_terms[t], decoded, 0, [&](qsizetype at, qsizetype) {
+                lookText(t, at);
+                return false; // the first is enough
+            });
+        }
+
+        if (const std::uint32_t way = wayIn(seen, dead)) {
             // A match. A line here that has more of the terms, or more of
             // them at the start of a word ("fix", not in "prefix"), shows it
             // better; a few dozen looked at (packed code repeats them).
-            const auto better = [&] { return best.terms < std::ssize(finders) || best.starts < std::ssize(finders); };
+            const int count = std::popcount(way);
+            const auto better = [&] { return best.terms < count || best.starts < count; };
             int looks = 64;
-            for (std::size_t t = 0; t < finders.size() && better() && looks > 0; ++t) {
-                for (std::size_t pos = finders[t]->find(data, windowLength, windowFloor), next = 0;
-                    pos != text::npos && better() && looks > 0; pos = finders[t]->find(data, windowLength, next)) {
-                    look(t, pos, next);
-                    --looks;
+            for (std::size_t t = 0; t < m_terms.size() && better() && looks > 0; ++t) {
+                if (!(way & bit(t)))
+                    continue;
+                if (finders[t]) {
+                    for (std::size_t pos = finders[t]->find(data, windowLength, windowFloor), next = 0;
+                        pos != text::npos && better() && looks > 0; pos = finders[t]->find(data, windowLength, next)) {
+                        look(t, pos, next);
+                        --looks;
+                    }
+                } else if (m_terms[t].regex) {
+                    decodeLines();
+                    qsizetype from = 0;
+                    while (better() && looks > 0 && from <= decoded.size()) {
+                        qsizetype next = -1;
+                        forEachHit(m_terms[t], decoded, from, [&](qsizetype at, qsizetype) {
+                            next = lookText(t, at);
+                            return false;
+                        });
+                        if (next < 0)
+                            break;
+                        from = next + 1;
+                        --looks;
+                    }
                 }
             }
-            const std::uint32_t lacking = all & ~termsIn(best.line);
+            // Of the ways the file has, the one the line shown has the most
+            // of ("马上|立即": the one that is on it).
+            std::uint32_t shown = way;
+            for (const std::uint32_t other : m_ways) {
+                if ((other & seen) == other && !(other & dead)
+                    && std::popcount(other & best.has) > std::popcount(shown & best.has))
+                    shown = other;
+            }
+            const std::uint32_t lacking = shown & ~best.has;
             std::ranges::sort(firsts, {}, &First::number);
             std::vector<QString> others;
             for (First& first : firsts) {
                 if (first.terms & lacking)
                     others.push_back(std::move(first.line));
             }
-            ContentMatch match = matchIn(best.line, best.number, others);
+            ContentMatch match = matchIn(best.line, best.number, best.has, others);
             match.longLine = best.longLine;
+            match.termCount = std::popcount(shown);
             return match;
         }
+        if (last)
+            return std::nullopt;
 
-        // Slide the window, keeping a tail so matches across chunks are found.
+        // Slide the window, keeping a tail so matches across chunks are
+        // found, and the lines no expression was run on yet.
         std::size_t keep = needleBytes > unit ? needleBytes - unit : 0;
         keep = std::min(keep, windowLength - windowFloor);
         if (unit == 2)
             keep &= ~std::size_t {1};
+        const std::size_t tail = windowLength - regexEnd;
+        keep = std::max(keep, tail);
         linesBeforeWindow += countNewlines(data, windowLength - keep, encoding);
         std::memmove(data, data + windowLength - keep, keep);
         const std::size_t got = fill(read, data + keep, chunkSize);
-        if (got == 0)
+        if (got == 0 && tail == 0)
             return std::nullopt;
+        last = got < chunkSize;
         windowLength = keep + got;
         windowFloor = 0;
+        regexFloor = keep - tail;
     }
 }
 

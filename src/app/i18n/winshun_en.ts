@@ -4614,6 +4614,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Regular expressions: every word is matched against names as a regular expression · click to turn off</translation>
     </message>
     <message>
+        <source>正则模式：每个词都按正则表达式匹配文件里的文字 · 点击关闭</source>
+        <translation>Regular expressions: every word is matched against the text of files as a regular expression · click to turn off</translation>
+    </message>
+    <message>
         <source>取消钉住</source>
         <translation>Unpin</translation>
     </message>
@@ -7909,8 +7913,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Past this many rows the list scrolls. 4–20, 8 by default; fewer where the screen has no room below.</translation>
     </message>
     <message>
-        <source>在“全部”和“文件”里，每个词都按正则表达式匹配名字</source>
-        <translation>In All and Files, match every term as a regular expression against names</translation>
+        <source>每个词都按正则表达式匹配：“全部”和“文件”里匹配名字，“内容”里匹配文件里的文字</source>
+        <translation>Match every term as a regular expression: against names in All and Files, against the text of files in Content</translation>
     </message>
     <message>
         <source>较早的日期也显示具体时间</source>
@@ -8285,8 +8289,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Switch the order; with nothing typed, opened or modified lately</translation>
     </message>
     <message>
-        <source>正则模式：每个词都按正则表达式匹配名字；再按一次关闭</source>
-        <translation>Regular expressions: every word is matched against names as a regular expression; press again to turn off</translation>
+        <source>正则模式：每个词都按正则表达式匹配名字，“内容”里匹配文件里的文字；再按一次关闭</source>
+        <translation>Regular expressions: every word is a regular expression on names, in Content on the text of files; press again to turn off</translation>
     </message>
     <message>
         <source>当前文件夹优先 → 只搜它 → 只搜这一层，轮换</source>
@@ -11544,6 +11548,10 @@ Content index: %5</translation>
     <message>
         <source>正则模式：每个词都按正则表达式匹配名字</source>
         <translation>Regular expressions: every word is matched against names as a regular expression</translation>
+    </message>
+    <message>
+        <source>正则模式：每个词都按正则表达式匹配文件里的文字</source>
+        <translation>Regular expressions: every word is matched against the text of files as a regular expression</translation>
     </message>
     <message>
         <source>已关闭正则模式</source>

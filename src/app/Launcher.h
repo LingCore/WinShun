@@ -1234,7 +1234,8 @@ private:
     bool m_searchPlaces = true;
     bool m_regexMode = false;
     bool m_shownRegex = false; // of the rows on screen, as m_shownText
-    // What is typed is parsed as regexes (regexMode, and not 内容).
+    // What is typed is parsed as regexes on names (regexMode, and not 内容:
+    // there the words are expressions on the files' text, m_regexMode as it is).
     bool regexTerms() const { return m_regexMode && m_scope != Content; }
     struct PrefixScope { Scope scope; QStringList typeKeys; bool folders; };
     std::optional<PrefixScope> m_filePrefix;

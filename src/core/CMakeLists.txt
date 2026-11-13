@@ -10,6 +10,7 @@ qt_add_library(wscore STATIC
     ClipStore.cpp ClipStore.h
     ContentIndex.cpp ContentIndex.h
     ContentIndexer.cpp ContentIndexer.h
+    ContentPattern.cpp ContentPattern.h
     ContentScanner.cpp ContentScanner.h
     ContentDetails.cpp ContentDetails.h
     ContentReport.cpp ContentReport.h
