@@ -10,6 +10,7 @@
 #include "LongCapture.h"
 #include "PinManager.h"
 #include "Recorder.h"
+#include "SizePresets.h"
 #include "UiaProbe.h"
 #include "WindowSnapshot.h"
 
@@ -112,6 +113,8 @@ public:
         std::function<void(const QString&)> colorFormatChanged;
         // The key hints' 不再显示 (false) or 一直显示 (true): [Capture] KeyHints.
         std::function<void(bool)> keyHintsKept;
+        // The size panel's list was added to or taken from: [Capture] SizePresets.
+        std::function<void(const QString&)> sizePresetsChanged;
         // A fill that carries white words (the countdown's).
         std::function<QColor()> accent;
         // The countdown's corner, logical px (the 界面风格's menuRadius; 0 in
@@ -147,6 +150,8 @@ public:
     // UI Automation for the controls that are not child windows ([Capture] ControlsUia).
     void setControlDetection(bool on) { m_uiaEnabled = on; }
     void setColorFormat(ColorFormat format) { m_session.setColorFormat(format); }
+    // The sizes and shapes to pick from ([Capture] SizePresets, #308).
+    void setSizePresets(const QString& text) { m_session.setSizePresets(parseSizePresets(text)); }
     // 截图历史: each capture taken keeps its monitors' pictures, its selection
     // and annotations in `folder` (the last `count`; 0: none, and those kept
     // go), for , and . in the overlay ([Capture] HistoryCount).

@@ -28,6 +28,10 @@ Version 1.1.2: the capture settings no longer freeze with “Not responding” t
 
 Version 1.1.3: Read text on screen has a hotkey of its own (#198); pin zoom steps are finer and show the percentage, `Ctrl`+wheel shows the opacity, and the wheel or `[` `]` set annotation width, text size and mosaic cell finely (#164); without D3D11 video support recording converts frames on the CPU (#214); Open link on a QR code opens the browser (needs WinShun 0.21.0, #225); the windows follow the interface style chosen in WinShun; idle memory goes back to Windows. Permissions are unchanged.
 
+下一版：截图时可以指定选区尺寸（#308）。点选区旁的尺寸，或按 `F`，直接输入宽和高，可以锁定比例，也可以从预设里选；框选之前按 `F` 选预设，会在光标处得到固定大小的选区。预设可以自己增删。权限不变。
+
+Next version: a capture can be given an exact size (#308). Click the size by the selection, or press `F`, to type a width and a height, lock the shape, or pick a preset; before selecting, `F` and a preset size make a selection of that size at the pointer. The presets can be added to and removed. Permissions are unchanged.
+
 ## 权限 / Permissions
 
 - `ui`：显示截图、编辑、贴图及录屏窗口，注册快捷键。Display capture, editing, pin and recording windows and register shortcuts.

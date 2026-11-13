@@ -481,6 +481,10 @@ void CaptureApp::apply()
             if (name != m_settings.options().colorFormat)
                 m_settings.update([&](CaptureOptions& next) { next.colorFormat = name; });
         };
+        callbacks.sizePresetsChanged = [this](const QString& text) {
+            if (text != m_settings.options().sizePresets)
+                m_settings.update([&](CaptureOptions& next) { next.sizePresets = text; });
+        };
         callbacks.keyHintsKept = [this](bool on) { m_settings.setCaptureKeyHints(on); }; // the panel's 不再显示 / 一直显示
         callbacks.recording.preferences = [this] {
             const CaptureOptions& p = m_settings.options();
@@ -548,6 +552,7 @@ void CaptureApp::apply()
     m_capture->setDelay(o.delay);
     m_capture->setHistory(QDir(m_dataDir).filePath(u"capture-history"_s), o.historyCount);
     m_capture->setColorFormat(capture::colorFormatFromName(o.colorFormat));
+    m_capture->setSizePresets(o.sizePresets);
     // The pin and save keys and the pin window's (#187): open pins and an open editor too.
     m_capture->setKeys(o.keys);
     // A save folder chosen: Save goes straight into it, as in 0.16 (#194).

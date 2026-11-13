@@ -4,6 +4,7 @@
 #include "CaptureTools.h"
 #include "Geometry.h"
 #include "KeyHintPolicy.h"
+#include "SizePresets.h"
 
 #include <QElapsedTimer>
 #include <QImage>
@@ -12,6 +13,7 @@
 #include <QRect>
 #include <QSize>
 #include <QTimer>
+#include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
 #include <functional>
@@ -156,7 +158,10 @@ private:
 // Enter or a double click copies, Ctrl+S saves, F3 pins it
 // to the screen; Esc or a right click drops the selection, or with none ends
 // the capture; C copies the colour under the cursor. A selection stays on
-// one monitor. With a selection, the annotation tools (AnnotationModel) draw
+// one monitor. F opens the size panel (CaptureSizeBox.qml, GitHub #308): a
+// width and a height typed in, a shape the selection is then held to
+// (ratioLocked: drags, handles and Shift with the arrows keep it), and the
+// sizes and shapes kept to pick from, before a selection too. With a selection, the annotation tools (AnnotationModel) draw
 // on the frozen picture: the mouse and keys go to the model first (docs/
 // design-capture-roadmap.md, 3.6), and Esc takes a text, a stroke, then the
 // selection with its annotations off the screen in steps.
@@ -195,6 +200,16 @@ class CaptureSession : public QObject {
     // 识别屏幕文字 (#198): this capture only picks a region for its words; no
     // toolbar, no annotations, no size label.
     Q_PROPERTY(bool ocrOnly READ ocrOnly NOTIFY ocrOnlyChanged FINAL)
+    // The size panel is open (F, or a click on the size by the selection):
+    // no magnifier and no key hints meanwhile; a press on the picture closes it.
+    Q_PROPERTY(bool sizeEditing READ sizeEditing WRITE setSizeEditing NOTIFY sizeEditingChanged FINAL)
+    // The selection keeps the shape `ratio` (width : height) however it is
+    // drawn or resized; for this capture only.
+    Q_PROPERTY(bool ratioLocked READ ratioLocked NOTIFY ratioChanged FINAL)
+    Q_PROPERTY(QSize ratio READ ratio NOTIFY ratioChanged FINAL)
+    // The sizes and shapes to pick from, in order: {label, ratio, width, height}.
+    Q_PROPERTY(QVariantList sizePresets READ sizePresetList NOTIFY sizePresetsChanged FINAL)
+    Q_PROPERTY(bool sizePresetsFull READ sizePresetsFull NOTIFY sizePresetsChanged FINAL)
 
 public:
     // Pin: left on the screen where it was (PinWindow); Ocr: its words read (CaptureOcr);
@@ -293,6 +308,31 @@ public:
     void setOcrOnly(bool on);
     bool ocrOnly() const { return m_ocrOnly; }
 
+    // ---- the size panel (#308) ----
+    bool sizeEditing() const { return m_sizeEditing; }
+    void setSizeEditing(bool on);
+    bool ratioLocked() const { return !m_ratio.isEmpty(); }
+    QSize ratio() const { return m_ratio; }
+    // The selection made `width` x `height` (its top left stays where the
+    // monitor has room); with none, one of that size about the pointer. Held
+    // to the shape when locked: the side along `lead` (a Qt::Orientation, the
+    // number typed) is kept and the other follows.
+    Q_INVOKABLE void setSize(int width, int height, int lead = Qt::Horizontal);
+    // The shape `width` : `height` held from now on (the panel's lock; the
+    // numbers it shows); 0 either way lets go of it.
+    Q_INVOKABLE void lockRatio(int width, int height);
+    // One of sizePresets: a size is given to the selection (or makes one
+    // about the pointer), a shape is held and the selection made to fit it.
+    Q_INVOKABLE void applySizePreset(int index);
+    // The list itself: `width` x `height` at its end, or one taken out
+    // (sizePresetsEdited tells the settings).
+    Q_INVOKABLE void addSizePreset(int width, int height);
+    Q_INVOKABLE void removeSizePreset(int index);
+    void setSizePresets(std::vector<SizePreset> presets);
+    const std::vector<SizePreset>& sizePresets() const { return m_sizePresets; }
+    QVariantList sizePresetList() const;
+    bool sizePresetsFull() const { return m_sizePresets.size() >= kSizePresetLimit; }
+
     // What the mouse buttons do once a selection is there (issue #46), as
     // Settings keeps them: none | copy | save | pin | ocr | ocrcopy | ocrsearch |
     // ocrweb | cancel, the right button also back. Only with no annotation tool on and no stroke or text
@@ -387,6 +427,10 @@ signals:
     void keyHintsChanged();
     void keyHintsKept(bool on); // the panel's button: [Capture] KeyHints
     void ocrOnlyChanged();
+    void sizeEditingChanged();
+    void ratioChanged();
+    void sizePresetsChanged();
+    void sizePresetsEdited(); // by the user, in the panel: [Capture] SizePresets
 
 private:
     // Annotating: a drawing, moving or reshaping gesture of the model's is
@@ -406,6 +450,9 @@ private:
     void recallSelection(bool previous); // R: older; Shift+R: newer
     void nudgeSelection(int dx, int dy, bool resize);
     void movePointer(int dx, int dy); // WASD: the mouse pointer, whatever the phase
+    void placeSize(QSize size); // setSize's, the shape already seen to
+    void setRatio(QSize ratio); // empty: none held
+    bool resting() const { return m_phase == Phase::Hover || m_phase == Phase::Selected; } // no button held
     void back(); // Esc, right click
     enum class MouseAct { None, Copy, Save, Pin, Ocr, Cancel, Back, OcrCopy, OcrSearch, OcrWeb, CopyPin };
     static MouseAct parseMouseAct(const QString& name, MouseAct fallback);
@@ -436,6 +483,9 @@ private:
     bool m_magnifier = true; // off: no magnifier, so no colour picking either
     bool m_pinOnCopy = false;
     bool m_ocrOnly = false;
+    bool m_sizeEditing = false;
+    QSize m_ratio; // the shape held; empty: none
+    std::vector<SizePreset> m_sizePresets;
     MouseAct m_actDoubleLeft = MouseAct::Copy;
     MouseAct m_actRight = MouseAct::Back;
     MouseAct m_actMiddle = MouseAct::None;

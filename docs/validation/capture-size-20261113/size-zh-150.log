@@ -1,0 +1,40 @@
+preparing
+loading the font
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+Screen capture: overlay up 106 ms after the hotkey (grab 21 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 21 ms in all; 13 windows listed in 1 ms; session begun at 25 ms, windows shown at 31 ms; 19324 page faults)
+Screen capture: 1 overlay(s) warmed in 231 ms
+PASS: at rest it is the label
+Screen capture: UI Automation gave 0 controls in 103 ms
+Screen capture: UI Automation gave 0 controls in 11 ms
+PASS: F with no selection opens the panel with its list, the width has the keys
+PASS: the magnifier and the key hints give way
+saved F:/电脑便捷工具/build/issue-308/size-zh-150/size-before-selection.png 2561x1601
+PASS: saved size-before-selection.png
+PASS: the first preset can be clicked
+PASS: a size preset makes a 640 × 480 selection about the pointer: 640x480
+PASS: the panel closed and the capture has the keys again
+PASS: the label can be clicked
+PASS: a click on the label opens the panel with the size now, the list closed
+PASS: Tab gives the width typed to the selection
+PASS: Enter gives 800 × 600 with the top left where it was, and closes the panel
+PASS: the capture's own keys work again (Shift+Right)
+PASS: F with a selection opens the panel
+PASS: the lock holds 800 : 600 and the field keeps the keys
+PASS: with the lock the height follows the width typed: 300
+PASS: Enter gives 400 × 300
+PASS: Up steps a pixel, the shape kept, the panel stays
+PASS: Shift+Down steps ten: 390x293
+PASS: letters typed into the panel do nothing
+PASS: the arrow opens the list
+saved F:/电脑便捷工具/build/issue-308/size-zh-150/size-panel.png 2561x1601
+PASS: saved size-panel.png
+PASS: the size now is kept as a preset: 
+PASS: not twice
+PASS: a preset is taken out without being applied: 640x480,16:9,390x293
+PASS: the arrows and Enter pick 16 : 9 from the list: 390x219
+saved F:/电脑便捷工具/build/issue-308/size-zh-150/size-locked-label.png 2561x1601
+PASS: saved size-locked-label.png
+PASS: Esc closes the panel, not the selection
+PASS: a press on the picture closes the panel
+PASS: Enter copies the picture at the size asked for
+selection size checks: passed; 0 warning(s)

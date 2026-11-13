@@ -193,6 +193,10 @@ Capture::Capture(QQmlEngine* engine, Callbacks callbacks, QObject* parent)
         if (m_callbacks.colorFormatChanged)
             m_callbacks.colorFormatChanged(colorFormatName(format));
     });
+    connect(&m_session, &CaptureSession::sizePresetsEdited, this, [this] {
+        if (m_callbacks.sizePresetsChanged)
+            m_callbacks.sizePresetsChanged(sizePresetsText(m_session.sizePresets()));
+    });
     connect(&m_session, &CaptureSession::keyHintsKept, this, [this](bool on) {
         if (m_callbacks.keyHintsKept)
             m_callbacks.keyHintsKept(on);

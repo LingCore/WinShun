@@ -150,6 +150,123 @@ QRect nudge(const QRect& r, int dx, int dy, bool resize, const QRect& bounds)
     return QRect(r.left(), r.top(), right - r.left(), bottom - r.top());
 }
 
+// ---- a selection of a size typed in or chosen ---------------------------------
+
+namespace {
+
+int scaled(int length, int from, int to)
+{
+    return std::max(1, static_cast<int>(std::llround(static_cast<double>(length) * to / from)));
+}
+
+bool movesLeft(Handle h) { return h == Handle::Left || h == Handle::TopLeft || h == Handle::BottomLeft; }
+bool movesRight(Handle h) { return h == Handle::Right || h == Handle::TopRight || h == Handle::BottomRight; }
+bool movesTop(Handle h) { return h == Handle::Top || h == Handle::TopLeft || h == Handle::TopRight; }
+bool movesBottom(Handle h) { return h == Handle::Bottom || h == Handle::BottomLeft || h == Handle::BottomRight; }
+
+// A rectangle of `size` with a corner on the lines x and y (between pixels),
+// lying right of and below them, or left of and above (`towards...` false).
+QRect fromCorner(int x, int y, QSize size, bool towardsRight, bool towardsBottom)
+{
+    return QRect(towardsRight ? x : x - size.width(), towardsBottom ? y : y - size.height(), size.width(), size.height());
+}
+
+// The shape's side that makes the larger rectangle leads.
+Qt::Orientation widerLead(QSize size, QSize ratio)
+{
+    return static_cast<qint64>(size.width()) * ratio.height() >= static_cast<qint64>(size.height()) * ratio.width()
+        ? Qt::Horizontal : Qt::Vertical;
+}
+
+} // namespace
+
+QSize ratioSize(QSize size, QSize ratio, Qt::Orientation lead, QSize most)
+{
+    most = most.expandedTo(QSize(1, 1));
+    if (ratio.isEmpty())
+        return size.expandedTo(QSize(1, 1)).boundedTo(most);
+    int width = std::max(1, size.width());
+    int height = std::max(1, size.height());
+    if (lead == Qt::Horizontal)
+        height = scaled(width, ratio.width(), ratio.height());
+    else
+        width = scaled(height, ratio.height(), ratio.width());
+    if (width > most.width()) {
+        width = most.width();
+        height = scaled(width, ratio.width(), ratio.height());
+    }
+    if (height > most.height()) {
+        height = most.height();
+        width = std::min(most.width(), scaled(height, ratio.height(), ratio.width()));
+    }
+    return QSize(width, height);
+}
+
+QRect resized(const QRect& r, QSize size, const QRect& bounds)
+{
+    return moveInto(QRect(r.topLeft(), size.expandedTo(QSize(1, 1))), bounds);
+}
+
+QRect sizedAround(QPoint centre, QSize size, const QRect& bounds)
+{
+    size = size.expandedTo(QSize(1, 1));
+    return moveInto(QRect(centre.x() - size.width() / 2, centre.y() - size.height() / 2, size.width(), size.height()), bounds);
+}
+
+QRect keepRatio(const QRect& dragged, const QRect& start, Handle handle, QSize ratio, const QRect& bounds)
+{
+    if (ratio.isEmpty() || handle == Handle::None || handle == Handle::Move)
+        return dragged;
+    const int maxX = bounds.left() + bounds.width();
+    const int maxY = bounds.top() + bounds.height();
+    const bool across = movesLeft(handle) || movesRight(handle);
+    const bool down = movesTop(handle) || movesBottom(handle);
+    // The edge lines that stay, and the side of them the selection is on now
+    // (the other one once the drag passed them).
+    const int fixedX = movesLeft(handle) ? start.left() + start.width() : start.left();
+    const int fixedY = movesTop(handle) ? start.top() + start.height() : start.top();
+    const bool towardsRight = dragged.left() >= fixedX;
+    const bool towardsBottom = dragged.top() >= fixedY;
+    const int roomX = towardsRight ? maxX - fixedX : fixedX - bounds.left();
+    const int roomY = towardsBottom ? maxY - fixedY : fixedY - bounds.top();
+    if (across && down) {
+        const QSize size = ratioSize(dragged.size(), ratio, widerLead(dragged.size(), ratio), QSize(roomX, roomY));
+        return fromCorner(fixedX, fixedY, size, towardsRight, towardsBottom);
+    }
+    if (across) {
+        const QSize size = ratioSize(dragged.size(), ratio, Qt::Horizontal, QSize(roomX, bounds.height()));
+        const int top = start.top() + (start.height() - size.height()) / 2;
+        return moveInto(QRect(towardsRight ? fixedX : fixedX - size.width(), top, size.width(), size.height()), bounds);
+    }
+    const QSize size = ratioSize(dragged.size(), ratio, Qt::Vertical, QSize(bounds.width(), roomY));
+    const int left = start.left() + (start.width() - size.width()) / 2;
+    return moveInto(QRect(left, towardsBottom ? fixedY : fixedY - size.height(), size.width(), size.height()), bounds);
+}
+
+QRect spanRatio(QPoint from, QPoint to, QSize ratio, const QRect& bounds)
+{
+    const QRect span = spanRect(from, to);
+    if (ratio.isEmpty())
+        return span;
+    // `from` is a pixel in the selection: the corner is the line on its far side.
+    const bool towardsRight = to.x() >= from.x();
+    const bool towardsBottom = to.y() >= from.y();
+    const int x = towardsRight ? from.x() : from.x() + 1;
+    const int y = towardsBottom ? from.y() : from.y() + 1;
+    const QSize room(towardsRight ? bounds.left() + bounds.width() - x : x - bounds.left(),
+        towardsBottom ? bounds.top() + bounds.height() - y : y - bounds.top());
+    return fromCorner(x, y, ratioSize(span.size(), ratio, widerLead(span.size(), ratio), room), towardsRight, towardsBottom);
+}
+
+QRect nudgeRatio(const QRect& r, int dx, int dy, QSize ratio, const QRect& bounds)
+{
+    if (r.isEmpty() || ratio.isEmpty() || (dx == 0 && dy == 0))
+        return nudge(r, dx, dy, true, bounds);
+    const QSize room(bounds.left() + bounds.width() - r.left(), bounds.top() + bounds.height() - r.top());
+    const QSize asked(r.width() + dx, r.height() + dy);
+    return QRect(r.topLeft(), ratioSize(asked, ratio, dx != 0 ? Qt::Horizontal : Qt::Vertical, room));
+}
+
 int cursorFor(Handle handle)
 {
     switch (handle) {

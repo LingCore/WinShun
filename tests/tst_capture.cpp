@@ -1409,13 +1409,13 @@ private slots:
         QVERIFY(s.keyHints().isEmpty()); // not begun
         rig.begin();
         rig.session.pointerMove(0, {500, 400});
-        QCOMPARE(s.keyHints(), (QStringList {u"wheel"_s, u"wasd"_s, u"quit"_s}));
+        QCOMPARE(s.keyHints(), (QStringList {u"wheel"_s, u"wasd"_s, u"size"_s, u"quit"_s}));
         // R, , and ., Shift+C only when they have something to do.
         QSignalSpy told(&s, &CaptureSession::keyHintsChanged);
         s.rememberSelection(QRect(10, 10, 100, 100));
         s.setHistoryAvailable(true);
         s.setOcrAvailable(true);
-        QCOMPARE(s.keyHints(), (QStringList {u"wheel"_s, u"wasd"_s, u"recall"_s, u"history"_s, u"ocr"_s, u"quit"_s}));
+        QCOMPARE(s.keyHints(), (QStringList {u"wheel"_s, u"wasd"_s, u"size"_s, u"recall"_s, u"history"_s, u"ocr"_s, u"quit"_s}));
         QCOMPARE(told.count(), 3);
         rig.session.pointerMove(0, {520, 410});
         QCOMPARE(told.count(), 3); // a move that changes nothing tells nothing
@@ -1427,7 +1427,7 @@ private slots:
         QVERIFY(s.keyHints().isEmpty());
         s.pointerRelease(0, {300, 300}, Qt::LeftButton);
         QCOMPARE(s.keyHints(),
-            (QStringList {u"copy"_s, u"save"_s, u"pin"_s, u"arrows"_s, u"ocr"_s, u"long"_s}));
+            (QStringList {u"copy"_s, u"save"_s, u"pin"_s, u"arrows"_s, u"size"_s, u"ocr"_s, u"long"_s}));
 
         // A tool on (as the toolbar sets it, on the model): its rows; a stroke under way: none.
         AnnotationModel* annot = s.annotation();
@@ -1451,6 +1451,293 @@ private slots:
         QCOMPARE(s.keyHints().last(), u"recalled"_s);
         s.end();
         QVERIFY(s.keyHints().isEmpty());
+    }
+
+    // ---- a size typed in or picked (GitHub #308) ----
+
+    void ratioSizeFollowsTheLeadAndFits()
+    {
+        const QSize room(1000, 800);
+        QCOMPARE(ratioSize({1280, 5}, {16, 9}, Qt::Horizontal, {4000, 4000}), QSize(1280, 720));
+        QCOMPARE(ratioSize({5, 1080}, {16, 9}, Qt::Vertical, {4000, 4000}), QSize(1920, 1080));
+        QCOMPARE(ratioSize({300, 300}, {}, Qt::Horizontal, room), QSize(300, 300)); // no shape held
+        QCOMPARE(ratioSize({5000, 300}, {}, Qt::Horizontal, room), QSize(1000, 300));
+        // Past the room: both shrink, the shape stays.
+        QCOMPARE(ratioSize({1920, 1}, {16, 9}, Qt::Horizontal, room), QSize(1000, 563));
+        QCOMPARE(ratioSize({1, 2000}, {1, 1}, Qt::Vertical, room), QSize(800, 800));
+        QCOMPARE(ratioSize({1, 1}, {1000, 1}, Qt::Horizontal, room), QSize(1, 1)); // never under a pixel
+        QCOMPARE(ratioSize({0, 0}, {1, 1}, Qt::Horizontal, room), QSize(1, 1));
+    }
+
+    void resizedKeepsTheCornerWhereThereIsRoom()
+    {
+        const QRect screen(0, 0, 1000, 800);
+        QCOMPARE(resized(QRect(100, 100, 50, 50), {300, 200}, screen), QRect(100, 100, 300, 200));
+        QCOMPARE(resized(QRect(900, 700, 50, 50), {300, 200}, screen), QRect(700, 600, 300, 200)); // moved in
+        QCOMPARE(resized(QRect(100, 100, 50, 50), {5000, 5000}, screen), screen); // no larger than the monitor
+        QCOMPARE(resized(QRect(100, 100, 50, 50), {0, -3}, screen), QRect(100, 100, 1, 1));
+        QCOMPARE(sizedAround({500, 400}, {200, 100}, screen), QRect(400, 350, 200, 100));
+        QCOMPARE(sizedAround({5, 5}, {200, 100}, screen), QRect(0, 0, 200, 100));
+        QCOMPARE(sizedAround({995, 795}, {200, 100}, screen), QRect(800, 700, 200, 100));
+    }
+
+    void ratioHeldWhileDraggingAndNudging()
+    {
+        const QRect screen(0, 0, 1000, 800);
+        const QSize wide(16, 9);
+        // Drawn out: the corner pressed stays, the side dragged further leads.
+        QCOMPARE(spanRatio({100, 100}, {419, 120}, wide, screen), QRect(100, 100, 320, 180));
+        QCOMPARE(spanRatio({100, 100}, {110, 279}, wide, screen), QRect(100, 100, 320, 180));
+        QCOMPARE(spanRatio({500, 500}, {181, 490}, wide, screen), QRect(181, 321, 320, 180)); // up and left
+        QCOMPARE(spanRatio({100, 100}, {419, 120}, {}, screen), spanRect({100, 100}, {419, 120}));
+        QCOMPARE(spanRatio({900, 100}, {999, 700}, {1, 1}, screen), QRect(900, 100, 100, 100)); // the screen's edge
+        // A corner handle: the opposite corner stays.
+        const QRect start(200, 200, 320, 180);
+        const auto dragged = [&](Handle h, QPoint by) { return keepRatio(dragHandle(start, h, by, screen), start, h, wide, screen); };
+        QCOMPARE(dragged(Handle::BottomRight, {160, 0}), QRect(200, 200, 480, 270));
+        QCOMPARE(dragged(Handle::TopLeft, {-160, 0}), QRect(40, 110, 480, 270));
+        QCOMPARE(dragged(Handle::BottomRight, {-400, -270}), QRect(40, 110, 160, 90)); // past the corner: the other side of it
+        // An edge leads, the other side grows about its middle.
+        QCOMPARE(dragged(Handle::Right, {160, 0}), QRect(200, 155, 480, 270));
+        QCOMPARE(dragged(Handle::Bottom, {0, 90}), QRect(120, 200, 480, 270));
+        QCOMPARE(dragged(Handle::Move, {10, 10}), QRect(210, 210, 320, 180));
+        const QRect all = dragged(Handle::Right, {5000, 0});
+        QCOMPARE(all.size(), QSize(800, 450)); // as far as the screen goes
+        QVERIFY(screen.contains(all));
+        // Shift with the arrows.
+        QCOMPARE(nudgeRatio(QRect(100, 100, 160, 90), 16, 0, wide, screen), QRect(100, 100, 176, 99));
+        QCOMPARE(nudgeRatio(QRect(100, 100, 160, 90), 0, 9, wide, screen), QRect(100, 100, 176, 99));
+        QCOMPARE(nudgeRatio(QRect(100, 100, 160, 90), 1, 0, {}, screen), QRect(100, 100, 161, 90));
+        QCOMPARE(nudgeRatio(QRect(840, 100, 160, 90), 1, 0, wide, screen), QRect(840, 100, 160, 90)); // at the edge
+    }
+
+    void sizePresetsReadAndWrite()
+    {
+        QCOMPARE(parseSizePreset(u"1920x1080"), (SizePreset {{1920, 1080}, false}));
+        QCOMPARE(parseSizePreset(u" 1280 × 720 "), (SizePreset {{1280, 720}, false}));
+        QCOMPARE(parseSizePreset(u"800*600"), (SizePreset {{800, 600}, false}));
+        QCOMPARE(parseSizePreset(u"800X600"), (SizePreset {{800, 600}, false}));
+        QCOMPARE(parseSizePreset(u"16:9"), (SizePreset {{16, 9}, true}));
+        QCOMPARE(parseSizePreset(u"4：3"), (SizePreset {{4, 3}, true}));
+        for (const QStringView bad : {u"", u"x", u"1920", u"1920x", u"x1080", u"0x10", u"10x0", u"-5x10", u"100000x1", u"axb", u"1x2x3"})
+            QVERIFY2(!parseSizePreset(bad).valid(), qPrintable(bad.toString()));
+        const auto presets = parseSizePresets(u"1920x1080, 16:9,junk,1920x1080,,4:3");
+        QCOMPARE(presets.size(), std::size_t(3)); // what reads, once each
+        QCOMPARE(sizePresetsText(presets), u"1920x1080,16:9,4:3"_s);
+        QCOMPARE(parseSizePresets(sizePresetsText(presets)), presets);
+        QCOMPARE(parseSizePresets(kDefaultSizePresets).size(), std::size_t(6));
+        QString many;
+        for (int i = 1; i <= 30; ++i)
+            many += u"%1x%1,"_s.arg(i);
+        QCOMPARE(parseSizePresets(many).size(), kSizePresetLimit);
+    }
+
+    void sizeTypedInResizesTheSelection()
+    {
+        Rig rig;
+        CaptureSession& s = rig.session;
+        rig.begin();
+        rig.drag({100, 100}, {299, 199});
+        QCOMPARE(s.selectionRect(), QRect(100, 100, 200, 100));
+        QSignalSpy changed(&s, &CaptureSession::selectionChanged);
+        s.setSize(640, 480);
+        QCOMPARE(s.selectionRect(), QRect(100, 100, 640, 480)); // the top left stays
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(rig.screen.selection(), QRect(100, 100, 640, 480));
+        s.setSize(640, 480);
+        QCOMPARE(changed.count(), 1); // the same again tells nothing
+        s.setSize(950, 780);
+        QCOMPARE(s.selectionRect(), QRect(50, 20, 950, 780)); // moved in from the edges
+        s.setSize(5000, 5000);
+        QCOMPARE(s.selectionRect(), QRect(0, 0, 1000, 800));
+        s.setSize(0, 10);
+        QCOMPARE(s.selectionRect(), QRect(0, 0, 1000, 800)); // not a size
+        // Annotations stay where they were drawn: the selection may still be sized.
+        s.setSize(400, 300);
+        s.annotation()->setTool(0);
+        rig.drag({50, 50}, {150, 150});
+        s.annotation()->setTool(-1);
+        QVERIFY(s.hasAnnotations());
+        s.setSize(500, 300);
+        QCOMPARE(s.selectionRect().size(), QSize(500, 300));
+        QVERIFY(s.hasAnnotations());
+    }
+
+    void sizeWithNoSelectionMakesOneAboutThePointer()
+    {
+        Rig rig;
+        CaptureSession& s = rig.session;
+        rig.begin();
+        s.setSize(300, 200);
+        QVERIFY(!s.hasSelection()); // the pointer is nowhere yet
+        s.pointerMove(0, {500, 400});
+        s.setSize(300, 200);
+        QVERIFY(s.hasSelection());
+        QCOMPARE(s.selectionRect(), QRect(350, 300, 300, 200));
+        QCOMPARE(s.phaseName(), u"selected"_s);
+        QVERIFY(s.annotation()->active()); // a selection like any other: the tools are there
+        // The pointer is in it: a drag moves it into place.
+        rig.drag({500, 400}, {510, 420});
+        QCOMPARE(s.selectionRect(), QRect(360, 320, 300, 200));
+        QVERIFY(s.key(Qt::Key_Escape, Qt::NoModifier));
+        s.pointerMove(0, {5, 5});
+        s.setSize(300, 200);
+        QCOMPARE(s.selectionRect(), QRect(0, 0, 300, 200)); // by the corner: on the screen
+    }
+
+    void ratioLockHoldsTheShape()
+    {
+        Rig rig;
+        CaptureSession& s = rig.session;
+        rig.begin();
+        rig.drag({100, 100}, {419, 279});
+        QCOMPARE(s.selectionRect(), QRect(100, 100, 320, 180));
+        QSignalSpy told(&s, &CaptureSession::ratioChanged);
+        QVERIFY(!s.ratioLocked());
+        s.lockRatio(320, 180);
+        QVERIFY(s.ratioLocked());
+        QCOMPARE(s.ratio(), QSize(320, 180));
+        QCOMPARE(told.count(), 1);
+        // A number typed leads; the other follows.
+        s.setSize(640, 1, Qt::Horizontal);
+        QCOMPARE(s.selectionRect(), QRect(100, 100, 640, 360));
+        s.setSize(1, 180, Qt::Vertical);
+        QCOMPARE(s.selectionRect(), QRect(100, 100, 320, 180));
+        // Shift with the arrows, a handle, a new drag.
+        QVERIFY(s.key(Qt::Key_Right, Qt::ShiftModifier));
+        QCOMPARE(s.selectionRect(), QRect(100, 100, 321, 181));
+        s.setSize(320, 1);
+        s.pointerMove(0, {420, 280});
+        s.pointerPress(0, {420, 280}, Qt::LeftButton); // the bottom right corner
+        s.pointerMove(0, {580, 290});
+        s.pointerRelease(0, {580, 290}, Qt::LeftButton);
+        QCOMPARE(s.selectionRect(), QRect(100, 100, 480, 270));
+        rig.drag({600, 500}, {759, 510});
+        QCOMPARE(s.selectionRect(), QRect(600, 500, 160, 90));
+        // Let go of: free again.
+        s.lockRatio(0, 0);
+        QVERIFY(!s.ratioLocked());
+        s.setSize(100, 100);
+        QCOMPARE(s.selectionRect().size(), QSize(100, 100));
+        // A window clicked, a region recalled and the next capture have their own shape.
+        s.lockRatio(1, 1);
+        QVERIFY(s.key(Qt::Key_Escape, Qt::NoModifier));
+        rig.click({900, 700});
+        QVERIFY(!s.ratioLocked());
+        QCOMPARE(s.selectionRect(), QRect(0, 0, 1000, 800));
+        s.lockRatio(1, 1);
+        s.rememberSelection(QRect(10, 10, 300, 100));
+        QVERIFY(s.key(Qt::Key_Escape, Qt::NoModifier));
+        QVERIFY(s.key(Qt::Key_R, Qt::NoModifier));
+        QVERIFY(!s.ratioLocked());
+        QCOMPARE(s.selectionRect(), QRect(10, 10, 300, 100));
+        s.lockRatio(4, 3);
+        rig.begin();
+        QVERIFY(!s.ratioLocked());
+    }
+
+    void sizePresetsApplyAndAreKept()
+    {
+        Rig rig;
+        CaptureSession& s = rig.session;
+        QSignalSpy listed(&s, &CaptureSession::sizePresetsChanged);
+        QSignalSpy edited(&s, &CaptureSession::sizePresetsEdited);
+        s.setSizePresets(parseSizePresets(u"640x480,16:9"));
+        QCOMPARE(listed.count(), 1);
+        QCOMPARE(edited.count(), 0); // the settings' own list is not an edit
+        const QVariantList list = s.sizePresetList();
+        QCOMPARE(list.size(), 2);
+        QCOMPARE(list[0].toMap().value(u"label"_s).toString(), u"640 × 480"_s);
+        QCOMPARE(list[1].toMap().value(u"ratio"_s).toBool(), true);
+        rig.begin();
+        s.pointerMove(0, {500, 400});
+        // Before a selection: a size makes one about the pointer.
+        s.applySizePreset(0);
+        QCOMPARE(s.selectionRect(), QRect(180, 160, 640, 480));
+        QVERIFY(!s.ratioLocked());
+        // A shape: held, and the selection made to fit by its width.
+        s.applySizePreset(1);
+        QVERIFY(s.ratioLocked());
+        QCOMPARE(s.selectionRect(), QRect(180, 160, 640, 360));
+        // A size while a shape is held: that size exactly, and its shape from then on.
+        s.applySizePreset(0);
+        QCOMPARE(s.selectionRect(), QRect(180, 160, 640, 480));
+        QCOMPARE(s.ratio(), QSize(640, 480));
+        // Before a selection: a shape is held for the drag to come, and says so.
+        QVERIFY(s.key(Qt::Key_Escape, Qt::NoModifier));
+        s.lockRatio(0, 0);
+        s.applySizePreset(1);
+        QVERIFY(!s.hasSelection());
+        QVERIFY(!rig.screen.notice().isEmpty());
+        rig.drag({100, 100}, {419, 110});
+        QCOMPARE(s.selectionRect(), QRect(100, 100, 320, 180));
+        s.applySizePreset(7); // not one
+        QCOMPARE(s.selectionRect(), QRect(100, 100, 320, 180));
+        // The list: added once, taken out, never past its limit.
+        s.addSizePreset(320, 180);
+        s.addSizePreset(320, 180);
+        s.addSizePreset(0, 5);
+        QCOMPARE(sizePresetsText(s.sizePresets()), u"640x480,16:9,320x180"_s);
+        QCOMPARE(edited.count(), 1);
+        s.removeSizePreset(0);
+        s.removeSizePreset(9);
+        QCOMPARE(sizePresetsText(s.sizePresets()), u"16:9,320x180"_s);
+        QCOMPARE(edited.count(), 2);
+        for (int i = 1; i <= 30; ++i)
+            s.addSizePreset(i, i);
+        QCOMPARE(s.sizePresets().size(), kSizePresetLimit);
+        QVERIFY(s.sizePresetsFull());
+    }
+
+    void sizePanelOpensWithFAndGivesWay()
+    {
+        Rig rig;
+        CaptureSession& s = rig.session;
+        rig.begin();
+        QSignalSpy told(&s, &CaptureSession::sizeEditingChanged);
+        QVERIFY(s.key(Qt::Key_F, Qt::NoModifier));
+        QVERIFY(!s.sizeEditing()); // no selection and no pointer: nowhere to open
+        s.pointerMove(0, {500, 400});
+        QVERIFY(rig.screen.magnifierShown());
+        QVERIFY(s.key(Qt::Key_F, Qt::NoModifier));
+        QVERIFY(s.sizeEditing());
+        QVERIFY(!rig.screen.magnifierShown());
+        QVERIFY(s.keyHints().isEmpty());
+        // Esc closes the panel first, the capture stays.
+        QVERIFY(s.key(Qt::Key_Escape, Qt::NoModifier));
+        QVERIFY(!s.sizeEditing() && s.active());
+        QVERIFY(rig.screen.magnifierShown());
+        QCOMPARE(told.count(), 2);
+        // A press on the picture closes it and is the press it would have been.
+        s.setSizeEditing(true);
+        rig.drag({100, 100}, {299, 199});
+        QVERIFY(!s.sizeEditing());
+        QCOMPARE(s.selectionRect(), QRect(100, 100, 200, 100));
+        // With a selection; not while a button is held, nor into a text being typed.
+        QVERIFY(s.key(Qt::Key_F, Qt::NoModifier));
+        QVERIFY(s.sizeEditing());
+        s.setSizeEditing(false);
+        s.pointerPress(0, {150, 150}, Qt::LeftButton);
+        s.pointerMove(0, {180, 180});
+        QVERIFY(s.key(Qt::Key_F, Qt::NoModifier));
+        QVERIFY(!s.sizeEditing());
+        s.pointerRelease(0, {180, 180}, Qt::LeftButton);
+        // Ctrl+F and Shift+F are not it.
+        s.key(Qt::Key_F, Qt::ControlModifier);
+        s.key(Qt::Key_F, Qt::ShiftModifier);
+        QVERIFY(!s.sizeEditing());
+        // Finishing closes it; 识别屏幕文字 has no sizes.
+        s.setSizeEditing(true);
+        QVERIFY(s.key(Qt::Key_Return, Qt::NoModifier));
+        QVERIFY(!s.sizeEditing());
+        s.end();
+        s.setOcrOnly(true);
+        rig.begin();
+        s.pointerMove(0, {500, 400});
+        s.key(Qt::Key_F, Qt::NoModifier);
+        QVERIFY(!s.sizeEditing());
+        s.setSize(300, 200);
+        QVERIFY(!s.hasSelection());
     }
 
     // When they show by themselves (KeyHintPolicy's rules), on its own clock.

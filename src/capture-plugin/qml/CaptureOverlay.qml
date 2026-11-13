@@ -4,8 +4,8 @@ import WinShun
 
 // The screen capture over one monitor (src/capture, Capture): the frozen
 // picture shown pixel for pixel, the window or control under the mouse
-// outlined, the selection with its size, handles and toolbar, the
-// magnifier; over the picture the annotations (AnnotationCanvas,
+// outlined, the selection with its size (CaptureSizeBox: typed in or picked
+// too), handles and toolbar, the magnifier; over the picture the annotations (AnnotationCanvas,
 // AnnotateLayer) and the toolbar's two rows (AnnotateToolbar,
 // AnnotateStylePanel). All the state is CaptureScreen's, in the monitor's
 // physical pixels; px() and py() turn them into this window's logical units
@@ -200,28 +200,6 @@ Window {
                  : Qt.point(-100000, -100000)
     }
 
-    Rectangle { // the size of what is picked, in screen pixels
-        id: sizeLabel
-
-        readonly property point place: overlay.screenModel.placeSizeLabel(overlay.shown, width, height)
-
-        visible: (overlay.selectedHere || overlay.hoverHere) && !overlay.session.ocrOnly // 识别屏幕文字: only the shade
-        x: Math.round(place.x * overlay.dpr) / overlay.dpr
-        y: Math.round(place.y * overlay.dpr) / overlay.dpr
-        width: sizeText.implicitWidth + 12
-        height: sizeText.implicitHeight + 4
-        radius: Theme.smallControlRadius
-        color: Theme.accentFill
-
-        Text {
-            id: sizeText
-            anchors.centerIn: parent
-            text: qsTr("%1 × %2").arg(overlay.shown.width).arg(overlay.shown.height)
-            color: Theme.accentText
-            font.pixelSize: Theme.fontCaption
-        }
-    }
-
     Item { // the toolbar (AnnotateToolbar) and the style panel on its side away from the selection
         id: toolbar
         objectName: "captureToolbar"
@@ -338,6 +316,19 @@ Window {
             dpr: overlay.dpr
             direction: toolbar.side === "below" ? 1 : -1
         }
+    }
+
+    CaptureSizeBox { // the size of what is picked, in screen pixels; a click or F: typed in, or picked (#308)
+        id: sizeLabel
+        session: overlay.session
+        screenModel: overlay.screenModel
+        keyTarget: keys
+        dpr: overlay.dpr
+        shown: overlay.shown
+        selectedHere: overlay.selectedHere
+        hoverHere: overlay.hoverHere
+        areaWidth: overlay.width
+        areaHeight: overlay.height
     }
 
     Rectangle { // the magnifier: the pixels round the cursor, where it is, its colour

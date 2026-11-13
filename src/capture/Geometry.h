@@ -51,6 +51,30 @@ QRect dragHandle(const QRect& start, Handle handle, QPoint delta, const QRect& b
 // `resize` (Shift) its right edge moves by dx and its bottom edge by dy
 // instead, never under 1x1. Kept in `bounds`.
 QRect nudge(const QRect& r, int dx, int dy, bool resize, const QRect& bounds);
+
+// ---- a selection of a size typed in or chosen (GitHub #308) -----------------
+
+// The size nearest `size` with the shape `ratio` (width : height): the side
+// along `lead` is kept and the other follows it; both shrink together where
+// that passes `most`. Never under 1x1. `size` itself when `ratio` is empty.
+QSize ratioSize(QSize size, QSize ratio, Qt::Orientation lead, QSize most);
+// `r` given `size`: its top left stays where there is room, else it moves in
+// from the edge of `bounds`; no larger than `bounds`, never under 1x1.
+QRect resized(const QRect& r, QSize size, const QRect& bounds);
+// A selection of `size` with `centre` in its middle, kept in `bounds`.
+QRect sizedAround(QPoint centre, QSize size, const QRect& bounds);
+// What dragHandle gave (`dragged`, from `start` by `handle`), made the shape
+// `ratio`: a corner keeps the one opposite it and the side dragged further
+// leads; an edge leads and the other side grows evenly about its middle.
+// Kept in `bounds`. `dragged` itself for Move, None and an empty ratio.
+QRect keepRatio(const QRect& dragged, const QRect& start, Handle handle, QSize ratio, const QRect& bounds);
+// A selection drawn from `from` to `to` (as spanRect) of the shape `ratio`:
+// `from` is a corner of it and it lies towards `to`. Kept in `bounds`.
+QRect spanRatio(QPoint from, QPoint to, QSize ratio, const QRect& bounds);
+// The arrow keys with Shift (nudge's resize) on a selection of the shape
+// `ratio`: the side asked for changes a pixel and the other follows.
+QRect nudgeRatio(const QRect& r, int dx, int dy, QSize ratio, const QRect& bounds);
+
 // The cursor shape (Qt::CursorShape) for a handle.
 int cursorFor(Handle handle);
 
