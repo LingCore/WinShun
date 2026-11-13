@@ -55,6 +55,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool recordingHotkey READ recordingHotkey WRITE setRecordingHotkey NOTIFY recordingHotkeyChanged FINAL)
     Q_PROPERTY(bool autostart READ autostart WRITE setAutostart NOTIFY autostartChanged FINAL)
     Q_PROPERTY(bool recordHistory READ recordHistory WRITE setRecordHistory NOTIFY changed FINAL)
+    Q_PROPERTY(bool rememberAdmin READ rememberAdmin WRITE setRememberAdmin NOTIFY changed FINAL)
     Q_PROPERTY(int historyCount READ historyCount NOTIFY historyCountChanged FINAL)
     // The launcher is wider or narrower than at first (dragged at its edge; Placement).
     Q_PROPERTY(bool launcherWidthSet READ launcherWidthSet NOTIFY launcherWidthSetChanged FINAL)
@@ -199,6 +200,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString sort READ sort WRITE setSort NOTIFY changed FINAL) // match | newest | oldest | name | folder | type | largest | smallest (kSortNames)
     Q_PROPERTY(QString startList READ startList WRITE setStartList NOTIFY changed FINAL) // opened | modified | none
     Q_PROPERTY(int recentItems READ recentItems WRITE setRecentItems NOTIFY changed FINAL)
+    Q_PROPERTY(int maxRows READ maxRows WRITE setMaxRows NOTIFY changed FINAL) // Settings::maxRows, 4..20
     Q_PROPERTY(bool mergeFileScope READ mergeFileScope WRITE setMergeFileScope NOTIFY changed FINAL)
     Q_PROPERTY(bool appsTab READ appsTab WRITE setAppsTab NOTIFY changed FINAL)
     Q_PROPERTY(QString queryHistoryKeys READ queryHistoryKeys WRITE setQueryHistoryKeys NOTIFY changed FINAL)
@@ -315,6 +317,9 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString dataFolder READ dataFolder CONSTANT FINAL)
     Q_PROPERTY(QString diagnosticsStatus READ diagnosticsStatus NOTIFY diagnosticsChanged FINAL)
     Q_PROPERTY(bool diagnosticsBusy READ diagnosticsBusy NOTIFY diagnosticsChanged FINAL)
+    // Rules for file windows programs draw themselves (DialogRuleStore, GitHub #272).
+    Q_PROPERTY(QString dialogRuleStatus READ dialogRuleStatus NOTIFY dialogRuleStatusChanged FINAL)
+    Q_PROPERTY(bool dialogRuleLearning READ dialogRuleLearning NOTIFY dialogRuleStatusChanged FINAL)
     // 索引位置 (set by the app): where the index files are, and how moving them goes
     Q_PROPERTY(QString indexFolder READ indexFolder NOTIFY indexFolderChanged FINAL)
     Q_PROPERTY(bool indexFolderIsDefault READ indexFolderIsDefault NOTIFY indexFolderChanged FINAL)
@@ -389,6 +394,8 @@ public:
     void refreshAutostart(); // changed or read again elsewhere (the tray menu, the task itself)
     bool recordHistory() const { return m_settings.recordHistory; }
     void setRecordHistory(bool on);
+    bool rememberAdmin() const { return m_settings.rememberAdmin; }
+    void setRememberAdmin(bool on);
     int historyCount() const { return m_historyCount; }
     void setHistoryCount(int count); // set by the app
     bool launcherWidthSet() const { return m_launcherWidthSet; }
@@ -635,6 +642,9 @@ public:
     QString dataFolder() const { return Settings::dataDir(); }
     QString diagnosticsStatus() const { return m_diagnosticsStatus; }
     bool diagnosticsBusy() const { return m_diagnosticsBusy; }
+    QString dialogRuleStatus() const { return m_dialogRuleStatus; }
+    bool dialogRuleLearning() const { return m_dialogRuleLearning; }
+    void setDialogRuleStatus(const QString& text, bool learning);
     void finishDiagnosticsExport(const QString& error);
 
     // 索引位置, as the app has it.
@@ -737,6 +747,8 @@ public:
     void setStartList(const QString& list);
     int recentItems() const { return m_settings.recentItems; }
     void setRecentItems(int count);
+    int maxRows() const { return m_settings.maxRows; }
+    void setMaxRows(int rows);
     bool favoritesOnStart() const { return m_settings.favoritesOnStart; }
     void setFavoritesOnStart(bool on);
     bool clearOnOpen() const { return m_settings.clearOnOpen; }
@@ -928,6 +940,8 @@ public:
     Q_INVOKABLE void resetLauncherWidth() { emit launcherWidthResetRequested(); }
     Q_INVOKABLE void openDataFolder();
     Q_INVOKABLE void exportDiagnostics();
+    Q_INVOKABLE void learnDialogRule(); // a rule for the window the user brings to the front next
+    Q_INVOKABLE void openDialogRules(); // dialogs.json in the editor
     // Automatic backups of the settings: into a folder asked for here; off.
     // Returns whether they are on now.
     Q_INVOKABLE bool chooseBackupFolder();
@@ -1019,6 +1033,9 @@ signals:
     void screenshotPluginChanged();
     void diagnosticsChanged();
     void diagnosticsExportRequested();
+    void dialogRuleStatusChanged();
+    void dialogRuleLearnRequested();
+    void dialogRulesFileRequested();
     void historyCountChanged();
     void historyClearRequested();
     void launcherWidthSetChanged();
@@ -1127,6 +1144,8 @@ private:
     QString m_pickedWebIcon; // chosen in a form not saved yet: kept from pruning
     QString m_diagnosticsStatus;
     bool m_diagnosticsBusy = false;
+    QString m_dialogRuleStatus;
+    bool m_dialogRuleLearning = false;
     std::vector<ShareIndexer::Status> m_shareStatuses;
     std::vector<remotecontent::Indexer::Status> m_shareContentStatuses;
     std::vector<unc::Known> m_knownShares; // read with the window, again as it opens (refreshKnownPlaces)

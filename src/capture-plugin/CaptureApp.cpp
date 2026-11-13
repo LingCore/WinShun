@@ -11,6 +11,7 @@
 #include "Geometry.h"
 #include "HotkeyText.h"
 #include "IdleTrim.h"
+#include "platform/HotPages.h"
 #include "IdleGraphics.h"
 #include "ImageOrigin.h"
 #include "Keycaps.h"
@@ -451,8 +452,20 @@ void CaptureApp::apply()
         // Not in the frozen picture: hidden, and one composition waited for, so
         // the grab right after does not still find it on the screen.
         callbacks.starting = [this] {
+            // What the last capture after an emptying needed, read back while
+            // this one starts (HotPages, as the launcher's, GitHub #265): the
+            // working set is emptied 20 s after a capture, and minutes later
+            // Windows may have given the pages away. Still in memory, it
+            // costs next to nothing.
+            if (m_hotPages->bytes() > 0)
+                std::thread([pages = m_hotPages->pages()] { pages.prefetch(); }).detach();
+            m_recordPages = m_idleTrim->takeTrimmed();
             if (closeOcrBubble())
                 ::DwmFlush();
+        };
+        callbacks.shown = [this] {
+            if (std::exchange(m_recordPages, false))
+                std::thread([pages = m_hotPages] { pages->learn(PageSet::resident().without(pages->pages())); }).detach();
         };
         callbacks.pins = [this] { return &pins(); };
         callbacks.smart = smartHooks();

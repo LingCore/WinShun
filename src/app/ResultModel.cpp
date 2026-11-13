@@ -446,6 +446,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
     case ElevatableRole:
         return !r->missing && !r->offline && (r->isApp() ? r->elevatable
             : !r->isDir && shell::canRunAsAdministrator(r->path));
+    case AdminRunRole:
+        return r->runAsAdmin && !r->isCommand() && !r->missing && !r->offline; // a command's row keeps its keyword in view
     case RevealableRole:
         return !r->isApp() || (!r->isWindow() && !r->isPlace() && !r->target.isEmpty());
     case CopyableRole:
@@ -562,6 +564,7 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {SuggestionRole, "suggestion"},
         {PackagedAppRole, "packagedApp"},
         {ElevatableRole, "elevatable"},
+        {AdminRunRole, "adminRun"},
         {RevealableRole, "revealable"},
         {CopyableRole, "copyable"},
         {SettingsActionRole, "settingsAction"},

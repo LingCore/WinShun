@@ -1165,13 +1165,21 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
     if (keyword >= 0 && favoriteShown(request.scope, favorites[keyword], types))
         wanted.push_back(&favorites[keyword]);
     const bool keyed = !wanted.isEmpty();
+    // A keyword being typed ("cm" of "cmda", GitHub #313) finds its favorite
+    // as its name does: what was opened so then comes first the next time
+    // (learnedFirst), the keyword not typed out again.
+    const QStringView typed = QStringView(request.text).trimmed();
+    const auto keywordStarts = [&](const Favorite& f) {
+        return keywords && !request.regex && !typed.isEmpty() && f.keyword.size() > typed.size()
+            && f.keyword.startsWith(typed, Qt::CaseInsensitive);
+    };
     for (qsizetype i = 0; promote && i < favorites.size() && wanted.size() < kFavoritesPromoted + (keyed ? 1 : 0); ++i) {
         const Favorite& f = favorites[i];
         if (i == keyword || !favoriteShown(request.scope, f, types))
             continue;
         const bool found = std::any_of(results.cbegin(), results.cend(),
             [&](const SearchResult& r) { return r.favorite && pathtext::samePath(r.path, f.path); });
-        if (found || nameMatches(f.name)
+        if (found || nameMatches(f.name) || keywordStarts(f)
             || (f.isFileOrFolder() && matcher.matchPath(f.path, f.kind == Favorite::Kind::Folder) >= 0)) {
             wanted.push_back(&f);
         }
@@ -1510,6 +1518,19 @@ void SearchEngine::runNameSearch(const Job& job)
                     // the window opens would flip it back (pinnedPlaces).
                     if (place && place->switchId.isEmpty())
                         round.emplace_back(fromPlace(*place, true));
+                    continue;
+                }
+                if (path.startsWith(u"winshun-command:")) {
+                    // A favorite's command run from here (GitHub #313): no
+                    // file to ask the disk about. One removed since is gone.
+                    const qsizetype at = indexOfFavorite(request.favorites, path);
+                    if (at >= 0 && favoriteShown(request.scope, request.favorites[at], types)) {
+                        SearchResults rows = favoriteRows({&request.favorites[at]}, *apps, *places, *m_onDisk, m_index);
+                        if (!rows.isEmpty()) {
+                            rows.first().recent = true;
+                            round.emplace_back(std::move(rows.first()));
+                        }
+                    }
                     continue;
                 }
                 if (!ofType(path, false, types, hidden))

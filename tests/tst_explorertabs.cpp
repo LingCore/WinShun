@@ -7,11 +7,13 @@
 // guess made before the folder is known; the hidden windows and their
 // journal (Hider: in the journal from before hiding until after showing,
 // what a restart reads back); the closing of spare tabs (Closer: only the
-// active one, one at a time, one window at a time).
+// active one, one at a time, one window at a time); the tabs kept for the
+// next logon (Session: what is written and read back, what gets opened).
 
 #include "Closer.h"
 #include "Hider.h"
 #include "Rules.h"
+#include "Session.h"
 
 #include <QDir>
 #include <QTemporaryDir>
@@ -560,6 +562,101 @@ private slots:
         QCOMPARE(done.size(), std::size_t(1));
         QCOMPARE(done[0].top, b);
         QVERIFY(!closer.any());
+    }
+
+    // ---- the tabs kept for the next logon (Session, #273) ----
+
+    static SavedWindow saved(std::vector<std::wstring> places, int active = 0)
+    {
+        SavedWindow w;
+        w.left = 10;
+        w.top = 20;
+        w.right = 810;
+        w.bottom = 620;
+        w.active = active;
+        w.tabs = std::move(places);
+        return w;
+    }
+
+    void sessionReadsBackWhatItWrote()
+    {
+        Session session;
+        session.open = true;
+        session.windows = {saved({L"C:\\a b", L"D:\\文件夹\\子", L"::{20D04FE0-3AEA-1069-A2D8-08002B30309D}"}, 1), saved({L"\\\\server\\share"})};
+        session.windows[1].maximized = true;
+        session.windows[1].left = -1920; // a screen to the left
+        session.previous = {saved({L"E:\\old"})};
+        QVERIFY(parseSession(serialize(session)) == session);
+        QVERIFY(parseSession(serialize(Session {})) == Session {});
+    }
+
+    void sessionLeavesOutWhatItCannotRead()
+    {
+        QVERIFY(parseSession("") == Session {});
+        QVERIFY(parseSession("something else\nopen 1\nwindow 0 0 1 1 0 0\ntab C:\\a\n") == Session {});
+        // A window line cut short takes its tabs with it; a window without
+        // tabs is none; an index past the tabs becomes the first; CRLF reads too.
+        const Session read = parseSession("WinShun.ExplorerTabs.Session 1\r\nopen 1\r\nwindow 1 2 3\r\ntab C:\\lost\r\n"
+                                          "window 0 0 100 100 0 7\r\ntab C:\\kept\r\nfuture line\r\nwindow 0 0 5 5 0 0\r\n");
+        QVERIFY(read.open);
+        QCOMPARE(read.windows.size(), std::size_t(1));
+        QCOMPARE(read.windows[0].tabs, std::vector<std::wstring> {L"C:\\kept"});
+        QCOMPARE(read.windows[0].active, 0);
+        // Nothing readable: nothing was open.
+        QVERIFY(!parseSession("WinShun.ExplorerTabs.Session 1\nopen 1\n").open);
+    }
+
+    void sessionKeepsTheLastWindowsWhenAllClose()
+    {
+        Session stored = noted({}, {saved({L"C:\\a", L"C:\\b"})});
+        QVERIFY(stored.open);
+        QCOMPARE(tabCount(stored.windows), 2);
+        // The user closed the last window: what it was stays, marked closed.
+        stored = noted(stored, {});
+        QVERIFY(!stored.open);
+        QCOMPARE(tabCount(stored.windows), 2);
+        // A new logon: that is what the logon before left, and it stays so
+        // while this logon's windows are written.
+        stored = newLogon(stored);
+        stored = noted(stored, {saved({L"C:\\now"})});
+        QCOMPARE(stored.previous.size(), std::size_t(1));
+        QCOMPARE(stored.previous[0].tabs, (std::vector<std::wstring> {L"C:\\a", L"C:\\b"}));
+        QCOMPARE(stored.windows[0].tabs, std::vector<std::wstring> {L"C:\\now"});
+    }
+
+    void restoreOpensWhatIsNotOpen()
+    {
+        const std::vector<SavedWindow> left {saved({L"C:\\a", L"C:\\b", L"C:\\c"}, 2), saved({L"D:\\x"})};
+        // Nothing open: both windows, tabs and the one in front as they were.
+        std::vector<Reopen> plan = planRestore(left, {});
+        QCOMPARE(plan.size(), std::size_t(2));
+        QCOMPARE(plan[0].into, std::uintptr_t(0));
+        QVERIFY(plan[0].window == left[0]);
+        QVERIFY(plan[1].window == left[1]);
+        // All open already (written differently): nothing.
+        QVERIFY(planRestore(left, {{7, {L"c:/A/", L"C:\\B", L"C:\\c"}}, {8, {L"D:\\x"}}}).empty());
+        // Windows brought one tab of the first window back itself: the
+        // others join it there, and what is in front there stays.
+        plan = planRestore(left, {{7, {L"C:\\b"}}});
+        QCOMPARE(plan.size(), std::size_t(2));
+        QCOMPARE(plan[0].into, std::uintptr_t(7));
+        QCOMPARE(plan[0].window.tabs, (std::vector<std::wstring> {L"C:\\a", L"C:\\c"}));
+        QCOMPARE(plan[0].window.active, -1);
+        QCOMPARE(plan[1].into, std::uintptr_t(0));
+        // A tab open in a window whose place is not known does not count.
+        QCOMPARE(planRestore({saved({L"D:\\x"})}, {{9, {L""}}}).size(), std::size_t(1));
+    }
+
+    void restoreSkipsWhatTabsCannotShow()
+    {
+        // Control Panel never comes back as a tab; the tab in front follows
+        // the tabs that are left.
+        const std::vector<Reopen> plan =
+            planRestore({saved({L"::{26EE0668-A00A-44D7-9371-BEB064C98683}\\0", L"C:\\a", L"C:\\b"}, 2)}, {});
+        QCOMPARE(plan.size(), std::size_t(1));
+        QCOMPARE(plan[0].window.tabs, (std::vector<std::wstring> {L"C:\\a", L"C:\\b"}));
+        QCOMPARE(plan[0].window.active, 1);
+        QVERIFY(planRestore({saved({L"::{21EC2020-3AEA-1069-A2DD-08002B30309D}"})}, {}).empty());
     }
 };
 

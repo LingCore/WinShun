@@ -137,6 +137,8 @@ class Launcher : public QObject {
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool footerHints READ footerHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool pureSearch READ pureSearch NOTIFY resultOptionsChanged FINAL)
+    // The most rows the search box shows before its list scrolls (Settings::maxRows).
+    Q_PROPERTY(int maxRows READ maxRows NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString previewHotkey READ previewHotkey NOTIFY resultOptionsChanged FINAL)
     // A second key for Enter on a result (Settings::openHotkey); "" for none.
     Q_PROPERTY(QString openHotkey READ openHotkey NOTIFY resultOptionsChanged FINAL)
@@ -312,6 +314,7 @@ public:
         EditPicture, // 编辑: a screenshot's row, in the editing window (Shift+Enter)
         BrowseFolder, // list a folder in Win顺, then keep typing to search there
         Rename, // 重命名: a file's or folder's row, in place (F2; Main.qml opens the box, see beginRename)
+        RunAsUser, // 以普通权限运行: a row whose Enter runs as administrator (adminRemembered); Open from then on
         PluginAction = 100,
         PluginFileAction = 200
     };
@@ -524,6 +527,8 @@ public:
     void setKeyboardHints(bool help, bool footer);
     bool pureSearch() const { return m_pureSearch; }
     void setPureSearch(bool on);
+    int maxRows() const { return m_maxRows; }
+    void setMaxRows(int rows);
     int numberKeysLeft() const { return static_cast<int>(m_numberKeysLeft); }
     void setNumberKeysLeft(unsigned digits);
     bool inTaskbarBox() const { return m_inTaskbarBox; }
@@ -543,6 +548,11 @@ public:
     // Off: nothing opened is remembered, and what was is not shown (it stays
     // until cleared in the settings).
     void setRecordHistory(bool on);
+    // 记住以管理员身份运行 (GitHub #313, off unless chosen): an app or a
+    // program file run as administrator from here (Ctrl+Shift+Enter) runs so
+    // again on Enter, its row saying 管理员, until run with normal rights
+    // from its menu (RunAsUser).
+    void setRememberAdmin(bool on);
     bool mergeFileScope() const { return m_mergeFileScope; }
     void setMergeFileScope(bool merged);
     QStringList queryHistory() const { return m_recordHistory ? m_queryHistory.items() : QStringList(); }
@@ -1005,6 +1015,8 @@ private:
     // Opened: into the history, if it is kept. `query`: the text the list it
     // was opened from is for (m_shownText); none when it was not found by typing.
     void remember(const QString& path, const QString& query = {});
+    bool canRememberAdmin(const SearchResult& r) const; // the setting on, and a row that can run as administrator
+    bool adminRemembered(const SearchResult& r) const; // its Enter runs as administrator
     void rememberWindow(const SearchResult& window); // switched to: the folder it shows, if it is a file manager's (GitHub #231)
     void forgetRecent(const QStringList& paths);
     // showSystemMenu's work, from the event loop; afterwards forgetGone drops
@@ -1276,6 +1288,8 @@ private:
     SortOrder m_panelSort;
 
     bool m_recordHistory = true;
+    bool m_rememberAdmin = false;
+    std::optional<bool> m_adminNote; // perform() to remember(): how the row is being run, to keep with it
     KindOrder m_kindOrder = KindOrder::FilesFirst;
     QStringList m_preferredTypes; // files of these types first among those that match about as well
     QStringList m_excludedTypes; // files of these types never listed (Settings::excludedTypes)
@@ -1293,6 +1307,7 @@ private:
     bool m_shortcutHelp = true;
     bool m_footerHints = true;
     bool m_pureSearch = false;
+    int m_maxRows = 8;
     QString m_previewHotkey = QStringLiteral("Alt+P");
     QKeySequence m_previewSequence {QStringLiteral("Alt+P")};
     QString m_openHotkey;

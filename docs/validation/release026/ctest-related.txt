@@ -1,0 +1,16 @@
+ 1/14 Test   #4: tst_hotpages .....................   Passed    0.08 sec
+ 2/14 Test  #36: tst_wsplugin .....................   Passed    9.79 sec
+ 3/14 Test  #43: tst_opusfocus ....................   Passed    0.10 sec
+ 4/14 Test  #48: tst_launchernavigation ...........   Passed    0.06 sec
+ 5/14 Test  #67: tst_dialogrules ..................   Passed    7.61 sec
+ 6/14 Test #133: tst_plugincommands ...............   Passed    0.27 sec
+ 7/14 Test #159: tst_backupservice ................   Passed    0.32 sec
+ 8/14 Test #160: tst_cloudbackup ..................   Passed    2.60 sec
+ 9/14 Test #167: tst_favorites ....................   Passed    4.32 sec
+10/14 Test #179: tst_mcp ..........................   Passed   17.45 sec
+11/14 Test #180: tst_cli ..........................   Passed   25.34 sec
+12/14 Test #181: tst_plugin .......................   Passed   51.06 sec
+13/14 Test #186: tst_updater ......................   Passed    5.33 sec
+14/14 Test #187: tst_scoopinstall .................   Passed    0.32 sec
+100% tests passed, 0 tests failed out of 14
+Total Test time (real) = 125.22 sec

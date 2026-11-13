@@ -22,10 +22,6 @@ namespace ws {
 
 namespace {
 
-// Since the last window lost the focus: one searches, opens what was found,
-// and often searches again within seconds; emptied in between, every open
-// would take the pages back.
-constexpr int kAfterUseMs = 20'000;
 constexpr int kSettleMs = 5'000; // after busy work ended (poke)
 constexpr int kBusyRecheckMs = 15'000; // while the index loads, catches up or reads content
 // While unused: background work brings pages back. The content indexer's
@@ -35,7 +31,7 @@ constexpr int kBusyRecheckMs = 15'000; // while the index loads, catches up or r
 // ~90 MB; copies, journal changes and saves.
 // A check reads one number; only a working set above kTrimAbove is emptied.
 constexpr int kRecheckMs = 30'000;
-constexpr SIZE_T kTrimAbove = 32 * 1024 * 1024; // private working set; ~5 MB is what idling itself touches
+constexpr SIZE_T kTrimAbove = 32 * 1024 * 1024; // private working set, over what stayed last time; ~5 MB is what idling itself touches
 // More asleep than this between two checks (at most kRecheckMs apart, awake): woken up.
 constexpr std::uint64_t kSleptMs = 10'000;
 
@@ -59,10 +55,11 @@ SIZE_T privateWorkingSet()
 
 } // namespace
 
-IdleTrim::IdleTrim(std::function<const char*()> busy, std::function<bool()> up, QObject* parent)
+IdleTrim::IdleTrim(std::function<const char*()> busy, std::function<bool()> up, std::function<PageSet()> keep, QObject* parent)
     : QObject(parent)
     , m_busy(std::move(busy))
     , m_up(std::move(up))
+    , m_keep(std::move(keep))
     , m_lastTickMs(::GetTickCount64())
     , m_lastAwakeMs(awakeMs())
 {
@@ -74,10 +71,10 @@ IdleTrim::IdleTrim(std::function<const char*()> busy, std::function<bool()> up, 
             m_heldAfterResume = false; // used: emptied a while after, as ever
         } else {
             m_inactive.restart();
-            m_timer.start(kAfterUseMs);
+            m_timer.start(m_afterUseMs);
         }
     });
-    m_timer.start(kAfterUseMs);
+    m_timer.start(m_afterUseMs);
 }
 
 bool IdleTrim::inUse() const
@@ -110,7 +107,7 @@ void IdleTrim::poke()
     // not have moved yet; check() asks again when the time is up.
     if (m_busy())
         return;
-    startAfter(static_cast<int>(std::max<qint64>(kSettleMs, kAfterUseMs - m_inactive.elapsed())));
+    startAfter(static_cast<int>(std::max<qint64>(std::min(kSettleMs, m_afterUseMs), m_afterUseMs - m_inactive.elapsed())));
 }
 
 void IdleTrim::startAfter(int ms)
@@ -123,7 +120,7 @@ void IdleTrim::used()
 {
     m_heldAfterResume = false;
     m_inactive.restart();
-    m_timer.start(kAfterUseMs);
+    m_timer.start(m_afterUseMs);
 }
 
 void IdleTrim::resumed()
@@ -159,6 +156,12 @@ bool IdleTrim::takeSlept()
 
 void IdleTrim::noteTrim(qint64 megabytes) noexcept
 {
+    m_floor = 0; // everything went
+    gaveBack(megabytes);
+}
+
+void IdleTrim::gaveBack(qint64 megabytes) noexcept
+{
     m_lastTrimMb = megabytes;
     m_trimmed = true; // the next opening brings the pages a search reads back (App)
     m_lastTrimAtMs = QDateTime::currentMSecsSinceEpoch();
@@ -170,7 +173,7 @@ void IdleTrim::check()
         resumed();
     if (inUse()) {
         m_heldAfterResume = false;
-        m_timer.start(kAfterUseMs);
+        m_timer.start(m_afterUseMs);
         return;
     }
     if (m_heldAfterResume) {
@@ -190,17 +193,25 @@ void IdleTrim::check()
         return;
     }
     m_waitingFor = nullptr;
-    if (const SIZE_T bytes = privateWorkingSet(); bytes > kTrimAbove) {
+    if (const SIZE_T bytes = privateWorkingSet(); bytes > m_floor.load() + kTrimAbove) {
+        PageSet keep = m_keep ? m_keep() : PageSet();
         const auto megabytes = static_cast<qint64>(bytes / (1024 * 1024));
-        qInfo() << "Idle trim:" << megabytes << "MB";
-        journal({{u"private_mb"_s, megabytes}}, false);
-        // ~10 ms per 100 MB (wsbench --trim): not on the GUI thread, so a
-        // hotkey pressed meanwhile is not held up.
+        qInfo() << "Idle trim:" << megabytes << "MB, keeping" << (keep.bytes() >> 20) << "MB";
+        QJsonObject details {{u"private_mb"_s, megabytes}};
+        if (!keep.empty())
+            details.insert(u"keep_mb"_s, static_cast<qint64>(keep.bytes() >> 20));
+        journal(details, false);
+        // ~10 ms per 100 MB: not on the GUI thread, so a hotkey pressed
+        // meanwhile is not held up.
         m_trimmed = true;
-        std::thread([this, bytes] {
-            ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
+        std::thread([this, bytes, keep = std::move(keep)] {
+            if (keep.empty()) // all of it, in one call
+                ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
+            else
+                PageSet::resident().without(keep).release();
             const SIZE_T after = privateWorkingSet();
-            noteTrim(static_cast<qint64>((bytes > after ? bytes - after : 0) / (1024 * 1024)));
+            m_floor = keep.empty() || after == SIZE_MAX ? 0 : after;
+            gaveBack(static_cast<qint64>((bytes > after ? bytes - after : 0) / (1024 * 1024)));
         }).detach();
     }
     m_timer.start(kRecheckMs);

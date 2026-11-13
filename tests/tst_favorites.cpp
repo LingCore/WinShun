@@ -217,6 +217,47 @@ private slots:
         QCOMPARE(spy.takeFirst().at(1).value<SearchResults>().size(), 1);
     }
 
+    // GitHub #313: a keyword need not be typed out, and a command run from
+    // here is among the recent ones as anything else opened is.
+    void keywordStartFindsFavoriteAndCommandIsRecent()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        IndexService service(temporary.filePath(u"index"_s), {});
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        SearchEngine::Request request;
+        const Favorite command {Favorite::Kind::Command, u"winshun-command:admin"_s, u"管理员终端"_s, u"cmda"_s, u"wt.exe"_s};
+        request.favorites = {command, folder(u"D:\\Reports"_s, u"报告"_s, u"bg"_s)};
+        const auto listed = [&] {
+            spy.clear();
+            engine.submit(request);
+            if (!spy.wait(5000))
+                return SearchResults();
+            return spy.first().at(1).value<SearchResults>();
+        };
+        request.text = u"CM"_s;
+        const SearchResults started = listed();
+        QCOMPARE(started.size(), 1);
+        QVERIFY(started.first().isCommand() && started.first().favorite && !started.first().exact);
+        QCOMPARE(started.first().name, command.name);
+        QVERIFY(started.first().words.isEmpty());
+        request.text = u"cmdax"_s; // more than the keyword: not it
+        QVERIFY(listed().isEmpty());
+        request.text = u"cm x"_s; // words go after a whole keyword only
+        QVERIFY(listed().isEmpty());
+
+        request.text.clear();
+        request.favoritesOnStart = false;
+        request.history = {command.path, u"winshun-command:removed"_s};
+        const SearchResults recent = listed();
+        QCOMPARE(recent.size(), 1);
+        QVERIFY(recent.first().isCommand() && recent.first().recent && recent.first().favorite);
+        QCOMPARE(recent.first().target, command.command);
+        request.scope = Scope::Files; // a command is no file
+        QVERIFY(listed().isEmpty());
+    }
+
     void recentCountRespectsVisibilityAndLimit()
     {
         QTemporaryDir temporary;

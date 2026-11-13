@@ -1,0 +1,31 @@
+{
+  "manifest": 1,
+  "id": "winshun.cloudbackup",
+  "name": {"zh": "云备份", "en": "Cloud Backup"},
+  "version": "1.0.0",
+  "description": {"zh": "把 Win顺 的设置备份自动传到 WebDAV（坚果云、NAS 等）或 GitHub 私有仓库，换电脑时输入 cloud 一键恢复", "en": "Keeps Win顺's settings backup on a WebDAV server or in a private GitHub repository; type cloud to restore it on another PC"},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "minWinShun": "0.26.0",
+  "runtime": {"mode": "resident", "program": "WinShunCloudBackup.exe", "start": "eager", "timeoutMs": 5000, "idleExitSec": 0},
+  "permissions": ["winshun:backup", "network", "notifications"],
+  "commands": [{
+    "id": "cloud",
+    "keyword": ["cloud", "云备份"],
+    "title": {"zh": "云备份", "en": "Cloud backup"},
+    "description": {"zh": "立即备份到云端，或从云端的备份恢复设置", "en": "Back up to the cloud now, or restore the settings from a backup there"},
+    "icon": "ph:cloud-arrow-up",
+    "hint": {"zh": "Enter 备份或恢复", "en": "Enter backs up or restores"}
+  }],
+  "settings": [
+    {"key": "webdavUrl", "type": "text", "title": {"zh": "WebDAV 文件夹地址", "en": "WebDAV folder address"}, "hint": {"zh": "备份放进这个文件夹，没有会自动建。坚果云填 https://dav.jianguoyun.com/dav/WinShun；不用 WebDAV 就留空", "en": "Backups go into this folder, made when missing, e.g. https://dav.example.com/dav/WinShun; leave empty to not use WebDAV"}, "default": ""},
+    {"key": "webdavUser", "type": "text", "title": {"zh": "WebDAV 用户名", "en": "WebDAV user name"}, "default": ""},
+    {"key": "webdavPassword", "type": "password", "title": {"zh": "WebDAV 密码", "en": "WebDAV password"}, "hint": {"zh": "坚果云等要填“应用密码”。存在 Windows 凭据管理器里，不进设置文件，也不进备份", "en": "Some services want an app password. Kept in Windows Credential Manager, not in the settings file or the backups"}},
+    {"key": "githubRepo", "type": "text", "title": {"zh": "GitHub 私有仓库", "en": "Private GitHub repository"}, "hint": {"zh": "写成 用户名/仓库名，或贴仓库网址。必须是私有仓库，公开仓库不会上传；不用 GitHub 就留空", "en": "owner/name, or the repository's address. It must be private: nothing is uploaded to a public one. Leave empty to not use GitHub"}, "default": ""},
+    {"key": "githubToken", "type": "password", "title": {"zh": "GitHub 令牌", "en": "GitHub token"}, "hint": {"zh": "细粒度令牌只选这一个仓库，给 Contents 读写权限。存在 Windows 凭据管理器里", "en": "A fine-grained token for this repository only, with Contents: read and write. Kept in Windows Credential Manager"}},
+    {"key": "githubApi", "type": "text", "title": {"zh": "GitHub API 地址", "en": "GitHub API address"}, "hint": {"zh": "一般留空；GitHub Enterprise 填 https://你的服务器/api/v3", "en": "Usually empty; GitHub Enterprise: https://your-server/api/v3"}, "default": ""},
+    {"key": "automatic", "type": "bool", "title": {"zh": "自动备份", "en": "Back up automatically"}, "hint": {"zh": "启动两分钟后检查一次，之后每半小时一次；设置没变就不上传。关掉后只在输入 cloud 按 Enter 时备份", "en": "Checked two minutes after start and every half hour; nothing is uploaded while the settings are the same. Off: only when you type cloud and press Enter"}, "default": true},
+    {"key": "keep", "type": "number", "title": {"zh": "云端保留几份", "en": "Backups kept in the cloud"}, "hint": {"zh": "超出的旧备份会从云端删掉", "en": "Older ones are removed from the cloud"}, "default": 10}
+  ]
+}

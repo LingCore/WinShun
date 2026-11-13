@@ -63,14 +63,14 @@
 | 📄 | [搜文件里的字](docs/使用说明.md#搜文件里的文字) | Word、Excel、PPT、PDF、WPS 和文本、代码，结果显示命中的那一行 |
 | 🗂️ | [搜索面板](docs/使用说明.md#搜索面板筛选和排序) | `Ctrl+E` 展开：按类型、时间、大小、位置筛选，常用条件可存成一点就用的快捷筛选，按列排序，大图浏览 |
 | 👀 | [预览](docs/使用说明.md#预览文件) | `Alt+P` 看一眼图片、文档、PDF，不用打开 |
-| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到 |
+| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签 |
 | 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找与悬停预览 |
 | 📂 | [“打开”“另存为”对话框](docs/使用说明.md#打开另存为对话框) ² | 对话框旁多一个搜索框；`Ctrl+G` 转到文件管理器正开着的文件夹 |
 | 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹；在文件列表里直接打字就搜 |
 | ⭐ | [收藏夹](docs/使用说明.md#收藏夹) | 给常用的文件、文件夹、应用起个关键词，一打就开；还能自定义命令 |
 | 🔎 | [任务栏搜索框](docs/使用说明.md#任务栏搜索框) ² | 在 Windows 11 任务栏上放一个 Win顺 的搜索框 |
 | 🤖 | [AI 助手和命令行](docs/使用说明.md#给-ai-助手用mcp) ² | 让 Claude、Cursor 等 AI 搜你的文件（默认只读）；终端里用 `ws` 命令搜 |
-| 🎨 | [外观和备份](docs/使用说明.md#外观设置和备份) | 四种界面风格（含液态玻璃），自选字体与界面大小；设置自动备份，换电脑一键迁移 |
+| 🎨 | [外观和备份](docs/使用说明.md#外观设置和备份) | 四种界面风格（含液态玻璃），自选字体与界面大小；设置自动备份，换电脑一键迁移，也可以用云备份插件传到 WebDAV 或 GitHub 私有仓库 |
 
 ¹ 在第一次启动的引导里选，或以后在设置里打开。　² 默认关着，用的话在设置里打开。
 
@@ -93,9 +93,12 @@
 | 浏览器书签 | `bm 关键词`，搜 Chrome、Edge 的书签 | 插件库 |
 | 局域网传输 | `传`，和开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件 | 插件库 |
 | 休息提醒 | 定时提醒休息，`休息` 看还有多久 | 插件库 |
-| 资源管理器标签页 | 新开的资源管理器窗口并成标签页（Windows 11 22H2 起） | 插件库 |
+| 资源管理器标签页 | 新开的资源管理器窗口并成标签页，还能在下次登录后打开上次的标签页（Windows 11 22H2 起） | 插件库 |
+| [云备份](docs/使用说明.md#外观设置和备份) | 设置自动备份到 WebDAV（坚果云、NAS）或 GitHub 私有仓库，`cloud` 立即备份或恢复 | 插件库 |
 
 想自己写插件：零代码的 `plugin.json`、任意语言的脚本都行，附 Python / PowerShell / C++ SDK，见 [插件文档](docs/plugins.md)。
+
+交给 AI 助手：`npx skills add LingCore/WinShun` 给 Claude Code、Codex、Cursor 这类助手装上 Win顺 的 Skill，一共三个：`winshun`（用 `ws` 命令搜文件、装插件）、`winshun-plugin-dev`（写插件）、`winshun-dev`（改 Win顺 本身）。装插件也可以让它来：`ws plugin search 翻译`、`ws plugin install winshun.translate`，要你点头的地方（插件要的权限等）Win顺 会弹窗问你，见 [命令行 ws](docs/使用说明.md#命令行-ws)。
 
 ### 常用按键
 
@@ -106,7 +109,7 @@
 | `Ctrl+Enter` | 打开所在文件夹 |
 | `Ctrl+Shift+Enter` | 以管理员身份运行 |
 | `Ctrl+1`～`Ctrl+9` | 打开第几项 |
-| `Tab` | 切换范围：全部 / 文件 / 内容 |
+| `Tab` | 切换范围：全部 / 文件 / 内容（打开了“应用”标签时还有应用） |
 | `Ctrl+E` | 展开成搜索面板 |
 | `Alt+P` | 预览 |
 | `Ctrl+S` | 排序：最匹配 / 最新 / 最早 |
@@ -175,25 +178,25 @@ scoop install winshun
 - **管理员直读**：管理员账户可以在设置 → 索引方式里选“管理员直读”，像旧版一样整个程序以管理员身份运行、直接读盘。
 - **以管理员身份运行的程序**：Windows 不让普通权限的程序往它们里面打字。往这样的窗口里粘贴时，装了索引服务的由服务替你按一次粘贴键（设置 › 剪贴板 › “粘贴到以管理员身份运行的程序”，默认开启）；没有索引服务或关掉这一项时，Win顺 只复制，提示你按 `Ctrl+V`。它们的“打开”“另存为”对话框旁也有搜索框：装了索引服务的安装版能像别的对话框一样直接转到选中的文件夹，`Ctrl+G` 也管用；便携版和“只为我安装”的版本只能复制选中的路径，要你自己粘贴到路径框里。
 - **它们在最前面时双击 Ctrl 没反应**：Windows 也不把发给它们的按键交给普通权限的程序，所以没装索引服务时，这种窗口在最前面，双击 Ctrl（Alt、Shift）没反应；带 Ctrl、Alt、Shift 或 Win 的组合键（比如 `Alt+Space`）照样能用。装了索引服务就没有这个问题（服务的助手听得到），Win顺 自己以管理员身份运行（管理员直读）时也没有。这种程序第一次在最前面停一会儿时，Win顺 会弹一次通知说明：设了组合键就提醒你改按它；便携版（含 Scoop 装的）能装索引服务时，点通知直接到 设置 › 索引方式，在下面一行装上。每个程序只说一次，最多说 3 个，一次运行只说一次。
-- **打开的东西是普通权限**：从 Win顺 打开的文件和应用都以普通权限运行，只有 `Ctrl+Shift+Enter` 才以管理员身份运行。
+- **打开的东西是普通权限**：从 Win顺 打开的文件和应用都以普通权限运行，只有 `Ctrl+Shift+Enter` 才以管理员身份运行。常用管理员身份开的程序（比如终端），可以在 **设置 › 使用记录** 里打开“记住以管理员身份运行”（默认关闭）：这样运行过一次后，之后按 `Enter` 也以管理员身份运行，这一行会标出“管理员”；右键选“以普通权限运行”改回。
 
 </details>
 
 ### 最近更新
 
-**0.25.0**
+**0.26.0**
 
-- 🔖 **快捷筛选** 把常用的搜索条件存起来（“排除回收站”“大 PDF”），面板里点一下套用，或在搜索框里打 `:前缀`；面板的筛选改成左侧窄列表或结果上方一行。
-- ✏️ **F2 就地重命名** 在结果上按 `F2` 直接改名，`Ctrl+Z` 可在资源管理器里撤销。
-- 🎨 **预览：代码上色，设计稿直接看** 代码和 Markdown 按语法上色、标出搜索的词；`.ai`、`.psd` 不装 Adobe 软件也能预览。
-- 📝 **剪贴板记录加备注** 给一条记录写一句自己的话，搜索时按备注就能找到。
-- ⌨️ **打开结果更顺手** 可以给 `Enter` 配一个备用键；只打一个字母也能找回打开过的应用。
-- 📂 **对话框搜索框只搜当前文件夹** `Ctrl+Shift+D` 切换；文件类型也可以绑定文件夹（`cw:`）。
-- 🧭 **首次启动的引导重做** 左右两栏，一眼看全，不用滚动。
-- 🧩 **插件** 图标可以写 Phosphor 图标名（`ph:heart`）；需要管理员权限的插件可一键“以管理员身份重新启动”。
-- 🛠️ **修复** Directory Opus 停在“此电脑”时打字不出搜索框、插件启动时搜索框被关掉、设置窗口在另一种缩放的屏幕上宽度出错等。
+- 📱 **“应用”标签** 应用排成图标网格，看常用的、收藏的或全部，点星标收藏；在 **设置 › 结果列表** 打开。
+- ☁️ **云备份插件** 设置自动备份到 WebDAV（坚果云、NAS）或 GitHub 私有仓库，换电脑时输入 `cloud` 恢复。
+- 🪟 **程序自己画的选文件窗口也能搜、能转** 像 ArcGIS “添加数据”这样的窗口，点一次“识别窗口”教会 Win顺，之后搜索框和 `Ctrl+G` 照常用。
+- 🗂️ **资源管理器标签页 1.1.0** 记住开着的窗口和标签页，下次登录后自动打开，或随时手动打开。
+- ⚡ **隔多久呼出都快** 闲着时只把用不着的内存还给系统，留下搜索框和剪贴板要用的那部分。
+- 📦 **安装和更新更稳** 文件被别的程序占着时，更新照样完成，不再卡在“正在准备安装”。
+- 🤖 **命令行装插件、给 AI 的 Skill** `ws plugin install winshun.translate`；`npx skills add LingCore/WinShun`。
+- 📏 **小改进** 搜索框显示几行可以自己定（4–20）；网页搜索的网站行按 `Tab` 补全关键词；局域网传输可以自动接收；截图按住鼠标时方向键也能微调。
+- 🛠️ **修复** 设置窗口最大化后发黑、以管理员身份运行时接管开始菜单打字后搜索框不接收输入、Directory Opus 右键菜单里按键变成搜索、搜索面板横向滚动条一直显示、预览卡在“正在读取”、截图时鼠标指针不见等。
 
-详见 [0.25.0 发布说明](docs/release-notes/v0.25.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
+详见 [0.26.0 发布说明](docs/release-notes/v0.26.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
 
 ### 常见问题
 
@@ -272,6 +275,8 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 
 也可以用 Qt Creator 或 VS Code（CMake Tools）打开，预设见 `CMakePresets.json`。源码结构和设计见 [docs/architecture.md](docs/architecture.md)，踩过的坑见 [docs/pitfalls.md](docs/pitfalls.md)。
 
+用 AI 助手改代码：在克隆下来的仓库里运行 `npx skills add LingCore/WinShun --skill winshun-dev`，它会先读到怎么编译、只跑哪些测试、界面规范和常见的坑（就是 [skills/winshun-dev](skills/winshun-dev/SKILL.md) 这份说明）。
+
 </details>
 
 ---
@@ -304,14 +309,14 @@ No installer, or Scoop? See [Download and install](#download-and-install).
 | 📄 | [Text inside files](docs/features.en.md#full-text-search) | Word, Excel, PowerPoint, PDF, WPS, text and code, showing the matching line |
 | 🗂️ | [Search panel](docs/features.en.md#file-search) | `Ctrl+E` expands it: filter by kind, date, size and folder, save your own quick filters, sort by column, large icons |
 | 👀 | [Preview](docs/features.en.md#file-search) | `Alt+P` shows a picture, document or PDF without opening it |
-| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages |
+| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons |
 | 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search and hover previews |
 | 📂 | [Open / Save dialogs](docs/features.en.md#open-and-save-dialogs) ² | A search bar beside the dialog; `Ctrl+G` jumps to the folder open in your file manager |
 | 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders; type in a file list to search |
 | ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; your own commands too |
 | 🔎 | [Taskbar search box](docs/features.en.md#taskbar-search-box) ² | A WinShun search box on the Windows 11 taskbar |
 | 🤖 | [AI assistants and the command line](docs/features.en.md#ai-assistants-mcp) ² | Let Claude, Cursor and others search your files (read-only by default); `ws` searches from a terminal |
-| 🎨 | [Looks and backup](docs/features.en.md#looks-and-settings) | Three interface styles, your font and interface size; settings backups and migration |
+| 🎨 | [Looks and backup](docs/features.en.md#looks-and-settings) | Three interface styles, your font and interface size; settings backups and migration, to WebDAV or a private GitHub repository with the Cloud Backup plugin |
 
 ¹ Chosen during the first-start setup, or turned on later in the settings.　² Off by default; turn it on in the settings.
 
@@ -334,9 +339,12 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | Browser bookmarks | `bm words` searches Chrome and Edge bookmarks | Plugin library |
 | LAN transfer | `ls ` to send files to and from phones and PCs running [LocalSend](https://localsend.org) | Plugin library |
 | Break reminder | Reminds you to take breaks; `break` shows the time left | Plugin library |
-| Explorer tabs | New File Explorer windows open as tabs (Windows 11 22H2 or newer) | Plugin library |
+| Explorer tabs | New File Explorer windows open as tabs, and the tabs from last time come back after a logon (Windows 11 22H2 or newer) | Plugin library |
+| [Cloud backup](docs/features.en.md#looks-and-settings) | Keeps the settings backup on a WebDAV server or in a private GitHub repository; `cloud` backs up or restores | Plugin library |
 
 Write your own: a zero-code `plugin.json` or scripts in any language, with SDKs for Python, PowerShell and C++. See [docs/plugins.en.md](docs/plugins.en.md).
+
+Hand it to an AI assistant: `npx skills add LingCore/WinShun` installs WinShun's skills for Claude Code, Codex, Cursor and the like. There are three: `winshun` (search files and install plugins with the `ws` command), `winshun-plugin-dev` (write a plugin) and `winshun-dev` (work on WinShun itself). It can install plugins too: `ws plugin search translate`, `ws plugin install winshun.translate`; where your yes is needed (the permissions a plugin asks for), WinShun asks you in its own window.
 
 ### Keys
 
@@ -416,25 +424,25 @@ Standard and portable packages install enhanced text recognition on demand. Open
 - **Direct as administrator**: on an administrator account, Settings → Index access → “Direct (administrator)” runs the whole app as administrator and reads the drives itself, as earlier versions did.
 - **Programs running as administrator**: Windows doesn't let normal-rights programs type into them. Pasting into such a window, the index service presses the paste keys for you where it is installed (Settings › Clipboard › "Paste into programs run as administrator", on by default); without the service, or with that turned off, WinShun only copies and tells you to press `Ctrl+V`. The search bar beside their Open / Save dialogs appears too: the installed WinShun with the index service jumps to the chosen folder just as in other dialogs, and `Ctrl+G` works there; a portable copy, or one installed for you only, can only copy the chosen path for you to paste into the path box yourself.
 - **Double Ctrl does nothing while they are in front**: Windows doesn't give the keys typed into them to normal-rights programs either, so without the index service double Ctrl (Alt, Shift) does nothing while such a window is in front; a shortcut with Ctrl, Alt, Shift or Win (`Alt+Space`, say) still works. With the index service installed this doesn't happen (the service's helper hears the keys), nor when WinShun itself runs as administrator (Direct). The first time such a program stays in front for a moment, WinShun says why in one notification: it names your shortcut if you set one, and where a portable copy (Scoop's too) can install the index service, a click opens Settings › Index access, with the install button just below. Each program is mentioned once, three at most, and one per run.
-- **What you open is not elevated**: files and apps you open from WinShun run with your normal rights; only `Ctrl+Shift+Enter` runs one as administrator.
+- **What you open is not elevated**: files and apps you open from WinShun run with your normal rights; only `Ctrl+Shift+Enter` runs one as administrator. For programs you mostly run as administrator (a terminal, say), turn on "Remember “Run as administrator”" in the settings (off by default): once run that way, the program runs as administrator on `Enter` from then on and its row says Admin; right-click it and choose "Run with normal rights" to change it back.
 
 </details>
 
 ### What's new
 
-**0.25.0**
+**0.26.0**
 
-- 🔖 **Quick filters** Save the conditions you keep typing ("no Recycle Bin", "big PDFs"): one click in the panel, or a `:prefix` in the box. The panel's filters are a narrow list at the left or one line over the rows.
-- ✏️ **Rename in place with F2** `F2` on a result renames it; `Ctrl+Z` in File Explorer takes it back.
-- 🎨 **Preview: coloured code, design files as pictures** Code and Markdown are coloured with the searched words marked; `.ai` and `.psd` preview without Adobe's software.
-- 📝 **Notes on clipboard entries** A line of your own on an entry, found by the search.
-- ⌨️ **Opening results with less reach** A second key for `Enter`; a single letter brings back apps opened before.
-- 📂 **The dialog bar can search only the dialog's folder** `Ctrl+Shift+D` switches; a file kind can be bound to folders (`cw:`).
-- 🧭 **A new first-run setup** Two panes, everything in sight, nothing scrolled.
-- 🧩 **Plugins** Icons by Phosphor name (`ph:heart`); a plugin that needs administrator rights offers Restart as administrator.
-- 🛠️ **Fixes** Typing in Directory Opus on This PC, the search box closing as a plugin starts, the settings window's width on a screen of another scale, and more.
+- 📱 **Apps tab** The apps as a grid of icons: the most used, the favorites or all of them, with a star to keep one. Turned on under Settings › Result list.
+- ☁️ **Cloud Backup plugin** Keeps the settings backup on a WebDAV server or in a private GitHub repository; type `cloud` on another PC to restore it.
+- 🪟 **File windows programs draw themselves** Show WinShun a window like ArcGIS's "Add Data" once with "Learn a window", and the search bar and `Ctrl+G` work there too.
+- 🗂️ **Explorer tabs 1.1.0** Remembers the open windows and tabs and opens them after the next logon, or when asked.
+- ⚡ **Quick to appear however long it sat** Idle, WinShun gives back only the memory it does not need to show the box and the clipboard.
+- 📦 **Steadier installs and updates** A file another program holds no longer stops an update or leaves it on "Preparing to Install".
+- 🤖 **Plugins from the command line, skills for AI assistants** `ws plugin install winshun.translate`; `npx skills add LingCore/WinShun`.
+- 📏 **Small things** The number of rows in the search box is a setting (4–20); `Tab` on a web site's row completes its keyword; LAN transfer can accept by itself; the arrow keys nudge the pointer while a mouse button is held in a capture.
+- 🛠️ **Fixes** The settings window going black when maximized, the box taking no letters after Start menu typing while run as administrator, a key in a Directory Opus menu starting a search, the panel's horizontal scroll bar always showing, the preview stuck on "Reading…", the pointer missing during a capture, and more.
 
-See the [0.25.0 release notes](docs/release-notes/v0.25.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
+See the [0.26.0 release notes](docs/release-notes/v0.26.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
 
 ### FAQ
 
@@ -510,6 +518,8 @@ Needs Visual Studio 2022 (Desktop development with C++), Qt 6.8 or later (6.12 r
 ```
 
 Architecture, design notes and benchmarks (in Chinese) are in [docs/architecture.md](docs/architecture.md).
+
+With an AI assistant: run `npx skills add LingCore/WinShun --skill winshun-dev` in your clone. It tells the assistant how to build, which tests to run, the UI rules and the usual pitfalls ([skills/winshun-dev](skills/winshun-dev/SKILL.md)).
 
 </details>
 

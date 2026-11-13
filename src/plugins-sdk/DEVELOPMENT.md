@@ -32,15 +32,26 @@
 内容检索插件可在命令中声明 `contentSearch: true`（需要支持此能力的新宿主），接收 `trigger: "content"` 与目录、日期、大小、排除项等 `filters`。普通关键词查询仍有效。按整个文件验证关键词，返回原文件 `open.path` 和命中摘要；动作数组按 Enter、Ctrl+Enter、Shift+Enter 排列，`key` 只是显示文字，不能替代顺序。完整约定见 [内容检索提供者](../../docs/plugins.md#内容检索提供者)。
 
 1. 在 Win顺 中打开插件开关，输入模板关键字。开发者模式会在脚本修改后重新加载，并显示消息记录。
-2. 从 Win顺 源码构建后，可运行：
+2. 插件不在 Win顺 的插件文件夹里时，用 Win顺 的命令行装上试（先在 设置 → AI 助手 里启用命令行）：
+
+   ```powershell
+   ws plugin install <插件目录>     # 装上；盖在开着的版本上直接换成新的，改完再运行一次
+   ws plugin enable <作者.名字>     # 打开；第一次由用户在 Win顺 的窗口里确认权限（退出码 1 表示正在问）
+   ws plugin list --json           # state、进程的 status、error
+   ```
+
+   插件的 stderr、协议错误和崩溃在 `%LOCALAPPDATA%\WinShun\plugins.log`。
+3. 从 Win顺 源码构建后，还可运行：
 
    ```powershell
    wsbench --plugin <插件目录> --query "<关键字> 示例" --runs 5
    ```
 
-3. Fork [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)，把插件目录放到 `plugins/<作者.名字>/`，运行 `python tools/check.py`，再按该仓库的贡献指南提交 PR。每次更新提升插件版本。
+4. 发布：插件放在自己的公开 GitHub 仓库，Release 上附 `<作者.名字>-<版本>.wsplugin`；再向 [WinShun-plugins](https://github.com/LingCore/WinShun-plugins) 提一个只加 `plugins/<作者.名字>.json` 的 PR（用该仓库的 `tools/entry.py` 生成），细节见它的贡献指南。每次更新提升插件版本。
 
-社区库只收支持的脚本、文本和图片，不收 exe 或 DLL。C++ 模板可在自己的仓库发布，用户通过 Win顺 导入插件包。PowerShell 脚本存成带 BOM 的 UTF-8，兼容 Windows PowerShell 5.1。
+带 exe 或 dll 的包按“未审核的原生插件”收录，安装和每次更新都由用户确认。PowerShell 脚本存成带 BOM 的 UTF-8，兼容 Windows PowerShell 5.1。
+
+编程助手可以用 `npx skills add LingCore/WinShun --skill winshun-plugin-dev` 装上同一套说明，不必每次粘贴这份提示。
 
 插件安装后默认关闭，用户开启时才确认权限；开发者模式和模板创建不代替这个授权。
 

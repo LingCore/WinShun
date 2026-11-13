@@ -110,6 +110,7 @@ struct Settings {
     QString proxyMode = QStringLiteral("system");
     QString proxyAddress;
     bool recordHistory = true; // remember what was opened: listed with nothing typed, first among matches
+    bool rememberAdmin = false; // Enter runs as administrator what was last run so from here (GitHub #313)
     bool dialogJump = true; // Ctrl+G in an Open or Save dialog goes to the folder open in a file manager (filemanager::)
     // A search bar under Open and Save dialogs (DialogBar). Off for new
     // installs, a module turned on where wanted (the 插件 page's 内置功能);
@@ -309,6 +310,7 @@ struct Settings {
     int glassClarity = 50; // 0..100, liquid reading surfaces; higher is more opaque
     QString taskbarIcon = QStringLiteral("color"); // color | mono: the tray's and the taskbar box's icon (monologo)
     QString uiSize = QStringLiteral("standard"); // compact | standard | roomy: type and row heights (uisize::)
+    int maxRows = 8; // MaxRows=: the most rows the search box shows before its list scrolls, 4..20 (fewer where the screen has no room)
     QString uiFont; // empty: bundled default; otherwise an installed font family
     QString corners; // round | square: defaults() picks by Windows version
     QString uiStyle = QStringLiteral("fluent"); // fluent | brand | tactile | liquid: 界面风格 (Theme.style, themes/)

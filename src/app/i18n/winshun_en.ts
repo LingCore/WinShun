@@ -707,6 +707,10 @@
         <translation>Remember searches and opened items</translation>
     </message>
     <message>
+        <source>记住以管理员身份运行</source>
+        <translation>Remember “Run as administrator”</translation>
+    </message>
+    <message>
         <source>主题</source>
         <translation>Theme</translation>
     </message>
@@ -1284,6 +1288,14 @@
     <message>
         <source>项</source>
         <translation>items</translation>
+    </message>
+    <message>
+        <source>搜索框显示行数</source>
+        <translation>Rows in the search box</translation>
+    </message>
+    <message>
+        <source>行</source>
+        <translation>rows</translation>
     </message>
     <message>
         <source>全屏时不响应剪贴板快捷键</source>
@@ -4162,6 +4174,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <source>正在读取…</source>
         <translation>Reading…</translation>
     </message>
+    <message>
+        <source>读取时间比平时长，文件所在的磁盘或网络位置可能没有响应</source>
+        <translation>This is taking longer than usual: the disk or network location the file is on may not be responding</translation>
+    </message>
 </context>
 <context>
     <name>PreviewWindow</name>
@@ -4284,6 +4300,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>最近</source>
         <translation>Recent</translation>
+    </message>
+    <message>
+        <source>管理员</source>
+        <translation>Admin</translation>
     </message>
     <message>
         <source>离线</source>
@@ -4636,6 +4656,30 @@ Double-click grip: expand/collapse search panel</translation>
 </context>
 <context>
     <name>SettingsWindow</name>
+    <message>
+        <source>程序自己的选文件窗口</source>
+        <translation>Programs’ own file windows</translation>
+    </message>
+    <message>
+        <source>规则;自定义;对话框;识别;添加数据;ArcGIS;CAD;dialogs.json</source>
+        <translation>rule;custom;dialog;learn;recognise;add data;ArcGIS;CAD;dialogs.json</translation>
+    </message>
+    <message>
+        <source>有的程序用自己画的窗口选文件，上面几项认不出它。打开那个窗口，回来点“识别窗口”，它就也能搜、能转</source>
+        <translation>Some programs pick files in a window of their own. Open it, then click “Learn a window” here, and the options above work there too</translation>
+    </message>
+    <message>
+        <source>等待中…</source>
+        <translation>Waiting…</translation>
+    </message>
+    <message>
+        <source>识别窗口</source>
+        <translation>Learn a window</translation>
+    </message>
+    <message>
+        <source>规则文件</source>
+        <translation>Rules file</translation>
+    </message>
     <message>
         <source>显示“应用”标签</source>
         <translation>Show the Apps tab</translation>
@@ -7745,6 +7789,18 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>When file names still do not fit, hovering the mouse over the row shows the full name and path</translation>
     </message>
     <message>
+        <source>搜索框显示行数</source>
+        <translation>Rows in the search box</translation>
+    </message>
+    <message>
+        <source>行数;高度;加高;变高;结果数;条数;显示更多;rows;height;results</source>
+        <translation>rows;height;taller;results;count;show more;lines</translation>
+    </message>
+    <message>
+        <source>结果超过这个行数时滚动查看，可填 4–20 行，默认 8 行；屏幕下方放不下时自动减少</source>
+        <translation>Past this many rows the list scrolls. 4–20, 8 by default; fewer where the screen has no room below.</translation>
+    </message>
+    <message>
         <source>在“全部”和“文件”里，每个词都按正则表达式匹配名字</source>
         <translation>In All and Files, match every term as a regular expression against names</translation>
     </message>
@@ -7843,6 +7899,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>记住搜索和打开过的项目</source>
         <translation>Remember searches and opened items</translation>
+    </message>
+    <message>
+        <source>记住以管理员身份运行</source>
+        <translation>Remember “Run as administrator”</translation>
+    </message>
+    <message>
+        <source>管理员;提权;权限;admin;administrator;elevate</source>
+        <translation>administrator;admin;elevate;rights;UAC</translation>
+    </message>
+    <message>
+        <source>用 Ctrl+Shift+Enter 以管理员身份运行过的程序，之后按 Enter 也以管理员身份运行；右键选“以普通权限运行”可改回</source>
+        <translation>A program you ran as administrator with Ctrl+Shift+Enter runs as administrator on Enter from then on; right-click it and choose “Run with normal rights” to change it back</translation>
     </message>
     <message>
         <source>记住打开过的项目和最近 100 条搜索词；同样的字常打开的项目排在前面。插件命令不记入搜索历史</source>
@@ -8538,6 +8606,10 @@ Double-click grip: expand/collapse search panel</translation>
 </context>
 <context>
     <name>ws::App</name>
+    <message>
+        <source>打不开 Win顺 的设置窗口</source>
+        <translation>WinShun&apos;s settings window could not be opened</translation>
+    </message>
     <message>
         <source>截图尚未启用</source>
         <translation>Screen capture is not enabled yet</translation>
@@ -9434,6 +9506,10 @@ Double-click grip: expand/collapse search panel</translation>
 </context>
 <context>
     <name>ws::Backup</name>
+    <message>
+        <source>另一个备份正在进行，稍后再试</source>
+        <translation>Another backup is under way; try again in a moment</translation>
+    </message>
     <message>
         <source>导出设置备份</source>
         <translation>Export settings backup</translation>
@@ -10416,6 +10492,33 @@ Content index: %5</translation>
     <message>
         <source>打印失败，请检查打印机后重试</source>
         <translation>Printing failed. Check the printer and try again.</translation>
+    </message>
+</context>
+<context>
+    <name>ws::DialogRuleStore</name>
+    <message>
+        <source>%1 秒内切到那个窗口，光标点进填文件名的输入框…</source>
+        <translation>Within %1 s, switch to that window and click its file name box…</translation>
+    </message>
+    <message>
+        <source>没有切到别的程序的窗口，再点一次试试</source>
+        <translation>No other program's window came to the front. Click once more to try again</translation>
+    </message>
+    <message>
+        <source>这个窗口 Win顺 本来就认识，不用加规则</source>
+        <translation>Win顺 knows this window already: it needs no rule</translation>
+    </message>
+    <message>
+        <source>这个窗口里没找到能填路径的输入框（它可能是管理员权限的程序，或不支持辅助功能）</source>
+        <translation>No box for a path was found there (the program may run as administrator, or not support accessibility)</translation>
+    </message>
+    <message>
+        <source>规则文件写不进去：%1</source>
+        <translation>The rules file could not be written: %1</translation>
+    </message>
+    <message>
+        <source>已记下“%1”（%2），现在就能用。认错了输入框，点“规则文件”改</source>
+        <translation>Learned “%1” (%2); it works now. Wrong box? Change it in the rules file</translation>
     </message>
 </context>
 <context>
@@ -11594,6 +11697,10 @@ Content index: %5</translation>
         <translation>“%1” can’t run as administrator</translation>
     </message>
     <message>
+        <source>以普通权限运行</source>
+        <translation>Run with normal rights</translation>
+    </message>
+    <message>
         <source>“%1”没有可以打开的位置</source>
         <translation>“%1” has no location to open</translation>
     </message>
@@ -12313,7 +12420,158 @@ Content index: %5</translation>
     </message>
 </context>
 <context>
+    <name>ws::PluginCommands</name>
+    <message>
+        <source>这个版本的 Win顺 不认这个命令，请更新 Win顺</source>
+        <translation>This WinShun does not know this command; update WinShun</translation>
+    </message>
+    <message>
+        <source>拿不到插件库的列表：连不上 GitHub。检查网络，或在 Win顺 的设置里搜“网络代理”，给它配一个</source>
+        <translation>Could not get the plugin library&apos;s list: GitHub cannot be reached. Check the network, or search WinShun&apos;s settings for &quot;Network proxy&quot; and set one</translation>
+    </message>
+    <message>
+        <source>连不上插件库，这是 %1 存下的列表</source>
+        <translation>The plugin library cannot be reached; this is the list kept on %1</translation>
+    </message>
+    <message>
+        <source>要装哪个插件：给一个插件包、插件文件夹，或插件库里的 id</source>
+        <translation>Which plugin: give a package, a plugin&apos;s folder, or an id of the library</translation>
+    </message>
+    <message>
+        <source>找不到 %1</source>
+        <translation>%1 was not found</translation>
+    </message>
+    <message>
+        <source>不能安装 %1：%2</source>
+        <translation>%1 cannot be installed: %2</translation>
+    </message>
+    <message>
+        <source>没有安装 %1：%2 已经是一个文件夹，但不是装好的插件。在 Win顺 的 设置 → 插件 里从压缩包安装，会先问你怎么处理它</source>
+        <translation>%1 was not installed: %2 is a folder already, but not an installed plugin. Install from an archive in WinShun&apos;s Settings &gt; Plugins, which asks you what to do with it first</translation>
+    </message>
+    <message>
+        <source>Win顺 正在更新这个插件，稍后再试</source>
+        <translation>WinShun is updating this plugin; try again in a moment</translation>
+    </message>
+    <message>
+        <source>没有安装 %1：%2</source>
+        <translation>%1 was not installed: %2</translation>
+    </message>
+    <message>
+        <source>已安装 %1 %2</source>
+        <translation>Installed %1 %2</translation>
+    </message>
+    <message>
+        <source>已安装 %1 %2（原来是 %3）</source>
+        <translation>Installed %1 %2 (was %3)</translation>
+    </message>
+    <message>
+        <source>。新版本要更多权限，先停着；请用户同意：ws plugin enable %1</source>
+        <translation>. The new version asks for more permissions and waits; have the user agree: ws plugin enable %1</translation>
+    </message>
+    <message>
+        <source>，开着，已经换上</source>
+        <translation>; it is on and in use</translation>
+    </message>
+    <message>
+        <source>，还关着；打开它：ws plugin enable %1</source>
+        <translation>; it is off. Turn it on: ws plugin enable %1</translation>
+    </message>
+    <message>
+        <source>找不到 %1：它不是文件或文件夹，也不是插件的 id</source>
+        <translation>%1 was not found: it is no file or folder, and no plugin id</translation>
+    </message>
+    <message>
+        <source>这里装不了插件库里的插件</source>
+        <translation>Plugins of the library cannot be installed here</translation>
+    </message>
+    <message>
+        <source>Win顺 正在问用户要不要装 %1 %2；用户在 Win顺 的窗口里回答之后才会装</source>
+        <translation>WinShun is asking the user whether to install %1 %2; it is installed once they answer in WinShun&apos;s window</translation>
+    </message>
+    <message>
+        <source>。打开它：ws plugin enable %1</source>
+        <translation>. Turn it on: ws plugin enable %1</translation>
+    </message>
+    <message>
+        <source>没有装 %1；ws plugin list 列出装了哪些</source>
+        <translation>%1 is not installed; ws plugin list shows what is</translation>
+    </message>
+    <message>
+        <source>已关闭 %1</source>
+        <translation>Turned %1 off</translation>
+    </message>
+    <message>
+        <source>%1 本来就关着</source>
+        <translation>%1 was off already</translation>
+    </message>
+    <message>
+        <source>%1 用不了：%2</source>
+        <translation>%1 cannot be used: %2</translation>
+    </message>
+    <message>
+        <source>%1 本来就开着</source>
+        <translation>%1 was on already</translation>
+    </message>
+    <message>
+        <source>已打开 %1</source>
+        <translation>Turned %1 on</translation>
+    </message>
+    <message>
+        <source>打不开 Win顺 的设置窗口，没法请用户确认 %1 的权限</source>
+        <translation>WinShun&apos;s settings window could not be opened to ask the user about %1&apos;s permissions</translation>
+    </message>
+    <message>
+        <source>Win顺 正在请用户确认 %1 要的权限；用户在 Win顺 的窗口里同意之后它才打开</source>
+        <translation>WinShun is asking the user to confirm the permissions %1 asks for; it turns on once they agree in WinShun&apos;s window</translation>
+    </message>
+    <message>
+        <source>%1 随 Win顺 自带，不能卸载；不想用就关掉：ws plugin disable %2</source>
+        <translation>%1 comes with WinShun and cannot be removed; turn it off instead: ws plugin disable %2</translation>
+    </message>
+    <message>
+        <source>打不开 Win顺 的设置窗口，没法请用户确认卸载 %1</source>
+        <translation>WinShun&apos;s settings window could not be opened to ask the user about removing %1</translation>
+    </message>
+    <message>
+        <source>Win顺 正在问用户要不要卸载 %1；用户在 Win顺 的窗口里确认之后才卸载</source>
+        <translation>WinShun is asking the user whether to remove %1; it is removed once they confirm in WinShun&apos;s window</translation>
+    </message>
+</context>
+<context>
     <name>ws::PluginGallery</name>
+    <message>
+        <source>插件库现在用不了</source>
+        <translation>The plugin library is not available now</translation>
+    </message>
+    <message>
+        <source>正在安装另一个插件，等它装完再试</source>
+        <translation>Another plugin is being installed; try again when it is done</translation>
+    </message>
+    <message>
+        <source>插件库里没有 %1</source>
+        <translation>The plugin library has no %1</translation>
+    </message>
+    <message>
+        <source>%1 已经是最新版（%2）</source>
+        <translation>%1 is up to date (%2)</translation>
+    </message>
+    <message>
+        <source>%1 随 Win顺 自带，不用安装</source>
+        <translation>%1 comes with WinShun; there is nothing to install</translation>
+    </message>
+    <message>
+        <source>%1 %2 要 Win顺 %3 或更新的版本，先更新 Win顺</source>
+        <translation>%1 %2 needs WinShun %3 or later; update WinShun first</translation>
+    </message>
+    <message>
+        <source>现在装不了 %1</source>
+        <translation>%1 cannot be installed now</translation>
+    </message>
+    <message>
+        <source>下载被取消了</source>
+        <translation>The download was cancelled</translation>
+    </message>
     <message>
         <source>正在更新 %1/%2…</source>
         <translation>Updating %1 of %2…</translation>
@@ -12592,6 +12850,10 @@ Content index: %5</translation>
     <message>
         <source>让 Win顺 打开文件和网址（以普通权限）</source>
         <translation>Have WinShun open files and URLs (with normal rights)</translation>
+    </message>
+    <message>
+        <source>取得 Win顺 的设置备份，并用备份恢复设置</source>
+        <translation>Get WinShun's settings backup and restore the settings from one</translation>
     </message>
     <message>
         <source>读最近打开的项目</source>

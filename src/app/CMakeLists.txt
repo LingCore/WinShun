@@ -38,6 +38,7 @@ endforeach()
 qt_add_executable(WinShun WIN32
     platform/WindowSearch.cpp platform/WindowSearch.h
     InteractionOptimizationProbe.cpp InteractionOptimizationProbe.h
+    IdleOpenProbe.cpp IdleOpenProbe.h
     main.cpp
     DropPieHelper.cpp DropPieHelper.h
     AiSettings.cpp AiSettings.h
@@ -89,6 +90,8 @@ qt_add_executable(WinShun WIN32
     platform/DragOut.cpp platform/DragOut.h
     platform/ExternalPreview.cpp platform/ExternalPreview.h
     platform/FileDialog.cpp platform/FileDialog.h
+    platform/DialogRules.cpp platform/DialogRules.h
+    DialogRuleStore.cpp DialogRuleStore.h
     platform/BlenderFileDialog.cpp platform/BlenderFileDialog.h
     platform/FileManagers.cpp platform/FileManagers.h
     platform/FolderViewHit.cpp platform/FolderViewHit.h
@@ -348,7 +351,9 @@ qt_add_qml_module(WinShun
         IconBadge.cpp IconBadge.h
         Launcher.cpp Launcher.h LauncherNavigation.h
         Placement.cpp Placement.h
+        PluginCommands.cpp PluginCommands.h
         PluginGallery.cpp PluginGallery.h
+        PluginInstalled.h
         PluginSettings.cpp PluginSettings.h
         PluginReadme.cpp PluginReadme.h
         PluginUpdates.cpp PluginUpdates.h # the installed plugins kept up to date in the background

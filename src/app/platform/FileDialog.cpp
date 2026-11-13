@@ -1,5 +1,6 @@
 #include "FileDialog.h"
 #include "BlenderFileDialog.h"
+#include "DialogRules.h"
 
 #include "PathText.h"
 #include "Win32Util.h"
@@ -628,9 +629,9 @@ bool accept(HWND hwnd)
 
 } // namespace kingsoft
 
-} // namespace
-
-Kind kind(HWND hwnd)
+// The dialogs known by what they are made of; the user's own rules
+// (DialogRules) come after, for windows that are none of these.
+Kind knownKind(HWND hwnd)
 {
     if (!hwnd)
         return Kind::None;
@@ -661,6 +662,19 @@ Kind kind(HWND hwnd)
     if (browseTree(hwnd) && ::GetDlgItem(hwnd, IDOK))
         return Kind::Browse;
     return Kind::None;
+}
+
+} // namespace
+
+Kind kind(HWND hwnd)
+{
+    const Kind known = knownKind(hwnd);
+    return known != Kind::None || !dialogrules::any() ? known : dialogrules::kind(hwnd);
+}
+
+bool byRule(HWND hwnd)
+{
+    return dialogrules::any() && knownKind(hwnd) == Kind::None && dialogrules::isOne(hwnd);
 }
 
 bool mayBeKingsoft(HWND hwnd)
@@ -704,7 +718,7 @@ std::wstring currentFolder(HWND dialog)
 std::wstring fileType(HWND dialog)
 {
     const CustomFileBoxes custom = customFileBoxes(dialog);
-    if ((kind(dialog) != Kind::Open && !custom.name) || kingsoft::isOne(dialog))
+    if ((kind(dialog) != Kind::Open && !custom.name) || kingsoft::isOne(dialog) || byRule(dialog))
         return {};
     const HWND types = custom.type ? custom.type : ::GetDlgItem(dialog, kFileTypeCombo);
     return types && hasClass(types, L"ComboBox") ? controlText(types) : std::wstring();
@@ -723,6 +737,8 @@ bool waitForLocation(HWND dialog)
         return true;
     if (kingsoft::isOne(dialog))
         return kingsoft::waitForLocation(dialog);
+    if (byRule(dialog))
+        return true; // where it is cannot be told: nothing to wait for
     const HWND crumbs = crumbBar(dialog);
     return crumbs && waitFor([crumbs] {
         DWORD_PTR buttons = 0;
@@ -743,6 +759,8 @@ bool goTo(HWND dialog, const std::wstring& folder)
     const Kind k = kind(dialog);
     if (blenderdialog::isOne(dialog))
         return blenderdialog::goTo(dialog, folder);
+    if (byRule(dialog))
+        return dialogrules::goTo(dialog, folder);
     if (k == Kind::Legacy)
         return goByName(dialog, folder);
     if (k == Kind::Browse)
@@ -769,6 +787,8 @@ bool setFileName(HWND dialog, const std::wstring& name)
         return false;
     if (kingsoft::isOne(dialog))
         return kingsoft::setFileName(dialog, name);
+    if (byRule(dialog))
+        return dialogrules::setFileName(dialog, name);
     const HWND box = fileNameBox(dialog);
     if (!box || !setFileBoxText(dialog, box, name))
         return false;
@@ -784,6 +804,8 @@ bool accept(HWND dialog)
         return false;
     if (kingsoft::isOne(dialog))
         return kingsoft::accept(dialog);
+    if (byRule(dialog))
+        return dialogrules::accept(dialog);
     const HWND ok = ::GetDlgItem(dialog, IDOK);
     return ok && ::PostMessageW(dialog, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), reinterpret_cast<LPARAM>(ok));
 }

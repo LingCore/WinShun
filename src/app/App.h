@@ -7,6 +7,7 @@
 #include "Win32Util.h"
 #include "platform/ClipboardWatcher.h"
 #include "platform/HoldWatch.h"
+#include "platform/HotPages.h"
 #include "platform/InputMode.h"
 #include "platform/KeyListener.h"
 #include "platform/KeyRouter.h"
@@ -27,6 +28,7 @@
 #include <QTranslator>
 #include <QVariantMap>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -48,7 +50,7 @@ class QWinEventNotifier;
 
 namespace ws {
 
-namespace preview { struct DoubleTapActionsProbe; }
+namespace preview { struct DoubleTapActionsProbe; struct IdleOpenProbe; }
 
 namespace piedrop {
 class FileOperations;
@@ -60,9 +62,12 @@ class ClipStore;
 class Clipboard;
 class ClipboardDisplay;
 class OcrPackage;
+class PluginCommands;
+class PluginSettings;
 class ComWorker;
 class DialogBar;
 class DialogJump;
+class DialogRuleStore;
 class Favorites;
 class FilePreview;
 class DropPie;
@@ -72,7 +77,6 @@ class SystemCatalog;
 class History;
 class IndexService;
 class IdleTrim;
-class HotPages;
 class KeyListener;
 class PointerWatch;
 class ServiceDialogNav;
@@ -134,6 +138,7 @@ class Tools;
 class App : public QObject {
     Q_OBJECT
     friend struct preview::DoubleTapActionsProbe;
+    friend struct preview::IdleOpenProbe;
 
 public:
     struct StartOptions {
@@ -145,6 +150,9 @@ public:
         // Isolated runtime QA only: the settings window shown without being
         // activated or brought to the front (no input of any kind is sent).
         bool settingsProbe = false;
+        // Isolated runtime QA only: the pipe AI clients and ws are served on,
+        // in place of the user's (which their own Win顺 may be serving).
+        QString mcpPipe;
         // 管理员直读 wants administrator rights, put off while an in-app
         // update's helper waits for this copy (main.cpp, GitHub #274).
         bool elevateAfterUpdate = false;
@@ -545,6 +553,12 @@ private:
     void installMovedPlugins(); // the ones that came with 0.16.0, from the library (GitHub #138)
     void setPluginRecoveryState(const QString& message, bool busy = false);
     void pluginsChanged(); // the catalog's entries: the icon provider's folders
+    // ws plugin (PluginCommands): what it has the app do. The switch of a
+    // plugin that needs no answer from the user; the 插件 page in front of
+    // the user with the plugin's switch turned on there, or its 卸载
+    // clicked (false: no settings window); the library's install on that page.
+    void setPluginSwitch(const QString& id, bool on);
+    PluginSettings* pluginPage(const QString& id);
     // Win顺's tools for the plugins' winshun/tool (plugin::Tools): made
     // with the first call, whatever the AI switch says.
     plugin::Tools& pluginTools();
@@ -794,6 +808,7 @@ private:
     std::unique_ptr<MessageWindow> m_messages;
     std::unique_ptr<Updater> m_updater;
     std::unique_ptr<PluginUpdates> m_pluginUpdates; // after m_updater; goes before the plugin host
+    std::unique_ptr<PluginCommands> m_pluginCommands; // ws plugin; goes before the updates and the host
     std::unique_ptr<Backup> m_backup; // of the settings, into a folder chosen
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<NetworkNotifier> m_network; // after m_index, whose shares it tells
@@ -801,8 +816,8 @@ private:
     // GitHub #265, memory short: the pages an opening needs are read back ahead.
     std::shared_ptr<HotPages> m_launcherPages;
     std::shared_ptr<HotPages> m_clipPages;
-    std::shared_ptr<HotPages> m_recordPages; // of the opening under way, recorded once it is seen
-    qint64 m_lastOpeningSeenMs = 0; // ms since 1970, as IdleTrim::LastTrim
+    std::shared_ptr<HotPages> m_recordPages; // of the opening under way, told what it used once it is seen
+    std::array<qint64, 2> m_openingSeenMs {}; // by TriggerWindow, when each was last seen; ms since 1970, as IdleTrim::LastTrim
     std::unique_ptr<BackgroundStatus> m_background; // what runs in the background, in words (after m_index, m_updater)
     std::unique_ptr<HealthMonitor> m_health; // the 运行状况 page's readings (after m_background, m_idleTrim)
     std::vector<std::wstring> m_sharesBuilding; // being read for the first time: told when done
@@ -819,6 +834,10 @@ private:
     QStringList m_doubleCtrlIgnoredLogged; // "program reason", logged once each: a game gets many
     std::unique_ptr<DialogJump> m_dialogJump; // file dialogs: Ctrl+G, the bar; after m_messages, which has the hotkey
     std::unique_ptr<DialogBar> m_dialogBar; // the search bar under file dialogs
+    // The user's rules for file windows programs draw themselves: made with
+    // the dialogs' following, or when the settings page asks for it.
+    std::unique_ptr<DialogRuleStore> m_dialogRules;
+    DialogRuleStore& dialogRules();
     std::unique_ptr<ServiceDialogNav> m_serviceNav; // navigates elevated dialogs via the service (#104)
     QDeadlineTimer m_barFocusDeadline; // gone back to from the clipboard: until then, it takes the keyboard as it shows
     std::unique_ptr<Placement> m_placement; // where the launcher opens; moving it
@@ -931,6 +950,7 @@ private:
     SettingsOpening m_settingsOpening;
     QElapsedTimer m_settingsOpenClock; // since the latest showSettings() that showed it
     bool m_settingsProbe = false; // StartOptions::settingsProbe
+    QString m_mcpPipe; // StartOptions::mcpPipe; empty: the user's
     QString m_pluginRecoveryMessage;
     bool m_pluginRecoveryBusy = false;
     QString m_renderer; // the one in use; changing it takes a restart

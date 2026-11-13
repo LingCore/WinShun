@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.web",
   "name": {"zh": "网页搜索", "en": "Web search"},
-  "version": "2.0.1",
+  "version": "2.0.2",
   "minWinShun": "0.17.0",
   "description": {"zh": "用关键词打开网站或搜索网页，可自定义网站、图标和搜索建议；不运行额外进程", "en": "Open or search sites by keyword, with custom sites, icons and suggestions; no extra process"},
   "author": "LingCore",

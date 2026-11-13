@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(WinShun
-    VERSION 0.25.0
+    VERSION 0.26.0
     DESCRIPTION "Fast file, folder and text-content search launcher for Windows"
     LANGUAGES C CXX) # C: miniz
 
@@ -56,6 +56,7 @@ add_subdirectory(src/explorer-tabs-plugin)
 add_subdirectory(src/switches-plugin)
 add_subdirectory(src/bookmarks-plugin)
 add_subdirectory(src/translate-plugin)
+add_subdirectory(src/cloudbackup-plugin)
 add_subdirectory(src/capture)
 add_subdirectory(src/capture-plugin)
 add_subdirectory(src/ocr-search-plugin)
@@ -133,13 +134,15 @@ add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBookmarks>" "${library_plugins_dir}/winshun.bookmarks/WinShunBookmarks.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/translate-plugin/package" "${library_plugins_dir}/winshun.translate"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunTranslate>" "${library_plugins_dir}/winshun.translate/WinShunTranslate.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/cloudbackup-plugin/package" "${library_plugins_dir}/winshun.cloudbackup"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunCloudBackup>" "${library_plugins_dir}/winshun.cloudbackup/WinShunCloudBackup.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/capture-plugin/package" "${library_plugins_dir}/winshun.capture"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunCapture>" "${library_plugins_dir}/winshun.capture/WinShunCapture.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunCaptureApp>" "${library_plugins_dir}/winshun.capture/WinShunCaptureApp.dll"
     # What is compiled into WinShunCaptureApp.dll; Qt, ONNX Runtime and the OCR models are Win顺's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
-    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunExplorerTabs WinShunBookmarks WinShunTranslate WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
+    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunExplorerTabs WinShunBookmarks WinShunTranslate WinShunCloudBackup WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
     VERBATIM)
 

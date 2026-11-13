@@ -24,6 +24,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <vector>
 
 class QQuickItem;
 class QWindow;
@@ -78,6 +79,9 @@ class FilePreview : public QObject {
     Q_PROPERTY(QStringList facts READ facts NOTIFY contentChanged FINAL)
     Q_PROPERTY(QString message READ message NOTIFY contentChanged FINAL) // Message: why nothing shows
     Q_PROPERTY(bool slow READ slow NOTIFY slowChanged FINAL) // Loading for a moment already
+    // Loading for seconds (GitHub #307): the place the file is in does not
+    // answer (a share gone, a disk asleep, a program holding the read back).
+    Q_PROPERTY(bool stalled READ stalled NOTIFY slowChanged FINAL)
 
 public:
     enum Kind { Loading, Picture, Text, Handler, Facts, Message };
@@ -169,6 +173,7 @@ public:
     QStringList facts() const { return m_facts; }
     QString message() const { return m_message; }
     bool slow() const { return m_slow; }
+    bool stalled() const { return m_stalled; }
 
     Q_INVOKABLE void openFile(); // 打开 in the header: as Enter on the row
     // The content area, where a preview handler draws (PreviewBody.qml).
@@ -181,6 +186,11 @@ public:
     // "image://preview/<n>": the picture, or the thumbnail, of the file shown.
     QQuickImageProvider* imageProvider();
 
+    // For the checks: called on the reading thread with each file's path
+    // before it is read (one that does not return is a place that does not
+    // answer).
+    static void setReadProbe(std::function<void(const QString& path)> probe);
+
 signals:
     void contentChanged();
     void slowChanged();
@@ -189,6 +199,7 @@ signals:
 
 private:
     struct Loaded; // what the worker found out
+    struct Lane; // a thread files are read on, and what it is at
     class Images;
 
     void load(const Item& item, bool followed = false); // followed: a handler waits until the row stayed
@@ -199,7 +210,8 @@ private:
     void handlerFailed(quint64 generation);
     bool screenRect(QQuickItem* item, int* left, int* top, int* right, int* bottom) const; // physical
     void showExternal(const Item& item);
-    void setSlow(bool slow);
+    void setWaiting(bool slow, bool stalled = false);
+    Lane* laneForNext();
 
     std::function<QQuickWindow*()> m_makeWindow;
     QPointer<QQuickWindow> m_window;
@@ -217,7 +229,10 @@ private:
     Item m_item;
     std::atomic<quint64> m_generation {0};
     QDeadlineTimer m_handlerNotBefore; // load(followed): when its handler may start (expired: at once)
-    ComWorker* m_worker = nullptr; // never deleted: a shell call may still be running at exit
+    // The threads files are read on, never deleted: a shell call may still
+    // be running at exit. One for all, until a file keeps it (laneForNext).
+    std::vector<Lane*> m_lanes;
+    Lane* m_lane = nullptr; // the one the next file goes to
     std::unique_ptr<PreviewHost> m_host;
     std::shared_ptr<Images> m_images;
 
@@ -240,7 +255,8 @@ private:
     QStringList m_facts;
     QString m_message;
     bool m_slow = false;
-    QTimer m_slowTimer;
+    bool m_stalled = false;
+    QTimer m_slowTimer; // Loading: slow after a moment, stalled after seconds
     QTimer m_relayout; // the launcher moved or changed size: placed again
     QTimer m_externalCheck; // Seer asked: did it show anything? (GitHub #131)
     QString m_noHandlerFor; // a handler failed on it: shown as facts instead

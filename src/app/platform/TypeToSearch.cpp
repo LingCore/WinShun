@@ -489,17 +489,16 @@ bool TypeToSearch::explorerFocused(HWND& tab) const
     return true;
 }
 
-// Only Opus's file display itself, not its child editors or an open menu.
+// Only Opus's file display itself, not its child editors or an open menu
+// (its own menus leave the focus there: folderview::opusTypingView).
 bool TypeToSearch::opusFocused(HWND& tab) const
 {
-    GUITHREADINFO info {sizeof info};
-    if (!m_opus || ::GetForegroundWindow() != m_opus
-        || !::GetGUIThreadInfo(::GetWindowThreadProcessId(m_opus, nullptr), &info))
+    if (!m_opus || ::GetForegroundWindow() != m_opus)
         return false;
-    const bool items = folderview::isOpusFileDisplay(m_opus, info.hwndFocus);
-    if (searchtyping::focusOf(static_cast<unsigned>(info.flags), items) != searchtyping::Focus::ItemsView)
+    const HWND view = folderview::opusTypingView(m_opus);
+    if (!view)
         return false;
-    tab = info.hwndFocus;
+    tab = view;
     return true;
 }
 

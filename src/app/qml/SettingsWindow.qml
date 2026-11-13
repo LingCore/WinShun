@@ -2571,6 +2571,30 @@ Window {
                         }
                     }
                 }
+
+                SettingRow {
+                    id: dialogRulesRow
+                    objectName: "dialogRulesRow"
+                    title: qsTr("程序自己的选文件窗口")
+                    keywords: qsTr("规则;自定义;对话框;识别;添加数据;ArcGIS;CAD;dialogs.json").split(";")
+                    description: qsTr("有的程序用自己画的窗口选文件，上面几项认不出它。打开那个窗口，回来点“识别窗口”，它就也能搜、能转")
+                                 + (window.editor.dialogRuleStatus.length > 0 ? "\n" + window.editor.dialogRuleStatus : "")
+
+                    FlatButton {
+                        objectName: "dialogRuleLearnButton"
+                        dpr: window.dpr
+                        text: window.editor.dialogRuleLearning ? qsTr("等待中…") : qsTr("识别窗口")
+                        enabled: !window.editor.dialogRuleLearning
+                        onClicked: window.editor.learnDialogRule()
+                    }
+
+                    FlatButton {
+                        objectName: "dialogRuleFileButton"
+                        dpr: window.dpr
+                        text: qsTr("规则文件")
+                        onClicked: window.editor.openDialogRules()
+                    }
+                }
             }
 
             SettingsSection {
@@ -2678,6 +2702,19 @@ Window {
                         dpr: window.dpr
                         checked: window.editor.recordHistory
                         onToggled: (on) => window.editor.recordHistory = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("记住以管理员身份运行")
+                    keywords: qsTr("管理员;提权;权限;admin;administrator;elevate").split(";")
+                    description: qsTr("用 Ctrl+Shift+Enter 以管理员身份运行过的程序，之后按 Enter 也以管理员身份运行；右键选“以普通权限运行”可改回")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        enabled: window.editor.recordHistory
+                        checked: window.editor.rememberAdmin
+                        onToggled: (on) => window.editor.rememberAdmin = on
                     }
                 }
 
@@ -2969,6 +3006,29 @@ Window {
                         text: qsTr("恢复默认宽度")
                         enabled: window.editor.launcherWidthSet
                         onClicked: window.editor.resetLauncherWidth()
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("搜索框显示行数")
+                    keywords: qsTr("行数;高度;加高;变高;结果数;条数;显示更多;rows;height;results").split(";")
+                    description: qsTr("结果超过这个行数时滚动查看，可填 4–20 行，默认 8 行；屏幕下方放不下时自动减少")
+
+                    InputBox {
+                        objectName: "maxRowsInput"
+                        dpr: window.dpr
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 80
+                        horizontalAlignment: TextInput.AlignHCenter
+                        text: String(window.editor.maxRows)
+                        Accessible.name: qsTr("搜索框显示行数")
+                        validator: IntValidator { bottom: 1; top: 20 }
+                        onEditingFinished: {
+                            const rows = parseInt(text, 10)
+                            if (rows > 0)
+                                window.editor.maxRows = rows
+                            text = Qt.binding(() => String(window.editor.maxRows))
+                        }
                     }
                 }
             }

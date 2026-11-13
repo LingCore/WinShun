@@ -82,3 +82,22 @@ Blender 的独立文件窗口是自绘 `GHOST_WindowClass`，不能套用 Win32 
 本地证据保存在未提交的 `build/issue143`：`ctest-final.txt`、`visibility-final.txt`、`transport-tests.txt`、`acceptance-en`、`final-ui-zh/runtime/runtime.json` 与 `dialog-with-search.png`、`package-verification/stdout.txt`。
 
 单独的 `tst_filedialog` 默认跳过 Blender 和真实 Inno 窗口用例；只有提供隔离实例 PID 和观察器文件才执行。未通过的探索记录保留在忽略目录 `build/issue143`，不计为当前实现的通过证据。
+
+## 程序自己画的选文件窗口：用户规则（#272，2026-11-12）
+
+[Issue #272](https://github.com/LingCore/WinShun/issues/272) 要的是 ArcMap、ArcGIS Pro 的“添加数据”窗口，并希望做成用户能自己适配别的窗口的办法。截图表明 ArcMap 的是带自绘内容视图的 `#32770`（不是系统文件对话框，没有地址栏和标准控件 ID），ArcGIS Pro 的是 WPF 窗口（类名 `HwndWrapper[ArcGISPro;;<每次不同>]`，没有子窗口）。**本机没有 ArcGIS，也没有为这次验证安装；下面的通过结果都来自替身窗口，不是 ArcGIS 实机结果。**
+
+没有为 ArcGIS 写死适配，做的是通用规则（`platform/DialogRules`、`DialogRuleStore`）：
+
+- 规则写在数据文件夹的 `dialogs.json`：哪个程序（`program`）、哪个窗口（`class`、`title`，`*` 通配）、路径填进哪个输入框（`box`）、怎么确认（`confirm`：输入框里回车，或一个按钮）。输入框和按钮按 UI Automation 的控件类型、AutomationId、名称、类名来指，所以同一套规则适用于 Win32、WPF、WinForms、Qt 窗口。
+- 设置里的“识别窗口”倒数五秒后看前台窗口，自动写出一条规则：输入框取有键盘焦点的那个（它能输入文字时），否则取位置最靠下的可输入框；窗口类名里每次运行都变的部分换成 `*`。看到的所有输入框和按钮记在规则的 `seen` 里，供认错时手工改。
+- 驱动方式和旧式对话框一样：文件夹带尾部反斜杠填进输入框并确认（只可能被当成文件夹）；文件填整条路径，要“直接打开”时才确认。回车是发给刚拿到焦点的输入框（有自己窗口句柄时）或顶层窗口（WPF、Qt）的窗口消息，不合成按键，不往目标进程里装东西。
+- 规则只对 Win顺 本来不认识的窗口生效；文件一保存就重新读，当前在前台的窗口立刻重新判断。管理员权限的程序不支持（服务的助手不认规则，退回复制路径）。
+
+前提是那个窗口本身支持“在文件名框里填一条路径、回车就过去”。ArcGIS 的两个窗口是否如此、识别出的输入框对不对，要等报告者实测。
+
+验证：
+
+- `tst_dialogrules`：规则文件的读写和报错；通配；只认规则指明的程序、类名、标题；原生替身窗口（独立线程，编辑框 + 默认按钮）分别用回车和按钮确认，覆盖形似文件名的中文文件夹、不存在的文件夹、窗口不清空输入框时放回原文字、文件整条路径、明确确认；找不到输入框时不动手；识别出的规则能直接驱动窗口；另一个进程里的 WPF 替身窗口（PowerShell，`tests/fixtures/wpf-file-window.ps1`，两个输入框）识别到下方的名称框并跳转成功。
+- 真实主程序的离屏检查 `WinShun --preview-settings <目录> --dialog-rule-settings --fixture tests\fixtures\wpf-file-window.ps1`（中、英文各跑通过，20 项）：设置行和两个按钮在行内；点“识别窗口”倒数、不能重复点；切到替身窗口后写出规则；真实的 `DialogJump` 在没有规则时不跟随、规则写入后立刻跟随仍在前台的窗口；`DialogJump::go` 把文件夹和文件送进窗口；在文件里删掉规则后立刻不再跟随。
+- 没有覆盖：搜索框在这类窗口旁边的实际摆放（走的是与其他对话框相同的代码）、ArcGIS 实机。

@@ -25,6 +25,7 @@
 #include <QUuid>
 
 #include <dwmapi.h>
+#include <psapi.h>
 #include <knownfolders.h>
 #include <shlobj.h>
 
@@ -122,6 +123,14 @@ QString outcomeName(CaptureSession::Action action)
 QString sizeText(const QSize& size)
 {
     return size.isEmpty() ? QString() : u"%1x%2"_s.arg(size.width()).arg(size.height());
+}
+
+// Page faults of the process so far: a capture after the working set was
+// emptied (IdleTrim) takes thousands, each waited for.
+quint64 pageFaults()
+{
+    PROCESS_MEMORY_COUNTERS counters {sizeof counters};
+    return ::GetProcessMemoryInfo(::GetCurrentProcess(), &counters, sizeof counters) ? counters.PageFaultCount : 0;
 }
 
 void sendEscape()
@@ -244,6 +253,25 @@ void Capture::screensChanged()
 void Capture::buildOverlays()
 {
     const QList<QScreen*> screens = QGuiApplication::screens();
+    // The overlays present by copying, not by flipping (read when a window's
+    // graphics are made, so set until they all are: warmed()). A flip swap
+    // chain that covers a monitor, opaque and topmost, is what Windows takes
+    // out of composition and hands to the display directly (independent
+    // flip, an overlay plane). The switch is where drivers go wrong: the
+    // screen black for a moment as the overlay comes, the mouse pointer (a
+    // plane of its own) gone or broken over it. Copied, the overlay is
+    // always composed with the desktop like any window, pointer included.
+    // It draws only when something changes, so the copy costs nothing seen.
+    if (!screens.isEmpty() && !qEnvironmentVariableIsSet("QT_D3D_NO_FLIP")
+        && !qEnvironmentVariableIsSet("WINSHUN_CAPTURE_FLIP")) {
+        qputenv("QT_D3D_NO_FLIP", "1");
+        m_legacySwapSet = true;
+    }
+    // A picture of each monitor for the hidden first show: the grab, the
+    // texture's upload and the swap chain at the monitor's size are then
+    // behind the first real capture (150-650 ms measured for it, 60 after).
+    m_warmClock.start();
+    const std::vector<Grabber::Shot> shots = m_grabber.grab();
     for (int i = 0; i < screens.size(); ++i) {
         QScreen* screen = screens[i];
         // A monitor changing size or scale changes everything about its overlay.
@@ -281,11 +309,32 @@ void Capture::buildOverlays()
         window->create();
         // Its graphics set up now, out of sight: a first show costs 130–170 ms,
         // later ones 3–6 ms (stage 0).
-        overlay.warming = true;
+        overlay.warming = 1;
         overlay.cloaked = true;
         win::setCloaked(window, true);
+        if (const auto shot = std::ranges::find(shots, overlay.monitor, &Grabber::Shot::monitor);
+            shot != shots.end() && !shot->image.isNull()) {
+            const QRect& rect = shot->rect;
+            ::SetWindowPos(reinterpret_cast<HWND>(window->winId()), nullptr, rect.x(), rect.y(), rect.width(), rect.height(),
+                SWP_NOACTIVATE | SWP_NOZORDER);
+            model->setGeometry(rect, window->devicePixelRatio(), window->size());
+            model->setImage(shot->image);
+            overlay.warming = 2;
+        }
         window->show();
         m_overlays.push_back(overlay);
+    }
+    if (m_overlays.empty())
+        warmed();
+}
+
+void Capture::warmed()
+{
+    if (std::exchange(m_legacySwapSet, false))
+        qunsetenv("QT_D3D_NO_FLIP"); // the plugin's other windows flip as before
+    if (m_warmClock.isValid()) {
+        qInfo().noquote() << u"Screen capture: %1 overlay(s) warmed in %2 ms"_s.arg(m_overlays.size()).arg(m_warmClock.elapsed());
+        m_warmClock.invalidate();
     }
 }
 
@@ -345,6 +394,7 @@ void Capture::start(bool ocrOnly)
         m_callbacks.starting();
     m_ocrOnly = ocrOnly;
     m_clock.start();
+    m_faultsBefore = pageFaults();
     m_reported = false;
     m_flyoutMs = -1;
     if (!ocrOnly) { // reading words takes no picture: the draft keeps its time
@@ -425,6 +475,7 @@ void Capture::start(bool ocrOnly)
     m_liveWindows = windows;
     m_session.setOcrOnly(ocrOnly);
     m_session.begin(byIndex, std::move(windows));
+    m_beginMs = m_clock.elapsed();
     if (quiet)
         m_session.quietKeyHints(); // a delayed capture is for a passing moment (KeyHintPolicy rule 7)
 
@@ -458,7 +509,7 @@ void Capture::show()
             rect.height(), SWP_NOACTIVATE);
         overlay.model->setGeometry(rect, overlay.window->devicePixelRatio(), overlay.window->size());
         overlay.cloaked = true;
-        overlay.warming = false;
+        overlay.warming = 0;
         win::setCloaked(overlay.window, true); // until its first frame with the picture
         overlay.window->show();
         if (rect.contains(cursor.x, cursor.y)) {
@@ -479,17 +530,27 @@ void Capture::show()
         win::bringToFront(under); // the keys: Esc, Enter, the arrows
         under->requestActivate();
     }
+    m_showMs = m_clock.elapsed();
     if (underIndex >= 0)
         m_session.pointerMove(underIndex, underAt); // the hover and the magnifier before the mouse moves
     if (m_ocrOnly) // where the pointer is, at the top: what this capture is for
         m_session.notify(tr("识别文字：拖选区域，或单击窗口 · Esc 取消"));
     startWatch();
+    // Nothing more here: the first frame is drawn when this returns to the
+    // event loop, and what is done before that is time with no overlay.
+}
+
+void Capture::afterUp()
+{
+    m_pointerFacts = diag::pointerFacts(); // the registry, the system's cursors
     // The capture before, read meanwhile: , shows it at once (not for reading words).
     if (m_history.enabled() && !m_ocrOnly) {
-        m_historyIds = m_history.ids();
+        m_historyIds = m_history.ids(); // a folder listed
         prefetchHistory(0);
     }
     m_session.setHistoryAvailable(m_history.enabled() && !m_ocrOnly && !m_historyIds.isEmpty()); // the key hints' , .
+    if (m_callbacks.shown)
+        m_callbacks.shown();
 }
 
 void Capture::startWatch()
@@ -503,7 +564,6 @@ void Capture::startWatch()
     m_shownClock.start();
     m_tickClock.start();
     m_watchTimer.start();
-    m_pointerFacts = diag::pointerFacts();
 }
 
 bool Capture::pointerOverOverlay(POINT at) const
@@ -547,11 +607,26 @@ void Capture::recordCapture(CaptureSession::Action action, const QRect& rect)
 {
     m_watchTimer.stop();
     QJsonArray dprs;
-    for (const Overlay& overlay : m_overlays)
+    QJsonArray refresh; // with the graphics card and how the overlays are presented: what a black flash or a broken pointer depends on
+    for (const Overlay& overlay : m_overlays) {
         dprs.append(overlay.model->dpr());
+        refresh.append(overlay.screen ? qRound(overlay.screen->refreshRate()) : 0);
+    }
+    QJsonArray cards;
+    DISPLAY_DEVICEW device {};
+    device.cb = sizeof device;
+    for (DWORD i = 0; ::EnumDisplayDevicesW(nullptr, i, &device, 0); ++i) {
+        const QString name = QString::fromWCharArray(device.DeviceString);
+        if ((device.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) && !cards.contains(name))
+            cards.append(name);
+    }
+    const bool software = QQuickWindow::graphicsApi() == QSGRendererInterface::Software;
     const QRect selected = !rect.isEmpty() ? rect : m_session.hasSelection() ? m_session.selectionRect() : QRect();
     QJsonObject details {{u"overlay_up_ms"_s, m_reported && m_upClock.isValid() ? m_clock.elapsed() - m_upClock.elapsed() : -1},
-        {u"grab_ms"_s, m_grabMs}, {u"monitors"_s, static_cast<int>(m_overlays.size())}, {u"dpr"_s, dprs},
+        {u"grab_ms"_s, m_grabMs}, {u"begun_ms"_s, m_beginMs}, {u"shown_ms"_s, m_showMs},
+        {u"page_faults"_s, m_reported ? m_upFaults : -1}, {u"refresh_hz"_s, refresh}, {u"graphics"_s, cards},
+        {u"presented"_s, software ? u"software"_s : qEnvironmentVariableIsSet("WINSHUN_CAPTURE_FLIP") ? u"flip"_s : u"copy"_s},
+        {u"monitors"_s, static_cast<int>(m_overlays.size())}, {u"dpr"_s, dprs},
         {u"wgc"_s, m_wgcShots}, {u"hdr"_s, m_hdrShots}, {u"magnifier"_s, m_magnifierOn},
         {u"smart_prescan"_s, m_callbacks.smart.prescan && m_callbacks.smart.prescan()},
         {u"first_since_start"_s, g_firstCapture}, {u"seconds_since_start"_s, diag::secondsSinceProcessStart()},
@@ -598,11 +673,18 @@ void Capture::frameDrawn(QQuickWindow* window)
     const auto overlay = std::ranges::find(m_overlays, window, [](const Overlay& o) { return o.window.data(); });
     if (overlay == m_overlays.end() || !overlay->cloaked)
         return;
-    if (overlay->warming) {
-        overlay->warming = false;
+    if (overlay->warming > 0) {
+        if (--overlay->warming > 0) { // drawn with the picture: once more without, its texture gone
+            overlay->model->setImage({});
+            window->update();
+            return;
+        }
+        overlay->model->setImage({});
         overlay->cloaked = false;
         window->hide();
         win::setCloaked(window, false);
+        if (std::ranges::none_of(m_overlays, [](const Overlay& o) { return o.warming > 0; }))
+            warmed();
         return;
     }
     if (m_state == State::Closing) {
@@ -617,13 +699,17 @@ void Capture::frameDrawn(QQuickWindow* window)
     if (!m_reported && std::ranges::none_of(m_overlays, [](const Overlay& o) { return o.window && o.window->isVisible() && o.cloaked; })) {
         m_reported = true;
         m_upClock.start();
-        qInfo().noquote() << u"Screen capture: overlay up %1 ms after the hotkey (grab %2 ms: %3; %4 windows listed in %5 ms%6)"_s
+        m_upFaults = static_cast<qint64>(pageFaults() - m_faultsBefore);
+        qInfo().noquote() << u"Screen capture: overlay up %1 ms after the hotkey (grab %2 ms: %3; %4 windows listed in %5 ms; session begun at %7 ms, windows shown at %8 ms; %9 page faults%6)"_s
                                  .arg(m_clock.elapsed())
                                  .arg(m_grabMs)
                                  .arg(m_grabReport)
                                  .arg(m_snapshot.windows().size())
                                  .arg(m_listMs - m_grabMs)
-                                 .arg(m_flyoutMs >= 0 ? u"; waited %1 ms for the Start menu to close"_s.arg(m_flyoutMs) : QString());
+                                 .arg(m_flyoutMs >= 0 ? u"; waited %1 ms for the Start menu to close"_s.arg(m_flyoutMs) : QString())
+                                 .arg(m_beginMs)
+                                 .arg(m_showMs)
+                                 .arg(m_upFaults);
         // show() brought it to the front for the keys. Not in front now,
         // with no word from bringToFront: something took the foreground
         // back. Say what, so a real case leaves a trace.
@@ -636,6 +722,19 @@ void Capture::frameDrawn(QQuickWindow* window)
             qWarning().noquote() << u"Screen capture: overlay up, but %1 (%2) is in front"_s.arg(
                 front ? QString::fromWCharArray(name) : u"no window"_s, front ? foreground::programOf(front) : QString());
         }
+        // The overlay's pointer, now. Qt sets a window's cursor when the mouse
+        // enters it, and Windows tells of that when a window shows under a
+        // still mouse; ours showed cloaked, which is no window to the mouse,
+        // and uncloaking tells nothing. Until the mouse next moved the
+        // pointer stayed what the program underneath had made it: its
+        // arrow or I-beam, or nothing at all where it hides the pointer
+        // while typing (measured: the arrow in 16 captures of 17 with the
+        // mouse still). Set to where it is, the mouse "moves" there.
+        if (POINT at {}; m_state == State::Showing && ::GetCursorPos(&at) && pointerOverOverlay(at))
+            ::SetCursorPos(at.x, at.y);
+        warmed(); // a capture asked for before the hidden first shows were over
+        if (m_state == State::Showing)
+            afterUp();
     }
 }
 

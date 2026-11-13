@@ -360,6 +360,15 @@ void SettingsEditor::setRecentItems(int count)
     commit();
 }
 
+void SettingsEditor::setMaxRows(int rows)
+{
+    rows = std::clamp(rows, 4, 20);
+    if (m_settings.maxRows == rows)
+        return;
+    m_settings.maxRows = rows;
+    commit();
+}
+
 void SettingsEditor::setFavoritesOnStart(bool on)
 {
     if (m_settings.favoritesOnStart == on)
@@ -1108,6 +1117,14 @@ void SettingsEditor::setRecordHistory(bool on)
     if (m_settings.recordHistory == on)
         return;
     m_settings.recordHistory = on;
+    commit();
+}
+
+void SettingsEditor::setRememberAdmin(bool on)
+{
+    if (m_settings.rememberAdmin == on)
+        return;
+    m_settings.rememberAdmin = on;
     commit();
 }
 
@@ -3595,6 +3612,26 @@ void SettingsEditor::finishDiagnosticsExport(const QString& error)
     m_diagnosticsBusy = false;
     m_diagnosticsStatus = error.isEmpty() ? tr("诊断包已生成，把 WinShun-diagnostics.zip 发给开发者即可") : error;
     emit diagnosticsChanged();
+}
+
+void SettingsEditor::learnDialogRule()
+{
+    if (!m_dialogRuleLearning)
+        emit dialogRuleLearnRequested();
+}
+
+void SettingsEditor::openDialogRules()
+{
+    emit dialogRulesFileRequested();
+}
+
+void SettingsEditor::setDialogRuleStatus(const QString& text, bool learning)
+{
+    if (m_dialogRuleStatus == text && m_dialogRuleLearning == learning)
+        return;
+    m_dialogRuleStatus = text;
+    m_dialogRuleLearning = learning;
+    emit dialogRuleStatusChanged();
 }
 
 bool SettingsEditor::chooseBackupFolder()

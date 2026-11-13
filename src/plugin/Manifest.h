@@ -51,6 +51,9 @@ enum class Permission : std::uint32_t {
     // own): only runtime.program exe, not with sandbox strict, and only from
     // the copy the user confirmed (Elevation.h).
     Elevated = 1u << 14,
+    // Win顺's own settings backup, made for it and restored from a file of its
+    // (backup_export, backup_restore: the cloud backup plugin, GitHub #276).
+    WinshunBackup = 1u << 15,
 };
 
 struct Permissions {

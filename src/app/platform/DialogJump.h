@@ -90,6 +90,10 @@ public:
     // navigate elevated dialogs changed (ServiceDialogNav availability).
     void refreshElevated();
 
+    // What counts as a file dialog changed (the user's rules, DialogRules):
+    // the window in front is looked at again, as if it had just come there.
+    void lookAgain() { follow(::GetForegroundWindow()); }
+
 private:
     static void CALLBACK onForeground(HWINEVENTHOOK, DWORD, HWND hwnd, LONG, LONG, DWORD, DWORD);
     static void CALLBACK onLocation(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG object, LONG, DWORD, DWORD);

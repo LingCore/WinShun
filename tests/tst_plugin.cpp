@@ -1075,6 +1075,25 @@ private slots:
 
     // `elevated` (Elevation.h): only a plugin's own exe, never with the strict
     // sandbox, never zero-code; known by its name.
+    // winshun:backup (GitHub #276) and the plugin it is for, as shipped.
+    void manifestBackupPermission()
+    {
+        QCOMPARE(permissionName(Permission::WinshunBackup), u"winshun:backup"_s);
+        QCOMPARE(permissionFromName(u"winshun:backup"), std::optional(Permission::WinshunBackup));
+        QFile file(QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(u"../src/cloudbackup-plugin/package/plugin.json"_s));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QString error;
+        const auto shipped = Manifest::parse(file.readAll(), &error);
+        QVERIFY2(shipped.has_value(), qPrintable(error));
+        QCOMPARE(shipped->id, u"winshun.cloudbackup"_s);
+        QVERIFY(shipped->permissions.has(Permission::WinshunBackup));
+        QVERIFY(shipped->permissions.has(Permission::Network));
+        QVERIFY(shipped->permissions.has(Permission::Notifications)); // a failed backup is told by a toast
+        QVERIFY(shipped->runtime.has_value());
+        QCOMPARE(shipped->runtime->start, StartWhen::Eager);
+        QCOMPARE(shipped->runtime->idleExitSec, 0);
+    }
+
     void manifestElevated()
     {
         QString error;

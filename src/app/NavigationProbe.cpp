@@ -2,6 +2,7 @@
 
 #include "AppCatalog.h"
 #include "Clipboard.h"
+#include "DialogRuleStore.h"
 #include "ClipboardDisplay.h"
 #include "FolderMenu.h"
 #include "History.h"
@@ -19,6 +20,8 @@
 #include "SystemTheme.h"
 #include "WindowFrame.h"
 #include "platform/ClipboardWatcher.h"
+#include "platform/DialogJump.h"
+#include "platform/DialogRules.h"
 #include "platform/WindowEffects.h"
 
 #include <QCoreApplication>
@@ -35,6 +38,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
+#include <QProcess>
+#include <QThread>
 #include <QInputMethodEvent>
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -46,6 +51,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <dwmapi.h>
 
@@ -793,6 +799,8 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
         const auto lock = index.index()->writeLock();
         const auto drive = index.index()->addRoot("D:");
         index.index()->add(drive, "report.txt", 0);
+        for (int i = 0; i < 25; ++i) // more than the most rows the box can be set to
+            index.index()->add(drive, QByteArray("ledger-") + QByteArray::number(i) + ".txt", 0);
     }
     AppCatalog apps;
     apps.setApps(std::make_shared<const AppList>());
@@ -878,6 +886,39 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     launcher.setPureSearch(false);
     settle(window);
     check(footer->isVisible() && tabs->isVisible(), u"switching off restores the original presentation"_s);
+    // 设置 › 外观 › 搜索框显示行数 (Settings::maxRows): the box is as tall as
+    // that many rows, where the screen has the room.
+    launcher.setScope(Launcher::All);
+    launcher.setQuery(u"ledger"_s);
+    settle(window);
+    const int rowHeight = window->property("rowHeight").toInt();
+    const auto rows = [&] { return window->property("listRows").toInt(); };
+    check(launcher.results()->count() == 25, u"rows: 25 found, got %1"_s.arg(launcher.results()->count()));
+    check(window->property("maxRows").toInt() == 8 && rows() == 8, u"rows: 8 by default, shows %1"_s.arg(rows()));
+    const int eightHeight = window->height();
+    launcher.setMaxRows(12);
+    settle(window);
+    const int fit = window->property("fitRows").toInt();
+    check(window->property("maxRows").toInt() == 12 && fit > 8 && rows() == fit,
+        u"rows: set to 12, fits %1, shows %2"_s.arg(fit).arg(rows()));
+    check(window->height() == eightHeight + (fit - 8) * rowHeight,
+        u"rows: the window grows by the rows added (%1 -> %2, rows of %3)"_s.arg(eightHeight).arg(window->height()).arg(rowHeight));
+    check(window->grabWindow().save(output.filePath(u"rows-12.png"_s)), u"capture 12 rows"_s);
+    launcher.setMaxRows(4);
+    settle(window);
+    check(rows() == 4 && window->height() == eightHeight - 4 * rowHeight, u"rows: set to 4, shows %1"_s.arg(rows()));
+    launcher.setFolderSearch(true);
+    settle(window);
+    check(window->property("maxRows").toInt() == 4, u"rows: a folder's box follows a setting under 6"_s);
+    launcher.setMaxRows(20);
+    settle(window);
+    check(window->property("maxRows").toInt() == 6, u"rows: a folder's box stays at 6"_s);
+    launcher.setFolderSearch(false);
+    launcher.setMaxRows(99);
+    check(launcher.maxRows() == 20, u"rows: never more than 20"_s);
+    launcher.setMaxRows(8);
+    launcher.setQuery({});
+    settle(window);
     check(!window->isActive(), u"probe never activates the user's desktop"_s);
     QFile report(output.filePath(u"pure-search.json"_s));
     if (!report.open(QIODevice::WriteOnly)) return false;
@@ -1153,7 +1194,7 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
         index.index()->add(root, "report-folder", EntryFlag::Directory);
     }
     AppCatalog apps;
-    AppInfo app {.name = u"Report"_s, .id = u"WinShun.Probe.Report"_s, .target = u"D:\\Report.exe"_s};
+    AppInfo app {.name = u"Report"_s, .id = u"WinShun.Probe.Report"_s, .target = u"D:\\Report.exe"_s, .elevatable = true};
     app.prepare();
     apps.setApps(std::make_shared<const AppList>(AppList {app}));
     SystemCatalog places;
@@ -1200,6 +1241,54 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
     check(strip->property("shown").toBool(), u"merged All keeps the type strip visible"_s);
     check(launcher.results()->count() == 4 && launcher.results()->at(0)->isApp(),
         u"merged All finds both files and applications, with the application first"_s);
+    {
+        // 记住以管理员身份运行 (GitHub #313): only with the setting on does
+        // a program last run so say 管理员 and offer the way back.
+        const QString appPath = launcher.results()->pathAt(0);
+        const auto menuHas = [&](Launcher::Action action) {
+            const QVariantList items = launcher.menuItems(0);
+            return std::ranges::any_of(items, [&](const QVariant& i) { return i.toMap().value(u"action"_s).toInt() == action; });
+        };
+        const auto adminRow = [&] {
+            return launcher.results()->data(launcher.results()->index(0), ResultModel::AdminRunRole).toBool();
+        };
+        const auto searchAgain = [&] {
+            launcher.setQuery(u"repor"_s);
+            settle(window);
+            launcher.setQuery(u"report"_s);
+            settle(window);
+        };
+        history.record(appPath, u"report"_s, QDateTime::currentMSecsSinceEpoch());
+        history.setAdmin(appPath, true);
+        searchAgain();
+        check(launcher.results()->pathAt(0) == appPath && !adminRow() && menuHas(Launcher::RunAsAdmin) && !menuHas(Launcher::RunAsUser),
+            u"remembering administrator runs is off by default"_s);
+        launcher.setRememberAdmin(true);
+        searchAgain();
+        check(adminRow() && menuHas(Launcher::RunAsUser) && !menuHas(Launcher::RunAsAdmin),
+            u"a program last run as administrator says so and offers normal rights"_s);
+        check(launcher.currentRow() == 0
+                && launcher.keyHints().value(u"enter"_s).toString() == QCoreApplication::translate("ws::Launcher", "以管理员身份运行"),
+            u"the footer says what Enter does on it"_s);
+        check(window->grabWindow().save(output.filePath(u"remembered-admin-enter.png"_s)), u"capture the footer's hint"_s);
+        key(field, Qt::Key_Down);
+        settle(window);
+        check(launcher.currentRow() == 1
+                && launcher.keyHints().value(u"enter"_s).toString() == QCoreApplication::translate("ws::Launcher", "打开"),
+            u"and on the row after it"_s);
+        check(!launcher.results()->data(launcher.results()->index(1), ResultModel::AdminRunRole).toBool(),
+            u"other rows are not marked"_s);
+        check(window->grabWindow().save(output.filePath(u"remembered-admin.png"_s)), u"capture the administrator mark"_s);
+        key(field, Qt::Key_Up);
+        settle(window);
+        history.setAdmin(appPath, false);
+        searchAgain();
+        check(!adminRow() && menuHas(Launcher::RunAsAdmin) && !menuHas(Launcher::RunAsUser),
+            u"run with normal rights, it is an ordinary row again"_s);
+        launcher.setRememberAdmin(false);
+        history.remove(appPath);
+        searchAgain();
+    }
     launcher.toggleFileType(0);
     settle(window);
     check(launcher.scope() == Launcher::Files && launcher.results()->count() == 1
@@ -1383,6 +1472,138 @@ bool checkLogoPositionSettings(QQuickWindow* window, SettingsEditor* editor, con
     check(editor->logoRightClick() == u"menu", u"settings editor rejects unknown logo actions"_s);
     check(!window->isActive(), u"logo settings probe leaves desktop focus untouched"_s);
     QFile report(output.filePath(u"logo-position-settings.json"_s));
+    if (!report.open(QIODevice::WriteOnly)) return false;
+    report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
+    return check.passed;
+}
+
+// The row 程序自己的选文件窗口 and what stands behind it (GitHub #272), with
+// a WPF window in another process standing in for a program's own file
+// window (`fixture`: tests/fixtures/wpf-file-window.ps1): 识别窗口 counts
+// down and writes a rule for the window brought to the front, the dialogs'
+// following (DialogJump) takes the window from then on, a folder and a file
+// go into its box, and a rule taken out of the file lets the window go.
+bool checkDialogRuleSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output, const QString& fixture)
+{
+    Checks check;
+    const auto waitUntil = [](const std::function<bool()>& done, int ms) {
+        QElapsedTimer clock;
+        clock.start();
+        while (!done()) {
+            if (clock.elapsed() > ms)
+                return false;
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            QThread::msleep(10);
+        }
+        return true;
+    };
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 0), Q_ARG(QVariant, 2),
+        Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "程序自己的选文件窗口")));
+    settle(window);
+    auto* row = item(window->contentItem(), u"dialogRulesRow"_s);
+    auto* learn = item(window->contentItem(), u"dialogRuleLearnButton"_s);
+    auto* fileButton = item(window->contentItem(), u"dialogRuleFileButton"_s);
+    check(row && row->isVisible() && learn && learn->isVisible() && fileButton && fileButton->isVisible(),
+        u"the row and its two buttons are on the dialogs tab"_s);
+    if (!row || !learn || !fileButton)
+        return false;
+    const auto inside = [&](QQuickItem* button) {
+        const QPointF at = button->mapToItem(row, QPointF());
+        return at.x() >= 0 && at.x() + button->width() <= row->width() + 1 && at.y() >= 0 && at.y() + button->height() <= row->height() + 1;
+    };
+    check(inside(learn) && inside(fileButton), u"both buttons fit inside the row"_s);
+
+    // The store as App wires it, on a folder of its own.
+    const QString folder = output.filePath(u"rules"_s);
+    QDir(folder).removeRecursively();
+    QDir().mkpath(folder);
+    DialogRuleStore store(folder);
+    QObject::connect(editor, &SettingsEditor::dialogRuleLearnRequested, &store, [&] { store.learn(); });
+    QObject::connect(&store, &DialogRuleStore::status, editor,
+        [&](const QString& text, bool done) { editor->setDialogRuleStatus(text, !done); });
+    HWND followed = nullptr;
+    DialogJump::Callbacks callbacks;
+    callbacks.setHotkey = [](bool) { return true; };
+    callbacks.dialogChanged = [&](HWND dialog) { followed = dialog; };
+    DialogJump jump(std::move(callbacks));
+    QObject::connect(&store, &DialogRuleStore::changed, editor, [&] { jump.lookAgain(); });
+
+    const QString starter = store.ensureFile();
+    QFile started(starter);
+    check(!starter.isEmpty() && started.open(QIODevice::ReadOnly) && dialogrules::parse(started.readAll()).size() == 1,
+        u"规则文件 makes a file with one example rule in it"_s);
+    started.close();
+
+    QTemporaryDir places;
+    const QString went = places.filePath(u"went.txt"_s);
+    const QString target = places.filePath(u"工程 数据.gdb"_s);
+    QDir().mkpath(target);
+    QFile data(QDir(target).filePath(u"roads.shp"_s));
+    check(data.open(QIODevice::WriteOnly), u"a folder and a file to go to"_s);
+    data.close();
+    QProcess program;
+    program.start(u"powershell.exe"_s, {u"-NoProfile"_s, u"-STA"_s, u"-ExecutionPolicy"_s, u"Bypass"_s, u"-File"_s,
+                                           QDir::toNativeSeparators(fixture), u"-Result"_s, QDir::toNativeSeparators(went)});
+    const auto stop = qScopeGuard([&] {
+        program.kill();
+        program.waitForFinished(3000);
+    });
+    HWND other = nullptr;
+    check(waitUntil([&] { return (other = ::FindWindowW(nullptr, L"WsRuleFixture 添加数据")) != nullptr; }, 20000),
+        u"the stand-in window is up"_s);
+    if (!other)
+        return false;
+    const auto toFront = [&] {
+        INPUT nothing {};
+        nothing.type = INPUT_MOUSE;
+        ::SendInput(1, &nothing, sizeof nothing); // as a user's input: Windows then lets the front be handed on
+        ::SetForegroundWindow(other);
+        return waitUntil([&] { return ::GetForegroundWindow() == other; }, 3000);
+    };
+    check(toFront(), u"the stand-in window comes to the front"_s);
+    waitUntil([] { return false; }, 400);
+    check(!followed, u"without a rule the window is nobody's file dialog"_s);
+
+    QMetaObject::invokeMethod(learn, "clicked");
+    settle(window);
+    check(editor->dialogRuleLearning() && editor->dialogRuleStatus().contains(u'5') && !learn->property("enabled").toBool(),
+        u"识别窗口 counts down and cannot be clicked twice: "_s + editor->dialogRuleStatus());
+    check(window->grabWindow().save(output.filePath(u"dialog-rule-learning.png"_s)), u"capture the countdown"_s);
+    check(toFront(), u"the user switches to the window meanwhile"_s);
+    check(waitUntil([&] { return !editor->dialogRuleLearning(); }, 12000), u"the countdown ends"_s);
+    check(editor->dialogRuleStatus().contains(u"WsRuleFixture 添加数据"_s) && editor->dialogRuleStatus().contains(u"powershell.exe"_s),
+        u"the row says which window it learned: "_s + editor->dialogRuleStatus());
+    settle(window);
+    check(inside(learn) && inside(fileButton), u"the buttons still fit with the status line shown"_s);
+    check(window->grabWindow().save(output.filePath(u"dialog-rule-learned.png"_s)), u"capture the learned state"_s);
+    QFile written(store.filePath());
+    const std::vector<dialogrules::Rule> rules = written.open(QIODevice::ReadOnly) ? dialogrules::parse(written.readAll()) : std::vector<dialogrules::Rule>();
+    written.close();
+    check(rules.size() == 2 && rules.back().program == L"powershell.exe" && rules.back().box.id == L"NameBox",
+        u"the rule is in the file beside the example, with the box that takes the name"_s);
+    check(waitUntil([&] { return followed == other; }, 3000), u"the window is followed at once, still in front"_s);
+
+    const std::wstring folderPath = QDir::toNativeSeparators(target).toStdWString();
+    const auto wentTo = [&] {
+        QFile file(went);
+        return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()) : QString();
+    };
+    jump.go(other, folderPath, false);
+    check(waitUntil([&] { return wentTo() == QString::fromStdWString(folderPath + L'\\'); }, 5000),
+        u"a folder is typed into its box with a trailing backslash and confirmed"_s);
+    const std::wstring filePath = folderPath + L"\\roads.shp";
+    jump.go(other, filePath, true, true);
+    check(waitUntil([&] { return wentTo() == QString::fromStdWString(filePath); }, 5000),
+        u"a file goes in as its whole path and is confirmed when asked"_s);
+
+    // The rule taken out again, in an editor: the window is let go without a restart.
+    QFile emptied(store.filePath());
+    check(emptied.open(QIODevice::WriteOnly | QIODevice::Truncate) && emptied.write("{\"dialogs\": []}") > 0, u"the file is edited"_s);
+    emptied.close();
+    check(waitUntil([&] { return followed == nullptr; }, 5000), u"a saved change applies at once: the window is let go"_s);
+    dialogrules::setRules({});
+
+    QFile report(output.filePath(u"dialog-rule-settings.json"_s));
     if (!report.open(QIODevice::WriteOnly)) return false;
     report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
     return check.passed;
