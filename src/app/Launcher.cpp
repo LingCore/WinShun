@@ -2387,6 +2387,12 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
             }
         }
     }
+    if (m_rememberAdmin && m_recordHistory) {
+        for (SearchResult& r : rows) {
+            if (adminRemembered(r))
+                r.runAsAdmin = true; // the row says so (管理员)
+        }
+    }
     m_results.assign(std::move(rows), std::move(highlights));
     m_shownText = searchText();
     m_shownScope = m_scope;
@@ -3541,13 +3547,13 @@ void Launcher::refreshKeyHints()
             tab = tr("调音量");
         }
     } else if (r->isApp()) {
-        enter = tr("打开");
+        enter = adminRemembered(*r) ? tr("以管理员身份运行") : tr("打开"); // GitHub #313: said before Enter is pressed
         if (!r->target.isEmpty()) {
             secondKeys = u"Ctrl+Enter"_s;
             second = r->isPackagedApp() ? tr("打开安装文件夹") : tr("打开位置");
         }
     } else {
-        enter = r->isDir ? tr("打开文件夹") : tr("打开");
+        enter = r->isDir ? tr("打开文件夹") : adminRemembered(*r) ? tr("以管理员身份运行") : tr("打开");
         secondKeys = u"Ctrl+Enter"_s;
         // Typed in a folder's window: its direct items are followed there as the
         // keys move; the rest are not (that would navigate the tab), Ctrl+Enter
@@ -4712,6 +4718,7 @@ void Launcher::clearSelection()
 void Launcher::perform(const SearchResult& result, Action action, bool fileChecked)
 {
     const SearchResult r = result; // the model may change underneath us
+    m_adminNote.reset(); // set below for the row being run, taken by remember()
     if (!fileChecked)
         dropServerWait(); // a server still being waited for no longer matters
     if (r.isWindow()) {
@@ -4778,8 +4785,20 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         return;
     }
     if (r.isPlace()) {
-        performPlace(r, action);
+        performPlace(r, action == RunAsUser ? Open : action);
         return;
+    }
+    // 记住以管理员身份运行 (GitHub #313): Enter runs as it was last run from
+    // here. remember() keeps which with the row. Not on the second pass for
+    // a file checked meanwhile: `action` is already what it became.
+    if (action == RunAsUser) {
+        action = Open;
+        if (canRememberAdmin(r))
+            m_adminNote = false;
+    } else if (action == RunAsAdmin && canRememberAdmin(r)) {
+        m_adminNote = true;
+    } else if (!fileChecked && action == Open && adminRemembered(r)) {
+        action = RunAsAdmin;
     }
     if (r.isApp()) {
         performApp(r, action);
@@ -5499,6 +5518,30 @@ void Launcher::remember(const QString& path, const QString& query)
     rememberQuery();
     if (m_recordHistory)
         m_history->record(path, query, QDateTime::currentMSecsSinceEpoch());
+    if (m_recordHistory && m_adminNote)
+        m_history->setAdmin(path, *m_adminNote);
+    m_adminNote.reset();
+}
+
+void Launcher::setRememberAdmin(bool on)
+{
+    if (m_rememberAdmin == on)
+        return;
+    m_rememberAdmin = on;
+    if (m_window && m_window->isVisible())
+        search(); // 管理员 comes or goes
+}
+
+bool Launcher::canRememberAdmin(const SearchResult& r) const
+{
+    if (!m_rememberAdmin || !m_recordHistory || r.missing || r.offline || r.isPlace() || r.isWeb() || r.isPlugin() || r.isWindow())
+        return false;
+    return r.isApp() ? r.elevatable : !r.isDir && shell::canRunAsAdministrator(r.path);
+}
+
+bool Launcher::adminRemembered(const SearchResult& r) const
+{
+    return m_rememberAdmin && m_recordHistory && m_history->admin(r.path) && canRememberAdmin(r);
 }
 
 // A window switched to that shows a folder (Explorer, Total Commander, Opus:
@@ -5882,8 +5925,12 @@ QVariantList Launcher::menuItems(int row) const
         return items;
     }
     if (r->isApp()) {
-        items.append(entry(Open, tr("打开"), u"Enter"_s, u"\uE8A7"_s)); // OpenInNewWindow
-        if (r->elevatable && !r->missing && !r->offline)
+        // Enter runs it as administrator (GitHub #313): said so, with the way back.
+        const bool admin = adminRemembered(*r);
+        items.append(entry(Open, admin ? tr("以管理员身份运行") : tr("打开"), u"Enter"_s, admin ? u"\uE7EF"_s : u"\uE8A7"_s)); // Admin, OpenInNewWindow
+        if (admin)
+            items.append(entry(RunAsUser, tr("以普通权限运行"), QString(), u"\uE8A7"_s));
+        else if (r->elevatable && !r->missing && !r->offline)
             items.append(entry(RunAsAdmin, tr("以管理员身份运行"), u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
         if (!r->target.isEmpty())
             items.append(entry(Reveal, r->isPackagedApp() ? tr("打开安装文件夹") : tr("打开所在位置"), u"Ctrl+Enter"_s,
@@ -5901,7 +5948,9 @@ QVariantList Launcher::menuItems(int row) const
         }
         return items;
     }
-    items.append(entry(Open, r->isDir ? tr("打开文件夹") : tr("打开"), u"Enter"_s, r->isDir ? u"\uE838"_s : u"\uE8E5"_s));
+    const bool admin = adminRemembered(*r); // as an app's above
+    items.append(entry(Open, r->isDir ? tr("打开文件夹") : admin ? tr("以管理员身份运行") : tr("打开"), u"Enter"_s,
+        r->isDir ? u"\uE838"_s : admin ? u"\uE7EF"_s : u"\uE8E5"_s));
     items.append(entry(Reveal, tr("打开所在位置"), u"Ctrl+Enter"_s, u"\uE8DA"_s));
     if (navigation::canBrowseFolder(*r))
         items.append(entry(BrowseFolder, tr("进入此文件夹搜索"), QString(), u"\uE721"_s));
@@ -5912,7 +5961,9 @@ QVariantList Launcher::menuItems(int row) const
     items.append(entry(OpenTerminal, tr("在终端中打开"), QString(), u"\uE756"_s)); // CommandPrompt
     if (r->isDir && m_contentEnabled && !r->path.startsWith(u"\\\\"_s)) // shares: contents are not read there
         items.append(entry(SearchInFolder, tr("在此文件夹中搜内容"), QString(), u"\uE721"_s)); // Search
-    if (!r->isDir && !r->missing && !r->offline && shell::canRunAsAdministrator(r->path))
+    if (admin)
+        items.append(entry(RunAsUser, tr("以普通权限运行"), QString(), u"\uE8E5"_s));
+    else if (!r->isDir && !r->missing && !r->offline && shell::canRunAsAdministrator(r->path))
         items.append(entry(RunAsAdmin, tr("以管理员身份运行"), u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
     fileCommandItems(items);
     if (renamable(*r) && m_results.selectedCount() <= 1)

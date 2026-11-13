@@ -1908,6 +1908,7 @@ void App::applySettings(bool initial)
     }
     m_backup->setFolder(m_settings.backupFolder);
     m_launcher->setRecordHistory(m_settings.recordHistory);
+    m_launcher->setRememberAdmin(m_settings.rememberAdmin);
     m_launcher->setMergeFileScope(m_settings.mergeFileScope);
     m_launcher->setAppsTab(m_settings.appsTab);
     m_launcher->setHistoryKeys(m_settings.queryHistoryKeys);

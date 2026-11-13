@@ -1194,7 +1194,7 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
         index.index()->add(root, "report-folder", EntryFlag::Directory);
     }
     AppCatalog apps;
-    AppInfo app {.name = u"Report"_s, .id = u"WinShun.Probe.Report"_s, .target = u"D:\\Report.exe"_s};
+    AppInfo app {.name = u"Report"_s, .id = u"WinShun.Probe.Report"_s, .target = u"D:\\Report.exe"_s, .elevatable = true};
     app.prepare();
     apps.setApps(std::make_shared<const AppList>(AppList {app}));
     SystemCatalog places;
@@ -1241,6 +1241,54 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
     check(strip->property("shown").toBool(), u"merged All keeps the type strip visible"_s);
     check(launcher.results()->count() == 4 && launcher.results()->at(0)->isApp(),
         u"merged All finds both files and applications, with the application first"_s);
+    {
+        // 记住以管理员身份运行 (GitHub #313): only with the setting on does
+        // a program last run so say 管理员 and offer the way back.
+        const QString appPath = launcher.results()->pathAt(0);
+        const auto menuHas = [&](Launcher::Action action) {
+            const QVariantList items = launcher.menuItems(0);
+            return std::ranges::any_of(items, [&](const QVariant& i) { return i.toMap().value(u"action"_s).toInt() == action; });
+        };
+        const auto adminRow = [&] {
+            return launcher.results()->data(launcher.results()->index(0), ResultModel::AdminRunRole).toBool();
+        };
+        const auto searchAgain = [&] {
+            launcher.setQuery(u"repor"_s);
+            settle(window);
+            launcher.setQuery(u"report"_s);
+            settle(window);
+        };
+        history.record(appPath, u"report"_s, QDateTime::currentMSecsSinceEpoch());
+        history.setAdmin(appPath, true);
+        searchAgain();
+        check(launcher.results()->pathAt(0) == appPath && !adminRow() && menuHas(Launcher::RunAsAdmin) && !menuHas(Launcher::RunAsUser),
+            u"remembering administrator runs is off by default"_s);
+        launcher.setRememberAdmin(true);
+        searchAgain();
+        check(adminRow() && menuHas(Launcher::RunAsUser) && !menuHas(Launcher::RunAsAdmin),
+            u"a program last run as administrator says so and offers normal rights"_s);
+        check(launcher.currentRow() == 0
+                && launcher.keyHints().value(u"enter"_s).toString() == QCoreApplication::translate("ws::Launcher", "以管理员身份运行"),
+            u"the footer says what Enter does on it"_s);
+        check(window->grabWindow().save(output.filePath(u"remembered-admin-enter.png"_s)), u"capture the footer's hint"_s);
+        key(field, Qt::Key_Down);
+        settle(window);
+        check(launcher.currentRow() == 1
+                && launcher.keyHints().value(u"enter"_s).toString() == QCoreApplication::translate("ws::Launcher", "打开"),
+            u"and on the row after it"_s);
+        check(!launcher.results()->data(launcher.results()->index(1), ResultModel::AdminRunRole).toBool(),
+            u"other rows are not marked"_s);
+        check(window->grabWindow().save(output.filePath(u"remembered-admin.png"_s)), u"capture the administrator mark"_s);
+        key(field, Qt::Key_Up);
+        settle(window);
+        history.setAdmin(appPath, false);
+        searchAgain();
+        check(!adminRow() && menuHas(Launcher::RunAsAdmin) && !menuHas(Launcher::RunAsUser),
+            u"run with normal rights, it is an ordinary row again"_s);
+        launcher.setRememberAdmin(false);
+        history.remove(appPath);
+        searchAgain();
+    }
     launcher.toggleFileType(0);
     settle(window);
     check(launcher.scope() == Launcher::Files && launcher.results()->count() == 1

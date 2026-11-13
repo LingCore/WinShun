@@ -382,6 +382,10 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/History", QT_TRANSLATE_NOOP("AiSettings", "记住搜索和打开过的项目"), "startup", 3,
                     "Remembers what was opened: listed when nothing is typed, and ranked first among matches."},
         &Settings::recordHistory));
+    add(boolean({"Launcher/RememberAdmin", QT_TRANSLATE_NOOP("AiSettings", "记住以管理员身份运行"), "startup", 3,
+                    "A program last run as administrator from Win顺 (Ctrl+Shift+Enter) runs so again on Enter, until it is "
+                    "run with normal rights from its menu. Needs Launcher/History."},
+        &Settings::rememberAdmin));
 
     // ---- 外观 ----
     add(choice({"Appearance/Theme", QT_TRANSLATE_NOOP("AiSettings", "主题"), "appearance", -1, "Light or dark windows."},

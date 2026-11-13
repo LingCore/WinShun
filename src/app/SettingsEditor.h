@@ -55,6 +55,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool recordingHotkey READ recordingHotkey WRITE setRecordingHotkey NOTIFY recordingHotkeyChanged FINAL)
     Q_PROPERTY(bool autostart READ autostart WRITE setAutostart NOTIFY autostartChanged FINAL)
     Q_PROPERTY(bool recordHistory READ recordHistory WRITE setRecordHistory NOTIFY changed FINAL)
+    Q_PROPERTY(bool rememberAdmin READ rememberAdmin WRITE setRememberAdmin NOTIFY changed FINAL)
     Q_PROPERTY(int historyCount READ historyCount NOTIFY historyCountChanged FINAL)
     // The launcher is wider or narrower than at first (dragged at its edge; Placement).
     Q_PROPERTY(bool launcherWidthSet READ launcherWidthSet NOTIFY launcherWidthSetChanged FINAL)
@@ -393,6 +394,8 @@ public:
     void refreshAutostart(); // changed or read again elsewhere (the tray menu, the task itself)
     bool recordHistory() const { return m_settings.recordHistory; }
     void setRecordHistory(bool on);
+    bool rememberAdmin() const { return m_settings.rememberAdmin; }
+    void setRememberAdmin(bool on);
     int historyCount() const { return m_historyCount; }
     void setHistoryCount(int count); // set by the app
     bool launcherWidthSet() const { return m_launcherWidthSet; }

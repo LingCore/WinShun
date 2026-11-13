@@ -57,6 +57,7 @@ Item {
     required property bool suggestion // a web search on one of the site's suggestions: tagged 建议
     required property bool packagedApp
     required property bool elevatable
+    required property bool adminRun // Enter runs it as administrator (GitHub #313): said in place of 最近
     required property bool revealable
     required property bool copyable
     required property bool settingsAction
@@ -453,6 +454,7 @@ Item {
         text: row.contentMode ? row.location
             : row.offline ? qsTr("离线")
             : row.missing ? qsTr("已不存在")
+            : row.adminRun ? qsTr("管理员")
             : row.favorite ? (row.favoriteKeyword.length > 0 ? qsTr("收藏 · %1").arg(row.favoriteKeyword) : qsTr("收藏"))
             : row.recent ? qsTr("最近") : ""
         color: Theme.faint
@@ -475,6 +477,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             y: row.onPixel((badge.height - height) / 2)
             text: row.plugin ? row.source : row.missing ? qsTr("已不存在")
+                : row.adminRun ? qsTr("管理员")
                 : row.favorite ? (row.favoriteKeyword.length > 0 ? qsTr("收藏 · %1").arg(row.favoriteKeyword) : qsTr("收藏"))
                 : row.recent ? qsTr("最近") : row.suggestion ? qsTr("建议") : row.web ? qsTr("网页")
                 : row.place ? qsTr("系统") : row.source

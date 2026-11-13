@@ -1120,6 +1120,14 @@ void SettingsEditor::setRecordHistory(bool on)
     commit();
 }
 
+void SettingsEditor::setRememberAdmin(bool on)
+{
+    if (m_settings.rememberAdmin == on)
+        return;
+    m_settings.rememberAdmin = on;
+    commit();
+}
+
 void SettingsEditor::setDialogBar(bool on)
 {
     if (m_settings.dialogBar == on)

@@ -110,6 +110,7 @@ struct Settings {
     QString proxyMode = QStringLiteral("system");
     QString proxyAddress;
     bool recordHistory = true; // remember what was opened: listed with nothing typed, first among matches
+    bool rememberAdmin = false; // Enter runs as administrator what was last run so from here (GitHub #313)
     bool dialogJump = true; // Ctrl+G in an Open or Save dialog goes to the folder open in a file manager (filemanager::)
     // A search bar under Open and Save dialogs (DialogBar). Off for new
     // installs, a module turned on where wanted (the 插件 page's 内置功能);

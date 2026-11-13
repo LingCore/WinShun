@@ -707,6 +707,10 @@
         <translation>Remember searches and opened items</translation>
     </message>
     <message>
+        <source>记住以管理员身份运行</source>
+        <translation>Remember “Run as administrator”</translation>
+    </message>
+    <message>
         <source>主题</source>
         <translation>Theme</translation>
     </message>
@@ -4296,6 +4300,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>最近</source>
         <translation>Recent</translation>
+    </message>
+    <message>
+        <source>管理员</source>
+        <translation>Admin</translation>
     </message>
     <message>
         <source>离线</source>
@@ -7891,6 +7899,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>记住搜索和打开过的项目</source>
         <translation>Remember searches and opened items</translation>
+    </message>
+    <message>
+        <source>记住以管理员身份运行</source>
+        <translation>Remember “Run as administrator”</translation>
+    </message>
+    <message>
+        <source>管理员;提权;权限;admin;administrator;elevate</source>
+        <translation>administrator;admin;elevate;rights;UAC</translation>
+    </message>
+    <message>
+        <source>用 Ctrl+Shift+Enter 以管理员身份运行过的程序，之后按 Enter 也以管理员身份运行；右键选“以普通权限运行”可改回</source>
+        <translation>A program you ran as administrator with Ctrl+Shift+Enter runs as administrator on Enter from then on; right-click it and choose “Run with normal rights” to change it back</translation>
     </message>
     <message>
         <source>记住打开过的项目和最近 100 条搜索词；同样的字常打开的项目排在前面。插件命令不记入搜索历史</source>
@@ -11675,6 +11695,10 @@ Content index: %5</translation>
     <message>
         <source>“%1”不能以管理员身份运行</source>
         <translation>“%1” can’t run as administrator</translation>
+    </message>
+    <message>
+        <source>以普通权限运行</source>
+        <translation>Run with normal rights</translation>
     </message>
     <message>
         <source>“%1”没有可以打开的位置</source>

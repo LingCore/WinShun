@@ -54,6 +54,14 @@ public:
     const QString& filePath() const noexcept { return m_filePath; }
     Use use(const QString& path) const; // count 0 when not there
 
+    // Whether it was last run as administrator from here (GitHub #313, the
+    // setting 记住以管理员身份运行): Enter then runs it so again. Kept for a
+    // path that is in the history only; written as one more text of the
+    // line ("\x01admin", which nothing typed can be), so that an older
+    // build keeps it.
+    bool admin(const QString& path) const;
+    void setAdmin(const QString& path, bool on);
+
     // The paths for what is being typed, best first: those opened for just
     // this text, then for a text containing this one, then for a text
     // contained in this one, then the rest; each group by its weight
@@ -76,6 +84,7 @@ private:
         Use use;
         double weight = 0; // as of use.last (that 0: unknown, taken as old)
         QList<Typed> typed;
+        bool admin = false;
     };
 
     void save() const;

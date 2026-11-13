@@ -2706,6 +2706,19 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("记住以管理员身份运行")
+                    keywords: qsTr("管理员;提权;权限;admin;administrator;elevate").split(";")
+                    description: qsTr("用 Ctrl+Shift+Enter 以管理员身份运行过的程序，之后按 Enter 也以管理员身份运行；右键选“以普通权限运行”可改回")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        enabled: window.editor.recordHistory
+                        checked: window.editor.rememberAdmin
+                        onToggled: (on) => window.editor.rememberAdmin = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("搜索历史快捷键")
                     description: qsTr("在搜索框中翻阅；回到最新位置时恢复未完成的输入，也可点时钟图标浏览和删除")
                     keywords: qsTr("历史;上一个;下一个;history;Ctrl;Alt").split(";")

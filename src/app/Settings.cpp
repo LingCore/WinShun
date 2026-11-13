@@ -879,6 +879,7 @@ void Settings::load()
         proxyMode = d.proxyMode;
     proxyAddress = readOrDefault(s, u"Proxy/Address"_s, d.proxyAddress).trimmed();
     recordHistory = readOrDefault(s, u"Launcher/History"_s, d.recordHistory);
+    rememberAdmin = readOrDefault(s, u"Launcher/RememberAdmin"_s, d.rememberAdmin);
     mergeFileScope = readOrDefault(s, u"Results/MergeFileScope"_s, d.mergeFileScope);
     appsTab = readOrDefault(s, u"Results/AppsTab"_s, d.appsTab);
     queryHistoryKeys = readOrDefault(s, u"Launcher/QueryHistoryKeys"_s, d.queryHistoryKeys);
@@ -1300,6 +1301,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Proxy/Mode"_s, proxyMode);
     s.setValue(u"Proxy/Address"_s, proxyAddress);
     s.setValue(u"Launcher/History"_s, recordHistory);
+    s.setValue(u"Launcher/RememberAdmin"_s, rememberAdmin);
     s.setValue(u"Launcher/DialogJump"_s, dialogJump);
     s.setValue(u"Launcher/DialogBar"_s, dialogBar);
     s.setValue(u"Launcher/DialogBarPlace"_s, dialogBarPlace);

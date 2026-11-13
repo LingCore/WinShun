@@ -178,7 +178,7 @@ scoop install winshun
 - **管理员直读**：管理员账户可以在设置 → 索引方式里选“管理员直读”，像旧版一样整个程序以管理员身份运行、直接读盘。
 - **以管理员身份运行的程序**：Windows 不让普通权限的程序往它们里面打字。往这样的窗口里粘贴时，装了索引服务的由服务替你按一次粘贴键（设置 › 剪贴板 › “粘贴到以管理员身份运行的程序”，默认开启）；没有索引服务或关掉这一项时，Win顺 只复制，提示你按 `Ctrl+V`。它们的“打开”“另存为”对话框旁也有搜索框：装了索引服务的安装版能像别的对话框一样直接转到选中的文件夹，`Ctrl+G` 也管用；便携版和“只为我安装”的版本只能复制选中的路径，要你自己粘贴到路径框里。
 - **它们在最前面时双击 Ctrl 没反应**：Windows 也不把发给它们的按键交给普通权限的程序，所以没装索引服务时，这种窗口在最前面，双击 Ctrl（Alt、Shift）没反应；带 Ctrl、Alt、Shift 或 Win 的组合键（比如 `Alt+Space`）照样能用。装了索引服务就没有这个问题（服务的助手听得到），Win顺 自己以管理员身份运行（管理员直读）时也没有。这种程序第一次在最前面停一会儿时，Win顺 会弹一次通知说明：设了组合键就提醒你改按它；便携版（含 Scoop 装的）能装索引服务时，点通知直接到 设置 › 索引方式，在下面一行装上。每个程序只说一次，最多说 3 个，一次运行只说一次。
-- **打开的东西是普通权限**：从 Win顺 打开的文件和应用都以普通权限运行，只有 `Ctrl+Shift+Enter` 才以管理员身份运行。
+- **打开的东西是普通权限**：从 Win顺 打开的文件和应用都以普通权限运行，只有 `Ctrl+Shift+Enter` 才以管理员身份运行。常用管理员身份开的程序（比如终端），可以在 **设置 › 使用记录** 里打开“记住以管理员身份运行”（默认关闭）：这样运行过一次后，之后按 `Enter` 也以管理员身份运行，这一行会标出“管理员”；右键选“以普通权限运行”改回。
 
 </details>
 
@@ -424,7 +424,7 @@ Standard and portable packages install enhanced text recognition on demand. Open
 - **Direct as administrator**: on an administrator account, Settings → Index access → “Direct (administrator)” runs the whole app as administrator and reads the drives itself, as earlier versions did.
 - **Programs running as administrator**: Windows doesn't let normal-rights programs type into them. Pasting into such a window, the index service presses the paste keys for you where it is installed (Settings › Clipboard › "Paste into programs run as administrator", on by default); without the service, or with that turned off, WinShun only copies and tells you to press `Ctrl+V`. The search bar beside their Open / Save dialogs appears too: the installed WinShun with the index service jumps to the chosen folder just as in other dialogs, and `Ctrl+G` works there; a portable copy, or one installed for you only, can only copy the chosen path for you to paste into the path box yourself.
 - **Double Ctrl does nothing while they are in front**: Windows doesn't give the keys typed into them to normal-rights programs either, so without the index service double Ctrl (Alt, Shift) does nothing while such a window is in front; a shortcut with Ctrl, Alt, Shift or Win (`Alt+Space`, say) still works. With the index service installed this doesn't happen (the service's helper hears the keys), nor when WinShun itself runs as administrator (Direct). The first time such a program stays in front for a moment, WinShun says why in one notification: it names your shortcut if you set one, and where a portable copy (Scoop's too) can install the index service, a click opens Settings › Index access, with the install button just below. Each program is mentioned once, three at most, and one per run.
-- **What you open is not elevated**: files and apps you open from WinShun run with your normal rights; only `Ctrl+Shift+Enter` runs one as administrator.
+- **What you open is not elevated**: files and apps you open from WinShun run with your normal rights; only `Ctrl+Shift+Enter` runs one as administrator. For programs you mostly run as administrator (a terminal, say), turn on "Remember “Run as administrator”" in the settings (off by default): once run that way, the program runs as administrator on `Enter` from then on and its row says Admin; right-click it and choose "Run with normal rights" to change it back.
 
 </details>
 

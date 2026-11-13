@@ -9743,8 +9743,28 @@ private slots:
         QCOMPARE(again.items(), history.items());
         QCOMPARE(again.use(uR"(D:\b.txt)"_s).count, 3);
         QCOMPARE(again.use(uR"(D:\b.txt)"_s).last, 2000);
+
+        // Last run as administrator (GitHub #313): kept with the path, for
+        // one in the history only, through a save and whatever is typed.
+        QVERIFY(!again.admin(uR"(D:\b.txt)"_s));
+        again.setAdmin(uR"(d:\B.txt)"_s, true);
+        again.setAdmin(uR"(X:\never opened.exe)"_s, true);
+        again.record(uR"(D:\b.txt)"_s, u"admin"_s, 5000);
+        History third(file, 3);
+        third.load();
+        QVERIFY(third.admin(uR"(D:\b.txt)"_s));
+        QVERIFY(!third.admin(uR"(E:\c.txt)"_s) && !third.admin(uR"(X:\never opened.exe)"_s));
+        QCOMPARE(third.items(), again.items());
+        QCOMPARE(third.use(uR"(D:\b.txt)"_s).count, 4);
+        QCOMPARE(third.ranked(u"admin"_s, 5000).first(), uR"(D:\b.txt)"_s);
+        third.setAdmin(uR"(D:\b.txt)"_s, false);
+        History fourth(file, 3);
+        fourth.load();
+        QVERIFY(!fourth.admin(uR"(D:\b.txt)"_s));
+
         again.remove(uR"(d:\B.txt)"_s);
         QCOMPARE(again.use(uR"(D:\b.txt)"_s).count, 0);
+        QVERIFY(!again.admin(uR"(D:\b.txt)"_s));
     }
 
     void historyFormats()
