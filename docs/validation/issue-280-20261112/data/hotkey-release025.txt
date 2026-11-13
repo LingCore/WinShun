@@ -1,0 +1,22 @@
+ready after 20 s
+== first (after the start, memory given back): private 4 MB
+open 1 ack_ms=0.0 seen_ms=41.9 faults=10341
+== warm
+open 1 ack_ms=0.0 seen_ms=64.2 faults=15950
+open 2 ack_ms=0.0 seen_ms=61.9 faults=168
+open 3 ack_ms=0.0 seen_ms=47.3 faults=333
+open 4 ack_ms=0.0 seen_ms=38.3 faults=267
+open 5 ack_ms=0.0 seen_ms=40.5 faults=177
+== idle 1 (27 s): private 3 MB
+open 1 ack_ms=0.0 seen_ms=59.0 faults=37594
+== idle 2 (27 s): private 6 MB
+open 1 ack_ms=0.0 seen_ms=72.7 faults=37702
+== idle 3 (27 s): private 5 MB
+open 1 ack_ms=0.0 seen_ms=61.5 faults=38078
+== idle 4 (27 s): private 4 MB
+open 1 ack_ms=0.0 seen_ms=57.4 faults=38044
+== idle 5 (27 s): private 4 MB
+open 1 ack_ms=0.0 seen_ms=61.1 faults=37796
+== idle 6 (27 s): private 5 MB
+open 1 ack_ms=0.0 seen_ms=58.0 faults=37625
+== at rest: private 5 MB

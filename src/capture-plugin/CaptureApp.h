@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CaptureSettings.h"
+#include "platform/HotPages.h"
 
 #include <QImage>
 #include <QFileSystemWatcher>
@@ -125,6 +126,9 @@ private:
     QQmlEngine m_qml;
     HWND m_window = nullptr;
     std::unique_ptr<IdleTrim> m_idleTrim;
+    // The pages a capture needs, read back ahead at the next one (HotPages).
+    std::shared_ptr<HotPages> m_hotPages = std::make_shared<HotPages>();
+    bool m_recordPages = false; // this capture is the first since the working set was emptied
     std::unique_ptr<capture::Capture> m_capture;
     std::unique_ptr<capture::PinManager> m_pins;
     std::unique_ptr<capture::CaptureEditor> m_editor;

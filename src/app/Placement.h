@@ -122,13 +122,21 @@ public:
     // where all of the box keeps clear of it; else inside, in that list's
     // corner within `frame`. Decided here, once: its rows coming and going
     // later do not move it between the two.
+    // `explorerList`: `window` is File Explorer's file list, given without
+    // its scroll bars: right in its corner (windowavoidance::kExplorerListGap).
     void avoidNative(const QRect& window, QScreen* screen, bool inside = false, const QRect& lists = {},
-        const QRect& frame = {}, const QRect& orInto = {});
+        const QRect& frame = {}, const QRect& orInto = {}, bool explorerList = false);
     // Where avoidNative put it, for the diagnostics journal (GitHub #203):
     // by the file manager typed in at all; in its file list's corner, else
     // beside it.
     bool avoiding() const { return m_avoid.has_value(); }
     bool avoidingInside() const { return m_avoid.has_value() && m_avoidInside; }
+    // The window's height for its content (Main.qml binds the window's to
+    // it). In a file list's corner its bottom is what stays, so there it is
+    // made that tall and moved in one step, here, before the height is
+    // returned: made taller first and moved up after, it hung below the
+    // list for a frame, the new part not drawn yet, black (GitHub #234).
+    Q_INVOKABLE int fitHeight(int height);
     // Geometry supplied by the ordinary-process peer to its UIAccess display.
     void placeDisplay(const QRect& geometry, int room, bool above);
     // A user move in the display peer; retain the usual temporary/home rules.
@@ -296,6 +304,8 @@ private:
     std::optional<QRect> m_box; // attached to it
     std::optional<QRect> m_avoid; // native bounds of the file manager typed in
     bool m_avoidInside = false; // the corner of m_avoid, not beside it
+    int m_avoidGap = 0; // ... that far in from its edges (windowavoidance::kListGap, or Explorer's)
+    int m_fitHeight = 0; // fitHeight: the height the window is about to have, for where it goes
     QRect m_avoidLists; // ... native: the lister's file lists together; empty: not known
     QRect m_avoidFrame; // ... native: the lister's client area; empty: not known
     int m_boxGap = 0; // ... this far off it, logical pixels

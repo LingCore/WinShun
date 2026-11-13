@@ -140,6 +140,7 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const
     case ElevationNoteRole: return c.elevationNote;
     case ElevationProblemRole: return c.elevationProblem;
     case FeedbackRole: return c.feedback;
+    case StagedRole: return c.staged;
     }
     return {};
 }
@@ -151,7 +152,7 @@ QHash<int, QByteArray> PluginListModel::roleNames() const
         {StatusRole, "status"}, {ToneRole, "tone"}, {ErrorRole, "error"}, {ResidentRole, "resident"}, {KeywordsRole, "keywords"},
         {PermissionsRole, "permissions"}, {SettingsRole, "settings"}, {HasReadmeRole, "hasReadme"}, {SettingsWindowRole, "settingsWindow"}, {HasDataRole, "hasData"},
         {AiExposeRole, "aiExpose"}, {AiEnabledRole, "aiEnabled"}, {AiNoteRole, "aiNote"}, {WebSearchRole, "webSearch"},
-        {ElevationRole, "elevation"}, {ElevationNoteRole, "elevationNote"}, {ElevationProblemRole, "elevationProblem"}, {FeedbackRole, "feedback"}};
+        {ElevationRole, "elevation"}, {ElevationNoteRole, "elevationNote"}, {ElevationProblemRole, "elevationProblem"}, {FeedbackRole, "feedback"}, {StagedRole, "staged"}};
 }
 
 bool PluginListModel::setCards(std::vector<Card> cards)
@@ -314,7 +315,11 @@ PluginSettings::~PluginSettings()
 
 void PluginSettings::setUpdates(PluginUpdates* updates)
 {
+    if (m_updates)
+        disconnect(m_updates, nullptr, this, nullptr);
     m_updates = updates;
+    if (updates) // a version kept for the next start, or put in place: the cards say it
+        connect(updates, &PluginUpdates::changed, this, &PluginSettings::rebuild);
     m_gallery.setUpdates(updates);
 }
 
@@ -522,6 +527,8 @@ QVariantList PluginSettings::permissionRows(const plugin::Manifest& m) const
         row(u"winshun:history"_s, permissionText(P::WinshunHistory), true);
     if (m.permissions.has(P::WinshunContent))
         row(u"winshun:content"_s, permissionText(P::WinshunContent), true);
+    if (m.permissions.has(P::WinshunBackup))
+        row(u"winshun:backup"_s, permissionText(P::WinshunBackup), true);
     if (m.permissions.has(P::FilesWrite))
         row(u"files:write"_s, permissionText(P::FilesWrite), strict, strict ? tr("严格沙箱：只能写它自己的数据文件夹") : tr("和你自己一样能写"));
     if (m.permissions.has(P::FilesRead))
@@ -558,6 +565,7 @@ QString PluginSettings::permissionText(plugin::Permission p)
     case P::Notifications: return tr("弹出系统通知");
     case P::SystemSettings: return tr("更改 Windows 系统设置（主题、无线电、音量、资源管理器、保持唤醒）");
     case P::Elevated: return tr("跟随 Win顺 的管理员权限");
+    case P::WinshunBackup: return tr("取得 Win顺 的设置备份，并用备份恢复设置");
     }
     return plugin::permissionName(p);
 }
@@ -597,6 +605,12 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     c.name = m.name.pick(m_locale);
     c.version = m.version;
     c.author = m.author;
+    // Downloaded while its program ran (a resident one runs all day): said on
+    // the card, with 立即更新, not only in the 插件库.
+    if (m_updates && !c.bundled) {
+        if (const QString staged = m_updates->stagedVersion(id); !staged.isEmpty() && plugin::compareVersions(staged, m.version) > 0)
+            c.staged = staged;
+    }
     // The manifest's is any string: 主页 is offered only for an address of
     // the web (openHomepage). Anything else would be started as a program
     // or a file is (shell::openUrl), which a plugin's own rows may not do
@@ -1158,34 +1172,36 @@ void PluginSettings::install(const QString& given)
     installFrom(given, {}, {});
 }
 
-void PluginSettings::installFrom(const QString& given, const QString& expectedId, const QString& name, bool enableAfterInstall, bool unreviewed)
+PluginInstalled PluginSettings::notInstalled(const QString& id, const QString& message)
+{
+    setMessage(message);
+    return {PluginInstalled::Step::Failed, id, {}, message};
+}
+
+PluginInstalled PluginSettings::installFrom(const QString& given, const QString& expectedId, const QString& name, bool enableAfterInstall,
+    bool unreviewed)
 {
     if (!m_host)
-        return;
+        return {};
     QString path = given;
     if (path.startsWith(u"file:", Qt::CaseInsensitive))
         path = QUrl(path).toLocalFile();
     cancelInstall();
     std::optional<plugin::install::Candidate> candidate = plugin::install::inspect(path);
-    if (!candidate) {
-        setMessage(tr("找不到 %1").arg(QDir::toNativeSeparators(path)));
-        return;
-    }
-    if (!candidate->manifest) {
-        setMessage(tr("不能安装 %1：%2").arg(name.isEmpty() ? QFileInfo(path).fileName() : name, candidate->error));
-        return;
-    }
+    if (!candidate)
+        return notInstalled(expectedId, tr("找不到 %1").arg(QDir::toNativeSeparators(path)));
+    if (!candidate->manifest)
+        return notInstalled(expectedId, tr("不能安装 %1：%2").arg(name.isEmpty() ? QFileInfo(path).fileName() : name, candidate->error));
     const QString id = candidate->manifest->id;
+    const QString version = candidate->manifest->version;
     if (!expectedId.isEmpty() && id != expectedId) {
         plugin::install::discard(*candidate);
-        setMessage(tr("没有安装 %1：下载来的是另一个插件（%2）").arg(name.isEmpty() ? expectedId : name, id));
-        return;
+        return notInstalled(expectedId, tr("没有安装 %1：下载来的是另一个插件（%2）").arg(name.isEmpty() ? expectedId : name, id));
     }
     if (m_updates) { // not while the background is changing it
         if (!m_updates->claim(id)) {
             plugin::install::discard(*candidate);
-            setMessage(tr("正在后台更新这个插件，稍后再试"));
-            return;
+            return notInstalled(id, tr("正在后台更新这个插件，稍后再试"));
         }
         m_installClaim = id;
     }
@@ -1212,7 +1228,7 @@ void PluginSettings::installFrom(const QString& given, const QString& expectedId
         m_pendingInstall = std::move(candidate);
         m_pendingEnable = enableAfterInstall;
         emit installQuestion(info);
-        return;
+        return {PluginInstalled::Step::Asking, id, version, {}};
     }
     // A folder of its name that is no installed plugin (an uninstall its
     // program's files survived, the user's own): not put over unasked. The
@@ -1232,9 +1248,9 @@ void PluginSettings::installFrom(const QString& given, const QString& expectedId
         m_pendingInstall = std::move(candidate);
         m_pendingEnable = enableAfterInstall;
         emit installQuestion(info);
-        return;
+        return {PluginInstalled::Step::Asking, id, version, {}};
     }
-    finishInstall(std::move(*candidate), enableAfterInstall);
+    return finishInstall(std::move(*candidate), enableAfterInstall);
 }
 
 void PluginSettings::openPendingFolder()
@@ -1273,18 +1289,18 @@ void PluginSettings::cancelInstall()
     m_pendingAside.clear();
 }
 
-void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall, bool allow, const QString& asideForeignTo)
+PluginInstalled PluginSettings::finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall, bool allow,
+    const QString& asideForeignTo)
 {
     const auto releaseIt = qScopeGuard([this] { releaseClaim(); });
     if (!m_host)
-        return;
+        return {};
     const QString id = candidate.manifest->id;
     const QString name = candidate.manifest->name.pick(m_locale);
     const QString error = plugin::updates::replace(*m_host, candidate, m_userDir, 2500, asideForeignTo);
-    if (!error.isEmpty()) {
-        setMessage(tr("没有安装 %1：%2").arg(name, error));
-        return;
-    }
+    if (!error.isEmpty())
+        return notInstalled(id, tr("没有安装 %1：%2").arg(name, error));
+    const auto installed = [&] { return PluginInstalled {PluginInstalled::Step::Done, id, candidate.manifest->version, m_message}; };
     // Where the folder that was no plugin went, said with the result (GitHub #253).
     const QString asideNote = asideForeignTo.isEmpty() ? QString() : tr("。原来的文件夹改名为 %1，留在旁边").arg(asideForeignTo);
     m_host->catalog().scan();
@@ -1294,7 +1310,7 @@ void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool en
         confirmEnable(id);
         setMessage(tr("已安装 %1 %2").arg(name, candidate.manifest->version) + asideNote);
         rebuild();
-        return;
+        return installed();
     }
     // Installed, and off until the user turns it on (the permissions are
     // shown then); a version put over one that is on and asking for more
@@ -1306,8 +1322,10 @@ void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool en
     else
         setMessage((config && config->enabled ? tr("已安装 %1 %2").arg(name, version) : tr("已安装 %1 %2，打开它的开关就能用").arg(name, version)) + asideNote);
     rebuild();
+    const PluginInstalled done = installed(); // before the switch below, which may ask and say more
     if (enableAfterInstall)
         setEnabled(id, true); // the normal permission dialog still applies
+    return done;
 }
 
 QString PluginSettings::installUpdate(const QString& path, const QString& id, const QString& version)
@@ -1750,6 +1768,8 @@ void PluginSettings::loadPreview(bool elevated, int logPlugins, bool hostNormal)
         c.aiExpose = true;
         c.aiEnabled = true;
         c.aiNote = tr("工具：%1").arg(u"plugin_lingcore_kill_kill"_s);
+        if (qEnvironmentVariableIsSet("WINSHUN_PREVIEW_STAGED")) // the card of a version waiting for the next start, to look at
+            c.staged = u"1.3.0"_s;
         cards.push_back(c);
     }
     {

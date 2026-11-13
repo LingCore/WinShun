@@ -9,7 +9,7 @@
 
 #include "BitArray.h"
 #include "Pattern.h"
-#include "Barcode.h"
+#include "BarcodeData.h"
 #include "ZXAlgorithms.h"
 
 #include <algorithm>
@@ -62,9 +62,9 @@ public:
 		virtual ~DecodingState() = default;
 	};
 
-	virtual ~RowReader() {}
+	virtual ~RowReader() = default;
 
-	virtual Barcode decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>& state) const = 0;
+	virtual BarcodeData decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>& state) const = 0;
 
 	/**
 	 * Determines how closely a set of observed counts of runs of black/white values matches a given
@@ -152,12 +152,15 @@ public:
 		for (int i = 2; i < view.size(); ++i)
 			UpdateMinMax(m[i], M[i], view[i]);
 
+		// the max-spread check between bar/space depends on whether both have seen narrow and wide
+		int maxSpread = M[0] >= 2 * m[0] && M[1] >= 2 * m[1] ? 2 : 4;
+
 		BarAndSpaceI res;
 		for (int i = 0; i < 2; ++i) {
 			// check that
 			//  a) wide <= 4 * narrow
-			//  b) bars and spaces are not more than a factor of 2 (or 3 for the max) apart from each other
-			if (M[i] > 4 * (m[i] + 1) || M[i] > 3 * M[i + 1] || m[i] > 2 * (m[i + 1] + 1))
+			//  b) bars and spaces are not more than a factor of spread apart from each other
+			if (M[i] > 4 * (m[i] + 1) || M[i] > maxSpread * M[i + 1] || m[i] > maxSpread * (m[i + 1] + 1))
 				return {};
 			// the threshold is the average of min and max but at least 1.5 * min
 			res[i] = std::max((m[i] + M[i]) / 2, m[i] * 3 / 2);
@@ -187,16 +190,6 @@ public:
 	}
 
 	/**
-	 * @brief each bar/space is 1-4 modules wide, we have N bars/spaces, they are SUM modules wide in total
-	 */
-	template <int LEN, int SUM>
-	static int OneToFourBitPattern(const PatternView& view)
-	{
-		// TODO: make sure none of the elements in the normalized pattern exceeds 4
-		return ToInt(NormalizedPattern<LEN, SUM>(view));
-	}
-
-	/**
 	 * @brief Lookup the pattern in the table and return the character in alphabet at the same index.
 	 * @returns 0 if pattern is not found. Used to be -1 but that fails on systems where char is unsigned.
 	 */
@@ -222,7 +215,7 @@ Barcode DecodeSingleRow(const RowReader& reader, const Range& range)
 	PatternView view(row);
 
 	std::unique_ptr<RowReader::DecodingState> state;
-	return reader.decodePattern(0, view, state);
+	return {reader.decodePattern(0, view, state)};
 }
 
 } // OneD

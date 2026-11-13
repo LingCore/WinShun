@@ -267,6 +267,10 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/ExplorerTyping", QT_TRANSLATE_NOOP("AiSettings", "在资源管理器里直接打字搜索"), "files_and_dialogs", 2,
                     "Typing in a File Explorer folder window searches that folder with Win顺, instead of Explorer's jump to a name by its first letters."},
         &Settings::explorerTyping));
+    add(boolean({"Launcher/DesktopTyping", QT_TRANSLATE_NOOP("AiSettings", "在桌面上直接打字搜索"), "files_and_dialogs", 2,
+                    "Typing with the desktop in front (its icons focused) opens Win顺 to search the whole PC, instead of the "
+                    "desktop's jump to an icon by its first letters. Off by default."},
+        &Settings::desktopTyping));
     add(boolean({"Launcher/OpusTyping", QT_TRANSLATE_NOOP("AiSettings", "在 Directory Opus 里直接打字搜索"),
                     "files_and_dialogs", 2,
                     "In a Directory Opus file display, letters and digits open Win顺 to search that tab's folder. "
@@ -382,8 +386,16 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/History", QT_TRANSLATE_NOOP("AiSettings", "记住搜索和打开过的项目"), "startup", 3,
                     "Remembers what was opened: listed when nothing is typed, and ranked first among matches."},
         &Settings::recordHistory));
+    add(boolean({"Launcher/RememberAdmin", QT_TRANSLATE_NOOP("AiSettings", "记住以管理员身份运行"), "startup", 3,
+                    "A program last run as administrator from Win顺 (Ctrl+Shift+Enter) runs so again on Enter, until it is "
+                    "run with normal rights from its menu. Needs Launcher/History."},
+        &Settings::rememberAdmin));
 
     // ---- 外观 ----
+    add(boolean({"Appearance/ScopeButton", QT_TRANSLATE_NOOP("AiSettings", "范围标签"), "appearance", -1,
+                    "true: the launcher's scopes (全部, 文件, 内容) are one button showing the current one; a click or Tab goes to the next. "
+                    "Off: the tabs side by side."},
+        &Settings::scopeButton));
     add(choice({"Appearance/Theme", QT_TRANSLATE_NOOP("AiSettings", "主题"), "appearance", -1, "Light or dark windows."},
         &Settings::theme,
         {{u"system"_s, u"follow Windows' light or dark mode"_s, QT_TRANSLATE_NOOP("AiSettings", "跟随系统")},
@@ -539,7 +551,7 @@ std::vector<Entry> buildCatalog()
                     "All also finds Windows settings pages, Control Panel items and system switches (\"关蓝牙\", \"音量 30\"). Off: All finds files, folders and content only."},
         &Settings::searchSystem));
     add(boolean({"Results/RegexMode", QT_TRANSLATE_NOOP("AiSettings", "正则模式"), "results", 1,
-                    "Every word typed in All and Files is a regular expression on names (Ctrl+R in the search box toggles it). A single word can be one with regex: before it either way."},
+                    "Every word typed is a regular expression: on names in All and Files, on the text of files in Content (Ctrl+R in the search box toggles it). A single word can be one with regex: before it either way."},
         &Settings::regexMode));
     add(boolean({"Results/ShowModified", QT_TRANSLATE_NOOP("AiSettings", "显示修改日期"), "results", 1,
                     "Each result says when the file was last written."},
@@ -554,6 +566,10 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Results/Thumbnails", QT_TRANSLATE_NOOP("AiSettings", "显示图片缩略图"), "results", 1,
                     "A picture, video or PDF shows its thumbnail as its icon."},
         &Settings::thumbnails));
+    add(boolean({"Results/DeleteButton", QT_TRANSLATE_NOOP("AiSettings", "显示删除按钮"), "results", 1,
+                    "A file's or folder's row has a delete button (clicked twice, to the Recycle Bin) among its "
+                    "buttons. Off: none; Windows' own menu (更多选项 in its right-click menu) still deletes."},
+        &Settings::rowDeleteButton));
     add(choice({"Results/PreviewWith", QT_TRANSLATE_NOOP("AiSettings", "预览文件"), "results", 1,
                    "Which viewer the result preview uses."},
         &Settings::previewWith,
@@ -670,6 +686,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Clipboard/KeepPlace", QT_TRANSLATE_NOOP("AiSettings", "粘贴后保持位置"), "clipboard", 0,
                     "Pasting an entry from the history leaves it where it is in the list; off: it moves to the top."},
         &Settings::clipboardKeepPlace));
+    add(integer({"Appearance/MaxRows", QT_TRANSLATE_NOOP("AiSettings", "搜索框显示行数"), "appearance", -1,
+                    "The most result rows the search box shows before its list scrolls; fewer where the screen has no room below it."},
+        &Settings::maxRows, 4, 20, QT_TRANSLATE_NOOP("AiSettings", "行"), "rows"));
     add(choice({"Clipboard/UiSize", QT_TRANSLATE_NOOP("AiSettings", "剪贴板大小"), "clipboard", 0,
                    "Type and row heights of the clipboard window alone: follows the interface size, or its own (dense: one line per entry)."},
         &Settings::clipboardUiSize,

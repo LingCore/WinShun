@@ -87,6 +87,10 @@ private slots:
         QVERIFY(!settings.mergeFileScope);
         QVERIFY(!settings.appsTab);
         settings.appsTab = true;
+        QVERIFY(settings.rowDeleteButton); // GitHub #316: there unless turned off
+        QVERIFY(!settings.scopeButton); // GitHub #185: the tabs side by side unless chosen
+        settings.scopeButton = true;
+        settings.rowDeleteButton = false;
         QCOMPARE(settings.queryHistoryKeys, u"ctrl"_s);
         settings.mergeFileScope = true;
         settings.queryHistoryKeys = u"alt"_s;
@@ -95,6 +99,8 @@ private slots:
         restored.load();
         QVERIFY(restored.mergeFileScope);
         QVERIFY(restored.appsTab);
+        QVERIFY(!restored.rowDeleteButton);
+        QVERIFY(restored.scopeButton);
         QCOMPARE(restored.queryHistoryKeys, u"alt"_s);
         restored.queryHistoryKeys = u"off"_s;
         QVERIFY(restored.saveChecked());
@@ -600,6 +606,28 @@ private slots:
         }
     }
 
+    void searchBoxRows()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.maxRows, 8);
+        settings.maxRows = 14;
+        settings.save();
+        ws::Settings restored;
+        restored.load();
+        QCOMPARE(restored.maxRows, 14);
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        for (const int invalid : {-1, 0, 3, 21, 10000}) {
+            ini.setValue(u"Appearance/MaxRows"_s, invalid);
+            ini.sync();
+            restored.load();
+            QCOMPARE(restored.maxRows, std::clamp(invalid, 4, 20));
+        }
+    }
+
     void clipboardOpeningPosition()
     {
         QTemporaryDir profile;
@@ -758,6 +786,14 @@ private slots:
         ws::Settings settings;
         settings.load();
         QVERIFY(!settings.opusTyping);
+        QVERIFY(!settings.desktopTyping); // GitHub #314: asked for, as the others
+        settings.desktopTyping = true;
+        settings.save();
+        {
+            ws::Settings read;
+            read.load();
+            QVERIFY(read.desktopTyping);
+        }
         for (const bool explorer : {false, true}) {
             for (const bool opus : {true, false}) {
                 settings.explorerTyping = explorer;

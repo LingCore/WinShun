@@ -110,6 +110,7 @@ struct Settings {
     QString proxyMode = QStringLiteral("system");
     QString proxyAddress;
     bool recordHistory = true; // remember what was opened: listed with nothing typed, first among matches
+    bool rememberAdmin = false; // Enter runs as administrator what was last run so from here (GitHub #313)
     bool dialogJump = true; // Ctrl+G in an Open or Save dialog goes to the folder open in a file manager (filemanager::)
     // A search bar under Open and Save dialogs (DialogBar). Off for new
     // installs, a module turned on where wanted (the 插件 page's 内置功能);
@@ -142,6 +143,9 @@ struct Settings {
     // letters: off unless asked for, so that an upgrade changes nothing.
     bool explorerTyping = false;
     bool opusTyping = false; // opt in per manager: typing in an Opus file display (GitHub #82)
+    // ... and with the desktop's icons having the keyboard (GitHub #314): the
+    // launcher as its hotkey opens it, to search the whole PC.
+    bool desktopTyping = false;
     // folder | all: typed in Opus, the launcher opens on that tab's folder, or
     // with nothing before the words, to search the whole PC.
     QString opusTypingScope = QStringLiteral("folder");
@@ -212,6 +216,7 @@ struct Settings {
     // Opt in to the former behavior: in 全部, Tab browses a favorite folder.
     bool tabEntersFavoriteFolder = false;
     bool thumbnails = true; // a picture, video, PDF found shows its thumbnail for an icon
+    bool rowDeleteButton = true; // a file's row has a delete button among its buttons (GitHub #316)
     // 全部 also finds apps, and Windows' settings pages, Control Panel items
     // and switches; off, it finds names and content only (SearchEngine::Request).
     bool searchApps = true;
@@ -247,6 +252,10 @@ struct Settings {
     bool shortcutHelp = true;
     bool footerHints = true;
     bool pureSearch = false; // empty floating launcher: just the input, without start results or chrome
+    // The launcher's scopes (全部, 文件, 内容…) as one key that says the
+    // current one and goes to the next when clicked, in place of the tabs
+    // side by side (GitHub #185, #244). Tab moves through them either way.
+    bool scopeButton = false;
     // auto | builtin: what Alt+P on a row shows the file with. auto: QuickLook
     // or Seer when one is running in the background (FilePreview), else
     // Win顺's own preview window; builtin: always that.
@@ -309,6 +318,7 @@ struct Settings {
     int glassClarity = 50; // 0..100, liquid reading surfaces; higher is more opaque
     QString taskbarIcon = QStringLiteral("color"); // color | mono: the tray's and the taskbar box's icon (monologo)
     QString uiSize = QStringLiteral("standard"); // compact | standard | roomy: type and row heights (uisize::)
+    int maxRows = 8; // MaxRows=: the most rows the search box shows before its list scrolls, 4..20 (fewer where the screen has no room)
     QString uiFont; // empty: bundled default; otherwise an installed font family
     QString corners; // round | square: defaults() picks by Windows version
     QString uiStyle = QStringLiteral("fluent"); // fluent | brand | tactile | liquid: 界面风格 (Theme.style, themes/)

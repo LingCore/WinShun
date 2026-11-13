@@ -8,13 +8,14 @@
 
 #include "CharacterSet.h"
 #include "DecoderResult.h"
-#include "PDFDecoderResultExtra.h"
+#include "PDFCustomData.h"
 #include "ZXAlgorithms.h"
 #include "ZXBigInteger.h"
 #include "ZXTestSupport.h"
 
 #include <array>
 #include <cassert>
+#include <charconv>
 #include <sstream>
 #include <utility>
 
@@ -92,11 +93,19 @@ static bool TerminatesCompaction(int code)
 **/
 static int ProcessECI(const std::vector<int>& codewords, int codeIndex, const int length, const int code, Content& result)
 {
-	if (codeIndex < length && IsECI(code)) {
-		if (code == ECI_CHARSET)
-			result.switchEncoding(ECI(codewords[codeIndex++]));
-		else
-			codeIndex += code == ECI_GENERAL_PURPOSE ? 2 : 1; // Don't currently handle non-character set ECIs so just ignore
+	if (!IsECI(code))
+		return codeIndex;
+
+	if (codeIndex >= length)
+		return codeIndex; // throw FormatError(); TODO: check why there are unit tests that expect this to be silently ignored
+
+	if (code == ECI_CHARSET) {
+		result.switchEncoding(ECI(codewords[codeIndex++]));
+	} else {
+		int paramCount = code == ECI_GENERAL_PURPOSE ? 2 : 1;
+		if (codeIndex + paramCount > length)
+			return codeIndex; // throw FormatError(); TODO: check why there are unit tests that expect this to be silently ignored
+		codeIndex += paramCount; // Don't currently handle non-character set ECIs so just ignore
 	}
 
 	return codeIndex;
@@ -355,8 +364,9 @@ static int ProcessByteECIs(const std::vector<int>& codewords, int codeIndex, Con
 	while (codeIndex < codewords[0] && codewords[codeIndex] >= TEXT_COMPACTION_MODE_LATCH
 			&& !TerminatesCompaction(codewords[codeIndex])) {
 		int code = codewords[codeIndex++];
-		if (IsECI(code))
-			codeIndex = ProcessECI(codewords, codeIndex, codewords[0], code, result);
+		if (!IsECI(code))
+			throw FormatError();
+		codeIndex = ProcessECI(codewords, codeIndex, codewords[0], code, result);
 	}
 
 	return codeIndex;
@@ -384,8 +394,12 @@ static int ByteCompaction(int mode, const std::vector<int>& codewords, int codeI
 
 	for (int batch = 0; batch < batches; batch++) {
 		int64_t value = 0;
-		for (int count = 0; count < 5; count++)
+		for (int count = 0; count < 5; count++) {
+			// Per ISO/IEC 15438:2015 5.5.3.2, ECI shall not appear within a 5-codeword data group
+			if (codeIndex >= codewords[0] || codewords[codeIndex] >= TEXT_COMPACTION_MODE_LATCH)
+				throw FormatError();
 			value = 900 * value + codewords[codeIndex++];
+		}
 
 		for (int j = 0; j < 6; ++j)
 			result.push_back((uint8_t)(value >> (8 * (5 - j))));
@@ -394,7 +408,7 @@ static int ByteCompaction(int mode, const std::vector<int>& codewords, int codeI
 		codeIndex = ProcessByteECIs(codewords, codeIndex, result);
 	}
 
-	for (int i = 0; i < trailingCount; i++) {
+	for (int i = 0; i < trailingCount && codeIndex < codewords[0]; i++) {
 		result.push_back((uint8_t)codewords[codeIndex++]);
 		// Deal with inter-byte ECIs
 		codeIndex = ProcessByteECIs(codewords, codeIndex, result);
@@ -490,7 +504,7 @@ static int NumericCompaction(const std::vector<int>& codewords, int codeIndex, C
 			codeIndex++;
 		}
 		if (count > 0 && (count == MAX_NUMERIC_CODEWORDS || codeIndex == codewords[0] || code >= TEXT_COMPACTION_MODE_LATCH)) {
-			result += DecodeBase900toBase10(codewords, codeIndex, count);
+			result.append(DecodeBase900toBase10(codewords, codeIndex, count));
 			count = 0;
 		}
 
@@ -530,7 +544,8 @@ static int DecodeMacroOptionalTextField(const std::vector<int>& codewords, int c
 /*
 * Helper to deal with optional numeric fields in Macros.
 */
-static int DecodeMacroOptionalNumericField(const std::vector<int>& codewords, int codeIndex, uint64_t& field)
+template<typename T>
+int DecodeMacroOptionalNumericField(const std::vector<int>& codewords, int codeIndex, T& field)
 {
 	Content result;
 	// Each optional field begins with an implied reset to ECI 2 (Annex H.2.3). ECI 2 is ASCII for 0-127, and Cp437
@@ -539,13 +554,15 @@ static int DecodeMacroOptionalNumericField(const std::vector<int>& codewords, in
 
 	codeIndex = NumericCompaction(codewords, codeIndex, result);
 
-	field = std::stoll(result.utf8());
+	auto txt = result.utf8();
+	if (std::from_chars(txt.data(), txt.data()+txt.size(), field).ec != std::errc())
+		throw FormatError();
 
 	return codeIndex;
 }
 
 ZXING_EXPORT_TEST_ONLY
-int DecodeMacroBlock(const std::vector<int>& codewords, int codeIndex, DecoderResultExtra& resultMetadata)
+int DecodeMacroBlock(const std::vector<int>& codewords, int codeIndex, PDF417CustomData& customData)
 {
 	// we must have at least two codewords left for the segment index
 	if (codeIndex + NUMBER_OF_SEQUENCE_CODEWORDS > codewords[0])
@@ -553,7 +570,7 @@ int DecodeMacroBlock(const std::vector<int>& codewords, int codeIndex, DecoderRe
 
 	std::string strBuf = DecodeBase900toBase10(codewords, codeIndex += NUMBER_OF_SEQUENCE_CODEWORDS, NUMBER_OF_SEQUENCE_CODEWORDS);
 
-	resultMetadata.setSegmentIndex(std::stoi(strBuf));
+	customData.segmentIndex = std::stoi(strBuf);
 
 	// Decoding the fileId codewords as 0-899 numbers, each 0-filled to width 3. This follows the spec
 	// (See ISO/IEC 15438:2015 Annex H.6) and preserves all info, but some generators (e.g. TEC-IT) write
@@ -564,7 +581,7 @@ int DecodeMacroBlock(const std::vector<int>& codewords, int codeIndex, DecoderRe
 		 codeIndex++) {
 		fileId << ToString(codewords[codeIndex], 3);
 	}
-	resultMetadata.setFileId(fileId.str());
+	customData.fileId = fileId.str();
 
 	int optionalFieldsStart = -1;
 	if (codeIndex < codewords[0] && codewords[codeIndex] == BEGIN_MACRO_PDF417_OPTIONAL_FIELD)
@@ -577,55 +594,34 @@ int DecodeMacroBlock(const std::vector<int>& codewords, int codeIndex, DecoderRe
 			if (codeIndex >= codewords[0])
 				break;
 			switch (codewords[codeIndex]) {
-			case MACRO_PDF417_OPTIONAL_FIELD_FILE_NAME: {
-				std::string fileName;
-				codeIndex = DecodeMacroOptionalTextField(codewords, codeIndex + 1, fileName);
-				resultMetadata.setFileName(fileName);
+			case MACRO_PDF417_OPTIONAL_FIELD_FILE_NAME:
+				codeIndex = DecodeMacroOptionalTextField(codewords, codeIndex + 1, customData.fileName);
 				break;
-			}
-			case MACRO_PDF417_OPTIONAL_FIELD_SENDER: {
-				std::string sender;
-				codeIndex = DecodeMacroOptionalTextField(codewords, codeIndex + 1, sender);
-				resultMetadata.setSender(sender);
+			case MACRO_PDF417_OPTIONAL_FIELD_SENDER:
+				codeIndex = DecodeMacroOptionalTextField(codewords, codeIndex + 1, customData.sender);
 				break;
-			}
-			case MACRO_PDF417_OPTIONAL_FIELD_ADDRESSEE: {
-				std::string addressee;
-				codeIndex = DecodeMacroOptionalTextField(codewords, codeIndex + 1, addressee);
-				resultMetadata.setAddressee(addressee);
+			case MACRO_PDF417_OPTIONAL_FIELD_ADDRESSEE:
+				codeIndex = DecodeMacroOptionalTextField(codewords, codeIndex + 1, customData.addressee);
 				break;
-			}
-			case MACRO_PDF417_OPTIONAL_FIELD_SEGMENT_COUNT: {
-				uint64_t segmentCount;
-				codeIndex = DecodeMacroOptionalNumericField(codewords, codeIndex + 1, segmentCount);
-				resultMetadata.setSegmentCount(narrow_cast<int>(segmentCount));
+			case MACRO_PDF417_OPTIONAL_FIELD_SEGMENT_COUNT:
+				codeIndex = DecodeMacroOptionalNumericField(codewords, codeIndex + 1, customData.segmentCount);
 				break;
-			}
-			case MACRO_PDF417_OPTIONAL_FIELD_TIME_STAMP: {
-				uint64_t timestamp;
-				codeIndex = DecodeMacroOptionalNumericField(codewords, codeIndex + 1, timestamp);
-				resultMetadata.setTimestamp(timestamp);
+			case MACRO_PDF417_OPTIONAL_FIELD_TIME_STAMP:
+				codeIndex = DecodeMacroOptionalNumericField(codewords, codeIndex + 1, customData.timestamp);
 				break;
-			}
-			case MACRO_PDF417_OPTIONAL_FIELD_CHECKSUM: {
-				uint64_t checksum;
-				codeIndex = DecodeMacroOptionalNumericField(codewords, codeIndex + 1, checksum);
-				resultMetadata.setChecksum(narrow_cast<int>(checksum));
+			case MACRO_PDF417_OPTIONAL_FIELD_CHECKSUM:
+				codeIndex = DecodeMacroOptionalNumericField(codewords, codeIndex + 1, customData.checksum);
 				break;
-			}
-			case MACRO_PDF417_OPTIONAL_FIELD_FILE_SIZE: {
-				uint64_t fileSize;
-				codeIndex = DecodeMacroOptionalNumericField(codewords, codeIndex + 1, fileSize);
-				resultMetadata.setFileSize(fileSize);
+			case MACRO_PDF417_OPTIONAL_FIELD_FILE_SIZE:
+				codeIndex = DecodeMacroOptionalNumericField(codewords, codeIndex + 1, customData.fileSize);
 				break;
-			}
 			default: throw FormatError();
 			}
 			break;
 		}
 		case MACRO_PDF417_TERMINATOR: {
 			codeIndex++;
-			resultMetadata.setLastSegment(true);
+			customData.isLastSegment = true;
 			break;
 		}
 		default: throw FormatError();
@@ -635,11 +631,11 @@ int DecodeMacroBlock(const std::vector<int>& codewords, int codeIndex, DecoderRe
 	// copy optional fields to additional options
 	if (optionalFieldsStart != -1) {
 		int optionalFieldsLength = codeIndex - optionalFieldsStart;
-		if (resultMetadata.isLastSegment())
+		if (customData.isLastSegment)
 			optionalFieldsLength--; // do not include terminator
 
-		resultMetadata.setOptionalData(
-			std::vector<int>(codewords.begin() + optionalFieldsStart, codewords.begin() + optionalFieldsStart + optionalFieldsLength));
+		customData.optionalData =
+			std::vector<int>(codewords.begin() + optionalFieldsStart, codewords.begin() + optionalFieldsStart + optionalFieldsLength);
 	}
 
 	return codeIndex;
@@ -647,11 +643,14 @@ int DecodeMacroBlock(const std::vector<int>& codewords, int codeIndex, DecoderRe
 
 DecoderResult Decode(const std::vector<int>& codewords)
 {
+	if (codewords.empty() || codewords[0] < 1 || codewords[0] > Size(codewords))
+		return FormatError();
+
 	Content result;
-	result.symbology = {'L', '2', char(-1)};
+	result.symbology = {'L', '2', -1};
 
 	bool readerInit = false;
-	auto resultMetadata = std::make_shared<DecoderResultExtra>();
+	auto customData = std::make_shared<PDF417CustomData>();
 
 	try {
 		for (int codeIndex = 1; codeIndex < codewords[0];) {
@@ -667,7 +666,7 @@ DecoderResult Decode(const std::vector<int>& codewords)
 			case ECI_CHARSET:
 			case ECI_GENERAL_PURPOSE:
 			case ECI_USER_DEFINED: codeIndex = ProcessECI(codewords, codeIndex, codewords[0], code, result); break;
-			case BEGIN_MACRO_PDF417_CONTROL_BLOCK: codeIndex = DecodeMacroBlock(codewords, codeIndex, *resultMetadata); break;
+			case BEGIN_MACRO_PDF417_CONTROL_BLOCK: codeIndex = DecodeMacroBlock(codewords, codeIndex, *customData); break;
 			case BEGIN_MACRO_PDF417_OPTIONAL_FIELD:
 			case MACRO_PDF417_TERMINATOR:
 				// Should not see these outside a macro block
@@ -705,22 +704,22 @@ DecoderResult Decode(const std::vector<int>& codewords)
 		return e;
 	}
 
-	if (result.empty() && resultMetadata->segmentIndex() == -1)
+	if (result.empty() && customData->segmentIndex == -1)
 		return FormatError();
 
 	StructuredAppendInfo sai;
-	if (resultMetadata->segmentIndex() > -1) {
-		sai.count = resultMetadata->segmentCount() != -1
-						? resultMetadata->segmentCount()
-						: (resultMetadata->isLastSegment() ? resultMetadata->segmentIndex() + 1 : 0);
-		sai.index = resultMetadata->segmentIndex();
-		sai.id    = resultMetadata->fileId();
+	if (customData->segmentIndex > -1) {
+		sai.count = customData->segmentCount != -1
+						? customData->segmentCount
+						: (customData->isLastSegment ? customData->segmentIndex + 1 : 0);
+		sai.index = customData->segmentIndex;
+		sai.id    = customData->fileId;
 	}
 
 	return DecoderResult(std::move(result))
 		.setStructuredAppend(sai)
 		.setReaderInit(readerInit)
-		.setExtra(resultMetadata);
+		.setCustomData(customData);
 }
 
 } // namespace ZXing::Pdf417

@@ -224,6 +224,13 @@ std::optional<Index> parse(const QByteArray& json, const QString& source, QStrin
         }
         item.minWinShun = o.value(u"minWinShun"_s).toString();
         item.bundled = o.value(u"bundled"_s).toBool();
+        // Shown, never run: still only over https and only with a hash to hold it to.
+        const QString readme = o.value(u"readme"_s).toString();
+        const QString readmeSha = o.value(u"readmeSha256"_s).toString().toLower();
+        if (readme.startsWith(u"https://"_s, Qt::CaseInsensitive) && isSha256(readmeSha)) {
+            item.readme = readme;
+            item.readmeSha256 = readmeSha;
+        }
         index.items.push_back(std::move(item));
     }
     return index;

@@ -119,6 +119,12 @@ public:
 
     struct Request {
         QString text;
+        // A command of the favorites' whose words are looked for as files
+        // (Favorite::searchFiles, GitHub #319): `text` is those words alone,
+        // this the command's path and the whole text typed (its keyword and
+        // the words), for its own row among the rows found.
+        QString commandPath;
+        QString commandText;
         Scope scope = Scope::All;
         // 文件 with a type chosen (图片…): only files with one of these
         // extensions (without the dot, any case), typed or not; with ext:
@@ -237,7 +243,8 @@ public:
         // names and content only (a favorite app or place stays).
         bool apps = true;
         bool places = true;
-        // Every term of `text` is a regex (parseQuery's regexTerms; names only).
+        // Every term of `text` is a regex (parseQuery's regexTerms for names,
+        // contentPattern's regexMode for a content search).
         bool regex = false;
     };
 

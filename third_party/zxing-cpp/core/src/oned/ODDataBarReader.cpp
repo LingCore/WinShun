@@ -12,9 +12,10 @@
 #include "DetectorResult.h"
 #include "GTIN.h"
 #include "ODDataBarCommon.h"
-#include "Barcode.h"
+#include "BarcodeData.h"
 
 #include <cmath>
+#include <ranges>
 #include <unordered_set>
 
 namespace ZXing::OneD {
@@ -52,8 +53,8 @@ static Character ReadDataCharacter(const PatternView& view, bool outsideChar, bo
 
 	auto calcChecksumPortion = [](const Array4I& counts) {
 		int res = 0;
-		for (auto it = counts.rbegin(); it != counts.rend(); ++it)
-			res = 9 * res + *it;
+		for (int count : std::ranges::reverse_view(counts))
+			res = 9 * res + count;
 		return res;
 	};
 
@@ -86,7 +87,7 @@ static Character ReadDataCharacter(const PatternView& view, bool outsideChar, bo
 
 int ParseFinderPattern(const PatternView& view, bool reversed)
 {
-	static constexpr std::array<std::array<int, 3>, 9> e2ePatterns = {{
+	static constexpr std::array<Pattern<3>, 9> e2ePatterns = {{
 		{11, 10, 3 }, // {3, 8, 2, 1, 1}
 		{8 , 10, 6 }, // {3, 5, 5, 1, 1}
 		{6 , 10, 8 }, // {3, 3, 7, 1, 1}
@@ -98,7 +99,7 @@ int ParseFinderPattern(const PatternView& view, bool reversed)
 		{4 , 12, 10}, // {1, 3, 9, 1, 1}
 	}};
 
-	return ParseFinderPattern<9>(view, reversed, e2ePatterns);
+	return ParseFinderPattern(view, reversed, e2ePatterns);
 }
 
 static Pair ReadPair(const PatternView& view, bool rightPair)
@@ -137,10 +138,25 @@ static bool ChecksumIsValid(Pair leftPair, Pair rightPair)
 	return a == b && Value(leftPair, rightPair) <= 9999999999999LL; // 13 digits
 }
 
-static std::string ConstructText(Pair leftPair, Pair rightPair)
+static bool PositionIsPlausible(const Pair& l, const Pair& r)
+{
+	int wl = l.xStop - l.xStart;
+	int wr = r.xStop - r.xStart;
+	int h = std::abs(l.y - r.y);
+	int dxl = std::abs(l.xStart - r.xStart);
+	int dxr = std::abs(l.xStop - r.xStart);
+
+	// - the pairs must be wider than the stack is high
+	// - the pairs must be roughly of the same width
+	// - the pairs x positions must be sufficiently aligned (i.e. the stack is not too slanted)
+	return h < wl && h < wr && wl > wr / 2 && wr > wl / 2 && (dxl < wl / 2 || dxr < wr / 2);
+}
+
+static std::string ConstructText(const Pair& leftPair, const Pair& rightPair)
 {
 	auto txt = ToString(Value(leftPair, rightPair), 13);
-	return txt + GTIN::ComputeCheckDigit(txt);
+	// see ISO/IEC 24724:2011 Section 9
+	return "01" + txt + GTIN::ComputeCheckDigit(txt);
 }
 
 struct State : public RowReader::DecodingState
@@ -149,25 +165,30 @@ struct State : public RowReader::DecodingState
 	std::unordered_set<Pair, PairHash> rightPairs;
 };
 
-Barcode DataBarReader::decodePattern(int rowNumber, PatternView& next, std::unique_ptr<RowReader::DecodingState>& state) const
+BarcodeData DataBarReader::decodePattern(int rowNumber, PatternView& next, std::unique_ptr<RowReader::DecodingState>& state) const
 {
-#if 0 // non-stacked version
-	next = next.subView(-1, FULL_PAIR_SIZE + 1); // +1 reflects the guard pattern on the right, see IsRightPair());
-	// yes: the first view we test is at index 1 (black bar at 0 would be the guard pattern)
-	while (next.shift(2)) {
-		if (IsLeftPair(next)) {
-			if (auto leftPair = ReadPair(next, false); leftPair && next.shift(FULL_PAIR_SIZE) && IsRightPair(next)) {
-				if (auto rightPair = ReadPair(next, true); rightPair && ChecksumIsValid(leftPair, rightPair)) {
-					return {ConstructText(leftPair, rightPair), rowNumber, leftPair.xStart, rightPair.xStop,
-							BarcodeFormat::DataBar};
+	if (!state)
+		state = std::make_unique<State>();
+	auto* prevState = static_cast<State*>(state.get());
+
+	if (_opts.hasFormat(BarcodeFormat::DataBarOmni) && !_opts.hasFormat(BarcodeFormat::DataBar) && !_opts.tryHarder()) {
+		// non-stacked version
+		(void)state;
+		next = next.subView(-1, FULL_PAIR_SIZE + 1); // +1 reflects the guard pattern on the right, see IsRightPair());
+		// yes: the first view we test is at index 1 (black bar at 0 would be the guard pattern)
+		while (next.shift(2)) {
+			if (IsLeftPair(next)) {
+				if (auto leftPair = ReadPair(next, false); leftPair && next.shift(FULL_PAIR_SIZE) && IsRightPair(next)) {
+					if (auto rightPair = ReadPair(next, true); rightPair && ChecksumIsValid(leftPair, rightPair)) {
+						return LinearBarcode(BarcodeFormat::DataBarOmni, ConstructText(leftPair, rightPair), rowNumber, leftPair.xStart,
+											 rightPair.xStop, {'e', '0', 0, AIFlag::GS1});
+					}
 				}
 			}
 		}
+
+		goto out;
 	}
-#else
-	if (!state)
-		state.reset(new State);
-	auto* prevState = static_cast<State*>(state.get());
 
 	next = next.subView(0, FULL_PAIR_SIZE + 1); // +1 reflects the guard pattern on the right, see IsRightPair()
 	// yes: the first view we test is at index 1 (black bar at 0 would be the guard pattern)
@@ -175,7 +196,9 @@ Barcode DataBarReader::decodePattern(int rowNumber, PatternView& next, std::uniq
 		if (IsLeftPair(next)) {
 			if (auto leftPair = ReadPair(next, false)) {
 				leftPair.y = rowNumber;
-				prevState->leftPairs.insert(leftPair);
+				auto [it, inserted] = prevState->leftPairs.insert(leftPair);
+				if (!inserted)
+					const_cast<Pair&>(*it).count++;
 				next.shift(FULL_PAIR_SIZE - 1);
 			}
 		}
@@ -183,7 +206,9 @@ Barcode DataBarReader::decodePattern(int rowNumber, PatternView& next, std::uniq
 		if (next.shift(1) && IsRightPair(next)) {
 			if (auto rightPair = ReadPair(next, true)) {
 				rightPair.y = rowNumber;
-				prevState->rightPairs.insert(rightPair);
+				auto [it, inserted] = prevState->rightPairs.insert(rightPair);
+				if (!inserted)
+					const_cast<Pair&>(*it).count++;
 				next.shift(FULL_PAIR_SIZE + 2);
 			}
 		}
@@ -191,19 +216,21 @@ Barcode DataBarReader::decodePattern(int rowNumber, PatternView& next, std::uniq
 
 	for (const auto& leftPair : prevState->leftPairs)
 		for (const auto& rightPair : prevState->rightPairs)
-			if (ChecksumIsValid(leftPair, rightPair)) {
+			if (ChecksumIsValid(leftPair, rightPair) && PositionIsPlausible(leftPair, rightPair) && leftPair.count > 1
+				&& rightPair.count > 1) {
 				// Symbology identifier ISO/IEC 24724:2011 Section 9 and GS1 General Specifications 5.1.3 Figure 5.1.3-2
-				Barcode res{DecoderResult(Content(ByteArray(ConstructText(leftPair, rightPair)), {'e', '0'}))
-								.setLineCount(EstimateLineCount(leftPair, rightPair)),
-							{{}, EstimatePosition(leftPair, rightPair)},
-							BarcodeFormat::DataBar};
+				auto res = BarcodeData{.content = Content(ByteArray{ConstructText(leftPair, rightPair)}, {'e', '0', 0, AIFlag::GS1}),
+									   .position = EstimatePosition(leftPair, rightPair),
+									   .format = leftPair.center() < rightPair.xStart ? BarcodeFormat::DataBarOmni
+																					  : BarcodeFormat::DataBarStk,
+									   .lineCount = EstimateLineCount(leftPair, rightPair)};
 
 				prevState->leftPairs.erase(leftPair);
 				prevState->rightPairs.erase(rightPair);
 				return res;
 			}
-#endif
 
+out:
 	// guarantee progress (see loop in ODReader.cpp)
 	next = {};
 

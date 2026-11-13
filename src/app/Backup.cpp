@@ -13,6 +13,7 @@
 #include <QWindow>
 
 #include <chrono>
+#include <memory>
 
 using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
@@ -29,6 +30,16 @@ QString restoreProblem;
 QString stagedFolder()
 {
     return QDir(Settings::dataDir()).filePath(u"restore"_s);
+}
+
+// `path` is a file inside `folder` (a plugin's data folder).
+bool insideFolder(const QString& path, const QString& folder)
+{
+    if (path.isEmpty() || folder.isEmpty() || !QFileInfo(path).isAbsolute())
+        return false;
+    const QString clean = QDir::cleanPath(QDir::fromNativeSeparators(path));
+    const QString base = QDir::cleanPath(QDir::fromNativeSeparators(folder)) + u'/';
+    return clean.startsWith(base, Qt::CaseInsensitive) && !QDir::fromNativeSeparators(path).contains(u"/../"_s);
 }
 
 } // namespace
@@ -98,7 +109,66 @@ void Backup::restore(QWindow* window)
         run(file);
 }
 
-void Backup::run(const QString& restoring, const QString& exporting)
+void Backup::exportFor(const QString& file, const QString& unlessHash, std::function<void(Exported)> done)
+{
+    const QString settingsFile = Settings::filePath();
+    const QString dataFolder = Settings::dataDir();
+    const QString version = QCoreApplication::applicationVersion();
+    QThreadPool::globalInstance()->start([file, unlessHash, settingsFile, dataFolder, version, done = std::move(done)]() mutable {
+        Exported result;
+        result.when = QDateTime::currentDateTime();
+        const backupfiles::Packed packed
+            = backupfiles::pack(backupfiles::collect(settingsFile, dataFolder), version, result.when, true);
+        result.hash = packed.hash;
+        if (packed.zip.isEmpty())
+            result.problem = QCoreApplication::translate("ws::Backup", "有文件读不出来");
+        else if (packed.hash != unlessHash) {
+            result.problem = backupfiles::exportTo(file, packed);
+            result.written = result.problem.isEmpty();
+        }
+        QMetaObject::invokeMethod(qApp, [result, done = std::move(done)] { done(result); });
+    });
+}
+
+bool Backup::restoreFrom(const QString& file, std::function<void(QString)> done)
+{
+    if (m_busy)
+        return false;
+    run(file, {}, std::move(done));
+    return true;
+}
+
+void Backup::exportTool(const QString& dataDir, const QJsonObject& arguments, ToolDone done)
+{
+    const QString file = arguments.value(u"file"_s).toString();
+    if (!insideFolder(file, dataDir)) {
+        done({}, u"file must be a file in the plugin's data folder"_s);
+        return;
+    }
+    exportFor(file, arguments.value(u"unless"_s).toString(), [done = std::move(done)](const Exported& e) {
+        if (!e.problem.isEmpty())
+            done({}, e.problem);
+        else
+            done({{u"hash"_s, e.hash}, {u"when"_s, e.when.toString(Qt::ISODate)}, {u"written"_s, e.written}}, {});
+    });
+}
+
+void Backup::restoreTool(const QString& dataDir, const QJsonObject& arguments, ToolDone done)
+{
+    const QString file = arguments.value(u"file"_s).toString();
+    if (!insideFolder(file, dataDir)) {
+        done({}, u"file must be a file in the plugin's data folder"_s);
+        return;
+    }
+    // Answered once: by the restore, or here when another one is under way.
+    const auto answer = std::make_shared<ToolDone>(std::move(done));
+    if (!restoreFrom(file, [answer](const QString& problem) {
+            (*answer)(problem.isEmpty() ? QJsonObject {{u"restarting"_s, true}} : QJsonObject(), problem);
+        }))
+        (*answer)({}, tr("另一个备份正在进行，稍后再试"));
+}
+
+void Backup::run(const QString& restoring, const QString& exporting, std::function<void(QString)> done)
 {
     if (m_busy)
         return;
@@ -115,7 +185,7 @@ void Backup::run(const QString& restoring, const QString& exporting)
     const QString version = QCoreApplication::applicationVersion();
     const QString staged = stagedFolder();
     QThreadPool::globalInstance()->start([self = QPointer(this), folder, settingsFile, dataFolder, version, restoring,
-                                             exporting, staged] {
+                                             exporting, staged, done = std::move(done)]() mutable {
         const QString part = staged + u".part"_s;
         QString problem;
         QString message;
@@ -156,7 +226,9 @@ void Backup::run(const QString& restoring, const QString& exporting)
             = exporting.isEmpty() ? backupfiles::list(folder) : QList<backupfiles::Found>();
         const QDateTime last = found.isEmpty() ? QDateTime() : found.first().when;
         QMetaObject::invokeMethod(
-            qApp, [self, folder, problem, message, restart, last, exported = !exporting.isEmpty()] {
+            qApp, [self, folder, problem, message, restart, last, exported = !exporting.isEmpty(), done = std::move(done)] {
+                if (done)
+                    done(problem);
                 if (!self)
                     return;
                 self->m_busy = false;

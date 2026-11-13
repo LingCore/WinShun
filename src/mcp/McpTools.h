@@ -158,6 +158,11 @@ inline constexpr const char* kErrorOff = "off";
 // 剪贴板 → 记录剪贴板历史). AI's is named when both are off.
 inline constexpr const char* kSettingAiClipboard = "ai_clipboard";
 inline constexpr const char* kSettingClipboardHistory = "clipboard_history";
+
+// ws plugin's tools (Services::plugins). Never listed and unknown to every
+// client but ws: an AI client's model is not offered them (a shell agent
+// reaches them through ws, whose SKILL.md says how).
+inline constexpr const char* kPluginTools[] = {"plugins_list", "plugins_search", "plugins_install", "plugins_switch", "plugins_remove"};
 // The answer would not fit in one message (pipe::kMaxLineBytes).
 inline constexpr const char* kErrorTooLarge = "too_large";
 
@@ -276,6 +281,12 @@ struct Services {
     // Opens the settings window at a setting (its key) or a section (its
     // id) and brings it to the front.
     std::function<ToolResult(const QString& key, const QString& section)> openSettings;
+    // ws plugin (GitHub #251), the command line's alone (Tool::cliOnly): the
+    // plugins installed and the library's, installing one, its switch,
+    // removing it. `tool` is one of kPluginTools, `arguments` as ws sent
+    // them. `done` once, on the GUI thread; the words of the answer are for
+    // the person at the terminal, in Win顺's language.
+    std::function<void(const QString& tool, const QJsonObject& arguments, std::function<void(ToolResult)> done)> plugins;
     // Where screenshot_history puts its copies of the pictures; empty:
     // %TEMP%\WinShun\mcp.
     QString tempFolder;
@@ -336,7 +347,8 @@ public:
 
     QJsonArray tools() const; // MCP tool objects, the ones on offer
     QStringList toolNames() const; // likewise, the names
-    Known known(const QString& name) const;
+    // `cli`: asked by ws, which also knows the tools kept for it (kPluginTools).
+    Known known(const QString& name, bool cli = false) const;
     // Known::Off: the tool's own words on why, when it has any (an external
     // tool's offReason, change_settings' switch); empty for the others.
     QString offReason(const QString& name) const;
@@ -417,6 +429,7 @@ private:
     void changeSettings(const std::shared_ptr<Call>& call);
     void applySettings(const std::shared_ptr<Call>& call, SettingsApply apply);
     void openSettings(const std::shared_ptr<Call>& call);
+    void pluginCommand(const std::shared_ptr<Call>& call);
 
     const Tool* find(const QString& name) const; // among the host's own and the external ones
 

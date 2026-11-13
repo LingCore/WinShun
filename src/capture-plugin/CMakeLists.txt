@@ -23,7 +23,7 @@ foreach(name IN LISTS shared_qml)
 endforeach()
 foreach(name IN ITEMS CaptureOverlay AnnotateToolbar AnnotateStylePanel AnnotateSmartHint AnnotateLayer AnnotateObjects
                       EditWindow OcrPanel OcrBubble LongCapturePanel RecordingPanel RecordingButton RecordingOptions CaptureOptions CaptureSettingsWindow CaptureSaveButton
-                      SettingsSearch CaptureKeyHints PresenterOverlay PresenterToolbar)
+                      SettingsSearch CaptureKeyHints CaptureSizeBox PresenterOverlay PresenterToolbar)
     list(APPEND capture_qml "${CMAKE_CURRENT_SOURCE_DIR}/qml/${name}.qml")
 endforeach()
 set_source_files_properties("${app_dir}/qml/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -61,6 +61,7 @@ qt_add_library(WinShunCaptureApp SHARED
     ${app_dir}/platform/DragOut.cpp ${app_dir}/platform/DragOut.h
     ${app_dir}/platform/Foreground.cpp ${app_dir}/platform/Foreground.h
     ${app_dir}/platform/HotkeyText.h
+    ${app_dir}/platform/HotPages.cpp ${app_dir}/platform/HotPages.h
     ${app_dir}/platform/IdleTrim.cpp ${app_dir}/platform/IdleTrim.h
     ${app_dir}/platform/Integrity.cpp ${app_dir}/platform/Integrity.h
     ${app_dir}/platform/PaddleOcr.cpp ${app_dir}/platform/PaddleOcr.h

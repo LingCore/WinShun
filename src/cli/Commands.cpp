@@ -21,6 +21,7 @@ constexpr Opt kStatusOptions[] = {Opt::Json};
 // status says what is there: it does not wait for the index (--wait) and never starts Win顺 (--no-start).
 constexpr Opt kStatusShared[] = {Opt::Color, Opt::Encoding, Opt::Help, Opt::Version, Opt::Pipe, Opt::Instance};
 constexpr Opt kSkillOptions[] = {Opt::Install};
+constexpr Opt kPluginOptions[] = {Opt::Json};
 
 const Command kCommands[] = {
     {L"find", {L"按名字找文件和文件夹（默认命令）", L"Find files and folders by name (the default command)"},
@@ -43,12 +44,15 @@ const Command kCommands[] = {
     {L"grep", {L"按内容找：文件里的文字，Word、Excel、PPT、PDF 也行", L"Find by content: the text in files, Word, Excel, PowerPoint and PDF too"},
         {L"ws grep <文字> [选项]", L"ws grep <text> [options]"},
         {L"几个词都要出现在文件里；\"引号\" 里是整个短语，一行代码照原样找。\n"
+         L"\"马上|立即\" 是有一个就行；regex: 开头的词是正则表达式（在一行之内匹配，不分大小写）。\n"
          L"每个结果一行：路径:行号:那一行；文档写页 p3、幻灯片 s2、表格 [表名]r12。\n"
          L"比按名字找慢：到 --timeout 就停，给出已经找到的。",
             L"All words must occur in the file; \"quotes\" keep a phrase together, a line of code is found as it is.\n"
+            L"\"now|soon\" is either of them; a word that starts with regex: is a regular expression (within a line, any case).\n"
             L"One result a line: path:line:the line; documents give the page p3, slide s2 or sheet row [Sheet]r12.\n"
             L"Slower than finding by name: it stops at --timeout with what it found."},
-        {L"ws grep \"第三季度 销售额\" -n 20\nws grep \"TODO\" --in . --timeout 10s", L"ws grep \"quarterly revenue\" -n 20\nws grep \"TODO\" --in . --timeout 10s"},
+        {L"ws grep \"第三季度 销售额\" -n 20\nws grep \"TODO\" --in . --timeout 10s\nws grep \"regex:合同编号[A-Z]\\d+\"",
+            L"ws grep \"quarterly revenue\" -n 20\nws grep \"TODO\" --in . --timeout 10s\nws grep \"regex:invoice-\\d{4}\""},
         kGrepOptions, true, runGrep},
     {L"recent", {L"最近改过的文件，最新的在前", L"Files changed lately, newest first"}, {L"ws recent [选项]", L"ws recent [options]"},
         {L"不接查询词：--days 限定天数，--in 限定文件夹，--ext 限定类型，--folders 列文件夹。",
@@ -80,6 +84,26 @@ const Command kCommands[] = {
             L"Needs two switches turned on in WinShun: \"Keep a clipboard history\" in Settings > Clipboard and \"Allow AI to read the "
             L"clipboard history\" in Settings > AI assistants. One entry a line, line breaks written as \\n; -0 gives the whole texts."},
         {L"ws clip -n 5\nws clip \"http\" --kind link", L"ws clip -n 5\nws clip \"http\" --kind link"}, kClipOptions, true, runClip},
+    {L"plugin", {L"插件：列出、在插件库里找、安装、开关、卸载", L"Plugins: list, search the library, install, switch, remove"},
+        {L"ws plugin <list | search [词] | install <包、文件夹或 id> | enable <id> | disable <id> | remove <id>> [选项]",
+            L"ws plugin <list | search [words] | install <package, folder or id> | enable <id> | disable <id> | remove <id>> [options]"},
+        {L"list 列出装了哪些；search 在插件库里找（不写词就全列出来）；install 装一个插件包（.wsplugin、.zip）、一个插件文件夹，"
+         L"或插件库里的一个 id；enable、disable 开关；remove 卸载。\n"
+         L"自己的包和文件夹当场装好：新装的先关着，盖在开着的版本上就直接换上。要你点头的事，Win顺 在它自己的窗口里问你，"
+         L"ws 不等：第一次打开一个插件（它要哪些权限）、插件库里没人审核过的包、卸载。从插件库安装时，下载进度也在那个窗口里。\n"
+         L"退出码：0 办好了；1 Win顺 正在问你，答完用 ws plugin list 看结果（search 是没找到）；6 没有这个插件或文件；7 没办成。",
+            L"list shows what is installed; search looks in the plugin library (everything, without words); install takes a "
+            L"package (.wsplugin, .zip), a plugin's folder, or an id of the library; enable and disable are its switch; remove "
+            L"uninstalls it.\n"
+            L"A package or folder of your own is installed at once: a new plugin stays off, one put over a version that is on "
+            L"is on. What needs your yes, WinShun asks in its own window, and ws does not wait: a plugin turned on for the "
+            L"first time (the permissions it asks for), a package of the library nobody reviewed, a removal. A download from "
+            L"the library shows in that window too.\n"
+            L"Exit codes: 0 done; 1 WinShun is asking you: see ws plugin list once you answered (search: nothing found); 6 no "
+            L"such plugin or file; 7 it could not be done."},
+        {L"ws plugin list\nws plugin search 翻译\nws plugin install winshun.translate\nws plugin install .\\dist\\me.hello-1.0.0.wsplugin\nws plugin enable me.hello",
+            L"ws plugin list\nws plugin search translate\nws plugin install winshun.translate\nws plugin install .\\dist\\me.hello-1.0.0.wsplugin\nws plugin enable me.hello"},
+        kPluginOptions, true, runPlugin},
     {L"status", {L"Win顺 在不在运行、索引好了没", L"Whether WinShun runs and its index is ready"}, {L"ws status [选项]", L"ws status [options]"},
         {L"不会启动 Win顺，也不等索引（所以没有 --wait 和 --no-start）；只在 Win顺 刚启动、管道还没出来时多等几秒。"
          L"退出码：0 就绪，5 索引还没好，3 没在运行，4 连接关着。",

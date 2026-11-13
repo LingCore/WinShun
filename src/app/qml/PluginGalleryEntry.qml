@@ -36,6 +36,8 @@ Rectangle {
     required property string problem
     required property bool shown
     required property string staged // a newer version kept aside for the next start
+    required property bool hasReadme // the list names its README: 说明 shows it (GitHub #304)
+    required property bool readmeBusy
     required property string morePermissions // what the list's version asks for besides, named
 
     readonly property real dpr: Screen.devicePixelRatio
@@ -43,6 +45,29 @@ Rectangle {
     // Where 主页 leads, for its tip: "github.com" of "https://github.com/…".
     readonly property string homepageHost: homepage.replace(/^https?:\/\/([^\/?#]+).*$/i, "$1")
     readonly property bool waiting: stage === "update" && staged.length > 0 && !busy // put in place at the next start, or now
+    // The tip of the "i" by the name: what need not be read to choose (it is asked again when installing).
+    readonly property bool anyRisky: permissions.some(p => p.risky)
+    readonly property string infoText: {
+        const lines = []
+        if (reviewLabel.length > 0)
+            lines.push(reviewLabel)
+        if (author.length > 0)
+            lines.push(qsTr("作者：%1").arg(author))
+        if (keywords.length > 0)
+            lines.push(qsTr("关键字：%1").arg(keywords.join("  ")))
+        if (needs.length > 0)
+            lines.push(needs)
+        if (stage === "update" || stage === "installed")
+            lines.push(qsTr("已安装 %1").arg(installedVersion))
+        if (permissions.length > 0) {
+            lines.push(qsTr("权限："))
+            for (const p of permissions)
+                lines.push((p.risky ? "⚠ " : "• ") + p.text)
+        } else {
+            lines.push(qsTr("不需要额外的权限"))
+        }
+        return lines.join("\n")
+    }
 
     signal showInstalled() // 查看
 
@@ -67,7 +92,7 @@ Rectangle {
         x: Theme.snap(14, entry.dpr)
         y: Theme.snap(12, entry.dpr)
         width: parent.width - 2 * x
-        spacing: Theme.snap(10, entry.dpr)
+        spacing: Theme.snap(8, entry.dpr)
 
         Item { // the icon and the words; what it is here on the right
             width: parent.width
@@ -116,7 +141,9 @@ Rectangle {
                         font.weight: Theme.fontStrong
                         elide: Text.ElideRight
                         width: Math.min(implicitWidth, parent.width - versionText.width - 8
-                                                        - (homepageSlot.visible ? homepageSlot.width + 8 : 0))
+                                                        - (homepageSlot.visible ? homepageSlot.width + 8 : 0)
+                                                        - (readmeSlot.visible ? readmeSlot.width + 8 : 0)
+                                                        - infoDot.width - 8)
                         height: Theme.snapUp(implicitHeight, entry.dpr)
                     }
                     Text {
@@ -159,15 +186,41 @@ Rectangle {
                             }
                         }
                     }
-                }
-                Text {
-                    objectName: "pluginReviewLabel"
-                    width: parent.width
-                    text: entry.reviewLabel
-                    textFormat: Text.PlainText
-                    color: entry.unreviewed ? Theme.caution : Theme.subtext
-                    font.pixelSize: Theme.fontCaption
-                    wrapMode: Text.Wrap
+                    Item { // 说明 (GitHub #304): its README, read here before installing
+                        id: readmeSlot
+                        visible: entry.hasReadme
+                        width: 24
+                        height: nameText.height
+
+                        FlatButton {
+                            id: readmeButton
+                            dpr: entry.dpr
+                            objectName: "pluginReadme-" + entry.pluginId
+                            y: Theme.snap((parent.height - height) / 2, entry.dpr)
+                            implicitWidth: 24
+                            implicitHeight: 24
+                            flat: true
+                            enabled: !entry.readmeBusy
+                            opacity: readmeHover.hovered || activeFocus ? 1 : 0.55
+                            glyph: "\uE8A5" // Document, as 说明 in the installed card's menu
+                            Accessible.name: qsTr("说明")
+                            onClicked: entry.gallery.openReadme(entry.pluginId)
+                            HoverHandler { id: readmeHover }
+                            HoverTip {
+                                target: readmeHover.hovered ? readmeButton : null
+                                dpr: entry.dpr
+                                text: entry.readmeBusy ? qsTr("正在取说明…") : qsTr("说明")
+                            }
+                        }
+                    }
+                    InfoDot { // who made it, its keywords, what it may do
+                        id: infoDot
+                        objectName: "pluginInfo-" + entry.pluginId
+                        y: Theme.snap((nameText.height - height) / 2, entry.dpr)
+                        dpr: entry.dpr
+                        caution: entry.anyRisky
+                        text: entry.infoText
+                    }
                 }
                 Text { // what it does
                     width: parent.width
@@ -179,59 +232,17 @@ Rectangle {
                     font.pixelSize: Theme.fontCaption
                     elide: Text.ElideRight
                 }
-                Flow { // who made it, its keywords, what it needs
+                Text { // not reviewed, or its interpreter is not installed here: worth reading before installing
+                    objectName: "pluginReviewLabel"
                     width: parent.width
-                    spacing: Theme.snap(6, entry.dpr)
-
-                    Text {
-                        visible: entry.author.length > 0
-                        width: Theme.snapUp(implicitWidth, entry.dpr)
-                        height: 24
-                        verticalAlignment: Text.AlignVCenter
-                        text: entry.author
-                        textFormat: Text.PlainText
-                        color: Theme.faint
-                        font.pixelSize: Theme.fontCaption
-                    }
-                    Repeater {
-                        model: entry.keywords
-
-                        delegate: Item { // as keys to press (PluginCard's)
-                            id: keycap
-
-                            required property string modelData
-
-                            width: Theme.snapUp(Math.max(28, keycapText.implicitWidth + 14), entry.dpr)
-                            height: 24
-
-                            Hook { // the style's key cap (Theme.keyHint): it only tells
-                                id: keycapPart
-                                anchors.fill: parent
-                                part: Theme.keyHint
-                                dpr: entry.dpr
-                            }
-                            Text {
-                                id: keycapText
-                                anchors.centerIn: parent
-                                anchors.verticalCenterOffset: keycapPart.out("contentOffsetY", 0)
-                                text: keycap.modelData
-                                textFormat: Text.PlainText
-                                color: keycapPart.out("foreground", Theme.text)
-                                font.pixelSize: Theme.fontCaption
-                            }
-                        }
-                    }
-                    Text { // the interpreter it runs on; not installed here, in the caution colour
-                        visible: entry.needs.length > 0
-                        height: 24
-                        verticalAlignment: Text.AlignVCenter
-                        text: entry.needsMissing ? qsTr("%1（这台电脑还没装）").arg(entry.needs) : entry.needs
-                        textFormat: Text.PlainText
-                        color: entry.needsMissing ? Theme.caution : Theme.subtext
-                        font.pixelSize: Theme.fontCaption
-                    }
+                    visible: text.length > 0
+                    text: [entry.unreviewed ? entry.reviewLabel : "",
+                           entry.needsMissing ? qsTr("%1（这台电脑还没装）").arg(entry.needs) : ""].filter(t => t.length > 0).join(" · ")
+                    textFormat: Text.PlainText
+                    color: Theme.caution
+                    font.pixelSize: Theme.fontCaption
+                    wrapMode: Text.Wrap
                 }
-
             }
 
             Row { // what it is here, and what can be done
@@ -239,29 +250,27 @@ Rectangle {
                 anchors.right: parent.right
                 spacing: 10
 
-                Text {
-                    y: Theme.snap((32 - height) / 2, entry.dpr) // across from the button, there or not
-                    visible: text.length > 0
-                    text: entry.busy ? "" : entry.waiting ? qsTr("重启 Win顺 后更新到 %1").arg(entry.staged)
-                                        : entry.stage === "installed" ? qsTr("已安装 %1").arg(entry.installedVersion)
-                                        : entry.stage === "bundled" ? qsTr("随 Win顺 自带")
-                                        : entry.stage === "update" ? qsTr("已装 %1").arg(entry.installedVersion)
-                                        : ""
+                Text { // it comes and goes with Win顺: nothing to press
+                    y: Theme.snap((32 - height) / 2, entry.dpr)
+                    visible: !entry.busy && entry.stage === "bundled"
+                    text: qsTr("自带")
                     textFormat: Text.PlainText
                     color: Theme.subtext
                     font.pixelSize: Theme.fontCaption
                 }
                 FlatButton {
+                    id: actionButton
                     dpr: entry.dpr
                     objectName: "installPlugin-" + entry.pluginId
                     visible: entry.busy || entry.stage !== "bundled" // nothing to do with one that comes with Win顺
                     implicitHeight: 32
                     text: entry.busy ? qsTr("取消")
                         : entry.waiting ? qsTr("立即更新")
-                        : entry.stage === "install" ? qsTr("安装并启用")
+                        : entry.stage === "install" ? qsTr("安装")
                         : entry.stage === "update" ? qsTr("更新到 %1").arg(entry.version)
                         : entry.stage === "app" ? qsTr("需要更新 Win顺")
-                        : qsTr("查看")
+                        : qsTr("已安装")
+                    flat: !entry.busy && entry.stage === "installed" // done: it only leads to its card
                     highlighted: entry.installable && !entry.busy && !entry.waiting
                     // One download at a time; a newer Win顺 first.
                     enabled: entry.busy || (entry.installable ? !entry.gallery.downloading : entry.stage !== "app")
@@ -277,54 +286,17 @@ Rectangle {
                         else
                             entry.showInstalled()
                     }
-                }
-            }
-        }
 
-        Flow { // what it may do
-            id: permissionsFlow
-            x: texts.x
-            width: body.width - x
-            spacing: 12
-
-            Text {
-                width: Math.min(Theme.snapUp(implicitWidth, entry.dpr), permissionsFlow.width)
-                height: Math.max(20, Theme.snapUp(implicitHeight, entry.dpr))
-                verticalAlignment: Text.AlignVCenter
-                text: entry.permissions.length > 0 ? qsTr("权限") : qsTr("不需要额外的权限")
-                color: Theme.faint
-                font.pixelSize: Theme.fontCaption
-                wrapMode: Text.Wrap
-            }
-            Repeater {
-                model: entry.permissions
-
-                delegate: Row { // the riskiest with a warning, in the caution colour
-                    id: permission
-
-                    required property var modelData
-
-                    height: Math.max(20, permissionText.implicitHeight)
-                    spacing: 4
-
-                    Glyph {
-                        id: permissionWarning
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: permission.modelData.risky
-                        glyph: "" // Warning
-                        size: 12
-                        color: Theme.caution
-                    }
-                    Text {
-                        id: permissionText
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(Theme.snapUp(implicitWidth, entry.dpr),
-                            Math.max(0, permissionsFlow.width - (permission.modelData.risky ? permissionWarning.width + permission.spacing : 0)))
-                        text: permission.modelData.text
-                        textFormat: Text.PlainText
-                        color: permission.modelData.risky ? Theme.caution : Theme.subtext
-                        font.pixelSize: Theme.fontCaption
-                        wrapMode: Text.Wrap
+                    HoverHandler { id: actionHover }
+                    HoverTip {
+                        target: actionHover.hovered && text.length > 0 ? actionButton : null
+                        dpr: entry.dpr
+                        maxWidth: 320
+                        text: entry.busy ? ""
+                            : entry.waiting ? qsTr("%1 已经下载好。现在更新会先停一下这个插件；不点的话，下次启动 Win顺 时自动换上").arg(entry.staged)
+                            : entry.stage === "installed" ? qsTr("在“已安装”里查看")
+                            : entry.stage === "update" ? qsTr("现在装的是 %1").arg(entry.installedVersion)
+                            : ""
                     }
                 }
             }

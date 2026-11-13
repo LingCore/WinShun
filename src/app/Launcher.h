@@ -134,9 +134,15 @@ class Launcher : public QObject {
     // or "" for none (Settings::numberKeys).
     Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString numberHints READ numberHints NOTIFY resultOptionsChanged FINAL)
+    // A file's row has a delete button among its buttons (the settings, GitHub #316).
+    Q_PROPERTY(bool rowDeleteButton READ rowDeleteButton NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool footerHints READ footerHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool pureSearch READ pureSearch NOTIFY resultOptionsChanged FINAL)
+    // The scopes as one key in place of the tabs (the settings, GitHub #185).
+    Q_PROPERTY(bool scopeButton READ scopeButton NOTIFY resultOptionsChanged FINAL)
+    // The most rows the search box shows before its list scrolls (Settings::maxRows).
+    Q_PROPERTY(int maxRows READ maxRows NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString previewHotkey READ previewHotkey NOTIFY resultOptionsChanged FINAL)
     // A second key for Enter on a result (Settings::openHotkey); "" for none.
     Q_PROPERTY(QString openHotkey READ openHotkey NOTIFY resultOptionsChanged FINAL)
@@ -312,6 +318,7 @@ public:
         EditPicture, // 编辑: a screenshot's row, in the editing window (Shift+Enter)
         BrowseFolder, // list a folder in Win顺, then keep typing to search there
         Rename, // 重命名: a file's or folder's row, in place (F2; Main.qml opens the box, see beginRename)
+        RunAsUser, // 以普通权限运行: a row whose Enter runs as administrator (adminRemembered); Open from then on
         PluginAction = 100,
         PluginFileAction = 200
     };
@@ -426,6 +433,13 @@ public:
     // Edited, it is a path typed: only that folder, as ever. Empty: none
     // (the window opened for anything else).
     void setTypingFolder(const QString& prefix);
+    // Opened by a key typed in a file manager, that key and the ones after
+    // it on their way (App): with `text` alone in the box (the folder, or
+    // nothing) no rows are listed, the box waits for them. Listed, what is
+    // in the folder (seen in the file manager already) or the start list
+    // showed for a moment and gave way to what was typed, the box changing
+    // size twice (GitHub #234). Until the box says something else, or hides.
+    void awaitTyping(const QString& text);
     // FolderTyping: "only" (only the folder and below), "level" (only what
     // lies directly in it), else its rows first and then the rest.
     void setFolderTyping(const QString& how);
@@ -519,11 +533,17 @@ public:
     void setOpenHotkey(const QString& shortcut);
     Q_INVOKABLE bool isOpenKey(int key, int modifiers) const;
     void setNumberHints(const QString& hints);
+    bool rowDeleteButton() const { return m_rowDeleteButton; }
+    void setRowDeleteButton(bool shown);
     bool shortcutHelp() const { return m_shortcutHelp; }
     bool footerHints() const { return m_footerHints; }
     void setKeyboardHints(bool help, bool footer);
     bool pureSearch() const { return m_pureSearch; }
+    bool scopeButton() const { return m_scopeButton; }
+    void setScopeButton(bool on);
     void setPureSearch(bool on);
+    int maxRows() const { return m_maxRows; }
+    void setMaxRows(int rows);
     int numberKeysLeft() const { return static_cast<int>(m_numberKeysLeft); }
     void setNumberKeysLeft(unsigned digits);
     bool inTaskbarBox() const { return m_inTaskbarBox; }
@@ -543,6 +563,11 @@ public:
     // Off: nothing opened is remembered, and what was is not shown (it stays
     // until cleared in the settings).
     void setRecordHistory(bool on);
+    // 记住以管理员身份运行 (GitHub #313, off unless chosen): an app or a
+    // program file run as administrator from here (Ctrl+Shift+Enter) runs so
+    // again on Enter, its row saying 管理员, until run with normal rights
+    // from its menu (RunAsUser).
+    void setRememberAdmin(bool on);
     bool mergeFileScope() const { return m_mergeFileScope; }
     void setMergeFileScope(bool merged);
     QStringList queryHistory() const { return m_recordHistory ? m_queryHistory.items() : QStringList(); }
@@ -1005,6 +1030,8 @@ private:
     // Opened: into the history, if it is kept. `query`: the text the list it
     // was opened from is for (m_shownText); none when it was not found by typing.
     void remember(const QString& path, const QString& query = {});
+    bool canRememberAdmin(const SearchResult& r) const; // the setting on, and a row that can run as administrator
+    bool adminRemembered(const SearchResult& r) const; // its Enter runs as administrator
     void rememberWindow(const SearchResult& window); // switched to: the folder it shows, if it is a file manager's (GitHub #231)
     void forgetRecent(const QStringList& paths);
     // showSystemMenu's work, from the event loop; afterwards forgetGone drops
@@ -1202,6 +1229,18 @@ private:
     // What the name search looks for: typed in a folder, the words after it
     // (none: the folder's own listing, as the path typed); else searchText().
     QString nameText() const;
+    // A favorite command whose words find files (Favorite::searchFiles,
+    // GitHub #319) is what is typed, with words after its keyword: the
+    // command and those words. The rows are then the files and folders
+    // the words find (Enter hands the row's path to the command) and the
+    // command's own row, which takes the words as they are: last, or
+    // first when they are a path that exists.
+    struct CommandFiles {
+        Favorite command;
+        QString words;
+    };
+    std::optional<CommandFiles> commandFiles() const;
+    static bool fileRow(const SearchResult& r); // a file's or folder's own row, one a command can be handed
     // The words after the folder typed in when there are some and the box is
     // for it (typedInFolder): "" otherwise.
     QString typingWords() const;
@@ -1222,7 +1261,8 @@ private:
     bool m_searchPlaces = true;
     bool m_regexMode = false;
     bool m_shownRegex = false; // of the rows on screen, as m_shownText
-    // What is typed is parsed as regexes (regexMode, and not 内容).
+    // What is typed is parsed as regexes on names (regexMode, and not 内容:
+    // there the words are expressions on the files' text, m_regexMode as it is).
     bool regexTerms() const { return m_regexMode && m_scope != Content; }
     struct PrefixScope { Scope scope; QStringList typeKeys; bool folders; };
     std::optional<PrefixScope> m_filePrefix;
@@ -1276,6 +1316,8 @@ private:
     SortOrder m_panelSort;
 
     bool m_recordHistory = true;
+    bool m_rememberAdmin = false;
+    std::optional<bool> m_adminNote; // perform() to remember(): how the row is being run, to keep with it
     KindOrder m_kindOrder = KindOrder::FilesFirst;
     QStringList m_preferredTypes; // files of these types first among those that match about as well
     QStringList m_excludedTypes; // files of these types never listed (Settings::excludedTypes)
@@ -1290,9 +1332,14 @@ private:
     bool m_tabEntersFavoriteFolder = false;
     QString m_numberKeys = QStringLiteral("ctrl");
     QString m_numberHints = QStringLiteral("always");
+    bool m_rowDeleteButton = true;
     bool m_shortcutHelp = true;
     bool m_footerHints = true;
     bool m_pureSearch = false;
+    bool m_scopeButton = false;
+    bool m_typingAwaited = false; // awaitTyping, and ...
+    QString m_awaitedText; // ... the box's text then, trimmed
+    int m_maxRows = 8;
     QString m_previewHotkey = QStringLiteral("Alt+P");
     QKeySequence m_previewSequence {QStringLiteral("Alt+P")};
     QString m_openHotkey;

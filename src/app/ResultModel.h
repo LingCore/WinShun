@@ -63,6 +63,7 @@ public:
         WebRole, // a web shortcut's site, or a search on it
         PackagedAppRole,
         ElevatableRole, // run as administrator
+        AdminRunRole, // Enter runs it as administrator: remembered so (Launcher::adminRemembered)
         RevealableRole, // has a file or folder to open the location of
         CopyableRole, // has a file to copy for pasting in Explorer
         SelectedRole,

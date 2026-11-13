@@ -6,8 +6,10 @@
 
 #include "ODDXFilmEdgeReader.h"
 
-#include "Barcode.h"
+#include "BarcodeData.h"
+#include "SymbologyIdentifier.h"
 
+#include <cmath>
 #include <optional>
 #include <vector>
 
@@ -36,12 +38,12 @@ template <int N, int SUM>
 bool IsPattern(PatternView& view, const FixedPattern<N, SUM>& pattern, float minQuietZone)
 {
 	view = view.subView(0, N);
-	return view.isValid() && IsPattern(view, pattern, view.isAtFirstBar() ? std::numeric_limits<int>::max() : view[-1], minQuietZone);
+	return view.isValid() && IsPattern(view, pattern, view.spaceInFront(), minQuietZone);
 }
 
 bool DistIsBelowThreshold(PointI a, PointI b, PointI threshold)
 {
-	return std::abs(a.x - b.x) < threshold.x && std::abs(a.y - b.y) < threshold.y;
+	return std::abs(a.x - b.x) <= threshold.x && std::abs(a.y - b.y) <= threshold.y;
 }
 
 // DX Film Edge clock track found on 35mm films.
@@ -54,7 +56,7 @@ struct Clock
 
 	int dataLength() const { return hasFrameNr ? DATA_LENGTH_FN : DATA_LENGTH_NO_FN; }
 
-	float moduleSize() const { return float(xStop - xStart) / (hasFrameNr ? CLOCK_LENGTH_FN : CLOCK_LENGTH_NO_FN); }
+	float moduleSize() const { return float(xStop + 1 - xStart) / (hasFrameNr ? CLOCK_LENGTH_FN : CLOCK_LENGTH_NO_FN); }
 
 	bool isCloseTo(PointI p, int x) const { return DistIsBelowThreshold(p, {x, rowNumber}, PointI(moduleSize() * PointF{0.5, 4})); }
 
@@ -70,7 +72,7 @@ struct DXFEState : public RowReader::DecodingState
 	// see if we a clock that starts near {x, y}
 	Clock* findClock(int x, int y)
 	{
-		auto i = FindIf(clocks, [start = PointI{x, y}](auto& v) { return v.isCloseToStart(start.x, start.y); });
+		auto i = FindIf(clocks, [start = PointI{x, y}](auto& v) { return v.rowNumber != start.y && v.isCloseToStart(start.x, start.y); });
 		return i != clocks.end() ? &(*i) : nullptr;
 	}
 
@@ -104,24 +106,33 @@ std::optional<Clock> CheckForClock(int rowNumber, PatternView& view)
 
 } // namespace
 
-Barcode DXFilmEdgeReader::decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>& state) const
+BarcodeData DXFilmEdgeReader::decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>& state) const
 {
 	if (!state) {
-		state.reset(new DXFEState);
+		state = std::make_unique<DXFEState>();
 		static_cast<DXFEState*>(state.get())->centerRow = rowNumber;
 	}
 
 	auto dxState = static_cast<DXFEState*>(state.get());
 
 	// Only consider rows below the center row of the image
-	if (!_opts.tryRotate() && rowNumber < dxState->centerRow)
+	if (!_opts.tryRotate() && rowNumber < dxState->centerRow - 1)
 		return {};
 
-	// Look for a pattern that is part of both the clock as well as the data track (ommitting the first bar)
+	// Look for a pattern that is part of both the clock as well as the data track (omitting the first bar)
 	constexpr auto Is4x1 = [](const PatternView& view, int spaceInPixel) {
-		// find min/max of 4 consecutive bars/spaces and make sure they are close together
-		auto [m, M] = std::minmax({view[1], view[2], view[3], view[4]});
+#if 0
+		// Find min/max of 4 consecutive bars/spaces and make sure they are close together.
+		auto a = view[1], b = view[2], c = view[3], d = view[4];
+		auto m = std::min(std::min(a, b), std::min(c, d));
+		auto M = std::max(std::max(a, b), std::max(c, d));
 		return M <= m * 4 / 3 + 1 && spaceInPixel > m / 2;
+#else
+		// perform a very rough check to see if the 4 bars/spaces are close together
+		auto a = view[1], b = view[2], c = view[3], d = view[4];
+		auto diff = std::abs(a - b) + std::abs(a - c) + std::abs(a - d);
+		return diff < a && spaceInPixel > a / 2;
+#endif
 	};
 
 	// 12 is the minimum size of the data track (at least one product class bit + one parity bit)
@@ -152,6 +163,10 @@ Barcode DXFilmEdgeReader::decodePattern(int rowNumber, PatternView& next, std::u
 	if (!clock)
 		return {};
 
+	// Make sure the start pattern has the proper size (approx. 5 modules)
+	if (std::fabs(next.sum() / clock->moduleSize() - 5) > 1.0 )
+		return {};
+
 	// Skip the data start pattern (black, white, black, white, black)
 	// The first signal bar is always white: this is the
 	// separation between the start pattern and the product number
@@ -161,9 +176,12 @@ Barcode DXFilmEdgeReader::decodePattern(int rowNumber, PatternView& next, std::u
 	BitArray dataBits;
 	while (next.isValid(1) && dataBits.size() < clock->dataLength()) {
 
-		int modules = int(next[0] / clock->moduleSize() + 0.5);
-		// even index means we are at a bar, otherwise at a space
-		dataBits.appendBits(next.index() % 2 == 0 ? 0xFFFFFFFF : 0x0, modules);
+		// Max no. of modules is 20 spaces (with "96-0/0")
+		if (int modules = std::lround(next[0] / clock->moduleSize()); modules >= 1 && modules <= 20)
+			// even index means we are at a bar, otherwise at a space
+			dataBits.appendBits(next.index() % 2 == 0 ? 0xFFFFFFFF : 0x0, modules);
+		else
+			return {};
 
 		next.shift(1);
 	}
@@ -175,7 +193,7 @@ Barcode DXFilmEdgeReader::decodePattern(int rowNumber, PatternView& next, std::u
 	next = next.subView(0, DATA_STOP_PATTERN.size());
 
 	// Check there is the Stop pattern at the end of the data track
-	if (!next.isValid() || !IsRightGuard(next, DATA_STOP_PATTERN, minDataQuietZone))
+	if (!IsRightGuard(next, DATA_STOP_PATTERN, minDataQuietZone))
 		return {};
 
 	// The following bits are always white (=false), they are separators.
@@ -219,7 +237,10 @@ Barcode DXFilmEdgeReader::decodePattern(int rowNumber, PatternView& next, std::u
 	clock->xStart = xStart;
 	clock->xStop = xStop;
 
-	return Barcode(txt, rowNumber, xStart, xStop, BarcodeFormat::DXFilmEdge, {});
+	// ISO/IEC 15424:2008(E) specifies 'X' as 'other barcode' that can be used by the decoder manufacturer as he sees fit.
+	SymbologyIdentifier si {'X', 'F'};
+
+	return LinearBarcode(BarcodeFormat::DXFilmEdge, txt, rowNumber, xStart, xStop, si);
 }
 
 } // namespace ZXing::OneD

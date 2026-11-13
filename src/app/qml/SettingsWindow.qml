@@ -2096,6 +2096,21 @@ Window {
                     }
                 }
 
+                SettingRow { // GitHub #314
+                    id: desktopTypingRow
+                    title: qsTr("在桌面上直接打字搜索")
+                    keywords: qsTr("桌面;打字;输入;直接搜索;图标;desktop;type to search").split(";")
+                    description: qsTr("点一下桌面后直接打字，即可用 Win顺 搜索整台电脑")
+                    tip: qsTr("代替桌面自带的“按首字母跳到图标”；重命名图标时不受影响")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        objectName: "desktopTypingToggle"
+                        checked: window.editor.desktopTyping
+                        onToggled: (on) => window.editor.desktopTyping = on
+                    }
+                }
+
                 SettingRow {
                     id: opusTypingRow
                     title: qsTr("在 Directory Opus 里直接打字搜索")
@@ -2571,6 +2586,30 @@ Window {
                         }
                     }
                 }
+
+                SettingRow {
+                    id: dialogRulesRow
+                    objectName: "dialogRulesRow"
+                    title: qsTr("程序自己的选文件窗口")
+                    keywords: qsTr("规则;自定义;对话框;识别;添加数据;ArcGIS;CAD;dialogs.json").split(";")
+                    description: qsTr("有的程序用自己画的窗口选文件，上面几项认不出它。打开那个窗口，回来点“识别窗口”，它就也能搜、能转")
+                                 + (window.editor.dialogRuleStatus.length > 0 ? "\n" + window.editor.dialogRuleStatus : "")
+
+                    FlatButton {
+                        objectName: "dialogRuleLearnButton"
+                        dpr: window.dpr
+                        text: window.editor.dialogRuleLearning ? qsTr("等待中…") : qsTr("识别窗口")
+                        enabled: !window.editor.dialogRuleLearning
+                        onClicked: window.editor.learnDialogRule()
+                    }
+
+                    FlatButton {
+                        objectName: "dialogRuleFileButton"
+                        dpr: window.dpr
+                        text: qsTr("规则文件")
+                        onClicked: window.editor.openDialogRules()
+                    }
+                }
             }
 
             SettingsSection {
@@ -2678,6 +2717,19 @@ Window {
                         dpr: window.dpr
                         checked: window.editor.recordHistory
                         onToggled: (on) => window.editor.recordHistory = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("记住以管理员身份运行")
+                    keywords: qsTr("管理员;提权;权限;admin;administrator;elevate").split(";")
+                    description: qsTr("用 Ctrl+Shift+Enter 以管理员身份运行过的程序，之后按 Enter 也以管理员身份运行；右键选“以普通权限运行”可改回")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        enabled: window.editor.recordHistory
+                        checked: window.editor.rememberAdmin
+                        onToggled: (on) => window.editor.rememberAdmin = on
                     }
                 }
 
@@ -2969,6 +3021,56 @@ Window {
                         text: qsTr("恢复默认宽度")
                         enabled: window.editor.launcherWidthSet
                         onClicked: window.editor.resetLauncherWidth()
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("搜索框显示行数")
+                    keywords: qsTr("行数;高度;加高;变高;结果数;条数;显示更多;rows;height;results").split(";")
+                    description: qsTr("结果超过这个行数时滚动查看，可填 4–20 行，默认 8 行；屏幕下方放不下时自动减少")
+
+                    InputBox {
+                        objectName: "maxRowsInput"
+                        dpr: window.dpr
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 80
+                        horizontalAlignment: TextInput.AlignHCenter
+                        text: String(window.editor.maxRows)
+                        Accessible.name: qsTr("搜索框显示行数")
+                        validator: IntValidator { bottom: 1; top: 20 }
+                        onEditingFinished: {
+                            const rows = parseInt(text, 10)
+                            if (rows > 0)
+                                window.editor.maxRows = rows
+                            text = Qt.binding(() => String(window.editor.maxRows))
+                        }
+                    }
+                }
+
+                SettingRow { // with what the box looks like, where it is looked for (GitHub #185)
+                    title: qsTr("纯净搜索模式")
+                    description: qsTr("搜索框空着时只保留输入栏，输入后恢复结果和范围标签；右上角的搜索历史和展开按钮一直隐藏，快捷键照常可用。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响")
+                    keywords: qsTr("纯净;极简;空白;底栏;最近;收藏;pure;minimal").split(";")
+                    ToggleSwitch {
+                        objectName: "pureSearchToggle"
+                        dpr: window.dpr
+                        checked: window.editor.pureSearch
+                        Accessible.name: qsTr("纯净搜索模式")
+                        onToggled: (on) => window.editor.pureSearch = on
+                    }
+                }
+
+                SettingRow { // GitHub #185, #244
+                    title: qsTr("范围标签")
+                    keywords: qsTr("范围;全部;文件;内容;标签;合并;三合一;按钮;极简;scope;tabs").split(";")
+                    description: qsTr("搜索框右边的“全部 / 文件 / 内容”：拆分成几个标签，或合并成一个按钮，点一下切到下一个")
+                    tip: qsTr("两种样式下 Tab / Shift+Tab 都能切换；展开的搜索面板始终拆分显示")
+
+                    ScopeTabs {
+                        objectName: "scopeButtonChoice"
+                        labels: [qsTr("拆分"), qsTr("合并")]
+                        current: window.editor.scopeButton ? 1 : 0
+                        onActivated: (index) => window.editor.scopeButton = index === 1
                     }
                 }
             }
@@ -4063,7 +4165,7 @@ Window {
                 SettingRow {
                     title: qsTr("正则模式（Ctrl+R）")
                     keywords: qsTr("正则;正则表达式;regex;Everything;Ctrl+R;匹配").split(";")
-                    description: qsTr("在“全部”和“文件”里，每个词都按正则表达式匹配名字")
+                    description: qsTr("每个词都按正则表达式匹配：“全部”和“文件”里匹配名字，“内容”里匹配文件里的文字")
                     tip: qsTr("如 ^IMG_\\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:")
 
                     ToggleSwitch {
@@ -4166,19 +4268,6 @@ Window {
                 title: qsTr("键盘提示")
 
                 SettingRow {
-                    title: qsTr("纯净搜索模式")
-                    description: qsTr("搜索框空着时只保留输入栏；输入后恢复结果和操作按钮。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响")
-                    keywords: qsTr("纯净;极简;空白;底栏;最近;收藏;pure;minimal").split(";")
-                    ToggleSwitch {
-                        objectName: "pureSearchToggle"
-                        dpr: window.dpr
-                        checked: window.editor.pureSearch
-                        Accessible.name: qsTr("纯净搜索模式")
-                        onToggled: (on) => window.editor.pureSearch = on
-                    }
-                }
-
-                SettingRow {
                     title: qsTr("显示快捷键帮助按钮")
                     description: qsTr("在搜索框右下角显示入口，点击查看常用快捷键")
                     keywords: qsTr("快捷键;帮助;提示;隐藏;极简").split(";")
@@ -4265,6 +4354,19 @@ Window {
                         dpr: window.dpr
                         checked: window.editor.thumbnails
                         onToggled: (on) => window.editor.thumbnails = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("显示删除按钮")
+                    keywords: qsTr("删除;垃圾桶;回收站;误删;按钮;delete;trash;recycle").split(";")
+                    description: qsTr("文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后可在右键菜单的“更多选项”里删除")
+
+                    ToggleSwitch {
+                        objectName: "rowDeleteButtonToggle"
+                        dpr: window.dpr
+                        checked: window.editor.rowDeleteButton
+                        onToggled: (on) => window.editor.rowDeleteButton = on
                     }
                 }
 

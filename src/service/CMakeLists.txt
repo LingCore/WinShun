@@ -14,6 +14,7 @@ add_executable(WinShunService
     ${PROJECT_SOURCE_DIR}/src/app/platform/KeyListener.cpp
     Volumes.cpp
     ${PROJECT_SOURCE_DIR}/src/core/DialogNav.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/PathBoxDialog.cpp
     ${PROJECT_SOURCE_DIR}/src/core/Ntfs.cpp
     ${PROJECT_SOURCE_DIR}/src/core/NtfsBulk.cpp
     ${PROJECT_SOURCE_DIR}/src/core/ServiceLocation.cpp

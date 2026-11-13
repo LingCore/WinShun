@@ -124,6 +124,12 @@ private:
     struct Hook; // the window procedure subclass
     friend struct Hook;
 
+    // Qt made the window a new native one (the old handle took the subclass
+    // with it): hooked again, or nothing here would drag the window until
+    // the program is started again.
+    bool eventFilter(QObject* watched, QEvent* event) override;
+    void attach(); // the subclass and the styles, on the handle the window has now
+
     int hitTest(int screenX, int screenY) const; // HT* code
     bool sidesOnly() const { return m_sideSizing && !m_resizable && !m_ownFrame; } // see setSideSizing
     bool onHandle(int screenX, int screenY) const; // a handle under that point (see addHandle)

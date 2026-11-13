@@ -10,6 +10,7 @@ qt_add_library(wscore STATIC
     ClipStore.cpp ClipStore.h
     ContentIndex.cpp ContentIndex.h
     ContentIndexer.cpp ContentIndexer.h
+    ContentPattern.cpp ContentPattern.h
     ContentScanner.cpp ContentScanner.h
     ContentDetails.cpp ContentDetails.h
     ContentReport.cpp ContentReport.h
@@ -39,6 +40,7 @@ qt_add_library(wscore STATIC
     OwnInput.h
     PasteFile.cpp PasteFile.h # also built into WinShunSearch.exe (src/stub), without Qt
     PasteOffer.h
+    PathBoxDialog.cpp PathBoxDialog.h
     PathText.cpp PathText.h
     ProxyAddress.cpp ProxyAddress.h
     Pinyin.cpp Pinyin.h

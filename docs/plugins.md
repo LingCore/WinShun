@@ -16,7 +16,7 @@ Win顺 的插件给搜索框加关键字命令、把结果混进列表。界面�
 
 升级后原来开着的功能如果没能恢复，“已安装”页会保留原因，提供“重试恢复”和本地包安装，原来的设置和数据保留。
 
-Win顺 自己的另外几个插件不随安装包，在插件库里，要用时装上（设置 → 插件 → 插件库；源码在 `src\<名字>-plugin\`，清单和 README 在其中的 `package\`）：`winshun.capture`（截图与录屏；C++，用 Win顺 自己的 Qt，见下面“有自己窗口的常驻插件”）、`winshun.semantic`（按意思找：`? 一句话` 按文档讲的内容找文件，用你选的嵌入模型——本机的 Ollama 或云服务的密钥；C++ 常驻，用 `winshun:content` 拿 Win顺 已经读出的文字）、`winshun.localsend`（局域网传输：同一网络里的手机、电脑互传文件和文字，兼容 LocalSend；`传` 或 `ls`，或文件右键菜单的"用局域网发送…"；C++ 常驻、eager，用到 `network:listen`、`notifications` 和 `files` 触发）、`winshun.break`（休息提醒：每 20 分钟小休、隔一次大休，提前一个小条，到点调暗所有显示器显示倒计时；`休息` 或 `break`；C++ 常驻、eager，只要 `ui`，自己画窗口、休息时用键盘钩子拦按键）、`winshun.explorer-tabs`（资源管理器标签页：新开的文件夹窗口并成已开着的资源管理器窗口里的一个标签页，像 ExplorerTabUtility；按住 Ctrl+Shift 打开就还是新窗口；`标签页` 或 `tabs` 看状态、暂停；C++ 常驻、eager，要 `ui` 和 `elevated`（Win顺 以管理员身份运行、确认过时，也能并以管理员身份运行的窗口），用 ShellWindows 事件和 WinEvent 钩子，不往资源管理器里注入东西；关键词命令只为能暂停，主要功能不靠输入）、`winshun.translate`（翻译：`tr 句子`，用你自己的 DeepL 或 OpenAI 兼容接口，要自己填 API 密钥；C++ 常驻，`debounceMs` 300，先推一行"翻译中…"）、`winshun.bookmarks`（浏览器书签：`bm 词` 搜 Chrome 和 Edge 的书签；C++ 一次性）、`winshun.ocr-search`（图片文字搜索：`ocr 词` 搜图片、扫描 PDF 和文档内嵌图片里的文字，也在“内容”和“全部”里出结果；C++ 常驻，插件包的最低版本是构建它的 Win顺 版本）、`winshun.web`（网页搜索：不带程序的声明式插件，网站在插件设置里管理，见下面“网页搜索”）。以前随安装包、你又开着的，升级后 Win顺 自动从插件库装上，设置照旧。每个都是一份能跑的示例，有 README。
+Win顺 自己的另外几个插件不随安装包，在插件库里，要用时装上（设置 → 插件 → 插件库；源码在 `src\<名字>-plugin\`，清单和 README 在其中的 `package\`）：`winshun.capture`（截图与录屏；C++，用 Win顺 自己的 Qt，见下面“有自己窗口的常驻插件”）、`winshun.cloudbackup`（云备份：把设置备份自动传到 WebDAV 或 GitHub 私有仓库，`cloud` 立即备份或恢复；C++ 常驻、eager，用 `winshun:backup` 让 Win顺 做出备份、恢复备份，自己只管传文件，GitHub #276）、`winshun.semantic`（按意思找：`? 一句话` 按文档讲的内容找文件，用你选的嵌入模型——本机的 Ollama 或云服务的密钥；C++ 常驻，用 `winshun:content` 拿 Win顺 已经读出的文字）、`winshun.localsend`（局域网传输：同一网络里的手机、电脑互传文件和文字，兼容 LocalSend；`传` 或 `ls`，或文件右键菜单的"用局域网发送…"；C++ 常驻、eager，用到 `network:listen`、`notifications` 和 `files` 触发）、`winshun.break`（休息提醒：每 20 分钟小休、隔一次大休，提前一个小条，到点调暗所有显示器显示倒计时；`休息` 或 `break`；C++ 常驻、eager，只要 `ui`，自己画窗口、休息时用键盘钩子拦按键）、`winshun.explorer-tabs`（资源管理器标签页：新开的文件夹窗口并成已开着的资源管理器窗口里的一个标签页，像 ExplorerTabUtility；按住 Ctrl+Shift 打开就还是新窗口；`标签页` 或 `tabs` 看状态、暂停；C++ 常驻、eager，要 `ui` 和 `elevated`（Win顺 以管理员身份运行、确认过时，也能并以管理员身份运行的窗口），用 ShellWindows 事件和 WinEvent 钩子，不往资源管理器里注入东西；关键词命令只为能暂停，主要功能不靠输入）、`winshun.translate`（翻译：`tr 句子`，用你自己的 DeepL 或 OpenAI 兼容接口，要自己填 API 密钥；C++ 常驻，`debounceMs` 300，先推一行"翻译中…"）、`winshun.bookmarks`（浏览器书签：`bm 词` 搜 Chrome 和 Edge 的书签；C++ 一次性）、`winshun.ocr-search`（图片文字搜索：`ocr 词` 搜图片、扫描 PDF 和文档内嵌图片里的文字，也在“内容”和“全部”里出结果；C++ 常驻，插件包的最低版本是构建它的 Win顺 版本）、`winshun.web`（网页搜索：不带程序的声明式插件，网站在插件设置里管理，见下面“网页搜索”）。以前随安装包、你又开着的，升级后 Win顺 自动从插件库装上，设置照旧。每个都是一份能跑的示例，有 README。
 
 别人写的插件、以及分享你自己的插件：[WinShun-plugins](https://github.com/LingCore/WinShun-plugins)（设置 → 插件 → 插件库 里直接安装和更新：下载后先核对大小和 sha256，再走和压缩包一样的安装；也可以自己下载 `.wsplugin`，在“已安装”里从压缩包安装；投稿见那里的 CONTRIBUTING）。插件库在打开这一页（十分钟内不重复取）、点“刷新”或安装时联网；开着“自动更新”、又装了插件库里的插件时，每天还会在后台检查一次更新。上次的列表存在数据文件夹的 `plugin-index.json`。
 
@@ -116,7 +116,7 @@ Start-WinShunPlugin -Name 'me.ps' -OnQuery {
 |---|---|---|
 | `winshun.py` | `query()`、`settings()`、`item(...)`、`reply(items)`、`is_action()` / `action_request()` / `effects(...)` | `serve(on_query, on_action=None, on_settings=None, on_details=None)`；处理函数收到 `(q, plugin)`，`plugin.partial()`、`plugin.log()`、`plugin.notify_user()`、`plugin.toast()`、`plugin.progress()`、`plugin.refresh()`、`plugin.tool(name, **args)`、`plugin.settings` |
 | `WinShun.psm1` | `Get-WinShunQuery`、`Get-WinShunSettings`、`New-WinShunItem`、`Send-WinShunReply`、`Send-WinShunEffects` | `Start-WinShunPlugin -OnQuery {…} -OnAction {…} -OnDetails {…}`、`Send-WinShunPartial`、`Write-WinShunLog`、`Send-WinShunNotify`、`Send-WinShunToast`、`Send-WinShunProgress`、`Invoke-WinShunTool` |
-| `winshun.h` | `winshun::onceQuery()`、`onceSettings()`、`once(items)`、`onceAction()` / `onceEffects()` | 派生 `winshun::Plugin`，重写 `query()`（和 `queryResult()`、`action()`、`settingsChanged()`、`initialized()`、`shuttingDown()`、`appearanceChanged()`、`details()`），`serve()`；成员 `partial()`、`log()`、`notifyUser()`、`toast()`、`progress()`、`refresh()`、`tool()`、`settings()`；这些成员可以在别的线程里调（发送有锁） |
+| `winshun.h` | `winshun::onceQuery()`、`onceSettings()`、`once(items)`、`onceAction()` / `onceEffects()` | 派生 `winshun::Plugin`，重写 `query()`（和 `queryResult()`、`action()`、`settingsChanged()`、`initialized()`、`shuttingDown()`、`appearanceChanged()`、`details()`），`serve()`；成员 `partial()`、`log()`、`notifyUser()`、`toast()`、`progress()`、`refresh()`、`tool()`、`settings()`；这些成员可以在别的线程里调（发送有锁；`tool()` 在别的线程里调时由 `serve()` 所在的线程把回答交给它，可以给一个 `canceled` 标志，插件要停时置位，调用马上返回错误） |
 
 effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) / set_query(text) / open_path(path) / open_url(url) / replace(items)`；PowerShell `New-WinShunEffect -Hide / -Keep / -Notify / -Copy / -SetQuery / -OpenPath / -OpenUrl / -Replace`；C++ `winshun::effect::hide()` 等。
 
@@ -307,6 +307,8 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
 | `show_launcher` | `ui` | `text` | 打开搜索框并填上这段文字 |
 | `web_search` | `winshun:open` | `text` | 用 Win顺 的默认网页搜索搜这段文字 |
 | `open_url` | `winshun:open` | `url` | 用默认浏览器（或邮件程序）以用户的普通权限打开一个 `http`、`https` 或 `mailto` 链接；`open_item` 只开文件和文件夹。0.21.0 起 |
+| `backup_export` | `winshun:backup` | `file`、`unless`（可选） | 把现在的设置做成一份备份（和“导出备份”一样，不含这台电脑的备份位置、索引位置），写到 `file`（要在插件的数据文件夹里）。回 `{hash, when, written}`：`hash` 只跟内容有关，和 `unless` 一样时不写文件、`written` 是 false。0.26.0 起 |
+| `backup_restore` | `winshun:backup` | `file` | 用 `file`（插件数据文件夹里的一份备份）恢复：先校验，把现在的设置在本机 `backups` 里存一份，然后 Win顺 重启换上它，和“从备份恢复”一样。校验不过或另一个备份正在进行时回错误，什么都不换。让用户确认之后再调。0.26.0 起 |
 
 ### 系统开关提供者
 
@@ -412,6 +414,7 @@ manifest 的 `permissions` 是数组：`["processes", "clipboard:read", {"files:
 | `ui` | 开自己的窗口、找别的窗口 | 部分 | 没有时作业限制桌面和 USER 句柄，并禁用传统扩展点；有此权限的插件保留传统输入法扩展点，仍受其他进程缓解策略和作业限制 |
 | `system:settings` | 修改 Windows 用户设置（主题、资源管理器、无线电、音量、保持唤醒） | **否** | 普通用户权限，仅声明；用于系统开关提供者，不授予管理员权限 |
 | `winshun:search` / `winshun:open` / `winshun:history` | 调 Win顺 的工具 | **是** | `winshun/tool` 按权限放行 |
+| `winshun:backup` | 取得 Win顺 的设置备份，并用备份恢复设置（`backup_export`、`backup_restore`）。备份里有全部设置、收藏和装的插件；恢复会换掉现在的设置并重启 Win顺。0.26.0 起，更早的 Win顺 不认识它，会拒绝整个插件，清单里同时写 `"minWinShun": "0.26.0"` | **是** | `winshun/tool` 按权限放行；文件只能在插件自己的数据文件夹里 |
 | `winshun:content` | 读 Win顺 从文档和文本文件里取出的文字（`list_documents`、`read_file_text`） | **是** | `winshun/tool` 按权限放行；不用自己解析 Word、PDF，也不用再读一遍硬盘 |
 | `files:write` | 写你的文件 | 只在 `strict` 下 | `strict` 写不了用户目录，只能写 `<id>.data`；`normal` 和你自己一样能写，**只是声明** |
 | `files:read` | 读哪些文件 | **否** | 只是告诉用户它读什么（中完整性本来就能读） |
@@ -453,7 +456,9 @@ manifest 写 `"ai": {"expose": true}`，并在设置 → AI 助手 打开"AI 可
 ## 调试
 
 - **开发者模式**（设置 → 插件 → 高级）：改了脚本自动重启常驻插件（底栏"已重新加载 X"）；"消息记录"记下每一条往来（时间、插件、方向 → ← stderr ·、方法、请求到响应的毫秒），点一条看整个消息；"打开 plugins.log"（`%LOCALAPPDATA%\WinShun\plugins.log`，插件的 stderr、协议错误、崩溃都在那）。
-- **命令行**（源码编译出的 `build\release\wsbench.exe`，不用开界面）：
+- **`ws plugin`**（Win顺 自带的命令行，先在 设置 → AI 助手 里启用命令行）：`ws plugin install <插件文件夹或 .wsplugin>` 把它装上（新装的先关着；盖在开着的版本上直接换成新的，改完再装一次就行），`ws plugin enable <id>` 打开（第一次要你在 Win顺 的窗口里确认权限），`ws plugin list --json` 看它的状态（`state`、进程的 `status`、`error`：manifest 的错、缺程序、上次崩溃）。AI 助手也这样装上试。
+- **让 AI 写**：`npx skills add LingCore/WinShun --skill winshun-plugin-dev` 给 Claude Code、Codex、Cursor 等装上写插件的 Skill（协议要点、上面这个循环、发布步骤），不用再手动复制开发提示。
+- **wsbench**（源码编译出的 `build\release\wsbench.exe`，不用开界面）：
 
 ```powershell
 wsbench --plugin D:\my.plugin --query "hi 你好" --runs 20                 # 校验 manifest、经 runner 起进程、打印结果 JSON 和耗时（冷启动 / 首次往返 / 稳态中位数），以及进程的完整性、是否在作业里

@@ -4,6 +4,7 @@
 #include "ChangeWatcher.h"
 #include "ContentIndex.h"
 #include "ContentIndexer.h"
+#include "ContentPattern.h"
 #include "ContentScanner.h"
 #include "Crawler.h"
 #include "DocExtractor.h"
@@ -9743,8 +9744,28 @@ private slots:
         QCOMPARE(again.items(), history.items());
         QCOMPARE(again.use(uR"(D:\b.txt)"_s).count, 3);
         QCOMPARE(again.use(uR"(D:\b.txt)"_s).last, 2000);
+
+        // Last run as administrator (GitHub #313): kept with the path, for
+        // one in the history only, through a save and whatever is typed.
+        QVERIFY(!again.admin(uR"(D:\b.txt)"_s));
+        again.setAdmin(uR"(d:\B.txt)"_s, true);
+        again.setAdmin(uR"(X:\never opened.exe)"_s, true);
+        again.record(uR"(D:\b.txt)"_s, u"admin"_s, 5000);
+        History third(file, 3);
+        third.load();
+        QVERIFY(third.admin(uR"(D:\b.txt)"_s));
+        QVERIFY(!third.admin(uR"(E:\c.txt)"_s) && !third.admin(uR"(X:\never opened.exe)"_s));
+        QCOMPARE(third.items(), again.items());
+        QCOMPARE(third.use(uR"(D:\b.txt)"_s).count, 4);
+        QCOMPARE(third.ranked(u"admin"_s, 5000).first(), uR"(D:\b.txt)"_s);
+        third.setAdmin(uR"(D:\b.txt)"_s, false);
+        History fourth(file, 3);
+        fourth.load();
+        QVERIFY(!fourth.admin(uR"(D:\b.txt)"_s));
+
         again.remove(uR"(d:\B.txt)"_s);
         QCOMPARE(again.use(uR"(D:\b.txt)"_s).count, 0);
+        QVERIFY(!again.admin(uR"(D:\b.txt)"_s));
     }
 
     void historyFormats()
@@ -11174,6 +11195,318 @@ private slots:
         const QByteArray gbk = encode(u"测试文本\n"_s, 936);
         QVERIFY(ContentScanner(QStringList {u"测试"_s, u"文本"_s}, 936).scan(reader(gbk), 4096, {}));
         QVERIFY(!ContentScanner(QStringList {u"测试"_s, u"\U0001F600"_s}, 936).scan(reader(gbk), 4096, {}));
+    }
+
+    // ---- GitHub #295: either of some words, regular expressions ----
+
+    void regexNeed()
+    {
+        const auto need = [](const QString& pattern) { return RegexNeed::of(pattern).toString(); };
+        QCOMPARE(need(uR"(abc)"_s), uR"("abc")"_s);
+        QCOMPARE(need(uR"(ABC\d+def)"_s), uR"(all("abc", "def"))"_s);
+        QCOMPARE(need(u"马上|立即"_s), u"oneOf(\"马上\", \"立即\")"_s);
+        // Zoekt's own example.
+        QCOMPARE(need(uR"((Path|PathFragment).*=.*/usr/local)"_s), uR"(all(oneOf("path", "pathfragment"), "=", "/usr/local"))"_s);
+        QCOMPARE(need(uR"([rbc]at)"_s), uR"(oneOf("rat", "bat", "cat"))"_s);
+        QCOMPARE(need(uR"(colou?r)"_s), uR"(oneOf("colour", "color"))"_s);
+        QCOMPARE(need(uR"(foo(?=bar))"_s), uR"("foo")"_s);
+        QCOMPARE(need(uR"(foo(?!x)bar)"_s), uR"("foobar")"_s);
+        // (Plain literals where a raw one's quotes and brackets would not pair up: moc reads the file too.)
+        QCOMPARE(need(uR"(^\s*#include\s+<(\w+)>$)"_s), u"all(\"#include\", \"<\", \">\")"_s);
+        QCOMPARE(need(uR"((?i)TODO|FIXME)"_s), uR"(oneOf("todo", "fixme"))"_s);
+        QCOMPARE(need(uR"(a{3})"_s), uR"("aaa")"_s);
+        QCOMPARE(need(uR"((ab){2,}c)"_s), uR"(all("ab", "c"))"_s);
+        QCOMPARE(need(uR"((?<year>\d{4})-(?<month>\d\d))"_s), uR"("-")"_s);
+        QCOMPARE(need(uR"([a-z]+@example\.com)"_s), uR"("@example.com")"_s);
+        QCOMPARE(need(uR"(\bfoo\b)"_s), uR"("foo")"_s);
+        QCOMPARE(need(uR"(\x41bc)"_s), uR"("bc")"_s);
+        QCOMPARE(need(uR"([^a]bc)"_s), uR"("bc")"_s);
+        QCOMPARE(need(uR"(a\.b)"_s), uR"("a.b")"_s);
+        QCOMPARE(need(u"[]]x"_s), u"\"]x\""_s);
+        QCOMPARE(need(uR"([a\]]x)"_s), uR"("x")"_s);
+        QCOMPARE(need(uR"([[:alpha:]]+ing)"_s), uR"("ing")"_s);
+        QCOMPARE(need(uR"((?:年度|季度)报告)"_s), u"oneOf(\"年度报告\", \"季度报告\")"_s);
+        QCOMPARE(need(uR"(a{x}b)"_s), uR"("a{x}b")"_s); // no quantifier: the brace is a character
+        // A letter with a case that is not ASCII's: left out, the rest stays.
+        QCOMPARE(need(u"caf\u00E9s"_s), uR"(all("caf", "s"))"_s);
+        // Nothing to be said, or not made out: every file is read.
+        for (const QString& open : {uR"(\d{11})"_s, uR"(.*)"_s, uR"(x*)"_s, uR"(a|)"_s, uR"(\Qa.b\E)"_s, uR"((?x) a b)"_s,
+                 uR"((*UTF)abc)"_s, uR"((?#note)abc)"_s, uR"(a(?R)?b)"_s, uR"(\w+)"_s, uR"(a{2 }b)"_s})
+            QVERIFY2(RegexNeed::of(open).isAny(), qPrintable(open + u" -> "_s + need(open)));
+        // Too many to list: still something.
+        QVERIFY(!RegexNeed::of(uR"((a|b)(c|d)(e|f)(g|h)(i|j)xyz)"_s).isAny());
+    }
+
+    // Whatever an expression matches has what was read off it: on made-up
+    // texts over a few characters, with the expressions run by PCRE itself.
+    void regexNeedHolds()
+    {
+        const QStringList patterns {uR"(abc)"_s, uR"(a.c)"_s, uR"(ab|ba)"_s, uR"((ab|ba)+x)"_s, uR"(a?b+a*)"_s, uR"([ab]{2}x)"_s,
+            uR"(a{2,3}b)"_s, uR"(^ab)"_s, uR"(ba$)"_s, uR"(\bab\b)"_s, uR"(a\sb)"_s, uR"(a\nb)"_s, uR"(a(?=b)b)"_s,
+            uR"((?<=a)b(?!a))"_s, uR"(a(b|)a)"_s, uR"((a|b)(a|b)(a|b)(a|b)(a|b)x)"_s, uR"(a.*b.*x)"_s, uR"((?-i)Ab)"_s,
+            uR"((?i:AB)x)"_s, uR"(a[^b]a)"_s, uR"(a\x62a)"_s, uR"((a)x\1)"_s, uR"(a{0}b)"_s, uR"(a{1}b{2})"_s, uR"(x??a)"_s,
+            uR"(a++b)"_s, uR"((?>ab|a)x)"_s, uR"(a\Kb)"_s, uR"([a-b]x[1-2])"_s, uR"(1\d1)"_s, uR"(a\.b)"_s, uR"(\.x)"_s,
+            u"马上|立即"_s, u"马.即"_s, u"[马立]即"_s, u"(马上)?立即x"_s, u"上\\s*立"_s, uR"((?|(a)b|(b)a)x)"_s,
+            uR"((?<n>ab)x\k<n>)"_s, uR"(a{,2}b)"_s, uR"(a(?:b|x(?:a|1))+)"_s};
+        const QString alphabet = u"aabbxAB1. \n马上立即"_s;
+        quint32 seed = 295;
+        const auto next = [&] {
+            seed = seed * 1664525u + 1013904223u;
+            return seed >> 8;
+        };
+        std::vector<QString> texts;
+        for (int i = 0; i < 6000; ++i) {
+            QString text;
+            for (quint32 n = next() % 13; n > 0; --n)
+                text.append(alphabet[next() % alphabet.size()]);
+            texts.push_back(text);
+        }
+        int matched = 0;
+        for (const QString& pattern : patterns) {
+            const QRegularExpression expression(pattern,
+                QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption
+                    | QRegularExpression::MultilineOption);
+            QVERIFY2(expression.isValid(), qPrintable(pattern));
+            const RegexNeed need = RegexNeed::of(pattern);
+            int hits = 0;
+            for (const QString& text : texts) {
+                if (!expression.match(text).hasMatch())
+                    continue;
+                ++hits;
+                QVERIFY2(need.in(text), qPrintable(u"%1 matches \"%2\" without %3"_s.arg(pattern, text, need.toString())));
+            }
+            matched += hits > 0 ? 1 : 0;
+        }
+        QVERIFY2(matched >= patterns.size() - 3, qPrintable(QString::number(matched))); // the texts do try them
+    }
+
+    void contentPatternTyped()
+    {
+        using Ways = std::vector<std::uint32_t>;
+        const auto texts = [](const ContentPattern& p) {
+            QStringList out;
+            for (const ContentNeedle& n : p.needles)
+                out.append((n.regex ? u"re:"_s : QString()) + n.text);
+            return out;
+        };
+        ContentPattern p = contentPattern(u" 报告  2025 "_s);
+        QCOMPARE(texts(p), (QStringList {u"报告"_s, u"2025"_s}));
+        QCOMPARE(p.ways, (Ways {0b11}));
+        QVERIFY(!p.hasRegex() && p.error.isEmpty());
+
+        // Either of them: as Everything writes it, or apart as in a name search.
+        for (const QString& typed : {u"马上|立即"_s, u"马上 | 立即"_s, u"马上| 立即"_s, u"|马上||立即|"_s}) {
+            p = contentPattern(typed);
+            if (typed.contains(u"||")) { // a line of code, as it is
+                QCOMPARE(texts(p), QStringList {typed});
+                continue;
+            }
+            QCOMPARE(texts(p), (QStringList {u"马上"_s, u"立即"_s}));
+            QCOMPARE(p.ways, (Ways {0b01, 0b10}));
+        }
+        p = contentPattern(u"会议 马上|立即"_s);
+        QCOMPARE(texts(p), (QStringList {u"会议"_s, u"马上"_s, u"立即"_s}));
+        QCOMPARE(p.ways, (Ways {0b011, 0b101}));
+        p = contentPattern(u"报告 | 总结 2026"_s);
+        QCOMPARE(p.ways, (Ways {0b001, 0b110}));
+        QCOMPARE(p.words(), (QStringList {u"报告"_s, u"总结"_s, u"2026"_s}));
+        // While it is being typed: what is there so far.
+        QCOMPARE(texts(contentPattern(u"马上|"_s)), QStringList {u"马上"_s});
+        QCOMPARE(contentPattern(u"马上 | "_s).ways, (Ways {1}));
+        // Quoted, the bar is a character; so it is in a line of code.
+        QCOMPARE(texts(contentPattern(u"\"a|b\""_s)), QStringList {u"a|b"_s});
+        QCOMPARE(texts(contentPattern(u"printf(\"%d\", a | b)"_s)), QStringList {u"printf(\"%d\", a | b)"_s});
+        QCOMPARE(texts(contentPattern(u"\"年度 报"_s)), QStringList {u"年度 报"_s});
+        // Typed twice, or a way that asks for more than another: once.
+        QCOMPARE(contentPattern(u"a A"_s).needles.size(), std::size_t {1});
+        QCOMPARE(contentPattern(u"abc | abc def"_s).ways, (Ways {1}));
+        // Too many choices to be ways: the word as it is.
+        QCOMPARE(texts(contentPattern(u"a|b c|d e|f g|h i|j"_s)).last(), u"i|j"_s);
+        QVERIFY(contentPattern(u"   "_s).isEmpty());
+
+        // Expressions: by a word's prefix, or every word in regex mode.
+        p = contentPattern(uR"(regex:1[3-9]\d{9})"_s);
+        QCOMPARE(texts(p), QStringList {uR"(re:1[3-9]\d{9})"_s});
+        QVERIFY(p.hasRegex() && p.needles[0].expression.isValid());
+        QVERIFY(p.words().isEmpty());
+        p = contentPattern(uR"(re:"a b" 报告)"_s);
+        QCOMPARE(texts(p), (QStringList {u"re:a b"_s, u"报告"_s}));
+        QCOMPARE(p.ways, (Ways {0b11}));
+        p = contentPattern(u"\"regex:[\""_s); // quoted from the start: the words
+        QCOMPARE(texts(p), QStringList {u"regex:["_s});
+        p = contentPattern(uR"(报告 regex:()"_s);
+        QVERIFY(p.isEmpty() && p.needles.empty() && !p.error.isEmpty());
+        QVERIFY(!contentPattern(u"regex:"_s).error.isEmpty());
+        p = contentPattern(uR"(马上|立即 \d+)"_s, true);
+        QCOMPARE(texts(p), (QStringList {u"re:马上|立即"_s, uR"(re:\d+)"_s}));
+        QCOMPARE(p.ways, (Ways {0b11}));
+        QCOMPARE(p.needles[0].need.toString(), u"oneOf(\"马上\", \"立即\")"_s);
+        QCOMPARE(contentPattern(u"foo | bar"_s, true).ways, (Ways {0b01, 0b10}));
+        QCOMPARE(texts(contentPattern(u"re:foo"_s, true)), QStringList {u"re:foo"_s}); // the prefix is not doubled
+        QVERIFY(!contentPattern(u"a("_s, true).error.isEmpty());
+
+        // Where to look, in regex mode: a path at the start only.
+        ContentQuery q = splitContentQuery(uR"(D:\proj\ \d+/)"_s, true);
+        QCOMPARE(q.folders.size(), std::size_t {1});
+        QCOMPARE(q.folders[0].path, uR"(D:\proj)"_s);
+        QCOMPARE(q.words, uR"(\d+/)"_s);
+        q = splitContentQuery(uR"(\d+/ abc/)"_s, true);
+        QVERIFY(q.folders.empty());
+        QCOMPARE(q.words, uR"(\d+/ abc/)"_s);
+    }
+
+    void contentEitherWord()
+    {
+        const auto scan = [](const QString& typed, const QString& text) {
+            return ContentScanner(contentPattern(typed)).scan(reader(text.toUtf8()), 4096, {});
+        };
+        const auto m = scan(u"马上|立即"_s, u"第一行\n请立即处理\n马上也行\n"_s);
+        QVERIFY(m);
+        QCOMPARE(m->line, 2);
+        QCOMPARE(m->snippet, u"请立即处理"_s);
+        QCOMPARE(m->matches, (QList<std::pair<qsizetype, qsizetype>> {{1, 2}}));
+        QCOMPARE(m->termCount, 1);
+        QVERIFY(!scan(u"马上|立即"_s, u"没有这两个词\n"_s));
+        // With another word: that one, and either.
+        QVERIFY(scan(u"会议 马上|立即"_s, u"会议纪要\n请立即回复\n"_s));
+        QVERIFY(!scan(u"会议 马上|立即"_s, u"会议纪要\n"_s));
+        QVERIFY(!scan(u"会议 马上|立即"_s, u"请立即回复\n"_s));
+        const auto way = scan(u"报告 | 总结 2026"_s, u"总结\n2026 年\n"_s);
+        QVERIFY(way);
+        QCOMPARE(way->termCount, 2);
+        QCOMPARE(way->snippet, u"总结 … 2026 年"_s);
+        QVERIFY(!scan(u"报告 | 总结 2026"_s, u"总结\n"_s));
+        // Both there: the line with both shows them.
+        const auto both = scan(u"alpha|beta"_s, u"alpha\nalpha and beta\n"_s);
+        QVERIFY(both);
+        QCOMPARE(both->termCount, 1);
+        // GBK: a word the code page cannot write is not there; the other may be.
+        const QByteArray gbk = encode(u"测试文本\n"_s, 936);
+        QVERIFY(ContentScanner(contentPattern(u"\U0001F600|文本"_s), 936).scan(reader(gbk), 4096, {}));
+        QVERIFY(!ContentScanner(contentPattern(u"\U0001F600|没有"_s), 936).scan(reader(gbk), 4096, {}));
+        // One in the name is all of "a|b" for the ranking.
+        ContentMatch one;
+        one.termCount = 1;
+        const QStringList words {u"alpha"_s, u"beta"_s};
+        QCOMPARE(contentRelevance(one, words, u"alpha.txt", 1, -1), contentRelevance(one, {u"alpha"_s}, u"alpha.txt", 1, -1));
+    }
+
+    void contentRegex()
+    {
+        const auto pattern = [](const QString& expression) { return contentPattern(expression, true); };
+        const auto scan = [&](const QString& expression, const QByteArray& bytes, std::size_t chunk = 4096, std::size_t step = 1u << 20) {
+            return ContentScanner(pattern(expression), 936).scan(reader(bytes, step), chunk, {});
+        };
+        auto m = scan(uR"(1[3-9]\d{9})"_s, "name: x\ntel: 13812345678 ok\n");
+        QVERIFY(m);
+        QCOMPARE(m->line, 2);
+        QCOMPARE(m->snippet, u"tel: 13812345678 ok"_s);
+        QCOMPARE(m->matches, (QList<std::pair<qsizetype, qsizetype>> {{5, 11}}));
+        QVERIFY(!scan(uR"(1[3-9]\d{9})"_s, "tel: 12812345678\n1381234567\n"));
+        // Any case unless it says otherwise.
+        QVERIFY(scan(u"HELLO"_s, "say hello\n"));
+        QVERIFY(!scan(u"(?-i)HELLO"_s, "say hello\n"));
+        // A line at a time, whatever ends it.
+        for (const char* text : {"foo\r\nbar\r\n", "foo\nbar\n", "foo\nbar"}) {
+            m = scan(u"foo$"_s, text);
+            QVERIFY2(m && m->line == 1, text);
+            m = scan(u"^bar$"_s, text);
+            QVERIFY2(m && m->line == 2 && m->snippet == u"bar", text);
+            QVERIFY2(!scan(u"foo.bar"_s, text), text);
+            QVERIFY2(!scan(u"^oo"_s, text), text);
+        }
+        // Either, as an expression writes it; several, every one.
+        m = scan(u"马上|立即"_s, u"第一行\n请立即处理\n"_s.toUtf8());
+        QVERIFY(m);
+        QCOMPARE(m->line, 2);
+        QCOMPARE(m->matches, (QList<std::pair<qsizetype, qsizetype>> {{1, 2}}));
+        m = scan(uR"(\d{4}-\d\d report)"_s, "the Report\nof 2025-01\n");
+        QVERIFY(m);
+        QCOMPARE(m->termCount, 2);
+        QCOMPARE(m->snippet, u"the Report … of 2025-01"_s);
+        QVERIFY(!scan(uR"(\d{4}-\d\d report)"_s, "the Report\n"));
+        // With words, by the prefix.
+        m = ContentScanner(contentPattern(uR"(regex:v\d+\.\d+ 发布)"_s)).scan(reader(u"发布说明\n版本 v12.3\n"_s.toUtf8()), 4096, {});
+        QVERIFY(m);
+        QCOMPARE(m->snippet, u"发布说明 … 版本 v12.3"_s);
+        // Matching nothing is no match.
+        QVERIFY(!scan(u"x*"_s, "abc\n"));
+        // UTF-16 and GBK: on the text, not the bytes.
+        m = scan(uR"(季度\w告)"_s, utf16le(u"第一行\r\n季度报告\r\n"_s, true));
+        QVERIFY(m && m->line == 2 && m->snippet == u"季度报告");
+        m = scan(u"测试.本$"_s, encode(u"空\n测试文本\n"_s, 936));
+        QVERIFY(m && m->line == 2);
+
+        // Across chunks, read a few bytes at a time: every line is whole
+        // when the expression is run on it, and its number is right.
+        QByteArray lines;
+        for (int i = 1; i <= 400; ++i)
+            lines += "line " + QByteArray::number(i) + (i == 317 ? " has needle42end in it" : " has nothing") + "\n";
+        for (const std::size_t chunk : std::initializer_list<std::size_t> {16, 18, 32, 100, 4096, 1u << 20}) {
+            for (const std::size_t step : std::initializer_list<std::size_t> {1, 7, 1u << 20}) {
+                m = scan(uR"(needle\d+end)"_s, lines, chunk, step);
+                QVERIFY2(m && m->line == 317, qPrintable(u"chunk %1 step %2"_s.arg(chunk).arg(step)));
+                QVERIFY(!scan(uR"(needle\d+end$)"_s, lines, chunk, step));
+                m = scan(uR"(^line 400 )"_s, lines.chopped(1), chunk, step); // the last line, not ended
+                QVERIFY2(m && m->line == 400, qPrintable(u"chunk %1 step %2"_s.arg(chunk).arg(step)));
+            }
+        }
+        // A file that ends with a chunk.
+        m = scan(u"^tail$"_s, "01234567890\ntail", 16);
+        QVERIFY(m && m->line == 2);
+        // A line longer than is waited for: looked through in pieces, and told as long.
+        QByteArray packed(100 * 1024, 'a');
+        packed += " needle7end ";
+        packed += QByteArray(100 * 1024, 'b');
+        m = scan(uR"(needle\dend)"_s, packed, 4096);
+        QVERIFY(m && m->line == 1 && m->longLine);
+        QVERIFY(m->snippet.contains(u"needle7end"));
+    }
+
+    void contentIndexPattern()
+    {
+        QTemporaryDir dir;
+        ContentIndex content(dir.path());
+        QVERIFY(content.add(10, gramsOf(u"季度报告"_s), false, 1, 0));
+        QVERIFY(content.add(20, gramsOf(u"年度报告和计划"_s), false, 2, 0));
+        QVERIFY(content.add(5, gramsOf(u"English only"_s), false, 4, 0));
+        QVERIFY(content.add(7, gramsOf(u"tel 13812345678"_s), false, 5, 0));
+        const auto matches = [&](const QString& typed, bool regexMode = false) {
+            std::vector<EntryId> out;
+            const ContentIndex::Lookup lookup = content.lookup(contentPattern(typed, regexMode));
+            for (const std::uint32_t k : lookup.known) {
+                if (lookup.usable && (k & ContentIndex::Lookup::kMatch))
+                    out.push_back(k & ~ContentIndex::Lookup::kMatch);
+            }
+            return out;
+        };
+        const auto usable = [&](const QString& typed, bool regexMode = false) {
+            return content.lookup(contentPattern(typed, regexMode)).usable;
+        };
+        using Ids = std::vector<EntryId>;
+        QCOMPARE(matches(u"季度|计划"_s), (Ids {10, 20}));
+        QCOMPARE(matches(u"季度|english"_s), (Ids {5, 10}));
+        QCOMPARE(matches(u"报告 季度|计划"_s), (Ids {10, 20}));
+        QCOMPARE(matches(u"only 季度|计划"_s), (Ids {}));
+        QCOMPARE(matches(u"中文|没有"_s), (Ids {}));
+        QVERIFY(content.lookup(contentPattern(u"季度|计划"_s)).decisive);
+        QVERIFY(!usable(u"on|报告"_s)); // "on" may be in any file
+        QVERIFY(usable(u"on 报告"_s));
+
+        // An expression: what it cannot match without.
+        QCOMPARE(matches(u"季度|计划"_s, true), (Ids {10, 20}));
+        QVERIFY(!content.lookup(contentPattern(u"季度|计划"_s, true)).decisive); // it is yet to be run
+        QCOMPARE(matches(uR"(engl.sh\s+only)"_s, true), (Ids {5}));
+        QCOMPARE(matches(uR"(englishman|报告)"_s, true), (Ids {10, 20}));
+        QCOMPARE(matches(uR"((年度|季度)报告)"_s, true), (Ids {10, 20}));
+        QCOMPARE(matches(uR"(tel\s\d{11})"_s, true), (Ids {7}));
+        QCOMPARE(matches(uR"(regex:138\d+ tel)"_s), (Ids {7}));
+        QCOMPARE(matches(uR"(regex:138\d+ 报告)"_s), (Ids {}));
+        QVERIFY(!usable(uR"(\d{11})"_s, true));
+        QVERIFY(!usable(uR"(报告|\d+)"_s, true));
+        QVERIFY(usable(uR"(\d+ 报告)"_s, true)); // the other word has grams
+        QCOMPARE(matches(uR"(\d+ 报告)"_s, true), (Ids {10, 20}));
+        QVERIFY(!usable(u"regex:("_s)); // not read: nothing is looked up
     }
 
     void contentRanking()

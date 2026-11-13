@@ -153,6 +153,7 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.historyCount = std::clamp(readOrDefault(s, u"Capture/HistoryCount"_s, d.historyCount), 0, 100);
     const QString format = readOrDefault(s, u"Capture/ColorFormat"_s, d.colorFormat).trimmed().toLower();
     o.colorFormat = format == u"rgb" || format == u"hsl" ? format : u"hex"_s;
+    o.sizePresets = capture::sizePresetsText(capture::parseSizePresets(listOrText(s, u"Capture/SizePresets"_s, d.sizePresets)));
     o.pinsHotkey = readOrDefault(s, u"Capture/PinsHotkey"_s, d.pinsHotkey).trimmed();
     o.pinsRestoreHotkey = readOrDefault(s, u"Capture/PinsRestoreHotkey"_s, d.pinsRestoreHotkey).trimmed();
     o.lastPinHotkey = readOrDefault(s, u"Capture/LastPinHotkey"_s, d.lastPinHotkey).trimmed();
@@ -224,6 +225,7 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/DelaySeconds"_s, delay);
     s.setValue(u"Capture/HistoryCount"_s, historyCount);
     s.setValue(u"Capture/ColorFormat"_s, colorFormat);
+    s.setValue(u"Capture/SizePresets"_s, sizePresets);
     s.setValue(u"Capture/PinsHotkey"_s, pinsHotkey);
     s.setValue(u"Capture/PinsRestoreHotkey"_s, pinsRestoreHotkey);
     s.setValue(u"Capture/LastPinHotkey"_s, lastPinHotkey);

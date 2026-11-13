@@ -4,7 +4,9 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QEvent>
 #include <QGuiApplication>
+#include <QPlatformSurfaceEvent>
 #include <QScreen>
 #include <QQuickWindow>
 #include <QStyleHints>
@@ -274,9 +276,8 @@ WindowFrame::~WindowFrame()
 void WindowFrame::setWindow(QWindow* window)
 {
     m_window = window;
-    m_hwnd = window->winId();
-    const HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
-    ::SetWindowSubclass(hwnd, &Hook::proc, 0, reinterpret_cast<DWORD_PTR>(this));
+    window->installEventFilter(this);
+    attach();
     // The frame's dark mode as it is shown too, not only as it activates
     // (WM_NCACTIVATE above): the clipboard and the preview open without the focus.
     win::keepDarkFrameOnShow(window);
@@ -303,14 +304,46 @@ void WindowFrame::setWindow(QWindow* window)
             QMetaObject::invokeMethod(this, &WindowFrame::frameShown, Qt::QueuedConnection);
         }, Qt::DirectConnection);
     }
-    if (!m_ownFrame)
-        return;
+}
+
+void WindowFrame::attach()
+{
+    m_hwnd = m_window->winId();
+    const HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
+    ::SetWindowSubclass(hwnd, &Hook::proc, 0, reinterpret_cast<DWORD_PTR>(this));
+    if (m_noActivate)
+        ::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_NOACTIVATE);
+    const LONG_PTR was = ::GetWindowLongPtrW(hwnd, GWL_STYLE);
+    LONG_PTR style = was;
     // For Windows a normal window (snapping, the animations, the window menu);
     // the frame itself is client area from now on (WM_NCCALCSIZE).
-    const LONG_PTR style = ::GetWindowLongPtrW(hwnd, GWL_STYLE);
-    ::SetWindowLongPtrW(hwnd, GWL_STYLE, (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW);
+    if (m_ownFrame)
+        style = (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW;
+    if (m_resizable) // see setResizable
+        style |= WS_THICKFRAME;
+    if (m_fixedSize) // see setFixedSize
+        style &= ~WS_MAXIMIZEBOX;
+    if (style == was)
+        return;
+    ::SetWindowLongPtrW(hwnd, GWL_STYLE, style);
     ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
         SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+}
+
+bool WindowFrame::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == m_window && event->type() == QEvent::PlatformSurface
+        && static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated
+        && m_window->winId() != m_hwnd) {
+        qWarning("Window frame: the window has a new native handle (%ls), hooked again",
+            qUtf16Printable(m_window->objectName().isEmpty() ? m_window->title() : m_window->objectName()));
+        m_handleButton = Qt::NoButton;
+        m_trackingLeave = false;
+        setPointer({-1, -1});
+        setMaximizeState(false, false);
+        attach();
+    }
+    return QObject::eventFilter(watched, event);
 }
 
 void WindowFrame::afterNextFrame()

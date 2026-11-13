@@ -298,7 +298,7 @@ void McpServer::callTool(Session& session, const QJsonValue& id, const QJsonObje
         session.sink(jsonrpc::errorResponse(id, jsonrpc::kInvalidParams, u"tools/call needs a tool name and an arguments object"_s));
         return;
     }
-    switch (m_host->known(name)) {
+    switch (m_host->known(name, session.cli)) {
     case ToolHost::Known::No:
         session.sink(jsonrpc::errorResponse(id, jsonrpc::kInvalidParams, u"Unknown tool: "_s + name));
         return;

@@ -267,6 +267,7 @@ Item {
                                 target: tipArea.containsMouse ? tipBadge : null
                                 text: row.tip
                                 delay: 150
+                                maxWidth: 420
                             }
                         }
                     }

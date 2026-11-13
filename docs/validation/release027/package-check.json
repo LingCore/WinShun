@@ -1,0 +1,22 @@
+{
+  "portable_program_files": 190,
+  "mismatched": [],
+  "deployment_files_missing_from_zip": [],
+  "data_entries": [
+    "WinShun/data/README.txt"
+  ],
+  "sha256sums_match": {
+    "WinShun-0.27.0-x64-setup.exe": true,
+    "WinShun-0.27.0-x64-portable.zip": true,
+    "WinShun-0.27.0-x64-offline-setup.exe": true,
+    "WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip": true
+  },
+  "sizes": {
+    "WinShun-0.27.0-x64-setup.exe": 31308657,
+    "WinShun-0.27.0-x64-portable.zip": 44380553,
+    "WinShun-0.27.0-x64-offline-setup.exe": 40623251,
+    "WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip": 11802525
+  },
+  "WinShun.exe_sha256": "23b96fe2b7413ed8994ba17fc91480593281024cc492f889cab92f1fd30f6ec0",
+  "installed_after_upgrade_sha256": "23b96fe2b7413ed8994ba17fc91480593281024cc492f889cab92f1fd30f6ec0"
+}

@@ -57,6 +57,7 @@ Item {
     required property bool suggestion // a web search on one of the site's suggestions: tagged 建议
     required property bool packagedApp
     required property bool elevatable
+    required property bool adminRun // Enter runs it as administrator (GitHub #313): said in place of 最近
     required property bool revealable
     required property bool copyable
     required property bool settingsAction
@@ -87,6 +88,8 @@ Item {
     readonly property bool modifiedShown: showModified && modified.length > 0
     property int hint: 0 // its number for the number keys (Ctrl+1…); 0 for none
     property bool reserveHintSpace: false // a numbered row keeps the number's room, also while the hint is faded out; a row without a number sits flush left
+    // A list that shows more rows than there are number keys (搜索框显示行数 over 9): its rows without a number keep that room too, in line with the numbered ones.
+    property bool alignWithNumbered: false
     property string hintModifier: "Ctrl" // ... with this held
     property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
     property real hintOpacity: 1
@@ -275,7 +278,7 @@ Item {
         id: iconSlot
         objectName: "resultIcon"
         opacity: row.offline || row.missing ? 0.6 : 1
-        x: Theme.iconInset + (row.reserveHintSpace && row.hint > 0 ? 28 : 0)
+        x: Theme.iconInset + (row.reserveHintSpace && (row.hint > 0 || row.alignWithNumbered) ? 28 : 0)
         anchors.verticalCenter: parent.verticalCenter
         width: row.compact ? 24 : 32 // 48 device pixels at 150 %, 64 at 200 %: sizes icons are drawn for
         height: width
@@ -451,6 +454,7 @@ Item {
         text: row.contentMode ? row.location
             : row.offline ? qsTr("离线")
             : row.missing ? qsTr("已不存在")
+            : row.adminRun ? qsTr("管理员")
             : row.favorite ? (row.favoriteKeyword.length > 0 ? qsTr("收藏 · %1").arg(row.favoriteKeyword) : qsTr("收藏"))
             : row.recent ? qsTr("最近") : ""
         color: Theme.faint
@@ -473,6 +477,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             y: row.onPixel((badge.height - height) / 2)
             text: row.plugin ? row.source : row.missing ? qsTr("已不存在")
+                : row.adminRun ? qsTr("管理员")
                 : row.favorite ? (row.favoriteKeyword.length > 0 ? qsTr("收藏 · %1").arg(row.favoriteKeyword) : qsTr("收藏"))
                 : row.recent ? qsTr("最近") : row.suggestion ? qsTr("建议") : row.web ? qsTr("网页")
                 : row.place ? qsTr("系统") : row.source

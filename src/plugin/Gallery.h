@@ -47,6 +47,10 @@ struct Item {
     QString minWinShun; // empty: any
     QString url; // the package: an https address (a file when the list is one)
     QString sha256; // lower-case hex
+    // The package's README, published beside the list (GitHub #304): an https
+    // address and the SHA-256 of what is there; both empty when the list names none.
+    QString readme;
+    QString readmeSha256;
     qint64 size = 0;
     bool bundled = false; // comes with Win顺 and is updated with it
     Review review = Review::Unspecified;

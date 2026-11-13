@@ -89,7 +89,7 @@
 //                      Also through a volume handle opened after the writes,
 //                      with the disk's write counter, and against
 //                      FSCTL_GET_NTFS_FILE_RECORD. Cleans up after itself
-//   wsbench [snapshot] --content-search [--all] [--unknown] phrase ...
+//   wsbench [snapshot] [--regex] --content-search [--all] [--unknown] phrase ...
 //                      with the content index the app keeps (from copies of its
 //                      files), what a content search for each phrase reads: how
 //                      many files and MB may contain it, the largest of them,
@@ -231,7 +231,7 @@
 //                      follows the indexing for up to S seconds (default
 //                      900), then asks each QUERY. --data keeps its vectors
 //                      in FOLDER for the next run
-//   wsbench --launcher-sim [--plugins DIR] [--index FOLDER] [--key-ms N] ["TEXT" ...]
+//   wsbench --launcher-sim [--plugins DIR] [--index FOLDER] [--key-ms N] [--scope files|folders|save] [--each-key] ["TEXT" ...]
 //                      the launcher's list without the launcher: each TEXT
 //                      typed key by key (N ms apart, default 80) over a copy
 //                      of the index, with the plugins of DIR (default
@@ -4048,6 +4048,7 @@ int runContentSearchBench(const ws::FileIndex& index, std::span<const char> stat
     const bool all = args.contains(u"--all"_s) || settings.contentInLowPriority;
     const bool readUnknown = args.contains(u"--unknown"_s);
     const bool show = args.contains(u"--show"_s); // the first files found, with their lines
+    const bool regexMode = args.contains(u"--regex"_s); // every word an expression, as the search box's regex mode
     const ws::ContentFilter filter {ws::ExtensionFilter(settings.contentExtensions), all};
     const ws::ContentSizeLimits limits = settings.contentSizeLimits();
     QStringList needles;
@@ -4073,8 +4074,18 @@ int runContentSearchBench(const ws::FileIndex& index, std::span<const char> stat
     const ws::EntryId profile = index.findPath(ws::win32::expandEnvironment(L"%USERPROFILE%"));
     for (const QString& needle : needles) {
         timer.restart();
-        const QStringList terms = ws::contentTerms(needle); // as the app splits what was typed
-        const ws::ContentIndex::Lookup lookup = content.lookup(terms);
+        const ws::ContentPattern pattern = ws::contentPattern(needle, regexMode); // as the app reads what was typed
+        if (pattern.isEmpty()) {
+            std::printf("\"%s\": %s\n", needle.toUtf8().constData(),
+                pattern.error.isEmpty() ? "nothing to look for" : pattern.error.toUtf8().constData());
+            continue;
+        }
+        for (const ws::ContentNeedle& n : pattern.needles) {
+            if (n.regex)
+                std::printf("  expression %s needs %s\n", n.text.toUtf8().constData(), n.need.toString().toUtf8().constData());
+        }
+        const QStringList terms = pattern.words();
+        const ws::ContentIndex::Lookup lookup = content.lookup(pattern);
         const double lookupMs = msSince(timer);
         struct File {
             ws::EntryId id;
@@ -4153,7 +4164,7 @@ int runContentSearchBench(const ws::FileIndex& index, std::span<const char> stat
 
         // Read as 内容 does: 16 threads, in order, the likely ones first.
         const std::size_t end = readUnknown ? files.size() : likelyEnd;
-        const ws::ContentScanner scanner(terms);
+        const ws::ContentScanner scanner(pattern);
         std::atomic<std::size_t> next {0};
         std::atomic<std::size_t> found {0};
         std::atomic<std::size_t> foundLikely {0};
@@ -5178,6 +5189,18 @@ int runLauncherSim(QStringList args)
         keyMs = std::max(0, args[at + 1].toInt());
         args.remove(at, 2);
     }
+    // --scope files|folders|save: the name search the bar under a file dialog
+    // asks for (DialogBar::search: files and folders without apps, folders
+    // alone for a folder picker, folders first where to save) in place of
+    // the launcher's; --each-key: every key's time, not only the last one's.
+    ws::Scope scope = ws::Scope::All;
+    std::optional<ws::KindOrder> order;
+    if (const qsizetype at = args.indexOf(u"--scope"_s); at >= 0 && at + 1 < args.size()) {
+        scope = args[at + 1] == u"folders" ? ws::Scope::Folders : ws::Scope::Files;
+        order = args[at + 1] == u"save" ? ws::KindOrder::FoldersFirst : ws::KindOrder::FilesFirst;
+        args.remove(at, 2);
+    }
+    const bool eachKey = args.removeAll(u"--each-key"_s) > 0;
     // HARNESS (ocr-in-search investigation): --ocr-data DIR = a copy of a plugin data folder
     // (put in as winshun.ocr-search.data), --walk DIR = index only this folder (repeatable),
     // --content on|off = filters.contentEnabled as the launcher sends it (default on).
@@ -5386,9 +5409,10 @@ int runLauncherSim(QStringList args)
         if (keywordPlugin.isEmpty()) {
             ws::SearchEngine::Request request;
             request.text = text;
-            request.scope = ws::Scope::All;
-            request.kindOrder = settings.foldersFirst ? ws::KindOrder::FoldersFirst : ws::KindOrder::FilesFirst;
-            request.web = settings.webShortcuts;
+            request.scope = scope;
+            request.kindOrder = order.value_or(settings.foldersFirst ? ws::KindOrder::FoldersFirst : ws::KindOrder::FilesFirst);
+            if (!order)
+                request.web = settings.webShortcuts;
             requestId = engine.submit(std::move(request));
         } else {
             engine.cancel();
@@ -5431,6 +5455,10 @@ int runLauncherSim(QStringList args)
                 const QDeadlineTimer pause(keyMs);
                 while (!pause.hasExpired())
                     QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 5);
+                if (eachKey)
+                    std::printf("  \"%s\": names %s\n", qUtf8Printable(text.left(n)),
+                        namesIn ? qUtf8Printable(QString::number(namesMs, 'f', 1) + u" ms"_s)
+                                : qUtf8Printable(u"not in after %1 ms"_s.arg(keyMs)));
             }
         }
         const bool done = waitSettled(8000);

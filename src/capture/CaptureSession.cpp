@@ -203,11 +203,13 @@ QStringList CaptureSession::keyHintRows() const
     if (m_annot.active() && (m_annot.gestureActive() || m_annot.pathActive() || m_annot.editingText()
             || m_annot.editingNumber() || m_annot.picking()))
         return {};
+    if (m_sizeEditing) // the keys are the panel's
+        return {};
     QStringList rows;
     if (m_ocrOnly) // 识别屏幕文字: picking a region is all there is
         return {u"wheel"_s, u"wasd"_s, u"quit"_s};
     if (m_selection.screen < 0) { // a press not yet a drag too: what it was over
-        rows = {u"wheel"_s, u"wasd"_s};
+        rows = {u"wheel"_s, u"wasd"_s, u"size"_s};
         if (!m_selectionHistory.empty())
             rows.append(u"recall"_s);
         if (m_historyAvailable)
@@ -227,7 +229,7 @@ QStringList CaptureSession::keyHintRows() const
             rows.append(u"save"_s);
         if (m_annot.keys().has(KeyAction::Pin))
             rows.append(u"pin"_s);
-        rows.append(u"arrows"_s);
+        rows.append({u"arrows"_s, u"size"_s});
         if (m_ocrAvailable)
             rows.append(u"ocr"_s);
         rows.append(u"long"_s);
@@ -404,6 +406,9 @@ void CaptureSession::begin(std::vector<CaptureScreen*> screens, Windows windows)
     m_parkedSelection = {};
     m_annot.end();
     m_annotScreen = -1;
+    if (std::exchange(m_sizeEditing, false))
+        emit sizeEditingChanged();
+    setRatio({}); // a shape is held for the capture it was chosen in
     if (std::exchange(m_toolbarHidden, false))
         emit toolbarHiddenChanged();
     m_hintPolicy.begin(hintNow()); // afresh (rule 8); publish() below sets its stage
@@ -423,6 +428,9 @@ void CaptureSession::begin(std::vector<CaptureScreen*> screens, Windows windows)
 void CaptureSession::replaceShot(Windows windows, int screen, const QRect& rect, const std::optional<annot::Document>& doc)
 {
     retireAnnotation();
+    if (std::exchange(m_sizeEditing, false))
+        emit sizeEditingChanged();
+    setRatio({});
     m_recalledSelection = -1;
     m_pendingButton = Qt::NoButton;
     m_windows = std::move(windows);
@@ -525,6 +533,9 @@ void CaptureSession::end()
     m_selection = {};
     m_previous = {};
     m_phase = Phase::Hover;
+    if (std::exchange(m_sizeEditing, false))
+        emit sizeEditingChanged();
+    setRatio({});
     if (std::exchange(m_ocrOnly, false))
         emit ocrOnlyChanged();
     if (std::exchange(m_active, false))
@@ -654,7 +665,7 @@ void CaptureSession::publish()
     const CaptureScreen* cursorScreen = screenAt(m_cursorScreen);
     const int line = std::max(1, static_cast<int>(std::lround(cursorScreen ? cursorScreen->dpr() : 1.0)));
     const bool overShown = shown.screen == m_cursorScreen && shown.rect.adjusted(-line, -line, line, line).contains(m_cursorAt);
-    const bool magnifier = m_magnifier && !m_cursorCovered && (hovering || adjusting || overShown);
+    const bool magnifier = m_magnifier && !m_cursorCovered && !m_sizeEditing && (hovering || adjusting || overShown);
     for (CaptureScreen* s : m_screens) {
         const QRect hover = hovering && s->index() == m_hoverScreen ? hoverRect() : QRect();
         const QRect selection = s->index() == shown.screen ? shown.rect : QRect();
@@ -701,18 +712,19 @@ void CaptureSession::pointerMove(int screen, QPoint p, Qt::KeyboardModifiers mod
         m_phase = Phase::Dragging;
         m_previous = {};
         dropParked();
-        m_selection = {m_pressScreen, spanRect(m_pressAt, clampTo(m_pressScreen, here))};
+        m_selection = {m_pressScreen, spanRatio(m_pressAt, clampTo(m_pressScreen, here), m_ratio, screenAt(m_pressScreen)->bounds())};
         emit selectionChanged();
         break;
     }
     case Phase::Dragging: {
         const QPoint here = p + screenAt(screen)->rect().topLeft() - screenAt(m_pressScreen)->rect().topLeft();
-        m_selection.rect = spanRect(m_pressAt, clampTo(m_pressScreen, here));
+        m_selection.rect = spanRatio(m_pressAt, clampTo(m_pressScreen, here), m_ratio, screenAt(m_pressScreen)->bounds());
         break;
     }
     case Phase::Adjusting: {
         const QPoint here = p + screenAt(screen)->rect().topLeft() - screenAt(m_pressScreen)->rect().topLeft();
-        m_selection.rect = dragHandle(m_startRect, m_handle, here - m_pressAt, screenAt(m_pressScreen)->bounds());
+        const QRect bounds = screenAt(m_pressScreen)->bounds();
+        m_selection.rect = keepRatio(dragHandle(m_startRect, m_handle, here - m_pressAt, bounds), m_startRect, m_handle, m_ratio, bounds);
         break;
     }
     case Phase::Annotating: {
@@ -735,6 +747,7 @@ void CaptureSession::pointerPress(int screen, QPoint p, Qt::MouseButton button, 
 {
     if (!m_active || !screenAt(screen))
         return;
+    setSizeEditing(false); // a press on the picture: the panel is done with
     m_hintPolicy.press(); // any button: the hints go at once (KeyHintPolicy rule 2)
     refreshKeyHints();
     m_pendingButton = Qt::NoButton; // another press voids one waiting for its release
@@ -824,6 +837,7 @@ void CaptureSession::pointerRelease(int screen, QPoint p, Qt::MouseButton button
             break;
         }
         dropParked();
+        setRatio({}); // the window's own shape, not the one held
         m_selection = hovered(); // a click picks the window or control under it
         m_phase = Phase::Selected;
         emit selectionChanged();
@@ -1080,9 +1094,10 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
         case Qt::Key_Right:
         case Qt::Key_Up:
         case Qt::Key_Down:
-            if (!busy && plain && m_selection.screen < 0)
-                nudgeSelection(key == Qt::Key_Left ? -1 : key == Qt::Key_Right ? 1 : 0,
-                    key == Qt::Key_Up ? -1 : key == Qt::Key_Down ? 1 : 0, false);
+            // The pointer as WASD, with a button held too (the drag goes along).
+            if (plain && (busy || m_selection.screen < 0))
+                movePointer((key == Qt::Key_Left ? -1 : key == Qt::Key_Right ? 1 : 0) * step,
+                    (key == Qt::Key_Up ? -1 : key == Qt::Key_Down ? 1 : 0) * step);
             return true;
         case Qt::Key_C:
             if (busy || !plain)
@@ -1119,6 +1134,15 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
         const int step = shift ? 10 : 1;
         movePointer((key == Qt::Key_A ? -1 : key == Qt::Key_D ? 1 : 0) * step,
             (key == Qt::Key_W ? -1 : key == Qt::Key_S ? 1 : 0) * step);
+        return true;
+    }
+    // F: the size panel, where a size is typed in or picked (#308). Tab is the
+    // way to the toolbar's buttons, and no tool has this letter.
+    if (key == Qt::Key_F && plain && !shift) {
+        if (m_annot.active() && (m_annot.editingText() || m_annot.editingNumber()))
+            return false;
+        if (resting() && !(m_annot.active() && (m_annot.gestureActive() || m_annot.pathActive())))
+            setSizeEditing(true);
         return true;
     }
     // The tools, undo, delete and the arrows on a selected annotation come
@@ -1228,10 +1252,17 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
     case Qt::Key_Right:
     case Qt::Key_Up:
     case Qt::Key_Down: {
-        if (busy)
-            return true;
         const int dx = key == Qt::Key_Left ? -1 : key == Qt::Key_Right ? 1 : 0;
         const int dy = key == Qt::Key_Up ? -1 : key == Qt::Key_Down ? 1 : 0;
+        if (busy) {
+            // A button is held (dragging the selection out, an edge, a stroke):
+            // nothing to nudge, so the arrows are the pointer as WASD is, a
+            // pixel or ten with Shift, and the drag goes along. They did
+            // nothing here, while moving the pointer before the press.
+            if (plain && !m_annot.editingText() && !m_annot.editingNumber())
+                movePointer(dx * (shift ? 10 : 1), dy * (shift ? 10 : 1));
+            return true;
+        }
         nudgeSelection(dx, dy, shift);
         return true;
     }
@@ -1250,7 +1281,8 @@ void CaptureSession::movePointer(int dx, int dy)
 void CaptureSession::nudgeSelection(int dx, int dy, bool resize)
 {
     if (CaptureScreen* s = screenAt(m_selection.screen)) {
-        const QRect moved = nudge(m_selection.rect, dx, dy, resize, s->bounds());
+        const QRect moved = resize ? nudgeRatio(m_selection.rect, dx, dy, m_ratio, s->bounds())
+                                   : nudge(m_selection.rect, dx, dy, false, s->bounds());
         if (moved != m_selection.rect) {
             m_selection.rect = moved;
             emit selectionChanged();
@@ -1294,6 +1326,7 @@ void CaptureSession::recallSelection(bool previous)
             continue; // Its monitor may have been disconnected; try the next region.
         dropParked();
         retireAnnotation();
+        setRatio({}); // the region as it was
         m_recalledSelection = at;
         m_selection = {m_screens[static_cast<std::size_t>(last->monitor)]->index(), last->rect};
         m_previous = {};
@@ -1313,6 +1346,10 @@ void CaptureSession::back()
 {
     if (m_ocrOnly) { // 识别屏幕文字: nothing to step back to
         finish(Action::Cancel);
+        return;
+    }
+    if (m_sizeEditing) { // the panel first
+        setSizeEditing(false);
         return;
     }
     // Esc, in steps (3.6): a text under way is kept and closed, a gesture
@@ -1381,6 +1418,8 @@ void CaptureSession::finish(Action action)
         action = Action::Save;
     if (m_annot.active())
         m_annot.commitPending(); // the words typed so far are part of the picture
+    if (std::exchange(m_sizeEditing, false))
+        emit sizeEditingChanged();
     Pick pick;
     if (action != Action::Cancel && action != Action::Delay)
         pick = m_selection.screen >= 0 ? m_selection : hovered();
@@ -1391,6 +1430,127 @@ void CaptureSession::finish(Action action)
     if (const CaptureScreen* s = screenAt(pick.screen); s && action != Action::Cancel && action != Action::Delay && action != Action::Save)
         rememberSelection(pick.rect.translated(s->origin()));
     emit finished(action, pick.screen, pick.rect);
+}
+
+// ---- the size panel (#308) ------------------------------------------------------
+
+void CaptureSession::setSizeEditing(bool on)
+{
+    // With no selection it opens by the pointer, so there must be one on a monitor.
+    on = on && m_active && !m_ocrOnly && (m_selection.screen >= 0 || m_cursorScreen >= 0);
+    if (std::exchange(m_sizeEditing, on) == on)
+        return;
+    emit sizeEditingChanged();
+    if (m_active)
+        publish(); // the magnifier and the hints give way, and come back
+}
+
+void CaptureSession::setRatio(QSize ratio)
+{
+    if (ratio.isEmpty())
+        ratio = {};
+    if (std::exchange(m_ratio, ratio) != ratio)
+        emit ratioChanged();
+}
+
+void CaptureSession::setSizePresets(std::vector<SizePreset> presets)
+{
+    if (presets.size() > kSizePresetLimit)
+        presets.resize(kSizePresetLimit);
+    if (presets == m_sizePresets)
+        return;
+    m_sizePresets = std::move(presets);
+    emit sizePresetsChanged();
+}
+
+QVariantList CaptureSession::sizePresetList() const
+{
+    QVariantList list;
+    for (const SizePreset& preset : m_sizePresets) {
+        list.append(QVariantMap {
+            {u"label"_s, (preset.ratio ? tr("%1 : %2") : tr("%1 × %2")).arg(preset.size.width()).arg(preset.size.height())},
+            {u"ratio"_s, preset.ratio},
+            {u"width"_s, preset.size.width()},
+            {u"height"_s, preset.size.height()},
+        });
+    }
+    return list;
+}
+
+void CaptureSession::placeSize(QSize size)
+{
+    if (!m_active || m_ocrOnly || !resting())
+        return;
+    if (CaptureScreen* s = screenAt(m_selection.screen)) {
+        const QRect sized = resized(m_selection.rect, size, s->bounds());
+        if (sized == m_selection.rect)
+            return;
+        m_selection.rect = sized;
+        m_recalledSelection = -1;
+    } else if (CaptureScreen* under = screenAt(m_cursorScreen)) {
+        // None yet: one of that size about the pointer, to be dragged into place.
+        dropParked();
+        m_selection = {m_cursorScreen, sizedAround(m_cursorAt, size, under->bounds())};
+        m_previous = {};
+        m_phase = Phase::Selected;
+    } else {
+        return;
+    }
+    emit selectionChanged();
+    if (m_cursorScreen >= 0)
+        updateCursor(m_cursorScreen, m_cursorAt);
+    publish();
+}
+
+void CaptureSession::setSize(int width, int height, int lead)
+{
+    const CaptureScreen* s = screenAt(m_selection.screen >= 0 ? m_selection.screen : m_cursorScreen);
+    if (!s || width < 1 || height < 1)
+        return;
+    placeSize(ratioSize(QSize(width, height), m_ratio, lead == Qt::Vertical ? Qt::Vertical : Qt::Horizontal, s->pixels()));
+}
+
+void CaptureSession::lockRatio(int width, int height)
+{
+    setRatio(QSize(width, height));
+}
+
+void CaptureSession::applySizePreset(int index)
+{
+    if (!m_active || index < 0 || index >= static_cast<int>(m_sizePresets.size()))
+        return;
+    const SizePreset preset = m_sizePresets[static_cast<std::size_t>(index)];
+    if (!preset.ratio) {
+        if (ratioLocked())
+            setRatio(preset.size); // still held, to the shape just chosen
+        placeSize(preset.size);
+        return;
+    }
+    setRatio(preset.size);
+    if (m_selection.screen >= 0)
+        setSize(m_selection.rect.width(), m_selection.rect.height(), Qt::Horizontal);
+    else
+        showNotice(tr("已锁定比例 %1 : %2 · 拖动框选").arg(preset.size.width()).arg(preset.size.height()));
+}
+
+void CaptureSession::addSizePreset(int width, int height)
+{
+    const SizePreset preset {QSize(width, height), false};
+    if (width < 1 || height < 1 || width > SizePreset::kMost || height > SizePreset::kMost || sizePresetsFull()
+        || std::ranges::find(m_sizePresets, preset) != m_sizePresets.end())
+        return;
+    m_sizePresets.push_back(preset);
+    emit sizePresetsChanged();
+    emit sizePresetsEdited();
+}
+
+void CaptureSession::removeSizePreset(int index)
+{
+    if (index < 0 || index >= static_cast<int>(m_sizePresets.size()))
+        return;
+    m_sizePresets.erase(m_sizePresets.begin() + index);
+    emit sizePresetsChanged();
+    emit sizePresetsEdited();
 }
 
 void CaptureSession::mouseMoved(int screen, qreal x, qreal y)

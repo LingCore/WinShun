@@ -20,6 +20,8 @@ namespace {
 constexpr double kHalfLifeMs = 14.0 * 24 * 60 * 60 * 1000;
 constexpr qsizetype kMostTexts = 8; // typed texts kept per path
 constexpr qsizetype kLongestText = 64;
+// In place of a typed text: last run as administrator (History::admin).
+const QString kAdminMark = QChar(1) + QStringLiteral("admin");
 
 // What `weight`, as of `at`, has decayed to by `now`. No time known (0) is
 // taken as one half-life ago: old, but not forgotten.
@@ -67,7 +69,13 @@ void History::load()
             if (ok && weight > 0)
                 entry.weight = weight;
         }
-        for (qsizetype i = 4; i + 2 < fields.size() && entry.typed.size() < kMostTexts; i += 3) {
+        for (qsizetype i = 4; i + 2 < fields.size(); i += 3) {
+            if (fields[i] == kAdminMark) {
+                entry.admin = true;
+                continue;
+            }
+            if (entry.typed.size() >= kMostTexts)
+                continue;
             Typed typed;
             typed.text = fields[i];
             typed.weight = fields[i + 1].toDouble();
@@ -168,6 +176,21 @@ History::Use History::use(const QString& path) const
     return m_uses.value(key(path)).use;
 }
 
+bool History::admin(const QString& path) const
+{
+    const auto it = m_uses.constFind(key(path));
+    return it != m_uses.cend() && it->admin;
+}
+
+void History::setAdmin(const QString& path, bool on)
+{
+    const auto it = m_uses.find(key(path));
+    if (it == m_uses.end() || it->admin == on)
+        return;
+    it->admin = on;
+    save();
+}
+
 int History::Affinity::bonus() const noexcept
 {
     if (weight <= 0)
@@ -263,6 +286,8 @@ void History::save() const
             file.write("\t" + typed.text.toUtf8() + "\t" + QByteArray::number(typed.weight, 'g', 9) + "\t"
                 + QByteArray::number(typed.last));
         }
+        if (entry.admin)
+            file.write("\t" + kAdminMark.toUtf8() + "\t1\t" + QByteArray::number(entry.use.last));
         file.write("\n");
     }
     file.commit();

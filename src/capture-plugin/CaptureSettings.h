@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CaptureKeys.h"
+#include "SizePresets.h"
 
 #include <QObject>
 #include <QString>
@@ -44,6 +45,8 @@ struct CaptureOptions {
     // for , and . in the overlay (capture::CaptureHistory); 0: none kept.
     int historyCount = 10;
     QString colorFormat = QStringLiteral("hex");
+    // The sizes and shapes the size panel offers (#308), as capture::parseSizePresets reads them.
+    QString sizePresets = capture::kDefaultSizePresets.toString();
     QString pinsHotkey;
     QString pinsRestoreHotkey;
     QString lastPinHotkey;

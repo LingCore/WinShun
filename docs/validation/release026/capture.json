@@ -1,0 +1,7 @@
+{
+  "sha256": "e9d36455eb617a52cda9e4bf10a683bca6b7f63525f15d50fb3ba4e51fcb2263",
+  "scale": 2,
+  "renderer": "d3d11",
+  "exe": "F:\\电脑便捷工具\\dist\\release026\\WinShun\\WinShun.exe",
+  "profiles": "isolated production previews"
+}

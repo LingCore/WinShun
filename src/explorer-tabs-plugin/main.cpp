@@ -15,10 +15,13 @@
 //   WINSHUN_TABS_BYPASS=1   as if Ctrl+Shift were held
 //   WINSHUN_TABS_FAIL=1     every navigation of the new tab fails
 //   WINSHUN_TABS_TRACE      a file for one timing line per window
+//   WINSHUN_TABS_LOGON=1    this start counts as the first after a logon
+//                           (the tabs kept from before are opened again)
 
 #include "winshun.h"
 
 #include "Engine.h"
+#include "Keeper.h"
 
 #include <memory>
 #include <string>
@@ -33,6 +36,7 @@ namespace {
 constexpr const char* kIcon = "glyph:U+E838"; // FolderOpen
 constexpr const char* kPauseIcon = "glyph:U+E769"; // Pause
 constexpr const char* kPlayIcon = "glyph:U+E768"; // Play
+constexpr const char* kRestoreIcon = "glyph:U+E81C"; // History
 
 // The Windows build (RtlGetVersion does not lie to a program without a
 // manifest), 0 when it cannot be read.
@@ -94,6 +98,19 @@ protected:
         if (!m_pauseFile.empty() && ::GetFileAttributesW(m_pauseFile.c_str()) != INVALID_FILE_ATTRIBUTES)
             m_engine->setPaused(true);
         m_engine->start();
+        // The open tabs are kept whether or not they come back by themselves:
+        // the keyword's second row brings them back when asked.
+        if (!dataDir().empty()) {
+            tabs::KeeperOptions k;
+            k.file = winshun::wide(dataDir()) + L"\\session.txt";
+            k.restoreAtLogon = settings()["restore"].toBool();
+            k.restriction.root = winshun::wide(winshun::env("WINSHUN_TABS_TEST_ROOT"));
+            k.asIfLogon = winshun::env("WINSHUN_TABS_LOGON") == "1";
+            k.hold = [engine = m_engine.get()](bool held) { engine->setHeld(held); };
+            k.log = [this](const std::string& text) { log("info", text); };
+            m_keeper = std::make_unique<tabs::Keeper>(std::move(k));
+            m_keeper->start();
+        }
     }
 
     void settingsChanged(const Json& s) override
@@ -104,6 +121,8 @@ protected:
 
     void shuttingDown() override
     {
+        if (m_keeper)
+            m_keeper->stop(); // first: it may be holding the engine
         if (m_engine)
             m_engine->stop();
     }
@@ -139,13 +158,25 @@ protected:
             status.icon = kPauseIcon;
         }
         items.push_back(status);
+        if (const tabs::Keeper::Left left = m_keeper ? m_keeper->left() : tabs::Keeper::Left {}; left.tabs > 0) {
+            const std::string windows = std::to_string(left.windows);
+            const std::string count = std::to_string(left.tabs);
+            Item restore("restore", zh ? "打开上次的标签页" : "Open the tabs from last time");
+            restore.subtitle = zh ? "上次登录留下 " + windows + " 个窗口、" + count + " 个标签页 · 已经开着的不重复打开"
+                                  : windows + " window(s), " + count + " tab(s) left by the last logon · those open already are skipped";
+            restore.icon = kRestoreIcon;
+            items.push_back(restore);
+        }
         return items;
     }
 
     winshun::Effects action(const winshun::ActionRequest& a) override
     {
         winshun::Effects effects;
-        if (a.item["id"].toString() == "status" && a.action == "default" && m_engine) {
+        if (a.item["id"].toString() == "restore" && a.action == "default" && m_keeper) {
+            if (!m_keeper->restoring())
+                m_keeper->restore();
+        } else if (a.item["id"].toString() == "status" && a.action == "default" && m_engine) {
             const bool zh = chinese();
             const bool pause = !m_engine->paused();
             m_engine->setPaused(pause);
@@ -169,6 +200,7 @@ protected:
 
 private:
     std::unique_ptr<tabs::Engine> m_engine;
+    std::unique_ptr<tabs::Keeper> m_keeper; // after the engine: gone before it
     bool m_unsupported = false; // Explorer here has no tabs (before Windows 11 22H2)
     std::wstring m_pauseFile; // <dataDir>\paused: there while paused (survives a restart)
 };

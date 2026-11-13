@@ -171,15 +171,19 @@ private slots:
         write(data + u"/WinShun.log"_s, "app warning");
         write(service + u"/service.log"_s, "service warning");
         write(data + u"/plugins.log"_s, QByteArray(300 * 1024, 'p') + "plugin log tail");
+        // The screenshot plugin's journal goes along; its settings and pictures do not.
+        write(data + u"/plugins/winshun.capture.data/diagnostics/events.jsonl"_s, "capture journal");
         for (const QString& name : {u"WinShun.ini"_s, u"clipboard/clipboard.db"_s, u"history.txt"_s, u"mcp.log"_s,
-                 u"content/document.texts"_s})
+                 u"content/document.texts"_s, u"plugins/winshun.capture.data/capture.ini"_s,
+                 u"plugins/winshun.capture.data/capture-history/1.png"_s})
             write(data + u'/' + name, "PRIVATE_DATA_DO_NOT_EXPORT");
         const QJsonObject clipboard {{u"max_read_records"_s, 16},
             {u"recent_reads"_s, QJsonArray {QJsonObject {{u"outcome"_s, u"captured"_s}, {u"sequence_after"_s, 42}}}}};
         const auto first = diagnostics::exportArchive(log, data, service, {{u"run"_s, 1}, {u"clipboard"_s, clipboard}});
         QVERIFY2(first.error.isEmpty(), qPrintable(first.error));
         auto files = unpack(first.path);
-        QCOMPARE(files.size(), 5);
+        QCOMPARE(files.size(), 6);
+        QCOMPARE(files[u"capture/events.jsonl"_s], QByteArray("capture journal"));
         QVERIFY(files.contains(u"app/plugins.log"_s));
         QVERIFY(files[u"app/plugins.log"_s].endsWith("plugin log tail"));
         QCOMPARE(files[u"app/plugins.log"_s].size(), 256 * 1024); // only its newest part

@@ -166,6 +166,9 @@ private slots:
         QCOMPARE(squeezed.width(), least.width());
         QVERIFY(work.contains(squeezed));
         QCOMPARE(squeezed.right(), narrowList.right() - 12);
+        // File Explorer's list comes without its scroll bars: right in its corner (GitHub #234).
+        QCOMPARE(windowavoidance::inList(work, maxList, {}, work, box, least, windowavoidance::kExplorerListGap),
+            QRect(maxList.right() + 1 - 760, maxList.bottom() + 1 - 600, 760, 600));
         // Nothing found but the window: its corner, still within it.
         QVERIFY(client.contains(windowavoidance::inList(work, client, {}, client, box, least)));
     }

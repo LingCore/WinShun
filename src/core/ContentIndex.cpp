@@ -1,5 +1,6 @@
 #include "ContentIndex.h"
 
+#include "ContentPattern.h"
 #include "ContentScanner.h"
 #include "Documents.h"
 #include "TextUtil.h"
@@ -1978,21 +1979,32 @@ std::optional<std::uint32_t> ContentIndex::docStamp(EntryId entry) const
     return m_docStamp[d];
 }
 
-ContentIndex::Lookup ContentIndex::lookup(std::span<const QString> terms) const
+namespace {
+
+// What both have.
+void keepCommon(std::vector<std::uint32_t>& matched, const std::vector<std::uint32_t>& other)
 {
-    Lookup out;
-    std::vector<grams::Key> keys;
-    bool decisive = true;
-    for (const QString& term : terms) {
-        std::ranges::copy(grams::ofPhrase(term), std::back_inserter(keys));
-        decisive = decisive && grams::decides(term);
+    std::size_t kept = 0;
+    std::size_t j = 0;
+    for (const std::uint32_t c : matched) {
+        while (j < other.size() && other[j] < c)
+            ++j;
+        if (j < other.size() && other[j] == c)
+            matched[kept++] = c;
     }
+    matched.resize(kept);
+}
+
+} // namespace
+
+ContentIndex::Contents ContentIndex::contentsWithAll(std::vector<grams::Key> keys) const
+{
+    Contents out;
     std::ranges::sort(keys);
     keys.erase(std::ranges::unique(keys).begin(), keys.end());
-    out.usable = !keys.empty();
-    out.decisive = out.usable && decisive;
-
-    std::shared_lock lock(m_mutex);
+    if (keys.empty())
+        return out;
+    out.any = false;
     // Rarest first: intersecting with it keeps the lists short.
     std::vector<std::pair<std::uint64_t, grams::Key>> order;
     for (const grams::Key key : keys) {
@@ -2005,27 +2017,105 @@ ContentIndex::Lookup ContentIndex::lookup(std::span<const QString> terms) const
         order.emplace_back(count, key);
     }
     std::sort(order.begin(), order.end());
-    std::vector<ContentId> matched;
     std::vector<ContentId> next;
     for (std::size_t k = 0; k < order.size(); ++k) {
         next.clear();
         contentsOf(order[k].second, next);
-        if (k == 0) {
-            matched.swap(next);
-        } else {
-            std::size_t kept = 0;
-            std::size_t j = 0;
-            for (const ContentId c : matched) {
-                while (j < next.size() && next[j] < c)
-                    ++j;
-                if (j < next.size() && next[j] == c)
-                    matched[kept++] = c;
-            }
-            matched.resize(kept);
-        }
-        if (matched.empty())
+        if (k == 0)
+            out.ids.swap(next);
+        else
+            keepCommon(out.ids, next);
+        if (out.ids.empty())
             break;
     }
+    return out;
+}
+
+ContentIndex::Contents ContentIndex::contentsWith(const RegexNeed& need) const
+{
+    Contents out;
+    switch (need.kind) {
+    case RegexNeed::Kind::Any:
+        break;
+    case RegexNeed::Kind::Literal:
+        out = contentsWithAll(grams::ofPhrase(need.text));
+        break;
+    case RegexNeed::Kind::All:
+        for (const RegexNeed& part : need.parts) {
+            Contents with = contentsWith(part);
+            if (with.any)
+                continue;
+            if (out.any)
+                out = std::move(with);
+            else
+                keepCommon(out.ids, with.ids);
+        }
+        break;
+    case RegexNeed::Kind::OneOf:
+        out.any = false;
+        for (const RegexNeed& part : need.parts) {
+            const Contents with = contentsWith(part);
+            if (with.any)
+                return {}; // one of them tells nothing: nor do they together
+            std::vector<ContentId> both;
+            std::ranges::set_union(out.ids, with.ids, std::back_inserter(both));
+            out.ids = std::move(both);
+        }
+        break;
+    }
+    return out;
+}
+
+ContentIndex::Lookup ContentIndex::lookup(const ContentPattern& pattern) const
+{
+    Lookup out;
+    std::shared_lock lock(m_mutex);
+    // Each way: the grams of all its words at once, then what its
+    // expressions need; a file that may match any of the ways may match.
+    std::vector<ContentId> matched;
+    bool usable = !pattern.ways.empty();
+    bool decisive = true;
+    std::vector<std::optional<Contents>> ofExpression(pattern.needles.size());
+    for (const std::uint32_t way : pattern.ways) {
+        std::vector<grams::Key> keys;
+        Contents with; // any, so far
+        for (std::size_t n = 0; n < pattern.needles.size(); ++n) {
+            if (!(way >> n & 1))
+                continue;
+            const ContentNeedle& needle = pattern.needles[n];
+            if (!needle.regex) {
+                std::ranges::copy(grams::ofPhrase(needle.text), std::back_inserter(keys));
+                decisive = decisive && grams::decides(needle.text);
+                continue;
+            }
+            decisive = false; // the expression is yet to be run
+            if (!ofExpression[n])
+                ofExpression[n] = contentsWith(needle.need);
+            if (ofExpression[n]->any)
+                continue;
+            if (with.any)
+                with = *ofExpression[n];
+            else
+                keepCommon(with.ids, ofExpression[n]->ids);
+        }
+        if (Contents words = contentsWithAll(std::move(keys)); !words.any) {
+            if (with.any)
+                with = std::move(words);
+            else
+                keepCommon(with.ids, words.ids);
+        }
+        if (with.any) {
+            usable = false;
+            break;
+        }
+        std::vector<ContentId> both;
+        std::ranges::set_union(matched, with.ids, std::back_inserter(both));
+        matched = std::move(both);
+    }
+    if (!usable)
+        matched.clear();
+    out.usable = usable;
+    out.decisive = usable && decisive;
 
     std::vector<std::uint64_t> bits((m_contentEnd + std::size_t {63}) / 64, 0);
     for (const ContentId c : matched) {

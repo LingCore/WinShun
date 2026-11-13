@@ -53,7 +53,8 @@ Window {
     // Read once here for all the window's parts and rows (GitHub #111): every
     // item that reads Screen has an attached object of its own.
     readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
-    readonly property int maxRows: folderMode ? 6 : 8
+    // The user's (设置 › 外观 › 搜索框显示行数); typed in a folder's window, no more than 6.
+    readonly property int maxRows: folderMode ? Math.min(6, launcher.maxRows) : launcher.maxRows
     readonly property int minRows: 3 // the window settles no lower than these fit below
     // Everything but the rows: header, the strip of kinds of file, divider,
     // the list's margins, footer. Budget the full strip in every scope so
@@ -446,7 +447,9 @@ Window {
     Binding {
         target: window
         property: "height"
-        value: layout.implicitHeight
+        // In a file list's corner the placement moves and sizes the window
+        // in one step first (Placement.fitHeight, GitHub #234).
+        value: window.placement.fitHeight(layout.implicitHeight)
         // Once the panel's minimumHeight has gone too: both follow `panel` in
         // no set order, and set while it still held, a box shorter than the
         // panel stayed 360 tall, empty under its footer.
@@ -1436,6 +1439,7 @@ Window {
                 bar: Component {
                     ResultActions {
                         dpr: window.dpr
+                        deleteButton: window.launcher.rowDeleteButton
                     }
                 }
             }
@@ -1663,6 +1667,7 @@ Window {
                     showSize: window.launcher.showFileSize || window.launcher.sort === Launcher.LargestFirst || window.launcher.sort === Launcher.SmallestFirst
                     hint: window.numberOf(index)
                     reserveHintSpace: window.numberKey >= 0 && window.launcher.numberHints !== "off"
+                    alignWithNumbered: window.listRows > 9
                     hintOpacity: numberHints.hintOpacity
                     hintModifier: window.numberModifier
                     hintTaken: resultRow.hint > 0 && !window.numberUsable(resultRow.hint)

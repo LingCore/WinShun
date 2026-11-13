@@ -7,6 +7,7 @@
 
 #include "DMDataBlock.h"
 
+#include "ByteArray.h"
 #include "DMVersion.h"
 #include "ZXAlgorithms.h"
 
@@ -28,7 +29,6 @@ std::vector<DataBlock> GetDataBlocks(const ByteArray& rawCodewords, const Versio
 
 	// All blocks have the same amount of data, except that the last n
 	// (where n may be 0) have 1 less byte. Figure out where these start.
-	// TODO(bbrown): There is only one case where there is a difference for Data Matrix for size 144
 	const int numCodewords = Size(result[0].codewords);
 	const int numDataCodewords = numCodewords - ecBlocks.codewordsPerBlock;
 

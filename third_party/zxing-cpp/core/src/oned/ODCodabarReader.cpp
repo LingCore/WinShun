@@ -8,7 +8,8 @@
 #include "ODCodabarReader.h"
 
 #include "ReaderOptions.h"
-#include "Barcode.h"
+#include "BarcodeData.h"
+#include "SymbologyIdentifier.h"
 #include "ZXAlgorithms.h"
 
 #include <string>
@@ -16,16 +17,16 @@
 
 namespace ZXing::OneD {
 
-static const char ALPHABET[] = "0123456789-$:/.+ABCD";
+static constexpr char ALPHABET[] = "0123456789-$:/.+ABCD";
 
 // These represent the encodings of characters, as patterns of wide and narrow bars. The 7 least-significant bits of
 // each int correspond to the pattern of wide and narrow, with 1s representing wide and 0s representing narrow.
-static const int CHARACTER_ENCODINGS[] = {
+static constexpr int CHARACTER_ENCODINGS[] = {
 	0x03, 0x06, 0x09, 0x60, 0x12, 0x42, 0x21, 0x24, 0x30, 0x48, // 0-9
 	0x0c, 0x18, 0x45, 0x51, 0x54, 0x15, 0x1A, 0x29, 0x0B, 0x0E, // -$:/.+ABCD
 };
 
-static_assert(Size(ALPHABET) - 1 == Size(CHARACTER_ENCODINGS), "table size mismatch");
+static_assert(Size(ALPHABET) == Size(CHARACTER_ENCODINGS), "table size mismatch");
 
 // some industries use a checksum standard but this is not part of the original codabar standard
 // for more information see : http://www.mecsw.com/specs/codabar.html
@@ -41,11 +42,19 @@ constexpr float QUIET_ZONE_SCALE = 0.5f;
 
 bool IsLeftGuard(const PatternView& view, int spaceInPixel)
 {
+#if 0
 	return spaceInPixel > view.sum() * QUIET_ZONE_SCALE &&
 		   Contains({0x1A, 0x29, 0x0B, 0x0E}, RowReader::NarrowWideBitPattern(view));
+#else
+	// "ABCD" all start with a narrow bar and have a wide space in the middle and either on 1st or 3rd position.
+	// The following check is not completely specific but very fast and the final check happens in isStartOrStopSymbol().
+	// Gain over the old check is a 10% - 15% reduction of the total runtime for a Codabar search on Lum input data.
+	return spaceInPixel > view[0] * 4 && view[0] < view[3] && view[1] + view[5] > view[3]
+		   && spaceInPixel > view.sum() * QUIET_ZONE_SCALE;
+#endif
 }
 
-Barcode CodabarReader::decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>&) const
+BarcodeData CodabarReader::decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>&) const
 {
 	// minimal number of characters that must be present (including start, stop and checksum characters)
 	// absolute minimum would be 2 (meaning 0 'content'). everything below 4 produces too many false
@@ -82,16 +91,12 @@ Barcode CodabarReader::decodePattern(int rowNumber, PatternView& next, std::uniq
 	if (Size(txt) < minCharCount || !next.hasQuietZoneAfter(QUIET_ZONE_SCALE))
 		return {};
 
-	// remove stop/start characters
-	if (!_opts.returnCodabarStartEnd())
-		txt = txt.substr(1, txt.size() - 2);
-
 	// symbology identifier ISO/IEC 15424:2008 4.4.9
 	// if checksum processing were implemented and checksum present and stripped then modifier would be 4
 	SymbologyIdentifier symbologyIdentifier = {'F', '0'};
 
 	int xStop = next.pixelsTillEnd();
-	return Barcode(txt, rowNumber, xStart, xStop, BarcodeFormat::Codabar, symbologyIdentifier);
+	return LinearBarcode(BarcodeFormat::Codabar, txt, rowNumber, xStart, xStop, symbologyIdentifier);
 }
 
 } // namespace ZXing::OneD

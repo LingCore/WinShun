@@ -57,14 +57,25 @@ QString lineText(const Document& doc, int line)
 
 Matches find(std::shared_ptr<const Document> text, const QStringList& terms, const Cancel& cancel)
 {
+    return find(std::move(text), ContentPattern::allOf(terms).needles, cancel);
+}
+
+Matches find(std::shared_ptr<const Document> text, const std::vector<ContentNeedle>& needles, const Cancel& cancel)
+{
     Matches out;
     out.document = std::move(text);
     if (!out.document)
         return out;
     out.truncated = out.document->truncated;
-    for (const QString& term : terms) {
-        if (!term.isEmpty() && !out.terms.contains(term, Qt::CaseInsensitive))
-            out.terms.append(term);
+    std::vector<const ContentNeedle*> wanted;
+    for (const ContentNeedle& needle : needles) {
+        const bool listed = std::ranges::any_of(wanted, [&](const ContentNeedle* w) {
+            return w->regex == needle.regex && w->text.compare(needle.text, needle.regex ? Qt::CaseSensitive : Qt::CaseInsensitive) == 0;
+        });
+        if (!needle.text.isEmpty() && !listed) {
+            wanted.push_back(&needle);
+            out.terms.append(needle.text);
+        }
     }
     out.counts.resize(out.terms.size());
     out.sheetCounts.resize(out.document->sheets.size());
@@ -72,20 +83,35 @@ Matches find(std::shared_ptr<const Document> text, const QStringList& terms, con
         const auto& row = out.document->lines[line];
         const QStringView value = QStringView(out.document->text).mid(row.offset, row.length);
         for (int term = 0; term < out.terms.size(); ++term) {
+            const ContentNeedle& needle = *wanted[term];
             qsizetype at = 0;
-            while ((at = value.indexOf(out.terms[term], at, Qt::CaseInsensitive)) >= 0) {
+            while (at <= value.size()) {
+                qsizetype length = needle.text.size();
+                if (needle.regex) {
+                    const QRegularExpressionMatch match = needle.expression.matchView(value, at);
+                    at = match.hasMatch() ? match.capturedStart() : -1;
+                    length = match.hasMatch() ? match.capturedLength() : 0;
+                } else {
+                    at = value.indexOf(needle.text, at, Qt::CaseInsensitive);
+                }
+                if (at < 0)
+                    break;
                 if (cancel && cancel()) {
                     out.cancelled = true;
                     return out;
+                }
+                if (length == 0) { // an expression that matches nothing there: no place to show
+                    ++at;
+                    continue;
                 }
                 if (out.items.size() == kMaxMatches) {
                     out.truncated = true;
                     return out;
                 }
-                out.items.push_back({line, at, out.terms[term].size(), term});
+                out.items.push_back({line, at, length, term});
                 ++out.counts[term];
                 if (row.sheet < out.sheetCounts.size()) ++out.sheetCounts[row.sheet];
-                at += out.terms[term].size(); // occurrences of one term do not overlap
+                at += length; // occurrences of one term do not overlap
             }
         }
         if (cancel && cancel()) {

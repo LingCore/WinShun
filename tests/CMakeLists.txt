@@ -19,6 +19,16 @@ foreach(test IN ITEMS tst_queryhistory tst_pluginreadme)
     set_tests_properties(${test} PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endforeach()
 
+# The pages that stay in memory while Win顺 sits idle (GitHub #280): the
+# ranges' arithmetic, and Windows taking just those pages out, on this
+# process's own memory.
+qt_add_executable(tst_hotpages tst_hotpages.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/HotPages.cpp)
+target_include_directories(tst_hotpages PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_hotpages PRIVATE winshun_options Qt6::Test psapi)
+set_target_properties(tst_hotpages PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_hotpages COMMAND tst_hotpages -o -,txt)
+set_tests_properties(tst_hotpages PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_paster tst_paster.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Paster.cpp)
 target_include_directories(tst_paster PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
 target_link_libraries(tst_paster PRIVATE winshun_options Qt6::Test user32 comctl32)
@@ -202,6 +212,14 @@ add_test(NAME tst_settingsreopen COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_settingsreopen PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# ws plugin (GitHub #251), end to end: the real ws.exe against the real App,
+# isolated (--probe-runtime) and on a pipe of the probe's own, through the
+# server, PluginCommands and the 插件 page's dialogs.
+add_test(NAME tst_wsplugin COMMAND $<TARGET_FILE:WinShun>
+    --probe-runtime "${CMAKE_CURRENT_BINARY_DIR}/ws-plugin" --ws-plugin-check $<TARGET_FILE:ws>)
+set_tests_properties(tst_wsplugin PROPERTIES RUN_SERIAL TRUE TIMEOUT 180
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The settings pages are made when needed: opening makes the page on show only,
 # each way in from elsewhere its own, a word typed all of them (results in page
 # order, as many as before), and after the first frame the rest, one per tick.
@@ -383,10 +401,11 @@ set_tests_properties(tst_displaygeometry PROPERTIES
 
 set(file_dialog_backend
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileDialog.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/DialogRules.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/BlenderFileDialog.cpp)
 qt_add_executable(tst_filedialog tst_filedialog.cpp ${file_dialog_backend})
 target_include_directories(tst_filedialog PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
-target_link_libraries(tst_filedialog PRIVATE wscore Qt6::Test ole32 oleaut32 uiautomationcore user32)
+target_link_libraries(tst_filedialog PRIVATE wscore Qt6::Test comctl32 ole32 oleaut32 uiautomationcore user32)
 # Process identity is part of the CAD adapter's guard. This is a copy of our
 # native protocol fixture, never AutoCAD; no Autodesk software is installed.
 set(cad_dialog_fixture "$<TARGET_FILE_DIR:tst_filedialog>/cad-dialog-fixture/acad.exe")
@@ -398,11 +417,20 @@ add_test(NAME tst_filedialog_other_program COMMAND tst_filedialog customRejectsO
 set_tests_properties(tst_filedialog tst_filedialog_other_program PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The user's rules for file windows programs draw themselves (GitHub #272):
+# a native stand-in on a thread of its own and a WPF one in PowerShell.
+qt_add_executable(tst_dialogrules tst_dialogrules.cpp ${file_dialog_backend})
+target_include_directories(tst_dialogrules PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_dialogrules PRIVATE wscore Qt6::Test ole32 oleaut32 uiautomationcore user32)
+add_test(NAME tst_dialogrules COMMAND tst_dialogrules)
+set_tests_properties(tst_dialogrules PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The Qt-free dialog-navigation classifier used by the #104 service helper,
 # its folder-request check and command-line quoting.
 qt_add_executable(tst_dialognav tst_dialognav.cpp)
 target_include_directories(tst_dialognav PRIVATE ${PROJECT_SOURCE_DIR}/src/core)
-target_link_libraries(tst_dialognav PRIVATE wscore Qt6::Test ole32 oleaut32 shell32 user32)
+target_link_libraries(tst_dialognav PRIVATE wscore Qt6::Test comctl32 ole32 oleaut32 shell32 user32)
 add_test(NAME tst_dialognav COMMAND tst_dialognav)
 # AutoCAD's own file window is taken only in acad.exe / acadlt.exe (GitHub
 # #143): a copy of the test under that name, with the stand-in window. It
@@ -413,6 +441,24 @@ add_custom_command(TARGET tst_dialognav POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:tst_dialognav>" "${cad_nav_fixture}")
 add_test(NAME tst_dialognav_cad COMMAND "${cad_nav_fixture}" cadByName cadLeftAlone)
 set_tests_properties(tst_dialognav tst_dialognav_cad PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# Windows that take a folder in a box of their own (core/PathBoxDialog):
+# Bandizip's kind by what it is made of; 7-Zip's and WinRAR's only in those
+# programs, so copies of the test under their names run those two cases. The
+# copies contain nothing of either program.
+qt_add_executable(tst_pathbox tst_pathbox.cpp)
+target_include_directories(tst_pathbox PRIVATE ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_pathbox PRIVATE wscore Qt6::Test comctl32 user32)
+set(pathbox_fixture_dir "$<TARGET_FILE_DIR:tst_pathbox>/pathbox-fixture")
+add_custom_command(TARGET tst_pathbox POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${pathbox_fixture_dir}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:tst_pathbox>" "${pathbox_fixture_dir}/7zG.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:tst_pathbox>" "${pathbox_fixture_dir}/WinRAR.exe")
+add_test(NAME tst_pathbox COMMAND tst_pathbox)
+add_test(NAME tst_pathbox_7zip COMMAND "${pathbox_fixture_dir}/7zG.exe" sevenZip)
+add_test(NAME tst_pathbox_winrar COMMAND "${pathbox_fixture_dir}/WinRAR.exe" winRar)
+set_tests_properties(tst_pathbox tst_pathbox_7zip tst_pathbox_winrar PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # Launch only a short-lived copy of this test, writing into QTemporaryDir.
@@ -996,6 +1042,18 @@ add_test(NAME tst_pluginupdates COMMAND tst_pluginupdates)
 set_tests_properties(tst_pluginupdates PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# ws plugin's side in the app (src/app/PluginCommands, GitHub #251), over a
+# real plugin host on folders of the test's own; the page it hands the user's
+# questions to is the test's.
+qt_add_executable(tst_plugincommands tst_plugincommands.cpp ${PROJECT_SOURCE_DIR}/src/app/PluginCommands.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/PluginUpdates.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
+target_include_directories(tst_plugincommands PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_plugincommands PRIVATE wscore wsmcp wsplugin miniz Qt6::Test winhttp ws2_32 bcrypt)
+set_target_properties(tst_plugincommands PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_plugincommands COMMAND tst_plugincommands -o -,txt)
+set_tests_properties(tst_plugincommands PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The proxy setting (GitHub #84): the address check, and WinHTTP going where
 # the setting says, against two small servers of the test's own.
 qt_add_executable(tst_proxy tst_proxy.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
@@ -1247,7 +1305,7 @@ target_include_directories(tst_cli PRIVATE ${PROJECT_SOURCE_DIR}/src/cli ${PROJE
 target_link_libraries(tst_cli PRIVATE wsmcp Qt6::Test ntdll shell32 ole32 oleaut32 uuid advapi32)
 target_compile_definitions(tst_cli PRIVATE
     WINSHUN_CLI="$<TARGET_FILE:ws>"
-    WINSHUN_CLI_SKILL="${PROJECT_SOURCE_DIR}/src/cli/SKILL.md")
+    WINSHUN_CLI_SKILL="${PROJECT_SOURCE_DIR}/skills/winshun/SKILL.md")
 add_dependencies(tst_cli ws)
 
 # The pieces of the tools plugin that compute (src/tools-plugin), built in
@@ -1296,7 +1354,8 @@ set_tests_properties(tst_break PROPERTIES
 # folder already open, Ctrl+Shift, a tab dragged out, Control Panel, the
 # integrity level and the test-root restriction, with made-up windows.
 qt_add_executable(tst_explorertabs tst_explorertabs.cpp ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Rules.cpp
-    ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Hider.cpp ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Closer.cpp)
+    ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Hider.cpp ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Closer.cpp
+    ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/Session.cpp)
 target_include_directories(tst_explorertabs PRIVATE ${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin)
 target_link_libraries(tst_explorertabs PRIVATE winshun_options Qt6::Test)
 set_target_properties(tst_explorertabs PROPERTIES WIN32_EXECUTABLE FALSE)
@@ -1328,6 +1387,35 @@ target_compile_definitions(tst_translate PRIVATE WINSHUN_TRANSLATE_MANIFEST="${P
 set_target_properties(tst_translate PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_translate COMMAND tst_translate)
 set_tests_properties(tst_translate PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# The backup service (src/app/Backup) as Win顺's tools backup_export and
+# backup_restore use it for the cloud backup plugin (GitHub #276), on a
+# profile in a temporary folder.
+qt_add_executable(tst_backupservice tst_backupservice.cpp ${PROJECT_SOURCE_DIR}/src/app/Backup.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/BackupFiles.cpp ${PROJECT_SOURCE_DIR}/src/app/Settings.cpp)
+# Backup.h is a QML element: QtQml's headers for the macros, not the module
+# (linking it has CMake scan this target for QML imports, of which it has none).
+target_include_directories(tst_backupservice PRIVATE ${PROJECT_SOURCE_DIR}/src/app
+    $<TARGET_PROPERTY:Qt6::Qml,INTERFACE_INCLUDE_DIRECTORIES>)
+target_link_libraries(tst_backupservice PRIVATE wscore miniz Qt6::Gui Qt6::Test)
+set_target_properties(tst_backupservice PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_backupservice COMMAND tst_backupservice)
+set_tests_properties(tst_backupservice PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# winshun.cloudbackup (src/cloudbackup-plugin, GitHub #276), built in again:
+# the backups' names, WebDAV and GitHub against a local server that keeps the
+# files in memory, and WinShunCloudBackup.exe over its protocol with the test
+# as Win顺 (backup_export, backup_restore from the plugin's worker thread).
+qt_add_executable(tst_cloudbackup tst_cloudbackup.cpp ${PROJECT_SOURCE_DIR}/src/cloudbackup-plugin/Cloud.cpp
+    ${PROJECT_SOURCE_DIR}/src/cloudbackup-plugin/Http.cpp)
+add_dependencies(tst_cloudbackup WinShunCloudBackup)
+target_include_directories(tst_cloudbackup PRIVATE ${PROJECT_SOURCE_DIR}/src/cloudbackup-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+target_link_libraries(tst_cloudbackup PRIVATE winshun_options Qt6::Test Qt6::Network winhttp)
+set_target_properties(tst_cloudbackup PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_cloudbackup COMMAND tst_cloudbackup)
+set_tests_properties(tst_cloudbackup PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The plugin system (src/plugin): manifests, items, zero-code, the catalog,

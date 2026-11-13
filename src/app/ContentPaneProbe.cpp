@@ -393,6 +393,59 @@ bool checkContentPane(QQmlEngine* qml, const QDir& output)
         check(u"plugin_details_failed"_s, !details.busy() && details.message() == subject.message && details.hits()->rowCount() == 0);
         details.setActive(false);
     }
+    {
+        // GitHub #295: either of some words, and regular expressions, typed
+        // into the real box: the rows, their snippets, the pane's counts,
+        // the ".*" key and what a broken expression says.
+        const QString minutes = write(u"会议纪要.txt"_s, u"第一行\n请立即处理这个问题\n电话 13812345678\n"_s.toUtf8());
+        const QString notice = write(u"通知.txt"_s, u"马上开会\nv12.3 发布\n"_s.toUtf8());
+        const QString neither = write(u"无关.txt"_s, u"这里什么都没有\n"_s.toUtf8());
+        const auto found = [&](const QString& path) { return launcher.results()->indexOf(path) >= 0; };
+        const auto rowOf = [&](const QString& path) { return launcher.results()->at(launcher.results()->indexOf(path)); };
+        const auto settled = [&] { return until([&] { return !launcher.searching(); }); };
+        const auto counts = [&] {
+            QList<qint64> out;
+            for (const QVariant& term : pane->terms())
+                out.append(term.toMap().value(u"count"_s).toLongLong());
+            return out;
+        };
+        pane->setTab(1);
+        launcher.setQuery(u"马上|立即"_s);
+        check(u"either_word_finds_both"_s, until([&] { return !launcher.searching() && found(minutes) && found(notice); })
+            && !found(neither) && launcher.results()->count() == 2);
+        check(u"either_word_row"_s, found(minutes) && rowOf(minutes)->line == 2 && rowOf(minutes)->snippet == u"请立即处理这个问题");
+        check(u"either_word_pane_counts"_s, choose(minutes) && pane->terms().size() == 2 && counts() == QList<qint64> {0, 1});
+        check(u"either_word_screenshot"_s, snap(u"either-word"_s));
+        launcher.setQuery(u"马上 | 立即"_s);
+        check(u"either_word_apart"_s, settled() && found(minutes) && found(notice) && launcher.results()->count() == 2);
+
+        launcher.setQuery(uR"(regex:1[3-9]\d{9})"_s);
+        check(u"regex_prefix_finds"_s, until([&] { return !launcher.searching() && found(minutes); }) && launcher.results()->count() == 1);
+        check(u"regex_prefix_row"_s, found(minutes) && rowOf(minutes)->line == 3 && rowOf(minutes)->snippet.contains(u"13812345678"));
+        check(u"regex_prefix_pane_count"_s, choose(minutes) && counts() == QList<qint64> {1});
+        check(u"regex_prefix_no_error"_s, launcher.queryError().isEmpty());
+
+        auto* chip = named(window->contentItem(), u"regexChip"_s);
+        check(u"regex_chip_hidden_when_off"_s, chip && !chip->isVisible());
+        launcher.setRegexMode(true);
+        launcher.setQuery(uR"(v\d+\.\d+ 发布|开会)"_s);
+        check(u"regex_mode_finds"_s, until([&] { return !launcher.searching() && found(notice); }) && launcher.results()->count() == 1);
+        check(u"regex_mode_pane_counts"_s, choose(notice) && counts() == QList<qint64> {1, 2});
+        check(u"regex_chip_shown_in_content"_s, chip && chip->isVisible() && launcher.scope() == Launcher::Content);
+        check(u"regex_mode_screenshot"_s, snap(u"regex-mode"_s));
+        launcher.setQuery(u"马上|立即"_s); // an expression of its own: either
+        check(u"regex_mode_alternation"_s, until([&] { return !launcher.searching() && found(minutes) && found(notice); })
+            && launcher.results()->count() == 2);
+        launcher.setQuery(u"发布("_s);
+        check(u"regex_broken_says_why"_s, until([&] { return !launcher.queryError().isEmpty() && !launcher.searching(); })
+            && launcher.statusText() == launcher.queryError() && launcher.results()->count() == 0);
+        check(u"regex_broken_screenshot"_s, snap(u"regex-broken"_s));
+        launcher.setRegexMode(false);
+        check(u"regex_off_same_words_literal"_s, until([&] { return launcher.queryError().isEmpty() && !launcher.searching(); })
+            && launcher.results()->count() == 0);
+        launcher.setQuery(u"发布"_s);
+        check(u"plain_word_still_found"_s, until([&] { return !launcher.searching() && found(notice); }));
+    }
     pane->setActive(false);
     window->hide();
     QFile log(output.filePath(u"content-pane.json"_s));

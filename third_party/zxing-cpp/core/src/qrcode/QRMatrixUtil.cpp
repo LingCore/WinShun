@@ -7,11 +7,11 @@
 #include "QRMatrixUtil.h"
 
 #include "BitArray.h"
-#include "BitHacks.h"
 #include "QRDataMask.h"
 #include "QRErrorCorrectionLevel.h"
 #include "QRVersion.h"
 
+#include <bit>
 #include <stdexcept>
 #include <string>
 
@@ -76,7 +76,7 @@ static void EmbedPositionDetectionPattern(int xStart, int yStart, TritMatrix& ma
 	// Surround the 7x7 pattern with one line of white space (separation pattern)
 	auto setIfInside = [&](int x, int y) {
 		if( x >= 0 && x < matrix.width() && y >= 0 && y < matrix.height())
-			matrix.set(x, y, 0);
+			matrix.set(x, y, false);
 	};
 
 	for (int i = -1; i < 8; ++i) {
@@ -102,7 +102,7 @@ static void EmbedPositionDetectionPatternsAndSeparators(TritMatrix& matrix)
 // Embed the lonely dark dot at left bottom corner. JISX0510:2004 (p.46)
 static void EmbedDarkDotAtLeftBottomCorner(TritMatrix& matrix)
 {
-	matrix.set(8, matrix.height() - 8, 1);
+	matrix.set(8, matrix.height() - 8, true);
 }
 
 // Return the position of the most significant bit set (to one) in the "value". The most
@@ -112,7 +112,7 @@ static void EmbedDarkDotAtLeftBottomCorner(TritMatrix& matrix)
 // - findMSBSet(255) => 8
 static int FindMSBSet(unsigned value)
 {
-	return 32 - BitHacks::NumberOfLeadingZeros(value);
+	return 32 - std::countl_zero(value);
 }
 
 // Calculate BCH (Bose-Chaudhuri-Hocquenghem) code for "value" using polynomial "poly". The BCH
@@ -139,7 +139,7 @@ static int FindMSBSet(unsigned value)
 // The return value is 0xc94 (1100 1001 0100)
 //
 // Since all coefficients in the polynomials are 1 or 0, we can do the calculation by bit
-// operations. We don't care if cofficients are positive or negative.
+// operations. We don't care if coefficients are positive or negative.
 static int CalculateBCHCode(int value, int poly)
 {
 	// If poly is "1 1111 0010 0101" (version info poly), msbSetInPoly is 13. We'll subtract 1

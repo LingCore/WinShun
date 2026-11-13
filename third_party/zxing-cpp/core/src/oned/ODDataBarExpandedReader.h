@@ -12,14 +12,14 @@
 namespace ZXing::OneD {
 
 /**
-* Decodes DataBarExpandedReader (formerly known as RSS) sybmols, including truncated and stacked variants. See ISO/IEC 24724:2006.
+* Decodes DataBarExpandedReader (formerly known as RSS) symbols, including truncated and stacked variants. See ISO/IEC 24724:2006.
 */
 class DataBarExpandedReader : public RowReader
 {
 public:
 	using RowReader::RowReader;
 
-	Barcode decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>& state) const override;
+	BarcodeData decodePattern(int rowNumber, PatternView& view, std::unique_ptr<DecodingState>& state) const override;
 };
 
 } // namespace ZXing::OneD

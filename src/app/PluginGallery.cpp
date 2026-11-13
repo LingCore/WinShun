@@ -11,6 +11,7 @@
 #include "platform/Http.h"
 #include "platform/Shell.h"
 
+#include <QCryptographicHash>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -106,6 +107,8 @@ QVariant PluginGalleryModel::data(const QModelIndex& index, int role) const
     case ShownRole: return r.shown;
     case StagedRole: return r.staged;
     case MorePermissionsRole: return r.morePermissions;
+    case HasReadmeRole: return r.hasReadme;
+    case ReadmeBusyRole: return r.readmeBusy;
     }
     return {};
 }
@@ -117,7 +120,7 @@ QHash<int, QByteArray> PluginGalleryModel::roleNames() const
         {IconRole, "icon"}, {KeywordsRole, "keywords"}, {PermissionsRole, "permissions"}, {NeedsRole, "needs"}, {NeedsMissingRole, "needsMissing"},
         {StageRole, "stage"}, {InstalledVersionRole, "installedVersion"}, {MinWinShunRole, "minWinShun"}, {BusyRole, "busy"},
         {ProgressRole, "progress"}, {ProblemRole, "problem"}, {ShownRole, "shown"}, {StagedRole, "staged"},
-        {MorePermissionsRole, "morePermissions"}, {ReviewLabelRole, "reviewLabel"}, {UnreviewedRole, "unreviewed"}};
+        {MorePermissionsRole, "morePermissions"}, {HasReadmeRole, "hasReadme"}, {ReadmeBusyRole, "readmeBusy"}, {ReviewLabelRole, "reviewLabel"}, {UnreviewedRole, "unreviewed"}};
 }
 
 void PluginGalleryModel::setRows(std::vector<Row> rows)
@@ -161,6 +164,8 @@ void PluginGalleryModel::setRows(std::vector<Row> rows)
         differs(old.shown != now.shown, ShownRole);
         differs(old.staged != now.staged, StagedRole);
         differs(old.morePermissions != now.morePermissions, MorePermissionsRole);
+        differs(old.hasReadme != now.hasReadme, HasReadmeRole);
+        differs(old.readmeBusy != now.readmeBusy, ReadmeBusyRole);
         old = std::move(now);
         const QModelIndex at = index(static_cast<int>(i));
         if (!roles.isEmpty())
@@ -425,6 +430,8 @@ void PluginGallery::rebuild()
             if (r.homepage.isEmpty()) // none given: its repository
                 r.homepage = gallery::repositoryAddress(item.repo);
             r.version = item.version;
+            r.hasReadme = !item.readme.isEmpty();
+            r.readmeBusy = item.id == m_readmeId;
             r.keywords = item.keywords;
             r.minWinShun = item.minWinShun;
             const gallery::Local local = host ? gallery::localOf(host->catalog(), bundledDir, item.id) : gallery::Local {};
@@ -595,10 +602,68 @@ void PluginGallery::beginInstall(const QString& id, bool enableAfterInstall, boo
     });
 }
 
+void PluginGallery::installFor(const QString& id, std::function<void(PluginInstalled)> done)
+{
+    const auto failed = [&](const QString& why) { done({PluginInstalled::Step::Failed, id, {}, why}); };
+    if (m_preview || !m_settings->m_host)
+        return failed(tr("插件库现在用不了"));
+    if (m_installDone || !m_downloadId.isEmpty() || m_updatingAll)
+        return failed(tr("正在安装另一个插件，等它装完再试"));
+    m_installFor = id;
+    m_installDone = std::move(done);
+    if (!m_cacheRead)
+        readCache();
+    if (!m_fetching && m_fetchedThisRun.isValid() && !m_fetchedThisRun.hasExpired(kStaleMs)) {
+        startFor(id);
+        return;
+    }
+    refresh(); // nothing when the list is on its way already
+    const auto waiting = std::make_shared<QMetaObject::Connection>();
+    *waiting = connect(this, &PluginGallery::stateChanged, this, [this, id, waiting] {
+        if (m_fetching)
+            return;
+        disconnect(*waiting);
+        startFor(id);
+    });
+}
+
+void PluginGallery::startFor(const QString& id)
+{
+    if (id != m_installFor || !m_installDone)
+        return;
+    const auto failed = [&](const QString& why) { settle({PluginInstalled::Step::Failed, id, {}, why}); };
+    // The list just fetched; when it could not be, the one kept from last
+    // time will do: the package is checked against its entry either way.
+    const gallery::Item* item = m_index.find(id);
+    const auto& rows = m_list.rows();
+    const auto row = std::ranges::find_if(rows, [&](const PluginGalleryModel::Row& r) { return r.id == id; });
+    if (!item || row == rows.end())
+        return failed(m_problem.isEmpty() ? tr("插件库里没有 %1").arg(id) : m_problem);
+    const QString name = item->name.pick(m_settings->m_locale);
+    if (row->stage == u"installed")
+        return settle({PluginInstalled::Step::Done, id, row->installedVersion, tr("%1 已经是最新版（%2）").arg(name, row->installedVersion)});
+    if (row->stage == u"bundled")
+        return failed(tr("%1 随 Win顺 自带，不用安装").arg(name));
+    if (row->stage == u"app")
+        return failed(tr("%1 %2 要 Win顺 %3 或更新的版本，先更新 Win顺").arg(name, item->version, item->minWinShun));
+    beginInstall(id, false);
+    if (m_downloadId != id) // too big a package: the row says why
+        failed(m_problems.value(id, tr("现在装不了 %1").arg(name)));
+}
+
+void PluginGallery::settle(PluginInstalled outcome)
+{
+    m_installFor.clear();
+    if (const auto done = std::exchange(m_installDone, nullptr))
+        done(std::move(outcome));
+}
+
 void PluginGallery::cancel(const QString& id)
 {
     if (id.isEmpty() || id != m_downloadId)
         return;
+    if (id == m_installFor)
+        settle({PluginInstalled::Step::Failed, id, {}, tr("下载被取消了")});
     if (m_cancel)
         m_cancel->store(true);
     m_cancel.reset();
@@ -635,6 +700,8 @@ void PluginGallery::finishDownload(const QString& id, const Download& d)
         }
         rebuild();
         emit stateChanged();
+        if (id == m_installFor)
+            settle({PluginInstalled::Step::Failed, id, {}, problem});
         return;
     }
     if (d.bulk) { // 全部更新: no question; what asks for more than was allowed is left to be updated on its own
@@ -656,8 +723,10 @@ void PluginGallery::finishDownload(const QString& id, const Download& d)
     // run events meanwhile (a plugin's program let go of): nothing of the
     // rows is held across it.
     const gallery::Item* item = m_index.find(id);
-    m_settings->installFrom(d.path, id, item ? item->name.pick(m_settings->m_locale) : id, d.enableAfterInstall, d.unreviewed);
+    PluginInstalled outcome = m_settings->installFrom(d.path, id, item ? item->name.pick(m_settings->m_locale) : id, d.enableAfterInstall, d.unreviewed);
     QFile::remove(d.path);
+    if (id == m_installFor)
+        settle(std::move(outcome));
 }
 
 void PluginGallery::readList()
@@ -768,6 +837,51 @@ void PluginGallery::openRepository()
     shell::openUrl(QString(gallery::kRepositoryUrl));
 }
 
+// 说明 (GitHub #304): the package's README as the list names it, fetched when
+// asked for and held to the list's hash, then shown in the window the
+// installed plugins' 说明 uses. Text only: nothing in it is loaded or run.
+void PluginGallery::openReadme(const QString& id)
+{
+    if (m_preview || !m_readmeId.isEmpty())
+        return;
+    const gallery::Item* found = m_index.find(id);
+    if (!found || found->readme.isEmpty())
+        return;
+    const std::vector<PluginGalleryModel::Row>& rows = m_list.rows();
+    const auto row = std::ranges::find_if(rows, [&](const PluginGalleryModel::Row& r) { return r.id == id; });
+    const QString name = row != rows.end() ? row->name : id;
+    m_readmeId = id;
+    m_problems.remove(id);
+    rebuild();
+    constexpr qint64 kLimit = 1024 * 1024;
+    QThreadPool::globalInstance()->start([self = QPointer(this), id, name, url = found->readme, sha = found->readmeSha256] {
+        const auto fits = [&](const QByteArray& bytes) {
+            return bytes.size() <= kLimit && QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex()) == sha;
+        };
+        gallery::Fetched fetched = gallery::fetch(url, kLimit + 1, webFetcher(kListTimeoutMs), {}, fits);
+        const bool good = fetched.status == 200 && fits(fetched.body);
+        QMetaObject::invokeMethod(qApp, [self, id, name, good, fetched = std::move(fetched)] {
+            if (!self)
+                return;
+            self->m_readmeId.clear();
+            const readme::Document document = good ? readme::fromMarkdown(fetched.body) : readme::Document {};
+            if (good && document.error.isEmpty()) {
+                emit self->m_settings->readmeRequested(name, document.html);
+            } else if (good) {
+                self->m_problems.insert(id, document.error);
+            } else if (fetched.status == 200 || fetched.status == 404) {
+                // Not what the list says, or gone: the list here is behind the library's.
+                self->m_problems.insert(id, tr("说明和插件列表对不上，已经在刷新列表，稍后再点一次。"));
+                qWarning().noquote() << "Plugin library: README of" << id << "does not match the list" << fetched.status;
+                self->refresh();
+            } else {
+                self->m_problems.insert(id, tr("说明没能下载：%1").arg(self->networkProblem(fetched)));
+            }
+            self->rebuild();
+        }, Qt::QueuedConnection);
+    });
+}
+
 void PluginGallery::openHomepage(const QString& id)
 {
     const std::vector<PluginGalleryModel::Row>& rows = m_list.rows();
@@ -796,6 +910,7 @@ void PluginGallery::loadPreview()
         r.version = version;
         r.stage = stage;
         r.icon = glyph(u"U+EA86"_s);
+        r.hasReadme = true;
         r.words = (id + u'\n' + name + u'\n' + description).toLower();
         return r;
     };

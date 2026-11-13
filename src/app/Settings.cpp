@@ -879,6 +879,7 @@ void Settings::load()
         proxyMode = d.proxyMode;
     proxyAddress = readOrDefault(s, u"Proxy/Address"_s, d.proxyAddress).trimmed();
     recordHistory = readOrDefault(s, u"Launcher/History"_s, d.recordHistory);
+    rememberAdmin = readOrDefault(s, u"Launcher/RememberAdmin"_s, d.rememberAdmin);
     mergeFileScope = readOrDefault(s, u"Results/MergeFileScope"_s, d.mergeFileScope);
     appsTab = readOrDefault(s, u"Results/AppsTab"_s, d.appsTab);
     queryHistoryKeys = readOrDefault(s, u"Launcher/QueryHistoryKeys"_s, d.queryHistoryKeys);
@@ -909,6 +910,7 @@ void Settings::load()
     fileManagerRevealCommand = readOrDefault(s, u"Launcher/FileManagerRevealCommand"_s, d.fileManagerRevealCommand).trimmed();
     explorerMenu = readOrDefault(s, u"Launcher/ExplorerMenu"_s, d.explorerMenu);
     explorerTyping = readOrDefault(s, u"Launcher/ExplorerTyping"_s, d.explorerTyping);
+    desktopTyping = readOrDefault(s, u"Launcher/DesktopTyping"_s, d.desktopTyping);
     opusTyping = readOrDefault(s, u"Launcher/OpusTyping"_s, d.opusTyping);
     opusTypingScope = readOrDefault(s, u"Launcher/OpusTypingScope"_s, d.opusTypingScope).trimmed().toLower();
     if (opusTypingScope != u"all")
@@ -963,6 +965,7 @@ void Settings::load()
     doubleClickToOpen = readOrDefault(s, u"Results/DoubleClickToOpen"_s, d.doubleClickToOpen);
     tabEntersFavoriteFolder = readOrDefault(s, u"Results/TabEntersFavoriteFolder"_s, d.tabEntersFavoriteFolder);
     thumbnails = readOrDefault(s, u"Results/Thumbnails"_s, d.thumbnails);
+    rowDeleteButton = readOrDefault(s, u"Results/DeleteButton"_s, d.rowDeleteButton);
     searchApps = readOrDefault(s, u"Results/SearchApps"_s, d.searchApps);
     searchSystem = readOrDefault(s, u"Results/SearchSystem"_s, d.searchSystem);
     regexMode = readOrDefault(s, u"Results/RegexMode"_s, d.regexMode);
@@ -988,6 +991,7 @@ void Settings::load()
     shortcutHelp = readOrDefault(s, u"Results/ShortcutHelp"_s, d.shortcutHelp);
     footerHints = readOrDefault(s, u"Results/FooterHints"_s, d.footerHints);
     pureSearch = readOrDefault(s, u"Results/PureSearch"_s, d.pureSearch);
+    scopeButton = readOrDefault(s, u"Appearance/ScopeButton"_s, d.scopeButton);
     previewWith = readOrDefault(s, u"Results/PreviewWith"_s, d.previewWith).trimmed().toLower();
     if (previewWith != u"builtin")
         previewWith = d.previewWith;
@@ -1026,6 +1030,7 @@ void Settings::load()
     uiFont = readOrDefault(s, u"Appearance/UiFont"_s, d.uiFont).trimmed();
     if (uiSize != u"compact" && uiSize != u"roomy")
         uiSize = d.uiSize;
+    maxRows = std::clamp(readOrDefault(s, u"Appearance/MaxRows"_s, d.maxRows), 4, 20);
     corners = readOrDefault(s, u"Appearance/Corners"_s, d.corners).trimmed().toLower();
     if (corners != u"round" && corners != u"square")
         corners = d.corners;
@@ -1299,6 +1304,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Proxy/Mode"_s, proxyMode);
     s.setValue(u"Proxy/Address"_s, proxyAddress);
     s.setValue(u"Launcher/History"_s, recordHistory);
+    s.setValue(u"Launcher/RememberAdmin"_s, rememberAdmin);
     s.setValue(u"Launcher/DialogJump"_s, dialogJump);
     s.setValue(u"Launcher/DialogBar"_s, dialogBar);
     s.setValue(u"Launcher/DialogBarPlace"_s, dialogBarPlace);
@@ -1312,6 +1318,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FileManagerRevealCommand"_s, fileManagerRevealCommand);
     s.setValue(u"Launcher/ExplorerMenu"_s, explorerMenu);
     s.setValue(u"Launcher/ExplorerTyping"_s, explorerTyping);
+    s.setValue(u"Launcher/DesktopTyping"_s, desktopTyping);
     s.setValue(u"Launcher/OpusTyping"_s, opusTyping);
     s.setValue(u"Launcher/OpusTypingScope"_s, opusTypingScope);
     s.setValue(u"Launcher/FolderTyping"_s, folderTyping);
@@ -1347,6 +1354,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/DoubleClickToOpen"_s, doubleClickToOpen);
     s.setValue(u"Results/TabEntersFavoriteFolder"_s, tabEntersFavoriteFolder);
     s.setValue(u"Results/Thumbnails"_s, thumbnails);
+    s.setValue(u"Results/DeleteButton"_s, rowDeleteButton);
     s.setValue(u"Results/SearchApps"_s, searchApps);
     s.setValue(u"Results/SearchSystem"_s, searchSystem);
     s.setValue(u"Results/RegexMode"_s, regexMode);
@@ -1365,6 +1373,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/ShortcutHelp"_s, shortcutHelp);
     s.setValue(u"Results/FooterHints"_s, footerHints);
     s.setValue(u"Results/PureSearch"_s, pureSearch);
+    s.setValue(u"Appearance/ScopeButton"_s, scopeButton);
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
     s.setValue(u"Results/OpenHotkey"_s, openHotkey);
@@ -1378,6 +1387,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Appearance/TaskbarIcon"_s, taskbarIcon);
     s.remove(u"Appearance/SearchLogo"_s); // retired exterior decoration; inline logos are always present
     s.setValue(u"Appearance/UiSize"_s, uiSize);
+    s.setValue(u"Appearance/MaxRows"_s, maxRows);
     s.setValue(u"Appearance/UiFont"_s, uiFont);
     s.setValue(u"Appearance/Corners"_s, corners);
     s.setValue(u"Appearance/UiStyle"_s, uiStyle);

@@ -1,4 +1,204 @@
 /*
+ * Copyright 2026 Axel Waggershauser
+ */
+// SPDX-License-Identifier: Apache-2.0
+
+#include "BarcodeFormat.h"
+
+#include "Version.h"
+#include "ZXAlgorithms.h"
+
+#include <algorithm>
+
+namespace ZXing {
+
+// =================================== BarcodeFormat =================================
+
+static_assert(ZX_BCF_ID('\0', '\0') == 0, "BarcodeFormat encoding error");
+
+BarcodeFormat Symbology(BarcodeFormat format)
+{
+	return BarcodeFormat(ZX_BCF_ID(SymbologyKey(format), ' ' * (VariantKey(format) != 0)));
+}
+
+std::string_view Name(BarcodeFormat format)
+{
+	switch (format) {
+#define X(NAME, SYM, VAR, FLAGS, ZINT, ENABLED, HRI) \
+	case BarcodeFormat(ZX_BCF_ID(SYM, VAR)): return HRI;
+		ZX_BCF_LIST(X)
+#undef X
+	default: return "Unknown";
+	};
+}
+
+BarcodeFormat BarcodeFormatFromString(std::string_view str)
+{
+	if (str.size() < 3)
+		throw std::invalid_argument(StrCat("This is not a valid barcode format: '", str, "'"));
+#define X(NAME, SYM, VAR, FLAGS, ZINT, ENABLED, HRI) \
+	if ((str[0] == ']' && str[1] == SYM && str[2] == VAR) || IsEqualIgnoreCase(str, #NAME) || IsEqualIgnoreCaseAnd(str, HRI, " -_/")) \
+		return BarcodeFormat(ZX_BCF_ID(SYM, VAR));
+	ZX_BCF_LIST(X)
+#undef X
+	throw std::invalid_argument(StrCat("This is not a valid barcode format: '", str, "'"));
+}
+
+std::string ToString(BarcodeFormat format)
+{
+	return std::string(Name(format));
+}
+
+bool operator<=(BarcodeFormat e, BarcodeFormat s)
+{
+	return e == s || s == BarcodeFormat::All
+		   || (SymbologyKey(s) == '*' ? SymbologyKey(e) != '*' && (e & s)
+									  : SymbologyKey(s) == SymbologyKey(e) && VariantKey(s) == ' ');
+}
+
+bool operator&(BarcodeFormat a, BarcodeFormat b)
+{
+	if (SymbologyKey(a) == '*' && SymbologyKey(b) == '*') {
+		switch (VariantKey(a)) {
+		case 'l': return ZXING_ENABLE_1D && !Contains("smp", VariantKey(b));
+		case 's': return ZXING_ENABLE_PDF417 && !Contains("lmp", VariantKey(b));
+		case 'p': return !Contains("lms", VariantKey(b)); // TODO: postal codes
+		case 'm':
+			return (ZXING_ENABLE_MAXICODE || ZXING_ENABLE_QRCODE || ZXING_ENABLE_DATAMATRIX || ZXING_ENABLE_AZTEC)
+				   && !Contains("lsp", VariantKey(b));
+		default: return true;
+		}
+	}
+
+	if (SymbologyKey(a) == '*')
+		std::swap(a, b);
+
+	if (SymbologyKey(b) == '*') {
+		char vkb = VariantKey(b);
+		if (vkb == '*')
+			return true;
+
+		switch (a) {
+#ifdef ZXING_USE_ZINT
+#define USING_ZINT 1
+#else
+#define USING_ZINT 0
+#endif
+#define X(NAME, SYM, VAR, FLAGS, ZINT, ENABLED, HRI) \
+	case BarcodeFormat(ZX_BCF_ID(SYM, VAR)): \
+		return ENABLED \
+			   && ((vkb == 'w' && USING_ZINT) ? ZINT : (FLAGS[0] == vkb || FLAGS[1] == vkb || FLAGS[2] == vkb || FLAGS[3] == vkb || FLAGS[4] == vkb));
+			ZX_BCF_LIST(X)
+#undef X
+		};
+	}
+
+	if (a == b || Symbology(a) == b || a == Symbology(b))
+		return true;
+
+	return false;
+}
+
+// ==================================== BarcodeFormats =================================
+
+inline bool operator<(BarcodeFormat a, BarcodeFormat b)
+{
+	return SymbologyKey(a) < SymbologyKey(b) || (SymbologyKey(a) == SymbologyKey(b) && VariantKey(a) < VariantKey(b));
+}
+
+void BarcodeFormats::normalize()
+{
+	std::erase_if(formats_, [](BarcodeFormat t) { return t == BarcodeFormat::None; });
+	std::sort(formats_.begin(), formats_.end());
+	formats_.erase(std::unique(formats_.begin(), formats_.end()), formats_.end());
+}
+
+BarcodeFormats::BarcodeFormats(std::string_view str)
+{
+	while (str.size() >= 3 && str[0] == ']') {
+		formats_.push_back(BarcodeFormat(ZX_BCF_ID(str[1], str[2])));
+		str.remove_prefix(3);
+	}
+
+	ForEachToken(TrimWS(str, " []"), ",|", [this](std::string_view token) {
+		if (!token.empty())
+			formats_.push_back(BarcodeFormatFromString(token));
+	});
+
+	normalize();
+}
+
+BarcodeFormats BarcodeFormats::list(const BarcodeFormats& filter)
+{
+	std::vector<BarcodeFormat> res;
+	res.reserve(100);
+	if (filter.empty()) {
+#define X(NAME, SYM, VAR, FLAGS, ZINT, ENABLED, HRI) \
+		if (ENABLED) \
+			res.push_back(BarcodeFormat(ZX_BCF_ID(SYM, VAR)));
+		ZX_BCF_LIST(X)
+#undef X
+		return res;
+	}
+	for (auto f : filter) {
+		// printf("Filter for: %s\n", IdStr(f).c_str());
+#define X(NAME, SYM, VAR, FLAGS, ZINT, ENABLED, HRI) \
+	if (ENABLED && SYM != '*' \
+		&& (SymbologyKey(f) == '*' ? BarcodeFormat(ZX_BCF_ID(SYM, VAR)) & f \
+								   : SYM == SymbologyKey(f) && (VariantKey(f) == ' ' || VariantKey(f) == VAR))) \
+		res.push_back(BarcodeFormat(ZX_BCF_ID(SYM, VAR))); //, printf("adding: %c %c\n", SYM, VAR);
+		ZX_BCF_LIST(X)
+#undef X
+		// printf("N: %d\n", (int)res.size());
+	}
+	return res;
+}
+
+// BarcodeFormats&& BarcodeFormats::operator|(BarcodeFormat bt) &&
+// {
+// 	types_.push_back(bt);
+// 	normalize();
+// 	return std::move(*this);
+// }
+
+// BarcodeFormats&& BarcodeFormats::operator|(const BarcodeFormats& other) &&
+// {
+// 	types_.insert(std::end(types_), other.begin(), other.end());
+// 	normalize();
+// 	return std::move(*this);
+// }
+
+BarcodeFormats BarcodeFormats::operator&(const BarcodeFormats& other)
+{
+	std::vector<BarcodeFormat> res;
+	for (auto l : formats_)
+		for (auto r : other.formats_)
+			if (l <= r)
+				res.push_back(l);
+			else if (r <= l)
+				res.push_back(r);
+	return res;
+}
+
+BarcodeFormats BarcodeFormatsFromString(std::string_view str)
+{
+	return BarcodeFormats(str);
+}
+
+std::string ToString(const BarcodeFormats& formats)
+{
+	if (formats.empty())
+		return {};
+	std::string res;
+	for (auto f : formats)
+		res += std::string(Name(f)) + ", ";
+	return res.substr(0, res.size() - 2);
+}
+
+} // namespace ZXing
+
+#if 0
+/*
 * Copyright 2016 Nu-book Inc.
 * Copyright 2016 ZXing authors
 */
@@ -8,10 +208,7 @@
 
 #include "ZXAlgorithms.h"
 
-#include <algorithm>
-#include <cctype>
 #include <iterator>
-#include <sstream>
 #include <stdexcept>
 
 namespace ZXing {
@@ -22,7 +219,7 @@ struct BarcodeFormatName
 	std::string_view name;
 };
 
-static BarcodeFormatName NAMES[] = {
+static const BarcodeFormatName NAMES[] = {
 	{BarcodeFormat::None, "None"},
 	{BarcodeFormat::Aztec, "Aztec"},
 	{BarcodeFormat::Codabar, "Codabar"},
@@ -38,6 +235,7 @@ static BarcodeFormatName NAMES[] = {
 	{BarcodeFormat::EAN13, "EAN-13"},
 	{BarcodeFormat::ITF, "ITF"},
 	{BarcodeFormat::MaxiCode, "MaxiCode"},
+	{BarcodeFormat::MicroPDF417, "MicroPDF417"},
 	{BarcodeFormat::MicroQRCode, "MicroQRCode"},
 	{BarcodeFormat::PDF417, "PDF417"},
 	{BarcodeFormat::QRCode, "QRCode"},
@@ -64,45 +262,25 @@ std::string ToString(BarcodeFormats formats)
 	return res.substr(0, res.size() - 1);
 }
 
-static std::string NormalizeFormatString(std::string_view sv)
-{
-	std::string str(sv);
-	std::transform(str.begin(), str.end(), str.begin(), [](char c) { return (char)std::tolower(c); });
-#ifdef __cpp_lib_erase_if
-	std::erase_if(str, [](char c) { return Contains("_-[]", c); });
-#else
-	str.erase(std::remove_if(str.begin(), str.end(), [](char c) { return Contains("_-[]", c); }), str.end());
-#endif
-	return str;
-}
-
-static BarcodeFormat ParseFormatString(const std::string& str)
-{
-	auto i = FindIf(NAMES, [str](auto& v) { return NormalizeFormatString(v.name) == str; });
-	return i == std::end(NAMES) ? BarcodeFormat::None : i->format;
-}
-
 BarcodeFormat BarcodeFormatFromString(std::string_view str)
 {
-	return ParseFormatString(NormalizeFormatString(str));
+	auto i = FindIf(NAMES, [str](auto& v) { return IsEqualIgnoreCaseAnd(v.name, str, "_-"); });
+	return i == std::end(NAMES) ? BarcodeFormat::None : i->format;
 }
 
 BarcodeFormats BarcodeFormatsFromString(std::string_view str)
 {
-	auto normalized = NormalizeFormatString(str);
-	std::replace_if(
-		normalized.begin(), normalized.end(), [](char c) { return Contains(" ,", c); }, '|');
-	std::istringstream input(normalized);
 	BarcodeFormats res;
-	for (std::string token; std::getline(input, token, '|');) {
-		if(!token.empty()) {
-			auto bc = ParseFormatString(token);
+	ForEachToken(TrimWS(str, " []"), " ,|", [&res](std::string_view token) {
+		if (!token.empty()) {
+			auto bc = BarcodeFormatFromString(token);
 			if (bc == BarcodeFormat::None)
-				throw std::invalid_argument("This is not a valid barcode format: " + token);
+				throw std::invalid_argument("This is not a valid barcode format: '" + std::string(token) + "'");
 			res |= bc;
 		}
-	}
+	});
 	return res;
 }
 
 } // ZXing
+#endif // 0

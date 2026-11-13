@@ -36,11 +36,7 @@ static int combins(int n, int r)
 	return val;
 }
 
-#ifdef __cpp_lib_span
-int GetValue(const std::span<int> widths, int maxWidth, bool noNarrow)
-#else
-int GetValue(const Array4I& widths, int maxWidth, bool noNarrow)
-#endif
+int GetValue(ArrayView<int> widths, int maxWidth, bool noNarrow)
 {
 	int elements = Size(widths);
 	int n = Reduce(widths);
@@ -168,8 +164,9 @@ Position EstimatePosition(const Pair& first, const Pair& last)
 
 int EstimateLineCount(const Pair& first, const Pair& last)
 {
-	// see incrementLineCount() in ODReader.cpp for the -1 here
-	return std::min(first.count, last.count) - 1 + IsStacked(first, last);
+	// see ODReader.cpp 'lineCount++' and Barcode::operator==() for the -2 here
+	// TODO: this is a bit of a hack... implement a proper Pair clustering
+	return std::max(0, std::min(first.count, last.count) - 2) + IsStacked(first, last);
 }
 
 } // namespace ZXing::OneD::DataBar

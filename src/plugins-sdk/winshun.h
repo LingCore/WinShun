@@ -23,7 +23,10 @@
 
 #include <windows.h>
 
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -34,6 +37,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -840,16 +844,21 @@ public:
     // comes. The process's exit code.
     int serve()
     {
+        m_serveThread = std::this_thread::get_id();
         std::string line;
         for (;;) {
             if (!m_queued.empty()) {
                 line = std::move(m_queued.front());
                 m_queued.pop_front();
             } else if (!m_reader.next(line))
-                return 0;
+                break;
+            if (toolAnswer(line))
+                continue;
             if (handle(line))
-                return 0;
+                break;
         }
+        endToolCalls(); // no answer comes any more: threads waiting for one go on
+        return 0;
     }
     // The same over the given ends instead of stdin and stdout (a plugin
     // that Win顺 runs inside its plugin host).
@@ -911,19 +920,47 @@ public:
     // open_item, show_in_folder, clipboard_history, clipboard_get,
     // index_status), as the manifest's permissions allow. The result, or an
     // object with "error" {code, message}. Lines meanwhile are kept for after.
-    // Only from the thread in serve() (it reads the answer itself).
-    Json tool(const std::string& name, Json arguments)
+    // From the thread in serve() (it reads the answer itself), or from another
+    // thread while serve() runs (a worker: serve() hands it the answer). A
+    // worker gives `canceled` when the plugin may have to stop it (shutdown
+    // waits for the worker, and no answer is read meanwhile): set, the call
+    // returns an error at once.
+    Json tool(const std::string& name, Json arguments, const std::atomic_bool* canceled = nullptr)
     {
         const long long id = m_nextId++;
-        send(Json::Object {{"id", id}, {"method", "winshun/tool"}, {"params", Json::Object {{"name", name}, {"arguments", std::move(arguments)}}}});
+        const Json request = Json::Object {{"id", id}, {"method", "winshun/tool"}, {"params", Json::Object {{"name", name}, {"arguments", std::move(arguments)}}}};
+        const auto gone = [] { return Json(Json::Object {{"error", Json::Object {{"code", -32000}, {"message", "Win顺 went away"}}}}); };
+        if (std::this_thread::get_id() != m_serveThread) {
+            std::unique_lock lock(m_toolMutex);
+            if (m_toolsEnded)
+                return gone();
+            m_toolAnswers[id]; // waited for
+            lock.unlock();
+            send(request);
+            lock.lock();
+            for (;;) {
+                if (auto found = m_toolAnswers.find(id); found != m_toolAnswers.end() && found->second) {
+                    Json answer = std::move(*found->second);
+                    m_toolAnswers.erase(found);
+                    return answer;
+                }
+                if (m_toolsEnded || (canceled && canceled->load())) {
+                    m_toolAnswers.erase(id);
+                    return gone();
+                }
+                m_toolCv.wait_for(lock, std::chrono::milliseconds(50));
+            }
+        }
+        send(request);
         std::string line;
         while (m_reader.next(line)) {
             const auto message = Json::parse(line);
             if (message && message->isObject() && !message->has("method") && (*message)["id"].isNumber() && (*message)["id"].toInt() == id)
                 return message->has("error") ? Json(Json::Object {{"error", (*message)["error"]}}) : (*message)["result"];
-            m_queued.push_back(line);
+            if (!toolAnswer(line))
+                m_queued.push_back(line);
         }
-        return Json(Json::Object {{"error", Json::Object {{"code", -32000}, {"message", "Win顺 went away"}}}});
+        return gone();
     }
 
 protected:
@@ -983,6 +1020,32 @@ private:
     void fail(const Json& id, int code, const std::string& text)
     {
         send(Json::Object {{"id", id}, {"error", Json::Object {{"code", code}, {"message", text}}}});
+    }
+
+    // An answer to a tool call another thread waits for: handed to it.
+    bool toolAnswer(const std::string& line)
+    {
+        {
+            const std::lock_guard lock(m_toolMutex);
+            if (m_toolAnswers.empty())
+                return false;
+        }
+        const auto message = Json::parse(line);
+        if (!message || !message->isObject() || message->has("method") || !(*message)["id"].isNumber())
+            return false;
+        const std::lock_guard lock(m_toolMutex);
+        const auto found = m_toolAnswers.find((*message)["id"].toInt());
+        if (found == m_toolAnswers.end())
+            return false;
+        found->second = message->has("error") ? Json(Json::Object {{"error", (*message)["error"]}}) : (*message)["result"];
+        m_toolCv.notify_all();
+        return true;
+    }
+    void endToolCalls()
+    {
+        const std::lock_guard lock(m_toolMutex);
+        m_toolsEnded = true;
+        m_toolCv.notify_all();
     }
 
     // One line; true when the loop is to end. What the plugin throws (no
@@ -1099,7 +1162,12 @@ private:
     HANDLE m_out = ::GetStdHandle(STD_OUTPUT_HANDLE);
     std::mutex m_sendMutex;
     std::deque<std::string> m_queued; // lines that came while a tool call waited
-    long long m_nextId = 1;
+    std::atomic<long long> m_nextId = 1;
+    std::thread::id m_serveThread = std::this_thread::get_id(); // until serve(): whoever made the plugin
+    std::mutex m_toolMutex; // tool calls of other threads: id -> the answer once it came
+    std::condition_variable m_toolCv;
+    std::map<long long, std::optional<Json>> m_toolAnswers;
+    bool m_toolsEnded = false;
     Json m_settings;
     std::string m_locale = "zh";
     std::string m_theme = "light";

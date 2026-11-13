@@ -82,3 +82,60 @@ Blender 的独立文件窗口是自绘 `GHOST_WindowClass`，不能套用 Win32 
 本地证据保存在未提交的 `build/issue143`：`ctest-final.txt`、`visibility-final.txt`、`transport-tests.txt`、`acceptance-en`、`final-ui-zh/runtime/runtime.json` 与 `dialog-with-search.png`、`package-verification/stdout.txt`。
 
 单独的 `tst_filedialog` 默认跳过 Blender 和真实 Inno 窗口用例；只有提供隔离实例 PID 和观察器文件才执行。未通过的探索记录保留在忽略目录 `build/issue143`，不计为当前实现的通过证据。
+
+## 程序自己画的选文件窗口：用户规则（#272，2026-11-12）
+
+[Issue #272](https://github.com/LingCore/WinShun/issues/272) 要的是 ArcMap、ArcGIS Pro 的“添加数据”窗口，并希望做成用户能自己适配别的窗口的办法。截图表明 ArcMap 的是带自绘内容视图的 `#32770`（不是系统文件对话框，没有地址栏和标准控件 ID），ArcGIS Pro 的是 WPF 窗口（类名 `HwndWrapper[ArcGISPro;;<每次不同>]`，没有子窗口）。**本机没有 ArcGIS，也没有为这次验证安装；下面的通过结果都来自替身窗口，不是 ArcGIS 实机结果。**
+
+没有为 ArcGIS 写死适配，做的是通用规则（`platform/DialogRules`、`DialogRuleStore`）：
+
+- 规则写在数据文件夹的 `dialogs.json`：哪个程序（`program`）、哪个窗口（`class`、`title`，`*` 通配）、路径填进哪个输入框（`box`）、怎么确认（`confirm`：输入框里回车，或一个按钮）。输入框和按钮按 UI Automation 的控件类型、AutomationId、名称、类名来指，所以同一套规则适用于 Win32、WPF、WinForms、Qt 窗口。
+- 设置里的“识别窗口”倒数五秒后看前台窗口，自动写出一条规则：输入框取有键盘焦点的那个（它能输入文字时），否则取位置最靠下的可输入框；窗口类名里每次运行都变的部分换成 `*`。看到的所有输入框和按钮记在规则的 `seen` 里，供认错时手工改。
+- 驱动方式和旧式对话框一样：文件夹带尾部反斜杠填进输入框并确认（只可能被当成文件夹）；文件填整条路径，要“直接打开”时才确认。回车是发给刚拿到焦点的输入框（有自己窗口句柄时）或顶层窗口（WPF、Qt）的窗口消息，不合成按键，不往目标进程里装东西。
+- 规则只对 Win顺 本来不认识的窗口生效；文件一保存就重新读，当前在前台的窗口立刻重新判断。管理员权限的程序不支持（服务的助手不认规则，退回复制路径）。
+
+前提是那个窗口本身支持“在文件名框里填一条路径、回车就过去”。ArcGIS 的两个窗口是否如此、识别出的输入框对不对，要等报告者实测。
+
+验证：
+
+- `tst_dialogrules`：规则文件的读写和报错；通配；只认规则指明的程序、类名、标题；原生替身窗口（独立线程，编辑框 + 默认按钮）分别用回车和按钮确认，覆盖形似文件名的中文文件夹、不存在的文件夹、窗口不清空输入框时放回原文字、文件整条路径、明确确认；找不到输入框时不动手；识别出的规则能直接驱动窗口；另一个进程里的 WPF 替身窗口（PowerShell，`tests/fixtures/wpf-file-window.ps1`，两个输入框）识别到下方的名称框并跳转成功。
+- 真实主程序的离屏检查 `WinShun --preview-settings <目录> --dialog-rule-settings --fixture tests\fixtures\wpf-file-window.ps1`（中、英文各跑通过，20 项）：设置行和两个按钮在行内；点“识别窗口”倒数、不能重复点；切到替身窗口后写出规则；真实的 `DialogJump` 在没有规则时不跟随、规则写入后立刻跟随仍在前台的窗口；`DialogJump::go` 把文件夹和文件送进窗口；在文件里删掉规则后立刻不再跟随。
+- 没有覆盖：搜索框在这类窗口旁边的实际摆放（走的是与其他对话框相同的代码）、ArcGIS 实机。
+
+## 自带路径框的选文件夹窗口：Bandizip、7-Zip、WinRAR（2026-11-13）
+
+用户反馈 Bandizip 的“选择解压路径”窗口下面没有搜索框。这类窗口不是系统对话框：没有地址栏，文件夹写在窗口自己的一个输入框里，按它的“确定”时程序读这个框。此前只认了同类里的 Inno Setup 选目录窗口。
+
+先查了别的项目怎么做，再动手：
+
+| 项目 | 做法 | 对我们有用的结论 |
+|---|---|---|
+| [Listary 的 WinRAR 插件](https://github.com/listary/Listary.FileAppPlugin.WinRAR)（开源） | `#32770` + 进程 `WinRAR.exe` + 标签页控件 `0x3020`；路径组合框 `0x65`（在第一个子页上），写入后点“显示”按钮 `0x66`，不按确定 | WinRAR 的控件 ID 与驱动办法照此实现 |
+| Listary 本体（闭源） | [官方页面](https://www.listary.com/feature/quick-save-and-open)点名支持 Bandizip，实现未公开 | 只说明值得做 |
+| [JoyHak/QuickSwitch](https://github.com/JoyHak/QuickSwitch)（[#43](https://github.com/JoyHak/QuickSwitch/issues/43)） | 按结构认“按钮 + 输入框 + 树”，写入后回车；回车在 Bandizip 上等于确定，窗口直接关闭 | 结构识别可行；**不能发回车** |
+| [Quick Access Popup](https://www.quickaccesspopup.com/can-i-change-folders-in-file-dialog-boxes-open-save-as-etc/) | 规则最宽（任意带输入框的 `#32770`），因误改设置窗口而默认关闭 | 识别条件要收紧 |
+| Flow Launcher、gepruts/QuickSwitch、PathWrap | 只支持系统对话框 | 无 |
+| [7-Zip 源码](https://github.com/ip7z/7zip/blob/main/CPP/7zip/UI/GUI/ExtractDialog.cpp) | 解压窗口：路径组合框 `100`、“...”按钮 `101`、两个下拉列表 `102`/`103`；确定时**先读列表选中项，没有选中项才读文字**；“...”按钮自己的做法是先 `SetCurSel(-1)` 再写文字 | 写入前必须取消列表选中项 |
+
+没有一个项目靠遍历文件夹树（`TVM_*`）来跳转。
+
+实现（`core/PathBoxDialog`，界面端 `platform/FileDialog` 和管理员窗口的助手 `core/DialogNav` 共用，Inno 的识别也并了进来）：
+
+- **Bandizip 这一类按结构认，不限程序**：`#32770`，有确定和取消，直接子控件里恰好一棵可见的文件夹树、恰好一个可输入的框（组合框或单行输入框），并且框里当前是一条绝对路径。出现列表、标签页、第二个输入框、第二棵树、只读/密码/数字框，或树是“浏览文件夹”自己的那棵（它另有处理），都不认。界面端认过一次的窗口在它关闭前一直算数，用户在框里手改路径时搜索框不会跟着消失；助手不记，框里不是路径就不动。
+- **7-Zip 和 WinRAR 按控件 ID 认，只在各自的程序里生效**（`7zG.exe`／`7zFM.exe`、`WinRAR.exe`）。
+- **跳转 = 写框**：取消组合框的列表选中项，文字写进框并读回核对，再把“用户改了文字”（`CBN_EDITCHANGE`）告诉窗口；WinRAR 再按一下它自己的“显示”。**不发回车、不按确定**，解压由用户自己点。
+- 通知是投递的，不等对方处理完（见下面的实测）。
+
+Bandizip 7.36 实测（本机已装；7-Zip、WinRAR 本机没有，也没有为此安装）：
+
+- 窗口结构：路径组合框 ID 1021、树 ID 1024、确定、取消，另有换肤的位置栏（不是标准控件）。
+- 只 `WM_SETTEXT` 时树不动；收到 `CBN_EDITCHANGE` 后树跟到该文件夹；确定读的是框里的文字。
+- 树跟过去的耗时取决于沿途文件夹的大小：普通文件夹 10 毫秒级，`System32\drivers` 0.7 秒，有 1700 项的 `Temp` 下面的文件夹 5 秒以上，这期间 Bandizip 不回应任何消息。用户自己在框里打字也一样，所以通知改为投递，Win顺 不陪着等。
+
+验证：
+
+- `tst_pathbox`（24 项）：路径形状判断；替身窗口（真实控件，行为按上面的实测和源码）覆盖组合框与单行输入框、形似文件名的文件夹、中文加空格、共享路径、列表选中项被取消、没有被确认；十几种不认的情形。`ctest -R tst_pathbox_7zip` 和 `tst_pathbox_winrar` 用改名为 `7zG.exe`、`WinRAR.exe` 的测试副本覆盖两个替身窗口（7-Zip 替身的确定按源码先读选中项，写入后它的回答就是写入的文件夹；WinRAR 替身收到“显示”时框里已是新文件夹，第一页被隐藏时也可以），原名运行时同样的窗口不被识别。副本里没有这两个软件的任何东西。
+- `tst_pathbox` 的 `realBandizip`（设 `WINSHUN_TEST_BANDIZIP=<Bandizip.exe>` 才跑）：启动真实 Bandizip 解压这里现做的压缩包，窗口被认出，写入中文加空格的文件夹，树的选中项随之改变，窗口还开着且什么都没解压；再按它的确定，文件出现在写入的文件夹里。
+- `tst_filedialog`、`tst_dialognav` 各加一项：界面端识别为选文件夹窗口、当前位置取自框里、跳转、不给文件名也不确认、认过之后保持；助手对不存在的文件夹和相对路径不动手。
+- 真实主程序：`./tools/verify-bandizip-dialog.ps1 -BuildDir build/dialog-pathbox -OutputDir build/dialog-pathbox/bandizip`。真实 `App`、`DialogJump`、`DialogBar` 和搜索引擎对着真实 Bandizip 窗口：搜索框出现在窗口下方并拿到焦点，搜到文件夹，选中后窗口的框里是该文件夹，窗口没有被关闭；随后取消窗口，确认什么都没解压。2026-11-13 通过，QML 运行告警 0。
+- **没有实机结果的部分**：7-Zip 和 WinRAR 只有替身窗口的结果（依据分别是 7-Zip 源码和 Listary 插件源码）；管理员权限下的 Bandizip 没有实测（助手一侧只有替身窗口）。这两个软件的“复制到/移动到”等其他窗口没有处理。

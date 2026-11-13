@@ -234,6 +234,7 @@ struct Fixture {
     QList<SettingsApply> settingsApplied;
     SettingsQuery lastSettingsQuery;
     QString openedAt; // "key|section"
+    QStringList pluginCalls; // ws plugin's tools, as the app would hear them: "tool {arguments}"
     // Shared with the host's services, which may outlive the test's frame
     // on the jobs' threads.
     std::shared_ptr<Hold> hold = std::make_shared<Hold>();
@@ -306,6 +307,10 @@ struct Fixture {
                     asker(request, std::move(done));
             };
         }
+        services.plugins = [this](const QString& tool, const QJsonObject& arguments, std::function<void(ToolResult)> done) {
+            pluginCalls.push_back(tool + u' ' + QString::fromUtf8(QJsonDocument(arguments).toJson(QJsonDocument::Compact)));
+            done({{{u"state"_s, u"done"_s}, {u"message"_s, u"好了"_s}}});
+        };
         services.getSettings = [this](const SettingsQuery& query) {
             lastSettingsQuery = query;
             QJsonArray list;
@@ -718,6 +723,37 @@ private slots:
         QCOMPARE(error.value(u"code"_s).toInt(), -32601);
     }
 
+    // ws plugin's tools (GitHub #251): never among the tools on offer, no
+    // tools at all to a client that is not ws, and the app's to answer.
+    void pluginToolsAreKeptForWs()
+    {
+        Fixture f;
+        for (const char* name : kPluginTools) {
+            const QString tool = QString::fromLatin1(name);
+            QVERIFY2(!f.host->toolNames().contains(tool), name);
+            QCOMPARE(f.host->known(tool), ToolHost::Known::No);
+            QCOMPARE(f.host->known(tool, true), ToolHost::Known::Yes);
+        }
+        for (const QJsonValue& tool : f.host->tools())
+            QVERIFY(!tool.toObject().value(u"name"_s).toString().startsWith(u"plugins_"_s));
+        std::optional<ToolResult> got;
+        const auto run = [&](std::uint64_t id, bool cli) {
+            got.reset();
+            f.host->call(id, u"tst"_s, u"plugins_switch"_s, {{u"id"_s, u"me.hello"_s}, {u"on"_s, true}}, [&](ToolResult r) { got = std::move(r); },
+                {nullptr, cli, false});
+            return QTest::qWaitFor([&] { return got.has_value(); }, 5000);
+        };
+        QVERIFY(run(1, false));
+        QVERIFY(got->isError);
+        QCOMPARE(got->errorText, u"Unknown tool: plugins_switch"_s);
+        QVERIFY(f.pluginCalls.isEmpty());
+        QVERIFY(run(2, true));
+        QVERIFY(!got->isError);
+        QCOMPARE(got->structured.value(u"state"_s).toString(), u"done"_s);
+        QCOMPARE(f.pluginCalls, QStringList {u"plugins_switch {\"id\":\"me.hello\",\"on\":true}"_s});
+        QCOMPARE(f.host->pendingCalls(), 0);
+    }
+
     void toolsOnOffer()
     {
         Fixture f;
@@ -927,6 +963,30 @@ private slots:
         reply = s.exchange(callLine(4, u"search_content"_s, {{u"query"_s, u"zzqqxx"_s}}), 20000);
         QVERIFY(reply);
         QCOMPARE(outcomeOf(*reply).structured.value(u"returned"_s).toInt(), 0);
+
+        // GitHub #295: either of some words; a regular expression by its
+        // prefix, or every word one; one that cannot be read is said to be so.
+        reply = s.exchange(callLine(10, u"search_content"_s, {{u"query"_s, u"zzqqxx|readLock|季度"_s}}), 20000);
+        QVERIFY(reply);
+        QStringList either = names(outcomeOf(*reply).structured);
+        either.sort();
+        QCOMPARE(either, (QStringList {u"code.md"_s, u"销售.txt"_s}));
+        reply = s.exchange(callLine(11, u"search_content"_s, {{u"query"_s, uR"(regex:销售额\s\d+\s万$)"_s}}), 20000);
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QCOMPARE(names(out.structured), QStringList {u"销售.txt"_s});
+        QCOMPARE(out.structured.value(u"items"_s).toArray().first().toObject().value(u"location"_s).toObject().value(u"line"_s).toInt(), 2);
+        reply = s.exchange(callLine(12, u"search_content"_s, {{u"query"_s, uR"(第.季度 \d{3})"_s}, {u"regex"_s, true}}), 20000);
+        QVERIFY(reply);
+        QCOMPARE(names(outcomeOf(*reply).structured), QStringList {u"销售.txt"_s});
+        reply = s.exchange(callLine(13, u"search_content"_s, {{u"query"_s, uR"(第.季度 \d{3})"_s}}), 20000); // words, without it
+        QVERIFY(reply);
+        QCOMPARE(outcomeOf(*reply).structured.value(u"returned"_s).toInt(), 0);
+        reply = s.exchange(callLine(14, u"search_content"_s, {{u"query"_s, u"regex:销售("_s}}), 20000);
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QVERIFY(out.isError);
+        QVERIFY2(out.text.contains(u"regular expression") && out.text.contains(u"parenthesis"), qPrintable(out.text));
 
         // Content search turned off in the settings: no file is read for AI either.
         Policy policy = f.host->policy();

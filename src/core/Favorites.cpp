@@ -228,6 +228,10 @@ QByteArray writeFavoritesFile(const FavoriteList& favorites)
             version = std::max(version, 2);
             entry.insert(u"command"_s, f.command);
             entry.insert(u"workingDirectory"_s, f.workingDirectory);
+            if (f.searchFiles) { // an older copy drops it on its next save, and runs the command as before
+                version = std::max(version, 2);
+                entry.insert(u"searchFiles"_s, true);
+            }
             if (f.silent || f.runAsAdmin) { // version 4: an older copy would drop them on its next save
                 version = kFileVersion;
                 if (f.silent)
@@ -281,6 +285,7 @@ std::optional<FavoritesFile> readFavoritesFile(QByteArrayView json, bool* newer)
             f.icon = entry.value(u"icon"_s).toString();
             f.silent = entry.value(u"silent"_s).toBool();
             f.runAsAdmin = entry.value(u"admin"_s).toBool();
+            f.searchFiles = entry.value(u"searchFiles"_s).toBool();
             if (!f.icon.isEmpty() && favoriteIconPng(f.icon).isEmpty()) {
                 f.icon.clear();
                 ++result.badIcons;

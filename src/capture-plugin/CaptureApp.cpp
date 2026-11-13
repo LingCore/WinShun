@@ -11,6 +11,7 @@
 #include "Geometry.h"
 #include "HotkeyText.h"
 #include "IdleTrim.h"
+#include "platform/HotPages.h"
 #include "IdleGraphics.h"
 #include "ImageOrigin.h"
 #include "Keycaps.h"
@@ -451,8 +452,20 @@ void CaptureApp::apply()
         // Not in the frozen picture: hidden, and one composition waited for, so
         // the grab right after does not still find it on the screen.
         callbacks.starting = [this] {
+            // What the last capture after an emptying needed, read back while
+            // this one starts (HotPages, as the launcher's, GitHub #265): the
+            // working set is emptied 20 s after a capture, and minutes later
+            // Windows may have given the pages away. Still in memory, it
+            // costs next to nothing.
+            if (m_hotPages->bytes() > 0)
+                std::thread([pages = m_hotPages->pages()] { pages.prefetch(); }).detach();
+            m_recordPages = m_idleTrim->takeTrimmed();
             if (closeOcrBubble())
                 ::DwmFlush();
+        };
+        callbacks.shown = [this] {
+            if (std::exchange(m_recordPages, false))
+                std::thread([pages = m_hotPages] { pages->learn(PageSet::resident().without(pages->pages())); }).detach();
         };
         callbacks.pins = [this] { return &pins(); };
         callbacks.smart = smartHooks();
@@ -467,6 +480,10 @@ void CaptureApp::apply()
         callbacks.colorFormatChanged = [this](const QString& name) {
             if (name != m_settings.options().colorFormat)
                 m_settings.update([&](CaptureOptions& next) { next.colorFormat = name; });
+        };
+        callbacks.sizePresetsChanged = [this](const QString& text) {
+            if (text != m_settings.options().sizePresets)
+                m_settings.update([&](CaptureOptions& next) { next.sizePresets = text; });
         };
         callbacks.keyHintsKept = [this](bool on) { m_settings.setCaptureKeyHints(on); }; // the panel's 不再显示 / 一直显示
         callbacks.recording.preferences = [this] {
@@ -535,6 +552,7 @@ void CaptureApp::apply()
     m_capture->setDelay(o.delay);
     m_capture->setHistory(QDir(m_dataDir).filePath(u"capture-history"_s), o.historyCount);
     m_capture->setColorFormat(capture::colorFormatFromName(o.colorFormat));
+    m_capture->setSizePresets(o.sizePresets);
     // The pin and save keys and the pin window's (#187): open pins and an open editor too.
     m_capture->setKeys(o.keys);
     // A save folder chosen: Save goes straight into it, as in 0.16 (#194).

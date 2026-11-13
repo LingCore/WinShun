@@ -30,6 +30,8 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <chrono>
+#include <mutex>
 
 using Microsoft::WRL::ComPtr;
 using namespace Qt::StringLiterals;
@@ -47,6 +49,22 @@ constexpr int kFolderItemsCounted = 10000;
 // before a preview handler starts on its file: with the launcher's own 100 ms
 // for the pointer (Main.qml), about Windows' hover time.
 constexpr std::chrono::milliseconds kFollowedHandlerWait {300};
+// Reading a file (GitHub #307). Still Loading after kSlow: the window says
+// so; after kStalled: it says the file's place may not be answering, and the
+// log tells where the reading stands. A thread kept by one file for kKept is
+// left to it, and the next file is read on another, kLanes at the most.
+constexpr std::chrono::milliseconds kSlow {250};
+constexpr std::chrono::milliseconds kStalled {5000};
+constexpr std::chrono::milliseconds kKept {2000};
+constexpr std::size_t kLanes = 4;
+
+qint64 steadyMs()
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+std::mutex g_readProbeMutex;
+std::function<void(const QString&)> g_readProbe; // FilePreview::setReadProbe
 
 // Kinds Windows Imaging Component reads, with the codecs it comes with or a
 // common add-on (HEIF, WebP, AVIF, RAW image extensions from the Store).
@@ -182,6 +200,20 @@ struct FilePreview::Loaded {
     QUuid handler; // Handler: the preview handler's CLSID
 };
 
+// A file is read on its thread, one after another. `since` and `step` say
+// what the thread is at, for the GUI thread to see without waiting for it.
+struct FilePreview::Lane {
+    ComWorker worker;
+    std::atomic<qint64> since {0}; // steadyMs() when the file it is at began; 0: at none
+    std::atomic<const char*> step {""}; // what of that file is being asked for
+
+    bool kept() const
+    {
+        const qint64 began = since.load();
+        return began != 0 && steadyMs() - began >= kKept.count();
+    }
+};
+
 // The pictures QML shows ("image://preview/<n>"): only the latest one is kept.
 class FilePreview::Images : public QQuickImageProvider {
 public:
@@ -225,9 +257,18 @@ FilePreview::FilePreview(QString imageScheme, bool embedded, QObject* parent)
 {
     connect(m_host.get(), &PreviewHost::failed, this, &FilePreview::handlerFailed);
     m_slowTimer.setSingleShot(true);
-    m_slowTimer.setInterval(250);
     connect(&m_slowTimer, &QTimer::timeout, this, [this] {
-        setSlow(true);
+        if (m_slow) {
+            // Seconds, and nothing: said in the window, and where the reading
+            // stands in the log (the kind of file, never its name).
+            setWaiting(true, true);
+            qWarning("WinShun: the preview has waited %lld s for a .%s file; the reading thread is at: %s",
+                static_cast<long long>(std::chrono::duration_cast<std::chrono::seconds>(kStalled).count()),
+                qUtf8Printable(QFileInfo(m_item.path).suffix().toLower()), m_lane ? m_lane->step.load() : "");
+            return;
+        }
+        setWaiting(true);
+        m_slowTimer.start(kStalled - kSlow);
         // Taking a while: the window now, saying so, rather than nothing at all.
         if (m_open && !m_external && m_kind == Loading && !m_embedded && (!m_window || !m_window->isVisible()))
             showWindow({});
@@ -250,8 +291,35 @@ FilePreview::FilePreview(QString imageScheme, bool embedded, QObject* parent)
 
 FilePreview::~FilePreview()
 {
-    // m_worker is left running: a thumbnail or a picture codec may still be
-    // busy in it at exit, and nothing should wait for that.
+    // m_lanes are left running: a thumbnail or a picture codec may still be
+    // busy in one at exit, and nothing should wait for that.
+}
+
+void FilePreview::setReadProbe(std::function<void(const QString& path)> probe)
+{
+    std::lock_guard lock(g_readProbeMutex);
+    g_readProbe = std::move(probe);
+}
+
+// The thread the next file is read on: the one in use, unless a file has
+// kept it for kKept (its place does not answer: a share gone, a disk asleep,
+// a shell extension waiting). Every file after that one would wait behind it
+// for good (GitHub #307); the thread is left to it, and one that is free, or
+// a new one, takes over. With kLanes of them kept, the next waits its turn.
+FilePreview::Lane* FilePreview::laneForNext()
+{
+    if (m_lane && !m_lane->kept())
+        return m_lane;
+    const auto free = std::ranges::find_if(m_lanes, [](const Lane* lane) { return lane->since.load() == 0; });
+    if (free != m_lanes.end())
+        return m_lane = *free;
+    if (m_lanes.size() < kLanes) {
+        if (m_lane)
+            qWarning("WinShun: a file has kept the preview's reading thread at: %s; the next one is read on another", m_lane->step.load());
+        m_lanes.push_back(new Lane); // made when first wanted: a page that never shows a preview has no thread for it
+        return m_lane = m_lanes.back();
+    }
+    return m_lane;
 }
 
 QQuickImageProvider* FilePreview::imageProvider()
@@ -390,7 +458,7 @@ void FilePreview::follow(const std::optional<Item>& item)
         m_message = tr("这一行没有可预览的文件");
         m_summary.clear();
         m_slowTimer.stop();
-        setSlow(false);
+        setWaiting(false);
         emit contentChanged();
         return;
     }
@@ -436,7 +504,7 @@ void FilePreview::close()
     setSelection(0, 0, 0, 0);
     m_images->set({}, {});
     m_imageUrl.clear();
-    setSlow(false);
+    setWaiting(false);
     emit contentChanged();
 }
 
@@ -480,11 +548,12 @@ void FilePreview::openFile()
         emit openRequested(m_item.path);
 }
 
-void FilePreview::setSlow(bool slow)
+void FilePreview::setWaiting(bool slow, bool stalled)
 {
-    if (m_slow == slow)
+    if (m_slow == slow && m_stalled == stalled)
         return;
     m_slow = slow;
+    m_stalled = stalled;
     emit slowChanged();
 }
 
@@ -497,8 +566,8 @@ void FilePreview::load(const Item& item, bool followed)
     m_message.clear();
     m_summary.clear();
     m_facts.clear();
-    setSlow(false);
-    m_slowTimer.start();
+    setWaiting(false);
+    m_slowTimer.start(kSlow);
     if (m_host)
         m_host->hide();
     emit contentChanged();
@@ -547,14 +616,33 @@ void FilePreview::load(const Item& item, bool followed)
         }
         return count;
     };
-    if (!m_worker)
-        m_worker = new ComWorker; // made when first wanted: a page that never shows a preview has no thread for it
-    m_worker->post([self, item, textTypes, noHandler, generation, stale, split] {
+    Lane* const lane = laneForNext();
+    lane->worker.post([self, lane, item, textTypes, noHandler, generation, stale, split] {
         if (stale())
             return;
+        // What the thread is at, until this file is done with (however it ends).
+        struct At {
+            Lane* lane;
+            ~At()
+            {
+                lane->since = 0;
+                lane->step = "";
+            }
+        } const at {lane};
+        const auto step = [lane](const char* what) { lane->step = what; };
+        step("starting");
+        lane->since = steadyMs();
+        if (!item.inPlace()) {
+            std::unique_lock lock(g_readProbeMutex);
+            if (const auto probe = g_readProbe) {
+                lock.unlock();
+                probe(item.path);
+            }
+        }
         auto loaded = std::make_shared<Loaded>();
         const std::wstring native = QString(item.path).replace(u'/', u'\\').toStdWString();
         WIN32_FILE_ATTRIBUTE_DATA data {};
+        step("the file's attributes");
         if (!item.message.isEmpty()) {
             loaded->message = item.message;
         } else if (item.text) {
@@ -577,6 +665,7 @@ void FilePreview::load(const Item& item, bool followed)
             const bool isDir = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
             const qint64 bytes = (static_cast<qint64>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
             const QString suffix = isDir ? QString() : QFileInfo(item.path).suffix().toLower();
+            step("the name of its type (the shell)");
             const QString type = typeName(item.path, isDir);
             const QString modified = timeText(data.ftLastWriteTime);
             QStringList summary {type};
@@ -591,6 +680,7 @@ void FilePreview::load(const Item& item, bool followed)
             const bool cloudOnly = (data.dwFileAttributes & kNotHere) != 0;
             bool done = false;
             if (isDir) {
+                step("counting what the folder holds");
                 bool more = false;
                 const auto [folders, files] = countFolder(item.path, &more, stale);
                 const QString holds = folders + files == 0 ? QCoreApplication::translate("ws::FilePreview", "空文件夹")
@@ -601,6 +691,7 @@ void FilePreview::load(const Item& item, bool followed)
                 summary.insert(1, holds);
                 fact(QCoreApplication::translate("ws::FilePreview", "包含"), holds);
             } else if (!cloudOnly && isPicture(suffix)) {
+                step("decoding the picture");
                 QSize original;
                 QImage image = decodePictureFile(QString::fromStdWString(native), kLargestPicture, &original);
                 if (!image.isNull()) {
@@ -613,7 +704,8 @@ void FilePreview::load(const Item& item, bool followed)
             } else if (!cloudOnly && isDrawn(suffix)) {
                 // One that cannot be drawn (an old .ai without a PDF part, a
                 // 32-bit .psd) goes on to whatever handler it has.
-                static auto* const drawer = new DocExtractor(1, DocExtractor::Priority::Normal); // as m_worker: never deleted
+                step("drawing it (the document reader)");
+                static auto* const drawer = new DocExtractor(1, DocExtractor::Priority::Normal); // as m_lanes: never deleted
                 DocExtractor::Rendered drawn = drawer->renderFile(native, static_cast<std::uint32_t>(kLargestPicture), stale);
                 if (drawn.status == extractproto::Status::Ok) {
                     // The picture keeps the bytes it came in (64 MB at the most: no second copy).
@@ -631,6 +723,7 @@ void FilePreview::load(const Item& item, bool followed)
             } else if (!cloudOnly && (isText(suffix, textTypes) || suffix.isEmpty() || noHandler || !PreviewHost::handlerFor(item.path))) {
                 // A text kind; or no extension, or nothing else would show
                 // it: text if it reads as text.
+                step("reading its text");
                 const filetext::Head head = filetext::readHead(native, kTextBytes);
                 if (head.status == filetext::Status::Ok && head.text.isEmpty()) {
                     loaded->kind = Message;
@@ -638,6 +731,7 @@ void FilePreview::load(const Item& item, bool followed)
                     done = true;
                 } else if (head.status == filetext::Status::Ok) {
                     loaded->kind = Text;
+                    step("its lines and their colours");
                     const int count = split(head.text, *loaded);
                     QString encoding;
                     switch (head.encoding) {
@@ -659,6 +753,7 @@ void FilePreview::load(const Item& item, bool followed)
             // preview pane does not hand such a file to its handler (a
             // document can make it fetch from a server, and so give away the
             // user's sign-in, KB5070960); nor does Win顺.
+            step("where it came from, and its preview handler");
             const bool fromInternet = !done && !isDir && !cloudOnly && fromTheInternet(native);
             if (!done && !isDir && !cloudOnly && !noHandler && !fromInternet) {
                 if (const std::optional<QUuid> handler = PreviewHost::handlerFor(item.path)) {
@@ -683,8 +778,10 @@ void FilePreview::load(const Item& item, bool followed)
                 else if (fromInternet && PreviewHost::handlerFor(item.path))
                     fact(QCoreApplication::translate("ws::FilePreview", "说明"),
                         QCoreApplication::translate("ws::FilePreview", "从网上下载的文件，为安全起见不预览内容（资源管理器也是这样）"));
-                else if (!stale())
+                else if (!stale()) {
+                    step("its thumbnail (the shell)");
                     loaded->image = FileIconProvider::largeImage(item.path, kThumbnailPx);
+                }
             }
             summary.removeAll(QString());
             loaded->summary = summary.join(u"  ·  "_s);
@@ -709,7 +806,7 @@ void FilePreview::apply(quint64 generation, std::shared_ptr<Loaded> loaded)
         return;
     }
     m_slowTimer.stop();
-    setSlow(false);
+    setWaiting(false);
     m_kind = loaded->kind;
     m_summary = loaded->summary;
     m_facts = loaded->facts;

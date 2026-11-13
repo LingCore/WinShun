@@ -2,6 +2,7 @@
 #include "PreviewInteractionProbe.h"
 #include "NavigationProbe.h"
 #include "ForegroundMemoryProbe.h"
+#include "IdleOpenProbe.h"
 #include "InteractionOptimizationProbe.h"
 #include "UiFont.h"
 
@@ -39,6 +40,7 @@
 #include "SystemTheme.h"
 #include "Switches.h"
 #include "Updater.h"
+#include "WindowAvoidance.h"
 #include "WindowFrame.h"
 #include "DropPieHelper.h"
 #include "DropPie.h"
@@ -68,9 +70,11 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QPixmap>
+#include <QCryptographicHash>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QJsonArray>
+#include <QThread>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
@@ -87,6 +91,7 @@
 #include <QQmlEngine>
 #include <QQmlExpression>
 #include <QAbstractEventDispatcher>
+#include <QAbstractNativeEventFilter>
 #include <QEventLoop>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -107,6 +112,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
@@ -1792,6 +1798,8 @@ int runSettings(const QStringList& args)
         return finish(window, checkSearchExperienceSettings(window, editor, out));
     if (args.contains(u"--logo-position-settings"_s))
         return finish(window, checkLogoPositionSettings(window, editor, out));
+    if (args.contains(u"--dialog-rule-settings"_s)) // + --fixture tests\fixtures\wpf-file-window.ps1
+        return finish(window, checkDialogRuleSettings(window, editor, out, valueAfter(args, u"--fixture")));
     if (args.contains(u"--optimization-settings"_s))
         return finish(window, checkOptimizationSettings(window, editor, out));
 
@@ -3620,6 +3628,37 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
             if (test.name == u"Portable.ExE")
                 saveGrab(window, output.filePath(u"portable-admin.png"_s));
         }
+        {
+            // 显示删除按钮 (GitHub #316): a file's row has the button unless
+            // the settings take it away; its other buttons and its menu's 更多选项 stay.
+            SearchResult file;
+            file.name = u"Notes.txt"_s;
+            file.path = temporary.filePath(file.name);
+            launcher.results()->assign({file}, {});
+            launcher.setCurrentRow(0);
+            settle(window);
+            const auto shown = [&](const QString& name) {
+                QQuickItem* row = visualNamed(window->contentItem(), u"resultRow-0"_s);
+                QQuickItem* action = row ? visualNamed(row, name) : nullptr;
+                return action && action->isVisible();
+            };
+            const auto menuHasMore = [&] {
+                bool found = false;
+                for (const QVariant& item : launcher.menuItems(0))
+                    found = found || item.toMap().value(u"action"_s).toInt() == Launcher::SystemMenu; // Windows' menu, which deletes
+                return found;
+            };
+            check(shown(u"deleteAction"_s) && shown(u"copyPathAction"_s), u"launcher: a file's row has its delete button"_s);
+            launcher.setRowDeleteButton(false);
+            settle(window);
+            check(!shown(u"deleteAction"_s) && shown(u"copyPathAction"_s),
+                u"launcher: the delete button goes with its setting, the other buttons stay"_s);
+            check(menuHasMore(), u"launcher: the row's menu still leads to Windows' own, which deletes"_s);
+            saveGrab(window, output.filePath(u"row-without-delete.png"_s));
+            launcher.setRowDeleteButton(true);
+            settle(window);
+            check(shown(u"deleteAction"_s), u"launcher: the delete button is back with its setting"_s);
+        }
         window->hide();
     }
     {
@@ -4060,6 +4099,36 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
                 launcher.setPanel(false);
             }
         }
+    }
+    {
+        // The native window made anew (Qt can; the old handle takes the
+        // subclass with it): the logo and the grip still drag the window. A
+        // user's did not until the program was started again.
+        window->destroy();
+        window->create();
+        showOffScreen(window);
+        settle(window);
+        const HWND fresh = reinterpret_cast<HWND>(window->winId());
+        RECT client {};
+        ::GetClientRect(fresh, &client);
+        const auto hitOn = [&](const QString& boxName, const QString& panelName) {
+            auto* item = visualNamed(window->contentItem(), launcher.panel() ? panelName : boxName);
+            if (!item || !item->isVisible())
+                return LRESULT(HTNOWHERE);
+            const QPointF scene = item->mapToScene({item->width() / 2, item->height() / 2});
+            POINT native {qRound(scene.x() * client.right / window->width()), qRound(scene.y() * client.bottom / window->height())};
+            ::ClientToScreen(fresh, &native);
+            return ::SendMessageW(fresh, WM_NCHITTEST, 0, MAKELPARAM(native.x, native.y));
+        };
+        check(!::IsWindow(hwnd) && fresh && hitOn(u"searchLogo"_s, u"panelSearchLogo"_s) == HTCAPTION
+            && hitOn(u"searchGrip"_s, u"panelSearchGrip"_s) == HTCAPTION,
+            u"a native window made anew keeps the logo and the grip as drag regions"_s);
+        const bool wasMoving = placement.moving();
+        ::SendMessageW(fresh, WM_ENTERSIZEMOVE, 0, 0);
+        const bool moving = placement.moving();
+        ::SendMessageW(fresh, WM_EXITSIZEMOVE, 0, 0);
+        pump(1);
+        check(!wasMoving && moving && !placement.moving(), u"a native window made anew is still followed while it is moved"_s);
     }
     window->hide();
     QQuickWindow appearance;
@@ -4526,6 +4595,68 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
                 check(kindsOf(0).isEmpty() && filePreview.firstMarkRow() == 1, "a plain text file got colours, or lost its marks");
                 filePreview.close();
                 say(u"preview colours: code, Markdown, JSON by the file's kind; searched words marked and scrolled to"_s);
+            }
+            // A file whose place does not answer (GitHub #307: the preview
+            // stayed at 正在读取… for good, for every file after it too). The
+            // reading thread is left to that file and the next one is read
+            // on another; the window says the place may not be answering.
+            {
+                const auto fixture = [&](const QString& name) {
+                    QFile file(temporary.filePath(name));
+                    check(file.open(QIODevice::WriteOnly) && file.write("# A chapter\n\nSome text.\n") > 0, "could not create a fixture for the stalled reading");
+                    file.close();
+                    return QDir::toNativeSeparators(file.fileName());
+                };
+                const QString stuck = fixture(u"stuck.md"_s);
+                const QString fine = fixture(u"fine.md"_s);
+                std::atomic<bool> answer {false};
+                std::atomic<int> held {0};
+                const int warned = g_warnings; // the log's two lines of it, wanted here
+                FilePreview::setReadProbe([&](const QString& path) {
+                    if (path.compare(stuck, Qt::CaseInsensitive) != 0)
+                        return;
+                    ++held;
+                    while (!answer.load())
+                        ::Sleep(10);
+                    --held;
+                });
+                // Shown until `done` or `ms` passed (the launcher's row may take the preview back once).
+                const auto showUntil = [&](const QString& path, int ms, const std::function<bool()>& done) {
+                    timeout.restart();
+                    do {
+                        if (!filePreview.isShowing(path))
+                            filePreview.show({.path = path, .name = QFileInfo(path).fileName()});
+                        pump(10);
+                    } while (!(filePreview.isShowing(path) && done()) && timeout.elapsed() < ms);
+                    return filePreview.isShowing(path) && done();
+                };
+                check(!showUntil(stuck, 2300, [&] { return filePreview.kind() != FilePreview::Loading; }) && filePreview.slow(),
+                    "a file that does not read is not shown as being read");
+                check(!filePreview.stalled(), "a file is said not to answer within its first seconds");
+                check(showUntil(fine, 2000, [&] { return filePreview.kind() == FilePreview::Text; }),
+                    "after a file that does not read, the next one is not shown");
+                check(held.load() == 1, "the file that does not read was asked for again behind itself");
+                // Back on it: seconds later the window says so (and the log where it stands).
+                check(showUntil(stuck, 6500, [&] { return filePreview.stalled(); }) && filePreview.kind() == FilePreview::Loading,
+                    "a file that does not read for seconds is not said to be one");
+                if (filePreview.window())
+                    check(saveGrab(filePreview.window(), output.filePath(u"preview-stalled.png"_s)), "could not save the stalled preview's picture");
+                // It answers at last: shown, and nothing said of waiting any more.
+                answer = true;
+                check(showUntil(stuck, 2000, [&] { return filePreview.kind() == FilePreview::Text; }) && !filePreview.slow() && !filePreview.stalled(),
+                    "a file that answered at last is not shown");
+                timeout.restart();
+                while (held.load() > 0 && timeout.elapsed() < 2000)
+                    pump(10);
+                FilePreview::setReadProbe({});
+                // Where the reading stood is in the log, for a report: the
+                // thread left to the file, and the wait of seconds (twice
+                // the first where the launcher's row took the preview back).
+                check(g_warnings - warned >= 2, "the log does not tell of the file that did not read");
+                g_warnings = warned;
+                check(showUntil(fine, 2000, [&] { return filePreview.kind() == FilePreview::Text; }), "the threads freed do not read the next file");
+                filePreview.close();
+                say(u"preview of a file that does not read: the next file shown on another thread, the wait said after seconds"_s);
             }
         }
         const auto click = [&](QQuickItem* item) {
@@ -5611,6 +5742,39 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
             }
             launcher.results()->assign(std::move(original), {u"报告"_s});
             settle(panelWindow, 2);
+        }
+    }
+    // The columns' own scroll bar: there only while they are wider than the
+    // list, and no room is kept for it under the rows otherwise (GitHub #310:
+    // it lay across the whole list whatever the widths).
+    {
+        auto* list = visualNamed(panelWindow->contentItem(), u"panelResultList"_s);
+        auto* bar = visualNamed(panelWindow->contentItem(), u"panelColumnsScrollBar"_s);
+        check(list && bar, "panel list or its columns scroll bar missing");
+        if (list && bar) {
+            const auto widths = [&] {
+                int total = 0;
+                for (const QVariant& column : launcher.panelColumns()->visibleColumns())
+                    total += column.toMap().value(u"width"_s).toInt();
+                return total;
+            };
+            const int name = launcher.panelColumns()->visibleColumns()[0].toMap().value(u"width"_s).toInt();
+            launcher.panelColumns()->resize(u"name"_s, 120);
+            settle(panelWindow, 2);
+            check(widths() < list->width(), "columns scroll bar regression needs columns narrower than the list");
+            check(!bar->isVisible(), "columns scroll bar shown although every column fits");
+            check(list->property("bottomMargin").toReal() == 4, "room kept under the rows for a scroll bar that is not there");
+            check(saveGrab(panelWindow, output.filePath(u"panel-columns-fit.png"_s)), "could not render fitting columns");
+            launcher.panelColumns()->resize(u"name"_s, 2000);
+            settle(panelWindow, 2);
+            check(widths() > list->width() && bar->isVisible() && bar->property("size").toReal() < 1,
+                "columns scroll bar missing although the columns are wider than the list");
+            check(list->property("bottomMargin").toReal() == 14, "rows not kept clear of the columns scroll bar");
+            check(saveGrab(panelWindow, output.filePath(u"panel-columns-wide.png"_s)), "could not render overflowing columns");
+            launcher.panelColumns()->resize(u"name"_s, name);
+            settle(panelWindow, 2);
+            check(launcher.panelColumns()->visibleColumns()[0].toMap().value(u"width"_s).toInt() == name,
+                "columns scroll bar regression did not put the name column back");
         }
     }
     const auto mouse = [&](QEvent::Type type, const QPointF& at, Qt::MouseButton button, Qt::MouseButtons held) {
@@ -7475,6 +7639,35 @@ bool forgetRuntimeIdentity()
     return true;
 }
 
+// Every place and size a window is given while this lives, as Windows
+// tells it (WM_WINDOWPOSCHANGED): where its bottom edge has been.
+class BottomWatch : public QAbstractNativeEventFilter {
+public:
+    explicit BottomWatch(HWND window)
+        : m_window(window)
+    {
+        QCoreApplication::instance()->installNativeEventFilter(this);
+    }
+    ~BottomWatch() override { QCoreApplication::instance()->removeNativeEventFilter(this); }
+    bool nativeEventFilter(const QByteArray&, void* message, qintptr*) override
+    {
+        const MSG* msg = static_cast<const MSG*>(message);
+        RECT at {};
+        if (msg->hwnd == m_window && msg->message == WM_WINDOWPOSCHANGED && ::GetWindowRect(m_window, &at)) {
+            ++changes;
+            lowest = std::max(lowest, at.bottom);
+            highest = std::min(highest, at.bottom);
+            tallest = std::max(tallest, at.bottom - at.top);
+        }
+        return false;
+    }
+    int changes = 0;
+    LONG lowest = LONG_MIN, highest = LONG_MAX, tallest = 0;
+
+private:
+    HWND m_window;
+};
+
 bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonObject& report)
 {
     using Microsoft::WRL::ComPtr;
@@ -7875,11 +8068,11 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
         ::GetClientRect(root, &client);
         ::MapWindowPoints(root, nullptr, reinterpret_cast<POINT*>(&client), 2);
-        const int gap = qRound(12 * (window->screen() ? window->screen()->devicePixelRatio() : 1.0));
+        const int gap = qRound(windowavoidance::kExplorerListGap * (window->screen() ? window->screen()->devicePixelRatio() : 1.0));
         check(box.left >= client.left && box.top >= client.top && box.right <= client.right && box.bottom <= client.bottom,
             "too large to keep clear of: the box is inside the Explorer window");
         check(std::abs(list.right - box.right - gap) <= 2 && box.bottom <= list.bottom - gap + 2,
-            "too large to keep clear of: 12 px in from the right of its file list, the rows ending above its bottom");
+            "too large to keep clear of: in the bottom right corner of its file list, the rows ending at its bottom");
         check(box.left != area.left || box.top != area.top, "too large to keep clear of: not at the top left of the screen");
         report.insert(u"centred_explorer_list"_s, QJsonArray {int(list.left), int(list.top), int(list.right - list.left),
             int(list.bottom - list.top)});
@@ -7890,9 +8083,11 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     pump(300);
 
     // GitHub #234: more rows and wider columns than the list shows, so that
-    // Explorer shows both its scroll bars. The box keeps 12 px clear of them
-    // as it does of the edges of a list without any: as far from the one on
-    // the right as from the one at the bottom, over neither.
+    // Explorer shows both its scroll bars. The box sits against them, in the
+    // corner they leave, as it sits in the corner of a list without any, and
+    // over neither. Opened by typing it lists nothing until the words come,
+    // and as its rows come its bottom stays where it is, the window made
+    // taller and moved up in one step.
     {
         // The probe's own folder: rows enough for the bar on the right.
         filemanager::goTo(secondTab, folder.toStdWString());
@@ -7954,12 +8149,27 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         settle(window, 3);
         RECT box {}, overlap {};
         ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
-        const int gap = qRound(12 * scale);
+        const int gap = qRound(windowavoidance::kExplorerListGap * scale);
+        check(launcher->results()->count() == 0 && !launcher->searching(),
+            "opened by typing: nothing is listed before the words typed");
         if (both) {
             check(!::IntersectRect(&overlap, &box, &bars.vertical) && !::IntersectRect(&overlap, &box, &bars.horizontal),
                 "with scroll bars: the box is over neither");
             check(std::abs(bars.vertical.left - box.right - gap) <= 2 && std::abs(bars.horizontal.top - box.bottom - gap) <= 2,
-                "with scroll bars: 12 px from the one on the right and from the one at the bottom");
+                "with scroll bars: against the one on the right and the one at the bottom");
+        }
+        {
+            const int shortBox = box.bottom - box.top;
+            BottomWatch watch(reinterpret_cast<HWND>(window->winId()));
+            const bool listed = search(u"many_"_s, kFolderTypingMany);
+            settle(window, 3);
+            check(listed, "the words typed: their rows are listed");
+            check(watch.changes > 0 && watch.tallest > shortBox, "the box grew taller with its rows");
+            check(watch.lowest == box.bottom && watch.highest == box.bottom,
+                "growing, its bottom never left the corner: taller and moved up in one step");
+            report.insert(u"grow_changes"_s, watch.changes);
+            report.insert(u"grow_bottoms"_s, QJsonArray {int(watch.highest), int(watch.lowest), int(box.bottom)});
+            ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
         }
         const auto rectOf = [](const RECT& r) { return QJsonArray {int(r.left), int(r.top), int(r.right - r.left), int(r.bottom - r.top)}; };
         report.insert(u"scrollbars_vertical"_s, rectOf(bars.vertical));
@@ -8066,6 +8276,125 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     return ok;
 }
 
+// Typing in the bar under a dialog, a key every 120 ms, over the few thousand
+// files --file-dialog-typing makes: for each key, how long setQuery kept this
+// thread, when the rows came, when the frame with them was shown, the longest
+// this thread was kept by one thing meanwhile, and the height of the window
+// (it grows and shrinks with the rows).
+// Which event kept this thread longest: told before each one is delivered,
+// so one's time runs till the next is, or till done() after the loop's turn.
+class SlowestEvent : public QObject {
+public:
+    SlowestEvent() { m_clock.start(); qApp->installEventFilter(this); }
+    void done() { close(); m_from = -1; }
+    QString take()
+    {
+        const QString told = m_slowestNs > 0 ? u"%1 ms: %2"_s.arg(m_slowestNs / 1e6, 0, 'f', 1).arg(m_slowest) : QString();
+        m_slowestNs = 0;
+        return told;
+    }
+
+protected:
+    bool eventFilter(QObject* receiver, QEvent* event) override
+    {
+        close();
+        m_from = m_clock.nsecsElapsed();
+        m_what = u"%1 %2 event %3"_s.arg(QLatin1StringView(receiver->metaObject()->className()), receiver->objectName())
+                     .arg(static_cast<int>(event->type()));
+        return false;
+    }
+
+private:
+    void close()
+    {
+        if (m_from >= 0 && m_clock.nsecsElapsed() - m_from > m_slowestNs) {
+            m_slowestNs = m_clock.nsecsElapsed() - m_from;
+            m_slowest = m_what;
+        }
+    }
+    QElapsedTimer m_clock;
+    qint64 m_from = -1;
+    qint64 m_slowestNs = 0;
+    QString m_what;
+    QString m_slowest;
+};
+
+// `keys`: each letter as a key of the keyboard (SendInput, a Unicode key: no
+// input method composes it), sent only while the bar's window is in front;
+// else the text is set as the field sets it.
+QJsonArray typeInDialogBar(DialogBar* bar, QQuickWindow* window, bool keys_)
+{
+    QJsonArray keys;
+    SlowestEvent slowest;
+    const QString words[] = {u"report 12"_s, u"notes"_s, u"report 1234 x"_s};
+    for (const QString& word : words) {
+        bar->setQuery({});
+        pump(400);
+        for (qsizetype typed = 1; typed <= word.size(); ++typed) {
+            QElapsedTimer since;
+            since.start();
+            qint64 rowsAt = -1;
+            std::atomic<qint64> frameAt {-1};
+            std::atomic<bool> rowsIn {false};
+            const auto onRows = QObject::connect(bar, &DialogBar::resultsReplaced, bar, [&] {
+                if (rowsAt < 0) {
+                    rowsAt = since.nsecsElapsed();
+                    rowsIn = true;
+                    window->update();
+                }
+            });
+            const auto onFrame = QObject::connect(window, &QQuickWindow::frameSwapped, window, [&] {
+                if (rowsIn && frameAt < 0)
+                    frameAt = since.nsecsElapsed();
+            }, Qt::DirectConnection);
+            qint64 queryAt = -1;
+            const auto onQuery = QObject::connect(bar, &DialogBar::queryChanged, bar, [&] {
+                if (queryAt < 0)
+                    queryAt = since.nsecsElapsed();
+            });
+            if (keys_) {
+                if (GetForegroundWindow() != reinterpret_cast<HWND>(window->winId())) {
+                    QObject::disconnect(onRows);
+                    QObject::disconnect(onFrame);
+                    QObject::disconnect(onQuery);
+                    keys.append(QJsonObject {{u"query"_s, word.left(typed)}, {u"skipped"_s, u"the bar is not in front"_s}});
+                    return keys;
+                }
+                INPUT strokes[2] {};
+                strokes[0].type = strokes[1].type = INPUT_KEYBOARD;
+                strokes[0].ki.wScan = strokes[1].ki.wScan = word[typed - 1].unicode();
+                strokes[0].ki.dwFlags = KEYEVENTF_UNICODE;
+                strokes[1].ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+                since.restart();
+                SendInput(2, strokes, sizeof(INPUT));
+            } else {
+                bar->setQuery(word.left(typed));
+            }
+            const qint64 call = since.nsecsElapsed();
+            qint64 last = since.nsecsElapsed();
+            qint64 kept = 0;
+            while (since.elapsed() < 120 || (frameAt < 0 && since.elapsed() < 1500)) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents);
+                slowest.done();
+                const qint64 now = since.nsecsElapsed();
+                kept = std::max(kept, now - last);
+                QThread::usleep(300);
+                last = since.nsecsElapsed();
+            }
+            QObject::disconnect(onRows);
+            QObject::disconnect(onFrame);
+            QObject::disconnect(onQuery);
+            const auto ms = [](qint64 ns) { return ns < 0 ? -1.0 : qRound(ns / 10000.0) / 100.0; };
+            keys.append(QJsonObject {{u"query"_s, bar->query()}, {u"set_query_ms"_s, ms(call)}, {u"query_ms"_s, ms(queryAt)}, {u"rows_ms"_s, ms(rowsAt)},
+                {u"frame_ms"_s, ms(frameAt.load())}, {u"longest_kept_ms"_s, ms(kept)}, {u"slowest_event"_s, slowest.take()}, {u"rows"_s, bar->rows()},
+                {u"found"_s, bar->results()->rowCount()}, {u"height"_s, window->height()}});
+        }
+    }
+    bar->setQuery({});
+    pump(300);
+    return keys;
+}
+
 bool probeFileDialog(const QStringList& args, const QDir& out, const QString& selected, QJsonObject& report)
 {
     const auto samePath = [&selected](const QString& path) {
@@ -8110,6 +8439,8 @@ bool probeFileDialog(const QStringList& args, const QDir& out, const QString& se
     report.insert(u"dialog_bar_focused"_s, window->isActive());
     if (!window->isActive())
         return false;
+    if (args.contains(u"--file-dialog-typing"_s))
+        report.insert(u"dialog_typing"_s, typeInDialogBar(bar, window, args.contains(u"--file-dialog-keys"_s)));
     bar->setQuery(QFileInfo(selected).completeBaseName());
     int row = -1;
     waiting.restart();
@@ -8140,12 +8471,21 @@ bool probeFileDialog(const QStringList& args, const QDir& out, const QString& se
             combined.right - combined.left, combined.bottom - combined.top).save(out.filePath(u"dialog-with-search.png"_s));
     }
     // The production controller hands focus back and calls DialogJump::go.
-    // The fixture's independent observer confirms Blender actually changed.
+    // The fixture's independent observer confirms Blender actually changed;
+    // with none (a window that takes folders), the window itself tells where
+    // it is now.
     bar->choose(row, false);
     waiting.restart();
     bool selectedInDialog = false;
-    while (!selectedInDialog && waiting.elapsed() < 5000) {
+    const bool observed = args.contains(u"--file-dialog-state"_s);
+    // Bandizip answers nothing while its tree opens down to the folder: for
+    // seconds, with the folder made here under a Temp of thousands.
+    while (!selectedInDialog && waiting.elapsed() < (observed ? 5000 : 20000)) {
         pump(50);
+        if (!observed) {
+            selectedInDialog = samePath(QString::fromStdWString(filedialog::currentFolder(target)));
+            continue;
+        }
         QFile observer(valueAfter(args, u"--file-dialog-state"));
         if (!observer.open(QIODevice::ReadOnly))
             continue;
@@ -8161,7 +8501,11 @@ bool probeFileDialog(const QStringList& args, const QDir& out, const QString& se
         }
     }
     report.insert(u"dialog_selection_confirmed"_s, selectedInDialog);
-    return selectedInDialog;
+    report.insert(u"dialog_selection_ms"_s, waiting.elapsed());
+    if (!observed)
+        report.insert(u"dialog_folder_shown"_s, QString::fromStdWString(filedialog::currentFolder(target)));
+    report.insert(u"dialog_still_open"_s, IsWindow(target) != FALSE);
+    return selectedInDialog && IsWindow(target);
 }
 
 bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& report)
@@ -8519,6 +8863,231 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
 
 // Production App, launcher, settings model and plugin installation on the
 // runtime probe's isolated profile. Opens no browser and uses no user data.
+// --ws-plugin-check <ws.exe> (GitHub #251): the real ws.exe against this App
+// over a pipe of the probe's own, through everything between: the server,
+// the tools kept for ws, PluginCommands, the 插件 page and its dialogs. What
+// the user would click is answered here through the dialog's own accept and
+// reject. The library is a list and two packages made beside the report
+// (wsPluginFixture, before the App starts).
+const QString kWsPluginPipe = u"WinShun.Probe.WsPlugin.%1"_s.arg(QCoreApplication::applicationPid());
+
+QByteArray probePluginManifest(const QString& id, const QString& version, bool program = false)
+{
+    QJsonObject o {{u"manifest"_s, 1}, {u"id"_s, id}, {u"name"_s, QJsonObject {{u"zh"_s, u"探针插件"_s}, {u"en"_s, u"Probe plugin"_s}}},
+        {u"version"_s, version}, {u"permissions"_s, QJsonArray {u"network"_s}},
+        {u"commands"_s, QJsonArray {QJsonObject {{u"id"_s, u"list"_s}, {u"keyword"_s, u"zzprobe"_s}, {u"title"_s, u"List"_s},
+                            {u"run"_s, QJsonObject {{u"items"_s, QJsonArray {QJsonObject {{u"id"_s, u"a"_s}, {u"title"_s, u"Alpha"_s}}}}}}}}}};
+    if (program) { // a program of its own: the library lists it as nobody's review
+        o.insert(u"runtime"_s, QJsonObject {{u"mode"_s, u"once"_s}, {u"program"_s, u"probe.exe"_s}});
+        o.insert(u"minWinShun"_s, u"0.22.0"_s);
+        QJsonArray commands = o.value(u"commands"_s).toArray();
+        QJsonObject command = commands[0].toObject();
+        command.remove(u"run"_s);
+        commands[0] = command;
+        o.insert(u"commands"_s, commands);
+    }
+    return QJsonDocument(o).toJson();
+}
+
+bool wsPluginFixture(const QDir& out)
+{
+    const auto package = [&](const QString& id, const QString& review, bool program) -> QJsonObject {
+        mz_zip_archive zip {};
+        if (!mz_zip_writer_init_heap(&zip, 0, 0))
+            return {};
+        const QByteArray manifest = probePluginManifest(id, u"1.0.0"_s, program);
+        bool ok = mz_zip_writer_add_mem(&zip, "plugin.json", manifest.constData(), static_cast<size_t>(manifest.size()), MZ_DEFAULT_LEVEL);
+        if (program)
+            ok = ok && mz_zip_writer_add_mem(&zip, "probe.exe", "MZ", 2, MZ_DEFAULT_LEVEL);
+        void* buffer = nullptr;
+        size_t size = 0;
+        ok = ok && mz_zip_writer_finalize_heap_archive(&zip, &buffer, &size);
+        mz_zip_writer_end(&zip);
+        if (!ok)
+            return {};
+        const QByteArray bytes(static_cast<const char*>(buffer), static_cast<qsizetype>(size));
+        mz_free(buffer);
+        const QString name = id + u"-1.0.0.wsplugin"_s;
+        QFile file(out.filePath(name));
+        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size())
+            return {};
+        QJsonObject entry {{u"id"_s, id}, {u"name"_s, QJsonObject {{u"zh"_s, u"探针插件"_s}}}, {u"version"_s, u"1.0.0"_s},
+            {u"url"_s, name}, {u"sha256"_s, QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex())},
+            {u"size"_s, bytes.size()}, {u"review"_s, review}, {u"permissions"_s, QJsonArray {u"network"_s}}};
+        if (program)
+            entry.insert(u"runtime"_s, QJsonObject {{u"mode"_s, u"once"_s}, {u"program"_s, u"probe.exe"_s}});
+        return entry;
+    };
+    const QJsonObject listed = package(u"probe.listed"_s, u"reviewed"_s, false);
+    const QJsonObject native = package(u"probe.native"_s, u"unreviewed-native"_s, true);
+    if (listed.isEmpty() || native.isEmpty())
+        return false;
+    QFile index(out.filePath(u"ws-plugin-index.json"_s));
+    if (!index.open(QIODevice::WriteOnly)
+        || index.write(QJsonDocument(QJsonObject {{u"schema"_s, 1}, {u"plugins"_s, QJsonArray {listed, native}}}).toJson()) <= 0)
+        return false;
+    _wputenv_s(L"WINSHUN_PLUGIN_INDEX", QDir::toNativeSeparators(index.fileName()).toStdWString().c_str());
+    QSettings settings(Settings::filePath(), QSettings::IniFormat);
+    settings.setValue(u"Mcp/Enabled"_s, true); // the connection ws shares with AI clients
+    settings.sync();
+    return settings.status() == QSettings::NoError;
+}
+
+bool probeWsPlugin(App& app, const QStringList& args, const QDir& out, QJsonObject& report)
+{
+    Q_UNUSED(app);
+    QJsonObject checks;
+    QJsonArray runs;
+    bool passed = true;
+    const auto check = [&](bool ok, const QString& key) {
+        checks.insert(key, ok);
+        if (!ok) { qWarning().noquote() << "ws plugin:" << key; passed = false; }
+        return ok;
+    };
+    const auto finish = qScopeGuard([&] { report.insert(u"ws_plugin"_s, QJsonObject {{u"checks"_s, checks}, {u"runs"_s, runs}, {u"passed"_s, passed}}); });
+    const QString wsExe = valueAfter(args, u"--ws-plugin-check");
+    if (!check(QFileInfo::exists(wsExe), u"ws_exe_given"_s))
+        return false;
+
+    struct Ran {
+        int code = -1;
+        QString out;
+        QString err;
+    };
+    // ws as a person or an agent runs it, this App answering meanwhile.
+    const auto ws = [&](const QStringList& words) {
+        QProcess process;
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(u"WS_SETTINGS"_s, QDir::toNativeSeparators(Settings::filePath()));
+        environment.insert(u"WS_LANG"_s, u"zh"_s);
+        environment.insert(u"WS_ENCODING"_s, u"utf8"_s);
+        environment.remove(u"QT_QPA_PLATFORM"_s);
+        process.setProcessEnvironment(environment);
+        process.start(wsExe, QStringList {u"--pipe"_s, kWsPluginPipe, u"--no-start"_s, u"plugin"_s} + words);
+        QElapsedTimer timer;
+        timer.start();
+        while (process.state() != QProcess::NotRunning && timer.elapsed() < 60000)
+            pump(20);
+        Ran ran;
+        if (process.state() != QProcess::NotRunning)
+            process.kill();
+        else
+            ran.code = process.exitCode();
+        ran.out = QString::fromUtf8(process.readAllStandardOutput());
+        ran.err = QString::fromUtf8(process.readAllStandardError());
+        runs.push_back(QJsonObject {{u"ws"_s, words.join(u' ')}, {u"code"_s, ran.code}, {u"out"_s, ran.out}, {u"err"_s, ran.err}});
+        return ran;
+    };
+    const auto stateOf = [&](const QString& id) -> QString {
+        const Ran listed = ws({u"list"_s, u"--json"_s});
+        for (const QJsonValue plugin : QJsonDocument::fromJson(listed.out.toUtf8()).array()) {
+            if (plugin.toObject().value(u"id"_s).toString() == id)
+                return plugin.toObject().value(u"version"_s).toString() + u' ' + plugin.toObject().value(u"state"_s).toString();
+        }
+        return listed.code == 0 ? u"absent"_s : u"list failed"_s;
+    };
+    QQuickWindow* window = nullptr;
+    const auto settingsWindow = [&]() -> QQuickWindow* {
+        for (auto* candidate : QGuiApplication::allWindows()) {
+            if (candidate->property("editor").value<SettingsEditor*>())
+                return qobject_cast<QQuickWindow*>(candidate);
+        }
+        return nullptr;
+    };
+    // The page's question, as it stands over the settings window: its kind while it is up.
+    const auto question = [&]() -> QQuickItem* {
+        window = settingsWindow();
+        if (!window || !window->isVisible())
+            return nullptr;
+        settle(window, 2);
+        QQuickItem* card = visualNamed(window->contentItem(), u"pluginDialogCard"_s);
+        QQuickItem* dialog = card ? card->parentItem() : nullptr;
+        return dialog && dialog->property("open").toBool() ? dialog : nullptr;
+    };
+    const auto questionKind = [&] {
+        QQuickItem* dialog = question();
+        return dialog ? dialog->property("kind").toString() : QString();
+    };
+    const auto answer = [&](bool yes) {
+        QQuickItem* dialog = question();
+        if (!dialog)
+            return false;
+        const bool called = yes ? QMetaObject::invokeMethod(dialog, "accept", Q_ARG(QVariant, QVariant(false)))
+                                : QMetaObject::invokeMethod(dialog, "reject");
+        pump(300);
+        return called;
+    };
+    const QString userDir = Settings::dataDir() + u"/plugins"_s;
+    const QString source = out.filePath(u"ws-plugin-src"_s);
+    const auto writeSource = [&](const QString& version) {
+        QDir().mkpath(source);
+        QFile file(source + u"/plugin.json"_s);
+        return file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(probePluginManifest(u"probe.hello"_s, version)) > 0;
+    };
+
+    // A folder of one's own: installed at once, off, and no window comes up for it.
+    check(ws({u"list"_s}).code <= 1, u"list_answers"_s); // 1: a build folder without the plugins that come with Win顺
+    check(writeSource(u"1.0.0"_s), u"source_written"_s);
+    Ran ran = ws({u"install"_s, QDir::toNativeSeparators(source)});
+    check(ran.code == 0 && ran.out.contains(u"ws plugin enable probe.hello"_s), u"install_folder_done"_s);
+    check(QFileInfo::exists(userDir + u"/probe.hello/plugin.json"_s), u"install_folder_in_place"_s);
+    check(stateOf(u"probe.hello"_s) == u"1.0.0 off", u"installed_is_off"_s);
+    check(!settingsWindow() || !settingsWindow()->isVisible(), u"install_folder_shows_no_window"_s);
+
+    // Turned on for the first time: the user's to answer, in the settings window.
+    ran = ws({u"enable"_s, u"probe.hello"_s});
+    check(ran.code == 1, u"enable_first_time_asks"_s);
+    check(questionKind() == u"permissions", u"permission_dialog_up"_s);
+    check(window && saveGrab(window, out.filePath(u"ws-plugin-permissions.png"_s)), u"permission_screenshot"_s);
+    check(stateOf(u"probe.hello"_s) == u"1.0.0 off", u"off_until_answered"_s);
+    check(answer(false) && stateOf(u"probe.hello"_s) == u"1.0.0 off", u"declined_stays_off"_s);
+    check(ws({u"enable"_s, u"probe.hello"_s}).code == 1 && questionKind() == u"permissions", u"asks_again_after_no"_s);
+    check(answer(true) && stateOf(u"probe.hello"_s) == u"1.0.0 on", u"agreed_turns_on"_s);
+    check(ws({u"enable"_s, u"probe.hello"_s}).code == 0 && questionKind().isEmpty(), u"enable_again_asks_nothing"_s);
+
+    // The loop of someone writing a plugin: changed, installed again, still on.
+    check(writeSource(u"1.1.0"_s), u"source_changed"_s);
+    ran = ws({u"install"_s, QDir::toNativeSeparators(source)});
+    check(ran.code == 0 && questionKind().isEmpty(), u"reinstall_done_unasked"_s);
+    check(stateOf(u"probe.hello"_s) == u"1.1.0 on", u"reinstall_stays_on"_s);
+    check(ws({u"disable"_s, u"probe.hello"_s}).code == 0 && stateOf(u"probe.hello"_s) == u"1.1.0 off", u"disable"_s);
+    check(ws({u"enable"_s, u"probe.hello"_s}).code == 0 && stateOf(u"probe.hello"_s) == u"1.1.0 on", u"enable_once_agreed_unasked"_s);
+
+    // The library: found, installed on its page; a package nobody reviewed is asked about.
+    ran = ws({u"search"_s, u"probe"_s});
+    check(ran.code == 0 && ran.out.contains(u"probe.listed"_s) && ran.out.contains(u"probe.native"_s), u"search_lists_library"_s);
+    ran = ws({u"install"_s, u"probe.listed"_s});
+    check(ran.code == 0 && QFileInfo::exists(userDir + u"/probe.listed/plugin.json"_s), u"install_listed_done"_s);
+    check(stateOf(u"probe.listed"_s) == u"1.0.0 off", u"listed_is_off"_s);
+    check(ws({u"install"_s, u"probe.listed"_s}).code == 0, u"install_listed_again_is_done"_s);
+    ran = ws({u"install"_s, u"probe.native"_s});
+    check(ran.code == 1 && questionKind() == u"install", u"unreviewed_package_asks"_s);
+    check(window && saveGrab(window, out.filePath(u"ws-plugin-unreviewed.png"_s)), u"unreviewed_screenshot"_s);
+    check(answer(false) && !QFileInfo::exists(userDir + u"/probe.native"_s), u"unreviewed_declined_not_installed"_s);
+    check(ws({u"install"_s, u"probe.absent"_s}).code == 7, u"unknown_id_fails"_s);
+
+    // Removing: always the user's to answer.
+    ran = ws({u"remove"_s, u"probe.hello"_s});
+    check(ran.code == 1 && questionKind() == u"uninstall", u"remove_asks"_s);
+    check(window && saveGrab(window, out.filePath(u"ws-plugin-remove.png"_s)), u"remove_screenshot"_s);
+    check(QFileInfo::exists(userDir + u"/probe.hello/plugin.json"_s), u"there_until_answered"_s);
+    check(answer(true) && !QFileInfo::exists(userDir + u"/probe.hello"_s), u"confirmed_removes"_s);
+    check(stateOf(u"probe.hello"_s) == u"absent", u"removed_is_gone"_s);
+    check(ws({u"enable"_s, u"probe.hello"_s}).code == 6, u"gone_is_not_found"_s);
+    if (QQuickWindow* shown = settingsWindow()) { // put away as the user would
+        shown->close();
+        pump(300);
+    }
+    // The cards the list made again (a plugin came, went, changed) were left
+    // to deleteLater, which nothing runs here: this probe has no event loop,
+    // only pump(). Left alive, a card would outlive the theme at the App's
+    // end, and the glyph of its switch, its font's family then empty
+    // (Toggle.qml), has Qt look for its default "MS Sans Serif": a
+    // DirectWrite warning that is this probe's, not the App's.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    return passed;
+}
+
 bool probeWebPlugin(App& app, const QStringList& args, const QDir& out, QJsonObject& report)
 {
     QJsonObject checks;
@@ -9823,6 +10392,17 @@ int runRuntime(const QStringList& args)
         settings.selectedDrives = QStringList {QDir::toNativeSeparators(QStorageInfo(dialogFiles->path()).rootPath())};
         settings.excludedPaths = {Settings::profile() + u"/excluded"_s}; // an empty list reloads the TEMP-excluding defaults
     }
+    // --idle-open-index: folders with enough in them for an index of a real size.
+    if (const QString folders = valueAfter(args, u"--idle-open-index"); !folders.isEmpty()) {
+        settings.indexFolders = folders.split(u';', Qt::SkipEmptyParts);
+        QStringList drives;
+        for (const QString& folder : std::as_const(settings.indexFolders)) {
+            const QString drive = QDir::toNativeSeparators(QStorageInfo(folder).rootPath());
+            if (!drives.contains(drive, Qt::CaseInsensitive))
+                drives.push_back(drive);
+        }
+        settings.selectedDrives = drives;
+    }
     QDir().mkpath(settings.indexFolders.front());
     if (typingProbe) {
         settings.opusTypingScope = args.contains(u"--opus-everywhere"_s) ? u"all"_s : u"folder"_s;
@@ -9840,14 +10420,34 @@ int runRuntime(const QStringList& args)
         QFile nested(files.filePath(u"child/nested-only.txt"_s));
         if (!nested.open(QIODevice::WriteOnly)) return 4;
     }
-    QFile fixture(settings.indexFolders.front() + u"/startup-probe.txt"_s);
+    // Not into a folder of the user's (--idle-open-index).
+    QDir().mkpath(Settings::profile());
+    QFile fixture(args.contains(u"--idle-open-index"_s) ? Settings::profile() + u"/startup-probe.txt"_s
+                                                        : settings.indexFolders.front() + u"/startup-probe.txt"_s);
     if (!fixture.open(QIODevice::WriteOnly))
         return 4;
     fixture.write("WinShun isolated startup probe\n");
     fixture.close();
-    const QString dialogSample = QDir(settings.indexFolders.front()).filePath(u"WinShun-dialog-验证.blend"_s);
-    if (settings.dialogBar && !QFile::copy(valueAfter(args, u"--file-dialog-sample"), dialogSample))
+    // What the bar is to find and give the window: a file copied here, or,
+    // with no sample (a window that takes folders: a path box, a folder
+    // picker), a folder made here.
+    const bool dialogFolder = settings.dialogBar && !args.contains(u"--file-dialog-sample"_s);
+    const QString dialogSample = QDir(settings.indexFolders.front()).filePath(
+        dialogFolder ? u"WinShun-dialog-验证 文件夹"_s : u"WinShun-dialog-验证.blend"_s);
+    if (settings.dialogBar
+        && !(dialogFolder ? QDir().mkpath(dialogSample) : QFile::copy(valueAfter(args, u"--file-dialog-sample"), dialogSample)))
         return 4;
+    if (args.contains(u"--file-dialog-typing"_s)) { // something to search through
+        const QDir files(settings.indexFolders.front());
+        for (int i = 0; i < 6000; ++i) {
+            const QString group = u"group %1"_s.arg(i / 200, 2, 10, QLatin1Char('0'));
+            if (i % 200 == 0 && !files.mkpath(group))
+                return 4;
+            QFile file(files.filePath(group + (i % 3 ? u"/report %1 季度.xlsx"_s : u"/notes %1 会议.docx"_s).arg(i, 4, 10, QLatin1Char('0'))));
+            if (!file.open(QIODevice::WriteOnly))
+                return 4;
+        }
+    }
 
     const QDir plugins(valueAfter(args, u"--runtime-plugins"));
     if (args.contains(u"--runtime-plugins"_s)) {
@@ -9899,7 +10499,8 @@ int runRuntime(const QStringList& args)
         state.setValue(u"Search/Scope"_s, scopeLeft);
         state.sync();
     }
-    if (args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s) || live) {
+    if (args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s) || live
+        || args.contains(u"--idle-open-check"_s)) {
         ClipStore store(Settings::dataDir() + u"/clipboard"_s);
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (!store.open(now)) return 4;
@@ -9963,7 +10564,30 @@ int runRuntime(const QStringList& args)
             return 4;
         return passed && saved ? std::min(unexpected, 100) : 4;
     }
+    if (args.contains(u"--ws-plugin-check"_s)) { // a check of its own: none of the startup probe's other measurements
+        bool passed = wsPluginFixture(out);
+        if (passed) {
+            App app;
+            passed = app.start({.background = true, .settingsProbe = true, .mcpPipe = kWsPluginPipe}) && probeWsPlugin(app, args, out, report);
+        }
+        const int warnings = g_warnings; // the App's end included
+        report.insert(u"warnings"_s, warnings);
+        QFile json(out.filePath(u"ws-plugin.json"_s));
+        const bool saved = json.open(QIODevice::WriteOnly) && json.write(QJsonDocument(report).toJson()) > 0;
+        QDir(Settings::profile()).removeRecursively();
+        say(u"ws plugin: %1, %2 warning(s)"_s.arg(passed ? u"passed"_s : u"FAILED"_s).arg(warnings));
+        return passed && saved ? std::min(warnings, 100) : 4;
+    }
     {
+        // --idle-open-check: its profile goes once the App is gone. Removed
+        // while the App lived, the folder came back as it saved its index on
+        // the way out (15 MB a run, left in %TEMP%).
+        const auto idleOpenProfile = qScopeGuard([&args] {
+            const QFileInfo profile(Settings::profile());
+            if (args.contains(u"--idle-open-check"_s) && profile.fileName().startsWith(u"WinShun-preview-")
+                && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
+                QDir(profile.absoluteFilePath()).removeRecursively();
+        });
         App app;
         QElapsedTimer since;
         since.start();
@@ -10013,6 +10637,8 @@ int runRuntime(const QStringList& args)
         }
         if (args.contains(u"--double-tap-plugin"_s) && !checkDoubleTapPlugin(app, out))
             return 4;
+        if (args.contains(u"--idle-open-check"_s))
+            return checkIdleOpen(app, args, out) ? 0 : 4; // its profile goes after the App (idleOpenProfile)
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
         if (args.contains(u"--clipboard-shell-probe"_s)) {

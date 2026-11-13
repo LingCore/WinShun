@@ -20,6 +20,16 @@ Item {
     // corner collapses the panel instead of expanding the box into it.
     property bool panelMode: false
     property bool minimal: false
+    // 纯净搜索模式: the box keeps its scope tabs and loses the two keys right
+    // of them, the search history and the panel, with words typed too; their
+    // shortcuts stay (GitHub #185, #244). Not the panel's own bar (the way
+    // back from it), a folder's or the taskbar box's, which the mode leaves alone.
+    // One key for the scopes in place of the tabs: a folder's box always (it
+    // is narrow), the launcher's where the settings ask for it (GitHub
+    // #185, #244). The panel has the room and keeps its tabs; the taskbar
+    // box's bar too.
+    readonly property bool scopeKey: bar.folderMode || (bar.launcher.scopeButton && !bar.panelMode && !bar.inBox)
+    readonly property bool pureKeys: bar.launcher.pureSearch && !bar.panelMode && !bar.folderMode && !bar.inBox
     readonly property bool menuOpen: headerMenu.item !== null && headerMenu.item.visible
     readonly property string positionAction: panelMode && launcher.logoRightClick === "top" ? "center" : launcher.logoRightClick
     readonly property string positionActionLabel: positionAction === "top" ? qsTr("回到靠上位置")
@@ -318,7 +328,7 @@ Item {
         readonly property real styleStart: fieldPart.out("leadingInset", 0)
         anchors.left: handle.right
         anchors.leftMargin: styleStart > 0 ? Theme.snap(Math.max(6, Theme.fieldInset + styleStart - handle.x - handle.width), bar.dpr) : 8
-        anchors.right: bar.minimal ? bar.right : regexChip.visible ? regexChip.left : bar.folderMode ? compactScope.left : tabs.left
+        anchors.right: bar.minimal ? bar.right : regexChip.visible ? regexChip.left : bar.scopeKey ? compactScope.left : tabs.left
         anchors.rightMargin: regexChip.visible ? 8 : 12
         height: bar.height - grip.y - 2 * grip.height
         y: grip.y + grip.height
@@ -423,8 +433,8 @@ Item {
     }
 
     // Regex mode is on (Launcher.regexMode, Ctrl+R): ".*" before the tabs,
-    // as the pin shows it is on; a click turns it off. Not in 内容, where
-    // it changes nothing.
+    // as the pin shows it is on; a click turns it off. In 内容 the words are
+    // expressions on the files' text (GitHub #295).
     // The keys in the field: the style's (Theme.keySurface, role "fieldKey");
     // a mode that is on (.*, the pin) is a checked one.
     component FieldKey: Hook {
@@ -497,8 +507,9 @@ Item {
     Item {
         id: regexChip
 
-        visible: !bar.minimal && bar.launcher.regexMode && bar.launcher.scope !== Launcher.Content && !bar.inBox
-        anchors.right: bar.folderMode ? compactScope.left : tabs.left
+        objectName: "regexChip"
+        visible: !bar.minimal && bar.launcher.regexMode && !bar.inBox
+        anchors.right: bar.scopeKey ? compactScope.left : tabs.left
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)
         width: Math.max(height, regexText.implicitWidth + 16)
@@ -534,7 +545,8 @@ Item {
         }
         HoverTip {
             target: regexArea.containsMouse ? regexChip : null
-            text: qsTr("正则模式：每个词都按正则表达式匹配名字 · 点击关闭")
+            text: bar.launcher.scope === Launcher.Content ? qsTr("正则模式：每个词都按正则表达式匹配文件里的文字 · 点击关闭")
+                                                          : qsTr("正则模式：每个词都按正则表达式匹配名字 · 点击关闭")
             shortcut: "Ctrl+R"
         }
     }
@@ -592,7 +604,10 @@ Item {
     IconKey {
         id: expand
         objectName: bar.panelMode ? "panelCollapseButton" : "searchExpandButton"
-        visible: !bar.minimal
+        visible: !bar.minimal && !bar.pureKeys
+        // Gone with pureKeys, it takes no room either: what is anchored to
+        // its left (the scope tabs) moves up to the box's edge.
+        width: bar.pureKeys ? 0 : height
         anchors.right: parent.right
         anchors.rightMargin: bar.keysRight
         y: bar.onPixel((bar.height - height) / 2)
@@ -615,7 +630,7 @@ Item {
     IconKey {
         id: historyButton
         objectName: bar.panelMode ? "panelHistoryButton" : "queryHistoryButton"
-        visible: !bar.minimal && bar.launcher.queryHistoryEnabled && !bar.folderMode && !bar.inBox
+        visible: !bar.minimal && !bar.pureKeys && bar.launcher.queryHistoryEnabled && !bar.folderMode && !bar.inBox
         anchors.right: sidebarToggle.visible ? sidebarToggle.left : expand.left
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)
@@ -667,15 +682,25 @@ Item {
 
     Item {
         id: compactScope
-        visible: bar.folderMode
-        anchors.right: expand.left
+        objectName: bar.panelMode ? "panelScopeKey" : "searchScopeKey"
+        visible: bar.scopeKey && !bar.minimal
+        // A plugin's keyword has the list: its name, and a click leaves it (as the tabs' chip does).
+        readonly property bool keyword: bar.launcher.scope === Launcher.All && bar.launcher.pluginKeyword.length > 0
+                                        && bar.launcher.pluginLabel.length > 0
+        function next() {
+            if (keyword)
+                bar.launcher.leaveKeyword()
+            else
+                bar.launcher.cycleScope(1)
+        }
+        anchors.right: historyButton.visible ? historyButton.left : expand.left
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)
         width: compactScopeLabel.implicitWidth + 20
         height: bar.keyHeight
         Accessible.role: Accessible.Button
         Accessible.name: compactScopeLabel.text
-        Accessible.onPressAction: bar.launcher.cycleScope(1)
+        Accessible.onPressAction: compactScope.next()
 
         FieldKey {
             id: compactScopeKey
@@ -687,21 +712,21 @@ Item {
         Text {
             id: compactScopeLabel
             anchors.centerIn: parent
-            text: tabs.labels[tabs.current] ?? ""
+            text: compactScope.keyword ? bar.launcher.pluginLabel : tabs.labels[tabs.current] ?? ""
             color: compactScopeKey.out("foreground", Theme.subtext)
-            font.pixelSize: 12
+            font.pixelSize: bar.folderMode ? 12 : Theme.uiBody
         }
         MouseArea {
             id: compactScopeArea
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: bar.launcher.cycleScope(1)
+            onClicked: compactScope.next()
         }
         HoverTip {
             target: compactScopeArea.containsMouse ? compactScope : null
-            text: compactScopeLabel.text
-            shortcut: "Tab"
+            text: bar.folderMode ? compactScopeLabel.text : qsTr("切换搜索范围")
+            shortcut: bar.folderMode ? "Tab" : "Tab / Shift+Tab"
         }
     }
 
@@ -710,7 +735,7 @@ Item {
         HoverHandler { id: scopeHover }
         HoverTip { target: scopeHover.hovered ? tabs : null; text: qsTr("切换搜索范围"); shortcut: "Tab / Shift+Tab"; host: bar.launcher }
         objectName: bar.panelMode ? "panelScopeTabs" : "searchScopeTabs"
-        visible: !bar.minimal && !bar.folderMode
+        visible: !bar.minimal && !bar.scopeKey
         scaled: true
         role: "scope"
         dpr: bar.dpr

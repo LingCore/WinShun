@@ -280,6 +280,31 @@ private slots:
         QVERIFY(!loaded->favorites[0].runAsAdmin);
     }
 
+    // GitHub #319: the words after a command's keyword find files for it.
+    // Kept with it; a file without it reads as before, as does one where it
+    // is not `true`.
+    void searchingFilesTravelsWithFavorites()
+    {
+        Favorite command {Favorite::Kind::Command, u"winshun-command:files"_s, u"编辑器"_s, u"code"_s, u"code.exe {query}"_s};
+        QVERIFY(!writeFavoritesFile({command}).contains("searchFiles"));
+        command.searchFiles = true;
+        const QByteArray written = writeFavoritesFile({command});
+        QVERIFY(written.contains("\"searchFiles\": true"));
+        QVERIFY(written.contains("\"version\": 2")); // an older copy still reads the command
+        auto loaded = readFavoritesFile(written);
+        QVERIFY(loaded);
+        QCOMPARE(loaded->favorites, FavoriteList {command});
+        QVERIFY(loaded->favorites[0].searchFiles);
+        loaded = readFavoritesFile(R"({"format": "winshun-favorites", "version": 2, "favorites": [
+            {"kind": "command", "path": "winshun-command:x", "name": "x", "command": "a.exe {query}", "searchFiles": 1}]})");
+        QVERIFY(loaded);
+        QVERIFY(!loaded->favorites[0].searchFiles);
+        // Its keyword and the words after it, as the launcher splits them.
+        QCOMPARE(typedCommandKeyword({command}, u"code 我的项目"), 0);
+        QCOMPARE(commandWords(command, u"code 我的项目"), u"我的项目"_s);
+        QVERIFY(commandWords(command, u"code ").isEmpty());
+    }
+
     void searchRowsCarryTheFlags()
     {
         Favorite command {Favorite::Kind::Command, u"winshun-command:row"_s, u"行"_s, u"row"_s, u"a.exe"_s};

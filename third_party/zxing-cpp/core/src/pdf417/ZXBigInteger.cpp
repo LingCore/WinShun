@@ -5,12 +5,10 @@
 
 #include "ZXBigInteger.h"
 
-#include "BitHacks.h"
 #include "ZXAlgorithms.h"
 
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cstdint>
 #include <utility>
 
@@ -19,7 +17,7 @@ namespace ZXing {
 using Block = BigInteger::Block;
 using Magnitude = std::vector<Block>;
 
-static const size_t NB_BITS = 8 * sizeof(Block);
+constexpr size_t NB_BITS = 8 * sizeof(Block);
 
 static void AddMag(const Magnitude& a, const Magnitude& b, Magnitude& c)
 {
@@ -366,7 +364,7 @@ static bool ParseFromString(const StrT& str, std::vector<Block>& mag, bool& nega
 {
 	auto iter = str.begin();
 	auto end = str.end();
-	while (iter != end && std::isspace(*iter)) ++iter;
+	while (iter != end && IsSpace(*iter)) ++iter;
 	if (iter != end) {
 		mag.clear();
 		negative = false;
@@ -380,7 +378,7 @@ static bool ParseFromString(const StrT& str, std::vector<Block>& mag, bool& nega
 
 		Magnitude ten{10};
 		Magnitude tmp{0};
-		for (int c; iter != end && std::isdigit(c = *iter); ++iter) {
+		for (int c; iter != end && IsDigit(c = *iter); ++iter) {
 			tmp[0] = c - '0';
 			MulMag(mag, ten, mag);
 			AddMag(mag, tmp, mag);
@@ -585,9 +583,9 @@ BigInteger::toString() const
 		result.push_back('-');
 	}
 
-	static const uint32_t base = 10;
+	constexpr uint32_t base = 10;
+	constexpr uint32_t minBitsPerDigit = 4; // HighestBitSet(base)
 	auto maxBitLenOfX = static_cast<uint32_t>(mag.size()) * NB_BITS;
-	int minBitsPerDigit = BitHacks::HighestBitSet(base);
 	auto maxDigitLenOfX = (maxBitLenOfX + minBitsPerDigit - 1) / minBitsPerDigit; // ceilingDiv
 	
 	std::vector<uint8_t> buffer;

@@ -1,5 +1,5 @@
 /*
-* Copyright 2024 Axel Waggershauser
+* Copyright 2026 Axel Waggershauser
 */
 // SPDX-License-Identifier: Apache-2.0
 
@@ -7,4 +7,8 @@
 
 #include "Version.h"
 
-#pragma message("Header `ZXVersion.h` is deprecated, please include `Version.h`.")
+#if defined(_MSC_VER)
+#pragma message("<ZXing/ZXingVersion.h> is deprecated, include ZXing/Version.h instead")
+#else
+#warning "<ZXing/ZXingVersion.h> is deprecated, include ZXing/Version.h instead"
+#endif

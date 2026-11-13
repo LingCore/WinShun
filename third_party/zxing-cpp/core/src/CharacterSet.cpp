@@ -9,7 +9,6 @@
 #include "ZXAlgorithms.h"
 
 #include <algorithm>
-#include <cctype>
 
 namespace ZXing {
 
@@ -64,21 +63,9 @@ static CharacterSetName NAME_TO_CHARSET[] = {
 	{"BINARY",		CharacterSet::BINARY},
 };
 
-static std::string NormalizeName(std::string_view sv)
-{
-	std::string str(sv);
-	std::transform(str.begin(), str.end(), str.begin(), [](char c) { return (char)std::tolower(c); });
-#ifdef __cpp_lib_erase_if
-	std::erase_if(str, [](char c) { return Contains("_-[] ", c); });
-#else
-	str.erase(std::remove_if(str.begin(), str.end(), [](char c) { return Contains("_-[] ", c); }), str.end());
-#endif
-	return str;
-}
-
 CharacterSet CharacterSetFromString(std::string_view name)
 {
-	auto i = FindIf(NAME_TO_CHARSET, [str = NormalizeName(name)](auto& v) { return NormalizeName(v.name) == str; });
+	auto i = FindIf(NAME_TO_CHARSET, [name](auto& v) { return IsEqualIgnoreCaseAnd(v.name, name, "_- "); });
 	return i == std::end(NAME_TO_CHARSET) ? CharacterSet::Unknown : i->cs;
 }
 

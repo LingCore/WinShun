@@ -54,6 +54,7 @@ es 只管文件名。我们多出来、对 AI 最有用的两样：**内容搜�
 | `ws ls <文件夹>` | 从索引列文件夹（大文件夹也快） | `list_folder` | `-n`，`-l` |
 | `ws open <查询或路径>` | 打开最匹配的那个（和启动器里按 Enter 一样） | `search_files`，打开由 ws 自己做 | `--reveal` 在文件夹里显示 |
 | `ws clip` | 剪贴板历史（AI 的剪贴板开关开着、Win顺 也在记录才行） | `clipboard_history` | `-n`，`--kind text\|link\|path\|files\|image` |
+| `ws plugin <动作>` | 插件：`list`、`search [词]`、`install <包、文件夹或 id>`、`enable` / `disable` / `remove <id>`（见下面“ws plugin”） | `plugins_list` / `plugins_search` / `plugins_install` / `plugins_switch` / `plugins_remove`，只给 ws | `--json` |
 | `ws status` | Win顺 在不在、索引好了没、版本 | `index_status` | |
 | `ws skill` | 打印给 AI 用的 SKILL.md；`--install claude` 装进 Claude Code | 本地 | |
 | `ws help [命令]` | 帮助 | 本地 | |
@@ -338,3 +339,15 @@ src/mcp/PipeClient.cpp/h、Launch.cpp/h   和中继共用的源文件（第 9 �
 2. 安装包和 PATH、设置页“命令行”一栏、Skill 和“装 Skill”按钮。
 3. `recent`、`ls`、`open`、`clip`、帮助的打磨。
 4. 补全、`show`、插件命令（看有没有人要）。
+
+## ws plugin（GitHub #251）
+
+让终端里的人和能跑命令的 AI 代理管理插件：以前只能在设置里点。
+
+- **工具只给 ws**：`plugins_*` 五个工具（`mcp::kPluginTools`）不进 `tools/list`，`clientInfo.name` 不是 `ws` 的客户端调它们得到“Unknown tool”——MCP 客户端的模型看不到、也不用为它们花上下文。这只是“给谁看”，不是权限边界（谁都可以自称 ws），所以下面每一条本身就要站得住。
+- **当场办的事，是用户自己的程序本来就能对插件文件夹和设置文件做的事**：把一个包或文件夹放进 `plugins\<id>`（和设置页“从压缩包安装”同一套 `install::inspect` / `updates::replace`，新装的关着；盖在开着的版本上保持开着，少了“已有 X 版，要不要换”那一问——运行这条命令就是回答）、关掉一个插件、打开一个用户已经同意过权限的插件。
+- **只有用户能回答的事，仍然在 Win顺 的窗口里问用户**，ws 不等：第一次打开（或新版本多要权限、或提权的 Win顺 里带 `elevated` 的插件）走设置页自己的开关和权限对话框；卸载走设置页的卸载和它的确认；插件库里的 id 走插件库页自己的“安装”（`PluginGallery::installFor`：下载、校验大小和 SHA-256、未审核原生包的确认都是原来那一套，进度在页面上）。回答是 `asking`。名字对不上的文件夹（不是装好的插件，GitHub #253）不替用户挪，直接说去设置页装。
+- **回答**：`{state: done | asking | failed, message, plugin?, plugins?, code?}`。`message` 由 Win顺 用界面语言写（给终端前的人看，ws 原样打印）；失败也是正常回答，不用 `isError`（那是给模型看的英文）。`code: "not_found"` → 退出码 6。退出码：0 `done`，1 `asking`（`search` 没有结果也是 1），7 `failed`。
+- **`install` 的参数**：存在的文件或文件夹就是路径（ws 换成绝对路径发 `path`），否则当插件库的 id 发 `id`。
+- **`search`**：现取插件库的列表（不验签，只用来显示；安装时包按条目的大小和 SHA-256 核对），取不到用设置页存下的 `plugin-index.json`，并说明是哪天存的。
+- **代码**：`src/cli/Plugin.cpp`（ws 这边：选工具、打印、退出码），`src/app/PluginCommands.*`（Win顺 这边，界面无关，页面的事经 `Environment` 的回调交给 `App`），`tests/tst_plugincommands.cpp`、`tst_cli` 的 `plugin`、`tst_mcp` 的 `pluginToolsAreKeptForWs`。

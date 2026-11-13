@@ -200,7 +200,8 @@ private:
     bool m_busy = false;
     QString m_path, m_message, m_key;
     Subject m_subject; // m_path: its file
-    QStringList m_terms;
+    QStringList m_terms; // the texts of m_needles
+    std::vector<ContentNeedle> m_needles; // what the search looks for (ContentPattern)
     std::vector<bool> m_enabled;
     contentdetails::Filter m_filter;
     ContentLines m_hits, m_text;
@@ -216,7 +217,7 @@ private:
     QVariantList m_groups;
     QVariantList m_countGroups;
     ContentLeftOut m_auditLeftOut;
-    QStringList m_auditTerms;
+    std::vector<ContentNeedle> m_auditNeedles;
     bool m_snapshotComplete = false;
     bool m_indexEnabled = false;
     bool m_dialogOpen = false;

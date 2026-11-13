@@ -50,11 +50,6 @@ static const uint8_t LATCHES[] = {
 	231, // LATCH_TO_BASE256,
 };
 
-static bool IsDigit(int ch)
-{
-	return ch >= '0' && ch <= '9';
-}
-
 static bool IsExtendedASCII(int ch)
 {
 	return ch >= 128 && ch <= 255;
@@ -62,12 +57,12 @@ static bool IsExtendedASCII(int ch)
 
 static bool IsNativeC40(int ch)
 {
-	return (ch == ' ') || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z');
+	return (ch == ' ') || IsDigit(ch) || IsUpper(ch);
 }
 
 static bool IsNativeText(int ch)
 {
-	return (ch == ' ') || (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z');
+	return (ch == ' ') || IsDigit(ch) || IsLower(ch);
 }
 
 static bool IsX12TermSep(int ch)
@@ -79,7 +74,7 @@ static bool IsX12TermSep(int ch)
 
 static bool IsNativeX12(int ch)
 {
-	return IsX12TermSep(ch) || (ch == ' ') || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z');
+	return IsX12TermSep(ch) || (ch == ' ') || IsDigit(ch) || IsUpper(ch);
 }
 
 static bool IsNativeEDIFACT(int ch)
@@ -317,7 +312,7 @@ namespace ASCIIEncoder {
 	static int DetermineConsecutiveDigitCount(const std::string& msg, int startpos)
 	{
 		auto begin = msg.begin() + startpos;
-		return narrow_cast<int>(std::find_if_not(begin, msg.end(), IsDigit) - begin);
+		return narrow_cast<int>(std::find_if_not(begin, msg.end(), IsDigit<char>) - begin);
 	}
 
 	static uint8_t EncodeASCIIDigits(int digit1, int digit2)
@@ -368,11 +363,11 @@ namespace C40Encoder {
 			sb.push_back('\3');
 			return 1;
 		}
-		if (c >= '0' && c <= '9') {
+		if (IsDigit(c)) {
 			sb.push_back((char)(c - 48 + 4));
 			return 1;
 		}
-		if (c >= 'A' && c <= 'Z') {
+		if (IsUpper(c)) {
 			sb.push_back((char)(c - 65 + 14));
 			return 1;
 		}
@@ -408,7 +403,7 @@ namespace C40Encoder {
 	}
 
 	static int BacktrackOneCharacter(EncoderContext& context, std::string& buffer, std::string& removed, int lastCharSize,
-									 std::function<int(int, std::string&)> encodeChar)
+									 const std::function<int(int, std::string&)>& encodeChar)
 	{
 		buffer.resize(buffer.size() - lastCharSize);
 		context.setCurrentPos(context.currentPos() - 1);
@@ -481,7 +476,7 @@ namespace C40Encoder {
 		context.setNewEncoding(ASCII_ENCODATION);
 	}
 
-	static void EncodeC40(EncoderContext& context, std::function<int (int, std::string&)> encodeChar, int encodingMode)
+	static void EncodeC40(EncoderContext& context, const std::function<int (int, std::string&)>& encodeChar, int encodingMode)
 	{
 		//step C
 		std::string buffer;
@@ -533,11 +528,11 @@ namespace DMTextEncoder {
 			sb.push_back('\3');
 			return 1;
 		}
-		if (c >= '0' && c <= '9') {
+		if (IsDigit(c)) {
 			sb.push_back((char)(c - 48 + 4));
 			return 1;
 		}
-		if (c >= 'a' && c <= 'z') {
+		if (IsLower(c)) {
 			sb.push_back((char)(c - 97 + 14));
 			return 1;
 		}
@@ -599,9 +594,9 @@ namespace X12Encoder {
 		case '>': sb.push_back('\2'); break;
 		case ' ': sb.push_back('\3'); break;
 		default:
-			if (c >= '0' && c <= '9') {
+			if (IsDigit(c)) {
 				sb.push_back((char)(c - 48 + 4));
-			} else if (c >= 'A' && c <= 'Z') {
+			} else if (IsUpper(c)) {
 				sb.push_back((char)(c - 65 + 14));
 			} else {
 				throw std::invalid_argument("Illegal character: " + ToHexString(c));
@@ -840,17 +835,6 @@ namespace Base256Encoder {
 
 } // Base256Encoder
 
-//TODO: c++20
-static bool StartsWith(std::wstring_view s, std::wstring_view ss)
-{
-	return s.length() > ss.length() && s.compare(0, ss.length(), ss) == 0;
-}
-
-static bool EndsWith(std::wstring_view s, std::wstring_view ss)
-{
-	return s.length() > ss.length() && s.compare(s.length() - ss.length(), ss.length(), ss) == 0;
-}
-
 ByteArray Encode(const std::wstring& msg)
 {
 	return Encode(msg, CharacterSet::ISO8859_1, SymbolShape::NONE, -1, -1, -1, -1);
@@ -887,12 +871,12 @@ ByteArray Encode(const std::wstring& msg, CharacterSet charset, SymbolShape shap
 	constexpr std::wstring_view MACRO_06_HEADER = L"[)>\x1E""06\x1D";
 	constexpr std::wstring_view MACRO_TRAILER = L"\x1E\x04";
 
-	if (StartsWith(msg, MACRO_05_HEADER) && EndsWith(msg, MACRO_TRAILER)) {
+	if (msg.starts_with(MACRO_05_HEADER) && msg.ends_with(MACRO_TRAILER)) {
 		context.addCodeword(MACRO_05);
 		context.setSkipAtEnd(2);
 		context.setCurrentPos(Size(MACRO_05_HEADER));
 	}
-	else if (StartsWith(msg, MACRO_06_HEADER) && EndsWith(msg, MACRO_TRAILER)) {
+	else if (msg.starts_with(MACRO_06_HEADER) && msg.ends_with(MACRO_TRAILER)) {
 		context.addCodeword(MACRO_06);
 		context.setSkipAtEnd(2);
 		context.setCurrentPos(Size(MACRO_06_HEADER));

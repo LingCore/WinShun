@@ -712,7 +712,7 @@ ContentScope resolveScope(const FileIndex& index, const SearchEngine::Request& r
     const std::function<bool()>& isCancelled, ScopeFolders& scope)
 {
     ContentScope out;
-    const ContentQuery typed = splitContentQuery(request.text);
+    const ContentQuery typed = splitContentQuery(request.text, request.regex);
     out.words = typed.words;
     for (const ContentFolderSpec& spec : typed.folders) {
         ContentScope::Place place = resolvePlace(index, spec, request, pool, isCancelled, scope);
@@ -1160,18 +1160,27 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
     // Typed in a folder's window (GitHub #110), the words are looked for in
     // it, never a keyword: they need not end in a space there.
     const bool keywords = request.currentFolder.isEmpty() && request.typeFolders.isEmpty();
-    const qsizetype command = keywords ? typedCommandKeyword(favorites, request.text) : -1;
+    const qsizetype command = !request.commandPath.isEmpty() ? indexOfFavorite(favorites, request.commandPath)
+        : keywords ? typedCommandKeyword(favorites, request.text) : -1;
     const qsizetype keyword = command >= 0 ? command : keywords ? typedFavoriteKeyword(favorites, request.text) : -1;
     if (keyword >= 0 && favoriteShown(request.scope, favorites[keyword], types))
         wanted.push_back(&favorites[keyword]);
     const bool keyed = !wanted.isEmpty();
+    // A keyword being typed ("cm" of "cmda", GitHub #313) finds its favorite
+    // as its name does: what was opened so then comes first the next time
+    // (learnedFirst), the keyword not typed out again.
+    const QStringView typed = QStringView(request.text).trimmed();
+    const auto keywordStarts = [&](const Favorite& f) {
+        return keywords && !request.regex && !typed.isEmpty() && f.keyword.size() > typed.size()
+            && f.keyword.startsWith(typed, Qt::CaseInsensitive);
+    };
     for (qsizetype i = 0; promote && i < favorites.size() && wanted.size() < kFavoritesPromoted + (keyed ? 1 : 0); ++i) {
         const Favorite& f = favorites[i];
         if (i == keyword || !favoriteShown(request.scope, f, types))
             continue;
         const bool found = std::any_of(results.cbegin(), results.cend(),
             [&](const SearchResult& r) { return r.favorite && pathtext::samePath(r.path, f.path); });
-        if (found || nameMatches(f.name)
+        if (found || nameMatches(f.name) || keywordStarts(f)
             || (f.isFileOrFolder() && matcher.matchPath(f.path, f.kind == Favorite::Kind::Folder) >= 0)) {
             wanted.push_back(&f);
         }
@@ -1196,7 +1205,8 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
             rows.push_back({});
         }
     }
-    const SearchResults looked = favoriteRows(unfound, apps, places, onDisk, index, request.text);
+    const SearchResults looked = favoriteRows(unfound, apps, places, onDisk, index,
+        request.commandPath.isEmpty() ? request.text : request.commandText);
     SearchResults put;
     for (qsizetype i = 0, k = 0; i < rows.size(); ++i) {
         if (k < std::ssize(unfoundAt) && unfoundAt[static_cast<std::size_t>(k)] == i) {
@@ -1510,6 +1520,19 @@ void SearchEngine::runNameSearch(const Job& job)
                     // the window opens would flip it back (pinnedPlaces).
                     if (place && place->switchId.isEmpty())
                         round.emplace_back(fromPlace(*place, true));
+                    continue;
+                }
+                if (path.startsWith(u"winshun-command:")) {
+                    // A favorite's command run from here (GitHub #313): no
+                    // file to ask the disk about. One removed since is gone.
+                    const qsizetype at = indexOfFavorite(request.favorites, path);
+                    if (at >= 0 && favoriteShown(request.scope, request.favorites[at], types)) {
+                        SearchResults rows = favoriteRows({&request.favorites[at]}, *apps, *places, *m_onDisk, m_index);
+                        if (!rows.isEmpty()) {
+                            rows.first().recent = true;
+                            round.emplace_back(std::move(rows.first()));
+                        }
+                    }
                     continue;
                 }
                 if (!ofType(path, false, types, hidden))
@@ -2257,8 +2280,12 @@ void SearchEngine::runContentSearch(const Job& job)
     // A name no folder has is among the words (Status::Words): no scope of its own.
     const bool scoped = request.contentSet != ContentSet::Given
         && std::ranges::any_of(where.places, [](const ContentScope::Place& p) { return p.status != ContentScope::Status::Words; });
-    const QStringList terms = contentTerms(where.words);
-    if (terms.isEmpty() || (scoped && scope.folders.empty())) {
+    // What for: words, either of some ("马上|立即"), regular expressions
+    // (GitHub #295). One that cannot be read finds nothing: the launcher
+    // says why (ContentPattern::error).
+    const ContentPattern pattern = contentPattern(where.words, request.regex);
+    const QStringList terms = pattern.words(); // for ranking: those in a file's name
+    if (pattern.isEmpty() || (scoped && scope.folders.empty())) {
         emit contentProgress(job.id, 0, 0, true);
         return;
     }
@@ -2318,7 +2345,7 @@ void SearchEngine::runContentSearch(const Job& job)
     QElapsedTimer lookupTimer;
     lookupTimer.start();
     enter("asking the content index");
-    const ContentIndex::Lookup lookup = content && !oneOff ? content->lookup(terms) : ContentIndex::Lookup();
+    const ContentIndex::Lookup lookup = content && !oneOff ? content->lookup(pattern) : ContentIndex::Lookup();
     enter("picking the files to read");
     if (lookupTimer.elapsed() > 50) // a few milliseconds from the cache: it was read off the disk
         m_index->prewarmSoon(std::chrono::seconds(5));
@@ -2516,7 +2543,7 @@ void SearchEngine::runContentSearch(const Job& job)
             [](const Candidate& a, const Candidate& b) { return a.order < b.order; });
     }
 
-    const ContentScanner scanner(terms);
+    const ContentScanner scanner(pattern);
     const std::int64_t now = QDateTime::currentSecsSinceEpoch();
     // Before the reads, gone once they are done. Not for a part read this
     // once: the index is to stay as it is about those files (see ContentSet).

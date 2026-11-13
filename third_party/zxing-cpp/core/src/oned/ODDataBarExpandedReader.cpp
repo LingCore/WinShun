@@ -12,7 +12,7 @@
 #include "DetectorResult.h"
 #include "ODDataBarCommon.h"
 #include "ODDataBarExpandedBitDecoder.h"
-#include "Barcode.h"
+#include "BarcodeData.h"
 
 #include <cmath>
 #include <map>
@@ -137,7 +137,7 @@ static const std::array<int, 7> VALID_HALF_PAIRS = {{-FINDER_A, FINDER_B, -FINDE
 
 static int ParseFinderPattern(const PatternView& view, Direction dir)
 {
-	static constexpr std::array<std::array<int, 3>, 6> e2ePatterns = {{
+	static constexpr std::array<Pattern<3>, 6> e2ePatterns = {{
 		{9, 12, 5 }, // {1, 8, 4, 1, 1}, // A
 		{9, 10, 5 }, // {3, 6, 4, 1, 1}, // B
 		{7, 10, 7 }, // {3, 4, 6, 1, 1}, // C
@@ -146,7 +146,7 @@ static int ParseFinderPattern(const PatternView& view, Direction dir)
 		{4, 11, 10}, // {2, 2, 9, 1, 1}, // F
 	}};
 
-	return ParseFinderPattern<6>(view, dir == Direction::Left, e2ePatterns);
+	return ParseFinderPattern(view, dir == Direction::Left, e2ePatterns);
 }
 
 static bool ChecksumIsValid(const Pairs& pairs)
@@ -328,7 +328,7 @@ struct DBERState : public RowReader::DecodingState
 	PairMap allPairs;
 };
 
-Barcode DataBarExpandedReader::decodePattern(int rowNumber, PatternView& view, std::unique_ptr<RowReader::DecodingState>& state) const
+BarcodeData DataBarExpandedReader::decodePattern(int rowNumber, PatternView& view, std::unique_ptr<RowReader::DecodingState>& state) const
 {
 #if 0 // non-stacked version
 	auto pairs = ReadRowOfPairs<false>(view, rowNumber);
@@ -337,7 +337,7 @@ Barcode DataBarExpandedReader::decodePattern(int rowNumber, PatternView& view, s
 		return {};
 #else
 	if (!state)
-		state.reset(new DBERState);
+		state = std::make_unique<DBERState>();
 	auto& allPairs = static_cast<DBERState*>(state.get())->allPairs;
 
 	// Stacked codes can be laid out in a number of ways. The following rules apply:
@@ -367,12 +367,17 @@ Barcode DataBarExpandedReader::decodePattern(int rowNumber, PatternView& view, s
 
 	RemovePairs(allPairs, pairs);
 
+	bool isStacked =
+		std::any_of(pairs.begin() + 1, pairs.end(), [center = pairs.front().center()](const Pair& p) { return p.xStart < center; });
+
 	// TODO: EstimatePosition misses part of the symbol in the stacked case where the last row contains less pairs than
 	// the first
 	// Symbology identifier: ISO/IEC 24724:2011 Section 9 and GS1 General Specifications 5.1.3 Figure 5.1.3-2
-	return {DecoderResult(Content(ByteArray(txt), {'e', '0', 0, AIFlag::GS1}))
-				.setLineCount(EstimateLineCount(pairs.front(), pairs.back())),
-			{{}, EstimatePosition(pairs.front(), pairs.back())}, BarcodeFormat::DataBarExpanded};
+	return {.content = Content(ByteArray(txt), {'e', '0', 0, AIFlag::GS1}),
+			.error = Error{},
+			.position = EstimatePosition(pairs.front(), pairs.back()),
+			.format = isStacked ? BarcodeFormat::DataBarExpStk : BarcodeFormat::DataBarExp,
+			.lineCount = EstimateLineCount(pairs.front(), pairs.back())};
 }
 
 } // namespace ZXing::OneD

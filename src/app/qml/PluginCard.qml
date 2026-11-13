@@ -54,6 +54,7 @@ Rectangle {
     // account, so the plugin does too: a line with 以管理员身份重新启动.
     required property string elevation
     required property string elevationNote
+    required property string staged // a newer version downloaded, waiting for the next start
     required property string elevationProblem // why the last 确认 did not work: under the note, here where it was clicked
     property bool marked: false // what the settings search found
     property bool expanded: false
@@ -63,7 +64,25 @@ Rectangle {
     property string pendingFocus // the command whose keyword box takes the focus once made
 
     // Anything to unfold: a plugin that cannot be used has none.
-    readonly property bool hasDetails: webSearch || keywords.length > 0 || aiExpose || permissions.length > 0 || settings.length > 0
+    readonly property bool hasDetails: webSearch || keywords.length > 0 || aiExpose || settings.length > 0
+    // Starting, waiting for a yes, or broken: said on the card. Running or ready is only in the tip.
+    readonly property bool noteworthy: tone === "busy" || tone === "warn" || tone === "error"
+    // The keywords shown folded, as keys to press: the first few (all of them are in the details).
+    readonly property var shownKeywords: keywords.filter(k => k.keyword.length > 0).slice(0, 3)
+    // The tip of the "i" by the name: who made it, how it stands, what it may do.
+    readonly property string infoText: {
+        const lines = []
+        if (author.length > 0)
+            lines.push(qsTr("作者：%1").arg(author))
+        if (status.length > 0 && !noteworthy)
+            lines.push(qsTr("状态：%1").arg(status))
+        if (permissions.length > 0) {
+            lines.push(qsTr("权限："))
+            for (const p of permissions)
+                lines.push("• " + p.text + (p.note.length > 0 ? "（" + p.note + "）" : "") + (p.enforced ? "" : qsTr("（仅声明）")))
+        }
+        return lines.join("\n")
+    }
     readonly property color toneColor: tone === "ok" ? Theme.success
                                      : tone === "busy" ? Theme.accent
                                      : tone === "warn" ? Theme.caution
@@ -166,7 +185,7 @@ Rectangle {
                 anchors.rightMargin: 12
                 spacing: 4
 
-                Row {
+                Row { // the name, the version, and the rest behind an "i"
                     width: parent.width
                     spacing: 8
 
@@ -178,9 +197,21 @@ Rectangle {
                         font.pixelSize: Theme.fontBody
                         font.weight: Theme.fontStrong
                         elide: Text.ElideRight
-                        width: Math.min(implicitWidth, parent.width - (bundledTag.visible ? bundledTag.width + 8 : 0)
+                        width: Math.min(implicitWidth, parent.width - (versionText.visible ? versionText.width + 8 : 0)
+                                                        - (bundledTag.visible ? bundledTag.width + 8 : 0)
                                                         - (aiTag.visible ? aiTag.width + 8 : 0)
-                                                        - (shield.visible ? shield.width + 8 : 0))
+                                                        - (shield.visible ? shield.width + 8 : 0)
+                                                        - (infoDot.visible ? infoDot.width + 8 : 0))
+                    }
+                    Text {
+                        id: versionText
+                        objectName: "pluginVersion"
+                        visible: text.length > 0
+                        anchors.baseline: nameText.baseline
+                        text: card.version
+                        textFormat: Text.PlainText
+                        color: Theme.faint
+                        font.pixelSize: Theme.fontCaption
                     }
                     Glyph { // it runs as administrator, as Win顺 does
                         id: shield
@@ -214,101 +245,118 @@ Rectangle {
                         visible: card.aiExpose && card.aiEnabled
                         text: "AI"
                     }
-                }
-                Text { // what it does
-                    width: parent.width
-                    visible: card.description.length > 0
-                    text: card.description
-                    textFormat: Text.PlainText
-                    color: Theme.subtext
-                    font.pixelSize: Theme.fontCaption
-                    elide: Text.ElideRight
-                }
-                Flow { // where it stands, at a glance (the words say it), then its keywords
-                    id: stateLine
-                    width: parent.width
-                    spacing: 6
-
-                    Item {
-                        id: stateItem
-
-                        // A line as tall as a keycap; a long message wraps under its dot.
-                        readonly property int lineHeight: 24
-
-                        width: Math.min(dot.width + 8 + statusText.implicitWidth + 6, stateLine.width)
-                        height: Math.max(lineHeight, statusText.implicitHeight)
-
-                        Rectangle {
-                            id: dot
-                            y: Math.round(statusText.y + statusText.fontInfo.pixelSize * 0.62 - height / 2)
-                            width: 8
-                            height: 8
-                            radius: Theme.pillRadius(width)
-                            color: card.toneColor
-
-                            SequentialAnimation on opacity { // starting
-                                running: card.tone === "busy" && SystemTheme.animations && (card.Window.window?.visible ?? false) // the hidden settings window kept: no frames to drive
-                                loops: Animation.Infinite
-                                alwaysRunToEnd: true
-                                NumberAnimation { to: 0.3; duration: 600; easing.type: Easing.InOutSine }
-                                NumberAnimation { to: 1; duration: 600; easing.type: Easing.InOutSine }
-                            }
-                        }
-                        Text {
-                            id: statusText
-                            anchors.left: dot.right
-                            anchors.leftMargin: 8
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            y: lineCount > 1 ? 0 : card.onPixel((stateItem.lineHeight - implicitHeight) / 2)
-                            text: card.status
-                            textFormat: Text.PlainText
-                            color: card.tone === "error" ? Theme.danger : card.tone === "warn" ? Theme.caution : Theme.subtext
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.Wrap
-                            lineHeight: 1.15
-                        }
+                    InfoDot { // who made it, how it stands, what it may do
+                        id: infoDot
+                        objectName: "pluginInfo"
+                        anchors.verticalCenter: nameText.verticalCenter
+                        dpr: card.dpr
+                        text: card.infoText
                     }
+                }
+                Item { // its keywords as keys to press, then what it does: one line
+                    width: parent.width
+                    height: capsRow.visible ? 24 : descriptionText.implicitHeight
+                    visible: capsRow.visible || card.description.length > 0
 
-                    Repeater {
-                        model: card.keywords.filter(k => k.keyword.length > 0)
+                    Row {
+                        id: capsRow
+                        visible: card.shownKeywords.length > 0
+                        spacing: 6
 
-                        delegate: Item { // the keyword, as keys to press; a click goes to its box
-                            id: keycap
+                        Repeater {
+                            model: card.shownKeywords
 
-                            required property var modelData
+                            delegate: Item { // the keyword, as keys to press; a click goes to its box
+                                id: keycap
 
-                            width: Math.max(28, keycapText.implicitWidth + 14)
-                            height: 24
+                                required property var modelData
 
-                            Hook { // the style's key (Theme.keySurface): it can be pressed
-                                id: keycapPart
-                                anchors.fill: parent
-                                part: Theme.keySurface
-                                hovered: keycapArea.containsMouse
-                                pressed: keycapArea.pressed
-                                role: "toolbar"
-                                dpr: card.dpr
-                            }
-                            Text {
-                                id: keycapText
-                                anchors.centerIn: parent
-                                anchors.verticalCenterOffset: keycapPart.out("contentOffsetY", 0)
-                                text: keycap.modelData.keyword
-                                textFormat: Text.PlainText
-                                color: keycap.modelData.conflict.length > 0 ? Theme.danger : keycapPart.out("foreground", Theme.text)
-                                font.pixelSize: Theme.fontCaption
-                            }
-                            MouseArea {
-                                id: keycapArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: card.focusKeyword(keycap.modelData.command)
+                                width: Math.max(28, keycapText.implicitWidth + 14)
+                                height: 24
+
+                                Hook { // the style's key (Theme.keySurface): it can be pressed
+                                    id: keycapPart
+                                    anchors.fill: parent
+                                    part: Theme.keySurface
+                                    hovered: keycapArea.containsMouse
+                                    pressed: keycapArea.pressed
+                                    role: "toolbar"
+                                    dpr: card.dpr
+                                }
+                                Text {
+                                    id: keycapText
+                                    anchors.centerIn: parent
+                                    anchors.verticalCenterOffset: keycapPart.out("contentOffsetY", 0)
+                                    text: keycap.modelData.keyword
+                                    textFormat: Text.PlainText
+                                    color: keycap.modelData.conflict.length > 0 ? Theme.danger : keycapPart.out("foreground", Theme.text)
+                                    font.pixelSize: Theme.fontCaption
+                                }
+                                MouseArea {
+                                    id: keycapArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: card.focusKeyword(keycap.modelData.command)
+                                }
                             }
                         }
                     }
+                    Text {
+                        id: descriptionText
+                        anchors.left: capsRow.visible ? capsRow.right : parent.left
+                        anchors.leftMargin: capsRow.visible ? 8 : 0
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: card.description
+                        textFormat: Text.PlainText
+                        color: Theme.subtext
+                        font.pixelSize: Theme.fontCaption
+                        elide: Text.ElideRight
+                    }
                 }
+                Item { // where it stands, only when that needs a look (the tip by the name says it otherwise)
+                    id: stateItem
+                    visible: card.noteworthy
+
+                    // A line as tall as a keycap; a long message wraps under its dot.
+                    readonly property int lineHeight: 24
+
+                    width: Math.min(dot.width + 8 + statusText.implicitWidth + 6, texts.width)
+                    height: Math.max(lineHeight, statusText.implicitHeight)
+
+                    Rectangle {
+                        id: dot
+                        y: Math.round(statusText.y + statusText.fontInfo.pixelSize * 0.62 - height / 2)
+                        width: 8
+                        height: 8
+                        radius: Theme.pillRadius(width)
+                        color: card.toneColor
+
+                        SequentialAnimation on opacity { // starting
+                            running: card.tone === "busy" && SystemTheme.animations && (card.Window.window?.visible ?? false) // the hidden settings window kept: no frames to drive
+                            loops: Animation.Infinite
+                            alwaysRunToEnd: true
+                            NumberAnimation { to: 0.3; duration: 600; easing.type: Easing.InOutSine }
+                            NumberAnimation { to: 1; duration: 600; easing.type: Easing.InOutSine }
+                        }
+                    }
+                    Text {
+                        id: statusText
+                        anchors.left: dot.right
+                        anchors.leftMargin: 8
+                        anchors.right: parent.right
+                        anchors.rightMargin: 6
+                        y: lineCount > 1 ? 0 : card.onPixel((stateItem.lineHeight - implicitHeight) / 2)
+                        text: card.status
+                        textFormat: Text.PlainText
+                        color: card.tone === "error" ? Theme.danger : card.tone === "warn" ? Theme.caution : Theme.subtext
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                        lineHeight: 1.15
+                    }
+                }
+
                 Column { // `elevated` waits for the user (or cannot be): why, what the last 确认 came to, and the one click
                     visible: card.elevation === "unconfirmed" || card.elevation === "changed" || card.elevation === "unavailable"
                              || card.elevation === "confirming" || card.elevation === "host"
@@ -362,6 +410,25 @@ Rectangle {
                 y: 0
                 spacing: 8
 
+                FlatButton { // a newer version is downloaded: it waited for the plugin's program to stop
+                    id: stagedButton
+                    dpr: card.dpr
+                    objectName: "applyStagedUpdate"
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: card.staged.length > 0
+                    implicitHeight: 32
+                    highlighted: true
+                    text: qsTr("更新到 %1").arg(card.staged)
+                    onClicked: card.plugins.gallery.applyNow(card.pluginId)
+
+                    HoverHandler { id: stagedHover }
+                    HoverTip {
+                        target: stagedHover.hovered ? stagedButton : null
+                        dpr: card.dpr
+                        maxWidth: 320
+                        text: qsTr("新版本已经下载好。现在更新会先停一下这个插件；不点的话，下次启动 Win顺 时自动换上")
+                    }
+                }
                 FlatButton { // the plugin's own window, while it runs
                     dpr: card.dpr
                     anchors.verticalCenter: parent.verticalCenter
@@ -373,6 +440,7 @@ Rectangle {
                 ToggleSwitch {
                     dpr: card.dpr
                     anchors.verticalCenter: parent.verticalCenter
+                    word: false
                     enabled: card.usable
                     checked: card.pluginEnabled
                     onToggled: (on) => card.plugins.setEnabled(card.pluginId, on)
@@ -615,80 +683,6 @@ Rectangle {
                 }
             }
 
-            Column { // the permissions
-                width: parent.width
-                spacing: 2
-                visible: card.permissions.length > 0
-
-                Text {
-                    height: 24
-                    verticalAlignment: Text.AlignVCenter
-                    text: qsTr("权限")
-                    color: Theme.subtext
-                    font.pixelSize: Theme.fontCaption
-                }
-
-                Repeater {
-                    model: card.permissions
-
-                    delegate: Item {
-                        id: permissionRow
-
-                        required property var modelData
-
-                        // A line of 24; a long sentence (the sandbox's) wraps, the
-                        // tick or tag staying on its first line.
-                        width: parent.width
-                        height: Math.max(24, permissionText.implicitHeight + 6)
-
-                        Glyph { // enforced by Windows: a tick
-                            id: tick
-                            x: 16
-                            y: Math.round((24 - height) / 2)
-                            visible: permissionRow.modelData.enforced
-                            glyph: "" // CheckMark
-                            size: 12
-                            color: Theme.success
-                        }
-                        Rectangle { // declared only: Win顺 cannot hold the plugin to it
-                            id: declaredTag
-                            x: 6
-                            y: 3
-                            visible: !permissionRow.modelData.enforced
-                            width: declaredText.implicitWidth + 10
-                            height: 18
-                            radius: Theme.smallControlRadius
-                            color: "transparent"
-                            border.width: 1
-                            border.color: Theme.controlBorder
-
-                            Text {
-                                id: declaredText
-                                anchors.centerIn: parent
-                                text: qsTr("仅声明")
-                                color: Theme.subtext
-                                font.pixelSize: 11
-                            }
-                        }
-                        Text {
-                            id: permissionText
-                            anchors.left: parent.left
-                            // After the tag when it is wider than the usual margin (English).
-                            anchors.leftMargin: declaredTag.visible ? Math.max(64, declaredTag.x + declaredTag.width + 8) : 64
-                            anchors.right: parent.right
-                            y: 3
-                            text: permissionRow.modelData.text
-                                  + (permissionRow.modelData.note.length > 0 ? "（" + permissionRow.modelData.note + "）" : "")
-                            textFormat: Text.PlainText
-                            color: Theme.text
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.Wrap
-                            lineHeight: 1.15
-                        }
-                    }
-                }
-            }
-
             Column { // the settings the manifest declares
                 width: parent.width
                 spacing: 6
@@ -875,16 +869,6 @@ Rectangle {
                         }
                     }
                 }
-            }
-
-            Text { // who made which version of it
-                width: parent.width
-                visible: text.length > 0
-                text: [card.version, card.author].filter(s => s.length > 0).join(" · ")
-                textFormat: Text.PlainText
-                color: Theme.faint
-                font.pixelSize: 12
-                elide: Text.ElideRight
             }
 
             Item { // room under the last line, inside the clip

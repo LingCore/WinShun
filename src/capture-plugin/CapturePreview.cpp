@@ -1079,6 +1079,223 @@ int runSelectionKeys(const QStringList& args)
     return ok && g_warnings == 0 ? 0 : 4;
 }
 
+// --selection-size: the size panel (CaptureSizeBox.qml, GitHub #308) in the
+// real overlay over a made-up desktop, through the overlay's own mouse and
+// key routing: F before a selection and a preset picked, the label clicked,
+// numbers typed, the lock, the arrows, the list added to and taken from, and
+// the picture copied at the size asked for; size-*.png.
+int runSelectionSize(const QStringList& args)
+{
+    using namespace capture;
+    const QDir out(valueAfter(args, kCaptureToolsFlag));
+    QDir().mkpath(out.path());
+    QTranslator translator;
+    if (args.contains(u"--english"_s) && translator.load(u":/i18n/capture_en.qm"_s))
+        QCoreApplication::installTranslator(&translator);
+    QQmlApplicationEngine engine;
+    QQmlComponent fixtureComponent(&engine);
+    fixtureComponent.setData(R"(
+        import QtQuick
+        Window {
+            color: "#f4f6f8"
+            flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+            Text {
+                x: 80; y: 48
+                text: "截图尺寸验证 / Capture size verification"
+                color: "#253047"; font.pixelSize: 24
+            }
+        }
+    )", QUrl(u"qrc:/selection-size-fixture.qml"_s));
+    std::unique_ptr<QQuickWindow> fixture(qobject_cast<QQuickWindow*>(fixtureComponent.create()));
+    if (!fixture) { say(fixtureComponent.errorString()); return 3; }
+    fixture->showFullScreen();
+    settle(fixture.get());
+    QImage copied;
+    int copies = 0;
+    QStringList kept;
+    Capture::Callbacks callbacks;
+    callbacks.copy = [&](const QImage& image, const QByteArray&, const QString&) { copied = image; ++copies; };
+    callbacks.sizePresetsChanged = [&](const QString& text) { kept.append(text); };
+    Capture capture(&engine, std::move(callbacks));
+    capture.setSizePresets(u"640x480,16:9"_s);
+    QQuickWindow* overlay = nullptr;
+    CaptureSession* session = nullptr;
+    CaptureScreen* screen = nullptr;
+    bool ok = true;
+    const auto check = [&](bool passed, const QString& what) {
+        say(u"%1: %2"_s.arg(passed ? u"PASS"_s : u"FAIL"_s, what));
+        ok = passed && ok;
+    };
+    const auto waitFor = [&](const std::function<bool()>& ready) {
+        QElapsedTimer clock;
+        clock.start();
+        while (!ready() && clock.elapsed() < 8000)
+            pump(20);
+        return ready();
+    };
+    capture.trigger();
+    const bool begun = waitFor([&] {
+        for (QWindow* window : QGuiApplication::topLevelWindows()) {
+            auto* model = window->property("screenModel").value<CaptureScreen*>();
+            auto* state = window->property("session").value<CaptureSession*>();
+            if (model && state && model->hasImage() && state->active() && window->isVisible()
+                && window->isActive() && window->screen() == fixture->screen()) {
+                overlay = qobject_cast<QQuickWindow*>(window);
+                session = state;
+                screen = model;
+                return overlay && overlay->activeFocusItem();
+            }
+        }
+        return false;
+    });
+    if (!begun) { check(false, u"real capture overlay appeared"_s); return 4; }
+    // By the items on the screen: a Repeater's rows are not QObject children of the window.
+    const std::function<QQuickItem*(QQuickItem*, const QString&)> find = [&](QQuickItem* from, const QString& name) -> QQuickItem* {
+        if (from->objectName() == name)
+            return from;
+        for (QQuickItem* child : from->childItems()) {
+            if (QQuickItem* found = find(child, name))
+                return found;
+        }
+        return nullptr;
+    };
+    const auto item = [&](const char* name) { return find(overlay->contentItem(), QString::fromLatin1(name)); };
+    const auto send = [&](QEvent::Type type, QPointF at, Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, at, overlay->mapToGlobal(at), button, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(overlay, &event);
+        pump(20);
+    };
+    const auto middle = [](QQuickItem* target) { return target->mapToScene(QPointF(target->width() / 2, target->height() / 2)); };
+    const auto click = [&](QQuickItem* target) {
+        if (!target || !target->isVisible())
+            return false;
+        const QPointF at = middle(target);
+        send(QEvent::MouseMove, at, Qt::NoButton, Qt::NoButton);
+        send(QEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton);
+        send(QEvent::MouseButtonRelease, at, Qt::LeftButton, Qt::NoButton);
+        return true;
+    };
+    const auto key = [&](int code, Qt::KeyboardModifiers modifiers = Qt::NoModifier, const QString& text = {}) {
+        QKeyEvent press(QEvent::KeyPress, code, modifiers, text);
+        QCoreApplication::sendEvent(overlay, &press);
+        QKeyEvent release(QEvent::KeyRelease, code, modifiers);
+        QCoreApplication::sendEvent(overlay, &release);
+        pump(20);
+    };
+    const auto type = [&](const QString& digits) {
+        for (const QChar digit : digits)
+            key(Qt::Key_0 + digit.digitValue(), Qt::NoModifier, QString(digit));
+    };
+    const auto shownAs = [&](const char* name) { QQuickItem* i = item(name); return i && i->isVisible(); };
+    const auto fieldText = [&](const char* name) {
+        QQuickItem* field = item(name);
+        QObject* input = field ? field->property("input").value<QObject*>() : nullptr;
+        return input ? input->property("text").toString() : QString();
+    };
+    const auto typing = [&] { // a number field has the keys
+        const QQuickItem* focus = overlay->activeFocusItem();
+        return focus && focus->inherits("QQuickTextInput");
+    };
+    const auto grab = [&](QStringView name) {
+        settle(overlay);
+        check(saveGrab(overlay, out.filePath(name.toString())), u"saved %1"_s.arg(name));
+    };
+    const qreal dpr = screen->dpr();
+    const QSize pixels = screen->pixels();
+    const QPointF centre(pixels.width() / dpr / 2, pixels.height() / dpr / 2);
+
+    // Before a selection: F opens it by the pointer, the list out; a size makes a selection there.
+    send(QEvent::MouseMove, centre, Qt::NoButton, Qt::NoButton);
+    check(shownAs("captureSizeLabel") && !shownAs("captureSizePanel"), u"at rest it is the label"_s);
+    key(Qt::Key_F, Qt::NoModifier, u"f"_s);
+    check(waitFor([&] { return session->sizeEditing() && shownAs("captureSizePanel") && shownAs("captureSizeList") && typing(); }),
+        u"F with no selection opens the panel with its list, the width has the keys"_s);
+    check(!screen->magnifierShown() && session->keyHints().isEmpty(), u"the magnifier and the key hints give way"_s);
+    grab(u"size-before-selection.png");
+    check(click(item("captureSizePreset0")), u"the first preset can be clicked"_s);
+    const QPoint at = screen->cursor();
+    check(session->hasSelection() && session->selectionRect().size() == QSize(640, 480)
+            && session->selectionRect().contains(at),
+        u"a size preset makes a 640 × 480 selection about the pointer: %1x%2"_s.arg(session->selectionRect().width()).arg(session->selectionRect().height()));
+    check(!session->sizeEditing() && !shownAs("captureSizePanel") && !typing(), u"the panel closed and the capture has the keys again"_s);
+
+    // The label clicked: numbers typed, Tab to the height, Enter.
+    const QPoint corner = session->selectionRect().topLeft();
+    check(click(item("captureSizeLabel")), u"the label can be clicked"_s);
+    check(waitFor([&] { return shownAs("captureSizePanel") && typing(); }) && !shownAs("captureSizeList")
+            && fieldText("captureSizeWidth") == u"640" && fieldText("captureSizeHeight") == u"480",
+        u"a click on the label opens the panel with the size now, the list closed"_s);
+    type(u"800"_s);
+    key(Qt::Key_Tab);
+    check(session->selectionRect() == QRect(corner, QSize(800, 480)), u"Tab gives the width typed to the selection"_s);
+    type(u"600"_s);
+    key(Qt::Key_Return);
+    check(session->selectionRect() == QRect(corner, QSize(800, 600)) && !session->sizeEditing() && !typing(),
+        u"Enter gives 800 × 600 with the top left where it was, and closes the panel"_s);
+    key(Qt::Key_Right, Qt::ShiftModifier);
+    check(session->selectionRect().size() == QSize(801, 600), u"the capture's own keys work again (Shift+Right)"_s);
+    key(Qt::Key_Left, Qt::ShiftModifier);
+
+    // The lock: the other number follows the one typed; the arrows step.
+    key(Qt::Key_F, Qt::NoModifier, u"f"_s);
+    check(waitFor([&] { return shownAs("captureSizePanel") && typing(); }), u"F with a selection opens the panel"_s);
+    check(click(item("captureSizeLock")) && session->ratioLocked() && session->ratio() == QSize(800, 600) && typing(),
+        u"the lock holds 800 : 600 and the field keeps the keys"_s);
+    type(u"400"_s);
+    check(fieldText("captureSizeHeight") == u"300", u"with the lock the height follows the width typed: "_s + fieldText("captureSizeHeight"));
+    key(Qt::Key_Return);
+    check(session->selectionRect() == QRect(corner, QSize(400, 300)), u"Enter gives 400 × 300"_s);
+    key(Qt::Key_F, Qt::NoModifier, u"f"_s);
+    waitFor([&] { return typing(); });
+    key(Qt::Key_Up);
+    check(session->selectionRect().size() == QSize(401, 301) && fieldText("captureSizeWidth") == u"401"
+            && fieldText("captureSizeHeight") == u"301" && session->sizeEditing(),
+        u"Up steps a pixel, the shape kept, the panel stays"_s);
+    key(Qt::Key_Down);
+    key(Qt::Key_Down, Qt::ShiftModifier);
+    check(session->selectionRect().size() == QSize(390, 293), u"Shift+Down steps ten: %1x%2"_s.arg(session->selectionRect().width()).arg(session->selectionRect().height()));
+    key(Qt::Key_F, Qt::NoModifier, u"f"_s); // a letter in the field: not the capture's
+    key(Qt::Key_C, Qt::NoModifier, u"c"_s);
+    check(session->active() && session->sizeEditing() && fieldText("captureSizeWidth") == u"390", u"letters typed into the panel do nothing"_s);
+
+    // The list: a shape, the size now added, a preset taken out.
+    check(click(item("captureSizePresets")) && shownAs("captureSizeList"), u"the arrow opens the list"_s);
+    grab(u"size-panel.png");
+    check(click(item("captureSizeAdd")) && kept.value(0) == u"640x480,16:9,390x293" && shownAs("captureSizeList"),
+        u"the size now is kept as a preset: "_s + kept.join(u" | "));
+    check(click(item("captureSizeAdd")) && kept.size() == 1, u"not twice"_s);
+    QQuickItem* first = item("captureSizePreset0");
+    send(QEvent::MouseMove, first ? middle(first) : centre, Qt::NoButton, Qt::NoButton);
+    check(click(item("captureSizePreset0Remove")) && kept.value(1) == u"16:9,390x293" && session->selectionRect().size() == QSize(390, 293),
+        u"a preset is taken out without being applied: "_s + kept.join(u" | "));
+    key(Qt::Key_Down);
+    key(Qt::Key_Return);
+    check(session->ratio() == QSize(16, 9) && session->selectionRect().size() == QSize(390, 219) && !session->sizeEditing(),
+        u"the arrows and Enter pick 16 : 9 from the list: %1x%2"_s.arg(session->selectionRect().width()).arg(session->selectionRect().height()));
+    grab(u"size-locked-label.png");
+
+    // Esc closes the panel only; a press on the picture closes it too.
+    key(Qt::Key_F, Qt::NoModifier, u"f"_s);
+    waitFor([&] { return typing(); });
+    key(Qt::Key_Escape);
+    check(session->active() && session->hasSelection() && !session->sizeEditing() && !typing(), u"Esc closes the panel, not the selection"_s);
+    key(Qt::Key_F, Qt::NoModifier, u"f"_s);
+    waitFor([&] { return typing(); });
+    const QRect before = session->selectionRect();
+    const QPointF inside((before.center().x()) / dpr, (before.center().y()) / dpr);
+    send(QEvent::MouseButtonPress, inside, Qt::LeftButton, Qt::LeftButton);
+    send(QEvent::MouseButtonRelease, inside, Qt::LeftButton, Qt::NoButton);
+    check(!session->sizeEditing() && !typing() && session->selectionRect() == before, u"a press on the picture closes the panel"_s);
+
+    const QImage expected = screen->image().copy(before);
+    key(Qt::Key_Return);
+    check(waitFor([&] { return !capture.busy(); }) && copies == 1 && copied == expected && copied.size() == QSize(390, 219),
+        u"Enter copies the picture at the size asked for"_s);
+    fixture->hide();
+    say(u"selection size checks: %1; %2 warning(s)"_s.arg(ok ? u"passed"_s : u"failed"_s).arg(g_warnings));
+    return ok && g_warnings == 0 ? 0 : 4;
+}
+
 // --key-hints: the shortcut hints (CaptureKeyHints.qml) in the real overlay
 // over a made-up desktop, through the overlay's own mouse routing, on the
 // real clock (KeyHintPolicy): none at first, then by themselves; a press
@@ -1202,7 +1419,7 @@ int runKeyHints(const QStringList& args)
     check(session.keyHintsShown(), u"shown by themselves after %1 ms with no button pressed"_s.arg(startMs));
     move(QPointF(640, 330));
     grab(u"choosing");
-    check(rows() == u"wheel,wasd,recall,history,ocr,quit", u"choosing rows: "_s + rows());
+    check(rows() == u"wheel,wasd,size,recall,history,ocr,quit", u"choosing rows: "_s + rows());
     check(opacity() == 1 && hints->property("corner").toInt() == 0, u"shown in the bottom-left corner"_s);
     const QRectF cardRect = card->mapRectToScene(QRectF(0, 0, card->width(), card->height()));
     say(u"card %1,%2 %3x%4 logical"_s.arg(cardRect.x()).arg(cardRect.y()).arg(cardRect.width()).arg(cardRect.height()));
@@ -1261,7 +1478,7 @@ int runKeyHints(const QStringList& args)
     pump(idleMs + 300);
     check(session.keyHintsShown(), u"after %1 ms without input: the selection's rows"_s.arg(idleMs));
     grab(u"selected");
-    check(rows() == u"copy,save,pin,arrows,ocr,long", u"selected rows: "_s + rows());
+    check(rows() == u"copy,save,pin,arrows,size,ocr,long", u"selected rows: "_s + rows());
     check(opacity() == 1 && hints->property("corner").toInt() == 0, u"still bottom-left with a selection in the middle"_s);
     move(QPointF(650, 335));
     check(!session.keyHintsShown(), u"a move after the pause hides them"_s);
@@ -1399,6 +1616,8 @@ int runCaptureTools(const QStringList& args)
         return runCaptureSave(args) + g_warnings;
     if (args.contains(u"--selection-keys"_s))
         return runSelectionKeys(args);
+    if (args.contains(u"--selection-size"_s))
+        return runSelectionSize(args);
     if (args.contains(u"--toolbar-drag"_s) || args.contains(u"--brush"_s) || args.contains(u"--brush-performance"_s))
         return runToolbarDrag(args);
     using namespace capture;

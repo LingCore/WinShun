@@ -3,11 +3,14 @@
 # plugin on the single-header SDK (src/plugins-sdk/winshun.h): new File
 # Explorer folder windows become tabs of a window already open. No Qt, the
 # C runtime linked in. The rules (Rules), the hidden windows and their
-# journal (Hider) and the closing of spare tabs (Closer) are plain C++ that
+# journal (Hider), the closing of spare tabs (Closer) and the tabs kept for
+# the next logon (Session) are plain C++ that
 # tests/tst_explorertabs.cpp builds in again.
 add_executable(WinShunExplorerTabs
     main.cpp
-    Engine.cpp Engine.h
+    Engine.cpp Engine.h Explorer.h
+    Keeper.cpp Keeper.h
+    Session.cpp Session.h
     Rules.cpp Rules.h
     Hider.cpp Hider.h
     Closer.cpp Closer.h

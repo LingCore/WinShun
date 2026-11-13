@@ -5,16 +5,20 @@
 
 #pragma once
 
-#include "BitHacks.h"
 #include "Range.h"
 #include "ZXAlgorithms.h"
 
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <cassert>
 #include <cmath>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <limits>
+#include <type_traits>
 #include <vector>
 
 namespace ZXing {
@@ -45,21 +49,21 @@ public:
 	PatternView(Iterator data, int size, Iterator base, Iterator end) : _data(data), _size(size), _base(base), _end(end) {}
 
 	template <size_t N>
-	PatternView(const Pattern<N>& row) : _data(row.data()), _size(N)
+	constexpr PatternView(const Pattern<N>& row) : _data(row.data()), _size(N)
 	{}
 
 	Iterator data() const { return _data; }
 	Iterator begin() const { return _data; }
 	Iterator end() const { return _data + _size; }
 
-	value_type operator[](int i) const
+	constexpr value_type operator[](int i) const
 	{
 //		assert(i < _count);
 		return _data[i];
 	}
 
-	int sum(int n = 0) const { return Reduce(_data, _data + (n == 0 ? _size : n)); }
-	int size() const { return _size; }
+	constexpr int sum(int n = 0) const { return Reduce(_data, _data + (n == 0 ? _size : n)); }
+	constexpr int size() const { return _size; }
 
 	// index is the number of bars and spaces from the first bar to the current position
 	int index() const { return narrow_cast<int>(_data - _base) - 1; }
@@ -69,6 +73,7 @@ public:
 	bool isAtLastBar() const { return _data + _size == _end - 1; }
 	bool isValid(int n) const { return _data && _data >= _base && _data + n <= _end; }
 	bool isValid() const { return isValid(size()); }
+	int spaceInFront() const { return isAtFirstBar() ? INT_MAX : _data[-1]; }
 
 	template<bool acceptIfAtFirstBar = false>
 	bool hasQuietZoneBefore(float scale) const
@@ -152,21 +157,25 @@ constexpr auto BarAndSpaceSum(const T* view) noexcept
  *
  * N = number of bars/spaces
  * SUM = sum over all N elements (size of pattern in modules)
- * IS_SPARCE = whether or not the pattern contains '0's denoting 'wide' bars/spaces
+ * IS_SPARSE = whether or not the pattern contains '0's denoting 'wide' bars/spaces
  */
-template <int N, int SUM, bool IS_SPARCE = false>
-struct FixedPattern
+template <int N, int SUM, bool IS_SPARSE = false>
+struct FixedPattern : public Pattern<N>
 {
-	using value_type = PatternRow::value_type;
-	value_type _data[N];
-	constexpr value_type operator[](int i) const noexcept { return _data[i]; }
-	constexpr const value_type* data() const noexcept { return _data; }
+	static_assert(N > 0, "N must be > 0");
+	static_assert(SUM > 0, "SUM must be > 0");
+	static_assert(SUM >= N || IS_SPARSE, "SUM must be >= N");
+
+	using typename Pattern<N>::value_type;
+	using Pattern<N>::data;
+
 	constexpr int size() const noexcept { return N; }
-	constexpr BarAndSpace<value_type> sums() const noexcept { return BarAndSpaceSum<N, value_type>(_data); }
+	constexpr int sum() const noexcept { return SUM; }
+	constexpr BarAndSpace<value_type> sums() const noexcept { return BarAndSpaceSum<N, value_type>(data()); }
 };
 
 template <int N, int SUM>
-using FixedSparcePattern = FixedPattern<N, SUM, true>;
+using FixedSparsePattern = FixedPattern<N, SUM, true>;
 
 template <bool E2E = false, int LEN, int SUM>
 double IsPattern(const PatternView& view, const FixedPattern<LEN, SUM, false>& pattern, int spaceInPixel = 0,
@@ -184,7 +193,7 @@ double IsPattern(const PatternView& view, const FixedPattern<LEN, SUM, false>& p
 		if (minQuietZone && spaceInPixel < minQuietZone * modSize.space)
 			return 0;
 
-		const BarAndSpace<double> thr = {modSize[0] * .75 + .5, modSize[1] / (2 + (LEN < 6)) + .5};
+		const BarAndSpace<double> thr = {modSize[0] * .75 + .5, modSize[1] * .6 + .5};
 
 		for (int x = 0; x < LEN; ++x)
 			if (std::abs(view[x] - pattern[x] * modSize[x]) > thr[x])
@@ -244,12 +253,15 @@ double IsPattern(const PatternView& view, const FixedPattern<N, SUM, true>& patt
 	return moduleSize;
 }
 
-template <int N, int SUM, bool IS_SPARCE>
-bool IsRightGuard(const PatternView& view, const FixedPattern<N, SUM, IS_SPARCE>& pattern, double minQuietZone,
+template <bool E2E = false, int N, int SUM, bool IS_SPARSE>
+bool IsRightGuard(const PatternView& view, const FixedPattern<N, SUM, IS_SPARSE>& pattern, double minQuietZone,
 				  double moduleSizeRef = 0)
 {
+	assert(view.size() == pattern.size());
+	if (!view.isValid())
+		return false;
 	int spaceInPixel = view.isAtLastBar() ? std::numeric_limits<int>::max() : *view.end();
-	return IsPattern(view, pattern, spaceInPixel, minQuietZone, moduleSizeRef) != 0;
+	return IsPattern<E2E>(view, pattern, spaceInPixel, minQuietZone, moduleSizeRef) != 0;
 }
 
 template<int LEN, typename Pred>
@@ -268,23 +280,50 @@ PatternView FindLeftGuard(const PatternView& view, int minSize, Pred isGuard)
 	return {};
 }
 
-template <int LEN, int SUM, bool IS_SPARCE>
-PatternView FindLeftGuard(const PatternView& view, int minSize, const FixedPattern<LEN, SUM, IS_SPARCE>& pattern,
+template <bool E2E = false, int LEN, int SUM, bool IS_SPARSE>
+PatternView FindLeftGuard(const PatternView& view, int minSize, const FixedPattern<LEN, SUM, IS_SPARSE>& pattern,
 						  double minQuietZone)
 {
 	return FindLeftGuard<LEN>(view, std::max(minSize, LEN),
 							  [&pattern, minQuietZone](const PatternView& window, int spaceInPixel) {
-								  return IsPattern(window, pattern, spaceInPixel, minQuietZone);
+								  return IsPattern<E2E>(window, pattern, spaceInPixel, minQuietZone);
 							  });
 }
 
-template <int LEN>
-std::array<int, LEN - 2> NormalizedE2EPattern(const PatternView& view, int mods, bool reverse = false)
+template <typename ARRAY, typename = std::enable_if_t<std::is_integral_v<typename ARRAY::value_type>>>
+constexpr int ToInt(const ARRAY& a)
+{
+	assert(Reduce(a) <= 32);
+
+	int pattern = 0;
+	for (int i = 0; i < Size(a); i++) {
+		if (a[i] < 0) // negative shift is undefined behavior
+			return -1;
+		pattern = (pattern << a[i]) | ~(0xffffffff << a[i]) * (~i & 1);
+	}
+	return pattern;
+}
+
+template <size_t BITS, typename T, size_t N, typename = std::enable_if_t<std::is_integral_v<T>>>
+constexpr uint32_t PackedPattern(const std::array<T, N>& np, T min = 0)
+{
+	static_assert(BITS * N <= 32, "PackedArray: BITS * N must be <= 32");
+	uint32_t res = 0;
+	for (size_t i = 0; i < N; ++i) {
+		if (np[i] < min || np[i] - min >= (1 << BITS))
+			return -1;
+		AppendBits(res, uint32_t(np[i] - min), BITS);
+	}
+	return res;
+}
+
+template <int LEN, int RET_LEN>
+constexpr std::array<int, RET_LEN> NormalizedE2EPattern(const PatternView& view, int mods, bool reverse = false)
 {
 	double moduleSize = static_cast<double>(view.sum(LEN)) / mods;
-	std::array<int, LEN - 2> e2e;
+	std::array<int, RET_LEN> e2e;
 
-	for (int i = 0; i < LEN - 2; i++) {
+	for (int i = 0; i < RET_LEN; i++) {
 		int i_v = reverse ? LEN - 2 - i : i;
 		double v = (view[i_v] + view[i_v + 1]) / moduleSize;
 		e2e[i] = int(v + .5);
@@ -293,8 +332,23 @@ std::array<int, LEN - 2> NormalizedE2EPattern(const PatternView& view, int mods,
 	return e2e;
 }
 
+template <int LEN, int SUM, int RET_LEN = LEN - 2>
+constexpr std::array<int, RET_LEN> NormalizedE2EPattern(const PatternView& view)
+{
+	return NormalizedE2EPattern<LEN, RET_LEN>(view, SUM);
+}
+
+template <int LEN, int SUM, size_t N>
+constexpr auto PatternsToE2EInts(const std::array<FixedPattern<LEN, SUM>, N>& in)
+{
+	std::array<int, N> res{};
+	for (size_t i = 0; i < N; ++i)
+		res[i] = ToInt(NormalizedE2EPattern<LEN, SUM>(in[i]));
+	return res;
+}
+
 template <int LEN, int SUM>
-std::array<int, LEN> NormalizedPattern(const PatternView& view)
+constexpr std::array<int, LEN> NormalizedPattern(const PatternView& view)
 {
 	double moduleSize = static_cast<double>(view.sum(LEN)) / SUM;
 #if 1
@@ -312,8 +366,8 @@ std::array<int, LEN> NormalizedPattern(const PatternView& view)
 		return {};
 
 	if (err) {
-		auto mi = err > 0 ? std::max_element(std::begin(rs), std::end(rs)) - std::begin(rs)
-						  : std::min_element(std::begin(rs), std::end(rs)) - std::begin(rs);
+		auto mi = err > 0 ? std::ranges::max_element(rs) - rs.begin()
+						  : std::ranges::min_element(rs) - rs.begin();
 		is[mi] += err;
 		rs[mi] -= err;
 	}
@@ -354,7 +408,7 @@ void GetPatternRow(Range<I> b_row, PatternRow& p_row)
 	if (*lastPos)
 		p_row.push_back(0); // first value is number of white pixels, here 0
 
-	for (auto p = b_row.begin() + 1; p < b_row.end(); ++p)
+	for (auto p = b_row.begin() + 1; p != b_row.end(); ++p)
 		if (bool(*p) != bool(*lastPos))
 			p_row.push_back(p - std::exchange(lastPos, p));
 
@@ -373,27 +427,33 @@ void GetPatternRow(Range<I> b_row, PatternRow& p_row)
 	if (*bitPos)
 		intPos++; // first value is number of white pixels, here 0
 
-	// The following code as been observed to cause a speedup of up to 30% on large images on an AVX cpu
+	// The following code has been observed to cause a speedup of up to 30% on large images on an AVX cpu
 	// and on an a Google Pixel 3 Android phone. Your mileage may vary.
-	if constexpr (std::is_pointer_v<I> && sizeof(I) == 8 && sizeof(std::remove_pointer_t<I>) == 1) {
+	if constexpr (std::contiguous_iterator<I> && sizeof(std::remove_cv_t<std::iter_value_t<I>>) == 1) {
 		using simd_t = uint64_t;
-		while (bitPos < bitPosEnd - sizeof(simd_t)) {
-			auto asSimd0 = BitHacks::LoadU<simd_t>(bitPos);
-			auto asSimd1 = BitHacks::LoadU<simd_t>(bitPos + 1);
+		const auto* const bitPtrBegin = std::to_address(bitPos);
+		const auto* const bitPtrEnd = std::to_address(bitPosEnd);
+		auto* bitPtr = bitPtrBegin;
+
+		while (bitPtr < bitPtrEnd - sizeof(simd_t)) {
+			auto asSimd0 = LoadU<simd_t>(bitPtr);
+			auto asSimd1 = LoadU<simd_t>(bitPtr + 1);
 			auto z = asSimd0 ^ asSimd1;
 			if (z) {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-				int step = BitHacks::NumberOfTrailingZeros(z) / 8 + 1;
+				int step = std::countr_zero(z) / 8 + 1;
 #else
-				int step = BitHacks::NumberOfLeadingZeros(z) / 8 + 1;
+				int step = std::countl_zero(z) / 8 + 1;
 #endif
 				(*intPos++) += step;
-				bitPos += step;
+				bitPtr += step;
 			} else {
 				(*intPos) += sizeof(simd_t);
-				bitPos += sizeof(simd_t);
+				bitPtr += sizeof(simd_t);
 			}
 		}
+
+		bitPos += bitPtr - bitPtrBegin;
 	}
 
 	while (++bitPos != bitPosEnd) {

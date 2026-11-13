@@ -62,6 +62,13 @@ Hit classifyWindow(HWND root);
 // field nested under it. Class queries only: safe on the keyboard hook.
 bool isOpusLister(HWND root);
 bool isOpusFileDisplay(HWND root, HWND focus);
+// The file display of the lister `root` that a key typed now belongs to: the
+// one with the keyboard focus, with no menu open over it; null otherwise.
+// Opus draws its menus itself (dopus.button.display.popup), so the thread is
+// in no menu mode and the focus stays on the files: what tells is that the
+// menu holds the mouse (GitHub #311). GetGUIThreadInfo only, which sends the
+// other thread nothing: safe on the keyboard hook.
+HWND opusTypingView(HWND root);
 // The bounds of the lister's file displays shown, together (both sides of a
 // dual display); empty for none. Screen pixels (GitHub #82).
 RECT opusFileLists(HWND root);

@@ -42,6 +42,7 @@
 #include "MovedPlugins.h"
 #include "Pipe.h"
 #include "Placement.h"
+#include "PluginCommands.h"
 #include "PluginSettings.h"
 #include "PluginUpdates.h"
 #include "ProxyAddress.h"
@@ -68,6 +69,7 @@
 #include "platform/ComWorker.h"
 #include "platform/Credentials.h"
 #include "platform/DialogJump.h"
+#include "DialogRuleStore.h"
 #include "platform/ExternalPreview.h"
 #include "platform/FileManagers.h"
 #include "platform/Foreground.h"
@@ -508,6 +510,7 @@ bool App::start(const StartOptions& options)
 {
     m_clipDisplayProbe = options.clipboardDisplayProbe;
     m_settingsProbe = options.settingsProbe;
+    m_mcpPipe = options.mcpPipe;
     ocr::setComponentsRoot(Settings::dataDir() + u"/components"_s);
     const bool firstRun = !Settings::exists();
     // Updated from a version without the clipboard history: tell about it once.
@@ -695,6 +698,9 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         // it, the focus left where it was), a pinned launcher, a file dialog's bar.
         return (m_clipWindow && m_clipWindow->isVisible() && !m_clipPrewarming.load())
             || (m_launcher && m_launcher->pinned() && launcherShown()) || (m_dialogBar && m_dialogBar->isShown());
+    }, [this] {
+        // What the launcher and the clipboard need to come up stays (HotPages).
+        return m_launcherPages->pages().united(m_clipPages->pages());
     });
     // Loaded, caught up, done reading: emptied now, not at the next recheck.
     connect(m_index.get(), &IndexService::stateChanged, m_idleTrim.get(), &IdleTrim::poke);
@@ -923,9 +929,12 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_clipboard.get(), &Clipboard::pinnedChanged, this, &App::clipboardPinnedChanged);
     connect(m_clipboard.get(), &Clipboard::keysWanted, this, &App::engageClipboard);
     connect(m_clipboard.get(), &Clipboard::focusNeeded, this, &App::activateClipboard);
-    // A group's name is typed in the window itself, Chinese with the input
-    // method, which only works in the window with the focus.
+    // A group's name and an entry's note are typed in the window itself,
+    // Chinese with the input method, which only works in the window with
+    // the focus; pinned, the keys elsewhere, nothing typed came at all
+    // (GitHub #267).
     connect(m_clipboard.get(), &Clipboard::groupNameRequested, this, &App::activateClipboard);
+    connect(m_clipboard.get(), &Clipboard::noteRequested, this, &App::activateClipboard);
     connect(m_clipboard.get(), &Clipboard::fieldRequested, this, &App::returnToField);
     connect(m_clipboard.get(), &Clipboard::turnOnRequested, this, [this] {
         Settings settings = m_settings;
@@ -1902,6 +1911,7 @@ void App::applySettings(bool initial)
     }
     m_backup->setFolder(m_settings.backupFolder);
     m_launcher->setRecordHistory(m_settings.recordHistory);
+    m_launcher->setRememberAdmin(m_settings.rememberAdmin);
     m_launcher->setMergeFileScope(m_settings.mergeFileScope);
     m_launcher->setAppsTab(m_settings.appsTab);
     m_launcher->setHistoryKeys(m_settings.queryHistoryKeys);
@@ -1930,7 +1940,10 @@ void App::applySettings(bool initial)
     m_preview->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
+    m_launcher->setRowDeleteButton(m_settings.rowDeleteButton);
+    m_launcher->setScopeButton(m_settings.scopeButton);
     m_launcher->setKeyboardHints(m_settings.shortcutHelp, m_settings.footerHints);
+    m_launcher->setMaxRows(m_settings.maxRows);
     m_launcher->setPureSearch(m_settings.pureSearch && !m_launcherOverBox);
     tellLauncherFolders();
     m_clipboard->setNumberHints(m_settings.numberHints);
@@ -2437,6 +2450,24 @@ void App::setUpAppTools()
             });
             done({});
         }});
+    // The cloud backup plugin (GitHub #276; winshun:backup): a backup of the
+    // settings as 导出备份 makes it, into the plugin's data folder ({hash,
+    // when, written}; nothing written when it is what the plugin has, `unless`);
+    // and the backup in a file there checked, what there is now saved to this
+    // computer's "backups", and Win顺 restarted with it, as 从备份恢复 does.
+    const auto backupTool = [](std::function<void(mcp::ToolResult)> done) {
+        return [done = std::move(done)](const QJsonObject& result, const QString& error) {
+            done(error.isEmpty() ? mcp::ToolResult {result} : toolError(error));
+        };
+    };
+    tools.push_back({u"backup_export"_s, plugin::Permission::WinshunBackup,
+        [this, backupTool](const QString&, const QString& dataDir, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            m_backup->exportTool(dataDir, arguments, backupTool(std::move(done)));
+        }});
+    tools.push_back({u"backup_restore"_s, plugin::Permission::WinshunBackup,
+        [this, backupTool](const QString&, const QString& dataDir, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            m_backup->restoreTool(dataDir, arguments, backupTool(std::move(done)));
+        }});
     m_pluginHost->setAppTools(std::move(tools));
 }
 
@@ -2693,6 +2724,7 @@ void App::applyTypeToSearch()
     const TypeToSearch::Surfaces wanted {.startMenu = m_settings.taskbarStartTyping,
         .explorer = m_settings.explorerTyping,
         .opus = m_settings.opusTyping,
+        .desktop = m_settings.desktopTyping,
         .pasteFile = m_settings.pasteFileEnabled && m_settings.pasteFileCtrlV};
     if (m_typing && m_typing->surfaces() == wanted)
         return;
@@ -2721,6 +2753,15 @@ void App::applyTypeToSearch()
                                          .arg(reinterpret_cast<quintptr>(root), 0, 16)
                                          .arg(reinterpret_cast<quintptr>(tab), 0, 16);
                 folderTyped(root, tab, true, request);
+            },
+            Qt::QueuedConnection);
+    };
+    callbacks.typedOnDesktop = [this](HWND desktop, unsigned vk, TypeToSearch::RequestId request) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, desktop, vk, request] {
+                qInfo().noquote() << u"Desktop typing: key 0x%1"_s.arg(vk, 2, 16, QLatin1Char('0'));
+                desktopTyped(desktop, request);
             },
             Qt::QueuedConnection);
     };
@@ -3159,6 +3200,25 @@ void App::folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request)
     });
 }
 
+// Typed with the desktop's icons having the keyboard (GitHub #314): the
+// launcher as its hotkey opens it, nothing before the words, which follow
+// once it is ready for them. The desktop no longer in front (a window
+// opened meanwhile): the keys are given back, which only goes to the icons
+// if they still have the keyboard.
+void App::desktopTyped(HWND desktop, std::uint64_t request)
+{
+    if (!m_typing || !m_typing->pending(request))
+        return;
+    if (!m_settings.desktopTyping || !m_window || ::GetForegroundWindow() != desktop) {
+        qInfo() << "Desktop typing: the desktop is no longer in front; the keys go back to it";
+        m_typing->giveBack(request);
+        return;
+    }
+    beginHandoff(u"desktop"_s);
+    showLauncher();
+    deliverTyping(); // pinned and up already: it may be now
+}
+
 void App::typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t request, bool known, const QString& folder)
 {
     if (!m_typing || !m_typing->pending(request))
@@ -3166,11 +3226,13 @@ void App::typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t reques
     // No folder on disk there (Home, This PC, the Recycle Bin, a search): the
     // keys were Explorer's after all, which jumps by them as it would have.
     // In Opus such a tab is `known` with no folder: the whole PC is searched.
-    GUITHREADINFO focus {sizeof focus};
-    const bool sameFocus = ::GetForegroundWindow() == root
-        && ::GetGUIThreadInfo(::GetWindowThreadProcessId(root, nullptr), &focus)
-        && searchtyping::focusOf(static_cast<unsigned>(focus.flags), true) == searchtyping::Focus::ItemsView
-        && (opus ? focus.hwndFocus == tab : folderview::classify(focus.hwndFocus, {}).tab == tab);
+    const auto explorerTab = [root]() -> HWND {
+        GUITHREADINFO focus {sizeof focus};
+        const bool items = ::GetGUIThreadInfo(::GetWindowThreadProcessId(root, nullptr), &focus)
+            && searchtyping::focusOf(static_cast<unsigned>(focus.flags), true) == searchtyping::Focus::ItemsView;
+        return items ? folderview::classify(focus.hwndFocus, {}).tab : nullptr;
+    };
+    const bool sameFocus = ::GetForegroundWindow() == root && (opus ? folderview::opusTypingView(root) : explorerTab()) == tab;
     if (!known || !(opus ? m_settings.opusTyping : m_settings.explorerTyping) || !m_window || !sameFocus) {
         qInfo() << "Folder typing: no folder or focus changed; give back to the original view only";
         m_typing->giveBack(request);
@@ -3197,6 +3259,7 @@ void App::showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder
     const RECT list = opus ? RECT {} : folderview::explorerFileList(root, tab);
     // Pinned and up, or the panel: where it is (showLauncher).
     const QString kept = m_launcher->pinned() && launcherShown() ? u"pinned"_s : m_launcher->panel() ? u"panel"_s : QString();
+    m_launcher->awaitTyping(prefix); // the key typed follows: nothing listed before it
     showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(opus ? tab : root, MONITOR_DEFAULTTONEAREST)), opus ? tab : root, opus,
         list);
     m_typingOrigin = {root, tab, opus, folder}; // after showLauncher, which clears it
@@ -3626,6 +3689,11 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         connect(editor, &SettingsEditor::elevatedRestartRequested, this,
             [this] { restart({u"--settings"_s, u"--settings-at"_s, u"indexAccess"_s}, Elevation::Elevated); });
         connect(editor, &SettingsEditor::indexServiceInstallRequested, this, &App::installIndexService);
+        connect(editor, &SettingsEditor::dialogRuleLearnRequested, this, [this] { dialogRules().learn(); });
+        connect(editor, &SettingsEditor::dialogRulesFileRequested, this, [this] {
+            const QString file = dialogRules().ensureFile();
+            shell::open(file.isEmpty() ? Settings::dataDir() : file);
+        });
         connect(editor, &SettingsEditor::diagnosticsExportRequested, this, [this] {
             if (m_diagnosticsExporting) {
                 m_settingsEditor->finishDiagnosticsExport(tr("诊断包正在生成，完成后会打开文件夹"));
@@ -4569,6 +4637,8 @@ void App::applyDialogs()
             }, Qt::QueuedConnection);
         });
     }
+    if (followDialogs)
+        dialogRules(); // before the first look at the window in front
     if (followDialogs && !m_dialogJump) {
         DialogJump::Callbacks callbacks;
         callbacks.setHotkey = [this](bool on) {
@@ -4773,6 +4843,24 @@ unsigned App::ownNumberDigits(const QString& keys) const
     return digits;
 }
 
+DialogRuleStore& App::dialogRules()
+{
+    if (!m_dialogRules) {
+        m_dialogRules = std::make_unique<DialogRuleStore>(Settings::dataDir());
+        connect(m_dialogRules.get(), &DialogRuleStore::status, this, [this](const QString& text, bool done) {
+            if (m_settingsEditor)
+                m_settingsEditor->setDialogRuleStatus(text, !done);
+        });
+        // A window just learned is usually the one in front: taken now, not
+        // when it next comes to the front.
+        connect(m_dialogRules.get(), &DialogRuleStore::changed, this, [this] {
+            if (m_dialogJump)
+                m_dialogJump->lookAgain();
+        });
+    }
+    return *m_dialogRules;
+}
+
 void App::updateCompanions()
 {
     if (!m_dialogJump)
@@ -4944,21 +5032,24 @@ void App::beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optio
     context.helper = m_keyListener && m_keyListener->serviceActive();
     // Emptied since a window was last seen (not just since the launcher's
     // last warming: IdleTrim::trimmed()).
-    context.trimmed = m_idleTrim && m_idleTrim->lastTrim().atMs > m_lastOpeningSeenMs;
+    const qint64 trimmedAt = m_idleTrim ? m_idleTrim->lastTrim().atMs : 0;
+    context.trimmed = trimmedAt > std::ranges::max(m_openingSeenMs);
     context.rawInput = rawInputState();
     context.told = told;
-    // What the window's last opening after an emptying needed, read back
-    // while this one starts (GitHub #265): emptied here, or by Windows while
-    // memory was short, it is on the disk; still in memory, it costs next
-    // to nothing. Emptied since the last opening, this one's are recorded.
+    // What the window needs to come up (HotPages) stayed when the rest was
+    // given back; read back while this opening starts all the same (GitHub
+    // #265): taken by Windows while memory was short, it is on the disk;
+    // still in memory, that costs next to nothing. This window's first
+    // opening since the memory was given back tells what else it uses, once
+    // it is seen.
     const bool clipboard = source == TriggerSource::ClipboardHotkey || source == TriggerSource::WinV;
     const std::shared_ptr<HotPages>& pages = clipboard ? m_clipPages : m_launcherPages;
     if (pages) {
         context.hotMb = static_cast<int>(pages->bytes() >> 20);
         if (context.hotMb > 0)
-            std::thread([pages] { pages->prefetch(); }).detach();
+            std::thread([kept = pages->pages()] { kept.prefetch(); }).detach();
     }
-    m_recordPages = context.trimmed ? pages : nullptr;
+    m_recordPages = trimmedAt > m_openingSeenMs[static_cast<std::size_t>(clipboard ? TriggerWindow::Clipboard : TriggerWindow::Launcher)] ? pages : nullptr;
     m_triggers->begin(source, pressedAt, context);
 }
 
@@ -4966,12 +5057,33 @@ void App::openingSeen(TriggerWindow window)
 {
     if (m_triggers)
         m_triggers->seen(window);
-    m_lastOpeningSeenMs = QDateTime::currentMSecsSinceEpoch(); // IdleTrim::LastTrim's clock
-    // The first opening after an emptying: what it brought back is what the
-    // next one will need (HotPages).
+    m_openingSeenMs[static_cast<std::size_t>(window)] = QDateTime::currentMSecsSinceEpoch(); // IdleTrim::LastTrim's clock
+    // The file index's pages back, before the first search needs them
+    // (IdleTrim, FileIndex::warm). Once the window is up, not while it
+    // comes: tens of thousands of page faults on another thread held up
+    // the window's own (measured 2026-11-12, 35 ms to be seen instead of 27).
+    if (window == TriggerWindow::Launcher && m_idleTrim->takeTrimmed() && m_index->index()) {
+        std::thread([index = m_index->index()] {
+            const auto lock = index->longReadLock();
+            index->warm();
+        }).detach();
+    }
+    // Its first opening since the memory was given back: what is in memory
+    // now and was not kept came back for it, or for what ran meanwhile
+    // (HotPages tells them apart). Not the file index's large blocks, which
+    // the search it started is reading on its threads.
     const std::shared_ptr<HotPages>& own = window == TriggerWindow::Clipboard ? m_clipPages : m_launcherPages;
-    if (m_recordPages && m_recordPages == own)
-        std::thread([pages = std::exchange(m_recordPages, nullptr)] { pages->record(); }).detach();
+    if (m_recordPages && m_recordPages == own) {
+        std::thread([pages = std::exchange(m_recordPages, nullptr), launcher = m_launcherPages, clipboard = m_clipPages,
+                        index = m_index->index()] {
+            PageSet used = PageSet::resident().without(launcher->pages()).without(clipboard->pages());
+            if (index) {
+                const auto lock = index->longReadLock();
+                used = used.without(PageSet::within(index->memoryBlocks()));
+            }
+            pages->learn(used);
+        }).detach();
+    }
 }
 
 // A double tap that came to nothing (KeyListener::Note): in the journal, a
@@ -5174,14 +5286,6 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     m_typingOrigin = {}; // opened anew: set again by typingFolderKnown when that is why
     if (!query.isEmpty())
         m_launcher->setTypingFolder({}); // a path given ("search here") is searched alone, as typed (GitHub #110)
-    if (m_idleTrim->takeTrimmed() && m_index->index()) {
-        // The index's pages back while the window comes up, before the first
-        // search needs them (IdleTrim, FileIndex::warm).
-        std::thread([index = m_index->index()] {
-            const auto lock = index->longReadLock();
-            index->warm();
-        }).detach();
-    }
     hideClipboard(false); // from under its search box: searching again
     // Each time it is asked for, pinned and up already too: English once its
     // field has the focus (lettersOnOpen). A click into it is not asked for.
@@ -5260,7 +5364,8 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
                 && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.left))
                 && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.right));
             m_placement->avoidNative(orIntoList ? native(orInto) : native(bounds), screen, inside || orIntoList,
-                inside && !orIntoList ? native(folderview::opusFileLists(root)) : QRect(), framed ? native(client) : QRect());
+                inside && !orIntoList ? native(folderview::opusFileLists(root)) : QRect(), framed ? native(client) : QRect(), {},
+                orIntoList);
         } else
             m_placement->placeOn(screen);
     }
@@ -7672,6 +7777,13 @@ void App::applyMcp()
             applyAiSettings(apply, std::move(done));
         };
         services.openSettings = [this](const QString& key, const QString& section) { return openAiSettings(key, section); };
+        // ws plugin, the command line's alone.
+        services.plugins = [this](const QString& tool, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            if (m_pluginCommands)
+                m_pluginCommands->run(tool, arguments, std::move(done));
+            else
+                done({{}, true, u"Win顺's plugins are not available."_s});
+        };
         m_mcpHost = std::make_unique<mcp::ToolHost>(std::move(services));
         m_mcpHost->setPolicy(mcpPolicy());
         m_mcpServer = std::make_unique<mcp::McpServer>(m_mcpHost.get(), QStringLiteral(WINSHUN_VERSION));
@@ -7684,7 +7796,7 @@ void App::applyMcp()
         });
         connect(m_mcpHost.get(), &mcp::ToolHost::toolsChanged, this, &App::writeMcpToolsCache);
         DWORD error = 0;
-        if (!m_mcpServer->listen(pipe::defaultName(), &error))
+        if (!m_mcpServer->listen(m_mcpPipe.isEmpty() ? pipe::defaultName() : m_mcpPipe.toStdWString(), &error))
             qWarning("MCP: cannot serve on the pipe (error %lu)", error);
         writeMcpToolsCache();
     } else {
@@ -7776,6 +7888,38 @@ void App::createPluginHost()
                     self->showPluginUpdates();
             });
         });
+    }
+    {
+        PluginCommands::Environment environment;
+        environment.host = m_pluginHost.get();
+        environment.updates = m_pluginUpdates.get();
+        environment.locale = [this] { return m_language; };
+        environment.configs = [this] { return m_settings.plugins; };
+        environment.setSwitch = [this](const QString& id, bool on) { setPluginSwitch(id, on); };
+        environment.askEnable = [this](const QString& id) {
+            PluginSettings* page = pluginPage(id);
+            if (page)
+                page->setEnabled(id, true);
+            return page != nullptr;
+        };
+        environment.askRemove = [this](const QString& id) {
+            PluginSettings* page = pluginPage(id);
+            if (page)
+                page->uninstall(id);
+            return page != nullptr;
+        };
+        environment.installFromLibrary = [this](const QString& id, std::function<void(PluginInstalled)> done) {
+            // The library's tab at this plugin: its download and its questions show there.
+            showSettings([&id](QQuickWindow* window) { QMetaObject::invokeMethod(window, "showPluginLibrary", Q_ARG(QVariant, QVariant(id))); });
+            if (m_settingsEditor)
+                m_settingsEditor->plugins()->gallery()->installFor(id, std::move(done));
+            else
+                done({PluginInstalled::Step::Failed, id, {}, tr("打不开 Win顺 的设置窗口")});
+        };
+        environment.librarySource = PluginUpdates::defaultSource();
+        environment.web = m_pluginUpdates->web();
+        environment.keptList = dataDir + u"\\plugin-index.json"_s;
+        m_pluginCommands = std::make_unique<PluginCommands>(std::move(environment));
     }
     connect(&m_pluginHost->catalog(), &plugin::Catalog::changed, this, &App::pluginsChanged);
     connect(m_pluginHost.get(), &plugin::Host::stateChanged, this, [this](const QString& id) {
@@ -8019,6 +8163,25 @@ void App::pluginsChanged()
     applyScreenshots();
     if (!m_pluginRecoveryBusy && moved::missing(m_pluginHost->catalog(), m_settings.plugins).isEmpty())
         setPluginRecoveryState({});
+}
+
+void App::setPluginSwitch(const QString& id, bool on)
+{
+    PluginConfig& config = m_settings.pluginConfig(id);
+    if (config.enabled == on)
+        return;
+    config.enabled = on;
+    m_settings.save();
+    if (m_settingsEditor)
+        m_settingsEditor->setSettings(m_settings); // its copy, and the card's switch
+    applyPlugins();
+    m_backup->soon();
+}
+
+PluginSettings* App::pluginPage(const QString& id)
+{
+    showPluginSettings(id);
+    return m_settingsEditor ? m_settingsEditor->plugins() : nullptr;
 }
 
 void App::applyPlugins()

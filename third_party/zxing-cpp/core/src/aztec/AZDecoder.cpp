@@ -8,18 +8,18 @@
 #include "AZDecoder.h"
 
 #include "AZDetectorResult.h"
+#include "Barcode.h"
 #include "BitArray.h"
 #include "BitMatrix.h"
 #include "DecoderResult.h"
-#include "GenericGF.h"
-#include "ReedSolomonDecoder.h"
+#include "ReedSolomon.h"
 #include "ZXTestSupport.h"
 #include "ZXAlgorithms.h"
 
-#include <cctype>
 #include <cstring>
 #include <numeric>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -119,23 +119,18 @@ static BitArray ExtractBits(const DetectorResult& ddata)
 /**
 * @brief Performs RS error correction on an array of bits.
 */
-static BitArray CorrectBits(const DetectorResult& ddata, const BitArray& rawbits)
+static std::tuple<BitArray, int, double> CorrectBits(const DetectorResult& ddata, const BitArray& rawbits)
 {
-	const GenericGF* gf = nullptr;
-	int codewordSize;
+	int codewordSize = 0;
 
 	if (ddata.nbLayers() <= 2) {
 		codewordSize = 6;
-		gf = &GenericGF::AztecData6();
 	} else if (ddata.nbLayers() <= 8) {
 		codewordSize = 8;
-		gf = &GenericGF::AztecData8();
 	} else if (ddata.nbLayers() <= 22) {
 		codewordSize = 10;
-		gf = &GenericGF::AztecData10();
 	} else {
 		codewordSize = 12;
-		gf = &GenericGF::AztecData12();
 	}
 
 	int numCodewords = Size(rawbits) / codewordSize;
@@ -146,8 +141,9 @@ static BitArray CorrectBits(const DetectorResult& ddata, const BitArray& rawbits
 		throw FormatError("Invalid number of code words");
 
 	auto dataWords = ToInts<int>(rawbits, codewordSize, numCodewords, Size(rawbits) % codewordSize);
+	auto uec = ReedSolomonDecode(GF2nAztec(codewordSize), dataWords, numECCodewords);
 
-	if (!ReedSolomonDecode(*gf, dataWords, numECCodewords))
+	if (!uec)
 		throw ChecksumError();
 
 	// drop the ECCodewords from the dataWords array
@@ -167,7 +163,7 @@ static BitArray CorrectBits(const DetectorResult& ddata, const BitArray& rawbits
 			correctedBits.appendBits(dataWord, codewordSize);
 	}
 
-	return correctedBits;
+	return {std::move(correctedBits), numECCodewords * 100 / numCodewords, *uec};
 }
 
 /**
@@ -220,9 +216,9 @@ static ECI ParseECIValue(BitArrayView& bits, const int flg)
 /**
 * See ISO/IEC 24778:2008 Section 8
 */
-static StructuredAppendInfo ParseStructuredAppend(ByteArray& bytes)
+static StructuredAppendInfo ParseStructuredAppend(Content& res)
 {
-	std::string text(bytes.begin(), bytes.end());
+	std::string text(res.bytes.begin(), res.bytes.end());
 	StructuredAppendInfo sai;
 	std::string::size_type i = 0;
 
@@ -234,7 +230,7 @@ static StructuredAppendInfo ParseStructuredAppend(ByteArray& bytes)
 		sai.id = text.substr(1, sp - 1); // Strip space delimiters
 		i = sp + 1;
 	}
-	if (i + 1 >= text.size() || !std::isupper(text[i]) || !std::isupper(text[i + 1]))
+	if (i + 1 >= text.size() || !IsUpper(text[i]) || !IsUpper(text[i + 1]))
 		return {};
 
 	sai.index = text[i] - 'A';
@@ -243,18 +239,18 @@ static StructuredAppendInfo ParseStructuredAppend(ByteArray& bytes)
 	if (sai.count == 1 || sai.count <= sai.index) // If info doesn't make sense
 		sai.count = 0; // Choose to mark count as unknown
 
-	text.erase(0, i + 2); // Remove
-	bytes = ByteArray(text);
+	res.erase(0, narrow_cast<int>(i + 2)); // Remove
 
 	return sai;
 }
 
-static void DecodeContent(const BitArray& bits, Content& res)
+static void DecodeContent(const BitArray& bits, Content& res, bool &haveFNC1)
 {
 	Table latchTable = Table::UPPER; // table most recently latched to
 	Table shiftTable = Table::UPPER; // table to use for the next read
 
 	auto remBits = BitArrayView(bits);
+	haveFNC1 = false;
 
 	while (remBits.size() >= (shiftTable == Table::DIGIT ? 4 : 5)) { // see ISO/IEC 24778:2008 7.3.1.2 regarding padding bits
 		if (shiftTable == Table::BINARY) {
@@ -273,7 +269,7 @@ static void DecodeContent(const BitArray& bits, Content& res)
 			const char* str = GetCharacter(shiftTable, code);
 			if (std::strncmp(str, "CTRL_", 5) == 0) {
 				// Table changes
-				// ISO/IEC 24778:2008 prescibes ending a shift sequence in the mode from which it was invoked.
+				// ISO/IEC 24778:2008 prescribes ending a shift sequence in the mode from which it was invoked.
 				// That's including when that mode is a shift.
 				// Our test case dlusbs.png for issue #642 exercises that.
 				latchTable = shiftTable;  // Latch the current mode, so as to return to Upper after U/S B/S
@@ -283,6 +279,7 @@ static void DecodeContent(const BitArray& bits, Content& res)
 			} else if (std::strcmp(str, "FLGN") == 0) {
 				int flg = remBits.readBits(3);
 				if (flg == 0) { // FNC1
+					haveFNC1 = true;
 					res.push_back(29); // May be removed at end if first/second FNC1
 				} else if (flg <= 6) {
 					// FLG(1) to FLG(6) ECI
@@ -305,11 +302,12 @@ DecoderResult Decode(const BitArray& bits)
 {
 	Content res;
 	res.symbology = {'z', '0', 3};
+	bool haveFNC1;
 
 	try {
-		DecodeContent(bits, res);
-	} catch (const std::exception&) { // see BitArrayView::readBits
-		return FormatError();
+		DecodeContent(bits, res, haveFNC1);
+	} catch (std::out_of_range&) { // see BitArrayView::readBits
+		return FormatError("Truncated bit stream");
 	}
 
 	if (res.bytes.empty())
@@ -319,26 +317,29 @@ DecoderResult Decode(const BitArray& bits)
 	bool haveStructuredAppend = Size(bits) > 20 && ToInt(bits, 0, 5) == 29 // latch to MIXED (from UPPER)
 								&& ToInt(bits, 5, 5) == 29;                // latch back to UPPER (from MIXED)
 
-	StructuredAppendInfo sai = haveStructuredAppend ? ParseStructuredAppend(res.bytes) : StructuredAppendInfo();
+	StructuredAppendInfo sai = haveStructuredAppend ? ParseStructuredAppend(res) : StructuredAppendInfo();
 
-	// As converting character set ECIs ourselves and ignoring/skipping non-character ECIs, not using
-	// modifiers that indicate ECI protocol (ISO/IEC 24778:2008 Annex F Table F.1)
-	if (res.bytes.size() > 1 && res.bytes[0] == 29) {
-		res.symbology.modifier = '1'; // GS1
-		res.symbology.aiFlag = AIFlag::GS1;
-		res.erase(0, 1); // Remove FNC1
-	} else if (res.bytes.size() > 2 && std::isupper(res.bytes[0]) && res.bytes[1] == 29) {
-		// FNC1 following single uppercase letter (the AIM Application Indicator)
-		res.symbology.modifier = '2'; // AIM
-		res.symbology.aiFlag = AIFlag::AIM;
-		res.erase(1, 1); // Remove FNC1,
-						 // The AIM Application Indicator character "A"-"Z" is left in the stream (ISO/IEC 24778:2008 16.2)
-	} else if (res.bytes.size() > 3 && std::isdigit(res.bytes[0]) && std::isdigit(res.bytes[1]) && res.bytes[2] == 29) {
-		// FNC1 following 2 digits (the AIM Application Indicator)
-		res.symbology.modifier = '2'; // AIM
-		res.symbology.aiFlag = AIFlag::AIM;
-		res.erase(2, 1); // Remove FNC1
-						 // The AIM Application Indicator characters "00"-"99" are left in the stream (ISO/IEC 24778:2008 16.2)
+	if (res.bytes.empty())
+		return FormatError("Empty symbol content after removing Structured Append info");
+
+	if (haveFNC1) {
+		if (res.bytes[0] == 29) {
+			res.symbology.modifier = '1'; // GS1
+			res.symbology.aiFlag = AIFlag::GS1;
+			res.erase(0, 1); // Remove FNC1
+		} else if (res.bytes.size() > 1 && IsAlpha(res.bytes[0]) && res.bytes[1] == 29) {
+			// FNC1 following single upper/lowercase letter (the AIM Application Indicator)
+			res.symbology.modifier = '2'; // AIM
+			res.symbology.aiFlag = AIFlag::AIM;
+			res.erase(1, 1); // Remove FNC1,
+							 // The AIM Application Indicator character "A"-"Z"/"a"-"z" is left in the stream (ISO/IEC 24778:2008 16.2)
+		} else if (res.bytes.size() > 2 && IsDigit(res.bytes[0]) && IsDigit(res.bytes[1]) && res.bytes[2] == 29) {
+			// FNC1 following 2 digits (the AIM Application Indicator)
+			res.symbology.modifier = '2'; // AIM
+			res.symbology.aiFlag = AIFlag::AIM;
+			res.erase(2, 1); // Remove FNC1
+							 // The AIM Application Indicator characters "00"-"99" are left in the stream (ISO/IEC 24778:2008 16.2)
+		}
 	}
 
 	if (sai.index != -1)
@@ -365,8 +366,8 @@ DecoderResult Decode(const DetectorResult& detectorResult)
 			// This is a rune - just return the rune value
 			return DecodeRune(detectorResult);
 		}
-		auto bits = CorrectBits(detectorResult, ExtractBits(detectorResult));
-		return Decode(bits);
+		auto [bits, ecLevel, uec] = CorrectBits(detectorResult, ExtractBits(detectorResult));
+		return Decode(bits).setEcLevel(std::to_string(ecLevel) + "%").addExtra(BarcodeExtra::UEC, uec, -1.0);
 	} catch (Error e) {
 		return e;
 	}

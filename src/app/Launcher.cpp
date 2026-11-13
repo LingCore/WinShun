@@ -126,7 +126,6 @@ QString walkedPath(const QString& kind)
 // Rows asked for at a time: names, content matches, files written lately.
 // Scrolled to the end, a page more (loadMore), up to kMaxPages.
 constexpr int kPage = 256;
-constexpr int kFewRows = 8; // fewer found than the window shows: the content scan's left-out hints
 constexpr int kMaxPages = 16;
 
 // Ranked by time: where a content match goes among `count` rows (`at(i)`
@@ -757,7 +756,9 @@ void Launcher::toggleRegexMode()
 {
     setRegexMode(!m_regexMode);
     if (m_window && m_window->isVisible())
-        flash(m_regexMode ? tr("正则模式：每个词都按正则表达式匹配名字") : tr("已关闭正则模式"));
+        flash(!m_regexMode ? tr("已关闭正则模式")
+            : m_scope == Content ? tr("正则模式：每个词都按正则表达式匹配文件里的文字")
+            : tr("正则模式：每个词都按正则表达式匹配名字"));
 }
 
 void Launcher::setQuery(const QString& query)
@@ -988,6 +989,12 @@ void Launcher::setTypingFolder(const QString& prefix)
         search();
 }
 
+void Launcher::awaitTyping(const QString& text)
+{
+    m_typingAwaited = true;
+    m_awaitedText = text.trimmed();
+}
+
 void Launcher::setFolderSearch(bool enabled)
 {
     if (m_folderSearch == enabled)
@@ -1022,7 +1029,33 @@ QString Launcher::typingWords() const
 QString Launcher::nameText() const
 {
     const QString words = typingWords();
-    return words.isEmpty() ? searchText() : words;
+    if (!words.isEmpty())
+        return words;
+    if (const auto files = commandFiles())
+        return files->words;
+    return searchText();
+}
+
+std::optional<Launcher::CommandFiles> Launcher::commandFiles() const
+{
+    if (!m_favorites || m_keyword || m_filePrefix || (m_scope != All && m_scope != Files) || typedInFolder())
+        return std::nullopt;
+    const QString text = searchText();
+    const qsizetype at = typedCommandKeyword(m_favorites->items(), text);
+    if (at < 0)
+        return std::nullopt;
+    const Favorite& f = m_favorites->items()[at];
+    if (!f.searchFiles || !f.command.contains(u"{query}"))
+        return std::nullopt;
+    const QString words = commandWords(f, text);
+    if (words.isEmpty())
+        return std::nullopt;
+    return CommandFiles {f, words};
+}
+
+bool Launcher::fileRow(const SearchResult& r)
+{
+    return !r.isApp() && !r.isCommand() && r.line == 0 && !r.missing && !r.path.isEmpty();
 }
 
 QString Launcher::typingKey() const
@@ -1143,7 +1176,7 @@ QVariantList Launcher::leftOutHints() const
     // The counts are of files not read, whatever was typed: offered under
     // every list they would be noise. Only when what was found does not fill
     // the window (Main.qml maxRows), where "is that all?" is the question.
-    if (m_scanComplete && !m_moreContent && m_results.count() < kFewRows) {
+    if (m_scanComplete && !m_moreContent && m_results.count() < m_maxRows) {
         if (!m_leftOut.large.isEmpty()) {
             add(kLargeHint, tr("另有 %Ln 个大文件超过大小上限没搜", nullptr, static_cast<int>(m_leftOut.large.size())),
                 tr("也搜这些"));
@@ -1182,7 +1215,7 @@ QVariantList Launcher::leftOutHints() const
     if (m_scope != Content && !m_moreNames) {
         const QString outside = outsideFolder();
         switch (pathtext::scopeNote(m_foldersOnly, !outside.isEmpty(), m_folderNoteDismissed, static_cast<int>(m_results.count()),
-            kFewRows, searchText().size())) {
+            m_maxRows, searchText().size())) {
         case pathtext::ScopeNote::Outside:
             // On an external hard disk the index leaves out (it says
             // DRIVE_FIXED: GitHub #266), the drive's hint above says it.
@@ -1292,6 +1325,7 @@ void Launcher::searchLeftOut(const QString& kind)
     } else {
         request.text = m_scope == Content ? searchText() : contentNeedle();
         request.scope = ws::Scope::Content;
+        request.regex = m_regexMode;
         request.contentExtensions = m_contentExtensions;
         request.contentSizeLimits = m_contentSizeLimits;
         request.contentDocuments = m_contentDocuments;
@@ -1611,12 +1645,37 @@ void Launcher::setNumberHints(const QString& hints)
     emit resultOptionsChanged();
 }
 
+void Launcher::setRowDeleteButton(bool shown)
+{
+    if (m_rowDeleteButton == shown)
+        return;
+    m_rowDeleteButton = shown;
+    emit resultOptionsChanged();
+}
+
 void Launcher::setKeyboardHints(bool help, bool footer)
 {
     if (m_shortcutHelp == help && m_footerHints == footer)
         return;
     m_shortcutHelp = help;
     m_footerHints = footer;
+    emit resultOptionsChanged();
+}
+
+void Launcher::setMaxRows(int rows)
+{
+    rows = std::clamp(rows, 4, 20);
+    if (m_maxRows == rows)
+        return;
+    m_maxRows = rows;
+    emit resultOptionsChanged();
+}
+
+void Launcher::setScopeButton(bool on)
+{
+    if (m_scopeButton == on)
+        return;
+    m_scopeButton = on;
     emit resultOptionsChanged();
 }
 
@@ -2120,6 +2179,7 @@ void Launcher::retranslate()
 
 void Launcher::handleHidden()
 {
+    m_typingAwaited = false;
     rememberQuery();
     closePreview(); // the wish to have it stays (m_previewWanted) ...
     if (!m_previewRestore)
@@ -2201,8 +2261,9 @@ void Launcher::search(bool more)
     // (the first is selected). So is a plugin command's list in place of
     // the names' (or back): "=" and "= " are the same text trimmed.
     std::optional<KeywordMode> keyword = m_filePrefix || m_scope == Apps ? std::nullopt : matchKeyword(m_query);
-    const QString error = m_scope == Content || keyword || typedKeyword(m_web, m_query)
-        ? QString() : parseQuery(nameText(), regexTerms()).error;
+    const QString error = keyword || typedKeyword(m_web, m_query) ? QString()
+        : m_scope == Content ? contentPattern(splitContentQuery(text, m_regexMode).words, m_regexMode).error
+        : parseQuery(nameText(), regexTerms()).error;
     if (m_queryError != error) {
         m_queryError = error;
         emit queryErrorChanged();
@@ -2282,7 +2343,11 @@ void Launcher::search(bool more)
         return;
     }
 
-    const bool pureEmpty = m_pureSearch && !m_panel && !m_folderSearch && !m_inTaskbarBox && m_query.trimmed().isEmpty();
+    // The words typed in a file manager are on their way (awaitTyping).
+    if (m_typingAwaited && m_query.trimmed() != m_awaitedText)
+        m_typingAwaited = false;
+    const bool pureEmpty = (m_pureSearch && !m_panel && !m_folderSearch && !m_inTaskbarBox && m_query.trimmed().isEmpty())
+        || (m_typingAwaited && m_scope != Content);
     if (m_scope == Content || pureEmpty) {
         m_engine->cancel();
         m_requestId = 0;
@@ -2324,6 +2389,10 @@ void Launcher::search(bool more)
 
     SearchEngine::Request request;
     request.text = nameText();
+    if (const auto files = commandFiles()) {
+        request.commandPath = files->command.path;
+        request.commandText = searchText();
+    }
     // Typed in a folder's window (GitHub #110): its words, there first (or
     // only there). The folder alone is listed as the path typed it is.
     if (!typingWords().isEmpty()) {
@@ -2406,6 +2475,12 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
                     break;
                 }
             }
+        }
+    }
+    if (m_rememberAdmin && m_recordHistory) {
+        for (SearchResult& r : rows) {
+            if (adminRemembered(r))
+                r.runAsAdmin = true; // the row says so (管理员)
         }
     }
     m_results.assign(std::move(rows), std::move(highlights));
@@ -2557,7 +2632,8 @@ void Launcher::dropSuggestions()
 
 
 // 全部 looks for the typed text inside files too, as the 内容 scope does
-// (contentTerms: the words, "a phrase", or a line of code as it is). Not for
+// (contentPattern: the words, "a phrase", either of some, expressions, or a
+// line of code as it is). Not for
 // name syntax (ext:, wildcards, !exclusions: "*.log", "report !draft"),
 // unless the text reads as code anyway ("if (!ok)", "char* p = s;"). Nor
 // after a web shortcut's keyword: that is a search on the web ("gh
@@ -2571,16 +2647,37 @@ QString Launcher::contentNeedle() const
         return {};
     const QString text = searchText();
     const ParsedQuery query = ws::parseQuery(text, regexTerms());
-    if (!query.alternatives.empty() || !query.error.isEmpty()
-        || std::ranges::any_of(query.terms, [](const QueryTerm& t) { return t.regex; }))
+    if (!query.error.isEmpty())
         return {};
-    if (query.terms.empty() || m_keyword || typedKeyword(m_web, m_query) || !pathtext::splitTyped(text).folder.isEmpty())
+    // "报告 | 总结": each part is a query of its own, and what goes for one
+    // goes for them all.
+    const std::vector<ParsedQuery> one {query};
+    const std::vector<ParsedQuery>& parts = query.alternatives.empty() ? one : query.alternatives;
+    const auto anyTerm = [&](const auto& is) {
+        return std::ranges::any_of(parts, [&](const ParsedQuery& q) { return std::ranges::any_of(q.terms, is); });
+    };
+    if (!anyTerm([](const QueryTerm&) { return true; }) || m_keyword || typedKeyword(m_web, m_query)
+        || !pathtext::splitTyped(text).folder.isEmpty())
         return {};
+    // An expression is one for the text of files too (GitHub #295): in regex
+    // mode every word, else the words that say so (regex:). "^IMG" and
+    // ".pdf$" are about names.
+    if (!regexTerms()) {
+        qsizetype expressions = 0;
+        for (const ParsedQuery& q : parts)
+            expressions += std::ranges::count_if(q.terms, &QueryTerm::regex);
+        const QStringList words = ws::queryWords(text);
+        const qsizetype said = std::ranges::count_if(words, [](const QString& w) {
+            return w.startsWith(u"regex:", Qt::CaseInsensitive) || w.startsWith(u"re:", Qt::CaseInsensitive);
+        });
+        if (expressions != said)
+            return {};
+    }
     if (m_favorites && (typedFavoriteKeyword(m_favorites->items(), text) >= 0
         || typedCommandKeyword(m_favorites->items(), text) >= 0))
         return {};
-    const bool nameSyntax = !query.extensions.empty()
-        || std::any_of(query.terms.cbegin(), query.terms.cend(), [](const QueryTerm& t) { return t.negated || t.wildcard; });
+    const bool nameSyntax = std::ranges::any_of(parts, [](const ParsedQuery& q) { return !q.extensions.empty(); })
+        || anyTerm([](const QueryTerm& t) { return t.negated || t.wildcard; });
     if (nameSyntax && !ws::looksLikeCode(text))
         return {};
     return text;
@@ -2591,6 +2688,7 @@ SearchEngine::Request Launcher::contentRequest() const
     SearchEngine::Request request;
     request.text = m_scope == Content ? searchText() : contentNeedle();
     request.scope = ws::Scope::Content;
+    request.regex = m_regexMode; // every word an expression, on the files' text (GitHub #295)
     request.rankBy = rankBy();
     request.excludedTypes = m_excludedTypes;
     request.excludedFileNames = m_excludedFileNames;
@@ -2690,7 +2788,7 @@ void Launcher::syncContentPane()
     // A plugin's keyword list: its words (as its details request has them,
     // GitHub #202), not those of the content search before it.
     const QString words = m_keyword ? m_keyword->words
-        : m_contentScope.words.isEmpty() ? splitContentQuery(searchText()).words : m_contentScope.words;
+        : m_contentScope.words.isEmpty() ? splitContentQuery(searchText(), m_regexMode).words : m_contentScope.words;
     m_contentPane->setContentIndexEnabled(m_contentIndex);
     m_contentPane->update(contentRequest(), words, searchText() + u'\n' + panelKey() + u'\n' + pickKey(m_contentPick)
             + u'\n' + m_contentFolder, std::move(rows), stale() ? SearchResults{} : paneFiles(m_results.selection()), current,
@@ -2741,6 +2839,19 @@ void Launcher::onResults(quint64 id, const SearchResults& results, qint64 total,
     }
 
     SearchResults rows = results;
+    if (const auto files = commandFiles()) {
+        // The files and folders its words found, for the command; what a
+        // command cannot be handed (apps, settings, sites) is not listed.
+        // Its own row, the words as they are: after them, or before when
+        // the words are a path there is ("code D:\\项目" runs as ever).
+        const QString own = files->command.path;
+        rows.removeIf([&](const SearchResult& r) { return r.path != own && !fileRow(r); });
+        const auto it = std::ranges::find_if(rows, [&](const SearchResult& r) { return r.path == own; });
+        const QFileInfo typed(files->words);
+        const bool path = typed.isAbsolute() && !files->words.startsWith(u"\\\\") && typed.exists();
+        if (it != rows.end() && !path)
+            std::rotate(it, it + 1, rows.end());
+    }
     QSet<QString> names;
     if (m_refresh) {
         for (const SearchResult& r : rows)
@@ -3562,13 +3673,13 @@ void Launcher::refreshKeyHints()
             tab = tr("调音量");
         }
     } else if (r->isApp()) {
-        enter = tr("打开");
+        enter = adminRemembered(*r) ? tr("以管理员身份运行") : tr("打开"); // GitHub #313: said before Enter is pressed
         if (!r->target.isEmpty()) {
             secondKeys = u"Ctrl+Enter"_s;
             second = r->isPackagedApp() ? tr("打开安装文件夹") : tr("打开位置");
         }
     } else {
-        enter = r->isDir ? tr("打开文件夹") : tr("打开");
+        enter = r->isDir ? tr("打开文件夹") : adminRemembered(*r) ? tr("以管理员身份运行") : tr("打开");
         secondKeys = u"Ctrl+Enter"_s;
         // Typed in a folder's window: its direct items are followed there as the
         // keys move; the rest are not (that would navigate the tab), Ctrl+Enter
@@ -3576,6 +3687,10 @@ void Launcher::refreshKeyHints()
         second = typedInFolder() && !pathtext::sameFolder(QFileInfo(r->path).absolutePath(), m_typingFolder)
             ? tr("在原窗口定位") : tr("打开位置");
     }
+    if (const auto files = r && fileRow(*r) ? commandFiles() : std::nullopt)
+        enter = tr("用“%1”打开").arg(files->command.name);
+    else if (r && r->isCommand() && commandFiles())
+        enter = tr("原样传入“%1”").arg(r->words);
     const QVariantMap hints {{u"enter"_s, enter}, {u"secondKeys"_s, secondKeys}, {u"second"_s, second}, {u"tab"_s, tab},
         {u"tabKeys"_s, tabKeys}};
     if (hints == m_keyHints)
@@ -4037,7 +4152,7 @@ const ContentScope::Place* Launcher::typedPlace() const
 {
     if (m_scope != Content)
         return nullptr;
-    const ContentQuery typed = splitContentQuery(searchText());
+    const ContentQuery typed = splitContentQuery(searchText(), m_regexMode);
     if (typed.folders.empty())
         return nullptr;
     for (const ContentScope::Place& place : m_contentScope.places) {
@@ -4069,7 +4184,7 @@ QVariantList Launcher::folderChips() const
     if (m_scope != Content)
         return chips;
     // A folder named among the words: that one, or the ones it stands for.
-    const ContentQuery typed = splitContentQuery(searchText());
+    const ContentQuery typed = splitContentQuery(searchText(), m_regexMode);
     if (!typed.folders.empty()) {
         const ContentFolderSpec& spec = typed.folders.front();
         const QString label = spec.path.isEmpty() ? spec.names.join(u'\\') : spec.path;
@@ -4130,7 +4245,7 @@ QString Launcher::folderChip() const
                 return kPickPrefix.toString() + place->chosen;
             return place->count > 1 || place->folders.isEmpty() ? kAllChip.toString() : kPickPrefix.toString() + place->folders.first();
         }
-    } else if (!splitContentQuery(searchText()).folders.empty()) {
+    } else if (!splitContentQuery(searchText(), m_regexMode).folders.empty()) {
         return kTypedChip.toString();
     }
     return m_contentFolder.isEmpty() ? QString() : kPinPrefix.toString() + m_contentFolder;
@@ -4149,8 +4264,8 @@ QString Launcher::folderHint() const
             return tr("没有叫 %1 的文件夹，当作文字搜").arg(name);
         }
     }
-    if (!splitContentQuery(searchText()).folders.empty())
-        return {};
+    if (m_regexMode || !splitContentQuery(searchText(), m_regexMode).folders.empty())
+        return {}; // in regex mode "abc/" is an expression: the folders below are the way
     return tr("或在词后加“文件夹名/”");
 }
 
@@ -4158,7 +4273,7 @@ QString Launcher::contentWords() const
 {
     if (typedPlace())
         return m_contentScope.words;
-    return splitContentQuery(searchText()).words;
+    return splitContentQuery(searchText(), m_regexMode).words;
 }
 
 QString Launcher::contentWhere() const
@@ -4210,7 +4325,7 @@ void Launcher::chooseFolderChip(const QString& key)
     if (key == kAllChip) {
         m_contentPick = {};
     } else if (key.startsWith(kPickPrefix)) {
-        const ContentQuery typed = splitContentQuery(searchText());
+        const ContentQuery typed = splitContentQuery(searchText(), m_regexMode);
         if (typed.folders.empty())
             return;
         m_contentPick = {typed.folders.front().typed, key.mid(kPickPrefix.size())};
@@ -4733,6 +4848,16 @@ void Launcher::clearSelection()
 void Launcher::perform(const SearchResult& result, Action action, bool fileChecked)
 {
     const SearchResult r = result; // the model may change underneath us
+    m_adminNote.reset(); // set below for the row being run, taken by remember()
+    // A file or folder found for a command (commandFiles): Enter hands it over.
+    if (const auto files = action == Open && fileRow(r) ? commandFiles() : std::nullopt) {
+        const Favorite& command = files->command;
+        remember(command.path, m_shownText);
+        shell::runCustom(command.command, command.workingDirectory, r.path, reportFailure(command.name),
+            {command.silent, command.runAsAdmin});
+        emit dismissRequested();
+        return;
+    }
     if (!fileChecked)
         dropServerWait(); // a server still being waited for no longer matters
     if (r.isWindow()) {
@@ -4799,8 +4924,20 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         return;
     }
     if (r.isPlace()) {
-        performPlace(r, action);
+        performPlace(r, action == RunAsUser ? Open : action);
         return;
+    }
+    // 记住以管理员身份运行 (GitHub #313): Enter runs as it was last run from
+    // here. remember() keeps which with the row. Not on the second pass for
+    // a file checked meanwhile: `action` is already what it became.
+    if (action == RunAsUser) {
+        action = Open;
+        if (canRememberAdmin(r))
+            m_adminNote = false;
+    } else if (action == RunAsAdmin && canRememberAdmin(r)) {
+        m_adminNote = true;
+    } else if (!fileChecked && action == Open && adminRemembered(r)) {
+        action = RunAsAdmin;
     }
     if (r.isApp()) {
         performApp(r, action);
@@ -5520,6 +5657,30 @@ void Launcher::remember(const QString& path, const QString& query)
     rememberQuery();
     if (m_recordHistory)
         m_history->record(path, query, QDateTime::currentMSecsSinceEpoch());
+    if (m_recordHistory && m_adminNote)
+        m_history->setAdmin(path, *m_adminNote);
+    m_adminNote.reset();
+}
+
+void Launcher::setRememberAdmin(bool on)
+{
+    if (m_rememberAdmin == on)
+        return;
+    m_rememberAdmin = on;
+    if (m_window && m_window->isVisible())
+        search(); // 管理员 comes or goes
+}
+
+bool Launcher::canRememberAdmin(const SearchResult& r) const
+{
+    if (!m_rememberAdmin || !m_recordHistory || r.missing || r.offline || r.isPlace() || r.isWeb() || r.isPlugin() || r.isWindow())
+        return false;
+    return r.isApp() ? r.elevatable : !r.isDir && shell::canRunAsAdministrator(r.path);
+}
+
+bool Launcher::adminRemembered(const SearchResult& r) const
+{
+    return m_rememberAdmin && m_recordHistory && m_history->admin(r.path) && canRememberAdmin(r);
 }
 
 // A window switched to that shows a folder (Explorer, Total Commander, Opus:
@@ -5903,8 +6064,12 @@ QVariantList Launcher::menuItems(int row) const
         return items;
     }
     if (r->isApp()) {
-        items.append(entry(Open, tr("打开"), u"Enter"_s, u"\uE8A7"_s)); // OpenInNewWindow
-        if (r->elevatable && !r->missing && !r->offline)
+        // Enter runs it as administrator (GitHub #313): said so, with the way back.
+        const bool admin = adminRemembered(*r);
+        items.append(entry(Open, admin ? tr("以管理员身份运行") : tr("打开"), u"Enter"_s, admin ? u"\uE7EF"_s : u"\uE8A7"_s)); // Admin, OpenInNewWindow
+        if (admin)
+            items.append(entry(RunAsUser, tr("以普通权限运行"), QString(), u"\uE8A7"_s));
+        else if (r->elevatable && !r->missing && !r->offline)
             items.append(entry(RunAsAdmin, tr("以管理员身份运行"), u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
         if (!r->target.isEmpty())
             items.append(entry(Reveal, r->isPackagedApp() ? tr("打开安装文件夹") : tr("打开所在位置"), u"Ctrl+Enter"_s,
@@ -5922,7 +6087,9 @@ QVariantList Launcher::menuItems(int row) const
         }
         return items;
     }
-    items.append(entry(Open, r->isDir ? tr("打开文件夹") : tr("打开"), u"Enter"_s, r->isDir ? u"\uE838"_s : u"\uE8E5"_s));
+    const bool admin = adminRemembered(*r); // as an app's above
+    items.append(entry(Open, r->isDir ? tr("打开文件夹") : admin ? tr("以管理员身份运行") : tr("打开"), u"Enter"_s,
+        r->isDir ? u"\uE838"_s : admin ? u"\uE7EF"_s : u"\uE8E5"_s));
     items.append(entry(Reveal, tr("打开所在位置"), u"Ctrl+Enter"_s, u"\uE8DA"_s));
     if (navigation::canBrowseFolder(*r))
         items.append(entry(BrowseFolder, tr("进入此文件夹搜索"), QString(), u"\uE721"_s));
@@ -5933,7 +6100,9 @@ QVariantList Launcher::menuItems(int row) const
     items.append(entry(OpenTerminal, tr("在终端中打开"), QString(), u"\uE756"_s)); // CommandPrompt
     if (r->isDir && m_contentEnabled && !r->path.startsWith(u"\\\\"_s)) // shares: contents are not read there
         items.append(entry(SearchInFolder, tr("在此文件夹中搜内容"), QString(), u"\uE721"_s)); // Search
-    if (!r->isDir && !r->missing && !r->offline && shell::canRunAsAdministrator(r->path))
+    if (admin)
+        items.append(entry(RunAsUser, tr("以普通权限运行"), QString(), u"\uE8E5"_s));
+    else if (!r->isDir && !r->missing && !r->offline && shell::canRunAsAdministrator(r->path))
         items.append(entry(RunAsAdmin, tr("以管理员身份运行"), u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
     fileCommandItems(items);
     if (renamable(*r) && m_results.selectedCount() <= 1)

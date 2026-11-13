@@ -8,208 +8,184 @@
 #pragma once
 
 #include "BarcodeFormat.h"
-#include "ByteArray.h"
-#include "Content.h"
-#include "ReaderOptions.h"
+#include "ContentType.h"
 #include "Error.h"
 #include "ImageView.h"
 #include "Quadrilateral.h"
-#include "StructuredAppend.h"
+#include "ReaderOptions.h" // for TextMode
+#include "Version.h" // ZXING_... macros
 
-#ifdef ZXING_EXPERIMENTAL_API
 #include <memory>
-namespace ZXing {
-class BitMatrix;
-}
-
-extern "C" struct zint_symbol;
-struct zint_symbol_deleter
-{
-	void operator()(zint_symbol* p) const noexcept;
-};
-using unique_zint_symbol = std::unique_ptr<zint_symbol, zint_symbol_deleter>;
-#endif
-
 #include <string>
 #include <vector>
 
+#ifdef ZXING_USE_ZINT
+extern "C" struct zint_symbol;
+#endif
+
 namespace ZXing {
 
-class DecoderResult;
-class DetectorResult;
+class CreatorOptions;
+class ReaderOptions;
 class WriterOptions;
-class Result; // TODO: 3.0 replace deprected symbol name
+class Barcode;
+struct BarcodeData;
 
 using Position = QuadrilateralI;
-using Barcode = Result;
 using Barcodes = std::vector<Barcode>;
-using Results = std::vector<Result>;
 
 /**
- * @brief The Barcode class encapsulates the result of decoding a barcode within an image.
+ * @brief String keys for the extra() metadata of Barcode. The values depend on the symbology and may not be present for all barcodes.
  */
-class Result
+namespace BarcodeExtra {
+	#define ZX_EXTRA(NAME) static constexpr auto NAME = #NAME
+	ZX_EXTRA(DataMask); ///< QRCodes
+	ZX_EXTRA(Version);  ///< QRCodes, DataMatrix, MaxiCode (e.g. "12x12" for DataMatrix)
+	ZX_EXTRA(EanAddOn); ///< The EAN/UPC add-on content if detected
+	ZX_EXTRA(ECLevel);  ///< Error correction level (e.g. "L", "M", "Q", "H" for QRCode)
+	ZX_EXTRA(UEC);      ///< Unused error correction margin in the range [0, 1]
+	ZX_EXTRA(UPCE);     ///< The original (non-normalized) UPC-E code if UPC-E is detected
+	ZX_EXTRA(ReaderInit);
+	#undef ZX_EXTRA
+} // namespace BarcodeExtra
+
+/**
+ * @brief The Barcode class encapsulates a decoded or created barcode symbol.
+ *
+ * Barcode represents a decoded or created barcode symbol, providing access to its content, format,
+ * position, and other metadata. It serves as the primary interface for working with barcodes in the library.
+ *
+ * Barcode objects are obtained from the ReadBarcodes function when scanning an image, or from the
+ * CreateBarcodeFrom... functions when generating a new barcode. To convert a Barcode to an image or SVG,
+ * use the WriteBarcodeTo... functions.
+ *
+ * @see ReadBarcodes, CreateBarcodeFromText, CreateBarcodeFromBytes, WriteBarcodeToImage, WriteBarcodeToSVG
+ */
+class Barcode
 {
-	void setIsInverted(bool v) { _isInverted = v; }
-	Result& setReaderOptions(const ReaderOptions& opts);
+	using Data = BarcodeData;
+
+	std::shared_ptr<Data> d;
+
+	Barcode& setReaderOptions(const ReaderOptions& opts);
 
 	friend Barcode MergeStructuredAppendSequence(const Barcodes&);
 	friend Barcodes ReadBarcodes(const ImageView&, const ReaderOptions&);
+	friend Barcode CreateBarcode(const void*, int, int, const CreatorOptions&);
 	friend Image WriteBarcodeToImage(const Barcode&, const WriterOptions&);
-	friend void IncrementLineCount(Barcode&);
+	friend std::string WriteBarcodeToSVG(const Barcode&, const WriterOptions&);
 
 public:
-	Result() = default;
+	Barcode();
+	Barcode(Barcode::Data&& data);
 
-	// linear symbology convenience constructor
-	Result(const std::string& text, int y, int xStart, int xStop, BarcodeFormat format, SymbologyIdentifier si, Error error = {},
-		   bool readerInit = false);
-
-	Result(DecoderResult&& decodeResult, DetectorResult&& detectorResult, BarcodeFormat format);
-
-	[[deprecated]] Result(DecoderResult&& decodeResult, Position&& position, BarcodeFormat format);
-
+	/// Returns whether the barcode is valid, i.e. it contains a successfully decoded or created symbol.
 	bool isValid() const;
 
-	const Error& error() const { return _error; }
+	/// Returns the error associated with the barcode, if any.
+	const Error& error() const;
 
-	BarcodeFormat format() const { return _format; }
+	/// Returns the BarcodeFormat of the barcode.
+	BarcodeFormat format() const;
 
-	/**
-	 * @brief bytes is the raw / standard content without any modifications like character set conversions
-	 */
-	const ByteArray& bytes() const;
+	/// Returns the symbology of the barcode format (e.g. EAN/UPC for EAN13, EAN8, UPCA, etc.).
+	BarcodeFormat symbology() const { return Symbology(format()); }
 
-	/**
-	 * @brief bytesECI is the raw / standard content following the ECI protocol
-	 */
-	ByteArray bytesECI() const;
+	/// Returns the raw / standard content without any modifications like character set conversions.
+	const std::vector<uint8_t>& bytes() const;
 
-	/**
-	 * @brief text returns the bytes() content rendered to unicode/utf8 text accoring to specified TextMode
-	 */
+	/// Returns the raw / standard content following the ECI protocol.
+	std::vector<uint8_t> bytesECI() const;
+
+	/// Returns the bytes() content rendered to unicode/utf8 text according to specified TextMode.
 	std::string text(TextMode mode) const;
 
-	/**
-	 * @brief text returns the bytes() content rendered to unicode/utf8 text accoring to the TextMode set in the ReaderOptions
-	 */
+	/// Returns the bytes() content rendered to unicode/utf8 text according to the TextMode set in the ReaderOptions.
 	std::string text() const;
 
-	/**
-	 * @brief ecLevel returns the error correction level of the symbol (empty string if not applicable)
-	 */
-	std::string ecLevel() const;
-
-	/**
-	 * @brief contentType gives a hint to the type of content found (Text/Binary/GS1/etc.)
-	 */
+	/// Returns the content type, giving a hint to the type of content found (Text/Binary/GS1/etc.).
 	ContentType contentType() const;
 
-	/**
-	 * @brief hasECI specifies wheter or not an ECI tag was found
-	 */
+	/// Returns whether or not an ECI tag was found.
 	bool hasECI() const;
 
-	const Position& position() const { return _position; }
-	void setPosition(Position pos) { _position = pos; }
+	/// Returns the position of the barcode in the image as a quadrilateral of 4 points (topLeft, topRight, bottomRight,
+	/// bottomLeft).
+	const Position& position() const;
 
-	/**
-	 * @brief orientation of barcode in degree, see also Position::orientation()
-	 */
+	/// Returns the orientation of the barcode in degrees, see also Position::orientation()
 	int orientation() const;
 
-	/**
-	 * @brief isMirrored is the symbol mirrored (currently only supported by QRCode and DataMatrix)
-	 */
-	bool isMirrored() const { return _isMirrored; }
+	/// Returns whether the symbol is mirrored (currently only supported by QRCode and DataMatrix).
+	bool isMirrored() const;
+	/// Returns whether the symbol is inverted / has reversed reflectance (see ReaderOptions::tryInvert).
+	bool isInverted() const;
 
-	/**
-	 * @brief isInverted is the symbol inverted / has reveresed reflectance (see ReaderOptions::tryInvert)
-	 */
-	bool isInverted() const { return _isInverted; }
-
-	/**
-	 * @brief symbologyIdentifier Symbology identifier "]cm" where "c" is symbology code character, "m" the modifier.
-	 */
+	/// Returns the symbology identifier "]cm" where "c" is symbology code character, "m" the modifier.
 	std::string symbologyIdentifier() const;
 
-	/**
-	 * @brief sequenceSize number of symbols in a structured append sequence.
-	 *
-	 * If this is not part of a structured append sequence, the returned value is -1.
-	 * If it is a structured append symbol but the total number of symbols is unknown, the
-	 * returned value is 0 (see PDF417 if optional "Segment Count" not given).
-	 */
+	/// @brief Returns the number of symbols in a structured append sequence.
+	///
+	/// If this is not part of a structured append sequence, the returned value is -1.
+	/// If it is a structured append symbol but the total number of symbols is unknown, the
+	/// returned value is 0 (see PDF417 if optional "Segment Count" not given).
 	int sequenceSize() const;
 
-	/**
-	 * @brief sequenceIndex the 0-based index of this symbol in a structured append sequence.
-	 */
+	/// Returns the 0-based index of this symbol in a structured append sequence.
 	int sequenceIndex() const;
 
-	/**
-	 * @brief sequenceId id to check if a set of symbols belongs to the same structured append sequence.
-	 *
-	 * If the symbology does not support this feature, the returned value is empty (see MaxiCode).
-	 * For QR Code, this is the parity integer converted to a string.
-	 * For PDF417 and DataMatrix, this is the "fileId".
-	 */
+	/// @brief Returns the sequenceId to check if a set of symbols belongs to the same structured append sequence.
+	///
+	/// If the symbology does not support this feature, the returned value is empty (see MaxiCode).
+	/// For QR Code, this is the parity integer converted to a string.
+	/// For PDF417 and DataMatrix, this is the "fileId".
 	std::string sequenceId() const;
 
+	/// Returns whether this symbol is the last in a structured append sequence.
 	bool isLastInSequence() const { return sequenceSize() == sequenceIndex() + 1; }
+
+	/// Returns whether this symbol is part of a structured append sequence.
 	bool isPartOfSequence() const { return sequenceSize() > -1 && sequenceIndex() > -1; }
 
-	/**
-	 * @brief readerInit Set if Reader Initialisation/Programming symbol.
-	 */
-	bool readerInit() const { return _readerInit; }
+	/// Returns how many lines have been detected with this code (applies only to linear symbologies).
+	int lineCount() const;
 
-	/**
-	 * @brief lineCount How many lines have been detected with this code (applies only to linear symbologies)
-	 */
-	int lineCount() const { return _lineCount; }
-
-	/**
-	 * @brief version QRCode / DataMatrix / Aztec version or size.
-	 */
-	std::string version() const;
-
-#ifdef ZXING_EXPERIMENTAL_API
-	void symbol(BitMatrix&& bits);
+	/// Returns the bit matrix of the symbol as an ImageView.
 	ImageView symbol() const;
-	void zint(unique_zint_symbol&& z);
-	zint_symbol* zint() const { return _zint.get(); }
+
+	/// @brief Retrieve supplementary metadata associated with this barcode.
+	///
+	/// Returns a string containing additional and symbology specific information. In form of a JSON object
+	/// serialization. The optional parameter @p key can be used to retrieve a specific item only.
+	/// Key values are case insensitive. See BarcodeExtra namespace for valid keys.
+	/// If the key is not found or there is no info available, an empty string is returned.
+	std::string extra(std::string_view key = "") const;
+
+	/// @cond DEPRECATED
+	/// Returns the error correction level of the symbol (empty string if not applicable).
+	// [[deprecated ("use extra(BarcodeExtra::ECLevel) instead")]]
+	std::string ecLevel() const { return extra(BarcodeExtra::ECLevel); }
+
+	/// Returns whether the symbol is a Reader Initialisation/Programming symbol.
+	// [[deprecated ("use extra(BarcodeExtra::ReaderInit) instead")]]
+	bool readerInit() const { return !extra(BarcodeExtra::ReaderInit).empty(); }
+
+	/// Returns the version QRCode / DataMatrix / Aztec version or size.
+	// [[deprecated ("use extra(BarcodeExtra::Version) instead")]]
+	std::string version() const { return extra(BarcodeExtra::Version); }
+	/// @endcond
+
+#if defined(ZXING_USE_ZINT) && defined(ZXING_EXPERIMENTAL_API)
+	zint_symbol* zint() const;
 #endif
 
-	bool operator==(const Result& o) const;
-
-private:
-	Content _content;
-	Error _error;
-	Position _position;
-	ReaderOptions _readerOpts; // TODO: 3.0 switch order to prevent 4 padding bytes
-	StructuredAppendInfo _sai;
-	BarcodeFormat _format = BarcodeFormat::None;
-	char _ecLevel[4] = {};
-	char _version[4] = {};
-	int _lineCount = 0;
-	bool _isMirrored = false;
-	bool _isInverted = false;
-	bool _readerInit = false;
-#ifdef ZXING_EXPERIMENTAL_API
-	std::shared_ptr<BitMatrix> _symbol;
-	std::shared_ptr<zint_symbol> _zint;
-#endif
+	bool operator==(const Barcode& o) const;
 };
 
-/**
- * @brief Merge a list of Barcodes from one Structured Append sequence to a single barcode
- */
-Barcode MergeStructuredAppendSequence(const Barcodes& results);
+/// Merge a list of Barcodes from one Structured Append sequence to a single barcode.
+Barcode MergeStructuredAppendSequence(const Barcodes& barcodes);
 
-/**
- * @brief Automatically merge all Structured Append sequences found in the given list of barcodes
- */
+/// Automatically merge all Structured Append sequences found in the given list of barcodes.
 Barcodes MergeStructuredAppendSequences(const Barcodes& barcodes);
 
 } // ZXing

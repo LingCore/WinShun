@@ -8,6 +8,7 @@
 #include <QEasingCurve>
 #include <QEvent>
 #include <QGuiApplication>
+#include <QPlatformSurfaceEvent>
 #include <QScreen>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -124,6 +125,19 @@ QRect logicalOf(const NativeArea& native, const QRect& r)
     const auto up = [&](int value, int origin) { return origin + int(std::ceil((value - origin) / native.scale)); };
     return QRect(QPoint(down(r.x(), native.origin.x()), down(r.y(), native.origin.y())),
         QPoint(up(r.x() + r.width(), native.origin.x()) - 1, up(r.y() + r.height(), native.origin.y()) - 1));
+}
+
+// ... inwards: all of it lies within the native bounds. For a file list
+// the box sits inside of, right in its corner: rounded outwards at 150 %,
+// the box came out a physical pixel over the scroll bars (GitHub #234).
+QRect logicalWithin(const NativeArea& native, const QRect& r)
+{
+    if (r.isEmpty())
+        return {};
+    const auto down = [&](int value, int origin) { return origin + int(std::floor((value - origin) / native.scale)); };
+    const auto up = [&](int value, int origin) { return origin + int(std::ceil((value - origin) / native.scale)); };
+    return QRect(QPoint(up(r.x(), native.origin.x()), up(r.y(), native.origin.y())),
+        QPoint(down(r.x() + r.width(), native.origin.x()) - 1, down(r.y() + r.height(), native.origin.y()) - 1));
 }
 
 } // namespace
@@ -366,6 +380,16 @@ bool Placement::eventFilter(QObject* watched, QEvent* event)
 {
     if (watched == m_window && (event->type() == QEvent::DevicePixelRatioChange || event->type() == QEvent::Show))
         scheduleDisplayRestore();
+    // Qt made the window a new native one: the old handle took the subclass
+    // with it, and the window would be moved and sized without any of this.
+    if (watched == m_window && event->type() == QEvent::PlatformSurface
+        && static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated
+        && m_window->winId() != m_hwnd) {
+        qWarning("Placement: the window has a new native handle, hooked again");
+        setMoving(false); // no WM_EXITSIZEMOVE comes from a handle that is gone
+        m_hwnd = m_window->winId();
+        ::SetWindowSubclass(reinterpret_cast<HWND>(m_hwnd), &Hook::proc, 0, reinterpret_cast<DWORD_PTR>(this));
+    }
     return QObject::eventFilter(watched, event);
 }
 
@@ -422,11 +446,12 @@ void Placement::placeOn(QScreen* screen)
 }
 
 void Placement::avoidNative(const QRect& window, QScreen* screen, bool inside, const QRect& lists, const QRect& frame,
-    const QRect& orInto)
+    const QRect& orInto, bool explorerList)
 {
     m_glide.stop();
     m_avoid = window.isEmpty() ? std::nullopt : std::optional {window};
     m_avoidInside = inside;
+    m_avoidGap = explorerList ? windowavoidance::kExplorerListGap : windowavoidance::kListGap;
     m_avoidLists = lists;
     m_avoidFrame = frame;
     m_box.reset();
@@ -443,6 +468,7 @@ void Placement::avoidNative(const QRect& window, QScreen* screen, bool inside, c
                     settleOn(screen, false))) {
                 m_avoid = orInto;
                 m_avoidInside = true;
+                m_avoidGap = windowavoidance::kExplorerListGap;
                 m_avoidLists = {};
             }
         }
@@ -715,9 +741,10 @@ QPoint Placement::settleAvoiding(QScreen* screen, bool fitList)
     const QPoint home = settleOn(screen, false);
     const NativeArea native = nativeArea(screen);
     const auto logical = [&](const QRect& r) { return logicalOf(native, r); };
-    const QRect obstacle = logical(*m_avoid);
+    const QRect obstacle = m_avoidInside ? logicalWithin(native, *m_avoid) : logical(*m_avoid);
     const QRect area = screen->availableGeometry();
-    int height = std::max(m_roomNeeded, m_roomWanted > 0 ? m_roomWanted : m_window->height());
+    const int windowHeight = m_fitHeight > 0 ? m_fitHeight : m_window->height();
+    int height = std::max(m_roomNeeded, m_roomWanted > 0 ? m_roomWanted : windowHeight);
     QPoint at;
     if (m_avoidInside) {
         // Over the list (GitHub #82). As it opens, as narrow as the list is
@@ -726,7 +753,7 @@ QPoint Placement::settleAvoiding(QScreen* screen, bool fitList)
         const bool narrow = fitList && m_defaultWidth > 0 && !m_panel;
         const int width = narrow ? std::min(460, widthOn(screen)) : widthNow();
         const QRect spot = windowavoidance::inList(area, obstacle, logical(m_avoidLists), logical(m_avoidFrame),
-            {width, height}, {narrow ? std::min(320, width) : width, m_roomNeeded});
+            {width, height}, {narrow ? std::min(320, width) : width, m_roomNeeded}, m_avoidGap);
         if (narrow && spot.width() != m_boxWidth) {
             m_boxWidth = spot.width();
             emit boxWidthChanged();
@@ -736,7 +763,7 @@ QPoint Placement::settleAvoiding(QScreen* screen, bool fitList)
         // Keep the panel's bottom at the file list's bottom as the result
         // count changes; room still describes the full result budget.
         if (!fitList)
-            at.ry() += std::max(0, spot.height() - m_window->height());
+            at.ry() += std::max(0, spot.height() - windowHeight);
     } else {
         at = windowavoidance::place(area, obstacle, {widthNow(), height}, home);
     }
@@ -826,6 +853,22 @@ int Placement::roomRight() const
     const int width = m_anchorWidth > 0 ? std::min(m_anchorWidth, m_window->width()) : m_window->width();
     const int right = native.toNative(m_window->x() + width, native.origin.x());
     return int(std::floor((native.work.x() + native.work.width() - right) / native.scale));
+}
+
+int Placement::fitHeight(int height)
+{
+    if (!m_window || !m_window->isVisible() || !m_avoid || !m_avoidInside || m_panel || m_moving || m_sizing || m_windowSizing
+        || m_glide.state() == QAbstractAnimation::Running || height <= 0 || height == m_window->height())
+        return height;
+    QScreen* screen = m_window->screen();
+    if (!screen)
+        return height;
+    m_fitHeight = height;
+    const QPoint at = settleAvoiding(screen);
+    m_fitHeight = 0;
+    m_place = at;
+    m_window->setGeometry(QRect(at, QSize(m_window->width(), height))); // one SetWindowPos: moved and sized together
+    return height;
 }
 
 void Placement::refit()

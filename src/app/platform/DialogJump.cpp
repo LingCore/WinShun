@@ -457,9 +457,11 @@ void DialogJump::go(HWND dialog, std::wstring path, bool isFile, bool open)
         // the dialog not go there, the whole path in the box does as well.
         const std::size_t slash = path.find_last_of(L'\\');
         bool named = false;
-        if (blenderdialog::isOne(dialog)) {
-            // Its API selects directory and filename together: one refresh
-            // and one acknowledged request, without a separate state query.
+        if (blenderdialog::isOne(dialog) || filedialog::byRule(dialog)) {
+            // Blender's API selects directory and filename together: one
+            // refresh and one acknowledged request, without a separate state
+            // query. A window driven by a user's rule has one box, which
+            // takes the whole path.
             named = filedialog::setFileName(dialog, path);
         } else if (slash == std::wstring::npos) {
             named = filedialog::setFileName(dialog, path);

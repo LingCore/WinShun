@@ -359,13 +359,16 @@ Item {
         }
     }
 
-    // Reading it, a moment after it began; or why there is nothing to show.
+    // Reading it, a moment after it began (seconds after: the file's place
+    // may not be answering, GitHub #307); or why there is nothing to show.
     Text {
         anchors.centerIn: parent
         width: parent.width - 2 * body.padding
         horizontalAlignment: Text.AlignHCenter
         visible: text.length > 0
-        text: body.preview.kind === FilePreview.Loading ? (body.preview.slow ? qsTr("正在读取…") : "")
+        text: body.preview.kind === FilePreview.Loading
+              ? (body.preview.stalled ? qsTr("读取时间比平时长，文件所在的磁盘或网络位置可能没有响应")
+                 : body.preview.slow ? qsTr("正在读取…") : "")
             : body.preview.kind === FilePreview.Message ? body.preview.message : ""
         wrapMode: Text.Wrap
         color: Theme.faint

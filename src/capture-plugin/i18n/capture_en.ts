@@ -666,6 +666,14 @@
         <translation>Nudge the pointer 1 px, with Shift 10 px</translation>
     </message>
     <message>
+        <source>输入尺寸、锁定比例、选预设</source>
+        <translation>Type a size, lock the shape, pick a preset</translation>
+    </message>
+    <message>
+        <source>按预设尺寸或比例框选</source>
+        <translation>Select by a preset size or shape</translation>
+    </message>
+    <message>
         <source>恢复最近选区</source>
         <translation>Bring back a recent area</translation>
     </message>
@@ -1221,10 +1229,6 @@
         <translation>Screenshot</translation>
     </message>
     <message>
-        <source>%1 × %2</source>
-        <translation>%1 × %2</translation>
-    </message>
-    <message>
         <source>位置 %1, %2</source>
         <translation>Position %1, %2</translation>
     </message>
@@ -1269,6 +1273,57 @@
     <message>
         <source>截图设置分类</source>
         <translation>Screenshot settings categories</translation>
+    </message>
+</context>
+<context>
+    <name>CaptureSizeBox</name>
+    <message>
+        <source>%1 × %2</source>
+        <translation>%1 × %2</translation>
+    </message>
+    <message>
+        <source>输入尺寸或选预设（F）</source>
+        <translation>Type a size or pick a preset (F)</translation>
+    </message>
+    <message>
+        <source>宽度（像素）</source>
+        <translation>Width (pixels)</translation>
+    </message>
+    <message>
+        <source>高度（像素）</source>
+        <translation>Height (pixels)</translation>
+    </message>
+    <message>
+        <source>取消锁定比例</source>
+        <translation>Unlock the shape</translation>
+    </message>
+    <message>
+        <source>锁定比例</source>
+        <translation>Lock the shape</translation>
+    </message>
+    <message>
+        <source>预设尺寸</source>
+        <translation>Preset sizes</translation>
+    </message>
+    <message>
+        <source>比例</source>
+        <translation>Shape</translation>
+    </message>
+    <message>
+        <source>存为预设</source>
+        <translation>Save preset</translation>
+    </message>
+    <message>
+        <source>预设已满</source>
+        <translation>List full</translation>
+    </message>
+    <message>
+        <source>已在预设里</source>
+        <translation>Already saved</translation>
+    </message>
+    <message>
+        <source>删除这个预设</source>
+        <translation>Remove this preset</translation>
     </message>
 </context>
 <context>
@@ -2083,6 +2138,18 @@ The unfinished recording is kept at: %1</translation>
     <message>
         <source>已放弃这次的标注 · Ctrl+Z 恢复</source>
         <translation>Annotations given up · Ctrl+Z brings them back</translation>
+    </message>
+    <message>
+        <source>%1 : %2</source>
+        <translation>%1 : %2</translation>
+    </message>
+    <message>
+        <source>%1 × %2</source>
+        <translation>%1 × %2</translation>
+    </message>
+    <message>
+        <source>已锁定比例 %1 : %2 · 拖动框选</source>
+        <translation>Shape locked to %1 : %2 · drag to select</translation>
     </message>
     <message>
         <source>先完成或放弃标注</source>

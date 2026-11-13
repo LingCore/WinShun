@@ -52,10 +52,14 @@ QRect toRect(const RECT& r)
 
 // The screen's pixels in `r` through GDI: CAPTUREBLT takes layered windows
 // in too. SDR only (HDR monitors come out washed out).
+//
+// Straight into a DIB section whose pixels the picture then is: a
+// compatible bitmap read back with GetDIBits is the same pixels copied a
+// second time, into memory touched for the first time (4,000 page faults
+// for 2560x1600). The section goes with the last copy of the picture.
 QImage bitblt(const QRect& r)
 {
-    QImage image(r.width(), r.height(), QImage::Format_RGB32);
-    if (image.isNull())
+    if (r.isEmpty())
         return {};
     const HDC screen = ::GetDC(nullptr);
     if (!screen)
@@ -65,16 +69,6 @@ QImage bitblt(const QRect& r)
     if (!memory)
         return {};
     const auto releaseMemory = qScopeGuard([memory] { ::DeleteDC(memory); });
-    const HBITMAP bitmap = ::CreateCompatibleBitmap(screen, r.width(), r.height());
-    if (!bitmap)
-        return {};
-    const auto releaseBitmap = qScopeGuard([bitmap] { ::DeleteObject(bitmap); });
-    const HGDIOBJ old = ::SelectObject(memory, bitmap);
-    if (!old || old == HGDI_ERROR)
-        return {};
-    const bool ok = ::BitBlt(memory, 0, 0, r.width(), r.height(), screen, r.x(), r.y(), SRCCOPY | CAPTUREBLT);
-    // GetDIBits requires the bitmap to be deselected from every DC.
-    ::SelectObject(memory, old);
     BITMAPINFO info {};
     info.bmiHeader.biSize = sizeof info.bmiHeader;
     info.bmiHeader.biWidth = r.width();
@@ -82,8 +76,29 @@ QImage bitblt(const QRect& r)
     info.bmiHeader.biPlanes = 1;
     info.bmiHeader.biBitCount = 32;
     info.bmiHeader.biCompression = BI_RGB;
-    const int lines = ok ? ::GetDIBits(memory, bitmap, 0, static_cast<UINT>(r.height()), image.bits(), &info, DIB_RGB_COLORS) : 0;
-    return lines == r.height() ? image : QImage();
+    void* bits = nullptr;
+    const HBITMAP bitmap = ::CreateDIBSection(screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!bitmap || !bits) {
+        if (bitmap)
+            ::DeleteObject(bitmap);
+        return {};
+    }
+    auto releaseBitmap = qScopeGuard([bitmap] { ::DeleteObject(bitmap); });
+    const HGDIOBJ old = ::SelectObject(memory, bitmap);
+    if (!old || old == HGDI_ERROR)
+        return {};
+    const bool ok = ::BitBlt(memory, 0, 0, r.width(), r.height(), screen, r.x(), r.y(), SRCCOPY | CAPTUREBLT);
+    ::SelectObject(memory, old); // out of the DC before the pixels are read
+    ::GdiFlush();
+    if (!ok)
+        return {};
+    // A 32-bit section's rows are width x 4 bytes, as QImage's.
+    QImage image(static_cast<uchar*>(bits), r.width(), r.height(), r.width() * 4, QImage::Format_RGB32,
+        [](void* handle) { ::DeleteObject(static_cast<HBITMAP>(handle)); }, bitmap);
+    if (image.isNull())
+        return {};
+    releaseBitmap.dismiss(); // the picture's now
+    return image;
 }
 
 } // namespace

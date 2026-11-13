@@ -9,9 +9,8 @@
 #include "ByteArray.h"
 #include "CharacterSet.h"
 #include "DecoderResult.h"
-#include "GenericGF.h"
 #include "MCBitMatrixParser.h"
-#include "ReedSolomonDecoder.h"
+#include "ReedSolomon.h"
 #include "ZXTestSupport.h"
 
 #include <algorithm>
@@ -41,7 +40,7 @@ static bool CorrectErrors(ByteArray& codewordBytes, int start, int dataCodewords
 			codewordsInts[i / divisor] = codewordBytes[i + start];
 	}
 
-	if (!ReedSolomonDecode(GenericGF::MaxiCodeField64(), codewordsInts, ecCodewords / divisor))
+	if (!ReedSolomonDecode(RSField::MaxiCode, codewordsInts, ecCodewords / divisor))
 		return false;
 
 	// Copy back into array of bytes -- only need to worry about the bytes that were data
@@ -276,10 +275,8 @@ DecoderResult Decode(ByteArray&& bytes, const int mode)
 		auto country  = ToString(GetCountry(bytes), 3);
 		auto service  = ToString(GetServiceClass(bytes), 3);
 		GetMessage(bytes, 10, 84, result, sai);
-		if (result.bytes.asString().compare(0, 7, "[)>\u001E01\u001D") == 0) // "[)>" + RS + "01" + GS
-			result.insert(9, postcode + GS + country + GS + service + GS);
-		else
-			result.insert(0, postcode + GS + country + GS + service + GS);
+		result.insert(result.bytes.asString().starts_with("[)>\u001E01\u001D") ? 9 : 0, // "[)>" + RS + "01" + GS
+					  postcode + GS + country + GS + service + GS);
 		break;
 	}
 	case 4:
