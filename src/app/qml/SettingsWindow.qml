@@ -3063,12 +3063,12 @@ Window {
                 SettingRow { // GitHub #185, #244
                     title: qsTr("范围标签")
                     keywords: qsTr("范围;全部;文件;内容;标签;合并;三合一;按钮;极简;scope;tabs").split(";")
-                    description: qsTr("搜索框右边的“全部 / 文件 / 内容”：并排显示，或合成一个按钮，点一下切到下一个")
-                    tip: qsTr("两种样式下 Tab / Shift+Tab 都能切换；展开的搜索面板始终并排显示")
+                    description: qsTr("搜索框右边的“全部 / 文件 / 内容”：拆分成几个标签，或合并成一个按钮，点一下切到下一个")
+                    tip: qsTr("两种样式下 Tab / Shift+Tab 都能切换；展开的搜索面板始终拆分显示")
 
                     ScopeTabs {
                         objectName: "scopeButtonChoice"
-                        labels: [qsTr("并排"), qsTr("合成一个按钮")]
+                        labels: [qsTr("拆分"), qsTr("合并")]
                         current: window.editor.scopeButton ? 1 : 0
                         onActivated: (index) => window.editor.scopeButton = index === 1
                     }
