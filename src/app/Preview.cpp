@@ -5710,6 +5710,39 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
             settle(panelWindow, 2);
         }
     }
+    // The columns' own scroll bar: there only while they are wider than the
+    // list, and no room is kept for it under the rows otherwise (GitHub #310:
+    // it lay across the whole list whatever the widths).
+    {
+        auto* list = visualNamed(panelWindow->contentItem(), u"panelResultList"_s);
+        auto* bar = visualNamed(panelWindow->contentItem(), u"panelColumnsScrollBar"_s);
+        check(list && bar, "panel list or its columns scroll bar missing");
+        if (list && bar) {
+            const auto widths = [&] {
+                int total = 0;
+                for (const QVariant& column : launcher.panelColumns()->visibleColumns())
+                    total += column.toMap().value(u"width"_s).toInt();
+                return total;
+            };
+            const int name = launcher.panelColumns()->visibleColumns()[0].toMap().value(u"width"_s).toInt();
+            launcher.panelColumns()->resize(u"name"_s, 120);
+            settle(panelWindow, 2);
+            check(widths() < list->width(), "columns scroll bar regression needs columns narrower than the list");
+            check(!bar->isVisible(), "columns scroll bar shown although every column fits");
+            check(list->property("bottomMargin").toReal() == 4, "room kept under the rows for a scroll bar that is not there");
+            check(saveGrab(panelWindow, output.filePath(u"panel-columns-fit.png"_s)), "could not render fitting columns");
+            launcher.panelColumns()->resize(u"name"_s, 2000);
+            settle(panelWindow, 2);
+            check(widths() > list->width() && bar->isVisible() && bar->property("size").toReal() < 1,
+                "columns scroll bar missing although the columns are wider than the list");
+            check(list->property("bottomMargin").toReal() == 14, "rows not kept clear of the columns scroll bar");
+            check(saveGrab(panelWindow, output.filePath(u"panel-columns-wide.png"_s)), "could not render overflowing columns");
+            launcher.panelColumns()->resize(u"name"_s, name);
+            settle(panelWindow, 2);
+            check(launcher.panelColumns()->visibleColumns()[0].toMap().value(u"width"_s).toInt() == name,
+                "columns scroll bar regression did not put the name column back");
+        }
+    }
     const auto mouse = [&](QEvent::Type type, const QPointF& at, Qt::MouseButton button, Qt::MouseButtons held) {
         QMouseEvent event(type, at, panelWindow->mapToGlobal(at.toPoint()), button, held, {});
         QCoreApplication::sendEvent(panelWindow, &event);

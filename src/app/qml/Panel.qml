@@ -1198,9 +1198,13 @@ Item {
         reuseItems: true
         contentWidth: Math.max(width, panel.columnsWidth)
         flickableDirection: Flickable.AutoFlickIfNeeded
+        // Shown only while the columns are wider than the list. Not left to
+        // the policy: Controls keeps the bar itself visible and fades its own
+        // contentItem instead, which the one below replaces (GitHub #310).
         ScrollBar.horizontal: ScrollBar {
             id: horizontalScroll
-            policy: ScrollBar.AsNeeded
+            objectName: "panelColumnsScrollBar"
+            visible: panel.columnsWidth > list.width
             height: 8
             contentItem: Rectangle { implicitHeight: 6; radius: Theme.pillRadius(height); color: Theme.faint }
         }

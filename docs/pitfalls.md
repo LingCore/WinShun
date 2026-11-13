@@ -2920,6 +2920,13 @@
 - **做法**：`folderview::opusTypingView`：焦点在文件列表，且线程不在菜单模式、没有窗口捕获鼠标、线程上没有可见的 `dopus.button.display.popup`，才算可以接管打字。按键钩子和“查到文件夹后再核对一次焦点”两处都用它。资源管理器的判断不变。
 - **验证**：`tst_opusfocus typingStopsWhileAMenuHoldsTheMouse`（本线程的假窗口，不需要 Opus）；真 Opus 用 `tst_opusfocus liveMenuWatch`（设 `WINSHUN_OPUS_MENU_WATCH=秒数`，Opus 在前台，期间右键点开文件菜单再关掉）：菜单开着的几秒里一直判为“留给 Opus”，关掉后恢复（两次实测 11 秒、4.5 秒）。注意模拟的 Esc 关不掉 Opus 的菜单，测试时点一下空白处来关。
 
+### Controls 的 ScrollBar 换了 contentItem 就一直显示（GitHub #310）
+
+- **现象**：2026-11-12 用户反馈：搜索面板底部的横向滚动条在各列没超出窗口时也横在那里（整条等宽），列表底部还白白留出 10 像素。
+- **原因**：Basic 样式的 `ScrollBar` 自身 `visible` 只看 `policy !== AlwaysOff`；“内容放得下就不显示”是靠它自带 `contentItem` 的 `opacity` 状态做的。自己换了 `contentItem` 后这套淡出就没了，`policy: ScrollBar.AsNeeded` 不起任何作用。
+- **做法**：自己写 `visible`（面板里是 `panel.columnsWidth > list.width`）。以后给 Controls 的滚动条换外观时都要这样处理，或者用项目自己的 `ListScrollBar`。
+- **验证**：`WinShun.exe --preview-results <目录> --file-metadata` 的面板检查：列放得下时滚动条不可见、底部留白 4；把“名称”列拉到 2000 后可见、留白 14；存图 `panel-columns-fit.png`、`panel-columns-wide.png`。
+
 ### Directory Opus 从外面看不出双击落在了空白处
 
 - **现象**：2026-10-14 用户反馈：在 Directory Opus 里双击空白处没有文件夹菜单（当时只做了资源管理器和桌面）。
