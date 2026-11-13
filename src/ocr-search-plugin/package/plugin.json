@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.ocr-search",
   "name": {"zh": "图片文字搜索", "en": "Image text search"},
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": {"zh": "离线搜索图片、扫描与混排 PDF、Word / PPT / Excel 内嵌图片中的文字。选择目录，后台增量识别，预览高亮命中位置。建好索引后直接在搜索框输入图片里的文字即可搜到。", "en": "Offline search in images, scanned and mixed PDFs, and images embedded in Word, PowerPoint and Excel. Incremental indexing with highlighted previews. Once indexed, type the picture's words straight into the search box."},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
