@@ -370,6 +370,33 @@ bool isOpusFileDisplay(HWND root, HWND focus)
         && hasClass(::GetParent(focus), L"dopus.filedisplaycontainer");
 }
 
+HWND opusTypingView(HWND root)
+{
+    const DWORD thread = root ? ::GetWindowThreadProcessId(root, nullptr) : 0;
+    GUITHREADINFO info {sizeof info};
+    if (!thread || !::GetGUIThreadInfo(thread, &info) || !isOpusFileDisplay(root, info.hwndFocus))
+        return nullptr;
+    // A menu of Windows' (the title bar's) puts the thread in menu mode; one
+    // of Opus's own (a file's context menu, a toolbar's drop-down) captures
+    // the mouse for as long as it is open, its submenus too. The same goes
+    // for a drag started in the files: none of these keys is a search.
+    if ((info.flags & (GUI_INMENUMODE | GUI_SYSTEMMENUMODE | GUI_POPUPMENUMODE)) != 0 || info.hwndCapture)
+        return nullptr;
+    // Opus's menu takes the mouse only once it has faded in (0.2 s measured
+    // on 13.25): shown already counts, for a key pressed the moment it shows.
+    bool menuShown = false;
+    ::EnumThreadWindows(
+        thread,
+        [](HWND window, LPARAM shown) -> BOOL {
+            if (!::IsWindowVisible(window) || !hasClass(window, L"dopus.button.display.popup"))
+                return TRUE;
+            *reinterpret_cast<bool*>(shown) = true;
+            return FALSE;
+        },
+        reinterpret_cast<LPARAM>(&menuShown));
+    return menuShown ? nullptr : info.hwndFocus;
+}
+
 RECT opusFileLists(HWND root)
 {
     // dopus.lister > dopus.filedisplaycontainer > dopus.filedisplay, one per

@@ -3191,11 +3191,13 @@ void App::typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t reques
     // No folder on disk there (Home, This PC, the Recycle Bin, a search): the
     // keys were Explorer's after all, which jumps by them as it would have.
     // In Opus such a tab is `known` with no folder: the whole PC is searched.
-    GUITHREADINFO focus {sizeof focus};
-    const bool sameFocus = ::GetForegroundWindow() == root
-        && ::GetGUIThreadInfo(::GetWindowThreadProcessId(root, nullptr), &focus)
-        && searchtyping::focusOf(static_cast<unsigned>(focus.flags), true) == searchtyping::Focus::ItemsView
-        && (opus ? focus.hwndFocus == tab : folderview::classify(focus.hwndFocus, {}).tab == tab);
+    const auto explorerTab = [root]() -> HWND {
+        GUITHREADINFO focus {sizeof focus};
+        const bool items = ::GetGUIThreadInfo(::GetWindowThreadProcessId(root, nullptr), &focus)
+            && searchtyping::focusOf(static_cast<unsigned>(focus.flags), true) == searchtyping::Focus::ItemsView;
+        return items ? folderview::classify(focus.hwndFocus, {}).tab : nullptr;
+    };
+    const bool sameFocus = ::GetForegroundWindow() == root && (opus ? folderview::opusTypingView(root) : explorerTab()) == tab;
     if (!known || !(opus ? m_settings.opusTyping : m_settings.explorerTyping) || !m_window || !sameFocus) {
         qInfo() << "Folder typing: no folder or focus changed; give back to the original view only";
         m_typing->giveBack(request);

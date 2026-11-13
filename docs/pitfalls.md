@@ -2913,6 +2913,13 @@
 - **做法**：`filemanager::opusPlace` 返回 `std::optional`：没应答／不是文件列表是“无”，应答了（`pathtext::opusAnswered`：`<results … result="1">`）但没列这个标签、或列的不是磁盘上的文件夹（库、压缩包里）是“空串”。空串时照常弹出搜索框，不带文件夹前缀，搜整机；选中结果仍在原来那一栏里打开。资源管理器不变：主页、此电脑、回收站里的字母仍归它自己（按字母跳到盘符是它的习惯用法）。
 - **验证**：`tst_core fileManagerText`（应答判定）；`tst_shelllaunch opusTypingNavigation` 加了此电脑一步；真 Opus 实测见 `docs/validation/issues-242-82-20261111/`（0.24.0 不出框，改后出框，普通文件夹一栏不变）。
 
+### Opus 的右键菜单开着时，打字被当成了搜索（GitHub #311）
+
+- **现象**：2026-11-12 用户反馈：开了“在 Directory Opus 里直接打字搜索”后，右键点开文件菜单再按 D（删除），弹出的是搜索框。
+- **原因**：Opus 的菜单是它自己画的窗口（`dopus.button.display.popup`），不是 Windows 的菜单。实测 Opus 13.25：菜单开着时线程不在菜单模式（`GetGUIThreadInfo` 的 `flags` 是 0），键盘焦点仍在 `dopus.filedisplay`，所以原来照资源管理器那样只看 `flags` 和焦点，认不出来。能看出来的是鼠标捕获：菜单淡入结束后 `hwndCapture` 就是这个菜单窗口（子菜单同理）；淡入的约 0.2 秒里窗口已可见、还没捕获。
+- **做法**：`folderview::opusTypingView`：焦点在文件列表，且线程不在菜单模式、没有窗口捕获鼠标、线程上没有可见的 `dopus.button.display.popup`，才算可以接管打字。按键钩子和“查到文件夹后再核对一次焦点”两处都用它。资源管理器的判断不变。
+- **验证**：`tst_opusfocus typingStopsWhileAMenuHoldsTheMouse`（本线程的假窗口，不需要 Opus）；真 Opus 用 `tst_opusfocus liveMenuWatch`（设 `WINSHUN_OPUS_MENU_WATCH=秒数`，Opus 在前台，期间右键点开文件菜单再关掉）：菜单开着的几秒里一直判为“留给 Opus”，关掉后恢复（两次实测 11 秒、4.5 秒）。注意模拟的 Esc 关不掉 Opus 的菜单，测试时点一下空白处来关。
+
 ### Directory Opus 从外面看不出双击落在了空白处
 
 - **现象**：2026-10-14 用户反馈：在 Directory Opus 里双击空白处没有文件夹菜单（当时只做了资源管理器和桌面）。
