@@ -755,7 +755,9 @@ void Launcher::toggleRegexMode()
 {
     setRegexMode(!m_regexMode);
     if (m_window && m_window->isVisible())
-        flash(m_regexMode ? tr("正则模式：每个词都按正则表达式匹配名字") : tr("已关闭正则模式"));
+        flash(!m_regexMode ? tr("已关闭正则模式")
+            : m_scope == Content ? tr("正则模式：每个词都按正则表达式匹配文件里的文字")
+            : tr("正则模式：每个词都按正则表达式匹配名字"));
 }
 
 void Launcher::setQuery(const QString& query)
@@ -1290,6 +1292,7 @@ void Launcher::searchLeftOut(const QString& kind)
     } else {
         request.text = m_scope == Content ? searchText() : contentNeedle();
         request.scope = ws::Scope::Content;
+        request.regex = m_regexMode;
         request.contentExtensions = m_contentExtensions;
         request.contentSizeLimits = m_contentSizeLimits;
         request.contentDocuments = m_contentDocuments;
@@ -2180,8 +2183,9 @@ void Launcher::search(bool more)
     // (the first is selected). So is a plugin command's list in place of
     // the names' (or back): "=" and "= " are the same text trimmed.
     std::optional<KeywordMode> keyword = m_filePrefix || m_scope == Apps ? std::nullopt : matchKeyword(m_query);
-    const QString error = m_scope == Content || keyword || typedKeyword(m_web, m_query)
-        ? QString() : parseQuery(nameText(), regexTerms()).error;
+    const QString error = keyword || typedKeyword(m_web, m_query) ? QString()
+        : m_scope == Content ? contentPattern(splitContentQuery(text, m_regexMode).words, m_regexMode).error
+        : parseQuery(nameText(), regexTerms()).error;
     if (m_queryError != error) {
         m_queryError = error;
         emit queryErrorChanged();
@@ -2542,7 +2546,8 @@ void Launcher::dropSuggestions()
 
 
 // 全部 looks for the typed text inside files too, as the 内容 scope does
-// (contentTerms: the words, "a phrase", or a line of code as it is). Not for
+// (contentPattern: the words, "a phrase", either of some, expressions, or a
+// line of code as it is). Not for
 // name syntax (ext:, wildcards, !exclusions: "*.log", "report !draft"),
 // unless the text reads as code anyway ("if (!ok)", "char* p = s;"). Nor
 // after a web shortcut's keyword: that is a search on the web ("gh
@@ -2556,16 +2561,37 @@ QString Launcher::contentNeedle() const
         return {};
     const QString text = searchText();
     const ParsedQuery query = ws::parseQuery(text, regexTerms());
-    if (!query.alternatives.empty() || !query.error.isEmpty()
-        || std::ranges::any_of(query.terms, [](const QueryTerm& t) { return t.regex; }))
+    if (!query.error.isEmpty())
         return {};
-    if (query.terms.empty() || m_keyword || typedKeyword(m_web, m_query) || !pathtext::splitTyped(text).folder.isEmpty())
+    // "报告 | 总结": each part is a query of its own, and what goes for one
+    // goes for them all.
+    const std::vector<ParsedQuery> one {query};
+    const std::vector<ParsedQuery>& parts = query.alternatives.empty() ? one : query.alternatives;
+    const auto anyTerm = [&](const auto& is) {
+        return std::ranges::any_of(parts, [&](const ParsedQuery& q) { return std::ranges::any_of(q.terms, is); });
+    };
+    if (!anyTerm([](const QueryTerm&) { return true; }) || m_keyword || typedKeyword(m_web, m_query)
+        || !pathtext::splitTyped(text).folder.isEmpty())
         return {};
+    // An expression is one for the text of files too (GitHub #295): in regex
+    // mode every word, else the words that say so (regex:). "^IMG" and
+    // ".pdf$" are about names.
+    if (!regexTerms()) {
+        qsizetype expressions = 0;
+        for (const ParsedQuery& q : parts)
+            expressions += std::ranges::count_if(q.terms, &QueryTerm::regex);
+        const QStringList words = ws::queryWords(text);
+        const qsizetype said = std::ranges::count_if(words, [](const QString& w) {
+            return w.startsWith(u"regex:", Qt::CaseInsensitive) || w.startsWith(u"re:", Qt::CaseInsensitive);
+        });
+        if (expressions != said)
+            return {};
+    }
     if (m_favorites && (typedFavoriteKeyword(m_favorites->items(), text) >= 0
         || typedCommandKeyword(m_favorites->items(), text) >= 0))
         return {};
-    const bool nameSyntax = !query.extensions.empty()
-        || std::any_of(query.terms.cbegin(), query.terms.cend(), [](const QueryTerm& t) { return t.negated || t.wildcard; });
+    const bool nameSyntax = std::ranges::any_of(parts, [](const ParsedQuery& q) { return !q.extensions.empty(); })
+        || anyTerm([](const QueryTerm& t) { return t.negated || t.wildcard; });
     if (nameSyntax && !ws::looksLikeCode(text))
         return {};
     return text;
@@ -2576,6 +2602,7 @@ SearchEngine::Request Launcher::contentRequest() const
     SearchEngine::Request request;
     request.text = m_scope == Content ? searchText() : contentNeedle();
     request.scope = ws::Scope::Content;
+    request.regex = m_regexMode; // every word an expression, on the files' text (GitHub #295)
     request.rankBy = rankBy();
     request.excludedTypes = m_excludedTypes;
     request.excludedFileNames = m_excludedFileNames;
@@ -2675,7 +2702,7 @@ void Launcher::syncContentPane()
     // A plugin's keyword list: its words (as its details request has them,
     // GitHub #202), not those of the content search before it.
     const QString words = m_keyword ? m_keyword->words
-        : m_contentScope.words.isEmpty() ? splitContentQuery(searchText()).words : m_contentScope.words;
+        : m_contentScope.words.isEmpty() ? splitContentQuery(searchText(), m_regexMode).words : m_contentScope.words;
     m_contentPane->setContentIndexEnabled(m_contentIndex);
     m_contentPane->update(contentRequest(), words, searchText() + u'\n' + panelKey() + u'\n' + pickKey(m_contentPick)
             + u'\n' + m_contentFolder, std::move(rows), stale() ? SearchResults{} : paneFiles(m_results.selection()), current,
@@ -4022,7 +4049,7 @@ const ContentScope::Place* Launcher::typedPlace() const
 {
     if (m_scope != Content)
         return nullptr;
-    const ContentQuery typed = splitContentQuery(searchText());
+    const ContentQuery typed = splitContentQuery(searchText(), m_regexMode);
     if (typed.folders.empty())
         return nullptr;
     for (const ContentScope::Place& place : m_contentScope.places) {
@@ -4054,7 +4081,7 @@ QVariantList Launcher::folderChips() const
     if (m_scope != Content)
         return chips;
     // A folder named among the words: that one, or the ones it stands for.
-    const ContentQuery typed = splitContentQuery(searchText());
+    const ContentQuery typed = splitContentQuery(searchText(), m_regexMode);
     if (!typed.folders.empty()) {
         const ContentFolderSpec& spec = typed.folders.front();
         const QString label = spec.path.isEmpty() ? spec.names.join(u'\\') : spec.path;
@@ -4115,7 +4142,7 @@ QString Launcher::folderChip() const
                 return kPickPrefix.toString() + place->chosen;
             return place->count > 1 || place->folders.isEmpty() ? kAllChip.toString() : kPickPrefix.toString() + place->folders.first();
         }
-    } else if (!splitContentQuery(searchText()).folders.empty()) {
+    } else if (!splitContentQuery(searchText(), m_regexMode).folders.empty()) {
         return kTypedChip.toString();
     }
     return m_contentFolder.isEmpty() ? QString() : kPinPrefix.toString() + m_contentFolder;
@@ -4134,8 +4161,8 @@ QString Launcher::folderHint() const
             return tr("没有叫 %1 的文件夹，当作文字搜").arg(name);
         }
     }
-    if (!splitContentQuery(searchText()).folders.empty())
-        return {};
+    if (m_regexMode || !splitContentQuery(searchText(), m_regexMode).folders.empty())
+        return {}; // in regex mode "abc/" is an expression: the folders below are the way
     return tr("或在词后加“文件夹名/”");
 }
 
@@ -4143,7 +4170,7 @@ QString Launcher::contentWords() const
 {
     if (typedPlace())
         return m_contentScope.words;
-    return splitContentQuery(searchText()).words;
+    return splitContentQuery(searchText(), m_regexMode).words;
 }
 
 QString Launcher::contentWhere() const
@@ -4195,7 +4222,7 @@ void Launcher::chooseFolderChip(const QString& key)
     if (key == kAllChip) {
         m_contentPick = {};
     } else if (key.startsWith(kPickPrefix)) {
-        const ContentQuery typed = splitContentQuery(searchText());
+        const ContentQuery typed = splitContentQuery(searchText(), m_regexMode);
         if (typed.folders.empty())
             return;
         m_contentPick = {typed.folders.front().typed, key.mid(kPickPrefix.size())};

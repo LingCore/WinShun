@@ -89,7 +89,7 @@
 //                      Also through a volume handle opened after the writes,
 //                      with the disk's write counter, and against
 //                      FSCTL_GET_NTFS_FILE_RECORD. Cleans up after itself
-//   wsbench [snapshot] --content-search [--all] [--unknown] phrase ...
+//   wsbench [snapshot] [--regex] --content-search [--all] [--unknown] phrase ...
 //                      with the content index the app keeps (from copies of its
 //                      files), what a content search for each phrase reads: how
 //                      many files and MB may contain it, the largest of them,
@@ -4048,6 +4048,7 @@ int runContentSearchBench(const ws::FileIndex& index, std::span<const char> stat
     const bool all = args.contains(u"--all"_s) || settings.contentInLowPriority;
     const bool readUnknown = args.contains(u"--unknown"_s);
     const bool show = args.contains(u"--show"_s); // the first files found, with their lines
+    const bool regexMode = args.contains(u"--regex"_s); // every word an expression, as the search box's regex mode
     const ws::ContentFilter filter {ws::ExtensionFilter(settings.contentExtensions), all};
     const ws::ContentSizeLimits limits = settings.contentSizeLimits();
     QStringList needles;
@@ -4073,8 +4074,18 @@ int runContentSearchBench(const ws::FileIndex& index, std::span<const char> stat
     const ws::EntryId profile = index.findPath(ws::win32::expandEnvironment(L"%USERPROFILE%"));
     for (const QString& needle : needles) {
         timer.restart();
-        const QStringList terms = ws::contentTerms(needle); // as the app splits what was typed
-        const ws::ContentIndex::Lookup lookup = content.lookup(terms);
+        const ws::ContentPattern pattern = ws::contentPattern(needle, regexMode); // as the app reads what was typed
+        if (pattern.isEmpty()) {
+            std::printf("\"%s\": %s\n", needle.toUtf8().constData(),
+                pattern.error.isEmpty() ? "nothing to look for" : pattern.error.toUtf8().constData());
+            continue;
+        }
+        for (const ws::ContentNeedle& n : pattern.needles) {
+            if (n.regex)
+                std::printf("  expression %s needs %s\n", n.text.toUtf8().constData(), n.need.toString().toUtf8().constData());
+        }
+        const QStringList terms = pattern.words();
+        const ws::ContentIndex::Lookup lookup = content.lookup(pattern);
         const double lookupMs = msSince(timer);
         struct File {
             ws::EntryId id;
@@ -4153,7 +4164,7 @@ int runContentSearchBench(const ws::FileIndex& index, std::span<const char> stat
 
         // Read as 内容 does: 16 threads, in order, the likely ones first.
         const std::size_t end = readUnknown ? files.size() : likelyEnd;
-        const ws::ContentScanner scanner(terms);
+        const ws::ContentScanner scanner(pattern);
         std::atomic<std::size_t> next {0};
         std::atomic<std::size_t> found {0};
         std::atomic<std::size_t> foundLikely {0};

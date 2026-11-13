@@ -4123,7 +4123,7 @@ Window {
                 SettingRow {
                     title: qsTr("正则模式（Ctrl+R）")
                     keywords: qsTr("正则;正则表达式;regex;Everything;Ctrl+R;匹配").split(";")
-                    description: qsTr("在“全部”和“文件”里，每个词都按正则表达式匹配名字")
+                    description: qsTr("每个词都按正则表达式匹配：“全部”和“文件”里匹配名字，“内容”里匹配文件里的文字")
                     tip: qsTr("如 ^IMG_\\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:")
 
                     ToggleSwitch {

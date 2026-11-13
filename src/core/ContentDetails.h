@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ContentPattern.h"
 #include "DocText.h"
 
 #include <QString>
@@ -65,6 +66,11 @@ using Cancel = std::function<bool()>;
 inline constexpr std::size_t kMaxLines = 250'000;
 inline constexpr std::size_t kMaxMatches = 250'000;
 std::shared_ptr<const Document> document(const doctext::DocText& text, const Cancel& cancel = {});
+// Where each needle of a content search is (ContentPattern::needles): words
+// in any case, an expression's matches within a line. Matches::terms: their
+// texts, each once.
+Matches find(std::shared_ptr<const Document> text, const std::vector<ContentNeedle>& needles, const Cancel& cancel = {});
+// Words, as they are.
 Matches find(std::shared_ptr<const Document> text, const QStringList& terms, const Cancel& cancel = {});
 Rows filter(const Matches& all, const std::vector<bool>& enabled, const Filter& filter, int context,
     int sheet = -1, const Cancel& cancel = {});

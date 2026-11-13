@@ -423,8 +423,8 @@ Item {
     }
 
     // Regex mode is on (Launcher.regexMode, Ctrl+R): ".*" before the tabs,
-    // as the pin shows it is on; a click turns it off. Not in 内容, where
-    // it changes nothing.
+    // as the pin shows it is on; a click turns it off. In 内容 the words are
+    // expressions on the files' text (GitHub #295).
     // The keys in the field: the style's (Theme.keySurface, role "fieldKey");
     // a mode that is on (.*, the pin) is a checked one.
     component FieldKey: Hook {
@@ -497,7 +497,8 @@ Item {
     Item {
         id: regexChip
 
-        visible: !bar.minimal && bar.launcher.regexMode && bar.launcher.scope !== Launcher.Content && !bar.inBox
+        objectName: "regexChip"
+        visible: !bar.minimal && bar.launcher.regexMode && !bar.inBox
         anchors.right: bar.folderMode ? compactScope.left : tabs.left
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)
@@ -534,7 +535,8 @@ Item {
         }
         HoverTip {
             target: regexArea.containsMouse ? regexChip : null
-            text: qsTr("正则模式：每个词都按正则表达式匹配名字 · 点击关闭")
+            text: bar.launcher.scope === Launcher.Content ? qsTr("正则模式：每个词都按正则表达式匹配文件里的文字 · 点击关闭")
+                                                          : qsTr("正则模式：每个词都按正则表达式匹配名字 · 点击关闭")
             shortcut: "Ctrl+R"
         }
     }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ContentPattern.h"
 #include "FileIndex.h"
 #include "Pinyin.h"
 #include "SearchTypes.h"
@@ -97,18 +98,6 @@ QString sizeText(std::uint64_t bytes);
 // patterns: folded, with * and ? (Settings' skipped file names).
 bool nameMatchesAny(std::string_view name, const std::vector<std::string>& foldedPatterns) noexcept;
 
-// What was typed, split at whitespace; "within quotes" is one word, spaces
-// and all (the quotes go).
-QStringList queryWords(const QString& text);
-
-// Characters that name searches have no use for, but lines of code are full of.
-bool looksLikeCode(QStringView text);
-
-// What a content search looks for, every one somewhere in the file: the
-// words ("报告 2025"), or a line of code as it is, quotes, spaces and all
-// (printf("%d", *p)).
-QStringList contentTerms(const QString& text);
-
 // A folder a content search is to look in, named among its words.
 //
 //   年度报告 abc/        in every folder named abc (a full-width ／ or a \ will do)
@@ -130,8 +119,10 @@ struct ContentQuery {
 
 // What a content search was typed as: its words, and the folders named
 // among them (ContentFolderSpec). A line of code is all words: "a/" or
-// "/usr/bin" in it are what it says.
-ContentQuery splitContentQuery(const QString& text);
+// "/usr/bin" in it are what it says. So are regular expressions
+// (`regexMode`, as contentPattern takes it: "\d+/" is one), after a folder
+// given by its path at the start.
+ContentQuery splitContentQuery(const QString& text, bool regexMode = false);
 
 // `regexTerms`: every term is a regular expression, as if each had regex:
 // before it (the search box's regex mode, Ctrl+R, as Everything's); ext:,

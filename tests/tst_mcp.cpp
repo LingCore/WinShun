@@ -964,6 +964,30 @@ private slots:
         QVERIFY(reply);
         QCOMPARE(outcomeOf(*reply).structured.value(u"returned"_s).toInt(), 0);
 
+        // GitHub #295: either of some words; a regular expression by its
+        // prefix, or every word one; one that cannot be read is said to be so.
+        reply = s.exchange(callLine(10, u"search_content"_s, {{u"query"_s, u"zzqqxx|readLock|季度"_s}}), 20000);
+        QVERIFY(reply);
+        QStringList either = names(outcomeOf(*reply).structured);
+        either.sort();
+        QCOMPARE(either, (QStringList {u"code.md"_s, u"销售.txt"_s}));
+        reply = s.exchange(callLine(11, u"search_content"_s, {{u"query"_s, uR"(regex:销售额\s\d+\s万$)"_s}}), 20000);
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QCOMPARE(names(out.structured), QStringList {u"销售.txt"_s});
+        QCOMPARE(out.structured.value(u"items"_s).toArray().first().toObject().value(u"location"_s).toObject().value(u"line"_s).toInt(), 2);
+        reply = s.exchange(callLine(12, u"search_content"_s, {{u"query"_s, uR"(第.季度 \d{3})"_s}, {u"regex"_s, true}}), 20000);
+        QVERIFY(reply);
+        QCOMPARE(names(outcomeOf(*reply).structured), QStringList {u"销售.txt"_s});
+        reply = s.exchange(callLine(13, u"search_content"_s, {{u"query"_s, uR"(第.季度 \d{3})"_s}}), 20000); // words, without it
+        QVERIFY(reply);
+        QCOMPARE(outcomeOf(*reply).structured.value(u"returned"_s).toInt(), 0);
+        reply = s.exchange(callLine(14, u"search_content"_s, {{u"query"_s, u"regex:销售("_s}}), 20000);
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QVERIFY(out.isError);
+        QVERIFY2(out.text.contains(u"regular expression") && out.text.contains(u"parenthesis"), qPrintable(out.text));
+
         // Content search turned off in the settings: no file is read for AI either.
         Policy policy = f.host->policy();
         policy.content = false;

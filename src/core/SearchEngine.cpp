@@ -712,7 +712,7 @@ ContentScope resolveScope(const FileIndex& index, const SearchEngine::Request& r
     const std::function<bool()>& isCancelled, ScopeFolders& scope)
 {
     ContentScope out;
-    const ContentQuery typed = splitContentQuery(request.text);
+    const ContentQuery typed = splitContentQuery(request.text, request.regex);
     out.words = typed.words;
     for (const ContentFolderSpec& spec : typed.folders) {
         ContentScope::Place place = resolvePlace(index, spec, request, pool, isCancelled, scope);
@@ -2278,8 +2278,12 @@ void SearchEngine::runContentSearch(const Job& job)
     // A name no folder has is among the words (Status::Words): no scope of its own.
     const bool scoped = request.contentSet != ContentSet::Given
         && std::ranges::any_of(where.places, [](const ContentScope::Place& p) { return p.status != ContentScope::Status::Words; });
-    const QStringList terms = contentTerms(where.words);
-    if (terms.isEmpty() || (scoped && scope.folders.empty())) {
+    // What for: words, either of some ("马上|立即"), regular expressions
+    // (GitHub #295). One that cannot be read finds nothing: the launcher
+    // says why (ContentPattern::error).
+    const ContentPattern pattern = contentPattern(where.words, request.regex);
+    const QStringList terms = pattern.words(); // for ranking: those in a file's name
+    if (pattern.isEmpty() || (scoped && scope.folders.empty())) {
         emit contentProgress(job.id, 0, 0, true);
         return;
     }
@@ -2339,7 +2343,7 @@ void SearchEngine::runContentSearch(const Job& job)
     QElapsedTimer lookupTimer;
     lookupTimer.start();
     enter("asking the content index");
-    const ContentIndex::Lookup lookup = content && !oneOff ? content->lookup(terms) : ContentIndex::Lookup();
+    const ContentIndex::Lookup lookup = content && !oneOff ? content->lookup(pattern) : ContentIndex::Lookup();
     enter("picking the files to read");
     if (lookupTimer.elapsed() > 50) // a few milliseconds from the cache: it was read off the disk
         m_index->prewarmSoon(std::chrono::seconds(5));
@@ -2537,7 +2541,7 @@ void SearchEngine::runContentSearch(const Job& job)
             [](const Candidate& a, const Candidate& b) { return a.order < b.order; });
     }
 
-    const ContentScanner scanner(terms);
+    const ContentScanner scanner(pattern);
     const std::int64_t now = QDateTime::currentSecsSinceEpoch();
     // Before the reads, gone once they are done. Not for a part read this
     // once: the index is to stay as it is about those files (see ContentSet).

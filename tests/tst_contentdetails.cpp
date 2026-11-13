@@ -39,6 +39,21 @@ private slots:
         QCOMPARE(cd::filter(found, {false, true}, {}, 0).lines, (std::vector<int>{1}));
         QVERIFY(cd::filter(found, {false, false}, {}, 3).lines.empty());
     }
+    // GitHub #295: what the search looked for, as it read it: either of some
+    // words, expressions; each place of each counted.
+    void needlesOfAPattern()
+    {
+        const auto doc = cd::document({"tel 13812345678\r\nTEL none\r\n13912345678 and 13712345678\r\n", {}, {}, false});
+        const auto found = cd::find(doc, contentPattern(uR"(regex:1[3-9]\d{9} tel|none)"_s).needles);
+        QCOMPARE(found.terms, (QStringList {uR"(1[3-9]\d{9})"_s, u"tel"_s, u"none"_s}));
+        QCOMPARE(found.counts, (std::vector<qint64> {3, 2, 1}));
+        QCOMPARE(found.items.front().start, 0); // "tel", then the number after it
+        QCOMPARE(found.items[1].start, 4);
+        QCOMPARE(found.items[1].length, 11);
+        // A line at a time; an expression that matches nothing has no places.
+        const auto ends = cd::find(doc, contentPattern(u"none$ ^tel x*"_s, true).needles);
+        QCOMPARE(ends.counts, (std::vector<qint64> {1, 2, 0}));
+    }
     void refinementIsIndependentOfContext()
     {
         const auto found = cd::find(cd::document({"Needle region\nneedle regional\nneedle other\nREGION\n", {}, {}, false}), {u"needle"_s});

@@ -1378,6 +1378,13 @@ private slots:
         QCOMPARE(r.out, at(u"sub\\deep\\c.txt"_s).toUtf8() + '\0');
         r = ws({u"grep"_s, u"zzqqxx"_s});
         QCOMPARE(r.code, 1);
+        // GitHub #295: the query's own syntax goes through as it is.
+        r = ws({u"grep"_s, u"zzqqxx|销售额"_s});
+        QCOMPARE(r.code, 0);
+        QCOMPARE(r.text(), at(u"报告𠀀.txt"_s) + u":2:第三季度销售额 123 万\n"_s);
+        r = ws({u"grep"_s, uR"(regex:销售额\s\d+)"_s});
+        QCOMPARE(r.code, 0);
+        QCOMPARE(r.text(), at(u"报告𠀀.txt"_s) + u":2:第三季度销售额 123 万\n"_s);
         r = ws({u"grep"_s});
         QCOMPARE(r.code, 2);
     }

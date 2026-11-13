@@ -10,7 +10,7 @@ description: Find files on this Windows PC by name (pinyin too) or by the text i
 ## Commands
 
 - `ws find "quarterly report" -n 20`: files and folders by name (`ws "report"` is the same)
-- `ws grep "invoice 2024" -n 20`: files containing the words, as `path:line:text`; documents give `p3` (page), `s2` (slide), `[Sheet1]r12` (row)
+- `ws grep "invoice 2024" -n 20`: files containing the words, as `path:line:text`; documents give `p3` (page), `s2` (slide), `[Sheet1]r12` (row). `"a|b"` finds either word; a word starting with `regex:` is a regular expression matched within a line (`ws grep "regex:invoice-\d{4}"`), fast when it has some fixed text in it
 - `ws text "D:\Docs\plan.docx"`: the text of a file or document (docx, xlsx, pptx, pdf); a long one in parts with `--from <offset>`
 - `ws recent --days 7 --ext docx,xlsx`: files changed lately, newest first
 - `ws ls "D:\Projects"`: a folder's entries, from the index
