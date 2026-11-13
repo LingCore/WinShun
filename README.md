@@ -63,14 +63,14 @@
 | 📄 | [搜文件里的字](docs/使用说明.md#搜文件里的文字) | Word、Excel、PPT、PDF、WPS 和文本、代码，结果显示命中的那一行 |
 | 🗂️ | [搜索面板](docs/使用说明.md#搜索面板筛选和排序) | `Ctrl+E` 展开：按类型、时间、大小、位置筛选，常用条件可存成一点就用的快捷筛选，按列排序，大图浏览 |
 | 👀 | [预览](docs/使用说明.md#预览文件) | `Alt+P` 看一眼图片、文档、PDF，不用打开 |
-| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到 |
+| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签 |
 | 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找与悬停预览 |
 | 📂 | [“打开”“另存为”对话框](docs/使用说明.md#打开另存为对话框) ² | 对话框旁多一个搜索框；`Ctrl+G` 转到文件管理器正开着的文件夹 |
 | 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹；在文件列表里直接打字就搜 |
 | ⭐ | [收藏夹](docs/使用说明.md#收藏夹) | 给常用的文件、文件夹、应用起个关键词，一打就开；还能自定义命令 |
 | 🔎 | [任务栏搜索框](docs/使用说明.md#任务栏搜索框) ² | 在 Windows 11 任务栏上放一个 Win顺 的搜索框 |
 | 🤖 | [AI 助手和命令行](docs/使用说明.md#给-ai-助手用mcp) ² | 让 Claude、Cursor 等 AI 搜你的文件（默认只读）；终端里用 `ws` 命令搜 |
-| 🎨 | [外观和备份](docs/使用说明.md#外观设置和备份) | 四种界面风格（含液态玻璃），自选字体与界面大小；设置自动备份，换电脑一键迁移 |
+| 🎨 | [外观和备份](docs/使用说明.md#外观设置和备份) | 四种界面风格（含液态玻璃），自选字体与界面大小；设置自动备份，换电脑一键迁移，也可以用云备份插件传到 WebDAV 或 GitHub 私有仓库 |
 
 ¹ 在第一次启动的引导里选，或以后在设置里打开。　² 默认关着，用的话在设置里打开。
 
@@ -93,7 +93,8 @@
 | 浏览器书签 | `bm 关键词`，搜 Chrome、Edge 的书签 | 插件库 |
 | 局域网传输 | `传`，和开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件 | 插件库 |
 | 休息提醒 | 定时提醒休息，`休息` 看还有多久 | 插件库 |
-| 资源管理器标签页 | 新开的资源管理器窗口并成标签页（Windows 11 22H2 起） | 插件库 |
+| 资源管理器标签页 | 新开的资源管理器窗口并成标签页，还能在下次登录后打开上次的标签页（Windows 11 22H2 起） | 插件库 |
+| [云备份](docs/使用说明.md#外观设置和备份) | 设置自动备份到 WebDAV（坚果云、NAS）或 GitHub 私有仓库，`cloud` 立即备份或恢复 | 插件库 |
 
 想自己写插件：零代码的 `plugin.json`、任意语言的脚本都行，附 Python / PowerShell / C++ SDK，见 [插件文档](docs/plugins.md)。
 
@@ -108,7 +109,7 @@
 | `Ctrl+Enter` | 打开所在文件夹 |
 | `Ctrl+Shift+Enter` | 以管理员身份运行 |
 | `Ctrl+1`～`Ctrl+9` | 打开第几项 |
-| `Tab` | 切换范围：全部 / 文件 / 内容 |
+| `Tab` | 切换范围：全部 / 文件 / 内容（打开了“应用”标签时还有应用） |
 | `Ctrl+E` | 展开成搜索面板 |
 | `Alt+P` | 预览 |
 | `Ctrl+S` | 排序：最匹配 / 最新 / 最早 |
@@ -183,19 +184,19 @@ scoop install winshun
 
 ### 最近更新
 
-**0.25.0**
+**0.26.0**
 
-- 🔖 **快捷筛选** 把常用的搜索条件存起来（“排除回收站”“大 PDF”），面板里点一下套用，或在搜索框里打 `:前缀`；面板的筛选改成左侧窄列表或结果上方一行。
-- ✏️ **F2 就地重命名** 在结果上按 `F2` 直接改名，`Ctrl+Z` 可在资源管理器里撤销。
-- 🎨 **预览：代码上色，设计稿直接看** 代码和 Markdown 按语法上色、标出搜索的词；`.ai`、`.psd` 不装 Adobe 软件也能预览。
-- 📝 **剪贴板记录加备注** 给一条记录写一句自己的话，搜索时按备注就能找到。
-- ⌨️ **打开结果更顺手** 可以给 `Enter` 配一个备用键；只打一个字母也能找回打开过的应用。
-- 📂 **对话框搜索框只搜当前文件夹** `Ctrl+Shift+D` 切换；文件类型也可以绑定文件夹（`cw:`）。
-- 🧭 **首次启动的引导重做** 左右两栏，一眼看全，不用滚动。
-- 🧩 **插件** 图标可以写 Phosphor 图标名（`ph:heart`）；需要管理员权限的插件可一键“以管理员身份重新启动”。
-- 🛠️ **修复** Directory Opus 停在“此电脑”时打字不出搜索框、插件启动时搜索框被关掉、设置窗口在另一种缩放的屏幕上宽度出错等。
+- 📱 **“应用”标签** 应用排成图标网格，看常用的、收藏的或全部，点星标收藏；在 **设置 › 结果列表** 打开。
+- ☁️ **云备份插件** 设置自动备份到 WebDAV（坚果云、NAS）或 GitHub 私有仓库，换电脑时输入 `cloud` 恢复。
+- 🪟 **程序自己画的选文件窗口也能搜、能转** 像 ArcGIS “添加数据”这样的窗口，点一次“识别窗口”教会 Win顺，之后搜索框和 `Ctrl+G` 照常用。
+- 🗂️ **资源管理器标签页 1.1.0** 记住开着的窗口和标签页，下次登录后自动打开，或随时手动打开。
+- ⚡ **隔多久呼出都快** 闲着时只把用不着的内存还给系统，留下搜索框和剪贴板要用的那部分。
+- 📦 **安装和更新更稳** 文件被别的程序占着时，更新照样完成，不再卡在“正在准备安装”。
+- 🤖 **命令行装插件、给 AI 的 Skill** `ws plugin install winshun.translate`；`npx skills add LingCore/WinShun`。
+- 📏 **小改进** 搜索框显示几行可以自己定（4–20）；网页搜索的网站行按 `Tab` 补全关键词；局域网传输可以自动接收；截图按住鼠标时方向键也能微调。
+- 🛠️ **修复** 设置窗口最大化后发黑、以管理员身份运行时接管开始菜单打字后搜索框不接收输入、Directory Opus 右键菜单里按键变成搜索、搜索面板横向滚动条一直显示、预览卡在“正在读取”、截图时鼠标指针不见等。
 
-详见 [0.25.0 发布说明](docs/release-notes/v0.25.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
+详见 [0.26.0 发布说明](docs/release-notes/v0.26.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
 
 ### 常见问题
 
@@ -308,14 +309,14 @@ No installer, or Scoop? See [Download and install](#download-and-install).
 | 📄 | [Text inside files](docs/features.en.md#full-text-search) | Word, Excel, PowerPoint, PDF, WPS, text and code, showing the matching line |
 | 🗂️ | [Search panel](docs/features.en.md#file-search) | `Ctrl+E` expands it: filter by kind, date, size and folder, save your own quick filters, sort by column, large icons |
 | 👀 | [Preview](docs/features.en.md#file-search) | `Alt+P` shows a picture, document or PDF without opening it |
-| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages |
+| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons |
 | 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search and hover previews |
 | 📂 | [Open / Save dialogs](docs/features.en.md#open-and-save-dialogs) ² | A search bar beside the dialog; `Ctrl+G` jumps to the folder open in your file manager |
 | 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders; type in a file list to search |
 | ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; your own commands too |
 | 🔎 | [Taskbar search box](docs/features.en.md#taskbar-search-box) ² | A WinShun search box on the Windows 11 taskbar |
 | 🤖 | [AI assistants and the command line](docs/features.en.md#ai-assistants-mcp) ² | Let Claude, Cursor and others search your files (read-only by default); `ws` searches from a terminal |
-| 🎨 | [Looks and backup](docs/features.en.md#looks-and-settings) | Three interface styles, your font and interface size; settings backups and migration |
+| 🎨 | [Looks and backup](docs/features.en.md#looks-and-settings) | Three interface styles, your font and interface size; settings backups and migration, to WebDAV or a private GitHub repository with the Cloud Backup plugin |
 
 ¹ Chosen during the first-start setup, or turned on later in the settings.　² Off by default; turn it on in the settings.
 
@@ -338,7 +339,8 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | Browser bookmarks | `bm words` searches Chrome and Edge bookmarks | Plugin library |
 | LAN transfer | `ls ` to send files to and from phones and PCs running [LocalSend](https://localsend.org) | Plugin library |
 | Break reminder | Reminds you to take breaks; `break` shows the time left | Plugin library |
-| Explorer tabs | New File Explorer windows open as tabs (Windows 11 22H2 or newer) | Plugin library |
+| Explorer tabs | New File Explorer windows open as tabs, and the tabs from last time come back after a logon (Windows 11 22H2 or newer) | Plugin library |
+| [Cloud backup](docs/features.en.md#looks-and-settings) | Keeps the settings backup on a WebDAV server or in a private GitHub repository; `cloud` backs up or restores | Plugin library |
 
 Write your own: a zero-code `plugin.json` or scripts in any language, with SDKs for Python, PowerShell and C++. See [docs/plugins.en.md](docs/plugins.en.md).
 
@@ -428,19 +430,19 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
-**0.25.0**
+**0.26.0**
 
-- 🔖 **Quick filters** Save the conditions you keep typing ("no Recycle Bin", "big PDFs"): one click in the panel, or a `:prefix` in the box. The panel's filters are a narrow list at the left or one line over the rows.
-- ✏️ **Rename in place with F2** `F2` on a result renames it; `Ctrl+Z` in File Explorer takes it back.
-- 🎨 **Preview: coloured code, design files as pictures** Code and Markdown are coloured with the searched words marked; `.ai` and `.psd` preview without Adobe's software.
-- 📝 **Notes on clipboard entries** A line of your own on an entry, found by the search.
-- ⌨️ **Opening results with less reach** A second key for `Enter`; a single letter brings back apps opened before.
-- 📂 **The dialog bar can search only the dialog's folder** `Ctrl+Shift+D` switches; a file kind can be bound to folders (`cw:`).
-- 🧭 **A new first-run setup** Two panes, everything in sight, nothing scrolled.
-- 🧩 **Plugins** Icons by Phosphor name (`ph:heart`); a plugin that needs administrator rights offers Restart as administrator.
-- 🛠️ **Fixes** Typing in Directory Opus on This PC, the search box closing as a plugin starts, the settings window's width on a screen of another scale, and more.
+- 📱 **Apps tab** The apps as a grid of icons: the most used, the favorites or all of them, with a star to keep one. Turned on under Settings › Result list.
+- ☁️ **Cloud Backup plugin** Keeps the settings backup on a WebDAV server or in a private GitHub repository; type `cloud` on another PC to restore it.
+- 🪟 **File windows programs draw themselves** Show WinShun a window like ArcGIS's "Add Data" once with "Learn a window", and the search bar and `Ctrl+G` work there too.
+- 🗂️ **Explorer tabs 1.1.0** Remembers the open windows and tabs and opens them after the next logon, or when asked.
+- ⚡ **Quick to appear however long it sat** Idle, WinShun gives back only the memory it does not need to show the box and the clipboard.
+- 📦 **Steadier installs and updates** A file another program holds no longer stops an update or leaves it on "Preparing to Install".
+- 🤖 **Plugins from the command line, skills for AI assistants** `ws plugin install winshun.translate`; `npx skills add LingCore/WinShun`.
+- 📏 **Small things** The number of rows in the search box is a setting (4–20); `Tab` on a web site's row completes its keyword; LAN transfer can accept by itself; the arrow keys nudge the pointer while a mouse button is held in a capture.
+- 🛠️ **Fixes** The settings window going black when maximized, the box taking no letters after Start menu typing while run as administrator, a key in a Directory Opus menu starting a search, the panel's horizontal scroll bar always showing, the preview stuck on "Reading…", the pointer missing during a capture, and more.
 
-See the [0.25.0 release notes](docs/release-notes/v0.25.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
+See the [0.26.0 release notes](docs/release-notes/v0.26.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
 
 ### FAQ
 

@@ -53,6 +53,7 @@ On a fresh install some extras start switched off: the search bar beside Open / 
 ## Apps and settings
 
 - **Apps**: everything in the Start menu (Store apps included), by name, pinyin, initials (`vsc`) or program file (`winword`). Pinyin needs two letters; a single letter also lists apps opened before whose name has a character starting with it.
+- **Apps tab** (off by default): turn on "Show the Apps tab" under Settings › Result list and a fourth scope, Apps, follows All / Files / Content: the apps as a grid of icons. The chips under the box choose the most used, the favorites or all of them (`Ctrl+Tab`, remembered); arrows pick a tile, `Enter` opens it, and typing matches as All matches apps, among the ones chosen. The star on a hovered tile adds it to or takes it from the favorites; a right-click opens the menu a row has. The panel and the dialog bar do not have this tab.
 - **WinShun itself**: `admin` (管理员, 提权) lists Restart WinShun as administrator, for plugins that need it; `winshun`, `issue` or 反馈 lists its issue tracker and discussions.
 - **Settings**: about 1,200 Windows settings pages and Control Panel items (`ncpa.cpl`, “network adapter”), plus Group Policy, Disk Management, hosts, AppData and more.
 - Searching for files only? Turn off app and settings results in the settings, and All lists files and content alone.
@@ -60,7 +61,7 @@ On a fresh install some extras start switched off: the search bar beside Open / 
 
 ## Web search
 
-install and enable Web search from the plugin library. `zhihu 显卡`, `baidu 天气`: a keyword and a space search that site. Manage sites, keywords, icons and suggestions on its plugin card; existing settings migrate on upgrade. Presets include Chinese sites, GitHub, YouTube and Wikipedia; add your own with `%s` in the URL, and import or export the list and icons. The site's search suggestions show below as you type (Enter searches one, Tab puts it in the box), and a site's icon can be an SVG file or pasted SVG code.
+install and enable Web search from the plugin library. `zhihu 显卡`, `baidu 天气`: a keyword and a space search that site; found by a part of its keyword or by its name (`b`), a site's row takes `Tab` to put the keyword in the box. Manage sites, keywords, icons and suggestions on its plugin card; existing settings migrate on upgrade. Presets include Chinese sites, GitHub, YouTube and Wikipedia; add your own with `%s` in the URL, and import or export the list and icons. The site's search suggestions show below as you type (Enter searches one, Tab puts it in the box), and a site's icon can be an SVG file or pasted SVG code.
 
 ## Favorites
 
@@ -192,7 +193,7 @@ WinShun's own search box on the Windows 11 taskbar, or a pinned WinShun icon ins
 | `Ctrl+C` / `Ctrl+Shift+C` | Copy the file / copy its path |
 | `F2` | Rename the selected file or folder in place |
 | `Ctrl+1`…`Ctrl+9` | Open the nth row (numbers visible by default; hold-only is optional) |
-| `Tab` / `Shift+Tab` | Switch scope: All / Files / Content (forward / back) |
+| `Tab` / `Shift+Tab` | Switch scope: All / Files / Content, and Apps when its tab is on (forward / back) |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | In **Files**, step through the kinds; in **Content**, through the folders |
 | `Ctrl+S` | Best match → newest first → oldest first (name, type and size are under More in the footer) |
 | `Ctrl+J` / `Ctrl+N`, `Ctrl+K` / `Ctrl+P` | Move down / up; `Ctrl+U` / `Ctrl+D` pages up / down |
