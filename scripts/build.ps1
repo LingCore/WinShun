@@ -147,12 +147,35 @@ try {
         foreach ($codec in @('qgif', 'qjpeg', 'qsvg')) {
             Copy-Item -LiteralPath "$QtDir\plugins\imageformats\$codec$codecSuffix.dll" -Destination $imageFormats
         }
-        # App-local C++ runtime, so users need no VC++ redistributable installed
-        # (msvcp140_1: onnxruntime.dll).
+        # App-local C++ runtime, so users need no VC++ redistributable installed.
+        # All of msvcp140*/vcruntime140*, not a list kept by hand: Qt 6.12's
+        # Qt6Gui and Qt6Quick import msvcp140_2.dll, which the list lacked, and
+        # 0.27.0 did not start (0xC0000135) on a PC without the redistributable
+        # (found on a clean Windows 10). The library plugins share these too.
         $crt = Join-Path $env:VCToolsRedistDir 'x64\Microsoft.VC143.CRT'
-        foreach ($dll in 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_atomic_wait.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
-            Copy-Item (Join-Path $crt $dll) $dist
+        Get-ChildItem $crt -Filter '*.dll' | Where-Object { $_.Name -match '^(msvcp140|vcruntime140)' } |
+            ForEach-Object { Copy-Item $_.FullName $dist }
+        # And checked: whatever anything deployed imports from the runtime's
+        # folder or from Qt must be next to it.
+        $shipped = @{}
+        Get-ChildItem $dist -Recurse -Include '*.dll', '*.exe' | ForEach-Object { $shipped[$_.Name.ToLower()] = $true }
+        $runtime = @{}
+        Get-ChildItem $crt -Filter '*.dll' | ForEach-Object { $runtime[$_.Name.ToLower()] = $true }
+        $lacking = @()
+        foreach ($binary in Get-ChildItem $dist -Recurse -Include '*.dll', '*.exe') {
+            $delayed = $false
+            foreach ($line in (& dumpbin /nologo /dependents $binary.FullName)) {
+                if ($line -match 'delay load') { $delayed = $true }
+                elseif ($line -match 'Image has the following dependencies') { $delayed = $false }
+                elseif (-not $delayed -and $line -match '^\s+(\S+\.dll)\s*$') {
+                    $import = $Matches[1].ToLower()
+                    if (($runtime[$import] -or $import -like 'qt6*') -and -not $shipped[$import]) {
+                        $lacking += "$($binary.Name) needs $import"
+                    }
+                }
+            }
         }
+        if ($lacking) { throw "Deployed files import DLLs that are not shipped:`n$(($lacking | Sort-Object -Unique) -join "`n")" }
         Write-Host "Deployed to $dist"
     }
 } finally {
