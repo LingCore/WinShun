@@ -447,7 +447,9 @@ Window {
     Binding {
         target: window
         property: "height"
-        value: layout.implicitHeight
+        // In a file list's corner the placement moves and sizes the window
+        // in one step first (Placement.fitHeight, GitHub #234).
+        value: window.placement.fitHeight(layout.implicitHeight)
         // Once the panel's minimumHeight has gone too: both follow `panel` in
         // no set order, and set while it still held, a box shorter than the
         // panel stayed 360 tall, empty under its footer.
@@ -1437,6 +1439,7 @@ Window {
                 bar: Component {
                     ResultActions {
                         dpr: window.dpr
+                        deleteButton: window.launcher.rowDeleteButton
                     }
                 }
             }

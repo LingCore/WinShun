@@ -103,6 +103,10 @@ inline QString normalized(const QString& shortcut)
 
 // What may be a hotkey (Settings::hotkeyAllowed: the settings window's
 // recorder and AI): a function key alone, or a key with Ctrl, Alt or Win.
+// Shift alone types (a capital, a symbol), so it makes none, but for
+// Shift+Space: other clipboard tools and launchers take it and people
+// bring the habit along (GitHub #294); the space typed with Shift held is
+// then the hotkey's, theirs to choose.
 inline bool allowed(const QString& shortcut)
 {
     const QString normal = normalized(shortcut);
@@ -110,7 +114,7 @@ inline bool allowed(const QString& shortcut)
         return false;
     const QStringList parts = normal.split(u'+');
     static const QRegularExpression functionKey(u"^f([1-9]|1\\d|2[0-4])$"_s);
-    if (functionKey.match(parts.last()).hasMatch())
+    if (functionKey.match(parts.last()).hasMatch() || normal == u"shift+space")
         return true;
     return parts.contains(u"ctrl") || parts.contains(u"alt") || parts.contains(u"win");
 }

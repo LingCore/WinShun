@@ -2096,6 +2096,21 @@ Window {
                     }
                 }
 
+                SettingRow { // GitHub #314
+                    id: desktopTypingRow
+                    title: qsTr("在桌面上直接打字搜索")
+                    keywords: qsTr("桌面;打字;输入;直接搜索;图标;desktop;type to search").split(";")
+                    description: qsTr("点一下桌面后直接打字，即可用 Win顺 搜索整台电脑")
+                    tip: qsTr("代替桌面自带的“按首字母跳到图标”；重命名图标时不受影响")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        objectName: "desktopTypingToggle"
+                        checked: window.editor.desktopTyping
+                        onToggled: (on) => window.editor.desktopTyping = on
+                    }
+                }
+
                 SettingRow {
                     id: opusTypingRow
                     title: qsTr("在 Directory Opus 里直接打字搜索")
@@ -3029,6 +3044,33 @@ Window {
                                 window.editor.maxRows = rows
                             text = Qt.binding(() => String(window.editor.maxRows))
                         }
+                    }
+                }
+
+                SettingRow { // with what the box looks like, where it is looked for (GitHub #185)
+                    title: qsTr("纯净搜索模式")
+                    description: qsTr("搜索框空着时只保留输入栏，输入后恢复结果和范围标签；右上角的搜索历史和展开按钮一直隐藏，快捷键照常可用。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响")
+                    keywords: qsTr("纯净;极简;空白;底栏;最近;收藏;pure;minimal").split(";")
+                    ToggleSwitch {
+                        objectName: "pureSearchToggle"
+                        dpr: window.dpr
+                        checked: window.editor.pureSearch
+                        Accessible.name: qsTr("纯净搜索模式")
+                        onToggled: (on) => window.editor.pureSearch = on
+                    }
+                }
+
+                SettingRow { // GitHub #185, #244
+                    title: qsTr("范围标签")
+                    keywords: qsTr("范围;全部;文件;内容;标签;合并;三合一;按钮;极简;scope;tabs").split(";")
+                    description: qsTr("搜索框右边的“全部 / 文件 / 内容”：拆分成几个标签，或合并成一个按钮，点一下切到下一个")
+                    tip: qsTr("两种样式下 Tab / Shift+Tab 都能切换；展开的搜索面板始终拆分显示")
+
+                    ScopeTabs {
+                        objectName: "scopeButtonChoice"
+                        labels: [qsTr("拆分"), qsTr("合并")]
+                        current: window.editor.scopeButton ? 1 : 0
+                        onActivated: (index) => window.editor.scopeButton = index === 1
                     }
                 }
             }
@@ -4226,19 +4268,6 @@ Window {
                 title: qsTr("键盘提示")
 
                 SettingRow {
-                    title: qsTr("纯净搜索模式")
-                    description: qsTr("搜索框空着时只保留输入栏；输入后恢复结果和操作按钮。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响")
-                    keywords: qsTr("纯净;极简;空白;底栏;最近;收藏;pure;minimal").split(";")
-                    ToggleSwitch {
-                        objectName: "pureSearchToggle"
-                        dpr: window.dpr
-                        checked: window.editor.pureSearch
-                        Accessible.name: qsTr("纯净搜索模式")
-                        onToggled: (on) => window.editor.pureSearch = on
-                    }
-                }
-
-                SettingRow {
                     title: qsTr("显示快捷键帮助按钮")
                     description: qsTr("在搜索框右下角显示入口，点击查看常用快捷键")
                     keywords: qsTr("快捷键;帮助;提示;隐藏;极简").split(";")
@@ -4325,6 +4354,19 @@ Window {
                         dpr: window.dpr
                         checked: window.editor.thumbnails
                         onToggled: (on) => window.editor.thumbnails = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("显示删除按钮")
+                    keywords: qsTr("删除;垃圾桶;回收站;误删;按钮;delete;trash;recycle").split(";")
+                    description: qsTr("文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后可在右键菜单的“更多选项”里删除")
+
+                    ToggleSwitch {
+                        objectName: "rowDeleteButtonToggle"
+                        dpr: window.dpr
+                        checked: window.editor.rowDeleteButton
+                        onToggled: (on) => window.editor.rowDeleteButton = on
                     }
                 }
 

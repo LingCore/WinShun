@@ -4,6 +4,7 @@
 #include "Clipboard.h"
 #include "DialogRuleStore.h"
 #include "ClipboardDisplay.h"
+#include "Favorites.h"
 #include "FolderMenu.h"
 #include "History.h"
 #include "IndexService.h"
@@ -857,8 +858,17 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     launcher.setQuery(u"report"_s);
     settle(window);
     check(launcher.results()->count() == 1, u"typing searches the real index"_s);
-    check(!window->property("pureEmpty").toBool() && footer->isVisible() && tabs->isVisible() && expand->isVisible(),
-        u"typing restores all existing controls"_s);
+    // The scope tabs and the footer come back; the two keys right of the tabs
+    // (the history, the panel) stay away in this mode (GitHub #185, #244),
+    // and the tabs take their place at the box's edge.
+    check(!window->property("pureEmpty").toBool() && footer->isVisible() && tabs->isVisible(),
+        u"typing restores the results' controls"_s);
+    {
+        auto* historyKey = item(window->contentItem(), u"queryHistoryButton"_s);
+        check(!expand->isVisible() && historyKey && !historyKey->isVisible(), u"pure search keeps the history and panel keys away while typing"_s);
+        const qreal tabsRight = tabs->mapToItem(window->contentItem(), QPointF(tabs->width(), 0)).x();
+        check(window->width() - tabsRight < 32, u"the scope tabs end at the box's edge"_s);
+    }
     check(window->height() > emptyHeight, u"results expand the window"_s);
     check(window->grabWindow().save(output.filePath(u"pure-results.png"_s)), u"capture populated search"_s);
     launcher.setQuery({});
@@ -884,6 +894,36 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     check(!window->property("pureEmpty").toBool(), u"taskbar input keeps its existing presentation"_s);
     launcher.setInTaskbarBox(false);
     launcher.setPureSearch(false);
+    {
+        // 范围标签 › 合成一个按钮 (GitHub #185, #244): one key saying the
+        // current scope in the tabs' place; a click goes to the next, as Tab does.
+        launcher.setQuery(u"report"_s);
+        launcher.setScope(Launcher::All);
+        settle(window);
+        auto* scopeKey = item(window->contentItem(), u"searchScopeKey"_s);
+        check(scopeKey && !scopeKey->isVisible() && tabs->isVisible(), u"the scopes are tabs side by side unless chosen"_s);
+        launcher.setScopeButton(true);
+        settle(window);
+        check(scopeKey && scopeKey->isVisible() && !tabs->isVisible(), u"one scope key takes the tabs' place"_s);
+        if (scopeKey) {
+            const qreal keyRight = scopeKey->mapToItem(window->contentItem(), QPointF(scopeKey->width(), 0)).x();
+            const qreal fieldRight = field->mapToItem(window->contentItem(), QPointF(field->width(), 0)).x();
+            check(fieldRight <= scopeKey->mapToItem(window->contentItem(), QPointF(0, 0)).x() && keyRight <= window->width(),
+                u"the field ends before the scope key, the key inside the box"_s);
+            const Launcher::Scope before = launcher.scope();
+            QMetaObject::invokeMethod(scopeKey, "next");
+            settle(window);
+            check(launcher.scope() != before, u"a click on the scope key goes to the next scope"_s);
+            check(window->grabWindow().save(output.filePath(u"scope-key.png"_s)), u"capture the scope key"_s);
+            key(field, Qt::Key_Tab);
+            settle(window);
+            check(scopeKey->isVisible(), u"Tab moves through the scopes with the key as with the tabs"_s);
+        }
+        launcher.setScopeButton(false);
+        launcher.setScope(Launcher::All);
+        launcher.setQuery({});
+        settle(window);
+    }
     settle(window);
     check(footer->isVisible() && tabs->isVisible(), u"switching off restores the original presentation"_s);
     // 设置 › 外观 › 搜索框显示行数 (Settings::maxRows): the box is as tall as
@@ -1051,7 +1091,7 @@ bool checkResultRowSpacing(QQmlEngine* engine, const QDir& output)
 bool checkPluginReviewSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output)
 {
     Checks check;
-    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 3), Q_ARG(QVariant, 1),
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 1), Q_ARG(QVariant, 0),
         Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "纯净搜索模式")));
     settle(window);
     auto* toggle = item(window->contentItem(), u"pureSearchToggle"_s);
@@ -1288,6 +1328,57 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
         launcher.setRememberAdmin(false);
         history.remove(appPath);
         searchAgain();
+    }
+    {
+        // A command whose words find files (GitHub #319): "ed report" lists
+        // the files and folders "report" finds, Enter hands the one chosen
+        // to the command; its own row, the words as they are, comes last.
+        // No app is listed: a command cannot be handed one. A command
+        // without the choice is as before.
+        Favorites favorites(profile.filePath(u"favorites.json"_s));
+        Favorite editor {Favorite::Kind::Command, u"winshun-command:probe-editor"_s, u"编辑器"_s, u"ed"_s, u"D:\\Editor.exe {query}"_s};
+        editor.searchFiles = true;
+        Favorite plain {Favorite::Kind::Command, u"winshun-command:probe-plain"_s, u"回显"_s, u"pl"_s, u"D:\\Echo.exe {query}"_s};
+        favorites.add(editor);
+        favorites.add(plain);
+        launcher.setFavorites(&favorites);
+        const auto typed = [&](const QString& text) {
+            launcher.setQuery(text);
+            QElapsedTimer waiting;
+            waiting.start();
+            do {
+                settle(window);
+            } while (launcher.searching() && waiting.elapsed() < 3000);
+        };
+        const auto enterHint = [&] { return launcher.keyHints().value(u"enter"_s).toString(); };
+        typed(u"ed report"_s);
+        const int count = launcher.results()->count();
+        QStringList paths;
+        for (int row = 0; row < count; ++row)
+            paths.append(launcher.results()->pathAt(row));
+        check(count == 4 && paths.last() == editor.path, u"a command's words list the files found, its own row last: "_s + paths.join(u" | "_s));
+        check(std::ranges::none_of(paths, [](const QString& p) { return p.contains(u"Report.exe") || p.startsWith(u"shell:"); }),
+            u"no app among a command's files"_s);
+        launcher.setCurrentRow(0);
+        settle(window);
+        check(enterHint() == QCoreApplication::translate("ws::Launcher", "用“%1”打开").arg(editor.name),
+            u"Enter on a file found says the command it goes to: "_s + enterHint());
+        check(window->grabWindow().save(output.filePath(u"command-files.png"_s)), u"capture a command's files"_s);
+        launcher.setCurrentRow(count - 1);
+        settle(window);
+        check(enterHint() == QCoreApplication::translate("ws::Launcher", "原样传入“%1”").arg(u"report"_s),
+            u"Enter on the command's own row says the words go as they are: "_s + enterHint());
+        typed(u"ed"_s);
+        check(launcher.results()->count() >= 1 && launcher.results()->pathAt(0) == editor.path,
+            u"its keyword alone is the command, as before"_s);
+        typed(u"pl report"_s);
+        launcher.setCurrentRow(0);
+        settle(window);
+        check(launcher.results()->count() >= 1 && launcher.results()->pathAt(0) == plain.path
+                && enterHint() == QCoreApplication::translate("ws::Launcher", "打开"),
+            u"a command without the choice takes its words as before: "_s + enterHint());
+        launcher.setFavorites(nullptr);
+        typed(u"report"_s);
     }
     launcher.toggleFileType(0);
     settle(window);

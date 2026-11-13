@@ -455,6 +455,10 @@
         <translation>Automatic updates</translation>
     </message>
     <message>
+        <source>在桌面上直接打字搜索</source>
+        <translation>Type to search on the desktop</translation>
+    </message>
+    <message>
         <source>在 Directory Opus 里直接打字搜索</source>
         <translation>Type to search in Directory Opus</translation>
     </message>
@@ -929,6 +933,14 @@
     <message>
         <source>显示图片缩略图</source>
         <translation>Show thumbnails</translation>
+    </message>
+    <message>
+        <source>范围标签</source>
+        <translation>Scope tabs</translation>
+    </message>
+    <message>
+        <source>显示删除按钮</source>
+        <translation>Show the delete button</translation>
     </message>
     <message>
         <source>内置预览</source>
@@ -2086,6 +2098,18 @@
     <message>
         <source>不填则由 Windows 决定；路径不用加引号</source>
         <translation>Leave blank to let Windows choose. Do not quote the path.</translation>
+    </message>
+    <message>
+        <source>关键词后面的字用来搜索文件</source>
+        <translation>The words after the keyword find files</translation>
+    </message>
+    <message>
+        <source>输入关键词和要找的名字，在搜到的文件或文件夹上按 Enter，就把它的完整路径交给 {query}；列表最后一行仍可原样传入输入的字</source>
+        <translation>Type the keyword and a name, then press Enter on a file or folder found: its full path goes to {query}. The last row still passes the words as typed</translation>
+    </message>
+    <message>
+        <source>命令里要有 {query}，用来接收选中的文件或文件夹</source>
+        <translation>The command needs {query} to take the file or folder chosen</translation>
     </message>
     <message>
         <source>静默执行</source>
@@ -4903,6 +4927,22 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Checking for WinShun updates contacts lcstp.com and sends only the Windows version and the kind of install; checking plugins downloads the plugin library list from GitHub or a mirror. Nothing personal is sent.</translation>
     </message>
     <message>
+        <source>在桌面上直接打字搜索</source>
+        <translation>Type to search on the desktop</translation>
+    </message>
+    <message>
+        <source>桌面;打字;输入;直接搜索;图标;desktop;type to search</source>
+        <translation>desktop;type to search;typing;icons</translation>
+    </message>
+    <message>
+        <source>点一下桌面后直接打字，即可用 Win顺 搜索整台电脑</source>
+        <translation>Click the desktop and just type: Win顺 searches the whole PC</translation>
+    </message>
+    <message>
+        <source>代替桌面自带的“按首字母跳到图标”；重命名图标时不受影响</source>
+        <translation>Replaces the desktop&apos;s own jump to an icon by its first letters; renaming an icon is not affected</translation>
+    </message>
+    <message>
         <source>在 Directory Opus 里直接打字搜索</source>
         <translation>Type to search in Directory Opus</translation>
     </message>
@@ -5797,6 +5837,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>显示图片缩略图</source>
         <translation>Show thumbnails</translation>
+    </message>
+    <message>
+        <source>显示删除按钮</source>
+        <translation>Show the delete button</translation>
+    </message>
+    <message>
+        <source>删除;垃圾桶;回收站;误删;按钮;delete;trash;recycle</source>
+        <translation>delete;trash;recycle bin;remove;button;accident</translation>
+    </message>
+    <message>
+        <source>文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后可在右键菜单的“更多选项”里删除</source>
+        <translation>Rows of files and folders end with a delete button (click twice; to the Recycle Bin). Off: delete from More options in the right-click menu</translation>
     </message>
     <message>
         <source>缩略图;预览;图片;照片;视频;PDF;thumbnail;preview</source>
@@ -8077,8 +8129,32 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Minimal search mode</translation>
     </message>
     <message>
-        <source>搜索框空着时只保留输入栏；输入后恢复结果和操作按钮。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响</source>
-        <translation>Keep only the input when the search box is empty. Results and controls return as you type. Full search, folder search and taskbar search keep their controls.</translation>
+        <source>范围标签</source>
+        <translation>Scope tabs</translation>
+    </message>
+    <message>
+        <source>范围;全部;文件;内容;标签;合并;三合一;按钮;极简;scope;tabs</source>
+        <translation>scope;tabs;all;files;content;merge;one button;minimal</translation>
+    </message>
+    <message>
+        <source>搜索框右边的“全部 / 文件 / 内容”：拆分成几个标签，或合并成一个按钮，点一下切到下一个</source>
+        <translation>All / Files / Content at the right of the search box: split into tabs, or merged into one button that goes to the next when clicked</translation>
+    </message>
+    <message>
+        <source>两种样式下 Tab / Shift+Tab 都能切换；展开的搜索面板始终拆分显示</source>
+        <translation>Tab / Shift+Tab switch in both; the expanded search panel always shows them split</translation>
+    </message>
+    <message>
+        <source>拆分</source>
+        <translation>Split</translation>
+    </message>
+    <message>
+        <source>合并</source>
+        <translation>Merged</translation>
+    </message>
+    <message>
+        <source>搜索框空着时只保留输入栏，输入后恢复结果和范围标签；右上角的搜索历史和展开按钮一直隐藏，快捷键照常可用。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响</source>
+        <translation>Keep only the input when the search box is empty; results and the scope tabs return as you type. The history and expand buttons at the top right stay hidden, their shortcuts still work. Full search, folder search and taskbar search keep their controls.</translation>
     </message>
     <message>
         <source>纯净;极简;空白;底栏;最近;收藏;pure;minimal</source>
@@ -12285,6 +12361,14 @@ Content index: %5</translation>
     <message>
         <source>已复制网址</source>
         <translation>Address copied</translation>
+    </message>
+    <message>
+        <source>用“%1”打开</source>
+        <translation>Open with “%1”</translation>
+    </message>
+    <message>
+        <source>原样传入“%1”</source>
+        <translation>Pass “%1” as typed</translation>
     </message>
     <message>
         <source>打开网站</source>

@@ -14,6 +14,7 @@ Item {
 
     property ResultRow host: null // the row it is lent to; null: put away
     property real dpr: 1
+    property bool deleteButton: true // the settings': off, no row has one (GitHub #316)
 
     // For the row: the room the buttons take, how many show, and the one the
     // mouse rests on (the row's HoverTip, one for its buttons and its date).
@@ -106,6 +107,7 @@ Item {
         }
         RowAction {
             id: copyPathAction
+            objectName: "copyPathAction"
             readonly property ResultRow host: bar.host
             dpr: bar.dpr
             shared: true
@@ -128,7 +130,7 @@ Item {
             readonly property bool armed: host !== null && host.deleteArmed
             dpr: bar.dpr
             shared: true
-            visible: host !== null && !host.isApp // uninstalling is for Windows Settings
+            visible: bar.deleteButton && host !== null && !host.isApp // uninstalling is for Windows Settings
             glyph: "" // Delete
             tip: armed ? "" : qsTranslate("ResultRow", "删除（点两次，移到回收站）")
             text: !armed ? ""

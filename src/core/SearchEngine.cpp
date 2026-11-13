@@ -1160,7 +1160,8 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
     // Typed in a folder's window (GitHub #110), the words are looked for in
     // it, never a keyword: they need not end in a space there.
     const bool keywords = request.currentFolder.isEmpty() && request.typeFolders.isEmpty();
-    const qsizetype command = keywords ? typedCommandKeyword(favorites, request.text) : -1;
+    const qsizetype command = !request.commandPath.isEmpty() ? indexOfFavorite(favorites, request.commandPath)
+        : keywords ? typedCommandKeyword(favorites, request.text) : -1;
     const qsizetype keyword = command >= 0 ? command : keywords ? typedFavoriteKeyword(favorites, request.text) : -1;
     if (keyword >= 0 && favoriteShown(request.scope, favorites[keyword], types))
         wanted.push_back(&favorites[keyword]);
@@ -1204,7 +1205,8 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
             rows.push_back({});
         }
     }
-    const SearchResults looked = favoriteRows(unfound, apps, places, onDisk, index, request.text);
+    const SearchResults looked = favoriteRows(unfound, apps, places, onDisk, index,
+        request.commandPath.isEmpty() ? request.text : request.commandText);
     SearchResults put;
     for (qsizetype i = 0, k = 0; i < rows.size(); ++i) {
         if (k < std::ssize(unfoundAt) && unfoundAt[static_cast<std::size_t>(k)] == i) {

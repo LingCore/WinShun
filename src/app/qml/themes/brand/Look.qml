@@ -56,8 +56,11 @@ QtObject {
     readonly property color capEdge: dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.14)
     readonly property color capsuleFill: dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.045)
     readonly property color rowSelected: dark ? Qt.rgba(1, 1, 1, 0.07) : "#FFFFFF"
-    readonly property color rowSelectedEdge: dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.08)
-    readonly property color rowSelectedShadow: dark ? "transparent" : Qt.rgba(0, 0, 0, 0.04)
+    // Light: a white face on a near-white list tells little by its fill, so
+    // its edge and shadow carry it; fainter (0.08 / 0.04) it read weaker
+    // than the grey under the pointer on the row beside it (GitHub #267).
+    readonly property color rowSelectedEdge: dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.16)
+    readonly property color rowSelectedShadow: dark ? "transparent" : Qt.rgba(0, 0, 0, 0.10)
     readonly property color rowHover: dark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.025)
     // Under the pointer on a settings card (rows, the panel's choices): the same lightness step in dark as in light (CIE L* 2.2) —
     // white 3.5 % over the card's #28282D steps 3.5, the launcher list's darker floor takes it better.

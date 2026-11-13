@@ -143,6 +143,9 @@ struct Settings {
     // letters: off unless asked for, so that an upgrade changes nothing.
     bool explorerTyping = false;
     bool opusTyping = false; // opt in per manager: typing in an Opus file display (GitHub #82)
+    // ... and with the desktop's icons having the keyboard (GitHub #314): the
+    // launcher as its hotkey opens it, to search the whole PC.
+    bool desktopTyping = false;
     // folder | all: typed in Opus, the launcher opens on that tab's folder, or
     // with nothing before the words, to search the whole PC.
     QString opusTypingScope = QStringLiteral("folder");
@@ -213,6 +216,7 @@ struct Settings {
     // Opt in to the former behavior: in 全部, Tab browses a favorite folder.
     bool tabEntersFavoriteFolder = false;
     bool thumbnails = true; // a picture, video, PDF found shows its thumbnail for an icon
+    bool rowDeleteButton = true; // a file's row has a delete button among its buttons (GitHub #316)
     // 全部 also finds apps, and Windows' settings pages, Control Panel items
     // and switches; off, it finds names and content only (SearchEngine::Request).
     bool searchApps = true;
@@ -248,6 +252,10 @@ struct Settings {
     bool shortcutHelp = true;
     bool footerHints = true;
     bool pureSearch = false; // empty floating launcher: just the input, without start results or chrome
+    // The launcher's scopes (全部, 文件, 内容…) as one key that says the
+    // current one and goes to the next when clicked, in place of the tabs
+    // side by side (GitHub #185, #244). Tab moves through them either way.
+    bool scopeButton = false;
     // auto | builtin: what Alt+P on a row shows the file with. auto: QuickLook
     // or Seer when one is running in the background (FilePreview), else
     // Win顺's own preview window; builtin: always that.

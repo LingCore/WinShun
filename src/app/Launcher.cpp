@@ -988,6 +988,12 @@ void Launcher::setTypingFolder(const QString& prefix)
         search();
 }
 
+void Launcher::awaitTyping(const QString& text)
+{
+    m_typingAwaited = true;
+    m_awaitedText = text.trimmed();
+}
+
 void Launcher::setFolderSearch(bool enabled)
 {
     if (m_folderSearch == enabled)
@@ -1022,7 +1028,33 @@ QString Launcher::typingWords() const
 QString Launcher::nameText() const
 {
     const QString words = typingWords();
-    return words.isEmpty() ? searchText() : words;
+    if (!words.isEmpty())
+        return words;
+    if (const auto files = commandFiles())
+        return files->words;
+    return searchText();
+}
+
+std::optional<Launcher::CommandFiles> Launcher::commandFiles() const
+{
+    if (!m_favorites || m_keyword || m_filePrefix || (m_scope != All && m_scope != Files) || typedInFolder())
+        return std::nullopt;
+    const QString text = searchText();
+    const qsizetype at = typedCommandKeyword(m_favorites->items(), text);
+    if (at < 0)
+        return std::nullopt;
+    const Favorite& f = m_favorites->items()[at];
+    if (!f.searchFiles || !f.command.contains(u"{query}"))
+        return std::nullopt;
+    const QString words = commandWords(f, text);
+    if (words.isEmpty())
+        return std::nullopt;
+    return CommandFiles {f, words};
+}
+
+bool Launcher::fileRow(const SearchResult& r)
+{
+    return !r.isApp() && !r.isCommand() && r.line == 0 && !r.missing && !r.path.isEmpty();
 }
 
 QString Launcher::typingKey() const
@@ -1609,6 +1641,14 @@ void Launcher::setNumberHints(const QString& hints)
     emit resultOptionsChanged();
 }
 
+void Launcher::setRowDeleteButton(bool shown)
+{
+    if (m_rowDeleteButton == shown)
+        return;
+    m_rowDeleteButton = shown;
+    emit resultOptionsChanged();
+}
+
 void Launcher::setKeyboardHints(bool help, bool footer)
 {
     if (m_shortcutHelp == help && m_footerHints == footer)
@@ -1624,6 +1664,14 @@ void Launcher::setMaxRows(int rows)
     if (m_maxRows == rows)
         return;
     m_maxRows = rows;
+    emit resultOptionsChanged();
+}
+
+void Launcher::setScopeButton(bool on)
+{
+    if (m_scopeButton == on)
+        return;
+    m_scopeButton = on;
     emit resultOptionsChanged();
 }
 
@@ -2102,6 +2150,7 @@ void Launcher::retranslate()
 
 void Launcher::handleHidden()
 {
+    m_typingAwaited = false;
     rememberQuery();
     closePreview(); // the wish to have it stays (m_previewWanted) ...
     if (!m_previewRestore)
@@ -2265,7 +2314,11 @@ void Launcher::search(bool more)
         return;
     }
 
-    const bool pureEmpty = m_pureSearch && !m_panel && !m_folderSearch && !m_inTaskbarBox && m_query.trimmed().isEmpty();
+    // The words typed in a file manager are on their way (awaitTyping).
+    if (m_typingAwaited && m_query.trimmed() != m_awaitedText)
+        m_typingAwaited = false;
+    const bool pureEmpty = (m_pureSearch && !m_panel && !m_folderSearch && !m_inTaskbarBox && m_query.trimmed().isEmpty())
+        || (m_typingAwaited && m_scope != Content);
     if (m_scope == Content || pureEmpty) {
         m_engine->cancel();
         m_requestId = 0;
@@ -2307,6 +2360,10 @@ void Launcher::search(bool more)
 
     SearchEngine::Request request;
     request.text = nameText();
+    if (const auto files = commandFiles()) {
+        request.commandPath = files->command.path;
+        request.commandText = searchText();
+    }
     // Typed in a folder's window (GitHub #110): its words, there first (or
     // only there). The folder alone is listed as the path typed it is.
     if (!typingWords().isEmpty()) {
@@ -2753,6 +2810,19 @@ void Launcher::onResults(quint64 id, const SearchResults& results, qint64 total,
     }
 
     SearchResults rows = results;
+    if (const auto files = commandFiles()) {
+        // The files and folders its words found, for the command; what a
+        // command cannot be handed (apps, settings, sites) is not listed.
+        // Its own row, the words as they are: after them, or before when
+        // the words are a path there is ("code D:\\项目" runs as ever).
+        const QString own = files->command.path;
+        rows.removeIf([&](const SearchResult& r) { return r.path != own && !fileRow(r); });
+        const auto it = std::ranges::find_if(rows, [&](const SearchResult& r) { return r.path == own; });
+        const QFileInfo typed(files->words);
+        const bool path = typed.isAbsolute() && !files->words.startsWith(u"\\\\") && typed.exists();
+        if (it != rows.end() && !path)
+            std::rotate(it, it + 1, rows.end());
+    }
     QSet<QString> names;
     if (m_refresh) {
         for (const SearchResult& r : rows)
@@ -3588,6 +3658,10 @@ void Launcher::refreshKeyHints()
         second = typedInFolder() && !pathtext::sameFolder(QFileInfo(r->path).absolutePath(), m_typingFolder)
             ? tr("在原窗口定位") : tr("打开位置");
     }
+    if (const auto files = r && fileRow(*r) ? commandFiles() : std::nullopt)
+        enter = tr("用“%1”打开").arg(files->command.name);
+    else if (r && r->isCommand() && commandFiles())
+        enter = tr("原样传入“%1”").arg(r->words);
     const QVariantMap hints {{u"enter"_s, enter}, {u"secondKeys"_s, secondKeys}, {u"second"_s, second}, {u"tab"_s, tab},
         {u"tabKeys"_s, tabKeys}};
     if (hints == m_keyHints)
@@ -4746,6 +4820,15 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
 {
     const SearchResult r = result; // the model may change underneath us
     m_adminNote.reset(); // set below for the row being run, taken by remember()
+    // A file or folder found for a command (commandFiles): Enter hands it over.
+    if (const auto files = action == Open && fileRow(r) ? commandFiles() : std::nullopt) {
+        const Favorite& command = files->command;
+        remember(command.path, m_shownText);
+        shell::runCustom(command.command, command.workingDirectory, r.path, reportFailure(command.name),
+            {command.silent, command.runAsAdmin});
+        emit dismissRequested();
+        return;
+    }
     if (!fileChecked)
         dropServerWait(); // a server still being waited for no longer matters
     if (r.isWindow()) {

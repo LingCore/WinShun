@@ -32,7 +32,10 @@ namespace ws {
 // open (its keys are the menu's: 属性(R), GitHub #37) is taken the same way,
 // and the launcher is asked for with that window's folder (typedInExplorer).
 // Opus uses the same handoff for a letter or digit in its file display
-// (typedInOpus); symbols keep its own find modes. That
+// (typedInOpus); symbols keep its own find modes. On the desktop (one
+// more setting, off by default, GitHub #314) a key typed while its icons
+// have the keyboard is taken likewise, and the launcher is asked for as its
+// hotkey would open it, to search the whole PC (typedOnDesktop). That
 // key and the ones typed after it are held back until the launcher has the
 // keyboard (deliver), then typed again in order (SendInput, marked as
 // Win顺's own): they go through the input method as if typed into the search
@@ -86,6 +89,7 @@ public:
         bool startMenu = false;
         bool explorer = false; // typing searches the folder
         bool opus = false; // independent opt-in for Directory Opus
+        bool desktop = false; // typing with the desktop's icons focused opens the launcher
         bool pasteFile = false; // Ctrl+V pastes the clipboard as a file
         bool operator==(const Surfaces&) const = default;
     };
@@ -98,6 +102,9 @@ public:
         std::function<void(HWND root, HWND tab, unsigned vk, RequestId request)> typedInExplorer;
         // ... in Opus's focused file display; `tab` is its native window.
         std::function<void(HWND root, HWND tab, unsigned vk, RequestId request)> typedInOpus;
+        // ... with the icons of the desktop (`desktop`: Progman or WorkerW)
+        // having the keyboard.
+        std::function<void(HWND desktop, unsigned vk, RequestId request)> typedOnDesktop;
         // Ctrl+V was taken in `view`: the Explorer tab, or the desktop's
         // window (Progman or WorkerW). On the hook's thread.
         std::function<void(HWND view)> pastedInto;
@@ -188,7 +195,7 @@ private:
     HWND m_opus = nullptr; // the Opus lister in front, if opted in
     HWND m_sourceWindow = nullptr; // the hold's originating folder window and focus
     HWND m_sourceFocus = nullptr;
-    HWND m_desktop = nullptr; // the desktop in front, when pasting there counts
+    HWND m_desktop = nullptr; // the desktop in front, when typing or pasting there counts
     bool m_pasteTaken = false; // Ctrl+V taken, V not let go yet: its repeats and release are taken too
     bool m_windowsSearch = false; // Left Alt in the Start menu: its own search this time
     // The keys held back for the launcher (or the file display they were

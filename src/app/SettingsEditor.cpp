@@ -327,6 +327,14 @@ void SettingsEditor::setThumbnails(bool on)
     commit();
 }
 
+void SettingsEditor::setRowDeleteButton(bool on)
+{
+    if (m_settings.rowDeleteButton == on)
+        return;
+    m_settings.rowDeleteButton = on;
+    commit();
+}
+
 void SettingsEditor::setWebSuggestions(bool on)
 {
     if (m_settings.webSuggestions == on)
@@ -423,6 +431,14 @@ void SettingsEditor::setFooterHints(bool on)
     if (m_settings.footerHints == on)
         return;
     m_settings.footerHints = on;
+    commit();
+}
+
+void SettingsEditor::setScopeButton(bool on)
+{
+    if (m_settings.scopeButton == on)
+        return;
+    m_settings.scopeButton = on;
     commit();
 }
 
@@ -1382,6 +1398,14 @@ void SettingsEditor::setExplorerTyping(bool on)
     if (m_settings.explorerTyping == on)
         return;
     m_settings.explorerTyping = on;
+    commit();
+}
+
+void SettingsEditor::setDesktopTyping(bool on)
+{
+    if (m_settings.desktopTyping == on)
+        return;
+    m_settings.desktopTyping = on;
     commit();
 }
 

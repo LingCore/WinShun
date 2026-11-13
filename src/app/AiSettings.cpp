@@ -267,6 +267,10 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/ExplorerTyping", QT_TRANSLATE_NOOP("AiSettings", "在资源管理器里直接打字搜索"), "files_and_dialogs", 2,
                     "Typing in a File Explorer folder window searches that folder with Win顺, instead of Explorer's jump to a name by its first letters."},
         &Settings::explorerTyping));
+    add(boolean({"Launcher/DesktopTyping", QT_TRANSLATE_NOOP("AiSettings", "在桌面上直接打字搜索"), "files_and_dialogs", 2,
+                    "Typing with the desktop in front (its icons focused) opens Win顺 to search the whole PC, instead of the "
+                    "desktop's jump to an icon by its first letters. Off by default."},
+        &Settings::desktopTyping));
     add(boolean({"Launcher/OpusTyping", QT_TRANSLATE_NOOP("AiSettings", "在 Directory Opus 里直接打字搜索"),
                     "files_and_dialogs", 2,
                     "In a Directory Opus file display, letters and digits open Win顺 to search that tab's folder. "
@@ -388,6 +392,10 @@ std::vector<Entry> buildCatalog()
         &Settings::rememberAdmin));
 
     // ---- 外观 ----
+    add(boolean({"Appearance/ScopeButton", QT_TRANSLATE_NOOP("AiSettings", "范围标签"), "appearance", -1,
+                    "true: the launcher's scopes (全部, 文件, 内容) are one button showing the current one; a click or Tab goes to the next. "
+                    "Off: the tabs side by side."},
+        &Settings::scopeButton));
     add(choice({"Appearance/Theme", QT_TRANSLATE_NOOP("AiSettings", "主题"), "appearance", -1, "Light or dark windows."},
         &Settings::theme,
         {{u"system"_s, u"follow Windows' light or dark mode"_s, QT_TRANSLATE_NOOP("AiSettings", "跟随系统")},
@@ -558,6 +566,10 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Results/Thumbnails", QT_TRANSLATE_NOOP("AiSettings", "显示图片缩略图"), "results", 1,
                     "A picture, video or PDF shows its thumbnail as its icon."},
         &Settings::thumbnails));
+    add(boolean({"Results/DeleteButton", QT_TRANSLATE_NOOP("AiSettings", "显示删除按钮"), "results", 1,
+                    "A file's or folder's row has a delete button (clicked twice, to the Recycle Bin) among its "
+                    "buttons. Off: none; Windows' own menu (更多选项 in its right-click menu) still deletes."},
+        &Settings::rowDeleteButton));
     add(choice({"Results/PreviewWith", QT_TRANSLATE_NOOP("AiSettings", "预览文件"), "results", 1,
                    "Which viewer the result preview uses."},
         &Settings::previewWith,

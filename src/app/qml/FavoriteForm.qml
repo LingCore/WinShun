@@ -22,6 +22,7 @@ Item {
     property string iconData
     property bool silent: false // 静默执行, 以管理员身份运行 (GitHub #112)
     property bool administrator: false
+    property bool searchFiles: false // the words after the keyword find files for {query} (GitHub #319)
     property int iconRequest: 0
     readonly property bool iconLoading: iconRequest > 0
     property string previewCommand
@@ -36,14 +37,14 @@ Item {
     readonly property string pieLabel: pieName.length > 0 ? DropPieText.label(pieName) : ""
 
     signal finished()
-    signal edited(string name, string keyword, string commandLine, string directory, string icon, bool silent, bool administrator)
+    signal edited(string name, string keyword, string commandLine, string directory, string icon, bool silent, bool administrator, bool searchFiles)
     signal moveRequested(int to) // 上移 or 下移: the form goes with it
 
     function save() {
         if (form.iconLoading)
             return
         form.error = form.command
-            ? form.favorites.saveCommand(form.index, nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator)
+            ? form.favorites.saveCommand(form.index, nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator, form.searchFiles)
             : form.favorites.save(form.index, nameField.text, keywordField.text)
         if (form.error.length === 0)
             form.finished()
@@ -52,12 +53,13 @@ Item {
     function changed() {
         error = ""
         if (ready)
-            edited(nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator)
+            edited(nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator, form.searchFiles)
     }
 
     onIconDataChanged: form.changed()
     onSilentChanged: form.changed()
     onAdministratorChanged: form.changed()
+    onSearchFilesChanged: form.changed()
 
     Timer {
         id: previewDelay
@@ -93,6 +95,7 @@ Item {
         form.iconData = form.draft ? form.draft.icon ?? "" : form.favorite.commandIcon ?? ""
         form.silent = form.draft ? form.draft.silent ?? false : form.favorite.silent ?? false
         form.administrator = form.draft ? form.draft.administrator ?? false : form.favorite.administrator ?? false
+        form.searchFiles = form.draft ? form.draft.searchFiles ?? false : form.favorite.searchFiles ?? false
         form.previewCommand = commandField.text
         form.previewDirectory = directoryField.text
         form.ready = true
@@ -276,6 +279,17 @@ Item {
             onAccepted: form.save()
         }
 
+        Option {
+            objectName: "favoriteSearchFiles"
+            visible: form.command
+            enabled: commandField.text.indexOf("{query}") >= 0
+            width: parent.width
+            label: qsTr("关键词后面的字用来搜索文件")
+            hint: enabled ? qsTr("输入关键词和要找的名字，在搜到的文件或文件夹上按 Enter，就把它的完整路径交给 {query}；列表最后一行仍可原样传入输入的字")
+                          : qsTr("命令里要有 {query}，用来接收选中的文件或文件夹")
+            checked: form.searchFiles && enabled
+            onToggled: (on) => form.searchFiles = on
+        }
         Option {
             objectName: "favoriteSilent"
             visible: form.command
