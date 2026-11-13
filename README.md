@@ -60,7 +60,7 @@
 | | 功能 | 一句话说明 |
 |:-:|---|---|
 | 🔍 | [搜文件](docs/使用说明.md#搜文件) | 按名字、拼音、首字母找；本机磁盘、U 盘、NAS 和共享文件夹、WSL 都能搜 |
-| 📄 | [搜文件里的字](docs/使用说明.md#搜文件里的文字) | Word、Excel、PPT、PDF、WPS 和文本、代码，结果显示命中的那一行 |
+| 📄 | [搜文件里的字](docs/使用说明.md#搜文件里的文字) | Word、Excel、PPT、PDF、WPS 和文本、代码，结果显示命中的那一行；可以用正则表达式 |
 | 🗂️ | [搜索面板](docs/使用说明.md#搜索面板筛选和排序) | `Ctrl+E` 展开：按类型、时间、大小、位置筛选，常用条件可存成一点就用的快捷筛选，按列排序，大图浏览 |
 | 👀 | [预览](docs/使用说明.md#预览文件) | `Alt+P` 看一眼图片、文档、PDF，不用打开 |
 | 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签 |
@@ -184,19 +184,19 @@ scoop install winshun
 
 ### 最近更新
 
-**0.26.0**
+**0.27.0**
 
-- 📱 **“应用”标签** 应用排成图标网格，看常用的、收藏的或全部，点星标收藏；在 **设置 › 结果列表** 打开。
-- ☁️ **云备份插件** 设置自动备份到 WebDAV（坚果云、NAS）或 GitHub 私有仓库，换电脑时输入 `cloud` 恢复。
-- 🪟 **程序自己画的选文件窗口也能搜、能转** 像 ArcGIS “添加数据”这样的窗口，点一次“识别窗口”教会 Win顺，之后搜索框和 `Ctrl+G` 照常用。
-- 🗂️ **资源管理器标签页 1.1.0** 记住开着的窗口和标签页，下次登录后自动打开，或随时手动打开。
-- ⚡ **隔多久呼出都快** 闲着时只把用不着的内存还给系统，留下搜索框和剪贴板要用的那部分。
-- 📦 **安装和更新更稳** 文件被别的程序占着时，更新照样完成，不再卡在“正在准备安装”。
-- 🤖 **命令行装插件、给 AI 的 Skill** `ws plugin install winshun.translate`；`npx skills add LingCore/WinShun`。
-- 📏 **小改进** 搜索框显示几行可以自己定（4–20）；网页搜索的网站行按 `Tab` 补全关键词；局域网传输可以自动接收；截图按住鼠标时方向键也能微调。
-- 🛠️ **修复** 设置窗口最大化后发黑、以管理员身份运行时接管开始菜单打字后搜索框不接收输入、Directory Opus 右键菜单里按键变成搜索、搜索面板横向滚动条一直显示、预览卡在“正在读取”、截图时鼠标指针不见等。
+- 🔎 **内容搜索支持正则** `regex:1[3-9]\d{9}` 或按 `Ctrl+R`；`马上|立即` 找含任意一个词的文件。
+- 🗜️ **解压窗口也有搜索框** Bandizip、7-Zip、WinRAR 的“选择解压路径”下面搜文件夹，按 `Enter` 填进路径框。
+- ⌨️ **命令先搜文件** 给自己的命令打开“关键词后面的字用来搜索文件”，`code 我的项目` 列出搜到的文件夹，选一个交给程序。
+- 🧩 **插件安装前看说明** 插件库里点“说明”先看文档；卡片上作者、权限收进名字旁的 “i”。
+- 📐 **截图指定大小** 点选区旁的尺寸或按 `F`，输入宽高、锁定比例、选常用尺寸；QQ 的圆点二维码也读得出来（截图与录屏 1.1.13）。
+- 🖥️ **在桌面上直接打字搜索** 点一下桌面就能打字搜整台电脑，在 **设置 › 打开 Win顺 › 对话框** 打开。
+- 🎛️ **搜索框更简洁** 范围标签可以合成一个按钮；纯净搜索模式搬到 **设置 › 外观 › 尺寸与布局**，一直隐藏右上角两个按钮。
+- 📏 **小改进** 记住哪些程序要以管理员身份运行；结果行的删除按钮可以关掉；`Shift+Space` 可以当快捷键；收藏的关键词打开头几个字就能找到。
+- 🛠️ **修复** 资源管理器里打字弹出的搜索框先闪一下文件夹内容、变高时黑一帧、压住滚动条；剪贴板钉住时“加备注”打不了字；品牌样式下选中行不明显等。
 
-详见 [0.26.0 发布说明](docs/release-notes/v0.26.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
+详见 [0.27.0 发布说明](docs/release-notes/v0.27.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
 
 ### 常见问题
 
@@ -306,7 +306,7 @@ No installer, or Scoop? See [Download and install](#download-and-install).
 | | Feature | In one line |
 |:-:|---|---|
 | 🔍 | [File search](docs/features.en.md#file-search) | By name, pinyin or initials; local drives, USB drives, NAS and network shares, WSL |
-| 📄 | [Text inside files](docs/features.en.md#full-text-search) | Word, Excel, PowerPoint, PDF, WPS, text and code, showing the matching line |
+| 📄 | [Text inside files](docs/features.en.md#full-text-search) | Word, Excel, PowerPoint, PDF, WPS, text and code, showing the matching line; regular expressions too |
 | 🗂️ | [Search panel](docs/features.en.md#file-search) | `Ctrl+E` expands it: filter by kind, date, size and folder, save your own quick filters, sort by column, large icons |
 | 👀 | [Preview](docs/features.en.md#file-search) | `Alt+P` shows a picture, document or PDF without opening it |
 | 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons |
@@ -430,19 +430,19 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
-**0.26.0**
+**0.27.0**
 
-- 📱 **Apps tab** The apps as a grid of icons: the most used, the favorites or all of them, with a star to keep one. Turned on under Settings › Result list.
-- ☁️ **Cloud Backup plugin** Keeps the settings backup on a WebDAV server or in a private GitHub repository; type `cloud` on another PC to restore it.
-- 🪟 **File windows programs draw themselves** Show WinShun a window like ArcGIS's "Add Data" once with "Learn a window", and the search bar and `Ctrl+G` work there too.
-- 🗂️ **Explorer tabs 1.1.0** Remembers the open windows and tabs and opens them after the next logon, or when asked.
-- ⚡ **Quick to appear however long it sat** Idle, WinShun gives back only the memory it does not need to show the box and the clipboard.
-- 📦 **Steadier installs and updates** A file another program holds no longer stops an update or leaves it on "Preparing to Install".
-- 🤖 **Plugins from the command line, skills for AI assistants** `ws plugin install winshun.translate`; `npx skills add LingCore/WinShun`.
-- 📏 **Small things** The number of rows in the search box is a setting (4–20); `Tab` on a web site's row completes its keyword; LAN transfer can accept by itself; the arrow keys nudge the pointer while a mouse button is held in a capture.
-- 🛠️ **Fixes** The settings window going black when maximized, the box taking no letters after Start menu typing while run as administrator, a key in a Directory Opus menu starting a search, the panel's horizontal scroll bar always showing, the preview stuck on "Reading…", the pointer missing during a capture, and more.
+- 🔎 **Regular expressions in Content search** `regex:1[3-9]\d{9}` or `Ctrl+R`; `now|soon` finds files with either word.
+- 🗜️ **The search bar under extraction windows** Find a folder under Bandizip's, 7-Zip's or WinRAR's extraction path window and `Enter` writes it into the path box.
+- ⌨️ **Commands that find files first** With "The words after the keyword find files" on, `code my project` lists what the words find and hands the one you pick to the program.
+- 🧩 **A plugin's README before installing** Readme on a library entry; who made it and what it may do sit in an "i" beside the name.
+- 📐 **Captures of an exact size** Click the size by the selection or press `F` to type a width and height, lock the shape or pick a preset; QQ's round, dotted QR codes are read (Screenshot and recording 1.1.13).
+- 🖥️ **Type on the desktop to search** Click the desktop and type to search the whole PC; turned on under Settings › Open WinShun › Dialogs.
+- 🎛️ **A plainer search box** The scope tabs can be one button; Pure search mode moved to Settings › Appearance › Size and layout and keeps the two top-right buttons hidden.
+- 📏 **Small things** Programs remembered as run as administrator; result rows without the delete button; `Shift+Space` as a shortcut; the start of a favorite's keyword finds it.
+- 🛠️ **Fixes** The box opened by typing in File Explorer listing the folder first, showing a black part for a frame and covering the scroll bars; "Add a note…" taking no typing while the clipboard is pinned; the chosen row reading weak in the brand style, and more.
 
-See the [0.26.0 release notes](docs/release-notes/v0.26.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
+See the [0.27.0 release notes](docs/release-notes/v0.27.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
 
 ### FAQ
 
