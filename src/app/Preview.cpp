@@ -73,6 +73,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QJsonArray>
+#include <QThread>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
@@ -8196,6 +8197,125 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     return ok;
 }
 
+// Typing in the bar under a dialog, a key every 120 ms, over the few thousand
+// files --file-dialog-typing makes: for each key, how long setQuery kept this
+// thread, when the rows came, when the frame with them was shown, the longest
+// this thread was kept by one thing meanwhile, and the height of the window
+// (it grows and shrinks with the rows).
+// Which event kept this thread longest: told before each one is delivered,
+// so one's time runs till the next is, or till done() after the loop's turn.
+class SlowestEvent : public QObject {
+public:
+    SlowestEvent() { m_clock.start(); qApp->installEventFilter(this); }
+    void done() { close(); m_from = -1; }
+    QString take()
+    {
+        const QString told = m_slowestNs > 0 ? u"%1 ms: %2"_s.arg(m_slowestNs / 1e6, 0, 'f', 1).arg(m_slowest) : QString();
+        m_slowestNs = 0;
+        return told;
+    }
+
+protected:
+    bool eventFilter(QObject* receiver, QEvent* event) override
+    {
+        close();
+        m_from = m_clock.nsecsElapsed();
+        m_what = u"%1 %2 event %3"_s.arg(QLatin1StringView(receiver->metaObject()->className()), receiver->objectName())
+                     .arg(static_cast<int>(event->type()));
+        return false;
+    }
+
+private:
+    void close()
+    {
+        if (m_from >= 0 && m_clock.nsecsElapsed() - m_from > m_slowestNs) {
+            m_slowestNs = m_clock.nsecsElapsed() - m_from;
+            m_slowest = m_what;
+        }
+    }
+    QElapsedTimer m_clock;
+    qint64 m_from = -1;
+    qint64 m_slowestNs = 0;
+    QString m_what;
+    QString m_slowest;
+};
+
+// `keys`: each letter as a key of the keyboard (SendInput, a Unicode key: no
+// input method composes it), sent only while the bar's window is in front;
+// else the text is set as the field sets it.
+QJsonArray typeInDialogBar(DialogBar* bar, QQuickWindow* window, bool keys_)
+{
+    QJsonArray keys;
+    SlowestEvent slowest;
+    const QString words[] = {u"report 12"_s, u"notes"_s, u"report 1234 x"_s};
+    for (const QString& word : words) {
+        bar->setQuery({});
+        pump(400);
+        for (qsizetype typed = 1; typed <= word.size(); ++typed) {
+            QElapsedTimer since;
+            since.start();
+            qint64 rowsAt = -1;
+            std::atomic<qint64> frameAt {-1};
+            std::atomic<bool> rowsIn {false};
+            const auto onRows = QObject::connect(bar, &DialogBar::resultsReplaced, bar, [&] {
+                if (rowsAt < 0) {
+                    rowsAt = since.nsecsElapsed();
+                    rowsIn = true;
+                    window->update();
+                }
+            });
+            const auto onFrame = QObject::connect(window, &QQuickWindow::frameSwapped, window, [&] {
+                if (rowsIn && frameAt < 0)
+                    frameAt = since.nsecsElapsed();
+            }, Qt::DirectConnection);
+            qint64 queryAt = -1;
+            const auto onQuery = QObject::connect(bar, &DialogBar::queryChanged, bar, [&] {
+                if (queryAt < 0)
+                    queryAt = since.nsecsElapsed();
+            });
+            if (keys_) {
+                if (GetForegroundWindow() != reinterpret_cast<HWND>(window->winId())) {
+                    QObject::disconnect(onRows);
+                    QObject::disconnect(onFrame);
+                    QObject::disconnect(onQuery);
+                    keys.append(QJsonObject {{u"query"_s, word.left(typed)}, {u"skipped"_s, u"the bar is not in front"_s}});
+                    return keys;
+                }
+                INPUT strokes[2] {};
+                strokes[0].type = strokes[1].type = INPUT_KEYBOARD;
+                strokes[0].ki.wScan = strokes[1].ki.wScan = word[typed - 1].unicode();
+                strokes[0].ki.dwFlags = KEYEVENTF_UNICODE;
+                strokes[1].ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+                since.restart();
+                SendInput(2, strokes, sizeof(INPUT));
+            } else {
+                bar->setQuery(word.left(typed));
+            }
+            const qint64 call = since.nsecsElapsed();
+            qint64 last = since.nsecsElapsed();
+            qint64 kept = 0;
+            while (since.elapsed() < 120 || (frameAt < 0 && since.elapsed() < 1500)) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents);
+                slowest.done();
+                const qint64 now = since.nsecsElapsed();
+                kept = std::max(kept, now - last);
+                QThread::usleep(300);
+                last = since.nsecsElapsed();
+            }
+            QObject::disconnect(onRows);
+            QObject::disconnect(onFrame);
+            QObject::disconnect(onQuery);
+            const auto ms = [](qint64 ns) { return ns < 0 ? -1.0 : qRound(ns / 10000.0) / 100.0; };
+            keys.append(QJsonObject {{u"query"_s, bar->query()}, {u"set_query_ms"_s, ms(call)}, {u"query_ms"_s, ms(queryAt)}, {u"rows_ms"_s, ms(rowsAt)},
+                {u"frame_ms"_s, ms(frameAt.load())}, {u"longest_kept_ms"_s, ms(kept)}, {u"slowest_event"_s, slowest.take()}, {u"rows"_s, bar->rows()},
+                {u"found"_s, bar->results()->rowCount()}, {u"height"_s, window->height()}});
+        }
+    }
+    bar->setQuery({});
+    pump(300);
+    return keys;
+}
+
 bool probeFileDialog(const QStringList& args, const QDir& out, const QString& selected, QJsonObject& report)
 {
     const auto samePath = [&selected](const QString& path) {
@@ -8240,6 +8360,8 @@ bool probeFileDialog(const QStringList& args, const QDir& out, const QString& se
     report.insert(u"dialog_bar_focused"_s, window->isActive());
     if (!window->isActive())
         return false;
+    if (args.contains(u"--file-dialog-typing"_s))
+        report.insert(u"dialog_typing"_s, typeInDialogBar(bar, window, args.contains(u"--file-dialog-keys"_s)));
     bar->setQuery(QFileInfo(selected).completeBaseName());
     int row = -1;
     waiting.restart();
@@ -10236,6 +10358,17 @@ int runRuntime(const QStringList& args)
     if (settings.dialogBar
         && !(dialogFolder ? QDir().mkpath(dialogSample) : QFile::copy(valueAfter(args, u"--file-dialog-sample"), dialogSample)))
         return 4;
+    if (args.contains(u"--file-dialog-typing"_s)) { // something to search through
+        const QDir files(settings.indexFolders.front());
+        for (int i = 0; i < 6000; ++i) {
+            const QString group = u"group %1"_s.arg(i / 200, 2, 10, QLatin1Char('0'));
+            if (i % 200 == 0 && !files.mkpath(group))
+                return 4;
+            QFile file(files.filePath(group + (i % 3 ? u"/report %1 季度.xlsx"_s : u"/notes %1 会议.docx"_s).arg(i, 4, 10, QLatin1Char('0'))));
+            if (!file.open(QIODevice::WriteOnly))
+                return 4;
+        }
+    }
 
     const QDir plugins(valueAfter(args, u"--runtime-plugins"));
     if (args.contains(u"--runtime-plugins"_s)) {
