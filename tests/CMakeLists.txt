@@ -405,7 +405,7 @@ set(file_dialog_backend
     ${PROJECT_SOURCE_DIR}/src/app/platform/BlenderFileDialog.cpp)
 qt_add_executable(tst_filedialog tst_filedialog.cpp ${file_dialog_backend})
 target_include_directories(tst_filedialog PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
-target_link_libraries(tst_filedialog PRIVATE wscore Qt6::Test ole32 oleaut32 uiautomationcore user32)
+target_link_libraries(tst_filedialog PRIVATE wscore Qt6::Test comctl32 ole32 oleaut32 uiautomationcore user32)
 # Process identity is part of the CAD adapter's guard. This is a copy of our
 # native protocol fixture, never AutoCAD; no Autodesk software is installed.
 set(cad_dialog_fixture "$<TARGET_FILE_DIR:tst_filedialog>/cad-dialog-fixture/acad.exe")
@@ -430,7 +430,7 @@ set_tests_properties(tst_dialogrules PROPERTIES
 # its folder-request check and command-line quoting.
 qt_add_executable(tst_dialognav tst_dialognav.cpp)
 target_include_directories(tst_dialognav PRIVATE ${PROJECT_SOURCE_DIR}/src/core)
-target_link_libraries(tst_dialognav PRIVATE wscore Qt6::Test ole32 oleaut32 shell32 user32)
+target_link_libraries(tst_dialognav PRIVATE wscore Qt6::Test comctl32 ole32 oleaut32 shell32 user32)
 add_test(NAME tst_dialognav COMMAND tst_dialognav)
 # AutoCAD's own file window is taken only in acad.exe / acadlt.exe (GitHub
 # #143): a copy of the test under that name, with the stand-in window. It
@@ -441,6 +441,24 @@ add_custom_command(TARGET tst_dialognav POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:tst_dialognav>" "${cad_nav_fixture}")
 add_test(NAME tst_dialognav_cad COMMAND "${cad_nav_fixture}" cadByName cadLeftAlone)
 set_tests_properties(tst_dialognav tst_dialognav_cad PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# Windows that take a folder in a box of their own (core/PathBoxDialog):
+# Bandizip's kind by what it is made of; 7-Zip's and WinRAR's only in those
+# programs, so copies of the test under their names run those two cases. The
+# copies contain nothing of either program.
+qt_add_executable(tst_pathbox tst_pathbox.cpp)
+target_include_directories(tst_pathbox PRIVATE ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_pathbox PRIVATE wscore Qt6::Test comctl32 user32)
+set(pathbox_fixture_dir "$<TARGET_FILE_DIR:tst_pathbox>/pathbox-fixture")
+add_custom_command(TARGET tst_pathbox POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${pathbox_fixture_dir}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:tst_pathbox>" "${pathbox_fixture_dir}/7zG.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:tst_pathbox>" "${pathbox_fixture_dir}/WinRAR.exe")
+add_test(NAME tst_pathbox COMMAND tst_pathbox)
+add_test(NAME tst_pathbox_7zip COMMAND "${pathbox_fixture_dir}/7zG.exe" sevenZip)
+add_test(NAME tst_pathbox_winrar COMMAND "${pathbox_fixture_dir}/WinRAR.exe" winRar)
+set_tests_properties(tst_pathbox tst_pathbox_7zip tst_pathbox_winrar PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # Launch only a short-lived copy of this test, writing into QTemporaryDir.

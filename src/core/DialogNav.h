@@ -18,7 +18,8 @@
 // Nothing in this module reads or writes another process's memory, injects
 // code, or types a file name: only window messages the system marshals
 // (WM_SETTEXT, a keyboard Enter in the address bar, an Up / Down arrow pair
-// to the folder tree) and UI Automation (ExpandCollapse / SelectionItem on
+// to the folder tree; for a window with a folder box of its own, the edit
+// told to its owner and WinRAR's "Display" pressed: PathBoxDialog.h) and UI Automation (ExpandCollapse / SelectionItem on
 // the folder tree) -- exactly the operations a uiAccess accessibility tool is
 // meant to perform. That keeps it off the elevation-of-privilege path
 // (docs/architecture.md 权限分离).
@@ -33,15 +34,16 @@
 // told as not done. No other kind is ever sent OK, Open or Save.
 //
 // This is a deliberately elevated-only variant of platform/FileDialog.cpp's
-// navigation; keep the classification and the address-bar / Inno paths in
-// step with it. It is Qt-free so the service executable can link it.
+// navigation; keep the classification and the address-bar paths in step
+// with it (the windows with a folder box of their own are shared code:
+// PathBoxDialog). It is Qt-free so the service executable can link it.
 namespace ws::dialognav {
 
 enum class Kind {
     None, // not one we navigate from the helper
     Open, // IFileOpenDialog / GetOpenFileName without a hook
     Save,
-    Folder, // a folder picker (FOS_PICKFOLDERS), or Inno Setup's destination picker
+    Folder, // a folder picker (FOS_PICKFOLDERS), or a window with a folder box of its own (PathBoxDialog.h)
     Legacy, // the Windows XP style and AutoCAD's own (no address bar): by the file name box and OK
     Browse, // SHBrowseForFolder's tree ("浏览文件夹"), old and new style
 };

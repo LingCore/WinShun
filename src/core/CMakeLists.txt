@@ -39,6 +39,7 @@ qt_add_library(wscore STATIC
     OwnInput.h
     PasteFile.cpp PasteFile.h # also built into WinShunSearch.exe (src/stub), without Qt
     PasteOffer.h
+    PathBoxDialog.cpp PathBoxDialog.h
     PathText.cpp PathText.h
     ProxyAddress.cpp ProxyAddress.h
     Pinyin.cpp Pinyin.h

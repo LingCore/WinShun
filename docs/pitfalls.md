@@ -5518,3 +5518,14 @@
 - 探针里做过“会让列表重建”的事（安装、卸载、启用插件等），收尾时调一次 `QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete)`。
 - 查这类“退出时才出现”的 Qt 警告：在消息处理函数里临时用 `CaptureStackBackTrace` + `SymFromAddrW` 打调用栈（Qt 没有 PDB 也能看到导出的函数名；带符号编 Win顺 要 `RelWithDebInfo` 加 `/bigobj`），再用 `RtlVirtualUnwind` 逐帧取保存的寄存器、和一个已知 `Text` 的虚表比对，就能拿到出问题的那个对象，打印它的 `qmlContext()->baseUrl()` 和父对象链。
 
+
+## 别的程序自带路径框的窗口：写了文字它不知道，回车等于确定，列表选中项会盖过文字（2026-11-13）
+
+给 Bandizip、7-Zip、WinRAR 的解压路径窗口补搜索框时确认的几件事（`core/PathBoxDialog`，细节见 `docs/dialog-compatibility.md`）：
+
+- `WM_SETTEXT` 不算用户输入：Bandizip 的文件夹树不动，要再给窗口发组合框的 `CBN_EDITCHANGE`。
+- 这类窗口里回车就是“确定”，会直接开始解压并关窗。跳转只写框，不发回车。
+- 组合框有列表选中项时，程序可能读选中项而不读文字（7-Zip 的 `OnOK`）。写之前先 `CB_SETCURSEL(-1)`。
+- 通知要投递（`PostMessage`），不要等：Bandizip 把树展开到目标文件夹时不回应消息，沿途有个几千项的文件夹（`Temp`）就是好几秒。等它的话，我们的工作线程和随后读“当前位置”的界面线程都被拖住。
+- “按一下它的按钮”用 `WM_COMMAND`＋`BN_CLICKED` 发给按钮的父窗口，不用 `BM_CLICK`：后者要求对方窗口是活动窗口，而那一刻在前台的是我们的搜索框。
+- 测试脚本里跨进程读文字用带超时的 `SendMessageTimeout`；用 `SendMessage` 的话对方一忙脚本就跟着停，时间线全是错的。

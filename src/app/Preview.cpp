@@ -8270,12 +8270,21 @@ bool probeFileDialog(const QStringList& args, const QDir& out, const QString& se
             combined.right - combined.left, combined.bottom - combined.top).save(out.filePath(u"dialog-with-search.png"_s));
     }
     // The production controller hands focus back and calls DialogJump::go.
-    // The fixture's independent observer confirms Blender actually changed.
+    // The fixture's independent observer confirms Blender actually changed;
+    // with none (a window that takes folders), the window itself tells where
+    // it is now.
     bar->choose(row, false);
     waiting.restart();
     bool selectedInDialog = false;
-    while (!selectedInDialog && waiting.elapsed() < 5000) {
+    const bool observed = args.contains(u"--file-dialog-state"_s);
+    // Bandizip answers nothing while its tree opens down to the folder: for
+    // seconds, with the folder made here under a Temp of thousands.
+    while (!selectedInDialog && waiting.elapsed() < (observed ? 5000 : 20000)) {
         pump(50);
+        if (!observed) {
+            selectedInDialog = samePath(QString::fromStdWString(filedialog::currentFolder(target)));
+            continue;
+        }
         QFile observer(valueAfter(args, u"--file-dialog-state"));
         if (!observer.open(QIODevice::ReadOnly))
             continue;
@@ -8291,7 +8300,11 @@ bool probeFileDialog(const QStringList& args, const QDir& out, const QString& se
         }
     }
     report.insert(u"dialog_selection_confirmed"_s, selectedInDialog);
-    return selectedInDialog;
+    report.insert(u"dialog_selection_ms"_s, waiting.elapsed());
+    if (!observed)
+        report.insert(u"dialog_folder_shown"_s, QString::fromStdWString(filedialog::currentFolder(target)));
+    report.insert(u"dialog_still_open"_s, IsWindow(target) != FALSE);
+    return selectedInDialog && IsWindow(target);
 }
 
 bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& report)
@@ -10214,8 +10227,14 @@ int runRuntime(const QStringList& args)
         return 4;
     fixture.write("WinShun isolated startup probe\n");
     fixture.close();
-    const QString dialogSample = QDir(settings.indexFolders.front()).filePath(u"WinShun-dialog-验证.blend"_s);
-    if (settings.dialogBar && !QFile::copy(valueAfter(args, u"--file-dialog-sample"), dialogSample))
+    // What the bar is to find and give the window: a file copied here, or,
+    // with no sample (a window that takes folders: a path box, a folder
+    // picker), a folder made here.
+    const bool dialogFolder = settings.dialogBar && !args.contains(u"--file-dialog-sample"_s);
+    const QString dialogSample = QDir(settings.indexFolders.front()).filePath(
+        dialogFolder ? u"WinShun-dialog-验证 文件夹"_s : u"WinShun-dialog-验证.blend"_s);
+    if (settings.dialogBar
+        && !(dialogFolder ? QDir().mkpath(dialogSample) : QFile::copy(valueAfter(args, u"--file-dialog-sample"), dialogSample)))
         return 4;
 
     const QDir plugins(valueAfter(args, u"--runtime-plugins"));
