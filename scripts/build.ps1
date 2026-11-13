@@ -148,10 +148,13 @@ try {
             Copy-Item -LiteralPath "$QtDir\plugins\imageformats\$codec$codecSuffix.dll" -Destination $imageFormats
         }
         # App-local C++ runtime, so users need no VC++ redistributable installed
-        # (msvcp140_1: onnxruntime.dll).
-        $crt = Join-Path $env:VCToolsRedistDir 'x64\Microsoft.VC143.CRT'
+        # (msvcp140_1: onnxruntime.dll). The toolset ships VC143 or VC145
+        # depending on its version; take whichever CRT directory it has.
+        $crt = Get-ChildItem (Join-Path $env:VCToolsRedistDir 'x64') -Directory -Filter 'Microsoft.VC*.CRT' |
+            Sort-Object Name | Select-Object -Last 1
+        if (-not $crt) { throw "No C++ runtime redistributable under $env:VCToolsRedistDir" }
         foreach ($dll in 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_atomic_wait.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
-            Copy-Item (Join-Path $crt $dll) $dist
+            Copy-Item (Join-Path $crt.FullName $dll) $dist
         }
         Write-Host "Deployed to $dist"
     }
