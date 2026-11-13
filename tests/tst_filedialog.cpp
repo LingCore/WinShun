@@ -1,5 +1,6 @@
 #include "FakeFileDialog.h"
 #include "FakeCustomFileDialog.h"
+#include "FakePathBoxDialog.h"
 #include "platform/FileDialog.h"
 #include "platform/BlenderFileDialog.h"
 #include "Win32Util.h"
@@ -313,6 +314,37 @@ private slots:
         ::EnableWindow(box.handle, TRUE);
         ::ShowWindow(box.handle, SW_HIDE);
         QCOMPARE(fd::kind(dialog.handle), Kind::None);
+    }
+
+    // A window that takes a folder in a box of its own (pathbox, Bandizip's
+    // kind): a folder picker whose place is what the box holds. Going there
+    // writes the box and confirms nothing; there is no file name to give it.
+    // Known once, it stays one while the user types in its box.
+    void pathBoxFolder()
+    {
+        fakepathbox::TreeBoxDialog dialog;
+        QVERIFY(dialog.valid());
+        QCOMPARE(fd::kind(dialog.handle()), Kind::Folder);
+        QCOMPARE(fd::currentFolder(dialog.handle()), std::wstring(L"C:\\Users"));
+        QVERIFY(fd::waitForLocation(dialog.handle()));
+        for (const auto* path : {L"D:\\", L"D:\\新 项目\\软件.zip", L"\\\\server\\share\\工具"}) {
+            QVERIFY(fd::goTo(dialog.handle(), path));
+            QCOMPARE(fd::currentFolder(dialog.handle()), std::wstring(path));
+            QTRY_COMPARE(dialog.shown(), std::wstring(path)); // told of the edit: posted
+        }
+        QVERIFY(!fd::setFileName(dialog.handle(), L"unwanted.exe"));
+        QVERIFY(!fd::accept(dialog.handle()));
+        QVERIFY(dialog.answers().empty());
+        QCOMPARE(fd::fileType(dialog.handle()), std::wstring());
+        ::SetWindowTextW(dialog.edit(), L"");
+        QCOMPARE(fd::kind(dialog.handle()), Kind::Folder);
+        ::EnableWindow(dialog.combo(), FALSE);
+        QCOMPARE(fd::kind(dialog.handle()), Kind::None);
+
+        fakepathbox::TreeBoxDialog search(L"type to search");
+        QCOMPARE(fd::kind(search.handle()), Kind::None);
+        QVERIFY(!fd::goTo(search.handle(), QDir::tempPath().toStdWString()));
+        QCOMPARE(search.path(), std::wstring(L"type to search"));
     }
 
     void rejectLookalikes()

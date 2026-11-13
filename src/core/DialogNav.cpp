@@ -1,5 +1,6 @@
 #include "DialogNav.h"
 
+#include "PathBoxDialog.h"
 #include "ServiceLocation.h"
 #include "Win32Util.h"
 
@@ -59,22 +60,6 @@ HWND crumbBar(HWND dialog)
 HWND addressBox(HWND dialog)
 {
     return descend(addressBar(dialog), {L"ComboBoxEx32", L"ComboBox", L"Edit"});
-}
-
-// Inno Setup's own destination-folder picker (not SHBrowseForFolder); its
-// Start Menu picker shares the form class but a different tree, left alone.
-HWND installerFolderBox(HWND dialog)
-{
-    if ((!hasClass(dialog, L"TSelectFolderForm") && !hasClass(dialog, L"TSelectDirDlg"))
-        || !::FindWindowExW(dialog, nullptr, L"TFolderTreeView", nullptr))
-        return nullptr;
-    for (const wchar_t* name : {L"TNewPathEdit", L"TNewEdit", L"TEdit"}) {
-        if (const HWND edit = ::FindWindowExW(dialog, nullptr, name, nullptr);
-            edit && ::IsWindowVisible(edit) && ::IsWindowEnabled(edit)
-            && !(::GetWindowLongPtrW(edit, GWL_STYLE) & ES_READONLY))
-            return edit;
-    }
-    return nullptr;
 }
 
 HWND browseTree(HWND dialog)
@@ -691,7 +676,7 @@ Kind classify(HWND dialog)
 {
     if (!dialog)
         return Kind::None;
-    if (installerFolderBox(dialog))
+    if (pathbox::find(dialog))
         return Kind::Folder;
     if (!hasClass(dialog, L"#32770"))
         return Kind::None;
@@ -826,10 +811,10 @@ bool navigateToFolder(HWND dialog, const std::wstring& folder)
 {
     if (!dialog || !::IsWindow(dialog) || !isValidFolderRequest(folder) || !isExistingDirectory(folder.c_str()))
         return false;
-    if (const HWND edit = installerFolderBox(dialog)) {
-        // Inno fires PathEditChange on the edit; never send Enter (that accepts
-        // the picker). Checked again right before it goes in; confirm it took.
-        return isExistingDirectory(folder.c_str()) && setText(edit, folder) && controlText(edit) == folder;
+    if (const pathbox::Box box = pathbox::find(dialog)) {
+        // Into the window's own box (pathbox), never with Enter (that accepts
+        // the window). Checked again right before it goes in.
+        return isExistingDirectory(folder.c_str()) && pathbox::setFolder(box, folder);
     }
     switch (classify(dialog)) {
     case Kind::Open:

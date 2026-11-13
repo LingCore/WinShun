@@ -231,7 +231,7 @@
 //                      follows the indexing for up to S seconds (default
 //                      900), then asks each QUERY. --data keeps its vectors
 //                      in FOLDER for the next run
-//   wsbench --launcher-sim [--plugins DIR] [--index FOLDER] [--key-ms N] ["TEXT" ...]
+//   wsbench --launcher-sim [--plugins DIR] [--index FOLDER] [--key-ms N] [--scope files|folders|save] [--each-key] ["TEXT" ...]
 //                      the launcher's list without the launcher: each TEXT
 //                      typed key by key (N ms apart, default 80) over a copy
 //                      of the index, with the plugins of DIR (default
@@ -5189,6 +5189,18 @@ int runLauncherSim(QStringList args)
         keyMs = std::max(0, args[at + 1].toInt());
         args.remove(at, 2);
     }
+    // --scope files|folders|save: the name search the bar under a file dialog
+    // asks for (DialogBar::search: files and folders without apps, folders
+    // alone for a folder picker, folders first where to save) in place of
+    // the launcher's; --each-key: every key's time, not only the last one's.
+    ws::Scope scope = ws::Scope::All;
+    std::optional<ws::KindOrder> order;
+    if (const qsizetype at = args.indexOf(u"--scope"_s); at >= 0 && at + 1 < args.size()) {
+        scope = args[at + 1] == u"folders" ? ws::Scope::Folders : ws::Scope::Files;
+        order = args[at + 1] == u"save" ? ws::KindOrder::FoldersFirst : ws::KindOrder::FilesFirst;
+        args.remove(at, 2);
+    }
+    const bool eachKey = args.removeAll(u"--each-key"_s) > 0;
     // HARNESS (ocr-in-search investigation): --ocr-data DIR = a copy of a plugin data folder
     // (put in as winshun.ocr-search.data), --walk DIR = index only this folder (repeatable),
     // --content on|off = filters.contentEnabled as the launcher sends it (default on).
@@ -5397,9 +5409,10 @@ int runLauncherSim(QStringList args)
         if (keywordPlugin.isEmpty()) {
             ws::SearchEngine::Request request;
             request.text = text;
-            request.scope = ws::Scope::All;
-            request.kindOrder = settings.foldersFirst ? ws::KindOrder::FoldersFirst : ws::KindOrder::FilesFirst;
-            request.web = settings.webShortcuts;
+            request.scope = scope;
+            request.kindOrder = order.value_or(settings.foldersFirst ? ws::KindOrder::FoldersFirst : ws::KindOrder::FilesFirst);
+            if (!order)
+                request.web = settings.webShortcuts;
             requestId = engine.submit(std::move(request));
         } else {
             engine.cancel();
@@ -5442,6 +5455,10 @@ int runLauncherSim(QStringList args)
                 const QDeadlineTimer pause(keyMs);
                 while (!pause.hasExpired())
                     QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 5);
+                if (eachKey)
+                    std::printf("  \"%s\": names %s\n", qUtf8Printable(text.left(n)),
+                        namesIn ? qUtf8Printable(QString::number(namesMs, 'f', 1) + u" ms"_s)
+                                : qUtf8Printable(u"not in after %1 ms"_s.arg(keyMs)));
             }
         }
         const bool done = waitSettled(8000);

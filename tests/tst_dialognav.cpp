@@ -10,6 +10,7 @@
 #include "DialogNav.h"
 #include "FakeCustomFileDialog.h"
 #include "FakeFileDialog.h"
+#include "FakePathBoxDialog.h"
 #include "ServiceLocation.h"
 
 #include <QDir>
@@ -572,6 +573,33 @@ private slots:
         QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));
         QCOMPARE(dialog.notifications(), 0);
         QVERIFY(!dialog.accepted());
+    }
+
+    // A window that takes a folder in a box of its own (pathbox, Bandizip's
+    // kind): a Folder, taken there through that box and never confirmed. The
+    // helper remembers nothing: a box holding no path is none.
+    void pathBoxFolder()
+    {
+        fakepathbox::TreeBoxDialog dialog;
+        QVERIFY(dialog.valid());
+        QCOMPARE(dn::classify(dialog.handle()), Kind::Folder);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QVERIFY(QDir(dir.path()).mkpath(QStringLiteral("目标 文件夹.zip")));
+        const std::wstring path = QDir::toNativeSeparators(dir.filePath(QStringLiteral("目标 文件夹.zip"))).toStdWString();
+        QVERIFY(!dn::navigateToFolder(dialog.handle(), path + L"\\gone"));
+        QVERIFY(!dn::navigateToFolder(dialog.handle(), L"relative"));
+        QCOMPARE(dialog.path(), std::wstring(L"C:\\Users"));
+        QCOMPARE(dialog.edits(), 0);
+        QVERIFY(dn::navigateToFolder(dialog.handle(), path));
+        QCOMPARE(dialog.path(), path);
+        QTRY_COMPARE(dialog.shown(), path); // told of the edit: posted
+        QVERIFY(dialog.answers().empty());
+        QVERIFY(::IsWindow(dialog.handle()));
+        ::SetWindowTextW(dialog.edit(), L"not a path");
+        QCOMPARE(dn::classify(dialog.handle()), Kind::None);
+        QVERIFY(!dn::navigateToFolder(dialog.handle(), path));
+        QCOMPARE(dialog.path(), std::wstring(L"not a path"));
     }
 
     void navigateChecksFolder()

@@ -2,6 +2,7 @@
 #include "BlenderFileDialog.h"
 #include "DialogRules.h"
 
+#include "PathBoxDialog.h"
 #include "PathText.h"
 #include "Win32Util.h"
 
@@ -167,21 +168,27 @@ HWND fileNameBox(HWND dialog)
     return customFileBoxes(dialog).name;
 }
 
-// Inno Setup uses its own folder picker, not SHBrowseForFolder. Its Start
-// Menu picker has the same form class but a different tree: leave that alone.
-// See upstream Setup.SelectFolderForm.pas (formerly TSelectDirDlg).
-HWND installerFolderBox(HWND dialog)
+// A window that takes a folder in a box of its own (pathbox: Inno Setup's
+// picker, Bandizip's, 7-Zip's and WinRAR's extraction windows). One known by
+// the path its box held stays known while it lives: the user may be typing in
+// the box, and the bar under the window is not to come and go with each key.
+std::mutex g_folderBoxMutex;
+std::vector<HWND> g_folderBoxes;
+
+pathbox::Box folderBox(HWND dialog)
 {
-    if ((!hasClass(dialog, L"TSelectFolderForm") && !hasClass(dialog, L"TSelectDirDlg"))
-        || !::FindWindowExW(dialog, nullptr, L"TFolderTreeView", nullptr))
-        return nullptr;
-    for (const wchar_t* name : {L"TNewPathEdit", L"TNewEdit", L"TEdit"}) {
-        if (const HWND edit = ::FindWindowExW(dialog, nullptr, name, nullptr);
-            edit && ::IsWindowVisible(edit) && ::IsWindowEnabled(edit)
-            && !(::GetWindowLongPtrW(edit, GWL_STYLE) & ES_READONLY))
-            return edit;
+    bool known = false;
+    {
+        std::scoped_lock lock(g_folderBoxMutex);
+        known = std::ranges::find(g_folderBoxes, dialog) != g_folderBoxes.end();
     }
-    return nullptr;
+    const pathbox::Box box = pathbox::find(dialog, known);
+    if (box && !known) {
+        std::scoped_lock lock(g_folderBoxMutex);
+        std::erase_if(g_folderBoxes, [dialog](HWND seen) { return seen == dialog || !::IsWindow(seen); });
+        g_folderBoxes.push_back(dialog);
+    }
+    return box;
 }
 
 bool send(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -635,7 +642,7 @@ Kind knownKind(HWND hwnd)
 {
     if (!hwnd)
         return Kind::None;
-    if (installerFolderBox(hwnd))
+    if (folderBox(hwnd))
         return Kind::Folder;
     if (blenderdialog::isOne(hwnd)) {
         const auto mode = reinterpret_cast<quintptr>(::GetPropW(hwnd, L"WinShun.Blender.Mode.v1"));
@@ -708,8 +715,8 @@ std::wstring currentFolder(HWND dialog)
 {
     if (blenderdialog::isOne(dialog))
         return blenderdialog::currentFolder(dialog);
-    if (const HWND edit = installerFolderBox(dialog))
-        return controlText(edit);
+    if (const pathbox::Box box = folderBox(dialog))
+        return pathbox::folder(box);
     const HWND crumbs = kingsoft::isOne(dialog) ? nullptr : crumbBar(dialog);
     return crumbs ? pathtext::folderFromAddress(QString::fromStdWString(caption(crumbs))).toStdWString()
                   : std::wstring();
@@ -733,7 +740,7 @@ bool waitForLocation(HWND dialog)
 {
     if (blenderdialog::isOne(dialog))
         return true;
-    if (installerFolderBox(dialog))
+    if (folderBox(dialog))
         return true;
     if (kingsoft::isOne(dialog))
         return kingsoft::waitForLocation(dialog);
@@ -749,11 +756,10 @@ bool waitForLocation(HWND dialog)
 
 bool goTo(HWND dialog, const std::wstring& folder)
 {
-    if (const HWND edit = installerFolderBox(dialog)) {
-        // Changing the edit fires Inno's PathEditChange. Do not send Enter:
-        // that would accept the picker, rather than let the user review it.
-        return setText(edit, folder) && controlText(edit) == folder;
-    }
+    // Written into the window's own box, and no Enter: that would accept
+    // the window, rather than let the user review it.
+    if (const pathbox::Box box = folderBox(dialog))
+        return pathbox::setFolder(box, folder);
     if (!isFolder(folder))
         return false; // gone (or a file): nothing is typed anywhere
     const Kind k = kind(dialog);
@@ -783,7 +789,7 @@ bool setFileName(HWND dialog, const std::wstring& name)
 {
     if (blenderdialog::isOne(dialog))
         return blenderdialog::setFileName(dialog, name);
-    if (installerFolderBox(dialog))
+    if (folderBox(dialog))
         return false;
     if (kingsoft::isOne(dialog))
         return kingsoft::setFileName(dialog, name);
@@ -800,7 +806,7 @@ bool accept(HWND dialog)
 {
     if (blenderdialog::isOne(dialog))
         return blenderdialog::accept(dialog);
-    if (installerFolderBox(dialog))
+    if (folderBox(dialog))
         return false;
     if (kingsoft::isOne(dialog))
         return kingsoft::accept(dialog);
