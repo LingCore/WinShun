@@ -516,6 +516,7 @@ private:
     QString doubleCtrlName() const;
     void updateDoubleTapActions();
     void armReveal();
+    void typedRowsShown();
     void revealLauncher(); // slides in (Placement::slideIn) unless it went away meanwhile
     void finishHidingLauncher(); // slid out (Placement::slideOut), or at once
     bool launcherShown() const; // up, and not on its way out
@@ -788,6 +789,14 @@ private:
     taskbar::SearchBox::Text m_fieldShown; // what it last reported (mirrorField), for the box
     bool m_deliverTyping = false; // the launcher was asked for by typing in the Start menu or in Explorer
     QTimer m_typingCap; // ... the keys go all the same when this runs out (searchtyping::kHandoffCapMs)
+    // The box a key typed in a file manager opens (showFolderSearch) is not
+    // seen until that key's rows are in it: drawn once (FirstFrame), then the
+    // keys go into it while it stays cloaked (Awaited) until their rows are
+    // shown or kTypedRowsCap is over (GitHub #234).
+    enum class TypedRows { No, FirstFrame, Awaited };
+    static constexpr std::chrono::milliseconds kTypedRowsCap {250};
+    TypedRows m_typedRows = TypedRows::No;
+    QTimer m_typedRowsCap;
     // The handoff of those keys, for its diagnostics (endHandoff): when each
     // part came, from App's side; the hook's and the window's are added then.
     struct TypingHandoff {

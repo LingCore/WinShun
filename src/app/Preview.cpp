@@ -52,6 +52,7 @@
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
 #include "platform/FolderViewHit.h"
+#include "platform/TypeToSearch.h"
 #include "platform/WindowEffects.h"
 #include "platform/Foreground.h"
 #include "platform/MessageWindow.h"
@@ -7781,6 +7782,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     }
     if (!window || !launcher) return false;
     const QString prefix = folder + u"\\ "_s;
+    int lowTall = 0; // the box with kFolderTypingMany rows in a window low on the screen
     const auto search = [&](const QString& words, int count) {
         launcher->setQuery(prefix + words);
         waiting.restart();
@@ -7818,10 +7820,13 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     RECT searchRect {}, sourceRect {};
     ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &searchRect);
     ::GetWindowRect(root, &sourceRect);
-    const RECT fileList = folderview::explorerFileList(root, tab);
+    const RECT fileList = folderview::explorerTypingCorner(root, tab);
     check(searchRect.right <= sourceRect.right && searchRect.left >= sourceRect.left
-            && searchRect.top >= fileList.top && searchRect.bottom <= fileList.bottom,
+            && searchRect.top >= fileList.top && searchRect.bottom <= fileList.bottom + 1, // Qt rounds its top and its height each
         "compact search stays inside the originating Explorer file area");
+    report.insert(u"compact_box"_s, QJsonArray {int(searchRect.left), int(searchRect.top), int(searchRect.right), int(searchRect.bottom)});
+    report.insert(u"compact_list"_s, QJsonArray {int(fileList.left), int(fileList.top), int(fileList.right), int(fileList.bottom)});
+    report.insert(u"compact_window"_s, QJsonArray {int(sourceRect.left), int(sourceRect.top), int(sourceRect.right), int(sourceRect.bottom)});
     check(window->width() <= 460, "folder search uses a compact width");
     check(field && field->property("text").toString() == u"follow_"_s,
         "folder input shows only the query, keeping its path out of editable text");
@@ -8063,7 +8068,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     pump(600);
     settle(window, 3);
     {
-        const RECT list = folderview::explorerFileList(root, secondTab);
+        const RECT list = folderview::explorerTypingCorner(root, secondTab);
         RECT box {}, client {};
         ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
         ::GetClientRect(root, &client);
@@ -8071,9 +8076,21 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         const int gap = qRound(windowavoidance::kExplorerListGap * (window->screen() ? window->screen()->devicePixelRatio() : 1.0));
         check(box.left >= client.left && box.top >= client.top && box.right <= client.right && box.bottom <= client.bottom,
             "too large to keep clear of: the box is inside the Explorer window");
-        check(std::abs(list.right - box.right - gap) <= 2 && box.bottom <= list.bottom - gap + 2,
-            "too large to keep clear of: in the bottom right corner of its file list, the rows ending at its bottom");
+        check(std::abs(list.right - box.right - gap) <= 2
+                && std::abs(std::min(client.bottom, area.bottom) - box.bottom) <= 2,
+            "too large to keep clear of: at the right of its file list, down to the window's bottom (over the status bar)");
         check(box.left != area.left || box.top != area.top, "too large to keep clear of: not at the top left of the screen");
+        // Low on the screen, its rows have the room it opened with above it,
+        // not what is left under its top (GitHub #234).
+        const bool many = search(u"many_"_s, kFolderTypingMany);
+        settle(window, 3);
+        RECT grown {};
+        ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &grown);
+        lowTall = window->height();
+        check(many && std::abs(grown.bottom - box.bottom) <= 1, "low on the screen: grown with its rows, its bottom where it was");
+        report.insert(u"low_grown_height"_s, lowTall);
+        launcher->setQuery(prefix);
+        pump(200);
         report.insert(u"centred_explorer_list"_s, QJsonArray {int(list.left), int(list.top), int(list.right - list.left),
             int(list.bottom - list.top)});
         report.insert(u"centred_explorer_box"_s, QJsonArray {int(box.left), int(box.top), int(box.right - box.left),
@@ -8153,10 +8170,13 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         check(launcher->results()->count() == 0 && !launcher->searching(),
             "opened by typing: nothing is listed before the words typed");
         if (both) {
-            check(!::IntersectRect(&overlap, &box, &bars.vertical) && !::IntersectRect(&overlap, &box, &bars.horizontal),
-                "with scroll bars: the box is over neither");
-            check(std::abs(bars.vertical.left - box.right - gap) <= 2 && std::abs(bars.horizontal.top - box.bottom - gap) <= 2,
-                "with scroll bars: against the one on the right and the one at the bottom");
+            RECT client {};
+            ::GetClientRect(root, &client);
+            ::MapWindowPoints(root, nullptr, reinterpret_cast<POINT*>(&client), 2);
+            check(!::IntersectRect(&overlap, &box, &bars.vertical), "with scroll bars: the box is not over the one on the right");
+            check(std::abs(bars.vertical.left - box.right - gap) <= 2
+                    && std::abs(std::min(client.bottom, area.bottom) - box.bottom) <= 2,
+                "with scroll bars: against the one on the right, down to the window's bottom");
         }
         {
             const int shortBox = box.bottom - box.top;
@@ -8170,6 +8190,41 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
             report.insert(u"grow_changes"_s, watch.changes);
             report.insert(u"grow_bottoms"_s, QJsonArray {int(watch.highest), int(watch.lowest), int(box.bottom)});
             ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
+        }
+        // Opened by a key whose rows come while it is still kept from view:
+        // first seen with them, as tall as they make it (GitHub #234).
+        {
+            app.hideLauncher();
+            pump(300);
+            ::SetForegroundWindow(root);
+            app.showFolderSearch(root, secondTab, false, folder);
+            const HWND own = reinterpret_cast<HWND>(window->winId());
+            waiting.restart();
+            while (window->height() == 0 && waiting.elapsed() < 200)
+                pump(5);
+            pump(80); // its first frame is drawn; the key's rows are awaited (App::kTypedRowsCap is 250 ms)
+            const bool held = window->isVisible() && isCloaked(own);
+            const int emptyHeight = window->height();
+            launcher->setQuery(prefix + u"many_"_s);
+            int seenAt = 0;
+            waiting.restart();
+            while (waiting.elapsed() < 2000) {
+                pump(2);
+                if (!isCloaked(own)) {
+                    seenAt = window->height();
+                    break;
+                }
+            }
+            const bool rows = launcher->results()->count() == kFolderTypingMany;
+            BottomWatch watch(own);
+            settle(window, 3);
+            pump(300);
+            check(held, "opened by a key typed: kept from view until that key's rows are in it");
+            check(seenAt > emptyHeight && rows, "first seen with the rows of the key typed, taller than the empty box");
+            check(window->height() == seenAt, "seen once, at its final height: it does not grow after");
+            check(lowTall == seenAt, "low on the screen: as tall with as many rows as anywhere");
+            report.insert(u"typed_reveal"_s, QJsonArray {held, emptyHeight, seenAt, window->height(), int(watch.changes)});
+            ::GetWindowRect(own, &box);
         }
         const auto rectOf = [](const RECT& r) { return QJsonArray {int(r.left), int(r.top), int(r.right - r.left), int(r.bottom - r.top)}; };
         report.insert(u"scrollbars_vertical"_s, rectOf(bars.vertical));

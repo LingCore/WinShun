@@ -745,6 +745,8 @@ QPoint Placement::settleAvoiding(QScreen* screen, bool fitList)
     const QRect area = screen->availableGeometry();
     const int windowHeight = m_fitHeight > 0 ? m_fitHeight : m_window->height();
     int height = std::max(m_roomNeeded, m_roomWanted > 0 ? m_roomWanted : windowHeight);
+    std::optional<int> kept; // the height kept on the work area, where it is not `height`
+    std::optional<int> rowsFrom; // where the room for its rows starts, where that is not its top
     QPoint at;
     if (m_avoidInside) {
         // Over the list (GitHub #82). As it opens, as narrow as the list is
@@ -762,15 +764,23 @@ QPoint Placement::settleAvoiding(QScreen* screen, bool fitList)
         height = spot.height();
         // Keep the panel's bottom at the file list's bottom as the result
         // count changes; room still describes the full result budget.
-        if (!fitList)
+        if (!fitList) {
+            rowsFrom = at.y(); // it grows upwards, as far as it opened: not from where its top is now
             at.ry() += std::max(0, spot.height() - windowHeight);
+            // What is kept on the work area below is the window as tall as
+            // it is, not the room its rows may take: with that reaching past
+            // the screen's bottom (a window low on it, or maximized), the box
+            // was nudged 4 px up out of its corner (GitHub #234).
+            kept = std::min(spot.height(), windowHeight);
+        }
     } else {
         at = windowavoidance::place(area, obstacle, {widthNow(), height}, home);
     }
     at.setX(native.keepInside(at.x(), widthNow(), native.work.x(), native.work.x() + native.work.width(), native.origin.x()));
-    at.setY(native.keepInside(at.y(), std::min(height, area.height()), native.work.y(), native.work.y() + native.work.height(),
-        native.origin.y()));
-    const int room = int(std::floor((native.work.y() + native.work.height() - native.toNative(at.y(), native.origin.y())) / native.scale));
+    at.setY(native.keepInside(at.y(), std::min(kept.value_or(height), area.height()), native.work.y(),
+        native.work.y() + native.work.height(), native.origin.y()));
+    const int room = int(std::floor(
+        (native.work.y() + native.work.height() - native.toNative(rowsFrom.value_or(at.y()), native.origin.y())) / native.scale));
     // Over a list, its rows end above the list's bottom edge, not the work area's.
     setRoom(m_avoidInside ? std::min(room, height) : room);
     return at;

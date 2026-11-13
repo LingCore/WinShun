@@ -795,6 +795,8 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_launcher.get(), &Launcher::namesShown, this, [this] {
         if (m_launcherReveal.pending())
             armReveal();
+        else
+            typedRowsShown();
     });
     connect(m_launcher.get(), &Launcher::webSettingsRequested, this, &App::showWebSettings);
     connect(m_launcher.get(), &Launcher::fileTypeSettingsRequested, this, &App::showFileTypeSettings);
@@ -1381,6 +1383,13 @@ bool App::createWindow()
     m_typingCap.setSingleShot(true);
     m_typingCap.setTimerType(Qt::PreciseTimer);
     connect(&m_typingCap, &QTimer::timeout, this, &App::deliverTyping);
+    m_typedRowsCap.setSingleShot(true);
+    m_typedRowsCap.setInterval(kTypedRowsCap);
+    m_typedRowsCap.setTimerType(Qt::PreciseTimer);
+    connect(&m_typedRowsCap, &QTimer::timeout, this, [this] {
+        if (m_typedRows == TypedRows::Awaited)
+            revealLauncher(); // a slow search, or keys that typed nothing: seen as it is
+    });
     m_handoffWatch.setSingleShot(true);
     m_handoffWatch.setInterval(500ms);
     connect(&m_handoffWatch, &QTimer::timeout, this, &App::endHandoff);
@@ -3028,7 +3037,9 @@ void App::deliverTyping()
     const searchtyping::LauncherState state {
         .active = m_window->isActive(),
         .fieldFocused = focus && (focus == m_searchField || focus->objectName() == u"panelSearchField"),
-        .revealed = m_window->isVisible() && !m_launcherReveal.pending() && !m_prewarming.load() && !isCloaked(window),
+        // Drawn and kept from view for the rows of these very keys (TypedRows): as revealed.
+        .revealed = m_window->isVisible() && !m_launcherReveal.pending() && !m_prewarming.load()
+            && (!isCloaked(window) || m_typedRows == TypedRows::Awaited),
         .preparing = m_launcherOpening,
         .routed = launcherRouted(),
     };
@@ -3256,12 +3267,18 @@ void App::showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder
     // On the monitor of the list typed in (a lister over two may have the other on the other).
     // Folder typing uses a compact panel in the file list's bottom-right
     // corner, even when there is space beside the window (GitHub #234).
-    const RECT list = opus ? RECT {} : folderview::explorerFileList(root, tab);
+    const RECT list = opus ? RECT {} : folderview::explorerTypingCorner(root, tab);
     // Pinned and up, or the panel: where it is (showLauncher).
     const QString kept = m_launcher->pinned() && launcherShown() ? u"pinned"_s : m_launcher->panel() ? u"panel"_s : QString();
     m_launcher->awaitTyping(prefix); // the key typed follows: nothing listed before it
     showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(opus ? tab : root, MONITOR_DEFAULTTONEAREST)), opus ? tab : root, opus,
         list);
+    // Opened anew: not to be seen until the rows of the key typed are in it
+    // (revealLauncher), so it comes up once, as tall as it will be. Seen
+    // empty first, it grew a moment later, and a window without Mica
+    // (Windows 10) showed black where it had grown until its next frame
+    // (GitHub #234).
+    m_typedRows = m_launcherReveal.pending() ? TypedRows::FirstFrame : TypedRows::No;
     m_typingOrigin = {root, tab, opus, folder}; // after showLauncher, which clears it
     // For the journal's typing-handoff: how it was placed, the window typed
     // in, its file list and the work area (screen pixels), the box where Qt
@@ -5281,6 +5298,8 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     // or caretRequested places the caret; replay then loses the first key.
     // The typing callers deliver again after this preparation has finished.
     QScopedValueRollback opening(m_launcherOpening, true);
+    m_typedRows = TypedRows::No; // showFolderSearch sets it after
+    m_typedRowsCap.stop();
     m_launcher->setFolderSearch(avoid && (inside || !::IsRectEmpty(&orInto)));
     cancelTypingSelection();
     m_typingOrigin = {}; // opened anew: set again by typingFolderKnown when that is why
@@ -6252,10 +6271,34 @@ void App::armReveal()
     m_launcherReveal.arm();
 }
 
+// The rows of the words typed in a file manager are in the box, which was
+// kept from view for them (TypedRows): seen with its next frame, at the
+// height they give it.
+void App::typedRowsShown()
+{
+    if (m_typedRows != TypedRows::Awaited || m_launcher->typingAwaited())
+        return;
+    m_typedRows = TypedRows::No;
+    m_typedRowsCap.stop();
+    m_launcherReveal.begin();
+    armReveal();
+}
+
 void App::revealLauncher()
 {
     if (!m_window)
         return;
+    if (m_typedRows == TypedRows::FirstFrame && launcherShown()
+        && (m_deliverTyping || m_launcher->typingAwaited() || m_launcher->waitingForNames())) {
+        // Drawn, and ready for the keys typed: they go into it now, and it
+        // is seen with their rows (typedRowsShown), or after kTypedRowsCap.
+        m_typedRows = TypedRows::Awaited;
+        m_typedRowsCap.start();
+        deliverTyping();
+        return;
+    }
+    m_typedRows = TypedRows::No;
+    m_typedRowsCap.stop();
     // Slide in before revealing, unless it was hidden before its first frame.
     if (m_window->isVisible())
         m_placement->slideIn();
@@ -6707,7 +6750,7 @@ void App::hideLauncher()
     if (clipboardUnderLauncher())
         hideClipboard(false);
     // Slid out, unless it was never seen (still waiting for its first frame).
-    if (m_launcherReveal.pending() || m_prewarming.load()) {
+    if (m_launcherReveal.pending() || m_prewarming.load() || m_typedRows == TypedRows::Awaited) {
         finishHidingLauncher();
         return;
     }
@@ -6743,6 +6786,8 @@ void App::finishHidingLauncher()
         return;
     m_window->hide();
     m_launcherReveal.cancel();
+    m_typedRows = TypedRows::No;
+    m_typedRowsCap.stop();
     win::setCloaked(m_window, false); // hidden before its first frame: drop the cloak
     m_launcher->handleHidden();
     if (m_launcher->panel())

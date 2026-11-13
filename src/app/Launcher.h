@@ -95,6 +95,9 @@ class Launcher : public QObject {
     // that is not known (busy: the divider shows work going on).
     Q_PROPERTY(qreal progress READ progress NOTIFY statusChanged FINAL)
     Q_PROPERTY(bool searching READ searching NOTIFY statusChanged FINAL)
+    // Opened by a key typed in a file manager, which has yet to arrive
+    // (awaitTyping): nothing is listed, and nothing is "not found" either.
+    Q_PROPERTY(bool typingAwaited READ typingAwaited NOTIFY typingAwaitedChanged FINAL)
     Q_PROPERTY(bool stale READ stale NOTIFY statusChanged FINAL)
     Q_PROPERTY(QString placeholder READ placeholder NOTIFY scopeChanged FINAL)
     Q_PROPERTY(QString contentFilesLabel READ contentFilesLabel NOTIFY scopeChanged FINAL)
@@ -440,6 +443,8 @@ public:
     // showed for a moment and gave way to what was typed, the box changing
     // size twice (GitHub #234). Until the box says something else, or hides.
     void awaitTyping(const QString& text);
+    void setTypingAwaited(bool awaited);
+    bool typingAwaited() const { return m_typingAwaited; }
     // FolderTyping: "only" (only the folder and below), "level" (only what
     // lies directly in it), else its rows first and then the rest.
     void setFolderTyping(const QString& how);
@@ -822,6 +827,7 @@ signals:
     void shown();
     void resultsReplaced(); // results for a new query: select the first row
     void namesShown(); // a name search finished and its rows are in the model
+    void typingAwaitedChanged();
     void dismissRequested();
     void escaped(); // Esc closed it (dismiss), before dismissRequested: nothing opened
     // Not started: it would have needed administrator rights to start at all

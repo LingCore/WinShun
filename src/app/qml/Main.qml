@@ -162,7 +162,10 @@ Window {
     property var emptyShownHints: []
     property bool dimEmpty: false // held long enough to notice (as dimRows): it is the last query's
     function settleEmpty() {
-        if (trimmedQuery.length > 0 && view.count === 0 && !launcher.searching && shownRows === 0 && !appsMode) {
+        // Not while the key that opened it from a file manager is on its
+        // way: "没有找到" of the folder alone showed until its rows came (GitHub #234).
+        if (trimmedQuery.length > 0 && view.count === 0 && !launcher.searching && shownRows === 0 && !appsMode
+                && !launcher.typingAwaited) {
             emptyShownTitle = emptyTitle
             emptyShownHint = emptyHint
             emptyShownHints = hints
@@ -184,6 +187,8 @@ Window {
         onTriggered: window.dimEmpty = true
     }
     onTrimmedQueryChanged: Qt.callLater(settleRows)
+    readonly property bool typingAwaited: launcher.typingAwaited
+    onTypingAwaitedChanged: Qt.callLater(settleRows)
     onEmptyTitleChanged: Qt.callLater(settleRows)
     onEmptyHintChanged: Qt.callLater(settleRows)
 

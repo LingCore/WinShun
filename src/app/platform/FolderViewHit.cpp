@@ -485,6 +485,17 @@ RECT explorerFileList(HWND root, HWND tab)
     return list;
 }
 
+RECT explorerTypingCorner(HWND root, HWND tab)
+{
+    RECT corner = explorerFileList(root, tab);
+    RECT client {};
+    if (!::IsRectEmpty(&corner) && ::GetClientRect(root, &client)) {
+        ::MapWindowPoints(root, nullptr, reinterpret_cast<POINT*>(&client), 2);
+        corner.bottom = std::max(corner.bottom, client.bottom);
+    }
+    return corner;
+}
+
 bool isBlank(const Hit& hit, BlankTrace* trace)
 {
     if (hit.surface == Surface::None || !::IsWindow(hit.view) || ::IsHungAppWindow(hit.root))

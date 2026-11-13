@@ -52,8 +52,8 @@ inline bool clearOf(const QRect& area, const QRect& obstacle, QSize size, QPoint
 // How far in from a file list's edges the box sits in its corner (inList).
 // Opus's file display is one window with its scroll bars: 12 px keeps the
 // box off them. File Explorer's list is given without its scroll bars
-// (folderview::explorerFileList), and there the box sits right in the
-// corner, against them, as Listary's does (GitHub #234).
+// and down to the window's bottom (folderview::explorerTypingCorner), and
+// there the box sits right in the corner, as Listary's does (GitHub #234).
 inline constexpr int kListGap = 12;
 inline constexpr int kExplorerListGap = 0;
 

@@ -81,6 +81,11 @@ RECT opusFileLists(HWND root);
 // one tab and the tabs of Windows 11 alike, the hidden ones never (GitHub
 // #203). Class names only: any thread.
 RECT explorerFileList(HWND root, HWND tab);
+// Where the box opened by typing there sits in the corner of: that list down
+// to the bottom of the window, over the status bar (and a scroll bar along
+// the bottom), as Listary's does; the scroll bar on the right stays clear, to
+// scroll the files by (GitHub #234).
+RECT explorerTypingCorner(HWND root, HWND tab);
 
 // What isBlank went by, for the diagnostics journal (GitHub #45): class
 // names, roles and results only, never an item's name.
