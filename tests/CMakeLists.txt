@@ -1587,3 +1587,14 @@ set_target_properties(tst_capturekeys PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_capturekeys COMMAND tst_capturekeys -o -,txt)
 set_tests_properties(tst_capturekeys PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# PrtScn taken from the Snipping Tool and kept (#322, src/capture/PrintScreen and
+# the registry watch the screenshot plugin keeps it with): on a key of its own
+# under HKCU\Software\WinShunTest, never the real Control Panel\Keyboard.
+qt_add_executable(tst_printscreen tst_printscreen.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/RegistryWatch.cpp)
+target_include_directories(tst_printscreen PRIVATE ${PROJECT_SOURCE_DIR}/src/app/platform ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_printscreen PRIVATE wscapture Qt6::Core Qt6::Test advapi32 user32)
+set_target_properties(tst_printscreen PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_printscreen COMMAND tst_printscreen -o -,txt)
+set_tests_properties(tst_printscreen PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")

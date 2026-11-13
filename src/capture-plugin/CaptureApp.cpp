@@ -22,6 +22,7 @@
 #include "PrintScreen.h"
 #include "RawClicks.h"
 #include "RecordingPointer.h"
+#include "platform/RegistryWatch.h"
 #include "SavedFile.h"
 #include "SystemTheme.h"
 #include "TrayMenu.h"
@@ -412,6 +413,7 @@ void CaptureApp::shutdown()
         m_presenter->presenter().close();
     for (int id = CaptureKey; id <= OcrKey; ++id)
         ::UnregisterHotKey(m_window, id);
+    m_printScreenWatch.reset(); // before the value goes back: that is not for taking again
     const QString before = m_settings.options().printScreenBefore;
     std::optional<DWORD> value;
     if (!before.isEmpty() && (!printscreen::decode(before, &value) || printscreen::write(value)))
@@ -567,23 +569,34 @@ void CaptureApp::apply()
     }
 
     // PrtScn: taken from the Snipping Tool while it is wanted, the value
-    // found then kept in PrintScreenBefore and put back after.
+    // found then kept in PrintScreenBefore and put back after. GitHub #322:
+    // taken whenever it is not 0, kept or not (an update's late old process, or
+    // Windows, may have put it back), and watched while wanted (printScreenChanged).
     QString before = o.printScreenBefore;
     QString note;
-    if (o.printScreen && before.isEmpty()) {
+    m_retakes.clear();
+    m_retakesStopped = false;
+    if (o.printScreen) {
+        if (!m_printScreenWatch) // before the value is read: a change in between is not lost
+            m_printScreenWatch = std::make_unique<RegistryWatch>(printscreen::kKeyboardKey, [this] { printScreenChanged(); });
         const std::optional<DWORD> now = printscreen::read();
-        if (printscreen::write(DWORD {0}))
-            before = printscreen::encode(now);
-        else
-            note = tr("没能改 PrtScn 的设置，它还会打开截图工具。");
-    } else if (!o.printScreen && !before.isEmpty()) {
-        std::optional<DWORD> value;
-        if (!printscreen::decode(before, &value))
-            before.clear(); // unreadable: nothing to put back
-        else if (printscreen::write(value))
-            before.clear();
-        else
-            note = tr("没能把 PrtScn 的设置改回去。");
+        if (printscreen::snippingToolOwns(now)) {
+            if (!printscreen::write(DWORD {0}))
+                note = tr("没能改 PrtScn 的设置，它还会打开截图工具。");
+            else if (before.isEmpty()) // an original already kept is not overwritten by what was found later
+                before = printscreen::encode(now);
+        }
+    } else {
+        m_printScreenWatch.reset(); // before the value goes back: that is not for taking again
+        if (!before.isEmpty()) {
+            std::optional<DWORD> value;
+            if (!printscreen::decode(before, &value))
+                before.clear(); // unreadable: nothing to put back
+            else if (printscreen::write(value))
+                before.clear();
+            else
+                note = tr("没能把 PrtScn 的设置改回去。");
+        }
     }
     if (before != o.printScreenBefore) {
         QSignalBlocker quiet(&m_settings); // saved, not applied again
@@ -595,6 +608,36 @@ void CaptureApp::apply()
     problems.note = note;
     m_settings.setProblems(problems); // the hotkeys' come next
     applyHotkeys();
+}
+
+// The keyboard settings were written (our own take too: the value is 0 then,
+// nothing to do). GitHub #322: PrtScn went back to the Snipping Tool (an old
+// process putting its value back late on an update, Windows, another program)
+// and is taken again. A program that keeps doing it is not fought for ever:
+// the 4th time within a minute it is said once and left until the next apply().
+void CaptureApp::printScreenChanged()
+{
+    if (!m_settings.options().printScreen || m_retakesStopped)
+        return;
+    const std::optional<DWORD> value = printscreen::read();
+    if (!printscreen::snippingToolOwns(value))
+        return;
+    if (!m_retakes.allow(printscreen::RetakeLimit::Clock::now())) {
+        m_retakesStopped = true;
+        qWarning().noquote() << u"PrtScn: not taken back again, something keeps putting it back (value is %1)"_s.arg(
+            printscreen::encode(value));
+        const QString note = tr("没能改 PrtScn 的设置，它还会打开截图工具。");
+        // Only the note is new: the hotkeys' problems stay as they are.
+        m_settings.setProblems({m_settings.captureHotkeyError(), m_settings.capturePinsHotkeyError(),
+            m_settings.capturePinsRestoreHotkeyError(), m_settings.captureLastPinHotkeyError(),
+            m_settings.capturePresentHotkeyError(), m_settings.captureOcrHotkeyError(), note});
+        if (!(m_settingsWindow && m_settingsWindow->isVisible()))
+            notify(tr("截图"), note);
+        return;
+    }
+    qInfo().noquote() << u"PrtScn: taken back from the Snipping Tool (value was %1)"_s.arg(printscreen::encode(value));
+    if (!printscreen::write(DWORD {0}))
+        qWarning() << "PrtScn: could not take it back";
 }
 
 void CaptureApp::applyHotkeys()

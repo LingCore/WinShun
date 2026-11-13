@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CaptureSettings.h"
+#include "PrintScreen.h"
 #include "platform/HotPages.h"
 
 #include <QImage>
@@ -23,6 +24,7 @@ class QQuickWindow;
 namespace ws {
 class IdleTrim;
 class PresenterHost;
+class RegistryWatch;
 class WindowFrame;
 namespace capture {
 class Capture;
@@ -69,6 +71,7 @@ private:
     // ---- what App did ----
     void apply();
     void applyHotkeys();
+    void printScreenChanged(); // the keyboard settings were written: PrtScn taken again if it went back (#322)
     void reportHotkeyProblems(const CaptureSettings::Problems& problems);
     void applyAppearance(const QJsonObject& appearance);
     // The Theme made, the first time C++ draws by its look (the pins, the
@@ -150,6 +153,9 @@ private:
     QStringList m_reportedHotkeys; // what Win顺 was told it holds (applyHotkeys)
     bool m_hostHotkeys = false;
     quint64 m_hotkeyRevision = 0;
+    std::unique_ptr<RegistryWatch> m_printScreenWatch; // while PrtScn is wanted; gone before the value is put back
+    printscreen::RetakeLimit m_retakes;
+    bool m_retakesStopped = false; // another program keeps putting the value back: until the next apply()
     std::jthread m_pinSaver;
     // The history pictures being edited: what Win顺 handed over for them.
     struct HistoryPicture {
