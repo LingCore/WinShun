@@ -1693,6 +1693,15 @@ void Launcher::setPureSearch(bool on)
         search();
 }
 
+void Launcher::setPanelListsAll(bool on)
+{
+    if (m_panelListsAll == on)
+        return;
+    m_panelListsAll = on;
+    if (m_panel && m_window && m_window->isVisible() && m_query.trimmed().isEmpty())
+        search();
+}
+
 void Launcher::setPreviewHotkey(const QString& shortcut)
 {
     const QString value = shortcut.isEmpty() ? QString() : previewkeys::normalized(shortcut);
@@ -2326,7 +2335,11 @@ void Launcher::search(bool more)
     if (m_typingAwaited && m_query.trimmed() != m_awaitedText)
         setTypingAwaited(false);
     const bool pureEmpty = (m_pureSearch && !m_panel && !m_folderSearch && !m_inTaskbarBox && m_query.trimmed().isEmpty())
-        || (m_typingAwaited && m_scope != Content);
+        || (m_typingAwaited && m_scope != Content)
+        // The panel as set to list nothing of itself (GitHub #321): a filter
+        // chosen, or a kind of file, is something asked for, and lists.
+        || (m_panel && !m_panelListsAll && m_scope != Content && m_query.trimmed().isEmpty() && !filtersActive()
+            && !(m_scope == Files && m_fileType >= 0));
     if (m_scope == Content || pureEmpty) {
         m_engine->cancel();
         m_requestId = 0;

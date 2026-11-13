@@ -547,6 +547,9 @@ public:
     bool scopeButton() const { return m_scopeButton; }
     void setScopeButton(bool on);
     void setPureSearch(bool on);
+    // The panel with nothing typed and no filter chosen: every file (as
+    // Everything), or nothing until something is (GitHub #321).
+    void setPanelListsAll(bool on);
     int maxRows() const { return m_maxRows; }
     void setMaxRows(int rows);
     int numberKeysLeft() const { return static_cast<int>(m_numberKeysLeft); }
@@ -1342,6 +1345,7 @@ private:
     bool m_shortcutHelp = true;
     bool m_footerHints = true;
     bool m_pureSearch = false;
+    bool m_panelListsAll = true;
     bool m_scopeButton = false;
     bool m_typingAwaited = false; // awaitTyping, and ...
     QString m_awaitedText; // ... the box's text then, trimmed

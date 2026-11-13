@@ -959,6 +959,39 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     launcher.setMaxRows(8);
     launcher.setQuery({});
     settle(window);
+    {
+        // 搜索面板空着时列出全部文件 (Settings::panelListsAll, GitHub #321):
+        // on, the empty panel lists every file as Everything does; off,
+        // nothing until something is typed or a filter chosen.
+        const auto lists = [&](int count) {
+            QElapsedTimer waiting;
+            waiting.start();
+            while ((launcher.searching() || launcher.results()->count() != count) && waiting.elapsed() < 3000)
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            settle(window);
+            return !launcher.searching() && launcher.results()->count() == count;
+        };
+        window->resize(900, 600);
+        launcher.setPanel(true);
+        launcher.handleShown(); // asks again, as the app does after sizing the window
+        check(lists(26), u"panel: empty, it lists every file by default"_s);
+        launcher.setPanelListsAll(false);
+        check(lists(0), u"panel: set so, empty it lists nothing"_s);
+        check(window->grabWindow().save(output.filePath(u"panel-empty.png"_s)), u"capture the empty panel"_s);
+        launcher.setQuery(u"ledger"_s);
+        check(lists(25), u"panel: words typed are searched as ever"_s);
+        launcher.setQuery({});
+        check(lists(0), u"panel: cleared, nothing again"_s);
+        launcher.setFolderFilter(u"D:\\"_s);
+        check(lists(26), u"panel: a folder chosen is something asked for, and lists"_s);
+        launcher.setFolderFilter({});
+        check(lists(0), u"panel: the filter gone, nothing again"_s);
+        launcher.setPanelListsAll(true);
+        check(lists(26), u"panel: switched back on, every file at once"_s);
+        launcher.setPanel(false);
+        launcher.handleShown(); // asks again, as the app does after sizing the window
+        settle(window);
+    }
     check(!window->isActive(), u"probe never activates the user's desktop"_s);
     QFile report(output.filePath(u"pure-search.json"_s));
     if (!report.open(QIODevice::WriteOnly)) return false;

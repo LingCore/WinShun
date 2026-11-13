@@ -41,11 +41,14 @@ private slots:
         ws::Settings settings;
         settings.load();
         QVERIFY(!settings.pureSearch);
+        QVERIFY(settings.panelListsAll); // as Everything, until its user says otherwise (GitHub #321)
         settings.pureSearch = true;
+        settings.panelListsAll = false;
         QVERIFY(settings.saveChecked());
         ws::Settings restored;
         restored.load();
         QVERIFY(restored.pureSearch);
+        QVERIFY(!restored.panelListsAll);
         restored.pureSearch = false;
         QVERIFY(restored.saveChecked());
         settings.load();

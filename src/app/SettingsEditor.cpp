@@ -450,6 +450,14 @@ void SettingsEditor::setPureSearch(bool on)
     commit();
 }
 
+void SettingsEditor::setPanelListsAll(bool on)
+{
+    if (m_settings.panelListsAll == on)
+        return;
+    m_settings.panelListsAll = on;
+    commit();
+}
+
 void SettingsEditor::setPreviewWith(const QString& with)
 {
     if (m_settings.previewWith == with || (with != u"auto" && with != u"builtin"))

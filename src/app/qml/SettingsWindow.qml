@@ -3060,6 +3060,19 @@ Window {
                     }
                 }
 
+                SettingRow { // GitHub #321
+                    title: qsTr("搜索面板空着时列出全部文件")
+                    description: qsTr("关掉后，搜索面板里没输入文字、也没选筛选条件时不列任何文件，输入后才显示结果")
+                    keywords: qsTr("面板;完整搜索窗口;空白;默认;全部文件;不显示结果;panel;empty;everything").split(";")
+                    ToggleSwitch {
+                        objectName: "panelListsAllToggle"
+                        dpr: window.dpr
+                        checked: window.editor.panelListsAll
+                        Accessible.name: qsTr("搜索面板空着时列出全部文件")
+                        onToggled: (on) => window.editor.panelListsAll = on
+                    }
+                }
+
                 SettingRow { // GitHub #185, #244
                     title: qsTr("范围标签")
                     keywords: qsTr("范围;全部;文件;内容;标签;合并;三合一;按钮;极简;scope;tabs").split(";")

@@ -8129,6 +8129,18 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Minimal search mode</translation>
     </message>
     <message>
+        <source>搜索面板空着时列出全部文件</source>
+        <translation>List all files in the empty search panel</translation>
+    </message>
+    <message>
+        <source>关掉后，搜索面板里没输入文字、也没选筛选条件时不列任何文件，输入后才显示结果</source>
+        <translation>When off, the search panel lists no files until you type something or choose a filter</translation>
+    </message>
+    <message>
+        <source>面板;完整搜索窗口;空白;默认;全部文件;不显示结果;panel;empty;everything</source>
+        <translation>panel;full search window;blank;default;all files;no results;empty;everything</translation>
+    </message>
+    <message>
         <source>范围标签</source>
         <translation>Scope tabs</translation>
     </message>

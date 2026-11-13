@@ -252,6 +252,9 @@ struct Settings {
     bool shortcutHelp = true;
     bool footerHints = true;
     bool pureSearch = false; // empty floating launcher: just the input, without start results or chrome
+    // The search panel with nothing typed and no filter chosen lists every
+    // file, as Everything does; off: nothing until something is typed (GitHub #321).
+    bool panelListsAll = true;
     // The launcher's scopes (全部, 文件, 内容…) as one key that says the
     // current one and goes to the next when clicked, in place of the tabs
     // side by side (GitHub #185, #244). Tab moves through them either way.

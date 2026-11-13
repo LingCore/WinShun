@@ -1954,6 +1954,7 @@ void App::applySettings(bool initial)
     m_launcher->setKeyboardHints(m_settings.shortcutHelp, m_settings.footerHints);
     m_launcher->setMaxRows(m_settings.maxRows);
     m_launcher->setPureSearch(m_settings.pureSearch && !m_launcherOverBox);
+    m_launcher->setPanelListsAll(m_settings.panelListsAll);
     tellLauncherFolders();
     m_clipboard->setNumberHints(m_settings.numberHints);
     const QString clipboardSize = m_settings.clipboardUiSize == u"follow" ? m_settings.uiSize : m_settings.clipboardUiSize;
