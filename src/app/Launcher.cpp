@@ -51,6 +51,7 @@
 #include <QScreen>
 #include <QSet>
 #include <QSettings>
+#include <QTimer>
 #include <QStyleHints>
 #include <QTimeZone>
 #include <QVarLengthArray>
@@ -1498,7 +1499,10 @@ void Launcher::setSwitches(Switches* switches, const QString& stateFile)
     m_stateFile = stateFile;
     if (!stateFile.isEmpty()) {
         const QString view = QSettings(stateFile, QSettings::IniFormat).value(u"Search/AppsView"_s).toString();
-        m_appsView = view == u"favorites" ? FavoriteApps : view == u"all" ? AllApps : FrequentApps;
+        m_appsView = view == u"favorites" ? FavoriteApps
+            : view == u"all"          ? AllApps
+            : view == u"running"      ? RunningApps
+                                      : FrequentApps;
         emit appsViewChanged();
     }
     m_contentPane->loadPreferences(stateFile);
@@ -1831,10 +1835,8 @@ void Launcher::startOver()
         m_quickFiltersOn.clear();
         emit filtersChanged();
     }
-    if (m_scope != All) {
-        m_scope = All;
-        emit scopeChanged();
-    }
+    // The scope tab is the user's choice and is kept across openings (选中则记住);
+    // only the words, the folder and the filters go back to the start.
     if (!m_query.isEmpty()) {
         m_query.clear();
         updateQueryPrefix();
@@ -1932,14 +1934,19 @@ void Launcher::appsTabMoved()
 
 void Launcher::setAppsView(AppsView view)
 {
-    if (view != FrequentApps && view != FavoriteApps && view != AllApps)
+    if (view != FrequentApps && view != FavoriteApps && view != AllApps && view != RunningApps)
         return;
     if (m_appsView == view)
         return;
     m_appsView = view;
+    ++m_appsRefreshToken; // a 运行 refresh waiting is moot
     if (!m_stateFile.isEmpty()) {
         QSettings(m_stateFile, QSettings::IniFormat)
-            .setValue(u"Search/AppsView"_s, view == FavoriteApps ? u"favorites"_s : view == AllApps ? u"all"_s : u"frequent"_s);
+            .setValue(u"Search/AppsView"_s,
+                view == FavoriteApps ? u"favorites"_s
+                : view == AllApps   ? u"all"_s
+                : view == RunningApps ? u"running"_s
+                                    : u"frequent"_s);
     }
     emit appsViewChanged();
     if (m_scope == Apps) {
@@ -1951,7 +1958,10 @@ void Launcher::setAppsView(AppsView view)
 
 void Launcher::cycleAppsView(int delta)
 {
-    setAppsView(static_cast<AppsView>(((static_cast<int>(m_appsView) + delta) % 3 + 3) % 3));
+    static constexpr AppsView kOrder[] {RunningApps, FrequentApps, FavoriteApps, AllApps}; // as the strip shows them
+    const int at = static_cast<int>(std::find(std::begin(kOrder), std::end(kOrder), m_appsView) - std::begin(kOrder));
+    const int size = static_cast<int>(std::size(kOrder));
+    setAppsView(kOrder[((at + delta) % size + size) % size]);
 }
 
 // search() in 程序: the apps the strip chose, as rows; narrowed by what is
@@ -1985,7 +1995,12 @@ void Launcher::showApps()
 
     SearchResults rows;
     QStringList highlights;
-    QList<int> counts {0, 0, 0};
+    QList<int> counts {0, 0, 0, 0};
+    const QString text = searchText();
+    SearchResults running = windowsearch::snapshot(); // 运行: the windows open on this desktop
+    counts[RunningApps] = static_cast<int>(running.size());
+    if (m_appsView == RunningApps)
+        rows = text.trimmed().isEmpty() ? running : windowsearch::matching(running, text, regexTerms());
     if (const std::shared_ptr<const AppList> apps = m_apps->apps()) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         std::vector<std::size_t> frequent;
@@ -2017,32 +2032,37 @@ void Launcher::showApps()
         byName.setNumericMode(true);
         std::stable_sort(all.begin(), all.end(),
             [&](std::size_t a, std::size_t b) { return byName.compare((*apps)[a].name, (*apps)[b].name) < 0; });
-        counts = {static_cast<int>(frequent.size()), static_cast<int>(favorites.size()), static_cast<int>(all.size())};
+        counts[FrequentApps] = static_cast<int>(frequent.size());
+        counts[FavoriteApps] = static_cast<int>(favorites.size());
+        counts[AllApps] = static_cast<int>(all.size());
 
-        const std::vector<std::size_t>& chosen = m_appsView == FavoriteApps ? favorites : m_appsView == AllApps ? all : frequent;
-        const QString text = searchText();
-        if (text.trimmed().isEmpty()) {
-            rows.reserve(static_cast<qsizetype>(chosen.size()));
-            for (const std::size_t i : chosen)
-                rows.push_back(ws::appResult((*apps)[i]));
-        } else if (const ParsedQuery query = parseQuery(text, regexTerms()); query.error.isEmpty()) {
-            const NameMatcher matcher(query);
-            const QSet<std::size_t> among(chosen.cbegin(), chosen.cend());
-            const QStringList history = m_recordHistory ? m_history->ranked(text, now) : QStringList();
-            const History::Affinities affinities = m_recordHistory ? m_history->affinities(text, now) : History::Affinities();
-            for (const AppHit& hit : searchApps(*apps, query, matcher, history, affinities)) {
-                if (!among.contains(hit.index))
-                    continue;
-                rows.push_back(ws::appResult((*apps)[hit.index], false, hit.otherName));
-                rows.back().exact = hit.exact;
+        if (m_appsView != RunningApps) { // 运行's rows are the windows, made above
+            const std::vector<std::size_t>& chosen
+                = m_appsView == FavoriteApps ? favorites : m_appsView == AllApps ? all : frequent;
+            if (text.trimmed().isEmpty()) {
+                rows.reserve(static_cast<qsizetype>(chosen.size()));
+                for (const std::size_t i : chosen)
+                    rows.push_back(ws::appResult((*apps)[i]));
+            } else if (const ParsedQuery query = parseQuery(text, regexTerms()); query.error.isEmpty()) {
+                const NameMatcher matcher(query);
+                const QSet<std::size_t> among(chosen.cbegin(), chosen.cend());
+                const QStringList history = m_recordHistory ? m_history->ranked(text, now) : QStringList();
+                const History::Affinities affinities
+                    = m_recordHistory ? m_history->affinities(text, now) : History::Affinities();
+                for (const AppHit& hit : searchApps(*apps, query, matcher, history, affinities)) {
+                    if (!among.contains(hit.index))
+                        continue;
+                    rows.push_back(ws::appResult((*apps)[hit.index], false, hit.otherName));
+                    rows.back().exact = hit.exact;
+                }
+                highlights = query.highlights;
             }
-            highlights = query.highlights;
-        }
-        if (m_favorites) { // the tiles' stars
-            for (SearchResult& r : rows) {
-                if (const qsizetype at = m_favorites->indexOf(r.path); at >= 0) {
-                    r.favorite = true;
-                    r.favoriteKeyword = m_favorites->items()[at].keyword;
+            if (m_favorites) { // the tiles' stars
+                for (SearchResult& r : rows) {
+                    if (const qsizetype at = m_favorites->indexOf(r.path); at >= 0) {
+                        r.favorite = true;
+                        r.favoriteKeyword = m_favorites->items()[at].keyword;
+                    }
                 }
             }
         }
@@ -2055,6 +2075,15 @@ void Launcher::showApps()
     m_shownAppsView = m_appsView;
     showRows(std::move(rows), std::move(highlights));
     refreshStatus();
+    if (m_scope == Apps && m_appsView == RunningApps && m_window && m_window->isVisible()) {
+        const quint64 token = ++m_appsRefreshToken;
+        QTimer::singleShot(1500, this, [this, token] {
+            if (token != m_appsRefreshToken || m_scope != Apps || m_appsView != RunningApps || !m_window
+                || !m_window->isVisible())
+                return;
+            showApps(); // windows were opened or closed meanwhile
+        });
+    }
 }
 
 QVariantList Launcher::frequentApps() const
