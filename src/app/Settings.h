@@ -485,6 +485,9 @@ struct Settings {
     // (WebSuggester). On: only words typed after a site's keyword go out,
     // to that site, which the user is about to search anyway.
     bool webSuggestions = true;
+    // Nothing found on this PC: a row that searches the first site of the
+    // list for the words typed, so Enter looks them up (GitHub #320).
+    bool webFallback = true;
 
     // [Shares]: network shares searched too, written as an array: size=,
     // 1\Path=, 1\Name=. A mapped drive (Z:\...) is kept as the share it maps.

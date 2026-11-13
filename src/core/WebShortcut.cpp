@@ -103,11 +103,18 @@ QString defaultWebSearchUrl(const WebShortcuts& shortcuts, const QString& words)
     const QString trimmed = words.trimmed();
     if (trimmed.isEmpty())
         return {};
-    for (const WebShortcut& s : shortcuts) {
-        if (s.searches())
-            return s.searchUrl(trimmed);
-    }
+    if (const qsizetype first = defaultWebSearch(shortcuts); first >= 0)
+        return shortcuts[first].searchUrl(trimmed);
     return u"https://www.bing.com/search?q="_s + QString::fromLatin1(QUrl::toPercentEncoding(trimmed));
+}
+
+qsizetype defaultWebSearch(const WebShortcuts& shortcuts) noexcept
+{
+    for (qsizetype i = 0; i < shortcuts.size(); ++i) {
+        if (shortcuts[i].searches())
+            return i;
+    }
+    return -1;
 }
 
 WebShortcuts withNewDefaults(WebShortcuts shortcuts, const WebShortcuts& defaults)
@@ -153,8 +160,21 @@ std::optional<TypedKeyword> typedKeyword(const WebShortcuts& shortcuts, QStringV
             continue;
         const QString words = text.mid(end).trimmed().toString();
         if (!words.isEmpty() && !shortcut.searches())
-            return std::nullopt;
+            break; // a page takes no words; its keyword may still end them for another's search
         return TypedKeyword {i, words};
+    }
+    // The words first and the keyword after them ("how to cook eggs gg"), for
+    // whoever thinks of the site last (GitHub #320).
+    qsizetype start = text.size();
+    while (start > 0 && !text[start - 1].isSpace())
+        --start;
+    const QStringView last = text.mid(start);
+    const QStringView before = text.left(start).trimmed();
+    if (before.isEmpty())
+        return std::nullopt;
+    for (qsizetype i = 0; i < shortcuts.size(); ++i) {
+        if (shortcuts[i].searches() && shortcuts[i].keyword.compare(last, Qt::CaseInsensitive) == 0)
+            return TypedKeyword {i, before.toString(), true};
     }
     return std::nullopt;
 }

@@ -1497,6 +1497,42 @@ void Launcher::setWebShortcuts(const WebShortcuts& shortcuts)
         search();
 }
 
+void Launcher::setWebFallback(bool on)
+{
+    if (on == m_webFallback)
+        return;
+    m_webFallback = on;
+    if (m_window && m_window->isVisible() && m_scope == All && !searchText().isEmpty())
+        search();
+}
+
+// Nothing found for words typed in 全部: the row that searches the web for
+// them, with the first site of the user's list that searches (the one the
+// OCR's 网页搜索 uses too). Not for what is not plain words to look up: a
+// folder typed in or a path, a filter, a regular expression, a mistake in
+// the query, a command's or a site's keyword (those have their own rows).
+std::optional<SearchResult> Launcher::webFallbackRow() const
+{
+    const QString words = m_query.trimmed();
+    if (!m_webFallback || m_scope != All || m_panel || m_folderSearch || m_keyword || m_filePrefix || m_regexMode
+        || words.isEmpty() || !m_queryError.isEmpty() || !m_typingPrefix.isEmpty() || !typedQuick().filters.isEmpty()
+        || typedKeyword(m_web, m_query) || words.contains(QDir::separator()) || words.contains(u'/'))
+        return std::nullopt;
+    const qsizetype first = defaultWebSearch(m_web);
+    if (first < 0)
+        return std::nullopt;
+    const WebShortcut& web = m_web[first];
+    SearchResult r; // as SearchEngine's fromWeb makes a search's row
+    r.name = web.name;
+    r.path = webPath(web.keyword, words);
+    r.app = AppKind::Web;
+    r.target = web.searchUrl(words);
+    r.keyword = web.keyword;
+    r.words = words;
+    r.icon = web.iconRef();
+    return r;
+}
+
 void Launcher::setWebSuggestions(bool on)
 {
     if (on == m_webSuggestions)
@@ -2453,6 +2489,10 @@ void Launcher::search(bool more)
 // moves the selection back to the first one; a refresh keeps it.
 void Launcher::showRows(SearchResults rows, QStringList highlights)
 {
+    if (rows.isEmpty()) {
+        if (std::optional<SearchResult> web = webFallbackRow())
+            rows.append(std::move(*web)); // Enter looks the words up instead of 没有找到 (GitHub #320)
+    }
     // The site's suggestions under its search's row, as they were: a new
     // list for the next word typed keeps them until the site answers for it
     // (rows coming and going at every key would make the window jump).

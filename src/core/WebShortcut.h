@@ -69,6 +69,8 @@ WebShortcuts withNewDefaults(WebShortcuts shortcuts, const WebShortcuts& default
 // the top is the default and the list's order is the user's to change; Bing's
 // when the list has none. Empty when `words` has none.
 QString defaultWebSearchUrl(const WebShortcuts& shortcuts, const QString& words);
+// That shortcut: the first of the list that searches; -1 when none does.
+qsizetype defaultWebSearch(const WebShortcuts& shortcuts) noexcept;
 
 // "winshun-web:<keyword>": stands for a shortcut's row (SearchResult::path).
 QString webPath(const QString& keyword, const QString& words = {});
@@ -77,11 +79,14 @@ bool isWebPath(QStringView path) noexcept;
 struct TypedKeyword {
     qsizetype index = -1; // into the shortcuts
     QString words; // what follows the keyword, trimmed; empty: the keyword alone
+    bool atEnd = false; // the words came first, the keyword last ("WinShun gh")
 };
 
 // The shortcut whose keyword the text starts with, alone or followed by a
 // space and the words to search for ("gh", "gh  WinShun"). A shortcut that
-// does not search takes no words: "page x" is an ordinary query then.
+// does not search takes no words: "page x" is an ordinary query then. Else
+// the one whose keyword the text ends with, after the words ("WinShun gh",
+// GitHub #320): one that searches only; the keyword first wins.
 std::optional<TypedKeyword> typedKeyword(const WebShortcuts& shortcuts, QStringView text);
 
 struct WebHit {

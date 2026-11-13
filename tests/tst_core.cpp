@@ -1976,8 +1976,18 @@ private slots:
         QVERIFY(typed(u"blog notes"_s).isEmpty()); // an ordinary query then
         QVERIFY(typed(u"ghost"_s).isEmpty());
         QVERIFY(typed(u"g"_s).isEmpty());
-        QVERIFY(typed(u"report gh"_s).isEmpty());
+        // The words first, the keyword after them (GitHub #320).
+        QCOMPARE(typed(u"report gh"_s), (QStringList {u"0"_s, u"report"_s}));
+        QCOMPARE(typed(u" how to  cook eggs  GH "_s), (QStringList {u"0"_s, u"how to  cook eggs"_s}));
+        QVERIFY(typedKeyword(shortcuts, u"report gh"_s)->atEnd);
+        QVERIFY(!typedKeyword(shortcuts, u"gh report"_s)->atEnd);
+        QCOMPARE(typed(u"gh report gh"_s), (QStringList {u"0"_s, u"report gh"_s})); // the keyword first wins
+        QCOMPARE(typed(u"blog notes gh"_s), (QStringList {u"0"_s, u"blog notes"_s})); // a page's keyword first: words like any
+        QVERIFY(typed(u"notes blog"_s).isEmpty()); // a page takes no words, at the end either
+        QVERIFY(typed(u"reportgh"_s).isEmpty());
         QVERIFY(typed({}).isEmpty());
+        QCOMPARE(defaultWebSearch(shortcuts), 0);
+        QCOMPARE(defaultWebSearch({shortcuts[1]}), -1);
         QVERIFY(!typedKeyword({}, u"gh"_s));
     }
 

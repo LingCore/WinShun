@@ -191,6 +191,15 @@ Column {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 2
 
+                            FlatButton { // the first that searches is the one used without a keyword (GitHub #320)
+                                dpr: webSection.dpr
+                                objectName: "webFirstButton"
+                                implicitHeight: 32
+                                flat: true
+                                visible: webRow.index > 0
+                                text: qsTranslate("SettingsWindow", "置顶")
+                                onClicked: webSection.editor.moveWebShortcutFirst(webRow.index)
+                            }
                             FlatButton {
                                 dpr: webSection.dpr
                                 implicitHeight: 32
@@ -230,6 +239,19 @@ Column {
             dpr: webSection.dpr
             checked: webSection.editor.webSuggestions
             onToggled: (on) => webSection.editor.webSuggestions = on
+        }
+    }
+
+    SettingRow { // GitHub #320
+        title: qsTranslate("SettingsWindow", "没有结果时用网页搜索")
+        keywords: qsTranslate("SettingsWindow", "没有找到;无结果;默认搜索;兜底;fallback;no results;default search").split(";")
+        description: qsTranslate("SettingsWindow", "在“全部”里什么都没找到时，列出一行用上面第一个能搜索的网站搜这些字，按 Enter 打开。想换网站，点它那一行的“置顶”")
+
+        ToggleSwitch {
+            objectName: "webFallbackToggle"
+            dpr: webSection.dpr
+            checked: webSection.editor.webFallback
+            onToggled: (on) => webSection.editor.webFallback = on
         }
     }
 }

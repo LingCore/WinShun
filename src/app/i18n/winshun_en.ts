@@ -1019,6 +1019,10 @@
         <translation>Web search suggestions</translation>
     </message>
     <message>
+        <source>没有结果时用网页搜索</source>
+        <translation>Search the web when nothing is found</translation>
+    </message>
+    <message>
         <source>网页搜索关键词</source>
         <translation>Web search keywords</translation>
     </message>
@@ -6460,6 +6464,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>搜索建议;联想;补全;suggest;suggestion</source>
         <translation>search suggestions;autocomplete;complete;suggest;suggestion</translation>
+    </message>
+    <message>
+        <source>没有结果时用网页搜索</source>
+        <translation>Search the web when nothing is found</translation>
+    </message>
+    <message>
+        <source>没有找到;无结果;默认搜索;兜底;fallback;no results;default search</source>
+        <translation>not found;no results;default search;fallback</translation>
+    </message>
+    <message>
+        <source>在“全部”里什么都没找到时，列出一行用上面第一个能搜索的网站搜这些字，按 Enter 打开。想换网站，点它那一行的“置顶”</source>
+        <translation>When All finds nothing, lists a row that searches the first site above for what you typed; Enter opens it. To use another site, click Move to top on its row</translation>
+    </message>
+    <message>
+        <source>置顶</source>
+        <translation>Move to top</translation>
     </message>
     <message>
         <source>在网站关键词后输入文字时，列出这个网站的搜索建议。只有这时才会把输入的文字发给那个网站</source>

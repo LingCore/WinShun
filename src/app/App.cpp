@@ -1518,6 +1518,7 @@ void App::applyWebSearch()
     m_pluginHost->setWebKeywords(keywords);
     m_launcher->setWebShortcuts(shortcuts);
     m_launcher->setWebSuggestions(!shortcuts.isEmpty() && m_settings.webSuggestions);
+    m_launcher->setWebFallback(m_settings.webFallback);
 }
 
 bool App::openWebSearch(const QString& query)

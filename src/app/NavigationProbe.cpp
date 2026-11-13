@@ -960,6 +960,43 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     launcher.setQuery({});
     settle(window);
     {
+        // Web searches (GitHub #320): a site's keyword after the words puts
+        // its search on top as before them; nothing found, a row searches the
+        // first site that does (没有结果时用网页搜索), unless switched off.
+        const auto shows = [&](int count) {
+            QElapsedTimer waiting;
+            waiting.start();
+            while ((launcher.searching() || launcher.results()->count() != count) && waiting.elapsed() < 3000)
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            settle(window);
+            return !launcher.searching() && launcher.results()->count() == count;
+        };
+        const auto first = [&] { return launcher.results()->at(0); };
+        launcher.setWebShortcuts({{u"page"_s, u"A page"_s, u"https://example.com/page"_s, {}},
+            {u"gg"_s, u"Google"_s, u"https://www.google.com/search?q=%s"_s, {}},
+            {u"bd"_s, u"Baidu"_s, u"https://www.baidu.com/s?wd=%s"_s, {}}});
+        launcher.setQuery(u"report gg"_s);
+        check(shows(1) && first()->isWeb() && first()->keyword == u"gg" && first()->words == u"report",
+            u"web: the keyword after the words searches its site for them"_s);
+        launcher.setQuery(u"how to cook eggs"_s);
+        check(shows(1) && first()->isWeb() && first()->keyword == u"gg"
+                && first()->target == u"https://www.google.com/search?q=how%20to%20cook%20eggs",
+            u"web: nothing found, a row searches the first site that searches"_s);
+        check(!window->property("showEmptyState").toBool(), u"web: that row stands in for the empty state"_s);
+        check(window->grabWindow().save(output.filePath(u"web-fallback.png"_s)), u"capture the web search row"_s);
+        launcher.setQuery(u"report"_s);
+        check(shows(1) && !first()->isWeb(), u"web: something found, no such row"_s);
+        launcher.setWebFallback(false);
+        launcher.setQuery(u"how to cook eggs"_s);
+        check(shows(0), u"web: switched off, nothing found lists nothing"_s);
+        settle(window);
+        check(window->property("showEmptyState").toBool(), u"web: and says so as before"_s);
+        launcher.setWebFallback(true);
+        launcher.setWebShortcuts({});
+        launcher.setQuery({});
+        settle(window);
+    }
+    {
         // 搜索面板空着时列出全部文件 (Settings::panelListsAll, GitHub #321):
         // on, the empty panel lists every file as Everything does; off,
         // nothing until something is typed or a filter chosen.

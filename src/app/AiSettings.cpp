@@ -664,6 +664,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"WebSearch/Suggestions", QT_TRANSLATE_NOOP("AiSettings", "网页搜索建议"), "web", -1,
                     "Shows a site's search suggestions under a keyword's search; only the words typed after the keyword go out, to that site."},
         &Settings::webSuggestions));
+    add(boolean({"WebSearch/Fallback", QT_TRANSLATE_NOOP("AiSettings", "没有结果时用网页搜索"), "web", -1,
+                    "When nothing on this PC matches what was typed in 全部, lists a row that searches the first site of the web search list for it."},
+        &Settings::webFallback));
     {
         Entry e = base({"WebSearch/Shortcuts", QT_TRANSLATE_NOOP("AiSettings", "网页搜索关键词"), "web", -1,
                            "Keywords that open or search a web page from the search box: 'gh' opens GitHub, 'gh WinShun' searches it. Change with add ({keyword, name?, url, home?}; url is an http(s) address, %s where the searched words go) or remove (keywords). A keyword another shortcut or a favorite has is refused."},

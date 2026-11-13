@@ -66,7 +66,15 @@ inline bool suggestions(const PluginConfig* config)
     return !text || *text != u"false";
 }
 
-inline void store(PluginConfig& config, const WebShortcuts& shortcuts, bool suggestions)
+// "fallback": with nothing found on this PC, a row searching the first site
+// for what was typed (GitHub #320). On unless switched off.
+inline bool fallback(const PluginConfig* config)
+{
+    const auto* text = config ? value(*config, u"fallback") : nullptr;
+    return !text || *text != u"false";
+}
+
+inline void store(PluginConfig& config, const WebShortcuts& shortcuts, bool suggestions, bool fallback)
 {
     QJsonArray entries;
     for (const auto& shortcut : shortcuts) {
@@ -76,6 +84,7 @@ inline void store(PluginConfig& config, const WebShortcuts& shortcuts, bool sugg
     }
     setValue(config, QStringLiteral("shortcuts"), QString::fromUtf8(QJsonDocument(entries).toJson(QJsonDocument::Compact)));
     setValue(config, QStringLiteral("suggestions"), suggestions ? QStringLiteral("true") : QStringLiteral("false"));
+    setValue(config, QStringLiteral("fallback"), fallback ? QStringLiteral("true") : QStringLiteral("false"));
 }
 
 // The v1 zero-code sample's commands, including renamed/removed keywords.

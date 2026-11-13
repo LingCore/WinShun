@@ -1248,7 +1248,7 @@ void Settings::load()
                     legacyCommands = object.value(u"commands"_s).toArray();
             }
             webplugin::mergeLegacyCommands(webShortcuts, config, legacyCommands);
-            webplugin::store(config, webShortcuts, webSuggestions);
+            webplugin::store(config, webShortcuts, webSuggestions, webFallback);
             config.enabled = !firstRun || legacy || config.enabled;
             if (config.enabled && config.confirmed.isEmpty())
                 config.confirmed = {u"none"_s}; // URL-only; the migration adds no permission.
@@ -1259,6 +1259,7 @@ void Settings::load()
     }
     webShortcuts = webplugin::shortcuts(plugin(webplugin::kId));
     webSuggestions = webplugin::suggestions(plugin(webplugin::kId));
+    webFallback = webplugin::fallback(plugin(webplugin::kId));
     // System switches used to be unconditional native backends. Preserve
     // existing users' system-search choice once; a fresh profile starts off.
     // Persist the marker even when off, so the second load is not an upgrade.
@@ -1482,7 +1483,7 @@ bool Settings::saveChecked() const
         pluginConfigs.append(config);
         web = std::prev(pluginConfigs.end());
     }
-    webplugin::store(*web, webShortcuts, webSuggestions);
+    webplugin::store(*web, webShortcuts, webSuggestions, webFallback);
     writePlugins(s, pluginConfigs);
     s.setValue(u"Plugins/WebSearchMigrated"_s, true);
     s.sync();

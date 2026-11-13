@@ -199,6 +199,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool thumbnails READ thumbnails WRITE setThumbnails NOTIFY changed FINAL)
     Q_PROPERTY(bool rowDeleteButton READ rowDeleteButton WRITE setRowDeleteButton NOTIFY changed FINAL)
     Q_PROPERTY(bool webSuggestions READ webSuggestions WRITE setWebSuggestions NOTIFY changed FINAL)
+    Q_PROPERTY(bool webFallback READ webFallback WRITE setWebFallback NOTIFY changed FINAL)
     Q_PROPERTY(QString sort READ sort WRITE setSort NOTIFY changed FINAL) // match | newest | oldest | name | folder | type | largest | smallest (kSortNames)
     Q_PROPERTY(QString startList READ startList WRITE setStartList NOTIFY changed FINAL) // opened | modified | none
     Q_PROPERTY(int recentItems READ recentItems WRITE setRecentItems NOTIFY changed FINAL)
@@ -749,6 +750,8 @@ public:
     void setRowDeleteButton(bool on);
     bool webSuggestions() const { return m_settings.webSuggestions; }
     void setWebSuggestions(bool on);
+    bool webFallback() const { return m_settings.webFallback; }
+    void setWebFallback(bool on);
     QString sort() const { return m_settings.sort; }
     void setSort(const QString& sort);
     QString startList() const { return m_settings.startList; }
@@ -910,6 +913,9 @@ public:
     // (knownSuggestUrl), offered in the form of a new shortcut; empty if none.
     Q_INVOKABLE QString knownSuggestUrl(const QString& url) const;
     Q_INVOKABLE void removeWebShortcut(int index);
+    // To the top of the list: the first that searches is the one a search
+    // without a keyword uses (the row for nothing found, the OCR's 网页搜索).
+    Q_INVOKABLE void moveWebShortcutFirst(int index);
     Q_INVOKABLE void openWebShortcut(int index); // its site, to try it
     // Asks for a PNG, ICO or SVG to show for a shortcut and keeps it: {icon: its
     // name} to save with it, {error: why not}, or {} when cancelled.

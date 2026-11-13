@@ -500,6 +500,9 @@ public:
     // 网页搜索建议 (Settings::webSuggestions): a site keyword and words typed
     // ("baidu 显卡") list the site's suggestions under its search's row.
     void setWebSuggestions(bool on);
+    // 没有结果时用网页搜索 (Settings::webFallback): nothing found in 全部,
+    // a row searching the first site of the list for the words (GitHub #320).
+    void setWebFallback(bool on);
     // Its user's favorites (may be none): with every request, and the
     // rows refreshed when they change.
     void setFavorites(Favorites* favorites);
@@ -1378,6 +1381,8 @@ private:
     bool m_contentInLowPriority = false; // 内容 also looks in system, program and tool folders
     WebShortcuts m_web;
     bool m_webSuggestions = true;
+    bool m_webFallback = true;
+    std::optional<SearchResult> webFallbackRow() const;
     WebSuggester m_suggester;
     SearchResults m_suggestRows; // the latest answer's, for the site typed; kept until the next answer
     QPointer<Favorites> m_favorites;
