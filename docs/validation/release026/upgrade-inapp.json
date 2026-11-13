@@ -1,0 +1,64 @@
+{
+  "mode": "InApp",
+  "hold": false,
+  "before": {
+    "version": "0.25.0",
+    "exeSha": "9ae6797322dbee5da83facc3456559690748a47c76c6f357f585144975525671",
+    "runningFromHere": 0,
+    "running": 0,
+    "elevated": [],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.25.0",
+    "iniBytes": 12023,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "indexBytes": 31870107
+  },
+  "updated": true,
+  "seconds": 60.8,
+  "after": {
+    "version": "0.26.0",
+    "exeSha": "e9d36455eb617a52cda9e4bf10a683bca6b7f63525f15d50fb3ba4e51fcb2263",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.26.0",
+    "iniBytes": 12049,
+    "historySha": "2761fcdbde13702871bbc56ee538cab0a98495e3e2711e7f3b9f1b9e4722d057",
+    "indexBytes": 31928760
+  },
+  "feedRequests": [
+    "0.26.0 from F:\\电脑便捷工具\\dist\\release026 on http://127.0.0.1:47631/stable.json",
+    "\"GET /stable.json HTTP/1.1\" 200 -",
+    "\"GET /stable.json HTTP/1.1\" 200 -",
+    "\"GET /WinShun-0.26.0-x64-setup.exe HTTP/1.1\" 200 -"
+  ],
+  "setupLog": null,
+  "helperLog": [
+    "2026-11-12 14:54:36 swapped in 41 entries, backed up 41",
+    "2026-11-12 14:54:36 started F:\\电脑便捷工具\\build\\updtest-live\\portable-out\\portable\\WinShun\\WinShun.exe (pid 27384)",
+    "2026-11-12 14:54:37 some of the backup was left: F:\\电脑便捷工具\\build\\updtest-live\\portable-out\\portable\\WinShun\\.winshun-update-old",
+    "2026-11-12 14:54:37 done",
+    "2026-11-12 14:58:18 Setup ended (exit code 0)",
+    "2026-11-13 10:04:48 Setup ended (exit code 0)"
+  ],
+  "appLog": [
+    "warning: Update check failed: 403 0",
+    "warning: Update check failed: 0 12029",
+    "warning: Update check failed: 0 12002",
+    "warning: Update check failed: 0 12029",
+    "warning: Update: installing 0.25.1 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "warning: Update: installing 0.25.1 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "warning: Update: installing 0.26.0 at once (WINSHUN_UPDATE_AUTOINSTALL)"
+  ],
+  "runningAfterRestart": 1
+}
