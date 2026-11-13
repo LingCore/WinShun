@@ -11,6 +11,7 @@
 #include "TextRecognizer.h"
 
 #include "PaddleOcr.h"
+#include "QrCode.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -237,8 +238,9 @@ void TextRecognizer::work(const std::stop_token& stop)
                 QString error;
                 QImageReader reader(job.file);
                 reader.setAutoTransform(true);
-                if (paddle->read(reader.read(), &lines, &error)) {
-                    words = lines.join(u'\n');
+                const QImage image = reader.read();
+                if (paddle->read(image, &lines, &error)) {
+                    words = capture::withQrCodes(lines.join(u'\n'), image); // a code's content with the words (GitHub #305)
                 } else {
                     qWarning().noquote() << "Text recognition failed:" << error;
                     ok = false;
@@ -264,7 +266,9 @@ void TextRecognizer::work(const std::stop_token& stop)
                         if (!text.isEmpty())
                             lines.append(std::move(text));
                     }
-                    words = lines.join(u'\n');
+                    QImageReader reader(job.file);
+                    reader.setAutoTransform(true);
+                    words = capture::withQrCodes(lines.join(u'\n'), reader.read());
                 }
             } catch (const winrt::hresult_error& e) {
                 // Not marked read: tried again at the next start, rather than

@@ -358,6 +358,8 @@ public:
     // Pictures whose words were not read yet, newest first (their files
     // written); with `all`, then those read already too.
     std::vector<qint64> unreadPictures(bool all = false) const;
+    // Pictures read with no words found in them, newest first.
+    std::vector<qint64> wordlessPictures() const;
     void setPictureText(qint64 id, const QString& text); // read: the words in it, maybe none
 
     // Small values kept with the history (the separator for joined pastes).

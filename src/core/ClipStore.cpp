@@ -669,6 +669,16 @@ std::vector<qint64> ClipStore::unreadPictures(bool all) const
     return ids;
 }
 
+std::vector<qint64> ClipStore::wordlessPictures() const
+{
+    std::vector<qint64> ids;
+    for (const Clip& c : m_clips) {
+        if (c.kind == ClipKind::Image && c.read && c.ocr.isEmpty() && !imagePending(c.id))
+            ids.push_back(c.id);
+    }
+    return ids;
+}
+
 void ClipStore::setPictureText(qint64 id, const QString& words)
 {
     const auto it = std::ranges::find(m_clips, id, &Clip::id);

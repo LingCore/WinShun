@@ -655,6 +655,21 @@ private slots:
         QCOMPARE(found, QStringList {u"https://winshun.example/q"_s});
     }
 
+    // The words read in a picture, and what its codes hold after them: what
+    // the clipboard history searches and shows for it (GitHub #305).
+    void aCodeJoinsThePicturesWords()
+    {
+        const QImage code = qrPicture(u"https://winshun.example/q"_s);
+        QCOMPARE(withQrCodes({}, code), u"https://winshun.example/q"_s); // a code alone: no longer wordless
+        QCOMPARE(withQrCodes(u"scan me"_s, code), u"scan me\nhttps://winshun.example/q"_s);
+        QCOMPARE(withQrCodes(u"see https://winshun.example/q here"_s, code), u"see https://winshun.example/q here"_s); // read as text already
+        QImage plain(200, 120, QImage::Format_RGB32);
+        plain.fill(Qt::white);
+        QCOMPARE(withQrCodes(u"just words"_s, plain), u"just words"_s);
+        QCOMPARE(withQrCodes({}, plain), QString());
+        QCOMPARE(withQrCodes(u"words"_s, QImage()), u"words"_s);
+    }
+
     void aQrCodeSurvivesInversionAndATurn()
     {
         QCOMPARE(readQrCodes(qrPicture(u"inverted code"_s, 6, true)), QStringList {u"inverted code"_s}); // dark mode

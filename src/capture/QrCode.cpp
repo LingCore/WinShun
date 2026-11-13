@@ -53,6 +53,19 @@ QStringList readQrCodes(const QImage& image)
     return found;
 }
 
+QString withQrCodes(QString words, const QImage& image)
+{
+    for (const QString& found : readQrCodes(image)) {
+        const QString code = found.trimmed();
+        if (code.isEmpty() || words.contains(code))
+            continue;
+        if (!words.isEmpty())
+            words += u'\n';
+        words += code;
+    }
+    return words;
+}
+
 QString qrLink(const QString& text)
 {
     const QString trimmed = text.trimmed();

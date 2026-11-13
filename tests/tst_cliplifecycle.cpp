@@ -58,6 +58,25 @@ private slots:
         QVERIFY(!recognizer.running());
     }
 
+    // The whole way for a real picture, which loads the OCR models: only when
+    // asked. WS_OCR_PICTURE names the file, WS_OCR_EXPECT what must be among
+    // the words read in it (a QR code's content, GitHub #305). Skipped without.
+    void recognizerReadsWhatAPictureSays()
+    {
+        const QString picture = qEnvironmentVariable("WS_OCR_PICTURE");
+        if (picture.isEmpty())
+            QSKIP("WS_OCR_PICTURE is not set");
+        TextRecognizer recognizer;
+        QSignalSpy done(&recognizer, &TextRecognizer::done);
+        recognizer.read(1, picture);
+        QTRY_COMPARE_WITH_TIMEOUT(done.size(), 1, 60000);
+        QVERIFY(done.back().at(2).toBool());
+        const QString words = done.back().at(1).toString();
+        qInfo().noquote() << "engine" << recognizer.engine() << "read" << words.size() << "characters";
+        QVERIFY2(words.contains(qEnvironmentVariable("WS_OCR_EXPECT")), qUtf8Printable(words));
+        QTRY_VERIFY_WITH_TIMEOUT(!recognizer.running(), 5000);
+    }
+
     void disabledWriterRetiresAfterItsRequest()
     {
         ClipboardWatcher watcher({}, {});

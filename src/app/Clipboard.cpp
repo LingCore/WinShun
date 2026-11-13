@@ -113,6 +113,13 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
                 m_rereading.insert(id);
             m_recognizer.read(id, m_store->imagePath(id));
         }
+        // Read before QR codes were (until 0.27): those left without words
+        // once more, for the code one of them may be (GitHub #305).
+        if (!again && m_store->value(u"codes"_s) != u"1") {
+            for (const qint64 id : m_store->wordlessPictures())
+                m_recognizer.read(id, m_store->imagePath(id));
+            m_store->setValue(u"codes"_s, u"1"_s);
+        }
     });
     if (m_store->isOpen())
         m_backlogTimer.start();
