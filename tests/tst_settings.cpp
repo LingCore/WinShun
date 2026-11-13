@@ -87,6 +87,8 @@ private slots:
         QVERIFY(!settings.mergeFileScope);
         QVERIFY(!settings.appsTab);
         settings.appsTab = true;
+        QVERIFY(settings.rowDeleteButton); // GitHub #316: there unless turned off
+        settings.rowDeleteButton = false;
         QCOMPARE(settings.queryHistoryKeys, u"ctrl"_s);
         settings.mergeFileScope = true;
         settings.queryHistoryKeys = u"alt"_s;
@@ -95,6 +97,7 @@ private slots:
         restored.load();
         QVERIFY(restored.mergeFileScope);
         QVERIFY(restored.appsTab);
+        QVERIFY(!restored.rowDeleteButton);
         QCOMPARE(restored.queryHistoryKeys, u"alt"_s);
         restored.queryHistoryKeys = u"off"_s;
         QVERIFY(restored.saveChecked());
@@ -780,6 +783,14 @@ private slots:
         ws::Settings settings;
         settings.load();
         QVERIFY(!settings.opusTyping);
+        QVERIFY(!settings.desktopTyping); // GitHub #314: asked for, as the others
+        settings.desktopTyping = true;
+        settings.save();
+        {
+            ws::Settings read;
+            read.load();
+            QVERIFY(read.desktopTyping);
+        }
         for (const bool explorer : {false, true}) {
             for (const bool opus : {true, false}) {
                 settings.explorerTyping = explorer;

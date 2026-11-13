@@ -42,7 +42,8 @@ private slots:
         QVERIFY(PluginHotkeys::allowed(u"PrintScreen"_s));
         QVERIFY(!PluginHotkeys::allowed(u"A"_s));
         QVERIFY(!PluginHotkeys::allowed(u"Ctrl+A+B"_s));
-        QVERIFY(!PluginHotkeys::allowed(u"Shift+Space"_s));
+        QVERIFY(PluginHotkeys::allowed(u"Shift+Space"_s)); // the one chord Shift makes (GitHub #294)
+        QVERIFY(!PluginHotkeys::allowed(u"Shift+Enter"_s));
         QVERIFY(!PluginHotkeys::allowed(u"Shift+A"_s));
     }
 

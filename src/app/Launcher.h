@@ -134,6 +134,8 @@ class Launcher : public QObject {
     // or "" for none (Settings::numberKeys).
     Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString numberHints READ numberHints NOTIFY resultOptionsChanged FINAL)
+    // A file's row has a delete button among its buttons (the settings, GitHub #316).
+    Q_PROPERTY(bool rowDeleteButton READ rowDeleteButton NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool footerHints READ footerHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool pureSearch READ pureSearch NOTIFY resultOptionsChanged FINAL)
@@ -522,6 +524,8 @@ public:
     void setOpenHotkey(const QString& shortcut);
     Q_INVOKABLE bool isOpenKey(int key, int modifiers) const;
     void setNumberHints(const QString& hints);
+    bool rowDeleteButton() const { return m_rowDeleteButton; }
+    void setRowDeleteButton(bool shown);
     bool shortcutHelp() const { return m_shortcutHelp; }
     bool footerHints() const { return m_footerHints; }
     void setKeyboardHints(bool help, bool footer);
@@ -1304,6 +1308,7 @@ private:
     bool m_tabEntersFavoriteFolder = false;
     QString m_numberKeys = QStringLiteral("ctrl");
     QString m_numberHints = QStringLiteral("always");
+    bool m_rowDeleteButton = true;
     bool m_shortcutHelp = true;
     bool m_footerHints = true;
     bool m_pureSearch = false;

@@ -455,6 +455,10 @@
         <translation>Automatic updates</translation>
     </message>
     <message>
+        <source>在桌面上直接打字搜索</source>
+        <translation>Type to search on the desktop</translation>
+    </message>
+    <message>
         <source>在 Directory Opus 里直接打字搜索</source>
         <translation>Type to search in Directory Opus</translation>
     </message>
@@ -929,6 +933,10 @@
     <message>
         <source>显示图片缩略图</source>
         <translation>Show thumbnails</translation>
+    </message>
+    <message>
+        <source>显示删除按钮</source>
+        <translation>Show the delete button</translation>
     </message>
     <message>
         <source>内置预览</source>
@@ -4791,6 +4799,22 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Checking for WinShun updates contacts lcstp.com and sends only the Windows version and the kind of install; checking plugins downloads the plugin library list from GitHub or a mirror. Nothing personal is sent.</translation>
     </message>
     <message>
+        <source>在桌面上直接打字搜索</source>
+        <translation>Type to search on the desktop</translation>
+    </message>
+    <message>
+        <source>桌面;打字;输入;直接搜索;图标;desktop;type to search</source>
+        <translation>desktop;type to search;typing;icons</translation>
+    </message>
+    <message>
+        <source>点一下桌面后直接打字，即可用 Win顺 搜索整台电脑</source>
+        <translation>Click the desktop and just type: Win顺 searches the whole PC</translation>
+    </message>
+    <message>
+        <source>代替桌面自带的“按首字母跳到图标”；重命名图标时不受影响</source>
+        <translation>Replaces the desktop&apos;s own jump to an icon by its first letters; renaming an icon is not affected</translation>
+    </message>
+    <message>
         <source>在 Directory Opus 里直接打字搜索</source>
         <translation>Type to search in Directory Opus</translation>
     </message>
@@ -5685,6 +5709,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>显示图片缩略图</source>
         <translation>Show thumbnails</translation>
+    </message>
+    <message>
+        <source>显示删除按钮</source>
+        <translation>Show the delete button</translation>
+    </message>
+    <message>
+        <source>删除;垃圾桶;回收站;误删;按钮;delete;trash;recycle</source>
+        <translation>delete;trash;recycle bin;remove;button;accident</translation>
+    </message>
+    <message>
+        <source>文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后可在右键菜单的“更多选项”里删除</source>
+        <translation>Rows of files and folders end with a delete button (click twice; to the Recycle Bin). Off: delete from More options in the right-click menu</translation>
     </message>
     <message>
         <source>缩略图;预览;图片;照片;视频;PDF;thumbnail;preview</source>

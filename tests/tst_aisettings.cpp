@@ -438,9 +438,9 @@ private slots:
     {
         QTest::addColumn<QString>("hotkey");
         QTest::addColumn<bool>("accepted");
-        for (const char* ok : {"Alt+Space", "Ctrl+Alt+D", "Win+V", "ctrl+shift+a", "Alt+F4", "F5", "Shift+F5", "F24", "Control+Alt+`", "Win+Shift+S"})
+        for (const char* ok : {"Alt+Space", "Ctrl+Alt+D", "Win+V", "ctrl+shift+a", "Alt+F4", "F5", "Shift+F5", "F24", "Control+Alt+`", "Win+Shift+S", "Shift+Space"})
             QTest::newRow(ok) << QString::fromLatin1(ok) << true;
-        for (const char* bad : {"Enter", "Space", "A", "a", "7", "PrintScreen", "Shift+A", "Shift+Enter", "Shift+Space", "Tab", "F25", "F0",
+        for (const char* bad : {"Enter", "Space", "A", "a", "7", "PrintScreen", "Shift+A", "Shift+Enter", "Shift+Tab", "Tab", "F25", "F0",
                  "Ctrl", "Ctrl+Alt", "Ctrl+A+B", "Banana", "Ctrl+Banana"})
             QTest::newRow(bad) << QString::fromLatin1(bad) << false;
     }

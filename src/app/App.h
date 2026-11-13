@@ -403,6 +403,7 @@ private:
     // that window's screen, and the keys follow; with no folder there, the
     // keys go back to Explorer.
     void folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request);
+    void desktopTyped(HWND desktop, std::uint64_t request); // typed on the desktop's icons: the launcher, for the whole PC
     void typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t request, bool known, const QString& folder);
     void followTypingSelection();
     void cancelTypingSelection();
@@ -755,7 +756,7 @@ private:
     bool m_lettersPending = false; // opened with englishOnOpen, its field not yet switched (lettersOnOpen)
     win::LettersSwitch m_lettersSwitch; // what that did, to put back on hiding
     std::unique_ptr<ComWorker> m_typingWorker; // queries a file display's folder (folderTyped); before m_typing
-    std::unique_ptr<TypeToSearch> m_typing; // while StartMenuTyping, ExplorerTyping, OpusTyping or PasteFile is on
+    std::unique_ptr<TypeToSearch> m_typing; // while StartMenuTyping, ExplorerTyping, OpusTyping, DesktopTyping or PasteFile is on
     // The launcher is up from typing in this Explorer or Opus window and tab:
     // Esc goes back to the window, a folder opened goes to the tab (openInTypingTab).
     // Cleared by any other opening (showLauncher), by hiding the launcher,

@@ -3625,6 +3625,37 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
             if (test.name == u"Portable.ExE")
                 saveGrab(window, output.filePath(u"portable-admin.png"_s));
         }
+        {
+            // 显示删除按钮 (GitHub #316): a file's row has the button unless
+            // the settings take it away; its other buttons and its menu's 更多选项 stay.
+            SearchResult file;
+            file.name = u"Notes.txt"_s;
+            file.path = temporary.filePath(file.name);
+            launcher.results()->assign({file}, {});
+            launcher.setCurrentRow(0);
+            settle(window);
+            const auto shown = [&](const QString& name) {
+                QQuickItem* row = visualNamed(window->contentItem(), u"resultRow-0"_s);
+                QQuickItem* action = row ? visualNamed(row, name) : nullptr;
+                return action && action->isVisible();
+            };
+            const auto menuHasMore = [&] {
+                bool found = false;
+                for (const QVariant& item : launcher.menuItems(0))
+                    found = found || item.toMap().value(u"action"_s).toInt() == Launcher::SystemMenu; // Windows' menu, which deletes
+                return found;
+            };
+            check(shown(u"deleteAction"_s) && shown(u"copyPathAction"_s), u"launcher: a file's row has its delete button"_s);
+            launcher.setRowDeleteButton(false);
+            settle(window);
+            check(!shown(u"deleteAction"_s) && shown(u"copyPathAction"_s),
+                u"launcher: the delete button goes with its setting, the other buttons stay"_s);
+            check(menuHasMore(), u"launcher: the row's menu still leads to Windows' own, which deletes"_s);
+            saveGrab(window, output.filePath(u"row-without-delete.png"_s));
+            launcher.setRowDeleteButton(true);
+            settle(window);
+            check(shown(u"deleteAction"_s), u"launcher: the delete button is back with its setting"_s);
+        }
         window->hide();
     }
     {

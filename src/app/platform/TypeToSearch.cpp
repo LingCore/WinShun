@@ -437,7 +437,8 @@ void TypeToSearch::foregroundChanged(HWND window, HWND named)
             m_explorerBehind = named; // behind another window, Explorer's own too
         else if (behind && behind != window && activeBehind(behind))
             m_explorerBehind = behind;
-        if (m_surfaces.pasteFile && folderview::classifyWindow(window).surface == folderview::Surface::Desktop
+        if ((m_surfaces.pasteFile || m_surfaces.desktop)
+            && folderview::classifyWindow(window).surface == folderview::Surface::Desktop
             && !integrity::higherThanOurs(window))
             m_desktop = window;
     }
@@ -616,6 +617,7 @@ bool TypeToSearch::startsHold(UINT vk, bool press)
     HWND tab = nullptr;
     HWND source = nullptr;
     bool opus = false;
+    bool desktop = false;
     if (m_startInFront) {
         if (m_windowsSearch || !searchtyping::startsTyping(vk))
             return false;
@@ -625,6 +627,16 @@ bool TypeToSearch::startsHold(UINT vk, bool press)
             return false;
         source = m_opus;
         opus = true;
+        source = m_opus;
+        opus = true;
+    } else if (m_surfaces.desktop && m_desktop && ::GetForegroundWindow() == m_desktop) {
+        // As in an Explorer folder: the keys that would jump to an icon by
+        // its name, the icons having the keyboard (no name being renamed,
+        // no menu open).
+        if (!searchtyping::explorerStarts(vk, press, combination, searchtyping::Focus::ItemsView, false) || !desktopFocused())
+            return false;
+        source = m_desktop;
+        desktop = true;
     } else if (m_surfaces.explorer && (m_explorer || m_explorerBehind)) {
         // The key alone first; what is in front and what has the focus
         // are asked only for one that would start a search.
@@ -663,9 +675,12 @@ bool TypeToSearch::startsHold(UINT vk, bool press)
     if (source) {
         const RequestId request = ++g_nextFolderRequest;
         m_pendingRequest = request;
-        const auto& callback = opus ? m_callbacks.typedInOpus : m_callbacks.typedInExplorer;
-        if (callback)
+        if (desktop) {
+            if (m_callbacks.typedOnDesktop)
+                m_callbacks.typedOnDesktop(source, vk, request);
+        } else if (const auto& callback = opus ? m_callbacks.typedInOpus : m_callbacks.typedInExplorer) {
             callback(source, tab, vk, request);
+        }
     } else if (m_callbacks.typed) {
         m_callbacks.typed();
     }

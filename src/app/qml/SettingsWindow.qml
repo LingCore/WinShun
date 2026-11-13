@@ -2096,6 +2096,21 @@ Window {
                     }
                 }
 
+                SettingRow { // GitHub #314
+                    id: desktopTypingRow
+                    title: qsTr("在桌面上直接打字搜索")
+                    keywords: qsTr("桌面;打字;输入;直接搜索;图标;desktop;type to search").split(";")
+                    description: qsTr("点一下桌面后直接打字，即可用 Win顺 搜索整台电脑")
+                    tip: qsTr("代替桌面自带的“按首字母跳到图标”；重命名图标时不受影响")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        objectName: "desktopTypingToggle"
+                        checked: window.editor.desktopTyping
+                        onToggled: (on) => window.editor.desktopTyping = on
+                    }
+                }
+
                 SettingRow {
                     id: opusTypingRow
                     title: qsTr("在 Directory Opus 里直接打字搜索")
@@ -4325,6 +4340,19 @@ Window {
                         dpr: window.dpr
                         checked: window.editor.thumbnails
                         onToggled: (on) => window.editor.thumbnails = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("显示删除按钮")
+                    keywords: qsTr("删除;垃圾桶;回收站;误删;按钮;delete;trash;recycle").split(";")
+                    description: qsTr("文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后可在右键菜单的“更多选项”里删除")
+
+                    ToggleSwitch {
+                        objectName: "rowDeleteButtonToggle"
+                        dpr: window.dpr
+                        checked: window.editor.rowDeleteButton
+                        onToggled: (on) => window.editor.rowDeleteButton = on
                     }
                 }
 

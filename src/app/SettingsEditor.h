@@ -78,6 +78,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString fileManagerProblem READ fileManagerProblem NOTIFY changed FINAL)
     Q_PROPERTY(bool explorerMenu READ explorerMenu WRITE setExplorerMenu NOTIFY changed FINAL)
     Q_PROPERTY(bool explorerTyping READ explorerTyping WRITE setExplorerTyping NOTIFY changed FINAL)
+    Q_PROPERTY(bool desktopTyping READ desktopTyping WRITE setDesktopTyping NOTIFY changed FINAL)
     Q_PROPERTY(bool opusTyping READ opusTyping WRITE setOpusTyping NOTIFY changed FINAL)
     Q_PROPERTY(QString opusTypingScope READ opusTypingScope WRITE setOpusTypingScope NOTIFY changed FINAL) // folder | all (GitHub #82)
     Q_PROPERTY(QString folderTyping READ folderTyping WRITE setFolderTyping NOTIFY changed FINAL) // first | only | level (GitHub #110, #182)
@@ -196,6 +197,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool searchSystem READ searchSystem WRITE setSearchSystem NOTIFY changed FINAL)
     Q_PROPERTY(bool regexMode READ regexMode WRITE setRegexMode NOTIFY changed FINAL)
     Q_PROPERTY(bool thumbnails READ thumbnails WRITE setThumbnails NOTIFY changed FINAL)
+    Q_PROPERTY(bool rowDeleteButton READ rowDeleteButton WRITE setRowDeleteButton NOTIFY changed FINAL)
     Q_PROPERTY(bool webSuggestions READ webSuggestions WRITE setWebSuggestions NOTIFY changed FINAL)
     Q_PROPERTY(QString sort READ sort WRITE setSort NOTIFY changed FINAL) // match | newest | oldest | name | folder | type | largest | smallest (kSortNames)
     Q_PROPERTY(QString startList READ startList WRITE setStartList NOTIFY changed FINAL) // opened | modified | none
@@ -426,6 +428,8 @@ public:
     void setExplorerMenu(bool on);
     bool explorerTyping() const { return m_settings.explorerTyping; }
     void setExplorerTyping(bool on);
+    bool desktopTyping() const { return m_settings.desktopTyping; }
+    void setDesktopTyping(bool on);
     bool opusTyping() const { return m_settings.opusTyping; }
     void setOpusTyping(bool on);
     QString opusTypingScope() const { return m_settings.opusTypingScope; }
@@ -739,6 +743,8 @@ public:
     void setRegexMode(bool on);
     bool thumbnails() const { return m_settings.thumbnails; }
     void setThumbnails(bool on);
+    bool rowDeleteButton() const { return m_settings.rowDeleteButton; }
+    void setRowDeleteButton(bool on);
     bool webSuggestions() const { return m_settings.webSuggestions; }
     void setWebSuggestions(bool on);
     QString sort() const { return m_settings.sort; }

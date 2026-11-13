@@ -910,6 +910,7 @@ void Settings::load()
     fileManagerRevealCommand = readOrDefault(s, u"Launcher/FileManagerRevealCommand"_s, d.fileManagerRevealCommand).trimmed();
     explorerMenu = readOrDefault(s, u"Launcher/ExplorerMenu"_s, d.explorerMenu);
     explorerTyping = readOrDefault(s, u"Launcher/ExplorerTyping"_s, d.explorerTyping);
+    desktopTyping = readOrDefault(s, u"Launcher/DesktopTyping"_s, d.desktopTyping);
     opusTyping = readOrDefault(s, u"Launcher/OpusTyping"_s, d.opusTyping);
     opusTypingScope = readOrDefault(s, u"Launcher/OpusTypingScope"_s, d.opusTypingScope).trimmed().toLower();
     if (opusTypingScope != u"all")
@@ -964,6 +965,7 @@ void Settings::load()
     doubleClickToOpen = readOrDefault(s, u"Results/DoubleClickToOpen"_s, d.doubleClickToOpen);
     tabEntersFavoriteFolder = readOrDefault(s, u"Results/TabEntersFavoriteFolder"_s, d.tabEntersFavoriteFolder);
     thumbnails = readOrDefault(s, u"Results/Thumbnails"_s, d.thumbnails);
+    rowDeleteButton = readOrDefault(s, u"Results/DeleteButton"_s, d.rowDeleteButton);
     searchApps = readOrDefault(s, u"Results/SearchApps"_s, d.searchApps);
     searchSystem = readOrDefault(s, u"Results/SearchSystem"_s, d.searchSystem);
     regexMode = readOrDefault(s, u"Results/RegexMode"_s, d.regexMode);
@@ -1315,6 +1317,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FileManagerRevealCommand"_s, fileManagerRevealCommand);
     s.setValue(u"Launcher/ExplorerMenu"_s, explorerMenu);
     s.setValue(u"Launcher/ExplorerTyping"_s, explorerTyping);
+    s.setValue(u"Launcher/DesktopTyping"_s, desktopTyping);
     s.setValue(u"Launcher/OpusTyping"_s, opusTyping);
     s.setValue(u"Launcher/OpusTypingScope"_s, opusTypingScope);
     s.setValue(u"Launcher/FolderTyping"_s, folderTyping);
@@ -1350,6 +1353,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/DoubleClickToOpen"_s, doubleClickToOpen);
     s.setValue(u"Results/TabEntersFavoriteFolder"_s, tabEntersFavoriteFolder);
     s.setValue(u"Results/Thumbnails"_s, thumbnails);
+    s.setValue(u"Results/DeleteButton"_s, rowDeleteButton);
     s.setValue(u"Results/SearchApps"_s, searchApps);
     s.setValue(u"Results/SearchSystem"_s, searchSystem);
     s.setValue(u"Results/RegexMode"_s, regexMode);

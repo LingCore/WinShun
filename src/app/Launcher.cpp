@@ -1606,6 +1606,14 @@ void Launcher::setNumberHints(const QString& hints)
     emit resultOptionsChanged();
 }
 
+void Launcher::setRowDeleteButton(bool shown)
+{
+    if (m_rowDeleteButton == shown)
+        return;
+    m_rowDeleteButton = shown;
+    emit resultOptionsChanged();
+}
+
 void Launcher::setKeyboardHints(bool help, bool footer)
 {
     if (m_shortcutHelp == help && m_footerHints == footer)

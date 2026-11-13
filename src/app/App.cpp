@@ -929,9 +929,12 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_clipboard.get(), &Clipboard::pinnedChanged, this, &App::clipboardPinnedChanged);
     connect(m_clipboard.get(), &Clipboard::keysWanted, this, &App::engageClipboard);
     connect(m_clipboard.get(), &Clipboard::focusNeeded, this, &App::activateClipboard);
-    // A group's name is typed in the window itself, Chinese with the input
-    // method, which only works in the window with the focus.
+    // A group's name and an entry's note are typed in the window itself,
+    // Chinese with the input method, which only works in the window with
+    // the focus; pinned, the keys elsewhere, nothing typed came at all
+    // (GitHub #267).
     connect(m_clipboard.get(), &Clipboard::groupNameRequested, this, &App::activateClipboard);
+    connect(m_clipboard.get(), &Clipboard::noteRequested, this, &App::activateClipboard);
     connect(m_clipboard.get(), &Clipboard::fieldRequested, this, &App::returnToField);
     connect(m_clipboard.get(), &Clipboard::turnOnRequested, this, [this] {
         Settings settings = m_settings;
@@ -1937,6 +1940,7 @@ void App::applySettings(bool initial)
     m_preview->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
+    m_launcher->setRowDeleteButton(m_settings.rowDeleteButton);
     m_launcher->setKeyboardHints(m_settings.shortcutHelp, m_settings.footerHints);
     m_launcher->setMaxRows(m_settings.maxRows);
     m_launcher->setPureSearch(m_settings.pureSearch && !m_launcherOverBox);
@@ -2719,6 +2723,7 @@ void App::applyTypeToSearch()
     const TypeToSearch::Surfaces wanted {.startMenu = m_settings.taskbarStartTyping,
         .explorer = m_settings.explorerTyping,
         .opus = m_settings.opusTyping,
+        .desktop = m_settings.desktopTyping,
         .pasteFile = m_settings.pasteFileEnabled && m_settings.pasteFileCtrlV};
     if (m_typing && m_typing->surfaces() == wanted)
         return;
@@ -2747,6 +2752,15 @@ void App::applyTypeToSearch()
                                          .arg(reinterpret_cast<quintptr>(root), 0, 16)
                                          .arg(reinterpret_cast<quintptr>(tab), 0, 16);
                 folderTyped(root, tab, true, request);
+            },
+            Qt::QueuedConnection);
+    };
+    callbacks.typedOnDesktop = [this](HWND desktop, unsigned vk, TypeToSearch::RequestId request) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, desktop, vk, request] {
+                qInfo().noquote() << u"Desktop typing: key 0x%1"_s.arg(vk, 2, 16, QLatin1Char('0'));
+                desktopTyped(desktop, request);
             },
             Qt::QueuedConnection);
     };
@@ -3183,6 +3197,25 @@ void App::folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request)
             [this, root, tab, opus, request, known, folder] { typingFolderKnown(root, tab, opus, request, known, folder); },
             Qt::QueuedConnection);
     });
+}
+
+// Typed with the desktop's icons having the keyboard (GitHub #314): the
+// launcher as its hotkey opens it, nothing before the words, which follow
+// once it is ready for them. The desktop no longer in front (a window
+// opened meanwhile): the keys are given back, which only goes to the icons
+// if they still have the keyboard.
+void App::desktopTyped(HWND desktop, std::uint64_t request)
+{
+    if (!m_typing || !m_typing->pending(request))
+        return;
+    if (!m_settings.desktopTyping || !m_window || ::GetForegroundWindow() != desktop) {
+        qInfo() << "Desktop typing: the desktop is no longer in front; the keys go back to it";
+        m_typing->giveBack(request);
+        return;
+    }
+    beginHandoff(u"desktop"_s);
+    showLauncher();
+    deliverTyping(); // pinned and up already: it may be now
 }
 
 void App::typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t request, bool known, const QString& folder)
