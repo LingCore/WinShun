@@ -1060,7 +1060,7 @@ bool checkResultRowSpacing(QQmlEngine* engine, const QDir& output)
 bool checkPluginReviewSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output)
 {
     Checks check;
-    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 3), Q_ARG(QVariant, 1),
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 1), Q_ARG(QVariant, 0),
         Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "纯净搜索模式")));
     settle(window);
     auto* toggle = item(window->contentItem(), u"pureSearchToggle"_s);
