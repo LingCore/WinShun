@@ -4,6 +4,7 @@
 #include "Clipboard.h"
 #include "DialogRuleStore.h"
 #include "ClipboardDisplay.h"
+#include "Favorites.h"
 #include "FolderMenu.h"
 #include "History.h"
 #include "IndexService.h"
@@ -1327,6 +1328,57 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
         launcher.setRememberAdmin(false);
         history.remove(appPath);
         searchAgain();
+    }
+    {
+        // A command whose words find files (GitHub #319): "ed report" lists
+        // the files and folders "report" finds, Enter hands the one chosen
+        // to the command; its own row, the words as they are, comes last.
+        // No app is listed: a command cannot be handed one. A command
+        // without the choice is as before.
+        Favorites favorites(profile.filePath(u"favorites.json"_s));
+        Favorite editor {Favorite::Kind::Command, u"winshun-command:probe-editor"_s, u"编辑器"_s, u"ed"_s, u"D:\\Editor.exe {query}"_s};
+        editor.searchFiles = true;
+        Favorite plain {Favorite::Kind::Command, u"winshun-command:probe-plain"_s, u"回显"_s, u"pl"_s, u"D:\\Echo.exe {query}"_s};
+        favorites.add(editor);
+        favorites.add(plain);
+        launcher.setFavorites(&favorites);
+        const auto typed = [&](const QString& text) {
+            launcher.setQuery(text);
+            QElapsedTimer waiting;
+            waiting.start();
+            do {
+                settle(window);
+            } while (launcher.searching() && waiting.elapsed() < 3000);
+        };
+        const auto enterHint = [&] { return launcher.keyHints().value(u"enter"_s).toString(); };
+        typed(u"ed report"_s);
+        const int count = launcher.results()->count();
+        QStringList paths;
+        for (int row = 0; row < count; ++row)
+            paths.append(launcher.results()->pathAt(row));
+        check(count == 4 && paths.last() == editor.path, u"a command's words list the files found, its own row last: "_s + paths.join(u" | "_s));
+        check(std::ranges::none_of(paths, [](const QString& p) { return p.contains(u"Report.exe") || p.startsWith(u"shell:"); }),
+            u"no app among a command's files"_s);
+        launcher.setCurrentRow(0);
+        settle(window);
+        check(enterHint() == QCoreApplication::translate("ws::Launcher", "用“%1”打开").arg(editor.name),
+            u"Enter on a file found says the command it goes to: "_s + enterHint());
+        check(window->grabWindow().save(output.filePath(u"command-files.png"_s)), u"capture a command's files"_s);
+        launcher.setCurrentRow(count - 1);
+        settle(window);
+        check(enterHint() == QCoreApplication::translate("ws::Launcher", "原样传入“%1”").arg(u"report"_s),
+            u"Enter on the command's own row says the words go as they are: "_s + enterHint());
+        typed(u"ed"_s);
+        check(launcher.results()->count() >= 1 && launcher.results()->pathAt(0) == editor.path,
+            u"its keyword alone is the command, as before"_s);
+        typed(u"pl report"_s);
+        launcher.setCurrentRow(0);
+        settle(window);
+        check(launcher.results()->count() >= 1 && launcher.results()->pathAt(0) == plain.path
+                && enterHint() == QCoreApplication::translate("ws::Launcher", "打开"),
+            u"a command without the choice takes its words as before: "_s + enterHint());
+        launcher.setFavorites(nullptr);
+        typed(u"report"_s);
     }
     launcher.toggleFileType(0);
     settle(window);

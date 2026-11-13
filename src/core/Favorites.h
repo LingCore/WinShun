@@ -37,6 +37,10 @@ struct Favorite {
     // script or a .bat (a GUI program is shown as ever); and as administrator.
     bool silent = false;
     bool runAsAdmin = false;
+    // Command only (GitHub #319): the words after its keyword are looked
+    // for as files and folders, and the one chosen is what {query} gets
+    // ("code 项目" then Enter on a folder found). Off: the words themselves.
+    bool searchFiles = false;
 
     bool isFileOrFolder() const noexcept { return kind == Kind::Folder || kind == Kind::File; }
     friend bool operator==(const Favorite&, const Favorite&) = default;

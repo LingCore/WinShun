@@ -1229,6 +1229,18 @@ private:
     // What the name search looks for: typed in a folder, the words after it
     // (none: the folder's own listing, as the path typed); else searchText().
     QString nameText() const;
+    // A favorite command whose words find files (Favorite::searchFiles,
+    // GitHub #319) is what is typed, with words after its keyword: the
+    // command and those words. The rows are then the files and folders
+    // the words find (Enter hands the row's path to the command) and the
+    // command's own row, which takes the words as they are: last, or
+    // first when they are a path that exists.
+    struct CommandFiles {
+        Favorite command;
+        QString words;
+    };
+    std::optional<CommandFiles> commandFiles() const;
+    static bool fileRow(const SearchResult& r); // a file's or folder's own row, one a command can be handed
     // The words after the folder typed in when there are some and the box is
     // for it (typedInFolder): "" otherwise.
     QString typingWords() const;

@@ -2100,6 +2100,18 @@
         <translation>Leave blank to let Windows choose. Do not quote the path.</translation>
     </message>
     <message>
+        <source>关键词后面的字用来搜索文件</source>
+        <translation>The words after the keyword find files</translation>
+    </message>
+    <message>
+        <source>输入关键词和要找的名字，在搜到的文件或文件夹上按 Enter，就把它的完整路径交给 {query}；列表最后一行仍可原样传入输入的字</source>
+        <translation>Type the keyword and a name, then press Enter on a file or folder found: its full path goes to {query}. The last row still passes the words as typed</translation>
+    </message>
+    <message>
+        <source>命令里要有 {query}，用来接收选中的文件或文件夹</source>
+        <translation>The command needs {query} to take the file or folder chosen</translation>
+    </message>
+    <message>
         <source>静默执行</source>
         <translation>Run silently</translation>
     </message>
@@ -12233,6 +12245,14 @@ Content index: %5</translation>
     <message>
         <source>已复制网址</source>
         <translation>Address copied</translation>
+    </message>
+    <message>
+        <source>用“%1”打开</source>
+        <translation>Open with “%1”</translation>
+    </message>
+    <message>
+        <source>原样传入“%1”</source>
+        <translation>Pass “%1” as typed</translation>
     </message>
     <message>
         <source>打开网站</source>

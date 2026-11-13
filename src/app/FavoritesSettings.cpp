@@ -199,6 +199,7 @@ void FavoritesSettings::refresh()
             {u"commandIcon"_s, f.icon},
             {u"silent"_s, f.silent},
             {u"administrator"_s, f.runAsAdmin},
+            {u"searchFiles"_s, f.searchFiles},
         });
     }
     if (items == m_items)
@@ -308,7 +309,7 @@ QString FavoritesSettings::save(int index, const QString& name, const QString& k
 }
 
 QString FavoritesSettings::saveCommand(int index, const QString& name, const QString& keyword,
-    const QString& command, const QString& directory, const QString& icon, bool silent, bool administrator)
+    const QString& command, const QString& directory, const QString& icon, bool silent, bool administrator, bool searchFiles)
 {
     if (!m_store || index < -1 || index >= m_store->items().size()
         || (index >= 0 && m_store->items()[index].kind != Favorite::Kind::Command))
@@ -341,6 +342,7 @@ QString FavoritesSettings::saveCommand(int index, const QString& name, const QSt
     f.icon = icon;
     f.silent = silent;
     f.runAsAdmin = administrator;
+    f.searchFiles = searchFiles && line.contains(u"{query}"); // nothing to hand a file to otherwise
     if (index < 0)
         m_store->add(f);
     else
