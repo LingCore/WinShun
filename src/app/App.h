@@ -792,11 +792,20 @@ private:
     // The box a key typed in a file manager opens (showFolderSearch) is not
     // seen until that key's rows are in it: drawn once (FirstFrame), then the
     // keys go into it while it stays cloaked (Awaited) until their rows are
-    // shown or kTypedRowsCap is over (GitHub #234).
-    enum class TypedRows { No, FirstFrame, Awaited };
-    static constexpr std::chrono::milliseconds kTypedRowsCap {250};
+    // shown or kTypedRowsCap is over (GitHub #234). The cap is for keys that
+    // type nothing and searches that take long, not for a slow PC: on
+    // Windows 10 in a VM the rows of one letter came 300 ms after the first
+    // frame, and at 250 the box was seen empty just before them.
+    // Settling: the rows are in; one frame is let go by, which may still be
+    // drawn in the window's old size (Qt hears of the new one after it), and
+    // the next is the one seen. Shown with the first, the window stood there
+    // unpainted in its new size for a frame.
+    enum class TypedRows { No, FirstFrame, Awaited, Settling };
+    static constexpr std::chrono::milliseconds kTypedRowsCap {700};
+    static constexpr std::chrono::milliseconds kTypedRowsFrame {300}; // for the frame with the rows, once they are in
     TypedRows m_typedRows = TypedRows::No;
     QTimer m_typedRowsCap;
+    QElapsedTimer m_typedRowsClock; // since the box was asked for: for the log
     // The handoff of those keys, for its diagnostics (endHandoff): when each
     // part came, from App's side; the hook's and the window's are added then.
     struct TypingHandoff {

@@ -358,7 +358,13 @@ bool isDarkMode()
 // D3D11 backend logged a warning about that on every resize after.
 void prepareBackdrop(QQuickWindow* window)
 {
-    if (!SystemTheme::backdropAvailable()) // the setting can turn it on later
+    // Without Mica too (Windows 10) wherever Direct3D draws: a swap chain
+    // without alpha is not scaled, and the frame in which its size and the
+    // window's differ (every time the window grows or shrinks) had the
+    // difference filled black: the box typed open in a folder flashed black
+    // under its rows (GitHub #234). With alpha it is a composition swap
+    // chain, stretched for that frame. The software renderer has none.
+    if (!SystemTheme::backdropAvailable() && QQuickWindow::graphicsApi() != QSGRendererInterface::Direct3D11)
         return;
     const auto keepAlpha = [window] {
         QSurfaceFormat format = window->requestedFormat();
@@ -793,10 +799,10 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
                 : tr("Windows 没能打开它。请稍后再试，或按 Ctrl+Shift+Enter 以管理员身份运行。"));
     });
     connect(m_launcher.get(), &Launcher::namesShown, this, [this] {
-        if (m_launcherReveal.pending())
+        if ((m_typedRows == TypedRows::FirstFrame || m_typedRows == TypedRows::Awaited) && !m_launcher->typingAwaited())
+            typedRowsShown(); // the rows of the key typed in a folder: seen with the frame that has them
+        else if (m_launcherReveal.pending())
             armReveal();
-        else
-            typedRowsShown();
     });
     connect(m_launcher.get(), &Launcher::webSettingsRequested, this, &App::showWebSettings);
     connect(m_launcher.get(), &Launcher::fileTypeSettingsRequested, this, &App::showFileTypeSettings);
@@ -1368,7 +1374,11 @@ bool App::createWindow()
         EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr, &App::foregroundChanged, 0, 0, WINEVENT_OUTOFCONTEXT);
     // Fresh rows coming in while it slides in beat a launcher that comes
     // late: keep the existing 60 ms fallback even if no frame arrives.
-    m_launcherReveal.setWindow(m_window, 60ms, [this] { revealLauncher(); });
+    // 200 ms for a frame that does not come. It was 60: with the software
+    // renderer (a PC without a usable GPU, a virtual machine) the first
+    // frame takes longer, and the window was seen before anything was drawn
+    // in it, white or black (seen on Windows 10 in a VM, GitHub #234).
+    m_launcherReveal.setWindow(m_window, 200ms, [this] { revealLauncher(); });
     connect(m_window, &QQuickWindow::frameSwapped, this, [this] {
         if (m_prewarming.load())
             QMetaObject::invokeMethod(this, &App::finishPrewarm, Qt::QueuedConnection);
@@ -3281,6 +3291,8 @@ void App::showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder
     // (Windows 10) showed black where it had grown until its next frame
     // (GitHub #234).
     m_typedRows = m_launcherReveal.pending() ? TypedRows::FirstFrame : TypedRows::No;
+    m_typedRowsClock.start();
+    qInfo() << "Folder typing: the box is" << (m_typedRows == TypedRows::No ? "up already" : "kept from view for the key's rows");
     m_typingOrigin = {root, tab, opus, folder}; // after showLauncher, which clears it
     // For the journal's typing-handoff: how it was placed, the window typed
     // in, its file list and the work area (screen pixels), the box where Qt
@@ -6278,11 +6290,15 @@ void App::armReveal()
 // height they give it.
 void App::typedRowsShown()
 {
-    if (m_typedRows != TypedRows::Awaited || m_launcher->typingAwaited())
-        return;
-    m_typedRows = TypedRows::No;
+    // Whether its first frame has been drawn or not (the keys go into it
+    // kHandoffCapMs after it is active all the same): a frame from now on,
+    // which has the rows and the height they give it. With longer for that
+    // frame than an opening gets: revealed before it, the window showed its
+    // empty first frame in the size of the rows.
+    qInfo().noquote() << u"Folder typing: the key's rows are in after %1 ms, seen with the frame after next"_s.arg(m_typedRowsClock.elapsed());
+    m_typedRows = TypedRows::Settling;
     m_typedRowsCap.stop();
-    m_launcherReveal.begin();
+    m_launcherReveal.begin(kTypedRowsFrame);
     armReveal();
 }
 
@@ -6290,13 +6306,20 @@ void App::revealLauncher()
 {
     if (!m_window)
         return;
-    if (m_typedRows == TypedRows::FirstFrame && launcherShown()
-        && (m_deliverTyping || m_launcher->typingAwaited() || m_launcher->waitingForNames())) {
+    if (m_typedRows != TypedRows::No)
+        qInfo().noquote() << u"Folder typing: a frame after %1 ms, state %2"_s.arg(m_typedRowsClock.elapsed()).arg(int(m_typedRows));
+    if (m_typedRows == TypedRows::FirstFrame && launcherShown()) { // the rows are not in yet (typedRowsShown)
         // Drawn, and ready for the keys typed: they go into it now, and it
         // is seen with their rows (typedRowsShown), or after kTypedRowsCap.
         m_typedRows = TypedRows::Awaited;
         m_typedRowsCap.start();
         deliverTyping();
+        return;
+    }
+    if (m_typedRows == TypedRows::Settling && launcherShown()) {
+        m_typedRows = TypedRows::No;
+        m_launcherReveal.begin(kTypedRowsFrame);
+        armReveal();
         return;
     }
     m_typedRows = TypedRows::No;

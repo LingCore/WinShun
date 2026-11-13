@@ -11,7 +11,7 @@ void FrameReveal::setWindow(QQuickWindow* window, std::chrono::milliseconds time
     m_window = window;
     m_reveal = std::move(reveal);
     m_timeout.setSingleShot(true);
-    m_timeout.setInterval(timeout);
+    m_defaultTimeout = timeout;
     connect(&m_timeout, &QTimer::timeout, this, [this] { finish(m_pending); });
     connect(window, &QWindow::visibleChanged, this, [this](bool visible) {
         if (!visible)
@@ -26,11 +26,11 @@ void FrameReveal::setWindow(QQuickWindow* window, std::chrono::milliseconds time
     }, Qt::DirectConnection);
 }
 
-void FrameReveal::begin()
+void FrameReveal::begin(std::chrono::milliseconds timeout)
 {
     m_armed = 0;
     m_pending = ++m_generation;
-    m_timeout.start();
+    m_timeout.start(timeout.count() > 0 ? timeout : m_defaultTimeout);
 }
 
 void FrameReveal::arm()

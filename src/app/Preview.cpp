@@ -8202,7 +8202,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
             waiting.restart();
             while (window->height() == 0 && waiting.elapsed() < 200)
                 pump(5);
-            pump(80); // its first frame is drawn; the key's rows are awaited (App::kTypedRowsCap is 250 ms)
+            pump(80); // its first frame is drawn; the key's rows are awaited (App::kTypedRowsCap is 700 ms)
             const bool held = window->isVisible() && isCloaked(own);
             const int emptyHeight = window->height();
             launcher->setQuery(prefix + u"many_"_s);
