@@ -1,0 +1,37 @@
+[
+  {
+    "case": "plain-update",
+    "passed": true,
+    "seconds": 26.4,
+    "exit": 0,
+    "failures": []
+  },
+  {
+    "case": "own-programs-running",
+    "passed": true,
+    "seconds": 57.1,
+    "exit": 0,
+    "failures": []
+  },
+  {
+    "case": "library-loaded-elsewhere",
+    "passed": true,
+    "seconds": 29.1,
+    "exit": 0,
+    "failures": []
+  },
+  {
+    "case": "file-read-by-another",
+    "passed": true,
+    "seconds": 28.2,
+    "exit": 0,
+    "failures": []
+  },
+  {
+    "case": "file-nobody-may-touch",
+    "passed": true,
+    "seconds": 28.6,
+    "exit": 7,
+    "failures": []
+  }
+]

@@ -1,0 +1,39 @@
+Test project F:/电脑便捷工具/build/release027
+      Start   8: tst_pluginhotkeys
+ 1/17 Test   #8: tst_pluginhotkeys ................   Passed    0.07 sec
+      Start  10: tst_contentdetails
+ 2/17 Test  #10: tst_contentdetails ...............   Passed    6.11 sec
+      Start  65: tst_filedialog
+ 3/17 Test  #65: tst_filedialog ...................   Passed    3.49 sec
+      Start  68: tst_dialognav
+ 4/17 Test  #68: tst_dialognav ....................   Passed    3.72 sec
+      Start  70: tst_pathbox
+ 5/17 Test  #70: tst_pathbox ......................   Passed    2.53 sec
+      Start  89: tst_aisettings
+ 6/17 Test  #89: tst_aisettings ...................   Passed    5.52 sec
+      Start  96: tst_capture
+ 7/17 Test  #96: tst_capture ......................   Passed    2.34 sec
+      Start 110: tst_stage7
+ 8/17 Test #110: tst_stage7 .......................   Passed    0.18 sec
+      Start 166: tst_core
+ 9/17 Test #166: tst_core .........................   Passed   77.48 sec
+      Start 170: tst_favorites
+10/17 Test #170: tst_favorites ....................   Passed    4.30 sec
+      Start 171: tst_commandlaunch
+11/17 Test #171: tst_commandlaunch ................   Passed    1.15 sec
+      Start 175: tst_placement
+12/17 Test #175: tst_placement ....................   Passed    0.06 sec
+      Start 182: tst_mcp
+13/17 Test #182: tst_mcp ..........................   Passed   18.05 sec
+      Start 183: tst_cli
+14/17 Test #183: tst_cli ..........................   Passed   26.16 sec
+      Start 184: tst_plugin
+15/17 Test #184: tst_plugin .......................   Passed   49.19 sec
+      Start 189: tst_updater
+16/17 Test #189: tst_updater ......................   Passed    5.23 sec
+      Start 190: tst_scoopinstall
+17/17 Test #190: tst_scoopinstall .................   Passed    0.18 sec
+
+100% tests passed, 0 tests failed out of 17
+
+Total Test time (real) = 206.38 sec
