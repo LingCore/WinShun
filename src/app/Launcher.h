@@ -431,6 +431,13 @@ public:
     // Edited, it is a path typed: only that folder, as ever. Empty: none
     // (the window opened for anything else).
     void setTypingFolder(const QString& prefix);
+    // Opened by a key typed in a file manager, that key and the ones after
+    // it on their way (App): with `text` alone in the box (the folder, or
+    // nothing) no rows are listed, the box waits for them. Listed, what is
+    // in the folder (seen in the file manager already) or the start list
+    // showed for a moment and gave way to what was typed, the box changing
+    // size twice (GitHub #234). Until the box says something else, or hides.
+    void awaitTyping(const QString& text);
     // FolderTyping: "only" (only the folder and below), "level" (only what
     // lies directly in it), else its rows first and then the rest.
     void setFolderTyping(const QString& how);
@@ -1312,6 +1319,8 @@ private:
     bool m_shortcutHelp = true;
     bool m_footerHints = true;
     bool m_pureSearch = false;
+    bool m_typingAwaited = false; // awaitTyping, and ...
+    QString m_awaitedText; // ... the box's text then, trimmed
     int m_maxRows = 8;
     QString m_previewHotkey = QStringLiteral("Alt+P");
     QKeySequence m_previewSequence {QStringLiteral("Alt+P")};

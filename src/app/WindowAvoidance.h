@@ -49,6 +49,14 @@ inline bool clearOf(const QRect& area, const QRect& obstacle, QSize size, QPoint
     return !QRect(place(area, obstacle, size, preferred, gap), size).intersects(obstacle);
 }
 
+// How far in from a file list's edges the box sits in its corner (inList).
+// Opus's file display is one window with its scroll bars: 12 px keeps the
+// box off them. File Explorer's list is given without its scroll bars
+// (folderview::explorerFileList), and there the box sits right in the
+// corner, against them, as Listary's does (GitHub #234).
+inline constexpr int kListGap = 12;
+inline constexpr int kExplorerListGap = 0;
+
 // Over the file list typed in (Directory Opus, GitHub #82), as Listary opens
 // its box: in the list's bottom right corner, `gap` in from its edges; as wide
 // and as tall (the room for rows) as the list leaves, between `least` and
@@ -58,7 +66,7 @@ inline bool clearOf(const QRect& area, const QRect& obstacle, QSize size, QPoint
 // tree, viewer, toolbars), from the same corner, and stays on the work area.
 // Empty `lists` or `frame`: not known.
 inline QRect inList(const QRect& area, const QRect& list, const QRect& lists, const QRect& frame, QSize wanted, QSize least,
-    int gap = 12)
+    int gap = kListGap)
 {
     const auto span = [&](int want, int fewest, int room, int most) {
         return std::min(most, std::max(fewest, std::min(want, room - 2 * gap)));

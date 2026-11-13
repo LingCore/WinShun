@@ -857,8 +857,17 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     launcher.setQuery(u"report"_s);
     settle(window);
     check(launcher.results()->count() == 1, u"typing searches the real index"_s);
-    check(!window->property("pureEmpty").toBool() && footer->isVisible() && tabs->isVisible() && expand->isVisible(),
-        u"typing restores all existing controls"_s);
+    // The scope tabs and the footer come back; the two keys right of the tabs
+    // (the history, the panel) stay away in this mode (GitHub #185, #244),
+    // and the tabs take their place at the box's edge.
+    check(!window->property("pureEmpty").toBool() && footer->isVisible() && tabs->isVisible(),
+        u"typing restores the results' controls"_s);
+    {
+        auto* history = item(window->contentItem(), u"queryHistoryButton"_s);
+        check(!expand->isVisible() && history && !history->isVisible(), u"pure search keeps the history and panel keys away while typing"_s);
+        const qreal tabsRight = tabs->mapToItem(window->contentItem(), QPointF(tabs->width(), 0)).x();
+        check(window->width() - tabsRight < 32, u"the scope tabs end at the box's edge"_s);
+    }
     check(window->height() > emptyHeight, u"results expand the window"_s);
     check(window->grabWindow().save(output.filePath(u"pure-results.png"_s)), u"capture populated search"_s);
     launcher.setQuery({});

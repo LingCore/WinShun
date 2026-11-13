@@ -986,6 +986,12 @@ void Launcher::setTypingFolder(const QString& prefix)
         search();
 }
 
+void Launcher::awaitTyping(const QString& text)
+{
+    m_typingAwaited = true;
+    m_awaitedText = text.trimmed();
+}
+
 void Launcher::setFolderSearch(bool enabled)
 {
     if (m_folderSearch == enabled)
@@ -2107,6 +2113,7 @@ void Launcher::retranslate()
 
 void Launcher::handleHidden()
 {
+    m_typingAwaited = false;
     rememberQuery();
     closePreview(); // the wish to have it stays (m_previewWanted) ...
     if (!m_previewRestore)
@@ -2269,7 +2276,11 @@ void Launcher::search(bool more)
         return;
     }
 
-    const bool pureEmpty = m_pureSearch && !m_panel && !m_folderSearch && !m_inTaskbarBox && m_query.trimmed().isEmpty();
+    // The words typed in a file manager are on their way (awaitTyping).
+    if (m_typingAwaited && m_query.trimmed() != m_awaitedText)
+        m_typingAwaited = false;
+    const bool pureEmpty = (m_pureSearch && !m_panel && !m_folderSearch && !m_inTaskbarBox && m_query.trimmed().isEmpty())
+        || (m_typingAwaited && m_scope != Content);
     if (m_scope == Content || pureEmpty) {
         m_engine->cancel();
         m_requestId = 0;

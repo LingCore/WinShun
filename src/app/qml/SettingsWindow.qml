@@ -4242,7 +4242,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("纯净搜索模式")
-                    description: qsTr("搜索框空着时只保留输入栏；输入后恢复结果和操作按钮。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响")
+                    description: qsTr("搜索框空着时只保留输入栏，输入后恢复结果和范围标签；右上角的搜索历史和展开按钮一直隐藏，快捷键照常可用。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响")
                     keywords: qsTr("纯净;极简;空白;底栏;最近;收藏;pure;minimal").split(";")
                     ToggleSwitch {
                         objectName: "pureSearchToggle"

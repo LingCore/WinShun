@@ -20,6 +20,11 @@ Item {
     // corner collapses the panel instead of expanding the box into it.
     property bool panelMode: false
     property bool minimal: false
+    // 纯净搜索模式: the box keeps its scope tabs and loses the two keys right
+    // of them, the search history and the panel, with words typed too; their
+    // shortcuts stay (GitHub #185, #244). Not the panel's own bar (the way
+    // back from it), a folder's or the taskbar box's, which the mode leaves alone.
+    readonly property bool pureKeys: bar.launcher.pureSearch && !bar.panelMode && !bar.folderMode && !bar.inBox
     readonly property bool menuOpen: headerMenu.item !== null && headerMenu.item.visible
     readonly property string positionAction: panelMode && launcher.logoRightClick === "top" ? "center" : launcher.logoRightClick
     readonly property string positionActionLabel: positionAction === "top" ? qsTr("回到靠上位置")
@@ -592,7 +597,10 @@ Item {
     IconKey {
         id: expand
         objectName: bar.panelMode ? "panelCollapseButton" : "searchExpandButton"
-        visible: !bar.minimal
+        visible: !bar.minimal && !bar.pureKeys
+        // Gone with pureKeys, it takes no room either: what is anchored to
+        // its left (the scope tabs) moves up to the box's edge.
+        width: bar.pureKeys ? 0 : height
         anchors.right: parent.right
         anchors.rightMargin: bar.keysRight
         y: bar.onPixel((bar.height - height) / 2)
@@ -615,7 +623,7 @@ Item {
     IconKey {
         id: historyButton
         objectName: bar.panelMode ? "panelHistoryButton" : "queryHistoryButton"
-        visible: !bar.minimal && bar.launcher.queryHistoryEnabled && !bar.folderMode && !bar.inBox
+        visible: !bar.minimal && !bar.pureKeys && bar.launcher.queryHistoryEnabled && !bar.folderMode && !bar.inBox
         anchors.right: sidebarToggle.visible ? sidebarToggle.left : expand.left
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)

@@ -3258,6 +3258,7 @@ void App::showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder
     const RECT list = opus ? RECT {} : folderview::explorerFileList(root, tab);
     // Pinned and up, or the panel: where it is (showLauncher).
     const QString kept = m_launcher->pinned() && launcherShown() ? u"pinned"_s : m_launcher->panel() ? u"panel"_s : QString();
+    m_launcher->awaitTyping(prefix); // the key typed follows: nothing listed before it
     showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(opus ? tab : root, MONITOR_DEFAULTTONEAREST)), opus ? tab : root, opus,
         list);
     m_typingOrigin = {root, tab, opus, folder}; // after showLauncher, which clears it
@@ -5362,7 +5363,8 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
                 && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.left))
                 && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.right));
             m_placement->avoidNative(orIntoList ? native(orInto) : native(bounds), screen, inside || orIntoList,
-                inside && !orIntoList ? native(folderview::opusFileLists(root)) : QRect(), framed ? native(client) : QRect());
+                inside && !orIntoList ? native(folderview::opusFileLists(root)) : QRect(), framed ? native(client) : QRect(), {},
+                orIntoList);
         } else
             m_placement->placeOn(screen);
     }

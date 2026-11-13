@@ -40,6 +40,7 @@
 #include "SystemTheme.h"
 #include "Switches.h"
 #include "Updater.h"
+#include "WindowAvoidance.h"
 #include "WindowFrame.h"
 #include "DropPieHelper.h"
 #include "DropPie.h"
@@ -89,6 +90,7 @@
 #include <QQmlEngine>
 #include <QQmlExpression>
 #include <QAbstractEventDispatcher>
+#include <QAbstractNativeEventFilter>
 #include <QEventLoop>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -7636,6 +7638,35 @@ bool forgetRuntimeIdentity()
     return true;
 }
 
+// Every place and size a window is given while this lives, as Windows
+// tells it (WM_WINDOWPOSCHANGED): where its bottom edge has been.
+class BottomWatch : public QAbstractNativeEventFilter {
+public:
+    explicit BottomWatch(HWND window)
+        : m_window(window)
+    {
+        QCoreApplication::instance()->installNativeEventFilter(this);
+    }
+    ~BottomWatch() override { QCoreApplication::instance()->removeNativeEventFilter(this); }
+    bool nativeEventFilter(const QByteArray&, void* message, qintptr*) override
+    {
+        const MSG* msg = static_cast<const MSG*>(message);
+        RECT at {};
+        if (msg->hwnd == m_window && msg->message == WM_WINDOWPOSCHANGED && ::GetWindowRect(m_window, &at)) {
+            ++changes;
+            lowest = std::max(lowest, at.bottom);
+            highest = std::min(highest, at.bottom);
+            tallest = std::max(tallest, at.bottom - at.top);
+        }
+        return false;
+    }
+    int changes = 0;
+    LONG lowest = LONG_MIN, highest = LONG_MAX, tallest = 0;
+
+private:
+    HWND m_window;
+};
+
 bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonObject& report)
 {
     using Microsoft::WRL::ComPtr;
@@ -8036,11 +8067,11 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
         ::GetClientRect(root, &client);
         ::MapWindowPoints(root, nullptr, reinterpret_cast<POINT*>(&client), 2);
-        const int gap = qRound(12 * (window->screen() ? window->screen()->devicePixelRatio() : 1.0));
+        const int gap = qRound(windowavoidance::kExplorerListGap * (window->screen() ? window->screen()->devicePixelRatio() : 1.0));
         check(box.left >= client.left && box.top >= client.top && box.right <= client.right && box.bottom <= client.bottom,
             "too large to keep clear of: the box is inside the Explorer window");
         check(std::abs(list.right - box.right - gap) <= 2 && box.bottom <= list.bottom - gap + 2,
-            "too large to keep clear of: 12 px in from the right of its file list, the rows ending above its bottom");
+            "too large to keep clear of: in the bottom right corner of its file list, the rows ending at its bottom");
         check(box.left != area.left || box.top != area.top, "too large to keep clear of: not at the top left of the screen");
         report.insert(u"centred_explorer_list"_s, QJsonArray {int(list.left), int(list.top), int(list.right - list.left),
             int(list.bottom - list.top)});
@@ -8051,9 +8082,11 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     pump(300);
 
     // GitHub #234: more rows and wider columns than the list shows, so that
-    // Explorer shows both its scroll bars. The box keeps 12 px clear of them
-    // as it does of the edges of a list without any: as far from the one on
-    // the right as from the one at the bottom, over neither.
+    // Explorer shows both its scroll bars. The box sits against them, in the
+    // corner they leave, as it sits in the corner of a list without any, and
+    // over neither. Opened by typing it lists nothing until the words come,
+    // and as its rows come its bottom stays where it is, the window made
+    // taller and moved up in one step.
     {
         // The probe's own folder: rows enough for the bar on the right.
         filemanager::goTo(secondTab, folder.toStdWString());
@@ -8115,12 +8148,27 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         settle(window, 3);
         RECT box {}, overlap {};
         ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
-        const int gap = qRound(12 * scale);
+        const int gap = qRound(windowavoidance::kExplorerListGap * scale);
+        check(launcher->results()->count() == 0 && !launcher->searching(),
+            "opened by typing: nothing is listed before the words typed");
         if (both) {
             check(!::IntersectRect(&overlap, &box, &bars.vertical) && !::IntersectRect(&overlap, &box, &bars.horizontal),
                 "with scroll bars: the box is over neither");
             check(std::abs(bars.vertical.left - box.right - gap) <= 2 && std::abs(bars.horizontal.top - box.bottom - gap) <= 2,
-                "with scroll bars: 12 px from the one on the right and from the one at the bottom");
+                "with scroll bars: against the one on the right and the one at the bottom");
+        }
+        {
+            const int shortBox = box.bottom - box.top;
+            BottomWatch watch(reinterpret_cast<HWND>(window->winId()));
+            const bool listed = search(u"many_"_s, kFolderTypingMany);
+            settle(window, 3);
+            check(listed, "the words typed: their rows are listed");
+            check(watch.changes > 0 && watch.tallest > shortBox, "the box grew taller with its rows");
+            check(watch.lowest == box.bottom && watch.highest == box.bottom,
+                "growing, its bottom never left the corner: taller and moved up in one step");
+            report.insert(u"grow_changes"_s, watch.changes);
+            report.insert(u"grow_bottoms"_s, QJsonArray {int(watch.highest), int(watch.lowest), int(box.bottom)});
+            ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
         }
         const auto rectOf = [](const RECT& r) { return QJsonArray {int(r.left), int(r.top), int(r.right - r.left), int(r.bottom - r.top)}; };
         report.insert(u"scrollbars_vertical"_s, rectOf(bars.vertical));
