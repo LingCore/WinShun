@@ -6,17 +6,18 @@
 
 #include "QRDecoder.h"
 
+#include "Barcode.h"
 #include "BitMatrix.h"
 #include "BitSource.h"
+#include "ByteArray.h"
 #include "CharacterSet.h"
 #include "DecoderResult.h"
-#include "GenericGF.h"
 #include "QRBitMatrixParser.h"
 #include "QRCodecMode.h"
 #include "QRDataBlock.h"
 #include "QRFormatInformation.h"
 #include "QRVersion.h"
-#include "ReedSolomonDecoder.h"
+#include "ReedSolomon.h"
 #include "StructuredAppend.h"
 #include "ZXAlgorithms.h"
 #include "ZXTestSupport.h"
@@ -27,30 +28,6 @@
 #include <vector>
 
 namespace ZXing::QRCode {
-
-/**
-* <p>Given data and error-correction codewords received, possibly corrupted by errors, attempts to
-* correct the errors in-place using Reed-Solomon error correction.</p>
-*
-* @param codewordBytes data and error correction codewords
-* @param numDataCodewords number of codewords that are data bytes
-* @return false if error correction fails
-*/
-static bool CorrectErrors(ByteArray& codewordBytes, int numDataCodewords)
-{
-	// First read into an array of ints
-	std::vector<int> codewordsInts(codewordBytes.begin(), codewordBytes.end());
-
-	int numECCodewords = Size(codewordBytes) - numDataCodewords;
-	if (!ReedSolomonDecode(GenericGF::QRCodeField256(), codewordsInts, numECCodewords))
-		return false;
-
-	// Copy back into array of bytes -- only need to worry about the bytes that were data
-	// We don't care about errors in the error-correction codewords
-	std::copy_n(codewordsInts.begin(), numDataCodewords, codewordBytes.begin());
-	return true;
-}
-
 
 /**
 * See specification GBT 18284-2000
@@ -73,8 +50,8 @@ static void DecodeHanziSegment(BitSource& bits, int count, Content& result)
 			// In the 0xB0A1 to 0xFAFE range
 			assembledTwoBytes += 0x0A6A1;
 		}
-		result += narrow_cast<uint8_t>((assembledTwoBytes >> 8) & 0xFF);
-		result += narrow_cast<uint8_t>(assembledTwoBytes & 0xFF);
+		result.push_back((assembledTwoBytes >> 8) & 0xFF);
+		result.push_back(assembledTwoBytes & 0xFF);
 		count--;
 	}
 }
@@ -97,8 +74,8 @@ static void DecodeKanjiSegment(BitSource& bits, int count, Content& result)
 			// In the 0xE040 to 0xEBBF range
 			assembledTwoBytes += 0x0C140;
 		}
-		result += narrow_cast<uint8_t>(assembledTwoBytes >> 8);
-		result += narrow_cast<uint8_t>(assembledTwoBytes);
+		result.push_back(assembledTwoBytes >> 8);
+		result.push_back(assembledTwoBytes);
 		count--;
 	}
 }
@@ -109,7 +86,7 @@ static void DecodeByteSegment(BitSource& bits, int count, Content& result)
 	result.reserve(count);
 
 	for (int i = 0; i < count; i++)
-		result += narrow_cast<uint8_t>(bits.readBits(8));
+		result.push_back(bits.readBits(8));
 }
 
 static char ToAlphaNumericChar(int value)
@@ -117,17 +94,14 @@ static char ToAlphaNumericChar(int value)
 	/**
 	* See ISO 18004:2006, 6.4.4 Table 5
 	*/
-	static const char ALPHANUMERIC_CHARS[] = {
+	constexpr std::array ALPHANUMERIC_CHARS = {
 		'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B',
 		'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
 		'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
 		' ', '$', '%', '*', '+', '-', '.', '/', ':'
 	};
 
-	if (value < 0 || value >= Size(ALPHANUMERIC_CHARS))
-		throw std::out_of_range("ToAlphaNumericChar: out of range");
-
-	return ALPHANUMERIC_CHARS[value];
+	return ALPHANUMERIC_CHARS.at(value);
 }
 
 static void DecodeAlphanumericSegment(BitSource& bits, int count, Content& result)
@@ -161,7 +135,7 @@ static void DecodeAlphanumericSegment(BitSource& bits, int count, Content& resul
 	}
 
 	result.switchEncoding(CharacterSet::ISO8859_1);
-	result += buffer;
+	result.append(buffer);
 }
 
 static void DecodeNumericSegment(BitSource& bits, int count, Content& result)
@@ -205,7 +179,7 @@ static ECI ParseECIValue(BitSource& bits)
  * M2 - 1 bit mode code, 5 bits terminator code
  * M3 - 2 bit mode code, 7 bits terminator code
  * M4 - 3 bit mode code, 9 bits terminator code
- * IsTerminator peaks into the bit stream to see if the current position is at the start of
+ * IsTerminator peeks into the bit stream to see if the current position is at the start of
  * a terminator code.  If true, then the decoding can finish. If false, then the decoding
  * can read off the next mode code.
  *
@@ -218,7 +192,7 @@ bool IsEndOfStream(const BitSource& bits, const Version& version)
 {
 	const int bitsRequired = TerminatorBitsLength(version);
 	const int bitsAvailable = std::min(bits.available(), bitsRequired);
-	return bitsAvailable == 0 || bits.peakBits(bitsAvailable) == 0;
+	return bitsAvailable == 0 || bits.peekBits(bitsAvailable) == 0;
 }
 
 /**
@@ -262,9 +236,9 @@ DecoderResult DecodeBitStream(ByteArray&& bytes, const Version& version, ErrorCo
 				result.symbology.modifier = '5'; // As above
 				// ISO/IEC 18004:2015 7.4.8.3 AIM Application Indicator (FNC1 in second position), "00-99" or "A-Za-z"
 				if (int appInd = bits.readBits(8); appInd < 100) // "00-09"
-					result += ZXing::ToString(appInd, 2);
+					result.append(ZXing::ToString(appInd, 2));
 				else if ((appInd >= 165 && appInd <= 190) || (appInd >= 197 && appInd <= 222)) // "A-Za-z"
-					result += narrow_cast<uint8_t>(appInd - 100);
+					result.push_back(appInd - 100);
 				else
 					throw FormatError("Invalid AIM Application Indicator");
 				result.symbology.aiFlag = AIFlag::AIM; // see also above
@@ -349,6 +323,7 @@ DecoderResult Decode(const BitMatrix& bits)
 	const auto totalBytes = Reduce(dataBlocks, int{}, op);
 	ByteArray resultBytes(totalBytes);
 	auto resultIterator = resultBytes.begin();
+	double uec = 1.0;
 
 	// Error-correct and copy data blocks together into a stream of bytes
 	Error error;
@@ -356,17 +331,26 @@ DecoderResult Decode(const BitMatrix& bits)
 	{
 		ByteArray& codewordBytes = dataBlock.codewords();
 		int numDataCodewords = dataBlock.numDataCodewords();
+		auto blockUEC = ReedSolomonDecode(RSField::QRCode, codewordBytes, Size(codewordBytes) - numDataCodewords);
 
-		if (!CorrectErrors(codewordBytes, numDataCodewords))
+		if (!blockUEC)
 			error = ChecksumError();
+
+		uec = std::min(uec, blockUEC.value_or(0.0));
 
 		resultIterator = std::copy_n(codewordBytes.begin(), numDataCodewords, resultIterator);
 	}
 
+	auto versionStr = version.isRMQR() ? "R" + ToString(Version::SymbolSize(version.versionNumber(), version.type()), true)
+									   : (version.isMicro() ? "M" : "") + std::to_string(version.versionNumber());
+
 	// Decode the contents of that stream of bytes
 	auto ret = DecodeBitStream(std::move(resultBytes), version, formatInfo.ecLevel)
-		.setDataMask(formatInfo.mask)
-		.setIsMirrored(formatInfo.isMirrored);
+		.setIsMirrored(formatInfo.isMirrored)
+		.addExtra(BarcodeExtra::DataMask, formatInfo.dataMask, uint8_t(255))
+		.addExtra(BarcodeExtra::UEC, uec, -1.0)
+		.addExtra(BarcodeExtra::Version, versionStr)
+		;
 	if (error)
 		ret.setError(error);
 	return ret;

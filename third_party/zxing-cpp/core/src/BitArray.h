@@ -33,7 +33,6 @@ class BitArray
 	// Nothing wrong to support it, just to make it explicit, instead of by mistake.
 	// Use copy() below.
 	BitArray(const BitArray &) = default;
-	BitArray& operator=(const BitArray &) = delete;
 
 public:
 
@@ -45,6 +44,7 @@ public:
 
 	BitArray(BitArray&& other) noexcept = default;
 	BitArray& operator=(BitArray&& other) noexcept = default;
+	BitArray& operator=(const BitArray &) = delete;
 
 	BitArray copy() const { return *this; }
 
@@ -73,8 +73,15 @@ public:
 	*/
 	void appendBits(int value, int numBits)
 	{
+		assert(numBits >= 1 && numBits <= 32);
+
 		for (; numBits; --numBits)
 			_bits.push_back((value >> (numBits-1)) & 1);
+	}
+
+	void appendBits(uint32_t value, int numBits)
+	{
+		appendBits(static_cast<int>(value), numBits);
 	}
 
 	void appendBit(bool bit) { _bits.push_back(bit); }
@@ -100,23 +107,6 @@ public:
 
 	friend bool operator==(const BitArray& a, const BitArray& b) { return a._bits == b._bits; }
 };
-
-template<typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
-T& AppendBit(T& val, bool bit)
-{
-	return (val <<= 1) |= static_cast<T>(bit);
-}
-
-template <typename ARRAY, typename = std::enable_if_t<std::is_integral_v<typename ARRAY::value_type>>>
-int ToInt(const ARRAY& a)
-{
-	assert(Reduce(a) <= 32);
-
-	int pattern = 0;
-	for (int i = 0; i < Size(a); i++)
-		pattern = (pattern << a[i]) | ~(0xffffffff << a[i]) * (~i & 1);
-	return pattern;
-}
 
 template <typename T = int, typename = std::enable_if_t<std::is_integral_v<T>>>
 T ToInt(const BitArray& bits, int pos = 0, int count = 8 * sizeof(T))
@@ -162,11 +152,11 @@ public:
 		return *this;
 	}
 
-	int peakBits(int n) const
+	int peekBits(int n) const
 	{
 		assert(n <= 32);
 		if (cur + n > bits.end())
-			throw std::out_of_range("BitArrayView::peakBits() out of range.");
+			throw std::out_of_range("BitArrayView::peekBits() out of range.");
 		int res = 0;
 		for (auto i = cur; n > 0; --n, i++)
 			AppendBit(res, *i);
@@ -175,7 +165,7 @@ public:
 
 	int readBits(int n)
 	{
-		int res = peakBits(n);
+		int res = peekBits(n);
 		cur += n;
 		return res;
 	}

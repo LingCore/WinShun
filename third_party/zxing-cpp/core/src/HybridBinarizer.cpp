@@ -34,7 +34,7 @@ bool HybridBinarizer::getPatternRow(int row, int rotation, PatternRow& res) cons
 	// This is the original "hybrid" behavior: use GlobalHistogram for the 1D case
 	return GlobalHistogramBinarizer::getPatternRow(row, rotation, res);
 #else
-	// This is an alternative that can be faster in general and perform better in unevenly lit sitations like
+	// This is an alternative that can be faster in general and perform better in unevenly lit situations like
 	// https://github.com/zxing-cpp/zxing-cpp/blob/master/test/samples/ean13-2/21.png. That said, it fairs
 	// worse in borderline low resolution situations. With the current black box sample set we'd loose 94
 	// test cases while gaining 53 others.
@@ -143,7 +143,7 @@ static std::shared_ptr<BitMatrix> CalculateMatrix(const uint8_t* __restrict lumi
 {
 	auto matrix = std::make_shared<BitMatrix>(width, height);
 
-#ifndef NDEBUG
+#ifdef PRINT_DEBUG
 	Matrix<uint8_t> out(width, height);
 	Matrix<uint8_t> out2(width, height);
 #endif
@@ -163,7 +163,7 @@ static std::shared_ptr<BitMatrix> CalculateMatrix(const uint8_t* __restrict lumi
 			int average = sum / 25;
 			ThresholdBlock(luminances, xoffset, yoffset, average, rowStride, *matrix);
 
-#ifndef NDEBUG
+#ifdef PRINT_DEBUG
 			for (int yy = 0; yy < 8; ++yy)
 				for (int xx = 0; xx < 8; ++xx) {
 					out.set(xoffset + xx, yoffset + yy, blackPoints(x, y));
@@ -173,7 +173,7 @@ static std::shared_ptr<BitMatrix> CalculateMatrix(const uint8_t* __restrict lumi
 		}
 	}
 
-#ifndef NDEBUG
+#ifdef PRINT_DEBUG
 	std::ofstream file("thresholds.pnm");
 	file << "P5\n" << out.width() << ' ' << out.height() << "\n255\n";
 	file.write(reinterpret_cast<const char*>(out.data()), out.size());
@@ -187,7 +187,7 @@ static std::shared_ptr<BitMatrix> CalculateMatrix(const uint8_t* __restrict lumi
 
 #else
 
-// Subdivide the image in blocks of BLOCK_SIZE and calculate one treshold value per block as
+// Subdivide the image in blocks of BLOCK_SIZE and calculate one threshold value per block as
 // (max - min > MIN_DYNAMIC_RANGE) ? (max + min) / 2 : 0
 static Matrix<T_t> BlockThresholds(const ImageView iv)
 {
@@ -215,7 +215,7 @@ static Matrix<T_t> BlockThresholds(const ImageView iv)
 	return thresholds;
 }
 
-// Apply gaussian-like smoothing filter over all non-zero thresholds and fill any remainig gaps with nearest neighbor
+// Apply gaussian-like smoothing filter over all non-zero thresholds and fill any remaining gaps with nearest neighbor
 static Matrix<T_t> SmoothThresholds(Matrix<T_t>&& in)
 {
 	Matrix<T_t> out(in.width(), in.height());
@@ -242,7 +242,7 @@ static Matrix<T_t> SmoothThresholds(Matrix<T_t>&& in)
 		}
 	}
 
-	// flood fill any remaing gaps of (very large) no-contrast regions
+	// flood fill any remaining gaps of (very large) no-contrast regions
 	auto last = out.begin() - 1;
 	for (auto* i = out.begin(); i != out.end(); ++i) {
 		if (*i) {
@@ -260,7 +260,7 @@ static std::shared_ptr<BitMatrix> ThresholdImage(const ImageView iv, const Matri
 {
 	auto matrix = std::make_shared<BitMatrix>(iv.width(), iv.height());
 
-#ifndef NDEBUG
+#ifdef PRINT_DEBUG
 	Matrix<uint8_t> out(iv.width(), iv.height());
 #endif
 
@@ -270,7 +270,7 @@ static std::shared_ptr<BitMatrix> ThresholdImage(const ImageView iv, const Matri
 			int xoffset = std::min(x * BLOCK_SIZE, iv.width() - BLOCK_SIZE);
 			ThresholdBlock(iv.data(), xoffset, yoffset, thresholds(x, y), iv.rowStride(), *matrix);
 
-#ifndef NDEBUG
+#ifdef PRINT_DEBUG
 			for (int yy = 0; yy < 8; ++yy)
 				for (int xx = 0; xx < 8; ++xx)
 					out.set(xoffset + xx, yoffset + yy, thresholds(x, y));
@@ -278,7 +278,7 @@ static std::shared_ptr<BitMatrix> ThresholdImage(const ImageView iv, const Matri
 		}
 	}
 
-#ifndef NDEBUG
+#ifdef PRINT_DEBUG
 	std::ofstream file("thresholds_new.pnm");
 	file << "P5\n" << out.width() << ' ' << out.height() << "\n255\n";
 	file.write(reinterpret_cast<const char*>(out.data()), out.size());
@@ -294,6 +294,8 @@ std::shared_ptr<const BitMatrix> HybridBinarizer::getBlackMatrix() const
 	if (width() >= WINDOW_SIZE && height() >= WINDOW_SIZE) {
 #ifdef USE_NEW_ALGORITHM
 		auto thrs = SmoothThresholds(BlockThresholds(_buffer));
+		if (std::ranges::max(thrs) == 0)
+			return GlobalHistogramBinarizer::getBlackMatrix();
 		return ThresholdImage(_buffer, thrs);
 #else
 		const uint8_t* luminances = _buffer.data();

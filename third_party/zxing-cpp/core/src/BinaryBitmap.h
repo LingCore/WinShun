@@ -40,7 +40,7 @@ protected:
 	*/
 	virtual std::shared_ptr<const BitMatrix> getBlackMatrix() const = 0;
 
-	BitMatrix binarize(const uint8_t threshold) const;
+	BitMatrix binarize(uint8_t threshold) const;
 
 public:
 	BinaryBitmap(const ImageView& buffer);
@@ -54,7 +54,7 @@ public:
 	*/
 	virtual bool getPatternRow(int row, int rotation, PatternRow& res) const = 0;
 
-	const BitMatrix* getBitMatrix() const;
+	const BitMatrix* getBitMatrix(bool transposed = false) const;
 
 	void invert();
 	bool inverted() const { return _inverted; }

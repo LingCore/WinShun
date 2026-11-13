@@ -6,7 +6,10 @@
 #pragma once
 
 #include "Point.h"
+
+#ifdef ZXING_INTERNAL
 #include "ZXAlgorithms.h"
+#endif
 
 #include <array>
 #include <cmath>
@@ -14,6 +17,14 @@
 
 namespace ZXing {
 
+/**
+ * @brief A simple class representing a quadrilateral defined by its four corner points.
+ *
+ * It represents a quadrilateral defined by its four corner points:
+ * top-left, top-right, bottom-right, and bottom-left. Those points are relative to the detected symbol
+ * i.e. topLeft() will return the coordinates of the top-left corner of the symbol. If e.g. the symbol
+ * is rotated 180 degrees, the top-left corner will be the one that is at the bottom-right position in the image.
+ */
 template <typename T>
 class Quadrilateral : public std::array<T, 4>
 {
@@ -34,6 +45,8 @@ public:
 	constexpr Point bottomRight() const noexcept { return at(2); }
 	constexpr Point bottomLeft() const noexcept { return at(3); }
 
+	/// Return the orientation of the quadrilateral in radians, where 0 means the horizontal center line
+	/// is parallel to the x-axis and positive values mean a clockwise rotation.
 	double orientation() const
 	{
 		auto centerLine = (topRight() + bottomRight()) - (topLeft() + bottomLeft());
@@ -47,11 +60,37 @@ public:
 using QuadrilateralF = Quadrilateral<PointF>;
 using QuadrilateralI = Quadrilateral<PointI>;
 
+template <typename T>
+std::string ToString(const Quadrilateral<PointT<T>>& points)
+{
+	std::string res;
+	for (const auto& p : points)
+		res += std::to_string(p.x) + "x" + std::to_string(p.y) + (&p == &points.back() ? "" : " ");
+	return res;
+}
+
+#ifdef ZXING_INTERNAL
+
 template <typename PointT = PointF>
 Quadrilateral<PointT> Rectangle(int width, int height, typename PointT::value_t margin = 0)
 {
 	return {
 		PointT{margin, margin}, {width - margin, margin}, {width - margin, height - margin}, {margin, height - margin}};
+}
+
+template <typename PointT = PointF>
+Quadrilateral<PointT> Rectangle(int x0, int x1, int y0, int y1, typename PointT::value_t o)
+{
+	return {PointT{x0 + o, y0 + o}, {x1 + o, y0 + o}, {x1 + o, y1 + o}, {x0 + o, y1 + o}};
+}
+
+template <typename PointT = PointF>
+Quadrilateral<PointT> Rectangle(int left, int top, int width, int height)
+{
+	int right  = left + width - 1;
+	int bottom = top + height - 1;
+
+	return {PointT{left, top}, {right, top}, {right, bottom}, {left, bottom}};
 }
 
 template <typename PointT = PointF>
@@ -104,6 +143,12 @@ template <typename PointT>
 Quadrilateral<PointT> Scale(const Quadrilateral<PointT>& q, int factor)
 {
 	return {factor * q[0], factor * q[1], factor * q[2], factor * q[3]};
+}
+
+template <typename PointT>
+Quadrilateral<PointT> Move(const Quadrilateral<PointT>& q, PointT offset)
+{
+	return {q[0] + offset, q[1] + offset, q[2] + offset, q[3] + offset};
 }
 
 template <typename PointT>
@@ -164,14 +209,7 @@ Quadrilateral<PointT> Blend(const Quadrilateral<PointT>& a, const Quadrilateral<
 	return res;
 }
 
-template <typename T>
-std::string ToString(const Quadrilateral<PointT<T>>& points)
-{
-	std::string res;
-	for (const auto& p : points)
-		res += std::to_string(p.x) + "x" + std::to_string(p.y) + (&p == &points.back() ? "" : " ");
-	return res;
-}
+#endif
 
 } // ZXing
 

@@ -9,7 +9,10 @@
 
 #include "Matrix.h"
 #include "Point.h"
+
+#ifdef ZXING_INTERNAL
 #include "Range.h"
+#endif
 
 #include <cstdint>
 #include <stdexcept>
@@ -18,7 +21,6 @@
 namespace ZXing {
 
 class BitArray;
-class ByteMatrix;
 
 /**
  * @brief A simple, fast 2D array of bits.
@@ -33,7 +35,6 @@ class BitMatrix
 	// There is nothing wrong to support this but disable to make it explicit since we may copy something very big here.
 	// Use copy() below.
 	BitMatrix(const BitMatrix&) = default;
-	BitMatrix& operator=(const BitMatrix&) = delete;
 
 	const data_t& get(int i) const
 	{
@@ -61,7 +62,7 @@ public:
 #endif
 	BitMatrix(int width, int height) : _width(width), _height(height), _bits(width * height, UNSET_V)
 	{
-		if (width != 0 && Size(_bits) / width != height)
+		if (width != 0 && int(_bits.size()) / width != height)
 			throw std::invalid_argument("Invalid size: width * height is too big");
 	}
 
@@ -69,9 +70,11 @@ public:
 
 	BitMatrix(BitMatrix&& other) noexcept = default;
 	BitMatrix& operator=(BitMatrix&& other) noexcept = default;
+	BitMatrix& operator=(const BitMatrix&) = delete;
 
 	BitMatrix copy() const { return *this; }
 
+#ifdef ZXING_INTERNAL
 	Range<data_t*> row(int y) { return {_bits.data() + y * _width, _bits.data() + (y + 1) * _width}; }
 	Range<const data_t*> row(int y) const { return {_bits.data() + y * _width, _bits.data() + (y + 1) * _width}; }
 
@@ -79,6 +82,7 @@ public:
 	{
 		return {{_bits.data() + x + (_height - 1) * _width, -_width}, {_bits.data() + x - _width, -_width}};
 	}
+#endif
 
 	bool get(int x, int y) const { return get(y * _width + x); }
 	void set(int x, int y, bool val = true) { get(y * _width + x) = val * SET_V; }
@@ -161,7 +165,7 @@ BitMatrix Inflate(BitMatrix&& input, int width, int height, int quietZone);
 
 /**
  * @brief Deflate (crop + subsample) a bit matrix
- * @param input matrix to be shrinked
+ * @param input matrix to be shrunk
  * @param width new width
  * @param height new height
  * @param top cropping starts at top row

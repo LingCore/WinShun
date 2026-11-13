@@ -8,6 +8,7 @@
 
 #include "BitMatrix.h"
 #include "Pattern.h"
+#include "ZXConfig.h"
 
 #include <algorithm>
 #include <array>
@@ -32,7 +33,8 @@ inline ImageLineView RowView(const ImageView& iv, int row)
 	return {{iv.data(0, row), iv.pixStride()}, {iv.data(iv.width(), row), iv.pixStride()}};
 }
 
-static void ThresholdSharpened(const ImageLineView in, int threshold, std::vector<uint8_t>& out)
+template <typename I>
+static void ThresholdSharpened(Range<I> in, int threshold, std::vector<uint8_t>& out)
 {
 	out.resize(in.size());
 	auto i = in.begin();
@@ -44,14 +46,39 @@ static void ThresholdSharpened(const ImageLineView in, int threshold, std::vecto
 	*o++ = (*i++ <= threshold) * BitMatrix::SET_V;
 }
 
-static auto GenHistogram(const ImageLineView line)
+template <typename I>
+static auto GenHistogram(Range<I> line)
 {
 	// This code causes about 20% of the total runtime on an AVX2 system for a EAN13 search on Lum input data.
-	// Trying to increase the performance by performing 2 or 4 "parallel" histograms helped nothing.
+	// Trying to increase the performance by performing 2 or 4 "parallel" histograms helped nothing on the Intel
+	// system but was able to make the total runtime for that use case go down about 10% on an ARM M4.
+#if 1
+	Histogram res0 = {}, res1 = {}, res2 = {}, res3 = {};
+
+	auto src = line.begin();
+	const auto end = line.end();
+
+	while (end - src >= 4) {
+		res0[*src++ >> LUMINANCE_SHIFT]++;
+		res1[*src++ >> LUMINANCE_SHIFT]++;
+		res2[*src++ >> LUMINANCE_SHIFT]++;
+		res3[*src++ >> LUMINANCE_SHIFT]++;
+	}
+
+	Histogram res = {};
+	for (int i = 0; i < LUMINANCE_BUCKETS; ++i)
+		res[i] = res0[i] + res1[i] + res2[i] + res3[i];
+
+	while (src != end)
+		res[*src++ >> LUMINANCE_SHIFT]++;
+
+	return res;
+#else
 	Histogram res = {};
 	for (auto pix : line)
 		res[pix >> LUMINANCE_SHIFT]++;
 	return res;
+#endif
 }
 
 // Return -1 on error
@@ -110,12 +137,12 @@ bool GlobalHistogramBinarizer::getPatternRow(int row, int rotation, PatternRow& 
 	if (buffer.width() < 3)
 		return false; // special casing the code below for a width < 3 makes no sense
 
-#if defined(__AVX__) // or defined(__ARM_NEON)
+#if defined(__AVX__) || defined(__ARM_NEON)
 	// If we are extracting a column (instead of a row), we run into cache misses on every pixel access both
 	// during the histogram calculation and during the sharpen+threshold operation. Additionally, if we
 	// perform the ThresholdSharpened function on pixStride==1 data, the auto-vectorizer makes that part
 	// 8x faster on an AVX2 cpu which easily recovers the extra cost that we pay for the copying.
-	thread_local std::vector<uint8_t> line;
+	ZX_THREAD_LOCAL std::vector<uint8_t> line;
 	if (std::abs(buffer.pixStride()) > 4) {
 		line.resize(lineView.size());
 		std::copy(lineView.begin(), lineView.end(), line.begin());
@@ -123,14 +150,17 @@ bool GlobalHistogramBinarizer::getPatternRow(int row, int rotation, PatternRow& 
 	}
 #endif
 
-	auto threshold = EstimateBlackPoint(GenHistogram(lineView)) - 1;
+	auto packedLineView =
+		lineView.begin().stride == 1 ? Range(lineView.begin().pos, lineView.end().pos) : Range<const uint8_t*>(nullptr, nullptr);
+	auto histogram = packedLineView ? GenHistogram(packedLineView) : GenHistogram(lineView);
+	auto threshold = EstimateBlackPoint(histogram) - 1;
 	if (threshold <= 0)
 		return false;
 
-	thread_local std::vector<uint8_t> binarized;
+	ZX_THREAD_LOCAL std::vector<uint8_t> binarized;
 	// the optimizer can generate a specialized version for pixStride==1 (non-rotated input) that is about 8x faster on AVX2 hardware
-	if (lineView.begin().stride == 1)
-		ThresholdSharpened(lineView, threshold, binarized);
+	if (packedLineView)
+		ThresholdSharpened(packedLineView, threshold, binarized);
 	else
 		ThresholdSharpened(lineView, threshold, binarized);
 	GetPatternRow(Range(binarized), res);

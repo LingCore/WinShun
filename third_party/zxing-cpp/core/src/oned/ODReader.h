@@ -25,8 +25,7 @@ public:
 	explicit Reader(const ReaderOptions& opts);
 	~Reader() override;
 
-	Barcode decode(const BinaryBitmap& image) const override;
-	Barcodes decode(const BinaryBitmap& image, int maxSymbols) const override;
+	BarcodesData read(const BinaryBitmap& image, int maxSymbols) const override;
 
 private:
 	std::vector<std::unique_ptr<RowReader>> _readers;

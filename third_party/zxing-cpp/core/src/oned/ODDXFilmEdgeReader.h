@@ -10,7 +10,7 @@
 namespace ZXing::OneD {
 
 /**
- * <p>Implements decoding of the DX Edge Film code format, a type or barcode found on 35mm films.</p>
+ * <p>Implements decoding of the DX Edge Film code format, a type of barcode found on 35mm films.</p>
  *
  * <p>See <a href="https://en.wikipedia.org/wiki/DX_encoding">https://en.wikipedia.org/wiki/DX_encoding</a></p>
  */
@@ -20,7 +20,7 @@ class DXFilmEdgeReader : public RowReader
 public:
 	using RowReader::RowReader;
 
-	Barcode decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>&) const override;
+	BarcodeData decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>&) const override;
 };
 
 } // namespace ZXing::OneD

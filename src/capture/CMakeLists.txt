@@ -18,14 +18,17 @@
 # (Capture) are in this folder too, but built into WinShun's QML module
 # (src/app/CMakeLists.txt), which registers their types.
 #
-# zxing-cpp 2.3.0 (Apache-2.0, third_party/zxing-cpp: the library's core/ and
-# its LICENSE as released, the writers' libzint left out) reads the QR codes
+# zxing-cpp 3.1.1 (Apache-2.0, third_party/zxing-cpp: the library's core/ and
+# its LICENSE as released, the new writers' libzint left out) reads the QR codes
 # (QrCode). Its writers are on for the tests, which make their own codes; a
 # static library, so a program without them links none. EXCLUDE_FROM_ALL keeps
 # its install rules out of ours.
 find_package(Threads REQUIRED)
 set(ZXING_READERS ON)
-set(ZXING_WRITERS ON)
+set(ZXING_WRITERS OLD) # the writer the tests use; the new one needs libzint
+foreach(format 1D AZTEC DATAMATRIX MAXICODE PDF417) # QR codes are all that is read
+    set(ZXING_ENABLE_${format} OFF)
+endforeach()
 set(ZXING_C_API OFF)
 set(ZXING_EXPERIMENTAL_API OFF)
 set(ZXING_UNIT_TESTS OFF)

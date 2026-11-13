@@ -7,30 +7,18 @@
 
 #include "ByteArray.h"
 #include "CharacterSet.h"
+#include "ContentType.h"
+#include "ECI.h"
 #include "ReaderOptions.h"
+#include "SymbologyIdentifier.h"
+#include "Version.h"
+#include "ZXAlgorithms.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ZXing {
-
-enum class ECI : int;
-
-enum class ContentType { Text, Binary, Mixed, GS1, ISO15434, UnknownECI };
-enum class AIFlag : char { None, GS1, AIM };
-
-std::string ToString(ContentType type);
-
-struct SymbologyIdentifier
-{
-	char code = 0, modifier = 0, eciModifierOffset = 0;
-	AIFlag aiFlag = AIFlag::None;
-
-	std::string toString(bool hasECI = false) const
-	{
-		return code ? ']' + std::string(1, code) + static_cast<char>(modifier + eciModifierOffset * hasECI) : std::string();
-	}
-};
 
 class Content
 {
@@ -49,12 +37,21 @@ public:
 
 	ByteArray bytes;
 	std::vector<Encoding> encodings;
+#if !defined(ZXING_READERS) && defined(ZXING_USE_ZINT)
+	std::vector<std::string> utf8Cache;
+#endif
 	SymbologyIdentifier symbology;
 	CharacterSet defaultCharset = CharacterSet::Unknown;
 	bool hasECI = false;
 
-	Content();
-	Content(ByteArray&& bytes, SymbologyIdentifier si);
+	Content() = default;
+	Content(ByteArray&& bytes, SymbologyIdentifier si, CharacterSet defaultCharset = CharacterSet::Unknown);
+
+	// make movable but not copyable
+	Content(const Content& other) = delete;
+	Content& operator=(const Content& other) = delete;
+	Content(Content&& other) = default;
+	Content& operator=(Content&& other) = default;
 
 	void switchEncoding(ECI eci) { switchEncoding(eci, true); }
 	void switchEncoding(CharacterSet cs);
@@ -62,15 +59,13 @@ public:
 	void reserve(int count) { bytes.reserve(bytes.size() + count); }
 
 	void push_back(uint8_t val) { bytes.push_back(val); }
-	void append(const std::string& str) { bytes.insert(bytes.end(), str.begin(), str.end()); }
-	void append(const ByteArray& ba) { bytes.insert(bytes.end(), ba.begin(), ba.end()); }
+	void push_back(int val) { bytes.push_back(narrow_cast<uint8_t>(val)); }
+	void append(std::string_view str) { bytes.insert(bytes.end(), str.begin(), str.end()); }
+	void append(ByteView bv) { bytes.insert(bytes.end(), bv.begin(), bv.end()); }
 	void append(const Content& other);
 
-	void operator+=(char val) { push_back(val); }
-	void operator+=(const std::string& str) { append(str); }
-
 	void erase(int pos, int n);
-	void insert(int pos, const std::string& str);
+	void insert(int pos, std::string_view str);
 
 	bool empty() const { return bytes.empty(); }
 	bool canProcess() const;

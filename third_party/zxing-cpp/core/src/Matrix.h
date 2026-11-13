@@ -7,7 +7,6 @@
 #pragma once
 
 #include "Point.h"
-#include "ZXAlgorithms.h"
 
 #include <stdexcept>
 #include <algorithm>
@@ -30,7 +29,6 @@ private:
 	// Nothing wrong to support it, just to make it explicit, instead of by mistake.
 	// Use copy() below.
 	Matrix(const Matrix &) = default;
-	Matrix& operator=(const Matrix &) = delete;
 
 public:
 	Matrix() = default;
@@ -39,12 +37,13 @@ public:
 	__attribute__((no_sanitize("signed-integer-overflow")))
 #endif
 	Matrix(int width, int height, value_t val = {}) : _width(width), _height(height), _data(_width * _height, val) {
-		if (width != 0 && Size(_data) / width != height)
+		if (width != 0 && int(_data.size()) / width != height)
 			throw std::invalid_argument("Invalid size: width * height is too big");
 	}
 
 	Matrix(Matrix&&) noexcept = default;
 	Matrix& operator=(Matrix&&) noexcept = default;
+	Matrix& operator=(const Matrix &) = delete;
 
 	Matrix copy() const {
 		return *this;
@@ -59,7 +58,7 @@ public:
 	}
 
 	int size() const {
-		return Size(_data);
+		return int(_data.size());
 	}
 
 	value_t& operator()(int x, int y)
@@ -72,6 +71,14 @@ public:
 	{
 		assert(x >= 0 && x < _width && y >= 0 && y < _height);
 		return _data[y * _width + x];
+	}
+
+	value_t& operator()(PointI p) {
+		return operator()(p.x, p.y);
+	}
+
+	const T& operator()(PointI p) const {
+		return operator()(p.x, p.y);
 	}
 
 	const value_t& get(int x, int y) const {

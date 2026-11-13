@@ -12,10 +12,12 @@
 #include "WindowSnapshot.h"
 
 #include <BitMatrix.h>
-#include <MultiFormatWriter.h>
+#include <qrcode/QRWriter.h>
 
 #include <QGuiApplication>
 #include <QPainter>
+#include <QElapsedTimer>
+#include <QDirIterator>
 #include <QScopeGuard>
 #include <QTest>
 
@@ -87,7 +89,7 @@ RedactLine line(const QString& text, QRectF box)
 // A QR code for `text` as a picture: modules of `scale` pixels, a quiet zone of 4.
 QImage qrPicture(const QString& text, int scale = 6, bool inverted = false)
 {
-    ZXing::MultiFormatWriter writer(ZXing::BarcodeFormat::QRCode);
+    ZXing::QRCode::Writer writer;
     writer.setEncoding(ZXing::CharacterSet::UTF8);
     writer.setMargin(4);
     const QByteArray utf8 = text.toUtf8();
@@ -658,6 +660,40 @@ private slots:
         QCOMPARE(readQrCodes(qrPicture(u"inverted code"_s, 6, true)), QStringList {u"inverted code"_s}); // dark mode
         QCOMPARE(readQrCodes(turnedImage(qrPicture(u"turned code"_s), true)), QStringList {u"turned code"_s});
         QCOMPARE(readQrCodes(qrPicture(u"small modules"_s, 3)), QStringList {u"small modules"_s});
+    }
+
+    // Real pictures, which are not ours to keep in the repository (GitHub #305:
+    // QQ's round, dotted codes): WS_QR_SAMPLES names a folder of them,
+    // WS_QR_SCALE a size to draw them at first (0.25) and WS_QR_AT_LEAST how
+    // many must be read. Skipped without the folder.
+    void realPicturesAreRead()
+    {
+        const QString folder = qEnvironmentVariable("WS_QR_SAMPLES");
+        if (folder.isEmpty())
+            QSKIP("WS_QR_SAMPLES is not set");
+        const double scale = qEnvironmentVariable("WS_QR_SCALE", u"1"_s).toDouble();
+        int pictures = 0;
+        int read = 0;
+        QElapsedTimer timer;
+        qint64 spent = 0;
+        QDirIterator it(folder, QDir::Files);
+        while (it.hasNext()) {
+            QImage image(it.next());
+            if (image.isNull())
+                continue;
+            if (scale > 0 && scale != 1.0)
+                image = image.scaled(image.size() * scale, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            ++pictures;
+            timer.start();
+            const bool found = !readQrCodes(image).isEmpty();
+            spent += timer.elapsed();
+            if (found)
+                ++read;
+            else
+                qInfo().noquote() << "not read:" << it.fileName();
+        }
+        qInfo() << "read" << read << "of" << pictures << "in" << spent << "ms";
+        QVERIFY(read >= qEnvironmentVariableIntValue("WS_QR_AT_LEAST"));
     }
 
     void twoQrCodesGiveTwoTexts()

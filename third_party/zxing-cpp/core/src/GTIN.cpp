@@ -6,12 +6,12 @@
 
 #include "GTIN.h"
 
-#include "Barcode.h"
-
 #include <algorithm>
+#ifdef __cpp_lib_format // not available on gcc 12
+#include <format>
+#endif
 #include <iomanip>
 #include <iterator>
-#include <sstream>
 #include <string>
 
 namespace ZXing::GTIN {
@@ -157,7 +157,7 @@ static const CountryId COUNTRIES[] = {
 	// clang-format on
 };
 
-std::string LookupCountryIdentifier(const std::string& GTIN, const BarcodeFormat format)
+std::string LookupCountryIdentifier(std::string_view GTIN, const BarcodeFormat format)
 {
 	// Ignore add-on if any
 	const auto space = GTIN.find(' ');
@@ -173,22 +173,22 @@ std::string LookupCountryIdentifier(const std::string& GTIN, const BarcodeFormat
 
 	if (size != 8 || format != BarcodeFormat::EAN8) { // Assuming following doesn't apply to EAN-8
 		// 0000000 Restricted Circulation Numbers; 0000001-0000099 unused to avoid collision with GTIN-8
-		int prefix = std::stoi(GTIN.substr(first, 7 - implicitZero));
+		int prefix = FromString<int>(GTIN.substr(first, 7 - implicitZero));
 		if (prefix >= 0 && prefix <= 99)
 			return {};
 
 		// 00001-00009 US
-		prefix = std::stoi(GTIN.substr(first, 5 - implicitZero));
+		prefix = FromString<int>(GTIN.substr(first, 5 - implicitZero));
 		if (prefix >= 1 && prefix <= 9)
 			return "US";
 
 		// 0001-0009 US
-		prefix = std::stoi(GTIN.substr(first, 4 - implicitZero));
+		prefix = FromString<int>(GTIN.substr(first, 4 - implicitZero));
 		if (prefix >= 1 && prefix <= 9)
 			return "US";
 	}
 
-	const int prefix = std::stoi(GTIN.substr(first, 3 - implicitZero));
+	const int prefix = FromString<int>(GTIN.substr(first, 3 - implicitZero));
 
 	// Special case EAN-8 for prefix < 100 (GS1 General Specifications Figure 1.4.3-1)
 	if (size == 8 && format == BarcodeFormat::EAN8 && prefix <= 99) // Restricted Circulation Numbers
@@ -201,11 +201,9 @@ std::string LookupCountryIdentifier(const std::string& GTIN, const BarcodeFormat
 
 std::string EanAddOn(const Barcode& barcode)
 {
-	if (!(BarcodeFormat::EAN13 | BarcodeFormat::UPCA | BarcodeFormat::UPCE | BarcodeFormat::EAN8).testFlag(barcode.format()))
+	if (barcode.symbologyIdentifier() != "]E3")
 		return {};
-	auto txt = barcode.bytes().asString();
-	auto pos = txt.find(' ');
-	return pos != std::string::npos ? std::string(txt.substr(pos + 1)) : std::string();
+	return barcode.text().substr(barcode.format() == BarcodeFormat::EAN8 ? 8 : 13);
 }
 
 std::string IssueNr(const std::string& ean2AddOn)
@@ -245,9 +243,11 @@ std::string Price(const std::string& ean5AddOn)
 	}
 
 	int rawAmount = std::stoi(ean5AddOn.substr(1));
-	std::stringstream buf;
-	buf << currency << std::fixed << std::setprecision(2) << (float(rawAmount) / 100);
-	return buf.str();
+#if !defined(__cpp_lib_to_chars) || !defined(__cpp_lib_format) // not available on older macOS / gcc 12
+	return currency + std::to_string(rawAmount / 100) + '.' + std::to_string(rawAmount % 100);
+#else
+	return std::format("{}{:.2f}", currency, float(rawAmount) / 100);
+#endif
 }
 
 } // namespace ZXing::GTIN

@@ -9,14 +9,16 @@
 
 #include "BitMatrix.h"
 #include "BitMatrixCursor.h"
-#include "ByteMatrix.h"
+#include "Matrix.h"
 #include "DetectorResult.h"
+#include "DMVersion.h"
 #include "GridSampler.h"
 #include "LogMatrix.h"
+#include "LocalGrid.h"
 #include "Point.h"
 #include "RegressionLine.h"
 #include "ResultPoint.h"
-#include "Scope.h"
+#include "StdScope.h"
 #include "WhiteRectDetector.h"
 
 #include <algorithm>
@@ -24,6 +26,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <map>
 #include <utility>
 #include <vector>
@@ -198,7 +201,7 @@ static DetectorResult SampleGrid(const BitMatrix& image, const ResultPoint& topL
 								 const ResultPoint& bottomRight, const ResultPoint& topRight, int width, int height)
 {
 	return SampleGrid(image, width, height,
-					  {Rectangle(width, height, 0.5), {topLeft, topRight, bottomRight, bottomLeft}});
+					  {Rectangle(width, height, 0), {topLeft, topRight, bottomRight, bottomLeft}});
 }
 
 /**
@@ -276,7 +279,7 @@ static DetectorResult DetectOld(const BitMatrix& image)
 	const auto& lSideOne = transitions[0];
 	const auto& lSideTwo = transitions[1];
 
-	// We accept at most 4 transisions inside the L pattern (i.e. 2 corruptions) to reduce false positive FormatErrors
+	// We accept at most 4 transitions inside the L pattern (i.e. 2 corruptions) to reduce false positive FormatErrors
 	if (lSideTwo.transitions > 2)
 		return {};
 
@@ -467,6 +470,7 @@ public:
 		printf("unit pixel dist: %.1f\n", unitPixelDist);
 		printf("lineLength: %.1f, meanModSize: %.1f (min: %.1f, max: %.1f), gaps: %lu\n", lineLength, meanModSize, *iMin, *iMax,
 			   modSizes.size());
+		printf("modSizes: ");
 		printv("%.1f ", modSizes);
 
 		if (*iMax > 2 * *iMin) {
@@ -476,6 +480,7 @@ public:
 				else if (modSizes[i] > meanModSize * 1.6)
 					modSizes[i] = 0;
 			}
+			printf("filtered: ");
 			printv("%.1f ", modSizes);
 
 			meanModSize = average(modSizes, [](double dist) { return dist > 0; });
@@ -565,7 +570,8 @@ class EdgeTracer : public BitMatrixCursorF
 	}
 
 public:
-	ByteMatrix* history = nullptr;
+	using StateMatrix = Matrix<int8_t>;
+	StateMatrix* history = nullptr;
 	int state = 0;
 
 	using BitMatrixCursorF::BitMatrixCursor;
@@ -717,7 +723,191 @@ public:
 	}
 };
 
-static DetectorResult Scan(EdgeTracer& startTracer, std::array<DMRegressionLine, 4>& lines)
+// Store a LUT mapping module indices to their actual center positions along the edge.
+struct ModuleCenterLUT : std::vector<double>
+{
+	using std::vector<double>::vector;
+
+	double operator()(int i) const { return empty() ? i + 0.5 : (*this)[i]; }
+};
+
+// Build a module-center LUT from uniform module coordinates to actual (non-uniform) ones
+// by analyzing the gap structure in timing-pattern traced points. See #794, #1063, #1072.
+static ModuleCenterLUT BuildModuleCenterLUT(const std::vector<PointF>& points, PointF start, PointF end, int numModules,
+											const std::function<double(double)>& edgeFracToModule)
+{
+	if (Size(points) < 5)
+		return {};
+
+	auto edgeDir = end - start;
+	auto edgeLen = length(edgeDir);
+	auto unitDir = normalized(edgeDir);
+	auto modSize = edgeLen / numModules;
+
+	// project traced points onto edge direction
+	std::vector<double> proj;
+	proj.reserve(points.size());
+	for (const auto& p : points)
+		proj.push_back(dot(p - start, unitDir));
+
+	bool startsWithGap = false;
+	if (proj.front() > proj.back()) {
+		std::reverse(proj.begin(), proj.end());
+		startsWithGap = true;
+	}
+
+	// detect gaps (white modules) — use a lower threshold than modules() (1.9×) to catch
+	// compressed gaps near edges caused by barrel distortion on curved surfaces
+	auto unitPixelDist = length(bresenhamDirection(edgeDir));
+	double gapThreshold = 1.4 * unitPixelDist;
+
+	std::vector<double> gapMids;
+	for (int i = 1; i < Size(proj); ++i)
+		if (proj[i] - proj[i - 1] > gapThreshold) {
+			auto gapMid = (proj[i] + proj[i - 1]) / 2;
+			if (gapMids.empty() || gapMid - gapMids.back() > 0.75 * 2 * modSize)
+				gapMids.push_back(gapMid);
+		}
+
+	if (gapMids.empty()) {
+		return {};
+	}
+
+	// assign each gap a module index, accounting for missing gaps via spacing ratio
+	std::vector<int> modIdx(gapMids.size());
+	modIdx[0] = static_cast<int>(std::round((gapMids.front() / modSize - (1.5 + startsWithGap)) / 2)) * 2 + 1 + startsWithGap;
+	for (int i = 1; i < Size(gapMids); ++i)
+		modIdx[i] = modIdx[i - 1] + std::max(1, static_cast<int>(std::round((gapMids[i] - gapMids[i - 1]) / (2 * modSize)))) * 2;
+
+	printf("mIdx: ");
+	printv("%d ", modIdx);
+
+	struct Knot
+	{
+		double mc, corrMc;
+	};
+	std::vector<Knot> knots;
+	knots.reserve(Size(gapMids) + 2);
+	knots.push_back({0.0, 0.0});
+	for (int k = 0; k < Size(gapMids); ++k)
+		knots.push_back({modIdx[k] + 0.5, edgeFracToModule(gapMids[k] / edgeLen)});
+	knots.push_back({double(numModules), double(numModules)});
+
+	// less than 1/2 module deviation: correction not worthwhile
+	if (Reduce(knots, 0.0, [](double m, const Knot& k) { return std::max(m, std::abs(k.mc - k.corrMc)); }) < 0.5)
+		return {};
+
+	ModuleCenterLUT centerLUT(numModules);
+
+	// #define ZXING_USE_POLY_TIMING_REMAP
+	// #define ZXING_USE_POLY_TIMING_REMAP_CONSTRAINED
+
+#ifdef ZXING_USE_POLY_TIMING_REMAP
+	{
+		// Fit degree-2 polynomial corrMc = poly[0] + poly[1]*mc + poly[2]*mc^2
+		// using least-squares on all knots (including endpoint sentinels at 0 and numModules).
+		double s0 = Size(knots), s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+		double b0 = 0, b1 = 0, b2 = 0;
+		for (const auto& k : knots) {
+			double m = k.mc, c = k.corrMc, m2 = m * m;
+			s1 += m;
+			s2 += m2;
+			s3 += m2 * m;
+			s4 += m2 * m2;
+			b0 += c;
+			b1 += m * c;
+			b2 += m2 * c;
+		}
+		// Gaussian elimination on the 3x3 normal equations [A^T A | A^T b]
+		double mat[3][4] = {{s0, s1, s2, b0}, {s1, s2, s3, b1}, {s2, s3, s4, b2}};
+		for (int col = 0; col < 3; ++col)
+			for (int row = col + 1; row < 3; ++row) {
+				double f = mat[row][col] / mat[col][col];
+				for (int j = col; j <= 3; ++j)
+					mat[row][j] -= f * mat[col][j];
+			}
+		double p2 = mat[2][3] / mat[2][2];
+		double p1 = (mat[1][3] - mat[1][2] * p2) / mat[1][1];
+		double p0 = (mat[0][3] - mat[0][2] * p2 - mat[0][1] * p1) / mat[0][0];
+		for (int i = 0; i < numModules; ++i) {
+			double mc = i + 0.5;
+			centerLUT[i] = p0 + p1 * mc + p2 * mc * mc;
+		}
+	}
+#elif defined(ZXING_USE_POLY_TIMING_REMAP_CONSTRAINED)
+	{
+		// Fit a quadratic that reproduces both sentinel endpoints (0 and N) exactly:
+		// corrMc = mc + a * mc * (mc - N).
+		// This keeps corrMc(0) == 0 and corrMc(N) == N by construction,
+		// while fitting the interior gap knots in the least-squares sense.
+		double gg = 0, gb = 0;
+		for (const auto& k : knots) {
+			double g = k.mc * (k.mc - numModules);
+			gg += g * g;
+			gb += g * (k.corrMc - k.mc);
+		}
+		double a = gb / gg;
+		double p0 = 0;
+		double p1 = 1 - a * numModules;
+		double p2 = a;
+		for (int i = 0; i < numModules; ++i) {
+			double mc = i + 0.5;
+			centerLUT[i] = p0 + p1 * mc + p2 * mc * mc;
+		}
+	}
+#else
+	// Fill dense lookup table at module centers via piecewise-linear interpolation.
+	int ki = 0;
+	for (int i = 0; i < numModules; ++i) {
+		double mc = i + 0.5;
+		while (ki + 1 < Size(knots) - 1 && knots[ki + 1].mc < mc)
+			++ki;
+		double denom = knots[ki + 1].mc - knots[ki].mc;
+		assert(denom >= 0.1);
+		double t = (mc - knots[ki].mc) / denom;
+		centerLUT[i] = knots[ki].corrMc + t * (knots[ki + 1].corrMc - knots[ki].corrMc);
+	}
+#endif
+
+	printf("corr: ");
+	for (int i = 0; i < numModules; ++i)
+		printf("%.2f ", centerLUT[i] - (i + 0.5));
+	printf("\n");
+
+	return centerLUT;
+}
+
+//TODO: merge this into a generic SampleGrid function
+static DetectorResult SampleGridCorrected(const BitMatrix& image, int width, int height, const PerspectiveTransform& mod2Pix,
+										  const ModuleCenterLUT& topCenterLUT, const ModuleCenterLUT& rightCenterLUT)
+{
+#ifdef PRINT_DEBUG
+	LogMatrix log;
+	static int i = 0;
+	LogMatrixWriter lmw(log, image, 5, "grid_c" + std::to_string(i++) + ".pnm");
+#endif
+
+	BitMatrix res(width, height);
+	for (int y = 0; y < height; ++y) {
+		double my = rightCenterLUT(y);
+		for (int x = 0; x < width; ++x) {
+			auto p = mod2Pix(PointF{topCenterLUT(x), my});
+			if (!image.isIn(p))
+				return {};
+#ifdef PRINT_DEBUG
+			log(p, 3);
+#endif
+			if (image.get(p))
+				res.set(x, y);
+		}
+	}
+
+	auto projectCorner = [&](PointI p) { return PointI(mod2Pix(PointF(p)) + PointF(0.5, 0.5)); };
+	return {std::move(res),
+			{projectCorner({0, 0}), projectCorner({width, 0}), projectCorner({width, height}), projectCorner({0, height})}};
+}
+
+static DetectorResults Scan(EdgeTracer& startTracer, std::array<DMRegressionLine, 4>& lines)
 {
 	while (startTracer.moveToNextWhiteAfterBlack()) {
 		log(startTracer.p);
@@ -812,7 +1002,7 @@ static DetectorResult Scan(EdgeTracer& startTracer, std::array<DMRegressionLine,
 		int dimT, dimR;
 		double fracT, fracR;
 		auto splitDouble = [](double d, int* i, double* f) {
-			*i = std::isnormal(d) ? static_cast<int>(d + 0.5) : 0;
+			*i = std::isnormal(d) ? narrow_cast<int>(std::lround(d)) : 0;
 			*f = std::isnormal(d) ? std::abs(d - *i) : INFINITY;
 		};
 		splitDouble(lineT.modules(tl, tr), &dimT, &fracT);
@@ -824,15 +1014,23 @@ static DetectorResult Scan(EdgeTracer& startTracer, std::array<DMRegressionLine,
 
 		printf("L: %.1f, %.1f ^ %.1f, %.1f > %.1f, %.1f ^> %.1f, %.1f\n", bl.x, bl.y,
 			   tl.x - bl.x, tl.y - bl.y, br.x - bl.x, br.y - bl.y, tr.x, tr.y);
-		printf("dim: %d x %d\n", dimT, dimR);
+		printf("dim: %d x %d (%.2f, %.2f)\n", dimT, dimR, fracT, fracR);
 
-		// if we have an almost square (invalid rectangular) data matrix dimension, we try to parse it by assuming a
-		// square. we use the dimension that is closer to an integral value. all valid rectangular symbols differ in
-		// their dimension by at least 10. Note: this is currently not required for the black-box tests to complete.
-		if (std::abs(dimT - dimR) < 10)
-			dimT = dimR = fracR < fracT ? dimR : dimT;
+		auto* version = VersionForDimensions(dimR, dimT);
 
-		CHECK(dimT >= 10 && dimT <= 144 && dimR >= 8 && dimR <= 144);
+		// if we have an invalid dimension but it is almost square (all valid rectangular symbols differ in their dimension by at least 10),
+		// we try to parse it by assuming a square. If only one leads to a valid version, we use that, otherwise we use the dimension
+		// that is closer to an integral value.
+		if (!version && std::abs(dimT - dimR) < 10) {
+			auto* versionT = VersionForDimensions(dimT, dimT);
+			auto* versionR = VersionForDimensions(dimR, dimR);
+			if (bool(versionT) ^ bool(versionR))
+				dimT = dimR = versionT ? dimT : dimR;
+			else
+				dimT = dimR = fracR < fracT ? dimR : dimT;
+			version = VersionForDimensions(dimR, dimT);
+		}
+		CHECK(version);
 
 		auto movedTowardsBy = [](PointF a, PointF b1, PointF b2, auto d) {
 			return a + d * normalized(normalized(b1 - a) + normalized(b2 - a));
@@ -848,32 +1046,98 @@ static DetectorResult Scan(EdgeTracer& startTracer, std::array<DMRegressionLine,
 			movedTowardsBy(bl, tl, br, 0.5f),
 		};
 
-		auto res = SampleGrid(*startTracer.img, dimT, dimR, PerspectiveTransform(Rectangle(dimT, dimR, 0), sourcePoints));
+		auto mod2Pix = PerspectiveTransform(Rectangle(dimT, dimR, 0), sourcePoints);
+		auto pix2Mod = PerspectiveTransform(sourcePoints, Rectangle(dimT, dimR, 0));
 
-		CHECK(res.isValid());
+#if 1
+		std::vector<int> apX(version->dataBlocksX() + 1), apY(version->dataBlocksY() + 1);
+		std::generate(apX.begin(), apX.end(), [i = 0, version]() mutable { return i++ * (version->dataBlockWidth + 2); });
+		std::generate(apY.begin(), apY.end(), [i = 0, version]() mutable { return i++ * (version->dataBlockHeight + 2); });
+		apX.back() = dimT - 1;
+		apY.back() = dimR - 1;
+		auto apP = Matrix<std::optional<PointF>>(Size(apX), Size(apY));
 
-		return res;
+		constexpr PointI l(-1, 0), r(1, 0), u(0, -1), d(0, 1);
+
+		// Find the position of the alignment pattern center by looking for the given b/w patterns around the initial estimate
+		// based on the mod2Pix projection.
+		auto findAP = [&](PointI p, PointI offset, int radius, PointI timingStart, LocalGrid::Directions timingDirs, PointI blackStart,
+						  LocalGrid::Directions blackDirs, PointI whiteStart,
+						  LocalGrid::Directions whiteDirs) -> std::optional<PointF> {
+			auto lg = LocalGrid(*startTracer.img, mod2Pix, p, {dimT, dimR}, offset);
+			if (lg.findPattern(radius, timingStart, timingDirs, blackStart, blackDirs, whiteStart, whiteDirs))
+				return lg.getPos();
+			return {};
+		};
+
+		for (int y = 0; y < Size(apY); ++y)
+			for (int x = 0; x < Size(apX); ++x) {
+				std::optional<PointF> ap;
+				PointI api{apX[x], apY[y]};
+				int Nx = Size(apX) - 1, Ny = Size(apY) - 1;
+
+				if (x == 0 && y == 0) // top-left
+					ap = findAP(api, {2, 0}, 4, {1, 0}, std::array{r}, {0, 0}, std::array{d}, {-1, -1}, std::array{d, r});
+				else if (x == Nx && y == 0) // top-right
+					ap = findAP(api, {-1, 1}, 4, {0, 0}, std::array{l, d}, {}, {}, {1, -1}, std::array{d, l});
+				else if (x == Nx && y == Ny) // bottom-right
+					ap = findAP(api, {-0, -2}, 4, {0, -1}, std::array{u}, {0, 0}, std::array{l}, {1, 1}, std::array{u, l});
+				else if (x == 0 && y == Ny) // bottom-left
+					ap = findAP(api, {1, -1}, 4, {}, {}, {0, 0}, std::array{u, r}, {-1, 1}, std::array{u, r});
+				else if (x == 0) // left
+					ap = findAP(api, {2, 0}, 3, {1, 0}, std::array{r}, {0, -1}, std::array{u, d, r}, {}, {});
+				else if (x == Nx) // right
+					ap = findAP(api, {-1, 0}, 3, {0, 0}, std::array{l, u, d}, {0, -1}, std::array{l}, {}, {});
+				else if (y == 0) // top
+					ap = findAP(api, {-1, 0}, 3, {-1, 0}, std::array{l, r, d}, {0, 0}, std::array{d}, {}, {});
+				else if (y == Ny) // bottom
+					ap = findAP(api, {-1, -1}, 3, {-1, -1}, std::array{u}, {0, 0}, std::array{l, r, u}, {}, {});
+				else // center
+					ap = findAP(api, {-1, 0}, 3, {-1, 0}, std::array{l, r, u, d}, {0, -1}, std::array{l, r, u, d}, {}, {});
+
+				if (ap)
+					apP.set(x, y, *ap);
+			}
+
+		if (auto res = SampleGrid(*startTracer.img, dimT, dimR, mod2Pix, std::move(apP), apX, apY); res.isValid())
+			co_yield std::move(res);
+#else
+		if (auto res = SampleGrid(*startTracer.img, dimT, dimR, mod2Pix); res.isValid())
+			co_yield std::move(res);
+#endif
+		// if (auto res = SampleGrid(*startTracer.img, dimT, dimR, mod2Pix); res.isValid())
+		// 	co_yield std::move(res);
+
+		if (dimT > 42 && dimR > 42) // symbols that are this large are unlikely to be fixable by a 'global' timing pattern correction
+			continue;
+
+		// TODO: we currently only yield the corrected grid if at least one dimention is significantly deformed (has a LUT), but it
+		// would be even better if we stopped right after having a sucessful decoding result from the uncorrected grid. The current
+		// co-routine setup does not allow this. The runtime impact is very small though.
+
+		// produce timing-pattern-corrected alternatives for deformed symbols
+		tl = sourcePoints[0], tr = sourcePoints[1], br = sourcePoints[2];
+
+		auto tLUT = BuildModuleCenterLUT(lineT.points(), tl, tr, dimT, [&](double t) { return pix2Mod((1 - t) * tl + t * tr).x; });
+		auto rLUT = BuildModuleCenterLUT(lineR.points(), tr, br, dimR, [&](double t) { return pix2Mod((1 - t) * tr + t * br).y; });
+
+		if (!tLUT.empty() || !rLUT.empty())
+			if (auto res = SampleGridCorrected(*startTracer.img, dimT, dimR, mod2Pix, tLUT, rLUT); res.isValid())
+				co_yield std::move(res);
 	}
-
-	return {};
 }
 
 static DetectorResults DetectNew(const BitMatrix& image, bool tryHarder, bool tryRotate)
 {
 #ifdef PRINT_DEBUG
-	LogMatrixWriter lmw(log, image, 1, "dm-log.pnm");
+	LogMatrixWriter lmw(log, image, 3, "dm-log.pnm");
 //	tryRotate = tryHarder = false;
 #endif
 
-	// disable expensive multi-line scan to detect off-center symbols for now
-#ifndef __cpp_impl_coroutine
-	tryHarder = false;
-#endif
-
 	// a history log to remember where the tracing already passed by to prevent a later trace from doing the same work twice
-	ByteMatrix history;
+	EdgeTracer::StateMatrix history;
 	if (tryHarder)
-		history = ByteMatrix(image.width(), image.height());
+		history = EdgeTracer::StateMatrix(image.width(), image.height());
 
 	// instantiate RegressionLine objects outside of Scan function to prevent repetitive std::vector allocations
 	std::array<DMRegressionLine, 4> lines;
@@ -895,14 +1159,8 @@ static DetectorResults DetectNew(const BitMatrix& image, bool tryHarder, bool tr
 			if (!tracer.isIn())
 				break;
 
-#ifdef __cpp_impl_coroutine
-			DetectorResult res;
-			while (res = Scan(tracer, lines), res.isValid())
+			for (auto&& res : Scan(tracer, lines))
 				co_yield std::move(res);
-#else
-			if (auto res = Scan(tracer, lines); res.isValid())
-				return res;
-#endif
 
 			if (!tryHarder)
 				break; // only test center lines
@@ -911,10 +1169,6 @@ static DetectorResults DetectNew(const BitMatrix& image, bool tryHarder, bool tr
 		if (!tryRotate)
 			break; // only test left direction
 	}
-
-#ifndef __cpp_impl_coroutine
-	return {};
-#endif
 }
 
 /**
@@ -949,17 +1203,13 @@ static DetectorResult DetectPure(const BitMatrix& image)
 		|| !image.isIn(PointF{left + modSizeX / 2 + (dimT - 1) * modSize, top + modSizeY / 2 + (dimR - 1) * modSize}))
 		return {};
 
-	int right  = left + width - 1;
-	int bottom = top + height - 1;
-
 	// Now just read off the bits (this is a crop + subsample)
 	return {Deflate(image, dimT, dimR, top + modSizeY / 2, left + modSizeX / 2, modSize),
-			{{left, top}, {right, top}, {right, bottom}, {left, bottom}}};
+			Rectangle<PointI>(left, top, width, height)};
 }
 
 DetectorResults Detect(const BitMatrix& image, bool tryHarder, bool tryRotate, bool isPure)
 {
-#ifdef __cpp_impl_coroutine
 	// First try the very fast DetectPure() path. Also because DetectNew() generally fails with pure module size 1 symbols
 	// TODO: implement a tryRotate version of DetectPure, see #590.
 	if (auto r = DetectPure(image); r.isValid())
@@ -975,14 +1225,6 @@ DetectorResults Detect(const BitMatrix& image, bool tryHarder, bool tryRotate, b
 				co_yield std::move(r);
 		}
 	}
-#else
-	auto result = DetectPure(image);
-	if (!result.isValid() && !isPure)
-		result = DetectNew(image, tryHarder, tryRotate);
-	if (!result.isValid() && tryHarder && !isPure)
-		result = DetectOld(image);
-	return result;
-#endif
 }
 
 } // namespace ZXing::DataMatrix

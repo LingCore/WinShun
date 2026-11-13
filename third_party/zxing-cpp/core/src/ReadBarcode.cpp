@@ -4,10 +4,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "ReadBarcode.h"
-
-#if !defined(ZXING_READERS) && !defined(ZXING_WRITERS)
+#include "ReaderOptions.h"
+#include "BarcodeData.h"
 #include "Version.h"
-#endif
+
+#include <utility>
+
 
 #ifdef ZXING_READERS
 #include "GlobalHistogramBinarizer.h"
@@ -22,6 +24,105 @@
 #include <stdexcept>
 
 namespace ZXing {
+
+// ==============================================================================
+// ReaderOptions implementation
+// ==============================================================================
+
+struct ReaderOptions::Data
+{
+	bool tryHarder                : 1 = true;
+	bool tryRotate                : 1 = true;
+	bool tryInvert                : 1 = true;
+	bool tryDownscale             : 1 = true;
+#ifdef ZXING_EXPERIMENTAL_API
+	bool tryDenoise               : 1 = false;
+#endif
+	bool isPure                   : 1 = false;
+	bool validateOptionalChecksum : 1 = false;
+	bool returnErrors             : 1 = false;
+	uint8_t downscaleFactor       : 3 = 3; // values 2, 3, 4
+	EanAddOnSymbol eanAddOnSymbol : 2 = EanAddOnSymbol::Ignore;
+	Binarizer binarizer           : 2 = Binarizer::LocalAverage;
+	TextMode textMode             : 3 = TextMode::HRI;
+	CharacterSet characterSet     : 6 = CharacterSet::Unknown;
+
+	uint8_t minLineCount          = 2;
+	uint8_t maxNumberOfSymbols    = 0xff;
+	uint16_t downscaleThreshold   = 500;
+	BarcodeFormats formats        = {};
+};
+
+ReaderOptions::ReaderOptions() : d(std::make_unique<Data>()) {}
+ReaderOptions::~ReaderOptions() = default;
+
+// copy
+ReaderOptions::ReaderOptions(const ReaderOptions& other) : d(std::make_unique<Data>(*other.d)) {}
+ReaderOptions& ReaderOptions::operator=(const ReaderOptions& other)
+{
+	if (this != &other)
+		d = std::make_unique<Data>(*other.d);
+	return *this;
+}
+
+// move
+ReaderOptions::ReaderOptions(ReaderOptions&&) noexcept = default;
+ReaderOptions& ReaderOptions::operator=(ReaderOptions&&) noexcept = default;
+
+const BarcodeFormats& ReaderOptions::formats() const noexcept { return d->formats; }
+ReaderOptions& ReaderOptions::formats(BarcodeFormats&& v) & { return (void)(d->formats = std::move(v)), *this; }
+ReaderOptions&& ReaderOptions::formats(BarcodeFormats&& v) && { return (void)(d->formats = std::move(v)), std::move(*this); }
+
+#define ZX_PROPERTY(TYPE, NAME, SETTER) \
+	TYPE ReaderOptions::NAME() const noexcept { return d->NAME; } \
+	ReaderOptions& ReaderOptions::NAME(TYPE v) & { return (void)(d->NAME = std::move(v)), *this; } \
+	ReaderOptions&& ReaderOptions::NAME(TYPE v) && { return (void)(d->NAME = std::move(v)), std::move(*this); }
+
+ZX_PROPERTY(bool, tryHarder, setTryHarder)
+ZX_PROPERTY(bool, tryRotate, setTryRotate)
+ZX_PROPERTY(bool, tryInvert, setTryInvert)
+ZX_PROPERTY(bool, tryDownscale, setTryDownscale)
+#ifdef ZXING_EXPERIMENTAL_API
+ZX_PROPERTY(bool, tryDenoise, setTryDenoise)
+#endif
+ZX_PROPERTY(Binarizer, binarizer, setBinarizer)
+ZX_PROPERTY(bool, isPure, setIsPure)
+ZX_PROPERTY(uint16_t, downscaleThreshold, setDownscaleThreshold)
+ZX_PROPERTY(uint8_t, downscaleFactor, setDownscaleFactor)
+ZX_PROPERTY(uint8_t, minLineCount, setMinLineCount)
+ZX_PROPERTY(uint8_t, maxNumberOfSymbols, setMaxNumberOfSymbols)
+ZX_PROPERTY(bool, validateOptionalChecksum, setValidateOptionalChecksum)
+ZX_PROPERTY(bool, returnErrors, setReturnErrors)
+ZX_PROPERTY(EanAddOnSymbol, eanAddOnSymbol, setEanAddOnSymbol)
+ZX_PROPERTY(TextMode, textMode, setTextMode)
+ZX_PROPERTY(CharacterSet, characterSet, setCharacterSet)
+
+#undef ZX_PROPERTY
+
+ReaderOptions& ReaderOptions::characterSet(std::string_view v) &
+{
+	d->characterSet = CharacterSetFromString(v);
+	return *this;
+}
+ReaderOptions&& ReaderOptions::characterSet(std::string_view v) &&
+{
+	d->characterSet = CharacterSetFromString(v);
+	return std::move(*this);
+}
+
+bool ReaderOptions::hasFormat(const BarcodeFormats& formats) const noexcept
+{
+	return d->formats.empty() || std::any_of(formats.begin(), formats.end(), [this](BarcodeFormat bt) { return bt <= d->formats; });
+}
+
+bool ReaderOptions::hasAnyFormat(const BarcodeFormats& formats) const noexcept
+{
+	return d->formats.empty() || std::any_of(formats.begin(), formats.end(), [this](BarcodeFormat bt) { return bt & d->formats; });
+}
+
+// ==============================================================================
+// ReadBarcode implementation
+// ==============================================================================
 
 #ifdef ZXING_READERS
 
@@ -141,7 +242,7 @@ std::unique_ptr<BinaryBitmap> CreateBitmap(ZXing::Binarizer binarizer, const Ima
 
 Barcode ReadBarcode(const ImageView& _iv, const ReaderOptions& opts)
 {
-	return FirstOrDefault(ReadBarcodes(_iv, ReaderOptions(opts).setMaxNumberOfSymbols(1)));
+	return FirstOrDefault(ReadBarcodes(_iv, ReaderOptions(opts).maxNumberOfSymbols(1)));
 }
 
 Barcodes ReadBarcodes(const ImageView& _iv, const ReaderOptions& opts)
@@ -157,14 +258,15 @@ Barcodes ReadBarcodes(const ImageView& _iv, const ReaderOptions& opts)
 	MultiFormatReader reader(opts);
 
 	if (opts.isPure())
-		return {reader.read(*CreateBitmap(opts.binarizer(), iv)).setReaderOptions(opts)};
+		return {FirstOrDefault(reader.read(*CreateBitmap(opts.binarizer(), iv), 1)).setReaderOptions(opts)};
 
 	std::unique_ptr<MultiFormatReader> closedReader;
 #ifdef ZXING_EXPERIMENTAL_API
-	auto formatsBenefittingFromClosing = BarcodeFormat::Aztec | BarcodeFormat::DataMatrix | BarcodeFormat::QRCode | BarcodeFormat::MicroQRCode;
+	using enum BarcodeFormat;
+	BarcodeFormats formatsBenefittingFromClosing = Aztec | DataMatrix | QRCode;
 	ReaderOptions closedOptions = opts;
-	if (opts.tryDenoise() && opts.hasFormat(formatsBenefittingFromClosing) && _iv.height() >= 3) {
-		closedOptions.setFormats((opts.formats().empty() ? BarcodeFormat::Any : opts.formats()) & formatsBenefittingFromClosing);
+	if (opts.tryDenoise() && opts.hasAnyFormat(formatsBenefittingFromClosing) && _iv.height() >= 3) {
+		closedOptions.formats(opts.formats().empty() ? formatsBenefittingFromClosing : formatsBenefittingFromClosing & opts.formats());
 		closedReader = std::make_unique<MultiFormatReader>(closedOptions);
 	}
 #endif
@@ -175,20 +277,24 @@ Barcodes ReadBarcodes(const ImageView& _iv, const ReaderOptions& opts)
 	for (auto&& iv : pyramid.layers) {
 		auto bitmap = CreateBitmap(opts.binarizer(), iv);
 		for (int close = 0; close <= (closedReader ? 1 : 0); ++close) {
-			if (close)
+			if (close) {
+				// if we already inverted the image in the first round, we need to undo that first
+				if (bitmap->inverted())
+					bitmap->invert();
 				bitmap->close();
+			}
 
 			// TODO: check if closing after invert would be beneficial
 			for (int invert = 0; invert <= static_cast<int>(opts.tryInvert() && !close); ++invert) {
 				if (invert)
 					bitmap->invert();
-				auto rs = (close ? *closedReader : reader).readMultiple(*bitmap, maxSymbols);
+				auto rs = (close ? *closedReader : reader).read(*bitmap, maxSymbols);
 				for (auto& r : rs) {
 					if (iv.width() != _iv.width())
-						r.setPosition(Scale(r.position(), _iv.width() / iv.width()));
+						r.d->position = Scale(r.position(), _iv.width() / iv.width());
 					if (!Contains(res, r)) {
 						r.setReaderOptions(opts);
-						r.setIsInverted(bitmap->inverted());
+						r.d->isInverted = bitmap->inverted();
 						res.push_back(std::move(r));
 						--maxSymbols;
 					}
@@ -197,6 +303,16 @@ Barcodes ReadBarcodes(const ImageView& _iv, const ReaderOptions& opts)
 					return res;
 			}
 		}
+	}
+
+	if (opts.returnErrors()) {
+		// if symbols overlap and one is in error remove it
+		for (auto a = res.begin(); a != res.end(); ++a)
+			for (auto b = std::next(a); b != res.end(); ++b)
+				if (HaveIntersectingBoundingBoxes(a->position(), b->position()) && (a->error() != b->error()))
+					*(a->error() ? a : b) = BarcodeData();
+
+		std::erase_if(res, [](auto&& r) { return r.format() == BarcodeFormat::None; });
 	}
 
 	return res;

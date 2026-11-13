@@ -14,6 +14,7 @@
 #include "ConcentricFinder.h"
 #include "GridSampler.h"
 #include "LogMatrix.h"
+#include "Matrix.h"
 #include "Pattern.h"
 #include "QRFormatInformation.h"
 #include "QRVersion.h"
@@ -25,6 +26,7 @@
 #include <cstdlib>
 #include <iterator>
 #include <map>
+#include <numbers>
 #include <utility>
 #include <vector>
 
@@ -42,8 +44,8 @@ constexpr bool E2E = true;
 PatternView FindPattern(const PatternView& view)
 {
 	return FindLeftGuard<PATTERN.size()>(view, PATTERN.size(), [](const PatternView& view, int spaceInPixel) {
-		// perform a fast plausability test for 1:1:3:1:1 pattern
-		if (view[2] < 2 * std::max(view[0], view[4]) || view[2] < std::max(view[1], view[3]))
+		// perform a fast plausibility test for 1:1:3:1:1 pattern
+		if (view[2] < 3 || view[2] < 2 * std::max(view[0], view[4]) || view[2] < std::max(view[1], view[3]))
 			return 0.;
 		return IsPattern<E2E>(view, PATTERN, spaceInPixel, 0.1); // the requires 4, here we accept almost 0
 	});
@@ -78,8 +80,8 @@ std::vector<ConcentricPattern> FindFinderPatterns(const BitMatrix& image, bool t
 			if (FindIf(res, [p](const auto& old) { return distance(p, old) < old.size / 2; }) == res.end()) {
 				log(p);
 				N++;
-				auto pattern = LocateConcentricPattern<E2E>(image, PATTERN, p,
-															next.sum() * 3); // 3 for very skewed samples
+				auto width = 2 * next.sum(); // the factor 2 allows for a maximum aspect ratio of 4:1 due to perspective distortion
+				auto pattern = LocateConcentricPattern<E2E>(image, PATTERN, p, width);
 				if (pattern) {
 					log(*pattern, 3);
 					log(*pattern + PointF(.2, 0), 3);
@@ -97,7 +99,7 @@ std::vector<ConcentricPattern> FindFinderPatterns(const BitMatrix& image, bool t
 		}
 	}
 
-	printf("FPs?  : %d\n", N);
+	printf("FPs: FindPattern: %d, LocateConcentric: %d\n", N, Size(res));
 
 	return res;
 }
@@ -109,30 +111,124 @@ std::vector<ConcentricPattern> FindFinderPatterns(const BitMatrix& image, bool t
  */
 FinderPatternSets GenerateFinderPatternSets(FinderPatterns& patterns)
 {
-	std::sort(patterns.begin(), patterns.end(), [](const auto& a, const auto& b) { return a.size < b.size; });
+	std::sort(patterns.begin(), patterns.end(), [](const auto& a, const auto& b) { return a.size > b.size; });
+
+	struct {
+		int rejSize = 0;
+		int nearFPs = 0;
+		int candidates = 0;
+		int rejLegRatio = 0;
+		int rejModCount = 0;
+		int rejAngle = 0;
+		int accepted = 0;
+	} stats;
 
 	auto sets            = std::multimap<double, FinderPatternSet>();
 	auto squaredDistance = [](const auto* a, const auto* b) {
-		// The scaling of the distance by the b/a size ratio is a very coarse compensation for the shortening effect of
+		// The scaling of the distance based on the b/a size ratio is a very coarse compensation for the shortening effect of
 		// the camera projection on slanted symbols. The fact that the size of the finder pattern is proportional to the
 		// distance from the camera is used here. This approximation only works if a < b < 2*a (see below).
 		// Test image: fix-finderpattern-order.jpg
-		return dot((*a - *b), (*a - *b)) * std::pow(double(b->size) / a->size, 2);
+		// Originally, I scaled the squaredDistance with the (b/a)^2 ratio but that could skew the cosine calculation
+		// below too much, resulting in the acceptance of degenerate triangles (a, b and c on a line).
+		return dot((*a - *b), (*a - *b)) * double(b->size) / a->size;
 	};
-	const double cosUpper = std::cos(45. / 180 * 3.1415); // TODO: use c++20 std::numbers::pi_v
-	const double cosLower = std::cos(135. / 180 * 3.1415);
+	const double cosUpper = std::cos(60. / 180 * std::numbers::pi);
+	const double cosLower = std::cos(120. / 180 * std::numbers::pi);
+
+#if 1
+	if (Size(patterns) < 3)
+		return {};
+
+	// Bin finder patterns into spatial bins to reduce the number of candidates to compare with geometry heuristics below.
+	// For each finder pattern, we only compare it to patterns in bins that are not further away than the largest symbol (177 modules)
+	// can occupy.  We search from inside out and stop after we found a limited number of candidates which reduces the complexity from
+	// O(n^3) to O(n). E.g. a sample with 140 small QRCodes has 420 finder patterns, which results in 12 million candidates to process
+	// while with the binning, we only compare 20k candidates -> total runtime goes from 190ms to 9ms.
+	auto [mX, MX] = std::ranges::minmax_element(patterns, {}, &PointF::x);
+	auto [mY, MY] = std::ranges::minmax_element(patterns, {}, &PointF::y);
+	int medianSize = patterns[Size(patterns) / 2].size;
+	int binSize = std::max(32, medianSize * 3); // 3 for minimum symbol size of 21 modules
+	Matrix<std::vector<int>> bins(std::ceil((MX->x - mX->x + 1) / binSize), std::ceil((MY->y - mY->y + 1) / binSize));
+
+	printf("medianSize=%d binSize=%d bins=(%dx%d) ", medianSize, binSize, bins.width(), bins.height());
+
+	auto bin = [&](PointF p) {
+		return PointI(std::clamp(int((p.x - mX->x) / binSize), 0, bins.width() - 1),
+					  std::clamp(int((p.y - mY->y) / binSize), 0, bins.height() - 1));
+	};
+
+	for (int idx = 0; idx < Size(patterns); ++idx)
+		bins(bin(patterns[idx])).push_back(idx);
+
+	constexpr double maxModuleCount = 177 * 1.5;
+	// manually tuned to work with e.g. https://github.com/eventualbuddha/zedbar/blob/f0d9d9fa6158c108a21f7cde42c0339fb32dff69/examples/qr-code-140-grid02.jpg
+	constexpr size_t maxCandidates = 15;
+	auto candidates = std::vector<int>();
+	candidates.reserve(maxCandidates * 2);
+
+	int nbPatterns = Size(patterns);
+	bool useFilters = nbPatterns > 5; // for a small number of patterns, we apply no/less filters (like size ratio, leg ratio, angle)
+	for (int i = 0; i < nbPatterns - 2; i++) {
+		const auto* c0 = &patterns[i];
+		double maxDistToC = c0->size / 7.0 * maxModuleCount;
+		auto cBin = bin(*c0);
+		int binRadius = std::ceil(maxDistToC / binSize);
+		candidates.clear();
+
+		for (auto d : Spiral(binRadius)) {
+			auto b = cBin + d;
+			if (b.x < 0 || b.x >= bins.width() || b.y < 0 || b.y >= bins.height())
+				continue;
+
+			for (int idx : bins(b)) {
+				if (idx <= i)
+					continue;
+
+				const auto* p = &patterns[idx];
+				if (useFilters && c0->size > p->size * 2 + 2) {
+					stats.rejSize++;
+					continue;
+				}
+
+				candidates.push_back(idx);
+				stats.nearFPs++;
+			}
+
+			if (candidates.size() >= maxCandidates)
+				break;
+		}
+
+		for (int u = 0; u < Size(candidates) - 1; ++u) {
+			for (int v = u + 1; v < Size(candidates); ++v) {
+				stats.candidates++;
+				int j = candidates[u];
+				int k = candidates[v];
+
+				// patterns is sorted descending by size (the larger the pattern, the less likely is it noise),
+				// but the geometry/size heuristics below assume a <= b <= c in size. Keep that convention by remapping indices.
+				const auto* a = &patterns[std::max(j, k)];
+				const auto* b = &patterns[std::min(j, k)];
+				const auto* c = c0;
+
+#else
 
 	int nbPatterns = Size(patterns);
 	for (int i = 0; i < nbPatterns - 2; i++) {
 		for (int j = i + 1; j < nbPatterns - 1; j++) {
 			for (int k = j + 1; k < nbPatterns - 0; k++) {
-				const auto* a = &patterns[i];
+				stats.candidates++;
+				// patterns is sorted descending by size (the larger the pattern, the less likely is it noise),
+				// but the geometry/size heuristics below assume a <= b <= c in size. Keep that convention by remapping i/j/k.
+				const auto* a = &patterns[k];
 				const auto* b = &patterns[j];
-				const auto* c = &patterns[k];
+				const auto* c = &patterns[i];
+
 				// if the pattern sizes are too different to be part of the same symbol, skip this
 				// and the rest of the innermost loop (sorted list)
 				if (c->size > a->size * 2)
 					break;
+#endif
 
 				// Orders the three points in an order [A,B,C] such that AB is less than AC
 				// and BC is less than AC, and the angle between BC and BA is less than 180 degrees.
@@ -149,48 +245,64 @@ FinderPatternSets GenerateFinderPatternSets(FinderPatterns& patterns)
 					std::swap(distAB2, distAC2);
 				}
 
+				// Make sure distAB and distBC don't differ more than reasonable:
+				// equivalent to distAB > 2 * distBC || distBC > 2 * distAB but avoids sqrt.
+				// TODO: make sure the constant 2 is not too conservative for reasonably tilted symbols
+				if (useFilters && (distAB2 > 4 * distBC2 || distBC2 > 4 * distAB2)) {
+					stats.rejLegRatio++;
+					continue;
+				}
+
 				auto distAB = std::sqrt(distAB2);
 				auto distBC = std::sqrt(distBC2);
 
-				// Make sure distAB and distBC don't differ more than reasonable
-				// TODO: make sure the constant 2 is not to conservative for reasonably tilted symbols
-				if (distAB > 2 * distBC || distBC > 2 * distAB)
-					continue;
-
 				// Estimate the module count and ignore this set if it can not result in a valid decoding
 				if (auto moduleCount = (distAB + distBC) / (2 * (a->size + b->size + c->size) / (3 * 7.f)) + 7;
-					moduleCount < 21 * 0.9 || moduleCount > 177 * 1.5) // moduleCount may be overestimated, see above
+					moduleCount < 21 * 0.9 || moduleCount > 177 * 1.5) { // moduleCount may be overestimated, see above
+					stats.rejModCount++;
 					continue;
+				}
 
-				// Make sure the angle between AB and BC does not deviate from 90° by more than 45°
+				// Make sure the angle between AB and BC does not deviate from 90° too much
 				auto cosAB_BC = (distAB2 + distBC2 - distAC2) / (2 * distAB * distBC);
-				if (std::isnan(cosAB_BC) || cosAB_BC > cosUpper || cosAB_BC < cosLower)
+				if (useFilters && (std::isnan(cosAB_BC) || cosAB_BC > cosUpper || cosAB_BC < cosLower)) {
+					stats.rejAngle++;
 					continue;
+				}
 
 				// a^2 + b^2 = c^2 (Pythagorean theorem), and a = b (isosceles triangle).
 				// Since any right triangle satisfies the formula c^2 - b^2 - a^2 = 0,
 				// we need to check both two equal sides separately.
 				// The value of |c^2 - 2 * b^2| + |c^2 - 2 * a^2| increases as dissimilarity
 				// from isosceles right triangle.
-				double d = (std::abs(distAC2 - 2 * distAB2) + std::abs(distAC2 - 2 * distBC2));
+				// double score = (std::abs(distAC2 - 2 * distAB2) + std::abs(distAC2 - 2 * distBC2));
 
-				// Use cross product to figure out whether A and C are correct or flipped.
-				// This asks whether BC x BA has a positive z component, which is the arrangement
-				// we want for A, B, C. If it's negative then swap A and C.
-				if (cross(*c - *b, *a - *b) < 0)
-					std::swap(a, c);
+				// Calculate a score that is used to determine wich sets are most likely to be actual finder pattern sets,
+				// the smaller the better. Prefer finder patterns that are close to each with similar distances to each other.
+				// Note: experiments incorporating cosAB_BC or the difference of the finder pattern sizes did not yield better results.
+				auto score = distAB + distBC + std::abs(distAB - distBC);
 
 				// arbitrarily limit the number of potential sets
 				// (this has performance implications while limiting the maximal number of detected symbols)
-				const auto setSizeLimit = 256;
-				if (sets.size() < setSizeLimit || sets.crbegin()->first > d) {
-					sets.emplace(d, FinderPatternSet{*a, *b, *c});
+				const size_t setSizeLimit = 256;
+				if (sets.size() < setSizeLimit || sets.crbegin()->first > score) {
+					// Use cross product to figure out whether A and C are correct or flipped.
+					// This asks whether BC x BA has a positive z component, which is the arrangement
+					// we want for A, B, C. If it's negative then swap A and C.
+					if (cross(*c - *b, *a - *b) < 0)
+						std::swap(a, c);
+
+					sets.emplace(score, FinderPatternSet{*a, *b, *c});
 					if (sets.size() > setSizeLimit)
 						sets.erase(std::prev(sets.end()));
+					stats.accepted++;
 				}
 			}
 		}
 	}
+
+	printf("rejectSize=%d nearFPs=%d candidates=%d rejectLeg=%d rejectMod=%d rejectAng=%d accepted=%d\n", stats.rejSize,
+		   stats.nearFPs, stats.candidates, stats.rejLegRatio, stats.rejModCount, stats.rejAngle, stats.accepted);
 
 	// convert from multimap to vector
 	FinderPatternSets res;
@@ -252,7 +364,7 @@ static RegressionLine TraceLine(const BitMatrix& image, PointF p, PointF d, int 
 	auto curI = BitMatrixCursorI(image, PointI(cur.p), PointI(mainDirection(cur.d)));
 	// make sure curI positioned such that the white->black edge is directly behind
 	// Test image: fix-traceline.jpg
-	while (!curI.edgeAtBack()) {
+	while (curI.isIn() && !curI.edgeAtBack()) {
 		if (curI.edgeAtLeft())
 			curI.turnRight();
 		else if (curI.edgeAtRight())
@@ -302,15 +414,19 @@ static std::optional<PointF> LocateAlignmentPattern(const BitMatrix& image, int 
 #else
 				   {0, -2}, {0, 2}, {-2, 0}, {2, 0}, {-1, -2}, {1, -2}, {-1, 2}, {1, 2}, {-2, -1}, {-2, 1}, {2, -1}, {2, 1}}) {
 #endif
-		auto cor = CenterOfRing(image, PointI(estimate + moduleSize * 2.25 * d), moduleSize * 3, 1, false);
+		auto p = estimate + moduleSize * 2.25 * d;
+		if (!image.isIn(p))
+			continue;
+
+		auto cor = CenterOfRing(image, PointI(p), moduleSize * 3, 1, false);
 
 		// if we did not land on a black pixel the concentric pattern finder will fail
 		if (!cor || !image.get(*cor))
 			continue;
 
-		if (auto cor1 = CenterOfRing(image, PointI(*cor), moduleSize, 1))
-			if (auto cor2 = CenterOfRing(image, PointI(*cor), moduleSize * 3, -2))
-				if (distance(*cor1, *cor2) < moduleSize / 2) {
+		if (auto cor1 = CenterOfRing(image, PointI(*cor), moduleSize * 2, 1))
+			if (auto cor2 = CenterOfRing(image, PointI(*cor), moduleSize * 3, 2))
+				if (distance(*cor1, *cor2) < moduleSize / 2 && cor2->size > cor1->size) {
 					auto res = (*cor1 + *cor2) / 2;
 					log(res, 3);
 					return res;
@@ -343,20 +459,21 @@ static const Version* ReadVersion(const BitMatrix& image, int dimension, const P
 	return Version::DecodeVersionInformation(bits[0], bits[1]);
 }
 
-DetectorResult SampleQR(const BitMatrix& image, const FinderPatternSet& fp)
+DetectorResults SampleQR(const BitMatrix& image, const FinderPatternSet& fp)
 {
 	auto top  = EstimateDimension(image, fp.tl, fp.tr);
 	auto left = EstimateDimension(image, fp.tl, fp.bl);
 
 	if (!top.dim && !left.dim)
-		return {};
+		co_return;
 
 	auto best = top.err == left.err ? (top.dim > left.dim ? top : left) : (top.err < left.err ? top : left);
 	int dimension = best.dim;
-	int moduleSize = static_cast<int>(best.ms + 1);
+	int moduleSize = static_cast<int>(top.dim == left.dim ? std::midpoint(top.ms, left.ms) : best.ms) + 1;
 
 	auto br = PointF{-1, -1};
 	auto brOffset = PointF{3, 3};
+	bool brFound = false;
 
 	// Everything except version 1 (21 modules) has an alignment pattern. Estimate the center of that by intersecting
 	// line extensions of the 1 module wide square around the finder patterns. This could also help with detecting
@@ -378,14 +495,13 @@ DetectorResult SampleQR(const BitMatrix& image, const FinderPatternSet& fp)
 			if (auto brCP = LocateAlignmentPattern(image, moduleSize, brInter))
 				br = *brCP;
 
-		// if the symbol is tilted or the resolution of the RegressionLines is sufficient, use their intersection
-		// as the best estimate (see discussion in #199 and test image estimate-tilt.jpg )
-		if (!image.isIn(br) && (EstimateTilt(fp) > 1.1 || (bl2.isHighRes() && bl3.isHighRes() && tr2.isHighRes() && tr3.isHighRes())))
+		brFound = image.isIn(br);
+		if (!brFound)
 			br = brInter;
 	}
 
-	// otherwise the simple estimation used by upstream is used as a best guess fallback
-	if (!image.isIn(br)) {
+	// otherwise or if finder patterns are not square, the simple estimation used by upstream is used as a best guess fallback
+	if (!image.isIn(br) || !FitSquareToPoints(image, fp.bl, fp.bl.size, 2, false)) {
 		br = fp.tr - fp.tl + fp.bl;
 		brOffset = PointF(0, 0);
 	}
@@ -397,14 +513,16 @@ DetectorResult SampleQR(const BitMatrix& image, const FinderPatternSet& fp)
 		auto version = ReadVersion(image, dimension, mod2Pix);
 
 		// if the version bits are garbage -> discard the detection
-		if (!version || std::abs(version->dimension() - dimension) > 8)
-			return DetectorResult();
+		if (!version || std::min(std::abs(version->dimension() - top.dim), std::abs(version->dimension() - left.dim)) > 8)
+			co_return;
 		if (version->dimension() != dimension) {
 			printf("update dimension: %d -> %d\n", dimension, version->dimension());
 			dimension = version->dimension();
 			mod2Pix = Mod2Pix(dimension, brOffset, {fp.tl, fp.tr, br, fp.bl});
 		}
-#if 1
+
+#if 1 // finding and evaluating the alignment patterns to enable a tiled sampling of the symbol
+
 		auto& apM = version->alignmentPatternCenters(); // alignment pattern positions in modules
 		auto apP = Matrix<std::optional<PointF>>(Size(apM), Size(apM)); // found/guessed alignment pattern positions in pixels
 		const int N = Size(apM) - 1;
@@ -438,7 +556,7 @@ DetectorResult SampleQR(const BitMatrix& image, const FinderPatternSet& fp)
 				PointF guessed =
 					x * y == 0 ? bestGuessAPP(x, y) : bestGuessAPP(x - 1, y) + bestGuessAPP(x, y - 1) - bestGuessAPP(x - 1, y - 1);
 				if (auto found = LocateAlignmentPattern(image, moduleSize, guessed))
-					apP.set(x, y, *found);
+					apP.set(x, y, found);
 			}
 
 		// go over the whole set of alignment patters again and try to fill any remaining gap by using available neighbors as guides
@@ -473,38 +591,23 @@ DetectorResult SampleQR(const BitMatrix& image, const FinderPatternSet& fp)
 		if (auto c = apP.get(N, N))
 			mod2Pix = Mod2Pix(dimension, PointF(3, 3), {fp.tl, fp.tr, *c, fp.bl});
 
-		// go over the whole set of alignment patters again and fill any remaining gaps by a projection based on an updated mod2Pix
-		// projection. This works if the symbol is flat, wich is a reasonable fall-back assumption.
-		for (int y = 0; y <= N; ++y)
-			for (int x = 0; x <= N; ++x) {
-				if (apP(x, y))
-					continue;
-
-				printf("locate failed at %dx%d\n", x, y);
-				apP.set(x, y, projectM2P(x, y));
-			}
-
-#ifdef PRINT_DEBUG
-		for (int y = 0; y <= N; ++y)
-			for (int x = 0; x <= N; ++x)
-				log(*apP(x, y), 2);
-#endif
-
-		// assemble a list of region-of-interests based on the found alignment pattern pixel positions
-		ROIs rois;
-		for (int y = 0; y < N; ++y)
-			for (int x = 0; x < N; ++x) {
-				int x0 = apM[x], x1 = apM[x + 1], y0 = apM[y], y1 = apM[y + 1];
-				rois.push_back({x0 - (x == 0) * 6, x1 + (x == N - 1) * 7, y0 - (y == 0) * 6, y1 + (y == N - 1) * 7,
-								PerspectiveTransform{Rectangle(x0, x1, y0, y1),
-													 {*apP(x, y), *apP(x + 1, y), *apP(x + 1, y + 1), *apP(x, y + 1)}}});
-			}
-
-		return SampleGrid(image, dimension, dimension, rois);
+		co_yield SampleGrid(image, dimension, dimension, mod2Pix, std::move(apP), apM, apM);
 #endif
 	}
+	else
+		co_yield SampleGrid(image, dimension, dimension, mod2Pix);
 
-	return SampleGrid(image, dimension, dimension, mod2Pix);
+	// if we have not found the br alignment pattern, we check
+	// a) if we have a version 1 symbol and tried and failed with the intersection of the trace lines (#1086), or
+	// b) if the symbol is almost level and the resolution of the RegressionLines is not sufficient (#199 and estimate-tilt.jpg)
+	// we then try the fallback method of sampling the symbol with the br corner extrapolated from the other three corners.
+	if (!brFound
+		&& ((dimension == 21 && brOffset != PointF(0, 0))
+			|| (EstimateTilt(fp) < 1.1 && !(bl2.isHighRes() && bl3.isHighRes() && tr2.isHighRes() && tr3.isHighRes()))))
+		{
+			mod2Pix = Mod2Pix(dimension, PointF(0, 0), {fp.tl, fp.tr, fp.tr - fp.tl + fp.bl, fp.bl});
+			co_yield SampleGrid(image, dimension, dimension, mod2Pix);
+		}
 }
 
 /**
@@ -526,10 +629,9 @@ DetectorResult DetectPureQR(const BitMatrix& image)
 	int left, top, width, height;
 	if (!image.findBoundingBox(left, top, width, height, MIN_MODULES) || std::abs(width - height) > 1)
 		return {};
-	int right  = left + width - 1;
-	int bottom = top + height - 1;
+	auto pos = Rectangle<PointI>(left, top, width, height);
 
-	PointI tl{left, top}, tr{right, top}, bl{left, bottom};
+	const PointI &tl = pos.topLeft(), &tr = pos.topRight(), &bl = pos.bottomLeft();
 	Pattern diagonal;
 	// allow corners be moved one pixel inside to accommodate for possible aliasing artifacts
 	for (auto [p, d] : {std::pair(tl, PointI{1, 1}), {tr, {-1, 1}}, {bl, {1, -1}}}) {
@@ -538,7 +640,7 @@ DetectorResult DetectPureQR(const BitMatrix& image)
 			return {};
 	}
 
-	auto fpWidth = Reduce(diagonal);
+	PointF::value_t fpWidth = Reduce(diagonal);
 	auto dimension =
 		EstimateDimension(image, {tl + fpWidth / 2 * PointF(1, 1), fpWidth}, {tr + fpWidth / 2 * PointF(-1, 1), fpWidth}).dim;
 
@@ -557,8 +659,7 @@ DetectorResult DetectPureQR(const BitMatrix& image)
 #endif
 
 	// Now just read off the bits (this is a crop + subsample)
-	return {Deflate(image, dimension, dimension, top + moduleSize / 2, left + moduleSize / 2, moduleSize),
-			{{left, top}, {right, top}, {right, bottom}, {left, bottom}}};
+	return {Deflate(image, dimension, dimension, top + moduleSize / 2, left + moduleSize / 2, moduleSize), std::move(pos)};
 }
 
 DetectorResult DetectPureMQR(const BitMatrix& image)
@@ -570,8 +671,6 @@ DetectorResult DetectPureMQR(const BitMatrix& image)
 	int left, top, width, height;
 	if (!image.findBoundingBox(left, top, width, height, MIN_MODULES) || std::abs(width - height) > 1)
 		return {};
-	int right  = left + width - 1;
-	int bottom = top + height - 1;
 
 	// allow corners be moved one pixel inside to accommodate for possible aliasing artifacts
 	auto diagonal = BitMatrixCursorI(image, {left, top}, {1, 1}).readPatternFromBlack<Pattern>(1);
@@ -597,7 +696,7 @@ DetectorResult DetectPureMQR(const BitMatrix& image)
 
 	// Now just read off the bits (this is a crop + subsample)
 	return {Deflate(image, dimension, dimension, top + moduleSize / 2, left + moduleSize / 2, moduleSize),
-			{{left, top}, {right, top}, {right, bottom}, {left, bottom}}};
+			Rectangle<PointI>(left, top, width, height)};
 }
 
 DetectorResult DetectPureRMQR(const BitMatrix& image)
@@ -618,10 +717,9 @@ DetectorResult DetectPureRMQR(const BitMatrix& image)
 	int left, top, width, height;
 	if (!image.findBoundingBox(left, top, width, height, MIN_MODULES) || height >= width)
 		return {};
-	int right  = left + width - 1;
-	int bottom = top + height - 1;
+	auto pos = Rectangle<PointI>(left, top, width, height);
 
-	PointI tl{left, top}, tr{right, top}, br{right, bottom}, bl{left, bottom};
+	const PointI &tl = pos.topLeft(), &tr = pos.topRight(), &bl = pos.bottomLeft(), &br = pos.bottomRight();
 
 	// allow corners be moved one pixel inside to accommodate for possible aliasing artifacts
 	auto diagonal = BitMatrixCursorI(image, tl, {1, 1}).readPatternFromBlack<Pattern>(1);
@@ -658,11 +756,11 @@ DetectorResult DetectPureRMQR(const BitMatrix& image)
 	LogMatrixWriter lmw(log, image, 5, "grid2.pnm");
 	for (int y = 0; y < dimH; y++)
 		for (int x = 0; x < dimW; x++)
-			log(PointF(left + (x + .5f) * moduleSize, top + (y + .5f) * moduleSize));
+			log(pos.topLeft() + moduleSize * PointF(x + .5f, y + .5f));
 #endif
 
 	// Now just read off the bits (this is a crop + subsample)
-	return {Deflate(image, dimW, dimH, top + moduleSize / 2, left + moduleSize / 2, moduleSize), {tl, tr, br, bl}};
+	return {Deflate(image, dimW, dimH, top + moduleSize / 2, left + moduleSize / 2, moduleSize), std::move(pos)};
 }
 
 DetectorResult SampleMQR(const BitMatrix& image, const ConcentricPattern& fp)
@@ -673,7 +771,8 @@ DetectorResult SampleMQR(const BitMatrix& image, const ConcentricPattern& fp)
 
 	auto srcQuad = Rectangle(7, 7, 0.5);
 
-#if defined(_MSVC_LANG) // TODO: see MSVC issue https://developercommunity.visualstudio.com/t/constexpr-object-is-unable-to-be-used-as/10035065
+#if defined(_MSVC_LANG) && !(_MSC_VER >= 1940) // VS2022 17.10 and later work
+	// see MSVC issue https://developercommunity.visualstudio.com/t/constexpr-object-is-unable-to-be-used-as/10035065
 	static
 #else
 	constexpr
@@ -759,8 +858,8 @@ DetectorResult SampleRMQR(const BitMatrix& image, const ConcentricPattern& fp)
 			continue;
 
 		uint32_t formatInfoBits = 0;
-		for (int i = 0; i < Size(FORMAT_INFO_COORDS); ++i)
-			AppendBit(formatInfoBits, cur.blackAt(mod2Pix(centered(FORMAT_INFO_COORDS[i]))));
+		for (auto c : FORMAT_INFO_COORDS)
+			AppendBit(formatInfoBits, cur.blackAt(mod2Pix(centered(c))));
 
 		auto fi = FormatInformation::DecodeRMQR(formatInfoBits, 0 /*formatInfoBits2*/);
 		if (fi.hammingDistance < bestFI.hammingDistance) {

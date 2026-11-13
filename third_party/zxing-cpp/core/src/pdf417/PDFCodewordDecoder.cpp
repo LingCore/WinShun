@@ -6,15 +6,20 @@
 
 #include "PDFCodewordDecoder.h"
 #include "BitArray.h"
+#include "PDF417.h"
 #include "ZXAlgorithms.h"
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <limits>
+#include <memory>
 
 namespace ZXing {
 namespace Pdf417 {
+
+using namespace PDF417;
 
 static constexpr const int SYMBOL_COUNT = 2787;
 
@@ -412,7 +417,7 @@ using ModuleBitCountType = std::array<int, CodewordDecoder::BARS_IN_MODULE>;
 
 static ModuleBitCountType SampleBitCounts(const ModuleBitCountType& moduleBitCount)
 {
-	float bitCountSum = static_cast<float>(Reduce(moduleBitCount));
+	float bitCountSum = Reduce(moduleBitCount);
 	ModuleBitCountType result;
 	result.fill(0);
 	int bitCountIndex = 0;
@@ -451,52 +456,64 @@ static constexpr int getSymbol(int idx)
 	return SYMBOL_TABLE[idx] | 0x10000;
 }
 
-static int GetClosestDecodedValue(const ModuleBitCountType& moduleBitCount)
+// The bar widths (in modules, 1..6) of every symbol, plus the sum of their squares (37..67, so
+// int8_t is enough). 24kB of int8_t instead of 87kB of float keeps the table in L1 during the scan.
+struct BarSizeTable
 {
-#if 1 // put 87kB on heap and calucate per process on first use -> 7% smaller binary
-	static const auto ratioTable = []() {
-		auto table = std::vector<std::array<float, CodewordDecoder::BARS_IN_MODULE>>(SYMBOL_COUNT);
-#else // put 87kB in .rodata shared by all processes and calcuate during compilation
-	static constexpr const auto ratioTable = []() constexpr {
-		auto table = std::array<std::array<float, CodewordDecoder::BARS_IN_MODULE>, SYMBOL_COUNT>();
-#endif
-		for (int i = 0; i < SYMBOL_COUNT; i++) {
-			int currentSymbol = getSymbol(i);
-			int currentBit = currentSymbol & 0x1;
-			for (int j = 0; j < CodewordDecoder::BARS_IN_MODULE; j++) {
-				int8_t size = 0;
-				while ((currentSymbol & 0x1) == currentBit) {
-					size += 1;
-					currentSymbol >>= 1;
-				}
-				currentBit = currentSymbol & 0x1;
-				table[i][CodewordDecoder::BARS_IN_MODULE - j - 1] = size / 17.f; // MODULES_IN_CODEWORD
-			}
-		}
-		return table;
-	}();
+	std::array<std::array<int8_t, CodewordDecoder::BARS_IN_MODULE>, SYMBOL_COUNT> sizes;
+	std::array<int8_t, SYMBOL_COUNT> sumOfSquares;
+};
 
-	int bitCountSum = Reduce(moduleBitCount);
-	std::array<float, CodewordDecoder::BARS_IN_MODULE> bitCountRatios = {};
-	if (bitCountSum > 1) {
-		for (int i = 0; i < CodewordDecoder::BARS_IN_MODULE; i++) {
-			bitCountRatios[i] = moduleBitCount[i] / (float)bitCountSum;
+static constexpr BarSizeTable MakeBarSizeTable()
+{
+	BarSizeTable table = {};
+	for (int i = 0; i < SYMBOL_COUNT; i++) {
+		int currentSymbol = getSymbol(i);
+		int currentBit = currentSymbol & 0x1;
+		for (int j = 0; j < CodewordDecoder::BARS_IN_MODULE; j++) {
+			int8_t size = 0;
+			while ((currentSymbol & 0x1) == currentBit) {
+				size += 1;
+				currentSymbol >>= 1;
+			}
+			currentBit = currentSymbol & 0x1;
+			table.sizes[i][CodewordDecoder::BARS_IN_MODULE - j - 1] = size;
+			table.sumOfSquares[i] += size * size;
 		}
 	}
-	float bestMatchError = std::numeric_limits<float>::max();
+	return table;
+}
+
+static int GetClosestDecodedValue(const ModuleBitCountType& moduleBitCount)
+{
+#if 1 // put 24kB in .rodata shared by all processes and calculate during compilation
+	static constexpr auto barSizes = MakeBarSizeTable();
+	const BarSizeTable& table = barSizes;
+#else // put 24kB on the heap and calculate per process on first use -> 2% smaller binary
+	static const auto barSizes = std::make_unique<const BarSizeTable>(MakeBarSizeTable());
+	const BarSizeTable& table = *barSizes;
+#endif
+
+	// Find the symbol whose bar width ratios are closest to the measured ones, i.e.
+	//   argmin_j sum_k (barSize[j][k] / 17 - moduleBitCount[k] / sum)^2
+	// Scaling that by the positive constant (17 * sum)^2 and dropping the sum_k moduleBitCount[k]^2
+	// term (which is the same for every symbol) leaves an equivalent all-integer expression
+	//   argmin_j (sum * sumOfSquares[j] - 34 * dot(barSize[j], moduleBitCount))
+	// that picks the exact same symbol without any division or rounding.
+	int sum = Reduce(moduleBitCount);
+	assert(sum >= CodewordDecoder::BARS_IN_MODULE); // every bar/space is at least one pixel wide
+
+	// |score| <= sum * 67 + 34 * 6 * sum == 271 * sum and sum is at most a codeword's width, so
+	// even at the 65535 image width limit this stays 2 orders of magnitude inside int
+	int bestScore = std::numeric_limits<int>::max();
 	int bestMatch = -1;
-	for (size_t j = 0; j < ratioTable.size(); j++) {
-		float error = 0.0f;
-		auto& ratioTableRow = ratioTable[j];
-		for (int k = 0; k < CodewordDecoder::BARS_IN_MODULE; k++) {
-			float diff = ratioTableRow[k] - bitCountRatios[k];
-			error += diff * diff;
-			if (error >= bestMatchError) {
-				break;
-			}
-		}
-		if (error < bestMatchError) {
-			bestMatchError = error;
+	for (int j = 0; j < SYMBOL_COUNT; j++) {
+		int dot = 0;
+		for (int k = 0; k < CodewordDecoder::BARS_IN_MODULE; k++)
+			dot += table.sizes[j][k] * moduleBitCount[k];
+		int score = sum * table.sumOfSquares[j] - 34 * dot; // 34 == 2 * MODULES_IN_CODEWORD
+		if (score < bestScore) {
+			bestScore = score;
 			bestMatch = getSymbol(j);
 		}
 	}
@@ -527,6 +544,43 @@ CodewordDecoder::GetCodeword(int symbol)
 	if (it != SYMBOL_TABLE.end() && *it == symbol) {
 		return (CODEWORD_TABLE[it - SYMBOL_TABLE.begin()] - 1) % NUMBER_OF_CODEWORDS;
 	}
+	return -1;
+}
+
+static constexpr Pattern417 GetPdf417PatternFromBits(uint32_t value)
+{
+	Pattern417 result{};
+	for (int i = 7; i >= 0; --i)
+		value >>= (result[i] = std::countr_one(value) + std::countr_zero(value));
+	return result;
+}
+
+constexpr auto GenerateCodewordPatternTable()
+{
+	std::array<CodewordPattern, SYMBOL_COUNT> res{};
+	for (int i = 0; i < SYMBOL_COUNT; ++i) {
+		auto codeword = (CODEWORD_TABLE[i] - 1) % 929;
+		auto pattern = GetPdf417PatternFromBits(SYMBOL_TABLE[i] | 0x10000);
+		auto np = NormalizedE2EPattern<8, 17>(pattern);
+		res[i] = CodewordPattern(codeword, PackedPattern<3>(np, 2));
+		assert(res[i].cluster() == ((CODEWORD_TABLE[i] - 1) / 929) * 3);
+	}
+	return res;
+}
+
+int CodewordDecoder::GetCodeword(const std::array<int, 6>& ne2ep)
+{
+	static auto cwis = [] {
+		auto cwps = GenerateCodewordPatternTable();
+		std::sort(cwps.begin(), cwps.end());
+		return cwps;
+	}();
+
+	int cluster = CodewordCluster(ne2ep);
+	auto bits = PackedPattern<3>(ne2ep, 2);
+	auto it = std::lower_bound(cwis.begin(), cwis.end(), CodewordPattern{0, bits});
+	if (it != cwis.end() && it->cluster() == cluster && it->bits == bits)
+		return it->codeword;
 	return -1;
 }
 

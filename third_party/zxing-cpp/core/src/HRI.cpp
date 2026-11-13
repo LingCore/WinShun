@@ -28,16 +28,17 @@ struct AiInfo
 		if ((aiPrefix[0] == '3' && Contains("1234569", aiPrefix[1])) || aiPrefix == "703"sv || aiPrefix == "723"sv)
 			return 4;
 		else
-			return strlen(aiPrefix);
+			return narrow_cast<int>(strlen(aiPrefix));
 	}
 };
 
-// https://github.com/gs1/gs1-syntax-dictionary 2024-06-10
+// https://github.com/gs1/gs1-syntax-dictionary 2025-12-08 HEAD [c7e0c5b]
 static const AiInfo aiInfos[] = {
 //TWO_DIGIT_DATA_LENGTH
 	{ "00", 18 },
 	{ "01", 14 },
 	{ "02", 14 },
+	{ "03", 14 },
 
 	{ "10", -20 },
 	{ "11", 6 },
@@ -104,6 +105,8 @@ static const AiInfo aiInfos[] = {
 	{ "713", -20 },
 	{ "714", -20 },
 	{ "715", -20 },
+	{ "716", -20 },
+	{ "717", -20 },
 
 //THREE_DIGIT_PLUS_DIGIT_DATA_LENGTH
 	{ "310", 6 },
@@ -217,6 +220,7 @@ static const AiInfo aiInfos[] = {
 	{ "7022", -20 },
 	{ "7023", -30 },
 	{ "7040", 4 },
+	{ "7041", -4 },
 	{ "7240", -20 },
 	{ "7241", 2 },
 	{ "7242", -25 },
@@ -244,12 +248,17 @@ static const AiInfo aiInfos[] = {
 	{ "8011", -12 },
 	{ "8012", -20 },
 	{ "8013", -25 },
+	{ "8014", -25 },
 	{ "8017", 18 },
 	{ "8018", 18 },
 	{ "8019", -10 },
 	{ "8020", -25 },
 	{ "8026", 18 },
 	{ "8030", -90 },
+	{ "8040", 15 },
+	{ "8041", 15 },
+	{ "8042", 32 },
+	{ "8043", -20 },
 	{ "8110", -70 },
 	{ "8111", 4 },
 	{ "8112", -70 },
@@ -258,15 +267,13 @@ static const AiInfo aiInfos[] = {
 
 std::string HRIFromGS1(std::string_view gs1)
 {
-	//TODO: c++20
-	auto starts_with = [](std::string_view str, std::string_view pre) { return str.substr(0, pre.size()) == pre; };
 	constexpr char GS = 29; // GS character (29 / 0x1D)
 
 	std::string_view rem = gs1;
 	std::string res;
 
 	while (rem.size()) {
-		const AiInfo* i = FindIf(aiInfos, [&](const AiInfo& i) { return starts_with(rem, i.aiPrefix); });
+		const AiInfo* i = FindIf(aiInfos, [&](const AiInfo& i) { return rem.starts_with(i.aiPrefix); });
 		if (i == std::end(aiInfos))
 			return {};
 
@@ -314,7 +321,7 @@ std::string HRIFromISO15434(std::string_view str)
 
 	for (char c : str) {
 #if 1
-		if (0 <= c && c <= 0x20)
+		if (!((c) & ~0x1f) || c == 0x20)
 			(res += "\xe2\x90") += char(0x80 + c); // Unicode Block “Control Pictures”: 0x2400
 		else
 			res += c;

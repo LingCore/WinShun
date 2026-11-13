@@ -6,27 +6,49 @@
 
 namespace ws::capture {
 
-QStringList readQrCodes(const QImage& image)
+namespace {
+
+QStringList readOnce(const QImage& grey, const ZXing::ReaderOptions& options)
 {
     QStringList found;
-    if (image.isNull())
-        return found;
-    // Grey is all the reader looks at; Grayscale8 rows are padded to 4 bytes.
-    const QImage grey = image.convertToFormat(QImage::Format_Grayscale8);
+    // Grayscale8 rows are padded to 4 bytes.
     const ZXing::ImageView view(grey.constBits(), grey.width(), grey.height(), ZXing::ImageFormat::Lum,
         static_cast<int>(grey.bytesPerLine()));
+    for (const ZXing::Barcode& code : ZXing::ReadBarcodes(view, options)) {
+        if (!code.isValid())
+            continue;
+        const std::string utf8 = code.text();
+        const QString text = QString::fromUtf8(utf8.data(), static_cast<qsizetype>(utf8.size()));
+        if (!text.isEmpty() && !found.contains(text))
+            found.append(text);
+    }
+    return found;
+}
+
+} // namespace
+
+QStringList readQrCodes(const QImage& image)
+{
+    if (image.isNull())
+        return {};
+    // Grey is all the reader looks at.
+    const QImage grey = image.convertToFormat(QImage::Format_Grayscale8);
     ZXing::ReaderOptions options;
     options.setFormats(ZXing::BarcodeFormat::QRCode | ZXing::BarcodeFormat::MicroQRCode);
     options.setTryHarder(true);
     options.setTryRotate(true);
     options.setTryInvert(true);
     options.setMaxNumberOfSymbols(8);
-    for (const ZXing::Barcode& code : ZXing::ReadBarcodes(view, options)) {
-        if (!code.isValid())
-            continue;
-        const QString text = QString::fromUtf8(code.text().data(), static_cast<qsizetype>(code.text().size()));
-        if (!text.isEmpty() && !found.contains(text))
-            found.append(text);
+    QStringList found = readOnce(grey, options);
+    // A small code (QQ's round, dotted ones above all: GitHub #305) is often
+    // read once it is drawn larger: of 142 real ones at a quarter of their
+    // size, 111 were read as they were and 121 with this. Only for a picture
+    // with nothing found, and never one that would grow past 12 megapixels.
+    for (int factor = 2; found.isEmpty() && factor <= 3; ++factor) {
+        const QSize size = grey.size() * factor;
+        if (qint64(size.width()) * size.height() > 12'000'000)
+            break;
+        found = readOnce(grey.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation), options);
     }
     return found;
 }

@@ -13,6 +13,8 @@
 #include "GTIN.h"
 #include "ODUPCEANCommon.h"
 #include "Barcode.h"
+#include "JSON.h"
+#include "SymbologyIdentifier.h"
 
 #include <cmath>
 
@@ -132,7 +134,7 @@ static bool EAN13(PartialResult& res, PatternView begin)
 	auto mid = begin.subView(27, MID_PATTERN.size());
 	auto end = begin.subView(56, END_PATTERN.size());
 
-	CHECK(end.isValid() && IsRightGuard(end, END_PATTERN, QUIET_ZONE_RIGHT_EAN) && IsPattern(mid, MID_PATTERN));
+	CHECK(IsRightGuard(end, END_PATTERN, QUIET_ZONE_RIGHT_EAN) && IsPattern(mid, MID_PATTERN));
 
 	auto next = begin.subView(END_PATTERN.size(), CHAR_LEN);
 	res.txt = " "; // make space for lgPattern character
@@ -164,7 +166,7 @@ static bool EAN8(PartialResult& res, PatternView begin)
 	auto mid = begin.subView(19, MID_PATTERN.size());
 	auto end = begin.subView(40, END_PATTERN.size());
 
-	CHECK(end.isValid() && IsRightGuard(end, END_PATTERN, QUIET_ZONE_RIGHT_EAN) && IsPattern(mid, MID_PATTERN));
+	CHECK(IsRightGuard(end, END_PATTERN, QUIET_ZONE_RIGHT_EAN) && IsPattern(mid, MID_PATTERN));
 
 	// additional plausibility check for the module size: it has to be about the same for both
 	// the guard patterns and the payload/data part.
@@ -191,7 +193,7 @@ static bool UPCE(PartialResult& res, PatternView begin)
 {
 	auto end = begin.subView(27, UPCE_END_PATTERN.size());
 
-	CHECK(end.isValid() && IsRightGuard(end, UPCE_END_PATTERN, QUIET_ZONE_RIGHT_UPC));
+	CHECK(IsRightGuard(end, UPCE_END_PATTERN, QUIET_ZONE_RIGHT_UPC));
 
 	// additional plausibility check for the module size: it has to be about the same for both
 	// the guard patterns and the payload/data part. This speeds up the falsepositives use case
@@ -258,11 +260,11 @@ static bool AddOn(PartialResult& res, PatternView begin, int digitCount)
 		constexpr int CHECK_DIGIT_ENCODINGS[] = {0x18, 0x14, 0x12, 0x11, 0x0C, 0x06, 0x03, 0x0A, 0x09, 0x05};
 		CHECK(Ean5Checksum(res.txt) == IndexOf(CHECK_DIGIT_ENCODINGS, lgPattern));
 	}
-	res.format = BarcodeFormat::Any; // make sure res.format is valid, see below
+	res.format = BarcodeFormat::EANUPC; // make sure res.format is valid, see below
 	return true;
 }
 
-Barcode MultiUPCEANReader::decodePattern(int rowNumber, PatternView& next, std::unique_ptr<RowReader::DecodingState>&) const
+BarcodeData MultiUPCEANReader::decodePattern(int rowNumber, PatternView& next, std::unique_ptr<RowReader::DecodingState>&) const
 {
 	const int minSize = 3 + 6*4 + 6; // UPC-E
 
@@ -272,52 +274,50 @@ Barcode MultiUPCEANReader::decodePattern(int rowNumber, PatternView& next, std::
 
 	PartialResult res;
 	auto begin = next;
-	
-	if (!(((_opts.hasFormat(BarcodeFormat::EAN13 | BarcodeFormat::UPCA)) && EAN13(res, begin)) ||
-		  (_opts.hasFormat(BarcodeFormat::EAN8) && EAN8(res, begin)) ||
-		  (_opts.hasFormat(BarcodeFormat::UPCE) && UPCE(res, begin))))
+
+	if (!((((readEAN13 || readUPCA) && EAN13(res, begin)) || (readEAN8 && EAN8(res, begin)) || (readUPCE && UPCE(res, begin)))))
 		return {};
 
-	Error error;
-	if (!GTIN::IsCheckDigitValid(res.format == BarcodeFormat::UPCE ? UPCEANCommon::ConvertUPCEtoUPCA(res.txt) : res.txt))
-		error = ChecksumError();
-
-	// If UPC-A was a requested format and we detected a EAN-13 code with a leading '0', then we drop the '0' and call it
-	// a UPC-A code.
-	// TODO: this is questionable
-	if (_opts.hasFormat(BarcodeFormat::UPCA) && res.format == BarcodeFormat::EAN13 && res.txt.front() == '0') {
-		res.txt = res.txt.substr(1);
-		res.format = BarcodeFormat::UPCA;
+	// ISO/IEC 15420:2009 (& GS1 General Specifications 5.1.3) states that the content for "]E0" should be 13 digits,
+	// i.e. converted to EAN-13 if UPC-A/E
+	std::string upceTxt;
+	if (res.format == BarcodeFormat::UPCE) {
+		upceTxt = res.txt;
+		res.txt = "0" + UPCEANCommon::ConvertUPCEtoUPCA(res.txt);
 	}
 
-	// if we explicitly requested UPCA but not EAN13, don't return an EAN13 symbol
-	if (res.format == BarcodeFormat::EAN13 && ! _opts.hasFormat(BarcodeFormat::EAN13))
-		return {};
+	Error error = !GTIN::IsCheckDigitValid(res.txt) ? ChecksumError() : Error();
+
+	// if we explicitly excluded EAN13, don't return an EAN13 symbol
+	if (res.format == BarcodeFormat::EAN13 && !readEAN13) {
+		if (res.txt.front() == '0')
+			res.format = BarcodeFormat::UPCA;
+		else
+			return {};
+	}
 
 	// Symbology identifier modifiers ISO/IEC 15420:2009 Annex B Table B.1
-	// ISO/IEC 15420:2009 (& GS1 General Specifications 5.1.3) states that the content for "]E0" should be 13 digits,
-	// i.e. converted to EAN-13 if UPC-A/E, but not doing this here to maintain backward compatibility
 	SymbologyIdentifier symbologyIdentifier = {'E', res.format == BarcodeFormat::EAN8 ? '4' : '0'};
 
 	next = res.end;
 
 	auto ext = res.end;
 	PartialResult addOnRes;
-	if (_opts.eanAddOnSymbol() != EanAddOnSymbol::Ignore && ext.skipSymbol() && ext.skipSingle(static_cast<int>(begin.sum() * 3.5))
-		&& (AddOn(addOnRes, ext, 5) || AddOn(addOnRes, ext, 2))) {
+	if (_opts.eanAddOnSymbol() != EanAddOnSymbol::Ignore && ext.skipSymbol()
+		&& ext.skipSingle(static_cast<int>(begin.sum() * 3.5)) && (AddOn(addOnRes, ext, 5) || AddOn(addOnRes, ext, 2))) {
+		res.txt += addOnRes.txt;
+		next = addOnRes.end;
 		// ISO/IEC 15420:2009 states that the content for "]E3" should be 15 or 18 digits, i.e. converted to EAN-13
 		// and extended with no separator, and that the content for "]E4" should be 8 digits, i.e. no add-on
-		res.txt += " " + addOnRes.txt;
-		next = addOnRes.end;
-
-		if (res.format != BarcodeFormat::EAN8) // Keeping EAN-8 with add-on as "]E4"
-			symbologyIdentifier.modifier = '3'; // Combined packet, EAN-13, UPC-A, UPC-E, with add-on
+		// @gitlost and @axxel decided to extend the spec here to simply add an EAN-8 + add-on option
+		symbologyIdentifier.modifier = '3'; // Combined packet, EAN-13, UPC-A, UPC-E, with add-on
 	}
-	
+
 	if (_opts.eanAddOnSymbol() == EanAddOnSymbol::Require && !addOnRes.isValid())
 		return {};
 
-	return Barcode(res.txt, rowNumber, begin.pixelsInFront(), next.pixelsTillEnd(), res.format, symbologyIdentifier, error);
+	return LinearBarcode(res.format, res.txt, rowNumber, begin.pixelsInFront(), next.pixelsTillEnd(), symbologyIdentifier, error,
+						 JsonProp(BarcodeExtra::UPCE, upceTxt) + JsonProp(BarcodeExtra::EanAddOn, addOnRes.txt));
 }
 
 } // namespace ZXing::OneD
