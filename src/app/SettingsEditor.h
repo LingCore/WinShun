@@ -215,6 +215,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp WRITE setShortcutHelp NOTIFY changed FINAL)
     Q_PROPERTY(bool footerHints READ footerHints WRITE setFooterHints NOTIFY changed FINAL)
     Q_PROPERTY(bool pureSearch READ pureSearch WRITE setPureSearch NOTIFY changed FINAL)
+    Q_PROPERTY(bool scopeButton READ scopeButton WRITE setScopeButton NOTIFY changed FINAL)
     Q_PROPERTY(QString previewWith READ previewWith WRITE setPreviewWith NOTIFY changed FINAL) // auto | builtin
     Q_PROPERTY(QString previewHotkey READ previewHotkey WRITE setPreviewHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString previewHotkeyError READ previewHotkeyError NOTIFY changed FINAL)
@@ -770,6 +771,8 @@ public:
     bool footerHints() const { return m_settings.footerHints; }
     void setFooterHints(bool on);
     bool pureSearch() const { return m_settings.pureSearch; }
+    bool scopeButton() const { return m_settings.scopeButton; }
+    void setScopeButton(bool on);
     void setPureSearch(bool on);
     QString numberKeysNote() const { return m_numberKeysNote; }
     QString previewWith() const { return m_settings.previewWith; }

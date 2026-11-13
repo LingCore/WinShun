@@ -252,6 +252,10 @@ struct Settings {
     bool shortcutHelp = true;
     bool footerHints = true;
     bool pureSearch = false; // empty floating launcher: just the input, without start results or chrome
+    // The launcher's scopes (全部, 文件, 内容…) as one key that says the
+    // current one and goes to the next when clicked, in place of the tabs
+    // side by side (GitHub #185, #244). Tab moves through them either way.
+    bool scopeButton = false;
     // auto | builtin: what Alt+P on a row shows the file with. auto: QuickLook
     // or Seer when one is running in the background (FilePreview), else
     // Win顺's own preview window; builtin: always that.

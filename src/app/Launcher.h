@@ -139,6 +139,8 @@ class Launcher : public QObject {
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool footerHints READ footerHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool pureSearch READ pureSearch NOTIFY resultOptionsChanged FINAL)
+    // The scopes as one key in place of the tabs (the settings, GitHub #185).
+    Q_PROPERTY(bool scopeButton READ scopeButton NOTIFY resultOptionsChanged FINAL)
     // The most rows the search box shows before its list scrolls (Settings::maxRows).
     Q_PROPERTY(int maxRows READ maxRows NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString previewHotkey READ previewHotkey NOTIFY resultOptionsChanged FINAL)
@@ -537,6 +539,8 @@ public:
     bool footerHints() const { return m_footerHints; }
     void setKeyboardHints(bool help, bool footer);
     bool pureSearch() const { return m_pureSearch; }
+    bool scopeButton() const { return m_scopeButton; }
+    void setScopeButton(bool on);
     void setPureSearch(bool on);
     int maxRows() const { return m_maxRows; }
     void setMaxRows(int rows);
@@ -1319,6 +1323,7 @@ private:
     bool m_shortcutHelp = true;
     bool m_footerHints = true;
     bool m_pureSearch = false;
+    bool m_scopeButton = false;
     bool m_typingAwaited = false; // awaitTyping, and ...
     QString m_awaitedText; // ... the box's text then, trimmed
     int m_maxRows = 8;

@@ -1638,6 +1638,14 @@ void Launcher::setMaxRows(int rows)
     emit resultOptionsChanged();
 }
 
+void Launcher::setScopeButton(bool on)
+{
+    if (m_scopeButton == on)
+        return;
+    m_scopeButton = on;
+    emit resultOptionsChanged();
+}
+
 void Launcher::setPureSearch(bool on)
 {
     if (m_pureSearch == on)

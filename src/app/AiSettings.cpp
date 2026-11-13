@@ -392,6 +392,10 @@ std::vector<Entry> buildCatalog()
         &Settings::rememberAdmin));
 
     // ---- 外观 ----
+    add(boolean({"Appearance/ScopeButton", QT_TRANSLATE_NOOP("AiSettings", "范围标签"), "appearance", -1,
+                    "true: the launcher's scopes (全部, 文件, 内容) are one button showing the current one; a click or Tab goes to the next. "
+                    "Off: the tabs side by side."},
+        &Settings::scopeButton));
     add(choice({"Appearance/Theme", QT_TRANSLATE_NOOP("AiSettings", "主题"), "appearance", -1, "Light or dark windows."},
         &Settings::theme,
         {{u"system"_s, u"follow Windows' light or dark mode"_s, QT_TRANSLATE_NOOP("AiSettings", "跟随系统")},

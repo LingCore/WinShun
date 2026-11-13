@@ -434,6 +434,14 @@ void SettingsEditor::setFooterHints(bool on)
     commit();
 }
 
+void SettingsEditor::setScopeButton(bool on)
+{
+    if (m_settings.scopeButton == on)
+        return;
+    m_settings.scopeButton = on;
+    commit();
+}
+
 void SettingsEditor::setPureSearch(bool on)
 {
     if (m_settings.pureSearch == on)

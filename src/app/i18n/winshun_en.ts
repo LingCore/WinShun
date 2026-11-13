@@ -935,6 +935,10 @@
         <translation>Show thumbnails</translation>
     </message>
     <message>
+        <source>范围标签</source>
+        <translation>Scope tabs</translation>
+    </message>
+    <message>
         <source>显示删除按钮</source>
         <translation>Show the delete button</translation>
     </message>
@@ -7999,6 +8003,30 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>纯净搜索模式</source>
         <translation>Minimal search mode</translation>
+    </message>
+    <message>
+        <source>范围标签</source>
+        <translation>Scope tabs</translation>
+    </message>
+    <message>
+        <source>范围;全部;文件;内容;标签;合并;三合一;按钮;极简;scope;tabs</source>
+        <translation>scope;tabs;all;files;content;merge;one button;minimal</translation>
+    </message>
+    <message>
+        <source>搜索框右边的“全部 / 文件 / 内容”：并排显示，或合成一个按钮，点一下切到下一个</source>
+        <translation>All / Files / Content at the right of the search box: side by side, or as one button that goes to the next when clicked</translation>
+    </message>
+    <message>
+        <source>两种样式下 Tab / Shift+Tab 都能切换；展开的搜索面板始终并排显示</source>
+        <translation>Tab / Shift+Tab switch in both; the expanded search panel always shows them side by side</translation>
+    </message>
+    <message>
+        <source>并排</source>
+        <translation>Side by side</translation>
+    </message>
+    <message>
+        <source>合成一个按钮</source>
+        <translation>One button</translation>
     </message>
     <message>
         <source>搜索框空着时只保留输入栏，输入后恢复结果和范围标签；右上角的搜索历史和展开按钮一直隐藏，快捷键照常可用。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响</source>

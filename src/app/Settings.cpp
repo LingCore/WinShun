@@ -991,6 +991,7 @@ void Settings::load()
     shortcutHelp = readOrDefault(s, u"Results/ShortcutHelp"_s, d.shortcutHelp);
     footerHints = readOrDefault(s, u"Results/FooterHints"_s, d.footerHints);
     pureSearch = readOrDefault(s, u"Results/PureSearch"_s, d.pureSearch);
+    scopeButton = readOrDefault(s, u"Appearance/ScopeButton"_s, d.scopeButton);
     previewWith = readOrDefault(s, u"Results/PreviewWith"_s, d.previewWith).trimmed().toLower();
     if (previewWith != u"builtin")
         previewWith = d.previewWith;
@@ -1372,6 +1373,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/ShortcutHelp"_s, shortcutHelp);
     s.setValue(u"Results/FooterHints"_s, footerHints);
     s.setValue(u"Results/PureSearch"_s, pureSearch);
+    s.setValue(u"Appearance/ScopeButton"_s, scopeButton);
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
     s.setValue(u"Results/OpenHotkey"_s, openHotkey);

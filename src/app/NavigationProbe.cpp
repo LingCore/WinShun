@@ -863,8 +863,8 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     check(!window->property("pureEmpty").toBool() && footer->isVisible() && tabs->isVisible(),
         u"typing restores the results' controls"_s);
     {
-        auto* history = item(window->contentItem(), u"queryHistoryButton"_s);
-        check(!expand->isVisible() && history && !history->isVisible(), u"pure search keeps the history and panel keys away while typing"_s);
+        auto* historyKey = item(window->contentItem(), u"queryHistoryButton"_s);
+        check(!expand->isVisible() && historyKey && !historyKey->isVisible(), u"pure search keeps the history and panel keys away while typing"_s);
         const qreal tabsRight = tabs->mapToItem(window->contentItem(), QPointF(tabs->width(), 0)).x();
         check(window->width() - tabsRight < 32, u"the scope tabs end at the box's edge"_s);
     }
@@ -893,6 +893,36 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     check(!window->property("pureEmpty").toBool(), u"taskbar input keeps its existing presentation"_s);
     launcher.setInTaskbarBox(false);
     launcher.setPureSearch(false);
+    {
+        // 范围标签 › 合成一个按钮 (GitHub #185, #244): one key saying the
+        // current scope in the tabs' place; a click goes to the next, as Tab does.
+        launcher.setQuery(u"report"_s);
+        launcher.setScope(Launcher::All);
+        settle(window);
+        auto* scopeKey = item(window->contentItem(), u"searchScopeKey"_s);
+        check(scopeKey && !scopeKey->isVisible() && tabs->isVisible(), u"the scopes are tabs side by side unless chosen"_s);
+        launcher.setScopeButton(true);
+        settle(window);
+        check(scopeKey && scopeKey->isVisible() && !tabs->isVisible(), u"one scope key takes the tabs' place"_s);
+        if (scopeKey) {
+            const qreal keyRight = scopeKey->mapToItem(window->contentItem(), QPointF(scopeKey->width(), 0)).x();
+            const qreal fieldRight = field->mapToItem(window->contentItem(), QPointF(field->width(), 0)).x();
+            check(fieldRight <= scopeKey->mapToItem(window->contentItem(), QPointF(0, 0)).x() && keyRight <= window->width(),
+                u"the field ends before the scope key, the key inside the box"_s);
+            const Launcher::Scope before = launcher.scope();
+            QMetaObject::invokeMethod(scopeKey, "next");
+            settle(window);
+            check(launcher.scope() != before, u"a click on the scope key goes to the next scope"_s);
+            check(window->grabWindow().save(output.filePath(u"scope-key.png"_s)), u"capture the scope key"_s);
+            key(field, Qt::Key_Tab);
+            settle(window);
+            check(scopeKey->isVisible(), u"Tab moves through the scopes with the key as with the tabs"_s);
+        }
+        launcher.setScopeButton(false);
+        launcher.setScope(Launcher::All);
+        launcher.setQuery({});
+        settle(window);
+    }
     settle(window);
     check(footer->isVisible() && tabs->isVisible(), u"switching off restores the original presentation"_s);
     // 设置 › 外观 › 搜索框显示行数 (Settings::maxRows): the box is as tall as

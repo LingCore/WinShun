@@ -88,6 +88,8 @@ private slots:
         QVERIFY(!settings.appsTab);
         settings.appsTab = true;
         QVERIFY(settings.rowDeleteButton); // GitHub #316: there unless turned off
+        QVERIFY(!settings.scopeButton); // GitHub #185: the tabs side by side unless chosen
+        settings.scopeButton = true;
         settings.rowDeleteButton = false;
         QCOMPARE(settings.queryHistoryKeys, u"ctrl"_s);
         settings.mergeFileScope = true;
@@ -98,6 +100,7 @@ private slots:
         QVERIFY(restored.mergeFileScope);
         QVERIFY(restored.appsTab);
         QVERIFY(!restored.rowDeleteButton);
+        QVERIFY(restored.scopeButton);
         QCOMPARE(restored.queryHistoryKeys, u"alt"_s);
         restored.queryHistoryKeys = u"off"_s;
         QVERIFY(restored.saveChecked());
