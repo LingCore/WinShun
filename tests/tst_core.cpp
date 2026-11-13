@@ -9061,6 +9061,47 @@ private slots:
         QVERIFY(first(mine, u"工具箱"_s).exact);
     }
 
+    void appInstalledNames()
+    {
+        const auto app = [](const QString& name, const QString& target) {
+            AppInfo a;
+            a.name = name;
+            a.id = target;
+            a.target = target;
+            a.prepare();
+            return a;
+        };
+        const auto names = [](const AppList& list, const QString& text) {
+            const ParsedQuery query = ws::parseQuery(text);
+            const NameMatcher matcher(query);
+            QStringList out;
+            for (const AppHit& hit : searchApps(list, query, matcher, {}))
+                out.append(list[hit.index].name);
+            return out;
+        };
+        AppList apps {
+            app(u"Word"_s, uR"(C:\Program Files\Microsoft Office\Root\Office16\WINWORD.EXE)"_s),
+            app(u"7-Zip File Manager"_s, uR"(C:\Program Files\7-Zip\7zFM.exe)"_s),
+            app(u"Zeta"_s, uR"(C:\Telegram\zeta.exe)"_s),
+        };
+        addInstalledNames(apps, {
+            {u"Microsoft Office LTSC 专业增强版 2024 - zh-cn"_s, uR"(C:\Program Files\Microsoft Office)"_s},
+            {u"7-Zip 25.01 (x64)"_s, uR"(C:\Program Files\7-Zip)"_s},
+            {u"Telegram Desktop"_s, uR"(C:\Telegram-2)"_s}, // another folder
+        });
+        QCOMPARE(apps[0].aliases, std::vector<std::string> {"Microsoft Office LTSC 专业增强版 2024 - zh-cn"});
+        QCOMPARE(apps[1].aliases, std::vector<std::string> {"7-Zip 25.01 (x64)"});
+        QVERIFY(apps[2].aliases.empty()); // not installed in that folder
+        QCOMPARE(names(apps, u"microsoft office"_s), QStringList {u"Word"_s});
+        QCOMPARE(names(apps, u"office ltsc"_s), QStringList {u"Word"_s});
+        QCOMPARE(names(apps, u"7-zip 25"_s), QStringList {u"7-Zip File Manager"_s});
+
+        // Its own name is not an alias again.
+        AppList again {app(u"7-Zip File Manager"_s, uR"(C:\Program Files\7-Zip\7zFM.exe)"_s)};
+        addInstalledNames(again, {{u"7-Zip File Manager"_s, uR"(C:\Program Files\7-Zip)"_s}});
+        QVERIFY(again[0].aliases.empty());
+    }
+
     void historyCounts()
     {
         QTemporaryDir dir;
