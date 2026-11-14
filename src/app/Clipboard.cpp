@@ -4,6 +4,7 @@
 #include "ColorText.h"
 #include "Diagnostics.h"
 #include "FileIconProvider.h"
+#include "FileText.h"
 #include "HotkeySteps.h"
 #include "TextField.h"
 #include "platform/ComWorker.h"
@@ -28,6 +29,7 @@
 #include <QQuickWindow>
 #include <QScreen>
 #include <QStyleHints>
+#include <QThreadPool>
 #include <QUrl>
 
 #include <algorithm>
@@ -50,6 +52,8 @@ constexpr qint64 kClipboardWaitMs = 300; // held open longer than that, the past
 constexpr qint64 kFieldWaitMs = 1000;
 constexpr qsizetype kPreviewChars = 20000; // a preview shows no more; pasting takes all of it
 constexpr int kPreviewFiles = 50;
+constexpr std::size_t kFileHeadBytes = 64 * 1024; // of a copied text file, for its preview
+constexpr std::size_t kFileHeads = 8;
 
 const QStringList kSeparators {u"newline"_s, u"space"_s, u"comma"_s, u"tab"_s, u"none"_s};
 
@@ -1594,6 +1598,41 @@ void Clipboard::turnOn()
     emit turnOnRequested();
 }
 
+const Clipboard::FileHead* Clipboard::fileHead(qint64 clip, const QFileInfo& file) const
+{
+    const QString path = file.absoluteFilePath();
+    const qint64 size = file.size();
+    const QDateTime modified = file.lastModified();
+    const auto same = [&](const FileHead& head) { return head.path == path && head.size == size && head.modified == modified; };
+    if (const auto known = std::ranges::find_if(m_fileHeads, same); known != m_fileHeads.end())
+        return known->ready ? &*known : nullptr;
+    if (m_fileHeads.size() >= kFileHeads)
+        m_fileHeads.erase(m_fileHeads.begin());
+    m_fileHeads.push_back({path, size, modified});
+    // readHead never opens a cloud file that is not on this computer, and says NotText of a binary one.
+    QThreadPool::globalInstance()->start([self = QPointer<Clipboard>(const_cast<Clipboard*>(this)), clip, path, size, modified] {
+        const filetext::Head head = filetext::readHead(QDir::toNativeSeparators(path).toStdWString(), kFileHeadBytes);
+        const bool text = head.status == filetext::Status::Ok;
+        const QString shown = text ? head.text.left(kPreviewChars) : QString();
+        const bool cut = text && (head.cut || shown.size() < head.text.size());
+        QMetaObject::invokeMethod(qApp, [self, clip, path, size, modified, shown, cut] {
+            if (!self)
+                return;
+            const auto mine = std::ranges::find_if(self->m_fileHeads, [&](const FileHead& head) {
+                return head.path == path && head.size == size && head.modified == modified;
+            });
+            if (mine == self->m_fileHeads.end())
+                return; // others were asked for since: read again if this one is
+            mine->ready = true;
+            mine->text = shown;
+            mine->cut = cut;
+            if (!shown.isEmpty())
+                self->m_model.fileRead(clip);
+        }, Qt::QueuedConnection);
+    });
+    return nullptr;
+}
+
 QVariantMap Clipboard::preview(int row) const
 {
     const Clip* c = m_model.at(row);
@@ -1650,8 +1689,14 @@ QVariantMap Clipboard::preview(int row) const
         // a PDF...); local files only: a network one could keep it waiting.
         if (!paths.isEmpty() && isLocal(paths.constFirst())) {
             const QFileInfo first(paths.constFirst());
-            if (first.isFile())
+            if (first.isFile()) {
                 map.insert(u"thumbnail"_s, FileIconProvider::thumbnailUrl(paths.constFirst()));
+                // One file copied: what it says, as the search's preview shows a text file (GitHub #324).
+                if (const FileHead* head = paths.size() == 1 ? fileHead(c->id, first) : nullptr; head && !head->text.isEmpty()) {
+                    map.insert(u"fileText"_s, head->text);
+                    map.insert(u"fileCut"_s, head->cut);
+                }
+            }
         }
         if (c->kind == ClipKind::Files)
             size = tr("%Ln 个文件", nullptr, static_cast<int>(paths.size()));

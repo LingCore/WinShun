@@ -473,6 +473,11 @@ void ClipModel::pictureSaved(qint64 id)
         emit dataChanged(index(row), index(row), {ImageRole});
 }
 
+void ClipModel::fileRead(qint64 id)
+{
+    pictureRead(id); // the same to a view: the row's preview is asked for again
+}
+
 void ClipModel::pictureRead(qint64 id)
 {
     const int row = rowOf(id);

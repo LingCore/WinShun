@@ -1443,6 +1443,10 @@
         </translation>
     </message>
     <message>
+        <source>…只显示开头</source>
+        <translation>… only the beginning is shown</translation>
+    </message>
+    <message>
         <source>带格式，Shift+Enter 粘贴为纯文本</source>
         <translation>Formatted; Shift+Enter pastes plain text</translation>
     </message>

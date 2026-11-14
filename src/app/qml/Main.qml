@@ -1234,7 +1234,7 @@ Window {
     }
     Timer {
         id: previewHoverTimer
-        interval: 100
+        interval: 200 // resting on a row, not passing over it (GitHub #324)
         onTriggered: window.launcher.previewHover(window.previewHoverRow)
     }
     // A click on a system switch's own switch: it toggles, whatever the row asks.

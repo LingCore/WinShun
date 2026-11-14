@@ -276,7 +276,7 @@ Item {
     }
     Timer {
         id: hoverTimer
-        interval: page.previewOpen ? 60 : 200
+        interval: page.previewOpen ? 120 : 400 // resting on a row, not passing over it (GitHub #324)
         onTriggered: {
             if (!page.findingGroup && !page.menuOpen && !page.previewSizing && !list.rowDragging
                     && !(Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier))

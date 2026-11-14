@@ -6,7 +6,9 @@
 #include "platform/Paster.h"
 #include "platform/TextRecognizer.h"
 
+#include <QDateTime>
 #include <QElapsedTimer>
+#include <QFileInfo>
 #include <QImage>
 #include <QObject>
 #include <QPointer>
@@ -423,6 +425,18 @@ private:
     ClipStore* m_store;
     ClipboardWatcher* m_watcher;
     ClipModel m_model;
+    // A copied file's own text for the preview (GitHub #324): its start, read off the GUI thread once
+    // for the file as it is now (its size and time); the last few are kept.
+    struct FileHead {
+        QString path;
+        qint64 size = 0;
+        QDateTime modified;
+        bool ready = false;
+        QString text; // none: not a text file, or nothing in it
+        bool cut = false; // the file goes on
+    };
+    const FileHead* fileHead(qint64 clip, const QFileInfo& file) const; // null: being read, asked again then
+    mutable std::vector<FileHead> m_fileHeads;
     TextRecognizer m_recognizer; // the words in pictures, for the search
     QTimer m_backlogTimer;
     bool m_refreshRecognition = false;

@@ -438,6 +438,31 @@ Item {
                     font.pixelSize: preview.metrics.uiCaption
                 }
             }
+
+            Rectangle { // between the file and what it says
+                visible: fileText.visible
+                width: parent.width
+                height: 1
+                color: Theme.divider
+            }
+            Text { // one copied text file: its own words, as the search's preview shows them (GitHub #324)
+                id: fileText
+                objectName: "clipboardPreviewFileText"
+                visible: text.length > 0
+                width: parent.width
+                text: preview.kind === 3 || preview.kind === 2 ? (preview.info.fileText ?? "") : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.WrapAnywhere
+                color: Theme.text
+                font.pixelSize: preview.metrics.uiBody
+                lineHeight: 1.15
+            }
+            Text {
+                visible: fileText.visible && (preview.info.fileCut ?? false)
+                text: qsTr("…只显示开头")
+                color: Theme.faint
+                font.pixelSize: preview.metrics.uiCaption
+            }
         }
     }
 

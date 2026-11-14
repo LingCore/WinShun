@@ -32,7 +32,7 @@ Window {
 
     TextMetrics {
         id: measure
-        text: (window.info.text ?? "").slice(0, 256)
+        text: (window.info.fileText ?? window.info.text ?? "").slice(0, 256) // a copied file: by what it says
         font.pixelSize: window.metrics.uiBody
     }
     ClipPreview {
