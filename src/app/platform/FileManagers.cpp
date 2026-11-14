@@ -1,4 +1,5 @@
 #include "FileManagers.h"
+#include "SearchTyping.h"
 
 #include "FolderViewHit.h"
 #include "Integrity.h"
@@ -1066,6 +1067,29 @@ std::wstring explorerFolder(HWND tab)
     ComPtr<IWebBrowser2> web;
     ComPtr<IShellBrowser> browser;
     return findTab(tab, web, browser) ? folderPath(browser.Get()) : std::wstring();
+}
+
+std::optional<std::wstring> explorerPlace(HWND tab)
+{
+    ComPtr<IWebBrowser2> web;
+    ComPtr<IShellBrowser> browser;
+    if (!findTab(tab, web, browser))
+        return std::nullopt;
+    std::wstring folder = folderPath(browser.Get());
+    if (!folder.empty())
+        return folder;
+    ComPtr<IShellView> view;
+    ComPtr<IFolderView> folderView;
+    ComPtr<IPersistFolder2> shown;
+    PIDLIST_ABSOLUTE pidl = nullptr;
+    if (FAILED(browser->QueryActiveShellView(&view)) || FAILED(view.As(&folderView))
+        || FAILED(folderView->GetFolder(IID_PPV_ARGS(&shown))) || FAILED(shown->GetCurFolder(&pidl)) || !pidl)
+        return std::nullopt;
+    PWSTR name = nullptr;
+    const bool everywhere = SUCCEEDED(::SHGetNameFromIDList(pidl, SIGDN_DESKTOPABSOLUTEPARSING, &name)) && searchtyping::wholePcPlace(name);
+    ::CoTaskMemFree(name);
+    ::ILFree(pidl);
+    return everywhere ? std::optional(std::wstring()) : std::nullopt;
 }
 
 bool goTo(HWND tab, const std::wstring& folder)

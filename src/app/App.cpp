@@ -1055,7 +1055,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
             folderMenuHotkey();
         else if (id == kPanelHotkeyId) {
             beginTrigger(TriggerSource::Hotkey, pressedAt);
-            showSearchPanel();
+            panelHotkey(pressedAt);
         }
         else if (id != kDialogJumpHotkeyId) {
             beginTrigger(TriggerSource::Hotkey, pressedAt);
@@ -3303,9 +3303,9 @@ void App::folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request)
         // Opus's tab without a folder on disk (This PC, a library, FTP): known
         // all the same, and searched as the whole PC (GitHub #82).
         const std::optional<std::wstring> place
-            = opus ? filemanager::opusPlace(tab) : std::optional(filemanager::explorerFolder(tab));
+            = opus ? filemanager::opusPlace(tab) : filemanager::explorerPlace(tab);
         const QString folder = QString::fromStdWString(place.value_or({}));
-        const bool known = place && (opus || !folder.isEmpty());
+        const bool known = place.has_value(); // with no folder: This PC and the like, the whole PC is searched (#82, #329)
         qInfo().noquote() << (opus ? u"Opus typing:" : u"Explorer typing:")
                           << u"folder \"%1\"%2 %3 ms"_s.arg(folder, known ? QString() : u" (none)"_s).arg(clock.elapsed());
         QMetaObject::invokeMethod(
@@ -3338,9 +3338,11 @@ void App::typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t reques
 {
     if (!m_typing || !m_typing->pending(request))
         return;
-    // No folder on disk there (Home, This PC, the Recycle Bin, a search): the
-    // keys were Explorer's after all, which jumps by them as it would have.
-    // In Opus such a tab is `known` with no folder: the whole PC is searched.
+    // Neither a folder on disk nor a place to search the whole PC from (the
+    // Recycle Bin, a search's results, the Control Panel): the keys were
+    // Explorer's after all, which jumps by them as it would have. This PC,
+    // Home and Quick access (and in Opus any tab without a folder) are
+    // `known` with no folder: the whole PC is searched (GitHub #82, #329).
     const auto explorerTab = [root]() -> HWND {
         GUITHREADINFO focus {sizeof focus};
         const bool items = ::GetGUIThreadInfo(::GetWindowThreadProcessId(root, nullptr), &focus)
@@ -3365,7 +3367,7 @@ void App::showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder
 {
     // Typed in Opus, the box sits in the corner of its file list (as Listary's
     // does) rather than over it, and may search the whole PC (GitHub #82).
-    // No folder there (This PC and the like, Opus only): the whole PC too.
+    // No folder there (This PC and the like): the whole PC too.
     const bool everywhere = folder.isEmpty() || (opus && m_settings.opusTypingScope == u"all");
     const QString prefix = everywhere ? QString() : folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s;
     // On the monitor of the list typed in (a lister over two may have the other on the other).
@@ -6966,6 +6968,24 @@ void App::finishHidingLauncher()
 void App::showSearchPanel()
 {
     showLauncher({}, {}, false, nullptr, nullptr, false, {}, true);
+}
+
+// The panel's own hotkey (GitHub #206). Pressed again with the panel up and
+// in front, it closes it, as the launcher's does (GitHub #330: it stayed,
+// only Esc closed it); with the small box up it makes that the panel; behind
+// another window it comes forward. A press made before it was there to be
+// seen leaves it (seenBy, GitHub #111).
+void App::panelHotkey(std::optional<std::uint64_t> pressedAt)
+{
+    const std::uint64_t at = pressedAt.value_or(::GetTickCount64());
+    const bool up = launcherShown() && m_window && !clipboardInCharge();
+    if (up && shortcutAction(true, m_window->isActive(), m_launcher->panel(), true, seenBy(m_launcherRevealedAt, at)) == ShortcutAction::Hide) {
+        hideLauncher();
+        if (m_triggers)
+            m_triggers->decided("hide");
+        return;
+    }
+    showSearchPanel();
 }
 
 void App::togglePanel()

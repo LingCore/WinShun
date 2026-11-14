@@ -88,6 +88,11 @@ std::vector<Folder> openFolders();
 // comes back). Need COM.
 // False when the tab is not among the shell's windows (they can miss one).
 std::wstring explorerFolder(HWND tab);
+// For typing there to search (GitHub #329): the folder on disk, or empty
+// where the whole PC is the place to search (This PC, Home, Quick access:
+// searchtyping::wholePcPlace); nothing for any other tab without a folder,
+// and when the tab is not found.
+std::optional<std::wstring> explorerPlace(HWND tab);
 // Select a direct child in that same active tab, without navigating or
 // taking keyboard focus. `current` is rechecked after blocking COM calls.
 bool selectInExplorer(HWND tab, const std::wstring& folder, const std::wstring& path,

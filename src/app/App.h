@@ -191,6 +191,7 @@ public:
     void showLauncher(const QString& query = {}, const std::optional<taskbar::Spot>& spot = {}, bool inBox = false,
         QScreen* on = nullptr, HWND avoid = nullptr, bool inside = false, const RECT& orInto = {}, bool asPanel = false);
     void showSearchPanel();
+    void panelHotkey(std::optional<std::uint64_t> pressedAt);
     void showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder);
     void hideLauncher();
     // The launcher as the search panel (Launcher::panel): the window sized

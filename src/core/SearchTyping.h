@@ -8,10 +8,38 @@
 #include <iterator>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace ws::searchtyping {
+
+// An Explorer tab that shows no folder on disk, by the name the shell parses
+// it from (SIGDN_DESKTOPABSOLUTEPARSING): This PC, Home (Windows 11) and
+// Quick access (Windows 10) are where one starts from to find something
+// anywhere, so typing there searches the whole PC (GitHub #329). Not the
+// Recycle Bin, the Control Panel, Network, a search's results or a library:
+// their keys stay Explorer's.
+constexpr bool wholePcPlace(std::wstring_view parsingName) noexcept
+{
+    constexpr std::wstring_view places[] {
+        L"::{20D04FE0-3AEA-1069-A2D8-08002B30309D}", // This PC
+        L"::{F874310E-B6B7-47DC-BC84-B9E6B38F5903}", // Home
+        L"::{679F85CB-0220-4080-B29B-5540CC05AAB6}", // Quick access
+    };
+    for (const std::wstring_view place : places) {
+        if (parsingName.size() != place.size())
+            continue;
+        bool same = true;
+        for (std::size_t i = 0; i < place.size() && same; ++i) {
+            const wchar_t c = parsingName[i];
+            same = (c >= L'a' && c <= L'z' ? static_cast<wchar_t>(c - L'a' + L'A') : c) == place[i];
+        }
+        if (same)
+            return true;
+    }
+    return false;
+}
 
 // What typing somewhere else means for Win顺 (platform/TypeToSearch): in the
 // Start menu (a setting) and in a File Explorer folder window (another), the

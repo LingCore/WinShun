@@ -119,6 +119,7 @@ install and enable Web search from the plugin library. `zhihu 显卡`, `baidu �
 - **Send to › LAN transfer (WinShun)** (0.28.0): with the LAN transfer plugin on, the files chosen go to its device list from Send to in the right-click menu (under "Show more options" on Windows 11).
 - **Pin to screen (WinShun)** (0.29.0): with the Screenshot and recording plugin on, right-click a picture file in File Explorer and choose it to pin that picture on the screen; several pictures chosen are each pinned. Under "Show more options" on Windows 11 (or `Shift`+right-click).
 - **WinShun commands ›** (0.29.0): right-click a file or folder to see the favorites commands set to show there (see Favorites); choosing one hands the full path to its `{query}`. Under "Show more options" on Windows 11.
+- **Typing on This PC and Home** (0.30.0): with Type to search on, typing in File Explorer on This PC, Home or Quick access searches the whole PC (there is no folder to put first). The Recycle Bin, the Control Panel, Network and search results keep their keys.
 - **Caps Lock held down is left alone** (0.29.0): with Type to search on, a letter pressed while `Caps Lock` is held down no longer opens the search box, so tools that use Caps Lock as a modifier (CapsLock+, AutoHotkey, PowerToys) keep their keys. Caps Lock merely switched on (typing capitals) still searches.
 - Typing to search does not start while a mouse button is down (a file held or dragged); with a Chinese input method the letters still being composed are searched at once.
 

@@ -14448,6 +14448,13 @@ private slots:
         // file) leaves the focus on the files with the flags 0x14 (in menu
         // mode, a pop-up menu); nothing open, 0.
         QCOMPARE(focusOf(0, true), Focus::ItemsView);
+        // Typing on This PC, Home or Quick access searches the whole PC (GitHub #329); other places without a folder do not.
+        QVERIFY(wholePcPlace(L"::{20D04FE0-3AEA-1069-A2D8-08002B30309D}"));
+        QVERIFY(wholePcPlace(L"::{f874310e-b6b7-47dc-bc84-b9e6b38f5903}")); // as Windows 11 spells Home
+        QVERIFY(wholePcPlace(L"::{679F85CB-0220-4080-B29B-5540CC05AAB6}"));
+        QVERIFY(!wholePcPlace(L"::{645FF040-5081-101B-9F08-00AA002F954E}")); // the Recycle Bin
+        QVERIFY(!wholePcPlace(L"::{20D04FE0-3AEA-1069-A2D8-08002B30309D}\\C:"));
+        QVERIFY(!wholePcPlace(L"C:\\Users") && !wholePcPlace(L""));
         QCOMPARE(focusOf(0x14, true), Focus::Menu);
         QCOMPARE(focusOf(kGuiInMenuMode | kGuiSystemMenuMode, true), Focus::Menu); // the system menu
         QCOMPARE(focusOf(kGuiInMenuMode, true), Focus::Menu);
@@ -16283,6 +16290,8 @@ private slots:
         QCOMPARE(shortcutAction(true, true, true, false), ShortcutAction::Hide);
         QCOMPARE(shortcutAction(true, true, false, true), ShortcutAction::ExpandPanel);
         QCOMPARE(shortcutAction(true, true, true, true), ShortcutAction::Hide); // the third press
+        // The panel's own hotkey asks as "expand on again" (GitHub #330): up as the panel and in
+        // front it closes, the small box becomes the panel, behind a window it comes forward.
 
         // Pressed before it was there to be seen (GitHub #111): it comes, and
         // stays; neither closed nor expanded, active or not.
