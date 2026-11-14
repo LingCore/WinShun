@@ -1077,6 +1077,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     callbacks.commandReceived = [this](const QString& command) { handleCommand(command); };
     // Explorer's "search here" (WinShunSearch.exe): the folder typed, words to come.
     callbacks.lanSend = [this](const QStringList& files) { lanSend({}, files, false); };
+    callbacks.pinPicture = [this](const QString& file) { pictureAction(u"pin"_s, 0, file, false); };
     callbacks.searchHere = [this](const QString& folder) {
         m_launcher->noteSearchHere(folder); // not indexed (GitHub #52): searched on the disk all the same
         showLauncher(folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s);
@@ -2229,6 +2230,7 @@ void App::pluginPicturesChanged()
         m_launcher->setPictureVerbs(pin, edit);
     if (m_clipboard)
         m_clipboard->setPictureVerbs(pin, edit);
+    shellmenu::applyPinPicture(pin); // Explorer's 贴到屏幕 on a picture, while something pins
     updateScreenshotPlugin();
 }
 

@@ -35,6 +35,12 @@ constexpr const wchar_t* kPasteFileKeys[] {
     L"Software\\Classes\\Directory\\Background\\shell\\WinShun.PasteFile",
 };
 
+// Where 贴到屏幕 goes: the files Windows knows as pictures (their PerceivedType),
+// whatever program they open with.
+constexpr const wchar_t* kPinPictureKeys[] {
+    L"Software\\Classes\\SystemFileAssociations\\image\\shell\\WinShun.PinPicture",
+};
+
 std::wstring readString(HKEY root, const std::wstring& key, const wchar_t* name)
 {
     DWORD bytes = 0;
@@ -72,7 +78,9 @@ struct Stub {
 
 // Sets the verb at `keys` to run `arguments` with the stub (`on`), or takes
 // away the verbs there that start this copy's stub or one that is gone.
-void setVerbs(std::span<const wchar_t* const> keys, bool on, std::wstring_view title, std::wstring_view arguments)
+// `each`: with several items chosen the verb stays, run once an item.
+void setVerbs(std::span<const wchar_t* const> keys, bool on, std::wstring_view title, std::wstring_view arguments,
+    bool each = false)
 {
     const Stub stub;
     if (on && ::GetFileAttributesW(stub.path.c_str()) == INVALID_FILE_ATTRIBUTES)
@@ -98,7 +106,7 @@ void setVerbs(std::span<const wchar_t* const> keys, bool on, std::wstring_view t
         // Empty space has nothing selected, so "Single" hides the verb there
         // (0.8.0 wrote it everywhere; take it back off).
         if (std::wstring_view(key).find(L"\\Background\\") == std::wstring_view::npos)
-            changed |= writeString(key, L"MultiSelectModel", L"Single");
+            changed |= writeString(key, L"MultiSelectModel", each ? L"Document" : L"Single");
         else
             changed |= deleteValue(key, L"MultiSelectModel");
         changed |= writeString(commandKey, nullptr, command);
@@ -124,6 +132,12 @@ void applyPasteFile(bool on)
     // verb that has it differs, so it is written again without.
     setVerbs(kPasteFileKeys, on, explorerlang::pasteFileTitle(explorerlang::windowsIsEnglish()),
         L"--paste-file \"%V\"");
+}
+
+void applyPinPicture(bool on)
+{
+    setVerbs(kPinPictureKeys, on, explorerlang::pinPictureTitle(explorerlang::windowsIsEnglish()),
+        L"--pin-picture \"%1\"", true);
 }
 
 void applyLanSend(bool on)

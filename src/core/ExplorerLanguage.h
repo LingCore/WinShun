@@ -46,6 +46,12 @@ constexpr std::wstring_view pasteFileTitle(bool english) noexcept
     return english ? L"Paste as file" : L"粘贴为文件";
 }
 
+// On a picture file, while the screenshot plugin is on (GitHub #128).
+constexpr std::wstring_view pinPictureTitle(bool english) noexcept
+{
+    return english ? L"Pin to screen (WinShun)" : L"贴到屏幕（Win顺）";
+}
+
 // The entry in 发送到 for the LAN transfer plugin (GitHub #180); the file is this and ".lnk".
 constexpr std::wstring_view lanSendTitle(bool english) noexcept
 {

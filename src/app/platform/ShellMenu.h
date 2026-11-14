@@ -24,6 +24,12 @@ void apply(bool on);
 // The same for 粘贴为文件.
 void applyPasteFile(bool on);
 
+// 贴到屏幕（Win顺）on a picture file (GitHub #128; --pin-picture "<file>", which hands the file
+// to Win顺 for the screenshot plugin to pin). Under SystemFileAssociations\image: every type
+// Windows knows as a picture, whichever program opens it. With several chosen Explorer runs it
+// once a file, and each is pinned. There while a plugin pins pictures.
+void applyPinPicture(bool on);
+
 // 发送到 › 局域网传输（Win顺）(GitHub #180): a shortcut in the user's SendTo folder to this copy's
 // WinShunSearch.exe --lan-send, which Explorer runs once with every file chosen (a verb would run
 // once a file). There while the LAN transfer plugin is on; `!on` removes this copy's, and one

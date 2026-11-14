@@ -240,6 +240,8 @@ void TestPasteFile::explorerLanguage()
     QCOMPARE(q(std::wstring(el::searchHereTitle(false))), u"用 Win顺 搜索此处"_s);
     QCOMPARE(q(std::wstring(el::pasteFileTitle(true))), u"Paste as file"_s);
     QCOMPARE(q(std::wstring(el::pasteFileTitle(false))), u"粘贴为文件"_s);
+    QCOMPARE(q(std::wstring(el::pinPictureTitle(true))), u"Pin to screen (WinShun)"_s);
+    QCOMPARE(q(std::wstring(el::pinPictureTitle(false))), u"贴到屏幕（Win顺）"_s);
 }
 
 QTEST_APPLESS_MAIN(TestPasteFile)
