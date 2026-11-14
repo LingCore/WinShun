@@ -5044,14 +5044,15 @@ Window {
                 }
 
                 SettingRow {
-                    title: qsTr("大图片缩略图")
-                    keywords: qsTr("缩略图;图片;截图;放大;看清;细节").split(";")
-                    description: qsTr("图片的那一行更高，缩略图大到能看清细节，不用打开预览")
+                    title: qsTr("图片缩略图")
+                    keywords: qsTr("缩略图;图片;截图;放大;看清;细节;等高;一样高;行高;整齐").split(";")
+                    description: qsTr("小：图片那一行和别的一样高；大：缩略图能看清细节，不用打开预览")
 
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.clipboardLargePictures
-                        onToggled: (on) => window.editor.clipboardLargePictures = on
+                    ScopeTabs {
+                        readonly property var sizes: ["small", "standard", "large"]
+                        labels: [qsTr("小"), qsTr("标准"), qsTr("大")]
+                        current: Math.max(0, sizes.indexOf(window.editor.clipboardPictureSize))
+                        onActivated: (index) => window.editor.clipboardPictureSize = sizes[index]
                     }
                 }
             }

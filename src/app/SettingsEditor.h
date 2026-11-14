@@ -244,7 +244,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool clipboardImages READ clipboardImages WRITE setClipboardImages NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardClickToPaste READ clipboardClickToPaste WRITE setClipboardClickToPaste NOTIFY changed FINAL)
     Q_PROPERTY(QString clipboardUiSize READ clipboardUiSize WRITE setClipboardUiSize NOTIFY changed FINAL) // follow | dense | compact | standard | roomy
-    Q_PROPERTY(bool clipboardLargePictures READ clipboardLargePictures WRITE setClipboardLargePictures NOTIFY changed FINAL)
+    Q_PROPERTY(QString clipboardPictureSize READ clipboardPictureSize WRITE setClipboardPictureSize NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardKeepPlace READ clipboardKeepPlace WRITE setClipboardKeepPlace NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardAtPointer READ clipboardAtPointer WRITE setClipboardAtPointer NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardPauseInFullScreen READ clipboardPauseInFullScreen WRITE setClipboardPauseInFullScreen NOTIFY changed FINAL)
@@ -695,8 +695,8 @@ public:
     void setClipboardClickToPaste(bool on);
     QString clipboardUiSize() const { return m_settings.clipboardUiSize; }
     void setClipboardUiSize(const QString& size);
-    bool clipboardLargePictures() const { return m_settings.clipboardLargePictures; }
-    void setClipboardLargePictures(bool on);
+    QString clipboardPictureSize() const { return m_settings.clipboardPictureSize; }
+    void setClipboardPictureSize(const QString& size);
     bool clipboardKeepPlace() const { return m_settings.clipboardKeepPlace; }
     void setClipboardKeepPlace(bool on);
     bool clipboardAtPointer() const { return m_settings.clipboardAtPointer; }

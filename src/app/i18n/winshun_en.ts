@@ -1055,8 +1055,8 @@
         <translation>Dense</translation>
     </message>
     <message>
-        <source>大图片缩略图</source>
-        <translation>Large picture thumbnails</translation>
+        <source>图片缩略图</source>
+        <translation>Picture thumbnails</translation>
     </message>
     <message>
         <source>开在光标上方时翻转</source>
@@ -6522,8 +6522,16 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>place;position;order;sort;jump to top;stay;fixed order;after paste</translation>
     </message>
     <message>
-        <source>大图片缩略图</source>
-        <translation>Large picture thumbnails</translation>
+        <source>图片缩略图</source>
+        <translation>Picture thumbnails</translation>
+    </message>
+    <message>
+        <source>小：图片那一行和别的一样高；大：缩略图能看清细节，不用打开预览</source>
+        <translation>Small: a picture's row is as high as any other. Large: thumbnails big enough to make out, without the preview</translation>
+    </message>
+    <message>
+        <source>缩略图;图片;截图;放大;看清;细节;等高;一样高;行高;整齐</source>
+        <translation>thumbnail;picture;image;screenshot;larger;details;same height;equal;row height;tidy</translation>
     </message>
     <message>
         <source>缩略图;图片;截图;放大;看清;细节</source>

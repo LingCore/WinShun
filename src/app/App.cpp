@@ -1962,7 +1962,7 @@ void App::applySettings(bool initial)
     m_clipboard->setNumberHints(m_settings.numberHints);
     const QString clipboardSize = m_settings.clipboardUiSize == u"follow" ? m_settings.uiSize : m_settings.clipboardUiSize;
     const bool clipboardResized = clipboardSize != m_clipboard->uiSize();
-    m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardLargePictures, clipboardSize);
+    m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardPictureSize, clipboardSize);
     if (clipboardResized && m_clipPlacement)
         m_clipPlacement->resized(); // the rows have another height
     m_clipboard->setLayoutOptions(m_settings.clipboardFlipAbove, m_settings.clipboardSearchBoxSide == u"far");

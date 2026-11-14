@@ -78,8 +78,10 @@ Item {
     readonly property real dpr: Screen.devicePixelRatio
     readonly property UiScale metrics: UiScale { size: page.clipboard.uiSize } // its own 界面大小 (Settings 剪贴板大小)
     readonly property int rowHeight: page.metrics.rowHeight // what the window's height is counted in
-    // A picture's row: its thumbnail larger (ClipRow), larger still with largePictures.
-    readonly property int pictureRowHeight: clipboard.largePictures ? 142 : 80
+    // A picture's row: its thumbnail larger (ClipRow), larger still with "large";
+    // with "small" a row like any other.
+    readonly property int pictureRowHeight: clipboard.pictureSize === "large" ? 142
+        : clipboard.pictureSize === "small" ? rowHeight : 80
     // Opened from a field of Win顺's own: Enter pastes there, Esc goes back.
     readonly property bool intoField: clipboard.fieldName.length > 0
     readonly property string pasteLabel: intoField ? qsTr("粘贴到%1").arg(clipboard.fieldName) : qsTr("粘贴")
@@ -1016,7 +1018,7 @@ Item {
                         hintTaken: clipRow.hint > 0 && !page.numberUsable(clipRow.hint)
                         pasteTip: page.pasteLabel
                         clickToPaste: page.clipboard.clickToPaste
-                        largePictures: page.clipboard.largePictures
+                        pictureSize: page.clipboard.pictureSize
                         metrics: page.metrics
                         actionsPool: clipActions
                         onDragRequested: (index) => page.clipboard.dragOut(index)

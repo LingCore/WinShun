@@ -325,7 +325,7 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
 
     ClipboardWatcher watcher({}, {});
     Clipboard clipboard(&store, &watcher);
-    clipboard.setRowOptions(false, large, valueOf(u"--size", u"standard"_s));
+    clipboard.setRowOptions(false, large ? u"large"_s : u"standard"_s, valueOf(u"--size", u"standard"_s));
     clipboard.setNumberHints(valueOf(u"--hints", u"always"_s)); // the setting's default
     clipboard.setPreviewOpen(args.contains(u"--preview-open"_s));
     clipboard.setActive(true);

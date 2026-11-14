@@ -132,6 +132,48 @@ private slots:
         }
     }
 
+    // Several pictures copied in Explorer are files: the first one's thumbnail,
+    // and how many they are (GitHub #328). Not when one of them is no picture.
+    void severalPictureFilesShowTheFirst()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto made = [&dir](const QString& name) {
+            const QString path = QDir::toNativeSeparators(dir.filePath(name));
+            QFile file(path);
+            if (!file.open(QIODevice::WriteOnly))
+                return QString();
+            file.write("by its name alone: the model must not decode images");
+            return path;
+        };
+        const QString first = made(u"first.jpg"_s);
+        const QString second = made(u"second.png"_s);
+        const QString notes = made(u"notes.txt"_s);
+        QVERIFY(!first.isEmpty() && !second.isEmpty() && !notes.isEmpty());
+        ClipStore store(dir.filePath(u"history"_s));
+        QVERIFY(store.open(kStart));
+        const auto add = [&store](ClipKind kind, const QString& text, qint64 at) {
+            ClipCapture capture;
+            capture.kind = kind;
+            capture.text = text;
+            return store.add(capture, at);
+        };
+        QVERIFY(add(ClipKind::Text, u"words"_s, kStart) > 0);
+        QVERIFY(add(ClipKind::Files, first + QChar(QChar::LineFeed) + notes, kStart + 1) > 0);
+        QVERIFY(add(ClipKind::Files, first + QChar(QChar::LineFeed) + second, kStart + 2) > 0);
+        ClipModel model(&store);
+        model.setRows(store.find({}), {});
+        QCOMPARE(model.rowCount(), 3); // the newest first
+        const QString thumbnail
+            = ClipThumbnailProvider::url(first, QFileInfo(first).lastModified(QTimeZone::UTC).toMSecsSinceEpoch());
+        QCOMPARE(model.data(model.index(0), ClipModel::ImageRole).toString(), thumbnail);
+        QCOMPARE(model.data(model.index(0), ClipModel::FileCountRole).toInt(), 2);
+        QCOMPARE(model.data(model.index(0), ClipModel::KindRole).toInt(), static_cast<int>(ClipKind::Files));
+        QVERIFY(model.data(model.index(1), ClipModel::ImageRole).toString().isEmpty()); // a text file among them
+        QCOMPARE(model.data(model.index(1), ClipModel::FileCountRole).toInt(), 2);
+        QCOMPARE(model.data(model.index(2), ClipModel::FileCountRole).toInt(), 0);
+    }
+
     // Ctrl+A in 全部: what is in no group, in the order listed.
     void allTabSkipsPinnedAndGrouped()
     {

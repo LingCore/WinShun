@@ -170,7 +170,7 @@ MaxDays=30               ; 多少天没再复制或粘贴过就删除；0 = 一�
 Images=true              ; 也记录图片
 ClickToPaste=false       ; 单击就粘贴（和 Windows 自带的一样；论坛 #137）；关时单击选中、双击粘贴。开着时行上的“粘贴”按钮换成“预览”，Ctrl/Shift+单击仍是多选
 KeepPlace=false          ; 从历史里粘贴一条后它留在原位（不动 used，重启后顺序也不变；只写 clips.pasted，过期按 used 和 pasted 里较晚的算；行上显示“已粘贴过”对勾）；关时粘贴把它移到最前（GitHub #122）。重新复制同样的内容仍移到最前
-LargePictures=false      ; 图片行更高（142，缩略图 208×130，否则 80、108×68），看得清细节
+PictureSize=standard     ; 图片缩略图：small 和别的行一样高（缩略图在图标的位置，GitHub #328）、standard 行高 80（108×68）、large 行高 142（208×130，看得清细节）。0.28 及以前是开关 LargePictures，开着的读成 large
 ExcludedApps=KeePass.exe, KeePassXC.exe, 1Password.exe, Bitwarden.exe ; 不记录这些程序复制的内容
 
 [Taskbar]

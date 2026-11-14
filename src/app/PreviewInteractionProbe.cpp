@@ -97,7 +97,7 @@ bool checkPreviewInteractions(QQmlEngine* engine, const QDir& output)
     const qint64 shortId = store.add(ClipCapture {.kind = ClipKind::Text, .text = u"短文本 / Short note"_s}, now + 1);
     ClipboardWatcher watcher({.record = false}, {});
     Clipboard clipboard(&store, &watcher);
-    clipboard.setRowOptions(false, false, SystemTheme::uiSize());
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
     clipboard.setState(true, false, u"Win+V"_s);
     clipboard.setActive(true);
     Placement placement(profile.filePath(u"state.ini"_s), u"Clipboard"_s);

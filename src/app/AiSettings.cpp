@@ -700,9 +700,12 @@ std::vector<Entry> buildCatalog()
             {u"compact"_s, u"smaller type and rows"_s, QT_TRANSLATE_NOOP("AiSettings", "紧凑")},
             {u"standard"_s, u"the usual size"_s, QT_TRANSLATE_NOOP("AiSettings", "标准")},
             {u"roomy"_s, u"larger type and rows"_s, QT_TRANSLATE_NOOP("AiSettings", "宽松")}}));
-    add(boolean({"Clipboard/LargePictures", QT_TRANSLATE_NOOP("AiSettings", "大图片缩略图"), "clipboard", 0,
-                    "Pictures on taller rows, thumbnails large enough to make out."},
-        &Settings::clipboardLargePictures));
+    add(choice({"Clipboard/PictureSize", QT_TRANSLATE_NOOP("AiSettings", "图片缩略图"), "clipboard", 0,
+                   "How large a picture's thumbnail is in the clipboard list, and with it how high its row."},
+        &Settings::clipboardPictureSize,
+        {{u"small"_s, u"on a row as high as any other entry's"_s, QT_TRANSLATE_NOOP("AiSettings", "小")},
+            {u"standard"_s, u"on a taller row"_s, QT_TRANSLATE_NOOP("AiSettings", "标准")},
+            {u"large"_s, u"large enough to make out the details"_s, QT_TRANSLATE_NOOP("AiSettings", "大")}}));
     add(boolean({"Clipboard/AtPointer", QT_TRANSLATE_NOOP("AiSettings", "剪贴板打开位置"), "clipboard", 0,
                     "Always open the clipboard beside the mouse pointer. Off: by the text caret or focused field."},
         &Settings::clipboardAtPointer));

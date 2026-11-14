@@ -1887,11 +1887,11 @@ void SettingsEditor::setClipboardUiSize(const QString& size)
     commit();
 }
 
-void SettingsEditor::setClipboardLargePictures(bool on)
+void SettingsEditor::setClipboardPictureSize(const QString& size)
 {
-    if (m_settings.clipboardLargePictures == on)
+    if (m_settings.clipboardPictureSize == size || (size != u"small" && size != u"standard" && size != u"large"))
         return;
-    m_settings.clipboardLargePictures = on;
+    m_settings.clipboardPictureSize = size;
     commit();
 }
 

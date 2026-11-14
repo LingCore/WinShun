@@ -120,6 +120,7 @@ QHash<int, QByteArray> ClipModel::roleNames() const
         {AfterPinnedRole, "afterPinned"},
         {ScreenshotRole, "screenshot"},
         {PastedRole, "pasted"},
+        {FileCountRole, "fileCount"},
     };
 }
 
@@ -143,6 +144,8 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
         case ImageRole:
         case ColorRole:
             return QString();
+        case FileCountRole:
+            return 0;
         case MissingRole:
         case ScreenshotRole:
             return false;
@@ -184,14 +187,20 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
         if (c->kind != ClipKind::Files && c->kind != ClipKind::Path)
             return QString();
         const QStringList files = c->files();
-        if (files.size() != 1 || !isLocal(files.constFirst()))
+        if (files.isEmpty() || fileMissing(*c))
             return QString();
         const QString& path = files.constFirst();
-        // Presentation only: WeChat can copy a picture as a file. Keep its
-        // original kind and paste formats. MatchExtension never reads the
-        // file's contents on the GUI thread.
+        // Presentation only: WeChat can copy a picture as a file, and several
+        // pictures copied in Explorer are files (the first one's thumbnail,
+        // the row says how many: GitHub #328). The entry keeps its kind and
+        // its paste formats. By their names alone: MatchExtension never reads
+        // a file's contents on the GUI thread; the first few stand for the rest.
         static const QMimeDatabase mimes;
-        if (!mimes.mimeTypeForFile(path, QMimeDatabase::MatchExtension).name().startsWith(u"image/") || fileMissing(*c))
+        constexpr qsizetype kLooked = 16;
+        const auto picture = [](const QString& one) {
+            return isLocal(one) && mimes.mimeTypeForFile(one, QMimeDatabase::MatchExtension).name().startsWith(u"image/");
+        };
+        if (!std::all_of(files.cbegin(), files.cbegin() + std::min(files.size(), kLooked), picture))
             return QString();
         const QFileInfo file(path);
         if (!file.isFile())
@@ -213,6 +222,8 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
         return movable(index.row());
     case ScreenshotRole:
         return c->screenshot;
+    case FileCountRole:
+        return c->kind == ClipKind::Files || c->kind == ClipKind::Path ? static_cast<int>(c->files().size()) : 0;
     case PastedRole:
         return m_marksPasted && c->pasted > 0;
     case AfterPinnedRole: {

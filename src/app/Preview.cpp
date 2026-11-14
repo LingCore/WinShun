@@ -3414,7 +3414,7 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
             QDateTime::currentMSecsSinceEpoch() + i);
     ClipboardWatcher watcher({}, {});
     Clipboard clipboard(&store, &watcher);
-    clipboard.setRowOptions(false, false, SystemTheme::uiSize());
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
     Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
     Placement clipPlacement(temporary.filePath(u"clipboard.ini"_s), u"Clipboard"_s);
     WindowFrame frame(false);
@@ -3696,7 +3696,7 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
         const Step steps[] = {{"dense", 32}, {"compact", 52}, {"standard", 60}, {"roomy", 68}};
         for (const Step& step : steps) {
             const QString name = QString::fromLatin1(step.size);
-            clipboard.setRowOptions(false, false, name);
+            clipboard.setRowOptions(false, u"standard"_s, name);
             settle(window);
             pump(200);
             QQuickItem* row = visualNamed(window->contentItem(), u"clipboardRow-0"_s);
@@ -6153,7 +6153,7 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
         .text = QDir::toNativeSeparators(temporary.filePath(u"不存在的演示文件.txt"_s))}, QDateTime::currentMSecsSinceEpoch());
     ClipboardWatcher watcher({}, {});
     Clipboard clipboard(&store, &watcher);
-    clipboard.setRowOptions(false, false, SystemTheme::uiSize());
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
     clipboard.setPreviewOpen(false);
     clipboard.setActive(true);
     clipboard.handleShown();

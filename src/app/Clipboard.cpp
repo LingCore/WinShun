@@ -350,12 +350,12 @@ void Clipboard::setNumberKeys(const QString& keys)
     emit numberKeysChanged();
 }
 
-void Clipboard::setRowOptions(bool clickToPaste, bool largePictures, const QString& uiSize)
+void Clipboard::setRowOptions(bool clickToPaste, const QString& pictureSize, const QString& uiSize)
 {
-    if (clickToPaste == m_clickToPaste && largePictures == m_largePictures && uiSize == m_uiSize)
+    if (clickToPaste == m_clickToPaste && pictureSize == m_pictureSize && uiSize == m_uiSize)
         return;
     m_clickToPaste = clickToPaste;
-    m_largePictures = largePictures;
+    m_pictureSize = pictureSize;
     m_uiSize = uiSize;
     emit rowOptionsChanged();
     refreshStatus(); // pinned, it says how to paste

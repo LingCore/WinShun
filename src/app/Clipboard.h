@@ -96,8 +96,8 @@ class Clipboard : public QObject {
     // standard | roomy (Settings::clipboardUiSize, else the interface size).
     Q_PROPERTY(QString uiSize READ uiSize NOTIFY rowOptionsChanged FINAL)
     // Pictures on taller rows, their thumbnails large enough to make out
-    // (Settings::clipboardLargePictures).
-    Q_PROPERTY(bool largePictures READ largePictures NOTIFY rowOptionsChanged FINAL)
+    // (Settings::clipboardPictureSize: "small", "standard", "large").
+    Q_PROPERTY(QString pictureSize READ pictureSize NOTIFY rowOptionsChanged FINAL)
     // Opened over the caret or a search box (Placement.above), the window
     // upside down: the newest entry by it, older ones upwards
     // (Settings::clipboardFlipAbove).
@@ -175,9 +175,9 @@ public:
     int numberKeysLeft() const { return static_cast<int>(m_numberKeysLeft); }
     void setNumberKeysLeft(unsigned digits);
     bool clickToPaste() const { return m_clickToPaste; }
-    bool largePictures() const { return m_largePictures; }
+    QString pictureSize() const { return m_pictureSize; }
     QString uiSize() const { return m_uiSize; }
-    void setRowOptions(bool clickToPaste, bool largePictures, const QString& uiSize);
+    void setRowOptions(bool clickToPaste, const QString& pictureSize, const QString& uiSize);
     bool flipAbove() const { return m_flipAbove; }
     bool searchFar() const { return m_searchFar; }
     void setLayoutOptions(bool flipAbove, bool searchFar);
@@ -468,7 +468,7 @@ private:
     QString m_numberHints = QStringLiteral("always");
     unsigned m_numberKeysLeft = 0;
     bool m_clickToPaste = false;
-    bool m_largePictures = false;
+    QString m_pictureSize = QStringLiteral("standard");
     QString m_uiSize = QStringLiteral("standard");
     bool m_flipAbove = true;
     bool m_searchFar = false;

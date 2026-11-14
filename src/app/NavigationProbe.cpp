@@ -127,7 +127,7 @@ void clipboardGroups(QQmlEngine* engine, const QDir& output, bool flipped, Check
     store.setGroup(std::span(&privateEntry, 1), personal);
     ClipboardWatcher watcher({.record = false}, {});
     Clipboard clipboard(&store, &watcher);
-    clipboard.setRowOptions(false, false, SystemTheme::uiSize());
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
     clipboard.setState(true, false, u"Win+V"_s);
     clipboard.setActive(true);
     Placement placement(profile.filePath(u"state.ini"_s), u"Clipboard"_s);
@@ -612,7 +612,7 @@ bool checkClipboardAlignment(QQmlEngine* engine, const QDir& output, bool flippe
     }
     ClipboardWatcher watcher({.record = false}, {});
     Clipboard clipboard(&store, &watcher);
-    clipboard.setRowOptions(false, false, SystemTheme::uiSize());
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
     clipboard.setNumberHints(u"always"_s);
     clipboard.setState(true, false, u"Win+V"_s);
     clipboard.setActive(true);
@@ -674,7 +674,7 @@ bool checkClipboardAlignment(QQmlEngine* engine, const QDir& output, bool flippe
     check(laterIcon && laterIcon->x() == leading - 28, u"turning number hints off releases the gutter consistently"_s);
     window->setMaximumHeight(screenHeight);
     clipboard.setWindowHeight(640);
-    clipboard.setRowOptions(false, true, SystemTheme::uiSize());
+    clipboard.setRowOptions(false, u"large"_s, SystemTheme::uiSize());
     at(0);
     picture = at(1);
     slot = picture ? item(picture, u"clipboardIconSlot"_s) : nullptr;

@@ -27,6 +27,7 @@ Item {
     required property bool movable // in its group's own order: a handle to drag, Ctrl+Up/Down
     required property bool afterPinned // the first after those in "固定" listed first
     required property bool screenshot // a picture Win顺's capture took: tagged 截图 (when in no group)
+    required property int fileCount // files and paths: how many
     required property bool pasted // pasted from the list before, with 粘贴后保持位置 on (else the last pasted is on top): a check mark
     property int hint: 0 // the number that pastes this row (Alt+1...); 0 for none
     property bool reserveHintSpace: false // keep one shared gutter, including rows beyond the nine numbered entries
@@ -35,7 +36,7 @@ Item {
     property real hintOpacity: 1
     property string pasteTip: qsTr("粘贴") // where the paste button pastes ("粘贴到搜索框")
     property bool clickToPaste: false // a click pastes (Clipboard::clickToPaste)
-    property bool largePictures: false // a picture's thumbnail larger (Clipboard::largePictures)
+    property string pictureSize: "standard" // a picture's thumbnail: "small", "standard", "large" (Clipboard::pictureSize)
     property UiScale metrics: Theme.metrics
 
     // Thumbnail layout is independent of the clipboard kind (and its paste/drag actions).
@@ -171,9 +172,11 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         // Pictures larger, on a taller row (ClipboardPage.pictureRowHeight):
         // what is in them shows (GitHub #9); 108 x 68 holds a 16:10 screen whole,
-        // 208 x 130 (largePictures) its details too (forum #137).
-        width: !row.picture ? row.iconSize : row.largePictures ? 208 : 108
-        height: !row.picture ? row.iconSize : row.largePictures ? 130 : 68
+        // 208 x 130 ("large") its details too (forum #137). "small": where an
+        // icon would be, every row as high as the next (GitHub #328).
+        readonly property bool iconSized: !row.picture || row.pictureSize === "small"
+        width: iconSized ? row.iconSize : row.pictureSize === "large" ? 208 : 108
+        height: iconSized ? row.iconSize : row.pictureSize === "large" ? 130 : 68
 
         Rectangle { // text and links: a sign on a soft tile
             anchors.fill: parent
@@ -242,7 +245,9 @@ Item {
                 // set, the aspect kept), then drawn pixel for pixel, on whole
                 // pixels: sharp. Kept scaled (ClipThumbnailProvider), so a row
                 // scrolled back to shows its picture at once.
-                x: 0 // the image's leading edge follows the same gutter as text/file icons
+                // The image's leading edge follows the same gutter as text and file
+                // icons; in an icon's place it is centred as an icon is.
+                x: row.pictureSize === "small" ? Math.round((parent.width - width) / 2 * dpr) / dpr : 0
                 y: Math.round((parent.height - height) / 2 * dpr) / dpr
                 width: ready ? implicitWidth : parent.width
                 height: ready ? implicitHeight : parent.height
@@ -258,6 +263,26 @@ Item {
                 asynchronous: true
                 autoTransform: true
                 smooth: false
+            }
+        }
+
+        Rectangle { // several pictures copied as files: how many, on the first one's thumbnail
+            objectName: "clipboardPictureCount"
+            visible: thumbnail.ready && row.fileCount > 1 && row.pictureSize !== "small"
+            x: thumbnail.x + thumbnail.width - width - 4
+            y: thumbnail.y + thumbnail.height - height - 4
+            width: Math.max(height, pictureCount.implicitWidth + 10)
+            height: 18
+            radius: Theme.pillRadius(height)
+            color: Qt.rgba(0, 0, 0, 0.62) // over any picture, in either theme
+
+            Text {
+                id: pictureCount
+                anchors.centerIn: parent
+                text: row.fileCount
+                color: "white"
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
             }
         }
 

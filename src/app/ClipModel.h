@@ -32,7 +32,7 @@ public:
         TitleRole, // the first line (or where the query matched), highlighted: StyledText
         DetailRole, // "微信 · 3 分钟前 · 128 字"
         IconRole, // files and paths: the file's icon
-        ImageRole, // pictures and single local image files: their thumbnail source
+        ImageRole, // pictures, and local picture files copied (the first one's): their thumbnail source
         ColorRole, // text that is a colour ("#3B82F6"): that colour; else empty
         OrderRole, // picked: 1, 2, ... in the order picked; 0 if not
         GroupRole, // the group's name, "" if none
@@ -42,6 +42,7 @@ public:
         AfterPinnedRole, // the first row after those in "固定" listed first: a line above it
         ScreenshotRole, // a picture Win顺's capture took (Clip::screenshot): tagged 截图
         PastedRole, // pasted from the list before, and marksPasted: a mark on the row
+        FileCountRole, // files and paths: how many; 0 for anything else
     };
 
     // Which rows can be moved in their group's order: none (a search, the

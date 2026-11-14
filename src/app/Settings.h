@@ -423,7 +423,9 @@ struct Settings {
     QString clipboardQuickPaste = QStringLiteral("off"); // off | ctrl | alt: the first nine of All, without opening the window
     bool clipboardClickToPaste = false; // a click pastes the row (Windows' way); off: picks it, a double click pastes
     QString clipboardUiSize = QStringLiteral("follow"); // follow (界面大小) | dense | compact | standard | roomy: its own type and row heights
-    bool clipboardLargePictures = false; // pictures on taller rows, thumbnails large enough to make out
+    // A picture's thumbnail in the list: "small" on a row as high as any other (GitHub #328),
+    // "standard" on a taller one, "large" enough to make out its details (forum #137).
+    QString clipboardPictureSize = QStringLiteral("standard");
     bool clipboardKeepPlace = false; // pasting from the history leaves the entry where it is (GitHub #122); off: it moves to the top
     bool clipboardAtPointer = false; // always open beside the mouse, including over our own fields (GitHub #105)
     bool clipboardPauseInFullScreen = false; // only global opening hotkeys, not recording or menu actions (#121)

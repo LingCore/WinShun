@@ -1148,7 +1148,11 @@ void Settings::load()
     clipboardUiSize = readOrDefault(s, u"Clipboard/UiSize"_s, d.clipboardUiSize).trimmed().toLower();
     if (clipboardUiSize != u"dense" && clipboardUiSize != u"compact" && clipboardUiSize != u"standard" && clipboardUiSize != u"roomy")
         clipboardUiSize = d.clipboardUiSize;
-    clipboardLargePictures = readOrDefault(s, u"Clipboard/LargePictures"_s, d.clipboardLargePictures);
+    // Clipboard/LargePictures was a switch until 0.28: on is "large".
+    clipboardPictureSize = readOrDefault(s, u"Clipboard/PictureSize"_s,
+        s.value(u"Clipboard/LargePictures"_s, false).toBool() ? u"large"_s : d.clipboardPictureSize).trimmed().toLower();
+    if (clipboardPictureSize != u"small" && clipboardPictureSize != u"standard" && clipboardPictureSize != u"large")
+        clipboardPictureSize = d.clipboardPictureSize;
     clipboardKeepPlace = readOrDefault(s, u"Clipboard/KeepPlace"_s, d.clipboardKeepPlace);
     clipboardAtPointer = readOrDefault(s, u"Clipboard/AtPointer"_s, d.clipboardAtPointer);
     clipboardPauseInFullScreen = readOrDefault(s, u"Clipboard/PauseInFullScreen"_s, d.clipboardPauseInFullScreen);
@@ -1432,7 +1436,8 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/Images"_s, clipboardImages);
     s.setValue(u"Clipboard/ClickToPaste"_s, clipboardClickToPaste);
     s.setValue(u"Clipboard/UiSize"_s, clipboardUiSize);
-    s.setValue(u"Clipboard/LargePictures"_s, clipboardLargePictures);
+    s.setValue(u"Clipboard/PictureSize"_s, clipboardPictureSize);
+    s.remove(u"Clipboard/LargePictures"_s); // said by PictureSize now
     s.setValue(u"Clipboard/KeepPlace"_s, clipboardKeepPlace);
     s.setValue(u"Clipboard/AtPointer"_s, clipboardAtPointer);
     s.setValue(u"Clipboard/PauseInFullScreen"_s, clipboardPauseInFullScreen);

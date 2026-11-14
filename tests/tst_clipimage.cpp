@@ -343,7 +343,7 @@ private slots:
             {u"icon"_s, QUrl::fromLocalFile(path).toString()},
             {u"image"_s, ClipThumbnailProvider::url(path)}, {u"swatch"_s, QString()},
             {u"order"_s, 0}, {u"groupName"_s, QString()}, {u"pinned"_s, false},
-            {u"missing"_s, false}, {u"movable"_s, false}, {u"afterPinned"_s, false}, {u"screenshot"_s, false}, {u"pasted"_s, false},
+            {u"missing"_s, false}, {u"movable"_s, false}, {u"afterPinned"_s, false}, {u"screenshot"_s, false}, {u"pasted"_s, false}, {u"fileCount"_s, 1},
         }));
         QVERIFY2(object, qPrintable(component.errorString()));
         auto* row = qobject_cast<QQuickItem*>(object.get());
@@ -363,7 +363,7 @@ private slots:
         QVERIFY(icon);
         QVERIFY(row->property("picture").toBool());
         for (bool large : {false, true}) {
-            row->setProperty("largePictures", large);
+            row->setProperty("pictureSize", large ? u"large"_s : u"standard"_s);
             QTRY_COMPARE(thumbnail->property("status").toInt(), 1); // Image.Ready
             QVERIFY(thumbnail->isVisible());
             QVERIFY(!icon->isVisible());
@@ -380,6 +380,26 @@ private slots:
         const QString screenshot = qEnvironmentVariable("WINSHUN_CLIP_ROW_SCREENSHOT");
         if (!screenshot.isEmpty())
             QVERIFY(rendered.save(screenshot));
+        // "small": in an icon's place, the row no higher than a text's (GitHub #328).
+        row->setProperty("pictureSize", u"small"_s);
+        QTRY_VERIFY(thumbnail->property("status").toInt() == 1 && thumbnail->height() <= 32 && thumbnail->width() <= 32);
+        QVERIFY(thumbnail->isVisible());
+        QVERIFY(qAbs(thumbnail->width() / thumbnail->height() - 900.0 / 1600) < 0.08);
+        if (!screenshot.isEmpty())
+            QVERIFY(window.grabWindow().save(screenshot + u".small.png"_s));
+        // Several pictures copied as files: how many, on the thumbnail; not on the small one.
+        auto* count = row->findChild<QQuickItem*>(u"clipboardPictureCount"_s);
+        QVERIFY(count);
+        row->setProperty("fileCount", 3);
+        QVERIFY(!count->isVisible());
+        row->setProperty("pictureSize", u"standard"_s);
+        QTRY_VERIFY(count->isVisible());
+        const QRectF badge = count->mapRectToItem(thumbnail, QRectF(QPointF(), count->size()));
+        QVERIFY(QRectF(QPointF(), thumbnail->size()).contains(badge));
+        if (!screenshot.isEmpty())
+            QVERIFY(window.grabWindow().save(screenshot + u".count.png"_s));
+        row->setProperty("fileCount", 1);
+        QVERIFY(!count->isVisible());
         // A broken image keeps its file icon; changing the reused row clears the old picture.
         const QString broken = dir.filePath(u"broken.jpg"_s);
         QFile file(broken);

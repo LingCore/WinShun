@@ -43,7 +43,7 @@ namespace ws {
 DisplayRows::DisplayRows(QObject* parent) : QAbstractListModel(parent)
 {
     const QList<QByteArray> names {"clipId", "kind", "title", "detail", "icon", "image", "swatch", "order",
-        "groupName", "pinned", "missing", "movable", "afterPinned", "screenshot", "pasted"};
+        "groupName", "pinned", "missing", "movable", "afterPinned", "screenshot", "pasted", "fileCount"};
     for (int i = 0; i < names.size(); ++i) m_roles.insert(Qt::UserRole + i + 1, names[i]);
 }
 
