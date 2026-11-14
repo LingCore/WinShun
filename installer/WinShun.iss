@@ -1325,6 +1325,17 @@ begin
     end;
 end;
 
+// A path as the start of a WQL LIKE pattern in a quoted string: the backslash and the quote
+// escaped for the string, LIKE's own [ and % made literal (_ stays: it matches the letter too).
+function WqlLike(Path: String): String;
+begin
+  Result := Path;
+  StringChangeEx(Result, '[', '[[]', True);
+  StringChangeEx(Result, '%', '[%]', True);
+  StringChangeEx(Result, '\', '\\', True);
+  StringChangeEx(Result, '''', '\''', True);
+end;
+
 // Ends every program that runs from {app} (a plugin's helper, a tool of
 // Win顺's left behind): by its path, so never another copy's. After Win顺
 // itself was asked to quit. True when there were some.
@@ -1339,7 +1350,10 @@ begin
     exit;
   Root := Lowercase(AddBackslash(ExpandConstant('{app}')));
   try
-    Found := Wmi.ExecQuery('SELECT ProcessId, ExecutablePath FROM Win32_Process');
+    // Only those under {app}, asked of WMI: ItemIndex walks the set from its start each time, so
+    // going through every process of the PC took the square of their number (27 s with 547 of
+    // them, in every install and update). The path is checked again below: LIKE's _ is any letter.
+    Found := Wmi.ExecQuery('SELECT ProcessId, ExecutablePath FROM Win32_Process WHERE ExecutablePath LIKE ''' + WqlLike(Root) + '%''');
     for I := 0 to Found.Count - 1 do
     begin
       Item := Found.ItemIndex(I);
@@ -1734,6 +1748,14 @@ begin
       RegDeleteKeyIncludingSubkeys(HKCU, Keys[I]);
 end;
 
+// 发送到 › 局域网传输（Win顺）(ShellMenu.cpp, applyLanSend), under either name: the installed copy's
+// only in effect: a portable copy that still runs writes its own again when it next starts.
+procedure RemoveSendToEntry();
+begin
+  DeleteFile(ExpandConstant('{usersendto}\局域网传输（Win顺）.lnk'));
+  DeleteFile(ExpandConstant('{usersendto}\LAN transfer (WinShun).lnk'));
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
@@ -1749,6 +1771,7 @@ begin
       Exec(ExpandConstant('{app}\WinShunService.exe'), '--uninstall', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     RemoveAutostart();
     RemoveExplorerMenu();
+    RemoveSendToEntry();
     RemoveWsFromPath(); // ChangesEnvironment tells the other programs when the uninstall ends
     // Directory Opus's double click on blank space, if Win顺 set it to run this copy.
     Exec(ExpandConstant('{app}\WinShunSearch.exe'), '--opus-menu-off', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
