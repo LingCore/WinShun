@@ -90,6 +90,10 @@ void Session::receive(const QByteArray& line)
         } else if (method == u"winshun/refresh") {
             if (m_handlers.refresh)
                 m_handlers.refresh();
+        } else if (method == u"winshun/settings/update") {
+            const auto values = message->params.value(u"settings"_s);
+            if (values.isObject() && m_handlers.settingsUpdate)
+                m_handlers.settingsUpdate(values.toObject());
         } else if (method == u"winshun/hotkeys") {
             if (m_handlers.hotkeys) {
                 QStringList keys;
