@@ -6,6 +6,8 @@ On a fresh install some extras start switched off: the search bar beside Open / 
 
 ## File search
 
+- **An empty search panel** (0.28.0): "List all files in the empty search panel" under Settings › Appearance › Size and layout (on by default) can be turned off, so the panel lists nothing until something is typed.
+
 - **Query history**. The clock button opens the last 100 completed queries. `Ctrl+Up` / `Ctrl+Down` browses them and restores the previous draft at the newest position. Settings can choose Alt with the arrows or disable the keys. Delete individual entries or clear the list. History follows the usage-recording switch.
 - **Open windows**. In All, sorted by relevance, matching current window titles and program names appear first. Enter activates the selected window, including a minimized one.
 - **Minimal empty search**. Enable Pure search mode under Appearance › Size and layout to keep only the input bar when empty. Results and the scope tabs return as you type; the history and expand buttons stay hidden, their shortcuts still work. Beside it, Scope tabs › Merged turns All / Files / Content into one button that names the current scope: a click or `Tab` goes to the next. Both start off.
@@ -65,6 +67,8 @@ On a fresh install some extras start switched off: the search bar beside Open / 
 
 ## Web search
 
+- **When nothing is found** (0.28.0, off by default): "Search the web when nothing is found" on the Web search plugin's card adds a row that searches with the first site in the list. A keyword may also come last: `weather g` works as `g weather` does.
+
 install and enable Web search from the plugin library. `zhihu 显卡`, `baidu 天气`: a keyword and a space search that site; found by a part of its keyword or by its name (`b`), a site's row takes `Tab` to put the keyword in the box. Manage sites, keywords, icons and suggestions on its plugin card; existing settings migrate on upgrade. Presets include Chinese sites, GitHub, YouTube and Wikipedia; add your own with `%s` in the URL, and import or export the list and icons. The site's search suggestions show below as you type (Enter searches one, Tab puts it in the box), and a site's icon can be an SVG file or pasted SVG code.
 
 ## Favorites
@@ -105,6 +109,9 @@ install and enable Web search from the plugin library. `zhihu 显卡`, `baidu �
 
 ## In File Explorer
 
+- **Send to › LAN transfer (WinShun)** (0.28.0): with the LAN transfer plugin on, the files chosen go to its device list from Send to in the right-click menu (under "Show more options" on Windows 11).
+- Typing to search does not start while a mouse button is down (a file held or dragged); with a Chinese input method the letters still being composed are searched at once.
+
 - **Direct folder entries**. Under Open WinShun › Dialogs › Folder menu, set 0–10 recent or open folders to show directly. Zero uses the submenu, and overflow entries appear under More. Menu density follows the interface size and long paths have hover tips.
 - **Tessoa folders**. Ctrl+G can read the active folder of a specific Tessoa window using its v1 protocol, available in Tessoa 0.22.0 or newer.
 
@@ -118,6 +125,9 @@ install and enable Web search from the plugin library. `zhihu 显卡`, `baidu �
 - **Placement and selection (0.17.0)**: the search box opens beside the originating Explorer window when all of it fits there; otherwise (a large, centred or maximized window) it opens in the bottom right corner of the file list, as Listary's does, never in a corner of the screen. Neither changes its remembered position. On the few PCs where Windows will not let the search box to the front, Explorer keeps the focus and what is typed still goes into the box (past the input method: pinyin is searched as letters). Browsing a direct child selects and reveals it in the original tab while the search field keeps keyboard focus; nested and elsewhere results do not navigate Explorer.
 
 ## Clipboard history
+
+- **Hidden entries** (0.28.0): "Hide content" in an entry's menu shows dots in the list and the preview and keeps its text out of the search; pasting is unchanged and "Show content" brings it back. A note tells you which one it is.
+- **A copied text file** (0.28.0): one text file copied shows its beginning under its name in the preview.
 
 - **Find a group**. Press `Ctrl+G` or the folder button, search group names, select with the arrows and press Enter. Continue typing to search inside the group. Esc restores the earlier content query and scope.
 - **Hover preview**. Rest the pointer on an item for about 200 ms to see its text or picture. Move into the popup to keep reading. Scrolling or changing groups closes it, and Alt+P or the middle button can open the manual side preview.
@@ -139,6 +149,8 @@ install and enable Web search from the plugin library. `zhihu 显卡`, `baidu �
 - **Privacy**: passwords from password managers are not kept, and the history stays on your PC.
 
 ## Screenshots and recording
+
+- **Keys on a pin** (Screenshot and recording 1.1.14): after a click on it, `E` edits, `O` reads its text, `U` sends it to the top edge and back; changeable under Keys › Pin window.
 
 The Screenshot and recording plugin: install it in Settings › Plugins › Plugin library, record your own shortcut under Settings on its card, and turn on `PrtScn` there too if you want it. Who had screenshots on gets it installed with the update, settings as they were.
 

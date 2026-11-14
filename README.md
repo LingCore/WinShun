@@ -184,19 +184,19 @@ scoop install winshun
 
 ### 最近更新
 
-**0.27.0**
+**0.28.0**
 
-- 🔎 **内容搜索支持正则** `regex:1[3-9]\d{9}` 或按 `Ctrl+R`；`马上|立即` 找含任意一个词的文件。
-- 🗜️ **解压窗口也有搜索框** Bandizip、7-Zip、WinRAR 的“选择解压路径”下面搜文件夹，按 `Enter` 填进路径框。
-- ⌨️ **命令先搜文件** 给自己的命令打开“关键词后面的字用来搜索文件”，`code 我的项目` 列出搜到的文件夹，选一个交给程序。
-- 🧩 **插件安装前看说明** 插件库里点“说明”先看文档；卡片上作者、权限收进名字旁的 “i”。
-- 📐 **截图指定大小** 点选区旁的尺寸或按 `F`，输入宽高、锁定比例、选常用尺寸；QQ 的圆点二维码也读得出来（截图与录屏 1.1.13）。
-- 🖥️ **在桌面上直接打字搜索** 点一下桌面就能打字搜整台电脑，在 **设置 › 打开 Win顺 › 对话框** 打开。
-- 🎛️ **搜索框更简洁** 范围标签可以合成一个按钮；纯净搜索模式搬到 **设置 › 外观 › 尺寸与布局**，一直隐藏右上角两个按钮。
-- 📏 **小改进** 记住哪些程序要以管理员身份运行；结果行的删除按钮可以关掉；`Shift+Space` 可以当快捷键；收藏的关键词打开头几个字就能找到。
-- 🛠️ **修复** 资源管理器里打字弹出的搜索框先闪一下文件夹内容、变高时黑一帧、压住滚动条；剪贴板钉住时“加备注”打不了字；品牌样式下选中行不明显等。
+- 🚑 **修复 0.27.0 打不开** 没装过 VC++ 运行库的电脑上提示缺 `MSVCP140_2.dll`，这一版把运行库带全了。
+- 🈶 **拼音没选字就出结果** 中文输入法下打 `weixin`，不用先选字或切英文就能找到“微信”。
+- 🌐 **没有结果时用网页搜索** 在网页搜索插件里打开，搜不到时多一行“在 … 中搜索”；关键词也可以写在后面（`天气 baidu`）。
+- 📄 **剪贴板看得到文本文件的内容** 复制的 txt、md、代码文件，预览里直接显示开头的内容。
+- 🙈 **剪贴板条目可以遮住** 右键“遮住内容”，列表和预览只显示圆点，录屏、共享屏幕时不露密码。
+- 📤 **右键“发送到”局域网传输** 资源管理器里选中文件，右键 › 发送到 › 局域网传输（Win顺），直接选设备发送。
+- 📌 **贴图按键** 点一下贴图后按 `E` 编辑、`O` 识别文字、`U` 收到屏幕顶边（截图与录屏 1.1.14）。
+- 📏 **小改进** 搜索面板空着时可以不列出全部文件；图片里的二维码内容也能搜到。
+- 🛠️ **修复** 安装和更新在进程多的电脑上停几十秒；Windows 10 上文件夹里打字的搜索框先小后大、露黑块；拖文件按键时误弹搜索框；PrtScn 被系统截图抢回去等。
 
-详见 [0.27.0 发布说明](docs/release-notes/v0.27.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
+详见 [0.28.0 发布说明](docs/release-notes/v0.28.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
 
 ### 常见问题
 
@@ -430,19 +430,19 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
-**0.27.0**
+**0.28.0**
 
-- 🔎 **Regular expressions in Content search** `regex:1[3-9]\d{9}` or `Ctrl+R`; `now|soon` finds files with either word.
-- 🗜️ **The search bar under extraction windows** Find a folder under Bandizip's, 7-Zip's or WinRAR's extraction path window and `Enter` writes it into the path box.
-- ⌨️ **Commands that find files first** With "The words after the keyword find files" on, `code my project` lists what the words find and hands the one you pick to the program.
-- 🧩 **A plugin's README before installing** Readme on a library entry; who made it and what it may do sit in an "i" beside the name.
-- 📐 **Captures of an exact size** Click the size by the selection or press `F` to type a width and height, lock the shape or pick a preset; QQ's round, dotted QR codes are read (Screenshot and recording 1.1.13).
-- 🖥️ **Type on the desktop to search** Click the desktop and type to search the whole PC; turned on under Settings › Open WinShun › Dialogs.
-- 🎛️ **A plainer search box** The scope tabs can be one button; Pure search mode moved to Settings › Appearance › Size and layout and keeps the two top-right buttons hidden.
-- 📏 **Small things** Programs remembered as run as administrator; result rows without the delete button; `Shift+Space` as a shortcut; the start of a favorite's keyword finds it.
-- 🛠️ **Fixes** The box opened by typing in File Explorer listing the folder first, showing a black part for a frame and covering the scroll bars; "Add a note…" taking no typing while the clipboard is pinned; the chosen row reading weak in the brand style, and more.
+- 🚑 **0.27.0 not starting, fixed** On a PC without the Visual C++ runtime it asked for `MSVCP140_2.dll`; the whole runtime now ships with the program.
+- 🈶 **Results while an input method is composing** With a Chinese input method, `weixin` finds 微信 before a candidate is chosen.
+- 🌐 **A web search when nothing is found** Turned on in the Web search plugin: a row that searches the web when there are no results; a keyword may also come last (`weather g`).
+- 📄 **A copied text file's content in the clipboard** txt, md and code files copied show their beginning in the preview.
+- 🙈 **Clipboard entries kept from view** "Hide content" shows dots in the list and the preview, for screens that are shared or recorded.
+- 📤 **Send to › LAN transfer** Files chosen in File Explorer go straight to the LAN transfer plugin's device list.
+- 📌 **Keys on a pin** After a click on a pin, `E` edits, `O` reads its text, `U` sends it to the top edge (Screenshot and recording 1.1.14).
+- 📏 **Small things** An empty search panel need not list every file; the content of QR codes in pictures is searchable.
+- 🛠️ **Fixes** Setup and updates pausing for tens of seconds on a PC with many processes; the typing box in File Explorer on Windows 10 growing after it appeared and showing black; the box opening when a key is pressed during a drag; PrtScn going back to the system's screenshot, and more.
 
-See the [0.27.0 release notes](docs/release-notes/v0.27.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
+See the [0.28.0 release notes](docs/release-notes/v0.28.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
 
 ### FAQ
 
