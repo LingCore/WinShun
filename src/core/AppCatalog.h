@@ -45,9 +45,13 @@ struct AppInfo {
     QStringList otherNames;
     std::vector<std::string> otherNamesUtf8;
     // what else people call it, UTF-8, matched as its name is but never shown
-    // ("微信" for WeChat.exe, whatever its shortcut is named); from apps.txt,
-    // and the name Windows lists the installed software under (addInstalledNames)
+    // ("微信" for WeChat.exe, whatever its shortcut is named);
     std::vector<std::string> aliases;
+    // what Windows lists the software it came with under (Settings > 应用:
+    // "Microsoft Office LTSC 2024" for Word), UTF-8; matched below its own
+    // names, never shown, never the exact match (addInstalledNames; prepare()
+    // leaves it alone).
+    std::vector<std::string> installedNames;
     // its abbreviations, folded ASCII, matched only when typed in full ("ps").
     std::vector<std::string> abbreviations;
     bool auxiliary = false; // an uninstaller or a document (manual, readme): ranked lower
@@ -165,13 +169,21 @@ struct InstalledName {
 
 // The Uninstall keys' installed programs that name their folder (HKLM, its
 // 32-bit view, and HKCU), without components and updates (SystemComponent,
-// ParentKeyName). Empty on failure. Sorted, so that a second read keeps each
-// app's aliases in the same order.
+// ParentKeyName) and without those that name a folder many programs share (a
+// drive, Program Files, the Windows folder, the user's own: sharedInstallFolder).
+// Empty on failure. Sorted, so that a second read keeps each app's names in
+// the same order.
 std::vector<InstalledName> installedNames();
 
-// Adds each name as an alias (matched, never shown) of every desktop app whose
-// program is in that folder: "Microsoft Office" finds Word and Excel, "7-Zip
-// 25.01 (x64)" finds 7-Zip File Manager.
+// Whether `folder` is one of `shared` (compared without case): an installer
+// that wrote such a place as its own would name every program in it.
+bool sharedInstallFolder(const QString& folder, const QStringList& shared);
+
+// Gives every desktop app whose program is in a name's folder that name
+// (AppInfo::installedNames): "Microsoft Office" finds Word and Excel, "7-Zip
+// 25.01 (x64)" finds 7-Zip File Manager. Only the names of the deepest such
+// folder: a suite's name is not given to the program installed in a folder of
+// its own inside it. Not a name the app has already.
 void addInstalledNames(AppList& apps, const std::vector<InstalledName>& names);
 
 // How often at most AppCatalog asks the disk whether the programs are

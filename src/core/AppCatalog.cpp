@@ -48,6 +48,9 @@ constexpr auto kMaxAge = 10min;
 // An abbreviation typed in full ("ps" for Photoshop): below a name typed in
 // full (115), above a program's file name (109).
 constexpr int kAbbreviationScore = 112;
+// What a match in the name Windows lists the software under is worth less
+// than one in the app's own name: the apps named so themselves come first.
+constexpr int kInstalledNamePenalty = 8;
 
 // System.AppUserModel.* properties that propkey.h has no constants for.
 constexpr GUID kAppUserModel {0x9F4C2855, 0x9F79, 0x4B39, {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}};
@@ -227,7 +230,7 @@ bool sameApps(const AppList& a, const AppList& b)
 {
     return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](const AppInfo& x, const AppInfo& y) {
         return x.name == y.name && x.id == y.id && x.target == y.target && x.arguments == y.arguments
-            && x.kind == y.kind && x.elevatable == y.elevatable && x.aliases == y.aliases;
+            && x.kind == y.kind && x.elevatable == y.elevatable && x.installedNames == y.installedNames;
     });
 }
 
@@ -604,6 +607,12 @@ std::vector<AppHit> searchApps(
         if (!app.program.empty()) {
             if (const int s = matcher.matchName(app.program); s >= 0)
                 better(s - 6, -1); // "winword" finds Word, a little below a name match
+        }
+        // "office ltsc" finds Word and Excel, below every app named so itself:
+        // "visio" is Visio first, then the suite it was installed with.
+        for (const std::string& installed : app.installedNames) {
+            if (const int s = matcher.matchName(installed); s >= 0)
+                better(std::max(s - kInstalledNamePenalty, 1), -1);
         }
         // Whole or not at all: "p" and "s" are in too many names to pull in Photoshop.
         const bool abbreviation
@@ -1004,8 +1013,25 @@ void addUninstallKeys(Fnv1a& hash)
 
 } // namespace
 
+bool sharedInstallFolder(const QString& folder, const QStringList& shared)
+{
+    return folder.size() <= 3 || shared.contains(folder, Qt::CaseInsensitive); // "C:\" too
+}
+
 std::vector<InstalledName> installedNames()
 {
+    // Where many programs live side by side: an installer that gave one of
+    // these as its own folder would lend its name to all of them.
+    QStringList shared;
+    for (const char* variable : {"ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles",
+             "CommonProgramFiles(x86)", "ProgramData", "SystemRoot", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PUBLIC"}) {
+        if (const QString folder = installFolder(qEnvironmentVariable(variable).toStdWString()); !folder.isEmpty())
+            shared.append(folder);
+    }
+    for (const QString& inside : {uR"(\System32)"_s, uR"(\SysWOW64)"_s})
+        shared.append(installFolder(qEnvironmentVariable("SystemRoot").toStdWString()) + inside);
+    shared.append(installFolder(qEnvironmentVariable("LOCALAPPDATA").toStdWString()) + uR"(\Programs)"_s);
+
     std::vector<InstalledName> names;
     for (const auto& [root, path] : kUninstallKeys) {
         win32::UniqueKey list;
@@ -1030,7 +1056,7 @@ std::vector<InstalledName> installedNames()
                 continue;
             const std::wstring name = registryString(entry.get(), L"DisplayName");
             const QString folder = installFolder(registryString(entry.get(), L"InstallLocation"));
-            if (name.empty() || folder.isEmpty())
+            if (name.empty() || folder.isEmpty() || sharedInstallFolder(folder, shared))
                 continue;
             names.push_back({QString::fromStdWString(name), folder});
         }
@@ -1044,15 +1070,25 @@ std::vector<InstalledName> installedNames()
 void addInstalledNames(AppList& apps, const std::vector<InstalledName>& names)
 {
     for (AppInfo& app : apps) {
+        app.installedNames.clear();
         if (app.kind != AppKind::Desktop || app.target.isEmpty())
             continue;
+        qsizetype deepest = 0;
         for (const InstalledName& one : names) {
-            if (!inFolder(app.target, one.folder))
+            if (one.folder.size() > deepest && inFolder(app.target, one.folder))
+                deepest = one.folder.size();
+        }
+        if (deepest == 0)
+            continue;
+        for (const InstalledName& one : names) {
+            if (one.folder.size() != deepest || !inFolder(app.target, one.folder))
                 continue;
-            const std::string name = wtf8::fromUtf16(wtf8::view(one.name));
-            if (name == app.nameUtf8 || std::ranges::find(app.aliases, name) != app.aliases.end())
-                continue;
-            app.aliases.push_back(name);
+            if (sameFolded(one.name, app.name) || app.otherNames.contains(one.name, Qt::CaseInsensitive))
+                continue; // found by that name already, and at its full worth
+            std::string name = wtf8::fromUtf16(wtf8::view(one.name));
+            if (std::ranges::find(app.aliases, name) == app.aliases.end()
+                && std::ranges::find(app.installedNames, name) == app.installedNames.end())
+                app.installedNames.push_back(std::move(name));
         }
     }
 }

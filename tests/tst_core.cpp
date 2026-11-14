@@ -9745,25 +9745,53 @@ private slots:
         };
         AppList apps {
             app(u"Word"_s, uR"(C:\Program Files\Microsoft Office\Root\Office16\WINWORD.EXE)"_s),
+            app(u"Visio"_s, uR"(C:\Program Files\Microsoft Office\Root\Office16\VISIO.EXE)"_s),
             app(u"7-Zip File Manager"_s, uR"(C:\Program Files\7-Zip\7zFM.exe)"_s),
             app(u"Zeta"_s, uR"(C:\Telegram\zeta.exe)"_s),
+            app(u"Addin Manager"_s, uR"(C:\Program Files\Microsoft Office\Addins\Manager\manager.exe)"_s),
         };
-        addInstalledNames(apps, {
+        const std::vector<InstalledName> installed {
             {u"Microsoft Office LTSC 专业增强版 2024 - zh-cn"_s, uR"(C:\Program Files\Microsoft Office)"_s},
+            {u"Microsoft Visio LTSC 专业版 2024 - zh-cn"_s, uR"(C:\Program Files\Microsoft Office)"_s},
+            {u"Office Addins 3"_s, uR"(C:\Program Files\Microsoft Office\Addins)"_s},
             {u"7-Zip 25.01 (x64)"_s, uR"(C:\Program Files\7-Zip)"_s},
             {u"Telegram Desktop"_s, uR"(C:\Telegram-2)"_s}, // another folder
-        });
-        QCOMPARE(apps[0].aliases, std::vector<std::string> {"Microsoft Office LTSC 专业增强版 2024 - zh-cn"});
-        QCOMPARE(apps[1].aliases, std::vector<std::string> {"7-Zip 25.01 (x64)"});
-        QVERIFY(apps[2].aliases.empty()); // not installed in that folder
-        QCOMPARE(names(apps, u"microsoft office"_s), QStringList {u"Word"_s});
-        QCOMPARE(names(apps, u"office ltsc"_s), QStringList {u"Word"_s});
+        };
+        addInstalledNames(apps, installed);
+        QCOMPARE(apps[0].installedNames, (std::vector<std::string> {"Microsoft Office LTSC 专业增强版 2024 - zh-cn",
+                                             "Microsoft Visio LTSC 专业版 2024 - zh-cn"}));
+        QCOMPARE(apps[2].installedNames, std::vector<std::string> {"7-Zip 25.01 (x64)"});
+        QVERIFY(apps[3].installedNames.empty()); // not installed in that folder
+        // The deepest folder's names only: not the suite's it sits in.
+        QCOMPARE(apps[4].installedNames, std::vector<std::string> {"Office Addins 3"});
+        QVERIFY(apps[0].aliases.empty()); // apps.txt's are another matter
+        QCOMPARE(names(apps, u"office ltsc"_s), (QStringList {u"Word"_s, u"Visio"_s}));
         QCOMPARE(names(apps, u"7-zip 25"_s), QStringList {u"7-Zip File Manager"_s});
+        // The app named so comes before the one that only came with it.
+        QCOMPARE(names(apps, u"visio"_s), (QStringList {u"Visio"_s, u"Word"_s}));
+        // Never the exact match, typed in full or not.
+        {
+            const ParsedQuery query = ws::parseQuery(u"7-Zip 25.01 (x64)"_s);
+            const NameMatcher matcher(query);
+            const std::vector<AppHit> hits = searchApps(apps, query, matcher, {});
+            QCOMPARE(hits.size(), std::size_t {1});
+            QVERIFY(!hits.front().exact);
+        }
+        // Read again: the same names, not twice.
+        addInstalledNames(apps, installed);
+        QCOMPARE(apps[2].installedNames.size(), std::size_t {1});
 
-        // Its own name is not an alias again.
+        // Its own name is not given to it again.
         AppList again {app(u"7-Zip File Manager"_s, uR"(C:\Program Files\7-Zip\7zFM.exe)"_s)};
-        addInstalledNames(again, {{u"7-Zip File Manager"_s, uR"(C:\Program Files\7-Zip)"_s}});
-        QVERIFY(again[0].aliases.empty());
+        addInstalledNames(again, {{u"7-zip file manager"_s, uR"(C:\Program Files\7-Zip)"_s}});
+        QVERIFY(again[0].installedNames.empty());
+
+        // A folder many programs share names none of them.
+        const QStringList shared {uR"(C:\Program Files)"_s, uR"(C:\Users\me)"_s};
+        QVERIFY(sharedInstallFolder(uR"(c:\program files)"_s, shared));
+        QVERIFY(sharedInstallFolder(uR"(D:\)"_s, shared));
+        QVERIFY(!sharedInstallFolder(uR"(C:\Program Files\7-Zip)"_s, shared));
+        QVERIFY(!sharedInstallFolder(uR"(D:\PDFgear)"_s, shared));
     }
 
     void historyCounts()
