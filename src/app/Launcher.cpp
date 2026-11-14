@@ -1684,6 +1684,14 @@ void Launcher::setExcludedFiles(const QStringList& types, const QStringList& nam
         search();
 }
 
+void Launcher::setLetterJump(bool on)
+{
+    if (m_letterJump == on)
+        return;
+    m_letterJump = on;
+    emit resultOptionsChanged();
+}
+
 void Launcher::setNumberHints(const QString& hints)
 {
     if (m_numberHints == hints)

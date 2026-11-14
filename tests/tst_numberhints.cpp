@@ -97,6 +97,151 @@ private slots:
         QCOMPARE(settings.clipboardQuickPaste, u"off"_s);
     }
 
+    // 字母直达 (GitHub #175): the key tapped by itself turns the letters on and
+    // off; a hold, a chord, a tap while it is off or while nobody listens do not.
+    void letterTap()
+    {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import "../src/app/qml"
+            Item {
+                width: 200; height: 60
+                property alias hints: hints
+                property alias field: field
+                NumberHints { id: hints; listening: true; key: Qt.Key_Control; mode: "always" }
+                TextInput {
+                    id: field
+                    anchors.fill: parent
+                    focus: true
+                    readOnly: hints.jumping
+                    Keys.onPressed: event => hints.press(event)
+                    Keys.onReleased: event => hints.release(event)
+                }
+            }
+        )", QUrl::fromLocalFile(QStringLiteral(WINSHUN_TEST_SOURCE) + u"/hints.qml"_s));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        QQuickWindow window;
+        qobject_cast<QQuickItem*>(root.get())->setParentItem(window.contentItem());
+        auto* hints = root->property("hints").value<QObject*>();
+        auto* field = root->property("field").value<QObject*>();
+        const auto send = [&](QEvent::Type type, int code, Qt::KeyboardModifiers modifiers = Qt::ControlModifier, bool repeat = false) {
+            QKeyEvent event(type, code, modifiers, {}, repeat);
+            QCoreApplication::sendEvent(field, &event); // Qt events only
+        };
+        const auto tap = [&](int waitMs = 30) {
+            send(QEvent::KeyPress, Qt::Key_Control);
+            QTest::qWait(waitMs);
+            send(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
+        };
+        const auto jumping = [&] { return hints->property("jumping").toBool(); };
+        const auto letter = [&](int offset) {
+            QString out;
+            QMetaObject::invokeMethod(hints, "letterOf", Q_RETURN_ARG(QString, out), Q_ARG(int, offset));
+            return out;
+        };
+        const auto offset = [&](int key) {
+            int out = -2;
+            QMetaObject::invokeMethod(hints, "offsetOf", Q_RETURN_ARG(int, out), Q_ARG(int, key));
+            return out;
+        };
+        // Off (the default): a tap is nothing.
+        tap();
+        QVERIFY(!jumping());
+        QVERIFY(hints->property("shown").toBool());
+        hints->setProperty("jumpEnabled", true);
+        QCOMPARE(letter(0), QString()); // no letters until the tap
+        tap();
+        QVERIFY(jumping());
+        QVERIFY(!hints->property("shown").toBool()); // the letters are in the numbers' place
+        QVERIFY(field->property("readOnly").toBool()); // no input method takes the letters
+        // The home row first; 26 rows, each key its own row.
+        QCOMPARE(letter(0), u"A"_s);
+        QCOMPARE(letter(1), u"S"_s);
+        QCOMPARE(letter(9), u"Q"_s);
+        QCOMPARE(letter(25), u"M"_s);
+        QCOMPARE(letter(26), QString());
+        QCOMPARE(letter(-1), QString());
+        QCOMPARE(offset(Qt::Key_A), 0);
+        QCOMPARE(offset(Qt::Key_F), 3);
+        QCOMPARE(offset(Qt::Key_M), 25);
+        QCOMPARE(offset(Qt::Key_1), -1);
+        QCOMPARE(offset(Qt::Key_Escape), -1);
+        QSet<int> rows;
+        for (int key = Qt::Key_A; key <= Qt::Key_Z; ++key)
+            rows.insert(offset(key));
+        QCOMPARE(rows.size(), 26);
+        // The tap again: off.
+        tap();
+        QVERIFY(!jumping());
+        QVERIFY(hints->property("shown").toBool());
+        // Held longer than a tap: not one.
+        tap(450);
+        QVERIFY(!jumping());
+        // A chord (Ctrl+C), or another modifier with it: not a tap.
+        send(QEvent::KeyPress, Qt::Key_Control);
+        send(QEvent::KeyPress, Qt::Key_C);
+        send(QEvent::KeyRelease, Qt::Key_C);
+        send(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
+        QVERIFY(!jumping());
+        send(QEvent::KeyPress, Qt::Key_Control, Qt::ControlModifier | Qt::ShiftModifier);
+        send(QEvent::KeyRelease, Qt::Key_Control, Qt::ShiftModifier);
+        QVERIFY(!jumping());
+        // A release whose press was not seen here (the second of a double tap that opened the window): not one.
+        send(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
+        QVERIFY(!jumping());
+        // Auto-repeat of a held key does not arm it again.
+        send(QEvent::KeyPress, Qt::Key_Control);
+        QTest::qWait(400);
+        send(QEvent::KeyPress, Qt::Key_Control, Qt::ControlModifier, true);
+        send(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
+        QVERIFY(!jumping());
+        // On, then nobody listens (the window hidden, a menu open): off, and a tap then is nothing.
+        tap();
+        QVERIFY(jumping());
+        hints->setProperty("listening", false);
+        QVERIFY(!jumping());
+        tap();
+        QVERIFY(!jumping());
+        hints->setProperty("listening", true);
+        // The setting turned off while they show: gone.
+        tap();
+        QVERIFY(jumping());
+        hints->setProperty("jumpEnabled", false);
+        QVERIFY(!jumping());
+        // No number keys at all: Ctrl is the key.
+        hints->setProperty("key", -1);
+        hints->setProperty("jumpEnabled", true);
+        tap();
+        QVERIFY(jumping());
+        // With Alt as the number key, Alt is.
+        hints->setProperty("key", int(Qt::Key_Alt));
+        QVERIFY(!jumping());
+        tap();
+        QVERIFY(!jumping());
+        send(QEvent::KeyPress, Qt::Key_Alt, Qt::AltModifier);
+        send(QEvent::KeyRelease, Qt::Key_Alt, Qt::NoModifier);
+        QVERIFY(jumping());
+    }
+
+    void letterJumpSetting()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(!settings.letterJump); // a tap of Ctrl means nothing until asked for
+        settings.letterJump = true;
+        settings.save();
+        ws::Settings read;
+        read.load();
+        QVERIFY(read.letterJump);
+        QCOMPARE(read.numberHints, u"always"_s);
+    }
+
     void settings()
     {
         QTemporaryDir profile;

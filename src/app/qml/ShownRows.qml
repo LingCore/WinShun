@@ -15,6 +15,8 @@ QtObject {
     // Hidden (held hints not held), nothing is worked out per frame of a
     // scroll: a key asks at its press (rowOf).
     property bool tracking: true
+    // How many rows at most (the nine number keys; a letter each while the letters show).
+    property int span: 9
     // -1 for none
     readonly property int first: {
         if (!tracking)
@@ -29,11 +31,12 @@ QtObject {
     readonly property int last: {
         if (first < 0)
             return -1
+        span
         view.contentY; view.height; view.contentHeight; view.originY; view.count; view.contentItem.childrenRect
         return lastShown(first)
     }
 
-    // The number that row shows (1…9), else 0.
+    // The number that row shows (1…span), else 0.
     function numberOf(index: int): int {
         return first >= 0 && index >= first && index <= last ? index - first + 1 : 0
     }
@@ -72,7 +75,7 @@ QtObject {
     }
     function lastShown(from: int): int {
         let row = from
-        while (row + 1 < view.count && row + 1 <= from + 8 && halfShown(row + 1))
+        while (row + 1 < view.count && row + 1 <= from + span - 1 && halfShown(row + 1))
             ++row
         return row
     }

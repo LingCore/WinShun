@@ -1956,6 +1956,7 @@ void App::applySettings(bool initial)
     m_preview->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
+    m_launcher->setLetterJump(m_settings.letterJump);
     m_launcher->setRowDeleteButton(m_settings.rowDeleteButton);
     m_launcher->setScopeButton(m_settings.scopeButton);
     m_launcher->setKeyboardHints(m_settings.shortcutHelp, m_settings.footerHints);
@@ -1964,6 +1965,7 @@ void App::applySettings(bool initial)
     m_launcher->setPanelListsAll(m_settings.panelListsAll);
     tellLauncherFolders();
     m_clipboard->setNumberHints(m_settings.numberHints);
+    m_clipboard->setLetterJump(m_settings.letterJump);
     const QString clipboardSize = m_settings.clipboardUiSize == u"follow" ? m_settings.uiSize : m_settings.clipboardUiSize;
     const bool clipboardResized = clipboardSize != m_clipboard->uiSize();
     m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardPictureSize, clipboardSize);

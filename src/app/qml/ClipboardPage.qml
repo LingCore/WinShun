@@ -178,11 +178,33 @@ Item {
         key: page.numberKey
         // Over another app the existing KeyRouter delivers modifier keys too.
         listening: page.visible && (page.Window.active || page.clipboard.keysRouted) && !page.menuOpen
+        // 字母直达 (GitHub #175); not while a group is looked for or an entry's words are changed.
+        jumpEnabled: page.clipboard.letterJump && !page.findingGroup && page.editingId === 0
     }
     ShownRows {
         id: shownRows
         view: list
-        tracking: numberHints.hintOpacity > 0 // not per frame of a scroll while no number shows
+        tracking: numberHints.hintOpacity > 0 || numberHints.jumping // not per frame of a scroll while nothing shows
+        span: numberHints.jumping ? numberHints.letters.length : 9 // a letter each, past the ninth row too
+    }
+    // A key while the letters show: a letter pastes its row (with Shift: as
+    // plain text), and is taken; anything else puts the numbers back and is
+    // that key as ever (Esc only puts them back).
+    function letterKey(event) {
+        if (!numberHints.jumping || [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta].includes(event.key))
+            return false
+        const offset = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0
+            ? numberHints.offsetOf(event.key) : -1
+        const row = offset >= 0 ? shownRows.rowOf(offset + 1) : -1
+        numberHints.leave()
+        if (offset >= 0) {
+            if (row >= 0 && !event.isAutoRepeat) {
+                list.currentIndex = row
+                clipboard.quickPaste(row, (event.modifiers & Qt.ShiftModifier) !== 0)
+            }
+            return true
+        }
+        return event.key === Qt.Key_Escape
     }
     // A chord that is one of Win顺's own shortcuts stays that (Clipboard.numberKeysLeft):
     // the row still shows it, struck through (ClipRow.hintTaken).
@@ -451,6 +473,10 @@ Item {
             return
         }
         numberHints.press(event)
+        if (letterKey(event)) {
+            event.accepted = true
+            return
+        }
         if (menuOpen && contextMenu.handleKey(event)) {
             event.accepted = true
             return
@@ -750,6 +776,8 @@ Item {
                 anchors.rightMargin: pausedTag.visible ? 16 : 8
                 anchors.verticalCenter: parent.verticalCenter
                 focus: true
+                // The letters showing: the keys are letters, not an input method's words.
+                readOnly: numberHints.jumping
                 // Typed into without the focus (keysRouted): the caret shows
                 // where, steady (it blinks only with the focus).
                 cursorVisible: activeFocus || page.clipboard.keysRouted
@@ -1054,8 +1082,9 @@ Item {
                         objectName: "clipboardRow-" + index
                         width: list.width
                         height: clipRow.picture ? page.pictureRowHeight : page.rowHeight
-                        hint: page.numberKey >= 0 ? shownRows.numberOf(index) : 0
-                        reserveHintSpace: page.numberKey >= 0 && page.clipboard.numberHints !== "off"
+                        hint: page.numberKey >= 0 && !numberHints.jumping ? shownRows.numberOf(index) : 0
+                        hintLetter: numberHints.letterOf(shownRows.numberOf(index) - 1)
+                        reserveHintSpace: (page.numberKey >= 0 && page.clipboard.numberHints !== "off") || page.clipboard.letterJump
                         hintOpacity: numberHints.hintOpacity
                         hintModifier: page.numberKey === Qt.Key_Control ? "Ctrl" : "Alt"
                         hintTaken: clipRow.hint > 0 && !page.numberUsable(clipRow.hint)

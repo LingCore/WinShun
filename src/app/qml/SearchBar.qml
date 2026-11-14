@@ -114,6 +114,8 @@ Item {
     // so QML hears of the pointer there only from the frame.
     readonly property bool hovered: hover.hovered || contains(mapFromItem(null, frame.pointer))
 
+    // The keys are for the window alone (字母直达's letters): no input method takes them, nothing is typed.
+    property bool keysOnly: false
     signal keyPressed(var event)
     signal keyReleased(var event)
     signal editingRequested()
@@ -336,6 +338,7 @@ Item {
     TextInput {
         id: input
         objectName: bar.panelMode ? "panelSearchField" : "searchField" // App answers the input method for it while it is in the box
+        readOnly: bar.keysOnly
         // Where the style's words start in its field (leadingInset, from the
         // field's left edge), never nearer the logo than 6; 8 after the logo
         // in a style that says nothing (fluent).

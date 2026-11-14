@@ -131,6 +131,7 @@ DisplayReplica::DisplayReplica(QQmlEngine* engine) : QQmlPropertyMap(this, nullp
     insert(u"listWidth"_s, 480);
     insert(u"numberKeys"_s, u"alt"_s);
     insert(u"numberHints"_s, u"auto"_s);
+    insert(u"letterJump"_s, false);
     insert(u"items"_s, QVariant::fromValue<QObject*>(&m_rows));
     insert(u"field"_s, QVariant::fromValue<QObject*>(nullptr));
     // Callable values keep the existing QML interface; only the explicitly

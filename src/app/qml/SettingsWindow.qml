@@ -4601,6 +4601,18 @@ Window {
                         onActivated: (index) => window.editor.numberHints = ["held", "always", "off"][index]
                     }
                 }
+
+                SettingRow {
+                    title: qsTr("字母直达")
+                    description: qsTr("轻按一下数字键用的那个键（搜索框是 Ctrl，剪贴板是 Alt，按上面的设置）再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有；加 Shift 是打开所在位置（剪贴板里是粘贴为纯文本）。再按一下或按 Esc 退出。启动器和剪贴板共用")
+                    keywords: qsTr("快捷键;字母;单手;vim;vi;提示;跳转;直达;hint").split(";")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.letterJump
+                        onToggled: (on) => window.editor.letterJump = on
+                    }
+                }
             }
 
             FileTypesSection {

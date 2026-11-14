@@ -503,6 +503,14 @@ void KeyRouter::handleModifier(bool press, const KBDLLHOOKSTRUCT& event)
         return;
     if (press && !key.autoRepeat && modifier != Qt::ControlModifier)
         sendMask(kOwnMask);
+    // Alt let go: masked once more. What a hook sends is seen ahead of the
+    // key it was called for, so the mask at the press comes before the
+    // press itself and an Alt held for the numbers, or tapped for the
+    // letters (GitHub #175), still opened the program's menu bar: Notepad's
+    // then took the paste's Ctrl+V for its 查看(V). This one lies between the
+    // press and the release.
+    if (!press && modifier == Qt::AltModifier)
+        sendMask(kOwnMask);
     if (tapped && m_policy == Policy::Clipboard && m_callbacks.shiftTapped)
         m_callbacks.shiftTapped();
 }

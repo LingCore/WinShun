@@ -93,6 +93,8 @@ Item {
     property string hintModifier: "Ctrl" // ... with this held
     property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
     property real hintOpacity: 1
+    // 字母直达: the letter that opens (pastes) this row while the letters show, in the number's place; "" for none.
+    property string hintLetter
     // The window's tip for a name or folder cut short (one for all its rows).
     property NameTip nameTip: null
     // The window's devicePixelRatio, read once by the list's host (GitHub #111);
@@ -489,19 +491,19 @@ Item {
     Item {
         id: numberSlot
         objectName: "resultNumberSlot"
-        visible: row.reserveHintSpace && row.hint > 0
-        opacity: row.hintOpacity
+        visible: row.reserveHintSpace && (row.hint > 0 || row.hintLetter.length > 0)
+        opacity: row.hintLetter.length > 0 ? 1 : row.hintOpacity
         x: row.onPixel(Theme.tok("hintX", 14)) // centred between the style's mark (or card edge) and the icon
         width: 24
         height: row.height
 
         CenteredNumber {
             objectName: "resultNumber"
-            text: row.hint > 0 ? String(row.hint) : ""
+            text: row.hintLetter.length > 0 ? row.hintLetter : row.hint > 0 ? String(row.hint) : ""
             font.pixelSize: row.compact ? 14 : Theme.uiTitle
-            font.weight: Font.Medium
-            font.strikeout: row.hintTaken
-            color: row.hintTaken ? Theme.faint : row.current ? Theme.accent : Theme.subtext
+            font.weight: row.hintLetter.length > 0 ? Font.DemiBold : Font.Medium
+            font.strikeout: row.hintTaken && row.hintLetter.length === 0
+            color: row.hintLetter.length > 0 ? Theme.accent : row.hintTaken ? Theme.faint : row.current ? Theme.accent : Theme.subtext
             Accessible.ignored: true
         }
     }

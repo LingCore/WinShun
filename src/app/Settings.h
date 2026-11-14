@@ -249,6 +249,10 @@ struct Settings {
     QString numberKeys = QStringLiteral("ctrl");
     // held | always | off: shared by the launcher's and clipboard's row hints.
     QString numberHints = QStringLiteral("always");
+    // 字母直达 (GitHub #175): the number key tapped by itself puts a letter on
+    // every row in view of the search box and the clipboard; the letter
+    // opens or pastes its row. Off: a tap of Ctrl or Alt means nothing.
+    bool letterJump = false;
     bool shortcutHelp = true;
     bool footerHints = true;
     bool pureSearch = false; // empty floating launcher: just the input, without start results or chrome

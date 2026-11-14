@@ -418,6 +418,14 @@ void SettingsEditor::setNumberKeys(const QString& keys)
     refreshNumberKeys();
 }
 
+void SettingsEditor::setLetterJump(bool on)
+{
+    if (m_settings.letterJump == on)
+        return;
+    m_settings.letterJump = on;
+    commit();
+}
+
 void SettingsEditor::setNumberHints(const QString& hints)
 {
     if (m_settings.numberHints == hints || (hints != u"held" && hints != u"always" && hints != u"off"))

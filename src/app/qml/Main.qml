@@ -571,6 +571,36 @@ Window {
         mode: window.launcher.numberHints
         key: window.numberKey
         listening: window.visible && window.active && !window.menuOpen && !window.clipboardBelow
+        // 字母直达 (GitHub #175): the plain list only (its rows have the room for a letter).
+        jumpEnabled: window.launcher.letterJump && window.gridColumns === 1 && !window.panel
+    }
+    // The rows the letters are on: from the first at least half in view to the last, one letter each.
+    readonly property int lastLetterRow: Math.min(view.count - 1, firstShownRow + numberHints.letters.length - 1,
+                                                  rowAtY(view.contentY + view.height - viewRowHeight / 2, false))
+    function letterOf(index) {
+        return numberHints.jumping && index >= firstShownRow && index <= lastLetterRow
+            ? numberHints.letterOf(index - firstShownRow) : ""
+    }
+    // A key while the letters show: a letter opens its row (with Shift: where
+    // the file is), and is taken; anything else puts the numbers back and is
+    // that key as ever (Esc only puts them back).
+    function letterKey(event) {
+        if (!numberHints.jumping || [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta].includes(event.key))
+            return false
+        const offset = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0
+            ? numberHints.offsetOf(event.key) : -1
+        const row = firstShownRow + offset
+        const last = lastLetterRow
+        numberHints.leave()
+        if (offset >= 0) {
+            if (row <= last && !event.isAutoRepeat) {
+                window.launcher.clearSelection() // that row alone
+                view.currentIndex = row
+                window.launcher.trigger(row, (event.modifiers & Qt.ShiftModifier) ? Launcher.Reveal : Launcher.Open)
+            }
+            return true
+        }
+        return event.key === Qt.Key_Escape
     }
     Connections {
         target: window.searchBar
@@ -759,6 +789,10 @@ Window {
         else if (!event.isAutoRepeat)
             peekKeywords(true)
         numberHints.press(event)
+        if (letterKey(event)) {
+            event.accepted = true
+            return
+        }
         nameTip.dismiss() // as Windows' tips go on a key
         if (panel && panelPage && !menuOpen && !columnMenuOpen && panelPage.handleContentKey(event))
             return
@@ -1272,6 +1306,7 @@ Window {
             SearchBar {
                 id: boxBar
                 minimal: window.pureEmpty
+                keysOnly: numberHints.jumping
                 width: parent.width
                 launcher: window.launcher
                 placement: window.placement
@@ -1671,8 +1706,9 @@ Window {
                     showModified: window.launcher.showModified
                     showSize: window.launcher.showFileSize || window.launcher.sort === Launcher.LargestFirst || window.launcher.sort === Launcher.SmallestFirst
                     hint: window.numberOf(index)
-                    reserveHintSpace: window.numberKey >= 0 && window.launcher.numberHints !== "off"
-                    alignWithNumbered: window.listRows > 9
+                    hintLetter: window.letterOf(index)
+                    reserveHintSpace: (window.numberKey >= 0 && window.launcher.numberHints !== "off") || window.launcher.letterJump
+                    alignWithNumbered: window.listRows > 9 || window.launcher.letterJump
                     hintOpacity: numberHints.hintOpacity
                     hintModifier: window.numberModifier
                     hintTaken: resultRow.hint > 0 && !window.numberUsable(resultRow.hint)

@@ -451,6 +451,14 @@ int Clipboard::heldRow() const
     return m_holding && m_heldId ? m_model.rowOf(m_heldId) : -1;
 }
 
+void Clipboard::setLetterJump(bool on)
+{
+    if (m_letterJump == on)
+        return;
+    m_letterJump = on;
+    emit numberKeysChanged();
+}
+
 void Clipboard::setNumberHints(const QString& hints)
 {
     if (m_numberHints == hints)

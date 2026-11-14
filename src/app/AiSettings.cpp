@@ -630,6 +630,11 @@ std::vector<Entry> buildCatalog()
         {{u"held"_s, u"while the modifier key is held"_s, QT_TRANSLATE_NOOP("AiSettings", "按住修饰键时")},
             {u"always"_s, u"always"_s, QT_TRANSLATE_NOOP("AiSettings", "一直显示")},
             {u"off"_s, u"never"_s, QT_TRANSLATE_NOOP("AiSettings", "不显示")}}));
+    add(boolean({"Results/LetterJump", QT_TRANSLATE_NOOP("AiSettings", "字母直达"), "results", 2,
+                    "Tapping the number keys' modifier (Ctrl or Alt) by itself puts a letter on every row in view of the "
+                    "search box and the clipboard; the letter opens (pastes) its row, with Shift it shows where the file "
+                    "is (pastes as plain text). The tap again or Esc leaves."},
+        &Settings::letterJump));
 
     // ---- 文件内容搜索 ----
     add(recording({"Content/Enabled", QT_TRANSLATE_NOOP("AiSettings", "文件内容搜索"), "content", 0,

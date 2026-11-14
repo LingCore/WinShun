@@ -213,6 +213,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool englishOnOpen READ englishOnOpen WRITE setEnglishOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(QString numberKeys READ numberKeys WRITE setNumberKeys NOTIFY changed FINAL) // ctrl | alt | off
     Q_PROPERTY(QString numberHints READ numberHints WRITE setNumberHints NOTIFY changed FINAL) // held | always | off
+    Q_PROPERTY(bool letterJump READ letterJump WRITE setLetterJump NOTIFY changed FINAL)
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp WRITE setShortcutHelp NOTIFY changed FINAL)
     Q_PROPERTY(bool footerHints READ footerHints WRITE setFooterHints NOTIFY changed FINAL)
     Q_PROPERTY(bool pureSearch READ pureSearch WRITE setPureSearch NOTIFY changed FINAL)
@@ -770,6 +771,8 @@ public:
     void setNumberKeys(const QString& keys);
     QString numberHints() const { return m_settings.numberHints; }
     void setNumberHints(const QString& hints);
+    bool letterJump() const { return m_settings.letterJump; }
+    void setLetterJump(bool on);
     bool shortcutHelp() const { return m_settings.shortcutHelp; }
     void setShortcutHelp(bool on);
     bool footerHints() const { return m_settings.footerHints; }
