@@ -1383,6 +1383,7 @@ private:
     QSet<QString> m_trayDoubleClick; // tray programs known to open only on a double click (Run/TrayDoubleClick)
     void rememberTrayDoubleClick(const QString& key);
     qint64 m_trayRefreshTick = 0;
+    qint64 m_runningEmptyTick = 0; // the last "运行 came back empty" said, so it is not said every 1.5 s
     void refreshTray();
     bool m_appsLeft = false; // 程序 was left because its tab went for a while (the panel, a dialog's bar)
     void showApps(); // search() in 程序

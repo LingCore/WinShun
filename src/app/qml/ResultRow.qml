@@ -69,6 +69,7 @@ Item {
     required property bool offline // on a network share that cannot be reached now: dimmed, tagged
     required property bool plugin // a plugin's row
     required property bool windowResult
+    required property bool trayApp // a notification-area program found by 全部's search: tagged 运行
     required property string source // ... the plugin's name
     required property bool pluginCopies // ... with its own text to copy, or Enter copies: its copy button
     required property string folderAway // ... its second line while the keyboard is on another row; "": the folder line
@@ -476,7 +477,8 @@ Item {
             id: badgeText
             anchors.horizontalCenter: parent.horizontalCenter
             y: row.onPixel((badge.height - height) / 2)
-            text: row.plugin ? row.source : row.missing ? qsTr("已不存在")
+            text: row.windowResult || row.trayApp ? qsTr("运行")
+                : row.plugin ? row.source : row.missing ? qsTr("已不存在")
                 : row.adminRun ? qsTr("管理员")
                 : row.favorite ? (row.favoriteKeyword.length > 0 ? qsTr("收藏 · %1").arg(row.favoriteKeyword) : qsTr("收藏"))
                 : row.recent ? qsTr("最近") : row.suggestion ? qsTr("建议") : row.web ? qsTr("网页")

@@ -21,6 +21,27 @@
 using namespace Qt::StringLiterals;
 
 namespace ws::traysearch {
+
+QString trayKey(const QString& name)
+{
+    // "Filee Filee：按住 Ctrl 拖动文件" → "Filee"; "Argus Argus" → "Argus";
+    // a tooltip whose first line is a long PATH (LocalSend) → "LocalSend".
+    QString key = name;
+    const qsizetype colon = key.indexOf(u'：');
+    if (colon > 0)
+        key = key.left(colon);
+    if (key.length() > 60 || key.contains(u';')) {
+        const qsizetype lastSpace = key.lastIndexOf(u' ');
+        if (lastSpace >= 0)
+            key = key.mid(lastSpace + 1);
+    } else {
+        const qsizetype space = key.indexOf(u' ');
+        if (space > 0)
+            key = key.left(space);
+    }
+    return key.trimmed();
+}
+
 namespace {
 
 struct ComScope {
@@ -55,26 +76,6 @@ QString elementName(IUIAutomationElement* element)
     BSTR value = nullptr;
     element->get_CurrentName(&value);
     return takeBstr(value).trimmed();
-}
-
-QString windowKey(const QString& name)
-{
-    // "Filee Filee：按住 Ctrl 拖动文件" → "Filee"; "Argus Argus" → "Argus";
-    // a tooltip whose first line is a long PATH (LocalSend) → "LocalSend".
-    QString key = name;
-    const qsizetype colon = key.indexOf(u'：');
-    if (colon > 0)
-        key = key.left(colon);
-    if (key.length() > 60 || key.contains(u';')) {
-        const qsizetype lastSpace = key.lastIndexOf(u' ');
-        if (lastSpace >= 0)
-            key = key.mid(lastSpace + 1);
-    } else {
-        const qsizetype space = key.indexOf(u' ');
-        if (space > 0)
-            key = key.left(space);
-    }
-    return key.trimmed();
 }
 
 bool sameProgram(const QString& a, const QString& b)
@@ -232,7 +233,7 @@ void collect(IUIAutomation* uia, IUIAutomationElement* root, QVector<TrayItem>* 
                 const qsizetype newline = text.indexOf(u'\n');
                 item.name = newline > 0 ? text.left(newline).trimmed() : text;
                 item.subtitle = newline > 0 ? text.mid(newline + 1).trimmed() : QString();
-                item.key = windowKey(item.name);
+                item.key = trayKey(item.name);
                 item.rect = QRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
                 if (item.rect.width() > 0 && item.rect.height() > 0)
                     items->append(item);

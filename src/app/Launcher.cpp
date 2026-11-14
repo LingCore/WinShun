@@ -46,6 +46,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLocale>
+#include <QMutex>
 #include <QPointer>
 #include <QRegularExpression>
 #include <QScopedValueRollback>
@@ -2101,7 +2102,11 @@ void Launcher::showApps()
             runningKeys.append(QString::number(static_cast<qulonglong>(row.windowHandle)) + u"\n"_s + row.name);
         const bool trayChanged = trayNames != m_shownTray;
         const bool windowsChanged = runningKeys != m_shownRunning;
-        if (!trayChanged && !windowsChanged) {
+        // Only these rows on screen may stay: another scope's search may have
+        // replaced them since (全部 searched, then back here), the windows
+        // and their icons unchanged all the while.
+        const bool sameView = m_shownScope == Apps && m_shownAppsView == RunningApps;
+        if (!trayChanged && !windowsChanged && sameView) {
             keepRows = true;
         } else {
             // The tray icons no window stands for become rows of their own,
@@ -2138,6 +2143,15 @@ void Launcher::showApps()
         const qint64 rowsSpent = QDateTime::currentMSecsSinceEpoch() - rowsClock;
         if (rowsSpent >= 100)
             qWarning("WinShun: 运行 rows took %lld ms", static_cast<long long>(rowsSpent));
+        // A normal desktop always has tray icons, so an empty list means the
+        // walk failed this moment (a desktop switch, Explorer restarting).
+        // Said once in a while, for a report that says the page was empty.
+        if (rows.isEmpty() && m_window && m_window->isVisible()
+            && (m_runningEmptyTick == 0 || rowsClock - m_runningEmptyTick >= 10000)) {
+            m_runningEmptyTick = rowsClock;
+            qWarning("WinShun: 运行 came back empty (windows %lld, tray %lld)",
+                static_cast<long long>(running.size()), static_cast<long long>(trayNames.size()));
+        }
     }
     else
     {
@@ -2341,156 +2355,195 @@ QString appIconFor(const AppInfo& app, bool dark)
     return FileIconProvider::appIconUrl(app.id, app.kind != AppKind::Desktop, dark);
 }
 
-} // namespace
+// A window of the icon's program: its title exactly, the program's name, or
+// a long shared lead ("Claude Code Haha" / "claude-code-desktop"). A window
+// whose title merely holds a short tray word ("微信 · …", a Sublime window)
+// is not the same program.
+bool sameTrayWindow(const ws::traysearch::TrayItem& item, const SearchResult& window)
+{
+    const QString program = QFileInfo(window.target).completeBaseName();
+    return window.name.compare(item.name, Qt::CaseInsensitive) == 0
+        || namesLikelySame(item.name, window.name)
+        || namesLikelySame(item.name, program)
+        || (!program.isEmpty() && item.name.contains(program, Qt::CaseInsensitive));
+}
 
-bool Launcher::trayMatchesWindow(const ws::traysearch::TrayItem& item, const SearchResults& windows) const
+bool trayHasWindow(const ws::traysearch::TrayItem& item, const SearchResults& windows)
 {
     for (const SearchResult& window : windows) {
-        const QString program = QFileInfo(window.target).completeBaseName();
-        // The window's own title exactly, its program's name, or a long shared
-        // lead ("Claude Code Haha" / "claude-code-desktop"). A window whose
-        // title merely holds a short tray word ("微信 · …", a Sublime
-        // window) is not the same program.
-        if (window.name.compare(item.name, Qt::CaseInsensitive) == 0
-            || namesLikelySame(item.name, window.name)
-            || namesLikelySame(item.name, program)
-            || (!program.isEmpty() && item.name.contains(program, Qt::CaseInsensitive)))
+        if (sameTrayWindow(item, window))
             return true;
     }
     return false;
 }
 
+// The installed app an icon's name stands for: an exact or leading name beats
+// one merely found inside the tooltip ("企业微信…" before "微信"), and a
+// longer name beats a shorter.
+const AppInfo* bestTrayApp(const ws::traysearch::TrayItem& item, const AppList& apps)
+{
+    const bool keyUsable = item.key.length() >= 3
+        || (item.key.length() == 2 && item.key.at(0).unicode() > 0x7F);
+    const QString compactItem = compactName(item.name);
+    const auto loose = [&](const QString& name) {
+        if (name.length() < 2)
+            return false;
+        // Its whole name in the tooltip, the tooltip's name in it, or the
+        // name being exactly the tooltip's first word — never a longer name
+        // that merely holds that word ("企业微信" for "微信").
+        return name.compare(item.name, Qt::CaseInsensitive) == 0
+            || item.name.contains(name, Qt::CaseInsensitive)
+            || (keyUsable && name.compare(item.key, Qt::CaseInsensitive) == 0);
+    };
+    const AppInfo* best = nullptr;
+    int bestScore = -1;
+    for (const auto& app : apps) {
+        const QString compactApp = compactName(app.name);
+        int score = -1;
+        if (app.name.compare(item.name, Qt::CaseInsensitive) == 0)
+            score = 1000 + app.name.length();
+        else if (!compactApp.isEmpty() && compactItem.startsWith(compactApp))
+            score = 800 + app.name.length();
+        else if (loose(app.name))
+            score = 100 + app.name.length();
+        if (score < 0) {
+            for (const QString& other : app.otherNames) {
+                if (loose(other)) {
+                    score = 80 + other.length();
+                    break;
+                }
+            }
+        }
+        if (score < 0) {
+            for (const auto& alias : app.aliases) {
+                if (loose(QString::fromStdString(alias))) {
+                    score = 60 + QString::fromStdString(alias).length();
+                    break;
+                }
+            }
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            best = &app;
+        }
+    }
+    return best;
+}
+
+struct TrayLookup {
+    QString icon;
+    QString program;
+};
+
+// An icon's picture and program: its window's, the running program's own, or
+// an installed app of that name; empty when none of them is known.
+TrayLookup resolveTray(const ws::traysearch::TrayItem& item, const SearchResults& windows,
+    const QStringList& programs, const AppList* apps, bool dark)
+{
+    for (const SearchResult& window : windows) {
+        if (!window.target.isEmpty() && sameTrayWindow(item, window))
+            return {FileIconProvider::iconUrl(window.target, false), window.target};
+    }
+    if (const QString program = trayProgramFor(item.name, item.key, programs); !program.isEmpty())
+        return {FileIconProvider::iconUrl(program, false), program};
+    if (apps) {
+        if (const AppInfo* best = bestTrayApp(item, *apps))
+            return {appIconFor(*best, dark),
+                best->kind == AppKind::Desktop && !best->target.isEmpty() ? best->target : QString()};
+    }
+    return {};
+}
+
+// The tray icons as a search's own reads them: the walk costs tens of
+// milliseconds, and a list typed into asks once per key.
+struct TrayWalk {
+    QMutex mutex;
+    qint64 at = 0;
+    QVector<ws::traysearch::TrayItem> items;
+};
+
+QVector<ws::traysearch::TrayItem> recentTrayItems()
+{
+    static const auto walk = std::make_shared<TrayWalk>();
+    QMutexLocker lock(&walk->mutex);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (walk->at == 0 || now - walk->at >= 2000) {
+        walk->items = ws::traysearch::snapshot();
+        walk->at = now;
+    }
+    return walk->items;
+}
+
+// 全部's rows for the notification-area programs the words name: the icons
+// 运行 lists, found by typing. A window of the same program among the rows
+// already says so, and is not listed twice.
+SearchResults traySearchRows(const QString& text, bool regex, const SearchResults& windows,
+    const AppList* apps, bool dark)
+{
+    SearchResults rows;
+    const ParsedQuery query = parseQuery(text, regex);
+    if (query.isEmpty() || !query.error.isEmpty() || query.hasFilters())
+        return rows;
+    const NameMatcher matcher(query);
+    struct Matched {
+        int score;
+        ws::traysearch::TrayItem item;
+    };
+    QVector<Matched> matched;
+    for (const ws::traysearch::TrayItem& item : recentTrayItems()) {
+        if (trayHasWindow(item, windows))
+            continue;
+        const int score = matcher.matchName(item.name.toStdString());
+        if (score >= 0)
+            matched.append({score, item});
+    }
+    if (matched.isEmpty())
+        return rows;
+    std::stable_sort(matched.begin(), matched.end(), [](const Matched& a, const Matched& b) {
+        return a.score != b.score ? a.score > b.score
+                                  : a.item.name.compare(b.item.name, Qt::CaseInsensitive) < 0;
+    });
+    const QStringList programs = processPaths();
+    for (const Matched& m : matched) {
+        const TrayLookup lookup = resolveTray(m.item, windows, programs, apps, dark);
+        SearchResult row;
+        row.name = m.item.name;
+        row.app = AppKind::Desktop; // an app in the list's terms; trayApp sends Enter to its icon
+        row.trayApp = true;
+        row.icon = lookup.icon;
+        row.target = lookup.program;
+        row.score = m.score;
+        row.path = u"winshun-tray:"_s
+            + QString::number(static_cast<qulonglong>(qHash(m.item.name + u':' + QString::number(m.item.rect.left())
+                + u':' + QString::number(m.item.rect.top()))), 16);
+        rows.append(row);
+        if (rows.size() >= 8)
+            break;
+    }
+    return rows;
+}
+
+} // namespace
+
+bool Launcher::trayMatchesWindow(const ws::traysearch::TrayItem& item, const SearchResults& windows) const
+{
+    return trayHasWindow(item, windows);
+}
+
 QString Launcher::trayIconFor(const ws::traysearch::TrayItem& item, const SearchResults& windows,
     const QStringList& programs) const
 {
-    for (const SearchResult& window : windows) {
-        const QString program = QFileInfo(window.target).completeBaseName();
-        if (!window.target.isEmpty()
-            && (window.name.compare(item.name, Qt::CaseInsensitive) == 0
-                || namesLikelySame(item.name, window.name)
-                || namesLikelySame(item.name, program)
-                || (!program.isEmpty() && item.name.contains(program, Qt::CaseInsensitive))))
-            return FileIconProvider::iconUrl(window.target, false);
-    }
-    if (const QString program = trayProgramFor(item.name, item.key, programs); !program.isEmpty())
-        return FileIconProvider::iconUrl(program, false);
-    if (const std::shared_ptr<const AppList> apps = m_apps->apps()) {
-        const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
-        const bool keyUsable = item.key.length() >= 3
-            || (item.key.length() == 2 && item.key.at(0).unicode() > 0x7F);
-        const QString compactItem = compactName(item.name);
-        const auto loose = [&](const QString& name) {
-            if (name.length() < 2)
-                return false;
-            // Its whole name in the tooltip, the tooltip's name in it, or the
-            // name being exactly the tooltip's first word — never a longer
-            // name that merely holds that word ("企业微信" for "微信").
-            return name.compare(item.name, Qt::CaseInsensitive) == 0
-                || item.name.contains(name, Qt::CaseInsensitive)
-                || (keyUsable && name.compare(item.key, Qt::CaseInsensitive) == 0);
-        };
-        // The best of the installed apps: an exact or leading name beats one
-        // merely found inside the tooltip ("企业微信…" before "微信"), and a
-        // longer name beats a shorter.
-        const AppInfo* best = nullptr;
-        int bestScore = -1;
-        for (const auto& app : *apps) {
-            const QString compactApp = compactName(app.name);
-            int score = -1;
-            if (app.name.compare(item.name, Qt::CaseInsensitive) == 0)
-                score = 1000 + app.name.length();
-            else if (!compactApp.isEmpty() && compactItem.startsWith(compactApp))
-                score = 800 + app.name.length();
-            else if (loose(app.name))
-                score = 100 + app.name.length();
-            if (score < 0) {
-                for (const QString& other : app.otherNames) {
-                    if (loose(other)) {
-                        score = 80 + other.length();
-                        break;
-                    }
-                }
-            }
-            if (score < 0) {
-                for (const auto& alias : app.aliases) {
-                    if (loose(QString::fromStdString(alias))) {
-                        score = 60 + QString::fromStdString(alias).length();
-                        break;
-                    }
-                }
-            }
-            if (score > bestScore) {
-                bestScore = score;
-                best = &app;
-            }
-        }
-        if (best)
-            return appIconFor(*best, dark);
-    }
-    return {};
+    const std::shared_ptr<const AppList> apps = m_apps->apps();
+    const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+    return resolveTray(item, windows, programs, apps.get(), dark).icon;
 }
 
 QString Launcher::trayProgramPathFor(const ws::traysearch::TrayItem& item, const SearchResults& windows,
     const QStringList& programs) const
 {
-    for (const SearchResult& window : windows) {
-        const QString program = QFileInfo(window.target).completeBaseName();
-        if (!window.target.isEmpty()
-            && (window.name.compare(item.name, Qt::CaseInsensitive) == 0
-                || namesLikelySame(item.name, window.name)
-                || namesLikelySame(item.name, program)
-                || (!program.isEmpty() && item.name.contains(program, Qt::CaseInsensitive))))
-            return window.target;
-    }
-    if (const QString program = trayProgramFor(item.name, item.key, programs); !program.isEmpty())
-        return program;
-    if (const std::shared_ptr<const AppList> apps = m_apps->apps()) {
-        const bool keyUsable = item.key.length() >= 3
-            || (item.key.length() == 2 && item.key.at(0).unicode() > 0x7F);
-        const QString compactItem = compactName(item.name);
-        const auto loose = [&](const QString& name) {
-            if (name.length() < 2)
-                return false;
-            return name.compare(item.name, Qt::CaseInsensitive) == 0
-                || item.name.contains(name, Qt::CaseInsensitive)
-                || (keyUsable && name.compare(item.key, Qt::CaseInsensitive) == 0);
-        };
-        const AppInfo* best = nullptr;
-        int bestScore = -1;
-        for (const auto& app : *apps) {
-            const QString compactApp = compactName(app.name);
-            int score = -1;
-            if (app.name.compare(item.name, Qt::CaseInsensitive) == 0)
-                score = 1000 + app.name.length();
-            else if (!compactApp.isEmpty() && compactItem.startsWith(compactApp))
-                score = 800 + app.name.length();
-            else if (loose(app.name))
-                score = 100 + app.name.length();
-            if (score < 0) {
-                for (const QString& other : app.otherNames) {
-                    if (loose(other)) {
-                        score = 80 + other.length();
-                        break;
-                    }
-                }
-            }
-            if (score < 0) {
-                for (const auto& alias : app.aliases) {
-                    if (loose(QString::fromStdString(alias))) {
-                        score = 60 + QString::fromStdString(alias).length();
-                        break;
-                    }
-                }
-            }
-            if (score > bestScore) {
-                bestScore = score;
-                best = &app;
-            }
-        }
-        if (best && best->kind == AppKind::Desktop && !best->target.isEmpty())
-            return best->target;
-    }
-    return {};
+    const std::shared_ptr<const AppList> apps = m_apps->apps();
+    const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+    return resolveTray(item, windows, programs, apps.get(), dark).program;
 }
 
 QVariantList Launcher::trayApps() const
@@ -2910,8 +2963,15 @@ void Launcher::search(bool more)
     request.web = m_web;
     request.apps = m_searchApps;
     if (m_searchApps && !m_folderSearch && !typedKeyword(m_web, m_query)) {
-        request.openWindows = [query = request.text, regex = regexTerms()] {
-            return windowsearch::matching(windowsearch::snapshot(), query, regex);
+        // 运行's own: the windows open now, and the notification-area icons
+        // that have none — typing a tray program's name finds it here too.
+        const std::shared_ptr<const AppList> apps = m_apps->apps();
+        const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+        request.openWindows = [query = request.text, regex = regexTerms(), apps, dark] {
+            SearchResults windows = windowsearch::matching(windowsearch::snapshot(), query, regex);
+            const SearchResults tray = traySearchRows(query, regex, windows, apps.get(), dark);
+            windows.append(tray);
+            return windows;
         };
     }
     request.places = m_searchPlaces;
@@ -5330,26 +5390,32 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
     if (r.trayApp) {
         if (action == Open || action == Alternate) {
             const auto it = m_trayRows.constFind(r.path);
+            // 运行's rows keep their icon; one found by 全部's search may not
+            // be in that list (it is not open there), and is clicked by name.
+            ws::traysearch::TrayItem item;
             if (it != m_trayRows.cend()) {
-                const ws::traysearch::TrayItem item = *it;
-                const QString key = item.key;
-                const QString program = r.target; // the icon's own program, when known
-                const bool knownDouble = m_trayDoubleClick.contains(key);
-                // Off the UI thread: UI Automation and a possible double
-                // click take hundreds of milliseconds; the launcher must not
-                // wait on them.
-                std::thread([this, item, key, program, knownDouble] {
-                    bool usedDouble = false;
-                    try {
-                        ws::traysearch::activate(item, knownDouble, &usedDouble, program);
-                    } catch (...) {
-                    }
-                    if (usedDouble) {
-                        QMetaObject::invokeMethod(this, [this, key] { rememberTrayDoubleClick(key); },
-                            Qt::QueuedConnection);
-                    }
-                }).detach();
+                item = *it;
+            } else {
+                item.name = r.name;
+                item.key = ws::traysearch::trayKey(r.name);
             }
+            const QString key = item.key;
+            const QString program = r.target; // the icon's own program, when known
+            const bool knownDouble = m_trayDoubleClick.contains(key);
+            // Off the UI thread: UI Automation and a possible double
+            // click take hundreds of milliseconds; the launcher must not
+            // wait on them.
+            std::thread([this, item, key, program, knownDouble] {
+                bool usedDouble = false;
+                try {
+                    ws::traysearch::activate(item, knownDouble, &usedDouble, program);
+                } catch (...) {
+                }
+                if (usedDouble) {
+                    QMetaObject::invokeMethod(this, [this, key] { rememberTrayDoubleClick(key); },
+                        Qt::QueuedConnection);
+                }
+            }).detach();
             emit dismissRequested();
         } else if (action == Reveal) {
             if (r.target.isEmpty())

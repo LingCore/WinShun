@@ -18,6 +18,10 @@ struct TrayItem {
     QRect rect; // screen coordinates, physical pixels
 };
 
+// The key of an icon's name: its first word before "：" ("Filee Filee：…" →
+// "Filee"), for windows and programs.
+QString trayKey(const QString& name);
+
 // The notification-area icons of this desktop. When the taskbar's overflow
 // panel is open its hidden icons are included too.
 QVector<TrayItem> snapshot();
