@@ -85,11 +85,25 @@ Item {
     readonly property bool folderMode: !panelMode && launcher.folderSearch
     readonly property string hiddenPrefix: folderMode ? launcher.typingPrefix : ""
     property bool syncingQuery: false
+    // What the rows are for: the text, with the letters an input method is still composing where
+    // they will go ("wei'xin" as weixin), so pinyin finds 微信 before a candidate is chosen (GitHub #157:
+    // with Microsoft Pinyin in its Chinese mode typing showed no rows until then).
+    readonly property string typedText: {
+        const composing = input.preeditText.replace(/['\s]/g, "")
+        if (composing.length === 0)
+            return input.text
+        const at = input.cursorPosition
+        return input.text.slice(0, at) + composing + input.text.slice(at)
+    }
+    onTypedTextChanged: {
+        if (!syncingQuery)
+            launcher.query = hiddenPrefix + typedText
+    }
     function syncQuery() {
         const query = launcher.query
         const shown = hiddenPrefix.length > 0 && query.toLowerCase().startsWith(hiddenPrefix.toLowerCase())
                       ? query.slice(hiddenPrefix.length) : query
-        if (input.text === shown)
+        if (typedText === shown) // a composition is in it: the field's own text stays as the input method has it
             return
         syncingQuery = true
         input.text = shown
@@ -374,11 +388,7 @@ Item {
             acceptedButtons: Qt.LeftButton
             onPressedChanged: if (pressed) bar.editingRequested()
         }
-        onTextChanged: {
-            if (!bar.syncingQuery)
-                bar.launcher.query = bar.hiddenPrefix + text
-            bar.reportField()
-        }
+        onTextChanged: bar.reportField()
         onTextEdited: { historyPicker.close(); bar.typed() }
         onPreeditTextChanged: bar.reportField()
         onCursorPositionChanged: bar.reportField()

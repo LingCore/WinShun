@@ -3104,8 +3104,16 @@ void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& 
         key(Qt::Key_O, Qt::ControlModifier);
         QInputMethodEvent resumedComposition(u"shi"_s, {});
         QCoreApplication::sendEvent(field, &resumedComposition);
-        check(!menuOpen() && launcher.query() == query, mode + u"starting IME composition closes the menu"_s);
+        // The letters being composed are searched where they will go (GitHub #157); the field keeps its own text.
+        check(!menuOpen() && field->property("text").toString() == query
+                && launcher.query() == query.left(1) + u"shi"_s + query.mid(1),
+            mode + u"starting IME composition closes the menu, its letters in the search"_s);
         QCoreApplication::sendEvent(field, &ended);
+        check(launcher.query() == query, mode + u"a composition given up leaves the query as typed"_s);
+        QElapsedTimer rowsBack; // the rows of the query as typed, for the checks below
+        rowsBack.start();
+        while (launcher.searching() && rowsBack.elapsed() < 2000)
+            pump(10);
         for (const auto modifier : {Qt::ControlModifier | Qt::ShiftModifier, Qt::ControlModifier | Qt::AltModifier,
                  Qt::ControlModifier | Qt::MetaModifier}) {
             key(Qt::Key_O, modifier);

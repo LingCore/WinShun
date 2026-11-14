@@ -853,8 +853,16 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output)
     QInputMethodEvent composing(u"zhong"_s, {});
     QCoreApplication::sendEvent(field, &composing);
     check(!window->property("pureEmpty").toBool(), u"IME composition restores controls before committing the query"_s);
+    // Its letters are searched before a candidate is chosen (GitHub #157), Microsoft Pinyin's separators left out.
+    check(launcher.query() == u"zhong"_s && field->property("text").toString().isEmpty(),
+        u"IME composition: the letters are the query, the field's text is the input method's"_s);
+    QInputMethodEvent separated(u"re'port"_s, {});
+    QCoreApplication::sendEvent(field, &separated);
+    settle(window);
+    check(launcher.query() == u"report"_s && launcher.results()->count() == 1, u"IME composition finds rows by its letters"_s);
     QInputMethodEvent endComposition;
     QCoreApplication::sendEvent(field, &endComposition);
+    check(launcher.query().isEmpty(), u"IME composition given up: nothing typed"_s);
     launcher.setQuery(u"report"_s);
     settle(window);
     check(launcher.results()->count() == 1, u"typing searches the real index"_s);
