@@ -8570,6 +8570,14 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>All</translation>
     </message>
     <message>
+        <source>运行</source>
+        <translation>Running</translation>
+    </message>
+    <message>
+        <source>正在运行的程序，Enter 切换过去</source>
+        <translation>The windows open now; Enter switches to one</translation>
+    </message>
+    <message>
         <source>打开最多的应用</source>
         <translation>The apps you open most</translation>
     </message>

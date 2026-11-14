@@ -563,6 +563,9 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
         emit statusChanged();
     });
 
+    m_runningTick.setInterval(1500ms);
+    connect(&m_runningTick, &QTimer::timeout, this, &Launcher::runningTicked);
+
     m_statusPoll.setInterval(500ms); // live item count while the index is being built
     connect(&m_statusPoll, &QTimer::timeout, this, [this] {
         if (m_index->state() != IndexService::State::Ready || m_index->isRefreshing())
@@ -1947,8 +1950,10 @@ void Launcher::startOver()
         m_quickFiltersOn.clear();
         emit filtersChanged();
     }
-    // The scope tab is the user's choice and is kept across openings (选中则记住);
-    // only the words, the folder and the filters go back to the start.
+    if (m_scope != All) {
+        m_scope = All;
+        emit scopeChanged();
+    }
     if (!m_query.isEmpty()) {
         m_query.clear();
         updateQueryPrefix();
@@ -2051,7 +2056,6 @@ void Launcher::setAppsView(AppsView view)
     if (m_appsView == view)
         return;
     m_appsView = view;
-    ++m_appsRefreshToken; // a 运行 refresh waiting is moot
     if (!m_stateFile.isEmpty()) {
         QSettings(m_stateFile, QSettings::IniFormat)
             .setValue(u"Search/AppsView"_s,
@@ -2075,6 +2079,20 @@ void Launcher::cycleAppsView(int delta)
     const int size = static_cast<int>(std::size(kOrder));
     setAppsView(kOrder[((at + delta) % size + size) % size]);
 }
+
+namespace {
+
+// What tells one list of windows from another: which they are, and their titles.
+QStringList windowKeys(const SearchResults& windows)
+{
+    QStringList keys;
+    keys.reserve(windows.size());
+    for (const SearchResult& w : windows)
+        keys.append(w.path + u'\n' + w.name);
+    return keys;
+}
+
+} // namespace
 
 // search() in 程序: the apps the strip chose, as rows; narrowed by what is
 // typed, matched and ranked as 全部 does apps (names, pinyin, other names,
@@ -2109,10 +2127,11 @@ void Launcher::showApps()
     QStringList highlights;
     QList<int> counts {0, 0, 0, 0};
     const QString text = searchText();
-    SearchResults running = windowsearch::snapshot(); // 运行: the windows open on this desktop
+    const SearchResults running = windowsearch::snapshot(); // 运行: the windows open on this desktop
     counts[RunningApps] = static_cast<int>(running.size());
     if (m_appsView == RunningApps)
         rows = text.trimmed().isEmpty() ? running : windowsearch::matching(running, text, regexTerms());
+    m_runningShown = windowKeys(running);
     if (const std::shared_ptr<const AppList> apps = m_apps->apps()) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         std::vector<std::size_t> frequent;
@@ -2187,15 +2206,25 @@ void Launcher::showApps()
     m_shownAppsView = m_appsView;
     showRows(std::move(rows), std::move(highlights));
     refreshStatus();
-    if (m_scope == Apps && m_appsView == RunningApps && m_window && m_window->isVisible()) {
-        const quint64 token = ++m_appsRefreshToken;
-        QTimer::singleShot(1500, this, [this, token] {
-            if (token != m_appsRefreshToken || m_scope != Apps || m_appsView != RunningApps || !m_window
-                || !m_window->isVisible())
-                return;
-            showApps(); // windows were opened or closed meanwhile
-        });
+    // 运行 follows the windows while it is looked at: one opened or closed
+    // meanwhile, or named anew, is in the grid within the tick.
+    if (m_appsView == RunningApps && m_window && m_window->isVisible())
+        m_runningTick.start();
+    else
+        m_runningTick.stop();
+}
+
+// The tick of 运行. The grid is made again only when the windows are not the
+// ones shown: rows given again for nothing would take the selection back to
+// the first tile under the arrow keys.
+void Launcher::runningTicked()
+{
+    if (m_scope != Apps || m_appsView != RunningApps || !m_window || !m_window->isVisible()) {
+        m_runningTick.stop();
+        return;
     }
+    if (windowKeys(windowsearch::snapshot()) != m_runningShown)
+        showApps();
 }
 
 QVariantList Launcher::frequentApps() const

@@ -1370,7 +1370,9 @@ private:
     AppsView m_appsView = FrequentApps; // kept in the state file (Search/AppsView)
     AppsView m_shownAppsView = FrequentApps; // of the rows on screen, as m_shownText
     QList<int> m_appCounts {0, 0, 0, 0};
-    quint64 m_appsRefreshToken = 0; // an earlier 运行 refresh is moot when it does not match
+    QTimer m_runningTick; // while 运行 is on screen: have the windows changed?
+    QStringList m_runningShown; // the windows 运行 was last made from (windowKeys)
+    void runningTicked();
     bool m_appsLeft = false; // 程序 was left because its tab went for a while (the panel, a dialog's bar)
     void showApps(); // search() in 程序
     void appsTabMoved();

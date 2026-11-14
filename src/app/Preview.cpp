@@ -6396,8 +6396,8 @@ bool checkAppsGrid(QQmlEngine* qmlEngine, const QDir& output)
     settle(window, 6);
     check(launcher.scope() == Launcher::Apps && tabs->property("current").toInt() == 3, u"Shift+Tab from 全部 is not 应用, shown current"_s);
     check(grid->isVisible() && window->property("view").value<QObject*>() == grid, u"the grid is not the window's view"_s);
-    check(strip->property("shown").toBool() && strip->property("apps").toBool() && strip->property("chips").toList().size() == 3,
-        u"the strip does not show the apps' three choices"_s);
+    check(strip->property("shown").toBool() && strip->property("apps").toBool() && strip->property("chips").toList().size() == 4,
+        u"the strip does not show the apps' four choices"_s);
     const QList<int> counts = launcher.appCounts();
     say(u"apps: %1 frequent, %2 favorites, %3 in all; %4 columns"_s.arg(counts.value(0)).arg(counts.value(1)).arg(counts.value(2))
             .arg(grid->property("columns").toInt()));
@@ -6459,6 +6459,29 @@ bool checkAppsGrid(QQmlEngine* qmlEngine, const QDir& output)
     launcher.setQuery({});
     settle(window, 4);
     check(count() == counts.value(2), u"the words gone, the apps are not all back"_s);
+
+    // 运行: the windows open now as tiles (this probe's own are not among
+    // them), no star on them, narrowed by the words typed; kept as the choice.
+    launcher.setAppsView(Launcher::RunningApps);
+    settle(window, 6);
+    const int running = launcher.appCounts().value(Launcher::RunningApps);
+    say(u"运行: %1 window(s), first \"%2\""_s.arg(running).arg(count() > 0 ? name(0) : QString()));
+    check(running > 0 && count() == running, u"运行 does not list the open windows"_s);
+    check(count() == 0 || launcher.results()->data(launcher.results()->index(0), ResultModel::WindowResultRole).toBool(),
+        u"运行's tiles are not windows"_s);
+    check(QSettings(stateFile, QSettings::IniFormat).value(u"Search/AppsView"_s).toString() == u"running", u"运行 was not kept as the choice"_s);
+    check(saveGrab(window, output.filePath(u"apps-running.png"_s)), u"render 运行"_s);
+    grid->setProperty("currentIndex", qMin(1, count() - 1));
+    pump(1700); // past a tick: the same windows are not laid out again
+    check(grid->property("currentIndex").toInt() == qMin(1, count() - 1), u"运行's tick took the selection back to the first tile"_s);
+    launcher.setQuery(u"zzzqqqxxx"_s);
+    settle(window, 4);
+    check(count() == 0, u"words no window has still list windows"_s);
+    launcher.setQuery({});
+    key(Qt::Key_Tab, Qt::ControlModifier);
+    check(launcher.appsView() == Launcher::FrequentApps, u"Ctrl+Tab from 运行 is not 常用"_s);
+    launcher.setAppsView(Launcher::AllApps);
+    settle(window, 4);
 
     // The panel has no grid: 应用 gives way to 全部 there, and is back with the box.
     launcher.setPanel(true);
