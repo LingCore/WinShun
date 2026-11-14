@@ -63,11 +63,11 @@
 | 📄 | [搜文件里的字](docs/使用说明.md#搜文件里的文字) | Word、Excel、PPT、PDF、WPS 和文本、代码，结果显示命中的那一行；可以用正则表达式 |
 | 🗂️ | [搜索面板](docs/使用说明.md#搜索面板筛选和排序) | `Ctrl+E` 展开：按类型、时间、大小、位置筛选，常用条件可存成一点就用的快捷筛选，按列排序，大图浏览 |
 | 👀 | [预览](docs/使用说明.md#预览文件) | `Alt+P` 看一眼图片、文档、PDF，不用打开 |
-| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签 |
+| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签，还能切换已打开的窗口 |
 | 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找与悬停预览 |
 | 📂 | [“打开”“另存为”对话框](docs/使用说明.md#打开另存为对话框) ² | 对话框旁多一个搜索框；`Ctrl+G` 转到文件管理器正开着的文件夹 |
 | 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹；在文件列表里直接打字就搜 |
-| ⭐ | [收藏夹](docs/使用说明.md#收藏夹) | 给常用的文件、文件夹、应用起个关键词，一打就开；还能自定义命令 |
+| ⭐ | [收藏夹](docs/使用说明.md#收藏夹) | 给常用的文件、文件夹、应用起个关键词，一打就开；还能自定义命令，也可放进文件的右键菜单 |
 | 🔎 | [任务栏搜索框](docs/使用说明.md#任务栏搜索框) ² | 在 Windows 11 任务栏上放一个 Win顺 的搜索框 |
 | 🤖 | [AI 助手和命令行](docs/使用说明.md#给-ai-助手用mcp) ² | 让 Claude、Cursor 等 AI 搜你的文件（默认只读）；终端里用 `ws` 命令搜 |
 | 🎨 | [外观和备份](docs/使用说明.md#外观设置和备份) | 四种界面风格（含液态玻璃），自选字体与界面大小；设置自动备份，换电脑一键迁移，也可以用云备份插件传到 WebDAV 或 GitHub 私有仓库 |
@@ -90,7 +90,7 @@
 | 按意思找 | `? 去年报销的规定` | 插件库 |
 | 翻译 | `tr 句子` 翻译，`dict 单词` 查词典 | 插件库 |
 | [网页搜索](docs/使用说明.md#网页搜索) | `baidu 天气`、`zhihu 显卡` | 插件库 |
-| 浏览器书签 | `bm 关键词`，搜 Chrome、Edge 的书签 | 插件库 |
+| 浏览器书签 | `bm 关键词`，搜 Chrome、Edge 的书签，拼音也行 | 插件库 |
 | 局域网传输 | `传`，和开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件 | 插件库 |
 | 休息提醒 | 定时提醒休息，`休息` 看还有多久 | 插件库 |
 | 资源管理器标签页 | 新开的资源管理器窗口并成标签页，还能在下次登录后打开上次的标签页（Windows 11 22H2 起） | 插件库 |
@@ -184,19 +184,18 @@ scoop install winshun
 
 ### 最近更新
 
-**0.28.0**
+**0.29.0**
 
-- 🚑 **修复 0.27.0 打不开** 没装过 VC++ 运行库的电脑上提示缺 `MSVCP140_2.dll`，这一版把运行库带全了。
-- 🈶 **拼音没选字就出结果** 中文输入法下打 `weixin`，不用先选字或切英文就能找到“微信”。
-- 🌐 **没有结果时用网页搜索** 在网页搜索插件里打开，搜不到时多一行“在 … 中搜索”；关键词也可以写在后面（`天气 baidu`）。
-- 📄 **剪贴板看得到文本文件的内容** 复制的 txt、md、代码文件，预览里直接显示开头的内容。
-- 🙈 **剪贴板条目可以遮住** 右键“遮住内容”，列表和预览只显示圆点，录屏、共享屏幕时不露密码。
-- 📤 **右键“发送到”局域网传输** 资源管理器里选中文件，右键 › 发送到 › 局域网传输（Win顺），直接选设备发送。
-- 📌 **贴图按键** 点一下贴图后按 `E` 编辑、`O` 识别文字、`U` 收到屏幕顶边（截图与录屏 1.1.14）。
-- 📏 **小改进** 搜索面板空着时可以不列出全部文件；图片里的二维码内容也能搜到。
-- 🛠️ **修复** 安装和更新在进程多的电脑上停几十秒；Windows 10 上文件夹里打字的搜索框先小后大、露黑块；拖文件按键时误弹搜索框；PrtScn 被系统截图抢回去等。
+- ▶️ **“应用”标签里切换已打开的窗口** 多了“运行”：把现在开着的窗口排成图标，`Enter` 或点一下就切过去，不会再启动一个。
+- 🔎 **按安装时的名字找应用** 输入 `office 2024` 找到 Word、Excel、PowerPoint，`7-zip 25` 找到 7-Zip File Manager。
+- 📌 **右键图片贴到屏幕** 开着“截图与录屏”插件时，资源管理器里右键图片文件，选“贴到屏幕（Win顺）”。
+- 🧩 **自己的命令放进文件右键菜单** 设置 › 收藏夹 里的命令可以显示在文件和文件夹的右键菜单里，把完整路径交给命令。
+- 🖼️ **剪贴板图片缩略图三档** “图片缩略图”分小、标准、大，选“小”时图片那一行和文字行一样高；一次复制几张图片文件，显示第一张和张数。
+- 🔖 **书签用拼音找** `bm xjtu` 找到“西安交通大学”（书签插件 2.0.5）。
+- ⌨️ **按住 Caps Lock 时不拦** 文件夹里直接打字搜索时，`CapsLock+字母` 不再弹出搜索框。
+- 🛠️ **修复** 界面字体选英文名（如 LXGW WenKai）重启后不生效，现在中英文名都认。
 
-详见 [0.28.0 发布说明](docs/release-notes/v0.28.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
+详见 [0.29.0 发布说明](docs/release-notes/v0.29.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
 
 ### 常见问题
 
@@ -309,11 +308,11 @@ No installer, or Scoop? See [Download and install](#download-and-install).
 | 📄 | [Text inside files](docs/features.en.md#full-text-search) | Word, Excel, PowerPoint, PDF, WPS, text and code, showing the matching line; regular expressions too |
 | 🗂️ | [Search panel](docs/features.en.md#file-search) | `Ctrl+E` expands it: filter by kind, date, size and folder, save your own quick filters, sort by column, large icons |
 | 👀 | [Preview](docs/features.en.md#file-search) | `Alt+P` shows a picture, document or PDF without opening it |
-| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons |
+| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons and switches to open windows |
 | 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search and hover previews |
 | 📂 | [Open / Save dialogs](docs/features.en.md#open-and-save-dialogs) ² | A search bar beside the dialog; `Ctrl+G` jumps to the folder open in your file manager |
 | 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders; type in a file list to search |
-| ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; your own commands too |
+| ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; your own commands too, also in the right-click menu of files |
 | 🔎 | [Taskbar search box](docs/features.en.md#taskbar-search-box) ² | A WinShun search box on the Windows 11 taskbar |
 | 🤖 | [AI assistants and the command line](docs/features.en.md#ai-assistants-mcp) ² | Let Claude, Cursor and others search your files (read-only by default); `ws` searches from a terminal |
 | 🎨 | [Looks and backup](docs/features.en.md#looks-and-settings) | Three interface styles, your font and interface size; settings backups and migration, to WebDAV or a private GitHub repository with the Cloud Backup plugin |
@@ -336,7 +335,7 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | Search by meaning | `? last year's expense rules` | Plugin library |
 | Translate | `tr sentence` to translate, `dict word` for a dictionary | Plugin library |
 | Web search | `baidu 天气`, `zhihu 显卡` | Plugin library |
-| Browser bookmarks | `bm words` searches Chrome and Edge bookmarks | Plugin library |
+| Browser bookmarks | `bm words` searches Chrome and Edge bookmarks, pinyin too | Plugin library |
 | LAN transfer | `ls ` to send files to and from phones and PCs running [LocalSend](https://localsend.org) | Plugin library |
 | Break reminder | Reminds you to take breaks; `break` shows the time left | Plugin library |
 | Explorer tabs | New File Explorer windows open as tabs, and the tabs from last time come back after a logon (Windows 11 22H2 or newer) | Plugin library |
@@ -430,19 +429,18 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
-**0.28.0**
+**0.29.0**
 
-- 🚑 **0.27.0 not starting, fixed** On a PC without the Visual C++ runtime it asked for `MSVCP140_2.dll`; the whole runtime now ships with the program.
-- 🈶 **Results while an input method is composing** With a Chinese input method, `weixin` finds 微信 before a candidate is chosen.
-- 🌐 **A web search when nothing is found** Turned on in the Web search plugin: a row that searches the web when there are no results; a keyword may also come last (`weather g`).
-- 📄 **A copied text file's content in the clipboard** txt, md and code files copied show their beginning in the preview.
-- 🙈 **Clipboard entries kept from view** "Hide content" shows dots in the list and the preview, for screens that are shared or recorded.
-- 📤 **Send to › LAN transfer** Files chosen in File Explorer go straight to the LAN transfer plugin's device list.
-- 📌 **Keys on a pin** After a click on a pin, `E` edits, `O` reads its text, `U` sends it to the top edge (Screenshot and recording 1.1.14).
-- 📏 **Small things** An empty search panel need not list every file; the content of QR codes in pictures is searchable.
-- 🛠️ **Fixes** Setup and updates pausing for tens of seconds on a PC with many processes; the typing box in File Explorer on Windows 10 growing after it appeared and showing black; the box opening when a key is pressed during a drag; PrtScn going back to the system's screenshot, and more.
+- ▶️ **Switch to open windows from the Apps tab** A new "Running" choice lists the windows open now as tiles: `Enter` or a click switches to one instead of starting the program again.
+- 🔎 **Apps found by the name they were installed under** `office 2024` finds Word, Excel and PowerPoint; `7-zip 25` finds 7-Zip File Manager.
+- 📌 **Pin a picture from its right-click menu** With the Screenshot and recording plugin on, right-click a picture file in File Explorer and choose "Pin to screen (WinShun)".
+- 🧩 **Your own commands in the right-click menu of files** A command under Settings › Favorites can be shown in the right-click menu of files and folders, and gets the full path.
+- 🖼️ **Clipboard picture thumbnails in three sizes** "Picture thumbnails" is Small, Standard or Large; Small keeps a picture's row as high as a text row. Several picture files copied at once show the first one and their number.
+- 🔖 **Bookmarks by pinyin** `bm xjtu` finds 西安交通大学 (Bookmarks plugin 2.0.5).
+- ⌨️ **Caps Lock held down is left alone** With typing in a folder on, `CapsLock+letter` no longer opens the search box.
+- 🛠️ **Fix** A font chosen under its English name (such as LXGW WenKai) was lost after a restart; both names now work.
 
-See the [0.28.0 release notes](docs/release-notes/v0.28.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
+See the [0.29.0 release notes](docs/release-notes/v0.29.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
 
 ### FAQ
 
