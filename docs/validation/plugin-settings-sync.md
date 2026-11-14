@@ -1,5 +1,22 @@
 # Plugin settings synchronization: draft review
 
+## Decision — 2026-11-15
+
+Use the upstream installed WinShun locally while waiting for upstream to merge
+this proposal or implement an equivalent settings synchronization mechanism.
+Do not deploy the custom host as the daily-use version in the meantime.
+
+- Issue: https://github.com/LingCore/WinShun/issues/332
+- Draft PR: https://github.com/LingCore/WinShun/pull/333
+- Preserve branch `fix/plugin-settings-sync` and this worktree for follow-up.
+- The running host was verified as `C:\Program Files\WinShun\WinShun.exe`.
+- Installing cursorwrap 0.10.0 alone does not provide bidirectional settings
+  synchronization on a host without `winshun/settings/update` support. Until
+  upstream supplies it, do not claim that the two settings surfaces synchronize.
+- When upstream resolves the issue, inspect its actual protocol and behavior,
+  adapt cursorwrap if necessary, and verify both edit directions and restart
+  persistence before considering this work complete.
+
 ## Problem
 
 Cursorwrap's search commands persisted private overrides while the settings
