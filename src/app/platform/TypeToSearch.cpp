@@ -614,6 +614,10 @@ bool TypeToSearch::startsHold(UINT vk, bool press)
     const bool combination = held(VK_CONTROL) || held(VK_MENU) || held(VK_LWIN) || held(VK_RWIN);
     if (!press || combination)
         return false; // AltGr too: its left Ctrl is down
+    // A mouse button down: a file pressed or being dragged. A key then is the drag's (the drop
+    // pie's key, GitHub #327: the box came up beside the pie, the key in its field), not a search.
+    if (held(VK_LBUTTON) || held(VK_RBUTTON) || held(VK_MBUTTON))
+        return false;
     HWND tab = nullptr;
     HWND source = nullptr;
     bool opus = false;
