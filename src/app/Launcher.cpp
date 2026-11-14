@@ -3735,7 +3735,15 @@ void Launcher::refreshKeyHints()
     } else if (r->isPlugin()) {
         const PluginRow& p = *r->plugin;
         if (p.valid) {
-            if (!p.actions.isEmpty()) {
+            if (!p.setQuery.isEmpty() || !p.searchQuery.isEmpty()) {
+                // Enter drills (performPlugin prefers setQuery over actions for
+                // a row that has both): the hint must say so, not name action 0.
+                enter = !p.searchQuery.isEmpty() ? tr("搜索") : tr("填入搜索框");
+                if (p.actions.size() > 1) {
+                    secondKeys = p.actions[1].key.isEmpty() ? u"Ctrl+Enter"_s : p.actions[1].key;
+                    second = p.actions[1].title;
+                }
+            } else if (!p.actions.isEmpty()) {
                 enter = p.actions[0].title;
                 if (p.actions.size() > 1) {
                     secondKeys = p.actions[1].key.isEmpty() ? u"Ctrl+Enter"_s : p.actions[1].key;
@@ -6093,6 +6101,12 @@ QVariantList Launcher::menuItems(int row) const
         const PluginRow& p = *r->plugin;
         static constexpr QStringView kKeys[] {u"Enter", u"Ctrl+Enter", u"Shift+Enter"};
         if (p.valid) {
+            // A row that drills (setQuery/searchQuery) keeps that as its Enter
+            // even when it also carries actions: the menu names it first.
+            if (!p.setQuery.isEmpty() || !p.searchQuery.isEmpty()) {
+                const QString text = !p.searchQuery.isEmpty() ? tr("搜索") : tr("填入搜索框");
+                items.append(entry(Open, text, u"Enter"_s, u"\uE8A7"_s));
+            }
             for (int i = 0; i < p.actions.size(); ++i) {
                 const QString key = !p.actions[i].key.isEmpty() ? p.actions[i].key
                     : i < 3                                     ? kKeys[i].toString()
