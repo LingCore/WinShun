@@ -273,6 +273,13 @@ bool MessageWindow::parseHotkey(const QString& shortcut, UINT* modifiers, UINT* 
     return hotkeys::parse(shortcut, modifiers, vk);
 }
 
+void MessageWindow::watchClipboard(bool on)
+{
+    if (on == m_clipboardWatched || !m_hwnd)
+        return;
+    m_clipboardWatched = on ? ::AddClipboardFormatListener(m_hwnd) != FALSE : (::RemoveClipboardFormatListener(m_hwnd), false);
+}
+
 bool MessageWindow::registerHotkey(int id, const QString& shortcut)
 {
     UINT modifiers = 0;
@@ -489,6 +496,10 @@ LRESULT MessageWindow::handle(UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_FONTCHANGE:
         if (m_callbacks.drawingMessage)
             m_callbacks.drawingMessage(msg, wParam);
+        return 0;
+    case WM_CLIPBOARDUPDATE:
+        if (m_clipboardWatched && m_callbacks.clipboardChanged)
+            m_callbacks.clipboardChanged();
         return 0;
     case WM_HOTKEY: // posted when the keys were pressed
         if (m_callbacks.hotkeyPressed)

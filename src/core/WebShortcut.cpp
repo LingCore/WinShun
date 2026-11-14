@@ -145,6 +145,93 @@ bool isWebPath(QStringView path) noexcept
     return path.startsWith(u"winshun-web:");
 }
 
+namespace {
+
+// Endings of names on the web: the general ones in wide use, and the
+// countries'. Not "zip" and "mov": files, whatever the registry says.
+bool isDomainEnding(QStringView label)
+{
+    static const QSet<QString> endings = [] {
+        QSet<QString> set;
+        for (const QStringView word : QStringView(
+                 u"com net org edu gov mil int info biz name pro xyz top site online store tech app dev io ai me tv cc co club vip "
+                 u"shop work link live news wiki blog cloud fun icu ltd run plus team world today space design studio email art "
+                 u"page chat games ren wang "
+                 u"cn hk tw mo jp kr us uk de fr ru in au ca sg my th vn id ph es it nl se no fi dk pl ch at be br mx ar za nz ie "
+                 u"pt gr tr il ae sa eu la to gg im is ly fm am sh so ws py js ts md rs go ps cs db st").split(u' ', Qt::SkipEmptyParts))
+            set.insert(word.toString());
+        return set;
+    }();
+    return endings.contains(label.toString().toLower());
+}
+
+// Of those, the ones a file ends with more often: an address only with more about it.
+bool isFileEnding(QStringView label)
+{
+    static const QSet<QString> endings {u"sh"_s, u"so"_s, u"py"_s, u"js"_s, u"ts"_s, u"md"_s, u"rs"_s, u"go"_s, u"ps"_s, u"pl"_s,
+        u"cs"_s, u"cc"_s, u"db"_s, u"ai"_s, u"st"_s, u"name"_s, u"page"_s};
+    return endings.contains(label.toString().toLower());
+}
+
+bool isHostLabel(QStringView label)
+{
+    if (label.isEmpty() || label.size() > 63 || label.front() == u'-' || label.back() == u'-')
+        return false;
+    return std::ranges::all_of(label, [](QChar c) { return c.isLetterOrNumber() || c == u'-'; });
+}
+
+} // namespace
+
+std::optional<QString> typedWebAddress(QStringView text)
+{
+    text = text.trimmed();
+    if (text.size() < 4 || text.size() > 2048 || std::ranges::any_of(text, [](QChar c) { return c.isSpace(); }))
+        return std::nullopt;
+    for (const QStringView scheme : {QStringView(u"https://"), QStringView(u"http://")}) {
+        if (text.startsWith(scheme, Qt::CaseInsensitive)) {
+            const QStringView rest = text.sliced(scheme.size());
+            return !rest.isEmpty() && (rest.front().isLetterOrNumber() || rest.front() == u'[') ? std::optional(text.toString())
+                                                                                              : std::nullopt;
+        }
+    }
+    // host[:port][/path][?query][#part]
+    qsizetype end = 0;
+    while (end < text.size() && text[end] != u'/' && text[end] != u'?' && text[end] != u'#')
+        ++end;
+    QStringView host = text.first(end);
+    const bool more = end < text.size();
+    bool port = false;
+    if (const qsizetype colon = host.lastIndexOf(u':'); colon >= 0) {
+        const QStringView digits = host.sliced(colon + 1);
+        if (digits.isEmpty() || digits.size() > 5 || !std::ranges::all_of(digits, [](QChar c) { return c.isDigit(); }))
+            return std::nullopt;
+        host = host.first(colon);
+        port = true;
+    }
+    if (host.compare(u"localhost", Qt::CaseInsensitive) == 0)
+        return port || more ? std::optional(u"http://"_s + text) : std::nullopt;
+    const QList<QStringView> labels = host.split(u'.');
+    if (labels.size() < 2 || !std::ranges::all_of(labels, isHostLabel))
+        return std::nullopt;
+    const auto number = [](QStringView label) {
+        return label.size() <= 3 && std::ranges::all_of(label, [](QChar c) { return c.isDigit(); }) && label.toInt() <= 255;
+    };
+    if (labels.size() == 4 && std::ranges::all_of(labels, number))
+        return u"http://"_s + text;
+    const QStringView ending = labels.last();
+    if (!isDomainEnding(ending))
+        return std::nullopt;
+    const bool www = labels.size() >= 3 && labels.first().compare(u"www", Qt::CaseInsensitive) == 0;
+    if (isFileEnding(ending) && !www && !more && !port)
+        return std::nullopt;
+    return u"https://"_s + text;
+}
+
+QString webAddressPath(const QString& address)
+{
+    return u"winshun-web:"_s + address;
+}
+
 std::optional<TypedKeyword> typedKeyword(const WebShortcuts& shortcuts, QStringView text)
 {
     text = text.trimmed();

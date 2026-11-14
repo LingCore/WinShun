@@ -401,6 +401,14 @@ void SettingsEditor::setClearOnOpen(bool on)
     commit();
 }
 
+void SettingsEditor::setClipboardFillSeconds(int seconds)
+{
+    if (m_settings.clipboardFillSeconds == seconds || seconds < 0 || seconds > 60)
+        return;
+    m_settings.clipboardFillSeconds = seconds;
+    commit();
+}
+
 void SettingsEditor::setEnglishOnOpen(bool on)
 {
     if (m_settings.englishOnOpen == on)

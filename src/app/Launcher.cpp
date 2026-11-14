@@ -1537,6 +1537,29 @@ std::optional<SearchResult> Launcher::webFallbackRow() const
     return r;
 }
 
+// A web address typed in 全部 (GitHub #171): the row that opens it, with the
+// web search plugin on. Listed with what else the words find, never in
+// place of it: which one Enter means is the user's to see and choose.
+std::optional<SearchResult> Launcher::webAddressRow() const
+{
+    if (m_web.isEmpty() || m_scope != All || m_panel || m_folderSearch || m_keyword || m_filePrefix || m_regexMode
+        || !m_queryError.isEmpty() || !m_typingPrefix.isEmpty() || !typedQuick().filters.isEmpty() || typedKeyword(m_web, m_query))
+        return std::nullopt;
+    const QString words = m_query.trimmed();
+    const std::optional<QString> address = typedWebAddress(words);
+    if (!address)
+        return std::nullopt;
+    SearchResult r;
+    r.name = words; // as typed: the row's second line says what opens
+    r.path = webAddressPath(*address);
+    r.app = AppKind::Web;
+    r.target = *address;
+    r.icon = *address; // its site's own
+    r.exact = true;
+    r.score = 1000; // as a typed keyword's row (SearchEngine's kTypedKeywordScore)
+    return r;
+}
+
 void Launcher::setWebSuggestions(bool on)
 {
     if (on == m_webSuggestions)
@@ -2558,6 +2581,14 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
     if (rows.isEmpty()) {
         if (std::optional<SearchResult> web = webFallbackRow())
             rows.append(std::move(*web)); // Enter looks the words up instead of 没有找到 (GitHub #320)
+    }
+    if (std::optional<SearchResult> address = webAddressRow()) {
+        // First, but after a file or an app of that very name ("baidu.txt"
+        // there on the disk is what Enter opens; the address is the next row).
+        const bool named = !rows.isEmpty() && !rows.first().isWeb()
+            && rows.first().name.compare(address->name, Qt::CaseInsensitive) == 0;
+        rows.removeIf([&](const SearchResult& r) { return r.path == address->path; });
+        rows.insert(named ? 1 : 0, std::move(*address));
     }
     // The site's suggestions under its search's row, as they were: a new
     // list for the next word typed keeps them until the site answers for it

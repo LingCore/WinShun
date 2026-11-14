@@ -125,6 +125,12 @@ ClipKind kindOfText(const QString& text)
     return ClipKind::Path;
 }
 
+QString searchFillOf(const QString& copied)
+{
+    const QString words = copied.trimmed();
+    return words.size() > kSearchFillLength || words.contains(u'\n') || words.contains(u'\r') ? QString() : words;
+}
+
 QByteArray clipHash(ClipKind kind, const QString& text)
 {
     QCryptographicHash hash(QCryptographicHash::Sha1);

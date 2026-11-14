@@ -211,6 +211,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool favoritesOnStart READ favoritesOnStart WRITE setFavoritesOnStart NOTIFY changed FINAL)
     Q_PROPERTY(bool clearOnOpen READ clearOnOpen WRITE setClearOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(bool englishOnOpen READ englishOnOpen WRITE setEnglishOnOpen NOTIFY changed FINAL)
+    Q_PROPERTY(int clipboardFillSeconds READ clipboardFillSeconds WRITE setClipboardFillSeconds NOTIFY changed FINAL) // seconds, 0: off
     Q_PROPERTY(QString numberKeys READ numberKeys WRITE setNumberKeys NOTIFY changed FINAL) // ctrl | alt | off
     Q_PROPERTY(QString numberHints READ numberHints WRITE setNumberHints NOTIFY changed FINAL) // held | always | off
     Q_PROPERTY(bool letterJump READ letterJump WRITE setLetterJump NOTIFY changed FINAL)
@@ -767,6 +768,8 @@ public:
     void setClearOnOpen(bool on);
     bool englishOnOpen() const { return m_settings.englishOnOpen; }
     void setEnglishOnOpen(bool on);
+    int clipboardFillSeconds() const { return m_settings.clipboardFillSeconds; }
+    void setClipboardFillSeconds(int seconds);
     QString numberKeys() const { return m_settings.numberKeys; }
     void setNumberKeys(const QString& keys);
     QString numberHints() const { return m_settings.numberHints; }

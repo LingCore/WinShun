@@ -1958,6 +1958,45 @@ private slots:
         QVERIFY(pathtext::listTyped({root + u"\\nothing here"_s, {}}, false, 50).isEmpty());
     }
 
+
+    // A web address typed in the search box (GitHub #171).
+    void typedWebAddresses()
+    {
+        const auto opens = [](const QString& text) { return typedWebAddress(text).value_or(u"-"_s); };
+        // With its scheme: as it is.
+        QCOMPARE(opens(u"https://example.com/a?b=1#c"_s), u"https://example.com/a?b=1#c"_s);
+        QCOMPARE(opens(u"HTTP://Example.com"_s), u"HTTP://Example.com"_s);
+        QCOMPARE(opens(u"  https://example.com  "_s), u"https://example.com"_s);
+        QCOMPARE(opens(u"https://"_s), u"-"_s);
+        QCOMPARE(opens(u"https:// example.com"_s), u"-"_s);
+        // Without: https before a name.
+        QCOMPARE(opens(u"github.com"_s), u"https://github.com"_s);
+        QCOMPARE(opens(u"baidu.com"_s), u"https://baidu.com"_s);
+        QCOMPARE(opens(u"www.baidu.com"_s), u"https://www.baidu.com"_s);
+        QCOMPARE(opens(u"github.com/LingCore/WinShun/issues?q=is:open"_s), u"https://github.com/LingCore/WinShun/issues?q=is:open"_s);
+        QCOMPARE(opens(u"docs.qt.io"_s), u"https://docs.qt.io"_s);
+        QCOMPARE(opens(u"example.com.cn:8443/x"_s), u"https://example.com.cn:8443/x"_s);
+        QCOMPARE(opens(u"百度.com"_s), u"https://百度.com"_s);
+        // This computer and numbers: http.
+        QCOMPARE(opens(u"localhost:3000"_s), u"http://localhost:3000"_s);
+        QCOMPARE(opens(u"localhost/admin"_s), u"http://localhost/admin"_s);
+        QCOMPARE(opens(u"192.168.1.1"_s), u"http://192.168.1.1"_s);
+        QCOMPARE(opens(u"10.0.0.2:8080/status"_s), u"http://10.0.0.2:8080/status"_s);
+        // Words, files, paths, versions: not addresses.
+        for (const QString& text : {u"localhost"_s, u"report"_s, u"report.docx"_s, u"baidu.txt"_s, u"archive.zip"_s, u"clip.mov"_s,
+                 u"hello world.com"_s, u"a.b"_s, u".com"_s, u"com."_s, u"x..com"_s, u"-a.com"_s, u"C:/Users/x.com"_s,
+                 u"1.2.3"_s, u"6.12.0.300"_s, u"example.com:port"_s, u"example.com:"_s, u"ftp://example.com"_s, u"3.14"_s})
+            QVERIFY2(!typedWebAddress(text), qPrintable(text));
+        // An ending a file has more often than a country: an address only with more about it.
+        for (const QString& text : {u"main.py"_s, u"notes.md"_s, u"logo.ai"_s, u"app.js"_s, u"index.ts"_s, u"lib.rs"_s, u"main.go"_s,
+                 u"run.sh"_s, u"data.db"_s})
+            QVERIFY2(!typedWebAddress(text), qPrintable(text));
+        QCOMPARE(opens(u"www.python.py"_s), u"https://www.python.py"_s);
+        QCOMPARE(opens(u"crates.rs/tokio"_s), u"https://crates.rs/tokio"_s);
+        QCOMPARE(opens(u"claude.ai/new"_s), u"https://claude.ai/new"_s);
+        QCOMPARE(opens(u"deno.js:8000"_s), u"https://deno.js:8000"_s);
+        QVERIFY(isWebPath(webAddressPath(u"https://github.com"_s)));
+    }
     void webKeyword()
     {
         const WebShortcuts shortcuts {

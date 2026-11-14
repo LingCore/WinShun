@@ -52,6 +52,8 @@ public:
         // Going to sleep, back from it, fonts added or removed (WM_POWERBROADCAST,
         // WM_FONTCHANGE): what the diagnostics record notes of how windows draw.
         std::function<void(UINT message, WPARAM wParam)> drawingMessage;
+        // Something was put on the clipboard, while watchClipboard() is on.
+        std::function<void()> clipboardChanged;
     };
 
     explicit MessageWindow(Callbacks callbacks);
@@ -85,6 +87,9 @@ public:
     // A plugin's held back longer than this is out of date and dropped.
     static constexpr std::uint64_t kHeldMostMs = 60000;
 
+    // Tells every change of the clipboard (clipboardChanged), by whichever
+    // program; off, nothing is asked of Windows. Nothing is read here.
+    void watchClipboard(bool on);
     bool registerHotkey(int id, const QString& shortcut); // "Alt+Space", "Ctrl+Shift+F"
     void unregisterHotkey(int id);
 
@@ -106,6 +111,7 @@ private:
     HICON m_icon = nullptr;
     bool m_mono = false;
     HPOWERNOTIFY m_powerNotify = nullptr; // so that resuming is told on every kind of standby
+    bool m_clipboardWatched = false;
     QString m_tooltip;
     std::function<void()> m_onNotificationClick; // of the last showNotification()
     NotificationTurns m_turns; // whose is up

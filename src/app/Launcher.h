@@ -1390,6 +1390,7 @@ private:
     bool m_webSuggestions = true;
     bool m_webFallback = true;
     std::optional<SearchResult> webFallbackRow() const;
+    std::optional<SearchResult> webAddressRow() const;
     WebSuggester m_suggester;
     SearchResults m_suggestRows; // the latest answer's, for the site typed; kept until the next answer
     QPointer<Favorites> m_favorites;

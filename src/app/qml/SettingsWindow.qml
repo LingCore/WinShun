@@ -4540,6 +4540,18 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("打开时填入刚复制的文字")
+                    keywords: qsTr("剪贴板;复制;自动;填入;粘贴;网址;clipboard;paste").split(";")
+                    description: qsTr("刚在别的程序里复制了一行文字，在这么多秒内打开搜索框，就直接搜它（全选着，打字即替换）；超过时间、复制的是多行或文件时不填。装了“网页搜索”插件，复制的是网址时第一行就是打开它")
+
+                    ScopeTabs {
+                        labels: [qsTr("关闭"), qsTr("3 秒"), qsTr("5 秒"), qsTr("10 秒")]
+                        current: [0, 3, 5, 10].indexOf(window.editor.clipboardFillSeconds) // another number of seconds (set in the file): none of them
+                        onActivated: (index) => window.editor.clipboardFillSeconds = [0, 3, 5, 10][index]
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("打开结果的备用键")
                     keywords: qsTr("打开;回车;Enter;备用;左手;快捷键;空格;open;shortcut").split(";")
                     values: [window.editor.openHotkey]

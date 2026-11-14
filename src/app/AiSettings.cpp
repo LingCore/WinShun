@@ -619,6 +619,10 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/EnglishOnOpen", QT_TRANSLATE_NOOP("AiSettings", "打开时切换为英文输入"), "results", 2,
                     "Each time the search box opens, a Chinese input method there goes into its English mode, so letters and pinyin initials go straight into the search. Switching back in the box is kept for that opening; on closing it is put back as it was."},
         &Settings::englishOnOpen));
+    add(integer({"Launcher/ClipboardFill", QT_TRANSLATE_NOOP("AiSettings", "打开时填入刚复制的文字"), "results", 2,
+                    "Seconds: one line of text copied in another program at most that long before the search box is opened "
+                    "becomes its words, all selected so typing replaces them. 0: never. The settings window offers 3, 5 and 10."},
+        &Settings::clipboardFillSeconds, 1, 60, QT_TRANSLATE_NOOP("AiSettings", "关闭"), "never"));
     add(choice({"Results/NumberKeys", QT_TRANSLATE_NOOP("AiSettings", "用数字键直接打开"), "results", 2,
                    "Which modifier with 1…9 opens the nth result."},
         &Settings::numberKeys,

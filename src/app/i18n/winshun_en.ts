@@ -963,6 +963,10 @@
         <translation>Off</translation>
     </message>
     <message>
+        <source>打开时填入刚复制的文字</source>
+        <translation>Fill in what was just copied</translation>
+    </message>
+    <message>
         <source>序号提示</source>
         <translation>Number key hints</translation>
     </message>
@@ -4870,6 +4874,30 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>程序;应用;图标;网格;启动台;apps;grid;launchpad</source>
         <translation>apps;programs;icons;grid;launchpad;launcher</translation>
+    </message>
+    <message>
+        <source>打开时填入刚复制的文字</source>
+        <translation>Fill in what was just copied</translation>
+    </message>
+    <message>
+        <source>剪贴板;复制;自动;填入;粘贴;网址;clipboard;paste</source>
+        <translation>clipboard;copy;automatic;fill;paste;address;url</translation>
+    </message>
+    <message>
+        <source>刚在别的程序里复制了一行文字，在这么多秒内打开搜索框，就直接搜它（全选着，打字即替换）；超过时间、复制的是多行或文件时不填。装了“网页搜索”插件，复制的是网址时第一行就是打开它</source>
+        <translation>One line of text copied in another program at most this many seconds before the search box opens is searched at once (all selected: typing replaces it); not after that time, nor for several lines or files. With the Web search plugin, a copied address has the row that opens it first</translation>
+    </message>
+    <message>
+        <source>3 秒</source>
+        <translation>3 s</translation>
+    </message>
+    <message>
+        <source>5 秒</source>
+        <translation>5 s</translation>
+    </message>
+    <message>
+        <source>10 秒</source>
+        <translation>10 s</translation>
     </message>
     <message>
         <source>打开结果的备用键</source>
@@ -13628,6 +13656,10 @@ Content index: %5</translation>
             <numerusform>%n hour</numerusform>
             <numerusform>%n hours</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>打开网址 · %1</source>
+        <translation>Open the address · %1</translation>
     </message>
     <message>
         <source>%1 %2</source>

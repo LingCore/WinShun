@@ -128,6 +128,8 @@ QString appOrigin(const SearchResult& r)
     case AppKind::Web:
         if (r.suggestion)
             return ResultModel::tr("%1 的搜索建议").arg(r.name);
+        if (r.keyword.isEmpty()) // an address typed out (Launcher::webAddressRow)
+            return ResultModel::tr("打开网址 · %1").arg(displayWebUrl(r.target));
         return r.words.isEmpty() ? ResultModel::tr("%1 · 关键词 %2").arg(displayWebUrl(r.target), r.keyword)
                                  : displayWebUrl(r.target);
     case AppKind::Store:

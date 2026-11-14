@@ -982,6 +982,7 @@ void Settings::load()
         startList = d.startList;
     clearOnOpen = readOrDefault(s, u"Launcher/ClearOnOpen"_s, d.clearOnOpen);
     englishOnOpen = readOrDefault(s, u"Launcher/EnglishOnOpen"_s, d.englishOnOpen);
+    clipboardFillSeconds = std::clamp(readOrDefault(s, u"Launcher/ClipboardFill"_s, d.clipboardFillSeconds), 0, 60);
     numberKeys = readOrDefault(s, u"Results/NumberKeys"_s, d.numberKeys).trimmed().toLower();
     if (numberKeys != u"alt" && numberKeys != u"off")
         numberKeys = d.numberKeys;
@@ -1375,6 +1376,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/FavoritesOnStart"_s, favoritesOnStart);
     s.setValue(u"Launcher/ClearOnOpen"_s, clearOnOpen);
     s.setValue(u"Launcher/EnglishOnOpen"_s, englishOnOpen);
+    s.setValue(u"Launcher/ClipboardFill"_s, clipboardFillSeconds);
     s.setValue(u"Results/NumberKeys"_s, numberKeys);
     s.setValue(u"Results/NumberHints"_s, numberHints);
     s.setValue(u"Results/LetterJump"_s, letterJump);

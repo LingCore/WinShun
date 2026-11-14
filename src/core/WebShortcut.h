@@ -82,6 +82,18 @@ struct TypedKeyword {
     bool atEnd = false; // the words came first, the keyword last ("WinShun gh")
 };
 
+// The web address the text is, typed as people type one (GitHub #171): with
+// its scheme ("https://example.com/a?b"), or without, a name whose ending is
+// a domain's ("github.com/LingCore", "www.baidu.com", "docs.qt.io"), this
+// computer or a number ("localhost:3000", "192.168.1.1"). What a browser
+// opens for it: https:// before a name, http:// before localhost and a
+// number. None for words, for a path, and for a bare name whose ending is a
+// file's more often than a country's ("main.py", "notes.md", "logo.ai";
+// "www.x.py" and "x.py/docs" are addresses all the same).
+std::optional<QString> typedWebAddress(QStringView text);
+// "winshun-web:<address>": stands for that address's row.
+QString webAddressPath(const QString& address);
+
 // The shortcut whose keyword the text starts with, alone or followed by a
 // space and the words to search for ("gh", "gh  WinShun"). A shortcut that
 // does not search takes no words: "page x" is an ordinary query then. Else

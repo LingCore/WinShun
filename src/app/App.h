@@ -762,6 +762,13 @@ private:
     bool m_launcherClosing = false; // sliding out (hideLauncher)
     bool m_launcherOpening = false; // query/focus/caret still being prepared; no typing replay yet (#140)
     bool m_lettersPending = false; // opened with englishOnOpen, its field not yet switched (lettersOnOpen)
+    // 打开时填入刚复制的文字 (Settings::clipboardFillSeconds): since another
+    // program last put something on the clipboard; watched only while the
+    // setting is on, invalid once the copy was taken (or before any).
+    QElapsedTimer m_copiedAt;
+    void watchCopies();
+    void copyNoticed();
+    QString copiedJustNow();
     win::LettersSwitch m_lettersSwitch; // what that did, to put back on hiding
     std::unique_ptr<ComWorker> m_typingWorker; // queries a file display's folder (folderTyped); before m_typing
     std::unique_ptr<TypeToSearch> m_typing; // while StartMenuTyping, ExplorerTyping, OpusTyping, DesktopTyping or PasteFile is on

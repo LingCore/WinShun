@@ -501,6 +501,19 @@ private slots:
 
     // An entry's note (GitHub #267): one line of the user's own, found by the
     // search as the text is, kept over a restart and an undone removal.
+    // What the search box takes of a text copied just before it opens (GitHub #171).
+    void searchFill()
+    {
+        QCOMPARE(searchFillOf(u"  github.com/LingCore \t"_s), u"github.com/LingCore"_s);
+        QCOMPARE(searchFillOf(u"会议纪要 2026"_s), u"会议纪要 2026"_s);
+        QCOMPARE(searchFillOf(u"one line\r\n"_s), u"one line"_s); // a line copied with its end
+        QVERIFY(searchFillOf(u"two\nlines"_s).isEmpty());
+        QVERIFY(searchFillOf(u"   "_s).isEmpty());
+        QVERIFY(searchFillOf({}).isEmpty());
+        QCOMPARE(searchFillOf(QString(200, u'a')).size(), 200);
+        QVERIFY(searchFillOf(QString(201, u'a')).isEmpty());
+    }
+
     // An entry's text changed by the user (GitHub #267).
     void editedText()
     {

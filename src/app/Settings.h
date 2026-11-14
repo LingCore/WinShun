@@ -244,6 +244,11 @@ struct Settings {
     // letters and pinyin initials find most names (GitHub #201). Switched
     // back in the box, it stays so for that opening; put back on closing.
     bool englishOnOpen = false;
+    // 打开时填入刚复制的文字 (GitHub #171): text copied in some program at most
+    // this many seconds before the search box is opened is its words, all
+    // selected (typing replaces them). 0: never; the settings offer 3, 5 and
+    // 10, the file and the AI settings any up to 60.
+    int clipboardFillSeconds = 0;
     // ctrl | alt | off: Ctrl+1…9 opens the nth row shown, in the launcher and
     // the bar by file dialogs (other programs' hotkeys stay theirs, see numberkeys).
     QString numberKeys = QStringLiteral("ctrl");

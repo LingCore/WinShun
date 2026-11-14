@@ -32,6 +32,13 @@ QString clipImageExtension(ClipImageFormat format);
 // The kind of copied text, from what it looks like.
 ClipKind kindOfText(const QString& text);
 
+// What of a text copied a moment ago the search box takes as its words when
+// it opens (GitHub #171): the text without the space around it, if it is
+// one line of at most kSearchFillLength characters; else nothing (a
+// paragraph is not something to search for).
+constexpr qsizetype kSearchFillLength = 200;
+QString searchFillOf(const QString& copied);
+
 // What tells copied text (or files) from any other: the same again is the
 // same entry. Any thread.
 QByteArray clipHash(ClipKind kind, const QString& text);

@@ -105,6 +105,7 @@
 #include "PrintScreen.h" // restorePrintScreen
 #include "platform/HotkeyText.h"
 
+#include <QClipboard>
 #include <QContextMenuEvent>
 #include <QCursor>
 #include <QDateTime>
@@ -1110,6 +1111,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         return m_volumeNotifier ? m_volumeNotifier->handle(event, data) : TRUE;
     };
     // Once the disks have settled: after hibernating, the file cache is gone.
+    callbacks.clipboardChanged = [this] { copyNoticed(); };
     callbacks.resumed = [this] {
         m_index->prewarmSoon(30s);
         m_index->shares().networkChanged(); // the servers may have gone, or come back, meanwhile
@@ -1133,6 +1135,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     };
     callbacks.drawingMessage = [](UINT message, WPARAM wParam) { diagnostics::noteSystemMessage(message, wParam); };
     m_messages = std::make_unique<MessageWindow>(std::move(callbacks));
+    watchCopies(); // the settings were applied before there was a window to listen with
     // Its hotkeys and the plugins' with no modifier: the listener that holds
     // them back over administrators' windows is told (GitHub #243). Once for
     // all the changes of a moment: a plugin's start registers several.
@@ -1957,6 +1960,7 @@ void App::applySettings(bool initial)
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
     m_launcher->setLetterJump(m_settings.letterJump);
+    watchCopies();
     m_launcher->setRowDeleteButton(m_settings.rowDeleteButton);
     m_launcher->setScopeButton(m_settings.scopeButton);
     m_launcher->setKeyboardHints(m_settings.shortcutHelp, m_settings.footerHints);
@@ -5354,11 +5358,49 @@ const char* App::rawInputState() const
     return raw.registration->hwndTarget == m_keyListener->window() ? "ok" : "other";
 }
 
-void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>& spot, bool inBox, QScreen* on, HWND avoid,
+void App::watchCopies()
+{
+    if (m_messages)
+        m_messages->watchClipboard(m_settings.clipboardFillSeconds > 0);
+    if (m_settings.clipboardFillSeconds <= 0)
+        m_copiedAt.invalidate();
+}
+
+// The clipboard changed (MessageWindow, while the setting is on). Another
+// program's copy counts: what Win顺 puts there itself (a path copied from a
+// row, an entry pasted from the history) is not asked about.
+void App::copyNoticed()
+{
+    DWORD process = 0;
+    if (const HWND owner = ::GetClipboardOwner())
+        ::GetWindowThreadProcessId(owner, &process);
+    if (process == ::GetCurrentProcessId())
+        m_copiedAt.invalidate();
+    else
+        m_copiedAt.start();
+}
+
+// The words to open the search box with: one line copied within the
+// setting's seconds, once (the next opening is empty again).
+QString App::copiedJustNow()
+{
+    if (!m_copiedAt.isValid())
+        return {};
+    const bool fresh = m_copiedAt.elapsed() <= m_settings.clipboardFillSeconds * 1000ll;
+    m_copiedAt.invalidate();
+    return fresh ? searchFillOf(QGuiApplication::clipboard()->text()) : QString();
+}
+
+void App::showLauncher(const QString& asked, const std::optional<taskbar::Spot>& spot, bool inBox, QScreen* on, HWND avoid,
     bool inside, const RECT& orInto, bool asPanel)
 {
     if (!m_window)
         return;
+    // Opened for nothing in particular just after a copy (GitHub #171): the
+    // copy is what is searched, selected so that typing replaces it.
+    const bool mayFill = asked.isEmpty() && !avoid && !asPanel && !(m_launcher->pinned() && launcherShown());
+    const QString query = mayFill ? copiedJustNow() : asked;
+    const bool filled = asked.isEmpty() && !query.isEmpty();
     // show()/activation and forceActiveFocus() emit signals synchronously.
     // They may call deliverTyping before handleShown selects the old words
     // or caretRequested places the caret; replay then loses the first key.
@@ -5474,7 +5516,7 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     if (refuseFrontForTest() == RefuseFront::No)
         m_window->requestActivate();
     m_launcher->handleShown(); // selects all that is typed
-    if (!query.isEmpty()) // typed for the user (a folder, --query): words go after it
+    if (!query.isEmpty() && !filled) // typed for the user (a folder, --query): words go after it
         emit m_launcher->caretRequested(static_cast<int>(query.size()), false);
     if (m_launcherReveal.pending() && !m_launcher->waitingForNames())
         armReveal(); // nothing to wait for (内容 refreshes in the background)
