@@ -28,6 +28,10 @@ Version 1.1.2: the capture settings no longer freeze with “Not responding” t
 
 Version 1.1.3: Read text on screen has a hotkey of its own (#198); pin zoom steps are finer and show the percentage, `Ctrl`+wheel shows the opacity, and the wheel or `[` `]` set annotation width, text size and mosaic cell finely (#164); without D3D11 video support recording converts frames on the CPU (#214); Open link on a QR code opens the browser (needs WinShun 0.21.0, #225); the windows follow the interface style chosen in WinShun; idle memory goes back to Windows. Permissions are unchanged.
 
+1.1.14：点一下贴图再按键就能操作：`E` 编辑、`O` 识别文字、`U` 收到屏幕顶边（再按一次展开），都标在右键菜单里，可以在截图设置的“按键 › 贴图窗口”里改（#124、#212）。打开了“用 PrtScn 键截图”后，Windows 或别的程序把这个键改回系统截图时，会自动拿回来（#322）。权限不变。
+
+Version 1.1.14: keys on a pin after a click on it: `E` edits, `O` reads its text, `U` sends it to the top edge of the screen (again brings it back). They are shown in the pin's menu and can be changed under Keys › Pin window in the capture settings (#124, #212). With PrtScn set to take screenshots, the key is taken back when Windows or another program hands it to the system's own screenshot again (#322). Permissions are unchanged.
+
 1.1.13：截图时可以指定选区尺寸（#308）。点选区旁的尺寸，或按 `F`，直接输入宽和高，可以锁定比例，也可以从预设里选；框选之前按 `F` 选预设，会在光标处得到固定大小的选区。预设可以自己增删。二维码识别升级到 zxing-cpp 3.1.1，小的码和 QQ 的圆点码更容易读出来（#305）。权限不变。
 
 Version 1.1.13: a capture can be given an exact size (#308). Click the size by the selection, or press `F`, to type a width and a height, lock the shape, or pick a preset; before selecting, `F` and a preset size make a selection of that size at the pointer. The presets can be added to and removed. QR reading moves to zxing-cpp 3.1.1, which reads small codes and QQ's round, dotted ones far more often (#305). Permissions are unchanged.
