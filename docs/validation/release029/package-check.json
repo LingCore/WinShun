@@ -1,0 +1,16 @@
+{
+ "portableProgramFiles": 193,
+ "mismatched": [],
+ "data": [
+  "data/README.txt"
+ ],
+ "winshunExeSha256": "617ac0b739930124efedb1f418bcf97093fdb83ce2705c44bce9a018c47ed720",
+ "installedAfterUpgradeSha256": "617ac0b739930124efedb1f418bcf97093fdb83ce2705c44bce9a018c47ed720",
+ "sumsMatch": true,
+ "sizes": {
+  "WinShun-0.29.0-x64-setup.exe": 31687749,
+  "WinShun-0.29.0-x64-portable.zip": 44940238,
+  "WinShun-0.29.0-x64-offline-setup.exe": 40989105,
+  "WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip": 11802525
+ }
+}

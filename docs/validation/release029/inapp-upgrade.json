@@ -1,0 +1,69 @@
+{
+  "mode": "InApp",
+  "hold": false,
+  "before": {
+    "version": "0.28.0",
+    "exeSha": "028c839d3182499159b3804ac03bb044402e7a691632ebaaa46758f02d40f228",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.28.0",
+    "iniBytes": 12141,
+    "historySha": "2c542962a1e95a91d951884335dec1810aef7ac84dbc19f3bdceaf7d3e8f690b",
+    "indexBytes": 31052899
+  },
+  "updated": true,
+  "seconds": 54.9,
+  "after": {
+    "version": "0.29.0",
+    "exeSha": "617ac0b739930124efedb1f418bcf97093fdb83ce2705c44bce9a018c47ed720",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.29.0",
+    "iniBytes": 12163,
+    "historySha": "2c542962a1e95a91d951884335dec1810aef7ac84dbc19f3bdceaf7d3e8f690b",
+    "indexBytes": 31141568
+  },
+  "feedRequests": [
+    "0.29.0 from F:\\电脑便捷工具\\dist\\release029 on http://127.0.0.1:47631/stable.json",
+    "\"GET /stable.json HTTP/1.1\" 200 -",
+    "\"GET /stable.json HTTP/1.1\" 200 -",
+    "\"GET /WinShun-0.29.0-x64-setup.exe HTTP/1.1\" 200 -",
+    "\"GET /stable.json HTTP/1.1\" 200 -"
+  ],
+  "setupLog": null,
+  "helperLog": [
+    "2026-11-12 14:54:37 done",
+    "2026-11-12 14:58:18 Setup ended (exit code 0)",
+    "2026-11-13 10:04:48 Setup ended (exit code 0)",
+    "2026-11-13 15:19:27 Setup ended (exit code 0)",
+    "2026-11-14 13:43:18 Setup ended (exit code 0)",
+    "2026-11-14 16:32:30 Setup ended (exit code 0)"
+  ],
+  "appLog": [
+    "warning: Update check failed: 0 12002",
+    "warning: Update check failed: 0 12029",
+    "warning: Update: installing 0.25.1 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "warning: Update: installing 0.25.1 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "warning: Update: installing 0.26.0 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "warning: Update: installing 0.27.0 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "warning: Update: installing 0.28.0 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "warning: Update: installing 0.29.0 at once (WINSHUN_UPDATE_AUTOINSTALL)"
+  ],
+  "runningAfterRestart": 1
+}

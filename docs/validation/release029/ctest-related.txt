@@ -1,0 +1,12 @@
+ 1/11 Test  #89: tst_aisettings ...................   Passed    4.93 sec
+ 2/11 Test  #94: tst_settings .....................   Passed    3.78 sec
+ 3/11 Test #123: tst_clipimage ....................   Passed    1.69 sec
+ 4/11 Test #128: tst_pastefile ....................   Passed    0.06 sec
+ 5/11 Test #145: tst_uifont_freetype ..............   Passed    0.86 sec
+ 6/11 Test #146: tst_uifont_gdi ...................   Passed    1.03 sec
+ 7/11 Test #160: tst_bookmarks ....................   Passed    0.19 sec
+ 8/11 Test #170: tst_favorites ....................   Passed    4.31 sec
+ 9/11 Test #171: tst_commandlaunch ................   Passed    1.09 sec
+10/11 Test #188: tst_clipselect ...................   Passed    0.66 sec
+11/11 Test #190: tst_scoopinstall .................   Passed    0.19 sec
+100% tests passed, 0 tests failed out of 11
