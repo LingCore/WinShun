@@ -5422,6 +5422,7 @@ private slots:
             auto index = std::make_unique<FileIndex>();
             std::vector<EntryId> folders {index->addRoot("C:"), index->addRoot("D:")};
             std::vector<EntryId> all;
+            bool interning = false; // the test's own mirror of setInterning's state
             const auto refresh = [&] { // after ids changed, or to forget the removed
                 folders.assign(index->roots().begin(), index->roots().end());
                 all.clear();
@@ -5468,8 +5469,19 @@ private slots:
                         index->move(id, folder, n);
                     }
                 } else if (op < 97) {
-                    index->setInterning(pick(2) == 0);
+                    // The snapshot round trip below always comes back with
+                    // interning off (load ends with setInterning(false)), and
+                    // compaction must not run while the name table is live:
+                    // its slots would point into the old name pool. So the
+                    // walk mirrors what production does — the table is on for
+                    // bulk adds, and a compaction first turns it off.
+                    interning = pick(2) == 0;
+                    index->setInterning(interning);
                 } else if (op < 99) {
+                    if (interning) {
+                        interning = false;
+                        index->setInterning(false);
+                    }
                     index->compact(pick(2) == 0);
                     refresh();
                 } else {
