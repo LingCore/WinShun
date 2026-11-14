@@ -40,6 +40,9 @@ public:
         std::function<void(const QString& folder)> folderMenu;
         // Files chosen in Explorer's 发送到 › 局域网传输 (WinShunSearch.exe --lan-send, GitHub #180).
         std::function<void(const QStringList& files)> lanSend;
+        // Explorer's Win顺 命令 › on a file or a folder (GitHub #61): the command's id (what
+        // follows "winshun-command:") and the full path it is run with.
+        std::function<void(const QString& id, const QString& path)> runCommand;
         // Explorer's 贴到屏幕（Win顺）on a picture file (GitHub #128): its full path.
         std::function<void(const QString& file)> pinPicture;
         std::function<void()> sessionEnding; // Windows is logging off / shutting down

@@ -201,6 +201,7 @@ std::wstring folderAfter(std::wstring_view option, bool skipEnglish = false)
 
 constexpr ULONG_PTR kSearchHere = 0x57535348; // "WSSH"
 constexpr ULONG_PTR kFolderMenu = 0x5753464D; // "WSFM"
+constexpr ULONG_PTR kRunCommand = 0x57535243; // "WSRC": a command's id, a new line, the path it is run with (GitHub #61)
 constexpr ULONG_PTR kPinPicture = 0x57535050; // "WSPP": a picture file to pin to the screen (GitHub #128)
 constexpr ULONG_PTR kLanSend = 0x57534C53; // "WSLS": files for the LAN transfer, a line each (GitHub #180)
 
@@ -456,6 +457,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     else if (option == L"--search-here") {
         if (const std::wstring folder = folderAfter(L"--search-here"); !folder.empty())
             sendFolder(folder, kSearchHere);
+    } else if (option == L"--run-command" && count == 4) {
+        // Explorer's Win顺 命令 › on a file or a folder (ShellMenu.cpp): the command's id, then the path.
+        sendFolder(std::wstring(args[2]) + L'\n' + args[3], kRunCommand);
     } else if (option == L"--pin-picture") {
         // Explorer's 贴到屏幕（Win顺）on a picture (ShellMenu.cpp).
         if (const std::wstring file = folderAfter(L"--pin-picture"); !file.empty())

@@ -30,6 +30,7 @@ constexpr ULONG_PTR kSearchHereTag = 0x57535348; // "WSSH"
 constexpr ULONG_PTR kFolderMenuTag = 0x5753464D; // "WSFM"
 constexpr ULONG_PTR kLanSendTag = 0x57534C53; // "WSLS"
 constexpr ULONG_PTR kPinPictureTag = 0x57535050; // "WSPP"
+constexpr ULONG_PTR kRunCommandTag = 0x57535243; // "WSRC"
 
 // A folder's full path as Explorer gives it: on a drive or a share, nothing
 // that could be read as anything else.
@@ -339,7 +340,7 @@ LRESULT CALLBACK MessageWindow::searchHereProc(HWND hwnd, UINT msg, WPARAM wPara
     const auto* data = reinterpret_cast<const COPYDATASTRUCT*>(lParam);
     if (!self || !data
         || (data->dwData != kSearchHereTag && data->dwData != kFolderMenuTag && data->dwData != kLanSendTag
-            && data->dwData != kPinPictureTag)
+            && data->dwData != kPinPictureTag && data->dwData != kRunCommandTag)
         || !data->lpData
         || data->cbData < sizeof(wchar_t) || data->cbData > 32768 * sizeof(wchar_t))
         return FALSE;
@@ -347,6 +348,17 @@ LRESULT CALLBACK MessageWindow::searchHereProc(HWND hwnd, UINT msg, WPARAM wPara
         static_cast<const wchar_t*>(data->lpData), static_cast<qsizetype>(data->cbData / sizeof(wchar_t)));
     while (folder.endsWith(QChar(0)))
         folder.chop(1);
+    if (data->dwData == kRunCommandTag) { // a command's id, a new line, a file's or a folder's full path
+        const qsizetype split = folder.indexOf(u'\n');
+        const QString id = folder.left(split);
+        const QString path = split < 0 ? QString() : folder.mid(split + 1);
+        const bool plain = !id.isEmpty() && id.size() <= 64
+            && std::all_of(id.begin(), id.end(), [](QChar c) { return c.isLetterOrNumber() || c == u'-' || c == u'_'; });
+        if (!plain || !isFolderPath(path) || !self->m_callbacks.runCommand)
+            return FALSE;
+        self->m_callbacks.runCommand(id, path);
+        return TRUE;
+    }
     if (data->dwData == kLanSendTag) { // full paths, a line each: files and folders alike
         QStringList files;
         for (const QString& file : folder.split(u'\n', Qt::SkipEmptyParts)) {

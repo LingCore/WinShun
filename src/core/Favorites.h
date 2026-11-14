@@ -41,6 +41,9 @@ struct Favorite {
     // for as files and folders, and the one chosen is what {query} gets
     // ("code 项目" then Enter on a folder found). Off: the words themselves.
     bool searchFiles = false;
+    // Command only (GitHub #61): listed in Explorer's menu on a file or a
+    // folder (Win顺 命令 ›), which hands that path to {query}.
+    bool fileMenu = false;
 
     bool isFileOrFolder() const noexcept { return kind == Kind::Folder || kind == Kind::File; }
     friend bool operator==(const Favorite&, const Favorite&) = default;

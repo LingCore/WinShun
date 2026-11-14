@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QList>
 #include <QString>
 
 // Explorer's right-click verbs, run by WinShunSearch.exe (src/stub):
@@ -29,6 +30,17 @@ void applyPasteFile(bool on);
 // Windows knows as a picture, whichever program opens it. With several chosen Explorer runs it
 // once a file, and each is pinned. There while a plugin pins pictures.
 void applyPinPicture(bool on);
+
+// Win顺 命令 › on a file or a folder (GitHub #61): the user's own commands that ask to be there
+// (Favorite::fileMenu), each run with the path as its {query}: WinShunSearch.exe --run-command
+// <id> "<path>", which hands both to Win顺. A cascade under *\shell and Directory\shell, made
+// again when the commands differ from what is written; none: the entry goes.
+struct MenuCommand {
+    QString id; // what follows "winshun-command:" in the favorite's path
+    QString title; // its name
+    friend bool operator==(const MenuCommand&, const MenuCommand&) = default;
+};
+void applyCommands(const QList<MenuCommand>& commands);
 
 // 发送到 › 局域网传输（Win顺）(GitHub #180): a shortcut in the user's SendTo folder to this copy's
 // WinShunSearch.exe --lan-send, which Explorer runs once with every file chosen (a verb would run

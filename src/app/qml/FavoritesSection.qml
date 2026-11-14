@@ -396,10 +396,10 @@ SettingsSection {
                                     section.draft = null
                                     section.editing = -1
                                 }
-                                onEdited: (name, keyword, commandLine, directory, icon, silent, administrator, searchFiles) => section.draft = {
+                                onEdited: (name, keyword, commandLine, directory, icon, silent, administrator, searchFiles, fileMenu) => section.draft = {
                                     path: favRow.modelData.path, name: name, keyword: keyword,
                                     commandLine: commandLine, directory: directory, icon: icon,
-                                    silent: silent, administrator: administrator, searchFiles: searchFiles
+                                    silent: silent, administrator: administrator, searchFiles: searchFiles, fileMenu: fileMenu
                                 }
                                 onMoveRequested: (to) => {
                                     const from = favRow.index

@@ -23,6 +23,7 @@ Item {
     property bool silent: false // 静默执行, 以管理员身份运行 (GitHub #112)
     property bool administrator: false
     property bool searchFiles: false // the words after the keyword find files for {query} (GitHub #319)
+    property bool fileMenu: false // in Explorer's menu on a file or a folder, which {query} gets (GitHub #61)
     property int iconRequest: 0
     readonly property bool iconLoading: iconRequest > 0
     property string previewCommand
@@ -37,14 +38,14 @@ Item {
     readonly property string pieLabel: pieName.length > 0 ? DropPieText.label(pieName) : ""
 
     signal finished()
-    signal edited(string name, string keyword, string commandLine, string directory, string icon, bool silent, bool administrator, bool searchFiles)
+    signal edited(string name, string keyword, string commandLine, string directory, string icon, bool silent, bool administrator, bool searchFiles, bool fileMenu)
     signal moveRequested(int to) // 上移 or 下移: the form goes with it
 
     function save() {
         if (form.iconLoading)
             return
         form.error = form.command
-            ? form.favorites.saveCommand(form.index, nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator, form.searchFiles)
+            ? form.favorites.saveCommand(form.index, nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator, form.searchFiles, form.fileMenu)
             : form.favorites.save(form.index, nameField.text, keywordField.text)
         if (form.error.length === 0)
             form.finished()
@@ -53,13 +54,14 @@ Item {
     function changed() {
         error = ""
         if (ready)
-            edited(nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator, form.searchFiles)
+            edited(nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator, form.searchFiles, form.fileMenu)
     }
 
     onIconDataChanged: form.changed()
     onSilentChanged: form.changed()
     onAdministratorChanged: form.changed()
     onSearchFilesChanged: form.changed()
+    onFileMenuChanged: form.changed()
 
     Timer {
         id: previewDelay
@@ -96,6 +98,7 @@ Item {
         form.silent = form.draft ? form.draft.silent ?? false : form.favorite.silent ?? false
         form.administrator = form.draft ? form.draft.administrator ?? false : form.favorite.administrator ?? false
         form.searchFiles = form.draft ? form.draft.searchFiles ?? false : form.favorite.searchFiles ?? false
+        form.fileMenu = form.draft ? form.draft.fileMenu ?? false : form.favorite.fileMenu ?? false
         form.previewCommand = commandField.text
         form.previewDirectory = directoryField.text
         form.ready = true
@@ -289,6 +292,17 @@ Item {
                           : qsTr("命令里要有 {query}，用来接收选中的文件或文件夹")
             checked: form.searchFiles && enabled
             onToggled: (on) => form.searchFiles = on
+        }
+        Option {
+            objectName: "favoriteFileMenu"
+            visible: form.command
+            enabled: commandField.text.indexOf("{query}") >= 0
+            width: parent.width
+            label: qsTr("显示在文件和文件夹的右键菜单里")
+            hint: enabled ? qsTr("在资源管理器里右键文件或文件夹，“Win顺 命令”里选它，就把完整路径交给 {query}；Windows 11 在“显示更多选项”里")
+                          : qsTr("命令里要有 {query}，用来接收右键的文件或文件夹")
+            checked: form.fileMenu && enabled
+            onToggled: (on) => form.fileMenu = on
         }
         Option {
             objectName: "favoriteSilent"

@@ -653,7 +653,9 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         if (m_pluginHost)
             m_pluginHost->setFavoriteKeywords(favoriteKeywords(*m_favorites));
         applyScreenshots(); // a favorite given the word takes it
+        applyMenuCommands();
     });
+    applyMenuCommands();
     // Sites' icons: fetched when a row of theirs is first shown, not before.
     siteicons::setFolder(dataDir + u"\\icons\\web"_s);
     IndexService::Options indexStart;
@@ -1078,6 +1080,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     // Explorer's "search here" (WinShunSearch.exe): the folder typed, words to come.
     callbacks.lanSend = [this](const QStringList& files) { lanSend({}, files, false); };
     callbacks.pinPicture = [this](const QString& file) { pictureAction(u"pin"_s, 0, file, false); };
+    callbacks.runCommand = [this](const QString& id, const QString& path) { runMenuCommand(id, path); };
     callbacks.searchHere = [this](const QString& folder) {
         m_launcher->noteSearchHere(folder); // not indexed (GitHub #52): searched on the disk all the same
         showLauncher(folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s);
@@ -2209,6 +2212,45 @@ mcp::ToolResult toolError(const QString& text)
 bool App::screenshotPluginOn() const
 {
     return m_pluginHost && m_pluginHost->catalog().enabled(kScreenshotPlugin);
+}
+
+constexpr QStringView kCommandPrefix = u"winshun-command:"; // a command favorite's path, then its id
+
+// Explorer's Win顺 命令 ›: the commands that ask to be there, in the favorites' order.
+void App::applyMenuCommands()
+{
+    QList<shellmenu::MenuCommand> commands;
+    for (const Favorite& f : m_favorites->items()) {
+        if (f.kind == Favorite::Kind::Command && f.fileMenu && f.path.startsWith(kCommandPrefix))
+            commands.append({f.path.mid(kCommandPrefix.size()), f.name});
+    }
+    shellmenu::applyCommands(commands);
+}
+
+// One of them chosen on a file or a folder: run as its keyword would run it
+// with that path typed, in that item's folder unless the command names its own.
+void App::runMenuCommand(const QString& id, const QString& path)
+{
+    const auto& items = m_favorites->items();
+    const auto found = std::ranges::find_if(items, [&](const Favorite& f) {
+        return f.kind == Favorite::Kind::Command && f.fileMenu && f.path.startsWith(kCommandPrefix) && f.path.mid(kCommandPrefix.size()) == id;
+    });
+    if (found == items.end())
+        return; // taken out of the menu since Explorer listed it
+    const QString name = found->name;
+    const QString directory = !found->workingDirectory.isEmpty() ? found->workingDirectory
+        : QFileInfo(path).isDir()                                 ? path
+                                                                  : QFileInfo(path).absolutePath();
+    shell::runCustom(found->command, QDir::toNativeSeparators(directory), path,
+        [guard = QPointer(this), name](bool ok) {
+            if (ok)
+                return;
+            QMetaObject::invokeMethod(qApp, [guard, name] {
+                if (guard && guard->m_messages)
+                    guard->m_messages->showNotification(tr("没有打开“%1”").arg(name), tr("请检查命令和工作文件夹。"));
+            }, Qt::QueuedConnection);
+        },
+        {found->silent, found->runAsAdmin});
 }
 
 QString App::picturePlugin(const QString& verb) const

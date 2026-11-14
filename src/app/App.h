@@ -458,6 +458,10 @@ private:
     // Text or files to the LAN transfer plugin's device list; its card in the settings while it is not ready.
     // `fromHistory`: chosen in the clipboard history (the plugin says so), else files chosen in Explorer.
     void lanSend(const QString& text, const QStringList& files, bool fromHistory);
+    // Explorer's Win顺 命令 › on a file or a folder (GitHub #61): written from the favorites,
+    // and one of its commands run with the path chosen.
+    void applyMenuCommands();
+    void runMenuCommand(const QString& id, const QString& path);
     void showPluginSettings(const QString& pluginId); // ... on that plugin's card ("winshun:settings")
     void applyHotkey();
     void applyDialogs(); // Ctrl+G, the bar and going by themselves in file dialogs

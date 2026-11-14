@@ -299,6 +299,15 @@ private slots:
             {"kind": "command", "path": "winshun-command:x", "name": "x", "command": "a.exe {query}", "searchFiles": 1}]})");
         QVERIFY(loaded);
         QVERIFY(!loaded->favorites[0].searchFiles);
+        // GitHub #61: in Explorer's menu or not, kept the same way.
+        command.fileMenu = true;
+        const QByteArray listed = writeFavoritesFile({command});
+        QVERIFY(listed.contains("\"fileMenu\": true"));
+        loaded = readFavoritesFile(listed);
+        QVERIFY(loaded);
+        QCOMPARE(loaded->favorites, FavoriteList {command});
+        command.fileMenu = false;
+        QVERIFY(!writeFavoritesFile({command}).contains("fileMenu"));
         // Its keyword and the words after it, as the launcher splits them.
         QCOMPARE(typedCommandKeyword({command}, u"code 我的项目"), 0);
         QCOMPARE(commandWords(command, u"code 我的项目"), u"我的项目"_s);
