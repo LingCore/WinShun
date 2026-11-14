@@ -88,6 +88,10 @@ void PinManager::add(const QImage& image, QPoint origin, bool screenshot, QByteA
         if (m_callbacks.save)
             m_callbacks.save(pin->image(), {});
     };
+    host.edit = [this](PinWindow* pin) {
+        if (m_callbacks.edit)
+            m_callbacks.edit(pin);
+    };
     host.dark = m_callbacks.dark;
     host.accent = m_callbacks.accent;
     host.edge = m_callbacks.edge;
@@ -269,7 +273,7 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         shell::MenuItem::separator(),
     };
     if (full) {
-        items.push_back(command(EditCommand, tr("编辑"), 0xE70F));
+        items.push_back(command(EditCommand, tr("编辑") + hint(KeyAction::PinEdit), 0xE70F));
         items.push_back(command(OcrCommand, ocr, 0xE8A5));
         items.push_back(command(PickTextCommand, tr("选择文字") + hint(KeyAction::PinTextPick), 0xE8D2,
             pin->textMode(), ocrAvailable && pin->canPickText()));

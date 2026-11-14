@@ -921,6 +921,10 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
                 else
                     endTextPick();
                 break;
+            case KeyAction::PinEdit: // as the menu: a whole picture only
+                if (m_form == PinForm::Full && m_host.edit)
+                    m_host.edit(this);
+                break;
             case KeyAction::PinCollapse:
                 if (m_form == PinForm::Full)
                     collapse(PinForm::Tile);

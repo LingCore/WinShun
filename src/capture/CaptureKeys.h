@@ -28,6 +28,7 @@ enum class KeyAction {
     PinRotateLeft,
     PinFlipHorizontal,
     PinFlipVertical,
+    PinEdit, // the editing window, as the menu's 编辑 (#124)
 };
 
 enum class KeyContext { Capture, PinWindow };
@@ -66,6 +67,8 @@ inline constexpr std::array kActions {
         QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "左右翻转")},
     ActionInfo {KeyAction::PinFlipVertical, "PinFlipVertical", KeyContext::PinWindow, QKeyCombination(Qt::Key_V),
         QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "上下翻转")},
+    ActionInfo {KeyAction::PinEdit, "PinEdit", KeyContext::PinWindow, QKeyCombination(Qt::Key_E),
+        QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "编辑")},
 };
 
 inline constexpr std::size_t kCount = kActions.size();

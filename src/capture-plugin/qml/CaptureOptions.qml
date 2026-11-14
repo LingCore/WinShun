@@ -418,6 +418,7 @@ Column {
                             { id: "PinClose", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "关闭贴图") },
                             { id: "PinCopy", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "复制") },
                             { id: "PinSave", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "保存") },
+                            { id: "PinEdit", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "编辑") },
                             { id: "PinCollapse", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "收起/展开") },
                             { id: "PinTextPick", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "选取文字") },
                             { id: "PinRotateRight", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "向右转") },
