@@ -2031,6 +2031,8 @@ private slots:
         QCOMPARE(ocrOneLine(QString(1000, u'x')).size(), 256);
         QCOMPARE(ocrOneLine(u"x"_s, 3), u"x"_s);
         QCOMPARE(ocrOneLine(u"abcdef"_s, 3), u"abc"_s);
+        // 翻译 (GitHub #191) takes a paragraph (CaptureOcr::kMaxTranslate), lines as words all the same.
+        QCOMPARE(ocrOneLine(QString(2000, u'y'), 800).size(), 800);
     }
 
     void hiddenToolbarButtonsAreTheSessionsToTell()

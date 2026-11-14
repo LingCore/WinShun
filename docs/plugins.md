@@ -306,6 +306,7 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
 | `clipboard_copy_entry` | `clipboard:write` | `id` | 剪贴板历史里的一条重新放到剪贴板，并移到最前 |
 | `show_launcher` | `ui` | `text` | 打开搜索框并填上这段文字 |
 | `web_search` | `winshun:open` | `text` | 用 Win顺 的默认网页搜索搜这段文字 |
+| `translate_text` | `ui` | `text` | 打开搜索框，用“翻译”插件翻译这段文字（前面加上它的关键字）；插件没启用时报错并提示去安装。0.30.0 起 |
 | `open_url` | `winshun:open` | `url` | 用默认浏览器（或邮件程序）以用户的普通权限打开一个 `http`、`https` 或 `mailto` 链接；`open_item` 只开文件和文件夹。0.21.0 起 |
 | `backup_export` | `winshun:backup` | `file`、`unless`（可选） | 把现在的设置做成一份备份（和“导出备份”一样，不含这台电脑的备份位置、索引位置），写到 `file`（要在插件的数据文件夹里）。回 `{hash, when, written}`：`hash` 只跟内容有关，和 `unless` 一样时不写文件、`written` 是 false。0.26.0 起 |
 | `backup_restore` | `winshun:backup` | `file` | 用 `file`（插件数据文件夹里的一份备份）恢复：先校验，把现在的设置在本机 `backups` 里存一份，然后 Win顺 重启换上它，和“从备份恢复”一样。校验不过或另一个备份正在进行时回错误，什么都不换。让用户确认之后再调。0.26.0 起 |

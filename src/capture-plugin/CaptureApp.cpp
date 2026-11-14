@@ -814,6 +814,16 @@ capture::CaptureOcr& CaptureApp::captureOcr()
         });
         connect(m_captureOcr.get(), &capture::CaptureOcr::searchRequested, this, [this](const QString& query) { searchText(query, false); });
         connect(m_captureOcr.get(), &capture::CaptureOcr::webSearchRequested, this, [this](const QString& query) { searchText(query, true); });
+        connect(m_captureOcr.get(), &capture::CaptureOcr::translateRequested, this, [this](const QString& text) {
+            // Win顺 puts the translate plugin's keyword before the words. An
+            // older Win顺 has no such tool: the search box with "tr" before
+            // them, the plugin's keyword unless the user changed it.
+            QPointer<CaptureApp> self(this);
+            m_protocol.tool(u"translate_text"_s, {{u"text"_s, text}}, [self, text](const QJsonValue&, const QString& error) {
+                if (self && error.startsWith(u"Unknown tool"))
+                    self->m_protocol.tool(u"show_launcher"_s, {{u"text"_s, QString(u"tr "_s + text)}});
+            });
+        });
         connect(m_captureOcr.get(), &capture::CaptureOcr::closeRequested, this, [this] { closeCaptureOcr(); });
         connect(m_captureOcr.get(), &capture::CaptureOcr::openLinkRequested, this, [this](const QString& url) {
             // Only ever from a click on 打开链接; opened by Win顺 (no programs started

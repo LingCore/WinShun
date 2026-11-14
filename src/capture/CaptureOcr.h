@@ -91,6 +91,10 @@ public:
     Q_INVOKABLE void search(const QString& text);
     // The same one line, for the default web search.
     Q_INVOKABLE void webSearch(const QString& text);
+    // The same text for the translate plugin (GitHub #191): lines as words,
+    // up to kMaxTranslate characters (a paragraph, not a search word).
+    Q_INVOKABLE void translate(const QString& text);
+    static constexpr int kMaxTranslate = 800;
     // Lines as words, trimmed, cut at what a search box takes; empty when no words.
     static QString oneLine(const QString& text);
     Q_INVOKABLE void close() { emit closeRequested(); }
@@ -101,6 +105,7 @@ signals:
     void copyRequested(const QString& text);
     void searchRequested(const QString& query);
     void webSearchRequested(const QString& query);
+    void translateRequested(const QString& text);
     void closeRequested();
     void openLinkRequested(const QString& url);
     void setupRequested();

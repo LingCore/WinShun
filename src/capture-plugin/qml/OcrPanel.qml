@@ -204,6 +204,13 @@ Window {
             text: qsTr("打开链接")
             onClicked: window.ocr.openLink(window.ocr.link)
         }
+        FlatButton { // the words (the selected ones, else all) to the translate plugin, in Win顺's search box
+            dpr: window.dpr
+            visible: window.ocr.link.length === 0
+            text: qsTr("翻译")
+            enabled: !window.ocr.busy && words.text.trim().length > 0
+            onClicked: window.ocr.translate(words.selectedText.length > 0 ? words.selectedText : words.text)
+        }
         FlatButton {
             dpr: window.dpr
             visible: window.ocr.link.length === 0

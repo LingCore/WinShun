@@ -1489,6 +1489,10 @@
 <context>
     <name>OcrPanel</name>
     <message>
+        <source>翻译</source>
+        <translation>Translate</translation>
+    </message>
+    <message>
         <source>打开链接</source>
         <translation>Open link</translation>
     </message>

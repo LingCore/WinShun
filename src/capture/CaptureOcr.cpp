@@ -168,6 +168,13 @@ void CaptureOcr::search(const QString& text)
         emit searchRequested(query);
 }
 
+void CaptureOcr::translate(const QString& text)
+{
+    const QString words = ocrOneLine(text, kMaxTranslate);
+    if (!words.isEmpty())
+        emit translateRequested(words);
+}
+
 void CaptureOcr::webSearch(const QString& text)
 {
     const QString query = oneLine(text);

@@ -9736,6 +9736,18 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Some features have not been restored</translation>
     </message>
     <message>
+        <source>翻译插件未启用</source>
+        <translation>The Translate plugin is not on</translation>
+    </message>
+    <message>
+        <source>请在设置 → 插件 → 插件库中安装并启用“翻译”，填好翻译服务。</source>
+        <translation>Install and turn on Translate in Settings → Plugins → Plugin library, and fill in its service.</translation>
+    </message>
+    <message>
+        <source>翻译插件未启用，请在设置 → 插件 → 插件库中安装并启用“翻译”</source>
+        <translation>The Translate plugin is not on: install and turn it on in Settings → Plugins → Plugin library</translation>
+    </message>
+    <message>
         <source>网页搜索插件未启用</source>
         <translation>Web search plugin is not enabled</translation>
     </message>

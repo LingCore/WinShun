@@ -2472,6 +2472,34 @@ void App::setUpAppTools()
             showLauncher(arguments.value(u"text"_s).toString().left(1000));
             done({});
         }});
+    // 识别文字并翻译 (GitHub #191): the search box with the translate
+    // plugin's keyword before the words, so its answer is the first row
+    // (Enter copies it, as when typed). The keyword is the user's own if
+    // they changed it. Without the plugin: said, with the way to get it.
+    tools.push_back({u"translate_text"_s, plugin::Permission::Ui,
+        [this](const QString&, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            const QString text = arguments.value(u"text"_s).toString().simplified().left(1000);
+            if (text.isEmpty()) {
+                done(toolError(u"text is empty"_s));
+                return;
+            }
+            const QString id = u"winshun.translate"_s;
+            const QStringList keywords = m_pluginHost && m_pluginHost->catalog().enabled(id)
+                ? m_pluginHost->catalog().keywordsOf(id, u"tr") : QStringList();
+            if (keywords.isEmpty()) {
+                if (m_messages)
+                    m_messages->showNotification(tr("翻译插件未启用"), tr("请在设置 → 插件 → 插件库中安装并启用“翻译”，填好翻译服务。"),
+                        [this, id] {
+                            showSettings([id](QQuickWindow* window) {
+                                QMetaObject::invokeMethod(window, "showPluginLibrary", Q_ARG(QVariant, QVariant(id)));
+                            });
+                        });
+                done(toolError(tr("翻译插件未启用，请在设置 → 插件 → 插件库中安装并启用“翻译”")));
+                return;
+            }
+            showLauncher(keywords.first() + u' ' + text);
+            done({});
+        }});
     // 识别文字并网页搜索: Win顺's default web search.
     tools.push_back({u"web_search"_s, plugin::Permission::WinshunOpen,
         [this](const QString&, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
