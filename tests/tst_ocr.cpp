@@ -215,6 +215,94 @@ private slots:
         QCOMPARE(translatedPicture(page, blocks, found, font), page.convertToFormat(QImage::Format_RGB32));
     }
 
+    // Bold words stay bold, and words in the middle of a button stay there.
+    void weightAndCentring()
+    {
+        using namespace ws::capture;
+        const auto measured = [](const QString& family, int px, bool bold, const QString& text, QColor ink, QColor paper) {
+            QFont font(family);
+            font.setPixelSize(px);
+            font.setBold(bold);
+            QImage image(px * 26, px * 3, QImage::Format_RGB32);
+            image.fill(paper);
+            QPainter painter(&image);
+            painter.setFont(font);
+            painter.setPen(ink);
+            painter.drawText(px, px * 2, text);
+            painter.end();
+            const QRect box(px - 3, static_cast<int>(px * 0.85), QFontMetrics(font).horizontalAdvance(text) + 6, static_cast<int>(px * 1.3));
+            return strokeWeight(image, box, blockColors(image, box), px * 1.3);
+        };
+        for (const QString& family : {u"Segoe UI"_s, u"Microsoft YaHei UI"_s}) {
+            for (const int px : {14, 18, 24, 34, 48}) {
+                for (const QString& text : {u"Translation in place today"_s, u"就地翻译这一段文字"_s}) {
+                    const double regular = measured(family, px, false, text, Qt::black, Qt::white);
+                    const double bold = measured(family, px, true, text, Qt::black, Qt::white);
+                    const double light = measured(family, px, true, text, QColor(235, 235, 240), QColor(32, 34, 40));
+                    const double thin = measured(family, px, false, text, QColor(235, 235, 240), QColor(32, 34, 40));
+                    const double onBlue = measured(family, px, false, text, Qt::white, QColor(15, 108, 189));
+                    QVERIFY2(thin < kBoldStrokeLight - 0.02 && onBlue < kBoldStrokeLight - 0.02, qPrintable(u"%1 %2"_s.arg(thin).arg(onBlue)));
+                    const QByteArray what = u"%1 %2px '%3': regular %4, bold %5, bold light on dark %6"_s.arg(family).arg(px).arg(text)
+                                                .arg(regular, 0, 'f', 3).arg(bold, 0, 'f', 3).arg(light, 0, 'f', 3).toUtf8();
+                    qInfo("%s", what.constData());
+                    QVERIFY2(regular < kBoldStroke - 0.015, what.constData());
+                    QVERIFY2(bold > regular * 1.25 && light > regular * 1.25, what.constData());
+                    // CJK in Segoe UI comes from a fallback font whose bold is thinner at large sizes: allowed to stay regular.
+                    if (family == u"Microsoft YaHei UI" || text.front().unicode() < 0x80 || px < 24)
+                        QVERIFY2(bold >= kBoldStroke + 0.01, what.constData());
+                }
+            }
+        }
+
+        // A button with its words in the middle, a label at the left of a wide row.
+        QImage page(600, 200, QImage::Format_RGB32);
+        page.fill(Qt::white);
+        QFont font(u"Microsoft YaHei UI"_s);
+        font.setPixelSize(20);
+        const QRect button(40, 40, 220, 44);
+        {
+            QPainter painter(&page);
+            painter.fillRect(button, QColor(15, 108, 189));
+            painter.setFont(font);
+            painter.setPen(Qt::white);
+            painter.drawText(button, Qt::AlignCenter, u"Save changes"_s);
+            painter.setPen(Qt::black);
+            painter.drawText(40, 150, u"Name"_s);
+        }
+        const int wide = QFontMetrics(font).horizontalAdvance(u"Save changes"_s);
+        const QRect words(button.center().x() - wide / 2 - 2, 48, wide + 4, 28);
+        const Margins inButton = blockMargins(page, words, QColor(15, 108, 189));
+        QVERIFY2(inButton.centred(), qPrintable(u"%1 %2"_s.arg(inButton.left).arg(inButton.right)));
+        const Margins label = blockMargins(page, QRect(38, 130, 60, 28), Qt::white);
+        QVERIFY(!label.centred());
+        QCOMPARE(label.right, -1); // the ground runs to the edge
+        // Drawn: the shorter words are in the middle of the button, as far from one edge as from the other.
+        TextBlock block;
+        block.box = words;
+        block.text = u"Save changes"_s;
+        block.lineHeight = 28;
+        block.lines = 1;
+        const QImage out = translatedPicture(page, {block}, {u"保存"_s}, font);
+        int first = -1, last = -1;
+        for (int x = button.left(); x <= button.right(); ++x) {
+            bool ink = false;
+            for (int y = button.top(); y <= button.bottom() && !ink; ++y)
+                ink = qGray(out.pixel(x, y)) > 200;
+            if (ink) {
+                if (first < 0)
+                    first = x;
+                last = x;
+            }
+        }
+        QVERIFY(first > 0);
+        QVERIFY2(std::abs((first - button.left()) - (button.right() - last)) <= 3, qPrintable(u"%1..%2"_s.arg(first).arg(last)));
+        // Longer words than the box: on both ways, still inside the button.
+        const QImage longer = translatedPicture(page, {block}, {u"Save all the changes"_s}, font);
+        QCOMPARE(longer.pixelColor(button.left() + 1, button.center().y()), QColor(15, 108, 189));
+        QCOMPARE(longer.pixelColor(button.right() - 1, button.center().y()), QColor(15, 108, 189));
+        QVERIFY2(read(longer).contains(u"Save all the changes"_s), qPrintable(read(longer)));
+    }
+
     // 翻译 on the toolbar: read, then asked for at once.
     void readThenTranslate()
     {

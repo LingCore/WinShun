@@ -35,7 +35,8 @@ enum MenuCommand {
     HideAllCommand,
     AllTopmostCommand,
     OtherSideCommand,
-    CopyTranslationCommand
+    CopyTranslationCommand,
+    TranslateCommand
 };
 
 shell::MenuItem command(int id, QString text, char16_t glyph, bool checked = false, bool enabled = true)
@@ -288,6 +289,8 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
     if (full) {
         items.push_back(command(EditCommand, tr("编辑") + hint(KeyAction::PinEdit), 0xE70F));
         items.push_back(command(OcrCommand, ocr + hint(KeyAction::PinOcr), 0xE8A5));
+        if (m_callbacks.translate && !pin->hasOtherSide())
+            items.push_back(command(TranslateCommand, tr("翻译"), 0xE8C1, false, ocrAvailable));
         items.push_back(command(PickTextCommand, tr("选择文字") + hint(KeyAction::PinTextPick), 0xE8D2,
             pin->textMode(), ocrAvailable && pin->canPickText()));
         items.push_back(shell::MenuItem::separator());
@@ -338,6 +341,10 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         break;
     case OtherSideCommand:
         pin->showOtherSide();
+        break;
+    case TranslateCommand:
+        if (m_callbacks.translate)
+            m_callbacks.translate(pin);
         break;
     case CopyTranslationCommand:
         if (m_callbacks.copyText)

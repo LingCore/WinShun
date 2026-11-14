@@ -91,6 +91,9 @@ private:
     // Whatever stands in the way (no reader, no service, an answer that does
     // not match the blocks) goes to the OCR window instead, which says so.
     void translateInPlace(const QImage& image, double dpr, const QRect& where);
+    // The same on a pin that is there (its menu's 翻译). `own`: translateInPlace
+    // made the pin for this, and takes it away when the OCR window opens instead.
+    void translatePin(capture::PinWindow* pin, bool own);
     // Bubble: 识别屏幕文字's, copied and said in the card by the region.
     enum class OcrThen { Copy, Search, Web, Bubble };
     void captureOcrThen(const QImage& image, double dpr, const QRect& where, OcrThen then);

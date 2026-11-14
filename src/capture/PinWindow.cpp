@@ -510,7 +510,11 @@ void PinWindow::forgetOtherSide()
 void PinWindow::note(const QString& text, bool stay)
 {
     showHint(text);
-    m_hintStays = stay;
+    m_hintStays = stay && !text.isEmpty();
+    if (text.isEmpty()) { // none: the one that stayed goes
+        m_hintSince = 0;
+        m_hintAlpha = 0;
+    }
     if (m_form == PinForm::Full)
         render(); // showHint leaves the drawing to what changed the zoom or the opacity
 }

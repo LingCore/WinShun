@@ -181,6 +181,69 @@ BlockColors blockColors(const QImage& image, const QRect& asked)
     return {QColor(paper), QColor(static_cast<int>(red / count), static_cast<int>(green / count), static_cast<int>(blue / count))};
 }
 
+double strokeWeight(const QImage& image, const QRect& asked, const BlockColors& colors, double lineHeight)
+{
+    const QRect box = asked.intersected(image.rect());
+    const QRgb paper = colors.paper.rgb();
+    const int far = distance(colors.ink.rgb(), paper);
+    if (box.isEmpty() || far < 60 || lineHeight <= 0)
+        return 0;
+    // A run's length with its smoothed ends counted for what they cover: a
+    // stroke of one and a half pixels is not one of one or of two.
+    std::vector<double> runs;
+    const int step = std::max(1, box.height() / 48);
+    for (int y = box.top(); y <= box.bottom(); y += step) {
+        double run = 0;
+        for (int x = box.left(); x <= box.right() + 1; ++x) {
+            const double cover = x <= box.right() ? std::min(1.0, distance(image.pixel(x, y), paper) / static_cast<double>(far)) : 0;
+            if (cover >= 0.2) {
+                run += cover;
+            } else if (run > 0) {
+                runs.push_back(run);
+                run = 0;
+            }
+        }
+    }
+    if (runs.size() < 12)
+        return 0;
+    std::ranges::nth_element(runs, runs.begin() + static_cast<std::ptrdiff_t>(runs.size() / 2));
+    return runs[runs.size() / 2] / lineHeight;
+}
+
+bool boldWords(const QImage& image, const QRect& box, const BlockColors& colors, double lineHeight)
+{
+    const bool light = qGray(colors.ink.rgb()) > qGray(colors.paper.rgb());
+    return strokeWeight(image, box, colors, lineHeight) >= (light ? kBoldStrokeLight : kBoldStroke);
+}
+
+Margins blockMargins(const QImage& image, const QRect& asked, const QColor& ground)
+{
+    const QRect box = asked.intersected(image.rect());
+    if (box.isEmpty())
+        return {};
+    const QRgb paper = ground.rgb();
+    Margins m {image.width(), image.width()};
+    bool leftEnds = true;
+    bool rightEnds = true;
+    for (const int y : {box.top() + box.height() / 4, box.center().y(), box.bottom() - box.height() / 4}) {
+        int x = box.left() - 1;
+        while (x >= 0 && distance(image.pixel(x, y), paper) < 30)
+            --x;
+        leftEnds = leftEnds && x >= 0;
+        m.left = std::min(m.left, box.left() - 1 - x);
+        x = box.right() + 1;
+        while (x < image.width() && distance(image.pixel(x, y), paper) < 30)
+            ++x;
+        rightEnds = rightEnds && x < image.width();
+        m.right = std::min(m.right, x - box.right() - 1);
+    }
+    if (!leftEnds)
+        m.left = -1;
+    if (!rightEnds)
+        m.right = -1;
+    return m;
+}
+
 QImage translatedPicture(const QImage& source, const QList<TextBlock>& blocks, const QStringList& translations, const QFont& family)
 {
     if (source.isNull() || blocks.size() != translations.size())
@@ -215,9 +278,12 @@ QImage translatedPicture(const QImage& source, const QList<TextBlock>& blocks, c
         const int most = std::max(9, static_cast<int>(std::lround(block.lineHeight * 0.78)));
         const int least = std::max(9, static_cast<int>(std::lround(most * 0.6)));
         QFont font = family;
+        font.setBold(boldWords(from, job.box, job.colors, block.lineHeight));
         QRect area = job.box;
-        int flags = Qt::AlignLeft | Qt::AlignVCenter;
-        if (block.lines > 1 || job.box.height() > 2.2 * block.lineHeight)
+        const bool wraps = block.lines > 1 || job.box.height() > 2.2 * block.lineHeight;
+        const Margins margins = wraps ? Margins() : blockMargins(from, job.cover, job.colors.paper);
+        int flags = (margins.centred() ? Qt::AlignHCenter : Qt::AlignLeft) | Qt::AlignVCenter;
+        if (wraps)
             flags |= Qt::TextWordWrap;
         const auto fits = [&](int size) {
             font.setPixelSize(size);
@@ -230,8 +296,14 @@ QImage translatedPicture(const QImage& source, const QList<TextBlock>& blocks, c
         while (size > least && !fits(size))
             --size;
         if (!fits(size) && !(flags & Qt::TextWordWrap)) {
-            // One line, too long even small: on over the empty ground to its right, and as large as that lets it be.
-            area.setWidth(area.width() + roomToTheRight(from, job.box, job.colors.paper.rgb(), blocks, job.index));
+            // One line, too long even small: on over the empty ground to its right (both ways for one in
+            // the middle of its button, short of the edges), and as large as that lets it be.
+            if (margins.centred()) {
+                const int more = std::max(0, std::min(margins.left, margins.right) - 2 - 4);
+                area.adjust(-more, 0, more, 0);
+            } else {
+                area.setWidth(area.width() + roomToTheRight(from, job.box, job.colors.paper.rgb(), blocks, job.index));
+            }
             size = most;
             while (size > least && !fits(size))
                 --size;

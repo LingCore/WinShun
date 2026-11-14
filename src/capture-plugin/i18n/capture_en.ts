@@ -2299,6 +2299,10 @@ click here to cancel</translation>
 <context>
     <name>ws::capture::PinManager</name>
     <message>
+        <source>翻译</source>
+        <translation>Translate</translation>
+    </message>
+    <message>
         <source>显示原文</source>
         <translation>Show the original</translation>
     </message>

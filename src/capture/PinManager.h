@@ -32,6 +32,7 @@ public:
         std::function<void(const QImage&, bool screenshot)> copy; // screenshot: the pin came from a capture
         std::function<void(const QImage&, const QString& path)> save; // empty path: the Screenshots folder
         std::function<void(const QImage&, double dpr, const QRect& picture)> ocr;
+        std::function<void(PinWindow*)> translate; // 翻译: its words translated in place (#191); empty: not offered
         std::function<void(PinWindow*)> edit; // 编辑: the editing window opens on it
         std::function<void()> closed; // a pin closed: its memory can go back to Windows
         std::function<bool()> dark;

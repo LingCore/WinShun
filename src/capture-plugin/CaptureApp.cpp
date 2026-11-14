@@ -1029,9 +1029,30 @@ void CaptureApp::closeCaptureOcr(bool destroy)
 
 void CaptureApp::translateInPlace(const QImage& image, double dpr, const QRect& where)
 {
-    capture::PinWindow* pin = capture::CaptureOcr::available() ? pins().pin(image, where.topLeft()) : nullptr;
-    if (!pin) {
+    if (capture::PinWindow* pin = capture::CaptureOcr::available() ? pins().pin(image, where.topLeft()) : nullptr)
+        translatePin(pin, true);
+    else
         showCaptureOcr(image, dpr, where, nullptr, true);
+}
+
+namespace {
+
+// At most this many blocks are asked for one by one when the answer for all
+// of them at once came back with other lines than blocks (a chat model that
+// joined or split some): a request each, one after the other.
+constexpr qsizetype kOneByOne = 24;
+
+} // namespace
+
+void CaptureApp::translatePin(capture::PinWindow* pin, bool own)
+{
+    const QImage image = pin->image();
+    const double dpr = pin->dpr();
+    const QRect where = pin->pictureRect();
+    if (image.isNull())
+        return;
+    if (!capture::CaptureOcr::available()) {
+        showCaptureOcr(image, dpr, where, nullptr, true); // says how to get the reader
         return;
     }
     pin->note(tr("正在翻译…"), true);
@@ -1041,10 +1062,14 @@ void CaptureApp::translateInPlace(const QImage& image, double dpr, const QRect& 
     const auto still = [this, pin, revision]() -> capture::PinWindow* {
         return m_pins && m_pins->contains(pin) && pin->revision() == revision ? pin : nullptr;
     };
-    // The OCR window instead, with the words and what is in the way; the pin was only the picture.
-    const auto instead = [this, still, image, dpr, where] {
-        if (capture::PinWindow* p = still())
-            p->close();
+    // The OCR window instead, with the words and what is in the way.
+    const auto instead = [this, still, own, image, dpr, where] {
+        if (capture::PinWindow* p = still()) {
+            if (own)
+                p->close(); // it was only the picture
+            else
+                p->note({});
+        }
         showCaptureOcr(image, dpr, where, nullptr, true);
     };
     if (!m_translateOcr)
@@ -1068,23 +1093,55 @@ void CaptureApp::translateInPlace(const QImage& image, double dpr, const QRect& 
             return;
         }
         QPointer<CaptureApp> self(this);
+        const auto show = [self, still, image, blocks](const QStringList& translations) {
+            capture::PinWindow* p = still();
+            if (!self || !p)
+                return;
+            const QImage translated = capture::translatedPicture(image, blocks, translations, QGuiApplication::font());
+            if (p->setTranslation(translated, translations.join(u'\n'), p->revision()))
+                p->note(self->tr("Tab 看原文"));
+            self->m_idleTrim->poke();
+        };
         m_protocol.tool(u"translate_text"_s, {{u"text"_s, text}},
-            [self, ticket, still, instead, image, blocks](const QJsonValue& result, const QString&) {
+            [self, ticket, instead, show, words](const QJsonValue& result, const QString&) {
                 if (!self || ticket != self->m_translateTicket)
                     return;
                 const QJsonObject answer = result.toObject();
-                QStringList translations = answer.value(u"text"_s).toString().split(u'\n', Qt::SkipEmptyParts);
-                if (answer.value(u"state"_s).toString() != u"ok" || translations.size() != blocks.size()) {
-                    instead(); // no service, no plugin, failed, an older Win顺, or lines that are not the blocks
+                if (answer.value(u"state"_s).toString() != u"ok") {
+                    instead(); // no service, no plugin, failed, or an older Win顺
                     return;
                 }
-                capture::PinWindow* p = still();
-                if (!p)
+                const QStringList translations = answer.value(u"text"_s).toString().split(u'\n', Qt::SkipEmptyParts);
+                if (translations.size() == words.size()) {
+                    show(translations);
                     return;
-                const QImage translated = capture::translatedPicture(image, blocks, translations, QGuiApplication::font());
-                if (p->setTranslation(translated, translations.join(u'\n'), p->revision()))
-                    p->note(self->tr("Tab 看原文"));
-                self->m_idleTrim->poke();
+                }
+                if (words.size() > kOneByOne) {
+                    instead();
+                    return;
+                }
+                // Other lines than blocks: each block on its own, in turn; one that fails keeps its words.
+                auto got = std::make_shared<QStringList>();
+                auto next = std::make_shared<std::function<void()>>();
+                *next = [self, ticket, show, words, got, next] {
+                    if (!self || ticket != self->m_translateTicket) {
+                        *next = nullptr;
+                        return;
+                    }
+                    if (got->size() == words.size()) {
+                        show(*got);
+                        *next = nullptr; // lets go of itself
+                        return;
+                    }
+                    self->m_protocol.tool(u"translate_text"_s, {{u"text"_s, words[got->size()]}},
+                        [got, next](const QJsonValue& one, const QString&) {
+                            const QJsonObject o = one.toObject();
+                            got->append(o.value(u"state"_s).toString() == u"ok" ? o.value(u"text"_s).toString().simplified() : QString());
+                            if (*next)
+                                (*next)();
+                        });
+                };
+                (*next)();
             });
     });
 }
@@ -1250,6 +1307,7 @@ capture::PinManager& CaptureApp::pins()
         };
         callbacks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
         callbacks.edit = [this](capture::PinWindow* pin) { editPin(pin); };
+        callbacks.translate = [this](capture::PinWindow* pin) { translatePin(pin, false); };
         callbacks.closed = [this] { m_idleTrim->poke(); }; // its pixels can go back to Windows
         callbacks.dark = [] { return isDarkMode(); };
         // The 界面风格's (Theme's nativeLook), as the launcher's.
