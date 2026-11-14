@@ -4,16 +4,34 @@
 // Bookmarks file from the settings, whose title, folder or address has every
 // word typed. Enter opens the address (a declarative `url`, no second
 // process). It was a Python script; as an exe it needs no Python and starts
-// in milliseconds. No Qt, the C runtime linked in. The logic is in
+// in milliseconds. `bh words` lists the pages opened in them (History.cpp),
+// once turned on. No Qt, the C runtime linked in. The logic is in
 // Bookmarks.cpp, which tests/tst_bookmarks.cpp builds in again.
 
-#include "Bookmarks.h"
+#include "History.h"
 
 int main()
 {
     const winshun::Query q = winshun::onceQuery();
     const winshun::Json settings = winshun::onceSettings();
     const bool chinese = winshun::env("WS_LOCALE") != "en";
+
+    // `bh words`: the pages opened in those browsers (GitHub #160), once the
+    // user has turned it on. Changing by the minute, it is kept half as long.
+    if (q.command == "history") {
+        winshun::Items rows = bm::historyOff(chinese);
+        if (settings["history"].toBool()) {
+            const std::vector<std::string> files = bm::historyFiles(winshun::env("LOCALAPPDATA"), winshun::trim(settings["extraFile"].toString()));
+            std::vector<bm::Visit> visits;
+            for (const std::string& path : files) {
+                std::vector<bm::Visit> found = bm::readHistory(path, bm::browserOf(path, chinese));
+                visits.insert(visits.end(), std::make_move_iterator(found.begin()), std::make_move_iterator(found.end()));
+            }
+            rows = bm::searchHistory(std::move(visits), q.text, chinese, bm::historyNow(), !files.empty());
+        }
+        const winshun::Json answer = winshun::Json::Object {{"items", winshun::itemsJson(rows)}, {"cache", 30}};
+        return winshun::detail::writeLine(answer.dump()) ? 0 : 1;
+    }
 
     std::vector<bm::Entry> entries;
     for (const std::string& path : bm::bookmarkFiles(winshun::env("LOCALAPPDATA"), winshun::trim(settings["extraFile"].toString()))) {

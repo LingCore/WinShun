@@ -3,7 +3,9 @@
 // unquote, Unicode lower case, matching, scoring and the rows. Files are
 // made in a temporary folder; nothing of the real browsers is read.
 
-#include "Bookmarks.h"
+#include "History.h"
+
+#include <winsqlite/winsqlite3.h>
 
 #include <QDir>
 #include <QFile>
@@ -434,6 +436,188 @@ private slots:
         QCOMPARE(rows.front().score, 76);
         QCOMPARE(q(rows[1].title), Q("在线工具1")); // stable: file order within a score
         QCOMPARE(rows[1].score, 70);
+    }
+
+    // The browsing history (GitHub #160). The databases are made here with
+    // the same SQLite that reads them; nothing of a real browser is opened.
+    void historyRead()
+    {
+        QTemporaryDir dir;
+        const std::string path = QDir::toNativeSeparators(dir.filePath(Q("历史 #1%/History"))).toStdString();
+        QVERIFY(QDir().mkpath(dir.filePath(Q("历史 #1%"))));
+        sqlite3* db = historyDb(path, {{"https://a.example/", "Alpha", 300, 0}, {"https://b.example/", "Beta", 500, 0},
+                                          {"https://hidden.example/", "Hidden", 900, 1}, {"https://never.example/", "Never", 0, 0},
+                                          {"https://c.example/", "", 400, 0}});
+        QVERIFY(db);
+        // The browser's own lock on it, held while it runs: read all the same.
+        QCOMPARE(sqlite3_exec(db, "PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE", nullptr, nullptr, nullptr), SQLITE_OK);
+        const std::vector<Visit> visits = readHistory(path, "Chrome");
+        QCOMPARE(visits.size(), size_t(3)); // not the hidden one, not the one never opened
+        QCOMPARE(q(visits[0].title), Q("Beta")); // the last opened first
+        QCOMPARE(visits[0].lastVisit, 500ll);
+        QCOMPARE(q(visits[0].browser), Q("Chrome"));
+        QCOMPARE(q(visits[1].url), Q("https://c.example/"));
+        QCOMPARE(q(visits[2].title), Q("Alpha"));
+        QCOMPARE(readHistory(path, "Chrome", 2).size(), size_t(2));
+        sqlite3_close(db);
+        // Not a database, a database of something else, no file: nothing, and no file made.
+        const QString text = dir.filePath(Q("Bookmarks"));
+        QFile plain(text);
+        QVERIFY(plain.open(QIODevice::WriteOnly) && plain.write("{\"roots\":{}}") > 0);
+        plain.close();
+        QVERIFY(readHistory(QDir::toNativeSeparators(text).toStdString(), "Chrome").empty());
+        const std::string other = QDir::toNativeSeparators(dir.filePath(Q("Other"))).toStdString();
+        sqlite3* odd = nullptr;
+        QCOMPARE(sqlite3_open(other.c_str(), &odd), SQLITE_OK);
+        QCOMPARE(sqlite3_exec(odd, "CREATE TABLE notes (x)", nullptr, nullptr, nullptr), SQLITE_OK);
+        sqlite3_close(odd);
+        QVERIFY(readHistory(other, "Chrome").empty());
+        const QString missing = dir.filePath(Q("Missing"));
+        QVERIFY(readHistory(QDir::toNativeSeparators(missing).toStdString(), "Chrome").empty());
+        QVERIFY(!QFile::exists(missing));
+
+    }
+    void historyFilesFound()
+    {
+        QTemporaryDir dir;
+        const QString local = dir.path();
+        for (const char* file : {"Google/Chrome/User Data/Default/History", "Google/Chrome/User Data/Profile 1/History",
+                 "Microsoft/Edge/User Data/Default/History", "Brave/User Data/Default/History", "Brave/User Data/Default/Bookmarks"}) {
+            const QString path = local + QLatin1Char('/') + QLatin1String(file);
+            QVERIFY(QDir().mkpath(QFileInfo(path).path()));
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(QDir().mkpath(local + Q("/Google/Chrome/User Data/Guest Profile"))); // a profile with none
+        const std::string root = QDir::toNativeSeparators(local).toStdString();
+        QCOMPARE(historyFiles(root, {}).size(), size_t(3));
+        // Another browser, named by its Bookmarks file: the History beside it.
+        const std::string brave = QDir::toNativeSeparators(local + Q("/Brave/User Data/Default/Bookmarks")).toStdString();
+        const std::vector<std::string> files = historyFiles(root, brave);
+        QCOMPARE(files.size(), size_t(4));
+        QVERIFY(q(files.back()).endsWith(Q("Default\\History")));
+        QCOMPARE(q(browserOf(files.back(), true)), Q("Brave"));
+        QCOMPARE(historyFiles({}, "Bookmarks").size(), size_t(0)); // a bare name: nothing beside it
+    }
+    void historySearch()
+    {
+        const long long now = localMicros(2026, 11, 14, 12, 0);
+        const long long minute = 60ll * 1'000'000;
+        const std::vector<Visit> visits {
+            {"在线工具", "https://tools.example/", "Chrome", now - 3 * minute},
+            {"西安交通大学", "https://xjtu.example/", "Edge", localMicros(2026, 11, 13, 9, 30)},
+            {"Release notes", "https://github.example/xian/releases", "Chrome", localMicros(2026, 3, 4, 18, 40)},
+            {"", "https://files.example/%E5%AE%89%E8%A3%85", "Chrome", localMicros(2025, 3, 4, 8, 0)},
+            {"西安交通大学 again", "https://XJTU.example/", "Chrome", now - minute}, // the same address, opened later elsewhere
+        };
+        // Nothing typed: the pages last opened, each address once.
+        auto rows = searchHistory(visits, "", true, now);
+        QCOMPARE(rows.size(), size_t(4));
+        QCOMPARE(q(rows[0].title), Q("西安交通大学 again"));
+        QCOMPARE(q(rows[0].subtitle), Q("Chrome · 今天 11:59 · https://XJTU.example/"));
+        QCOMPARE(q(rows[1].subtitle), Q("Chrome · 今天 11:57 · https://tools.example/"));
+        QCOMPARE(q(rows[2].subtitle), Q("Chrome · 03-04 18:40 · https://github.example/xian/releases"));
+        QCOMPARE(q(rows[3].title), Q("https://files.example/安装")); // no title: the address as read
+        QCOMPARE(q(rows[3].subtitle), Q("Chrome · 2025-03-04 · https://files.example/安装"));
+        QCOMPARE(q(rows[3].open["url"].toString()), Q("https://files.example/%E5%AE%89%E8%A3%85"));
+        QCOMPARE(q(rows[0].icon), Q("site:https://XJTU.example/"));
+        QCOMPARE(q(rows[0].copy), Q("https://XJTU.example/"));
+        QCOMPARE(rows[0].id, std::string("bh-0"));
+        QVERIFY(rows[0].valid);
+        // Yesterday, and in English.
+        const std::vector<Visit> one {visits[1]};
+        QCOMPARE(q(searchHistory(one, "", true, now).front().subtitle), Q("Edge · 昨天 09:30 · https://xjtu.example/"));
+        QCOMPARE(q(searchHistory(one, "", false, now).front().subtitle), Q("Edge · Yesterday 09:30 · https://xjtu.example/"));
+        QCOMPARE(q(searchHistory({visits[0]}, "", false, now).front().subtitle), Q("Chrome · Today 11:57 · https://tools.example/"));
+        // Words: said in the title, spelled in it (pinyin), in the address only; all of them or none.
+        rows = searchHistory(visits, "xian", true, now);
+        QCOMPARE(rows.size(), size_t(3));
+        QCOMPARE(q(rows[0].title), Q("西安交通大学 again")); // spelled, the later of the two spelled
+        QCOMPARE(rows[0].score, 74);
+        QCOMPARE(q(rows[1].title), Q("在线工具"));
+        QCOMPARE(q(rows[2].title), Q("Release notes")); // in its address
+        QCOMPARE(rows[2].score, 62);
+        QCOMPARE(searchHistory(visits, "交通", true, now).front().score, 80);
+        QCOMPARE(searchHistory(visits, "安装", true, now).size(), size_t(1)); // the address as read
+        QCOMPARE(searchHistory(visits, "RELEASE github", true, now).size(), size_t(1));
+        // None: why.
+        rows = searchHistory(visits, "nothing-like-it", true, now);
+        QCOMPARE(rows.size(), size_t(1));
+        QVERIFY(!rows[0].valid);
+        QCOMPARE(q(rows[0].title), Q("没有匹配的浏览历史"));
+        QCOMPARE(q(searchHistory({}, "", true, now, false).front().title), Q("没有找到浏览历史"));
+        QCOMPARE(q(searchHistory({}, "", false, now, false).front().title), Q("No browsing history found"));
+        QVERIFY(!historyOff(true).front().valid);
+        QVERIFY(q(historyOff(true).front().subtitle).contains(Q("搜索浏览历史")));
+    }
+    void historyBestFifty()
+    {
+        const long long now = localMicros(2026, 11, 14, 12, 0);
+        std::vector<Visit> many;
+        for (int i = 0; i < 200; ++i)
+            many.push_back({"Page " + std::to_string(i), "https://p.example/" + std::to_string(i), "Chrome", now - i * 1'000'000ll});
+        many.push_back({"docs", "https://d.example/page", "Chrome", now - 500 * 1'000'000ll}); // the oldest, by its address
+        many.push_back({"The page itself", "https://t.example/", "Chrome", now - 900 * 1'000'000ll}); // older still, by its title
+        QCOMPARE(searchHistory(many, "", true, now).size(), size_t(50));
+        QCOMPARE(q(searchHistory(many, "", true, now)[49].title), Q("Page 49"));
+        const auto rows = searchHistory(many, "page", true, now);
+        QCOMPARE(rows.size(), size_t(50));
+        QCOMPARE(q(rows[0].title), Q("Page 0")); // said in the title, the last opened first
+        QVERIFY(std::ranges::all_of(rows, [](const winshun::Item& row) { return row.score == 80; }));
+        QVERIFY(std::ranges::any_of(searchHistory(many, "itself", true, now), [](const winshun::Item& row) { return row.title == "The page itself"; }));
+    }
+
+private:
+    struct Row {
+        const char* url;
+        const char* title;
+        long long lastVisit;
+        int hidden;
+    };
+    // A History database with the browsers' own table, left open as a browser leaves it.
+    static sqlite3* historyDb(const std::string& path, std::initializer_list<Row> rows)
+    {
+        sqlite3* db = nullptr;
+        if (sqlite3_open(path.c_str(), &db) != SQLITE_OK
+            || sqlite3_exec(db,
+                   "CREATE TABLE urls(id INTEGER PRIMARY KEY AUTOINCREMENT, url LONGVARCHAR, title LONGVARCHAR, "
+                   "visit_count INTEGER DEFAULT 0 NOT NULL, typed_count INTEGER DEFAULT 0 NOT NULL, "
+                   "last_visit_time INTEGER NOT NULL, hidden INTEGER DEFAULT 0 NOT NULL)",
+                   nullptr, nullptr, nullptr)
+                != SQLITE_OK) {
+            sqlite3_close(db);
+            return nullptr;
+        }
+        sqlite3_stmt* insert = nullptr;
+        sqlite3_prepare_v2(db, "INSERT INTO urls(url, title, last_visit_time, hidden) VALUES (?, ?, ?, ?)", -1, &insert, nullptr);
+        for (const Row& row : rows) {
+            sqlite3_bind_text(insert, 1, row.url, -1, SQLITE_STATIC);
+            sqlite3_bind_text(insert, 2, row.title, -1, SQLITE_STATIC);
+            sqlite3_bind_int64(insert, 3, row.lastVisit);
+            sqlite3_bind_int(insert, 4, row.hidden);
+            sqlite3_step(insert);
+            sqlite3_reset(insert);
+        }
+        sqlite3_finalize(insert);
+        return db;
+    }
+    // A local date and time as the history counts it.
+    static long long localMicros(int year, int month, int day, int hour, int minute)
+    {
+        SYSTEMTIME local {};
+        local.wYear = static_cast<WORD>(year);
+        local.wMonth = static_cast<WORD>(month);
+        local.wDay = static_cast<WORD>(day);
+        local.wHour = static_cast<WORD>(hour);
+        local.wMinute = static_cast<WORD>(minute);
+        SYSTEMTIME utc;
+        FILETIME ft;
+        ::TzSpecificLocalTimeToSystemTime(nullptr, &local, &utc);
+        ::SystemTimeToFileTime(&utc, &ft);
+        ULARGE_INTEGER ticks;
+        ticks.LowPart = ft.dwLowDateTime;
+        ticks.HighPart = ft.dwHighDateTime;
+        return static_cast<long long>(ticks.QuadPart / 10);
     }
 };
 

@@ -46,6 +46,10 @@ std::vector<Entry> parseFile(const std::string& content, const std::string& brow
 // open); empty when it cannot be read. Never writes.
 std::string readFile(const std::string& path);
 
+// The files of these names (each with its leading backslash) in every
+// profile of Chrome and Edge under `localAppData`, those that are there.
+std::vector<std::string> profileFiles(const std::string& localAppData, std::initializer_list<const wchar_t*> names);
+
 // Chrome's and Edge's Bookmarks and AccountBookmarks of every profile under
 // `localAppData`, then `extraFile` when it is an existing file, and the
 // AccountBookmarks beside it.

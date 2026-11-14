@@ -242,13 +242,15 @@ std::string readFile(const std::string& path)
     return content;
 }
 
-std::vector<std::string> bookmarkFiles(const std::string& localAppData, const std::string& extraFile)
+static bool isFile(const std::wstring& path)
+{
+    const DWORD attrs = ::GetFileAttributesW(path.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+std::vector<std::string> profileFiles(const std::string& localAppData, std::initializer_list<const wchar_t*> names)
 {
     std::vector<std::string> files;
-    const auto isFile = [](const std::wstring& path) {
-        const DWORD attrs = ::GetFileAttributesW(path.c_str());
-        return attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
-    };
     if (!localAppData.empty()) {
         for (const char* browser : {"\\Google\\Chrome\\User Data", "\\Microsoft\\Edge\\User Data"}) {
             const std::wstring root = winshun::wide(localAppData + browser);
@@ -260,11 +262,7 @@ std::vector<std::string> bookmarkFiles(const std::string& localAppData, const st
                 // Like a glob's "*": not the names that start with a dot.
                 if (found.cFileName[0] == L'.')
                     continue;
-                // Bookmarks is the local list; AccountBookmarks holds the
-                // account's after signing in (Chrome writes it beside the same
-                // profile, and it may be the only one there). Both are read;
-                // the same URL in both is shown once, by search().
-                for (const wchar_t* name : {L"\\Bookmarks", L"\\AccountBookmarks"}) {
+                for (const wchar_t* name : names) {
                     const std::wstring path = root + L"\\" + found.cFileName + name;
                     if (isFile(path))
                         files.push_back(winshun::utf8(path));
@@ -273,6 +271,16 @@ std::vector<std::string> bookmarkFiles(const std::string& localAppData, const st
             ::FindClose(find);
         }
     }
+    return files;
+}
+
+std::vector<std::string> bookmarkFiles(const std::string& localAppData, const std::string& extraFile)
+{
+    // Bookmarks is the local list; AccountBookmarks holds the account's after
+    // signing in (Chrome writes it beside the same profile, and it may be the
+    // only one there). Both are read; the same URL in both is shown once, by
+    // search().
+    std::vector<std::string> files = profileFiles(localAppData, {L"\\Bookmarks", L"\\AccountBookmarks"});
     if (!extraFile.empty() && isFile(winshun::wide(extraFile))) {
         files.push_back(extraFile);
         // The setting names one browser's Bookmarks file; its account list

@@ -2,15 +2,15 @@
   "manifest": 1,
   "id": "winshun.bookmarks",
   "name": {"zh": "浏览器书签", "en": "Browser bookmarks"},
-  "version": "2.0.5",
-  "description": {"zh": "bm 词：搜 Chrome 和 Edge 的书签（含账户书签），支持拼音，Enter 打开", "en": "bm words: searches Chrome and Edge bookmarks, account ones too, by pinyin as well; Enter opens"},
+  "version": "2.1.0",
+  "description": {"zh": "bm 词：搜 Chrome 和 Edge 的书签（含账户书签），支持拼音，Enter 打开；在设置里打开后，bh 词 搜浏览历史", "en": "bm words: searches Chrome and Edge bookmarks, account ones too, by pinyin as well; Enter opens. Once turned on in the settings, bh words searches the browsing history"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
   "license": "MIT",
   "minWinShun": "0.17.0",
   "runtime": {"mode": "once", "program": "WinShunBookmarks.exe", "debounceMs": 100},
   "permissions": [
-    {"files:read": ["%LOCALAPPDATA%\\Google\\Chrome\\User Data\\*\\Bookmarks", "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\*\\AccountBookmarks", "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\*\\Bookmarks", "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\*\\AccountBookmarks"]}
+    {"files:read": ["%LOCALAPPDATA%\\Google\\Chrome\\User Data\\*\\Bookmarks", "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\*\\AccountBookmarks", "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\*\\Bookmarks", "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\*\\AccountBookmarks", "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\*\\History", "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\*\\History"]}
   ],
   "commands": [{
     "id": "bm",
@@ -21,8 +21,18 @@
     "hint": {"zh": "书签的名字、文件夹或网址里的词；名字和文件夹是汉字的话也可以打拼音", "en": "words of a bookmark's name, folder or address; pinyin for Chinese names and folders too"},
     "cache": {"seconds": 60},
     "ai": {"description": "Search the user's Chrome and Edge bookmarks (the local list and the signed-in account's) by words in the title or URL; each item has the title, the folder and the URL (open.url)."}
+  }, {
+    "id": "history",
+    "keyword": ["bh", "ls"],
+    "title": {"zh": "浏览历史", "en": "Browsing history"},
+    "description": {"zh": "搜 Chrome / Edge 打开过的网页，可用拼音；要先在设置里打开", "en": "Search the pages opened in Chrome / Edge, pinyin works; turned on in the settings first"},
+    "icon": "glyph:U+E81C",
+    "hint": {"zh": "网页标题或网址里的词，标题是汉字的话也可以打拼音；不打字是最近打开的网页", "en": "words of a page's title or address, pinyin for Chinese titles too; nothing typed lists the pages last opened"},
+    "cache": {"seconds": 30},
+    "ai": {"description": "Search the user's Chrome and Edge browsing history by words in the page title or URL (only when the user has turned this on in the plugin's settings); each item has the title, the browser, when it was last opened and the URL (open.url). An empty query lists the most recently opened pages."}
   }],
   "settings": [
+    {"key": "history", "type": "bool", "title": {"zh": "搜索浏览历史", "en": "Search the browsing history"}, "hint": {"zh": "打开后，bh 词 搜 Chrome、Edge 打开过的网页（只在这台电脑上读，不上传）；开了“AI 可以使用插件”的话，AI 也能查。关着时不读历史", "en": "On: bh words searches the pages opened in Chrome and Edge (read on this PC only, sent nowhere); with \"AI may use plugins\" on, an AI can search it too. Off: the history is not read"}, "default": false},
     {"key": "extraFile", "type": "file", "title": {"zh": "另外的书签文件", "en": "Another bookmarks file"}, "hint": {"zh": "Chromium 系浏览器的 Bookmarks 文件（Brave、Vivaldi…），和 Chrome、Edge 的一起搜", "en": "A Chromium browser's Bookmarks file (Brave, Vivaldi …), searched with Chrome's and Edge's"}}
   ],
   "ai": {"expose": true}
