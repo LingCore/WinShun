@@ -57,6 +57,7 @@ add_library(wscapture STATIC
     AnnotationFormat.cpp AnnotationFormat.h
     AnnotationStyles.cpp AnnotationStyles.h
     SmartRedact.cpp SmartRedact.h
+    TranslateOverlay.cpp TranslateOverlay.h
     ScrollStitcher.cpp ScrollStitcher.h
     ScrollInput.cpp ScrollInput.h
     ScrollGrabber.cpp ScrollGrabber.h

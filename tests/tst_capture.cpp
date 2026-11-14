@@ -11,6 +11,7 @@
 #include "Geometry.h"
 #include "Hdr.h"
 #include "PrintScreen.h"
+#include "TranslateOverlay.h"
 #include "WindowSnapshot.h"
 
 #include <QDir>
@@ -2031,6 +2032,94 @@ private slots:
         QCOMPARE(ocrOneLine(QString(1000, u'x')).size(), 256);
         QCOMPARE(ocrOneLine(u"x"_s, 3), u"x"_s);
         QCOMPARE(ocrOneLine(u"abcdef"_s, 3), u"abc"_s);
+    }
+
+    // 截图翻译 in place (GitHub #191): the reader's lines as the blocks a translator gets.
+    void ocrLinesBecomeBlocks()
+    {
+        const auto line = [](double x, double y, double w, double h, const QString& text) {
+            RedactLine l;
+            l.quad = QPolygonF({QPointF(x, y), QPointF(x + w, y), QPointF(x + w, y + h), QPointF(x, y + h)});
+            l.text = text;
+            return l;
+        };
+        // A paragraph of three lines (the last one short), a heading above it, two labels under it.
+        QList<RedactLine> page {
+            line(40, 20, 180, 40, u"Heading"_s),
+            line(40, 100, 700, 30, u"Screenshots are read on this computer. Nothing leaves it until you"_s),
+            line(40, 132, 660, 30, u"ask for a translation, and then only the words go to the service"_s),
+            line(40, 164, 270, 30, u"you chose in the settings."_s),
+            line(40, 230, 50, 30, u"File"_s),
+            line(40, 262, 50, 30, u"Edit"_s),
+        };
+        QList<TextBlock> blocks = ocrBlocks(page);
+        QCOMPARE(blocks.size(), 4);
+        QCOMPARE(blocks[0].text, u"Heading"_s);
+        QCOMPARE(blocks[1].text,
+            u"Screenshots are read on this computer. Nothing leaves it until you ask for a translation, and then only the words go to the service you chose in the settings."_s);
+        QCOMPARE(blocks[1].lines, 3);
+        QCOMPARE(blocks[1].box, QRect(40, 100, 700, 94));
+        QCOMPARE(blocks[1].lineHeight, 30.0);
+        QCOMPARE(blocks[2].text, u"File"_s);
+        QCOMPARE(blocks[3].text, u"Edit"_s);
+        // The order the reader gave them in does not matter.
+        std::ranges::reverse(page);
+        QCOMPARE(ocrBlocks(page), blocks);
+
+        // Two columns side by side: each its own paragraph, the lines not mixed across.
+        const QList<TextBlock> columns = ocrBlocks({
+            line(20, 20, 300, 24, u"The left column says one thing and goes"_s),
+            line(400, 20, 300, 24, u"while the right one says another and"_s),
+            line(20, 46, 200, 24, u"on like this."_s),
+            line(400, 46, 180, 24, u"ends here."_s),
+        });
+        QCOMPARE(columns.size(), 2);
+        QCOMPARE(columns[0].text, u"The left column says one thing and goes on like this."_s);
+        QCOMPARE(columns[1].text, u"while the right one says another and ends here."_s);
+
+        // Not one paragraph: another size (a caption), too far below, an indent, a sentence that
+        // ended, a list item, a line that stopped short of the edge.
+        const QString full = u"A line long enough to be running text all the way"_s;
+        QCOMPARE(ocrBlocks({line(20, 20, 400, 24, full), line(20, 46, 200, 16, u"smaller"_s)}).size(), 2);
+        QCOMPARE(ocrBlocks({line(20, 20, 400, 24, full), line(20, 80, 200, 24, u"far below"_s)}).size(), 2);
+        QCOMPARE(ocrBlocks({line(20, 20, 400, 24, full), line(80, 46, 200, 24, u"indented"_s)}).size(), 2);
+        QCOMPARE(ocrBlocks({line(20, 20, 400, 24, full + u'.'), line(20, 46, 200, 24, u"next"_s)}).size(), 2);
+        QCOMPARE(ocrBlocks({line(20, 20, 400, 24, full), line(20, 46, 200, 24, u"- item"_s)}).size(), 2);
+        QCOMPARE(ocrBlocks({line(20, 20, 400, 24, full), line(20, 46, 600, 24, full + full)}).size(), 2);
+        QCOMPARE(ocrBlocks({line(20, 20, 400, 24, full), line(20, 46, 200, 24, u"and on"_s)}).size(), 1);
+        // CJK lines are glued without a space.
+        QCOMPARE(ocrBlocks({line(20, 20, 400, 24, u"这是一段比较长的中文文字，显示到右边"_s), line(20, 46, 120, 24, u"就会换行"_s)}).first().text,
+            u"这是一段比较长的中文文字，显示到右边就会换行"_s);
+        // A turned line is a block of its own, marked; no words, no block.
+        RedactLine turned = line(20, 20, 400, 24, full);
+        turned.quad[1].ry() += 60;
+        turned.quad[2].ry() += 60;
+        const QList<TextBlock> odd = ocrBlocks({turned, line(20, 200, 100, 24, u"  "_s)});
+        QCOMPARE(odd.size(), 1);
+        QVERIFY(!odd.first().level);
+    }
+
+    // The ground's colour from round the words, the words' own from their strokes.
+    void blockColorsFromThePicture()
+    {
+        QImage image(200, 80, QImage::Format_RGB32);
+        image.fill(QColor(32, 34, 40));
+        for (int x = 40; x < 160; x += 6) { // strokes, with a softer edge
+            for (int y = 24; y < 56; ++y) {
+                image.setPixelColor(x, y, QColor(140, 150, 170));
+                image.setPixelColor(x + 1, y, QColor(240, 240, 250));
+                image.setPixelColor(x + 2, y, QColor(240, 240, 250));
+            }
+        }
+        const BlockColors dark = blockColors(image, QRect(36, 20, 128, 40));
+        QCOMPARE(dark.paper, QColor(32, 34, 40));
+        QCOMPARE(dark.ink, QColor(240, 240, 250));
+        // Nothing stands out: black or white by the ground. Off the picture: no crash.
+        image.fill(QColor(250, 250, 250));
+        QCOMPARE(blockColors(image, QRect(36, 20, 128, 40)).ink, QColor(Qt::black));
+        image.fill(QColor(10, 10, 10));
+        QCOMPARE(blockColors(image, QRect(-20, -20, 500, 500)).ink, QColor(Qt::white));
+        QCOMPARE(blockColors(image, QRect(900, 900, 5, 5)).paper, QColor(Qt::white));
     }
 
     // 翻译 (GitHub #191): a sentence the screen cut in two is one again for the translator.

@@ -113,6 +113,21 @@ public:
     // left and the zoom stay, the window follows the new size. A null picture
     // changes nothing. A collapsed pin opens first.
     void setPicture(const QImage& image, QByteArray project);
+    // 截图翻译 (GitHub #191). The picture with its words translated takes
+    // the place of the one shown, which becomes the other side: Tab, or the
+    // menu, turns the pin over (showOtherSide), as often as wanted. `words`:
+    // the translation as text, for the menu's 复制译文. Only for a picture of
+    // the size shown, in full and not changed since `revision` was read
+    // (turned, flipped, edited: revision() counts those); else nothing
+    // happens. Turning, flipping or editing afterwards leaves one side only.
+    bool setTranslation(const QImage& translated, const QString& words, int revision);
+    int revision() const { return m_revision; }
+    bool hasOtherSide() const { return !m_other.isNull(); }
+    bool translationShown() const { return m_translationShown; }
+    const QString& translatedWords() const { return m_translatedWords; }
+    void showOtherSide();
+    // A word in the pill on the picture; `stay`: until the next one (正在翻译…), else for a moment.
+    void note(const QString& text, bool stay = false);
     // Out of sight while it is edited, and back (it keeps its place).
     void setShown(bool shown);
     // Out of sight for 隐藏全部贴图, and back; independent of setShown.
@@ -192,6 +207,7 @@ private:
     void drawTextLayer(QImage& canvas, const QRect& picture);
     void drawHint(QImage& canvas, const QRect& picture); // the zoom or opacity, a moment after it changes
     void showHint(const QString& text); // (re)starts the moment
+    void forgetOtherSide(); // the picture is another now: one side, the next revision
     void showTextPill(); // the text pick's pill (drawTextLayer): (re)starts its moment
     void hintTick(); // the moments' timer: fades the hint and the pill out
     void updatePicked(QPoint cursor);
@@ -216,6 +232,11 @@ private:
     bool m_shown = true;
     bool m_allHidden = false;
     QByteArray m_project;
+    QImage m_other; // the side not shown (the original under its translation, or the other way round); null: none
+    QString m_translatedWords;
+    bool m_translationShown = false;
+    int m_revision = 0;
+    bool m_hintStays = false;
     bool m_dragging = false;
     QPoint m_grab; // the cursor less m_origin at the press
     int m_wheel = 0; // wheel delta not yet a whole notch (touchpads)

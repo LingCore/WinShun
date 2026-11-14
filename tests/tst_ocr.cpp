@@ -5,6 +5,7 @@
 #include "PaddleOcr.h"
 #include "SmartRedact.h"
 #include "CaptureOcr.h"
+#include "TranslateOverlay.h"
 
 #include <QCoreApplication>
 #include <QFont>
@@ -152,6 +153,66 @@ private slots:
         QSignalSpy setup(&reader, &CaptureOcr::translationSetupRequested);
         reader.setupTranslation();
         QCOMPARE(setup.count(), 1);
+    }
+
+    // 截图翻译 in place, the whole way but the service: a page drawn as a
+    // screenshot shows it, read, its blocks' "translations" drawn over the
+    // words, and the result read again: the new words are there, the old gone,
+    // what was not text untouched.
+    void translatedInPlace()
+    {
+        using namespace ws::capture;
+        QFont font(u"Microsoft YaHei UI"_s);
+        font.setPixelSize(22);
+        QImage page(820, 330, QImage::Format_RGB32);
+        page.fill(QColor(250, 250, 252));
+        {
+            QPainter painter(&page);
+            painter.setFont(font);
+            painter.setPen(QColor(30, 30, 36));
+            painter.drawText(30, 50, u"Screenshots are read on this computer. Nothing leaves it"_s);
+            painter.drawText(30, 82, u"until you ask for a translation, and then only the words"_s);
+            painter.drawText(30, 114, u"go to the service you chose."_s);
+            painter.drawText(30, 190, u"Settings"_s);
+            painter.fillRect(QRect(600, 160, 180, 120), QColor(200, 60, 60)); // not text
+            painter.fillRect(QRect(0, 290, 820, 40), QColor(32, 34, 40)); // a dark bar with light words
+            painter.setPen(QColor(235, 235, 240));
+            painter.drawText(30, 318, u"Ready"_s);
+        }
+        CaptureOcr reader;
+        QList<RedactLine> lines;
+        bool done = false;
+        reader.scan(page, 1.5, [&](QList<RedactLine> read) { lines = std::move(read); done = true; });
+        QTRY_VERIFY_WITH_TIMEOUT(done, 15000);
+        const QList<TextBlock> blocks = ocrBlocks(lines);
+        QStringList found;
+        for (const TextBlock& b : blocks)
+            found.append(b.text);
+        QVERIFY2(blocks.size() == 3, qPrintable(found.join(u" | "_s)));
+        QCOMPARE(blocks[0].lines, 3);
+        QVERIFY2(blocks[0].text.startsWith(u"Screenshots are read"_s) && blocks[0].text.endsWith(u"you chose."_s), qPrintable(blocks[0].text));
+        QCOMPARE(blocks[1].text, u"Settings"_s);
+        QCOMPARE(blocks[2].text, u"Ready"_s);
+
+        QCOMPARE(translatedPicture(page, blocks, {u"one"_s}, font), QImage()); // not a translation a block
+        const QStringList translations {u"截图在这台电脑上识别，在你要求翻译之前什么都不会离开；翻译时也只有文字会发给你选的服务。"_s, u"设置"_s, u"就绪"_s};
+        const QImage translated = translatedPicture(page, blocks, translations, font);
+        QCOMPARE(translated.size(), page.size());
+        QCOMPARE(translated.copy(600, 160, 180, 120), page.copy(600, 160, 180, 120).convertToFormat(QImage::Format_RGB32)); // the red box
+        QCOMPARE(translated.pixelColor(810, 20), QColor(250, 250, 252));
+        QCOMPARE(translated.pixelColor(400, 325), QColor(32, 34, 40)); // the bar is still the bar
+        const QString again = read(translated);
+        QVERIFY2(again.contains(u"截图在这台电脑上识别"_s) && again.contains(u"你选的服务"_s), qPrintable(again));
+        QVERIFY2(again.contains(u"设置"_s) && again.contains(u"就绪"_s), qPrintable(again));
+        QVERIFY2(!again.contains(u"Screenshots"_s) && !again.contains(u"Settings"_s) && !again.contains(u"Ready"_s), qPrintable(again));
+
+        // The other way: longer words than the label's box holds run on over the empty ground beside it.
+        const QImage longer = translatedPicture(page, blocks, {QString(), u"Settings and preferences"_s, QString()}, font);
+        const QString wide = read(longer);
+        QVERIFY2(wide.contains(u"Settings and preferences"_s), qPrintable(wide));
+        QVERIFY2(wide.contains(u"Screenshots are read"_s) && wide.contains(u"Ready"_s), qPrintable(wide)); // no translation: as they were
+        // The same words as there were: nothing drawn.
+        QCOMPARE(translatedPicture(page, blocks, found, font), page.convertToFormat(QImage::Format_RGB32));
     }
 
     // 翻译 on the toolbar: read, then asked for at once.

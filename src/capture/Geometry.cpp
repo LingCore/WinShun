@@ -577,6 +577,20 @@ bool startsListItem(const QString& line)
 
 } // namespace
 
+bool ocrGoesOn(const QString& line, const QString& next)
+{
+    return !endsSentence(line) && !startsListItem(next);
+}
+
+void ocrGlue(QString& text, const QString& next)
+{
+    if (text.back() == u'-' && text.size() > 1 && text[text.size() - 2].isLetter() && next.front().isLower())
+        text.chop(1); // "trans-" + "lation"
+    else if (!(wideChar(text.back()) && wideChar(next.front())))
+        text += u' ';
+    text += next;
+}
+
 QString ocrParagraphs(const QString& text, int most)
 {
     QStringList lines;
@@ -594,17 +608,13 @@ QString ocrParagraphs(const QString& text, int most)
             goesOn = false;
             continue;
         }
-        if (!out.isEmpty()) {
-            if (!goesOn)
-                out += u'\n';
-            else if (out.back() == u'-' && out.size() > 1 && out[out.size() - 2].isLetter() && line.front().isLower())
-                out.chop(1); // "trans-" + "lation"
-            else if (!(wideChar(out.back()) && wideChar(line.front())))
-                out += u' ';
-        }
-        out += line;
-        goesOn = columnsOf(line) >= full && !endsSentence(line) && i + 1 < lines.size() && !lines[i + 1].isEmpty()
-            && !startsListItem(lines[i + 1]);
+        if (out.isEmpty())
+            out = line;
+        else if (goesOn)
+            ocrGlue(out, line);
+        else
+            out += u'\n' + line;
+        goesOn = columnsOf(line) >= full && i + 1 < lines.size() && !lines[i + 1].isEmpty() && ocrGoesOn(line, lines[i + 1]);
     }
     return out.left(most).trimmed();
 }

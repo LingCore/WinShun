@@ -190,7 +190,7 @@ Request buildRequest(const Settings& settings, const std::string& text, const st
               "examples (up to 2 objects with text and translation strings). "
               "For an unknown word return empty definitions. Do not invent a meaning."
         : "Translate the following text into " + englishName(target)
-            + ". Reply with the translation only, no explanations.";
+            + ". Keep the line breaks: each line of the text is one line of the translation, in the same order. Reply with the translation only, no explanations.";
     r.body = Json(Json::Object {
                       {"model", settings.model.empty() ? "gpt-4o-mini" : settings.model},
                       {"temperature", 0},

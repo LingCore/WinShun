@@ -373,12 +373,12 @@ Item {
         Separator { visible: bar.recognizeShown }
 
         OcrButton { visible: bar.shows("ocr") }
-        ActionButton { // GitHub #191: the words read and translated at once, both in the OCR window
+        ActionButton { // GitHub #191: a pin where the selection is, its words translated in place
             id: translateButton
             visible: bar.shows("translate")
             glyph: String.fromCharCode(0xE8C1) // Translate
             name: qsTr("翻译")
-            tipText: qsTr("翻译：识别图里的文字并翻译，用“翻译”插件里设好的服务")
+            tipText: qsTr("翻译：把图里的文字翻译好，贴在原来的位置；用“翻译”插件里设好的服务")
             onClicked: bar.act(CaptureSession.OcrTranslate)
         }
         ActionButton {

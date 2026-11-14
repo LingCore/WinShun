@@ -386,7 +386,7 @@ private slots:
         QCOMPARE(messages.size(), std::size_t(2));
         QCOMPARE(QString::fromStdString(messages[0]["role"].toString()), QString::fromUtf8("system"));
         QCOMPARE(QString::fromStdString(messages[0]["content"].toString()),
-            QString::fromUtf8("Translate the following text into English. Reply with the translation only, no explanations."));
+            QString::fromUtf8("Translate the following text into English. Keep the line breaks: each line of the text is one line of the translation, in the same order. Reply with the translation only, no explanations."));
         QCOMPARE(QString::fromStdString(messages[1]["role"].toString()), QString::fromUtf8("user"));
         QCOMPARE(QString::fromStdString(messages[1]["content"].toString()), QString::fromUtf8("He said \"go\"\\n\n\tok 你好 😀"));
 

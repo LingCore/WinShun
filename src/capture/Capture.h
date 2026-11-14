@@ -85,7 +85,7 @@ public:
         std::function<void(const QImage&, double dpr, const QRect& where)> ocr;
         // 识别文字并复制 / 搜索 / 网页搜索 (the mouse buttons' choices): read, then go
         // on at once with `then` (OcrCopy, OcrSearch or OcrWeb) without the window;
-        // OcrTranslate: the window, which translates them as soon as they are read.
+        // OcrTranslate: a pin with them translated in place (the app decides; the window when that cannot be).
         std::function<void(const QImage&, double dpr, const QRect& where, CaptureSession::Action then)> ocrThen;
         // 识别屏幕文字 (triggerOcr, #198): the region picked, to be read and its
         // words copied; it is in no history and is not the last capture.

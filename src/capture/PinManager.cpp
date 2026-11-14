@@ -33,7 +33,9 @@ enum MenuCommand {
     ExpandCommand,
     CloseOthersCommand,
     HideAllCommand,
-    AllTopmostCommand
+    AllTopmostCommand,
+    OtherSideCommand,
+    CopyTranslationCommand
 };
 
 shell::MenuItem command(int id, QString text, char16_t glyph, bool checked = false, bool enabled = true)
@@ -63,9 +65,9 @@ PinManager::~PinManager()
     m_closing.clear();
 }
 
-void PinManager::pin(const QImage& image, QPoint origin, bool screenshot, QByteArray project)
+PinWindow* PinManager::pin(const QImage& image, QPoint origin, bool screenshot, QByteArray project)
 {
-    add(image, origin, screenshot, std::move(project), std::nullopt);
+    return add(image, origin, screenshot, std::move(project), std::nullopt);
 }
 
 void PinManager::pinFitted(const QImage& image, QPoint origin, QPoint anchor, bool screenshot)
@@ -73,10 +75,10 @@ void PinManager::pinFitted(const QImage& image, QPoint origin, QPoint anchor, bo
     add(image, origin, screenshot, {}, anchor);
 }
 
-void PinManager::add(const QImage& image, QPoint origin, bool screenshot, QByteArray project, std::optional<QPoint> fitAbout)
+PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, QByteArray project, std::optional<QPoint> fitAbout)
 {
     if (image.isNull())
-        return;
+        return nullptr;
     PinWindow::Host host;
     host.closed = [this](PinWindow* pin) { closed(pin); };
     host.menu = [this](PinWindow* pin, POINT at) { showMenu(pin, at); };
@@ -123,8 +125,10 @@ void PinManager::add(const QImage& image, QPoint origin, bool screenshot, QByteA
     pin->setProject(std::move(project));
     pin->setDoubleClick(m_doubleClick);
     pin->setKeys(m_keys);
-    if (pin->hwnd())
-        m_pins.push_back(std::move(pin));
+    if (!pin->hwnd())
+        return nullptr;
+    m_pins.push_back(std::move(pin));
+    return m_pins.back().get();
 }
 
 bool PinManager::contains(const PinWindow* pin) const
@@ -276,6 +280,11 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         command(SaveAsCommand, tr("另存为…"), 0xE74E),
         shell::MenuItem::separator(),
     };
+    if (full && pin->hasOtherSide()) { // 截图翻译 (#191): the translation is one side, the original the other
+        items.push_back(command(OtherSideCommand, (pin->translationShown() ? tr("显示原文") : tr("显示译文")) + u"\tTab"_s, 0xE8C1));
+        items.push_back(command(CopyTranslationCommand, tr("复制译文"), 0xE8C8));
+        items.push_back(shell::MenuItem::separator());
+    }
     if (full) {
         items.push_back(command(EditCommand, tr("编辑") + hint(KeyAction::PinEdit), 0xE70F));
         items.push_back(command(OcrCommand, ocr + hint(KeyAction::PinOcr), 0xE8A5));
@@ -326,6 +335,13 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
     case OcrCommand:
         if (m_callbacks.ocr)
             m_callbacks.ocr(pin->image(), pin->dpr(), pin->pictureRect());
+        break;
+    case OtherSideCommand:
+        pin->showOtherSide();
+        break;
+    case CopyTranslationCommand:
+        if (m_callbacks.copyText)
+            m_callbacks.copyText(pin->translatedWords());
         break;
     case PickTextCommand:
         if (pin->textMode())

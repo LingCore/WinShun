@@ -300,8 +300,8 @@
         <translation>Translate</translation>
     </message>
     <message>
-        <source>翻译：识别图里的文字并翻译，用“翻译”插件里设好的服务</source>
-        <translation>Translate: reads the words in the picture and translates them with the service set in the Translate plugin</translation>
+        <source>翻译：把图里的文字翻译好，贴在原来的位置；用“翻译”插件里设好的服务</source>
+        <translation>Translate: pins the picture where it is with its words translated in place, using the service set in the Translate plugin</translation>
     </message>
     <message>
         <source>延时</source>
@@ -2299,6 +2299,18 @@ click here to cancel</translation>
 <context>
     <name>ws::capture::PinManager</name>
     <message>
+        <source>显示原文</source>
+        <translation>Show the original</translation>
+    </message>
+    <message>
+        <source>显示译文</source>
+        <translation>Show the translation</translation>
+    </message>
+    <message>
+        <source>复制译文</source>
+        <translation>Copy the translation</translation>
+    </message>
+    <message>
         <source>关闭其他</source>
         <translation>Close the others</translation>
     </message>
@@ -2560,6 +2572,18 @@ Original video kept at: %2</translation>
 </context>
 <context>
     <name>ws::captureplugin::CaptureApp</name>
+    <message>
+        <source>正在翻译…</source>
+        <translation>Translating…</translation>
+    </message>
+    <message>
+        <source>没有找到文字</source>
+        <translation>No text found</translation>
+    </message>
+    <message>
+        <source>Tab 看原文</source>
+        <translation>Tab shows the original</translation>
+    </message>
     <message>
         <source>“%1” 已被其他程序或系统占用，请换一个。</source>
         <translation>“%1” is already used by another program or by Windows. Please choose another.</translation>

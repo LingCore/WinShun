@@ -86,6 +86,11 @@ private:
     capture::SmartHooks smartHooks();
     void showCaptureOcr(const QImage& image, double dpr, const QRect& where, const QStringList* texts = nullptr, bool translate = false);
     void closeCaptureOcr(bool destroy = false);
+    // 截图翻译 (GitHub #191): a pin where the picture was taken, its words
+    // translated in place once the translation is back (TranslateOverlay).
+    // Whatever stands in the way (no reader, no service, an answer that does
+    // not match the blocks) goes to the OCR window instead, which says so.
+    void translateInPlace(const QImage& image, double dpr, const QRect& where);
     // Bubble: 识别屏幕文字's, copied and said in the card by the region.
     enum class OcrThen { Copy, Search, Web, Bubble };
     void captureOcrThen(const QImage& image, double dpr, const QRect& where, OcrThen then);
@@ -141,6 +146,8 @@ private:
     std::unique_ptr<capture::CaptureOcr> m_captureOcr;
     std::unique_ptr<capture::CaptureOcr> m_quickOcr;
     OcrThen m_quickOcrThen = OcrThen::Copy;
+    std::unique_ptr<capture::CaptureOcr> m_translateOcr; // translateInPlace's reader, while it reads
+    int m_translateTicket = 0; // the latest translateInPlace: an older one's answers are dropped
     QRect m_quickOcrWhere; // the region read, physical: the card goes by it
     std::unique_ptr<WindowFrame> m_bubbleFrame;
     QPointer<QQuickWindow> m_bubbleWindow;

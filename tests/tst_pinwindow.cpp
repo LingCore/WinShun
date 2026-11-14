@@ -41,6 +41,51 @@ private slots:
         QVERIFY(!pin.textMode());
         QCOMPARE(pin.textHintAlpha(), 0);
     }
+
+    // 截图翻译 (GitHub #191): the translation over the original, the original its other side.
+    void translationAndItsOtherSide()
+    {
+        QImage original(320, 200, QImage::Format_RGB32);
+        original.fill(Qt::white);
+        QImage translated(320, 200, QImage::Format_RGB32);
+        translated.fill(Qt::yellow);
+        PinWindow pin(original, QPoint(40, 40), PinWindow::Host {});
+        QVERIFY(pin.hwnd());
+        QVERIFY(!pin.hasOtherSide() && !pin.translationShown());
+        pin.showOtherSide(); // none: nothing
+        QCOMPARE(pin.image(), original);
+        pin.note(QStringLiteral("…"), true);
+
+        const int revision = pin.revision();
+        QVERIFY(!pin.setTranslation(translated.copy(0, 0, 100, 100), QStringLiteral("x"), revision)); // not this picture's size
+        QVERIFY(!pin.setTranslation(translated, QStringLiteral("x"), revision + 1)); // not this picture any more
+        QVERIFY(!pin.hasOtherSide());
+        QVERIFY(pin.setTranslation(translated, QStringLiteral("words"), revision));
+        QVERIFY(pin.hasOtherSide() && pin.translationShown());
+        QCOMPARE(pin.image(), translated);
+        QCOMPARE(pin.translatedWords(), QStringLiteral("words"));
+        const QRect place = pin.pictureRect();
+        pin.showOtherSide();
+        QVERIFY(pin.hasOtherSide() && !pin.translationShown());
+        QCOMPARE(pin.image(), original);
+        QCOMPARE(pin.pictureRect(), place);
+        ::SendMessageW(pin.hwnd(), WM_KEYDOWN, VK_TAB, 0); // Tab turns it over
+        QVERIFY(pin.translationShown());
+        QCOMPARE(pin.image(), translated);
+        QCOMPARE(pin.revision(), revision); // turning it over is not another picture
+
+        pin.flip(true); // another picture now: one side
+        QVERIFY(!pin.hasOtherSide() && !pin.translationShown() && pin.translatedWords().isEmpty());
+        QVERIFY(pin.revision() != revision);
+        ::SendMessageW(pin.hwnd(), WM_KEYDOWN, VK_TAB, 0);
+        QVERIFY(!pin.translationShown());
+        QVERIFY(pin.setTranslation(translated, QStringLiteral("again"), pin.revision()));
+        pin.rotate(true);
+        QVERIFY(!pin.hasOtherSide());
+        QVERIFY(pin.setTranslation(translated.transformed(QTransform().rotate(90)), QStringLiteral("again"), pin.revision()));
+        pin.setPicture(original, {});
+        QVERIFY(!pin.hasOtherSide());
+    }
 };
 
 QTEST_MAIN(TestPinWindow)

@@ -220,7 +220,7 @@ public:
     // (Q); Delay: this capture ends and the next begins after the countdown (Ctrl+Shift+D).
     // Save: into the chosen save folder, or Save As when none was chosen (#194);
     // SavePrevious: into the folder without a picker; SaveAs: always the picker.
-    // OcrTranslate: its words read and translated at once, both in the OCR window (GitHub #191).
+    // OcrTranslate: pinned where it is, its words translated in place (GitHub #191).
     enum class Action { Copy, Save, Cancel, Pin, Ocr, OcrCopy, OcrSearch, OcrWeb, Long, Qr, Delay, CopyPin, Record, SavePrevious, SaveAs, OcrTranslate };
     Q_ENUM(Action)
     static constexpr int kLongMinimum = 48;

@@ -17,6 +17,7 @@
 #include "Keycaps.h"
 #include "PictureFile.h"
 #include "PinManager.h"
+#include "TranslateOverlay.h"
 #include "PinImage.h"
 #include "PinWindow.h"
 #include "PrintScreen.h"
@@ -449,7 +450,7 @@ void CaptureApp::apply()
         callbacks.ocrThen = [this](const QImage& image, double dpr, const QRect& where, capture::CaptureSession::Action then) {
             using Action = capture::CaptureSession::Action;
             if (then == Action::OcrTranslate) {
-                showCaptureOcr(image, dpr, where, nullptr, true);
+                translateInPlace(image, dpr, where);
                 return;
             }
             captureOcrThen(image, dpr, where,
@@ -1021,8 +1022,71 @@ void CaptureApp::closeCaptureOcr(bool destroy)
     if (destroy) {
         m_ocrFrame.reset();
         m_quickOcr.reset();
+        m_translateOcr.reset();
         m_captureOcr.reset(); // its thread, and the reader if still loaded
     }
+}
+
+void CaptureApp::translateInPlace(const QImage& image, double dpr, const QRect& where)
+{
+    capture::PinWindow* pin = capture::CaptureOcr::available() ? pins().pin(image, where.topLeft()) : nullptr;
+    if (!pin) {
+        showCaptureOcr(image, dpr, where, nullptr, true);
+        return;
+    }
+    pin->note(tr("正在翻译…"), true);
+    const int ticket = ++m_translateTicket;
+    const int revision = pin->revision();
+    // The pin as it is when an answer comes: gone, or another picture by then, is no pin.
+    const auto still = [this, pin, revision]() -> capture::PinWindow* {
+        return m_pins && m_pins->contains(pin) && pin->revision() == revision ? pin : nullptr;
+    };
+    // The OCR window instead, with the words and what is in the way; the pin was only the picture.
+    const auto instead = [this, still, image, dpr, where] {
+        if (capture::PinWindow* p = still())
+            p->close();
+        showCaptureOcr(image, dpr, where, nullptr, true);
+    };
+    if (!m_translateOcr)
+        m_translateOcr = std::make_unique<capture::CaptureOcr>();
+    m_translateOcr->scan(image, dpr, [this, ticket, still, instead, image](QList<capture::RedactLine> lines) {
+        if (ticket != m_translateTicket)
+            return; // another translation was asked for: this pin stays as the picture
+        m_translateOcr.release()->deleteLater(); // its thread and reader go with it
+        const QList<capture::TextBlock> blocks = capture::ocrBlocks(lines);
+        QStringList words;
+        for (const capture::TextBlock& block : blocks)
+            words.append(block.text);
+        const QString text = words.join(u'\n'); // a block a line: the translation comes back a line a block
+        if (blocks.isEmpty()) {
+            if (capture::PinWindow* p = still())
+                p->note(tr("没有找到文字"));
+            return;
+        }
+        if (text.size() > capture::CaptureOcr::kMaxTranslate) {
+            instead();
+            return;
+        }
+        QPointer<CaptureApp> self(this);
+        m_protocol.tool(u"translate_text"_s, {{u"text"_s, text}},
+            [self, ticket, still, instead, image, blocks](const QJsonValue& result, const QString&) {
+                if (!self || ticket != self->m_translateTicket)
+                    return;
+                const QJsonObject answer = result.toObject();
+                QStringList translations = answer.value(u"text"_s).toString().split(u'\n', Qt::SkipEmptyParts);
+                if (answer.value(u"state"_s).toString() != u"ok" || translations.size() != blocks.size()) {
+                    instead(); // no service, no plugin, failed, an older Win顺, or lines that are not the blocks
+                    return;
+                }
+                capture::PinWindow* p = still();
+                if (!p)
+                    return;
+                const QImage translated = capture::translatedPicture(image, blocks, translations, QGuiApplication::font());
+                if (p->setTranslation(translated, translations.join(u'\n'), p->revision()))
+                    p->note(self->tr("Tab 看原文"));
+                self->m_idleTrim->poke();
+            });
+    });
 }
 
 // The mouse buttons' 识别文字并复制 / 搜索 / 网页搜索: read on a reader of its

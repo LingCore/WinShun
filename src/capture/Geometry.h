@@ -185,6 +185,12 @@ QString ocrOneLine(const QString& text, int most = 256);
 // CJK characters, and a word hyphenated at the break whole again. The other
 // line breaks stay, empty lines go; cut at `most` characters.
 QString ocrParagraphs(const QString& text, int most);
+// What the words say about it (both lines trimmed, not empty): false when
+// `line` ends its sentence or `next` starts a list item.
+bool ocrGoesOn(const QString& line, const QString& next);
+// `next` on the end of `text`, as one sentence: a space between, none between
+// two CJK characters, a word hyphenated at the break whole again.
+void ocrGlue(QString& text, const QString& next);
 inline constexpr int kRunningColumns = 24;
 
 // A window of `box` beside `anchor`: right of it, else left, else under,

@@ -12,6 +12,7 @@
 #include <windowsx.h>
 
 #include <algorithm>
+#include <utility>
 #include <cmath>
 #include <cstring>
 #include <thread>
@@ -319,6 +320,7 @@ void PinWindow::showHint(const QString& text)
     if (!m_hwnd)
         return;
     m_hint = text;
+    m_hintStays = false;
     m_hintSince = QDateTime::currentMSecsSinceEpoch();
     m_hintAlpha = 255;
     ::SetTimer(m_hwnd, kHintTimer, 40, nullptr); // restarts the count while it runs
@@ -336,7 +338,7 @@ void PinWindow::showTextPill()
 void PinWindow::hintTick()
 {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    const int hint = m_hintSince ? fadedAlpha(now - m_hintSince, kHintHoldMs) : 0;
+    const int hint = m_hintStays ? 255 : m_hintSince ? fadedAlpha(now - m_hintSince, kHintHoldMs) : 0;
     // The pill stays while the words are still being read: it says so.
     const int pill = m_text == Text::Reading ? 255 : m_pillSince ? fadedAlpha(now - m_pillSince, kPillHoldMs) : 0;
     if (hint <= 0 && pill <= 0)
@@ -468,7 +470,49 @@ void PinWindow::setPicture(const QImage& image, QByteArray project)
     m_imageSize = m_image.size();
     m_scaled = {};
     m_project = std::move(project);
+    forgetOtherSide();
     render();
+}
+
+bool PinWindow::setTranslation(const QImage& translated, const QString& words, int revision)
+{
+    if (!m_hwnd || m_form != PinForm::Full || m_image.isNull() || revision != m_revision || translated.size() != m_imageSize)
+        return false;
+    endTextPick();
+    m_other = std::exchange(m_image, translated.convertToFormat(QImage::Format_RGB32));
+    m_translatedWords = words;
+    m_translationShown = true;
+    m_scaled = {};
+    m_project.clear(); // the annotations are in the picture now, under the new words or beside them
+    render();
+    return true;
+}
+
+void PinWindow::showOtherSide()
+{
+    if (!m_hwnd || m_form != PinForm::Full || m_image.isNull() || m_other.isNull())
+        return;
+    endTextPick();
+    std::swap(m_image, m_other);
+    m_translationShown = !m_translationShown;
+    m_scaled = {};
+    render();
+}
+
+void PinWindow::forgetOtherSide()
+{
+    ++m_revision;
+    m_other = {};
+    m_translatedWords.clear();
+    m_translationShown = false;
+}
+
+void PinWindow::note(const QString& text, bool stay)
+{
+    showHint(text);
+    m_hintStays = stay;
+    if (m_form == PinForm::Full)
+        render(); // showHint leaves the drawing to what changed the zoom or the opacity
 }
 
 void PinWindow::setShown(bool shown)
@@ -562,6 +606,7 @@ void PinWindow::rotate(bool clockwise)
     m_scaled = {};
     m_origin = recenteredOrigin(before, zoomedSize(m_imageSize, m_zoom));
     m_project.clear(); // the annotations were drawn on the other way up
+    forgetOtherSide();
     render();
 }
 
@@ -573,6 +618,7 @@ void PinWindow::flip(bool horizontal)
     m_image = flippedImage(m_image, horizontal);
     m_scaled = {};
     m_project.clear();
+    forgetOtherSide();
     render();
 }
 
@@ -956,6 +1002,10 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             break;
         if (ctrl)
             break;
+        if (wParam == VK_TAB && !shift && hasOtherSide()) { // the original under its translation, and back
+            showOtherSide();
+            return 0;
+        }
         const int step = shift ? 10 : 1;
         switch (wParam) {
         case VK_LEFT:
