@@ -6452,6 +6452,16 @@ bool checkAppsGrid(QQmlEngine* qmlEngine, const QDir& output)
     say(u"jsq: %1 tile(s), first \"%2\""_s.arg(count()).arg(count() > 0 ? name(0) : QString()));
     check(count() > 0 && count() < counts.value(2), u"the pinyin initials jsq did not narrow the apps"_s);
     check(saveGrab(window, output.filePath(u"apps-typed.png"_s)), u"render the typed search"_s);
+    // What Windows lists the software under, not what its shortcuts are called
+    // (said, not checked: it is this PC's own software).
+    for (const QString& typed : {u"microsoft office"_s, u"office ltsc"_s, u"visio"_s, u"blender foundation"_s}) {
+        launcher.setQuery(typed);
+        settle(window, 4);
+        QStringList found;
+        for (int i = 0; i < qMin(count(), 6); ++i)
+            found.append(name(i));
+        say(u"%1: %2 tile(s): %3"_s.arg(typed).arg(count()).arg(found.join(u", "_s)));
+    }
     launcher.setQuery(u"zzzqqqxxx"_s);
     settle(window, 4);
     check(count() == 0 && !window->property("showEmptyState").toBool(), u"nothing found is not the grid's own line alone"_s);

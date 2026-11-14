@@ -9758,7 +9758,9 @@ private slots:
             {u"Telegram Desktop"_s, uR"(C:\Telegram-2)"_s}, // another folder
         };
         addInstalledNames(apps, installed);
-        QCOMPARE(apps[0].installedNames, (std::vector<std::string> {"Microsoft Office LTSC 专业增强版 2024 - zh-cn",
+        // Visio's name says Visio: its alone, though Word is in the same folder.
+        QCOMPARE(apps[0].installedNames, std::vector<std::string> {"Microsoft Office LTSC 专业增强版 2024 - zh-cn"});
+        QCOMPARE(apps[1].installedNames, (std::vector<std::string> {"Microsoft Office LTSC 专业增强版 2024 - zh-cn",
                                              "Microsoft Visio LTSC 专业版 2024 - zh-cn"}));
         QCOMPARE(apps[2].installedNames, std::vector<std::string> {"7-Zip 25.01 (x64)"});
         QVERIFY(apps[3].installedNames.empty()); // not installed in that folder
@@ -9767,8 +9769,12 @@ private slots:
         QVERIFY(apps[0].aliases.empty()); // apps.txt's are another matter
         QCOMPARE(names(apps, u"office ltsc"_s), (QStringList {u"Word"_s, u"Visio"_s}));
         QCOMPARE(names(apps, u"7-zip 25"_s), QStringList {u"7-Zip File Manager"_s});
-        // The app named so comes before the one that only came with it.
-        QCOMPARE(names(apps, u"visio"_s), (QStringList {u"Visio"_s, u"Word"_s}));
+        QCOMPARE(names(apps, u"visio"_s), QStringList {u"Visio"_s});
+        // An app named so itself comes before those that only came with it.
+        QCOMPARE(names(apps, u"addin"_s).value(0), u"Addin Manager"_s);
+        QStringList office = names(apps, u"office"_s); // each by the name of the folder it is in
+        office.sort();
+        QCOMPARE(office, (QStringList {u"Addin Manager"_s, u"Visio"_s, u"Word"_s}));
         // Never the exact match, typed in full or not.
         {
             const ParsedQuery query = ws::parseQuery(u"7-Zip 25.01 (x64)"_s);

@@ -1067,8 +1067,39 @@ std::vector<InstalledName> installedNames()
     return names;
 }
 
+namespace {
+
+// Whether `name` holds `word` as words of its own: "Microsoft Visio LTSC 2024"
+// holds "Visio", not "Vis".
+bool holdsWord(const QString& name, const QString& word)
+{
+    if (word.size() < 2)
+        return false;
+    for (qsizetype at = name.indexOf(word, 0, Qt::CaseInsensitive); at >= 0;
+        at = name.indexOf(word, at + 1, Qt::CaseInsensitive)) {
+        const qsizetype end = at + word.size();
+        if ((at == 0 || !name[at - 1].isLetterOrNumber()) && (end == name.size() || !name[end].isLetterOrNumber()))
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
 void addInstalledNames(AppList& apps, const std::vector<InstalledName>& names)
 {
+    const auto installedIn = [](const AppInfo& app, const InstalledName& one) {
+        return app.kind == AppKind::Desktop && inFolder(app.target, one.folder);
+    };
+    // A name that says one of the folder's apps is that app's alone: Visio is
+    // installed in Office's folder under "Microsoft Visio LTSC 2024", and
+    // "visio" is not to bring Word and Excel along.
+    std::vector<bool> ofOneApp(names.size());
+    for (std::size_t n = 0; n < names.size(); ++n) {
+        ofOneApp[n] = std::ranges::any_of(apps, [&](const AppInfo& app) {
+            return installedIn(app, names[n]) && holdsWord(names[n].name, app.name);
+        });
+    }
     for (AppInfo& app : apps) {
         app.installedNames.clear();
         if (app.kind != AppKind::Desktop || app.target.isEmpty())
@@ -1080,8 +1111,11 @@ void addInstalledNames(AppList& apps, const std::vector<InstalledName>& names)
         }
         if (deepest == 0)
             continue;
-        for (const InstalledName& one : names) {
+        for (std::size_t n = 0; n < names.size(); ++n) {
+            const InstalledName& one = names[n];
             if (one.folder.size() != deepest || !inFolder(app.target, one.folder))
+                continue;
+            if (ofOneApp[n] && !holdsWord(one.name, app.name))
                 continue;
             if (sameFolded(one.name, app.name) || app.otherNames.contains(one.name, Qt::CaseInsensitive))
                 continue; // found by that name already, and at its full worth

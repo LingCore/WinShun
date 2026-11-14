@@ -183,7 +183,9 @@ bool sharedInstallFolder(const QString& folder, const QStringList& shared);
 // (AppInfo::installedNames): "Microsoft Office" finds Word and Excel, "7-Zip
 // 25.01 (x64)" finds 7-Zip File Manager. Only the names of the deepest such
 // folder: a suite's name is not given to the program installed in a folder of
-// its own inside it. Not a name the app has already.
+// its own inside it; and a name that says one of the folder's apps ("Microsoft
+// Visio LTSC 2024", Visio being in Office's folder) is given to that app alone.
+// Not a name the app has already.
 void addInstalledNames(AppList& apps, const std::vector<InstalledName>& names);
 
 // How often at most AppCatalog asks the disk whether the programs are
