@@ -1,13 +1,16 @@
 #include "UiFont.h"
 
+#include <QCollator>
 #include <QDir>
 #include <QFile>
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QJsonArray>
 
-#include <optional>
 #include <algorithm>
+#include <optional>
+
+#include <windows.h>
 
 using namespace Qt::StringLiterals;
 
@@ -15,6 +18,37 @@ namespace ws::uifont {
 namespace {
 std::optional<QFont> defaultFont;
 QJsonObject loaded;
+
+// The installed outline fonts Windows has under `face`, or all of them for an
+// empty one, by the names it lists them under for this user: "霞鹜文楷" on a
+// Chinese system, also when asked for "LXGW WenKai". Windows is asked, not
+// QFontDatabase::families(): that list has a family under one of its names or
+// the other, or not at all, by the font engine and by what was drawn so far
+// (GitHub #325: "LXGW WenKai", chosen from it, was not in it at the next
+// start, and the default font came back). No vertical ("@") faces, no bitmap
+// fonts (the FreeType engine draws outlines).
+QStringList installed(const QString& face = {})
+{
+    LOGFONTW ask {};
+    ask.lfCharSet = DEFAULT_CHARSET;
+    if (face.size() >= LF_FACESIZE)
+        return {}; // longer than a face name can be
+    face.toWCharArray(ask.lfFaceName);
+    QStringList names;
+    const HDC screen = ::GetDC(nullptr);
+    ::EnumFontFamiliesExW(
+        screen, &ask,
+        [](const LOGFONTW* font, const TEXTMETRICW*, DWORD type, LPARAM out) -> int {
+            const QString name = QString::fromWCharArray(font->lfFaceName);
+            auto& names = *reinterpret_cast<QStringList*>(out);
+            if ((type & TRUETYPE_FONTTYPE) && !name.startsWith(u'@') && !names.contains(name))
+                names.append(name); // once, not for each of its scripts
+            return 1;
+        },
+        reinterpret_cast<LPARAM>(&names), 0);
+    ::ReleaseDC(nullptr, screen);
+    return names;
+}
 }
 
 QJsonObject initialize()
@@ -48,27 +82,43 @@ QJsonObject initialize()
 
 QStringList families()
 {
-    auto result = QFontDatabase::families();
-    result.removeIf([](const QString& family) {
-        return family.startsWith(u'@') || QFontDatabase::isPrivateFamily(family);
-    });
+    QStringList result = installed();
+    QCollator order; // the user's own: Chinese names by pinyin on a Chinese system
+    order.setCaseSensitivity(Qt::CaseInsensitive);
+    order.setNumericMode(true);
+    std::ranges::sort(result, [&order](const QString& a, const QString& b) { return order.compare(a, b) < 0; });
     // Readable Windows CJK faces stay easy to find among large font collections.
-    for (const QString& family : {u"Microsoft YaHei"_s, u"Microsoft YaHei UI"_s}) {
+    for (const QString& family : {u"Microsoft YaHei"_s, u"微软雅黑"_s, u"Microsoft YaHei UI"_s}) {
         if (result.removeOne(family))
             result.prepend(family);
     }
     return result;
 }
 
+QString listedFamily(const QString& family)
+{
+    if (family.isEmpty())
+        return {};
+    const QStringList names = installed(family);
+    // Its own spelling when Windows lists it so too (a font named in two
+    // languages at once), else the name the list has it under.
+    for (const QString& name : names) {
+        if (name.compare(family, Qt::CaseInsensitive) == 0)
+            return name;
+    }
+    return names.value(0);
+}
+
 bool available(const QString& family)
 {
-    return family.isEmpty() || families().contains(family, Qt::CaseInsensitive);
+    return family.isEmpty() || !listedFamily(family).isEmpty();
 }
 
 QString resolvedFamily(const QString& family)
 {
     initialize();
-    return !family.isEmpty() && available(family) ? family : defaultFont->family();
+    const QString listed = listedFamily(family);
+    return listed.isEmpty() ? defaultFont->family() : listed;
 }
 
 void apply(const QString& family)
@@ -77,8 +127,10 @@ void apply(const QString& family)
     QFont font = *defaultFont;
     const QFont current = QGuiApplication::font();
     font.setStyleStrategy(current.styleStrategy()); // retain the renderer's antialiasing policy
-    if (!family.isEmpty() && (family == current.family() || available(family)))
-        font.setFamily(family);
+    // By the name Windows lists it under: the one Qt has it under with either
+    // font engine, whichever of its names was saved.
+    if (const QString listed = listedFamily(family); !listed.isEmpty())
+        font.setFamily(listed);
     if (current != font)
         QGuiApplication::setFont(font);
 }

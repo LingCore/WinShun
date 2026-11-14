@@ -1124,7 +1124,7 @@ void SettingsEditor::setUiFont(const QString& family)
     const QString trimmed = family.trimmed();
     if (m_settings.uiFont == trimmed || !uifont::available(trimmed))
         return;
-    m_settings.uiFont = trimmed;
+    m_settings.uiFont = uifont::listedFamily(trimmed); // as the list has it: the picker shows it chosen
     commit();
 }
 

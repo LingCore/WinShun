@@ -1,4 +1,7 @@
 #include "UiFont.h"
+
+#include <QRawFont>
+#include <QSet>
 #include <QFontDatabase>
 #include <QFile>
 #include <QFontInfo>
@@ -65,6 +68,44 @@ private slots:
         ws::uifont::apply({});
         label.reset(component.create());
         QCOMPARE(font().family(), m_family);
+    }
+
+    // A font is installed under a name in each of its languages, and Windows
+    // lists it under one of them: saved under either, it is that font (GitHub
+    // #325: "LXGW WenKai" was not in Qt's list, where 霞鹜文楷 was).
+    void eitherNameOfAFont()
+    {
+        const QString chinese = u"微软雅黑"_s;
+        const QString english = u"Microsoft YaHei"_s;
+        if (!ws::uifont::available(chinese) && !ws::uifont::available(english))
+            QSKIP("Microsoft YaHei is not installed here");
+        QVERIFY(ws::uifont::available(chinese));
+        QVERIFY(ws::uifont::available(english));
+        const QString listed = ws::uifont::listedFamily(english);
+        QVERIFY(listed == chinese || listed == english);
+        QCOMPARE(ws::uifont::listedFamily(chinese), listed);
+        QCOMPARE(ws::uifont::listedFamily(u"microsoft yahei"_s), listed);
+        QVERIFY(ws::uifont::families().contains(listed));
+        for (const QString& saved : {chinese, english}) {
+            ws::uifont::apply({});
+            ws::uifont::apply(saved);
+            QCOMPARE(QGuiApplication::font().family(), listed);
+            QCOMPARE(ws::uifont::resolvedFamily(saved), listed);
+            const QString drawn = QRawFont::fromFont(QGuiApplication::font()).familyName();
+            QVERIFY2(drawn == chinese || drawn == english, qPrintable(drawn)); // that font, not a fallback
+        }
+        ws::uifont::apply({});
+        QCOMPARE(QGuiApplication::font().family(), m_family);
+        QVERIFY(ws::uifont::listedFamily(u"Missing-WinShun-Test-Font"_s).isEmpty());
+        QVERIFY(ws::uifont::listedFamily(QString(40, u'x')).isEmpty()); // longer than a face name
+        // The list: no vertical faces, nothing twice, none Windows does not know.
+        const QStringList all = ws::uifont::families();
+        QVERIFY(all.size() > 10);
+        QCOMPARE(QSet<QString>(all.cbegin(), all.cend()).size(), all.size());
+        for (const QString& family : all) {
+            QVERIFY2(!family.startsWith(u'@'), qPrintable(family));
+            QCOMPARE(ws::uifont::listedFamily(family), family);
+        }
     }
 
     void mixedTextAndFallbackHaveGlyphs()
