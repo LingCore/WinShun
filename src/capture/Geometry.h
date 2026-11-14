@@ -176,6 +176,16 @@ double ocrUpscale(QSize image, double dpr, int maxWidth = 2000);
 // whitespace (the line breaks) become one space, trimmed, cut at `most`
 // characters; empty when there are no words.
 QString ocrOneLine(const QString& text, int most = 256);
+// The words read as paragraphs for a translator (GitHub #191). The reader
+// gives a line per line on the screen, and a sentence cut in two there is
+// translated as two halves. A line of running text that reached the right
+// edge (four fifths of the widest line and kRunningColumns columns at least,
+// a CJK character two) and does not end its sentence goes on in the next one,
+// unless that one starts a list item: with a space between, none between two
+// CJK characters, and a word hyphenated at the break whole again. The other
+// line breaks stay, empty lines go; cut at `most` characters.
+QString ocrParagraphs(const QString& text, int most);
+inline constexpr int kRunningColumns = 24;
 
 // A window of `box` beside `anchor`: right of it, else left, else under,
 // else over, else inside the area's middle; always in `area`.

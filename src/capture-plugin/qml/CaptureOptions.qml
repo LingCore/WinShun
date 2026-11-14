@@ -53,6 +53,7 @@ Column {
         { value: "ocrcopy", text: qsTr("识别文字并复制") },
         { value: "ocrsearch", text: qsTr("识别文字并搜索") },
         { value: "ocrweb", text: qsTr("识别文字并网页搜索") },
+        { value: "ocrtranslate", text: qsTr("识别文字并翻译") },
         { value: "cancel", text: qsTr("取消截图") }
     ]
     readonly property var rightChoices: [mouseChoices[0], { value: "back", text: qsTr("后退（重新框选）") }].concat(mouseChoices.slice(1))
@@ -75,6 +76,7 @@ Column {
         { id: "delay", text: qsTr("延时") },
         { id: "qr", text: qsTr("二维码") },
         { id: "ocr", text: qsTr("识别文字") },
+        { id: "translate", text: qsTr("翻译") },
         { id: "pin", text: qsTr("贴图") },
         { id: "save", text: qsTr("保存") },
         { id: "cancel", text: qsTr("取消") },
@@ -85,7 +87,7 @@ Column {
     readonly property var toolbarRows: [
         { title: qsTr("编辑"), ids: ["undo", "redo"] },
         { title: qsTr("截图方式"), ids: ["long", "record", "delay"] },
-        { title: qsTr("识别"), ids: ["qr", "ocr"] },
+        { title: qsTr("识别"), ids: ["qr", "ocr", "translate"] },
         { title: qsTr("结束截图"), ids: ["pin", "save", "cancel", "copy"] },
         { title: qsTr("帮助"), ids: ["help"] }
     ]

@@ -459,6 +459,51 @@ int runOcr(const QStringList& args)
         {u"ocr"_s, QVariant::fromValue(&reader)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
     if (!window) { say(component.errorString()); return 3; }
     frame.setWindow(window);
+    // --translation: 翻译's part under the words (#191) in its states, ocr-translation-<state>.png.
+    if (args.contains(u"--translation"_s)) {
+        using Translated = capture::CaptureOcr::Translated;
+        int ticket = 0;
+        QObject::connect(&reader, &capture::CaptureOcr::translateRequested, &reader, [&](const QString&, int t) { ticket = t; });
+        bool setup = false;
+        QObject::connect(&reader, &capture::CaptureOcr::translationSetupRequested, &reader, [&] { setup = true; });
+        reader.showText(u"Screenshots are read on this computer. Nothing leaves it until you ask for a\ntranslation, and then only the words go to the service you chose.\n\nFile\nEdit\nView"_s);
+        showOffScreen(window);
+        settle(window);
+        const int plain = window->height();
+        QObject* translate = window->findChild<QObject*>(u"translateWords"_s);
+        bool all = translate != nullptr;
+        const std::tuple<QString, Translated, QString> states[] {
+            {u"done"_s, Translated::Done, u"截图在这台电脑上识别。在你要求翻译之前，什么都不会离开这台电脑；翻译时也只有文字会发给你选的服务。\n文件\n编辑\n视图"_s},
+            {u"failed"_s, Translated::Failed, u"接口返回 401: Incorrect API key provided"_s},
+            {u"service"_s, Translated::NoService, QString()},
+            {u"plugin"_s, Translated::NoPlugin, QString()},
+        };
+        for (const auto& [state, outcome, text] : states) {
+            if (!translate)
+                break;
+            QMetaObject::invokeMethod(translate, "clicked");
+            settle(window);
+            if (state == u"done")
+                all = saveGrab(window, out.filePath(u"ocr-translation-working.png"_s)) && all;
+            reader.setTranslation(ticket, outcome, text);
+            settle(window);
+            QObject* shown = window->findChild<QObject*>(u"ocrTranslationText"_s);
+            QObject* note = window->findChild<QObject*>(u"ocrTranslationNote"_s);
+            QObject* button = window->findChild<QObject*>(u"setupTranslation"_s);
+            say(u"translation %1: %2 x %3 (plain %4), text %5, note '%6', button %7 '%8'"_s.arg(state).arg(window->width()).arg(window->height())
+                    .arg(plain).arg(shown ? shown->property("text").toString().size() : -1)
+                    .arg(note ? note->property("text").toString() : QString())
+                    .arg(button && button->property("visible").toBool()).arg(button ? button->property("text").toString() : QString()));
+            all = window->height() > plain && all;
+            if (button && button->property("visible").toBool())
+                QMetaObject::invokeMethod(button, "clicked");
+            all = saveGrab(window, out.filePath(u"ocr-translation-%1.png"_s.arg(state))) && all;
+        }
+        reader.showText(u"other words"_s); // the part closes with the words it was for
+        settle(window);
+        say(u"translation closed: %1 (plain %2), setup asked %3"_s.arg(window->height()).arg(plain).arg(setup));
+        return finish(window, all && setup && window->height() == plain);
+    }
     QImage image(600, 80, QImage::Format_RGB32);
     image.fill(Qt::white);
     reader.read(image, 1.0);

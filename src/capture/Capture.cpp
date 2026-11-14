@@ -110,7 +110,8 @@ QString outcomeName(CaptureSession::Action action)
     case CaptureSession::Action::Ocr:
     case CaptureSession::Action::OcrCopy:
     case CaptureSession::Action::OcrSearch:
-    case CaptureSession::Action::OcrWeb: return u"ocr"_s;
+    case CaptureSession::Action::OcrWeb:
+    case CaptureSession::Action::OcrTranslate: return u"ocr"_s;
     case CaptureSession::Action::Cancel: return u"cancelled"_s;
     case CaptureSession::Action::Long: return u"long"_s;
     case CaptureSession::Action::Record: return u"record"_s;
@@ -940,6 +941,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     case CaptureSession::Action::OcrCopy:
     case CaptureSession::Action::OcrSearch:
     case CaptureSession::Action::OcrWeb:
+    case CaptureSession::Action::OcrTranslate:
         if (m_callbacks.ocrThen)
             m_callbacks.ocrThen(picture, dpr, QRect(origin, picture.size()), action);
         break;

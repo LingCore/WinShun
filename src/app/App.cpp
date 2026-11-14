@@ -2209,6 +2209,22 @@ bool insideFolder(const QString& path, const QString& folder)
     return clean.startsWith(base, Qt::CaseInsensitive) && !clean.contains(u"/../"_s);
 }
 
+// What the translate plugin's rows say, for translate_text: the row "t" is
+// the translation (its copy text whole, the title may be cut for showing),
+// "setup" asks for a service, anything else says what went wrong.
+QJsonObject translationAnswer(bool ok, const plugin::Items& items, const QString& error)
+{
+    if (!ok || items.isEmpty())
+        return {{u"state"_s, u"failed"_s}, {u"message"_s, error}};
+    const plugin::Item& first = items.first();
+    if (first.id == u"t")
+        return {{u"state"_s, u"ok"_s}, {u"text"_s, first.copy.isEmpty() ? first.title : first.copy}};
+    if (first.id == u"setup")
+        return {{u"state"_s, u"service"_s}};
+    return {{u"state"_s, u"failed"_s},
+        {u"message"_s, first.subtitle.isEmpty() || first.id == u"empty" ? first.title : first.title + u": "_s + first.subtitle}};
+}
+
 mcp::ToolResult toolError(const QString& text)
 {
     return {{}, true, text};
@@ -2472,33 +2488,39 @@ void App::setUpAppTools()
             showLauncher(arguments.value(u"text"_s).toString().left(1000));
             done({});
         }});
-    // 识别文字并翻译 (GitHub #191): the search box with the translate
-    // plugin's keyword before the words, so its answer is the first row
-    // (Enter copies it, as when typed). The keyword is the user's own if
-    // they changed it. Without the plugin: said, with the way to get it.
+    // 识别文字并翻译 (GitHub #191): the translate plugin's answer to "tr
+    // <text>", handed back to the plugin that asked, which shows it itself
+    // (the capture's OCR window). The text keeps its line breaks: paragraphs.
+    // "state": ok with "text"; service (the plugin has no service or key
+    // yet); plugin (not installed, or off); failed with "message". Nothing
+    // is shown here. `setup`: the settings instead, at the plugin's card, or
+    // at its entry in the library when it is not there.
     tools.push_back({u"translate_text"_s, plugin::Permission::Ui,
         [this](const QString&, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
-            const QString text = arguments.value(u"text"_s).toString().simplified().left(1000);
+            const QString id = u"winshun.translate"_s;
+            const bool there = m_pluginHost && m_pluginHost->catalog().enabled(id);
+            if (arguments.value(u"setup"_s).toBool()) {
+                if (there)
+                    showPluginSettings(id);
+                else
+                    showSettings([id](QQuickWindow* window) {
+                        QMetaObject::invokeMethod(window, "showPluginLibrary", Q_ARG(QVariant, QVariant(id)));
+                    });
+                done({});
+                return;
+            }
+            const QString text = arguments.value(u"text"_s).toString().trimmed().left(4000);
             if (text.isEmpty()) {
                 done(toolError(u"text is empty"_s));
                 return;
             }
-            const QString id = u"winshun.translate"_s;
-            const QStringList keywords = m_pluginHost && m_pluginHost->catalog().enabled(id)
-                ? m_pluginHost->catalog().keywordsOf(id, u"tr") : QStringList();
-            if (keywords.isEmpty()) {
-                if (m_messages)
-                    m_messages->showNotification(tr("翻译插件未启用"), tr("请在设置 → 插件 → 插件库中安装并启用“翻译”，填好翻译服务。"),
-                        [this, id] {
-                            showSettings([id](QQuickWindow* window) {
-                                QMetaObject::invokeMethod(window, "showPluginLibrary", Q_ARG(QVariant, QVariant(id)));
-                            });
-                        });
-                done(toolError(tr("翻译插件未启用，请在设置 → 插件 → 插件库中安装并启用“翻译”")));
+            if (!there) {
+                done({{{u"state"_s, u"plugin"_s}}});
                 return;
             }
-            showLauncher(keywords.first() + u' ' + text);
-            done({});
+            m_pluginHost->callCommand(id, u"tr"_s, text, 4, [done](bool ok, const plugin::Items& items, const QString& error) {
+                done({translationAnswer(ok, items, error)});
+            });
         }});
     // 识别文字并网页搜索: Win顺's default web search.
     tools.push_back({u"web_search"_s, plugin::Permission::WinshunOpen,

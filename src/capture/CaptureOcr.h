@@ -45,6 +45,16 @@ class CaptureOcr : public QObject {
     // The text as a web address (http or https) to offer 打开链接 for; empty when it is not one.
     Q_PROPERTY(QString link READ link NOTIFY changed FINAL)
     Q_PROPERTY(bool needsPackage READ needsPackage NOTIFY changed FINAL)
+    // 翻译 (GitHub #191): the words' translation, under them in the same
+    // window. With a signal of its own: changed() puts the words read back
+    // into the field, over what the user edited there.
+    Q_PROPERTY(bool translating READ translating NOTIFY translationChanged FINAL)
+    Q_PROPERTY(QString translation READ translation NOTIFY translationChanged FINAL)
+    Q_PROPERTY(QString translationNote READ translationNote NOTIFY translationChanged FINAL) // none: why
+    // What is to be set up before there can be one: "service" (the translate
+    // plugin has no service or key), "plugin" (it is not installed or off); else empty.
+    Q_PROPERTY(QString translationNeeds READ translationNeeds NOTIFY translationChanged FINAL)
+    Q_PROPERTY(bool translationShown READ translationShown NOTIFY translationChanged FINAL)
 
 public:
     explicit CaptureOcr(QObject* parent = nullptr);
@@ -56,8 +66,9 @@ public:
     static void setProgramFolder(const QString& folder) { s_programFolder = folder; }
     static QString programFolder();
 
-    // Reads `image`, taken on a monitor at `dpr` (its text's size).
-    void read(const QImage& image, double dpr);
+    // Reads `image`, taken on a monitor at `dpr` (its text's size);
+    // `thenTranslate`: and asks for the words' translation once they are read.
+    void read(const QImage& image, double dpr, bool thenTranslate = false);
     void retry(); // continue the original picture after an OCR package is installed
     void discardPending() { m_pendingImage = {}; }
     bool needsPackage() const { return !m_pendingImage.isNull(); }
@@ -91,10 +102,23 @@ public:
     Q_INVOKABLE void search(const QString& text);
     // The same one line, for the default web search.
     Q_INVOKABLE void webSearch(const QString& text);
-    // The same text for the translate plugin (GitHub #191): lines as words,
-    // up to kMaxTranslate characters (a paragraph, not a search word).
+    // Asks for the translation of the text (the selection, else all of it),
+    // its lines put together as paragraphs (ocrParagraphs), up to
+    // kMaxTranslate characters: translateRequested() with a ticket, answered
+    // by setTranslation(). A newer request, or a new picture, drops the answer
+    // to an older one.
     Q_INVOKABLE void translate(const QString& text);
-    static constexpr int kMaxTranslate = 800;
+    static constexpr int kMaxTranslate = 3000;
+    enum class Translated { Done, Failed, NoService, NoPlugin };
+    // `text`: the translation (Done; empty: nothing to show, the part closes), or why not (Failed).
+    void setTranslation(int ticket, Translated outcome, const QString& text);
+    Q_INVOKABLE void setupTranslation() { emit translationSetupRequested(); }
+
+    bool translating() const { return m_translating; }
+    QString translation() const { return m_translation; }
+    QString translationNote() const { return m_translationNote; }
+    QString translationNeeds() const { return m_translationNeeds; }
+    bool translationShown() const { return m_translating || !m_translation.isEmpty() || !m_translationNote.isEmpty(); }
     // Lines as words, trimmed, cut at what a search box takes; empty when no words.
     static QString oneLine(const QString& text);
     Q_INVOKABLE void close() { emit closeRequested(); }
@@ -105,7 +129,9 @@ signals:
     void copyRequested(const QString& text);
     void searchRequested(const QString& query);
     void webSearchRequested(const QString& query);
-    void translateRequested(const QString& text);
+    void translationChanged();
+    void translateRequested(const QString& text, int ticket);
+    void translationSetupRequested();
     void closeRequested();
     void openLinkRequested(const QString& url);
     void setupRequested();
@@ -127,6 +153,7 @@ private:
     void enqueueScan(const QImage& image, const QRect& region, double dpr, bool grayscale, std::function<void(RedactScan)> done);
     void work(const std::stop_token& stop);
     void done(int round, const QString& text, const QString& error);
+    void clearTranslation();
     void scanDone(int ticket, RedactScan scan);
 
     bool m_busy = false;
@@ -137,6 +164,12 @@ private:
     int m_round = 0;
     QImage m_pendingImage;
     double m_pendingDpr = 1;
+    bool m_thenTranslate = false;
+    bool m_translating = false;
+    int m_translateTicket = 0;
+    QString m_translation;
+    QString m_translationNote;
+    QString m_translationNeeds;
 
     std::mutex m_mutex;
     std::condition_variable_any m_wake;

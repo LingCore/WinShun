@@ -220,7 +220,8 @@ public:
     // (Q); Delay: this capture ends and the next begins after the countdown (Ctrl+Shift+D).
     // Save: into the chosen save folder, or Save As when none was chosen (#194);
     // SavePrevious: into the folder without a picker; SaveAs: always the picker.
-    enum class Action { Copy, Save, Cancel, Pin, Ocr, OcrCopy, OcrSearch, OcrWeb, Long, Qr, Delay, CopyPin, Record, SavePrevious, SaveAs };
+    // OcrTranslate: its words read and translated at once, both in the OCR window (GitHub #191).
+    enum class Action { Copy, Save, Cancel, Pin, Ocr, OcrCopy, OcrSearch, OcrWeb, Long, Qr, Delay, CopyPin, Record, SavePrevious, SaveAs, OcrTranslate };
     Q_ENUM(Action)
     static constexpr int kLongMinimum = 48;
     static constexpr int kSelectionHistoryLimit = 10;
@@ -454,7 +455,7 @@ private:
     void setRatio(QSize ratio); // empty: none held
     bool resting() const { return m_phase == Phase::Hover || m_phase == Phase::Selected; } // no button held
     void back(); // Esc, right click
-    enum class MouseAct { None, Copy, Save, Pin, Ocr, Cancel, Back, OcrCopy, OcrSearch, OcrWeb, CopyPin };
+    enum class MouseAct { None, Copy, Save, Pin, Ocr, Cancel, Back, OcrCopy, OcrSearch, OcrWeb, CopyPin, OcrTranslate };
     static MouseAct parseMouseAct(const QString& name, MouseAct fallback);
     bool annotationBusy() const; // a tool on, a gesture or a text under way
     void mouseButton(Qt::MouseButton button, int screen, QPoint p); // right, middle, X1, X2

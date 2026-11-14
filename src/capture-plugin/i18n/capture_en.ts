@@ -296,6 +296,14 @@
         <translation>QR code: reads the QR codes in the selection; copy the text or open a link</translation>
     </message>
     <message>
+        <source>翻译</source>
+        <translation>Translate</translation>
+    </message>
+    <message>
+        <source>翻译：识别图里的文字并翻译，用“翻译”插件里设好的服务</source>
+        <translation>Translate: reads the words in the picture and translates them with the service set in the Translate plugin</translation>
+    </message>
+    <message>
         <source>延时</source>
         <translation>Delay</translation>
     </message>
@@ -847,6 +855,14 @@
     <message>
         <source>识别文字并网页搜索</source>
         <translation>Read text and search the web</translation>
+    </message>
+    <message>
+        <source>识别文字并翻译</source>
+        <translation>Read text and translate</translation>
+    </message>
+    <message>
+        <source>翻译</source>
+        <translation>Translate</translation>
     </message>
     <message>
         <source>取消截图</source>
@@ -1493,6 +1509,26 @@
         <translation>Translate</translation>
     </message>
     <message>
+        <source>译文</source>
+        <translation>Translation</translation>
+    </message>
+    <message>
+        <source>复制译文</source>
+        <translation>Copy the translation</translation>
+    </message>
+    <message>
+        <source>正在翻译…</source>
+        <translation>Translating…</translation>
+    </message>
+    <message>
+        <source>安装翻译插件…</source>
+        <translation>Install the Translate plugin…</translation>
+    </message>
+    <message>
+        <source>设置翻译服务…</source>
+        <translation>Set up a translation service…</translation>
+    </message>
+    <message>
         <source>打开链接</source>
         <translation>Open link</translation>
     </message>
@@ -2131,6 +2167,22 @@ The unfinished recording is kept at: %1</translation>
     <message>
         <source>识别失败：%1</source>
         <translation>Reading failed: %1</translation>
+    </message>
+    <message>
+        <source>翻译失败。</source>
+        <translation>The translation failed.</translation>
+    </message>
+    <message>
+        <source>翻译失败：%1</source>
+        <translation>The translation failed: %1</translation>
+    </message>
+    <message>
+        <source>还没有设置翻译服务，设置好后再点“翻译”。</source>
+        <translation>No translation service is set up yet. Set one up, then choose Translate again.</translation>
+    </message>
+    <message>
+        <source>需要插件库里的“翻译”插件，装好后再点“翻译”。</source>
+        <translation>This needs the Translate plugin from the plugin library. Install it, then choose Translate again.</translation>
     </message>
     <message>
         <source>图片里没有找到文字。</source>

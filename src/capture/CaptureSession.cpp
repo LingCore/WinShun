@@ -941,7 +941,7 @@ CaptureSession::MouseAct CaptureSession::parseMouseAct(const QString& name, Mous
     static const std::pair<const char16_t*, MouseAct> names[] {{u"none", MouseAct::None}, {u"copy", MouseAct::Copy},
         {u"save", MouseAct::Save}, {u"pin", MouseAct::Pin}, {u"ocr", MouseAct::Ocr}, {u"cancel", MouseAct::Cancel},
         {u"back", MouseAct::Back}, {u"ocrcopy", MouseAct::OcrCopy}, {u"ocrsearch", MouseAct::OcrSearch},
-        {u"ocrweb", MouseAct::OcrWeb}, {u"copypin", MouseAct::CopyPin}};
+        {u"ocrweb", MouseAct::OcrWeb}, {u"copypin", MouseAct::CopyPin}, {u"ocrtranslate", MouseAct::OcrTranslate}};
     for (const auto& [text, act] : names) {
         if (name == QStringView(text))
             return act;
@@ -1006,6 +1006,9 @@ void CaptureSession::perform(MouseAct act)
         break;
     case MouseAct::OcrWeb:
         finish(Action::OcrWeb);
+        break;
+    case MouseAct::OcrTranslate:
+        finish(Action::OcrTranslate);
         break;
     case MouseAct::Cancel:
         finish(Action::Cancel);
@@ -1621,7 +1624,7 @@ void CaptureSession::keyReleased(int key)
 
 void CaptureSession::act(int action)
 {
-    if (!m_active || action < static_cast<int>(Action::Copy) || action > static_cast<int>(Action::SaveAs))
+    if (!m_active || action < static_cast<int>(Action::Copy) || action > static_cast<int>(Action::OcrTranslate))
         return;
     if (action == static_cast<int>(Action::Long) || action == static_cast<int>(Action::Record)) {
         // Its picture is the screen's, scrolled: annotations would be lost.

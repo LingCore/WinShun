@@ -8,7 +8,9 @@ import WinShun
 // edited before it goes anywhere: 复制全部 puts it on the clipboard (into
 // the history), 用它搜索 takes the selection, else all of it, as one line
 // into the launcher's search box, 网页搜索 into the default web search.
-// Esc or 关闭 closes it.
+// 翻译 (GitHub #191) puts their translation under them, the window taller
+// by that part: the translate plugin's, asked through Win顺. Esc or 关闭
+// closes it.
 Window {
     id: window
 
@@ -23,8 +25,10 @@ Window {
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     color: Theme.backdrop && SystemTheme.materials ? "transparent" : Theme.background
     title: qsTr("识别文字") // Qt adds " - Win顺"
-    width: 460
-    height: 360
+    width: Math.max(460, footer.width + 2 * padding) // the buttons in a row are wider in English
+    height: ocr.translationShown ? 360 + translationHeight : 360
+
+    readonly property int translationHeight: 200
 
     // A new picture: its text replaces whatever was edited before.
     Connections {
@@ -95,7 +99,7 @@ Window {
         anchors.leftMargin: window.padding
         anchors.right: parent.right
         anchors.rightMargin: window.padding
-        anchors.bottom: footer.top
+        anchors.bottom: translated.top
 
         Hook { // the style's input field (Theme.inputField)
             id: fieldPart
@@ -180,6 +184,125 @@ Window {
         }
     }
 
+    // ---- the translation, when asked for ----------------------------------------------
+
+    Item {
+        id: translated
+        objectName: "ocrTranslation"
+        anchors.left: field.left
+        anchors.right: field.right
+        anchors.bottom: footer.top
+        height: window.ocr.translationShown ? window.translationHeight : 0
+        visible: window.ocr.translationShown
+
+        Item { // what the part below is, and its copy
+            id: translatedCaption
+            width: parent.width
+            height: 36
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: 2
+                text: qsTr("译文")
+                color: Theme.subtext
+                font.pixelSize: Theme.uiCaption
+            }
+            FlatButton {
+                dpr: window.dpr
+                objectName: "copyTranslation"
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: 2
+                flat: true
+                width: 28
+                height: 28
+                glyph: "\uE8C8" // Copy
+                visible: window.ocr.translation.length > 0
+                Accessible.name: qsTr("复制译文")
+                onClicked: window.ocr.copyAll(translation.selectedText.length > 0 ? translation.selectedText : translation.text)
+            }
+        }
+
+        Item {
+            anchors.top: translatedCaption.bottom
+            anchors.bottom: parent.bottom
+            width: parent.width
+
+            Hook {
+                id: translatedPart
+                anchors.fill: parent
+                part: Theme.inputField
+                focused: translation.activeFocus
+                hovered: translatedHover.hovered
+                dpr: window.dpr
+            }
+            HoverHandler { id: translatedHover }
+
+            Flickable {
+                id: translatedFlick
+                anchors.fill: parent
+                anchors.margins: 10
+                anchors.rightMargin: 14 // room for the scroll bar
+                clip: true
+                contentWidth: width
+                contentHeight: translation.height
+                boundsBehavior: Flickable.StopAtBounds
+                visible: window.ocr.translation.length > 0
+
+                TextEdit { // read, selected, copied; not edited
+                    id: translation
+                    objectName: "ocrTranslationText"
+                    width: translatedFlick.width
+                    height: Math.max(contentHeight, translatedFlick.height)
+                    textFormat: TextEdit.PlainText
+                    wrapMode: TextEdit.Wrap
+                    readOnly: true
+                    selectByMouse: true
+                    persistentSelection: true
+                    text: window.ocr.translation
+                    color: translatedPart.out("textColor", Theme.text)
+                    selectionColor: Theme.textSelection
+                    selectedTextColor: Theme.text
+                    font.pixelSize: Theme.uiBody
+                    Keys.onEscapePressed: window.ocr.close()
+                }
+            }
+
+            ListScrollBar {
+                dpr: window.dpr
+                flickable: translatedFlick
+                visible: translatedFlick.visible && translatedFlick.contentHeight > translatedFlick.height
+                anchors.right: parent.right
+                anchors.top: translatedFlick.top
+                anchors.bottom: translatedFlick.bottom
+            }
+
+            Column { // under way, or what is in the way of one and the way past it
+                anchors.centerIn: parent
+                width: parent.width - 32
+                visible: !translatedFlick.visible
+                spacing: 12
+                Text {
+                    objectName: "ocrTranslationNote"
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
+                    text: window.ocr.translating ? qsTr("正在翻译…") : window.ocr.translationNote
+                    color: Theme.subtext
+                    font.pixelSize: Theme.uiBody
+                }
+                FlatButton {
+                    dpr: window.dpr
+                    objectName: "setupTranslation"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: !window.ocr.translating && window.ocr.translationNeeds.length > 0
+                    text: window.ocr.translationNeeds === "plugin" ? qsTr("安装翻译插件…") : qsTr("设置翻译服务…")
+                    onClicked: window.ocr.setupTranslation()
+                }
+            }
+        }
+    }
+
     // ---- what to do with it ------------------------------------------------------------
 
     Row {
@@ -204,11 +327,12 @@ Window {
             text: qsTr("打开链接")
             onClicked: window.ocr.openLink(window.ocr.link)
         }
-        FlatButton { // the words (the selected ones, else all) to the translate plugin, in Win顺's search box
+        FlatButton { // the words' (the selected ones', else all) translation, under them
             dpr: window.dpr
+            objectName: "translateWords"
             visible: window.ocr.link.length === 0
             text: qsTr("翻译")
-            enabled: !window.ocr.busy && words.text.trim().length > 0
+            enabled: !window.ocr.busy && !window.ocr.translating && words.text.trim().length > 0
             onClicked: window.ocr.translate(words.selectedText.length > 0 ? words.selectedText : words.text)
         }
         FlatButton {

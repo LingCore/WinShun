@@ -10,6 +10,7 @@
 #include <QFont>
 #include <QFontMetricsF>
 #include <QPainter>
+#include <QSignalSpy>
 #include <QTest>
 #include <QThread>
 
@@ -88,6 +89,90 @@ private slots:
         reader.cancelScan();
         QTest::qWait(500);
         QVERIFY(!done);
+    }
+
+    // 翻译 (GitHub #191): asked with a ticket, answered once; an answer for
+    // words no longer shown, or to an older request, is dropped.
+    void translationOfTheWords()
+    {
+        using namespace ws::capture;
+        CaptureOcr reader;
+        QSignalSpy asked(&reader, &CaptureOcr::translateRequested);
+        QSignalSpy changed(&reader, &CaptureOcr::translationChanged);
+        QSignalSpy words(&reader, &CaptureOcr::changed);
+        reader.showText(u"The quick brown fox jumps over the lazy\ndog."_s);
+        QVERIFY(!reader.translationShown());
+        reader.translate(u" \n "_s);
+        QCOMPARE(asked.count(), 0); // nothing to translate: not asked
+
+        reader.translate(reader.text());
+        QCOMPARE(asked.count(), 1);
+        QCOMPARE(asked.last().at(0).toString(), u"The quick brown fox jumps over the lazy dog."_s); // as paragraphs
+        QVERIFY(reader.translating() && reader.translationShown());
+        const int first = asked.last().at(1).toInt();
+        reader.translate(u"again"_s);
+        const int second = asked.last().at(1).toInt();
+        QVERIFY(second != first);
+        reader.setTranslation(first, CaptureOcr::Translated::Done, u"old"_s);
+        QVERIFY(reader.translating()); // the older request's answer
+        reader.setTranslation(second, CaptureOcr::Translated::Done, u" 再来 \n"_s);
+        QVERIFY(!reader.translating());
+        QCOMPARE(reader.translation(), u"再来"_s);
+        QVERIFY(reader.translationNote().isEmpty() && reader.translationNeeds().isEmpty());
+        reader.setTranslation(second, CaptureOcr::Translated::Failed, u"twice"_s);
+        QCOMPARE(reader.translation(), u"再来"_s); // answered already
+        const qsizetype wordsChanged = words.count();
+        QCOMPARE(wordsChanged, 1); // the words' own signal stayed quiet: what the user edited is not put back
+
+        const auto answer = [&](CaptureOcr::Translated outcome, const QString& text) {
+            reader.translate(u"x"_s);
+            reader.setTranslation(asked.last().at(1).toInt(), outcome, text);
+        };
+        answer(CaptureOcr::Translated::Failed, u"HTTP 401"_s);
+        QVERIFY(reader.translation().isEmpty() && reader.translationNote().contains(u"HTTP 401"_s) && reader.translationNeeds().isEmpty());
+        answer(CaptureOcr::Translated::Failed, {});
+        QVERIFY(!reader.translationNote().isEmpty());
+        answer(CaptureOcr::Translated::NoService, {});
+        QCOMPARE(reader.translationNeeds(), u"service"_s);
+        QVERIFY(reader.translationShown() && !reader.translationNote().isEmpty());
+        answer(CaptureOcr::Translated::NoPlugin, {});
+        QCOMPARE(reader.translationNeeds(), u"plugin"_s);
+        answer(CaptureOcr::Translated::Done, {}); // nothing to show (an older Win顺 took the words to its search box)
+        QVERIFY(!reader.translationShown());
+
+        // Other words: the translation goes, and the answer still on its way with it.
+        reader.translate(u"x"_s);
+        const int late = asked.last().at(1).toInt();
+        changed.clear();
+        reader.showText(u"other"_s);
+        QVERIFY(!reader.translationShown() && changed.count() == 1);
+        reader.setTranslation(late, CaptureOcr::Translated::Done, u"late"_s);
+        QVERIFY(!reader.translationShown());
+
+        QSignalSpy setup(&reader, &CaptureOcr::translationSetupRequested);
+        reader.setupTranslation();
+        QCOMPARE(setup.count(), 1);
+    }
+
+    // 翻译 on the toolbar: read, then asked for at once.
+    void readThenTranslate()
+    {
+        using namespace ws::capture;
+        CaptureOcr reader;
+        QSignalSpy asked(&reader, &CaptureOcr::translateRequested);
+        reader.read(drawn({u"Press Ctrl twice"_s}, 28, Qt::black, Qt::white), 1.5, true);
+        QTRY_VERIFY_WITH_TIMEOUT(!reader.busy(), 15000);
+        QTRY_COMPARE(asked.count(), 1);
+        QVERIFY2(asked.first().at(0).toString().contains(u"Ctrl"_s), qPrintable(asked.first().at(0).toString()));
+        QVERIFY(reader.translating());
+        // Nothing read: nothing asked.
+        QImage blank(300, 80, QImage::Format_RGB32);
+        blank.fill(Qt::white);
+        reader.read(blank, 1.5, true);
+        QTRY_VERIFY_WITH_TIMEOUT(!reader.busy(), 15000);
+        QTest::qWait(50);
+        QCOMPARE(asked.count(), 1);
+        QVERIFY(!reader.translationShown());
     }
 
     // Small UI text, Chinese with English and decimals, one line each.

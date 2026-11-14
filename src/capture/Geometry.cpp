@@ -538,6 +538,77 @@ QString ocrOneLine(const QString& text, int most)
     return text.simplified().left(most); // simplified(): trimmed, each run of whitespace one space
 }
 
+namespace {
+
+// Two columns wide in a fixed-pitch font: CJK characters and their punctuation, kana, Hangul, full-width forms.
+bool wideChar(QChar c)
+{
+    const char16_t u = c.unicode();
+    return (u >= 0x1100 && u <= 0x115F) || (u >= 0x2E80 && u <= 0xA4CF) || (u >= 0xAC00 && u <= 0xD7A3) || (u >= 0xF900 && u <= 0xFAFF)
+        || (u >= 0xFE30 && u <= 0xFE4F) || (u >= 0xFF00 && u <= 0xFF60) || (u >= 0xFFE0 && u <= 0xFFE6);
+}
+
+int columnsOf(const QString& line)
+{
+    int columns = 0;
+    for (const QChar c : line)
+        columns += wideChar(c) ? 2 : 1;
+    return columns;
+}
+
+bool endsSentence(const QString& line)
+{
+    // . ! ? : ; and the full-width ones, the ideographic full stop, the ellipsis
+    static constexpr char16_t ends[] {u'.', u'!', u'?', u':', u';', 0x3002, 0xFF01, 0xFF1F, 0xFF1A, 0xFF1B, 0x2026};
+    return std::ranges::find(ends, line.back().unicode()) != std::end(ends);
+}
+
+bool startsListItem(const QString& line)
+{
+    // - * and the bullets, the dashes; "1." "2)" "3、"
+    static constexpr char16_t marks[] {u'-', u'*', 0x2022, 0x00B7, 0x25CF, 0x25CB, 0x25A0, 0x25AA, 0x2013, 0x2014};
+    if (std::ranges::find(marks, line.front().unicode()) != std::end(marks))
+        return true;
+    qsizetype digits = 0;
+    while (digits < line.size() && digits < 3 && line[digits].isDigit())
+        ++digits;
+    return digits > 0 && digits < line.size() && (line[digits] == u'.' || line[digits] == u')' || line[digits].unicode() == 0x3001);
+}
+
+} // namespace
+
+QString ocrParagraphs(const QString& text, int most)
+{
+    QStringList lines;
+    int widest = 0;
+    for (const QString& raw : text.split(u'\n')) {
+        lines.append(raw.simplified());
+        widest = std::max(widest, columnsOf(lines.last()));
+    }
+    const int full = std::max(kRunningColumns, widest * 4 / 5);
+    QString out;
+    bool goesOn = false; // the line before goes on in this one
+    for (qsizetype i = 0; i < lines.size(); ++i) {
+        const QString& line = lines[i];
+        if (line.isEmpty()) {
+            goesOn = false;
+            continue;
+        }
+        if (!out.isEmpty()) {
+            if (!goesOn)
+                out += u'\n';
+            else if (out.back() == u'-' && out.size() > 1 && out[out.size() - 2].isLetter() && line.front().isLower())
+                out.chop(1); // "trans-" + "lation"
+            else if (!(wideChar(out.back()) && wideChar(line.front())))
+                out += u' ';
+        }
+        out += line;
+        goesOn = columnsOf(line) >= full && !endsSentence(line) && i + 1 < lines.size() && !lines[i + 1].isEmpty()
+            && !startsListItem(lines[i + 1]);
+    }
+    return out.left(most).trimmed();
+}
+
 QPoint placeBeside(const QRect& anchor, QSize box, const QRect& area, int gap)
 {
     const int areaRight = area.left() + area.width();

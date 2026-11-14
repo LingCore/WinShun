@@ -84,7 +84,7 @@ private:
     void togglePresenter();
     capture::CaptureOcr& captureOcr();
     capture::SmartHooks smartHooks();
-    void showCaptureOcr(const QImage& image, double dpr, const QRect& where, const QStringList* texts = nullptr);
+    void showCaptureOcr(const QImage& image, double dpr, const QRect& where, const QStringList* texts = nullptr, bool translate = false);
     void closeCaptureOcr(bool destroy = false);
     // Bubble: 识别屏幕文字's, copied and said in the card by the region.
     enum class OcrThen { Copy, Search, Web, Bubble };

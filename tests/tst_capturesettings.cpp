@@ -375,7 +375,7 @@ private slots:
         const CaptureOptions fresh = CaptureOptions::load(file);
         QVERIFY(fresh.toolbarHidden.isEmpty()); // all shown
         QCOMPARE(CaptureOptions::toolbarButtonIds(),
-            (QStringList {u"undo"_s, u"redo"_s, u"copy"_s, u"save"_s, u"pin"_s, u"ocr"_s, u"long"_s, u"record"_s, u"qr"_s, u"delay"_s, u"cancel"_s, u"help"_s}));
+            (QStringList {u"undo"_s, u"redo"_s, u"copy"_s, u"save"_s, u"pin"_s, u"ocr"_s, u"translate"_s, u"long"_s, u"record"_s, u"qr"_s, u"delay"_s, u"cancel"_s, u"help"_s}));
 
         CaptureOptions o = fresh;
         o.mouseDoubleLeft = u"ocrcopy"_s;

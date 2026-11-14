@@ -36,7 +36,7 @@ template <typename T> T readOrDefault(QSettings& s, const QString& key, const T&
 const QStringList& mouseActions()
 {
     static const QStringList known {u"none"_s, u"copy"_s, u"copypin"_s, u"save"_s, u"pin"_s, u"ocr"_s, u"ocrcopy"_s,
-        u"ocrsearch"_s, u"ocrweb"_s, u"cancel"_s};
+        u"ocrsearch"_s, u"ocrweb"_s, u"ocrtranslate"_s, u"cancel"_s};
     return known;
 }
 
@@ -87,7 +87,7 @@ std::vector<std::pair<QString, const char*>> ownHotkeys(const CaptureOptions& o)
 
 QStringList CaptureOptions::toolbarButtonIds()
 {
-    return {u"undo"_s, u"redo"_s, u"copy"_s, u"save"_s, u"pin"_s, u"ocr"_s, u"long"_s, u"record"_s, u"qr"_s, u"delay"_s, u"cancel"_s, u"help"_s};
+    return {u"undo"_s, u"redo"_s, u"copy"_s, u"save"_s, u"pin"_s, u"ocr"_s, u"translate"_s, u"long"_s, u"record"_s, u"qr"_s, u"delay"_s, u"cancel"_s, u"help"_s};
 }
 
 QString CaptureOptions::normalizedToolbarHidden(const QString& text)

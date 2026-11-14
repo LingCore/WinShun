@@ -53,8 +53,10 @@ bool CaptureOcr::available()
     return PaddleOcr::installed(programFolder());
 }
 
-void CaptureOcr::read(const QImage& image, double dpr)
+void CaptureOcr::read(const QImage& image, double dpr, bool thenTranslate)
 {
+    clearTranslation();
+    m_thenTranslate = thenTranslate;
     m_pendingImage = {};
     ++m_round;
     m_text.clear();
@@ -87,11 +89,13 @@ void CaptureOcr::read(const QImage& image, double dpr)
 void CaptureOcr::retry()
 {
     if (!m_pendingImage.isNull() && available())
-        read(std::exchange(m_pendingImage, {}), m_pendingDpr);
+        read(std::exchange(m_pendingImage, {}), m_pendingDpr, m_thenTranslate);
 }
 
 void CaptureOcr::showTexts(const QStringList& texts, const QString& title, const QString& none)
 {
+    clearTranslation();
+    m_thenTranslate = false;
     m_pendingImage = {};
     ++m_round; // a reading still under way is for a picture no longer shown
     m_busy = false;
@@ -104,6 +108,8 @@ void CaptureOcr::showTexts(const QStringList& texts, const QString& title, const
 
 void CaptureOcr::showText(const QString& text)
 {
+    clearTranslation();
+    m_thenTranslate = false;
     m_pendingImage = {};
     ++m_round;
     m_busy = false;
@@ -170,9 +176,51 @@ void CaptureOcr::search(const QString& text)
 
 void CaptureOcr::translate(const QString& text)
 {
-    const QString words = ocrOneLine(text, kMaxTranslate);
-    if (!words.isEmpty())
-        emit translateRequested(words);
+    const QString words = ocrParagraphs(text, kMaxTranslate);
+    if (words.isEmpty())
+        return;
+    m_translating = true;
+    m_translation.clear();
+    m_translationNote.clear();
+    m_translationNeeds.clear();
+    emit translationChanged();
+    emit translateRequested(words, ++m_translateTicket);
+}
+
+void CaptureOcr::setTranslation(int ticket, Translated outcome, const QString& text)
+{
+    if (ticket != m_translateTicket || !m_translating)
+        return; // asked again, or another picture, since
+    m_translating = false;
+    switch (outcome) {
+    case Translated::Done:
+        m_translation = text.trimmed();
+        break;
+    case Translated::Failed:
+        m_translationNote = text.trimmed().isEmpty() ? tr("翻译失败。") : tr("翻译失败：%1").arg(text.trimmed());
+        break;
+    case Translated::NoService:
+        m_translationNote = tr("还没有设置翻译服务，设置好后再点“翻译”。");
+        m_translationNeeds = u"service"_s;
+        break;
+    case Translated::NoPlugin:
+        m_translationNote = tr("需要插件库里的“翻译”插件，装好后再点“翻译”。");
+        m_translationNeeds = u"plugin"_s;
+        break;
+    }
+    emit translationChanged();
+}
+
+void CaptureOcr::clearTranslation()
+{
+    ++m_translateTicket; // an answer still on its way is for words no longer shown
+    if (!translationShown())
+        return;
+    m_translating = false;
+    m_translation.clear();
+    m_translationNote.clear();
+    m_translationNeeds.clear();
+    emit translationChanged();
 }
 
 void CaptureOcr::webSearch(const QString& text)
@@ -195,6 +243,8 @@ void CaptureOcr::done(int round, const QString& text, const QString& error)
     else
         m_message.clear();
     emit changed();
+    if (std::exchange(m_thenTranslate, false) && m_message.isEmpty())
+        translate(m_text);
 }
 
 void CaptureOcr::work(const std::stop_token& stop)

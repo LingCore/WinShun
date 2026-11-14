@@ -1990,7 +1990,7 @@ private slots:
         } rows[] {{Qt::MiddleButton, "copy", A::Copy}, {Qt::BackButton, "save", A::Save},
             {Qt::ForwardButton, "pin", A::Pin}, {Qt::RightButton, "ocr", A::Ocr}, {Qt::MiddleButton, "cancel", A::Cancel},
             {Qt::MiddleButton, "ocrcopy", A::OcrCopy}, {Qt::BackButton, "ocrsearch", A::OcrSearch},
-            {Qt::ForwardButton, "ocrweb", A::OcrWeb}};
+            {Qt::ForwardButton, "ocrweb", A::OcrWeb}, {Qt::MiddleButton, "ocrtranslate", A::OcrTranslate}};
         for (const auto& r : rows)
             QTest::newRow(r.name) << int(r.button) << QString::fromLatin1(r.name) << int(r.action);
     }
@@ -2031,8 +2031,31 @@ private slots:
         QCOMPARE(ocrOneLine(QString(1000, u'x')).size(), 256);
         QCOMPARE(ocrOneLine(u"x"_s, 3), u"x"_s);
         QCOMPARE(ocrOneLine(u"abcdef"_s, 3), u"abc"_s);
-        // 翻译 (GitHub #191) takes a paragraph (CaptureOcr::kMaxTranslate), lines as words all the same.
-        QCOMPARE(ocrOneLine(QString(2000, u'y'), 800).size(), 800);
+    }
+
+    // 翻译 (GitHub #191): a sentence the screen cut in two is one again for the translator.
+    void ocrLinesBecomeParagraphs()
+    {
+        // Running text that reached the right edge goes on; the short last line ends the paragraph.
+        QCOMPARE(ocrParagraphs(u"The quick brown fox jumps over the lazy\ndog and keeps running through the field\nuntil night.\nA new paragraph."_s, 3000),
+            u"The quick brown fox jumps over the lazy dog and keeps running through the field until night.\nA new paragraph."_s);
+        // No space between two CJK characters, one between a CJK character and a word.
+        QCOMPARE(ocrParagraphs(u"这是一段比较长的中文文字，在屏幕上显示到右边\n就会换行，翻译时应该接成一句话再用 Win\nShun 翻译。"_s, 3000),
+            u"这是一段比较长的中文文字，在屏幕上显示到右边就会换行，翻译时应该接成一句话再用 Win Shun 翻译。"_s);
+        // A word hyphenated at the break is whole again.
+        QCOMPARE(ocrParagraphs(u"Screenshots are read on this computer, the trans-\nlation is the service's."_s, 3000),
+            u"Screenshots are read on this computer, the translation is the service's."_s);
+        // Short lines (a menu, labels) stay lines, however alike in width.
+        QCOMPARE(ocrParagraphs(u"File\nEdit\nView\nHelp"_s, 3000), u"File\nEdit\nView\nHelp"_s);
+        QCOMPARE(ocrParagraphs(u"打开文件所在的文件夹\n复制文件的完整路径吧"_s, 3000), u"打开文件所在的文件夹\n复制文件的完整路径吧"_s);
+        // A full line that ends its sentence, and one before a list item, end there.
+        QCOMPARE(ocrParagraphs(u"This line is as wide as the widest one is.\nThis one starts another sentence, though\n- and this is a list item\n2. so is this"_s, 3000),
+            u"This line is as wide as the widest one is.\nThis one starts another sentence, though\n- and this is a list item\n2. so is this"_s);
+        // Blanks: trimmed, runs of them one space, empty lines gone (and nothing joined across one).
+        QCOMPARE(ocrParagraphs(u"  a  b \n\n \n c\r\n"_s, 3000), u"a b\nc"_s);
+        QCOMPARE(ocrParagraphs(u"The quick brown fox jumps over the lazy\n\ndog."_s, 3000), u"The quick brown fox jumps over the lazy\ndog."_s);
+        QVERIFY(ocrParagraphs(u" \n\t "_s, 3000).isEmpty());
+        QCOMPARE(ocrParagraphs(QString(5000, u'y'), 3000).size(), 3000);
     }
 
     void hiddenToolbarButtonsAreTheSessionsToTell()
