@@ -1,0 +1,10 @@
+1/9 Test  #94: tst_settings .....................   Passed    3.37 sec
+2/9 Test  #95: tst_capturesettings ..............   Passed    0.37 sec
+3/9 Test #110: tst_stage7 .......................   Passed    0.18 sec
+4/9 Test #166: tst_core .........................   Passed   75.68 sec
+5/9 Test #169: tst_clipboard ....................   Passed    0.90 sec
+6/9 Test #189: tst_updater ......................   Passed    5.22 sec
+7/9 Test #190: tst_scoopinstall .................   Passed    0.30 sec
+8/9 Test #193: tst_capturekeys ..................   Passed    0.16 sec
+9/9 Test #194: tst_printscreen ..................   Passed    0.80 sec
+100% tests passed, 0 tests failed out of 9

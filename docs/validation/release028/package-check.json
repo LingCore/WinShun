@@ -1,0 +1,15 @@
+{
+  "portableFiles": 193,
+  "deployedFiles": 193,
+  "mismatched": [],
+  "data": [
+    "data/README.txt"
+  ],
+  "sha256sumsMatch": {
+    "WinShun-0.28.0-x64-setup.exe": true,
+    "WinShun-0.28.0-x64-portable.zip": true,
+    "WinShun-0.28.0-x64-offline-setup.exe": true,
+    "WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip": true
+  },
+  "winShunExeSha256": "028c839d3182499159b3804ac03bb044402e7a691632ebaaa46758f02d40f228"
+}
