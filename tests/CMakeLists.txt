@@ -876,6 +876,9 @@ foreach(scale IN ITEMS 1 1.25 1.5 2)
 endforeach()
 
 qt_add_executable(tst_core tst_core.cpp)
+# The file grew past the object-file format's 65 536 sections (a Debug compile
+# has no /GL to pack them): C1128 stopped the whole Debug build.
+target_compile_options(tst_core PRIVATE /bigobj)
 target_link_libraries(tst_core PRIVATE wscore wsextract miniz Qt6::Test)
 
 qt_add_executable(tst_activity tst_activity.cpp ${PROJECT_SOURCE_DIR}/src/app/ActivityText.cpp
