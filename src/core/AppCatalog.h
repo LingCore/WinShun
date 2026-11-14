@@ -45,7 +45,8 @@ struct AppInfo {
     QStringList otherNames;
     std::vector<std::string> otherNamesUtf8;
     // what else people call it, UTF-8, matched as its name is but never shown
-    // ("微信" for WeChat.exe, whatever its shortcut is named);
+    // ("微信" for WeChat.exe, whatever its shortcut is named); from apps.txt,
+    // and the name Windows lists the installed software under (addInstalledNames)
     std::vector<std::string> aliases;
     // its abbreviations, folded ASCII, matched only when typed in full ("ps").
     std::vector<std::string> abbreviations;
@@ -152,6 +153,26 @@ bool appTargetGone(const QString& target);
 // shell lists a Start-menu shortcut whose program was deleted (by hand, or
 // an uninstaller that left the shortcut) as long as the shortcut is there.
 AppList presentApps(const AppList& apps, const std::function<bool(const QString&)>& gone = appTargetGone);
+
+// A program Windows lists as installed (Settings > 应用), under the name its
+// installer gave it, and the folder it is installed in: "7-Zip 25.01 (x64)" in
+// C:\Program Files\7-Zip. The Start menu names its apps by their shortcuts
+// ("7-Zip File Manager"), which hold none of the words such a name is typed by.
+struct InstalledName {
+    QString name; // DisplayName
+    QString folder; // InstallLocation: %VARS% expanded, native separators, no closing '\'
+};
+
+// The Uninstall keys' installed programs that name their folder (HKLM, its
+// 32-bit view, and HKCU), without components and updates (SystemComponent,
+// ParentKeyName). Empty on failure. Sorted, so that a second read keeps each
+// app's aliases in the same order.
+std::vector<InstalledName> installedNames();
+
+// Adds each name as an alias (matched, never shown) of every desktop app whose
+// program is in that folder: "Microsoft Office" finds Word and Excel, "7-Zip
+// 25.01 (x64)" finds 7-Zip File Manager.
+void addInstalledNames(AppList& apps, const std::vector<InstalledName>& names);
 
 // How often at most AppCatalog asks the disk whether the programs are
 // there, unless the list was just read or an app did not open: a hard disk
