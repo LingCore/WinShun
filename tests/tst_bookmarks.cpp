@@ -300,7 +300,10 @@ private slots:
         QCOMPARE(rows.size(), size_t(50));
         QCOMPARE(q(rows[49].title), Q("Mark 49"));
         QCOMPARE(rows[49].id, std::string("bm-49"));
-        // The cap counts the matches, in file order, before the sort.
+        // The cap applies to the ranking's own order: every match is ranked,
+        // then the first 50 are kept. These 200 all score the same, and
+        // stable_sort leaves them in file order, so "Mark 49" is still the
+        // 50th -- the cap is not what puts it there.
         many.push_back(entry("Mark Z", "https://z.example/", "Bar"));
         QCOMPARE(search(many, "z.example", true).size(), size_t(1));
         QCOMPARE(search(many, "mark", true).size(), size_t(50));
@@ -323,6 +326,114 @@ private slots:
         QCOMPARE(q(miss[0].subtitle), Q("zzz"));
         QCOMPARE(q(search({entry("A", "https://a.example/")}, "zzz", false)[0].title), Q("No matching bookmark"));
         QCOMPARE(q(miss[0].icon), Q("glyph:U+E734"));
+    }
+    void pinyinMatching()
+    {
+        const std::vector<Entry> all {entry("西安交通大学", "https://xjtu.example/"), entry("在线视频", "https://video.example/"),
+                                      entry("Plain English", "https://english.example/")};
+        // Initials, whole syllables and mixes all find it ...
+        QCOMPARE(search(all, "xjtu", true).size(), size_t(1));
+        QCOMPARE(q(search(all, "xian", true).front().title), Q("西安交通大学"));
+        QCOMPARE(q(search(all, "xajt", true).front().title), Q("西安交通大学"));
+        // ... and a title that says the word outranks one that only spells it:
+        // 西安 literally reads "xian", 在线 is zai**xian**.
+        const auto rows = search(all, "xian", true);
+        QCOMPARE(rows.size(), size_t(2));
+        QCOMPARE(q(rows[0].title), Q("西安交通大学"));
+        QCOMPARE(rows[0].score, 76); // pinyin, and it starts the title
+        QCOMPARE(q(rows[1].title), Q("在线视频"));
+        QCOMPARE(rows[1].score, 70); // pinyin in the middle of the title
+        // Chinese typed as Chinese still matches literally and ranks first.
+        QCOMPARE(search(all, "西安", true).front().score, 80);
+        // English stays literal: "plain" is not the pinyin of anything.
+        QCOMPARE(search(all, "plain", true).size(), size_t(1));
+        // One letter is a literal search, so it does not turn into pinyin: "x"
+        // appears in every address here, and it never reads 西.
+        QCOMPARE(search(all, "x", true).size(), size_t(3));
+        // Pinyin only applies to text that has Chinese in it. "xian" is in the
+        // title, so it matches literally; "xa" only would as pinyin, which an
+        // ASCII name does not get. (The address must not contain "xa" itself.)
+        const std::vector<Entry> ascii {entry("xian", "https://q.test/")};
+        QCOMPARE(search(ascii, "xian", true).size(), size_t(1));
+        QCOMPARE(search(ascii, "xa", true).front().id, std::string("none"));
+    }
+    // Pinyin is read from the title and from the folders, never from the
+    // address: a folder the user made is a name they chose (网安 answers "wa"),
+    // while an address is ASCII nearly always and was never named.
+    void pinyinIsReadFromTheTitleAndTheFolders()
+    {
+        const std::vector<Entry> all {
+            entry("Hack The Box", "https://hackthebox.example/", "书签栏 › 网安"),
+            entry("CTF Wiki", "https://wiki.example/", "书签栏 › 网安"),
+            entry("知乎", "https://zhihu.example/", "书签栏"),
+        };
+        // A folder the user named is pinyin-searchable: 网安 is wang/an.
+        QCOMPARE(search(all, "wa", true).size(), size_t(2));
+        QCOMPARE(search(all, "wangan", true).size(), size_t(2));
+        QCOMPARE(search(all, "书签栏", true).size(), size_t(3)); // literally, too
+        // The title is read as pinyin as before: 知乎 is zhi/hu.
+        QCOMPARE(q(search(all, "zh", true).front().title), Q("知乎"));
+        // The address is not: "hackthebox" matches literally, and no pinyin is
+        // tried on it, so a spelling that only the address could answer misses.
+        QCOMPARE(q(search(all, "hackthebox", true).front().title), Q("Hack The Box"));
+        // A miss still comes back as one row, the "no bookmark" message, so it
+        // is the row that has to be checked, not the size.
+        QVERIFY(!search(all, "htb", true).front().valid); // no ASCII initials
+        // A term may not span the title and the folder: the newline stops it.
+        QVERIFY(!search(all, "box书", true).front().valid);
+    }
+    // The browser's own two folders are not read as pinyin. Every profile has
+    // them, under the same name, so they say nothing about what is inside --
+    // and 书签栏 spells "sql" (shu-qian-lan) while 其他书签 starts "qt"
+    // (qi-ta), so reading them matched the whole bar for unrelated queries.
+    void theBrowsersOwnFoldersAreNotSpelled()
+    {
+        const std::vector<Entry> all {
+            entry("Hack The Box", "https://hackthebox.example/", "书签栏"),
+            entry("CTF Wiki", "https://wiki.example/", "书签栏"),
+            entry("网易云音乐", "https://music.example/", "其他书签"),
+        };
+        // The complaint this fixes: "sql" is 书签栏's initials and "qt" is
+        // 其他书签's, and neither says anything about the bookmarks below.
+        QVERIFY(!search(all, "sql", true).front().valid);
+        QVERIFY(!search(all, "qt", true).front().valid);
+        QVERIFY(!search(all, "sqt", true).front().valid);
+        // Typing the name still finds them literally: the literal search reads
+        // the whole folder text, built-in names included.
+        QCOMPARE(search(all, "书签栏", true).size(), size_t(2));
+        QCOMPARE(search(all, "其他书签", true).size(), size_t(1));
+        // A folder the user named inside the bar is still spelled: 工具 is
+        // gong/ju, and the built-in parent above it stays out of the way.
+        const std::vector<Entry> inner {entry("知乎", "https://zhihu.example/", "书签栏 › 工具")};
+        QCOMPARE(search(inner, "gj", true).size(), size_t(1));
+        QCOMPARE(search(inner, "gongju", true).size(), size_t(1));
+        // The English names count too: the file stores whichever language the
+        // browser runs in.
+        const std::vector<Entry> english {entry("Hack The Box", "https://h.example/", "Bookmarks bar")};
+        QVERIFY(!search(english, "bb", true).front().valid);
+        QCOMPARE(search(english, "Bookmarks bar", true).size(), size_t(1));
+        // A built-in name only stops being spelled where it is a whole folder:
+        // a folder the user named 书签栏备份 is their own name and is read.
+        const std::vector<Entry> own {entry("X", "https://x.example/", "书签栏备份")};
+        QCOMPARE(search(own, "sqlbf", true).size(), size_t(1));
+    }
+    // The rows are capped at 50, and the cap has to come after the ranking:
+    // more bookmarks match than fit, and the one that says the word may be the
+    // last of them in file order.
+    void theBestFiftyOutliveTheFileOrder()
+    {
+        std::vector<Entry> many;
+        for (int i = 1; i <= 60; ++i) // "xian" as pinyin inside the title: zai-xian
+            many.push_back(entry("在线工具" + std::to_string(i), "https://z" + std::to_string(i) + ".example/"));
+        many.push_back(entry("西安交通大学", "https://xjtu.example/")); // 61st: the one that counts
+        const auto rows = search(many, "xian", true);
+        QCOMPARE(rows.size(), size_t(50));
+        // Ranking over the whole list puts it first; cutting to the first 50
+        // in file order would have left it out entirely.
+        QCOMPARE(q(rows.front().title), Q("西安交通大学"));
+        QCOMPARE(rows.front().score, 76);
+        QCOMPARE(q(rows[1].title), Q("在线工具1")); // stable: file order within a score
+        QCOMPARE(rows[1].score, 70);
     }
 };
 

@@ -7,6 +7,7 @@
 #pragma once
 
 #include "winshun.h"
+#include "winshun-pinyin.h"
 
 #include <string>
 #include <vector>
@@ -50,8 +51,11 @@ std::string readFile(const std::string& path);
 // AccountBookmarks beside it.
 std::vector<std::string> bookmarkFiles(const std::string& localAppData, const std::string& extraFile);
 
-// The rows for the typed `text`: at most 50, title matches first. When
-// nothing is found, one invalid row says why (no files at all, or no match).
+// The rows for the typed `text`: at most 50, the best ranked ones first. A
+// word of letters also matches as the pinyin of Chinese characters in the title
+// or in a folder ("xian", "wa"); the address is matched literally only.
+// When nothing is found, one invalid row says why (no files at all, or no
+// match).
 winshun::Items search(const std::vector<Entry>& entries, const std::string& text, bool chinese);
 
 } // namespace bm

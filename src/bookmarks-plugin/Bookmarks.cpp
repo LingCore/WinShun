@@ -291,36 +291,132 @@ std::vector<std::string> bookmarkFiles(const std::string& localAppData, const st
     return files;
 }
 
+// The two folders a browser makes for itself, at the top of the tree: the
+// bookmarks bar and the other bookmarks. Every profile has them under the same
+// name, so they say nothing about what is filed inside. Read as pinyin they are
+// pure noise: 书签栏 spells "sql" (shu-qian-lan) and 其他书签 starts "qt"
+// (qi-ta), so either one matches the whole bar for a query that has nothing to
+// do with it. Both the Chinese and the English names are listed, because the
+// file stores whichever the browser was installed in.
+bool isBuiltInFolder(const std::string& name)
+{
+    static const char* const kNames[] = {
+        "书签栏", "其他书签", "收藏夹栏", "其他收藏夹",
+        "bookmarks bar", "other bookmarks", "favorites bar", "other favorites",
+    };
+    const std::string low = lower(name);
+    for (const char* built : kNames) {
+        if (low == built)
+            return true;
+    }
+    return false;
+}
+
+// The folder as pinyin reads it: the browser's own folders left out, so a name
+// the user chose (网安 answers "wa") is still searched while the bar every
+// profile shares is not. A literal search still sees the whole folder text,
+// so typing 书签栏 finds the bar as before.
+std::string spelledFolder(const std::string& folder)
+{
+    std::string out;
+    const std::size_t step = std::strlen(kSeparator);
+    for (std::size_t at = 0; at <= folder.size();) {
+        const std::size_t sep = folder.find(kSeparator, at);
+        const std::string part = folder.substr(at, sep == std::string::npos ? std::string::npos : sep - at);
+        if (!part.empty() && !isBuiltInFolder(part)) {
+            if (!out.empty())
+                out += "\n"; // a term may not span two folders either
+            out += lower(part);
+        }
+        if (sep == std::string::npos)
+            break;
+        at = sep + step;
+    }
+    return out;
+}
+
 winshun::Items search(const std::vector<Entry>& entries, const std::string& text, bool chinese)
 {
     const std::vector<std::string> typed = words(text);
+    // A term that is only letters may be pinyin, so "xian" finds 西安. Built
+    // once per term, not once per bookmark.
+    std::vector<winshun::pinyin::Matcher> pinyin;
+    pinyin.reserve(typed.size());
+    for (const std::string& word : typed)
+        pinyin.emplace_back(word);
     winshun::Items rows;
     std::set<std::string> seen;
     for (const Entry& e : entries) {
         // Shown and matched decoded, opened as it is.
         const std::string shown = unquote(e.url);
         const std::string haystack = lower(e.title + "\n" + e.url + "\n" + shown + "\n" + e.folder);
-        const auto missing = [&haystack](const std::string& w) { return haystack.find(w) == std::string::npos; };
-        if (std::any_of(typed.begin(), typed.end(), missing))
+        // Typed letters match either literally, anywhere, or as the pinyin of a
+        // Chinese character in the title or in a folder the user named: "wa"
+        // finds the bookmarks filed under 网安, as the app's own search reads
+        // folders (Query.cpp). The address is left out of the pinyin: it is
+        // ASCII nearly always, so reading it would cost a comparison per
+        // bookmark and find nothing, and an address is not something the user
+        // named. The browser's own two folders are left out too -- see
+        // spelledFolder(). The newline keeps a match from spanning two names.
+        const std::string title = lower(e.title);
+        const bool titleHan = winshun::pinyin::hasHan(title);
+        const std::string spelled = title + "\n" + spelledFolder(e.folder);
+        const bool spelledHan = winshun::pinyin::hasHan(spelled);
+        const auto missing = [&haystack, &spelled, &pinyin, spelledHan](const std::string& w, std::size_t i) {
+            if (haystack.find(w) != std::string::npos)
+                return false;
+            const winshun::pinyin::Matcher& m = pinyin[i];
+            return !spelledHan || !m.valid() || !m.matches(spelled);
+        };
+        bool keep = true;
+        for (std::size_t i = 0; i < typed.size(); ++i) {
+            if (missing(typed[i], i)) {
+                keep = false;
+                break;
+            }
+        }
+        if (!keep)
             continue;
         if (!seen.insert(lower(e.url)).second)
             continue;
-        // Title matches rank above address-only matches.
-        const std::string title = lower(e.title);
-        const bool inTitle = std::all_of(typed.begin(), typed.end(), [&title](const std::string& w) { return title.find(w) != std::string::npos; });
+        // Title matches rank above address-only matches, and a title that says
+        // the words outranks one that only spells them in pinyin ("西安" before
+        // "在线" for "xian"), as the app ranks it. Among pinyin matches, one at
+        // the start of the title ranks higher still: "西安交通大学" opens with
+        // 西安, while "在线" only hides "xian" after 在.
+        bool allInTitle = true; // every term is in the title ...
+        bool allLiteral = true; // ... and says it without pinyin
+        bool spelledAtStart = true; // every spelled term starts the title
+        for (std::size_t i = 0; i < typed.size() && allInTitle; ++i) {
+            if (title.find(typed[i]) != std::string::npos)
+                continue;
+            allLiteral = false;
+            const winshun::pinyin::Matcher& m = pinyin[i];
+            if (!titleHan || !m.valid())
+                allInTitle = false;
+            else if (const auto span = m.findUtf8(title); span.has_value())
+                spelledAtStart = spelledAtStart && span->first == 0;
+            else
+                allInTitle = false;
+        }
+        const int inTitle = allInTitle ? (allLiteral ? 2 : spelledAtStart ? 1 : 0) : -1;
         const std::string low = lower(e.url);
         const bool web = startsWith(low, "https://") || startsWith(low, "http://");
         rows.push_back(winshun::Item("bm-" + std::to_string(rows.size()), e.title.empty() ? shown : e.title, join({&e.browser, &e.folder, &shown}))
                            // The site's own icon; Win顺 fetches and keeps it.
                            .withIcon(web ? "site:" + e.url : kGlyph)
-                           .withScore(inTitle ? 80 : 60)
+                           .withScore(inTitle == 2 ? 80 : inTitle == 1 ? 76 : inTitle == 0 ? 70 : 60)
                            .withUrl(e.url)
                            .withCopy(e.url));
         rows.back().match = e.title + " " + shown;
-        if (rows.size() >= kMaxRows)
-            break;
     }
+    // These can run to every bookmark there is, so the cap belongs after the
+    // ranking, not before it: cutting the first 50 in file order would drop a
+    // title that says the word for one that only happens to sit earlier in the
+    // file. Over the whole list, the ranking decides which 50 they are.
     std::stable_sort(rows.begin(), rows.end(), [](const winshun::Item& a, const winshun::Item& b) { return a.score > b.score; });
+    if (rows.size() > kMaxRows)
+        rows.resize(kMaxRows);
     if (!rows.empty())
         return rows;
     if (entries.empty()) {
