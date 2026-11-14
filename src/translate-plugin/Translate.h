@@ -8,6 +8,7 @@
 #include "winshun.h"
 
 #include <string>
+#include <vector>
 
 namespace tr {
 
@@ -39,6 +40,14 @@ std::string targetOf(const std::string& text, const std::string& setting);
 
 // "中文" / "Chinese" for zh, and so on; an unknown code is returned as given.
 std::string languageName(const std::string& target, bool chinese);
+
+// The text's lines, trimmed, the empty ones left out. More than one (the
+// blocks of a screenshot, a paragraph each: Win顺's translate_text) are
+// translated each on its own and come back a line each, in the same order:
+// DeepL and Microsoft take them as an array, a chat model gets a JSON array
+// and is asked for one of the same length (parseAnswer reads it; an answer
+// that is not such an array is taken as the plain text it is).
+std::vector<std::string> linesOf(const std::string& text);
 
 // One POST: where, what, and the Authorization header's value.
 struct Request {

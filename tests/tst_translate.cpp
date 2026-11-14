@@ -356,8 +356,10 @@ private slots:
     void deeplBody()
     {
         const Json body = parse(tr::buildRequest(deepl("k"), "say \"hi\"\nnow 你好", "ja").body);
-        QCOMPARE(body["text"].toArray().size(), std::size_t(1));
-        QCOMPARE(QString::fromStdString(body["text"].toArray()[0].toString()), QString::fromUtf8("say \"hi\"\nnow 你好"));
+        QCOMPARE(body["text"].toArray().size(), std::size_t(2)); // a line a text: translated each on its own
+        QCOMPARE(QString::fromStdString(body["text"].toArray()[0].toString()), QString::fromUtf8("say \"hi\""));
+        QCOMPARE(QString::fromStdString(body["text"].toArray()[1].toString()), QString::fromUtf8("now 你好"));
+        QCOMPARE(parse(tr::buildRequest(deepl("k"), " one line \n\n", "ja").body)["text"].toArray().size(), std::size_t(1));
         QCOMPARE(QString::fromStdString(body["target_lang"].toString()), QString::fromUtf8("JA"));
         QCOMPARE(QString::fromStdString(parse(tr::buildRequest(deepl("k"), "x", "zh").body)["target_lang"].toString()), QString::fromUtf8("ZH"));
         QCOMPARE(QString::fromStdString(parse(tr::buildRequest(deepl("k"), "x", "en").body)["target_lang"].toString()), QString::fromUtf8("EN"));
@@ -379,16 +381,16 @@ private slots:
     void openaiBody()
     {
         tr::Settings s = openai();
-        Json body = parse(tr::buildRequest(s, "He said \"go\"\\n\n\tok 你好 😀", "en").body);
+        Json body = parse(tr::buildRequest(s, "He said \"go\"\\n\tok 你好 😀", "en").body);
         QCOMPARE(QString::fromStdString(body["model"].toString()), QString::fromUtf8("gpt-4o-mini"));
         QCOMPARE(body["temperature"].toNumber(-1), 0.0);
         const Json::Array& messages = body["messages"].toArray();
         QCOMPARE(messages.size(), std::size_t(2));
         QCOMPARE(QString::fromStdString(messages[0]["role"].toString()), QString::fromUtf8("system"));
         QCOMPARE(QString::fromStdString(messages[0]["content"].toString()),
-            QString::fromUtf8("Translate the following text into English. Keep the line breaks: each line of the text is one line of the translation, in the same order. Reply with the translation only, no explanations."));
+            QString::fromUtf8("Translate the following text into English. Reply with the translation only, no explanations."));
         QCOMPARE(QString::fromStdString(messages[1]["role"].toString()), QString::fromUtf8("user"));
-        QCOMPARE(QString::fromStdString(messages[1]["content"].toString()), QString::fromUtf8("He said \"go\"\\n\n\tok 你好 😀"));
+        QCOMPARE(QString::fromStdString(messages[1]["content"].toString()), QString::fromUtf8("He said \"go\"\\n\tok 你好 😀"));
 
         s.model = "deepseek-chat";
         body = parse(tr::buildRequest(s, "x", "zh").body);
@@ -413,6 +415,56 @@ private slots:
         QVERIFY(o.ok);
         QCOMPARE(QString::fromStdString(o.text), QString::fromUtf8("Hello"));
         QVERIFY(o.detected.empty());
+    }
+
+    // Several lines (a screenshot's blocks): each translated on its own, the answer a line each.
+    void severalLinesEachOnItsOwn()
+    {
+        QCOMPARE(tr::linesOf("  a \n\n\tb\r\n \n").size(), std::size_t(2));
+        QCOMPARE(QString::fromStdString(tr::linesOf("  a \n\n\tb\r\n")[1]), QString::fromUtf8("b"));
+        QVERIFY(tr::linesOf(" \n ").empty());
+
+        // A chat model: a JSON array out, one of the same length asked for.
+        const Json body = parse(tr::buildRequest(openai(), "Save \"all\"\nCancel\n\n就绪", "zh").body);
+        const QString system = QString::fromStdString(body["messages"].toArray()[0]["content"].toString());
+        QVERIFY2(system.contains(QString::fromUtf8("JSON array of 3 strings")) && system.contains(QString::fromUtf8("into Chinese"))
+                && system.contains(QString::fromUtf8("exactly 3 strings")), qPrintable(system));
+        const Json sent = parse(body["messages"].toArray()[1]["content"].toString());
+        QCOMPARE(sent.toArray().size(), std::size_t(3));
+        QCOMPARE(QString::fromStdString(sent.toArray()[0].toString()), QString::fromUtf8("Save \"all\""));
+        QCOMPARE(QString::fromStdString(sent.toArray()[2].toString()), QString::fromUtf8("就绪"));
+        const auto chat = [](const std::string& content) {
+            return Json(Json::Object {{"choices", Json::Array {Json::Object {{"message", Json::Object {{"content", content}}}}}}}).dump();
+        };
+        tr::Answer a = tr::parseAnswer(openai(), chat("[\"保存“全部”\", \"取消\", \"Ready\"]"), true);
+        QVERIFY(a.ok);
+        QCOMPARE(QString::fromStdString(a.text), QString::fromUtf8("保存“全部”\n取消\nReady"));
+        // In a code fence; a line break inside one translation does not make two.
+        a = tr::parseAnswer(openai(), chat("```json\n[\"第一\\n行\", \"第二\"]\n```"), true);
+        QCOMPARE(QString::fromStdString(a.text), QString::fromUtf8("第一 行\n第二"));
+        // Not such an array: the text as it came (the caller counts the lines).
+        a = tr::parseAnswer(openai(), chat("[1] 保存\n[2] 取消"), true);
+        QCOMPARE(QString::fromStdString(a.text), QString::fromUtf8("[1] 保存\n[2] 取消"));
+        a = tr::parseAnswer(openai(), chat("[\"a\", 2]"), true);
+        QCOMPARE(QString::fromStdString(a.text), QString::fromUtf8("[\"a\", 2]"));
+
+        // Microsoft and DeepL: a text each, a translation each.
+        tr::Settings microsoft = openai();
+        microsoft.provider = "microsoft";
+        const Json ms = parse(tr::buildRequest(microsoft, "Save\nCancel", "zh").body);
+        QCOMPARE(ms.toArray().size(), std::size_t(2));
+        QCOMPARE(QString::fromStdString(ms.toArray()[1]["Text"].toString()), QString::fromUtf8("Cancel"));
+        a = tr::parseAnswer(microsoft,
+            R"([{"detectedLanguage":{"language":"en"},"translations":[{"text":"保存"}]},{"translations":[{"text":"取\n消"}]}])", true);
+        QVERIFY(a.ok);
+        QCOMPARE(QString::fromStdString(a.text), QString::fromUtf8("保存\n取 消"));
+        QCOMPARE(QString::fromStdString(a.detected), QString::fromUtf8("en"));
+        a = tr::parseAnswer(deepl("k"), R"({"translations":[{"detected_source_language":"EN","text":"保存"},{"text":"取消"}]})", true);
+        QVERIFY(a.ok);
+        QCOMPARE(QString::fromStdString(a.text), QString::fromUtf8("保存\n取消"));
+        // One text keeps its own line breaks, as before.
+        a = tr::parseAnswer(deepl("k"), R"({"translations":[{"text":"第一行\n第二行"}]})", true);
+        QCOMPARE(QString::fromStdString(a.text), QString::fromUtf8("第一行\n第二行"));
     }
 
     void answersWithMissingParts()
