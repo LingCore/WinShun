@@ -218,6 +218,12 @@ Item {
     function closePreview() {
         previewClickTimer.stop()
         clearHover()
+        if (editingId > 0) { // closed over the words being changed: they are there the next time
+            draftId = editingId
+            draftText = textEditor.text
+            editingId = 0
+            editOpenedPreview = false
+        }
         previewOpen = false
         clipboard.previewOpen = false
     }
@@ -387,6 +393,42 @@ Item {
             }
         }
         focusSearch()
+    }
+
+    // An entry's own words being changed where the preview is (GitHub #267):
+    // its id; what was typed and not saved is kept for the entry until Esc.
+    property real editingId: 0
+    property bool editOpenedPreview: false // the preview closes again with it
+    property real draftId: 0
+    property string draftText
+    function beginEdit(id, text) {
+        closeContextMenu()
+        tabs.stopNaming()
+        if (!previewOpen) {
+            showPreview()
+            editOpenedPreview = true
+        }
+        for (let i = 0; i < list.count; ++i) { // the row it is, wherever the list has it now
+            if (clipboard.items.idAt(i) === id) {
+                list.currentIndex = i
+                break
+            }
+        }
+        editingId = id
+        textEditor.begin(id === draftId ? draftText : text)
+    }
+    function endEdit(keepDraft) {
+        if (editingId <= 0)
+            return
+        draftId = keepDraft ? editingId : 0
+        draftText = keepDraft ? textEditor.text : ""
+        editingId = 0
+        if (editOpenedPreview) {
+            editOpenedPreview = false
+            closePreview()
+        }
+        if (!input.activeFocus && page.Window.active)
+            focusSearch()
     }
 
     function handleKey(event) {
@@ -628,6 +670,7 @@ Item {
             tabs.nameLength = 60
             tabs.startNaming(note)
         }
+        function onTextEditRequested(id, text) { page.beginEdit(id, text) }
         function onGroupNameRequested(row, group) {
             page.notingId = 0
             tabs.namePlaceholder = qsTr("分组名称")
@@ -1164,6 +1207,24 @@ Item {
                 // compiler, and the binding would not depend on it.
                 info: page.previewOpen && page.previewRevision >= 0 && list.count > 0 && page.previewIndex >= 0
                       ? page.clipboard.preview(page.previewIndex) : ({})
+                opacity: textEditor.visible ? 0 : 1 // its place taken by the words being changed
+            }
+            ClipTextEditor {
+                id: textEditor
+                metrics: page.metrics
+                dpr: page.dpr
+                visible: preview.visible && page.editingId > 0
+                x: preview.x
+                width: preview.width
+                height: preview.height
+                resizeMargin: preview.resizeMargin
+                onSaveRequested: (text) => {
+                    if (page.clipboard.setText(page.editingId, text))
+                        page.endEdit(false)
+                }
+                onCancelled: page.endEdit(false)
+                // The list or the search clicked, another window: put by, not lost.
+                onFocusLost: page.endEdit(true)
             }
 
             // The edge between the list and the preview: drag to size the
@@ -1355,6 +1416,7 @@ Item {
                 // Pinned without the keys: no key does anything here; the
                 // status says what a click does.
                 readonly property bool shown: !(page.clipboard.pinned && !page.clipboard.keysRouted && !page.Window.active)
+                                              && page.editingId === 0 // the keys are the editor's, which says its own
                                               && (page.selectedCount > 0
                                                   || statusLabel.implicitWidth <= footer.width - reserved - implicitWidth)
                 opacity: shown && !pinyinNote.visible && !holdNote.visible ? 1 : 0 // still laid out: its width tells when it fits again

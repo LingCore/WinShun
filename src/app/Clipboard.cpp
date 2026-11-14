@@ -1505,6 +1505,25 @@ void Clipboard::setNote(qint64 id, const QString& note)
     m_model.refreshTimes(); // the row shows it
 }
 
+bool Clipboard::setText(qint64 id, const QString& text)
+{
+    switch (m_store->setText(id, text)) {
+    case ClipStore::TextChange::Changed:
+        historyChanged(); // it may be a link now, or no longer what is searched for
+        flash(tr("已保存修改"));
+        return true;
+    case ClipStore::TextChange::Unchanged:
+        return true;
+    case ClipStore::TextChange::Duplicate:
+        flash(tr("已有一条内容相同的记录"));
+        return false;
+    case ClipStore::TextChange::Refused:
+        break;
+    }
+    flash(tr("内容不能为空"));
+    return false;
+}
+
 void Clipboard::remove(int row)
 {
     const std::vector<const Clip*> clips = targets(row);
@@ -1778,6 +1797,10 @@ QVariantList Clipboard::menuItems(int row) const
     }
     if (!many) // a line of the user's own before it, found by the search
         items.append(entry(EditNote, clips.front()->note.isEmpty() ? tr("加备注…") : tr("改备注…"), QString(), u"\uE70F"_s)); // Edit
+    // Its own words changed where the preview is: text all of which is listed, not kept from view.
+    if (!many && clips.front()->kind != ClipKind::Files && clips.front()->kind != ClipKind::Image
+        && !clips.front()->truncated() && !clips.front()->masked)
+        items.append(entry(EditText, tr("修改文字…"), QString(), u"\uE70F"_s)); // Edit
     items.append(entry(SaveFiles, many ? tr("保存 %Ln 条为文件…", nullptr, n) : tr("保存为文件…"), QString(),
         u"\uE74E"_s));
     items.append(entry(SendLan, m_lanSendAvailable ? tr("用局域网发送…")
@@ -1871,6 +1894,10 @@ void Clipboard::trigger(int row, int action)
     case EditNote:
         if (const std::vector<const Clip*> clips = targets(row); clips.size() == 1)
             emit noteRequested(clips.front()->id, clips.front()->note);
+        break;
+    case EditText:
+        if (const std::vector<const Clip*> clips = targets(row); clips.size() == 1)
+            emit textEditRequested(clips.front()->id, clips.front()->text);
         break;
     case LeaveGroup:
         moveToGroup(row, 0);

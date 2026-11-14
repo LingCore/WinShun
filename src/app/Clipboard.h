@@ -153,6 +153,7 @@ public:
         SendLan, // this history selection, without replacing the system clipboard
         EditNote, // 备注: a line of the user's own for the entry (noteRequested), found by the search
         Mask, // 遮住内容 / 显示内容: dots in the list and the preview (Clip::masked)
+        EditText, // 修改文字: the entry's own words changed in the preview's place (textEditRequested)
         MoveToGroup = 1000, // + the group's id
     };
     Q_ENUM(Action)
@@ -297,6 +298,10 @@ public:
     // The entry's note (GitHub #267): what the user typed after 备注 in its
     // menu; empty takes the note away.
     Q_INVOKABLE void setNote(qint64 id, const QString& note);
+    // The entry's words as the user changed them (GitHub #267). True: saved,
+    // or the same as before; false with the reason shown (flash): another
+    // entry is those words already, or nothing is left of them.
+    Q_INVOKABLE bool setText(qint64 id, const QString& text);
 
     Q_INVOKABLE void toggleSelected(int row);
     Q_INVOKABLE void selectRange(int from, int to, bool add);
@@ -371,6 +376,7 @@ signals:
     void pinyinHintRequested();
     void groupNameRequested(int row, qint64 group); // a name for a new group (group 0) for the row, or a new one for `group`
     void noteRequested(qint64 id, const QString& note); // a note for the entry, starting from the one it has
+    void textEditRequested(qint64 id, const QString& text); // the entry's words to change, starting from what they are
     void fieldChanged();
     // The field the window goes back to: its own window in front again (App).
     void fieldRequested(QQuickItem* field);

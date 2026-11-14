@@ -501,6 +501,76 @@ private slots:
 
     // An entry's note (GitHub #267): one line of the user's own, found by the
     // search as the text is, kept over a restart and an undone removal.
+    // An entry's text changed by the user (GitHub #267).
+    void editedText()
+    {
+        QTemporaryDir dir;
+        qint64 plain = 0;
+        qint64 rich = 0;
+        qint64 lines = 0;
+        qint64 picture = 0;
+        {
+            ClipStore store(dir.path());
+            QVERIFY(store.open(kStart));
+            plain = store.add(text(u"sk-old-key"_s), kStart);
+            ClipCapture formatted = text(u"bold words"_s);
+            formatted.html = "<b>bold words</b>";
+            formatted.rtf = "{\\rtf1 bold words}";
+            rich = store.add(formatted, kStart + 1);
+            lines = store.add(text(u"one\r\ntwo"_s), kStart + 2);
+            ClipCapture shot;
+            shot.kind = ClipKind::Image;
+            shot.imageData = QByteArray("PNG-edit", 8);
+            shot.hash = "edited-text-picture";
+            picture = store.add(shot, kStart + 3);
+            store.setNote(plain, u"the key"_s);
+            const qint64 used = store.clip(plain)->used;
+            const QByteArray hash = store.clip(plain)->hash;
+
+            QCOMPARE(store.setText(plain, u"sk-new-key"_s), ClipStore::TextChange::Changed);
+            QCOMPARE(store.clip(plain)->text, u"sk-new-key"_s);
+            QCOMPARE(store.clip(plain)->textLength, 10);
+            QVERIFY(store.clip(plain)->hash != hash);
+            QCOMPARE(store.clip(plain)->used, used); // where and when it was
+            QCOMPARE(store.clip(plain)->note, u"the key"_s);
+            QCOMPARE(store.clips().back().id, plain); // still the oldest
+            QCOMPARE(store.setText(plain, u"sk-new-key"_s), ClipStore::TextChange::Unchanged);
+            // What its words say now: a link, then text again.
+            QCOMPARE(store.setText(plain, u"https://example.com/key"_s), ClipStore::TextChange::Changed);
+            QCOMPARE(store.clip(plain)->kind, ClipKind::Link);
+            QCOMPARE(store.setText(plain, u"sk-new-key"_s), ClipStore::TextChange::Changed);
+            QCOMPARE(store.clip(plain)->kind, ClipKind::Text);
+            // Nothing left of it, another entry's very words, a picture, no such entry: as it was.
+            QCOMPARE(store.setText(plain, u"  \n "_s), ClipStore::TextChange::Refused);
+            QCOMPARE(store.setText(plain, u"bold words"_s), ClipStore::TextChange::Duplicate);
+            QCOMPARE(store.setText(picture, u"words"_s), ClipStore::TextChange::Refused);
+            QCOMPARE(store.setText(987654, u"words"_s), ClipStore::TextChange::Refused);
+            QCOMPARE(store.clip(plain)->text, u"sk-new-key"_s);
+            // The formatted versions would paste the old words: gone.
+            QVERIFY(store.clip(rich)->html && store.clip(rich)->rtf);
+            QCOMPARE(store.setText(rich, u"plain words"_s), ClipStore::TextChange::Changed);
+            QVERIFY(!store.clip(rich)->html && !store.clip(rich)->rtf);
+            QVERIFY(store.payload(rich).html.isEmpty() && store.payload(rich).rtf.isEmpty());
+            QCOMPARE(store.payload(rich).text, u"plain words"_s);
+            // An editor's line ends are the entry's own again; the same words are no change.
+            QCOMPARE(store.setText(lines, u"one\ntwo"_s), ClipStore::TextChange::Unchanged);
+            QCOMPARE(store.setText(lines, u"one\ntwo\nthree"_s), ClipStore::TextChange::Changed);
+            QCOMPARE(store.clip(lines)->text, u"one\r\ntwo\r\nthree"_s);
+            // Copied again as it is now: the same entry, to the top. As it was: a new one.
+            QCOMPARE(store.add(text(u"sk-new-key"_s), kStart + 10), plain);
+            QVERIFY(store.add(text(u"sk-old-key"_s), kStart + 11) != plain);
+        }
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart + 20));
+        QCOMPARE(store.clip(plain)->text, u"sk-new-key"_s);
+        QCOMPARE(store.clip(plain)->kind, ClipKind::Text);
+        QCOMPARE(store.clip(plain)->note, u"the key"_s);
+        QCOMPARE(store.clip(rich)->text, u"plain words"_s);
+        QVERIFY(!store.clip(rich)->html && !store.clip(rich)->rtf);
+        QCOMPARE(store.clip(lines)->text, u"one\r\ntwo\r\nthree"_s);
+        QCOMPARE(store.add(text(u"plain words"_s), kStart + 30), rich); // found by its new words
+    }
+
     void notes()
     {
         QTemporaryDir dir;

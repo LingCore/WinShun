@@ -935,6 +935,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     // (GitHub #267).
     connect(m_clipboard.get(), &Clipboard::groupNameRequested, this, &App::activateClipboard);
     connect(m_clipboard.get(), &Clipboard::noteRequested, this, &App::activateClipboard);
+    connect(m_clipboard.get(), &Clipboard::textEditRequested, this, &App::activateClipboard);
     connect(m_clipboard.get(), &Clipboard::fieldRequested, this, &App::returnToField);
     connect(m_clipboard.get(), &Clipboard::turnOnRequested, this, [this] {
         Settings settings = m_settings;

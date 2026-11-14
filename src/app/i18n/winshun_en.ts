@@ -1495,6 +1495,25 @@
     </message>
 </context>
 <context>
+    <name>ClipTextEditor</name>
+    <message>
+        <source>修改文字</source>
+        <translation>Edit the text</translation>
+    </message>
+    <message>
+        <source>Ctrl+Enter 保存 · Esc 取消</source>
+        <translation>Ctrl+Enter saves · Esc cancels</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>保存</source>
+        <translation>Save</translation>
+    </message>
+</context>
+<context>
     <name>ClipTabs</name>
     <message>
         <source>分组名称</source>
@@ -10305,6 +10324,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>改备注…</source>
         <translation>Edit the note…</translation>
+    </message>
+    <message>
+        <source>修改文字…</source>
+        <translation>Edit the text…</translation>
+    </message>
+    <message>
+        <source>已保存修改</source>
+        <translation>Saved</translation>
+    </message>
+    <message>
+        <source>已有一条内容相同的记录</source>
+        <translation>Another entry already has this text</translation>
+    </message>
+    <message>
+        <source>内容不能为空</source>
+        <translation>The text cannot be empty</translation>
     </message>
     <message>
         <source>移到新分组…</source>

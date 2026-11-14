@@ -6215,6 +6215,86 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
             check(title.startsWith(u"<b>学校 收件地址</b>"), "the note does not lead the entry's line");
             check(saveGrab(window, output.filePath(u"clipboard-note.png"_s)), "the noted entry did not render");
         }
+        // An entry's own words changed (GitHub #267): 修改文字 in its menu puts
+        // an editor where the preview is; Ctrl+Enter saves, Esc does not, and
+        // words another entry has already are refused with the editor open.
+        {
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            const qint64 other = store.add(ClipCapture {.kind = ClipKind::Text, .text = u"another entry"_s}, now + 5);
+            const qint64 id = store.add(ClipCapture {.kind = ClipKind::Text, .text = u"sk-old-key"_s}, now + 6);
+            clipboard.historyChanged();
+            settle(window);
+            QQuickItem* const editor = window->findChild<QQuickItem*>(u"clipboardTextEditor"_s);
+            const auto editing = [&] { return page->property("editingId").toLongLong(); };
+            const auto key = [&](int code, Qt::KeyboardModifiers modifiers, const QString& text = {}) {
+                QKeyEvent press(QEvent::KeyPress, code, modifiers, text);
+                QCoreApplication::sendEvent(window, &press);
+                QKeyEvent release(QEvent::KeyRelease, code, modifiers, text);
+                QCoreApplication::sendEvent(window, &release);
+            };
+            const auto type = [&](const QString& words) {
+                key(Qt::Key_A, Qt::ControlModifier);
+                for (const QChar c : words)
+                    key(0, {}, QString(c));
+            };
+            const auto listed = [&] {
+                for (const QVariant& item : clipboard.menuItems(0)) {
+                    if (item.toMap().value(u"action"_s).toInt() == Clipboard::EditText)
+                        return true;
+                }
+                return false;
+            };
+            check(editor && listed(), "修改文字 is not in a text entry's menu");
+            clipboard.trigger(0, Clipboard::EditText);
+            settle(window);
+            check(editing() == id && page->property("previewOpen").toBool() && !clipboard.previewOpen(),
+                "修改文字 did not open the editor in the preview's place");
+            check(editor && editor->isVisible() && window->activeFocusItem()
+                    && window->activeFocusItem()->parentItem() && window->activeFocusItem()->property("text").toString() == u"sk-old-key",
+                "the editor does not hold the entry's words and the keys");
+            check(saveGrab(window, output.filePath(u"clipboard-edit-text.png"_s)), "the editor did not render");
+            type(u"another entry"_s);
+            key(Qt::Key_Return, Qt::ControlModifier);
+            settle(window);
+            check(editing() == id && store.clip(id)->text == u"sk-old-key"
+                    && clipboard.statusText() == Clipboard::tr("已有一条内容相同的记录"),
+                "another entry's words were not refused with the editor open");
+            type(u"sk-new-key"_s);
+            key(Qt::Key_Return, Qt::ControlModifier);
+            settle(window);
+            check(editing() == 0 && store.clip(id)->text == u"sk-new-key" && !page->property("previewOpen").toBool(),
+                "Ctrl+Enter did not save the words and close the editor");
+            check(clipboard.items()->data(clipboard.items()->index(0), ClipModel::TitleRole).toString().contains(u"sk-new-key"),
+                "the list does not show the new words");
+            check(saveGrab(window, output.filePath(u"clipboard-edit-saved.png"_s)), "the edited entry did not render");
+            // Esc: as it was, and nothing put by for the next time.
+            clipboard.trigger(0, Clipboard::EditText);
+            settle(window);
+            type(u"thrown away"_s);
+            key(Qt::Key_Escape, {});
+            settle(window);
+            check(editing() == 0 && store.clip(id)->text == u"sk-new-key", "Esc did not leave the words as they were");
+            clipboard.trigger(0, Clipboard::EditText);
+            settle(window);
+            check(window->activeFocusItem() && window->activeFocusItem()->property("text").toString() == u"sk-new-key",
+                "words thrown away with Esc came back");
+            // Left for the search field: put by, and there again.
+            type(u"half done"_s);
+            QMetaObject::invokeMethod(page, "focusSearch");
+            settle(window);
+            check(editing() == 0 && store.clip(id)->text == u"sk-new-key", "leaving the editor saved or kept it open");
+            clipboard.trigger(0, Clipboard::EditText);
+            settle(window);
+            check(window->activeFocusItem() && window->activeFocusItem()->property("text").toString() == u"half done",
+                "words typed and left were lost");
+            key(Qt::Key_Escape, {});
+            settle(window);
+            std::vector<qint64> gone {id, other};
+            store.remove(gone);
+            clipboard.historyChanged();
+            QMetaObject::invokeMethod(page, "focusSearch");
+            settle(window);
+        }
         settle(window);
         say(u"clipboard search logo: shared SVG loaded; spacing, focus and both header positions checked"_s);
     } else {

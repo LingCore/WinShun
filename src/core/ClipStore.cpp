@@ -1150,6 +1150,42 @@ void ClipStore::setNote(qint64 id, const QString& note)
     });
 }
 
+ClipStore::TextChange ClipStore::setText(qint64 id, const QString& edited)
+{
+    const auto it = std::ranges::find(m_clips, id, &Clip::id);
+    if (!m_open || it == m_clips.end() || it->kind == ClipKind::Files || it->kind == ClipKind::Image || it->truncated())
+        return TextChange::Refused;
+    QString words = edited;
+    words.replace(u"\r\n"_s, u"\n"_s);
+    if (it->text.contains(u"\r\n"_s))
+        words.replace(u"\n"_s, u"\r\n"_s);
+    if (words.trimmed().isEmpty())
+        return TextChange::Refused;
+    if (words == it->text)
+        return TextChange::Unchanged;
+    const ClipKind kind = kindOfText(words);
+    const QByteArray hash = clipHash(kind, words);
+    if (std::ranges::any_of(m_clips, [&](const Clip& c) { return c.id != id && c.hash == hash; }))
+        return TextChange::Duplicate;
+    it->kind = kind;
+    it->text = words.left(kTextInMemory);
+    it->textLength = words.size();
+    it->hash = hash;
+    it->html = false;
+    it->rtf = false;
+    m_writer->post([id, kind, words, hash](QSqlDatabase& db) {
+        QSqlQuery query(db);
+        query.prepare(u"UPDATE clips SET kind = ?, text = ?, length = ?, hash = ?, html = NULL, rtf = NULL WHERE id = ?"_s);
+        query.addBindValue(static_cast<int>(kind));
+        query.addBindValue(text(words));
+        query.addBindValue(words.size());
+        query.addBindValue(hash);
+        query.addBindValue(id);
+        run(query, "Saving an entry's edited text");
+    });
+    return TextChange::Changed;
+}
+
 std::vector<qint64> ClipStore::groupOrder(qint64 groupId) const
 {
     std::vector<const Clip*> members;
