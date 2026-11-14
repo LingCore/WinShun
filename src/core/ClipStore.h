@@ -88,6 +88,9 @@ struct Clip {
     // The user's own words for the entry (GitHub #267): shown before it, and
     // found by the search as its text is. Empty: none.
     QString note;
+    // Kept from view (GitHub #260): the list and the preview show dots in its place, the search
+    // finds it by its note and source only. Pasting it is as ever.
+    bool masked = false;
     bool read = false;
     // Image: taken with Win顺's own screen capture (src/capture), not copied
     // from a program: the screenshot history (jt, the 截图 tag, MCP's
@@ -319,6 +322,8 @@ public:
     // characters; empty takes it away.
     static constexpr qsizetype kNoteLength = 60;
     void setNote(qint64 id, const QString& note);
+    // Kept from view or shown again (Clip::masked).
+    void setMasked(std::span<const qint64> ids, bool masked);
     // Moves an entry of a group to where `target`, of the same group, is
     // (before it moving up, after it moving down); the rest keep their order.
     void moveInGroup(qint64 id, qint64 target);

@@ -152,6 +152,7 @@ public:
         SaveMerged, // the words of all in one file
         SendLan, // this history selection, without replacing the system clipboard
         EditNote, // 备注: a line of the user's own for the entry (noteRequested), found by the search
+        Mask, // 遮住内容 / 显示内容: dots in the list and the preview (Clip::masked)
         MoveToGroup = 1000, // + the group's id
     };
     Q_ENUM(Action)

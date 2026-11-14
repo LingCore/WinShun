@@ -9825,6 +9825,10 @@ Double-click grip: expand/collapse search panel</translation>
 <context>
     <name>ws::ClipModel</name>
     <message>
+        <source>已遮住</source>
+        <translation>hidden</translation>
+    </message>
+    <message>
         <source>%1 动图</source>
         <translation>%1 animation</translation>
     </message>
@@ -10253,6 +10257,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>移到“%1”</source>
         <translation>Move to “%1”</translation>
+    </message>
+    <message>
+        <source>遮住内容</source>
+        <translation>Hide content</translation>
+    </message>
+    <message>
+        <source>显示内容</source>
+        <translation>Show content</translation>
+    </message>
+    <message>
+        <source>已遮住</source>
+        <translation>Hidden</translation>
     </message>
     <message>
         <source>加备注…</source>

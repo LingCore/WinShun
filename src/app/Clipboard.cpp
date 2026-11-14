@@ -1647,6 +1647,16 @@ QVariantMap Clipboard::preview(int row) const
         {u"formatted"_s, c->html || c->rtf},
         {u"swatch"_s, ClipModel::colorOf(*c)},
     };
+    if (c->masked) { // dots in place of whatever it is, where it came from and when below them
+        map.insert(u"kind"_s, static_cast<int>(ClipKind::Text));
+        map.insert(u"formatted"_s, false);
+        map.insert(u"swatch"_s, QString());
+        map.insert(u"text"_s, u"\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"_s);
+        map.insert(u"more"_s, 0);
+        map.insert(u"size"_s, tr("已遮住"));
+        map.insert(u"group"_s, QString());
+        return map;
+    }
     if (c->kind == ClipKind::Text) {
         if (const std::optional<QColor> color = colortext::parse(c->text)) {
             QVariantList notations;
@@ -1761,6 +1771,11 @@ QVariantList Clipboard::menuItems(int row) const
         if (c.kind == ClipKind::Image)
             items.append(entry(OpenImage, tr("打开图片"), QString(), u""_s));
     }
+    {
+        // Kept from view: a password copied, a screen being shared or recorded (GitHub #260).
+        const bool masked = std::all_of(clips.begin(), clips.end(), [](const Clip* c) { return c->masked; });
+        items.append(entry(Mask, masked ? tr("显示内容") : tr("遮住内容"), QString(), masked ? u"\uE890"_s : u"\uED1A"_s)); // View, Hide
+    }
     if (!many) // a line of the user's own before it, found by the search
         items.append(entry(EditNote, clips.front()->note.isEmpty() ? tr("加备注…") : tr("改备注…"), QString(), u"\uE70F"_s)); // Edit
     items.append(entry(SaveFiles, many ? tr("保存 %Ln 条为文件…", nullptr, n) : tr("保存为文件…"), QString(),
@@ -1844,6 +1859,15 @@ void Clipboard::trigger(int row, int action)
     case NewGroup:
         emit groupNameRequested(row, 0);
         break;
+    case Mask: {
+        const std::vector<const Clip*> clips = targets(row);
+        std::vector<qint64> ids;
+        for (const Clip* c : clips)
+            ids.push_back(c->id);
+        m_store->setMasked(ids, !std::all_of(clips.begin(), clips.end(), [](const Clip* c) { return c->masked; }));
+        m_model.refreshTimes(); // the rows show it, and the preview is asked for again
+        break;
+    }
     case EditNote:
         if (const std::vector<const Clip*> clips = targets(row); clips.size() == 1)
             emit noteRequested(clips.front()->id, clips.front()->note);

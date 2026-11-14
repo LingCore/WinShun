@@ -226,7 +226,8 @@ bool ClipMatcher::matches(const Clip& clip) const
     }
     const QString& text = clip.searchText(); // a picture: the words in it
     for (const Term& term : m_terms) { // each in the entry, or in the user's note for it (GitHub #267)
-        if (!find(term, text, &start, &length) && (clip.note.isEmpty() || !find(term, clip.note, &start, &length)))
+        // One kept from view: not by what it says (a row found would tell).
+        if ((clip.masked || !find(term, text, &start, &length)) && (clip.note.isEmpty() || !find(term, clip.note, &start, &length)))
             return false;
     }
     return true;
@@ -423,6 +424,7 @@ bool ClipStore::open(qint64 now)
         bool hasAnimated = false;
         bool hasPasted = false;
         bool hasNote = false;
+        bool hasMasked = false;
         QSqlQuery columns(db);
         columns.prepare(u"PRAGMA table_info(clips)"_s);
         if (!run(columns, "Reading the columns"))
@@ -437,6 +439,7 @@ bool ClipStore::open(qint64 now)
             hasAnimated = hasAnimated || columns.value(1).toString() == u"animated"_s;
             hasPasted = hasPasted || columns.value(1).toString() == u"pasted"_s;
             hasNote = hasNote || columns.value(1).toString() == u"note"_s;
+            hasMasked = hasMasked || columns.value(1).toString() == u"masked"_s;
         }
         columns.finish();
         if (!hasOcr && !run(db, u"ALTER TABLE clips ADD COLUMN ocr TEXT"_s))
@@ -478,6 +481,8 @@ bool ClipStore::open(qint64 now)
         QSqlQuery groups(db);
         if (!hasNote && !run(db, u"ALTER TABLE clips ADD COLUMN note TEXT NOT NULL DEFAULT ''"_s))
             return loaded;
+        if (!hasMasked && !run(db, u"ALTER TABLE clips ADD COLUMN masked INTEGER NOT NULL DEFAULT 0"_s))
+            return loaded;
         groups.prepare(u"SELECT id, name FROM groups ORDER BY position, id"_s);
         if (!run(groups, "Reading the groups"))
             return loaded;
@@ -488,7 +493,7 @@ bool ClipStore::open(qint64 now)
         clips.setForwardOnly(true);
         clips.prepare(u"SELECT id, kind, substr(text, 1, %1), length, hash, created, used, source, sourcePath, groupId, "
                       u"width, height, bytes, html IS NOT NULL, rtf IS NOT NULL, ocr, rank, screenshot, project, "
-                      u"formats IS NOT NULL, imageFormat, animated, pasted, note FROM clips ORDER BY used DESC, id DESC"_s
+                      u"formats IS NOT NULL, imageFormat, animated, pasted, note, masked FROM clips ORDER BY used DESC, id DESC"_s
                 .arg(kTextInMemory));
         if (!run(clips, "Reading the history"))
             return loaded;
@@ -519,6 +524,7 @@ bool ClipStore::open(qint64 now)
             clip.animated = clip.kind == ClipKind::Image && clips.value(21).toBool();
             clip.pasted = clips.value(22).toLongLong();
             clip.note = clips.value(23).toString();
+            clip.masked = clips.value(24).toInt() != 0;
             loaded.clips.push_back(std::move(clip));
         }
         QSqlQuery last(db);
@@ -980,6 +986,22 @@ void ClipStore::restore(std::vector<ClipRecord> records)
             }
         });
     }
+    // And kept from view as they were.
+    std::vector<qint64> masked;
+    for (std::size_t i = 0; i < records.size(); ++i) {
+        if (written[i] && records[i].clip.masked)
+            masked.push_back(records[i].clip.id);
+    }
+    if (!masked.empty()) {
+        m_writer->post([masked](QSqlDatabase& db) {
+            QSqlQuery query(db);
+            query.prepare(u"UPDATE clips SET masked = 1 WHERE id = ?"_s);
+            for (const qint64 id : masked) {
+                query.addBindValue(id);
+                run(query, "Restoring an entry kept from view");
+            }
+        });
+    }
     for (std::size_t i = 0; i < records.size(); ++i) {
         if (!written[i])
             continue;
@@ -1081,6 +1103,31 @@ void ClipStore::setGroup(std::span<const qint64> ids, qint64 groupId)
             run(query, "Moving an entry");
         }
         db.commit();
+    });
+}
+
+void ClipStore::setMasked(std::span<const qint64> ids, bool masked)
+{
+    if (!m_open)
+        return;
+    std::vector<qint64> changed;
+    for (const qint64 id : ids) {
+        const auto it = std::ranges::find(m_clips, id, &Clip::id);
+        if (it == m_clips.end() || it->masked == masked)
+            continue;
+        it->masked = masked;
+        changed.push_back(id);
+    }
+    if (changed.empty())
+        return;
+    m_writer->post([changed, masked](QSqlDatabase& db) {
+        QSqlQuery query(db);
+        query.prepare(u"UPDATE clips SET masked = ? WHERE id = ?"_s);
+        for (const qint64 id : changed) {
+            query.addBindValue(masked ? 1 : 0);
+            query.addBindValue(id);
+            run(query, "Keeping an entry from view");
+        }
     });
 }
 

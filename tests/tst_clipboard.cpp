@@ -546,6 +546,38 @@ private slots:
         QCOMPARE(again.clip(noted)->note, u"学校 收件地址"_s);
     }
 
+    // An entry kept from view (GitHub #260): not found by what it says, kept over a restart and an
+    // undone removal, shown again when asked.
+    void masked()
+    {
+        QTemporaryDir dir;
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart));
+        const qint64 secret = store.add(text(u"hunter2-password"_s), kStart);
+        const qint64 plain = store.add(text(u"hunter gatherers"_s), kStart + 1);
+        store.setNote(secret, u"mail"_s);
+        store.setMasked(std::span(&secret, 1), true);
+        QVERIFY(store.clip(secret)->masked);
+        QVERIFY(!store.clip(plain)->masked);
+        QVERIFY(!ClipMatcher(u"hunter"_s).matches(*store.clip(secret)));
+        QVERIFY(ClipMatcher(u"hunter"_s).matches(*store.clip(plain)));
+        QVERIFY(ClipMatcher(u"mail"_s).matches(*store.clip(secret))); // by its note still
+        std::vector<ClipRecord> removed = store.remove(std::span(&secret, 1));
+        store.restore(std::move(removed));
+        QVERIFY(store.clip(secret)->masked);
+        store.close();
+        ClipStore again(dir.path());
+        QVERIFY(again.open(kStart + 20));
+        QVERIFY(again.clip(secret)->masked);
+        QVERIFY(!again.clip(plain)->masked);
+        again.setMasked(std::span(&secret, 1), false);
+        QVERIFY(ClipMatcher(u"hunter2"_s).matches(*again.clip(secret)));
+        again.close();
+        ClipStore third(dir.path());
+        QVERIFY(third.open(kStart + 40));
+        QVERIFY(!third.clip(secret)->masked);
+    }
+
     void persistsAndRestores()
     {
         QTemporaryDir dir;

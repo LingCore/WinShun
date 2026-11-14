@@ -128,6 +128,28 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
     const Clip* c = at(index.row());
     if (!c)
         return {};
+    // Kept from view (GitHub #260): a plain row of dots, whatever it is; its note still leads it.
+    if (c->masked) {
+        switch (role) {
+        case KindRole:
+            return static_cast<int>(ClipKind::Text);
+        case TitleRole: {
+            const QString dots = u"\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"_s;
+            return c->note.isEmpty() ? dots
+                : u"<b>"_s + highlighted(c->note, m_matcher.spans(c->note), m_highlightColor, m_highlightWeight >= 600)
+                      + u"</b>\u2002"_s + dots;
+        }
+        case IconRole:
+        case ImageRole:
+        case ColorRole:
+            return QString();
+        case MissingRole:
+        case ScreenshotRole:
+            return false;
+        default:
+            break;
+        }
+    }
     switch (role) {
     case IdRole:
         return c->id;
@@ -270,6 +292,10 @@ QString ClipModel::detail(const Clip& clip) const
     if (!clip.source.isEmpty())
         parts.append(clip.source);
     parts.append(when(clip.used, m_now));
+    if (clip.masked) { // nothing of what it is
+        parts.append(tr("已遮住"));
+        return parts.join(u" · "_s);
+    }
     switch (clip.kind) {
     case ClipKind::Text:
         parts.append(tr("%Ln 字", nullptr, static_cast<int>(std::min<qint64>(clip.textLength, INT_MAX))));
