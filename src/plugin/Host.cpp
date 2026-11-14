@@ -1425,6 +1425,9 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
             emit progress(queryId, id, text);
     };
     handlers.refresh = [this, id] { onRefresh(id); };
+    handlers.settingsUpdate = [this, id](const QJsonObject& values) {
+        emit settingsUpdateRequested(id, values);
+    };
     handlers.hotkeys = [this, id](const QStringList& keys) { emit hotkeysChanged(id, keys); };
     handlers.systemSwitchesChanged = [this, id](const QStringList& ids) {
         const Entry* e = entry(id);

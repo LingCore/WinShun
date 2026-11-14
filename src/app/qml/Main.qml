@@ -1672,7 +1672,12 @@ Window {
                     showSize: window.launcher.showFileSize || window.launcher.sort === Launcher.LargestFirst || window.launcher.sort === Launcher.SmallestFirst
                     hint: window.numberOf(index)
                     reserveHintSpace: window.numberKey >= 0 && window.launcher.numberHints !== "off"
-                    alignWithNumbered: window.listRows > 9
+                    // The gutter stays reserved whenever the LIST has more rows
+                    // than the number keys, not only when the window shows that
+                    // many: a scrolled list otherwise numbers the rows in view
+                    // and leaves the rest flush — two left edges in one page
+                    // (a plugin's settings page scrolled one screen).
+                    alignWithNumbered: window.listRows > 9 || view.count > 9
                     hintOpacity: numberHints.hintOpacity
                     hintModifier: window.numberModifier
                     hintTaken: resultRow.hint > 0 && !window.numberUsable(resultRow.hint)
