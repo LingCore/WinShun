@@ -343,6 +343,35 @@ void PluginSettings::setHost(plugin::Host* host)
     m_dataRoot = host->options().dataRoot.isEmpty() ? m_userDir : QDir::toNativeSeparators(host->options().dataRoot);
     m_logPath = host->options().logPath;
     connect(host, &plugin::Host::stateChanged, this, [this](const QString&) { rebuild(); });
+    connect(host, &plugin::Host::settingsUpdateRequested, this,
+        [this](const QString& id, const QJsonObject& values) {
+            const plugin::Entry* entry = m_host->catalog().find(id);
+            if (!entry || !entry->manifest)
+                return;
+            const auto manifest = *entry->manifest;
+            auto& config = m_editor->m_settings.pluginConfig(id);
+            bool changed = false;
+            for (const auto& setting : manifest.settings) {
+                const auto value = values.value(setting.key);
+                if (value.isUndefined() || setting.type == u"password")
+                    continue;
+                QString text;
+                if (setting.type == u"bool" && value.isBool())
+                    text = value.toBool() ? u"true"_s : u"false"_s;
+                else if (setting.type == u"number" && value.isDouble())
+                    text = QString::number(value.toDouble(), 'g', 17);
+                else if (setting.type != u"bool" && setting.type != u"number" && value.isString())
+                    text = value.toString();
+                else
+                    continue;
+                changed = plugin::secrets::store(id, manifest, setting.key, text, config.settings) || changed;
+            }
+            if (changed)
+                m_editor->commit();
+            // Echo even an unchanged value: it confirms that the host owns it.
+            applyPluginSettings(id);
+            rebuild();
+        });
     connect(&host->catalog(), &plugin::Catalog::changed, this, &PluginSettings::rebuild);
     connect(host, &plugin::Host::traced, this,
         [this](const QString& pluginId, const QString& direction, const QString& summary, const QString& detail, int elapsedMs) {

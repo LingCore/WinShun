@@ -248,6 +248,7 @@ signals:
     // winshun/hotkeys: the shortcuts a plugin registers itself; empty when it
     // says so, or its process ended.
     void hotkeysChanged(const QString& pluginId, const QStringList& keys);
+    void settingsUpdateRequested(const QString& pluginId, const QJsonObject& settings);
     // winshun/notify with "toast" from a plugin with the "notifications"
     // permission: a system notification. At most one per plugin every
     // kToastGapMs (a newer one waiting replaces the one before it); the
