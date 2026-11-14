@@ -85,6 +85,7 @@ GridView {
         required property string icon
         required property bool favorite
         required property bool windowResult
+        required property bool trayApp
         readonly property bool current: GridView.isCurrentItem
 
         width: grid.tileWidth
@@ -122,12 +123,36 @@ GridView {
             y: 12 + 1 / 64
             width: pixels / grid.dpr
             height: pixels / grid.dpr
+            visible: tile.icon !== ""
             source: tile.icon
             sourceSize.width: pixels / grid.dpr
             sourceSize.height: pixels / grid.dpr
             smooth: false
             asynchronous: true
             fillMode: Image.PreserveAspectFit
+        }
+        Glyph { // 运行's tray icon without a picture of its own: a plain tile
+            visible: tile.icon === ""
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 12
+            iconName: "squares-four"
+            size: grid.iconSize
+            color: Theme.subtext
+        }
+        Rectangle { // 托盘: the icon is a notification-area one, not a window's
+            visible: tile.trayApp
+            x: 4
+            y: 4
+            width: 20
+            height: 20
+            radius: Theme.pillRadius(height)
+            color: Theme.hover
+            Glyph {
+                anchors.centerIn: parent
+                iconName: "tray"
+                size: 12
+                color: Theme.subtext
+            }
         }
         Text {
             x: 6
@@ -159,7 +184,7 @@ GridView {
             y: 4
             width: 24
             height: 24
-            visible: !tile.windowResult && (tile.favorite || tileArea.containsMouse || starArea.containsMouse)
+            visible: !tile.windowResult && !tile.trayApp && (tile.favorite || tileArea.containsMouse || starArea.containsMouse)
             Accessible.role: Accessible.Button
             Accessible.name: tile.favorite ? qsTr("从收藏夹移除") : qsTr("加入收藏夹")
             Accessible.onPressAction: starArea.toggle()

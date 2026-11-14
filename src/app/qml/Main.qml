@@ -1461,7 +1461,7 @@ Window {
                 onMenuRequested: (index, globalPos) => window.openContextMenu(index, globalPos)
             }
             Text { // 应用 with no tile: why, or what brings one
-                anchors.centerIn: parent
+                anchors.centerIn: appsGrid
                 width: parent.width - 80
                 horizontalAlignment: Text.AlignHCenter
                 visible: window.appsMode && appsGrid.count === 0

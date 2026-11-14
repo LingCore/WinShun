@@ -231,6 +231,9 @@ struct SearchResult {
     quintptr windowHandle = 0;
     quint32 windowProcess = 0;
     quint32 windowThread = 0;
+    // 运行's notification-area icon (Launcher::showApps): no window of its
+    // own; the tile shows a tray badge. `name` is its tooltip's first line.
+    bool trayApp = false;
 
     // An app or a place: something to start, not a file (no deleting it).
     bool isApp() const noexcept { return app != AppKind::None; }

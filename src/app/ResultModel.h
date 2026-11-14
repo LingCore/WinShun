@@ -104,6 +104,7 @@ public:
         FolderAwayRole,
         SettingsActionRole, // WinShun's own settings; no file or command to copy
         WindowResultRole,
+        TrayAppRole, // 运行's notification-area icon (SearchResult::trayApp)
     };
 
     explicit ResultModel(QObject* parent = nullptr);

@@ -13,6 +13,7 @@
 #include "SearchTypes.h"
 #include "WebShortcut.h"
 #include "WebSuggester.h"
+#include "platform/TrayIcons.h"
 
 #include <QCache>
 #include <QElapsedTimer>
@@ -109,6 +110,9 @@ class Launcher : public QObject {
     // typed: for each {name, icon}. Read again each time it is shown; none
     // while history is not kept.
     Q_PROPERTY(QVariantList frequentApps READ frequentApps NOTIFY frequentAppsChanged FINAL)
+    // 程序 › 运行: the notification-area icons under the windows, narrowed by
+    // the words typed as the windows are. Each {name, subtitle, icon, index}.
+    Q_PROPERTY(QVariantList trayApps READ trayApps NOTIFY trayAppsChanged FINAL)
     // 程序 (GitHub #296): the apps as a grid of icons, the strip under the box
     // choosing which: those opened most, the favorites among them (in the
     // favorites' order), or all the Start menu lists, by name. Each with how
@@ -591,6 +595,12 @@ public:
     Q_INVOKABLE void clearHistory();
     QVariantList frequentApps() const;
     Q_INVOKABLE void openFrequentApp(int index);
+    QVariantList trayApps() const;
+    Q_INVOKABLE void activateTray(int index); // switch to its window, or the icon's own click
+    Q_INVOKABLE void trayMenu(int index); // the icon's own context menu
+    Q_INVOKABLE QVariantList trayMenuItems(int index); // ...read into WinShun's menu
+    Q_INVOKABLE void chooseTrayMenuItem(int index, int item);
+    Q_INVOKABLE void copyTrayTitle(int index);
     // Nothing typed, 全部, no folder chosen in 内容: as at the first opening
     // (Settings::clearOnOpen); the search follows in handleShown.
     void startOver();
@@ -838,6 +848,7 @@ signals:
     void frequentAppsChanged();
     void appsViewChanged();
     void appCountsChanged();
+    void trayAppsChanged();
     void webSettingsRequested(); // the settings window, on its 网页搜索 page
     void fileTypeSettingsRequested(); // ... on its 结果列表 page, at the file types
     void fileTypeChanged();
@@ -1358,6 +1369,21 @@ private:
     AppsView m_shownAppsView = FrequentApps; // of the rows on screen, as m_shownText
     QList<int> m_appCounts {0, 0, 0, 0};
     quint64 m_appsRefreshToken = 0; // an earlier 运行 refresh is moot when it does not match
+    QVector<ws::traysearch::TrayItem> m_trayItems; // 运行's notification-area icons
+    QVector<int> m_trayShown; // indices into m_trayItems, as the words narrow them
+    QStringList m_trayMenuNames; // the last menu read, by entry, for choosing one
+    QStringList m_shownRunning; // the windows on screen, as m_shownText: a refresh with the same leaves the grid
+    QStringList m_shownTray; // the tray icons on screen: same
+    QHash<QString, ws::traysearch::TrayItem> m_trayRows; // 运行's tray tiles by their row path
+    bool trayMatchesWindow(const ws::traysearch::TrayItem& item, const SearchResults& windows) const;
+    QString trayIconFor(const ws::traysearch::TrayItem& item, const SearchResults& windows,
+        const QStringList& programs) const;
+    QString trayProgramPathFor(const ws::traysearch::TrayItem& item, const SearchResults& windows,
+        const QStringList& programs) const;
+    QSet<QString> m_trayDoubleClick; // tray programs known to open only on a double click (Run/TrayDoubleClick)
+    void rememberTrayDoubleClick(const QString& key);
+    qint64 m_trayRefreshTick = 0;
+    void refreshTray();
     bool m_appsLeft = false; // 程序 was left because its tab went for a while (the panel, a dialog's bar)
     void showApps(); // search() in 程序
     void appsTabMoved();

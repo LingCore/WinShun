@@ -37,6 +37,7 @@ endforeach()
 
 qt_add_executable(WinShun WIN32
     platform/WindowSearch.cpp platform/WindowSearch.h
+    platform/TrayIcons.cpp platform/TrayIcons.h
     InteractionOptimizationProbe.cpp InteractionOptimizationProbe.h
     IdleOpenProbe.cpp IdleOpenProbe.h
     main.cpp
@@ -145,6 +146,7 @@ qt_add_executable(WinShun WIN32
 set(qml_files
     qml/Main.qml
     qml/AppsGrid.qml
+    qml/TrayGrid.qml
     qml/SearchKeys.qml
     qml/Theme.qml
     qml/Hook.qml

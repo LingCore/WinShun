@@ -390,9 +390,13 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return r->path;
     case WindowResultRole:
         return r->isWindow();
+    case TrayAppRole:
+        return r->trayApp;
     case IsDirRole:
         return r->isDir;
     case IconRole:
+        if (r->trayApp)
+            return r->icon; // its own picture; empty: the tile shows its glyph
         if (r->isWeb() || r->isApp()) {
             const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
             if (r->isWindow())
@@ -580,6 +584,7 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {PluginRole, "plugin"},
         {SourceRole, "source"},
         {WindowResultRole, "windowResult"},
+        {TrayAppRole, "trayApp"},
         {FavoriteRole, "favorite"},
         {FavoriteKeywordRole, "favoriteKeyword"},
         {MissingRole, "missing"},
