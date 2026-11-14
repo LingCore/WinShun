@@ -110,7 +110,7 @@ Item {
             anchors.right: buttons.left
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            text: qsTr("Ctrl+Enter 保存 · Esc 取消")
+            text: qsTr("Ctrl+Enter 保存")
             elide: Text.ElideRight
             color: Theme.faint
             font.pixelSize: editor.metrics.uiCaption

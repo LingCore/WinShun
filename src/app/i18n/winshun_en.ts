@@ -1501,8 +1501,8 @@
         <translation>Edit the text</translation>
     </message>
     <message>
-        <source>Ctrl+Enter 保存 · Esc 取消</source>
-        <translation>Ctrl+Enter saves · Esc cancels</translation>
+        <source>Ctrl+Enter 保存</source>
+        <translation>Ctrl+Enter saves</translation>
     </message>
     <message>
         <source>取消</source>
