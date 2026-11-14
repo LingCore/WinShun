@@ -553,6 +553,7 @@ void CaptureEditor::hoverAt(QPoint image)
         setCursor(Qt::OpenHandCursor);
         return;
     }
+    m_model.pointerAt(image);
     const int shape = m_model.cursorAt(image);
     setCursor(shape >= 0 ? shape : Qt::ArrowCursor);
 }

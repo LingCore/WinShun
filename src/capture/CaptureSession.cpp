@@ -650,6 +650,8 @@ void CaptureSession::updateCursor(int screen, QPoint p)
             shape = cursorFor(m_handle);
         s->setCursor(here, here ? m_cursorAt : QPoint(-1, -1), shape);
     }
+    // The redaction tool marks the line of text under the pointer (GitHub #129).
+    m_annot.pointerAt(m_annot.active() && m_annotScreen == screen ? m_cursorAt : QPoint(-1, -1));
 }
 
 void CaptureSession::publish()

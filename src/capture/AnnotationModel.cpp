@@ -397,6 +397,8 @@ struct AnnotationModel::Private {
         QImage gray; // the picture scanned, for the boxes' edges
         std::optional<QList<RedactHit>> all; // every place the rules found, in the document's pixels; made when asked for
         std::optional<QList<RedactHit>> hits; // those not hidden yet; made again when the redactions change
+        QPoint pointer {-1, -1}; // where the hosts last said the pointer is (pointerAt)
+        bool lineTold = false; // "a click on text hides it" has been said
     } smart;
 
     // What the change signals were last sent for: sync() sends each one when
@@ -422,6 +424,8 @@ struct AnnotationModel::Private {
         int selectedCount = 0;
         int smartFound = -1;
         bool smartBusy = false;
+        QRectF textTarget;
+        bool textTargetHidden = false;
     } shown;
 };
 
@@ -678,6 +682,10 @@ void AnnotationModel::setTool(int tool)
     }
     m_tool = tool;
     d->wheelSum = 0;
+    // The redaction tool hides a line of text at a click (GitHub #129): the
+    // text is read for it now, if the scan did not start on its own.
+    if (toolKind() == Kind::Redact && !d->smart.ready && !d->smart.scanning)
+        smartStart(false);
     sync();
 }
 
@@ -1286,6 +1294,13 @@ void AnnotationModel::sync()
         s.smartBusy = busy;
         emit smartChanged();
     }
+    const QRectF target = textTarget();
+    const bool targetHidden = textTargetHidden();
+    if (target != s.textTarget || targetHidden != s.textTargetHidden) {
+        s.textTarget = target;
+        s.textTargetHidden = targetHidden;
+        emit textTargetChanged();
+    }
 }
 
 // ---- the mouse -------------------------------------------------------------
@@ -1780,6 +1795,16 @@ void AnnotationModel::finishGesture()
     d->dragging = false;
     if (gesture == Gesture::Marquee)
         d->marqueeBox = QRect(); // the objects it touched stay selected
+    // The redaction tool clicked, not dragged, on a line of the text that
+    // was read: the line is hidden, or shown again (GitHub #129).
+    if (gesture == Gesture::Draw && command && shortDrag && d->before.kind == Kind::Redact) {
+        if (const std::optional<QRect> line = textLineAt(d->pressAt)) {
+            if (applied)
+                touched(command->revert(m_document));
+            toggleTextLine(*line);
+            return;
+        }
+    }
     if (!command || !applied)
         return; // nothing was drawn: a click
     switch (gesture) {
@@ -2713,7 +2738,8 @@ void AnnotationModel::smartSchedule()
 {
     smartInvalidate();
     Private::Smart& s = d->smart;
-    if (!active() || !s.hooks.scan || (s.hooks.prescan && !s.hooks.prescan()))
+    // On its own if the settings let it; for the redaction tool in any case (its click on a line).
+    if (!active() || !s.hooks.scan || (s.hooks.prescan && !s.hooks.prescan() && toolKind() != Kind::Redact))
         return;
     s.timer->start();
 }
@@ -2771,6 +2797,8 @@ void AnnotationModel::smartScanned(int ticket, RedactScan scan)
     qInfo().noquote() << u"Screen capture: smart redaction found %1 places in %2 lines"_s.arg(smartHits().size()).arg(s.lines.size());
     if (apply)
         smartRedact();
+    else if (toolKind() == Kind::Redact && !s.lines.isEmpty() && !std::exchange(s.lineTold, true))
+        emit notice(tr("点一下文字就能打码，再点一下取消"));
     sync();
 }
 
@@ -2877,6 +2905,86 @@ void AnnotationModel::smartRedact()
     emit notice(word);
     qInfo().noquote() << u"Screen capture: smart redaction hid %1 places (%2 ms to put them on)"_s.arg(hits.size()).arg(clock.elapsed());
     sync();
+}
+
+// ---- a click on a line of text (GitHub #129) ---------------------------------
+
+void AnnotationModel::pointerAt(QPoint p)
+{
+    if (d->smart.pointer == p)
+        return;
+    d->smart.pointer = p;
+    if (toolKind() == Kind::Redact)
+        sync();
+}
+
+// The box that hides the line of read text at `p`: the line and a margin
+// about its letters, inside what was scanned. None: no text there, or none read.
+std::optional<QRect> AnnotationModel::textLineAt(QPoint p) const
+{
+    const Private::Smart& s = d->smart;
+    if (!s.ready || !s.rect.contains(p))
+        return std::nullopt;
+    const QPointF at = QPointF(p - s.rect.topLeft()) + QPointF(0.5, 0.5);
+    for (const RedactLine& line : s.lines) {
+        if (!line.quad.containsPoint(at, Qt::OddEvenFill))
+            continue;
+        const QRect ink = line.quad.boundingRect().toAlignedRect();
+        const int margin = std::max(2, int(std::lround(0.12 * ink.height())));
+        const QRect box = ink.adjusted(-margin, -margin, margin, margin).translated(s.rect.topLeft()) & s.rect;
+        if (!box.isEmpty())
+            return box;
+    }
+    return std::nullopt;
+}
+
+// The redaction a click on that line made (its box is the line's still): the next click takes it away.
+const annot::Item* AnnotationModel::textLineRedaction(const QRect& box) const
+{
+    for (const annot::Item& item : m_document.items) {
+        if (item.kind == Kind::Redact && !annot::isBrush(item) && annot::itemBox(item) == box)
+            return &item;
+    }
+    return nullptr;
+}
+
+void AnnotationModel::toggleTextLine(const QRect& box)
+{
+    m_picked.clear();
+    if (const annot::Item* there = textLineRedaction(box)) {
+        auto remove = std::make_unique<annot::RemoveItems>(QList<quint32> {there->id});
+        remove->label = QCoreApplication::translate("Annotation", "取消打码");
+        push(std::move(remove));
+        return;
+    }
+    // In the tool's remembered style, as a box (as 智能打码 puts them).
+    annot::Item item;
+    item.kind = Kind::Redact;
+    item.style = m_styles.forTool(Kind::Redact, dpr());
+    item.style.shape = annot::RedactShape::Box;
+    item.style.width = annot::Style {}.width;
+    item.style.cell = std::max(item.style.cell, int(std::lround(0.3 * box.height())));
+    item.seed = QRandomGenerator::global()->generate64();
+    item.points = annot::boxPoints(box);
+    auto add = std::make_unique<annot::AddItems>(QList<annot::Item> {item});
+    add->label = QCoreApplication::translate("Annotation", "文字打码");
+    push(std::move(add));
+}
+
+QRectF AnnotationModel::textTarget() const
+{
+    const QPoint p = d->smart.pointer;
+    if (!active() || toolKind() != Kind::Redact || m_gesture != Gesture::None || m_editing || m_picking || p.x() < 0
+        || onHandle(p) || onSelected(p))
+        return {};
+    const std::optional<QRect> line = textLineAt(p);
+    return line ? QRectF(*line) : QRectF();
+}
+
+bool AnnotationModel::textTargetHidden() const
+{
+    const QRectF target = textTarget();
+    return !target.isEmpty() && textLineRedaction(target.toRect());
 }
 
 } // namespace ws::capture

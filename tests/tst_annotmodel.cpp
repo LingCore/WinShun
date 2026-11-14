@@ -926,6 +926,122 @@ private slots:
         QVERIFY(!m.canUndo());
     }
 
+    // ---- the redaction tool on a line of read text (GitHub #129) ----
+
+    void textLineClickHidesAndShowsAgain()
+    {
+        FakeReader reader;
+        AnnotationModel m;
+        m.setSmartHooks(reader.hooks());
+        m.begin(noiseImage(QSize(400, 300), 3), 1.0, StyleMemory());
+        const QRect selection(30, 40, 200, 160);
+        m.setSelection(selection);
+        QTRY_COMPARE_WITH_TIMEOUT(reader.scans, 1, 1500);
+        reader.answer(phoneLines());
+        QSignalSpy targets(&m, &AnnotationModel::textTargetChanged);
+        const QPoint onFirst = selection.topLeft() + QPoint(60, 30); // the first line: 10..120 x 20..40
+        const QPoint onSecond = selection.topLeft() + QPoint(60, 70);
+        const QPoint offText = selection.topLeft() + QPoint(170, 30);
+        // Without the tool the pointer marks nothing.
+        m.pointerAt(onFirst);
+        QVERIFY(m.textTarget().isEmpty());
+        m.setTool(toolIndex(Kind::Redact));
+        QCOMPARE(reader.scans, 1); // read already: not again
+        // Over a line: its box, a margin about the letters, inside the selection.
+        const QRectF target = m.textTarget();
+        QVERIFY(!target.isEmpty());
+        QCOMPARE(targets.count(), 1);
+        QVERIFY(!m.textTargetHidden());
+        QVERIFY(target.contains(QRectF(selection.topLeft() + QPoint(10, 20), QSize(110, 20))));
+        QVERIFY(QRectF(selection).contains(target));
+        QVERIFY(target.height() <= 20 + 2 * 3);
+        m.pointerAt(offText);
+        QVERIFY(m.textTarget().isEmpty());
+        m.pointerAt(QPoint(-1, -1));
+        QVERIFY(m.textTarget().isEmpty());
+        // A click on the line hides it: one box redaction over it, one undo step, nothing selected.
+        m.pointerAt(onFirst);
+        click(m, onFirst);
+        QCOMPARE(m.itemCount(), 1);
+        const Item made = m.document().items[0];
+        QCOMPARE(made.kind, Kind::Redact);
+        QCOMPARE(made.style.shape, RedactShape::Box);
+        QCOMPARE(QRectF(itemBox(made)), target);
+        QVERIFY(made.style.cell >= int(0.3 * itemBox(made).height()));
+        QCOMPARE(m.selectedCount(), 0);
+        QVERIFY(m.textTargetHidden());
+        QCOMPARE(m.smartFound(), 2); // 智能打码 offers the other two only
+        // The next click shows it again; undo brings each step back.
+        click(m, onFirst);
+        QCOMPARE(m.itemCount(), 0);
+        QVERIFY(!m.textTargetHidden());
+        m.undo();
+        QCOMPARE(m.itemCount(), 1);
+        m.undo();
+        QCOMPARE(m.itemCount(), 0);
+        QVERIFY(!m.canUndo());
+        // Two lines, two redactions; a click off the text makes nothing.
+        click(m, onFirst);
+        click(m, onSecond);
+        click(m, offText);
+        QCOMPARE(m.itemCount(), 2);
+        // A drag is the tool's own box as ever, also when it starts on a line.
+        drag(m, onFirst, onFirst + QPoint(90, 60));
+        QCOMPARE(m.itemCount(), 3);
+        QVERIFY(itemBox(m.document().items[2]).height() > 40);
+        // A box moved off its line is an object like any other: a click on the line hides the line anew.
+        m.undo();
+        QCOMPARE(m.itemCount(), 2);
+        // With another tool a click on the text is that tool's.
+        m.setTool(toolIndex(Kind::Rect));
+        m.pointerAt(onFirst);
+        QVERIFY(m.textTarget().isEmpty());
+        click(m, selection.topLeft() + QPoint(60, 110));
+        QCOMPARE(m.itemCount(), 2);
+    }
+
+    // The scan off in the settings: choosing the tool reads the text, and once more when the selection moves.
+    void textLineReadsWhenTheToolIsChosen()
+    {
+        FakeReader reader;
+        reader.prescan = false;
+        AnnotationModel m;
+        m.setSmartHooks(reader.hooks());
+        m.begin(noiseImage(QSize(400, 300), 3), 1.0, StyleMemory());
+        const QRect selection(30, 40, 200, 160);
+        m.setSelection(selection);
+        QTest::qWait(450);
+        QCOMPARE(reader.scans, 0);
+        QSignalSpy notices(&m, &AnnotationModel::notice);
+        m.setTool(toolIndex(Kind::Redact));
+        QCOMPARE(reader.scans, 1);
+        QVERIFY(!m.smartBusy()); // not the button's scan: nothing is hidden when it is done
+        // Not read yet: a click is a click of the tool, nothing made.
+        const QPoint onFirst = selection.topLeft() + QPoint(60, 30);
+        m.pointerAt(onFirst);
+        QVERIFY(m.textTarget().isEmpty());
+        click(m, onFirst);
+        QCOMPARE(m.itemCount(), 0);
+        reader.answer(phoneLines());
+        QCOMPARE(m.itemCount(), 0);
+        QCOMPARE(notices.count(), 1); // "a click on text hides it", said once
+        QVERIFY(!m.textTarget().isEmpty());
+        click(m, onFirst);
+        QCOMPARE(m.itemCount(), 1);
+        // The selection moves with the tool on: read again, the old lines are of nothing.
+        m.setSelection(selection.adjusted(0, 0, 40, 0));
+        QVERIFY(m.textTarget().isEmpty());
+        QTRY_COMPARE_WITH_TIMEOUT(reader.scans, 2, 1500);
+        reader.answer(phoneLines());
+        QCOMPARE(notices.count(), 1);
+        QVERIFY(!m.textTarget().isEmpty());
+        // No text in it: no word about clicking text.
+        m.setTool(-1);
+        m.setSelection(selection);
+        QTest::qWait(450);
+        QCOMPARE(reader.scans, 2);
+    }
+
     // The tool's remembered style is used (not a brush), and the editing window scans the crop.
     void smartRedactUsesTheToolsStyleAndTheEditorsCrop()
     {

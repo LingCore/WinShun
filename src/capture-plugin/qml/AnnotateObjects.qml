@@ -45,6 +45,24 @@ Item {
     function clampX(x, w) { return Math.max(margin, Math.min(x, width - w - margin)) }
     function clampY(y, h) { return Math.max(margin, Math.min(y, height - h - margin)) }
 
+    // ---- the line of text the redaction tool is over (GitHub #129) ----
+
+    Rectangle { // red: a click hides it; the accent: hidden by a click, the next one shows it again
+        readonly property rect box: over.here && over.annot ? over.annot.textTarget : Qt.rect(0, 0, 0, 0)
+        readonly property bool hidden: over.annot ? over.annot.textTargetHidden : false
+        readonly property color ink: hidden ? Theme.accent : Theme.danger
+
+        visible: box.width > 0
+        x: over.px(box.x) - 2 * over.unitX
+        y: over.py(box.y) - 2 * over.unitY
+        width: over.px(box.width) + 4 * over.unitX
+        height: over.py(box.height) + 4 * over.unitY
+        radius: 2
+        color: hidden ? "transparent" : Qt.rgba(ink.r, ink.g, ink.b, 0.12)
+        border.width: Math.max(1, Math.round(1.5 * over.dpr)) * over.unitX
+        border.color: ink
+    }
+
     // ---- the selected object ----
 
     Repeater {

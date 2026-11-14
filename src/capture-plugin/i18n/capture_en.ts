@@ -547,6 +547,14 @@
 <context>
     <name>Annotation</name>
     <message>
+        <source>文字打码</source>
+        <translation>Redact the text</translation>
+    </message>
+    <message>
+        <source>取消打码</source>
+        <translation>Show the text again</translation>
+    </message>
+    <message>
         <source>添加</source>
         <translation>Add</translation>
     </message>
@@ -1912,6 +1920,10 @@ The unfinished recording is kept at: %1</translation>
 </context>
 <context>
     <name>ws::capture::AnnotationModel</name>
+    <message>
+        <source>点一下文字就能打码，再点一下取消</source>
+        <translation>Click a line of text to redact it; click again to show it</translation>
+    </message>
     <message>
         <source>只能在选区里画</source>
         <translation>Draw inside the selection</translation>

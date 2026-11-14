@@ -86,6 +86,12 @@ class AnnotationModel : public QObject {
     Q_PROPERTY(int smartFound READ smartFound NOTIFY smartChanged FINAL)
     // A scan asked for by the button is under way.
     Q_PROPERTY(bool smartBusy READ smartBusy NOTIFY smartChanged FINAL)
+    // The redaction tool over a line of the text that was read (GitHub
+    // #129): the line's box, image px, null when the pointer is on none. A
+    // click hides the line; one already hidden that way (textTargetHidden)
+    // is shown again by it.
+    Q_PROPERTY(QRectF textTarget READ textTarget NOTIFY textTargetChanged FINAL)
+    Q_PROPERTY(bool textTargetHidden READ textTargetHidden NOTIFY textTargetChanged FINAL)
     // The crop's edge is being dragged.
     Q_PROPERTY(bool cropping READ cropping NOTIFY gestureChanged FINAL)
     Q_PROPERTY(bool gestureActive READ gestureActive NOTIFY gestureChanged FINAL)
@@ -172,6 +178,11 @@ public:
     // 智能打码: every place found becomes a redaction, in the tool's remembered
     // style, as one undo step. Reads the text first when that has not been done.
     Q_INVOKABLE void smartRedact();
+    // Where the pointer is (image px; (-1, -1) for nowhere), no button held:
+    // the hosts tell it with every move, for textTarget.
+    void pointerAt(QPoint p);
+    QRectF textTarget() const;
+    bool textTargetHidden() const;
     // The composed picture of the selection (annot::Compositor::exportImage)
     // and the project that makes it editable again; both commit a text under
     // way first. Null / empty when there are no items. The editor's: the
@@ -365,6 +376,7 @@ signals:
     void marqueeChanged();
     void pickingChanged();
     void smartChanged();
+    void textTargetChanged();
     void keysChanged();
     // A word for the user (the overlay shows it by the selection).
     void notice(const QString& text);
@@ -444,6 +456,9 @@ private:
     void smartStart(bool apply);
     void smartScanned(int ticket, RedactScan scan);
     const QList<RedactHit>& smartHits() const;
+    std::optional<QRect> textLineAt(QPoint p) const;
+    const annot::Item* textLineRedaction(const QRect& box) const;
+    void toggleTextLine(const QRect& box);
     void reset();
     void sync();
 
