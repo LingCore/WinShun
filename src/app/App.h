@@ -455,6 +455,9 @@ private:
     void showFileTypeSettings(); // ... on its 结果列表 page, at the file types (the + of the launcher's strip)
     void showFavoriteSettings(const QString& path); // ... on its 收藏夹 page, at that favorite (a row's menu)
     void showPluginUpdates(); // 设置 › 插件库, only the ones with a newer version
+    // Text or files to the LAN transfer plugin's device list; its card in the settings while it is not ready.
+    // `fromHistory`: chosen in the clipboard history (the plugin says so), else files chosen in Explorer.
+    void lanSend(const QString& text, const QStringList& files, bool fromHistory);
     void showPluginSettings(const QString& pluginId); // ... on that plugin's card ("winshun:settings")
     void applyHotkey();
     void applyDialogs(); // Ctrl+G, the bar and going by themselves in file dialogs

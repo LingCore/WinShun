@@ -38,6 +38,8 @@ public:
         // A double click on blank space in Directory Opus showing `folder`
         // (WinShunSearch.exe --folder-menu, run by Opus).
         std::function<void(const QString& folder)> folderMenu;
+        // Files chosen in Explorer's 发送到 › 局域网传输 (WinShunSearch.exe --lan-send, GitHub #180).
+        std::function<void(const QStringList& files)> lanSend;
         std::function<void()> sessionEnding; // Windows is logging off / shutting down
         std::function<LRESULT(WPARAM, LPARAM)> deviceChange; // WM_DEVICECHANGE (see VolumeNotifier)
         std::function<void()> shellRestarted; // Explorer started again (its taskbar is back)

@@ -24,4 +24,10 @@ void apply(bool on);
 // The same for 粘贴为文件.
 void applyPasteFile(bool on);
 
+// 发送到 › 局域网传输（Win顺）(GitHub #180): a shortcut in the user's SendTo folder to this copy's
+// WinShunSearch.exe --lan-send, which Explorer runs once with every file chosen (a verb would run
+// once a file). There while the LAN transfer plugin is on; `!on` removes this copy's, and one
+// whose program is gone.
+void applyLanSend(bool on);
+
 } // namespace ws::shellmenu

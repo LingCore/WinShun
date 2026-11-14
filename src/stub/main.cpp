@@ -201,6 +201,7 @@ std::wstring folderAfter(std::wstring_view option, bool skipEnglish = false)
 
 constexpr ULONG_PTR kSearchHere = 0x57535348; // "WSSH"
 constexpr ULONG_PTR kFolderMenu = 0x5753464D; // "WSFM"
+constexpr ULONG_PTR kLanSend = 0x57534C53; // "WSLS": files for the LAN transfer, a line each (GitHub #180)
 
 // Explorer's "search here" (GitHub #20, kSearchHere) or Directory Opus's
 // double click (kFolderMenu): the folder to Win顺's window for these
@@ -454,6 +455,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     else if (option == L"--search-here") {
         if (const std::wstring folder = folderAfter(L"--search-here"); !folder.empty())
             sendFolder(folder, kSearchHere);
+    } else if (option == L"--lan-send") {
+        // Explorer's 发送到 › 局域网传输 (ShellMenu.cpp): every file chosen follows, in one call.
+        std::wstring files;
+        for (int i = 2; i < count; ++i) {
+            if (!files.empty())
+                files += L'\n';
+            files += args[i];
+        }
+        if (!files.empty())
+            sendFolder(files, kLanSend);
     } else if (option == L"--folder-menu") {
         if (const std::wstring folder = folderAfter(L"--folder-menu"); !folder.empty())
             sendFolder(folder, kFolderMenu);

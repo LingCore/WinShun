@@ -915,18 +915,8 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
             showPluginSettings(u"winshun.localsend"_s);
         }
     });
-    connect(m_clipboard.get(), &Clipboard::lanSendRequested, this, [this](const QString& text, const QStringList& files) {
-        if (!m_pluginHost || !m_pluginHost->catalog().enabled(u"winshun.localsend"_s)
-            || localSendNeedsUpdate(m_pluginHost->catalog())) {
-            hideClipboard(false);
-            showPluginSettings(u"winshun.localsend"_s);
-            return;
-        }
-        if (m_launcher->panel())
-            setPanel(false);
-        showLauncher();
-        m_launcher->runPluginCommand(u"winshun.localsend"_s, u"send"_s, u"clipboard"_s, text, files);
-    });
+    connect(m_clipboard.get(), &Clipboard::lanSendRequested, this,
+        [this](const QString& text, const QStringList& files) { lanSend(text, files, true); });
     // The history changed (a screenshot taken, removed, put back): the
     // launcher's screenshot list too, while it shows it.
     connect(m_clipboard.get(), &Clipboard::categoriesChanged, m_launcher.get(), &Launcher::refreshScreenshots);
@@ -1086,6 +1076,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     };
     callbacks.commandReceived = [this](const QString& command) { handleCommand(command); };
     // Explorer's "search here" (WinShunSearch.exe): the folder typed, words to come.
+    callbacks.lanSend = [this](const QStringList& files) { lanSend({}, files, false); };
     callbacks.searchHere = [this](const QString& folder) {
         m_launcher->noteSearchHere(folder); // not indexed (GitHub #52): searched on the disk all the same
         showLauncher(folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s);
@@ -4334,6 +4325,20 @@ void App::refreshIndexFolder(bool measure)
     if (m_indexOnHardDisk) // nothing to choose: a hint, not a warning (IndexService::prewarmSoon)
         state.note = tr("这是机械硬盘：文件名搜索不受影响；内容索引会在后台预读进内存，硬盘休眠后第一次内容搜索可能要等它转起来");
     m_settingsEditor->setIndexFolderState(state);
+}
+
+void App::lanSend(const QString& text, const QStringList& files, bool fromHistory)
+{
+    if (!m_pluginHost || !m_pluginHost->catalog().enabled(u"winshun.localsend"_s)
+        || localSendNeedsUpdate(m_pluginHost->catalog())) {
+        hideClipboard(false);
+        showPluginSettings(u"winshun.localsend"_s);
+        return;
+    }
+    if (m_launcher->panel())
+        setPanel(false);
+    showLauncher();
+    m_launcher->runPluginCommand(u"winshun.localsend"_s, u"send"_s, fromHistory ? u"clipboard"_s : u"files"_s, text, files);
 }
 
 void App::handleCommand(const QString& command)
@@ -8230,6 +8235,7 @@ void App::pluginsChanged()
     const bool update = localSendNeedsUpdate(m_pluginHost->catalog());
     if (m_clipboard)
         m_clipboard->setLanSendAvailable(m_pluginHost->catalog().enabled(u"winshun.localsend"_s) && !update, update);
+    shellmenu::applyLanSend(m_pluginHost->catalog().enabled(u"winshun.localsend"_s) && !update);
     applyScreenshots();
     if (!m_pluginRecoveryBusy && moved::missing(m_pluginHost->catalog(), m_settings.plugins).isEmpty())
         setPluginRecoveryState({});
@@ -8306,6 +8312,7 @@ void App::applyPlugins()
     applySwitches();
     const bool update = localSendNeedsUpdate(catalog);
     m_clipboard->setLanSendAvailable(catalog.enabled(u"winshun.localsend"_s) && !update, update);
+    shellmenu::applyLanSend(catalog.enabled(u"winshun.localsend"_s) && !update);
     applyScreenshots(); // and 截图历史
     restorePrintScreen();
 }

@@ -46,4 +46,10 @@ constexpr std::wstring_view pasteFileTitle(bool english) noexcept
     return english ? L"Paste as file" : L"粘贴为文件";
 }
 
+// The entry in 发送到 for the LAN transfer plugin (GitHub #180); the file is this and ".lnk".
+constexpr std::wstring_view lanSendTitle(bool english) noexcept
+{
+    return english ? L"LAN transfer (WinShun)" : L"局域网传输（Win顺）";
+}
+
 } // namespace ws::explorerlang

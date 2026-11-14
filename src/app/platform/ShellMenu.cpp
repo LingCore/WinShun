@@ -9,6 +9,8 @@
 
 #include <windows.h>
 #include <shlobj.h>
+#include <shobjidl.h>
+#include <wrl/client.h>
 
 #include <span>
 #include <string>
@@ -122,6 +124,50 @@ void applyPasteFile(bool on)
     // verb that has it differs, so it is written again without.
     setVerbs(kPasteFileKeys, on, explorerlang::pasteFileTitle(explorerlang::windowsIsEnglish()),
         L"--paste-file \"%V\"");
+}
+
+void applyLanSend(bool on)
+{
+    using Microsoft::WRL::ComPtr;
+    const Stub stub;
+    if (on && ::GetFileAttributesW(stub.path.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return; // a build without it (run from the build folder)
+    PWSTR known = nullptr;
+    if (FAILED(::SHGetKnownFolderPath(FOLDERID_SendTo, KF_FLAG_DEFAULT, nullptr, &known)))
+        return;
+    const std::wstring folder = known;
+    ::CoTaskMemFree(known);
+    const bool english = explorerlang::windowsIsEnglish();
+    // Either language's: Windows' may have changed since it was written.
+    for (const bool named : {true, false}) {
+        const std::wstring link = folder + L'\\' + std::wstring(explorerlang::lanSendTitle(named)) + L".lnk";
+        const bool wanted = on && named == english;
+        const bool there = ::GetFileAttributesW(link.c_str()) != INVALID_FILE_ATTRIBUTES;
+        ComPtr<IShellLinkW> shortcut;
+        ComPtr<IPersistFile> file;
+        if (FAILED(::CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shortcut)))
+            || FAILED(shortcut.As(&file)))
+            return;
+        wchar_t target[MAX_PATH] {};
+        const bool read = there && SUCCEEDED(file->Load(link.c_str(), STGM_READ))
+            && shortcut->GetPath(target, MAX_PATH, nullptr, SLGP_RAWPATH) == S_OK;
+        const bool ours = read && scoop::sameCopy(QString::fromWCharArray(target), QString::fromStdWString(stub.path));
+        if (!wanted) {
+            // Only ours, or one to a program that is gone: another copy's stays.
+            if (there && (ours || (read && ::GetFileAttributesW(target) == INVALID_FILE_ATTRIBUTES)))
+                ::DeleteFileW(link.c_str());
+            continue;
+        }
+        if (ours)
+            continue; // as it should be already
+        ComPtr<IShellLinkW> made;
+        ComPtr<IPersistFile> saved;
+        const std::wstring icon = stub.folder + L"\\WinShun.exe";
+        if (SUCCEEDED(::CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&made)))
+            && SUCCEEDED(made->SetPath(stub.path.c_str())) && SUCCEEDED(made->SetArguments(L"--lan-send"))
+            && SUCCEEDED(made->SetIconLocation(icon.c_str(), 0)) && SUCCEEDED(made.As(&saved)))
+            saved->Save(link.c_str(), TRUE);
+    }
 }
 
 } // namespace ws::shellmenu
