@@ -340,7 +340,7 @@ winshun::Items search(const std::vector<Entry>& entries, const std::string& text
     const std::vector<std::string> typed = words(text);
     // A term that is only letters may be pinyin, so "xian" finds 西安. Built
     // once per term, not once per bookmark.
-    std::vector<winshun::pinyin::Matcher> pinyin;
+    std::vector<ws::pinyin::Matcher> pinyin;
     pinyin.reserve(typed.size());
     for (const std::string& word : typed)
         pinyin.emplace_back(word);
@@ -359,14 +359,14 @@ winshun::Items search(const std::vector<Entry>& entries, const std::string& text
         // named. The browser's own two folders are left out too -- see
         // spelledFolder(). The newline keeps a match from spanning two names.
         const std::string title = lower(e.title);
-        const bool titleHan = winshun::pinyin::hasHan(title);
+        const bool titleHan = ws::pinyin::hasHan(title);
         const std::string spelled = title + "\n" + spelledFolder(e.folder);
-        const bool spelledHan = winshun::pinyin::hasHan(spelled);
+        const bool spelledHan = ws::pinyin::hasHan(spelled);
         const auto missing = [&haystack, &spelled, &pinyin, spelledHan](const std::string& w, std::size_t i) {
             if (haystack.find(w) != std::string::npos)
                 return false;
-            const winshun::pinyin::Matcher& m = pinyin[i];
-            return !spelledHan || !m.valid() || !m.matches(spelled);
+            const ws::pinyin::Matcher& m = pinyin[i];
+            return !spelledHan || !m.valid() || !m.findUtf8(spelled);
         };
         bool keep = true;
         for (std::size_t i = 0; i < typed.size(); ++i) {
@@ -391,11 +391,11 @@ winshun::Items search(const std::vector<Entry>& entries, const std::string& text
             if (title.find(typed[i]) != std::string::npos)
                 continue;
             allLiteral = false;
-            const winshun::pinyin::Matcher& m = pinyin[i];
+            const ws::pinyin::Matcher& m = pinyin[i];
             if (!titleHan || !m.valid())
                 allInTitle = false;
             else if (const auto span = m.findUtf8(title); span.has_value())
-                spelledAtStart = spelledAtStart && span->first == 0;
+                spelledAtStart = spelledAtStart && span->start == 0;
             else
                 allInTitle = false;
         }

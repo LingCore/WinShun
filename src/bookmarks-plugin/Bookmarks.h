@@ -7,7 +7,7 @@
 #pragma once
 
 #include "winshun.h"
-#include "winshun-pinyin.h"
+#include "Pinyin.h" // the app's own matcher and table (src/core), built in
 
 #include <string>
 #include <vector>

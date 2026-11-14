@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.bookmarks",
   "name": {"zh": "浏览器书签", "en": "Browser bookmarks"},
-  "version": "2.0.6",
+  "version": "2.0.5",
   "description": {"zh": "bm 词：搜 Chrome 和 Edge 的书签（含账户书签），支持拼音，Enter 打开", "en": "bm words: searches Chrome and Edge bookmarks, account ones too, by pinyin as well; Enter opens"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",

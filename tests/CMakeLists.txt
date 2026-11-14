@@ -1366,8 +1366,10 @@ set_tests_properties(tst_explorertabs PROPERTIES
 # winshun.bookmarks (src/bookmarks-plugin/Bookmarks), built in again: reading
 # Bookmarks files, the folder text, percent-decoding, matching, scoring,
 # the 50-row cap and the "nothing found" rows.
-qt_add_executable(tst_bookmarks tst_bookmarks.cpp ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/Bookmarks.cpp)
-target_include_directories(tst_bookmarks PRIVATE ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+qt_add_executable(tst_bookmarks tst_bookmarks.cpp ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/Bookmarks.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/Pinyin.cpp ${PROJECT_SOURCE_DIR}/src/core/PinyinTable.cpp)
+target_include_directories(tst_bookmarks PRIVATE ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk
+    ${PROJECT_SOURCE_DIR}/src/core)
 target_link_libraries(tst_bookmarks PRIVATE winshun_options Qt6::Test)
 set_target_properties(tst_bookmarks PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_bookmarks COMMAND tst_bookmarks)
