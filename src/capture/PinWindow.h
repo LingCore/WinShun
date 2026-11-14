@@ -61,6 +61,7 @@ public:
         std::function<void(PinWindow*)> copy; // Ctrl+C
         std::function<void(PinWindow*)> save; // Ctrl+S
         std::function<void(PinWindow*)> edit; // E: the editing window on this picture
+        std::function<void(PinWindow*)> ocr; // O: the words in this picture
         std::function<bool()> dark; // the border's grey
         std::function<QColor()> accent; // a fill that carries white words
         // The 界面风格's (Theme.windowEdge, Theme.controlRadius in logical px);

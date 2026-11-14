@@ -92,6 +92,10 @@ void PinManager::add(const QImage& image, QPoint origin, bool screenshot, QByteA
         if (m_callbacks.edit)
             m_callbacks.edit(pin);
     };
+    host.ocr = [this](PinWindow* pin) {
+        if (m_callbacks.ocr)
+            m_callbacks.ocr(pin->image(), pin->dpr(), pin->pictureRect());
+    };
     host.dark = m_callbacks.dark;
     host.accent = m_callbacks.accent;
     host.edge = m_callbacks.edge;
@@ -258,7 +262,7 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
     auto collapse = command(0, tr("收起"), 0xE73F);
     collapse.children = {
         command(CollapseTileCommand, tr("收成小块") + hint(KeyAction::PinCollapse), 0xE73F),
-        command(CollapseEdgeCommand, tr("收到屏幕顶边"), 0xE74A),
+        command(CollapseEdgeCommand, tr("收到屏幕顶边") + hint(KeyAction::PinCollapseEdge), 0xE74A),
     };
     auto all = command(0, tr("全部贴图"), 0xE8A9);
     all.children = {
@@ -274,7 +278,7 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
     };
     if (full) {
         items.push_back(command(EditCommand, tr("编辑") + hint(KeyAction::PinEdit), 0xE70F));
-        items.push_back(command(OcrCommand, ocr, 0xE8A5));
+        items.push_back(command(OcrCommand, ocr + hint(KeyAction::PinOcr), 0xE8A5));
         items.push_back(command(PickTextCommand, tr("选择文字") + hint(KeyAction::PinTextPick), 0xE8D2,
             pin->textMode(), ocrAvailable && pin->canPickText()));
         items.push_back(shell::MenuItem::separator());

@@ -925,6 +925,16 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
                 if (m_form == PinForm::Full && m_host.edit)
                     m_host.edit(this);
                 break;
+            case KeyAction::PinOcr:
+                if (m_form == PinForm::Full && m_host.ocr)
+                    m_host.ocr(this);
+                break;
+            case KeyAction::PinCollapseEdge:
+                if (m_form == PinForm::Full)
+                    collapse(PinForm::Edge);
+                else
+                    expand();
+                break;
             case KeyAction::PinCollapse:
                 if (m_form == PinForm::Full)
                     collapse(PinForm::Tile);

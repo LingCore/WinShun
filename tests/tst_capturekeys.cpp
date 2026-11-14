@@ -30,6 +30,8 @@ private slots:
         QCOMPARE(k.key(KeyAction::PinFlipVertical), combo({}, Qt::Key_V));
         QCOMPARE(k.key(KeyAction::PinEdit), combo({}, Qt::Key_E));
         QCOMPARE(k.triggered(KeyContext::PinWindow, Qt::Key_E, {}), KeyAction::PinEdit);
+        QCOMPARE(k.triggered(KeyContext::PinWindow, Qt::Key_O, {}), KeyAction::PinOcr);
+        QCOMPARE(k.triggered(KeyContext::PinWindow, Qt::Key_U, {}), KeyAction::PinCollapseEdge);
         QCOMPARE(CaptureKeys::defaults(), k);
         QCOMPARE(QString::fromLatin1(keys::info(KeyAction::PinFlipVertical).id), u"PinFlipVertical"_s);
         for (std::size_t i = 0; i < keys::kCount; ++i)
