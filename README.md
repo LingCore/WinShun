@@ -66,7 +66,7 @@
 | 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签，还能切换已打开的窗口 |
 | 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找与悬停预览 |
 | 📂 | [“打开”“另存为”对话框](docs/使用说明.md#打开另存为对话框) ² | 对话框旁多一个搜索框；`Ctrl+G` 转到文件管理器正开着的文件夹 |
-| 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹；在文件列表里直接打字就搜 |
+| 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹，可一层层走进子文件夹；在文件列表里直接打字就搜 |
 | ⭐ | [收藏夹](docs/使用说明.md#收藏夹) | 给常用的文件、文件夹、应用起个关键词，一打就开；还能自定义命令，也可放进文件的右键菜单 |
 | 🔎 | [任务栏搜索框](docs/使用说明.md#任务栏搜索框) ² | 在 Windows 11 任务栏上放一个 Win顺 的搜索框 |
 | 🤖 | [AI 助手和命令行](docs/使用说明.md#给-ai-助手用mcp) ² | 让 Claude、Cursor 等 AI 搜你的文件（默认只读）；终端里用 `ws` 命令搜 |
@@ -82,7 +82,7 @@
 
 | 插件 | 怎么用 | 从哪来 |
 |---|---|---|
-| 小工具 | `= 1+2*3` 计算，`12 inch to cm` 换算，`#ff8800` 颜色，还有时间戳、UUID、Base64、哈希 | 随包 |
+| 小工具 | `= 1+2*3` 计算（只打 `=` 列出算过的账），`12 inch to cm` 换算，`#ff8800` 颜色，还有时间戳、UUID、Base64、哈希 | 随包 |
 | 结束进程 | `kill 进程名` | 随包 |
 | [系统开关](docs/使用说明.md#系统开关) | 深色模式、蓝牙、WLAN、音量等一键切换：`关蓝牙`、`静音`、`音量 30`、`保持唤醒 1小时` | 随包，默认关 |
 | [截图与录屏](docs/使用说明.md#截图) | 截图、标注、打码、长截图、贴图、截图翻译、录屏和 GIF、演示白板 | 插件库 |
@@ -184,19 +184,16 @@ scoop install winshun
 
 ### 最近更新
 
-**0.30.0**
+**0.31.0**
 
-- 🌐 **截图翻译** 框选后点工具条上的“翻译”，截图贴在原来的位置，里面的文字换成译文；需要“翻译”插件和你自己的翻译服务。
-- 🔤 **“识别文字”窗口里翻译** 上面是原文，下面是译文，可以先改一改再翻译。
-- ✏️ **剪贴板里直接修改文字** 文本记录的右键菜单里选“修改文字…”，改完还在原来的位置。
-- 🕘 **搜浏览器历史** `bh 关键词` 搜 Chrome、Edge 打开过的网页，默认关着，在插件设置里打开（书签插件 2.1.0）。
-- 🖍️ **点一下就遮住一行字** 截图时选打码工具，点一下就盖住鼠标下的那一行。
-- ⌨️ **字母直达** 在设置里打开后，轻按一下 `Ctrl`（剪贴板里是 `Alt`），每一行前面出现一个字母，按字母就打开这一行。
-- 🔗 **搜索框里直接打开网址** 开着“网页搜索”插件时，打一个网址，第一行就是“打开网址”。
-- 📋 **打开时填入刚复制的文字** 在设置里打开后，刚复制的一行字，打开搜索框时直接就搜它。
-- 🛠️ **改进** 面板快捷键再按一次就关闭；“此电脑”和“主文件夹”里也能直接打字搜索。
+- 📂 **文件夹菜单里走进子文件夹** 文件夹那一行末尾的箭头上停一下（或按 `→`），就列出里面的文件夹，可以一层层往下走。
+- 🧮 **计算记录** 按 `Enter` 复制过结果的算式会记下来，只打 `=` 就一行一条列出来核对。
+- 🔎 **当作 Everything** 在设置里打开后，Directory Opus、Total Commander 和 `es.exe` 的 Everything 搜索由 Win顺 来回答，不用再装 Everything。
+- 🔤 **界面字体列表里直接搜** 打字体名字的一部分就能找到。
+- 🚀 **更省内存** 搜索时占用的内存少了约两成，速度不变。
+- 🛠️ **修复** 剪贴板窗口开着却不接按键；对话框切回来时每次都转到文件管理器的文件夹；连按两次 `Win+E` 出两个窗口（资源管理器标签页 1.1.2）；界面卡住时诊断日志会记下原因。
 
-详见 [0.30.0 发布说明](docs/release-notes/v0.30.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
+详见 [0.31.0 发布说明](docs/release-notes/v0.31.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
 
 ### 常见问题
 
@@ -312,7 +309,7 @@ No installer, or Scoop? See [Download and install](#download-and-install).
 | 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons and switches to open windows |
 | 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search and hover previews |
 | 📂 | [Open / Save dialogs](docs/features.en.md#open-and-save-dialogs) ² | A search bar beside the dialog; `Ctrl+G` jumps to the folder open in your file manager |
-| 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders; type in a file list to search |
+| 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders and the folders inside them; type in a file list to search |
 | ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; your own commands too, also in the right-click menu of files |
 | 🔎 | [Taskbar search box](docs/features.en.md#taskbar-search-box) ² | A WinShun search box on the Windows 11 taskbar |
 | 🤖 | [AI assistants and the command line](docs/features.en.md#ai-assistants-mcp) ² | Let Claude, Cursor and others search your files (read-only by default); `ws` searches from a terminal |
@@ -328,7 +325,7 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 
 | Plugin | How | Where from |
 |---|---|---|
-| Tools | `= 1+2*3` calculator, `12 inch to cm`, `#ff8800` colors, timestamps, UUID, Base64, hashes | Bundled |
+| Tools | `= 1+2*3` calculator (`=` alone lists past sums), `12 inch to cm`, `#ff8800` colors, timestamps, UUID, Base64, hashes | Bundled |
 | Kill | `kill process` | Bundled |
 | System switches | Dark mode, Bluetooth, WLAN, volume and more in one step: `bluetooth off`, `mute`, `volume 30`, `awake 1h` | Bundled, off by default |
 | [Screenshot and recording](docs/features.en.md#screenshots-and-recording) | Capture, mark up, redact, scrolling screenshots, pins, translating a capture in place, MP4 and GIF recording, presenter and whiteboard | Plugin library |
@@ -430,19 +427,16 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
-**0.30.0**
+**0.31.0**
 
-- 🌐 **Screenshot translation** After selecting a region, the toolbar's Translate button pins the capture where it was taken with its words translated in place; it needs the Translate plugin and a translation service of your own.
-- 🔤 **Translating in the text recognition window** The original above, the translation below; edit the text first if you like.
-- ✏️ **Edit a clipboard text entry** Choose "Edit the text…" in a text entry's menu; it keeps its place after the change.
-- 🕘 **Browser history** `bh words` searches the pages opened in Chrome and Edge; off by default, turn it on in the plugin's settings (Bookmarks plugin 2.1.0).
-- 🖍️ **Click a line to hide it** With the redact tool in a capture, one click covers the line of text under the mouse.
-- ⌨️ **Letter jump** Turn it on in the settings, tap `Ctrl` (`Alt` in the clipboard), and every row shows a letter; press it to open that row.
-- 🔗 **Open a web address from the search box** With the Web search plugin on, a typed address gets an "Open the address" row first.
-- 📋 **Fill in what was just copied** Turn it on in the settings, and a line you just copied is searched as soon as the search box opens.
-- 🛠️ **Improved** The panel's hotkey closes the panel when pressed again; typing on This PC and Home searches the whole PC.
+- 📂 **Subfolders in the folder menu** Rest the pointer on the arrow at the end of a folder's row (or press `→`) to list the folders inside, level after level.
+- 🧮 **Calculator tape** A sum whose result you took with `Enter` is kept; type `=` alone to list them, a row each.
+- 🔎 **Answering for Everything** Turn it on in the settings, and the Everything search of Directory Opus, Total Commander and `es.exe` is answered by WinShun, with no Everything installed.
+- 🔤 **Search in the interface font list** Type part of a font's name to find it.
+- 🚀 **Less memory** About a fifth less memory while searching, at the same speed.
+- 🛠️ **Fixed** The clipboard window up but taking no keys; a file dialog now goes to the file manager's folder every time you come back; two windows from two presses of `Win+E` (Explorer tabs 1.1.2); the diagnostics record why the interface stopped answering.
 
-See the [0.30.0 release notes](docs/release-notes/v0.30.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
+See the [0.31.0 release notes](docs/release-notes/v0.31.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
 
 ### FAQ
 
