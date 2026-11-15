@@ -61,7 +61,16 @@ namespace ws {
 //
 // Clicks are not taken (the window does not activate on them); a button
 // pressed outside Win顺's windows, or another window coming to the front,
-// tells the window to go, as a menu would.
+// tells the window to go, as a menu would. A window that came to the front
+// unannounced (before the router listened, or with its event lost) is told
+// of as soon as the router starts, or at the next key it lets go by.
+//
+// Hooks that are no longer called (Windows may take out one that answers
+// late, without telling) leave every key to the program, typing and the
+// window's own keys alike (GitHub #86): the router notices by the input
+// going on past the hooks' last call, and puts new ones in. One late answer
+// costs that key only: its press is the program's by then, and so is its
+// release.
 //
 // Done (drain), it takes no more keys, but stays until the keys it took are
 // let go: their releases are its too (Enter pasted, Esc closed), and would
@@ -112,10 +121,14 @@ public:
     // Approximate session totals, readable from the GUI thread. No keys,
     // text, window titles or identifiers; never writes logs from a hook.
     QJsonObject diagnosticStatus() const;
-    // A click in the search field can recover a hook Windows silently
-    // removed after a timeout, without activating the clipboard window.
+    // Puts the hooks in again, without activating the window: a click in
+    // the search field asks for it. Hooks Windows took out after a late
+    // answer come back on their own (hooks_recovered counts them), within
+    // a second of the next key.
     void refresh();
     void drain(); // no more keys taken, no more callbacks but `drained`
+    // Takes the hooks out with nothing said, as Windows may a late one.
+    void loseHooksForTest();
 
 private:
     static LRESULT CALLBACK keyboardProc(int code, WPARAM wParam, LPARAM lParam);
@@ -130,10 +143,12 @@ private:
     bool taking() const { return availability() == Availability::Ready; }
     enum Counter : std::size_t {
         Presses, Routed, OtherForeground, Hidden, Hung, WinHeld, AlreadyHeld,
-        NotWanted, GlobalHotkey, OtherHook, Refreshes, RefreshFailed, CounterCount
+        NotWanted, GlobalHotkey, OtherHook, Refreshes, RefreshFailed, Recovered, ForegroundMissed, LateAnswers, CounterCount
     };
     void count(Counter counter) { m_counts[counter].fetch_add(1, std::memory_order_relaxed); }
     void checkDrained();
+    bool hooksDropped(); // router thread
+    void tellOtherForeground(bool starting); // router thread
     Key translate(const KBDLLHOOKSTRUCT& event, bool press, bool autoRepeat) const;
     bool heldAsHotkey(const Key& key); // router thread
 
@@ -147,6 +162,8 @@ private:
     Callbacks m_callbacks;
     std::bitset<256> m_taken; // keys held whose press was taken; only touched on the router thread
     std::unordered_map<UINT, bool> m_hotkeys; // heldAsHotkey's answers by chord; router thread
+    HWND m_toldFront = nullptr; // the window in front last said by tellOtherForeground; router thread
+    DWORD m_calledAt = 0; // GetTickCount as a hook was last called or answered; router thread
     UINT m_lonelyShift = 0; // the Shift down with nothing else so far (its key), else 0; router thread
     std::atomic<bool> m_draining {false}; // takes effect at once, from the GUI thread
     std::atomic<DWORD> m_threadId {0};

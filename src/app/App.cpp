@@ -5636,11 +5636,21 @@ void App::showClipboard()
             // Search/Start must keep their input field too (#179). They can
             // cover ordinary topmost windows, so put the clipboard beside
             // the flyout instead of dismissing it to get the foreground.
-            const bool shellFlyout = win::isShellFlyout(foreground);
+            //
+            // The caret was waited for: another window may be in front by
+            // now (one that was only passing as the hotkey came). The keys
+            // are routed from the one there now, and the paste goes to it;
+            // over the earlier one the window would take no key at all
+            // (GitHub #86).
+            const HWND front = ::GetForegroundWindow();
+            const HWND routed = front == foreground ? target : paste::usableTarget(front);
+            if (front != foreground)
+                m_clipboard->setTarget(front);
+            const bool shellFlyout = win::isShellFlyout(front);
             m_clipDisplayWanted = shellFlyout && m_clipDisplay && m_clipDisplay->ready();
-            keepFocus = target && (startKeyRouting(target) || shellFlyout);
+            keepFocus = routed && (startKeyRouting(routed) || shellFlyout);
             if (shellFlyout && !m_clipDisplayWanted)
-                avoidClipboardShellFlyout(foreground);
+                avoidClipboardShellFlyout(front);
         }
         m_clipboard->handlePlaced(); // the preview, if left open: as wide as there is room for here
         // Cloaked until its first frame: Windows would first put up the

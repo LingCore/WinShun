@@ -94,6 +94,39 @@ struct PassiveWindow {
     ~PassiveWindow() { if (hwnd) ::DestroyWindow(hwnd); }
 };
 
+// The temporary window of another process that the keys are typed into: its
+// own, in front, saying what reached it.
+struct Receiver {
+    QProcess process;
+    HWND window = nullptr;
+    QByteArray output;
+
+    bool start()
+    {
+        process.setProcessChannelMode(QProcess::MergedChannels);
+        process.start(QCoreApplication::applicationFilePath(), {u"--key-receiver"_s});
+        if (!process.waitForStarted(5000))
+            return false;
+        if (!QTest::qWaitFor([&] { return read().contains("window:"); }, 5000))
+            return false;
+        const QByteArray handle = output.mid(output.indexOf("window:") + 7).split('\n').front().trimmed();
+        window = reinterpret_cast<HWND>(handle.toULongLong());
+        return window && ::IsWindow(window) && QTest::qWaitFor([&] { return ::GetForegroundWindow() == window; }, 3000);
+    }
+    const QByteArray& read()
+    {
+        output += process.readAll();
+        return output;
+    }
+    ~Receiver()
+    {
+        if (window)
+            ::PostMessageW(window, WM_CLOSE, 0, 0);
+        if (process.state() != QProcess::NotRunning && !process.waitForFinished(3000))
+            process.kill();
+    }
+};
+
 bool send(HWND target, WORD vk, bool up)
 {
     // Never inject into a user window, or while a physical modifier is held.
@@ -346,6 +379,165 @@ private slots:
         output += child.readAll();
         QVERIFY2(!output.contains("down:"), output.constData());
         QVERIFY2(!output.contains("up:"), output.constData());
+    }
+
+    // Hooks that are no longer called, with nothing to say so (Windows may
+    // take out one that answers late): what is typed goes to the program in
+    // front, and none of the window's keys work (GitHub #86). The router
+    // must be taking keys again by itself, within a second or so.
+    void liveHooksComeBackAfterTheyWereTakenOut()
+    {
+        if (qEnvironmentVariableIntValue("WINSHUN_KEYROUTER_LIVE") != 1)
+            QSKIP("Opt-in desktop test: uses guarded keys in its own temporary receiver only.");
+        Receiver receiver;
+        QVERIFY(receiver.start());
+        PassiveWindow passive;
+        QVERIFY(passive.hwnd);
+        ::ShowWindow(passive.hwnd, SW_SHOWNOACTIVATE);
+
+        std::array<std::atomic<int>, 256> presses {};
+        KeyRouter router(receiver.window, passive.hwnd, {.key = [&](const KeyRouter::Key& key) {
+            if (key.press && key.vk < presses.size())
+                ++presses[key.vk];
+        }});
+        QVERIFY(router.isActive());
+        const auto tap = [&](WORD vk) { return send(receiver.window, vk, false) && send(receiver.window, vk, true); };
+        QVERIFY(tap('A'));
+        QTRY_COMPARE_WITH_TIMEOUT(presses['A'].load(), 1, 2000);
+        QVERIFY2(!receiver.read().contains("down:"), receiver.output.constData());
+
+        // Out: the next key is the program's, as the report has it.
+        router.loseHooksForTest();
+        QTest::qWait(50);
+        QVERIFY(tap('U'));
+        QTRY_VERIFY_WITH_TIMEOUT(receiver.read().contains("down:85"), 2000);
+        QCOMPARE(presses['U'].load(), 0);
+
+        // Typing goes on, and is the window's again.
+        bool back = false;
+        for (int i = 0; i < 15 && !back; ++i) {
+            QVERIFY(tap('T'));
+            QTest::qWait(200);
+            back = presses['T'].load() > 0;
+        }
+        const QJsonObject status = router.diagnosticStatus();
+        QVERIFY2(back, QJsonDocument(status).toJson(QJsonDocument::Compact).constData());
+        QCOMPARE(status.value(u"hooks_recovered"_s).toInteger(), 1);
+        QCOMPARE(status.value(u"refresh_failed"_s).toInteger(), 0);
+        QCOMPARE(::GetForegroundWindow(), receiver.window);
+
+        // And stays so: no key more reaches the program, the hooks are not put in over and over.
+        receiver.read();
+        receiver.output.clear();
+        for (const WORD vk : {WORD('K'), WORD('L'), WORD(VK_DOWN)}) {
+            QVERIFY(tap(vk));
+            QTRY_COMPARE_WITH_TIMEOUT(presses[vk].load(), 1, 2000);
+            QTest::qWait(300);
+        }
+        QVERIFY2(!receiver.read().contains("down:"), receiver.output.constData());
+        QCOMPARE(router.diagnosticStatus().value(u"hooks_recovered"_s).toInteger(), 1);
+    }
+
+    // The router started for a window that is not the one in front (another
+    // came forward between the look at it and the router's start, with no
+    // event to say so): it would stay up taking no key, what is typed going
+    // to that program (GitHub #86). The owner is told, as of any other
+    // window coming forward, once.
+    void liveWindowInFrontUnannouncedIsTold()
+    {
+        if (qEnvironmentVariableIntValue("WINSHUN_KEYROUTER_LIVE") != 1)
+            QSKIP("Opt-in desktop test: uses guarded keys in its own temporary receiver only.");
+        Receiver receiver;
+        QVERIFY(receiver.start());
+        PassiveWindow passive;
+        PassiveWindow earlier; // the window that was in front as the owner looked
+        QVERIFY(passive.hwnd && earlier.hwnd);
+        ::ShowWindow(passive.hwnd, SW_SHOWNOACTIVATE);
+
+        std::atomic<int> keys {0};
+        std::atomic<int> told {0};
+        std::atomic<HWND> toldOf {nullptr};
+        KeyRouter router(earlier.hwnd, passive.hwnd, {.key = [&](const KeyRouter::Key&) { ++keys; },
+            .foregroundChanged = [&](HWND window) {
+                toldOf = window;
+                ++told;
+            }});
+        QVERIFY(router.isActive());
+        QTRY_COMPARE_WITH_TIMEOUT(told.load(), 1, 2000);
+        QCOMPARE(toldOf.load(), receiver.window);
+
+        // The keys are that program's, and it is not told again for each.
+        const auto tap = [&](WORD vk) { return send(receiver.window, vk, false) && send(receiver.window, vk, true); };
+        QVERIFY(tap('G'));
+        QVERIFY(tap('H'));
+        QTRY_VERIFY_WITH_TIMEOUT(receiver.read().contains("down:72"), 2000);
+        QCOMPARE(keys.load(), 0);
+        QCOMPARE(told.load(), 1);
+        const QJsonObject status = router.diagnosticStatus();
+        QCOMPARE(status.value(u"foreground_missed"_s).toInteger(), 1);
+        QCOMPARE(status.value(u"other_foreground"_s).toInteger(), 2);
+    }
+
+    // An answer that comes too late for Windows (the router's thread held
+    // up for more than a second): that press is the program's, whatever the
+    // hook says then. Its release must be too, or the key stays down for
+    // Windows and its next press goes to the program as well.
+    void liveLateAnswerCostsOneKeyOnly()
+    {
+        if (qEnvironmentVariableIntValue("WINSHUN_KEYROUTER_LIVE") != 1)
+            QSKIP("Opt-in desktop test: uses guarded keys in its own temporary receiver only.");
+        Receiver receiver;
+        QVERIFY(receiver.start());
+        PassiveWindow passive;
+        QVERIFY(passive.hwnd);
+        ::ShowWindow(passive.hwnd, SW_SHOWNOACTIVATE);
+
+        // Whatever comes of it, S is not left down for Windows (nor found so).
+        const auto letGo = [] {
+            if (::GetAsyncKeyState('S') & 0x8000) {
+                INPUT up {};
+                up.type = INPUT_KEYBOARD;
+                up.ki.wVk = 'S';
+                up.ki.wScan = static_cast<WORD>(::MapVirtualKeyW('S', MAPVK_VK_TO_VSC));
+                up.ki.dwFlags = KEYEVENTF_KEYUP;
+                up.ki.dwExtraInfo = kOwnInput;
+                ::SendInput(1, &up, sizeof up);
+            }
+        };
+        letGo();
+        const auto after = qScopeGuard(letGo);
+
+        std::array<std::atomic<int>, 256> presses {};
+        std::atomic<int> lateMs {1300};
+        KeyRouter router(receiver.window, passive.hwnd, {.key = [&](const KeyRouter::Key& key) {
+            if (key.press && key.vk < presses.size())
+                ++presses[key.vk];
+            if (key.press && key.vk == 'S')
+                ::Sleep(static_cast<DWORD>(lateMs.exchange(0))); // on the router's thread, inside the hook: once
+        }});
+        QVERIFY(router.isActive());
+        const auto tap = [&](WORD vk) { return send(receiver.window, vk, false) && send(receiver.window, vk, true); };
+        QVERIFY(tap('S'));
+        QTRY_COMPARE_WITH_TIMEOUT(presses['S'].load(), 1, 3000);
+        if (!QTest::qWaitFor([&] { return receiver.read().contains("down:83"); }, 1000))
+            QSKIP("Windows waited for the late answer: nothing went to the program.");
+        QTRY_VERIFY_WITH_TIMEOUT(receiver.read().contains("up:83"), 2000);
+        // Up for Windows too. (Where its limit is short the release went by
+        // the hook as well, late_answers 0; where it is a second the release
+        // came to the hook, which let it go on, late_answers 1.)
+        QVERIFY((::GetAsyncKeyState('S') & 0x8000) == 0);
+
+        // The same key again, once the late answer is through: the window's.
+        QTest::qWait(1500);
+        receiver.read();
+        receiver.output.clear();
+        QVERIFY(tap('S'));
+        QTRY_COMPARE_WITH_TIMEOUT(presses['S'].load(), 2, 2000);
+        QTest::qWait(150);
+        QVERIFY2(!receiver.read().contains("down:83"), receiver.output.constData());
+        const QJsonObject status = router.diagnosticStatus();
+        QCOMPARE(status.value(u"already_held"_s).toInteger(), 0);
+        QVERIFY(status.value(u"late_answers"_s).toInteger() <= 1);
     }
 };
 

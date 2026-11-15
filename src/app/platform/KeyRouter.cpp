@@ -16,11 +16,30 @@ thread_local KeyRouter* t_router = nullptr;
 
 constexpr UINT kDrainMessage = WM_APP; // to the router's thread (drain)
 constexpr UINT kRefreshMessage = WM_APP + 1; // the search field was clicked
+constexpr UINT kLoseHooksMessage = WM_APP + 2; // loseHooksForTest
+// A low-level hook that is no longer called says nothing: what is typed then
+// goes to the program in front, and no key of the window works (GitHub #86).
+// Windows is known to take out one that answers late (past
+// LowLevelHooksTimeout: the thread starved, its pages on disk after an idle
+// trim); Windows 10 22H2 and 11 did not after a dozen late answers
+// (docs/pitfalls.md), but nothing would tell if they did. The hooks are
+// looked at this often; input this long past their last call says they are
+// out.
+constexpr UINT kWatchMs = 250;
+constexpr DWORD kDroppedMs = 500;
 constexpr UINT kToUnicodeKeepState = 0x4; // ToUnicodeEx: leave the dead key state alone (Windows 10 1607)
 
 bool held(int vk)
 {
     return (::GetAsyncKeyState(vk) & 0x8000) != 0;
+}
+
+// Input `lastInput` (GetLastInputInfo) came well after the hooks' last call
+// (GetTickCount, both; the clock's wrap included).
+bool inputWentPast(DWORD lastInput, DWORD lastCall)
+{
+    const DWORD gap = lastInput - lastCall;
+    return gap > kDroppedMs && gap < 0x80000000u;
 }
 
 Qt::KeyboardModifiers heldModifiers()
@@ -219,7 +238,7 @@ KeyRouter::KeyRouter(
             m_setupStep = "keyboard";
             m_setupError = ::GetLastError();
         }
-        const HHOOK mouse = keyboard ? ::SetWindowsHookExW(WH_MOUSE_LL, &KeyRouter::mouseProc, instance, 0) : nullptr;
+        HHOOK mouse = keyboard ? ::SetWindowsHookExW(WH_MOUSE_LL, &KeyRouter::mouseProc, instance, 0) : nullptr;
         if (keyboard && !mouse) {
             m_setupStep = "mouse";
             m_setupError = ::GetLastError();
@@ -233,8 +252,37 @@ KeyRouter::KeyRouter(
             m_setupError = ::GetLastError();
         }
         m_active = foreground != nullptr;
+        m_calledAt = ::GetTickCount();
+        const UINT_PTR watch = m_active ? ::SetTimer(nullptr, 0, kWatchMs, nullptr) : 0;
+        // New hooks in, then the old ones out: no key goes by in between
+        // (this thread is handed none meanwhile), and the old ones stay if
+        // new ones cannot be had. Windows may have taken the old ones out
+        // already; letting them go then fails, which is all it does.
+        const auto putInAgain = [&] {
+            const HHOOK newKeyboard = ::SetWindowsHookExW(WH_KEYBOARD_LL, &KeyRouter::keyboardProc, instance, 0);
+            const HHOOK newMouse = newKeyboard ? ::SetWindowsHookExW(WH_MOUSE_LL, &KeyRouter::mouseProc, instance, 0) : nullptr;
+            if (!newMouse) {
+                m_refreshError = ::GetLastError();
+                if (newKeyboard)
+                    ::UnhookWindowsHookEx(newKeyboard);
+                count(RefreshFailed);
+                qWarning("KeyRouter: hooks not put in again (error %lu)", m_refreshError.load());
+                return false;
+            }
+            m_refreshError = 0;
+            m_refreshUnhookError = ::UnhookWindowsHookEx(keyboard) ? 0 : ::GetLastError();
+            ::UnhookWindowsHookEx(mouse);
+            keyboard = newKeyboard;
+            mouse = newMouse;
+            m_calledAt = ::GetTickCount();
+            return true;
+        };
         ready.count_down();
         if (m_active) {
+            // Another window may have come to the front between the caller's
+            // look at it and the event hook above: no event will say so. (The
+            // window itself may not be up yet: the caller shows it next.)
+            tellOtherForeground(true);
             // The hooks are called from inside GetMessage; the events too.
             while (::GetMessageW(&msg, nullptr, 0, 0) > 0) {
                 if (msg.hwnd == nullptr && msg.message == kDrainMessage) {
@@ -244,29 +292,26 @@ KeyRouter::KeyRouter(
                 if (msg.hwnd == nullptr && msg.message == kRefreshMessage) {
                     if (!m_draining) {
                         count(Refreshes);
-                        // Installing succeeded once, but Windows can remove a
-                        // timed-out hook without notifying us. Keep the old
-                        // one if its replacement cannot be installed.
-                        if (const HHOOK replacement = ::SetWindowsHookExW(
-                                WH_KEYBOARD_LL, &KeyRouter::keyboardProc, instance, 0)) {
-                            m_refreshError = 0;
-                            m_refreshUnhookError = 0;
-                            if (!::UnhookWindowsHookEx(keyboard)) {
-                                m_refreshUnhookError = ::GetLastError();
-                                qWarning("KeyRouter: replaced an unavailable keyboard hook (error %lu)", m_refreshUnhookError.load());
-                            }
-                            keyboard = replacement;
-                        } else {
-                            m_refreshError = ::GetLastError();
-                            count(RefreshFailed);
-                            qWarning("KeyRouter: keyboard hook not refreshed (error %lu)", m_refreshError.load());
-                        }
+                        putInAgain();
                     }
+                    continue;
+                }
+                if (msg.hwnd == nullptr && msg.message == kLoseHooksMessage) {
+                    ::UnhookWindowsHookEx(keyboard); // as Windows does: the handles stay, nothing is called
+                    ::UnhookWindowsHookEx(mouse);
+                    continue;
+                }
+                if (msg.hwnd == nullptr && msg.message == WM_TIMER && msg.wParam == watch) {
+                    // While it drains too: the releases of the keys it took are still its own.
+                    if (hooksDropped() && putInAgain())
+                        count(Recovered);
                     continue;
                 }
                 ::DispatchMessageW(&msg);
             }
         }
+        if (watch)
+            ::KillTimer(nullptr, watch);
         if (foreground)
             ::UnhookWinEvent(foreground);
         if (mouse)
@@ -301,10 +346,16 @@ QJsonObject KeyRouter::diagnosticStatus() const
         {QStringLiteral("refresh_unhook_error"), static_cast<qint64>(m_refreshUnhookError.load())}};
     static constexpr std::array<const char*, CounterCount> names {
         "non_modifier_presses", "routed_presses", "other_foreground", "window_hidden", "window_hung",
-        "win_held", "already_held", "not_wanted", "global_hotkey", "other_hook", "refreshes", "refresh_failed"};
+        "win_held", "already_held", "not_wanted", "global_hotkey", "other_hook", "refreshes", "refresh_failed",
+        "hooks_recovered", "foreground_missed", "late_answers"};
     for (std::size_t i = 0; i < names.size(); ++i)
         status.insert(QString::fromLatin1(names[i]), static_cast<qint64>(m_counts[i].load(std::memory_order_relaxed)));
     return status;
+}
+
+void KeyRouter::loseHooksForTest()
+{
+    ::PostThreadMessageW(m_threadId.load(), kLoseHooksMessage, 0, 0);
 }
 
 void KeyRouter::drain()
@@ -319,24 +370,70 @@ void KeyRouter::checkDrained()
         m_callbacks.drained();
 }
 
+// Both stamp the time as they are called and as they answer (hooksDropped):
+// input that came while one was at work is not input that went by it.
 LRESULT CALLBACK KeyRouter::keyboardProc(int code, WPARAM wParam, LPARAM lParam)
 {
-    if (code == HC_ACTION && t_router)
-        return t_router->handleKey(code, wParam, lParam);
-    return ::CallNextHookEx(nullptr, code, wParam, lParam);
+    if (code != HC_ACTION || !t_router)
+        return ::CallNextHookEx(nullptr, code, wParam, lParam);
+    t_router->m_calledAt = ::GetTickCount();
+    const LRESULT taken = t_router->handleKey(code, wParam, lParam);
+    t_router->m_calledAt = ::GetTickCount();
+    return taken;
 }
 
 LRESULT CALLBACK KeyRouter::mouseProc(int code, WPARAM wParam, LPARAM lParam)
 {
-    if (code == HC_ACTION && t_router)
+    if (code == HC_ACTION && t_router) {
+        t_router->m_calledAt = ::GetTickCount();
         t_router->handleMouse(wParam, *reinterpret_cast<const MSLLHOOKSTRUCT*>(lParam));
-    return ::CallNextHookEx(nullptr, code, wParam, lParam);
+    }
+    const LRESULT answer = ::CallNextHookEx(nullptr, code, wParam, lParam);
+    if (t_router)
+        t_router->m_calledAt = ::GetTickCount();
+    return answer;
+}
+
+// Whether Windows took the hooks out: input went on well past their last
+// call. Not while another window is in front (a program run as administrator,
+// whose input no hook of Win顺's is called for; the secure desktop, with
+// none): no key is taken then anyway, and the window goes. Looked at, the
+// input counts as seen: asked again only for input after it.
+bool KeyRouter::hooksDropped()
+{
+    LASTINPUTINFO last {sizeof last, 0};
+    if (!::GetLastInputInfo(&last) || !inputWentPast(last.dwTime, m_calledAt))
+        return false;
+    const HWND front = ::GetForegroundWindow();
+    if (!front || ::GetAncestor(front, GA_ROOT) != m_target) {
+        m_calledAt = last.dwTime;
+        return false;
+    }
+    return true;
 }
 
 void CALLBACK KeyRouter::foregroundProc(HWINEVENTHOOK, DWORD, HWND hwnd, LONG, LONG, DWORD, DWORD)
 {
     if (t_router && hwnd && !t_router->m_draining && t_router->m_callbacks.foregroundChanged)
         t_router->m_callbacks.foregroundChanged(::GetAncestor(hwnd, GA_ROOT));
+}
+
+// A window other than the target is in front, and the window still shows:
+// the event that should have said so was missed (it came before the hooks,
+// or not at all), and the window would stay up taking no key, what is typed
+// going to that program (GitHub #86). Said as the change it is, once per
+// window: the owner does what it does when another program comes forward.
+void KeyRouter::tellOtherForeground(bool starting)
+{
+    if (!m_target || m_draining || !m_callbacks.foregroundChanged)
+        return;
+    const HWND front = ::GetForegroundWindow();
+    const HWND root = front ? ::GetAncestor(front, GA_ROOT) : nullptr;
+    if (!root || root == m_target || root == m_toldFront || (!starting && !::IsWindowVisible(m_window)))
+        return;
+    m_toldFront = root;
+    count(ForegroundMissed);
+    m_callbacks.foregroundChanged(root);
 }
 
 KeyRouter::Availability KeyRouter::availability() const
@@ -375,14 +472,22 @@ LRESULT KeyRouter::handleKey(int code, WPARAM message, LPARAM lParam)
         // The release and auto-repeat of a taken key are taken too, wherever
         // the focus went. The hooks after this one saw its press: they see
         // these as well (AutoHotkey keeps a key's state from them).
-        next();
+        const LRESULT passed = next();
         if (!press) {
             m_taken.reset(vk);
+            // Down for Windows although its press was taken: the answer came
+            // too late (past LowLevelHooksTimeout the key goes to the program
+            // whatever the hook says then). Its release goes there too, or
+            // the key stays down for Windows and its next press is left to
+            // the program as one held since before (GitHub #86).
+            const bool wentOn = held(static_cast<int>(vk));
+            if (wentOn)
+                count(LateAnswers);
             if (m_draining)
                 checkDrained();
             else
                 m_callbacks.key(translate(event, false, false));
-            return 1;
+            return wentOn ? passed : 1;
         }
         const Key key = translate(event, true, true);
         count(Routed);
@@ -405,6 +510,7 @@ LRESULT KeyRouter::handleKey(int code, WPARAM message, LPARAM lParam)
     switch (availability()) {
     case Availability::OtherForeground:
         count(OtherForeground);
+        tellOtherForeground(false);
         return next();
     case Availability::Hidden:
         count(Hidden);
