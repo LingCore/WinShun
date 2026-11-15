@@ -69,12 +69,12 @@
     },
     {
       "id": "hash",
-      "keyword": ["md5", "sha1", "sha256"],
+      "keyword": ["md5", "sha1", "sha256", "sha384", "sha512"],
       "title": {"zh": "哈希", "en": "Hash"},
-      "description": {"zh": "MD5、SHA-1、SHA-256，文字或文件", "en": "MD5, SHA-1, SHA-256 of text or a file"},
+      "description": {"zh": "MD5、SHA-1、SHA-256/384/512，文字或文件", "en": "MD5, SHA-1, SHA-256/384/512 of text or a file"},
       "icon": "glyph:U+E928",
       "hint": {"zh": "文字或文件路径", "en": "text or a file path"},
-      "ai": {"description": "Hash text (UTF-8) or a file (give its full path; up to 64 MB). Start the query with md5, sha1 or sha256 to pick one; otherwise all three are returned, each item's title the lower-case hex digest."}
+      "ai": {"description": "Hash text (UTF-8) or a file (give its full path; up to 64 MB). Start the query with md5, sha1, sha256, sha384 or sha512 to pick one; otherwise md5, sha1 and sha256 are returned, each item's title the lower-case hex digest."}
     }
   ],
   "ai": {"expose": true}
