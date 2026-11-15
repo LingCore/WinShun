@@ -309,12 +309,17 @@ private slots:
                 const QJsonObject trigger = t.toObject();
                 if (trigger.contains(u"files"_s)) {
                     // A `files` trigger: a right-click menu item for the chosen
-                    // files. One item per digest, a command each, one file.
+                    // files. One item per digest, a command each, one file,
+                    // each gated on its own card switch.
                     const QJsonObject files = trigger.value(u"files"_s).toObject();
-                    fileCommands.append(command.value(u"id"_s).toString());
+                    const QString id = command.value(u"id"_s).toString();
+                    fileCommands.append(id);
                     QCOMPARE(files.value(u"kind"_s).toString(), u"file"_s);
                     QCOMPARE(files.value(u"max"_s).toInt(), 1);
                     QVERIFY(!files.value(u"title"_s).isUndefined());
+                    const QString expectedIf = id == u"hash-md5"_s ? u"menuMd5"_s
+                        : id == u"hash-sha1"_s ? u"menuSha1"_s : u"menuSha256"_s;
+                    QCOMPARE(files.value(u"if"_s).toString(), expectedIf);
                     continue;
                 }
                 const QRegularExpression re(trigger.value(u"regex"_s).toString());
@@ -324,6 +329,18 @@ private slots:
         fileCommands.sort();
         const QStringList expectedFileCommands {u"hash-md5"_s, u"hash-sha1"_s, u"hash-sha256"_s};
         QCOMPARE(fileCommands, expectedFileCommands);
+        // The switches the menu items follow: three bools, on by default.
+        QJsonObject settings;
+        for (const QJsonValue s : manifest.value(u"settings"_s).toArray()) {
+            const QJsonObject setting = s.toObject();
+            settings.insert(setting.value(u"key"_s).toString(), setting);
+        }
+        QCOMPARE(settings.count(), 3);
+        for (const QString key : {u"menuMd5"_s, u"menuSha1"_s, u"menuSha256"_s}) {
+            QVERIFY2(settings.contains(key), qPrintable(key));
+            QCOMPARE(settings.value(key).toObject().value(u"type"_s).toString(), u"bool"_s);
+            QCOMPARE(settings.value(key).toObject().value(u"default"_s).toBool(), true);
+        }
         // Every icon named for the commands is a Phosphor name (AGENTS.md).
         for (const QJsonValue v : commands) {
             const QString icon = v.toObject().value(u"icon"_s).toString();

@@ -2,13 +2,18 @@
   "manifest": 1,
   "id": "winshun.tools",
   "name": {"zh": "小工具", "en": "Tools"},
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": {"zh": "计算器、单位换算、颜色、时间戳、UUID、Base64、哈希，Enter 复制结果", "en": "Calculator, unit conversion, colours, timestamps, UUIDs, Base64 and hashes; Enter copies"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
   "license": "MIT",
   "runtime": {"mode": "resident", "program": "WinShunTools.exe", "start": "eager", "sandbox": "strict", "idleExitSec": 0, "memoryMB": 64},
   "permissions": [],
+  "settings": [
+    {"key": "menuMd5", "type": "bool", "title": {"zh": "右键菜单：复制 MD5", "en": "File menu: Copy MD5"}, "hint": {"zh": "关掉后，文件结果的右键菜单里不再有这一项", "en": "Off takes Copy MD5 off a file result's context menu"}, "default": true},
+    {"key": "menuSha1", "type": "bool", "title": {"zh": "右键菜单：复制 SHA-1", "en": "File menu: Copy SHA-1"}, "hint": {"zh": "关掉后，文件结果的右键菜单里不再有这一项", "en": "Off takes Copy SHA-1 off a file result's context menu"}, "default": true},
+    {"key": "menuSha256", "type": "bool", "title": {"zh": "右键菜单：复制 SHA-256", "en": "File menu: Copy SHA-256"}, "hint": {"zh": "关掉后，文件结果的右键菜单里不再有这一项", "en": "Off takes Copy SHA-256 off a file result's context menu"}, "default": true}
+  ],
   "commands": [
     {
       "id": "calc",
@@ -81,7 +86,7 @@
       "title": {"zh": "复制 MD5", "en": "Copy MD5"},
       "description": {"zh": "把文件的 MD5 复制进剪贴板", "en": "Copy a file's MD5 to the clipboard"},
       "icon": "ph:fingerprint",
-      "triggers": [{"files": {"kind": "file", "max": 1, "title": {"zh": "复制 MD5", "en": "Copy MD5"}}}],
+      "triggers": [{"files": {"kind": "file", "max": 1, "if": "menuMd5", "title": {"zh": "复制 MD5", "en": "Copy MD5"}}}],
       "ai": {"description": "Hash a file with MD5 (give its full path; up to 64 MB). The first item's title is the lower-case hex digest."}
     },
     {
@@ -89,7 +94,7 @@
       "title": {"zh": "复制 SHA-1", "en": "Copy SHA-1"},
       "description": {"zh": "把文件的 SHA-1 复制进剪贴板", "en": "Copy a file's SHA-1 to the clipboard"},
       "icon": "ph:fingerprint",
-      "triggers": [{"files": {"kind": "file", "max": 1, "title": {"zh": "复制 SHA-1", "en": "Copy SHA-1"}}}],
+      "triggers": [{"files": {"kind": "file", "max": 1, "if": "menuSha1", "title": {"zh": "复制 SHA-1", "en": "Copy SHA-1"}}}],
       "ai": {"description": "Hash a file with SHA-1 (give its full path; up to 64 MB). The first item's title is the lower-case hex digest."}
     },
     {
@@ -97,7 +102,7 @@
       "title": {"zh": "复制 SHA-256", "en": "Copy SHA-256"},
       "description": {"zh": "把文件的 SHA-256 复制进剪贴板", "en": "Copy a file's SHA-256 to the clipboard"},
       "icon": "ph:fingerprint",
-      "triggers": [{"files": {"kind": "file", "max": 1, "title": {"zh": "复制 SHA-256", "en": "Copy SHA-256"}}}],
+      "triggers": [{"files": {"kind": "file", "max": 1, "if": "menuSha256", "title": {"zh": "复制 SHA-256", "en": "Copy SHA-256"}}}],
       "ai": {"description": "Hash a file with SHA-256 (give its full path; up to 64 MB). The first item's title is the lower-case hex digest."}
     }
   ],
