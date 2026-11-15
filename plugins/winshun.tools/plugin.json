@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.tools",
   "name": {"zh": "小工具", "en": "Tools"},
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": {"zh": "计算器、单位换算、颜色、时间戳、UUID、Base64、哈希，Enter 复制结果", "en": "Calculator, unit conversion, colours, timestamps, UUIDs, Base64 and hashes; Enter copies"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
@@ -74,8 +74,31 @@
       "description": {"zh": "MD5、SHA-1、SHA-256/384/512，文字或文件", "en": "MD5, SHA-1, SHA-256/384/512 of text or a file"},
       "icon": "ph:fingerprint",
       "hint": {"zh": "文字或文件路径", "en": "text or a file path"},
-      "triggers": [{"files": {"kind": "file", "max": 1, "title": {"zh": "计算哈希…", "en": "Hash…"}}}],
       "ai": {"description": "Hash text (UTF-8) or a file (give its full path; up to 64 MB). Start the query with md5, sha1, sha256, sha384 or sha512 to pick one; otherwise md5, sha1 and sha256 are returned, each item's title the lower-case hex digest."}
+    },
+    {
+      "id": "hash-md5",
+      "title": {"zh": "复制 MD5", "en": "Copy MD5"},
+      "description": {"zh": "把文件的 MD5 复制进剪贴板", "en": "Copy a file's MD5 to the clipboard"},
+      "icon": "ph:fingerprint",
+      "triggers": [{"files": {"kind": "file", "max": 1, "title": {"zh": "复制 MD5", "en": "Copy MD5"}}}],
+      "ai": {"description": "Hash a file with MD5 (give its full path; up to 64 MB). The first item's title is the lower-case hex digest."}
+    },
+    {
+      "id": "hash-sha1",
+      "title": {"zh": "复制 SHA-1", "en": "Copy SHA-1"},
+      "description": {"zh": "把文件的 SHA-1 复制进剪贴板", "en": "Copy a file's SHA-1 to the clipboard"},
+      "icon": "ph:fingerprint",
+      "triggers": [{"files": {"kind": "file", "max": 1, "title": {"zh": "复制 SHA-1", "en": "Copy SHA-1"}}}],
+      "ai": {"description": "Hash a file with SHA-1 (give its full path; up to 64 MB). The first item's title is the lower-case hex digest."}
+    },
+    {
+      "id": "hash-sha256",
+      "title": {"zh": "复制 SHA-256", "en": "Copy SHA-256"},
+      "description": {"zh": "把文件的 SHA-256 复制进剪贴板", "en": "Copy a file's SHA-256 to the clipboard"},
+      "icon": "ph:fingerprint",
+      "triggers": [{"files": {"kind": "file", "max": 1, "title": {"zh": "复制 SHA-256", "en": "Copy SHA-256"}}}],
+      "ai": {"description": "Hash a file with SHA-256 (give its full path; up to 64 MB). The first item's title is the lower-case hex digest."}
     }
   ],
   "ai": {"expose": true}

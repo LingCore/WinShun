@@ -289,25 +289,29 @@ private slots:
         QStringList keywords;
         const QJsonArray commands = manifest.value(u"commands"_s).toArray();
         QVERIFY(!commands.isEmpty());
+        QStringList fileCommands;
         for (const QJsonValue v : commands) {
             const QJsonObject command = v.toObject();
             QVERIFY2(!command.value(u"id"_s).toString().isEmpty(), "a command has no id");
             QVERIFY(!command.value(u"title"_s).isUndefined());
-            // Keywords are unique and carry no spaces (docs/plugins.md).
+            // Keywords are unique and carry no spaces (docs/plugins.md); a
+            // command of the file menu alone has none.
             const QJsonValue keyword = command.value(u"keyword"_s);
-            for (const QJsonValue k : keyword.isArray() ? keyword.toArray() : QJsonArray {keyword}) {
-                const QString word = k.toString();
-                QVERIFY2(!word.isEmpty() && !word.contains(u' '), qPrintable(word));
-                QVERIFY2(!keywords.contains(word), qPrintable(u"duplicate keyword "_s + word));
-                keywords.append(word);
+            if (!keyword.isUndefined()) {
+                for (const QJsonValue k : keyword.isArray() ? keyword.toArray() : QJsonArray {keyword}) {
+                    const QString word = k.toString();
+                    QVERIFY2(!word.isEmpty() && !word.contains(u' '), qPrintable(word));
+                    QVERIFY2(!keywords.contains(word), qPrintable(u"duplicate keyword "_s + word));
+                    keywords.append(word);
+                }
             }
             for (const QJsonValue t : command.value(u"triggers"_s).toArray()) {
                 const QJsonObject trigger = t.toObject();
                 if (trigger.contains(u"files"_s)) {
                     // A `files` trigger: a right-click menu item for the chosen
-                    // files. The hash command takes a single file, nothing else.
+                    // files. One item per digest, a command each, one file.
                     const QJsonObject files = trigger.value(u"files"_s).toObject();
-                    QCOMPARE(command.value(u"id"_s).toString(), u"hash"_s);
+                    fileCommands.append(command.value(u"id"_s).toString());
                     QCOMPARE(files.value(u"kind"_s).toString(), u"file"_s);
                     QCOMPARE(files.value(u"max"_s).toInt(), 1);
                     QVERIFY(!files.value(u"title"_s).isUndefined());
@@ -317,6 +321,9 @@ private slots:
                 QVERIFY2(re.isValid(), qPrintable(re.errorString()));
             }
         }
+        fileCommands.sort();
+        const QStringList expectedFileCommands {u"hash-md5"_s, u"hash-sha1"_s, u"hash-sha256"_s};
+        QCOMPARE(fileCommands, expectedFileCommands);
         // Every icon named for the commands is a Phosphor name (AGENTS.md).
         for (const QJsonValue v : commands) {
             const QString icon = v.toObject().value(u"icon"_s).toString();

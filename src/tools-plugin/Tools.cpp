@@ -14,7 +14,8 @@
 //   uuid   a new UUID
 //   b64    Base64 encode / decode
 //   md5, sha1, sha256   hashes of text, or of a file by its path; a file's
-//          right-click menu has 计算哈希…, the same digests for that file
+//          right-click menu has 复制 MD5 / 复制 SHA-1 / 复制 SHA-256, the
+//          digest straight to the clipboard
 
 #include "Tools.h"
 
@@ -69,7 +70,7 @@ protected:
             return uuid(q);
         if (q.command == "b64")
             return base64(q);
-        if (q.command == "hash")
+        if (q.command == "hash" || q.command.compare(0, 5, "hash-") == 0)
             return hash(q);
         return {};
     }
@@ -81,12 +82,10 @@ protected:
 
     // Enter on a sum's result keeps the sum (CalcHistory); on a sum kept, its
     // result is copied again, or the whole line, or it is taken off the list.
-    // From a file's right-click menu (the hash command's `files` trigger, one
-    // file): the digests as rows, what `md5 <path>` would give.
     Effects action(const ActionRequest& a) override
     {
-        if (a.command == "hash" && a.trigger == "files")
-            return hashFile(a);
+        if (a.trigger == "files")
+            return a.files.size() == 1 ? copyFileDigest(a.command, a.files.front()) : Effects {};
         if (a.command != "calc")
             return Plugin::action(a);
         const std::string id = a.item["id"].toString();
@@ -131,39 +130,29 @@ protected:
     }
 
 private:
-    Effects hashFile(const ActionRequest& a)
+    // The file's right-click menu (the hash-md5 / -sha1 / -sha256 commands,
+    // one file): that digest straight into the clipboard — Win顺 copies it,
+    // the strict sandbox has no clipboard of its own — with a line of status.
+    // An action's `replace` rows are listed by the launcher only under an
+    // active keyword, so the menu copies instead of listing.
+    Effects copyFileDigest(const std::string& command, const std::string& path)
     {
-        using namespace tools::codec;
-        if (a.files.size() != 1)
-            return Plugin::action(a);
-        const std::string& path = a.files.front();
-        Items items;
+        using tools::codec::hashFileHex;
+        const char* algorithm = command == "hash-md5" ? "md5" : command == "hash-sha1" ? "sha1" : "sha256";
+        const char* shown = command == "hash-md5" ? "MD5" : command == "hash-sha1" ? "SHA-1" : "SHA-256";
         const DWORD attributes = ::GetFileAttributesW(winshun::wide(path).c_str());
-        if (attributes == INVALID_FILE_ATTRIBUTES) {
-            items.push_back(help("missing", zh("没有这个文件，查一下路径", "No such file; check the path"), path, kHashIcon));
-        } else if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
-            items.push_back(help("dir", zh("这是一个文件夹，给它里面的文件", "That is a folder; name a file in it"), path, kHashIcon));
-        } else {
-            for (const char* algorithm : {"md5", "sha1", "sha256"}) {
-                std::string upper = algorithm;
-                for (char& c : upper)
-                    c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
-                bool tooLarge = false;
-                const std::string digest = hashFileHex(algorithm, winshun::wide(path), kMaxHashFile, &tooLarge);
-                if (tooLarge) {
-                    items.assign(1, help("big", zh("文件超过 64 MB，不算了", "The file is over 64 MB"), path, kHashIcon));
-                    break;
-                }
-                if (digest.empty())
-                    continue;
-                Item item(algorithm, digest, upper + " · " + zh("文件 ", "file ") + path);
-                item.withIcon(kHashIcon).withCopy(digest).withScore(90 - static_cast<int>(items.size()));
-                items.push_back(std::move(item));
-            }
-        }
-        if (items.empty())
-            items.push_back(help("fail", zh("算不出摘要", "Cannot compute the digests"), path, kHashIcon));
-        return {winshun::effect::replace(std::move(items)), winshun::effect::keep()};
+        if (attributes == INVALID_FILE_ATTRIBUTES)
+            return {winshun::effect::notify(zh("没有这个文件，查一下路径", "No such file; check the path"))};
+        if (attributes & FILE_ATTRIBUTE_DIRECTORY)
+            return {winshun::effect::notify(zh("这是一个文件夹，给它里面的文件", "That is a folder; name a file in it"))};
+        bool tooLarge = false;
+        const std::string digest = hashFileHex(algorithm, winshun::wide(path), kMaxHashFile, &tooLarge);
+        if (tooLarge)
+            return {winshun::effect::notify(zh("文件超过 64 MB，不算了", "The file is over 64 MB"))};
+        if (digest.empty())
+            return {winshun::effect::notify(zh("算不出摘要", "Cannot compute the digest"))};
+        return {winshun::effect::copy(digest),
+            winshun::effect::notify(std::string(zh("已复制 ", "Copied the ")) + shown)};
     }
 
     const char* zh(const char* chinese, const char* english) const { return this->chinese() ? chinese : english; }
@@ -449,6 +438,10 @@ private:
             algorithms.push_back(keyword);
         else
             algorithms = {"md5", "sha1", "sha256"};
+        // A file-menu command (hash-md5 …) pins its one algorithm: the AI
+        // calls it by name, the menu by its click.
+        if (q.command.size() > 5 && q.command.compare(0, 5, "hash-") == 0)
+            algorithms.assign(1, q.command.substr(5));
         if (text.empty()) {
             items.push_back(help("h1", zh("输入文字或文件路径", "Type text or a file path"),
                 zh("文字按 UTF-8 计算；文件最大 64 MB", "Text is hashed as UTF-8; files up to 64 MB"), kHashIcon));
