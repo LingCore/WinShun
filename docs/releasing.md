@@ -75,4 +75,6 @@ curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch
 
 Scoop：`scripts/release.ps1 -Publish` 在 Release 创建成功之后，把 `bucket/winshun.json` 的 `version`、`url`、`hash` 改成这次的便携包（只改这三处，保持 4 空格缩进和无 BOM 的 UTF-8），只提交这一个文件（`git commit --only`，工作区里可能有别人的修改）为 “Scoop: winshun <版本>” 并推送。用户用 `scoop bucket add winshun https://github.com/LingCore/WinShun` 加入的就是主仓库，所以推送要在 Release 之后，清单不能比 zip 先到。`checkver` / `autoupdate` 写好了（`$sha256\s+$basename` 只匹配便携包那一行），发布后可以用 Scoop 自带的 `bin\checkver.ps1 -App winshun -Dir bucket -Update`（先复制一份目录）核对：它会用公开的 SHA256SUMS.txt 算出同样的值。`tests/tst_scoopinstall.cpp` 检查清单是合法 JSON、正则能在样例校验文件里只匹配便携包。
 
+WinGet：包 `LingCore.WinShun` 在 `microsoft/winget-pkgs` 的 `manifests/l/LingCore/WinShun`，不归本仓库维护。Release 公开后会有自动提交的 “New version: LingCore.WinShun version <版本>” PR，由 winget 维护者审核合并后才上架，所以 `winget install` 拿到新版本通常比 Release 晚一两天；清单里的安装包是离线安装包 `WinShun-<版本>-x64-offline-setup.exe`（自带增强文字识别），`Scope: machine`，`winget install` 装成给所有用户的版本（`C:\Program Files\WinShun`，带索引服务）。发布后核对最新那个 PR 的 `InstallerUrl`、`InstallerSha256` 和公开的 `SHA256SUMS.txt` 一致即可，不用自己建清单；README 和[使用说明](使用说明.md#用-winget-安装更新卸载)只写命令、不写版本号，免得包还没跟上时对不上。清单还声明了 `Microsoft.VCRedist.2015+.x64` 依赖，而程序自己带着 C++ 运行库、用不上它，下一次提清单时可以去掉。
+
 已发布成功的单次任务不得重复执行；若由一次性自动化触发，成功后关闭它。论坛文案可另行提供，但发布到论坛或向他人发消息需要用户明确要求。
