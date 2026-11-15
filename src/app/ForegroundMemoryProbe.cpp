@@ -9,6 +9,7 @@
 #include "Preview.h"
 #include "SearchEngine.h"
 #include "SystemCatalog.h"
+#include "SystemTheme.h"
 #include "WindowFrame.h"
 #include "platform/ClipboardWatcher.h"
 
@@ -17,6 +18,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
+#include <QFont>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -437,6 +439,26 @@ bool checkForegroundMemory(QQmlEngine* engine, const QDir& output, bool requireL
             u"the row the mouse left gives its buttons back, disarmed"_s);
     }
     check(!window->isActive(), u"probe never takes desktop focus"_s);
+    {
+        // An icon's Text has its font alone (SystemTheme.glyphFont). Merged
+        // with the others, a code the font has no glyph for (a lent button
+        // had its next icon's for a moment) sent Qt through every font
+        // installed, loading each: 17 MB, and the first search waited for it.
+        int icons = 0, merged = 0;
+        QList<QQuickItem*> pending {window->contentItem()};
+        while (!pending.isEmpty()) {
+            QQuickItem* item = pending.takeLast();
+            pending.append(item->childItems());
+            if (!item->inherits("QQuickText"))
+                continue;
+            const QFont font = item->property("font").value<QFont>();
+            if (font.family() != SystemTheme::iconFontName() && !font.family().startsWith(u"Phosphor"))
+                continue;
+            ++icons;
+            merged += (font.styleStrategy() & QFont::NoFontMerging) ? 0 : 1;
+        }
+        check(icons > 0 && merged == 0, u"no icon's text is merged with other fonts (%1 of %2 are)"_s.arg(merged).arg(icons));
+    }
     if (requireLazy) {
         // The full panel may already be selected before Main is constructed.
         window->hide();

@@ -65,6 +65,7 @@ themes/
   - 状态：`danger` `dangerFill` `success` `caution` `closeHover` `closePressed`
   - 类型色：`typeHues`（按 hueIndex 0..n）、`folderHue`、`hueFor(index)`
   - `iconFont`（Segoe/Phosphor 图标字体名，给画图标的部件用）
+  - `glyphFont(pixels)`（用 `iconFont` 画字形的 Text 的字体：只用这一个字体，不与别的字体合并；部件里不要直接写 `font.family: look.iconFont`，缺字形时 Qt 会把系统里所有字体挨个加载一遍）
 
 `Theme.xxx` 的名字不变（100 多个文件在用），每个都改为 `look.xxx`；尺寸（字号、行高、搜索行高）仍由 `UiScale`（界面大小）决定，所有风格共用。
 

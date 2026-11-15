@@ -80,6 +80,9 @@ QtObject {
     readonly property color danger: dark ? "#FFABB3" : "#B4232F"
     readonly property color dangerFill: "#B4232F"
     readonly property string iconFont: SystemTheme.iconFont
+    // A Text's font for one of its glyphs, `pixels` high: that font alone,
+    // never merged with another (SystemTheme.glyphFont).
+    function glyphFont(pixels: int): font { return SystemTheme.glyphFont(iconFont, 0, pixels) }
 
     readonly property real cardRadius: r(10)
     readonly property real largeCardRadius: r(12)

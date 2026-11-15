@@ -48,8 +48,7 @@ Item {
         visible: part.kind === "check" && part.lit
         anchors.centerIn: parent
         text: "\uE73E"
-        font.family: part.look ? part.look.iconFont : ""
-        font.pixelSize: Math.round(part.height * 0.6)
+        font: part.look ? part.look.glyphFont(Math.round(part.height * 0.6)) : Qt.font({})
         color: part.look ? part.look.accentText : "transparent"
     }
 }

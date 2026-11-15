@@ -349,6 +349,9 @@ QtObject {
     readonly property color folderHue: kinds.folder.ink[dark ? 1 : 0]
     function hueFor(index: int): color { return index === -2 ? folderHue : index < 0 ? faint : typeHues[index % typeHues.length] }
     readonly property string iconFont: SystemTheme.iconFont
+    // A Text's font for one of its glyphs, `pixels` high: that font alone,
+    // never merged with another (SystemTheme.glyphFont).
+    function glyphFont(pixels: int): font { return SystemTheme.glyphFont(iconFont, 0, pixels) }
 
     // ---- Parts (hooks): Hook { part: Theme.look.keySurface; ... } ----
     readonly property Component searchField: Component { SearchField { look: brandLook } }

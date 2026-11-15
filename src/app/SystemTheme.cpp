@@ -52,6 +52,19 @@ QVariant SystemTheme::phosphorIcon(const QString& spec) const
     return QVariantMap {{u"text"_s, icon->text}, {u"family"_s, icon->family}};
 }
 
+QFont SystemTheme::glyphFont(const QString& family, qreal pointSize, int pixelSize) const
+{
+    QFont font = QGuiApplication::font();
+    if (!family.isEmpty())
+        font.setFamilies({family});
+    if (pointSize > 0)
+        font.setPointSizeF(pointSize);
+    else if (pixelSize > 0)
+        font.setPixelSize(pixelSize);
+    font.setStyleStrategy(QFont::StyleStrategy(font.styleStrategy() | QFont::NoFontMerging));
+    return font;
+}
+
 namespace {
 
 bool supports(const QRawFont& font, const QString& family, const QString& glyph)

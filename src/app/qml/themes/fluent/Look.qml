@@ -138,6 +138,9 @@ QtObject {
 
     // For parts that draw icons.
     readonly property string iconFont: SystemTheme.iconFont
+    // A Text's font for one of its glyphs, `pixels` high: that font alone,
+    // never merged with another (SystemTheme.glyphFont).
+    function glyphFont(pixels: int): font { return SystemTheme.glyphFont(iconFont, 0, pixels) }
 
     // ---- lines and pixels
     // edge(): a 1 px border or line on whole device pixels (2 at 150 %): window

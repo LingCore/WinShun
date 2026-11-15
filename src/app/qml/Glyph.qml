@@ -80,10 +80,11 @@ Item {
         anchors.centerIn: parent
         visible: !icon.drawn && !icon.phosphor
         text: icon.drawn ? icon.phosphor.text : icon.shown
-        font.family: icon.phosphor ? icon.phosphor.family : Theme.iconFont
         // In points: font.pixelSize is a whole number of logical pixels, which
         // would round a size like 64/3 (32 device pixels at 150%) down.
-        font.pointSize: icon.size * (icon.phosphor ? SystemTheme.iconScale : 1) * 72 / 96
+        // Never merged with other fonts (SystemTheme.glyphFont).
+        font: SystemTheme.glyphFont(icon.phosphor ? icon.phosphor.family : Theme.iconFont,
+                                    icon.size * (icon.phosphor ? SystemTheme.iconScale : 1) * 72 / 96)
         scale: icon.inkScale // the system font's (an older Windows 10)
         color: icon.color
         horizontalAlignment: Text.AlignHCenter

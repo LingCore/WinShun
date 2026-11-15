@@ -67,6 +67,14 @@ public:
     // point, as {text, family}, or undefined: the icon font draws it then
     // (see phosphor::resolve).
     Q_INVOKABLE QVariant phosphorIcon(const QString& spec) const;
+    // The font an icon's Text is given (Glyph.qml): the application's, of
+    // this family and size, and never merged with another font. Without
+    // that, a code the family has no glyph for sends Qt through every font
+    // installed, loading each (69 of them here, 17 MB and the time to read
+    // them), to find that none has it: an icon lent from row to row had its
+    // new code for a moment while its family was still the last one's.
+    // The size in points, or, with none, in pixels.
+    Q_INVOKABLE QFont glyphFont(const QString& family, qreal pointSize, int pixelSize = 0) const;
     // The icon font has the glyph (every character of it). An older Windows
     // 10 has an older "Segoe MDL2 Assets", without the icons added since: the
     // text would then take the character from whatever font has it, a Chinese
