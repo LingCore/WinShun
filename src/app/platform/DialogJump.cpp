@@ -157,14 +157,11 @@ void DialogJump::follow(HWND foreground)
         return;
     }
     // Left for a file manager, straight or by way of the taskbar, the task
-    // switcher or the Start menu (each in front for a moment): what it shows
-    // when it first comes up tells, on the way back, whether the user went
-    // somewhere there.
+    // switcher or the Start menu (each in front for a moment): on the way
+    // back the dialog may go to the folder shown there.
     if (m_autoJump && m_lastDialog && ::IsWindow(m_lastDialog) && filemanager::kindOf(foreground).has_value()
-        && std::ranges::find(m_wentToManager, m_lastDialog) == m_wentToManager.end()) {
+        && std::ranges::find(m_wentToManager, m_lastDialog) == m_wentToManager.end())
         m_wentToManager.push_back(m_lastDialog);
-        m_worker.post([this, dialog = m_lastDialog] { noteManager(dialog); });
-    }
     const bool fromManager = std::erase(m_wentToManager, foreground) > 0;
     // Never attach to GUI-thread modal windows: following their drag on the
     // same thread caused linux.do #222. Our shell pickers now have their own
@@ -319,9 +316,7 @@ void DialogJump::setDialog(HWND dialog, bool fromManager)
         if (first)
             m_seen.push_back(dialog);
         if (fromManager || (first && m_atOpen))
-            m_worker.post([this, dialog, first = first && !fromManager, atOpen = m_atOpen] {
-                autoJump(dialog, first, atOpen);
-            });
+            m_worker.post([this, dialog, first = first && !fromManager] { autoJump(dialog, first); });
     }
 }
 
@@ -365,14 +360,7 @@ void DialogJump::setRegistered(bool on)
         qWarning() << "Ctrl+G is taken by another program: no jumping to the file manager's folder in file dialogs";
 }
 
-void DialogJump::noteManager(HWND dialog)
-{
-    std::erase_if(m_leftFor, [dialog](const auto& left) { return left.first == dialog || !::IsWindow(left.first); });
-    const std::vector<filemanager::Folder> folders = filemanager::openFolders();
-    m_leftFor.emplace_back(dialog, folders.empty() ? std::wstring() : folders.front().path);
-}
-
-void DialogJump::autoJump(HWND dialog, bool first, bool atOpen)
+void DialogJump::autoJump(HWND dialog, bool first)
 {
     const bool elevated = integrity::higherThanOurs(dialog);
     if (elevated && !elevatedNav(dialog))
@@ -381,23 +369,27 @@ void DialogJump::autoJump(HWND dialog, bool first, bool atOpen)
     if (folders.empty())
         return;
     const std::wstring& folder = folders.front().path;
-    std::erase_if(m_jumped, [](HWND jumped) { return !::IsWindow(jumped); });
-    // Back from a file manager: only if it shows another folder than when the
-    // user went there; but not at open, a dialog that has not gone yet goes
-    // anyway (it opened where Windows left it).
-    if (!first && (atOpen || std::ranges::find(m_jumped, dialog) != m_jumped.end())) {
-        const auto left = std::ranges::find(m_leftFor, dialog, &decltype(m_leftFor)::value_type::first);
-        if (left == m_leftFor.end() || sameFolder(left->second, folder))
-            return;
-        left->second = folder;
-    }
+    std::erase_if(m_sentTo, [](const auto& sent) { return !::IsWindow(sent.first); });
+    // Back from a file manager: to the folder in front there, each time,
+    // whether the user went to it there or picked a window already showing
+    // it (GitHub #334: the second folder picked was not gone to). Not to the
+    // one the dialog was sent to last, though: the file manager only looked
+    // at, the dialog stays where the user has taken it since.
+    const auto sent = std::ranges::find(m_sentTo, dialog, &decltype(m_sentTo)::value_type::first);
+    if (!first && sent != m_sentTo.end() && sameFolder(sent->second, folder))
+        return;
+    const auto noteSent = [&] {
+        if (const auto it = std::ranges::find(m_sentTo, dialog, &decltype(m_sentTo)::value_type::first); it != m_sentTo.end())
+            it->second = folder;
+        else
+            m_sentTo.emplace_back(dialog, folder);
+    };
     if (elevated) {
         // We cannot read the elevated dialog's current folder across UIPI; the
         // helper navigates it (a no-op if it is already there). No "go back"
         // origin, since we never read where it was.
         m_callbacks.navigateElevated(dialog, folder);
-        if (std::ranges::find(m_jumped, dialog) == m_jumped.end())
-            m_jumped.push_back(dialog);
+        noteSent();
         return;
     }
     filedialog::waitForFront(dialog);
@@ -406,14 +398,15 @@ void DialogJump::autoJump(HWND dialog, bool first, bool atOpen)
     if (::GetForegroundWindow() != dialog)
         return; // the user has gone on
     const std::wstring from = filedialog::currentFolder(dialog);
-    if (sameFolder(from, folder))
+    if (sameFolder(from, folder)) {
+        noteSent(); // there already: as good as sent
         return;
+    }
     if (!filedialog::goTo(dialog, folder)) {
         qWarning() << "The file dialog did not go to the file manager's folder by itself";
         return;
     }
-    if (std::ranges::find(m_jumped, dialog) == m_jumped.end())
-        m_jumped.push_back(dialog);
+    noteSent();
     if (m_callbacks.autoJumped)
         m_callbacks.autoJumped(dialog, from);
 }

@@ -63,10 +63,10 @@ public:
 
     void setHotkeyEnabled(bool on); // Ctrl+G; the dialogs are followed either way
     // On: a dialog goes by itself to the folder shown in the file manager
-    // when it comes up (`atOpen`), and when the user comes back to it from
-    // the file manager after going to another folder there (not after just
-    // looking). Not at open: it opens where Windows left it, and goes the
-    // first time the user comes back (after just looking too), then as above.
+    // when it comes up (`atOpen`), and each time the user comes back to it
+    // from the file manager, unless that folder is the one it was sent to
+    // last (the file manager only looked at). Not at open: it opens where
+    // Windows left it, and goes when the user comes back.
     void setAutoJump(bool on, bool atOpen = true)
     {
         m_autoJump = on;
@@ -117,8 +117,7 @@ private:
     // can drive for us. `elevatedNav`: elevated AND the service can.
     bool canFollow(HWND dialog) const;
     bool elevatedNav(HWND dialog) const;
-    void noteManager(HWND dialog); // on the worker
-    void autoJump(HWND dialog, bool first, bool atOpen); // on the worker
+    void autoJump(HWND dialog, bool first); // on the worker
 
     Callbacks m_callbacks;
     HWINEVENTHOOK m_foregroundHook = nullptr;
@@ -144,9 +143,10 @@ private:
     HWND m_probing = nullptr; // WPS Office's window being probed, while in front
     bool m_probingFromManager = false;
     std::vector<HWND> m_seen; // the dialogs that came up, for setAutoJump
-    // On the worker: what the file managers showed when the user left each dialog for one.
-    std::vector<std::pair<HWND, std::wstring>> m_leftFor;
-    std::vector<HWND> m_jumped; // on the worker: the dialogs gone to the file manager's folder by themselves
+    // On the worker: the folder each dialog was last sent to by itself (or
+    // found in already). Back from a file manager, a dialog goes only to
+    // another folder than that one.
+    std::vector<std::pair<HWND, std::wstring>> m_sentTo;
     ComWorker m_worker; // last: done with its task before the members above go
 };
 
