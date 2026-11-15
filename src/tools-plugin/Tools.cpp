@@ -284,9 +284,12 @@ private:
         Items items;
         const std::string zone = localZoneName();
         const auto moment = [&](const Moment& m, const std::string& heading) {
-            const std::string local = formatLocal(m);
+            // Milliseconds shown when the moment has them (a fractional
+            // timestamp); whole seconds keep the plain form.
+            const bool withMs = m.milliseconds != 0;
+            const std::string local = formatLocal(m, withMs);
             items.push_back(Item("local", local, heading + " · " + zh("本地时间 ", "local time ") + zone).withIcon(kTimeIcon).withCopy(local).withScore(90));
-            const std::string utc = formatUtc(m);
+            const std::string utc = formatUtc(m, withMs);
             items.push_back(Item("utc", utc, "UTC").withIcon(kTimeIcon).withCopy(utc));
             const std::string isoLocal = formatIsoLocal(m);
             items.push_back(Item("isoLocal", isoLocal, "ISO 8601").withIcon(kTimeIcon).withCopy(isoLocal));
