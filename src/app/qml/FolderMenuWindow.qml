@@ -433,7 +433,12 @@ Window {
                     if (menu.highlighted === entry.index) menu.highlighted = -1
                     if (menu.hoveredEntry === entry) menu.hoveredEntry = null
                 }
-                onClicked: menu.activate(entry.index)
+                onClicked: mouse => {
+                    menu.pointerAt = mapToGlobal(mouse.x, mouse.y)
+                    menu.activate(entry.index)
+                }
+                // Where the pointer is, for a page opened by a key: see settledAt.
+                onPositionChanged: mouse => menu.pointerAt = mapToGlobal(mouse.x, mouse.y)
 
                 MouseArea {
                     id: arrow
@@ -447,9 +452,14 @@ Window {
                     Accessible.name: qsTr("展开“%1”").arg(entry.modelData.text ?? "")
                     Accessible.ignored: !entry.branch
                     Accessible.onPressAction: menu.open(entry.index, false)
+                    // Coming onto it counts as well: a quick move may arrive in one step.
+                    onEntered: menu.pointed(entry.index, mapToGlobal(mouseX, mouseY))
                     onPositionChanged: mouse => menu.pointed(entry.index, mapToGlobal(mouse.x, mouse.y))
                     onExited: menu.unpointed(entry.index)
-                    onClicked: menu.open(entry.index, true)
+                    onClicked: mouse => {
+                        menu.pointerAt = mapToGlobal(mouse.x, mouse.y)
+                        menu.open(entry.index, true)
+                    }
                 }
             }
         }

@@ -717,11 +717,13 @@ private slots:
         QTRY_COMPARE(folder(), work);
         QVERIFY(opened.isEmpty());
         QVERIFY(menu.isOpen());
+        QTest::qWait(700); // the arrow that came under the pointer where it clicked opens nothing
+        QCOMPARE(folder(), work);
         // Resting on an arrow goes in too; the page that comes under the
         // pointer, still at rest on another arrow now, opens nothing further.
         QTRY_VERIFY(arrow(3).x() > 0);
         const QPoint at = arrow(3);
-        QTest::mouseMove(window, at - QPoint(3, 0));
+        QTest::mouseMove(window, QPoint(90, at.y())); // from the row's name onto its arrow in one step
         QTest::mouseMove(window, at);
         QTest::qWait(150);
         QCOMPARE(folder(), work); // not at once
