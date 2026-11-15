@@ -184,6 +184,13 @@ scoop install winshun
 
 ### 最近更新
 
+**0.31.1**
+
+- 🔤 **界面字体** 选了“霞鹜文楷”（常规体）却显示成别的字体，已修好；Noto Sans SC Medium、Bahnschrift Light 这类单独列出的字重以前选了不生效，现在也能用（#325）。
+- 🛠️ **截图卡顿的排查** 截图时界面卡住，诊断日志会记下当时卡在哪（截图与录屏 1.1.17）。
+
+详见 [0.31.1 发布说明](docs/release-notes/v0.31.1.md)。
+
 **0.31.0**
 
 - 📂 **文件夹菜单里走进子文件夹** 文件夹那一行末尾的箭头上停一下（或按 `→`），就列出里面的文件夹，可以一层层往下走。
@@ -426,6 +433,13 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.31.1**
+
+- 🔤 **Interface font** Choosing 霞鹜文楷 (LXGW WenKai, regular) showed another font: fixed. Weights that Windows lists on their own (Noto Sans SC Medium, Bahnschrift Light…) had no effect before and now work (#325).
+- 🛠️ **Capture stalls** When the interface stops answering during a capture, the diagnostics record where (Screenshot and recording 1.1.17).
+
+See the [0.31.1 release notes](docs/release-notes/v0.31.1.md).
 
 **0.31.0**
 
