@@ -9,7 +9,16 @@ Window {
     required property FolderMenu folderMenu
     property int highlighted: -1
     property var page: null
-    property int parentHighlight: -1
+    // The pages above this one, each with the row that led down from it.
+    property var trail: []
+    // A folder being read, its page not up yet: { folder, text, from, byPointer }.
+    property var pending: null
+    // The pointer on a row's arrow opens its page after a moment; where it
+    // was (on the screen) when the page last changed: rows that come under a
+    // pointer at rest open nothing.
+    property int dwellRow: -1
+    property point pointerAt
+    property point settledAt
     property Item hoveredEntry: null
     property string hoveredText
     property point popupAnchor
@@ -74,12 +83,19 @@ Window {
         menu.x = x
         menu.y = y
     }
+    function forget() {
+        trail = []
+        pending = null
+        slow.stop()
+        dwell.stop()
+        dwellRow = -1
+    }
     function popup(pos) {
         page = null
-        parentHighlight = -1
         highlighted = -1
         hoveredEntry = null
         flick.contentY = 0
+        forget()
         popupAnchor = pos
         availableArea = folderMenu.screenArea(pos)
         flick.forceLayout()
@@ -105,21 +121,89 @@ Window {
         if (highlighted >= 0)
             flick.positionViewAtIndex(highlighted, ListView.Contain)
     }
-    function activate(i) {
+    function enter(target, from, byPointer) {
+        dwell.stop()
+        settledAt = pointerAt
+        trail = trail.concat([{ page: page, highlight: from }])
+        page = target
+        if (!byPointer) highlighted = step(-1, 1)
+    }
+    function folderPage(text, folder, children) {
+        return { text: text, folder: folder, children: children }
+    }
+    // The page a row leads to: a group's rows, or the folders inside a folder
+    // (read first; a page saying so comes only when that takes a while).
+    function open(i, byPointer) {
         if (!selectable(i)) return
         const entry = entries[i]
         if (entry.children !== undefined) {
-            parentHighlight = i
-            page = entry
-            highlighted = step(-1, 1)
-        } else {
-            folderMenu.trigger(entry.action)
+            enter(entry, i, byPointer)
+        } else if (entry.folder !== undefined) {
+            pending = { folder: entry.folder, text: entry.text, from: i, byPointer: byPointer }
+            slow.restart()
+            folderMenu.listFolder(entry.folder)
         }
     }
+    function activate(i) {
+        if (!selectable(i)) return
+        const entry = entries[i]
+        if (entry.action !== undefined) folderMenu.trigger(entry.action)
+        else open(i, false)
+    }
     function back() {
-        if (page === null) return
-        page = null
-        highlighted = parentHighlight
+        pending = null
+        slow.stop()
+        dwell.stop()
+        settledAt = pointerAt
+        if (trail.length === 0) {
+            page = null
+            return
+        }
+        const above = trail[trail.length - 1]
+        trail = trail.slice(0, -1)
+        page = above.page
+        highlighted = above.highlight
+    }
+    function listed(folder, rows) {
+        const children = rows.length > 0 ? rows : [{ text: qsTr("没有子文件夹"), disabled: true }]
+        if (pending !== null && pending.folder === folder) {
+            const asked = pending
+            pending = null
+            slow.stop()
+            enter(folderPage(asked.text, folder, children), asked.from, asked.byPointer)
+        } else if (page !== null && page.folder === folder && page.reading === true) {
+            const byKeys = page.byPointer !== true
+            page = folderPage(page.text, folder, children)
+            if (byKeys) highlighted = step(-1, 1)
+        }
+    }
+    function pointed(i, at) {
+        pointerAt = at
+        if (at.x === settledAt.x && at.y === settledAt.y) return
+        if (dwellRow === i && dwell.running) return
+        dwellRow = i
+        dwell.restart()
+    }
+    function unpointed(i) {
+        if (dwellRow === i) dwell.stop()
+    }
+    Timer {
+        id: dwell
+        interval: 350
+        onTriggered: menu.open(menu.dwellRow, true)
+    }
+    Timer { // the folder has not answered yet: its page, saying so
+        id: slow
+        interval: 200
+        onTriggered: {
+            const asked = menu.pending
+            if (asked === null) return
+            menu.pending = null
+            const reading = menu.folderPage(asked.text, asked.folder, [{ text: qsTr("正在读取…"), disabled: true }])
+            reading.reading = true
+            reading.byPointer = asked.byPointer
+            menu.enter(reading, asked.from, asked.byPointer)
+        }
     }
     function jumpTo(text) {
         const wanted = text.toLowerCase()
@@ -141,7 +225,7 @@ Window {
         case Qt.Key_End:
         case Qt.Key_PageDown: highlighted = step(0, -1); return
         case Qt.Key_Right:
-            if (highlighted >= 0 && entries[highlighted].children !== undefined) activate(highlighted)
+            if (highlighted >= 0) open(highlighted, false)
             return
         case Qt.Key_Left:
         case Qt.Key_Backspace: back(); return
@@ -163,11 +247,13 @@ Window {
         function onPopupRequested(pos) { menu.popup(pos) }
         function onHideRequested() {
             menu.visible = false
+            menu.forget()
             menu.page = null
             menu.highlighted = -1
             menu.hoveredEntry = null
         }
         function onKeyPressed(key, text) { menu.handleKey(key, text) }
+        function onFolderListed(folder, entries) { menu.listed(folder, entries) }
     }
 
     Item {
@@ -249,7 +335,7 @@ Window {
             readonly property bool separator: modelData.separator === true
             readonly property bool disabled: modelData.disabled === true
             readonly property bool section: modelData.heading === true
-            readonly property bool branch: modelData.children !== undefined
+            readonly property bool branch: modelData.children !== undefined || modelData.folder !== undefined
             readonly property string tooltip: modelData.tooltip ?? ""
             readonly property real trailingWidth: Math.min(detail.implicitWidth, 96) + (branch ? 20 : 0)
             objectName: "folderMenuEntry" + index
@@ -259,6 +345,7 @@ Window {
             ListView.onPooled: {
                 if (menu.hoveredEntry === entry)
                     menu.hoveredEntry = null
+                menu.unpointed(entry.index)
             }
             Accessible.role: section ? Accessible.Heading : Accessible.MenuItem
             Accessible.name: modelData.text ?? ""
@@ -314,6 +401,16 @@ Window {
                 color: Theme.faint
                 font.pixelSize: Theme.menuCaptionSize
             }
+            Rectangle { // the arrow is a button of its own on a row that goes somewhere itself
+                visible: arrow.containsMouse && entry.modelData.action !== undefined
+                anchors.right: parent.right
+                anchors.rightMargin: 4
+                anchors.verticalCenter: parent.verticalCenter
+                width: 28
+                height: entry.height - 8
+                radius: Theme.menuItemRadius
+                color: Theme.controlHover
+            }
             Glyph {
                 visible: entry.branch
                 anchors.right: parent.right
@@ -337,6 +434,23 @@ Window {
                     if (menu.hoveredEntry === entry) menu.hoveredEntry = null
                 }
                 onClicked: menu.activate(entry.index)
+
+                MouseArea {
+                    id: arrow
+                    objectName: "folderMenuArrow" + entry.index
+                    anchors.right: parent.right
+                    width: 36
+                    height: parent.height
+                    enabled: entry.branch
+                    hoverEnabled: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: qsTr("展开“%1”").arg(entry.modelData.text ?? "")
+                    Accessible.ignored: !entry.branch
+                    Accessible.onPressAction: menu.open(entry.index, false)
+                    onPositionChanged: mouse => menu.pointed(entry.index, mapToGlobal(mouse.x, mouse.y))
+                    onExited: menu.unpointed(entry.index)
+                    onClicked: menu.open(entry.index, true)
+                }
             }
         }
     }

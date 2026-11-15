@@ -19,6 +19,8 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QClipboard>
+#include <QCollator>
+#include <QThreadPool>
 #include <QGuiApplication>
 #include <QJsonObject>
 #include <QScreen>
@@ -568,12 +570,16 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
         m_folder = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
     m_entries.clear();
     m_actions.clear();
+    ++m_shown;
     const auto action = [this](Kind kind, const QString& path, const QString& text, const QString& detail,
                             const QString& glyph, const QString& icon = QString(), const QString& tooltip = QString()) {
         const int index = static_cast<int>(m_actions.size());
         m_actions.push_back({kind, path, text});
-        return QVariantMap {{u"text"_s, text}, {u"detail"_s, detail}, {u"glyph"_s, glyph},
+        QVariantMap row {{u"text"_s, text}, {u"detail"_s, detail}, {u"glyph"_s, glyph},
             {u"icon"_s, icon}, {u"tooltip"_s, tooltip}, {u"action"_s, index}};
+        if (kind == Kind::Folder)
+            row.insert(u"folder"_s, path); // its row opens the folders inside it (#170)
+        return row;
     };
     const auto group = [this](const QString& text, const QString& glyph, const QVariantList& children) {
         m_entries.append(groupEntries(text, glyph, children));
@@ -618,8 +624,11 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
                 }
                 break;
             }
-            favorites.append(action(Kind::Favorite, f.path, f.name.isEmpty() ? nameOf(f.path) : f.name, f.keyword,
-                glyph, icon, tooltip));
+            QVariantMap row = action(Kind::Favorite, f.path, f.name.isEmpty() ? nameOf(f.path) : f.name, f.keyword,
+                glyph, icon, tooltip);
+            if (f.kind == Favorite::Kind::Folder)
+                row.insert(u"folder"_s, f.path);
+            favorites.append(row);
         }
         group(tr("收藏夹"), u"\uE734"_s, favorites);
     }
@@ -854,7 +863,10 @@ void FolderMenu::goTo(const QString& folder)
         return;
     }
     if (m_hit.surface != folderview::Surface::Explorer) {
-        shell::open(folder); // the desktop, any other window: in the file manager chosen
+        if (m_opener)
+            m_opener(folder);
+        else
+            shell::open(folder); // the desktop, any other window: in the file manager chosen
         return;
     }
     // The same tab goes there; one the shell's list lacks (it can miss
@@ -864,6 +876,66 @@ void FolderMenu::goTo(const QString& folder)
             qWarning() << "Folder menu: tab not found; a new window instead";
             shell::open(path);
         }
+    });
+}
+
+QStringList FolderMenu::subfolders(const QString& folder, qsizetype max)
+{
+    QStringList names;
+    std::wstring pattern = QDir::toNativeSeparators(folder).toStdWString();
+    if (pattern.empty())
+        return names;
+    if (pattern.back() != L'\\')
+        pattern += L'\\';
+    pattern += L'*';
+    WIN32_FIND_DATAW data;
+    const HANDLE find = ::FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &data, FindExSearchLimitToDirectories, nullptr,
+        FIND_FIRST_EX_LARGE_FETCH);
+    if (find == INVALID_HANDLE_VALUE)
+        return names;
+    do {
+        // Hidden ones stay out, as in File Explorer's own default view.
+        if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN))
+            continue;
+        const std::wstring_view name = data.cFileName;
+        if (name != L"." && name != L"..")
+            names.append(QString::fromWCharArray(name.data(), static_cast<qsizetype>(name.size())));
+    } while (::FindNextFileW(find, &data));
+    ::FindClose(find);
+    QCollator order; // the user's own order, numbers by value: 2 before 10
+    order.setNumericMode(true);
+    order.setCaseSensitivity(Qt::CaseInsensitive);
+    std::ranges::sort(names, [&order](const QString& a, const QString& b) { return order.compare(a, b) < 0; });
+    if (names.size() > max)
+        names.resize(max);
+    return names;
+}
+
+void FolderMenu::listFolder(const QString& folder)
+{
+    if (folder.isEmpty() || !m_open)
+        return;
+    // Not on the menu's own worker: a share that does not answer would keep
+    // the next menu waiting behind it.
+    QThreadPool::globalInstance()->start([guard = QPointer(this), folder, shown = m_shown] {
+        QStringList names = subfolders(folder);
+        QMetaObject::invokeMethod(qApp, [guard, folder, shown, names = std::move(names)] {
+            FolderMenu* const menu = guard.data();
+            if (!menu || !menu->m_open || menu->m_shown != shown)
+                return;
+            const QDir parent(folder);
+            QVariantList rows;
+            rows.reserve(names.size());
+            for (const QString& name : names) {
+                const QString path = QDir::toNativeSeparators(parent.filePath(name));
+                const int index = static_cast<int>(menu->m_actions.size());
+                menu->m_actions.push_back({Kind::Folder, path, name});
+                rows.append(QVariantMap {{u"text"_s, name}, {u"glyph"_s, QString(QChar(0xE8B7))},
+                    {u"icon"_s, FileIconProvider::iconUrl(path, true)}, {u"tooltip"_s, path}, {u"action"_s, index},
+                    {u"folder"_s, path}});
+            }
+            emit menu->folderListed(folder, rows);
+        }, Qt::QueuedConnection);
     });
 }
 

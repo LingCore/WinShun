@@ -69,6 +69,7 @@ class FolderMenu : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the application")
     // {text, detail, glyph, icon, tooltip, action}, {children: [...]} or a separator.
+    // A row with `folder` (a path) opens a page of the folders inside it.
     Q_PROPERTY(QVariantList entries READ entries NOTIFY entriesChanged FINAL)
     Q_PROPERTY(bool open READ isOpen NOTIFY openChanged FINAL)
 
@@ -92,6 +93,9 @@ public:
     // Explorer): the menu does not come, the double click only closes that.
     // Where Copy path writes the text: the system clipboard unless a test says otherwise.
     void setClipboardWriter(std::function<void(const QString&)> writer) { m_clipboardWriter = std::move(writer); }
+    // How a folder chosen from a window that is no file manager's is opened:
+    // in the file manager unless a test says otherwise.
+    void setOpener(std::function<void(const QString&)> opener) { m_opener = std::move(opener); }
     void setBlocked(std::function<bool()> blocked) { m_blocked = std::move(blocked); }
     // Takes an Open or Save dialog to a folder, in order with the app's
     // other moves of it (DialogJump::go); false: not able to, the menu
@@ -126,10 +130,19 @@ public:
     Q_INVOKABLE QRectF screenArea(QPointF globalPos) const;
     Q_INVOKABLE void prepareMenuWindow(QWindow* menu) const;
     Q_INVOKABLE void trigger(int index);
+    // The folders inside `folder`, for the page a folder's row opens (GitHub
+    // #170): read off the GUI thread (a share may take its time), answered
+    // by folderListed() with rows as the menu's own, each to be opened in
+    // turn. Nothing comes for a menu closed meanwhile.
+    Q_INVOKABLE void listFolder(const QString& folder);
+    // The folders right inside `folder`, by name as File Explorer orders
+    // them (2 before 10), hidden ones left out; at most `max`.
+    static QStringList subfolders(const QString& folder, qsizetype max = 500);
     Q_INVOKABLE void dismiss();
 
 signals:
     void entriesChanged();
+    void folderListed(const QString& folder, const QVariantList& entries);
     void popupRequested(QPointF pos); // logical pixels: the window's top-left corner, or where it flips from
     void hideRequested();
     void keyPressed(int key, const QString& text); // taken on its way to File Explorer
@@ -166,6 +179,7 @@ private:
     QPointer<QWindow> m_window;
     std::function<bool()> m_blocked;
     std::function<void(const QString&)> m_clipboardWriter;
+    std::function<void(const QString&)> m_opener;
     std::function<bool(HWND, const QString&)> m_dialogGo;
     std::function<HWND(HWND)> m_dialogOf;
     menuhotkey::Toggle m_toggle; // GUI thread: what a hotkey press means now
@@ -186,6 +200,7 @@ private:
     std::atomic<bool> m_itemSettings {true};
     std::atomic<bool> m_open {false};
     std::atomic<int> m_asks {0}; // the latest double click's number: older answers are dropped
+    int m_shown = 0; // which showing the entries are of: a folder listed for an older one is dropped
     folderview::Hit m_hit; // where the menu is up
     QString m_folder; // the tab's folder or Desktop directory; empty in Home / This PC
     QVariantList m_entries;

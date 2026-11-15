@@ -2401,6 +2401,18 @@
         <source>返回</source>
         <translation>Back</translation>
     </message>
+    <message>
+        <source>没有子文件夹</source>
+        <translation>No folders inside</translation>
+    </message>
+    <message>
+        <source>正在读取…</source>
+        <translation>Reading…</translation>
+    </message>
+    <message>
+        <source>展开“%1”</source>
+        <translation>Show the folders in “%1”</translation>
+    </message>
 </context>
 <context>
     <name>FontPicker</name>

@@ -19,6 +19,8 @@
 #include <QWindow>
 #include <QScopeGuard>
 #include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlExpression>
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -571,6 +573,179 @@ private slots:
         QVERIFY(open());
         QCOMPARE(entry(menu, command.name), -1);
         menu.dismiss();
+    }
+
+    // The folders inside a folder (GitHub #170): by name with numbers by
+    // value, hidden ones and files left out.
+    void subfolders()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QDir root(temporary.path());
+        for (const QString& name : {u"10月"_s, u"2月"_s, u"24年"_s, u"25年"_s, u"藏起来的"_s})
+            QVERIFY(root.mkpath(name));
+        QVERIFY(::SetFileAttributesW(reinterpret_cast<const wchar_t*>(
+                                         QDir::toNativeSeparators(root.filePath(u"藏起来的"_s)).utf16()),
+            FILE_ATTRIBUTE_HIDDEN));
+        QFile file(root.filePath(u"3月.txt"_s));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        const QStringList expected {u"2月"_s, u"10月"_s, u"24年"_s, u"25年"_s};
+        QCOMPARE(FolderMenu::subfolders(temporary.path()), expected);
+        QCOMPARE(FolderMenu::subfolders(temporary.path() + u'/'), expected);
+        QCOMPARE(FolderMenu::subfolders(temporary.path(), 2), expected.first(2));
+        QCOMPARE(FolderMenu::subfolders(root.filePath(u"2月"_s)), QStringList());
+        QCOMPARE(FolderMenu::subfolders(root.filePath(u"没有这个"_s)), QStringList());
+        QCOMPARE(FolderMenu::subfolders({}), QStringList());
+    }
+
+    // A folder's row leads to the folders inside it, level after level: by
+    // the Right key, a click on its arrow, or the pointer resting there. The
+    // row itself still goes to the folder; a page that comes under a pointer
+    // at rest opens nothing further.
+    void folderPages()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QDir root(temporary.path());
+        for (const QString& name : {u"工作/2月"_s, u"工作/10月"_s, u"工作/24年"_s, u"工作/25年/a一月"_s, u"工作/25年/b二月"_s})
+            QVERIFY(root.mkpath(name));
+        const QString work = QDir::toNativeSeparators(root.filePath(u"工作"_s));
+        const HWND previous = ::GetForegroundWindow();
+        auto restore = qScopeGuard([previous] {
+            if (previous && ::IsWindow(previous))
+                ::SetForegroundWindow(previous);
+        });
+        QWindow source;
+        source.setTitle(u"WinShun folder pages test"_s);
+        source.resize(320, 160);
+        source.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&source));
+        win::bringToFront(&source);
+        const HWND sourceHandle = reinterpret_cast<HWND>(source.winId());
+        QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), sourceHandle, 3000);
+
+        Favorites favorites(temporary.filePath(u"favorites.json"_s));
+        QVERIFY(favorites.add({Favorite::Kind::Folder, work, u"工作"_s, {}}));
+        QVERIFY(favorites.add({Favorite::Kind::File, root.filePath(u"readme.txt"_s), u"使用说明"_s, {}}));
+        FolderMenu menu(nullptr, &favorites);
+        menu.setRecordHistory(false);
+        menu.setGroups(true, false, false);
+        QStringList opened; // never the real file manager
+        menu.setOpener([&](const QString& folder) { opened.append(QDir::toNativeSeparators(folder)); });
+        QQmlEngine engine;
+        engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQmlComponent component(
+            &engine, QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR) + u"/FolderMenuWindow.qml"_s));
+        std::unique_ptr<QObject> object(
+            component.createWithInitialProperties({{u"folderMenu"_s, QVariant::fromValue(&menu)}}));
+        QVERIFY2(object, qPrintable(component.errorString()));
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        QVERIFY(window);
+        menu.setWindow(window);
+        QSignalSpy changed(&menu, &FolderMenu::entriesChanged);
+        const auto open = [&] {
+            changed.clear();
+            menu.hotkeyPressed();
+            return changed.wait(5000) && menu.isOpen();
+        };
+        const auto value = [&](const QString& script) {
+            return QQmlExpression(qmlContext(object.get()), object.get(), script).evaluate();
+        };
+        const auto folder = [&] { return value(u"page === null ? '' : (page.folder ?? '')"_s).toString(); };
+        const auto texts = [&] { return value(u"entries.map(e => e.text ?? '').join('|')"_s).toString(); };
+        const auto key = [&](Qt::Key k) { emit menu.keyPressed(k, {}); };
+        const auto arrow = [&](int row) -> QPoint {
+            auto* item = visualItem(window->contentItem(), u"folderMenuArrow%1"_s.arg(row));
+            return item ? item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint() : QPoint(-1, -1);
+        };
+        const auto shot = [&](const QString& name) {
+            const QString evidence = qEnvironmentVariable("WINSHUN_MENU_EVIDENCE");
+            return evidence.isEmpty() || (QDir().mkpath(evidence) && window->grabWindow().save(evidence + u'/' + name + u".png"_s));
+        };
+
+        // Keys: Right goes in, Enter goes there, Left comes back to the row left.
+        QVERIFY(open());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QTRY_COMPARE(texts(), u"工作|使用说明"_s);
+        QCOMPARE(object->property("highlighted").toInt(), 0);
+        key(Qt::Key_Right);
+        QTRY_COMPARE(folder(), work);
+        QCOMPARE(texts(), u"2月|10月|24年|25年"_s);
+        QCOMPARE(object->property("highlighted").toInt(), 0);
+        QTest::qWait(150); // asynchronous shell icons before visual evidence
+        QVERIFY(shot(u"folder-page"_s));
+        key(Qt::Key_End);
+        key(Qt::Key_Right);
+        QTRY_COMPARE(folder(), work + u"\\25年"_s);
+        QCOMPARE(texts(), u"a一月|b二月"_s);
+        key(Qt::Key_Right); // nothing inside: says so, and nothing to choose
+        QTRY_COMPARE(folder(), work + u"\\25年\\a一月"_s);
+        QCOMPARE(texts(), u"没有子文件夹"_s);
+        QCOMPARE(object->property("highlighted").toInt(), -1);
+        key(Qt::Key_Left);
+        QTRY_COMPARE(folder(), work + u"\\25年"_s);
+        QCOMPARE(object->property("highlighted").toInt(), 0);
+        key(Qt::Key_Left);
+        QTRY_COMPARE(folder(), work);
+        QCOMPARE(object->property("highlighted").toInt(), 3);
+        key(Qt::Key_Right);
+        QTRY_COMPARE(folder(), work + u"\\25年"_s);
+        key(Qt::Key_Down);
+        key(Qt::Key_Return);
+        QCOMPARE(opened, QStringList {work + u"\\25年\\b二月"_s});
+        QVERIFY(!menu.isOpen());
+        opened.clear();
+
+        // A file among the favorites has no arrow; Right on it does nothing.
+        QVERIFY(open());
+        QCOMPARE(folder(), QString());
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QTRY_COMPARE(texts(), u"工作|使用说明"_s);
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QTest::qWait(300);
+        QCOMPARE(texts(), u"工作|使用说明"_s);
+
+        // The pointer: a click on the arrow goes in, the row itself goes there.
+        QTRY_VERIFY(arrow(0).x() > 0);
+        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, arrow(0));
+        QTRY_COMPARE(folder(), work);
+        QVERIFY(opened.isEmpty());
+        QVERIFY(menu.isOpen());
+        // Resting on an arrow goes in too; the page that comes under the
+        // pointer, still at rest on another arrow now, opens nothing further.
+        QTRY_VERIFY(arrow(3).x() > 0);
+        const QPoint at = arrow(3);
+        QTest::mouseMove(window, at - QPoint(3, 0));
+        QTest::mouseMove(window, at);
+        QTest::qWait(150);
+        QCOMPARE(folder(), work); // not at once
+        QTRY_COMPARE(folder(), work + u"\\25年"_s);
+        QTest::qWait(700);
+        QCOMPARE(folder(), work + u"\\25年"_s);
+        QVERIFY(shot(u"folder-page-pointer"_s));
+        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(90, arrow(0).y()));
+        QVERIFY(!menu.isOpen());
+        QCOMPARE(opened.size(), 1);
+        QVERIFY(opened.first().startsWith(work + u"\\25年\\"_s));
+        QCOMPARE(::GetForegroundWindow(), sourceHandle);
+
+        // Closed before the folder answered: nothing comes for the next menu.
+        QVERIFY(open());
+        QSignalSpy listed(&menu, &FolderMenu::folderListed);
+        menu.listFolder(work);
+        menu.dismiss();
+        QVERIFY(open());
+        QTest::qWait(300);
+        QCOMPARE(listed.size(), 0);
+        QCOMPARE(folder(), QString());
+        menu.dismiss();
+        QCOMPARE(warnings.count(), 0);
     }
 };
 
