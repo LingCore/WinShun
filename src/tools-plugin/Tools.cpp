@@ -401,12 +401,27 @@ private:
                 zh("文字按 UTF-8 计算；文件最大 64 MB", "Text is hashed as UTF-8; files up to 64 MB"), kHashIcon));
             return items;
         }
-        // A file path: hash the file.
+        // A file path: hash the file. Drive-letter paths and UNC shares;
+        // anything else is text. A path that looks like one (a separator,
+        // a known extension) but is not there says so instead of hashing
+        // the path itself, which would be silently wrong.
         std::string path = text;
         if (path.size() > 2 && path.front() == '"' && path.back() == '"')
             path = path.substr(1, path.size() - 2);
-        const DWORD attributes = path.size() > 3 && path[1] == ':' ? ::GetFileAttributesW(winshun::wide(path).c_str()) : INVALID_FILE_ATTRIBUTES;
-        const bool file = attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+        const bool pathLike = (path.size() > 2 && path[1] == ':') || path.compare(0, 2, "\\\\") == 0
+            || path.find('/') != std::string::npos || path.find('\\') != std::string::npos
+            || path.rfind('.') != std::string::npos;
+        const DWORD attributes = pathLike ? ::GetFileAttributesW(winshun::wide(path).c_str()) : INVALID_FILE_ATTRIBUTES;
+        const bool exists = attributes != INVALID_FILE_ATTRIBUTES;
+        if (pathLike && !exists) {
+            items.push_back(help("missing", zh("没有这个文件，查一下路径", "No such file; check the path"), path, kHashIcon));
+            return items;
+        }
+        const bool file = exists && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+        if (exists && !file) {
+            items.push_back(help("dir", zh("这是一个文件夹，给它里面的文件", "That is a folder; name a file in it"), path, kHashIcon));
+            return items;
+        }
         int n = 0;
         for (const std::string& algorithm : algorithms) {
             std::string upper = algorithm;
