@@ -13,4 +13,17 @@
 
 ## 打包
 
-见本文件末尾的校验值（由发布流程填入）。
+`scripts/release.ps1 -BuildDir build\run-latest -OutputDir dist\release0311`，从 `55d841eb`（标签 `v0.31.1`）构建。`tools/verify-installer.ps1` 5 项全过（正常升级、自己的程序在运行、库被别的程序加载、文件被别的程序读着、文件被独占）。
+
+| 文件 | SHA256 |
+|---|---|
+| WinShun-0.31.1-x64-setup.exe | d1010a28ec491cee3947889ca6a97c0acaf1223bab2ad4596175056ad1099511 |
+| WinShun-0.31.1-x64-portable.zip | 7e9ea1df07f3ddd7fc74ccf46fefb704cb89014477f3f00c5c0c920b19e4faab |
+| WinShun-0.31.1-x64-offline-setup.exe | 1857e3dc5fcf93f19f8c8583a09c2cf61a77bc38aec85c83af4ccbef99764002 |
+| WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip | ccb82d77a545f183504edc51e6353370742d0423b71fa1cf7800db919494277e |
+
+GitHub 上五个附件的大小和 SHA256 与本地一致后才发布。
+
+## 插件库
+
+只有“截图与录屏”有改动：1.1.17（`winshun.capture-v1.1.17`，源码 `1ab46575`，SHA256 `7cc4ca53eb485834e146771407db83518021c50e489c947d72b6b8fb33e6f628`，权限不变）。包取自同一次发布构建（工作区干净，等于 `55d841eb`），没有另外从提交副本重建。其余官方插件的源码自 0.31.0 以来没有变化。
