@@ -271,6 +271,48 @@ private slots:
         QVERIFY(calc::hex(1e19).empty());
     }
 
+    // The manifest the tests are compiled against (the one this source
+    // ships with) has to stay a well-formed plugin manifest: the fields
+    // the host validates are the ones here.
+    void manifestIsValid()
+    {
+        QFile file(QStringLiteral(WINSHUN_TOOLS_MANIFEST));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+        QVERIFY2(!document.isNull(), "the manifest is not JSON");
+        const QJsonObject manifest = document.object();
+        QCOMPARE(manifest.value(u"manifest"_s).toInt(), 1);
+        QCOMPARE(manifest.value(u"id"_s).toString(), u"winshun.tools"_s);
+        const QRegularExpression version(u"\\d+\\.\\d+\\.\\d+"_s);
+        QVERIFY(version.match(manifest.value(u"version"_s).toString()).hasMatch());
+        QVERIFY(manifest.value(u"runtime"_s).toObject().value(u"mode"_s).toString() == u"resident"_s);
+        QStringList keywords;
+        const QJsonArray commands = manifest.value(u"commands"_s).toArray();
+        QVERIFY(!commands.isEmpty());
+        for (const QJsonValue v : commands) {
+            const QJsonObject command = v.toObject();
+            QVERIFY2(!command.value(u"id"_s).toString().isEmpty(), "a command has no id");
+            QVERIFY(!command.value(u"title"_s).isUndefined());
+            // Keywords are unique and carry no spaces (docs/plugins.md).
+            const QJsonValue keyword = command.value(u"keyword"_s);
+            for (const QJsonValue k : keyword.isArray() ? keyword.toArray() : QJsonArray {keyword}) {
+                const QString word = k.toString();
+                QVERIFY2(!word.isEmpty() && !word.contains(u' '), qPrintable(word));
+                QVERIFY2(!keywords.contains(word), qPrintable(u"duplicate keyword "_s + word));
+                keywords.append(word);
+            }
+            for (const QJsonValue t : command.value(u"triggers"_s).toArray()) {
+                const QRegularExpression re(t.toObject().value(u"regex"_s).toString());
+                QVERIFY2(re.isValid(), qPrintable(re.errorString()));
+            }
+        }
+        // Every icon named for the commands is a Phosphor name (AGENTS.md).
+        for (const QJsonValue v : commands) {
+            const QString icon = v.toObject().value(u"icon"_s).toString();
+            QVERIFY2(icon.startsWith(u"ph:"_s), qPrintable(icon));
+        }
+    }
+
     void unitsParse()
     {
         auto r = units::parse("12 inch to cm");
