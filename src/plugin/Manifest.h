@@ -103,6 +103,7 @@ struct Trigger {
     QStringList extensions;
     int maxFiles = 20;
     Text title; // Files: the result menu's entry ("用局域网发送…"); empty: the command's title
+    QString setting; // Files: the entry shows only while this bool setting is on ("if")
     friend bool operator==(const Trigger&, const Trigger&) = default;
 };
 

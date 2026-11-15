@@ -312,6 +312,8 @@ Trigger readTrigger(const QJsonValue& value, const QString& where, Check& check)
             e = e.toLower().remove(u'.');
         t.maxFiles = intField(files, u"max"_s, 20, 1, 1000, where + u".files"_s, check);
         t.title = readText(files.value(u"title"_s), where + u".files.title"_s, check).value_or(Text {});
+        if (files.contains(u"if"_s))
+            t.setting = stringField(files, u"if"_s, where + u".files"_s, check);
     } else if (o.contains(u"clipboard"_s)) {
         t.kind = Trigger::Kind::Clipboard;
         const QJsonObject clip = o.value(u"clipboard"_s).toObject();
@@ -658,6 +660,20 @@ std::optional<Manifest> Manifest::parse(const QByteArray& json, QString* error)
         int i = 0;
         for (const QJsonValue& s : settings.toArray())
             m.settings.push_back(readSetting(s, i++, check));
+    }
+    // A files trigger's `if` names one of the settings, and a bool one: the
+    // menu entry comes and goes with the switch on the card.
+    for (int c = 0; c < m.commands.size(); ++c) {
+        for (int t = 0; t < m.commands[c].triggers.size(); ++t) {
+            const Trigger& trigger = m.commands[c].triggers[t];
+            if (trigger.kind != Trigger::Kind::Files || trigger.setting.isEmpty())
+                continue;
+            const bool declared = std::any_of(m.settings.cbegin(), m.settings.cend(),
+                [&](const Setting& s) { return s.key == trigger.setting && s.type == u"bool"_s; });
+            if (!declared)
+                check.fail(u"commands[%1].triggers[%2].files.if 要指向一个 bool 设置项，没有 %3"_s
+                    .arg(QString::number(c), QString::number(t), trigger.setting));
+        }
     }
     if (o.value(u"ai"_s).isObject())
         m.aiExpose = o.value(u"ai"_s).toObject().value(u"expose"_s).toBool();

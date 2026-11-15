@@ -5258,6 +5258,44 @@ private slots:
         f.host->shutdown();
     }
 
+    // A `files` trigger's `if`: the menu entry comes and goes with a bool
+    // setting of the plugin's, the manifest's default under the user's value.
+    void filesTriggerSetting()
+    {
+        Fixture f;
+        Spec spec;
+        spec.settings = QJsonArray {QJsonObject {{u"key"_s, u"menu"_s}, {u"type"_s, u"bool"_s},
+            {u"title"_s, u"菜单"_s}, {u"default"_s, true}}};
+        spec.commandExtra = {{u"triggers"_s, QJsonArray {QJsonObject {{u"files"_s,
+            QJsonObject {{u"kind"_s, u"any"_s}, {u"if"_s, u"menu"_s}, {u"title"_s, QJsonObject {{u"zh"_s, u"发送…"_s}, {u"en"_s, u"Send…"_s}}}}}}}}};
+        QVERIFY(!f.install(spec).isEmpty());
+        const auto commands = [&](const QStringList& paths, const QList<bool>& folders) {
+            QStringList out;
+            for (const Catalog::FileCommand& c : f.host->catalog().fileCommands(paths, folders))
+                out.push_back(c.entry->id + u'/' + c.command->id);
+            return out;
+        };
+        // The manifest's default (on) shows it.
+        QCOMPARE(commands({u"C:\\a.txt"_s}, {false}), QStringList {u"test.fake/main"_s});
+        // The user's switch: off hides it, on shows it again.
+        f.host->setPluginSettings(u"test.fake"_s, QJsonObject {{u"menu"_s, false}});
+        QVERIFY(commands({u"C:\\a.txt"_s}, {false}).isEmpty());
+        f.host->setPluginSettings(u"test.fake"_s, QJsonObject {{u"menu"_s, true}});
+        QCOMPARE(commands({u"C:\\a.txt"_s}, {false}), QStringList {u"test.fake/main"_s});
+        f.host->shutdown();
+    }
+
+    // `if` has to name a bool setting of the same manifest.
+    void filesTriggerSettingChecked()
+    {
+        QString error;
+        QVERIFY(Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","runtime":{"mode":"resident","program":"fake.exe"},"commands":[{"id":"c","triggers":[{"files":{"kind":"any","if":"menu"}}]}],"settings":[{"key":"menu","type":"bool","title":"菜单","default":true}]})", &error));
+        QVERIFY(!Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","runtime":{"mode":"resident","program":"fake.exe"},"commands":[{"id":"c","triggers":[{"files":{"kind":"any","if":"menu"}}]}]})", &error));
+        QVERIFY2(error.contains(u"files.if 要指向一个 bool 设置项"_s), qPrintable(error));
+        QVERIFY(!Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","runtime":{"mode":"resident","program":"fake.exe"},"commands":[{"id":"c","triggers":[{"files":{"kind":"any","if":"alias"}}]}],"settings":[{"key":"alias","type":"text","title":"名字"}]})", &error));
+        QVERIFY2(error.contains(u"files.if 要指向一个 bool 设置项"_s), qPrintable(error));
+    }
+
     void filesTriggerOnce()
     {
         Fixture f;
