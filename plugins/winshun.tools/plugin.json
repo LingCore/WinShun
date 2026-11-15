@@ -15,7 +15,7 @@
       "keyword": "=",
       "title": {"zh": "计算", "en": "Calculate"},
       "description": {"zh": "算式和单位换算", "en": "Arithmetic and unit conversion"},
-      "icon": "glyph:U+E8EF",
+      "icon": "ph:calculator",
       "hint": {"zh": "算式，或 12 inch to cm", "en": "an expression, or 12 inch to cm"},
       "triggers": [
         {"regex": "^(?!(?:\\d{4}/\\d{1,2}/\\d{1,2}|\\d{1,2}/\\d{1,2}/\\d{4})$)(?=.*(?:[+*/^×÷(]|\\d\\s*!|\\d\\s*%\\s*$|0[xbo]))[-+*/^×÷%!(),.\\da-fA-FxXbBoO\\s]{3,64}$", "minLength": 3, "maxLength": 64},
@@ -30,7 +30,7 @@
       "keyword": "color",
       "title": {"zh": "颜色", "en": "Colour"},
       "description": {"zh": "颜色值的各种写法：HEX、RGB、HSL、HSV", "en": "A colour in every notation: HEX, RGB, HSL, HSV"},
-      "icon": "glyph:U+E790",
+      "icon": "ph:palette",
       "hint": {"zh": "#ff8800、rgb(255, 136, 0)、hsl(32, 100%, 50%)", "en": "#ff8800, rgb(255, 136, 0), hsl(32, 100%, 50%)"},
       "triggers": [
         {"regex": "(?i)^(?:#[0-9a-f]{3,4}|#[0-9a-f]{6}|#[0-9a-f]{8}|(?:rgba?|hsla?|hsva?|hsba?)\\(.{5,40}\\));?$", "minLength": 4, "maxLength": 48}
@@ -42,7 +42,7 @@
       "keyword": "ts",
       "title": {"zh": "时间戳", "en": "Timestamp"},
       "description": {"zh": "时间戳 ⇄ 日期，本地和 UTC", "en": "Timestamps to dates and back, local and UTC"},
-      "icon": "glyph:U+E823",
+      "icon": "ph:clock",
       "hint": {"zh": "时间戳或日期；留空看现在", "en": "a timestamp or a date; empty for now"},
       "triggers": [
         {"regex": "^1\\d{9}(?:\\d{3})?$", "minLength": 10, "maxLength": 13}
@@ -54,7 +54,7 @@
       "keyword": "uuid",
       "title": "UUID",
       "description": {"zh": "生成一个 UUID（v4）", "en": "A new UUID (v4)"},
-      "icon": "glyph:U+E8D7",
+      "icon": "ph:tag",
       "hint": {"zh": "按空格生成", "en": "press space"},
       "ai": {"description": "Generate a random UUID (version 4). The first item's title is the UUID."}
     },
@@ -63,7 +63,7 @@
       "keyword": "b64",
       "title": "Base64",
       "description": {"zh": "Base64 编码、解码", "en": "Base64 encode and decode"},
-      "icon": "glyph:U+E943",
+      "icon": "ph:code",
       "hint": {"zh": "文字，或要解码的 Base64", "en": "text, or Base64 to decode"},
       "ai": {"description": "Base64: encodes the text given (UTF-8); when the text is itself Base64 that decodes to text, the first item is the decoded text."}
     },
@@ -72,7 +72,7 @@
       "keyword": ["md5", "sha1", "sha256", "sha384", "sha512"],
       "title": {"zh": "哈希", "en": "Hash"},
       "description": {"zh": "MD5、SHA-1、SHA-256/384/512，文字或文件", "en": "MD5, SHA-1, SHA-256/384/512 of text or a file"},
-      "icon": "glyph:U+E928",
+      "icon": "ph:fingerprint",
       "hint": {"zh": "文字或文件路径", "en": "text or a file path"},
       "ai": {"description": "Hash text (UTF-8) or a file (give its full path; up to 64 MB). Start the query with md5, sha1, sha256, sha384 or sha512 to pick one; otherwise md5, sha1 and sha256 are returned, each item's title the lower-case hex digest."}
     }

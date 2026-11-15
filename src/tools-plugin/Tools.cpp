@@ -42,11 +42,12 @@ using winshun::Query;
 
 namespace {
 
-constexpr const char* kCalcIcon = "glyph:U+E8EF"; // Calculator
-constexpr const char* kTimeIcon = "glyph:U+E823"; // Recent
-constexpr const char* kIdIcon = "glyph:U+E8D7"; // Tag
-constexpr const char* kCodeIcon = "glyph:U+E943"; // Code
-constexpr const char* kHashIcon = "glyph:U+E928"; // Fingerprint
+constexpr const char* kCalcIcon = "ph:calculator";
+constexpr const char* kTimeIcon = "ph:clock";
+constexpr const char* kIdIcon = "ph:tag";
+constexpr const char* kCodeIcon = "ph:code";
+constexpr const char* kHashIcon = "ph:fingerprint";
+constexpr const char* kClearIcon = "ph:trash";
 constexpr std::uint64_t kMaxHashFile = 64ull << 20;
 constexpr std::size_t kSumsListed = 50; // of the sums kept, under "="
 constexpr std::size_t kSumsBelow = 20; // ... and under a sum being typed
@@ -98,7 +99,7 @@ protected:
         if (id == "clear") {
             Item confirm("clear-confirm", zh("再按一次 Enter 清空", "Press Enter again to clear"),
                 std::to_string(m_sums.records().size()) + zh(" 条，不能恢复", " sums; this cannot be undone"));
-            confirm.withIcon("glyph:U+E74D").withActions({{"confirm", zh("清空", "Clear"), "Enter"},
+            confirm.withIcon(kClearIcon).withActions({{"confirm", zh("清空", "Clear"), "Enter"},
                 {"keep", zh("留着，不清", "Keep them"), "Shift+Enter"}});
             return {winshun::effect::replace(Items {confirm}), winshun::effect::keep()};
         }
@@ -176,7 +177,7 @@ private:
         if (withClear && count > 0)
             items.push_back(Item("clear", zh("清空计算记录", "Clear the sums"),
                 std::to_string(records.size()) + zh(" 条；保留最近一个月、最多 200 条", " kept; a month's, 200 at most"))
-                                .withIcon("glyph:U+E74D")
+                                .withIcon(kClearIcon)
                                 .withScore(1));
         return items;
     }
@@ -268,7 +269,7 @@ private:
             if (pushed(q))
                 return items;
             items.push_back(help("h1", zh("输入一个颜色值，列出它的各种写法", "Type a colour to see it in every notation"),
-                "#ff8800、#f80、rgb(255, 136, 0)、hsl(32, 100%, 50%)、rgba(255 136 0 / 50%)", "glyph:U+E790"));
+                "#ff8800、#f80、rgb(255, 136, 0)、hsl(32, 100%, 50%)、rgba(255 136 0 / 50%)", "ph:palette"));
             return items;
         }
         const std::string swatch = "color:" + tools::color::hex(*parsed, false);
