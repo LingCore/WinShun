@@ -73,7 +73,7 @@ qt_add_executable(WinShun WIN32
     ContentPaneProbe.cpp ContentPaneProbe.h
     RecentFolders.cpp RecentFolders.h
     Settings.cpp Settings.h
-    UiFont.cpp UiFont.h
+    UiFont.cpp UiFont.h FontFile.h
     SiteIconImage.cpp SiteIconImage.h
     SvgIcon.cpp SvgIcon.h
     Switches.cpp Switches.h SwitchBackend.h

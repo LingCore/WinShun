@@ -6,6 +6,7 @@
 #include "CaptureApp.h"
 #include "CapturePreview.h"
 #include "DiagnosticLog.h"
+#include "FontFile.h"
 #include "Phosphor.h"
 #include "PluginShell.h"
 #include "Protocol.h"
@@ -54,9 +55,7 @@ void applyUiFont(const QString& appDir)
         if (ascii) {
             id = QFontDatabase::addApplicationFont(fontDir + file);
         } else {
-            QFile data(fontDir + file);
-            if (data.open(QIODevice::ReadOnly))
-                id = QFontDatabase::addApplicationFontFromData(data.readAll());
+            id = ws::addFontFromFile(fontDir + file);
         }
         const QStringList families = QFontDatabase::applicationFontFamilies(id);
         if (family.isEmpty() && !families.isEmpty())

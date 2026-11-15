@@ -1,10 +1,9 @@
 #include "Phosphor.h"
 
+#include "FontFile.h"
 #include "PhosphorAliases.h"
 #include "PhosphorIcons.generated.h"
 
-#include <QByteArray>
-#include <QFile>
 #include <QFontDatabase>
 
 #include <algorithm>
@@ -24,10 +23,7 @@ QString g_fill;
 
 QString load(const QString& path)
 {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
-        return {};
-    return QFontDatabase::applicationFontFamilies(QFontDatabase::addApplicationFontFromData(file.readAll())).value(0);
+    return QFontDatabase::applicationFontFamilies(addFontFromFile(path)).value(0);
 }
 
 // The generated table is sorted by name, which is plain Latin-1. One lookup

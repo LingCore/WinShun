@@ -1,5 +1,7 @@
 #include "UiFont.h"
 
+#include "FontFile.h"
+
 #include <QCollator>
 #include <QDir>
 #include <QFile>
@@ -64,9 +66,7 @@ QJsonObject initialize()
     } else {
         // FreeType opens paths through the ANSI C runtime. Data also works
         // when the portable program lives in a Chinese-named directory.
-        QFile data(folder + file);
-        if (data.open(QIODevice::ReadOnly))
-            id = QFontDatabase::addApplicationFontFromData(data.readAll());
+        id = addFontFromFile(folder + file);
     }
     const auto bundled = QFontDatabase::applicationFontFamilies(id);
     defaultFont = bundled.isEmpty() ? QGuiApplication::font() : QFont(bundled.first());

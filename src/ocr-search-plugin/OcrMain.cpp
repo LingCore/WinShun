@@ -1,6 +1,7 @@
 #include "OcrController.h"
 #include "OcrWorker.h"
 #include "../capture-plugin/Protocol.h"
+#include "FontFile.h"
 #include "Phosphor.h"
 #include "SystemTheme.h"
 #include "WindowFrame.h"
@@ -115,15 +116,12 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
     }
     // Fonts only for the window (some 8 MB): the worker draws no text.
     ws::phosphor::loadFonts();
-    QFile font(QDir(appDir).filePath(u"fonts/AlibabaPuHuiTi-3-55-Regular.ttf"_s));
-    if (font.open(QIODevice::ReadOnly)) {
-        const int id = QFontDatabase::addApplicationFontFromData(font.readAll());
-        const auto families = QFontDatabase::applicationFontFamilies(id);
-        if (!families.isEmpty()) {
-            QFont f(families.first());
-            f.setHintingPreference(QFont::PreferVerticalHinting);
-            QGuiApplication::setFont(f);
-        }
+    const auto families = QFontDatabase::applicationFontFamilies(
+        ws::addFontFromFile(QDir(appDir).filePath(u"fonts/AlibabaPuHuiTi-3-55-Regular.ttf"_s)));
+    if (!families.isEmpty()) {
+        QFont f(families.first());
+        f.setHintingPreference(QFont::PreferVerticalHinting);
+        QGuiApplication::setFont(f);
     }
     QString dataDir
         = preview ? option(u"--data-dir"_s) : params.value(u"dataDir"_s).toString(qEnvironmentVariable("WS_DATA_DIR"));
