@@ -32,7 +32,8 @@ struct Moment {
     int milliseconds = 0; // 0–999
 };
 Moment now();
-// "1700000000", "1700000000000" (milliseconds), "1700000000.5";
+// "1700000000", "1700000000000" (milliseconds), "1700000000000000"
+// (microseconds), "1700000000000000000" (nanoseconds), "1700000000.5";
 // nullopt when not a timestamp.
 std::optional<Moment> parseTimestamp(const std::string& text);
 // "2024-01-02", "2024-01-02 15:04", "2024-01-02T15:04:05", with "Z" or

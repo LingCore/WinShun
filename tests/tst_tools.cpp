@@ -487,12 +487,21 @@ private slots:
         QCOMPARE(m->milliseconds, 123);
         m = codec::parseTimestamp("1700000000.5");
         QVERIFY(m && m->milliseconds == 500);
+        m = codec::parseTimestamp("1700000000123456"); // microseconds
+        QVERIFY(m);
+        QCOMPARE(m->seconds, std::int64_t(1700000000));
+        QCOMPARE(m->milliseconds, 123);
+        m = codec::parseTimestamp("1700000000123456789"); // nanoseconds
+        QVERIFY(m);
+        QCOMPARE(m->seconds, std::int64_t(1700000000));
+        QCOMPARE(m->milliseconds, 123);
         m = codec::parseTimestamp("1 700 000 000");
         QVERIFY(m && m->seconds == 1700000000);
         QVERIFY(!codec::parseTimestamp("abc"));
         QVERIFY(!codec::parseTimestamp(""));
-        QVERIFY(!codec::parseTimestamp("99999999999999999")); // too long
-        QVERIFY(!codec::parseTimestamp("999999999999999")); // beyond FILETIME's years
+        QVERIFY(!codec::parseTimestamp("99999999999999999999")); // over 19 digits
+        m = codec::parseTimestamp("999999999999999999"); // 18 nines: nanoseconds, year 2001
+        QVERIFY(m && m->seconds == 999999999 && m->milliseconds == 999);
         m = codec::parseDate("2023-11-14T22:13:20Z");
         QVERIFY(m);
         QCOMPARE(m->seconds, std::int64_t(1700000000));

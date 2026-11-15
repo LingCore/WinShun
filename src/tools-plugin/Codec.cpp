@@ -349,13 +349,22 @@ std::optional<Moment> parseTimestamp(const std::string& given)
         else
             return std::nullopt;
     }
-    if (digits.empty() || digits.size() > 16)
+    if (digits.empty() || digits.size() > 19)
         return std::nullopt;
     Moment m;
     const long long whole = std::strtoll(digits.c_str(), nullptr, 10);
-    if (digits.size() >= 12 && fraction.empty()) { // milliseconds
-        m.seconds = whole / 1000;
-        m.milliseconds = static_cast<int>(whole % 1000);
+    // Seconds are 10 digits today (11 to 2059); longer counts are a smaller
+    // unit: milliseconds (12–13), microseconds (14–16, as Java and Go log),
+    // nanoseconds (17–19). A fraction after a dot stays milliseconds; finer
+    // than milliseconds rounds away.
+    if (fraction.empty() && digits.size() >= 12) {
+        long long subSecond = whole; // in the unit the digits say
+        if (digits.size() >= 17) // nanoseconds to microseconds
+            subSecond /= 1000;
+        if (digits.size() >= 14) // microseconds to milliseconds
+            subSecond /= 1000;
+        m.seconds = subSecond / 1000;
+        m.milliseconds = static_cast<int>(subSecond % 1000);
     } else {
         m.seconds = whole;
         if (!fraction.empty()) {
