@@ -32,6 +32,15 @@ bool store(const QString& pluginId, const Manifest& manifest, const QString& key
     QList<std::pair<QString, QString>>& iniValues);
 // The plugin's settings as it reads them: the INI's text by the manifest's
 // types (bool, number, text), the passwords from the Credential Manager.
+// winshun/settings/update (GitHub #332): the values a plugin sent for its own
+// settings, as the settings file keeps them (key, text), for those that may
+// be set this way: declared in its manifest; text, number, bool or choice (a
+// password stays the user's to type, a folder, a file and a hotkey the
+// user's to pick); of the JSON type the setting has; a choice one of its
+// options; text no longer than kSettingTextMost. Anything else is left out.
+QList<std::pair<QString, QString>> acceptedUpdate(const Manifest& manifest, const QJsonObject& values);
+inline constexpr qsizetype kSettingTextMost = 4096;
+
 QJsonObject settingsOf(const QString& pluginId, const Manifest& manifest, const QList<std::pair<QString, QString>>& iniValues);
 
 } // namespace ws::plugin::secrets

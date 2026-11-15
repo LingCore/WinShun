@@ -683,9 +683,37 @@ struct Engine::Impl {
         if (FAILED(e.web->get_HWND(&top)))
             return std::nullopt;
         e.top = reinterpret_cast<HWND>(top);
-        if (const ComPtr<IShellBrowser> browser = shellBrowserOf(e.web.Get()))
-            browser->GetWindow(&e.tab);
+        e.tab = tabWindowOf(e.web.Get());
         return e;
+    }
+
+    // The tab's own window (ShellTabWindowClass). A window that has only just
+    // registered may not have one to give yet: its entry then has none, and
+    // is asked again when the tab is looked for (knownTab).
+    static HWND tabWindowOf(IWebBrowser2* web)
+    {
+        HWND tab = nullptr;
+        if (const ComPtr<IShellBrowser> browser = shellBrowserOf(web))
+            browser->GetWindow(&tab);
+        return tab;
+    }
+
+    // The cache's entry for a tab of `top`. One that registered before its
+    // tab's window was there was kept without it, and never matched again:
+    // that window then counted as none, and nothing was merged into it
+    // (GitHub #331: two Win+E, "no other window" both times). Found now.
+    Entry* knownTab(HWND top, HWND tab)
+    {
+        if (const auto it = std::ranges::find_if(cache, [&](const Entry& c) { return c.tab == tab; }); it != cache.end())
+            return &*it;
+        for (Entry& c : cache) {
+            if (c.top == top && !::IsWindow(c.tab) && tabWindowOf(c.web.Get()) == tab) {
+                c.tab = tab;
+                publishKnown();
+                return &c;
+            }
+        }
+        return nullptr;
     }
 
     bool connect()
@@ -792,6 +820,9 @@ struct Engine::Impl {
         const std::int64_t now = tickMs();
         std::erase_if(closedTabs, [&](const Closed& c) { return now - c.atMs > kDraggedOutMs; });
         std::erase_if(cache, [&](Entry& e) {
+            // (an entry kept without its tab's window, see knownTab, is not a closed tab while its window lives)
+            if (!e.tab && ::IsWindow(e.top))
+                e.tab = tabWindowOf(e.web.Get());
             if (!::IsWindow(e.tab)) {
                 if (const auto it = lastPlaces.find(e.tab); it != lastPlaces.end()) {
                     closedTabs.push_back({it->second, now});
@@ -904,9 +935,9 @@ struct Engine::Impl {
                     continue;
                 ComPtr<IWebBrowser2> web;
                 int order = INT_MAX;
-                if (const auto it = std::ranges::find_if(cache, [&](const Entry& c) { return c.tab == tab; }); it != cache.end()) {
-                    web = it->web;
-                    order = it->openOrder;
+                if (const Entry* known = knownTab(top, tab)) {
+                    web = known->web;
+                    order = known->openOrder;
                 }
                 std::wstring tabPlace;
                 if (web) {
@@ -927,7 +958,15 @@ struct Engine::Impl {
         }
         const Decision d = decide(s, paused || held, options.restriction, candidate, others, closedTabs, tickMs());
         const double decided = nowMs();
-        log("B " + utf8(candidate.place) + ": " + whyName(d.why));
+        // "no other window" with what was looked at: windows besides B, those with a tab the
+        // cache knows, those shown and not above us. Counts only, for a report that it merges nothing.
+        std::string looked;
+        if (d.why == Why::NoWindow) {
+            const auto able = std::ranges::count_if(others, [](const Window& w) { return w.usable && !w.aboveUs; });
+            looked = " (" + std::to_string(z.empty() ? 0 : z.size() - 1) + " besides, " + std::to_string(others.size()) + " known, "
+                + std::to_string(able) + " able)";
+        }
+        log("B " + utf8(candidate.place) + ": " + whyName(d.why) + looked);
         {
             const std::lock_guard lock(mutex);
             early.erase(b);

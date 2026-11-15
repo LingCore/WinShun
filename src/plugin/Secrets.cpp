@@ -3,6 +3,8 @@
 #include <windows.h>
 #include <wincred.h>
 
+#include <algorithm>
+#include <cmath>
 #include <string>
 
 using namespace Qt::StringLiterals;
@@ -128,6 +130,34 @@ bool store(const QString& pluginId, const Manifest& manifest, const QString& key
     }
     iniValues.append({key, value});
     return true;
+}
+
+QList<std::pair<QString, QString>> acceptedUpdate(const Manifest& manifest, const QJsonObject& values)
+{
+    QList<std::pair<QString, QString>> accepted;
+    for (const Setting& setting : manifest.settings) {
+        const QJsonValue value = values.value(setting.key);
+        if (value.isUndefined())
+            continue;
+        if (setting.type == u"bool") {
+            if (value.isBool())
+                accepted.append({setting.key, value.toBool() ? u"true"_s : u"false"_s});
+        } else if (setting.type == u"number") {
+            if (value.isDouble() && std::isfinite(value.toDouble()))
+                accepted.append({setting.key, QString::number(value.toDouble(), 'g', 17)});
+        } else if (setting.type == u"choice") {
+            // An option is its value, or an object with one.
+            const bool offered = value.isString() && std::ranges::any_of(setting.options, [&](const QJsonValue& option) {
+                return (option.isObject() ? option.toObject().value(u"value"_s) : option).toString() == value.toString();
+            });
+            if (offered)
+                accepted.append({setting.key, value.toString()});
+        } else if (setting.type == u"text") {
+            if (value.isString() && value.toString().size() <= kSettingTextMost)
+                accepted.append({setting.key, value.toString()});
+        }
+    }
+    return accepted;
 }
 
 QJsonObject settingsOf(const QString& pluginId, const Manifest& manifest, const QList<std::pair<QString, QString>>& iniValues)

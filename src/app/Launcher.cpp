@@ -6146,9 +6146,10 @@ QVariantList Launcher::menuItems(int row) const
                 const QString text = !p.searchQuery.isEmpty() ? tr("搜索") : tr("填入搜索框");
                 items.append(entry(Open, text, u"Enter"_s, u"\uE8A7"_s));
             }
+            const bool drills = !p.setQuery.isEmpty() || !p.searchQuery.isEmpty(); // Enter is that row's, not its first action's
             for (int i = 0; i < p.actions.size(); ++i) {
                 const QString key = !p.actions[i].key.isEmpty() ? p.actions[i].key
-                    : i < 3                                     ? kKeys[i].toString()
+                    : i < 3 && !(drills && i == 0)              ? kKeys[i].toString()
                                                                 : QString();
                 items.append(entry(static_cast<Action>(PluginAction + i), p.actions[i].title, key,
                     i == 0 ? u"\uE8A7"_s : u"\uE768"_s));

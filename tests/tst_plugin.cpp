@@ -4200,6 +4200,33 @@ private slots:
         QVERIFY(!install::remove(userDir, dataRoot, u"../x"_s, true).isEmpty()); // never outside the folder
     }
 
+    // winshun/settings/update (GitHub #332): what a plugin may set of its own settings.
+    void settingsAPluginMaySetItself()
+    {
+        QString error;
+        const std::optional<Manifest> m = Manifest::parse(R"({"manifest":1,"id":"test.sets","name":"S","version":"1",
+            "settings":[{"key":"apiKey","type":"password","title":"Key"},{"key":"wrap","type":"bool","title":"W","default":false},
+                {"key":"speed","type":"number","title":"N"},{"key":"note","type":"text","title":"T"},
+                {"key":"mode","type":"choice","title":"M","options":[{"value":"fast","title":"Fast"},"slow"]},
+                {"key":"dir","type":"folder","title":"D"},{"key":"key","type":"hotkey","title":"H"}],
+            "commands":[{"id":"c","keyword":"sc","run":{"folder":"C:\\"}}]})", &error);
+        QVERIFY2(m.has_value(), qPrintable(error));
+        using Pairs = QList<std::pair<QString, QString>>;
+        // Each of its kind, in the manifest's order; 0 and false are values like any other.
+        QCOMPARE(secrets::acceptedUpdate(*m, {{u"speed"_s, 3000}, {u"wrap"_s, true}, {u"note"_s, u"你好"_s}, {u"mode"_s, u"slow"_s}}),
+            (Pairs {{u"wrap"_s, u"true"_s}, {u"speed"_s, u"3000"_s}, {u"note"_s, u"你好"_s}, {u"mode"_s, u"slow"_s}}));
+        QCOMPARE(secrets::acceptedUpdate(*m, {{u"speed"_s, 0}, {u"wrap"_s, false}, {u"mode"_s, u"fast"_s}, {u"note"_s, QString()}}),
+            (Pairs {{u"wrap"_s, u"false"_s}, {u"speed"_s, u"0"_s}, {u"note"_s, QString()}, {u"mode"_s, u"fast"_s}}));
+        QCOMPARE(secrets::acceptedUpdate(*m, {{u"speed"_s, 0.25}}), (Pairs {{u"speed"_s, u"0.25"_s}}));
+        // Not this way: a password, a folder, a hotkey, a setting it never declared.
+        QVERIFY(secrets::acceptedUpdate(*m, {{u"apiKey"_s, u"sk"_s}, {u"dir"_s, u"C:/"_s}, {u"key"_s, u"Ctrl+1"_s}, {u"other"_s, 1}}).isEmpty());
+        // Not of the setting's kind, not one of the options, too long.
+        QVERIFY(secrets::acceptedUpdate(*m, {{u"speed"_s, u"3000"_s}, {u"wrap"_s, 1}, {u"note"_s, 5}, {u"mode"_s, u"faster"_s}, {u"mode"_s, 2}}).isEmpty());
+        QVERIFY(secrets::acceptedUpdate(*m, {{u"note"_s, QString(secrets::kSettingTextMost + 1, u'x')}}).isEmpty());
+        QCOMPARE(secrets::acceptedUpdate(*m, {{u"note"_s, QString(secrets::kSettingTextMost, u'x')}}).size(), 1);
+        QVERIFY(secrets::acceptedUpdate(*m, {}).isEmpty());
+    }
+
     void secretsStayOutOfTheIni()
     {
         const SecretsCleanup cleanup {u"test.secret"_s};

@@ -1706,6 +1706,8 @@ Window {
                     showModified: window.launcher.showModified
                     showSize: window.launcher.showFileSize || window.launcher.sort === Launcher.LargestFirst || window.launcher.sort === Launcher.SmallestFirst
                     hint: window.numberOf(index)
+                    hintLetter: window.letterOf(index)
+                    reserveHintSpace: (window.numberKey >= 0 && window.launcher.numberHints !== "off") || window.launcher.letterJump
                     // With more rows in the list than number keys (also when the window shows fewer:
                     // scrolled, some rows in view have a number and some none), or letters for every row,
                     // each row keeps the room, so their left edges stay in one line.
