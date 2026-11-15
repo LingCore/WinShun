@@ -89,10 +89,22 @@ protected:
             m_sums.add({std::time(nullptr), data["sum"].toString(), a.item["title"].toString(), a.item["copy"].toString()});
             return Plugin::action(a);
         }
-        if (id == "clear") {
+        if (id == "clear-confirm") {
+            // The row Shift+Enter asked for; Enter here really clears.
             m_sums.clear();
             return {winshun::effect::replace(calcHelp()), winshun::effect::notify(zh("计算记录已清空", "The sums were cleared")),
                 winshun::effect::keep()};
+        }
+        if (id == "clear") {
+            Item confirm("clear-confirm", zh("再按一次 Enter 清空", "Press Enter again to clear"),
+                std::to_string(m_sums.records().size()) + zh(" 条，不能恢复", " sums; this cannot be undone"));
+            confirm.withIcon("glyph:U+E74D").withActions({{"confirm", zh("清空", "Clear"), "Enter"},
+                {"keep", zh("留着，不清", "Keep them"), "Shift+Enter"}});
+            return {winshun::effect::replace(Items {confirm}), winshun::effect::keep()};
+        }
+        if (id == "clear-confirm" && a.action == "keep") {
+            Items left = sums(std::string(), kSumsListed, true);
+            return {winshun::effect::replace(left.empty() ? calcHelp() : left), winshun::effect::keep()};
         }
         if (!data["when"].isNumber())
             return Plugin::action(a);
