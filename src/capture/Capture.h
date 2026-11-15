@@ -235,6 +235,7 @@ private:
     void afterUp(); // what can wait until the overlays are on the screen
     void warmed(); // every overlay's hidden first show is over
     void watchTick();
+    bool isOverlay(HWND root) const;
     bool pointerOverOverlay(POINT at) const;
     void recordCapture(CaptureSession::Action action, const QRect& rect);
     // , and . in the overlay: the capture before or after the one shown (the

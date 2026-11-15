@@ -571,13 +571,26 @@ void Capture::startWatch()
     m_watchTimer.start();
 }
 
-bool Capture::pointerOverOverlay(POINT at) const
+namespace {
+
+HWND rootAt(POINT at)
 {
     const HWND hit = ::WindowFromPoint(at);
-    const HWND root = hit ? ::GetAncestor(hit, GA_ROOT) : nullptr;
+    return hit ? ::GetAncestor(hit, GA_ROOT) : nullptr;
+}
+
+} // namespace
+
+bool Capture::isOverlay(HWND root) const
+{
     return root && std::ranges::any_of(m_overlays, [root](const Overlay& o) {
         return o.window && reinterpret_cast<HWND>(o.window->winId()) == root;
     });
+}
+
+bool Capture::pointerOverOverlay(POINT at) const
+{
+    return isOverlay(rootAt(at));
 }
 
 void Capture::watchTick()
@@ -595,11 +608,34 @@ void Capture::watchTick()
             {u"first_since_start"_s, g_firstCapture}});
     }
     CURSORINFO info {sizeof info};
-    if (!::GetCursorInfo(&info) || !pointerOverOverlay(info.ptScreenPos))
+    if (!::GetCursorInfo(&info))
         return;
-    if (diag::cursorHidden(info.flags) && m_stalls.noteHidden()) {
+    const bool noCursor = !info.hCursor;
+    if (const HWND root = rootAt(info.ptScreenPos); !isOverlay(root)) {
+        // Once the overlay is up, another program's window here is over it,
+        // and that program sets the pointer there: one of its own topmost
+        // windows, a tooltip, an input method's bar. Our other windows (the
+        // save picker) are not counted.
+        DWORD pid = 0;
+        if (sinceUp < 0 || !root || !::GetWindowThreadProcessId(root, &pid) || pid == ::GetCurrentProcessId())
+            return;
+        wchar_t name[256] {};
+        ::GetClassNameW(root, name, static_cast<int>(std::size(name)));
+        const QString windowClass = QString::fromWCharArray(name);
+        if (m_stalls.noteCovered(u"%1|%2"_s.arg(pid).arg(windowClass))) {
+            const bool topmost = ::GetWindowLongPtrW(root, GWL_EXSTYLE) & WS_EX_TOPMOST;
+            diagnostics::record(u"capture-pointer-covered"_s, {{u"program"_s, foreground::programOf(root)},
+                {u"window_class"_s, windowClass}, {u"topmost"_s, topmost}, {u"no_cursor"_s, noCursor},
+                {u"flags"_s, static_cast<qint64>(info.flags)}, {u"ms_since_overlay_up"_s, sinceUp}, {u"phase"_s, phase}});
+        }
+        return;
+    }
+    if (!diag::cursorHidden(info.flags, info.hCursor))
+        m_stalls.noteShown();
+    else if (m_stalls.noteHidden()) {
         diagnostics::record(u"capture-cursor-hidden"_s, {{u"flags"_s, static_cast<qint64>(info.flags)},
-            {u"ms_since_overlay_up"_s, sinceUp}, {u"ms_since_show"_s, sinceShow}, {u"phase"_s, phase}});
+            {u"no_cursor"_s, noCursor}, {u"ms_since_overlay_up"_s, sinceUp}, {u"ms_since_show"_s, sinceShow},
+            {u"phase"_s, phase}});
     }
     // Not at the first tick: the overlay has had a chance to set its cursor.
     if (m_ticks >= 2 && m_cursorShown.isEmpty())

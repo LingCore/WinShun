@@ -101,18 +101,30 @@ std::optional<StallWatch::Stall> StallWatch::note(qint64 intervalMs, qint64 atMs
 
 bool StallWatch::noteHidden()
 {
+    ++m_pointerTicks;
     return ++m_hiddenTicks == 1;
+}
+
+bool StallWatch::noteCovered(const QString& by)
+{
+    ++m_pointerTicks;
+    ++m_coveredTicks;
+    if (std::ssize(m_coverers) >= kMaxCoverers || std::ranges::find(m_coverers, by) != m_coverers.end())
+        return false;
+    m_coverers.push_back(by);
+    return true;
 }
 
 QJsonObject StallWatch::summary() const
 {
     return {{u"count"_s, m_count}, {u"longest_ms"_s, m_longestMs}, {u"longest_at_ms"_s, m_longestAtMs},
-        {u"longest_phase"_s, m_longestPhase}, {u"hidden_ticks"_s, m_hiddenTicks}};
+        {u"longest_phase"_s, m_longestPhase}, {u"pointer_ticks"_s, m_pointerTicks}, {u"hidden_ticks"_s, m_hiddenTicks},
+        {u"covered_ticks"_s, m_coveredTicks}};
 }
 
-bool cursorHidden(DWORD flags)
+bool cursorHidden(DWORD flags, HCURSOR cursor)
 {
-    return !(flags & CURSOR_SHOWING) || (flags & CURSOR_SUPPRESSED);
+    return !(flags & CURSOR_SHOWING) || (flags & CURSOR_SUPPRESSED) || !cursor;
 }
 
 QJsonObject frameStats(std::vector<qint64> nanoseconds)

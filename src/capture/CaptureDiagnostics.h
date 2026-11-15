@@ -23,6 +23,8 @@ namespace ws::capture::diag {
 inline constexpr int kTickMs = 50;
 inline constexpr int kStallAfterMs = 150;
 inline constexpr int kMaxStallEvents = 5;
+// Other programs' windows found over the overlay, recorded one by one per capture.
+inline constexpr int kMaxCoverers = 3;
 
 class StallWatch {
 public:
@@ -35,14 +37,23 @@ public:
     // A tick that came `intervalMs` after the one before, `atMs` after the
     // overlay was shown, in `phase`.
     std::optional<Stall> note(qint64 intervalMs, qint64 atMs, const QString& phase);
-    // The pointer was over the overlay and hidden: true the first time only.
-    bool noteHidden();
+    // Where the pointer was at a tick once the overlay was up; pointer_ticks
+    // counts them all. A pointer that "went missing" is one of these: Windows
+    // drew none (hidden), another program's window over the overlay decided
+    // it (covered), or Windows had ours up and the screen still showed none,
+    // which only the graphics driver can explain.
+    void noteShown() { ++m_pointerTicks; } // over the overlay, a cursor up
+    bool noteHidden(); // over the overlay, no cursor drawn: true the first time only
+    // Over a window of another program: true for each new `by` (program and
+    // window class), up to kMaxCoverers.
+    bool noteCovered(const QString& by);
     int count() const { return m_count; }
     qint64 longestMs() const { return m_longestMs; }
     qint64 longestAtMs() const { return m_longestAtMs; }
     QString longestPhase() const { return m_longestPhase; }
     int hiddenTicks() const { return m_hiddenTicks; }
-    // {count, longest_ms, longest_at_ms, longest_phase, hidden_ticks}
+    int coveredTicks() const { return m_coveredTicks; }
+    // {count, longest_ms, longest_at_ms, longest_phase, pointer_ticks, hidden_ticks, covered_ticks}
     QJsonObject summary() const;
 
 private:
@@ -50,11 +61,16 @@ private:
     qint64 m_longestMs = 0;
     qint64 m_longestAtMs = 0;
     QString m_longestPhase;
+    int m_pointerTicks = 0;
     int m_hiddenTicks = 0;
+    int m_coveredTicks = 0;
+    std::vector<QString> m_coverers;
 };
 
-// GetCursorInfo's flags: the pointer is not shown, or Windows holds it back.
-bool cursorHidden(DWORD flags);
+// GetCursorInfo's answer: Windows draws no pointer. Not shown (ShowCursor),
+// held back (touch, pen), or shown with no cursor set (SetCursor(nullptr)):
+// the flags alone miss the last.
+bool cursorHidden(DWORD flags, HCURSOR cursor);
 
 // {count, p95_ms, max_ms} of the times between frames (nanoseconds); empty for none.
 QJsonObject frameStats(std::vector<qint64> nanoseconds);

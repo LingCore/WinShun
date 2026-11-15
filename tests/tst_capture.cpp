@@ -2828,19 +2828,33 @@ private slots:
         QCOMPARE(watch.longestMs(), qint64(550));
         QCOMPARE(watch.longestAtMs(), qint64(900));
         QCOMPARE(watch.longestPhase(), u"selected"_s);
+        watch.noteShown();
         QVERIFY(watch.noteHidden());
         QVERIFY(!watch.noteHidden()); // one event per capture, every tick counted
         QCOMPARE(watch.summary()[u"hidden_ticks"_s].toInt(), 2);
+        // Other programs' windows over the overlay: each new one recorded, up to three.
+        QVERIFY(watch.noteCovered(u"10|SoPY_Status"_s));
+        QVERIFY(!watch.noteCovered(u"10|SoPY_Status"_s));
+        QVERIFY(watch.noteCovered(u"10|tooltips_class32"_s)); // the same program, another window
+        QVERIFY(watch.noteCovered(u"20|Chrome_WidgetWin_1"_s));
+        QVERIFY(!watch.noteCovered(u"30|Shell_TrayWnd"_s)); // a fourth: only counted
+        const QJsonObject summary = watch.summary();
+        QCOMPARE(summary[u"covered_ticks"_s].toInt(), 5);
+        QCOMPARE(summary[u"pointer_ticks"_s].toInt(), 1 + 2 + 5);
         watch.reset();
         QCOMPARE(watch.count(), 0);
         QCOMPARE(watch.hiddenTicks(), 0);
+        QCOMPARE(watch.coveredTicks(), 0);
+        QVERIFY(watch.noteCovered(u"10|SoPY_Status"_s)); // a new capture: recorded again
     }
 
     void diagSmallParts()
     {
-        QVERIFY(!diag::cursorHidden(CURSOR_SHOWING));
-        QVERIFY(diag::cursorHidden(0));
-        QVERIFY(diag::cursorHidden(CURSOR_SHOWING | CURSOR_SUPPRESSED));
+        const auto cursor = ::LoadCursorW(nullptr, IDC_ARROW);
+        QVERIFY(!diag::cursorHidden(CURSOR_SHOWING, cursor));
+        QVERIFY(diag::cursorHidden(0, cursor));
+        QVERIFY(diag::cursorHidden(CURSOR_SHOWING | CURSOR_SUPPRESSED, cursor));
+        QVERIFY(diag::cursorHidden(CURSOR_SHOWING, nullptr)); // SetCursor(nullptr): "showing", nothing drawn
         QCOMPARE(diag::fileNameOf(u"%SystemRoot%\\cursors\\cross_rl.cur"_s), u"cross_rl.cur"_s);
         QCOMPARE(diag::fileNameOf({}), QString());
         QVERIFY(diag::frameStats({}).isEmpty());
