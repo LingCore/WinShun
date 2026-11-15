@@ -28,6 +28,10 @@ Version 1.1.2: the capture settings no longer freeze with “Not responding” t
 
 Version 1.1.3: Read text on screen has a hotkey of its own (#198); pin zoom steps are finer and show the percentage, `Ctrl`+wheel shows the opacity, and the wheel or `[` `]` set annotation width, text size and mosaic cell finely (#164); without D3D11 video support recording converts frames on the CPU (#214); Open link on a QR code opens the browser (needs WinShun 0.21.0, #225); the windows follow the interface style chosen in WinShun; idle memory goes back to Windows. Permissions are unchanged.
 
+1.1.17：截图时界面卡住超过 0.3 秒，诊断日志会记下当时程序各个线程在做什么，用来查“按下截图键后黑屏或卡一两秒”的原因。功能没有变化。
+
+Version 1.1.17: when the interface stops answering for more than 0.3 s during a capture, the diagnostics record what each thread of the program was doing, to find why some PCs go black or stall for a second or two after the capture key. No change in what it does.
+
 1.1.16：“识别屏幕文字”可以不显示结果卡片：截图设置“快捷键”分类里新增“识别后显示结果卡片”（默认开），关掉后识别到的文字直接复制，只有没识别到文字时才提示。窗口占用的内存更少（图标文字不再连带加载电脑里的所有字体，字体文件直接映射）。权限不变。
 
 Version 1.1.16: Read text on screen can go without its result card: a new switch, "Show the result card after reading", on the hotkeys page of the capture settings (on by default); off, the text is copied and only finding no text is still said. The windows use less memory (icon text no longer pulls in every font installed, and font files are mapped). Permissions are unchanged.
