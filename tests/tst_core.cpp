@@ -4801,6 +4801,66 @@ private slots:
             qPrintable(u"entry metadata uses %1 bytes per slot"_s.arg(static_cast<double>(bytes) / index.slotCount())));
     }
 
+    // An entry is kept in two parts: what a search reads of it (EntryScan,
+    // nine bytes) and its place in the folders' lists with a file's size
+    // (EntryLinks). A pass over the first leaves the second where it is, so
+    // both ways of reading a chunk must tell the same of every entry, through
+    // changes and a compaction; and each part has blocks of its own.
+    void indexKeepsWhatASearchReadsApart()
+    {
+        FileIndex index;
+        const EntryId root = index.addRoot("C:");
+        const EntryId work = index.add(root, "work", EntryFlag::Directory);
+        const EntryId old = index.add(root, "old", EntryFlag::Directory | EntryFlag::Hidden);
+        for (int i = 0; i < 70'000; ++i) { // more than a chunk
+            const std::string name = "file " + std::to_string(i) + (i % 3 ? ".txt" : ".报告");
+            const EntryId file = index.add(i % 5 ? work : old, name, i % 7 ? 0 : EntryFlag::LowPriority);
+            index.setSize(file, packSize(static_cast<std::uint64_t>(i) * 10));
+            if (i % 11 == 0)
+                index.move(file, i % 5 ? old : work, name + ".moved");
+            if (i % 13 == 0)
+                index.remove(file);
+        }
+        const auto agree = [&index] {
+            for (std::size_t c = 0; c < index.chunkCount(); ++c) {
+                const auto scanned = index.scanChunk(c);
+                const auto whole = index.chunk(c);
+                if (scanned.size() != whole.size())
+                    return false;
+                std::size_t i = 0;
+                for (const Entry& e : whole) { // as most passes read it
+                    const auto id = static_cast<EntryId>((c << FileIndex::kChunkBits) + i);
+                    const Entry asked = index.entry(id);
+                    const EntryScan& s = scanned[i];
+                    if (e.nameOffset != s.nameOffset || e.parent != s.parent || e.flags != s.flags || e.isDir() != s.isDir()
+                        || asked.nameOffset != e.nameOffset || asked.parent != e.parent || asked.flags != e.flags
+                        || asked.childOrSize != e.childOrSize || asked.nextSibling != e.nextSibling || whole[i].childOrSize != e.childOrSize
+                        || index.parent(id) != e.parent || index.name(id) != index.name(e)
+                        || index.size(id) != (e.isDir() ? kUnknownSize : e.childOrSize))
+                        return false;
+                    ++i;
+                }
+            }
+            return true;
+        };
+        QVERIFY(index.chunkCount() >= 2);
+        QVERIFY(agree());
+        QVERIFY(index.compact() > 0);
+        QVERIFY(agree());
+        QCOMPARE(index.findChild(work, "file 1.txt") != kNoEntry, true);
+        QCOMPARE(index.findChild(work, "file 0.报告.moved"), kNoEntry); // moved there, then removed (0 is a multiple of both)
+        QVERIFY(index.findChild(work, "file 55.txt.moved") != kNoEntry); // moved from old, and kept
+
+        std::size_t scanBlocks = 0, linkBlocks = 0;
+        for (const auto& [address, size] : index.memoryBlocks()) {
+            scanBlocks += size == FileIndex::kChunkSize * sizeof(EntryScan);
+            linkBlocks += size == FileIndex::kChunkSize * sizeof(EntryLinks);
+        }
+        QCOMPARE(scanBlocks, index.chunkCount());
+        QCOMPARE(linkBlocks, index.chunkCount());
+        QCOMPARE(sizeof(EntryScan) + sizeof(EntryLinks), std::size_t(17)); // no more than the one record it was
+    }
+
     void mappedIndexStorageSurvivesCompactionAndSnapshot()
     {
         QTemporaryDir temp;

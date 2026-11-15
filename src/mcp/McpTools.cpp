@@ -632,7 +632,7 @@ std::vector<FolderArg> lookUp(const FileIndex& index, const QStringList& folders
     for (const QString& given : folders) {
         FolderArg folder {given, nativePath(given)};
         if (const EntryId id = index.findPath(indexPath(given)); id != kNoEntry) {
-            const Entry& e = index.entry(id);
+            const EntryScan& e = index.scan(id);
             folder.path = QString::fromStdWString(index.wpath(id));
             folder.isDir = e.isDir();
         }
@@ -2297,10 +2297,10 @@ void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
                 };
                 std::vector<Hit>& mine = found[c];
                 const auto byTime = [](const Hit& a, const Hit& b) { return a.modified > b.modified; }; // a min-heap on time
-                const auto entries = index->chunk(c);
+                const auto entries = index->scanChunk(c);
                 const auto first = static_cast<EntryId>(c << FileIndex::kChunkBits);
                 for (std::size_t i = 0; i < entries.size(); ++i) {
-                    const Entry& e = entries[i];
+                    const EntryScan& e = entries[i];
                     if (e.isDeleted() || (e.flags & EntryFlag::Root))
                         continue;
                     if ((kind == u"files" && e.isDir()) || (kind == u"folders" && !e.isDir()))
@@ -2374,7 +2374,7 @@ void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
             std::ranges::sort(hits, newer);
             rows.reserve(hits.size());
             for (const Hit& hit : hits) {
-                const Entry& e = index->entry(hit.id);
+                const EntryScan& e = index->scan(hit.id);
                 rows.push_back({index->path(hit.id), wtf8::toQString(index->name(e)), e.isDir(), hit.modified, indexedSize(*index, hit.id)});
             }
         }
@@ -2449,7 +2449,7 @@ void ToolHost::listFolder(const std::shared_ptr<Call>& call)
                 return notFound(notInIndex(path)); // gone since it was checked
             folderPath = index->path(folder);
             for (EntryId child = index->entry(folder).firstChild(); child != kNoEntry; child = index->entry(child).nextSibling) {
-                const Entry& e = index->entry(child);
+                const EntryScan& e = index->scan(child);
                 if (e.isDeleted())
                     continue;
                 if ((kind == u"files" && e.isDir()) || (kind == u"folders" && !e.isDir()))
@@ -2819,7 +2819,7 @@ void ToolHost::listDocuments(const std::shared_ptr<Call>& call)
                 // One being read again has no current text yet: it comes in a later listing.
                 if (it->need != ContentIndex::Need::None || it->entry >= index->slotCount())
                     continue;
-                const Entry& e = index->entry(it->entry);
+                const EntryScan& e = index->scan(it->entry);
                 if (e.isDeleted() || e.isDir() || (!system && (e.flags & EntryFlag::LowPriority)))
                     continue;
                 if (!wanted.empty()) {

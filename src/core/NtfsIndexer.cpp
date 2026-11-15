@@ -319,7 +319,7 @@ void UsnApplier::noteWritten(const ntfs::UsnRecord& r)
     if (parent == kNoEntry)
         return; // outside the index
     const EntryId id = find(parent, wtf8::fromUtf16(r.name));
-    if (id != kNoEntry && !m_index.entry(id).isDir())
+    if (id != kNoEntry && !m_index.scan(id).isDir())
         m_written.push_back(id);
 }
 
@@ -353,7 +353,7 @@ void UsnApplier::noteTime(const ntfs::UsnRecord& r)
     item.name = wtf8::fromUtf16(r.name);
     item.folder = r.attributes & FILE_ATTRIBUTE_DIRECTORY;
     const EntryId id = findItem(item);
-    if (id == kNoEntry || (m_index.entry(id).flags & EntryFlag::Root))
+    if (id == kNoEntry || (m_index.scan(id).flags & EntryFlag::Root))
         return;
     // A file closed after being written: its size has changed too, and the
     // journal does not say to what (a stat, cheap: it was just written).
@@ -385,7 +385,7 @@ void UsnApplier::readTimes()
     m_toRead.clear();
     auto lock = m_index.writeLock();
     for (const Read& r : read) {
-        if (r.id < m_index.slotCount() && !m_index.entry(r.id).isDeleted()) {
+        if (r.id < m_index.slotCount() && !m_index.scan(r.id).isDeleted()) {
             m_index.setModified(r.id, r.time); // ids stay: the caller keeps compaction away
             m_index.setCreated(r.id, r.created);
             if (r.size != kUnknownSize)
@@ -410,7 +410,7 @@ EntryId UsnApplier::findItem(const Item& item)
     }
     const EntryId parent = m_index.folderByRecord(m_root, item.parent);
     const EntryId id = parent != kNoEntry ? find(parent, item.name) : kNoEntry;
-    return id != kNoEntry && m_index.entry(id).isDir() == item.folder ? id : kNoEntry;
+    return id != kNoEntry && m_index.scan(id).isDir() == item.folder ? id : kNoEntry;
 }
 
 std::wstring UsnApplier::childPath(EntryId parent, std::wstring_view name) const
@@ -426,7 +426,7 @@ std::wstring UsnApplier::childPath(EntryId parent, std::wstring_view name) const
 std::uint8_t UsnApplier::flagsFor(EntryId parent, const Item& item, const std::wstring& path) const
 {
     auto flags = static_cast<std::uint8_t>(
-        flagsOf(item.attributes, item.folder) | (m_index.entry(parent).flags & EntryFlag::Inherited));
+        flagsOf(item.attributes, item.folder) | (m_index.scan(parent).flags & EntryFlag::Inherited));
     if (item.folder)
         flags |= m_crawler.dirPriorityFlags(path, item.wideName);
     return flags;
@@ -435,7 +435,7 @@ std::uint8_t UsnApplier::flagsFor(EntryId parent, const Item& item, const std::w
 void UsnApplier::remove(const Item& item)
 {
     const EntryId id = findItem(item);
-    if (id != kNoEntry && !(m_index.entry(id).flags & EntryFlag::Root))
+    if (id != kNoEntry && !(m_index.scan(id).flags & EntryFlag::Root))
         m_index.remove(id);
     if (item.folder)
         m_index.forgetFolderRecord(m_root, item.record);
@@ -449,10 +449,10 @@ void UsnApplier::move(const Item& item, const OldName* old, std::vector<Crawler:
     } else if (old) {
         const EntryId from = m_index.folderByRecord(m_root, old->parent);
         id = from != kNoEntry ? find(from, old->name) : kNoEntry;
-        if (id != kNoEntry && m_index.entry(id).isDir())
+        if (id != kNoEntry && m_index.scan(id).isDir())
             id = kNoEntry;
     }
-    if (id != kNoEntry && (m_index.entry(id).flags & EntryFlag::Root))
+    if (id != kNoEntry && (m_index.scan(id).flags & EntryFlag::Root))
         return;
     const EntryId parent = m_index.folderByRecord(m_root, item.parent);
     const std::wstring path = parent != kNoEntry && item.folder ? childPath(parent, item.wideName) : std::wstring();
@@ -481,7 +481,7 @@ void UsnApplier::ensure(const Item& item, bool walk, std::vector<Crawler::Root>&
     if (item.folder) {
         const EntryId known = m_index.folderByRecord(m_root, item.record);
         if (known != kNoEntry) {
-            if (m_index.entry(known).parent != parent || m_index.name(known) != item.name)
+            if (m_index.scan(known).parent != parent || m_index.name(known) != item.name)
                 move(item, nullptr, walks); // a rename we did not see
             return;
         }
@@ -489,7 +489,7 @@ void UsnApplier::ensure(const Item& item, bool walk, std::vector<Crawler::Root>&
     const EntryId id = find(parent, item.name);
     if (id == kNoEntry)
         add(parent, item, walk, walks);
-    else if (item.folder && m_index.entry(id).isDir())
+    else if (item.folder && m_index.scan(id).isDir())
         m_index.setFolderRecord(m_root, item.record, id);
 }
 
@@ -524,10 +524,10 @@ void UsnApplier::add(EntryId parent, const Item& item, bool walk, std::vector<Cr
 void UsnApplier::updateFlags(const Item& item)
 {
     const EntryId id = findItem(item);
-    if (id == kNoEntry || (m_index.entry(id).flags & EntryFlag::Root))
+    if (id == kNoEntry || (m_index.scan(id).flags & EntryFlag::Root))
         return;
-    const Entry& e = m_index.entry(id);
-    const auto inherited = static_cast<std::uint8_t>(m_index.entry(e.parent).flags & EntryFlag::Inherited);
+    const EntryScan& e = m_index.scan(id);
+    const auto inherited = static_cast<std::uint8_t>(m_index.scan(e.parent).flags & EntryFlag::Inherited);
     m_index.setFlags(id, static_cast<std::uint8_t>(
         flagsOf(item.attributes, item.folder) | inherited | (e.flags & EntryFlag::LowPriority)));
 }

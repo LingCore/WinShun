@@ -463,7 +463,7 @@ bool duplicatesApp(const SearchResult& file, const SearchResult& app)
 
 SearchResult fromIndex(const FileIndex& index, EntryId id)
 {
-    const Entry& e = index.entry(id);
+    const EntryScan& e = index.scan(id);
     SearchResult r;
     r.created = knownTime(index.created(id));
     r.name = wtf8::toQString(index.name(e));
@@ -542,13 +542,13 @@ public:
     bool contains(EntryId id) const { return std::ranges::find(m_folders, id) != m_folders.end(); }
     bool operator()(EntryId id)
     {
-        const EntryId parent = m_index.entry(id).parent;
+        const EntryId parent = m_index.scan(id).parent;
         if (m_folders.empty() || parent == kNoEntry)
             return false;
         Slot& slot = m_cache[parent & (m_cache.size() - 1)];
         if (slot.parent != parent) {
             bool under = false;
-            for (EntryId cur = parent; cur != kNoEntry && !under; cur = m_index.entry(cur).parent)
+            for (EntryId cur = parent; cur != kNoEntry && !under; cur = m_index.scan(cur).parent)
                 under = contains(cur);
             slot = {parent, under};
         }
@@ -586,13 +586,13 @@ public:
     }
     Where operator()(EntryId id)
     {
-        const EntryId parent = m_index.entry(id).parent;
+        const EntryId parent = m_index.scan(id).parent;
         if (parent == kNoEntry)
             return Where::Outside;
         Slot& slot = m_cache[parent & (m_cache.size() - 1)];
         if (slot.parent != parent) {
             Where where = Where::Outside;
-            for (EntryId cur = parent; cur != kNoEntry; cur = m_index.entry(cur).parent) {
+            for (EntryId cur = parent; cur != kNoEntry; cur = m_index.scan(cur).parent) {
                 if (std::ranges::binary_search(m_scope.folders, cur)) { // the innermost says
                     where = std::ranges::binary_search(m_scope.aside, cur) ? Where::InsideAside : Where::Inside;
                     break;
@@ -630,7 +630,7 @@ ContentScope::Place resolvePlace(const FileIndex& index, const ContentFolderSpec
     std::vector<EntryId> ids;
     if (!spec.path.isEmpty()) {
         const EntryId id = index.findPath(spec.path.toStdWString());
-        if (id == kNoEntry || index.entry(id).isDeleted() || !index.entry(id).isDir()) {
+        if (id == kNoEntry || index.scan(id).isDeleted() || !index.scan(id).isDir()) {
             place.status = Status::NotFound;
             place.folders = {spec.path};
             return place;
@@ -662,7 +662,7 @@ ContentScope::Place resolvePlace(const FileIndex& index, const ContentFolderSpec
         }
         // Your own folders so named, not those in program folders and
         // node_modules alike, unless only those are (or those are asked for).
-        const auto aside = [&](EntryId id) { return (index.entry(id).flags & EntryFlag::LowPriority) != 0; };
+        const auto aside = [&](EntryId id) { return (index.scan(id).flags & EntryFlag::LowPriority) != 0; };
         if (!request.contentInLowPriority && !std::ranges::all_of(ids, aside))
             std::erase_if(ids, aside);
     }
@@ -674,7 +674,7 @@ ContentScope::Place resolvePlace(const FileIndex& index, const ContentFolderSpec
     // folders; the shallowest first in each.
     UnderFolder inProfile(index, win32::userFolders());
     const auto rank = [&](EntryId id) {
-        const Entry& e = index.entry(id);
+        const EntryScan& e = index.scan(id);
         const int kind = (e.flags & EntryFlag::LowPriority) ? 3
             : (e.flags & EntryFlag::Hidden)                  ? 2
             : (inProfile.contains(id) || inProfile(id))       ? 0
@@ -700,7 +700,7 @@ ContentScope::Place resolvePlace(const FileIndex& index, const ContentFolderSpec
     }
     for (const EntryId id : ids) {
         scope.folders.push_back(id);
-        if (index.entry(id).flags & EntryFlag::LowPriority)
+        if (index.scan(id).flags & EntryFlag::LowPriority)
             scope.aside.push_back(id);
     }
     return place;
@@ -1687,7 +1687,7 @@ void SearchEngine::runNameSearch(const Job& job)
                     // Subtracting duplicates just from the visible page made
                     // the total change as more rows were requested (#141).
                     if (id != kNoEntry) {
-                        const Entry& entry = index->entry(id);
+                        const EntryScan& entry = index->scan(id);
                         if (!(entry.flags & (EntryFlag::Deleted | EntryFlag::Root))
                             && (!foldersOnly || entry.isDir()) && matcher.match(*index, entry) >= 0)
                             continue;
@@ -1900,7 +1900,7 @@ void SearchEngine::runNameSearch(const Job& job)
                         continue;
                     row.modified = index->modified(id);
                     const qsizetype opened = request.history.indexOf(row.path, 0, Qt::CaseInsensitive);
-                    const bool aside = index->entry(id).flags & (EntryFlag::LowPriority | EntryFlag::Hidden);
+                    const bool aside = index->scan(id).flags & (EntryFlag::LowPriority | EntryFlag::Hidden);
                     led.push_back({std::move(row), opened < 0 ? request.history.size() : opened, aside, index->depth(id)});
                 }
             }
@@ -2353,7 +2353,7 @@ void SearchEngine::runContentSearch(const Job& job)
         return;
     // Where a file is, for ranking (contentRelevance): your own folders
     // first, then elsewhere, hidden ones, system and program folders.
-    const auto priorityOf = [](const Entry& e, EntryId id, UnderFolder& inProfile) -> std::uint8_t {
+    const auto priorityOf = [](const EntryScan& e, EntryId id, UnderFolder& inProfile) -> std::uint8_t {
         if (e.flags & EntryFlag::LowPriority)
             return 3;
         if (e.flags & EntryFlag::Hidden)
@@ -2368,7 +2368,7 @@ void SearchEngine::runContentSearch(const Job& job)
         UnderFolder inProfile(*index, personalFolders);
         for (const QString& file : request.contentOnly) {
             const EntryId id = index->findPath(file.toStdWString());
-            if (id == kNoEntry || index->entry(id).isDeleted())
+            if (id == kNoEntry || index->scan(id).isDeleted())
                 continue;
             candidates.push_back({id, priorityOf(index->entry(id), id, inProfile), false,
                 byTime ? sortTime(index->modified(id), until) : FileTime {0}});
@@ -2398,9 +2398,9 @@ void SearchEngine::runContentSearch(const Job& job)
             const auto first = static_cast<EntryId>(c << FileIndex::kChunkBits);
             auto k = static_cast<std::size_t>(std::lower_bound(lookup.known.begin(), lookup.known.end(), first,
                 [](std::uint32_t known, EntryId id) { return (known & ~kMatch) < id; }) - lookup.known.begin());
-            const auto entries = index->chunk(c);
+            const auto entries = index->scanChunk(c);
             for (std::size_t i = 0; i < entries.size(); ++i) {
-                const Entry& e = entries[i];
+                const EntryScan& e = entries[i];
                 // Outside the folders named: neither read nor counted as passed over.
                 const auto within = scoped ? inScope(static_cast<EntryId>(first + i)) : UnderFolders::Where::Inside;
                 if (within == UnderFolders::Where::Outside)
@@ -2619,7 +2619,7 @@ void SearchEngine::runContentSearch(const Job& job)
                     FileSize size = kUnknownSize;
                     {
                         const auto lock = index->readLock();
-                        gone = index->entry(candidate.id).isDeleted();
+                        gone = index->scan(candidate.id).isDeleted();
                         if (!gone) {
                             path = index->wpath(candidate.id); // as it is now: it may have moved
                             modified = index->modified(candidate.id);

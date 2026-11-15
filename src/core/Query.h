@@ -178,8 +178,8 @@ public:
     bool filtersNames() const noexcept;
 
     // Caller holds index.readLock().
-    int match(const FileIndex& index, const Entry& entry, Folders& folders, EntryId id = kNoEntry) const;
-    int match(const FileIndex& index, const Entry& entry) const;
+    int match(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id = kNoEntry) const;
+    int match(const FileIndex& index, const EntryScan& entry) const;
     // Matches a full path that is not (necessarily) in the index, e.g. history.
     int matchPath(const QString& fullPath, bool isDir, FileTime modified = 0, FileSize size = kUnknownSize) const;
     // Matches a bare UTF-8 name with no folders or extension, such as an

@@ -373,15 +373,15 @@ public:
     };
     Place placeOf(EntryId id)
     {
-        const EntryId parent = m_index.entry(id).parent;
+        const EntryId parent = m_index.scan(id).parent;
         if (parent == kNoEntry)
             return {id, false};
         Slot& slot = m_cache[parent & (m_cache.size() - 1)];
         if (slot.parent != parent) {
             EntryId cur = parent;
             bool inProfile = contains(cur);
-            while (m_index.entry(cur).parent != kNoEntry) {
-                cur = m_index.entry(cur).parent;
+            while (m_index.scan(cur).parent != kNoEntry) {
+                cur = m_index.scan(cur).parent;
                 inProfile = inProfile || contains(cur);
             }
             slot = {parent, cur, inProfile};
@@ -721,7 +721,7 @@ ContentIndexer::Plan ContentIndexer::plan(const FileIndex& index, const ContentI
     std::size_t k = 0;
     // A file a search looks in, on a volume followed: what to do with it.
     // Documents of the files passed over on the way are retired.
-    const auto look = [&](EntryId id, const Entry& e) {
+    const auto look = [&](EntryId id, const EntryScan& e) {
         // A remote file a search looks in (ContentVerdict::Remote): kept
         // when its share's contents are indexed, read by its own thread.
         const bool remote = (e.flags & EntryFlag::Remote) != 0;
@@ -763,7 +763,7 @@ ContentIndexer::Plan ContentIndexer::plan(const FileIndex& index, const ContentI
         }
     } else {
         for (std::size_t c = 0; c < index.chunkCount(); ++c) {
-            const auto entries = index.chunk(c);
+            const auto entries = index.scanChunk(c);
             for (std::size_t i = 0; i < entries.size(); ++i)
                 look(static_cast<EntryId>((c << FileIndex::kChunkBits) + i), entries[i]);
         }
@@ -782,13 +782,13 @@ ContentIndexer::Plan ContentIndexer::plan(const FileIndex& index, const ContentI
         std::vector<EntryId> folders;
         for (const Work& w : work) {
             if (w.order != kKnown)
-                folders.push_back(index.entry(w.entry).parent);
+                folders.push_back(index.scan(w.entry).parent);
         }
         std::sort(folders.begin(), folders.end());
         folders.erase(std::unique(folders.begin(), folders.end()), folders.end());
         for (const EntryId folder : folders) {
             for (EntryId c = index.entry(folder).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling) {
-                const Entry& e = index.entry(c);
+                const EntryScan& e = index.scan(c);
                 if (!(e.flags & EntryFlag::Remote) && filter.accepts(index, e))
                     candidates.push_back(c);
             }
@@ -797,7 +797,7 @@ ContentIndexer::Plan ContentIndexer::plan(const FileIndex& index, const ContentI
     const std::vector<EntryId> crowded = crowdedFolders(index, candidates);
     qint64 crowdedFiles = 0;
     for (Work& w : work) {
-        if (w.order != kKnown && std::binary_search(crowded.begin(), crowded.end(), index.entry(w.entry).parent)) {
+        if (w.order != kKnown && std::binary_search(crowded.begin(), crowded.end(), index.scan(w.entry).parent)) {
             w.crowded = true;
             ++crowdedFiles;
             if (crowdedLast())
@@ -904,7 +904,7 @@ std::vector<EntryId> ContentIndexer::crowdedFolders(const FileIndex& index, std:
     std::vector<File> files;
     files.reserve(candidates.size());
     for (const EntryId id : candidates) {
-        const Entry& e = index.entry(id);
+        const EntryScan& e = index.scan(id);
         std::size_t extLength = 0;
         const std::string_view name = index.fileName(e, extLength);
         files.push_back({e.parent, extensionKey(name.substr(name.size() - std::min(extLength, name.size())))});
@@ -1298,7 +1298,7 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
             return true; // a search read it meanwhile (Intake)
         {
             const auto lock = index->readLock();
-            if (index->entry(w.entry).isDeleted())
+            if (index->scan(w.entry).isDeleted())
                 return true;
             path = index->wpath(w.entry);
         }
@@ -1545,7 +1545,7 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
         {
             const auto lock = index->readLock();
             for (const Work* w : bv.files) {
-                const Entry& e = index->entry(w->entry);
+                const EntryScan& e = index->scan(w->entry);
                 if (e.isDeleted()) {
                     doneWith(*w);
                     continue;

@@ -63,7 +63,7 @@ std::size_t trimDepth(FileIndex& index, EntryId root, int limit)
             const EntryId next = index.entry(c).nextSibling;
             if (depth >= limit)
                 index.remove(c);
-            else if (index.entry(c).isDir())
+            else if (index.scan(c).isDir())
                 todo.emplace_back(c, depth + 1);
             c = next;
         }
@@ -101,7 +101,7 @@ FileTime now() noexcept
 // Entries in the subtree of `id`, itself included. Read lock held.
 std::size_t subtreeSize(const FileIndex& index, EntryId id)
 {
-    if (id >= index.slotCount() || index.entry(id).isDeleted())
+    if (id >= index.slotCount() || index.scan(id).isDeleted())
         return 0;
     std::size_t n = 0;
     std::vector<EntryId> stack {id};
@@ -117,7 +117,7 @@ std::size_t subtreeSize(const FileIndex& index, EntryId id)
 
 bool isUnder(const FileIndex& index, EntryId id, EntryId root)
 {
-    for (EntryId cur = id; cur != kNoEntry; cur = index.entry(cur).parent) {
+    for (EntryId cur = id; cur != kNoEntry; cur = index.scan(cur).parent) {
         if (cur == root)
             return true;
     }
@@ -1128,7 +1128,7 @@ bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool 
             for (std::size_t k = i; k < std::min(gone.size(), i + kRemoveBatch); ++k) {
                 const EntryId id = gone[k];
                 // Removed or moved away by a live change meanwhile: leave it be.
-                if (id < index->slotCount() && !index->entry(id).isDeleted() && isUnder(*index, id, root))
+                if (id < index->slotCount() && !index->scan(id).isDeleted() && isUnder(*index, id, root))
                     index->remove(id);
             }
         }

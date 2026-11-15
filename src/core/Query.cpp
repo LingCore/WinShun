@@ -1073,7 +1073,7 @@ std::uint64_t NameMatcher::termsInFolders(const FileIndex& index, EntryId folder
         folders->m_slots.resize(Folders::kSlots);
     const auto slotOf = [&](EntryId id) -> Folders::Slot& { return folders->m_slots[id % Folders::kSlots]; };
     const auto own = [&](EntryId id) {
-        const Entry& e = index.entry(id);
+        const EntryScan& e = index.scan(id);
         return termsInFolder(index.name(e), e.flags & EntryFlag::Han, true);
     };
 
@@ -1082,7 +1082,7 @@ std::uint64_t NameMatcher::termsInFolders(const FileIndex& index, EntryId folder
     std::size_t length = 0;
     std::uint64_t terms = 0;
     EntryId cur = folder;
-    for (; cur != kNoEntry && length < chain.size(); cur = index.entry(cur).parent) {
+    for (; cur != kNoEntry && length < chain.size(); cur = index.parent(cur)) {
         if (folders && slotOf(cur).folder == cur) {
             terms = slotOf(cur).terms;
             break;
@@ -1090,7 +1090,7 @@ std::uint64_t NameMatcher::termsInFolders(const FileIndex& index, EntryId folder
         chain[length++] = cur;
     }
     if (length == chain.size()) { // that deep: the rest unnoted
-        for (; cur != kNoEntry; cur = index.entry(cur).parent)
+        for (; cur != kNoEntry; cur = index.parent(cur))
             terms |= own(cur);
     }
     while (length > 0) {
@@ -1102,7 +1102,7 @@ std::uint64_t NameMatcher::termsInFolders(const FileIndex& index, EntryId folder
     return terms;
 }
 
-int NameMatcher::match(const FileIndex& index, const Entry& entry, Folders& folders, EntryId id) const
+int NameMatcher::match(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id) const
 {
     if (m_invalid)
         return -1;
@@ -1143,9 +1143,9 @@ int NameMatcher::match(const FileIndex& index, const Entry& entry, Folders& fold
         [&](const std::vector<std::string>& segments, const pinyin::Matcher* folders) {
             // Walk up from the parent, consuming segments innermost-first.
             auto j = static_cast<std::ptrdiff_t>(segments.size()) - 1;
-            for (EntryId cur = entry.parent; cur != kNoEntry && j >= 0; cur = index.entry(cur).parent) {
+            for (EntryId cur = entry.parent; cur != kNoEntry && j >= 0; cur = index.parent(cur)) {
                 const auto k = static_cast<std::size_t>(j);
-                const Entry& folder = index.entry(cur);
+                const EntryScan& folder = index.scan(cur);
                 if (folderMatches(index.name(folder), folder.flags & EntryFlag::Han, segments[k],
                         folders ? &folders[k] : nullptr, true))
                     --j;
@@ -1196,7 +1196,7 @@ bool NameMatcher::filtersNames() const noexcept
             [&](const QueryTerm& t) { return byName(t) && t.ancestors.empty(); });
 }
 
-int NameMatcher::match(const FileIndex& index, const Entry& entry) const
+int NameMatcher::match(const FileIndex& index, const EntryScan& entry) const
 {
     Folders folders;
     return match(index, entry, folders);

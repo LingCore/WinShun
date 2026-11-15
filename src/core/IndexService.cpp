@@ -1612,7 +1612,7 @@ IndexService::RuleChange IndexService::applyRuleChanges(
             const std::string utf8 = toUtf8(name);
             if (parent == kNoEntry || name.empty() || index->childForUpdate(parent, utf8, false) != kNoEntry)
                 continue;
-            const auto inherited = static_cast<std::uint8_t>(index->entry(parent).flags & EntryFlag::Inherited);
+            const auto inherited = static_cast<std::uint8_t>(index->scan(parent).flags & EntryFlag::Inherited);
             const auto flags = static_cast<std::uint8_t>(
                 Crawler::attributeFlags(f.probe.attributes) | inherited | crawler.dirPriorityFlags(f.path, name));
             const EntryId id = index->add(parent, utf8, flags);
@@ -1720,7 +1720,7 @@ std::vector<std::wstring> IndexService::prepareScope(
                     states.push_back({c.path, State::Unreadable});
                     if (const EntryId e = findFolder(*index, c.path); e != kNoEntry) {
                         keep.push_back(e);
-                        for (EntryId p = index->entry(e).parent; p != kNoEntry && p != rootId; p = index->entry(p).parent)
+                        for (EntryId p = index->scan(e).parent; p != kNoEntry && p != rootId; p = index->scan(p).parent)
                             through.push_back(p);
                     }
                     continue;
@@ -1733,7 +1733,7 @@ std::vector<std::wstring> IndexService::prepareScope(
                     const EntryId parent = e;
                     const std::string utf8 = toUtf8(d.name);
                     e = index->childForUpdate(parent, utf8, false);
-                    if (e != kNoEntry && !index->entry(e).isDir()) {
+                    if (e != kNoEntry && !index->scan(e).isDir()) {
                         index->remove(e); // a file once, a folder now
                         e = kNoEntry;
                     }
@@ -1742,7 +1742,7 @@ std::vector<std::wstring> IndexService::prepareScope(
                         const unsigned long attributes = d.probe.attributes == INVALID_FILE_ATTRIBUTES
                             ? FILE_ATTRIBUTE_DIRECTORY : d.probe.attributes | FILE_ATTRIBUTE_DIRECTORY;
                         const auto flags = static_cast<std::uint8_t>(Crawler::attributeFlags(attributes)
-                            | (index->entry(parent).flags & EntryFlag::Inherited) | crawler.dirPriorityFlags(folder, d.name));
+                            | (index->scan(parent).flags & EntryFlag::Inherited) | crawler.dirPriorityFlags(folder, d.name));
                         e = index->add(parent, utf8, flags);
                         index->setModified(e, d.probe.modified);
                         index->setCreated(e, d.probe.created);
@@ -1841,8 +1841,8 @@ bool IndexService::walkFolders(
             {
                 const auto lock = index.readLock();
                 id = findFolder(index, path);
-                if (id != kNoEntry && index.entry(id).isDir())
-                    inherited = static_cast<std::uint8_t>(index.entry(id).flags & EntryFlag::Inherited);
+                if (id != kNoEntry && index.scan(id).isDir())
+                    inherited = static_cast<std::uint8_t>(index.scan(id).flags & EntryFlag::Inherited);
                 else
                     id = kNoEntry;
             }
@@ -2641,8 +2641,8 @@ void IndexService::contentUnsureOf(const std::wstring& root)
     m_content->markUnsure([&](EntryId e) {
         if (e >= index->slotCount())
             return false;
-        while (index->entry(e).parent != kNoEntry)
-            e = index->entry(e).parent;
+        while (index->scan(e).parent != kNoEntry)
+            e = index->scan(e).parent;
         return e == volume;
     });
 }

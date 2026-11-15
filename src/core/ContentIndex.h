@@ -177,7 +177,7 @@ struct ContentFilter {
     ExtensionFilter extensions;
     bool includeLowPriority = false;
 
-    bool accepts(const FileIndex& index, const Entry& e) const noexcept
+    bool accepts(const FileIndex& index, const EntryScan& e) const noexcept
     {
         if (!includeLowPriority && (e.flags & EntryFlag::LowPriority))
             return false; // before anything about the name: that is read from elsewhere
@@ -186,7 +186,7 @@ struct ContentFilter {
         return classify(index, e, name, extLength) == ContentVerdict::Read;
     }
     // A remote file of a listed type, outside system and tool folders (ContentVerdict::Remote).
-    bool acceptsRemote(const FileIndex& index, const Entry& e) const noexcept
+    bool acceptsRemote(const FileIndex& index, const EntryScan& e) const noexcept
     {
         std::string_view name;
         std::size_t extLength;
@@ -196,7 +196,7 @@ struct ContentFilter {
     // As accepts(), and why not, for a search that counts what it passes
     // over (SearchEngine: ContentLeftOut). `name` and `extLength` are the
     // file's once its name was looked at (Read, LowPriority, OtherType, Remote).
-    ContentVerdict classify(const FileIndex& index, const Entry& e, std::string_view& name, std::size_t& extLength) const noexcept
+    ContentVerdict classify(const FileIndex& index, const EntryScan& e, std::string_view& name, std::size_t& extLength) const noexcept
     {
         constexpr std::uint8_t kNever = EntryFlag::Deleted | EntryFlag::Directory | EntryFlag::Offline;
         if (e.flags & kNever)

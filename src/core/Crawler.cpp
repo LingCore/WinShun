@@ -427,7 +427,7 @@ public:
         m_exactCase = exactCase;
         m_children.clear();
         for (EntryId c = index.entry(dir).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling)
-            m_children.push_back({index.name(c), c, index.entry(c).isDir()});
+            m_children.push_back({index.name(c), c, index.scan(c).isDir()});
         std::sort(m_children.begin(), m_children.end(), byName);
     }
 
@@ -508,7 +508,7 @@ void removeChildren(FileIndex& index, EntryId dir, const Remover& remove)
 void reconcile(FileIndex& index, const Crawler::Root& dir, const DirListing& listing, ChildMap& existing,
     std::vector<EntryId>& matched, std::vector<Crawler::Root>& subdirs, const Remover& remove)
 {
-    if (dir.id >= index.slotCount() || index.entry(dir.id).isDeleted())
+    if (dir.id >= index.slotCount() || index.scan(dir.id).isDeleted())
         return;
     existing.assign(index, dir.id, !unc::wslDistribution(dir.path).empty());
 
@@ -524,7 +524,7 @@ void reconcile(FileIndex& index, const Crawler::Root& dir, const DirListing& lis
         const bool isDir = item.flags & EntryFlag::Directory;
         EntryId id = matched[i] != kNoEntry ? matched[i] : existing.takeChanged(name, isDir);
         if (id != kNoEntry) {
-            if (index.entry(id).isDir() != isDir) {
+            if (index.scan(id).isDir() != isDir) {
                 // A file became a folder or vice versa. With removals
                 // deferred, the old one stays beside the new one till then.
                 remove(id);
@@ -700,7 +700,7 @@ void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const 
                 if (!lastWrite[k])
                     continue;
                 const EntryId id = index.findPath(changes[k].path);
-                written[k - i] = id != kNoEntry && !(index.entry(id).flags & (EntryFlag::Directory | EntryFlag::Root));
+                written[k - i] = id != kNoEntry && !(index.scan(id).flags & (EntryFlag::Directory | EntryFlag::Root));
             }
         }
 
@@ -720,7 +720,7 @@ void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const 
 
             const auto removePath = [&](const std::wstring& path) {
                 const EntryId id = index.pathForUpdate(path);
-                if (id != kNoEntry && !(index.entry(id).flags & EntryFlag::Root))
+                if (id != kNoEntry && !(index.scan(id).flags & EntryFlag::Root))
                     index.remove(id);
             };
 
@@ -739,7 +739,7 @@ void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const 
                 if (index.childForUpdate(parent, utf8, !unc::wslDistribution(path).empty()) != kNoEntry)
                     return;
                 auto flags = static_cast<std::uint8_t>(
-                    Crawler::attributeFlags(p.attributes) | (index.entry(parent).flags & EntryFlag::Inherited));
+                    Crawler::attributeFlags(p.attributes) | (index.scan(parent).flags & EntryFlag::Inherited));
                 if (flags & EntryFlag::Directory)
                     flags |= crawler.dirPriorityFlags(path, name);
                 const EntryId id = index.add(parent, utf8, flags);
@@ -769,7 +769,7 @@ void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const 
                 if (p.attributes == INVALID_FILE_ATTRIBUTES || (p.attributes & FILE_ATTRIBUTE_DIRECTORY))
                     return; // gone again (its Removed comes), or a folder after all
                 const EntryId id = index.pathForUpdate(path);
-                if (id == kNoEntry || (index.entry(id).flags & (EntryFlag::Directory | EntryFlag::Root)))
+                if (id == kNoEntry || (index.scan(id).flags & (EntryFlag::Directory | EntryFlag::Root)))
                     return;
                 index.setModified(id, p.modified);
                 index.setSize(id, p.size);
@@ -834,7 +834,7 @@ std::size_t removeExcluded(FileIndex& index, const CrawlRules& rules)
     std::size_t removed = 0;
     for (const std::wstring& path : rules.excludedPaths) {
         const EntryId id = index.pathForUpdate(path);
-        if (id != kNoEntry && index.entry(id).isDir() && !(index.entry(id).flags & EntryFlag::Root))
+        if (id != kNoEntry && index.scan(id).isDir() && !(index.scan(id).flags & EntryFlag::Root))
             removed += index.remove(id);
     }
     if (rules.excludedNames.empty())
@@ -855,9 +855,9 @@ std::size_t removeExcluded(FileIndex& index, const CrawlRules& rules)
     }
     std::vector<EntryId> doomed;
     for (std::size_t c = 0; c < index.chunkCount(); ++c) {
-        const auto entries = index.chunk(c);
+        const auto entries = index.scanChunk(c);
         for (std::size_t i = 0; i < entries.size(); ++i) {
-            const Entry& e = entries[i];
+            const EntryScan& e = entries[i];
             if (!e.isDir() || (e.flags & (EntryFlag::Deleted | EntryFlag::Root)))
                 continue;
             const std::string_view name = index.name(e);

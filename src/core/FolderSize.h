@@ -14,7 +14,7 @@ namespace ws {
 inline std::optional<std::uint64_t> indexedFolderSize(const FileIndex& index, EntryId folder,
     const std::function<bool()>& cancelled = {})
 {
-    if (folder >= index.slotCount() || index.entry(folder).isDeleted() || !index.entry(folder).isDir()) return {};
+    if (folder >= index.slotCount() || index.scan(folder).isDeleted() || !index.scan(folder).isDir()) return {};
     std::vector<EntryId> pending;
     if (const EntryId first = index.entry(folder).firstChild(); first != kNoEntry) pending.push_back(first);
     std::uint64_t bytes = 0;
@@ -24,7 +24,7 @@ inline std::optional<std::uint64_t> indexedFolderSize(const FileIndex& index, En
         const EntryId id = pending.back();
         pending.pop_back();
         if (id >= index.slotCount() || ++visited > index.slotCount()) return {}; // damaged links cannot loop
-        const Entry& entry = index.entry(id);
+        const Entry entry = index.entry(id); // the whole of it: a walk down the folders reads their lists
         if (entry.nextSibling != kNoEntry) pending.push_back(entry.nextSibling);
         if (entry.isDeleted()) continue;
         if (entry.isDir()) {

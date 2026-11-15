@@ -218,17 +218,22 @@ std::size_t FileIndex::defaultPrivateBudget() noexcept
 FileIndex::FileIndex(std::size_t privateBudget) : m_storage(std::make_unique<Storage>(privateBudget)) {}
 FileIndex::~FileIndex() = default;
 
-std::span<const Entry> FileIndex::chunk(std::size_t index) const noexcept
+FileIndex::Chunk FileIndex::chunk(std::size_t index) const noexcept
 {
     const std::size_t first = index << kChunkBits;
-    const std::size_t n = std::min(kChunkSize, m_count - first);
-    return {m_chunks[index].get(), n};
+    return {m_scan[index].get(), m_links[index].get(), std::min(kChunkSize, m_count - first)};
+}
+
+std::span<const EntryScan> FileIndex::scanChunk(std::size_t index) const noexcept
+{
+    const std::size_t first = index << kChunkBits;
+    return {m_scan[index].get(), std::min(kChunkSize, m_count - first)};
 }
 
 FileIndex::MemoryUse FileIndex::memoryUse() const noexcept
 {
     MemoryUse use;
-    use.entries = m_chunks.size() * kChunkSize * sizeof(Entry);
+    use.entries = m_scan.size() * kChunkSize * (sizeof(EntryScan) + sizeof(EntryLinks));
     use.times = (m_times.size() + m_created.size()) * kChunkSize * sizeof(FileTime);
     use.names = m_names.size() * (kNameChunkSize + text::kReadPastEnd);
     use.nameBytes = m_names.empty() ? 0 : (m_names.size() - 1) * kNameChunkSize + m_nameUsed; // roughly: chunks end early
@@ -246,9 +251,11 @@ FileIndex::MemoryUse FileIndex::memoryUse() const noexcept
 std::vector<std::pair<const void*, std::size_t>> FileIndex::memoryBlocks() const
 {
     std::vector<std::pair<const void*, std::size_t>> blocks;
-    blocks.reserve(m_chunks.size() * 3 + m_names.size());
-    for (const auto& c : m_chunks)
-        blocks.emplace_back(c.get(), kChunkSize * sizeof(Entry));
+    blocks.reserve(m_scan.size() * 4 + m_names.size());
+    for (const auto& c : m_scan)
+        blocks.emplace_back(c.get(), kChunkSize * sizeof(EntryScan));
+    for (const auto& c : m_links)
+        blocks.emplace_back(c.get(), kChunkSize * sizeof(EntryLinks));
     for (const auto& t : m_times)
         blocks.emplace_back(t.get(), kChunkSize * sizeof(FileTime));
     for (const auto& t : m_created)
@@ -262,13 +269,14 @@ void FileIndex::warm() const noexcept
 {
     // A large index must not fault several GiB back in just because the
     // launcher opened. Demand paging serves searches; dates are only read
-    // for matches. Keep the fast warm-up for small, privately held indexes.
+    // for matches, and the folders' lists of children (EntryLinks) by none.
+    // Keep the fast warm-up for small, privately held indexes.
     if (m_storage->usage->mappedBytes != 0 || m_storage->usage->privateBytes > defaultPrivateBudget())
         return;
     std::vector<WIN32_MEMORY_RANGE_ENTRY> ranges;
-    ranges.reserve(m_chunks.size() * 3 + m_names.size());
-    for (const auto& chunk : m_chunks)
-        ranges.push_back({chunk.get(), kChunkSize * sizeof(Entry)});
+    ranges.reserve(m_scan.size() + m_names.size());
+    for (const auto& chunk : m_scan)
+        ranges.push_back({chunk.get(), kChunkSize * sizeof(EntryScan)});
     for (const auto& chunk : m_names)
         ranges.push_back({chunk.get(), kNameChunkSize});
     // Pages written out to the pagefile: read in large requests, not one by
@@ -285,8 +293,9 @@ void FileIndex::warm() const noexcept
 
 EntryId FileIndex::allocate()
 {
-    if ((m_count >> kChunkBits) == m_chunks.size()) {
-        m_chunks.push_back(m_storage->allocate<Entry>(kChunkSize));
+    if ((m_count >> kChunkBits) == m_scan.size()) {
+        m_scan.push_back(m_storage->allocate<EntryScan>(kChunkSize));
+        m_links.push_back(m_storage->allocate<EntryLinks>(kChunkSize));
         m_times.push_back(m_storage->allocate<FileTime>(kChunkSize));
         m_created.push_back(m_storage->allocate<FileTime>(kChunkSize));
     }
@@ -340,7 +349,7 @@ void FileIndex::setInterning(bool enabled)
     m_internCount = 0;
     // Seed with existing names so new entries can share them.
     for (std::size_t i = 0; i < m_count; ++i) {
-        const Entry& e = entry(static_cast<EntryId>(i));
+        const EntryScan& e = scan(static_cast<EntryId>(i));
         if (e.isDeleted())
             continue;
         const std::string_view n = name(e);
@@ -373,7 +382,7 @@ std::size_t FileIndex::compact(bool always, const std::function<void(const Renum
     std::vector<std::uint64_t> liveBits(words, 0);
     std::vector<EntryId> liveBefore(words, 0);
     for (std::size_t i = 0; i < oldCount; ++i) {
-        if (!entry(static_cast<EntryId>(i)).isDeleted())
+        if (!scan(static_cast<EntryId>(i)).isDeleted())
             liveBits[i >> 6] |= std::uint64_t {1} << (i & 63);
     }
     EntryId running = 0;
@@ -406,7 +415,7 @@ std::size_t FileIndex::compact(bool always, const std::function<void(const Renum
             s = (s + 1) & mask;
         return s;
     };
-    const auto moveName = [&](const Entry& e) -> std::uint32_t {
+    const auto moveName = [&](const EntryScan& e) -> std::uint32_t {
         const std::uint64_t key = std::uint64_t {e.nameOffset} + 1;
         std::size_t s = slotFor(moved, key);
         if (moved[s] != 0)
@@ -429,16 +438,18 @@ std::size_t FileIndex::compact(bool always, const std::function<void(const Renum
     // Ascending, every live entry moves down or stays, onto a slot already read.
     for (std::size_t i = 0; i < oldCount; ++i) {
         const auto id = static_cast<EntryId>(i);
-        if (entry(id).isDeleted())
+        if (scan(id).isDeleted())
             continue;
-        Entry e = entry(id);
+        EntryScan e = scan(id);
+        EntryLinks l = links(id);
         e.parent = renumber(e.parent);
         if (e.isDir())
-            e.childOrSize = renumber(e.firstChild());
-        e.nextSibling = renumber(e.nextSibling);
+            l.childOrSize = renumber(l.childOrSize);
+        l.nextSibling = renumber(l.nextSibling);
         e.nameOffset = moveName(e);
         const EntryId to = renumber(id);
-        mut(to) = e;
+        scanMut(to) = e;
+        linksMut(to) = l;
         setModified(to, modified(id));
         setCreated(to, created(id));
     }
@@ -451,11 +462,13 @@ std::size_t FileIndex::compact(bool always, const std::function<void(const Renum
     });
 
     m_count = live;
-    m_chunks.resize((live + kChunkSize - 1) >> kChunkBits); // frees the emptied chunks
-    m_chunks.shrink_to_fit();
-    m_times.resize(m_chunks.size());
+    m_scan.resize((live + kChunkSize - 1) >> kChunkBits); // frees the emptied chunks
+    m_scan.shrink_to_fit();
+    m_links.resize(m_scan.size());
+    m_links.shrink_to_fit();
+    m_times.resize(m_scan.size());
     m_times.shrink_to_fit();
-    m_created.resize(m_chunks.size());
+    m_created.resize(m_scan.size());
     m_created.shrink_to_fit();
     m_childTables = decltype(m_childTables)(); // by old ids; rebuilt on demand
     if (m_tracking)
@@ -532,11 +545,10 @@ std::uint32_t FileIndex::appendName(std::string_view name)
 
 void FileIndex::link(EntryId parent, EntryId child)
 {
-    Entry& c = mut(child);
-    Entry& p = mut(parent);
-    const EntryId first = p.firstChild();
-    c.parent = parent;
-    c.nextSibling = first;
+    EntryLinks& p = linksMut(parent);
+    const EntryId first = scan(parent).isDir() ? p.childOrSize : kNoEntry;
+    scanMut(child).parent = parent;
+    linksMut(child).nextSibling = first;
     p.childOrSize = child;
     if (!m_childTables.empty()) {
         if (const auto it = m_childTables.find(parent); it != m_childTables.end()) {
@@ -551,8 +563,8 @@ void FileIndex::link(EntryId parent, EntryId child)
 // Before the child's name changes: its parent's ChildTable finds it by name.
 void FileIndex::unlink(EntryId child)
 {
-    const EntryId parent = entry(child).parent;
-    const EntryId next = entry(child).nextSibling;
+    const EntryId parent = scan(child).parent;
+    const EntryId next = links(child).nextSibling;
     if (parent == kNoEntry)
         return; // a root: in no list
 
@@ -583,14 +595,14 @@ void FileIndex::unlink(EntryId child)
         found = slot != kNoSlot;
         previous = found ? table->previous[slot] : kNoEntry;
     }
-    mut(child).nextSibling = kNoEntry;
+    linksMut(child).nextSibling = kNoEntry;
     if (!found)
         return; // not in the list (cannot happen)
 
     if (previous != kNoEntry)
-        mut(previous).nextSibling = next;
+        linksMut(previous).nextSibling = next;
     else
-        mut(parent).childOrSize = next;
+        linksMut(parent).childOrSize = next;
     if (table) {
         if (const std::size_t slot = next != kNoEntry ? tableSlot(*table, next) : kNoSlot; slot != kNoSlot)
             table->previous[slot] = previous;
@@ -611,8 +623,9 @@ EntryId FileIndex::add(EntryId parent, std::string_view name, std::uint8_t flags
 EntryId FileIndex::addStored(EntryId parent, std::uint32_t nameOffset, std::uint8_t flags)
 {
     const EntryId id = allocate();
-    Entry& e = mut(id);
-    e = Entry {};
+    EntryScan& e = scanMut(id);
+    e = EntryScan {};
+    linksMut(id) = EntryLinks {};
     setModified(id, 0); // a slot freed by compact() may be used again
     setCreated(id, 0);
     e.nameOffset = nameOffset;
@@ -631,10 +644,10 @@ EntryId FileIndex::addStored(EntryId parent, std::uint32_t nameOffset, std::uint
 
 std::size_t FileIndex::remove(EntryId id)
 {
-    if (id >= m_count || entry(id).isDeleted())
+    if (id >= m_count || scan(id).isDeleted())
         return 0;
     unlink(id);
-    if (entry(id).flags & EntryFlag::Root) {
+    if (scan(id).flags & EntryFlag::Root) {
         std::erase(m_roots, id);
         std::erase_if(m_folderRecords, [id](const auto& t) { return t.first == id; });
     }
@@ -644,7 +657,7 @@ std::size_t FileIndex::remove(EntryId id)
     while (!stack.empty()) {
         const EntryId cur = stack.back();
         stack.pop_back();
-        Entry& e = mut(cur);
+        EntryScan& e = scanMut(cur);
         if (e.isDeleted())
             continue;
         e.flags |= EntryFlag::Deleted;
@@ -653,7 +666,7 @@ std::size_t FileIndex::remove(EntryId id)
             noteChanged(cur);
         else if (!m_childTables.empty())
             m_childTables.erase(cur);
-        for (EntryId c = e.firstChild(); c != kNoEntry; c = entry(c).nextSibling)
+        for (EntryId c = e.isDir() ? links(cur).childOrSize : kNoEntry; c != kNoEntry; c = links(c).nextSibling)
             stack.push_back(c);
     }
     m_live.fetch_sub(removed, std::memory_order_relaxed);
@@ -664,20 +677,20 @@ bool FileIndex::move(EntryId id, EntryId newParent, std::string_view newName)
 {
     if (id >= m_count || newParent >= m_count)
         return false;
-    if (entry(id).isDeleted() || entry(newParent).isDeleted() || !entry(newParent).isDir())
+    if (scan(id).isDeleted() || scan(newParent).isDeleted() || !scan(newParent).isDir())
         return false;
-    for (EntryId p = newParent; p != kNoEntry; p = entry(p).parent) {
+    for (EntryId p = newParent; p != kNoEntry; p = scan(p).parent) {
         if (p == id)
             return false; // would move a folder into itself
     }
-    if (!entry(id).isDir())
+    if (!scan(id).isDir())
         noteChanged(id);
     else if (m_tracking && !m_changesLost && rootOf(id) != rootOf(newParent))
         loseChanges(); // the files in it are on another volume now
     unlink(id); // under the old name
     if (name(id) != newName) {
         const std::uint32_t offset = storeName(newName);
-        Entry& e = mut(id);
+        EntryScan& e = scanMut(id);
         e.nameOffset = offset;
         e.flags = static_cast<std::uint8_t>((e.flags & ~EntryFlag::Han) | hanFlag(*this, offset));
     }
@@ -687,7 +700,7 @@ bool FileIndex::move(EntryId id, EntryId newParent, std::string_view newName)
 
 void FileIndex::setFlags(EntryId id, std::uint8_t flags)
 {
-    Entry& e = mut(id);
+    EntryScan& e = scanMut(id);
     // What the index itself tracks stays; the rest comes from the caller.
     constexpr std::uint8_t kOwn = EntryFlag::Deleted | EntryFlag::Root | EntryFlag::Directory | EntryFlag::Han;
     const std::uint8_t before = e.flags;
@@ -698,8 +711,8 @@ void FileIndex::setFlags(EntryId id, std::uint8_t flags)
 
 EntryId FileIndex::rootOf(EntryId id) const noexcept
 {
-    while (entry(id).parent != kNoEntry)
-        id = entry(id).parent;
+    while (scan(id).parent != kNoEntry)
+        id = scan(id).parent;
     return id;
 }
 
@@ -960,7 +973,7 @@ void FileIndex::appendPath16(EntryId id, std::u16string& out) const
     EntryId chain[64];
     std::vector<EntryId> deep;
     std::size_t n = 0;
-    for (EntryId cur = id; cur != kNoEntry; cur = entry(cur).parent) {
+    for (EntryId cur = id; cur != kNoEntry; cur = scan(cur).parent) {
         if (n < std::size(chain))
             chain[n++] = cur;
         else
@@ -995,7 +1008,7 @@ std::wstring FileIndex::wpath(EntryId id) const
 int FileIndex::depth(EntryId id) const noexcept
 {
     int d = 0;
-    for (EntryId cur = entry(id).parent; cur != kNoEntry; cur = entry(cur).parent)
+    for (EntryId cur = scan(id).parent; cur != kNoEntry; cur = scan(cur).parent)
         ++d;
     return d;
 }

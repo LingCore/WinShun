@@ -54,7 +54,7 @@ std::optional<ReadStamp> stampAfterRead(FileIndex& index, EntryId id, std::int64
     const auto unchanged = [&] { return index.size(id) == listed.size && index.modified(id) == listed.modified; };
     {
         const auto lock = index.readLock();
-        if (index.entry(id).isDeleted())
+        if (index.scan(id).isDeleted())
             return std::nullopt;
         if (bytes < 0 || (index.size(id) == size && index.modified(id) == time))
             return ReadStamp {stampOf(index, id), false};
@@ -62,7 +62,7 @@ std::optional<ReadStamp> stampAfterRead(FileIndex& index, EntryId id, std::int64
             return ReadStamp {stampAsListed(size, time), false};
     }
     const auto lock = index.writeLock();
-    if (index.entry(id).isDeleted())
+    if (index.scan(id).isDeleted())
         return std::nullopt;
     if (!unchanged()) // changed meanwhile, after all
         return ReadStamp {stampAsListed(size, time), false};
@@ -106,7 +106,7 @@ Plan plan(const FileIndex& index, EntryId root, const ContentFilter& filter, con
     std::uint64_t sizeCap, std::span<const ContentIndex::DocInfo> docs)
 {
     Plan p;
-    if (root >= index.slotCount() || index.entry(root).isDeleted())
+    if (root >= index.slotCount() || index.scan(root).isDeleted())
         return p;
     const ExtensionFilter documents(documentExtensions());
     // Written to first (someone works on them), then the rest by depth (the
@@ -125,7 +125,7 @@ Plan plan(const FileIndex& index, EntryId root, const ContentFilter& filter, con
         const EntryId folder = folders.front();
         folders.pop_front();
         for (EntryId c = index.entry(folder).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling) {
-            const Entry& e = index.entry(c);
+            const EntryScan& e = index.scan(c);
             if (e.isDeleted())
                 continue;
             if (e.isDir()) {
@@ -173,7 +173,7 @@ Plan plan(const FileIndex& index, EntryId root, const ContentFilter& filter, con
     if (!fresh.empty()) {
         const std::vector<EntryId> crowded = ContentIndexer::crowdedFolders(index, fresh);
         for (Found& f : found) {
-            if (f.order != kAgain && std::binary_search(crowded.begin(), crowded.end(), index.entry(f.entry).parent))
+            if (f.order != kAgain && std::binary_search(crowded.begin(), crowded.end(), index.scan(f.entry).parent))
                 f.order = kCrowded;
         }
     }
@@ -466,7 +466,7 @@ bool ShareContent::planOf(EntryId root, const Source& s, const ContentIndexer::O
 {
     const FileIndex& index = *s.index;
     const auto lock = index.longReadLock(); // through all of the share: writers wait at their gate, not searches
-    if (root >= index.slotCount() || index.entry(root).isDeleted() || index.entry(root).parent != kNoEntry)
+    if (root >= index.slotCount() || index.scan(root).isDeleted() || index.scan(root).parent != kNoEntry)
         return false;
     std::u16string name; // wpath() would end in '\'
     wtf8::decodeAppend(name, index.name(root));
@@ -608,7 +608,7 @@ std::optional<ShareContent::Clock::duration> ShareContent::slice(std::stop_token
         Listed listed;
         {
             const auto lock = index.readLock();
-            if (index.entry(f.entry).isDeleted())
+            if (index.scan(f.entry).isDeleted())
                 continue;
             path = index.wpath(f.entry);
             listed = {index.size(f.entry), index.modified(f.entry)};
@@ -681,7 +681,7 @@ namespace {
 EntryId rootOf(const FileIndex& index, const std::wstring& path)
 {
     for (const EntryId r : index.roots()) {
-        if (index.entry(r).isDeleted())
+        if (index.scan(r).isDeleted())
             continue;
         std::u16string wide;
         wtf8::decodeAppend(wide, index.name(r));

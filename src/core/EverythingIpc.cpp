@@ -499,7 +499,7 @@ Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const st
     if (search.roots) {
         const auto lock = index.readLock();
         for (const EntryId id : index.roots()) {
-            if (index.entry(id).isDeleted())
+            if (index.scan(id).isDeleted())
                 continue;
             Row row;
             row.name = index.wpath(id); // "C:" as Everything names a drive
@@ -525,7 +525,7 @@ Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const st
     NameSearchOptions options;
     for (const QString& folder : search.folders) {
         const EntryId id = index.findPath(folder.toStdWString());
-        if (id == kNoEntry || !index.entry(id).isDir())
+        if (id == kNoEntry || !index.scan(id).isDir())
             return out; // not in the index: nothing is known to be in it
         options.filter.folders.push_back(id);
     }
@@ -546,13 +546,13 @@ Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const st
         return out;
     std::vector<NameHit>& hits = found.hits;
     if (search.kind == Kind::Files)
-        std::erase_if(hits, [&index](const NameHit& hit) { return index.entry(hit.id).isDir(); });
+        std::erase_if(hits, [&index](const NameHit& hit) { return index.scan(hit.id).isDir(); });
     std::size_t total = search.kind == Kind::Files ? hits.size() : std::max(found.totalMatches, hits.size());
     total = std::min(total, std::size_t {search.count.value_or(0xFFFF'FFFFu)});
     if (hits.size() > most)
         hits.resize(most);
     const auto folders
-        = static_cast<std::size_t>(std::ranges::count_if(hits, [&index](const NameHit& hit) { return index.entry(hit.id).isDir(); }));
+        = static_cast<std::size_t>(std::ranges::count_if(hits, [&index](const NameHit& hit) { return index.scan(hit.id).isDir(); }));
     out.totalItems = static_cast<std::uint32_t>(std::min<std::size_t>(total, 0xFFFF'FFFFu));
     // Of those kept: past kMostRows the two are not counted apart.
     out.totalFolders = static_cast<std::uint32_t>(folders);
@@ -566,7 +566,7 @@ Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const st
     out.rows.reserve(count);
     for (std::size_t i = first; i < first + count; ++i) {
         const EntryId id = hits[i].id;
-        const Entry& entry = index.entry(id);
+        const EntryScan& entry = index.scan(id);
         Row row;
         row.folder = entry.isDir();
         row.root = (entry.flags & EntryFlag::Root) != 0;

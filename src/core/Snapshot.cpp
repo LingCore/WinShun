@@ -573,7 +573,7 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
     shared = {};
 
     // Folder record numbers, for the folders that made it into the file.
-    const auto saved = [&](EntryId id) { return id < newId.size() && newId[id] != kNoEntry && index.entry(id).isDir(); };
+    const auto saved = [&](EntryId id) { return id < newId.size() && newId[id] != kNoEntry && index.scan(id).isDir(); };
     std::uint32_t tables = 0;
     for (const EntryId root : index.roots())
         tables += index.folderRecords(root) && saved(root) ? 1 : 0;
@@ -725,7 +725,7 @@ std::optional<Contents> load(const QString& filePath)
         }
         // Ids are assigned sequentially, so file order == entry id.
         const auto parent = static_cast<EntryId>(i - back);
-        if (back > i || index->entry(parent).isDeleted() || !index->entry(parent).isDir())
+        if (back > i || index->scan(parent).isDeleted() || !index->scan(parent).isDir())
             return false;
         index->addStored(parent, offset, flags);
         return true;
@@ -825,7 +825,7 @@ std::optional<Contents> load(const QString& filePath)
     for (std::uint32_t t = 0; t < tables && r.ok(); ++t) {
         const auto root = r.get<EntryId>();
         const auto n = r.get<std::uint32_t>();
-        if (!r.ok() || root >= count || !(index->entry(root).flags & EntryFlag::Root))
+        if (!r.ok() || root >= count || !(index->scan(root).flags & EntryFlag::Root))
             return std::nullopt;
         if (version >= 6) {
             const auto folderBytes = r.get<std::uint32_t>();
@@ -843,7 +843,7 @@ std::optional<Contents> load(const QString& filePath)
                 const std::uint64_t z = (*records)[k];
                 record += z & 1 ? -static_cast<std::int64_t>((z + 1) >> 1) : static_cast<std::int64_t>(z >> 1);
                 if (folder >= count || record < 0 || record > std::numeric_limits<std::uint32_t>::max()
-                    || !index->entry(static_cast<EntryId>(folder)).isDir())
+                    || !index->scan(static_cast<EntryId>(folder)).isDir())
                     return std::nullopt;
                 index->setFolderRecord(root, static_cast<std::uint32_t>(record), static_cast<EntryId>(folder));
             }
@@ -852,7 +852,7 @@ std::optional<Contents> load(const QString& filePath)
         for (std::uint32_t k = 0; k < n; ++k) {
             const auto record = r.get<std::uint32_t>();
             const auto folder = r.get<EntryId>();
-            if (!r.ok() || folder >= count || !index->entry(folder).isDir())
+            if (!r.ok() || folder >= count || !index->scan(folder).isDir())
                 return std::nullopt;
             index->setFolderRecord(root, record, folder);
         }

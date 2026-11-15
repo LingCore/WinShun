@@ -40,9 +40,9 @@ inline constexpr std::uint8_t Inherited = LowPriority | Hidden | Remote;
 // One file or folder. Children form a sibling list, newest first. Taking a
 // child out of it needs the one before: found by walking a small folder;
 // a big one has a table of its children that knows (see ChildTable).
-// Packed: there is one per file and folder, and a name search reads them
-// all (unaligned reads cost nothing on x64). The name's length and that of
-// its extension are kept with the name (see FileIndex::name).
+// The name's length and that of its extension are kept with the name (see
+// FileIndex::name). A value: the index keeps it in two parts (EntryScan,
+// EntryLinks) and puts one together when asked (FileIndex::entry).
 #pragma pack(push, 1)
 struct Entry {
     EntryId parent = kNoEntry;
@@ -58,8 +58,42 @@ struct Entry {
     bool isDeleted() const noexcept { return flags & EntryFlag::Deleted; }
     EntryId firstChild() const noexcept { return isDir() ? childOrSize : kNoEntry; }
 };
+
+// The part of an entry a search reads: where its name is, the folder it is
+// in, what it is. Kept apart from the rest and packed (unaligned reads cost
+// nothing on x64): a pass over the index goes through nine bytes an entry,
+// and the eight of the other part stay where they are, on the disk if
+// Windows took them there. What takes this part takes a whole Entry as well.
+struct EntryScan {
+    std::uint32_t nameOffset = 0; // in the index's name storage
+    EntryId parent = kNoEntry;
+    std::uint8_t flags = 0;
+
+    constexpr EntryScan() noexcept = default;
+    constexpr EntryScan(std::uint32_t name, EntryId in, std::uint8_t is) noexcept
+        : nameOffset(name)
+        , parent(in)
+        , flags(is)
+    {
+    }
+    constexpr EntryScan(const Entry& e) noexcept // NOLINT(google-explicit-constructor): see above
+        : nameOffset(e.nameOffset)
+        , parent(e.parent)
+        , flags(e.flags)
+    {
+    }
+    bool isDir() const noexcept { return flags & EntryFlag::Directory; }
+    bool isDeleted() const noexcept { return flags & EntryFlag::Deleted; }
+};
+
+// The other part: a folder's list of children, a file's size. Read by
+// whoever walks a folder or asks how large a file is.
+struct EntryLinks {
+    std::uint32_t childOrSize = kNoEntry; // Entry::childOrSize
+    EntryId nextSibling = kNoEntry;
+};
 #pragma pack(pop)
-static_assert(sizeof(Entry) == 17, "keep Entry compact: there is one per file and folder");
+static_assert(sizeof(EntryScan) == 9 && sizeof(EntryLinks) == 8, "keep the entries compact: there is one per file and folder");
 
 // When a file or folder was last written: seconds since 1970 (UTC), 0 when
 // not known. Good until 2106.
@@ -258,30 +292,36 @@ public:
     std::size_t slotCount() const noexcept { return m_count; } // includes deleted slots
     std::size_t liveCount() const noexcept { return m_live.load(std::memory_order_relaxed); }
 
-    const Entry& entry(EntryId id) const noexcept { return m_chunks[id >> kChunkBits][id & (kChunkSize - 1)]; }
-    std::string_view name(const Entry& e) const noexcept { return nameAt(e.nameOffset); }
-    std::string_view name(EntryId id) const noexcept { return name(entry(id)); }
+    // An entry, put together from its two parts: a value, not a place in the index.
+    Entry entry(EntryId id) const noexcept
+    {
+        const EntryScan& s = scan(id);
+        const EntryLinks& l = links(id);
+        return {s.parent, l.childOrSize, l.nextSibling, s.nameOffset, s.flags};
+    }
+    // Only what a search reads of it (EntryScan): for a pass over the index
+    // and what it calls for every entry, which then leave the other part alone.
+    const EntryScan& scan(EntryId id) const noexcept { return m_scan[id >> kChunkBits][id & (kChunkSize - 1)]; }
+    EntryId parent(EntryId id) const noexcept { return scan(id).parent; }
+    std::string_view name(const EntryScan& e) const noexcept { return nameAt(e.nameOffset); }
+    std::string_view name(EntryId id) const noexcept { return name(scan(id)); }
     // Bytes after the last '.' of a file's name; 0 for folders and names without one.
-    std::size_t extLength(const Entry& e) const noexcept { return e.isDir() ? 0 : nameExtLength(e.nameOffset); }
+    std::size_t extLength(const EntryScan& e) const noexcept { return e.isDir() ? 0 : nameExtLength(e.nameOffset); }
     // A file's name and its extLength, from one read of the record (for passes over every file).
-    std::string_view fileName(const Entry& e, std::size_t& extLength) const noexcept
+    std::string_view fileName(const EntryScan& e, std::size_t& extLength) const noexcept
     {
         const char* record = nameRecord(m_names, e.nameOffset);
         const std::string_view name = storedName(record);
         extLength = static_cast<unsigned char>(name.data()[-1]) & 0x7F;
         return name;
     }
-    // Kept apart from the entries, which name searches go through: only the
-    // matches have theirs looked at.
+    // Kept apart from what name searches go through: only the matches have
+    // theirs looked at.
     FileTime modified(EntryId id) const noexcept { return m_times[id >> kChunkBits][id & (kChunkSize - 1)]; }
     FileTime created(EntryId id) const noexcept { return m_created[id >> kChunkBits][id & (kChunkSize - 1)]; }
     // A file's size, packed (packSize); kUnknownSize for a folder, or a file
     // whose size was never read. Stored in the entry's unused child link.
-    FileSize size(EntryId id) const noexcept
-    {
-        const Entry& e = entry(id);
-        return e.isDir() ? kUnknownSize : e.childOrSize;
-    }
+    FileSize size(EntryId id) const noexcept { return scan(id).isDir() ? kUnknownSize : links(id).childOrSize; }
 
     // Bytes held, by part (for measuring). Caller holds a read lock.
     struct MemoryUse {
@@ -304,12 +344,66 @@ public:
     // (tables on the general heap) is not in the list. Caller holds a read lock.
     std::vector<std::pair<const void*, std::size_t>> memoryBlocks() const;
 
-    // Warms entries and names only for small, privately held indexes after
-    // IdleTrim. Large mapped indexes stay demand-paged. Caller holds a read lock.
+    // Warms what a search reads (EntryScan, the names) only for small,
+    // privately held indexes after IdleTrim. Large mapped indexes stay
+    // demand-paged. Caller holds a read lock.
     void warm() const noexcept;
 
-    std::size_t chunkCount() const noexcept { return m_chunks.size(); }
-    std::span<const Entry> chunk(std::size_t index) const noexcept;
+    // The entries of a chunk, each put together as entry() does: for a pass
+    // that reads all of an entry. One that reads what a search reads takes
+    // scanChunk(), and leaves the other part alone.
+    class Chunk {
+    public:
+        class iterator {
+        public:
+            using value_type = Entry;
+            using difference_type = std::ptrdiff_t;
+            iterator() noexcept = default;
+            iterator(const Chunk* chunk, std::size_t at) noexcept
+                : m_chunk(chunk)
+                , m_at(at)
+            {
+            }
+            Entry operator*() const noexcept { return (*m_chunk)[m_at]; }
+            iterator& operator++() noexcept
+            {
+                ++m_at;
+                return *this;
+            }
+            iterator operator++(int) noexcept
+            {
+                const iterator before = *this;
+                ++m_at;
+                return before;
+            }
+            bool operator==(const iterator&) const noexcept = default;
+
+        private:
+            const Chunk* m_chunk = nullptr;
+            std::size_t m_at = 0;
+        };
+        Chunk(const EntryScan* scan, const EntryLinks* links, std::size_t size) noexcept
+            : m_scan(scan)
+            , m_links(links)
+            , m_size(size)
+        {
+        }
+        std::size_t size() const noexcept { return m_size; }
+        Entry operator[](std::size_t i) const noexcept
+        {
+            return {m_scan[i].parent, m_links[i].childOrSize, m_links[i].nextSibling, m_scan[i].nameOffset, m_scan[i].flags};
+        }
+        iterator begin() const noexcept { return {this, 0}; }
+        iterator end() const noexcept { return {this, m_size}; }
+
+    private:
+        const EntryScan* m_scan;
+        const EntryLinks* m_links;
+        std::size_t m_size;
+    };
+    std::size_t chunkCount() const noexcept { return m_scan.size(); }
+    Chunk chunk(std::size_t index) const noexcept;
+    std::span<const EntryScan> scanChunk(std::size_t index) const noexcept;
     const std::vector<EntryId>& roots() const noexcept { return m_roots; }
 
     // Names compare ignoring ASCII case, as NTFS does for most names.
@@ -342,9 +436,8 @@ public:
     void setCreated(EntryId id, FileTime time) noexcept { m_created[id >> kChunkBits][id & (kChunkSize - 1)] = time; }
     void setSize(EntryId id, FileSize size) noexcept
     {
-        Entry& e = mut(id);
-        if (!e.isDir())
-            e.childOrSize = size;
+        if (!scan(id).isDir())
+            linksMut(id).childOrSize = size;
     }
 
     // While interning is on, identical names share one copy (only a third of
@@ -486,7 +579,9 @@ private:
     };
     static constexpr std::size_t kNoSlot = ~std::size_t {0};
 
-    Entry& mut(EntryId id) noexcept { return m_chunks[id >> kChunkBits][id & (kChunkSize - 1)]; }
+    const EntryLinks& links(EntryId id) const noexcept { return m_links[id >> kChunkBits][id & (kChunkSize - 1)]; }
+    EntryScan& scanMut(EntryId id) noexcept { return m_scan[id >> kChunkBits][id & (kChunkSize - 1)]; }
+    EntryLinks& linksMut(EntryId id) noexcept { return m_links[id >> kChunkBits][id & (kChunkSize - 1)]; }
     template <typename Lookup> EntryId walkPath(std::wstring_view path, Lookup&& lookup) const;
     std::pair<EntryId, std::size_t> shareRootOf(std::wstring_view path) const;
     EntryId tableFind(const ChildTable& table, std::string_view name, bool exactCase) const noexcept;
@@ -519,8 +614,9 @@ private:
     mutable std::shared_mutex m_writerGate; // see longReadLock()
     struct Storage;
     std::unique_ptr<Storage> m_storage;
-    std::vector<std::shared_ptr<Entry[]>> m_chunks;
-    std::vector<std::shared_ptr<FileTime[]>> m_times; // parallel to m_chunks
+    std::vector<std::shared_ptr<EntryScan[]>> m_scan; // an entry's two parts, a chunk of each
+    std::vector<std::shared_ptr<EntryLinks[]>> m_links;
+    std::vector<std::shared_ptr<FileTime[]>> m_times; // parallel to m_scan
     std::vector<std::shared_ptr<FileTime[]>> m_created;
     std::vector<std::shared_ptr<char[]>> m_names;
     std::size_t m_count = 0;

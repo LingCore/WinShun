@@ -19,7 +19,7 @@ static_assert(FileIndex::kChunkSize % kSliceSize == 0);
 constexpr int kLowPriorityCost = 35; // under system, program and tool folders
 
 // Ranking signals that do not depend on the query.
-int staticBonus(const Entry& e) noexcept
+int staticBonus(const EntryScan& e) noexcept
 {
     int bonus = 0;
     if (e.isDir())
@@ -34,7 +34,7 @@ int staticBonus(const Entry& e) noexcept
 // What a file of a type listed first (PreferredTypes) scores more; 0 for
 // any other. Named just what was typed, it is the program asked for: what
 // being in a program folder took off is given back. Asked for matches only.
-int preferredBonus(const FileIndex& index, const Entry& e, const NameMatcher& matcher, const PreferredTypes& preferred)
+int preferredBonus(const FileIndex& index, const EntryScan& e, const NameMatcher& matcher, const PreferredTypes& preferred)
 {
     std::size_t extLength = 0;
     const std::string_view name = index.fileName(e, extLength);
@@ -332,7 +332,7 @@ struct FolderOrder {
     bool descending;
     bool operator()(const NameHit& a, const NameHit& b) const noexcept
     {
-        const EntryId x = index.entry(a.id).parent, y = index.entry(b.id).parent;
+        const EntryId x = index.scan(a.id).parent, y = index.scan(b.id).parent;
         const auto name = [&](EntryId id) { return id == kNoEntry ? std::string_view() : index.name(id); };
         const int compared = compareNames(name(x), name(y));
         return compared != 0 ? (descending ? compared > 0 : compared < 0) : NameOrder {index, descending}(a, b);
@@ -360,7 +360,7 @@ std::vector<std::uint32_t> folderRanks(const FileIndex& index)
             stack.push_back(*it);
     };
     std::vector<EntryId> roots(index.roots());
-    std::erase_if(roots, [&](EntryId r) { return index.entry(r).isDeleted(); });
+    std::erase_if(roots, [&](EntryId r) { return index.scan(r).isDeleted(); });
     pushSorted(roots);
     std::uint32_t next = 1;
     while (!stack.empty()) {
@@ -388,8 +388,8 @@ struct PathOrder {
     {
         if (a.id == b.id)
             return false;
-        const EntryId pa = index.entry(a.id).parent;
-        const EntryId pb = index.entry(b.id).parent;
+        const EntryId pa = index.scan(a.id).parent;
+        const EntryId pb = index.scan(b.id).parent;
         int c = 0;
         if (pa != pb) {
             const std::uint32_t ra = pa == kNoEntry ? 0 : ranks[pa];
@@ -414,7 +414,7 @@ public:
     {
         m_cache.fill({kNoEntry, false});
     }
-    bool operator()(const Entry& e)
+    bool operator()(const EntryScan& e)
     {
         const EntryId parent = e.parent;
         if (parent == kNoEntry)
@@ -422,7 +422,7 @@ public:
         Slot& slot = m_cache[parent & (m_cache.size() - 1)];
         if (slot.parent != parent) {
             bool under = false;
-            for (EntryId cur = parent; cur != kNoEntry && !under; cur = m_index.entry(cur).parent)
+            for (EntryId cur = parent; cur != kNoEntry && !under; cur = m_index.parent(cur))
                 under = std::binary_search(m_folders.begin(), m_folders.end(), cur);
             slot = {parent, under};
         }
@@ -525,10 +525,11 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
             }
             const std::size_t first = slice * kSliceSize;
             const std::size_t count = std::min(kSliceSize, slotCount - first);
-            const Entry* entries
-                = index.chunk(first >> FileIndex::kChunkBits).data() + (first & (FileIndex::kChunkSize - 1));
+            // What a search reads of each entry, alone (EntryScan): the folders' lists stay where they are.
+            const EntryScan* entries
+                = index.scanChunk(first >> FileIndex::kChunkBits).data() + (first & (FileIndex::kChunkSize - 1));
             for (std::size_t i = 0; i < count; ++i) {
-                const Entry& e = entries[i];
+                const EntryScan& e = entries[i];
                 if (e.flags & (EntryFlag::Deleted | EntryFlag::Root))
                     continue;
                 if (options.foldersOnly && !e.isDir())
@@ -755,7 +756,7 @@ public:
         // Up to a folder known already (or the top), then down again.
         m_chain.clear();
         bool inside = false;
-        for (EntryId cur = folder; cur != kNoEntry; cur = m_index.entry(cur).parent) {
+        for (EntryId cur = folder; cur != kNoEntry; cur = m_index.parent(cur)) {
             if (const auto it = m_known.find(cur); it != m_known.end()) {
                 inside = it->second;
                 break;
@@ -793,7 +794,7 @@ private:
 EntryId workTree(const FileIndex& index, EntryId folder)
 {
     std::vector<EntryId> chain; // folder first, the drive last
-    for (EntryId cur = folder; cur != kNoEntry; cur = index.entry(cur).parent)
+    for (EntryId cur = folder; cur != kNoEntry; cur = index.parent(cur))
         chain.push_back(cur);
     const auto level = [&](std::size_t k) { return chain[chain.size() - 1 - k]; }; // 0: the drive
     const bool inProfile = chain.size() >= 3 && text::equalsIgnoreAsciiCase(index.name(level(1)), "Users");
@@ -829,12 +830,12 @@ NewestOutput newestFiles(const FileIndex& index, const NewestOptions& options, W
         }
         const std::size_t first = slice * kSliceSize;
         const std::size_t count = std::min(kSliceSize, slotCount - first);
-        const Entry* entries
-            = index.chunk(first >> FileIndex::kChunkBits).data() + (first & (FileIndex::kChunkSize - 1));
+        const EntryScan* entries
+            = index.scanChunk(first >> FileIndex::kChunkBits).data() + (first & (FileIndex::kChunkSize - 1));
         TopK<RankBy::Newest> top(kept);
         OutputTrees outputs(index);
         for (std::size_t i = 0; i < count; ++i) {
-            const Entry& e = entries[i];
+            const EntryScan& e = entries[i];
             if ((e.flags & skipped) || e.isDir())
                 continue;
             const auto id = static_cast<EntryId>(first + i);
@@ -890,7 +891,7 @@ NewestOutput newestFiles(const FileIndex& index, const NewestOptions& options, W
             sorted = static_cast<std::size_t>(to - hits.begin());
         }
         const NameHit& hit = hits[i];
-        const EntryId parent = index.entry(hit.id).parent;
+        const EntryId parent = index.scan(hit.id).parent;
         if (parent == kNoEntry)
             continue;
         std::size_t& inFolder = perFolder[parent];
@@ -901,7 +902,7 @@ NewestOutput newestFiles(const FileIndex& index, const NewestOptions& options, W
         ++inTree;
         if (!options.folders)
             output.hits.push_back(hit);
-        else if (!(index.entry(parent).flags & EntryFlag::Root)) // a drive is no place one works in
+        else if (!(index.scan(parent).flags & EntryFlag::Root)) // a drive is no place one works in
             output.hits.push_back({parent, 0, hit.modified});
     }
     return output;
@@ -976,17 +977,17 @@ std::vector<EntryId> findRelativePath(const FileIndex& index, const std::vector<
         }
         const std::size_t first = slice * kSliceSize;
         const std::size_t count = std::min(kSliceSize, slotCount - first);
-        const Entry* entries
-            = index.chunk(first >> FileIndex::kChunkBits).data() + (first & (FileIndex::kChunkSize - 1));
+        const EntryScan* entries
+            = index.scanChunk(first >> FileIndex::kChunkBits).data() + (first & (FileIndex::kChunkSize - 1));
         std::vector<EntryId>& found = partial[slice];
         for (std::size_t i = 0; i < count && found.size() < limit; ++i) {
-            const Entry& e = entries[i];
+            const EntryScan& e = entries[i];
             if ((e.flags & (EntryFlag::Deleted | EntryFlag::Root)) || (foldersOnly && !e.isDir())
                 || !named.has(e.nameOffset))
                 continue;
             // Then the folders it lies in, inside out.
             std::size_t k = names.size() - 1;
-            for (EntryId cur = e.parent; k > 0 && cur != kNoEntry; cur = index.entry(cur).parent, --k) {
+            for (EntryId cur = e.parent; k > 0 && cur != kNoEntry; cur = index.parent(cur), --k) {
                 if (!text::equalsIgnoreAsciiCase(index.name(cur), names[k - 1]))
                     break;
             }
