@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.tools",
   "name": {"zh": "小工具", "en": "Tools"},
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": {"zh": "计算器、单位换算、颜色、时间戳、UUID、Base64、哈希，Enter 复制结果", "en": "Calculator, unit conversion, colours, timestamps, UUIDs, Base64 and hashes; Enter copies"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",

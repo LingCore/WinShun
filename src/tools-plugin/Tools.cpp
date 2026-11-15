@@ -7,7 +7,8 @@
 // Win顺. Its commands:
 //
 //   =      calculator and unit conversion ("= 1+2*3", "12 inch to cm"; both
-//          also without the keyword, by regex)
+//          also without the keyword, by regex); the sums whose result was
+//          taken are kept and listed under it, a row each (CalcHistory)
 //   color  colour notations ("#ff8800", "rgb(255, 136, 0)"; by regex too)
 //   ts     timestamps to dates and back ("ts", "ts 1700000000", "ts 2024-01-02 15:04")
 //   uuid   a new UUID
@@ -19,18 +20,24 @@
 #include "winshun.h"
 
 #include "Calc.h"
+#include "CalcHistory.h"
 #include "Codec.h"
 #include "Color.h"
 #include "Units.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <string>
 #include <vector>
 
+using winshun::ActionRequest;
+using winshun::Effects;
 using winshun::Item;
 using winshun::Items;
+using winshun::Json;
 using winshun::Query;
 
 namespace {
@@ -41,6 +48,8 @@ constexpr const char* kIdIcon = "glyph:U+E8D7"; // Tag
 constexpr const char* kCodeIcon = "glyph:U+E943"; // Code
 constexpr const char* kHashIcon = "glyph:U+E928"; // Fingerprint
 constexpr std::uint64_t kMaxHashFile = 64ull << 20;
+constexpr std::size_t kSumsListed = 50; // of the sums kept, under "="
+constexpr std::size_t kSumsBelow = 20; // ... and under a sum being typed
 
 class Tools : public winshun::Plugin {
 protected:
@@ -63,9 +72,52 @@ protected:
         return {};
     }
 
+    void initialized() override
+    {
+        m_sums.open(dataDir().empty() ? std::string() : dataDir() + "\\calc-history.txt", std::time(nullptr));
+    }
+
+    // Enter on a sum's result keeps the sum (CalcHistory); on a sum kept, its
+    // result is copied again, or the whole line, or it is taken off the list.
+    Effects action(const ActionRequest& a) override
+    {
+        if (a.command != "calc")
+            return Plugin::action(a);
+        const std::string id = a.item["id"].toString();
+        const Json& data = a.item["data"];
+        if (id == "r" && data["sum"].isString()) {
+            m_sums.add({std::time(nullptr), data["sum"].toString(), a.item["title"].toString(), a.item["copy"].toString()});
+            return Plugin::action(a);
+        }
+        if (id == "clear") {
+            m_sums.clear();
+            return {winshun::effect::replace(calcHelp()), winshun::effect::notify(zh("计算记录已清空", "The sums were cleared")),
+                winshun::effect::keep()};
+        }
+        if (!data["when"].isNumber())
+            return Plugin::action(a);
+        const std::string sum = data["sum"].toString();
+        if (a.action == "remove") {
+            m_sums.remove(data["when"].toInt(), sum);
+            Items left = sums(data["keyword"].toString(), kSumsListed, true);
+            if (left.empty())
+                left = calcHelp();
+            return {winshun::effect::replace(left), winshun::effect::keep()};
+        }
+        if (a.action == "line") {
+            const std::string line = sum + " = " + a.item["copy"].toString();
+            return {winshun::effect::copy(line), winshun::effect::notify(zh("已复制算式和结果", "Copied the sum and its result")),
+                winshun::effect::hide()};
+        }
+        return Plugin::action(a);
+    }
+
 private:
     const char* zh(const char* chinese, const char* english) const { return this->chinese() ? chinese : english; }
     bool pushed(const Query& q) const { return q.trigger != "keyword"; }
+    // Asked by an AI assistant or the command line: the sums kept are the
+    // user's to see, and such a sum is not kept.
+    bool commanded(const Query& q) const { return q.source == "command"; }
 
     Item help(const std::string& id, const std::string& title, const std::string& subtitle, const char* icon) const
     {
@@ -73,6 +125,49 @@ private:
     }
 
     // ---- = -----------------------------------------------------------------------
+
+    Items calcHelp() const
+    {
+        Items items;
+        items.push_back(help("h1", zh("输入算式，Enter 复制结果", "Type an expression; Enter copies the result"),
+            zh("(1+2)*3、2^10、sqrt(2)、15% 、5!、0xff、pi、sin(rad(30))", "(1+2)*3, 2^10, sqrt(2), 15%, 5!, 0xff, pi, sin(rad(30))"), kCalcIcon));
+        items.push_back(help("h2", zh("或者换算单位", "Or convert units"),
+            zh("12 inch to cm、100 f to c、1.5 GB in MB、3 斤 换成 kg、2 小时 to 分钟", "12 inch to cm, 100 f to c, 1.5 GB in MB, 2 h to min"), kCalcIcon));
+        items.push_back(help("h3", zh("算过的会记在这里", "Sums are kept here"),
+            zh("按 Enter 复制过结果的算式，一行一条列在“=”下面，方便回头核对", "A sum whose result you took with Enter is listed under “=”, a row each, to check later"), kTimeIcon));
+        return items;
+    }
+
+    // The sums kept, newest first, a row each: the result, the sum and when
+    // under it. Tab puts the sum back in the box, to change and reckon again.
+    Items sums(const std::string& keyword, std::size_t most, bool withClear) const
+    {
+        Items items;
+        const long long now = std::time(nullptr);
+        const std::vector<tools::calc::Record>& records = m_sums.records();
+        const std::size_t count = std::min(most, records.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            const tools::calc::Record& r = records[i];
+            Item item("s" + std::to_string(r.when) + "-" + std::to_string(i), r.shown,
+                r.expression + " · " + tools::calc::whenText(r.when, now, chinese()));
+            item.withIcon(kTimeIcon)
+                .withCopy(r.plain)
+                .withPreview(r.expression + " = " + r.shown)
+                .withAutocomplete((keyword.empty() ? std::string("=") : keyword) + " " + r.expression)
+                .withScore(60 - static_cast<int>(std::min<std::size_t>(i, 55)))
+                .withData(Json::Object {{"when", static_cast<double>(r.when)}, {"sum", r.expression}, {"keyword", keyword}})
+                .withActions({{"copy", zh("复制结果", "Copy the result"), "Enter"},
+                    {"line", zh("复制算式和结果", "Copy the sum and its result"), "Ctrl+Enter"},
+                    {"remove", zh("删除这条记录", "Remove this sum"), "Shift+Enter"}});
+            items.push_back(std::move(item));
+        }
+        if (withClear && count > 0)
+            items.push_back(Item("clear", zh("清空计算记录", "Clear the sums"),
+                std::to_string(records.size()) + zh(" 条；保留最近一个月、最多 200 条", " kept; a month's, 200 at most"))
+                                .withIcon("glyph:U+E74D")
+                                .withScore(1));
+        return items;
+    }
 
     Items calc(const Query& q)
     {
@@ -83,11 +178,9 @@ private:
         if (text.empty()) {
             if (pushed(q))
                 return items;
-            items.push_back(help("h1", zh("输入算式，Enter 复制结果", "Type an expression; Enter copies the result"),
-                zh("(1+2)*3、2^10、sqrt(2)、15% 、5!、0xff、pi、sin(rad(30))", "(1+2)*3, 2^10, sqrt(2), 15%, 5!, 0xff, pi, sin(rad(30))"), kCalcIcon));
-            items.push_back(help("h2", zh("或者换算单位", "Or convert units"),
-                zh("12 inch to cm、100 f to c、1.5 GB in MB、3 斤 换成 kg、2 小时 to 分钟", "12 inch to cm, 100 f to c, 1.5 GB in MB, 2 h to min"), kCalcIcon));
-            return items;
+            if (!commanded(q))
+                items = sums(q.keyword, kSumsListed, true);
+            return items.empty() ? calcHelp() : items;
         }
         // A conversion first: "12 inch to cm" is no arithmetic.
         if (const auto request = tools::units::parse(text)) {
@@ -119,12 +212,19 @@ private:
         const std::string shown = tools::calc::format(result.value);
         const std::string plain = tools::calc::format(result.value, true);
         items.push_back(Item("r", shown, text + " = " + plain).withIcon(kCalcIcon).withCopy(plain).withScore(95));
+        if (!commanded(q))
+            items.back().withData(Json::Object {{"sum", text}}); // Enter keeps it: action()
         if (!pushed(q)) {
             const std::string hex = tools::calc::hex(result.value);
             if (!hex.empty() && result.value != 0) {
-                items.push_back(Item("hex", hex, zh("十六进制", "Hexadecimal")).withIcon(kCalcIcon).withCopy(hex));
-                items.push_back(Item("bin", tools::calc::binary(result.value), zh("二进制", "Binary")).withIcon(kCalcIcon).withCopy(tools::calc::binary(result.value)));
-                items.push_back(Item("oct", tools::calc::octal(result.value), zh("八进制", "Octal")).withIcon(kCalcIcon).withCopy(tools::calc::octal(result.value)));
+                items.push_back(Item("hex", hex, zh("十六进制", "Hexadecimal")).withIcon(kCalcIcon).withCopy(hex).withScore(70));
+                items.push_back(Item("bin", tools::calc::binary(result.value), zh("二进制", "Binary")).withIcon(kCalcIcon).withCopy(tools::calc::binary(result.value)).withScore(69));
+                items.push_back(Item("oct", tools::calc::octal(result.value), zh("八进制", "Octal")).withIcon(kCalcIcon).withCopy(tools::calc::octal(result.value)).withScore(68));
+            }
+            // The sums before this one under it, to check against.
+            if (!commanded(q)) {
+                for (Item& kept : sums(q.keyword, kSumsBelow, false))
+                    items.push_back(std::move(kept));
             }
         }
         return items;
@@ -328,6 +428,8 @@ private:
         }
         return items;
     }
+
+    tools::calc::History m_sums;
 };
 
 } // namespace

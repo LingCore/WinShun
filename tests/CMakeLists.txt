@@ -1328,6 +1328,7 @@ add_dependencies(tst_cli ws)
 # overflow, bad input) worth pinning down.
 qt_add_executable(tst_tools tst_tools.cpp
     ${PROJECT_SOURCE_DIR}/src/tools-plugin/Calc.cpp ${PROJECT_SOURCE_DIR}/src/tools-plugin/Units.cpp
+    ${PROJECT_SOURCE_DIR}/src/tools-plugin/CalcHistory.cpp
     ${PROJECT_SOURCE_DIR}/src/tools-plugin/Color.cpp ${PROJECT_SOURCE_DIR}/src/tools-plugin/Codec.cpp)
 target_include_directories(tst_tools PRIVATE ${PROJECT_SOURCE_DIR}/src/tools-plugin)
 target_compile_definitions(tst_tools PRIVATE WINSHUN_TOOLS_MANIFEST="${PROJECT_SOURCE_DIR}/plugins/winshun.tools/plugin.json")

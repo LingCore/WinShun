@@ -12,6 +12,7 @@
 add_library(wstools STATIC
     Tools.cpp Tools.h
     Calc.cpp Calc.h
+    CalcHistory.cpp CalcHistory.h
     Codec.cpp Codec.h
     Color.cpp Color.h
     Units.cpp Units.h

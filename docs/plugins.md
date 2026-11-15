@@ -247,6 +247,8 @@ Win顺 → 插件：
 {"jsonrpc":"2.0","id":5,"method":"shutdown"}  ← {"jsonrpc":"2.0","id":5,"result":{}} 然后退出
 ```
 
+`query` 的 `params` 里带 `"source": "command"` 时，这次查询不是用户在搜索框里打的，而是 AI 助手或 `ws` 命令行调用的（0.31.0 起）。只该给用户自己看的内容（比如使用记录）不要放进这种回答里。
+
 插件 → Win顺：
 
 ```

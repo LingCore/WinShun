@@ -2276,7 +2276,9 @@ void Host::sendCommand(Plugin& p, CommandCall& call)
     const Command* command = e ? e->manifest->command(call.commandId) : nullptr;
     const QString keyword = command && !command->keywords.isEmpty() ? command->keywords.first() : QString();
     QJsonObject params {{u"queryId"_s, static_cast<double>(call.id)}, {u"command"_s, call.commandId}, {u"trigger"_s, u"keyword"_s},
-        {u"text"_s, call.text}, {u"raw"_s, keyword.isEmpty() ? call.text : keyword + u' ' + call.text}, {u"limit"_s, call.limit}};
+        {u"text"_s, call.text}, {u"raw"_s, keyword.isEmpty() ? call.text : keyword + u' ' + call.text}, {u"limit"_s, call.limit},
+        // Not typed by the user: a plugin leaves what is theirs alone to see out of it.
+        {u"source"_s, u"command"_s}};
     if (!keyword.isEmpty())
         params.insert(u"keyword"_s, keyword);
     const std::uint64_t id = call.id;

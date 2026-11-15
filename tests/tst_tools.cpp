@@ -2,16 +2,19 @@
 // calculator, the unit conversions, colours and the codecs, at their edges.
 
 #include "Calc.h"
+#include "CalcHistory.h"
 #include "Codec.h"
 #include "Color.h"
 #include "Units.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <algorithm>
@@ -194,6 +197,70 @@ private slots:
         QCOMPARE(value("500-498-1"), 1.0);
         QCOMPARE(value("1/2/2"), 0.25);
         QCOMPARE(value("1+2*3/4-5"), -2.5);
+    }
+
+    // The sums kept (CalcHistory): newest first, across a restart, the same
+    // one twice in a row once, the old and the too many dropped.
+    void calcHistory()
+    {
+        QTemporaryDir folder;
+        QVERIFY(folder.isValid());
+        // In a folder that is not there yet, with Chinese in its path.
+        const std::string file = QDir::toNativeSeparators(folder.filePath(u"数据/calc-history.txt"_s)).toStdString();
+        const long long now = 1'800'000'000;
+        calc::History history;
+        history.open(file, now);
+        QVERIFY(history.records().empty());
+        history.add({now - 120, "3633+1414+1698", "6,745", "6745"});
+        history.add({now - 60, "1050 + 1490\t×\n2", "4,030", "4030"}); // on one line, whatever was typed
+        history.add({now - 30, "1050 + 1490 × 2", "4,030", "4030"}); // again: once, at the later time
+        history.add({now, "", "1", "1"}); // nothing to keep
+        QCOMPARE(history.records().size(), 2u);
+        QCOMPARE(history.records()[0], (calc::Record {now - 30, "1050 + 1490 × 2", "4,030", "4030"}));
+        QCOMPARE(history.records()[1].expression, std::string("3633+1414+1698"));
+
+        calc::History again; // another run
+        again.open(file, now);
+        QCOMPARE(again.records(), history.records());
+        QVERIFY(!again.remove(now - 30, "something else"));
+        QVERIFY(again.remove(now - 30, "1050 + 1490 × 2"));
+        QCOMPARE(again.records().size(), 1u);
+        // A month on, the old one is gone; what is added then stays.
+        calc::History later;
+        later.open(file, now + calc::History::kKeepSeconds + 1);
+        QVERIFY(later.records().empty());
+        later.open(file, now);
+        for (int i = 0; i < 205; ++i)
+            later.add({now + i, std::to_string(i) + "+1", std::to_string(i + 1), std::to_string(i + 1)});
+        QCOMPARE(later.records().size(), calc::History::kMost);
+        QCOMPARE(later.records().front().expression, std::string("204+1"));
+        QCOMPARE(later.records().back().expression, std::string("5+1"));
+        later.clear();
+        again.open(file, now);
+        QVERIFY(again.records().empty());
+        // A file that is no list of sums, and no file at all (kept in memory).
+        QFile junk(QString::fromStdString(file));
+        QVERIFY(junk.open(QIODevice::WriteOnly));
+        junk.write("hello\n\t\t\t\n12\tx\n0\t1\t1\t1+0\nabc\t1\t1\t1+0\n1800000000\t3\t3\t1+2\r\n");
+        junk.close();
+        again.open(file, now);
+        QCOMPARE(again.records().size(), 1u);
+        QCOMPARE(again.records()[0], (calc::Record {1'800'000'000, "1+2", "3", "3"}));
+        calc::History inMemory;
+        inMemory.open({}, now);
+        inMemory.add({now, "1+1", "2", "2"});
+        QCOMPARE(inMemory.records().size(), 1u);
+
+        // When, beside a sum: the time today, the day before that.
+        const QDateTime noon(QDate(2026, 11, 15), QTime(12, 0));
+        const auto when = [&](const QDateTime& t, bool chinese) {
+            return qs(calc::whenText(t.toSecsSinceEpoch(), noon.toSecsSinceEpoch(), chinese));
+        };
+        QCOMPARE(when(QDateTime(QDate(2026, 11, 15), QTime(10, 36)), true), u"10:36"_s);
+        QCOMPARE(when(QDateTime(QDate(2026, 11, 15), QTime(0, 5)), true), u"00:05"_s);
+        QCOMPARE(when(QDateTime(QDate(2026, 11, 14), QTime(23, 59)), true), u"昨天 23:59"_s);
+        QCOMPARE(when(QDateTime(QDate(2026, 11, 14), QTime(9, 0)), false), u"yesterday 09:00"_s);
+        QCOMPARE(when(QDateTime(QDate(2026, 11, 3), QTime(18, 20)), true), u"11-03 18:20"_s);
     }
 
     void calcFormat()

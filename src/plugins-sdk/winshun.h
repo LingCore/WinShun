@@ -706,6 +706,10 @@ struct Query {
     std::string keyword; // the one typed, in keyword mode
     std::string text; // after the keyword; the whole input otherwise
     std::string raw; // the whole input
+    // "command": asked for by an AI assistant or the ws command line, not typed
+    // by the user in Win顺's box (empty). What is the user's own to see (a
+    // history, say) is left out of such an answer.
+    std::string source;
     std::vector<std::string> match; // a regex trigger's groups
     int limit = 200;
     Json filters = Json::Object {}; // search-panel bounds; absent fields mean no restriction
@@ -1109,6 +1113,7 @@ private:
             q.keyword = params["keyword"].toString();
             q.text = params["text"].toString();
             q.raw = params["raw"].toString();
+            q.source = params["source"].toString();
             if (params["filters"].isObject()) q.filters = params["filters"];
             q.limit = static_cast<int>(params["limit"].toInt(200));
             for (const Json& group : params["match"].toArray())
