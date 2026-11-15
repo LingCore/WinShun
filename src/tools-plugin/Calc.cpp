@@ -466,30 +466,6 @@ Result evaluate(const std::string& text)
     return parser.run();
 }
 
-bool looksLikeExpression(const std::string& text)
-{
-    const std::string s = normalize(text);
-    bool digit = false;
-    bool op = false;
-    int depth = 0;
-    for (const char c : s) {
-        if (isDigit(c))
-            digit = true;
-        else if (c == '+' || c == '*' || c == '/' || c == '^')
-            op = true;
-        else if (c == '(') {
-            op = true;
-            ++depth;
-        } else if (c == ')')
-            --depth;
-        else if (c == '-' || c == '.' || c == ',' || c == ' ' || c == '%' || c == '!')
-            continue;
-        else
-            return false; // letters (dates, versions, pinyin) and the rest are names, not sums
-    }
-    return digit && op && depth == 0;
-}
-
 bool takeTrailingEquals(std::string& text)
 {
     constexpr std::string_view kWide = "\xEF\xBC\x9D"; // ＝

@@ -116,18 +116,6 @@ private slots:
         QCOMPARE(errorOf("报告"), calc::Error::Syntax); // not a name, not a number
     }
 
-    void calcLooksLikeExpression()
-    {
-        QVERIFY(calc::looksLikeExpression("1+2*3"));
-        QVERIFY(calc::looksLikeExpression("(2+3)*4"));
-        QVERIFY(calc::looksLikeExpression("3 × 4"));
-        QVERIFY(!calc::looksLikeExpression("2024-01-02")); // a date: minus only
-        QVERIFY(!calc::looksLikeExpression("13800138000"));
-        QVERIFY(!calc::looksLikeExpression("report"));
-        QVERIFY(!calc::looksLikeExpression("v2.1+beta")); // letters
-        QVERIFY(!calc::looksLikeExpression("1+(2")); // unbalanced
-    }
-
     // The manifest's regex triggers decide which typed text reaches the
     // calculator without "=": a subtraction alone (#123) must, a date must not.
     void calcTriggerCoversSubtraction()

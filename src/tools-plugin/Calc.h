@@ -37,12 +37,6 @@ struct Result {
 // deg, rad.
 Result evaluate(const std::string& text);
 
-// True when `text` looks like an expression worth evaluating without the
-// keyword: digits with at least one operator among + * / ^ × ÷ or a
-// parenthesis, nothing but arithmetic characters (a date like 2024-01-02
-// or a phone number does not qualify).
-bool looksLikeExpression(const std::string& text);
-
 // "2024-1987=": a sum typed as on a calculator, the "=" (or its full-width
 // form) after it. Taken off `text`, with the blanks before it; true if it
 // was there: the sum was asked for, whatever it looks like.
