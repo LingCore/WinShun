@@ -373,6 +373,18 @@ Column {
                         error: card.editor.captureOcrHotkeyError
                         onRecorded: (hotkey) => card.editor.captureOcrHotkey = hotkey
                     }
+
+                    SettingRow {
+                        title: qsTr("识别后显示结果卡片")
+                        description: qsTr("在选区旁显示识别出的文字，可点“编辑”修改。关闭后识别完直接复制，不弹出任何窗口；没识别到文字时仍会提示")
+
+                        ToggleSwitch {
+                            dpr: card.dpr
+                            objectName: "captureOcrBubbleSwitch"
+                            checked: card.editor.captureOcrBubble
+                            onToggled: (on) => card.editor.captureOcrBubble = on
+                        }
+                    }
                 }
 
             }

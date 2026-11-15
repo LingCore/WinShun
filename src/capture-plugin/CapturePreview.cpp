@@ -244,6 +244,22 @@ int runSettings(const QStringList& args)
         say(u"captureKeyHintsSwitch: not found"_s);
         ok = false;
     }
+    // 识别后显示结果卡片: on by default, off and on again through the switch.
+    if (QObject* bubble = window->findChild<QObject*>(u"captureOcrBubbleSwitch"_s)) {
+        bool switched = editor.captureOcrBubble() && bubble->property("checked").toBool();
+        for (const bool enabled : {false, true}) {
+            QMetaObject::invokeMethod(bubble, "toggled", Q_ARG(bool, enabled));
+            settle(window);
+            switched = switched && editor.captureOcrBubble() == enabled
+                && CaptureOptions::load(temporary.filePath(u"capture.ini"_s)).ocrBubble == enabled
+                && bubble->property("checked").toBool() == enabled;
+        }
+        say(u"captureOcrBubbleSwitch: %1"_s.arg(switched ? u"ok"_s : u"WRONG"_s));
+        ok = ok && switched;
+    } else {
+        say(u"captureOcrBubbleSwitch: not found"_s);
+        ok = false;
+    }
     // The choices drawn as segmented tabs (ScopeTabs): each one reaches the
     // editor and the isolated file, and the tabs show it as current; each
     // ends on its default again, for the pictures.

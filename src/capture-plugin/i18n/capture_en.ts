@@ -789,6 +789,14 @@
 <context>
     <name>CaptureOptions</name>
     <message>
+        <source>识别后显示结果卡片</source>
+        <translation>Show a card with the result</translation>
+    </message>
+    <message>
+        <source>在选区旁显示识别出的文字，可点“编辑”修改。关闭后识别完直接复制，不弹出任何窗口；没识别到文字时仍会提示</source>
+        <translation>Shows the text that was read beside the region, with Edit to change it. When off, the text is copied with no window at all; you are still told when no text is found.</translation>
+    </message>
+    <message>
         <source>全部按键</source>
         <translation>All keys</translation>
     </message>

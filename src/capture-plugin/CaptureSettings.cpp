@@ -129,6 +129,7 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.copyOnSelect = readOrDefault(s, u"Capture/CopyOnSelect"_s, d.copyOnSelect);
     o.magnifier = readOrDefault(s, u"Capture/Magnifier"_s, d.magnifier);
     o.keyHints = readOrDefault(s, u"Capture/KeyHints"_s, d.keyHints);
+    o.ocrBubble = readOrDefault(s, u"Capture/OcrBubble"_s, d.ocrBubble);
     o.pinOnCopy = readOrDefault(s, u"Capture/PinOnCopy"_s, d.pinOnCopy);
     const auto mouse = [&](const QString& key, const QString& fallback, bool allowBack) {
         const QString v = readOrDefault(s, key, fallback).trimmed().toLower();
@@ -207,6 +208,7 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/CopyOnSelect"_s, copyOnSelect);
     s.setValue(u"Capture/Magnifier"_s, magnifier);
     s.setValue(u"Capture/KeyHints"_s, keyHints);
+    s.setValue(u"Capture/OcrBubble"_s, ocrBubble);
     s.setValue(u"Capture/PinOnCopy"_s, pinOnCopy);
     s.setValue(u"Capture/MouseDoubleLeft"_s, mouseDoubleLeft);
     s.setValue(u"Capture/MouseRight"_s, mouseRight);

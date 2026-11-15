@@ -25,6 +25,7 @@ struct CaptureOptions {
     bool copyOnSelect = false;
     bool magnifier = true;
     bool keyHints = true; // the shortcut hints in a corner of the capture (CaptureKeyHints.qml)
+    bool ocrBubble = true; // 识别屏幕文字 says what it copied in a card (OcrBubble.qml); off: only a failure is said
     bool pinOnCopy = false;
     QString mouseDoubleLeft = QStringLiteral("copy");
     QString mouseRight = QStringLiteral("back");
@@ -91,6 +92,7 @@ class CaptureSettings : public QObject {
     Q_PROPERTY(bool captureCopyOnSelect READ captureCopyOnSelect WRITE setCaptureCopyOnSelect NOTIFY changed FINAL)
     Q_PROPERTY(bool captureMagnifier READ captureMagnifier WRITE setCaptureMagnifier NOTIFY changed FINAL)
     Q_PROPERTY(bool captureKeyHints READ captureKeyHints WRITE setCaptureKeyHints NOTIFY changed FINAL)
+    Q_PROPERTY(bool captureOcrBubble READ captureOcrBubble WRITE setCaptureOcrBubble NOTIFY changed FINAL)
     Q_PROPERTY(bool capturePinOnCopy READ capturePinOnCopy WRITE setCapturePinOnCopy NOTIFY changed FINAL)
     Q_PROPERTY(QString captureMouseDoubleLeft READ captureMouseDoubleLeft WRITE setCaptureMouseDoubleLeft NOTIFY changed FINAL)
     Q_PROPERTY(QString captureMouseRight READ captureMouseRight WRITE setCaptureMouseRight NOTIFY changed FINAL)
@@ -148,6 +150,8 @@ public:
     void setCaptureMagnifier(bool v) { change(m_options.magnifier, v); }
     bool captureKeyHints() const { return m_options.keyHints; }
     void setCaptureKeyHints(bool v) { change(m_options.keyHints, v); }
+    bool captureOcrBubble() const { return m_options.ocrBubble; }
+    void setCaptureOcrBubble(bool v) { change(m_options.ocrBubble, v); }
     bool capturePinOnCopy() const { return m_options.pinOnCopy; }
     void setCapturePinOnCopy(bool v) { change(m_options.pinOnCopy, v); }
     QString captureMouseDoubleLeft() const { return m_options.mouseDoubleLeft; }

@@ -1178,7 +1178,8 @@ void CaptureApp::quickOcrDone()
             showOcrBubble(u"none"_s, {}, message);
         } else {
             copyText(text);
-            showOcrBubble(u"copied"_s, text, {});
+            if (m_settings.options().ocrBubble)
+                showOcrBubble(u"copied"_s, text, {});
         }
         return;
     }
@@ -1220,7 +1221,8 @@ void CaptureApp::readScreenText(const QImage& image, double dpr, const QRect& wh
         return;
     }
     m_quickOcrWhere = where;
-    showOcrBubble(u"reading"_s, {}, {});
+    if (m_settings.options().ocrBubble) // off: only a failure is said (quickOcrDone)
+        showOcrBubble(u"reading"_s, {}, {});
     captureOcrThen(image, dpr, where, OcrThen::Bubble);
 }
 
