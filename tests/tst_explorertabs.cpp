@@ -319,6 +319,35 @@ private slots:
         Opener ours = explorer;
         ours.broughtByUs = true;
         QVERIFY(!openerWantsWindow(ours, s, {}));
+        // Win+E over an Explorer window (GitHub #331: pressed twice, two
+        // windows): Windows' own key, not that window asking. A tab.
+        Opener winE = explorer;
+        winE.winE = true;
+        QVERIFY(!openerWantsWindow(winE, s, {}));
+        b = folder(L"C:\\new");
+        b.requested = openerWantsWindow(winE, s, {});
+        QCOMPARE(decide(s, false, {}, b, others, {}, kNow).verdict, Verdict::NewTab);
+        // ...and one more tab when the window in front already shows that
+        // very folder (Win+E opens the same place each time): going to the
+        // tab before the user's eyes would do nothing at all.
+        std::vector<Window> inSight {window(1, 0, 0, {L"C:\\a", L"C:\\b"}), window(2, 1, 1, {L"C:\\a"})};
+        inSight[0].inSight = true;
+        b = folder(L"C:\\a");
+        d = decide(s, false, {}, b, inSight, {}, kNow);
+        QCOMPARE(d.verdict, Verdict::NewTab);
+        QCOMPARE(d.window, std::uintptr_t(1));
+        // (a tab behind the one in sight, or the window behind, is still gone to)
+        d = decide(s, false, {}, folder(L"C:\\b"), inSight, {}, kNow);
+        QCOMPARE(d.verdict, Verdict::SwitchTab);
+        QCOMPARE(d.tab, 1);
+        inSight[0].tabs = {L"C:\\c"};
+        d = decide(s, false, {}, folder(L"C:\\a"), inSight, {}, kNow);
+        QCOMPARE(d.verdict, Verdict::SwitchTab);
+        QCOMPARE(d.window, std::uintptr_t(2));
+        // Win+E with a listed program in front: still Windows' doing.
+        Settings terminal;
+        terminal.windowsFor = programList(L"WindowsTerminal");
+        QVERIFY(!openerWantsWindow({L"CASCADIA_HOSTING_WINDOW_CLASS", L"WindowsTerminal.exe", false, false, true}, terminal, {}));
         // Listed programs keep their windows (scripts, terminals: explorer /n).
         Settings listed;
         listed.windowsFor = programList(L"WindowsTerminal; cmd.exe");

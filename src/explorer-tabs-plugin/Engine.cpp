@@ -57,6 +57,7 @@ constexpr std::int64_t kNoRegistrationMs = 3000;
 constexpr std::size_t kMaxQueue = 8; // more windows waiting than this stay windows
 constexpr std::int64_t kBCloseNudgeMs = 1500; // a merged B still there: WM_CLOSE once more
 constexpr std::int64_t kBCloseLimitMs = 3000; // and after this it is shown again
+constexpr std::int64_t kWinEMs = 3000; // Win+E pressed: the window that opens within this is Windows' doing
 
 double nowMs()
 {
@@ -255,6 +256,8 @@ struct Engine::Impl {
         bool bypass = false;
         bool requested = false; // a window was asked for (openerWantsWindow)
         bool movedTab = false;
+        bool winE = false; // Win+E opened it
+        HWND openerWindow = nullptr; // the window in front then
         std::string opener; // for the trace: "<class>:<exe>"
     };
 
@@ -280,6 +283,10 @@ struct Engine::Impl {
     std::deque<HWND> foregrounds;
     HWND frontedByUs = nullptr; // under mutex
     DWORD frontedTick = 0; // GetTickCount() then, under mutex
+    // Win+E, seen as raw keyboard input on the watch thread (no hook: nothing
+    // waits on the plugin). tickMs() of the press, 0 none or used up.
+    std::atomic<std::int64_t> winEAt {0};
+    bool winHeld = false; // watch thread only
 
     std::thread watchThread;
     std::thread shellThread;
@@ -374,6 +381,7 @@ struct Engine::Impl {
             }
             o.windowClass = className(w);
             o.exe = exeOf(w);
+            o.window = reinterpret_cast<std::uintptr_t>(w);
             if (w == fronted) {
                 LASTINPUTINFO input {sizeof input};
                 // no key or click since the plugin put it there
@@ -391,8 +399,13 @@ struct Engine::Impl {
             }
             break;
         }
+        if (const std::int64_t at = winEAt)
+            o.winE = tickMs() - at <= kWinEMs;
+        else // E still held as the window shows: its release has not come yet
+            o.winE = ::GetAsyncKeyState('E') < 0 && (::GetAsyncKeyState(VK_LWIN) < 0 || ::GetAsyncKeyState(VK_RWIN) < 0);
         if (name) {
-            *name = utf8(o.windowClass) + ":" + utf8(o.exe) + (o.broughtByUs ? ":ours" : "") + (o.testWindow ? ":test" : "") + *name;
+            *name = utf8(o.windowClass) + ":" + utf8(o.exe) + (o.broughtByUs ? ":ours" : "") + (o.testWindow ? ":test" : "")
+                + (o.winE ? ":win+e" : "") + *name;
             if (!options.trace.empty()) { // (dev) what was in front lately, the newest first
                 *name += "[";
                 for (HWND w : recent) {
@@ -419,7 +432,10 @@ struct Engine::Impl {
         const std::vector<HWND> tabs = tabsOf(w);
         b.tabs = static_cast<int>(tabs.size());
         b.bypass = options.forceBypass || keysForBypass();
-        b.requested = openerWantsWindow(openerOf(w, &e.opener), s, options.restriction);
+        const Opener opener = openerOf(w, &e.opener);
+        b.requested = openerWantsWindow(opener, s, options.restriction);
+        e.winE = opener.winE;
+        e.openerWindow = reinterpret_cast<HWND>(opener.window);
         {
             const std::lock_guard lock(mutex);
             b.movedTab = std::ranges::any_of(tabs, [&](HWND t) { return knownTabs.contains(t); });
@@ -508,10 +524,57 @@ struct Engine::Impl {
         }
     }
 
+    // Win+E is Windows' own key for "a File Explorer window": the window it
+    // opens was not asked for from the Explorer window that happens to be in
+    // front. Only that key is looked for; any other key pressed ends the
+    // wait, so a Ctrl+N right after still gets its window.
+    void keyInput(HRAWINPUT handle)
+    {
+        RAWINPUT input {};
+        UINT size = sizeof input;
+        if (::GetRawInputData(handle, RID_INPUT, &input, &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1)
+            || input.header.dwType != RIM_TYPEKEYBOARD)
+            return;
+        const RAWKEYBOARD& key = input.data.keyboard;
+        const bool down = !(key.Flags & RI_KEY_BREAK);
+        switch (key.VKey) {
+        case VK_LWIN:
+        case VK_RWIN:
+            winHeld = down;
+            return;
+        case VK_SHIFT:
+        case VK_CONTROL:
+        case VK_MENU:
+        case 0xFF: // no key of its own (part of an escape sequence)
+            return;
+        }
+        // (Windows keeps the press of a key it takes as its own shortcut to
+        // itself: of Win+E only E's release arrives here)
+        if (winHeld && key.VKey == 'E')
+            winEAt = tickMs();
+        else if (down)
+            winEAt = 0;
+    }
+
+    static LRESULT CALLBACK keysProc(HWND w, UINT message, WPARAM wParam, LPARAM lParam)
+    {
+        if (message == WM_INPUT && s_self)
+            s_self->keyInput(reinterpret_cast<HRAWINPUT>(lParam));
+        return ::DefWindowProcW(w, message, wParam, lParam);
+    }
+
     void watchLoop()
     {
         guardThread();
         watchThreadId = ::GetCurrentThreadId();
+        WNDCLASSEXW wc {sizeof wc};
+        wc.lpfnWndProc = keysProc;
+        wc.hInstance = ::GetModuleHandleW(nullptr);
+        wc.lpszClassName = L"WinShun.ExplorerTabs.Keys";
+        ::RegisterClassExW(&wc);
+        const HWND keys = ::CreateWindowExW(0, wc.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, wc.hInstance, nullptr);
+        if (const RAWINPUTDEVICE keyboard {0x01, 0x06, RIDEV_INPUTSINK, keys}; !keys || !::RegisterRawInputDevices(&keyboard, 1, sizeof keyboard))
+            log("the keyboard cannot be read: Win+E over an Explorer window stays a window");
         if (const HWND front = ::GetForegroundWindow()) {
             const std::lock_guard lock(mutex);
             foregrounds.push_back(front);
@@ -539,6 +602,8 @@ struct Engine::Impl {
         }
         while (::GetMessageW(&msg, nullptr, 0, 0) > 0)
             ::DispatchMessageW(&msg);
+        if (keys)
+            ::DestroyWindow(keys);
         if (names)
             ::UnhookWinEvent(names);
         if (front)
@@ -888,8 +953,14 @@ struct Engine::Impl {
                 seen = true;
             }
         }
-        if (!seen) // registered and never hidden: who asked for it is read now
-            e.requested = openerWantsWindow(openerOf(b, &e.opener), currentSettings(), options.restriction);
+        if (!seen) { // registered and never hidden: who asked for it is read now
+            const Opener opener = openerOf(b, &e.opener);
+            e.requested = openerWantsWindow(opener, currentSettings(), options.restriction);
+            e.winE = opener.winE;
+            e.openerWindow = reinterpret_cast<HWND>(opener.window);
+        }
+        if (e.winE)
+            winEAt = 0; // one press, one window
         Candidate candidate;
         Place place = placeOf(entry.web.Get());
         candidate.place = place.name;
@@ -929,6 +1000,7 @@ struct Engine::Impl {
             w.openOrder = INT_MAX;
             w.usable = usable(top);
             w.aboveUs = aboveUs(top);
+            w.inSight = e.winE && top == e.openerWindow;
             bool any = false;
             for (HWND tab : tabsOf(top)) {
                 if ((top == opening && std::ranges::find(openingBefore, tab) == openingBefore.end()) || closer.isSpare(top, tab))
@@ -956,7 +1028,8 @@ struct Engine::Impl {
             if (any)
                 others.push_back(std::move(w));
         }
-        const Decision d = decide(s, paused || held, options.restriction, candidate, others, closedTabs, tickMs());
+        // (Win+E is no tab dragged out, even on a folder whose tab closed a moment ago)
+        const Decision d = decide(s, paused || held, options.restriction, candidate, others, e.winE ? std::vector<Closed> {} : closedTabs, tickMs());
         const double decided = nowMs();
         // "no other window" with what was looked at: windows besides B, those with a tab the
         // cache knows, those shown and not above us. Counts only, for a report that it merges nothing.
@@ -966,6 +1039,8 @@ struct Engine::Impl {
             looked = " (" + std::to_string(z.empty() ? 0 : z.size() - 1) + " besides, " + std::to_string(others.size()) + " known, "
                 + std::to_string(able) + " able)";
         }
+        if (d.why == Why::Requested)
+            looked = " (in front: " + e.opener + ")"; // which window or program made it one
         log("B " + utf8(candidate.place) + ": " + whyName(d.why) + looked);
         {
             const std::lock_guard lock(mutex);

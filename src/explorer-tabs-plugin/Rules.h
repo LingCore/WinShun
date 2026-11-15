@@ -68,6 +68,9 @@ struct Window {
     int openOrder = 0; // 0 is the window opened first
     bool usable = true; // shown, on this virtual desktop, not one we are hiding
     bool aboveUs = false;
+    // In front when Win+E asked for B: its active tab is before the user's
+    // eyes, so B on the same folder is not "go to its tab" but one more.
+    bool inSight = false;
     std::vector<std::wstring> tabs; // the places its tabs show, the active tab first; "" not known
 };
 
@@ -139,13 +142,17 @@ struct Opener {
     std::wstring exe; // its program's file name (or path), any case
     bool broughtByUs = false; // put in front by the plugin, no input from the user since
     bool testWindow = false; // (restricted) its title names the test folder
+    // Win+E was pressed just before: Windows opened B, whatever is in front.
+    bool winE = false;
+    std::uintptr_t window = 0; // the window itself, 0 none
 };
 
 // File Explorer itself asked for a window (Ctrl+N, "open in new window", a
 // tab dragged out: the window in front is an Explorer window the user is
 // working in), or a program listed in windowsFor did. The desktop, Win顺,
-// the Start menu and other programs: B may become a tab. Restricted, an
-// Explorer window counts only when it is a test window.
+// the Start menu and other programs: B may become a tab, and so may a window
+// Win+E opened over an Explorer window (GitHub #331: Win+E twice gave two
+// windows). Restricted, an Explorer window counts only when it is a test window.
 bool openerWantsWindow(const Opener& o, const Settings& s, const Restriction& r);
 
 // Where a tab for a window not decided yet would most likely go (decide's

@@ -97,7 +97,7 @@ function Title([string] $window) {
 # that moves nothing first: Windows then lets this process hand the front on.)
 function DesktopToFront {
     [WsTabs.Native]::mouse_event(1, 0, 0, 0, [UIntPtr]::Zero)
-    [void][WsTabs.Native]::SetForegroundWindow([WsTabs.Native]::FindWindow('Progman', $null))
+    [void][WsTabs.Native]::SetForegroundWindow([WsTabs.Native]::FindWindow('Progman', [NullString]::Value)) # ($null would be "", a window with no title)
     Start-Sleep -Milliseconds 500
 }
 
@@ -223,7 +223,9 @@ try {
     Check (WaitFor { (Layout) -eq $joined } 40) "its window got the two missing tabs, the other window came back (now: $(Layout))"
 
     Start-Sleep -Seconds 2
-    Check (WaitFor { (& $kept).Contains("tab $(Join-Path $root $names[1])`ntab $(Join-Path $root $names[0])`ntab $(Join-Path $root $names[2])`n") } 20) 'and they are written down in the order of the tab strip (second, first, third)'
+    # (whatever the case: Explorer names the drive "F:", the folder given here may say "f:")
+    $inOrder = "tab $(Join-Path $root $names[1])`ntab $(Join-Path $root $names[0])`ntab $(Join-Path $root $names[2])`n"
+    Check (WaitFor { (& $kept).IndexOf($inOrder, [StringComparison]::OrdinalIgnoreCase) -ge 0 } 20) 'and they are written down in the order of the tab strip (second, first, third)'
 
     Write-Host '7. Without the setting nothing comes back by itself'
     StopPlugin

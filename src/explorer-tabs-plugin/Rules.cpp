@@ -158,6 +158,8 @@ std::vector<std::wstring> programList(std::wstring_view text)
 
 bool openerWantsWindow(const Opener& o, const Settings& s, const Restriction& r)
 {
+    if (o.winE)
+        return false;
     if (!o.exe.empty()) {
         std::wstring exe = o.exe;
         if (const std::size_t slash = exe.find_last_of(L"\\/"); slash != std::wstring::npos)
@@ -247,7 +249,10 @@ Decision decide(const Settings& s, bool paused, const Restriction& r, const Cand
     std::ranges::sort(candidates, [&](const Window* x, const Window* y) {
         return s.target == Target::First ? x->openOrder < y->openOrder : x->zOrder < y->zOrder;
     });
-    if (s.reuse) {
+    // Asked for again with the folder in sight (Win+E over a window showing
+    // it): one more tab, wherever else it is open.
+    const bool again = std::ranges::any_of(others, [&](const Window& w) { return w.inSight && !w.tabs.empty() && samePlace(w.tabs.front(), b.place); });
+    if (s.reuse && !again) {
         for (const Window* w : candidates) {
             for (std::size_t i = 0; i < w->tabs.size(); ++i) {
                 if (samePlace(w->tabs[i], b.place))
