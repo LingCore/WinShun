@@ -1,5 +1,24 @@
 # 踩坑记录
 
+## 界面字体：Windows 列得出来的字体，Qt（FreeType）按名字不一定画得出来（#325 第二轮，2026-11-15）
+
+- **现象**：0.29.0 把界面字体的名单改成问 Windows（`EnumFontFamiliesEx`）之后，选“霞鹜文楷”（常规体）预览不对，重启后是后备字体；它的 Light、Medium 正常。
+- **原因**：FreeType 引擎下，Qt 自己的已装字体名单是拿 Windows 报的名字去注册表 `Fonts` 键里找字体文件，找不到文件的字体就不登记。霞鹜文楷常规体（v1.530）的名称表里，家族名（ID 1）有中文，全名（ID 4）只有英文 “LXGW WenKai”；Light 两个都有中文。于是中文系统上 Windows 报的是 “霞鹜文楷 / LXGW WenKai”，Qt 对不上，这个文件干脆没进名单：`QFont("霞鹜文楷")` 是 Tahoma；`QFont("LXGW WenKai")` 能画，但那是 Light 那个文件按“排版家族名”（ID 16）登记进来的，画出来是**细体**。上一轮（11-14）在虚拟机里看到“LXGW WenKai 画得出来”就当成对了，其实画的是细体，截图上看不出来。
+- **同一类还有很多**：在本机 276 个字体里，FreeType 下按 Windows 列的名字画不出来的有 90 多个，几乎都是 Windows 当成独立家族的字重（Noto Sans SC Medium、Bahnschrift Light、Cascadia Code SemiBold、Segoe UI Variable Text…），Qt 把它们并进了排版家族。以前选它们都是悄悄退回默认字体。
+- **做法**（`UiFont.cpp` 的 `drawnAs`）：先问 Qt 按这个名字画不画得出来（`QFontInfo::exactMatch()`，或 `QRawFont` 的家族名以它开头；GDI 的名字最多 31 个字符，会被截断）。画不出来就自己找文件加载：DirectWrite 的 GDI 互操作（`CreateFontFromLOGFONT` → `IDWriteLocalFontFileLoader::GetFilePathFromKey`）按 GDI 的名字拿到常规和粗体的文件路径，为所有用户装的、只为当前用户装的都行；`addApplicationFont` 之后用 Qt 报的家族名。DirectWrite 没有文件的（字体管理软件临时启用、没安装的）用 `GetFontData` 取字节再加载。加载后那个家族里可能有好几个字重，所以把 GDI 报的字重（`tmWeight`）一起设上。
+- **别踩**：
+  - 判断“Qt 认不认识”不能用 `QFontDatabase::hasFamily()` 一刀切然后只换家族名：那 90 多个“字重家族”会全部变成常规体。
+  - 字重别用 DirectWrite 的 `GetWeight()`：可变字体上它对 “Cascadia Code ExtraLight” 报 700。
+  - 验证字重要比像素：同一句话，常规体的墨量比细体多约 10%（虚拟机里 786,671 对 714,818）。光看截图像不像楷体不够。
+- **没做**：可变字体的“字重家族”（Noto Sans SC Thin 之类）加载后具体落在哪个实例没有逐个验证；设置里的预览只换家族名，不带字重。
+
+## 截图：遮罩一出来固定卡约 2 秒，原因还不知道；日志现在会记调用栈（2026-11-15）
+
+- **现象**（#325 的报告人，Win10 22H2、RX 6800 XT、4K 200%、144 Hz、Win顺 以管理员运行）：按截图键后“黑屏卡一两秒”，或者刚要拖选区时卡一两秒。两周的 `capture-stall` 一共 25 条，其中 15 条是同一个样子：最后一次正常的 tick 就在遮罩第一帧显示出来的那一刻（前后 50 ms 内），然后界面线程 2.06–2.17 秒不应答，恢复时离“遮罩显示”固定 2181–2206 ms；有两次是两段各约 1 秒。只出现在距上次截图 1 分钟以上（或进程启动后第一次）的截图上，连着截的从不卡。改成拷贝呈现（`QT_D3D_NO_FLIP`）之后照样有。
+- **排除了的**：UI Automation 探测（在自己的线程里）、PrtScn 的 `WM_SETTINGCHANGE` 广播（只在改设置时）、截图历史（默认关）、`HotPages` 的后台学习（11-02 还没有它时就有同样的卡顿）。本机（Win11、RTX 4060）和 Win10 虚拟机（WARP）都没复现。
+- **教训**：`capture-stall` 只量了“卡多久”，量了两周还是不知道卡在哪。固定时长说明是在等某个超时或某个固定耗时的东西，这种问题要的是卡住那一刻的调用栈，而且界面线程多半只是在等渲染线程，得连其他线程一起记。现在截图期间有 `ui-stall` / `ui-stall-threads`（architecture.md“运行诊断”）。
+- **拿到新日志后先看**：`ui-stall` 第一条的 `frames` 最里层是哪个系统调用；是 `NtWaitForSingleObject` 且上面是 `Qt6Quick` 的话，去 `ui-stall-threads` 里找名字是 `QSGRenderThread` 的线程和显卡驱动（`atidxx64.dll`、`amdxx64.dll`）的线程。
+
 ## 前台内存：图标字体缺字形时 Qt 把所有字体加载一遍；`thread_local` 数组每个线程一份（2026-11-15）
 
 - **现象**：索引 220 万条时，搜索框输入第一个词之后任务管理器里是 152 MB，再搜几个词到 175 MB；其中堆占了近 100 MB。
