@@ -302,7 +302,18 @@ private slots:
                 keywords.append(word);
             }
             for (const QJsonValue t : command.value(u"triggers"_s).toArray()) {
-                const QRegularExpression re(t.toObject().value(u"regex"_s).toString());
+                const QJsonObject trigger = t.toObject();
+                if (trigger.contains(u"files"_s)) {
+                    // A `files` trigger: a right-click menu item for the chosen
+                    // files. The hash command takes a single file, nothing else.
+                    const QJsonObject files = trigger.value(u"files"_s).toObject();
+                    QCOMPARE(command.value(u"id"_s).toString(), u"hash"_s);
+                    QCOMPARE(files.value(u"kind"_s).toString(), u"file"_s);
+                    QCOMPARE(files.value(u"max"_s).toInt(), 1);
+                    QVERIFY(!files.value(u"title"_s).isUndefined());
+                    continue;
+                }
+                const QRegularExpression re(trigger.value(u"regex"_s).toString());
                 QVERIFY2(re.isValid(), qPrintable(re.errorString()));
             }
         }

@@ -13,7 +13,8 @@
 //   ts     timestamps to dates and back ("ts", "ts 1700000000", "ts 2024-01-02 15:04")
 //   uuid   a new UUID
 //   b64    Base64 encode / decode
-//   md5, sha1, sha256   hashes of text, or of a file by its path
+//   md5, sha1, sha256   hashes of text, or of a file by its path; a file's
+//          right-click menu has 计算哈希…, the same digests for that file
 
 #include "Tools.h"
 
@@ -80,8 +81,12 @@ protected:
 
     // Enter on a sum's result keeps the sum (CalcHistory); on a sum kept, its
     // result is copied again, or the whole line, or it is taken off the list.
+    // From a file's right-click menu (the hash command's `files` trigger, one
+    // file): the digests as rows, what `md5 <path>` would give.
     Effects action(const ActionRequest& a) override
     {
+        if (a.command == "hash" && a.trigger == "files")
+            return hashFile(a);
         if (a.command != "calc")
             return Plugin::action(a);
         const std::string id = a.item["id"].toString();
@@ -126,6 +131,41 @@ protected:
     }
 
 private:
+    Effects hashFile(const ActionRequest& a)
+    {
+        using namespace tools::codec;
+        if (a.files.size() != 1)
+            return Plugin::action(a);
+        const std::string& path = a.files.front();
+        Items items;
+        const DWORD attributes = ::GetFileAttributesW(winshun::wide(path).c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES) {
+            items.push_back(help("missing", zh("没有这个文件，查一下路径", "No such file; check the path"), path, kHashIcon));
+        } else if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
+            items.push_back(help("dir", zh("这是一个文件夹，给它里面的文件", "That is a folder; name a file in it"), path, kHashIcon));
+        } else {
+            for (const char* algorithm : {"md5", "sha1", "sha256"}) {
+                std::string upper = algorithm;
+                for (char& c : upper)
+                    c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+                bool tooLarge = false;
+                const std::string digest = hashFileHex(algorithm, winshun::wide(path), kMaxHashFile, &tooLarge);
+                if (tooLarge) {
+                    items.assign(1, help("big", zh("文件超过 64 MB，不算了", "The file is over 64 MB"), path, kHashIcon));
+                    break;
+                }
+                if (digest.empty())
+                    continue;
+                Item item(algorithm, digest, upper + " · " + zh("文件 ", "file ") + path);
+                item.withIcon(kHashIcon).withCopy(digest).withScore(90 - static_cast<int>(items.size()));
+                items.push_back(std::move(item));
+            }
+        }
+        if (items.empty())
+            items.push_back(help("fail", zh("算不出摘要", "Cannot compute the digests"), path, kHashIcon));
+        return {winshun::effect::replace(std::move(items)), winshun::effect::keep()};
+    }
+
     const char* zh(const char* chinese, const char* english) const { return this->chinese() ? chinese : english; }
     bool pushed(const Query& q) const { return q.trigger != "keyword"; }
     // Asked by an AI assistant or the command line: the sums kept are the

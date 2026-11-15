@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.tools",
   "name": {"zh": "小工具", "en": "Tools"},
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": {"zh": "计算器、单位换算、颜色、时间戳、UUID、Base64、哈希，Enter 复制结果", "en": "Calculator, unit conversion, colours, timestamps, UUIDs, Base64 and hashes; Enter copies"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
@@ -74,6 +74,7 @@
       "description": {"zh": "MD5、SHA-1、SHA-256/384/512，文字或文件", "en": "MD5, SHA-1, SHA-256/384/512 of text or a file"},
       "icon": "ph:fingerprint",
       "hint": {"zh": "文字或文件路径", "en": "text or a file path"},
+      "triggers": [{"files": {"kind": "file", "max": 1, "title": {"zh": "计算哈希…", "en": "Hash…"}}}],
       "ai": {"description": "Hash text (UTF-8) or a file (give its full path; up to 64 MB). Start the query with md5, sha1, sha256, sha384 or sha512 to pick one; otherwise md5, sha1 and sha256 are returned, each item's title the lower-case hex digest."}
     }
   ],
