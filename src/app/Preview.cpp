@@ -4,6 +4,7 @@
 #include "ForegroundMemoryProbe.h"
 #include "ForegroundUseProbe.h"
 #include "IdleOpenProbe.h"
+#include "platform/AllocationTrace.h"
 #include "InteractionOptimizationProbe.h"
 #include "UiFont.h"
 
@@ -10789,6 +10790,9 @@ int runRuntime(const QStringList& args)
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
                 QDir(profile.absoluteFilePath()).removeRecursively();
         });
+        // Before the App is made, so that what it holds from its start is told too.
+        if (args.contains(u"--foreground-use-trace"_s) && !(memory::allocationTrace::start() && checkAllocationTrace()))
+            return 4;
         App app;
         QElapsedTimer since;
         since.start();

@@ -106,6 +106,7 @@ qt_add_executable(WinShun WIN32
     ActivityText.cpp ActivityText.h
     BackgroundStatus.cpp BackgroundStatus.h
     HealthMonitor.cpp HealthMonitor.h
+    platform/AllocationTrace.cpp platform/AllocationTrace.h
     platform/ProcessUsage.cpp platform/ProcessUsage.h
     platform/InputMode.cpp platform/InputMode.h
     platform/Integrity.cpp platform/Integrity.h
@@ -441,7 +442,7 @@ target_link_libraries(WinShun PRIVATE
     Qt6::Svg # SvgIcon: web shortcuts' SVG icons, drawn once into the PNG kept
     comctl32 d2d1 dwmapi dwrite dxgi imm32 oleacc oleaut32 shcore shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
     credui iphlpapi mpr psapi userenv windowscodecs
-    mfplat mfreadwrite mfuuid delayimp
+    mfplat mfreadwrite mfuuid delayimp dbghelp
     windowsapp # TextRecognizer: Windows.Media.Ocr, through C++/WinRT from the Windows SDK
     onnxruntime_headers) # PaddleOcr
 target_link_libraries(WinShun PRIVATE advapi32 userenv miniz comdlg32 gdi32) # native report printing
@@ -449,7 +450,7 @@ target_link_libraries(WinShun PRIVATE advapi32 userenv miniz comdlg32 gdi32) # n
 # with the rest of the manifest; the linker's own UAC fragment would be a
 # second one. Media Foundation is loaded only when used (SoundClip): Windows
 # N editions do not have it.
-target_link_options(WinShun PRIVATE /MANIFESTUAC:NO /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll)
+target_link_options(WinShun PRIVATE /MANIFESTUAC:NO /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll /DELAYLOAD:dbghelp.dll)
 
 # UI font files, loaded from fonts\ next to the exe (see main.cpp).
 set(font_files

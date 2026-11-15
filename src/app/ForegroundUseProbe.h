@@ -10,4 +10,8 @@ namespace ws::preview {
 // memory while it is up and typed into, with an index of a real size, and how
 // long its searches take. See the .cpp.
 bool checkForegroundUse(App& app, const QStringList& args, const QDir& output);
+// Whether the allocation trace, once started, tells what is held: blocks of
+// every size asked for and freed on several threads at once, against what
+// it says of them. Run before a traced probe believes it.
+bool checkAllocationTrace();
 }
