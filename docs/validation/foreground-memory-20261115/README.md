@@ -39,6 +39,7 @@
   - 窗口里所有图标文字的字体都带 `NoFontMerging`（71 个里 0 个没带）；
   - 程序的线程局部存储小于 4 KB（737 字节）。
 - **索引拆分**：`tst_core`（含新增的 `indexKeepsWhatASearchReadsApart`：经过增、删、移动和压缩，两种读法对每一条说的都一样，两部分各有自己的块）、`tst_mcp`、`tst_cli`、`tst_everything`、`tst_remotecontent`、`tst_contentdetails`、`tst_contentpane`、`tst_querysyntax`、`tst_queryhistory`、`tst_searchworkload`、`tst_recentfolders`、`tst_foldermenu`、`tst_windowsearch`、`tst_scoperestore_content` 通过。8 个查询的结果条数和拆分前相同。`tst_puresearch` 没过，拆分前的程序同样不过（同一类“列表等结果超过 1 秒”的警告）。
+- **闲置后再呼出没有变慢**（`--idle-open-check`，改动前的程序和最终程序交替各 2 轮，每轮 4 个来回）：闲置交还内存后呼出到显示 21.9 → 23.0 ms，刚用过再呼出 22.4 → 20.4 ms，系统清空工作集后 26.3 → 26.4 ms，都在一两毫秒的波动之内；呼出后（不输入）占 83.0 → 64.7 MB，闲置 20.0 → 19.8 MB。
 - **定向测试**：`tst_foregroundmemory`、`tst_foregroundpreload`、`tst_uifont_freetype`、`tst_uifont_gdi`、`tst_commandicons`、`tst_settingsscreen`、`tst_settingslazy`、`tst_clipboardsizing` 通过。`tst_searchlogo`、`tst_searchnavigation` 没过：旧程序在本机同样不过，警告内容一样（列表等结果超过 1 秒、预览读取线程等时序类），不是这次改的。
 - **记录器自检**：8 个线程各分配、释放两万块各种大小的内存，记录器报的在用量 983.9 MB，实际 982.9 MB，全部释放后为 0。
 - 截图录屏、图片文字搜索两个插件能编译（它们也编译 `SystemTheme.cpp`、`Phosphor.cpp`、`Glyph.qml`）；下次发布时这两个插件要升版本。
