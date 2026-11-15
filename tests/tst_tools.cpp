@@ -142,6 +142,7 @@ private slots:
         };
         for (const QString& yes : {u"99-9"_s, u"10 - 4"_s, u"10 -4"_s, u"5-3*2"_s, u"-5+3"_s, u"1+2"_s, u"3.5-1.5"_s, u"100 - 20 - 5"_s, u"2026 - 10"_s, u"1999-5000"_s, u"2024 - 2023"_s,
                  u"500-498-1"_s, u"1/2/2"_s, u"10/2/5"_s, u"-5-3-2"_s, u"1+2*3/4-5"_s,
+                 u"5!!"_s, u"(5!)"_s, u"50%"_s, u"0xff"_s, u"0b101"_s, u"0o17"_s, u"5!+1"_s, u"100*50%"_s,
                  u"2024-1987"_s, u"2026-1999"_s, u"2000-2000"_s, u"2023 - 2024"_s, u"2024-1987-3"_s, u"1850-1900"_s}) // an age: the earlier year second (#281)
             QVERIFY2(fires(yes), qPrintable(yes));
         QVERIFY(calc::looksLikeYearRange("1998-2003"));
