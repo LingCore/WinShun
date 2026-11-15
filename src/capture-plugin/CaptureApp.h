@@ -3,6 +3,7 @@
 #include "CaptureSettings.h"
 #include "PrintScreen.h"
 #include "platform/HotPages.h"
+#include "platform/UiStall.h"
 
 #include <QImage>
 #include <QFileSystemWatcher>
@@ -71,6 +72,7 @@ private:
     // ---- what App did ----
     void apply();
     void applyHotkeys();
+    void watchStalls(); // a capture begins: its stalls written down with what they were in
     void printScreenChanged(); // the keyboard settings were written: PrtScn taken again if it went back (#322)
     void reportHotkeyProblems(const CaptureSettings::Problems& problems);
     void applyAppearance(const QJsonObject& appearance);
@@ -140,6 +142,8 @@ private:
     // The pages a capture needs, read back ahead at the next one (HotPages).
     std::shared_ptr<HotPages> m_hotPages = std::make_shared<HotPages>();
     bool m_recordPages = false; // this capture is the first since the working set was emptied
+    // While a capture is up: what this thread and the others were in when it stopped answering.
+    std::unique_ptr<UiStallWatch> m_stallWatch;
     std::unique_ptr<capture::Capture> m_capture;
     std::unique_ptr<capture::PinManager> m_pins;
     std::unique_ptr<capture::CaptureEditor> m_editor;

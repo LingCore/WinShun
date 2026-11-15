@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
 
@@ -33,9 +34,11 @@ namespace ws {
 // allocated, looked up or logged until it runs again; the walk up the calls
 // is done on the copy.
 //
-// No names but those of the modules (file names, no folders); no text, no
-// titles, no keys. An offset becomes a function with that version's symbols
-// (docs/pitfalls.md has how they are made for a version already out).
+// No names but those of the modules (file names, no folders), of the function
+// one of Windows' own modules exports nearest before a call, and of the
+// program's threads; no text, no titles, no keys. An offset becomes a
+// function with that version's symbols (docs/pitfalls.md has how they are
+// made for a version already out).
 //
 // Not asked while nobody has typed or moved the mouse for a minute: nothing
 // wakes the interface's thread then. A stall the PC slept through is none.
@@ -48,6 +51,11 @@ public:
         int samples = 3; // looks at one stall, at most
         int stalls = 20; // written down per run; the ones after are left out
         bool onlyWhileUsed = true;
+        // The other threads' calls too, at a stall's first look: for a thread
+        // that may wait on another of the program's, the one that draws its
+        // windows. "ui-stall-threads" {stall, part, of, threads: [{frames,
+        // count, name}]} after that look's "ui-stall", the same calls once.
+        bool others = false;
     };
     // "ui-stall" {stall, sample, ms, ui_cpu_ms, process_cpu_ms, busy, frames}
     // for each look, "ui-stall-end" {stall, ms, samples} when it answers
@@ -73,6 +81,7 @@ private:
     enum class Waited { Answered, Late, Stopped };
     Waited wait(std::chrono::milliseconds limit) const;
     QJsonObject look(); // the calls the watched thread is in
+    QJsonArray lookAtOthers(); // and those of the program's other threads
     struct Spent {
         qint64 threadMs = 0;
         qint64 processMs = 0;

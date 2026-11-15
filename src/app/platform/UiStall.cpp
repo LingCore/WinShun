@@ -1,11 +1,15 @@
 #include "UiStall.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QStringList>
 
 #include <algorithm>
 #include <array>
 #include <cstring>
 #include <utility>
+
+#include <tlhelp32.h>
 
 namespace ws {
 
@@ -18,6 +22,10 @@ constexpr UINT kAsk = WM_APP;
 constexpr auto kAway = 60s; // nobody at the PC: not asked
 constexpr std::size_t kStackBytes = 256 * 1024; // of the top of the stack: some hundred calls
 constexpr int kMaxFrames = 48;
+constexpr int kOtherFrames = 20; // of each other thread: what it waits in, and who asked
+constexpr int kMostOthers = 32; // different stacks written down
+constexpr qsizetype kPartBytes = 5000; // of the other threads' calls in one entry
+constexpr DWORD kNearExport = 0x1000; // further past a name than this: not that function
 
 // Milliseconds the PC was awake since it started: a wait it slept through is short by this clock.
 qint64 awakeMs()
@@ -39,8 +47,74 @@ bool away()
     return ::GetLastInputInfo(&last) && ::GetTickCount() - last.dwTime >= static_cast<DWORD>(std::chrono::milliseconds(kAway).count());
 }
 
+// The exported function of `module` that starts closest before `rva`, and how
+// far in. Windows' own modules have no symbols to hand for whichever build a
+// PC has, but what a thread waits in is nearly always an exported call
+// (NtUserMessageCall, NtWaitForSingleObject, NtGdiDdDDIPresent). Plain data
+// in and out, structured exceptions around it: the module may go meanwhile.
+bool exportBefore(HMODULE module, DWORD rva, char* name, std::size_t room, DWORD* into) noexcept
+{
+    __try {
+        const auto* base = reinterpret_cast<const BYTE*>(module);
+        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+        if (dos->e_magic != IMAGE_DOS_SIGNATURE)
+            return false;
+        const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+        if (nt->Signature != IMAGE_NT_SIGNATURE || nt->OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT)
+            return false;
+        const IMAGE_DATA_DIRECTORY& where = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+        if (!where.VirtualAddress || where.Size < sizeof(IMAGE_EXPORT_DIRECTORY))
+            return false;
+        const auto* exports = reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(base + where.VirtualAddress);
+        const auto* functions = reinterpret_cast<const DWORD*>(base + exports->AddressOfFunctions);
+        const auto* names = reinterpret_cast<const DWORD*>(base + exports->AddressOfNames);
+        const auto* ordinals = reinterpret_cast<const WORD*>(base + exports->AddressOfNameOrdinals);
+        DWORD best = 0;
+        const char* found = nullptr;
+        for (DWORD i = 0; i < exports->NumberOfNames; ++i) {
+            if (ordinals[i] >= exports->NumberOfFunctions)
+                continue;
+            const DWORD start = functions[ordinals[i]];
+            // In the export table itself: a forwarder's text, no code. Of two
+            // names for one address the first stays (Nt… before Zw…).
+            if (start > rva || (found && start <= best)
+                || (start >= where.VirtualAddress && start - where.VirtualAddress < where.Size))
+                continue;
+            best = start;
+            found = reinterpret_cast<const char*>(base + names[i]);
+        }
+        if (!found || rva - best > kNearExport)
+            return false;
+        std::size_t length = 0;
+        while (length + 1 < room && found[length]) {
+            name[length] = found[length];
+            ++length;
+        }
+        name[length] = 0;
+        *into = rva - best;
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+// Windows' folder with the separator after it; empty when it cannot be told.
+const QString& windowsFolder()
+{
+    static const QString folder = [] {
+        std::array<wchar_t, MAX_PATH> path {};
+        const UINT length = ::GetSystemWindowsDirectoryW(path.data(), static_cast<UINT>(path.size()));
+        if (length == 0 || length >= path.size())
+            return QString();
+        return QString::fromWCharArray(path.data(), static_cast<qsizetype>(length)) + QLatin1Char('\\');
+    }();
+    return folder;
+}
+
 // "Qt6Core.dll+1a2b3c": the module an address is in and how far into it;
-// the address alone when it is in none (code made at run time).
+// the address alone when it is in none (code made at run time). In one of
+// Windows' own modules the exported function comes after it:
+// "win32u.dll+1234 NtUserMessageCall+14".
 QString named(quintptr address)
 {
     HMODULE module = nullptr;
@@ -50,8 +124,14 @@ QString named(quintptr address)
         || !module || !::GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size())))
         return QStringLiteral("0x") + QString::number(address, 16);
     const QString file = QString::fromWCharArray(path.data());
-    return file.mid(file.lastIndexOf(QLatin1Char('\\')) + 1) + QLatin1Char('+')
-        + QString::number(address - reinterpret_cast<quintptr>(module), 16);
+    const quintptr offset = address - reinterpret_cast<quintptr>(module);
+    QString text = file.mid(file.lastIndexOf(QLatin1Char('\\')) + 1) + QLatin1Char('+') + QString::number(offset, 16);
+    std::array<char, 96> function {};
+    DWORD into = 0;
+    if (!windowsFolder().isEmpty() && file.startsWith(windowsFolder(), Qt::CaseInsensitive) && offset <= MAXDWORD
+        && exportBefore(module, static_cast<DWORD>(offset), function.data(), function.size(), &into))
+        text += QLatin1Char(' ') + QLatin1StringView(function.data()) + QLatin1Char('+') + QString::number(into, 16);
+    return text;
 }
 
 #if defined(_M_X64)
@@ -207,6 +287,8 @@ void UiStallWatch::run()
                 const Spent now = spent();
                 const qint64 ms = awakeMs() - asked;
                 QJsonObject details = look();
+                // Before anything is written: as close to the same moment as can be.
+                const QJsonArray others = m_options.others && samples == 0 ? lookAtOthers() : QJsonArray();
                 details.insert(QStringLiteral("stall"), stall);
                 details.insert(QStringLiteral("sample"), ++samples);
                 details.insert(QStringLiteral("ms"), ms);
@@ -214,6 +296,24 @@ void UiStallWatch::run()
                 details.insert(QStringLiteral("process_cpu_ms"), now.processMs - before.processMs);
                 details.insert(QStringLiteral("busy"), (now.threadMs - before.threadMs) * 2 >= ms);
                 m_sink(QStringLiteral("ui-stall"), std::move(details));
+                // In parts: the journal takes 8 KB an entry, and a program with a
+                // graphics driver in it has some dozens of threads.
+                std::vector<QJsonArray> parts;
+                qsizetype size = 0;
+                for (const QJsonValue thread : others) {
+                    const qsizetype bytes = QJsonDocument(thread.toObject()).toJson(QJsonDocument::Compact).size();
+                    if (parts.empty() || size + bytes > kPartBytes) {
+                        parts.emplace_back();
+                        size = 0;
+                    }
+                    parts.back().append(thread);
+                    size += bytes;
+                }
+                for (std::size_t i = 0; i < parts.size(); ++i) {
+                    m_sink(QStringLiteral("ui-stall-threads"), {{QStringLiteral("stall"), stall},
+                        {QStringLiteral("part"), static_cast<int>(i + 1)}, {QStringLiteral("of"), static_cast<int>(parts.size())},
+                        {QStringLiteral("threads"), parts[i]}});
+                }
             }
             waited = wait(m_options.again);
         }
@@ -251,6 +351,100 @@ QJsonObject UiStallWatch::look()
     details.insert(QStringLiteral("frames"), names);
 #endif
     return details;
+}
+
+// The program's other threads, read the same way. The interface's thread
+// waiting says only that it waits (for the thread that draws, for a lock):
+// what holds it up is in another's calls. Threads in the same calls (a pool
+// at rest) are written once, with how many they are.
+QJsonArray UiStallWatch::lookAtOthers()
+{
+    QJsonArray threads;
+#if defined(_M_X64)
+    struct Other {
+        HANDLE thread = nullptr;
+        Frames frames;
+    };
+    std::vector<Other> all;
+    const DWORD process = ::GetCurrentProcessId();
+    const DWORD self = ::GetCurrentThreadId();
+    const DWORD watched = ::GetThreadId(m_watched);
+    if (const HANDLE snapshot = ::CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0); snapshot != INVALID_HANDLE_VALUE) {
+        THREADENTRY32 entry {sizeof entry};
+        for (BOOL more = ::Thread32First(snapshot, &entry); more; more = ::Thread32Next(snapshot, &entry)) {
+            if (entry.th32OwnerProcessID != process || entry.th32ThreadID == self || entry.th32ThreadID == watched)
+                continue;
+            if (const HANDLE thread = ::OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_LIMITED_INFORMATION,
+                    FALSE, entry.th32ThreadID))
+                all.push_back({thread, {}});
+        }
+        ::CloseHandle(snapshot);
+    }
+    for (Other& other : all) {
+        alignas(16) CONTEXT context {};
+        context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+        std::size_t bytes = 0;
+        // Stopped, it may hold the heap's lock: only calls into Windows until it runs again.
+        if (::SuspendThread(other.thread) == static_cast<DWORD>(-1))
+            continue;
+        MEMORY_BASIC_INFORMATION region {};
+        if (::GetThreadContext(other.thread, &context)
+            && ::VirtualQuery(reinterpret_cast<const void*>(context.Rsp), &region, sizeof region)
+            && region.State == MEM_COMMIT && !(region.Protect & (PAGE_GUARD | PAGE_NOACCESS))) {
+            // The committed part of a stack is one region, up to the stack's base.
+            const DWORD64 end = reinterpret_cast<DWORD64>(region.BaseAddress) + region.RegionSize;
+            bytes = std::min<std::size_t>(kStackBytes, end - context.Rsp);
+            std::memcpy(m_copy.data(), reinterpret_cast<const void*>(context.Rsp), bytes);
+        }
+        ::ResumeThread(other.thread);
+        if (bytes)
+            walk(context, m_copy.data(), bytes, other.frames);
+    }
+    using Described = HRESULT(WINAPI*)(HANDLE, PWSTR*); // GetThreadDescription: Windows 10 1607 on
+    const auto described = reinterpret_cast<Described>(
+        reinterpret_cast<void*>(::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription")));
+    struct Seen {
+        QString calls;
+        QJsonArray frames;
+        QStringList names;
+        int count = 0;
+    };
+    std::vector<Seen> seen;
+    for (const Other& other : all) {
+        QString name;
+        if (PWSTR text = nullptr; described && SUCCEEDED(described(other.thread, &text)) && text) {
+            name = QString::fromWCharArray(text);
+            ::LocalFree(text);
+        }
+        ::CloseHandle(other.thread);
+        if (other.frames.count == 0)
+            continue;
+        QJsonArray frames;
+        QString calls;
+        for (int i = 0; i < std::min<int>(other.frames.count, kOtherFrames); ++i) {
+            const QString call = named(other.frames.at[static_cast<std::size_t>(i)]);
+            frames.append(call);
+            calls += call + QLatin1Char('\n');
+        }
+        auto same = std::ranges::find(seen, calls, &Seen::calls);
+        if (same == seen.end())
+            same = seen.insert(seen.end(), Seen {calls, frames, {}, 0});
+        ++same->count;
+        if (!name.isEmpty() && !same->names.contains(name))
+            same->names.append(name);
+    }
+    for (const Seen& one : seen) {
+        if (threads.size() >= kMostOthers)
+            break;
+        QJsonObject thread {{QStringLiteral("frames"), one.frames}};
+        if (one.count > 1)
+            thread.insert(QStringLiteral("count"), one.count);
+        if (!one.names.isEmpty())
+            thread.insert(QStringLiteral("name"), one.names.join(QLatin1Char(',')));
+        threads.append(thread);
+    }
+#endif
+    return threads;
 }
 
 } // namespace ws

@@ -8,6 +8,7 @@
 #include "Capture.h"
 #include "CaptureEditor.h"
 #include "CaptureOcr.h"
+#include "DiagnosticLog.h"
 #include "Geometry.h"
 #include "HotkeyText.h"
 #include "IdleTrim.h"
@@ -36,6 +37,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QEvent>
 #include <QFile>
 #include <QGuiApplication>
@@ -445,7 +447,10 @@ void CaptureApp::apply()
         callbacks.copyColor = [this](const QString& hex) { copyText(hex); };
         callbacks.saveFolder = [this] { return m_settings.options().saveFolder; };
         callbacks.saved = [this](const QString& path, const QString& error) { notifySaved(path, error); };
-        callbacks.ended = [this] { m_idleTrim->poke(); };
+        callbacks.ended = [this] {
+            m_stallWatch.reset();
+            m_idleTrim->poke();
+        };
         callbacks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
         callbacks.ocrThen = [this](const QImage& image, double dpr, const QRect& where, capture::CaptureSession::Action then) {
             using Action = capture::CaptureSession::Action;
@@ -460,6 +465,7 @@ void CaptureApp::apply()
         // Not in the frozen picture: hidden, and one composition waited for, so
         // the grab right after does not still find it on the screen.
         callbacks.starting = [this] {
+            watchStalls();
             // What the last capture after an emptying needed, read back while
             // this one starts (HotPages, as the launcher's, GitHub #265): the
             // working set is emptied 20 s after a capture, and minutes later
@@ -621,6 +627,29 @@ void CaptureApp::apply()
 // process putting its value back late on an update, Windows, another program)
 // and is taken again. A program that keeps doing it is not fought for ever:
 // the 4th time within a minute it is said once and left until the next apply().
+// The capture's own watch (Capture::watchTick, "capture-stall") says how long
+// this thread did not answer, never what it was in: stalls of a fixed two
+// seconds right as the overlay came up were reported for weeks with nothing
+// to tell their cause. From the hotkey to the overlay's end a thread of its
+// own asks every 100 ms; 300 ms with no answer and the calls this thread is
+// in go into the journal ("ui-stall"), with those of every other thread the
+// first time (the one that draws, the graphics driver's), then twice more
+// while it lasts. `capture_ms` is the time since the hotkey.
+void CaptureApp::watchStalls()
+{
+    if (!diagnostics::enabled())
+        return;
+    QElapsedTimer began;
+    began.start();
+    m_stallWatch.reset(); // one at a time: its window class and events are per watch
+    m_stallWatch = std::make_unique<UiStallWatch>(
+        [began](const QString& event, QJsonObject details) {
+            details.insert(u"capture_ms"_s, began.elapsed());
+            diagnostics::record(event, std::move(details));
+        },
+        UiStallWatch::Options {.every = 100ms, .late = 300ms, .again = 700ms, .samples = 3, .stalls = 6, .others = true});
+}
+
 void CaptureApp::printScreenChanged()
 {
     if (!m_settings.options().printScreen || m_retakesStopped)

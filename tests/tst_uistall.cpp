@@ -6,7 +6,9 @@
 #include <QJsonDocument>
 #include <QTest>
 
+#include <atomic>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 using namespace ws;
@@ -83,6 +85,13 @@ bool hasFrameOf(const QJsonObject& details, QLatin1StringView module)
     return false;
 }
 
+// Another thread of the program's, held up in a call of its own until told to go.
+Q_NEVER_INLINE void heldUp(const std::atomic<bool>& go)
+{
+    while (!go.load())
+        ::Sleep(20);
+}
+
 } // namespace
 
 class UiStallTest : public QObject {
@@ -144,6 +153,63 @@ private slots:
         QVERIFY2(top.startsWith(u"ntdll.dll+", Qt::CaseInsensitive) || top.startsWith(u"win32u.dll+", Qt::CaseInsensitive),
             notes.text().constData());
         QVERIFY2(hasFrameOf(first, "tst_uistall.exe+"_L1), notes.text().constData());
+        // In Windows' own modules the exported call is named: which wait it is.
+        QVERIFY2(top.contains(u" NtDelayExecution+"_s), notes.text().constData());
+        // Never for the program's own: its offsets go with its symbols.
+        for (const QJsonValue frame : first.value(u"frames"_s).toArray()) {
+            if (frame.toString().startsWith(u"tst_uistall.exe+"_s, Qt::CaseInsensitive))
+                QVERIFY2(!frame.toString().contains(u' '), notes.text().constData());
+        }
+        QCOMPARE(notes.count(u"ui-stall-threads"_s), 0); // not asked for
+#endif
+    }
+
+    // Asked for the other threads: theirs at a stall's first look, the ones in the same calls once.
+    void theOtherThreadsAreLookedAt()
+    {
+        std::atomic<bool> go = false;
+        std::vector<std::jthread> held;
+        for (int i = 0; i < 3; ++i)
+            held.emplace_back([&go] { heldUp(go); });
+        Notes notes;
+        UiStallWatch::Options options = kQuick;
+        options.others = true;
+        {
+            UiStallWatch watch(notes.sink(), options);
+            waitFor(700); // looks at 250 and 550 ms
+            QTRY_COMPARE_WITH_TIMEOUT(notes.count(u"ui-stall-end"_s), 1, 2000);
+        }
+        go = true;
+        const auto all = notes.all();
+        QVERIFY2(all.size() >= 4, notes.text().constData());
+        QCOMPARE(all[0].event, u"ui-stall"_s);
+#if defined(_M_X64)
+        // Right after the first look, in parts small enough for the journal; not after the second.
+        QCOMPARE(all[1].event, u"ui-stall-threads"_s);
+        int heldUpThreads = 0;
+        int different = 0;
+        int parts = 0;
+        for (const Noted& note : all) {
+            if (note.event != u"ui-stall-threads"_s)
+                continue;
+            QCOMPARE(note.details.value(u"stall"_s).toInt(), 1);
+            QCOMPARE(note.details.value(u"part"_s).toInt(), ++parts);
+            QVERIFY2(QJsonDocument(note.details).toJson(QJsonDocument::Compact).size() < 7000, notes.text().constData());
+            for (const QJsonValue thread : note.details.value(u"threads"_s).toArray()) {
+                const QJsonObject one = thread.toObject();
+                QVERIFY2(!one.value(u"frames"_s).toArray().isEmpty(), notes.text().constData());
+                ++different;
+                if (hasFrameOf(one, "tst_uistall.exe+"_L1))
+                    heldUpThreads += one.value(u"count"_s).toInt(1);
+            }
+        }
+        QVERIFY(parts >= 1);
+        QCOMPARE(all[1].details.value(u"of"_s).toInt(), parts);
+        QCOMPARE(all[static_cast<std::size_t>(parts) + 1].event, u"ui-stall"_s); // the second look
+        // Sleeping or between two sleeps, in one stack or two: all three are there.
+        QCOMPARE(heldUpThreads, 3);
+        QVERIFY2(different < 3 + 20, notes.text().constData()); // the pools' threads at rest, once each kind
+        QVERIFY2(hasFrameOf(all[0].details, "tst_uistall.exe+"_L1), notes.text().constData()); // the watched one's as before
 #endif
     }
 
