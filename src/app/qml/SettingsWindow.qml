@@ -2159,6 +2159,21 @@ Window {
                         onActivated: (index) => window.editor.folderTyping = index === 2 ? "level" : index === 1 ? "only" : "first"
                     }
                 }
+
+                SettingRow { // GitHub #40
+                    title: qsTr("让其他软件把 Win顺 当作 Everything 搜索")
+                    keywords: qsTr("Everything;兼容;Directory Opus;DOpus;Total Commander;TC;es.exe;SDK;IPC").split(";")
+                    description: qsTr("Directory Opus、Total Commander 等软件里的 Everything 搜索由 Win顺 回答，不用再装 Everything")
+                    tip: qsTr("Everything 自己在运行时仍由它回答。打开后，本机的程序都可以通过这个接口查到索引里的文件名")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        objectName: "everythingCompatToggle"
+                        checked: window.editor.everythingCompat
+                        Accessible.name: qsTr("让其他软件把 Win顺 当作 Everything 搜索")
+                        onToggled: (on) => window.editor.everythingCompat = on
+                    }
+                }
             }
 
             SettingsSection {

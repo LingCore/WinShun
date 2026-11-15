@@ -1449,6 +1449,14 @@ void SettingsEditor::setOpusTyping(bool on)
     commit();
 }
 
+void SettingsEditor::setEverythingCompat(bool on)
+{
+    if (m_settings.everythingCompat == on)
+        return;
+    m_settings.everythingCompat = on;
+    commit();
+}
+
 void SettingsEditor::setOpusTypingScope(const QString& scope)
 {
     if (m_settings.opusTypingScope == scope || (scope != u"folder" && scope != u"all"))

@@ -143,6 +143,9 @@ struct Settings {
     // letters: off unless asked for, so that an upgrade changes nothing.
     bool explorerTyping = false;
     bool opusTyping = false; // opt in per manager: typing in an Opus file display (GitHub #82)
+    // Win顺 answers where programs look for Everything (GitHub #40: Directory
+    // Opus, Total Commander, es.exe): platform/EverythingServer.
+    bool everythingCompat = false;
     // ... and with the desktop's icons having the keyboard (GitHub #314): the
     // launcher as its hotkey opens it, to search the whole PC.
     bool desktopTyping = false;

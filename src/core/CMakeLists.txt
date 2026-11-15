@@ -34,6 +34,7 @@ qt_add_library(wscore STATIC
     MenuHotkey.h
     MissingFiles.cpp MissingFiles.h
     NameSearch.cpp NameSearch.h
+    EverythingIpc.cpp EverythingIpc.h
     Ntfs.cpp Ntfs.h
     NtfsBulk.cpp NtfsBulk.h
     NtfsIndexer.cpp NtfsIndexer.h

@@ -463,6 +463,10 @@
         <translation>Type to search in Directory Opus</translation>
     </message>
     <message>
+        <source>让其他软件把 Win顺 当作 Everything 搜索</source>
+        <translation>Let other programs search WinShun as Everything</translation>
+    </message>
+    <message>
         <source>在文件夹里打字时</source>
         <translation>When typing in a folder</translation>
     </message>
@@ -5036,6 +5040,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>在 Directory Opus 里直接打字搜索</source>
         <translation>Type to search in Directory Opus</translation>
+    </message>
+    <message>
+        <source>让其他软件把 Win顺 当作 Everything 搜索</source>
+        <translation>Let other programs search WinShun as Everything</translation>
+    </message>
+    <message>
+        <source>Everything;兼容;Directory Opus;DOpus;Total Commander;TC;es.exe;SDK;IPC</source>
+        <translation>Everything;compatible;Directory Opus;DOpus;Total Commander;TC;es.exe;SDK;IPC</translation>
+    </message>
+    <message>
+        <source>Directory Opus、Total Commander 等软件里的 Everything 搜索由 Win顺 回答，不用再装 Everything</source>
+        <translation>WinShun answers the Everything search of Directory Opus, Total Commander and the like, with Everything not installed</translation>
+    </message>
+    <message>
+        <source>Everything 自己在运行时仍由它回答。打开后，本机的程序都可以通过这个接口查到索引里的文件名</source>
+        <translation>While Everything itself runs, it goes on answering. When on, any program on this PC can ask for the names of indexed files this way</translation>
     </message>
     <message>
         <source>Opus;DOpus;直接打字;输入;当前文件夹;双栏;type to search</source>

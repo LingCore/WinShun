@@ -98,6 +98,7 @@ class SettingsEditor;
 class Switches;
 class SwitchPlugin;
 class TypeToSearch;
+class EverythingServer;
 class LauncherKeysWatch;
 class Updater;
 class BackgroundStatus;
@@ -773,6 +774,7 @@ private:
     win::LettersSwitch m_lettersSwitch; // what that did, to put back on hiding
     std::unique_ptr<ComWorker> m_typingWorker; // queries a file display's folder (folderTyped); before m_typing
     std::unique_ptr<TypeToSearch> m_typing; // while StartMenuTyping, ExplorerTyping, OpusTyping, DesktopTyping or PasteFile is on
+    std::unique_ptr<EverythingServer> m_everything; // while EverythingCompat is on; after m_index, which it asks
     // The launcher is up from typing in this Explorer or Opus window and tab:
     // Esc goes back to the window, a folder opened goes to the tab (openInTypingTab).
     // Cleared by any other opening (showLauncher), by hiding the launcher,

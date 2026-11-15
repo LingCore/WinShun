@@ -912,6 +912,7 @@ void Settings::load()
     explorerTyping = readOrDefault(s, u"Launcher/ExplorerTyping"_s, d.explorerTyping);
     desktopTyping = readOrDefault(s, u"Launcher/DesktopTyping"_s, d.desktopTyping);
     opusTyping = readOrDefault(s, u"Launcher/OpusTyping"_s, d.opusTyping);
+    everythingCompat = readOrDefault(s, u"Launcher/EverythingCompat"_s, d.everythingCompat);
     opusTypingScope = readOrDefault(s, u"Launcher/OpusTypingScope"_s, d.opusTypingScope).trimmed().toLower();
     if (opusTypingScope != u"all")
         opusTypingScope = d.opusTypingScope;
@@ -1328,6 +1329,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/ExplorerTyping"_s, explorerTyping);
     s.setValue(u"Launcher/DesktopTyping"_s, desktopTyping);
     s.setValue(u"Launcher/OpusTyping"_s, opusTyping);
+    s.setValue(u"Launcher/EverythingCompat"_s, everythingCompat);
     s.setValue(u"Launcher/OpusTypingScope"_s, opusTypingScope);
     s.setValue(u"Launcher/FolderTyping"_s, folderTyping);
     s.setValue(u"Launcher/FolderMenu"_s, folderMenu);

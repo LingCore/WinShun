@@ -781,6 +781,21 @@ private slots:
         QCOMPARE(restored.fileManager, u"onecommander"_s);
     }
 
+    void everythingCompat() // GitHub #40: off unless asked for, kept once on
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(!settings.everythingCompat);
+        settings.everythingCompat = true;
+        settings.save();
+        ws::Settings read;
+        read.load();
+        QVERIFY(read.everythingCompat);
+    }
+
     void opusTyping()
     {
         QTemporaryDir profile;

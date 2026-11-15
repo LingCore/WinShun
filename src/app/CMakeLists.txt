@@ -94,6 +94,7 @@ qt_add_executable(WinShun WIN32
     DialogRuleStore.cpp DialogRuleStore.h
     platform/BlenderFileDialog.cpp platform/BlenderFileDialog.h
     platform/FileManagers.cpp platform/FileManagers.h
+    platform/EverythingServer.cpp platform/EverythingServer.h
     platform/FolderViewHit.cpp platform/FolderViewHit.h
     platform/Foreground.cpp platform/Foreground.h
     platform/HoldWatch.cpp platform/HoldWatch.h

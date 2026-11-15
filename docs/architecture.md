@@ -105,6 +105,7 @@ DialogAutoJump=false     ; 对话框出现时（以及从文件管理器换了�
 DialogBarExcludedApps=   ; 不显示搜索框的程序，如 notepad.exe，逗号分隔；搜索框“更多”菜单里加，设置里删
 DialogBarFolderOnly=false ; 对话框旁的搜索框只搜对话框正显示的文件夹（#286）；在搜索框里切换（Ctrl+Shift+D、“…”菜单、点框前的文件夹名），这里只是记住
 ExplorerTyping=false     ; 在资源管理器的文件列表里直接打字，就用 Win顺 搜，这个窗口的文件夹优先（和 Listary 一样）；代替资源管理器自己的按首字母跳到文件，所以默认关
+EverythingCompat=false   ; 让找 Everything 的程序（Directory Opus、Total Commander、es.exe、Everything SDK）改由 Win顺 回答（GitHub #40）；Everything 自己在运行时仍由它回答
 OpusTyping=false         ; 独立开启 Directory Opus 文件列表中的字母／数字触发；符号键和编辑字段仍交给 Opus
 FolderTyping=first       ; first | only | level：在文件夹窗口里打字打开时，first 先列这个文件夹（含子文件夹）里的、再列其他位置的（和 Listary 一样，GitHub #110）；only 只搜这个文件夹（含子文件夹）；level 只搜直接放在这个文件夹里的，不含子文件夹（#182）。搜索时 Ctrl+Shift+D 按 first → only → level 轮流换，只换这一次；没有这一项（升级）时当 first
 FolderMenu=off           ; auto | on | off：在资源管理器或桌面的空白处双击弹出文件夹菜单（GitHub #22）；auto 时 Listary 在运行就不弹；新装默认 off，以前的设置文件里没有这一项时当 auto（升级不变）

@@ -71,6 +71,7 @@
 #include "platform/DialogJump.h"
 #include "DialogRuleStore.h"
 #include "platform/ExternalPreview.h"
+#include "platform/EverythingServer.h"
 #include "platform/FileManagers.h"
 #include "platform/Foreground.h"
 #include "platform/Http.h"
@@ -1894,6 +1895,13 @@ void App::onPlainHotkey(std::uint32_t vk, bool sent)
 
 void App::applySettings(bool initial)
 {
+    // Answering for Everything (GitHub #40): its window only while the switch is on.
+    if (m_settings.everythingCompat != static_cast<bool>(m_everything)) {
+        if (m_settings.everythingCompat)
+            m_everything = std::make_unique<EverythingServer>([service = m_index.get()] { return service->index(); });
+        else
+            m_everything.reset();
+    }
     // 网络代理 (GitHub #84): for every request over WinHTTP, from the next on. A
     // manual address that is not a good one follows the system's, as the page says.
     if (const proxy::Address address = proxy::parse(m_settings.proxyAddress); m_settings.proxyMode == u"none")

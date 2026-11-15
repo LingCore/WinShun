@@ -277,6 +277,13 @@ std::vector<Entry> buildCatalog()
                     "Off by default and independent of Explorer typing. Punctuation, shortcuts, menus and edit fields "
                     "stay in Opus."},
         &Settings::opusTyping));
+    add(boolean({"Launcher/EverythingCompat", QT_TRANSLATE_NOOP("AiSettings", "让其他软件把 Win顺 当作 Everything 搜索"),
+                    "files_and_dialogs", 2,
+                    "Win顺 answers the queries programs send to Everything (its IPC window): Directory Opus, Total "
+                    "Commander, es.exe and tools built on the Everything SDK then search Win顺's index with Everything not "
+                    "installed. Off by default. While Everything itself runs, it goes on answering. Any program on this "
+                    "PC can then ask for the names of indexed files."},
+        &Settings::everythingCompat));
     {
         Entry& e = add(choice({"Launcher/OpusTypingScope", QT_TRANSLATE_NOOP("AiSettings", "Directory Opus 里打字搜索的范围"),
                                   "files_and_dialogs", 2,
