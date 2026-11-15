@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cwchar>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -264,7 +265,12 @@ Map map(std::vector<std::pair<const void*, std::size_t>> fileIndex)
     };
     constexpr std::size_t kPage = 4096;
     constexpr std::size_t kStep = 4096;
-    static thread_local PSAPI_WORKING_SET_EX_INFORMATION info[kStep];
+    // The call's own, from the heap. As a thread_local it was 64 KB of every
+    // thread's storage, copied into memory as each thread started, whether
+    // or not the thread ever came here: 10.7 MB with the 169 threads of a
+    // Win顺 on 32 processors.
+    const auto buffer = std::make_unique_for_overwrite<PSAPI_WORKING_SET_EX_INFORMATION[]>(kStep);
+    PSAPI_WORKING_SET_EX_INFORMATION* const info = buffer.get();
     const HANDLE self = ::GetCurrentProcess();
 
     // Pages of [from, to) private and in the working set; those in the file index's blocks apart.

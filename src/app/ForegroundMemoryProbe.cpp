@@ -40,6 +40,18 @@ using namespace Qt::StringLiterals;
 
 namespace ws::preview {
 namespace {
+
+// The size of this program's thread-local storage: what each thread is given a copy of.
+std::size_t threadStorageBytes()
+{
+    const auto* base = reinterpret_cast<const std::uint8_t*>(::GetModuleHandleW(nullptr));
+    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
+    const IMAGE_DATA_DIRECTORY& entry = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS];
+    if (entry.VirtualAddress == 0)
+        return 0;
+    const auto* tls = reinterpret_cast<const IMAGE_TLS_DIRECTORY*>(base + entry.VirtualAddress);
+    return static_cast<std::size_t>(tls->EndAddressOfRawData - tls->StartAddressOfRawData) + tls->SizeOfZeroFill;
+}
 void settle(int ms = 350)
 {
     QEventLoop loop;
@@ -458,6 +470,11 @@ bool checkForegroundMemory(QQmlEngine* engine, const QDir& output, bool requireL
             merged += (font.styleStrategy() & QFont::NoFontMerging) ? 0 : 1;
         }
         check(icons > 0 && merged == 0, u"no icon's text is merged with other fonts (%1 of %2 are)"_s.arg(merged).arg(icons));
+        // Every thread has a copy of the program's thread_local variables,
+        // written as the thread starts: one 64 KB buffer among them was
+        // 10.7 MB with the 169 threads of a Win顺 on 32 processors.
+        const std::size_t perThread = threadStorageBytes();
+        check(perThread > 0 && perThread < 4096, u"a thread's own storage holds no buffer (%1 bytes)"_s.arg(perThread));
     }
     if (requireLazy) {
         // The full panel may already be selected before Main is constructed.
