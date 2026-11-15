@@ -6,6 +6,7 @@
 - **原因和做法**（数字、测法见 `docs/validation/foreground-memory-20261115/`）：
   - **图标的 `Text` 不要用 `font.family:` 指定图标字体**。字体里没有那个字形时，Qt 默认到别的字体里找（字体合并），而且是把系统装的字体**挨个加载**一遍才知道都没有：本机 69 个，约 17 MB，加载后不释放。触发它的不是“写错了图标码”，是绑定更新的中间状态：共用的行内按钮换图标时，`text` 先换成了新码、`font.family` 还是上一个图标的。用 `SystemTheme.glyphFont(字体, 磅值)`（风格部件里用 `look.glyphFont(像素)`），它带 `QFont::NoFontMerging`；QML 的 `font.*` 里没有这个开关，只能从 C++ 给整个 `font`。
   - **`thread_local` 里不要放数组**。程序的线程局部存储是一个模板，Windows 给每个线程复制一份，线程一启动就写进内存，和线程用不用无关。一个 64 KB 的 `static thread_local` 缓冲，169 个线程就是 10.7 MB。要缓冲就在调用时从堆上取，或者用 `thread_local std::vector`（对象本身只有 24 字节）。`--foreground-memory` 探针会检查程序的线程局部存储小于 4 KB。
+  - **全量遍历要读的字段和不读的字段别放在同一个结构里**。文件索引每条 17 字节，搜索只读其中 9 字节（名字位置、所在文件夹、标志），可是内存按页算，隔 17 字节读一下就把整块都带进来了。现在两部分各存一块（`EntryScan`、`EntryLinks`），遍历用 `index.scanChunk(c)`、`index.scan(id)`、`index.parent(id)`；只有走文件夹的子项链、问文件大小才用 `index.entry(id)`（它把两部分拼成一个值返回，不再是指向索引内部的引用）。新写的遍历如果用了 `index.chunk(c)` 或在循环里对每一条调 `index.entry(id)`，另外那 8 字节又会全部进内存。
   - **`addApplicationFontFromData(file.readAll())` 会让整个字体文件一直留在堆里**，`readAll` 还按倍数长：8.5 MB 的字体占 16 MB。用 `ws::addFontFromFile`（`FontFile.h`），它映射文件。
 - **查的时候踩到的**：
   - **探针里用 `processEvents()` 转事件，`deleteLater` 的对象永远不删**。列表每次出新结果，旧的行都是 `deleteLater`；它只在“回到一个正在运行的事件循环”时执行，手动 `processEvents()` 不算。结果探针里每搜一轮多 7.6 MB、一直涨，看起来像泄漏，其实正式程序里没有。探针里等待要用 `QEventLoop::exec()`（`ForegroundUseProbe::pump`）。

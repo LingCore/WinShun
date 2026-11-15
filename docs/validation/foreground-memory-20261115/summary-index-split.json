@@ -1,0 +1,156 @@
+{
+ "runs": {
+  "old": 3,
+  "new": 3,
+  "entries": [
+   2246587,
+   2246599,
+   2246609,
+   2246592,
+   2246604,
+   2246615
+  ]
+ },
+ "memory": [
+  {
+   "stage": "idle",
+   "old_private_mb": 2.5,
+   "new_private_mb": 3.8,
+   "old_commit_mb": 225.8,
+   "new_commit_mb": 224,
+   "old_heaps_mb": 2.3,
+   "new_heaps_mb": 3.5,
+   "old_runs": [
+    2.5,
+    5.9,
+    2.5
+   ],
+   "new_runs": [
+    2.5,
+    4,
+    3.8
+   ]
+  },
+  {
+   "stage": "opened",
+   "old_private_mb": 80.5,
+   "new_private_mb": 64.1,
+   "old_commit_mb": 226.6,
+   "new_commit_mb": 224.7,
+   "old_heaps_mb": 20.8,
+   "new_heaps_mb": 21.2,
+   "old_runs": [
+    81.3,
+    22.6,
+    80.5
+   ],
+   "new_runs": [
+    62.9,
+    64.1,
+    64.3
+   ]
+  },
+  {
+   "stage": "first query (report)",
+   "old_private_mb": 129.2,
+   "new_private_mb": 113,
+   "old_commit_mb": 246,
+   "new_commit_mb": 246.4,
+   "old_heaps_mb": 54.8,
+   "new_heaps_mb": 54.8,
+   "old_runs": [
+    129.2,
+    127.2,
+    129.3
+   ],
+   "new_runs": [
+    113,
+    111.8,
+    113.9
+   ]
+  },
+  {
+   "stage": "after round 1",
+   "old_private_mb": 149.4,
+   "new_private_mb": 135.3,
+   "old_commit_mb": 264.4,
+   "new_commit_mb": 264.9,
+   "old_heaps_mb": 72.8,
+   "new_heaps_mb": 72.7,
+   "old_runs": [
+    149.4,
+    149,
+    149.5
+   ],
+   "new_runs": [
+    135.3,
+    134.4,
+    138
+   ]
+  },
+  {
+   "stage": "after round 2",
+   "old_private_mb": 152.4,
+   "new_private_mb": 138.5,
+   "old_commit_mb": 266.4,
+   "new_commit_mb": 266.6,
+   "old_heaps_mb": 77,
+   "new_heaps_mb": 76,
+   "old_runs": [
+    152.4,
+    152.4,
+    153.6
+   ],
+   "new_runs": [
+    138.5,
+    135.8,
+    140.1
+   ]
+  },
+  {
+   "stage": "after round 3",
+   "old_private_mb": 156.1,
+   "new_private_mb": 142.3,
+   "old_commit_mb": 268.3,
+   "new_commit_mb": 269,
+   "old_heaps_mb": 79.5,
+   "new_heaps_mb": 79.8,
+   "old_runs": [
+    154.9,
+    156.2,
+    156.1
+   ],
+   "new_runs": [
+    142.3,
+    140.2,
+    143.7
+   ]
+  }
+ ],
+ "keys": {
+  "old": {
+   "first_key_ms": [
+    19.6,
+    22.3,
+    18.7
+   ],
+   "first_key_median_ms": 19.6,
+   "other_keys_median_ms": 9.5,
+   "other_keys_p90_ms": 16.9,
+   "keys": 357,
+   "name_search_median_ms": 5.95
+  },
+  "new": {
+   "first_key_ms": [
+    18,
+    17.8,
+    18.3
+   ],
+   "first_key_median_ms": 18,
+   "other_keys_median_ms": 9.4,
+   "other_keys_p90_ms": 16.2,
+   "keys": 357,
+   "name_search_median_ms": 5.57
+  }
+ }
+}
