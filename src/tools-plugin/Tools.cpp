@@ -184,7 +184,7 @@ private:
         }
         // A conversion first: "12 inch to cm" is no arithmetic.
         if (const auto request = tools::units::parse(text)) {
-            const std::vector<tools::units::Row> rows = tools::units::convert(*request);
+            const std::vector<tools::units::Row> rows = tools::units::convert(*request, chinese());
             int n = 0;
             for (const tools::units::Row& row : rows) {
                 const std::string value = row.value + " " + row.unit;

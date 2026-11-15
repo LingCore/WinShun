@@ -257,8 +257,12 @@ double decimalFactor(const Unit& u)
 
 } // namespace
 
-std::vector<Row> convert(const Request& request)
+std::vector<Row> convert(const Request& request, bool chinese)
 {
+    // The note on a data-size row: how the step was counted. English says
+    // the sizes themselves; Chinese says the rule in a word.
+    const char* note1024 = chinese ? "按 1024 算" : "1 KB = 1024 B";
+    const char* note1000 = chinese ? "按 1000 算" : "1 KB = 1000 B";
     std::vector<Row> rows;
     if (!request.from)
         return rows;
@@ -268,13 +272,13 @@ std::vector<Row> convert(const Request& request)
         row.value = formatValue(fromBase(base, to));
         row.unit = to.id;
         if (to.category == Category::Data && (to.factor >= 1024 || request.from->factor >= 1024))
-            row.note = "1 KB = 1024 B";
+            row.note = note1024;
         rows.push_back(row);
         if (to.category == Category::Data && (to.factor >= 1024 || request.from->factor >= 1024)) {
             Row alt;
             alt.value = formatValue(request.value * decimalFactor(*request.from) / decimalFactor(to));
             alt.unit = to.id;
-            alt.note = "1 KB = 1000 B";
+            alt.note = note1000;
             alt.alternate = true;
             rows.push_back(alt);
         }

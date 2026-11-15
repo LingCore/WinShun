@@ -336,6 +336,10 @@ private slots:
         QCOMPARE(qs(rows[0].value), u"1536"_s);
         QCOMPARE(qs(rows[1].value), u"1500"_s);
         QVERIFY(rows[1].alternate);
+        QCOMPARE(qs(rows[0].note), u"1 KB = 1024 B"_s); // the English note
+        const auto zhRows = units::convert(*units::parse("1.5 GB in MB"), true);
+        QCOMPARE(qs(zhRows[0].note), u"按 1024 算"_s);
+        QCOMPARE(qs(zhRows[1].note), u"按 1000 算"_s);
         rows = rowsOf("1 斤 to g");
         QCOMPARE(qs(rows[0].value), u"500"_s);
         rows = rowsOf("2 h to min");
