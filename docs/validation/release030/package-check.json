@@ -1,0 +1,15 @@
+{
+ "portable_files_matching": 193,
+ "problems": [],
+ "data_entries": [
+  "data/README.txt"
+ ],
+ "sums_match": true,
+ "winshun_exe_sha256": "ec0dec0b0d5151372a3b42edd3a82398a81c0597f0fcb4f839242ecde10487d8",
+ "sums": {
+  "WinShun-0.30.0-x64-setup.exe": "f11056a5de9cbfe18784952a246c435cb7058a04d6bee8145dd432449c59185d",
+  "WinShun-0.30.0-x64-portable.zip": "9087aaa73392d0a51dffadca1c6beceeda9853db8c82a08ef04c752f754cde4c",
+  "WinShun-0.30.0-x64-offline-setup.exe": "9a7a0f7d5e0f8854dc5d206fcdfc2b4f77be9b43a3e348736842530713e3d576",
+  "WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip": "ccb82d77a545f183504edc51e6353370742d0423b71fa1cf7800db919494277e"
+ }
+}
