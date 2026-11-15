@@ -85,10 +85,10 @@
 | 小工具 | `= 1+2*3` 计算，`12 inch to cm` 换算，`#ff8800` 颜色，还有时间戳、UUID、Base64、哈希 | 随包 |
 | 结束进程 | `kill 进程名` | 随包 |
 | [系统开关](docs/使用说明.md#系统开关) | 深色模式、蓝牙、WLAN、音量等一键切换：`关蓝牙`、`静音`、`音量 30`、`保持唤醒 1小时` | 随包，默认关 |
-| [截图与录屏](docs/使用说明.md#截图) | 截图、标注、打码、长截图、贴图、录屏和 GIF、演示白板 | 插件库 |
+| [截图与录屏](docs/使用说明.md#截图) | 截图、标注、打码、长截图、贴图、截图翻译、录屏和 GIF、演示白板 | 插件库 |
 | [图片文字搜索](docs/使用说明.md#图片文字搜索) | 搜图片和扫描件里的字，或 `ocr 关键词` | 插件库 |
 | 按意思找 | `? 去年报销的规定` | 插件库 |
-| 翻译 | `tr 句子` 翻译，`dict 单词` 查词典 | 插件库 |
+| 翻译 | `tr 句子` 翻译，`dict 单词` 查词典；截图翻译也用它 | 插件库 |
 | [网页搜索](docs/使用说明.md#网页搜索) | `baidu 天气`、`zhihu 显卡` | 插件库 |
 | 浏览器书签 | `bm 关键词`，搜 Chrome、Edge 的书签，拼音也行；打开开关后 `bh 关键词` 搜浏览历史 | 插件库 |
 | 局域网传输 | `传`，和开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件 | 插件库 |
@@ -184,18 +184,19 @@ scoop install winshun
 
 ### 最近更新
 
-**0.29.0**
+**0.30.0**
 
-- ▶️ **“应用”标签里切换已打开的窗口** 多了“运行”：把现在开着的窗口排成图标，`Enter` 或点一下就切过去，不会再启动一个。
-- 🔎 **按安装时的名字找应用** 输入 `office 2024` 找到 Word、Excel、PowerPoint，`7-zip 25` 找到 7-Zip File Manager。
-- 📌 **右键图片贴到屏幕** 开着“截图与录屏”插件时，资源管理器里右键图片文件，选“贴到屏幕（Win顺）”。
-- 🧩 **自己的命令放进文件右键菜单** 设置 › 收藏夹 里的命令可以显示在文件和文件夹的右键菜单里，把完整路径交给命令。
-- 🖼️ **剪贴板图片缩略图三档** “图片缩略图”分小、标准、大，选“小”时图片那一行和文字行一样高；一次复制几张图片文件，显示第一张和张数。
-- 🔖 **书签用拼音找** `bm xjtu` 找到“西安交通大学”（书签插件 2.0.5）。
-- ⌨️ **按住 Caps Lock 时不拦** 文件夹里直接打字搜索时，`CapsLock+字母` 不再弹出搜索框。
-- 🛠️ **修复** 界面字体选英文名（如 LXGW WenKai）重启后不生效，现在中英文名都认。
+- 🌐 **截图翻译** 框选后点工具条上的“翻译”，截图贴在原来的位置，里面的文字换成译文；需要“翻译”插件和你自己的翻译服务。
+- 🔤 **“识别文字”窗口里翻译** 上面是原文，下面是译文，可以先改一改再翻译。
+- ✏️ **剪贴板里直接修改文字** 文本记录的右键菜单里选“修改文字…”，改完还在原来的位置。
+- 🕘 **搜浏览器历史** `bh 关键词` 搜 Chrome、Edge 打开过的网页，默认关着，在插件设置里打开（书签插件 2.1.0）。
+- 🖍️ **点一下就遮住一行字** 截图时选打码工具，点一下就盖住鼠标下的那一行。
+- ⌨️ **字母直达** 在设置里打开后，轻按一下 `Ctrl`（剪贴板里是 `Alt`），每一行前面出现一个字母，按字母就打开这一行。
+- 🔗 **搜索框里直接打开网址** 开着“网页搜索”插件时，打一个网址，第一行就是“打开网址”。
+- 📋 **打开时填入刚复制的文字** 在设置里打开后，刚复制的一行字，打开搜索框时直接就搜它。
+- 🛠️ **改进** 面板快捷键再按一次就关闭；“此电脑”和“主文件夹”里也能直接打字搜索。
 
-详见 [0.29.0 发布说明](docs/release-notes/v0.29.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
+详见 [0.30.0 发布说明](docs/release-notes/v0.30.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
 
 ### 常见问题
 
@@ -330,12 +331,12 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | Tools | `= 1+2*3` calculator, `12 inch to cm`, `#ff8800` colors, timestamps, UUID, Base64, hashes | Bundled |
 | Kill | `kill process` | Bundled |
 | System switches | Dark mode, Bluetooth, WLAN, volume and more in one step: `bluetooth off`, `mute`, `volume 30`, `awake 1h` | Bundled, off by default |
-| [Screenshot and recording](docs/features.en.md#screenshots-and-recording) | Capture, mark up, redact, scrolling screenshots, pins, MP4 and GIF recording, presenter and whiteboard | Plugin library |
+| [Screenshot and recording](docs/features.en.md#screenshots-and-recording) | Capture, mark up, redact, scrolling screenshots, pins, translating a capture in place, MP4 and GIF recording, presenter and whiteboard | Plugin library |
 | Image text search | Search the words in pictures and scans, or `ocr words` | Plugin library |
 | Search by meaning | `? last year's expense rules` | Plugin library |
-| Translate | `tr sentence` to translate, `dict word` for a dictionary | Plugin library |
+| Translate | `tr sentence` to translate, `dict word` for a dictionary; screenshot translation uses it too | Plugin library |
 | Web search | `baidu 天气`, `zhihu 显卡` | Plugin library |
-| Browser bookmarks | `bm words` searches Chrome and Edge bookmarks, pinyin too | Plugin library |
+| Browser bookmarks | `bm words` searches Chrome and Edge bookmarks, pinyin too; once turned on, `bh words` searches the browsing history | Plugin library |
 | LAN transfer | `ls ` to send files to and from phones and PCs running [LocalSend](https://localsend.org) | Plugin library |
 | Break reminder | Reminds you to take breaks; `break` shows the time left | Plugin library |
 | Explorer tabs | New File Explorer windows open as tabs, and the tabs from last time come back after a logon (Windows 11 22H2 or newer) | Plugin library |
@@ -429,18 +430,19 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
-**0.29.0**
+**0.30.0**
 
-- ▶️ **Switch to open windows from the Apps tab** A new "Running" choice lists the windows open now as tiles: `Enter` or a click switches to one instead of starting the program again.
-- 🔎 **Apps found by the name they were installed under** `office 2024` finds Word, Excel and PowerPoint; `7-zip 25` finds 7-Zip File Manager.
-- 📌 **Pin a picture from its right-click menu** With the Screenshot and recording plugin on, right-click a picture file in File Explorer and choose "Pin to screen (WinShun)".
-- 🧩 **Your own commands in the right-click menu of files** A command under Settings › Favorites can be shown in the right-click menu of files and folders, and gets the full path.
-- 🖼️ **Clipboard picture thumbnails in three sizes** "Picture thumbnails" is Small, Standard or Large; Small keeps a picture's row as high as a text row. Several picture files copied at once show the first one and their number.
-- 🔖 **Bookmarks by pinyin** `bm xjtu` finds 西安交通大学 (Bookmarks plugin 2.0.5).
-- ⌨️ **Caps Lock held down is left alone** With typing in a folder on, `CapsLock+letter` no longer opens the search box.
-- 🛠️ **Fix** A font chosen under its English name (such as LXGW WenKai) was lost after a restart; both names now work.
+- 🌐 **Screenshot translation** After selecting a region, the toolbar's Translate button pins the capture where it was taken with its words translated in place; it needs the Translate plugin and a translation service of your own.
+- 🔤 **Translating in the text recognition window** The original above, the translation below; edit the text first if you like.
+- ✏️ **Edit a clipboard text entry** Choose "Edit the text…" in a text entry's menu; it keeps its place after the change.
+- 🕘 **Browser history** `bh words` searches the pages opened in Chrome and Edge; off by default, turn it on in the plugin's settings (Bookmarks plugin 2.1.0).
+- 🖍️ **Click a line to hide it** With the redact tool in a capture, one click covers the line of text under the mouse.
+- ⌨️ **Letter jump** Turn it on in the settings, tap `Ctrl` (`Alt` in the clipboard), and every row shows a letter; press it to open that row.
+- 🔗 **Open a web address from the search box** With the Web search plugin on, a typed address gets an "Open the address" row first.
+- 📋 **Fill in what was just copied** Turn it on in the settings, and a line you just copied is searched as soon as the search box opens.
+- 🛠️ **Improved** The panel's hotkey closes the panel when pressed again; typing on This PC and Home searches the whole PC.
 
-See the [0.29.0 release notes](docs/release-notes/v0.29.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
+See the [0.30.0 release notes](docs/release-notes/v0.30.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
 
 ### FAQ
 

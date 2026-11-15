@@ -9,6 +9,7 @@
 - 微软 Translator 使用自己的订阅密钥，资源要求区域时填写区域，例如 eastasia。区域资源和自定义终结点须按自己的资源配置。
 - 打字停止 100 毫秒后发请求。改词或关闭查询会取消旧请求，新词可立即开始处理。每个请求最多等 9 秒，成功结果缓存 5 分钟。网络与服务生成耗时仍取决于所选服务。
 - 日志仅记录服务名、请求耗时、HTTP 状态和错误码，便于定位网络延迟。日志不记录查询、译文和密钥。
+- 一次翻译多行文字（2.2.2）时，每一行单独翻译，译文按原来的顺序一行一行交回，截图翻译靠它把译文对回原处；一行文字照旧整句发送。
 
 默认地址和请求格式依据服务官方文档维护。
 
@@ -25,3 +26,5 @@ Install from Settings → Plugins → Plugin library. Use `tr sentence` or `fy s
 Choose a service and enter that service's own key. Each service's key is kept separately in Windows Credential Manager, so switching services never sends one service's key to another. The shared key from older versions still works for a service without its own. Nothing goes online until configured. Only the queried text is sent to the selected service. DeepL, Microsoft Translator and OpenAI-compatible endpoints are supported, with presets for DeepSeek, Doubao / Volcengine Ark and Tencent Hunyuan. The dictionary requires a model service. DeepL and Microsoft Translator provide translation only.
 
 An empty endpoint uses the selected service's default. An empty model uses its default, except Ark requires your enabled model or endpoint ID. Check both fields when changing service. Microsoft resources may require their resource region. Requests use the system proxy, start after a 100 ms debounce, cancel superseded text, and have a 9-second budget. Successful results are cached for 5 minutes. Network and model generation still affect response time. Logs contain service, elapsed time, HTTP status and error code, with query text, translations and credentials excluded.
+
+Several lines of text (2.2.2) are translated each on its own and come back one line each, in order, which is how screenshot translation puts the translations back where the words were; a single line is sent exactly as before.
