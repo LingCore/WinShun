@@ -313,7 +313,8 @@ private slots:
         QVERIFY(!units::parse("inch to cm")); // no number
         QVERIFY(!units::parse("report"));
         QVERIFY(!units::parse(""));
-        QVERIFY(units::find("GB") == units::find("gib")); // 1024-based, both spellings
+        QVERIFY(units::find("GB") != units::find("gib")); // GB is Windows's 1024, GiB strictly so
+        QVERIFY(units::find("GiB")->factor == units::find("GB")->factor);
         QVERIFY(units::find("g")->category == units::Category::Mass); // the gram, not GB
     }
 
@@ -340,6 +341,18 @@ private slots:
         const auto zhRows = units::convert(*units::parse("1.5 GB in MB"), true);
         QCOMPARE(qs(zhRows[0].note), u"按 1024 算"_s);
         QCOMPARE(qs(zhRows[1].note), u"按 1000 算"_s);
+        rows = rowsOf("1 GB to GiB");
+        QCOMPARE(rows.size(), std::size_t(1)); // both 1024-based: one row, no alternate
+        QCOMPARE(qs(rows[0].value), u"1"_s);
+        QVERIFY(qs(rows[0].note).isEmpty());
+        rows = rowsOf("1 GiB to MB");
+        QCOMPARE(rows.size(), std::size_t(1)); // from is strictly 1024-based: no alternate
+        QCOMPARE(qs(rows[0].value), u"1024"_s);
+        QVERIFY(qs(rows[0].note).isEmpty());
+        rows = rowsOf("1 GiB to gb");
+        QCOMPARE(rows.size(), std::size_t(1)); // GiB is unambiguous: the 1024 reading only
+        QCOMPARE(qs(rows[0].value), u"1"_s);
+        QVERIFY(qs(rows[0].note).isEmpty());
         rows = rowsOf("1 斤 to g");
         QCOMPARE(qs(rows[0].value), u"500"_s);
         rows = rowsOf("2 h to min");
