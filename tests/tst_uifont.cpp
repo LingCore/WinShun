@@ -11,6 +11,11 @@
 #include <QtTest>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QDir>
+#include <QRegularExpression>
+#include <QScopeGuard>
+
+#include <windows.h>
 
 using namespace Qt::StringLiterals;
 
@@ -106,6 +111,64 @@ private slots:
             QVERIFY2(!family.startsWith(u'@'), qPrintable(family));
             QCOMPARE(ws::uifont::listedFamily(family), family);
         }
+    }
+
+    // A font Windows lists and Qt's own list of the installed fonts leaves out
+    // (GitHub #325: 霞鹜文楷's regular, its registry name not the one Qt looks
+    // for): chosen, it is that font, added from its own file. Here a font file
+    // added to Windows' fonts for this program alone, which the registry does
+    // not have at all.
+    void aFontQtDoesNotList()
+    {
+        const QString file = QDir::toNativeSeparators(QStringLiteral(WINSHUN_SOURCE_DIR) + u"/third_party/phosphor/Phosphor-Fill.ttf"_s);
+        QVERIFY2(QFile::exists(file), qPrintable(file));
+        const QStringList before = ws::uifont::families();
+        QVERIFY(::AddFontResourceExW(reinterpret_cast<LPCWSTR>(file.utf16()), FR_PRIVATE, nullptr) > 0);
+        const auto removed = qScopeGuard([&] { ::RemoveFontResourceExW(reinterpret_cast<LPCWSTR>(file.utf16()), FR_PRIVATE, nullptr); });
+        QStringList added = ws::uifont::families();
+        added.removeIf([&](const QString& family) { return before.contains(family); });
+        if (added.isEmpty())
+            QSKIP("Phosphor Fill is installed on this PC");
+        QCOMPARE(added.size(), 1);
+        const QString listed = added.first();
+        QVERIFY2(!QFontDatabase::hasFamily(listed), qPrintable(listed)); // what this test is about
+        QVERIFY(ws::uifont::available(listed));
+        QTest::ignoreMessage(QtInfoMsg, QRegularExpression(u"^UI font: Qt does not draw .* by that name: added from .*"_s));
+        ws::uifont::apply(listed);
+        const QString family = QGuiApplication::font().family();
+        QVERIFY2(family != m_family, qPrintable(family));
+        QCOMPARE(ws::uifont::resolvedFamily(listed), family);
+        QVERIFY2(QFontDatabase::hasFamily(family), qPrintable(family));
+        QFont font = QGuiApplication::font();
+        font.setPixelSize(18);
+        const QRawFont drawn = QRawFont::fromFont(font);
+        QCOMPARE(drawn.familyName(), family); // that font, not a fallback
+        QVERIFY(!drawn.glyphIndexesForString(QString(QChar(0xE000 + 0x4E))).isEmpty()); // an icon of its private-use range
+        // Asked again: the same name, nothing added twice.
+        ws::uifont::apply({});
+        ws::uifont::apply(listed);
+        QCOMPARE(QGuiApplication::font().family(), family);
+        ws::uifont::apply({});
+        QCOMPARE(QGuiApplication::font().family(), m_family);
+    }
+
+    // Every font in the list is one Qt can be asked for by the name given for
+    // it: none comes up as the default or a fallback font.
+    void everyListedFontIsDrawn()
+    {
+        const QStringList all = ws::uifont::families();
+        QStringList wrong;
+        for (const QString& listed : all) {
+            const QString family = ws::uifont::resolvedFamily(listed);
+            QFont font(family);
+            font.setPixelSize(16);
+            const QString drawn = QRawFont::fromFont(font).familyName();
+            // A face name Windows lists ends after 31 characters.
+            if (!QFontInfo(font).exactMatch() && drawn.compare(family, Qt::CaseInsensitive) != 0
+                && !drawn.startsWith(listed, Qt::CaseInsensitive))
+                wrong.append(u"%1 (asked for as %2) is drawn as %3"_s.arg(listed, family, drawn));
+        }
+        QVERIFY2(wrong.isEmpty(), qPrintable(u"%1 of %2: "_s.arg(wrong.size()).arg(all.size()) + wrong.join(u"; "_s)));
     }
 
     void mixedTextAndFallbackHaveGlyphs()
