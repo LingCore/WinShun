@@ -77,6 +77,7 @@ class SystemCatalog;
 class History;
 class IndexService;
 class IdleTrim;
+class UiStallWatch;
 class KeyListener;
 class PointerWatch;
 class ServiceDialogNav;
@@ -850,6 +851,7 @@ private:
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<NetworkNotifier> m_network; // after m_index, whose shares it tells
     std::unique_ptr<IdleTrim> m_idleTrim; // gives the memory back while nothing is in use
+    std::unique_ptr<UiStallWatch> m_uiStall; // writes down what this thread was doing when it stopped answering
     // GitHub #265, memory short: the pages an opening needs are read back ahead.
     std::shared_ptr<HotPages> m_launcherPages;
     std::shared_ptr<HotPages> m_clipPages;

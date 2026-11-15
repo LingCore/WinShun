@@ -77,6 +77,7 @@
 #include "platform/Http.h"
 #include "platform/HotPages.h"
 #include "platform/IdleTrim.h"
+#include "platform/UiStall.h"
 #include "platform/MemoryReport.h"
 #include "BackgroundStatus.h"
 #include "HealthMonitor.h"
@@ -447,6 +448,7 @@ App::~App()
     // (SettingsWindow.resetForReopen) then, never from inside its destructor.
     if (m_settingsWindow)
         m_settingsWindow->hide();
+    m_uiStall.reset(); // closing may take its time: not a stall
     // The plugins told to go while all they may still ask for is here: a
     // plugin's last call (the screenshot giving its keys back) reaches the
     // tools of setUpAppTools. Left to the host's destructor, that came after
@@ -712,6 +714,11 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         // What the launcher and the clipboard need to come up stays (HotPages).
         return m_launcherPages->pages().united(m_clipPages->pages());
     });
+    // Stuck, with nothing to say where (GitHub #111): from now on the journal has it.
+    if (diagnostics::enabled()) {
+        m_uiStall = std::make_unique<UiStallWatch>(
+            [](const QString& event, QJsonObject details) { diagnostics::record(event, std::move(details)); });
+    }
     // Loaded, caught up, done reading: emptied now, not at the next recheck.
     connect(m_index.get(), &IndexService::stateChanged, m_idleTrim.get(), &IdleTrim::poke);
     m_launcherPages = std::make_shared<HotPages>();

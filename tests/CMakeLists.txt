@@ -969,6 +969,16 @@ add_test(NAME tst_keyrouter COMMAND tst_keyrouter -o -,txt)
 set_tests_properties(tst_keyrouter PROPERTIES RUN_SERIAL TRUE
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# Where the interface was when it stopped answering (GitHub #111): the watch
+# on this test's own thread, made to compute and to wait.
+qt_add_executable(tst_uistall tst_uistall.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/UiStall.cpp)
+target_include_directories(tst_uistall PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_uistall PRIVATE Qt6::Core Qt6::Test user32)
+set_target_properties(tst_uistall PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_uistall COMMAND tst_uistall -o -,txt)
+set_tests_properties(tst_uistall PROPERTIES RUN_SERIAL TRUE
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Win顺 answering Everything's queries (GitHub #40): the query read into
 # Win顺's own search, the rows from an index, the bytes of both kinds of
 # list, and the window asked as a program asks Everything's (under a class of
