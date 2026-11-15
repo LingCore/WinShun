@@ -2962,7 +2962,7 @@ Window {
                     keywords: qsTr("字体;雅黑;普惠体;清晰;font;typeface;YaHei").split(";")
                     values: [window.editor.uiFont]
                     description: window.editor.uiFontAvailable
-                        ? qsTr("输入名称查找，示例即时预览；重启后应用")
+                        ? qsTr("可在列表里查找名称，示例即时预览；重启后应用")
                         : qsTr("此电脑未安装“%1”，暂用默认字体").arg(window.editor.uiFont)
                     FontPicker {
                         frame: window.frame

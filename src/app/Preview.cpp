@@ -1721,6 +1721,9 @@ int runSettings(const QStringList& args)
                 const qreal gap = std::max(menuTop - picker->mapToScene(QPointF(0, picker->height())).y(),
                     picker->mapToScene(QPointF()).y() - menuBottom);
                 check(gap >= 4 - 1 / window->devicePixelRatio(), name + u" leaves a gap beside its control"_s);
+                // A menu with a search row holds its list one level down.
+                if (auto* inner = list->property("list").value<QQuickItem*>())
+                    list = inner;
             }
             check(popup->property("padding").toReal() > 0 && list
                     && list->width() < popup->property("width").toReal(),
@@ -2520,9 +2523,28 @@ int runSettings(const QStringList& args)
             u"startup preference reaches the real settings search field"_s);
         const QString family = u"Microsoft YaHei UI"_s;
         check(editor->uiFonts().contains(family), u"YaHei UI is selectable"_s);
-        picker->setProperty("editText", family);
-        check(QMetaObject::invokeMethod(picker, "accepted"), u"typed font accepted by the production picker"_s);
+        check(!picker->property("editable").toBool(), u"the field itself takes no typing"_s);
+        flick->setProperty("contentY", std::max(0.0, flick->property("contentY").toDouble()
+            + picker->mapToItem(qobject_cast<QQuickItem*>(flick), QPointF()).y() - 130));
         settle(window, 2);
+        auto* popup = picker->property("popup").value<QObject*>();
+        check(popup && QMetaObject::invokeMethod(popup, "open"), u"font list opens"_s);
+        settle(window, 2);
+        auto* search = popup ? visualNamed(popup->property("contentItem").value<QQuickItem*>(), u"uiFontSearch"_s) : nullptr;
+        auto* fontRows = popup ? popup->property("contentItem").value<QQuickItem*>()->property("list").value<QQuickItem*>() : nullptr;
+        check(search && search->property("inputFocused").toBool(), u"the menu's search row takes the keyboard"_s);
+        check(fontRows && std::abs(fontRows->height() - 5 * fontRows->property("currentItem").value<QQuickItem*>()->height()) < 0.5
+                && fontRows->property("count").toInt() > 5,
+            u"the menu shows five fonts and scrolls the rest"_s);
+        check(saveGrab(window, out.filePath(u"font-list.png"_s)), u"font list captured"_s);
+        if (search)
+            search->setProperty("text", u"yahei ui"_s);
+        settle(window, 2);
+        check(picker->property("matches").toStringList().value(0) == family, u"typing in the menu narrows the list"_s);
+        check(saveGrab(window, out.filePath(u"font-list-filtered.png"_s)), u"filtered font list captured"_s);
+        check(QMetaObject::invokeMethod(picker, "acceptQuery"), u"found font accepted by the production picker"_s);
+        settle(window, 2);
+        check(popup && !popup->property("visible").toBool(), u"choosing closes the menu"_s);
         Settings saved;
         saved.load();
         check(saved.uiFont == family && editor->uiFont() == family, u"font preference persisted in the isolated profile"_s);
@@ -2533,16 +2555,17 @@ int runSettings(const QStringList& args)
         flick->setProperty("contentY", std::max(0.0, flick->property("contentY").toDouble() + y - 130));
         settle(window, 2);
         check(saveGrab(window, out.filePath(u"font-picker.png"_s)), u"font preview captured"_s);
-        auto* popup = picker->property("popup").value<QObject*>();
-        check(popup && QMetaObject::invokeMethod(popup, "open"), u"font list opens"_s);
+        if (popup)
+            QMetaObject::invokeMethod(popup, "open");
         settle(window, 2);
-        check(popup && popup->property("height").toReal() <= 280, u"long font list stays within its scrollable menu"_s);
-        check(saveGrab(window, out.filePath(u"font-list.png"_s)), u"font list captured"_s);
+        if (search)
+            search->setProperty("text", u"Missing-WinShun-Test-Font"_s);
+        settle(window, 2);
+        QMetaObject::invokeMethod(picker, "acceptQuery");
+        check(editor->uiFont() == family, u"unknown typed font does not replace the preference"_s);
         if (popup)
             QMetaObject::invokeMethod(popup, "close");
-        picker->setProperty("editText", u"Missing-WinShun-Test-Font"_s);
-        QMetaObject::invokeMethod(picker, "accepted");
-        check(editor->uiFont() == family, u"unknown typed font does not replace the preference"_s);
+        settle(window, 2);
         QMetaObject::invokeMethod(picker, "activated", Q_ARG(int, 0));
         settle(window, 2);
         saved.load();

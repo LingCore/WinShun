@@ -2412,6 +2412,14 @@
         <source>界面字体</source>
         <translation>Interface font</translation>
     </message>
+    <message>
+        <source>查找字体</source>
+        <translation>Find a font</translation>
+    </message>
+    <message>
+        <source>没有匹配的字体</source>
+        <translation>No matching fonts</translation>
+    </message>
 </context>
 <context>
     <name>Footer</name>
@@ -4924,8 +4932,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>font;typeface;YaHei;Alibaba;clarity</translation>
     </message>
     <message>
-        <source>输入名称查找，示例即时预览；重启后应用</source>
-        <translation>Type a font name to preview it. Restart WinShun to apply.</translation>
+        <source>可在列表里查找名称，示例即时预览；重启后应用</source>
+        <translation>Find a font by name in the list to preview it. Restart WinShun to apply.</translation>
     </message>
     <message>
         <source>此电脑未安装“%1”，暂用默认字体</source>
