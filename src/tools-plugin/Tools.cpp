@@ -28,6 +28,7 @@
 #include "Units.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -94,22 +95,21 @@ protected:
             m_sums.add({std::time(nullptr), data["sum"].toString(), a.item["title"].toString(), a.item["copy"].toString()});
             return Plugin::action(a);
         }
-        if (id == "clear-confirm") {
-            // The row Shift+Enter asked for; Enter here really clears.
-            m_sums.clear();
-            return {winshun::effect::replace(calcHelp()), winshun::effect::notify(zh("计算记录已清空", "The sums were cleared")),
-                winshun::effect::keep()};
-        }
-        if (id == "clear") {
+        if (id == "clear") { // asks first: the sums cannot come back
             Item confirm("clear-confirm", zh("再按一次 Enter 清空", "Press Enter again to clear"),
                 std::to_string(m_sums.records().size()) + zh(" 条，不能恢复", " sums; this cannot be undone"));
             confirm.withIcon(kClearIcon).withActions({{"confirm", zh("清空", "Clear"), "Enter"},
                 {"keep", zh("留着，不清", "Keep them"), "Shift+Enter"}});
             return {winshun::effect::replace(Items {confirm}), winshun::effect::keep()};
         }
-        if (id == "clear-confirm" && a.action == "keep") {
-            Items left = sums(std::string(), kSumsListed, true);
-            return {winshun::effect::replace(left.empty() ? calcHelp() : left), winshun::effect::keep()};
+        if (id == "clear-confirm") {
+            if (a.action == "keep") {
+                Items left = sums(std::string(), kSumsListed, true);
+                return {winshun::effect::replace(left.empty() ? calcHelp() : left), winshun::effect::keep()};
+            }
+            m_sums.clear();
+            return {winshun::effect::replace(calcHelp()), winshun::effect::notify(zh("计算记录已清空", "The sums were cleared")),
+                winshun::effect::keep()};
         }
         if (!data["when"].isNumber())
             return Plugin::action(a);
@@ -447,16 +447,16 @@ private:
                 zh("文字按 UTF-8 计算；文件最大 64 MB", "Text is hashed as UTF-8; files up to 64 MB"), kHashIcon));
             return items;
         }
-        // A file path: hash the file. Drive-letter paths and UNC shares;
-        // anything else is text. A path that looks like one (a separator,
-        // a known extension) but is not there says so instead of hashing
-        // the path itself, which would be silently wrong.
+        // A file path: hash the file. A full path (C:\…, C:/…, \\server\share\…)
+        // is a file; anything else is text, dots and slashes included
+        // ("hello.world", "a/b"). A full path that is not there says so
+        // instead of hashing the path itself, which would be silently wrong.
         std::string path = text;
         if (path.size() > 2 && path.front() == '"' && path.back() == '"')
             path = path.substr(1, path.size() - 2);
-        const bool pathLike = (path.size() > 2 && path[1] == ':') || path.compare(0, 2, "\\\\") == 0
-            || path.find('/') != std::string::npos || path.find('\\') != std::string::npos
-            || path.rfind('.') != std::string::npos;
+        const bool drivePath = path.size() > 3 && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':'
+            && (path[2] == '\\' || path[2] == '/');
+        const bool pathLike = drivePath || (path.size() > 2 && path.compare(0, 2, "\\\\") == 0);
         const DWORD attributes = pathLike ? ::GetFileAttributesW(winshun::wide(path).c_str()) : INVALID_FILE_ATTRIBUTES;
         const bool exists = attributes != INVALID_FILE_ATTRIBUTES;
         if (pathLike && !exists) {

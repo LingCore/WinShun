@@ -339,7 +339,8 @@ private slots:
         for (const QString key : {u"menuMd5"_s, u"menuSha1"_s, u"menuSha256"_s}) {
             QVERIFY2(settings.contains(key), qPrintable(key));
             QCOMPARE(settings.value(key).toObject().value(u"type"_s).toString(), u"bool"_s);
-            QCOMPARE(settings.value(key).toObject().value(u"default"_s).toBool(), true);
+            // Only SHA-256 is on to begin with: three more rows on every file's menu is clutter.
+            QCOMPARE(settings.value(key).toObject().value(u"default"_s).toBool(), key == u"menuSha256"_s);
         }
         // Every icon named for the commands is a Phosphor name (AGENTS.md).
         for (const QJsonValue v : commands) {

@@ -14,7 +14,7 @@
 | `b64 你好`、`b64 5L2g5aW9` | Base64 编码 / 解码 |
 | `md5 文字`、`sha1 文字`、`sha256 文字`、`sha384 文字`、`sha512 文字`、`sha256 D:\下载\setup.exe`、`\\服务器\共享\setup.exe` | 哈希（文件最大 64 MB） |
 
-文件结果（搜索框里的文件行）的右键菜单里有**复制 MD5 / 复制 SHA-1 / 复制 SHA-256**：点一下，这个文件的对应摘要就进了剪贴板（文件最大 64 MB）。不想要的项在本插件卡片上关掉。
+文件结果（搜索框里的文件行）的右键菜单里有**复制 SHA-256**：点一下，这个文件的摘要就进了剪贴板（文件最大 64 MB）。**复制 MD5**、**复制 SHA-1** 在本插件卡片上打开，不想要的项也在那里关掉。
 
 每一行按 Enter 复制。单位换算认英文、符号和中文名：mm cm m km inch ft yd mile 里 尺 寸、mg g kg t lb oz 斤 两、°C °F K、B KB MB GB TB（KiB MiB GiB 也认，严格按 1024）、ms s min h day week、m² km² ha 亩 acre、mL L m³ gal cup。KB/MB/GB 按 Windows 习惯算 1024，结果里同时给出按 1000 的那一行。
 
@@ -22,4 +22,4 @@
 
 ---
 
-A resident C++ plugin shipped with Win顺 (`WinShunTools.exe`, written on the single-header SDK `winshun.h`; source in `src/tools-plugin/`). It runs in the **strict sandbox** (low integrity, no child processes, no clipboard; Enter copies through Win顺): `=` calculator and unit conversion (also without the keyword; `5!!`, `50%`, `0xff` too), `color` notations (`#ff8800` works on its own), `ts` timestamps (seconds, milliseconds, microseconds, nanoseconds), `uuid`, `b64`, `md5` / `sha1` / `sha256` / `sha384` / `sha512` of text or a file; a file result's right-click menu has **Copy MD5 / Copy SHA-1 / Copy SHA-256** — the click puts that file's digest on the clipboard (up to 64 MB); unwanted items can be switched off on the plugin's card. With "AI may use plugins" on, the commands are MCP tools (`plugin_winshun_tools_calc` …).
+A resident C++ plugin shipped with Win顺 (`WinShunTools.exe`, written on the single-header SDK `winshun.h`; source in `src/tools-plugin/`). It runs in the **strict sandbox** (low integrity, no child processes, no clipboard; Enter copies through Win顺): `=` calculator and unit conversion (also without the keyword; `5!!`, `50%`, `0xff` too), `color` notations (`#ff8800` works on its own), `ts` timestamps (seconds, milliseconds, microseconds, nanoseconds), `uuid`, `b64`, `md5` / `sha1` / `sha256` / `sha384` / `sha512` of text or a file; a file result's right-click menu has **Copy SHA-256**, which puts that file's digest on the clipboard (up to 64 MB); **Copy MD5** and **Copy SHA-1** are switched on, and unwanted items off, on the plugin's card. With "AI may use plugins" on, the commands are MCP tools (`plugin_winshun_tools_calc` …).

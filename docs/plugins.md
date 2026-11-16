@@ -452,7 +452,7 @@ manifest 的 `permissions` 是数组：`["processes", "clipboard:read", {"files:
 
 `settings[]`：`{"key", "type", "title", "hint", "default", "options"}`，`type` ∈ `text | password | bool | number | choice | folder | file | hotkey`。Win顺 用自己的控件画在卡片上，值存在 `WinShun.ini` 的 `[Plugin.<id>] Setting.<key>=`；**`password` 型存 Windows 凭据管理器**，不进 INI，不进日志（消息记录里打码）。`choice` 的 `options` 是字符串数组或 `[{"value": "deepl", "title": {"zh": …, "en": …}}]`。
 
-插件看到的是合并后的 JSON（声明的默认值 + 用户的值）：一次性在 `WS_SETTINGS`，常驻在 `initialize` 的 `settings`，改了再发 `settingsChanged`。`files` 触发可以用 `"if"` 指向一个 `bool` 设置项：设置开着，这项才出现在右键菜单里（宿主 0.32.0 起；更早的宿主忽略这个字段，项常显）。
+插件看到的是合并后的 JSON（声明的默认值 + 用户的值）：一次性在 `WS_SETTINGS`，常驻在 `initialize` 的 `settings`，改了再发 `settingsChanged`。`files` 触发可以用 `"if"` 指向一个 `bool` 设置项：设置开着，这项才出现在右键菜单里（0.33.0 起；更早的宿主忽略这个字段，项常显）。
 
 ## 给 AI 用
 
