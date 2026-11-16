@@ -207,16 +207,16 @@ bool saysOpen(std::wstring label)
 }
 
 // What a control of another program holds: GetWindowText does not ask
-// another program's controls (WM_GETTEXT).
-std::wstring controlText(HWND hwnd)
+// another program's controls (WM_GETTEXT). Each message waits `timeout` ms at most.
+std::wstring controlText(HWND hwnd, UINT timeout = 2000)
 {
     DWORD_PTR length = 0;
-    if (!::SendMessageTimeoutW(hwnd, WM_GETTEXTLENGTH, 0, 0, SMTO_ABORTIFHUNG, 2000, &length))
+    if (!::SendMessageTimeoutW(hwnd, WM_GETTEXTLENGTH, 0, 0, SMTO_ABORTIFHUNG, timeout, &length))
         return {};
     std::wstring text(length + 1, L'\0');
     DWORD_PTR copied = 0;
     if (!::SendMessageTimeoutW(hwnd, WM_GETTEXT, text.size(), reinterpret_cast<LPARAM>(text.data()), SMTO_ABORTIFHUNG,
-            2000, &copied))
+            timeout, &copied))
         return {};
     text.resize(std::min<std::size_t>(copied, length));
     return text;
@@ -830,10 +830,16 @@ bool opensFiles(HWND dialog, Kind kind)
     if (kind != Kind::Legacy)
         return false;
     // A button's caption is kept by Windows: read without a message to a
-    // program that may be busy (unlike an edit box's text, controlText).
+    // program that may be busy (measured across programs). One that keeps
+    // its own (answering WM_GETTEXT itself) is asked, briefly: this runs on
+    // the GUI thread as the dialog comes to the front.
     const HWND ok = ::GetDlgItem(dialog, IDOK);
+    if (!ok)
+        return false;
     wchar_t label[64] {};
-    return ok && ::GetWindowTextW(ok, label, static_cast<int>(std::size(label))) > 0 && saysOpen(label);
+    if (::GetWindowTextW(ok, label, static_cast<int>(std::size(label))) > 0)
+        return saysOpen(label);
+    return saysOpen(controlText(ok, 250));
 }
 
 } // namespace ws::filedialog

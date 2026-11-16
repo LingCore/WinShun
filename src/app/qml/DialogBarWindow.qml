@@ -143,7 +143,7 @@ Window {
             return
         hideNumbers()
         list.currentIndex = row
-        window.bar.choose(row)
+        window.bar.choose(row, true) // as Enter
     }
     function isNumberChord(event) {
         if (event.key < Qt.Key_1 || event.key > Qt.Key_9)
@@ -205,10 +205,12 @@ Window {
             break
         case Qt.Key_Return:
         case Qt.Key_Enter:
-            if (window.bar.holdUntilShown(0, ctrl))
+            // A file opens where the dialog opens files, as Enter does in the
+            // launcher (and in Listary); Ctrl+Enter only goes to it (#353).
+            if (window.bar.holdUntilShown(0, !ctrl))
                 break // typed a moment ago: on the rows for it
             if (row >= 0)
-                window.bar.choose(row, ctrl) // Ctrl: and open the file
+                window.bar.choose(row, !ctrl)
             break
         case Qt.Key_Tab: // into the row's folder; the focus stays in the box
             if (row >= 0)
@@ -688,7 +690,7 @@ Window {
                     return qsTr("Enter 转到所在文件夹")
                 if (window.typed && rowItem.current) {
                     if (!rowItem.isDir && window.bar.canOpen)
-                        return qsTr("Ctrl+Enter 直接打开")
+                        return qsTr("Enter 打开 · Ctrl+Enter 转到")
                     if (rowItem.isDir && rowItem.path !== window.bar.browsedFolder)
                         return qsTr("Tab 展开")
                 }

@@ -1950,8 +1950,8 @@
         <translation>More</translation>
     </message>
     <message>
-        <source>Ctrl+Enter 直接打开</source>
-        <translation>Ctrl+Enter opens it</translation>
+        <source>Enter 打开 · Ctrl+Enter 转到</source>
+        <translation>Enter opens · Ctrl+Enter goes there</translation>
     </message>
     <message>
         <source>Tab 展开</source>
@@ -10983,8 +10983,8 @@ Content index: %5</translation>
         <translation>Go there</translation>
     </message>
     <message>
-        <source>直接打开</source>
-        <translation>Open it</translation>
+        <source>打开</source>
+        <translation>Open</translation>
     </message>
     <message>
         <source>在列表中展开</source>

@@ -71,7 +71,7 @@ class DialogBar : public QObject {
     // (its name), to go back to; empty when it did not.
     Q_PROPERTY(QString originName READ originName NOTIFY originChanged FINAL)
     Q_PROPERTY(bool foldersOnly READ foldersOnly NOTIFY dialogKindChanged FINAL) // a folder picker
-    Q_PROPERTY(bool canOpen READ canOpen NOTIFY dialogKindChanged FINAL) // an Open dialog: Ctrl+Enter
+    Q_PROPERTY(bool canOpen READ canOpen NOTIFY dialogKindChanged FINAL) // a dialog that opens files: Enter opens one (#353)
     Q_PROPERTY(bool copyOnly READ copyOnly NOTIFY dialogKindChanged FINAL)
     // Why an elevated dialog is copy-only, for the bar's hint: "service" (no
     // service runs: installing it lets this copy jump), "other" (the service
@@ -116,8 +116,8 @@ public:
 
     // The context menus' entries.
     enum Action {
-        Go, // the row: there
-        GoAndOpen, // a file in an Open dialog: there, and open it
+        Go, // the row: there (a file selected in its folder); Ctrl+Enter where Enter opens
+        GoAndOpen, // a file in a dialog that opens files: there, and open it (Enter)
         Enter, // a folder: its path in the box, to list what it holds (Tab)
         CopyPath,
         Pin, // the row into the favorites (first in the list with nothing typed)
@@ -221,7 +221,7 @@ public:
     bool asking() const { return m_asking; }
     int rowHeight() const { return s_metrics.barRow; }
 
-    Q_INVOKABLE void choose(int row, bool open = false);
+    Q_INVOKABLE void choose(int row, bool open = false); // open: a file, where canOpen; else it goes there
     Q_INVOKABLE void chooseExplorer(); // the folder shown in the file manager (as Ctrl+G)
     Q_INVOKABLE void goBack(); // to the folder the dialog showed before it went by itself
     // The answer to `asking`: "open" (and there now), "back", or "" for no.
