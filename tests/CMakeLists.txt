@@ -1052,6 +1052,10 @@ target_link_libraries(tst_favorites PRIVATE wscore Qt6::Test)
 qt_add_executable(tst_commandlaunch tst_commandlaunch.cpp)
 target_link_libraries(tst_commandlaunch PRIVATE wscore Qt6::Test)
 
+# winshun:// links (GitHub #358): what a link asks for (core/WinShunUri).
+qt_add_executable(tst_winshunuri tst_winshunuri.cpp)
+target_link_libraries(tst_winshunuri PRIVATE wscore Qt6::Test)
+
 # The plugins that left the setup for the plugin library (GitHub #138,
 # src/app/MovedPlugins): the screenshot's settings moved to its plugin.
 qt_add_executable(tst_movedplugins tst_movedplugins.cpp ${PROJECT_SOURCE_DIR}/src/app/MovedPlugins.cpp
@@ -1512,6 +1516,9 @@ add_test(NAME tst_clipboard COMMAND tst_clipboard)
 add_test(NAME tst_favorites COMMAND tst_favorites)
 add_test(NAME tst_commandlaunch COMMAND tst_commandlaunch)
 set_tests_properties(tst_commandlaunch PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+add_test(NAME tst_winshunuri COMMAND tst_winshunuri)
+set_tests_properties(tst_winshunuri PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 add_test(NAME tst_color COMMAND tst_color)
 add_test(NAME tst_elide COMMAND tst_elide)

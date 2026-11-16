@@ -69,6 +69,12 @@ bool writeString(const std::wstring& key, const wchar_t* name, const std::wstrin
         == ERROR_SUCCESS;
 }
 
+// Whether a string value is there, an empty one too (readString cannot tell).
+bool hasString(const std::wstring& key, const wchar_t* name)
+{
+    return ::RegGetValueW(HKEY_CURRENT_USER, key.c_str(), name, RRF_RT_REG_SZ, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
+}
+
 // Whether it was there and is now gone.
 bool deleteValue(const std::wstring& key, const wchar_t* name)
 {
@@ -121,6 +127,11 @@ void setVerbs(std::span<const wchar_t* const> keys, bool on, std::wstring_view t
         ::SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
 }
 
+// The winshun:// protocol (GitHub #358): a web page, a note or a script that
+// opens such a link runs the stub with it. Under HKCU like the verbs, so no
+// administrator is needed.
+constexpr const wchar_t* kProtocolKey = L"Software\\Classes\\winshun";
+
 } // namespace
 
 // The titles are plain text in the language Windows is shown in (no @exe,-id
@@ -130,6 +141,36 @@ void apply(bool on)
 {
     setVerbs(kSearchHereKeys, on, explorerlang::searchHereTitle(explorerlang::windowsIsEnglish()),
         L"--search-here \"%V\"");
+}
+
+void applyUriProtocol(bool on)
+{
+    const Stub stub;
+    if (on && ::GetFileAttributesW(stub.path.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return; // a build without it (run from the build folder)
+    const std::wstring key = kProtocolKey;
+    const std::wstring commandKey = key + L"\\shell\\open\\command";
+    bool changed = false;
+    if (!on) {
+        // Only ours, or a copy's that is gone (as setVerbs).
+        const std::wstring current = readString(HKEY_CURRENT_USER, commandKey, nullptr);
+        const std::wstring program = autostart::runCommandProgram(current);
+        if (!program.empty()
+            && (scoop::sameCopy(QString::fromStdWString(program), QString::fromStdWString(stub.path))
+                || ::GetFileAttributesW(program.c_str()) == INVALID_FILE_ATTRIBUTES))
+            changed = ::RegDeleteTreeW(HKEY_CURRENT_USER, key.c_str()) == ERROR_SUCCESS;
+    } else {
+        changed |= writeString(key, nullptr, L"URL:Win顺"); // what Windows shows for the protocol
+        // An empty value marks it as a protocol: set by hand, as writeString takes empty for "not there".
+        if (!hasString(key, L"URL Protocol"))
+            changed |= ::RegSetKeyValueW(HKEY_CURRENT_USER, key.c_str(), L"URL Protocol", REG_SZ, L"", sizeof(wchar_t))
+                == ERROR_SUCCESS;
+        changed |= writeString(key + L"\\DefaultIcon", nullptr, stub.folder + L"\\WinShun.exe,0");
+        // %1 in quotes: the link, as it was given (the stub reads it from the raw command line).
+        changed |= writeString(commandKey, nullptr, L"\"" + stub.path + L"\" --uri \"%1\"");
+    }
+    if (changed)
+        ::SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
 }
 
 void applyPasteFile(bool on)

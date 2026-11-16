@@ -1425,6 +1425,14 @@ void SettingsEditor::setExplorerMenu(bool on)
     commit();
 }
 
+void SettingsEditor::setUriProtocol(bool on)
+{
+    if (m_settings.uriProtocol == on)
+        return;
+    m_settings.uriProtocol = on;
+    commit();
+}
+
 void SettingsEditor::setExplorerTyping(bool on)
 {
     if (m_settings.explorerTyping == on)

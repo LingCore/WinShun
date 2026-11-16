@@ -3,7 +3,7 @@
 #include <QList>
 #include <QString>
 
-// Explorer's right-click verbs, run by WinShunSearch.exe (src/stub):
+// Explorer's right-click verbs and the winshun:// protocol, run by WinShunSearch.exe (src/stub):
 // "用 Win顺 搜索此处" (GitHub #20) on a folder, in a folder's empty space,
 // and on a drive (--search-here "<folder>", which hands the folder to
 // Win顺); "粘贴为文件" in a folder's empty space and the desktop's
@@ -21,6 +21,12 @@ namespace ws::shellmenu {
 // set (`!on`; another copy's stay). Writes only what differs; Explorer is told
 // when anything did.
 void apply(bool on);
+
+// The winshun:// links (GitHub #358; core/WinShunUri.h): the protocol under HKCU\Software\Classes\winshun
+// runs this copy's WinShunSearch.exe --uri "<link>", which hands the link to Win顺 (a search typed, or
+// the settings). `!on` removes it when this copy set it, or the copy that did is gone (another copy's
+// stays). Not for a build without the stub; writes only what differs, Windows is told when anything did.
+void applyUriProtocol(bool on);
 
 // The same for 粘贴为文件.
 void applyPasteFile(bool on);

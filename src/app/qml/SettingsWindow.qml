@@ -2081,6 +2081,19 @@ Window {
                     }
                 }
 
+                SettingRow { // GitHub #358
+                    title: qsTr("winshun:// 链接")
+                    keywords: qsTr("链接;协议;网址;URL;网页;笔记;Obsidian;scheme;protocol;winshun").split(";")
+                    description: qsTr("网页、笔记软件里的 winshun://search/关键词 链接点一下就用 Win顺 搜索")
+                    tip: qsTr("winshun://search/合同 打开搜索框并填好“合同”；winshun://settings 打开设置。链接只会打字或打开设置，不会打开或运行文件")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.uriProtocol
+                        onToggled: (on) => window.editor.uriProtocol = on
+                    }
+                }
+
                 SettingRow {
                     id: explorerTypingRow
                     title: qsTr("在资源管理器里直接打字搜索")

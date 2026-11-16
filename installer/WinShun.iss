@@ -1748,6 +1748,17 @@ begin
       RegDeleteKeyIncludingSubkeys(HKCU, Keys[I]);
 end;
 
+// The winshun:// links (ShellMenu.cpp, applyUriProtocol), when they run this
+// copy's WinShunSearch.exe: a portable copy's stay.
+procedure RemoveUriProtocol();
+var
+  Command: String;
+begin
+  if RegQueryStringValue(HKCU, 'Software\Classes\winshun\shell\open\command', '', Command)
+    and (Pos(Lowercase(ExpandConstant('{app}\WinShunSearch.exe')), Lowercase(Command)) > 0) then
+    RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\winshun');
+end;
+
 // 发送到 › 局域网传输（Win顺）(ShellMenu.cpp, applyLanSend), under either name: the installed copy's
 // only in effect: a portable copy that still runs writes its own again when it next starts.
 procedure RemoveSendToEntry();
@@ -1771,6 +1782,7 @@ begin
       Exec(ExpandConstant('{app}\WinShunService.exe'), '--uninstall', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     RemoveAutostart();
     RemoveExplorerMenu();
+    RemoveUriProtocol();
     RemoveSendToEntry();
     RemoveWsFromPath(); // ChangesEnvironment tells the other programs when the uninstall ends
     // Directory Opus's double click on blank space, if Win顺 set it to run this copy.

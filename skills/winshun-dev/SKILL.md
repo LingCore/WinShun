@@ -27,7 +27,7 @@ Needs Visual Studio 2022 with the C++ workload (MSVC x64), CMake 3.25+, Ninja, a
 WinShun is single-instance: a second start, and `--quit`, `--toggle` or `--settings`, go to the copy already running. Never quit or replace a running WinShun unasked; it may be the user's, with unsaved work.
 
 - `WinShun.exe --preview-settings <folder>`, `--preview-results <folder>`, `--preview-plugins <file.png>`: render the real UI offscreen into pictures, on a temporary profile, beside any running copy. Add `--dark`, `--scale 1.5`, `--english`, `--style fluent|brand|tactile|liquid`, `--renderer d3d11` (needed to judge exact pixels). The exit code counts QML warnings; `preview.log` is beside the pictures. Many `tst_*` tests are such runs (`tests/CMakeLists.txt`).
-- `--profile <folder>` keeps settings and data in that folder, for a test copy; it still cannot run beside another copy, and it repoints the Explorer menu's registry entries at itself unless its ini has `ExplorerMenu=false` under `[Launcher]` (`docs/pitfalls.md`).
+- `--profile <folder>` keeps settings and data in that folder, for a test copy; it still cannot run beside another copy, and it repoints the Explorer menu's registry entries at itself unless its ini has `ExplorerMenu=false` and `UriProtocol=false` (the `winshun://` link handler) under `[Launcher]` (`docs/pitfalls.md`).
 - From a build folder Qt's `bin` must be on `PATH`; a `-DeployDir` copy needs nothing.
 
 ## Test

@@ -66,6 +66,7 @@
 #include "UpdatePackage.h"
 #include "WebDav.h"
 #include "WindowFrame.h"
+#include "WinShunUri.h"
 #include "platform/ClipboardWatcher.h"
 #include "platform/ComWorker.h"
 #include "platform/Credentials.h"
@@ -1094,6 +1095,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     callbacks.lanSend = [this](const QStringList& files) { lanSend({}, files, false); };
     callbacks.pinPicture = [this](const QString& file) { pictureAction(u"pin"_s, 0, file, false); };
     callbacks.runCommand = [this](const QString& id, const QString& path) { runMenuCommand(id, path); };
+    callbacks.uri = [this](const QString& link) { openLink(link); };
     callbacks.searchHere = [this](const QString& folder) {
         m_launcher->noteSearchHere(folder); // not indexed (GitHub #52): searched on the disk all the same
         showLauncher(folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s);
@@ -1940,6 +1942,7 @@ void App::applySettings(bool initial)
     if (!initial)
         applyAppearance();
     shellmenu::apply(m_settings.explorerMenu); // in Windows' language, not Win顺's (GitHub #190)
+    shellmenu::applyUriProtocol(m_settings.uriProtocol);
     shellmenu::applyPasteFile(m_settings.pasteFileEnabled && m_settings.pasteFileMenu);
     m_updater->setAutomatic(m_settings.autoUpdate);
     if (m_pluginUpdates) {
@@ -4474,6 +4477,30 @@ void App::handleCommand(const QString& command)
         dumpLauncher(command.mid(5));
     else
         showLauncher();
+}
+
+void App::openLink(const QString& link)
+{
+    const winshunuri::Request request = winshunuri::parse(link);
+    qInfo() << "winshun:// link:"
+            << (request.kind == winshunuri::Kind::Search ? "search"
+                       : request.kind == winshunuri::Kind::Settings ? "settings"
+                                                                    : "open"); // not what it says: that may be private
+    switch (request.kind) {
+    case winshunuri::Kind::Search:
+        showLauncher(request.text);
+        break;
+    case winshunuri::Kind::Settings:
+        // A page by the id open_settings knows (AiSettings' sections); another, or none: the window as it is.
+        if (!request.page.isEmpty() && aisettings::sectionOf(request.page))
+            openAiSettings({}, request.page);
+        else
+            showSettings();
+        break;
+    case winshunuri::Kind::Open:
+        showLauncher();
+        break;
+    }
 }
 
 void App::dumpLauncher(const QString& file) const

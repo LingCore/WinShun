@@ -31,6 +31,7 @@ constexpr ULONG_PTR kFolderMenuTag = 0x5753464D; // "WSFM"
 constexpr ULONG_PTR kLanSendTag = 0x57534C53; // "WSLS"
 constexpr ULONG_PTR kPinPictureTag = 0x57535050; // "WSPP"
 constexpr ULONG_PTR kRunCommandTag = 0x57535243; // "WSRC"
+constexpr ULONG_PTR kUriTag = 0x57535552; // "WSUR": a winshun:// link as it came (core/WinShunUri.h)
 
 // A folder's full path as Explorer gives it: on a drive or a share, nothing
 // that could be read as anything else.
@@ -85,7 +86,9 @@ MessageWindow::MessageWindow(Callbacks callbacks)
     ::ChangeWindowMessageFilterEx(m_hwnd, m_taskbarCreated, MSGFLT_ALLOW, nullptr);
     ::ChangeWindowMessageFilterEx(m_hwnd, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
     // Open to WinShunSearch.exe, which runs with the user's normal rights:
-    // it takes a folder to search in, and nothing else.
+    // it takes a folder to search in, files to pin or send, a command to run
+    // that the user made, and a winshun:// link (which only types words
+    // into the search box or shows the settings).
     WNDCLASSEXW searchHere {sizeof(WNDCLASSEXW)};
     searchHere.lpfnWndProc = &MessageWindow::searchHereProc;
     searchHere.hInstance = instance;
@@ -347,7 +350,7 @@ LRESULT CALLBACK MessageWindow::searchHereProc(HWND hwnd, UINT msg, WPARAM wPara
     const auto* data = reinterpret_cast<const COPYDATASTRUCT*>(lParam);
     if (!self || !data
         || (data->dwData != kSearchHereTag && data->dwData != kFolderMenuTag && data->dwData != kLanSendTag
-            && data->dwData != kPinPictureTag && data->dwData != kRunCommandTag)
+            && data->dwData != kPinPictureTag && data->dwData != kRunCommandTag && data->dwData != kUriTag)
         || !data->lpData
         || data->cbData < sizeof(wchar_t) || data->cbData > 32768 * sizeof(wchar_t))
         return FALSE;
@@ -355,6 +358,12 @@ LRESULT CALLBACK MessageWindow::searchHereProc(HWND hwnd, UINT msg, WPARAM wPara
         static_cast<const wchar_t*>(data->lpData), static_cast<qsizetype>(data->cbData / sizeof(wchar_t)));
     while (folder.endsWith(QChar(0)))
         folder.chop(1);
+    if (data->dwData == kUriTag) { // the link as it came: read by the callback (core/WinShunUri.h)
+        if (!self->m_callbacks.uri)
+            return FALSE;
+        self->m_callbacks.uri(folder);
+        return TRUE;
+    }
     if (data->dwData == kRunCommandTag) { // a command's id, a new line, a file's or a folder's full path
         const qsizetype split = folder.indexOf(u'\n');
         const QString id = folder.left(split);

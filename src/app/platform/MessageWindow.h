@@ -20,8 +20,9 @@ namespace ws {
 // Beside it, a second hidden window ("WinShun.SearchHere") takes a folder
 // from Explorer's "search here" (WinShunSearch.exe --search-here, run with
 // the user's normal rights, GitHub #20). It alone is open to programs that
-// are not elevated, and it takes nothing but a folder's path: the commands
-// above (quit, settings) stay closed to them.
+// are not elevated, and it takes what that program is run for (a folder or
+// file path, a winshun:// link): the commands above (quit, settings) stay
+// closed to them.
 class MessageWindow {
 public:
     struct Callbacks {
@@ -45,6 +46,9 @@ public:
         std::function<void(const QString& id, const QString& path)> runCommand;
         // Explorer's 贴到屏幕（Win顺）on a picture file (GitHub #128): its full path.
         std::function<void(const QString& file)> pinPicture;
+        // A winshun:// link (GitHub #358; WinShunSearch.exe --uri "<link>", the protocol ShellMenu.cpp
+        // registers), as it came: the callback reads it (core/WinShunUri.h).
+        std::function<void(const QString& link)> uri;
         std::function<void()> sessionEnding; // Windows is logging off / shutting down
         std::function<LRESULT(WPARAM, LPARAM)> deviceChange; // WM_DEVICECHANGE (see VolumeNotifier)
         std::function<void()> shellRestarted; // Explorer started again (its taskbar is back)

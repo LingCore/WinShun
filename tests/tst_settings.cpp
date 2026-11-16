@@ -860,6 +860,21 @@ private slots:
         QVERIFY(read.everythingCompat);
     }
 
+    void uriProtocol() // GitHub #358: winshun:// links are on unless turned off, and stay off
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(settings.uriProtocol);
+        settings.uriProtocol = false;
+        settings.save();
+        ws::Settings read;
+        read.load();
+        QVERIFY(!read.uriProtocol);
+    }
+
     // GitHub #351: with the Everything compatibility on, the folders excluded
     // are indexed for the programs asking over it and left out of Win顺's
     // own searches; a whole drive stays out of the index all the same.

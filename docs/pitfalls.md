@@ -2856,7 +2856,7 @@
 
 - **现象**：`--profile F:\x` 启动前把 `F:\x\WinShun.ini` 写好排除盘，结果它照样遍历所有盘。
 - **原因**：`--profile` 把 APPDATA 和 LOCALAPPDATA 都指到那个文件夹，设置文件在 `F:\x\WinShun\WinShun.ini`，索引在 `F:\x\index.bin`。
-- **另外**：`ExplorerMenu` 默认开，测试副本一启动就把右键“在 Win顺 里搜索”改指向它自己；测试时在 `[Launcher]` 写 `ExplorerMenu=false`，测完让 dist 最后一个启动。管理员副本的单实例互斥量 `Local\WinShun.Instance` 普通进程能打开（得到 `ERROR_ALREADY_EXISTS`），所以两者不会同时跑；但第二个副本发给管理员副本的 `WM_COPYDATA` 被挡，命令（显示、--query）会丢。
+- **另外**：`ExplorerMenu` 默认开，测试副本一启动就把右键“在 Win顺 里搜索”改指向它自己；测试时在 `[Launcher]` 写 `ExplorerMenu=false`（`winshun://` 链接的注册同理，写 `UriProtocol=false`），测完让 dist 最后一个启动。管理员副本的单实例互斥量 `Local\WinShun.Instance` 普通进程能打开（得到 `ERROR_ALREADY_EXISTS`），所以两者不会同时跑；但第二个副本发给管理员副本的 `WM_COPYDATA` 被挡，命令（显示、--query）会丢。
 
 ### 索引服务：`DisconnectNamedPipe` 会丢掉客户端还没读走的数据
 

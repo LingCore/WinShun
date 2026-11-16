@@ -587,6 +587,10 @@
         <translation>“Search here with WinShun” in Explorer’s right-click menu</translation>
     </message>
     <message>
+        <source>winshun:// 链接</source>
+        <translation>winshun:// links</translation>
+    </message>
+    <message>
         <source>在资源管理器里直接打字搜索</source>
         <translation>Type to search in File Explorer</translation>
     </message>
@@ -5374,6 +5378,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>右键文件夹、文件夹空白处或磁盘，只在那里面搜；Windows 11 在“显示更多选项”里</source>
         <translation>Right-click a folder, a folder’s empty space or a drive to search only in it; on Windows 11 it is under “Show more options”</translation>
+    </message>
+    <message>
+        <source>winshun:// 链接</source>
+        <translation>winshun:// links</translation>
+    </message>
+    <message>
+        <source>链接;协议;网址;URL;网页;笔记;Obsidian;scheme;protocol;winshun</source>
+        <translation>link;links;protocol;URL;web page;note;Obsidian;scheme;winshun</translation>
+    </message>
+    <message>
+        <source>网页、笔记软件里的 winshun://search/关键词 链接点一下就用 Win顺 搜索</source>
+        <translation>A winshun://search/keyword link in a web page or a notes app searches with WinShun when clicked</translation>
+    </message>
+    <message>
+        <source>winshun://search/合同 打开搜索框并填好“合同”；winshun://settings 打开设置。链接只会打字或打开设置，不会打开或运行文件</source>
+        <translation>winshun://search/report opens the search box with “report” typed; winshun://settings opens the settings. A link only types words or shows the settings; it never opens or runs files</translation>
     </message>
     <message>
         <source>在资源管理器或桌面弹出文件夹快捷菜单</source>

@@ -80,6 +80,7 @@ qt_add_library(wscore STATIC
     WebDav.cpp WebDav.h
     WebShortcut.cpp WebShortcut.h
     WebSuggest.cpp WebSuggest.h
+    WinShunUri.cpp WinShunUri.h
     Win32Util.cpp Win32Util.h
     WorkerPool.cpp WorkerPool.h
     Wsl.cpp Wsl.h

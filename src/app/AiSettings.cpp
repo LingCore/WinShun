@@ -264,6 +264,10 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/ExplorerMenu", QT_TRANSLATE_NOOP("AiSettings", "资源管理器右键“用 Win顺 搜索此处”"), "files_and_dialogs", 2,
                     "Adds 用 Win顺 搜索此处 to the right-click menu of folders in File Explorer."},
         &Settings::explorerMenu));
+    add(boolean({"Launcher/UriProtocol", QT_TRANSLATE_NOOP("AiSettings", "winshun:// 链接"), "files_and_dialogs", 2,
+                    "Lets winshun:// links open Win顺: winshun://search/<words> opens the search box with the words typed, "
+                    "winshun://settings opens the settings. Links never open or run files."},
+        &Settings::uriProtocol));
     add(boolean({"Launcher/ExplorerTyping", QT_TRANSLATE_NOOP("AiSettings", "在资源管理器里直接打字搜索"), "files_and_dialogs", 2,
                     "Typing in a File Explorer folder window searches that folder with Win顺, instead of Explorer's jump to a name by its first letters."},
         &Settings::explorerTyping));

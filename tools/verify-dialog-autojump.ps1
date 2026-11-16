@@ -148,6 +148,7 @@ try {
 Completed=true
 [Launcher]
 ExplorerMenu=false
+UriProtocol=false
 DoubleCtrl=false
 Hotkey=
 History=false

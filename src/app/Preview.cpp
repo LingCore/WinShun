@@ -10740,6 +10740,7 @@ int runRuntime(const QStringList& args)
     settings.dialogBarPlace = u"below"_s;
     settings.dialogAutoJump = false;
     settings.explorerMenu = false;
+    settings.uriProtocol = false;
     settings.explorerTyping = false;
     settings.opusTyping = false;
     settings.folderMenu = u"off"_s;

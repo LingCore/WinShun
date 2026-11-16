@@ -175,6 +175,9 @@ public:
 
     bool start(const StartOptions& options);
     void handleCommand(const QString& command); // from a second instance
+    // A winshun:// link (GitHub #358, core/WinShunUri.h): the search box with its words typed, or the
+    // settings. Nothing is opened or run: the link is from a web page, a note or a script.
+    void openLink(const QString& link);
 
     // byShortcut: the custom key or the double tap (ShortcutAgain);
     // pressedAt: when, on the 64-bit tick clock (now if not known): a press

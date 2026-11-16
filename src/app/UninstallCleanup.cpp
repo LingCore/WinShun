@@ -207,7 +207,9 @@ int cleanup()
     shellmenu::applyLanSend(false);
     shellmenu::applyPinPicture(false);
     shellmenu::applyCommands({});
-    say(u"已清除资源管理器右键菜单里属于这份的项。"_s, u"Explorer menu entries of this copy removed."_s);
+    shellmenu::applyUriProtocol(false);
+    say(u"已清除资源管理器右键菜单和 winshun:// 链接里属于这份的项。"_s,
+        u"Explorer menu entries and the winshun:// link entry of this copy removed."_s);
 
     const DWORD pathError = cli::removeFromUserPath(cli::binFolder());
     if (pathError == 0) {

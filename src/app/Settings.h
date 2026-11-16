@@ -138,6 +138,8 @@ struct Settings {
     QString fileManagerOpenCommand;
     QString fileManagerRevealCommand;
     bool explorerMenu = true; // "用 Win顺 搜索此处" in Explorer's right-click menu (shellmenu::)
+    // winshun:// links (GitHub #358) open Win顺 with a search typed, or its settings (shellmenu::applyUriProtocol).
+    bool uriProtocol = true;
     // Typing in a File Explorer folder window searches there with Win顺
     // (TypeToSearch), in place of Explorer's own jump to a name by its first
     // letters: off unless asked for, so that an upgrade changes nothing.

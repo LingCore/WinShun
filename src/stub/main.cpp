@@ -32,6 +32,12 @@
 // verb's title does, not Win顺's own. An --en before the folder, which older
 // verbs have, is read and ignored.
 //
+// --uri "<link>" is a winshun:// link (GitHub #358; ShellMenu.cpp registers
+// the protocol for the user): a web page, a note, a shortcut or a script opens
+// Win顺 with a search typed, or its settings. The link goes to Win顺 as it is,
+// read there (core/WinShunUri.h), and is never run here. Not running: Win顺
+// is started first, as for --search-here.
+//
 // --pin <shortcut> asks Windows to pin this program to the taskbar; the user
 // says yes in Windows' own dialog (TaskbarManager, open to desktop programs
 // since Windows 11 KB5074105). Win顺 starts it so from its settings, on the
@@ -199,7 +205,43 @@ std::wstring folderAfter(std::wstring_view option, bool skipEnglish = false)
     return folder;
 }
 
+// What follows `option` on our command line, as it is: the quote around it
+// taken off, nothing else touched. Not CommandLineToArgvW: a link that ends in
+// a backslash ("winshun://search/D:\Work\") would take the closing quote with
+// it. The program's own name is skipped first, so that a folder named like the
+// option does not stand in for it.
+std::wstring rawAfter(std::wstring_view option)
+{
+    std::wstring_view line = ::GetCommandLineW();
+    while (!line.empty() && (line.front() == L' ' || line.front() == L'\t'))
+        line.remove_prefix(1);
+    std::size_t program = 0;
+    if (!line.empty() && line.front() == L'"') {
+        const std::size_t close = line.find(L'"', 1);
+        program = close == std::wstring_view::npos ? line.size() : close + 1;
+    } else {
+        program = line.find_first_of(L" \t");
+        if (program == std::wstring_view::npos)
+            program = line.size();
+    }
+    line.remove_prefix(program);
+    const std::size_t at = line.find(option);
+    if (at == std::wstring_view::npos)
+        return {};
+    line.remove_prefix(at + option.size());
+    while (!line.empty() && (line.front() == L' ' || line.front() == L'\t'))
+        line.remove_prefix(1);
+    while (!line.empty() && (line.back() == L' ' || line.back() == L'\t'))
+        line.remove_suffix(1);
+    if (!line.empty() && line.front() == L'"')
+        line.remove_prefix(1);
+    if (!line.empty() && line.back() == L'"')
+        line.remove_suffix(1);
+    return std::wstring(line);
+}
+
 constexpr ULONG_PTR kSearchHere = 0x57535348; // "WSSH"
+constexpr ULONG_PTR kUri = 0x57535552; // "WSUR": a winshun:// link, as it came (GitHub #358)
 constexpr ULONG_PTR kFolderMenu = 0x5753464D; // "WSFM"
 constexpr ULONG_PTR kRunCommand = 0x57535243; // "WSRC": a command's id, a new line, the path it is run with (GitHub #61)
 constexpr ULONG_PTR kPinPicture = 0x57535050; // "WSPP": a picture file to pin to the screen (GitHub #128)
@@ -209,7 +251,8 @@ constexpr ULONG_PTR kLanSend = 0x57534C53; // "WSLS": files for the LAN transfer
 // double click (kFolderMenu): the folder to Win顺's window for these
 // (MessageWindow, open to this program), which shows the search box with
 // "<folder>\ " typed, or the folder menu. Not running: started first for a
-// search, as above; a menu would come seconds after the click, so none.
+// search, as above; a menu would come seconds after the click, so none. A
+// winshun:// link (kUri) goes the same way, the link in place of a folder.
 void sendFolder(const std::wstring& folder, ULONG_PTR tag)
 {
     constexpr wchar_t kWindow[] = L"WinShun.SearchHere";
@@ -457,6 +500,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     else if (option == L"--search-here") {
         if (const std::wstring folder = folderAfter(L"--search-here"); !folder.empty())
             sendFolder(folder, kSearchHere);
+    } else if (option == L"--uri") {
+        // A winshun:// link (ShellMenu.cpp's protocol): Win顺 reads it, started first when it is not running.
+        if (const std::wstring link = rawAfter(L"--uri"); !link.empty())
+            sendFolder(link, kUri);
     } else if (option == L"--run-command" && count == 4) {
         // Explorer's Win顺 命令 › on a file or a folder (ShellMenu.cpp): the command's id, then the path.
         sendFolder(std::wstring(args[2]) + L'\n' + args[3], kRunCommand);
