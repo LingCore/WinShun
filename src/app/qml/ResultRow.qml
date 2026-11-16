@@ -107,6 +107,12 @@ Item {
 
     readonly property bool contentMode: line > 0 // a content match (also mixed into 全部)
     readonly property bool current: ListView.isCurrentItem
+    // The name's line: a rename's box goes beside it, never over it, its text
+    // starting where the name does (GitHub #335).
+    readonly property real nameLeft: textColumn.x
+    readonly property real nameRight: textColumn.x + textColumn.width // short of the size, the date and the buttons
+    readonly property real nameTop: textColumn.y
+    readonly property real nameBottom: textColumn.y + nameLine.height
     // With rows selected, the background marks them; the current row keeps only its accent pill.
     readonly property int selectedCount: ListView.view ? ListView.view.model.selectedCount : 0
     readonly property var results: ListView.view ? ListView.view.model : null // the ResultModel
@@ -343,6 +349,7 @@ Item {
         spacing: row.compact ? 2 : 4
 
         Item {
+            id: nameLine
             width: parent.width
             height: row.upToPixel(title.implicitHeight) // the line below on a whole pixel too
 

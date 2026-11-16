@@ -4701,6 +4701,48 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
             QCoreApplication::sendEvent(window, &press);
             QCoreApplication::sendEvent(window, &release);
         };
+        const auto pressKey = [&](int code) {
+            if (code == Qt::Key_F2) { // taken by the search field in use
+                auto* panelField = visualNamed(window->contentItem(), u"panelSearchField"_s);
+                auto* field = panelField && panelField->isVisible() ? panelField : visualNamed(window->contentItem(), u"searchField"_s);
+                if (field)
+                    field->forceActiveFocus();
+            }
+            QKeyEvent down(QEvent::KeyPress, code, Qt::NoModifier);
+            QCoreApplication::sendEvent(window, &down);
+            QKeyEvent up(QEvent::KeyRelease, code, Qt::NoModifier);
+            QCoreApplication::sendEvent(window, &up);
+            pump(60);
+        };
+        // GitHub #335: the rename box beside the current row's name, never
+        // over it (a delegate without nameTop/nameBottom is one line), and
+        // inside the list.
+        const auto renameBesideName = [&](QObject* list) {
+            auto* box = visualNamed(window->contentItem(), u"renameBox"_s);
+            auto* listItem = qobject_cast<QQuickItem*>(list);
+            auto* item = list ? list->property("currentItem").value<QQuickItem*>() : nullptr;
+            if (!box || !box->isVisible() || !item || !listItem)
+                return false;
+            const QVariant top = item->property("nameTop");
+            const QVariant bottom = item->property("nameBottom");
+            const qreal nameTop = item->mapToScene(QPointF(0, top.isValid() ? top.toReal() : 0)).y();
+            const qreal nameBottom = item->mapToScene(QPointF(0, bottom.isValid() ? bottom.toReal() : item->height())).y();
+            const qreal boxTop = box->mapToScene(QPointF(0, 0)).y();
+            const qreal boxBottom = boxTop + box->height();
+            const qreal listTop = listItem->mapToScene(QPointF(0, 0)).y();
+            const qreal listBottom = listTop + listItem->height();
+            // Where the row says where its name starts, the box's text starts there too.
+            const QVariant left = item->property("nameLeft");
+            const bool aligned = !left.isValid()
+                || std::abs(item->mapToScene(QPointF(left.toReal(), 0)).x()
+                       - box->mapToScene(QPointF(box->property("textInset").toReal(), 0)).x()) <= 1;
+            // Within its row or tile across, not over the next tile.
+            const qreal boxLeft = box->mapToScene(QPointF(0, 0)).x();
+            const bool across = boxLeft >= item->mapToScene(QPointF(0, 0)).x() - 1
+                && boxLeft + box->width() <= item->mapToScene(QPointF(item->width(), 0)).x() + 1;
+            return aligned && across && (boxTop >= nameBottom - 1 || boxBottom <= nameTop + 1) && boxTop >= listTop - 1
+                && boxBottom <= listBottom + 1;
+        };
         grid->setProperty("currentIndex", 5);
         const QString chosen = launcher.results()->pathAt(5);
         click(visualNamed(window->contentItem(), u"fileViewList"_s));
@@ -4741,6 +4783,7 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
             check(file.exists() && box && box->isVisible() && box->property("text").toString() == file.fileName()
                     && box->property("inputFocused").toBool(),
                 "F2 did not open the rename box with the file's name");
+            check(renameBesideName(view), "the rename box covers the name in the panel's list");
             if (box && box->isVisible())
                 check(saveGrab(window, output.filePath(u"rename-box.png"_s)), "could not save the rename box's picture");
             if (box && box->isVisible()) {
@@ -4773,6 +4816,10 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
         settle(window);
         check(launcher.gallery() && launcher.results()->pathAt(grid->property("currentIndex").toInt()) == chosen,
             "switching back to gallery lost the current file");
+        pressKey(Qt::Key_F2);
+        check(renameBesideName(grid), "the rename box covers the name on a gallery tile");
+        check(saveGrab(window, output.filePath(u"rename-box-gallery.png"_s)), "could not save the gallery's rename box");
+        pressKey(Qt::Key_Escape);
         launcher.setResultOptions(KindOrder::FilesFirst, true, false, false, u"ctrl"_s);
         check(launcher.results()->data(launcher.results()->index(0), ResultModel::ThumbnailRole).toString().isEmpty()
             && !launcher.results()->data(launcher.results()->index(0), ResultModel::GalleryThumbnailRole).toString().isEmpty(),
@@ -4792,6 +4839,31 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
         window->resize(640, 480);
         settle(window);
         check(saveGrab(window, output.filePath(u"files-large-icons-compact.png"_s)), "could not render minimum width");
+
+        // The box's own list, two lines a row: under the name, over its
+        // folder; on the last row, above the name.
+        launcher.setGallery(false);
+        launcher.setPanel(false);
+        window->resize(900, 600);
+        settle(window);
+        auto* list = window->property("view").value<QObject*>();
+        if (list) {
+            for (const int row : {0, list->property("count").toInt() - 1}) {
+                list->setProperty("currentIndex", row);
+                settle(window);
+                pressKey(Qt::Key_F2);
+                check(renameBesideName(list), row == 0 ? "the rename box covers the name in the box's list"
+                                                       : "the rename box covers the name on the box's last row");
+                check(saveGrab(window, output.filePath(row == 0 ? u"rename-box-list.png"_s : u"rename-box-list-last.png"_s)),
+                    "could not save the box list's rename box");
+                pressKey(Qt::Key_Escape);
+            }
+        } else {
+            check(false, "no list in the box");
+        }
+        launcher.setPanel(true);
+        settle(window);
+        say(u"rename box beside the name: panel list, gallery tile, the box's first and last row"_s);
     }
     launcher.setGallery(false);
     settle(window);

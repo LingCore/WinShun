@@ -22,6 +22,9 @@ Item {
     property NameTip nameTip: null
     property real dpr: 1 // the window's, passed by the gallery (GitHub #111)
     readonly property bool current: GridView.isCurrentItem
+    // The name's line, top and bottom: a rename's box goes beside it, never over it (GitHub #335).
+    readonly property real nameTop: title.y
+    readonly property real nameBottom: title.y + title.height
     readonly property var results: GridView.view ? GridView.view.model : null
     readonly property int selectedCount: results ? results.selectedCount : 0
     readonly property bool wantsTip: area.containsMouse && !area.pressed

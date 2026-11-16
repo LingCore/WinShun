@@ -14,6 +14,7 @@ Rectangle {
     property alias tabFocus: input.activeFocusOnTab
     property string placeholder
     readonly property bool inputFocused: input.activeFocus
+    readonly property real textInset: input.anchors.leftMargin // from the box's left edge to its text
 
     signal accepted()
     signal editingFinished()

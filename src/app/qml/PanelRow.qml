@@ -52,6 +52,8 @@ Item {
 
     readonly property bool contentMode: line > 0
     readonly property bool current: ListView.isCurrentItem
+    // Where the name starts: a rename's box has its text there, on the row below (GitHub #335).
+    readonly property real nameLeft: title.x
     readonly property int selectedCount: ListView.view && ListView.view.model ? ListView.view.model.selectedCount : 0
     readonly property var results: ListView.view ? ListView.view.model : null
     // The window's device pixel ratio, passed by the panel: one Screen

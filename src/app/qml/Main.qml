@@ -1956,13 +1956,23 @@ Window {
             window.launcher.cancelRename()
             return
         }
-        // Over the name, its text where the name's is: past the number and the icon in
-        // a row of the box, past the small icon in the panel's, the whole width of a tile.
-        const inset = item.width <= 360 ? 4 : window.panel ? 23 : 52
+        // Its text where the name's is (a row says where), the whole width of a
+        // tile; up to where the row's name may go, its end or the list's. Under
+        // the name, so that it stays in sight (GitHub #335): over a row's folder
+        // and a little of the next row; above it where the list ends first.
+        const inset = item.nameLeft !== undefined ? item.nameLeft - renameBox.textInset : 4
         const at = item.mapToItem(window.contentItem, inset, 0)
+        const list = view.mapToItem(window.contentItem, 0, 0)
+        const right = Math.min(item.mapToItem(window.contentItem, item.nameRight ?? item.width - 4, 0).x, list.x + view.width - 12)
+        const nameTop = item.nameTop ?? 0 // a panel's row is its name's line
+        const nameBottom = item.nameBottom ?? item.height
+        const gap = 2
+        const below = at.y + nameBottom + gap
+        const above = at.y + nameTop - gap - renameBox.height
         renameBox.x = Math.round(at.x)
-        renameBox.width = Math.round(item.width - inset - 12)
-        renameBox.y = Math.round(at.y + (item.height > 80 ? item.height - renameBox.height - 6 : (item.height - renameBox.height) / 2))
+        renameBox.width = Math.round((item.nameRight === undefined ? right // a tile's or a panel row's width
+            : Math.max(right, Math.min(at.x + 240, list.x + view.width - 12))) - at.x) // room to type in a narrow window
+        renameBox.y = Math.round(below + renameBox.height <= list.y + view.height || above < list.y ? below : above)
         renameBox.text = window.launcher.renameName()
         renameBox.visible = true
         renameBox.takeFocus()
