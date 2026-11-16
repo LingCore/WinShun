@@ -20,6 +20,7 @@
 #include <QElapsedTimer>
 #include <QClipboard>
 #include <QCollator>
+#include <QCursor>
 #include <QThreadPool>
 #include <QGuiApplication>
 #include <QJsonObject>
@@ -935,6 +936,11 @@ void FolderMenu::listFolder(const QString& folder)
             emit menu->folderListed(folder, rows);
         }, Qt::QueuedConnection);
     });
+}
+
+QPoint FolderMenu::cursorPos() const
+{
+    return QCursor::pos();
 }
 
 QRectF FolderMenu::screenArea(QPointF globalPos) const

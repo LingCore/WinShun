@@ -590,6 +590,31 @@ void folderGroups(QQmlEngine* engine, const QDir& output, Checks& check)
     settle(window);
     check(root->property("page").toMap().value(u"children"_s).toList().size() == 11 && window->y() == top,
         u"going back puts the first page where it was (y %1, was %2)"_s.arg(window->y()).arg(top));
+
+    // A page swapped in under a pointer at rest: the arrow now under it opens
+    // nothing until the pointer moves (#348: one hover went all the way down).
+    const QVariantMap deepest {{u"text"_s, u"最深"_s}, {u"children"_s, QVariantList {QVariantMap {{u"text"_s, u"底"_s}, {u"action"_s, 13}}}}};
+    const QVariantMap deeper {{u"text"_s, u"更深"_s}, {u"children"_s, QVariantList {deepest}}};
+    const QVariantMap deep {{u"text"_s, u"深"_s}, {u"children"_s, QVariantList {deeper}}};
+    root->setProperty("trail", QVariantList());
+    root->setProperty("page", QVariantMap {{u"text"_s, u"文件夹菜单"_s}, {u"children"_s, QVariantList {deep}}});
+    settle(window);
+    const auto shown = [&] { return root->property("page").toMap().value(u"text"_s).toString(); };
+    const auto pump = [](int milliseconds) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < milliseconds)
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+    };
+    QMetaObject::invokeMethod(root.get(), "open", Q_ARG(QVariant, 0), Q_ARG(QVariant, true));
+    settle(window);
+    QMetaObject::invokeMethod(root.get(), "pointed", Q_ARG(QVariant, 0));
+    pump(600);
+    check(shown() == u"深", u"an arrow that comes under the pointer at rest opens nothing (page '%1')"_s.arg(shown()));
+    root->setProperty("restingCursor", QPointF(-100000, -100000)); // as if the pointer had moved since
+    QMetaObject::invokeMethod(root.get(), "pointed", Q_ARG(QVariant, 0));
+    pump(600);
+    check(shown() == u"更深", u"once the pointer moves, resting on an arrow opens its page (page '%1')"_s.arg(shown()));
     window->hide();
 }
 } // namespace

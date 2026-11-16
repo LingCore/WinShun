@@ -128,6 +128,9 @@ public:
     }
 
     Q_INVOKABLE QRectF screenArea(QPointF globalPos) const;
+    // Where the system's pointer is: unlike a row's mapToGlobal, the same
+    // while the pointer rests, though pages move the window (GitHub #348).
+    Q_INVOKABLE QPoint cursorPos() const;
     Q_INVOKABLE void prepareMenuWindow(QWindow* menu) const;
     Q_INVOKABLE void trigger(int index);
     // The folders inside `folder`, for the page a folder's row opens (GitHub
