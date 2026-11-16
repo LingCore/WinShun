@@ -4,8 +4,6 @@
 #include <QProcess>
 #include <QTest>
 
-#include <windows.h>
-
 using namespace Qt::StringLiterals;
 
 namespace {

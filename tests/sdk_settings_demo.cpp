@@ -4,8 +4,10 @@
 
 namespace {
 
+// A plugin on the SDK for tst_pluginsdk: query() reports what the settings
+// hooks saw. DemoPluginBase keeps the default showSettings(), DemoPlugin
+// overrides it.
 class DemoPluginBase : public winshun::Plugin {
-public:
 protected:
     winshun::Items query(const winshun::Query&) override
     {
@@ -26,10 +28,6 @@ protected:
 
     void settingsChanged(const winshun::Json&) override { ++m_settingsChangedCalls; }
 
-    int showSettingsCalls() const { return m_showSettingsCalls; }
-    int settingsChangedCalls() const { return m_settingsChangedCalls; }
-
-protected:
     int m_showSettingsCalls = 0;
     int m_settingsChangedCalls = 0;
 };
