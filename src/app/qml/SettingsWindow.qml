@@ -6099,6 +6099,13 @@ Window {
         frame: window.frame
     }
 
+    PluginNotesDialog {
+        z: 1
+        anchors.fill: parent
+        plugins: window.editor.plugins
+        frame: window.frame
+    }
+
     PluginDialog { // the 插件 page's questions: permissions, versions, removal
         id: pluginDialog
         z: 1

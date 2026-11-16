@@ -9,16 +9,14 @@ Item {
     required property WindowFrame frame
     property bool open: false
     property string title
-    property string heading // what it is of the plugin: 使用说明, 更新内容
     property string html
     property Item returnFocus: null
     readonly property real dpr: Screen.devicePixelRatio
     visible: open
 
-    function show(name, text, what) {
+    function show(name, text) {
         returnFocus = Window.window.activeFocusItem
         title = name
-        heading = what
         html = text
         scroll.contentY = 0
         open = true
@@ -33,8 +31,7 @@ Item {
     Component.onCompleted: frame.addPopup(dialog)
     Connections {
         target: dialog.plugins
-        function onReadmeRequested(title, html) { dialog.show(title, html, qsTr("使用说明")) }
-        function onNotesRequested(title, html) { dialog.show(title, html, qsTr("更新内容")) }
+        function onReadmeRequested(title, html) { dialog.show(title, html) }
     }
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Escape || (event.key === Qt.Key_Q && event.modifiers === Qt.NoModifier)) {
@@ -50,20 +47,30 @@ Item {
         id: card
         anchors.centerIn: parent
         width: Math.min(800, parent.width - 40)
-        // As tall as the text, up to the window: a few lines of 更新内容
-        // in a card, not on a page of their own.
-        height: Math.min(parent.height - 40, Math.max(160, scroll.y + body.contentHeight + 24))
+        height: Math.min(parent.height - 40, Math.max(160, scroll.y + body.contentHeight + 24)) // a short one in a card, not on a page
         Hook { anchors.fill: parent; part: Theme.menuFrame; dpr: dialog.dpr }
         MouseArea { anchors.fill: parent }
-        Text {
+        Row { // whose it is, then what: the name leads, 使用说明 under it in weight
             x: 20; y: 17
             width: parent.width - 128
-            text: dialog.title + " · " + dialog.heading
-            textFormat: Text.PlainText
-            elide: Text.ElideRight
-            color: Theme.text
-            font.pixelSize: Theme.fontTitle
-            font.weight: Theme.fontStrong
+            spacing: 10
+            Text {
+                id: titleText
+                width: Math.min(implicitWidth, parent.width - kindText.implicitWidth - parent.spacing)
+                text: dialog.title
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                color: Theme.text
+                font.pixelSize: Theme.fontTitle
+                font.weight: Theme.fontStrong
+            }
+            Text {
+                id: kindText
+                anchors.baseline: titleText.baseline
+                text: qsTr("使用说明")
+                color: Theme.subtext
+                font.pixelSize: Theme.fontCaption
+            }
         }
         RowAction {
             objectName: "closePluginReadme"

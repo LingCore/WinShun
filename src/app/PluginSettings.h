@@ -314,7 +314,9 @@ public:
 
 signals:
     void readmeRequested(const QString& title, const QString& html);
-    void notesRequested(const QString& title, const QString& html); // a library entry's 更新内容 (GitHub #337)
+    // A library entry's 更新内容 (GitHub #337). `about`: id, name, icon,
+    // version, installedVersion, stage and staged of its row, as it was.
+    void notesRequested(const QVariantMap& about, const QString& html);
     void webSettingsRequested();
     void listChanged();
     void logPluginsChanged();

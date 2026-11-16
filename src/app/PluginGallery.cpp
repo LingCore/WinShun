@@ -886,8 +886,9 @@ void PluginGallery::openReadme(const QString& id)
 }
 
 // 更新内容 (GitHub #337): the notes of the release the list's version came
-// in, carried in the (signed) list itself: nothing to fetch. Shown in the
-// window 说明 uses, as passive text.
+// in, carried in the (signed) list itself: nothing to fetch. Shown as
+// passive text, with what the entry is here so that the update it describes
+// is a click away.
 void PluginGallery::openNotes(const QString& id)
 {
     const gallery::Item* found = m_index.find(id);
@@ -900,7 +901,16 @@ void PluginGallery::openNotes(const QString& id)
         rebuild();
         return;
     }
-    emit m_settings->notesRequested(tr("%1 %2").arg(found->name.pick(locale), found->version), document.html);
+    const std::vector<PluginGalleryModel::Row>& rows = m_list.rows();
+    const auto row = std::ranges::find_if(rows, [&](const PluginGalleryModel::Row& r) { return r.id == id; });
+    QVariantMap about {{u"id"_s, id}, {u"name"_s, found->name.pick(locale)}, {u"version"_s, found->version}};
+    if (row != rows.end()) {
+        about.insert(u"icon"_s, row->icon);
+        about.insert(u"stage"_s, row->stage);
+        about.insert(u"installedVersion"_s, row->installedVersion);
+        about.insert(u"staged"_s, row->staged);
+    }
+    emit m_settings->notesRequested(about, document.html);
 }
 
 void PluginGallery::openHomepage(const QString& id)

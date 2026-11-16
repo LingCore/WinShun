@@ -10513,7 +10513,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
 // (taken and deleted as they come) open its windows for a look at them:
 //   show [text] | hide | clip | settings [place] | style <fluent|brand|tactile>
 //   | theme <light|dark|system> | set <SettingsEditor property> <value>
-//   | windows (their places into windows.json)
+//   | windows (their places into windows.json) | press <objectName> (its clicked())
 // Each batch done is counted in <folder>\ack.txt.
 int runLive(App& app, const QDir& out)
 {
@@ -10631,6 +10631,22 @@ int runLive(App& app, const QDir& out)
                 QFile json(out.filePath(u"windows.json"_s));
                 if (json.open(QIODevice::WriteOnly))
                     json.write(QJsonDocument(list).toJson());
+            } else if (verb == u"press") { // press <objectName>: its clicked(), as a click would, to look at what it opens
+                // By the items on show (a list's rows are not QObject children of the list).
+                const std::function<QQuickItem*(QQuickItem*)> find = [&](QQuickItem* item) -> QQuickItem* {
+                    if (item->objectName() == rest && item->isVisible())
+                        return item;
+                    for (QQuickItem* child : item->childItems())
+                        if (QQuickItem* found = find(child))
+                            return found;
+                    return nullptr;
+                };
+                for (QWindow* window : QGuiApplication::topLevelWindows()) {
+                    auto* quick = qobject_cast<QQuickWindow*>(window);
+                    QQuickItem* found = quick && window->isVisible() ? find(quick->contentItem()) : nullptr;
+                    if (found && QMetaObject::invokeMethod(found, "clicked"))
+                        break;
+                }
             } else if (verb == u"parts") { // parts.txt: every style part alive in the visible windows
                 QStringList found;
                 const std::function<void(QQuickItem*, int)> walk = [&](QQuickItem* item, int depth) {

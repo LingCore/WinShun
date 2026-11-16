@@ -109,6 +109,10 @@ Document render(const QByteArray& bytes, const QString& extension)
             format.clearProperty(QTextFormat::BackgroundBrush);
             format.clearProperty(QTextFormat::FontPointSize);
             format.clearProperty(QTextFormat::FontPixelSize);
+            // `code`: Windows' own monospace, as Win顺's update notes use; the
+            // generic one falls to a serif Courier.
+            if (format.fontFixedPitch())
+                format.setFontFamilies(QStringList {u"Consolas"_s});
             cursor.setCharFormat(format);
         }
     }
