@@ -20,6 +20,10 @@
 
 namespace ws::capture {
 
+// What a pin tells its owner about the keyboard and the mouse, for its key
+// card (GitHub #343, PinHintPolicy): a button down or let go, a key or the wheel.
+enum class PinInput { Press, Release, Key };
+
 // A picture left on the screen ("贴图", docs/design-capture.md 4.3): a
 // native layered window (WS_EX_LAYERED, one UpdateLayeredWindow of a 32-bit
 // premultiplied DIB), not a QQuickWindow. Stage 0 measured a Qt Quick window
@@ -76,6 +80,13 @@ public:
         // The edge tabs of the other pins on `monitorWork` (physical), so a new one goes beside them.
         std::function<std::vector<QRect>(const PinWindow* self)> takenTabs;
         std::function<void(PinWindow*)> released; // its picture was let go of (collapsed): memory can go back
+        // The key card (#343): the keyboard focus came or went (`fromOwnWindow`:
+        // it came back from another window of this program, its menu say);
+        // the keys, buttons and wheel on it (moves are not told); ? or F1
+        // (when F1 is not one of its keys) to show or hide the card.
+        std::function<void(PinWindow*, bool focused, bool fromOwnWindow)> focus;
+        std::function<void(PinWindow*, PinInput)> input;
+        std::function<void(PinWindow*)> toggleHints;
     };
 
     // The largest window a zoom may make, in pixels (~96 MB of DIB).

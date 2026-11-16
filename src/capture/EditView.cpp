@@ -144,4 +144,78 @@ WindowPlace placeForPin(const QRect& picture, QPoint imageInWindow, QSize window
     return place;
 }
 
+int pinInset(double dpr)
+{
+    return std::max(1, int(std::lround(dpr)));
+}
+
+namespace {
+
+// The fewest logical px that are a whole number of device px at `dpr`: 1, 2
+// or 4 at Windows' scales (steps of 25 %); 1 at any other.
+int logicalStep(double dpr)
+{
+    for (int step = 1; step <= 4; ++step) {
+        const double device = step * dpr;
+        if (std::abs(device - std::round(device)) < 1e-6)
+            return step;
+    }
+    return 1;
+}
+
+int roundUpTo(int value, int step)
+{
+    return (value + step - 1) / step * step;
+}
+
+// The logical px that hold `device` px.
+int logicalFor(int device, double dpr)
+{
+    return int(std::ceil(device / dpr - 1e-9));
+}
+
+} // namespace
+
+PinLayout pinLayout(const QRect& canvas, double dpr, int band, int chrome, const QRect& work)
+{
+    if (dpr <= 0)
+        dpr = 1.0;
+    const int inset = pinInset(dpr);
+    const int step = logicalStep(dpr);
+    // No larger than the work area: a canvas larger than that scrolls.
+    const int maxWidth = std::max(step, int(std::floor(work.width() / dpr + 1e-9)) / step * step);
+    const int maxHeight = std::max(step, int(std::floor(work.height() / dpr + 1e-9)) / step * step);
+    PinLayout layout;
+    layout.window = QSize(std::min(maxWidth, roundUpTo(std::max(chrome, logicalFor(canvas.width() + 2 * inset, dpr)), step)),
+        std::min(maxHeight, roundUpTo(band + logicalFor(canvas.height() + inset, dpr), step)));
+    const int width = int(std::lround(layout.window.width() * dpr));
+    const int height = int(std::lround(layout.window.height() * dpr));
+    const int bandDevice = int(std::lround(band * dpr));
+
+    // Above when the window fits there (its band within the work area, the
+    // inset may lie past it), else below when it fits there, else on the
+    // side with more room.
+    const int bottom = work.top() + work.height(); // one past it
+    const bool fitsAbove = canvas.top() - bandDevice >= work.top() && canvas.top() - bandDevice + height <= bottom + inset;
+    const bool fitsBelow = canvas.top() - inset + height <= bottom + inset;
+    layout.below = !fitsAbove && (fitsBelow || bottom - (canvas.top() + canvas.height()) > canvas.top() - work.top());
+
+    // Centred under the band, unless that takes the window past the work area's side.
+    const int shown = std::min(canvas.width(), width - 2 * inset);
+    const int lowest = work.left() - inset;
+    const int highest = std::max(lowest, work.left() + work.width() + inset - width);
+    const int left = std::clamp(canvas.left() - inset - (width - 2 * inset - shown) / 2, lowest, highest);
+    layout.canvasX = std::clamp(canvas.left() - left, inset, std::max(inset, width - inset - shown));
+    return layout;
+}
+
+QRect pinViewport(QSize window, QSize shown, int bandDevice, int canvasX, bool below, int inset)
+{
+    const int top = below ? inset : bandDevice;
+    const int bottom = below ? window.height() - bandDevice : window.height() - inset;
+    const int width = std::clamp(shown.width(), 0, std::max(0, window.width() - 2 * inset));
+    const int height = std::clamp(shown.height(), 0, std::max(0, bottom - top));
+    return QRect(std::clamp(canvasX, inset, std::max(inset, window.width() - inset - width)), top, width, height);
+}
+
 } // namespace ws::capture::editview

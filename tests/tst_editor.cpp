@@ -262,6 +262,230 @@ private slots:
         QCOMPARE(place.topLeft, QPoint(0, 0));
     }
 
+    // GitHub #343: the window on a pin is the pin grown a toolbar.
+    void pinWindowLayout()
+    {
+        using namespace editview;
+        const QRect work(0, 0, 2560, 1400); // physical, at 150 %
+        const QRect room = work.adjusted(-2, -2, 2, 2); // the insets may lie past it
+        QCOMPARE(pinInset(1.0), 1);
+        QCOMPARE(pinInset(1.25), 1);
+        QCOMPARE(pinInset(1.5), 2);
+        // A narrow pin with room: the band above it, as wide as the toolbar,
+        // the canvas centred under it; no minimum size beyond that.
+        const QRect pin(1000, 600, 300, 200);
+        PinLayout layout = pinLayout(pin, 1.5, 84, 660, work);
+        QCOMPARE(layout.window, QSize(660, 220)); // 84 + 135, made even: whole device px at 150 %
+        QVERIFY(!layout.below);
+        QCOMPARE(layout.canvasX, 345);
+        QRect view = pinViewport(QSize(990, 330), pin.size(), 126, layout.canvasX, layout.below, 2);
+        QCOMPARE(view, QRect(345, 126, 300, 200));
+        WindowPlace place = placeForPin(pin, view.topLeft(), QSize(990, 330), room);
+        QCOMPARE(place.topLeft, QPoint(655, 474));
+        QVERIFY(place.exact);
+        // No room above: the band below it, the canvas at the window's top.
+        const QRect high(1000, 50, 300, 200);
+        layout = pinLayout(high, 1.5, 84, 660, work);
+        QVERIFY(layout.below);
+        view = pinViewport(QSize(990, 330), high.size(), 126, layout.canvasX, layout.below, 2);
+        QCOMPARE(view, QRect(345, 2, 300, 200));
+        QVERIFY(view.y() + view.height() <= 330 - 126);
+        place = placeForPin(high, view.topLeft(), QSize(990, 330), room);
+        QCOMPARE(place.topLeft, QPoint(655, 48));
+        QVERIFY(place.exact);
+        // At the bottom of the work area: above, still exact.
+        const QRect low(1000, 1250, 300, 150);
+        layout = pinLayout(low, 1.5, 84, 660, work);
+        QVERIFY(!layout.below);
+        // Near the right edge, the toolbar wider than the pin: the window stays
+        // in the work area and the canvas lies at its right, still exact.
+        const QRect right(2400, 600, 150, 100);
+        layout = pinLayout(right, 1.5, 84, 660, work);
+        QCOMPARE(layout.window, QSize(660, 152));
+        QCOMPARE(layout.canvasX, 828);
+        view = pinViewport(QSize(990, 228), right.size(), 126, layout.canvasX, layout.below, 2);
+        place = placeForPin(right, view.topLeft(), QSize(990, 228), room);
+        QVERIFY(place.exact);
+        QCOMPARE(place.topLeft.x() + 990, work.right() + 1 + 2);
+        // Near the left edge likewise, the canvas at the window's left.
+        layout = pinLayout(QRect(10, 600, 150, 100), 1.5, 84, 660, work);
+        QCOMPARE(layout.canvasX, 12);
+        // A pin wider than the toolbar: the window is the canvas and its insets.
+        layout = pinLayout(QRect(100, 600, 1200, 300), 1.5, 84, 660, work);
+        QCOMPARE(layout.window.width(), 804);
+        QVERIFY(layout.canvasX >= 2 && layout.canvasX <= 4);
+        // As tall as the work area: no taller than it, and the canvas scrolls.
+        const QRect tall(1000, 0, 300, 1400);
+        layout = pinLayout(tall, 1.5, 84, 660, work);
+        QCOMPARE(layout.window.height(), 932);
+        view = pinViewport(QSize(990, 1398), tall.size(), 126, layout.canvasX, layout.below, 2);
+        QVERIFY(view.height() < 1400);
+        QVERIFY(view.y() >= 2 && view.y() + view.height() <= 1398 - 2);
+        // Whole device px at 100 % and 125 % too.
+        QCOMPARE(pinLayout(pin, 1.0, 84, 660, QRect(0, 0, 1920, 1040)).window, QSize(660, 285));
+        QCOMPARE(pinLayout(pin, 1.25, 84, 660, QRect(0, 0, 2400, 1300)).window, QSize(660, 248));
+    }
+
+    void pinKeysInPlace()
+    {
+        const QImage picture = noise(QSize(300, 200), 9);
+        bool shown = true;
+        int replaced = 0;
+        Rig rig; // 1000 x 700 at 150 %
+        auto makeTarget = [&] {
+            CaptureEditor::PinTarget target;
+            target.image = picture;
+            target.picture = QRect(500, 400, 300, 200);
+            target.zoom = 1.0;
+            target.alive = [] { return true; };
+            target.setShown = [&shown](bool on) { shown = on; };
+            target.replace = [&replaced](const QImage&, const QByteArray&) { ++replaced; };
+            return target;
+        };
+        QVERIFY(!rig.editor.pinMode());
+        QSignalSpy layouts(&rig.editor, &CaptureEditor::layoutChanged);
+        QVERIFY(rig.editor.openPin(makeTarget()));
+        QVERIFY(rig.editor.pinMode());
+        QVERIFY(layouts.count() >= 1);
+        // No title bar: the band above the picture, and the picture's own size, nothing round it.
+        QCOMPARE(rig.editor.topHeight(), CaptureEditor::kPinToolbarRow + CaptureEditor::kPinStripHeight);
+        QCOMPARE(rig.editor.bottomHeight(), 0);
+        QCOMPARE(rig.editor.viewportDevice(), QRect(2, 126, 300, 200));
+        QCOMPARE(rig.editor.originDevice(), QPoint(0, 0));
+        QCOMPARE(rig.editor.viewRect().top(), 84.0);
+        // E is the ellipse here, as in the capture; Esc leaves at once, the pin as it was.
+        rig.editor.model()->setTool(rig.toolIndex(Kind::Rect));
+        rig.drag(QPoint(30, 30), QPoint(120, 90));
+        QVERIFY(rig.editor.model()->modified());
+        QVERIFY(rig.editor.keyPressed(Qt::Key_E, 0));
+        QCOMPARE(rig.editor.model()->tool(), rig.toolIndex(Kind::Ellipse));
+        QVERIFY(rig.editor.isOpen());
+        QVERIFY(rig.editor.keyPressed(Qt::Key_Escape, 0));
+        QVERIFY(!rig.editor.isOpen());
+        QVERIFY(shown);
+        QCOMPARE(replaced, 0);
+        // The pin's 编辑 key, when the editor has no use for it, is 完成.
+        CaptureKeys keys;
+        keys.set(KeyAction::PinEdit, QKeyCombination(Qt::Key_F2));
+        rig.editor.setKeys(keys);
+        QVERIFY(rig.editor.openPin(makeTarget()));
+        rig.editor.model()->setTool(rig.toolIndex(Kind::Rect));
+        rig.drag(QPoint(30, 30), QPoint(120, 90));
+        QVERIFY(rig.editor.keyPressed(Qt::Key_F2, 0));
+        QCOMPARE(replaced, 1);
+        QVERIFY(!rig.editor.isOpen());
+        // What the key list says of it: the editor's own keys never finish, the others do.
+        QCOMPARE(rig.editor.pinEditKeyText(), u"F2"_s);
+        QVERIFY(rig.editor.pinEditFinishes());
+        for (const QKeyCombination taken : {QKeyCombination(Qt::Key_E), QKeyCombination(Qt::Key_I), QKeyCombination(Qt::Key_3),
+                 QKeyCombination(Qt::ShiftModifier, Qt::Key_B), QKeyCombination(Qt::ControlModifier, Qt::Key_D),
+                 QKeyCombination(Qt::Key_Space), QKeyCombination(Qt::Key_Z), QKeyCombination(Qt::ControlModifier, Qt::Key_S)})
+            QVERIFY2(rig.editor.editorTakes(taken), qPrintable(QKeySequence(taken).toString()));
+        for (const QKeyCombination free : {QKeyCombination(Qt::Key_F2), QKeyCombination(Qt::Key_Q), QKeyCombination(Qt::Key_O),
+                 QKeyCombination(Qt::ControlModifier, Qt::Key_K), QKeyCombination(Qt::AltModifier, Qt::Key_E)})
+            QVERIFY2(!rig.editor.editorTakes(free), qPrintable(QKeySequence(free).toString()));
+        QSignalSpy keysTold(&rig.editor, &CaptureEditor::keysChanged);
+        keys.set(KeyAction::PinEdit, QKeyCombination(Qt::Key_E)); // the default: the ellipse here
+        rig.editor.setKeys(keys);
+        QCOMPARE(keysTold.count(), 1);
+        QVERIFY(!rig.editor.pinEditFinishes());
+        keys.set(KeyAction::PinEdit, QKeyCombination(Qt::Key_Q));
+        rig.editor.setKeys(keys);
+        QVERIFY(rig.editor.openPin(makeTarget()));
+        QVERIFY(rig.editor.keyPressed(Qt::Key_Q, 0)); // nothing changed: just closed
+        QVERIFY(!rig.editor.isOpen());
+        QCOMPARE(replaced, 1);
+        keys.set(KeyAction::PinEdit, QKeyCombination(Qt::Key_F2));
+        rig.editor.setKeys(keys);
+        // Not a key of an ordinary editing window.
+        QVERIFY(rig.editor.openHistory(1));
+        QVERIFY(!rig.editor.pinMode());
+        QCOMPARE(rig.editor.topHeight(), CaptureEditor::kTitleHeight + CaptureEditor::kToolbarRow);
+        QVERIFY(!rig.editor.keyPressed(Qt::Key_F2, 0));
+        QVERIFY(rig.editor.isOpen());
+    }
+
+    void aPinsWindowSitsOnThePin()
+    {
+        QQuickWindow window;
+        window.setFlags(Qt::Window | Qt::FramelessWindowHint);
+        window.resize(1000, 700);
+        Rig rig(QSize(200, 120), false);
+        const QImage picture = noise(QSize(300, 200), 9);
+        const QScreen* screen = QGuiApplication::primaryScreen();
+        const qreal dpr = screen->devicePixelRatio();
+        const QRect avail = screen->availableGeometry();
+        const QRect work(avail.topLeft(), QSize(qRound(avail.width() * dpr), qRound(avail.height() * dpr)));
+        if (work.width() < 700 || work.height() < 500)
+            QSKIP("the screen is too small for the layout tested here");
+        CaptureEditor::Hooks hooks;
+        hooks.picture = [&rig](qint64) { return rig.base; };
+        QList<bool> modes;
+        QList<bool> cloaks;
+        hooks.window.show = [](QQuickWindow* w) { w->show(); };
+        hooks.window.cloak = [&cloaks](QQuickWindow*, bool on) { cloaks.append(on); };
+        hooks.window.pinMode = [&modes](QQuickWindow*, bool on) { modes.append(on); };
+        // The window's place on the screen as Qt keeps it (the offscreen platform has no native frame).
+        hooks.window.nativeRect = [](QQuickWindow* w) {
+            const qreal d = w->devicePixelRatio();
+            return QRect(QPoint(qRound(w->x() * d), qRound(w->y() * d)), QSize(qRound(w->width() * d), qRound(w->height() * d)));
+        };
+        hooks.window.moveTo = [](QQuickWindow* w, QPoint at) {
+            const qreal d = w->devicePixelRatio();
+            w->setPosition(qRound(at.x() / d), qRound(at.y() / d));
+        };
+        rig.editor.setHooks(hooks);
+        rig.editor.attach(&window);
+        rig.editor.setChromeWidth(500); // what QML's rows would ask for
+        bool shown = true;
+        auto open = [&](QPoint at) {
+            CaptureEditor::PinTarget target;
+            target.image = picture;
+            target.picture = QRect(work.topLeft() + at, picture.size());
+            target.zoom = 1.0;
+            target.alive = [] { return true; };
+            target.setShown = [&shown](bool on) { shown = on; };
+            target.replace = [](const QImage&, const QByteArray&) {};
+            return rig.editor.openPin(target);
+        };
+
+        // Room above: the band above, the window as wide as the rows, the canvas on the pin.
+        QVERIFY(open(QPoint(200, 300)));
+        QCOMPARE(modes, QList<bool> {true});
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        const editview::PinLayout expected = editview::pinLayout(QRect(work.topLeft() + QPoint(200, 300), picture.size()), dpr,
+            CaptureEditor::kPinToolbarRow + CaptureEditor::kPinStripHeight, 500, work);
+        QCOMPARE(window.size(), expected.window);
+        QVERIFY(!rig.editor.toolbarBelow());
+        QCOMPARE(rig.editor.viewportDevice().size(), picture.size());
+        QCOMPARE(hooks.window.nativeRect(&window).topLeft() + rig.editor.imageInWindow(), work.topLeft() + QPoint(200, 300));
+        // Shown (uncloaked) once laid out, and only then the pin hidden.
+        QTRY_VERIFY_WITH_TIMEOUT(!shown, 3000);
+        QVERIFY(!cloaks.isEmpty());
+        QCOMPARE(cloaks.first(), true);
+        QCOMPARE(cloaks.last(), false);
+        rig.editor.close();
+        QTRY_VERIFY_WITH_TIMEOUT(!window.isVisible(), 3000);
+        QVERIFY(shown);
+
+        // No room above: the band below, the canvas at the window's top, still on the pin.
+        QVERIFY(open(QPoint(200, 20)));
+        QVERIFY(rig.editor.toolbarBelow());
+        QCOMPARE(rig.editor.topHeight(), 0);
+        QCOMPARE(rig.editor.viewportDevice().top(), editview::pinInset(dpr));
+        QTRY_VERIFY_WITH_TIMEOUT(!shown, 3000);
+        QCOMPARE(hooks.window.nativeRect(&window).topLeft() + rig.editor.imageInWindow(), work.topLeft() + QPoint(200, 20));
+        rig.editor.close();
+        QTRY_VERIFY_WITH_TIMEOUT(!window.isVisible(), 3000);
+
+        // An ordinary picture: an ordinary window again.
+        QVERIFY(rig.editor.openHistory(1));
+        QCOMPARE(modes, (QList<bool> {true, false}));
+        QVERIFY(!rig.editor.pinMode());
+        rig.editor.close();
+        QTRY_VERIFY_WITH_TIMEOUT(!window.isVisible(), 3000);
+    }
+
     void viewIsOnDevicePixels()
     {
         Rig rig(QSize(3000, 2000), false);

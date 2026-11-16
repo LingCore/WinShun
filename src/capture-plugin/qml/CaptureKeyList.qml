@@ -4,11 +4,18 @@ import WinShun
 // Every key of a capture and of the editing window, as [keys, what they do]
 // flattened: the toolbar's 全部按键 list (AnnotateToolbar) and the settings'
 // 按键 tab (CaptureOptions, GitHub #342) read the same rows. The texts keep
-// the toolbar's translation context, where they were first.
+// the toolbar's translation context, where they were first. And the pin
+// window's keys that are not set in the settings (pinRows, GitHub #343).
 QtObject {
     id: list
 
     property bool editor: false // the editing window's keys, else the capture's
+    // A pin's editing window (GitHub #343): Enter is 完成, Esc leaves the pin
+    // as it was, and the pin's 编辑 key (pinEditKey) is 完成 too unless the
+    // editor has a use of its own for it (pinEditFinishes; the default E is the ellipse).
+    property bool pin: false
+    property string pinEditKey: ""
+    property bool pinEditFinishes: false
     // The keys the user set (#187), shown with the rest when given; the
     // settings list them as boxes of their own and leave this unset.
     property AnnotationModel annot: null
@@ -26,7 +33,7 @@ QtObject {
         qsTranslate("AnnotateToolbar", "画的时候按住 Shift"), qsTranslate("AnnotateToolbar", "正方形、正圆；线吸附 15°；画笔、荧光笔画直线"),
         qsTranslate("AnnotateToolbar", "双击"), qsTranslate("AnnotateToolbar", "文字：改文字；序号：改号，序号旁的字：改字"),
         "Ctrl+Enter、Esc", qsTranslate("AnnotateToolbar", "写完文字（Enter 换行；序号旁的字 Enter 就写完）"),
-        "Ctrl+C、Enter", qsTranslate("AnnotateToolbar", "复制")
+        "Ctrl+C、Enter", pin ? qsTr("完成：贴图换成改好的图") : qsTranslate("AnnotateToolbar", "复制")
     ].concat(annot && annot.saveKeyText.length > 0
                  ? [annot.saveKeyText, annot.saveDirect ? qsTranslate("AnnotateToolbar", "保存到设置的保存位置") : qsTranslate("AnnotateToolbar", "另存为：选择保存位置")] : [],
              annot && annot.pinKeyText.length > 0 ? [annot.pinKeyText, qsTranslate("AnnotateToolbar", "贴图")] : [])
@@ -57,7 +64,24 @@ QtObject {
         qsTranslate("AnnotateToolbar", "Ctrl+滚轮、Ctrl+加号 / 减号"), qsTranslate("AnnotateToolbar", "缩放"),
         "Z", qsTranslate("AnnotateToolbar", "适合窗口 / 100%"),
         qsTranslate("AnnotateToolbar", "空格 + 拖动，或中键拖动"), qsTranslate("AnnotateToolbar", "平移"),
-        qsTranslate("AnnotateToolbar", "Esc"), qsTranslate("AnnotateToolbar", "写完文字；有改动时放弃全部（Ctrl+Z 恢复）；没有改动时关闭")
-    ]
+        qsTranslate("AnnotateToolbar", "Esc"), pin ? qsTr("写完文字；否则关闭编辑，贴图保持原样")
+                                                   : qsTranslate("AnnotateToolbar", "写完文字；有改动时放弃全部（Ctrl+Z 恢复）；没有改动时关闭")
+    ].concat(pin && pinEditKey.length > 0
+                 ? [pinEditKey, pinEditFinishes ? qsTr("贴图的编辑键：再按一次也是完成")
+                                                : qsTr("贴图的编辑键：在这里和截图时一样选工具，完成按 Enter")] : [])
     readonly property var rows: commonRows.concat(editor ? editorRows : overlayRows)
+    // The pin window's keys that are not set in the settings (PinWindow; the
+    // double click is a setting of its own): the settings' 按键 tab.
+    readonly property var pinRows: [
+        qsTranslate("AnnotateToolbar", "方向键"), qsTr("移动贴图 1 个物理像素，按住 Shift 一次 10 个"),
+        qsTranslate("AnnotateToolbar", "滚轮"), qsTr("缩放；Ctrl+滚轮改透明度"),
+        qsTr("加号 / 减号"), qsTr("放大 / 缩小"),
+        qsTr("拖四角"), qsTr("按比例缩放"),
+        qsTr("中键"), qsTr("收成小块 / 展开"),
+        qsTr("右键、菜单键"), qsTr("贴图菜单：另存为、置顶、鼠标穿透、关闭其他等"),
+        "Tab", qsTr("截图翻译的贴图：看原文 / 看译文"),
+        "Esc", qsTr("退出选择文字（关闭贴图的键改了也是）"),
+        qsTr("按住 Ctrl"), qsTr("鼠标穿透的贴图暂时可以拖动和点"),
+        "?、F1", qsTr("显示 / 隐藏屏幕角落的快捷键提示")
+    ]
 }

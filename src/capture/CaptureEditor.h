@@ -50,11 +50,29 @@ class CaptureEditor : public QObject {
     // What the first button says: 复制, or on a pin 完成.
     Q_PROPERTY(QString copyText READ copyText NOTIFY openChanged FINAL)
     Q_PROPERTY(bool ocrAvailable READ ocrAvailable CONSTANT FINAL)
-    // The window's layout, logical px: the title bar and the toolbar above
-    // the picture, the panel's row below it.
-    Q_PROPERTY(int topHeight READ topHeight CONSTANT FINAL)
-    Q_PROPERTY(int toolbarRow READ toolbarRow CONSTANT FINAL)
-    Q_PROPERTY(int bottomHeight READ bottomHeight CONSTANT FINAL)
+    // On a pin (GitHub #343) the window is the pin grown a toolbar: no
+    // title bar, the canvas exactly over the pin's picture, the toolbar's
+    // row and the style panel's row (the band) above it, or below it when
+    // the screen has no room above. Else an ordinary window with its title bar.
+    Q_PROPERTY(bool pinMode READ pinMode NOTIFY layoutChanged FINAL)
+    Q_PROPERTY(bool toolbarBelow READ toolbarBelow NOTIFY layoutChanged FINAL)
+    // The window's layout, logical px: what lies above the picture (the
+    // title bar and the toolbar, or the band) and below it (the panel's row,
+    // or the band); the toolbar's row and the panel's row.
+    Q_PROPERTY(int topHeight READ topHeight NOTIFY layoutChanged FINAL)
+    Q_PROPERTY(int toolbarRow READ toolbarRow NOTIFY layoutChanged FINAL)
+    Q_PROPERTY(int bottomHeight READ bottomHeight NOTIFY layoutChanged FINAL)
+    Q_PROPERTY(int stripHeight READ stripHeight NOTIFY layoutChanged FINAL)
+    // The pin's 编辑 key (the key list's words), and whether it is 完成 in a
+    // pin's editing window too: not when the editor has a use of its own
+    // for it (the default E is the ellipse there, as in a capture).
+    Q_PROPERTY(QString pinEditKeyText READ pinEditKeyText NOTIFY keysChanged FINAL)
+    Q_PROPERTY(bool pinEditFinishes READ pinEditFinishes NOTIFY keysChanged FINAL)
+    // The width the toolbar's and the panel's rows need (logical px), from
+    // QML: a pin's window is no narrower.
+    Q_PROPERTY(int chromeWidth READ chromeWidth WRITE setChromeWidth NOTIFY chromeWidthChanged FINAL)
+    // The picture's part of the window (logical px, on whole device px).
+    Q_PROPERTY(QRectF viewRect READ viewRect NOTIFY viewChanged FINAL)
     // The picture in the window: logical px per image px (the zoom, at the
     // window's real buffer scale), one device pixel in logical px, the
     // monitor's scale; where the picture's top left is (window coordinates,
@@ -126,6 +144,13 @@ public:
             std::function<void(QQuickWindow*, bool cloaked)> cloak;
             std::function<QRect(QQuickWindow*)> nativeRect;
             std::function<void(QQuickWindow*, QPoint topLeft)> moveTo;
+            // Called while the window is hidden: on a pin it is a tool window
+            // on top of the others like the pin (not in Alt+Tab or the
+            // taskbar) and of one size; else an ordinary one again.
+            std::function<void(QQuickWindow*, bool pin)> pinMode;
+            // A window of its own for a list or a tip too tall for the window
+            // (QML's popup windows): shown without taking the focus.
+            std::function<void(QWindow*)> prepareMenu;
         } window;
     };
 
@@ -133,6 +158,9 @@ public:
     static constexpr int kTitleHeight = 48;
     static constexpr int kToolbarRow = 52;
     static constexpr int kBottomHeight = 56;
+    // On a pin: the toolbar's row (the toolbar's own height) and the panel's.
+    static constexpr int kPinToolbarRow = 44;
+    static constexpr int kPinStripHeight = 40;
     static constexpr int kMinWindowWidth = 640;
     static constexpr int kMinWindowHeight = 360;
     // Around a picture that fits, logical px, and the share of the work area a window may take.
@@ -178,9 +206,29 @@ public:
     const AnnotationModel& model() const { return m_model; }
     QString copyText() const;
     bool ocrAvailable() const { return m_ocrAvailable; }
-    int topHeight() const { return kTitleHeight + kToolbarRow; }
-    int toolbarRow() const { return kToolbarRow; }
-    int bottomHeight() const { return kBottomHeight; }
+    bool pinMode() const { return m_pinMode; }
+    bool toolbarBelow() const { return m_pinMode && m_toolbarBelow; }
+    int topHeight() const
+    {
+        if (!m_pinMode)
+            return kTitleHeight + kToolbarRow;
+        return m_toolbarBelow ? 0 : kPinToolbarRow + kPinStripHeight;
+    }
+    int toolbarRow() const { return m_pinMode ? kPinToolbarRow : kToolbarRow; }
+    int bottomHeight() const
+    {
+        if (!m_pinMode)
+            return kBottomHeight;
+        return m_toolbarBelow ? kPinToolbarRow + kPinStripHeight : 0;
+    }
+    int stripHeight() const { return m_pinMode ? kPinStripHeight : kBottomHeight; }
+    int chromeWidth() const { return m_chromeWidth; }
+    void setChromeWidth(int width);
+    QRectF viewRect() const { return m_viewport; }
+    // A list or a tip in a window of its own (HoverTip's `host`, the key list):
+    // the work area of the monitor at that point, and the window made ready.
+    Q_INVOKABLE QRectF screenArea(QPointF globalPos) const;
+    Q_INVOKABLE void prepareMenuWindow(QWindow* menu) const;
     qreal scaleX() const { return m_zoom / m_bufferX; }
     qreal scaleY() const { return m_zoom / m_bufferY; }
     qreal unitX() const { return 1.0 / m_bufferX; }
@@ -216,8 +264,15 @@ public:
     {
         m_keys = keys;
         m_model.setKeys(keys);
+        emit keysChanged();
     }
     const CaptureKeys& keys() const { return m_keys; }
+    QString pinEditKeyText() const { return m_keys.text(KeyAction::PinEdit); }
+    bool pinEditFinishes() const { return m_keys.has(KeyAction::PinEdit) && !editorTakes(m_keys.key(KeyAction::PinEdit)); }
+    // Whether the editing window has a use of its own for `key`, whatever
+    // the moment: a tool's letter or digit, the model's keys, the fixed ones
+    // (fixedKey), Space (panning), Alt+F4, the user's save and pin keys.
+    bool editorTakes(QKeyCombination key) const;
     Q_INVOKABLE void spaceHeld(bool held);
     // A save folder was chosen ([Capture] SaveFolder): Save goes straight into it (#194).
     void setSaveDirect(bool on) { m_model.setSaveDirect(on); }
@@ -237,7 +292,8 @@ public:
     // The picture moved by device px (kept inside the viewport).
     void scrollBy(QPoint device);
 
-    // The Esc ladder after the model's own steps: give up the changes, else
+    // The Esc ladder after the model's own steps: on a pin, close it (the
+    // pin as it was); else give up the changes, else
     // close. True when it did one.
     bool escape();
     // Enter: copy / 完成. Save, pin and OCR are act()'s.
@@ -245,6 +301,9 @@ public:
 
 signals:
     void openChanged();
+    void layoutChanged();
+    void keysChanged();
+    void chromeWidthChanged();
     void viewChanged();
     void sizeTextChanged();
     void cursorChanged();
@@ -257,6 +316,7 @@ private:
     using Origin = editview::Origin;
 
     bool begin(annot::Project project, Origin origin);
+    bool fixedKey(int key, bool ctrl); // Esc, Enter, the zoom, the arrows: not the user's to change
     annot::Project projectOfPicture(const QImage& picture) const;
     void present();
     void settle();
@@ -281,6 +341,14 @@ private:
     void flushMotion();
     void alignToPin();
     QScreen* targetScreen() const;
+    // On a pin: the window's look switched while it is hidden; the canvas's
+    // place on the screen (physical); the window sized for it, true when
+    // its size changed; shown when that is settled.
+    void setPinMode(bool on);
+    QRect pinCanvas() const;
+    bool layoutPin();
+    void revealFrame();
+    void reveal();
 
     AnnotationModel m_model;
     CaptureKeys m_keys;
@@ -299,6 +367,15 @@ private:
     qreal m_bufferY = 1.0;
     QRectF m_viewport {0, 100, 1000, 544}; // logical, window coordinates (setMetrics)
     QRect m_viewDev;
+    // On a pin
+    bool m_pinMode = false;
+    bool m_toolbarBelow = false;
+    int m_pinCanvasX = 0; // device px in the window
+    int m_chromeWidth = 0;
+    bool m_revealing = false; // shown cloaked, until laid out and drawn
+    int m_revealFrames = 0;
+    QTimer m_revealTimeout;
+    QMetaObject::Connection m_revealConnection;
     double m_zoom = 1.0;
     bool m_fit = true;
     QPoint m_originDev; // the picture's top left from the viewport's, device px

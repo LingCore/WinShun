@@ -75,6 +75,19 @@ void copyOpaque(const QImage& picture, QImage& canvas, QPoint at)
     }
 }
 
+// The key types "?" on the keyboard layout in use (Shift+/ on most, not on all).
+bool typesQuestionMark(UINT virtualKey, LPARAM lParam)
+{
+    BYTE state[256] {};
+    if (!::GetKeyboardState(state))
+        return false;
+    wchar_t typed[4] {};
+    const UINT scan = (static_cast<UINT>(lParam) >> 16) & 0xFFu;
+    // 4: the keyboard's state (a dead key waiting) is left as it was.
+    const int count = ::ToUnicodeEx(virtualKey, scan, state, typed, 4, 4, ::GetKeyboardLayout(0));
+    return count == 1 && typed[0] == L'?';
+}
+
 } // namespace
 
 PinWindow::PinWindow(const QImage& image, QPoint origin, Host host, std::optional<QPoint> fitAbout)
@@ -788,7 +801,24 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
     const int reach = std::max(4, static_cast<int>(std::lround(10 * dpr())));
     switch (message) {
     case WM_ACTIVATE:
+        if (m_host.focus) {
+            // lParam: the window the focus came from (or goes to); null for another thread's.
+            const auto other = reinterpret_cast<HWND>(lParam);
+            DWORD process = 0;
+            if (other)
+                ::GetWindowThreadProcessId(other, &process);
+            m_host.focus(this, LOWORD(wParam) != WA_INACTIVE, other && process == ::GetCurrentProcessId());
+        }
         return 0;
+    case WM_RBUTTONDOWN:
+    case WM_MBUTTONDOWN:
+        if (m_host.input)
+            m_host.input(this, PinInput::Press);
+        break; // the menu comes with the button up (WM_CONTEXTMENU), the middle button's tile too
+    case WM_RBUTTONUP:
+        if (m_host.input)
+            m_host.input(this, PinInput::Release);
+        break;
     case kEncoded:
         finishEncode(reinterpret_cast<const EncodeJob*>(lParam));
         return 0;
@@ -814,6 +844,8 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         return TRUE;
     }
     case WM_LBUTTONDOWN: {
+        if (m_host.input)
+            m_host.input(this, PinInput::Press);
         const QPoint at = cursorNow();
         m_press = at;
         m_moved = false;
@@ -862,6 +894,8 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         }
         return 0;
     case WM_LBUTTONUP:
+        if (m_host.input)
+            m_host.input(this, PinInput::Release);
         if (m_picking) {
             m_picking = false;
             m_pickBand = {};
@@ -883,6 +917,8 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         }
         return 0;
     case WM_MBUTTONUP:
+        if (m_host.input)
+            m_host.input(this, PinInput::Release);
         if (m_form == PinForm::Full)
             collapse(PinForm::Tile);
         else
@@ -916,6 +952,8 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             hintTick();
         return 0;
     case WM_MOUSEWHEEL: {
+        if (m_host.input)
+            m_host.input(this, PinInput::Key);
         m_wheel += GET_WHEEL_DELTA_WPARAM(wParam);
         const int steps = m_wheel / WHEEL_DELTA;
         m_wheel -= steps * WHEEL_DELTA;
@@ -943,6 +981,15 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         const bool alt = ::GetKeyState(VK_MENU) < 0;
         const QKeyCombination pressed = CaptureKeys::fromVirtualKey(static_cast<unsigned>(wParam), ctrl, shift, alt);
         const auto action = m_keys.triggered(KeyContext::PinWindow, pressed.key(), pressed.keyboardModifiers());
+        // ? or F1 shows or hides the key card (#343), unless F1 is one of the user's keys here.
+        if (!action && !ctrl && !alt && (wParam == VK_F1 ? !shift : typesQuestionMark(static_cast<UINT>(wParam), lParam))) {
+            if (m_host.toggleHints)
+                m_host.toggleHints(this);
+            return 0;
+        }
+        // Any other key takes the card away; Shift, Ctrl and Alt alone do not (Shift+/ is ?, Ctrl+wheel the opacity).
+        if (m_host.input && wParam != VK_SHIFT && wParam != VK_CONTROL && wParam != VK_MENU)
+            m_host.input(this, PinInput::Key);
         if (action) {
             switch (*action) {
             case KeyAction::PinClose:

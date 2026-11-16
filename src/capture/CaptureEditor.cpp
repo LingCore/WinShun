@@ -1,6 +1,7 @@
 #include "CaptureEditor.h"
 
 #include "AnnotationFormat.h"
+#include "AnnotationStyles.h"
 #include "CaptureSession.h"
 #include "Geometry.h"
 
@@ -69,6 +70,9 @@ CaptureEditor::CaptureEditor(QObject* parent)
     m_settle.setSingleShot(true);
     m_settle.setInterval(80ms);
     connect(&m_settle, &QTimer::timeout, this, &CaptureEditor::settle);
+    m_revealTimeout.setSingleShot(true);
+    m_revealTimeout.setInterval(400ms); // should the frames not come
+    connect(&m_revealTimeout, &QTimer::timeout, this, &CaptureEditor::reveal);
     m_motionEnd.setSingleShot(true);
     m_motionEnd.setInterval(400ms);
     connect(&m_motionEnd, &QTimer::timeout, this, &CaptureEditor::flushMotion);
@@ -263,21 +267,38 @@ void CaptureEditor::setMetrics(QSize windowLogical, qreal dpr)
     // scale of each axis is not the monitor's (docs/pitfalls.md, 全屏遮罩差 1 个像素).
     m_bufferX = bufferScale(windowLogical.width(), m_dpr);
     m_bufferY = bufferScale(windowLogical.height(), m_dpr);
-    m_viewport = QRectF(0, topHeight(), windowLogical.width(),
-        std::max(0, windowLogical.height() - topHeight() - bottomHeight()));
+    if (!m_pinMode) // a pin's follows the zoom (relayout)
+        m_viewport = QRectF(0, topHeight(), windowLogical.width(),
+            std::max(0, windowLogical.height() - topHeight() - bottomHeight()));
     relayout();
 }
 
 void CaptureEditor::relayout()
 {
-    const int x0 = int(std::lround(m_viewport.left() * m_bufferX));
-    const int y0 = int(std::lround(m_viewport.top() * m_bufferY));
-    const int x1 = int(std::lround(m_viewport.right() * m_bufferX));
-    const int y1 = int(std::lround(m_viewport.bottom() * m_bufferY));
-    m_viewDev = QRect(x0, y0, std::max(0, x1 - x0), std::max(0, y1 - y0));
+    if (m_pinMode) {
+        // The canvas's own size within the window (what the band and the
+        // insets leave), at the place the layout gave it: nothing round it.
+        const QSize window(int(std::lround(m_windowLogical.width() * m_bufferX)),
+            int(std::lround(m_windowLogical.height() * m_bufferY)));
+        const int band = int(std::lround((kPinToolbarRow + kPinStripHeight) * m_bufferY));
+        const int inset = editview::pinInset(m_dpr);
+        const QSize canvas = m_model.document().canvas;
+        if (m_open && m_fit)
+            m_zoom = editview::fitZoom(canvas, editview::pinViewport(window, window, band, m_pinCanvasX, m_toolbarBelow, inset).size());
+        const QSize shown = m_open ? editview::shownSize(canvas, editview::clampZoom(m_zoom)) : window;
+        m_viewDev = editview::pinViewport(window, shown, band, m_pinCanvasX, m_toolbarBelow, inset);
+        m_viewport = QRectF(m_viewDev.x() / m_bufferX, m_viewDev.y() / m_bufferY, m_viewDev.width() / m_bufferX,
+            m_viewDev.height() / m_bufferY);
+    } else {
+        const int x0 = int(std::lround(m_viewport.left() * m_bufferX));
+        const int y0 = int(std::lround(m_viewport.top() * m_bufferY));
+        const int x1 = int(std::lround(m_viewport.right() * m_bufferX));
+        const int y1 = int(std::lround(m_viewport.bottom() * m_bufferY));
+        m_viewDev = QRect(x0, y0, std::max(0, x1 - x0), std::max(0, y1 - y0));
+    }
     if (m_open) {
         const QSize canvas = m_model.document().canvas;
-        if (m_fit)
+        if (m_fit && !m_pinMode) // a pin's fit was taken above, from all the room there is
             m_zoom = editview::fitZoom(canvas, m_viewDev.size());
         m_zoom = editview::clampZoom(m_zoom);
         m_originDev = editview::clampOrigin(m_originDev, editview::shownSize(canvas, m_zoom), m_viewDev.size());
@@ -316,6 +337,42 @@ QString CaptureEditor::sizeText() const
 QString CaptureEditor::copyText() const
 {
     return fromPin() ? tr("完成") : tr("复制");
+}
+
+void CaptureEditor::setChromeWidth(int width)
+{
+    width = std::max(0, width);
+    if (width == m_chromeWidth)
+        return;
+    m_chromeWidth = width;
+    emit chromeWidthChanged();
+    // Wider rows (a tool's panel) widen a pin's window at once; narrower
+    // ones wait for the next time, so it does not jump from tool to tool.
+    // While it is still cloaked, revealFrame() lays it out.
+    if (m_open && m_pinMode && !m_revealing && m_window && width > m_window->width()) {
+        QMetaObject::invokeMethod(this, [this] {
+            if (layoutPin())
+                alignToPin();
+        }, Qt::QueuedConnection);
+    }
+}
+
+QRectF CaptureEditor::screenArea(QPointF globalPos) const
+{
+    QScreen* screen = QGuiApplication::screenAt(globalPos.toPoint());
+    if (!screen && m_window)
+        screen = m_window->screen();
+    return screen ? QRectF(screen->availableGeometry()) : QRectF();
+}
+
+void CaptureEditor::prepareMenuWindow(QWindow* menu) const
+{
+    if (!menu)
+        return;
+    if (m_hooks.window.prepareMenu)
+        m_hooks.window.prepareMenu(menu);
+    else
+        menu->setProperty("_q_showWithoutActivating", true);
 }
 
 void CaptureEditor::showNotice(const QString& text)
@@ -424,6 +481,7 @@ QScreen* CaptureEditor::targetScreen() const
 bool CaptureEditor::begin(annot::Project project, Origin origin)
 {
     m_origin = origin;
+    setPinMode(origin == Origin::Pin);
     const QScreen* screen = m_window ? targetScreen() : nullptr;
     const qreal deviceDpr = screen ? screen->devicePixelRatio() : m_dpr;
     const annot::StyleMemory styles = annot::StyleMemory::fromJson(m_hooks.styles ? m_hooks.styles() : QString());
@@ -453,20 +511,39 @@ void CaptureEditor::present()
         relayout();
         return;
     }
+    if (m_pinMode) {
+        // Sized for the canvas and put over the pin while cloaked; shown, and
+        // the pin hidden, once QML has laid out its rows (revealFrame).
+        layoutPin();
+        const bool cloaked = static_cast<bool>(m_hooks.window.cloak);
+        if (cloaked) {
+            m_hooks.window.cloak(m_window, true);
+            m_revealing = true;
+            m_revealFrames = 0;
+            disconnect(m_revealConnection);
+            m_revealConnection = connect(m_window, &QQuickWindow::frameSwapped, this, &CaptureEditor::revealFrame,
+                Qt::QueuedConnection);
+            m_revealTimeout.start();
+        }
+        if (m_hooks.window.show)
+            m_hooks.window.show(m_window);
+        alignToPin();
+        if (!cloaked && m_pin.setShown)
+            m_pin.setShown(false); // the canvas takes its place
+        m_settle.start();
+        return;
+    }
     QScreen* screen = targetScreen();
     const qreal dpr = screen->devicePixelRatio();
     const QRect avail = screen->availableGeometry(); // logical size, native origin
-    const bool pin = m_origin == Origin::Pin;
     const int minWidth = std::max(kMinWindowWidth, m_window->minimumWidth());
     const int minHeight = std::max(kMinWindowHeight, m_window->minimumHeight());
     const int maxWidth = std::max(minWidth, int(avail.width() * kWorkShare));
     const int maxHeight = std::max(minHeight, int(avail.height() * kWorkShare));
     const QSize canvas = m_model.document().canvas;
-    const double zoom = pin ? m_zoom : 1.0;
     const int chrome = topHeight() + bottomHeight();
-    const int padding = pin ? 0 : kPadding;
-    const int wantWidth = int(std::ceil(canvas.width() * zoom / dpr)) + 2 * padding;
-    const int wantHeight = int(std::ceil(canvas.height() * zoom / dpr)) + 2 * padding + chrome;
+    const int wantWidth = int(std::ceil(canvas.width() / dpr)) + 2 * kPadding;
+    const int wantHeight = int(std::ceil(canvas.height() / dpr)) + 2 * kPadding + chrome;
     const QSize size(std::clamp(wantWidth, minWidth, maxWidth), std::clamp(wantHeight, minHeight, maxHeight));
 
     m_window->setScreen(screen);
@@ -475,11 +552,8 @@ void CaptureEditor::present()
     m_window->setPosition(avail.topLeft() + QPoint((avail.width() - size.width()) / 2, (avail.height() - size.height()) / 2));
     m_wantedPosition = m_window->position();
     setMetrics(size, dpr);
-    if (pin && m_pin.setShown)
-        m_pin.setShown(false); // the canvas takes its place
     if (m_hooks.window.show)
         m_hooks.window.show(m_window);
-    alignToPin();
     m_settle.start(); // the window's real scale and size, once it is up
 }
 
@@ -487,6 +561,15 @@ void CaptureEditor::settle()
 {
     if (!m_open || !m_window)
         return;
+    if (m_pinMode) {
+        // Its real scale once it is up (another monitor's, say): laid out
+        // for that, and over the pin again.
+        updateScale();
+        layoutPin();
+        alignToPin();
+        logView("settled (pin)");
+        return;
+    }
     // A window that was snapped to an edge when it was closed comes back with the size it had before
     // (Windows keeps that with the window): once it is up, the size it should have again.
     if (m_window->visibility() == QWindow::Windowed && m_window->size() != m_wantedSize && !m_wantedSize.isEmpty()) {
@@ -497,26 +580,103 @@ void CaptureEditor::settle()
         m_window->setGeometry(QRect(m_wantedPosition, m_wantedSize));
     }
     updateScale();
-    alignToPin();
-    logView(m_origin == Origin::Pin ? "settled (pin)" : "settled");
+    logView("settled");
 }
 
 // The canvas where the pin's picture was, when the work area has room.
 void CaptureEditor::alignToPin()
 {
-    if (m_origin != Origin::Pin || !m_open || !m_window || !m_hooks.window.nativeRect || !m_hooks.window.moveTo)
+    if (!m_pinMode || !m_open || !m_window || !m_hooks.window.nativeRect || !m_hooks.window.moveTo)
         return;
-    const QScreen* screen = m_window->screen();
+    const QScreen* screen = targetScreen();
     const QRect native = m_hooks.window.nativeRect(m_window);
     if (native.isEmpty() || !screen)
         return;
-    // The crop of the base is what the pin showed.
-    const QPoint cropOffset(int(std::lround(m_model.cropRect().x() * m_zoom)), int(std::lround(m_model.cropRect().y() * m_zoom)));
-    const QRect picture(m_pin.picture.topLeft() - cropOffset, m_pin.picture.size());
-    const editview::WindowPlace place = editview::placeForPin(picture, imageInWindow(), native.size(),
-        physical(screen->availableGeometry(), screen->devicePixelRatio()));
+    // The window's insets may lie past the work area, as the pin's border does.
+    const int inset = editview::pinInset(screen->devicePixelRatio());
+    const QRect work = physical(screen->availableGeometry(), screen->devicePixelRatio()).adjusted(-inset, -inset, inset, inset);
+    const editview::WindowPlace place = editview::placeForPin(pinCanvas(), imageInWindow(), native.size(), work);
     if (place.topLeft != native.topLeft())
         m_hooks.window.moveTo(m_window, place.topLeft);
+}
+
+// ---- on a pin (GitHub #343) ---------------------------------------------------------------------
+
+void CaptureEditor::setPinMode(bool on)
+{
+    if (on == m_pinMode)
+        return;
+    // Its styles change only while it is hidden (the taskbar follows then).
+    if (m_window && m_window->isVisible())
+        m_window->hide();
+    m_pinMode = on;
+    m_toolbarBelow = false;
+    if (m_window && m_hooks.window.pinMode)
+        m_hooks.window.pinMode(m_window, on);
+    emit layoutChanged();
+}
+
+// The whole canvas on the screen at the pin's zoom (physical): the crop of
+// the base, what the pin showed, lies where the pin's picture is.
+QRect CaptureEditor::pinCanvas() const
+{
+    const QRect crop = m_model.cropRect();
+    const QPoint cropOffset(int(std::lround(crop.x() * m_zoom)), int(std::lround(crop.y() * m_zoom)));
+    return QRect(m_pin.picture.topLeft() - cropOffset, editview::shownSize(m_model.document().canvas, m_zoom));
+}
+
+bool CaptureEditor::layoutPin()
+{
+    if (!m_pinMode || !m_open || !m_window)
+        return false;
+    QScreen* screen = targetScreen();
+    const qreal dpr = screen->devicePixelRatio();
+    const editview::PinLayout layout = editview::pinLayout(pinCanvas(), dpr, kPinToolbarRow + kPinStripHeight,
+        m_chromeWidth, physical(screen->availableGeometry(), dpr));
+    m_pinCanvasX = layout.canvasX;
+    if (layout.below != m_toolbarBelow) {
+        m_toolbarBelow = layout.below;
+        emit layoutChanged();
+    }
+    if (m_window->screen() != screen)
+        m_window->setScreen(screen);
+    const bool resized = m_window->size() != layout.window;
+    if (resized)
+        m_window->resize(layout.window);
+    m_wantedSize = layout.window;
+    setMetrics(layout.window, m_window->isVisible() ? m_window->devicePixelRatio() : dpr);
+    return resized;
+}
+
+// A frame of the cloaked window drawn: once QML's rows have their width and
+// the window did not have to change for it, it is shown and the pin goes.
+void CaptureEditor::revealFrame()
+{
+    if (!m_revealing)
+        return;
+    if (++m_revealFrames < 4 && layoutPin()) {
+        alignToPin();
+        if (m_window)
+            m_window->update();
+        return;
+    }
+    alignToPin();
+    reveal();
+}
+
+void CaptureEditor::reveal()
+{
+    if (!m_revealing)
+        return;
+    m_revealing = false;
+    disconnect(m_revealConnection);
+    m_revealTimeout.stop();
+    if (!m_open)
+        return;
+    if (m_window && m_hooks.window.cloak)
+        m_hooks.window.cloak(m_window, false);
+    if (m_pin.setShown)
+        m_pin.setShown(false); // the canvas takes its place
 }
 
 QRect CaptureEditor::canvasOnScreen() const
@@ -767,8 +927,52 @@ bool CaptureEditor::keyPressed(int key, int modifiers)
         act(static_cast<int>(Action::Pin));
         return true;
     }
-    if (alt)
+    if (!alt && fixedKey(key, ctrl))
+        return true;
+    // On a pin, the pin's own 编辑 key again is 完成, as the toolbar's last
+    // button, when the editor has no use for it (E stays the ellipse).
+    if (m_pinMode && m_keys.matches(KeyAction::PinEdit, key, mods) && pinEditFinishes()) {
+        done();
+        return true;
+    }
+    return false;
+}
+
+bool CaptureEditor::editorTakes(QKeyCombination combination) const
+{
+    const int key = combination.key();
+    const Qt::KeyboardModifiers mods = combination.keyboardModifiers() & ~Qt::KeypadModifier;
+    if (key == Qt::Key_Space || m_keys.matches(KeyAction::Save, key, mods) || m_keys.matches(KeyAction::Pin, key, mods))
+        return true;
+    if (mods & (Qt::AltModifier | Qt::MetaModifier))
+        return key == Qt::Key_F4 && (mods & Qt::AltModifier);
+    if (!(mods & Qt::ControlModifier)) { // alone or with Shift
+        for (const annot::ToolInfo& t : annot::tools()) {
+            if (key == int(t.letter.toUpper().unicode()) || (t.digit >= 1 && t.digit <= 9 && key == Qt::Key_0 + t.digit))
+                return true;
+        }
+        switch (key) {
+        case Qt::Key_I: case Qt::Key_Z: case Qt::Key_Escape: case Qt::Key_Return: case Qt::Key_Enter:
+        case Qt::Key_Delete: case Qt::Key_Backspace: case Qt::Key_BracketLeft: case Qt::Key_BracketRight:
+        case Qt::Key_Left: case Qt::Key_Right: case Qt::Key_Up: case Qt::Key_Down:
+        case Qt::Key_PageUp: case Qt::Key_PageDown: case Qt::Key_Home: case Qt::Key_End:
+            return true;
+        default:
+            return false;
+        }
+    }
+    switch (key) { // with Ctrl
+    case Qt::Key_A: case Qt::Key_C: case Qt::Key_D: case Qt::Key_Y: case Qt::Key_Z: case Qt::Key_0:
+    case Qt::Key_Plus: case Qt::Key_Equal: case Qt::Key_Minus: case Qt::Key_Underscore:
+    case Qt::Key_BracketLeft: case Qt::Key_BracketRight: case Qt::Key_Return: case Qt::Key_Enter:
+        return true;
+    default:
         return false;
+    }
+}
+
+bool CaptureEditor::fixedKey(int key, bool ctrl)
+{
     switch (key) {
     case Qt::Key_Escape:
         return escape();
@@ -838,6 +1042,11 @@ bool CaptureEditor::escape()
         return false;
     if (m_model.escape())
         return true; // a text, a stroke, the number box, the eyedropper
+    if (m_pinMode) { // as the capture's toolbar going: the pin stays as it was (Enter keeps the changes)
+        qInfo().noquote() << u"Editor: Esc closes it, the pin as it was (%1 objects given up)"_s.arg(m_model.itemCount());
+        close();
+        return true;
+    }
     if (m_model.modified()) {
         m_model.discardChanges();
         showNotice(tr("已放弃修改 · Ctrl+Z 恢复"));
@@ -1000,6 +1209,12 @@ void CaptureEditor::end()
         m_open = false;
         m_pressed = m_panning = m_space = false;
         m_settle.stop();
+        if (std::exchange(m_revealing, false)) { // closed before it was shown: hideWindow() uncloaks a shown one
+            disconnect(m_revealConnection);
+            m_revealTimeout.stop();
+            if (m_window && m_hooks.window.cloak && !m_window->isVisible())
+                m_hooks.window.cloak(m_window, false);
+        }
         m_notice.clear();
         m_noticeTimer.stop();
         emit openChanged();

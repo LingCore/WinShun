@@ -18,6 +18,10 @@ Item {
     // The eyedropper and the colour it took: not on the presenter's live
     // desktop, where there is no picture to take a colour from (#189).
     property bool picker: true
+    // In a pin's editing window (GitHub #343) the window is the card: no card of its own.
+    property bool flat: false
+    // HoverTip's `host`: a tip with no room in a short window goes into one of its own.
+    property QtObject tipHost: null
 
     // ---- geometry, logical px ----
     readonly property int pad: 4 // card edge to the controls
@@ -106,6 +110,7 @@ Item {
 
     Hook { // the style's floating panel (Theme.menuFrame)
         anchors.fill: parent
+        visible: !panel.flat
         part: Theme.menuFrame
         extra: ({ floating: true })
         dpr: panel.dpr
@@ -589,6 +594,7 @@ Item {
         target: panel.visible ? panel.tipItem : null
         text: panel.tipItem ? panel.tipItem.tip : ""
         shortcut: panel.tipItem ? panel.tipItem.tipKeys : ""
+        host: panel.tipHost
     }
 
     // ---- the parts ----

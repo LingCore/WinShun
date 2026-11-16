@@ -89,4 +89,33 @@ struct WindowPlace {
 };
 WindowPlace placeForPin(const QRect& picture, QPoint imageInWindow, QSize window, const QRect& work);
 
+// ---- the editing window on a pin (GitHub #343): the pin grows a toolbar ----
+
+// The device px between the canvas and the window's edge where they meet
+// (Theme.edge's width): DWM's border lies there, not on the picture.
+int pinInset(double dpr);
+
+// The window that is the pin with a toolbar: the canvas exactly over the
+// pin's picture at the pin's zoom, the band of the toolbar's row (next to
+// the canvas) and the style panel's row (beyond it) above the canvas, or
+// below it when the work area has no room above; as wide as the canvas or
+// the band, whichever is wider, nothing else round it. `canvas`: the whole
+// canvas on the screen at the pin's zoom (physical, virtual desktop: its top
+// left is where the window must put it); `band`, `chrome`: the band's height
+// and the width its rows need (logical px); `work`: the monitor's work area.
+struct PinLayout {
+    // Logical px, at Windows' scales a whole number of device px each way:
+    // the band then lies on whole device px.
+    QSize window;
+    // The canvas's left in the window (device px): centred under a wider
+    // band, moved so that the window stays in `work`.
+    int canvasX = 0;
+    bool below = false; // the band under the canvas
+};
+PinLayout pinLayout(const QRect& canvas, double dpr, int band, int chrome, const QRect& work);
+// The canvas's part of such a window (device px, window coordinates):
+// `window` its size, `shown` the canvas's size at the zoom now,
+// `bandDevice` the band's height; never past the window's insets.
+QRect pinViewport(QSize window, QSize shown, int bandDevice, int canvasX, bool below, int inset);
+
 } // namespace ws::capture::editview

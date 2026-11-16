@@ -395,8 +395,8 @@ Column {
                     }
 
                     SettingRow {
-                        title: qsTr("截图时显示快捷键提示")
-                        description: qsTr("停下来时在屏幕左下角列出此刻能用的按键，一按鼠标就消失，挡路时自动让开。关闭后截图时按 ? 仍可临时显示")
+                        title: qsTr("截图和贴图时显示快捷键提示")
+                        description: qsTr("截图或点了贴图后停下来时，在屏幕左下角列出此刻能用的按键，一按鼠标就消失，挡路时自动让开。关闭后按 ? 仍可临时显示")
 
                         ToggleSwitch {
                             dpr: card.dpr
@@ -541,11 +541,26 @@ Column {
                     width: parent.width
                     title: qsTr("编辑图片时")
                     glyph: "" // Edit
-                    note: qsTr("贴图按“编辑”或打开图片编辑时。撤销、打码、复制等和截图时一样")
+                    note: qsTr("打开图片编辑时。贴图按“编辑”就在贴图上编辑：Enter 完成，Esc 关闭编辑、贴图保持原样。撤销、打码等和截图时一样")
 
                     FixedKeys {
                         readonly property CaptureKeyList keys: CaptureKeyList { editor: true }
                         rows: keys.commonRows.slice(0, 2).concat(keys.editorRows) // its tool keys, then its own
+                    }
+                }
+
+                // A pin's keys that are not set above (GitHub #343), as its key card lists them with the ones set.
+                SettingsSection {
+                    page: 0
+                    tab: 1
+                    width: parent.width
+                    title: qsTr("贴图窗口里的其他按键")
+                    glyph: "" // Pin
+                    note: qsTr("这些按键是固定的。点了贴图后停下来，屏幕角落会列出它的按键，按 ? 也可以")
+
+                    FixedKeys {
+                        readonly property CaptureKeyList keys: CaptureKeyList {}
+                        rows: keys.pinRows
                     }
                 }
 

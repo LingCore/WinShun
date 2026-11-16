@@ -58,10 +58,15 @@ PinManager::PinManager(Callbacks callbacks, QObject* parent)
     m_watch.setInterval(40);
     m_watch.setTimerType(Qt::CoarseTimer);
     connect(&m_watch, &QTimer::timeout, this, &PinManager::watch);
+    m_hintTimer.setSingleShot(true);
+    connect(&m_hintTimer, &QTimer::timeout, this, &PinManager::syncHints);
+    m_hintClock.start();
 }
 
 PinManager::~PinManager()
 {
+    m_card.reset();
+    m_hintPin = nullptr;
     m_pins.clear(); // their windows destroyed without telling anyone
     m_closing.clear();
 }
@@ -92,6 +97,7 @@ PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, 
             m_callbacks.save(pin->image(), {});
     };
     host.edit = [this](PinWindow* pin) {
+        hintStop(pin);
         if (m_callbacks.edit)
             m_callbacks.edit(pin);
     };
@@ -115,10 +121,14 @@ PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, 
         }
         return tabs;
     };
-    host.released = [this](PinWindow*) {
+    host.released = [this](PinWindow* pin) {
+        hintStop(pin); // collapsed
         if (m_callbacks.closed)
             m_callbacks.closed(); // its pixels can go back to Windows
     };
+    host.focus = [this](PinWindow* pin, bool focused, bool fromOwnWindow) { hintFocus(pin, focused, fromOwnWindow); };
+    host.input = [this](PinWindow* pin, PinInput input) { hintInput(pin, input); };
+    host.toggleHints = [this](PinWindow* pin) { hintToggle(pin); };
     if (m_hidden)
         setAllHidden(false); // a new pin: they are wanted back
     auto pin = std::make_unique<PinWindow>(image, origin, std::move(host), fitAbout);
@@ -201,12 +211,16 @@ void PinManager::setAllHidden(bool hidden)
     m_hidden = hidden;
     for (const auto& p : m_pins)
         p->setAllHidden(hidden);
+    if (hidden)
+        m_hints.stop();
+    syncHints();
 }
 
 void PinManager::restyle()
 {
     for (const auto& p : m_pins)
         p->restyle();
+    syncHints(); // the card in the new colours
 }
 
 bool PinManager::allTopmost() const
@@ -232,10 +246,109 @@ void PinManager::setKeys(const CaptureKeys& keys)
     m_keys = keys;
     for (const auto& p : m_pins)
         p->setKeys(keys);
+    syncHints();
+}
+
+void PinManager::setKeyHints(bool on)
+{
+    m_hints.setEnabled(on);
+    syncHints();
+}
+
+// ---- the key card (GitHub #343) ---------------------------------------------------------------
+
+void PinManager::hintFocus(PinWindow* pin, bool focused, bool fromOwnWindow)
+{
+    if (focused) {
+        // Back from its own menu or another of the app's windows: the same round goes on.
+        m_hints.focus(m_hintClock.elapsed(), fromOwnWindow && pin == m_lastHintPin);
+        m_hintPin = pin;
+        m_lastHintPin = pin;
+        if (pin->form() != PinForm::Full)
+            m_hints.stop(); // a tile or a tab: the card's keys are not its keys
+    } else if (pin == m_hintPin) {
+        m_hints.blur();
+        m_hintPin = nullptr;
+    }
+    syncHints();
+}
+
+void PinManager::hintInput(PinWindow* pin, PinInput input)
+{
+    if (pin != m_hintPin)
+        return;
+    const qint64 now = m_hintClock.elapsed();
+    switch (input) {
+    case PinInput::Press: m_hints.press(now); break;
+    case PinInput::Release: m_hints.release(now); break;
+    case PinInput::Key: m_hints.input(now); break;
+    }
+    syncHints();
+    // Told before the pin acts on it: once it has (moved, zoomed, collapsed, closed), the card again.
+    QMetaObject::invokeMethod(this, &PinManager::syncHints, Qt::QueuedConnection);
+}
+
+void PinManager::hintToggle(PinWindow* pin)
+{
+    if (pin->form() != PinForm::Full)
+        return;
+    if (pin != m_hintPin) { // keys go to the pin with the focus, which should have said so
+        m_hints.focus(m_hintClock.elapsed(), false);
+        m_hintPin = pin;
+        m_lastHintPin = pin;
+    }
+    m_hints.toggle();
+    syncHints();
+}
+
+void PinManager::hintStop(const PinWindow* pin)
+{
+    if (pin != m_hintPin)
+        return;
+    m_hints.stop();
+    syncHints();
+}
+
+void PinManager::syncHints()
+{
+    const qint64 now = m_hintClock.elapsed();
+    m_hints.tick(now);
+    // The focus comes in a pin's constructor, before it is one of m_pins: shown later.
+    PinWindow* pin = m_hintPin && contains(m_hintPin) ? m_hintPin : nullptr;
+    bool shown = false;
+    if (pin && m_hints.shown() && !m_hidden && pin->form() == PinForm::Full && pin->hwnd()) {
+        const bool ocr = m_callbacks.readLines && m_callbacks.ocrAvailable && m_callbacks.ocrAvailable();
+        const std::vector<PinKeyRow> rows = pinKeyRows(m_keys, ocr, pin->hasOtherSide(), pin->translationShown());
+        const PinKeyCard::Look look = m_callbacks.keyCardLook ? m_callbacks.keyCardLook()
+                                                              : PinKeyCard::Look::fallback(m_callbacks.dark && m_callbacks.dark());
+        MONITORINFO monitor {};
+        monitor.cbSize = sizeof monitor;
+        if (::GetMonitorInfoW(::MonitorFromWindow(pin->hwnd(), MONITOR_DEFAULTTONEAREST), &monitor)) {
+            const RECT& w = monitor.rcWork;
+            if (!m_card)
+                m_card = std::make_unique<PinKeyCard>();
+            shown = m_card->show(rows, QRect(w.left, w.top, w.right - w.left, w.bottom - w.top), pin->pictureRect(),
+                pin->dpr(), look);
+        }
+    }
+    if (!shown)
+        m_card.reset(); // its window and pixels go with it
+    const qint64 next = m_hints.nextDeadline();
+    if (next >= 0)
+        m_hintTimer.start(static_cast<int>(std::clamp<qint64>(next - now, 0, 60'000)));
+    else
+        m_hintTimer.stop();
 }
 
 void PinManager::closed(PinWindow* pin)
 {
+    if (pin == m_lastHintPin)
+        m_lastHintPin = nullptr;
+    if (pin == m_hintPin) {
+        m_hints.blur();
+        m_hintPin = nullptr;
+        syncHints();
+    }
     // Called from inside its window procedure: deleted once that returns.
     const auto found = std::ranges::find(m_pins, pin, &std::unique_ptr<PinWindow>::get);
     if (found == m_pins.end())
@@ -332,6 +445,7 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         break;
     }
     case EditCommand:
+        hintStop(pin);
         if (m_callbacks.edit)
             m_callbacks.edit(pin);
         break;

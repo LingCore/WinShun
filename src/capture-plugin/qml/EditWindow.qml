@@ -10,6 +10,11 @@ import WinShun
 // the input; this places things where it says. Positions of the picture are
 // in the window's logical units, put on whole device pixels by the editor,
 // so that at 100 % one image pixel is one screen pixel.
+//
+// On a pin (GitHub #343) it is the pin grown a toolbar: no title bar, the
+// canvas exactly over the pin's picture, the toolbar's row next to it and
+// the style panel's row beyond (the band), above the picture or below it,
+// the window itself their card (CaptureEditor.pinMode).
 Window {
     id: window
 
@@ -19,19 +24,34 @@ Window {
     readonly property AnnotationModel annotation: editor.model
     readonly property real dpr: editor.dpr
     readonly property int margin: 12 // the toolbar's and the panel's edge to the window's
+    readonly property bool pin: editor.pinMode
+    // Where the rows are: the title bar's, the toolbar's and the panel's; on
+    // a pin the band's top, the panel's row the outer one.
+    readonly property real bandY: editor.toolbarBelow ? height - editor.toolbarRow - editor.stripHeight : 0
+    readonly property real toolbarY: !pin ? titleBar.height : editor.toolbarBelow ? bandY : editor.stripHeight
+    readonly property real stripY: !pin ? height - editor.bottomHeight : editor.toolbarBelow ? bandY + editor.toolbarRow : 0
+    // The rows' width: the toolbar's; and while the style panel shows, its width and the size and zoom beside it
+    // (the number tool's panel is wider than a default window: live test 2026-10-22). A pin's window is no narrower.
+    readonly property int rowsWidth: Math.ceil(Math.max(bar.implicitWidth + (pin ? 0 : 2 * margin),
+                                                        status.implicitWidth + 2 * margin,
+                                                        panel.visible ? panel.implicitWidth + status.implicitWidth + 3 * margin : 0))
 
     function onPixel(v) { return Math.round(v * dpr) / dpr }
 
     flags: Qt.Window | Qt.FramelessWindowHint // the title bar is ours (see WindowFrame)
-    color: Theme.page
-    title: qsTr("编辑图片") // shown as "编辑图片 - Win顺"
+    color: pin ? Theme.menuBackground : Theme.page
+    title: pin ? "" : qsTr("编辑图片") // shown as "编辑图片 - Win顺"
     width: 1000
     height: 700
-    // The toolbar's width; and while the style panel shows, its width and the size and zoom beside it
-    // (the number tool's panel is wider than a default window: live test 2026-10-22).
-    minimumWidth: Math.ceil(Math.max(bar.implicitWidth + 2 * margin,
-                                     panel.visible ? panel.implicitWidth + status.implicitWidth + 3 * margin : 0))
-    minimumHeight: 360
+    // A pin's window is exactly what the editor makes it (the pin's size, the band).
+    minimumWidth: pin ? 0 : rowsWidth
+    minimumHeight: pin ? 0 : 360
+
+    Binding {
+        target: window.editor
+        property: "chromeWidth"
+        value: window.rowsWidth
+    }
 
     onActiveChanged: if (active && editor.open) keys.forceActiveFocus()
 
@@ -47,6 +67,7 @@ Window {
     TitleBar {
         id: titleBar
         z: 1
+        visible: !window.pin
         width: parent.width
         frame: window.frame
         title: window.title + " - " + Qt.application.displayName
@@ -60,8 +81,9 @@ Window {
 
     AnnotateToolbar {
         id: bar
-        x: window.margin
-        y: window.onPixel(titleBar.height + (window.editor.toolbarRow - height) / 2)
+        // On a pin at the band's right end, as the capture's toolbar at the selection's.
+        x: window.pin ? window.onPixel(window.width - width) : window.margin
+        y: window.onPixel(window.toolbarY + (window.editor.toolbarRow - height) / 2)
         z: 2
         annot: window.annotation
         editor: true
@@ -70,7 +92,13 @@ Window {
         pinnable: !window.editor.fromPin
         ocrAvailable: window.editor.ocrAvailable
         blockRect: Qt.rect(x, y, width, height)
-        opensDown: true
+        // The key list away from the picture: on a pin with the band below it, below the window.
+        opensDown: !window.pin || window.editor.toolbarBelow
+        flat: window.pin
+        popupHost: window.pin ? window.editor : null
+        pin: window.pin
+        pinEditKey: window.editor.pinEditKeyText
+        pinEditFinishes: window.editor.pinEditFinishes
         onAction: (which) => window.editor.act(which)
         onKeyForwarded: (event) => keys.handleKey(event)
         onKeyReleased: (event) => keys.handleRelease(event)
@@ -81,14 +109,16 @@ Window {
     Item {
         id: view
 
-        // The picture's part of the window.
-        y: window.editor.topHeight
-        width: parent.width
-        height: Math.max(0, parent.height - y - window.editor.bottomHeight)
+        // The picture's part of the window (on a pin, the picture's own size).
+        x: window.editor.viewRect.x
+        y: window.editor.viewRect.y
+        width: window.editor.viewRect.width
+        height: window.editor.viewRect.height
         clip: true
 
         Rectangle { // round the picture
             anchors.fill: parent
+            visible: !window.pin
             color: Theme.track
         }
 
@@ -265,42 +295,43 @@ Window {
                 border.color: Theme.accent
             }
         }
+    }
 
-        Item { // a word for the user: the changes given up
-            id: noticeBar
+    Item { // a word for the user (the changes given up) over the picture, not cut off by a narrow one
+        id: noticeBar
 
-            property string words
+        property string words
 
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: 12
-            width: Math.ceil((label.implicitWidth + 20) / 4) * 4
-            height: 28
-            opacity: window.editor.notice.length > 0 ? 1 : 0
-            visible: opacity > 0
+        x: window.onPixel(Math.max(4, Math.min(view.x + (view.width - width) / 2, window.width - width - 4)))
+        y: window.onPixel(view.y + 12)
+        z: 3
+        width: Math.ceil((label.implicitWidth + 20) / 4) * 4
+        height: 28
+        opacity: window.editor.notice.length > 0 ? 1 : 0
+        visible: opacity > 0
 
-            Behavior on opacity { NumberAnimation { duration: 120 } }
+        Behavior on opacity { NumberAnimation { duration: 120 } }
 
-            Hook { // the style's floating panel (Theme.menuFrame)
-                anchors.fill: parent
-                part: Theme.menuFrame
-                dpr: window.dpr
+        Hook { // the style's floating panel (Theme.menuFrame)
+            anchors.fill: parent
+            part: Theme.menuFrame
+            dpr: window.dpr
+        }
+
+        Connections {
+            target: window.editor
+            function onNoticeChanged() {
+                if (window.editor.notice.length > 0)
+                    noticeBar.words = window.editor.notice
             }
+        }
 
-            Connections {
-                target: window.editor
-                function onNoticeChanged() {
-                    if (window.editor.notice.length > 0)
-                        noticeBar.words = window.editor.notice
-                }
-            }
-
-            Text {
-                id: label
-                anchors.centerIn: parent
-                text: noticeBar.words
-                color: Theme.text
-                font.pixelSize: Theme.fontCaption
-            }
+        Text {
+            id: label
+            anchors.centerIn: parent
+            text: noticeBar.words
+            color: Theme.text
+            font.pixelSize: Theme.fontCaption
         }
     }
 
@@ -309,11 +340,12 @@ Window {
     Item {
         id: strip
 
-        y: parent.height - height
+        y: window.stripY
         width: parent.width
-        height: window.editor.bottomHeight
+        height: window.editor.stripHeight
 
         Hook { // between the picture and this row (the style's separator)
+            visible: !window.pin
             width: parent.width
             height: Theme.edge(window.dpr)
             part: Theme.separator
@@ -331,12 +363,14 @@ Window {
 
         AnnotateStylePanel {
             id: panel
-            x: window.margin
+            x: window.pin ? 0 : window.margin
             y: window.onPixel((strip.height - height) / 2)
             visible: window.annotation.panelVisible
             annot: window.annotation
             dpr: window.dpr
-            direction: -1
+            direction: window.editor.toolbarBelow ? 1 : -1
+            flat: window.pin
+            tipHost: window.pin ? window.editor : null
         }
 
         Row {
@@ -418,8 +452,30 @@ Window {
         Keys.onReleased: (event) => handleRelease(event)
     }
 
+    // On a pin: a line between the band's rows, and one between the band and the picture (the style's separator).
+    Hook {
+        visible: window.pin
+        y: window.onPixel(window.editor.toolbarBelow ? window.stripY : window.toolbarY)
+        width: parent.width
+        height: Theme.edge(window.dpr)
+        part: Theme.separator
+        orientation: Qt.Horizontal
+        dpr: window.dpr
+    }
+    Hook {
+        visible: window.pin
+        y: window.editor.toolbarBelow ? window.onPixel(window.bandY)
+                                      : window.onPixel(window.toolbarY + window.editor.toolbarRow) - height
+        width: parent.width
+        height: Theme.edge(window.dpr)
+        part: Theme.separator
+        orientation: Qt.Horizontal
+        dpr: window.dpr
+    }
+
     WindowEdge {
         id: windowEdge
-        fill: Theme.page
+        fill: window.pin ? Theme.menuBackground : Theme.page
+        body: !window.pin // a pin's window is a floating panel, as a menu is
     }
 }

@@ -3046,6 +3046,12 @@
 - **原因**：Qt 6 的 `QTest::mouseMove(QWindow*)` 只发 Qt 事件，不动系统光标，而 #348 的“光标没动就不算”比的是 `QCursor::pos()`，测试里它一直不变。`Item` 本来就有锚线属性 `left / right / top / bottom` 等，同名信号盖不掉它。屏幕外的窗口收不到尺寸变化，`contentItem` 一直是 0×0，`anchors.fill: parent` 的子项跟着是 0×0。
 - **做法**：`FolderMenu::setCursorSource` 让测试自己给光标位置；从一个窗口移到另一个窗口时给离开的窗口发 `QEvent::Leave`，模拟 Windows 的鼠标离开（`tst_foldermenu` 的 `Pointer`）。信号改名 `unpointed`。列的尺寸直接绑窗口的 `width / height`，不用 `anchors.fill`。
 
+### 贴图原地编辑（#343）：lupdate 认错上下文、软件渲染器的分隔线
+
+- **现象**：贴图快捷键卡片的一条文字在 `capture_en.ts` 里跑到了别的上下文，翻译不生效；数编辑工具条分隔线的像素时，150 % 下量出 3 个设备像素高。
+- **原因**：`QCoreApplication::translate(...)` 和 `X::tr(...)` 写在同一个表达式里时，lupdate 会把后一个字符串归到前一个的上下文。软件渲染器把 `Theme.separator` 在 150 % 下画成 3 行，普通编辑窗口也一样；d3d11 下正好 2 行。
+- **做法**：两种调用拆成两条语句。数像素的探针加 `--renderer d3d11`。
+
 ## 内容索引直读（bulk，第一次建立不逐个打开文件）
 
 做法和取舍见 [architecture.md](architecture.md) 的“内容索引第一次建立时直读磁盘”（`src/core/NtfsBulk.cpp`、`ContentIndexer::pass` 的 feeder、`src/service/Volumes.cpp` 的 `serveOpenBulkRead`）。下面是量出来的、光看资料想不到的几条。

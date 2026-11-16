@@ -10,8 +10,8 @@
 # diagnostics (Scroll*; docs/design-capture-roadmap.md, 4.2), and stage 7's
 # parts that need no QML: the pins' turning, collapsing and text picking
 # (PinTools), the small features (CaptureTools), the QR reader (QrCode), the
-# UI Automation probe (UiaProbe) and the delayed capture's countdown
-# (CountdownWindow), and the keys a recording shows (GitHub #98: Keycaps, which
+# UI Automation probe (UiaProbe), the delayed capture's countdown
+# (CountdownWindow) and a pin's key card (GitHub #343: PinKeyCard), and the keys a recording shows (GitHub #98: Keycaps, which
 # keys and rows; KeycapRender, their picture; KeyStream, the hooks while
 # recording). What the
 # overlays bind to (CaptureSession, CaptureImage) and the controller
@@ -68,6 +68,7 @@ add_library(wscapture STATIC
     CaptureHistory.cpp CaptureHistory.h
     UiaProbe.cpp UiaProbe.h
     CountdownWindow.cpp CountdownWindow.h
+    PinKeyCard.cpp PinKeyCard.h
     CaptureDiagnostics.cpp CaptureDiagnostics.h
     LaserTrail.cpp LaserTrail.h
     LiveStroke.cpp LiveStroke.h

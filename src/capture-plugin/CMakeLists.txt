@@ -48,7 +48,7 @@ qt_add_library(WinShunCaptureApp SHARED
     PluginMain.cpp
     CaptureApp.cpp CaptureApp.h
     PinImage.cpp PinImage.h
-    CapturePreview.cpp CapturePreview.h LongCapturePreview.cpp CaptureSavePreview.cpp
+    CapturePreview.cpp CapturePreview.h LongCapturePreview.cpp CaptureSavePreview.cpp PinKeyLook.h
     RawClicks.cpp RawClicks.h
     Protocol.cpp Protocol.h
     PluginShell.cpp PluginShell.h
@@ -123,6 +123,7 @@ qt_add_lupdate(WinShunCaptureApp LUPDATE_TARGET capture_lupdate
             ${PROJECT_SOURCE_DIR}/src/capture/AnnotationStyles.cpp
             ${PROJECT_SOURCE_DIR}/src/capture/CaptureKeys.h
             ${PROJECT_SOURCE_DIR}/src/capture/CountdownWindow.cpp
+            ${PROJECT_SOURCE_DIR}/src/capture/PinKeyCard.cpp
             ${PROJECT_SOURCE_DIR}/src/capture/Recording.cpp
             ${PROJECT_SOURCE_DIR}/src/capture/RecordingWorker.cpp
     OPTIONS -source-language zh_CN -no-obsolete -locations none)

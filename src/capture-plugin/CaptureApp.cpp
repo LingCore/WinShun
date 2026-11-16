@@ -17,6 +17,7 @@
 #include "ImageOrigin.h"
 #include "Keycaps.h"
 #include "PictureFile.h"
+#include "PinKeyLook.h"
 #include "PinManager.h"
 #include "TranslateOverlay.h"
 #include "PinImage.h"
@@ -581,6 +582,7 @@ void CaptureApp::apply()
     if (m_pins) {
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(o.pinDoubleClick));
         m_pins->setKeys(o.keys);
+        m_pins->setKeyHints(o.keyHints);
     }
     if (m_editor) {
         m_editor->setKeys(o.keys);
@@ -1382,9 +1384,15 @@ capture::PinManager& CaptureApp::pins()
         callbacks.readLines = [this](const QImage& image, double dpr, std::function<void(QList<capture::RedactLine>)> done) {
             captureOcr().scan(image, dpr, std::move(done));
         };
+        // The key card (#343) in the capture card's colours.
+        callbacks.keyCardLook = [this] {
+            ensureTheme();
+            return pinKeyCardLook(m_qml.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s), isDarkMode(), win::roundedCorners());
+        };
         m_pins = std::make_unique<capture::PinManager>(std::move(callbacks));
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(m_settings.options().pinDoubleClick));
         m_pins->setKeys(m_settings.options().keys);
+        m_pins->setKeyHints(m_settings.options().keyHints);
     }
     return *m_pins;
 }
@@ -1459,6 +1467,25 @@ capture::CaptureEditor* CaptureApp::editor()
     hooks.window.cloak = [](QQuickWindow* window, bool cloaked) { win::setCloaked(window, cloaked); };
     hooks.window.nativeRect = [](QQuickWindow* window) { return clientRectOf(window); };
     hooks.window.moveTo = [](QQuickWindow* window, QPoint topLeft) { moveClientTo(window, topLeft); };
+    // On a pin (#343): the pin grown a toolbar, so like the pin a tool window
+    // on top of the others (not in Alt+Tab or the taskbar; changed while it
+    // is hidden, so the taskbar follows) and of one size. The styles are set
+    // on the handle as it is, not by Qt's flags, which may make a new one.
+    hooks.window.pinMode = [this](QQuickWindow* window, bool pin) {
+        if (m_editFrame)
+            m_editFrame->setFixedSize(pin);
+        const auto hwnd = reinterpret_cast<HWND>(window->winId());
+        const LONG_PTR exStyle = ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        ::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, pin ? exStyle | WS_EX_TOOLWINDOW : exStyle & ~WS_EX_TOOLWINDOW);
+        ::SetWindowPos(hwnd, pin ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    };
+    // The key list's window and the tips' (shown without the focus), as the clipboard's menus.
+    hooks.window.prepareMenu = [](QWindow* menu) {
+        menu->setProperty("_q_showWithoutActivating", true);
+        win::styleFramelessWindow(menu);
+        win::setDarkFrame(menu, isDarkMode());
+    };
     editor->setHooks(std::move(hooks));
     editor->setOcrAvailable(capture::CaptureOcr::available());
 

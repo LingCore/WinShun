@@ -1,9 +1,11 @@
 #pragma once
 
+#include "PinKeyCard.h"
 #include "PinWindow.h"
 #include "platform/Shell.h"
 
 #include <QColor>
+#include <QElapsedTimer>
 #include <QImage>
 #include <QObject>
 #include <QRect>
@@ -45,6 +47,8 @@ public:
         std::function<bool()> ocrAvailable; // checked again after an on-demand installation
         // The host supplies its themed native menu; standalone previews can use the system menu.
         std::function<int(HWND, const std::vector<shell::MenuItem>&, POINT)> popupMenu;
+        // The key card's colours (the 界面风格's); empty: PinKeyCard::Look::fallback.
+        std::function<PinKeyCard::Look()> keyCardLook;
     };
 
     explicit PinManager(Callbacks callbacks, QObject* parent = nullptr);
@@ -81,6 +85,11 @@ public:
     void setDoubleClick(PinDoubleClick action);
     // The keys inside the pins (and in their menus), for every pin, and those made later.
     void setKeys(const CaptureKeys& keys);
+    // [Capture] KeyHints: the key card (GitHub #343, PinKeyCard) shows by
+    // itself when a pin has the focus and the user stops (PinHintPolicy);
+    // off, only ? or F1 shows it.
+    void setKeyHints(bool on);
+    bool keyCardShown() const { return m_card && m_card->visible(); }
     const CaptureKeys& keys() const { return m_keys; }
     // True while the Ctrl watcher runs (some pin is click-through), else no timer at all.
     bool watching() const { return m_watch.isActive(); }
@@ -91,6 +100,12 @@ private:
     PinWindow* add(const QImage& image, QPoint origin, bool screenshot, QByteArray project, std::optional<QPoint> fitAbout);
     void showMenu(PinWindow* pin, POINT at);
     void closed(PinWindow* pin);
+    // The key card: what the pins report (PinWindow::Host), and the card shown or taken away to match.
+    void hintFocus(PinWindow* pin, bool focused, bool fromOwnWindow);
+    void hintInput(PinWindow* pin, PinInput input);
+    void hintToggle(PinWindow* pin);
+    void hintStop(const PinWindow* pin); // edited or collapsed: no card for the rest of the round
+    void syncHints();
 
     Callbacks m_callbacks;
     std::vector<std::unique_ptr<PinWindow>> m_pins;
@@ -100,6 +115,13 @@ private:
     CaptureKeys m_keys;
     const PinWindow* m_menuPin = nullptr; // the pin whose menu is up
     std::vector<std::unique_ptr<PinWindow>> m_closing; // windows gone, deleted once their procedure returned
+    // The key card
+    PinHintPolicy m_hints;
+    QTimer m_hintTimer; // wakes the policy at its next deadline
+    QElapsedTimer m_hintClock;
+    PinWindow* m_hintPin = nullptr; // the pin with the focus
+    const PinWindow* m_lastHintPin = nullptr; // the last one that had it: compared, never used
+    std::unique_ptr<PinKeyCard> m_card; // only while it shows
 };
 
 } // namespace ws::capture

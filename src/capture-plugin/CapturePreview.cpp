@@ -9,6 +9,8 @@
 #include "CaptureSession.h"
 #include "CaptureOcr.h"
 #include "CaptureEditor.h"
+#include "PinKeyCard.h"
+#include "PinKeyLook.h"
 #include "WindowFrame.h"
 #include "platform/OcrFiles.h"
 #include "RawClicks.h"
@@ -24,6 +26,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QJSValue>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
@@ -1669,8 +1672,168 @@ int runEditWindow(const QStringList& args)
     return finish(window, ok);
 }
 
+// --preview-capture-tools <dir> --edit-window --pin: editing a pin where it
+// is (GitHub #343), off the screen: the pin grown a toolbar, the band above
+// the picture (edit-pin.png), below it for a pin at the top of the screen
+// (edit-pin-below.png), a pin narrower than the toolbar (edit-pin-narrow.png)
+// and one at the work area's left edge (edit-pin-edge.png). Each checks
+// where the editor puts the window: the canvas over the pin to the device
+// pixel, the window inside the work area; and the 全部按键 list in its pin
+// form (CaptureKeyList: Enter is 完成, a row for the pin's 编辑 key).
+int runEditPin(const QStringList& args)
+{
+    using namespace capture;
+    const QDir out(valueAfter(args, kCaptureToolsFlag));
+    QDir().mkpath(out.path());
+    QQmlApplicationEngine engine;
+    CaptureEditor editor;
+    WindowFrame frame(true);
+    CaptureEditor::Hooks hooks;
+    hooks.window.show = [](QQuickWindow* window) { showOffScreen(window); };
+    hooks.window.pinMode = [&frame](QQuickWindow*, bool pin) { frame.setFixedSize(pin); };
+    hooks.window.prepareMenu = [](QWindow* menu) { menu->setProperty("_q_showWithoutActivating", true); };
+    // Where the editor puts the window (physical), the window itself staying off the screen.
+    QPoint placedAt(-100000, -100000);
+    hooks.window.nativeRect = [&placedAt](QQuickWindow* window) {
+        const qreal ratio = window->devicePixelRatio();
+        return QRect(placedAt, QSize(qRound(window->width() * ratio), qRound(window->height() * ratio)));
+    };
+    hooks.window.moveTo = [&placedAt](QQuickWindow*, QPoint topLeft) { placedAt = topLeft; };
+    editor.setHooks(std::move(hooks));
+    QQmlComponent component(&engine, u"WinShun"_s, u"EditWindow"_s);
+    auto* window = qobject_cast<QQuickWindow*>(component.createWithInitialProperties({
+        {u"editor"_s, QVariant::fromValue(&editor)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    if (!window) { say(component.errorString()); return 3; }
+    frame.setWindow(window);
+    editor.attach(window);
+    const QScreen* screen = QGuiApplication::primaryScreen();
+    const qreal dpr = screen->devicePixelRatio();
+    const QRect avail = screen->availableGeometry();
+    const QRect work(qRound(avail.x() * dpr), qRound(avail.y() * dpr), qRound(avail.width() * dpr), qRound(avail.height() * dpr));
+    const auto picture = [](QSize size) {
+        QImage image(size, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        QPainter painter(&image);
+        painter.setPen(QColor(120, 128, 138)); // one image pixel round it: where the pin's picture is, exactly
+        painter.drawRect(QRect(QPoint(0, 0), size - QSize(1, 1)));
+        painter.setPen(QColor(35, 40, 45));
+        QFont font = QGuiApplication::font();
+        font.setPixelSize(20);
+        painter.setFont(font);
+        painter.drawText(20, 36, u"贴图上直接编辑"_s);
+        const int half = size.width() / 2;
+        painter.fillRect(QRect(20, 56, half - 30, size.height() - 76), QColor(79, 157, 255));
+        painter.fillRect(QRect(half + 10, 56, half - 30, size.height() - 76), QColor(63, 191, 127));
+        return image;
+    };
+    int rect = -1;
+    for (qsizetype i = 0; i < annot::tools().size(); ++i) {
+        if (annot::tools()[i].kind == annot::Kind::Rect)
+            rect = static_cast<int>(i);
+    }
+    // The toolbar (AnnotateToolbar): the item with the key list's rows.
+    const std::function<QQuickItem*(QQuickItem*)> toolbarIn = [&](QQuickItem* item) -> QQuickItem* {
+        if (item->metaObject()->indexOfProperty("keyRows") >= 0)
+            return item;
+        for (QQuickItem* child : item->childItems()) {
+            if (QQuickItem* found = toolbarIn(child))
+                return found;
+        }
+        return nullptr;
+    };
+    bool ok = true;
+    const auto shot = [&](const QString& name, const QRect& where, bool below) {
+        CaptureEditor::PinTarget target;
+        target.image = picture(where.size());
+        target.picture = where;
+        target.alive = [] { return true; };
+        target.setShown = [](bool) {};
+        target.replace = [](const QImage&, const QByteArray&) {};
+        if (!editor.openPin(std::move(target))) {
+            say(u"edit pin %1: did not open"_s.arg(name));
+            ok = false;
+            return;
+        }
+        editor.model()->setTool(rect); // the panel's row with a tool's styles
+        if (!window->isVisible())
+            showOffScreen(window);
+        settle(window);
+        pump(400);
+        settle(window, 2);
+        const QRectF view = editor.viewRect();
+        const qreal ratio = window->devicePixelRatio();
+        const bool exact = qAbs(view.width() * ratio - where.width()) < 0.5 && qAbs(view.height() * ratio - where.height()) < 0.5;
+        // Over the pin to the device pixel, inside the work area (its insets may lie past it).
+        const int inset = editview::pinInset(ratio);
+        const QRect native(placedAt, QSize(qRound(window->width() * ratio), qRound(window->height() * ratio)));
+        const bool onPin = placedAt + QPoint(qRound(view.x() * ratio), qRound(view.y() * ratio)) == where.topLeft();
+        const bool inWork = work.adjusted(-inset, -inset, inset, inset).contains(native);
+        const bool placed = editor.pinMode() && editor.toolbarBelow() == below && exact && onPin && inWork;
+        say(u"edit pin %1: window %2x%3 logical at %10,%11 (work %12,%13 %14x%15), picture %4,%5 %6x%7, band %8%9"_s.arg(name)
+                .arg(window->width()).arg(window->height()).arg(view.x()).arg(view.y()).arg(view.width()).arg(view.height())
+                .arg(editor.toolbarBelow() ? u"below"_s : u"above"_s, placed ? QString() : u" (not as expected)"_s)
+                .arg(native.x()).arg(native.y()).arg(work.x()).arg(work.y()).arg(work.width()).arg(work.height()));
+        const QQuickItem* toolbar = toolbarIn(window->contentItem());
+        QVariant rowsValue = toolbar ? toolbar->property("keyRows") : QVariant();
+        if (rowsValue.metaType() == QMetaType::fromType<QJSValue>())
+            rowsValue = rowsValue.value<QJSValue>().toVariant();
+        const QStringList keyRows = rowsValue.toStringList();
+        const bool pinKeys = keyRows.contains(u"完成：贴图换成改好的图"_s) && keyRows.contains(editor.pinEditKeyText())
+            && keyRows.contains(editor.pinEditFinishes() ? u"贴图的编辑键：再按一次也是完成"_s
+                                                         : u"贴图的编辑键：在这里和截图时一样选工具，完成按 Enter"_s);
+        say(u"edit pin %1: key list %2 (%3 strings, the pin's 编辑 key %4)"_s.arg(name, pinKeys ? u"in its pin form"_s : u"NOT in its pin form"_s)
+                .arg(keyRows.size()).arg(editor.pinEditKeyText()));
+        ok = saveGrab(window, out.filePath(name + u".png"_s)) && placed && pinKeys && ok;
+        editor.close();
+    };
+    shot(u"edit-pin"_s, QRect(work.left() + work.width() / 4, work.top() + work.height() / 3, 1200, 560), false);
+    shot(u"edit-pin-below"_s, QRect(work.left() + work.width() / 4, work.top() + 8, 900, 420), true);
+    shot(u"edit-pin-narrow"_s, QRect(work.left() + work.width() / 4, work.top() + work.height() / 3, 300, 200), false);
+    shot(u"edit-pin-edge"_s, QRect(work.left() + 8, work.top() + work.height() / 3, 300, 200), false);
+    say(u"edit pin: %1"_s.arg(ok ? u"passed"_s : u"failed"_s));
+    return finish(window, ok);
+}
+
+// --preview-capture-tools <dir> --pin-keys: a pin's key card (GitHub #343,
+// PinKeyCard) in the 界面风格 asked for, with the default keys and text
+// recognition there, over a plain desktop (pin-keys.png): the very pixels
+// its layered window shows, shadow and all.
+int runPinKeys(const QStringList& args)
+{
+    using namespace capture;
+    const QDir out(valueAfter(args, kCaptureToolsFlag));
+    QDir().mkpath(out.path());
+    QTranslator translator;
+    if (args.contains(u"--english"_s) && translator.load(u":/i18n/capture_en.qm"_s))
+        QCoreApplication::installTranslator(&translator);
+    QQmlEngine engine;
+    const QObject* theme = engine.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
+    if (!theme) { say(u"pin keys: no Theme"_s); return 3; }
+    const bool dark = args.contains(u"--dark"_s);
+    const PinKeyCard::Look look = pinKeyCardLook(theme, dark, true);
+    const double dpr = valueAfter(args, u"--scale", u"1"_s).toDouble();
+    const std::vector<PinKeyRow> rows = pinKeyRows(CaptureKeys(), true, false, false);
+    const QImage card = PinKeyCard::picture(rows, dpr, look);
+    const int margin = qRound(16 * dpr) - PinKeyCard::shadowMargin(dpr);
+    QImage desktop(card.width() + 2 * margin + qRound(80 * dpr), card.height() + 2 * margin + qRound(40 * dpr), QImage::Format_RGB32);
+    desktop.fill(dark ? QColor(0x1F, 0x23, 0x2A) : QColor(0xDD, 0xE5, 0xEE));
+    {
+        QPainter painter(&desktop);
+        painter.drawImage(margin, desktop.height() - margin - card.height(), card);
+    }
+    const QSize size = PinKeyCard::cardSize(rows, dpr);
+    say(u"pin keys: %1 rows, card %2x%3 device px at %4"_s.arg(rows.size()).arg(size.width()).arg(size.height()).arg(dpr));
+    const bool ok = desktop.save(out.filePath(u"pin-keys.png"_s));
+    say(u"pin keys: %1"_s.arg(ok ? u"passed"_s : u"failed"_s));
+    return ok ? 0 : 1;
+}
+
 int runCaptureTools(const QStringList& args)
 {
+    if (args.contains(u"--edit-window"_s) && args.contains(u"--pin"_s))
+        return runEditPin(args);
+    if (args.contains(u"--pin-keys"_s))
+        return runPinKeys(args);
     if (args.contains(u"--edit-window"_s))
         return runEditWindow(args);
     if (args.contains(u"--key-hints"_s))

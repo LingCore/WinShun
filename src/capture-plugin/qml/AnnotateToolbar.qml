@@ -43,12 +43,26 @@ Item {
     property rect blockRect
     property bool opensDown: true
     property real dpr: 1
+    // In a pin's editing window (GitHub #343) the window is the card: no cards of its own.
+    property bool flat: false
+    // What has screenArea() and prepareMenuWindow() (CaptureEditor): the key
+    // list, and a tip with no room, go into windows of their own beside the
+    // window, which is as short as the pin there.
+    property QtObject popupHost: null
+    readonly property bool keysDetached: popupHost !== null
+    // A pin's editing window: Enter and Esc as they are there, and the pin's 编辑 key (CaptureKeyList).
+    property bool pin: false
+    property string pinEditKey: ""
+    property bool pinEditFinishes: false
 
     // The key list: the rows both have, then the overlay's or the editor's
     // (CaptureKeyList, which the settings' 按键 tab lists too).
     readonly property CaptureKeyList keyList: CaptureKeyList {
         editor: bar.editor
         annot: bar.annot
+        pin: bar.pin
+        pinEditKey: bar.pinEditKey
+        pinEditFinishes: bar.pinEditFinishes
     }
     readonly property var keyRows: keyList.rows
 
@@ -108,8 +122,33 @@ Item {
     readonly property var hostWindow: bar.Window.window
     onKeysOpenChanged: {
         const frame = hostWindow ? (hostWindow.frame ?? null) : null
-        if (keysOpen && frame)
+        if (keysOpen && frame && !keysDetached)
             frame.addPopup(keysCard)
+    }
+    // A key list in a window of its own goes when this window is left.
+    Connections {
+        target: bar.hostWindow
+        enabled: bar.keysDetached
+        function onActiveChanged() {
+            if (!bar.hostWindow.active)
+                bar.keysOpen = false
+        }
+    }
+    // Beside the window, on the side away from the picture (opensDown: the
+    // toolbar lies below it), within the work area there; right-aligned with the toolbar.
+    function placeKeysWindow(popup) {
+        const host = hostWindow
+        if (!popup || !host || !popupHost)
+            return
+        const at = host.contentItem.mapToGlobal(blockRect.x + blockRect.width, blockRect.y)
+        const area = popupHost.screenArea(at)
+        const below = host.y + host.height + popupGap
+        const above = host.y - popupGap - popup.height
+        const fitsBelow = below + popup.height <= area.y + area.height
+        const fitsAbove = above >= area.y
+        const y = opensDown ? (fitsBelow || !fitsAbove ? below : above) : (fitsAbove || !fitsBelow ? above : below)
+        popup.x = Math.round(Math.max(area.x, Math.min(at.x - popup.width, area.x + area.width - popup.width)))
+        popup.y = Math.round(Math.max(area.y, Math.min(y, area.y + area.height - popup.height)))
     }
 
     function shows(id) { return hidden.indexOf(id) < 0 }
@@ -408,6 +447,7 @@ Item {
             }
             return tip ? tip.item.tipKeys : ""
         }
+        host: bar.popupHost
     }
 
     // ---- the key list: on the window, above everything, until a click anywhere ----
@@ -424,23 +464,42 @@ Item {
         onWheel: (wheel) => { wheel.accepted = true }
     }
 
+    // The key list's own window, while it is open (keysDetached).
+    Loader {
+        id: keysWindow
+        active: bar.keysOpen && bar.keysDetached
+        sourceComponent: Window {
+            objectName: "captureKeysWindow"
+            flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
+            color: Theme.menuBackground
+            width: keysCard.width
+            height: keysCard.height
+            Component.onCompleted: { // placed first, then shown: no flash where it was made
+                bar.popupHost.prepareMenuWindow(this)
+                bar.placeKeysWindow(this)
+                visible = true
+            }
+        }
+    }
+
     Item {
         id: keysCard
 
+        readonly property bool detached: bar.keysDetached && keysWindow.item !== null
         readonly property real roomBelow: parent ? parent.height - (bar.blockRect.y + bar.blockRect.height) : 0
         readonly property bool down: bar.opensDown ? roomBelow >= height + bar.popupGap + bar.popupMargin
                                                    : bar.blockRect.y < height + bar.popupGap + bar.popupMargin
 
-        parent: bar.Window.contentItem
+        parent: detached ? keysWindow.item.contentItem : bar.Window.contentItem
         z: 900
         visible: bar.keysOpen
         width: Math.ceil((keysGrid.width + 2 * bar.popupPadX) / 4) * 4
         height: Math.ceil((keysTitle.height + bar.popupTitleGap + keysGrid.height + 2 * bar.popupPadY) / 4) * 4
-        x: parent ? bar.snap(Math.max(bar.popupMargin, Math.min(bar.blockRect.x + bar.blockRect.width - width,
-                                                                 parent.width - width - bar.popupMargin))) : 0
-        y: parent ? bar.snap(Math.max(bar.popupMargin, Math.min(down ? bar.blockRect.y + bar.blockRect.height + bar.popupGap
-                                                                      : bar.blockRect.y - bar.popupGap - height,
-                                                                 parent.height - height - bar.popupMargin))) : 0
+        x: !parent || detached ? 0 : bar.snap(Math.max(bar.popupMargin, Math.min(bar.blockRect.x + bar.blockRect.width - width,
+                                                                                  parent.width - width - bar.popupMargin)))
+        y: !parent || detached ? 0 : bar.snap(Math.max(bar.popupMargin, Math.min(down ? bar.blockRect.y + bar.blockRect.height + bar.popupGap
+                                                                                       : bar.blockRect.y - bar.popupGap - height,
+                                                                                  parent.height - height - bar.popupMargin)))
 
         Hook { // the style's floating panel (Theme.menuFrame)
             anchors.fill: parent
@@ -526,6 +585,7 @@ Item {
 
         Hook { // the style's floating panel (Theme.menuFrame)
             anchors.fill: parent
+            visible: !bar.flat
             part: Theme.menuFrame
             extra: ({ floating: true })
             dpr: bar.dpr
