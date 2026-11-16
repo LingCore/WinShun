@@ -769,9 +769,14 @@ Item {
                     ctx.arc(c, c, c - Math.round(bar.ringInset * u) - s / 2, 0, 2 * Math.PI)
                     ctx.stroke()
                     ctx.beginPath()
-                    const one = Math.floor((n - s) / 2) + s / 2
+                    // The 1 centred by its ink (flag to stem), not by its stem:
+                    // the stem sits right of the middle by half the flag, its
+                    // left edge on a whole pixel, and the flag reaches as far
+                    // left of the middle as the stem's right edge is right of it.
+                    const flag = Math.round(bar.oneFlag * u)
+                    const one = Math.round(c + flag / 2 - s / 2) + s / 2
                     const top = Math.round(bar.oneTop * u)
-                    ctx.moveTo(one - Math.round(bar.oneFlag * u), top + Math.round(bar.oneFlag * u))
+                    ctx.moveTo(c - (one - c), top + flag)
                     ctx.lineTo(one, top)
                     ctx.lineTo(one, n - top)
                     ctx.stroke()
