@@ -1463,6 +1463,17 @@ set_tests_properties(tst_cloudbackup PROPERTIES
 add_executable(plugin_fake plugin_fake.cpp)
 target_link_libraries(plugin_fake PRIVATE wsplugin_lite)
 set_target_properties(plugin_fake PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+add_executable(sdk_settings_demo sdk_settings_demo.cpp)
+target_include_directories(sdk_settings_demo PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+target_link_libraries(sdk_settings_demo PRIVATE winshun_options)
+set_target_properties(sdk_settings_demo PROPERTIES AUTOMOC OFF WIN32_EXECUTABLE FALSE
+    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+qt_add_executable(tst_pluginsdk tst_pluginsdk.cpp)
+target_include_directories(tst_pluginsdk PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+target_link_libraries(tst_pluginsdk PRIVATE winshun_options Qt6::Test)
+target_compile_definitions(tst_pluginsdk PRIVATE WINSHUN_SDK_SETTINGS_DEMO="$<TARGET_FILE:sdk_settings_demo>")
+add_dependencies(tst_pluginsdk sdk_settings_demo)
+set_target_properties(tst_pluginsdk PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 qt_add_executable(tst_plugin tst_plugin.cpp)
 qt_add_executable(plugin_qt plugin_qt.cpp)
 target_link_libraries(plugin_qt PRIVATE winshun_options Qt6::Quick)
@@ -1515,6 +1526,9 @@ add_test(NAME tst_semantic COMMAND tst_semantic)
 add_test(NAME tst_mcp COMMAND tst_mcp)
 add_test(NAME tst_cli COMMAND tst_cli)
 add_test(NAME tst_plugin COMMAND tst_plugin -o -,txt)
+add_test(NAME tst_pluginsdk COMMAND tst_pluginsdk -o -,txt)
+set_tests_properties(tst_pluginsdk PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 # Importing clipboard history (Ditto, text, CSV): the reader with a real store.
 qt_add_executable(tst_clipimport tst_clipimport.cpp ${PROJECT_SOURCE_DIR}/src/app/ClipImport.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ClipImage.cpp
