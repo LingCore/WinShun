@@ -9,11 +9,14 @@ namespace ws::uisize {
 // their rows. Widths, icons and the settings window stay as they are.
 // Theme.qml has the same steps for what QML draws; these are the heights C++
 // places windows by. All in logical pixels, whole numbers.
-enum class Size { Compact, Standard, Roomy };
+enum class Size { Dense, Compact, Standard, Roomy };
 
 inline Size parse(QStringView name)
 {
-    return name == u"compact" ? Size::Compact : name == u"roomy" ? Size::Roomy : Size::Standard;
+    return name == u"dense" ? Size::Dense
+        : name == u"compact" ? Size::Compact
+        : name == u"roomy" ? Size::Roomy
+                           : Size::Standard;
 }
 
 struct Metrics {
@@ -26,6 +29,8 @@ struct Metrics {
 constexpr Metrics metrics(Size size)
 {
     switch (size) {
+    case Size::Dense: // one line per result; the dialog bar's rows stay two lines, as 紧凑 has them
+        return {44, 40, 44, 36};
     case Size::Compact:
         return {56, 40, 44, 36};
     case Size::Roomy:

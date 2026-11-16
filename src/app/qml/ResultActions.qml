@@ -19,6 +19,7 @@ Item {
     // For the row: the room the buttons take, how many show, and the one the
     // mouse rests on (the row's HoverTip, one for its buttons and its date).
     readonly property real actionsWidth: actions.width
+    readonly property bool small: host !== null && host.dense // 密集 rows: the smaller buttons (RowAction.small)
     readonly property int count: actions.visibleChildren.length
     readonly property RowAction hovered: switchPageAction.tipWanted ? switchPageAction
                                        : adminAction.tipWanted ? adminAction
@@ -58,6 +59,7 @@ Item {
             id: switchPageAction
             dpr: bar.dpr
             shared: true
+            small: bar.small
             visible: bar.host !== null && bar.host.switchReady
             glyph: "" // Settings (gear)
             tip: qsTranslate("ResultRow", "打开设置")
@@ -69,6 +71,7 @@ Item {
             objectName: "adminAction"
             dpr: bar.dpr
             shared: true
+            small: bar.small
             visible: bar.host !== null && bar.host.elevatable && !bar.host.switchReady
             glyph: "" // Admin (shield)
             tip: qsTranslate("ResultRow", "以管理员身份运行")
@@ -79,6 +82,7 @@ Item {
             id: revealAction
             dpr: bar.dpr
             shared: true
+            small: bar.small
             visible: bar.host !== null && !bar.host.switchReady && (!bar.host.isApp || bar.host.revealable)
             glyph: "" // OpenFolder
             tip: bar.host !== null && bar.host.packagedApp ? qsTranslate("ResultRow", "打开安装文件夹") : qsTranslate("ResultRow", "打开所在位置")
@@ -89,6 +93,7 @@ Item {
             id: terminalAction
             dpr: bar.dpr
             shared: true
+            small: bar.small
             visible: bar.host !== null && !bar.host.isApp // a file's or folder's: its folder in cmd
             glyph: "" // CommandPrompt
             tip: qsTranslate("ResultRow", "在终端中打开")
@@ -98,6 +103,7 @@ Item {
             id: copyAction
             dpr: bar.dpr
             shared: true
+            small: bar.small
             // A desktop app copies its program; a packaged one has none.
             visible: bar.host !== null && bar.host.copyable && !bar.host.switchReady
             glyph: "" // Copy
@@ -111,6 +117,7 @@ Item {
             readonly property ResultRow host: bar.host
             dpr: bar.dpr
             shared: true
+            small: bar.small
             visible: host !== null && !host.settingsAction && !host.switchReady && (!host.plugin || host.pluginCopies)
             // Copy; else drawn by Glyph: a box holding "\\..".
             glyph: host !== null && (host.plugin || host.windowResult) ? "" : "copyPath"
@@ -130,6 +137,7 @@ Item {
             readonly property bool armed: host !== null && host.deleteArmed
             dpr: bar.dpr
             shared: true
+            small: bar.small
             visible: bar.deleteButton && host !== null && !host.isApp // uninstalling is for Windows Settings
             glyph: "" // Delete
             tip: armed ? "" : qsTranslate("ResultRow", "删除（点两次，移到回收站）")

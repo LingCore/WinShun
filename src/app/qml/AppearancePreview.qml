@@ -54,10 +54,35 @@ Rectangle {
         x: 16
         y: search.height + (Theme.rowHeight - height) / 2
         glyph: "\uE8B7"
-        size: 28
+        size: Theme.metrics.dense ? 20 : 28
         color: Theme.accent
     }
+    Item { // 密集: one line, the folder after the name
+        visible: Theme.metrics.dense
+        x: folderIcon.x + folderIcon.width + 8
+        y: search.height
+        width: parent.width - x - 16
+        height: Theme.rowHeight
+        Text {
+            id: denseName
+            anchors.verticalCenter: parent.verticalCenter
+            text: qsTr("项目资料")
+            color: Theme.text
+            font.pixelSize: Theme.uiTitle
+        }
+        Text {
+            anchors.left: denseName.right
+            anchors.leftMargin: 8
+            anchors.right: parent.right
+            anchors.baseline: denseName.baseline
+            text: qsTr("文件夹 · 效果预览")
+            color: Theme.faint
+            font.pixelSize: Theme.uiCaption
+            elide: Text.ElideRight
+        }
+    }
     Column {
+        visible: !Theme.metrics.dense
         x: folderIcon.x + folderIcon.width + 12
         y: search.height + (Theme.rowHeight - height) / 2
         width: parent.width - x - 16

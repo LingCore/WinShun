@@ -36,7 +36,7 @@ Window {
     objectName: "folderMenuWindow"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     color: Theme.menuBackground
-    readonly property int preferredWidth: Theme.metrics.size === "compact" ? 300 : Theme.metrics.size === "roomy" ? 400 : 360
+    readonly property int preferredWidth: Theme.metrics.level < 2 ? 300 : Theme.metrics.size === "roomy" ? 400 : 360
     width: availableArea.width > 0 ? Math.min(preferredWidth, availableArea.width - 16) : preferredWidth
     height: Math.min(listHeight + 2 * padding + headingHeight, maxHeight)
     onHeightChanged: if (visible) y = within(popupTop)

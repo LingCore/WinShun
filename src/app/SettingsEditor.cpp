@@ -1121,7 +1121,7 @@ void SettingsEditor::setTaskbarIcon(const QString& style)
 
 void SettingsEditor::setUiSize(const QString& size)
 {
-    if (m_settings.uiSize == size || (size != u"compact" && size != u"standard" && size != u"roomy"))
+    if (m_settings.uiSize == size || (size != u"dense" && size != u"compact" && size != u"standard" && size != u"roomy"))
         return;
     m_settings.uiSize = size;
     commit();

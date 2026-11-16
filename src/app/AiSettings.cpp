@@ -431,9 +431,10 @@ std::vector<Entry> buildCatalog()
                     "Liquid glass reading surface opacity. 50 is the theme default; higher makes cards more opaque."},
         &Settings::glassClarity, 0, 100));
     add(choice({"Appearance/UiSize", QT_TRANSLATE_NOOP("AiSettings", "界面大小"), "appearance", -1,
-                   "Type and row heights of the search box, the clipboard and the dialog bar (not the settings window)."},
+                   "Type and row heights of the search box, the clipboard and the dialog bar (not the settings window). Dense: one small line per result."},
         &Settings::uiSize,
-        {{u"compact"_s, u"smaller type and rows"_s, QT_TRANSLATE_NOOP("AiSettings", "紧凑")},
+        {{u"dense"_s, u"one small line per result"_s, QT_TRANSLATE_NOOP("AiSettings", "密集")},
+            {u"compact"_s, u"smaller type and rows"_s, QT_TRANSLATE_NOOP("AiSettings", "紧凑")},
             {u"standard"_s, u"the usual size"_s, QT_TRANSLATE_NOOP("AiSettings", "标准")},
             {u"roomy"_s, u"larger type and rows"_s, QT_TRANSLATE_NOOP("AiSettings", "宽松")}}));
     add(choice({"Appearance/TaskbarIcon", QT_TRANSLATE_NOOP("AiSettings", "任务栏图标"), "appearance", -1,

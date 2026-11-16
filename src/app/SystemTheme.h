@@ -44,7 +44,7 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     // Rounded on Windows 11 when the appearance setting allows it.
     Q_PROPERTY(bool roundedCorners READ roundedCorners NOTIFY changed FINAL)
     Q_PROPERTY(bool nativeWindowBorder READ nativeWindowBorder CONSTANT FINAL)
-    // How large the launcher and the clipboard are drawn (界面大小: compact,
+    // How large the launcher and the clipboard are drawn (界面大小: dense, compact,
     // standard, roomy; see uisize::), and its header's height, as C++ places by.
     Q_PROPERTY(QString uiSize READ uiSize NOTIFY uiSizeChanged FINAL)
     Q_PROPERTY(int headerHeight READ headerHeight NOTIFY uiSizeChanged FINAL)

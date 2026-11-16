@@ -52,7 +52,7 @@ void DropPieText::setFolderCount(int count)
 int DropPieText::uiStep()
 {
     const QString size = SystemTheme::uiSize();
-    return size == u"compact" ? 0 : size == u"roomy" ? 2 : 1;
+    return size == u"dense" || size == u"compact" ? 0 : size == u"roomy" ? 2 : 1;
 }
 
 QFont DropPieText::labelFont()

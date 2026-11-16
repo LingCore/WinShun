@@ -5,6 +5,7 @@
 #include "Query.h"
 #include "SettingsCommand.h"
 #include "StartupAccess.h"
+#include "UiSize.h"
 #include "Win32Util.h"
 
 #include "ServiceVolumeAccess.h"
@@ -675,6 +676,43 @@ private slots:
             QCOMPARE(restored.clipboardAtPointer, atPointer);
             QCOMPARE(restored.clipboardPauseInFullScreen, atPointer);
         }
+    }
+
+    // 界面大小: four steps, kept as written (密集 is the one line per result, GitHub #352);
+    // an unknown name is 标准.
+    void uiSize()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.uiSize, u"standard"_s);
+        for (const QString size : {u"dense"_s, u"compact"_s, u"roomy"_s, u"standard"_s}) {
+            settings.uiSize = size;
+            settings.save();
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.uiSize, size);
+        }
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Appearance/UiSize"_s, u"huge"_s);
+        }
+        ws::Settings invalid;
+        invalid.load();
+        QCOMPARE(invalid.uiSize, u"standard"_s);
+
+        using ws::uisize::Size;
+        QVERIFY(ws::uisize::parse(u"dense") == Size::Dense);
+        QVERIFY(ws::uisize::parse(u"compact") == Size::Compact);
+        QVERIFY(ws::uisize::parse(u"roomy") == Size::Roomy);
+        QVERIFY(ws::uisize::parse(u"huge") == Size::Standard);
+        // The search field is as high as UiScale.qml's 密集; the dialog bar keeps 紧凑's rows.
+        QCOMPARE(ws::uisize::metrics(u"dense").header, 44);
+        QCOMPARE(ws::uisize::metrics(u"dense").barHeight, ws::uisize::metrics(u"compact").barHeight);
+        QCOMPARE(ws::uisize::metrics(u"dense").barRow, ws::uisize::metrics(u"compact").barRow);
+        QCOMPARE(ws::uisize::metrics(u"dense").askHeight, ws::uisize::metrics(u"compact").askHeight);
     }
 
     // 剪贴板大小: its own step, kept as written; unknown names fall back to following 界面大小.

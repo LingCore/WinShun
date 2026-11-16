@@ -311,7 +311,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(int glassTransparency READ glassTransparency WRITE setGlassTransparency NOTIFY changed FINAL)
     Q_PROPERTY(int glassClarity READ glassClarity WRITE setGlassClarity NOTIFY changed FINAL)
     Q_PROPERTY(QString taskbarIcon READ taskbarIcon WRITE setTaskbarIcon NOTIFY changed FINAL) // color | mono
-    Q_PROPERTY(QString uiSize READ uiSize WRITE setUiSize NOTIFY changed FINAL) // compact | standard | roomy
+    Q_PROPERTY(QString uiSize READ uiSize WRITE setUiSize NOTIFY changed FINAL) // dense | compact | standard | roomy
     Q_PROPERTY(QString uiFont READ uiFont WRITE setUiFont NOTIFY changed FINAL)
     Q_PROPERTY(QStringList uiFonts READ uiFonts CONSTANT FINAL)
     Q_PROPERTY(bool uiFontAvailable READ uiFontAvailable NOTIFY changed FINAL)

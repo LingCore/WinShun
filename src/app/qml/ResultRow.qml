@@ -33,6 +33,10 @@ import WinShun
 // shown); one another program holds is struck through, its tip says why.
 // A file's or folder's row can be dragged out with the mouse, into a chat or
 // a folder (with the selection, when it is in it).
+// 界面大小 密集: one line, 32 high. The folder (or, for a content match, the
+// matching text) follows the name on its baseline in small grey type, the size
+// and the date stand side by side, and the buttons are the small ones (as the
+// clipboard's 密集 rows).
 Item {
     id: row
     objectName: "resultRow-" + index
@@ -83,6 +87,8 @@ Item {
     required property bool switchReady // draws its switch (else an ordinary place, with its tag)
     property bool showModified: true
     property bool compact: false
+    // 密集 (the folder box, which is `compact`, keeps its two short lines).
+    readonly property bool dense: Theme.metrics.dense && !compact
     property bool showSize: false
     readonly property bool sizeShown: showSize && size.length > 0
     readonly property bool modifiedShown: showModified && modified.length > 0
@@ -224,8 +230,14 @@ Item {
         return shown.split("…").length > whole.split("…").length
     }
     readonly property bool nameCut: title.truncated || cut(title.text, name)
-    readonly property bool folderCut: contentMode ? contentFolder.truncated
+    // 密集: a content match's folder is not on its line at all, so its tip is
+    // always there to say where the file is.
+    readonly property bool folderCut: dense ? (contentMode ? folder.length > 0
+                                              : sideText.truncated || (folderLine.marked && cut(sideText.text, folder)))
+                                    : contentMode ? contentFolder.truncated
                                     : folderLine.truncated || (folderLine.marked && cut(folderLine.text, folder))
+    // What the second line says (密集: after the name on the first).
+    readonly property string sideSource: contentMode ? snippetHtml : folderLine.away ? folderAway : folder
     // Over its icon or text (not the date, the buttons) with something cut:
     // the tip with all of it (NameTip), once the mouse rests there.
     readonly property bool wantsTip: nameTip !== null && (nameCut || folderCut) && area.containsMouse && !area.pressed
@@ -288,7 +300,7 @@ Item {
         opacity: row.offline || row.missing ? 0.6 : 1
         x: Theme.iconInset + (row.reserveHintSpace && (row.hint > 0 || row.alignWithNumbered) ? 28 : 0)
         anchors.verticalCenter: parent.verticalCenter
-        width: row.compact ? 24 : 32 // 48 device pixels at 150 %, 64 at 200 %: sizes icons are drawn for
+        width: row.compact || row.dense ? 24 : 32 // 48 device pixels at 150 %, 64 at 200 %: sizes icons are drawn for
         height: width
 
         Image {
@@ -341,7 +353,7 @@ Item {
         opacity: row.offline || row.missing ? 0.6 : 1
         y: row.onPixel((row.height - height) / 2)
         anchors.left: iconSlot.right
-        anchors.leftMargin: row.compact ? 8 : Theme.textStart - Theme.iconInset - iconSlot.width
+        anchors.leftMargin: row.compact || row.dense ? 8 : Theme.textStart - Theme.iconInset - iconSlot.width
         anchors.right: parent.right
         anchors.rightMargin: row.trailingSpace + (metadata.visible ? metadata.width + 16 : 0)
         // The folder box's short rows: closer, so that with any 界面字体 a
@@ -352,16 +364,28 @@ Item {
             id: nameLine
             width: parent.width
             height: row.upToPixel(title.implicitHeight) // the line below on a whole pixel too
+            // 密集: with something after it the name keeps at least 60 % of the
+            // line (cut around its matches); more where a short folder leaves
+            // it room. A content match's text always takes what is left.
+            readonly property real nameRoom: !row.dense || row.sideSource.length === 0 ? width
+                : row.contentMode ? Math.floor(width * 0.6)
+                : Math.max(Math.floor(width * 0.6), Math.floor(width - sideText.anchors.leftMargin - Math.ceil(sideMetrics.advanceWidth)))
+
+            TextMetrics {
+                id: sideMetrics
+                font: sideText.font
+                text: row.dense && !row.contentMode ? row.sideSource : ""
+            }
 
             Text {
                 id: title
-                width: Math.min(implicitWidth, parent.width)
+                width: Math.min(implicitWidth, nameLine.nameRoom)
                 // A long name is shortened around its matches, not past them,
                 // and keeps its end (the extension, "(2)", "v3") with or
                 // without any. An app's (and a web search's) is short, its
                 // highlights its own.
                 text: row.results && !row.isApp
-                      ? row.results.elidedHtml(row.name, row.nameMatches, parent.width, font, row.results.highlightColor, row.results.highlightWeight)
+                      ? row.results.elidedHtml(row.name, row.nameMatches, nameLine.nameRoom, font, row.results.highlightColor, row.results.highlightWeight)
                       : row.nameHtml
                 textFormat: Text.StyledText
                 elide: Text.ElideRight
@@ -377,7 +401,7 @@ Item {
 
             Text { // content search: where the file lives, next to its name
                 id: contentFolder
-                visible: row.contentMode
+                visible: row.contentMode && !row.dense
                 y: row.onPixel(title.baselineOffset - baselineOffset) // on the name's baseline
                 anchors.left: title.right
                 anchors.leftMargin: 8
@@ -387,6 +411,26 @@ Item {
                 elide: Text.ElideMiddle
                 color: Theme.faint
                 font.pixelSize: row.compact ? 12 : Theme.uiCaption
+            }
+
+            Text { // 密集: what the second line says, after the name on its baseline
+                id: sideText
+                visible: row.dense && row.sideSource.length > 0
+                y: row.onPixel(title.baselineOffset - baselineOffset)
+                anchors.left: title.right
+                anchors.leftMargin: 8
+                anchors.right: parent.right
+                text: !row.dense ? ""
+                    : row.contentMode ? row.snippetHtml
+                    : folderLine.away ? row.folderAway
+                    : folderLine.marked ? row.results.elidedHtml(row.folder, row.folderMatches, width, font, row.results.highlightColor, row.results.highlightWeight)
+                    : row.folder
+                textFormat: row.contentMode || folderLine.marked ? Text.StyledText : Text.PlainText
+                elide: row.contentMode || folderLine.marked || folderLine.away ? Text.ElideRight : Text.ElideMiddle
+                maximumLineCount: 1
+                color: row.switchError.length > 0 ? Theme.danger : Theme.faint
+                font.pixelSize: Theme.uiCaption
+                font.preferTypoLineMetrics: true
             }
         }
 
@@ -399,8 +443,10 @@ Item {
             // A term found in a folder rather than the name stands out there,
             // and stays in sight when the path is shortened.
             readonly property bool marked: !away && !row.contentMode && row.folderMatches.length > 0 && row.results !== null
+            visible: !row.dense
             width: parent.width
-            text: row.contentMode ? row.snippetHtml
+            text: row.dense ? ""
+                : row.contentMode ? row.snippetHtml
                 : away ? row.folderAway
                 : marked ? row.results.elidedHtml(row.folder, row.folderMatches, width, font, row.results.highlightColor, row.results.highlightWeight)
                 : row.folder
@@ -422,16 +468,20 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: row.trailingSpace
         height: row.height
-        width: Math.ceil(Math.max(row.sizeShown ? fileSize.implicitWidth : 0,
-                                  row.modifiedShown ? date.implicitWidth : 0))
+        // 密集: the two side by side (size first, 12 apart), else one column.
+        width: Math.ceil(row.dense ? (row.sizeShown ? fileSize.implicitWidth : 0) + (row.sizeShown && row.modifiedShown ? 12 : 0)
+                                     + (row.modifiedShown ? date.implicitWidth : 0)
+                                   : Math.max(row.sizeShown ? fileSize.implicitWidth : 0,
+                                              row.modifiedShown ? date.implicitWidth : 0))
 
         Text {
             id: fileSize
             objectName: "fileSizeLabel"
             visible: row.sizeShown
             anchors.right: parent.right
-            y: row.modifiedShown ? row.onPixel(textColumn.y + title.baselineOffset - baselineOffset)
-                                : row.onPixel((row.height - height) / 2)
+            anchors.rightMargin: row.dense && row.modifiedShown ? date.implicitWidth + 12 : 0
+            y: row.modifiedShown && !row.dense ? row.onPixel(textColumn.y + title.baselineOffset - baselineOffset)
+                                               : row.onPixel((row.height - height) / 2)
             text: row.size
             textFormat: Text.PlainText
             color: Theme.faint
@@ -443,8 +493,8 @@ Item {
             objectName: "modifiedLabel"
             visible: row.modifiedShown
             anchors.right: parent.right
-            y: row.sizeShown ? row.onPixel(textColumn.y + folderLine.y + folderLine.baselineOffset - baselineOffset)
-                            : row.onPixel((row.height - height) / 2)
+            y: row.sizeShown && !row.dense ? row.onPixel(textColumn.y + folderLine.y + folderLine.baselineOffset - baselineOffset)
+                                           : row.onPixel((row.height - height) / 2)
             text: row.modified
             textFormat: Text.PlainText
             color: Theme.faint

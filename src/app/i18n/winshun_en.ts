@@ -6191,8 +6191,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Size</translation>
     </message>
     <message>
-        <source>缩放;大小;字号;字体大小;行高;紧凑;宽松;scale;size;zoom;font</source>
-        <translation>scale;size;zoom;font;text size;row height;compact;roomy;density</translation>
+        <source>缩放;大小;字号;字体大小;行高;密集;紧凑;宽松;一行;小字;scale;size;zoom;font;dense;compact</source>
+        <translation>scale;size;zoom;font;text size;row height;dense;compact;roomy;density;one line</translation>
     </message>
     <message>
         <source>紧凑</source>
@@ -7423,8 +7423,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Liquid glass</translation>
     </message>
     <message>
-        <source>搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。剪贴板可在“剪贴板”页单独设置</source>
-        <translation>Text size and line height of the search bar, the clipboard and the search bar by file dialogs; the Settings window is unchanged. The clipboard can be set separately on the Clipboard page</translation>
+        <source>搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。密集是每条结果一行的小字。剪贴板可在“剪贴板”页单独设置</source>
+        <translation>Text size and line height of the search bar, the clipboard and the search bar by file dialogs; the Settings window is unchanged. Dense is one small line per result. The clipboard can be set separately on the Clipboard page</translation>
     </message>
     <message>
         <source>索引范围;范围;整个磁盘;选中的文件夹;工作文件夹;普通用户;没有管理员权限;scope</source>

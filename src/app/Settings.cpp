@@ -1034,7 +1034,7 @@ void Settings::load()
         taskbarIcon = d.taskbarIcon;
     uiSize = readOrDefault(s, u"Appearance/UiSize"_s, d.uiSize).trimmed().toLower();
     uiFont = readOrDefault(s, u"Appearance/UiFont"_s, d.uiFont).trimmed();
-    if (uiSize != u"compact" && uiSize != u"roomy")
+    if (uiSize != u"dense" && uiSize != u"compact" && uiSize != u"roomy")
         uiSize = d.uiSize;
     maxRows = std::clamp(readOrDefault(s, u"Appearance/MaxRows"_s, d.maxRows), 4, 20);
     corners = readOrDefault(s, u"Appearance/Corners"_s, d.corners).trimmed().toLower();

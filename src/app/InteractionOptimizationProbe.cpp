@@ -169,7 +169,7 @@ bool checkWindowSearchAndMenu(QQmlEngine* engine, const QDir& output)
         window->setProperty("availableArea", QRectF(0, 0, 640, 340));
         offscreen(window);
         const int height = window->property("itemHeight").toInt();
-        const bool compact = SystemTheme::uiSize() == u"compact";
+        const bool compact = SystemTheme::uiSize() == u"compact" || SystemTheme::uiSize() == u"dense";
         check(height == (style == u"fluent" ? 36 : 34) + (compact ? -6 : 0), style + u": menu density follows the selected size"_s);
         check(window->width() == (compact ? 300 : 360) && window->height() <= 324,
             style + u": compact width and bounded scrolling fit the work area"_s);

@@ -27,7 +27,7 @@ struct Metrics {
     Metrics scaled(double k) const noexcept;
 };
 
-// The scale for a 界面大小 step (Theme.step: 0 compact, 1 standard, 2 roomy):
+// The scale for a 界面大小 step (Theme.step: 0 dense and compact, 1 standard, 2 roomy):
 // the labels' type is 12, 13 or 14 px, the pie grows with it.
 double scaleForStep(int step) noexcept;
 int labelPixelSize(int step) noexcept;

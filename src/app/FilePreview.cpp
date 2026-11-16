@@ -895,7 +895,7 @@ QRect FilePreview::placeBeside(QSize wanted)
     case Text: {
         // As tall as the text, about (a line of the code font, by 界面大小).
         const QString size = SystemTheme::uiSize();
-        const int line = size == u"compact" ? 18 : size == u"large" ? 22 : 20;
+        const int line = size == u"dense" || size == u"compact" ? 18 : size == u"large" ? 22 : 20;
         want = QSize(820, std::clamp(kHeader + kPad + m_textRows * line, 280, tallest * 85 / 100));
         break;
     }

@@ -2,8 +2,10 @@ import QtQuick
 
 // The type and heights of one 界面大小 step (Settings uiSize): the launcher
 // and the dialog bar read the step Theme follows (Theme.metrics); the
-// clipboard has a step of its own (Clipboard.uiSize, ClipboardPage.metrics) and
-// adds 密集, a single line per row. Whole pixels in every step, even where
+// clipboard has a step of its own (Clipboard.uiSize, ClipboardPage.metrics),
+// which follows it by default. 密集 is a single line per row (the launcher's
+// ResultRow, the clipboard's ClipRow; the dialog bar's rows keep their two
+// lines, at 紧凑's heights). Whole pixels in every step, even where
 // they can be (whole device pixels at 150 %); 标准 is the scale in Theme.qml.
 // Widths, icons (32: one of Windows' own icon sizes at every scaling) and
 // 1-pixel lines stay. C++ has the heights it places windows by in UiSize.h.

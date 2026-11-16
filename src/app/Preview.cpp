@@ -3312,7 +3312,7 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
         // #245: two lines belong together; the gap to the next result must
         // remain larger than the space between a name and its folder.
         const QString previousSize = SystemTheme::uiSize();
-        for (const QString& size : {u"compact"_s, u"standard"_s, u"roomy"_s}) {
+        for (const QString& size : {u"dense"_s, u"compact"_s, u"standard"_s, u"roomy"_s}) {
             SystemTheme::setUiSize(size);
             DialogBar::setUiSize(size);
             list->setHeight(5 * bar.rowHeight());
@@ -3820,7 +3820,7 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
         // #173: cover the whole visible handle, rather than only its centre.
         // Measure the native client extent independently of Qt's reported DPR.
         const QString previousUiSize = SystemTheme::uiSize();
-        for (const QString& size : {u"compact"_s, u"standard"_s, u"roomy"_s}) {
+        for (const QString& size : {u"dense"_s, u"compact"_s, u"standard"_s, u"roomy"_s}) {
             SystemTheme::setUiSize(size);
             settle(window);
             // #162: the type strip shown once (文件) and closed again keeps
@@ -4174,7 +4174,7 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
         sampleRoot->setParentItem(appearance.contentItem());
         const QString previousSize = SystemTheme::uiSize();
         showOffScreen(&appearance);
-        for (const QString& size : {u"compact"_s, u"standard"_s, u"roomy"_s}) {
+        for (const QString& size : {u"dense"_s, u"compact"_s, u"standard"_s, u"roomy"_s}) {
             SystemTheme::setUiSize(size);
             sampleRoot->setSize({760, sampleRoot->implicitHeight()});
             appearance.resize(760, qRound(sampleRoot->height()));
@@ -7807,8 +7807,11 @@ int runResults(const QStringList& args)
                         // their boxes may touch, their letters must not. A line's letters
                         // stand on its baseline, no taller than its font.
                         const auto baseline = [](QQuickItem* label) { return label->y() + label->property("baselineOffset").toReal(); };
+                        // 密集 (GitHub #352): side by side on one baseline, 12 apart.
+                        const bool sideBySide = SystemTheme::uiSize() == u"dense";
                         if (sizeVisible && dateVisible
-                            && baseline(date) - baseline(size) < date->property("font").value<QFont>().pixelSize())
+                            && (sideBySide ? size->x() + size->width() + 12 > date->x() + 0.5
+                                           : baseline(date) - baseline(size) < date->property("font").value<QFont>().pixelSize()))
                             qWarning("preview: size and date overlap in row %d", i);
                     }
                 }

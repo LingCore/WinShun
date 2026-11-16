@@ -1164,6 +1164,8 @@ bool checkResultRowSpacing(QQmlEngine* engine, const QDir& output)
         check(launcher.results()->count() >= 3, mode + u": rows to measure"_s);
         const QImage picture = window->grabWindow().convertToFormat(QImage::Format_RGB32);
         const qreal dpr = picture.devicePixelRatio();
+        // 密集 (GitHub #352): the launcher's rows are one line, the folder after the name.
+        const bool oneLine = !folder && SystemTheme::uiSize() == u"dense";
         // Per row, from the top: where its name's ink starts and ends, then its folder's.
         struct Lines { int nameTop = -1, nameBottom = -1, folderTop = -1, folderBottom = -1; };
         std::vector<Lines> rows;
@@ -1184,15 +1186,19 @@ bool checkResultRowSpacing(QQmlEngine* engine, const QDir& output)
                 else
                     runs.back().second = y;
             }
-            if (runs.size() != 2) {
-                check(false, mode + u": row %1 shows two lines of ink (%2)"_s.arg(i).arg(runs.size()));
+            if (runs.size() != (oneLine ? 1u : 2u)) {
+                check(false, mode + u": row %1 shows %2 of ink (%3)"_s.arg(i).arg(oneLine ? u"one line"_s : u"two lines"_s).arg(runs.size()));
                 break;
             }
-            rows.push_back({area.top() + runs[0].first, area.top() + runs[0].second, area.top() + runs[1].first,
-                area.top() + runs[1].second});
+            rows.push_back({area.top() + runs[0].first, area.top() + runs[0].second, area.top() + runs.back().first,
+                area.top() + runs.back().second});
         }
         check(rows.size() == 3, mode + u": three rows measured"_s);
         if (rows.size() != 3) continue;
+        if (oneLine) {
+            check(picture.save(output.filePath(u"rows-launcher.png"_s)), mode + u": saved"_s);
+            continue; // no second line to keep apart from the next name
+        }
         qreal inner = 0, outer = 1e9;
         for (std::size_t i = 0; i < rows.size(); ++i) {
             inner = std::max<qreal>(inner, (rows[i].folderTop - rows[i].nameBottom - 1) / dpr);

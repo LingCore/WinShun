@@ -137,7 +137,7 @@ QtObject {
     readonly property color menuShadow: pick("menuShadow")
     readonly property int menuShadowSpread: pick("menuShadowSpread")
     // Density belongs to the host, shared by every menu style (#205).
-    readonly property int menuItemHeight: pick("menuItemHeight") + (metrics.size === "compact" ? -6 : metrics.size === "roomy" ? 4 : 0)
+    readonly property int menuItemHeight: pick("menuItemHeight") + (metrics.level < 2 ? -6 : metrics.size === "roomy" ? 4 : 0)
     readonly property int menuTextSize: metrics.uiBody
     readonly property int menuCaptionSize: metrics.uiCaption
     readonly property real menuPadding: pick("menuPadding")
@@ -158,14 +158,14 @@ QtObject {
     // a step of its own, see UiScale); the settings window keeps the scale
     // above. 标准 is the scale above.
     readonly property UiScale metrics: UiScale { size: SystemTheme.uiSize }
-    readonly property int step: SystemTheme.uiSize === "compact" ? 0 : SystemTheme.uiSize === "roomy" ? 2 : 1
+    readonly property int step: metrics.level < 2 ? 0 : metrics.level > 2 ? 2 : 1 // 紧凑 and 密集: 0, 标准: 1, 宽松: 2
     readonly property int uiSearch: metrics.uiSearch
     readonly property int uiTitle: metrics.uiTitle
     readonly property int uiBody: metrics.uiBody
     readonly property int uiCaption: metrics.uiCaption
     readonly property int uiTab: metrics.uiTab
     readonly property int uiSmall: metrics.uiSmall
-    readonly property int headerHeight: SystemTheme.headerHeight // the search field's row: 56, 64, 72
+    readonly property int headerHeight: SystemTheme.headerHeight // the search field's row: 44, 56, 64, 72
     readonly property int rowHeight: metrics.rowHeight
     readonly property int footerHeight: metrics.footerHeight
     readonly property int tabHeight: metrics.tabHeight

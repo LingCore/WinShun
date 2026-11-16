@@ -3016,12 +3016,12 @@ Window {
 
                 SettingRow {
                     title: qsTr("界面大小")
-                    keywords: qsTr("缩放;大小;字号;字体大小;行高;紧凑;宽松;scale;size;zoom;font").split(";")
-                    description: qsTr("搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。剪贴板可在“剪贴板”页单独设置")
+                    keywords: qsTr("缩放;大小;字号;字体大小;行高;密集;紧凑;宽松;一行;小字;scale;size;zoom;font;dense;compact").split(";")
+                    description: qsTr("搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。密集是每条结果一行的小字。剪贴板可在“剪贴板”页单独设置")
 
                     ScopeTabs {
-                        readonly property var sizes: ["compact", "standard", "roomy"]
-                        labels: [qsTr("紧凑"), qsTr("标准"), qsTr("宽松")]
+                        readonly property var sizes: ["dense", "compact", "standard", "roomy"]
+                        labels: [qsTr("密集"), qsTr("紧凑"), qsTr("标准"), qsTr("宽松")]
                         current: Math.max(0, sizes.indexOf(window.editor.uiSize))
                         onActivated: (index) => window.editor.uiSize = sizes[index]
                     }

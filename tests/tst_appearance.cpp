@@ -514,15 +514,18 @@ private slots:
         }
         QVERIFY(changed.count() >= 3);
         QSignalSpy resized(values.get(), SIGNAL(rowChanged()));
-        const QStringList sizes {u"compact"_s, u"standard"_s, u"roomy"_s, u"standard"_s};
+        // 密集 (one line per result, GitHub #352), 紧凑, 标准, 宽松, 标准 again.
+        const QStringList sizes {u"dense"_s, u"compact"_s, u"standard"_s, u"roomy"_s, u"standard"_s};
+        const int headers[] {44, 56, 64, 72, 64};
+        const int rows[] {32, 52, 60, 68, 60};
+        const int bodies[] {14, 14, 16, 18, 16};
         for (int i = 0; i < sizes.size(); ++i) {
             SystemTheme::setUiSize(sizes[i]);
-            const int step = i == 3 ? 1 : i;
-            QCOMPARE(values->property("header").toInt(), 56 + 8 * step);
-            QCOMPARE(values->property("row").toInt(), 52 + 8 * step);
-            QCOMPARE(values->property("body").toInt(), 14 + 2 * step);
+            QCOMPARE(values->property("header").toInt(), headers[i]);
+            QCOMPARE(values->property("row").toInt(), rows[i]);
+            QCOMPARE(values->property("body").toInt(), bodies[i]);
         }
-        QCOMPARE(resized.count(), 4);
+        QCOMPARE(resized.count(), 5);
 
         QQuickWindow window;
         window.setFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);

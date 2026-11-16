@@ -136,7 +136,7 @@ Renderer=d3d11           ; d3d11（文字清晰）| software（省内存，文�
 Corners=round            ; round | square：Windows 11 默认 round，Windows 10 默认 square；无效值回到系统默认
 Theme=system             ; system（跟随 Windows 的浅色 / 深色）| light | dark
 Language=system          ; system（Windows 显示语言是中文就用中文，否则英文）| zh | en
-UiSize=standard          ; compact | standard | roomy：启动器、剪贴板、对话框旁搜索框的字号和行高（UiSize.h、Theme.qml），设置窗口不变
+UiSize=standard          ; dense | compact | standard | roomy：启动器、剪贴板、对话框旁搜索框的字号和行高（UiSize.h、Theme.qml）；密集的启动器结果一条一行，对话框旁搜索框的行高同紧凑；设置窗口不变
 TaskbarIcon=color        ; color | mono：通知区域和任务栏搜索框里的图标；mono 是单色线条（platform/MonoLogo），随任务栏浅色、深色变黑或白
 
 [Update]
