@@ -423,6 +423,17 @@ private:
                     layout.icons = r;
             }
         }
+        // Start is always in the frame. None read: the taskbar caught while
+        // putting itself together again (a frame left with no children, or
+        // only a container across it). Taken as the whole bar free, it sent
+        // the box beside the tray with the icons centred, till a reading
+        // with them came back over it. Not a reading: the box stays, and is
+        // measured again a second later, the frame looked for anew.
+        if (!layout.icons) {
+            layout.trouble = printed(L"no icons in the TaskbarFrame (%d children)", count);
+            m_frame.Reset();
+            return layout;
+        }
         if (full && root) { // on some builds outside the frame
             m_outside.clear();
             ComPtr<IUIAutomationElementArray> trayIcons;
