@@ -142,6 +142,14 @@ public:
     // hideColumn at once, without the fade.
     Q_INVOKABLE void showColumn(QWindow* column);
     Q_INVOKABLE void hideColumn(QWindow* column) const;
+    // Puts a column at `at` (Qt's pixels, inside the work area `area`) on
+    // the screen's own pixels, which Qt's whole ones do not all reach at
+    // 150 %: beside `before` with the border they share one line (side 1:
+    // on its right, -1: on its left, 0: at `at`'s x), and with `level` its
+    // top `rowOffset` (Qt's pixels) below the top of `before`, its first row
+    // level with the row it came from (GitHub #348).
+    Q_INVOKABLE void placeColumn(QWindow* column, QWindow* before, QPointF at, int side, qreal rowOffset, bool level,
+        QRectF area) const;
     Q_INVOKABLE void trigger(int index);
     // The folders inside `folder`, for the page a folder's row opens (GitHub
     // #170): read off the GUI thread (a share may take its time), answered

@@ -151,6 +151,7 @@ Window {
     // row level with the row it came from; all inside the work area.
     function layout() {
         const shown = Math.min(depth, maxColumns)
+        let raised = false
         for (let visual = 1; visual < shown; ++visual) {
             if (visual > windows.length)
                 windows = windows.concat([columnWindow.createObject(menu, { visual: visual })])
@@ -159,9 +160,13 @@ Window {
             if (frame.page !== shownPage)
                 frame.page = shownPage
             placeColumn(frame, visual)
-            if (!frame.visible)
-                folderMenu.showColumn(frame) // cloaked until its first frame
+            if (!frame.visible) {
+                folderMenu.showColumn(frame) // cloaked until its first frame, in front
+                raised = true
+            }
         }
+        if (raised && pathTip.visible)
+            pathTip.raise() // the path stays in front of the columns
         for (let visual = shown; visual <= windows.length; ++visual) {
             const frame = windows[visual - 1]
             if (!frame.visible) continue
@@ -176,7 +181,9 @@ Window {
     function placeColumn(frame, visual) {
         const before = frameAt(visual - 1)
         const area = availableArea
-        const top = columnAt(visual - 1).rowTop(pages[levelAt(visual - 1)].from)
+        // Its top less the padding, from the top of the column before: its
+        // first row level with the row it came from.
+        const offset = columnAt(visual - 1).rowTop(pages[levelAt(visual - 1)].from) - padding - before.y
         const right = before.x + before.width - 1 // over its edge: one line between the two
         const left = before.x - frame.width + 1
         const roomRight = area.width <= 0 || right + frame.width <= area.x + area.width - 8
@@ -184,15 +191,18 @@ Window {
         let toLeft = before.direction < 0
         if (toLeft ? !roomLeft && roomRight : !roomRight && roomLeft)
             toLeft = !toLeft
-        let x = toLeft ? left : right
-        let y = Math.round(top - padding)
+        const beside = toLeft ? left : right
+        const level = Math.round(before.y + offset)
+        let x = beside
+        let y = level
         if (area.width > 0) {
             x = Math.max(area.x + 8, Math.min(x, area.x + area.width - frame.width - 8))
             y = Math.max(area.y + 8, Math.min(y, area.y + area.height - frame.height - 8))
         }
         frame.direction = toLeft ? -1 : 1
-        frame.x = x
-        frame.y = y
+        // On the screen's own pixels: the border the two share one line, at
+        // every scale (Qt's whole pixels are 1.5 of them at 150 %).
+        folderMenu.placeColumn(frame, before, Qt.point(x, y), x === beside ? frame.direction : 0, offset, y === level, area)
     }
 
     function selectable(level, i) {
@@ -236,13 +246,15 @@ Window {
             pending = null
             slow.stop()
         }
+        // Chosen first: the row that column shows stays the same throughout,
+        // or the list would bring it back into sight (a scroll closing columns).
+        highlighted = row
         if (level < depth - 1) {
             pages = pages.slice(0, level)
             if (pointerLevel >= level) pointerLevel = pointerRow = -1
             rest()
             layout()
         }
-        highlighted = row
     }
     // The column a row leads to: a group's rows, or the folders inside a
     // folder (read first; the column says so only when that takes a while).
@@ -345,6 +357,18 @@ Window {
         } else if (pointerLevel === level && pointerRow === i) {
             pointerLevel = pointerRow = -1 // the row its next column came from again
         }
+    }
+    // Column `level`'s list moved (the wheel, its bar, or to show a row): the
+    // columns after it follow the row they came from while it is in sight,
+    // and close once it is not. What the list brings under a pointer at rest
+    // opens nothing until the pointer moves (#348).
+    function scrolled(level) {
+        if (level >= depth) return
+        rest()
+        if (level === depth - 1) return
+        const shown = columnAt(visualOf(level))
+        if (shown !== null && shown.rowInSight(pages[level].from)) layout()
+        else closeAfter(level, rowShown(level))
     }
     function forgetRow(level, i, row) {
         if (hoverLevel === level && hoverRow === i) hoverLevel = hoverRow = -1
@@ -499,6 +523,7 @@ Window {
         onGone: (index, row) => menu.forgetRow(0, index, row)
         onChosen: index => menu.activate(0, index, true)
         onExpanded: index => menu.open(0, index, true)
+        onScrolled: menu.scrolled(0)
     }
     Component {
         id: columnWindow
@@ -530,11 +555,13 @@ Window {
                 onGone: (index, row) => menu.forgetRow(next.level, index, row)
                 onChosen: index => menu.activate(next.level, index, true)
                 onExpanded: index => menu.open(next.level, index, true)
+                onScrolled: menu.scrolled(next.level)
             }
             WindowEdge { body: false } // the menu's colour is the window's
         }
     }
     MenuPathTip {
+        id: pathTip
         host: menu
         availableArea: menu.availableArea
         target: menu.hoveredText.length > 0 ? menu.hoveredEntry : null

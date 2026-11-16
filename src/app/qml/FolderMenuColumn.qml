@@ -26,6 +26,7 @@ Item {
     signal gone(int index, Item row) // a row scrolled away (pooled)
     signal chosen(int index) // a row clicked
     signal expanded(int index) // its arrow clicked
+    signal scrolled() // the list moved: the wheel, its bar, or to show its highlighted row
 
     function rowHeight(entry: var): real {
         return entry.separator === true ? 9 : entry.heading === true ? sectionHeight : itemHeight
@@ -38,6 +39,16 @@ Item {
             y += rowHeight(entries[k])
         y = Math.max(0, Math.min(y - (flick.contentY - flick.originY), flick.height - itemHeight))
         return column.mapToGlobal(0, flick.y + y).y
+    }
+    // Whether row i is in sight: its middle inside the list.
+    function rowInSight(i: int): bool {
+        if (i < 0 || i >= entries.length)
+            return false
+        let y = 0
+        for (let k = 0; k < i; ++k)
+            y += rowHeight(entries[k])
+        const middle = y - (flick.contentY - flick.originY) + rowHeight(entries[i]) / 2
+        return middle >= 0 && middle <= flick.height
     }
     function sync() {
         flick.currentIndex = highlighted // the list's highlight follows it
@@ -85,6 +96,7 @@ Item {
         clip: true
         reuseItems: true
         model: column.entries
+        onContentYChanged: column.scrolled()
         // One highlight for the list, under the item chosen or pointed at:
         // it jumps, or slides as the style says (Theme.rowSlide). Not
         // managed by the view's own current item: column.highlighted is.

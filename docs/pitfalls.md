@@ -3046,6 +3046,12 @@
 - **原因**：Qt 6 的 `QTest::mouseMove(QWindow*)` 只发 Qt 事件，不动系统光标，而 #348 的“光标没动就不算”比的是 `QCursor::pos()`，测试里它一直不变。`Item` 本来就有锚线属性 `left / right / top / bottom` 等，同名信号盖不掉它。屏幕外的窗口收不到尺寸变化，`contentItem` 一直是 0×0，`anchors.fill: parent` 的子项跟着是 0×0。
 - **做法**：`FolderMenu::setCursorSource` 让测试自己给光标位置；从一个窗口移到另一个窗口时给离开的窗口发 `QEvent::Leave`，模拟 Windows 的鼠标离开（`tst_foldermenu` 的 `Pointer`）。信号改名 `unpointed`。列的尺寸直接绑窗口的 `width / height`，不用 `anchors.fill`。
 
+### 多列的接缝、路径提示、滚动（#348 实测）
+
+- **现象**：150 % 下第一、二列之间是一条 2 px 的线，第二、三列之间却是 3 px 的渐变线；完整路径提示被它所在的那一列盖住；滚动一列时，后面的列停在原处。修滚动的过程中，又发现来源行滚出视野、后面的列收起时，列表会自己跳回那一行。
+- **原因**：`QWindow` 的位置只能是整数的 Qt 像素，150 % 下换算成设备像素时隔一个就有一个到不了：每列宽 360（540 设备像素），叠 1 个 Qt 像素是 1.5 个设备像素，能不能和上一列的 2 px 边框重合，要看奇偶。`ShowWindow` 重新显示窗口时不改它的前后次序，所以提示框一直留在第一次显示时的位置，之后显示的列都在它前面。`closeAfter` 先截短 `pages` 再改 `highlighted`，那一列的高亮行中途变过一次，`sync()` 就把列表滚回高亮行。
+- **做法**：列的位置由 `FolderMenu::placeColumn` 直接按设备像素放（`SetWindowPos`）：左边界 = 上一列的右边界 − 边框宽，边框宽取 DWM 的 `DWMWA_VISIBLE_FRAME_BORDER_THICKNESS`（144 dpi 时是 2，Windows 10 没有就按 `Theme.edge`）；纵向位置也换成设备像素对齐来源行，并限制在工作区内。提示框每次显示、每显示一列都 `raise()`。列表一动，后面的列就跟着来源行走，来源行滚出视野时收起；滚动之后调 `rest()`，滚到静止光标下的行也不展开。`closeAfter` 先设 `highlighted`。测试里自己构造 `QWheelEvent` 时要给时间戳，并且接在 `QTest::lastMouseTimestamp` 之后，否则 Flickable 只认第一格。
+
 ### 贴图原地编辑（#343）：lupdate 认错上下文、软件渲染器的分隔线
 
 - **现象**：贴图快捷键卡片的一条文字在 `capture_en.ts` 里跑到了别的上下文，翻译不生效；数编辑工具条分隔线的像素时，150 % 下量出 3 个设备像素高。

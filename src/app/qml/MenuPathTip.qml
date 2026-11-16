@@ -47,6 +47,9 @@ Window {
             const y = above >= area.y + 8 ? above : p.y + tip.target.height + 6
             tip.y = Math.round(Math.max(area.y + 8, Math.min(y, area.y + area.height - tip.height - 8)))
             tip.shown = true
+            // In front of the host's other windows shown since it was last
+            // (the folder menu's columns): shown again, it keeps its place.
+            tip.raise()
         }
     }
     Hook {

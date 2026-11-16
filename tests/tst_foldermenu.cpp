@@ -31,8 +31,10 @@
 #include <QCursor>
 #include <QPixmap>
 #include <QPointer>
+#include <QWheelEvent>
 #include <cmath>
 #include <commctrl.h>
+#include <dwmapi.h>
 
 namespace {
 // Owned desktop-shaped windows: never changes Explorer or desktop settings.
@@ -193,6 +195,58 @@ class FolderMenuTest : public QObject {
             && r.y() + r.height() <= area.y() + area.height() - 7;
     }
     static HWND handle(QWindow* window) { return reinterpret_cast<HWND>(window->winId()); }
+    // A window on the screen's own pixels (Qt's whole ones are 1.5 of them at 150 %).
+    static QRect screenRect(QWindow* window)
+    {
+        RECT r {};
+        ::GetWindowRect(handle(window), &r);
+        return QRect(QPoint(r.left, r.top), QSize(r.right - r.left, r.bottom - r.top));
+    }
+    // The edge Windows draws inside a window, in the screen's pixels: DWM's on
+    // Windows 11 (DWMWA_VISIBLE_FRAME_BORDER_THICKNESS), WindowEdge's on 10.
+    static int frameBorder(QWindow* window)
+    {
+        UINT thickness = 0;
+        if (SUCCEEDED(::DwmGetWindowAttribute(handle(window), 37, &thickness, sizeof thickness)) && thickness > 0)
+            return static_cast<int>(thickness);
+        return std::max(1, qRound(window->devicePixelRatio()));
+    }
+    // `next` beside `before` (side 1: on its right), the border they share
+    // one line on the screen's pixels (#348: one off, it was a 3 px seam).
+    // Empty when so, else what is not.
+    static QByteArray seam(QWindow* before, QWindow* next, int side)
+    {
+        const QRect a = screenRect(before), b = screenRect(next);
+        const int border = frameBorder(before);
+        const bool shared = side > 0 ? b.x() == a.x() + a.width() - border : b.x() + b.width() == a.x() + border;
+        return shared ? QByteArray()
+                      : u"side %1: %2..%3 then %4..%5, border %6"_s.arg(side).arg(a.x()).arg(a.x() + a.width())
+                            .arg(b.x()).arg(b.x() + b.width()).arg(border).toUtf8();
+    }
+    // Where row `index` starts on the screen's own pixels.
+    static qreal screenTop(QQuickWindow* window, int index)
+    {
+        auto* item = rowItem(window, index);
+        return item ? screenRect(window).y() + item->mapToScene(QPointF(0, 0)).y() * window->devicePixelRatio() : -1e6;
+    }
+    // Whether `top` is in front of `below` on the screen.
+    static bool inFront(QWindow* top, QWindow* below)
+    {
+        for (HWND h = ::GetWindow(handle(top), GW_HWNDNEXT); h; h = ::GetWindow(h, GW_HWNDNEXT)) {
+            if (h == handle(below))
+                return true;
+        }
+        return false;
+    }
+    // The wheel turned over `local` of `window` (towards the user: negative).
+    static void wheel(QWindow* window, QPoint local, int notches)
+    {
+        QWheelEvent event(QPointF(local), QPointF(window->mapToGlobal(local)), QPoint(), QPoint(0, 120 * notches),
+            Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QTest::lastMouseTimestamp += 300; // on QTest's clock, after its pointer's moves
+        event.setTimestamp(QTest::lastMouseTimestamp);
+        QCoreApplication::sendEvent(window, &event);
+    }
     static QVariantMap group(const QString& text, const QVariantList& children)
     {
         return {{u"text"_s, text}, {u"glyph"_s, u"\uE8B7"_s}, {u"children"_s, children}};
@@ -1036,7 +1090,39 @@ private slots:
         QVERIFY2(aligned(second->x(), first->x() + width - 1), qPrintable(u"x %1"_s.arg(second->x())));
         QVERIFY2(aligned(topOf(second, 0), topOf(first, 1)), tops(topOf(second, 0), topOf(first, 1)).constData());
         QCOMPARE(value(object.get(), u"rowShown(1)"_s).toInt(), 1);
+        // On the screen's own pixels: each border the columns share one line,
+        // every row level with the one it came from (half a pixel at 150 %).
+        QByteArray wrong = seam(window, first, 1);
+        QVERIFY2(wrong.isEmpty(), wrong.constData());
+        wrong = seam(first, second, 1);
+        QVERIFY2(wrong.isEmpty(), wrong.constData());
+        QVERIFY2(std::abs(screenTop(first, 0) - screenTop(window, 1)) <= 0.51,
+            tops(screenTop(first, 0), screenTop(window, 1)).constData());
+        QVERIFY2(std::abs(screenTop(second, 0) - screenTop(first, 1)) <= 0.51,
+            tops(screenTop(second, 0), screenTop(first, 1)).constData());
         QVERIFY(screenEvidence({window, first, second}, dark ? u"cascade-dark"_s : u"cascade-light"_s));
+
+        // The full path in front of every column, those shown after it too.
+        key(Qt::Key_Left);
+        QCOMPARE(depth(), 2);
+        auto* tip = object->findChild<QQuickWindow*>(u"menuPathTip"_s);
+        QVERIFY(tip);
+        object->setProperty("hoveredText", u"C:\\项目资料\\2025"_s);
+        object->setProperty("hoveredEntry", QVariant::fromValue(rowItem(first, 1)));
+        QTRY_VERIFY(tip->isVisible());
+        QVERIFY(inFront(tip, first));
+        key(Qt::Key_Right);
+        QCOMPARE(depth(), 3);
+        QVERIFY(second->isVisible());
+        QVERIFY2(inFront(tip, second) && inFront(tip, first) && inFront(tip, window), "the path behind a column");
+        QTRY_VERIFY(rowItem(second, 0));
+        object->setProperty("hoveredText", u"C:\\项目资料\\2025\\01 一月"_s);
+        object->setProperty("hoveredEntry", QVariant::fromValue(rowItem(second, 0)));
+        QTRY_COMPARE(tip->property("shownText").toString(), u"C:\\项目资料\\2025\\01 一月"_s);
+        QVERIFY(tip->isVisible());
+        QVERIFY2(inFront(tip, second) && inFront(tip, first), "the path behind its own column");
+        object->setProperty("hoveredText", QString());
+        QTRY_VERIFY(!tip->isVisible());
         key(Qt::Key_Escape);
         QVERIFY(!window->isVisible());
         QVERIFY(!first->isVisible());
@@ -1058,6 +1144,10 @@ private slots:
         QVERIFY(second->isVisible());
         QVERIFY2(aligned(second->x(), first->x() - width + 1), qPrintable(u"x %1"_s.arg(second->x())));
         QVERIFY(inside(area, second));
+        wrong = seam(window, first, -1);
+        QVERIFY2(wrong.isEmpty(), wrong.constData());
+        wrong = seam(first, second, -1);
+        QVERIFY2(wrong.isEmpty(), wrong.constData());
         key(Qt::Key_Escape);
 
         // No room on either side: against the edge, over the menu.
@@ -1096,6 +1186,11 @@ private slots:
             auto* shown = column(object.get(), visual);
             QVERIFY(shown && shown->isVisible());
             QVERIFY2(inside(area, shown), qPrintable(u"column %1 at %2"_s.arg(visual).arg(shown->x())));
+            if (visual == 0)
+                continue;
+            // Right, right, then left over them, and so on: every seam one line.
+            wrong = seam(column(object.get(), visual - 1), shown, shown->property("direction").toInt());
+            QVERIFY2(wrong.isEmpty(), qPrintable(u"column %1: "_s.arg(visual) + QString::fromUtf8(wrong)));
         }
         key(Qt::Key_Left);
         QCOMPARE(depth(), 10);
@@ -1235,6 +1330,96 @@ private slots:
         pointer.moveTo(first, first->mapFromGlobal(pointer.at) + QPoint(3, 0));
         QTRY_COMPARE(depth(), 3);
         key(Qt::Key_Escape);
+        QCOMPARE(warnings.count(), 0);
+    }
+
+    // A column scrolled (GitHub #348): the columns after it follow the row
+    // they came from while it is in sight and close once it is not; the rows
+    // the list brings under the pointer at rest open nothing until it moves.
+    void cascadeScroll()
+    {
+        QVariantList folders;
+        for (int i = 1; i <= 30; ++i)
+            folders.append(group(u"文件夹 %1"_s.arg(i), {leaf(u"文件 %1"_s.arg(i))}));
+        FolderMenu menu(nullptr, nullptr);
+        menu.previewEntries({group(u"很多文件夹"_s, folders), leaf(u"设置"_s)});
+        Pointer pointer;
+        menu.setCursorSource([&pointer] { return pointer.at; });
+        QQmlEngine engine;
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        std::unique_ptr<QObject> object = load(engine, menu);
+        QVERIFY(object);
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        QVERIFY(window);
+        const QRect area = awayFromPointer(QSize(3 * window->width() + 60, 460));
+        emit menu.popupRequested(QPointF(area.topLeft() + QPoint(8, 8)));
+        object->setProperty("availableArea", QRectF(area));
+        QMetaObject::invokeMethod(object.get(), "place");
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        const auto key = [&](Qt::Key k) { emit menu.keyPressed(k, {}); };
+        const auto depth = [&] { return object->property("depth").toInt(); };
+        const auto from = [&](int level) {
+            return value(object.get(), u"pages.length > %1 ? pages[%1].from : -1"_s.arg(level)).toInt();
+        };
+        const auto inSight = [&](int row) { return value(object.get(), u"columnAt(1).rowInSight(%1)"_s.arg(row)).toBool(); };
+        const auto state = [&] {
+            return value(object.get(), u"JSON.stringify({hoverRow, pointerRow, highlighted, depth, rest: restingCursor})"_s)
+                .toString().toUtf8();
+        };
+
+        // Row 8 of the long column opens its own beside it.
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        auto* first = column(object.get(), 1);
+        QVERIFY(first && first->isVisible());
+        QTRY_VERIFY(rowItem(first, 8));
+        for (int i = 0; i < 8; ++i)
+            key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QCOMPARE(depth(), 3);
+        QCOMPARE(from(1), 8);
+        auto* second = column(object.get(), 2);
+        QVERIFY(second && second->isVisible());
+        QTRY_VERIFY(rowItem(second, 0));
+        auto* list = visualItem(first->contentItem(), u"folderMenuScroll"_s);
+        QVERIFY(list);
+        pointer.moveTo(first, on(first, 8)); // on that row, then at rest
+        QTest::qWait(400);
+        QCOMPARE(depth(), 3);
+        QCOMPARE(from(1), 8);
+
+        // Two rows down: its column follows the row.
+        const qreal was = screenTop(first, 8);
+        list->setProperty("contentY", 2 * object->property("itemHeight").toReal());
+        QVERIFY(screenTop(first, 8) < was - 10);
+        QVERIFY(inSight(8));
+        QCOMPARE(depth(), 3);
+        QVERIFY2(std::abs(screenTop(second, 0) - screenTop(first, 8)) <= 0.51,
+            qPrintable(u"row tops %1 and %2"_s.arg(screenTop(second, 0)).arg(screenTop(first, 8))));
+        QTest::qWait(700); // the row now under the pointer: nothing
+        QVERIFY2(depth() == 3 && from(1) == 8, state().constData());
+
+        // The wheel on until the row is out of sight: its column closes, the
+        // row stays chosen, and nothing under the pointer opens.
+        const QPoint local = first->mapFromGlobal(pointer.at);
+        for (int i = 0; i < 12 && depth() == 3; ++i) {
+            wheel(first, local, -1);
+            QTest::qWait(200);
+        }
+        QVERIFY2(depth() == 2, state().constData());
+        QVERIFY(!second->isVisible());
+        QVERIFY(!inSight(8));
+        QCOMPARE(object->property("highlighted").toInt(), 8);
+        QTRY_VERIFY(!list->property("moving").toBool());
+        QTest::qWait(700);
+        QVERIFY2(depth() == 2, state().constData());
+
+        // The pointer moves: the row under it opens its column.
+        pointer.moveTo(first, local + QPoint(3, 0));
+        QTRY_COMPARE(depth(), 3);
+        QVERIFY(from(1) > 8);
+        key(Qt::Key_Escape);
+        QVERIFY(!first->isVisible());
         QCOMPARE(warnings.count(), 0);
     }
 };

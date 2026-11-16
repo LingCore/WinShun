@@ -607,7 +607,10 @@ void folderGroups(QQmlEngine* engine, const QDir& output, Checks& check)
         u"More opens the remaining folders under their original group title"_s);
     check(root->property("highlighted").toInt() == 0 && value(u"rowShown(0)"_s).toInt() == 4,
         u"its first folder is chosen and More stays highlighted"_s);
-    check(more->width() == window->width() && more->x() == window->x() + window->width() - 1,
+    // Over its edge by the border they share: Windows' own, 2 px at 144 dpi
+    // while Qt's scale here is 1 (tst_foldermenu checks it on the screen's pixels).
+    const int overlap = window->x() + window->width() - more->x();
+    check(more->width() == window->width() && overlap >= 1 && overlap <= 2,
         u"the column is as wide as the menu, beside it over its edge (x %1, menu %2 + %3)"_s.arg(more->x())
             .arg(window->x()).arg(window->width()));
     check(std::abs(rowTop(more, 0) - rowTop(window, 4)) <= 1,
