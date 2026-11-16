@@ -354,10 +354,12 @@ void DialogBar::setDialog(HWND dialog)
         m_movingTo.reset();
         m_moveTimeout.stop();
         const filedialog::Kind kind = filedialog::kind(dialog);
+        const bool opens = filedialog::opensFiles(dialog, kind);
         const bool elevated = integrity::higherThanOurs(dialog);
         const bool copyOnly = elevated && !m_elevatedNavAvailable;
-        if (kind != m_kind || copyOnly != m_copyOnly || elevated != m_elevated) {
+        if (kind != m_kind || opens != m_opens || copyOnly != m_copyOnly || elevated != m_elevated) {
             m_kind = kind;
+            m_opens = opens;
             m_copyOnly = copyOnly;
             m_elevated = elevated;
             emit dialogKindChanged();

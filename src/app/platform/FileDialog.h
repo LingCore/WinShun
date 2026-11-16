@@ -81,4 +81,9 @@ bool setFileName(HWND dialog, const std::wstring& name);
 // for the program, which may take a while with the file.
 bool accept(HWND dialog);
 
+// Pressing accept() opens the file: an Open dialog, or one of the Windows XP
+// style (AutoCAD's too) whose button says 打开 / Open, not 保存 / Save.
+// `kind` is kind(dialog).
+bool opensFiles(HWND dialog, Kind kind);
+
 } // namespace ws::filedialog

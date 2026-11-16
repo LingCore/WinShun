@@ -207,6 +207,15 @@ private slots:
         QVERIFY(dialog.valid());
         QCOMPARE(fd::kind(dialog.handle()), Kind::Legacy);
         QCOMPARE(fd::fileType(dialog.handle()), std::wstring(L"Drawing (*.dwg)"));
+        // Ctrl+Enter opens a file only where its button opens one (#353).
+        QVERIFY(!fd::opensFiles(dialog.handle(), Kind::Legacy));
+        dialog.setAcceptText(L"打开(&O)");
+        QVERIFY(fd::opensFiles(dialog.handle(), Kind::Legacy));
+        dialog.setAcceptText(L"&Open");
+        QVERIFY(fd::opensFiles(dialog.handle(), Kind::Legacy));
+        dialog.setAcceptText(L"保存(&S)");
+        QVERIFY(!fd::opensFiles(dialog.handle(), Kind::Legacy));
+        QVERIFY(!fd::opensFiles(dialog.handle(), Kind::Save));
         QVERIFY(fd::goTo(dialog.handle(), target));
         QCOMPARE(dialog.entered(), std::vector<std::wstring> {target + L'\\'});
         QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));

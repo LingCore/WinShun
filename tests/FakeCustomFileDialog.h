@@ -46,6 +46,7 @@ public:
     void withoutType() { ::DestroyWindow(m_types); }
     void withoutList() { ::DestroyWindow(m_list); }
     void withoutCancel() { ::DestroyWindow(m_cancel); }
+    void setAcceptText(const wchar_t* text) { ::SetWindowTextW(::GetDlgItem(m_window, IDOK), text); }
     void ambiguousName() { make(L"ComboBox", m_window, CBS_DROPDOWN, 0x885, 20, 280, 400, 200); }
 
 private:

@@ -207,7 +207,7 @@ public:
     QString explorerSource() const;
     QString originName() const;
     bool foldersOnly() const { return m_kind == filedialog::Kind::Folder || m_kind == filedialog::Kind::Browse; }
-    bool canOpen() const { return !m_elevated && m_kind == filedialog::Kind::Open; }
+    bool canOpen() const { return !m_elevated && m_opens; }
     bool copyOnly() const { return m_copyOnly; }
     QString copyOnlyHint() const { return m_copyOnlyHint; }
     bool elevatedJump() const { return m_elevated && m_elevatedNavAvailable; }
@@ -292,6 +292,7 @@ private:
     HWND m_dialog = nullptr;
     QString m_dialogApp; // its program file, "notepad.exe"
     filedialog::Kind m_kind = filedialog::Kind::None;
+    bool m_opens = false; // pressing its button opens the file: Ctrl+Enter (filedialog::opensFiles, #353)
     bool m_copyOnly = false; // UIPI: search is available, applying the path is manual (no service helper)
     bool m_elevated = false; // the dialog is of a higher-integrity (elevated) process
     bool m_elevatedNavAvailable = false; // the service can drive elevated dialogs (#104)

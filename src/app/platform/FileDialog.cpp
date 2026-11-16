@@ -197,6 +197,15 @@ bool send(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return ::SendMessageTimeoutW(hwnd, msg, wParam, lParam, SMTO_ABORTIFHUNG, 2000, &result) != 0;
 }
 
+// A dialog's accept button that opens rather than saves: "打开(&O)", "開啟",
+// "&Open".
+bool saysOpen(std::wstring label)
+{
+    std::erase(label, L'&');
+    const auto has = [&label](std::wstring_view word) { return label.find(word) != std::wstring::npos; };
+    return has(L"打开") || has(L"打開") || has(L"開啟") || ::_wcsnicmp(label.c_str(), L"Open", 4) == 0;
+}
+
 // What a control of another program holds: GetWindowText does not ask
 // another program's controls (WM_GETTEXT).
 std::wstring controlText(HWND hwnd)
@@ -567,9 +576,7 @@ Kind probe(HWND hwnd)
     ComPtr<IUIAutomationElement> accept;
     waitFor([&] { return (accept = dialog.acceptButton()) != nullptr; }, 500ms);
     const std::wstring label = accept ? Dialog::nameOf(accept.Get()) : std::wstring(); // "保存(S)", "打开(O)"
-    const bool open = label.find(L"打开") != std::wstring::npos || label.find(L"開啟") != std::wstring::npos
-        || ::_wcsnicmp(label.c_str(), L"Open", 4) == 0;
-    return open ? Kind::Open : Kind::Save;
+    return saysOpen(label) ? Kind::Open : Kind::Save;
 }
 
 bool goTo(HWND hwnd, const std::wstring& folder)
@@ -814,6 +821,19 @@ bool accept(HWND dialog)
         return dialogrules::accept(dialog);
     const HWND ok = ::GetDlgItem(dialog, IDOK);
     return ok && ::PostMessageW(dialog, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), reinterpret_cast<LPARAM>(ok));
+}
+
+bool opensFiles(HWND dialog, Kind kind)
+{
+    if (kind == Kind::Open)
+        return true;
+    if (kind != Kind::Legacy)
+        return false;
+    // A button's caption is kept by Windows: read without a message to a
+    // program that may be busy (unlike an edit box's text, controlText).
+    const HWND ok = ::GetDlgItem(dialog, IDOK);
+    wchar_t label[64] {};
+    return ok && ::GetWindowTextW(ok, label, static_cast<int>(std::size(label))) > 0 && saysOpen(label);
 }
 
 } // namespace ws::filedialog
