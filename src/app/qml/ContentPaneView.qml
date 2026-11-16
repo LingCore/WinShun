@@ -19,8 +19,9 @@ Rectangle {
 
     function handleKey(event) {
         const mods = event.modifiers & ~Qt.KeypadModifier
-        if (mods === (Qt.ControlModifier | Qt.ShiftModifier) && event.key >= Qt.Key_1 && event.key <= Qt.Key_5) {
-            pane.tab = event.key - Qt.Key_1
+        const digit = SearchKeys.shiftDigit(event)
+        if (digit > 0) {
+            pane.tab = digit - 1
         } else if (event.key === Qt.Key_F3 && (mods === Qt.NoModifier || mods === Qt.ShiftModifier)) {
             if (pane.tab !== 1 && pane.tab !== 2) pane.tab = 1
             pane.nextMatch(mods === Qt.ShiftModifier ? -1 : 1)

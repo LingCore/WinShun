@@ -632,16 +632,23 @@ void Placement::togglePanelFill()
     QScreen* screen = m_window->screen();
     if (!screen)
         return;
-    const QRect area = screen->availableGeometry();
-    if (area.isEmpty())
+    // The work area to the physical pixel: in logical pixels at 150 % it
+    // rounds one over or (inwards) one short, a seam at the edges.
+    const NativeArea native = nativeArea(screen);
+    const QRect work = native.work;
+    if (work.isEmpty())
         return;
-    if (m_window->geometry() == area) { // filled: back to where it was, or to its own spot
+    const HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    RECT now {};
+    ::GetWindowRect(hwnd, &now);
+    if (QRect(QPoint(now.left, now.top), QPoint(now.right - 1, now.bottom - 1)) == work) {
+        // Filled: back to where it was, or to its own spot.
         m_window->setGeometry(m_panelUnfilled.value_or(panelRect(screen)));
         m_panelUnfilled.reset();
         return;
     }
     m_panelUnfilled = m_window->geometry();
-    m_window->setGeometry(area);
+    ::SetWindowPos(hwnd, nullptr, work.x(), work.y(), work.width(), work.height(), SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
 }
 
 void Placement::savePanel()

@@ -4,6 +4,17 @@ import QtQuick
 QtObject {
     // Normalize aliases before the existing list/grid navigation handles
     // selection, scrolling and boundaries. IME and AltGr keep their keys.
+    // Ctrl+Shift+1…5 (内容详情's tabs): 1–5, else 0. Windows hands Qt the
+    // shifted character (Ctrl+Shift+2 is @ on a US layout, " on others), so
+    // the key's place on the digit row (its scan code, 2–6) says which.
+    function shiftDigit(event: KeyEvent): int {
+        if ((event.modifiers & ~Qt.KeypadModifier) !== (Qt.ControlModifier | Qt.ShiftModifier))
+            return 0
+        if (event.key >= Qt.Key_1 && event.key <= Qt.Key_5)
+            return event.key - Qt.Key_0
+        return event.nativeScanCode >= 2 && event.nativeScanCode <= 6 ? event.nativeScanCode - 1 : 0
+    }
+
     function navigationKey(key: int, modifiers: int, composing: bool): int {
         if (composing || (modifiers & ~Qt.KeypadModifier) !== Qt.ControlModifier)
             return key

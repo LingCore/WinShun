@@ -154,11 +154,10 @@ Item {
     readonly property real paneWidth: compactDetails ? width
         : Math.min(Math.max(320, draggedPaneWidth > 0 ? draggedPaneWidth : launcher.contentPane.preferredWidth), width - sidebarWidth - 340)
     function handleContentKey(event) {
-        const mods = event.modifiers & ~Qt.KeypadModifier
-        if (contentMode && mods === (Qt.ControlModifier | Qt.ShiftModifier)
-                && event.key >= Qt.Key_1 && event.key <= Qt.Key_5) {
+        const digit = SearchKeys.shiftDigit(event)
+        if (contentMode && digit > 0) {
             launcher.contentPane.opened = true
-            launcher.contentPane.tab = event.key - Qt.Key_1
+            launcher.contentPane.tab = digit - 1
             event.accepted = true
             return true
         }

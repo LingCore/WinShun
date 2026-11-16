@@ -815,14 +815,6 @@ Window {
             event.accepted = true
             return
         }
-        // F11 (GitHub #354): the panel over the whole screen to read a file's
-        // content large, and back.
-        if (panel && event.key === Qt.Key_F11 && event.modifiers === Qt.NoModifier) {
-            if (!event.isAutoRepeat)
-                window.placement.togglePanelFill()
-            event.accepted = true
-            return
-        }
         if (isNumberChord(event) && searchBar.composition.length === 0) {
             window.launcher.pressNumber(event.key - Qt.Key_0)
             event.accepted = true
@@ -1217,6 +1209,14 @@ Window {
     // click shows that file's matches beside the list (GitHub #354).
     readonly property bool clickSelects: launcher.doubleClickToOpen || (panel && launcher.gallery)
                                          || (panel && panelPage !== null && panelPage.detailsVisible)
+    // F11 (GitHub #354): the panel over the whole screen to read a file's
+    // content large, and back; wherever the focus is in it (内容详情 too).
+    Shortcut {
+        sequence: "F11"
+        enabled: window.panel
+        autoRepeat: false
+        onActivated: window.placement.togglePanelFill()
+    }
     function rowClicked(index, modifiers) {
         spaceTogglesPreview = true
         const ctrl = (modifiers & Qt.ControlModifier) !== 0
