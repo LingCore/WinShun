@@ -44,51 +44,13 @@ Item {
     property bool opensDown: true
     property real dpr: 1
 
-    // The key list: the rows both have, then the overlay's or the editor's.
-    readonly property var commonRows: [
-        editor ? qsTr("R E A L P M T N B 或 1–9") : qsTr("1 E 3 L P M T N B 或 1–9"), qsTr("选工具：矩形、椭圆、箭头、直线、画笔、荧光笔、文字、序号、打码"),
-        qsTr("工具键再按一次"), qsTr("关掉工具"),
-        "Ctrl+Z", qsTr("撤销"),
-        "Ctrl+Y、Ctrl+Shift+Z", qsTr("重做"),
-        "Delete、Backspace", qsTr("删除选中的对象"),
-        "[  ]", qsTr("粗细、字号、格子小一档 / 大一档"),
-        "Shift+B", qsTr("智能打码：自动找出手机号、证件号、卡号、邮箱、密钥，一次全部打码"),
-        "Ctrl+[  Ctrl+]", qsTr("下移一层 / 上移一层，加 Shift 到底 / 到顶"),
-        qsTr("画的时候按住 Shift"), qsTr("正方形、正圆；线吸附 15°；画笔、荧光笔画直线"),
-        qsTr("双击"), qsTr("文字：改文字；序号：改号，序号旁的字：改字"),
-        "Ctrl+Enter、Esc", qsTr("写完文字（Enter 换行；序号旁的字 Enter 就写完）"),
-        "Ctrl+C、Enter", qsTr("复制")
-    ].concat(annot && annot.saveKeyText.length > 0 ? [annot.saveKeyText, annot.saveDirect ? qsTr("保存到设置的保存位置") : qsTr("另存为：选择保存位置")] : [],
-             annot && annot.pinKeyText.length > 0 ? [annot.pinKeyText, qsTr("贴图")] : []) // as the user set them (#187)
-    readonly property var overlayRows: [
-        "WASD", qsTr("微调鼠标光标，每次 1 个物理像素；按住左键拖选区、拖手柄或画标注时也有效"),
-        "Shift+WASD", qsTr("微调鼠标光标，每次 10 个物理像素"),
-        qsTr("滚轮"), qsTr("有工具或选中对象时改粗细"),
-        qsTr("方向键"), qsTr("挪动选中的对象；否则移动选区 1 个物理像素，Shift 调整选区大小；未框选时微调光标"),
-        "H", qsTr("隐藏 / 显示工具条"),
-        "?、F1", qsTr("显示 / 隐藏屏幕角落的快捷键提示（只管这次截图）"),
-        "C、Shift", qsTr("复制颜色并结束截图；单按 Shift 换颜色格式（HEX、RGB、HSL）"),
-        "Shift+C", qsTr("识别选区里的文字并复制"),
-        "R / Shift+R", qsTr("恢复最近选区：向前 / 向后循环，最多 10 个；使用当前画面"),
-        ",  .", qsTr("翻看之前截图时的画面（整屏、选区和标注），. 往回翻"),
-        "Q",qsTr("识别选区里的二维码"),
-        "Ctrl+Shift+D", qsTr("延时截图：关掉这次，倒计时后再截"),
-        "Ctrl+L", qsTr("长截图：选区里的内容一边滚动一边截"),
-        "Ctrl+R", qsTr("区域录屏：把选区里的操作录成 MP4 或 GIF"),
-        qsTr("Esc、右键"), qsTr("退一步：写完文字、放弃标注、关闭截图")
-    ]
-    readonly property var editorRows: [
-        qsTr("方向键"), qsTr("挪动选中的对象，按住 Shift 一次 10 像素；没有选中时滚动图片"),
-        qsTr("Shift+点击、拖空白处"), qsTr("多选；Ctrl+A 全选，Ctrl+D 复制一份"),
-        "I", qsTr("吸管：点图上的一点，取它的颜色"),
-        qsTr("拖图片的边"), qsTr("裁剪（没有工具时；有工具时从图外拖）"),
-        qsTr("滚轮"), qsTr("上下滚动，Shift 左右；Alt+滚轮改粗细"),
-        qsTr("Ctrl+滚轮、Ctrl+加号 / 减号"), qsTr("缩放"),
-        "Z", qsTr("适合窗口 / 100%"),
-        qsTr("空格 + 拖动，或中键拖动"), qsTr("平移"),
-        qsTr("Esc"), qsTr("写完文字；有改动时放弃全部（Ctrl+Z 恢复）；没有改动时关闭")
-    ]
-    readonly property var keyRows: commonRows.concat(editor ? editorRows : overlayRows)
+    // The key list: the rows both have, then the overlay's or the editor's
+    // (CaptureKeyList, which the settings' 按键 tab lists too).
+    readonly property CaptureKeyList keyList: CaptureKeyList {
+        editor: bar.editor
+        annot: bar.annot
+    }
+    readonly property var keyRows: keyList.rows
 
     // ---- geometry, logical px ----
     readonly property int pad: 4 // card edge to the buttons

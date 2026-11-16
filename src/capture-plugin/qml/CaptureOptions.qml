@@ -216,6 +216,56 @@ Column {
         }
     }
 
+    // Keys that cannot be changed, a keycap column and what they do beside
+    // it, as the toolbar's 全部按键 list shows them (CaptureKeyList, #342).
+    component FixedKeys: Item {
+        id: fixed
+
+        property var rows: [] // [keys, what they do] flattened
+        readonly property real keyWidth: {
+            let widest = 0
+            for (let i = 0; i < rows.length; i += 2)
+                widest = Math.max(widest, keyMetrics.advanceWidth(rows[i]))
+            return Math.min(Math.ceil(widest), Math.round(width * 0.4))
+        }
+
+        FontMetrics {
+            id: keyMetrics
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.fontStrong
+        }
+
+        width: parent ? parent.width : 0
+        implicitHeight: keyGrid.implicitHeight + 24
+
+        Grid {
+            id: keyGrid
+            x: 18
+            y: 12
+            width: parent.width - 36
+            columns: 2
+            columnSpacing: 20
+            rowSpacing: 8
+
+            Repeater {
+                model: fixed.rows
+
+                Text {
+                    required property string modelData
+                    required property int index
+                    readonly property bool isKey: index % 2 === 0
+
+                    width: isKey ? fixed.keyWidth : keyGrid.width - fixed.keyWidth - keyGrid.columnSpacing
+                    text: modelData
+                    color: isKey ? Theme.text : Theme.subtext
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: isKey ? Theme.fontStrong : Font.Normal
+                    wrapMode: Text.Wrap
+                }
+            }
+        }
+    }
+
     // A tab's cards are made the first time it is shown, the other tabs' once
     // the window is up, one per turn (fill), not all with the window: all
     // seven at once were the largest part of the first opening (80 of its
@@ -448,6 +498,36 @@ Column {
                             keyId: modelData.id
                             title: qsTranslate("ws::capture::CaptureKeys", modelData.name)
                         }
+                    }
+                }
+
+                // The keys that are not set here, as the toolbar's 全部按键 lists
+                // them (GitHub #342): those of a capture, then the editing window's own.
+                SettingsSection {
+                    page: 0
+                    tab: 1
+                    width: parent.width
+                    title: qsTr("截图时的其他按键")
+                    glyph: "" // Keyboard
+                    note: qsTr("这些按键是固定的。截图时按 ? 可在屏幕角落列出此刻能用的")
+
+                    FixedKeys {
+                        readonly property CaptureKeyList keys: CaptureKeyList {}
+                        rows: keys.rows
+                    }
+                }
+
+                SettingsSection {
+                    page: 0
+                    tab: 1
+                    width: parent.width
+                    title: qsTr("编辑图片时")
+                    glyph: "" // Edit
+                    note: qsTr("贴图按“编辑”或打开图片编辑时。撤销、打码、复制等和截图时一样")
+
+                    FixedKeys {
+                        readonly property CaptureKeyList keys: CaptureKeyList { editor: true }
+                        rows: keys.commonRows.slice(0, 2).concat(keys.editorRows) // its tool keys, then its own
                     }
                 }
 

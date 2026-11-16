@@ -416,10 +416,6 @@
         <translation>Wheel</translation>
     </message>
     <message>
-        <source>有工具或选中对象时改粗细</source>
-        <translation>Changes the size while a tool is on or an object is selected</translation>
-    </message>
-    <message>
         <source>画的时候按住 Shift</source>
         <translation>Hold Shift while drawing</translation>
     </message>
@@ -787,6 +783,17 @@
     </message>
 </context>
 <context>
+    <name>CaptureKeyList</name>
+    <message>
+        <source>框选前扩大 / 缩小框选范围；有工具或选中对象时改粗细</source>
+        <translation>Grows / shrinks the selection before you select; changes the size while a tool is on or an object is selected</translation>
+    </message>
+    <message>
+        <source>框选前按预设尺寸或比例框选；框选后输入尺寸、锁定比例、选预设</source>
+        <translation>Before you select: select at a preset size or ratio; after: type a size, lock the ratio, pick a preset</translation>
+    </message>
+</context>
+<context>
     <name>CaptureOptions</name>
     <message>
         <source>识别后显示结果卡片</source>
@@ -1039,6 +1046,22 @@
     <message>
         <source>识别 WinUI 等程序里的控件</source>
         <translation>Find controls in WinUI and similar programs</translation>
+    </message>
+    <message>
+        <source>截图时的其他按键</source>
+        <translation>Other keys while capturing</translation>
+    </message>
+    <message>
+        <source>这些按键是固定的。截图时按 ? 可在屏幕角落列出此刻能用的</source>
+        <translation>These keys are fixed. Press ? while capturing to list the ones you can use right then in a corner of the screen</translation>
+    </message>
+    <message>
+        <source>编辑图片时</source>
+        <translation>While editing a picture</translation>
+    </message>
+    <message>
+        <source>贴图按“编辑”或打开图片编辑时。撤销、打码、复制等和截图时一样</source>
+        <translation>After Edit on a pin, or when a picture is opened for editing. Undo, redact, copy and the like work as while capturing</translation>
     </message>
     <message>
         <source>自动框选设置、计算器等程序中的按钮和侧栏。Chrome、Edge、VS Code 这类 Chromium 程序不问（一问它们就打开屏幕阅读器模式），只框子窗口或整个窗口，可手动框选；管理员权限程序中的控件可能不可用。</source>

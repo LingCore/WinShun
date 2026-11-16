@@ -761,6 +761,7 @@ int runToolbarDrag(const QStringList& args)
         bar->setProperty("keysOpen", true);
         settle(window);
         check(bar->property("keysOpen").toBool(), "the full key list did not open");
+        grab(u"toolbar-keys"); // the rows the settings' 按键 tab lists too (CaptureKeyList)
         session.setHiddenButtons({u"help"_s});
         settle(window);
         check(!help->isVisible() && !bar->property("keysOpen").toBool(), "hiding help left its button or list visible");
