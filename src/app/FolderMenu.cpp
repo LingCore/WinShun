@@ -226,8 +226,9 @@ void FolderMenu::setGroups(bool favorites, bool recent, bool windows)
     m_listWindows = windows;
 }
 
-void FolderMenu::setInlineCounts(int recent, int windows)
+void FolderMenu::setInlineCounts(int favorites, int recent, int windows)
 {
+    m_favoritesInline = std::clamp(favorites, 0, 10);
     m_recentInline = std::clamp(recent, 0, 10);
     m_windowsInline = std::clamp(windows, 0, 10);
 }
@@ -581,9 +582,6 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
             row.insert(u"folder"_s, path); // its row opens the folders inside it (#170)
         return row;
     };
-    const auto group = [this](const QString& text, const QString& glyph, const QVariantList& children) {
-        m_entries.append(groupEntries(text, glyph, children));
-    };
     const auto separator = [this] {
         if (!m_entries.isEmpty() && !m_entries.last().toMap().value(u"separator"_s).toBool()) {
             m_entries.append(QVariantMap {{u"separator"_s, true}});
@@ -630,7 +628,7 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
                 row.insert(u"folder"_s, f.path);
             favorites.append(row);
         }
-        group(tr("收藏夹"), u"\uE734"_s, favorites);
+        m_entries.append(groupEntries(tr("收藏夹"), u"\uE734"_s, favorites, m_favoritesInline));
     }
     const auto addList = [&](const QString& text, const QStringList& folders, qsizetype max, const QString& glyph, int inlineCount) {
         QVariantList children;

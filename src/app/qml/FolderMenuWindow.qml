@@ -38,7 +38,7 @@ Window {
     readonly property int preferredWidth: Theme.metrics.size === "compact" ? 300 : Theme.metrics.size === "roomy" ? 400 : 360
     width: availableArea.width > 0 ? Math.min(preferredWidth, availableArea.width - 16) : preferredWidth
     height: Math.min(listHeight + 2 * padding + headingHeight, maxHeight)
-    onHeightChanged: if (visible) place()
+    onHeightChanged: if (visible) y = within(popupTop)
     onHighlightedChanged: {
         flick.currentIndex = highlighted // the list's highlight follows it
         Qt.callLater(ensureVisible)
@@ -70,6 +70,15 @@ Window {
         }
     }
 
+    // Where the first page went: beside the pointer, flipped where the
+    // screen ends. Other pages keep its top edge (a shorter page flipped no
+    // longer would jump below the pointer, #349), moved up only to stay on
+    // the screen; going back puts the first page where it was.
+    property real popupTop
+    function within(y) {
+        const area = availableArea
+        return area.width > 0 ? Math.max(area.y + 8, Math.min(y, area.y + area.height - height - 8)) : y
+    }
     function place() {
         let x = popupAnchor.x
         let y = popupAnchor.y
@@ -78,10 +87,10 @@ Window {
             if (x + width > area.x + area.width) x -= width
             if (y + height > area.y + area.height) y -= height
             x = Math.max(area.x + 8, Math.min(x, area.x + area.width - width - 8))
-            y = Math.max(area.y + 8, Math.min(y, area.y + area.height - height - 8))
         }
         menu.x = x
-        menu.y = y
+        menu.y = within(y)
+        popupTop = menu.y
     }
     function forget() {
         trail = []

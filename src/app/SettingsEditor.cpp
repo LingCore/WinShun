@@ -1547,6 +1547,15 @@ void SettingsEditor::setFolderMenuWindows(bool on)
     commit();
 }
 
+void SettingsEditor::setFolderMenuFavoritesInline(int count)
+{
+    count = std::clamp(count, 0, 10);
+    if (m_settings.folderMenuFavoritesInline == count)
+        return;
+    m_settings.folderMenuFavoritesInline = count;
+    commit();
+}
+
 void SettingsEditor::setFolderMenuRecentInline(int count)
 {
     count = std::clamp(count, 0, 10);

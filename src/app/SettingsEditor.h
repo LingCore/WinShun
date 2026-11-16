@@ -92,6 +92,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool folderMenuFavorites READ folderMenuFavorites WRITE setFolderMenuFavorites NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuRecent READ folderMenuRecent WRITE setFolderMenuRecent NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuWindows READ folderMenuWindows WRITE setFolderMenuWindows NOTIFY changed FINAL)
+    Q_PROPERTY(int folderMenuFavoritesInline READ folderMenuFavoritesInline WRITE setFolderMenuFavoritesInline NOTIFY changed FINAL)
     Q_PROPERTY(int folderMenuRecentInline READ folderMenuRecentInline WRITE setFolderMenuRecentInline NOTIFY changed FINAL)
     Q_PROPERTY(int folderMenuWindowsInline READ folderMenuWindowsInline WRITE setFolderMenuWindowsInline NOTIFY changed FINAL)
     // The actions under the lists (GitHub #200).
@@ -460,8 +461,10 @@ public:
     void setFolderMenuRecent(bool on);
     bool folderMenuWindows() const { return m_settings.folderMenuWindows; }
     void setFolderMenuWindows(bool on);
+    int folderMenuFavoritesInline() const { return m_settings.folderMenuFavoritesInline; }
     int folderMenuRecentInline() const { return m_settings.folderMenuRecentInline; }
     int folderMenuWindowsInline() const { return m_settings.folderMenuWindowsInline; }
+    void setFolderMenuFavoritesInline(int count);
     void setFolderMenuRecentInline(int count);
     void setFolderMenuWindowsInline(int count);
     bool folderMenuItemSearch() const { return m_settings.folderMenuItemSearch; }

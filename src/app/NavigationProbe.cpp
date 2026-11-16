@@ -565,6 +565,31 @@ void folderGroups(QQmlEngine* engine, const QDir& output, Checks& check)
     check(page.value(u"pageTitle"_s).toString() == u"最近的文件夹" && page.value(u"children"_s).toList().size() == 9,
         u"More opens the remaining folders under their original group title"_s);
     check(window->grabWindow().save(output.filePath(u"folder-more.png"_s)), u"capture remaining folder rows"_s);
+
+    // Flipped above a pointer near the screen's foot, a shorter page used to
+    // drop below the pointer (#349): every page keeps the first one's top.
+    QVariantList rows;
+    for (int i = 0; i < 10; ++i)
+        rows.append(QVariantMap {{u"text"_s, u"文件夹 %1"_s.arg(i + 1)}, {u"action"_s, i}, {u"glyph"_s, u"\uE8B7"_s}});
+    rows.append(QVariantMap {{u"text"_s, u"收藏夹"_s}, {u"glyph"_s, u"\uE734"_s},
+        {u"children"_s, QVariantList {QVariantMap {{u"text"_s, u"v10-dto"_s}, {u"action"_s, 10}},
+                            QVariantMap {{u"text"_s, u"Repos"_s}, {u"action"_s, 11}}}}});
+    root->setProperty("trail", QVariantList());
+    root->setProperty("page", QVariantMap {{u"text"_s, u"文件夹菜单"_s}, {u"children"_s, rows}});
+    root->setProperty("popupAnchor", QPointF(offset + 400, offset + 900));
+    settle(window);
+    QMetaObject::invokeMethod(root.get(), "place");
+    settle(window);
+    const int top = window->y();
+    check(top + window->height() <= offset + 900 + 1, u"a tall page near the screen's foot opens above the pointer"_s);
+    QMetaObject::invokeMethod(root.get(), "activate", Q_ARG(QVariant, 10));
+    settle(window);
+    check(root->property("page").toMap().value(u"children"_s).toList().size() == 2 && window->y() == top,
+        u"a shorter page keeps the menu's top edge (y %1, was %2)"_s.arg(window->y()).arg(top));
+    QMetaObject::invokeMethod(root.get(), "back");
+    settle(window);
+    check(root->property("page").toMap().value(u"children"_s).toList().size() == 11 && window->y() == top,
+        u"going back puts the first page where it was (y %1, was %2)"_s.arg(window->y()).arg(top));
     window->hide();
 }
 } // namespace
@@ -1860,10 +1885,11 @@ bool checkNavigationSettings(QQuickWindow* window, SettingsEditor* editor, const
     };
     reveal("直接打开搜索面板", 0);
     auto* recorder = item(window->contentItem(), u"panelHotkeyRecorder"_s);
+    auto* favorites = item(window->contentItem(), u"folderMenuFavoritesInline"_s);
     auto* recent = item(window->contentItem(), u"folderMenuRecentInline"_s);
     auto* windows = item(window->contentItem(), u"folderMenuWindowsInline"_s);
-    check(recorder && recent && windows, u"new settings use production controls"_s);
-    if (!recorder || !recent || !windows) return false;
+    check(recorder && favorites && recent && windows, u"new settings use production controls"_s);
+    if (!recorder || !favorites || !recent || !windows) return false;
     check(editor->panelHotkey().isEmpty(), u"full-panel shortcut defaults to unassigned"_s);
     // Deliver to the real recorder's QML handler without starting its global
     // keyboard capture or registering shortcuts in another user's session.
@@ -1878,19 +1904,24 @@ bool checkNavigationSettings(QQuickWindow* window, SettingsEditor* editor, const
     saved.load();
     check(editor->panelHotkey().isEmpty() && saved.panelHotkey.isEmpty() && saved.hotkey == u"Alt+Space",
         u"clearing the full-panel chord preserves the launcher shortcut"_s);
-    reveal("直接显示最近的文件夹", 2);
+    reveal("直接显示收藏夹", 2);
+    favorites->setProperty("text", u"5"_s);
+    QMetaObject::invokeMethod(favorites, "editingFinished");
     recent->setProperty("text", u"3"_s);
     QMetaObject::invokeMethod(recent, "editingFinished");
     windows->setProperty("text", u"10"_s);
     QMetaObject::invokeMethod(windows, "editingFinished");
     saved.load();
-    check(saved.folderMenuRecentInline == 3 && saved.folderMenuWindowsInline == 10,
-        u"recent and open-window counts persist independently"_s);
+    check(saved.folderMenuFavoritesInline == 5 && saved.folderMenuRecentInline == 3 && saved.folderMenuWindowsInline == 10,
+        u"favorites, recent and open-window counts persist independently"_s);
+    favorites->setProperty("text", u"11"_s);
+    QMetaObject::invokeMethod(favorites, "editingFinished");
     recent->setProperty("text", u"11"_s);
     QMetaObject::invokeMethod(recent, "editingFinished");
     windows->setProperty("text", QString());
     QMetaObject::invokeMethod(windows, "editingFinished");
-    check(recent->property("text").toString() == u"3" && windows->property("text").toString() == u"10",
+    check(favorites->property("text").toString() == u"5" && recent->property("text").toString() == u"3"
+            && windows->property("text").toString() == u"10",
         u"invalid and empty counts restore the saved values"_s);
     settle(window);
     auto* actions = item(window->contentItem(), u"folderMenuActionChoices"_s);
@@ -1907,11 +1938,13 @@ bool checkNavigationSettings(QQuickWindow* window, SettingsEditor* editor, const
         QMetaObject::invokeMethod(choice, "toggled", Q_ARG(int, 0), Q_ARG(bool, true));
     }
     check(window->grabWindow().save(output.filePath(u"folder-count-settings.png"_s)), u"capture direct-folder count settings"_s);
+    favorites->setProperty("text", u"0"_s);
+    QMetaObject::invokeMethod(favorites, "editingFinished");
     recent->setProperty("text", u"0"_s);
     QMetaObject::invokeMethod(recent, "editingFinished");
     saved.load();
-    check(saved.folderMenuRecentInline == 0 && saved.folderMenuWindowsInline == 10,
-        u"zero restores the recent-folders submenu without changing open windows"_s);
+    check(saved.folderMenuFavoritesInline == 0 && saved.folderMenuRecentInline == 0 && saved.folderMenuWindowsInline == 10,
+        u"zero restores the favorites and recent-folders submenus without changing open windows"_s);
     check(!window->isActive(), u"settings checks keep the native window inactive"_s);
     QFile file(output.filePath(u"navigation-settings.json"_s));
     if (!file.open(QIODevice::WriteOnly)) return false;

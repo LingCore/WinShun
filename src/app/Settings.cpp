@@ -935,6 +935,7 @@ void Settings::load()
     folderMenuFavorites = readOrDefault(s, u"Launcher/FolderMenuFavorites"_s, d.folderMenuFavorites);
     folderMenuRecent = readOrDefault(s, u"Launcher/FolderMenuRecent"_s, d.folderMenuRecent);
     folderMenuWindows = readOrDefault(s, u"Launcher/FolderMenuWindows"_s, d.folderMenuWindows);
+    folderMenuFavoritesInline = std::clamp(readOrDefault(s, u"Launcher/FolderMenuFavoritesInline"_s, d.folderMenuFavoritesInline), 0, 10);
     folderMenuRecentInline = std::clamp(readOrDefault(s, u"Launcher/FolderMenuRecentInline"_s, d.folderMenuRecentInline), 0, 10);
     folderMenuWindowsInline = std::clamp(readOrDefault(s, u"Launcher/FolderMenuWindowsInline"_s, d.folderMenuWindowsInline), 0, 10);
     if (!folderMenuFavorites && !folderMenuRecent && !folderMenuWindows) // a menu of nothing: back to all (#51)
@@ -1340,6 +1341,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FolderMenuFavorites"_s, folderMenuFavorites);
     s.setValue(u"Launcher/FolderMenuRecent"_s, folderMenuRecent);
     s.setValue(u"Launcher/FolderMenuWindows"_s, folderMenuWindows);
+    s.setValue(u"Launcher/FolderMenuFavoritesInline"_s, folderMenuFavoritesInline);
     s.setValue(u"Launcher/FolderMenuRecentInline"_s, folderMenuRecentInline);
     s.setValue(u"Launcher/FolderMenuWindowsInline"_s, folderMenuWindowsInline);
     s.setValue(u"Launcher/FolderMenuItemSearch"_s, folderMenuItemSearch);

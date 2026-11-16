@@ -175,7 +175,8 @@ struct Settings {
     bool folderMenuFavorites = true;
     bool folderMenuRecent = true;
     bool folderMenuWindows = true; // folders open in other windows
-    int folderMenuRecentInline = 0; // 0: submenu; 1..10: direct rows, then More
+    int folderMenuFavoritesInline = 0; // 0: submenu; 1..10: direct rows, then More
+    int folderMenuRecentInline = 0;
     int folderMenuWindowsInline = 0;
     // Which actions the menu offers under the lists (GitHub #200): all on is
     // what it always did. Favorite covers both adding and removing.

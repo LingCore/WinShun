@@ -8188,6 +8188,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>full window;panel;global;shortcut;full search;hotkey</translation>
     </message>
     <message>
+        <source>直接显示收藏夹</source>
+        <translation>Favorites shown directly</translation>
+    </message>
+    <message>
         <source>直接显示最近的文件夹</source>
         <translation>Recent folders shown directly</translation>
     </message>
@@ -8202,6 +8206,10 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>文件夹菜单;最近;已打开;数量;更多;展开;inline;recent;folders</source>
         <translation>folder menu;recent;open;count;more;expand;inline;folders</translation>
+    </message>
+    <message>
+        <source>文件夹菜单;收藏;收藏夹;数量;更多;展开;inline;favorites</source>
+        <translation>folder menu;favorite;favorites;count;more;expand;inline</translation>
     </message>
     <message>
         <source>启动时请求管理员权限，直接读取主文件表和变更日志；取消后本次用普通权限，保留选择。开机自启也以管理员身份</source>

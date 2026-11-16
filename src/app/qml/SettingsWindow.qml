@@ -2273,20 +2273,26 @@ Window {
                     }
                 }
 
-                Repeater {
-                    model: 2
+                Repeater { // the menu's order: favorites, recent, open
+                    model: [
+                        { title: qsTr("直接显示收藏夹"), words: qsTr("文件夹菜单;收藏;收藏夹;数量;更多;展开;inline;favorites"),
+                          group: "folderMenuFavorites", setting: "folderMenuFavoritesInline" },
+                        { title: qsTr("直接显示最近的文件夹"), words: qsTr("文件夹菜单;最近;已打开;数量;更多;展开;inline;recent;folders"),
+                          group: "folderMenuRecent", setting: "folderMenuRecentInline" },
+                        { title: qsTr("直接显示已打开的文件夹"), words: qsTr("文件夹菜单;最近;已打开;数量;更多;展开;inline;recent;folders"),
+                          group: "folderMenuWindows", setting: "folderMenuWindowsInline" }
+                    ]
                     delegate: SettingRow {
                         id: inlineFoldersRow
-                        required property int index
-                        readonly property bool recent: index === 0
-                        readonly property int count: recent ? window.editor.folderMenuRecentInline : window.editor.folderMenuWindowsInline
+                        required property var modelData
+                        readonly property int count: window.editor[modelData.setting]
                         sub: true
-                        title: recent ? qsTr("直接显示最近的文件夹") : qsTr("直接显示已打开的文件夹")
+                        title: modelData.title
                         description: qsTr("0：收进二级菜单；1–10：直接显示前几个，其余放进“更多…”")
-                        keywords: qsTr("文件夹菜单;最近;已打开;数量;更多;展开;inline;recent;folders").split(";")
+                        keywords: modelData.words.split(";")
                         InputBox {
-                            objectName: inlineFoldersRow.recent ? "folderMenuRecentInline" : "folderMenuWindowsInline"
-                            enabled: window.editor.folderMenu && (inlineFoldersRow.recent ? window.editor.folderMenuRecent : window.editor.folderMenuWindows)
+                            objectName: inlineFoldersRow.modelData.setting
+                            enabled: window.editor.folderMenu && window.editor[inlineFoldersRow.modelData.group]
                             width: 72
                             dpr: window.dpr
                             horizontalAlignment: TextInput.AlignHCenter
@@ -2294,10 +2300,8 @@ Window {
                             validator: IntValidator { bottom: 0; top: 10 }
                             onEditingFinished: {
                                 const count = parseInt(text, 10)
-                                if (!isNaN(count) && count >= 0 && count <= 10) {
-                                    if (inlineFoldersRow.recent) window.editor.folderMenuRecentInline = count
-                                    else window.editor.folderMenuWindowsInline = count
-                                }
+                                if (!isNaN(count) && count >= 0 && count <= 10)
+                                    window.editor[inlineFoldersRow.modelData.setting] = count
                                 text = Qt.binding(() => String(inlineFoldersRow.count))
                             }
                         }
