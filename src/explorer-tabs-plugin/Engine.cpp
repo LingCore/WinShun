@@ -104,13 +104,13 @@ private:
     HANDLE m_h;
 };
 
-DWORD integrityOf(HANDLE token)
+DWORD integrityOf(HANDLE token, DWORD unknown = SECURITY_MANDATORY_SYSTEM_RID)
 {
     DWORD size = 0;
     ::GetTokenInformation(token, TokenIntegrityLevel, nullptr, 0, &size);
     std::vector<BYTE> buffer(size);
     if (!size || !::GetTokenInformation(token, TokenIntegrityLevel, buffer.data(), size, &size))
-        return SECURITY_MANDATORY_SYSTEM_RID; // not known: as if above
+        return unknown;
     const PSID sid = reinterpret_cast<TOKEN_MANDATORY_LABEL*>(buffer.data())->Label.Sid;
     return *::GetSidSubAuthority(sid, *::GetSidSubAuthorityCount(sid) - 1);
 }
@@ -271,6 +271,7 @@ struct Engine::Impl {
     std::set<HWND> undecided; // registered, not decided yet (may still be hidden at SHOW), under mutex
     std::set<HWND> knownTabs; // their tabs, under mutex
     std::map<DWORD, DWORD> levels; // process id -> integrity, under mutex
+    std::set<DWORD> unreadLevels; // processes whose level could not be read (taken as medium), under mutex
     std::atomic<bool> paused {false};
     // The plugin itself is opening windows (Session restores them): they stay
     // windows, as while paused.
@@ -321,6 +322,12 @@ struct Engine::Impl {
         return settings;
     }
 
+    // Its process runs above the plugin's integrity level. One whose level
+    // cannot be read counts as Explorer's own, medium: security software
+    // guarding explorer.exe may refuse the look, and taking that as "above"
+    // ruled every window out (GitHub #331: "1 known, 0 able" on a PC where
+    // the same steps merge elsewhere). One that is above after all refuses
+    // the tab, as any merge that does not come.
     bool aboveUs(HWND w)
     {
         DWORD pid = 0;
@@ -330,15 +337,27 @@ struct Engine::Impl {
             if (const auto it = levels.find(pid); it != levels.end())
                 return it->second > ownLevel;
         }
-        DWORD level = SECURITY_MANDATORY_SYSTEM_RID; // cannot look: as if above (UIPI would refuse us anyway)
+        DWORD level = 0;
         if (Handle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)); process) {
             Handle token;
             if (::OpenProcessToken(process.get(), TOKEN_QUERY, token.put()))
-                level = integrityOf(token.get());
+                level = integrityOf(token.get(), 0);
         }
         const std::lock_guard lock(mutex);
+        if (level == 0) {
+            unreadLevels.insert(pid);
+            level = SECURITY_MANDATORY_MEDIUM_RID;
+        }
         levels[pid] = level;
         return level > ownLevel;
+    }
+
+    bool levelUnread(HWND w) const
+    {
+        DWORD pid = 0;
+        ::GetWindowThreadProcessId(w, &pid);
+        const std::lock_guard lock(mutex);
+        return unreadLevels.contains(pid);
     }
 
     // An Explorer window that may receive a tab (or count as "another window").
@@ -1037,7 +1056,25 @@ struct Engine::Impl {
         if (d.why == Why::NoWindow) {
             const auto able = std::ranges::count_if(others, [](const Window& w) { return w.usable && !w.aboveUs; });
             looked = " (" + std::to_string(z.empty() ? 0 : z.size() - 1) + " besides, " + std::to_string(others.size()) + " known, "
-                + std::to_string(able) + " able)";
+                + std::to_string(able) + " able";
+            // Why each known one is not (GitHub #331: the counts alone could not tell).
+            for (const Window& w : others) {
+                const HWND top = reinterpret_cast<HWND>(w.id);
+                std::string why;
+                if (!::IsWindowVisible(top))
+                    why += " invisible";
+                if (cloaked(top))
+                    why += " cloaked";
+                if (hider.hidden(top))
+                    why += " hidden";
+                if (w.aboveUs)
+                    why += " above";
+                if (levelUnread(top))
+                    why += " level-unread";
+                if (!why.empty())
+                    looked += ";" + why;
+            }
+            looked += ")";
         }
         if (d.why == Why::Requested)
             looked = " (in front: " + e.opener + ")"; // which window or program made it one
