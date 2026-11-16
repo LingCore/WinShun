@@ -956,6 +956,14 @@
         <translation>Press it, then drag over an area or click a window: when you let go, its text is read and copied. No screenshot toolbar, and no screenshot is kept. Esc or a right click cancels. Without a shortcut, use the tray menu or search for “Read text on screen”</translation>
     </message>
     <message>
+        <source>截图翻译</source>
+        <translation>Translate screen region</translation>
+    </message>
+    <message>
+        <source>按下后直接拖选区域或单击窗口，松开鼠标就在原位置显示译文，没有截图工具条。Esc 或右键取消。用“翻译”插件里设好的服务。不设时可从托盘菜单或搜索“截图翻译”使用</source>
+        <translation>Press it, then drag over an area or click a window: when you let go, its text is translated in place. No screenshot toolbar. Esc or a right click cancels. It uses the service set up in the Translate plugin. Without a shortcut, use the tray menu or search for “Translate screen region”</translation>
+    </message>
+    <message>
         <source>截图时</source>
         <translation>While capturing</translation>
     </message>
@@ -2063,6 +2071,10 @@ The unfinished recording is kept at: %1</translation>
         <translation>Read text: drag over an area, or click a window · Esc cancels</translation>
     </message>
     <message>
+        <source>截图翻译：拖选区域，或单击窗口 · Esc 取消</source>
+        <translation>Translate: drag over an area, or click a window · Esc cancels</translation>
+    </message>
+    <message>
         <source>没有保存之前的画面，可在设置 › 截图里打开</source>
         <translation>Earlier pictures are not being kept; turn this on in Settings › Screenshot</translation>
     </message>
@@ -2656,6 +2668,14 @@ Original video kept at: %2</translation>
         <translation>Select part of the screen; the text in it is copied</translation>
     </message>
     <message>
+        <source>截图翻译</source>
+        <translation>Translate screen region</translation>
+    </message>
+    <message>
+        <source>框选一块屏幕，在原位置显示译文</source>
+        <translation>Select part of the screen; its text is translated in place</translation>
+    </message>
+    <message>
         <source>%1 秒后截图</source>
         <translation>Capture in %1 seconds</translation>
     </message>
@@ -2853,6 +2873,10 @@ Original video kept at: %2</translation>
     <message>
         <source>识别屏幕文字</source>
         <translation>Read text on screen</translation>
+    </message>
+    <message>
+        <source>截图翻译</source>
+        <translation>Translate screen region</translation>
     </message>
     <message>
         <source>和“%1”的快捷键相同，按下时会先被它用掉</source>

@@ -326,7 +326,7 @@ Column {
         group: 0
         content: Component {
             GroupPage {
-                recordingHotkey: hotkeyRecorder.recording || ocrHotkeyRow.recording
+                recordingHotkey: hotkeyRecorder.recording || ocrHotkeyRow.recording || translateHotkeyRow.recording
 
                 SettingsSection {
                     page: 0
@@ -434,6 +434,24 @@ Column {
                             checked: card.editor.captureOcrBubble
                             onToggled: (on) => card.editor.captureOcrBubble = on
                         }
+                    }
+                }
+
+                SettingsSection { // 截图翻译 (#356): the same picking, the words translated in place when it ends
+                    page: 0
+                    tab: 0
+                    width: parent.width
+                    title: qsTr("截图翻译")
+                    glyph: String.fromCharCode(0xE8C1) // Translate
+
+                    HotkeyRow {
+                        id: translateHotkeyRow
+                        objectName: "captureTranslateHotkey"
+                        title: qsTr("快捷键")
+                        description: qsTr("按下后直接拖选区域或单击窗口，松开鼠标就在原位置显示译文，没有截图工具条。Esc 或右键取消。用“翻译”插件里设好的服务。不设时可从托盘菜单或搜索“截图翻译”使用")
+                        hotkey: card.editor.captureTranslateHotkey
+                        error: card.editor.captureTranslateHotkeyError
+                        onRecorded: (hotkey) => card.editor.captureTranslateHotkey = hotkey
                     }
                 }
 

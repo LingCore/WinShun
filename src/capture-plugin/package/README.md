@@ -28,6 +28,10 @@ Version 1.1.2: the capture settings no longer freeze with “Not responding” t
 
 Version 1.1.3: Read text on screen has a hotkey of its own (#198); pin zoom steps are finer and show the percentage, `Ctrl`+wheel shows the opacity, and the wheel or `[` `]` set annotation width, text size and mosaic cell finely (#164); without D3D11 video support recording converts frames on the CPU (#214); Open link on a QR code opens the browser (needs WinShun 0.21.0, #225); the windows follow the interface style chosen in WinShun; idle memory goes back to Windows. Permissions are unchanged.
 
+1.1.19：截图翻译可以设单独的快捷键（#356）：在截图设置“快捷键”分类里录一个“截图翻译”的快捷键（默认不设），或用托盘菜单“截图 › 截图翻译”、`cap` 搜索。按下后直接拖选一块或单击窗口，松开鼠标就识别并把译文贴在原来的位置，不用再点工具条上的“翻译”，也不显示工具条、不写入截图历史。`Esc` 或右键取消；翻译用的是“翻译”插件里设好的服务，没设好或没有文字识别组件时会打开“识别文字”窗口说明原因。权限不变。
+
+Version 1.1.19: screenshot translation has a hotkey of its own (#356): record a “Translate screen region” shortcut under Shortcuts in the capture settings (none by default), or use Screenshot › Translate screen region in the tray menu or `cap`. Drag over an area or click a window; when you let go its text is read and translated in place, without pressing Translate on the toolbar, and with no toolbar and nothing in the screenshot history. `Esc` or a right click cancels. It uses the service set up in the Translate plugin; if that is not set up, or the text reader is missing, the OCR window opens and says why. Permissions are unchanged.
+
 1.1.17：截图时界面卡住超过 0.3 秒，诊断日志会记下当时程序各个线程在做什么，用来查“按下截图键后黑屏或卡一两秒”的原因。功能没有变化。
 
 Version 1.1.17: when the interface stops answering for more than 0.3 s during a capture, the diagnostics record what each thread of the program was doing, to find why some PCs go black or stall for a second or two after the capture key. No change in what it does.

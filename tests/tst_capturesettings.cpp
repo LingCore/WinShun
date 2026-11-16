@@ -321,6 +321,58 @@ private slots:
         QVERIFY(CaptureOptions::load(file).ocrHotkey.isEmpty());
     }
 
+    // 截图翻译's hotkey (#356), Capture/TranslateHotkey: as 识别屏幕文字's, and
+    // registered after it, so it is the one that gives way to the same key; the
+    // 识别屏幕文字 key does not give way to it.
+    void translateHotkey()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"capture.ini"_s);
+        QVERIFY(CaptureOptions::load(file).translateHotkey.isEmpty());
+        QVERIFY(QSettings(file, QSettings::IniFormat).contains(u"Capture/TranslateHotkey"_s));
+
+        ws::captureplugin::CaptureSettings settings(file);
+        QSignalSpy changed(&settings, &ws::captureplugin::CaptureSettings::changed);
+        QVERIFY(settings.translateHotkeyClash().isEmpty()); // none set
+        settings.setCaptureTranslateHotkey(u" Ctrl+Alt+Y "_s);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(settings.captureTranslateHotkey(), u"Ctrl+Alt+Y"_s);
+        QCOMPARE(CaptureOptions::load(file).translateHotkey, u"Ctrl+Alt+Y"_s);
+        settings.setCaptureTranslateHotkey(u"Ctrl+Alt+Y"_s);
+        QCOMPARE(changed.count(), 1); // the same again: nothing
+        QVERIFY(settings.translateHotkeyClash().isEmpty());
+
+        // The same key as any other of the plugin's: said here (the other keeps it), written another way too.
+        settings.setCaptureHotkey(u"Alt+Ctrl+Y"_s);
+        QVERIFY(settings.translateHotkeyClash().contains(u"开始截图"_s));
+        settings.setCaptureHotkey(u"F1"_s);
+        QVERIFY(settings.translateHotkeyClash().isEmpty());
+        settings.setCaptureOcrHotkey(u"Ctrl+Alt+Y"_s);
+        QVERIFY(settings.translateHotkeyClash().contains(u"识别屏幕文字"_s));
+        QVERIFY(settings.ocrHotkeyClash().isEmpty()); // it was there first
+        settings.setCaptureOcrHotkey({});
+        settings.setCapturePrintScreen(true);
+        settings.setCaptureTranslateHotkey(u"PrintScreen"_s);
+        QVERIFY(settings.translateHotkeyClash().contains(u"PrtScn"_s));
+        settings.setCapturePrintScreen(false);
+        settings.setCapturePresentHotkey(u"F7"_s);
+        settings.setCaptureTranslateHotkey(u"F7"_s);
+        QVERIFY(settings.translateHotkeyClash().contains(u"演示"_s));
+        settings.setCaptureTranslateHotkey(u"F8"_s);
+
+        // The capture's and the pins' keys: refused on it, a conflict once it is set later.
+        QVERIFY(settings.setCaptureKey(u"Pin"_s, Qt::Key_F8, 0).contains(u"截图翻译"_s));
+        QVERIFY(settings.setCaptureKey(u"Pin"_s, Qt::Key_F9, 0).isEmpty());
+        const auto conflict = [&] { return settings.captureKeys().value(u"Pin"_s).toMap().value(u"conflict"_s).toString(); };
+        QVERIFY(conflict().isEmpty());
+        settings.setCaptureTranslateHotkey(u"F9"_s);
+        QVERIFY(conflict().contains(u"截图翻译"_s));
+        settings.setCaptureTranslateHotkey({});
+        QVERIFY(conflict().isEmpty());
+        QVERIFY(CaptureOptions::load(file).translateHotkey.isEmpty());
+    }
+
     // The mouse buttons (#46): the old behaviour by default, kept across a
     // save, and a name not known (or "back" on a button that cannot step
     // back) falls to the default.

@@ -86,6 +86,7 @@ public:
         // 识别文字并复制 / 搜索 / 网页搜索 (the mouse buttons' choices): read, then go
         // on at once with `then` (OcrCopy, OcrSearch or OcrWeb) without the window;
         // OcrTranslate: a pin with them translated in place (the app decides; the window when that cannot be).
+        // Also what triggerOcr(OcrPurpose::Translate) (#356) hands over, as its picking ends.
         std::function<void(const QImage&, double dpr, const QRect& where, CaptureSession::Action then)> ocrThen;
         // 识别屏幕文字 (triggerOcr, #198): the region picked, to be read and its
         // words copied; it is in no history and is not the last capture.
@@ -177,7 +178,12 @@ public:
     // and the magnifier; a drag or a click on a window reads its words
     // (Callbacks::readText). Again while it is up: it ends. While a capture,
     // a recording, a countdown or a long screenshot is under way: nothing.
-    void triggerOcr();
+    // Translate (#356, 截图翻译): the same picking, but what is picked goes to
+    // Callbacks::ocrThen with OcrTranslate, translated in place, no button
+    // pressed. The key of the other purpose while one is up: this one's picking
+    // goes on with the other purpose (it is not closed).
+    enum class OcrPurpose { Read, Translate };
+    void triggerOcr(OcrPurpose purpose = OcrPurpose::Read);
     bool busy() const { return m_state != State::Idle || m_countdown || (m_long && m_long->running()) || (m_recorder && m_recorder->active()); }
 
     // 贴上最近一次截图 (the tray menu).
@@ -215,7 +221,8 @@ private:
     void buildOverlays();
     void destroyOverlays();
     void screensChanged(); // monitors came, went or changed: everything made again
-    void start(bool ocrOnly = false);
+    void start(bool ocrOnly = false, OcrPurpose purpose = OcrPurpose::Read);
+    QString ocrNotice() const; // what the picking says by the pointer
     void show();
     void frameDrawn(QQuickWindow* window);
     void finish(CaptureSession::Action action, int screen, const QRect& rect);
@@ -279,6 +286,7 @@ private:
     std::unique_ptr<CountdownWindow> m_countdown;
     bool m_quietStart = false; // start() by the countdown: no key hints by themselves
     bool m_ocrOnly = false; // this capture is triggerOcr()'s
+    OcrPurpose m_ocrPurpose = OcrPurpose::Read; // what it is for (only while m_ocrOnly)
     QElapsedTimer m_countClock;
     QTimer m_countTimer;
     int m_countTotal = 0;

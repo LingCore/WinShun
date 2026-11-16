@@ -69,7 +69,7 @@ QString settingsTr(const char* text)
 }
 
 // The plugin's global hotkeys with their names for the user (untranslated),
-// 识别屏幕文字's last: it is registered after the others.
+// 识别屏幕文字 and then 截图翻译 last: they are registered after the others.
 std::vector<std::pair<QString, const char*>> ownHotkeys(const CaptureOptions& o)
 {
     return {
@@ -80,7 +80,23 @@ std::vector<std::pair<QString, const char*>> ownHotkeys(const CaptureOptions& o)
         {o.pinsRestoreHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "找回穿透贴图")},
         {o.presentHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "演示 / 白板")},
         {o.ocrHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "识别屏幕文字")},
+        {o.translateHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "截图翻译")},
     };
+}
+
+// Why the hotkey at `own[index]` cannot be registered too: one of those before it
+// (registered first, they keep it) is the same key.
+QString clashBefore(const std::vector<std::pair<QString, const char*>>& own, std::size_t index)
+{
+    const QString normal = hotkeys::normalized(own[index].first);
+    if (normal.isEmpty())
+        return {};
+    for (std::size_t i = 0; i < index; ++i) {
+        if (!own[i].first.isEmpty() && hotkeys::normalized(own[i].first) == normal)
+            return QCoreApplication::translate("ws::captureplugin::CaptureSettings", "和“%1”的快捷键相同，请换一个。")
+                .arg(settingsTr(own[i].second));
+    }
+    return {};
 }
 
 } // namespace
@@ -160,6 +176,7 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.lastPinHotkey = readOrDefault(s, u"Capture/LastPinHotkey"_s, d.lastPinHotkey).trimmed();
     o.presentHotkey = readOrDefault(s, u"Capture/PresentHotkey"_s, d.presentHotkey).trimmed();
     o.ocrHotkey = readOrDefault(s, u"Capture/OcrHotkey"_s, d.ocrHotkey).trimmed();
+    o.translateHotkey = readOrDefault(s, u"Capture/TranslateHotkey"_s, d.translateHotkey).trimmed();
     o.saveFolder = readOrDefault(s, u"Capture/SaveFolder"_s, d.saveFolder).trimmed();
     o.recordingFolder = readOrDefault(s, u"Capture/RecordingFolder"_s, d.recordingFolder).trimmed();
     o.recordingSystemAudio = readOrDefault(s, u"Capture/RecordingSystemAudio"_s, d.recordingSystemAudio);
@@ -233,6 +250,7 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/LastPinHotkey"_s, lastPinHotkey);
     s.setValue(u"Capture/PresentHotkey"_s, presentHotkey);
     s.setValue(u"Capture/OcrHotkey"_s, ocrHotkey);
+    s.setValue(u"Capture/TranslateHotkey"_s, translateHotkey);
     s.setValue(u"Capture/SaveFolder"_s, saveFolder);
     s.setValue(u"Capture/RecordingFolder"_s, recordingFolder);
     s.setValue(u"Capture/RecordingSystemAudio"_s, recordingSystemAudio);
@@ -299,7 +317,7 @@ void CaptureSettings::setProblems(const Problems& p)
 {
     if (p.hotkey == m_hotkeyError && p.pinsHotkey == m_pinsHotkeyError && p.pinsRestoreHotkey == m_pinsRestoreHotkeyError
         && p.lastPinHotkey == m_lastPinHotkeyError && p.presentHotkey == m_presentHotkeyError
-        && p.ocrHotkey == m_ocrHotkeyError && p.note == m_note)
+        && p.ocrHotkey == m_ocrHotkeyError && p.translateHotkey == m_translateHotkeyError && p.note == m_note)
         return;
     m_hotkeyError = p.hotkey;
     m_pinsHotkeyError = p.pinsHotkey;
@@ -307,6 +325,7 @@ void CaptureSettings::setProblems(const Problems& p)
     m_lastPinHotkeyError = p.lastPinHotkey;
     m_presentHotkeyError = p.presentHotkey;
     m_ocrHotkeyError = p.ocrHotkey;
+    m_translateHotkeyError = p.translateHotkey;
     m_note = p.note;
     emit problemsChanged();
 }
@@ -403,16 +422,14 @@ QString CaptureSettings::hotkeyConflict(QKeyCombination key, bool askSystem) con
 
 QString CaptureSettings::ocrHotkeyClash() const
 {
-    const QString normal = hotkeys::normalized(m_options.ocrHotkey);
-    if (normal.isEmpty())
-        return {};
-    auto own = ownHotkeys(m_options);
-    own.pop_back(); // itself
-    for (const auto& [hotkey, name] : own) {
-        if (!hotkey.isEmpty() && hotkeys::normalized(hotkey) == normal)
-            return tr("和“%1”的快捷键相同，请换一个。").arg(settingsTr(name));
-    }
-    return {};
+    const auto own = ownHotkeys(m_options);
+    return clashBefore(own, own.size() - 2); // those before it: not itself, not the one registered after it
+}
+
+QString CaptureSettings::translateHotkeyClash() const
+{
+    const auto own = ownHotkeys(m_options);
+    return clashBefore(own, own.size() - 1);
 }
 
 QString CaptureSettings::pickFolder(const QString& title)

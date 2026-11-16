@@ -100,8 +100,9 @@ private:
     enum class OcrThen { Copy, Search, Web, Bubble };
     void captureOcrThen(const QImage& image, double dpr, const QRect& where, OcrThen then);
     void quickOcrDone();
-    // 识别屏幕文字 (#198): the hotkey, the search box, the tray menu.
-    void startOcr();
+    // 识别屏幕文字 (#198): the hotkey, the search box, the tray menu; 截图翻译
+    // (#356) with `translate`.
+    void startOcr(bool translate = false);
     void readScreenText(const QImage& image, double dpr, const QRect& where);
     void showOcrBubble(const QString& phase, const QString& words, const QString& detail);
     bool closeOcrBubble(); // whether it was up
