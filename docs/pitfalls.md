@@ -1,5 +1,16 @@
 # 踩坑记录
 
+## 乱码：UTF-8 被当成 GBK 读（2026-11-16，#346）
+
+- **现象**：备份路径 `D:\BaiduSyncdisk\tourbox预设\Winshun设置备份` 显示成 `tourbox棰勮…\Winshun璁剧疆澶囦唤`。这是 UTF-8 字节被按系统代码页（中文 Windows 是 936/GBK）解码的典型样子。Win顺 自己的读写全是 UTF-16/UTF-8，没能复现；推测是选文件夹时某个外壳扩展返回了这样的路径。
+- **防护**：`core/Mojibake.h` 的 `utf8ReadAsAnsi()` 识别并还原这种乱码，`ungarbledPath()` 只在还原后的路径确实存在时采用（乱码文件夹已被建出来时也优先用真的）。选文件夹/文件对话框（`ShellDialogs.cpp` 的 `onDisk()`）拿到不存在的路径时先还原、再试外壳的解析名，都不行就当作没选；读设置时备份文件夹、索引文件夹也会还原。
+- **规则**（`tst_encoding` 检查，按需运行 `ctest -R ^tst_encoding$`）：
+  - 文本文件一律 UTF-8；含中文的 `.ps1/.psm1/.psd1` 必须带 BOM（Windows PowerShell 5.1 否则按 ANSI 读，中文字符串会吞掉后面的引号和代码）；`.bat/.cmd` 只用 ASCII；含非 ASCII 的 `.rc` 写 `#pragma code_page(65001)`。
+  - 代码里文字走 QString 和 W 函数；`fromLocal8Bit`、`CP_ACP`、`CP_OEMCP` 等只用在数据确实是那个代码页的地方（旧剪贴板格式、zip 旧文件名、写给 cmd 的 .bat、Everything 的 ANSI 协议……），并把文件和理由加进 `tst_encoding.cpp` 的 `kCodePageUsers`；不再用了就从名单删掉，测试会提醒。禁止任何 A 后缀的 Win32 调用。
+  - 读子进程的输出要想清楚它用什么编码：Qt 默认的消息处理器在设了 `QT_FORCE_STDERR_LOGGING` 时按 ANSI 写 stderr，插件进程里要装 UTF-8 的处理器；插件运行器把不是 UTF-8 的 stderr 按 ANSI 转过来，控制行里绝不放非法 UTF-8。
+  - 测试里不要用 `cmd /c mklink` 建联接（cmd 按控制台代码页输出，日志里是乱码）：用 `tests/TestJunction.h` 的 `makeJunction()`。
+  - 开发命令：用 `scripts/devshell.ps1` 进 MSVC 环境（它先把 vswhere 放进 PATH，否则 VsDevCmd 在 GBK 控制台里报错，读回来是乱码）。
+
 ## 界面字体：Windows 列得出来的字体，Qt（FreeType）按名字不一定画得出来（#325 第二轮，2026-11-15）
 
 - **现象**：0.29.0 把界面字体的名单改成问 Windows（`EnumFontFamiliesEx`）之后，选“霞鹜文楷”（常规体）预览不对，重启后是后备字体；它的 Light、Medium 正常。

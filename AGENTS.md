@@ -8,6 +8,12 @@
 - 清理前核对绝对路径、目录链接目标、运行中程序和用户数据。只清理能确认归属本项目的可再生成产物，保留源码、未提交成果、诊断原件、截图原始素材与正式文档，按具体目录处理。
 - 每次任务收尾检查 `git status --short` 和本次创建的产物目录，回收过期构建、重复部署、日志、缓存及暂存包。需要保留的验证证据按项目约定放入 `docs/validation/`，长期素材保留在对应素材项目中。
 
+## 编码（不出乱码）
+
+- 文本文件一律 UTF-8；含中文的 PowerShell 脚本带 BOM，`.bat/.cmd` 只用 ASCII。代码里文字走 QString 和 W 函数，不用 A 后缀的 Win32 调用。
+- 只在数据确实是系统代码页时才用 `fromLocal8Bit`、`CP_ACP`、`CP_OEMCP` 之类，并把文件和理由登记到 `tests/tst_encoding.cpp`。改动涉及这些时运行 `ctest -R ^tst_encoding$`。详见 [docs/pitfalls.md](docs/pitfalls.md) 的“乱码”一节。
+- 命令输出出现乱码时，先按正确编码重新读取，再据此判断；进 MSVC 环境用 `scripts/devshell.ps1`。
+
 ## 界面
 
 - 界面必须紧凑、现代化、简洁，与 Win顺 现有设计风格保持一致。
