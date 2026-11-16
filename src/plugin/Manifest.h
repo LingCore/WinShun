@@ -122,6 +122,10 @@ struct Run {
     QString program; // Program: what to start (%VARS% allowed)
     QString args; // Program: with %s for the words
     QString cwd;
+    // Program (GitHub #344): the words are looked for as these, listed
+    // under the command's row, and the one chosen is what %s gets:
+    // "files", "folders" or "paths" (both); empty: the words themselves.
+    QString suggest;
     QString folder; // Folder
     QString query; // Search: with %s
     QString scope; // Search: all | files | folders | content

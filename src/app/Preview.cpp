@@ -5729,6 +5729,97 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     query({}); // let the last search settle before its controller and engine go away
     say(u"launcher prefix, panel-sort and favorite Tab regressions: real controllers/engine over isolated fixtures"_s);
 
+    // GitHub #344: a program command's words looked for as paths, listed
+    // above its own row; the first one current, Enter named by the command.
+    {
+        const QString suggestFolder = temporary.filePath(u"plugins/test.suggest"_s);
+        QDir().mkpath(suggestFolder);
+        QFile suggest(QDir(suggestFolder).filePath(u"plugin.json"_s));
+        check(suggest.open(QIODevice::WriteOnly), "could not create the isolated suggest plugin");
+        suggest.write(R"({"manifest":1,"id":"test.suggest","name":"Suggest fixture","version":"1.0.0","commands":[
+            {"id":"open","keyword":"edit","title":"用编辑器打开","run":{"program":"C:\\none\\editor.exe","args":"%s","suggest":"paths"}},
+            {"id":"dir","keyword":"indir","title":"在终端打开","run":{"program":"C:\\none\\term.exe","args":"-d %s","suggest":"folders"}},
+            {"id":"txt","keyword":"note","title":"用记事本打开","run":{"program":"C:\\none\\note.exe","args":"%s","suggest":"files"}}]})");
+        suggest.close();
+        plugin::Host host({.userPluginDir = temporary.filePath(u"plugins"_s)});
+        host.catalog().scan();
+        host.setEnabled(u"test.suggest"_s, true);
+        launcher.setPluginHost(&host);
+        launcher.setPanel(false);
+        const auto rows = [&] {
+            QStringList names;
+            for (int i = 0; i < launcher.results()->count(); ++i) {
+                const SearchResult* r = launcher.results()->at(i);
+                names.append(r->isPlugin() ? u"[" + r->name + u"]" : r->name);
+            }
+            return names;
+        };
+        const auto settled = [&](const QString& text) {
+            query(text);
+            pump(100);
+            query(text); // the plugin's row and the names', both in
+        };
+        settled(u"edit 报告"_s);
+        const QStringList paths = rows();
+        check(paths.size() == 4 && paths.last() == u"[用编辑器打开]" && !paths.first().startsWith(u'['),
+            "#344: paths were not listed above the command's row");
+        check(paths.contains(u"报告资料"_s) && paths.contains(u"报告.txt"_s), "#344: a file or a folder was missing");
+        check(launcher.currentRow() == 0 && launcher.keyHints().value(u"enter"_s).toString() == u"用编辑器打开",
+            "#344: the first path was not current, or Enter did not say what it does");
+        say(u"#344 edit 报告: %1; Enter: %2"_s.arg(paths.join(u", "_s), launcher.keyHints().value(u"enter"_s).toString()));
+        settled(u"indir 报告"_s);
+        check(rows() == QStringList({u"报告资料"_s, u"[在终端打开]"_s}), "#344: folders only listed something else");
+        say(u"#344 indir 报告: %1"_s.arg(rows().join(u", "_s)));
+        settled(u"note 报告"_s);
+        check(!rows().contains(u"报告资料"_s) && rows().contains(u"报告.txt"_s) && rows().last() == u"[用记事本打开]",
+            "#344: files only listed a folder");
+        say(u"#344 note 报告: %1"_s.arg(rows().join(u", "_s)));
+        settled(u"edit "_s);
+        check(rows() == QStringList({u"[用编辑器打开]"_s}), "#344: the keyword alone listed paths");
+        query({});
+        launcher.setPluginHost(nullptr);
+    }
+    // ... and Enter on one: the program started with that path as %s.
+    {
+        const QString picked = QDir::toNativeSeparators(temporary.filePath(u"picked.txt"_s));
+        const QString folder = temporary.filePath(u"plugins/test.pick"_s);
+        QDir().mkpath(folder);
+        QFile manifest(QDir(folder).filePath(u"plugin.json"_s));
+        check(manifest.open(QIODevice::WriteOnly), "could not create the isolated pick plugin");
+        const QJsonObject run {{u"program"_s, u"%SystemRoot%\\System32\\cmd.exe"_s},
+            {u"args"_s, u"/d /c echo %s>\""_s + picked + u'"'}, {u"suggest"_s, u"paths"_s}};
+        manifest.write(QJsonDocument(QJsonObject {{u"manifest"_s, 1}, {u"id"_s, u"test.pick"_s}, {u"name"_s, u"Pick fixture"_s},
+            {u"version"_s, u"1.0.0"_s}, {u"permissions"_s, QJsonArray {u"processes"_s}},
+            {u"commands"_s, QJsonArray {QJsonObject {{u"id"_s, u"pick"_s}, {u"keyword"_s, u"pick"_s}, {u"title"_s, u"交给 cmd"_s}, {u"run"_s, run}}}}})
+                .toJson());
+        manifest.close();
+        plugin::Host host({.userPluginDir = temporary.filePath(u"plugins"_s)});
+        host.catalog().scan();
+        host.setEnabled(u"test.pick"_s, true);
+        launcher.setPluginHost(&host);
+        query(u"pick outside"_s);
+        pump(100);
+        query(u"pick outside"_s);
+        const SearchResult* first = launcher.results()->at(0);
+        check(first && !first->isPlugin() && first->name == u"outside.csv", "#344: the path was not the first row");
+        launcher.trigger(0, Launcher::Open);
+        QElapsedTimer wait;
+        wait.start();
+        QByteArray got;
+        while (wait.elapsed() < 5000 && got.trimmed().isEmpty()) {
+            pump(50);
+            QFile out(picked);
+            if (out.open(QIODevice::ReadOnly))
+                got = out.readAll();
+        }
+        // An ASCII path: the same in whatever code page cmd writes.
+        check(QString::fromLatin1(got.trimmed()) == QDir::toNativeSeparators(first ? first->path : QString()),
+            "#344: Enter did not hand the path over");
+        say(u"#344 Enter on %1: the program got \"%2\""_s.arg(first ? first->path : QString(), QString::fromLatin1(got.trimmed())));
+        query({});
+        launcher.setPluginHost(nullptr);
+    }
+
     const QString pluginFolder = temporary.filePath(u"plugins/test.columns"_s);
     QDir().mkpath(pluginFolder);
     QFile manifest(QDir(pluginFolder).filePath(u"plugin.json"_s));

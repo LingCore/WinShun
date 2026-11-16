@@ -44,7 +44,7 @@ A plugin is a folder under `%LOCALAPPDATA%\WinShun\plugins\<id>\` with a `plugin
 }
 ```
 
-`npm lodash` and Enter opens the search; `npm ` alone (with the space) opens the home page. `run` may also be `{"program": "C:\\…\\code.exe", "args": "%s"}`, `{"folder": "%USERPROFILE%\\Downloads"}`, `{"search": {"query": "ext:pdf %s", "scope": "files"}}` (as if typed into the box) or `{"items": [{"id": …, "title": …, "open": {"path": …}}]}` (a fixed list the words filter).
+`npm lodash` and Enter opens the search; `npm ` alone (with the space) opens the home page. `run` may also be `{"program": "C:\\…\\code.exe", "args": "%s"}` (with `"suggest": "paths"` the words are looked for as file and folder names, listed above the command's row, and Enter puts the chosen one's full path in `%s`; `"files"` finds files only, `"folders"` folders only; since 0.32.0), `{"folder": "%USERPROFILE%\\Downloads"}`, `{"search": {"query": "ext:pdf %s", "scope": "files"}}` (as if typed into the box) or `{"items": [{"id": …, "title": …, "open": {"path": …}}]}` (a fixed list the words filter).
 
 Zero-code paths beginning with `%USERPROFILE%\Desktop`, `Documents`, `Downloads`, `Pictures`, `Music` or `Videos` resolve through Windows known folders to their current locations, including other drives, OneDrive and network shares. Subpaths are supported. `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup` also resolves to the current Windows Startup folder. This applies to `run.folder`, `run.program`, working directories, and fixed items' `open.path` and subtitles containing variables. Use an explicit absolute path to target a specific location.
 
@@ -170,7 +170,7 @@ Top level:
 | `mode` | `list` (default) or `instant`: the keyword alone, with no space after it, sends `query` to the plugin, and what it returns leads the list; the files and programs found for that word follow as usual (with a space after the keyword the list is the command's alone; GitHub #242). Opening a window or changing anything still belongs in `action` (the user pressed Enter): `query` arrives while the user types, and they may be looking for a file with those letters in its name |
 | `contentSearch` | `true`: a content-search provider; requires `runtime` and receives `trigger: "content"`. See “Content-search providers” below. |
 | `actions` | `[{"id": "kill", "title": "Kill", "key": "Enter"}, …]`: the order gives Enter / Ctrl+Enter / Shift+Enter; the menu lists all; none means one `default` |
-| `run` | zero-code only: `url` (`%s` is the text, URL-encoded; `home` for the keyword alone), `program` (`%VAR%` expanded; `%s` in `args`), `folder`, `search` (`{"query": "ext:pdf %s", "scope": "all | files | folders | content"}`), `items` (item objects; `%VAR%` in `open.path` expanded) |
+| `run` | zero-code only: `url` (`%s` is the text, URL-encoded; `home` for the keyword alone), `program` (`%VAR%` expanded; `%s` in `args`; `suggest`: `files | folders | paths` lists paths found for the words to choose from), `folder`, `search` (`{"query": "ext:pdf %s", "scope": "all | files | folders | content"}`), `items` (item objects; `%VAR%` in `open.path` expanded) |
 | `cache` | `{"seconds": 60}`: how long the same text's answer is reused |
 | `ai` | `{"description": "…", "parameters": {JSON Schema}}` for the AI tool; default: `description` plus a `query` string |
 

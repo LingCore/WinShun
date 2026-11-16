@@ -926,6 +926,7 @@ private:
         QString label; // the command's title
         QString hint;
         QString icon; // an image URL
+        QString suggest; // a program's: what its words are looked for as (Run::suggest, GitHub #344); empty: nothing
     };
 
     void search(bool more = false); // more: a page more (loadMore)
@@ -982,6 +983,14 @@ private:
     // and returns false so the caller does nothing.
     bool pluginOpenAllowed(const QString& pluginId, const ws::plugin::Open& open);
     void showPluginRows(SearchResults rows); // keyword mode: the whole list (showRows)
+    // Keyword mode for a program whose words are looked for as paths
+    // (GitHub #344): the names searched for them, and the list of what was
+    // found with the command's own row.
+    bool suggestsPaths() const;
+    void searchSuggestedPaths();
+    void showSuggestedPaths();
+    // A path found for it, chosen: the program run with it as %s.
+    bool runWithPath(const SearchResult& row);
     RankBy rankBy() const; // as the current scope has it
     // The names' order when it is a column's (the panel's, or the sorts by
     // name, folder, type and size, #44); Rank: rankBy().
@@ -1454,6 +1463,9 @@ private:
     std::unique_ptr<plugin::Merge> m_merge;
     std::uint64_t m_pluginQueryId = 0;
     std::optional<KeywordMode> m_keyword;
+    SearchResults m_keywordOwn; // suggestsPaths(): the command's own rows, as it answered
+    SearchResults m_keywordFound; // ... and the paths found for its words
+    QString m_keywordFoundFor; // ... for which command ("plugin/command")
     QString m_shotKeyword; // setScreenshots
     ScreenshotHooks m_shotHooks;
     struct { bool pin = false; bool edit = false; } m_pictureVerbs;

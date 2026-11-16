@@ -4,8 +4,8 @@
 
 | 命令 | `run` | 做什么 |
 |---|---|---|
-| `code D:\项目` | `program` + `args: "%s"` | 用 VS Code 打开（路径按你的安装改；没装就报打不开） |
-| `np 笔记.txt` | `program` | 记事本 |
+| `code 项目` | `program` + `args: "%s"` + `suggest: "paths"` | 用 VS Code 打开：输入名字的一部分，下面列出找到的文件和文件夹，回车打开选中的那个；直接写完整路径也行（VS Code 的路径按你的安装改；没装就报打不开） |
+| `np 笔记` | `program` + `suggest: "files"` | 用记事本打开：同上，只列文件 |
 | `dl `、`desk ` | `folder` | 跳到 Windows 当前设置的下载 / 桌面文件夹，支持自定义位置和 OneDrive 重定向 |
 | `pdf 合同`、`img 截图` | `search` | 保存的搜索：等于在搜索框输入 `ext:pdf 合同` |
 | `go 文档` | `items` | 固定清单，输入的词用来筛选 |
@@ -18,7 +18,7 @@
 
 ---
 
-A zero-code plugin with one example of each `run`: `program` (+ `args` with `%s`), `folder`, `search` (a saved query, as if typed into the box) and `items` (a fixed list the words filter). Programs start with your normal rights, never elevated. Edit the VS Code path to match your install.
+A zero-code plugin with one example of each `run`: `program` (+ `args` with `%s`; with `suggest`, `code project` lists the files and folders found for the words and Enter opens the chosen one), `folder`, `search` (a saved query, as if typed into the box) and `items` (a fixed list the words filter). Programs start with your normal rights, never elevated. Edit the VS Code path to match your install.
 
 Desktop, Documents, Downloads and Pictures follow their current Windows locations, including custom drives and OneDrive redirection. Existing manifests work with the resolved paths in both the results and open actions.
 

@@ -48,7 +48,7 @@ English version: [plugins.en.md](plugins.en.md).
 }
 ```
 
-输入 `npm lodash`，Enter 打开搜索页；只输入 `npm `（带空格）打开首页。`run` 还可以是 `{"program": "C:\\…\\code.exe", "args": "%s"}`、`{"folder": "%USERPROFILE%\\Downloads"}`、`{"search": {"query": "ext:pdf %s", "scope": "files"}}`（等于在搜索框里输入它），或 `{"items": [{"id": …, "title": …, "open": {"path": …}}]}`（固定清单，输入的词用来筛选）。
+输入 `npm lodash`，Enter 打开搜索页；只输入 `npm `（带空格）打开首页。`run` 还可以是 `{"program": "C:\\…\\code.exe", "args": "%s"}`（加 `"suggest": "paths"`，输入的词会按名字找文件和文件夹，列在命令那一行上面，Enter 把选中的完整路径填进 `%s`；`"files"` 只找文件，`"folders"` 只找文件夹；0.32.0 起）、`{"folder": "%USERPROFILE%\\Downloads"}`、`{"search": {"query": "ext:pdf %s", "scope": "files"}}`（等于在搜索框里输入它），或 `{"items": [{"id": …, "title": …, "open": {"path": …}}]}`（固定清单，输入的词用来筛选）。
 
 零代码路径以 `%USERPROFILE%\Desktop`、`Documents`、`Downloads`、`Pictures`、`Music`、`Videos` 开头时，按 Windows 已知文件夹解析到当前设置的位置，支持迁移到其他盘、OneDrive 和网络目录，也支持后接子路径。`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup` 同样读取 Windows 当前的启动文件夹。`run.folder`、`run.program`、工作目录和固定清单的 `open.path`、含变量的副标题使用相同规则。直接填写的绝对路径按填写的地址打开。
 
@@ -174,7 +174,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 | `mode` | `list`（默认）或 `instant`：单独输入关键字、不用加空格，就向插件发 `query`，它返回的结果排在列表最前面，后面照常是按这个词找到的文件和程序（关键字后面加了空格，列表才只剩这个命令的结果；GitHub #242）。打开窗口、改东西这类动作仍然放在 `action` 里（用户按 Enter 时）：`query` 在用户打字时就会来，他可能只是想找名字里有这几个字母的文件 |
 | `contentSearch` | `true`：作为内容检索提供者，必须有 `runtime`；收到 `trigger: "content"`，见下面“内容检索提供者” |
 | `actions` | `[{"id": "kill", "title": "结束", "key": "Enter"}, …]`：顺序决定 Enter / Ctrl+Enter / Shift+Enter；右键菜单列全部；不写就只有一个 `default` |
-| `run` | 零代码专用：`url`（`%s` 是输入的文字，按网址规则编码；`home` 是单独输入关键字时开的）、`program`（`%VAR%` 会展开；`args` 里 `%s`）、`folder`、`search`（`{"query": "ext:pdf %s", "scope": "all | files | folders | content"}`）、`items`（item 数组，`open.path` 里的 `%VAR%` 会展开） |
+| `run` | 零代码专用：`url`（`%s` 是输入的文字，按网址规则编码；`home` 是单独输入关键字时开的）、`program`（`%VAR%` 会展开；`args` 里 `%s`；`suggest`: `files | folders | paths` 时按输入的词找路径给它选）、`folder`、`search`（`{"query": "ext:pdf %s", "scope": "all | files | folders | content"}`）、`items`（item 数组，`open.path` 里的 `%VAR%` 会展开） |
 | `cache` | `{"seconds": 60}`：同一命令同一文字的结果缓存多久 |
 | `ai` | `{"description": "…", "parameters": {JSON Schema}}`：作为 AI 工具时的描述和参数；不写就用 `description` 加一个 `query` 字符串参数 |
 

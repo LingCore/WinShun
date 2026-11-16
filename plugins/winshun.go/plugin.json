@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.go",
   "name": {"zh": "快捷跳转", "en": "Go to"},
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": {"zh": "零代码示例：code 用 VS Code 打开、dl 下载文件夹、pdf 找 PDF、go 常用位置", "en": "Zero-code sample: code opens in VS Code, dl Downloads, pdf finds PDFs, go common places"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
@@ -11,13 +11,13 @@
   "commands": [
     {
       "id": "code", "keyword": "code", "title": {"zh": "用 VS Code 打开", "en": "Open in VS Code"}, "icon": "glyph:U+E943",
-      "hint": {"zh": "文件或文件夹的路径；留空打开 VS Code", "en": "a file or folder path; empty opens VS Code"},
-      "run": {"program": "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe", "args": "%s"}
+      "hint": {"zh": "文件或文件夹的名字或路径；留空打开 VS Code", "en": "a file or folder, by name or path; empty opens VS Code"},
+      "run": {"program": "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe", "args": "%s", "suggest": "paths"}
     },
     {
-      "id": "np", "keyword": "np", "title": {"zh": "记事本", "en": "Notepad"}, "icon": "glyph:U+E70B",
-      "hint": {"zh": "要打开的文件；留空新建", "en": "a file to open; empty for a new one"},
-      "run": {"program": "%SystemRoot%\\notepad.exe", "args": "%s"}
+      "id": "np", "keyword": "np", "title": {"zh": "用记事本打开", "en": "Open in Notepad"}, "icon": "glyph:U+E70B",
+      "hint": {"zh": "文件的名字或路径；留空新建", "en": "a file, by name or path; empty for a new one"},
+      "run": {"program": "%SystemRoot%\\notepad.exe", "args": "%s", "suggest": "files"}
     },
     {"id": "dl", "keyword": "dl", "title": {"zh": "下载文件夹", "en": "Downloads"}, "icon": "glyph:U+E896", "run": {"folder": "%USERPROFILE%\\Downloads"}},
     {"id": "desk", "keyword": "desk", "title": {"zh": "桌面", "en": "Desktop"}, "icon": "glyph:U+E8FC", "run": {"folder": "%USERPROFILE%\\Desktop"}},

@@ -15,6 +15,7 @@
 #include "Host.h"
 #include "IndexService.h"
 #include "Merge.h"
+#include "ZeroCode.h"
 #include "OpenPolicy.h"
 #include "PathText.h"
 #include "Query.h"
@@ -2450,6 +2451,8 @@ void Launcher::search(bool more)
         m_requestId = 0;
         m_pending = false;
         m_contentRunning = false;
+        if (suggestsPaths())
+            searchSuggestedPaths();
         refreshStatus();
         if (isShotHistory(m_keyword->pluginId, m_keyword->commandId)) // the screenshots: in memory, at once
             showPluginRows(screenshotRows(m_keyword->words));
@@ -2662,10 +2665,77 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
 // Keyword mode: the command's answer is the list (ModelSink::assign).
 void Launcher::showPluginRows(SearchResults rows)
 {
+    if (m_keyword && !m_keyword->suggest.isEmpty()) {
+        m_keywordOwn = std::move(rows);
+        showSuggestedPaths();
+        return;
+    }
     if (m_panel && m_panelSort.key != SortKey::Rank)
         std::stable_sort(rows.begin(), rows.end(), [&](const auto& a, const auto& b) { return resultColumnLess(a, b, m_panelSort); });
     showRows(std::move(rows), m_keyword ? ws::parseQuery(m_keyword->words).highlights : QStringList());
     refreshStatus();
+}
+
+bool Launcher::suggestsPaths() const
+{
+    return m_keyword && !m_keyword->suggest.isEmpty() && !m_keyword->words.trimmed().isEmpty();
+}
+
+// "code 项目" (GitHub #344): the words looked for as files or folders, as
+// a command of the user's own does (commandFiles), the program's row kept.
+void Launcher::searchSuggestedPaths()
+{
+    SearchEngine::Request request;
+    request.text = m_keyword->words.trimmed();
+    request.scope = m_keyword->suggest == u"folders" ? ws::Scope::Folders : ws::Scope::Files;
+    request.kindOrder = m_kindOrder;
+    request.rankBy = rankBy();
+    request.preferredTypes = m_preferredTypes;
+    request.excludedTypes = m_excludedTypes;
+    request.excludedFileNames = m_excludedFileNames;
+    request.limit = kPage;
+    request.order = nameOrder();
+    request.regex = regexTerms();
+    if (m_recordHistory) {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        request.history = m_history->ranked(request.text, now);
+        request.historyAffinity = m_history->affinities(request.text, now);
+    }
+    m_requestId = m_engine->submit(std::move(request));
+    m_nameRequestId = m_requestId;
+    m_lastAsk.start();
+    m_pending = true;
+}
+
+// The paths found, then the program's own row (the words as they are),
+// or that row first when the words are a path there is ("code D:\项目").
+void Launcher::showSuggestedPaths()
+{
+    const QString key = m_keyword->pluginId + u'/' + m_keyword->commandId;
+    const QString words = m_keyword->words.trimmed();
+    SearchResults rows;
+    if (suggestsPaths() && m_keywordFoundFor == key)
+        rows = m_keywordFound;
+    const QFileInfo typed(words);
+    const bool path = typed.isAbsolute() && !words.startsWith(u"\\\\") && typed.exists();
+    rows = path ? m_keywordOwn + rows : rows + m_keywordOwn;
+    showRows(std::move(rows), ws::parseQuery(words).highlights);
+    refreshStatus();
+}
+
+bool Launcher::runWithPath(const SearchResult& row)
+{
+    const plugin::Entry* entry = m_plugins ? m_plugins->catalog().find(m_keyword->pluginId) : nullptr;
+    const plugin::Command* command = entry && entry->manifest ? entry->manifest->command(m_keyword->commandId) : nullptr;
+    if (!command || command->run.kind != plugin::Run::Kind::Program)
+        return false;
+    const QString locale = uiLocale();
+    const plugin::Items items = plugin::runZeroCode(*command, plugin::zeroCodePathArgument(command->run, row.path), locale);
+    if (items.isEmpty())
+        return false;
+    remember(row.path, m_keyword->words.trimmed()); // found for these words: first for them next time
+    performPlugin(plugin::toRow(*entry, *command, items.front(), 0, locale), Open);
+    return true;
 }
 
 // Only for a site's keyword followed by words: nothing typed otherwise ever
@@ -2940,6 +3010,17 @@ void Launcher::onResults(quint64 id, const SearchResults& results, qint64 total,
     if (m_contentRunning) {
         refreshStatus();
         return; // the (empty) start of a content scan: rows come with contentResults
+    }
+    if (m_keyword) { // the paths for a program's words (searchSuggestedPaths)
+        m_keywordFound.clear();
+        for (const SearchResult& r : results) {
+            if (fileRow(r) && !(m_keyword->suggest == u"files" && r.isDir))
+                m_keywordFound.append(r);
+        }
+        m_keywordFoundFor = m_keyword->pluginId + u'/' + m_keyword->commandId;
+        m_replacePending = true; // another list: its first row is current (what Enter hands over)
+        showSuggestedPaths();
+        return;
     }
 
     // More to list than came: names beyond the page, or the files written
@@ -3824,7 +3905,9 @@ void Launcher::refreshKeyHints()
         second = typedInFolder() && !pathtext::sameFolder(QFileInfo(r->path).absolutePath(), m_typingFolder)
             ? tr("在原窗口定位") : tr("打开位置");
     }
-    if (const auto files = r && fileRow(*r) ? commandFiles() : std::nullopt)
+    if (r && m_keyword && !m_keyword->suggest.isEmpty() && !r->isPlugin() && fileRow(*r))
+        enter = m_keyword->label; // the command's title says what it does with it: 用 VS Code 打开
+    else if (const auto files = r && fileRow(*r) ? commandFiles() : std::nullopt)
         enter = tr("用“%1”打开").arg(files->command.name);
     else if (r && r->isCommand() && commandFiles())
         enter = tr("原样传入“%1”").arg(r->words);
@@ -4980,6 +5063,9 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
 {
     const SearchResult r = result; // the model may change underneath us
     m_adminNote.reset(); // set below for the row being run, taken by remember()
+    // A path found for a program's words (GitHub #344): Enter hands it over.
+    if (action == Open && m_keyword && !m_keyword->suggest.isEmpty() && !r.isPlugin() && fileRow(r) && runWithPath(r))
+        return;
     // A file or folder found for a command (commandFiles): Enter hands it over.
     if (const auto files = action == Open && fileRow(r) ? commandFiles() : std::nullopt) {
         const Favorite& command = files->command;
@@ -6732,7 +6818,8 @@ std::optional<Launcher::KeywordMode> Launcher::matchKeyword(const QString& text)
         const QString icon = !m.command->icon.isEmpty() ? m.command->icon : m.entry->manifest->icon;
         return KeywordMode {m.entry->id, m.command->id, m.keyword, m.text,
             m.command->title.pick(locale).isEmpty() ? m.entry->manifest->name.pick(locale) : m.command->title.pick(locale),
-            m.command->hint.pick(locale), FileIconProvider::pluginIconUrl(m.entry->id, icon, dark)};
+            m.command->hint.pick(locale), FileIconProvider::pluginIconUrl(m.entry->id, icon, dark),
+            m.command->run.kind == plugin::Run::Kind::Program ? m.command->run.suggest : QString()};
     }
     return std::nullopt;
 }

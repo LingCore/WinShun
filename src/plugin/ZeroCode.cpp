@@ -21,6 +21,14 @@ QString zeroCodeUrl(const Run& run, const QString& words)
     return shortcut.searchUrl(words);
 }
 
+QString zeroCodePathArgument(const Run& run, const QString& path)
+{
+    const QString native = QDir::toNativeSeparators(path);
+    if (!native.contains(u' ') || run.args.contains(u"\"%s\""_s))
+        return native;
+    return u'"' + native + u'"';
+}
+
 namespace {
 
 QString expanded(const QString& path)

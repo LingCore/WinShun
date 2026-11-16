@@ -2331,6 +2331,43 @@ private slots:
         QVERIFY(f.host->catalog().translators().size() == 2u);
     }
 
+    // GitHub #344: a program's words looked for as paths; the chosen one is %s.
+    void zeroCodeSuggest()
+    {
+        QString error;
+        const QString json = uR"({"manifest":1,"id":"a.b","name":"X","version":"1","commands":[{"id":"c","keyword":"c","run":{"program":"x.exe","args":%1,"suggest":%2}}]})"_s;
+        const auto parsed = [&](const QString& args, const QString& suggest) { return Manifest::parse(json.arg(args, suggest).toUtf8(), &error); };
+        for (const QString suggest : {u"files"_s, u"folders"_s, u"paths"_s}) {
+            const auto m = parsed(u"\"-n %s\""_s, u'"' + suggest + u'"');
+            QVERIFY2(m.has_value(), qPrintable(error));
+            QCOMPARE(m->commands[0].run.suggest, suggest);
+        }
+        QVERIFY(!parsed(u"\"%s\""_s, u"\"apps\""_s));
+        QVERIFY2(error.contains(u"suggest"_s), qPrintable(error));
+        QVERIFY(!parsed(u"\"-n\""_s, u"\"files\""_s)); // nowhere to put the path
+        QVERIFY2(error.contains(u"%s"_s), qPrintable(error));
+
+        Run run;
+        run.args = u"%s"_s;
+        QCOMPARE(zeroCodePathArgument(run, u"D:/项目/a.txt"_s), u"D:\\项目\\a.txt"_s);
+        QCOMPARE(zeroCodePathArgument(run, u"D:\\My Projects"_s), u"\"D:\\My Projects\""_s);
+        run.args = u"--goto \"%s\""_s; // quoted already
+        QCOMPARE(zeroCodePathArgument(run, u"D:\\My Projects"_s), u"D:\\My Projects"_s);
+        Command command;
+        command.run.kind = Run::Kind::Program;
+        command.run.program = u"C:\\x.exe"_s;
+        command.run.args = u"-n %s"_s;
+        command.run.suggest = u"paths"_s;
+        QCOMPARE(runZeroCode(command, zeroCodePathArgument(command.run, u"D:\\My Projects"_s), u"zh"_s)[0].open.args,
+            u"-n \"D:\\My Projects\""_s);
+
+        // The sample's code and np look for paths.
+        const auto go = Manifest::load(QString::fromUtf8(WINSHUN_SOURCE_PLUGINS) + u"/winshun.go/plugin.json"_s, &error);
+        QVERIFY2(go.has_value(), qPrintable(error));
+        QCOMPARE(go->command(u"code")->run.suggest, u"paths"_s);
+        QCOMPARE(go->command(u"np")->run.suggest, u"files"_s);
+    }
+
     void zeroCodeRedirectedStartup()
     {
         QTemporaryDir temporary;

@@ -348,8 +348,13 @@ Run readRun(const QJsonValue& value, const QString& where, Check& check)
         run.program = stringField(o, u"program"_s, where, check);
         run.args = stringField(o, u"args"_s, where, check);
         run.cwd = stringField(o, u"cwd"_s, where, check);
+        run.suggest = stringField(o, u"suggest"_s, where, check);
         if (run.program.isEmpty())
             check.fail(where + u".program 不能为空"_s);
+        if (!run.suggest.isEmpty() && run.suggest != u"files" && run.suggest != u"folders" && run.suggest != u"paths")
+            check.fail(where + u".suggest 要是 files、folders 或 paths"_s);
+        else if (!run.suggest.isEmpty() && !run.args.contains(u"%s"_s))
+            check.fail(where + u".suggest 要 args 里有 %s，选中的路径填在那里"_s);
     }
     if (o.contains(u"folder"_s)) {
         ++kinds;
