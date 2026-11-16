@@ -344,10 +344,14 @@ bool goByName(HWND dialog, const std::wstring& folder)
     if (!isFolder(folder) || !setFileBoxText(dialog, box, target)
         || !send(dialog, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), reinterpret_cast<LPARAM>(ok)))
         return false;
-    // A dialog of Windows Vista and later goes there after OK returns, and
-    // then clears the box.
+    // Both styles go there after OK returns and then clear the box: Windows
+    // Vista's and later shows the folder in its crumbs, the Windows XP style
+    // only empties the box (some 40 ms on). A name put back before that
+    // would be cleared with it.
     if (crumbs)
         waitFor([&] { return caption(crumbs) != shown; }, 1500ms);
+    else
+        waitFor([&] { return controlText(box, 250) != target; }, 1500ms);
     setFileBoxText(dialog, box, typed);
     return true;
 }
