@@ -1,6 +1,7 @@
 #include "ClipImport.h"
 
 #include "ClipImage.h"
+#include "ContentScanner.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -301,7 +302,7 @@ QStringList dittoFiles(const QByteArray& drop)
         for (const QByteArray& name : drop.mid(offset).split('\0')) {
             if (name.isEmpty())
                 break;
-            files.append(fromCodePage(CP_ACP, name));
+            files.append(fromCodePage(ContentScanner::legacyCodePage(), name));
         }
     }
     return files;
@@ -444,7 +445,7 @@ Report importDitto(const QString& path, const Hooks& hooks)
                         }
                         if (text.trimmed().isEmpty() && have.contains(u"cf_text"_s)) {
                             const QByteArray raw = read("CF_TEXT", kMaxText);
-                            text = fromCodePage(CP_ACP, raw.left(std::max<qsizetype>(0, raw.indexOf('\0') >= 0 ? raw.indexOf('\0') : raw.size())));
+                            text = fromCodePage(ContentScanner::legacyCodePage(), raw.left(std::max<qsizetype>(0, raw.indexOf('\0') >= 0 ? raw.indexOf('\0') : raw.size())));
                         }
                         const bool bigText = have.contains(u"cf_unicodetext"_s) && have[u"cf_unicodetext"_s].size > kMaxText * 2 + 2;
                         if (bigText && text.isEmpty()) {

@@ -15,7 +15,7 @@ $source = Join-Path $repo 'integrations/blender/winshun_file_dialog'
 if ($LASTEXITCODE -ne 0) { throw 'Blender extension manifest validation failed.' }
 & $python $cli build --source-dir $source --output-dir ([IO.Path]::GetFullPath($OutputDir))
 if ($LASTEXITCODE -ne 0) { throw 'Blender extension build failed.' }
-$manifest = Get-Content "$source/blender_manifest.toml" -Raw
+$manifest = Get-Content "$source/blender_manifest.toml" -Raw -Encoding UTF8
 $version = [regex]::Match($manifest, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
 $package = Join-Path $OutputDir "winshun_file_dialog-$version.zip"
 & $python $cli validate $package

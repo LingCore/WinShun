@@ -5,6 +5,7 @@
 // crashes and restarts, encodings, and (run elevated) the token, job and
 // permissions a plugin process gets.
 
+#include "TestJunction.h"
 #include "Catalog.h"
 #include "Details.h"
 #include "Gallery.h"
@@ -404,12 +405,6 @@ QByteArray sigFileOf(const QList<std::pair<QString, QByteArray>>& entries)
     return toJson(QJsonObject {{u"schema"_s, 1}, {u"file"_s, u"index.json"_s}, {u"signatures"_s, signatures}});
 }
 
-// A junction at `link` to `target` (a plugin folder in development, as mklink /J makes it).
-bool makeJunction(const QString& link, const QString& target)
-{
-    QDir().mkpath(QFileInfo(link).path());
-    return QProcess::execute(u"cmd"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, QDir::toNativeSeparators(link), QDir::toNativeSeparators(target)}) == 0;
-}
 
 QString versionAt(const QString& pluginDir)
 {
@@ -1186,10 +1181,8 @@ private slots:
         // A link inside the folder: never confirmed, never matched.
         const QString target = QDir::toNativeSeparators(temp.path() + u"/elsewhere"_s);
         QVERIFY(QDir().mkpath(target));
-        QProcess mklink;
-        mklink.start(u"cmd.exe"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, folder + u"\\linked"_s, target});
-        QVERIFY(mklink.waitForFinished(10000));
-        QVERIFY2(QFileInfo(folder + u"\\linked"_s).exists(), mklink.readAllStandardOutput().constData());
+        QVERIFY(makeJunction(folder + u"\\linked"_s, target));
+        QVERIFY(QFileInfo(folder + u"\\linked"_s).exists());
         QVERIFY(!elevation::confirmFolder(store, u"a.b"_s, folder, &error));
         QVERIFY2(error.contains(u"linked"_s), qPrintable(error));
         QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::Changed);
@@ -1305,9 +1298,7 @@ private slots:
         const QString tree = r.dir;
         const QString key = QFileInfo(tree).path();
         const auto junction = [](const QString& link, const QString& target) {
-            QProcess mklink;
-            mklink.start(u"cmd.exe"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, QDir::toNativeSeparators(link), QDir::toNativeSeparators(target)});
-            return mklink.waitForFinished(10000) && QFileInfo(link).exists();
+            return makeJunction(link, target) && QFileInfo(link).exists();
         };
         // Each level in turn moved aside and a junction to it put in its place.
         for (const QString& level : {QDir::toNativeSeparators(store.root), QDir::toNativeSeparators(key), QDir::toNativeSeparators(tree)}) {
@@ -5459,7 +5450,13 @@ private slots:
         QCOMPARE(data.value(u"WS_SETTINGS"_s).toString(), u"{}"_s);
         QCOMPARE(QJsonDocument::fromJson(data.value(u"WS_FILTERS"_s).toString().toUtf8()).object(), filters);
         QCOMPARE(data.value(u"FAKE_EXTRA"_s).toString(), u"额外"_s);
-        QVERIFY(data.value(u"PYTHONIOENCODING"_s).toString().isEmpty()); // an exe, not python
+        // An exe, not python: nothing added to the user's own environment (which may set it).
+        const auto registryValue = [](const QString& key) {
+            return QSettings(key, QSettings::NativeFormat).value(u"PYTHONIOENCODING"_s).toString();
+        };
+        const QString userIo = registryValue(u"HKEY_CURRENT_USER\\Environment"_s);
+        QCOMPARE(data.value(u"PYTHONIOENCODING"_s).toString(),
+            userIo.isEmpty() ? registryValue(u"HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"_s) : userIo);
         // The regex trigger: the whole text, and the groups.
         QVERIFY(f.host->query(u"12+34"_s, Scope::All, 2));
         QVERIFY(f.waitFinal(2));
@@ -5767,6 +5764,38 @@ private slots:
         QVERIFY(f.host->query(u"ut 中文查询"_s, Scope::All, 3));
         QVERIFY(f.waitFinal(3));
         QCOMPARE(f.finalFor(3)->items[0].title, u"once: 中文查询"_s);
+    }
+
+    void stderrAnsi()
+    {
+        // A plugin whose stderr is in the ANSI code page (a batch file's echo, a
+        // PowerShell parse error, Qt's default message handler) is not UTF-8.
+        // The runner puts that stderr into a JSON control line, which the host
+        // drops when it is not valid: the stderr line and the exit with it,
+        // so the failure never came. It must come, with the text readable.
+        const std::wstring wide = u"something went wrong: Résumé 出错了"_s.toStdWString();
+        const int bytes = ::WideCharToMultiByte(CP_ACP, 0, wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
+        std::string ansi(static_cast<std::size_t>(bytes), '\0');
+        ::WideCharToMultiByte(CP_ACP, 0, wide.data(), static_cast<int>(wide.size()), ansi.data(), bytes, nullptr, nullptr);
+        const int chars = ::MultiByteToWideChar(CP_ACP, 0, ansi.data(), bytes, nullptr, 0);
+        std::wstring back(static_cast<std::size_t>(chars), L'\0');
+        ::MultiByteToWideChar(CP_ACP, 0, ansi.data(), bytes, back.data(), chars);
+        const QString expected = QString::fromStdWString(back);
+        qInfo() << "ANSI code page" << ::GetACP() << "gives back" << expected;
+
+        Fixture f;
+        Spec spec;
+        spec.mode = u"once"_s;
+        spec.role = u"--once"_s;
+        spec.args = {u"--fail-ansi"_s};
+        spec.runtimeExtra = {{u"debounceMs"_s, 0}};
+        QVERIFY(!f.install(spec).isEmpty());
+        QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+        QVERIFY(f.waitFailure(1));
+        const QString failure = f.failureOf(1);
+        QVERIFY2(failure.contains(u"退出码 3"_s), qPrintable(failure));
+        QVERIFY2(failure.contains(expected), qPrintable(failure));
+        QVERIFY2(!failure.contains(QChar(0xFFFD)) || expected.contains(QChar(0xFFFD)), qPrintable(failure));
     }
 
     // ---- the job and the permissions ---------------------------------------------
@@ -6332,14 +6361,11 @@ private slots:
             reinterpret_cast<LPCWSTR>((elsewhere + u"\\secret.txt"_s).utf16()), nullptr));
         QVERIFY(fileInFolder(data + u"\\link.txt"_s, data).isEmpty());
         // A junction in the folder to a folder elsewhere (no administrator needed).
-        QProcess mklink;
-        mklink.start(u"cmd.exe"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, data + u"\\out"_s, elsewhere});
-        QVERIFY(mklink.waitForFinished(10000) && mklink.exitCode() == 0);
+        QVERIFY(makeJunction(data + u"\\out"_s, elsewhere));
         QVERIFY(QFileInfo::exists(data + u"\\out\\secret.txt"_s));
         QVERIFY(fileInFolder(data + u"\\out\\secret.txt"_s, data).isEmpty());
         // The data folder itself reached through a junction: still its own.
-        mklink.start(u"cmd.exe"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, root + u"\\moved"_s, data});
-        QVERIFY(mklink.waitForFinished(10000) && mklink.exitCode() == 0);
+        QVERIFY(makeJunction(root + u"\\moved"_s, data));
         QVERIFY(!fileInFolder(data + u"\\details\\mail.msg"_s, root + u"\\moved"_s).isEmpty());
         QVERIFY(::RemoveDirectoryW(reinterpret_cast<LPCWSTR>((data + u"\\out"_s).utf16())));
         QVERIFY(::RemoveDirectoryW(reinterpret_cast<LPCWSTR>((root + u"\\moved"_s).utf16())));

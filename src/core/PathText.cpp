@@ -2,6 +2,7 @@
 
 #include "Query.h"
 #include "Unc.h"
+#include "Win32Util.h"
 #include "Wtf8.h"
 
 #include <QCollator>
@@ -116,7 +117,8 @@ QString expandVariables(QString line)
     QString expanded;
     qsizetype from = 0;
     for (const QRegularExpressionMatch& m : variable.globalMatch(line)) {
-        const QString value = qEnvironmentVariable(m.captured(1).toLocal8Bit().constData());
+        // Wide: a variable named in Chinese is not in the ANSI code page. An unknown name stays as it was.
+        const QString value = QString::fromStdWString(win32::expandEnvironment(m.captured().toStdWString()));
         expanded += line.mid(from, m.capturedStart() - from);
         expanded += value.isEmpty() ? m.captured() : value;
         from = m.capturedEnd();

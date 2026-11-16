@@ -228,10 +228,14 @@ struct Instance {
     std::deque<std::string> stderrTail;
     std::atomic<bool> done {false};
 
-    std::string decode(const std::string& line) const
+    // `lenient`: for what the runner puts into its own control lines (stderr).
+    // Bytes taken as UTF-8 that are not (a batch file's echo, Qt's default
+    // message handler, a PowerShell parse error: the ANSI code page) are read
+    // as the ANSI code page, else the host drops the line as bad JSON.
+    std::string decode(const std::string& line, bool lenient = false) const
     {
         if (codePage == CP_UTF8)
-            return line;
+            return !lenient || lite::validUtf8(line) ? line : lite::utf8(lite::wide(line, CP_ACP));
         return lite::utf8(lite::wide(line, codePage));
     }
 
@@ -281,7 +285,7 @@ struct Instance {
         lite::LineReader reader(stderrRead.get());
         std::string line;
         const auto keep = [&](const std::string& text) {
-            const std::string decoded = decode(text);
+            const std::string decoded = decode(text, true);
             {
                 const std::lock_guard lock(mutex);
                 stderrTail.push_back(decoded);

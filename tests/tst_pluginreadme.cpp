@@ -1,8 +1,11 @@
 #include "PluginReadme.h"
 #include <QFile>
+#include <QStringDecoder>
 #include <QTemporaryDir>
 #include <QTextDocument>
 #include <QtTest>
+
+#include <windows.h>
 
 using namespace Qt::StringLiterals;
 
@@ -34,6 +37,41 @@ private slots:
         QVERIFY(doc.toPlainText().contains(u"Heading"));
         QVERIFY(doc.toPlainText().contains(u"body"));
         QVERIFY(doc.toPlainText().contains(u"site"));
+    }
+    void ansiReadmeIsNotMojibake()
+    {
+        // A README saved as "ANSI" (Notepad's old default): no BOM, and not UTF-8
+        // either. GBK on a Chinese Windows; it used to come out as U+FFFD.
+        const std::wstring wide = u"中文说明 Résumé"_s.toStdWString();
+        const int size = ::WideCharToMultiByte(CP_ACP, 0, wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
+        QByteArray ansi(size, '\0');
+        ::WideCharToMultiByte(CP_ACP, 0, wide.data(), static_cast<int>(wide.size()), ansi.data(), size, nullptr, nullptr);
+        QStringDecoder probe(QStringConverter::Utf8);
+        const QString probed = probe(ansi);
+        Q_UNUSED(probed);
+        if (!probe.hasError())
+            QSKIP("the ANSI code page is UTF-8 here: the bytes cannot be told apart from UTF-8");
+        const int chars = ::MultiByteToWideChar(CP_ACP, 0, ansi.constData(), size, nullptr, 0);
+        std::wstring back(static_cast<std::size_t>(chars), L'\0');
+        ::MultiByteToWideChar(CP_ACP, 0, ansi.constData(), size, back.data(), chars);
+        const QString expected = QString::fromStdWString(back);
+        QVERIFY(expected.contains(u"Résumé"_s));
+
+        QTemporaryDir profile;
+        write(profile.filePath(u"README.txt"_s), ansi);
+        const auto result = ws::readme::load(profile.path());
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QTextDocument doc;
+        doc.setHtml(result.html);
+        QVERIFY2(doc.toPlainText().contains(expected), qPrintable(doc.toPlainText()));
+        QVERIFY(!doc.toPlainText().contains(QChar(0xFFFD)));
+
+        // UTF-8 without a BOM stays UTF-8.
+        QTemporaryDir other;
+        write(other.filePath(u"README.txt"_s), u"中文说明 Résumé"_s.toUtf8());
+        QTextDocument utf8;
+        utf8.setHtml(ws::readme::load(other.path()).html);
+        QVERIFY2(utf8.toPlainText().contains(u"中文说明 Résumé"_s), qPrintable(utf8.toPlainText()));
     }
     void passiveContent()
     {

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)] [string] $NewExe,   # the WinShun.exe that the update brings
     [string] $Old = 'F:\电脑便捷工具\dist\release022\WinShun',   # the version updated from (its helper runs)
     [string] $Root = 'F:\电脑便捷工具\build\issues-266-270-274\upd',

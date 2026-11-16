@@ -66,6 +66,12 @@ inline std::wstring wide(const std::string& s, UINT codePage = CP_UTF8)
     return w;
 }
 
+// Whether the bytes are well-formed UTF-8.
+inline bool validUtf8(const std::string& s)
+{
+    return s.empty() || ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s.data(), static_cast<int>(s.size()), nullptr, 0) > 0;
+}
+
 inline std::string format(const char* fmt, ...)
 {
     char buffer[4096];

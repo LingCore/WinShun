@@ -12,8 +12,16 @@ qt_add_executable(tst_queryhistory tst_queryhistory.cpp)
 target_link_libraries(tst_queryhistory PRIVATE wscore Qt6::Test)
 qt_add_executable(tst_pluginreadme tst_pluginreadme.cpp ${PROJECT_SOURCE_DIR}/src/app/PluginReadme.cpp)
 target_include_directories(tst_pluginreadme PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
-target_link_libraries(tst_pluginreadme PRIVATE winshun_options Qt6::Gui Qt6::Test)
-foreach(test IN ITEMS tst_queryhistory tst_pluginreadme)
+target_link_libraries(tst_pluginreadme PRIVATE wscore winshun_options Qt6::Gui Qt6::Test)
+# Paths and names garbled by UTF-8 read in the ANSI code page, undone (GitHub #346).
+qt_add_executable(tst_mojibake tst_mojibake.cpp)
+target_link_libraries(tst_mojibake PRIVATE wscore Qt6::Test)
+# No mojibake: text files are UTF-8, PowerShell scripts with Chinese carry a
+# BOM, and only listed sources meet the ANSI / OEM code page.
+qt_add_executable(tst_encoding tst_encoding.cpp)
+target_compile_definitions(tst_encoding PRIVATE WS_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(tst_encoding PRIVATE Qt6::Core Qt6::Test)
+foreach(test IN ITEMS tst_queryhistory tst_pluginreadme tst_mojibake tst_encoding)
     set_target_properties(${test} PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
     add_test(NAME ${test} COMMAND ${test} -o -,txt)
     set_tests_properties(${test} PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")

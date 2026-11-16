@@ -17,6 +17,7 @@
 #include <QTemporaryDir>
 #include <QDir>
 #include <QScopeGuard>
+#include <QStringDecoder>
 #include <QUuid>
 
 #include <windows.h>
@@ -168,7 +169,12 @@ Result supervise(const WorkerProgram& program, QJsonObject request, const Option
         process.waitForReadyRead(16);
         received += process.readAllStandardOutput();
         const QByteArray errors = process.readAllStandardError();
-        if (!errors.isEmpty()) qWarning().noquote() << "Recording worker:" << QString::fromUtf8(errors).trimmed();
+        if (!errors.isEmpty()) {
+            // UTF-8 if it is; else Qt's own log in the ANSI code page (QT_FORCE_STDERR_LOGGING).
+            QStringDecoder utf8(QStringConverter::Utf8);
+            const QString text = utf8(errors);
+            qWarning().noquote() << "Recording worker:" << (utf8.hasError() ? QString::fromLocal8Bit(errors) : text).trimmed();
+        }
         if (received.size() > kMaxMessage) { reason = u"worker protocol"_s; break; }
         qsizetype end;
         while ((end = received.indexOf('\n')) >= 0) {

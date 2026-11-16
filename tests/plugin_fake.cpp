@@ -2,9 +2,10 @@
 // No Qt, static C runtime (it is started by WinShunPluginHost.exe as any
 // plugin is). The first argument is the role, the rest its options:
 //
-//   --once [--n N] [--text] [--gbk] [--fail] [--slow MS] [--long BYTES] [--echo-env] [--action] [--rerun S]
+//   --once [--n N] [--text] [--gbk] [--fail] [--fail-ansi] [--slow MS] [--long BYTES] [--echo-env] [--action] [--rerun S]
 //       A once plugin: reads WS_* and prints JSON items (or plain text,
-//       or N items, or a line BYTES long, or exits 3, or the argv, its own
+//       or N items, or a line BYTES long, or exits 3 (--fail-ansi: with its
+//       message on stderr in the ANSI code page), or the argv, its own
 //       path and the environment it got, or the effects of WS_ACTION, with
 //       WS_TRIGGER and WS_FILES when files came); asks to be run again
 //       after S seconds with --rerun.
@@ -138,6 +139,16 @@ int onceMain()
         err("something went wrong: 出错了");
         return 3;
     }
+    if (has(L"--fail-ansi")) {
+        // stderr as a batch file's echo or Qt's default message handler write
+        // it: the bytes of the ANSI code page, not UTF-8.
+        const std::wstring text = L"something went wrong: Résumé 出错了";
+        const int n = ::WideCharToMultiByte(CP_ACP, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+        std::string bytes(static_cast<std::size_t>(n), '\0');
+        ::WideCharToMultiByte(CP_ACP, 0, text.data(), static_cast<int>(text.size()), bytes.data(), n, nullptr, nullptr);
+        err(bytes);
+        return 3;
+    }
     if (has(L"--long")) {
         const std::size_t n = std::strtoull(lite::utf8(value(L"--long")).c_str(), nullptr, 10);
         std::string line(n, 'x');
@@ -158,7 +169,7 @@ int onceMain()
         const int n = ::WideCharToMultiByte(CP_OEMCP, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
         std::string bytes(static_cast<std::size_t>(n), '\0');
         ::WideCharToMultiByte(CP_OEMCP, 0, text.data(), static_cast<int>(text.size()), bytes.data(), n, nullptr, nullptr);
-        out("{\"items\":[{\"title\":" + json::quote(bytes) + "}]}");
+        out("{\"items\":[{\"title\":\"" + bytes + "\"}]}"); // by hand: json::quote() would not let bytes that are not UTF-8 through
         return 0;
     }
     if (has(L"--echo-env")) {

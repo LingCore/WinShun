@@ -103,6 +103,9 @@ public:
     static bool isUtf8(std::string_view bytes, bool allowTruncatedTail);
     // The code page of files that are neither UTF-8 nor UTF-16 (GBK on Chinese Windows).
     static unsigned legacyCodePage();
+    // A whole text file as a person would read it: by its BOM, else as UTF-8
+    // when it is, else in the legacy code page.
+    static QString decodeText(std::string_view bytes);
     // How much of a file detect() looks at, and scan() reads at a time.
     static constexpr std::size_t kChunkBytes = 512 * 1024;
 
@@ -119,6 +122,7 @@ private:
     };
 
     QString decode(const char* data, std::size_t length, TextEncoding encoding) const;
+    static QString decode(const char* data, std::size_t length, TextEncoding encoding, unsigned codePage);
     // Where a term is in a text, from `from` on: f(at, length) for each
     // place, one after another, until it returns false.
     template <typename F> void forEachHit(const Term& term, QStringView text, qsizetype from, F&& f) const;

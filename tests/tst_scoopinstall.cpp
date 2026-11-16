@@ -3,6 +3,7 @@
 // bucket manifest (bucket/winshun.json) that Scoop reads.
 
 #include "ScoopInstall.h"
+#include "TestJunction.h"
 
 #include <QDir>
 #include <QFile>
@@ -40,9 +41,7 @@ bool junction(const QString& link, const QString& target)
 {
     QDir(link).removeRecursively();
     QFile::remove(link);
-    return QProcess::execute(u"cmd.exe"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, QDir::toNativeSeparators(link),
-               QDir::toNativeSeparators(target)})
-        == 0;
+    return makeJunction(link, target);
 }
 
 QString native(const QString& path)

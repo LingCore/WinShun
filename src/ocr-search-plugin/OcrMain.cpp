@@ -58,6 +58,18 @@ public:
 private:
     QString m_path;
 };
+
+// Qt's own stderr logging (QT_FORCE_STDERR_LOGGING) writes the ANSI code page;
+// the host and the window process, which read this process's stderr, take UTF-8.
+void logToStderrAsUtf8(QtMsgType type, const QMessageLogContext& context, const QString& text)
+{
+    const HANDLE err = ::GetStdHandle(STD_ERROR_HANDLE);
+    if (!err || err == INVALID_HANDLE_VALUE)
+        return;
+    const QByteArray line = qFormatLogMessage(type, context, text).toUtf8() + '\n';
+    DWORD put = 0;
+    ::WriteFile(err, line.constData(), static_cast<DWORD>(line.size()), &put, nullptr);
+}
 } // namespace
 
 extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, int mode)
@@ -65,7 +77,7 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
     const bool preview = mode == 1;
     const bool worker = mode == 2;
     const QString appDir = QString::fromWCharArray(host);
-    qputenv("QT_FORCE_STDERR_LOGGING", "1");
+    qInstallMessageHandler(logToStderrAsUtf8); // the window, the preview and the worker alike
     ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
     QStringList arguments;
     int count = 0;

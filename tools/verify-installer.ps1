@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Runs the installer for real, on this PC, against programs that hold its
     files (GitHub #300): must pass before every release.

@@ -1,3 +1,4 @@
+#include "TestJunction.h"
 #include "AppCatalog.h"
 #include "AppLogo.h"
 #include "AutostartRun.h"
@@ -834,40 +835,6 @@ private:
     Kind m_kind;
 };
 
-// Junctions need no elevation; every path and target belongs to the test.
-bool makeJunction(const QString& link, const QString& target)
-{
-    if (!QDir().mkpath(link))
-        return false;
-    const auto linkPath = QDir::toNativeSeparators(link).toStdWString();
-    const auto targetPath = QDir::toNativeSeparators(target).toStdWString();
-    const std::wstring substitute = L"\\??\\" + targetPath;
-    struct JunctionData {
-        DWORD tag;
-        WORD bytes;
-        WORD reserved;
-        WORD substituteOffset;
-        WORD substituteLength;
-        WORD printOffset;
-        WORD printLength;
-        wchar_t names[1];
-    };
-    const auto nameBytes = (substitute.size() + 1 + targetPath.size() + 1) * sizeof(wchar_t);
-    std::vector<std::byte> buffer(offsetof(JunctionData, names) + nameBytes);
-    auto* data = reinterpret_cast<JunctionData*>(buffer.data());
-    data->tag = IO_REPARSE_TAG_MOUNT_POINT;
-    data->bytes = WORD(buffer.size() - 8);
-    data->substituteLength = WORD(substitute.size() * sizeof(wchar_t));
-    data->printOffset = WORD((substitute.size() + 1) * sizeof(wchar_t));
-    data->printLength = WORD(targetPath.size() * sizeof(wchar_t));
-    std::memcpy(data->names, substitute.c_str(), (substitute.size() + 1) * sizeof(wchar_t));
-    std::memcpy(reinterpret_cast<std::byte*>(data->names) + data->printOffset, targetPath.c_str(), (targetPath.size() + 1) * sizeof(wchar_t));
-    win32::UniqueHandle handle(::CreateFileW(linkPath.c_str(), GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
-        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
-    DWORD returned = 0;
-    return handle.valid() && ::DeviceIoControl(handle.get(), FSCTL_SET_REPARSE_POINT, data, DWORD(buffer.size()), nullptr, 0, &returned, nullptr);
-}
-
 using FolderState = IndexService::FolderStatus::State;
 
 // The chosen folders' states, in their order.
@@ -1383,6 +1350,11 @@ private slots:
         QCOMPARE(pathFromText(u"\\\\server\\share\\folder\\"_s), u"\\\\server\\share\\folder"_s);
         QCOMPARE(pathFromText(u"%SystemRoot%\\System32"_s), qEnvironmentVariable("SystemRoot") + u"\\System32"_s);
         QCOMPARE(pathFromText(u"C:\\100%NOSUCHVARIABLE%\\x"_s), u"C:\\100%NOSUCHVARIABLE%\\x"_s);
+        // A variable named in Chinese, with a letter the ANSI code page has no place for (it read "WS_TEST_?"): found as any is.
+        const std::wstring name = L"WS_TEST_\u53d8\u91cf\u0167";
+        ::SetEnvironmentVariableW(name.c_str(), L"D:\\\u503c");
+        const auto unset = qScopeGuard([&] { ::SetEnvironmentVariableW(name.c_str(), nullptr); });
+        QCOMPARE(pathFromText(u"%WS_TEST_\u53d8\u91cf\u0167%\\x"_s), u"D:\\\u503c\\x"_s);
         QVERIFY(pathFromText(u"Users\\me"_s).isEmpty()); // relative
         QVERIFY(pathFromText(u"\\\\server"_s).isEmpty()); // no share
         QVERIFY(pathFromText(u"C:\\a?b"_s).isEmpty());

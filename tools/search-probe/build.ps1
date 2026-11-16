@@ -1,4 +1,4 @@
-# 构建 Win顺 搜索诊断工具：dist/search-probe/WinShun搜索诊断.exe
+﻿# 构建 Win顺 搜索诊断工具：dist/search-probe/WinShun搜索诊断.exe
 # 用系统自带的 .NET Framework 4 csc（C# 5），生成的 exe 在 Windows 10/11 上直接运行。
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')

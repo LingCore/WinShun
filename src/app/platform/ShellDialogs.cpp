@@ -5,11 +5,13 @@
 #include "Shell.h"
 
 #include "DragOut.h"
+#include "Mojibake.h"
 
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QDir>
 #include <QEventLoop>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QThread>
 
@@ -19,6 +21,7 @@
 
 #include <atomic>
 #include <functional>
+#include <optional>
 #include <thread>
 #include <utility>
 
@@ -103,6 +106,32 @@ template <typename Fn> QString runPicker(Fn&& pick)
     worker.join();
     QObject::disconnect(closing);
     return result;
+}
+
+// What a dialog's item is on disk. A shell extension may hand over a path
+// that names nothing (GitHub #346: one read its UTF-8 in the ANSI code
+// page): the ungarbled one, or the item's parsing name; else none, so the
+// pick fails rather than a folder of mojibake being made and kept. A file
+// to be saved is not there yet: its folder is.
+QString onDisk(IShellItem* item, PWSTR given, bool existing)
+{
+    const auto names = [existing](const QString& path) {
+        return QFileInfo::exists(existing ? path : QFileInfo(path).absolutePath());
+    };
+    const QString path = QString::fromWCharArray(given);
+    if (const std::optional<QString> original = utf8ReadAsAnsi(path); original && names(*original))
+        return *original; // even where a backup made the garbled one
+    if (names(path))
+        return path;
+    PWSTR parsing = nullptr;
+    if (SUCCEEDED(item->GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING, &parsing))) {
+        const QString other = QString::fromWCharArray(parsing);
+        ::CoTaskMemFree(parsing);
+        if (names(other))
+            return other;
+    }
+    qWarning("file dialog: the chosen item's path names nothing on disk");
+    return {};
 }
 
 } // namespace
@@ -225,7 +254,7 @@ QString pickFolder(HWND owner, const QString& title, const QString& start)
                 && SUCCEEDED(dialog->SetTitle(reinterpret_cast<LPCWSTR>(title.utf16()))) && startIn()
                 && SUCCEEDED(showPicker(dialog.Get(), owner)) && SUCCEEDED(dialog->GetResult(&item))
                 && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
-                result = QString::fromWCharArray(path);
+                result = onDisk(item.Get(), path, true);
                 ::CoTaskMemFree(path);
             }
         } // released before COM is uninitialised
@@ -262,7 +291,7 @@ QString pickFile(HWND owner, const QString& title, const std::vector<std::pair<Q
                 && SUCCEEDED(dialog->SetTitle(reinterpret_cast<LPCWSTR>(title.utf16())))
                 && SUCCEEDED(showPicker(dialog.Get(), owner)) && SUCCEEDED(dialog->GetResult(&item))
                 && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
-                result = QString::fromWCharArray(path);
+                result = onDisk(item.Get(), path, true);
                 ::CoTaskMemFree(path);
             }
         } // released before COM is uninitialised
@@ -296,7 +325,7 @@ QString pickSaveFile(
                 && SUCCEEDED(dialog->SetTitle(reinterpret_cast<LPCWSTR>(title.utf16())))
                 && SUCCEEDED(showPicker(dialog.Get(), owner)) && SUCCEEDED(dialog->GetResult(&item))
                 && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
-                result = QString::fromWCharArray(path);
+                result = onDisk(item.Get(), path, false);
                 ::CoTaskMemFree(path);
             }
         } // released before COM is uninitialised

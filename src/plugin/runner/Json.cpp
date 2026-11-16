@@ -334,6 +334,39 @@ void writeValue(std::string& out, const Value& value)
     }
 }
 
+// The length of the well-formed UTF-8 sequence starting at s[i], a byte of
+// 0x80 or more, or 0 when there is none (Unicode, table 3-7).
+std::size_t utf8Sequence(const std::string& s, std::size_t i)
+{
+    const auto at = [&](std::size_t k) { return static_cast<unsigned char>(s[k]); };
+    const unsigned char lead = at(i);
+    std::size_t n = 0;
+    unsigned char low = 0x80, high = 0xBF; // the range of the second byte
+    if (lead >= 0xC2 && lead <= 0xDF) {
+        n = 2;
+    } else if (lead >= 0xE0 && lead <= 0xEF) {
+        n = 3;
+        if (lead == 0xE0)
+            low = 0xA0;
+        else if (lead == 0xED)
+            high = 0x9F;
+    } else if (lead >= 0xF0 && lead <= 0xF4) {
+        n = 4;
+        if (lead == 0xF0)
+            low = 0x90;
+        else if (lead == 0xF4)
+            high = 0x8F;
+    } else {
+        return 0;
+    }
+    if (i + n > s.size() || at(i + 1) < low || at(i + 1) > high)
+        return 0;
+    for (std::size_t k = 2; k < n; ++k)
+        if ((at(i + k) & 0xC0) != 0x80)
+            return 0;
+    return n;
+}
+
 } // namespace
 
 std::optional<Value> parse(const std::string& text, std::string* problem)
@@ -346,7 +379,8 @@ std::string quote(const std::string& s)
     std::string out;
     out.reserve(s.size() + 2);
     out += '"';
-    for (const char c : s) {
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        const char c = s[i];
         switch (c) {
         case '"': out += "\\\""; break;
         case '\\': out += "\\\\"; break;
@@ -358,8 +392,14 @@ std::string quote(const std::string& s)
                 char buffer[8];
                 std::snprintf(buffer, sizeof buffer, "\\u%04x", static_cast<unsigned>(static_cast<unsigned char>(c)));
                 out += buffer;
-            } else
+            } else if (static_cast<unsigned char>(c) < 0x80) {
                 out += c;
+            } else if (const std::size_t n = utf8Sequence(s, i)) {
+                out.append(s, i, n);
+                i += n - 1;
+            } else {
+                out += "\xEF\xBF\xBD"; // U+FFFD: a byte that is not UTF-8 never makes the line invalid
+            }
         }
     }
     out += '"';

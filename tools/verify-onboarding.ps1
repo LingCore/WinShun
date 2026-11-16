@@ -33,7 +33,7 @@ $fixtures = Join-Path $OutputDir 'fixtures'
 New-Item -ItemType Directory -Path $fixtures | Out-Null
 Copy-Item -LiteralPath (Join-Path $LibraryPluginsDir 'winshun.capture') -Destination $fixtures -Recurse
 $plugin = Join-Path $fixtures 'winshun.capture'
-$manifest = Get-Content -LiteralPath (Join-Path $plugin 'plugin.json') -Raw | ConvertFrom-Json
+$manifest = Get-Content -LiteralPath (Join-Path $plugin 'plugin.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $package = Join-Path $fixtures 'capture.zip'
 Compress-Archive -Path (Join-Path $plugin '*') -DestinationPath $package
 $item = @{
@@ -71,7 +71,7 @@ try {
         if (-not (Test-Path -LiteralPath $resultFile -PathType Leaf)) {
             throw "Onboarding probe produced no report: $case; exit=$($process.ExitCode); see $caseDir/preview.log"
         }
-        $result = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json
+        $result = Get-Content -LiteralPath $resultFile -Raw -Encoding UTF8 | ConvertFrom-Json
         $summary += @{case=$case; exit=$process.ExitCode; passed=$result.passed; warnings=$result.warnings; unexpected=$result.unexpected_warnings; report=$resultFile}
         $summary | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $OutputDir 'summary.json') -Encoding utf8
         Write-Output "$case`: exit=$($process.ExitCode), passed=$($result.passed), unexpected warnings=$($result.unexpected_warnings)"

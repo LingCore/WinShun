@@ -68,7 +68,7 @@ try {
         '--file-dialog-window', [string]$window.ToInt64(), '--file-dialog-pid', [string]$process.Id)
     $runtime = Start-Process -FilePath "$BuildDir\WinShun.exe" -ArgumentList $runtimeArgs -WindowStyle Hidden -Wait -PassThru `
         -RedirectStandardOutput "$OutputDir\runtime-stdout.txt" -RedirectStandardError "$OutputDir\runtime-stderr.txt"
-    if (Test-Path -LiteralPath "$OutputDir\runtime\runtime.json") { Get-Content -LiteralPath "$OutputDir\runtime\runtime.json" -Raw }
+    if (Test-Path -LiteralPath "$OutputDir\runtime\runtime.json") { Get-Content -LiteralPath "$OutputDir\runtime\runtime.json" -Raw -Encoding UTF8 }
     if ($runtime.ExitCode -ne 0) { throw "The search bar did not drive the window (exit $($runtime.ExitCode)): $OutputDir\runtime\runtime.json" }
     if (![WinShun.BandizipProbe]::IsWindow($window)) { throw 'The window was closed: choosing a folder must not confirm it' }
 

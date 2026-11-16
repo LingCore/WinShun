@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Configure, build, test and (optionally) package WinShun.
 
@@ -47,14 +47,7 @@ $env:QTDIR = $QtDir
 Write-Host "Qt:  $QtDir"
 
 # MSVC developer environment (cl, rc, link on PATH).
-if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if (-not $vs) { throw 'Visual Studio with the C++ workload was not found.' }
-    $env:PATH = "$(Split-Path $vswhere);$env:PATH" # VsDevCmd calls vswhere itself
-    Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
-    Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
-}
+. (Join-Path $PSScriptRoot 'devshell.ps1')
 
 $preset = $Config.ToLower()
 $binary = if ($BuildDir) { [IO.Path]::GetFullPath($BuildDir) } else { Join-Path $root "build\$preset" }

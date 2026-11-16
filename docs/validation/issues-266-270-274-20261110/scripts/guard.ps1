@@ -1,4 +1,4 @@
-param([string] $Stop = 'F:\电脑便捷工具\build\issues-266-270-274\i270\guard.stop')
+﻿param([string] $Stop = 'F:\电脑便捷工具\build\issues-266-270-274\i270\guard.stop')
 # The window in front while Win+V is pressed: a NORMAL-rights one (the input
 # panel does not come up over an administrator's window).
 Add-Type -AssemblyName System.Windows.Forms

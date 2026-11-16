@@ -12,6 +12,7 @@
 #include "WebDav.h"
 #include "Win32Util.h"
 #include "ExplorerLanguage.h" // windowsIsChinese
+#include "Mojibake.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -1050,7 +1051,8 @@ void Settings::load()
     }
 
     autoUpdate = readOrDefault(s, u"Update/Automatic"_s, d.autoUpdate);
-    backupFolder = readOrDefault(s, u"Backup/Folder"_s, d.backupFolder);
+    // Picked folders some program garbled before they were kept (#346): as they were.
+    backupFolder = ungarbledPath(readOrDefault(s, u"Backup/Folder"_s, d.backupFolder));
 
     excludedPaths = readOrDefault(s, u"Index/ExcludedPaths"_s, d.excludedPaths);
     excludedNames = readOrDefault(s, u"Index/ExcludedNames"_s, d.excludedNames);
@@ -1073,7 +1075,7 @@ void Settings::load()
     indexAccess = readOrDefault(s, u"Index/Access"_s, d.indexAccess).trimmed().toLower();
     if (indexAccess != u"service" && indexAccess != u"direct" && indexAccess != u"walk")
         indexAccess = d.indexAccess;
-    indexFolder = readOrDefault(s, u"Index/Folder"_s, d.indexFolder).trimmed();
+    indexFolder = ungarbledPath(readOrDefault(s, u"Index/Folder"_s, d.indexFolder).trimmed());
     // GitHub #52. Whole disks were all there was: an older file without the
     // key goes on so (written, so that it stays so), a new install starts
     // with auto.

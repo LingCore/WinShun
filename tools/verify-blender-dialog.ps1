@@ -48,7 +48,7 @@ $savedPath = $env:PATH
 $testEnvironment = @('WINSHUN_TEST_BLENDER_PID', 'WINSHUN_TEST_BLENDER_STATE')
 $savedTest = @{}
 function Read-Fixture {
-    try { return Get-Content -LiteralPath "$OutputDir/blender-state.json" -Raw | ConvertFrom-Json } catch { return $null }
+    try { return Get-Content -LiteralPath "$OutputDir/blender-state.json" -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return $null }
 }
 function Wait-FileView([int]$AfterSequence = -1) {
     $waiting = [Diagnostics.Stopwatch]::StartNew()
@@ -87,7 +87,7 @@ try {
     $runtimeProcess = Start-Process -FilePath "$BuildDir/WinShun.exe" -ArgumentList $runtimeArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$OutputDir/runtime-stdout.txt" -RedirectStandardError "$OutputDir/runtime-stderr.txt"
     if ($runtimeProcess.ExitCode -ne 0) { throw "Search-bar integration failed: $OutputDir/runtime/runtime.json" }
     if (!$RuntimeOnly) { Get-Content "$OutputDir/filedialog.txt" -Tail 3 }
-    Get-Content "$OutputDir/runtime/runtime.json" -Raw
+    Get-Content "$OutputDir/runtime/runtime.json" -Raw -Encoding UTF8
     Write-Output "Verified isolated Blender instance only. Results: $OutputDir"
 } finally {
     $env:PATH = $savedPath

@@ -259,6 +259,26 @@ private slots:
         QCOMPARE(restored.folderMenuWindowsInline, 10);
     }
 
+    void garbledBackupFolder() // GitHub #346
+    {
+        if (::GetACP() != 936)
+            QSKIP("the garbling is that of the GBK code page");
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        const QString real = QDir::toNativeSeparators(profile.filePath(u"tourbox预设/Winshun设置备份"_s));
+        QVERIFY(QDir().mkpath(real));
+        const QByteArray utf8 = real.toUtf8(); // as a program that read it in GBK had it
+        QString garbled(::MultiByteToWideChar(936, 0, utf8.constData(), int(utf8.size()), nullptr, 0), Qt::Uninitialized);
+        ::MultiByteToWideChar(936, 0, utf8.constData(), int(utf8.size()), reinterpret_cast<LPWSTR>(garbled.data()),
+            int(garbled.size()));
+        QVERIFY(garbled != real);
+        QSettings(ws::Settings::filePath(), QSettings::IniFormat).setValue(u"Backup/Folder"_s, garbled);
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.backupFolder, real);
+    }
+
     void uiFontPreference()
     {
         QTemporaryDir profile;

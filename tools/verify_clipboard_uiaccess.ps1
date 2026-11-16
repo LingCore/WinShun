@@ -34,7 +34,7 @@ if ($Admin) {
         Get-ChildItem -LiteralPath $stage | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $target -Recurse }
         & icacls.exe $target /setowner '*S-1-5-32-544' /T /Q | Out-Null
         if ($LASTEXITCODE) { throw 'Could not protect file ownership' }
-        foreach ($file in (Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)) {
+        foreach ($file in (Get-Content -LiteralPath $manifest -Raw -Encoding UTF8 | ConvertFrom-Json)) {
             $path = [IO.Path]::GetFullPath((Join-Path $target $file.path))
             if (!$path.StartsWith($target + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid manifest path' }
             if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $file.hash) { throw "Hash mismatch: $path" }

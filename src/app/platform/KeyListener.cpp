@@ -70,8 +70,14 @@ bool listsFiles(HWND window)
 // Window classes identify the input boundary without keeping titles or file names.
 std::string windowClass(HWND window)
 {
-    char name[128] {};
-    return window && ::GetClassNameA(window, name, static_cast<int>(std::size(name))) ? name : "none";
+    wchar_t name[128] {};
+    const int length = window ? ::GetClassNameW(window, name, static_cast<int>(std::size(name))) : 0;
+    if (length <= 0)
+        return "none";
+    std::string utf8(static_cast<std::size_t>(length) * 3, '\0'); // at most 3 bytes a UTF-16 unit
+    utf8.resize(static_cast<std::size_t>(std::max(0,
+        ::WideCharToMultiByte(CP_UTF8, 0, name, length, utf8.data(), static_cast<int>(utf8.size()), nullptr, nullptr))));
+    return utf8;
 }
 
 using Key = DoubleTapDetector::Key;

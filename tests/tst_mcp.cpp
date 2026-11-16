@@ -3,6 +3,7 @@
 // the named pipe, and the relay WinShunMcp.exe driven over stdio, with
 // Win顺 there and away; and the plugins' commands as tools (plugin::AiBridge).
 
+#include "TestJunction.h"
 #include "AiBridge.h"
 #include "Aside.h"
 #include "ContentScanner.h"
@@ -3023,7 +3024,7 @@ private slots:
         policy.excludedPaths = {f.root + u"\\private-folder"_s};
         f.host->setPolicy(policy);
         const QString link = f.root + u"\\link"_s;
-        QCOMPARE(QProcess::execute(u"cmd.exe"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, link, f.root + u"\\private-folder"_s}), 0);
+        QVERIFY(makeJunction(link, f.root + u"\\private-folder"_s));
         const auto unlink = qScopeGuard([&] { ::RemoveDirectoryW(link.toStdWString().c_str()); });
         QVERIFY(QFileInfo::exists(link + u"\\p.txt"_s));
         Session s(f.server.get());

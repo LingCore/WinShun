@@ -1,4 +1,4 @@
-# The real hotkey (Ctrl+F22, SendInput) on a staged copy with its own profile: time until the
+﻿# The real hotkey (Ctrl+F22, SendInput) on a staged copy with its own profile: time until the
 # launcher is on the screen, a moment after the last opening and after IdleTrim gave the memory back.
 #   live.ps1 -Variant release025|new [-Idle 6]
 param([Parameter(Mandatory)] [ValidateSet('release025', 'new')] [string] $Variant, [int] $Idle = 6, [int] $GapSec = 27)

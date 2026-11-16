@@ -1,5 +1,7 @@
 #include "PluginReadme.h"
 
+#include "ContentScanner.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -68,8 +70,14 @@ Document fromMarkdown(const QByteArray& bytes)
 
 Document render(const QByteArray& bytes, const QString& extension)
 {
-    QStringDecoder decoder(QStringConverter::encodingForData(bytes).value_or(QStringConverter::Utf8));
-    const QString source = decoder(bytes);
+    // By its BOM, else UTF-8 when it is, else the legacy code page (a README written in Notepad as "ANSI").
+    QString source;
+    if (const std::optional<QStringConverter::Encoding> bom = QStringConverter::encodingForData(bytes)) {
+        QStringDecoder decoder(*bom);
+        source = decoder(bytes);
+    } else {
+        source = ContentScanner::decodeText(std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size())));
+    }
     TextDocument doc;
     if (extension.compare(u"md", Qt::CaseInsensitive) == 0)
         doc.setMarkdown(source, QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub) | QTextDocument::MarkdownNoHTML);

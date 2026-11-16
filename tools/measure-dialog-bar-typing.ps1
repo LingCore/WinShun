@@ -37,7 +37,7 @@ try {
   $a = @('--probe-runtime',"`"$Out\runtime`"",'--renderer','d3d11','--settle-ms','700','--file-dialog-window',"$($w.ToInt64())",'--file-dialog-pid',"$($fixture.Id)",'--file-dialog-typing') + $Extra
   $r = Start-Process "$BuildDir\WinShun.exe" -ArgumentList $a -PassThru -Wait -WindowStyle Hidden -RedirectStandardError "$Out\err.txt"
   "exit $($r.ExitCode)"
-  $j = Get-Content "$Out\runtime\runtime.json" -Raw | ConvertFrom-Json
+  $j = Get-Content "$Out\runtime\runtime.json" -Raw -Encoding UTF8 | ConvertFrom-Json
   $j.dialog_typing | Format-Table query, set_query_ms, query_ms, rows_ms, frame_ms, longest_kept_ms, rows, height, slowest_event -AutoSize | Out-String -Width 220
   $j | Select-Object dialog_bar_visible, dialog_search_found, dialog_selection_confirmed, warnings | Format-List
 } finally { if ($savedPath) { $env:PATH = $savedPath }; if(!$fixture.HasExited){ Stop-Process -Id $fixture.Id -Force } }

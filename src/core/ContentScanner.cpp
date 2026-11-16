@@ -542,7 +542,19 @@ TextEncoding ContentScanner::detect(std::string_view head, std::size_t* bomLengt
     return encoding;
 }
 
+QString ContentScanner::decodeText(std::string_view bytes)
+{
+    std::size_t bom = 0;
+    const TextEncoding encoding = detect(bytes, &bom);
+    return decode(bytes.data() + bom, bytes.size() - bom, encoding, legacyCodePage());
+}
+
 QString ContentScanner::decode(const char* data, std::size_t length, TextEncoding encoding) const
+{
+    return decode(data, length, encoding, m_codePage);
+}
+
+QString ContentScanner::decode(const char* data, std::size_t length, TextEncoding encoding, unsigned codePage)
 {
     const auto len = static_cast<qsizetype>(length);
     switch (encoding) {
@@ -557,11 +569,11 @@ QString ContentScanner::decode(const char* data, std::size_t length, TextEncodin
         return decoder(QByteArrayView(data, len));
     }
     case TextEncoding::Ansi: {
-        const int n = ::MultiByteToWideChar(m_codePage, 0, data, static_cast<int>(length), nullptr, 0);
+        const int n = ::MultiByteToWideChar(codePage, 0, data, static_cast<int>(length), nullptr, 0);
         if (n <= 0)
             return {};
         QString out(n, Qt::Uninitialized);
-        ::MultiByteToWideChar(m_codePage, 0, data, static_cast<int>(length), reinterpret_cast<wchar_t*>(out.data()), n);
+        ::MultiByteToWideChar(codePage, 0, data, static_cast<int>(length), reinterpret_cast<wchar_t*>(out.data()), n);
         return out;
     }
     }

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Updates a real Win顺 on this PC and checks what came of it. Ask the user
     before each run: it closes and REPLACES the Win顺 installed here.
@@ -180,7 +180,7 @@ try {
             if ($holder) { $report.holderStillRunning = -not $holder.HasExited }
             $report.feedRequests = @(Get-Content $feedLog | ForEach-Object { ($_ -replace '^\S+ ', '') })
             $report.setupLog = LogLines "$env:LOCALAPPDATA\WinShun\Updates\setup.log" $setupPattern
-            $report.helperLog = @(if (Test-Path "$env:LOCALAPPDATA\WinShun\Updates\update.log") { Get-Content "$env:LOCALAPPDATA\WinShun\Updates\update.log" -Tail 6 })
+            $report.helperLog = @(if (Test-Path "$env:LOCALAPPDATA\WinShun\Updates\update.log") { Get-Content "$env:LOCALAPPDATA\WinShun\Updates\update.log" -Tail 6 -Encoding UTF8 })
             $report.appLog = LogLines "$env:LOCALAPPDATA\WinShun\WinShun.log" 'Update[: ]|已更新到|没有更新到' | Select-Object -Last 8
             # Started by Setup with the test's environment: once more, without it.
             Quit $installed
@@ -214,7 +214,7 @@ try {
                 if ($holder) { $report.holderStillRunning = -not $holder.HasExited }
                 $report.feedRequests = @(Get-Content $feedLog | ForEach-Object { ($_ -replace '^\S+ ', '') })
                 $updates = Get-ChildItem "$app\data" -Recurse -Filter 'update.log' | Select-Object -First 1
-                $report.helperLog = @(if ($updates) { Get-Content $updates.FullName -Tail 12 })
+                $report.helperLog = @(if ($updates) { Get-Content $updates.FullName -Tail 12 -Encoding UTF8 })
                 $report.leftBehind = @(Get-ChildItem $app -Directory | Where-Object Name -match 'update|backup|stage' | Select-Object -ExpandProperty Name)
             }
             finally {
