@@ -28,6 +28,7 @@
 #include "Updates.h"
 #include "WebShortcut.h"
 #include "WebSearchProvider.h"
+#include "TranslateText.h"
 #include "ZeroCode.h"
 #include "KnownFolderOverride.h"
 
@@ -91,6 +92,7 @@ struct Spec {
     QJsonObject commandExtra; // triggers, run, actions …
     QJsonArray commands; // instead of the one command
     QJsonArray settings; // the declared settings
+    QJsonObject extra; // more of the manifest's own fields (translate …)
 };
 
 QByteArray manifestFor(const Spec& s)
@@ -111,6 +113,8 @@ QByteArray manifestFor(const Spec& s)
         m.insert(u"permissions"_s, QJsonArray::fromStringList(s.permissions));
     if (!s.settings.isEmpty())
         m.insert(u"settings"_s, s.settings);
+    for (auto it = s.extra.begin(); it != s.extra.end(); ++it)
+        m.insert(it.key(), it.value());
     if (!s.commands.isEmpty())
         m.insert(u"commands"_s, s.commands);
     else {
@@ -1046,6 +1050,42 @@ private slots:
         QString error;
         const auto m = Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","future":{"x":1},"commands":[{"id":"c","run":{"folder":"C:\\"},"newThing":true}]})", &error);
         QVERIFY2(m.has_value(), qPrintable(error));
+    }
+
+    // GitHub #340: any plugin may say which command translates; the
+    // screenshot's 翻译 asks the official one first, then the others.
+    void translators()
+    {
+        QString error;
+        const QByteArray resident = R"({"manifest":1,"id":"a.b","name":"X","version":"1","runtime":{"mode":"resident","program":"python","script":"m.py"},"translate":%1,"commands":[{"id":"tr","keyword":"x"},{"id":"go","run":{"folder":"C:\\"}}]})";
+        const auto m = Manifest::parse(QString::fromLatin1(resident).arg(u"\"tr\""_s).toUtf8(), &error);
+        QVERIFY2(m.has_value(), qPrintable(error));
+        QCOMPARE(m->translate, u"tr"_s);
+        QVERIFY(!Manifest::parse(QString::fromLatin1(resident).arg(u"\"nope\""_s).toUtf8(), &error));
+        QVERIFY2(error.contains(u"translate"_s), qPrintable(error));
+        QVERIFY(!Manifest::parse(QString::fromLatin1(resident).arg(u"true"_s).toUtf8(), &error));
+        QVERIFY(!Manifest::parse(QString::fromLatin1(resident).arg(u"\"go\""_s).toUtf8(), &error)); // zero-code: nothing to answer with
+        QVERIFY2(error.contains(u"零代码"_s), qPrintable(error));
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString user = dir.filePath(u"user"_s);
+        const auto put = [&](const QString& id, const QString& extra, const QString& command = u"tr"_s) {
+            const QString json = uR"({"manifest":1,"id":"%1","name":"X","version":"1","runtime":{"mode":"resident","program":"python","script":"m.py"}%2,"commands":[{"id":"%3","keyword":"%3"}]})"_s
+                                     .arg(id, extra, command);
+            return writeFile(user + u'/' + id + u"/plugin.json"_s, json.toUtf8());
+        };
+        QVERIFY(put(u"a.other"_s, u",\"translate\":\"ot\""_s, u"ot"_s));
+        QVERIFY(put(u"a.plain"_s, {})); // a "tr" of its own, not saying it translates
+        QVERIFY(put(u"winshun.translate"_s, {})); // 2.2.x: says nothing, "tr" is its translation
+        Catalog catalog(user, {});
+        catalog.scan();
+        const std::vector<Catalog::Translator> found = catalog.translators();
+        QCOMPARE(found.size(), 2u);
+        QCOMPARE(found[0].pluginId, u"winshun.translate"_s);
+        QCOMPARE(found[0].commandId, u"tr"_s);
+        QCOMPARE(found[1].pluginId, u"a.other"_s);
+        QCOMPARE(found[1].commandId, u"ot"_s);
     }
 
     void manifestProgramEscape()
@@ -2249,6 +2289,46 @@ private slots:
             QCOMPARE(result->items[0].subtitle, target);
         }
         QVERIFY(f.startedPids.empty());
+    }
+
+    // GitHub #340: the screenshot's 翻译 through whichever translate plugin
+    // can: one with no service hands over to the next.
+    void translateTextInTurn()
+    {
+        const auto translate = [](Host& host, const QString& text) {
+            std::optional<QJsonObject> answer;
+            translateText(host, text, [&](const QJsonObject& a) { answer = a; });
+            return QTest::qWaitFor([&] { return answer.has_value(); }, 10000) ? *answer : QJsonObject {};
+        };
+        Fixture f;
+        QCOMPARE(translate(*f.host, u"hi"_s).value(u"state"_s), u"plugin"_s); // none installed
+        QVERIFY(!translate(*f.host, u"hi"_s).contains(u"off"_s));
+
+        Spec unset; // installed first, so first in the catalog: no service yet
+        unset.id = u"a.unset"_s;
+        unset.args = {u"--needs-setup"_s};
+        unset.keywords = {u"us"_s};
+        unset.extra = {{u"translate"_s, u"main"_s}};
+        QVERIFY(!f.install(unset).isEmpty());
+        QCOMPARE(translate(*f.host, u"hi"_s).value(u"state"_s), u"service"_s);
+
+        Spec other;
+        other.id = u"b.other"_s;
+        other.args = {u"--translate"_s};
+        other.keywords = {u"ot"_s};
+        other.extra = {{u"translate"_s, u"main"_s}};
+        QVERIFY(!f.install(other).isEmpty());
+        const QJsonObject done = translate(*f.host, u"你好\n世界"_s);
+        QCOMPARE(done.value(u"state"_s), u"ok"_s);
+        QCOMPARE(done.value(u"text"_s), u"T:你好\n世界"_s);
+
+        // Both off: installed, but switched off; the settings can turn one on.
+        f.host->setEnabled(unset.id, false);
+        f.host->setEnabled(other.id, false);
+        const QJsonObject off = translate(*f.host, u"hi"_s);
+        QCOMPARE(off.value(u"state"_s), u"plugin"_s);
+        QVERIFY(off.value(u"off"_s).toBool());
+        QVERIFY(f.host->catalog().translators().size() == 2u);
     }
 
     void zeroCodeRedirectedStartup()

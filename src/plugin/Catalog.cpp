@@ -134,6 +134,23 @@ const Entry* Catalog::find(QStringView id) const
     return nullptr;
 }
 
+std::vector<Catalog::Translator> Catalog::translators() const
+{
+    constexpr QStringView official = u"winshun.translate";
+    std::vector<Translator> result;
+    for (const Entry& e : m_entries) {
+        if (!e.manifest)
+            continue;
+        QString command = e.manifest->translate;
+        if (command.isEmpty() && e.id == official && e.manifest->command(u"tr"))
+            command = u"tr"_s; // translate 2.2.x and before
+        if (!command.isEmpty())
+            result.push_back({e.id, command});
+    }
+    std::ranges::stable_partition(result, [&](const Translator& t) { return t.pluginId == official; });
+    return result;
+}
+
 void Catalog::setEnabled(const QSet<QString>& ids)
 {
     if (m_enabled == ids)

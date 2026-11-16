@@ -12,6 +12,7 @@
 //
 // Started as python.exe is (-u -X utf8 main.py first), it skips those.
 //   --serve [--partial] [--slow MS] [--crash N] [--hang] [--tool NAME] [--error] [--chatty] [--rerun S] [--toast] [--late N]
+//           [--translate | --needs-setup]
 //           [--refresh MS [--refresh-burst K] [--refresh-first]]
 //       A resident plugin: JSON-RPC on stdio. Answers initialize, query
 //       (two query/partial first with --partial; after MS; never with
@@ -25,7 +26,9 @@
 //       --refresh-burst), or preceded by one with --refresh-first), cancel
 //       (counted), action (the files and trigger of a `files` one in its
 //       notify), settingsChanged (remembered), appearance (remembered and
-//       counted: data.appearance, data.looks), shutdown.
+//       counted: data.appearance, data.looks), shutdown. As a translate
+//       plugin: "T:<text>" as its copy text with --translate, a row "setup"
+//       with --needs-setup.
 //   --probe
 //       A once plugin whose one item carries the facts about its process
 //       (token, job, mitigations, may it start a process, read the
@@ -312,6 +315,16 @@ struct Server {
                 }
                 const long long queryId = params["queryId"].toInt();
                 const std::string text = params["text"].toString();
+                if (has(L"--needs-setup")) { // a translate plugin with no service yet (GitHub #340)
+                    respond(id, json::Value::Object {{"items", json::Value::Array {json::Value(item("setup", "set up a service", ""))}}});
+                    continue;
+                }
+                if (has(L"--translate")) { // ... and one that translates: the row's copy text
+                    json::Value::Object t = item("source", "T:" + text, "");
+                    t["copy"] = "T:" + text;
+                    respond(id, json::Value::Object {{"items", json::Value::Array {json::Value(std::move(t))}}});
+                    continue;
+                }
                 if (has(L"--chatty")) {
                     notify("winshun/log", {{"level", "info"}, {"text", "query " + text}});
                     notify("winshun/notify", {{"text", "hello from fake 你好"}});

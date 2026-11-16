@@ -296,7 +296,8 @@ Window {
                     objectName: "setupTranslation"
                     anchors.horizontalCenter: parent.horizontalCenter
                     visible: !window.ocr.translating && window.ocr.translationNeeds.length > 0
-                    text: window.ocr.translationNeeds === "plugin" ? qsTr("安装翻译插件…") : qsTr("设置翻译服务…")
+                    text: window.ocr.translationNeeds === "plugin" ? qsTr("安装翻译插件…")
+                        : window.ocr.translationNeeds === "on" ? qsTr("打开翻译插件…") : qsTr("设置翻译服务…")
                     onClicked: window.ocr.setupTranslation()
                 }
             }

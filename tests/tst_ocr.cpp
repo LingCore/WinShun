@@ -138,6 +138,9 @@ private slots:
         QVERIFY(reader.translationShown() && !reader.translationNote().isEmpty());
         answer(CaptureOcr::Translated::NoPlugin, {});
         QCOMPARE(reader.translationNeeds(), u"plugin"_s);
+        answer(CaptureOcr::Translated::PluginOff, {}); // installed but off (#340): turn it on, not install it again
+        QCOMPARE(reader.translationNeeds(), u"on"_s);
+        QVERIFY(reader.translationNote().contains(u"关着"_s));
         answer(CaptureOcr::Translated::Done, {}); // nothing to show (an older Win顺 took the words to its search box)
         QVERIFY(!reader.translationShown());
 

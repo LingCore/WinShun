@@ -689,6 +689,14 @@ std::optional<Manifest> Manifest::parse(const QByteArray& json, QString* error)
     if ((!m.trayMenu.isEmpty() || !m.pictures.isEmpty() || m.settingsWindow)
         && (!m.resident() || !m.permissions.has(Permission::Ui)))
         check.fail(u"trayMenu、pictures 和 settingsWindow 要常驻（runtime.mode resident）并要 ui 权限"_s);
+    if (o.contains(u"translate"_s)) {
+        m.translate = o.value(u"translate"_s).toString();
+        const Command* translator = m.command(m.translate);
+        if (!o.value(u"translate"_s).isString() || !translator)
+            check.fail(u"translate 要写 commands 里一个命令的 id"_s);
+        else if (translator->zeroCode())
+            check.fail(u"translate 的命令要由插件自己的程序回答，不能是零代码命令"_s);
+    }
 
     if (check.failed())
         return fail(check.error);

@@ -90,6 +90,14 @@ public:
 
     const std::vector<Entry>& entries() const noexcept { return m_entries; }
     const Entry* find(QStringView id) const;
+    // The plugins that translate, whether on or not (GitHub #340): each
+    // with the command to hand a text to (its manifest's `translate`). The
+    // official one first, also from before it said so ("tr").
+    struct Translator {
+        QString pluginId;
+        QString commandId;
+    };
+    std::vector<Translator> translators() const;
     const QString& userDir() const noexcept { return m_userDir; }
 
     // From the settings: which plugins are on, the keywords the user

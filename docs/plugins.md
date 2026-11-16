@@ -142,6 +142,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 | `trayMenu` | 否 | 托盘菜单里一个子菜单的标题（文字），见下面"有自己窗口的常驻插件" |
 | `pictures` | 否 | `["pin", "edit"]`：剪贴板历史里的图片、结果里的图片文件，右键菜单的"贴到屏幕""编辑"交给这个插件，见下面"有自己窗口的常驻插件" |
 | `settingsWindow` | 否 | `true`：插件有自己的设置窗口，卡片上多一个"设置"按钮，见下面"有自己窗口的常驻插件" |
+| `translate` | 否 | 本插件哪个命令能翻译（写它的 `id`，如 `"tr"`）。截图的"翻译"（`translate_text`）会把文字当作这个命令的输入交给它：第一行的 `copy` 是译文（多行原文时一行对一行交回）；第一行 `id` 为 `setup` 表示还没设好翻译服务，换下一个翻译插件试。命令要由插件自己的程序回答，不能是零代码命令。0.32.0 起 |
 
 `runtime`：
 
@@ -311,7 +312,7 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
 | `clipboard_copy_entry` | `clipboard:write` | `id` | 剪贴板历史里的一条重新放到剪贴板，并移到最前 |
 | `show_launcher` | `ui` | `text` | 打开搜索框并填上这段文字 |
 | `web_search` | `winshun:open` | `text` | 用 Win顺 的默认网页搜索搜这段文字 |
-| `translate_text` | `ui` | `text`，或 `setup: true` | 用“翻译”插件翻译这段文字（保留换行，最多 4000 字），结果交回给调用的插件自己显示：`state` 为 `ok`（译文在 `text`）、`service`（翻译插件还没设服务）、`plugin`（翻译插件没装或没启用）、`failed`（原因在 `message`）。`setup: true` 不翻译，打开设置里翻译插件的卡片（没装就打开插件库里它那一项）。0.30.0 起 |
+| `translate_text` | `ui` | `text`，或 `setup: true` | 用翻译插件翻译这段文字（保留换行，最多 4000 字），结果交回给调用的插件自己显示：`state` 为 `ok`（译文在 `text`）、`service`（翻译插件还没设服务）、`plugin`（没装翻译插件；装了但关着时还带 `off: true`）、`failed`（原因在 `message`）。清单声明了 `translate` 的插件都算翻译插件（0.32.0 起），官方“翻译”在前；一个没设好或失败就换下一个，都不行时回第一个的结果。`setup: true` 不翻译，打开设置里第一个翻译插件的卡片（一个都没装就打开插件库里官方“翻译”那一项）。0.30.0 起 |
 | `open_url` | `winshun:open` | `url` | 用默认浏览器（或邮件程序）以用户的普通权限打开一个 `http`、`https` 或 `mailto` 链接；`open_item` 只开文件和文件夹。0.21.0 起 |
 | `backup_export` | `winshun:backup` | `file`、`unless`（可选） | 把现在的设置做成一份备份（和“导出备份”一样，不含这台电脑的备份位置、索引位置），写到 `file`（要在插件的数据文件夹里）。回 `{hash, when, written}`：`hash` 只跟内容有关，和 `unless` 一样时不写文件、`written` 是 false。0.26.0 起 |
 | `backup_restore` | `winshun:backup` | `file` | 用 `file`（插件数据文件夹里的一份备份）恢复：先校验，把现在的设置在本机 `backups` 里存一份，然后 Win顺 重启换上它，和“从备份恢复”一样。校验不过或另一个备份正在进行时回错误，什么都不换。让用户确认之后再调。0.26.0 起 |

@@ -907,7 +907,7 @@ capture::CaptureOcr& CaptureApp::captureOcr()
                 else if (state == u"service")
                     self->m_captureOcr->setTranslation(ticket, Translated::NoService, {});
                 else if (state == u"plugin")
-                    self->m_captureOcr->setTranslation(ticket, Translated::NoPlugin, {});
+                    self->m_captureOcr->setTranslation(ticket, answer.value(u"off"_s).toBool() ? Translated::PluginOff : Translated::NoPlugin, {});
                 else
                     self->m_captureOcr->setTranslation(ticket, Translated::Failed, error.isEmpty() ? answer.value(u"message"_s).toString() : error);
             });

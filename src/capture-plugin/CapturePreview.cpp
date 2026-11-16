@@ -493,6 +493,7 @@ int runOcr(const QStringList& args)
             {u"failed"_s, Translated::Failed, u"接口返回 401: Incorrect API key provided"_s},
             {u"service"_s, Translated::NoService, QString()},
             {u"plugin"_s, Translated::NoPlugin, QString()},
+            {u"off"_s, Translated::PluginOff, QString()},
         };
         for (const auto& [state, outcome, text] : states) {
             if (!translate)

@@ -109,7 +109,7 @@ public:
     // to an older one.
     Q_INVOKABLE void translate(const QString& text);
     static constexpr int kMaxTranslate = 3000;
-    enum class Translated { Done, Failed, NoService, NoPlugin };
+    enum class Translated { Done, Failed, NoService, NoPlugin, PluginOff };
     // `text`: the translation (Done; empty: nothing to show, the part closes), or why not (Failed).
     void setTranslation(int ticket, Translated outcome, const QString& text);
     Q_INVOKABLE void setupTranslation() { emit translationSetupRequested(); }

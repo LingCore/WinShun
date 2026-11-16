@@ -50,6 +50,7 @@ qt_add_library(wsplugin STATIC
     Secrets.cpp Secrets.h
     Session.cpp Session.h
     ToastPolicy.cpp ToastPolicy.h
+    TranslateText.cpp TranslateText.h
     Tools.cpp Tools.h
     Updates.cpp Updates.h
     ZeroCode.cpp ZeroCode.h

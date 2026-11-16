@@ -185,6 +185,10 @@ struct Manifest {
     bool settingsWindow = false;
     bool systemSwitches = false; // provider of the search UI's existing switch rows
     bool webSearch = false; // declarative URL provider; no process or static keyword commands
+    // The command that translates (GitHub #340): Win顺 hands it a text as
+    // its words for the screenshot's 翻译; its first row's `copy` is the
+    // translation, a row with id "setup" says no service is set up yet.
+    QString translate;
 
     const Command* command(QStringView commandId) const;
     bool resident() const noexcept { return runtime && runtime->mode == RunMode::Resident; }

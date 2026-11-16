@@ -207,6 +207,10 @@ void CaptureOcr::setTranslation(int ticket, Translated outcome, const QString& t
         m_translationNote = tr("需要插件库里的“翻译”插件，装好后再点“翻译”。");
         m_translationNeeds = u"plugin"_s;
         break;
+    case Translated::PluginOff: // installed, switched off (GitHub #340)
+        m_translationNote = tr("翻译插件关着，打开后再点“翻译”。");
+        m_translationNeeds = u"on"_s;
+        break;
     }
     emit translationChanged();
 }
