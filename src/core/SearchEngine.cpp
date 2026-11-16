@@ -299,6 +299,7 @@ struct Hidden {
     std::vector<std::string> types;
     std::vector<std::string> names;
     std::vector<ParsedQuery> conditions; // Request::conditions, read: not hidden files, but narrowing as they do
+    std::shared_ptr<const HiddenFolders> folders; // ParsedQuery::hiddenFolders: of the index only
     bool empty() const noexcept { return types.empty() && names.empty(); }
 };
 
@@ -324,7 +325,8 @@ bool ofType(const QString& path, bool isDir, const std::vector<std::string>& typ
 // for. Shown all the same: a type chosen (`types`) or ext: typed; a name
 // that a word typed is ("~$报告" is "~$*", "~$" quoted; a word with
 // wildcards, when it is one as it is written: "~$*.docx" too).
-Hidden hiddenOf(const SearchEngine::Request& request, const ParsedQuery& query, const std::vector<std::string>& types)
+Hidden hiddenOf(const SearchEngine::Request& request, const ParsedQuery& query, const std::vector<std::string>& types,
+    std::shared_ptr<const HiddenFolders> folders = {})
 {
     const auto anywhere = [&](auto&& in) {
         const auto look = [&](auto&& self, const ParsedQuery& part) -> bool {
@@ -333,7 +335,7 @@ Hidden hiddenOf(const SearchEngine::Request& request, const ParsedQuery& query, 
         return look(look, query);
     };
     Hidden hidden {foldedExtensions(request.excludedTypes), foldedExtensions(request.excludedFileNames),
-        parseConditions(request.conditions)};
+        parseConditions(request.conditions), std::move(folders)};
     std::erase_if(hidden.types, [&](const std::string& h) {
         return std::ranges::find(types, h) != types.end()
             || anywhere([&](const ParsedQuery& part) { return std::ranges::find(part.extensions, h) != part.extensions.end(); });
@@ -354,8 +356,10 @@ ParsedQuery withTypes(ParsedQuery query, const std::vector<std::string>& types, 
 {
     for (ParsedQuery& branch : query.alternatives)
         branch = withTypes(std::move(branch), types, hidden, false);
-    if (whole)
+    if (whole) {
         query.conditions = hidden.conditions; // once, over all its branches
+        query.hiddenFolders = hidden.folders;
+    }
     query.excludedExtensions = hidden.types;
     query.excludedFileNames = hidden.names;
     if (types.empty())
@@ -1465,7 +1469,7 @@ void SearchEngine::runNameSearch(const Job& job)
     const bool foldersOnly = request.scope == Scope::Folders;
     // 文件 with a type chosen: only its files, whatever is typed or listed.
     const std::vector<std::string> types = foldersOnly ? std::vector<std::string>() : foldedExtensions(request.extensions);
-    const Hidden hidden = hiddenOf(request, query, types); // skipped, and not asked for
+    const Hidden hidden = hiddenOf(request, query, types, m_index->hiddenFolders()); // skipped, and not asked for
     // Narrowed by when, how large or where (the panel's filters, size: and
     // dm: typed): files and folders alone, in the index's own terms. Nothing
     // typed in the panel lists them all the same (browse).
@@ -1481,7 +1485,8 @@ void SearchEngine::runNameSearch(const Job& job)
             .notAfter = trustedUntil(),
             .extensions = types,
             .excludedExtensions = hidden.types,
-            .excludedFileNames = hidden.names};
+            .excludedFileNames = hidden.names,
+            .hiddenFolders = hidden.folders};
         const auto index = m_index->index();
         phase = "waiting for the index";
         const auto lock = index->readLock();
@@ -2324,6 +2329,7 @@ void SearchEngine::runContentSearch(const Job& job)
     std::vector<NameMatcher> conditions;
     for (const ParsedQuery& condition : parseConditions(request.conditions))
         conditions.emplace_back(condition);
+    const std::shared_ptr<const HiddenFolders> hiddenFolders = m_index->hiddenFolders(); // GitHub #351
     const auto content = m_index->contentIndex();
     const ContentIndex::SearchGuard searching(content.get()); // the content indexer waits meanwhile
     std::vector<Candidate> candidates;
@@ -2395,6 +2401,7 @@ void SearchEngine::runContentSearch(const Job& job)
             UnderFolder inProfile(*index, personalFolders);
             UnderFolders inScope(*index, scope);
             std::vector<NameMatcher::Folders> conditionFolders(conditions.size());
+            HiddenFolders::Memo hiddenMemo;
             const auto first = static_cast<EntryId>(c << FileIndex::kChunkBits);
             auto k = static_cast<std::size_t>(std::lower_bound(lookup.known.begin(), lookup.known.end(), first,
                 [](std::uint32_t known, EntryId id) { return (known & ~kMatch) < id; }) - lookup.known.begin());
@@ -2451,7 +2458,7 @@ void SearchEngine::runContentSearch(const Job& job)
                 bool let = true;
                 for (std::size_t m = 0; let && m < conditions.size(); ++m)
                     let = conditions[m].match(*index, e, conditionFolders[m], id) >= 0;
-                if (!let)
+                if (!let || (hiddenFolders && hiddenFolders->hides(*index, e, hiddenMemo)))
                     continue; // the same
                 bool indexed = false;
                 bool likely = false;

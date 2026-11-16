@@ -219,6 +219,7 @@ IndexService::Options indexOptions(const Settings& settings, bool folders)
 {
     IndexService::Options options;
     options.rules = settings.crawlRules();
+    options.hidden = settings.hiddenRules();
     options.includeRemovable = settings.includeRemovableDrives;
     if (settings.selectedDrives) {
         options.selectedDrives.emplace();
@@ -236,6 +237,7 @@ IndexService::Options indexOptions(const Settings& settings, bool folders)
     options.content.sizeLimits = settings.contentSizeLimits();
     options.content.includeLowPriority = settings.contentInLowPriority;
     options.content.documents = settings.contentDocuments;
+    options.content.hidden = options.hidden;
     if (folders)
         options.folders = settings.indexFolderPaths();
     else

@@ -880,6 +880,7 @@ NewestOutput newestFiles(const FileIndex& index, const NewestOptions& options, W
     std::size_t sorted = 0;
     std::unordered_map<EntryId, std::size_t> perFolder;
     std::unordered_map<EntryId, std::size_t> perTree;
+    HiddenFolders::Memo hiddenMemo;
     for (std::size_t i = 0; i < hits.size(); ++i) {
         if (output.hits.size() >= options.limit)
             break;
@@ -892,7 +893,7 @@ NewestOutput newestFiles(const FileIndex& index, const NewestOptions& options, W
         }
         const NameHit& hit = hits[i];
         const EntryId parent = index.scan(hit.id).parent;
-        if (parent == kNoEntry)
+        if (parent == kNoEntry || (options.hiddenFolders && options.hiddenFolders->hides(index, index.scan(hit.id), hiddenMemo)))
             continue;
         std::size_t& inFolder = perFolder[parent];
         std::size_t& inTree = perTree[workTree(index, parent)];

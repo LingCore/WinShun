@@ -3,6 +3,7 @@
 #include "ContentScanner.h"
 #include "Crawler.h"
 #include "Documents.h"
+#include "HiddenFolders.h"
 #include "DiagnosticLog.h"
 #include "TextUtil.h"
 #include "Unc.h"
@@ -718,6 +719,10 @@ ContentIndexer::Plan ContentIndexer::plan(const FileIndex& index, const ContentI
     std::vector<EntryId>& retired = out.retired;
     std::vector<EntryId> candidates; // on the volumes followed, read before or not: what makes a folder crowded
     RootFinder finder(index, win32::userFolders());
+    const std::optional<HiddenFolders> hidden = options.hidden.excludedPaths.empty() && options.hidden.excludedNames.empty()
+        ? std::nullopt
+        : std::optional<HiddenFolders>(options.hidden);
+    HiddenFolders::Memo hiddenMemo;
     std::size_t k = 0;
     // A file a search looks in, on a volume followed: what to do with it.
     // Documents of the files passed over on the way are retired.
@@ -727,6 +732,8 @@ ContentIndexer::Plan ContentIndexer::plan(const FileIndex& index, const ContentI
         const bool remote = (e.flags & EntryFlag::Remote) != 0;
         if (remote ? !anyRemote || !filter.acceptsRemote(index, e) : !filter.accepts(index, e))
             return;
+        if (hidden && hidden->hides(index, e, hiddenMemo))
+            return; // and its document goes, if it has one
         const RootFinder::Place place = finder.placeOf(id);
         const auto volume = std::find_if(roots.begin(), roots.end(), [&](const Root& r) { return r.entry == place.root; });
         if (volume == roots.end())

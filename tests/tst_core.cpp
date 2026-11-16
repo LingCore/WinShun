@@ -9333,6 +9333,82 @@ private slots:
         QCOMPARE(search(u"report"_s, u"F:\\ws182\\gone"_s, true).names, L {});
     }
 
+    // GitHub #351: with the Everything compatibility on, the folders excluded
+    // stay in the index and Win顺's own searches leave them out, with all
+    // that is in them; what asks the index directly (the Everything
+    // interface) still finds them.
+    void hiddenFolders()
+    {
+        constexpr FileTime T = 1'700'000'000;
+        FileIndex index;
+        const auto dir = [&](EntryId parent, const char* name) { return index.add(parent, name, EntryFlag::Directory); };
+        const auto file = [&](EntryId folder, const char* name, FileTime when) {
+            const EntryId id = index.add(folder, name, 0);
+            index.setModified(id, when);
+            return id;
+        };
+        const EntryId c = index.addRoot("C:");
+        const EntryId work = dir(c, "work");
+        const EntryId skipped = dir(work, "Skipped"); // the rule says "skipped"
+        const EntryId inSkipped = file(skipped, "report.txt", T + 10);
+        const EntryId deep = file(dir(skipped, "deep"), "report.md", T + 20);
+        const EntryId similar = file(dir(work, "Skipped2"), "report.txt", T + 1);
+        const EntryId modules = dir(work, "node_modules");
+        const EntryId inModules = file(dir(modules, "pkg"), "report.js", T + 30);
+        const EntryId git = dir(work, ".git");
+        const EntryId objects = dir(git, "objects");
+        const EntryId inObjects = file(objects, "report", T + 40);
+        const EntryId otherObjects = dir(work, "objects"); // not in a .git
+        const EntryId inOther = file(otherObjects, "report.txt", T + 2);
+        const EntryId kept = file(work, "report.doc", T + 3);
+        const EntryId d = index.addRoot("D:"); // a whole drive by its root
+        const EntryId onD = file(dir(d, "x"), "report.txt", T + 50);
+
+        CrawlRules rules;
+        rules.excludedPaths = {L"C:\\work\\skipped", L"D:"};
+        rules.excludedNames = {L"node_modules", L".git\\objects"};
+        const auto hidden = std::make_shared<const HiddenFolders>(rules);
+        HiddenFolders::Memo memo;
+        const auto hides = [&](EntryId id) { return hidden->hides(index, index.scan(id), memo); };
+        for (const EntryId id : {skipped, inSkipped, deep, modules, inModules, objects, inObjects, d, onD})
+            QVERIFY2(hides(id), qPrintable(index.path(id)));
+        for (const EntryId id : {c, work, similar, git, otherObjects, inOther, kept})
+            QVERIFY2(!hides(id), qPrintable(index.path(id)));
+        // Asked again (known now), and with a fresh memo: the same.
+        QVERIFY(hides(deep) && !hides(similar));
+        HiddenFolders::Memo fresh;
+        QVERIFY(hidden->hides(index, index.scan(inModules), fresh));
+        QVERIFY(hidden->hidesPath(L"C:\\work\\skipped\\deep\\report.md"));
+        QVERIFY(!hidden->hidesPath(L"C:\\work\\skipped2\\report.txt"));
+
+        // A search: what the index has, but for those.
+        ParsedQuery query = ws::parseQuery(u"report"_s);
+        QVERIFY(NameMatcher(query).match(index, index.scan(inSkipped)) >= 0); // the Everything interface's
+        query.hiddenFolders = hidden;
+        const NameMatcher matcher(query);
+        for (const EntryId id : {inSkipped, deep, inModules, inObjects, onD})
+            QCOMPARE(matcher.match(index, index.scan(id)), -1);
+        for (const EntryId id : {similar, inOther, kept})
+            QVERIFY(matcher.match(index, index.scan(id)) >= 0);
+        WorkerPool pool(2);
+        const NameSearchOutput found = searchNames(index, matcher, {.limit = 50}, pool, {});
+        std::vector<EntryId> ids;
+        for (const NameHit& hit : found.hits)
+            ids.push_back(hit.id);
+        std::ranges::sort(ids);
+        std::vector<EntryId> expected {similar, inOther, kept};
+        std::ranges::sort(expected);
+        QCOMPARE(ids, expected);
+        // The files written last too.
+        const NewestOutput newest = ws::newestFiles(index,
+            {.limit = 10, .perFolder = 5, .perTree = 10, .notAfter = T + 100, .hiddenFolders = hidden}, pool, {});
+        ids.clear();
+        for (const NameHit& hit : newest.hits)
+            ids.push_back(hit.id);
+        std::ranges::sort(ids);
+        QCOMPARE(ids, expected);
+    }
+
     void newestFiles()
     {
         constexpr FileTime T = 1'700'000'000;

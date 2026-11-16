@@ -2164,7 +2164,7 @@ Window {
                     title: qsTr("让其他软件把 Win顺 当作 Everything 搜索")
                     keywords: qsTr("Everything;兼容;Directory Opus;DOpus;Total Commander;TC;es.exe;SDK;IPC").split(";")
                     description: qsTr("Directory Opus、Total Commander 等软件里的 Everything 搜索由 Win顺 回答，不用再装 Everything")
-                    tip: qsTr("Everything 自己在运行时仍由它回答。打开后，本机的程序都可以通过这个接口查到索引里的文件名")
+                    tip: qsTr("Everything 自己在运行时仍由它回答。打开后，本机的程序都可以通过这个接口查到索引里的文件名；“不搜索的文件夹”也会建索引给它们查，只是不出现在 Win顺 自己的结果里")
 
                     ToggleSwitch {
                         dpr: window.dpr
@@ -3370,7 +3370,10 @@ Window {
                     title: qsTr("不搜索的文件夹")
                     keywords: qsTr("排除;忽略;隐藏;黑名单;exclude").split(";")
                     values: window.editor.excludedPaths
-                    description: qsTr("这些文件夹里的内容都不出现在结果里")
+                    // GitHub #351: indexed all the same for the programs asking over the Everything interface.
+                    description: window.editor.everythingCompat
+                        ? qsTr("这些文件夹里的内容都不出现在结果里。“让其他软件把 Win顺 当作 Everything 搜索”开着时仍建索引，其他软件照样查得到（如 Total Commander 的文件夹大小）")
+                        : qsTr("这些文件夹里的内容都不出现在结果里")
 
                     FlatButton {
                         dpr: window.dpr

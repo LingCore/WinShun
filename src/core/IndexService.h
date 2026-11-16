@@ -5,6 +5,7 @@
 #include "ContentIndexer.h"
 #include "Crawler.h"
 #include "FileIndex.h"
+#include "HiddenFolders.h"
 #include "Ntfs.h"
 #include "RemoteContent.h"
 #include "ShareIndexer.h"
@@ -149,6 +150,10 @@ public:
         // Explicit directory links are walked in addition to whole-disk indexing,
         // also when the MFT and journals are read by the service or administrator.
         std::vector<std::wstring> extraFolders;
+        // GitHub #351: folders the index holds and Win顺's own searches
+        // leave out (hiddenFolders()): the excluded ones, with the
+        // Everything compatibility on. Only its excluded paths and names.
+        CrawlRules hidden;
         // Each chosen folder is walked again this often (folderVerifyDue).
         // 0: only at startup, as rescanOnStartup says.
         std::chrono::hours folderVerifyEvery {24};
@@ -235,6 +240,8 @@ public:
     std::shared_ptr<FileIndex> index() const { return m_index.load(); }
     // Its entry ids are the index's: look things up with the index's read lock held.
     std::shared_ptr<const ContentIndex> contentIndex() const { return m_content; }
+    // Options::hidden, for searches to ask of what they find; null: none.
+    std::shared_ptr<const HiddenFolders> hiddenFolders() const { return m_hidden.load(); }
     bool readingContent() const noexcept { return m_contentIndexer->reading(); }
     // Content searches hand it what they read (ContentIndexer::Intake).
     ContentIndexer* contentIndexer() const noexcept { return m_contentIndexer.get(); }
@@ -399,6 +406,7 @@ private:
     std::atomic<std::shared_ptr<const Crawler>> m_crawler; // replaced whole when the rules change
     std::atomic<std::shared_ptr<const Scope>> m_scope; // ... when the chosen folders do
     std::atomic<std::shared_ptr<FileIndex>> m_index;
+    std::atomic<std::shared_ptr<const HiddenFolders>> m_hidden; // Options::hidden
     std::atomic<State> m_state {State::Idle};
     std::atomic<bool> m_refreshing {false};
     // Which volumes are followed is known (contentVolumes): from a little

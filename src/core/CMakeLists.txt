@@ -25,6 +25,7 @@ qt_add_library(wscore STATIC
     Favorites.cpp Favorites.h
     FileIndex.cpp FileIndex.h
     FileText.cpp FileText.h
+    HiddenFolders.cpp HiddenFolders.h
     GameGuard.h
     History.cpp History.h
     IndexFolder.cpp IndexFolder.h

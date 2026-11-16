@@ -121,6 +121,7 @@ struct NewestOptions {
     // and those with these names (folded wildcards: nameMatchesAny).
     std::vector<std::string> excludedExtensions;
     std::vector<std::string> excludedFileNames;
+    std::shared_ptr<const HiddenFolders> hiddenFolders; // ParsedQuery::hiddenFolders
 };
 
 struct NewestOutput {

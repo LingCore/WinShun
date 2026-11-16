@@ -2,6 +2,7 @@
 
 #include "ContentPattern.h"
 #include "FileIndex.h"
+#include "HiddenFolders.h"
 #include "Pinyin.h"
 #include "SearchTypes.h"
 
@@ -10,6 +11,7 @@
 #include <QStringList>
 #include <QRegularExpression>
 
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -78,6 +80,9 @@ struct ParsedQuery {
     // what the query finds and are nothing to find by: isEmpty() does not
     // count them, and they neither rank nor highlight.
     std::vector<ParsedQuery> conditions;
+    // Set by the search as well (GitHub #351): folders the index holds and
+    // the search leaves out, with all that is in them; none when null.
+    std::shared_ptr<const HiddenFolders> hiddenFolders;
     EntryFilter filter; // size: and dm: (never folders)
     QStringList highlights; // plain terms to highlight in result names
 
@@ -166,6 +171,7 @@ public:
         std::vector<Slot> m_slots; // made when first needed
         std::vector<Folders> m_alternatives;
         std::vector<Folders> m_conditions;
+        HiddenFolders::Memo m_hidden;
     };
 
     // Whether an entry with this name (stored in the index, so padded) may
@@ -193,7 +199,11 @@ public:
     bool isExactName(QStringView name, bool isDir) const;
 
 private:
+    // match() but for ParsedQuery::hiddenFolders.
+    int matchShown(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id) const;
+
     bool m_invalid = false;
+    std::shared_ptr<const HiddenFolders> m_hidden;
     EntryFilter m_filter;
     std::vector<NameMatcher> m_alternatives;
     std::vector<NameMatcher> m_conditions; // ParsedQuery::conditions: all of them, as well as this

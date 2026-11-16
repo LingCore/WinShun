@@ -5054,8 +5054,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>WinShun answers the Everything search of Directory Opus, Total Commander and the like, with Everything not installed</translation>
     </message>
     <message>
-        <source>Everything 自己在运行时仍由它回答。打开后，本机的程序都可以通过这个接口查到索引里的文件名</source>
-        <translation>While Everything itself runs, it goes on answering. When on, any program on this PC can ask for the names of indexed files this way</translation>
+        <source>Everything 自己在运行时仍由它回答。打开后，本机的程序都可以通过这个接口查到索引里的文件名；“不搜索的文件夹”也会建索引给它们查，只是不出现在 Win顺 自己的结果里</source>
+        <translation>While Everything itself runs, it goes on answering. When on, any program on this PC can ask for the names of indexed files this way; the “Excluded folders” are indexed for them too, but stay out of WinShun&apos;s own results</translation>
     </message>
     <message>
         <source>Opus;DOpus;直接打字;输入;当前文件夹;双栏;type to search</source>
@@ -7266,6 +7266,10 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>这些文件夹里的内容都不出现在结果里</source>
         <translation>Nothing inside these folders shows up in results</translation>
+    </message>
+    <message>
+        <source>这些文件夹里的内容都不出现在结果里。“让其他软件把 Win顺 当作 Everything 搜索”开着时仍建索引，其他软件照样查得到（如 Total Commander 的文件夹大小）</source>
+        <translation>Nothing inside these folders shows up in results. With “Let other programs search WinShun as Everything” on they are still indexed, so other programs can find them (Total Commander&apos;s folder sizes, say)</translation>
     </message>
     <message>
         <source>按 %1+1 打开第一行，依此类推到第九行</source>

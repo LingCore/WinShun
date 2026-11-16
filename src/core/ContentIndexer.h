@@ -2,6 +2,7 @@
 
 #include "ContentIndex.h"
 #include "ContentScanner.h"
+#include "Crawler.h"
 #include "DocExtractor.h"
 #include "Ntfs.h"
 
@@ -69,6 +70,9 @@ public:
         // The local disks too ([Content] Index). Off while it is on: only the
         // shares whose contents are indexed (Volume::remote; GitHub #114).
         bool local = true;
+        // GitHub #351: folders the index holds and searches leave out
+        // (IndexService::Options::hidden): their files are not read either.
+        CrawlRules hidden;
 
         bool operator==(const Options&) const = default;
     };

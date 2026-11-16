@@ -1513,12 +1513,23 @@ ContentSizeLimits Settings::contentSizeLimits() const
     return limits;
 }
 
+namespace {
+
+bool isWholeDrive(std::wstring_view path)
+{
+    return path.size() == 2 && path[1] == L':';
+}
+
+} // namespace
+
 CrawlRules Settings::crawlRules() const
 {
     CrawlRules rules;
     for (const QString& p : excludedPaths) {
-        if (!p.trimmed().isEmpty())
-            rules.excludedPaths.push_back(normalizePath(p));
+        if (p.trimmed().isEmpty())
+            continue;
+        if (std::wstring path = normalizePath(p); !everythingCompat || isWholeDrive(path))
+            rules.excludedPaths.push_back(std::move(path));
     }
     // Our own files churn constantly. Not when they are a drive's root (an
     // empty drive chosen for the index): that would leave the whole drive out.
@@ -1531,7 +1542,7 @@ CrawlRules Settings::crawlRules() const
     if (!indexFolder.isEmpty())
         ownFolder(indexDir());
     for (const QString& n : excludedNames) {
-        if (!n.trimmed().isEmpty())
+        if (!n.trimmed().isEmpty() && !everythingCompat)
             rules.excludedNames.push_back(normalizeName(n));
     }
     for (const QString& p : kLowPriorityPaths) {
@@ -1541,6 +1552,24 @@ CrawlRules Settings::crawlRules() const
     }
     for (const QString& n : kLowPriorityNames)
         rules.lowPriorityNames.push_back(normalizeName(n));
+    return rules;
+}
+
+CrawlRules Settings::hiddenRules() const
+{
+    CrawlRules rules;
+    if (!everythingCompat)
+        return rules;
+    for (const QString& p : excludedPaths) {
+        if (p.trimmed().isEmpty())
+            continue;
+        if (std::wstring path = normalizePath(p); !isWholeDrive(path))
+            rules.excludedPaths.push_back(std::move(path));
+    }
+    for (const QString& n : excludedNames) {
+        if (!n.trimmed().isEmpty())
+            rules.excludedNames.push_back(normalizeName(n));
+    }
     return rules;
 }
 

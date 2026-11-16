@@ -626,6 +626,17 @@ bool IndexService::Scope::onRemovable() const
     return std::any_of(m_volumes.begin(), m_volumes.end(), [](const Volume& v) { return isRemovableDrive(v.root); });
 }
 
+namespace {
+
+std::shared_ptr<const HiddenFolders> hiddenOf(const CrawlRules& rules)
+{
+    if (rules.excludedPaths.empty() && rules.excludedNames.empty())
+        return nullptr;
+    return std::make_shared<const HiddenFolders>(rules);
+}
+
+} // namespace
+
 struct IndexService::Followed {
     std::size_t volume = 0;
     std::int64_t usn = 0; // the next record to read
@@ -644,6 +655,7 @@ IndexService::IndexService(QString folder, Options options, QObject* parent)
     , m_folder(QDir::cleanPath(QDir::fromNativeSeparators(folder)))
 {
     m_access.store(m_options.volumeAccess ? m_options.volumeAccess : std::make_shared<ntfs::DirectVolumeAccess>());
+    m_hidden.store(hiddenOf(m_options.hidden));
     m_crawler.store(std::make_shared<const Crawler>(m_options.rules));
     m_scope.store(std::make_shared<const Scope>(m_options.folders, m_options.extraFolders));
     resetFolderStatuses();
@@ -791,6 +803,10 @@ void IndexService::setOptions(Options options)
             m_contentIndexer->volumesChanged();
     }
     m_options.folderVerifyEvery = options.folderVerifyEvery; // the next look at what is due goes by it
+    if (!(options.hidden == m_options.hidden)) {
+        m_options.hidden = std::move(options.hidden);
+        m_hidden.store(hiddenOf(m_options.hidden));
+    }
     const bool rulesChanged = !(options.rules == m_options.rules);
     const bool drivesChanged = options.includeRemovable != m_options.includeRemovable
         || options.selectedDrives != m_options.selectedDrives;

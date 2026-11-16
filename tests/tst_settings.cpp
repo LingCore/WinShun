@@ -5,6 +5,7 @@
 #include "Query.h"
 #include "SettingsCommand.h"
 #include "StartupAccess.h"
+#include "Win32Util.h"
 
 #include "ServiceVolumeAccess.h"
 #include "platform/InputMode.h"
@@ -819,6 +820,35 @@ private slots:
         ws::Settings read;
         read.load();
         QVERIFY(read.everythingCompat);
+    }
+
+    // GitHub #351: with the Everything compatibility on, the folders excluded
+    // are indexed for the programs asking over it and left out of Win顺's
+    // own searches; a whole drive stays out of the index all the same.
+    void everythingCompatKeepsExcludedFoldersIndexed()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        settings.excludedPaths = {u"D:\\Work\\Skipped"_s, u"Q:\\"_s};
+        settings.excludedNames = {u"node_modules"_s};
+        const auto has = [](const std::vector<std::wstring>& list, const wchar_t* item) {
+            return std::ranges::any_of(list, [&](const std::wstring& s) { return ws::win32::equalsIgnoreCase(s, item); });
+        };
+        QVERIFY(has(settings.crawlRules().excludedPaths, L"D:\\Work\\Skipped"));
+        QVERIFY(has(settings.crawlRules().excludedNames, L"node_modules"));
+        QVERIFY(settings.hiddenRules().excludedPaths.empty() && settings.hiddenRules().excludedNames.empty());
+
+        settings.everythingCompat = true;
+        const ws::CrawlRules indexed = settings.crawlRules();
+        QVERIFY(!has(indexed.excludedPaths, L"D:\\Work\\Skipped"));
+        QVERIFY(has(indexed.excludedPaths, L"Q:"));
+        QVERIFY(indexed.excludedNames.empty());
+        const ws::CrawlRules hidden = settings.hiddenRules();
+        QCOMPARE(hidden.excludedPaths, std::vector<std::wstring> {L"D:\\Work\\Skipped"});
+        QCOMPARE(hidden.excludedNames, std::vector<std::wstring> {L"node_modules"});
     }
 
     void opusTyping()

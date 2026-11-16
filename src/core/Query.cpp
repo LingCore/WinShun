@@ -852,6 +852,7 @@ NameMatcher::NameMatcher(const ParsedQuery& query)
     : m_extensions(query.extensions)
     , m_excluded(query.excludedExtensions)
     , m_excludedNames(query.excludedFileNames)
+    , m_hidden(query.hiddenFolders)
 {
     m_invalid = !query.error.isEmpty();
     m_filter = query.filter;
@@ -1103,6 +1104,13 @@ std::uint64_t NameMatcher::termsInFolders(const FileIndex& index, EntryId folder
 }
 
 int NameMatcher::match(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id) const
+{
+    const int scored = matchShown(index, entry, folders, id);
+    // Last: only what matches is looked up in its folders.
+    return scored >= 0 && m_hidden && m_hidden->hides(index, entry, folders.m_hidden) ? -1 : scored;
+}
+
+int NameMatcher::matchShown(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id) const
 {
     if (m_invalid)
         return -1;
