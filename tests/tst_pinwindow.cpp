@@ -187,6 +187,7 @@ private slots:
         p.focus(62'000, true);
         p.tick(62'400);
         QVERIFY(p.shown());
+        p.input(62'500); // a key: over
         p.blur();
         QVERIFY(!p.shown());
         p.focus(63'000, true); // shown this round already
@@ -228,6 +229,68 @@ private slots:
         p.focus(150'000, false); // collapsed, hidden: gone for the round
         p.stop();
         p.tick(151'000);
+        QVERIFY(!p.shown());
+    }
+
+    // The focus coming and going by itself, nothing pressed (GitHub #343: at
+    // a fresh process's first pin the card went 0.3 s after it showed, the
+    // focus still on the pin). A card that shows stays when the pin is told
+    // again that it has the focus, hides while the focus is with one of the
+    // app's own windows and is back with it for the rest of its time; only
+    // another program's window begins a new round.
+    void keyCardFocusComesAndGoes()
+    {
+        PinHintPolicy p;
+        p.focus(0, false);
+        p.tick(400);
+        QVERIFY(p.shown());
+        p.focus(700, true); // told again
+        QVERIFY(p.shown());
+        p.tick(1000);
+        QVERIFY(p.shown());
+        QCOMPARE(p.nextDeadline(), 400 + PinHintPolicy::kShownMs);
+        p.blur(); // to one of the app's own windows and back
+        QVERIFY(!p.shown());
+        p.tick(1200);
+        p.focus(1300, true);
+        QVERIFY(p.shown());
+        QCOMPARE(p.nextDeadline(), 400 + PinHintPolicy::kShownMs); // its time, not a new one
+        p.blur(); // away past its time: not back
+        p.tick(400 + PinHintPolicy::kShownMs);
+        p.focus(9000, true);
+        p.tick(9500);
+        QVERIFY(!p.shown());
+        QCOMPARE(p.nextDeadline(), -1);
+        p.focus(10'000, false); // another program's window: a new round, after the rest
+        QVERIFY(!p.shown());
+        p.tick(10'400);
+        QVERIFY(p.shown());
+        p.press(10'500); // a button ends it: not back after a trip through the app's own window
+        p.release(10'600);
+        p.blur();
+        p.focus(11'000, true);
+        p.tick(12'000);
+        QVERIFY(!p.shown());
+
+        p.focus(20'000, false); // ? likewise: hidden while the focus is away, back with it
+        p.toggle();
+        QVERIFY(p.shown());
+        p.blur();
+        QVERIFY(!p.shown());
+        p.focus(21'000, true);
+        QVERIFY(p.shown());
+        p.focus(22'000, false); // a new round: gone, then by itself after the rest
+        QVERIFY(!p.shown());
+        p.tick(22'400);
+        QVERIFY(p.shown());
+
+        p.focus(30'000, false); // stop() (collapsed, edited) while the focus is away: not back
+        p.tick(30'400);
+        QVERIFY(p.shown());
+        p.blur();
+        p.stop();
+        p.focus(31'000, true);
+        p.tick(32'000);
         QVERIFY(!p.shown());
     }
 

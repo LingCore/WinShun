@@ -260,8 +260,10 @@ void PinManager::setKeyHints(bool on)
 void PinManager::hintFocus(PinWindow* pin, bool focused, bool fromOwnWindow)
 {
     if (focused) {
-        // Back from its own menu or another of the app's windows: the same round goes on.
-        m_hints.focus(m_hintClock.elapsed(), fromOwnWindow && pin == m_lastHintPin);
+        // The same round goes on (PinHintPolicy rule 3) for the pin back from its
+        // own menu or another of the app's windows, and for the pin with the
+        // focus told so again (a second WM_ACTIVATE, no WA_INACTIVE between).
+        m_hints.focus(m_hintClock.elapsed(), pin == m_lastHintPin && (fromOwnWindow || pin == m_hintPin));
         m_hintPin = pin;
         m_lastHintPin = pin;
         if (pin->form() != PinForm::Full)
@@ -303,7 +305,7 @@ void PinManager::hintToggle(PinWindow* pin)
 
 void PinManager::hintStop(const PinWindow* pin)
 {
-    if (pin != m_hintPin)
+    if (pin != m_lastHintPin) // the round is the last focused pin's, the focus there or away
         return;
     m_hints.stop();
     syncHints();
@@ -342,11 +344,13 @@ void PinManager::syncHints()
 
 void PinManager::closed(PinWindow* pin)
 {
-    if (pin == m_lastHintPin)
+    if (pin == m_lastHintPin) { // its round is over (rule 6)
         m_lastHintPin = nullptr;
-    if (pin == m_hintPin) {
-        m_hints.blur();
-        m_hintPin = nullptr;
+        m_hints.stop();
+        if (pin == m_hintPin) {
+            m_hints.blur();
+            m_hintPin = nullptr;
+        }
         syncHints();
     }
     // Called from inside its window procedure: deleted once that returns.

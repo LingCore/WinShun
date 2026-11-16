@@ -26,11 +26,15 @@ namespace ws::capture {
 //     shows. Moving the mouse leaves that alone.
 //  2. Shown, a button pressed, a key or the wheel takes it away, and so does
 //     kShownMs with none of them. Once per round, so it never nags.
-//  3. The focus going takes it away. The same pin taking it back from one
-//     of the app's own windows (its menu, the editing window) goes on with
-//     the round rather than beginning one.
-//  4. ? or F1: shown until pressed again, a button pressed or the focus
-//     gone, with no timer; hidden so, nothing more by itself this round.
+//  3. The focus going hides it. The same pin taking it back from one of
+//     the app's own windows (its menu, the editing window), or told again
+//     that it has it, goes on with the round rather than beginning one: a
+//     card that was showing shows again for the rest of its time. A key, a
+//     button, the wheel, kShownMs or stop() end a showing; the focus coming
+//     and going by itself never does.
+//  4. ? or F1: shown until pressed again or a button pressed, with no
+//     timer (hidden while the focus is away, rule 3); hidden so, nothing
+//     more by itself this round.
 //  5. Off in the settings ([Capture] KeyHints): nothing by itself; ? still
 //     shows it.
 //  6. stop(): collapsed, edited, closed: gone for this round.
@@ -50,20 +54,17 @@ public:
     {
         m_focused = true;
         m_down = false;
-        m_auto = false;
         m_since = now;
         if (!resume) {
+            m_auto = false;
             m_done = false;
             m_manual = Manual::None;
         }
     }
-    void blur() // rule 3
+    void blur() // rule 3: hidden (shown() needs the focus), what showed kept for the same pin's return
     {
         m_focused = false;
         m_down = false;
-        m_auto = false;
-        if (m_manual == Manual::Shown)
-            m_manual = Manual::None;
     }
     void press(qint64 now) // a button down: rules 2 and 4
     {
