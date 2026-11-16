@@ -1071,6 +1071,14 @@
         <translation>Picture thumbnails</translation>
     </message>
     <message>
+        <source>小</source>
+        <translation>Small</translation>
+    </message>
+    <message>
+        <source>大</source>
+        <translation>Large</translation>
+    </message>
+    <message>
         <source>开在光标上方时翻转</source>
         <translation>Flip when opening above the text cursor</translation>
     </message>
@@ -1350,6 +1358,17 @@
     </message>
 </context>
 <context>
+    <name>AppsGrid</name>
+    <message>
+        <source>从收藏夹移除</source>
+        <translation>Remove from favorites</translation>
+    </message>
+    <message>
+        <source>加入收藏夹</source>
+        <translation>Add to favorites</translation>
+    </message>
+</context>
+<context>
     <name>BuiltinCard</name>
     <message>
         <source>内置</source>
@@ -1507,25 +1526,6 @@
     </message>
 </context>
 <context>
-    <name>ClipTextEditor</name>
-    <message>
-        <source>修改文字</source>
-        <translation>Edit the text</translation>
-    </message>
-    <message>
-        <source>Ctrl+Enter 保存</source>
-        <translation>Ctrl+Enter saves</translation>
-    </message>
-    <message>
-        <source>取消</source>
-        <translation>Cancel</translation>
-    </message>
-    <message>
-        <source>保存</source>
-        <translation>Save</translation>
-    </message>
-</context>
-<context>
     <name>ClipTabs</name>
     <message>
         <source>分组名称</source>
@@ -1542,6 +1542,25 @@
     <message>
         <source>新建分组：放进分组的内容不会过期</source>
         <translation>New group: what goes in a group is kept for good</translation>
+    </message>
+</context>
+<context>
+    <name>ClipTextEditor</name>
+    <message>
+        <source>修改文字</source>
+        <translation>Edit the text</translation>
+    </message>
+    <message>
+        <source>Ctrl+Enter 保存</source>
+        <translation>Ctrl+Enter saves</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>保存</source>
+        <translation>Save</translation>
     </message>
 </context>
 <context>
@@ -2144,7 +2163,7 @@
     </message>
     <message>
         <source>在资源管理器里右键文件或文件夹，“Win顺 命令”里选它，就把完整路径交给 {query}；Windows 11 在“显示更多选项”里</source>
-        <translation>Right-click a file or a folder in Explorer and pick it under "WinShun commands": its full path goes to {query}. On Windows 11 it is under "Show more options"</translation>
+        <translation>Right-click a file or a folder in Explorer and pick it under &quot;WinShun commands&quot;: its full path goes to {query}. On Windows 11 it is under &quot;Show more options&quot;</translation>
     </message>
     <message>
         <source>命令里要有 {query}，用来接收右键的文件或文件夹</source>
@@ -2753,7 +2772,7 @@
     </message>
     <message>
         <source>点应用图标右上角的星标，它就留在这里</source>
-        <translation>Click the star at the corner of an app's icon to keep it here</translation>
+        <translation>Click the star at the corner of an app&apos;s icon to keep it here</translation>
     </message>
     <message>
         <source>打开过的应用会出现在这里</source>
@@ -3498,10 +3517,6 @@
         <translation>For AI</translation>
     </message>
     <message>
-        <source>仅声明</source>
-        <translation>Declared only</translation>
-    </message>
-    <message>
         <source>已保存，输入可替换</source>
         <translation>Saved; type to replace</translation>
     </message>
@@ -3524,10 +3539,6 @@
     <message>
         <source>默认</source>
         <translation>Default</translation>
-    </message>
-    <message>
-        <source>权限</source>
-        <translation>Permissions</translation>
     </message>
     <message>
         <source>选择</source>
@@ -3806,6 +3817,14 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>Permissions:</translation>
     </message>
     <message>
+        <source>更新内容</source>
+        <translation>What&apos;s new</translation>
+    </message>
+    <message>
+        <source>%1 更新内容</source>
+        <translation>What&apos;s new in %1</translation>
+    </message>
+    <message>
         <source>自带</source>
         <translation>Built in</translation>
     </message>
@@ -3830,10 +3849,6 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>Installed now: %1</translation>
     </message>
     <message>
-        <source>重启 Win顺 后更新到 %1</source>
-        <translation>Updates to %1 when WinShun restarts</translation>
-    </message>
-    <message>
         <source>立即更新</source>
         <translation>Update now</translation>
     </message>
@@ -3846,24 +3861,12 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>%1 (not installed on this PC)</translation>
     </message>
     <message>
-        <source>权限</source>
-        <translation>Permissions</translation>
-    </message>
-    <message>
         <source>不需要额外的权限</source>
         <translation>No extra permissions</translation>
     </message>
     <message>
         <source>已安装 %1</source>
         <translation>Installed %1</translation>
-    </message>
-    <message>
-        <source>随 Win顺 自带</source>
-        <translation>Comes with WinShun</translation>
-    </message>
-    <message>
-        <source>已装 %1</source>
-        <translation>You have %1</translation>
     </message>
     <message>
         <source>取消</source>
@@ -3878,20 +3881,12 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>Update WinShun first</translation>
     </message>
     <message>
-        <source>查看</source>
-        <translation>Show</translation>
-    </message>
-    <message>
         <source>正在下载… %1%</source>
         <translation>Downloading… %1%</translation>
     </message>
     <message>
         <source>要 Win顺 %1 或更新的版本，可以在“高级”里检查更新</source>
         <translation>Needs WinShun %1 or newer; you can check for updates under “Advanced”</translation>
-    </message>
-    <message>
-        <source>安装并启用</source>
-        <translation>Install and enable</translation>
     </message>
     <message>
         <source>主页</source>
@@ -3965,34 +3960,6 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>Nothing matches “%1”</translation>
     </message>
     <message>
-        <source>分享你的插件</source>
-        <translation>Share your plugin</translation>
-    </message>
-    <message>
-        <source>投稿;发布;提交;开发;share;publish;submit</source>
-        <translation>share;publish;submit;develop;contribute</translation>
-    </message>
-    <message>
-        <source>做了好用的插件？可以投稿到插件库，给大家用</source>
-        <translation>Made a useful plugin? Submit it to the plugin library for everyone to use</translation>
-    </message>
-    <message>
-        <source>看看怎么投稿</source>
-        <translation>How to submit</translation>
-    </message>
-    <message>
-        <source>做一个自己的插件</source>
-        <translation>Create your own plugin</translation>
-    </message>
-    <message>
-        <source>AI;开发;模板;创建;贡献;Python;PowerShell</source>
-        <translation>AI;develop;template;create;contribute;Python;PowerShell</translation>
-    </message>
-    <message>
-        <source>从能运行的模板开始，也可以把开发提示和模板一起交给 AI。创建后仍由你决定是否启用插件。</source>
-        <translation>Start with a working template, or give the template and instructions to an AI assistant. You choose when to enable the plugin.</translation>
-    </message>
-    <message>
         <source>复制 AI 开发提示</source>
         <translation>Copy AI instructions</translation>
     </message>
@@ -4007,6 +3974,37 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>只安装你需要的功能。下载后先核对文件，安装并启用时会先列出它要的权限，同意后即可使用。</source>
         <translation>Install the features you need. Downloads are checked before installation. Review the permissions to install and enable a plugin.</translation>
+    </message>
+</context>
+<context>
+    <name>PluginNotesDialog</name>
+    <message>
+        <source>%1 的更新内容 · 已经下载好，下次启动 Win顺 时换上</source>
+        <translation>What&apos;s new in %1 · Downloaded, takes effect the next time WinShun starts</translation>
+    </message>
+    <message>
+        <source>%1 的更新内容 · 现在装的是 %2</source>
+        <translation>What&apos;s new in %1 · You have %2</translation>
+    </message>
+    <message>
+        <source>%1 的更新内容</source>
+        <translation>What&apos;s new in %1</translation>
+    </message>
+    <message>
+        <source>关闭</source>
+        <translation>Close</translation>
+    </message>
+    <message>
+        <source>立即更新</source>
+        <translation>Update now</translation>
+    </message>
+    <message>
+        <source>安装</source>
+        <translation>Install</translation>
+    </message>
+    <message>
+        <source>更新到 %1</source>
+        <translation>Update to %1</translation>
     </message>
 </context>
 <context>
@@ -4027,12 +4025,12 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
 <context>
     <name>PluginReadmeDialog</name>
     <message>
-        <source>%1 · 使用说明</source>
-        <translation>%1 · User guide</translation>
+        <source>使用说明</source>
+        <translation>User guide</translation>
     </message>
     <message>
-        <source>关闭说明（Esc / Q）</source>
-        <translation>Close guide (Esc / Q)</translation>
+        <source>关闭（Esc / Q）</source>
+        <translation>Close (Esc / Q)</translation>
     </message>
 </context>
 <context>
@@ -4208,10 +4206,6 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>Installed plugins</translation>
     </message>
     <message>
-        <source>插件;扩展;关键字;命令;安装;plugin;extension</source>
-        <translation>plugin;extension;keyword;command;install</translation>
-    </message>
-    <message>
         <source>给 AI 用</source>
         <translation>For AI</translation>
     </message>
@@ -4241,14 +4235,6 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>压缩包（.zip / .wsplugin）</source>
         <translation>Archive (.zip / .wsplugin)</translation>
-    </message>
-    <message>
-        <source>位置;路径;文件夹;folder;path</source>
-        <translation>folder;path;location</translation>
-    </message>
-    <message>
-        <source>打开</source>
-        <translation>Open</translation>
     </message>
     <message>
         <source>开发者模式</source>
@@ -4289,10 +4275,6 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>从插件库挑选</source>
         <translation>From the plugin library</translation>
-    </message>
-    <message>
-        <source>随 Win顺 一起提供，用到哪个开哪个；关闭后停止对应功能，暂不支持单独卸载</source>
-        <translation>Included with WinShun. Enable what you need; disabling stops the feature. Separate uninstall is not supported yet.</translation>
     </message>
     <message>
         <source>收起设置</source>
@@ -4427,7 +4409,7 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     </message>
     <message>
         <source>把常用的搜索条件存起来，在搜索面板的侧栏点一下就套用，再点一下取消；同时开几个就要全部满足。条件和搜索框里的写法一样：%1 排除回收站里的东西，%2 排除这类文件夹，%3 只看大 PDF。填了搜索前缀（例如 nobin），在搜索框里输入“:nobin 报告”也能套用，不用展开面板。</source>
-        <translation>Save searches you use often: a click in the search panel&apos;s side bar applies one, another click removes it, and with several on a file must fit them all. Written as in the search box: %1 leaves out what is in the Recycle Bin, %2 such folders, %3 shows large PDFs only. Give one a search prefix (say nobin) and ":nobin report" in the search box applies it too, without the panel.</translation>
+        <translation>Save searches you use often: a click in the search panel&apos;s side bar applies one, another click removes it, and with several on a file must fit them all. Written as in the search box: %1 leaves out what is in the Recycle Bin, %2 such folders, %3 shows large PDFs only. Give one a search prefix (say nobin) and &quot;:nobin report&quot; in the search box applies it too, without the panel.</translation>
     </message>
     <message>
         <source>名称</source>
@@ -6630,19 +6612,11 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
         <source>小：图片那一行和别的一样高；大：缩略图能看清细节，不用打开预览</source>
-        <translation>Small: a picture's row is as high as any other. Large: thumbnails big enough to make out, without the preview</translation>
+        <translation>Small: a picture&apos;s row is as high as any other. Large: thumbnails big enough to make out, without the preview</translation>
     </message>
     <message>
         <source>缩略图;图片;截图;放大;看清;细节;等高;一样高;行高;整齐</source>
         <translation>thumbnail;picture;image;screenshot;larger;details;same height;equal;row height;tidy</translation>
-    </message>
-    <message>
-        <source>缩略图;图片;截图;放大;看清;细节</source>
-        <translation>thumbnail;picture;screenshot;larger;see;details</translation>
-    </message>
-    <message>
-        <source>图片的那一行更高，缩略图大到能看清细节，不用打开预览</source>
-        <translation>Pictures get taller rows, their thumbnails large enough to see the details without opening the preview</translation>
     </message>
     <message>
         <source>开在光标上方时翻转</source>
@@ -7578,6 +7552,14 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>密集</source>
         <translation>Dense</translation>
+    </message>
+    <message>
+        <source>小</source>
+        <translation>Small</translation>
+    </message>
+    <message>
+        <source>大</source>
+        <translation>Large</translation>
     </message>
     <message>
         <source>面板内数字键粘贴</source>
@@ -9254,6 +9236,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Waiting for the index service to start…</translation>
     </message>
     <message>
+        <source>请检查命令和工作文件夹。</source>
+        <translation>Check the command and the working folder.</translation>
+    </message>
+    <message>
         <source>贴到屏幕</source>
         <translation>Pin to screen</translation>
     </message>
@@ -9786,18 +9772,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>部分功能尚未恢复</source>
         <translation>Some features have not been restored</translation>
-    </message>
-    <message>
-        <source>翻译插件未启用</source>
-        <translation>The Translate plugin is not on</translation>
-    </message>
-    <message>
-        <source>请在设置 → 插件 → 插件库中安装并启用“翻译”，填好翻译服务。</source>
-        <translation>Install and turn on Translate in Settings → Plugins → Plugin library, and fill in its service.</translation>
-    </message>
-    <message>
-        <source>翻译插件未启用，请在设置 → 插件 → 插件库中安装并启用“翻译”</source>
-        <translation>The Translate plugin is not on: install and turn it on in Settings → Plugins → Plugin library</translation>
     </message>
     <message>
         <source>网页搜索插件未启用</source>
@@ -10906,33 +10880,6 @@ Content index: %5</translation>
     </message>
 </context>
 <context>
-    <name>ws::DialogRuleStore</name>
-    <message>
-        <source>%1 秒内切到那个窗口，光标点进填文件名的输入框…</source>
-        <translation>Within %1 s, switch to that window and click its file name box…</translation>
-    </message>
-    <message>
-        <source>没有切到别的程序的窗口，再点一次试试</source>
-        <translation>No other program's window came to the front. Click once more to try again</translation>
-    </message>
-    <message>
-        <source>这个窗口 Win顺 本来就认识，不用加规则</source>
-        <translation>Win顺 knows this window already: it needs no rule</translation>
-    </message>
-    <message>
-        <source>这个窗口里没找到能填路径的输入框（它可能是管理员权限的程序，或不支持辅助功能）</source>
-        <translation>No box for a path was found there (the program may run as administrator, or not support accessibility)</translation>
-    </message>
-    <message>
-        <source>规则文件写不进去：%1</source>
-        <translation>The rules file could not be written: %1</translation>
-    </message>
-    <message>
-        <source>已记下“%1”（%2），现在就能用。认错了输入框，点“规则文件”改</source>
-        <translation>Learned “%1” (%2); it works now. Wrong box? Change it in the rules file</translation>
-    </message>
-</context>
-<context>
     <name>ws::DialogBar</name>
     <message>
         <source>输入的路径</source>
@@ -11013,6 +10960,33 @@ Content index: %5</translation>
     <message>
         <source>只搜“%1”里面</source>
         <translation>Only inside “%1”</translation>
+    </message>
+</context>
+<context>
+    <name>ws::DialogRuleStore</name>
+    <message>
+        <source>%1 秒内切到那个窗口，光标点进填文件名的输入框…</source>
+        <translation>Within %1 s, switch to that window and click its file name box…</translation>
+    </message>
+    <message>
+        <source>没有切到别的程序的窗口，再点一次试试</source>
+        <translation>No other program&apos;s window came to the front. Click once more to try again</translation>
+    </message>
+    <message>
+        <source>这个窗口 Win顺 本来就认识，不用加规则</source>
+        <translation>Win顺 knows this window already: it needs no rule</translation>
+    </message>
+    <message>
+        <source>这个窗口里没找到能填路径的输入框（它可能是管理员权限的程序，或不支持辅助功能）</source>
+        <translation>No box for a path was found there (the program may run as administrator, or not support accessibility)</translation>
+    </message>
+    <message>
+        <source>规则文件写不进去：%1</source>
+        <translation>The rules file could not be written: %1</translation>
+    </message>
+    <message>
+        <source>已记下“%1”（%2），现在就能用。认错了输入框，点“规则文件”改</source>
+        <translation>Learned “%1” (%2); it works now. Wrong box? Change it in the rules file</translation>
     </message>
 </context>
 <context>
@@ -13284,7 +13258,7 @@ Content index: %5</translation>
     </message>
     <message>
         <source>取得 Win顺 的设置备份，并用备份恢复设置</source>
-        <translation>Get WinShun's settings backup and restore the settings from one</translation>
+        <translation>Get WinShun&apos;s settings backup and restore the settings from one</translation>
     </message>
     <message>
         <source>读最近打开的项目</source>
@@ -15282,17 +15256,6 @@ Content index: %5</translation>
     <message>
         <source>无法完成增强识别安装，原来的文件已保留。</source>
         <translation>Installation could not finish. Your existing recognition files have been kept.</translation>
-    </message>
-</context>
-<context>
-    <name>AppsGrid</name>
-    <message>
-        <source>从收藏夹移除</source>
-        <translation>Remove from favorites</translation>
-    </message>
-    <message>
-        <source>加入收藏夹</source>
-        <translation>Add to favorites</translation>
     </message>
 </context>
 </TS>

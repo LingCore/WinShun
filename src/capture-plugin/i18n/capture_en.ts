@@ -1560,6 +1560,10 @@
         <translation>Set up a translation service…</translation>
     </message>
     <message>
+        <source>打开翻译插件…</source>
+        <translation>Turn on the Translate plugin…</translation>
+    </message>
+    <message>
         <source>打开链接</source>
         <translation>Open link</translation>
     </message>
@@ -2214,6 +2218,10 @@ The unfinished recording is kept at: %1</translation>
     <message>
         <source>需要插件库里的“翻译”插件，装好后再点“翻译”。</source>
         <translation>This needs the Translate plugin from the plugin library. Install it, then choose Translate again.</translation>
+    </message>
+    <message>
+        <source>翻译插件关着，打开后再点“翻译”。</source>
+        <translation>The Translate plugin is off. Turn it on, then choose Translate again.</translation>
     </message>
     <message>
         <source>图片里没有找到文字。</source>
