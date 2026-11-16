@@ -53,7 +53,7 @@
 2. 第一次启动有两页简单设置：内容索引、剪贴板历史、截图要不要开，用哪个键打开 Win顺。选好点 **开始使用**；不想选就点 **稍后设置**，以后在设置里随时改。
 3. 连按两下 `Ctrl`，打字，按 `Enter` 打开。再按两下 `Ctrl` 或按 `Esc` 关掉。
 
-不想安装，或者用 Scoop 管理软件？见下面的[下载安装](#下载安装)。
+不想安装，或者用 Scoop、WinGet 管理软件？见下面的[下载安装](#下载安装)。
 
 ### 能做什么
 
@@ -145,11 +145,12 @@
 | **便携版** `WinShun-版本号-x64-portable.zip` | 不想安装。解压后运行 `WinShun.exe`，设置和索引都在旁边的 `data` 文件夹，可以整个带走 |
 | **离线安装版** `WinShun-版本号-x64-offline-setup.exe` | 没网的电脑。自带增强文字识别组件 |
 | **Scoop** | `scoop bucket add winshun https://github.com/LingCore/WinShun`，再 `scoop install winshun` |
+| **WinGet** | `winget install LingCore.WinShun` |
 
 **更新**：有新版本时托盘会提醒，点“下载并安装”，Win顺 自己下载、核对 SHA-256 后装好并重新打开，设置和索引都保留。卸载在 Windows 的“设置 → 应用”里。
 
 <details>
-<summary><b>安装细节</b>：便携版、Scoop、增强文字识别、AI 工具连着时升级</summary>
+<summary><b>安装细节</b>：便携版、Scoop、WinGet、增强文字识别、AI 工具连着时升级</summary>
 
 AI 工具（Claude Code、Cursor 等）正连着 Win顺 时，安装程序会先问一声：现在装，它会断开，装好后在它里面重新连接 Win顺 或重启它；也可以等它用完再装。
 
@@ -163,6 +164,14 @@ scoop install winshun
 ```
 
 装的就是上面的便携版（设置和索引存在 Scoop 的 `persist\winshun\data` 里），开始菜单里有 “WinShun”，终端里直接能用 `ws`。更新：Win顺 弹出更新提醒时点“用 Scoop 更新”（会打开一个窗口运行 `scoop update`，完成后自动重新打开），或自己运行 `scoop update winshun`。卸载用 `scoop uninstall winshun`，会先取消开机自启、右键菜单等 Win顺 登记的项目，设置和索引保留；加 `-p` 才连同数据一起删除。Scoop 不会装索引服务，需要索引整个磁盘时到 **设置 › 搜索范围 › 磁盘 › 索引方式** 里开启。
+
+用 [WinGet](https://learn.microsoft.com/windows/package-manager/) 的话一条命令：
+
+```powershell
+winget install LingCore.WinShun
+```
+
+装的是**离线安装版**（自带增强文字识别），按“为所有用户安装”装进 `C:\Program Files\WinShun`，带索引服务，Windows 问一次管理员权限。包在 [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs/tree/master/manifests/l/LingCore/WinShun)：新版本发布后才有对应的更新提交，审核合并后才上架，所以常常比 Releases 晚一两天，`winget show LingCore.WinShun` 里的版本就是能装到的版本。更新用 `winget upgrade LingCore.WinShun`；托盘里的“下载并安装”照常能用，装完就是最新版，这时 WinGet 记的版本比实际装的旧，`winget upgrade` 要等包追上才有动作（不会把更新的版本装回去）。卸载用 `winget uninstall LingCore.WinShun`，运行的就是“设置 → 应用”里那个卸载程序。
 
 标准安装版和便携版按需安装增强文字识别：到 **设置 › 剪贴板 › 记录 › 增强文字识别** 下载约 12 MB 的组件，也可以选择本地组件包。安装后剪贴板和截图共用，离线识别，不需要重启。旧版已有的识别文件继续使用。无网络的电脑可选 `WinShun-版本号-x64-offline-setup.exe`，自带完整识别组件；或把 Release 中的 `WinShun-ocr-*.zip` 拷过去从本地安装。截图识别尚未安装时会保留原图，安装后继续识别。 程序更新、插件库和增强识别的 GitHub 文件默认优先通过两个加速镜像下载，连接失败或文件校验不符会自动换源，最后尝试官方原站。
 
@@ -302,7 +311,7 @@ WinShun (Win顺, "Windows made smooth"): press `Ctrl` twice and a search box pop
 2. The first start shows two short setup pages: the content index, clipboard history, screenshots, and the key that opens WinShun. Choose **Get started**, or **Set up later** and change anything in the settings whenever you like.
 3. Press `Ctrl` twice, type, press `Enter`. `Ctrl` twice again or `Esc` closes it.
 
-No installer, or Scoop? See [Download and install](#download-and-install).
+No installer, or Scoop and WinGet? See [Download and install](#download-and-install).
 
 ### What it does
 
@@ -394,11 +403,12 @@ Get it from the [Releases page](https://github.com/LingCore/WinShun/releases/lat
 | **Portable** `WinShun-<version>-x64-portable.zip` | No installer. Unzip and run `WinShun.exe`; settings and index live in the `data` folder beside it, so the whole folder can travel |
 | **Offline setup** `WinShun-<version>-x64-offline-setup.exe` | PCs without internet. Includes enhanced text recognition |
 | **Scoop** | `scoop bucket add winshun https://github.com/LingCore/WinShun`, then `scoop install winshun` |
+| **WinGet** | `winget install LingCore.WinShun` |
 
 **Updates**: WinShun tells you in the tray; “Download and install” downloads it, checks its SHA-256, installs it and starts again, keeping your settings and index. Uninstall from Windows Settings → Apps.
 
 <details>
-<summary><b>Install details</b>: portable copy, Scoop, enhanced text recognition, upgrading while an AI tool is connected</summary>
+<summary><b>Install details</b>: portable copy, Scoop, WinGet, enhanced text recognition, upgrading while an AI tool is connected</summary>
 
 If an AI tool (Claude Code, Cursor …) is connected to WinShun, Setup asks first: install now and reconnect WinShun in that tool (or restart it) afterwards, or install later.
 
@@ -412,6 +422,14 @@ scoop install winshun
 ```
 
 This installs the portable package (settings and index live in Scoop's `persist\winshun\data`), adds “WinShun” to the Start menu and puts `ws` on the PATH. To update, click “Update with Scoop” in WinShun's update reminder (it opens a window that runs `scoop update`, then starts WinShun again) or run `scoop update winshun` yourself. `scoop uninstall winshun` first takes back what WinShun registered (autostart, Explorer menus ...) and keeps your settings and index; add `-p` to delete the data too. Scoop does not install the index service; to index whole disks turn it on in **Settings › Search scope › Disks › Index method**.
+
+With [WinGet](https://learn.microsoft.com/windows/package-manager/), one command does it:
+
+```powershell
+winget install LingCore.WinShun
+```
+
+This installs the **offline setup** (enhanced text recognition included) for all users into `C:\Program Files\WinShun`, index service and all, with one administrator prompt. The package is in [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs/tree/master/manifests/l/LingCore/WinShun): a release reaches it only through a new submission that is reviewed before it goes live, so it often trails Releases by a day or two, and the version in `winget show LingCore.WinShun` is the one you get. Update with `winget upgrade LingCore.WinShun`; “Download and install” in the tray still works and takes WinShun to the newest release, after which WinGet's version lags the installed one and `winget upgrade` waits until the package catches up (it never moves you back to an older version). Uninstall with `winget uninstall LingCore.WinShun`, which runs the same setup as Settings → Apps.
 
 Standard and portable packages install enhanced text recognition on demand. Open **Settings › Clipboard › Recording › Enhanced text recognition** to download about 12 MB, or install a local component archive. Clipboard and screenshots share it and work offline after installation, with no restart. Existing recognition files remain usable. For a PC without internet, choose `WinShun-<version>-x64-offline-setup.exe`, or copy the Release’s `WinShun-ocr-*.zip` and install it locally. Screenshot recognition keeps the original image and continues once the component is installed. App updates, the plugin library and enhanced recognition prefer two download mirrors for public GitHub files, then the original source; failed connections and rejected files automatically try the next source.
 
