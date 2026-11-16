@@ -53,6 +53,7 @@ QtObject {
         { where: "launcher", group: qsTr("打开与操作"), keys: "Ctrl+Shift+C", text: qsTr("复制路径") },
         { where: "launcher", group: qsTr("打开与操作"), keys: "Shift+F10", text: qsTr("右键菜单") },
         { where: "launcher", group: qsTr("窗口"), brief: true, keys: "Ctrl+E", text: qsTr("展开为搜索面板，或收回搜索框") },
+        { where: "launcher", group: qsTr("窗口"), keys: "F11", text: qsTr("搜索面板铺满屏幕，再按一次还原") },
         { where: "launcher", group: qsTr("窗口"), brief: true, keys: "Ctrl+T", text: qsTr("钉住：点别处、打开文件后都不收起；再按一次取消") },
         { where: "launcher", group: qsTr("窗口"), keys: "Ctrl+,", text: qsTr("打开 Win顺 设置") },
         { where: "launcher", group: qsTr("窗口"), keys: "Esc", text: qsTr("关闭；选中了多行时先取消选择") },

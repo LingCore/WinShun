@@ -815,6 +815,14 @@ Window {
             event.accepted = true
             return
         }
+        // F11 (GitHub #354): the panel over the whole screen to read a file's
+        // content large, and back.
+        if (panel && event.key === Qt.Key_F11 && event.modifiers === Qt.NoModifier) {
+            if (!event.isAutoRepeat)
+                window.placement.togglePanelFill()
+            event.accepted = true
+            return
+        }
         if (isNumberChord(event) && searchBar.composition.length === 0) {
             window.launcher.pressNumber(event.key - Qt.Key_0)
             event.accepted = true
@@ -1204,6 +1212,11 @@ Window {
     // A row clicked (the box's or the panel's): Ctrl toggles it in the
     // selection, Shift takes the rows up to it, plain opens it; the right
     // button with Shift the system's menu, else Win顺's.
+    // A click only selects and the double click opens: as set (#44), in the
+    // panel's gallery, and in the panel's 内容 with its 内容详情 open, where a
+    // click shows that file's matches beside the list (GitHub #354).
+    readonly property bool clickSelects: launcher.doubleClickToOpen || (panel && launcher.gallery)
+                                         || (panel && panelPage !== null && panelPage.detailsVisible)
     function rowClicked(index, modifiers) {
         spaceTogglesPreview = true
         const ctrl = (modifiers & Qt.ControlModifier) !== 0
@@ -1211,7 +1224,7 @@ Window {
             selectTo(index, ctrl)
         } else if (ctrl) {
             toggleRow(index)
-        } else if (launcher.doubleClickToOpen || (panel && launcher.gallery)) {
+        } else if (clickSelects) {
             // Only selected (#44); the double click opens. A row of a picked
             // set keeps the set, so the double click opens all of it.
             if (!launcher.results.isSelected(index))
@@ -1228,7 +1241,7 @@ Window {
     // A double click opens, where a click only selects; with Ctrl or Shift it
     // is two selecting clicks and nothing more.
     function rowDoubleClicked(index, modifiers) {
-        if (!(launcher.doubleClickToOpen || (panel && launcher.gallery)) || (modifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
+        if (!clickSelects || (modifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
             return
         view.currentIndex = index
         launcher.clickRow(index)

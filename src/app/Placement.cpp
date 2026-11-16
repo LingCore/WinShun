@@ -611,6 +611,7 @@ void Placement::enterPanel(QScreen* screen)
     m_dropped = false;
     setTaskbar({}); // the spot stays in m_taskbarSpot for leavePanel's caller
     m_panel = true;
+    m_panelUnfilled.reset();
     const QRect rect = panelRect(screen ? screen : m_window->screen());
     m_place = rect.topLeft();
     m_window->setGeometry(rect);
@@ -621,6 +622,26 @@ void Placement::leavePanel()
     if (!m_panel)
         return;
     m_panel = false;
+    m_panelUnfilled.reset();
+}
+
+void Placement::togglePanelFill()
+{
+    if (!m_window || !m_panel || m_moving || m_sizing || m_windowSizing)
+        return;
+    QScreen* screen = m_window->screen();
+    if (!screen)
+        return;
+    const QRect area = screen->availableGeometry();
+    if (area.isEmpty())
+        return;
+    if (m_window->geometry() == area) { // filled: back to where it was, or to its own spot
+        m_window->setGeometry(m_panelUnfilled.value_or(panelRect(screen)));
+        m_panelUnfilled.reset();
+        return;
+    }
+    m_panelUnfilled = m_window->geometry();
+    m_window->setGeometry(area);
 }
 
 void Placement::savePanel()

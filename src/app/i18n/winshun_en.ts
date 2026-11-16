@@ -8570,6 +8570,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Expand to the search panel, or collapse it</translation>
     </message>
     <message>
+        <source>搜索面板铺满屏幕，再按一次还原</source>
+        <translation>Fill the screen with the search panel; again to restore it</translation>
+    </message>
+    <message>
         <source>钉住：点别处、打开文件后都不收起；再按一次取消</source>
         <translation>Pin: stays up through clicks elsewhere and opened files; again to unpin</translation>
     </message>

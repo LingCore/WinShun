@@ -491,6 +491,7 @@ void ContentPane::toggleTerm(int index)
     if (index < 0 || index >= std::ssize(m_enabled)) return;
     m_enabled[index] = !m_enabled[index];
     schedule();
+    startPreview(); // its marks follow
 }
 void ContentPane::nextMatch(int delta)
 {
@@ -854,6 +855,19 @@ void ContentPane::startPreview()
         item = FilePreview::Item {m_path, QFileInfo(m_path).fileName()};
     else if (m_subject.text || !m_subject.message.isEmpty())
         item = FilePreview::Item {m_subject.key, m_subject.title, false, m_subject.text, m_subject.message};
+    // The words looked for, marked in a text file's lines and the first one
+    // scrolled to, as in the box's own preview (GitHub #354). Not an
+    // expression's text, nor a word switched off in 匹配.
+    if (item) {
+        for (std::size_t i = 0; i < m_needles.size(); ++i) {
+            if (m_needles[i].regex || (i < m_enabled.size() && !m_enabled[i]))
+                continue;
+            for (const QString& word : m_needles[i].text.split(u' ', Qt::SkipEmptyParts)) {
+                if (!item->words.contains(word, Qt::CaseInsensitive))
+                    item->words.append(word);
+            }
+        }
+    }
     if (!m_filePreview->isOpen()) {
         if (item) m_filePreview->show(*item);
         return;

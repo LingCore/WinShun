@@ -181,6 +181,10 @@ public:
     QRect panelRect(QScreen* screen) const;
     void enterPanel(QScreen* screen);
     void leavePanel();
+    // The panel over its monitor's whole work area, or back where it was
+    // (F11, GitHub #354: a file's content read large). For this opening
+    // only: not remembered as its size.
+    Q_INVOKABLE void togglePanelFill();
     std::optional<taskbar::Spot> taskbarSpot() const { return m_taskbar ? m_taskbarSpot : std::nullopt; }
 
     // Glides back to the home spot and stays there from now on.
@@ -313,6 +317,7 @@ private:
     std::optional<taskbar::Spot> m_taskbarSpot; // ... as attachTaskbar was given it
     QPointer<QScreen> m_taskbarScreen; // the taskbar's
     bool m_panel = false; // see enterPanel
+    std::optional<QRect> m_panelUnfilled; // togglePanelFill: where it was before it filled the work area
     QPointF m_panelAnchor {0.5, 0.1}; // the panel's spot: centre across, top down (fractions of the work area)
     QSize m_panelSize; // logical pixels; empty: not set yet
     bool m_dropped = false; // was attached, then moved by the user: stays there
