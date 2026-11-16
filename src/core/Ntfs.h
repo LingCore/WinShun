@@ -43,6 +43,9 @@ struct FileRecord {
     bool directory = false;
     std::uint32_t baseRecord = 0; // non-zero: an extension of that record
     std::uint32_t attributes = 0; // FILE_ATTRIBUTE_*, from $STANDARD_INFORMATION (base records only)
+    // A reparse point standing for another name (a junction, a symbolic
+    // link, a mount), from a resident $REPARSE_POINT; not a cloud placeholder.
+    bool nameSurrogate = false;
     std::int64_t modified = 0; // FILETIME of the last write, from there too
     std::int64_t created = 0;
     bool hasAttributeList = false; // some attributes live in extension records

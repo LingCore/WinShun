@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include <cstddef>
+#include <cstring>
 #include <cwctype>
 #include <mutex>
 #include <string_view>
@@ -166,6 +167,88 @@ bool hasDirectoryLink(std::wstring_view path, std::wstring_view ancestor)
         at = slash;
     }
     return false;
+}
+
+std::wstring directoryLinkTarget(std::wstring_view path)
+{
+    const win32::UniqueHandle h(::CreateFileW(win32::longPath(path).c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+    if (!h.valid())
+        return {};
+    // REPARSE_DATA_BUFFER (ntifs.h, not in the user-mode headers): the tag,
+    // then four offsets and lengths in bytes into the path buffer, which
+    // follows them (a symbolic link has its flags in between).
+    std::vector<std::uint32_t> buffer(MAXIMUM_REPARSE_DATA_BUFFER_SIZE / sizeof(std::uint32_t));
+    DWORD bytes = 0;
+    if (!::DeviceIoControl(h.get(), FSCTL_GET_REPARSE_POINT, nullptr, 0, buffer.data(),
+            static_cast<DWORD>(buffer.size() * sizeof(std::uint32_t)), &bytes, nullptr)
+        || bytes < 16)
+        return {};
+    const auto* data = reinterpret_cast<const std::byte*>(buffer.data());
+    const auto word = [&](std::size_t at) {
+        std::uint16_t v = 0;
+        std::memcpy(&v, data + at, sizeof v);
+        return v;
+    };
+    const std::uint32_t tag = buffer[0];
+    bool relative = false;
+    std::size_t pathBuffer = 16;
+    if (tag == IO_REPARSE_TAG_SYMLINK) {
+        if (bytes < 20)
+            return {};
+        relative = buffer[4] & 1; // SYMLINK_FLAG_RELATIVE
+        pathBuffer = 20;
+    } else if (tag != IO_REPARSE_TAG_MOUNT_POINT) {
+        return {};
+    }
+    const std::size_t offset = word(8);
+    const std::size_t length = word(10);
+    if (length == 0 || pathBuffer + offset + length > bytes)
+        return {};
+    std::wstring target(length / sizeof(wchar_t), L'\0');
+    std::memcpy(target.data(), data + pathBuffer + offset, target.size() * sizeof(wchar_t));
+
+    if (relative) {
+        // "..\data", from the folder the link is in.
+        const std::size_t slash = path.find_last_of(L'\\');
+        if (slash == std::wstring_view::npos)
+            return {};
+        const std::wstring joined = std::wstring(path.substr(0, slash + 1)) + target;
+        wchar_t full[32768];
+        const DWORD n = ::GetFullPathNameW(joined.c_str(), static_cast<DWORD>(std::size(full)), full, nullptr);
+        if (n == 0 || n >= std::size(full))
+            return {};
+        target.assign(full, n);
+    } else if (target.starts_with(L"\\??\\UNC\\")) {
+        target = L"\\\\" + target.substr(8);
+    } else if (target.starts_with(L"\\??\\Volume{")) {
+        // A volume mounted in a folder: by its drive letter, when it has one.
+        const std::size_t end = target.find(L'\\', 4);
+        const std::wstring volume = L"\\\\?\\" + target.substr(4, end == std::wstring::npos ? std::wstring::npos : end - 4) + L'\\';
+        const std::wstring rest = end == std::wstring::npos ? std::wstring() : target.substr(end + 1);
+        wchar_t names[1024] = {};
+        DWORD needed = 0;
+        if (::GetVolumePathNamesForVolumeNameW(volume.c_str(), names, static_cast<DWORD>(std::size(names)), &needed)) {
+            for (const wchar_t* name = names; *name; name += std::wcslen(name) + 1) {
+                if (std::wcslen(name) == 3 && name[1] == L':') {
+                    target = std::wstring(name) + rest;
+                    break;
+                }
+            }
+        }
+        if (target.starts_with(L"\\??\\"))
+            target = volume + rest;
+    } else if (target.starts_with(L"\\??\\")) {
+        target.erase(0, 4);
+    } else {
+        return {};
+    }
+    while (target.size() > 2 && target.back() == L'\\')
+        target.pop_back();
+    if (target.size() >= 2 && target[1] == L':')
+        target[0] = static_cast<wchar_t>(std::towupper(target[0]));
+    return target;
 }
 
 VolumePlacement placementOf(std::wstring_view root)

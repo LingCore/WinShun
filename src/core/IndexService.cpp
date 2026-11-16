@@ -330,6 +330,9 @@ FolderState stateNamed(const QString& name)
 struct ScopeFile {
     std::vector<std::wstring> scoped;
     std::vector<IndexService::FolderStatus> folders;
+    // GitHub #350: the directory links walked for their targets
+    // (IndexService::m_autoLinks); none in a file from before them.
+    std::optional<std::vector<std::wstring>> links;
 };
 
 std::optional<std::pair<std::uint64_t, std::int64_t>> stampOf(const QString& path)
@@ -362,8 +365,14 @@ bool writeScopeFile(const QString& snapshotPath, const ScopeFile& file)
             {u"took_ms"_s, static_cast<qint64>(f.took.count())}});
     }
     // As text: a FILETIME is beyond what a JSON number holds exactly.
-    const QJsonObject root {{u"version"_s, 1}, {u"index_bytes"_s, QString::number(stamp->first)},
+    QJsonObject root {{u"version"_s, 1}, {u"index_bytes"_s, QString::number(stamp->first)},
         {u"index_written"_s, QString::number(stamp->second)}, {u"scoped"_s, scoped}, {u"folders"_s, folders}};
+    if (file.links) {
+        QJsonArray links;
+        for (const std::wstring& link : *file.links)
+            links.append(QString::fromStdWString(link));
+        root.insert(u"links"_s, links);
+    }
     const QByteArray json = QJsonDocument(root).toJson();
     QSaveFile out(scopeFileOf(snapshotPath));
     return out.open(QIODevice::WriteOnly) && out.write(json) == json.size() && out.commit();
@@ -393,6 +402,11 @@ std::optional<ScopeFile> readScopeFile(const QString& snapshotPath, bool& stale)
     ScopeFile file;
     for (const QJsonValue& v : root.value(u"scoped"_s).toArray())
         file.scoped.push_back(v.toString().toStdWString());
+    if (root.value(u"links"_s).isArray()) {
+        file.links.emplace();
+        for (const QJsonValue& v : root.value(u"links"_s).toArray())
+            file.links->push_back(v.toString().toStdWString());
+    }
     for (const QJsonValue& v : root.value(u"folders"_s).toArray()) {
         const QJsonObject o = v.toObject();
         IndexService::FolderStatus f;
@@ -846,7 +860,15 @@ void IndexService::setScope(std::optional<std::vector<std::wstring>> folders)
 void IndexService::replaceScope()
 {
     const auto before = scope();
-    auto next = std::make_shared<const Scope>(m_options.folders, m_options.extraFolders);
+    std::vector<std::wstring> extra = m_options.extraFolders;
+    {
+        std::lock_guard lock(m_journalMutex);
+        for (const std::wstring& link : m_autoLinks) {
+            if (std::none_of(extra.begin(), extra.end(), [&](const std::wstring& e) { return win32::equalsIgnoreCase(e, link); }))
+                extra.push_back(link);
+        }
+    }
+    auto next = std::make_shared<const Scope>(m_options.folders, extra);
     if (before->supplemental()) {
         std::lock_guard lock(m_journalMutex);
         for (const auto& path : before->all()) {
@@ -1164,7 +1186,7 @@ void IndexService::run(std::stop_token stop, Pass pass)
 {
     const auto ran = qScopeGuard([this] { ranOut(); });
     const auto crawler = this->crawler();
-    const auto scope = this->scope();
+    auto scope = this->scope(); // with the links in scope.json, once that is read (GitHub #350)
     m_placed.clear();
     std::vector<VolumeInfo> previous;
     std::vector<JournalPosition> previousJournals;
@@ -1274,6 +1296,8 @@ void IndexService::run(std::stop_token stop, Pass pass)
             if (snapshotRules && !(*snapshotRules == crawler->rules()) && !m_rulesBefore)
                 m_rulesBefore = *snapshotRules; // the rules were edited while we were not running
             m_scopedVolumes = scopeFile ? std::move(scopeFile->scoped) : std::vector<std::wstring> {};
+            m_linksKnown = scopeFile && scopeFile->links;
+            m_autoLinks = m_linksKnown ? std::move(*scopeFile->links) : std::vector<std::wstring> {};
         } else {
             m_content->restore({}, 0); // clears out segment files nothing refers to
             setState(State::Building);
@@ -1291,6 +1315,18 @@ void IndexService::run(std::stop_token stop, Pass pass)
         std::lock_guard journalLock(m_journalMutex); // keeps compaction out
         auto lock = index->writeLock();
         dropStaleRoots(*index, volumes, known);
+    }
+
+    // GitHub #350: the links scope.json names are walked as the explicit ones.
+    bool linksOwed = false; // ... or the volumes are read once to find them
+    {
+        std::unique_lock lock(m_journalMutex);
+        linksOwed = !m_linksKnown && !scope->set();
+        if (pass == Pass::Startup && !m_autoLinks.empty()) {
+            lock.unlock();
+            replaceScope();
+            scope = this->scope();
+        }
     }
 
     // With no way to the journals yet, the index service may be on its way
@@ -1379,7 +1415,7 @@ void IndexService::run(std::stop_token stop, Pass pass)
                 toSync.push_back(i);
                 if (known[i])
                     contentUnsureOf(volumes[i].root); // what changed meanwhile is not in the journal any more
-            } else if (timesMissing) {
+            } else if (timesMissing || linksOwed) {
                 toSync.push_back(i); // the journal then goes on from where the snapshot left off
             }
         } else {
@@ -1939,7 +1975,7 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
 {
     const auto index = m_index.load();
     const auto crawler = this->crawler();
-    const auto scope = this->scope();
+    auto scope = this->scope(); // with the links found below (GitHub #350)
     const bool foldersOnly = this->foldersOnly(*scope);
     const bool firstBuild = state() != State::Ready;
     std::vector<VolumeInfo> volumes;
@@ -2004,6 +2040,8 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
     }
     std::atomic<bool> readMft = false;
     std::mutex walksMutex;
+    std::vector<std::wstring> linksRead; // the volumes read from their MFT, and the links on them
+    std::vector<std::wstring> links;
     {
         std::vector<std::jthread> readers;
         for (std::vector<std::size_t>& group : readingGroups(volumes, fromMft)) {
@@ -2017,10 +2055,14 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
                         index->setFolderRecord(roots[i], ntfs::kRootRecord, roots[i]);
                     }
                     setReading(v.root, true);
-                    const bool read = syncFromMft(v, roots[i], *crawler, !firstBuild, stop);
+                    std::vector<std::wstring> found;
+                    const bool read = syncFromMft(v, roots[i], *crawler, !firstBuild, stop, found);
                     setReading(v.root, false);
                     if (read) {
                         readMft = true;
+                        std::lock_guard lock(walksMutex);
+                        linksRead.push_back(v.root);
+                        links.insert(links.end(), std::make_move_iterator(found.begin()), std::make_move_iterator(found.end()));
                     } else if (!stop.stop_requested()) {
                         // Walking works too, a few times slower (on a hard disk, far
                         // slower); it records the folder numbers as well.
@@ -2047,7 +2089,10 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
     }
 
     // A disk-wide walk or MFT refresh intentionally skips directory links.
-    // Explicit links are read afterwards, under their original visible paths.
+    // Explicit links are read afterwards, under their original visible paths,
+    // and those found leading to what is indexed nowhere else (GitHub #350).
+    if (completed && !linksRead.empty() && takeLinks(stop, linksRead, links, false))
+        scope = this->scope();
     if (completed && scope->supplemental()) {
         std::vector<std::wstring> available;
         std::vector<std::wstring> renewed;
@@ -2110,8 +2155,8 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
     return true;
 }
 
-bool IndexService::syncFromMft(
-    const VolumeInfo& volume, EntryId root, const Crawler& crawler, bool lowPriority, std::stop_token stop)
+bool IndexService::syncFromMft(const VolumeInfo& volume, EntryId root, const Crawler& crawler, bool lowPriority,
+    std::stop_token stop, std::vector<std::wstring>& links)
 {
     const auto index = m_index.load();
     if (lowPriority)
@@ -2131,8 +2176,15 @@ bool IndexService::syncFromMft(
         return false;
     }
     // The listings are in memory: one thread does.
-    return crawler.sync(*index, {{root, volume.root, 0, root, ntfs::kRootRecord}}, 1, lowPriority, stop,
-        [&](const Crawler::Root& dir, DirListing& out) { return tree.list(*index, crawler, dir, out); });
+    if (!crawler.sync(*index, {{root, volume.root, 0, root, ntfs::kRootRecord}}, 1, lowPriority, stop,
+            [&](const Crawler::Root& dir, DirListing& out) { return tree.list(*index, crawler, dir, out); }))
+        return false;
+    const auto lock = index->readLock();
+    for (const std::uint32_t record : tree.links()) {
+        if (const EntryId id = index->folderByRecord(root, record); id != kNoEntry)
+            links.push_back(index->wpath(id)); // not in an excluded folder, then
+    }
+    return true;
 }
 
 std::unique_ptr<IndexService::Followed> IndexService::follow(std::size_t volume)
@@ -2165,16 +2217,100 @@ bool IndexService::readJournal(Followed& f, std::stop_token stop)
     std::int64_t next = 0;
     if (!f.reader->finish(f.records, next))
         return false;
-    std::lock_guard lock(m_journalMutex); // keeps compaction out
-    if (!f.records.empty()) {
-        f.applier->apply(f.records, stop);
-        m_dirty = true;
-        if (stop.stop_requested())
-            return true; // applied in part: the position stays, a replay redoes it
+    std::vector<std::wstring> links;
+    {
+        std::lock_guard lock(m_journalMutex); // keeps compaction out
+        if (!f.records.empty()) {
+            f.applier->apply(f.records, stop);
+            m_dirty = true;
+            if (stop.stop_requested())
+                return true; // applied in part: the position stays, a replay redoes it
+        }
+        f.usn = next;
+        if (f.volume < m_journals.size())
+            m_journals[f.volume].usn = f.applier->safePosition(next);
+        links = f.applier->takeLinks();
     }
-    f.usn = next;
-    if (f.volume < m_journals.size())
-        m_journals[f.volume].usn = f.applier->safePosition(next);
+    // GitHub #350: a directory link made since, walked now if it is wanted.
+    if (!links.empty() && !scope()->set())
+        takeLinks(stop, {}, links, true);
+    return true;
+}
+
+bool IndexService::linkWanted(std::wstring_view link, const Crawler& crawler) const
+{
+    if (crawler.isExcludedPath(link))
+        return false;
+    const std::wstring target = directoryLinkTarget(link);
+    if (target.empty())
+        return false;
+    if (target.starts_with(LR"(\\?\)"))
+        return true; // a volume with no drive letter: in the index nowhere
+    if (crawler.isExcludedPath(target))
+        return false;
+    if (unc::isUnc(target)) {
+        // Not on a share the index holds already.
+        return std::none_of(m_options.shares.shares.begin(), m_options.shares.shares.end(),
+            [&](const ShareConfig& share) { return unc::contains(share.path, target); });
+    }
+    // On a disk the index does not hold (removable, not chosen): with whole
+    // disks, what is on those it does is found where it is.
+    const std::wstring_view root = volumeOf(target);
+    std::lock_guard lock(m_journalMutex);
+    return !root.empty() && std::none_of(m_volumes.begin(), m_volumes.end(), [&](const VolumeInfo& v) {
+        return win32::equalsIgnoreCase(v.root, root);
+    });
+}
+
+bool IndexService::takeLinks(
+    std::stop_token stop, const std::vector<std::wstring>& read, const std::vector<std::wstring>& found, bool walkNow)
+{
+    // Enough for anyone's own; a disk full of links (a backup made of them)
+    // is not walked through every one.
+    constexpr std::size_t kMostLinks = 256;
+    const auto crawler = this->crawler();
+    const auto same = [](const std::wstring& a, const std::wstring& b) { return win32::equalsIgnoreCase(a, b); };
+    std::vector<std::wstring> wanted;
+    for (const std::wstring& link : found) {
+        if (stop.stop_requested())
+            return false;
+        if (std::ranges::none_of(wanted, [&](const std::wstring& w) { return same(w, link); }) && linkWanted(link, *crawler))
+            wanted.push_back(link);
+    }
+    std::vector<std::wstring> added;
+    {
+        std::lock_guard lock(m_journalMutex);
+        if (!read.empty())
+            m_linksKnown = true;
+        std::vector<std::wstring> next = m_autoLinks;
+        std::erase_if(next, [&](const std::wstring& link) {
+            return std::ranges::any_of(read, [&](const std::wstring& root) { return win32::equalsIgnoreCase(volumeOf(link), root); });
+        });
+        for (std::wstring& link : wanted) {
+            if (next.size() >= kMostLinks || std::ranges::any_of(next, [&](const std::wstring& n) { return same(n, link); }))
+                continue;
+            if (std::ranges::none_of(m_autoLinks, [&](const std::wstring& n) { return same(n, link); }))
+                added.push_back(link);
+            next.push_back(std::move(link));
+        }
+        std::ranges::sort(next);
+        if (next == m_autoLinks)
+            return false;
+        m_autoLinks = std::move(next);
+        m_dirty = true; // into scope.json with the next snapshot
+    }
+    replaceScope();
+    ensureWatcher(); // a link is watched by itself: its volume's watch or journal stops at it
+    if (walkNow && !added.empty()) {
+        std::vector<std::wstring> roots;
+        for (const std::wstring& link : added) {
+            if (std::wstring root(volumeOf(link)); !contains(roots, root))
+                roots.push_back(std::move(root));
+        }
+        std::vector<std::wstring> folders = prepareScope(stop, *scope(), roots, *crawler, false);
+        if (!stop.stop_requested())
+            walkFolders(stop, *m_index.load(), *crawler, std::move(folders), false);
+    }
     return true;
 }
 
@@ -2472,6 +2608,8 @@ IndexService::Save IndexService::writeSnapshot(const QString& path, std::vector<
                 if (!contains(scope.scoped, root))
                     scope.scoped.push_back(root);
             }
+            if (m_linksKnown)
+                scope.links = m_autoLinks;
         }
         scope.folders = folderStatuses();
         if (!writeScopeFile(path, scope))

@@ -61,6 +61,11 @@ bool driveLetterExists(std::wstring_view root); // "E:"
 // A junction/symlink/mount point on the way to `path`, after `ancestor`.
 // Cloud placeholders are not directory links. No link is followed while probing.
 bool hasDirectoryLink(std::wstring_view path, std::wstring_view ancestor = {});
+// Where the directory link (symbolic link or junction) at `path` leads, as
+// its reparse data says, without following it or asking a server: a full
+// path ("D:\data", "\\nas\share\x"), or "\\?\Volume{…}\x" for a volume
+// without a drive letter. Empty for anything else, or when it cannot be read.
+std::wstring directoryLinkTarget(std::wstring_view path);
 
 // Which disk a volume is on, and whether it is a hard disk.
 struct VolumePlacement {

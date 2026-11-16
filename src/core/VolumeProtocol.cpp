@@ -520,7 +520,8 @@ void BlockWriter::add(const ntfs::FileRecord& record, bool parsed)
     m_writer.i64(record.modified);
     m_writer.u8(static_cast<std::uint8_t>((record.directory ? kRecordDirectory : 0)
         | (record.hasAttributeList ? kRecordAttributeList : 0)
-        | (m_withSizes && record.sizeKnown ? kRecordSizeKnown : 0)));
+        | (m_withSizes && record.sizeKnown ? kRecordSizeKnown : 0)
+        | (record.nameSurrogate ? kRecordNameSurrogate : 0)));
     const std::size_t names = std::min(record.names.size(), kMaxNames);
     m_writer.u8(static_cast<std::uint8_t>(names));
     for (std::size_t i = 0; i < names; ++i) {
@@ -597,6 +598,7 @@ bool BlockReader::record(std::size_t i, ntfs::FileRecord& out) const
     out.modified = 0;
     out.created = 0;
     out.hasAttributeList = false;
+    out.nameSurrogate = false;
     out.size = 0;
     out.sizeKnown = false;
     out.names.clear();
@@ -620,6 +622,7 @@ bool BlockReader::record(std::size_t i, ntfs::FileRecord& out) const
     r.u8(names);
     out.directory = flags & kRecordDirectory;
     out.hasAttributeList = flags & kRecordAttributeList;
+    out.nameSurrogate = flags & kRecordNameSurrogate;
     out.names.reserve(names);
     for (std::uint8_t n = 0; n < names; ++n) {
         ntfs::FileRecord::Name name {};

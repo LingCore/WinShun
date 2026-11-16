@@ -325,6 +325,7 @@ enum class RecordKind : std::uint8_t { Invalid = 0, Free = 1, InUse = 2 }; // In
 constexpr std::uint8_t kRecordDirectory = 1;
 constexpr std::uint8_t kRecordAttributeList = 2;
 constexpr std::uint8_t kRecordSizeKnown = 4; // minor 2: the size that follows is the file's (FileRecord::sizeKnown)
+constexpr std::uint8_t kRecordNameSurrogate = 8; // FileRecord::nameSurrogate; an older service leaves it out
 
 // Writes an MftBlock record by record, as the service parses them.
 class BlockWriter {

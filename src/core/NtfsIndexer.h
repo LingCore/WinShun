@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace ws {
@@ -34,6 +35,11 @@ public:
 
     std::size_t nameCount() const noexcept { return m_folders.size() + m_files.size(); }
 
+    // The record numbers of the folders that are directory links (symbolic
+    // links, junctions, mount points: name surrogates), which the index
+    // keeps without their contents (GitHub #350).
+    const std::vector<std::uint32_t>& links() const noexcept { return m_links; }
+
 private:
     struct Name {
         std::uint32_t parent; // record number of the folder
@@ -49,6 +55,7 @@ private:
     };
     std::vector<Folder> m_folders; // sorted by parent
     std::vector<Name> m_files; // sorted by parent
+    std::vector<std::uint32_t> m_links;
 };
 
 // Applies one volume's change journal records to the index, in order. Every
@@ -68,6 +75,10 @@ public:
     // Where a replay has to start so nothing is lost: before the oldest
     // rename whose new name has not been seen yet, or else `next`.
     std::int64_t safePosition(std::int64_t next) const noexcept;
+
+    // GitHub #350: the full paths of the directory links (or what may be
+    // one: a folder with a reparse point) made or moved in since last asked.
+    std::vector<std::wstring> takeLinks() { return std::exchange(m_links, {}); }
 
 private:
     struct OldName {
@@ -98,6 +109,7 @@ private:
     std::unordered_map<std::uint64_t, OldName> m_oldNames; // renames waiting for their new name, by file
     std::unordered_map<std::uint64_t, std::uint32_t> m_seen; // reasons applied in each file's open session
     Written m_onWritten;
+    std::vector<std::wstring> m_links; // takeLinks()
     std::vector<EntryId> m_written; // of the current batch
     // Of the current batch: items whose times were set (copied or unpacked
     // files keep the original's), and files closed after being written (the

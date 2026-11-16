@@ -36,6 +36,7 @@ constexpr std::uint32_t kAttributeList = 0x20;
 constexpr std::uint32_t kFileName = 0x30;
 constexpr std::uint32_t kData = 0x80;
 constexpr std::uint32_t kBitmap = 0xB0;
+constexpr std::uint32_t kReparsePoint = 0xC0;
 constexpr std::uint32_t kEndOfAttributes = 0xFFFF'FFFF;
 constexpr std::uint8_t kDosNamespace = 2; // the 8.3 alias of a long name
 
@@ -46,7 +47,8 @@ constexpr std::uint32_t kMaxRecordBytes = 64u << 10; // NTFS uses 1 KB or 4 KB
 constexpr DWORD kJournalBufferBytes = 128 * 1024;
 constexpr DWORD kReasonMask = USN_REASON_FILE_CREATE | USN_REASON_FILE_DELETE | USN_REASON_RENAME_OLD_NAME
     | USN_REASON_RENAME_NEW_NAME | USN_REASON_BASIC_INFO_CHANGE | USN_REASON_HARD_LINK_CHANGE
-    | USN_REASON_DATA_OVERWRITE | USN_REASON_DATA_EXTEND | USN_REASON_DATA_TRUNCATION;
+    | USN_REASON_DATA_OVERWRITE | USN_REASON_DATA_EXTEND | USN_REASON_DATA_TRUNCATION
+    | USN_REASON_REPARSE_POINT_CHANGE; // a junction is a folder first, made one after (GitHub #350)
 
 HANDLE openVolume(std::wstring_view root, DWORD access, DWORD flags)
 {
@@ -171,6 +173,7 @@ bool parseFileRecord(std::byte* data, std::size_t size, FileRecord& out)
     out.directory = false;
     out.baseRecord = 0;
     out.attributes = 0;
+    out.nameSurrogate = false;
     out.modified = 0;
     out.created = 0;
     out.hasAttributeList = false;
@@ -210,6 +213,8 @@ bool parseFileRecord(std::byte* data, std::size_t size, FileRecord& out)
             out.attributes = load<std::uint32_t>(value.data() + 0x20);
             out.modified = load<std::int64_t>(value.data() + 0x08);
             out.created = load<std::int64_t>(value.data());
+        } else if (type == kReparsePoint && value.size() >= 4) {
+            out.nameSurrogate = IsReparseTagNameSurrogate(load<std::uint32_t>(value.data()));
         } else if (type == kFileName && value.size() >= 0x42) {
             const auto nameLength = static_cast<std::uint8_t>(value[0x40]);
             const auto nameSpace = static_cast<std::uint8_t>(value[0x41]);

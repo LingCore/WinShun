@@ -3509,6 +3509,131 @@ private slots:
         QVERIFY(QFileInfo::exists(target + u"\\o.txt"_s));
     }
 
+    // GitHub #350: where a directory link leads, read off its reparse point
+    // without following it.
+    void directoryLinkTargets()
+    {
+        QTemporaryDir tree;
+        QVERIFY(tree.isValid());
+        MadeLinks made; // one leads to a whole volume: never cleaned up through it
+        const QString t = QDir::toNativeSeparators(tree.path());
+        QVERIFY(QDir(t).mkpath(u"目标/sub"_s));
+        const QString target = t + u"\\目标"_s;
+        const QString junction = made << t + u"\\联接"_s;
+        QVERIFY(makeJunction(junction, target));
+        QCOMPARE(QString::fromStdWString(directoryLinkTarget(junction.toStdWString())), target);
+        QVERIFY(directoryLinkTarget(target.toStdWString()).empty()); // no link
+        QVERIFY(directoryLinkTarget((t + u"\\missing"_s).toStdWString()).empty());
+
+        // A volume mounted in a folder: by its drive letter when it has one.
+        wchar_t volume[64] = {};
+        QVERIFY(::GetVolumeNameForVolumeMountPointW((t.left(2) + u"\\"_s).toStdWString().c_str(), volume, 64));
+        const QString mounted = made << t + u"\\卷"_s;
+        QVERIFY(makeJunction(mounted, QString::fromWCharArray(volume))); // "\\?\Volume{…}\"
+        QCOMPARE(QString::fromStdWString(directoryLinkTarget(mounted.toStdWString())), t.left(2).toUpper());
+
+        // Symbolic links (mklink /d), where this account may make them
+        // (Developer Mode, or elevated): relative and to a share.
+        const QString relative = made << t + u"\\相对"_s;
+        if (!::CreateSymbolicLinkW(relative.toStdWString().c_str(), L"目标\\sub",
+                SYMBOLIC_LINK_FLAG_DIRECTORY | SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE)) {
+            qInfo("No symbolic links here (error %lu): junctions only", ::GetLastError());
+            return;
+        }
+        QCOMPARE(QString::fromStdWString(directoryLinkTarget(relative.toStdWString())), target + u"\\sub"_s);
+        const QString share = made << t + u"\\共享"_s;
+        QVERIFY(::CreateSymbolicLinkW(share.toStdWString().c_str(), L"\\\\nas\\docs\\年度",
+            SYMBOLIC_LINK_FLAG_DIRECTORY | SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE));
+        QCOMPARE(QString::fromStdWString(directoryLinkTarget(share.toStdWString())), u"\\\\nas\\docs\\年度"_s);
+    }
+
+    // GitHub #350: a link to what the index holds nowhere else (a folder on a
+    // disk it leaves out) is walked under its own path: found in the MFT,
+    // and in the journal when made later; remembered in scope.json. One to
+    // what it holds is not (found where it is).
+    void directoryLinksFoundWithLiveMft()
+    {
+        if (!qEnvironmentVariableIsSet("WINSHUN_TEST_REAL_VOLUMES"))
+            QSKIP("Opt in to reading the real MFT with WINSHUN_TEST_REAL_VOLUMES=1");
+        const QString otherDisk = qEnvironmentVariable("WINSHUN_TEST_OTHER_DISK_DIR");
+        if (otherDisk.isEmpty())
+            QSKIP("Set WINSHUN_TEST_OTHER_DISK_DIR to a folder on another disk than %TEMP%");
+        QTemporaryDir tree;
+        QTemporaryDir store;
+        QTemporaryDir elsewhere(otherDisk + u"/links-XXXXXX"_s);
+        QVERIFY(tree.isValid() && store.isValid() && elsewhere.isValid());
+        MadeLinks made;
+        QVERIFY(makeScopeTree(tree.path()));
+        const QString t = QDir::toNativeSeparators(tree.path());
+        const QString away = QDir::toNativeSeparators(elsewhere.path());
+        QVERIFY(away.left(2).compare(t.left(2), Qt::CaseInsensitive) != 0);
+        QVERIFY(QDir(away).mkpath(u"later"_s));
+        for (const QString& file : {u"away.txt"_s, u"later/later.txt"_s}) {
+            QFile f(QDir(away).filePath(file));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        }
+        const std::wstring root = t.left(2).toStdWString();
+        const QString pipe = qEnvironmentVariable("WINSHUN_TEST_LINK_PIPE");
+        std::shared_ptr<ntfs::VolumeAccess> access;
+        if (pipe.isEmpty()) {
+            access = std::make_shared<ntfs::DirectVolumeAccess>();
+        } else {
+            auto throughService = pipe == u"default"
+                ? std::make_shared<ntfs::ServiceVolumeAccess>()
+                : std::make_shared<ntfs::ServiceVolumeAccess>(pipe.toStdWString());
+            QVERIFY2(throughService->probe(), qPrintable(QString::fromStdWString(throughService->lastError())));
+            access = std::move(throughService);
+        }
+        const auto volumes = listLocalVolumes(false, {}, std::vector<std::wstring>{root});
+        QVERIFY(!volumes.empty() && volumes.front().ntfs);
+        if (!access->queryJournal(root, volumes.front().serial) && pipe.isEmpty())
+            QSKIP("Direct NTFS journal access requires an elevated test process");
+        QTest::failOnWarning(QRegularExpression(u"^WinShun: cannot read the MFT.*"_s));
+
+        const QString alias = made << t + u"\\docs\\远处"_s;
+        QVERIFY(makeJunction(alias, away));
+        const QString nearby = made << t + u"\\docs\\近处"_s;
+        QVERIFY(makeJunction(nearby, t + u"\\other"_s));
+        // The other disk is not chosen (and not excluded: a whole drive excluded
+        // is not to be reached through a link either).
+        auto rules = branchRules(t);
+        std::erase_if(rules.excludedPaths, [&](const std::wstring& p) { return win32::equalsIgnoreCase(p, away.left(2).toStdWString()); });
+        auto options = walkedOptions(std::nullopt, rules);
+        options.selectedDrives = std::vector<std::wstring>{root};
+        options.volumeAccess = access;
+        {
+            IndexService service(store.path(), options);
+            service.start();
+            QTRY_VERIFY_WITH_TIMEOUT(allReady(service), 120'000);
+            QTRY_VERIFY_WITH_TIMEOUT(indexedIn(service, alias + u"\\away.txt"_s), 20'000);
+            QVERIFY(indexedIn(service, alias + u"\\later\\later.txt"_s));
+            QVERIFY(indexedIn(service, t + u"\\other\\o.txt"_s));
+            QVERIFY(!indexedIn(service, nearby + u"\\o.txt"_s));
+            // Followed live under the link, and a link made since.
+            QFile added(away + u"\\new.txt"_s);
+            QVERIFY(added.open(QIODevice::WriteOnly));
+            added.close();
+            QTRY_VERIFY_WITH_TIMEOUT(indexedIn(service, alias + u"\\new.txt"_s), 30'000);
+            const QString later = made << t + u"\\pics\\后来"_s;
+            QVERIFY(makeJunction(later, away + u"\\later"_s));
+            QTRY_VERIFY_WITH_TIMEOUT(indexedIn(service, later + u"\\later.txt"_s), 30'000);
+            service.shutdown();
+        }
+        {
+            QFile scope(QDir(store.path()).filePath(u"scope.json"_s));
+            QVERIFY(scope.open(QIODevice::ReadOnly));
+            const QJsonArray links = QJsonDocument::fromJson(scope.readAll()).object().value(u"links"_s).toArray();
+            QCOMPARE(links.size(), 2);
+        } // closed: the next start writes it again
+        // A start from the snapshot knows them without reading the MFT again.
+        IndexService again(store.path(), options);
+        again.start();
+        QTRY_VERIFY_WITH_TIMEOUT(allReady(again) && indexedIn(again, alias + u"\\away.txt"_s)
+                && indexedIn(again, t + u"\\pics\\后来\\later.txt"_s), 60'000);
+        again.shutdown();
+        qInfo("Live %s: links found in the MFT and the journal, remembered", pipe.isEmpty() ? "direct" : "service");
+    }
+
     void chosenFoldersOnly()
     {
         QTemporaryDir tree;
@@ -6401,6 +6526,28 @@ private slots:
         ntfs::FileRecord file;
         QVERIFY(ntfs::parseFileRecord(fileBytes.data(), fileBytes.size(), file));
         QVERIFY(file.sizeKnown && file.size == 300);
+        // GitHub #350: a junction is told from a cloud folder by its tag.
+        const auto reparse = [](std::uint32_t tag) {
+            std::vector<std::byte> value(8);
+            std::memcpy(value.data(), &tag, sizeof tag);
+            return value;
+        };
+        RecordBuilder junctionBuilder(0x0003);
+        junctionBuilder.standardInformation(FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT);
+        junctionBuilder.fileName(5, u"联接", 1);
+        junctionBuilder.resident(0xC0, reparse(IO_REPARSE_TAG_MOUNT_POINT));
+        std::vector<std::byte> junctionBytes = junctionBuilder.finish();
+        ntfs::FileRecord junction;
+        QVERIFY(ntfs::parseFileRecord(junctionBytes.data(), junctionBytes.size(), junction));
+        QVERIFY(junction.nameSurrogate && !folder.nameSurrogate);
+        RecordBuilder cloudBuilder(0x0003);
+        cloudBuilder.standardInformation(FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT);
+        cloudBuilder.fileName(5, u"OneDrive", 1);
+        cloudBuilder.resident(0xC0, reparse(IO_REPARSE_TAG_CLOUD_6));
+        std::vector<std::byte> cloudBytes = cloudBuilder.finish();
+        ntfs::FileRecord cloud;
+        QVERIFY(ntfs::parseFileRecord(cloudBytes.data(), cloudBytes.size(), cloud));
+        QVERIFY(!cloud.nameSurrogate);
 
         BlockWriter bw;
         bw.begin(1000);
@@ -6409,7 +6556,9 @@ private slots:
         bw.add(folder, false); // garbage on the volume
         bw.add(ext, true);
         bw.add(file, true);
-        QCOMPARE(bw.count(), 5u);
+        bw.add(junction, true);
+        bw.add(cloud, true);
+        QCOMPARE(bw.count(), 7u);
         const std::span<const std::byte> frame = bw.finish(12345);
         Type type {};
         std::uint32_t length = 0;
@@ -6421,11 +6570,11 @@ private slots:
         BlockReader br;
         QVERIFY(br.load(std::vector<std::byte>(payload)));
         QCOMPARE(br.firstRecord(), 1000u);
-        QCOMPARE(br.count(), 5u);
+        QCOMPARE(br.count(), 7u);
         QCOMPARE(br.bytesDone(), std::uint64_t {12345});
         ntfs::FileRecord out;
         QVERIFY(br.record(0, out));
-        QVERIFY(out.inUse && out.directory && !out.hasAttributeList);
+        QVERIFY(out.inUse && out.directory && !out.hasAttributeList && !out.nameSurrogate);
         QCOMPARE(out.baseRecord, 0u);
         QCOMPARE(out.attributes, std::uint32_t {FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_ARCHIVE});
         QCOMPARE(out.modified, folder.modified);
@@ -6447,7 +6596,11 @@ private slots:
         QVERIFY(br.record(4, out));
         QVERIFY(out.sizeKnown);
         QCOMPARE(out.size, std::uint64_t {300});
-        QVERIFY(!br.record(5, out)); // past the end
+        QVERIFY(br.record(5, out));
+        QVERIFY(out.directory && out.nameSurrogate);
+        QVERIFY(br.record(6, out));
+        QVERIFY(out.directory && !out.nameSurrogate);
+        QVERIFY(!br.record(7, out)); // past the end
 
         // The other end at minor 1: no sizes in the records, either way.
         BlockWriter old;

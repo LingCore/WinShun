@@ -46,6 +46,7 @@ bool MftTree::read(
 {
     m_folders.clear();
     m_files.clear();
+    m_links.clear();
     const auto failed = [&] {
         if (error)
             *error = reader.valid() ? L"stopped" : reader.error();
@@ -104,6 +105,9 @@ bool MftTree::read(
             const FileSize size = record.directory || !record.sizeKnown ? kUnknownSize : packSize(record.size);
             if (!extension && record.hasAttributeList)
                 bases[number] = {flags, modified, created};
+            if (!extension && record.directory && (record.attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+                && record.nameSurrogate)
+                m_links.push_back(number);
             if (extension && record.sizeKnown)
                 extensionSizes[owner] = packSize(record.size);
             for (const auto& n : record.names) {
@@ -253,6 +257,16 @@ std::int64_t UsnApplier::safePosition(std::int64_t next) const noexcept
 
 void UsnApplier::applyOne(const ntfs::UsnRecord& r, std::vector<Crawler::Root>& walks)
 {
+    // GitHub #350: a folder that is a reparse point, made, moved in or made
+    // one here (a symbolic link; a junction, made a folder first; a cloud
+    // folder too, told apart by the caller), once its creator is done.
+    if ((r.reason & USN_REASON_CLOSE)
+        && (r.reason & (USN_REASON_FILE_CREATE | USN_REASON_RENAME_NEW_NAME | USN_REASON_REPARSE_POINT_CHANGE))
+        && !(r.reason & USN_REASON_FILE_DELETE) && (r.attributes & FILE_ATTRIBUTE_DIRECTORY)
+        && (r.attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        if (const EntryId parent = m_index.folderByRecord(m_root, ntfs::recordOf(r.parent)); parent != kNoEntry)
+            m_links.push_back(childPath(parent, wtf8::wview(r.name)));
+    }
     const std::uint32_t reason = r.reason & kNameReasons;
     const bool closed = r.reason & USN_REASON_CLOSE;
     if (reason == 0) {

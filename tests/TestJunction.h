@@ -2,7 +2,8 @@
 
 // A junction for tests, made in-process: no `cmd /c mklink`, whose message
 // comes back in the console's code page (mojibake in a UTF-8 log), and no
-// elevation. Every path and target belongs to the test.
+// elevation. Every path and target belongs to the test. A volume by its
+// name (\\?\Volume{…}\) is taken as such: a folder the volume is mounted in.
 
 #include <QDir>
 #include <QString>
@@ -12,6 +13,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -20,8 +22,10 @@ inline bool makeJunction(const QString& link, const QString& target)
     if (!QDir().mkpath(link))
         return false;
     const std::wstring linkPath = QDir::toNativeSeparators(link).toStdWString();
-    const std::wstring targetPath = QDir::toNativeSeparators(QDir(target).absolutePath()).toStdWString();
-    const std::wstring substitute = L"\\??\\" + targetPath;
+    const bool volume = target.startsWith(uR"(\\?\Volume{)");
+    const std::wstring targetPath
+        = volume ? target.toStdWString() : QDir::toNativeSeparators(QDir(target).absolutePath()).toStdWString();
+    const std::wstring substitute = L"\\??\\" + (volume ? targetPath.substr(4) : targetPath);
     struct JunctionData {
         DWORD tag;
         WORD bytes;
@@ -54,3 +58,26 @@ inline bool makeJunction(const QString& link, const QString& target)
         QDir().rmdir(link); // the empty folder made for it
     return made;
 }
+
+// Directory links a test made, removed as links (never followed) before the
+// QTemporaryDir holding them goes: its removeRecursively() walks through
+// junctions, into whatever they lead to. Declare it after the dirs.
+class MadeLinks {
+public:
+    MadeLinks() = default;
+    MadeLinks(const MadeLinks&) = delete;
+    MadeLinks& operator=(const MadeLinks&) = delete;
+    ~MadeLinks()
+    {
+        for (const std::wstring& link : m_links | std::views::reverse)
+            ::RemoveDirectoryW(link.c_str());
+    }
+    const QString& operator<<(const QString& link)
+    {
+        m_links.push_back(QDir::toNativeSeparators(link).toStdWString());
+        return link;
+    }
+
+private:
+    std::vector<std::wstring> m_links;
+};
