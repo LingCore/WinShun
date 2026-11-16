@@ -3442,8 +3442,10 @@ private slots:
                 {u"runtime"_s, QJsonObject {{u"mode"_s, u"once"_s}, {u"program"_s, u"python"_s}}}, {u"url"_s, url}, {u"sha256"_s, hash},
                 {u"size"_s, static_cast<double>(size)}};
         };
+        QJsonObject withNotes = entry(u"test.lib"_s, u"test.lib-1.2.0.wsplugin"_s, sha.toUpper(), bytes.size());
+        withNotes.insert(u"notes"_s, QJsonObject {{u"zh"_s, u"修好了 **一个** 问题。"_s}, {u"en"_s, u"Fixed **one** problem."_s}}); // GitHub #337
         const QJsonArray entries {
-            entry(u"test.lib"_s, u"test.lib-1.2.0.wsplugin"_s, sha.toUpper(), bytes.size()),
+            withNotes,
             entry(u"test.new"_s, package, sha, bytes.size(), u"9.0"_s),
             entry(u"Bad Id"_s, package, sha, bytes.size()), // left out: the id
             entry(u"test.nohash"_s, package, QString(), bytes.size()), // left out: no SHA-256
@@ -3462,6 +3464,9 @@ private slots:
         QCOMPARE(lib->sha256, sha); // lower-cased
         QCOMPARE(lib->url, QDir::toNativeSeparators(package)); // beside the list
         QCOMPARE(lib->permissions, (QStringList {u"network"_s, u"files:read"_s}));
+        QCOMPARE(lib->notes.pick(u"zh_CN"_s), u"修好了 **一个** 问题。"_s);
+        QCOMPARE(lib->notes.pick(u"en"_s), u"Fixed **one** problem."_s);
+        QVERIFY(index->find(u"test.new"_s)->notes.isEmpty()); // none in the list: no 更新内容
         QVERIFY(lib->program == Program::Python);
         QVERIFY(!gallery::parse("[]", listPath, &error));
         QVERIFY(!gallery::parse(R"({"schema":2,"plugins":[]})", listPath, &error));

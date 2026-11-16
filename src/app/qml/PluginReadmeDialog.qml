@@ -9,14 +9,16 @@ Item {
     required property WindowFrame frame
     property bool open: false
     property string title
+    property string heading // what it is of the plugin: 使用说明, 更新内容
     property string html
     property Item returnFocus: null
     readonly property real dpr: Screen.devicePixelRatio
     visible: open
 
-    function show(name, text) {
+    function show(name, text, what) {
         returnFocus = Window.window.activeFocusItem
         title = name
+        heading = what
         html = text
         scroll.contentY = 0
         open = true
@@ -31,7 +33,8 @@ Item {
     Component.onCompleted: frame.addPopup(dialog)
     Connections {
         target: dialog.plugins
-        function onReadmeRequested(title, html) { dialog.show(title, html) }
+        function onReadmeRequested(title, html) { dialog.show(title, html, qsTr("使用说明")) }
+        function onNotesRequested(title, html) { dialog.show(title, html, qsTr("更新内容")) }
     }
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Escape || (event.key === Qt.Key_Q && event.modifiers === Qt.NoModifier)) {
@@ -47,13 +50,15 @@ Item {
         id: card
         anchors.centerIn: parent
         width: Math.min(800, parent.width - 40)
-        height: parent.height - 40
+        // As tall as the text, up to the window: a few lines of 更新内容
+        // in a card, not on a page of their own.
+        height: Math.min(parent.height - 40, Math.max(160, scroll.y + body.contentHeight + 24))
         Hook { anchors.fill: parent; part: Theme.menuFrame; dpr: dialog.dpr }
         MouseArea { anchors.fill: parent }
         Text {
             x: 20; y: 17
             width: parent.width - 128
-            text: qsTr("%1 · 使用说明").arg(dialog.title)
+            text: dialog.title + " · " + dialog.heading
             textFormat: Text.PlainText
             elide: Text.ElideRight
             color: Theme.text
@@ -63,7 +68,7 @@ Item {
         RowAction {
             objectName: "closePluginReadme"
             anchors.right: parent.right; anchors.rightMargin: 14; y: 10
-            glyph: "\uE711"; text: "Esc"; tip: qsTr("关闭说明（Esc / Q）"); dpr: dialog.dpr
+            glyph: "\uE711"; text: "Esc"; tip: qsTr("关闭（Esc / Q）"); dpr: dialog.dpr
             onClicked: dialog.close()
         }
         Flickable {

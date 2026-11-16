@@ -109,6 +109,7 @@ QVariant PluginGalleryModel::data(const QModelIndex& index, int role) const
     case MorePermissionsRole: return r.morePermissions;
     case HasReadmeRole: return r.hasReadme;
     case ReadmeBusyRole: return r.readmeBusy;
+    case HasNotesRole: return r.hasNotes;
     }
     return {};
 }
@@ -120,7 +121,7 @@ QHash<int, QByteArray> PluginGalleryModel::roleNames() const
         {IconRole, "icon"}, {KeywordsRole, "keywords"}, {PermissionsRole, "permissions"}, {NeedsRole, "needs"}, {NeedsMissingRole, "needsMissing"},
         {StageRole, "stage"}, {InstalledVersionRole, "installedVersion"}, {MinWinShunRole, "minWinShun"}, {BusyRole, "busy"},
         {ProgressRole, "progress"}, {ProblemRole, "problem"}, {ShownRole, "shown"}, {StagedRole, "staged"},
-        {MorePermissionsRole, "morePermissions"}, {HasReadmeRole, "hasReadme"}, {ReadmeBusyRole, "readmeBusy"}, {ReviewLabelRole, "reviewLabel"}, {UnreviewedRole, "unreviewed"}};
+        {MorePermissionsRole, "morePermissions"}, {HasReadmeRole, "hasReadme"}, {ReadmeBusyRole, "readmeBusy"}, {HasNotesRole, "hasNotes"}, {ReviewLabelRole, "reviewLabel"}, {UnreviewedRole, "unreviewed"}};
 }
 
 void PluginGalleryModel::setRows(std::vector<Row> rows)
@@ -166,6 +167,7 @@ void PluginGalleryModel::setRows(std::vector<Row> rows)
         differs(old.morePermissions != now.morePermissions, MorePermissionsRole);
         differs(old.hasReadme != now.hasReadme, HasReadmeRole);
         differs(old.readmeBusy != now.readmeBusy, ReadmeBusyRole);
+        differs(old.hasNotes != now.hasNotes, HasNotesRole);
         old = std::move(now);
         const QModelIndex at = index(static_cast<int>(i));
         if (!roles.isEmpty())
@@ -432,6 +434,7 @@ void PluginGallery::rebuild()
             r.version = item.version;
             r.hasReadme = !item.readme.isEmpty();
             r.readmeBusy = item.id == m_readmeId;
+            r.hasNotes = !item.notes.isEmpty();
             r.keywords = item.keywords;
             r.minWinShun = item.minWinShun;
             const gallery::Local local = host ? gallery::localOf(host->catalog(), bundledDir, item.id) : gallery::Local {};
@@ -880,6 +883,24 @@ void PluginGallery::openReadme(const QString& id)
             self->rebuild();
         }, Qt::QueuedConnection);
     });
+}
+
+// 更新内容 (GitHub #337): the notes of the release the list's version came
+// in, carried in the (signed) list itself: nothing to fetch. Shown in the
+// window 说明 uses, as passive text.
+void PluginGallery::openNotes(const QString& id)
+{
+    const gallery::Item* found = m_index.find(id);
+    if (!found || found->notes.isEmpty())
+        return;
+    const QString& locale = m_settings->m_locale;
+    const readme::Document document = readme::fromMarkdown(found->notes.pick(locale).toUtf8());
+    if (!document.error.isEmpty()) {
+        m_problems.insert(id, document.error);
+        rebuild();
+        return;
+    }
+    emit m_settings->notesRequested(tr("%1 %2").arg(found->name.pick(locale), found->version), document.html);
 }
 
 void PluginGallery::openHomepage(const QString& id)

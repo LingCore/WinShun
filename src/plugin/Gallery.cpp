@@ -231,6 +231,10 @@ std::optional<Index> parse(const QByteArray& json, const QString& source, QStrin
             item.readme = readme;
             item.readmeSha256 = readmeSha;
         }
+        constexpr qsizetype kMaxNotes = 4000; // the list cuts them at 2000: more is not a list of ours
+        item.notes = textOf(o.value(u"notes"_s));
+        item.notes.zh.truncate(kMaxNotes);
+        item.notes.en.truncate(kMaxNotes);
         index.items.push_back(std::move(item));
     }
     return index;

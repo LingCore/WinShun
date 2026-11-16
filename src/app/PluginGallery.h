@@ -70,6 +70,7 @@ public:
         QString morePermissions; // the permissions the list's version adds to the installed one, named; empty: none
         bool hasReadme = false; // the list names its README: 说明 shows it before installing (GitHub #304)
         bool readmeBusy = false; // ... and it is on its way
+        bool hasNotes = false; // the list says what changed in its version: 更新内容 (GitHub #337)
         QString words; // what the filter looks in: the id, the names, descriptions and keywords, lower-cased
         friend bool operator==(const Row&, const Row&) = default;
     };
@@ -98,6 +99,7 @@ public:
         MorePermissionsRole,
         HasReadmeRole,
         ReadmeBusyRole,
+        HasNotesRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -176,7 +178,8 @@ public:
     Q_INVOKABLE void updateAll(); // 全部更新: the ones that need no new permission, one after the other
     Q_INVOKABLE void applyNow(const QString& id); // 立即更新: a version kept aside for the next start, now
     Q_INVOKABLE void openRepository(); // 看看怎么投稿
-    Q_INVOKABLE void openReadme(const QString& id); // the entry's 说明: its README, fetched and shown as the installed ones' is (GitHub #304)
+    Q_INVOKABLE void openReadme(const QString& id);
+    Q_INVOKABLE void openNotes(const QString& id); // 更新内容: what changed in the list's version (GitHub #337) // the entry's 说明: its README, fetched and shown as the installed ones' is (GitHub #304)
     Q_INVOKABLE void openHomepage(const QString& id); // the entry's 主页: the plugin's own page, in the browser (GitHub #248)
     // ws plugin install <id> (PluginCommands): as the row's 安装 or 更新到,
     // on the page, where its progress and its questions show; the list is

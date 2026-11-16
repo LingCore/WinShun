@@ -51,6 +51,9 @@ struct Item {
     // address and the SHA-256 of what is there; both empty when the list names none.
     QString readme;
     QString readmeSha256;
+    // What changed in this version (GitHub #337): its release's notes, as
+    // Markdown; empty when the list has none.
+    Text notes;
     qint64 size = 0;
     bool bundled = false; // comes with Win顺 and is updated with it
     Review review = Review::Unspecified;

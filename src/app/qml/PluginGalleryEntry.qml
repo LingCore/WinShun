@@ -38,6 +38,7 @@ Rectangle {
     required property string staged // a newer version kept aside for the next start
     required property bool hasReadme // the list names its README: 说明 shows it (GitHub #304)
     required property bool readmeBusy
+    required property bool hasNotes // the list says what changed in its version: 更新内容 shows it (GitHub #337)
     required property string morePermissions // what the list's version asks for besides, named
 
     readonly property real dpr: Screen.devicePixelRatio
@@ -143,6 +144,7 @@ Rectangle {
                         width: Math.min(implicitWidth, parent.width - versionText.width - 8
                                                         - (homepageSlot.visible ? homepageSlot.width + 8 : 0)
                                                         - (readmeSlot.visible ? readmeSlot.width + 8 : 0)
+                                                        - (notesSlot.visible ? notesSlot.width + 8 : 0)
                                                         - infoDot.width - 8)
                         height: Theme.snapUp(implicitHeight, entry.dpr)
                     }
@@ -210,6 +212,32 @@ Rectangle {
                                 target: readmeHover.hovered ? readmeButton : null
                                 dpr: entry.dpr
                                 text: entry.readmeBusy ? qsTr("正在取说明…") : qsTr("说明")
+                            }
+                        }
+                    }
+                    Item { // 更新内容 (GitHub #337): what changed in the list's version, before updating to it
+                        id: notesSlot
+                        visible: entry.hasNotes
+                        width: 24
+                        height: nameText.height
+
+                        FlatButton {
+                            id: notesButton
+                            dpr: entry.dpr
+                            objectName: "pluginNotes-" + entry.pluginId
+                            y: Theme.snap((parent.height - height) / 2, entry.dpr)
+                            implicitWidth: 24
+                            implicitHeight: 24
+                            flat: true
+                            opacity: notesHover.hovered || activeFocus ? 1 : 0.55
+                            glyph: "\uE81C" // History: what came with each version
+                            Accessible.name: qsTr("更新内容")
+                            onClicked: entry.gallery.openNotes(entry.pluginId)
+                            HoverHandler { id: notesHover }
+                            HoverTip {
+                                target: notesHover.hovered ? notesButton : null
+                                dpr: entry.dpr
+                                text: qsTr("%1 更新内容").arg(entry.version)
                             }
                         }
                     }
