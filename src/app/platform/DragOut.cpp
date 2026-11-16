@@ -152,12 +152,13 @@ private:
     QPoint m_hotspot;
 };
 
-// The left button's drag, as OLE's own: Esc cancels, letting go drops; each
+// A drag as OLE's own: Esc cancels, letting go of its button drops; each
 // move takes the picture along, with the system's cursors (copy, link, no).
 class Source final : public IDropSource {
 public:
-    explicit Source(Follower& follower)
+    Source(Follower& follower, Button button)
         : m_follower(follower)
+        , m_button(button == Button::Right ? MK_RBUTTON : MK_LBUTTON)
     {
     }
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** out) override
@@ -178,7 +179,7 @@ public:
     {
         if (escape)
             return DRAGDROP_S_CANCEL;
-        return keys & MK_LBUTTON ? S_OK : DRAGDROP_S_DROP;
+        return keys & m_button ? S_OK : DRAGDROP_S_DROP;
     }
     HRESULT STDMETHODCALLTYPE GiveFeedback(DWORD) override
     {
@@ -188,10 +189,16 @@ public:
 
 private:
     Follower& m_follower;
+    DWORD m_button;
     ULONG m_refs = 1;
 };
 
 } // namespace
+
+DWORD allowedEffects(Button button, bool allowLink)
+{
+    return DROPEFFECT_COPY | (allowLink ? DROPEFFECT_LINK : 0) | (button == Button::Right ? DROPEFFECT_MOVE : 0);
+}
 
 ComPtr<IDataObject> dataObject(const QStringList& paths)
 {
@@ -249,16 +256,26 @@ Outcome drag(const QStringList& paths, HWND source, bool allowLink, const QImage
     if (!data)
         return Outcome::Failed;
     DWORD effect = DROPEFFECT_NONE;
-    const DWORD allowed = DROPEFFECT_COPY | (allowLink ? DROPEFFECT_LINK : 0);
+    // The button the press that started it holds (this thread's state, as its messages said).
+    const Button button = ::GetKeyState(VK_RBUTTON) < 0 && ::GetKeyState(VK_LBUTTON) >= 0 ? Button::Right : Button::Left;
+    const DWORD allowed = allowedEffects(button, allowLink);
     HRESULT hr = E_FAIL;
     if (picture.isNull()) {
+        // The shell's drop source goes on with whichever button is down.
         hr = ::SHDoDragDrop(source, data.Get(), nullptr, allowed, &effect); // with the shell's stand-in picture
     } else {
         // OLE's own loop: the shell's would add its see-through stand-in.
         Follower follower(picture, hotspot);
-        Source dropSource(follower);
+        Source dropSource(follower, button);
         hr = ::DoDragDrop(data.Get(), &dropSource, allowed, &effect);
     }
+    // OLE's loop took the button's release: Qt still holds the press. Let it
+    // go where the pointer is now (over another program, mostly).
+    POINT p {};
+    ::GetCursorPos(&p);
+    ::ScreenToClient(source, &p);
+    ::PostMessageW(source, button == Button::Right ? WM_RBUTTONUP : WM_LBUTTONUP, 0,
+                   MAKELPARAM(static_cast<short>(p.x), static_cast<short>(p.y)));
     if (hr == DRAGDROP_S_DROP)
         return effect != DROPEFFECT_NONE ? Outcome::Dropped : Outcome::Cancelled;
     return hr == DRAGDROP_S_CANCEL ? Outcome::Cancelled : Outcome::Failed;

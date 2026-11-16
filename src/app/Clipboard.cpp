@@ -1185,11 +1185,6 @@ void Clipboard::dragOut(int row)
     emit focusNeeded(); // stop key routing so OLE receives Escape and Ctrl
     const DragPicture picture = dragPicture(paths, m_window->devicePixelRatio());
     const auto outcome = dragout::drag(paths, hwnd, !exported, picture.image, picture.hotspot); // a shortcut to an export would break
-    // OLE consumes the release; clear Qt's pressed state without pasting.
-    POINT p {};
-    ::GetCursorPos(&p);
-    ::ScreenToClient(hwnd, &p);
-    ::PostMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(static_cast<short>(p.x), static_cast<short>(p.y)));
     m_dragging = false;
     if (outcome == dragout::Outcome::Failed)
         flash(onlyImages ? tr("无法拖出图片") : tr("无法拖出这些内容"));

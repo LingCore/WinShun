@@ -129,18 +129,21 @@ Item {
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         property point pressedAt
         property bool draggedOut: false
+        property int dragButton: Qt.NoButton // the button that pressed, which drags
         onPressed: mouse => {
             tile.dropTip()
             draggedOut = false
             pressedAt = Qt.point(mouse.x, mouse.y)
-            preventStealing = mouse.button === Qt.LeftButton && !tile.isApp && !tile.offline && !tile.missing
+            dragButton = mouse.button
+            // The right button too: Explorer then asks what to do with the drop (#338).
+            preventStealing = (mouse.button & (Qt.LeftButton | Qt.RightButton)) !== 0 && !tile.isApp && !tile.offline && !tile.missing
                 && mouse.source === Qt.MouseEventNotSynthesized
         }
         onPositionChanged: mouse => {
             if (!pressed) {
                 tile.offerTip()
                 tile.hoverMoved(tile.index, mapToGlobal(mouse.x, mouse.y))
-            } else if (preventStealing && !draggedOut && (mouse.buttons & Qt.LeftButton)
+            } else if (preventStealing && !draggedOut && (mouse.buttons & dragButton)
                 && Math.hypot(mouse.x - pressedAt.x, mouse.y - pressedAt.y) >= Application.styleHints.startDragDistance) {
                 draggedOut = true
                 tile.dragRequested(tile.index)

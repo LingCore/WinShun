@@ -4948,12 +4948,6 @@ void Launcher::dragOut(int row)
     const auto hwnd = reinterpret_cast<HWND>(m_window->winId());
     const DragPicture picture = dragPicture(paths, m_window->devicePixelRatio());
     dragout::drag(paths, hwnd, true, picture.image, picture.hotspot);
-    // OLE's loop took the button's release: Qt still holds the press. Let it
-    // go where the pointer is now (over another program, mostly).
-    POINT p {};
-    ::GetCursorPos(&p);
-    ::ScreenToClient(hwnd, &p);
-    ::PostMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(static_cast<short>(p.x), static_cast<short>(p.y)));
 }
 
 void Launcher::toggleSelected(int row)

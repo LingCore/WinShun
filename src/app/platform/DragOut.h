@@ -30,12 +30,22 @@ Microsoft::WRL::ComPtr<IDataObject> fileNamesObject(const QStringList& paths);
 
 enum class Outcome { Dropped, Cancelled, Failed };
 
-// Drags the items until the left button is let go: a modal loop on the
-// calling thread, which pumps its messages meanwhile (the GUI thread, with
-// the button down). Copy or link, never move: dropped on a folder of the same
-// disk, Explorer would otherwise move the user's file away. Set allowLink to
-// false for temporary exports: a shortcut would break when the export is
-// removed.
+// The mouse button a drag goes on with: the left one, or the right one, on
+// whose release Explorer asks what to do (copy, move, a shortcut, an
+// archive's "extract here"; GitHub #338).
+enum class Button { Left, Right };
+
+// What a drop may do: copy, or link unless `allowLink` is false. Never move
+// with the left button: dropped on a folder of the same disk, Explorer would
+// move the user's file away. A right drag may: the target asks first.
+DWORD allowedEffects(Button button, bool allowLink);
+
+// Drags the items until the button held now is let go (the right one when it
+// alone is down, else the left): a modal loop on the calling thread, which
+// pumps its messages meanwhile (the GUI thread, with the button down), then
+// posts `source` the button's release, which the loop took from Qt. Set
+// allowLink to false for temporary exports: a shortcut would break when the
+// export is removed.
 //
 // `picture` (device pixels) is what follows the pointer, its `hotspot` under
 // the pointer's tip: in a window of its own, nearly solid (the shell's drag

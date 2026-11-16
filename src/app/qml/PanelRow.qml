@@ -228,6 +228,7 @@ Item {
         // dragged out of the window.
         property point pressedAt: Qt.point(0, 0)
         property bool draggedOut: false
+        property int dragButton: Qt.NoButton // the button that pressed, which drags
 
         anchors.fill: parent
         hoverEnabled: true
@@ -237,7 +238,9 @@ Item {
                 row.nameTip.dismiss()
             draggedOut = false
             pressedAt = Qt.point(mouse.x, mouse.y)
-            preventStealing = mouse.button === Qt.LeftButton && !row.isApp && !row.offline && !row.missing
+            dragButton = mouse.button
+            // The right button too: Explorer then asks what to do with the drop (#338).
+            preventStealing = (mouse.button & (Qt.LeftButton | Qt.RightButton)) !== 0 && !row.isApp && !row.offline && !row.missing
                               && mouse.source === Qt.MouseEventNotSynthesized
         }
         // The wheel hides the tip even where the list does not scroll (Windows' own tips do);
@@ -253,7 +256,7 @@ Item {
                 row.hoverMoved(row.index, area.mapToGlobal(mouse.x, mouse.y))
                 return
             }
-            if (!preventStealing || draggedOut || !(mouse.buttons & Qt.LeftButton))
+            if (!preventStealing || draggedOut || !(mouse.buttons & dragButton))
                 return
             if (Math.hypot(mouse.x - pressedAt.x, mouse.y - pressedAt.y) < Application.styleHints.startDragDistance)
                 return

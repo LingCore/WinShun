@@ -1,14 +1,21 @@
 // What a drop target gets when results are dragged out (dragout::dataObject):
-// the files as CF_HDROP and as the shell's item list, a copy preferred.
+// the files as CF_HDROP and as the shell's item list, a copy preferred;
+// and, opt-in, a real drag with either button (dragout::drag).
 #include "DragOut.h"
 
 #include <QDir>
 #include <QFile>
+#include <QImage>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTest>
 
 #include <shellapi.h>
 #include <shlobj.h>
+
+#include <atomic>
+#include <thread>
+#include <vector>
 
 using namespace Qt::StringLiterals;
 using namespace ws;
@@ -63,6 +70,105 @@ QStringList formats(IDataObject* data)
     }
     list->Release();
     return out;
+}
+
+// A drop target of the test's own: what a drag offered it and with which
+// button, taking a copy of what is dropped (nothing is written anywhere).
+class Target final : public IDropTarget {
+public:
+    DWORD allowed = 0; // what DragEnter was offered
+    DWORD keys = 0; // the buttons seen while over it
+    bool droppedIn = false;
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** out) override
+    {
+        if (!out)
+            return E_POINTER;
+        if (id == IID_IUnknown || id == IID_IDropTarget) {
+            *out = static_cast<IDropTarget*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++m_refs; }
+    ULONG STDMETHODCALLTYPE Release() override { return --m_refs; } // on the test's stack
+    HRESULT STDMETHODCALLTYPE DragEnter(IDataObject*, DWORD state, POINTL, DWORD* effect) override
+    {
+        allowed = *effect;
+        keys |= state;
+        *effect &= DROPEFFECT_COPY;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragOver(DWORD state, POINTL, DWORD* effect) override
+    {
+        keys |= state;
+        *effect &= DROPEFFECT_COPY;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragLeave() override { return S_OK; }
+    HRESULT STDMETHODCALLTYPE Drop(IDataObject*, DWORD, POINTL, DWORD* effect) override
+    {
+        droppedIn = true;
+        *effect &= DROPEFFECT_COPY;
+        return S_OK;
+    }
+
+private:
+    ULONG m_refs = 1;
+};
+
+// The button releases a window was posted, by message.
+std::vector<UINT> g_released;
+
+LRESULT CALLBACK recordingProc(HWND window, UINT message, WPARAM w, LPARAM l)
+{
+    if (message == WM_LBUTTONUP || message == WM_RBUTTONUP)
+        g_released.push_back(message);
+    return ::DefWindowProcW(window, message, w, l);
+}
+
+HWND topWindow(const wchar_t* className, WNDPROC proc, const RECT& at)
+{
+    WNDCLASSW wc {};
+    wc.lpfnWndProc = proc;
+    wc.hInstance = ::GetModuleHandleW(nullptr);
+    wc.hbrBackground = static_cast<HBRUSH>(::GetStockObject(GRAY_BRUSH));
+    wc.lpszClassName = className;
+    ::RegisterClassW(&wc);
+    const HWND window = ::CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, className, L"", WS_POPUP | WS_VISIBLE,
+        at.left, at.top, at.right - at.left, at.bottom - at.top, nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+    ::UpdateWindow(window);
+    return window;
+}
+
+void pump()
+{
+    MSG message {};
+    while (::PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+        ::TranslateMessage(&message);
+        ::DispatchMessageW(&message);
+    }
+}
+
+POINT centre(const RECT& r) { return {(r.left + r.right) / 2, (r.top + r.bottom) / 2}; }
+
+void click(DWORD flags)
+{
+    INPUT input {};
+    input.type = INPUT_MOUSE;
+    input.mi.dwFlags = flags;
+    ::SendInput(1, &input, sizeof input);
+}
+
+void key(WORD vk)
+{
+    INPUT input[2] {};
+    input[0].type = input[1].type = INPUT_KEYBOARD;
+    input[0].ki.wVk = input[1].ki.wVk = vk;
+    input[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    ::SendInput(2, input, sizeof input[0]);
 }
 
 } // namespace
@@ -149,6 +255,104 @@ private slots:
             QVERIFY(data->QueryGetData(&f) != S_OK);
         }
         QVERIFY(!dragout::fileNamesObject({}));
+    }
+
+    // A drop moves only when Explorer's menu said so, after a right drag (#338).
+    void allowedEffects()
+    {
+        using dragout::Button;
+        QCOMPARE(dragout::allowedEffects(Button::Left, true), DWORD(DROPEFFECT_COPY | DROPEFFECT_LINK));
+        QCOMPARE(dragout::allowedEffects(Button::Left, false), DWORD(DROPEFFECT_COPY));
+        QCOMPARE(dragout::allowedEffects(Button::Right, true), DWORD(DROPEFFECT_COPY | DROPEFFECT_LINK | DROPEFFECT_MOVE));
+        QCOMPARE(dragout::allowedEffects(Button::Right, false), DWORD(DROPEFFECT_COPY | DROPEFFECT_MOVE));
+    }
+
+    // A real drag with the real mouse, into a window of the test's own: it goes
+    // on with the button that started it, the right one offers a move, and the
+    // source is posted that button's release. Opt-in: it moves the pointer.
+    void realDrag_data()
+    {
+        QTest::addColumn<bool>("right");
+        QTest::addColumn<bool>("picture");
+        QTest::newRow("right, own picture") << true << true;
+        QTest::newRow("right, shell's picture") << true << false;
+        QTest::newRow("left, own picture") << false << true;
+    }
+
+    void realDrag()
+    {
+        if (qEnvironmentVariableIsEmpty("WINSHUN_TEST_REAL_INPUT"))
+            QSKIP("Moves the real mouse: set WINSHUN_TEST_REAL_INPUT=1, hands off the mouse");
+        QFETCH(bool, right);
+        QFETCH(bool, picture);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = QDir::toNativeSeparators(dir.filePath(u"拖出 test.txt"_s));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+
+        RECT work {};
+        QVERIFY(::SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0));
+        const RECT sourceAt {work.left + 100, work.top + 100, work.left + 300, work.top + 300};
+        const RECT targetAt {work.left + 400, work.top + 100, work.left + 600, work.top + 300};
+        const HWND source = topWindow(L"WinShunTestDragSource", recordingProc, sourceAt);
+        const HWND targetWindow = topWindow(L"WinShunTestDropTarget", ::DefWindowProcW, targetAt);
+        Target target;
+        QVERIFY(SUCCEEDED(::RegisterDragDrop(targetWindow, &target)));
+        POINT before {};
+        ::GetCursorPos(&before);
+        const auto restore = qScopeGuard([&] {
+            ::RevokeDragDrop(targetWindow);
+            ::DestroyWindow(targetWindow);
+            ::DestroyWindow(source);
+            ::SetCursorPos(before.x, before.y);
+        });
+        pump();
+        const POINT from = centre(sourceAt);
+        const POINT to = centre(targetAt);
+        ::SetCursorPos(from.x, from.y);
+        pump();
+        if (::WindowFromPoint(from) != source || ::WindowFromPoint(to) != targetWindow)
+            QSKIP("Another topmost window covers the test's windows");
+
+        g_released.clear();
+        const int vk = right ? VK_RBUTTON : VK_LBUTTON;
+        click(right ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_LEFTDOWN);
+        for (int i = 0; i < 200 && ::GetKeyState(vk) >= 0; ++i) { // as a press reaches the row: by message
+            pump();
+            ::Sleep(5);
+        }
+        QVERIFY(::GetKeyState(vk) < 0);
+        std::atomic<bool> over = false;
+        std::thread mover([&] {
+            ::Sleep(150);
+            for (int step = 1; step <= 10; ++step) {
+                ::SetCursorPos(from.x + (to.x - from.x) * step / 10, from.y + (to.y - from.y) * step / 10);
+                ::Sleep(30);
+            }
+            ::Sleep(150);
+            over = ::WindowFromPoint(to) == targetWindow;
+            if (!over)
+                key(VK_ESCAPE); // never drop on someone else's window
+            click(right ? MOUSEEVENTF_RIGHTUP : MOUSEEVENTF_LEFTUP);
+        });
+        QImage image;
+        if (picture) {
+            image = QImage(48, 48, QImage::Format_ARGB32_Premultiplied);
+            image.fill(Qt::darkCyan);
+        }
+        const dragout::Outcome outcome = dragout::drag({path}, source, true, image, QPoint(24, 24));
+        mover.join();
+        pump();
+
+        QVERIFY2(over, "the pointer left the test's window (was the mouse moved?)");
+        QCOMPARE(int(outcome), int(dragout::Outcome::Dropped));
+        QVERIFY(target.droppedIn);
+        QCOMPARE((target.allowed & DROPEFFECT_MOVE) != 0, right);
+        QVERIFY(target.keys & (right ? MK_RBUTTON : MK_LBUTTON));
+        QCOMPARE(g_released, std::vector<UINT> {UINT(right ? WM_RBUTTONUP : WM_LBUTTONUP)});
+        QVERIFY(QFile::exists(path)); // a copy at most: the file stays
     }
 };
 

@@ -426,6 +426,7 @@ Item {
         // Real mouse drags take rows out as files (Clipboard::dragOut); touch still scrolls the list.
         property point pressedAt: Qt.point(0, 0)
         property bool draggedOut: false
+        property int dragButton: Qt.NoButton // the button that pressed, which drags
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
@@ -433,13 +434,15 @@ Item {
         onPressed: (mouse) => {
             draggedOut = false
             pressedAt = Qt.point(mouse.x, mouse.y)
-            preventStealing = mouse.button === Qt.LeftButton
+            dragButton = mouse.button
+            // The right button too: Explorer then asks what to do with the drop (#338).
+            preventStealing = (mouse.button & (Qt.LeftButton | Qt.RightButton)) !== 0
                               && mouse.source === Qt.MouseEventNotSynthesized
         }
         onPositionChanged: (mouse) => {
             if (!pressed)
                 row.hoverMoved(row.index, area.mapToGlobal(mouse.x, mouse.y))
-            if (!pressed || !preventStealing || draggedOut || !(mouse.buttons & Qt.LeftButton))
+            if (!pressed || !preventStealing || draggedOut || !(mouse.buttons & dragButton))
                 return
             if (Math.hypot(mouse.x - pressedAt.x, mouse.y - pressedAt.y) < Application.styleHints.startDragDistance)
                 return
