@@ -172,6 +172,23 @@ void Catalog::setEnabled(const QString& id, bool on)
     emit changed();
 }
 
+void Catalog::setPluginSettings(const QString& id, const QJsonObject& settings)
+{
+    m_settings[id] = settings; // the menus read it as they are built
+}
+
+// A files trigger's `if`: on when the setting is, the manifest's default
+// under the user's value; no value anywhere reads as off.
+bool Catalog::settingOn(const Entry& e, const QString& key) const
+{
+    if (const QJsonValue v = m_settings.value(e.id).value(key); v.isBool())
+        return v.toBool();
+    for (const Setting& s : e.manifest->settings)
+        if (s.key == key)
+            return s.defaultValue.isBool() && s.defaultValue.toBool();
+    return false;
+}
+
 QStringList Catalog::setConfirmed(QHash<QString, QStringList> confirmed)
 {
     if (m_holdToConfirmed && m_confirmed == confirmed)
@@ -532,6 +549,8 @@ std::vector<Catalog::FileCommand> Catalog::fileCommands(const QStringList& paths
         for (const Command& c : e.manifest->commands) {
             for (const Trigger& t : c.triggers) {
                 if (t.kind != Trigger::Kind::Files || paths.size() > t.maxFiles)
+                    continue;
+                if (!t.setting.isEmpty() && !settingOn(e, t.setting))
                     continue;
                 if ((t.fileKind == u"file" && anyFolder) || (t.fileKind == u"folder" && anyFile))
                     continue;

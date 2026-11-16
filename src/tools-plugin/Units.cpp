@@ -40,13 +40,19 @@ const Unit kUnits[] = {
     {"°C", Category::Temperature, 1, "c|°c|℃|celsius|centigrade|摄氏度|摄氏|度"},
     {"°F", Category::Temperature, 1, "f|°f|℉|fahrenheit|华氏度|华氏"},
     {"K", Category::Temperature, 1, "k|kelvin|开尔文|开氏度"},
-    // data (base: byte; 1024-based, as Windows counts; the 1000-based row is added)
+    // data (base: byte; KB/MB/… are 1024-based, as Windows counts, with a
+    // 1000-based row added; KiB/MiB/… are strictly 1024-based, no rows)
     {"B", Category::Data, 1, "b|byte|bytes|字节"},
-    {"KB", Category::Data, 1024, "kb|kib|kilobyte|kilobytes|kibibyte|千字节"},
-    {"MB", Category::Data, 1048576, "mb|mib|megabyte|megabytes|mebibyte|兆|兆字节"},
-    {"GB", Category::Data, 1073741824, "gb|gib|gigabyte|gigabytes|gibibyte|吉字节"},
-    {"TB", Category::Data, 1099511627776.0, "tb|tib|terabyte|terabytes|tebibyte|太字节"},
-    {"PB", Category::Data, 1125899906842624.0, "pb|pib|petabyte|petabytes|pebibyte|拍字节"},
+    {"KB", Category::Data, 1024, "kb|kilobyte|kilobytes|千字节"},
+    {"MB", Category::Data, 1048576, "mb|megabyte|megabytes|兆|兆字节"},
+    {"GB", Category::Data, 1073741824, "gb|gigabyte|gigabytes|吉字节"},
+    {"TB", Category::Data, 1099511627776.0, "tb|terabyte|terabytes|太字节"},
+    {"PB", Category::Data, 1125899906842624.0, "pb|petabyte|petabytes|拍字节"},
+    {"KiB", Category::Data, 1024, "kib|kibibyte|kibibytes"},
+    {"MiB", Category::Data, 1048576, "mib|mebibyte|mebibytes"},
+    {"GiB", Category::Data, 1073741824, "gib|gibibyte|gibibytes"},
+    {"TiB", Category::Data, 1099511627776.0, "tib|tebibyte|tebibytes"},
+    {"PiB", Category::Data, 1125899906842624.0, "pib|pebibyte|pebibytes"},
     // time (base: second)
     {"ms", Category::Time, 0.001, "ms|millisecond|milliseconds|毫秒"},
     {"s", Category::Time, 1, "s|sec|secs|second|seconds|秒"},
@@ -255,26 +261,41 @@ double decimalFactor(const Unit& u)
     return f;
 }
 
+// True for the strictly 1024-based spellings (KiB, MiB, …): no 1000-based
+// row next to them, they mean 1024 and nothing else.
+bool binaryName(const Unit& u)
+{
+    const std::string id = u.id;
+    return id.size() > 1 && id.back() == 'B' && id[id.size() - 2] == 'i';
+}
+
 } // namespace
 
-std::vector<Row> convert(const Request& request)
+std::vector<Row> convert(const Request& request, bool chinese)
 {
+    // The note on a data-size row: how the step was counted. English says
+    // the sizes themselves; Chinese says the rule in a word.
+    const char* note1024 = chinese ? "按 1024 算" : "1 KB = 1024 B";
+    const char* note1000 = chinese ? "按 1000 算" : "1 KB = 1000 B";
     std::vector<Row> rows;
     if (!request.from)
         return rows;
     const double base = toBase(request.value, *request.from);
     const auto one = [&](const Unit& to) {
+        const bool sized = to.category == Category::Data
+            && (to.factor >= 1024 || request.from->factor >= 1024)
+            && !binaryName(to) && !binaryName(*request.from);
         Row row;
         row.value = formatValue(fromBase(base, to));
         row.unit = to.id;
-        if (to.category == Category::Data && (to.factor >= 1024 || request.from->factor >= 1024))
-            row.note = "1 KB = 1024 B";
+        if (sized)
+            row.note = note1024;
         rows.push_back(row);
-        if (to.category == Category::Data && (to.factor >= 1024 || request.from->factor >= 1024)) {
+        if (sized) {
             Row alt;
             alt.value = formatValue(request.value * decimalFactor(*request.from) / decimalFactor(to));
             alt.unit = to.id;
-            alt.note = "1 KB = 1000 B";
+            alt.note = note1000;
             alt.alternate = true;
             rows.push_back(alt);
         }

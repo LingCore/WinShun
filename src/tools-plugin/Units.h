@@ -39,8 +39,9 @@ struct Row {
 };
 
 // The conversions a request asks for: one row (two for data sizes, 1024
-// and 1000), or, with no target, one per unit of the category.
-std::vector<Row> convert(const Request& request);
+// and 1000), or, with no target, one per unit of the category. `chinese`
+// says the language of the notes.
+std::vector<Row> convert(const Request& request, bool chinese = false);
 
 // A number for the rows: up to 10 significant digits, no trailing zeros.
 std::string formatValue(double value);

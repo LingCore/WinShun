@@ -13,7 +13,9 @@
 //   ts     timestamps to dates and back ("ts", "ts 1700000000", "ts 2024-01-02 15:04")
 //   uuid   a new UUID
 //   b64    Base64 encode / decode
-//   md5, sha1, sha256   hashes of text, or of a file by its path
+//   md5, sha1, sha256   hashes of text, or of a file by its path; a file's
+//          right-click menu has 复制 MD5 / 复制 SHA-1 / 复制 SHA-256, the
+//          digest straight to the clipboard
 
 #include "Tools.h"
 
@@ -42,11 +44,12 @@ using winshun::Query;
 
 namespace {
 
-constexpr const char* kCalcIcon = "glyph:U+E8EF"; // Calculator
-constexpr const char* kTimeIcon = "glyph:U+E823"; // Recent
-constexpr const char* kIdIcon = "glyph:U+E8D7"; // Tag
-constexpr const char* kCodeIcon = "glyph:U+E943"; // Code
-constexpr const char* kHashIcon = "glyph:U+E928"; // Fingerprint
+constexpr const char* kCalcIcon = "ph:calculator";
+constexpr const char* kTimeIcon = "ph:clock";
+constexpr const char* kIdIcon = "ph:tag";
+constexpr const char* kCodeIcon = "ph:code";
+constexpr const char* kHashIcon = "ph:fingerprint";
+constexpr const char* kClearIcon = "ph:trash";
 constexpr std::uint64_t kMaxHashFile = 64ull << 20;
 constexpr std::size_t kSumsListed = 50; // of the sums kept, under "="
 constexpr std::size_t kSumsBelow = 20; // ... and under a sum being typed
@@ -67,7 +70,7 @@ protected:
             return uuid(q);
         if (q.command == "b64")
             return base64(q);
-        if (q.command == "hash")
+        if (q.command == "hash" || q.command.compare(0, 5, "hash-") == 0)
             return hash(q);
         return {};
     }
@@ -81,6 +84,8 @@ protected:
     // result is copied again, or the whole line, or it is taken off the list.
     Effects action(const ActionRequest& a) override
     {
+        if (a.trigger == "files")
+            return a.files.size() == 1 ? copyFileDigest(a.command, a.files.front()) : Effects {};
         if (a.command != "calc")
             return Plugin::action(a);
         const std::string id = a.item["id"].toString();
@@ -89,10 +94,22 @@ protected:
             m_sums.add({std::time(nullptr), data["sum"].toString(), a.item["title"].toString(), a.item["copy"].toString()});
             return Plugin::action(a);
         }
-        if (id == "clear") {
+        if (id == "clear-confirm") {
+            // The row Shift+Enter asked for; Enter here really clears.
             m_sums.clear();
             return {winshun::effect::replace(calcHelp()), winshun::effect::notify(zh("计算记录已清空", "The sums were cleared")),
                 winshun::effect::keep()};
+        }
+        if (id == "clear") {
+            Item confirm("clear-confirm", zh("再按一次 Enter 清空", "Press Enter again to clear"),
+                std::to_string(m_sums.records().size()) + zh(" 条，不能恢复", " sums; this cannot be undone"));
+            confirm.withIcon(kClearIcon).withActions({{"confirm", zh("清空", "Clear"), "Enter"},
+                {"keep", zh("留着，不清", "Keep them"), "Shift+Enter"}});
+            return {winshun::effect::replace(Items {confirm}), winshun::effect::keep()};
+        }
+        if (id == "clear-confirm" && a.action == "keep") {
+            Items left = sums(std::string(), kSumsListed, true);
+            return {winshun::effect::replace(left.empty() ? calcHelp() : left), winshun::effect::keep()};
         }
         if (!data["when"].isNumber())
             return Plugin::action(a);
@@ -113,6 +130,31 @@ protected:
     }
 
 private:
+    // The file's right-click menu (the hash-md5 / -sha1 / -sha256 commands,
+    // one file): that digest straight into the clipboard — Win顺 copies it,
+    // the strict sandbox has no clipboard of its own — with a line of status.
+    // An action's `replace` rows are listed by the launcher only under an
+    // active keyword, so the menu copies instead of listing.
+    Effects copyFileDigest(const std::string& command, const std::string& path)
+    {
+        using tools::codec::hashFileHex;
+        const char* algorithm = command == "hash-md5" ? "md5" : command == "hash-sha1" ? "sha1" : "sha256";
+        const char* shown = command == "hash-md5" ? "MD5" : command == "hash-sha1" ? "SHA-1" : "SHA-256";
+        const DWORD attributes = ::GetFileAttributesW(winshun::wide(path).c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES)
+            return {winshun::effect::notify(zh("没有这个文件，查一下路径", "No such file; check the path"))};
+        if (attributes & FILE_ATTRIBUTE_DIRECTORY)
+            return {winshun::effect::notify(zh("这是一个文件夹，给它里面的文件", "That is a folder; name a file in it"))};
+        bool tooLarge = false;
+        const std::string digest = hashFileHex(algorithm, winshun::wide(path), kMaxHashFile, &tooLarge);
+        if (tooLarge)
+            return {winshun::effect::notify(zh("文件超过 64 MB，不算了", "The file is over 64 MB"))};
+        if (digest.empty())
+            return {winshun::effect::notify(zh("算不出摘要", "Cannot compute the digest"))};
+        return {winshun::effect::copy(digest),
+            winshun::effect::notify(std::string(zh("已复制 ", "Copied the ")) + shown)};
+    }
+
     const char* zh(const char* chinese, const char* english) const { return this->chinese() ? chinese : english; }
     bool pushed(const Query& q) const { return q.trigger != "keyword"; }
     // Asked by an AI assistant or the command line: the sums kept are the
@@ -164,7 +206,7 @@ private:
         if (withClear && count > 0)
             items.push_back(Item("clear", zh("清空计算记录", "Clear the sums"),
                 std::to_string(records.size()) + zh(" 条；保留最近一个月、最多 200 条", " kept; a month's, 200 at most"))
-                                .withIcon("glyph:U+E74D")
+                                .withIcon(kClearIcon)
                                 .withScore(1));
         return items;
     }
@@ -184,7 +226,7 @@ private:
         }
         // A conversion first: "12 inch to cm" is no arithmetic.
         if (const auto request = tools::units::parse(text)) {
-            const std::vector<tools::units::Row> rows = tools::units::convert(*request);
+            const std::vector<tools::units::Row> rows = tools::units::convert(*request, chinese());
             int n = 0;
             for (const tools::units::Row& row : rows) {
                 const std::string value = row.value + " " + row.unit;
@@ -256,7 +298,7 @@ private:
             if (pushed(q))
                 return items;
             items.push_back(help("h1", zh("输入一个颜色值，列出它的各种写法", "Type a colour to see it in every notation"),
-                "#ff8800、#f80、rgb(255, 136, 0)、hsl(32, 100%, 50%)、rgba(255 136 0 / 50%)", "glyph:U+E790"));
+                "#ff8800、#f80、rgb(255, 136, 0)、hsl(32, 100%, 50%)、rgba(255 136 0 / 50%)", "ph:palette"));
             return items;
         }
         const std::string swatch = "color:" + tools::color::hex(*parsed, false);
@@ -284,9 +326,12 @@ private:
         Items items;
         const std::string zone = localZoneName();
         const auto moment = [&](const Moment& m, const std::string& heading) {
-            const std::string local = formatLocal(m);
+            // Milliseconds shown when the moment has them (a fractional
+            // timestamp); whole seconds keep the plain form.
+            const bool withMs = m.milliseconds != 0;
+            const std::string local = formatLocal(m, withMs);
             items.push_back(Item("local", local, heading + " · " + zh("本地时间 ", "local time ") + zone).withIcon(kTimeIcon).withCopy(local).withScore(90));
-            const std::string utc = formatUtc(m);
+            const std::string utc = formatUtc(m, withMs);
             items.push_back(Item("utc", utc, "UTC").withIcon(kTimeIcon).withCopy(utc));
             const std::string isoLocal = formatIsoLocal(m);
             items.push_back(Item("isoLocal", isoLocal, "ISO 8601").withIcon(kTimeIcon).withCopy(isoLocal));
@@ -322,7 +367,7 @@ private:
         }
         if (!pushed(q))
             items.push_back(help("h1", zh("输入时间戳或日期", "Type a timestamp or a date"),
-                zh("1700000000、1700000000000（毫秒）、2024-01-02 15:04:05、2024-01-02T15:04:05Z；留空看现在", "1700000000, 1700000000000 (ms), 2024-01-02 15:04:05, 2024-01-02T15:04:05Z; empty for now"), kTimeIcon));
+                zh("1700000000、1700000000000（毫秒）、1700000000000000（微秒）、2024-01-02 15:04:05、2024-01-02T15:04:05Z；留空看现在", "1700000000, 1700000000000 (ms), 1700000000000000 (µs), 2024-01-02 15:04:05, 2024-01-02T15:04:05Z; empty for now"), kTimeIcon));
         return items;
     }
 
@@ -393,17 +438,36 @@ private:
             algorithms.push_back(keyword);
         else
             algorithms = {"md5", "sha1", "sha256"};
+        // A file-menu command (hash-md5 …) pins its one algorithm: the AI
+        // calls it by name, the menu by its click.
+        if (q.command.size() > 5 && q.command.compare(0, 5, "hash-") == 0)
+            algorithms.assign(1, q.command.substr(5));
         if (text.empty()) {
             items.push_back(help("h1", zh("输入文字或文件路径", "Type text or a file path"),
                 zh("文字按 UTF-8 计算；文件最大 64 MB", "Text is hashed as UTF-8; files up to 64 MB"), kHashIcon));
             return items;
         }
-        // A file path: hash the file.
+        // A file path: hash the file. Drive-letter paths and UNC shares;
+        // anything else is text. A path that looks like one (a separator,
+        // a known extension) but is not there says so instead of hashing
+        // the path itself, which would be silently wrong.
         std::string path = text;
         if (path.size() > 2 && path.front() == '"' && path.back() == '"')
             path = path.substr(1, path.size() - 2);
-        const DWORD attributes = path.size() > 3 && path[1] == ':' ? ::GetFileAttributesW(winshun::wide(path).c_str()) : INVALID_FILE_ATTRIBUTES;
-        const bool file = attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+        const bool pathLike = (path.size() > 2 && path[1] == ':') || path.compare(0, 2, "\\\\") == 0
+            || path.find('/') != std::string::npos || path.find('\\') != std::string::npos
+            || path.rfind('.') != std::string::npos;
+        const DWORD attributes = pathLike ? ::GetFileAttributesW(winshun::wide(path).c_str()) : INVALID_FILE_ATTRIBUTES;
+        const bool exists = attributes != INVALID_FILE_ATTRIBUTES;
+        if (pathLike && !exists) {
+            items.push_back(help("missing", zh("没有这个文件，查一下路径", "No such file; check the path"), path, kHashIcon));
+            return items;
+        }
+        const bool file = exists && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+        if (exists && !file) {
+            items.push_back(help("dir", zh("这是一个文件夹，给它里面的文件", "That is a folder; name a file in it"), path, kHashIcon));
+            return items;
+        }
         int n = 0;
         for (const std::string& algorithm : algorithms) {
             std::string upper = algorithm;

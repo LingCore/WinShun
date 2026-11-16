@@ -690,6 +690,7 @@ void Host::setPluginSettings(const QString& id, const QJsonObject& settings)
         return; // nothing new to tell
     m_cache.clear(); // cached translations and other answers used the old settings
     m_settings[id] = settings;
+    m_catalog.setPluginSettings(id, settings); // the result menu's `if` entries follow the switches
     const auto it = m_plugins.find(id);
     if (it != m_plugins.end() && it->second->phase == Plugin::Phase::Ready && it->second->session)
         it->second->session->notify(u"settingsChanged"_s, {{u"settings"_s, pluginSettings(id)}});

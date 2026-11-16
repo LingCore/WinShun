@@ -10,6 +10,7 @@
 #include "Manifest.h"
 
 #include <QHash>
+#include <QJsonObject>
 #include <QObject>
 #include <QRegularExpression>
 #include <QSet>
@@ -127,6 +128,9 @@ public:
     // "plugin/command" -> the user's keywords in place of the manifest's
     // (typedKeywords); none: the command has no keyword.
     void setKeywordOverrides(QHash<QString, QStringList> overrides);
+    // The user's values for a plugin's settings (Host::setPluginSettings):
+    // a files trigger's `if` reads them, under the manifest's default.
+    void setPluginSettings(const QString& id, const QJsonObject& settings);
     void setWebKeywords(QList<std::pair<QString, QString>> keywords);
     void setFavoriteKeywords(QList<std::pair<QString, QString>> keywords);
     // Win顺's own keywords (the screenshot history's jt), (keyword, name):
@@ -161,7 +165,8 @@ public:
 
     // The enabled commands whose `files` trigger takes these files and
     // folders (`folders[i]`: paths[i] is one), for the result menu: each
-    // trigger's kind, extensions and count must fit the whole selection.
+    // trigger's kind, extensions and count must fit the whole selection,
+    // and a trigger's `if` setting must be on.
     // In the catalog's order.
     struct FileCommand {
         const Entry* entry = nullptr;
@@ -196,6 +201,7 @@ private:
     void rebuildIndex();
     void onFsChanges(const std::vector<QString>& paths); // the watcher's, on this thread
     const Command* commandOf(const KeywordUse& use, const Entry** entry) const;
+    bool settingOn(const Entry& e, const QString& key) const; // a files trigger's `if`
 
     QString m_userDir;
     QString m_bundledDir;
@@ -210,6 +216,7 @@ private:
     QList<std::pair<QString, QString>> m_builtin;
     QHash<QString, KeywordUse> m_keywords; // lower-cased keyword -> the command it opens
     QHash<QString, QStringList> m_effective; // "<id>/<command>" -> its keywords in use
+    QHash<QString, QJsonObject> m_settings; // id -> the user's values (a files trigger's `if` reads them)
     std::vector<KeywordConflict> m_conflicts;
     std::vector<Compiled> m_regexes;
     std::vector<Compiled> m_pushes;

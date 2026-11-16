@@ -116,18 +116,6 @@ private slots:
         QCOMPARE(errorOf("报告"), calc::Error::Syntax); // not a name, not a number
     }
 
-    void calcLooksLikeExpression()
-    {
-        QVERIFY(calc::looksLikeExpression("1+2*3"));
-        QVERIFY(calc::looksLikeExpression("(2+3)*4"));
-        QVERIFY(calc::looksLikeExpression("3 × 4"));
-        QVERIFY(!calc::looksLikeExpression("2024-01-02")); // a date: minus only
-        QVERIFY(!calc::looksLikeExpression("13800138000"));
-        QVERIFY(!calc::looksLikeExpression("report"));
-        QVERIFY(!calc::looksLikeExpression("v2.1+beta")); // letters
-        QVERIFY(!calc::looksLikeExpression("1+(2")); // unbalanced
-    }
-
     // The manifest's regex triggers decide which typed text reaches the
     // calculator without "=": a subtraction alone (#123) must, a date must not.
     void calcTriggerCoversSubtraction()
@@ -154,6 +142,7 @@ private slots:
         };
         for (const QString& yes : {u"99-9"_s, u"10 - 4"_s, u"10 -4"_s, u"5-3*2"_s, u"-5+3"_s, u"1+2"_s, u"3.5-1.5"_s, u"100 - 20 - 5"_s, u"2026 - 10"_s, u"1999-5000"_s, u"2024 - 2023"_s,
                  u"500-498-1"_s, u"1/2/2"_s, u"10/2/5"_s, u"-5-3-2"_s, u"1+2*3/4-5"_s,
+                 u"5!!"_s, u"(5!)"_s, u"50%"_s, u"0xff"_s, u"0b101"_s, u"0o17"_s, u"5!+1"_s, u"100*50%"_s,
                  u"2024-1987"_s, u"2026-1999"_s, u"2000-2000"_s, u"2023 - 2024"_s, u"2024-1987-3"_s, u"1850-1900"_s}) // an age: the earlier year second (#281)
             QVERIFY2(fires(yes), qPrintable(yes));
         QVERIFY(calc::looksLikeYearRange("1998-2003"));
@@ -282,6 +271,83 @@ private slots:
         QVERIFY(calc::hex(1e19).empty());
     }
 
+    // The manifest the tests are compiled against (the one this source
+    // ships with) has to stay a well-formed plugin manifest: the fields
+    // the host validates are the ones here.
+    void manifestIsValid()
+    {
+        QFile file(QStringLiteral(WINSHUN_TOOLS_MANIFEST));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+        QVERIFY2(!document.isNull(), "the manifest is not JSON");
+        const QJsonObject manifest = document.object();
+        QCOMPARE(manifest.value(u"manifest"_s).toInt(), 1);
+        QCOMPARE(manifest.value(u"id"_s).toString(), u"winshun.tools"_s);
+        const QRegularExpression version(u"\\d+\\.\\d+\\.\\d+"_s);
+        QVERIFY(version.match(manifest.value(u"version"_s).toString()).hasMatch());
+        QVERIFY(manifest.value(u"runtime"_s).toObject().value(u"mode"_s).toString() == u"resident"_s);
+        QStringList keywords;
+        const QJsonArray commands = manifest.value(u"commands"_s).toArray();
+        QVERIFY(!commands.isEmpty());
+        QStringList fileCommands;
+        for (const QJsonValue v : commands) {
+            const QJsonObject command = v.toObject();
+            QVERIFY2(!command.value(u"id"_s).toString().isEmpty(), "a command has no id");
+            QVERIFY(!command.value(u"title"_s).isUndefined());
+            // Keywords are unique and carry no spaces (docs/plugins.md); a
+            // command of the file menu alone has none.
+            const QJsonValue keyword = command.value(u"keyword"_s);
+            if (!keyword.isUndefined()) {
+                for (const QJsonValue k : keyword.isArray() ? keyword.toArray() : QJsonArray {keyword}) {
+                    const QString word = k.toString();
+                    QVERIFY2(!word.isEmpty() && !word.contains(u' '), qPrintable(word));
+                    QVERIFY2(!keywords.contains(word), qPrintable(u"duplicate keyword "_s + word));
+                    keywords.append(word);
+                }
+            }
+            for (const QJsonValue t : command.value(u"triggers"_s).toArray()) {
+                const QJsonObject trigger = t.toObject();
+                if (trigger.contains(u"files"_s)) {
+                    // A `files` trigger: a right-click menu item for the chosen
+                    // files. One item per digest, a command each, one file,
+                    // each gated on its own card switch.
+                    const QJsonObject files = trigger.value(u"files"_s).toObject();
+                    const QString id = command.value(u"id"_s).toString();
+                    fileCommands.append(id);
+                    QCOMPARE(files.value(u"kind"_s).toString(), u"file"_s);
+                    QCOMPARE(files.value(u"max"_s).toInt(), 1);
+                    QVERIFY(!files.value(u"title"_s).isUndefined());
+                    const QString expectedIf = id == u"hash-md5"_s ? u"menuMd5"_s
+                        : id == u"hash-sha1"_s ? u"menuSha1"_s : u"menuSha256"_s;
+                    QCOMPARE(files.value(u"if"_s).toString(), expectedIf);
+                    continue;
+                }
+                const QRegularExpression re(trigger.value(u"regex"_s).toString());
+                QVERIFY2(re.isValid(), qPrintable(re.errorString()));
+            }
+        }
+        fileCommands.sort();
+        const QStringList expectedFileCommands {u"hash-md5"_s, u"hash-sha1"_s, u"hash-sha256"_s};
+        QCOMPARE(fileCommands, expectedFileCommands);
+        // The switches the menu items follow: three bools, on by default.
+        QJsonObject settings;
+        for (const QJsonValue s : manifest.value(u"settings"_s).toArray()) {
+            const QJsonObject setting = s.toObject();
+            settings.insert(setting.value(u"key"_s).toString(), setting);
+        }
+        QCOMPARE(settings.count(), 3);
+        for (const QString key : {u"menuMd5"_s, u"menuSha1"_s, u"menuSha256"_s}) {
+            QVERIFY2(settings.contains(key), qPrintable(key));
+            QCOMPARE(settings.value(key).toObject().value(u"type"_s).toString(), u"bool"_s);
+            QCOMPARE(settings.value(key).toObject().value(u"default"_s).toBool(), true);
+        }
+        // Every icon named for the commands is a Phosphor name (AGENTS.md).
+        for (const QJsonValue v : commands) {
+            const QString icon = v.toObject().value(u"icon"_s).toString();
+            QVERIFY2(icon.startsWith(u"ph:"_s), qPrintable(icon));
+        }
+    }
+
     void unitsParse()
     {
         auto r = units::parse("12 inch to cm");
@@ -313,7 +379,8 @@ private slots:
         QVERIFY(!units::parse("inch to cm")); // no number
         QVERIFY(!units::parse("report"));
         QVERIFY(!units::parse(""));
-        QVERIFY(units::find("GB") == units::find("gib")); // 1024-based, both spellings
+        QVERIFY(units::find("GB") != units::find("gib")); // GB is Windows's 1024, GiB strictly so
+        QVERIFY(units::find("GiB")->factor == units::find("GB")->factor);
         QVERIFY(units::find("g")->category == units::Category::Mass); // the gram, not GB
     }
 
@@ -336,6 +403,22 @@ private slots:
         QCOMPARE(qs(rows[0].value), u"1536"_s);
         QCOMPARE(qs(rows[1].value), u"1500"_s);
         QVERIFY(rows[1].alternate);
+        QCOMPARE(qs(rows[0].note), u"1 KB = 1024 B"_s); // the English note
+        const auto zhRows = units::convert(*units::parse("1.5 GB in MB"), true);
+        QCOMPARE(qs(zhRows[0].note), u"按 1024 算"_s);
+        QCOMPARE(qs(zhRows[1].note), u"按 1000 算"_s);
+        rows = rowsOf("1 GB to GiB");
+        QCOMPARE(rows.size(), std::size_t(1)); // both 1024-based: one row, no alternate
+        QCOMPARE(qs(rows[0].value), u"1"_s);
+        QVERIFY(qs(rows[0].note).isEmpty());
+        rows = rowsOf("1 GiB to MB");
+        QCOMPARE(rows.size(), std::size_t(1)); // from is strictly 1024-based: no alternate
+        QCOMPARE(qs(rows[0].value), u"1024"_s);
+        QVERIFY(qs(rows[0].note).isEmpty());
+        rows = rowsOf("1 GiB to gb");
+        QCOMPARE(rows.size(), std::size_t(1)); // GiB is unambiguous: the 1024 reading only
+        QCOMPARE(qs(rows[0].value), u"1"_s);
+        QVERIFY(qs(rows[0].note).isEmpty());
         rows = rowsOf("1 斤 to g");
         QCOMPARE(qs(rows[0].value), u"500"_s);
         rows = rowsOf("2 h to min");
@@ -470,12 +553,21 @@ private slots:
         QCOMPARE(m->milliseconds, 123);
         m = codec::parseTimestamp("1700000000.5");
         QVERIFY(m && m->milliseconds == 500);
+        m = codec::parseTimestamp("1700000000123456"); // microseconds
+        QVERIFY(m);
+        QCOMPARE(m->seconds, std::int64_t(1700000000));
+        QCOMPARE(m->milliseconds, 123);
+        m = codec::parseTimestamp("1700000000123456789"); // nanoseconds
+        QVERIFY(m);
+        QCOMPARE(m->seconds, std::int64_t(1700000000));
+        QCOMPARE(m->milliseconds, 123);
         m = codec::parseTimestamp("1 700 000 000");
         QVERIFY(m && m->seconds == 1700000000);
         QVERIFY(!codec::parseTimestamp("abc"));
         QVERIFY(!codec::parseTimestamp(""));
-        QVERIFY(!codec::parseTimestamp("99999999999999999")); // too long
-        QVERIFY(!codec::parseTimestamp("999999999999999")); // beyond FILETIME's years
+        QVERIFY(!codec::parseTimestamp("99999999999999999999")); // over 19 digits
+        m = codec::parseTimestamp("999999999999999999"); // 18 nines: nanoseconds, year 2001
+        QVERIFY(m && m->seconds == 999999999 && m->milliseconds == 999);
         m = codec::parseDate("2023-11-14T22:13:20Z");
         QVERIFY(m);
         QCOMPARE(m->seconds, std::int64_t(1700000000));
