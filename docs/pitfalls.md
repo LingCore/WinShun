@@ -1,5 +1,12 @@
 # 踩坑记录
 
+## 目录链接：测试清理顺着联接删，MFT 经服务没有重解析标签（2026-11-16，#350）
+
+- **`QTemporaryDir` 会顺着联接删进目标**：它析构时 `QDir::removeRecursively()` 把联接当普通文件夹往里走。一次测试在临时目录里建了指向 C 盘卷根的联接（测 `\??\Volume{…}` 的解析），又建了指向 `\\nas\…` 的符号链接，后者让清理时的 stat 卡到 300 秒被 QtTest 杀掉，碰巧没走到卷根；联接本身的目标文件夹已经被删了。现在测试建的链接都登记在 `MadeLinks`（`tests/TestJunction.h`），声明在临时目录之后，先用 `RemoveDirectoryW` 单删链接再让 `QTemporaryDir` 清理。手工清理残留也一样：先 `[IO.Directory]::Delete(链接, $false)` 删掉每个 `ReparsePoint`，再递归删目录。
+- **经服务读 MFT 拿不到重解析标签**：服务传给程序的是解析好的精简记录（`volproto::BlockWriter`），只有属性、名字、大小，没有 `$REPARSE_POINT` 的标签，于是“是联接/符号链接”还是“OneDrive 云文件夹”分不出来，链接一个都找不到；提权直接读 MFT 时却正常。现在记录的标志字节多一位 `kRecordNameSurrogate`（旧端忽略），服务和主程序要一起更新。
+- **日志里看不到后建的联接**：`mklink /j` 是先建空文件夹、再设重解析点，第二步的记录原因是 `USN_REASON_REPARSE_POINT_CHANGE`，原先的 `kReasonMask` 不含它，整条被过滤掉。`mklink /d`（符号链接）一步建成，不受影响。
+- **QTRY 超时看着像卡死**：`QTRY_VERIFY_WITH_TIMEOUT` 条件到时不成立时，还会再等两倍时间来报告“后来成立了没有”，180 秒的等待实际要 540 秒才失败，被函数超时杀掉时只看得到“卡住”。先拆开等待条件、缩短超时，再判断是不是真卡。
+
 ## 乱码：UTF-8 被当成 GBK 读（2026-11-16，#346）
 
 - **现象**：备份路径 `D:\BaiduSyncdisk\tourbox预设\Winshun设置备份` 显示成 `tourbox棰勮…\Winshun璁剧疆澶囦唤`。这是 UTF-8 字节被按系统代码页（中文 Windows 是 936/GBK）解码的典型样子。Win顺 自己的读写全是 UTF-16/UTF-8，没能复现；推测是选文件夹时某个外壳扩展返回了这样的路径。
