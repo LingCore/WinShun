@@ -42,8 +42,11 @@
 #include <QProcess>
 #include <QThread>
 #include <QInputMethodEvent>
+#include <QPainter>
 #include <QQmlComponent>
+#include <QQmlContext>
 #include <QQmlEngine>
+#include <QQmlExpression>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
@@ -539,13 +542,35 @@ void displayGroups(Checks& check)
     pump(50);
 }
 
+// The menu's columns as they stand on the screen, side by side, each its own
+// grab (off the screen, nothing else is there to take).
+bool saveColumns(const QList<QQuickWindow*>& windows, const QString& path)
+{
+    QRect bounds;
+    for (const QQuickWindow* window : windows)
+        bounds |= window->geometry();
+    const qreal dpr = windows.first()->devicePixelRatio();
+    QImage image(bounds.size() * dpr, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    for (QQuickWindow* window : windows) {
+        QImage grab = window->grabWindow();
+        grab.setDevicePixelRatio(1);
+        painter.drawImage(QPointF((window->x() - bounds.x()) * dpr, (window->y() - bounds.y()) * dpr), grab);
+    }
+    painter.end();
+    return image.save(path);
+}
+
 void folderGroups(QQmlEngine* engine, const QDir& output, Checks& check)
 {
     FolderMenu menu(nullptr, nullptr);
+    QPoint pointer(-100000, -100000); // where the menu sees the system's pointer (#348)
+    menu.setCursorSource([&pointer] { return pointer; });
     QVariantList children;
     for (int i = 0; i < 12; ++i)
         children.append(QVariantMap {{u"text"_s, u"项目资料 %1"_s.arg(i + 1)}, {u"action"_s, i}, {u"glyph"_s, u"\uE8B7"_s}});
-    const auto entries = FolderMenu::groupEntries(u"最近的文件夹"_s, u"\uE81C"_s, children, 3);
+    menu.previewEntries(FolderMenu::groupEntries(u"最近的文件夹"_s, u"\uE81C"_s, children, 3));
     QQmlComponent component(engine, u"WinShun"_s, u"FolderMenuWindow"_s);
     std::unique_ptr<QObject> root(component.createWithInitialProperties({{u"folderMenu"_s, QVariant::fromValue(&menu)}}));
     auto* window = qobject_cast<QQuickWindow*>(root.get());
@@ -554,68 +579,98 @@ void folderGroups(QQmlEngine* engine, const QDir& output, Checks& check)
     const int offset = static_cast<int>(std::floor(24000 / window->devicePixelRatio()));
     root->setProperty("availableArea", QRectF(offset, offset, 1200, 1000));
     root->setProperty("popupAnchor", QPointF(offset + 8, offset + 8));
-    root->setProperty("page", QVariantMap {{u"text"_s, u"文件夹菜单"_s}, {u"children"_s, entries}});
     showOffscreen(window);
+    const auto value = [&](const QString& script) {
+        return QQmlExpression(qmlContext(root.get()), root.get(), script).evaluate();
+    };
+    const auto depth = [&] { return root->property("depth").toInt(); };
+    const auto columnAt = [&](int visual) { return root->findChild<QQuickWindow*>(u"folderMenuColumn%1"_s.arg(visual)); };
+    const auto rowTop = [](QQuickWindow* shown, int row) {
+        QQuickItem* entry = shown ? item(shown->contentItem(), u"folderMenuEntry%1"_s.arg(row)) : nullptr;
+        return entry ? entry->mapToGlobal(QPointF()).y() : -1e6;
+    };
     QMetaObject::invokeMethod(root.get(), "handleKey", Q_ARG(QVariant, Qt::Key_Down), Q_ARG(QVariant, QString()));
     check(root->property("highlighted").toInt() == 1, u"keyboard navigation skips the inline section heading"_s);
     check(window->grabWindow().save(output.filePath(u"folder-direct.png"_s)), u"capture direct folders and More"_s);
-    QMetaObject::invokeMethod(root.get(), "activate", Q_ARG(QVariant, 4));
+    // More, chosen by the keys: the remaining folders in a column of their
+    // own beside the menu (#348), the first one chosen, More still highlighted.
+    QMetaObject::invokeMethod(root.get(), "activate", Q_ARG(QVariant, 0), Q_ARG(QVariant, 4), Q_ARG(QVariant, false));
     settle(window);
-    const auto page = root->property("page").toMap();
-    check(page.value(u"pageTitle"_s).toString() == u"最近的文件夹" && page.value(u"children"_s).toList().size() == 9,
+    QQuickWindow* more = columnAt(1);
+    check(more && more->isVisible() && depth() == 2, u"More opens a column beside the menu"_s);
+    if (!more) {
+        menu.dismiss();
+        return;
+    }
+    settle(more);
+    check(value(u"pages[0].pageTitle"_s).toString() == u"最近的文件夹" && value(u"pages[0].children.length"_s).toInt() == 9,
         u"More opens the remaining folders under their original group title"_s);
-    check(window->grabWindow().save(output.filePath(u"folder-more.png"_s)), u"capture remaining folder rows"_s);
+    check(root->property("highlighted").toInt() == 0 && value(u"rowShown(0)"_s).toInt() == 4,
+        u"its first folder is chosen and More stays highlighted"_s);
+    check(more->width() == window->width() && more->x() == window->x() + window->width() - 1,
+        u"the column is as wide as the menu, beside it over its edge (x %1, menu %2 + %3)"_s.arg(more->x())
+            .arg(window->x()).arg(window->width()));
+    check(std::abs(rowTop(more, 0) - rowTop(window, 4)) <= 1,
+        u"its first row is level with More (%1, %2)"_s.arg(rowTop(more, 0)).arg(rowTop(window, 4)));
+    check(saveColumns({window, more}, output.filePath(u"folder-more.png"_s)), u"capture the menu and the column of the remaining folders"_s);
+    QMetaObject::invokeMethod(root.get(), "handleKey", Q_ARG(QVariant, Qt::Key_Left), Q_ARG(QVariant, QString()));
+    check(depth() == 1 && !more->isVisible() && root->property("highlighted").toInt() == 4,
+        u"Left closes the column, back on More"_s);
 
-    // Flipped above a pointer near the screen's foot, a shorter page used to
-    // drop below the pointer (#349): every page keeps the first one's top.
+    // The menu stays where it went while columns come and go beside it
+    // (#349: a shorter page used to drop below a pointer near the foot).
     QVariantList rows;
     for (int i = 0; i < 10; ++i)
         rows.append(QVariantMap {{u"text"_s, u"文件夹 %1"_s.arg(i + 1)}, {u"action"_s, i}, {u"glyph"_s, u"\uE8B7"_s}});
     rows.append(QVariantMap {{u"text"_s, u"收藏夹"_s}, {u"glyph"_s, u"\uE734"_s},
         {u"children"_s, QVariantList {QVariantMap {{u"text"_s, u"v10-dto"_s}, {u"action"_s, 10}},
                             QVariantMap {{u"text"_s, u"Repos"_s}, {u"action"_s, 11}}}}});
-    root->setProperty("trail", QVariantList());
-    root->setProperty("page", QVariantMap {{u"text"_s, u"文件夹菜单"_s}, {u"children"_s, rows}});
+    menu.previewEntries(rows);
     root->setProperty("popupAnchor", QPointF(offset + 400, offset + 900));
     settle(window);
     QMetaObject::invokeMethod(root.get(), "place");
     settle(window);
-    const int top = window->y();
-    check(top + window->height() <= offset + 900 + 1, u"a tall page near the screen's foot opens above the pointer"_s);
-    QMetaObject::invokeMethod(root.get(), "activate", Q_ARG(QVariant, 10));
+    const QPoint at = window->position();
+    check(at.y() + window->height() <= offset + 900 + 1, u"a tall menu near the screen's foot opens above the pointer"_s);
+    QMetaObject::invokeMethod(root.get(), "activate", Q_ARG(QVariant, 0), Q_ARG(QVariant, 10), Q_ARG(QVariant, false));
     settle(window);
-    check(root->property("page").toMap().value(u"children"_s).toList().size() == 2 && window->y() == top,
-        u"a shorter page keeps the menu's top edge (y %1, was %2)"_s.arg(window->y()).arg(top));
+    settle(more);
+    check(depth() == 2 && more->isVisible() && window->position() == at,
+        u"a column coming keeps the menu where it was (%1,%2, was %3,%4)"_s.arg(window->x()).arg(window->y()).arg(at.x()).arg(at.y()));
+    check(more->y() >= offset + 8 && more->y() + more->height() <= offset + 1000 - 8
+            && std::abs(rowTop(more, 0) - rowTop(window, 10)) <= 1,
+        u"the column's first row is level with its row, inside the work area (%1, %2)"_s.arg(rowTop(more, 0)).arg(rowTop(window, 10)));
     QMetaObject::invokeMethod(root.get(), "back");
     settle(window);
-    check(root->property("page").toMap().value(u"children"_s).toList().size() == 11 && window->y() == top,
-        u"going back puts the first page where it was (y %1, was %2)"_s.arg(window->y()).arg(top));
+    check(depth() == 1 && !more->isVisible() && window->position() == at,
+        u"closing it leaves the menu where it was (%1,%2, was %3,%4)"_s.arg(window->x()).arg(window->y()).arg(at.x()).arg(at.y()));
 
-    // A page swapped in under a pointer at rest: the arrow now under it opens
-    // nothing until the pointer moves (#348: one hover went all the way down).
+    // A column that comes under a pointer at rest opens nothing until the
+    // pointer moves (#348: one hover went all the way down).
     const QVariantMap deepest {{u"text"_s, u"最深"_s}, {u"children"_s, QVariantList {QVariantMap {{u"text"_s, u"底"_s}, {u"action"_s, 13}}}}};
     const QVariantMap deeper {{u"text"_s, u"更深"_s}, {u"children"_s, QVariantList {deepest}}};
     const QVariantMap deep {{u"text"_s, u"深"_s}, {u"children"_s, QVariantList {deeper}}};
-    root->setProperty("trail", QVariantList());
-    root->setProperty("page", QVariantMap {{u"text"_s, u"文件夹菜单"_s}, {u"children"_s, QVariantList {deep}}});
+    menu.previewEntries({deep});
     settle(window);
-    const auto shown = [&] { return root->property("page").toMap().value(u"text"_s).toString(); };
     const auto pump = [](int milliseconds) {
         QElapsedTimer timer;
         timer.start();
         while (timer.elapsed() < milliseconds)
             QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
     };
-    QMetaObject::invokeMethod(root.get(), "open", Q_ARG(QVariant, 0), Q_ARG(QVariant, true));
+    const QVariant noRow = QVariant::fromValue<QObject*>(nullptr);
+    QMetaObject::invokeMethod(root.get(), "open", Q_ARG(QVariant, 0), Q_ARG(QVariant, 0), Q_ARG(QVariant, true));
     settle(window);
-    QMetaObject::invokeMethod(root.get(), "pointed", Q_ARG(QVariant, 0));
+    QMetaObject::invokeMethod(root.get(), "pointed", Q_ARG(QVariant, 1), Q_ARG(QVariant, 0), Q_ARG(QVariant, noRow));
     pump(600);
-    check(shown() == u"深", u"an arrow that comes under the pointer at rest opens nothing (page '%1')"_s.arg(shown()));
-    root->setProperty("restingCursor", QPointF(-100000, -100000)); // as if the pointer had moved since
-    QMetaObject::invokeMethod(root.get(), "pointed", Q_ARG(QVariant, 0));
+    check(depth() == 2, u"a row that comes under the pointer at rest opens nothing (%1 columns)"_s.arg(depth()));
+    pointer += QPoint(10, 0); // the pointer moved since
+    QMetaObject::invokeMethod(root.get(), "pointed", Q_ARG(QVariant, 1), Q_ARG(QVariant, 0), Q_ARG(QVariant, noRow));
     pump(600);
-    check(shown() == u"更深", u"once the pointer moves, resting on an arrow opens its page (page '%1')"_s.arg(shown()));
-    window->hide();
+    check(depth() == 3 && value(u"pages[1].text"_s).toString() == u"更深",
+        u"once the pointer moves, resting on the row opens its column (%1 columns)"_s.arg(depth()));
+    menu.dismiss();
+    check(!window->isVisible() && !more->isVisible(), u"closing the menu hides every column"_s);
 }
 } // namespace
 

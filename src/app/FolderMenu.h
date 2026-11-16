@@ -97,6 +97,9 @@ public:
     // in the file manager unless a test says otherwise.
     void setOpener(std::function<void(const QString&)> opener) { m_opener = std::move(opener); }
     void setBlocked(std::function<bool()> blocked) { m_blocked = std::move(blocked); }
+    // Where the pointer is (cursorPos()): the system's unless a test says
+    // otherwise (QTest moves Qt's pointer, not the system's).
+    void setCursorSource(std::function<QPoint()> source) { m_cursorSource = std::move(source); }
     // Takes an Open or Save dialog to a folder, in order with the app's
     // other moves of it (DialogJump::go); false: not able to, the menu
     // does it itself.
@@ -132,6 +135,13 @@ public:
     // while the pointer rests, though pages move the window (GitHub #348).
     Q_INVOKABLE QPoint cursorPos() const;
     Q_INVOKABLE void prepareMenuWindow(QWindow* menu) const;
+    // A column of the menu (FolderMenuWindow, or a folder's column beside
+    // it) shown as the menu is (prepareMenuWindow), in front of those shown
+    // before it, and only with its first frame: Windows would first put it
+    // up as it last looked (another folder's rows) and fade it in. Hidden by
+    // hideColumn at once, without the fade.
+    Q_INVOKABLE void showColumn(QWindow* column);
+    Q_INVOKABLE void hideColumn(QWindow* column) const;
     Q_INVOKABLE void trigger(int index);
     // The folders inside `folder`, for the page a folder's row opens (GitHub
     // #170): read off the GUI thread (a share may take its time), answered
@@ -181,6 +191,8 @@ private:
     SystemCatalog* m_places = nullptr;
     QPointer<QWindow> m_window;
     std::function<bool()> m_blocked;
+    std::function<QPoint()> m_cursorSource;
+    std::uint64_t m_columnShows = 0; // which showing of a column its first frame reveals
     std::function<void(const QString&)> m_clipboardWriter;
     std::function<void(const QString&)> m_opener;
     std::function<bool(HWND, const QString&)> m_dialogGo;

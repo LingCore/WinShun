@@ -24,6 +24,7 @@
 #include <QThreadPool>
 #include <QGuiApplication>
 #include <QJsonObject>
+#include <QQuickWindow>
 #include <QScreen>
 #include <QStandardPaths>
 #include <QStyleHints>
@@ -940,7 +941,7 @@ void FolderMenu::listFolder(const QString& folder)
 
 QPoint FolderMenu::cursorPos() const
 {
-    return QCursor::pos();
+    return m_cursorSource ? m_cursorSource() : QCursor::pos();
 }
 
 QRectF FolderMenu::screenArea(QPointF globalPos) const
@@ -958,6 +959,38 @@ void FolderMenu::prepareMenuWindow(QWindow* menu) const
     const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
     win::styleFramelessWindow(menu);
     win::setDarkFrame(menu, dark);
+}
+
+void FolderMenu::showColumn(QWindow* column)
+{
+    auto* window = qobject_cast<QQuickWindow*>(column);
+    if (!window)
+        return;
+    if (!window->isVisible()) {
+        prepareMenuWindow(window);
+        // Cloaked (DWM does not show it) until a frame with what it shows
+        // now; a frame that does not come is waited for a moment only.
+        win::setCloaked(window, true);
+        const std::uint64_t show = ++m_columnShows;
+        window->setProperty("_ws_columnShow", QVariant::fromValue(show));
+        const auto reveal = [window = QPointer(window), show] {
+            if (window && window->isVisible() && window->property("_ws_columnShow").toULongLong() == show)
+                win::setCloaked(window, false);
+        };
+        connect(window, &QQuickWindow::frameSwapped, this, reveal,
+            static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
+        QTimer::singleShot(250ms, this, reveal);
+        window->show();
+    }
+    window->raise(); // over a column before it it may overlap
+}
+
+void FolderMenu::hideColumn(QWindow* column) const
+{
+    if (!column || !column->isVisible())
+        return;
+    win::setCloaked(column, true); // gone with the next composition, no fade
+    column->hide();
 }
 
 } // namespace ws

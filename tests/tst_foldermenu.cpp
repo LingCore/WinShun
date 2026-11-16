@@ -28,6 +28,10 @@
 #include <QScreen>
 #include <QStyleHints>
 #include <QFontDatabase>
+#include <QCursor>
+#include <QPixmap>
+#include <QPointer>
+#include <cmath>
 #include <commctrl.h>
 
 namespace {
@@ -98,6 +102,148 @@ class FolderMenuTest : public QObject {
         return -1;
     }
     static int entry(const FolderMenu& menu, const QString& title) { return entryIn(menu.entries(), title); }
+
+    // Where the pointer is, for the menu (FolderMenu::setCursorSource) and
+    // for Qt: QTest moves Qt's pointer, never the system's. Going from one
+    // window to another, the one left is told, as Windows tells it.
+    struct Pointer {
+        QPoint at {-30000, -30000};
+        QPointer<QWindow> over;
+        void leave()
+        {
+            if (over) {
+                QEvent left(QEvent::Leave);
+                QCoreApplication::sendEvent(over, &left);
+            }
+            over = nullptr;
+        }
+        void moveTo(QWindow* window, QPoint local)
+        {
+            if (over != window)
+                leave();
+            over = window;
+            at = window->mapToGlobal(local);
+            QTest::mouseMove(window, local);
+        }
+        // A window came under the pointer, which has not moved: Windows tells
+        // that one where the pointer is.
+        void cameUnder(QWindow* window)
+        {
+            if (over != window)
+                leave();
+            over = window;
+            QTest::mouseMove(window, window->mapFromGlobal(at));
+        }
+        void click(QWindow* window, QPoint local)
+        {
+            moveTo(window, local);
+            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, local);
+        }
+    };
+
+    // The production menu (FolderMenuWindow.qml) for `menu`.
+    static std::unique_ptr<QObject> load(QQmlEngine& engine, FolderMenu& menu)
+    {
+        QQmlComponent component(&engine, QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR) + u"/FolderMenuWindow.qml"_s));
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"folderMenu"_s, QVariant::fromValue(&menu)}}));
+        if (!object)
+            qWarning().noquote() << component.errorString();
+        return object;
+    }
+    static QVariant value(QObject* object, const QString& script)
+    {
+        QQmlExpression expression(qmlContext(object), object, script);
+        const QVariant result = expression.evaluate();
+        if (expression.hasError())
+            qWarning().noquote() << expression.error().toString();
+        return result;
+    }
+    // The window showing column `visual` of the menu (0: the menu's own).
+    static QQuickWindow* column(QObject* menu, int visual)
+    {
+        return visual == 0 ? qobject_cast<QQuickWindow*>(menu)
+                           : menu->findChild<QQuickWindow*>(u"folderMenuColumn%1"_s.arg(visual));
+    }
+    static QQuickItem* rowItem(QQuickWindow* window, int index)
+    {
+        return window ? visualItem(window->contentItem(), u"folderMenuEntry%1"_s.arg(index)) : nullptr;
+    }
+    // A point on row `index`, `across` of the way along it.
+    static QPoint on(QQuickWindow* window, int index, qreal across = 0.3)
+    {
+        auto* item = rowItem(window, index);
+        return item ? item->mapToScene(QPointF(item->width() * across, item->height() / 2)).toPoint() : QPoint(-1, -1);
+    }
+    static QPoint arrowOf(QQuickWindow* window, int index)
+    {
+        auto* item = window ? visualItem(window->contentItem(), u"folderMenuArrow%1"_s.arg(index)) : nullptr;
+        return item ? item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint() : QPoint(-1, -1);
+    }
+    static qreal topOf(QQuickWindow* window, int index)
+    {
+        auto* item = rowItem(window, index);
+        return item ? item->mapToGlobal(QPointF(0, 0)).y() : -1e6;
+    }
+    static bool aligned(qreal a, qreal b) { return std::abs(a - b) <= 1.01; }
+    // Inside the work area `area`, 8 px from its edges (a pixel either way).
+    static bool inside(const QRect& area, const QWindow* window)
+    {
+        const QRect r = window->geometry();
+        return r.x() >= area.x() + 7 && r.y() >= area.y() + 7 && r.x() + r.width() <= area.x() + area.width() - 7
+            && r.y() + r.height() <= area.y() + area.height() - 7;
+    }
+    static HWND handle(QWindow* window) { return reinterpret_cast<HWND>(window->winId()); }
+    static QVariantMap group(const QString& text, const QVariantList& children)
+    {
+        return {{u"text"_s, text}, {u"glyph"_s, u"\uE8B7"_s}, {u"children"_s, children}};
+    }
+    static QVariantMap leaf(const QString& text) { return {{u"text"_s, text}, {u"glyph"_s, u"\uE8B7"_s}, {u"action"_s, 0}}; }
+    // Somewhere on the screen away from the system's pointer, which the tests
+    // never move: a window that came under it would get its moves too.
+    static QRect awayFromPointer(QSize size)
+    {
+        const QRect screen = QGuiApplication::primaryScreen()->availableGeometry();
+        const QPoint cursor = QCursor::pos();
+        const int left = screen.x() + 16, right = screen.x() + screen.width() - size.width() - 16;
+        const int top = screen.y() + 16, bottom = screen.y() + screen.height() - size.height() - 16;
+        for (const QPoint corner : {QPoint(left, top), QPoint(right, top), QPoint(left, bottom), QPoint(right, bottom)}) {
+            if (!QRect(corner, size).adjusted(-24, -24, 24, 24).contains(cursor))
+                return QRect(corner, size);
+        }
+        return QRect(QPoint(left, top), size);
+    }
+    // A plain window under the menu for screenEvidence; none unless
+    // WINSHUN_MENU_EVIDENCE asks for evidence.
+    static std::unique_ptr<QQuickWindow> backdrop(const QRect& area, bool dark)
+    {
+        if (qEnvironmentVariableIsEmpty("WINSHUN_MENU_EVIDENCE"))
+            return {};
+        auto window = std::make_unique<QQuickWindow>();
+        window->setFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::WindowDoesNotAcceptFocus);
+        window->setProperty("_q_showWithoutActivating", true);
+        window->setColor(dark ? QColor(0x1f, 0x23, 0x29) : QColor(0xe3, 0xe8, 0xee));
+        window->setGeometry(area.adjusted(-40, -40, 40, 40));
+        window->show();
+        return window;
+    }
+    // The screen where the columns are, as Windows shows them (DWM's corners,
+    // edges and shadows), over the backdrop: WINSHUN_MENU_EVIDENCE only.
+    static bool screenEvidence(const QList<QQuickWindow*>& windows, const QString& name)
+    {
+        const QString folder = qEnvironmentVariable("WINSHUN_MENU_EVIDENCE");
+        if (folder.isEmpty())
+            return true;
+        QTest::qWait(400); // revealed (FolderMenu::showColumn), the highlights where they go
+        QRect bounds;
+        for (const QQuickWindow* window : windows)
+            bounds |= window->geometry();
+        QScreen* screen = windows.first()->screen();
+        const QRect whole = screen->geometry();
+        bounds = bounds.adjusted(-20, -20, 20, 20) & whole;
+        const QPixmap shot = screen->grabWindow(0, bounds.x() - whole.x(), bounds.y() - whole.y(), bounds.width(), bounds.height());
+        const QString scale = QString::number(qRound(screen->devicePixelRatio() * 100));
+        return QDir().mkpath(folder) && shot.save(folder + u'/' + name + u'-' + scale + u".png"_s);
+    }
 
 private slots:
     void initTestCase()
@@ -375,6 +521,8 @@ private slots:
     {
         QFETCH(QPoint, position);
         FolderMenu menu(nullptr, nullptr);
+        const QString path = u"C:\\项目资料\\"_s + QString(90, u'长') + u"\\outputs"_s;
+        menu.previewEntries({QVariantMap {{u"text"_s, u"outputs"_s}, {u"tooltip"_s, path}}});
         QQmlEngine engine;
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
         QQmlComponent component(&engine,
@@ -385,9 +533,6 @@ private slots:
         QVERIFY2(object, qPrintable(component.errorString()));
         auto* window = qobject_cast<QQuickWindow*>(object.get());
         QVERIFY(window);
-        const QString path = u"C:\\项目资料\\"_s + QString(90, u'长') + u"\\outputs"_s;
-        object->setProperty("page", QVariantMap {{u"text"_s, u"已打开的文件夹"_s},
-            {u"children"_s, QVariantList {QVariantMap {{u"text"_s, u"outputs"_s}, {u"tooltip"_s, path}}}}});
         window->setPosition(position);
         window->show();
         QTRY_VERIFY(visualItem(window->contentItem(), u"folderMenuEntry0"_s));
@@ -446,7 +591,7 @@ private slots:
         SystemTheme::setRoundedCorners(round);
         QWindow source;
         source.setTitle(u"WinShun menu page test"_s);
-        source.resize(320, 160);
+        source.setGeometry(QRect(awayFromPointer(QSize(900, 680)).topLeft(), QSize(320, 160)));
         source.show();
         QVERIFY(QTest::qWaitForWindowExposed(&source));
         win::bringToFront(&source);
@@ -478,6 +623,8 @@ private slots:
         FolderMenu menu(nullptr, &favorites);
         menu.setRecordHistory(false);
         menu.setGroups(true, false, false);
+        Pointer pointer;
+        menu.setCursorSource([&pointer] { return pointer.at; });
         QQmlEngine engine;
         engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
@@ -495,14 +642,17 @@ private slots:
             menu.hotkeyPressed();
             return changed.wait(5000) && menu.isOpen();
         };
-        const auto shot = [&](const QString& name) {
+        const auto shot = [&](QQuickWindow* shown, const QString& name) {
             const QString folder = qEnvironmentVariable("WINSHUN_MENU_EVIDENCE");
             if (folder.isEmpty())
                 return true;
             return QDir().mkpath(folder)
-                && window->grabWindow().save(folder + u'/' + name + (round ? QString() : u"-square"_s)
+                && shown->grabWindow().save(folder + u'/' + name + (round ? QString() : u"-square"_s)
                     + (dark ? u"-dark.png"_s : u"-light.png"_s));
         };
+        const auto depth = [&] { return object->property("depth").toInt(); };
+        const auto highlighted = [&] { return object->property("highlighted").toInt(); };
+        const auto key = [&](Qt::Key k) { emit menu.keyPressed(k, {}); };
         QVERIFY(open());
         QVERIFY(QTest::qWaitForWindowExposed(window));
         QCOMPARE(::GetForegroundWindow(), sourceHandle);
@@ -514,49 +664,76 @@ private slots:
         QVERIFY(children[50].toMap().value(u"icon"_s).toString().startsWith(u"image://fileicon/command/"));
         QCOMPARE(children.first().toMap().value(u"detail"_s).toString(), QString());
         QVERIFY(!children.first().toMap().value(u"tooltip"_s).toString().isEmpty());
-        QVERIFY(shot(u"root"_s));
+        QVERIFY(shot(window, u"root"_s));
 
-        // Mouse entry and keyboard return use the production QML handlers.
-        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(90, 22));
-        QTRY_VERIFY(object->property("headingHeight").toInt() > 0);
+        // A click on a group's row opens its column beside the menu, which
+        // stays where it is; nothing runs, and the window in front keeps it.
+        const QPoint topLeft = window->position();
+        QTRY_VERIFY(rowItem(window, 0));
+        pointer.click(window, on(window, 0));
+        QCOMPARE(depth(), 2);
+        auto* favoritesColumn = column(object.get(), 1);
+        QVERIFY(favoritesColumn);
+        QVERIFY(favoritesColumn->isVisible());
+        QCOMPARE(window->position(), topLeft);
+        QCOMPARE(favoritesColumn->transientParent(), window);
+        QVERIFY(favoritesColumn->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
+        QCOMPARE(favoritesColumn->width(), window->width());
         QVERIFY(!QFile::exists(output)); // browsing never executes a command
         QCOMPARE(::GetForegroundWindow(), sourceHandle);
-        emit menu.keyPressed(Qt::Key_Escape, {});
-        QTRY_COMPARE(object->property("headingHeight").toInt(), 0);
+        pointer.leave();
+        // Left closes it, back on the row it came from; the menu stays.
+        key(Qt::Key_Left);
+        QCOMPARE(depth(), 1);
+        QVERIFY(!favoritesColumn->isVisible());
+        QCOMPARE(highlighted(), 0);
         QVERIFY(menu.isOpen());
-        object->setProperty("highlighted", 0);
-        emit menu.keyPressed(Qt::Key_Right, {});
-        QTRY_VERIFY(object->property("headingHeight").toInt() > 0);
-        auto* scroll = visualItem(window->contentItem(), u"folderMenuScroll"_s);
+        // Right opens it again, its first row chosen; the row it came from
+        // stays highlighted in the menu, fainter.
+        key(Qt::Key_Right);
+        QCOMPARE(depth(), 2);
+        QVERIFY(favoritesColumn->isVisible());
+        QCOMPARE(highlighted(), 0);
+        QCOMPARE(value(object.get(), u"rowShown(0)"_s).toInt(), 0);
+        QVERIFY(value(object.get(), u"fainter(0)"_s).toBool());
+        auto* scroll = visualItem(favoritesColumn->contentItem(), u"folderMenuScroll"_s);
         QVERIFY(scroll);
         QTRY_VERIFY(scroll->property("contentHeight").toReal() > scroll->height());
-        QVERIFY(window->height() <= menu.screenArea(window->position()).height() - 16);
+        const QRectF area = menu.screenArea(window->position());
+        QVERIFY(favoritesColumn->height() <= area.height() - 16);
+        QVERIFY(area.contains(QRectF(favoritesColumn->geometry())));
         QTest::qWait(150); // asynchronous shell icons before visual evidence
-        QVERIFY(shot(u"favorites"_s));
-        emit menu.keyPressed(Qt::Key_End, {});
-        QTRY_COMPARE(object->property("highlighted").toInt(), 53);
+        QVERIFY(shot(favoritesColumn, u"favorites"_s));
+        key(Qt::Key_End);
+        QCOMPARE(highlighted(), 53);
         QTRY_VERIFY(scroll->property("contentY").toReal() > 0);
-        const auto* last = visualItem(window->contentItem(), u"folderMenuEntry53"_s);
-        QVERIFY(last);
+        QTRY_VERIFY(visualItem(favoritesColumn->contentItem(), u"folderMenuEntry53"_s));
+        const auto* last = visualItem(favoritesColumn->contentItem(), u"folderMenuEntry53"_s);
         const auto bottom = last->mapToItem(scroll, QPointF(0, last->height())).y();
         QVERIFY(bottom <= scroll->height() + 1);
-        QVERIFY(shot(u"favorites-end"_s));
-        emit menu.keyPressed(Qt::Key_Left, {});
-        QTRY_COMPARE(object->property("headingHeight").toInt(), 0);
-        emit menu.keyPressed(Qt::Key_Right, {});
-        emit menu.keyPressed(Qt::Key_Backspace, {});
-        QTRY_COMPARE(object->property("headingHeight").toInt(), 0);
-        emit menu.keyPressed(Qt::Key_Escape, {});
+        QVERIFY(shot(favoritesColumn, u"favorites-end"_s));
+        key(Qt::Key_Left);
+        QCOMPARE(depth(), 1);
+        key(Qt::Key_Right);
+        key(Qt::Key_Backspace);
+        QCOMPARE(depth(), 1);
+        // Esc closes the whole menu, its columns with it.
+        key(Qt::Key_Right);
+        QCOMPARE(depth(), 2);
+        key(Qt::Key_Escape);
         QVERIFY(!menu.isOpen());
+        QVERIFY(!window->isVisible());
+        QVERIFY(!favoritesColumn->isVisible());
         QVERIFY(open());
-        QCOMPARE(object->property("headingHeight").toInt(), 0);
-        emit menu.keyPressed(Qt::Key_Down, {});
-        emit menu.keyPressed(Qt::Key_Return, {});
-        QTRY_VERIFY(object->property("headingHeight").toInt() > 0);
+        QCOMPARE(depth(), 1);
+        key(Qt::Key_Down);
+        key(Qt::Key_Return);
+        QCOMPARE(depth(), 2);
         object->setProperty("highlighted", 50);
-        emit menu.keyPressed(Qt::Key_Return, {});
+        key(Qt::Key_Return);
         QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(output), 10000);
         QVERIFY(!menu.isOpen());
+        QVERIFY(!favoritesColumn->isVisible());
         QFile written(output);
         QVERIFY(written.open(QIODevice::ReadOnly));
         QCOMPARE(written.readAll(), QByteArray("menu-ok"));
@@ -599,10 +776,10 @@ private slots:
         QCOMPARE(FolderMenu::subfolders({}), QStringList());
     }
 
-    // A folder's row leads to the folders inside it, level after level: by
-    // the Right key, a click on its arrow, or the pointer resting there. The
-    // row itself still goes to the folder; a page that comes under a pointer
-    // at rest opens nothing further.
+    // A folder's row leads to the folders inside it, column after column: by
+    // the Right key, a click on its arrow, or the pointer resting on it. The
+    // row itself still goes to the folder; a column that comes while the
+    // pointer rests opens nothing further.
     void folderPages()
     {
         QTemporaryDir temporary;
@@ -618,7 +795,7 @@ private slots:
         });
         QWindow source;
         source.setTitle(u"WinShun folder pages test"_s);
-        source.resize(320, 160);
+        source.setGeometry(QRect(awayFromPointer(QSize(900, 400)).topLeft(), QSize(320, 160)));
         source.show();
         QVERIFY(QTest::qWaitForWindowExposed(&source));
         win::bringToFront(&source);
@@ -633,14 +810,13 @@ private slots:
         menu.setGroups(true, false, false);
         QStringList opened; // never the real file manager
         menu.setOpener([&](const QString& folder) { opened.append(QDir::toNativeSeparators(folder)); });
+        Pointer pointer;
+        menu.setCursorSource([&pointer] { return pointer.at; });
         QQmlEngine engine;
         engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
-        QQmlComponent component(
-            &engine, QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR) + u"/FolderMenuWindow.qml"_s));
-        std::unique_ptr<QObject> object(
-            component.createWithInitialProperties({{u"folderMenu"_s, QVariant::fromValue(&menu)}}));
-        QVERIFY2(object, qPrintable(component.errorString()));
+        std::unique_ptr<QObject> object = load(engine, menu);
+        QVERIFY(object);
         auto* window = qobject_cast<QQuickWindow*>(object.get());
         QVERIFY(window);
         menu.setWindow(window);
@@ -650,34 +826,34 @@ private slots:
             menu.hotkeyPressed();
             return changed.wait(5000) && menu.isOpen();
         };
-        const auto value = [&](const QString& script) {
-            return QQmlExpression(qmlContext(object.get()), object.get(), script).evaluate();
-        };
-        const auto folder = [&] { return value(u"page === null ? '' : (page.folder ?? '')"_s).toString(); };
-        const auto texts = [&] { return value(u"entries.map(e => e.text ?? '').join('|')"_s).toString(); };
+        const auto depth = [&] { return object->property("depth").toInt(); };
+        const auto highlighted = [&] { return object->property("highlighted").toInt(); };
+        const auto folder = [&] { return value(object.get(), u"page === null ? '' : (page.folder ?? '')"_s).toString(); };
+        const auto texts = [&] { return value(object.get(), u"entries.map(e => e.text ?? '').join('|')"_s).toString(); };
         const auto key = [&](Qt::Key k) { emit menu.keyPressed(k, {}); };
-        const auto arrow = [&](int row) -> QPoint {
-            auto* item = visualItem(window->contentItem(), u"folderMenuArrow%1"_s.arg(row));
-            return item ? item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint() : QPoint(-1, -1);
-        };
-        const auto shot = [&](const QString& name) {
+        const auto shot = [&](QQuickWindow* shown, const QString& name) {
             const QString evidence = qEnvironmentVariable("WINSHUN_MENU_EVIDENCE");
-            return evidence.isEmpty() || (QDir().mkpath(evidence) && window->grabWindow().save(evidence + u'/' + name + u".png"_s));
+            return evidence.isEmpty() || (QDir().mkpath(evidence) && shown->grabWindow().save(evidence + u'/' + name + u".png"_s));
         };
 
-        // Keys: Right goes in, Enter goes there, Left comes back to the row left.
+        // Keys: Right opens the column a row leads to, its first row chosen,
+        // the rows it came from still highlighted; Enter goes there; Left
+        // closes the last column, back on the row it came from.
         QVERIFY(open());
         QVERIFY(QTest::qWaitForWindowExposed(window));
         key(Qt::Key_Down);
         key(Qt::Key_Right);
-        QTRY_COMPARE(texts(), u"工作|使用说明"_s);
-        QCOMPARE(object->property("highlighted").toInt(), 0);
+        QCOMPARE(texts(), u"工作|使用说明"_s);
+        QCOMPARE(highlighted(), 0);
         key(Qt::Key_Right);
         QTRY_COMPARE(folder(), work);
+        QCOMPARE(depth(), 3);
         QCOMPARE(texts(), u"2月|10月|24年|25年"_s);
-        QCOMPARE(object->property("highlighted").toInt(), 0);
+        QCOMPARE(highlighted(), 0);
+        QCOMPARE(value(object.get(), u"rowShown(0)"_s).toInt(), 0);
+        QCOMPARE(value(object.get(), u"rowShown(1)"_s).toInt(), 0);
         QTest::qWait(150); // asynchronous shell icons before visual evidence
-        QVERIFY(shot(u"folder-page"_s));
+        QVERIFY(shot(column(object.get(), 2), u"folder-page"_s));
         key(Qt::Key_End);
         key(Qt::Key_Right);
         QTRY_COMPARE(folder(), work + u"\\25年"_s);
@@ -685,56 +861,81 @@ private slots:
         key(Qt::Key_Right); // nothing inside: says so, and nothing to choose
         QTRY_COMPARE(folder(), work + u"\\25年\\a一月"_s);
         QCOMPARE(texts(), u"没有子文件夹"_s);
-        QCOMPARE(object->property("highlighted").toInt(), -1);
+        QCOMPARE(highlighted(), -1);
+        QCOMPARE(depth(), 5);
         key(Qt::Key_Left);
-        QTRY_COMPARE(folder(), work + u"\\25年"_s);
-        QCOMPARE(object->property("highlighted").toInt(), 0);
+        QCOMPARE(depth(), 4);
+        QCOMPARE(folder(), work + u"\\25年"_s);
+        QCOMPARE(highlighted(), 0);
+        QVERIFY(!column(object.get(), 4)->isVisible());
         key(Qt::Key_Left);
-        QTRY_COMPARE(folder(), work);
-        QCOMPARE(object->property("highlighted").toInt(), 3);
+        QCOMPARE(folder(), work);
+        QCOMPARE(highlighted(), 3);
+        // Read once while the menu is up, a folder's column comes at once.
         key(Qt::Key_Right);
-        QTRY_COMPARE(folder(), work + u"\\25年"_s);
+        QCOMPARE(folder(), work + u"\\25年"_s);
+        QVERIFY(value(object.get(), u"pending === null"_s).toBool());
         key(Qt::Key_Down);
         key(Qt::Key_Return);
         QCOMPARE(opened, QStringList {work + u"\\25年\\b二月"_s});
         QVERIFY(!menu.isOpen());
+        QVERIFY(!column(object.get(), 3)->isVisible());
         opened.clear();
 
-        // A file among the favorites has no arrow; Right on it does nothing.
+        // A file among the favorites leads nowhere: Right on it does nothing.
         QVERIFY(open());
-        QCOMPARE(folder(), QString());
+        QCOMPARE(depth(), 1);
         key(Qt::Key_Down);
         key(Qt::Key_Right);
-        QTRY_COMPARE(texts(), u"工作|使用说明"_s);
+        QCOMPARE(texts(), u"工作|使用说明"_s);
         key(Qt::Key_Down);
         key(Qt::Key_Right);
         QTest::qWait(300);
+        QCOMPARE(depth(), 2);
         QCOMPARE(texts(), u"工作|使用说明"_s);
 
-        // The pointer: a click on the arrow goes in, the row itself goes there.
-        QTRY_VERIFY(arrow(0).x() > 0);
-        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, arrow(0));
+        // The pointer: a click on a row's arrow opens its column; while the
+        // pointer rests there, nothing further opens.
+        auto* favoritesColumn = column(object.get(), 1);
+        QVERIFY(favoritesColumn);
+        QTRY_VERIFY(arrowOf(favoritesColumn, 0).x() > 0);
+        pointer.click(favoritesColumn, arrowOf(favoritesColumn, 0));
         QTRY_COMPARE(folder(), work);
+        QCOMPARE(depth(), 3);
         QVERIFY(opened.isEmpty());
         QVERIFY(menu.isOpen());
-        QTest::qWait(700); // the arrow that came under the pointer where it clicked opens nothing
-        QCOMPARE(folder(), work);
-        // Resting on an arrow goes in too; the page that comes under the
-        // pointer, still at rest on another arrow now, opens nothing further.
-        QTRY_VERIFY(arrow(3).x() > 0);
-        const QPoint at = arrow(3);
-        QTest::mouseMove(window, QPoint(90, at.y())); // from the row's name onto its arrow in one step
-        QTest::mouseMove(window, at);
-        QTest::qWait(150);
-        QCOMPARE(folder(), work); // not at once
-        QTRY_COMPARE(folder(), work + u"\\25年"_s);
         QTest::qWait(700);
-        QCOMPARE(folder(), work + u"\\25年"_s);
-        QVERIFY(shot(u"folder-page-pointer"_s));
-        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(90, arrow(0).y()));
+        QCOMPARE(depth(), 3);
+        // Resting on a row opens its column after a moment, nothing chosen in
+        // it; the one that comes opens nothing further.
+        auto* foldersColumn = column(object.get(), 2);
+        QVERIFY(foldersColumn);
+        QTRY_VERIFY(on(foldersColumn, 3).x() > 0);
+        pointer.moveTo(foldersColumn, on(foldersColumn, 3, 0.2));
+        pointer.moveTo(foldersColumn, on(foldersColumn, 3, 0.4));
+        QTest::qWait(150);
+        QCOMPARE(depth(), 3); // not at once
+        QTRY_COMPARE(folder(), work + u"\\25年"_s);
+        QCOMPARE(depth(), 4);
+        QCOMPARE(highlighted(), -1);
+        QTest::qWait(700);
+        QCOMPARE(depth(), 4);
+        QVERIFY(shot(column(object.get(), 3), u"folder-page-pointer"_s));
+        // Back on the row of a column before whose column is up: the columns
+        // after that one close.
+        pointer.moveTo(favoritesColumn, on(favoritesColumn, 0));
+        QTRY_COMPARE(depth(), 3);
+        QCOMPARE(folder(), work);
+        QCOMPARE(highlighted(), 3);
+        // Onto a row there that leads nowhere: every column after its own closes.
+        pointer.moveTo(favoritesColumn, on(favoritesColumn, 1, 0.1));
+        QTRY_COMPARE(depth(), 2);
+        QCOMPARE(highlighted(), 1);
+        QVERIFY(!foldersColumn->isVisible());
+        // A click on a folder's row goes there.
+        pointer.click(favoritesColumn, on(favoritesColumn, 0, 0.1));
         QVERIFY(!menu.isOpen());
-        QCOMPARE(opened.size(), 1);
-        QVERIFY(opened.first().startsWith(work + u"\\25年\\"_s));
+        QCOMPARE(opened, QStringList {work});
         QCOMPARE(::GetForegroundWindow(), sourceHandle);
 
         // Closed before the folder answered: nothing comes for the next menu.
@@ -747,6 +948,293 @@ private slots:
         QCOMPARE(listed.size(), 0);
         QCOMPARE(folder(), QString());
         menu.dismiss();
+        QCOMPARE(warnings.count(), 0);
+    }
+
+    void cascadeColumns_data()
+    {
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("light") << false;
+        QTest::newRow("dark") << true;
+    }
+
+    // Each column beside the one before it (GitHub #348): on that one's side
+    // while there is room, flipped where the screen ends and on that way
+    // after, against the edge (over the one before) where neither side has
+    // room; its first row level with the row it came from; all inside the
+    // work area. Past eight columns the last window shows the last column.
+    void cascadeColumns()
+    {
+        QFETCH(bool, dark);
+        const auto scheme = QGuiApplication::styleHints()->colorScheme();
+        const auto restore = qScopeGuard([&] { QGuiApplication::styleHints()->setColorScheme(scheme); });
+        QGuiApplication::styleHints()->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+        QVariantList chain {leaf(u"底"_s)};
+        for (int level = 10; level >= 1; --level)
+            chain = {group(u"层 %1"_s.arg(level), chain), leaf(u"文件 a"_s), leaf(u"文件 b"_s)};
+        QVariantList many;
+        for (int i = 1; i <= 14; ++i)
+            many.append(leaf(u"文件夹 %1"_s.arg(i)));
+        FolderMenu menu(nullptr, nullptr);
+        menu.previewEntries({chain.first(),
+            group(u"项目资料"_s, {leaf(u"2024"_s),
+                group(u"2025"_s, {leaf(u"01 一月"_s), leaf(u"02 二月"_s), leaf(u"03 三月：一段很长的名称，用来检查省略"_s)}),
+                leaf(u"客户合同"_s), leaf(u"设计素材"_s)}),
+            leaf(u"年度报告"_s), leaf(u"会议记录"_s), leaf(u"归档备份"_s), leaf(u"财务报表"_s), leaf(u"产品文档"_s),
+            group(u"很多"_s, many)});
+        Pointer pointer; // never over the menu here: the keys only
+        menu.setCursorSource([&pointer] { return pointer.at; });
+        QQmlEngine engine;
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        std::unique_ptr<QObject> object = load(engine, menu);
+        QVERIFY(object);
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        QVERIFY(window);
+        const int width = window->width();
+        const QRect area = awayFromPointer(QSize(3 * width + 60, 460));
+        const auto behind = backdrop(area, dark);
+        const auto popup = [&](const QRect& within, QPoint at) {
+            emit menu.popupRequested(QPointF(at));
+            object->setProperty("availableArea", QRectF(within));
+            QMetaObject::invokeMethod(object.get(), "place");
+        };
+        const auto key = [&](Qt::Key k) { emit menu.keyPressed(k, {}); };
+        const auto depth = [&] { return object->property("depth").toInt(); };
+        const auto highlighted = [&] { return object->property("highlighted").toInt(); };
+        const auto tops = [](qreal a, qreal b) { return u"row tops %1 and %2"_s.arg(a).arg(b).toUtf8(); };
+
+        // To the right while there is room, each first row level with the row
+        // it came from, which stays highlighted, fainter.
+        popup(area, area.topLeft() + QPoint(8, 8));
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QCOMPARE(window->position(), area.topLeft() + QPoint(8, 8));
+        key(Qt::Key_Down);
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QCOMPARE(depth(), 2);
+        auto* first = column(object.get(), 1);
+        QVERIFY(first);
+        QVERIFY(first->isVisible());
+        QTRY_VERIFY(rowItem(first, 1));
+        QCOMPARE(first->transientParent(), window);
+        QCOMPARE(::GetWindow(handle(first), GW_OWNER), handle(window)); // in front of the menu, always
+        QVERIFY(first->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
+        QVERIFY(!first->isActive());
+        QCOMPARE(first->width(), width);
+        QVERIFY2(aligned(first->x(), window->x() + width - 1), qPrintable(u"x %1"_s.arg(first->x())));
+        QVERIFY2(aligned(topOf(first, 0), topOf(window, 1)), tops(topOf(first, 0), topOf(window, 1)).constData());
+        QCOMPARE(highlighted(), 0);
+        QCOMPARE(value(object.get(), u"rowShown(0)"_s).toInt(), 1);
+        QVERIFY(value(object.get(), u"fainter(0)"_s).toBool());
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QCOMPARE(depth(), 3);
+        auto* second = column(object.get(), 2);
+        QVERIFY(second);
+        QVERIFY(second->isVisible());
+        QTRY_VERIFY(rowItem(second, 0));
+        QVERIFY2(aligned(second->x(), first->x() + width - 1), qPrintable(u"x %1"_s.arg(second->x())));
+        QVERIFY2(aligned(topOf(second, 0), topOf(first, 1)), tops(topOf(second, 0), topOf(first, 1)).constData());
+        QCOMPARE(value(object.get(), u"rowShown(1)"_s).toInt(), 1);
+        QVERIFY(screenEvidence({window, first, second}, dark ? u"cascade-dark"_s : u"cascade-light"_s));
+        key(Qt::Key_Escape);
+        QVERIFY(!window->isVisible());
+        QVERIFY(!first->isVisible());
+        QVERIFY(!second->isVisible());
+
+        // Where the screen ends on the right: to the left, and on that way after.
+        const QPoint rightmost(area.x() + area.width() - 8 - width - 20, area.y() + 8);
+        popup(area, rightmost);
+        QCOMPARE(window->position(), rightmost);
+        key(Qt::Key_Down);
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QVERIFY(first->isVisible());
+        QVERIFY2(aligned(first->x(), window->x() - width + 1), qPrintable(u"x %1"_s.arg(first->x())));
+        QCOMPARE(first->property("direction").toInt(), -1);
+        QVERIFY2(aligned(topOf(first, 0), topOf(window, 1)), tops(topOf(first, 0), topOf(window, 1)).constData());
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QVERIFY(second->isVisible());
+        QVERIFY2(aligned(second->x(), first->x() - width + 1), qPrintable(u"x %1"_s.arg(second->x())));
+        QVERIFY(inside(area, second));
+        key(Qt::Key_Escape);
+
+        // No room on either side: against the edge, over the menu.
+        const QRect narrow(area.topLeft(), QSize(width + 150, area.height()));
+        popup(narrow, narrow.topLeft() + QPoint(8, 8));
+        key(Qt::Key_Down);
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QVERIFY(first->isVisible());
+        QVERIFY(inside(narrow, first));
+        QVERIFY(first->x() < window->x() + width - 1);
+        QVERIFY2(aligned(topOf(first, 0), topOf(window, 1)), tops(topOf(first, 0), topOf(window, 1)).constData());
+        key(Qt::Key_Escape);
+
+        // Level with its row only as far as the work area lets it.
+        popup(area, area.topLeft() + QPoint(8, 8));
+        key(Qt::Key_End);
+        QCOMPARE(highlighted(), 7);
+        key(Qt::Key_Right);
+        QVERIFY(first->isVisible());
+        QTRY_VERIFY(rowItem(first, 0));
+        QVERIFY(inside(area, first));
+        QVERIFY2(topOf(first, 0) < topOf(window, 7) - 1, tops(topOf(first, 0), topOf(window, 7)).constData());
+        key(Qt::Key_Escape);
+
+        // Deeper than eight columns: the last window shows the last column.
+        popup(area, area.topLeft() + QPoint(8, 8));
+        key(Qt::Key_Down);
+        for (int i = 0; i < 10; ++i)
+            key(Qt::Key_Right);
+        QCOMPARE(depth(), 11);
+        QCOMPARE(value(object.get(), u"windows.length"_s).toInt(), 7);
+        QVERIFY(!column(object.get(), 8));
+        QCOMPARE(value(object.get(), u"windows[6].page.text"_s).toString(), u"层 10"_s);
+        for (int visual = 0; visual < 8; ++visual) {
+            auto* shown = column(object.get(), visual);
+            QVERIFY(shown && shown->isVisible());
+            QVERIFY2(inside(area, shown), qPrintable(u"column %1 at %2"_s.arg(visual).arg(shown->x())));
+        }
+        key(Qt::Key_Left);
+        QCOMPARE(depth(), 10);
+        QCOMPARE(value(object.get(), u"windows[6].page.text"_s).toString(), u"层 9"_s);
+        QCOMPARE(highlighted(), 0);
+        key(Qt::Key_Escape);
+        for (int visual = 0; visual < 8; ++visual)
+            QVERIFY(!column(object.get(), visual)->isVisible());
+        QCOMPARE(warnings.count(), 0);
+    }
+
+    // The pointer (GitHub #348): resting on a row opens its column after a
+    // moment; on its way there it passes rows that open nothing (menu aim)
+    // unless it stops on one; back on a row of a column before, the columns
+    // after that one close; a column that comes over a pointer at rest
+    // chooses nothing under it until the pointer moves.
+    void cascadePointer()
+    {
+        FolderMenu menu(nullptr, nullptr);
+        menu.previewEntries({
+            group(u"项目资料"_s, {group(u"2024"_s, {leaf(u"一月"_s), leaf(u"二月"_s)}), group(u"2025"_s, {leaf(u"三月"_s)}),
+                leaf(u"说明"_s), leaf(u"合同"_s), leaf(u"报告"_s), leaf(u"素材"_s)}),
+            group(u"归档"_s, {leaf(u"旧项目"_s), leaf(u"备份"_s), leaf(u"其他"_s), leaf(u"杂项"_s)}),
+            leaf(u"设置"_s),
+            group(u"图片"_s, {group(u"截图"_s, {leaf(u"今天"_s), leaf(u"昨天"_s)}), group(u"壁纸"_s, {leaf(u"风景"_s)}),
+                leaf(u"图标"_s)}),
+            leaf(u"Repos"_s)});
+        Pointer pointer;
+        menu.setCursorSource([&pointer] { return pointer.at; });
+        QQmlEngine engine;
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        std::unique_ptr<QObject> object = load(engine, menu);
+        QVERIFY(object);
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        QVERIFY(window);
+        const int width = window->width();
+        const QRect area = awayFromPointer(QSize(3 * width + 60, 460));
+        const auto popup = [&](const QRect& within, QPoint at) {
+            emit menu.popupRequested(QPointF(at));
+            object->setProperty("availableArea", QRectF(within));
+            QMetaObject::invokeMethod(object.get(), "place");
+        };
+        const auto key = [&](Qt::Key k, const QString& text = {}) { emit menu.keyPressed(k, text); };
+        const auto depth = [&] { return object->property("depth").toInt(); };
+        const auto highlighted = [&] { return object->property("highlighted").toInt(); };
+        const auto from = [&](int level) {
+            return value(object.get(), u"pages.length > %1 ? pages[%1].from : -1"_s.arg(level)).toInt();
+        };
+        const auto aiming = [&](int row) { return value(object.get(), u"aim.running && aimRow === %1"_s.arg(row)).toBool(); };
+        const auto state = [&] {
+            return value(object.get(), u"JSON.stringify({aimRow, hoverRow, pointerRow, depth, rest: restingCursor, trace})"_s)
+                .toString().toUtf8();
+        };
+
+        // Resting on a row opens its column after a moment, nothing chosen in it.
+        popup(area, area.topLeft() + QPoint(8, 8));
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_VERIFY(rowItem(window, 4));
+        pointer.moveTo(window, on(window, 0));
+        QCOMPARE(highlighted(), 0);
+        QTest::qWait(150);
+        QCOMPARE(depth(), 1); // not at once
+        QTRY_COMPARE(depth(), 2);
+        QCOMPARE(from(0), 0);
+        QCOMPARE(highlighted(), -1);
+        auto* first = column(object.get(), 1);
+        QVERIFY(first);
+        QTRY_VERIFY(rowItem(first, 2));
+
+        // On its way to that column, across the rows below: they open nothing.
+        pointer.moveTo(window, on(window, 1, 0.8));
+        QVERIFY2(aiming(1), state().constData());
+        QCOMPARE(value(object.get(), u"rowShown(0)"_s).toInt(), 0);
+        pointer.moveTo(first, on(first, 2, 0.1));
+        QVERIFY(!aiming(1));
+        QCOMPARE(highlighted(), 2);
+        QTest::qWait(500);
+        QCOMPARE(depth(), 2);
+        QCOMPARE(from(0), 0);
+
+        // Stopped on one of them: chosen after all, and its column opens.
+        pointer.moveTo(window, on(window, 0));
+        QTest::qWait(400); // on the row its column came from: as it was
+        QCOMPARE(depth(), 2);
+        QCOMPARE(from(0), 0);
+        pointer.moveTo(window, on(window, 1, 0.8));
+        QVERIFY2(aiming(1), state().constData());
+        QTest::qWait(100);
+        QCOMPARE(from(0), 0);
+        QTRY_COMPARE(from(0), 1);
+        QCOMPARE(depth(), 2);
+
+        // Deeper, then back on the row in the menu that the column came from:
+        // the columns after that one close.
+        pointer.moveTo(window, on(window, 0, 0.1)); // up its left side, not towards the column
+        QTRY_COMPARE(from(0), 0);
+        QTRY_VERIFY(rowItem(first, 0));
+        pointer.moveTo(first, on(first, 0));
+        QTRY_COMPARE(depth(), 3);
+        auto* second = column(object.get(), 2);
+        QVERIFY(second && second->isVisible());
+        pointer.moveTo(window, on(window, 0));
+        QTRY_COMPARE(depth(), 2);
+        QCOMPARE(highlighted(), 0);
+        QVERIFY(!second->isVisible());
+        // A row there that leads nowhere: every column after the menu closes.
+        pointer.moveTo(window, on(window, 2, 0.1));
+        QTRY_COMPARE(depth(), 1);
+        QCOMPARE(highlighted(), 2);
+        QVERIFY(!first->isVisible());
+
+        // Letters choose in the last column.
+        pointer.leave();
+        key(Qt::Key_R, u"r"_s);
+        QCOMPARE(highlighted(), 4);
+        key(Qt::Key_Home);
+        key(Qt::Key_Right);
+        QCOMPARE(depth(), 2);
+        QCOMPARE(highlighted(), 0);
+        key(Qt::Key_2, u"2"_s);
+        QCOMPARE(highlighted(), 1);
+        key(Qt::Key_Escape);
+
+        // No room beside the menu: the column comes over the pointer resting
+        // on its row, and chooses nothing under it until the pointer moves.
+        const QRect narrow(area.topLeft(), QSize(width + 150, area.height()));
+        popup(narrow, narrow.topLeft() + QPoint(8, 8));
+        pointer.moveTo(window, on(window, 3, 0.8));
+        QTRY_COMPARE(depth(), 2);
+        QVERIFY(first->isVisible());
+        QVERIFY2(first->geometry().contains(pointer.at),
+            qPrintable(u"pointer %1,%2 column x %3"_s.arg(pointer.at.x()).arg(pointer.at.y()).arg(first->x())));
+        pointer.cameUnder(first);
+        QTest::qWait(700);
+        QCOMPARE(depth(), 2);
+        QCOMPARE(highlighted(), -1);
+        pointer.moveTo(first, first->mapFromGlobal(pointer.at) + QPoint(3, 0));
+        QTRY_COMPARE(depth(), 3);
+        key(Qt::Key_Escape);
         QCOMPARE(warnings.count(), 0);
     }
 };

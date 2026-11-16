@@ -195,6 +195,7 @@ set(qml_files
     qml/DialogBarWindow.qml
     qml/DialogBarRow.qml
     qml/FolderMenuWindow.qml
+    qml/FolderMenuColumn.qml
     qml/MenuPathTip.qml
     qml/FontPicker.qml
     qml/ChoiceBox.qml

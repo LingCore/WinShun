@@ -3,78 +3,82 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import WinShun
 
-// One non-activating window preserves the source folder's focus across pages.
+// The folder menu, column after column as Listary's (GitHub #348). This
+// window is the first column, the menu's own rows; a row that leads
+// somewhere (a group, a folder) opens the next column beside it, every
+// column a window of its own that takes no focus either, so the window the
+// menu is for keeps it. A column's window is made the first time it is
+// needed, then kept, hidden, for the next.
+//
+// The keys act on the last column. The pointer resting on a row opens what
+// it leads to, closing the columns after; on its way to the next column it
+// passes rows that it does not choose (menu aim).
 Window {
     id: menu
     required property FolderMenu folderMenu
+
+    // The columns after the first, each the page that a row of the column
+    // before it led to: { text, folder, children, pageTitle, reading,
+    // byPointer, from } (from: that row).
+    property var pages: []
+    // The row chosen in the last column, where the keys act. A column before
+    // it shows the row its next column came from, or the row the pointer
+    // settled on in it (pointerLevel, pointerRow).
     property int highlighted: -1
-    property var page: null
-    // The pages above this one, each with the row that led down from it.
-    property var trail: []
-    // A folder being read, its page not up yet: { folder, text, from, byPointer }.
+    property int pointerLevel: -1
+    property int pointerRow: -1
+    // The row the pointer is over now, whether it settled there or not.
+    property int hoverLevel: -1
+    property int hoverRow: -1
+    // A folder being read, its column not up yet: { level, from, folder, text, byPointer }.
     property var pending: null
-    // The pointer on a row's arrow opens its page after a moment; where the
-    // system's pointer was when the menu or its page last changed: rows that
-    // come under a pointer at rest open nothing (a page swapped in under it
-    // would open the next one, and so on down, GitHub #348). The system's,
-    // not a row's mapToGlobal: that moves with the window and its fractions.
+    // The folders inside the folders read while the menu is up.
+    property var listings: ({})
+    // The windows of the columns after the first, made as needed.
+    property var windows: []
+    // The pointer resting on a row opens what it leads to after a moment
+    // (dwell). Where the system's pointer was when a column last came,
+    // went or changed: rows that come under a pointer at rest choose nothing
+    // (a column put up under it would open the next one, and so on down,
+    // GitHub #348). The system's, not a row's mapToGlobal: that moves with
+    // the window and its fractions.
+    property int dwellLevel: -1
     property int dwellRow: -1
     property point restingCursor
+    // Where the pointer has been lately, and the row it passed on its way
+    // to the next column (aimLevel, aimRow), chosen only if it stops there.
+    property var trace: []
+    property int aimLevel: -1
+    property int aimRow: -1
     property Item hoveredEntry: null
     property string hoveredText
+    property int tipLevel: -1
     property point popupAnchor
     property rect availableArea
+    readonly property int maxColumns: 8
+    readonly property int depth: pages.length + 1
+    // The last column's page (null: the first column) and rows.
+    readonly property var page: pages.length > 0 ? pages[pages.length - 1] : null
     readonly property var entries: page === null ? folderMenu.entries : page.children
     readonly property real padding: Theme.menuPadding
     readonly property int itemHeight: Theme.menuItemHeight
     readonly property real dpr: Screen.devicePixelRatio
-    readonly property int sectionHeight: Theme.menuCaptionSize + 12
-    readonly property real listHeight: entries.reduce((height, entry) => height + (entry.separator === true ? 9 : entry.heading === true ? sectionHeight : itemHeight), 0)
-    readonly property int headingHeight: page === null ? 0 : itemHeight + 5
     readonly property real maxHeight: Math.min(600, availableArea.height > 0 ? availableArea.height - 16 : 600)
+    readonly property int direction: 1 // the side its next column opens to
 
     objectName: "folderMenuWindow"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     color: Theme.menuBackground
     readonly property int preferredWidth: Theme.metrics.level < 2 ? 300 : Theme.metrics.size === "roomy" ? 400 : 360
     width: availableArea.width > 0 ? Math.min(preferredWidth, availableArea.width - 16) : preferredWidth
-    height: Math.min(listHeight + 2 * padding + headingHeight, maxHeight)
-    onHeightChanged: if (visible) y = within(popupTop)
-    onHighlightedChanged: {
-        flick.currentIndex = highlighted // the list's highlight follows it
-        Qt.callLater(ensureVisible)
-    }
-    onEntriesChanged: {
-        hoveredEntry = null
-        highlighted = -1
-        flick.currentIndex = -1
-        flick.contentY = 0
+    height: Math.min(first.listHeight + 2 * padding, maxHeight)
+    onHeightChanged: if (visible) {
+        y = within(popupTop)
+        layout()
     }
 
-    // The highlight under an item chosen or pointed at (the style's
-    // rowHighlight, role "menu"). A part that knows the menu (declares
-    // `role`, or `inMenu` as brand's does) draws the item's fill; one that
-    // does not (a list's highlight) leaves it to the menu's own.
-    component MenuHighlight: Hook {
-        id: highlightPart
-        readonly property bool inMenu: item !== null && ("role" in item || "inMenu" in item)
-        part: Theme.rowHighlight
-        hovered: inMenu
-        role: "menu"
-        dpr: menu.dpr
-
-        Rectangle {
-            anchors.fill: parent
-            visible: !highlightPart.inMenu
-            radius: Theme.menuItemRadius
-            color: Theme.menuHover
-        }
-    }
-
-    // Where the first page went: beside the pointer, flipped where the
-    // screen ends. Other pages keep its top edge (a shorter page flipped no
-    // longer would jump below the pointer, #349), moved up only to stay on
-    // the screen; going back puts the first page where it was.
+    // Where the first column went: beside the pointer, flipped where the
+    // screen ends. It stays there while columns come and go (#349).
     property real popupTop
     function within(y) {
         const area = availableArea
@@ -92,379 +96,442 @@ Window {
         menu.x = x
         menu.y = within(y)
         popupTop = menu.y
+        layout()
     }
-    function forget() {
-        trail = []
+    function reset() {
         pending = null
+        listings = {}
         slow.stop()
         dwell.stop()
-        dwellRow = -1
+        aim.stop()
+        dwellLevel = dwellRow = -1
+        aimLevel = aimRow = -1
+        trace = []
+        pages = []
+        highlighted = -1
+        pointerLevel = pointerRow = -1
+        hoverLevel = hoverRow = -1
+        hoveredEntry = null
+        layout()
     }
     function popup(pos) {
-        page = null
-        highlighted = -1
-        hoveredEntry = null
-        flick.contentY = 0
-        forget()
-        restingCursor = folderMenu.cursorPos()
+        reset()
+        rest()
         popupAnchor = pos
         availableArea = folderMenu.screenArea(pos)
-        flick.forceLayout()
         place()
-        folderMenu.prepareMenuWindow(menu)
-        show()
-        raise()
+        folderMenu.showColumn(menu)
     }
-    function selectable(i) {
-        const entry = entries[i]
+
+    // The window showing column `level` (0: this one), or null where it is
+    // not shown: past maxColumns the last window shows the last column.
+    function levelAt(visual) { return visual < maxColumns - 1 ? visual : depth - 1 }
+    function visualOf(level) {
+        return level < maxColumns - 1 ? level : level === depth - 1 ? maxColumns - 1 : -1
+    }
+    function frameAt(visual) { return visual === 0 ? menu : windows[visual - 1] ?? null }
+    function columnAt(visual) {
+        const frame = frameAt(visual)
+        return visual === 0 ? first : frame === null ? null : frame.column
+    }
+    function rowsOf(level) {
+        return level === 0 ? first.entries : level < depth ? pages[level - 1].children : []
+    }
+    // The row column `level` shows highlighted.
+    function rowShown(level) {
+        if (level >= depth) return -1
+        if (level === depth - 1) return highlighted
+        return pointerLevel === level ? pointerRow : pages[level].from
+    }
+    function fainter(level) { return level < depth - 1 && highlighted >= 0 && pointerLevel !== level }
+
+    // Each column after the first beside the one before it, on the side
+    // that one opened to, on the other where the screen ends, against the
+    // screen's edge (over the one before) where neither has room; its first
+    // row level with the row it came from; all inside the work area.
+    function layout() {
+        const shown = Math.min(depth, maxColumns)
+        for (let visual = 1; visual < shown; ++visual) {
+            if (visual > windows.length)
+                windows = windows.concat([columnWindow.createObject(menu, { visual: visual })])
+            const frame = windows[visual - 1]
+            const shownPage = pages[levelAt(visual) - 1]
+            if (frame.page !== shownPage)
+                frame.page = shownPage
+            placeColumn(frame, visual)
+            if (!frame.visible)
+                folderMenu.showColumn(frame) // cloaked until its first frame
+        }
+        for (let visual = shown; visual <= windows.length; ++visual) {
+            const frame = windows[visual - 1]
+            if (!frame.visible) continue
+            folderMenu.hideColumn(frame)
+            frame.page = null
+        }
+        if (tipLevel >= depth) {
+            hoveredEntry = null
+            tipLevel = -1
+        }
+    }
+    function placeColumn(frame, visual) {
+        const before = frameAt(visual - 1)
+        const area = availableArea
+        const top = columnAt(visual - 1).rowTop(pages[levelAt(visual - 1)].from)
+        const right = before.x + before.width - 1 // over its edge: one line between the two
+        const left = before.x - frame.width + 1
+        const roomRight = area.width <= 0 || right + frame.width <= area.x + area.width - 8
+        const roomLeft = area.width <= 0 || left >= area.x + 8
+        let toLeft = before.direction < 0
+        if (toLeft ? !roomLeft && roomRight : !roomRight && roomLeft)
+            toLeft = !toLeft
+        let x = toLeft ? left : right
+        let y = Math.round(top - padding)
+        if (area.width > 0) {
+            x = Math.max(area.x + 8, Math.min(x, area.x + area.width - frame.width - 8))
+            y = Math.max(area.y + 8, Math.min(y, area.y + area.height - frame.height - 8))
+        }
+        frame.direction = toLeft ? -1 : 1
+        frame.x = x
+        frame.y = y
+    }
+
+    function selectable(level, i) {
+        const entry = rowsOf(level)[i]
         return entry !== undefined && entry.separator !== true && entry.disabled !== true
     }
-    function step(from, delta) {
-        const n = entries.length
+    function branch(level, i) {
+        const entry = rowsOf(level)[i]
+        return entry !== undefined && (entry.children !== undefined || entry.folder !== undefined)
+    }
+    function step(level, from, delta) {
+        const n = rowsOf(level).length
         let i = from
         for (let k = 0; k < n; ++k) {
             i = ((i + delta) % n + n) % n
-            if (selectable(i)) return i
+            if (selectable(level, i)) return i
         }
         return -1
     }
-    function ensureVisible() {
-        if (highlighted >= 0)
-            flick.positionViewAtIndex(highlighted, ListView.Contain)
+    // A column, its rows or where it is, has changed: rows under a pointer
+    // at rest choose nothing until it moves.
+    function rest() { restingCursor = folderMenu.cursorPos() }
+    function folderPage(asked, children) {
+        return { text: asked.text, folder: asked.folder, children: children, from: asked.from, byPointer: asked.byPointer }
     }
-    function enter(target, from, byPointer) {
-        dwell.stop()
-        restingCursor = folderMenu.cursorPos()
-        trail = trail.concat([{ page: page, highlight: from }])
-        page = target
-        if (!byPointer) highlighted = step(-1, 1)
-    }
-    function folderPage(text, folder, children) {
-        return { text: text, folder: folder, children: children }
-    }
-    // The page a row leads to: a group's rows, or the folders inside a folder
-    // (read first; a page saying so comes only when that takes a while).
-    function open(i, byPointer) {
-        if (!selectable(i)) return
-        const entry = entries[i]
-        if (entry.children !== undefined) {
-            enter(entry, i, byPointer)
-        } else if (entry.folder !== undefined) {
-            pending = { folder: entry.folder, text: entry.text, from: i, byPointer: byPointer }
-            slow.restart()
-            folderMenu.listFolder(entry.folder)
-        }
-    }
-    function activate(i) {
-        if (!selectable(i)) return
-        const entry = entries[i]
-        if (entry.action !== undefined) folderMenu.trigger(entry.action)
-        else open(i, false)
-    }
-    function back() {
+    // `page` as the column after `level`, the columns after that closed;
+    // its first row chosen when the keys asked for it.
+    function showPage(level, page, byPointer) {
         pending = null
         slow.stop()
-        dwell.stop()
-        restingCursor = folderMenu.cursorPos()
-        if (trail.length === 0) {
-            page = null
+        page.byPointer = byPointer
+        pages = pages.slice(0, level).concat([page])
+        if (pointerLevel >= level) pointerLevel = pointerRow = -1
+        highlighted = byPointer ? -1 : step(level + 1, -1, 1)
+        rest()
+        layout()
+    }
+    // The columns after `level` closed; `row` chosen in it, now the last.
+    function closeAfter(level, row) {
+        if (pending !== null && pending.level > level) {
+            pending = null
+            slow.stop()
+        }
+        if (level < depth - 1) {
+            pages = pages.slice(0, level)
+            if (pointerLevel >= level) pointerLevel = pointerRow = -1
+            rest()
+            layout()
+        }
+        highlighted = row
+    }
+    // The column a row leads to: a group's rows, or the folders inside a
+    // folder (read first; the column says so only when that takes a while).
+    function open(level, i, byPointer) {
+        if (level >= depth || !selectable(level, i) || !branch(level, i)) return
+        if (level < depth - 1 && pages[level].from === i) { // its column is up already
+            if (depth > level + 2) closeAfter(level + 1, pages[level + 1].from)
             return
         }
-        const above = trail[trail.length - 1]
-        trail = trail.slice(0, -1)
-        page = above.page
-        highlighted = above.highlight
+        const entry = rowsOf(level)[i]
+        if (entry.children !== undefined) {
+            showPage(level, { text: entry.text, pageTitle: entry.pageTitle, children: entry.children, from: i }, byPointer)
+            return
+        }
+        const asked = { level: level, from: i, folder: entry.folder, text: entry.text, byPointer: byPointer }
+        const known = listings[entry.folder]
+        if (known !== undefined) {
+            showPage(level, folderPage(asked, known), byPointer)
+            return
+        }
+        // The columns after it stay until its own comes, put up in their place.
+        pending = asked
+        slow.restart()
+        folderMenu.listFolder(entry.folder)
+    }
+    function activate(level, i, byPointer) {
+        if (level >= depth || !selectable(level, i)) return
+        const entry = rowsOf(level)[i]
+        if (entry.action !== undefined) folderMenu.trigger(entry.action)
+        else open(level, i, byPointer)
+    }
+    function back() {
+        if (depth > 1) closeAfter(depth - 2, pages[depth - 2].from)
     }
     function listed(folder, rows) {
         const children = rows.length > 0 ? rows : [{ text: qsTr("没有子文件夹"), disabled: true }]
+        const known = Object.assign({}, listings)
+        known[folder] = children
+        listings = known
         if (pending !== null && pending.folder === folder) {
             const asked = pending
-            pending = null
-            slow.stop()
-            enter(folderPage(asked.text, folder, children), asked.from, asked.byPointer)
-        } else if (page !== null && page.folder === folder && page.reading === true) {
-            const byKeys = page.byPointer !== true
-            page = folderPage(page.text, folder, children)
-            if (byKeys) highlighted = step(-1, 1)
+            showPage(asked.level, folderPage(asked, children), asked.byPointer)
+            return
+        }
+        for (let k = pages.length - 1; k >= 0; --k) { // a column saying it reads this folder: its folders now
+            const reading = pages[k]
+            if (reading.reading !== true || reading.folder !== folder) continue
+            const updated = pages.slice()
+            updated[k] = folderPage(reading, children)
+            pages = updated
+            if (k === pages.length - 1 && reading.byPointer !== true && highlighted < 0)
+                highlighted = step(k + 1, -1, 1)
+            rest()
+            layout()
+            return
         }
     }
-    function pointed(i) {
-        const at = folderMenu.cursorPos()
-        if (at.x === restingCursor.x && at.y === restingCursor.y) return
-        if (dwellRow === i && dwell.running) return
-        dwellRow = i
-        dwell.restart()
-    }
-    function unpointed(i) {
-        if (dwellRow === i) dwell.stop()
-    }
-    Timer {
-        id: dwell
-        interval: 350
-        onTriggered: menu.open(menu.dwellRow, true)
-    }
-    Timer { // the folder has not answered yet: its page, saying so
+    Timer { // the folder has not answered yet: its column, saying so
         id: slow
         interval: 200
         onTriggered: {
             const asked = menu.pending
             if (asked === null) return
-            menu.pending = null
-            const reading = menu.folderPage(asked.text, asked.folder, [{ text: qsTr("正在读取…"), disabled: true }])
+            const reading = menu.folderPage(asked, [{ text: qsTr("正在读取…"), disabled: true }])
             reading.reading = true
-            reading.byPointer = asked.byPointer
-            menu.enter(reading, asked.from, asked.byPointer)
+            menu.showPage(asked.level, reading, asked.byPointer)
         }
     }
-    function jumpTo(text) {
+
+    // The pointer came onto a row, or moved on it.
+    function pointed(level, i, row) {
+        const same = hoverLevel === level && hoverRow === i
+        hoverLevel = level
+        hoverRow = i
+        if (row && hoveredEntry !== row) {
+            hoveredEntry = row
+            hoveredText = row.tooltip
+            tipLevel = level
+        }
+        const at = folderMenu.cursorPos()
+        const last = trace.length > 0 ? trace[trace.length - 1] : null
+        const still = last !== null && last.x === at.x && last.y === at.y
+        record(at)
+        if (at.x === restingCursor.x && at.y === restingCursor.y) return
+        if (same && still) return // told again, not moved: as it was
+        const from = apex(at)
+        if (aiming(level, i, at, from)) {
+            aimLevel = level
+            aimRow = i
+            aim.restart()
+            return
+        }
+        aim.stop()
+        settle(level, i)
+    }
+    function unpointed(level, i, row) {
+        forgetRow(level, i, row)
+        if (level === depth - 1) {
+            if (highlighted === i) highlighted = -1
+        } else if (pointerLevel === level && pointerRow === i) {
+            pointerLevel = pointerRow = -1 // the row its next column came from again
+        }
+    }
+    function forgetRow(level, i, row) {
+        if (hoverLevel === level && hoverRow === i) hoverLevel = hoverRow = -1
+        if (hoveredEntry === row) hoveredEntry = null
+        if (dwellLevel === level && dwellRow === i) dwell.stop()
+        if (aimLevel === level && aimRow === i) aim.stop()
+    }
+    // The pointer chose row i: highlighted, and what it leads to opens if it
+    // stays (or the columns after close, for a row of a column before the last).
+    function settle(level, i) {
+        if (level >= depth) return
+        if (pending !== null && level > pending.level) { // on into the columns there were: not that folder
+            pending = null
+            slow.stop()
+        }
+        if (level === depth - 1) {
+            highlighted = i
+            if (branch(level, i)) wait(level, i)
+            else dwell.stop()
+            return
+        }
+        pointerLevel = level
+        pointerRow = i
+        if (i === pages[level].from && depth === level + 2) dwell.stop() // its column is the last already
+        else wait(level, i)
+    }
+    function wait(level, i) {
+        if (dwellLevel === level && dwellRow === i && dwell.running) return
+        dwellLevel = level
+        dwellRow = i
+        dwell.restart()
+    }
+    Timer {
+        id: dwell
+        interval: 350
+        onTriggered: {
+            const level = menu.dwellLevel
+            const i = menu.dwellRow
+            if (level >= menu.depth || !menu.selectable(level, i)) return
+            if (level < menu.depth - 1 && i === menu.pages[level].from) {
+                if (menu.depth > level + 2) // back on the row its column came from: the columns after that one close
+                    menu.closeAfter(level + 1, menu.pages[level + 1].from)
+            } else if (menu.branch(level, i))
+                menu.open(level, i, true)
+            else
+                menu.closeAfter(level, i)
+        }
+    }
+    // Menu aim: the pointer heading for the column after this one, inside
+    // the triangle from where it was a few pixels ago to that column's near
+    // corners, passes the rows on its way; one is chosen only if it stops.
+    function apex(at) {
+        for (let k = trace.length - 1; k >= 0; --k) {
+            const p = trace[k]
+            if (Math.abs(p.x - at.x) + Math.abs(p.y - at.y) >= 5) return p
+        }
+        return null
+    }
+    function record(at) {
+        const last = trace.length > 0 ? trace[trace.length - 1] : null
+        if (last === null || last.x !== at.x || last.y !== at.y)
+            trace = trace.concat([Qt.point(at.x, at.y)]).slice(-6)
+    }
+    function aiming(level, i, at, from) {
+        if (from === null || level >= depth - 1 || i === pages[level].from) return false
+        const own = frameAt(visualOf(level))
+        const next = frameAt(visualOf(level + 1))
+        if (own === null || next === null || !next.visible) return false
+        if (from.x < own.x || from.x >= own.x + own.width || from.y < own.y || from.y >= own.y + own.height) return false
+        const nearX = next.x >= own.x ? next.x : next.x + next.width
+        const a = Qt.point(nearX, next.y - 6)
+        const b = Qt.point(nearX, next.y + next.height + 6)
+        const side = (p, q, r) => (p.x - r.x) * (q.y - r.y) - (q.x - r.x) * (p.y - r.y)
+        const d1 = side(at, from, a)
+        const d2 = side(at, a, b)
+        const d3 = side(at, b, from)
+        return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))
+    }
+    Timer { // stopped on a row it passed: chosen after all
+        id: aim
+        interval: 150
+        onTriggered: {
+            if (menu.hoverLevel === menu.aimLevel && menu.hoverRow === menu.aimRow)
+                menu.settle(menu.aimLevel, menu.aimRow)
+        }
+    }
+
+    function jumpTo(level, text) {
         const wanted = text.toLowerCase()
-        const n = entries.length
+        const rows = rowsOf(level)
+        const n = rows.length
         for (let k = 1; k <= n; ++k) {
             const i = ((highlighted < 0 ? -1 : highlighted) + k) % n
-            if (selectable(i) && (entries[i].text ?? "").toLowerCase().startsWith(wanted)) {
+            if (selectable(level, i) && (rows[i].text ?? "").toLowerCase().startsWith(wanted)) {
                 highlighted = i
                 return
             }
         }
     }
     function handleKey(key, text) {
+        const level = depth - 1
+        // The keys take over: what the pointer rests on opens nothing until it moves.
+        dwell.stop()
+        aim.stop()
+        rest()
+        pointerLevel = pointerRow = -1
         switch (key) {
-        case Qt.Key_Down: highlighted = step(highlighted, 1); return
-        case Qt.Key_Up: highlighted = step(highlighted < 0 ? 0 : highlighted, -1); return
+        case Qt.Key_Down: highlighted = step(level, highlighted, 1); return
+        case Qt.Key_Up: highlighted = step(level, highlighted < 0 ? 0 : highlighted, -1); return
         case Qt.Key_Home:
-        case Qt.Key_PageUp: highlighted = step(-1, 1); return
+        case Qt.Key_PageUp: highlighted = step(level, -1, 1); return
         case Qt.Key_End:
-        case Qt.Key_PageDown: highlighted = step(0, -1); return
+        case Qt.Key_PageDown: highlighted = step(level, 0, -1); return
         case Qt.Key_Right:
-            if (highlighted >= 0) open(highlighted, false)
+            if (highlighted >= 0) open(level, highlighted, false)
             return
         case Qt.Key_Left:
         case Qt.Key_Backspace: back(); return
         case Qt.Key_Return:
         case Qt.Key_Enter:
-            if (highlighted >= 0) activate(highlighted)
+            if (highlighted >= 0) activate(level, highlighted, false)
             return
         case Qt.Key_Escape:
-            if (page !== null) back()
-            else folderMenu.dismiss()
-            return
         case Qt.Key_Menu: folderMenu.dismiss(); return
         default:
-            if (text.length > 0 && text.trim().length > 0) jumpTo(text)
+            if (text.length > 0 && text.trim().length > 0) jumpTo(level, text)
         }
     }
     Connections {
         target: menu.folderMenu
         function onPopupRequested(pos) { menu.popup(pos) }
         function onHideRequested() {
-            menu.visible = false
-            menu.forget()
-            menu.page = null
-            menu.highlighted = -1
-            menu.hoveredEntry = null
+            menu.reset()
+            menu.folderMenu.hideColumn(menu)
         }
         function onKeyPressed(key, text) { menu.handleKey(key, text) }
         function onFolderListed(folder, entries) { menu.listed(folder, entries) }
     }
 
-    Item {
-        id: heading
-        visible: menu.page !== null
-        x: menu.padding
-        y: menu.padding
-        width: menu.width - 2 * menu.padding
-        height: menu.headingHeight
-        Accessible.role: Accessible.MenuItem
-        Accessible.name: qsTr("返回")
-        Accessible.onPressAction: menu.back()
-        MenuHighlight {
-            visible: backMouse.containsMouse
-            width: heading.width
-            height: menu.itemHeight
-        }
-        Glyph {
-            x: 12
-            y: (menu.itemHeight - height) / 2
-            glyph: "\uE72B"
-            size: 16
-            color: Theme.text
-        }
-        Text {
-            x: 42
-            y: (menu.itemHeight - height) / 2
-            width: heading.width - x - 12
-            text: menu.page === null ? "" : (menu.page.pageTitle ?? menu.page.text)
-            font.pixelSize: Theme.menuTextSize
-            font.weight: Font.DemiBold
-            color: Theme.text
-            elide: Text.ElideRight
-        }
-        MouseArea {
-            id: backMouse
-            width: heading.width
-            height: menu.itemHeight
-            hoverEnabled: true
-            onClicked: menu.back()
-        }
-        Hook { // the style's seam, edge to edge
-            anchors.bottom: parent.bottom
-            x: -menu.padding
-            width: menu.width
-            height: Theme.edge(menu.dpr)
-            part: Theme.separator
-            dpr: menu.dpr
-        }
+    FolderMenuColumn {
+        id: first
+        // The window's size, not its content item's: that one stays 0x0 for a
+        // window off the screen (the previews), which gets no resize.
+        width: menu.width
+        height: menu.height
+        entries: menu.folderMenu.entries
+        highlighted: menu.rowShown(0)
+        faint: menu.fainter(0)
+        dpr: menu.dpr
+        onPointed: (index, row) => menu.pointed(0, index, row)
+        onUnpointed: (index, row) => menu.unpointed(0, index, row)
+        onGone: (index, row) => menu.forgetRow(0, index, row)
+        onChosen: index => menu.activate(0, index, true)
+        onExpanded: index => menu.open(0, index, true)
     }
-    ListView {
-        id: flick
-        objectName: "folderMenuScroll"
-        x: menu.padding
-        y: menu.padding + menu.headingHeight
-        width: menu.width - 2 * menu.padding
-        height: menu.height - 2 * menu.padding - menu.headingHeight
-        boundsBehavior: Flickable.StopAtBounds
-        clip: true
-        reuseItems: true
-        model: menu.entries
-        // One highlight for the list, under the item chosen or pointed at:
-        // it jumps, or slides as the style says (Theme.rowSlide). Not
-        // managed by the view's own current item: menu.highlighted is.
-        currentIndex: -1
-        highlightMoveDuration: Theme.rowSlide
-        highlightMoveVelocity: -1
-        highlightResizeDuration: 0
-        highlightResizeVelocity: -1
-        highlight: Item {
-            width: flick.width
-            visible: flick.currentItem !== null && menu.highlighted >= 0
-            MenuHighlight { anchors.fill: parent }
-        }
-        delegate: Item {
-            id: entry
-            required property var modelData
-            required property int index
-            readonly property bool separator: modelData.separator === true
-            readonly property bool disabled: modelData.disabled === true
-            readonly property bool section: modelData.heading === true
-            readonly property bool branch: modelData.children !== undefined || modelData.folder !== undefined
-            readonly property string tooltip: modelData.tooltip ?? ""
-            readonly property real trailingWidth: Math.min(detail.implicitWidth, 96) + (branch ? 20 : 0)
-            objectName: "folderMenuEntry" + index
-            width: flick.width
-            height: separator ? 9 : section ? menu.sectionHeight : menu.itemHeight
-            enabled: !disabled
-            ListView.onPooled: {
-                if (menu.hoveredEntry === entry)
-                    menu.hoveredEntry = null
-                menu.unpointed(entry.index)
-            }
-            Accessible.role: section ? Accessible.Heading : Accessible.MenuItem
-            Accessible.name: modelData.text ?? ""
-            Accessible.description: tooltip
-            Accessible.ignored: separator
-            Accessible.onPressAction: menu.activate(entry.index)
-            Hook { // the style's seam, edge to edge
-                visible: entry.separator
-                anchors.verticalCenter: parent.verticalCenter
-                x: -menu.padding
-                width: menu.width
-                height: Theme.edge(menu.dpr)
-                part: Theme.separator
-                dpr: menu.dpr
-            }
-            Image {
-                id: icon
-                visible: !entry.separator && status === Image.Ready
-                x: 12
-                anchors.verticalCenter: parent.verticalCenter
-                width: 18
-                height: 18
-                source: entry.modelData.icon ?? ""
-                sourceSize: Qt.size(18 * Screen.devicePixelRatio, 18 * Screen.devicePixelRatio)
-                asynchronous: true
-                fillMode: Image.PreserveAspectFit
-            }
-            Glyph {
-                visible: !entry.separator && !entry.section && !icon.visible
-                x: 13
-                anchors.verticalCenter: parent.verticalCenter
-                glyph: entry.modelData.glyph ?? ""
-                size: 16
-                color: entry.disabled ? Theme.faint : Theme.text
-            }
-            Text {
-                x: entry.section ? 12 : 42
-                width: Math.max(0, entry.width - x - 14 - entry.trailingWidth - 12)
-                anchors.verticalCenter: parent.verticalCenter
-                text: entry.modelData.text ?? ""
-                elide: Text.ElideRight
-                color: entry.disabled ? Theme.faint : Theme.text
-                font.pixelSize: entry.section ? Theme.menuCaptionSize : Theme.menuTextSize
-            }
-            Text {
-                id: detail
-                anchors.right: parent.right
-                anchors.rightMargin: entry.branch ? 34 : 14
-                anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(implicitWidth, 96)
-                text: entry.modelData.detail ?? ""
-                elide: Text.ElideRight
-                color: Theme.faint
-                font.pixelSize: Theme.menuCaptionSize
-            }
-            Rectangle { // the arrow is a button of its own on a row that goes somewhere itself
-                visible: arrow.containsMouse && entry.modelData.action !== undefined
-                anchors.right: parent.right
-                anchors.rightMargin: 4
-                anchors.verticalCenter: parent.verticalCenter
-                width: 28
-                height: entry.height - 8
-                radius: Theme.menuItemRadius
-                color: Theme.controlHover
-            }
-            Glyph {
-                visible: entry.branch
-                anchors.right: parent.right
-                anchors.rightMargin: 12
-                anchors.verticalCenter: parent.verticalCenter
-                glyph: "\uE76C"
-                size: 12
-                color: entry.disabled ? Theme.faint : Theme.text
-            }
-            MouseArea {
-                anchors.fill: parent
-                enabled: !entry.separator && !entry.disabled
-                hoverEnabled: true
-                onEntered: {
-                    menu.highlighted = entry.index
-                    menu.hoveredEntry = entry
-                    menu.hoveredText = entry.tooltip
-                }
-                onExited: {
-                    if (menu.highlighted === entry.index) menu.highlighted = -1
-                    if (menu.hoveredEntry === entry) menu.hoveredEntry = null
-                }
-                onClicked: menu.activate(entry.index)
+    Component {
+        id: columnWindow
+        Window {
+            id: next
+            required property int visual
+            readonly property int level: menu.levelAt(visual)
+            property var page: null
+            property int direction: 1
+            readonly property alias column: rows
+            readonly property real dpr: Screen.devicePixelRatio
+            objectName: "folderMenuColumn" + visual
+            flags: menu.flags
+            color: Theme.menuBackground
+            width: menu.width
+            height: Math.min(rows.listHeight + 2 * rows.padding, menu.maxHeight)
 
-                MouseArea {
-                    id: arrow
-                    objectName: "folderMenuArrow" + entry.index
-                    anchors.right: parent.right
-                    width: 36
-                    height: parent.height
-                    enabled: entry.branch
-                    hoverEnabled: true
-                    Accessible.role: Accessible.Button
-                    Accessible.name: qsTr("展开“%1”").arg(entry.modelData.text ?? "")
-                    Accessible.ignored: !entry.branch
-                    Accessible.onPressAction: menu.open(entry.index, false)
-                    // Coming onto it counts as well: a quick move may arrive in one step.
-                    onEntered: menu.pointed(entry.index)
-                    onPositionChanged: menu.pointed(entry.index)
-                    onExited: menu.unpointed(entry.index)
-                    onClicked: menu.open(entry.index, true)
-                }
+            FolderMenuColumn {
+                id: rows
+                width: next.width
+                height: next.height
+                entries: next.page === null ? [] : next.page.children
+                highlighted: menu.rowShown(next.level)
+                faint: menu.fainter(next.level)
+                dpr: next.dpr
+                Accessible.name: next.page === null ? "" : (next.page.pageTitle ?? next.page.text ?? "")
+                onPointed: (index, row) => menu.pointed(next.level, index, row)
+                onUnpointed: (index, row) => menu.unpointed(next.level, index, row)
+                onGone: (index, row) => menu.forgetRow(next.level, index, row)
+                onChosen: index => menu.activate(next.level, index, true)
+                onExpanded: index => menu.open(next.level, index, true)
             }
+            WindowEdge { body: false } // the menu's colour is the window's
         }
     }
     MenuPathTip {
@@ -472,14 +539,6 @@ Window {
         availableArea: menu.availableArea
         target: menu.hoveredText.length > 0 ? menu.hoveredEntry : null
         text: menu.hoveredText
-    }
-    ListScrollBar {
-        dpr: menu.dpr
-        visible: flick.contentHeight > flick.height
-        flickable: flick
-        x: menu.width - width
-        y: flick.y
-        height: flick.height
     }
 
     WindowEdge { body: false } // the menu's colour is the window's

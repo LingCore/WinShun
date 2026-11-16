@@ -181,7 +181,22 @@ bool checkWindowSearchAndMenu(QQmlEngine* engine, const QDir& output)
             style + u": last row is fully visible after scrolling"_s);
         check(window->grabWindow().save(output.filePath(style + u"-compact-menu.png"_s)), style + u": capture menu"_s);
         check(!window->isActive(), style + u": menu stays inactive"_s);
-        window->hide();
+        // A row that leads on opens its column (#348) as wide as the menu,
+        // its rows as tall, never activated; off the screen as the menu is.
+        window->setProperty("availableArea", QRectF(window->x(), window->x(), 1200, 800));
+        menu.previewEntries({QVariantMap {{u"text"_s, u"项目资料"_s}, {u"glyph"_s, u"\uE8B7"_s},
+            {u"children"_s, QVariantList {QVariantMap {{u"text"_s, u"年度报告"_s}, {u"glyph"_s, u"\uE8B7"_s}, {u"action"_s, 0}}}}}});
+        settle();
+        QMetaObject::invokeMethod(window, "handleKey", Q_ARG(QVariant, Qt::Key_Down), Q_ARG(QVariant, QString()));
+        QMetaObject::invokeMethod(window, "handleKey", Q_ARG(QVariant, Qt::Key_Right), Q_ARG(QVariant, QString()));
+        settle();
+        auto* column = window->findChild<QQuickWindow*>(u"folderMenuColumn1"_s);
+        auto* row = column ? find(column->contentItem(), u"folderMenuEntry0"_s) : nullptr;
+        check(column && column->isVisible() && column->width() == window->width() && !column->isActive() && row
+                && qRound(row->height()) == height,
+            style + u": a folder's column keeps the menu's width and density and stays inactive"_s);
+        menu.dismiss();
+        check(!window->isVisible() && column && !column->isVisible(), style + u": closing the menu hides its column"_s);
     }
     SystemTheme::setUiStyle(originalStyle);
     QTemporaryDir profile;

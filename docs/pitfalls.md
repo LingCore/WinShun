@@ -3040,6 +3040,12 @@
 - 在“别的窗口”上选一个已经有资源管理器窗口开着的文件夹来验证“用文件管理器打开”，数不到新窗口：外壳打开文件夹时，已有窗口显示着它就只把那个窗口提到前台（前台确实换成了它）。要验证就选没开着的（最近的文件夹），再数新开的 `CabinetWClass` 窗口。
 - 记日志的函数里用 `Write-Output` 写一行，这一行就成了调用它的函数的返回值的一部分：`Recorder` 返回的成了 `Object[]`，`MenuWindows` 只剩一项时又被拆成单个对象，`.Count` 是空。日志用 `Write-Host`，返回数组写 `return ,$m`，调用处套 `@()`。
 
+### 一列一个窗口（#348）：测试里的光标、`Item` 自带的 `left`、屏幕外窗口的 0×0
+
+- **现象**：改成多列之前 `tst_foldermenu` 的 `folderPages` 就过不了：指针停在箭头上 700 ms，下一页始终不出来。改的过程中又碰到两件：子列组件声明 `signal left(...)` 后整个菜单加载失败（`Final member left is overridden`、`Cannot assign to non-existent property "onLeft"`）；预览探针截出来的菜单是一片底色。
+- **原因**：Qt 6 的 `QTest::mouseMove(QWindow*)` 只发 Qt 事件，不动系统光标，而 #348 的“光标没动就不算”比的是 `QCursor::pos()`，测试里它一直不变。`Item` 本来就有锚线属性 `left / right / top / bottom` 等，同名信号盖不掉它。屏幕外的窗口收不到尺寸变化，`contentItem` 一直是 0×0，`anchors.fill: parent` 的子项跟着是 0×0。
+- **做法**：`FolderMenu::setCursorSource` 让测试自己给光标位置；从一个窗口移到另一个窗口时给离开的窗口发 `QEvent::Leave`，模拟 Windows 的鼠标离开（`tst_foldermenu` 的 `Pointer`）。信号改名 `unpointed`。列的尺寸直接绑窗口的 `width / height`，不用 `anchors.fill`。
+
 ## 内容索引直读（bulk，第一次建立不逐个打开文件）
 
 做法和取舍见 [architecture.md](architecture.md) 的“内容索引第一次建立时直读磁盘”（`src/core/NtfsBulk.cpp`、`ContentIndexer::pass` 的 feeder、`src/service/Volumes.cpp` 的 `serveOpenBulkRead`）。下面是量出来的、光看资料想不到的几条。

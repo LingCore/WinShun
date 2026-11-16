@@ -7468,6 +7468,29 @@ bool checkStyleWindows(QQmlEngine* engine, const QDir& output)
             pump(100);
             window->setProperty("highlighted", 3);
             shoot(window, u"style-foldermenu"_s);
+            // 收藏夹 opened by the keys: its column beside the menu (#348),
+            // the two as they stand side by side.
+            QMetaObject::invokeMethod(window, "activate", Q_ARG(QVariant, 0), Q_ARG(QVariant, 0), Q_ARG(QVariant, false));
+            auto* column = window->findChild<QQuickWindow*>(u"folderMenuColumn1"_s);
+            check(column && column->isVisible(), u"folder menu column"_s);
+            if (column) {
+                settle(window);
+                settle(column);
+                pump(300);
+                const qreal dpr = window->devicePixelRatio();
+                const QRect bounds = window->geometry() | column->geometry();
+                QImage image(bounds.size() * dpr, QImage::Format_ARGB32_Premultiplied);
+                image.fill(Qt::transparent);
+                QPainter painter(&image);
+                for (QQuickWindow* shown : {window, column}) {
+                    QImage grab = shown->grabWindow();
+                    grab.setDevicePixelRatio(1);
+                    painter.drawImage(QPointF((shown->x() - bounds.x()) * dpr, (shown->y() - bounds.y()) * dpr), grab);
+                }
+                painter.end();
+                check(image.save(output.filePath(u"style-foldermenu-cascade.png"_s)), u"style-foldermenu-cascade"_s);
+            }
+            menu.dismiss();
             window->hide();
         }
     }
