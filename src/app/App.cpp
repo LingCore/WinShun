@@ -8926,6 +8926,20 @@ mcp::ToolResult App::openAiSettings(const QString& key, const QString& section)
         }
         page = of->page;
         where = of->titleText();
+        // A section that is one tab of its page (打开 Win顺: 快捷键, 任务栏, 对话框,
+        // 启动) opens on that tab; one spread over several keeps the page's first.
+        std::optional<int> shared;
+        for (const aisettings::Entry& entry : aisettings::catalog()) {
+            if (entry.section.compare(of->id, Qt::CaseInsensitive) != 0)
+                continue;
+            if (!shared) {
+                shared = entry.tab;
+            } else if (*shared != entry.tab) {
+                shared = -1;
+                break;
+            }
+        }
+        tab = shared.value_or(-1);
     }
     showSettings([&](QQuickWindow* window) {
         QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, page), Q_ARG(QVariant, tab), Q_ARG(QVariant, rowTitle));
