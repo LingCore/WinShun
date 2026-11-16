@@ -26,25 +26,30 @@ bool taskWindow(HWND window)
     return FAILED(::DwmGetWindowAttribute(window, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) || !cloaked;
 }
 
-QString caption(HWND window)
+// GetWindowText sends WM_GETTEXT to a window of this process, which waits
+// for the thread that owns it; InternalGetWindowText reads the caption kept
+// by the system, as GetWindowText does for other processes' windows.
+QString caption(HWND window, DWORD process)
 {
     std::array<wchar_t, 2048> text {};
-    const int length = ::GetWindowTextW(window, text.data(), static_cast<int>(text.size()));
+    const int size = static_cast<int>(text.size());
+    const int length = process == ::GetCurrentProcessId() ? ::InternalGetWindowText(window, text.data(), size)
+                                                          : ::GetWindowTextW(window, text.data(), size);
     return QString::fromWCharArray(text.data(), length).trimmed();
 }
 
 } // namespace
 
-SearchResults snapshot(DWORD excludedProcess)
+SearchResults snapshot(Own own)
 {
-    struct Context { DWORD excluded; SearchResults rows; } context {excludedProcess, {}};
+    struct Context { DWORD excluded; SearchResults rows; } context {own == Own::Excluded ? ::GetCurrentProcessId() : 0, {}};
     ::EnumWindows([](HWND window, LPARAM data) -> BOOL {
         auto& context = *reinterpret_cast<Context*>(data);
         DWORD pid = 0;
         const DWORD tid = ::GetWindowThreadProcessId(window, &pid);
         if (!pid || pid == context.excluded || !taskWindow(window))
             return TRUE;
-        const QString title = caption(window);
+        const QString title = caption(window, pid);
         if (title.isEmpty())
             return TRUE;
         SearchResult row;
@@ -99,7 +104,7 @@ bool current(const SearchResult& row)
     DWORD pid = 0;
     const DWORD tid = ::GetWindowThreadProcessId(window, &pid);
     return pid == row.windowProcess && tid == row.windowThread && taskWindow(window)
-        && caption(window) == row.name;
+        && caption(window, pid) == row.name;
 }
 
 Activation activate(const SearchResult& row)

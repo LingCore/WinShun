@@ -10,6 +10,8 @@
 #include <QtTest>
 #include <QScopeGuard>
 #include <atomic>
+#include <future>
+#include <memory>
 #include <algorithm>
 #include <thread>
 
@@ -116,16 +118,30 @@ private slots:
         QVERIFY(window);
         const auto destroy = qScopeGuard([&] { ::DestroyWindow(window); });
         ::ShowWindow(window, SW_SHOWNOACTIVATE);
-        auto rows = windowsearch::snapshot(0);
+        auto rows = windowsearch::snapshot(windowsearch::Own::Included);
         QCOMPARE(rows.size(), 1);
         QCOMPARE(rows.first().windowHandle, reinterpret_cast<quintptr>(window));
         QVERIFY(windowsearch::snapshot().isEmpty()); // self excluded in production
+        // 运行 lists our own windows (#341): read from another thread while
+        // the owner pumps no messages, as the GUI thread may be busy.
+        {
+            auto read = std::make_shared<std::promise<SearchResults>>();
+            std::future<SearchResults> answer = read->get_future();
+            std::thread([read, desktop] {
+                ::SetThreadDesktop(desktop);
+                read->set_value(windowsearch::snapshot(windowsearch::Own::Included));
+            }).detach(); // not joined: a scan stuck on a message would hang the test
+            QVERIFY(answer.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+            const SearchResults fromAnotherThread = answer.get();
+            QCOMPARE(fromAnotherThread.size(), 1);
+            QCOMPARE(fromAnotherThread.first().name, u"window-search-owned"_s);
+        }
         QVERIFY(windowsearch::current(rows.first()));
         // A desktop which is not the input desktop cannot take foreground.
         // The production result must report that refusal, not claim success.
         QCOMPARE(windowsearch::activate(rows.first()), windowsearch::Activation::Refused);
         ::ShowWindow(window, SW_MINIMIZE);
-        QCOMPARE(windowsearch::snapshot(0).size(), 1); // minimized remains searchable
+        QCOMPARE(windowsearch::snapshot(windowsearch::Own::Included).size(), 1); // minimized remains searchable
         QCOMPARE(windowsearch::activate(rows.first()), windowsearch::Activation::Refused);
         // ShowWindowAsync posts to the owning thread. A real application has
         // a message loop; the private native fixture pumps that queue here.
@@ -144,10 +160,10 @@ private slots:
         ::SetWindowTextW(window, L"another document");
         QCOMPARE(windowsearch::activate(rows.first()), windowsearch::Activation::Gone);
         ::ShowWindow(window, SW_HIDE);
-        QVERIFY(windowsearch::snapshot(0).isEmpty());
+        QVERIFY(windowsearch::snapshot(windowsearch::Own::Included).isEmpty());
         ::ShowWindow(window, SW_SHOWNOACTIVATE);
         ::SetWindowLongPtrW(window, GWL_EXSTYLE, WS_EX_TOOLWINDOW);
-        QVERIFY(windowsearch::snapshot(0).isEmpty());
+        QVERIFY(windowsearch::snapshot(windowsearch::Own::Included).isEmpty());
         finished = true;
         });
         native.join();
@@ -188,7 +204,7 @@ private slots:
             QVERIFY(::SetForegroundWindow(first));
         }
         QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), first, 1000);
-        const auto windows = windowsearch::snapshot(0);
+        const auto windows = windowsearch::snapshot(windowsearch::Own::Included);
         const auto target = std::ranges::find_if(windows, [&](const auto& row) {
             return row.windowHandle == reinterpret_cast<quintptr>(second);
         });

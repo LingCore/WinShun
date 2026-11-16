@@ -2158,7 +2158,7 @@ void Launcher::showApps()
     QStringList highlights;
     QList<int> counts {0, 0, 0, 0};
     const QString text = searchText();
-    const SearchResults running = windowsearch::snapshot(); // 运行: the windows open on this desktop
+    const SearchResults running = windowsearch::snapshot(windowsearch::Own::Included); // 运行: the windows open on this desktop
     counts[RunningApps] = static_cast<int>(running.size());
     if (m_appsView == RunningApps)
         rows = text.trimmed().isEmpty() ? running : windowsearch::matching(running, text, regexTerms());
@@ -2254,7 +2254,7 @@ void Launcher::runningTicked()
         m_runningTick.stop();
         return;
     }
-    if (windowKeys(windowsearch::snapshot()) != m_runningShown)
+    if (windowKeys(windowsearch::snapshot(windowsearch::Own::Included)) != m_runningShown)
         showApps();
 }
 
