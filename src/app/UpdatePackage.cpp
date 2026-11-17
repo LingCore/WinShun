@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSet>
+#include <QSettings>
 #include <QStringList>
 #include <QUuid>
 
@@ -103,6 +104,20 @@ bool helperRunning()
     if (mutex)
         ::CloseHandle(mutex);
     return mutex || ::GetLastError() == ERROR_ACCESS_DENIED;
+}
+
+void rememberElevation(const QString& dataDir, bool elevated)
+{
+    QSettings state(dataDir + u"\\update.ini"_s, QSettings::IniFormat);
+    if (elevated)
+        state.setValue(u"ElevatedBeforeUpdate"_s, true);
+    else
+        state.remove(u"ElevatedBeforeUpdate"_s);
+}
+
+bool elevatedBeforeUpdate(const QString& dataDir)
+{
+    return QSettings(dataDir + u"\\update.ini"_s, QSettings::IniFormat).value(u"ElevatedBeforeUpdate"_s).toBool();
 }
 
 bool folderWritable(const QString& folder)

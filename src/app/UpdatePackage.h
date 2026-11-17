@@ -34,6 +34,14 @@ bool setupInstalled();
 // from its start to its end (each version's helper since 0.16).
 bool helperRunning();
 
+// Whether the copy that started an update ran as administrator (GitHub #363):
+// Setup starts the new version with the user's own rights (runasoriginaluser,
+// #21), so a copy raised by hand ("以管理员身份重新启动 Win顺") came back
+// without them. Kept in update.ini in the data folder as the update starts;
+// the new version raises itself once more after it (App::elevateOnceUpdated).
+void rememberElevation(const QString& dataDir, bool elevated);
+bool elevatedBeforeUpdate(const QString& dataDir);
+
 // Something can be created in `folder` (a portable copy in Program Files,
 // on a read-only share: not). Tried with a file that is gone at once.
 bool folderWritable(const QString& folder);

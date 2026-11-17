@@ -421,7 +421,11 @@ int main(int argc, char* argv[])
     // version back when it ends at once, as one handing over to an elevated
     // copy does (GitHub #274). So this one comes up as it was started, and
     // App restarts it as administrator once the helper is done.
-    const bool elevateAfterUpdate = wantsElevation && ws::update::helperRunning();
+    // So too when the copy that started the update was raised by hand, with
+    // 索引方式 left as it was (GitHub #363).
+    const bool raisedBeforeUpdate = ws::update::elevatedBeforeUpdate(ws::Settings::dataDir()) && ws::userIsAdministrator()
+        && !ws::integrity::processElevated() && !parser.isSet(unelevatedOnce);
+    const bool elevateAfterUpdate = (wantsElevation || raisedBeforeUpdate) && ws::update::helperRunning();
     if (wantsElevation && !elevateAfterUpdate) {
         // Honor the saved mode for manual starts too, before creating an
         // index or a window. The new copy must acquire the instance mutex.

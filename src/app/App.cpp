@@ -7311,10 +7311,12 @@ void App::restart(const QStringList& arguments, Elevation elevation)
 }
 
 // Started by an in-app update's helper while 管理员直读 is set (main.cpp,
-// GitHub #274): restarted as administrator, as a manual start would have
-// been, once the helper is done (it has seen this copy come up and cleared
-// the old files away) and nothing of ours is open under the user's hands.
-// UAC asks; declined, Win顺 comes back with normal rights (startAgain).
+// GitHub #274), or after an update started by a copy run as administrator
+// (#363: raised by hand for plugins that need it): restarted as
+// administrator, as a manual start would have been, once the helper is done
+// (it has seen this copy come up and cleared the old files away) and nothing
+// of ours is open under the user's hands. UAC asks; declined, Win顺 comes
+// back with normal rights (startAgain). Once: the mark is cleared.
 void App::elevateOnceUpdated()
 {
     auto* timer = new QTimer(this);
@@ -7325,14 +7327,19 @@ void App::elevateOnceUpdated()
         if (helper && std::chrono::steady_clock::now() < given)
             return;
         // Still wanted: the mode may have been changed meanwhile.
-        const bool wanted = !helper && m_settings.indexAccess == u"direct" && userIsAdministrator()
-            && !integrity::processElevated();
+        const bool direct = m_settings.indexAccess == u"direct";
+        const bool raised = update::elevatedBeforeUpdate(Settings::dataDir());
+        const bool wanted = !helper && (direct || raised) && userIsAdministrator() && !integrity::processElevated();
         if (wanted
             && (launcherShown() || (m_settingsWindow && m_settingsWindow->isVisible())
                 || (m_clipWindow && m_clipWindow->isVisible())))
             return; // once they are put away
         timer->deleteLater();
-        diagnostics::record(u"elevation-after-update"_s, {{u"restart"_s, wanted}, {u"helper_still_running"_s, helper}});
+        update::rememberElevation(Settings::dataDir(), false);
+        diagnostics::record(u"elevation-after-update"_s, {{u"restart"_s, wanted}, {u"helper_still_running"_s, helper},
+            {u"direct_read"_s, direct}, {u"elevated_before_update"_s, raised}});
+        qWarning() << "Update: back as administrator after the update:" << wanted << "(direct read" << direct
+                   << ", elevated before" << raised << ")";
         if (wanted)
             restart({u"--background"_s}, Elevation::Elevated);
     });

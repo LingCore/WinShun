@@ -2,6 +2,7 @@
 
 #include "Settings.h"
 #include "platform/Http.h"
+#include "platform/Integrity.h"
 #include "platform/Shell.h"
 
 #include <QCoreApplication>
@@ -540,6 +541,7 @@ void Updater::runSetup(const std::shared_ptr<Job>& job)
     const QString args = u"/SILENT /SUPPRESSMSGBOXES /NORESTART /SP- %1 /LOG=%2"_s.arg(
         job->kind == update::Kind::AllUsers ? u"/ALLUSERS"_s : u"/CURRENTUSER"_s, quoted(log));
     setPending(job->release.version);
+    update::rememberElevation(Settings::dataDir(), integrity::processElevated()); // #363
     auto setup = std::make_shared<win32::UniqueHandle>(shell::startUnelevated(QDir::toNativeSeparators(job->file).toStdWString(), args.toStdWString()));
     if (!setup->valid()) {
         qWarning() << "Update: Setup did not start" << ::GetLastError();
@@ -614,6 +616,7 @@ void Updater::runPortableSwap(const std::shared_ptr<Job>& job)
         return;
     }
     setPending(job->release.version);
+    update::rememberElevation(Settings::dataDir(), integrity::processElevated()); // #363
     const QString args = u"--portable --pid %1 --ready %2 --app %3 --stage %4 --backup %5 --log %6"_s
                              .arg(::GetCurrentProcessId())
                              .arg(ready, quoted(appDir()), quoted(job->stage), quoted(job->backup),

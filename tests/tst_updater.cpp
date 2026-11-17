@@ -218,6 +218,21 @@ private slots:
         QCOMPARE(update::setupBlockedBy("Update blocked by: " + QByteArray(200, 'a')).size(), 80);
     }
 
+    // GitHub #363: a copy run as administrator when it starts an update is
+    // raised again after it; the mark is kept beside the other update state.
+    void elevationBeforeUpdateIsRemembered()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString data = QDir::toNativeSeparators(dir.path());
+        QVERIFY(!update::elevatedBeforeUpdate(data));
+        update::rememberElevation(data, true);
+        QVERIFY(update::elevatedBeforeUpdate(data));
+        QVERIFY(QFile::exists(data + u"\\update.ini"_s));
+        update::rememberElevation(data, false);
+        QVERIFY(!update::elevatedBeforeUpdate(data));
+    }
+
     void parsesMirrorsAndDigest()
     {
         const auto info = release::parse(kFeed);
