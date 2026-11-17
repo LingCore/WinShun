@@ -193,6 +193,14 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.34.0**
+
+- 🔤 **字母直达可以换键、换字母**，`Shift`+字母点一行上的按钮（#357）。
+- ✖️ **贴图角上的关闭按钮**，鼠标从哪边进来就在哪个角（截图与录屏 1.1.20）；⚡ **可以关掉弹出动画**（#365）。
+- 🛠️ **修复** Total Commander 通过 Everything 接口看不到文件夹大小、“遍历”方式的磁盘不收录目录链接（#364）；以管理员身份运行时更新后回到管理员身份（#363）；下拉菜单的滚动条能拖了。
+
+详见 [0.34.0 发布说明](docs/release-notes/v0.34.0.md)。
+
 **0.33.0**
 
 - 🗂️ **文件夹菜单一列列并排展开**，前面的列都留着；✏️ **贴图原地编辑**，工具条直接长在贴图上。
@@ -454,6 +462,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.34.0**
+
+- 🔤 **Letter jump with your own key and letters**, and `Shift`+letter presses a row's buttons (#357).
+- ✖️ **A close button in a pin's corner**, on the side the mouse came in from (Screenshot and recording 1.1.20); ⚡ **the open animation can be turned off** (#365).
+- 🛠️ **Fixed** Total Commander getting no folder sizes through the Everything interface, and directory links not taken on walked disks (#364); an update started as administrator comes back as administrator (#363); drop-down scroll bars can be dragged.
+
+See the [0.34.0 release notes](docs/release-notes/v0.34.0.md).
 
 **0.33.0**
 
