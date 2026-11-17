@@ -39,6 +39,21 @@ constexpr int kShutdownGraceMs = 2000;
 constexpr qint64 kLogRotateBytes = 1 << 20;
 constexpr qsizetype kMaxOutputBytes = 16 << 20; // cumulative stdout of one once process
 
+// "：目录名称无效。": what Windows says of a start error, in the user's
+// language, so a report says more than a number. Empty when it has nothing.
+QString systemErrorText(quint32 error)
+{
+    wchar_t* buffer = nullptr;
+    const DWORD length = ::FormatMessageW(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error, 0,
+        reinterpret_cast<wchar_t*>(&buffer), 0, nullptr);
+    QString text = length ? QString::fromWCharArray(buffer, static_cast<qsizetype>(length)).trimmed() : QString();
+    ::LocalFree(buffer);
+    while (text.endsWith(u'。') || text.endsWith(u'.'))
+        text.chop(1);
+    return text.isEmpty() ? QString() : u"：%1"_s.arg(text);
+}
+
 const char* kindName(Match::Kind kind)
 {
     switch (kind) {
@@ -1666,7 +1681,7 @@ void Host::onFailed(std::uint64_t instance, const QString& stage, quint32 error)
         return;
     Plugin& p = plugin(owner->second);
     m_owners.erase(owner);
-    const QString why = u"启动失败：%1（错误 %2）"_s.arg(stage).arg(error);
+    const QString why = u"启动失败：%1（错误 %2%3）"_s.arg(stage).arg(error).arg(systemErrorText(error));
     log(u"%1: %2"_s.arg(p.id, why));
     if (const auto run = p.runs.find(instance); run != p.runs.end()) {
         if (!run->second->discarded) {

@@ -72,7 +72,7 @@ using SwitchesServe = int(__cdecl*)(HANDLE, HANDLE, HANDLE);
 // WinShunSwitchesApp.dll beside the plugin's program, loaded once and kept
 // (Qt is never unloaded); its Qt DLLs from Win顺's folder (WS_APP_DIR, as
 // WinShunSwitches.exe finds them; installed, that is the host's own).
-SwitchesServe switchesEntry(const std::wstring& exe, const std::wstring& appDir, std::string* problem)
+SwitchesServe switchesEntry(const std::wstring& exe, const std::wstring& appDir, std::string* problem, unsigned long* error)
 {
     static std::mutex mutex;
     static SwitchesServe entry = nullptr;
@@ -91,7 +91,8 @@ SwitchesServe switchesEntry(const std::wstring& exe, const std::wstring& appDir,
         ::AddDllDirectory(appDir.c_str()); // only for loads that ask for it (LOAD_LIBRARY_SEARCH_USER_DIRS)
     const HMODULE module = ::LoadLibraryExW(dll.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
     if (!module) {
-        *problem = "LoadLibrary " + lite::utf8(dll) + " error " + std::to_string(::GetLastError());
+        *error = ::GetLastError();
+        *problem = "LoadLibrary " + lite::utf8(dll) + " error " + std::to_string(*error);
         return nullptr;
     }
     entry = reinterpret_cast<SwitchesServe>(::GetProcAddress(module, "winshunSwitchesServe"));
@@ -108,8 +109,9 @@ bool known(const std::string& kind)
 }
 
 std::shared_ptr<Run> start(const std::string& kind, const std::wstring& exe, const std::wstring& appDir, HANDLE in, HANDLE out,
-    HANDLE err, std::string* problem)
+    HANDLE err, std::string* problem, unsigned long* error)
 {
+    *error = 0;
     const auto closeEnds = [in, out, err] {
         ::CloseHandle(in);
         ::CloseHandle(out);
@@ -133,7 +135,7 @@ std::shared_ptr<Run> start(const std::string& kind, const std::wstring& exe, con
         return run;
     }
     if (kind == "switches") {
-        const SwitchesServe entry = switchesEntry(exe, appDir, problem);
+        const SwitchesServe entry = switchesEntry(exe, appDir, problem, error);
         if (!entry) {
             closeEnds();
             return nullptr;

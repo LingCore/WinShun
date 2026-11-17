@@ -437,10 +437,13 @@ void startInProcess(std::unique_ptr<Instance> instance, const std::string& kind,
     }
     const LARGE_INTEGER started = lite::tick();
     std::string problem;
-    instance->run = inprocess::start(kind, exe, appDir, in, out, err, &problem);
+    unsigned long error = 0;
+    instance->run = inprocess::start(kind, exe, appDir, in, out, err, &problem, &error);
     if (!instance->run) {
         log("cannot run " + kind + " inside the host: " + problem);
-        sendControl({{"op", "failed"}, {"id", id}, {"stage", "inProcess"}, {"error", static_cast<unsigned long>(ERROR_MOD_NOT_FOUND)}});
+        // Windows' own code (a "126" for everything hid what was missing).
+        sendControl({{"op", "failed"}, {"id", id}, {"stage", "inProcess"},
+            {"error", error ? error : static_cast<unsigned long>(ERROR_MOD_NOT_FOUND)}});
         return;
     }
     launched(std::move(instance), ::GetCurrentProcessId(), lite::microsecondsSince(started), true);
@@ -604,6 +607,10 @@ void start(const json::Value& m)
     childStdout.reset();
     childStderr.reset();
     if (!created) {
+        // Which program and folder, for plugins.log: a 267 says only that
+        // the folder would not do.
+        log("cannot start " + lite::utf8(exe) + " in " + (cwd.empty() ? std::string("(no folder)") : lite::utf8(cwd))
+            + ": error " + std::to_string(createError));
         fail(strict ? "CreateProcessAsUserW" : "CreateProcessW", createError);
         return;
     }

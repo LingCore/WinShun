@@ -28,8 +28,9 @@ bool known(const std::string& kind);
 // Starts `kind` over `in` (it reads), `out` and `err` (it writes), which it
 // closes when it returns. `exe`: the program the manifest names, beside the
 // plugin's DLL; `appDir`: Win顺's folder (WS_APP_DIR), with Qt. Null, with a
-// reason, when it cannot; the ends are closed then too.
+// reason and Windows' error code (0 when there is none), when it cannot; the
+// ends are closed then too.
 std::shared_ptr<Run> start(const std::string& kind, const std::wstring& exe, const std::wstring& appDir, HANDLE in, HANDLE out,
-    HANDLE err, std::string* problem);
+    HANDLE err, std::string* problem, unsigned long* error);
 
 } // namespace ws::plugin::inprocess
