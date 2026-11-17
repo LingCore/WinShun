@@ -287,6 +287,14 @@ void SettingsEditor::setDoubleClickToOpen(bool on)
     commit();
 }
 
+void SettingsEditor::setClickPreviews(bool on)
+{
+    if (m_settings.clickPreviews == on)
+        return;
+    m_settings.clickPreviews = on;
+    commit();
+}
+
 void SettingsEditor::setTabEntersFavoriteFolder(bool on)
 {
     if (m_settings.tabEntersFavoriteFolder == on)

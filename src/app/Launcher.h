@@ -133,6 +133,8 @@ class Launcher : public QObject {
     // A click on a row only selects it; a double click (or Enter) opens it
     // (Settings::doubleClickToOpen, GitHub #44).
     Q_PROPERTY(bool doubleClickToOpen READ doubleClickToOpen NOTIFY resultOptionsChanged FINAL)
+    // With it, the click shows the row's preview too (Settings::clickPreviews).
+    Q_PROPERTY(bool clickPreviews READ clickPreviews NOTIFY resultOptionsChanged FINAL)
     // The modifier that opens the nth row shown with a digit: "ctrl", "alt",
     // or "" for none (Settings::numberKeys).
     Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY resultOptionsChanged FINAL)
@@ -544,6 +546,8 @@ public:
     bool showFileSize() const { return m_showFileSize; }
     bool doubleClickToOpen() const { return m_doubleClickToOpen; }
     void setDoubleClickToOpen(bool on);
+    bool clickPreviews() const { return m_clickPreviews; }
+    void setClickPreviews(bool on);
     void setTabEntersFavoriteFolder(bool on);
     QString numberKeys() const { return m_numberKeys; }
     QString numberHints() const { return m_numberHints; }
@@ -774,6 +778,10 @@ public:
     // launcher. closePreview: true when there was one to close.
     void setPreview(FilePreview* preview);
     Q_INVOKABLE void togglePreview(int row);
+    // The row clicked (Settings::clickPreviews): its preview, opened or
+    // brought to it; left as it is when it shows it already. Quiet on a row
+    // with nothing to preview.
+    Q_INVOKABLE void previewRow(int row);
     // The mouse rests on a row: an open preview shows its file, the current
     // row keeps the selection (the next move of it shows its file again).
     Q_INVOKABLE void previewHover(int row);
@@ -1390,6 +1398,7 @@ private:
     bool m_showModified = true;
     bool m_showFileSize = false;
     bool m_doubleClickToOpen = false;
+    bool m_clickPreviews = false;
     bool m_tabEntersFavoriteFolder = false;
     // GitHub #361. The path of the row the user chose (chooseRow), for Tab;
     // empty while the keyboard is where the list put it.

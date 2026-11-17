@@ -195,6 +195,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool showModifiedTime READ showModifiedTime WRITE setShowModifiedTime NOTIFY changed FINAL)
     Q_PROPERTY(bool showFileSize READ showFileSize WRITE setShowFileSize NOTIFY changed FINAL)
     Q_PROPERTY(bool doubleClickToOpen READ doubleClickToOpen WRITE setDoubleClickToOpen NOTIFY changed FINAL)
+    Q_PROPERTY(bool clickPreviews READ clickPreviews WRITE setClickPreviews NOTIFY changed FINAL)
     Q_PROPERTY(bool tabEntersFavoriteFolder READ tabEntersFavoriteFolder WRITE setTabEntersFavoriteFolder NOTIFY changed FINAL)
     Q_PROPERTY(bool searchApps READ searchApps WRITE setSearchApps NOTIFY changed FINAL)
     Q_PROPERTY(bool searchSystem READ searchSystem WRITE setSearchSystem NOTIFY changed FINAL)
@@ -755,6 +756,8 @@ public:
     void setShowFileSize(bool on);
     bool doubleClickToOpen() const { return m_settings.doubleClickToOpen; }
     void setDoubleClickToOpen(bool on);
+    bool clickPreviews() const { return m_settings.clickPreviews; }
+    void setClickPreviews(bool on);
     bool tabEntersFavoriteFolder() const { return m_settings.tabEntersFavoriteFolder; }
     void setTabEntersFavoriteFolder(bool on);
     bool searchApps() const { return m_settings.searchApps; }

@@ -977,6 +977,7 @@ void Settings::load()
     showFileSize = readOrDefault(s, u"Results/ShowFileSize"_s, d.showFileSize);
     folderKeyword = normalizedTypeKeyword(readOrDefault(s, u"Results/FolderKeyword"_s, d.folderKeyword)).value_or(d.folderKeyword);
     doubleClickToOpen = readOrDefault(s, u"Results/DoubleClickToOpen"_s, d.doubleClickToOpen);
+    clickPreviews = readOrDefault(s, u"Results/ClickPreviews"_s, d.clickPreviews);
     tabEntersFavoriteFolder = readOrDefault(s, u"Results/TabEntersFavoriteFolder"_s, d.tabEntersFavoriteFolder);
     thumbnails = readOrDefault(s, u"Results/Thumbnails"_s, d.thumbnails);
     rowDeleteButton = readOrDefault(s, u"Results/DeleteButton"_s, d.rowDeleteButton);
@@ -1387,6 +1388,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/ShowFileSize"_s, showFileSize);
     s.setValue(u"Results/FolderKeyword"_s, folderKeyword);
     s.setValue(u"Results/DoubleClickToOpen"_s, doubleClickToOpen);
+    s.setValue(u"Results/ClickPreviews"_s, clickPreviews);
     s.setValue(u"Results/TabEntersFavoriteFolder"_s, tabEntersFavoriteFolder);
     s.setValue(u"Results/Thumbnails"_s, thumbnails);
     s.setValue(u"Results/DeleteButton"_s, rowDeleteButton);

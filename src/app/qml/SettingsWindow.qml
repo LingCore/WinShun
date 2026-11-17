@@ -4435,13 +4435,21 @@ Window {
 
                 SettingRow {
                     title: qsTr("点击结果")
-                    keywords: qsTr("单击;双击;点击;鼠标;误触;打开;选中;click;double").split(";")
-                    description: qsTr("单击就打开；或者单击只选中（高亮），双击或按 Enter 才打开，结果多时不怕点错")
+                    keywords: qsTr("单击;双击;点击;鼠标;误触;打开;选中;预览;看内容;click;double;preview").split(";")
+                    description: !window.editor.doubleClickToOpen
+                                 ? qsTr("单击就打开；也可以单击只选中，双击或按 Enter 才打开，结果多时不怕点错")
+                                 : window.editor.clickPreviews
+                                   ? qsTr("单击选中并预览，不用打开就能看内容；双击或按 Enter 打开")
+                                   : qsTr("单击只选中（高亮），双击或按 Enter 才打开，结果多时不怕点错")
 
                     ScopeTabs {
-                        labels: [qsTr("单击打开"), qsTr("双击打开")]
-                        current: window.editor.doubleClickToOpen ? 1 : 0
-                        onActivated: (index) => window.editor.doubleClickToOpen = index === 1
+                        objectName: "clickActionChoice"
+                        labels: [qsTr("单击打开"), qsTr("双击打开"), qsTr("单击预览")]
+                        current: !window.editor.doubleClickToOpen ? 0 : window.editor.clickPreviews ? 2 : 1
+                        onActivated: (index) => {
+                            window.editor.clickPreviews = index === 2
+                            window.editor.doubleClickToOpen = index !== 0
+                        }
                     }
                 }
 

@@ -218,6 +218,9 @@ struct Settings {
     // A click on a result only selects it; a double click or Enter opens it
     // (GitHub #44: a stray click opened things). Off: a click opens.
     bool doubleClickToOpen = false;
+    // With doubleClickToOpen: the click also shows the row's preview, as the
+    // middle click does (feedback 2026-11-10: a look inside without opening).
+    bool clickPreviews = false;
     // GitHub #81: Tab switches scopes by default, including on favorites.
     // Opt in to the former behavior: in 全部, Tab browses a favorite folder.
     bool tabEntersFavoriteFolder = false;

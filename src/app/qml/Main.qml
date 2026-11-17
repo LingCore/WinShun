@@ -1296,6 +1296,8 @@ Window {
                 launcher.clearSelection()
             view.currentIndex = index
             selectionAnchor = index
+            if (launcher.doubleClickToOpen && launcher.clickPreviews)
+                launcher.previewRow(index) // after the row: an open preview has come to it already
         } else {
             view.currentIndex = index
             launcher.clickRow(index) // a selected row opens the selection

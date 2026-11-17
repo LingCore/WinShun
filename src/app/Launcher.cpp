@@ -1691,6 +1691,14 @@ void Launcher::setDoubleClickToOpen(bool on)
     emit resultOptionsChanged();
 }
 
+void Launcher::setClickPreviews(bool on)
+{
+    if (on == m_clickPreviews)
+        return;
+    m_clickPreviews = on;
+    emit resultOptionsChanged();
+}
+
 void Launcher::setTabEntersFavoriteFolder(bool on)
 {
     if (on == m_tabEntersFavoriteFolder)
@@ -4824,6 +4832,24 @@ void Launcher::togglePreview(int row)
     }
     m_preview->show(*item);
     setPreviewWanted(true);
+}
+
+void Launcher::previewRow(int row)
+{
+    if (!m_preview)
+        return;
+    if (detailsShown()) { // the panel's details: their 预览 tab
+        if (m_contentPane->tab() != ContentPane::PreviewTab)
+            togglePreview(row);
+        return;
+    }
+    const std::optional<FilePreview::Item> item = previewItem(m_results.at(row));
+    if (!item)
+        return;
+    m_preview->forgetClosedExternal(); // QuickLook or Seer closed on its own meanwhile
+    if (m_preview->isOpen() && m_preview->isShowing(item->path))
+        return;
+    togglePreview(row); // opens it, or (open on another file) shows this one
 }
 
 void Launcher::previewHover(int row)
