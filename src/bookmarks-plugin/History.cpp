@@ -8,14 +8,6 @@
 
 namespace bm {
 
-namespace {
-
-constexpr std::size_t kMaxRows = 50;
-constexpr const char* kGlyph = "glyph:U+E81C"; // History
-constexpr long long kMicrosPerDay = 24ll * 60 * 60 * 1'000'000;
-
-// The file as an SQLite URI that is read as it is: no lock asked for (the
-// browser holds its own for as long as it runs), nothing written beside it.
 std::string immutableUri(const std::string& path)
 {
     std::string uri = "file:";
@@ -32,6 +24,12 @@ std::string immutableUri(const std::string& path)
     }
     return uri + "?immutable=1";
 }
+
+namespace {
+
+constexpr std::size_t kMaxRows = 50;
+constexpr const char* kGlyph = "glyph:U+E81C"; // History
+constexpr long long kMicrosPerDay = 24ll * 60 * 60 * 1'000'000;
 
 // The local date and time of a history time; false if Windows cannot say.
 bool localTime(long long micros, SYSTEMTIME& out)
@@ -198,8 +196,8 @@ winshun::Items searchHistory(std::vector<Visit> visits, const std::string& text,
         return rows;
     if (!files) {
         rows.push_back(winshun::Item("none", chinese ? "没有找到浏览历史" : "No browsing history found",
-                                     chinese ? "装了 Chrome 或 Edge 就会自动读；其他浏览器的，在设置里指定它的书签文件"
-                                             : "Chrome's and Edge's are read on their own; for another browser, name its Bookmarks file in the settings")
+                                     chinese ? "Chrome、Edge、Firefox 的会自动读；其他浏览器的，在设置里指定它的书签文件"
+                                             : "Chrome's, Edge's and Firefox's are read on their own; for another browser, name its bookmarks file in the settings")
                            .withIcon(kGlyph)
                            .invalid());
     } else {

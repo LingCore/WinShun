@@ -3,7 +3,7 @@
 // unquote, Unicode lower case, matching, scoring and the rows. Files are
 // made in a temporary folder; nothing of the real browsers is read.
 
-#include "History.h"
+#include "Firefox.h"
 
 #include <winsqlite/winsqlite3.h>
 
@@ -317,9 +317,9 @@ private slots:
         QCOMPARE(none[0].id, std::string("none"));
         QVERIFY(!none[0].valid);
         QCOMPARE(q(none[0].title), Q("没有找到书签文件"));
-        QCOMPARE(q(none[0].subtitle), Q("装了 Chrome 或 Edge 就会自动读；其他浏览器的在设置里指定"));
+        QCOMPARE(q(none[0].subtitle), Q("Chrome、Edge、Firefox 的会自动读；其他浏览器的在设置里指定"));
         QCOMPARE(q(search({}, "", false)[0].title), Q("No bookmarks file found"));
-        QCOMPARE(q(search({}, "", false)[0].subtitle), Q("Chrome's and Edge's are read on their own; name another browser's in the settings"));
+        QCOMPARE(q(search({}, "", false)[0].subtitle), Q("Chrome's, Edge's and Firefox's are read on their own; name another browser's in the settings"));
 
         const auto miss = search({entry("A", "https://a.example/")}, "zzz", true);
         QCOMPARE(miss.size(), size_t(1));
@@ -567,6 +567,72 @@ private slots:
         QVERIFY(std::ranges::any_of(searchHistory(many, "itself", true, now), [](const winshun::Item& row) { return row.title == "The page itself"; }));
     }
 
+    // Firefox's places.sqlite: bookmarks with their folders, Firefox's own
+    // top folders named, tags and place: searches left out; the history with
+    // its times moved to Chromium's count. Made here with the schema's
+    // columns that are read.
+    void firefoxPlaces()
+    {
+        QTemporaryDir dir;
+        const QString folder = dir.filePath(Q("Mozilla/Firefox/Profiles/ab12.default-release"));
+        QVERIFY(QDir().mkpath(folder));
+        const std::string path = QDir::toNativeSeparators(folder + Q("/places.sqlite")).toStdString();
+        sqlite3* db = nullptr;
+        QCOMPARE(sqlite3_open(path.c_str(), &db), SQLITE_OK);
+        const char* sql =
+            "CREATE TABLE moz_places (id INTEGER PRIMARY KEY, url TEXT, title TEXT, hidden INTEGER DEFAULT 0, last_visit_date INTEGER);"
+            "CREATE TABLE moz_bookmarks (id INTEGER PRIMARY KEY, type INTEGER, fk INTEGER, parent INTEGER, position INTEGER, title TEXT, guid TEXT);"
+            "INSERT INTO moz_places VALUES (1, 'https://a.example/', 'A page', 0, 1700000000000000),"
+            " (2, 'https://b.example/%E5%AE%89', 'B page', 0, 1600000000000000), (3, 'place:sort=8', 'Recent', 0, 0),"
+            " (4, 'https://hidden.example/', 'Hidden', 1, 1800000000000000), (5, 'https://tagged.example/', 'Tagged', 0, NULL);"
+            "INSERT INTO moz_bookmarks VALUES (1, 2, NULL, 0, 0, '', 'root________'),"
+            " (2, 2, NULL, 1, 0, 'menu', 'menu________'), (3, 2, NULL, 1, 1, 'toolbar', 'toolbar_____'),"
+            " (4, 2, NULL, 1, 2, 'tags', 'tags________'), (5, 2, NULL, 1, 3, 'unfiled', 'unfiled_____'),"
+            " (6, 2, NULL, 3, 0, '工作', 'f1'), (7, 1, 1, 6, 0, '甲', 'b1'), (8, 1, 2, 3, 1, '', 'b2'),"
+            " (9, 1, 3, 2, 0, 'Recent', 'b3'), (10, 2, NULL, 4, 0, 'mytag', 't1'), (11, 1, 5, 10, 0, NULL, 't2'),"
+            " (12, 1, 5, 5, 0, 'Tagged one', 'b4'), (13, 3, NULL, 3, 2, '', 's1');";
+        QCOMPARE(sqlite3_exec(db, sql, nullptr, nullptr, nullptr), SQLITE_OK);
+        // Firefox keeps it locked while it runs: read all the same.
+        QCOMPARE(sqlite3_exec(db, "PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE", nullptr, nullptr, nullptr), SQLITE_OK);
+
+        QVERIFY(isPlaces(path));
+        QVERIFY(isPlaces("PLACES.SQLITE"));
+        QVERIFY(!isPlaces("C:\\x\\Bookmarks"));
+        QCOMPARE(q(browserOf(path, true)), Q("Firefox"));
+        const std::vector<Entry> marks = readPlaces(path, "Firefox", true);
+        QCOMPARE(marks.size(), size_t(3)); // not the place: search, not the tag
+        // In the browser's order: down the toolbar (its folder first), then the other bookmarks.
+        QCOMPARE(q(marks[0].title), Q("甲"));
+        QCOMPARE(q(marks[0].folder), Q("书签工具栏 › 工作"));
+        QCOMPARE(q(marks[0].url), Q("https://a.example/"));
+        QCOMPARE(q(marks[1].title), Q("B page")); // no title of its own: the page's
+        QCOMPARE(q(marks[1].folder), Q("书签工具栏"));
+        QCOMPARE(q(marks[2].title), Q("Tagged one"));
+        QCOMPARE(q(marks[2].folder), Q("其他书签"));
+        QCOMPARE(q(readPlaces(path, "Firefox", false)[0].folder), Q("Bookmarks Toolbar › 工作"));
+
+        const std::vector<Visit> visits = readPlacesHistory(path, "Firefox");
+        QCOMPARE(visits.size(), size_t(2)); // not hidden, not never visited, not place:
+        QCOMPARE(q(visits[0].title), Q("A page"));
+        QCOMPARE(visits[0].lastVisit, 1700000000000000ll + 11644473600ll * 1000000);
+        sqlite3_close(db);
+
+        // Found under the profiles folder; not a places database: nothing.
+        const std::vector<std::string> found = placesFiles(QDir::toNativeSeparators(dir.path()).toStdString(), {});
+        QCOMPARE(found.size(), size_t(1));
+        QVERIFY(q(found[0]).endsWith(Q("ab12.default-release\\places.sqlite")));
+        QVERIFY(placesFiles({}, {}).empty());
+        const QString text = dir.filePath(Q("places.sqlite"));
+        QFile plain(text);
+        QVERIFY(plain.open(QIODevice::WriteOnly) && plain.write("not a database") > 0);
+        plain.close();
+        QVERIFY(readPlaces(QDir::toNativeSeparators(text).toStdString(), "Firefox", true).empty());
+        QVERIFY(readPlacesHistory(QDir::toNativeSeparators(text).toStdString(), "Firefox").empty());
+        // Typing the pinyin of a folder the user made finds it; the toolbar's name does not.
+        QCOMPARE(search(marks, "gz", true).size(), size_t(1));
+        QCOMPARE(q(search(marks, "gz", true)[0].title), Q("甲"));
+    }
+
 private:
     struct Row {
         const char* url;
@@ -619,6 +685,7 @@ private:
         ticks.HighPart = ft.dwHighDateTime;
         return static_cast<long long>(ticks.QuadPart / 10);
     }
+
 };
 
 QTEST_APPLESS_MAIN(TstBookmarks)

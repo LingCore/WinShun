@@ -1414,7 +1414,7 @@ set_tests_properties(tst_explorertabs PROPERTIES
 # Bookmarks files, the folder text, percent-decoding, matching, scoring,
 # the 50-row cap and the "nothing found" rows.
 qt_add_executable(tst_bookmarks tst_bookmarks.cpp ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/Bookmarks.cpp
-    ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/History.cpp
+    ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/History.cpp ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/Firefox.cpp
     ${PROJECT_SOURCE_DIR}/src/core/Pinyin.cpp ${PROJECT_SOURCE_DIR}/src/core/PinyinTable.cpp)
 target_include_directories(tst_bookmarks PRIVATE ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk
     ${PROJECT_SOURCE_DIR}/src/core)

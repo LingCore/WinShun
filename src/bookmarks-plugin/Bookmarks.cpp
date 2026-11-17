@@ -192,7 +192,9 @@ std::string browserOf(const std::string& path, bool chinese)
         return "Chrome";
     if (low.find("\\microsoft\\edge\\") != std::string::npos)
         return "Edge";
-    for (const char* name : {"Brave", "Vivaldi", "Chromium", "Opera", "Yandex", "Arc"}) {
+    if (low.find("\\mozilla\\firefox\\") != std::string::npos || low.find("\\mozilla.firefox_") != std::string::npos)
+        return "Firefox";
+    for (const char* name : {"Brave", "Vivaldi", "Chromium", "Opera", "Yandex", "Arc", "LibreWolf", "Waterfox", "Floorp", "Zen"}) {
         if (low.find("\\" + lower(name)) != std::string::npos)
             return name;
     }
@@ -305,12 +307,14 @@ std::vector<std::string> bookmarkFiles(const std::string& localAppData, const st
 // pure noise: 书签栏 spells "sql" (shu-qian-lan) and 其他书签 starts "qt"
 // (qi-ta), so either one matches the whole bar for a query that has nothing to
 // do with it. Both the Chinese and the English names are listed, because the
-// file stores whichever the browser was installed in.
+// file stores whichever the browser was installed in. Firefox's top folders
+// (Firefox.cpp names them) are the same kind.
 bool isBuiltInFolder(const std::string& name)
 {
     static const char* const kNames[] = {
-        "书签栏", "其他书签", "收藏夹栏", "其他收藏夹",
-        "bookmarks bar", "other bookmarks", "favorites bar", "other favorites",
+        "书签栏", "其他书签", "收藏夹栏", "其他收藏夹", "书签菜单", "书签工具栏", "移动设备书签",
+        "bookmarks bar", "other bookmarks", "favorites bar", "other favorites", "bookmarks menu", "bookmarks toolbar",
+        "mobile bookmarks",
     };
     const std::string low = lower(name);
     for (const char* built : kNames) {
@@ -429,8 +433,8 @@ winshun::Items search(const std::vector<Entry>& entries, const std::string& text
         return rows;
     if (entries.empty()) {
         rows.push_back(winshun::Item("none", chinese ? "没有找到书签文件" : "No bookmarks file found",
-                                     chinese ? "装了 Chrome 或 Edge 就会自动读；其他浏览器的在设置里指定"
-                                             : "Chrome's and Edge's are read on their own; name another browser's in the settings")
+                                     chinese ? "Chrome、Edge、Firefox 的会自动读；其他浏览器的在设置里指定"
+                                             : "Chrome's, Edge's and Firefox's are read on their own; name another browser's in the settings")
                            .withIcon(kGlyph)
                            .invalid());
     } else {

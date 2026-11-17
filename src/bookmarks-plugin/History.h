@@ -20,6 +20,10 @@ struct Visit {
     long long lastVisit = 0;
 };
 
+// The file as an SQLite URI that is read as it is: no lock asked for (the
+// browser holds its own for as long as it runs), nothing written beside it.
+std::string immutableUri(const std::string& path);
+
 // Chrome's and Edge's History of every profile under `localAppData`, then
 // the History beside `extraFile` (the settings' Bookmarks file of another
 // browser) when there is one.

@@ -20,6 +20,14 @@
 - 设置里指定了另外的书签文件时，同一个文件夹里的 `History` 也一起读。
 - 无痕窗口的网页浏览器本来就不记，这里也没有。
 
+## Firefox（2.2.0）
+
+Firefox 的书签和浏览历史也一起搜：自动找 `%APPDATA%\Mozilla\Firefox\Profiles` 下每个配置文件的 `places.sqlite`（微软商店装的 Firefox 在它自己的包目录里，也会找）。书签显示所在文件夹，Firefox 自带的“书签菜单”“书签工具栏”“其他书签”按界面语言写，不参与拼音匹配；标签和“最近添加”这类智能书签不列。浏览历史同样要先打开“搜索浏览历史”。
+
+- 用 Windows 自带的 SQLite 只读，连 Firefox 还没合进主文件的新内容（同目录的 `places.sqlite-wal`）一起读，刚加的书签也搜得到；不改文件，Firefox 开着也不影响它。
+- LibreWolf、Zen、Waterfox 这类 Firefox 系浏览器：在“另外的书签文件”里指定它的 `places.sqlite`，书签和历史都会读。
+- 这一版新增读取 Firefox 文件，插件更新时会请你确认。
+
 ---
 
 A once C++ plugin from the plugin library (Settings → Plugins → Plugin library); no Python needed. `bm words` searches every Chrome and Edge profile's bookmarks by title, folder and address; Enter opens the address (a declarative `url`). A tiny process per query, results cached for 60 s. Bookmarks synced to a signed-in account live in `AccountBookmarks` beside the local list — sometimes as the only file — and both are read; a URL in both shows once. `EncryptedAccountBookmarks2` is encrypted and is not read. Its `files:read` lists the files it reads (a declaration Win顺 cannot enforce). The setting names one more Chromium browser's `Bookmarks` file, and the `AccountBookmarks` in that same folder is read with it; Opera keeps its bookmarks in `%APPDATA%\Opera Software\Opera Stable` (Roaming, no `User Data` level), so it is named there too. Nothing is written.
@@ -27,3 +35,5 @@ A once C++ plugin from the plugin library (Settings → Plugins → Plugin libra
 A Chinese title or folder can be found by pinyin: initials, whole syllables, or a mix — `xjtu`, `xian`, `xianjiaotong` all find 西安交通大学…, and `wa` finds the bookmarks filed under 网安. A title that says the word outranks one that only spells it (`xian` gives 西安… before …在线…). Pinyin applies to Chinese text only; English bookmarks keep matching literally. The address is matched literally and never as pinyin: it is nearly always English, so reading it as pinyin would find nothing.
 
 **Browsing history (2.1.0).** With "Search the browsing history" turned on in the plugin's settings, `bh words` (or `ls words`) searches the pages opened in every Chrome and Edge profile by title or address, pinyin for Chinese titles too; a title that says the words comes before an address that does, the last opened first. Nothing typed lists the 50 pages last opened. Off by default: until then nothing of the history is read, and `bh` only says where to turn it on. With "AI may use plugins" on, an AI can search it too. The profiles' `History` files are read with Windows' own SQLite, with no lock taken and nothing written, so a running browser is not disturbed; a page opened a moment ago may take a while to show up. The `History` beside the settings' other Bookmarks file is read as well.
+
+**Firefox (2.2.0).** Firefox's bookmarks and history are searched too: the `places.sqlite` of every profile under `%APPDATA%\Mozilla\Firefox\Profiles` (and the Microsoft Store Firefox's own package folder). Bookmarks show their folder, Firefox's own top folders named in the UI language and left out of pinyin matching; tags and smart bookmarks are not listed. Read with Windows' own SQLite, read-only, together with what Firefox has not yet folded into the file (`places.sqlite-wal`), so a bookmark added a moment ago is found; nothing is written and a running Firefox is not disturbed. For LibreWolf, Zen, Waterfox and the like, name their `places.sqlite` as the other bookmarks file. Reading Firefox's files is new in this version, so the update asks you to confirm.
