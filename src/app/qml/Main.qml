@@ -216,6 +216,10 @@ Window {
     // keeps its own height (at the taskbar the list area is as tall as it gets).
     readonly property int hintSpace: showHints && !fullHeight && shownRows < fitRows ? hints.length * hintHeight : 0
     property int hintIndex: -1 // the hint the keyboard is on; -1: none
+    // Where the current row stood in the list when the launcher went
+    // (Settings::reopenWhereLeft): opened again on it, it stands there again.
+    property string leftPath
+    property real leftRowY
     property int rowsBeforeHints: 0 // view.count when the keyboard went onto the hints: where what one brings starts
     function enterHints() {
         rowsBeforeHints = view.count
@@ -770,6 +774,8 @@ Window {
     // Hidden: also free the menu window until it is needed again.
     onVisibleChanged: {
         if (!visible) {
+            leftPath = launcher.results.pathAt(view.currentIndex)
+            leftRowY = view.currentItem ? view.currentItem.y - view.contentY : 0
             endRename(false)
             closeContextMenu()
             footer.sortMenuOpen = false // not still open when the launcher comes back
@@ -1113,8 +1119,15 @@ Window {
         view.contentY = view.originY - view.topMargin
         // Back out of a folder (GitHub #361): its row, maybe further down.
         const start = launcher.results.startRow()
-        if (start > 0 && view.currentIndex === start)
+        if (start > 0 && view.currentIndex === start) {
             view.positionViewAtIndex(start, ListView.Contain)
+            // Opened again where it was left: as far down as it was then.
+            if (leftPath !== "" && launcher.results.pathAt(start) === leftPath && view.currentItem) {
+                const top = view.originY - view.topMargin
+                const bottom = view.originY + view.contentHeight + view.bottomMargin - view.height
+                view.contentY = Math.max(top, Math.min(bottom, view.currentItem.y - leftRowY))
+            }
+        }
     }
 
     Connections {
