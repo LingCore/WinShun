@@ -108,7 +108,6 @@ ChoiceBox {
                 currentIndex: picker.cursor
                 highlightMoveDuration: 0
                 boundsBehavior: Flickable.StopAtBounds
-                ScrollIndicator.vertical: ScrollIndicator { }
                 delegate: ItemDelegate {
                     id: option
                     required property int index
@@ -144,6 +143,13 @@ ChoiceBox {
                     color: Theme.subtext
                     font.pixelSize: Theme.menuTextSize
                 }
+            }
+            ListScrollBar {
+                flickable: rows
+                anchors.top: rows.top
+                anchors.bottom: rows.bottom
+                anchors.right: rows.right
+                dpr: picker.dpr
             }
         }
 
