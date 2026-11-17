@@ -52,7 +52,7 @@ namespace ws {
 // when it gets taller (atTaskbar: it does not, the list keeps its height).
 //
 // Opening and closing are animated (slideIn, slideOut) unless the system's
-// animation effects are off: it fades in coming a little from the taskbar's
+// animation effects or the user's 弹出动画 (setAnimated) are off: it fades in coming a little from the taskbar's
 // side (elsewhere: rising), and fades out where it is. By the taskbar it
 // stays over it all the while, moving no further than the gap between them:
 // a see-through taskbar (TranslucentTB) showed a window that slid behind it,
@@ -168,6 +168,8 @@ public:
     bool sliding() const { return m_slide.state() == QAbstractAnimation::Running; }
     QPointF contentShift() const { return m_contentShift; }
     static bool animationsOn(); // the system's "animation effects"
+    // Off: slideIn and slideOut go straight there (弹出动画, GitHub #365).
+    void setAnimated(bool on) { m_animated = on; }
 
     // The search panel (Launcher::panel): the window as large as its user
     // left it (state.ini [Panel]: its size, and its spot as fractions of the
@@ -317,6 +319,7 @@ private:
     std::optional<taskbar::Spot> m_taskbarSpot; // ... as attachTaskbar was given it
     QPointer<QScreen> m_taskbarScreen; // the taskbar's
     bool m_panel = false; // see enterPanel
+    bool m_animated = true; // setAnimated
     std::optional<QRect> m_panelUnfilled; // togglePanelFill: where it was before it filled the work area
     QPointF m_panelAnchor {0.5, 0.1}; // the panel's spot: centre across, top down (fractions of the work area)
     QSize m_panelSize; // logical pixels; empty: not set yet

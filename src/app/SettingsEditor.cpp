@@ -485,6 +485,14 @@ void SettingsEditor::setScopeButton(bool on)
     commit();
 }
 
+void SettingsEditor::setOpenAnimation(bool on)
+{
+    if (m_settings.openAnimation == on)
+        return;
+    m_settings.openAnimation = on;
+    commit();
+}
+
 void SettingsEditor::setPureSearch(bool on)
 {
     if (m_settings.pureSearch == on)

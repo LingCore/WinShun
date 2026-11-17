@@ -1013,6 +1013,7 @@ void Settings::load()
     pureSearch = readOrDefault(s, u"Results/PureSearch"_s, d.pureSearch);
     panelListsAll = readOrDefault(s, u"Panel/ListAll"_s, d.panelListsAll);
     scopeButton = readOrDefault(s, u"Appearance/ScopeButton"_s, d.scopeButton);
+    openAnimation = readOrDefault(s, u"Appearance/OpenAnimation"_s, d.openAnimation);
     previewWith = readOrDefault(s, u"Results/PreviewWith"_s, d.previewWith).trimmed().toLower();
     if (previewWith != u"builtin")
         previewWith = d.previewWith;
@@ -1412,6 +1413,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/PureSearch"_s, pureSearch);
     s.setValue(u"Panel/ListAll"_s, panelListsAll);
     s.setValue(u"Appearance/ScopeButton"_s, scopeButton);
+    s.setValue(u"Appearance/OpenAnimation"_s, openAnimation);
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
     s.setValue(u"Results/OpenHotkey"_s, openHotkey);

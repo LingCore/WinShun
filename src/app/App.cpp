@@ -1294,6 +1294,7 @@ bool App::createWindow()
     m_qml->addImageProvider(u"preview"_s, m_preview->imageProvider()); // the picture in the preview (Alt+P)
     m_qml->addImageProvider(u"panepreview"_s, m_launcher->contentPane()->filePreview()->imageProvider()); // the search panel's 预览 tab
     m_placement = std::make_unique<Placement>(Settings::dataDir() + u"\\state.ini"_s, u"Launcher"_s);
+    m_placement->setAnimated(m_settings.openAnimation); // 弹出动画 (applySettings came before it)
     m_frame = std::make_unique<WindowFrame>(false);
     m_qml->setInitialProperties({
         {u"launcher"_s, QVariant::fromValue(m_launcher.get())},
@@ -1985,6 +1986,8 @@ void App::applySettings(bool initial)
     watchCopies();
     m_launcher->setRowDeleteButton(m_settings.rowDeleteButton);
     m_launcher->setScopeButton(m_settings.scopeButton);
+    if (m_placement)
+        m_placement->setAnimated(m_settings.openAnimation);
     m_launcher->setKeyboardHints(m_settings.shortcutHelp, m_settings.footerHints);
     m_launcher->setMaxRows(m_settings.maxRows);
     m_launcher->setPureSearch(m_settings.pureSearch && !m_launcherOverBox);

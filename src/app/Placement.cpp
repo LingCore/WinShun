@@ -1204,7 +1204,7 @@ void Placement::slideIn(std::function<void()> done)
     slide.from = m_offset;
     slide.opacityFrom = m_opacity;
     slide.shiftFrom = m_contentShift;
-    if (!animationsOn() || !layered()) { // straight there
+    if (!m_animated || !animationsOn() || !layered()) { // straight there
         m_slideSpec = slide;
         stepSlide(0);
         if (done)
@@ -1242,7 +1242,7 @@ void Placement::slideOut(std::function<void()> done)
     beginSlide();
     m_slide.stop();
     m_slideDone = {};
-    if (!animationsOn() || !layered()) {
+    if (!m_animated || !animationsOn() || !layered()) {
         finish();
         return;
     }

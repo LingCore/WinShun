@@ -283,6 +283,10 @@ struct Settings {
     // current one and goes to the next when clicked, in place of the tabs
     // side by side (GitHub #185, #244). Tab moves through them either way.
     bool scopeButton = false;
+    // The search box fades in rising a little from the taskbar's side, and
+    // fades out (Placement::slideIn, slideOut); off: there and gone at once
+    // (GitHub #365). Windows' own "animation effects" off: never animated.
+    bool openAnimation = true;
     // auto | builtin: what Alt+P on a row shows the file with. auto: QuickLook
     // or Seer when one is running in the background (FilePreview), else
     // Win顺's own preview window; builtin: always that.

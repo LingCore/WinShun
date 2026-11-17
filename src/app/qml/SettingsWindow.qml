@@ -3080,6 +3080,20 @@ Window {
                     }
                 }
 
+                SettingRow { // GitHub #365
+                    title: qsTr("弹出动画")
+                    description: qsTr("搜索框打开时从任务栏一侧轻轻升起并淡入，关闭时淡出。关掉后立即出现、立即消失")
+                    tip: qsTr("Windows 设置里关掉了“动画效果”时，始终没有动画")
+                    keywords: qsTr("动画;动效;淡入;淡出;弹出;升起;过渡;拖沓;立即显示;animation;motion;fade").split(";")
+                    ToggleSwitch {
+                        objectName: "openAnimationToggle"
+                        dpr: window.dpr
+                        checked: window.editor.openAnimation
+                        Accessible.name: qsTr("弹出动画")
+                        onToggled: (on) => window.editor.openAnimation = on
+                    }
+                }
+
                 SettingRow { // with what the box looks like, where it is looked for (GitHub #185)
                     title: qsTr("纯净搜索模式")
                     description: qsTr("搜索框空着时只保留输入栏，输入后恢复结果和范围标签；右上角的搜索历史和展开按钮一直隐藏，快捷键照常可用。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响")

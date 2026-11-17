@@ -755,6 +755,10 @@
         <translation>Rounded</translation>
     </message>
     <message>
+        <source>弹出动画</source>
+        <translation>Open animation</translation>
+    </message>
+    <message>
         <source>直角</source>
         <translation>Square</translation>
     </message>
@@ -7465,6 +7469,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。密集是每条结果一行的小字。剪贴板可在“剪贴板”页单独设置</source>
         <translation>Text size and line height of the search bar, the clipboard and the search bar by file dialogs; the Settings window is unchanged. Dense is one small line per result. The clipboard can be set separately on the Clipboard page</translation>
+    </message>
+    <message>
+        <source>弹出动画</source>
+        <translation>Open animation</translation>
+    </message>
+    <message>
+        <source>搜索框打开时从任务栏一侧轻轻升起并淡入，关闭时淡出。关掉后立即出现、立即消失</source>
+        <translation>The search bar rises a little from the taskbar side and fades in when it opens, and fades out when it closes. Off: it appears and disappears at once</translation>
+    </message>
+    <message>
+        <source>Windows 设置里关掉了“动画效果”时，始终没有动画</source>
+        <translation>With "Animation effects" off in Windows Settings, there is never an animation</translation>
+    </message>
+    <message>
+        <source>动画;动效;淡入;淡出;弹出;升起;过渡;拖沓;立即显示;animation;motion;fade</source>
+        <translation>animation;motion;fade;transition;slide;popup;instant;sluggish</translation>
     </message>
     <message>
         <source>索引范围;范围;整个磁盘;选中的文件夹;工作文件夹;普通用户;没有管理员权限;scope</source>

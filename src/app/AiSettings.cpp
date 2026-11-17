@@ -407,6 +407,10 @@ std::vector<Entry> buildCatalog()
                     "true: the launcher's scopes (全部, 文件, 内容) are one button showing the current one; a click or Tab goes to the next. "
                     "Off: the tabs side by side."},
         &Settings::scopeButton));
+    add(boolean({"Appearance/OpenAnimation", QT_TRANSLATE_NOOP("AiSettings", "弹出动画"), "appearance", -1,
+                    "true: the search box fades in rising a little from the taskbar's side, and fades out. "
+                    "false: it appears and disappears at once. Never animated while Windows' animation effects are off."},
+        &Settings::openAnimation));
     add(choice({"Appearance/Theme", QT_TRANSLATE_NOOP("AiSettings", "主题"), "appearance", -1, "Light or dark windows."},
         &Settings::theme,
         {{u"system"_s, u"follow Windows' light or dark mode"_s, QT_TRANSLATE_NOOP("AiSettings", "跟随系统")},
