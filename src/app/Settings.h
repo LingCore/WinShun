@@ -525,6 +525,9 @@ struct Settings {
     // (WebSuggester). On: only words typed after a site's keyword go out,
     // to that site, which the user is about to search anyway.
     bool webSuggestions = true;
+    // The program the sites open in, its full path; empty: Windows' default
+    // browser (the web plugin's "browser").
+    QString webBrowser;
     // Nothing found on this PC: a row that searches the first site of the
     // list for the words typed, so Enter looks them up (GitHub #320).
     bool webFallback = true;

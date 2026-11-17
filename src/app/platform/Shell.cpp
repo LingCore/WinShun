@@ -667,6 +667,43 @@ void openUrl(const QString& url)
     runOnShellThread([target = url.toStdWString()] { executeUnelevated(target, {}, {}); });
 }
 
+void openUrlWith(const QString& program, const QString& url)
+{
+    ::AllowSetForegroundWindow(ASFW_ANY);
+    runOnShellThread([program = QDir::toNativeSeparators(program).toStdWString(), target = url.toStdWString()] {
+        // Quoted: an address may hold spaces once decoded; it holds no quote (%22).
+        if (!executeUnelevated(program, L"\"" + target + L"\"", {}))
+            executeUnelevated(target, {}, {}); // gone or refused: the default browser after all
+    });
+}
+
+std::vector<InstalledBrowser> installedBrowsers()
+{
+    std::vector<InstalledBrowser> found;
+    for (const char16_t* root : {u"HKEY_CURRENT_USER", u"HKEY_LOCAL_MACHINE"}) {
+        QSettings clients(QString::fromUtf16(root) + u"\\SOFTWARE\\Clients\\StartMenuInternet"_s, QSettings::NativeFormat);
+        for (const QString& key : clients.childGroups()) {
+            if (key.compare(u"IEXPLORE.EXE"_s, Qt::CaseInsensitive) == 0)
+                continue; // still listed on Windows 11, where it only starts Edge
+            const QString name = clients.value(key + u"/."_s).toString().trimmed();
+            QString command = clients.value(key + u"/shell/open/command/."_s).toString().trimmed();
+            // "C:\...\firefox.exe" or C:\...\chrome.exe --flags: the program alone.
+            QString program;
+            if (command.startsWith(u'"'))
+                program = command.mid(1, command.indexOf(u'"', 1) - 1);
+            else
+                program = command.left(command.indexOf(u".exe"_s, 0, Qt::CaseInsensitive) + 4);
+            program = QDir::toNativeSeparators(program);
+            if (!program.endsWith(u".exe"_s, Qt::CaseInsensitive) || !QFileInfo::exists(program))
+                continue;
+            if (std::any_of(found.cbegin(), found.cend(), [&](const InstalledBrowser& b) { return b.program.compare(program, Qt::CaseInsensitive) == 0; }))
+                continue;
+            found.push_back({name.isEmpty() || name.startsWith(u'@') ? key : name, program});
+        }
+    }
+    return found;
+}
+
 void openTerminal(const QString& folder, std::function<void(bool)> done)
 {
     ::AllowSetForegroundWindow(ASFW_ANY);

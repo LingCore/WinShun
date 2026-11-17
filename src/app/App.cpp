@@ -1542,6 +1542,7 @@ void App::applyWebSearch()
     m_launcher->setWebShortcuts(shortcuts);
     m_launcher->setWebSuggestions(!shortcuts.isEmpty() && m_settings.webSuggestions);
     m_launcher->setWebFallback(m_settings.webFallback);
+    m_launcher->setWebBrowser(m_settings.webBrowser);
 }
 
 bool App::openWebSearch(const QString& query)
@@ -1553,8 +1554,10 @@ bool App::openWebSearch(const QString& query)
         return false;
     static const bool dryRun = qEnvironmentVariableIsSet("WINSHUN_WEB_DRYRUN");
     qInfo().noquote() << (dryRun ? u"Web: would open %1 (the words read from a picture)"_s : u"Web: open %1 (the words read from a picture)"_s).arg(url);
-    if (!dryRun)
+    if (!dryRun && m_settings.webBrowser.isEmpty())
         shell::openUrl(url);
+    else if (!dryRun)
+        shell::openUrlWith(m_settings.webBrowser, url);
     return true;
 }
 

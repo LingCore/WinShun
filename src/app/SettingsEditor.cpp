@@ -359,6 +359,39 @@ void SettingsEditor::setWebFallback(bool on)
     commit();
 }
 
+void SettingsEditor::setWebBrowser(const QString& program)
+{
+    const QString native = QDir::toNativeSeparators(program.trimmed());
+    if (m_settings.webBrowser == native)
+        return;
+    m_settings.webBrowser = native;
+    commit();
+}
+
+QVariantList SettingsEditor::webBrowsers() const
+{
+    static const std::vector<shell::InstalledBrowser> installed = shell::installedBrowsers();
+    QVariantList choices{QVariantMap{{u"text"_s, tr("默认浏览器")}, {u"value"_s, QString()}}};
+    bool listed = m_settings.webBrowser.isEmpty();
+    for (const auto& browser : installed) {
+        choices.append(QVariantMap{{u"text"_s, browser.name}, {u"value"_s, browser.program}});
+        listed = listed || browser.program.compare(m_settings.webBrowser, Qt::CaseInsensitive) == 0;
+    }
+    if (!listed)
+        choices.append(QVariantMap{{u"text"_s, QFileInfo(m_settings.webBrowser).completeBaseName()}, {u"value"_s, m_settings.webBrowser}});
+    return choices;
+}
+
+bool SettingsEditor::chooseWebBrowser()
+{
+    const HWND owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    const QString path = shell::pickFile(owner, tr("选择浏览器"), {{tr("程序"), u"*.exe"_s}});
+    if (path.isEmpty())
+        return false;
+    setWebBrowser(path);
+    return true;
+}
+
 void SettingsEditor::setSort(const QString& sort)
 {
     if (m_settings.sort == sort || !isSortName(sort))

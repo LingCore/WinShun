@@ -390,6 +390,13 @@ private slots:
         again.load();
         QCOMPARE(again.webShortcuts, migrated.webShortcuts);
         QVERIFY(!again.webSuggestions);
+        QVERIFY(again.webBrowser.isEmpty()); // Windows' default browser
+        again.webBrowser = u"C:/Program Files/Mozilla Firefox/firefox.exe"_s;
+        QVERIFY(again.saveChecked());
+        ws::Settings browser;
+        browser.load();
+        QCOMPARE(browser.webBrowser, QDir::toNativeSeparators(again.webBrowser)); // as Windows writes it
+        QCOMPARE(browser.webShortcuts, migrated.webShortcuts);
         // Disabling and deleting every website are both intentional, persistent choices.
         again.pluginConfig(ws::webplugin::kId.toString()).enabled = false;
         again.webShortcuts.clear();

@@ -75,6 +75,16 @@ bool startElevated(const std::wstring& program, const std::wstring& args, const 
 void runElevated(const std::wstring& program, const std::wstring& args,
     std::function<void(std::optional<unsigned long>)> done, int show = SW_SHOWNORMAL);
 void openUrl(const QString& url); // https:, mailto: ...
+// In that program (a browser's .exe), the address as its one argument; the
+// default way (openUrl) when it cannot be started.
+void openUrlWith(const QString& program, const QString& url);
+// The browsers Windows lists (Clients\StartMenuInternet, the user's and the
+// machine's), each once: what it calls itself and its program.
+struct InstalledBrowser {
+    QString name;
+    QString program;
+};
+std::vector<InstalledBrowser> installedBrowsers();
 // A command prompt (cmd.exe; in Windows Terminal when that is the default)
 // in `folder`, with the user's normal rights. On a network share, pushd
 // gives it a drive letter: cmd cannot start in a UNC path.

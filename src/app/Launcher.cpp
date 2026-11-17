@@ -1514,6 +1514,14 @@ void Launcher::setWebShortcuts(const WebShortcuts& shortcuts)
         search();
 }
 
+void Launcher::openWebAddress(const QString& url) const
+{
+    if (m_webBrowser.isEmpty())
+        shell::openUrl(url);
+    else
+        shell::openUrlWith(m_webBrowser, url);
+}
+
 void Launcher::setWebFallback(bool on)
 {
     if (on == m_webFallback)
@@ -5667,10 +5675,11 @@ void Launcher::performWeb(const SearchResult& web, Action action)
     case RunAsAdmin: {
         // WINSHUN_WEB_DRYRUN (tests): said in the log (WINSHUN_LOG_INFO), not opened.
         static const bool dryRun = qEnvironmentVariableIsSet("WINSHUN_WEB_DRYRUN");
-        qInfo().noquote() << (dryRun ? u"Web: would open %1%2"_s : u"Web: open %1%2"_s)
-                                 .arg(web.target, web.suggestion ? u" (a suggestion)"_s : QString());
+        qInfo().noquote() << (dryRun ? u"Web: would open %1%2%3"_s : u"Web: open %1%2%3"_s)
+                                 .arg(web.target, web.suggestion ? u" (a suggestion)"_s : QString(),
+                                     m_webBrowser.isEmpty() ? QString() : u" in "_s + m_webBrowser);
         if (!dryRun)
-            shell::openUrl(web.target);
+            openWebAddress(web.target);
         emit dismissRequested();
         break;
     }
@@ -5819,7 +5828,7 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
             if (r.isWeb()) {
                 if (admin)
                     continue;
-                shell::openUrl(r.target);
+                openWebAddress(r.target);
                 ++started;
                 continue; // not remembered (see performWeb)
             }

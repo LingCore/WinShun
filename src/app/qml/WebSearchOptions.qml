@@ -230,6 +230,42 @@ Column {
         }]
     }
 
+    SettingRow { // feedback 2026-11-15
+        title: qsTranslate("SettingsWindow", "用哪个浏览器打开")
+        keywords: qsTranslate("SettingsWindow", "浏览器;默认浏览器;Chrome;Edge;Firefox;火狐;browser").split(";")
+        description: qsTranslate("SettingsWindow", "这里的网站在这个浏览器里打开，可以和 Windows 的默认浏览器不同")
+
+        ChoiceBox {
+            id: browserPicker
+            objectName: "webBrowserPicker"
+            readonly property var choices: webSection.editor.webBrowsers.concat([{ text: qsTranslate("SettingsWindow", "其他程序…"), value: "*" }])
+            function chosen() { return Math.max(0, choices.findIndex(choice => choice.value.toLowerCase() === webSection.editor.webBrowser.toLowerCase())) }
+            implicitWidth: 240
+            implicitHeight: 36
+            dpr: webSection.dpr
+            model: choices
+            textRole: "text"
+            valueRole: "value"
+            currentIndex: chosen()
+            onActivated: {
+                if (currentValue === "*")
+                    webSection.editor.chooseWebBrowser()
+                else
+                    webSection.editor.webBrowser = currentValue
+                currentIndex = Qt.binding(chosen)
+            }
+            Accessible.name: qsTranslate("SettingsWindow", "用哪个浏览器打开")
+            leftPadding: 12
+            contentItem: Text {
+                text: browserPicker.displayText
+                font: browserPicker.font
+                color: browserPicker.palette.buttonText
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+        }
+    }
+
     SettingRow {
         title: qsTranslate("SettingsWindow", "网页搜索建议")
         keywords: qsTranslate("SettingsWindow", "搜索建议;联想;补全;suggest;suggestion").split(";")

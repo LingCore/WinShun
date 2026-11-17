@@ -531,6 +531,9 @@ public:
     // 没有结果时用网页搜索 (Settings::webFallback): nothing found in 全部,
     // a row searching the first site of the list for the words (GitHub #320).
     void setWebFallback(bool on);
+    // 用哪个浏览器打开 (Settings::webBrowser): the program the sites open
+    // in; empty: Windows' default browser.
+    void setWebBrowser(const QString& program) { m_webBrowser = program; }
     // Its user's favorites (may be none): with every request, and the
     // rows refreshed when they change.
     void setFavorites(Favorites* favorites);
@@ -1475,6 +1478,8 @@ private:
     WebShortcuts m_web;
     bool m_webSuggestions = true;
     bool m_webFallback = true;
+    QString m_webBrowser;
+    void openWebAddress(const QString& url) const; // in m_webBrowser, or the default one
     std::optional<SearchResult> webFallbackRow() const;
     std::optional<SearchResult> webAddressRow() const;
     WebSuggester m_suggester;

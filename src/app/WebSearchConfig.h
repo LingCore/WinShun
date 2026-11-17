@@ -74,7 +74,15 @@ inline bool fallback(const PluginConfig* config)
     return !text || *text != u"false";
 }
 
-inline void store(PluginConfig& config, const WebShortcuts& shortcuts, bool suggestions, bool fallback)
+// "browser": the program the sites open in (its path); none: Windows'
+// default browser (feedback 2026-11-15: searches in Firefox, not Edge).
+inline QString browser(const PluginConfig* config)
+{
+    const auto* text = config ? value(*config, u"browser") : nullptr;
+    return text ? *text : QString();
+}
+
+inline void store(PluginConfig& config, const WebShortcuts& shortcuts, bool suggestions, bool fallback, const QString& browser)
 {
     QJsonArray entries;
     for (const auto& shortcut : shortcuts) {
@@ -85,6 +93,7 @@ inline void store(PluginConfig& config, const WebShortcuts& shortcuts, bool sugg
     setValue(config, QStringLiteral("shortcuts"), QString::fromUtf8(QJsonDocument(entries).toJson(QJsonDocument::Compact)));
     setValue(config, QStringLiteral("suggestions"), suggestions ? QStringLiteral("true") : QStringLiteral("false"));
     setValue(config, QStringLiteral("fallback"), fallback ? QStringLiteral("true") : QStringLiteral("false"));
+    setValue(config, QStringLiteral("browser"), browser);
 }
 
 // The v1 zero-code sample's commands, including renamed/removed keywords.
