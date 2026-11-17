@@ -193,6 +193,16 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.33.0**
+
+- 🗂️ **文件夹菜单一列列并排展开**，前面的列都留着；✏️ **贴图原地编辑**，工具条直接长在贴图上。
+- 🌐 **截图翻译有自己的快捷键**；🪟 **框选前按 `Tab` 只框整个窗口**（截图与录屏 1.1.19）。
+- 🔗 **`winshun://` 链接** 从网页、笔记里打开搜索框或设置；📏 **界面大小“密集”**，每条结果一行。
+- ↪️ **`Tab` 一层层进文件夹，`Ctrl+Backspace` 退回来**；#️⃣ **文件右键菜单复制 SHA-256**（小工具 1.2.0）。
+- 🛠️ **修复** “另存为”旁的搜索框乱跳、对话框最大化时挡住地址栏，现在停在屏幕底部的任务栏上（#362）；搜索面板 `Ctrl+Shift+1…5` 切换标签。
+
+详见 [0.33.0 发布说明](docs/release-notes/v0.33.0.md)。
+
 **0.32.0**
 
 - 🖱️ **右键拖出结果** 按住右键把文件拖到资源管理器，松开时选复制、移动还是创建快捷方式。
@@ -201,14 +211,7 @@ winget install LingCore.WinShun
 - 📝 **插件库里看更新内容**；🌐 **截图翻译可以用其他翻译插件**；📄 **关键字命令边打边列出文件**（`code 名字` 用 VS Code 打开）。
 - 🛠️ **修复** 文件夹菜单自己一层层钻进去；选文件夹时路径变成乱码；F2 改名的输入框盖住原名；资源管理器标签页在部分电脑上不合并（1.1.3）。
 
-详见 [0.32.0 发布说明](docs/release-notes/v0.32.0.md)。
-
-**0.31.1**
-
-- 🔤 **界面字体** 选了“霞鹜文楷”（常规体）却显示成别的字体，已修好；Noto Sans SC Medium、Bahnschrift Light 这类单独列出的字重以前选了不生效，现在也能用（#325）。
-- 🛠️ **截图卡顿的排查** 截图时界面卡住，诊断日志会记下当时卡在哪（截图与录屏 1.1.17）。
-
-详见 [0.31.1 发布说明](docs/release-notes/v0.31.1.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
+详见 [0.32.0 发布说明](docs/release-notes/v0.32.0.md)；以往版本见 [Releases](https://github.com/LingCore/WinShun/releases)。
 
 ### 常见问题
 
@@ -451,23 +454,25 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
-**0.31.1**
+**0.33.0**
 
-- 🔤 **Interface font** Choosing 霞鹜文楷 (LXGW WenKai, regular) showed another font: fixed. Weights that Windows lists on their own (Noto Sans SC Medium, Bahnschrift Light…) had no effect before and now work (#325).
-- 🛠️ **Capture stalls** When the interface stops answering during a capture, the diagnostics record where (Screenshot and recording 1.1.17).
+- 🗂️ **Folder menu columns** side by side, the earlier ones staying; ✏️ **edit a pin where it is**, the toolbar on the pin itself.
+- 🌐 **Screenshot translation on a hotkey**; 🪟 **`Tab` before selecting outlines whole windows only** (Screenshot and recording 1.1.19).
+- 🔗 **`winshun://` links** open the search box or the settings from web pages and notes; 📏 **Dense interface size**, one line per result.
+- ↪️ **`Tab` into folders, `Ctrl+Backspace` back out**; #️⃣ **Copy a file's SHA-256 from its menu** (Tools 1.2.0).
+- 🛠️ **Fixed** the bar by Save As dialogs jumping about and covering a maximised dialog's address bar: it now sits over the taskbar at the bottom (#362); `Ctrl+Shift+1…5` switch the panel's tabs.
 
-See the [0.31.1 release notes](docs/release-notes/v0.31.1.md).
+See the [0.33.0 release notes](docs/release-notes/v0.33.0.md).
 
-**0.31.0**
+**0.32.0**
 
-- 📂 **Subfolders in the folder menu** Rest the pointer on the arrow at the end of a folder's row (or press `→`) to list the folders inside, level after level.
-- 🧮 **Calculator tape** A sum whose result you took with `Enter` is kept; type `=` alone to list them, a row each.
-- 🔎 **Answering for Everything** Turn it on in the settings, and the Everything search of Directory Opus, Total Commander and `es.exe` is answered by WinShun, with no Everything installed.
-- 🔤 **Search in the interface font list** Type part of a font's name to find it.
-- 🚀 **Less memory** About a fifth less memory while searching, at the same speed.
-- 🛠️ **Fixed** The clipboard window up but taking no keys; a file dialog now goes to the file manager's folder every time you come back; two windows from two presses of `Win+E` (Explorer tabs 1.1.2); the diagnostics record why the interface stopped answering.
+- 🖱️ **Drag results out with the right button** into File Explorer, and choose to copy, move or create a shortcut on release.
+- 📂 **The bar by file dialogs** opens a file found with Enter, while `Ctrl+Enter` only goes to its folder, as in the search box; AutoCAD's and XP-style Open windows too.
+- 🔗 **Directory links indexed by themselves**: links made with `mklink` that lead elsewhere need no adding by hand.
+- 📝 **What's new in the plugin library**; 🌐 **screenshot translation through other translators**; 📄 **keyword commands list files as you type** (`code name` opens it in VS Code).
+- 🛠️ **Fixed** the folder menu walking down by itself; garbled paths from folder pickers; the F2 rename box covering the old name; Explorer tabs not merging on some PCs (1.1.3).
 
-See the [0.31.0 release notes](docs/release-notes/v0.31.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
+See the [0.32.0 release notes](docs/release-notes/v0.32.0.md); earlier versions are on [Releases](https://github.com/LingCore/WinShun/releases).
 
 ### FAQ
 
