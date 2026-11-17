@@ -41,6 +41,9 @@ struct CaptureOptions {
     bool cursor = false;
     bool hdrFile = false;
     bool controlsUia = true;
+    // 只检测窗口 (#360): the hover picks whole windows, not their controls; Tab
+    // in a capture switches it, and it is kept as it was left.
+    bool windowsOnly = false;
     int delay = 5;
     // 截图历史: the last captures' whole screens, selection and annotations,
     // for , and . in the overlay (capture::CaptureHistory); 0: none kept.
@@ -109,6 +112,7 @@ class CaptureSettings : public QObject {
     Q_PROPERTY(bool captureCursor READ captureCursor WRITE setCaptureCursor NOTIFY changed FINAL)
     Q_PROPERTY(bool captureHdrFile READ captureHdrFile WRITE setCaptureHdrFile NOTIFY changed FINAL)
     Q_PROPERTY(bool captureControlsUia READ captureControlsUia WRITE setCaptureControlsUia NOTIFY changed FINAL)
+    Q_PROPERTY(bool captureWindowsOnly READ captureWindowsOnly WRITE setCaptureWindowsOnly NOTIFY changed FINAL)
     Q_PROPERTY(int captureDelay READ captureDelay WRITE setCaptureDelay NOTIFY changed FINAL)
     Q_PROPERTY(int captureHistoryCount READ captureHistoryCount WRITE setCaptureHistoryCount NOTIFY changed FINAL)
     Q_PROPERTY(QString capturePinsHotkey READ capturePinsHotkey WRITE setCapturePinsHotkey NOTIFY changed FINAL)
@@ -184,6 +188,8 @@ public:
     void setCaptureHdrFile(bool v) { change(m_options.hdrFile, v); }
     bool captureControlsUia() const { return m_options.controlsUia; }
     void setCaptureControlsUia(bool v) { change(m_options.controlsUia, v); }
+    bool captureWindowsOnly() const { return m_options.windowsOnly; }
+    void setCaptureWindowsOnly(bool v) { change(m_options.windowsOnly, v); }
     int captureDelay() const { return m_options.delay; }
     void setCaptureDelay(int v);
     int captureHistoryCount() const { return m_options.historyCount; }

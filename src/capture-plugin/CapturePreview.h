@@ -20,6 +20,9 @@
 //     --save-options: real native Save As, cancellation, overwrite, split menu and old-folder save.
 //     --key-hints: the shortcut hints in the real overlay over a made-up desktop (keyhints-*.png):
 //     the rows per state, see-through near the pointer, 不再显示 / 一直显示 / ?, moving and hiding.
+//     --pick-windows: Tab's 只检测窗口 (#360) in the real overlay over a made-up desktop
+//     (pick-*.png): control / whole window with the pointer still, the size label's mark,
+//     the notice and hint row, the taskbar, Tab to the toolbar with a selection, 识别屏幕文字.
 //   --preview-capture-settings <folder> [--english] [--dark] [--scale 1.5]
 //     Real settings QML at minimum width; checks the full-screen toggle,
 //     binding and persistence in a temporary profile. Registers no hotkeys.

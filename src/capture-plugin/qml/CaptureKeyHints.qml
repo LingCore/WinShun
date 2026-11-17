@@ -79,6 +79,8 @@ Item {
     function describe(id) {
         switch (id) {
         case "wheel": return { keys: [qsTr("滚轮")], text: qsTr("扩大 / 缩小框选范围") }
+        // 只检测窗口 (#360): the state now, which Tab turns over (also where no size label shows, as in 识别屏幕文字).
+        case "tab": return { keys: ["Tab"], text: session.windowsOnly ? qsTr("只检测窗口：开") : qsTr("只检测窗口：关") }
         case "wasd": return { keys: ["WASD"], text: qsTr("微调光标 1 像素，加 Shift 10 像素") }
         case "size": return { keys: ["F"], text: session.hasSelection ? qsTr("输入尺寸、锁定比例、选预设") : qsTr("按预设尺寸或比例框选") }
         case "recall": return { keys: ["R", "Shift+R"], text: qsTr("恢复最近选区") }

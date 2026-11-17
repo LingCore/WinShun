@@ -207,9 +207,9 @@ QStringList CaptureSession::keyHintRows() const
         return {};
     QStringList rows;
     if (m_ocrOnly) // 识别屏幕文字: picking a region is all there is
-        return {u"wheel"_s, u"wasd"_s, u"quit"_s};
+        return {u"wheel"_s, u"tab"_s, u"wasd"_s, u"quit"_s};
     if (m_selection.screen < 0) { // a press not yet a drag too: what it was over
-        rows = {u"wheel"_s, u"wasd"_s, u"size"_s};
+        rows = {u"wheel"_s, u"tab"_s, u"wasd"_s, u"size"_s};
         if (!m_selectionHistory.empty())
             rows.append(u"recall"_s);
         if (m_historyAvailable)
@@ -293,6 +293,20 @@ void CaptureSession::setOcrOnly(bool on)
     refreshKeyHints();
 }
 
+void CaptureSession::setWindowsOnly(bool on)
+{
+    if (std::exchange(m_windowsOnly, on) == on)
+        return;
+    emit windowsOnlyChanged(on);
+    // Under the pointer at once, without a move: the window, or its smallest
+    // control there, not a level the wheel stepped out to with the other kind.
+    if (m_active && m_phase == Phase::Hover && m_cursorScreen >= 0) {
+        m_hoverScreen = -1;
+        updateHover(m_cursorScreen, m_cursorAt);
+        publish();
+    }
+}
+
 void CaptureSession::setHistoryAvailable(bool on)
 {
     m_historyAvailable = on;
@@ -341,6 +355,7 @@ void CaptureSession::showNotice(const QString& text)
     for (CaptureScreen* s : m_screens)
         s->setNotice(s->index() == target ? text : QString());
     m_noticeTimer.start();
+    m_switchNotice = false;
 }
 
 // The model follows the selection: it begins when a selection is settled,
@@ -598,9 +613,11 @@ void CaptureSession::updateHover(int screen, QPoint p)
         }
         return list;
     };
-    std::vector<QRect> chain = hitChain(tops, children, p, s->bounds());
+    // 只检测窗口 (#360): the window itself and the screen; its child windows are
+    // not listed, and UI Automation is not asked.
+    std::vector<QRect> chain = m_windowsOnly ? hitChain(tops, {}, p, s->bounds()) : hitChain(tops, children, p, s->bounds());
     // The window the point is in: UI Automation may know more of it than its child windows.
-    if (m_windows.probe && m_phase == Phase::Hover) {
+    if (m_windows.probe && m_phase == Phase::Hover && !m_windowsOnly) {
         for (std::size_t i = above; i < tops.size(); ++i) {
             if (tops[i].intersected(s->bounds()).contains(p)) {
                 m_windows.probe(i - above, origin + p);
@@ -812,6 +829,11 @@ void CaptureSession::pointerPress(int screen, QPoint p, Qt::MouseButton button, 
         m_phase = Phase::Pressed;
         m_previous = {};
         updateHover(screen, p);
+        // What Tab said (it switches before a selection) would stand by the selection now.
+        if (std::exchange(m_switchNotice, false)) {
+            for (CaptureScreen* s : m_screens)
+                s->setNotice({});
+        }
     }
     updateCursor(screen, p);
     publish();
@@ -1114,6 +1136,10 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
                 finish(Action::Cancel);
             }
             return true;
+        case Qt::Key_Tab: // whole windows only, or their controls too (#360), as in a capture
+        case Qt::Key_Backtab:
+            switchPicking(plain);
+            return true;
         case Qt::Key_Shift:
         case Qt::Key_Control:
         case Qt::Key_Alt:
@@ -1253,6 +1279,11 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
         if (!busy)
             act(static_cast<int>(Action::Delay));
         return true;
+    case Qt::Key_Tab:
+    case Qt::Key_Backtab:
+        // Before a selection: whole windows only, or their controls too (#360,
+        // Snipaste's key). With one it is the overlay's focus chain, to the toolbar's buttons.
+        return switchPicking(plain);
     case Qt::Key_Left:
     case Qt::Key_Right:
     case Qt::Key_Up:
@@ -1274,6 +1305,20 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
     default:
         return false;
     }
+}
+
+bool CaptureSession::switchPicking(bool plain)
+{
+    // The size panel (F) moves between its fields with Tab.
+    if (m_selection.screen >= 0 || m_sizeEditing || !plain || m_annot.editingText() || m_annot.editingNumber())
+        return false;
+    // Resting only: with a button held the press keeps what it picked.
+    if (m_phase == Phase::Hover) {
+        setWindowsOnly(!m_windowsOnly);
+        showNotice(m_windowsOnly ? tr("只检测窗口 · Tab 切换") : tr("检测界面元素 · Tab 切换"));
+        m_switchNotice = true;
+    }
+    return true;
 }
 
 void CaptureSession::movePointer(int dx, int dy)
@@ -1606,6 +1651,8 @@ bool CaptureSession::keyPressed(int key, int modifiers, bool autoRepeat)
     if (m_active && key == Qt::Key_R && autoRepeat
         && !(modifiers & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)))
         return true; // One press recalls one region; WASD still repeats while held.
+    if (m_active && autoRepeat && (key == Qt::Key_Tab || key == Qt::Key_Backtab) && m_selection.screen < 0 && !m_sizeEditing)
+        return true; // one press, one switch of what the hover picks (with a selection: the focus chain's)
     return this->key(key, Qt::KeyboardModifiers(modifiers));
 }
 

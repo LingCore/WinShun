@@ -150,7 +150,8 @@ private:
 // A capture from the frozen screens to the picture taken (or none): what
 // the mouse and keys do. Moving over the screens highlights the window or
 // control a click picks (the wheel steps out to the window and the whole
-// screen and back); a drag draws a selection; with one, its eight handles
+// screen and back; Tab before a selection switches to whole windows only and
+// back, GitHub #360); a drag draws a selection; with one, its eight handles
 // resize it and a drag inside moves it; the arrow keys move it a physical
 // pixel (Shift: resize), and WASD moves the mouse pointer a physical pixel
 // (Shift: ten) in every phase, a held-button drag included. R recalls
@@ -210,6 +211,10 @@ class CaptureSession : public QObject {
     // The sizes and shapes to pick from, in order: {label, ratio, width, height}.
     Q_PROPERTY(QVariantList sizePresets READ sizePresetList NOTIFY sizePresetsChanged FINAL)
     Q_PROPERTY(bool sizePresetsFull READ sizePresetsFull NOTIFY sizePresetsChanged FINAL)
+    // 只检测窗口 (GitHub #360): the hover picks whole top-level windows (and the
+    // screen), not the controls in them. Tab switches it before a selection;
+    // kept between captures ([Capture] WindowsOnly).
+    Q_PROPERTY(bool windowsOnly READ windowsOnly NOTIFY windowsOnlyChanged FINAL)
 
 public:
     // Pin: left on the screen where it was (PinWindow); Ocr: its words read (CaptureOcr);
@@ -308,6 +313,11 @@ public:
     // save, pin, annotate or bring back a picture do nothing.
     void setOcrOnly(bool on);
     bool ocrOnly() const { return m_ocrOnly; }
+    // 只检测窗口 (#360): the setting, or Tab (which also says so by the pointer's
+    // monitor). The hover is picked afresh at once, from the most specific of
+    // the new kind; a capture beginning or ending leaves it as it is.
+    void setWindowsOnly(bool on);
+    bool windowsOnly() const { return m_windowsOnly; }
 
     // ---- the size panel (#308) ----
     bool sizeEditing() const { return m_sizeEditing; }
@@ -362,8 +372,9 @@ public:
     void setToolHintSeen(bool seen);
 
     // The key hints. Rows, in order (the panel words them):
-    //   choosing: wheel, wasd, recall (some remembered), history (setHistoryAvailable),
-    //             ocr (ocrAvailable), quit
+    //   choosing: wheel, tab (windowsOnly), wasd, size, recall (some remembered),
+    //             history (setHistoryAvailable), ocr (ocrAvailable), quit
+    //             (识别屏幕文字: wheel, tab, wasd, quit)
     //   selected: copy, save, pin, arrows, ocr, long, recalled (R brought it back)
     //   tool:     shift (shapes, lines and strokes), width, undo, delete, toolOff, hide
     // and none while busy.
@@ -432,6 +443,7 @@ signals:
     void ratioChanged();
     void sizePresetsChanged();
     void sizePresetsEdited(); // by the user, in the panel: [Capture] SizePresets
+    void windowsOnlyChanged(bool on); // Tab, or the setting: [Capture] WindowsOnly
 
 private:
     // Annotating: a drawing, moving or reshaping gesture of the model's is
@@ -451,6 +463,9 @@ private:
     void recallSelection(bool previous); // R: older; Shift+R: newer
     void nudgeSelection(int dx, int dy, bool resize);
     void movePointer(int dx, int dy); // WASD: the mouse pointer, whatever the phase
+    // Tab or Shift+Tab: true when it is the picking's (no selection, no size
+    // panel); then, when resting, windowsOnly switched and the switch said.
+    bool switchPicking(bool plain);
     void placeSize(QSize size); // setSize's, the shape already seen to
     void setRatio(QSize ratio); // empty: none held
     bool resting() const { return m_phase == Phase::Hover || m_phase == Phase::Selected; } // no button held
@@ -484,6 +499,8 @@ private:
     bool m_magnifier = true; // off: no magnifier, so no colour picking either
     bool m_pinOnCopy = false;
     bool m_ocrOnly = false;
+    bool m_windowsOnly = false;
+    bool m_switchNotice = false; // the notice up is Tab's (switchPicking): a press that picks puts it away
     bool m_sizeEditing = false;
     QSize m_ratio; // the shape held; empty: none
     std::vector<SizePreset> m_sizePresets;

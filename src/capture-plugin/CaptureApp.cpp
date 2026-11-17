@@ -508,6 +508,7 @@ void CaptureApp::apply()
                 m_settings.update([&](CaptureOptions& next) { next.sizePresets = text; });
         };
         callbacks.keyHintsKept = [this](bool on) { m_settings.setCaptureKeyHints(on); }; // the panel's 不再显示 / 一直显示
+        callbacks.windowsOnlyChanged = [this](bool on) { m_settings.setCaptureWindowsOnly(on); }; // Tab (#360): kept for the next capture
         callbacks.recording.preferences = [this] {
             const CaptureOptions& p = m_settings.options();
             return capture::Recorder::Preferences {p.recordingFolder, p.recordingSystemAudio, p.recordingMicrophone,
@@ -571,6 +572,7 @@ void CaptureApp::apply()
     m_capture->setIncludeCursor(o.cursor);
     m_capture->setHdrFile(o.hdrFile);
     m_capture->setControlDetection(o.controlsUia);
+    m_capture->setWindowsOnly(o.windowsOnly);
     m_capture->setDelay(o.delay);
     m_capture->setHistory(QDir(m_dataDir).filePath(u"capture-history"_s), o.historyCount);
     m_capture->setColorFormat(capture::colorFormatFromName(o.colorFormat));

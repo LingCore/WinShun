@@ -41,6 +41,7 @@ QtObject {
         "WASD", qsTranslate("AnnotateToolbar", "微调鼠标光标，每次 1 个物理像素；按住左键拖选区、拖手柄或画标注时也有效"),
         "Shift+WASD", qsTranslate("AnnotateToolbar", "微调鼠标光标，每次 10 个物理像素"),
         qsTranslate("AnnotateToolbar", "滚轮"), qsTr("框选前扩大 / 缩小框选范围；有工具或选中对象时改粗细"),
+        "Tab", qsTr("框选前开关“只检测窗口”：只框整个窗口，不框里面的按钮等界面元素；下次截图沿用"),
         qsTranslate("AnnotateToolbar", "方向键"), qsTranslate("AnnotateToolbar", "挪动选中的对象；否则移动选区 1 个物理像素，Shift 调整选区大小；未框选时微调光标"),
         "F", qsTr("框选前按预设尺寸或比例框选；框选后输入尺寸、锁定比例、选预设"),
         "H", qsTranslate("AnnotateToolbar", "隐藏 / 显示工具条"),

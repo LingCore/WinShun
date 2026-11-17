@@ -34,7 +34,12 @@ void writeByHand(const QString& file, const QByteArray& key, const QByteArray& v
     f.close();
     const qsizetype at = text.indexOf(key + '=');
     QVERIFY(at >= 0);
-    const qsizetype end = text.indexOf('\n', at);
+    qsizetype end = text.indexOf('\n', at);
+    // The line keeps its \r\n: true -> false must change the file's size, as
+    // QSettings reads a file again only when its size or time changed, and
+    // a save a moment before may have the same time.
+    if (end > at && text[end - 1] == '\r')
+        --end;
     text.replace(at, end - at, key + '=' + value);
     QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
     f.write(text);
@@ -137,6 +142,29 @@ private slots:
         QVERIFY(CaptureOptions::load(file).keyHints);
         writeByHand(file, "KeyHints", "false");
         QVERIFY(!CaptureOptions::load(file).keyHints);
+    }
+
+    // 框选时只检测窗口 (#360): off by default; the switch and Tab in a capture
+    // (through the same setter) saved at once, for the next capture.
+    void windowsOnly()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"capture.ini"_s);
+        QVERIFY(!CaptureOptions::load(file).windowsOnly);
+        ws::captureplugin::CaptureSettings settings(file);
+        QVERIFY(!settings.captureWindowsOnly());
+        QSignalSpy changed(&settings, &ws::captureplugin::CaptureSettings::changed);
+        settings.setCaptureWindowsOnly(true);
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(CaptureOptions::load(file).windowsOnly);
+        settings.setCaptureWindowsOnly(true);
+        QCOMPARE(changed.count(), 1); // the same again: nothing
+        settings.setProperty("captureWindowsOnly", false); // as the switch sets it
+        QCOMPARE(changed.count(), 2);
+        QVERIFY(!CaptureOptions::load(file).windowsOnly);
+        writeByHand(file, "WindowsOnly", "true");
+        QVERIFY(CaptureOptions::load(file).windowsOnly);
     }
 
     // The capture's and the pins' keys (#187), Capture/Keys/<id>: missing is

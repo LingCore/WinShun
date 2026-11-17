@@ -770,6 +770,140 @@ private slots:
         QCOMPARE(rig.session.selectionRect(), QRect(0, 0, 1000, 800));
     }
 
+    // 只检测窗口 (GitHub #360, Snipaste's Tab): before a selection Tab switches
+    // the outline between the smallest control under the pointer and its whole
+    // window, at once and without a move, and says so; the wheel still steps out
+    // to the screen; UI Automation is not asked meanwhile; a click picks what is
+    // outlined. Held, it switches once; not with a button held, nor while the
+    // size panel has the keys. With a selection Tab is not the session's: the
+    // overlay's focus chain takes it to the toolbar's buttons.
+    void tabSwitchesToWholeWindows()
+    {
+        Rig rig;
+        const QRect window(100, 100, 400, 300);
+        const QRect control(120, 120, 100, 40);
+        rig.tops = {window};
+        rig.children = {{QRect(110, 110, 300, 200), control}};
+        int asked = 0;
+        CaptureSession::Windows windows;
+        windows.tops = rig.tops;
+        windows.children = [&rig](std::size_t i) { return rig.children[i]; };
+        windows.probe = [&asked](std::size_t, QPoint) { ++asked; };
+        rig.session.begin({&rig.screen}, std::move(windows));
+        QSignalSpy switched(&rig.session, &CaptureSession::windowsOnlyChanged);
+        rig.session.pointerMove(0, {130, 130});
+        QCOMPARE(rig.screen.hover(), control);
+        QCOMPARE(asked, 1);
+
+        QVERIFY(rig.session.keyPressed(Qt::Key_Tab, Qt::NoModifier));
+        QVERIFY(rig.session.windowsOnly());
+        QCOMPARE(switched.count(), 1);
+        QCOMPARE(switched[0][0].toBool(), true);
+        QCOMPARE(rig.screen.hover(), window); // the pointer where it was
+        QVERIFY(!rig.screen.notice().isEmpty()); // said on the pointer's monitor
+        rig.session.pointerMove(0, {140, 150});
+        QCOMPARE(rig.screen.hover(), window);
+        QCOMPARE(asked, 1); // no UI Automation for whole windows
+        rig.session.wheel(0, {140, 150}, -1); // nothing smaller than the window now
+        QCOMPARE(rig.screen.hover(), window);
+        rig.session.wheel(0, {140, 150}, 1); // out: the screen
+        QCOMPARE(rig.screen.hover(), QRect(0, 0, 1000, 800));
+        QVERIFY(rig.session.keyPressed(Qt::Key_Tab, Qt::NoModifier, true)); // held down: still the one switch
+        QVERIFY(rig.session.windowsOnly());
+        QCOMPARE(switched.count(), 1);
+
+        // Shift+Tab comes as Backtab: back to the smallest control, not the screen the wheel had reached.
+        QVERIFY(rig.session.keyPressed(Qt::Key_Backtab, Qt::ShiftModifier));
+        QVERIFY(!rig.session.windowsOnly());
+        QCOMPARE(rig.screen.hover(), control);
+        QCOMPARE(asked, 2); // asked again
+        QCOMPARE(switched.count(), 2);
+        QVERIFY(!rig.session.keyPressed(Qt::Key_Tab, Qt::ControlModifier)); // Ctrl+Tab is not it
+        QVERIFY(!rig.session.windowsOnly());
+
+        // Not with the button held (it picks what was outlined at the press), nor in the size panel.
+        rig.session.pointerPress(0, {130, 130}, Qt::LeftButton);
+        QVERIFY(rig.session.keyPressed(Qt::Key_Tab, Qt::NoModifier));
+        QVERIFY(!rig.session.windowsOnly());
+        rig.session.pointerRelease(0, {130, 130}, Qt::LeftButton);
+        QCOMPARE(rig.session.selectionRect(), control);
+        QVERIFY(rig.session.key(Qt::Key_Escape, Qt::NoModifier));
+        QVERIFY(!rig.session.hasSelection());
+        rig.session.setSizeEditing(true); // its fields take Tab
+        QVERIFY(rig.session.sizeEditing());
+        QVERIFY(!rig.session.keyPressed(Qt::Key_Tab, Qt::NoModifier));
+        QVERIFY(!rig.session.windowsOnly());
+        rig.session.setSizeEditing(false);
+
+        // A click with windows only picks the whole window; what Tab said goes with the press.
+        QVERIFY(rig.session.keyPressed(Qt::Key_Tab, Qt::NoModifier));
+        QVERIFY(!rig.screen.notice().isEmpty());
+        rig.click({131, 131});
+        QCOMPARE(rig.session.selectionRect(), window);
+        QVERIFY(rig.screen.notice().isEmpty());
+        QVERIFY(!rig.session.keyPressed(Qt::Key_Tab, Qt::NoModifier));
+        QVERIFY(!rig.session.keyPressed(Qt::Key_Backtab, Qt::ShiftModifier));
+        QVERIFY(rig.session.windowsOnly());
+        QCOMPARE(switched.count(), 3);
+        // Esc drops it: picking again, still whole windows.
+        QVERIFY(rig.session.key(Qt::Key_Escape, Qt::NoModifier));
+        rig.session.pointerMove(0, {132, 132});
+        QCOMPARE(rig.screen.hover(), window);
+    }
+
+    // The setting ([Capture] WindowsOnly) and Tab are one switch, kept from one
+    // capture to the next; set while hovering, the outline follows at once. The
+    // taskbar is a window like the others; the desktop, a window as large as
+    // the screen, is the screen. 识别屏幕文字 and 截图翻译 pick the same way.
+    void windowsOnlyIsKeptAndShared()
+    {
+        Rig rig;
+        const QRect taskbar(0, 752, 1000, 48);
+        const QRect window(100, 100, 400, 300);
+        const QRect control(120, 120, 100, 40);
+        rig.tops = {taskbar, window, QRect(0, 0, 1000, 800)}; // the desktop at the bottom
+        rig.children = {{QRect(400, 752, 48, 48)}, {control}, {QRect(0, 0, 1000, 752)}};
+        QSignalSpy switched(&rig.session, &CaptureSession::windowsOnlyChanged);
+        rig.session.setWindowsOnly(true); // as the settings say, before a capture
+        rig.session.setWindowsOnly(true);
+        QCOMPARE(switched.count(), 1); // told once
+        rig.begin();
+        QVERIFY(rig.session.windowsOnly());
+        rig.session.pointerMove(0, {420, 770});
+        QCOMPARE(rig.screen.hover(), taskbar); // not the button in it
+        rig.session.pointerMove(0, {700, 600});
+        QCOMPARE(rig.screen.hover(), QRect(0, 0, 1000, 800));
+        rig.session.pointerMove(0, {130, 130});
+        QCOMPARE(rig.screen.hover(), window);
+        QVERIFY(rig.screen.notice().isEmpty()); // only Tab says it
+        rig.session.setWindowsOnly(false); // the settings window, meanwhile
+        QCOMPARE(rig.screen.hover(), control);
+        rig.session.end();
+        QVERIFY(!rig.session.windowsOnly());
+        rig.session.setWindowsOnly(true);
+        rig.begin();
+        rig.session.end();
+        QVERIFY(rig.session.windowsOnly()); // a capture beginning or ending leaves it
+
+        rig.session.setWindowsOnly(false);
+        rig.session.setOcrOnly(true);
+        rig.begin();
+        QCOMPARE(rig.session.keyHintRows(), (QStringList {u"wheel"_s, u"tab"_s, u"wasd"_s, u"quit"_s}));
+        rig.session.pointerMove(0, {130, 130});
+        QCOMPARE(rig.screen.hover(), control);
+        QVERIFY(rig.session.key(Qt::Key_Tab, Qt::NoModifier));
+        QVERIFY(rig.session.windowsOnly());
+        QCOMPARE(rig.screen.hover(), window);
+        QVERIFY(!rig.screen.notice().isEmpty());
+        QVERIFY(rig.session.key(Qt::Key_Tab, Qt::ControlModifier)); // still the OCR picker's: nothing else happens
+        QVERIFY(rig.session.windowsOnly());
+        QSignalSpy finished(&rig.session, &CaptureSession::finished);
+        rig.click({131, 131});
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(finished[0][0].value<CaptureSession::Action>(), CaptureSession::Action::OcrCopy);
+        QCOMPARE(finished[0][2].toRect(), window); // the whole window's words
+    }
+
     void handlesResizeAndInsideMoves()
     {
         Rig rig;
@@ -1047,7 +1181,7 @@ private slots:
             rig.session.setOcrOnly(true);
             rig.begin();
             QVERIFY(rig.session.ocrOnly());
-            QCOMPARE(rig.session.keyHintRows(), (QStringList {u"wheel"_s, u"wasd"_s, u"quit"_s}));
+            QCOMPARE(rig.session.keyHintRows(), (QStringList {u"wheel"_s, u"tab"_s, u"wasd"_s, u"quit"_s}));
             QSignalSpy finished(&rig.session, &CaptureSession::finished);
             rig.drag({100, 100}, {199, 149});
             QCOMPARE(finished.count(), 1);
@@ -1410,13 +1544,13 @@ private slots:
         QVERIFY(s.keyHints().isEmpty()); // not begun
         rig.begin();
         rig.session.pointerMove(0, {500, 400});
-        QCOMPARE(s.keyHints(), (QStringList {u"wheel"_s, u"wasd"_s, u"size"_s, u"quit"_s}));
+        QCOMPARE(s.keyHints(), (QStringList {u"wheel"_s, u"tab"_s, u"wasd"_s, u"size"_s, u"quit"_s}));
         // R, , and ., Shift+C only when they have something to do.
         QSignalSpy told(&s, &CaptureSession::keyHintsChanged);
         s.rememberSelection(QRect(10, 10, 100, 100));
         s.setHistoryAvailable(true);
         s.setOcrAvailable(true);
-        QCOMPARE(s.keyHints(), (QStringList {u"wheel"_s, u"wasd"_s, u"size"_s, u"recall"_s, u"history"_s, u"ocr"_s, u"quit"_s}));
+        QCOMPARE(s.keyHints(), (QStringList {u"wheel"_s, u"tab"_s, u"wasd"_s, u"size"_s, u"recall"_s, u"history"_s, u"ocr"_s, u"quit"_s}));
         QCOMPARE(told.count(), 3);
         rig.session.pointerMove(0, {520, 410});
         QCOMPARE(told.count(), 3); // a move that changes nothing tells nothing

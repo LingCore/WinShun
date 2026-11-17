@@ -202,6 +202,10 @@ Capture::Capture(QQmlEngine* engine, Callbacks callbacks, QObject* parent)
         if (m_callbacks.keyHintsKept)
             m_callbacks.keyHintsKept(on);
     });
+    connect(&m_session, &CaptureSession::windowsOnlyChanged, this, [this](bool on) {
+        if (m_callbacks.windowsOnlyChanged)
+            m_callbacks.windowsOnlyChanged(on);
+    });
     m_countTimer.setSingleShot(true);
     m_countTimer.setTimerType(Qt::PreciseTimer);
     connect(&m_countTimer, &QTimer::timeout, this, &Capture::tickCountdown);
@@ -683,6 +687,7 @@ void Capture::recordCapture(CaptureSession::Action action, const QRect& rect)
         {u"presented"_s, software ? u"software"_s : qEnvironmentVariableIsSet("WINSHUN_CAPTURE_FLIP") ? u"flip"_s : u"copy"_s},
         {u"monitors"_s, static_cast<int>(m_overlays.size())}, {u"dpr"_s, dprs},
         {u"wgc"_s, m_wgcShots}, {u"hdr"_s, m_hdrShots}, {u"magnifier"_s, m_magnifierOn},
+        {u"windows_only"_s, m_session.windowsOnly()}, // 只检测窗口 (#360): why no control is picked
         {u"smart_prescan"_s, m_callbacks.smart.prescan && m_callbacks.smart.prescan()},
         {u"first_since_start"_s, g_firstCapture}, {u"seconds_since_start"_s, diag::secondsSinceProcessStart()},
         {u"seconds_since_last_capture"_s, g_lastCapture.isValid() ? g_lastCapture.elapsed() / 1000 : -1},

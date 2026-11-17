@@ -588,6 +588,17 @@ Column {
                         title: qsTr("框选时显示放大镜")
                         description: qsTr("在指针旁放大显示像素和颜色值。关闭后，按 C 复制颜色、按 Shift 换颜色格式也一并停用。")
                     }
+                    SettingRow { // #360: the same value Tab switches in a capture
+                        title: qsTr("框选时只检测窗口")
+                        description: qsTr("鼠标移到窗口上只框出整个窗口，不框里面的按钮、输入框等界面元素。截图时按 Tab 也能切换，下次截图沿用。")
+
+                        ToggleSwitch {
+                            dpr: card.dpr
+                            objectName: "captureWindowsOnlySwitch"
+                            checked: card.editor.captureWindowsOnly
+                            onToggled: (on) => card.editor.captureWindowsOnly = on
+                        }
+                    }
                     ToggleRow {
                         key: "captureControlsUia"
                         title: qsTr("识别 WinUI 等程序里的控件")

@@ -223,6 +223,14 @@ Item {
                 size: 12
                 color: Theme.accentText
             }
+            Glyph { // 只检测窗口 (#360, Tab): what is outlined is a whole window
+                objectName: "captureSizeWindowsOnly"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: box.session.windowsOnly && !box.selectedHere
+                iconName: "app-window"
+                size: 12
+                color: Theme.accentText
+            }
             Text {
                 text: qsTr("%1 × %2").arg(box.shown.width).arg(box.shown.height)
                 color: Theme.accentText

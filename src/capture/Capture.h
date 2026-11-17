@@ -113,6 +113,8 @@ public:
         std::function<void(const QStringList&, const QRect& where)> qr;
         // The colour format C copies in (hex, rgb, hsl), when Shift alone changes it.
         std::function<void(const QString&)> colorFormatChanged;
+        // Tab switched 只检测窗口 (#360): [Capture] WindowsOnly.
+        std::function<void(bool)> windowsOnlyChanged;
         // The key hints' 不再显示 (false) or 一直显示 (true): [Capture] KeyHints.
         std::function<void(bool)> keyHintsKept;
         // The size panel's list was added to or taken from: [Capture] SizePresets.
@@ -151,6 +153,8 @@ public:
     void setHdrFile(bool on) { m_hdrFile = on; }
     // UI Automation for the controls that are not child windows ([Capture] ControlsUia).
     void setControlDetection(bool on) { m_uiaEnabled = on; }
+    // The hover picks whole windows only, not their controls ([Capture] WindowsOnly, #360).
+    void setWindowsOnly(bool on) { m_session.setWindowsOnly(on); }
     void setColorFormat(ColorFormat format) { m_session.setColorFormat(format); }
     // The sizes and shapes to pick from ([Capture] SizePresets, #308).
     void setSizePresets(const QString& text) { m_session.setSizePresets(parseSizePresets(text)); }

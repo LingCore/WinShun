@@ -674,6 +674,14 @@
         <translation>Pick a larger / smaller area</translation>
     </message>
     <message>
+        <source>只检测窗口：开</source>
+        <translation>Windows only: on</translation>
+    </message>
+    <message>
+        <source>只检测窗口：关</source>
+        <translation>Windows only: off</translation>
+    </message>
+    <message>
         <source>微调光标 1 像素，加 Shift 10 像素</source>
         <translation>Nudge the pointer 1 px, with Shift 10 px</translation>
     </message>
@@ -791,6 +799,10 @@
     <message>
         <source>框选前扩大 / 缩小框选范围；有工具或选中对象时改粗细</source>
         <translation>Grows / shrinks the selection before you select; changes the size while a tool is on or an object is selected</translation>
+    </message>
+    <message>
+        <source>框选前开关“只检测窗口”：只框整个窗口，不框里面的按钮等界面元素；下次截图沿用</source>
+        <translation>Before you select: turns &quot;Windows only&quot; on or off, which outlines whole windows, not the buttons and other UI elements in them; the next capture keeps it</translation>
     </message>
     <message>
         <source>框选前按预设尺寸或比例框选；框选后输入尺寸、锁定比例、选预设</source>
@@ -1122,6 +1134,14 @@
     <message>
         <source>在指针旁放大显示像素和颜色值。关闭后，按 C 复制颜色、按 Shift 换颜色格式也一并停用。</source>
         <translation>Magnified pixels and the colour value beside the pointer. When off, C (copy colour) and Shift (colour format) do nothing either.</translation>
+    </message>
+    <message>
+        <source>框选时只检测窗口</source>
+        <translation>Detect whole windows only while selecting</translation>
+    </message>
+    <message>
+        <source>鼠标移到窗口上只框出整个窗口，不框里面的按钮、输入框等界面元素。截图时按 Tab 也能切换，下次截图沿用。</source>
+        <translation>Pointing at a window outlines the whole window, not the buttons, input boxes and other UI elements in it. Tab switches it while capturing, and the next capture keeps it.</translation>
     </message>
     <message>
         <source>复制截图时同时贴图</source>
@@ -2381,6 +2401,14 @@ The unfinished recording is kept at: %1</translation>
     <message>
         <source>已关闭快捷键提示 · 按 ? 临时显示，截图设置里可重新打开</source>
         <translation>Shortcut hints off · Press ? to show them for a moment, or turn them back on in the screenshot settings</translation>
+    </message>
+    <message>
+        <source>只检测窗口 · Tab 切换</source>
+        <translation>Whole windows only · Tab to switch</translation>
+    </message>
+    <message>
+        <source>检测界面元素 · Tab 切换</source>
+        <translation>UI elements too · Tab to switch</translation>
     </message>
 </context>
 <context>

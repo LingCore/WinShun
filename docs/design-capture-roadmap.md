@@ -192,7 +192,7 @@
 |---|---|---|---|---|---|
 | 用上次的选区（记住是哪块屏） | Snow Shot（R / Shift+R）、QuickShot #9；反例：Flameshot #3091、#4646 不记屏 | 连续截同一块 | 低 | 之后·7（Shift+R） | 照思路自己写 |
 | 延时截图 | design-capture §1 第二轮 | 截菜单、悬停提示 | 低 | 之后·7 | 照思路自己写 |
-| 子控件识别补上 UIA（Electron、WinUI 这类控件不是子窗口的程序），带时间预算 | Snow Shot（snow-ui-selector：前台 168 ms、后台细化 1500 ms；Tab 在窗口和控件之间切） | design-capture §7.1 里的常见抱怨“Electron 和提权窗口识别不了控件”（提权窗口仍然不行，UIPI 挡着） | 中 | 之后·7 | 照思路自己写（不要 Tab，我们用滚轮在窗口链里走） |
+| 子控件识别补上 UIA（Electron、WinUI 这类控件不是子窗口的程序），带时间预算 | Snow Shot（snow-ui-selector：前台 168 ms、后台细化 1500 ms；Tab 在窗口和控件之间切） | design-capture §7.1 里的常见抱怨“Electron 和提权窗口识别不了控件”（提权窗口仍然不行，UIPI 挡着） | 中 | 之后·7 | 照思路自己写（滚轮在窗口链里走；2026-11 起 `Tab` 也切“只检测窗口”，#360） |
 | 二维码识别 | Snow Shot（Ctrl+Q）；QuickShot #8 在要 | 截了就能扫 | 低 | 之后·7 | 借 Apache 代码：整库引入 zxing-cpp，放 `third_party/zxing-cpp/` 并带 LICENSE。报告里没有现成能借的，这是我们自己挑的库；是整个库，不是代码片段。许可已核实：仓库的 LICENSE 是 Apache-2.0（2026-10-20 查） |
 | 多选区（合成一张、吸附对齐、等宽等高） | Snow Shot（#1932、#2017、#2002、#1972，抱怨最多） | 对比图、拼几个窗口 | 高 | 之后·8 | 照思路自己写 |
 | 拼接多张截图（纵、横、网格，标注跟着图走） | QuickShot（src/editor/stitch.ts）、Snow Shot（拼图） | 和多选区重叠 | 中 | 之后·8（并进多选区的“排版”） | 照思路自己写 |
