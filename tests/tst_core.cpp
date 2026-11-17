@@ -6,6 +6,7 @@
 #include "ContentIndex.h"
 #include "ContentIndexer.h"
 #include "ContentPattern.h"
+#include "DiagnosticLog.h"
 #include "ContentScanner.h"
 #include "Crawler.h"
 #include "DocExtractor.h"
@@ -3601,6 +3602,10 @@ private slots:
         auto options = walkedOptions(std::nullopt, rules);
         options.selectedDrives = std::vector<std::wstring>{root};
         options.volumeAccess = access;
+        // GitHub #364: what was found and why, in the diagnostics, without paths.
+        QTemporaryDir profile;
+        diagnostics::initialize(profile.path());
+        const auto disableLog = qScopeGuard([] { diagnostics::initialize({}); });
         {
             IndexService service(store.path(), options);
             service.start();
@@ -3618,6 +3623,32 @@ private slots:
             QVERIFY(makeJunction(later, away + u"\\later"_s));
             QTRY_VERIFY_WITH_TIMEOUT(indexedIn(service, later + u"\\later.txt"_s), 30'000);
             service.shutdown();
+        }
+        {
+            QFile events(QDir(profile.path()).filePath(u"diagnostics/events.jsonl"_s));
+            QVERIFY(events.open(QIODevice::ReadOnly | QIODevice::Text));
+            const QByteArray text = events.readAll();
+            QVERIFY2(!text.contains(QDir(tree.path()).dirName().toUtf8()), "a path in the diagnostics");
+            bool walked = false;
+            bool indexed = false;
+            bool madeSince = false;
+            for (const QByteArray& line : text.split('\n')) {
+                const QJsonObject entry = QJsonDocument::fromJson(line).object();
+                if (entry.value(u"event"_s).toString() != u"directory-links"_s)
+                    continue;
+                const QJsonObject details = entry.value(u"details"_s).toObject();
+                const QJsonObject results = details.value(u"results"_s).toObject();
+                walked = walked || results.value(u"walked"_s).toInteger() > 0;
+                indexed = indexed || results.value(u"disk-indexed"_s).toInteger() > 0;
+                madeSince = madeSince || details.value(u"made_since"_s).toBool();
+                for (const QJsonValue& link : details.value(u"links"_s).toArray()) {
+                    if (link.toObject().value(u"result"_s).toString() == u"walked"_s) {
+                        QCOMPARE(link.toObject().value(u"to"_s).toString().compare(away.left(2), Qt::CaseInsensitive), 0);
+                        QVERIFY(link.toObject().value(u"opens"_s).toBool());
+                    }
+                }
+            }
+            QVERIFY2(walked && indexed && madeSince, text.constData());
         }
         {
             QFile scope(QDir(store.path()).filePath(u"scope.json"_s));

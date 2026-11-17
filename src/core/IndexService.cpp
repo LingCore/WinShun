@@ -1,5 +1,6 @@
 #include "IndexService.h"
 
+#include "DiagnosticLog.h"
 #include "IndexFolder.h"
 #include "Ntfs.h"
 #include "NtfsIndexer.h"
@@ -2081,6 +2082,12 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
         std::vector<std::wstring> walked;
         for (const Crawler::Root& w : walks)
             walked.push_back(w.path);
+        // A walk passes directory links by and does not look for them: the
+        // links on these disks are not found (GitHub #350), say so (#364).
+        QJsonArray walkedRoots;
+        for (const std::wstring& root : walked)
+            walkedRoots.append(QString::fromStdWString(root)); // a volume's root: "D:"
+        diagnostics::record(u"directory-links-not-looked-for"_s, {{u"walked"_s, walkedRoots}});
         for (const std::wstring& root : walked)
             setReading(root, true);
         completed = crawler->sync(*index, std::move(walks), crawlThreads(), !firstBuild, stop);
@@ -2237,30 +2244,105 @@ bool IndexService::readJournal(Followed& f, std::stop_token stop)
     return true;
 }
 
-bool IndexService::linkWanted(std::wstring_view link, const Crawler& crawler) const
+LinkCheck IndexService::checkLink(std::wstring_view link, const Crawler& crawler) const
 {
-    if (crawler.isExcludedPath(link))
-        return false;
-    const std::wstring target = directoryLinkTarget(link);
-    if (target.empty())
-        return false;
-    if (target.starts_with(LR"(\\?\)"))
-        return true; // a volume with no drive letter: in the index nowhere
-    if (crawler.isExcludedPath(target))
-        return false;
+    LinkCheck check;
+    if (crawler.isExcludedPath(link)) {
+        check.verdict = LinkVerdict::LinkExcluded;
+        return check;
+    }
+    check.target = directoryLinkTarget(link);
+    if (check.target.empty()) {
+        check.error = ::GetLastError();
+        check.verdict = LinkVerdict::Unreadable;
+        return check;
+    }
+    const std::wstring& target = check.target;
+    if (target.starts_with(LR"(\\?\)")) {
+        check.verdict = LinkVerdict::Wanted; // a volume with no drive letter: in the index nowhere
+        return check;
+    }
+    if (crawler.isExcludedPath(target)) {
+        check.verdict = LinkVerdict::TargetExcluded;
+        return check;
+    }
     if (unc::isUnc(target)) {
         // Not on a share the index holds already.
-        return std::none_of(m_options.shares.shares.begin(), m_options.shares.shares.end(),
+        const bool held = std::any_of(m_options.shares.shares.begin(), m_options.shares.shares.end(),
             [&](const ShareConfig& share) { return unc::contains(share.path, target); });
+        check.verdict = held ? LinkVerdict::ShareIndexed : LinkVerdict::Wanted;
+        return check;
     }
     // On a disk the index does not hold (removable, not chosen): with whole
     // disks, what is on those it does is found where it is.
     const std::wstring_view root = volumeOf(target);
+    if (root.empty()) {
+        check.verdict = LinkVerdict::NoVolume;
+        return check;
+    }
     std::lock_guard lock(m_journalMutex);
-    return !root.empty() && std::none_of(m_volumes.begin(), m_volumes.end(), [&](const VolumeInfo& v) {
+    const bool held = std::any_of(m_volumes.begin(), m_volumes.end(), [&](const VolumeInfo& v) {
         return win32::equalsIgnoreCase(v.root, root);
     });
+    check.verdict = held ? LinkVerdict::VolumeIndexed : LinkVerdict::Wanted;
+    return check;
 }
+
+namespace {
+
+QString verdictName(LinkVerdict verdict)
+{
+    switch (verdict) {
+    case LinkVerdict::Wanted:
+        return u"walked"_s;
+    case LinkVerdict::LinkExcluded:
+        return u"link-excluded"_s;
+    case LinkVerdict::Unreadable:
+        return u"unreadable"_s;
+    case LinkVerdict::TargetExcluded:
+        return u"target-excluded"_s;
+    case LinkVerdict::ShareIndexed:
+        return u"share-indexed"_s;
+    case LinkVerdict::VolumeIndexed:
+        return u"disk-indexed"_s; // found where it is
+    case LinkVerdict::NoVolume:
+        return u"no-volume"_s;
+    }
+    return {};
+}
+
+// What a link leads to, without its folders' names (the diagnostics hold no
+// paths): "D:" and the kind of drive, a share, a volume with no letter.
+QJsonObject describeLink(std::wstring_view link, const LinkCheck& check)
+{
+    QJsonObject out {{u"result"_s, verdictName(check.verdict)}, {u"on"_s, QString::fromWCharArray(link.data(), static_cast<qsizetype>(volumeOf(link).size()))}};
+    if (check.error)
+        out.insert(u"error"_s, static_cast<qint64>(check.error));
+    const std::wstring& target = check.target;
+    if (target.starts_with(LR"(\\?\)")) {
+        out.insert(u"to"_s, u"volume without a letter"_s);
+    } else if (unc::isUnc(target)) {
+        out.insert(u"to"_s, u"share"_s);
+    } else if (const std::wstring_view root = volumeOf(target); !root.empty()) {
+        out.insert(u"to"_s, QString::fromWCharArray(root.data(), static_cast<qsizetype>(root.size())));
+        // 1: no such drive here (a mapped drive is not seen by a program run as administrator).
+        const std::wstring drive = std::wstring(root) + L'\\';
+        out.insert(u"drive_type"_s, static_cast<qint64>(::GetDriveTypeW(drive.c_str())));
+    } else if (!target.empty()) {
+        out.insert(u"to"_s, u"other"_s);
+    }
+    if (check.verdict == LinkVerdict::Wanted) {
+        // Whether it can be gone through at all, as the walk will.
+        const win32::UniqueHandle h(::CreateFileW(win32::longPath(link).c_str(), FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+        out.insert(u"opens"_s, h.valid());
+        if (!h.valid())
+            out.insert(u"open_error"_s, static_cast<qint64>(::GetLastError()));
+    }
+    return out;
+}
+
+} // namespace
 
 bool IndexService::takeLinks(
     std::stop_token stop, const std::vector<std::wstring>& read, const std::vector<std::wstring>& found, bool walkNow)
@@ -2271,11 +2353,33 @@ bool IndexService::takeLinks(
     const auto crawler = this->crawler();
     const auto same = [](const std::wstring& a, const std::wstring& b) { return win32::equalsIgnoreCase(a, b); };
     std::vector<std::wstring> wanted;
+    // GitHub #364: what was found and why each is walked or not, in the
+    // diagnostics (no paths: the drives and kinds of what they lead to).
+    constexpr qsizetype kMostDescribed = 24;
+    QJsonObject counts;
+    QJsonArray described;
     for (const std::wstring& link : found) {
         if (stop.stop_requested())
             return false;
-        if (std::ranges::none_of(wanted, [&](const std::wstring& w) { return same(w, link); }) && linkWanted(link, *crawler))
+        if (std::ranges::any_of(wanted, [&](const std::wstring& w) { return same(w, link); }))
+            continue;
+        const LinkCheck check = checkLink(link, *crawler);
+        const QString name = verdictName(check.verdict);
+        counts.insert(name, counts.value(name).toInteger() + 1);
+        if (described.size() < kMostDescribed)
+            described.append(describeLink(link, check));
+        if (check.verdict == LinkVerdict::Wanted)
             wanted.push_back(link);
+    }
+    if (!found.empty() || !read.empty()) {
+        QJsonArray volumes;
+        for (const std::wstring& root : read)
+            volumes.append(QString::fromStdWString(root));
+        diagnostics::record(u"directory-links"_s,
+            {{u"read"_s, volumes}, {u"found"_s, static_cast<qint64>(found.size())}, {u"results"_s, counts},
+                {u"links"_s, described}, {u"made_since"_s, read.empty()}}); // made_since: seen in the journal
+        qInfo("WinShun: directory links: %lld found, %lld to walk under the link (%ls)", static_cast<long long>(found.size()),
+            static_cast<long long>(wanted.size()), qUtf16Printable(QString::fromUtf8(QJsonDocument(counts).toJson(QJsonDocument::Compact))));
     }
     std::vector<std::wstring> added;
     {
@@ -2286,12 +2390,23 @@ bool IndexService::takeLinks(
         std::erase_if(next, [&](const std::wstring& link) {
             return std::ranges::any_of(read, [&](const std::wstring& root) { return win32::equalsIgnoreCase(volumeOf(link), root); });
         });
+        std::size_t overLimit = 0;
         for (std::wstring& link : wanted) {
-            if (next.size() >= kMostLinks || std::ranges::any_of(next, [&](const std::wstring& n) { return same(n, link); }))
+            if (std::ranges::any_of(next, [&](const std::wstring& n) { return same(n, link); }))
                 continue;
+            if (next.size() >= kMostLinks) {
+                ++overLimit;
+                continue;
+            }
             if (std::ranges::none_of(m_autoLinks, [&](const std::wstring& n) { return same(n, link); }))
                 added.push_back(link);
             next.push_back(std::move(link));
+        }
+        if (overLimit) {
+            qWarning("WinShun: directory links: %lld more to walk than the %lld taken, left out", static_cast<long long>(overLimit),
+                static_cast<long long>(kMostLinks));
+            diagnostics::record(u"directory-links-over-limit"_s,
+                {{u"left_out"_s, static_cast<qint64>(overLimit)}, {u"most"_s, static_cast<qint64>(kMostLinks)}});
         }
         std::ranges::sort(next);
         if (next == m_autoLinks)

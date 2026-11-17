@@ -21,4 +21,13 @@ main，构建目录 `build/run-latest`（Release，Qt 6.12.0）。
   - 两处都改后：C:\ 下的文件夹全都有大小（Windows 22,186,605,026），`C:\Users\ws` 1,402,486,266（`vm-after-all-sizes.png`）。
 - 同一台虚拟机，管理员直读、只索引 C:，`mklink /d C:\ws\lnk T:\data`（T: 是没有索引的 VHD）：`ws find` 找到 `C:\ws\lnk\deep\zzlinked364.txt`，链接照常跟进去。
 
-没有覆盖：Windows 11；用户那台机器上的链接（指向哪里还不知道，已在 issue 里问）。
+## 链接的诊断记录
+
+之前日志里一个链接都不写，用户那边出问题没法查。现在诊断里多了这几种记录（`IndexService::takeLinks`），都不记路径：
+- `directory-links`：读了哪些盘、找到几个链接、各结果的个数（`walked`、`disk-indexed`、`share-indexed`、`target-excluded`、`link-excluded`、`unreadable`、`no-volume`）。前 24 个链接各记一条：在哪个盘、指向哪个盘或哪种位置、盘的类型（`drive_type` 1 表示这里没有这个盘，比如管理员身份看不到的映射网络盘）、读不出来时的错误码、要跟进的能不能打开。日志里也写一行个数。
+- `directory-links-over-limit`：超过 256 个，没收的个数。
+- `directory-links-not-looked-for`：这些盘是遍历的（不是读主文件表），链接根本不会去找。
+
+本机以管理员身份跑 `tst_core directoryLinksFoundWithLiveMft directoryLinkTargets` 通过（`WINSHUN_TEST_REAL_VOLUMES=1`，另一块盘在 F:）。这个用例新加了检查：诊断里有 `walked`、`disk-indexed`、后来建的链接，跟进的那条指向 F:、能打开，整份记录里没有测试目录的名字。日志行：`directory links: 2 found, 1 to walk under the link ({"disk-indexed":1,"walked":1})`。
+
+没有覆盖：Windows 11 上的 TC；用户那台机器上的链接（指向哪里还不知道，已在 issue 里问）。

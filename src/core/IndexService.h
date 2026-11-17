@@ -110,6 +110,15 @@ ScopedChanges changesInScope(std::vector<FsChange> changes,
 // asked sees no pass running and starts one (walkOwedFolders).
 bool passOver(std::atomic<bool>& running, const std::function<bool()>& owed);
 
+// Whether a directory link found is walked under its own path (GitHub #350),
+// and why not, for the diagnostics (#364).
+enum class LinkVerdict { Wanted, LinkExcluded, Unreadable, TargetExcluded, ShareIndexed, VolumeIndexed, NoVolume };
+struct LinkCheck {
+    LinkVerdict verdict = LinkVerdict::Unreadable;
+    std::wstring target;
+    unsigned long error = 0; // GetLastError when the link could not be read
+};
+
 class IndexService : public QObject {
     Q_OBJECT
 
@@ -364,8 +373,9 @@ private:
     // GitHub #350: whether the index holds a directory link's target nowhere
     // else, so that it is walked under the link (m_autoLinks): a folder on a
     // disk not indexed, a volume with no drive letter, a share not among the
-    // network shares. Never a folder excluded, nor the link in one.
-    bool linkWanted(std::wstring_view link, const Crawler& crawler) const;
+    // network shares. Never a folder excluded, nor the link in one. With why
+    // not, for the diagnostics (GitHub #364).
+    LinkCheck checkLink(std::wstring_view link, const Crawler& crawler) const;
     // Worker thread: the links found on the volumes `read` (roots) replace
     // what was known of them; those not seen before are walked (`walkNow`)
     // or left to the walk of the pass under way. True when that changed.
