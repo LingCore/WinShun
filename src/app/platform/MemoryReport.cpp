@@ -70,9 +70,16 @@ bool privateBytes(HANDLE process, std::uint64_t& bytes)
 {
     PROCESS_MEMORY_COUNTERS_EX2 counters {};
     counters.cb = sizeof(counters);
-    if (!::GetProcessMemoryInfo(process, reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)))
-        return false;
-    bytes = counters.PrivateWorkingSetSize;
+    if (!::GetProcessMemoryInfo(process, reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters))) {
+        counters = {}; // in case an older Windows refuses the larger size
+        counters.cb = sizeof(PROCESS_MEMORY_COUNTERS);
+        if (!::GetProcessMemoryInfo(process, reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
+                sizeof(PROCESS_MEMORY_COUNTERS)))
+            return false;
+    }
+    // Before Windows 11 22H2 the private working set is not told (left 0,
+    // see IdleTrim.cpp): what the whole working set gave back stands in.
+    bytes = counters.PrivateWorkingSetSize != 0 ? counters.PrivateWorkingSetSize : counters.WorkingSetSize;
     return true;
 }
 

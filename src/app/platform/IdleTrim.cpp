@@ -43,14 +43,34 @@ std::uint64_t awakeMs()
     return unbiased / 10'000;
 }
 
-SIZE_T privateWorkingSet()
+// Task Manager's Memory column, the private working set. Windows tells it
+// from Windows 11 22H2 on (PROCESS_MEMORY_COUNTERS_EX2); before, the call
+// succeeds and leaves it 0 (ProcessUsage.cpp), so nothing was ever above
+// kTrimAbove: on Windows 10 Win顺 never gave its memory back (a user's memory
+// report, 2026-11-17, 1809: ~250 MB all day, no "idle-trim" in a week, an
+// EmptyWorkingSet took it to 1 MB). There the whole working set stands in,
+// the program files' shared pages with it: read the same way before and
+// after, the floor and kTrimAbove hold all the same.
+struct WorkingSet {
+    SIZE_T bytes = SIZE_MAX; // unknown: trim
+    bool exact = true; // the private working set, not the whole one
+};
+
+WorkingSet privateWorkingSet()
 {
     PROCESS_MEMORY_COUNTERS_EX2 counters {};
     counters.cb = sizeof(counters);
     if (!::GetProcessMemoryInfo(::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
-            sizeof(counters)))
-        return SIZE_MAX; // unknown: trim
-    return counters.PrivateWorkingSetSize;
+            sizeof(counters))) {
+        counters = {}; // in case an older Windows refuses the larger size
+        counters.cb = sizeof(PROCESS_MEMORY_COUNTERS);
+        if (!::GetProcessMemoryInfo(::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
+                sizeof(PROCESS_MEMORY_COUNTERS)))
+            return {};
+    }
+    if (counters.PrivateWorkingSetSize != 0) // never really 0 when told
+        return {counters.PrivateWorkingSetSize, true};
+    return {counters.WorkingSetSize, false};
 }
 
 } // namespace
@@ -193,11 +213,12 @@ void IdleTrim::check()
         return;
     }
     m_waitingFor = nullptr;
-    if (const SIZE_T bytes = privateWorkingSet(); bytes > m_floor.load() + kTrimAbove) {
+    if (const WorkingSet now = privateWorkingSet(); now.bytes > m_floor.load() + kTrimAbove) {
+        const SIZE_T bytes = now.bytes;
         PageSet keep = m_keep ? m_keep() : PageSet();
         const auto megabytes = static_cast<qint64>(bytes / (1024 * 1024));
         qInfo() << "Idle trim:" << megabytes << "MB, keeping" << (keep.bytes() >> 20) << "MB";
-        QJsonObject details {{u"private_mb"_s, megabytes}};
+        QJsonObject details {{now.exact ? u"private_mb"_s : u"working_set_mb"_s, megabytes}};
         if (!keep.empty())
             details.insert(u"keep_mb"_s, static_cast<qint64>(keep.bytes() >> 20));
         journal(details, false);
@@ -209,7 +230,7 @@ void IdleTrim::check()
                 ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
             else
                 PageSet::resident().without(keep).release();
-            const SIZE_T after = privateWorkingSet();
+            const SIZE_T after = privateWorkingSet().bytes;
             m_floor = keep.empty() || after == SIZE_MAX ? 0 : after;
             gaveBack(static_cast<qint64>((bytes > after ? bytes - after : 0) / (1024 * 1024)));
         }).detach();
