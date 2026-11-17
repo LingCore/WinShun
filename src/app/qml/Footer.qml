@@ -346,10 +346,12 @@ Item {
         // font fallback, which costs tens of MB.
         readonly property var keyHints: footer.launcher.keyHints
 
-        // Hints give way to the status from the left, Enter's first (everyone
-        // knows it), then Ctrl+Enter's; Tab's stays. Mostly there is none,
-        // and all show. Worked out from the full widths, not the laid-out
-        // ones, which depend on it.
+        // Hints give way to the status: Ctrl+Enter's first (always 打开位置 or
+        // so, learnt once), then Enter's, whose words change with the row
+        // (打开文件夹, 用“…”打开, 以管理员身份运行); Tab's stays (in a folder it
+        // is the way back out, GitHub #361). Mostly there is none, and all
+        // show. Worked out from the full widths, not the laid-out ones, which
+        // depend on it.
         readonly property real statusNeeds: Math.ceil(statusMetrics.advanceWidth)
         readonly property real statusRoom: footer.hintsRight - (order.visible ? 16 + order.width + 14 : 18) - 12
         function roomWith(shown) { // the status's, with these hints shown
@@ -357,7 +359,7 @@ Item {
             return statusRoom - widths.reduce((a, b) => a + b, 0) - hints.spacing * Math.max(0, widths.length - 1)
         }
         readonly property int given: statusNeeds <= roomWith([enterHint, secondHint, tabHint]) ? 0
-                                     : statusNeeds <= roomWith([secondHint, tabHint]) ? 1 : 2
+                                     : statusNeeds <= roomWith([enterHint, tabHint]) ? 1 : 2
 
         TextMetrics {
             id: statusMetrics
@@ -365,8 +367,8 @@ Item {
             text: footer.launcher.statusText
         }
 
-        KeyHint { dpr: footer.dpr; id: enterHint; visible: hints.given < 1 && label.length > 0; keys: "Enter"; label: hints.keyHints.enter ?? "" }
-        KeyHint { dpr: footer.dpr; id: secondHint; visible: hints.given < 2 && label.length > 0; keys: hints.keyHints.secondKeys ?? ""; label: hints.keyHints.second ?? "" }
+        KeyHint { dpr: footer.dpr; id: enterHint; visible: hints.given < 2 && label.length > 0; keys: "Enter"; label: hints.keyHints.enter ?? "" }
+        KeyHint { dpr: footer.dpr; id: secondHint; visible: hints.given < 1 && label.length > 0; keys: hints.keyHints.secondKeys ?? ""; label: hints.keyHints.second ?? "" }
         KeyHint { dpr: footer.dpr; id: tabHint; objectName: "footerTabHint"; visible: label.length > 0 && label !== qsTranslate("ws::Launcher", "切换范围"); keys: hints.keyHints.tabKeys || "Tab"; label: hints.keyHints.tab ?? "" }
     }
 
