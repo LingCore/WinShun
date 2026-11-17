@@ -193,6 +193,12 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.34.1**
+
+- 🛠️ **修复** 较早的 Windows 10 上闲着时不归还内存，一直占着两三百 MB（截图与录屏 1.1.21、图片文字搜索 1.0.20 一起修了）。
+
+详见 [0.34.1 发布说明](docs/release-notes/v0.34.1.md)。
+
 **0.34.0**
 
 - 🔤 **字母直达可以换键、换字母**，`Shift`+字母点一行上的按钮（#357）。
@@ -462,6 +468,12 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.34.1**
+
+- 🛠️ **Fixed** older Windows 10 builds never giving memory back when idle, holding two or three hundred MB all day (Screenshot and recording 1.1.21 and Picture text search 1.0.20 too).
+
+See the [0.34.1 release notes](docs/release-notes/v0.34.1.md).
 
 **0.34.0**
 
