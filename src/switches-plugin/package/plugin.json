@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.switches",
   "name": {"zh": "系统开关", "en": "System switches"},
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": {"zh": "在搜索结果里调整主题、音量、蓝牙和 WLAN、资源管理器选项，或保持电脑唤醒", "en": "Change theme, volume, Bluetooth/WLAN, Explorer options and keep-awake from search results"},
   "author": "LingCore",
   "license": "MIT",

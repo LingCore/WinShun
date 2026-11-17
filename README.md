@@ -193,6 +193,12 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.34.2**
+
+- 🛠️ **修复** 较早的 Windows 10 上托盘图标几乎看不见、深色标题栏不生效、录屏直接失败、截图排除自己窗口时变黑（截图与录屏 1.1.22）。
+
+详见 [0.34.2 发布说明](docs/release-notes/v0.34.2.md)。
+
 **0.34.1**
 
 - 🛠️ **修复** 较早的 Windows 10 上闲着时不归还内存，一直占着两三百 MB（截图与录屏 1.1.21、图片文字搜索 1.0.20 一起修了）。
@@ -468,6 +474,12 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.34.2**
+
+- 🛠️ **Fixed** on older Windows 10: a nearly invisible tray icon, dark title bars not applied, recording failing at once, and WinShun's own windows turning black when left out of a screenshot (Screenshot and recording 1.1.22).
+
+See the [0.34.2 release notes](docs/release-notes/v0.34.2.md).
 
 **0.34.1**
 
