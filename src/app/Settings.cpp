@@ -1192,7 +1192,9 @@ void Settings::load()
 
     // The rest of [Capture] is the screenshot plugin's (MovedPlugins).
     captureEnabled = readOrDefault(s, u"Capture/Enabled"_s, d.captureEnabled);
-    capturePrintScreenBefore = readOrDefault(s, u"Capture/PrintScreenBefore"_s, d.capturePrintScreenBefore).trimmed();
+    // Read, never written as a default: save drops it while empty, so a
+    // default put back here wrote the file a second time after every save.
+    capturePrintScreenBefore = s.value(u"Capture/PrintScreenBefore"_s).toString().trimmed();
     captureKeyword = readOrDefault(s, u"Capture/Keyword"_s, d.captureKeyword).trimmed();
 
     pasteFileEnabled = readOrDefault(s, u"PasteFile/Enabled"_s, d.pasteFileEnabled);
