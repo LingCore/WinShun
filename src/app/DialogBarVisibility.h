@@ -16,7 +16,8 @@ namespace ws {
 class DialogBarVisibility : public QObject {
 public:
     void setWindow(QQuickWindow* window);
-    void show(HWND dialog = nullptr, bool elevated = false); // elevated: of higher integrity than ours
+    // elevated: of higher integrity than ours; topmost: over the taskbar (#362)
+    void show(HWND dialog = nullptr, bool elevated = false, bool topmost = false);
     void hide();
     bool isRevealed() const;
 

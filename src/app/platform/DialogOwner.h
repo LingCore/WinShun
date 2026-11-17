@@ -56,7 +56,8 @@ inline void stackAbove(HWND hwnd, HWND target, UINT flags)
 // menus come along, and with no owner nothing else moves. An elevated
 // dialog: topmost, as before #95, the bar showing only while it is in front;
 // its program can raise windows over it that we may not hear of across UIPI.
-inline void followDialog(HWND companion, HWND dialog, bool elevated)
+// topmost: the bar is over the taskbar (#362), which is topmost itself.
+inline void followDialog(HWND companion, HWND dialog, bool elevated, bool topmost = false)
 {
     using namespace detail;
     if (!::IsWindow(companion))
@@ -65,7 +66,7 @@ inline void followDialog(HWND companion, HWND dialog, bool elevated)
         dialog = nullptr;
     if (::GetWindow(companion, GW_OWNER))
         setOwner(companion, nullptr); // first: a demotion would take an owner along
-    setTopmost(companion, dialog && (elevated || isTopmost(dialog)), kZOrderOnly);
+    setTopmost(companion, dialog && (elevated || topmost || isTopmost(dialog)), kZOrderOnly);
     if (dialog && !elevated)
         stackAbove(companion, dialog, kZOrderOnly);
 }

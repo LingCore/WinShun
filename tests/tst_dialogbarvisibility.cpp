@@ -241,39 +241,42 @@ class DialogBarVisibilityTest : public QObject {
     Q_OBJECT
 
 private slots:
-    void placementUsesAvailableRowsAndHysteresis()
+    // 自动 and 下方 (#362): below while the bar itself fits there, its list
+    // opening upward, as the dialog moves and grows; beside only when not
+    // even the bar does. A side set: there where it fits, else below by two
+    // rows. At 150%: the bar and two rows 242 px, a side 726.
+    void placementKeepsTheBarBelowWhileItFits()
     {
         using namespace ws::dialogbar;
-        QCOMPARE(chooseSide(220, 600, 600, 200, 60, 480, 24, Side::Auto, Side::Below), Side::Below);
-        QCOMPARE(chooseSide(199, 600, 600, 200, 60, 480, 24, Side::Auto, Side::Below), Side::Right);
-        for (int below = 200; below < 224; ++below)
-            QCOMPARE(chooseSide(below, 600, 600, 200, 60, 480, 24, Side::Auto, Side::Right), Side::Right);
-        QCOMPARE(chooseSide(224, 600, 600, 200, 60, 480, 24, Side::Auto, Side::Right), Side::Below);
-        QCOMPARE(chooseSide(300, 600, 600, 200, 60, 480, 24, Side::Left, Side::Below), Side::Left);
-        QCOMPARE(chooseSide(300, 100, 600, 200, 60, 480, 24, Side::Left, Side::Below), Side::Below);
+        const auto side = [](bool bar, int below, int left, int right, Side preferred, Side current) {
+            return chooseSide(bar, below, left, right, 242, 726, preferred, current);
+        };
+        for (Side set : {Side::Auto, Side::Below}) {
+            for (int below : {260, 242, 200, 120, 0})
+                QCOMPARE(side(true, below, 800, 800, set, Side::Below), Side::Below);
+            QCOMPARE(side(true, 0, 800, 800, set, Side::Right), Side::Below); // back as soon as the bar fits
+            QCOMPARE(side(false, 0, 800, 800, set, Side::Below), Side::Right); // not even the bar: beside
+            QCOMPARE(side(false, 0, 800, 300, set, Side::Below), Side::Left);
+            QCOMPARE(side(false, 0, 300, 300, set, Side::Below), Side::Below); // nowhere: place() puts it above or over
+        }
+        QCOMPARE(side(false, 0, 800, 800, Side::Auto, Side::Left), Side::Left); // keeps its side
+        QCOMPARE(side(true, 300, 800, 800, Side::Left, Side::Below), Side::Left);
+        QCOMPARE(side(true, 300, 100, 800, Side::Left, Side::Below), Side::Below);
+        QCOMPARE(side(true, 200, 800, 800, Side::Right, Side::Below), Side::Right);
+        QCOMPARE(side(true, 260, 800, 300, Side::Right, Side::Below), Side::Below);
     }
 
-    // 固定在下方 (#95): below while the bar itself fits, its list opening
-    // upward; beside only when not even the bar does. Auto and a side set stay
-    // as they were. At 150%: the bar and two rows 242 px, the bar 72, a side 726.
-    void fixedBelowKeepsTheBarWhileItFits()
+    // Where the bar goes under a dialog (#362), 150%: gap 6, bar 66, work
+    // area to 1000, a 72 px taskbar under it (screen to 1072).
+    void barTopUnderGoesOverTheTaskbar()
     {
-        using namespace ws::dialogbar;
-        const auto side = [](int below, int left, int right, Side preferred, Side current) {
-            return chooseSide(below, left, right, 242, 72, 726, 36, preferred, current);
-        };
-        for (int below : {260, 242, 200, 120, 72})
-            QCOMPARE(side(below, 800, 800, Side::Below, Side::Below), Side::Below);
-        QCOMPARE(side(72, 800, 800, Side::Below, Side::Right), Side::Below); // back as soon as the bar fits
-        QCOMPARE(side(71, 800, 800, Side::Below, Side::Below), Side::Right); // not even the bar: beside
-        QCOMPARE(side(71, 800, 300, Side::Below, Side::Below), Side::Left);
-        QCOMPARE(side(71, 300, 300, Side::Below, Side::Below), Side::Below); // nowhere: place() puts it above or over
-        QCOMPARE(side(260, 800, 800, Side::Auto, Side::Below), Side::Below);
-        QCOMPARE(side(200, 800, 800, Side::Auto, Side::Below), Side::Right);
-        QCOMPARE(side(120, 800, 800, Side::Auto, Side::Below), Side::Right);
-        QCOMPARE(side(200, 300, 300, Side::Auto, Side::Below), Side::Below);
-        QCOMPARE(side(200, 800, 800, Side::Right, Side::Below), Side::Right);
-        QCOMPARE(side(260, 800, 300, Side::Right, Side::Below), Side::Below);
+        using ws::dialogbar::barTopUnder;
+        QCOMPARE(barTopUnder(900, 1000, 1072, 6, 66), std::optional<int>(906)); // in the work area
+        QCOMPARE(barTopUnder(960, 1000, 1072, 6, 66), std::optional<int>(966)); // reaching over the taskbar
+        QCOMPARE(barTopUnder(1000, 1000, 1072, 6, 66), std::optional<int>(1006)); // maximised: on the taskbar
+        QCOMPARE(barTopUnder(1000, 1000, 1060, 6, 66), std::optional<int>(994)); // a lower taskbar: a little over the dialog
+        QCOMPARE(barTopUnder(1000, 1000, 1000, 6, 66), std::nullopt); // no taskbar under it
+        QCOMPARE(barTopUnder(1072, 1000, 1072, 6, 66), std::nullopt); // down to the screen's edge
     }
 
     // Never owned by the dialog: an owner on another thread joins the input of

@@ -132,11 +132,11 @@ public:
     };
     Q_ENUM(Action)
 
-    // Where the bar goes by the dialog. Auto: below with at least two rows,
-    // else on the right or left; switching back below needs extra clearance.
-    // The dialog is made
-    // shorter where none does. A side set: the dialog is made smaller (or
-    // moved) for room there.
+    // Where the bar goes by the dialog. Auto: below while the bar fits there
+    // (over the taskbar where the work area ends, #362), its list opening
+    // upward; else on the right or left. The dialog is made shorter where
+    // none does. A side set: the dialog is made smaller (or moved) for room
+    // there.
     using Place = dialogbar::Side;
 
     // Takes a dialog to a folder or a file (DialogJump::go).
@@ -314,6 +314,7 @@ private:
     QString m_scopeFolder; // the dialog's folder as last read, while m_folderOnly; see refreshScope()
     void refreshScope();
     Place m_side = Place::Below; // where the bar is: not Auto
+    bool m_overTaskbar = false; // below the work area: topmost, over the taskbar (#362)
     HWND m_originDialog = nullptr;
     QString m_origin; // see originName
 

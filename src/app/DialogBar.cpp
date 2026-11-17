@@ -44,6 +44,7 @@ using recentfolders::LocalDrives;
 constexpr int kGap = 4; // logical pixels between the dialog and the bar
 constexpr int kMinWidth = 480;
 constexpr int kSideWidth = 480; // beside the dialog
+constexpr int kTaskbarWidth = 800; // at most, over the taskbar: the tray and the clock stay in view (#362)
 constexpr int kMinDialogHeight = 400; // made shorter down to this (logical pixels), then moved up
 constexpr int kMinDialogWidth = 640; // made narrower down to this, then moved aside
 constexpr int kMaxExplorer = 5; // suggestions of each kind
@@ -88,10 +89,12 @@ QScreen* screenOf(HMONITOR monitor)
     return QGuiApplication::primaryScreen();
 }
 
-// A window's visible frame and the work area of its screen, in physical pixels.
+// A window's visible frame, the work area of its screen and the whole
+// screen, in physical pixels.
 struct Placing {
     RECT frame;
     RECT work;
+    RECT monitor;
     QScreen* screen;
 };
 
@@ -104,7 +107,7 @@ std::optional<Placing> placingOf(HWND hwnd)
     MONITORINFO info {sizeof info};
     if (!::GetMonitorInfoW(monitor, &info))
         return std::nullopt;
-    return Placing {frame, info.rcWork, screenOf(monitor)};
+    return Placing {frame, info.rcWork, info.rcMonitor, screenOf(monitor)};
 }
 
 // The bar and at least two rows fit on that side of the dialog as it is.
@@ -122,17 +125,24 @@ bool fitsBy(const Placing& at, DialogBar::Place side)
     }
 }
 
-// Where the bar goes now: the side set if it fits there (below: while the
-// bar itself fits, the list opening upward), else where it is if that still
-// fits (no going back and forth as the dialog moves), else the first that
-// fits of below, right and left; below if none does.
+// Where the bar's top goes under the dialog (barTopUnder), as place() puts it.
+std::optional<int> barTopUnder(const Placing& at)
+{
+    const qreal scale = at.screen->devicePixelRatio();
+    return dialogbar::barTopUnder(at.frame.bottom, at.work.bottom, at.monitor.bottom, qRound(kGap * scale),
+        qRound(DialogBar::metrics().barHeight * scale));
+}
+
+// Where the bar goes now: below (Auto or set) while the bar itself fits there,
+// the list opening upward; a side set if it fits there; else where it is if
+// that still fits, else the first that fits of below, right and left; below
+// if none does (chooseSide).
 DialogBar::Place sideFor(const Placing& at, DialogBar::Place set, DialogBar::Place current)
 {
     const qreal scale = at.screen->devicePixelRatio();
-    return dialogbar::chooseSide(at.work.bottom - at.frame.bottom, at.frame.left - at.work.left,
-        at.work.right - at.frame.right, qRound((kGap + minimumPanelHeight()) * scale),
-        qRound(kGap * scale) + qRound(DialogBar::metrics().barHeight * scale), // as place() puts it
-        qRound((kGap + kSideWidth) * scale), qRound(24 * scale), set, current);
+    return dialogbar::chooseSide(barTopUnder(at).has_value(), at.work.bottom - at.frame.bottom,
+        at.frame.left - at.work.left, at.work.right - at.frame.right,
+        qRound((kGap + minimumPanelHeight()) * scale), qRound((kGap + kSideWidth) * scale), set, current);
 }
 
 // Along one axis: the frame from `first` to `last`, the work area from
@@ -402,8 +412,12 @@ void DialogBar::dialogRestacked()
     // come as events of their own.
     const auto topmost = [](HWND hwnd) { return (::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0; };
     const HWND bar = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
-    if (m_inFront && bar && m_visibility.isRevealed() && !m_dragged && !m_movingTo
-        && ::GetWindow(m_dialog, GW_HWNDPREV) == bar && topmost(bar) == (m_elevated || topmost(m_dialog)))
+    // Over the taskbar (#362) it is topmost: other topmost windows (the
+    // taskbar) lie between it and the dialog.
+    const bool stacked = m_overTaskbar
+        ? topmost(bar)
+        : ::GetWindow(m_dialog, GW_HWNDPREV) == bar && topmost(bar) == (m_elevated || topmost(m_dialog));
+    if (m_inFront && bar && m_visibility.isRevealed() && !m_dragged && !m_movingTo && stacked)
         return;
     dialogMoved();
 }
@@ -487,7 +501,7 @@ void DialogBar::makeRoom()
     if (!at || !::GetWindowRect(m_dialog, &window))
         return;
     if (m_place == Place::Auto
-        && (fitsBy(*at, Place::Below) || fitsBy(*at, Place::Right) || fitsBy(*at, Place::Left)))
+        && (barTopUnder(*at) || fitsBy(*at, Place::Right) || fitsBy(*at, Place::Left)))
         return;
     const Place side = m_place == Place::Auto ? Place::Below : m_place;
     if (fitsBy(*at, side))
@@ -1157,7 +1171,7 @@ void DialogBar::prepareMenuWindow(QWindow* menu) const
 
 void DialogBar::showWindow()
 {
-    m_visibility.show(m_dialog, m_elevated);
+    m_visibility.show(m_dialog, m_elevated, m_overTaskbar);
 }
 
 void DialogBar::hideWindow()
@@ -1166,8 +1180,10 @@ void DialogBar::hideWindow()
 }
 
 // By the dialog's visible frame (physical pixels), on the side sideFor()
-// picks. Under it: as wide as the dialog; above it when there is no room
-// below, else over its top edge. Beside it: level with its top, or higher
+// picks. Under it: as wide as the dialog, over the taskbar where the work
+// area ends (barTopUnder, #362: kTaskbarWidth at most there); above it when
+// not even that fits, else over
+// its top edge. Beside it: level with its top, or higher
 // where the list would not fit below. The list, while the bar has the focus,
 // opens below, or above where there is more room.
 void DialogBar::setUiSize(const QString& size)
@@ -1205,11 +1221,14 @@ void DialogBar::place()
     int x = 0;
     int barTop = 0;
     if (m_side == Place::Below) {
-        width = std::min<int>(std::max<int>(frame.right - frame.left, physical(kMinWidth)), work.right - work.left);
-        x = std::clamp<int>(frame.left, work.left, work.right - width);
-        barTop = frame.bottom + gap;
-        if (barTop + bar > work.bottom)
+        if (const std::optional<int> under = barTopUnder(*at))
+            barTop = *under; // over the taskbar where the work area ends (#362)
+        else
             barTop = frame.top - gap - bar >= work.top ? frame.top - gap - bar : std::max<int>(work.top, frame.top);
+        width = std::min<int>(std::max<int>(frame.right - frame.left, physical(kMinWidth)), work.right - work.left);
+        if (barTop + bar > work.bottom)
+            width = std::min(width, physical(kTaskbarWidth));
+        x = std::clamp<int>(frame.left, work.left, work.right - width);
     } else {
         width = std::min<int>(physical(kSideWidth), work.right - work.left);
         x = std::clamp<int>(m_side == Place::Right ? frame.right + gap : frame.left - gap - width, work.left,
@@ -1219,6 +1238,9 @@ void DialogBar::place()
 
     const int wanted = m_window->isActive() && !m_listHeld ? std::min(m_results.count(), kMaxRows) : 0;
     const auto fit = [](int room) { return std::max(0, (room - kListChrome) / s_metrics.barRow); };
+    // Over the taskbar: topmost, and down to the screen's bottom edge.
+    const bool overTaskbar = barTop + bar > work.bottom;
+    const int bottom = overTaskbar ? at->monitor.bottom : work.bottom;
     const int fitBelow = fit(logical(work.bottom - barTop - bar));
     const int fitAbove = fit(logical(barTop - work.top));
     int rows = std::min(wanted, fitBelow);
@@ -1248,12 +1270,17 @@ void DialogBar::place()
         geometry.translate(-1, 0);
     for (int i = 0; i < 2 && start(origin.x(), geometry.x()) < work.left; ++i)
         geometry.translate(1, 0);
-    for (int i = 0; i < 2 && end(origin.y(), geometry.y(), geometry.height()) > work.bottom; ++i)
+    for (int i = 0; i < 2 && end(origin.y(), geometry.y(), geometry.height()) > bottom; ++i)
         geometry.translate(0, -1);
     for (int i = 0; i < 2 && start(origin.y(), geometry.y()) < work.top; ++i)
         geometry.translate(0, 1);
     if (m_window->geometry() != geometry)
         m_window->setGeometry(geometry);
+    if (overTaskbar != m_overTaskbar) {
+        m_overTaskbar = overTaskbar;
+        if (isShown())
+            showWindow(); // into the topmost band, or out of it
+    }
 }
 
 } // namespace ws
