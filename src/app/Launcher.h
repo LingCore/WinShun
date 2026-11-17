@@ -70,6 +70,9 @@ class Launcher : public QObject {
     Q_PROPERTY(QString historyKeys READ historyKeys NOTIFY historyChanged FINAL)
     Q_PROPERTY(QString logoRightClick READ logoRightClick NOTIFY logoRightClickChanged FINAL)
     Q_PROPERTY(ws::ResultModel* results READ results CONSTANT FINAL)
+    // Settings::favoriteTiles: with nothing typed in 全部, the favorites'
+    // rows taken out of the list and shown as tiles over it (Main.qml).
+    Q_PROPERTY(ws::ResultModel* favoriteTiles READ favoriteTiles CONSTANT FINAL)
     Q_PROPERTY(ws::PanelColumns* panelColumns READ panelColumns CONSTANT FINAL)
     Q_PROPERTY(ws::ContentPane* contentPane READ contentPane CONSTANT FINAL)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged FINAL)
@@ -417,6 +420,12 @@ public:
     void setCurrentRow(int row);
     QVariantMap keyHints() const { return m_keyHints; }
     ResultModel* results() { return &m_results; }
+    ResultModel* favoriteTiles() { return &m_tiles; }
+    void setFavoriteTiles(bool on);
+    // A tile opened as its row would be; one held and dropped on another's
+    // place: the favorites' order changed so (Favorites::move).
+    Q_INVOKABLE void openFavoriteTile(int index);
+    Q_INVOKABLE void moveFavoriteTile(int from, int to);
     QString statusText() const { return m_flash.isEmpty() ? m_status : m_flash; }
     bool busy() const;
     qreal progress() const;
@@ -1198,6 +1207,8 @@ private:
     QString m_historyKeys = QStringLiteral("ctrl");
     QString m_logoRightClick = QStringLiteral("menu");
     ResultModel m_results;
+    ResultModel m_tiles; // the favorites as tiles (setFavoriteTiles); empty otherwise
+    bool m_favoriteTilesOn = false;
     std::unique_ptr<ContentPane> m_contentPane;
     QPointer<QWindow> m_window;
     std::function<bool(const QString& folder)> m_folderOpener; // setFolderOpener

@@ -993,6 +993,7 @@ void Settings::load()
     startList = readOrDefault(s, u"Results/StartList"_s, d.startList).trimmed().toLower();
     recentItems = std::clamp(readOrDefault(s, u"Results/RecentItems"_s, d.recentItems), 1, 200);
     favoritesOnStart = readOrDefault(s, u"Results/FavoritesOnStart"_s, d.favoritesOnStart);
+    favoriteTiles = readOrDefault(s, u"Results/FavoriteTiles"_s, d.favoriteTiles);
     if (startList != u"modified" && startList != u"none")
         startList = d.startList;
     clearOnOpen = readOrDefault(s, u"Launcher/ClearOnOpen"_s, d.clearOnOpen);
@@ -1403,6 +1404,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/QueryHistoryKeys"_s, queryHistoryKeys);
     s.setValue(u"Launcher/LogoRightClick"_s, logoRightClick);
     s.setValue(u"Results/FavoritesOnStart"_s, favoritesOnStart);
+    s.setValue(u"Results/FavoriteTiles"_s, favoriteTiles);
     s.setValue(u"Launcher/ClearOnOpen"_s, clearOnOpen);
     s.setValue(u"Launcher/ReopenWhereLeft"_s, reopenWhereLeft);
     s.setValue(u"Launcher/EnglishOnOpen"_s, englishOnOpen);

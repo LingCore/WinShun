@@ -156,7 +156,7 @@ private slots:
         // search's nearest row is the one opened, not an exact title.
         const QStringList nearest {u"Launcher/DoubleTapKey"_s, u"Launcher/DoubleCtrlKey"_s, u"Launcher/DoubleCtrlPauseInGames"_s,
             u"Launcher/DoubleCtrlPauseInFullScreen"_s, u"Launcher/DoubleCtrlExcludedApps"_s, u"Launcher/FileManagerRevealCommand"_s,
-            u"Results/DoubleClickToOpen"_s, u"Results/TabEntersFavoriteFolder"_s, u"Capture/Keyword"_s};
+            u"Results/DoubleClickToOpen"_s, u"Results/DoubleClickToOpen"_s, u"Results/ClickPreviews"_s, u"Results/FavoriteTiles"_s, u"Results/TabEntersFavoriteFolder"_s, u"Capture/Keyword"_s};
         for (const aisettings::Entry& e : catalog()) {
             if (e.access == Access::Hidden || e.section == u"web" || e.section == u"paste_file" || nearest.contains(e.key))
                 continue;

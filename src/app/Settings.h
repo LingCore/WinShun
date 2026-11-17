@@ -246,6 +246,9 @@ struct Settings {
     QString queryHistoryKeys = QStringLiteral("ctrl"); // ctrl | alt | off, local Up/Down navigation
     QString logoRightClick = QStringLiteral("menu"); // menu | top | center | restore
     bool favoritesOnStart = true; // show favorites before typing; keywords always work (#135)
+    // Those favorites as a grid of icons over the rows, their names under
+    // them (feedback 2026-11-12/15); off: rows like the rest.
+    bool favoriteTiles = false;
     // Each time the launcher opens, nothing is typed and the scope is 全部, as
     // at its first opening (GitHub #24); else it keeps the words, selected.
     bool clearOnOpen = false;

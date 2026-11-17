@@ -213,6 +213,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString queryHistoryKeys READ queryHistoryKeys WRITE setQueryHistoryKeys NOTIFY changed FINAL)
     Q_PROPERTY(QString logoRightClick READ logoRightClick WRITE setLogoRightClick NOTIFY changed FINAL)
     Q_PROPERTY(bool favoritesOnStart READ favoritesOnStart WRITE setFavoritesOnStart NOTIFY changed FINAL)
+    Q_PROPERTY(bool favoriteTiles READ favoriteTiles WRITE setFavoriteTiles NOTIFY changed FINAL)
     Q_PROPERTY(bool clearOnOpen READ clearOnOpen WRITE setClearOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(bool reopenWhereLeft READ reopenWhereLeft WRITE setReopenWhereLeft NOTIFY changed FINAL)
     Q_PROPERTY(bool englishOnOpen READ englishOnOpen WRITE setEnglishOnOpen NOTIFY changed FINAL)
@@ -784,6 +785,8 @@ public:
     void setMaxRows(int rows);
     bool favoritesOnStart() const { return m_settings.favoritesOnStart; }
     void setFavoritesOnStart(bool on);
+    bool favoriteTiles() const { return m_settings.favoriteTiles; }
+    void setFavoriteTiles(bool on);
     bool clearOnOpen() const { return m_settings.clearOnOpen; }
     void setClearOnOpen(bool on);
     bool reopenWhereLeft() const { return m_settings.reopenWhereLeft; }

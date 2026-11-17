@@ -401,6 +401,14 @@ void SettingsEditor::setFavoritesOnStart(bool on)
     commit();
 }
 
+void SettingsEditor::setFavoriteTiles(bool on)
+{
+    if (m_settings.favoriteTiles == on)
+        return;
+    m_settings.favoriteTiles = on;
+    commit();
+}
+
 void SettingsEditor::setClearOnOpen(bool on)
 {
     if (m_settings.clearOnOpen == on)

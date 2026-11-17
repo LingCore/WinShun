@@ -62,6 +62,7 @@ Window {
     // gives the strip its room instead.
     readonly property int chromeHeight: searchBar.implicitHeight + (fullHeight || folderMode ? 0 : typeStrip.fullHeight) + 1 + 8
                                         + footer.implicitHeight + (showScopeBar ? scopeBar.implicitHeight : 0)
+                                        + favoriteTiles.height // the favorites as icons, over the rows
     // TypeStrip's animated height sizes this window through the column, so
     // its outer edge, rows and footer follow the same animation. At the
     // taskbar the list gives the strip its room and the window stays full height.
@@ -1414,7 +1415,19 @@ Window {
             width: parent.width
             height: Theme.edge(window.dpr)
             color: Theme.layerEdge
-            visible: !window.pureEmpty && !window.clipboardBelow && (window.listRows > 0 || window.showEmptyState)
+            visible: !window.pureEmpty && !window.clipboardBelow && (window.listRows > 0 || window.showEmptyState || favoriteTiles.shown)
+        }
+
+        FavoriteTiles { // nothing typed, the favorites as icons (Settings::favoriteTiles)
+            id: favoriteTiles
+            objectName: "favoriteTiles"
+            readonly property bool shown: !window.pureEmpty && !window.clipboardBelow && !window.appsMode && !window.folderMode && count > 0
+            width: parent.width
+            height: shown ? implicitHeight : 0
+            visible: shown
+            launcher: window.launcher
+            dpr: window.dpr
+            viewY: layout.y + y
         }
 
         Item {
@@ -1546,7 +1559,7 @@ Window {
                     verticalAlignment: Text.AlignVCenter
                     visible: view.count > 0
                     text: window.launcher.startList === Launcher.NoStartList ? qsTr("收藏")
-                          : window.launcher.hasFavorites
+                          : window.launcher.hasFavorites && !favoriteTiles.shown
                           ? (window.launcher.startList === Launcher.RecentlyModified ? qsTr("收藏和最近修改") : qsTr("收藏和最近"))
                           : (window.launcher.startList === Launcher.RecentlyModified ? qsTr("最近修改") : qsTr("最近"))
                     color: Theme.subtext

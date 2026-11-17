@@ -1975,6 +1975,7 @@ void App::applySettings(bool initial)
             : m_settings.startList == u"none"                     ? Launcher::NoStartList
                                                                  : Launcher::RecentlyOpened);
     m_launcher->setStartOptions(m_settings.recentItems, m_settings.favoritesOnStart);
+    m_launcher->setFavoriteTiles(m_settings.favoriteTiles);
     m_preview->setBuiltInOnly(m_settings.previewWith == u"builtin");
     m_launcher->setPreviewHotkey(m_settings.previewHotkey);
     m_launcher->setOpenHotkey(m_settings.openHotkey);

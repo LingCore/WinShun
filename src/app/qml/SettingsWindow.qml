@@ -4322,6 +4322,22 @@ Window {
                         onToggled: (on) => window.editor.favoritesOnStart = on
                     }
                 }
+
+                SettingRow {
+                    title: qsTr("收藏的样式")
+                    keywords: qsTr("收藏;图标;平铺;网格;多行;排序;拖动;favorite;icon;grid").split(";")
+                    description: window.editor.favoriteTiles
+                                 ? qsTr("不输入时，收藏排成一格格图标，名称在下面，一屏放得更多；按住一个图标稍等再拖动，可以换位置")
+                                 : qsTr("不输入时，收藏和最近打开的一样一行一个")
+
+                    ScopeTabs {
+                        objectName: "favoriteTilesChoice"
+                        enabled: window.editor.favoritesOnStart
+                        labels: [qsTr("列表"), qsTr("图标")]
+                        current: window.editor.favoriteTiles ? 1 : 0
+                        onActivated: (index) => window.editor.favoriteTiles = index === 1
+                    }
+                }
             }
 
             SettingsSection {

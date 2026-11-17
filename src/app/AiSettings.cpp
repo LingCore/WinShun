@@ -554,6 +554,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Results/FavoritesOnStart", QT_TRANSLATE_NOOP("AiSettings", "不输入时显示收藏"), "results", 1,
                     "Show favorites before typing. Turning this off keeps their names and keywords searchable."},
         &Settings::favoritesOnStart));
+    add(boolean({"Results/FavoriteTiles", QT_TRANSLATE_NOOP("AiSettings", "收藏显示为图标"), "results", 1,
+                    "With nothing typed, the favorites are a grid of icons with their names under them, over the recent items, instead of rows. Held a moment and dragged, a tile moves to another place in the favorites' order."},
+        &Settings::favoriteTiles));
     add(boolean({"Results/DoubleClickToOpen", QT_TRANSLATE_NOOP("AiSettings", "双击打开结果"), "results", 1,
                     "A click on a result only selects it; a double click (or Enter) opens it. Off: a click opens it."},
         &Settings::doubleClickToOpen));

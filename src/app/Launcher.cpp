@@ -1874,6 +1874,33 @@ void Launcher::setStartList(StartList list)
         search();
 }
 
+void Launcher::setFavoriteTiles(bool on)
+{
+    if (m_favoriteTilesOn == on)
+        return;
+    m_favoriteTilesOn = on;
+    if (m_window && m_window->isVisible() && searchText().isEmpty())
+        search();
+}
+
+void Launcher::openFavoriteTile(int index)
+{
+    if (const SearchResult* r = m_tiles.at(index))
+        perform(SearchResult(*r), Open); // a copy: opening may change the tiles
+}
+
+void Launcher::moveFavoriteTile(int from, int to)
+{
+    const SearchResult* a = m_tiles.at(from);
+    const SearchResult* b = m_tiles.at(to);
+    if (!m_favorites || !a || !b)
+        return;
+    const qsizetype at = m_favorites->indexOf(a->path);
+    const qsizetype there = m_favorites->indexOf(b->path);
+    if (at >= 0 && there >= 0 && at != there)
+        m_favorites->move(at, there); // saved; the tiles come again in the new order (setFavorites)
+}
+
 void Launcher::setStartOptions(int recentItems, bool favorites)
 {
     if (m_recentItems == recentItems && m_favoritesOnStart == favorites)
@@ -2656,6 +2683,17 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
                 r.runAsAdmin = true; // the row says so (管理员)
         }
     }
+    // Nothing typed in 全部, the favorites as tiles: their rows go there.
+    SearchResults tiles;
+    if (m_favoriteTilesOn && m_favoritesOnStart && !m_panel && !m_keyword && m_scope == All && searchText().isEmpty()) {
+        for (qsizetype i = 0; i < rows.size();) {
+            if (rows[i].favorite && !rows[i].statusRow)
+                tiles.append(rows.takeAt(i));
+            else
+                ++i;
+        }
+    }
+    m_tiles.assign(std::move(tiles), {});
     m_results.assign(std::move(rows), std::move(highlights));
     m_shownText = searchText();
     m_shownScope = m_scope;
