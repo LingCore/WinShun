@@ -3521,6 +3521,250 @@ void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& 
         throw std::runtime_error("Production search navigation regression failed; see search-navigation.json");
 }
 
+// GitHub #361 through the production Main.qml, with local Qt key events, in
+// the box and in the panel: Tab on a folder the list put under the keyboard
+// switches the scope (#81); on one the arrows chose it steps in, and on into
+// the folders there; Ctrl+Backspace comes back the same way, the folder
+// chosen again; then to the words and the scope searched. A part of a name
+// typed completes; a path typed goes up a level; with the caret elsewhere
+// Ctrl+Backspace edits; regex mode never steps in; → still opens the folder's
+// menu. Folders of its own on disk, indexed, and one that is not.
+QQuickItem* shownNamed(QQuickItem* root, const QString& name); // below: the box's footer, not the hidden panel's
+
+void checkFolderSteps(Launcher& launcher, IndexService& index, QQuickWindow* window, const QDir& output)
+{
+    QJsonArray checks;
+    bool passed = true;
+    const auto check = [&](bool okay, const QString& name) {
+        checks.append(QJsonObject {{u"name"_s, name}, {u"passed"_s, okay}});
+        passed = okay && passed;
+        if (!okay) qWarning("folder steps regression: %s", qUtf8Printable(name));
+    };
+    const auto key = [&](int code, Qt::KeyboardModifiers modifiers = {}, const QString& text = {}) {
+        QKeyEvent event(QEvent::KeyPress, code, modifiers, text);
+        QCoreApplication::sendEvent(window, &event);
+    };
+    const auto rows = [&] { // the rows of what the box holds now
+        QElapsedTimer timeout;
+        timeout.start();
+        while (launcher.searching() && timeout.elapsed() < 3000)
+            pump(10);
+        pump(30);
+    };
+    const auto type = [&](const QString& text) {
+        launcher.setQuery(text);
+        rows();
+    };
+    QTemporaryDir temporary;
+    const QString base = QDir::toNativeSeparators(temporary.path());
+    QDir(temporary.path()).mkpath(u"合同资料/2026"_s);
+    QDir(temporary.path()).mkpath(u"未索引"_s);
+    for (const QString& name : {u"合同资料/说明.txt"_s, u"合同资料/2026/清单.txt"_s, u"未索引/备注.txt"_s}) {
+        QFile file(temporary.filePath(name));
+        check(file.open(QIODevice::WriteOnly) && file.write("x") == 1, u"create "_s + name);
+    }
+    const QString contracts = base + u"\\合同资料"_s;
+    const QString year = contracts + u"\\2026"_s;
+    const QString unindexed = base + u"\\未索引"_s;
+    {
+        const auto files = index.index();
+        const auto lock = files->writeLock();
+        const auto root = files->addRoot(base.toStdString());
+        const auto folder = files->add(root, "合同资料", EntryFlag::Directory);
+        files->add(folder, "说明.txt", 0);
+        files->add(files->add(folder, "2026", EntryFlag::Directory), "清单.txt", 0);
+    }
+    const QString folderHint = QCoreApplication::translate("ws::Launcher", "进入文件夹");
+    const QString backHint = QCoreApplication::translate("ws::Launcher", "返回上一级");
+    const auto tabHint = [&] { return launcher.keyHints().value(u"tab"_s).toString(); };
+    const auto rowOf = [&](const QString& path) { return launcher.results()->indexOf(path); };
+    const auto previousScope = launcher.scope();
+    const int previousType = launcher.fileType();
+    const QString previousQuery = launcher.query();
+    const QSize previousSize = window->size();
+    for (const bool panel : {false, true}) {
+        launcher.setPanel(panel);
+        window->resize(panel ? QSize(1200, 680) : QSize(760, 600));
+        settle(window, 2);
+        const QString mode = panel ? u"panel: "_s : u"box: "_s;
+        auto* field = visualNamed(window->contentItem(), panel ? u"panelSearchField"_s : u"searchField"_s);
+        QObject* view = window->property("view").value<QObject*>();
+        check(field && view, mode + u"production search field and list"_s);
+        if (!field || !view)
+            continue;
+        field->forceActiveFocus();
+        const auto current = [&] { return view->property("currentIndex").toInt(); };
+        const auto caretAtEnd = [&] {
+            return field->property("text").toString() == launcher.query()
+                && field->property("cursorPosition").toInt() == launcher.query().size();
+        };
+        // The keyboard onto `row` as the user puts it there: an arrow from the
+        // row next to it (↑ on the first row, which keeps it there).
+        const auto arrive = [&](int row) {
+            const int count = view->property("count").toInt();
+            if (row < 0 || row >= count)
+                return false;
+            view->setProperty("currentIndex", row > 0 ? row - 1 : std::min(1, count - 1));
+            key(row > 0 ? Qt::Key_Down : Qt::Key_Up);
+            return current() == row;
+        };
+        launcher.setScope(Launcher::All);
+        type(u"合同资料"_s);
+        int row = rowOf(contracts);
+        check(row >= 0, mode + u"the folder is found by its name"_s);
+        view->setProperty("currentIndex", row); // where the list put the keyboard, nobody chose it
+        key(Qt::Key_Tab);
+        rows();
+        check(launcher.scope() != Launcher::All && launcher.query() == u"合同资料", mode + u"Tab on a folder nobody chose switches the scope"_s);
+        key(Qt::Key_Backtab, Qt::ShiftModifier);
+        rows();
+        check(launcher.scope() == Launcher::All, mode + u"Shift+Tab comes back to 全部"_s);
+        row = rowOf(contracts);
+        check(arrive(row) && tabHint() == folderHint, mode + u"chosen with the arrows, the footer says Tab goes into it"_s);
+        key(Qt::Key_Tab);
+        check(launcher.query() == contracts + u'\\' && launcher.scope() == Launcher::All && caretAtEnd(),
+            mode + u"Tab puts the folder chosen in the box, the caret after it"_s);
+        rows();
+        check(current() == 0 && launcher.results()->pathAt(0) == contracts && rowOf(year) > 0
+                && rowOf(year) < rowOf(contracts + u"\\说明.txt"_s),
+            mode + u"its listing: the folder itself on top, folders first"_s);
+        check(tabHint() == backHint && launcher.keyHints().value(u"tabKeys"_s).toString() == u"Ctrl+Backspace",
+            mode + u"in the folder, the footer gives the way back"_s);
+        check(arrive(rowOf(year)), mode + u"down onto the folder in it"_s);
+        key(Qt::Key_Tab);
+        rows();
+        check(launcher.query() == year + u'\\' && rowOf(year + u"\\清单.txt"_s) > 0, mode + u"Tab goes on down"_s);
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        check(launcher.query() == contracts + u'\\' && caretAtEnd() && current() == rowOf(year) && tabHint() == folderHint,
+            mode + u"Ctrl+Backspace comes back, on the folder it left, chosen"_s);
+        key(Qt::Key_Tab);
+        rows();
+        check(launcher.query() == year + u'\\', mode + u"Tab goes into it again"_s);
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        check(launcher.query() == u"合同资料" && launcher.scope() == Launcher::All && caretAtEnd() && current() == rowOf(contracts)
+                && tabHint() == folderHint,
+            mode + u"Ctrl+Backspace twice: back at the words, on the folder"_s);
+        check(field->hasActiveFocus() && !window->property("menuOpen").toBool(), mode + u"the keyboard stays in the box"_s);
+        if (panel)
+            continue;
+        // In 文件夹: back to it.
+        launcher.setScope(Launcher::Folders);
+        type(u"合同资料"_s);
+        check(arrive(rowOf(contracts)), mode + u"文件夹: on the folder"_s);
+        key(Qt::Key_Tab);
+        rows();
+        check(launcher.scope() == Launcher::All && launcher.query() == contracts + u'\\', mode + u"文件夹: Tab goes in, in 全部"_s);
+        settle(window, 2);
+        const QQuickItem* footerHint = shownNamed(window->contentItem(), u"footerTabHint"_s);
+        check(footerHint && footerHint->property("label").toString() == backHint
+                && footerHint->property("keys").toString() == u"Ctrl+Backspace",
+            mode + u"the footer shows Ctrl+Backspace 返回上一级"_s);
+        saveGrab(window, output.filePath(u"folder-steps-box.png"_s));
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        check(launcher.scope() == Launcher::Folders && launcher.query() == u"合同资料", mode + u"文件夹: Ctrl+Backspace comes back to it"_s);
+        launcher.setScope(Launcher::All);
+        // A part of a name typed: the folder it completes takes Tab at once.
+        type(base + u"\\合同"_s);
+        check(current() == 0 && launcher.results()->pathAt(0) == contracts && tabHint() == folderHint,
+            mode + u"a part of a name typed: the folder it completes is offered"_s);
+        key(Qt::Key_Tab);
+        rows();
+        check(launcher.query() == contracts + u'\\', mode + u"Tab completes the path"_s);
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        check(launcher.query() == base + u"\\合同"_s, mode + u"Ctrl+Backspace brings back the path as typed"_s);
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        check(launcher.query() == base + u'\\' && current() == 0, mode + u"then takes the name typed away"_s);
+        // Tab a moment after typing, before the rows for it came: on those
+        // rows, never on a folder of the last query's (未索引, for "…\未").
+        type(base + u"\\未"_s);
+        launcher.setQuery(base + u"\\合同"_s);
+        const bool coming = launcher.searching();
+        key(Qt::Key_Tab);
+        rows();
+        pump(50); // the Tab that waited goes after the rows are in
+        rows();
+        check(launcher.query() == contracts + u'\\' && launcher.scope() == Launcher::All,
+            mode + u"Tab right after typing completes from the rows for it (they were %1 yet)"_s
+                .arg(coming ? u"not there"_s : u"there"_s));
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        check(launcher.query() == base + u'\\', mode + u"and back out to the folder typed"_s);
+        // A folder not indexed, listed from the disk.
+        check(arrive(rowOf(unindexed)), mode + u"onto a folder not indexed"_s);
+        key(Qt::Key_Tab);
+        rows();
+        check(launcher.query() == unindexed + u'\\' && rowOf(unindexed + u"\\备注.txt"_s) > 0,
+            mode + u"Tab lists a folder not indexed"_s);
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        check(launcher.query() == base + u'\\' && current() == rowOf(unindexed), mode + u"and comes back out of it"_s);
+        // A path typed, not stepped into: a level up, the folder left chosen there.
+        type(year + u'\\');
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        check(launcher.query() == contracts + u'\\' && current() == rowOf(year) && tabHint() == folderHint,
+            mode + u"Ctrl+Backspace on a path typed goes up, on the folder it left"_s);
+        // The caret elsewhere, or words selected: Ctrl+Backspace edits as ever.
+        type(year + u'\\');
+        field->setProperty("cursorPosition", 3);
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        check(launcher.query() != contracts + u'\\' && launcher.query().size() < year.size() + 1,
+            mode + u"with the caret inside the path, Ctrl+Backspace deletes a word"_s);
+        type(year + u'\\');
+        QMetaObject::invokeMethod(field, "selectAll");
+        key(Qt::Key_Backspace, Qt::ControlModifier);
+        rows();
+        check(launcher.query() != contracts + u'\\', mode + u"with the words selected, Ctrl+Backspace deletes them"_s);
+        // → on a folder: its menu, with 进入此文件夹搜索, as before.
+        type(u"合同资料"_s);
+        check(arrive(rowOf(contracts)), mode + u"onto the folder for its menu"_s);
+        field->setProperty("cursorPosition", launcher.query().size());
+        key(Qt::Key_Right);
+        auto* menu = qobject_cast<QQuickWindow*>(window->property("contextMenu").value<QObject*>());
+        bool browses = false;
+        for (const QVariant& entry : menu ? menu->property("entries").toList() : QVariantList())
+            browses = browses || entry.toMap().value(u"action"_s, -1).toInt() == Launcher::BrowseFolder;
+        check(window->property("menuOpen").toBool() && browses, mode + u"→ opens the folder's menu, with its browse action"_s);
+        key(Qt::Key_Escape);
+        check(!window->property("menuOpen").toBool() && launcher.query() == u"合同资料", mode + u"Esc closes it, the words kept"_s);
+        // Regex mode: the words are patterns, Tab is the scopes'.
+        key(Qt::Key_R, Qt::ControlModifier);
+        rows();
+        check(launcher.regexMode() && arrive(rowOf(contracts)), mode + u"regex mode: on the folder"_s);
+        key(Qt::Key_Tab);
+        rows();
+        check(launcher.query() == u"合同资料" && launcher.scope() != Launcher::All, mode + u"regex mode: Tab switches the scope"_s);
+        key(Qt::Key_R, Qt::ControlModifier);
+        launcher.setScope(Launcher::All);
+        rows();
+        check(!launcher.regexMode(), mode + u"regex mode off again"_s);
+    }
+    if (previousType >= 0)
+        launcher.chooseFileType(previousType);
+    else
+        launcher.setScope(previousScope);
+    window->resize(previousSize);
+    type(previousQuery);
+    QFile report(output.filePath(u"folder-steps.json"_s));
+    check(report.open(QIODevice::WriteOnly), u"write the regression report"_s);
+    if (report.isOpen()) report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"checks"_s, checks}}).toJson());
+    report.close(); // written before a throw ends the process
+    say(u"folder steps (#361): %1 checks, production Main.qml/Launcher, local Qt key events, %2"_s
+        .arg(checks.size()).arg(passed ? u"passed" : u"FAILED"));
+    if (!passed)
+        throw std::runtime_error("Folder step regression failed; see folder-steps.json");
+}
+
 void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& output)
 {
     QTemporaryDir temporary;
@@ -4548,6 +4792,7 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
         field->setProperty("text", u"测试照片"_s);
     checkPreviewPlacement(launcher, window, filePreview);
     checkSearchMenuKeys(launcher, window, filePreview, output);
+    checkFolderSteps(launcher, index, window, output);
     checkDialogSearchKeys(index, engine, output);
     launcher.setGallery(true);
     settle(window);
@@ -5873,6 +6118,105 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     showRow(folder);
     launcher.setTabEntersFavoriteFolder(false);
     check(tabHint().isEmpty() && !launcher.autocomplete(0), "turning the Tab setting off left stale behavior or hints");
+    {
+        // GitHub #361, the controller's side (Main.qml's keys: checkFolderSteps):
+        // Tab steps into a folder chosen (chooseRow) or completing the path
+        // typed, never into one the list put under the keyboard by itself
+        // (#81); stepOut goes back the way Tab came, the folder chosen again,
+        // and on a path typed a level up.
+        QDir(temporary.path()).mkpath(u"ordinary/内层"_s);
+        const QString base = QDir::toNativeSeparators(temporary.path());
+        const QString inner = ordinaryPath + u"\\内层"_s;
+        const QString backHint = QCoreApplication::translate("ws::Launcher", "返回上一级");
+        const auto settled = [&] {
+            QElapsedTimer timeout;
+            timeout.start();
+            while (launcher.searching() && timeout.elapsed() < 2000)
+                pump(10);
+        };
+        const auto rowOf = [&](const QString& path) { return launcher.results()->indexOf(path); };
+        const auto startRow = [&] { // as Main.qml's selectFirst puts the keyboard
+            const int row = launcher.results()->defaultRow();
+            launcher.setCurrentRow(row);
+            return launcher.results()->pathAt(row);
+        };
+        const auto tabKeys = [&] { return launcher.keyHints().value(u"tabKeys"_s).toString(); };
+        launcher.setScope(Launcher::All);
+        query(base + u'\\');
+        check(startRow() == base && tabHint() == backHint && tabKeys() == u"Ctrl+Backspace",
+            "#361 a folder's listing did not start on the folder itself, offering the way up");
+        int row = rowOf(ordinaryPath);
+        launcher.setCurrentRow(row);
+        check(row > 0 && tabHint() != folderHint && !launcher.autocomplete(row) && launcher.query() == base + u'\\',
+            "#361 Tab stepped into a folder nobody chose");
+        launcher.chooseRow(row);
+        check(tabHint() == folderHint && launcher.autocomplete(row) && launcher.query() == ordinaryPath + u'\\',
+            "#361 Tab did not step into the folder chosen");
+        settled();
+        row = rowOf(inner);
+        launcher.setCurrentRow(row);
+        launcher.chooseRow(row);
+        check(row > 0 && launcher.autocomplete(row) && launcher.query() == inner + u'\\', "#361 Tab did not step on down");
+        settled();
+        check(launcher.stepOut() && launcher.query() == ordinaryPath + u'\\', "#361 stepOut did not come back a level");
+        settled();
+        check(startRow() == inner && tabHint() == folderHint, "#361 back out, the folder left was not chosen again");
+        check(launcher.stepOut() && launcher.query() == base + u'\\', "#361 stepOut did not come back to the first folder");
+        settled();
+        check(startRow() == ordinaryPath && tabHint() == folderHint, "#361 back out twice, its folder was not chosen again");
+        // A part of a name typed: the folder it completes takes Tab by itself.
+        query(base + u"\\ordin"_s);
+        check(startRow() == ordinaryPath && tabHint() == folderHint && launcher.autocomplete(0)
+                && launcher.query() == ordinaryPath + u'\\',
+            "#361 Tab did not complete the folder typed in part");
+        settled();
+        check(launcher.stepOut() && launcher.query() == base + u"\\ordin"_s, "#361 stepOut did not bring back the path as typed");
+        settled();
+        check(launcher.stepOut() && launcher.query() == base + u'\\', "#361 stepOut did not take the name typed away first");
+        // Typed, not stepped into: a level up, the folder left chosen there.
+        query(inner + u'\\');
+        check(launcher.stepOut() && launcher.query() == ordinaryPath + u'\\', "#361 stepOut on a path typed did not go up");
+        settled();
+        check(startRow() == inner && tabHint() == folderHint, "#361 up from a path typed, its folder was not chosen");
+        // From the words of a search, in 文件夹: back to them, and to 文件夹.
+        launcher.setScope(Launcher::Folders);
+        query(u"报告"_s);
+        row = rowOf(u"T:\\报告资料"_s);
+        launcher.setCurrentRow(row);
+        check(row >= 0 && !launcher.autocomplete(row) && launcher.query() == u"报告", "#361 Tab took a folder found but not chosen");
+        launcher.chooseRow(row);
+        check(launcher.autocomplete(row) && launcher.scope() == Launcher::All && launcher.query() == u"T:\\报告资料\\",
+            "#361 Tab did not step into a folder found by the words");
+        settled();
+        check(launcher.stepOut() && launcher.scope() == Launcher::Folders && launcher.query() == u"报告",
+            "#361 stepOut did not bring back the words and their scope");
+        settled();
+        check(startRow() == u"T:\\报告资料" && tabHint() == folderHint, "#361 back at the words, the folder was not chosen again");
+        check(!launcher.stepOut() && launcher.query() == u"报告", "#361 stepOut did something to words that are no path");
+        // A prefix's scope comes back with the prefix.
+        launcher.setScope(Launcher::All);
+        query(u":folder 报告"_s);
+        row = rowOf(u"T:\\报告资料"_s);
+        launcher.setCurrentRow(row);
+        launcher.chooseRow(row);
+        check(launcher.autocomplete(row) && launcher.scope() == Launcher::All && launcher.query() == u"T:\\报告资料\\",
+            "#361 Tab did not step out of a :folder search");
+        settled();
+        check(launcher.stepOut() && launcher.query() == u":folder 报告" && launcher.scope() == Launcher::Folders,
+            "#361 stepOut lost the :folder prefix");
+        settled();
+        query({});
+        check(launcher.scope() == Launcher::All, "#361 the prefix went, its scope did not");
+        // Regex mode: the words are patterns, no names to step into.
+        launcher.setRegexMode(true);
+        query(u"报告"_s);
+        row = rowOf(u"T:\\报告资料"_s);
+        launcher.setCurrentRow(row);
+        launcher.chooseRow(row);
+        check(row >= 0 && !launcher.autocomplete(row) && launcher.query() == u"报告", "#361 Tab stepped into a folder in regex mode");
+        launcher.setRegexMode(false);
+        query({});
+    }
     SearchResult suggestion {.name = u"Search suggestion"_s, .app = AppKind::Web,
         .keyword = u"example"_s, .words = u"report"_s, .suggestion = true};
     showRow(suggestion);

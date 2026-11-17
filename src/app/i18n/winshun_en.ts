@@ -5056,8 +5056,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Tab;Shift+Tab;favorite;folder;scope;keyboard</translation>
     </message>
     <message>
-        <source>在“全部”范围中，默认切换搜索范围；也可进入选中的收藏文件夹继续搜索。Shift+Tab 仍反向切换范围。</source>
-        <translation>In All, Tab switches search scopes by default. You can choose to browse the selected favorite folder instead. Shift+Tab still switches scopes backward.</translation>
+        <source>在“全部”范围中，列表自动选中的收藏文件夹（如第一行）默认切换搜索范围，也可改为进入它继续搜索。用 ↑ ↓ 或单击选中的文件夹，按 Tab 都会进入。Shift+Tab 仍反向切换范围。</source>
+        <translation>In All, Tab on a favorite folder the list selected by itself (such as the first row) switches search scopes by default; you can have it browse that folder instead. A folder you chose with ↑ ↓ or a click is always browsed. Shift+Tab still switches scopes backward.</translation>
     </message>
     <message>
         <source>切换范围</source>
@@ -8520,6 +8520,14 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>选中多行，也可 Ctrl+单击、Shift+单击</source>
         <translation>Select several rows; Ctrl+click and Shift+click too</translation>
+    </message>
+    <message>
+        <source>进入用 ↑ ↓ 或单击选中的文件夹，列出里面的内容；路径输入一半时补全文件夹</source>
+        <translation>Go into the folder chosen with ↑ ↓ or a click and list what is in it; completes a folder in a half-typed path</translation>
+    </message>
+    <message>
+        <source>返回上一级：退出文件夹，回到进入前的搜索</source>
+        <translation>Up a level: out of the folder, back to the search before it</translation>
     </message>
     <message>
         <source>范围与筛选</source>
@@ -12048,6 +12056,10 @@ Content index: %5</translation>
     <message>
         <source>切换范围</source>
         <translation>Scope</translation>
+    </message>
+    <message>
+        <source>返回上一级</source>
+        <translation>Up a level</translation>
     </message>
     <message>
         <source>打开位置</source>

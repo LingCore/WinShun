@@ -775,6 +775,15 @@ void Launcher::setQuery(const QString& query)
     // The folder typed in, edited: a path typed from now on (GitHub #110).
     if (!m_typingPrefix.isEmpty() && !m_query.startsWith(m_typingPrefix, Qt::CaseInsensitive))
         setTypingFolder({});
+    // GitHub #361: the list for these words starts on its first row, chosen
+    // by nobody; back out of a folder (returnTo), on that folder's row. The
+    // steps into folders the box has left are forgotten.
+    m_chosenPath = m_returnRow;
+    m_results.setStartPath(m_returnRow);
+    m_tabHeld = false; // typed on: a Tab waiting for the rows before is not for these
+    const QString inFolder = pathtext::splitTyped(m_query).folder;
+    while (!m_folderSteps.isEmpty() && (inFolder.isEmpty() || !navigation::within(m_folderSteps.last().folder, inFolder)))
+        m_folderSteps.removeLast();
     updateQueryPrefix();
     emit queryChanged();
     m_results.setSelection({});
@@ -875,6 +884,9 @@ void Launcher::setScope(Scope scope)
     emit scopeChanged();
     m_results.setSelection({});
     m_held.reset();
+    m_chosenPath.clear(); // another list: its first row, as typing gives (GitHub #361)
+    m_results.setStartPath({});
+    m_tabHeld = false;
     refreshKeyHints(); // Tab: through the kinds in 文件
     // Keep the old rows until the new results replace them: clearing first
     // collapses the window and then grows it back (flicker).
@@ -1991,6 +2003,7 @@ void Launcher::startOver()
         updateQueryPrefix();
         emit queryChanged();
     }
+    m_folderSteps.clear(); // no folder to step back out of (GitHub #361)
     m_results.setSelection({});
     m_held.reset();
     refreshKeyHints();
@@ -2007,6 +2020,11 @@ void Launcher::handleShown()
         m_switches->refresh(); // the switches' rows show what they are now
     scheduleAwakeTick();
     m_previewResume = m_previewWanted;
+    // Up again, it starts on its first row, as ever: the row a step out of a
+    // folder came back to, or one chosen before, is no longer meant (GitHub #361).
+    m_chosenPath.clear();
+    m_results.setStartPath({});
+    m_tabHeld = false;
     search(); // refresh: files may have changed, and "recent" certainly has
     emit historyChanged(); // things were opened since
     refreshFrequentApps();
@@ -2477,6 +2495,7 @@ void Launcher::search(bool more)
             m_replacePending = false;
             m_results.clear();
             m_haveResults = false;
+            m_chosenPath.clear(); // nothing listed, nothing chosen (GitHub #361)
             emit resultsReplaced();
         } else if (m_refresh) {
             // Asked again, the rows not found again go (not those a one-off
@@ -2646,9 +2665,20 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
         m_slowSearch.stop();
         m_searchSlow = false;
         forgetRowChanges(); // another list: what changed in the last one says nothing here
+        // Its first row is the list's choice, not the user's; back out of a
+        // folder, the folder's row (GitHub #361), chosen as it was.
+        m_chosenPath = m_results.startRow() >= 0 ? m_results.startPath() : QString();
         emit resultsReplaced();
         if (const auto held = std::exchange(m_held, std::nullopt))
             emit heldKey(held->first, held->second); // on the rows it was pressed for
+        // A Tab that waited for these rows (autocomplete), on them once they
+        // are in; as Main.qml's Tab, the scopes when nothing completes.
+        if (std::exchange(m_tabHeld, false)) {
+            QMetaObject::invokeMethod(this, [this, query = m_query] {
+                if (query == m_query && !autocomplete(m_currentRow))
+                    cycleScope(1);
+            }, Qt::QueuedConnection);
+        }
     }
     // Plugins that answered before the names: their rows go in now, among
     // these (after the first row is current again, so they are placed by it).
@@ -3839,16 +3869,23 @@ void Launcher::refreshKeyHints()
     QString secondKeys;
     QString second;
     QString tab;
+    QString tabKeys = u"Tab"_s; // the volume's row: its place is Alt+←→'s (Tab still does the same)
     switch (tabAction(m_currentRow)) {
     case navigation::TabAction::BrowseFolder: tab = tr("进入文件夹"); break;
     case navigation::TabAction::Complete: tab = tr("补全"); break;
     case navigation::TabAction::SwitchScope:
-        if (!m_query.trimmed().isEmpty())
+        // In a folder, the way back out (GitHub #361) where Tab only switches
+        // the scope, which goes unsaid; not while a name is typed in it (the
+        // key takes that away first, as editing).
+        if (pathtext::splitTyped(m_query).name.isEmpty() && stepBack()) {
+            tabKeys = u"Ctrl+Backspace"_s;
+            tab = tr("返回上一级");
+        } else if (!m_query.trimmed().isEmpty()) {
             tab = tr("切换范围");
+        }
         break;
     case navigation::TabAction::None: break;
     }
-    QString tabKeys = u"Tab"_s; // the volume's row: its place is Alt+←→'s (Tab still does the same)
     const SearchResult* r = m_results.at(m_currentRow);
     if (!r) {
         // Without a row, a nonblank query can still offer scope switching.
@@ -6601,22 +6638,112 @@ navigation::TabAction Launcher::tabAction(int row) const
 {
     if (m_scope == Apps)
         return navigation::TabAction::SwitchScope;
-    return navigation::tabAction(static_cast<ws::Scope>(m_scope), bool(m_keyword), m_tabEntersFavoriteFolder,
-        m_results.at(row), completionRow(row) != nullptr);
+    const SearchResult* r = m_results.at(row);
+    // The folder the box lists already (the first row under "D:\Work\"):
+    // going into it changes nothing, Tab is the scopes' there (GitHub #361).
+    const pathtext::TypedPath typed = pathtext::splitTyped(m_query);
+    if (r && typed.name.isEmpty() && pathtext::sameFolder(typed.folder, r->path))
+        r = nullptr;
+    return navigation::tabAction(static_cast<ws::Scope>(m_scope), bool(m_keyword), m_tabEntersFavoriteFolder, r,
+        completionRow(row) != nullptr, r && stepsInto(*r));
+}
+
+// GitHub #361: a folder the user chose in this list (chooseRow), or the one
+// that completes the path being typed ("D:\Wo" on D:\Work, as a shell
+// completes it). Not where the words are no names or no path: a plugin's
+// keyword, regex mode, typed in a folder's window (whose folder would go).
+bool Launcher::stepsInto(const SearchResult& r) const
+{
+    if (m_keyword || regexTerms() || typedInFolder() || !navigation::canBrowseFolder(r))
+        return false;
+    if (!m_chosenPath.isEmpty() && pathtext::samePath(r.path, m_chosenPath))
+        return true;
+    // A moment after typing, the rows on screen are the last query's: none
+    // of them completes what is typed now (autocomplete waits for this one's).
+    return !rowsComing() && navigation::completesPath(pathtext::splitTyped(m_query), r.path);
+}
+
+bool Launcher::completingPath() const
+{
+    if (m_keyword || regexTerms() || typedInFolder() || m_scope == Content || m_scope == Apps)
+        return false;
+    const pathtext::TypedPath typed = pathtext::splitTyped(m_query);
+    return !typed.folder.isEmpty() && !typed.name.isEmpty() && !typed.name.front().isSpace();
+}
+
+void Launcher::chooseRow(int row)
+{
+    const SearchResult* r = m_results.at(row);
+    const QString path = r ? r->path : QString();
+    if (path == m_chosenPath)
+        return;
+    m_chosenPath = path;
+    refreshKeyHints();
 }
 
 void Launcher::browseFolder(const SearchResult& folder)
 {
     if (!navigation::canBrowseFolder(folder))
         return;
-    const QString query = folder.path.endsWith(u'\\') ? folder.path : folder.path + u'\\';
+    const QString query = navigation::browseQuery(folder.path);
+    // Where Ctrl+Backspace comes back to (stepOut, GitHub #361): these words,
+    // in the scope under them (a prefix such as ":folder" sets its own again).
+    const FolderStep step {m_query, m_filePrefix ? m_filePrefix->scope : m_scope, folder.path};
+    const bool moved = query != m_query;
     if (m_scope != All)
         setScope(All);
     setQuery(query);
+    if (moved)
+        m_folderSteps.append(step);
+    emit caretRequested(static_cast<int>(m_query.size()), false);
+}
+
+std::optional<Launcher::StepBack> Launcher::stepBack() const
+{
+    if (m_keyword || regexTerms() || typedInFolder() || m_scope == Content || m_scope == Apps)
+        return std::nullopt;
+    const pathtext::TypedPath typed = pathtext::splitTyped(m_query);
+    if (typed.folder.isEmpty())
+        return std::nullopt;
+    if (typed.name.isEmpty() && !m_folderSteps.isEmpty() && pathtext::sameFolder(m_folderSteps.last().folder, typed.folder)) {
+        const FolderStep& step = m_folderSteps.last();
+        return StepBack {step.from, step.folder, step.scope != m_scope ? std::optional(step.scope) : std::nullopt, true};
+    }
+    const std::optional<navigation::Up> up = navigation::upFrom(typed);
+    if (!up)
+        return std::nullopt;
+    return StepBack {up->query, up->row, std::nullopt, false};
+}
+
+bool Launcher::stepOut()
+{
+    const std::optional<StepBack> out = stepBack();
+    if (!out)
+        return false;
+    if (out->back)
+        m_folderSteps.removeLast();
+    if (out->scope)
+        setScope(*out->scope); // as it was, not remembered as chosen (chooseScope, GitHub #263)
+    returnTo(out->query, out->row);
+    return true;
+}
+
+void Launcher::returnTo(const QString& query, const QString& row)
+{
+    const QScopedValueRollback back(m_returnRow, row);
+    setQuery(query);
+    emit caretRequested(static_cast<int>(m_query.size()), false);
 }
 
 bool Launcher::autocomplete(int row)
 {
+    // GitHub #361: Tab right after a part of a name was typed in a path, its
+    // rows not here yet: it waits for them (showRows), neither taking a
+    // folder of the last query's rows for the completion nor the scopes.
+    if (rowsComing() && completingPath()) {
+        m_tabHeld = true;
+        return true;
+    }
     const navigation::TabAction action = tabAction(row);
     if (action == navigation::TabAction::BrowseFolder) {
         browseFolder(*m_results.at(row));

@@ -525,6 +525,13 @@ Window {
             hintIndex = Math.max(0, Math.min(hints.length - 1, Math.max(hintIndex, 0) + delta))
         }
         selectionAnchor = -1
+        chooseCurrentRow()
+    }
+    // The user put the keyboard on this row (the keys, a click): Tab steps
+    // into it if it is a folder (GitHub #361). Not on the hints.
+    function chooseCurrentRow() {
+        if (hintIndex < 0)
+            window.launcher.chooseRow(view.currentIndex)
     }
 
     // Several rows: Ctrl+click toggles one, Shift+click or Shift+arrows take
@@ -554,6 +561,7 @@ Window {
         selectionMoved()
         if (view.count > 0)
             selectTo(Math.max(0, Math.min(view.count - 1, view.currentIndex + delta)), false)
+        chooseCurrentRow()
     }
 
     // Ctrl+1… (or Alt+1…, Launcher.numberKeys) opens the nth row shown,
@@ -676,6 +684,7 @@ Window {
         if (!window.launcher.results.isSelected(index))
             window.launcher.clearSelection() // as in Explorer: the menu is for this row alone
         view.currentIndex = index
+        window.launcher.chooseRow(index) // its row now: Tab goes into the folder, as a click on it
         const fromKeyboard = globalPos === undefined
         if (fromKeyboard) {
             view.positionViewAtIndex(index, ListView.Contain)
@@ -720,6 +729,7 @@ Window {
         if (!window.launcher.results.isSelected(index))
             window.launcher.clearSelection() // as in Explorer: the menu is for this row alone
         view.currentIndex = index
+        window.launcher.chooseRow(index)
         window.launcher.showSystemMenu(index, globalPos)
         return true
     }
@@ -995,6 +1005,15 @@ Window {
             else if (window.launcher.pluginKeyword.length === 0)
                 window.launcher.cycleScope(-1)
             break
+        case Qt.Key_Backspace:
+            // Ctrl+Backspace at the end of a path: a level up, out of a folder
+            // Tab went into back to what was there (GitHub #361); anywhere
+            // else it deletes a word, as ever.
+            if ((event.modifiers & ~Qt.KeypadModifier) !== Qt.ControlModifier || searchBar.composition.length > 0
+                    || searchBar.hasSelection || searchBar.field.cursorPosition !== searchBar.field.length
+                    || !window.launcher.stepOut())
+                return
+            break
         case Qt.Key_F2: // the row's file or folder under another name, in place
             if (ctrl || shift || view.currentIndex < 0)
                 return
@@ -1064,6 +1083,10 @@ Window {
         // off. A later resultsReplaced would then move a view already at
         // the true top down by that margin (see ClipboardPage.selectFirst).
         view.contentY = view.originY - view.topMargin
+        // Back out of a folder (GitHub #361): its row, maybe further down.
+        const start = launcher.results.startRow()
+        if (start > 0 && view.currentIndex === start)
+            view.positionViewAtIndex(start, ListView.Contain)
     }
 
     Connections {
@@ -1219,6 +1242,7 @@ Window {
     }
     function rowClicked(index, modifiers) {
         spaceTogglesPreview = true
+        window.launcher.chooseRow(index)
         const ctrl = (modifiers & Qt.ControlModifier) !== 0
         if (modifiers & Qt.ShiftModifier) {
             selectTo(index, ctrl)
@@ -1256,6 +1280,7 @@ Window {
         // (followPreview), and the click then closed it as for the file shown.
         window.launcher.togglePreview(index)
         view.currentIndex = index
+        window.launcher.chooseRow(index)
         window.launcher.keyboardMoved() // the pointer is on this row, as on the keyboard's
     }
     // An open preview shows the row the mouse rests on for a moment (as the

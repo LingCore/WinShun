@@ -1,5 +1,13 @@
 # 踩坑记录
 
+## Tab 进文件夹：刚打完字就按 Tab，屏幕上还是上一次的结果（2026-11-17，#361）
+
+- **现象**：路径后面打半个名字（`…\合同`）马上按 `Tab`，新结果还没出来，列表上还是上一次（`…\未`）的行。按“第一行的文件夹补全打着的路径”去判断，会进到 `未索引`（它也在那个文件夹里），或者没有可补全的就切了范围。
+- **原因**：结果是在后台线程列出的，打字后到新行出来有几十毫秒；这期间 `m_replacePending && searching()`，屏幕上的行属于上一次查询。按 Enter 早就有 `holdUntilShown` 等新行，Tab 原来没有。
+- **做法**：`Launcher::rowsComing()` 为真时，按路径补全不算数（`stepsInto`）；`autocomplete` 记下 `m_tabHeld`，新行出来后（`showRows` 换行的分支，排队调用，查询没变才执行）再按一次 Tab，没有可进的文件夹就照常切范围。再打字、换范围、重新打开搜索框都会清掉它。探针 `--search-navigation` 的 folder steps 里有“Tab right after typing…”一项，会写明这次是否真赶在新行之前。
+- **区分“列表选的”和“用户选的”**：ListView 的 `currentIndex` 分不出这一行是新结果自动选中的，还是用户按方向键、单击选的；#81 要求自动选中的收藏文件夹不抢 Tab。所以由 Main.qml 在按键、单击、右键菜单时调 `Launcher::chooseRow` 记下路径，`setQuery`、`setScope`、换了一批新行、重新打开时清掉。
+- **探针**：搜索框和面板各有一个底栏，`visualNamed(…, "footerTabHint")` 先找到的是隐藏着的面板那个，要用 `shownNamed`。探针失败时 `throw` 会直接结束进程，报告 JSON 要先 `close()` 再抛，否则是空文件。
+
 ## 目录链接：测试清理顺着联接删，MFT 经服务没有重解析标签（2026-11-16，#350）
 
 - **`QTemporaryDir` 会顺着联接删进目标**：它析构时 `QDir::removeRecursively()` 把联接当普通文件夹往里走。一次测试在临时目录里建了指向 C 盘卷根的联接（测 `\??\Volume{…}` 的解析），又建了指向 `\\nas\…` 的符号链接，后者让清理时的 stat 卡到 300 秒被 QtTest 杀掉，碰巧没走到卷根；联接本身的目标文件夹已经被删了。现在测试建的链接都登记在 `MadeLinks`（`tests/TestJunction.h`），声明在临时目录之后，先用 `RemoveDirectoryW` 单删链接再让 `QTemporaryDir` 清理。手工清理残留也一样：先 `[IO.Directory]::Delete(链接, $false)` 删掉每个 `ReparsePoint`，再递归删目录。

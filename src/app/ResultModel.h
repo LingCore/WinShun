@@ -122,8 +122,14 @@ public:
     Q_INVOKABLE QString pathAt(int row) const; // empty if out of range
     // The row the highlight starts on when rows are new: the first, but not
     // a status row (keep awake, listed above the recent items), which Enter
-    // must not act on at once. 0 when there is no other.
+    // must not act on at once. 0 when there is no other. Back out of a
+    // folder (GitHub #361), the folder's row (startRow).
     Q_INVOKABLE int defaultRow() const;
+    // The row of the folder a step out of it came from (setStartPath), which
+    // the list starts on wherever it is; -1 for none.
+    Q_INVOKABLE int startRow() const;
+    void setStartPath(const QString& path) { m_startPath = path; }
+    const QString& startPath() const noexcept { return m_startPath; }
     // Per row (the first 64), what Enter copies when the row's title is the
     // payload: a plugin's row that opens, searches and sets nothing and says
     // what to copy (a translation, a sum). Empty for every other row.
@@ -184,6 +190,7 @@ private:
     void keepSelectionInList(); // after rows went away
     void findElsewhere(); // after rows changed: elsewhereRow
     int m_elsewhereRow = -1;
+    QString m_startPath; // the Launcher's, for the rows of the query it was set with
     SearchResults m_items;
     QStringList m_highlights;
     QColor m_highlightColor {0x00, 0x5F, 0xB8};

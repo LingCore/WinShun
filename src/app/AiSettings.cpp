@@ -554,7 +554,7 @@ std::vector<Entry> buildCatalog()
                     "A click on a result only selects it; a double click (or Enter) opens it. Off: a click opens it."},
         &Settings::doubleClickToOpen));
     add(boolean({"Results/TabEntersFavoriteFolder", QT_TRANSLATE_NOOP("AiSettings", "Tab 进入收藏文件夹"), "results", 1,
-                    "In All, Tab browses the selected favorite folder. Off by default: Tab switches search scopes. Shift+Tab and plugin/web completion keep their usual behavior."},
+                    "In All, Tab browses a favorite folder the list selected by itself (such as the first row). Off by default: Tab switches search scopes there. A folder the user moved to with the arrow keys or clicked is always browsed by Tab, Ctrl+Backspace goes back. Shift+Tab and plugin/web completion keep their usual behavior."},
         &Settings::tabEntersFavoriteFolder));
     add(boolean({"Results/SearchApps", QT_TRANSLATE_NOOP("AiSettings", "搜索应用"), "results", 1,
                     "All also finds apps (Start menu programs, Store apps). Off: All finds files, folders and content only."},

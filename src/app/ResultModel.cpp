@@ -8,6 +8,7 @@
 #include "FileIndex.h"
 #include "FileIconProvider.h"
 #include "ThumbnailProvider.h"
+#include "PathText.h"
 #include "Pinyin.h"
 #include "Query.h"
 #include "SwitchBackend.h"
@@ -265,11 +266,24 @@ void ResultModel::switchChanged(const QString& id)
 
 int ResultModel::defaultRow() const
 {
+    if (const int start = startRow(); start >= 0)
+        return start;
     for (int row = 0; row < count(); ++row) {
         if (!m_items[row].statusRow)
             return row;
     }
     return 0; // nothing else listed: the status row itself
+}
+
+int ResultModel::startRow() const
+{
+    if (m_startPath.isEmpty())
+        return -1;
+    for (int row = 0; row < count(); ++row) {
+        if (!m_items[row].statusRow && pathtext::samePath(m_items[row].path, m_startPath))
+            return row;
+    }
+    return -1;
 }
 
 QString ResultModel::switchWords(const SearchResult& row, const SwitchIntent& intent, bool title)

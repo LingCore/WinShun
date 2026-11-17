@@ -4434,7 +4434,7 @@ Window {
                     objectName: "favoriteFolderTab"
                     title: qsTr("选中收藏文件夹时按 Tab")
                     keywords: qsTr("Tab;Shift+Tab;收藏;文件夹;范围;键盘;favorite;keyboard").split(";")
-                    description: qsTr("在“全部”范围中，默认切换搜索范围；也可进入选中的收藏文件夹继续搜索。Shift+Tab 仍反向切换范围。")
+                    description: qsTr("在“全部”范围中，列表自动选中的收藏文件夹（如第一行）默认切换搜索范围，也可改为进入它继续搜索。用 ↑ ↓ 或单击选中的文件夹，按 Tab 都会进入。Shift+Tab 仍反向切换范围。")
 
                     ScopeTabs {
                         objectName: "favoriteFolderTabChoice"

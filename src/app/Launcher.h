@@ -351,8 +351,20 @@ public:
     // Tab: the row's autocomplete into the box, if it has one; outside
     // keyword mode else the hint row offering a keyword, wherever it is
     // ("uu" → "uuid "; completionRow()). Optionally browses a selected
-    // favorite folder in 全部. False leaves Tab for scope switching.
+    // favorite folder in 全部; steps into a folder the user chose, or one
+    // completing the path typed (GitHub #361, stepsInto). False leaves Tab
+    // for scope switching.
     Q_INVOKABLE bool autocomplete(int row);
+    // GitHub #361. The keys (or a click) put the keyboard on `row`: the user
+    // chose it, and Tab steps into it if it is a folder. The row a list
+    // starts on is the list's choice, not the user's: Tab stays the scopes'.
+    Q_INVOKABLE void chooseRow(int row);
+    // Ctrl+Backspace on a path: a level up, as in Explorer's address bar. A
+    // name being typed goes first; then, from a folder Tab stepped into, back
+    // to the words, the scope and the row Tab was pressed on; else to the
+    // folder above, on the row of the one left. False: no path (or a root),
+    // and the key edits the text as ever.
+    Q_INVOKABLE bool stepOut();
     Q_INVOKABLE void leaveKeyword(); // the chip clicked: the box is emptied
 
     // The screenshot history: the clipboard history's pictures Win顺's
@@ -1051,6 +1063,25 @@ private:
     void copyFiles(const QStringList& files); // m_fileCopier, else shell::copyFiles
     navigation::TabAction tabAction(int row) const;
     void browseFolder(const SearchResult& folder);
+    // GitHub #361: Tab steps into `r` (navigation::tabAction's `stepsIn`).
+    bool stepsInto(const SearchResult& r) const;
+    // A part of a name typed after a path ("D:\Wo"), which a folder listed
+    // completes (stepsInto); not where Tab never steps in.
+    bool completingPath() const;
+    // The rows on screen are still the last query's, this one's on their way.
+    bool rowsComing() const { return m_replacePending && searching(); }
+    // Where Ctrl+Backspace would go (stepOut): the folder Tab stepped into
+    // from (`back`), or a level up; none when it would only edit the text.
+    struct StepBack {
+        QString query;
+        QString row; // chosen again there; empty: the first row as ever
+        std::optional<Scope> scope; // the scope to go back to, if another
+        bool back = false; // out of a step Tab took (m_folderSteps' last)
+    };
+    std::optional<StepBack> stepBack() const;
+    // Words put in the box anew, the list for them starting on `row` (its
+    // folder's row, chosen), the caret after them.
+    void returnTo(const QString& query, const QString& row);
     // Opened: into the history, if it is kept. `query`: the text the list it
     // was opened from is for (m_shownText); none when it was not found by typing.
     void remember(const QString& path, const QString& query = {});
@@ -1354,6 +1385,20 @@ private:
     bool m_showFileSize = false;
     bool m_doubleClickToOpen = false;
     bool m_tabEntersFavoriteFolder = false;
+    // GitHub #361. The path of the row the user chose (chooseRow), for Tab;
+    // empty while the keyboard is where the list put it.
+    QString m_chosenPath;
+    // The folders Tab (or 进入此文件夹搜索) stepped into, outermost first,
+    // each with what the box held before: Ctrl+Backspace goes back there.
+    // Forgotten once the box no longer holds a path in that folder.
+    struct FolderStep {
+        QString from; // the words
+        Scope scope = All;
+        QString folder; // its path: its row is chosen again on the way back
+    };
+    QList<FolderStep> m_folderSteps;
+    QString m_returnRow; // returnTo: the row the next list starts on
+    bool m_tabHeld = false; // Tab on a path being typed, waiting for its rows (autocomplete)
     QString m_numberKeys = QStringLiteral("ctrl");
     QString m_numberHints = QStringLiteral("always");
     bool m_letterJump = false;

@@ -71,6 +71,119 @@ private slots:
         QCOMPARE(tabAction(Scope::All, false, true, &folder, true), TabAction::BrowseFolder);
     }
 
+    // GitHub #361: a folder the user chose (the arrows, a click), or one
+    // completing the path typed, is stepped into; one the list put under the
+    // keyboard by itself keeps Tab for the scopes (GitHub #81).
+    void chosenFoldersStepIn()
+    {
+        SearchResult folder {.path = u"D:\\Work\\合同"_s, .isDir = true};
+        for (const Scope scope : {Scope::All, Scope::Files, Scope::Folders}) {
+            QCOMPARE(tabAction(scope, false, false, &folder, false, true), TabAction::BrowseFolder);
+            QCOMPARE(tabAction(scope, false, false, &folder, false, false), TabAction::SwitchScope);
+        }
+        // 内容 keeps Tab for its scopes.
+        QCOMPARE(tabAction(Scope::Content, false, false, &folder, false, true), TabAction::SwitchScope);
+        // Ahead of a keyword's hint row elsewhere in the list; that row itself still completes.
+        QCOMPARE(tabAction(Scope::All, false, false, &folder, true, true), TabAction::BrowseFolder);
+        QCOMPARE(tabAction(Scope::All, false, false, nullptr, true, true), TabAction::Complete);
+        // A plugin's keyword: its completion, never a folder.
+        QCOMPARE(tabAction(Scope::All, true, false, &folder, true, true), TabAction::Complete);
+        QCOMPARE(tabAction(Scope::All, true, false, &folder, false, true), TabAction::None);
+        // What cannot be browsed is not stepped into: a file, offline, missing, an app.
+        const SearchResult file {.path = u"D:\\Work\\合同.docx"_s};
+        QCOMPARE(tabAction(Scope::All, false, false, &file, false, true), TabAction::SwitchScope);
+        folder.offline = true;
+        QCOMPARE(tabAction(Scope::All, false, false, &folder, false, true), TabAction::SwitchScope);
+        folder.offline = false;
+        folder.missing = true;
+        QCOMPARE(tabAction(Scope::All, false, false, &folder, false, true), TabAction::SwitchScope);
+        folder.missing = false;
+        folder.app = AppKind::Desktop;
+        QCOMPARE(tabAction(Scope::All, false, false, &folder, false, true), TabAction::SwitchScope);
+    }
+
+    void pathCompletion()
+    {
+        using pathtext::splitTyped;
+        // A folder right in the folder typed, while a part of a name is typed
+        // (whatever the list matched it by: pinyin, a part of the name).
+        QVERIFY(completesPath(splitTyped(u"D:\\Wo"_s), u"D:\\Work"_s));
+        QVERIFY(completesPath(splitTyped(u"D:\\Work\\合"_s), u"D:\\Work\\合同"_s));
+        QVERIFY(completesPath(splitTyped(u"d:/work/ht"_s), u"D:\\Work\\合同"_s));
+        QVERIFY(completesPath(splitTyped(u"C:\\Program F"_s), u"C:\\Program Files"_s));
+        QVERIFY(completesPath(splitTyped(u"\\\\server\\share\\do"_s), u"\\\\server\\share\\docs"_s));
+        // Not the folder's own listing, nor words after a space, nor deeper or elsewhere.
+        QVERIFY(!completesPath(splitTyped(u"D:\\Work\\"_s), u"D:\\Work\\合同"_s));
+        QVERIFY(!completesPath(splitTyped(u"D:\\Work\\ 合同"_s), u"D:\\Work\\合同"_s));
+        QVERIFY(!completesPath(splitTyped(u"D:\\Work\\合"_s), u"D:\\Work\\合同\\2026"_s));
+        QVERIFY(!completesPath(splitTyped(u"D:\\Work\\合"_s), u"D:\\Other\\合同"_s));
+        QVERIFY(!completesPath(splitTyped(u"D:\\Work\\合"_s), u"D:\\Work"_s));
+        // Words that are no path.
+        QVERIFY(!completesPath(splitTyped(u"合同"_s), u"D:\\Work\\合同"_s));
+        QVERIFY(!completesPath(splitTyped(u"tools/sc"_s), u"D:\\tools\\screenshots"_s));
+    }
+
+    void stepsUpALevel()
+    {
+        const auto up = [](const QString& text) { return upFrom(pathtext::splitTyped(text)); };
+        // A name being typed goes first (as DialogBar::up), nothing to choose.
+        std::optional<Up> u = up(u"D:\\Work\\合"_s);
+        QVERIFY(u);
+        QCOMPARE(u->query, u"D:\\Work\\"_s);
+        QVERIFY(u->row.isEmpty());
+        u = up(u"D:\\Work"_s);
+        QVERIFY(u);
+        QCOMPARE(u->query, u"D:\\"_s);
+        QVERIFY(u->row.isEmpty());
+        // Then the folder above, the one left chosen there.
+        u = up(u"D:\\Work\\合同\\"_s);
+        QVERIFY(u);
+        QCOMPARE(u->query, u"D:\\Work\\"_s);
+        QCOMPARE(u->row, u"D:\\Work\\合同"_s);
+        u = up(u"D:\\Work\\"_s);
+        QVERIFY(u);
+        QCOMPARE(u->query, u"D:\\"_s);
+        QCOMPARE(u->row, u"D:\\Work"_s);
+        u = up(u"d:/work/合同/"_s); // slashes, as typed
+        QVERIFY(u);
+        QCOMPARE(u->query, u"d:\\work\\"_s);
+        QCOMPARE(u->row, u"d:\\work\\合同"_s);
+        u = up(u"\"D:\\Work\\合同\\\""_s); // in quotes, as Explorer copies a path
+        QVERIFY(u);
+        QCOMPARE(u->query, u"D:\\Work\\"_s);
+        QCOMPARE(u->row, u"D:\\Work\\合同"_s);
+        u = up(u"\\\\server\\share\\dir\\"_s);
+        QVERIFY(u);
+        QCOMPARE(u->query, u"\\\\server\\share\\"_s);
+        QCOMPARE(u->row, u"\\\\server\\share\\dir"_s);
+        // Nothing above a drive's or a share's root, and none in what is no
+        // path: the key edits the text as ever.
+        QVERIFY(!up(u"D:\\"_s));
+        QVERIFY(!up(u"D:"_s));
+        QVERIFY(!up(u"\\\\server\\share\\"_s));
+        QVERIFY(!up(u"\\\\server\\share"_s));
+        QVERIFY(!up(u"合同"_s));
+        QVERIFY(!up(u"tools/out/"_s));
+        QVERIFY(!up(QString()));
+    }
+
+    void folderPaths()
+    {
+        QCOMPARE(browseQuery(u"D:\\Work"_s), u"D:\\Work\\"_s);
+        QCOMPARE(browseQuery(u"D:\\"_s), u"D:\\"_s);
+        QCOMPARE(browseQuery(u"\\\\server\\share"_s), u"\\\\server\\share\\"_s);
+        QVERIFY(within(u"D:\\Work"_s, u"D:\\Work"_s));
+        QVERIFY(within(u"D:\\Work"_s, u"d:\\work\\合同"_s));
+        QVERIFY(within(u"D:\\Work\\"_s, u"D:\\Work\\合同\\2026"_s));
+        QVERIFY(within(u"D:\\"_s, u"D:\\Work"_s));
+        QVERIFY(within(u"\\\\server\\share"_s, u"\\\\server\\share\\dir"_s));
+        QVERIFY(!within(u"D:\\Work"_s, u"D:\\Workshop"_s));
+        QVERIFY(!within(u"D:\\Work\\合同"_s, u"D:\\Work"_s));
+        QVERIFY(!within(u"D:\\Work"_s, u"E:\\Work"_s));
+        QVERIFY(!within(QString(), u"D:\\Work"_s));
+        QVERIFY(!within(u"D:\\Work"_s, u"合同"_s));
+    }
+
     // GitHub #113: a list changing by itself (传's request coming in on top)
     // never puts another row under the keyboard's Enter, the first row
     // included; only right after the list opened from that plugin's

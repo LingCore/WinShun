@@ -34,6 +34,8 @@ QtObject {
         { where: "launcher", group: qsTr("移动"), keys: "Ctrl+J / N · Ctrl+K / P", text: qsTr("向下 / 向上移动") },
         { where: "launcher", group: qsTr("移动"), keys: "Ctrl+U / D", text: qsTr("向上 / 向下翻页") },
         { where: "launcher", group: qsTr("移动"), brief: true, keys: "Shift+↑ ↓", text: qsTr("选中多行，也可 Ctrl+单击、Shift+单击") },
+        { where: "launcher", group: qsTr("移动"), brief: true, keys: "Tab", text: qsTr("进入用 ↑ ↓ 或单击选中的文件夹，列出里面的内容；路径输入一半时补全文件夹") },
+        { where: "launcher", group: qsTr("移动"), keys: "Ctrl+Backspace", text: qsTr("返回上一级：退出文件夹，回到进入前的搜索") },
         { where: "launcher", group: qsTr("范围与筛选"), brief: true, keys: "Shift+Tab", text: qsTr("切换到上一个范围") },
         { where: "launcher", group: qsTr("范围与筛选"), brief: true, keys: "Ctrl+Tab", text: qsTr("在“文件”里切换类型，在“内容”里换个文件夹") },
         { where: "launcher", group: qsTr("范围与筛选"), brief: true, keys: "Ctrl+S", text: qsTr("切换排序；不输入时切换最近打开、最近修改") },
