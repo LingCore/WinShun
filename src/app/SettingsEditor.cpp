@@ -450,6 +450,14 @@ void SettingsEditor::setClearOnOpen(bool on)
     commit();
 }
 
+void SettingsEditor::setPinnedOnTop(bool on)
+{
+    if (m_settings.pinnedOnTop == on)
+        return;
+    m_settings.pinnedOnTop = on;
+    commit();
+}
+
 void SettingsEditor::setReopenWhereLeft(bool on)
 {
     if (m_settings.reopenWhereLeft == on)

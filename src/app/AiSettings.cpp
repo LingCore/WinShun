@@ -641,6 +641,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/ReopenWhereLeft", QT_TRANSLATE_NOOP("AiSettings", "回到上次的位置"), "results", 2,
                     "When the search box opens again with the same words, the row it was left on is selected and the list is as far down as it was, instead of starting on the first row."},
         &Settings::reopenWhereLeft));
+    add(boolean({"Launcher/PinnedOnTop", QT_TRANSLATE_NOOP("AiSettings", "钉住时在最前"), "results", 2,
+                    "Pinned (Ctrl+T), the search box stays over every other window. Off: another window clicked covers it like any window, and the shortcut brings it back to the front."},
+        &Settings::pinnedOnTop));
     add(boolean({"Launcher/EnglishOnOpen", QT_TRANSLATE_NOOP("AiSettings", "打开时切换为英文输入"), "results", 2,
                     "Each time the search box opens, a Chinese input method there goes into its English mode, so letters and pinyin initials go straight into the search. Switching back in the box is kept for that opening; on closing it is put back as it was."},
         &Settings::englishOnOpen));

@@ -1502,6 +1502,7 @@ private slots:
         QVERIFY(!fresh.doubleClickToOpen);
         QVERIFY(!fresh.clickPreviews);
         QVERIFY(!fresh.favoriteTiles);
+        QVERIFY(fresh.pinnedOnTop);
         QVERIFY(fresh.previewFollowsPointer);
         QVERIFY(fresh.previewRestore); // GitHub #258: a preview left open comes back, unless turned off
         QCOMPARE(fresh.pluginMaxResident, 8); // GitHub #252
@@ -1513,6 +1514,7 @@ private slots:
             s.doubleClickToOpen = true;
             s.clickPreviews = true;
             s.favoriteTiles = true;
+            s.pinnedOnTop = false;
             s.previewFollowsPointer = false;
             s.previewRestore = false;
             s.pluginMaxResident = 0; // no limit
@@ -1523,6 +1525,7 @@ private slots:
             QVERIFY(back.doubleClickToOpen);
             QVERIFY(back.clickPreviews);
             QVERIFY(back.favoriteTiles);
+            QVERIFY(!back.pinnedOnTop);
             QVERIFY(!back.previewFollowsPointer);
             QVERIFY(!back.previewRestore);
             QCOMPARE(back.pluginMaxResident, 0);

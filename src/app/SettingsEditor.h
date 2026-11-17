@@ -218,6 +218,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool favoriteTiles READ favoriteTiles WRITE setFavoriteTiles NOTIFY changed FINAL)
     Q_PROPERTY(bool clearOnOpen READ clearOnOpen WRITE setClearOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(bool reopenWhereLeft READ reopenWhereLeft WRITE setReopenWhereLeft NOTIFY changed FINAL)
+    Q_PROPERTY(bool pinnedOnTop READ pinnedOnTop WRITE setPinnedOnTop NOTIFY changed FINAL)
     Q_PROPERTY(bool englishOnOpen READ englishOnOpen WRITE setEnglishOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(int clipboardFillSeconds READ clipboardFillSeconds WRITE setClipboardFillSeconds NOTIFY changed FINAL) // seconds, 0: off
     Q_PROPERTY(QString numberKeys READ numberKeys WRITE setNumberKeys NOTIFY changed FINAL) // ctrl | alt | off
@@ -800,6 +801,8 @@ public:
     bool clearOnOpen() const { return m_settings.clearOnOpen; }
     void setClearOnOpen(bool on);
     bool reopenWhereLeft() const { return m_settings.reopenWhereLeft; }
+    bool pinnedOnTop() const { return m_settings.pinnedOnTop; }
+    void setPinnedOnTop(bool on);
     void setReopenWhereLeft(bool on);
     bool englishOnOpen() const { return m_settings.englishOnOpen; }
     void setEnglishOnOpen(bool on);

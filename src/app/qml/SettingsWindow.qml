@@ -4616,6 +4616,19 @@ Window {
                     }
                 }
 
+                SettingRow { // feedback 2026-11-16
+                    title: qsTr("钉住时在最前")
+                    keywords: qsTr("钉住;置顶;最前;盖住;遮挡;Ctrl+T;pin;topmost;always on top").split(";")
+                    description: qsTr("按 Ctrl+T 钉住后，搜索框一直盖在别的窗口上面；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面")
+
+                    ToggleSwitch {
+                        objectName: "pinnedOnTopSwitch"
+                        dpr: window.dpr
+                        checked: window.editor.pinnedOnTop
+                        onToggled: (on) => window.editor.pinnedOnTop = on
+                    }
+                }
+
                 SettingRow {
                     title: qsTr("打开时切换为英文输入")
                     keywords: qsTr("输入法;英文;字母;中文;拼音首字母;IME;English").split(";")

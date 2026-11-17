@@ -1985,6 +1985,7 @@ void App::applySettings(bool initial)
     m_launcher->setPreviewFollowsPointer(m_settings.previewFollowsPointer);
     m_launcher->setPreviewRestore(m_settings.previewRestore);
     m_launcher->setReopenWhereLeft(m_settings.reopenWhereLeft);
+    applyLauncherTopmost();
     m_preview->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
@@ -5519,6 +5520,7 @@ void App::showLauncher(const QString& asked, const std::optional<taskbar::Spot>&
     m_boxPressGrace.stop();
     m_launcherShown.start();
     m_frontTakenBack = 0;
+    applyLauncherTopmost(); // left not topmost by a pin of before, perhaps
     m_idleTrim->used();
     m_index->shares().lookedAt(); // a WebDAV server stopped meanwhile shows as offline (GitHub #114)
     if (!launcherShown()) { // what a screenshot of the history pastes into (jt, Enter)
@@ -7054,8 +7056,18 @@ void App::togglePanel()
         setPanel(!m_launcher->panel());
 }
 
+void App::applyLauncherTopmost()
+{
+    if (!m_window || !m_window->handle())
+        return;
+    const bool topmost = !m_launcher->pinned() || m_settings.pinnedOnTop;
+    ::SetWindowPos(reinterpret_cast<HWND>(m_window->winId()), topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+}
+
 void App::launcherPinnedChanged()
 {
+    applyLauncherTopmost();
     // Over the box, its field drawn there: pinned, the window is one of its
     // own (it stays while the user works elsewhere, and can be dragged
     // away), so the field comes back into it and the box goes idle. Where it

@@ -998,6 +998,7 @@ void Settings::load()
         startList = d.startList;
     clearOnOpen = readOrDefault(s, u"Launcher/ClearOnOpen"_s, d.clearOnOpen);
     reopenWhereLeft = readOrDefault(s, u"Launcher/ReopenWhereLeft"_s, d.reopenWhereLeft);
+    pinnedOnTop = readOrDefault(s, u"Launcher/PinnedOnTop"_s, d.pinnedOnTop);
     englishOnOpen = readOrDefault(s, u"Launcher/EnglishOnOpen"_s, d.englishOnOpen);
     clipboardFillSeconds = std::clamp(readOrDefault(s, u"Launcher/ClipboardFill"_s, d.clipboardFillSeconds), 0, 60);
     numberKeys = readOrDefault(s, u"Results/NumberKeys"_s, d.numberKeys).trimmed().toLower();
@@ -1408,6 +1409,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/FavoriteTiles"_s, favoriteTiles);
     s.setValue(u"Launcher/ClearOnOpen"_s, clearOnOpen);
     s.setValue(u"Launcher/ReopenWhereLeft"_s, reopenWhereLeft);
+    s.setValue(u"Launcher/PinnedOnTop"_s, pinnedOnTop);
     s.setValue(u"Launcher/EnglishOnOpen"_s, englishOnOpen);
     s.setValue(u"Launcher/ClipboardFill"_s, clipboardFillSeconds);
     s.setValue(u"Results/NumberKeys"_s, numberKeys);
