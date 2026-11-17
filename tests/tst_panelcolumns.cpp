@@ -27,8 +27,13 @@ private slots:
         QVERIFY(!indexedFolderSize(index, first));
         QVERIFY(!indexedFolderSize(index, kNoEntry));
         QVERIFY(!indexedFolderSize(index, folder, [] { return true; }));
+        // A file with no size (written since, still open) is left out, not the whole folder (GitHub #364)...
         const auto unknown = index.add(nested, "unknown.txt", 0);
-        QVERIFY(!indexedFolderSize(index, folder));
+        QCOMPARE(indexedFolderSize(index, folder).value(), std::uint64_t(3072));
+        // ... unless nothing in it has one.
+        const auto alone = index.add(root, "alone", EntryFlag::Directory);
+        index.add(alone, "new.log", 0);
+        QVERIFY(!indexedFolderSize(index, alone));
         index.remove(unknown);
         index.remove(nested);
         QCOMPARE(indexedFolderSize(index, folder).value(), std::uint64_t(1024));

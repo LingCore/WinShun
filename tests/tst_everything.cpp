@@ -201,6 +201,8 @@ private slots:
         row("opus-folders", u"<\"C:\\a\\\" | \"D:\\\"> x y"_s, u"x y"_s, ev::Kind::Any, {u"C:\\a"_s, u"D:"_s});
         row("group-open", u"<\"C:\\a\\\" x"_s, QString(), ev::Kind::Any, {}, {}, u"<>"_s);
         row("root-word", u"root: abc"_s, u"abc"_s, ev::Kind::Any, {}, {}, u"root:"_s);
+        // Total Commander asks "?:" for the drives (GitHub #364): roots, as root: alone.
+        row("drives-word-and-more", u"?: abc"_s, u"abc"_s, ev::Kind::Any, {}, {}, u"root:"_s);
         row("size-not-group", u"size:<1kb"_s, u"size:<1kb"_s);
         row("empty", QString(), QString());
     }
@@ -329,6 +331,9 @@ private slots:
         QCOMPARE(paths(rows), (QStringList {u"C:"_s, u"D:"_s}));
         QVERIFY(rows.rows[0].root && rows.rows[0].folder && rows.rows[0].path.empty());
         QCOMPARE(rows.totalItems, 2u);
+        // Total Commander asks "?:" first: without the drives it asks no folder sizes (GitHub #364).
+        QCOMPARE(paths(found(ask(u"?:"_s))), (QStringList {u"C:"_s, u"D:"_s}));
+        QCOMPARE(paths(found(ask(u"*:"_s))), (QStringList {u"C:"_s, u"D:"_s}));
         rows = found(ask(u"<\"C:\\Work\\\" | \"D:\\\"> report"_s));
         QCOMPARE(paths(rows), (QStringList {u"C:\\Work\\Archive\\old report.pdf"_s, u"D:\\report.md"_s}));
         ev::Query regex = ask(u"^report\\.(md|txt)$"_s);

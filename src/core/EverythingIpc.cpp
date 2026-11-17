@@ -476,6 +476,12 @@ Search translate(const QString& text, std::uint32_t searchFlags)
         }
         if (consumed || word.isEmpty())
             continue;
+        // A name of one character and a colon: only a drive has one ("C:").
+        // Total Commander asks "?:" for the drives Everything has (GitHub #364).
+        if (!negated && (word == u"?:" || word == u"*:")) {
+            search.roots = true;
+            continue;
+        }
         if (const QString path = unquoted(word); !negated && isFolderPath(path)) {
             const QString folder = withoutEndSlash(path);
             if (!search.folders.contains(folder, Qt::CaseInsensitive))
