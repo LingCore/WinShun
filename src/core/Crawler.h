@@ -106,12 +106,16 @@ struct DirListing {
     std::vector<Item> items;
     std::wstring scratchPath; // a child's full path, while checking the rules
     std::vector<std::uint64_t> readBuffer; // raw directory reads
+    // The directory links (junctions, symbolic links, mount folders) among the
+    // children read from the disk, not gone into: their full paths (GitHub #364).
+    std::vector<std::wstring> links;
 
     void clear()
     {
         names.clear();
         wideNames.clear();
         items.clear();
+        links.clear();
     }
     std::string_view name(const Item& item) const { return {names.data() + item.offset, item.length}; }
     std::wstring_view wideName(const Item& item) const { return {wideNames.data() + item.wideOffset, item.wideLength}; }
@@ -150,6 +154,9 @@ public:
         std::size_t listed = 0; // folders read
         std::size_t failed = 0; // folders that could not be read (left as they were)
         std::size_t items = 0; // in the folders read
+        // The directory links met on the way, not gone into (GitHub #364: a
+        // walk finds them as reading the MFT does, GitHub #350).
+        std::vector<std::wstring> links;
     };
     bool sync(FileIndex& index, std::vector<Root> roots, int threads, bool lowPriority, std::stop_token stop,
         const Lister& list, std::vector<EntryId>* deferRemovals, SyncStats* stats) const;
@@ -170,6 +177,9 @@ public:
 
     static std::uint8_t attributeFlags(unsigned long attributes) noexcept;
     static bool shouldDescend(unsigned long attributes, unsigned long reparseTag) noexcept;
+    // A junction, symbolic link or mount folder: a folder standing for another
+    // (not a cloud placeholder, which is a reparse point too).
+    static bool isDirectoryLink(unsigned long attributes, unsigned long reparseTag) noexcept;
 
     const CrawlRules& rules() const noexcept { return m_rules; }
 
@@ -189,8 +199,9 @@ PathProbe probePath(const std::wstring& path);
 
 // Applies what a ChangeWatcher reported, a batch per write lock. New folders
 // are walked with `list` (the disk when empty). The caller keeps compaction
-// out meanwhile: new folders are walked by their entry ids.
+// out meanwhile: new folders are walked by their entry ids. The directory
+// links made go into `links`, when given (GitHub #364).
 void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const Crawler& crawler, std::stop_token stop,
-    const Crawler::Lister& list = {});
+    const Crawler::Lister& list = {}, std::vector<std::wstring>* links = nullptr);
 
 } // namespace ws

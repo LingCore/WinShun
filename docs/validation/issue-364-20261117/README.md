@@ -26,8 +26,16 @@ main，构建目录 `build/run-latest`（Release，Qt 6.12.0）。
 之前日志里一个链接都不写，用户那边出问题没法查。现在诊断里多了这几种记录（`IndexService::takeLinks`），都不记路径：
 - `directory-links`：读了哪些盘、找到几个链接、各结果的个数（`walked`、`disk-indexed`、`share-indexed`、`target-excluded`、`link-excluded`、`unreadable`、`no-volume`）。前 24 个链接各记一条：在哪个盘、指向哪个盘或哪种位置、盘的类型（`drive_type` 1 表示这里没有这个盘，比如管理员身份看不到的映射网络盘）、读不出来时的错误码、要跟进的能不能打开。日志里也写一行个数。
 - `directory-links-over-limit`：超过 256 个，没收的个数。
-- `directory-links-not-looked-for`：这些盘是遍历的（不是读主文件表），链接根本不会去找。
 
 本机以管理员身份跑 `tst_core directoryLinksFoundWithLiveMft directoryLinkTargets` 通过（`WINSHUN_TEST_REAL_VOLUMES=1`，另一块盘在 F:）。这个用例新加了检查：诊断里有 `walked`、`disk-indexed`、后来建的链接，跟进的那条指向 F:、能打开，整份记录里没有测试目录的名字。日志行：`directory links: 2 found, 1 to walk under the link ({"disk-indexed":1,"walked":1})`。
+
+## 遍历的磁盘也找链接
+
+以前只有读主文件表（管理员直读、索引服务）时才找链接，“遍历”方式建索引的盘、读主文件表失败退回遍历的盘，链接一个都不会自动收录。现在：
+- 遍历时碰到的链接（`Crawler::SyncStats::links`）和读主文件表找到的一样交给 `takeLinks`。
+- 之后新建的链接：监视器报的变化里有链接时（`applyChanges` 的 `links`），交给工作线程收录（`m_linksMade`）：正在跟日志的工作线程被唤醒，没有在跑的就起一轮。不能在监视器自己的线程里做：收录会改监视的范围，第一版这样写，测试卡死在那里。
+- 联接是先建文件夹、紧接着才设成链接（`mklink /j` 也是）：监视器在中间看到时会把它当普通文件夹走进去。走完再看一次，已经是链接的，走进去的内容撤掉、当链接处理。测试里实际碰到过这种情况。
+
+`tst_core directoryLinksFoundByWalking`（新加，不用管理员，要 `WINSHUN_TEST_OTHER_DISK_DIR`）：遍历模式下，指向 F: 的联接按链接路径收录，指向本盘的不重复收录；运行中新建的指向 F: 的联接也收录；诊断里有这两次记录。同改动相关的 34 个用例（监视、遍历、改名、选中的文件夹、网络共享等）和管理员身份的 3 个真实主文件表链接用例都通过；全部目标编译通过。
 
 没有覆盖：Windows 11 上的 TC；用户那台机器上的链接（指向哪里还不知道，已在 issue 里问）。

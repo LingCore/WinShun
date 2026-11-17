@@ -3665,6 +3665,77 @@ private slots:
         qInfo("Live %s: links found in the MFT and the journal, remembered", pipe.isEmpty() ? "direct" : "service");
     }
 
+    // GitHub #364: a disk walked (no way to its MFT) finds its directory
+    // links too, during the walk and as they are made. Needs no elevation.
+    void directoryLinksFoundByWalking()
+    {
+        const QString otherDisk = qEnvironmentVariable("WINSHUN_TEST_OTHER_DISK_DIR");
+        if (otherDisk.isEmpty())
+            QSKIP("Set WINSHUN_TEST_OTHER_DISK_DIR to a folder on another disk than %TEMP%");
+        QTemporaryDir tree;
+        QTemporaryDir store;
+        QTemporaryDir elsewhere(otherDisk + u"/links-XXXXXX"_s);
+        QVERIFY(tree.isValid() && store.isValid() && elsewhere.isValid());
+        MadeLinks made;
+        QVERIFY(makeScopeTree(tree.path()));
+        const QString t = QDir::toNativeSeparators(tree.path());
+        const QString away = QDir::toNativeSeparators(elsewhere.path());
+        QVERIFY(away.left(2).compare(t.left(2), Qt::CaseInsensitive) != 0);
+        QVERIFY(QDir(away).mkpath(u"later"_s));
+        for (const QString& file : {u"away.txt"_s, u"later/later.txt"_s}) {
+            QFile f(QDir(away).filePath(file));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        }
+        const QString alias = made << t + u"\\docs\\远处"_s;
+        QVERIFY(makeJunction(alias, away));
+        const QString nearby = made << t + u"\\docs\\近处"_s;
+        QVERIFY(makeJunction(nearby, t + u"\\other"_s)); // on the disk indexed: found where it is
+
+        QTemporaryDir profile;
+        diagnostics::initialize(profile.path());
+        const auto disableLog = qScopeGuard([] { diagnostics::initialize({}); });
+        // The other disk is not chosen, and not excluded (a whole drive excluded
+        // is not to be reached through a link either).
+        auto rules = branchRules(t);
+        std::erase_if(rules.excludedPaths, [&](const std::wstring& p) { return win32::equalsIgnoreCase(p, away.left(2).toStdWString()); });
+        auto options = walkedOptions(std::nullopt, rules);
+        options.selectedDrives = std::vector<std::wstring>{t.left(2).toStdWString()};
+        IndexService service(store.path(), options);
+        service.start();
+        QTRY_VERIFY_WITH_TIMEOUT(allReady(service), 60'000);
+        QTRY_VERIFY_WITH_TIMEOUT(indexedIn(service, alias + u"\\away.txt"_s), 20'000);
+        QVERIFY(indexedIn(service, alias + u"\\later\\later.txt"_s));
+        QVERIFY(!indexedIn(service, away + u"\\away.txt"_s));
+        QVERIFY(!indexedIn(service, nearby + u"\\o.txt"_s));
+        // One made since, seen by the volume's watcher.
+        const QString later = made << t + u"\\pics\\后来"_s;
+        QVERIFY(makeJunction(later, away + u"\\later"_s));
+        QTRY_VERIFY_WITH_TIMEOUT(indexedIn(service, later + u"\\later.txt"_s), 30'000);
+        service.shutdown();
+
+        QFile events(QDir(profile.path()).filePath(u"diagnostics/events.jsonl"_s));
+        QVERIFY(events.open(QIODevice::ReadOnly | QIODevice::Text));
+        const QByteArray text = events.readAll();
+        QVERIFY2(!text.contains(QDir(tree.path()).dirName().toUtf8()), "a path in the diagnostics");
+        bool walkedRead = false;
+        bool madeSince = false;
+        for (const QByteArray& line : text.split('\n')) {
+            const QJsonObject entry = QJsonDocument::fromJson(line).object();
+            if (entry.value(u"event"_s).toString() != u"directory-links"_s)
+                continue;
+            const QJsonObject details = entry.value(u"details"_s).toObject();
+            const QJsonObject results = details.value(u"results"_s).toObject();
+            if (details.value(u"made_since"_s).toBool())
+                madeSince = madeSince || results.value(u"walked"_s).toInteger() == 1;
+            else
+                walkedRead = walkedRead
+                    || (details.value(u"read"_s).toArray().contains(t.left(2)) && results.value(u"walked"_s).toInteger() == 1
+                        && results.value(u"disk-indexed"_s).toInteger() == 1);
+        }
+        QVERIFY2(walkedRead && madeSince, text.constData());
+        QVERIFY(!text.contains("directory-links-not-looked-for"));
+    }
+
     void chosenFoldersOnly()
     {
         QTemporaryDir tree;

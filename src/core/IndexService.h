@@ -9,6 +9,7 @@
 #include "Ntfs.h"
 #include "RemoteContent.h"
 #include "ShareIndexer.h"
+#include "Win32Util.h"
 
 #include <QObject>
 #include <QString>
@@ -379,6 +380,8 @@ private:
     // Worker thread: the links found on the volumes `read` (roots) replace
     // what was known of them; those not seen before are walked (`walkNow`)
     // or left to the walk of the pass under way. True when that changed.
+    // Worker thread: the links onChanges told of (m_linksMade), taken as made since.
+    void takeLinksMade(std::stop_token stop);
     bool takeLinks(std::stop_token stop, const std::vector<std::wstring>& read, const std::vector<std::wstring>& found,
         bool walkNow);
     std::unique_ptr<Followed> follow(std::size_t volume);
@@ -506,6 +509,11 @@ private:
     LostEventsBackoff m_lostBackoff; // GUI thread
     QTimer m_verifyTimer; // verifyDueFolders
     std::atomic<bool> m_running {false}; // a worker pass is under way (from launch() to ranOut())
+    // GitHub #364: directory links made on a walked volume, told by the
+    // watcher's thread (onChanges), taken by the worker's (takeLinksMade):
+    // guarded by m_journalMutex; m_linksWake wakes a worker following journals.
+    std::vector<std::wstring> m_linksMade;
+    win32::UniqueHandle m_linksWake {::CreateEventW(nullptr, FALSE, FALSE, nullptr)};
     mutable std::mutex m_foldersMutex;
     std::vector<FolderStatus> m_folderStatus; // folderStatuses(); guarded by m_foldersMutex
     bool m_stopped = false;

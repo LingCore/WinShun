@@ -329,9 +329,13 @@ bool Crawler::shouldDescend(unsigned long attributes, unsigned long reparseTag) 
         return false;
     // Junctions, symlinks and mount points would index things twice or loop.
     // Cloud-sync folders (OneDrive) are reparse points too, but not surrogates.
-    if ((attributes & FILE_ATTRIBUTE_REPARSE_POINT) && IsReparseTagNameSurrogate(reparseTag))
-        return false;
-    return true;
+    return !isDirectoryLink(attributes, reparseTag);
+}
+
+bool Crawler::isDirectoryLink(unsigned long attributes, unsigned long reparseTag) noexcept
+{
+    return (attributes & FILE_ATTRIBUTE_DIRECTORY) && (attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+        && IsReparseTagNameSurrogate(reparseTag);
 }
 
 namespace {
@@ -471,10 +475,14 @@ bool Crawler::listDirectory(const Root& dir, DirListing& out) const
             const std::wstring_view name(info->FileName, info->FileNameLength / sizeof(wchar_t));
             if (name != L"." && name != L"..") {
                 // For reparse points, EaSize holds the reparse tag.
+                const std::size_t before = out.items.size();
                 addToListing(out, dir, {}, name, attributeFlags(info->FileAttributes),
                     shouldDescend(info->FileAttributes, info->EaSize), recordNumber(info->FileId),
                     fileTimeOf(info->LastWriteTime.QuadPart), packSize(static_cast<std::uint64_t>(info->EndOfFile.QuadPart)),
                     fileTimeOf(info->CreationTime.QuadPart));
+                // Kept (not excluded): scratchPath is its full path.
+                if (out.items.size() > before && isDirectoryLink(info->FileAttributes, info->EaSize))
+                    out.links.push_back(out.scratchPath);
             }
             if (info->NextEntryOffset == 0)
                 break;
@@ -693,6 +701,10 @@ bool Crawler::sync(FileIndex& index, std::vector<Root> roots, int threads, bool 
                 --shared.busy;
                 ++(listed ? shared.stats.listed : shared.stats.failed);
                 shared.stats.items += listed ? listing.items.size() : 0;
+                if (listed && stats) {
+                    for (std::wstring& link : listing.links)
+                        shared.stats.links.push_back(std::move(link));
+                }
             }
             subdirs.clear();
             shared.cv.notify_all();
@@ -753,7 +765,7 @@ bool isUnder(std::wstring_view path, std::wstring_view dir)
 } // namespace
 
 void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const Crawler& crawler, std::stop_token stop,
-    const Crawler::Lister& list)
+    const Crawler::Lister& list, std::vector<std::wstring>* links)
 {
     using Kind = FsChange::Kind;
     // Written to (GitHub #114: a share's watcher tells of writes): a file's
@@ -831,6 +843,8 @@ void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const 
                 index.setSize(id, p.size);
                 if (Crawler::shouldDescend(p.attributes, p.reparseTag))
                     newDirs.push_back({id, path, static_cast<std::uint8_t>(flags & EntryFlag::Inherited)});
+                else if (links && Crawler::isDirectoryLink(p.attributes, p.reparseTag))
+                    links->push_back(path);
             };
 
             const auto movePath = [&](const std::wstring& from, const std::wstring& to) {
@@ -890,8 +904,32 @@ void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const 
             }
         }
 
-        if (!newDirs.empty())
-            crawler.sync(index, std::move(newDirs), 1, !list, stop, list);
+        if (!newDirs.empty()) {
+            std::vector<std::pair<EntryId, std::wstring>> made;
+            if (!list) {
+                for (const Crawler::Root& dir : newDirs)
+                    made.emplace_back(dir.id, dir.path);
+            }
+            // A folder moved in or copied may hold links too.
+            Crawler::SyncStats stats;
+            crawler.sync(index, std::move(newDirs), 1, !list, stop, list, nullptr, links ? &stats : nullptr);
+            if (links)
+                links->insert(links->end(), std::make_move_iterator(stats.links.begin()), std::make_move_iterator(stats.links.end()));
+            // A junction is a folder first and a link a moment later (mklink
+            // /j): seen in between, it was gone into. What came through it
+            // goes, and it is a link (GitHub #364).
+            for (const auto& [id, path] : made) {
+                if (const PathProbe p = probePath(path); Crawler::isDirectoryLink(p.attributes, p.reparseTag)) {
+                    {
+                        auto lock = index.writeLock();
+                        if (id < index.slotCount() && !index.scan(id).isDeleted() && index.scan(id).isDir())
+                            removeChildren(index, id, Remover {index, nullptr});
+                    }
+                    if (links)
+                        links->push_back(path);
+                }
+            }
+        }
         i = end;
     }
 }

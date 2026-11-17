@@ -1177,7 +1177,7 @@ void IndexService::ranOut()
 {
     const bool owed = passOver(m_running, [this] {
         std::lock_guard lock(m_journalMutex);
-        return !m_verifyOwed.empty();
+        return !m_verifyOwed.empty() || !m_linksMade.empty();
     });
     if (owed) // asked for after this pass's walks were done
         QMetaObject::invokeMethod(this, [this] { walkOwedFolders(); }, Qt::QueuedConnection);
@@ -2082,17 +2082,17 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
         std::vector<std::wstring> walked;
         for (const Crawler::Root& w : walks)
             walked.push_back(w.path);
-        // A walk passes directory links by and does not look for them: the
-        // links on these disks are not found (GitHub #350), say so (#364).
-        QJsonArray walkedRoots;
-        for (const std::wstring& root : walked)
-            walkedRoots.append(QString::fromStdWString(root)); // a volume's root: "D:"
-        diagnostics::record(u"directory-links-not-looked-for"_s, {{u"walked"_s, walkedRoots}});
         for (const std::wstring& root : walked)
             setReading(root, true);
-        completed = crawler->sync(*index, std::move(walks), crawlThreads(), !firstBuild, stop);
+        // The directory links the walk passes by, as the MFT's (GitHub #364).
+        Crawler::SyncStats walkStats;
+        completed = crawler->sync(*index, std::move(walks), crawlThreads(), !firstBuild, stop, {}, nullptr, &walkStats);
         for (const std::wstring& root : walked)
             setReading(root, false);
+        if (completed) {
+            linksRead.insert(linksRead.end(), walked.begin(), walked.end());
+            links.insert(links.end(), std::make_move_iterator(walkStats.links.begin()), std::make_move_iterator(walkStats.links.end()));
+        }
     }
 
     // A disk-wide walk or MFT refresh intentionally skips directory links.
@@ -2123,9 +2123,10 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
         auto lock = index->writeLock();
         index->setInterning(false); // frees the lookup table
     }
+    std::vector<std::wstring> linksMade; // in what is replayed (GitHub #364)
     {
         std::lock_guard lock(m_journalMutex);
-        applyChanges(*index, m_journal, *crawler, m_shutdown.get_token()); // replay what changed on watched volumes during the walk
+        applyChanges(*index, m_journal, *crawler, m_shutdown.get_token(), {}, &linksMade); // replay what changed on watched volumes during the walk
         m_journal = decltype(m_journal)(); // releases the capacity, unlike `= {}`
         m_journaling = false;
         for (const std::size_t i : which) {
@@ -2150,6 +2151,8 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
     setRefreshing(false);
     if (!completed)
         return false; // stopped: a half-built index is never marked ready or saved
+    if (!linksMade.empty() && !this->scope()->set())
+        takeLinks(stop, {}, linksMade, true);
 
     // Removed items, and names the MFT read stored for excluded folders.
     compactIfWasteful(readMft.load());
@@ -2477,6 +2480,7 @@ void IndexService::followJournals(
     const auto walkAt = std::chrono::steady_clock::now() + std::chrono::milliseconds(m_options.rescanDelayMs);
 
     while (!stop.stop_requested()) {
+        takeLinksMade(stop); // GitHub #364: made on a walked volume since
         std::erase(followed, nullptr);
         if (followed.empty() && walkLater.empty())
             return; // nothing to follow; the watcher thread handles walked volumes
@@ -2484,7 +2488,7 @@ void IndexService::followJournals(
         auto wakeAt = std::chrono::steady_clock::time_point::max();
         if (!walkLater.empty())
             wakeAt = walkAt;
-        std::vector<HANDLE> handles {stopEvent.get()};
+        std::vector<HANDLE> handles {stopEvent.get(), m_linksWake.get()};
         for (auto& f : followed) {
             if (!f->reading && f->resumeAt <= now) {
                 f->reader->start(f->usn, true); // completes once there is something new
@@ -2624,7 +2628,7 @@ void IndexService::onChanges(std::vector<FsChange>&& changes)
     }
     std::erase_if(changes, [&](const FsChange& c) { return c.kind == Kind::Overflow || crawler->isExcludedPath(c.path); });
 
-    std::lock_guard lock(m_journalMutex);
+    std::unique_lock lock(m_journalMutex);
     if (!owed.empty()) {
         for (const std::wstring& f : owed) {
             if (!contains(m_overflowed, f))
@@ -2650,8 +2654,29 @@ void IndexService::onChanges(std::vector<FsChange>&& changes)
         }
         return;
     }
-    applyChanges(*m_index.load(), changes, *crawler, m_shutdown.get_token());
+    std::vector<std::wstring> links; // made since, on a volume walked (GitHub #364)
+    applyChanges(*m_index.load(), changes, *crawler, m_shutdown.get_token(), {}, &links);
     m_dirty = true;
+    if (links.empty() || scope->set())
+        return;
+    // Not here: walking them changes what is watched (ensureWatcher), which
+    // the worker's thread does. One following journals wakes for them; with
+    // none running, a pass is started that takes them (ranOut, followJournals).
+    m_linksMade.insert(m_linksMade.end(), std::make_move_iterator(links.begin()), std::make_move_iterator(links.end()));
+    lock.unlock();
+    ::SetEvent(m_linksWake.get());
+    QMetaObject::invokeMethod(this, [this] { walkOwedFolders(); }, Qt::QueuedConnection);
+}
+
+void IndexService::takeLinksMade(std::stop_token stop)
+{
+    std::vector<std::wstring> links;
+    {
+        std::lock_guard lock(m_journalMutex);
+        links.swap(m_linksMade);
+    }
+    if (!links.empty() && !scope()->set())
+        takeLinks(stop, {}, links, true);
 }
 
 void IndexService::saveSnapshot(bool wait)
