@@ -338,7 +338,9 @@ public:
     Q_ENUM(Action)
     // The first three as ws::RankBy and ws::StartList; the rest are a
     // ws::SortOrder over the names (#44), the content matches staying as ranked.
-    enum Sort { BestMatch, NewestFirst, OldestFirst, ByName, ByFolder, ByType, LargestFirst, SmallestFirst };
+    // MostOpened: by how many times each was opened from Win顺 (History's
+    // count, no fading with time), the rest as best matched (showRows).
+    enum Sort { BestMatch, NewestFirst, OldestFirst, ByName, ByFolder, ByType, LargestFirst, SmallestFirst, MostOpened };
     Q_ENUM(Sort)
     enum StartList { RecentlyOpened, RecentlyModified, NoStartList }; // none: only the favorites
     Q_ENUM(StartList)
@@ -1045,6 +1047,7 @@ private:
     void sortShownPanel(const QString& currentPath = {});
     QString panelKey() const;
     bool showsStartList() const; // nothing typed, and a list for it
+    bool byOpenCount() const; // 打开最多 in force: typed, not the panel nor a command
     QString contentNeedle() const;
     QString shownExtensions() const;
     void startContentSearch();
@@ -1236,6 +1239,7 @@ private:
     Scope m_shownScope = All;
     RankBy m_shownRankBy = RankBy::Match;
     SortOrder m_shownOrder;
+    Sort m_shownSort = BestMatch;
     StartList m_shownStartList = RecentlyOpened;
     KindOrder m_shownKindOrder = KindOrder::FilesFirst;
     QStringList m_shownPreferredTypes;

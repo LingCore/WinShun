@@ -237,6 +237,15 @@ History::Affinities History::affinities(const QString& query, qint64 now) const
     return out;
 }
 
+History::Affinities History::counts() const
+{
+    Affinities out;
+    out.reserve(m_uses.size());
+    for (auto it = m_uses.cbegin(); it != m_uses.cend(); ++it)
+        out.insert(it.key(), Affinity {3, static_cast<double>(std::max(it->use.count, 1)), it->use.last});
+    return out;
+}
+
 QStringList History::ranked(const QString& query, qint64 now) const
 {
     const QString text = normalize(query);

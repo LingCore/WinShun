@@ -69,6 +69,9 @@ public:
     // items() again, newest first, when nothing is typed.
     QStringList ranked(const QString& query, qint64 now) const;
     Affinities affinities(const QString& query, qint64 now) const;
+    // Every path by how many times it was opened, whatever was typed and
+    // however long ago (the sort 打开最多): all learned, so they come first.
+    Affinities counts() const;
     static Affinity affinity(const Affinities& affinities, const QString& path);
     // A text as it is kept and compared: no case, no filters (size:, dm:,
     // ext:) and no folder to look in (abc/), spaces as one, up to 64 characters.

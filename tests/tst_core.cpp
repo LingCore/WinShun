@@ -11133,13 +11133,13 @@ private slots:
         constexpr qint64 now = 1'800'000'000'000;
         SearchEngine engine(&service, &apps, &catalog);
         QSignalSpy spy(&engine, &SearchEngine::resultsReady);
-        const auto search = [&](const QString& text, int limit = 20) {
+        const auto search = [&](const QString& text, int limit = 20, bool byCount = false) {
             SearchEngine::Request request;
             request.text = text;
             request.scope = Scope::All;
             request.limit = limit;
             request.history = history.ranked(text, now);
-            request.historyAffinity = history.affinities(text, now);
+            request.historyAffinity = byCount ? history.counts() : history.affinities(text, now);
             spy.clear();
             engine.submit(std::move(request));
             if (spy.isEmpty() && !spy.wait(5000))
@@ -11165,12 +11165,16 @@ private slots:
         for (int i = 0; i < 3; ++i)
             history.record(app.launchPath(), u"port"_s, now - 3 + i);
         QCOMPARE(search(u"port"_s).value(0).path, app.launchPath());
+        // 打开最多: by the count alone, not by what was opened lately.
+        QCOMPARE(search(u"port"_s, 20, true).value(0).path, portable);
 
         History restored(dir.filePath(u"history.txt"_s));
         restored.load();
         QCOMPARE(History::affinity(restored.affinities(u"port"_s, now), portable).group, 0);
         QVERIFY(History::affinity(restored.affinities(u"port"_s, now), portable).learned());
         QVERIFY(!History::affinity(restored.affinities(u"port"_s, now + 140LL * 86'400'000), portable).learned());
+        QCOMPARE(History::affinity(restored.counts(), portable).weight, 100.0); // never fades
+        QCOMPARE(History::affinity(restored.counts(), app.launchPath()).weight, 3.0);
     }
 
     void entityPreferenceAcrossChineseAndPinyin()

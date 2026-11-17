@@ -299,12 +299,12 @@ Item {
     }
 
     // The sorts the chips have no room for (Launcher.Sort from ByName on).
-    readonly property var sortLabels: [qsTr("名称"), qsTr("所在文件夹"), qsTr("类型"), qsTr("大的在前"), qsTr("小的在前")]
+    readonly property var sortLabels: [qsTr("名称"), qsTr("所在文件夹"), qsTr("类型"), qsTr("大的在前"), qsTr("小的在前"), qsTr("打开最多")]
     readonly property var compactSortLabels: atStart ? [qsTr("最近打开"), qsTr("最近修改")]
         : [qsTr("最匹配"), qsTr("最新"), qsTr("最早")].concat(sortLabels)
     // On the chip the short word, so a long name does not push the key hints
     // out of the bar (#44); the menu has the full ones.
-    readonly property var sortChipLabels: [qsTr("名称"), qsTr("文件夹"), qsTr("类型"), qsTr("大在前"), qsTr("小在前")]
+    readonly property var sortChipLabels: [qsTr("名称"), qsTr("文件夹"), qsTr("类型"), qsTr("大在前"), qsTr("小在前"), qsTr("常打开")]
     readonly property bool moreSorts: launcher.sort >= Launcher.ByName
 
     DropMenu {

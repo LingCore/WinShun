@@ -31,9 +31,9 @@ inline double roundedSizeMB(double mb)
 
 // The orders of the results (Settings::sort), in Launcher::Sort's order:
 // best match, newest, oldest, then by name, by the folder each is in, by
-// type, largest first, smallest first (GitHub #44).
+// type, largest first, smallest first (GitHub #44), the most opened first.
 inline constexpr QStringView kSortNames[] {
-    u"match", u"newest", u"oldest", u"name", u"folder", u"type", u"largest", u"smallest"};
+    u"match", u"newest", u"oldest", u"name", u"folder", u"type", u"largest", u"smallest", u"opened"};
 
 inline bool isSortName(QStringView name)
 {

@@ -6051,7 +6051,8 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     const SortCase sorts[]{{Launcher::BestMatch, SortKey::Rank, false}, {Launcher::NewestFirst, SortKey::Modified, true},
         {Launcher::OldestFirst, SortKey::Modified, false}, {Launcher::ByName, SortKey::Name, false},
         {Launcher::ByFolder, SortKey::Path, false}, {Launcher::ByType, SortKey::Type, false},
-        {Launcher::LargestFirst, SortKey::Size, true}, {Launcher::SmallestFirst, SortKey::Size, false}};
+        {Launcher::LargestFirst, SortKey::Size, true}, {Launcher::SmallestFirst, SortKey::Size, false},
+        {Launcher::MostOpened, SortKey::Rank, false}};
     for (const auto& test : sorts) {
         launcher.setPanel(false);
         launcher.setSort(test.sort);

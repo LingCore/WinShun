@@ -4142,10 +4142,10 @@ Window {
                 SettingRow {
                     id: sortRow
                     title: qsTr("排序")
-                    keywords: qsTr("排序;修改时间;修改日期;最新;最早;名称;文件名;所在文件夹;目录;类型;扩展名;大小;升序;降序;sort;date;size;type").split(";")
+                    keywords: qsTr("排序;修改时间;修改日期;最新;最早;名称;文件名;所在文件夹;目录;类型;扩展名;大小;升序;降序;次数;打开次数;运行次数;最常用;sort;date;size;type;count").split(";")
                     description: qsTr("文件和文件夹怎么排（“全部”里应用和设置仍在前面）；底栏左边也能切换（Ctrl+S 在前三种里轮换）")
 
-                    readonly property var sorts: ["match", "newest", "oldest", "name", "folder", "type", "largest", "smallest"]
+                    readonly property var sorts: ["match", "newest", "oldest", "name", "folder", "type", "largest", "smallest", "opened"]
                     readonly property int chosen: sorts.indexOf(window.editor.sort)
 
                     ScopeTabs {
@@ -4157,7 +4157,7 @@ Window {
                     // Too many for one line (#44): the other orders under the first.
                     body: [
                         ScopeTabs {
-                            labels: [qsTr("名称"), qsTr("所在文件夹"), qsTr("类型"), qsTr("大的在前"), qsTr("小的在前")]
+                            labels: [qsTr("名称"), qsTr("所在文件夹"), qsTr("类型"), qsTr("大的在前"), qsTr("小的在前"), qsTr("打开最多")]
                             current: sortRow.chosen - 3 // below 0 while one of the three above is in force
                             onActivated: (index) => window.editor.sort = sortRow.sorts[index + 3]
                         }

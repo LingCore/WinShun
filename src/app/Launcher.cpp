@@ -61,7 +61,9 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <limits>
 #include <mutex>
+#include <numeric>
 #include <thread>
 
 using namespace Qt::StringLiterals;
@@ -1942,6 +1944,7 @@ SortOrder Launcher::nameOrder() const
     case BestMatch:
     case NewestFirst:
     case OldestFirst:
+    case MostOpened:
         break;
     }
     return {};
@@ -2455,7 +2458,8 @@ void Launcher::search(bool more)
     // The folder typed in, first or alone (typingKey), is a list of its own too.
     m_refresh = m_haveResults && !m_replacePending && text == m_shownText && m_scope == m_shownScope
         && fileExtensions() == m_shownExtensions && fileTypeFolders() == m_shownTypeFolders
-        && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && m_kindOrder == m_shownKindOrder
+        && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && (m_panel || m_sort == m_shownSort)
+        && m_kindOrder == m_shownKindOrder
         && m_preferredTypes == m_shownPreferredTypes && keywordKey == m_shownKeyword
         && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick))
         && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey
@@ -2617,7 +2621,7 @@ void Launcher::search(bool more)
     if (m_recordHistory && !(text.isEmpty() && m_startList == NoStartList)) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         request.history = m_history->ranked(text, now);
-        request.historyAffinity = m_history->affinities(text, now);
+        request.historyAffinity = byOpenCount() ? m_history->counts() : m_history->affinities(text, now);
     }
     request.web = m_web;
     request.apps = m_searchApps;
@@ -2649,8 +2653,34 @@ void Launcher::search(bool more)
 
 // Rows for the current query and scope. Replacing another query's rows
 // moves the selection back to the first one; a refresh keeps it.
+bool Launcher::byOpenCount() const
+{
+    return m_sort == MostOpened && !m_panel && !m_keyword && !searchText().isEmpty();
+}
+
 void Launcher::showRows(SearchResults rows, QStringList highlights)
 {
+    // 打开最多: the rows opened most often first, each by its own count; a
+    // status row and a keyword typed (a site's) stay first, the rest
+    // (never opened) as best matched.
+    if (byOpenCount() && m_recordHistory) {
+        const auto count = [&](const SearchResult& r) {
+            // 1000: a typed keyword's row (SearchEngine's kTypedKeywordScore)
+            return r.statusRow || r.score >= 1000 ? std::numeric_limits<int>::max() : m_history->use(r.path).count;
+        };
+        std::vector<int> counts;
+        counts.reserve(rows.size());
+        for (const SearchResult& r : rows)
+            counts.push_back(count(r));
+        std::vector<qsizetype> order(rows.size());
+        std::iota(order.begin(), order.end(), 0);
+        std::ranges::stable_sort(order, [&](qsizetype a, qsizetype b) { return counts[a] > counts[b]; });
+        SearchResults sorted;
+        sorted.reserve(rows.size());
+        for (const qsizetype i : order)
+            sorted.append(std::move(rows[i]));
+        rows = std::move(sorted);
+    }
     if (rows.isEmpty()) {
         if (std::optional<SearchResult> web = webFallbackRow())
             rows.append(std::move(*web)); // Enter looks the words up instead of 没有找到 (GitHub #320)
@@ -2711,6 +2741,7 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
     m_shownTypeFolders = fileTypeFolders();
     m_shownRankBy = rankBy();
     m_shownOrder = nameOrder();
+    m_shownSort = m_sort;
     m_shownStartList = m_startList;
     m_shownKindOrder = m_kindOrder;
     m_shownPreferredTypes = m_preferredTypes;
@@ -2799,7 +2830,7 @@ void Launcher::searchSuggestedPaths()
     if (m_recordHistory) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         request.history = m_history->ranked(request.text, now);
-        request.historyAffinity = m_history->affinities(request.text, now);
+        request.historyAffinity = byOpenCount() ? m_history->counts() : m_history->affinities(request.text, now);
     }
     m_requestId = m_engine->submit(std::move(request));
     m_nameRequestId = m_requestId;

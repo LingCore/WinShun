@@ -531,7 +531,8 @@ std::vector<Entry> buildCatalog()
             {u"folder"_s, u"by the folder each is in, A to Z"_s, QT_TRANSLATE_NOOP("AiSettings", "按所在文件夹")},
             {u"type"_s, u"by file type (extension), then name"_s, QT_TRANSLATE_NOOP("AiSettings", "按类型")},
             {u"largest"_s, u"largest files first"_s, QT_TRANSLATE_NOOP("AiSettings", "大的在前")},
-            {u"smallest"_s, u"smallest files first"_s, QT_TRANSLATE_NOOP("AiSettings", "小的在前")}}));
+            {u"smallest"_s, u"smallest files first"_s, QT_TRANSLATE_NOOP("AiSettings", "小的在前")},
+            {u"opened"_s, u"most opened from WinShun first (by count), the rest best match"_s, QT_TRANSLATE_NOOP("AiSettings", "打开最多的在前")}}));
     {
         Entry& e = add(boolean({"Results/FoldersFirst", QT_TRANSLATE_NOOP("AiSettings", "文件夹排在文件前面"), "results", 0,
                                    "全部 and 文件 list the folders found before the files (else after)."},
