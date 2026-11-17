@@ -10,6 +10,7 @@
 #include "platform/ComWorker.h"
 #include "platform/ExternalPreview.h"
 #include "platform/PreviewHost.h"
+#include "VideoView.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -23,7 +24,9 @@
 #include <QtMath>
 
 #include <windows.h>
+#include <propkey.h>
 #include <propvarutil.h>
+#include <shobjidl.h>
 #include <shellapi.h>
 #include <shlwapi.h>
 #include <wincodec.h>
@@ -82,6 +85,45 @@ bool isPicture(const QString& suffix)
 bool isDrawn(const QString& suffix)
 {
     return suffix == u"ai" || suffix == u"psd" || suffix == u"psb";
+}
+
+// Videos Media Foundation opens with what Windows has (MP4, MOV, MKV, AVI,
+// WMV, MPEG transport streams; WebM with the VP9 extension): played in the
+// preview (VideoView). One whose codec this PC lacks says so there.
+bool isVideo(const QString& suffix)
+{
+    static const QStringList kTypes {u"mp4"_s, u"m4v"_s, u"mov"_s, u"mkv"_s, u"webm"_s, u"avi"_s, u"wmv"_s, u"asf"_s,
+        u"3gp"_s, u"3g2"_s, u"ts"_s, u"mts"_s, u"m2ts"_s};
+    return kTypes.contains(suffix);
+}
+
+// A video's frame size and length (100 ns units) as the shell's property
+// system knows them (its own handlers read the file's header); none: 0.
+struct VideoProps {
+    QSize size;
+    qint64 duration = 0;
+};
+VideoProps videoProps(const std::wstring& path)
+{
+    VideoProps props;
+    Microsoft::WRL::ComPtr<IShellItem2> item;
+    if (FAILED(::SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&item))))
+        return props;
+    ULONG width = 0;
+    ULONG height = 0;
+    if (SUCCEEDED(item->GetUInt32(PKEY_Video_FrameWidth, &width)) && SUCCEEDED(item->GetUInt32(PKEY_Video_FrameHeight, &height)))
+        props.size = QSize(static_cast<int>(width), static_cast<int>(height));
+    ULONGLONG duration = 0;
+    if (SUCCEEDED(item->GetUInt64(PKEY_Media_Duration, &duration)))
+        props.duration = static_cast<qint64>(duration);
+    return props;
+}
+
+QString durationText(qint64 hundredNs)
+{
+    const qint64 seconds = (hundredNs + 5'000'000) / 10'000'000;
+    return seconds >= 3600 ? u"%1:%2:%3"_s.arg(seconds / 3600).arg(seconds / 60 % 60, 2, 10, QChar(u'0')).arg(seconds % 60, 2, 10, QChar(u'0'))
+                           : u"%1:%2"_s.arg(seconds / 60).arg(seconds % 60, 2, 10, QChar(u'0'));
 }
 
 // Text whatever handler a program may have put on it (an editor's, a web
@@ -353,7 +395,7 @@ void FilePreview::setLauncherWindow(QWindow* launcher)
     m_relayout.setInterval(0);
     connect(&m_relayout, &QTimer::timeout, this, [this] {
         if (m_open && !m_external && m_window && m_window->isVisible() && m_kind != Loading)
-            showWindow(m_kind == Picture ? m_imageSize : QSize());
+            showWindow(m_kind == Picture || m_kind == Video ? m_imageSize : QSize());
     });
     for (auto signal : {&QWindow::xChanged, &QWindow::yChanged, &QWindow::widthChanged, &QWindow::heightChanged})
         connect(launcher, signal, &m_relayout, qOverload<>(&QTimer::start));
@@ -690,6 +732,23 @@ void FilePreview::load(const Item& item, bool followed)
                                  : QCoreApplication::translate("ws::FilePreview", "%1 个文件夹，%2 个文件").arg(folders).arg(files);
                 summary.insert(1, holds);
                 fact(QCoreApplication::translate("ws::FilePreview", "包含"), holds);
+            } else if (!cloudOnly && isVideo(suffix) && VideoView::available()) {
+                // Played in the window (VideoView, from the path); here its
+                // size for the window's, its length, and a first picture
+                // (the shell's thumbnail) until the video's own is up.
+                step("its size and length (the shell)");
+                const VideoProps props = videoProps(native);
+                loaded->kind = Video;
+                loaded->imageSize = props.size;
+                if (!props.size.isEmpty())
+                    summary.insert(1, u"%1 × %2"_s.arg(props.size.width()).arg(props.size.height()));
+                if (props.duration > 0)
+                    summary.insert(1, durationText(props.duration));
+                if (!stale()) {
+                    step("its thumbnail (the shell)");
+                    loaded->image = FileIconProvider::largeImage(item.path, kThumbnailPx);
+                }
+                done = true;
             } else if (!cloudOnly && isPicture(suffix)) {
                 step("decoding the picture");
                 QSize original;
@@ -825,7 +884,7 @@ void FilePreview::apply(quint64 generation, std::shared_ptr<Loaded> loaded)
     m_imageUrl = loaded->image.isNull() ? QString() : u"image://%1/%2"_s.arg(m_imageScheme, id);
     m_images->set(id, std::move(loaded->image));
     QSize wanted;
-    if (m_kind == Picture)
+    if (m_kind == Picture || m_kind == Video)
         wanted = m_imageSize;
     showWindow(wanted);
     emit contentChanged();
@@ -899,6 +958,15 @@ QRect FilePreview::placeBeside(QSize wanted)
         want = QSize(820, std::clamp(kHeader + kPad + m_textRows * line, 280, tallest * 85 / 100));
         break;
     }
+    case Video:
+        // Its own size, but no larger than this (a 4K one is not a wall of a
+        // window); its proportions (fit) as a picture's. Not known: 16:9.
+        if (wanted.isEmpty())
+            wanted = QSize(16, 9) * 60 * screen->devicePixelRatio();
+        wanted = wanted.scaled(wanted.boundedTo(QSize(960, 600) * screen->devicePixelRatio()), Qt::KeepAspectRatio);
+        want = QSize(std::max(360, qCeil(wanted.width() / screen->devicePixelRatio()) + kPad),
+            std::max(280, qCeil(wanted.height() / screen->devicePixelRatio()) + kPad + kHeader));
+        break;
     case Handler: want = QSize(900, tallest * 90 / 100); break;
     case Loading:
         if (m_window && m_window->isVisible())
@@ -912,7 +980,7 @@ QRect FilePreview::placeBeside(QSize wanted)
     // is not as tall either: no bands of nothing above and below it).
     const auto fit = [&](QSize room) {
         const QSize bounded = want.boundedTo(room).expandedTo(QSize(std::min(360, room.width()), std::min(280, room.height())));
-        if (m_kind != Picture || wanted.isEmpty())
+        if ((m_kind != Picture && m_kind != Video) || wanted.isEmpty())
             return bounded;
         const QSizeF picture = QSizeF(wanted) / screen->devicePixelRatio();
         const qreal scale = std::min({1.0, (bounded.width() - kPad) / picture.width(), (bounded.height() - kPad - kHeader) / picture.height()});

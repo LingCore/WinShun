@@ -41,8 +41,8 @@ enum class Engine;
 // menu; the forum's #157, #162, #225): QuickLook (QL-Win) or Seer when one of
 // them runs in the background and the settings leave it to them (预览方式:
 // 自动), else Win顺's own window (PreviewWindow.qml): a picture (Windows
-// Imaging Component decodes it, any format Windows reads), the start of a
-// text file (decoded as the content search decodes), a document through
+// Imaging Component decodes it, any format Windows reads), a video (played
+// by Windows' media engine, VideoView), the start of a text file (decoded as the content search decodes), a document through
 // the preview handler Explorer's preview pane uses (PreviewHost), else a
 // large thumbnail and what is known of the file; a folder, its icon and
 // what it holds.
@@ -84,7 +84,7 @@ class FilePreview : public QObject {
     Q_PROPERTY(bool stalled READ stalled NOTIFY slowChanged FINAL)
 
 public:
-    enum Kind { Loading, Picture, Text, Handler, Facts, Message };
+    enum Kind { Loading, Picture, Text, Handler, Facts, Message, Video };
     Q_ENUM(Kind)
 
     struct Item {

@@ -207,6 +207,7 @@ set(qml_files
     qml/SoftShadow.qml
     qml/PreviewWindow.qml
     qml/PreviewBody.qml
+    qml/VideoPreview.qml
     qml/HoverTip.qml
     qml/InfoDot.qml
     qml/ShortcutTip.qml
@@ -351,6 +352,7 @@ qt_add_qml_module(WinShun
         FileDropTarget.cpp FileDropTarget.h
         FileFacts.cpp FileFacts.h
         FilePreview.cpp FilePreview.h
+        VideoView.cpp VideoView.h # a video in the preview, by Windows' media engine
         LineHighlighter.cpp LineHighlighter.h
         ContentPane.cpp ContentPane.h
         PictureFile.cpp PictureFile.h
@@ -446,7 +448,7 @@ target_link_libraries(WinShun PRIVATE
     wscapture # the screen capture (src/capture)
     Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network
     Qt6::Svg # SvgIcon: web shortcuts' SVG icons, drawn once into the PNG kept
-    comctl32 d2d1 dwmapi dwrite dxgi imm32 oleacc oleaut32 shcore shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
+    comctl32 d2d1 d3d11 dwmapi dwrite dxgi imm32 oleacc oleaut32 shcore shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
     credui iphlpapi mpr psapi userenv windowscodecs
     mfplat mfreadwrite mfuuid delayimp dbghelp
     windowsapp # TextRecognizer: Windows.Media.Ocr, through C++/WinRT from the Windows SDK

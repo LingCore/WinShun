@@ -4,7 +4,8 @@ import QtQuick
 import WinShun
 
 // What a FilePreview shows, without a frame: a picture fitted in (the wheel
-// zooms, a double click goes to its own size and back), the start of a text
+// zooms, a double click goes to its own size and back), a video playing
+// (VideoPreview), the start of a text
 // file, a document through the handler Explorer's preview pane uses (a
 // window of its own over the content area, see PreviewHost), or a large
 // thumbnail and what is known about the file. In the preview's own window
@@ -307,6 +308,13 @@ Item {
         onShownChanged: if (shown) body.preview.setHandlerArea(handlerArea)
         onWidthChanged: if (shown) body.preview.setHandlerArea(handlerArea)
         onHeightChanged: if (shown) body.preview.setHandlerArea(handlerArea)
+    }
+
+    // A video, played by Windows, its controls under it.
+    VideoPreview {
+        anchors.fill: parent
+        preview: body.preview
+        dpr: body.dpr
     }
 
     // A thumbnail (or the icon) and what is known about it: a folder, or
