@@ -684,9 +684,31 @@ Rectangle {
             }
 
             Column { // the settings the manifest declares
+                id: settingsColumn
+
+                // Down the card, the numbers' boxes and units are columns of
+                // one width each: the sliders' tracks start and end together.
+                readonly property real valueWidth: {
+                    let widest = 0
+                    for (const s of card.settings)
+                        if (s.slider === true)
+                            for (const end of [s.min, s.max])
+                                widest = Math.max(widest, valueMetrics.advanceWidth(Number(end).toFixed(s.decimals ?? 0)))
+                    return Math.max(52, Math.ceil(widest) + 24)
+                }
+                readonly property real unitWidth: {
+                    let widest = 0
+                    for (const s of card.settings)
+                        if (s.type === "number" && (s.unit ?? "").length > 0)
+                            widest = Math.max(widest, valueMetrics.advanceWidth(s.unit))
+                    return Math.ceil(widest)
+                }
+
                 width: parent.width
                 spacing: 6
                 visible: card.settings.length > 0
+
+                FontMetrics { id: valueMetrics; font.pixelSize: Theme.fontBody }
 
                 Rectangle {
                     width: parent.width
@@ -695,15 +717,19 @@ Rectangle {
                 }
 
                 Repeater {
-                    model: card.settings
+                    // By position, not over the list: a value saved gives the
+                    // card a new list, and its rows stay (with the focus in
+                    // them: a slider moved by keys) instead of being made again.
+                    model: card.settings.length
 
                     delegate: Item {
                         id: settingRow
 
-                        required property var modelData
-                        readonly property string kind: modelData.type
+                        required property int index
+                        readonly property var modelData: card.settings[index] ?? ({})
+                        readonly property string kind: modelData.type ?? ""
 
-                        width: parent.width
+                        width: settingsColumn.width
                         height: Math.max(36, settingControl.implicitHeight) + (settingHint.visible ? settingHint.implicitHeight + 4 : 0)
 
                         Text {
@@ -712,7 +738,7 @@ Rectangle {
                             anchors.right: settingControl.left
                             anchors.rightMargin: 12
                             y: Math.round((Math.max(36, settingControl.implicitHeight) - height) / 2)
-                            text: settingRow.modelData.title
+                            text: settingRow.modelData.title ?? ""
                             textFormat: Text.PlainText
                             color: Theme.text
                             font.pixelSize: Theme.fontCaption
@@ -749,6 +775,7 @@ Rectangle {
                                                : settingRow.kind === "choice" ? choiceControl
                                                : settingRow.kind === "folder" || settingRow.kind === "file" ? pathControl
                                                : settingRow.kind === "hotkey" ? hotkeyControl
+                                               : settingRow.kind === "number" && settingRow.modelData.slider === true ? rangeControl
                                                : textControl
                             }
 
@@ -761,26 +788,71 @@ Rectangle {
                                 }
                             }
                             Component {
-                                id: textControl
-                                InputBox { // text, number, password (masked, kept by the Credential Manager)
-                                    width: 220
+                                id: rangeControl
+                                SettingSlider { // a number with both ends (GitHub #359): slid, or typed into the box beside it
+                                    objectName: "pluginSlider-" + card.pluginId + "/" + (settingRow.modelData.key ?? "")
                                     implicitHeight: 32
-                                    text: settingRow.kind === "password" ? "" : String(settingRow.modelData.value ?? "")
-                                    placeholder: settingRow.kind === "password" ? (settingRow.modelData.set ? qsTr("已保存，输入可替换") : qsTr("未设置")) : ""
-                                    echoMode: settingRow.kind === "password" ? TextInput.Password : TextInput.Normal
-                                    validator: settingRow.kind === "number" ? numberValidator : null
-                                    onEditingFinished: {
-                                        if (settingRow.kind === "password") {
-                                            if (text.length > 0) {
-                                                card.plugins.setSettingValue(card.pluginId, settingRow.modelData.key, text)
-                                                clear()
-                                            }
-                                        } else if (text !== String(settingRow.modelData.value ?? "")) {
-                                            card.plugins.setSettingValue(card.pluginId, settingRow.modelData.key, text)
-                                        }
-                                    }
+                                    dpr: card.dpr
+                                    editable: true
+                                    boxWidth: settingsColumn.valueWidth
+                                    unitWidth: settingsColumn.unitWidth
+                                    rail: Theme.controlBorder // Theme.track is the page's: on a card it is all but gone
+                                    label: settingRow.modelData.title ?? ""
+                                    from: settingRow.modelData.min ?? 0
+                                    to: settingRow.modelData.max ?? 1
+                                    stepSize: settingRow.modelData.step ?? 1
+                                    decimals: settingRow.modelData.decimals ?? 0
+                                    unit: settingRow.modelData.unit ?? ""
+                                    value: Number(settingRow.modelData.value ?? 0)
+                                    onCommitted: (value) => card.plugins.setSettingValue(card.pluginId, settingRow.modelData.key, value)
+                                }
+                            }
+                            Component {
+                                id: textControl
+                                Row { // text, number (its unit after it), password (masked, kept by the Credential Manager)
+                                    spacing: 6
 
-                                    DoubleValidator { id: numberValidator; notation: DoubleValidator.StandardNotation }
+                                    InputBox {
+                                        objectName: "pluginSetting-" + card.pluginId + "/" + (settingRow.modelData.key ?? "")
+                                        dpr: card.dpr
+                                        width: 220
+                                        implicitHeight: 32
+                                        text: settingRow.kind === "password" ? "" : String(settingRow.modelData.value ?? "")
+                                        placeholder: settingRow.kind === "password" ? (settingRow.modelData.set ? qsTr("已保存，输入可替换") : qsTr("未设置")) : ""
+                                        echoMode: settingRow.kind === "password" ? TextInput.Password : TextInput.Normal
+                                        validator: settingRow.kind === "number" ? numberValidator : null
+                                        function finish() {
+                                            if (settingRow.kind === "password") {
+                                                if (text.length > 0) {
+                                                    card.plugins.setSettingValue(card.pluginId, settingRow.modelData.key, text)
+                                                    clear()
+                                                }
+                                                return
+                                            }
+                                            const number = settingRow.kind === "number"
+                                            const typed = number ? text.replace(/[,\s]/g, "") : text // "1,234" as 1234
+                                            if (typed !== String(settingRow.modelData.value ?? "")
+                                                    && (!number || (typed.length > 0 && isFinite(Number(typed)))))
+                                                card.plugins.setSettingValue(card.pluginId, settingRow.modelData.key, typed)
+                                            // What is kept: a number fitted to its range may be the one it had;
+                                            // a number box left empty shows its value again.
+                                            text = Qt.binding(() => String(settingRow.modelData.value ?? ""))
+                                        }
+                                        onEditingFinished: finish()
+                                        // The validator lets Enter, and leaving, say so only for a number.
+                                        onInputFocusedChanged: if (!inputFocused && settingRow.kind === "number") finish()
+
+                                        DoubleValidator { id: numberValidator; notation: DoubleValidator.StandardNotation }
+                                    }
+                                    Text { // a number's unit, in the card's column of them
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: settingsColumn.unitWidth
+                                        visible: settingRow.kind === "number" && width > 0
+                                        text: settingRow.modelData.unit ?? ""
+                                        textFormat: Text.PlainText
+                                        color: Theme.subtext
+                                        font.pixelSize: Theme.fontBody
+                                    }
                                 }
                             }
                             Component {

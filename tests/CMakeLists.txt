@@ -161,6 +161,14 @@ add_test(NAME tst_pluginkeywords COMMAND $<TARGET_FILE:WinShun>
     --preview-plugins "${CMAKE_CURRENT_BINARY_DIR}/plugin-keywords.png" --keyword-check --scale 1.5)
 set_tests_properties(tst_pluginkeywords PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# Numbers with a range (GitHub #359): a card's sliders moved by keys (the
+# focus kept, a held key saved once) and by the pointer, their boxes typed
+# into, a value the plugin sends, a box with a minimum only; the tracks and
+# boxes lined up; each time the box, the slider, the INI and the plugin.
+add_test(NAME tst_pluginsliders COMMAND $<TARGET_FILE:WinShun>
+    --preview-plugins "${CMAKE_CURRENT_BINARY_DIR}/plugin-sliders.png" --slider-check --scale 1.5)
+set_tests_properties(tst_pluginsliders PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # Combo menus share the theme frame, corner setting, inner padding and control gap.
 foreach(combo_style IN ITEMS fluent brand tactile liquid)

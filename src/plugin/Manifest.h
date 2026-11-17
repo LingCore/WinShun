@@ -160,6 +160,21 @@ struct Setting {
     Text hint;
     QJsonValue defaultValue;
     QJsonArray options; // choice
+    // A number's range, the step its values go by (from min, else from 0)
+    // and the unit after it (0.33.0, GitHub #359). Both ends: a slider, its
+    // step 1 unless given, its default min unless given. Whoever sets the
+    // value, it is kept to them (fit); older Win顺 ignore them.
+    std::optional<double> min;
+    std::optional<double> max;
+    std::optional<double> step;
+    Text unit;
+    bool slider() const noexcept { return min && max; }
+    bool bounded() const noexcept { return min || max || step; } // its values are fitted
+    int decimals() const; // the digits after the point its steps need (step's, min's, max's)
+    // Within min and max; with a step, the nearest of min + n × step and
+    // max (the last step may be shorter), rounded to decimals().
+    double fit(double value) const;
+    QString numberText(double value) const; // fitted, as the settings file keeps it: "0.3", "2000"
     friend bool operator==(const Setting&, const Setting&) = default;
 };
 

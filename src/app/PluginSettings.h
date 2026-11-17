@@ -63,7 +63,7 @@ public:
         bool resident = false;
         QVariantList keywords; // [{command, title, keyword, defaults, conflict, user}]
         QVariantList permissions; // [{name, text, enforced, note}]
-        QVariantList settings; // [{key, type, title, hint, value, options, optionIndex}]
+        QVariantList settings; // [{key, type, title, hint, value, options, optionIndex; a number's unit, slider, min, max, step, decimals}]
         bool hasReadme = false;
         bool settingsWindow = false; // the plugin draws its own settings window (manifest settingsWindow): 设置 on the card
         bool webSearch = false;

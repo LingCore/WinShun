@@ -113,22 +113,34 @@ bool store(const QString& pluginId, const Manifest& manifest, const QString& key
     QList<std::pair<QString, QString>>& iniValues)
 {
     const Setting* setting = declared(manifest, key);
-    if (setting && setting->type == u"password") {
-        write(pluginId, key, value);
-        // Never in the INI, not even from before the manifest called it one.
+    const auto drop = [&] {
         const qsizetype had = iniValues.size();
         iniValues.removeIf([&](const std::pair<QString, QString>& v) { return v.first == key; });
         return iniValues.size() != had;
+    };
+    if (setting && setting->type == u"password") {
+        write(pluginId, key, value);
+        return drop(); // never in the INI, not even from before the manifest called it one
+    }
+    QString text = value;
+    if (setting && setting->type == u"number" && setting->bounded()) {
+        // In its range, on its steps (GitHub #359), whoever set it; no
+        // number at all: back to its default.
+        bool ok = false;
+        const double number = value.trimmed().toDouble(&ok);
+        if (!ok || !std::isfinite(number))
+            return drop();
+        text = setting->numberText(number);
     }
     for (auto& [k, v] : iniValues) {
         if (k == key) {
-            if (v == value)
+            if (v == text)
                 return false;
-            v = value;
+            v = text;
             return true;
         }
     }
-    iniValues.append({key, value});
+    iniValues.append({key, text});
     return true;
 }
 
@@ -170,7 +182,14 @@ QJsonObject settingsOf(const QString& pluginId, const Manifest& manifest, const 
             continue; // the INI never holds one; the Credential Manager does
         if (type == u"bool")
             settings.insert(key, value.compare(u"true", Qt::CaseInsensitive) == 0 || value == u"1");
-        else if (type == u"number")
+        else if (type == u"number" && s->bounded()) {
+            // Kept before the manifest had its range, or typed into the file:
+            // fitted all the same; no number: its default stands.
+            bool ok = false;
+            const double number = value.trimmed().toDouble(&ok);
+            if (ok && std::isfinite(number))
+                settings.insert(key, s->fit(number));
+        } else if (type == u"number")
             settings.insert(key, value.toDouble());
         else
             settings.insert(key, value);

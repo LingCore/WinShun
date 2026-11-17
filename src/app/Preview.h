@@ -17,6 +17,10 @@
 //     over a real catalog with one plugin that starts nothing: several words,
 //     a quote, the plugin's own again, none, 默认; the box, the note under
 //     it, the INI and the index are read each time.
+//     --slider-check does the same for numbers with a range (GitHub #359):
+//     keys on the sliders (the focus kept, a held key saved once), the boxes
+//     typed into, a drag, a value the plugin sends, a box with a minimum only;
+//     the box, the slider, the INI and what the plugin is told each time.
 //
 //   WinShun.exe --preview-settings <folder> [--dark] [--scale 1.5] [--tree]
 //     [--corners round|square] [--page 1]: one appearance for a selected page.

@@ -828,6 +828,18 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
             row.insert(u"optionValues"_s, options);
             row.insert(u"optionIndex"_s, std::max<qsizetype>(0, options.indexOf(current)));
             row.insert(u"value"_s, current);
+        } else if (s.type == u"number") {
+            // Its unit after the box; with both ends a slider and the value
+            // beside it (GitHub #359), what the host keeps fitted already.
+            row.insert(u"value"_s, s.bounded() && value.isDouble() ? s.numberText(value.toDouble()) : value.toVariant().toString());
+            row.insert(u"unit"_s, s.unit.pick(m_locale));
+            if (s.slider()) {
+                row.insert(u"slider"_s, true);
+                row.insert(u"min"_s, *s.min);
+                row.insert(u"max"_s, *s.max);
+                row.insert(u"step"_s, *s.step);
+                row.insert(u"decimals"_s, s.decimals());
+            }
         } else
             row.insert(u"value"_s, value.toVariant().toString());
         c.settings.push_back(row);
@@ -1815,6 +1827,11 @@ void PluginSettings::loadPreview(bool elevated, int logPlugins, bool hostNormal)
                 {u"options"_s, QStringList {u"直译（逐句对照，保留原文的句子结构和专有名词）"_s, u"意译（读起来像母语写的；长句会拆开重排）"_s, u"术语表优先（按你的术语表翻，其余意译）"_s}},
                 {u"optionValues"_s, QStringList {u"literal"_s, u"free"_s, u"glossary"_s}}, {u"optionIndex"_s, 1}},
             QVariantMap {{u"key"_s, u"target"_s}, {u"type"_s, u"text"_s}, {u"title"_s, tr("目标语言")}, {u"hint"_s, tr("例如 zh、en、ja")}, {u"value"_s, u"zh"_s}},
+            // Numbers with both ends (GitHub #359): a slider, the value beside it, the unit after it.
+            QVariantMap {{u"key"_s, u"pause"_s}, {u"type"_s, u"number"_s}, {u"title"_s, u"停顿多久再翻译"_s}, {u"hint"_s, QString()}, {u"value"_s, u"400"_s},
+                {u"unit"_s, u"ms"_s}, {u"slider"_s, true}, {u"min"_s, 100}, {u"max"_s, 2000}, {u"step"_s, 50}, {u"decimals"_s, 0}},
+            QVariantMap {{u"key"_s, u"match"_s}, {u"type"_s, u"number"_s}, {u"title"_s, u"术语匹配的相似度"_s}, {u"hint"_s, QString()}, {u"value"_s, u"0.75"_s},
+                {u"unit"_s, QString()}, {u"slider"_s, true}, {u"min"_s, 0}, {u"max"_s, 1}, {u"step"_s, 0.05}, {u"decimals"_s, 2}},
             QVariantMap {{u"key"_s, u"cache"_s}, {u"type"_s, u"folder"_s}, {u"title"_s, tr("缓存文件夹")}, {u"hint"_s, QString()}, {u"value"_s, u"D:\\翻译缓存"_s}}};
         c.hasReadme = true;
         cards.push_back(c);

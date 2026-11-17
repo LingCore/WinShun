@@ -396,6 +396,21 @@ QByteArray zeroManifest(const QString& id, const QString& version, const QString
         .toUtf8();
 }
 
+// Numbers with ranges, steps and units (GitHub #359), and two without.
+std::optional<ws::plugin::Manifest> rangesManifest(QString* error)
+{
+    return ws::plugin::Manifest::parse(R"({"manifest":1,"id":"test.ranges","name":"R","version":"1",
+        "settings":[{"key":"pause","type":"number","title":"P","default":400,"min":100,"max":2000,"step":50,"unit":"ms"},
+            {"key":"ratio","type":"number","title":"R","min":0,"max":1,"step":0.1,"unit":{"zh":"倍","en":"x"}},
+            {"key":"count","type":"number","title":"C","min":1,"max":10,"default":3.6},
+            {"key":"floor","type":"number","title":"F","min":1},
+            {"key":"grid","type":"number","title":"G","step":5},
+            {"key":"edge","type":"number","title":"E","min":5,"max":99,"step":10,"default":97},
+            {"key":"plain","type":"number","title":"N","default":"20"},
+            {"key":"note","type":"text","title":"T","min":"x","max":1}],
+        "commands":[{"id":"c","keyword":"rc","run":{"folder":"C:\\"}}]})", error);
+}
+
 const QByteArray kVectorKey = "40d7b4ad0b2b90650f8b2570cb6dd97d233320c047c7464706c2e96bb1c5e14f50daccce7d2cb6d225f429626de52301ddc72823df66a72ab24d0f76fa8d4914";
 // Python (cryptography) signed {"schema":1,"plugins":[]} + LF with the key above: ECDSA P-256, SHA-256, DER turned into r||s.
 const QByteArray kVectorSignature = "uK3sTYHTOpLyssRKFTm6NXqhRqIBNCe8VCvTrdEkJclWtiqp52E/ZBvtOUkFo+2cH5nr1v42kFLyUdyrb33Wow==";
@@ -4338,6 +4353,136 @@ private slots:
         QVERIFY(secrets::acceptedUpdate(*m, {{u"note"_s, QString(secrets::kSettingTextMost + 1, u'x')}}).isEmpty());
         QCOMPARE(secrets::acceptedUpdate(*m, {{u"note"_s, QString(secrets::kSettingTextMost, u'x')}}).size(), 1);
         QVERIFY(secrets::acceptedUpdate(*m, {}).isEmpty());
+    }
+
+    // GitHub #359: a number's range, step and unit; both ends make a slider.
+    void numberRanges()
+    {
+        QString error;
+        const std::optional<Manifest> m = rangesManifest(&error);
+        QVERIFY2(m.has_value(), qPrintable(error));
+        const auto setting = [&](const QString& key) { return *std::ranges::find(m->settings, key, &Setting::key); };
+        const Setting pause = setting(u"pause"_s);
+        QVERIFY(pause.slider() && pause.bounded());
+        QCOMPARE(*pause.min, 100.0);
+        QCOMPARE(*pause.max, 2000.0);
+        QCOMPARE(*pause.step, 50.0);
+        QCOMPARE(pause.unit.pick(u"zh"_s), u"ms"_s);
+        QCOMPARE(pause.decimals(), 0);
+        QCOMPARE(pause.defaultValue.toDouble(), 400.0);
+        // Both ends without a default or a step: min, and steps of 1.
+        const Setting ratio = setting(u"ratio"_s);
+        QVERIFY(ratio.slider());
+        QCOMPARE(ratio.decimals(), 1);
+        QCOMPARE(ratio.defaultValue.toDouble(), 0.0);
+        QCOMPARE(ratio.unit.pick(u"en"_s), u"x"_s);
+        const Setting count = setting(u"count"_s);
+        QCOMPARE(*count.step, 1.0);
+        QCOMPARE(count.defaultValue.toDouble(), 4.0); // a default is fitted as any value is
+        // One end, or a step alone: no slider, still kept to them; no default made up.
+        const Setting floor = setting(u"floor"_s);
+        QVERIFY(!floor.slider() && floor.bounded() && !floor.step);
+        QVERIFY(floor.defaultValue.isUndefined());
+        QVERIFY(!setting(u"grid"_s).slider() && setting(u"grid"_s).bounded());
+        QCOMPARE(setting(u"edge"_s).defaultValue.toDouble(), 95.0); // as near to 95 as to 99: the step
+        // Without them, as before: the default as written, nothing fitted.
+        const Setting plain = setting(u"plain"_s);
+        QVERIFY(!plain.bounded() && !plain.slider());
+        QCOMPARE(plain.defaultValue.toString(), u"20"_s);
+        QVERIFY(!setting(u"note"_s).bounded()); // only a number has them
+
+        // Into the range, onto a step from min, rounded to the step's digits.
+        QCOMPARE(pause.fit(1234), 1250.0);
+        QCOMPARE(pause.fit(99999), 2000.0);
+        QCOMPARE(pause.fit(-5), 100.0);
+        QCOMPARE(pause.fit(124.9), 100.0);
+        QCOMPARE(pause.fit(125), 150.0);
+        QCOMPARE(ratio.numberText(0.33), u"0.3"_s);
+        QCOMPARE(ratio.numberText(0.7), u"0.7"_s); // not 0.7000000000000001
+        QCOMPARE(ratio.numberText(0.30000000000000004), u"0.3"_s);
+        QCOMPARE(count.numberText(3.6), u"4"_s);
+        QCOMPARE(floor.fit(-3), 1.0);
+        QCOMPARE(floor.numberText(2.5), u"2.5"_s); // no step: not rounded
+        QCOMPARE(floor.numberText(1e6), u"1000000"_s);
+        const Setting grid = setting(u"grid"_s);
+        QCOMPARE(grid.fit(12), 10.0); // from 0 without a min
+        QCOMPARE(grid.fit(13), 15.0);
+        QCOMPARE(grid.fit(-12), -10.0);
+        QCOMPARE(grid.numberText(-0.4), u"0"_s); // never "-0"
+        // max is a value too, though the last step to it is shorter.
+        const Setting edge = setting(u"edge"_s);
+        QCOMPARE(edge.fit(99), 99.0);
+        QCOMPARE(edge.fit(98), 99.0);
+        QCOMPARE(edge.fit(96), 95.0);
+        QCOMPARE(edge.fit(1000), 99.0);
+        QCOMPARE(edge.fit(5), 5.0);
+    }
+
+    void numberRangeErrors_data()
+    {
+        QTest::addColumn<QString>("fields");
+        QTest::addColumn<QString>("expect");
+        QTest::newRow("min not a number") << uR"("min":"1")"_s << u"settings[0].min 要是数字"_s;
+        QTest::newRow("max not a number") << uR"("max":true)"_s << u"settings[0].max 要是数字"_s;
+        QTest::newRow("min = max") << uR"("min":10,"max":10)"_s << u"settings[0].min 要小于 max"_s;
+        QTest::newRow("min > max") << uR"("min":10,"max":5)"_s << u"settings[0].min 要小于 max"_s;
+        QTest::newRow("step 0") << uR"("step":0)"_s << u"settings[0].step 要大于 0"_s;
+        QTest::newRow("step < 0") << uR"("min":0,"max":10,"step":-1)"_s << u"settings[0].step 要大于 0"_s;
+        QTest::newRow("step past the range") << uR"("min":0,"max":10,"step":20)"_s << u"settings[0].step 不能大于 max − min"_s;
+        QTest::newRow("a range under 1, no step") << uR"("min":0,"max":0.5)"_s << u"不写 step 时是 1"_s;
+        QTest::newRow("default not a number") << uR"("min":0,"max":10,"default":"5")"_s << u"settings[0].default 要是数字"_s;
+        QTest::newRow("unit not text") << uR"("unit":5)"_s << u"settings[0].unit"_s;
+    }
+    void numberRangeErrors()
+    {
+        QFETCH(QString, fields);
+        QFETCH(QString, expect);
+        const QString json = uR"({"manifest":1,"id":"a.b","name":"X","version":"1","settings":[{"key":"n","type":"number","title":"N",%1}],"commands":[{"id":"c","run":{"folder":"C:\\"}}]})"_s
+                                 .arg(fields);
+        QString error;
+        QVERIFY(!Manifest::parse(json.toUtf8(), &error));
+        QVERIFY2(error.contains(expect), qPrintable(error));
+    }
+
+    // Kept to the range whoever sets it: the card, the plugin, the file.
+    void rangedSettingsAreKeptInRange()
+    {
+        QString error;
+        const std::optional<Manifest> m = rangesManifest(&error);
+        QVERIFY2(m.has_value(), qPrintable(error));
+        using Pairs = QList<std::pair<QString, QString>>;
+        const QString id = u"test.ranges"_s;
+        Pairs ini;
+        QVERIFY(secrets::store(id, *m, u"pause"_s, u"1234"_s, ini));
+        QCOMPARE(ini, (Pairs {{u"pause"_s, u"1250"_s}}));
+        QVERIFY(!secrets::store(id, *m, u"pause"_s, u"1260"_s, ini)); // the same step: nothing changed
+        QVERIFY(secrets::store(id, *m, u"pause"_s, u" 99999 "_s, ini));
+        QVERIFY(secrets::store(id, *m, u"ratio"_s, u"0.30000000000000004"_s, ini));
+        QVERIFY(secrets::store(id, *m, u"floor"_s, u"-7"_s, ini));
+        QCOMPARE(ini, (Pairs {{u"pause"_s, u"2000"_s}, {u"ratio"_s, u"0.3"_s}, {u"floor"_s, u"1"_s}}));
+        // No number: the line goes, its default stands.
+        QVERIFY(secrets::store(id, *m, u"pause"_s, u"abc"_s, ini));
+        QVERIFY(!secrets::store(id, *m, u"pause"_s, QString(), ini));
+        QCOMPARE(ini, (Pairs {{u"ratio"_s, u"0.3"_s}, {u"floor"_s, u"1"_s}}));
+        // A number without them: as typed, as before.
+        QVERIFY(secrets::store(id, *m, u"plain"_s, u"abc"_s, ini));
+        QCOMPARE(ini.last(), (std::pair {u"plain"_s, u"abc"_s}));
+        // What the plugin sends (winshun/settings/update): taken, then fitted.
+        const Pairs sent = secrets::acceptedUpdate(*m, {{u"pause"_s, 3333}, {u"ratio"_s, 0.27}, {u"count"_s, u"7"_s}});
+        QCOMPARE(sent.size(), 2); // a number as text is no number
+        for (const auto& [key, text] : sent)
+            secrets::store(id, *m, key, text, ini);
+        QCOMPARE(ini, (Pairs {{u"ratio"_s, u"0.3"_s}, {u"floor"_s, u"1"_s}, {u"plain"_s, u"abc"_s}, {u"pause"_s, u"2000"_s}}));
+        // Read back, whatever the file says: kept before the range came, or typed into it.
+        const QJsonObject told = secrets::settingsOf(id, *m,
+            {{u"pause"_s, u"99999"_s}, {u"ratio"_s, u"0.34"_s}, {u"count"_s, u"abc"_s}, {u"floor"_s, u"0"_s}, {u"plain"_s, u"12.5"_s},
+                {u"grid"_s, u"12"_s}});
+        QCOMPARE(told.value(u"pause"_s).toDouble(), 2000.0);
+        QCOMPARE(told.value(u"ratio"_s).toDouble(), 0.3);
+        QVERIFY(!told.contains(u"count"_s)); // no number: the default (3.6 fitted to 4) is the host's to add
+        QCOMPARE(told.value(u"floor"_s).toDouble(), 1.0);
+        QCOMPARE(told.value(u"plain"_s).toDouble(), 12.5);
+        QCOMPARE(told.value(u"grid"_s).toDouble(), 10.0);
     }
 
     void secretsStayOutOfTheIni()

@@ -264,7 +264,7 @@ Win顺 → 插件：
 
 `winshun/refresh`：显示着的列表自己变了（比如来了一个请求、一次传输结束了），不必等 `rerun` 的秒数，Win顺 马上再问一次同样的查询；两次查询之间至少隔 0.1 秒，连着发几条只多问一次（正在回答时来的，答完再问）。只在上一次回答要了 `rerun`、列表还开着时起作用，别的时候什么都不做；旧版 Win顺 不认识它，也不碍事。先写好下一次查询要读的状态，再发它。C++ SDK 是 `refresh()`，Python 是 `plugin.refresh()`。
 
-`winshun/settings/update`（0.30.0 起）：插件让用户在搜索框里改了自己的设置时，用它告诉 Win顺，设置页的卡片和设置文件跟着变，两边显示同一个值。C++ SDK 用 `Plugin::updateSettings(Json values)` 发送这条通知。只能改自己清单里声明的设置，类型只限 `text`、`number`、`bool`、`choice`，值的 JSON 类型要对得上（`number` 给数字、`bool` 给布尔值、`choice` 给它的某个选项）；`password`、`folder`、`file`、`hotkey` 不能这样改，对不上的项会被忽略。值确实变了，插件会照常收到 `settingsChanged`；发来的值和原来一样时什么也不会发生。更早的 Win顺 不认识这条通知，会忽略它，所以插件仍要自己记住这个值。
+`winshun/settings/update`（0.30.0 起）：插件让用户在搜索框里改了自己的设置时，用它告诉 Win顺，设置页的卡片和设置文件跟着变，两边显示同一个值。C++ SDK 用 `Plugin::updateSettings(Json values)` 发送这条通知。只能改自己清单里声明的设置，类型只限 `text`、`number`、`bool`、`choice`，值的 JSON 类型要对得上（`number` 给数字、`bool` 给布尔值、`choice` 给它的某个选项）；`password`、`folder`、`file`、`hotkey` 不能这样改，对不上的项会被忽略。有范围的 `number`（见“设置项”，0.33.0 起）先拉回范围、取到最近的一步再保存。值确实变了，插件会照常收到 `settingsChanged`；发来的值和原来一样时什么也不会发生。更早的 Win顺 不认识这条通知，会忽略它，所以插件仍要自己记住这个值。
 
 系统通知（`toast`）要 `notifications` 权限，没有就当底栏提示。每个插件最多每 2 秒一条，等着的只留最新的；正文截到 200 个字。标题前面 Win顺 总会加上插件的名字，插件去不掉，免得被当成 Win顺 自己的通知：随 Win顺 装的插件是「局域网传输：…」，自己装的插件不管叫什么都套上「插件「名字」：…」；名字看不出字来（只有空格、填充符这类）时改用 id。名字最多 24 个字，连名字一共 63 个字；没有正文就拿标题当正文。看不见的字符（控制字符、改文字方向的字符、零宽字符、填充符）会被去掉。`click` 是点通知时做的 effects，只认三种、每种一个，别的（网址、`notify`、`hide`、`keep`、`replace`）都丢掉，日志里记一笔：`setQuery` 只能填这个插件自己的关键词（会先打开搜索框）；`open` 只能打开盘符开头的文件或文件夹（`C:\…`，不带参数和工作目录；网址、`\\服务器\共享` 这类路径不行，映射成盘符的网络盘照样能开），照样受 processes 权限约束；`reveal {path}`（同样只认盘符开头的路径）在文件管理器里打开它所在的文件夹并选中它，只是选中、不启动程序，不要 processes 权限，文件已经不在了就打开它所在的文件夹。`open` 和 `reveal` 合起来只做排在前面的那一个：想兼容不认识 `reveal` 的旧版 Win顺，就写 `[{"type":"reveal","path":文件}, {"type":"open","path":文件夹}]`，旧版会丢掉 `reveal`、照旧打开文件夹；`copy` 要 `clipboard:write` 权限。Win顺 自己的通知还在时，插件的通知先等它过去（一般 6 秒，最多 8 秒；等了 60 秒还没轮到就不发）；点哪条通知只做那条自己的事，刚被别的插件的通知顶掉时点的，什么都不做。通知会留在操作中心：**别把文件名、聊天内容这类私人的字写进去**。
 
@@ -451,6 +451,20 @@ manifest 的 `permissions` 是数组：`["processes", "clipboard:read", {"files:
 ## 设置项
 
 `settings[]`：`{"key", "type", "title", "hint", "default", "options"}`，`type` ∈ `text | password | bool | number | choice | folder | file | hotkey`。Win顺 用自己的控件画在卡片上，值存在 `WinShun.ini` 的 `[Plugin.<id>] Setting.<key>=`；**`password` 型存 Windows 凭据管理器**，不进 INI，不进日志（消息记录里打码）。`choice` 的 `options` 是字符串数组或 `[{"value": "deepl", "title": {"zh": …, "en": …}}]`。
+
+`number` 可以再写 `min`、`max`、`step` 和 `unit`（0.33.0 起）：
+
+```json
+{"key": "pause", "type": "number", "title": {"zh": "停顿多久再翻译", "en": "Pause before translating"},
+ "default": 400, "min": 100, "max": 2000, "step": 50, "unit": "ms"}
+```
+
+- `min` 和 `max` 都写时，卡片上是滑块，旁边的框里是数值，也可以直接输入。方向键走一步，PageUp/PageDown 走约十分之一，Home/End 到两头；松开鼠标或按键时才保存，按住不放也只保存一次。滚轮照常滚动设置页。只写其中一个时仍是输入框。
+- `step` 是步长，值取 `min + n × step`（没有 `min` 时从 0 算），`max` 本身也可以取到，最后一步可能短一些。有滑块时默认 1，要小数就写 `"step": 0.1` 这样；数值按步长的小数位显示（0.40、0.45）。
+- `unit` 显示在数值后面，字符串或 `{"zh": …, "en": …}`。
+- 不管值从哪来（卡片上输入的、`winshun/settings/update` 发来的、设置文件里手改的），都先拉回 `min`～`max`、取最近的一步，插件拿到的值总在范围内。设置文件里不是数字时用默认值。`default` 也一样处理；有滑块却没写 `default` 时，默认值是 `min`。
+- 写错时插件无法使用，卡片上写明哪一项：这几个要是数字，`min` 要小于 `max`，`step` 要大于 0 且不大于 `max − min`，有这些字段时 `default` 要是数字。
+- 更早的 Win顺 忽略这几个字段：照旧显示输入框，不限制范围，没写 `default` 时也不会拿 `min` 当默认值。要支持老版本，写上 `default`，插件自己再检查一次范围；或者写上 `"minWinShun": "0.33.0"`。
 
 插件看到的是合并后的 JSON（声明的默认值 + 用户的值）：一次性在 `WS_SETTINGS`，常驻在 `initialize` 的 `settings`，改了再发 `settingsChanged`。`files` 触发可以用 `"if"` 指向一个 `bool` 设置项：设置开着，这项才出现在右键菜单里（0.33.0 起；更早的宿主忽略这个字段，项常显）。
 

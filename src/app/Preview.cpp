@@ -49,6 +49,7 @@
 #include "FolderMenu.h"
 #include "Query.h"
 #include "Host.h"
+#include "Secrets.h"
 #include "platform/Integrity.h"
 #include "platform/SiteIcons.h"
 #include "platform/FileDialog.h"
@@ -365,6 +366,37 @@ int runPlugins(const QStringList& args)
         wordsHost->catalog().scan();
         wordsHost->setEnabled(wordsPlugin, true);
     }
+    // --slider-check (GitHub #359): the same over one plugin whose numbers
+    // have ranges; its card's sliders moved by keys and by the pointer, its
+    // boxes typed into, a value sent by the plugin; the INI, what the plugin
+    // is told and the card read each time.
+    const bool sliderCheck = args.contains(u"--slider-check"_s) && !keywordCheck;
+    const QString rangesPlugin = u"test.ranges"_s;
+    std::unique_ptr<plugin::Host> rangesHost;
+    if (sliderCheck) {
+        const QString folder = Settings::profile() + u"/plugins/"_s + rangesPlugin;
+        QDir().mkpath(folder);
+        QFile manifest(folder + u"/plugin.json"_s);
+        const QByteArray json = R"({"manifest":1,"id":"test.ranges","name":{"zh":"范围","en":"Ranges"},"version":"1.0.0",
+            "commands":[{"id":"main","title":"范围","keyword":"rg","run":{"folder":"C:\\"}}],
+            "settings":[
+                {"key":"pause","type":"number","title":"停顿多久再翻译","default":400,"min":100,"max":2000,"step":50,"unit":"ms"},
+                {"key":"match","type":"number","title":"术语匹配的相似度","default":0.75,"min":0,"max":1,"step":0.05},
+                {"key":"edge","type":"number","title":"最后一步短一些","min":5,"max":99,"step":10,"unit":{"zh":"个","en":"items"}},
+                {"key":"limit","type":"number","title":"最多列出几项","min":1,"unit":{"zh":"项","en":"items"}}]})";
+        if (!manifest.open(QIODevice::WriteOnly) || manifest.write(json) < 0) {
+            say(u"#359 sliders: the plugin could not be written"_s);
+            return 3;
+        }
+        manifest.close();
+        settings.pluginConfig(rangesPlugin).enabled = true;
+        plugin::Host::Options options;
+        options.userPluginDir = Settings::profile() + u"/plugins"_s;
+        options.version = QStringLiteral(WINSHUN_VERSION);
+        rangesHost = std::make_unique<plugin::Host>(options);
+        rangesHost->catalog().scan();
+        rangesHost->setEnabled(rangesPlugin, true);
+    }
     auto* editor = new SettingsEditor(settings, u"software"_s, &engine);
     editor->plugins()->setLocale(u"zh"_s);
     if (keywordCheck) {
@@ -372,6 +404,18 @@ int runPlugins(const QStringList& args)
         QObject::connect(editor, &SettingsEditor::edited, wordsHost.get(), [&wordsHost](const Settings& now) {
             wordsHost->setKeywordOverrides(PluginSettings::keywordOverrides(now.plugins));
         });
+    } else if (sliderCheck) {
+        // The settings as App::applyPlugins tells the host: the INI's, fitted.
+        const auto tell = [&rangesHost, rangesPlugin](const Settings& now) {
+            const plugin::Entry* e = rangesHost->catalog().find(rangesPlugin);
+            const PluginConfig* c = now.plugin(rangesPlugin);
+            if (e && e->manifest)
+                rangesHost->setPluginSettings(rangesPlugin,
+                    plugin::secrets::settingsOf(rangesPlugin, *e->manifest, c ? c->settings : QList<std::pair<QString, QString>>()));
+        };
+        tell(settings);
+        editor->plugins()->setHost(rangesHost.get());
+        QObject::connect(editor, &SettingsEditor::edited, rangesHost.get(), tell);
     } else {
         editor->plugins()->loadPreview(args.contains(u"--elevated"_s), manyLogs ? 8 : 2, args.contains(u"--host-normal"_s)); // the `elevated` shield and 确认 note
     }
@@ -619,12 +663,235 @@ int runPlugins(const QStringList& args)
         if (!keywords)
             qWarning("plugin keyword check failed");
     }
+    // --slider-check (GitHub #359): keys on a slider (its focus kept while
+    // the card is rebuilt under it), a held key saved once, the box typed
+    // into, the pointer dragging, a value the plugin sends, a plain box with
+    // only a minimum; each time the box, the slider, the INI and what the
+    // plugin is told.
+    bool sliders = true;
+    if (sliderCheck) {
+        if (QQuickItem* section = visualNamed(window->contentItem(), u"pluginsSection"_s))
+            QMetaObject::invokeMethod(section, "expand", Q_ARG(QVariant, rangesPlugin));
+        pump(600); // the card opens
+        int edits = 0;
+        QObject::connect(editor, &SettingsEditor::edited, editor, [&edits] { ++edits; });
+        const auto control = [&](const QString& key) { return visualNamed(window->contentItem(), u"pluginSlider-"_s + rangesPlugin + u'/' + key); };
+        const auto part = [&](const QString& key, const QString& name) -> QQuickItem* {
+            QQuickItem* c = control(key);
+            return c ? visualNamed(c, name) : nullptr;
+        };
+        const auto ini = [&](const QString& key) {
+            const QSettings file(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s);
+            return file.value(u"Plugin."_s + rangesPlugin + u"/Setting."_s + key);
+        };
+        const auto check = [&](const char* what, const QString& key, const QString& box, double slider, const QVariant& kept, double told,
+                               bool focused) {
+            QQuickItem* b = part(key, u"settingSliderValue"_s);
+            QQuickItem* s = part(key, u"settingSlider"_s);
+            const QVariant k = ini(key);
+            const QJsonValue t = rangesHost->pluginSettings(rangesPlugin).value(key);
+            const bool ok = b && s && b->property("text").toString() == box && qFuzzyCompare(s->property("value").toDouble(), slider)
+                && k.isValid() == kept.isValid() && (!kept.isValid() || k.toString() == kept.toString()) && t.isDouble()
+                && qFuzzyCompare(t.toDouble(), told) && s->hasActiveFocus() == focused;
+            say(u"#359 sliders, %1 (%2): box [%3] slider %4, INI %5, told %6, focus %7: %8"_s
+                    .arg(QString::fromUtf8(what), key, b ? b->property("text").toString() : u"?"_s)
+                    .arg(s ? s->property("value").toDouble() : -1)
+                    .arg(k.isValid() ? u'[' + k.toString() + u']' : u"none"_s)
+                    .arg(t.toDouble())
+                    .arg(s && s->hasActiveFocus())
+                    .arg(ok ? u"passed"_s : u"FAILED"_s));
+            sliders = sliders && ok;
+        };
+        const auto key = [&](int code, int repeats = 0) {
+            // Held: Qt's repeats, each after a release that says it is one.
+            QKeyEvent press(QEvent::KeyPress, code, {});
+            QCoreApplication::sendEvent(window, &press);
+            for (int i = 0; i < repeats; ++i) {
+                QKeyEvent up(QEvent::KeyRelease, code, {}, QString(), true);
+                QKeyEvent down(QEvent::KeyPress, code, {}, QString(), true);
+                QCoreApplication::sendEvent(window, &up);
+                QCoreApplication::sendEvent(window, &down);
+            }
+            QKeyEvent release(QEvent::KeyRelease, code, {});
+            QCoreApplication::sendEvent(window, &release);
+            pump(120);
+        };
+        const auto focus = [&](const QString& key) {
+            if (QQuickItem* s = part(key, u"settingSlider"_s))
+                s->forceActiveFocus(Qt::TabFocusReason);
+            pump(60);
+        };
+        const auto unfocus = [&] { // the root has the focus already: the focused one gives it up
+            if (QQuickItem* focused = window->activeFocusItem(); focused && focused != window->contentItem())
+                focused->setFocus(false);
+            pump(60);
+        };
+        const auto type = [&](const QString& name, const QString& text) {
+            if (QQuickItem* b = name.contains(u'/') ? visualNamed(window->contentItem(), name) : part(name, u"settingSliderValue"_s)) {
+                b->setProperty("text", text);
+                QMetaObject::invokeMethod(b, "editingFinished"); // Enter, or the focus left it
+            }
+            pump(150);
+        };
+        QQuickItem* pause = control(u"pause"_s);
+        check("as installed", u"pause"_s, u"400"_s, 400, {}, 400, false);
+        const bool unitShown = pause && pause->property("unit").toString() == u"ms" && pause->property("hasUnit").toBool();
+        say(u"#359 sliders: the unit after the box: %1"_s.arg(unitShown ? u"passed"_s : u"FAILED"_s));
+        sliders = sliders && unitShown;
+        // Down the card the tracks start and end together, and the boxes
+        // (the plain number's too) end together, whatever their units.
+        settle(window); // laid out only with a frame
+        {
+            const auto left = [](QQuickItem* i) { return i ? i->mapToScene({0, 0}).x() : -1.0; };
+            const auto right = [](QQuickItem* i) { return i ? i->mapToScene({i->width(), 0}).x() : -1.0; };
+            QQuickItem* tracks[] = {part(u"pause"_s, u"settingSlider"_s), part(u"match"_s, u"settingSlider"_s), part(u"edge"_s, u"settingSlider"_s)};
+            QQuickItem* boxes[] = {part(u"pause"_s, u"settingSliderValue"_s), part(u"match"_s, u"settingSliderValue"_s),
+                                   part(u"edge"_s, u"settingSliderValue"_s), visualNamed(window->contentItem(), u"pluginSetting-"_s + rangesPlugin + u"/limit"_s)};
+            bool lined = true;
+            for (QQuickItem* t : tracks)
+                lined = lined && t && qFuzzyCompare(left(t), left(tracks[0])) && qFuzzyCompare(right(t), right(tracks[0]));
+            for (QQuickItem* b : boxes)
+                lined = lined && b && qFuzzyCompare(right(b), right(boxes[0]));
+            say(u"#359 sliders: tracks from %1 to %2, boxes to %3 and %4: %5"_s.arg(left(tracks[0])).arg(right(tracks[0]))
+                    .arg(right(boxes[0])).arg(right(boxes[3])).arg(lined ? u"lined up, passed"_s : u"FAILED"_s));
+            sliders = sliders && lined;
+        }
+        focus(u"pause"_s);
+        key(Qt::Key_Right);
+        check("→", u"pause"_s, u"450"_s, 450, u"450"_s, 450, true);
+        key(Qt::Key_Right);
+        check("→ again, the focus kept", u"pause"_s, u"500"_s, 500, u"500"_s, 500, true);
+        key(Qt::Key_PageUp);
+        check("PageUp: a tenth, in steps", u"pause"_s, u"700"_s, 700, u"700"_s, 700, true);
+        key(Qt::Key_End);
+        check("End", u"pause"_s, u"2000"_s, 2000, u"2000"_s, 2000, true);
+        key(Qt::Key_Home);
+        check("Home", u"pause"_s, u"100"_s, 100, u"100"_s, 100, true);
+        key(Qt::Key_Up);
+        check("↑", u"pause"_s, u"150"_s, 150, u"150"_s, 150, true);
+        key(Qt::Key_Down);
+        check("↓", u"pause"_s, u"100"_s, 100, u"100"_s, 100, true);
+        const int before = edits;
+        key(Qt::Key_Right, 3);
+        check("→ held, four steps", u"pause"_s, u"300"_s, 300, u"300"_s, 300, true);
+        say(u"#359 sliders: a held key saved %1 time(s): %2"_s.arg(edits - before).arg(edits - before == 1 ? u"passed"_s : u"FAILED"_s));
+        sliders = sliders && edits - before == 1;
+        unfocus();
+        type(u"pause"_s, u"1234"_s);
+        check("typed 1234: on a step", u"pause"_s, u"1250"_s, 1250, u"1250"_s, 1250, false);
+        type(u"pause"_s, u"99999"_s);
+        check("typed past the end", u"pause"_s, u"2000"_s, 2000, u"2000"_s, 2000, false);
+        type(u"pause"_s, u"99999"_s);
+        check("past the end again: the box shows what is kept", u"pause"_s, u"2000"_s, 2000, u"2000"_s, 2000, false);
+        type(u"pause"_s, u"-5"_s);
+        check("typed under the start", u"pause"_s, u"100"_s, 100, u"100"_s, 100, false);
+        type(u"pause"_s, QString());
+        check("emptied: nothing saved", u"pause"_s, u"100"_s, 100, u"100"_s, 100, false);
+        // The pointer: pressed on the thumb, moved to the track's middle,
+        // let go; nothing saved until then.
+        if (QQuickItem* s = part(u"pause"_s, u"settingSlider"_s)) {
+            settle(window); // laid out (the opened card's rows where they are drawn) only with a frame
+            auto* handle = s->property("handle").value<QQuickItem*>();
+            const QPointF start = handle ? handle->mapToScene({handle->width() / 2, handle->height() / 2}) : QPointF();
+            const QPointF middle = s->mapToScene({s->width() / 2, s->height() / 2});
+            const auto mouse = [&](QEvent::Type type, const QPointF& at, Qt::MouseButton button, Qt::MouseButtons buttons) {
+                QMouseEvent event(type, at, window->mapToGlobal(at), button, buttons, {});
+                QCoreApplication::sendEvent(window, &event);
+                settle(window);
+            };
+            const int dragEdits = edits;
+            mouse(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+            mouse(QEvent::MouseMove, (start + middle) / 2, Qt::NoButton, Qt::LeftButton);
+            mouse(QEvent::MouseMove, middle, Qt::NoButton, Qt::LeftButton);
+            const double during = s->property("value").toDouble();
+            const QString shown = part(u"pause"_s, u"settingSliderValue"_s)->property("text").toString();
+            const bool onStep = std::fmod(during - 100, 50) == 0 && during > 100 && during < 2000;
+            const bool unsaved = edits == dragEdits && ini(u"pause"_s).toString() == u"100";
+            mouse(QEvent::MouseButtonRelease, middle, Qt::LeftButton, {});
+            const bool saved = ini(u"pause"_s).toString() == QString::number(during) && edits == dragEdits + 1;
+            say(u"#359 sliders, dragged: %1 shown [%2] on a step %3, unsaved while held %4, saved once let go %5: %6"_s
+                    .arg(during).arg(shown).arg(onStep).arg(unsaved).arg(saved)
+                    .arg(onStep && unsaved && saved && shown == QString::number(during) ? u"passed"_s : u"FAILED"_s));
+            sliders = sliders && onStep && unsaved && saved && shown == QString::number(during);
+        } else
+            sliders = false;
+        unfocus(); // a click gave the slider the focus
+        // The plugin sends a value (winshun/settings/update): kept to the range.
+        emit rangesHost->settingsUpdateRequested(rangesPlugin, QJsonObject {{u"pause"_s, 3333}});
+        pump(150);
+        check("sent 3333 by the plugin", u"pause"_s, u"2000"_s, 2000, u"2000"_s, 2000, false);
+        // Typed by keys, as a user does: through the box's validator, which
+        // lets Enter (and leaving) say so only for a number. Left empty, the
+        // box shows the value again, nothing saved.
+        const auto press = [&](int code, Qt::KeyboardModifiers modifiers = {}, const QString& text = {}) {
+            QKeyEvent down(QEvent::KeyPress, code, modifiers, text);
+            QKeyEvent up(QEvent::KeyRelease, code, modifiers, text);
+            QCoreApplication::sendEvent(window, &down);
+            QCoreApplication::sendEvent(window, &up);
+        };
+        const auto keys = [&](QQuickItem* box, const QString& text, bool enter) {
+            if (box && !box->property("inputFocused").toBool())
+                QMetaObject::invokeMethod(box, "takeFocus");
+            press(Qt::Key_A, Qt::ControlModifier); // all of it, typed over
+            press(Qt::Key_Backspace);
+            for (const QChar c : text)
+                press(c == u'-' ? int(Qt::Key_Minus) : c == u'.' ? int(Qt::Key_Period) : Qt::Key_0 + c.digitValue(), {}, QString(c));
+            if (enter)
+                press(Qt::Key_Return);
+            pump(150);
+        };
+        QQuickItem* pauseBox = part(u"pause"_s, u"settingSliderValue"_s);
+        keys(pauseBox, u"1234"_s, true);
+        check("keys 1234, Enter", u"pause"_s, u"1250"_s, 1250, u"1250"_s, 1250, false);
+        keys(pauseBox, QString(), false);
+        const bool pauseEmptied = pauseBox && pauseBox->property("text").toString().isEmpty();
+        unfocus(); // the focus leaves it empty
+        check(pauseEmptied ? "keys: emptied, then left" : "keys: emptied, then left (it was not emptied)", u"pause"_s, u"1250"_s, 1250,
+            u"1250"_s, 1250, false);
+        sliders = sliders && pauseEmptied;
+        // Steps after the point: shown with as many digits, kept without noise.
+        type(u"match"_s, u"0.33"_s);
+        check("typed 0.33", u"match"_s, u"0.35"_s, 0.35, u"0.35"_s, 0.35, false);
+        focus(u"match"_s);
+        key(Qt::Key_Right);
+        check("→ from 0.35", u"match"_s, u"0.40"_s, 0.4, u"0.4"_s, 0.4, true);
+        unfocus();
+        // A last step shorter than the others: max is a value too, both ways.
+        check("no default: min", u"edge"_s, u"5"_s, 5, {}, 5, false);
+        focus(u"edge"_s);
+        key(Qt::Key_End);
+        check("End: max off the steps", u"edge"_s, u"99"_s, 99, u"99"_s, 99, true);
+        key(Qt::Key_Left);
+        check("← from max: the last step", u"edge"_s, u"95"_s, 95, u"95"_s, 95, true);
+        key(Qt::Key_Right);
+        check("→ to max again", u"edge"_s, u"99"_s, 99, u"99"_s, 99, true);
+        unfocus();
+        // Only a minimum: the plain box, kept to it (by keys); left empty, it
+        // shows the value again, nothing saved.
+        QQuickItem* limit = visualNamed(window->contentItem(), u"pluginSetting-"_s + rangesPlugin + u"/limit"_s);
+        keys(limit, u"-3"_s, true);
+        const bool limited = limit && limit->property("text").toString() == u"1" && ini(u"limit"_s).toString() == u"1"
+            && rangesHost->pluginSettings(rangesPlugin).value(u"limit"_s).toDouble() == 1;
+        keys(limit, QString(), false);
+        const bool limitEmptied = limit && limit->property("text").toString().isEmpty();
+        unfocus();
+        const bool limitKept = limit && limit->property("text").toString() == u"1" && ini(u"limit"_s).toString() == u"1";
+        say(u"#359 sliders, a minimum only: keys -3, Enter: kept as 1 %1; emptied %2, then left: 1 again %3: %4"_s
+                .arg(limited).arg(limitEmptied).arg(limitKept).arg(limited && limitEmptied && limitKept ? u"passed"_s : u"FAILED"_s));
+        sliders = sliders && limited && limitEmptied && limitKept;
+        // For the picture: the values a user would leave, nothing focused.
+        type(u"pause"_s, u"400"_s);
+        type(u"match"_s, u"0.75"_s);
+        unfocus();
+        if (!sliders)
+            qWarning("plugin slider check failed");
+    }
     say(u"grabbing"_s);
     if (args.contains(u"--tree"_s))
         writeTree(window, out + u".tree.txt"_s);
     const bool saved = saveGrab(window, out);
     say(u"dpr %1"_s.arg(window->devicePixelRatio()));
-    return finish(window, saved && confirmed && homepages && keywords);
+    return finish(window, saved && confirmed && homepages && keywords && sliders);
 }
 
 // ---- --preview-settings -----------------------------------------------------------------
