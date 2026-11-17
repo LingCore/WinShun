@@ -1980,7 +1980,7 @@ void App::applySettings(bool initial)
     m_preview->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
-    m_launcher->setLetterJump(m_settings.letterJump);
+    m_launcher->setLetterJump(m_settings.letterJump, m_settings.letterJumpKey, m_settings.letterJumpKeys);
     watchCopies();
     m_launcher->setRowDeleteButton(m_settings.rowDeleteButton);
     m_launcher->setScopeButton(m_settings.scopeButton);
@@ -1990,7 +1990,7 @@ void App::applySettings(bool initial)
     m_launcher->setPanelListsAll(m_settings.panelListsAll);
     tellLauncherFolders();
     m_clipboard->setNumberHints(m_settings.numberHints);
-    m_clipboard->setLetterJump(m_settings.letterJump);
+    m_clipboard->setLetterJump(m_settings.letterJump, m_settings.letterJumpKey, m_settings.letterJumpKeys);
     const QString clipboardSize = m_settings.clipboardUiSize == u"follow" ? m_settings.uiSize : m_settings.clipboardUiSize;
     const bool clipboardResized = clipboardSize != m_clipboard->uiSize();
     m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardPictureSize, clipboardSize);
@@ -6268,6 +6268,9 @@ void App::clipboardShiftTapped()
     // keys with it. Not a Chinese one: a Shift alone means nothing to it.
     // Taking the focus for the input method would close what closes without
     // it there (VS Code's quick open), and the paste would go nowhere.
+    // Shift chosen for 字母直达 (GitHub #357): the tap is for the letters.
+    if (m_settings.letterJump && m_settings.letterJumpKey == u"shift")
+        return;
     const HKL layout = ::GetKeyboardLayout(::GetWindowThreadProcessId(::GetForegroundWindow(), nullptr));
     if (win::isChineseLayout(layout))
         emit m_clipboard->pinyinHintRequested();

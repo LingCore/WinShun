@@ -1720,11 +1720,13 @@ void Launcher::setExcludedFiles(const QStringList& types, const QStringList& nam
         search();
 }
 
-void Launcher::setLetterJump(bool on)
+void Launcher::setLetterJump(bool on, const QString& key, const QString& keys)
 {
-    if (m_letterJump == on)
+    if (m_letterJump == on && m_letterJumpKey == key && m_letterJumpKeys == keys)
         return;
     m_letterJump = on;
+    m_letterJumpKey = key;
+    m_letterJumpKeys = keys;
     emit resultOptionsChanged();
 }
 

@@ -180,6 +180,8 @@ Item {
         listening: page.visible && (page.Window.active || page.clipboard.keysRouted) && !page.menuOpen
         // 字母直达 (GitHub #175); not while a group is looked for or an entry's words are changed.
         jumpEnabled: page.clipboard.letterJump && !page.findingGroup && page.editingId === 0
+        trigger: page.clipboard.letterJumpKey
+        letters: page.clipboard.letterJumpKeys
     }
     ShownRows {
         id: shownRows
@@ -194,7 +196,7 @@ Item {
         if (!numberHints.jumping || [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta].includes(event.key))
             return false
         const offset = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0
-            ? numberHints.offsetOf(event.key) : -1
+            ? numberHints.offsetOf(event) : -1
         const row = offset >= 0 ? shownRows.rowOf(offset + 1) : -1
         numberHints.leave()
         if (offset >= 0) {

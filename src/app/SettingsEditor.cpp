@@ -434,6 +434,25 @@ void SettingsEditor::setLetterJump(bool on)
     commit();
 }
 
+void SettingsEditor::setLetterJumpKey(const QString& key)
+{
+    if (m_settings.letterJumpKey == key || (key != u"auto" && key != u"ctrl" && key != u"alt" && key != u"shift"))
+        return;
+    m_settings.letterJumpKey = key;
+    commit();
+}
+
+void SettingsEditor::setLetterJumpKeys(const QString& keys)
+{
+    const QString normalized = Settings::normalizedJumpKeys(keys);
+    if (m_settings.letterJumpKeys == normalized) {
+        emit changed(); // the box shows what was taken, not what was typed
+        return;
+    }
+    m_settings.letterJumpKeys = normalized;
+    commit();
+}
+
 void SettingsEditor::setNumberHints(const QString& hints)
 {
     if (m_settings.numberHints == hints || (hints != u"held" && hints != u"always" && hints != u"off"))

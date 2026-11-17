@@ -4651,13 +4651,74 @@ Window {
 
                 SettingRow {
                     title: qsTr("字母直达")
-                    description: qsTr("轻按一下数字键用的那个键（搜索框是 Ctrl，剪贴板是 Alt，按上面的设置）再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有；加 Shift 是打开所在位置（剪贴板里是粘贴为纯文本）。再按一下或按 Esc 退出。启动器和剪贴板共用")
+                    description: qsTr("轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板里 Shift+字母是粘贴为纯文本。再按一下那个键或按 Esc 退出。启动器和剪贴板共用")
                     keywords: qsTr("快捷键;字母;单手;vim;vi;提示;跳转;直达;hint").split(";")
 
                     ToggleSwitch {
                         dpr: window.dpr
                         checked: window.editor.letterJump
                         onToggled: (on) => window.editor.letterJump = on
+                    }
+                }
+
+                SettingRow {
+                    sub: true
+                    shown: window.editor.letterJump
+                    title: qsTr("字母直达用的键")
+                    description: window.editor.letterJumpKey === "shift"
+                                 ? qsTr("搜索框里用中文输入法时，轻按 Shift 也会切换中英文")
+                                 : qsTr("跟数字键一样：搜索框和剪贴板各用数字键设置里的那个键")
+                    keywords: qsTr("字母直达;修饰键;Ctrl;Alt;Shift").split(";")
+
+                    ScopeTabs {
+                        labels: [qsTr("跟数字键一样"), "Ctrl", "Alt", "Shift"]
+                        current: Math.max(0, ["auto", "ctrl", "alt", "shift"].indexOf(window.editor.letterJumpKey))
+                        onActivated: (index) => window.editor.letterJumpKey = ["auto", "ctrl", "alt", "shift"][index]
+                    }
+                }
+
+                SettingRow {
+                    sub: true
+                    shown: window.editor.letterJump
+                    title: qsTr("用哪些字母")
+                    description: qsTr("按顺序给第一行、第二行……，可以有数字，例如左手用的 QWERTASDFGZXCVB12345")
+                    keywords: qsTr("字母直达;字母;数字;顺序;左手;单手").split(";")
+
+                    Row {
+                        spacing: 8
+
+                        InputBox {
+                            id: letterJumpKeysBox
+                            dpr: window.dpr
+                            width: 230
+                            text: window.editor.letterJumpKeys
+                            placeholder: window.editor.defaultLetterJumpKeys
+                            // Taken as cleaned up (upper case, A-Z and 0-9 once each): the box shows that.
+                            // Anything else in it (an input method's 汉字 for the letters typed) is not
+                            // taken: cleaned up, "阿斯顿a" would be the one letter A.
+                            function take() {
+                                error = !/^[A-Za-z0-9\s,;，；]*$/.test(text)
+                                if (error)
+                                    return
+                                window.editor.letterJumpKeys = text
+                                text = Qt.binding(() => window.editor.letterJumpKeys)
+                                showStart()
+                            }
+                            onEditingFinished: take()
+                            onAccepted: take()
+                            onTextChanged: if (error && /^[A-Za-z0-9\s,;，；]*$/.test(text)) error = false
+                        }
+                        FlatButton {
+                            dpr: window.dpr
+                            visible: window.editor.letterJumpKeys !== window.editor.defaultLetterJumpKeys
+                            text: qsTr("恢复默认")
+                            onClicked: {
+                                window.editor.letterJumpKeys = window.editor.defaultLetterJumpKeys
+                                letterJumpKeysBox.error = false
+                                letterJumpKeysBox.text = Qt.binding(() => window.editor.letterJumpKeys)
+                                letterJumpKeysBox.showStart()
+                            }
+                        }
                     }
                 }
             }

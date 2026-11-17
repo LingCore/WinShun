@@ -101,6 +101,8 @@ Item {
     property real hintOpacity: 1
     // 字母直达: the letter that opens (pastes) this row while the letters show, in the number's place; "" for none.
     property string hintLetter
+    // 字母直达 (GitHub #357): the letters for its buttons, the first visible one's first; "" none.
+    property string actionLetters
     // The window's tip for a name or folder cut short (one for all its rows).
     property NameTip nameTip: null
     // The window's devicePixelRatio, read once by the list's host (GitHub #111);

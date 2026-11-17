@@ -581,6 +581,8 @@ Window {
         listening: window.visible && window.active && !window.menuOpen && !window.clipboardBelow
         // 字母直达 (GitHub #175): the plain list only (its rows have the room for a letter).
         jumpEnabled: window.launcher.letterJump && window.gridColumns === 1 && !window.panel
+        trigger: window.launcher.letterJumpKey
+        letters: window.launcher.letterJumpKeys
     }
     // The rows the letters are on: from the first at least half in view to the last, one letter each.
     readonly property int lastLetterRow: Math.min(view.count - 1, firstShownRow + numberHints.letters.length - 1,
@@ -589,14 +591,27 @@ Window {
         return numberHints.jumping && index >= firstShownRow && index <= lastLetterRow
             ? numberHints.letterOf(index - firstShownRow) : ""
     }
-    // A key while the letters show: a letter opens its row (with Shift: where
-    // the file is), and is taken; anything else puts the numbers back and is
-    // that key as ever (Esc only puts them back).
+    // A key while the letters show: a letter opens its row; Shift+letter
+    // picks the row and puts the letters on its buttons (GitHub #357), where
+    // a letter is that button's click (delete: twice, as with the mouse).
+    // The letter is taken; anything else puts the numbers back and is that
+    // key as ever (Esc only puts them back).
     function letterKey(event) {
-        if (!numberHints.jumping || [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta].includes(event.key))
+        if ((!numberHints.jumping && !numberHints.picking)
+                || [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta].includes(event.key))
             return false
-        const offset = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0
-            ? numberHints.offsetOf(event.key) : -1
+        const plain = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0
+        const offset = plain ? numberHints.offsetOf(event) : -1
+        if (numberHints.picking) {
+            const bar = view.currentItem ? view.currentItem.actions : null
+            numberHints.leave()
+            if (offset < 0)
+                return event.key === Qt.Key_Escape
+            if (!event.isAutoRepeat && bar !== null && bar.clickLettered(offset)
+                    && view.currentItem && view.currentItem.deleteArmed)
+                numberHints.pick() // delete armed: its letter again deletes
+            return true
+        }
         const row = firstShownRow + offset
         const last = lastLetterRow
         numberHints.leave()
@@ -604,11 +619,24 @@ Window {
             if (row <= last && !event.isAutoRepeat) {
                 window.launcher.clearSelection() // that row alone
                 view.currentIndex = row
-                window.launcher.trigger(row, (event.modifiers & Qt.ShiftModifier) ? Launcher.Reveal : Launcher.Open)
+                if (event.modifiers & Qt.ShiftModifier) {
+                    window.launcher.keyboardMoved()
+                    window.launcher.chooseRow(row)
+                    view.positionViewAtIndex(row, ListView.Contain)
+                    numberHints.pick()
+                } else {
+                    window.launcher.trigger(row, Launcher.Open)
+                }
             }
             return true
         }
         return event.key === Qt.Key_Escape
+    }
+    Connections { // the row picked for its buttons' letters is no longer the one under the keyboard
+        target: view
+        enabled: numberHints.picking
+        function onCurrentIndexChanged() { numberHints.leave() }
+        function onCountChanged() { numberHints.leave() }
     }
     Connections {
         target: window.searchBar
@@ -1344,7 +1372,7 @@ Window {
             SearchBar {
                 id: boxBar
                 minimal: window.pureEmpty
-                keysOnly: numberHints.jumping
+                keysOnly: numberHints.jumping || numberHints.picking
                 width: parent.width
                 launcher: window.launcher
                 placement: window.placement
@@ -1745,6 +1773,7 @@ Window {
                     showSize: window.launcher.showFileSize || window.launcher.sort === Launcher.LargestFirst || window.launcher.sort === Launcher.SmallestFirst
                     hint: window.numberOf(index)
                     hintLetter: window.letterOf(index)
+                    actionLetters: numberHints.picking && index === view.currentIndex ? numberHints.letters : ""
                     reserveHintSpace: (window.numberKey >= 0 && window.launcher.numberHints !== "off") || window.launcher.letterJump
                     // With more rows in the list than number keys (also when the window shows fewer:
                     // scrolled, some rows in view have a number and some none), or letters for every row,

@@ -451,11 +451,13 @@ int Clipboard::heldRow() const
     return m_holding && m_heldId ? m_model.rowOf(m_heldId) : -1;
 }
 
-void Clipboard::setLetterJump(bool on)
+void Clipboard::setLetterJump(bool on, const QString& key, const QString& keys)
 {
-    if (m_letterJump == on)
+    if (m_letterJump == on && m_letterJumpKey == key && m_letterJumpKeys == keys)
         return;
     m_letterJump = on;
+    m_letterJumpKey = key;
+    m_letterJumpKeys = keys;
     emit numberKeysChanged();
 }
 

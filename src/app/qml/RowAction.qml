@@ -16,6 +16,9 @@ Rectangle {
     property bool checked: false
     property string tip
     property string tipShortcut
+    // 字母直达 (GitHub #357): the key that clicks it now, on a small key in its
+    // corner; "" none. Over the icon's corner, not beside it: the row keeps its layout.
+    property string keyLetter
     readonly property bool tipWanted: area.containsMouse && !area.used && tip.length > 0
     readonly property color foreground: surface.out("foreground", danger ? Theme.accentText : checked ? Theme.accent
                                                     : area.containsMouse ? Theme.text : Theme.subtext)
@@ -81,6 +84,24 @@ Rectangle {
             text: button.text
             color: button.foreground
             font.pixelSize: Theme.fontCaption
+        }
+    }
+
+    Rectangle {
+        visible: button.keyLetter.length > 0
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        width: Math.max(height, letter.implicitWidth + 4)
+        height: button.small ? 12 : 14
+        radius: 3
+        color: Theme.accentFill
+        Text {
+            id: letter
+            anchors.centerIn: parent
+            text: button.keyLetter
+            color: Theme.accentText
+            font.pixelSize: button.small ? 9 : 10
+            font.weight: Font.DemiBold
         }
     }
 

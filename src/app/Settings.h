@@ -264,6 +264,15 @@ struct Settings {
     // every row in view of the search box and the clipboard; the letter
     // opens or pastes its row. Off: a tap of Ctrl or Alt means nothing.
     bool letterJump = false;
+    // The key tapped for the letters (GitHub #357): auto (the number keys'
+    // modifier, Ctrl when they are off) | ctrl | alt | shift.
+    QString letterJumpKey = QStringLiteral("auto");
+    // The letters, the first row's first: A-Z and 0-9, each once
+    // (normalizedJumpKeys); the home row first unless the user chose others.
+    QString letterJumpKeys = defaultJumpKeys();
+    static QString defaultJumpKeys() { return QStringLiteral("ASDFGHJKLQWERTYUIOPZXCVBNM"); }
+    // Upper case, A-Z and 0-9 only, each once; the default for none left.
+    static QString normalizedJumpKeys(const QString& keys);
     bool shortcutHelp = true;
     bool footerHints = true;
     bool pureSearch = false; // empty floating launcher: just the input, without start results or chrome

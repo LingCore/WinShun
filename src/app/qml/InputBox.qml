@@ -22,6 +22,7 @@ Rectangle {
     function clear() { input.text = "" }
     function takeFocus() { input.forceActiveFocus() }
     function select(from: int, to: int) { input.select(from, to) }
+    function showStart() { input.cursorPosition = 0 } // a text longer than the box: its beginning in view
 
     property bool error: false // the value is not taken: the style's error mark
     property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)

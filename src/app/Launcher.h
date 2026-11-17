@@ -138,6 +138,8 @@ class Launcher : public QObject {
     Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString numberHints READ numberHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool letterJump READ letterJump NOTIFY resultOptionsChanged FINAL) // Settings::letterJump
+    Q_PROPERTY(QString letterJumpKey READ letterJumpKey NOTIFY resultOptionsChanged FINAL) // auto | ctrl | alt | shift
+    Q_PROPERTY(QString letterJumpKeys READ letterJumpKeys NOTIFY resultOptionsChanged FINAL)
     // A file's row has a delete button among its buttons (the settings, GitHub #316).
     Q_PROPERTY(bool rowDeleteButton READ rowDeleteButton NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp NOTIFY resultOptionsChanged FINAL)
@@ -555,7 +557,10 @@ public:
     Q_INVOKABLE bool isOpenKey(int key, int modifiers) const;
     void setNumberHints(const QString& hints);
     bool letterJump() const { return m_letterJump; }
-    void setLetterJump(bool on);
+    // Settings::letterJump, letterJumpKey, letterJumpKeys (GitHub #357).
+    void setLetterJump(bool on, const QString& key, const QString& keys);
+    QString letterJumpKey() const { return m_letterJumpKey; }
+    QString letterJumpKeys() const { return m_letterJumpKeys; }
     bool rowDeleteButton() const { return m_rowDeleteButton; }
     void setRowDeleteButton(bool shown);
     bool shortcutHelp() const { return m_shortcutHelp; }
@@ -1402,6 +1407,8 @@ private:
     QString m_numberKeys = QStringLiteral("ctrl");
     QString m_numberHints = QStringLiteral("always");
     bool m_letterJump = false;
+    QString m_letterJumpKey = QStringLiteral("auto");
+    QString m_letterJumpKeys = QStringLiteral("ASDFGHJKLQWERTYUIOPZXCVBNM");
     bool m_rowDeleteButton = true;
     bool m_shortcutHelp = true;
     bool m_footerHints = true;

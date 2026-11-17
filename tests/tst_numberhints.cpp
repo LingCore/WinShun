@@ -142,9 +142,11 @@ private slots:
             QMetaObject::invokeMethod(hints, "letterOf", Q_RETURN_ARG(QString, out), Q_ARG(int, offset));
             return out;
         };
-        const auto offset = [&](int key) {
+        // As a key event comes to QML: Qt's key and the virtual key (0: none, a key made up in Qt).
+        const auto offset = [&](int key, int vk = 0) {
             int out = -2;
-            QMetaObject::invokeMethod(hints, "offsetOf", Q_RETURN_ARG(int, out), Q_ARG(int, key));
+            const QVariantMap event {{u"key"_s, key}, {u"nativeVirtualKey"_s, vk}};
+            QMetaObject::invokeMethod(hints, "offsetOf", Q_RETURN_ARG(int, out), Q_ARG(QVariant, event));
             return out;
         };
         // Off (the default): a tap is nothing.
@@ -224,6 +226,48 @@ private slots:
         send(QEvent::KeyPress, Qt::Key_Alt, Qt::AltModifier);
         send(QEvent::KeyRelease, Qt::Key_Alt, Qt::NoModifier);
         QVERIFY(jumping());
+
+        // GitHub #357: the key chosen, whatever the number keys use.
+        hints->setProperty("trigger", u"shift"_s);
+        QVERIFY(!jumping());
+        send(QEvent::KeyPress, Qt::Key_Alt, Qt::AltModifier);
+        send(QEvent::KeyRelease, Qt::Key_Alt, Qt::NoModifier);
+        QVERIFY(!jumping()); // Alt is no longer it
+        send(QEvent::KeyPress, Qt::Key_Shift, Qt::ShiftModifier);
+        send(QEvent::KeyRelease, Qt::Key_Shift, Qt::NoModifier);
+        QVERIFY(jumping());
+        send(QEvent::KeyPress, Qt::Key_Shift, Qt::ShiftModifier);
+        send(QEvent::KeyRelease, Qt::Key_Shift, Qt::NoModifier);
+        QVERIFY(!jumping());
+        hints->setProperty("trigger", u"ctrl"_s);
+        tap();
+        QVERIFY(jumping());
+        // The letters chosen, digits among them, in their order; a digit by its
+        // place on the keyboard: Shift+1 ("!") and the number pad's 1 are 1.
+        hints->setProperty("letters", u"QWERT12"_s);
+        QVERIFY(!jumping()); // other letters: those shown are gone
+        tap();
+        QCOMPARE(letter(0), u"Q"_s);
+        QCOMPARE(letter(5), u"1"_s);
+        QCOMPARE(letter(7), QString());
+        QCOMPARE(offset(Qt::Key_Q, 0x51), 0);
+        QCOMPARE(offset(Qt::Key_1, 0x31), 5);
+        QCOMPARE(offset(Qt::Key_Exclam, 0x31), 5);
+        QCOMPARE(offset(Qt::Key_1, 0x61), 5);
+        QCOMPARE(offset(Qt::Key_2), 6); // no virtual key: Qt's
+        QCOMPARE(offset(Qt::Key_A, 0x41), -1); // not one of them
+        // Shift+letter picks a row: the letters go to its buttons; the tap leaves.
+        QMetaObject::invokeMethod(hints, "pick");
+        QVERIFY(!jumping());
+        QVERIFY(hints->property("picking").toBool());
+        QVERIFY(!hints->property("shown").toBool());
+        QCOMPARE(letter(0), QString()); // none on the rows
+        tap();
+        QVERIFY(!hints->property("picking").toBool());
+        QVERIFY(!jumping()); // out, not back to the rows' letters
+        QMetaObject::invokeMethod(hints, "pick");
+        hints->setProperty("listening", false);
+        QVERIFY(!hints->property("picking").toBool());
     }
 
     void letterJumpSetting()
@@ -240,6 +284,29 @@ private slots:
         read.load();
         QVERIFY(read.letterJump);
         QCOMPARE(read.numberHints, u"always"_s);
+        QCOMPARE(read.letterJumpKey, u"auto"_s);
+        QCOMPARE(read.letterJumpKeys, ws::Settings::defaultJumpKeys());
+
+        // GitHub #357: the key and the letters kept; letters cleaned up.
+        QCOMPARE(ws::Settings::normalizedJumpKeys(u"qwe rt!1q2"_s), u"QWERT12"_s);
+        QCOMPARE(ws::Settings::normalizedJumpKeys(u"  "_s), ws::Settings::defaultJumpKeys());
+        QCOMPARE(ws::Settings::normalizedJumpKeys(u"字母"_s), ws::Settings::defaultJumpKeys());
+        read.letterJumpKey = u"shift"_s;
+        read.letterJumpKeys = u"QWERTASDFGZXCVB12345"_s;
+        read.save();
+        ws::Settings again;
+        again.load();
+        QCOMPARE(again.letterJumpKey, u"shift"_s);
+        QCOMPARE(again.letterJumpKeys, u"QWERTASDFGZXCVB12345"_s);
+        {
+            QSettings raw(ws::Settings::filePath(), QSettings::IniFormat);
+            raw.setValue(u"Results/LetterJumpKey"_s, u"win"_s);
+            raw.setValue(u"Results/LetterJumpKeys"_s, u"aab3"_s);
+        }
+        ws::Settings odd;
+        odd.load();
+        QCOMPARE(odd.letterJumpKey, u"auto"_s);
+        QCOMPARE(odd.letterJumpKeys, u"AB3"_s);
     }
 
     void settings()

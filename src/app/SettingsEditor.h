@@ -218,6 +218,9 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString numberKeys READ numberKeys WRITE setNumberKeys NOTIFY changed FINAL) // ctrl | alt | off
     Q_PROPERTY(QString numberHints READ numberHints WRITE setNumberHints NOTIFY changed FINAL) // held | always | off
     Q_PROPERTY(bool letterJump READ letterJump WRITE setLetterJump NOTIFY changed FINAL)
+    Q_PROPERTY(QString letterJumpKey READ letterJumpKey WRITE setLetterJumpKey NOTIFY changed FINAL) // auto | ctrl | alt | shift
+    Q_PROPERTY(QString letterJumpKeys READ letterJumpKeys WRITE setLetterJumpKeys NOTIFY changed FINAL)
+    Q_PROPERTY(QString defaultLetterJumpKeys READ defaultLetterJumpKeys CONSTANT FINAL)
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp WRITE setShortcutHelp NOTIFY changed FINAL)
     Q_PROPERTY(bool footerHints READ footerHints WRITE setFooterHints NOTIFY changed FINAL)
     Q_PROPERTY(bool pureSearch READ pureSearch WRITE setPureSearch NOTIFY changed FINAL)
@@ -785,6 +788,11 @@ public:
     void setNumberHints(const QString& hints);
     bool letterJump() const { return m_settings.letterJump; }
     void setLetterJump(bool on);
+    QString letterJumpKey() const { return m_settings.letterJumpKey; }
+    void setLetterJumpKey(const QString& key);
+    QString letterJumpKeys() const { return m_settings.letterJumpKeys; }
+    void setLetterJumpKeys(const QString& keys);
+    static QString defaultLetterJumpKeys() { return Settings::defaultJumpKeys(); }
     bool shortcutHelp() const { return m_settings.shortcutHelp; }
     void setShortcutHelp(bool on);
     bool footerHints() const { return m_settings.footerHints; }

@@ -647,10 +647,18 @@ std::vector<Entry> buildCatalog()
             {u"always"_s, u"always"_s, QT_TRANSLATE_NOOP("AiSettings", "一直显示")},
             {u"off"_s, u"never"_s, QT_TRANSLATE_NOOP("AiSettings", "不显示")}}));
     add(boolean({"Results/LetterJump", QT_TRANSLATE_NOOP("AiSettings", "字母直达"), "results", 2,
-                    "Tapping the number keys' modifier (Ctrl or Alt) by itself puts a letter on every row in view of the "
-                    "search box and the clipboard; the letter opens (pastes) its row, with Shift it shows where the file "
-                    "is (pastes as plain text). The tap again or Esc leaves."},
+                    "Tapping a key by itself (Results/LetterJumpKey) puts a letter on every row in view of the search box "
+                    "and the clipboard; the letter opens (pastes) its row. In the search box Shift+letter picks the row and "
+                    "puts letters on its buttons (open location, terminal, copy, copy path, delete twice); in the clipboard "
+                    "it pastes as plain text. The tap again or Esc leaves. The letters and their order are chosen in the "
+                    "settings window."},
         &Settings::letterJump));
+    add(choice({"Results/LetterJumpKey", QT_TRANSLATE_NOOP("AiSettings", "字母直达用的键"), "results", 2,
+                   "The key tapped by itself for 字母直达: the number keys' modifier (Ctrl when they are off), or Ctrl, Alt or "
+                   "Shift. Shift also switches a Chinese input method in the search box."},
+        &Settings::letterJumpKey,
+        {{u"auto"_s, u"same as the number keys"_s, QT_TRANSLATE_NOOP("AiSettings", "跟数字键一样")},
+            {u"ctrl"_s, u"Ctrl"_s, "Ctrl"}, {u"alt"_s, u"Alt"_s, "Alt"}, {u"shift"_s, u"Shift"_s, "Shift"}}));
 
     // ---- 文件内容搜索 ----
     add(recording({"Content/Enabled", QT_TRANSLATE_NOOP("AiSettings", "文件内容搜索"), "content", 0,

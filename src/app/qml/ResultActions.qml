@@ -29,6 +29,38 @@ Item {
                                        : copyPathAction.tipWanted ? copyPathAction
                                        : deleteAction.tipWanted ? deleteAction : null
 
+    // 字母直达 (GitHub #357): the host's letters on its buttons as they show,
+    // left to right; the nth letter clicks the nth button shown.
+    readonly property string letters: host !== null ? host.actionLetters : ""
+    function letterOf(button: RowAction): string {
+        if (letters.length === 0 || !button.visible)
+            return ""
+        let n = 0
+        for (let i = 0; i < actions.children.length; ++i) {
+            const child = actions.children[i]
+            if (child === button)
+                return n < letters.length ? letters[n] : ""
+            if (child.visible)
+                ++n
+        }
+        return ""
+    }
+    // False: no button shown has that place.
+    function clickLettered(n: int): bool {
+        let shown = 0
+        for (let i = 0; i < actions.children.length; ++i) {
+            const child = actions.children[i]
+            if (!child.visible)
+                continue
+            if (shown === n) {
+                child.clicked()
+                return true
+            }
+            ++shown
+        }
+        return false
+    }
+
     // Put in the row's mouse area by the pool, so that hovering a button still hovers the row.
     width: parent ? parent.width : 0
     height: parent ? parent.height : 0
@@ -60,6 +92,7 @@ Item {
             dpr: bar.dpr
             shared: true
             small: bar.small
+            keyLetter: bar.letterOf(switchPageAction)
             visible: bar.host !== null && bar.host.switchReady
             glyph: "" // Settings (gear)
             tip: qsTranslate("ResultRow", "打开设置")
@@ -72,6 +105,7 @@ Item {
             dpr: bar.dpr
             shared: true
             small: bar.small
+            keyLetter: bar.letterOf(adminAction)
             visible: bar.host !== null && bar.host.elevatable && !bar.host.switchReady
             glyph: "" // Admin (shield)
             tip: qsTranslate("ResultRow", "以管理员身份运行")
@@ -83,6 +117,7 @@ Item {
             dpr: bar.dpr
             shared: true
             small: bar.small
+            keyLetter: bar.letterOf(revealAction)
             visible: bar.host !== null && !bar.host.switchReady && (!bar.host.isApp || bar.host.revealable)
             glyph: "" // OpenFolder
             tip: bar.host !== null && bar.host.packagedApp ? qsTranslate("ResultRow", "打开安装文件夹") : qsTranslate("ResultRow", "打开所在位置")
@@ -94,6 +129,7 @@ Item {
             dpr: bar.dpr
             shared: true
             small: bar.small
+            keyLetter: bar.letterOf(terminalAction)
             visible: bar.host !== null && !bar.host.isApp // a file's or folder's: its folder in cmd
             glyph: "" // CommandPrompt
             tip: qsTranslate("ResultRow", "在终端中打开")
@@ -104,6 +140,7 @@ Item {
             dpr: bar.dpr
             shared: true
             small: bar.small
+            keyLetter: bar.letterOf(copyAction)
             // A desktop app copies its program; a packaged one has none.
             visible: bar.host !== null && bar.host.copyable && !bar.host.switchReady
             glyph: "" // Copy
@@ -118,6 +155,7 @@ Item {
             dpr: bar.dpr
             shared: true
             small: bar.small
+            keyLetter: bar.letterOf(copyPathAction)
             visible: host !== null && !host.settingsAction && !host.switchReady && (!host.plugin || host.pluginCopies)
             // Copy; else drawn by Glyph: a box holding "\\..".
             glyph: host !== null && (host.plugin || host.windowResult) ? "" : "copyPath"
@@ -138,6 +176,7 @@ Item {
             dpr: bar.dpr
             shared: true
             small: bar.small
+            keyLetter: bar.letterOf(deleteAction)
             visible: bar.deleteButton && host !== null && !host.isApp // uninstalling is for Windows Settings
             glyph: "" // Delete
             tip: armed ? "" : qsTranslate("ResultRow", "删除（点两次，移到回收站）")

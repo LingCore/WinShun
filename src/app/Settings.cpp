@@ -608,6 +608,16 @@ QStringList Settings::defaultIndexFolders()
     return folders;
 }
 
+QString Settings::normalizedJumpKeys(const QString& keys)
+{
+    QString result;
+    for (const QChar c : keys.toUpper()) {
+        if (((c >= u'A' && c <= u'Z') || (c >= u'0' && c <= u'9')) && !result.contains(c))
+            result += c;
+    }
+    return result.isEmpty() ? defaultJumpKeys() : result;
+}
+
 QString Settings::filePath()
 {
     return QSettings(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s).fileName();
@@ -994,6 +1004,10 @@ void Settings::load()
     if (numberHints != u"held" && numberHints != u"always" && numberHints != u"off")
         numberHints = d.numberHints;
     letterJump = readOrDefault(s, u"Results/LetterJump"_s, d.letterJump);
+    letterJumpKey = readOrDefault(s, u"Results/LetterJumpKey"_s, d.letterJumpKey).trimmed().toLower();
+    if (letterJumpKey != u"ctrl" && letterJumpKey != u"alt" && letterJumpKey != u"shift")
+        letterJumpKey = d.letterJumpKey;
+    letterJumpKeys = normalizedJumpKeys(readOrDefault(s, u"Results/LetterJumpKeys"_s, d.letterJumpKeys));
     shortcutHelp = readOrDefault(s, u"Results/ShortcutHelp"_s, d.shortcutHelp);
     footerHints = readOrDefault(s, u"Results/FooterHints"_s, d.footerHints);
     pureSearch = readOrDefault(s, u"Results/PureSearch"_s, d.pureSearch);
@@ -1390,6 +1404,8 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/NumberKeys"_s, numberKeys);
     s.setValue(u"Results/NumberHints"_s, numberHints);
     s.setValue(u"Results/LetterJump"_s, letterJump);
+    s.setValue(u"Results/LetterJumpKey"_s, letterJumpKey);
+    s.setValue(u"Results/LetterJumpKeys"_s, letterJumpKeys);
     s.setValue(u"Results/ShortcutHelp"_s, shortcutHelp);
     s.setValue(u"Results/FooterHints"_s, footerHints);
     s.setValue(u"Results/PureSearch"_s, pureSearch);

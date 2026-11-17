@@ -86,6 +86,8 @@ class Clipboard : public QObject {
     Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY numberKeysChanged FINAL)
     Q_PROPERTY(QString numberHints READ numberHints NOTIFY numberKeysChanged FINAL)
     Q_PROPERTY(bool letterJump READ letterJump NOTIFY numberKeysChanged FINAL) // Settings::letterJump
+    Q_PROPERTY(QString letterJumpKey READ letterJumpKey NOTIFY numberKeysChanged FINAL) // auto | ctrl | alt | shift
+    Q_PROPERTY(QString letterJumpKeys READ letterJumpKeys NOTIFY numberKeysChanged FINAL)
     // Bits 1 << n of the digits n left to one of Win顺's own shortcuts
     // (App::ownNumberDigits): their rows show the chord struck through.
     Q_PROPERTY(int numberKeysLeft READ numberKeysLeft NOTIFY numberKeysChanged FINAL)
@@ -174,7 +176,10 @@ public:
     QString numberHints() const { return m_numberHints; }
     void setNumberHints(const QString& hints);
     bool letterJump() const { return m_letterJump; }
-    void setLetterJump(bool on);
+    // Settings::letterJump, letterJumpKey, letterJumpKeys (GitHub #357).
+    void setLetterJump(bool on, const QString& key, const QString& keys);
+    QString letterJumpKey() const { return m_letterJumpKey; }
+    QString letterJumpKeys() const { return m_letterJumpKeys; }
     void setNumberKeys(const QString& keys); // "alt", "ctrl" or "off"
     int numberKeysLeft() const { return static_cast<int>(m_numberKeysLeft); }
     void setNumberKeysLeft(unsigned digits);
@@ -476,6 +481,8 @@ private:
     QString m_numberKeys = QStringLiteral("alt");
     QString m_numberHints = QStringLiteral("always");
     bool m_letterJump = false;
+    QString m_letterJumpKey = QStringLiteral("auto");
+    QString m_letterJumpKeys = QStringLiteral("ASDFGHJKLQWERTYUIOPZXCVBNM");
     unsigned m_numberKeysLeft = 0;
     bool m_clickToPaste = false;
     QString m_pictureSize = QStringLiteral("standard");

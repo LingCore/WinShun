@@ -6,7 +6,9 @@ import QtQuick
 // tapped by itself, down and up within tapMs with nothing else pressed,
 // puts a letter on every row in view; the letter then opens (or pastes) its
 // row with one hand, also the rows past the ninth. The tap again, Esc or
-// any other key puts the numbers back.
+// any other key puts the numbers back. Which key (`trigger`) and which
+// letters (`letters`, digits allowed) are the user's (GitHub #357); a key
+// counts by its place on the keyboard (the virtual key), so Shift+1 is 1.
 Item {
     id: hints
 
@@ -15,17 +17,22 @@ Item {
     property bool listening: false
     property bool held: false
     property bool ready: false
-    readonly property bool shown: key >= 0 && !jumping && (mode === "always" || (mode === "held" && listening && ready))
+    readonly property bool shown: key >= 0 && !jumping && !picking && (mode === "always" || (mode === "held" && listening && ready))
     property real hintOpacity: shown ? 1 : 0
 
     property bool jumpEnabled: false
-    readonly property int jumpKey: key >= 0 ? key : Qt.Key_Control
+    property string trigger: "auto" // auto: the number keys' modifier | ctrl | alt | shift
+    readonly property int jumpKey: trigger === "ctrl" ? Qt.Key_Control : trigger === "alt" ? Qt.Key_Alt
+                                 : trigger === "shift" ? Qt.Key_Shift : key >= 0 ? key : Qt.Key_Control
     property bool jumping: false
+    // Shift+letter in the search box (GitHub #357): the letters are on the
+    // buttons of the row it picked (the current one), not on the rows.
+    property bool picking: false
     property bool tapArmed: false
     property double tapAt: 0
     readonly property int tapMs: 350
-    // The home row first: the nearest keys for the first rows.
-    readonly property string letters: "ASDFGHJKLQWERTYUIOPZXCVBNM"
+    // The first row's first; the home row unless the user chose others.
+    property string letters: "ASDFGHJKLQWERTYUIOPZXCVBNM"
 
     Behavior on hintOpacity { NumberAnimation { duration: hints.shown ? 80 : 60 } }
 
@@ -38,13 +45,27 @@ Item {
     function letterOf(offset: int): string {
         return jumping && offset >= 0 && offset < letters.length ? letters[offset] : ""
     }
-    // How many rows after the first in view that key's letter picks; -1: not a letter.
-    function offsetOf(key: int): int {
-        return key >= Qt.Key_A && key <= Qt.Key_Z ? letters.indexOf(String.fromCharCode(key)) : -1
+    // The letter or digit of a key event ("" for none): by its virtual key,
+    // so that Shift (or a layout) does not make 1 a "!"; by Qt's key for a
+    // key that has none.
+    function charOf(event): string {
+        const vk = event.nativeVirtualKey
+        if ((vk >= 0x30 && vk <= 0x39) || (vk >= 0x41 && vk <= 0x5A))
+            return String.fromCharCode(vk)
+        if (vk >= 0x60 && vk <= 0x69) // the number pad's
+            return String.fromCharCode(vk - 0x30)
+        const key = event.key
+        return (key >= Qt.Key_A && key <= Qt.Key_Z) || (key >= Qt.Key_0 && key <= Qt.Key_9) ? String.fromCharCode(key) : ""
+    }
+    // How many rows after the first in view that key's letter picks; -1: not one of the letters.
+    function offsetOf(event): int {
+        const c = charOf(event)
+        return c.length > 0 ? letters.indexOf(c) : -1
     }
     function press(event) {
         if (!event.isAutoRepeat) {
-            const tapModifier = jumpKey === Qt.Key_Control ? Qt.ControlModifier : Qt.AltModifier
+            const tapModifier = jumpKey === Qt.Key_Control ? Qt.ControlModifier
+                              : jumpKey === Qt.Key_Shift ? Qt.ShiftModifier : Qt.AltModifier
             tapArmed = jumpEnabled && listening && event.key === jumpKey && (event.modifiers & ~tapModifier) === 0
             if (tapArmed)
                 tapAt = Date.now()
@@ -67,8 +88,12 @@ Item {
         if (event.isAutoRepeat)
             return
         if (event.key === jumpKey) {
-            if (tapArmed && jumpEnabled && listening && Date.now() - tapAt <= tapMs)
-                jumping = !jumping
+            if (tapArmed && jumpEnabled && listening && Date.now() - tapAt <= tapMs) {
+                if (picking)
+                    leave()
+                else
+                    jumping = !jumping
+            }
             tapArmed = false
         }
         if (event.key === key)
@@ -76,12 +101,19 @@ Item {
     }
     function leave() {
         jumping = false
+        picking = false
         tapArmed = false
+    }
+    function pick() {
+        jumping = false
+        picking = true
     }
 
     onListeningChanged: { reset(); leave() }
     onModeChanged: reset()
     onKeyChanged: { reset(); leave() }
+    onTriggerChanged: leave()
+    onLettersChanged: leave()
     onJumpEnabledChanged: leave()
 
     Timer {
