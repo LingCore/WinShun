@@ -178,6 +178,17 @@ add_executable(capture-probe tools/capture-probe.cpp)
 target_link_libraries(capture-probe PRIVATE winshun_options windowsapp d3d11 dxgi dwmapi windowscodecs user32 gdi32 advapi32 ole32)
 set_target_properties(capture-probe PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+# Memory report a user runs on their own machine (tools/memreport/README.md).
+# One exe with the C runtime and miniz built in, no Qt: it runs beside any
+# installed Win顺 version and is sent on its own, not installed.
+add_executable(WinShunMemReport tools/memreport/memreport.cpp ${PROJECT_SOURCE_DIR}/third_party/miniz/miniz.c
+    ${PROJECT_SOURCE_DIR}/resources/WinShunMemReport.rc)
+target_include_directories(WinShunMemReport PRIVATE ${PROJECT_SOURCE_DIR}/third_party/miniz)
+target_compile_definitions(WinShunMemReport PRIVATE MINIZ_NO_STDIO MINIZ_NO_TIME MINIZ_NO_ZLIB_COMPATIBLE_NAMES)
+target_link_libraries(WinShunMemReport PRIVATE winshun_options advapi32 ole32 pdh psapi shell32 user32 version wevtapi)
+set_target_properties(WinShunMemReport PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF
+    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 qt_add_executable(recording-probe tools/recording-probe.cpp src/app/platform/KeyListener.cpp)
 target_include_directories(recording-probe PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(recording-probe PRIVATE wscapture wscore Qt6::Gui shcore)
