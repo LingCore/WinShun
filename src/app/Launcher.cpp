@@ -1883,12 +1883,6 @@ void Launcher::setFavoriteTiles(bool on)
         search();
 }
 
-void Launcher::openFavoriteTile(int index)
-{
-    if (const SearchResult* r = m_tiles.at(index))
-        perform(SearchResult(*r), Open); // a copy: opening may change the tiles
-}
-
 void Launcher::moveFavoriteTile(int from, int to)
 {
     const SearchResult* a = m_tiles.at(from);
@@ -2683,17 +2677,25 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
                 r.runAsAdmin = true; // the row says so (管理员)
         }
     }
-    // Nothing typed in 全部, the favorites as tiles: their rows go there.
+    // Nothing typed in 全部, the favorites as tiles: their rows first (over
+    // a keep-awake's, which the tiles stand over anyway), drawn as tiles by
+    // Main.qml and left out of the list there. Rows still, so the keys, the
+    // menu, the preview and the selection are a row's.
     SearchResults tiles;
     if (m_favoriteTilesOn && m_favoritesOnStart && !m_panel && !m_keyword && m_scope == All && searchText().isEmpty()) {
-        for (qsizetype i = 0; i < rows.size();) {
-            if (rows[i].favorite && !rows[i].statusRow)
-                tiles.append(rows.takeAt(i));
-            else
-                ++i;
+        std::stable_partition(rows.begin(), rows.end(), [](const SearchResult& r) { return r.favorite && !r.statusRow; });
+        for (const SearchResult& r : rows) {
+            if (!r.favorite || r.statusRow)
+                break;
+            tiles.append(r);
         }
     }
-    m_tiles.assign(std::move(tiles), {});
+    const int tileRows = static_cast<int>(tiles.size());
+    m_tiles.assign(std::move(tiles), {}); // what the tiles draw: these rows' copies
+    if (m_tileRows != tileRows) {
+        m_tileRows = tileRows;
+        emit tileRowsChanged(); // before the rows: the list counts them out as it takes these
+    }
     m_results.assign(std::move(rows), std::move(highlights));
     m_shownText = searchText();
     m_shownScope = m_scope;

@@ -71,8 +71,10 @@ class Launcher : public QObject {
     Q_PROPERTY(QString logoRightClick READ logoRightClick NOTIFY logoRightClickChanged FINAL)
     Q_PROPERTY(ws::ResultModel* results READ results CONSTANT FINAL)
     // Settings::favoriteTiles: with nothing typed in 全部, the favorites'
-    // rows taken out of the list and shown as tiles over it (Main.qml).
+    // rows are the first tileRows rows, drawn as tiles over the list
+    // (Main.qml), which leaves them out; favoriteTiles holds their copies.
     Q_PROPERTY(ws::ResultModel* favoriteTiles READ favoriteTiles CONSTANT FINAL)
+    Q_PROPERTY(int tileRows READ tileRows NOTIFY tileRowsChanged FINAL)
     Q_PROPERTY(ws::PanelColumns* panelColumns READ panelColumns CONSTANT FINAL)
     Q_PROPERTY(ws::ContentPane* contentPane READ contentPane CONSTANT FINAL)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged FINAL)
@@ -422,9 +424,9 @@ public:
     ResultModel* results() { return &m_results; }
     ResultModel* favoriteTiles() { return &m_tiles; }
     void setFavoriteTiles(bool on);
-    // A tile opened as its row would be; one held and dropped on another's
-    // place: the favorites' order changed so (Favorites::move).
-    Q_INVOKABLE void openFavoriteTile(int index);
+    int tileRows() const { return m_tileRows; }
+    // A tile held and dropped on another's place: the favorites' order
+    // changed so (Favorites::move).
     Q_INVOKABLE void moveFavoriteTile(int from, int to);
     QString statusText() const { return m_flash.isEmpty() ? m_status : m_flash; }
     bool busy() const;
@@ -899,6 +901,7 @@ signals:
     void fileChoiceChanged();
     void favoriteSettingsRequested(const QString& path); // ... on its 收藏夹 page, at this favorite
     void favoritesChanged();
+    void tileRowsChanged();
     // The settings window, on the 插件 page at this plugin's card: a plugin
     // row opening "winshun:settings" (its own card only; performPlugin).
     void pluginSettingsRequested(const QString& pluginId);
@@ -1209,6 +1212,7 @@ private:
     ResultModel m_results;
     ResultModel m_tiles; // the favorites as tiles (setFavoriteTiles); empty otherwise
     bool m_favoriteTilesOn = false;
+    int m_tileRows = 0;
     std::unique_ptr<ContentPane> m_contentPane;
     QPointer<QWindow> m_window;
     std::function<bool(const QString& folder)> m_folderOpener; // setFolderOpener

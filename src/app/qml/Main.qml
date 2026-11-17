@@ -136,7 +136,7 @@ Window {
     function rowAtY(y, after) {
         const h = viewRowHeight
         if (panel || elsewhereRow < 0 || boxList.contentHeight <= 0)
-            return Math.floor(y / h)
+            return Math.floor(y / h) + tileRows // the tiles' rows take no room in the list
         const at = boxList.indexAt(boxList.contentX + 1, y)
         if (at >= 0)
             return at
@@ -404,7 +404,7 @@ Window {
     // is about to fill up again does not collapse and spring back.
     property int shownRows: 0
     function settleRows() {
-        const wanted = Math.min(launcher.results.count, fitRows)
+        const wanted = Math.min(launcher.results.count - tileRows, fitRows)
         if (wanted >= shownRows || !launcher.searching) {
             shownRows = wanted
             shrinkGrace.stop()
@@ -417,7 +417,7 @@ Window {
         id: shrinkGrace
         interval: 2000 // a content scan's first matches often take over a second
         onTriggered: {
-            window.shownRows = Math.min(window.launcher.results.count, window.fitRows)
+            window.shownRows = Math.min(window.launcher.results.count - window.tileRows, window.fitRows)
             window.settleEmpty()
         }
     }
@@ -543,6 +543,10 @@ Window {
     // the rows from the anchor (where the range started) to here.
     property int selectionAnchor: -1
     readonly property int selectedCount: launcher.results.selectedCount
+    // The favorites drawn as tiles (Settings::favoriteTiles): the list's first
+    // rows, left out of it here; the tiles over it are those rows.
+    readonly property int tileRows: panel ? 0 : launcher.tileRows
+    function isTileRow(index) { return index >= 0 && index < tileRows }
     function toggleRow(index) {
         window.launcher.toggleSelected(index)
         view.currentIndex = index
@@ -720,8 +724,7 @@ Window {
         window.launcher.chooseRow(index) // its row now: Tab goes into the folder, as a click on it
         const fromKeyboard = globalPos === undefined
         if (fromKeyboard) {
-            view.positionViewAtIndex(index, ListView.Contain)
-            globalPos = view.currentItem.mapToGlobal(56, viewRowHeight - 6)
+            globalPos = rowPoint(index)
         }
         nameTip.dismiss()
         menuLoader.active = true
@@ -768,6 +771,10 @@ Window {
     }
     function rowPoint(index) { // under the row's icon, where the keyboard's menus open
         view.currentIndex = index
+        if (isTileRow(index)) { // under a tile's icon
+            const tile = favoriteTiles.tileAt(index)
+            return tile.mapToGlobal(tile.width / 2, 46)
+        }
         view.positionViewAtIndex(index, ListView.Contain)
         return view.currentItem.mapToGlobal(56, viewRowHeight - 6)
     }
@@ -922,6 +929,39 @@ Window {
             }
             event.accepted = true
             return
+        }
+        // On a favorite's tile (nothing typed, so ← → move nothing else): the
+        // arrows go along the grid; ↓ from its last line to the list's first row.
+        if (isTileRow(view.currentIndex) && hintIndex < 0 && searchBar.composition.length === 0 && !shift && !ctrl
+                && (event.modifiers & Qt.AltModifier) === 0) {
+            const at = view.currentIndex
+            const columns = favoriteTiles.columns
+            let next = -1
+            if (event.key === Qt.Key_Left) {
+                next = Math.max(0, at - 1)
+            } else if (event.key === Qt.Key_Right) {
+                next = Math.min(tileRows - 1, at + 1)
+            } else if (key === Qt.Key_Up) {
+                if (at < columns && showHome) {
+                    enterHome()
+                    event.accepted = true
+                    return
+                }
+                next = at >= columns ? at - columns : at
+            } else if (key === Qt.Key_Down) {
+                next = at + columns < tileRows ? at + columns
+                     : Math.floor(at / columns) < Math.floor((tileRows - 1) / columns) ? tileRows - 1 // the last line is short
+                     : view.count > tileRows ? tileRows : at
+            }
+            if (next >= 0) {
+                window.launcher.keyboardMoved()
+                selectionMoved()
+                view.currentIndex = next
+                selectionAnchor = -1
+                chooseCurrentRow()
+                event.accepted = true
+                return
+            }
         }
         if (key === Qt.Key_Down || key === Qt.Key_Up || key === Qt.Key_PageDown || key === Qt.Key_PageUp) {
             window.launcher.keyboardMoved() // Alt+P is for this row now, not the one under a pointer left where it was
@@ -1123,7 +1163,7 @@ Window {
         if (start > 0 && view.currentIndex === start) {
             view.positionViewAtIndex(start, ListView.Contain)
             // Opened again where it was left: as far down as it was then.
-            if (leftPath !== "" && launcher.results.pathAt(start) === leftPath && view.currentItem) {
+            if (leftPath !== "" && launcher.results.pathAt(start) === leftPath && view.currentItem && !isTileRow(start)) {
                 const top = view.originY - view.topMargin
                 const bottom = view.originY + view.contentHeight + view.bottomMargin - view.height
                 view.contentY = Math.max(top, Math.min(bottom, view.currentItem.y - leftRowY))
@@ -1428,6 +1468,13 @@ Window {
             launcher: window.launcher
             dpr: window.dpr
             viewY: layout.y + y
+            currentRow: window.isTileRow(view.currentIndex) ? view.currentIndex : -1
+            selectedCount: window.selectedCount
+            onClicked: (index, modifiers) => window.rowClicked(index, modifiers)
+            onDoubleClicked: (index, modifiers) => window.rowDoubleClicked(index, modifiers)
+            onMenuRequested: (index, globalPos, modifiers) => window.rowMenuRequested(index, globalPos, modifiers)
+            onPreviewRequested: (index) => window.rowPreviewRequested(index)
+            onHoverMoved: (index, globalPos) => window.rowHoverMoved(index, globalPos)
         }
 
         Item {
@@ -1557,7 +1604,7 @@ Window {
                     x: 20
                     height: Theme.labelRowHeight
                     verticalAlignment: Text.AlignVCenter
-                    visible: view.count > 0
+                    visible: view.count > window.tileRows
                     text: window.launcher.startList === Launcher.NoStartList ? qsTr("收藏")
                           : window.launcher.hasFavorites && !favoriteTiles.shown
                           ? (window.launcher.startList === Launcher.RecentlyModified ? qsTr("收藏和最近修改") : qsTr("收藏和最近"))
@@ -1630,7 +1677,7 @@ Window {
                 highlight: Item {
                     id: currentHighlight
                     width: boxList.width
-                    visible: boxList.currentItem !== null
+                    visible: boxList.currentItem !== null && !window.isTileRow(boxList.currentIndex) // a tile shows itself
                     transform: ScrollPixelAlignment { // on whole device pixels, as the rows
                         view: boxList
                         viewY: layout.y + listArea.y + boxList.y
@@ -1796,7 +1843,8 @@ Window {
                     id: resultRow
                     compact: window.folderMode
                     width: boxList.width
-                    height: window.rowHeight
+                    height: window.isTileRow(index) ? 0 : window.rowHeight // a favorite drawn as a tile over the list
+                    visible: !window.isTileRow(index)
                     showModified: window.launcher.showModified
                     showSize: window.launcher.showFileSize || window.launcher.sort === Launcher.LargestFirst || window.launcher.sort === Launcher.SmallestFirst
                     hint: window.numberOf(index)
@@ -2046,7 +2094,7 @@ Window {
             return
         view.currentIndex = index
         view.positionViewAtIndex(index, ListView.Contain)
-        const item = view.currentItem
+        const item = isTileRow(index) ? favoriteTiles.tileAt(index) : view.currentItem // under a tile's name, as under a row's
         if (!item) {
             window.launcher.cancelRename()
             return
