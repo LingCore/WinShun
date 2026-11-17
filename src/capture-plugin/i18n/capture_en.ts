@@ -814,11 +814,11 @@
     </message>
     <message>
         <source>贴图的编辑键：再按一次也是完成</source>
-        <translation>The pin's Edit key: pressed again, it is Done too</translation>
+        <translation>The pin&apos;s Edit key: pressed again, it is Done too</translation>
     </message>
     <message>
         <source>贴图的编辑键：在这里和截图时一样选工具，完成按 Enter</source>
-        <translation>The pin's Edit key: picks a tool here, as while capturing; press Enter when done</translation>
+        <translation>The pin&apos;s Edit key: picks a tool here, as while capturing; press Enter when done</translation>
     </message>
     <message>
         <source>移动贴图 1 个物理像素，按住 Shift 一次 10 个</source>
@@ -858,7 +858,7 @@
     </message>
     <message>
         <source>贴图菜单：另存为、置顶、鼠标穿透、关闭其他等</source>
-        <translation>The pin's menu: Save as, Always on top, Click through, Close the others and more</translation>
+        <translation>The pin&apos;s menu: Save as, Always on top, Click through, Close the others and more</translation>
     </message>
     <message>
         <source>截图翻译的贴图：看原文 / 看译文</source>

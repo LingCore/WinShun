@@ -2425,10 +2425,6 @@
 <context>
     <name>FolderMenuWindow</name>
     <message>
-        <source>返回</source>
-        <translation>Back</translation>
-    </message>
-    <message>
         <source>没有子文件夹</source>
         <translation>No folders inside</translation>
     </message>
