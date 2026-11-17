@@ -35,7 +35,7 @@
 
 脚本构建（传了 `-Tests` 就跑这几个测试），再生成标准安装包、便携包、完整离线安装包、独立增强 OCR 组件 ZIP、增量更新包及 `SHA256SUMS.txt`。输出目录内运行着 Win顺，或部署目录含 `data` 时应换一个新目录。不要删除用户数据以绕过保护。
 
-增量更新包（见 [architecture.md](architecture.md) “增量更新”）：脚本从 GitHub 下最近 `-DeltaCount`（默认 3）个能用增量的已发布版本的便携包，各生成一个 `WinShun-<版本>-x64-delta-from-<旧版本>.zip`（`build\…\WinShunDelta.exe make`，带增量安装程序 `WinShun-<版本>-x64-delta-setup.exe`），再用同一个工具按 Win顺 的代码还原一遍，和这次部署逐个文件比对，不一致就停下。比安装包的 60% 还大的不发。生成的隐藏行写进 `<输出目录>\delta-notes-line.txt`，`-Publish` 时加在发布说明末尾（`docs/release-notes` 里的原文不改）一起上传；这些包也是 Release 附件，也写进 `SHA256SUMS.txt`。发布后查 lcstp.com 的回答时，`body` 末尾应有这行 `<!-- winshun-delta 1 … -->`。
+增量更新包（见 [architecture.md](architecture.md) “增量更新”）：脚本从 GitHub 下最近 `-DeltaCount`（默认 3）个能用增量的已发布版本的便携包，各生成一个 `WinShun-<版本>-x64-delta-from-<旧版本>.zip`（`build\…\WinShunDelta.exe make`，带增量安装程序 `WinShun-<版本>-x64-delta-setup.exe`），再用同一个工具按 Win顺 的代码还原一遍，和这次部署逐个文件比对，不一致就停下。比安装包的 60% 还大的不发。生成的隐藏行写进 `<输出目录>\delta-notes-line.txt`，`-Publish` 时加在发布说明末尾（`docs/release-notes` 里的原文不改）一起上传；这些包也是 Release 附件，也写进 `SHA256SUMS.txt`。发布后查 lcstp.com 的回答时，`body` 末尾应有这行 `<!-- winshun-delta 1 … -->`。只有源码里有 `src/app/UpdateDelta.cpp` 的已发布版本才会用增量，所以第一个带增量更新的版本发布时一个包也不生成（脚本打印 “cannot apply one”），属正常；从下一个版本起才有。
 
 构建依赖与应用内公开 GitHub 文件的默认镜像统一维护在 `resources/downloads/github-mirrors.txt`；修改后重新配置并构建。`cmake/Download.cmake` 优先镜像、再原站，每个响应都按固定 SHA256 检查，失败不使用半个文件；下载回归包含本地故障注入，公网验证需显式开启 `WINSHUN_UPDATE_LIVE=1`，不会运行安装程序。见 [镜像审计记录](download-mirrors-audit.md)。
 
