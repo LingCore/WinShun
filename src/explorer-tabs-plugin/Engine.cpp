@@ -1071,6 +1071,32 @@ struct Engine::Impl {
                     why += " above";
                 if (levelUnread(top))
                     why += " level-unread";
+                // GitHub #331 (1.1.3 log): every window "invisible", the multi-tab one the user
+                // looks at too. Hidden for real, or a look that fails? The raw style and its error,
+                // the program, the title's length, minimized, in front, and Explorer's own answer.
+                if (!::IsWindowVisible(top)) {
+                    ::SetLastError(0);
+                    const LONG_PTR style = ::GetWindowLongPtrW(top, GWL_STYLE);
+                    const DWORD styleError = ::GetLastError();
+                    wchar_t text[512] {};
+                    const int titleLength = ::InternalGetWindowText(top, text, 512);
+                    char buffer[96];
+                    std::snprintf(buffer, sizeof buffer, " style=%llx err=%lu title=%d", static_cast<unsigned long long>(style),
+                        styleError, titleLength);
+                    why += buffer;
+                    why += " exe=" + utf8(exeOf(top));
+                    if (::IsIconic(top))
+                        why += " iconic";
+                    if (top == ::GetForegroundWindow())
+                        why += " foreground";
+                    if (top == e.openerWindow)
+                        why += " opener";
+                    ComPtr<IWebBrowser2> web;
+                    if (const Entry* known = knownTab(top, activeTab(top)))
+                        web = known->web;
+                    VARIANT_BOOL shown = VARIANT_FALSE;
+                    why += !web ? " web=?" : FAILED(web->get_Visible(&shown)) ? " web=err" : shown ? " web=shown" : " web=hidden";
+                }
                 if (!why.empty())
                     looked += ";" + why;
             }
