@@ -11381,6 +11381,7 @@ int runRuntime(const QStringList& args)
     settings.folderMenuHotkey.clear();
     settings.taskbarSearchBox = false;
     settings.autoUpdate = false;
+    settings.usageReport = false;
     settings.proxyMode = u"none"_s; // loopback/file fixtures never use the user's proxy
     settings.mcp = false;
     settings.clipboard = args.contains(u"--with-clipboard"_s);

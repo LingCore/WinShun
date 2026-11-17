@@ -7,6 +7,7 @@
 #include "UpdatePackage.h"
 #include "platform/Http.h"
 #include "Swap.h"
+#include "UsageReport.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -27,6 +28,7 @@
 
 #include <atomic>
 #include <map>
+#include <mutex>
 #include <thread>
 
 using namespace Qt::StringLiterals;
@@ -74,6 +76,12 @@ public:
 
     QString url(const char* path) const { return u"http://127.0.0.1:%1%2"_s.arg(m_port).arg(QLatin1StringView(path)); }
     unsigned requests() const { return m_requests.load(); }
+    // The last request as it came: request line, headers and body.
+    QByteArray lastRequest() const
+    {
+        const std::lock_guard lock(m_lastLock);
+        return m_last;
+    }
 
 private:
     void serve()
@@ -90,6 +98,23 @@ private:
                     break;
                 request.append(buffer, got);
             }
+            // A POST's body, as long as its Content-Length says.
+            const qsizetype headEnd = request.indexOf("\r\n\r\n") + 4;
+            const qsizetype lengthAt = request.toLower().indexOf("\r\ncontent-length:");
+            if (headEnd >= 4 && lengthAt >= 0 && lengthAt < headEnd) {
+                const qsizetype lineEnd = request.indexOf("\r\n", lengthAt + 2);
+                const qsizetype length = request.mid(lengthAt + 17, lineEnd - lengthAt - 17).trimmed().toLongLong();
+                while (request.size() < headEnd + length) {
+                    const int got = ::recv(client, buffer, sizeof(buffer), 0);
+                    if (got <= 0)
+                        break;
+                    request.append(buffer, got);
+                }
+            }
+            {
+                const std::lock_guard lock(m_lastLock);
+                m_last = request;
+            }
             const QByteArray path = request.split(' ').value(1);
             ++m_requests;
             const auto it = m_routes.find(path);
@@ -104,6 +129,8 @@ private:
 
     std::map<QByteArray, Route> m_routes;
     std::atomic_uint m_requests {0};
+    mutable std::mutex m_lastLock;
+    QByteArray m_last;
     SOCKET m_listener = INVALID_SOCKET;
     int m_port = 0;
     std::atomic<bool> m_stop {false};
@@ -317,6 +344,82 @@ private slots:
                  u"https://lcstp.com.evil.example/"_s, u"https://lcstp.com@evil.example/"_s, u"javascript:alert(1)"_s,
                  u"https://evil.example/https://lcstp.com/"_s})
             QCOMPARE(release::releasePage(bad), fixed);
+    }
+
+    // The daily usage report and the users count, in the 拾穗 service's
+    // protocol (gleaning-web "installs", as MacShun sends it).
+    void usageInstallIdIsTheServicesHash()
+    {
+        // SHA-256("gleaning.install.v1:winshun:<MachineGuid>"), as gleaning-web's
+        // Send-GleaningInstallReport computes it.
+        QCOMPARE(usage::installId(u"winshun", u"8f1c2a3b-0d4e-4f5a-9b6c-7d8e9f0a1b2c"),
+            u"70350a6c0c47966078d9ea6530f3f9d535b8c940b7c1a1531504420dfdbdac48"_s);
+        QVERIFY(usage::installId(u"winshun", u"x") != usage::installId(u"macshun", u"x"));
+        QVERIFY(usage::installId(u"winshun", u"  ").isEmpty());
+        QVERIFY(!usage::machineGuid().isEmpty()); // every Windows has one
+    }
+
+    void usageBodyFitsTheService()
+    {
+        const QString id = usage::installId(u"winshun", u"m");
+        const QByteArray body = usage::reportBody(id, u"0.34.0"_s, u"10.0.26200"_s);
+        QVERIFY(body.size() < 1024);
+        const QJsonObject o = QJsonDocument::fromJson(body).object();
+        QCOMPARE(o.keys(), (QStringList {u"arch"_s, u"installId"_s, u"osVersion"_s, u"platform"_s, u"version"_s}));
+        QCOMPARE(o.value(u"installId"_s).toString(), id);
+        QCOMPARE(o.value(u"platform"_s).toString(), u"windows"_s);
+        QCOMPARE(o.value(u"arch"_s).toString(), u"x64"_s);
+        QVERIFY(!QJsonDocument::fromJson(usage::reportBody(id, u"0.34.0"_s, {})).object().contains(u"osVersion"_s));
+    }
+
+    void usageUrlsAtTheFeedsOrigin()
+    {
+        const QString feed = u"https://lcstp.com/updates/winshun/stable.json?platform=windows&arch=x64"_s;
+        QCOMPARE(usage::reportUrl(feed), u"https://lcstp.com/api/v1/projects/winshun/installs"_s);
+        QCOMPARE(usage::projectsUrl(feed), u"https://lcstp.com/api/v1/projects"_s);
+        QCOMPARE(usage::reportUrl(u"http://127.0.0.1:8123/feed.json"_s), u"http://127.0.0.1:8123/api/v1/projects/winshun/installs"_s);
+        for (const QString& bad : {u""_s, u"http://lcstp.com/feed"_s, u"https://user@lcstp.com/feed"_s, u"ftp://lcstp.com/"_s})
+            QVERIFY2(usage::reportUrl(bad).isEmpty() && usage::projectsUrl(bad).isEmpty(), qPrintable(bad));
+    }
+
+    void usageOncePerDay()
+    {
+        const QDate today(2026, 11, 17);
+        QVERIFY(usage::due({}, today));
+        QVERIFY(!usage::due(today, today));
+        QVERIFY(usage::due(today.addDays(-1), today));
+        QVERIFY(usage::due(today.addDays(1), today)); // the clock was set back
+    }
+
+    void usageCountsFromTheProjectsList()
+    {
+        const QByteArray json = R"({"projects":[
+            {"slug":"macshun","stats":{"downloads":79,"users":30}},
+            {"slug":"winshun","stats":{"downloads":869,"users":0}},
+            {"slug":"moye","stats":{"users":2.5}},
+            {"slug":"odd","stats":{"users":"12"}},
+            {"slug":"","stats":{"users":4}},
+            {"slug":"mojian3d"}]})";
+        const QHash<QString, int> counts = usage::userCounts(json);
+        QCOMPARE(counts.size(), 1);
+        QCOMPARE(counts.value(u"macshun"_s), 30);
+        QVERIFY(usage::userCounts("not json").isEmpty());
+    }
+
+    // The report goes out as a POST of the body, follows no redirect, and the
+    // service's 204 comes back.
+    void usageReportIsPosted()
+    {
+        FakeServer server({{"/api/v1/projects/winshun/installs", {204, {}}}, {"/moved", {302, {}}}});
+        const QString url = usage::reportUrl(server.url("/updates/winshun/stable.json"));
+        const QByteArray body = usage::reportBody(usage::installId(u"winshun", u"m"), u"0.34.0"_s, u"10.0.26200"_s);
+        const http::Response answer = http::post(url, {{u"Content-Type"_s, u"application/json"_s}}, body, 5000);
+        QCOMPARE(answer.status, 204);
+        const QByteArray request = server.lastRequest();
+        QVERIFY2(request.startsWith("POST /api/v1/projects/winshun/installs HTTP/1.1\r\n"), request.constData());
+        QVERIFY(request.contains("\r\nContent-Type: application/json\r\n"));
+        QVERIFY(request.endsWith("\r\n\r\n" + body));
+        QCOMPARE(http::post(server.url("/moved"), {}, "{}", 5000).status, 302);
     }
 
     void versionResource()

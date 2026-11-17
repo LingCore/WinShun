@@ -1945,6 +1945,7 @@ void App::applySettings(bool initial)
     shellmenu::applyUriProtocol(m_settings.uriProtocol);
     shellmenu::applyPasteFile(m_settings.pasteFileEnabled && m_settings.pasteFileMenu);
     m_updater->setAutomatic(m_settings.autoUpdate);
+    m_updater->setReporting(m_settings.usageReport);
     if (m_pluginUpdates) {
         m_pluginUpdates->setAutomatic(m_settings.autoUpdate);
         m_pluginUpdates->setPolicy(m_settings.pluginDeveloperMode, m_settings.plugins);

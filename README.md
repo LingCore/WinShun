@@ -257,6 +257,7 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 完全免费，MIT 开源。不会上传你的文件和索引，索引和历史只存在本机（`%LOCALAPPDATA%\WinShun`）。只在这些时候联网：
 
 - **检查新版本**：连接 lcstp.com，只发送系统版本和安装方式，不带个人信息（可以关）。
+- **匿名统计**：每天最多一次告诉 lcstp.com 这台电脑在用 Win顺，用来统计用户数。只发送电脑标识的单向哈希（不能还原，也对不上作者的其他软件）、版本号和 Windows 版本（设置 › 高级 › 发送匿名统计，可以关）。打开“拾穗计划”页时从 lcstp.com 取各个作品的用户数。
 - **下载更新**：你点“下载并安装”后，经第三方镜像或 GitHub 下载安装包，并用 SHA-256 校验。
 - **网站图标**：第一次显示某个网页搜索或书签时，取一次那个网站的图标。
 - **插件库**：打开设置里的“插件库”页、点“刷新”或安装插件时，取列表和插件；开着“自动更新”时每天检查一次已装插件有没有新版（可以关）。从旧版升级时，以前开着、现在不再随 Win顺 自带的插件（截图与录屏、翻译等）也从插件库取一次。
@@ -518,6 +519,7 @@ Under **Settings › Advanced › Diagnostic logs**, click “Export diagnostic 
 Free and MIT-licensed. Your files and index are never uploaded; the index and history stay on your PC (`%LOCALAPPDATA%\WinShun`). It goes online only:
 
 - **to check for new versions** at lcstp.com, sending only the Windows version and the kind of install, nothing personal (you can turn it off);
+- **for anonymous usage statistics**: at most once a day it tells lcstp.com that this PC uses WinShun, to count the users. It sends a one-way hash of the computer's ID (it cannot be reversed or matched with the author's other apps), the version and the Windows version (Settings › Advanced › Send anonymous statistics; you can turn it off). The 拾穗计划 (Gleaning) page fetches each work's number of users from lcstp.com when it opens;
 - **to download an update** when you click “Download and install”, through third-party mirrors or GitHub, checked against its SHA-256;
 - **for site icons**: once, the first time a web search site or bookmark is shown;
 - **for the plugin library**: when you open its page in the settings, press Refresh or install a plugin, and once a day to check installed plugins for updates while Automatic updates is on (you can turn it off). After an upgrade, plugins you had on that no longer come with WinShun (Screenshot and recording, Translate and others) are fetched from it once;

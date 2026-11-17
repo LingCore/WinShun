@@ -1192,6 +1192,7 @@ Window {
         anchors.top: titleBar.bottom
         anchors.bottom: parent.bottom
         editor: window.editor
+        updater: window.updater
     }
 
     Item {
@@ -5665,7 +5666,7 @@ Window {
                 width: parent.width
                 title: qsTr("更新")
                 glyph: "\uE895"
-                note: qsTr("检查 Win顺 更新访问 lcstp.com，只发送 Windows 版本和安装方式；检查插件更新从 GitHub 或镜像下载插件库列表。不发送个人信息。")
+                note: qsTr("检查 Win顺 更新访问 lcstp.com，只发送 Windows 版本和安装方式；检查插件更新从 GitHub 或镜像下载插件库列表。匿名统计每天最多一次，只发送电脑标识的单向哈希（不能还原）、版本号和 Windows 版本，用来统计用户数。不发送文件、剪贴板或任何个人信息。")
 
                 SettingRow {
                     title: qsTr("版本 %1").arg(window.updater.currentVersion)
@@ -5703,6 +5704,18 @@ Window {
                         dpr: window.dpr
                         checked: window.editor.autoUpdate
                         onToggled: (on) => window.editor.autoUpdate = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("发送匿名统计")
+                    keywords: qsTr("统计;用户数;隐私;联网;usage;statistics;privacy;telemetry").split(";")
+                    description: qsTr("每天最多一次告诉 lcstp.com 这台电脑在用 Win顺，用来统计用户数")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.usageReport
+                        onToggled: (on) => window.editor.usageReport = on
                     }
                 }
             }

@@ -1,6 +1,7 @@
 #include "Updater.h"
 
 #include "Settings.h"
+#include "UsageReport.h"
 #include "platform/Http.h"
 #include "platform/Integrity.h"
 #include "platform/Shell.h"
@@ -135,6 +136,8 @@ Updater::Updater(QObject* parent)
         m_scoop = scoop::detect(appDir());
     m_timer.setInterval(1h);
     connect(&m_timer, &QTimer::timeout, this, &Updater::checkIfDue);
+    m_reportTimer.setInterval(1h);
+    connect(&m_reportTimer, &QTimer::timeout, this, &Updater::reportIfDue);
     m_progressTimer.setInterval(200);
     connect(&m_progressTimer, &QTimer::timeout, this, [this] {
         if (m_job && m_job->received != m_received) {
@@ -215,6 +218,84 @@ void Updater::setAutomatic(bool on)
     m_timer.start();
     // Right after logging in the network may not be up yet.
     QTimer::singleShot(20s, this, &Updater::checkIfDue);
+}
+
+void Updater::setReporting(bool on)
+{
+    if (!on) {
+        m_reportTimer.stop();
+        return;
+    }
+    if (m_reportTimer.isActive())
+        return;
+    m_reportTimer.start();
+    // After the update check's 20 s: the network has had its time to come up.
+    QTimer::singleShot(30s, this, &Updater::reportIfDue);
+}
+
+void Updater::reportIfDue()
+{
+    if (!m_reportTimer.isActive() || m_reporting)
+        return; // turned off meanwhile, or one on its way
+    const QDate today = QDate::currentDate();
+    if (!usage::due(state().value(u"Usage/LastReport"_s).toDate(), today))
+        return;
+    const QString url = usage::reportUrl(feedUrl(false));
+    if (url.isEmpty())
+        return;
+    // Remembered before it is sent: a failure waits for tomorrow, as
+    // MacShun's does, rather than asking again every hour of a day offline.
+    state().setValue(u"Usage/LastReport"_s, today);
+    m_reporting = true;
+    const QOperatingSystemVersion os = QOperatingSystemVersion::current();
+    const QString osVersion = u"%1.%2.%3"_s.arg(os.majorVersion()).arg(os.minorVersion()).arg(os.microVersion());
+    const QString version = currentVersion();
+    QThreadPool::globalInstance()->start([self = QPointer(this), url, osVersion, version] {
+        const QString id = usage::installId(usage::kProject, usage::machineGuid());
+        int status = 0;
+        if (!id.isEmpty()) {
+            const QByteArray body = usage::reportBody(id, version, osVersion);
+            status = http::post(url, {{u"Content-Type"_s, u"application/json"_s}}, body, 15000, 4096).status;
+        }
+        QMetaObject::invokeMethod(qApp, [self, status, hasId = !id.isEmpty()] {
+            if (!self)
+                return;
+            self->m_reporting = false;
+            if (!hasId)
+                qInfo().noquote() << "Usage report: no machine identifier, not sent";
+            else if (status < 200 || status >= 300)
+                qInfo().noquote() << "Usage report not taken:" << status;
+        }, Qt::QueuedConnection);
+    });
+}
+
+void Updater::fetchUserCounts()
+{
+    if (m_userCountsAsked.isValid() && m_userCountsAsked.secsTo(QDateTime::currentDateTime()) < 600)
+        return;
+    const QString url = usage::projectsUrl(feedUrl(false));
+    if (url.isEmpty())
+        return;
+    m_userCountsAsked = QDateTime::currentDateTime();
+    QThreadPool::globalInstance()->start([self = QPointer(this), url] {
+        const http::Response response = http::get(url, {}, 15000, 1 << 20);
+        const QHash<QString, int> counts = response.status == 200 ? usage::userCounts(response.body) : QHash<QString, int>();
+        QMetaObject::invokeMethod(qApp, [self, counts, status = response.status] {
+            if (!self)
+                return;
+            if (status != 200) {
+                self->m_userCountsAsked = {}; // the next opening asks again
+                return;
+            }
+            QVariantMap map;
+            for (auto it = counts.begin(); it != counts.end(); ++it)
+                map.insert(it.key(), it.value());
+            if (map != self->m_userCounts) {
+                self->m_userCounts = map;
+                emit self->userCountsChanged();
+            }
+        }, Qt::QueuedConnection);
+    });
 }
 
 void Updater::setChinese(bool chinese)

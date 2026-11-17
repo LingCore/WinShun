@@ -845,6 +845,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Update/Automatic", QT_TRANSLATE_NOOP("AiSettings", "自动更新"), "advanced", -1,
                     "Checks for new versions of Win顺 now and then, and installs plugin updates that ask for no new permissions."},
         &Settings::autoUpdate));
+    add(boolean({"Update/UsageReport", QT_TRANSLATE_NOOP("AiSettings", "发送匿名统计"), "advanced", -1,
+                    "Once a day tells lcstp.com that this computer still uses Win顺, to count the users: a one-way hash of the computer's ID, the version and the Windows version. No files or personal information."},
+        &Settings::usageReport));
     {
         add(choice({"Launcher/Renderer", QT_TRANSLATE_NOOP("AiSettings", "界面绘制方式"), "advanced", -1,
                                   "How the windows are drawn. The graphics card (d3d11) is smoother and costs about 50 MB more memory; software is for machines with little memory. Needs Win顺 to restart."},

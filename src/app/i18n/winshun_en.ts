@@ -1151,6 +1151,14 @@
         <translation>Off</translation>
     </message>
     <message>
+        <source>字母直达用的键</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>跟数字键一样</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>截图历史的关键词</source>
         <translation>Keyword for the screenshot history</translation>
     </message>
@@ -1165,6 +1173,10 @@
     <message>
         <source>右键菜单里的“粘贴为文件”</source>
         <translation>“Paste as file” in the right-click menu</translation>
+    </message>
+    <message>
+        <source>发送匿名统计</source>
+        <translation>Send anonymous statistics</translation>
     </message>
     <message>
         <source>界面绘制方式</source>
@@ -2579,6 +2591,10 @@
     <message>
         <source>正在使用</source>
         <translation>In use</translation>
+    </message>
+    <message>
+        <source>%1 位用户</source>
+        <translation>%1 users</translation>
     </message>
     <message>
         <source>更多作品正在路上</source>
@@ -5000,10 +5016,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Checks for new versions of WinShun at startup and every 12 hours and shows them in the tray; checks plugins daily and installs updates that need no new permissions</translation>
     </message>
     <message>
-        <source>检查 Win顺 更新访问 lcstp.com，只发送 Windows 版本和安装方式；检查插件更新从 GitHub 或镜像下载插件库列表。不发送个人信息。</source>
-        <translation>Checking for WinShun updates contacts lcstp.com and sends only the Windows version and the kind of install; checking plugins downloads the plugin library list from GitHub or a mirror. Nothing personal is sent.</translation>
-    </message>
-    <message>
         <source>在桌面上直接打字搜索</source>
         <translation>Type to search on the desktop</translation>
     </message>
@@ -6743,6 +6755,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Updates</translation>
     </message>
     <message>
+        <source>检查 Win顺 更新访问 lcstp.com，只发送 Windows 版本和安装方式；检查插件更新从 GitHub 或镜像下载插件库列表。匿名统计每天最多一次，只发送电脑标识的单向哈希（不能还原）、版本号和 Windows 版本，用来统计用户数。不发送文件、剪贴板或任何个人信息。</source>
+        <translation>Checking for WinShun updates contacts lcstp.com and sends only the Windows version and the kind of install; checking for plugin updates downloads the plugin library list from GitHub or a mirror. Anonymous statistics go at most once a day and send only a one-way hash of the computer ID (it cannot be reversed), the version and the Windows version, to count the users. No files, clipboard or personal information are sent.</translation>
+    </message>
+    <message>
         <source>版本 %1</source>
         <translation>Version %1</translation>
     </message>
@@ -6769,6 +6785,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>查看 %1</source>
         <translation>See %1</translation>
+    </message>
+    <message>
+        <source>发送匿名统计</source>
+        <translation>Send anonymous statistics</translation>
+    </message>
+    <message>
+        <source>统计;用户数;隐私;联网;usage;statistics;privacy;telemetry</source>
+        <translation>usage;statistics;users;privacy;online;telemetry</translation>
+    </message>
+    <message>
+        <source>每天最多一次告诉 lcstp.com 这台电脑在用 Win顺，用来统计用户数</source>
+        <translation>At most once a day tells lcstp.com that this PC uses WinShun, to count the users</translation>
     </message>
     <message>
         <source>备份</source>
@@ -7274,10 +7302,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Letter jump</translation>
     </message>
     <message>
-        <source>轻按一下数字键用的那个键（搜索框是 Ctrl，剪贴板是 Alt，按上面的设置）再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有；加 Shift 是打开所在位置（剪贴板里是粘贴为纯文本）。再按一下或按 Esc 退出。启动器和剪贴板共用</source>
-        <translation>Tap the number keys&apos; modifier by itself (Ctrl in the search box, Alt in the clipboard, as set above): every row gets a letter, and the letter opens that row (pastes it, in the clipboard), the rows past the ninth too; with Shift it shows where the file is (pastes as plain text). The tap again or Esc leaves. Shared by the launcher and the clipboard</translation>
-    </message>
-    <message>
         <source>快捷键;字母;单手;vim;vi;提示;跳转;直达;hint</source>
         <translation>shortcut;letter;one hand;vim;vi;hint;jump</translation>
     </message>
@@ -7548,6 +7572,42 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>仅在搜索结果中生效，再按一次关闭，鼠标中键点一行也行。可直接录制空格：刚输入完时空格照常输入，选过结果或打开预览后才开关预览；Shift+空格始终输入空格。Backspace 清除，Esc 取消。</source>
         <translation>Works only in search results; press again to turn it off, or middle-click a row. You can record Space itself: right after typing, Space types a space as usual, and it toggles the preview only after you have selected a result or opened the preview; Shift+Space always types a space. Backspace clears, Esc cancels.</translation>
+    </message>
+    <message>
+        <source>轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板里 Shift+字母是粘贴为纯文本。再按一下那个键或按 Esc 退出。启动器和剪贴板共用</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>字母直达用的键</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>搜索框里用中文输入法时，轻按 Shift 也会切换中英文</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>跟数字键一样：搜索框和剪贴板各用数字键设置里的那个键</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>字母直达;修饰键;Ctrl;Alt;Shift</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>跟数字键一样</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>用哪些字母</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>按顺序给第一行、第二行……，可以有数字，例如左手用的 QWERTASDFGZXCVB12345</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>字母直达;字母;数字;顺序;左手;单手</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>剪贴板大小</source>

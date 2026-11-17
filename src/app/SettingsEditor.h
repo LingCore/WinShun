@@ -324,6 +324,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString corners READ corners WRITE setCorners NOTIFY changed FINAL) // round | square
     Q_PROPERTY(QString uiStyle READ uiStyle WRITE setUiStyle NOTIFY changed FINAL) // fluent | brand | tactile | liquid
     Q_PROPERTY(bool autoUpdate READ autoUpdate WRITE setAutoUpdate NOTIFY changed FINAL)
+    Q_PROPERTY(bool usageReport READ usageReport WRITE setUsageReport NOTIFY changed FINAL)
     Q_PROPERTY(QString backupFolder READ backupFolder NOTIFY changed FINAL) // empty: no backups (see Backup)
     Q_PROPERTY(bool restartRequired READ restartRequired NOTIFY changed FINAL)
     Q_PROPERTY(bool isDefault READ isDefault NOTIFY changed FINAL)
@@ -656,8 +657,10 @@ public:
     QString uiStyle() const { return m_settings.uiStyle; }
     void setUiStyle(const QString& style);
     bool autoUpdate() const { return m_settings.autoUpdate; }
+    bool usageReport() const { return m_settings.usageReport; }
     QString backupFolder() const { return QDir::toNativeSeparators(m_settings.backupFolder); }
     void setAutoUpdate(bool on);
+    void setUsageReport(bool on);
     bool restartRequired() const { return Settings::resolveRenderer(m_settings.renderer) != m_runningRenderer; }
     bool isDefault() const;
     QString dataFolder() const { return Settings::dataDir(); }

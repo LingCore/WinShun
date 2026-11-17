@@ -350,6 +350,8 @@ cmake --build --preset release --target update_translations   # lupdate：把新
 
 不再有打开 GitHub 的入口：检查失败时“打开下载页”、“查看完整说明”都去 lcstp.com。已经装着的旧版本仍然查 GitHub，装上这一版之后才走 lcstp.com。
 
+**用户数**（`core/UsageReport`，`Updater::setReporting` / `fetchUserCounts`）：协议是拾穗服务（gleaning-web）自己的 installs 接口，和 MacShun 一样。开着“发送匿名统计”（`Update/UsageReport`，默认开）时，启动 30 秒后、之后每小时看一次：本地日历日里还没报过（`update.ini` 的 `Usage/LastReport`）就 `POST https://lcstp.com/api/v1/projects/winshun/installs`，JSON 只有 `installId`、`version`、`platform`（windows）、`arch`（x64）、`osVersion`。`installId` 是 `SHA-256("gleaning.install.v1:winshun:" + MachineGuid)`（HKLM 64 位视图），和网站仓库里的 `Send-GleaningInstallReport` 算法一致；MachineGuid 本身不出本机，项目名进了哈希，所以同一台电脑在作者各个软件里的 ID 对不上。地址取更新源的 scheme + host + port，只用 https（`WINSHUN_UPDATE_FEED` 指向本机 http 时测试可用）。先记日期再发，失败了也等第二天，不重试、不提示；服务器按 ID 去重，同一台电脑的安装版、便携版、开发副本都只算一个。拾穗计划页打开时 `GET /api/v1/projects`（十分钟内不重复），取每个作品的 `stats.users`（累计电脑数，按 `slug` = `Gleaning.works[].id` 对上），大于 0 才显示“N 位用户”。预览模式（截图）不上报。
+
 发布新版本：
 
 1. 改 `CMakeLists.txt` 里 `project(... VERSION x.y.z)`。

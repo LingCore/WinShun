@@ -352,6 +352,7 @@ struct Settings {
 
     // [Update]
     bool autoUpdate = true; // look for new versions on GitHub (see Updater)
+    bool usageReport = true; // once a day, this computer counted as a user (Updater::setReporting)
 
     // [Backup]
     QString backupFolder; // where the settings are backed up (see Backup); empty: not

@@ -1066,6 +1066,7 @@ void Settings::load()
     }
 
     autoUpdate = readOrDefault(s, u"Update/Automatic"_s, d.autoUpdate);
+    usageReport = readOrDefault(s, u"Update/UsageReport"_s, d.usageReport);
     // Picked folders some program garbled before they were kept (#346): as they were.
     backupFolder = ungarbledPath(readOrDefault(s, u"Backup/Folder"_s, d.backupFolder));
 
@@ -1429,6 +1430,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Appearance/Corners"_s, corners);
     s.setValue(u"Appearance/UiStyle"_s, uiStyle);
     s.setValue(u"Update/Automatic"_s, autoUpdate);
+    s.setValue(u"Update/UsageReport"_s, usageReport);
     s.setValue(u"Backup/Folder"_s, backupFolder);
     s.setValue(u"Index/ExcludedPaths"_s, excludedPaths);
     s.setValue(u"Index/ExcludedNames"_s, excludedNames);

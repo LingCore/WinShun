@@ -76,6 +76,7 @@ qt_add_library(wscore STATIC
     SystemCatalog.cpp SystemCatalog.h
     TextUtil.cpp TextUtil.h
     Unc.cpp Unc.h
+    UsageReport.cpp UsageReport.h
     VolumeProtocol.cpp VolumeProtocol.h
     WebDav.cpp WebDav.h
     WebShortcut.cpp WebShortcut.h

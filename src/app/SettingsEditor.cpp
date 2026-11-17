@@ -1736,6 +1736,14 @@ void SettingsEditor::setAutoUpdate(bool on)
     commit();
 }
 
+void SettingsEditor::setUsageReport(bool on)
+{
+    if (m_settings.usageReport == on)
+        return;
+    m_settings.usageReport = on;
+    commit();
+}
+
 void SettingsEditor::setClipboard(bool on)
 {
     if (m_settings.clipboard == on)

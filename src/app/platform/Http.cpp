@@ -80,10 +80,12 @@ HINTERNET sharedSession()
     return session;
 }
 
-// get() and download(): with a `sink` the body goes there, and is read
-// only for an answer of 2xx.
+// get(), download() and post(): with a `sink` the body goes there, and is
+// read only for an answer of 2xx. With `payload` the request is a POST of it,
+// which follows no redirect.
 Response perform(const QString& url, const QList<std::pair<QString, QString>>& headers, int timeoutMs,
-    qint64 maxBytes, Session sessionKind, const Progress& progress, const Sink& sink)
+    qint64 maxBytes, Session sessionKind, const Progress& progress, const Sink& sink,
+    const QByteArray* payload = nullptr)
 {
     Response response;
     const auto fail = [&response] {
@@ -118,16 +120,22 @@ Response perform(const QString& url, const QList<std::pair<QString, QString>>& h
     if (!connection)
         return fail();
     const DWORD flags = parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
-    const Handle request(::WinHttpOpenRequest(connection.get(), L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER,
-        WINHTTP_DEFAULT_ACCEPT_TYPES, flags));
+    const Handle request(::WinHttpOpenRequest(connection.get(), payload ? L"POST" : L"GET", path.c_str(), nullptr,
+        WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags));
     if (!request)
         return fail();
     ::WinHttpSetTimeouts(request.get(), timeoutMs, timeoutMs, timeoutMs, timeoutMs);
+    if (payload) {
+        DWORD never = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+        ::WinHttpSetOption(request.get(), WINHTTP_OPTION_REDIRECT_POLICY, &never, sizeof(never));
+    }
     std::wstring headerText;
     for (const auto& [name, value] : headers)
         headerText += (name + u": "_s + value + u"\r\n"_s).toStdWString();
     if (!::WinHttpSendRequest(request.get(), headerText.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headerText.c_str(),
-            static_cast<DWORD>(headerText.size()), WINHTTP_NO_REQUEST_DATA, 0, 0, 0)
+            static_cast<DWORD>(headerText.size()),
+            payload ? const_cast<char*>(payload->constData()) : WINHTTP_NO_REQUEST_DATA,
+            payload ? static_cast<DWORD>(payload->size()) : 0, payload ? static_cast<DWORD>(payload->size()) : 0, 0)
         || !::WinHttpReceiveResponse(request.get(), nullptr))
         return fail();
 
@@ -225,6 +233,12 @@ Response download(const QString& url, const QList<std::pair<QString, QString>>& 
     qint64 maxBytes, const Sink& sink)
 {
     return perform(url, headers, timeoutMs, maxBytes, Session::Own, {}, sink);
+}
+
+Response post(const QString& url, const QList<std::pair<QString, QString>>& headers, const QByteArray& body,
+    int timeoutMs, qsizetype maxBytes)
+{
+    return perform(url, headers, timeoutMs, maxBytes, Session::Own, {}, {}, &body);
 }
 
 QString proxyServer()

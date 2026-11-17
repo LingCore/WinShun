@@ -3,8 +3,9 @@ import QtQuick
 
 // 拾穗计划: the author's other works, open source and paid. Every program of
 // the author's carries this page; the name comes from Millet's The Gleaners.
-// Ported from MacShun (Gleaning.swift). The content lives here and nothing is
-// fetched: the program does not go online.
+// Ported from MacShun (Gleaning.swift). The content lives here; only each
+// work's number of users comes from lcstp.com (Updater.userCounts, keyed by
+// `id`, the work's name on that site), shown when the page opens.
 // To use the page in another program, change only `thisApp`, `works`,
 // `authorUrl`, `feedbackUrl` and `thanks`.
 QtObject {

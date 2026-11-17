@@ -10,6 +10,7 @@ Flickable {
     id: page
 
     required property SettingsEditor editor
+    required property Updater updater
 
     readonly property var works: Gleaning.works.slice().sort((a, b) => Number(b.openSource) - Number(a.openSource))
     readonly property int openSourceCount: Gleaning.works.filter(w => w.openSource).length
@@ -22,7 +23,12 @@ Flickable {
     clip: true
 
     // Each time the page opens, the avatar pops up to say hello.
-    onVisibleChanged: if (visible) AuthorClock.play()
+    onVisibleChanged: {
+        if (!visible)
+            return;
+        AuthorClock.play();
+        updater.fetchUserCounts();
+    }
 
     component Tag: Rectangle {
         property alias text: tagLabel.text
@@ -126,6 +132,11 @@ Flickable {
 
                 Tag { text: work.modelData.openSource ? qsTr("开源") : qsTr("付费") }
                 Tag { visible: work.current; text: qsTr("正在使用") }
+                Tag {
+                    readonly property int users: page.updater.userCounts[work.modelData.id] ?? 0
+                    visible: users > 0
+                    text: qsTr("%1 位用户").arg(users.toLocaleString(Qt.locale(), "f", 0))
+                }
             }
         }
     }

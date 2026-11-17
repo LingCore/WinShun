@@ -57,4 +57,9 @@ Response get(const QString& url, const QList<std::pair<QString, QString>>& heade
 Response download(const QString& url, const QList<std::pair<QString, QString>>& headers, int timeoutMs,
     qint64 maxBytes, const Sink& sink);
 
+// A blocking POST of `body` (give its Content-Type in `headers`), in a session
+// of its own. Redirects are not followed: a 3xx is the answer.
+Response post(const QString& url, const QList<std::pair<QString, QString>>& headers, const QByteArray& body,
+    int timeoutMs = 20000, qsizetype maxBytes = 1 << 16);
+
 } // namespace ws::http
