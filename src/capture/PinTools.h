@@ -73,6 +73,15 @@ struct Resized {
 // is kept in minZoom..maxZoom.
 Resized resizeFromCorner(Corner corner, const QRect& start, QSize image, QPoint cursor, double minZoom, double maxZoom);
 
+// ---- the close button shown while the cursor is on it ------------------------------
+
+// The corner on the side the cursor came in from: the quarter of `picture` `p` is in.
+Corner entryCorner(const QRect& picture, QPoint p);
+// The round close button in `corner` of `picture` (its size and inset follow
+// `dpr`), a little in from the corner point so the very corner still resizes;
+// empty for None or a picture too small to carry it.
+QRect closeButtonRect(const QRect& picture, Corner corner, double dpr);
+
 // ---- picking text --------------------------------------------------------------
 
 // One line (or the part of one) the selection took.

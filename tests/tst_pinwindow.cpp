@@ -8,6 +8,7 @@
 
 #include <QGuiApplication>
 #include <QImage>
+#include <QScopeGuard>
 #include <QTest>
 
 #include <cmath>
@@ -56,6 +57,59 @@ private slots:
         pin.endTextPick();
         QVERIFY(!pin.textMode());
         QCOMPARE(pin.textHintAlpha(), 0);
+    }
+
+    // The cursor comes onto a pin: a close button in the corner it came in
+    // by; a click there closes the pin. The pin is put under the cursor where
+    // it is, and the window only told of the moves: the mouse is not moved.
+    void closeButtonInTheCornerTheCursorCameInBy()
+    {
+        // Physical cursor points, as in the program (per-monitor v2); the offscreen test app is not.
+        const DPI_AWARENESS_CONTEXT was = ::SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        const auto restore = qScopeGuard([was] { ::SetThreadDpiAwarenessContext(was); });
+        POINT at {};
+        QVERIFY(::GetCursorPos(&at));
+        const QPoint cursor(at.x, at.y);
+        QImage image(400, 300, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        bool closed = false;
+        PinWindow::Host host;
+        host.closed = [&](PinWindow*) { closed = true; };
+        // In by the right edge, low down: the lower right corner.
+        {
+            PinWindow pin(image, cursor - QPoint(395, 250), host);
+            if (pin.pictureRect().topLeft() != cursor - QPoint(395, 250))
+                QSKIP("the pin was kept in the work area: the cursor is near a screen edge");
+            QVERIFY(pin.closeButton().isEmpty()); // none before the cursor comes
+            ::SendMessageW(pin.hwnd(), WM_MOUSEMOVE, 0, 0);
+            const QRect button = pin.closeButton();
+            QVERIFY(!button.isEmpty());
+            QVERIFY(button.right() > pin.pictureRect().center().x());
+            QVERIFY(button.bottom() > pin.pictureRect().center().y());
+            ::SendMessageW(pin.hwnd(), WM_MOUSELEAVE, 0, 0);
+            QVERIFY(pin.closeButton().isEmpty()); // gone with the cursor
+        }
+        closed = false;
+        // Under the cursor in the upper left: the button is there, and a click on it closes the pin.
+        {
+            const int in = 20; // inside the button (8 to 32 px in, times the scale) at any scale
+            PinWindow pin(image, cursor - QPoint(in, in), host);
+            const QRect picture = pin.pictureRect();
+            if (picture.topLeft() != cursor - QPoint(in, in))
+                QSKIP("the pin was kept in the work area: the cursor is near a screen edge");
+            ::SendMessageW(pin.hwnd(), WM_MOUSEMOVE, 0, 0);
+            QVERIFY2(pin.closeButton().contains(cursor),
+                qPrintable(u"button %1,%2 %3x%4, picture %5,%6, cursor %7,%8, dpr %9"_s.arg(pin.closeButton().x())
+                        .arg(pin.closeButton().y()).arg(pin.closeButton().width()).arg(pin.closeButton().height())
+                        .arg(picture.x()).arg(picture.y()).arg(cursor.x()).arg(cursor.y()).arg(pin.dpr())));
+            const int inset = static_cast<int>(std::lround(8 * pin.dpr()));
+            QCOMPARE(pin.closeButton().topLeft(), picture.topLeft() + QPoint(inset, inset));
+            ::SendMessageW(pin.hwnd(), WM_LBUTTONDOWN, MK_LBUTTON, 0);
+            QVERIFY(!closed); // on the button up
+            ::SendMessageW(pin.hwnd(), WM_LBUTTONUP, 0, 0);
+            QVERIFY(closed);
+            QVERIFY(!pin.hwnd());
+        }
     }
 
     // 截图翻译 (GitHub #191): the translation over the original, the original its other side.

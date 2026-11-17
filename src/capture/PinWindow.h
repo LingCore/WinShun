@@ -54,7 +54,9 @@ enum class PinInput { Press, Release, Key };
 // Space, or the middle button, collapses it to a small tile; the menu also
 // collapses it to a tab on the top edge of its monitor's work area. While
 // collapsed only the picture's PNG bytes and a thumbnail are kept; a click
-// opens it again, to the pixel as it was. Esc closes it at once, Ctrl+C
+// opens it again, to the pixel as it was. While the cursor is on it, a round
+// close button waits in the corner on the side the cursor came in from (a
+// click closes it). Esc closes it at once, Ctrl+C
 // copies, Ctrl+S saves; the right button or the menu key asks the owner for
 // the menu. Not in the taskbar or Alt+Tab (WS_EX_TOOLWINDOW).
 class PinWindow {
@@ -186,6 +188,8 @@ public:
     // The pill saying what the pick is doing: 255 while shown, 0 once it has
     // faded off the words (GitHub #258). For tests.
     int textHintAlpha() const { return m_pillAlpha; }
+    // The close button shown while the cursor is on it (physical, virtual desktop); empty: none now.
+    QRect closeButton() const;
 
 private:
     enum class Text { Off, Reading, Ready };
@@ -260,6 +264,15 @@ private:
     // under it (GitHub #258); never while a drag is under way.
     qint64 m_pillSince = 0;
     int m_pillAlpha = 0;
+    // The close button while the cursor is on the picture: in the corner on
+    // the side it came in from (None: not shown), lit while the cursor is on
+    // it, pressed while the left button went down on it.
+    void drawCloseButton(QImage& canvas, const QRect& button);
+    void updateCloseHover(QPoint cursor); // the cursor moved: which corner, lit or not
+    bool m_tracking = false; // TrackMouseEvent asked for WM_MOUSELEAVE
+    Corner m_closeCorner = Corner::None;
+    bool m_closeHot = false;
+    bool m_closePressed = false;
     // Dragging a corner: which, and the picture as it was at the press.
     Corner m_corner = Corner::None;
     QRect m_resizeStart;

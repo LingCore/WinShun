@@ -301,7 +301,56 @@ void PinWindow::render()
         drawTextLayer(canvas, picture);
     if (m_hintAlpha > 0 && m_form == PinForm::Full)
         drawHint(canvas, picture);
+    if (const QRect button = closeButton(); !button.isEmpty())
+        drawCloseButton(canvas, button.translated(-window.topLeft()));
     paintBorder();
+}
+
+QRect PinWindow::closeButton() const
+{
+    if (m_form != PinForm::Full || m_text != Text::Off || m_closeCorner == Corner::None
+        || (m_clickThrough && !m_reachable))
+        return {};
+    return closeButtonRect(pictureRect(), m_closeCorner, dpr());
+}
+
+void PinWindow::drawCloseButton(QImage& canvas, const QRect& button)
+{
+    QPainter painter(&canvas);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(Qt::NoPen);
+    // A dark disc that reads over any picture; red under the cursor, as a window's close button.
+    painter.setBrush(m_closeHot ? (m_closePressed ? QColor(0xA3, 0x23, 0x17) : QColor(0xC4, 0x2B, 0x1C))
+                                : QColor(0, 0, 0, 150));
+    painter.drawEllipse(QRectF(button));
+    // Phosphor's X (Regular): from 56 to 200 of its 256 grid, round ends,
+    // drawn in a 14 px box at a 1.5 px line.
+    const QPointF c = QRectF(button).center();
+    const double half = 14 * dpr() * (72.0 / 256.0);
+    QPen pen(Qt::white, 1.5 * dpr(), Qt::SolidLine, Qt::RoundCap);
+    painter.setPen(pen);
+    painter.drawLine(QPointF(c.x() - half, c.y() - half), QPointF(c.x() + half, c.y() + half));
+    painter.drawLine(QPointF(c.x() + half, c.y() - half), QPointF(c.x() - half, c.y() + half));
+}
+
+void PinWindow::updateCloseHover(QPoint cursor)
+{
+    if (!m_hwnd)
+        return;
+    Corner corner = m_closeCorner;
+    if (!m_tracking) { // the cursor has just come onto the picture
+        TRACKMOUSEEVENT track {sizeof track, TME_LEAVE, m_hwnd, 0};
+        m_tracking = ::TrackMouseEvent(&track) != FALSE;
+        corner = entryCorner(pictureRect(), cursor);
+    }
+    const bool changed = corner != m_closeCorner;
+    m_closeCorner = corner;
+    const QRect button = closeButton();
+    const bool hot = !button.isEmpty() && button.contains(cursor) && (!m_dragging || m_closePressed);
+    if (changed || hot != m_closeHot) {
+        m_closeHot = hot;
+        render();
+    }
 }
 
 void PinWindow::drawHint(QImage& canvas, const QRect& picture)
@@ -315,8 +364,12 @@ void PinWindow::drawHint(QImage& canvas, const QRect& picture)
     const QSize size(metrics.horizontalAdvance(m_hint) + 2 * padX, metrics.height() + 2 * padY);
     if (picture.width() < size.width() + 2 * gap || picture.height() < size.height() + 2 * gap)
         return; // a pin smaller than its own label: none
-    // Upper left: the lower left is the text pick's.
-    const QRect pill(picture.left() + gap, picture.top() + gap, size.width(), size.height());
+    // Upper left: the lower left is the text pick's. Beside the close button when that is there.
+    const QRect button = closeButton();
+    const int left = m_closeCorner == Corner::TopLeft && !button.isEmpty() ? button.width() + gap : 0;
+    if (picture.width() < size.width() + 2 * gap + left)
+        return;
+    const QRect pill(picture.left() + gap + left, picture.top() + gap, size.width(), size.height());
     QPainter painter(&canvas);
     painter.setOpacity(m_hintAlpha / 255.0);
     painter.setRenderHint(QPainter::Antialiasing, true);
@@ -831,6 +884,8 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             shape = IDC_HAND;
         } else if (m_text == Text::Ready) {
             shape = IDC_IBEAM;
+        } else if (m_closePressed || (m_corner == Corner::None && closeButton().contains(at))) {
+            shape = IDC_ARROW;
         } else if (m_text == Text::Off || m_corner != Corner::None) {
             const Corner corner = m_corner != Corner::None ? m_corner : cornerAt(pictureRect(), at, reach);
             if (corner == Corner::TopLeft || corner == Corner::BottomRight)
@@ -859,6 +914,13 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             ::SetCapture(hwnd);
             return 0;
         }
+        if (closeButton().contains(at)) { // closes on the button up, if still on it
+            m_closePressed = true;
+            m_closeHot = true;
+            render();
+            ::SetCapture(hwnd);
+            return 0;
+        }
         if (m_form == PinForm::Full) {
             m_corner = cornerAt(pictureRect(), at, reach);
             m_resizeStart = pictureRect();
@@ -869,7 +931,10 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
     }
     case WM_MOUSEMOVE:
-        if (m_picking && ::GetCapture() == hwnd) {
+        updateCloseHover(cursorNow());
+        if (m_closePressed) {
+            // The button stays down on the close button; nothing moves.
+        } else if (m_picking && ::GetCapture() == hwnd) {
             updatePicked(cursorNow());
         } else if (m_dragging && ::GetCapture() == hwnd) {
             const QPoint at = cursorNow();
@@ -896,6 +961,21 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
     case WM_LBUTTONUP:
         if (m_host.input)
             m_host.input(this, PinInput::Release);
+        if (m_closePressed) {
+            const bool on = closeButton().contains(cursorNow());
+            m_closePressed = false;
+            if (::GetCapture() == hwnd)
+                ::ReleaseCapture();
+            if (on) {
+                close(); // the window is gone: nothing more of this
+                return 0;
+            }
+            m_closeHot = false;
+            if (!m_tracking) // it left while the button was down
+                m_closeCorner = Corner::None;
+            render();
+            return 0;
+        }
         if (m_picking) {
             m_picking = false;
             m_pickBand = {};
@@ -924,7 +1004,20 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         else
             expand();
         return 0;
+    case WM_MOUSELEAVE:
+        m_tracking = false;
+        if (m_closeCorner != Corner::None && !m_closePressed) {
+            m_closeCorner = Corner::None;
+            m_closeHot = false;
+            render();
+        }
+        return 0;
     case WM_CAPTURECHANGED:
+        if (m_closePressed) {
+            m_closePressed = false;
+            m_closeHot = false;
+            render();
+        }
         m_dragging = false;
         m_corner = Corner::None;
         if (m_picking) {

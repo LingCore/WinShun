@@ -270,6 +270,29 @@ private slots:
         QCOMPARE(cornerAt({}, {0, 0}, 10), Corner::None);
     }
 
+    void closeButtonWaitsInTheCornerTheCursorCameInBy()
+    {
+        const QRect picture(100, 100, 400, 300);
+        QCOMPARE(entryCorner(picture, {100, 120}), Corner::TopLeft); // in by the left edge, high up
+        QCOMPARE(entryCorner(picture, {120, 399}), Corner::BottomLeft); // by the bottom, on the left
+        QCOMPARE(entryCorner(picture, {499, 380}), Corner::BottomRight);
+        QCOMPARE(entryCorner(picture, {450, 100}), Corner::TopRight);
+        QCOMPARE(entryCorner({}, {0, 0}), Corner::None);
+
+        // 24 px round, 8 in from the corner at 100%; 36 and 12 at 150%.
+        QCOMPARE(closeButtonRect(picture, Corner::TopLeft, 1.0), QRect(108, 108, 24, 24));
+        QCOMPARE(closeButtonRect(picture, Corner::BottomRight, 1.0), QRect(468, 368, 24, 24));
+        QCOMPARE(closeButtonRect(picture, Corner::TopRight, 1.5), QRect(452, 112, 36, 36));
+        QCOMPARE(closeButtonRect(picture, Corner::BottomLeft, 1.5), QRect(112, 352, 36, 36));
+        QVERIFY(closeButtonRect(picture, Corner::None, 1.0).isEmpty());
+        // Clear of the very corner, which still resizes.
+        QCOMPARE(cornerAt(picture, {100, 100}, 15), Corner::TopLeft);
+        QVERIFY(!closeButtonRect(picture, Corner::TopLeft, 1.5).contains(QPoint(100, 100)));
+        // A pin too small for it: none.
+        QVERIFY(closeButtonRect(QRect(0, 0, 71, 300), Corner::TopLeft, 1.0).isEmpty());
+        QVERIFY(!closeButtonRect(QRect(0, 0, 72, 72), Corner::TopLeft, 1.0).isEmpty());
+    }
+
     void draggingACornerKeepsTheOppositeOneAndTheAspect()
     {
         const QSize image(400, 300);

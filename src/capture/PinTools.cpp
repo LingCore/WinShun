@@ -114,6 +114,32 @@ Corner cornerAt(const QRect& picture, QPoint p, int reach)
     return Corner::None;
 }
 
+Corner entryCorner(const QRect& picture, QPoint p)
+{
+    if (picture.isEmpty())
+        return Corner::None;
+    const bool left = 2 * (p.x() - picture.left()) < picture.width();
+    const bool top = 2 * (p.y() - picture.top()) < picture.height();
+    if (top)
+        return left ? Corner::TopLeft : Corner::TopRight;
+    return left ? Corner::BottomLeft : Corner::BottomRight;
+}
+
+QRect closeButtonRect(const QRect& picture, Corner corner, double dpr)
+{
+    if (corner == Corner::None || picture.isEmpty())
+        return {};
+    const int size = static_cast<int>(std::lround(24 * dpr));
+    const int inset = static_cast<int>(std::lround(8 * dpr));
+    if (picture.width() < 3 * size || picture.height() < 3 * size)
+        return {};
+    const bool left = corner == Corner::TopLeft || corner == Corner::BottomLeft;
+    const bool top = corner == Corner::TopLeft || corner == Corner::TopRight;
+    const int x = left ? picture.left() + inset : picture.left() + picture.width() - inset - size;
+    const int y = top ? picture.top() + inset : picture.top() + picture.height() - inset - size;
+    return {x, y, size, size};
+}
+
 Resized resizeFromCorner(Corner corner, const QRect& start, QSize image, QPoint cursor, double minZoom, double maxZoom)
 {
     Resized out {start.topLeft(), 1.0};
