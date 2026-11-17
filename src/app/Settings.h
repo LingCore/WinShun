@@ -246,6 +246,9 @@ struct Settings {
     // Each time the launcher opens, nothing is typed and the scope is 全部, as
     // at its first opening (GitHub #24); else it keeps the words, selected.
     bool clearOnOpen = false;
+    // Opened again on the same words, on the row it was left on and as far
+    // down the list (feedback 2026-11-17); off: the first row, as ever (#361).
+    bool reopenWhereLeft = false;
     // Each time the launcher opens, its input method goes into English mode:
     // letters and pinyin initials find most names (GitHub #201). Switched
     // back in the box, it stays so for that opening; put back on closing.

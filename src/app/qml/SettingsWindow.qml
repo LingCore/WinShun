@@ -4579,6 +4579,20 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("回到上次的位置")
+                    keywords: qsTr("上次;位置;滚动;记住;选中;恢复;scroll;position;remember").split(";")
+                    description: qsTr("再打开时停在上次选中的那一行，列表也滚到那里；关掉时从第一行开始。开着“每次打开时清空搜索”时不起作用")
+
+                    ToggleSwitch {
+                        objectName: "reopenWhereLeftSwitch"
+                        dpr: window.dpr
+                        enabled: !window.editor.clearOnOpen
+                        checked: window.editor.reopenWhereLeft
+                        onToggled: (on) => window.editor.reopenWhereLeft = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("打开时切换为英文输入")
                     keywords: qsTr("输入法;英文;字母;中文;拼音首字母;IME;English").split(";")
                     description: qsTr("中文输入法在搜索框里先用英文，直接打字母和拼音首字母；在框里切回中文照常可用，关掉后恢复原样")

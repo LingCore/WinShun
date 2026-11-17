@@ -551,6 +551,7 @@ public:
     void setPreviewHotkey(const QString& shortcut);
     void setPreviewFollowsPointer(bool on) { m_previewFollowsPointer = on; } // Settings::previewFollowsPointer
     void setPreviewRestore(bool on) { m_previewRestore = on; } // Settings::previewRestore
+    void setReopenWhereLeft(bool on) { m_reopenWhereLeft = on; } // Settings::reopenWhereLeft
     Q_INVOKABLE bool isPreviewKey(int key, int modifiers) const;
     QString openHotkey() const { return m_openHotkey; }
     void setOpenHotkey(const QString& shortcut);
@@ -1461,6 +1462,12 @@ private:
     bool m_previewWanted = false; // the preview was left open by the user: it comes back with the launcher
     bool m_previewFollowsPointer = true; // previewHover: the row the mouse rests on; off: the current row only
     bool m_previewRestore = true; // off: a preview left open closes for good with the launcher (GitHub #258)
+    // Settings::reopenWhereLeft: opened again on the same words, on the row
+    // it was left on, with as many pages listed (feedback 2026-11-17).
+    bool m_reopenWhereLeft = false;
+    QString m_leftQuery;
+    QString m_leftPath;
+    int m_leftPages = 1;
     bool m_previewResume = false; // shown now, and the preview not yet back
     bool m_previewHandedOver = false; // the window gave way to the details' 预览 tab: back when they go
     int m_tabBeforePreview = 1; // the details' tab Alt+P left for 预览 (匹配 at first): Alt+P again goes back

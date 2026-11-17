@@ -995,6 +995,7 @@ void Settings::load()
     if (startList != u"modified" && startList != u"none")
         startList = d.startList;
     clearOnOpen = readOrDefault(s, u"Launcher/ClearOnOpen"_s, d.clearOnOpen);
+    reopenWhereLeft = readOrDefault(s, u"Launcher/ReopenWhereLeft"_s, d.reopenWhereLeft);
     englishOnOpen = readOrDefault(s, u"Launcher/EnglishOnOpen"_s, d.englishOnOpen);
     clipboardFillSeconds = std::clamp(readOrDefault(s, u"Launcher/ClipboardFill"_s, d.clipboardFillSeconds), 0, 60);
     numberKeys = readOrDefault(s, u"Results/NumberKeys"_s, d.numberKeys).trimmed().toLower();
@@ -1401,6 +1402,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/LogoRightClick"_s, logoRightClick);
     s.setValue(u"Results/FavoritesOnStart"_s, favoritesOnStart);
     s.setValue(u"Launcher/ClearOnOpen"_s, clearOnOpen);
+    s.setValue(u"Launcher/ReopenWhereLeft"_s, reopenWhereLeft);
     s.setValue(u"Launcher/EnglishOnOpen"_s, englishOnOpen);
     s.setValue(u"Launcher/ClipboardFill"_s, clipboardFillSeconds);
     s.setValue(u"Results/NumberKeys"_s, numberKeys);

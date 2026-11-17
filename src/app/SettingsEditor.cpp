@@ -401,6 +401,14 @@ void SettingsEditor::setClearOnOpen(bool on)
     commit();
 }
 
+void SettingsEditor::setReopenWhereLeft(bool on)
+{
+    if (m_settings.reopenWhereLeft == on)
+        return;
+    m_settings.reopenWhereLeft = on;
+    commit();
+}
+
 void SettingsEditor::setClipboardFillSeconds(int seconds)
 {
     if (m_settings.clipboardFillSeconds == seconds || seconds < 0 || seconds > 60)

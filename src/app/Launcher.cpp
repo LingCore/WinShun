@@ -2026,6 +2026,14 @@ void Launcher::handleShown()
     // folder came back to, or one chosen before, is no longer meant (GitHub #361).
     m_chosenPath.clear();
     m_results.setStartPath({});
+    // Unless it is to come back where it was left (Settings::reopenWhereLeft):
+    // the same words still there (not cleared on opening), on the row left
+    // on, the pages scrolled through listed again.
+    if (m_reopenWhereLeft && !m_leftPath.isEmpty() && m_query == m_leftQuery) {
+        m_chosenPath = m_leftPath;
+        m_results.setStartPath(m_leftPath);
+        m_pages = m_leftPages;
+    }
     m_tabHeld = false;
     search(); // refresh: files may have changed, and "recent" certainly has
     emit historyChanged(); // things were opened since
@@ -2323,6 +2331,10 @@ void Launcher::handleHidden()
     m_previewHandedOver = false; // back with the launcher as left (m_previewWanted), wherever it opens
     m_index->contentIndexer()->setSearchBoxOpen(false);
     m_systemCommand = false;
+    // Where it was left, should it open there again (handleShown).
+    m_leftQuery = m_query;
+    m_leftPath = m_results.pathAt(m_currentRow);
+    m_leftPages = m_pages;
     m_results.setSelection({});
     m_held.reset();
     m_statusPoll.stop();

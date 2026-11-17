@@ -1979,6 +1979,7 @@ void App::applySettings(bool initial)
     m_launcher->setOpenHotkey(m_settings.openHotkey);
     m_launcher->setPreviewFollowsPointer(m_settings.previewFollowsPointer);
     m_launcher->setPreviewRestore(m_settings.previewRestore);
+    m_launcher->setReopenWhereLeft(m_settings.reopenWhereLeft);
     m_preview->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
