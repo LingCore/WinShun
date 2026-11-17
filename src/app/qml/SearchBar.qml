@@ -201,6 +201,7 @@ Item {
         frame.addControl(compactScope)
         frame.addControl(expand)
         frame.addControl(sidebarToggle)
+        frame.addControl(fillButton)
         frame.addControl(historyButton)
         frame.addControl(regexChip)
         frame.addControl(boxPin)
@@ -655,13 +656,33 @@ Item {
         onClicked: historyPicker.toggle(bar)
     }
 
+    // The panel over the whole screen, and back (F11); the next panel
+    // opens as this one is left (Placement.togglePanelFill).
+    IconKey {
+        id: fillButton
+        objectName: "panelFillButton"
+        visible: bar.panelMode && !bar.minimal && !bar.pureKeys
+        anchors.right: expand.left
+        anchors.rightMargin: 6
+        y: bar.onPixel((bar.height - height) / 2)
+        height: bar.keyHeight
+        dpr: bar.dpr
+        glyph: bar.placement.panelFilled ? "ph:arrows-in" : "ph:arrows-out"
+        tip: bar.placement.panelFilled ? qsTr("还原大小") : qsTr("铺满屏幕")
+        shortcut: "F11"
+        onClicked: {
+            bar.placement.togglePanelFill()
+            bar.focusAtEnd()
+        }
+    }
+
     // The panel's filters, shown or put away. Away with some of them set,
     // it says so: the accent colour, and a dot.
     IconKey {
         id: sidebarToggle
         objectName: "panelSidebarToggle"
         visible: bar.panelMode
-        anchors.right: expand.left
+        anchors.right: fillButton.visible ? fillButton.left : expand.left
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)
         height: bar.keyHeight
