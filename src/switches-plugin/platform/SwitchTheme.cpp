@@ -6,6 +6,7 @@
 #include <QAbstractNativeEventFilter>
 #include <QByteArray>
 #include <QDebug>
+#include <QOperatingSystemVersion>
 
 #include <windows.h>
 
@@ -76,7 +77,11 @@ void SwitchTheme::watch(Notify changed)
 
 SwitchState SwitchTheme::read(const QString&)
 {
-    return stateOf(dark(kApps), dark(kSystem), highContrast());
+    // Windows' own mode (the taskbar's) came with Windows 10 1903: before it
+    // the value is missing, and dark apps read as "自定义".
+    static const bool systemMode = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows10_1903;
+    const bool apps = dark(kApps);
+    return stateOf(apps, systemMode ? dark(kSystem) : apps, highContrast());
 }
 
 SwitchWrite SwitchTheme::write(const QString& id, const SwitchIntent& intent)

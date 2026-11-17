@@ -260,11 +260,19 @@ bool backdropFrameActive(HWND window, bool active)
         && ::GetPropW(window, kBackdropWindow) && materialsEnabled());
 }
 
+// Before Windows 10 20H1 (build 18985) the same attribute was 19: on 1809
+// to 1909 a frame asked with 20 stayed light.
+static DWORD darkModeAttribute()
+{
+    static const DWORD attribute = QOperatingSystemVersion::current().microVersion() >= 18985 ? kUseImmersiveDarkMode : 19;
+    return attribute;
+}
+
 void setDarkFrame(QWindow* window, bool dark)
 {
     if (const HWND hwnd = handleOf(window)) {
         const BOOL value = dark;
-        ::DwmSetWindowAttribute(hwnd, kUseImmersiveDarkMode, &value, sizeof value);
+        ::DwmSetWindowAttribute(hwnd, darkModeAttribute(), &value, sizeof value);
     }
 }
 
@@ -272,7 +280,7 @@ bool isDarkFrame(QWindow* window)
 {
     BOOL value = FALSE;
     if (const HWND hwnd = handleOf(window))
-        ::DwmGetWindowAttribute(hwnd, kUseImmersiveDarkMode, &value, sizeof value);
+        ::DwmGetWindowAttribute(hwnd, darkModeAttribute(), &value, sizeof value);
     return value;
 }
 
@@ -469,8 +477,11 @@ void setMenuTheme(bool dark)
         return;
     static const auto setMode = reinterpret_cast<SetPreferredAppMode>(::GetProcAddress(uxtheme, MAKEINTRESOURCEA(135)));
     static const auto flush = reinterpret_cast<FlushMenuThemes>(::GetProcAddress(uxtheme, MAKEINTRESOURCEA(136)));
+    // Windows 10 1809's 135 is AllowDarkModeForApp(BOOL): 3 (ForceLight)
+    // allowed dark menus all the same.
+    static const bool appMode = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows10_1903;
     if (setMode)
-        setMode(dark ? 2 /* ForceDark */ : 3 /* ForceLight */);
+        setMode(appMode ? (dark ? 2 /* ForceDark */ : 3 /* ForceLight */) : (dark ? TRUE : FALSE));
     if (flush)
         flush();
 }

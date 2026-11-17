@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QOperatingSystemVersion>
 #include <QRect>
 
 #include <windows.h>
@@ -25,7 +26,11 @@ inline void excludeFromCapture(HWND window, const QRect& region, bool capturing,
                return QRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top)
                    .adjusted(-grow, -grow, grow, grow).intersects(region);
            }();
-    const DWORD wanted = inFrames ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE;
+    // Before Windows 10 2004 (19041) WDA_EXCLUDEFROMCAPTURE acts as
+    // WDA_MONITOR: the window comes out black in the frames, not left out.
+    // Seen there, as it is, is the lesser harm.
+    static const bool supported = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows10_2004;
+    const DWORD wanted = inFrames && supported ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE;
     DWORD current = WDA_NONE;
     if (!::GetWindowDisplayAffinity(window, &current) || current != wanted)
         ::SetWindowDisplayAffinity(window, wanted);

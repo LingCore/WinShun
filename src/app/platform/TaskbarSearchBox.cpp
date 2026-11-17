@@ -882,8 +882,9 @@ struct SearchBox::Impl {
 
     void readTheme()
     {
-        dark = explorerValue(
-                   L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", L"SystemUsesLightTheme", 1)
+        // Missing before Windows 10 1903 (18362), whose taskbar is always dark.
+        dark = explorerValue(L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                   L"SystemUsesLightTheme", windowsBuild() >= 18362 ? 1 : 0)
             == 0;
         HIGHCONTRASTW contrast {sizeof contrast};
         highContrast = ::SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof contrast, &contrast, 0)
@@ -1694,7 +1695,8 @@ struct SearchBox::Impl {
         formatDpi = dpi;
         wchar_t locale[LOCALE_NAME_MAX_LENGTH] = L"zh-CN";
         ::GetUserDefaultLocaleName(locale, LOCALE_NAME_MAX_LENGTH); // fallback fonts for its script
-        if (FAILED(dwrite->CreateTextFormat(L"Segoe UI Variable Text", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
+        // Windows 10 has no Segoe UI Variable: DirectWrite would take any font for it.
+        if (FAILED(dwrite->CreateTextFormat(isWindows11() ? L"Segoe UI Variable Text" : L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
                 DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, kFontSize * dpi / 96.0f, locale, &format)))
             return;
         format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);

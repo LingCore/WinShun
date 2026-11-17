@@ -569,7 +569,10 @@ public:
         const auto format = m_color.hdr ? wdx::DirectXPixelFormat::R16G16B16A16Float : wdx::DirectXPixelFormat::B8G8R8A8UIntNormalized;
         m_pool = wgc::Direct3D11CaptureFramePool::CreateFreeThreaded(inspectable.as<wd3d::IDirect3DDevice>(), format, 2, m_item.Size());
         m_session = m_pool.CreateCaptureSession(m_item);
-        m_session.IsCursorCaptureEnabled(options.cursor);
+        // From Windows 10 2004 (19041) on; before, the pointer is always in
+        // the frames, and asking for it threw: no recording at all on 1809–1909.
+        if (auto pointer = m_session.try_as<wgc::IGraphicsCaptureSession2>())
+            pointer.IsCursorCaptureEnabled(options.cursor);
         // Borderless capture is optional. An unpackaged desktop program
         // must not wait for a consent operation just to start recording.
         try {

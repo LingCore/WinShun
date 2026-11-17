@@ -1,6 +1,7 @@
 // C++/WinRT before Qt's headers: Qt's "signals" and "slots" macros would
 // rewrite what is in it (as in platform/TextRecognizer.cpp).
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Metadata.h>
 #include <winrt/Windows.Graphics.Capture.h>
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
 #include <winrt/Windows.Graphics.DirectX.h>
@@ -279,6 +280,20 @@ struct Grabber::Worker {
         try {
             if (!wgc::GraphicsCaptureSession::IsSupported()) {
                 qWarning() << "Screen capture: Windows.Graphics.Capture is not supported here; BitBlt is used";
+                return false;
+            }
+            // Borderless capture (GraphicsCaptureAccess) came with build
+            // 20348: on Windows 10 every session draws a yellow border round
+            // the screen, and before 2004 the pointer cannot be left out.
+            // BitBlt there, as before, yet said so at once: asking threw
+            // after a Direct3D device had been made for nothing.
+            static const bool access = winrt::Windows::Foundation::Metadata::ApiInformation::IsTypePresent(
+                L"Windows.Graphics.Capture.GraphicsCaptureAccess");
+            if (!access) {
+                static std::once_flag told;
+                std::call_once(told, [] {
+                    qInfo() << "Screen capture: no borderless Windows.Graphics.Capture before Windows 11; BitBlt is used";
+                });
                 return false;
             }
             if (!device) {

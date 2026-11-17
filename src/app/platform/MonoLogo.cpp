@@ -1,5 +1,6 @@
 #include "MonoLogo.h"
 
+#include <QOperatingSystemVersion>
 #include <QPainter>
 #include <QPainterPath>
 
@@ -73,7 +74,10 @@ HICON icon(int pixels, const QColor& color)
 
 bool lightTaskbar()
 {
-    DWORD value = 1; // not set: light, Windows 11's default
+    // Not set: light, Windows 11's default. The value came with Windows 10
+    // 1903; before it (LTSC 2019 is 1809) the taskbar is always dark and
+    // the value is missing: black on it, the tray icon was all but invisible.
+    DWORD value = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows10_1903 ? 1 : 0;
     DWORD size = sizeof value;
     ::RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
         L"SystemUsesLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size);
