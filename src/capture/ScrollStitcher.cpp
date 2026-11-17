@@ -143,8 +143,33 @@ std::unique_ptr<ScrollStitcher::Analysis> analyze(const QImage& frame, int ignor
 
 } // namespace
 
+QImage transposed(const QImage& image)
+{
+    const QImage in = image.depth() == 32 ? image : image.convertToFormat(QImage::Format_RGB32);
+    QImage out(in.height(), in.width(), in.format());
+    if (out.isNull())
+        return out;
+    const int w = in.width();
+    const int h = in.height();
+    uchar* bits = out.bits();
+    const qsizetype stride = out.bytesPerLine();
+    constexpr int kTile = 64; // a square at a time: both sides stay in the cache
+    for (int y0 = 0; y0 < h; y0 += kTile) {
+        for (int x0 = 0; x0 < w; x0 += kTile) {
+            const int y1 = std::min(h, y0 + kTile);
+            const int x1 = std::min(w, x0 + kTile);
+            for (int y = y0; y < y1; ++y) {
+                const auto* src = reinterpret_cast<const uint32_t*>(in.constScanLine(y));
+                for (int x = x0; x < x1; ++x)
+                    reinterpret_cast<uint32_t*>(bits + x * stride)[y] = src[x];
+            }
+        }
+    }
+    return out;
+}
+
 ScrollStitcher::ScrollStitcher(QSize frame, Limits limits, Options options)
-    : m_size(frame)
+    : m_size(options.horizontal ? frame.transposed() : frame)
     , m_limits(limits)
     , m_options(options)
 {
@@ -457,8 +482,10 @@ bool ScrollStitcher::bounced(const Analysis& end, const Analysis& now, int gone,
     return true;
 }
 
-ScrollStitcher::Step ScrollStitcher::add(const QImage& frame, std::optional<int> expectDy, bool guess)
+ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int> expectDy, bool guess)
 {
+    // Sideways, only a frame the size of the region (turned here) is taken.
+    const QImage frame = !m_options.horizontal ? given : given.size() == m_size.transposed() ? transposed(given) : QImage();
     Step step;
     const auto finish = [&](State state) {
         step.state = state;
@@ -594,6 +621,11 @@ int ScrollStitcher::height() const
 
 QImage ScrollStitcher::result() const
 {
+    return m_options.horizontal ? transposed(straight()) : straight();
+}
+
+QImage ScrollStitcher::straight() const
+{
     const int total = height();
     if (total <= 0)
         return {};
@@ -615,6 +647,11 @@ QImage ScrollStitcher::result() const
 }
 
 QImage ScrollStitcher::preview(QSize box) const
+{
+    return m_options.horizontal ? transposed(strip(box.transposed())) : strip(box);
+}
+
+QImage ScrollStitcher::strip(QSize box) const
 {
     const int total = height();
     if (total <= 0 || box.isEmpty())

@@ -104,8 +104,9 @@ private:
 // second, so a program that hangs cannot hold the capture.
 class ScrollInput {
 public:
-    // `region`: physical pixels, virtual desktop.
-    explicit ScrollInput(const QRect& region);
+    // `region`: physical pixels, virtual desktop. `horizontal`: the steps
+    // go right (the horizontal wheel, UI Automation's horizontal scrolling).
+    explicit ScrollInput(const QRect& region, bool horizontal = false);
     ~ScrollInput();
 
     ScrollInput(const ScrollInput&) = delete;
@@ -118,12 +119,12 @@ public:
     HWND content() const { return m_content; }
     QString program() const { return m_program; }
 
-    // One step down. PostWheel and SendWheel: `amount` wheel notches (a
+    // One step down (horizontal: right). PostWheel and SendWheel: `amount` wheel notches (a
     // fraction is a smaller delta); Uia: the part of the view to move
     // (0.5 is half of what the program shows), by SetScrollPercent where it
     // has it, else by its small steps.
     ScrollResult scroll(ScrollMethod method, double amount);
-    // UI Automation's vertical position, 0..100; -1 when not known.
+    // UI Automation's position (vertical, or horizontal), 0..100; -1 when not known.
     double uiaPercent();
     bool cursorInRegion() const;
 
@@ -135,6 +136,7 @@ private:
     bool keysHeld(bool buttons);
 
     QRect m_region;
+    bool m_horizontal = false;
     POINT m_middle {};
     HWND m_window = nullptr;
     HWND m_content = nullptr;

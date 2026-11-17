@@ -50,6 +50,13 @@ public:
     };
     struct Options {
         int ignoreRight = 0; // px on the right left out of the comparing (still in the picture)
+        // Content scrolled sideways (feedback 2026-11-16): each frame goes in
+        // turned (rows and columns swapped, transposed()) and the result and
+        // the preview come out turned back, so the stitching is the same.
+        // All the rest speaks of the frames as stitched: "rows" and "height"
+        // are columns and width, top and bottom the left and the right, and
+        // ignoreRight a strip at the bottom (an overlay scroll bar there).
+        bool horizontal = false;
     };
     struct Step {
         State state = State::Waiting;
@@ -75,7 +82,7 @@ public:
     // `expectDy` anyway; the result is then only partly right (partial()).
     Step add(const QImage& frame, std::optional<int> expectDy = std::nullopt, bool guess = false);
 
-    QSize frameSize() const { return m_size; }
+    QSize frameSize() const { return m_size; } // as stitched: turned when horizontal
     int height() const; // the result's height now (0 before the first frame)
     int frames() const { return m_frames; }
     bool partial() const { return m_partial; }
@@ -85,7 +92,7 @@ public:
     // The topmost frame's header + the content + the bottommost frame's
     // footer, Format_RGB32. Either end can grow from the initial viewport.
     QImage result() const;
-    // The end most recently extended, scaled to `box`'s width.
+    // The end most recently extended, scaled to `box`'s width (horizontal: its height).
     QImage preview(QSize box) const;
     // Gives the memory back (the result was taken); add() starts over.
     void release();
@@ -101,6 +108,8 @@ private:
     Match match(const Analysis& a, const Analysis& b, std::optional<int> expectDy);
     bool bounced(const Analysis& end, const Analysis& now, int gone, bool top = false) const;
     int limitHeight() const;
+    QImage straight() const; // result() as stitched
+    QImage strip(QSize box) const; // preview() as stitched
 
     QSize m_size;
     Limits m_limits;
@@ -128,5 +137,7 @@ private:
 };
 
 QString stateName(ScrollStitcher::State state);
+// Rows and columns swapped (32 bits a pixel; others converted to Format_RGB32 first).
+QImage transposed(const QImage& image);
 
 } // namespace ws::capture

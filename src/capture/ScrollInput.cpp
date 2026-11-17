@@ -304,8 +304,9 @@ struct ScrollInput::Uia {
     bool percent = true; // SetScrollPercent works here, until it fails once
 };
 
-ScrollInput::ScrollInput(const QRect& region)
+ScrollInput::ScrollInput(const QRect& region, bool horizontal)
     : m_region(region)
+    , m_horizontal(horizontal)
     , m_middle {region.x() + region.width() / 2, region.y() + region.height() / 2}
 {
     m_window = windowUnderMiddle();
@@ -377,8 +378,10 @@ ScrollResult ScrollInput::scroll(ScrollMethod method, double amount)
             return result;
         }
         const HWND target = deepestChild(top, m_middle);
-        const short delta = short(std::clamp(std::lround(-120.0 * amount), -1200L, -1L));
-        if (!::PostMessageW(target, WM_MOUSEWHEEL, MAKEWPARAM(0, WORD(delta)), MAKELPARAM(WORD(short(m_middle.x)), WORD(short(m_middle.y))))) {
+        // Down is a negative delta; right a positive one.
+        const long notches = std::clamp(std::lround(120.0 * amount), 1L, 1200L);
+        const short delta = short(m_horizontal ? notches : -notches);
+        if (!::PostMessageW(target, m_horizontal ? WM_MOUSEHWHEEL : WM_MOUSEWHEEL, MAKEWPARAM(0, WORD(delta)), MAKELPARAM(WORD(short(m_middle.x)), WORD(short(m_middle.y))))) {
             result.detail = ::GetLastError();
             result.code = result.detail == ERROR_ACCESS_DENIED ? ScrollAccessDenied : ScrollFailed;
         }
@@ -395,8 +398,9 @@ ScrollResult ScrollInput::scroll(ScrollMethod method, double amount)
         }
         INPUT input {};
         input.type = INPUT_MOUSE;
-        input.mi.dwFlags = MOUSEEVENTF_WHEEL;
-        input.mi.mouseData = DWORD(std::clamp(std::lround(-120.0 * amount), -1200L, -1L));
+        input.mi.dwFlags = m_horizontal ? MOUSEEVENTF_HWHEEL : MOUSEEVENTF_WHEEL;
+        const long notches = std::clamp(std::lround(120.0 * amount), 1L, 1200L);
+        input.mi.mouseData = DWORD(m_horizontal ? notches : -notches);
         if (::SendInput(1, &input, sizeof input) != 1) {
             result.detail = ::GetLastError();
             result.code = ScrollFailed;
@@ -435,12 +439,13 @@ ScrollResult ScrollInput::scroll(ScrollMethod method, double amount)
             if (owner && SUCCEEDED(u.automation->ElementFromPoint(m_middle, &element)) && element
                 && SUCCEEDED(element->get_CurrentProcessId(&pid)) && DWORD(pid) == owner
                 && SUCCEEDED(u.automation->get_ControlViewWalker(&walker))) {
-                // Up to the nearest that scrolls up and down.
+                // Up to the nearest that scrolls up and down (or sideways).
                 for (int depth = 0; element && depth < 40; ++depth) {
                     ComPtr<IUIAutomationScrollPattern> p;
-                    BOOL vertical = FALSE;
+                    BOOL scrolls = FALSE;
                     if (SUCCEEDED(element->GetCurrentPatternAs(UIA_ScrollPatternId, IID_PPV_ARGS(&p))) && p
-                        && SUCCEEDED(p->get_CurrentVerticallyScrollable(&vertical)) && vertical) {
+                        && SUCCEEDED(m_horizontal ? p->get_CurrentHorizontallyScrollable(&scrolls) : p->get_CurrentVerticallyScrollable(&scrolls))
+                        && scrolls) {
                         u.pattern = p;
                         break;
                     }
@@ -457,9 +462,9 @@ ScrollResult ScrollInput::scroll(ScrollMethod method, double amount)
         }
         double at = 0;
         double view = 0;
-        HRESULT hr = u.pattern->get_CurrentVerticalScrollPercent(&at);
+        HRESULT hr = m_horizontal ? u.pattern->get_CurrentHorizontalScrollPercent(&at) : u.pattern->get_CurrentVerticalScrollPercent(&at);
         if (SUCCEEDED(hr))
-            hr = u.pattern->get_CurrentVerticalViewSize(&view);
+            hr = m_horizontal ? u.pattern->get_CurrentHorizontalViewSize(&view) : u.pattern->get_CurrentVerticalViewSize(&view);
         if (FAILED(hr)) {
             result.code = ScrollFailed;
             result.detail = quint32(hr);
@@ -472,14 +477,15 @@ ScrollResult ScrollInput::scroll(ScrollMethod method, double amount)
         // Where to is known (stage 6 probe: 602 px each time in Edge, 605 in
         // Settings), where a small step is 9 to 247 px depending on the program.
         if (u.percent && at != UIA_ScrollPatternNoScroll && view > 0 && view < 100) {
-            hr = u.pattern->SetScrollPercent(UIA_ScrollPatternNoScroll, std::min(100.0, at + view * std::max(0.01, amount)));
+            const double to = std::min(100.0, at + view * std::max(0.01, amount));
+            hr = m_horizontal ? u.pattern->SetScrollPercent(to, UIA_ScrollPatternNoScroll) : u.pattern->SetScrollPercent(UIA_ScrollPatternNoScroll, to);
             if (SUCCEEDED(hr))
                 return result;
             u.percent = false;
         }
         const int steps = std::max(1, int(std::lround(amount * 8)));
         for (int i = 0; i < steps; ++i) {
-            hr = u.pattern->Scroll(ScrollAmount_NoAmount, ScrollAmount_SmallIncrement);
+            hr = m_horizontal ? u.pattern->Scroll(ScrollAmount_SmallIncrement, ScrollAmount_NoAmount) : u.pattern->Scroll(ScrollAmount_NoAmount, ScrollAmount_SmallIncrement);
             if (FAILED(hr)) {
                 result.code = ScrollFailed;
                 result.detail = quint32(hr);
@@ -499,7 +505,8 @@ double ScrollInput::uiaPercent()
     if (!m_uia || !m_uia->pattern)
         return -1;
     double at = 0;
-    if (FAILED(m_uia->pattern->get_CurrentVerticalScrollPercent(&at)) || at == UIA_ScrollPatternNoScroll)
+    const HRESULT hr = m_horizontal ? m_uia->pattern->get_CurrentHorizontalScrollPercent(&at) : m_uia->pattern->get_CurrentVerticalScrollPercent(&at);
+    if (FAILED(hr) || at == UIA_ScrollPatternNoScroll)
         return -1;
     return at;
 }

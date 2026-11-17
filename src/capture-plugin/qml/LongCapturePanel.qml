@@ -48,7 +48,7 @@ Window {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     width: captionMetrics.advanceWidth(qsTr("高 %1 像素").arg(30000))
-                    text: qsTr("高 %1 像素").arg(panel.capture.pictureHeight)
+                    text: (panel.capture.horizontal ? qsTr("宽 %1 像素") : qsTr("高 %1 像素")).arg(panel.capture.pictureHeight)
                     color: Theme.subtext; font.pixelSize: Theme.fontCaption
                 }
             }
@@ -56,6 +56,20 @@ Window {
                 id: automatic
                 anchors.right: parent.right
                 spacing: 8
+                // Up and down, or sideways (feedback 2026-11-16). Scrolled
+                // sideways by hand at the start, it turns by itself.
+                FlatButton {
+                    dpr: panel.dpr
+                    objectName: "longCaptureDirection"
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitHeight: 28
+                    flat: true; keyboardActivation: false
+                    text: panel.capture.horizontal ? qsTr("横向") : qsTr("竖向")
+                    glyph: panel.capture.horizontal ? "ph:arrows-left-right" : "ph:arrows-down-up"
+                    Accessible.role: Accessible.Button
+                    Accessible.name: panel.capture.horizontal ? qsTr("横向长截图，点一下改成竖向") : qsTr("竖向长截图，点一下改成横向")
+                    onClicked: panel.capture.horizontal = !panel.capture.horizontal
+                }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: qsTr("自动滚动"); color: Theme.subtext; font.pixelSize: Theme.fontCaption

@@ -7,6 +7,7 @@
 #include "Capture.h"
 #include "CaptureSession.h"
 #include "LongCapture.h"
+#include "ScrollStitcher.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -99,9 +100,13 @@ int runLongCapture(const QStringList& args)
         QPainter painter(&foot);
         painter.fillRect(qRound(16 * dpr), qRound(14 * dpr), qRound(200 * dpr), qRound(4 * dpr), QColor("#8392a5"));
     }
-    check(head.save(out.filePath(u"header.png"_s)), "save header");
-    check(body.save(out.filePath(u"body.png"_s)), "save body");
-    check(foot.save(out.filePath(u"footer.png"_s)), "save footer");
+    // --sideways: the same page turned a quarter (transposed), scrolled
+    // left and right; the bars stand at the left and the right.
+    const bool sideways = args.contains(u"--sideways"_s);
+    const auto shown = [&](const QImage& picture) { return sideways ? capture::transposed(picture) : picture; };
+    check(shown(head).save(out.filePath(u"header.png"_s)), "save header");
+    check(shown(body).save(out.filePath(u"body.png"_s)), "save body");
+    check(shown(foot).save(out.filePath(u"footer.png"_s)), "save footer");
     QQmlApplicationEngine engine;
     engine.addImportPath(QDir(qEnvironmentVariable("WS_APP_DIR")).filePath(u"qml"_s));
     QQmlComponent component(&engine);
@@ -116,34 +121,61 @@ int runLongCapture(const QStringList& args)
             required property url headerSource
             required property url bodySource
             required property url footerSource
-            property alias scrollY: view.contentY
+            required property bool sideways
+            required property bool wheelTurns // sideways, the up-and-down wheel scrolls it too
+            property real scrollY: 0 // along the page: down, or (sideways) right
             Text { x: 20; y: 16; text: "长截图验证 · 在下方区域滚动，Enter 完成"; color: "#1c293a" }
             Item {
                 objectName: "longCaptureRegion"
                 // Multiples of four keep the fixture's texture origin on
                 // device pixels at 100/125/150/175/200 percent scaling.
-                x: 20; y: 48; width: 600; height: 440
-                Image { width: 600; height: 40; source: fixture.headerSource; sourceSize.width: 600 * Screen.devicePixelRatio }
+                x: 20; y: 48; width: fixture.sideways ? 440 : 600; height: fixture.sideways ? 600 : 440
+                Image {
+                    width: fixture.sideways ? 40 : 600; height: fixture.sideways ? 600 : 40
+                    source: fixture.headerSource; sourceSize.width: width * Screen.devicePixelRatio
+                }
                 Flickable {
                     id: view
-                    x: 0; y: 40; width: 600; height: 360
-                    contentHeight: 2880; clip: true; boundsBehavior: Flickable.StopAtBounds
-                    Image { width: 600; height: 2880; source: fixture.bodySource; sourceSize.width: 600 * Screen.devicePixelRatio }
+                    x: fixture.sideways ? 40 : 0; y: fixture.sideways ? 0 : 40
+                    width: fixture.sideways ? 360 : 600; height: fixture.sideways ? 600 : 360
+                    contentWidth: fixture.sideways ? 2880 : 600; contentHeight: fixture.sideways ? 600 : 2880
+                    contentX: fixture.sideways ? fixture.scrollY : 0; contentY: fixture.sideways ? 0 : fixture.scrollY
+                    interactive: false; clip: true
+                    Image {
+                        width: fixture.sideways ? 2880 : 600; height: fixture.sideways ? 600 : 2880
+                        source: fixture.bodySource; sourceSize.width: width * Screen.devicePixelRatio
+                    }
+                    // Sideways: the horizontal wheel, and with wheelTurns the other one too.
                     WheelHandler {
+                        enabled: !fixture.sideways || fixture.wheelTurns
                         onWheel: (event) => {
-                            view.contentY = Math.max(0, Math.min(2520, view.contentY - event.angleDelta.y / 120 * 72))
+                            fixture.scrollY = Math.max(0, Math.min(2520, fixture.scrollY - event.angleDelta.y / 120 * 72))
+                            event.accepted = true
+                        }
+                    }
+                    WheelHandler {
+                        orientation: Qt.Horizontal
+                        enabled: fixture.sideways
+                        onWheel: (event) => {
+                            fixture.scrollY = Math.max(0, Math.min(2520, fixture.scrollY - event.angleDelta.x / 120 * 72))
                             event.accepted = true
                         }
                     }
                 }
-                Image { y: 400; width: 600; height: 40; source: fixture.footerSource; sourceSize.width: 600 * Screen.devicePixelRatio }
+                Image {
+                    x: fixture.sideways ? 400 : 0; y: fixture.sideways ? 0 : 400
+                    width: fixture.sideways ? 40 : 600; height: fixture.sideways ? 600 : 40
+                    source: fixture.footerSource; sourceSize.width: width * Screen.devicePixelRatio
+                }
             }
         }
     )", QUrl(u"qrc:/long-capture-fixture.qml"_s));
     std::unique_ptr<QQuickWindow> fixture(qobject_cast<QQuickWindow*>(component.createWithInitialProperties({
         {u"headerSource"_s, QUrl::fromLocalFile(out.filePath(u"header.png"_s))},
         {u"bodySource"_s, QUrl::fromLocalFile(out.filePath(u"body.png"_s))},
-        {u"footerSource"_s, QUrl::fromLocalFile(out.filePath(u"footer.png"_s))}})));
+        {u"footerSource"_s, QUrl::fromLocalFile(out.filePath(u"footer.png"_s))},
+        {u"sideways"_s, sideways},
+        {u"wheelTurns"_s, args.contains(u"--wheel-turns"_s)}})));
     if (!fixture) { qWarning().noquote() << component.errorString(); return 3; }
     const bool up = args.contains(u"--up"_s);
     const bool both = args.contains(u"--both"_s);
@@ -259,6 +291,8 @@ int runLongCapture(const QStringList& args)
     }
     if (!controller || !panel) { qWarning("long capture: no long capture panel"); return 3; }
     check(!controller->autoScroll(), "manual scrolling must be the default");
+    check(!controller->horizontal(), "up and down must be the default");
+    // --turn: 横向 chosen on the panel; without it, sideways is for the engine to see.
     const QSize controlSize = panel->size();
     for (const auto* name : {"longCapturePin", "longCaptureSave", "longCaptureDone", "longCaptureCancel", "longCaptureCopy"}) {
         auto* button = panel->findChild<QQuickItem*>(QString::fromLatin1(name));
@@ -309,6 +343,30 @@ int runLongCapture(const QStringList& args)
         const QRect picture(origin.x, origin.y, qRound(fixture->width() * dpr), qRound(fixture->height() * dpr));
         check(desktop.copy(picture).save(out.filePath(u"interface.png"_s)), "save actual selection and controls");
     };
+    if (sideways && args.contains(u"--turn"_s)) {
+        // A real click (SendInput): in the heading's row, where the panel is
+        // dragged by, a made-up mouse event reaches no button.
+        pump(400);
+        auto* button = panel->findChild<QQuickItem*>(u"longCaptureDirection"_s);
+        check(button && button->isVisible(), "the direction button must be shown");
+        if (button) {
+            const QPointF at = button->mapToScene(QPointF(button->width() / 2, button->height() / 2)) * panel->devicePixelRatio();
+            POINT screenAt {LONG(at.x()), LONG(at.y())};
+            ::ClientToScreen(reinterpret_cast<HWND>(panel->winId()), &screenAt);
+            POINT was {};
+            ::GetCursorPos(&was);
+            ::SetCursorPos(screenAt.x, screenAt.y);
+            pump(100);
+            INPUT clicks[2] {};
+            clicks[0].type = clicks[1].type = INPUT_MOUSE;
+            clicks[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+            clicks[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+            ::SendInput(2, clicks, sizeof(INPUT));
+            pump(300);
+            ::SetCursorPos(was.x, was.y);
+        }
+        check(controller->horizontal(), "the direction button must turn it sideways");
+    }
     int nearest = start, farthest = start;
     const auto move = [&](int position, int wait = 150) {
         fixture->setProperty("scrollY", position);
@@ -323,12 +381,27 @@ int runLongCapture(const QStringList& args)
             externalFixture.waitForFinished(3000);
             return 3;
         }
+        // --mouse-in: the pointer over the region, so SendInput's wheel is
+        // tried too (it is put back afterwards).
+        POINT was {};
+        const bool mouseIn = args.contains(u"--mouse-in"_s);
+        if (mouseIn) {
+            ::GetCursorPos(&was);
+            ::SetCursorPos(region.center().x(), region.center().y());
+        }
         controller->setAutoScroll(true);
         QElapsedTimer clock;
         clock.start();
+        qint64 told = 0;
         while (controller->running() && clock.elapsed() < 20'000) {
             pump(10);
+            if (clock.elapsed() - told >= 500) { // what it did, for when it does not end
+                controller->copyDiagnostics();
+                told = clock.elapsed();
+            }
         }
+        if (mouseIn)
+            ::SetCursorPos(was.x, was.y);
         check(!controller->running(), "auto-scroll must stop at the end");
         if (controller->running()) controller->finish();
         farthest = bodyHeight - viewport;
@@ -398,6 +471,10 @@ int runLongCapture(const QStringList& args)
         painter.drawImage(0, head.height(), body.copy(0, from, pixels, rows));
         painter.drawImage(0, head.height() + rows, foot);
         painter.end();
+        if (sideways) {
+            expected = capture::transposed(expected);
+            check(controller->horizontal(), "the capture must have gone sideways (the button, or seen)");
+        }
         expected.save(out.filePath(u"expected.png"_s));
         result.save(out.filePath(u"result.png"_s));
         // Image texture sampling can round a channel by one even at 1:1

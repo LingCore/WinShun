@@ -279,10 +279,12 @@ struct Replay {
 
 using Distort = std::function<QImage(QImage, int frame)>;
 
+// `sideways`: the frames turned a quarter (transposed()) into a horizontal
+// stitcher, its result turned back.
 void replay(Replay& out, const Page& p, const std::vector<int>& positions, std::optional<int> expectError = std::nullopt,
-    const Distort& distort = {})
+    const Distort& distort = {}, bool sideways = false)
 {
-    ScrollStitcher stitcher(QSize(kWidth, kFrame), {}, {kIgnoreRight});
+    ScrollStitcher stitcher(sideways ? QSize(kFrame, kWidth) : QSize(kWidth, kFrame), {}, {kIgnoreRight, sideways});
     std::vector<int> seen(p.pictures.size(), -1);
     int farthest = 0;
     for (size_t t = 0; t < positions.size(); ++t) {
@@ -299,6 +301,8 @@ void replay(Replay& out, const Page& p, const std::vector<int>& positions, std::
         QImage f = p.frame(s, alpha);
         if (distort)
             f = distort(f, int(t));
+        if (sideways)
+            f = transposed(f);
         std::optional<int> expect;
         const int dy = t ? s - positions[t - 1] : 0;
         if (expectError && t && dy)
@@ -318,7 +322,7 @@ void replay(Replay& out, const Page& p, const std::vector<int>& positions, std::
         }
         farthest = std::max(farthest, s);
     }
-    out.result = stitcher.result();
+    out.result = sideways ? transposed(stitcher.result()) : stitcher.result();
     out.fixedTop = stitcher.fixedTop();
     out.fixedBottom = stitcher.fixedBottom();
     QVERIFY(!stitcher.partial());
@@ -381,6 +385,37 @@ private slots:
         const int d = difference(r.result, p.truth, button, &at);
         QVERIFY2(d <= 1, qPrintable(u"%1 at %2,%3"_s.arg(d).arg(at.x()).arg(at.y())));
         QCOMPARE(r.result.copy(button), p.frame(last).copy(p.button));
+    }
+
+    // Content scrolled sideways (Options::horizontal, feedback 2026-11-16):
+    // the page turned a quarter, frames and all, comes out as the page
+    // turned; the preview is the right end, as high as the box.
+    void sideways()
+    {
+        const Page& p = page();
+        QCOMPARE(transposed(transposed(p.frame(330))), p.frame(330));
+        QCOMPARE(transposed(p.frame(0)).size(), QSize(kFrame, kWidth));
+        Replay r;
+        replay(r, p, pagePositions(), std::nullopt, {}, true);
+        if (QTest::currentTestFailed())
+            return;
+        QCOMPARE(r.result.size(), p.truth.size());
+        QCOMPARE(r.fixedTop, kHeader); // the left and the right that stay
+        QCOMPARE(r.fixedBottom, kFooter);
+        QPoint at;
+        const int d = difference(r.result, p.truth, p.button.translated(0, 2616), &at);
+        QVERIFY2(d <= 1, qPrintable(u"%1 at %2,%3"_s.arg(d).arg(at.x()).arg(at.y())));
+
+        ScrollStitcher stitcher(QSize(kFrame, kWidth), {}, {kIgnoreRight, true});
+        QCOMPARE(stitcher.frameSize(), QSize(kWidth, kFrame));
+        QCOMPARE(stitcher.add(transposed(p.frame(0))).state, ScrollStitcher::State::Appended);
+        QCOMPARE(stitcher.add(transposed(p.frame(170))).dy, 170);
+        QCOMPARE(stitcher.result().size(), QSize(kFrame + 170, kWidth));
+        const QImage preview = stitcher.preview(QSize(300, 200));
+        QCOMPARE(preview.height(), 200);
+        QVERIFY(preview.width() > 0 && preview.width() <= 300);
+        // Frames the other way round (not turned) are not taken.
+        QCOMPARE(stitcher.add(p.frame(340)).state, ScrollStitcher::State::Lost);
     }
 
     // Auto-scroll knows about how far it scrolled: off by a few px, it

@@ -56,6 +56,9 @@ class LongCapture : public QObject {
     Q_PROPERTY(int pictureHeight READ pictureHeight NOTIFY changed FINAL)
     Q_PROPERTY(bool autoScroll READ autoScroll WRITE setAutoScroll NOTIFY changed FINAL)
     Q_PROPERTY(bool canAutoScroll READ canAutoScroll NOTIFY changed FINAL)
+    // Sideways (feedback 2026-11-16): the panel's 横向, or seen in how it was
+    // scrolled; pictureHeight is then the picture's width.
+    Q_PROPERTY(bool horizontal READ horizontal WRITE setHorizontal NOTIFY changed FINAL)
     Q_PROPERTY(QString hint READ hint NOTIFY changed FINAL)
     Q_PROPERTY(bool partial READ partial NOTIFY changed FINAL)
     Q_PROPERTY(QImage preview READ preview NOTIFY previewChanged FINAL)
@@ -94,6 +97,9 @@ public:
     bool autoScroll() const { return m_autoScroll; }
     void setAutoScroll(bool on);
     bool canAutoScroll() const { return m_canAuto; }
+    bool horizontal() const { return m_horizontal; }
+    // Turned while it runs: what was stitched goes, it starts again from what is in the region now.
+    void setHorizontal(bool on);
     QString hint() const;
     bool partial() const { return m_partial; }
     QImage preview() const { return m_preview; }
@@ -147,6 +153,8 @@ private:
     bool m_autoScroll = false;
     bool m_autoScrollChosen = false; // the switch as the user left it: the engine's "lost, by hand" is one run's
     bool m_canAuto = true;
+    bool m_horizontal = false;
+    bool m_horizontalChosen = false; // the panel's, for the next run; a turn the engine saw is that run's
     Hint m_hint = Hint::None;
     Hint m_hintBefore = Hint::None; // under Copied, for a moment
     bool m_partial = false;
