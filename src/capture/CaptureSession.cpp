@@ -1328,19 +1328,21 @@ void CaptureSession::movePointer(int dx, int dy)
         emit cursorMoveRequested(cursorScreen->origin() + clampTo(m_cursorScreen, m_cursorAt + QPoint(dx, dy)));
 }
 
-void CaptureSession::nudgeSelection(int dx, int dy, bool resize)
+void CaptureSession::nudgeSelection(int dx, int dy, bool shift)
 {
     if (CaptureScreen* s = screenAt(m_selection.screen)) {
-        const QRect moved = resize ? nudgeRatio(m_selection.rect, dx, dy, m_ratio, s->bounds())
+        const QRect moved = shift ? nudgeRatio(m_selection.rect, dx, dy, m_ratio, s->bounds())
                                    : nudge(m_selection.rect, dx, dy, false, s->bounds());
         if (moved != m_selection.rect) {
             m_selection.rect = moved;
             emit selectionChanged();
             publish();
         }
-    } else if (const CaptureScreen* cursorScreen = screenAt(m_cursorScreen)) {
-        // Nothing selected: the cursor itself, for the magnifier.
-        emit cursorMoveRequested(cursorScreen->origin() + clampTo(m_cursorScreen, m_cursorAt + QPoint(dx, dy)));
+    } else {
+        // Nothing selected: the cursor itself, for the magnifier, a pixel or
+        // ten with Shift as WASD moves it.
+        const int step = shift ? 10 : 1;
+        movePointer(dx * step, dy * step);
     }
 }
 

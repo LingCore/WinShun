@@ -153,8 +153,8 @@ private:
 // screen and back; Tab before a selection switches to whole windows only and
 // back, GitHub #360); a drag draws a selection; with one, its eight handles
 // resize it and a drag inside moves it; the arrow keys move it a physical
-// pixel (Shift: resize), and WASD moves the mouse pointer a physical pixel
-// (Shift: ten) in every phase, a held-button drag included. R recalls
+// pixel (Shift: resize), and WASD (the arrows too, before a selection) moves
+// the mouse pointer a physical pixel (Shift: ten) in every phase, a held-button drag included. R recalls
 // recent regions on this picture; ? (or F1) shows or hides the key hints.
 // Enter or a double click copies, Ctrl+S saves, F3 pins it
 // to the screen; Esc or a right click drops the selection, or with none ends
@@ -461,7 +461,7 @@ private:
     void publish(); // the state onto the screens
     void finish(Action action);
     void recallSelection(bool previous); // R: older; Shift+R: newer
-    void nudgeSelection(int dx, int dy, bool resize);
+    void nudgeSelection(int dx, int dy, bool shift); // Shift: resize a selection, ten pixels for the pointer
     void movePointer(int dx, int dy); // WASD: the mouse pointer, whatever the phase
     // Tab or Shift+Tab: true when it is the picking's (no selection, no size
     // panel); then, when resting, windowsOnly switched and the switch said.
