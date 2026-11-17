@@ -7,7 +7,7 @@ import QtQuick
 // work's number of users comes from lcstp.com (Updater.userCounts, keyed by
 // `id`, the work's name on that site), shown when the page opens.
 // To use the page in another program, change only `thisApp`, `works`,
-// `authorUrl`, `feedbackUrl` and `thanks`.
+// `authorUrl`, `feedbackUrl`, `qqGroup` and `thanks`.
 QtObject {
     readonly property string title: qsTr("拾穗计划")
 
@@ -17,6 +17,15 @@ QtObject {
     readonly property string authorUrl: ""
     // The official feedback form for this program.
     readonly property url feedbackUrl: "https://lcstp.com/projects/winshun/feedback"
+    // The users' QQ group, for talking together (feedback still goes to the
+    // website); null shows no 加入 QQ 群 button.
+    //   url: the group's join link, also drawn as the QR code (tools/make_qq_qr.py)
+    readonly property var qqGroup: ({
+        name: qsTr("麦田"),
+        number: "576446871",
+        url: "https://qm.qq.com/q/btbyWvs5ag",
+        qr: "qrc:/qt/qml/WinShun/gleaning/qq-group.svg"
+    })
 
     // Sites that list this program, thanked at the foot of the page; [] shows nothing.
     //   logo:  the site's own logo, drawn on a light plate

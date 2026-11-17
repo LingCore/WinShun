@@ -2550,6 +2550,10 @@
 <context>
     <name>Gleaning</name>
     <message>
+        <source>麦田</source>
+        <translation>Wheat Field</translation>
+    </message>
+    <message>
         <source>拾穗计划</source>
         <translation>Gleaning</translation>
     </message>
@@ -2583,7 +2587,32 @@
     </message>
 </context>
 <context>
+    <name>QqGroupCard</name>
+    <message>
+        <source>QQ 群 · %1</source>
+        <translation>QQ group · %1</translation>
+    </message>
+    <message>
+        <source>群号 %1</source>
+        <translation>Group %1</translation>
+    </message>
+    <message>
+        <source>用手机 QQ 扫码，进群一起交流
+建议和问题请到官网反馈</source>
+        <translation>Scan with QQ on your phone to chat with others
+Send suggestions and problems on our website</translation>
+    </message>
+    <message>
+        <source>在电脑 QQ 中打开</source>
+        <translation>Open in QQ on this computer</translation>
+    </message>
+</context>
+<context>
     <name>GleaningPage</name>
+    <message>
+        <source>加入 QQ 群</source>
+        <translation>Join our QQ group</translation>
+    </message>
     <message>
         <source>开源</source>
         <translation>Open source</translation>

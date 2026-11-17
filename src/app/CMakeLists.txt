@@ -257,6 +257,7 @@ set(qml_files
     qml/AuthorAvatar.qml
     qml/GleaningBackdrop.qml
     qml/GleaningPage.qml
+    qml/QqGroupCard.qml
     qml/AiAccessSection.qml
     qml/AiClientsSection.qml
     qml/AiCommandLineSection.qml
@@ -308,6 +309,7 @@ set(gleaning_images
     ${PROJECT_SOURCE_DIR}/resources/gleaning/winshun.png
     ${PROJECT_SOURCE_DIR}/resources/gleaning/macshun.png
     ${PROJECT_SOURCE_DIR}/resources/gleaning/ghxi.png
+    ${PROJECT_SOURCE_DIR}/resources/gleaning/qq-group.svg
     ${PROJECT_SOURCE_DIR}/resources/gleaning/ikun.mp3
 )
 foreach(file IN LISTS gleaning_images)
