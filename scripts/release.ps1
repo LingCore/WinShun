@@ -24,7 +24,8 @@ param(
     [string] $Iscc = $env:ISCC, # Inno Setup's compiler; found under the usual places otherwise
     [string] $OutputDir, # optional isolated deployment and package directory
     [string] $BuildDir, # optional isolated CMake binary directory
-    [string] $Tests # ctest -R regex of the tests this release's changes touch; none run otherwise
+    [string] $Tests, # ctest -R regex of the tests this release's changes touch; none run otherwise
+    [int] $DeltaCount = 3 # delta packages from this many earlier releases (UpdateDelta.h)
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -151,8 +152,79 @@ try {
     if (Test-Path -LiteralPath $offlineStage) { Remove-Item -LiteralPath $offlineStage -Recurse -Force }
 }
 
+# Delta updates (src/app/UpdateDelta.h): for each of the last few releases, a
+# package with only what changed since it (zstd patches) and the delta Setup,
+# which installs from the files Win顺 builds. The release notes name them in a
+# hidden last line, which lcstp.com passes on and the in-app update reads.
+# Each is applied once here with Win顺's own code to that release's files
+# and must give exactly this deployment; one that saves too little is left out.
+$deltaSetup = Join-Path $dist "WinShun-$version-x64-delta-setup.exe"
+& $Iscc /Q "/DAppVersion=$version" "/DSourceDir=$deployment" "/DOutputDir=$dist" /DDeltaPayload '/DPackageSuffix=-delta' (Join-Path $root 'installer\WinShun.iss')
+if ($LASTEXITCODE -or -not (Test-Path -LiteralPath $deltaSetup)) { throw 'Inno Setup failed for the delta Setup' }
+$deltaTool = Join-Path $binary 'WinShunDelta.exe'
+$env:PATH = "$env:QTDIR\bin;$env:PATH" # its Qt
+$deltas = [Collections.Generic.List[string]]::new()
+$deltaLine = ''
+$deltaWork = Join-Path $dist 'delta-work'
+function Get-TreeHashes([string] $folder) {
+    $map = @{}
+    foreach ($file in Get-ChildItem -LiteralPath $folder -Recurse -File -Force) {
+        $relative = $file.FullName.Substring($folder.Length + 1)
+        if ($relative -notlike 'data\*') { $map[$relative.ToLowerInvariant()] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash }
+    }
+    $map
+}
+try {
+    $earlier = @(gh release list --repo LingCore/WinShun --limit 20 --exclude-drafts --exclude-pre-releases --json tagName --jq '.[].tagName')
+    if ($LASTEXITCODE) { throw 'Could not list the earlier releases for delta packages.' }
+    $earlier = @($earlier | Where-Object { $_ -match '^v(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -lt [version]$version } |
+            Sort-Object { [version]$_.TrimStart('v') } -Descending | Select-Object -First $DeltaCount)
+    $wanted = Get-TreeHashes $deployment
+    $setupSize = (Get-Item -LiteralPath $setup).Length
+    foreach ($earlierTag in $earlier) {
+        $from = $earlierTag.TrimStart('v')
+        # Only a version that can apply one (its source has UpdateDelta.cpp).
+        gh api "repos/LingCore/WinShun/contents/src/app/UpdateDelta.cpp?ref=$earlierTag" --silent 2>$null
+        if ($LASTEXITCODE) { Write-Host "No delta from $from`: it cannot apply one"; continue }
+        $work = Join-Path $deltaWork $from
+        if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+        New-Item -ItemType Directory -Path $work | Out-Null
+        gh release download $earlierTag --repo LingCore/WinShun --pattern "WinShun-$from-x64-portable.zip" --dir $work
+        if ($LASTEXITCODE) { throw "Could not download the portable package of $earlierTag." }
+        Expand-Archive -LiteralPath (Join-Path $work "WinShun-$from-x64-portable.zip") -DestinationPath (Join-Path $work 'old')
+        $old = Join-Path $work 'old\WinShun'
+        $zip = Join-Path $dist "WinShun-$version-x64-delta-from-$from.zip"
+        & $deltaTool make --old $old --new $deployment --from $from --to $version --setup $deltaSetup --out $zip
+        if ($LASTEXITCODE) { throw "Making the delta package from $from failed." }
+        $check = Join-Path $work 'check'
+        & $deltaTool apply --package $zip --base $old --out $check
+        if ($LASTEXITCODE) { throw "The delta package from $from did not apply to $from's files." }
+        $built = Get-TreeHashes $check
+        $differs = @(@($wanted.Keys) + @($built.Keys) | Sort-Object -Unique | Where-Object { $wanted[$_] -ne $built[$_] })
+        if ($differs) { throw "The delta package from $from builds other files: $($differs -join ', ')" }
+        $size = (Get-Item -LiteralPath $zip).Length
+        if ($size -gt $setupSize * 0.6) {
+            Write-Host "Delta from $from left out: $size bytes, the Setup is $setupSize"
+            Remove-Item -LiteralPath $zip
+            continue
+        }
+        $deltas.Add($zip)
+        Write-Host "Packaged $zip ($size bytes)"
+    }
+    if ($deltas.Count) {
+        $deltaLine = (& $deltaTool line @deltas | Out-String).Trim()
+        if ($LASTEXITCODE -or $deltaLine -notmatch '^<!-- winshun-delta 1 .+ -->$') { throw 'The delta line for the release notes failed.' }
+        Set-Content -LiteralPath (Join-Path $dist 'delta-notes-line.txt') -Value $deltaLine -Encoding ascii -NoNewline
+    }
+} catch {
+    if ($Publish) { throw }
+    Write-Warning "No delta packages: $_" # a package to try out without them
+} finally {
+    if (Test-Path -LiteralPath $deltaWork) { Remove-Item -LiteralPath $deltaWork -Recurse -Force }
+}
+
 $sums = Join-Path $dist 'SHA256SUMS.txt'
-$lines = foreach ($file in $setup, $portable, $offlineSetup, $ocrPackage) {
+$lines = foreach ($file in @($setup, $portable, $offlineSetup, $ocrPackage) + $deltas) {
     "$((Get-FileHash $file -Algorithm SHA256).Hash.ToLower())  $(Split-Path $file -Leaf)"
 }
 Set-Content $sums ($lines -join "`n") -Encoding ascii -NoNewline
@@ -162,8 +234,13 @@ if ($Publish) {
     if ((git -C $root rev-parse HEAD).Trim() -ne $releaseCommit) { throw 'The release commit changed during the build.' }
     git -C $root diff --quiet HEAD --
     if ($LASTEXITCODE) { throw 'Tracked source files changed during the build.' }
-    $assets = @($setup, $portable, $offlineSetup, $ocrPackage, $sums)
-    gh release create $tag @assets --repo LingCore/WinShun --title "Win顺 $version" --notes-file $notes --target $releaseCommit --draft
+    $assets = @($setup, $portable, $offlineSetup, $ocrPackage) + $deltas + @($sums)
+    # The notes as written, and the delta packages' line after them.
+    $publishNotes = Join-Path $dist "release-notes-$tag.md"
+    $notesText = [IO.File]::ReadAllText($notes).TrimEnd()
+    if ($deltaLine) { $notesText += "`n`n" + $deltaLine }
+    [IO.File]::WriteAllText($publishNotes, $notesText + "`n", (New-Object Text.UTF8Encoding($false)))
+    gh release create $tag @assets --repo LingCore/WinShun --title "Win顺 $version" --notes-file $publishNotes --target $releaseCommit --draft
     if ($LASTEXITCODE) { throw 'gh release create failed' }
     $draftJson = gh release view $tag --repo LingCore/WinShun --json isDraft,targetCommitish,assets
     if ($LASTEXITCODE) { throw 'Could not inspect the uploaded draft.' }

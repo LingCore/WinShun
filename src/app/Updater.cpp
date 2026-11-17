@@ -1,6 +1,7 @@
 #include "Updater.h"
 
 #include "Settings.h"
+#include "UpdateDelta.h"
 #include "UsageReport.h"
 #include "platform/Http.h"
 #include "platform/Integrity.h"
@@ -111,13 +112,30 @@ QString quoted(const QString& path)
 
 using update::helperRunning;
 
+// A download's file name. Named here, not after the service's "name":
+// nothing it sends becomes a path.
+QString packageFile(const QString& version, const QString& kind)
+{
+    static const QRegularExpression unsafe(u"[^0-9A-Za-z.\\-]"_s);
+    return updatesDir() + u"\\WinShun-%1-x64-%2"_s.arg(QString(version).remove(unsafe), kind);
+}
+
+// Delta updates (UpdateDelta.h) unless a test asks for the full package.
+bool deltaAllowed()
+{
+    return !qEnvironmentVariableIsSet("WINSHUN_UPDATE_NODELTA");
+}
+
 } // namespace
 
 struct Updater::Job {
     release::Info release;
-    release::Asset asset;
+    release::Asset asset; // what is downloaded: the delta package, or the full one
+    release::Asset full; // the full package, should the delta not do
+    bool delta = false;
     update::Kind kind = update::Kind::None;
-    QString file; // the package, in updatesDir()
+    QString file; // the package, in updatesDir(); a delta's Setup once it is built
+    QString deltaDir; // installed, delta: the Setup and its "payload", in updatesDir()
     QString stage; // portable: the new files, unpacked
     QString backup;
     std::atomic<bool> cancel {false};
@@ -125,6 +143,8 @@ struct Updater::Job {
     // Held from its check until Setup has ended (or the zip is unpacked):
     // nobody can change it in between.
     update::HeldFile held;
+    // A delta's files built for Setup and the Setup itself, held likewise.
+    std::vector<std::unique_ptr<update::HeldFile>> holds;
 };
 
 Updater::Updater(QObject* parent)
@@ -478,11 +498,6 @@ void Updater::install()
         fail(tr("更新服务器给出的安装包信息不完整（没有校验值），为了安全没有下载。请稍后再试。"));
         return;
     }
-    const QStringList urls = release::downloadUrls(*asset, loopbackHttpAllowed());
-    if (urls.isEmpty()) {
-        fail(tr("更新服务器没有给出可用的下载地址，请稍后再试。"));
-        return;
-    }
     if (!QDir().mkpath(updatesDir())) {
         fail(tr("没法创建下载文件夹 %1。").arg(updatesDir()));
         return;
@@ -491,17 +506,40 @@ void Updater::install()
     auto job = std::make_shared<Job>();
     job->release = *m_release;
     job->asset = *asset;
+    job->full = *asset;
     job->kind = m_kind;
-    // Named here, not after the service's "name": nothing it sends becomes a path.
-    static const QRegularExpression unsafe(u"[^0-9A-Za-z.\\-]"_s);
-    const QString version = QString(job->release.version).remove(unsafe);
-    job->file = updatesDir() + u"\\WinShun-%1-x64-%2"_s.arg(version,
-                    package == release::Package::Setup ? u"setup.exe"_s : u"portable.zip"_s);
+    job->file = packageFile(job->release.version, package == release::Package::Setup ? u"setup.exe"_s : u"portable.zip"_s);
     job->stage = appDir() + u'\\' + QLatin1StringView(kStageFolder);
     job->backup = appDir() + u'\\' + QLatin1StringView(kBackupFolder);
+    // Only the files that changed, when the release has a package for
+    // this version: a few MB instead of the whole program.
+    if (deltaAllowed()) {
+        if (const auto delta = update::delta::offer(*m_release, *asset, currentVersion()); delta && delta->size < asset->size) {
+            job->delta = true;
+            job->asset = *delta;
+            job->file = packageFile(job->release.version, u"delta.zip"_s);
+            job->deltaDir = packageFile(job->release.version, u"delta"_s);
+        }
+    }
     m_job = job;
+    startDownload(job);
+}
+
+void Updater::startDownload(const std::shared_ptr<Job>& job)
+{
+    const QStringList urls = release::downloadUrls(job->asset, loopbackHttpAllowed());
+    if (urls.isEmpty()) {
+        if (job->delta)
+            fallBackToFull(job, u"no download address"_s);
+        else
+            fail(tr("更新服务器没有给出可用的下载地址，请稍后再试。"));
+        return;
+    }
+    if (job->delta)
+        qInfo().noquote() << "Update: delta package" << job->asset.name << job->asset.size << "bytes";
+    job->received = 0;
     m_received = 0;
-    m_total = asset->size;
+    m_total = job->asset.size;
     setStage(Stage::Downloading);
 
     QThreadPool::globalInstance()->start([self = QPointer(this), job, urls] {
@@ -515,6 +553,25 @@ void Updater::install()
                 self->downloaded(job, result.ok, result.cancelled, result.failures.join(u'\n'));
         }, Qt::QueuedConnection);
     });
+}
+
+// The delta package did not do (not downloaded, or not fitting the files
+// here): the full package then, as if there had been none.
+void Updater::fallBackToFull(const std::shared_ptr<Job>& job, const QString& why)
+{
+    qWarning().noquote() << "Update: the delta package did not do, downloading the full one:" << why;
+    job->holds.clear();
+    job->held.close();
+    QFile::remove(job->file);
+    if (!job->deltaDir.isEmpty())
+        QDir(job->deltaDir).removeRecursively();
+    if (job->kind == update::Kind::Portable && !helperRunning())
+        QDir(job->stage).removeRecursively();
+    job->delta = false;
+    job->asset = job->full;
+    job->deltaDir.clear();
+    job->file = packageFile(job->release.version, job->kind == update::Kind::Portable ? u"portable.zip"_s : u"setup.exe"_s);
+    startDownload(job);
 }
 
 void Updater::cancelInstall()
@@ -532,6 +589,10 @@ void Updater::downloaded(const std::shared_ptr<Job>& job, bool ok, bool cancelle
         QFile::remove(job->file);
         return;
     }
+    if (!ok && job->delta) {
+        fallBackToFull(job, why);
+        return;
+    }
     if (!ok) {
         qWarning().noquote() << u"Update download failed:\n"_s + why;
         fail(tr("下载没有成功：几个下载地址都连不上，或下载到的文件没有通过校验（已删除）。请检查网络后重试。"));
@@ -546,8 +607,47 @@ void Updater::downloaded(const std::shared_ptr<Job>& job, bool ok, bool cancelle
         const bool portable = job->kind == update::Kind::Portable;
         if (!job->held.open(job->file))
             why = u"cannot hold the file"_s;
-        else if (job->held.sha256(portable ? &bytes : nullptr, kMaxPackageBytes) != job->asset.sha256.toLatin1())
+        else if (job->held.sha256(portable || job->delta ? &bytes : nullptr, kMaxPackageBytes) != job->asset.sha256.toLatin1())
             why = u"SHA-256 differs"_s;
+        if (why.isEmpty() && job->delta) {
+            // The new version's files from the ones here and the patches,
+            // each checked (UpdateDelta.h); held for Setup until it ends.
+            job->held.close();
+            QFile::remove(job->file); // used: no longer needed
+            update::delta::ApplyOptions options;
+            options.cancel = &job->cancel;
+            if (portable) {
+                if (QFileInfo::exists(job->stage) && !helperRunning())
+                    QDir(job->stage).removeRecursively(); // left by an update that did not finish
+                why = update::delta::apply(bytes, appDir(), job->stage, options);
+                if (why.isEmpty()) {
+                    const QString version = update::fileVersion(job->stage + u"\\WinShun.exe"_s);
+                    if (!release::sameVersion(version, job->release.version))
+                        why = u"WinShun.exe is version %1, not %2"_s.arg(version, job->release.version);
+                }
+            } else {
+                QDir(job->deltaDir).removeRecursively();
+                options.setupTarget = job->deltaDir + u"\\WinShun-setup.exe"_s;
+                options.hold = &job->holds;
+                if (job->kind == update::Kind::CurrentUser)
+                    options.skip = {u"WinShunService.exe"_s}; // Setup leaves it out for the user alone
+                why = update::delta::apply(bytes, appDir(), job->deltaDir + u"\\payload"_s, options);
+                if (why.isEmpty()) {
+                    job->file = options.setupTarget;
+                    const QString version = update::fileVersion(job->file);
+                    if (!release::sameVersion(version, job->release.version))
+                        why = u"Setup is version %1, not %2"_s.arg(version, job->release.version);
+                }
+            }
+            bytes.clear();
+            if (job->cancel && why.isEmpty())
+                why = u"cancelled"_s;
+            QMetaObject::invokeMethod(qApp, [self, job, why] {
+                if (self)
+                    self->verified(job, why);
+            }, Qt::QueuedConnection);
+            return;
+        }
         // Where a publisher check belongs once the packages are signed: the
         // certificate (its thumbprint) fixed in this program, and
         // WinVerifyTrust on the held file compared with it, never with
@@ -585,13 +685,20 @@ void Updater::downloaded(const std::shared_ptr<Job>& job, bool ok, bool cancelle
 void Updater::verified(const std::shared_ptr<Job>& job, const QString& why)
 {
     const auto discard = [job] {
+        job->holds.clear();
         job->held.close();
         QFile::remove(job->file);
+        if (!job->deltaDir.isEmpty())
+            QDir(job->deltaDir).removeRecursively();
         if (job->kind == update::Kind::Portable)
             QDir(job->stage).removeRecursively();
     };
     if (job != m_job || job->cancel) {
         discard();
+        return;
+    }
+    if (!why.isEmpty() && job->delta) {
+        fallBackToFull(job, why);
         return;
     }
     if (!why.isEmpty()) {
@@ -628,7 +735,10 @@ void Updater::runSetup(const std::shared_ptr<Job>& job)
         qWarning() << "Update: Setup did not start" << ::GetLastError();
         setPending({});
         job->held.close();
+        job->holds.clear();
         QFile::remove(job->file);
+        if (!job->deltaDir.isEmpty())
+            QDir(job->deltaDir).removeRecursively();
         fail(tr("安装程序没能启动，旧版本照常可用。请重试。"));
         return;
     }
@@ -665,7 +775,10 @@ void Updater::setupEnded(unsigned long exitCode)
     qWarning() << "Update: Setup ended with" << exitCode << "while this version still runs";
     setPending({});
     m_job->held.close();
+    m_job->holds.clear();
     QFile::remove(m_job->file);
+    if (!m_job->deltaDir.isEmpty())
+        QDir(m_job->deltaDir).removeRecursively();
     if (exitCode == 0) {
         setStage(Stage::Idle);
         return;
@@ -877,6 +990,9 @@ void Updater::cleanUp()
         }
         all = QFile::remove(entry.absoluteFilePath()) && all;
     }
+    // A delta update's Setup and files (that Setup may still be ending).
+    for (const QFileInfo& entry : updates.entryInfoList({u"WinShun-*-x64-delta"_s}, QDir::Dirs | QDir::NoDotAndDotDot))
+        all = QDir(entry.absoluteFilePath()).removeRecursively() && all;
     if (m_kind == update::Kind::Portable) {
         for (const auto folder : {kStageFolder, kBackupFolder}) {
             QDir dir(appDir() + u'\\' + QLatin1StringView(folder));

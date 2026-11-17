@@ -380,7 +380,7 @@ qt_add_qml_module(WinShun
         SystemTheme.cpp SystemTheme.h
         PhosphorGlyph.cpp PhosphorGlyph.h
         UiSize.h
-        Updater.cpp Updater.h UpdatePackage.cpp UpdatePackage.h UninstallCleanup.cpp UninstallCleanup.h
+        Updater.cpp Updater.h UpdatePackage.cpp UpdatePackage.h UpdateDelta.cpp UpdateDelta.h UninstallCleanup.cpp UninstallCleanup.h
         Backup.cpp Backup.h BackupFiles.cpp BackupFiles.h
         WindowFrame.cpp WindowFrame.h
 )
@@ -448,7 +448,7 @@ target_link_libraries(WinShun PRIVATE
     mfplat mfreadwrite mfuuid delayimp dbghelp
     windowsapp # TextRecognizer: Windows.Media.Ocr, through C++/WinRT from the Windows SDK
     onnxruntime_headers) # PaddleOcr
-target_link_libraries(WinShun PRIVATE advapi32 userenv miniz comdlg32 gdi32) # native report printing
+target_link_libraries(WinShun PRIVATE advapi32 userenv miniz zstd_decompress comdlg32 gdi32) # native report printing; delta updates
 # The execution level (asInvoker, since 0.8.0) comes from app.manifest alone,
 # with the rest of the manifest; the linker's own UAC fragment would be a
 # second one. Media Foundation is loaded only when used (SoundClip): Windows

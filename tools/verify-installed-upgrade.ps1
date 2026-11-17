@@ -22,6 +22,11 @@
                    WinShunUpdate.exe). The installed copy is quit meanwhile and
                    started again afterwards.
 
+    InApp and Portable take the delta package when -Feed has one for the
+    version installed (WinShun-<Version>-x64-delta-from-<old>.zip, made with
+    WinShunDelta; src/app/UpdateDelta.h), else the full one; -NoDelta offers
+    only the full one. The report's "downloaded" says which it was.
+
     -Hold: another program keeps Qt6Core.dll of the program folder loaded
     throughout (GitHub #300). The report is <Out>\<Mode>.json; first run and
     what it does not cover: docs/validation/installer-held-files-20261112.
@@ -37,6 +42,7 @@ param(
     [string] $PortableZip,
     [Parameter(Mandatory)] [string] $Out,
     [switch] $Hold,
+    [switch] $NoDelta,
     [int] $Port = 47631
 )
 $ErrorActionPreference = 'Stop'
@@ -102,7 +108,8 @@ function HoldLibrary([string] $app) {
 }
 function StartFeed {
     $feedLog = Join-Path $Out "$Mode-feed.log"
-    $server = Start-Process python -ArgumentList "`"$root\tools\update-feed.py`"", "`"$([IO.Path]::GetFullPath($Feed))`"", $Version, $Port `
+    $feedArgs = @("`"$root\tools\update-feed.py`"", "`"$([IO.Path]::GetFullPath($Feed))`"", $Version, $Port) + @(if ($NoDelta) { '--no-delta' })
+    $server = Start-Process python -ArgumentList $feedArgs `
         -WindowStyle Hidden -PassThru -RedirectStandardOutput $feedLog -RedirectStandardError "$feedLog.err"
     $helpers.Add($server)
     for ($i = 0; $i -lt 50; $i++) {
@@ -179,6 +186,7 @@ try {
             $report.after = State $installed
             if ($holder) { $report.holderStillRunning = -not $holder.HasExited }
             $report.feedRequests = @(Get-Content $feedLog | ForEach-Object { ($_ -replace '^\S+ ', '') })
+            $report.downloaded = @($report.feedRequests | Select-String -Pattern 'GET /(WinShun-\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value })
             $report.setupLog = LogLines "$env:LOCALAPPDATA\WinShun\Updates\setup.log" $setupPattern
             $report.helperLog = @(if (Test-Path "$env:LOCALAPPDATA\WinShun\Updates\update.log") { Get-Content "$env:LOCALAPPDATA\WinShun\Updates\update.log" -Tail 6 -Encoding UTF8 })
             $report.appLog = LogLines "$env:LOCALAPPDATA\WinShun\WinShun.log" 'Update[: ]|已更新到|没有更新到' | Select-Object -Last 8
@@ -213,6 +221,7 @@ try {
                 $report.dataAfter = @(Get-ChildItem "$app\data" -File | Select-Object -ExpandProperty Name | Sort-Object)
                 if ($holder) { $report.holderStillRunning = -not $holder.HasExited }
                 $report.feedRequests = @(Get-Content $feedLog | ForEach-Object { ($_ -replace '^\S+ ', '') })
+                $report.downloaded = @($report.feedRequests | Select-String -Pattern 'GET /(WinShun-\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value })
                 $updates = Get-ChildItem "$app\data" -Recurse -Filter 'update.log' | Select-Object -First 1
                 $report.helperLog = @(if ($updates) { Get-Content $updates.FullName -Tail 12 -Encoding UTF8 })
                 $report.leftBehind = @(Get-ChildItem $app -Directory | Where-Object Name -match 'update|backup|stage' | Select-Object -ExpandProperty Name)

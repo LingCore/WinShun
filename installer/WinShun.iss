@@ -104,7 +104,7 @@ LanguageDetectionMethod=uilanguage
 
 OutputDir={#OutputDir}
 #ifdef TestInstall
-OutputBaseFilename=WsSetupTest-{#AppVersion}
+OutputBaseFilename=WsSetupTest-{#AppVersion}{#PackageSuffix}
 Compression=none
 #else
 OutputBaseFilename=WinShun-{#AppVersion}-x64{#PackageSuffix}-setup
@@ -204,9 +204,20 @@ Name: "wscommand"; Description: "{cm:WsCommand}"; GroupDescription: "{cm:WsGroup
 ; file is new: one started earlier would load Qt6Core.dll and the C++ runtime
 ; from here again, and with --start-winshun start Win顺 through its autostart
 ; task while the qml\ and plugin folders are still being replaced.
+#ifdef DeltaPayload
+; A delta update's Setup (/DDeltaPayload /DPackageSuffix=-delta; src/app/UpdateDelta.h):
+; no files of its own. Win顺 built the new version's files from the installed
+; ones and the patches into "payload" beside this Setup, checked each, and
+; holds them unchanged while it runs. The same entries otherwise; the service
+; is not built for a copy installed for the user alone.
+Source: "{src}\payload\*"; DestDir: "{app}"; Excludes: "WinShunService.exe,\WinShunMcp.exe"; Flags: external ignoreversion recursesubdirs createallsubdirs
+Source: "{src}\payload\WinShunService.exe"; DestDir: "{app}"; Flags: external ignoreversion skipifsourcedoesntexist; Check: IsAdminInstallMode
+Source: "{src}\payload\WinShunMcp.exe"; DestDir: "{app}"; Flags: external ignoreversion
+#else
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "WinShunService.exe,\WinShunMcp.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceDir}\WinShunService.exe"; DestDir: "{app}"; Flags: ignoreversion; Check: IsAdminInstallMode
 Source: "{#SourceDir}\WinShunMcp.exe"; DestDir: "{app}"; Flags: ignoreversion
+#endif
 
 [InstallDelete]
 ; The full regular face covers the original characters; Qt synthesizes bold.

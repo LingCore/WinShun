@@ -6,8 +6,11 @@ WINSHUN_UPDATE_AUTOINSTALL=1) asks this for the latest version and downloads the
 package from it, as it does from lcstp.com. Serves the Setup, or the portable
 zip for ...?package=portable, of the release folder given (the output folder of
 scripts/release.ps1), with the size and SHA-256 of the file as it is on disk.
+The delta packages in that folder (WinShun-<version>-x64-delta-from-*.zip)
+are named in the notes' hidden line and served beside it, as on GitHub
+(src/app/UpdateDelta.h); --no-delta leaves them out.
 
-    python tools/update-feed.py <release folder> <version> [port]
+    python tools/update-feed.py <release folder> <version> [port] [--no-delta]
 
 Writes one line per request to stdout; ends when killed.
 """
@@ -18,14 +21,21 @@ import pathlib
 import sys
 import urllib.parse
 
-folder = pathlib.Path(sys.argv[1]).resolve()
-version = sys.argv[2]
-port = int(sys.argv[3]) if len(sys.argv) > 3 else 47631
+args = [a for a in sys.argv[1:] if a != "--no-delta"]
+folder = pathlib.Path(args[0]).resolve()
+version = args[1]
+port = int(args[2]) if len(args) > 2 else 47631
 packages = {False: f"WinShun-{version}-x64-setup.exe", True: f"WinShun-{version}-x64-portable.zip"}
 for name in packages.values():
     if not (folder / name).is_file():
         sys.exit(f"missing {folder / name}")
-digests = {name: hashlib.sha256((folder / name).read_bytes()).hexdigest() for name in packages.values()}
+deltas = [] if "--no-delta" in sys.argv else sorted(p.name for p in folder.glob(f"WinShun-{version}-x64-delta-from-*.zip"))
+digests = {name: hashlib.sha256((folder / name).read_bytes()).hexdigest() for name in list(packages.values()) + deltas}
+delta_line = ""
+if deltas:
+    prefix = f"WinShun-{version}-x64-delta-from-"
+    delta_line = "\n\n<!-- winshun-delta 1 " + " ".join(
+        f"{name[len(prefix):-len('.zip')]}:{name}:{(folder / name).stat().st_size}:{digests[name]}" for name in deltas) + " -->\n"
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -38,7 +48,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "tag_name": f"v{version}",
                 "html_url": "https://lcstp.com/projects/winshun",
                 "body": f"Win顺 {version}（本机升级实测）。 WinShun {version} (upgrade test on this PC).\n\n"
-                        "## 新功能 · What's new\n\n- 🧪 **测试** 本机升级实测。\n\n  **Test** The upgrade test on this PC.\n",
+                        "## 新功能 · What's new\n\n- 🧪 **测试** 本机升级实测。\n\n  **Test** The upgrade test on this PC.\n" + delta_line,
                 "assets": [{"name": package, "browser_download_url": f"http://127.0.0.1:{port}/{package}",
                             "size": (folder / package).stat().st_size, "digest": "sha256:" + digests[package]}],
             }).encode("utf-8")
@@ -59,5 +69,5 @@ class Handler(http.server.BaseHTTPRequestHandler):
         print(self.address_string(), format % args, flush=True)
 
 
-print(f"serving {version} from {folder} on http://127.0.0.1:{port}/stable.json", flush=True)
+print(f"serving {version} from {folder} on http://127.0.0.1:{port}/stable.json, deltas: {deltas or 'none'}", flush=True)
 http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

@@ -1610,6 +1610,18 @@ add_test(NAME tst_updater COMMAND tst_updater)
 set_tests_properties(tst_updater PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# Delta updates (app/UpdateDelta): made with the release tool's code, applied
+# with Win顺's, and refused cleanly when anything does not fit.
+qt_add_executable(tst_updatedelta tst_updatedelta.cpp ${PROJECT_SOURCE_DIR}/src/app/UpdateDelta.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/UpdateDeltaMake.cpp ${PROJECT_SOURCE_DIR}/src/app/UpdatePackage.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
+target_include_directories(tst_updatedelta PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_updatedelta PRIVATE wscore miniz zstd_full Qt6::Test version winhttp ws2_32)
+set_target_properties(tst_updatedelta PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_updatedelta COMMAND tst_updatedelta)
+set_tests_properties(tst_updatedelta PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # A Scoop install (core/ScoopInstall): detection, the stable "current" path
 # (real directory junctions), and bucket/winshun.json.
 qt_add_executable(tst_scoopinstall tst_scoopinstall.cpp)

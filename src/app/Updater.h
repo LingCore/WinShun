@@ -137,6 +137,8 @@ private:
     bool shouldRemind(const QString& version) const;
     void setStage(Stage stage);
     void fail(const QString& problem);
+    void startDownload(const std::shared_ptr<Job>& job);
+    void fallBackToFull(const std::shared_ptr<Job>& job, const QString& why);
     void downloaded(const std::shared_ptr<Job>& job, bool ok, bool cancelled, const QString& why);
     void verified(const std::shared_ptr<Job>& job, const QString& why);
     void runSetup(const std::shared_ptr<Job>& job);

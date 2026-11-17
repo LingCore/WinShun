@@ -33,7 +33,9 @@
 
 测试只按需跑：不跑全部 CTest，发布也一样。用 `-Tests` 传本次改动涉及的测试（ctest `-R` 正则，例如 `-Tests 'tst_capture|tst_clipimage'`）；不传就不跑测试。新功能和修复照常做实际验证。
 
-脚本构建（传了 `-Tests` 就跑这几个测试），再生成标准安装包、便携包、完整离线安装包、独立增强 OCR 组件 ZIP 及 `SHA256SUMS.txt`。输出目录内运行着 Win顺，或部署目录含 `data` 时应换一个新目录。不要删除用户数据以绕过保护。
+脚本构建（传了 `-Tests` 就跑这几个测试），再生成标准安装包、便携包、完整离线安装包、独立增强 OCR 组件 ZIP、增量更新包及 `SHA256SUMS.txt`。输出目录内运行着 Win顺，或部署目录含 `data` 时应换一个新目录。不要删除用户数据以绕过保护。
+
+增量更新包（见 [architecture.md](architecture.md) “增量更新”）：脚本从 GitHub 下最近 `-DeltaCount`（默认 3）个能用增量的已发布版本的便携包，各生成一个 `WinShun-<版本>-x64-delta-from-<旧版本>.zip`（`build\…\WinShunDelta.exe make`，带增量安装程序 `WinShun-<版本>-x64-delta-setup.exe`），再用同一个工具按 Win顺 的代码还原一遍，和这次部署逐个文件比对，不一致就停下。比安装包的 60% 还大的不发。生成的隐藏行写进 `<输出目录>\delta-notes-line.txt`，`-Publish` 时加在发布说明末尾（`docs/release-notes` 里的原文不改）一起上传；这些包也是 Release 附件，也写进 `SHA256SUMS.txt`。发布后查 lcstp.com 的回答时，`body` 末尾应有这行 `<!-- winshun-delta 1 … -->`。
 
 构建依赖与应用内公开 GitHub 文件的默认镜像统一维护在 `resources/downloads/github-mirrors.txt`；修改后重新配置并构建。`cmake/Download.cmake` 优先镜像、再原站，每个响应都按固定 SHA256 检查，失败不使用半个文件；下载回归包含本地故障注入，公网验证需显式开启 `WINSHUN_UPDATE_LIVE=1`，不会运行安装程序。见 [镜像审计记录](download-mirrors-audit.md)。
 
@@ -49,7 +51,7 @@
 
 - **占用文件的实测（自动，必过）**：`tools/verify-installer.ps1 -WorkDir <新目录>`。它用同一份 `installer/WinShun.iss` 编译测试版（`/DTestInstall`：独立的 AppId 和程序名，不建快捷方式、不跑 [Run]、不写卸载项、不提权，不会碰本机装着或运行着的 Win顺），真的安装、真的静默升级，覆盖：正常升级、自己的程序还在运行、别的程序加载着库不放、别的程序在读文件、文件被独占打开（应当很快放弃、说明是谁、旧版本完好）。`scripts/release.ps1` 在打包前自动运行，失败就不出包。改过 `installer/` 下任何文件，或 `src/updater`、`Updater.cpp` 里启动安装程序的部分，提交前就要先跑一遍。
 - **真实升级（在开发机上做，先问用户）**：`tools/verify-installed-upgrade.ps1` 对本机 Program Files 里装着的那份做真实更新，每种方式都可以加 `-Hold`（另一个程序加载着程序目录里的库不放），跑完核对版本、新版本是否以普通权限启动、索引服务、自启任务、设置和历史。它会关掉并**替换**本机装着的 Win顺、弹 UAC，所以每次都要先得到用户同意；跑完本机装的就是新构建。
-  - `-Mode InApp -Feed <发布目录> -Version <新版本>`：**应用内更新整条链路**（检查、下载、校验、安装程序、守护的助手、新版本启动）。本机起一个只听 127.0.0.1 的假更新服务（`tools/update-feed.py`），已装的那份带着 `WINSHUN_UPDATE_AUTOINSTALL` 启动后自己完成更新。已装的版本要有这个开关（0.25.0 之后的版本）。每次发布至少跑这一项。
+  - `-Mode InApp -Feed <发布目录> -Version <新版本>`：**应用内更新整条链路**（检查、下载、校验、安装程序、守护的助手、新版本启动）。本机起一个只听 127.0.0.1 的假更新服务（`tools/update-feed.py`），已装的那份带着 `WINSHUN_UPDATE_AUTOINSTALL` 启动后自己完成更新。已装的版本要有这个开关（0.25.0 之后的版本）。每次发布至少跑这一项。已装的版本能用增量、发布目录里有对应它的增量包时，走的是增量更新（报告的 `downloaded` 是 `…-delta-from-….zip`）；加 `-NoDelta` 测完整包这条路。
   - `-Mode Setup -Setup <安装包>`：按应用内更新的参数直接静默运行安装包。
   - `-Mode Wizard -Setup <安装包>`：像双击那样走向导，页面由提权的 `tools/installer-wizard-clicks.ps1` 点过去。改过向导页面或安装模式的询问时跑。
   - `-Mode Portable -PortableZip <旧便携包> -Feed <发布目录> -Version <新版本>`：便携版自己更新（换文件的助手）。改过 `src/updater` 时跑；期间会暂时退出已装的那份，结束后恢复。
@@ -64,7 +66,7 @@
 
 提交所有本次必要改动并推送。保存已验证的提交 SHA，再次检查远端有无同版本 Release。
 
-先创建草稿 Release，使用明确的提交 SHA 为目标，上传标准安装包、便携包、完整离线安装包、增强 OCR 组件 ZIP 和 SHA256 文件。确认五个附件齐全、大小及远端 SHA256 与本地一致后，才发布草稿并设为最新正式版本。最后确认公开 Release、最新版本接口和标签提交一致；不要在没有核验结果时仅凭上传命令成功报告完成。
+先创建草稿 Release，使用明确的提交 SHA 为目标，上传标准安装包、便携包、完整离线安装包、增强 OCR 组件 ZIP、增量更新包和 SHA256 文件。确认附件齐全、大小及远端 SHA256 与本地一致后，才发布草稿并设为最新正式版本。最后确认公开 Release、最新版本接口和标签提交一致；不要在没有核验结果时仅凭上传命令成功报告完成。
 
 软件内更新问的是 lcstp.com，它最多 10 分钟后才从 GitHub 同步到新版本。发布后用 `curl` 查这两个地址，核对 `tag_name`、文件名、`size` 和 `digest` 是否和 `SHA256SUMS.txt` 一致：
 

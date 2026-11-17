@@ -64,6 +64,11 @@ function New-Version([int] $number) {
 }
 $setup1 = New-Version 1
 $setup2 = New-Version 2
+# Version 2's delta Setup (src/app/UpdateDelta.h): the same script, its files
+# taken from "payload" beside it, where Win顺 builds them.
+& $Iscc /Q /DTestInstall /DDeltaPayload /DPackageSuffix=-delta "/DAppVersion=2.0.0" "/DSourceDir=$work\source2" "/DOutputDir=$work\delta" (Join-Path $root 'installer\WinShun.iss')
+if ($LASTEXITCODE) { throw 'ISCC failed for the delta Setup' }
+$deltaSetup = Join-Path $work 'delta\WsSetupTest-2.0.0-delta.exe'
 $size = @{}
 foreach ($name in 'Lib.dll', 'fonts\Font.ttf', 'WsSetupTest.exe') {
     $size[$name] = @((Get-Item "$work\source1\$name").Length, (Get-Item "$work\source2\$name").Length)
@@ -194,6 +199,33 @@ Case 'file-nobody-may-touch' {
     Release $locked
     $again = Install $setup2 $app "$log.again.log"
     & $check ($again.exit -eq 0 -and (Version $app) -eq '2' -and (Is $app 'fonts\Font.ttf' 2)) 'the update did not go through once the file was free'
+    $r
+}
+Case 'delta-setup' {
+    # A delta update: the files built in payload\ (without the service, as
+    # for a copy installed for the user alone), held as Win顺 holds them
+    # (reading shared, nothing else) while its Setup installs from there.
+    param($app, $log, $check)
+    $payload = Join-Path $work 'delta\payload'
+    if (Test-Path -LiteralPath $payload) { Remove-Item -LiteralPath $payload -Recurse -Force }
+    Copy-Item -LiteralPath "$work\source2" -Destination $payload -Recurse
+    Remove-Item -LiteralPath "$payload\WinShunService.exe"
+    $held = foreach ($file in Get-ChildItem -LiteralPath $payload -Recurse -File) { [IO.File]::Open($file.FullName, 'Open', 'Read', 'Read') }
+    try {
+        $r = Install $deltaSetup $app $log
+    } finally {
+        foreach ($stream in $held) { $stream.Dispose() }
+    }
+    & $check ($r.exit -eq 0) "exit $($r.exit)"
+    & $check ((Version $app) -eq '2' -and (Is $app 'Lib.dll' 2) -and (Is $app 'WsSetupTest.exe' 2) -and (Is $app 'fonts\Font.ttf' 2)) 'version 2 is not in place'
+    foreach ($name in 'WinShunMcp.exe', 'WinShunSearch.exe', 'bin\Helper.exe') {
+        & $check (Test-Path -LiteralPath "$app\$name") "$name of version 2 is missing"
+    }
+    & $check (@(AsideFiles $app).Count -eq 0) 'files were moved aside with nothing holding them'
+    & $check (Test-Path -LiteralPath "$payload\WsSetupTest.exe") 'Setup removed its payload'
+    # The relay last, once (GitHub #97): the wildcard entry leaves it out here too.
+    $written = @(Select-String -LiteralPath $log -Pattern 'Dest filename: (.*)$' | ForEach-Object { Split-Path -Leaf $_.Matches[0].Groups[1].Value })
+    & $check ($written.Count -gt 0 -and $written[-1] -eq 'WinShunMcp.exe' -and @($written | Where-Object { $_ -eq 'WinShunMcp.exe' }).Count -eq 1) "the relay was not written last and once: $($written -join ', ')"
     $r
 }
 

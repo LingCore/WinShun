@@ -43,6 +43,20 @@ if(MSVC)
     endif()
 endif()
 
+# zstd (BSD, third_party/zstd: lib/ of the 1.5.7 release, unchanged).
+# Win顺 applies delta updates (src/app/UpdateDelta) with the decompressor
+# alone; the compressor goes only into tools/delta and the tests.
+file(GLOB zstd_common_sources ${PROJECT_SOURCE_DIR}/third_party/zstd/common/*.c)
+file(GLOB zstd_decompress_sources ${PROJECT_SOURCE_DIR}/third_party/zstd/decompress/*.c)
+file(GLOB zstd_compress_sources ${PROJECT_SOURCE_DIR}/third_party/zstd/compress/*.c)
+add_library(zstd_decompress STATIC ${zstd_common_sources} ${zstd_decompress_sources})
+add_library(zstd_full STATIC ${zstd_common_sources} ${zstd_decompress_sources} ${zstd_compress_sources})
+foreach(zstd_target zstd_decompress zstd_full)
+    target_include_directories(${zstd_target} PUBLIC ${PROJECT_SOURCE_DIR}/third_party/zstd)
+    # No assembly (the Huffman decoder's is for GCC/Clang), no threads.
+    target_compile_definitions(${zstd_target} PRIVATE ZSTD_DISABLE_ASM)
+endforeach()
+
 add_subdirectory(src/extract)
 add_subdirectory(src/core)
 add_subdirectory(src/mcp)
@@ -203,6 +217,14 @@ set_target_properties(capture-probe-qt PROPERTIES WIN32_EXECUTABLE OFF QT_QML_MO
 qt_add_executable(scroll-probe tools/scroll-probe.cpp)
 target_link_libraries(scroll-probe PRIVATE winshun_options Qt6::Gui Qt6::Quick windowsapp d3d11 dxgi dwmapi user32 gdi32 advapi32)
 set_target_properties(scroll-probe PROPERTIES WIN32_EXECUTABLE OFF QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+
+# Delta update packages (src/app/UpdateDelta.h), made and checked by
+# scripts/release.ps1: WinShunDelta make / apply / line. Not deployed.
+qt_add_executable(WinShunDelta tools/delta/main.cpp src/app/UpdateDelta.cpp src/app/UpdateDeltaMake.cpp
+    src/app/UpdatePackage.cpp src/app/platform/Http.cpp)
+target_include_directories(WinShunDelta PRIVATE src/app src/core)
+target_link_libraries(WinShunDelta PRIVATE wscore miniz zstd_full version winhttp ws2_32)
+set_target_properties(WinShunDelta PROPERTIES WIN32_EXECUTABLE OFF QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 
 if(WINSHUN_ASAN AND MSVC)
     # Fuzzing the parsers (tools/wsfuzz.cpp) with libFuzzer. They are built
