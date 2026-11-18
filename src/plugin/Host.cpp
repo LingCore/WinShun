@@ -23,6 +23,7 @@
 #include <sddl.h>
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 #include <vector>
 
@@ -279,6 +280,8 @@ struct Host::Plugin {
     std::optional<Inflight> inflight;
     QTimer queryTimer;
     std::optional<Pending> pending;
+    std::vector<SettingsReply> settingsPending;
+    std::map<std::uint64_t, std::vector<SettingsReply>> settingsInFlight;
     int timeouts = 0;
     std::map<std::uint64_t, std::uint64_t> actions; // our request id -> JSON-RPC id (resident)
     std::map<std::uint64_t, std::uint64_t> toolCalls; // the bridge's call id -> nothing (to cancel)
@@ -343,7 +346,7 @@ Host::Host(Options options, QObject* parent)
     connect(&m_runnerBackoff, &QTimer::timeout, this, [this] {
         // Start it again only for someone who needs it: the next query does.
         for (auto& [id, p] : m_plugins) {
-            if (p->pending || p->waiting)
+            if (hasQueuedWork(*p) || p->waiting)
                 ensureRunner();
         }
         preload(); // eager listeners also need recovery without another query
@@ -425,6 +428,7 @@ void Host::stop(const QString& id)
         }
     }
     stopResident(p, false);
+    failSettings(p, u"插件已停止"_s);
     QSet<std::uint64_t> failed;
     const auto failQuery = [&](std::uint64_t queryId) {
         if (!failed.contains(queryId)) {
@@ -566,15 +570,17 @@ Host::Plugin& Host::plugin(const QString& id)
             const bool eager = e && e->manifest && e->manifest->runtime && e->manifest->runtime->start == StartWhen::Eager;
             const bool called = std::any_of(m_commandCalls.begin(), m_commandCalls.end(),
                 [raw](const auto& call) { return call.second->pluginId == raw->id && call.second->waitingForStart; });
-            if (raw->pending || eager || called)
+            if (hasQueuedWork(*raw) || eager || called)
                 startResident(*raw);
             emit stateChanged(raw->id);
         });
         connect(&raw->idle, &QTimer::timeout, this, [this, raw] {
-            if (raw->phase == Plugin::Phase::Ready && !raw->inflight && raw->actions.empty()) {
+            if (raw->phase == Plugin::Phase::Ready && !raw->inflight && raw->actions.empty()
+                && (!raw->session || raw->session->pending() == 0)) {
                 log(u"%1: 空闲，退出"_s.arg(raw->id));
                 stopResident(*raw, false);
-            }
+            } else if (raw->phase == Plugin::Phase::Ready)
+                touch(*raw);
         });
         it = m_plugins.emplace(id, std::move(p)).first;
     }
@@ -676,14 +682,47 @@ bool Host::request(const QString& id, const QString& method, const QJsonObject& 
     });
     QTimer::singleShot(e->manifest->runtime->timeoutMs, this, [this, id, method, instance, requestId, pending] {
         Reply done = std::exchange(*pending, {});
-        if (!done)
-            return;
         const auto at = m_plugins.find(id);
         if (at != m_plugins.end() && at->second->instance == instance && at->second->session)
             at->second->session->forget(requestId);
+        if (!done)
+            return;
         log(u"%1: %2 没有及时回答"_s.arg(id, method));
         done(false, {});
     });
+    return true;
+}
+
+bool Host::requestSettings(const QString& id, SettingsReply reply)
+{
+    const Entry* e = m_catalog.find(id);
+    QString error;
+    if (m_shuttingDown)
+        error = u"Win顺 正在退出"_s;
+    else if (!e)
+        error = u"插件不存在"_s;
+    else if (!e->manifest)
+        error = e->error.isEmpty() ? u"插件不可用"_s : e->error;
+    else if (!e->manifest->settingsWindow)
+        error = u"插件没有设置窗口"_s;
+    else if (!m_catalog.enabled(id))
+        error = offText(m_catalog, id);
+    if (!error.isEmpty()) {
+        if (reply)
+            reply(false, error);
+        return false;
+    }
+    Plugin& p = plugin(id);
+    if (p.disabledByCrashes) {
+        if (reply)
+            reply(false, u"插件连续崩溃，已停用"_s);
+        return false;
+    }
+    p.settingsPending.push_back(std::move(reply));
+    if (p.phase == Plugin::Phase::Ready && p.session)
+        sendSettings(p);
+    else if (p.phase == Plugin::Phase::Stopped)
+        startResident(p);
     return true;
 }
 
@@ -697,6 +736,75 @@ bool Host::notify(const QString& id, const QString& method, const QJsonObject& p
         ::AllowSetForegroundWindow(it->second->pid);
     it->second->session->notify(method, params);
     return true;
+}
+
+bool Host::hasQueuedWork(const Plugin& p) const
+{
+    return p.pending.has_value() || !p.settingsPending.empty();
+}
+
+int Host::pendingRequestsForTests(const QString& id) const
+{
+    const auto it = m_plugins.find(id);
+    if (it == m_plugins.end() || !it->second->session)
+        return 0;
+    return it->second->session->pending();
+}
+
+void Host::sendSettings(Plugin& p)
+{
+    if (p.settingsPending.empty() || p.phase != Plugin::Phase::Ready || !p.session)
+        return;
+    const Entry* e = entry(p.id);
+    if (!e || !e->manifest->settingsWindow) {
+        failSettings(p, u"插件没有设置窗口"_s);
+        return;
+    }
+    const int timeoutMs = e->manifest->runtime->timeoutMs;
+    auto replies = std::exchange(p.settingsPending, {});
+    touch(p);
+    if (p.pid)
+        ::AllowSetForegroundWindow(p.pid);
+    const std::uint64_t instance = p.instance;
+    const std::uint64_t requestId = p.session->request(u"showSettings"_s, {}, [this, &p](const jsonrpc::Message& response) {
+        const QString error = response.failed ? response.error.value(u"message"_s).toString() : QString();
+        finishSettingsRequest(p, static_cast<std::uint64_t>(response.id.toDouble()), !response.failed, error);
+    });
+    p.settingsInFlight.emplace(requestId, std::move(replies));
+    QTimer::singleShot(timeoutMs, this, [this, &p, instance, requestId] {
+        if (p.instance != instance || !p.settingsInFlight.contains(requestId))
+            return;
+        p.session->forget(requestId);
+        log(u"%1: showSettings 没有及时回答"_s.arg(p.id));
+        finishSettingsRequest(p, requestId, false, u"设置请求超时"_s);
+    });
+}
+
+void Host::finishSettingsRequest(Plugin& p, std::uint64_t requestId, bool ok, const QString& error)
+{
+    auto request = p.settingsInFlight.extract(requestId);
+    if (request.empty())
+        return;
+    touch(p);
+    for (auto& reply : request.mapped()) {
+        if (reply)
+            reply(ok, error);
+    }
+}
+
+void Host::failSettings(Plugin& p, const QString& error)
+{
+    std::vector<SettingsReply> replies = std::exchange(p.settingsPending, {});
+    auto inFlight = std::exchange(p.settingsInFlight, {});
+    for (auto& [requestId, waiting] : inFlight) {
+        if (p.session)
+            p.session->forget(requestId);
+        std::move(waiting.begin(), waiting.end(), std::back_inserter(replies));
+    }
+    for (auto& reply : replies) {
+        if (reply)
+            reply(false, error);
+    }
 }
 
 void Host::setPluginSettings(const QString& id, const QJsonObject& settings)
@@ -797,7 +905,7 @@ bool Host::ensureRunner()
                 if (p->waiting && !p->debounce.isActive())
                     p->debounce.start(0);
                 const bool eager = e->manifest->resident() && e->manifest->runtime->start == StartWhen::Eager;
-                if (p->phase == Plugin::Phase::Stopped && (p->pending || eager))
+                if (p->phase == Plugin::Phase::Stopped && (hasQueuedWork(*p) || eager))
                     startResident(*p);
             }
         });
@@ -809,6 +917,8 @@ bool Host::ensureRunner()
         log(u"runner 启动失败：%1"_s.arg(error));
         const int delay = backoffDelayMs(m_runnerRestarts++);
         m_runnerBackoff.start(static_cast<int>(delay * m_backoffScale));
+        for (auto& [id, p] : m_plugins)
+            failSettings(*p, u"启动失败：%1"_s.arg(error));
         return false;
     }
     return true;
@@ -1338,7 +1448,8 @@ void Host::evictIfCrowded(const QString& starting)
             if (p->phase != Plugin::Phase::Starting && p->phase != Plugin::Phase::Ready)
                 continue;
             ++running;
-            if (id == starting || p->inflight || !p->actions.empty())
+            if (id == starting || p->inflight || !p->actions.empty() || !p->settingsPending.empty()
+                || (p->session && p->session->pending() > 0))
                 continue;
             const Entry* e = entry(id);
             if (e && e->manifest->runtime && e->manifest->runtime->start == StartWhen::Eager)
@@ -1361,8 +1472,12 @@ void Host::setMaxResident(int limit)
 void Host::startResident(Plugin& p)
 {
     const Entry* e = entry(p.id);
-    if (!e || !m_catalog.enabled(p.id) || p.disabledByCrashes || p.phase != Plugin::Phase::Stopped)
+    if (p.phase != Plugin::Phase::Stopped)
         return;
+    if (m_shuttingDown || !e || !m_catalog.enabled(p.id) || p.disabledByCrashes) {
+        failSettings(p, m_shuttingDown ? u"Win顺 正在退出"_s : u"插件已停用"_s);
+        return;
+    }
     if (!ensureRunner())
         return; // the pending query waits for the runner's return
     QString error;
@@ -1370,6 +1485,7 @@ void Host::startResident(Plugin& p)
     if (spec.exe.isEmpty()) {
         p.error = error;
         log(u"%1: 启动不了：%2"_s.arg(p.id, error));
+        failSettings(p, error);
         if (p.pending) {
             emit queryFailed(p.pending->queryId, p.id, error);
             p.pending.reset();
@@ -1475,6 +1591,7 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
         if (response.failed) {
             q.error = u"initialize 失败：%1"_s.arg(response.error.value(u"message"_s).toString());
             log(u"%1: %2"_s.arg(id, q.error));
+            failSettings(q, q.error);
             stopResident(q, false);
             return;
         }
@@ -1497,6 +1614,7 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
         q.initAppearance = {};
         q.initTheme.clear();
         emit stateChanged(id);
+        sendSettings(q);
         if (q.pending) {
             const Pending pending = *q.pending;
             q.pending.reset();
@@ -1592,6 +1710,7 @@ void Host::onQueryTimeout(const QString& id)
     if (p.phase == Plugin::Phase::Starting) {
         p.error = u"initialize 没有回应"_s;
         log(u"%1: %2"_s.arg(id, p.error));
+        failSettings(p, p.error);
         if (p.pending) {
             emit queryFailed(p.pending->queryId, id, p.error);
             p.pending.reset();
@@ -1659,6 +1778,7 @@ void Host::crashed(Plugin& p, const QString& why)
             emit queryFailed(p.pending->queryId, p.id, u"插件连续崩溃，已停用"_s);
             p.pending.reset();
         }
+        failSettings(p, u"插件连续崩溃，已停用"_s);
         failCommandCalls(p.id, u"插件连续崩溃，已停用"_s);
         emit disabledAfterCrashes(p.id);
         emit stateChanged(p.id);
@@ -1700,6 +1820,7 @@ void Host::onFailed(std::uint64_t instance, const QString& stage, quint32 error)
     p.instance = 0;
     p.session.reset();
     p.phase = Plugin::Phase::Stopped;
+    failSettings(p, why);
     crashed(p, why);
 }
 
@@ -1785,7 +1906,8 @@ void Host::onInstanceExited(std::uint64_t instance, quint32 code, const QStringL
     if (was == Plugin::Phase::ShuttingDown && !p.restartAfterStop) {
         log(u"%1: 退出（代码 %2）"_s.arg(p.id).arg(code));
         emit stateChanged(p.id);
-        if (p.pending || std::exchange(p.restartWhenGone, false))
+        const bool restart = std::exchange(p.restartWhenGone, false);
+        if (!m_shuttingDown && (hasQueuedWork(p) || restart))
             startResident(p); // asked for again while it was leaving, or reloaded
         return;
     }
@@ -2393,13 +2515,17 @@ void Host::shutdown(bool grace)
     m_shuttingDown = true;
     m_preload.stop();
     m_runnerBackoff.stop();
+    for (auto& [id, p] : m_plugins) {
+        failSettings(*p, u"Win顺 正在退出"_s);
+        p->backoff.stop();
+        p->debounce.stop();
+        p->queryTimer.stop();
+    }
     if ((m_runner && m_runner->running()) || (m_elevatedRunner && m_elevatedRunner->running())) {
         // Resident plugins get their shutdown request and a moment to go.
         int waiting = 0;
         for (auto& [id, p] : m_plugins) {
             p->idle.stop();
-            p->backoff.stop();
-            p->debounce.stop();
             dropInflight(*p, false);
             if (grace && p->phase == Plugin::Phase::Ready && p->session) {
                 ++waiting;

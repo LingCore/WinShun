@@ -429,7 +429,8 @@ Rectangle {
                         text: qsTr("新版本已经下载好。现在更新会先停一下这个插件；不点的话，下次启动 Win顺 时自动换上")
                     }
                 }
-                FlatButton { // the plugin's own window, while it runs
+                FlatButton { // the plugin's own settings window
+                    objectName: "pluginSettings-" + card.pluginId
                     dpr: card.dpr
                     anchors.verticalCenter: parent.verticalCenter
                     visible: card.settingsWindow && card.usable && card.pluginEnabled

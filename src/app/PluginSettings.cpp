@@ -1487,8 +1487,13 @@ void PluginSettings::showSettings(const QString& id)
         emit webSettingsRequested();
         return;
     }
-    if (!m_host->request(id, u"showSettings"_s, {}, {}, true))
-        setMessage(tr("插件还没准备好，请稍后再试"));
+    QPointer<PluginSettings> self(this);
+    m_host->requestSettings(id, [self](bool ok, const QString& error) {
+        if (!self)
+            return;
+        if (!ok)
+            self->setMessage(error.isEmpty() ? self->tr("设置窗口打不开") : error);
+    });
 }
 
 void PluginSettings::openReadme(const QString& id)
