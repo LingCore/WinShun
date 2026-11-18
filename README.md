@@ -195,6 +195,14 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.35.0**
+
+- 🖱️ **鼠标手势**（新插件）：按住右键画一下就能后退、关窗口、叫出搜索框。
+- 🔲 **收藏排成图标**；🎬 **预览里放视频**；📊 **排序：打开最多**；↔️ **长截图可以横着截**（截图与录屏 1.1.23）。
+- ⬇️ **增量更新**，下一次更新起只下载变了的部分；网页搜索可以用指定浏览器打开，单击预览，搜索面板记住铺满屏幕，Clover、360 文件夹的标签页里也能用文件夹菜单。
+
+详见 [0.35.0 发布说明](docs/release-notes/v0.35.0.md)。
+
 **0.34.2**
 
 - 🛠️ **修复** 较早的 Windows 10 上托盘图标几乎看不见、深色标题栏不生效、录屏直接失败、截图排除自己窗口时变黑（截图与录屏 1.1.22）。
@@ -477,6 +485,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.35.0**
+
+- 🖱️ **Mouse gestures** (new plugin): hold the right button and draw to go back, close a window or open the search box.
+- 🔲 **Favorites as icons**; 🎬 **videos play in the preview**; 📊 **sort by Opened most**; ↔️ **sideways long screenshots** (Screenshot and recording 1.1.23).
+- ⬇️ **Delta updates**, downloading only what changed from the next update on; web searches in a chosen browser, click to preview, the search panel remembers filling the screen, and the folder menu works in Clover and 360 Folder tabs.
+
+See the [0.35.0 release notes](docs/release-notes/v0.35.0.md).
 
 **0.34.2**
 
