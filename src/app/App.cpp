@@ -4965,6 +4965,10 @@ bool App::createBarWindow()
         delete object;
         return false;
     }
+    // Its list opens and changes length with the rows: on Windows 10 every
+    // such resize flashed black for a frame, as the box typed open in a
+    // folder did (GitHub #234), until the window had alpha as well.
+    prepareBackdrop(window);
     window->create();
     styleWindow(window);
     win::setDarkFrame(window, isDarkMode());
