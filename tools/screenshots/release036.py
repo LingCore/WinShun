@@ -61,6 +61,7 @@ import shots
 # the side list and the page: the same plain colour). All pixels are the
 # render's own; nothing is drawn or retouched.
 HEADER, FROM, FOOTER, NAV = 300, 2195, 160, 490
+SIDE_END = 1280  # a plain row under the side list's last entry
 
 
 def scrolled_to_excluded(image):
@@ -75,7 +76,7 @@ def scrolled_to_excluded(image):
         "the row under the tabs": plain((NAV, HEADER, width, HEADER + 1)),
         "the row between the folder list and 排除目录": plain((NAV, FROM, width, FROM + 1)),
         "the gap between side list and page": plain((NAV - 10, 0, NAV + 10, height)),
-        "the side list's end": plain((0, 1280, NAV, 1281)),
+        "the side list's end": plain((0, SIDE_END, NAV, SIDE_END + 1)),
         "above the footer": plain((0, height - FOOTER, NAV, height - FOOTER + 1)),
     }
     bad = [name for name, ok in checks.items() if not ok]
