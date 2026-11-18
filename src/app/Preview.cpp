@@ -2766,6 +2766,11 @@ int runSettings(const QStringList& args)
         check(!editor->setFileTypeKeyword(0, u"nobin"_s).isEmpty(), "quick filters: a kind took a filter's prefix");
         editor->moveQuickFilter(1, -1);
         check(editor->quickFilters().value(0).toMap().value(u"name"_s).toString() == u"大 PDF", "quick filters: moving one up did nothing");
+        // A sort of its own (GitHub #392): kept by name, an unknown one not at all.
+        editor->setQuickFilterSort(0, u"largest"_s);
+        check(editor->quickFilters().value(0).toMap().value(u"sort"_s).toString() == u"largest", "quick filters: its sort was not kept");
+        editor->setQuickFilterSort(1, u"sideways"_s);
+        check(editor->quickFilters().value(1).toMap().value(u"sort"_s).toString().isEmpty(), "quick filters: an unknown sort was kept");
         QMetaObject::invokeMethod(window, "showQuickFiltersPage", Q_ARG(QVariant, QVariant(u"!node_modules\\"_s)));
         settle(window, 3);
         auto* draft = visualNamed(window->contentItem(), u"quickFilterNewQuery"_s);
@@ -2779,6 +2784,10 @@ int runSettings(const QStringList& args)
                 check(row->x() + row->width() <= row->parentItem()->width() + 0.5, "quick filters: a row is wider than its card");
             }
         }
+        if (auto* sort = visualNamed(window->contentItem(), u"quickFilterSort_0"_s))
+            check(sort->isVisible() && sort->property("currentIndex").toInt() == 7, "quick filters: the sort box does not show 大的在前");
+        else
+            check(false, "quick filters: the sort box is missing");
         saved = saveGrab(window, out.filePath(u"quick-filters.png"_s)) && saved;
         editor->removeQuickFilter(0);
         editor->removeQuickFilter(0);
