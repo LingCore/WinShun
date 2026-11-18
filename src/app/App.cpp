@@ -4784,9 +4784,9 @@ void App::applyDialogs()
             m_dialogEngine = std::make_unique<SearchEngine>(m_index.get(), m_apps.get(), m_places.get());
         m_dialogBar = std::make_unique<DialogBar>(m_dialogEngine.get(), m_history.get(),
             m_favorites.get(), [this](HWND dialog, std::wstring path, bool isFile, bool open) {
-                // An elevated dialog goes through the service helper (folder
-                // only); a failure falls back to copying the path. A normal one
-                // is driven directly.
+                // An elevated dialog goes through the service helper (to the
+                // folder, a file's name in the box, never Open: #353); a failure
+                // falls back to copying the path. A normal one is driven directly.
                 if (integrity::higherThanOurs(dialog)) {
                     const QString copyPath = QString::fromStdWString(path);
                     if (!(m_serviceNav && m_serviceNav->available())) {
@@ -4798,10 +4798,10 @@ void App::applyDialogs()
                         return;
                     }
                     const std::size_t slash = path.find_last_of(L'\\');
-                    std::wstring folder = !isFile ? path
-                        : slash == std::wstring::npos ? path
-                                                      : path.substr(0, slash == 2 ? 3 : slash);
-                    m_serviceNav->navigate(dialog, std::move(folder), [this, dialog, copyPath](bool ok) {
+                    const bool named = isFile && slash != std::wstring::npos;
+                    std::wstring folder = named ? path.substr(0, slash == 2 ? 3 : slash) : path;
+                    std::wstring name = named ? path.substr(slash + 1) : std::wstring();
+                    m_serviceNav->navigate(dialog, std::move(folder), std::move(name), [this, dialog, copyPath](bool ok) {
                         if (ok)
                             return;
                         QMetaObject::invokeMethod(this, [this, dialog, copyPath] {
@@ -4899,7 +4899,7 @@ void App::applyDialogs()
         callbacks.elevatedNavAvailable = [this] { return m_serviceNav && m_serviceNav->available(); };
         callbacks.navigateElevated = [this](HWND dialog, std::wstring folder) { // may be the worker thread
             if (m_serviceNav)
-                m_serviceNav->navigate(dialog, std::move(folder), {});
+                m_serviceNav->navigate(dialog, std::move(folder), {}, {});
         };
         m_dialogJump = std::make_unique<DialogJump>(std::move(callbacks));
         updateCompanions();

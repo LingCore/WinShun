@@ -451,6 +451,88 @@ private slots:
         }
     }
 
+    // A file's name sent along with its folder (GitHub #353): one name, never
+    // a path, a stream or a wildcard; the helper's argv gives it back intact.
+    void fileNameRequest_data()
+    {
+        QTest::addColumn<QString>("name");
+        QTest::addColumn<bool>("valid");
+        QTest::newRow("plain") << QStringLiteral("roads.shp") << true;
+        QTest::newRow("Chinese and spaces") << QStringLiteral("图纸 项目.dwg") << true;
+        QTest::newRow("no extension") << QStringLiteral("README") << true;
+        QTest::newRow("dots and brackets") << QStringLiteral("#1 a.b (copy) [2].txt") << true;
+        QTest::newRow("at the limit") << QString(int(dn::kMaxFileNameChars), QLatin1Char('a')) << true;
+        QTest::newRow("leading dot") << QStringLiteral(".gitignore") << true;
+
+        QTest::newRow("empty") << QString() << false;
+        QTest::newRow("too long") << QString(int(dn::kMaxFileNameChars) + 1, QLatin1Char('a')) << false;
+        QTest::newRow("dot") << QStringLiteral(".") << false;
+        QTest::newRow("dot-dot") << QStringLiteral("..") << false;
+        QTest::newRow("trailing space") << QStringLiteral("a.txt ") << false;
+        QTest::newRow("trailing dot") << QStringLiteral("a.") << false;
+        QTest::newRow("a path") << QStringLiteral("..\\up.txt") << false;
+        QTest::newRow("absolute") << QStringLiteral("C:\\a.txt") << false;
+        QTest::newRow("forward slash") << QStringLiteral("a/b.txt") << false;
+        QTest::newRow("stream colon") << QStringLiteral("a.txt:x") << false;
+        QTest::newRow("wildcard") << QStringLiteral("*.txt") << false;
+        QTest::newRow("question mark") << QStringLiteral("a?.txt") << false;
+        QTest::newRow("quote") << QStringLiteral("a\"b.txt") << false;
+        QTest::newRow("angle") << QStringLiteral("a<b>.txt") << false;
+        QTest::newRow("pipe") << QStringLiteral("a|b.txt") << false;
+        QTest::newRow("tab") << QStringLiteral("a\tb.txt") << false;
+        QTest::newRow("del") << (QStringLiteral("a") + QChar(0x7F)) << false;
+        QTest::newRow("nul") << (QStringLiteral("a") + QChar(0) + QStringLiteral("b")) << false;
+    }
+
+    void fileNameRequest()
+    {
+        QFETCH(QString, name);
+        QFETCH(bool, valid);
+        QCOMPARE(dn::isValidFileName(name.toStdWString()), valid);
+        if (valid) {
+            const QStringList argv = argvOf(L"x.exe --navigate-dialog 1 " + dn::quoteArgument(L"C:\\") + L" "
+                + dn::quoteArgument(name.toStdWString()));
+            QCOMPARE(argv.size(), 5);
+            QCOMPARE(argv.at(3), QStringLiteral("C:\\"));
+            QCOMPARE(argv.at(4), name);
+        }
+    }
+
+    // Gone to the folder, the file's name in the box (GitHub #353), and
+    // nothing pressed; a window that takes a folder names no file.
+    void putsAFileName()
+    {
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const std::wstring folder = QDir::toNativeSeparators(root.path()).toStdWString();
+        const std::wstring name = L"图纸 项目.dwg";
+        {
+            fakedialog::OpenDialog dialog(folder + L"\\start");
+            QVERIFY(dialog.valid());
+            QVERIFY(dn::navigateToFolder(dialog.handle(), folder));
+            QVERIFY(dn::putFileName(dialog.handle(), name));
+            QCOMPARE(dialog.fileName(), name);
+            QCOMPARE(dialog.entered().size(), std::size_t(1)); // the folder, in the address bar
+            QVERIFY(!dn::putFileName(dialog.handle(), L"..\\up.txt"));
+            QCOMPARE(dialog.fileName(), name);
+        }
+        {
+            LegacyDialog dialog;
+            QVERIFY(dn::navigateToFolder(dialog.handle(), folder));
+            QVERIFY(dn::putFileName(dialog.handle(), name));
+            QCOMPARE(dialog.fileName(), QString::fromStdWString(name));
+            QCOMPARE(dialog.entered().size(), qsizetype(1));
+            QCOMPARE(dialog.answers(), 0);
+        }
+        {
+            fakepathbox::TreeBoxDialog dialog;
+            QVERIFY(dialog.valid());
+            QVERIFY(!dn::putFileName(dialog.handle(), name));
+            QCOMPARE(dialog.path(), std::wstring(L"C:\\Users"));
+        }
+        QVERIFY(!dn::putFileName(nullptr, name));
+    }
+
     // The Windows XP style has no address bar: the folder goes through the
     // file name box and OK, and the name that was there comes back (#143).
     void legacyByName_data()
@@ -535,6 +617,7 @@ private slots:
             QVERIFY(!dn::navigateToFolder(dialog.handle(), target));
             QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));
             QCOMPARE(dialog.notifications(), 0);
+            QVERIFY(!dn::putFileName(dialog.handle(), L"新图.dwg"));
             return;
         }
         QCOMPARE(dn::classify(dialog.handle()), Kind::Legacy);
@@ -542,6 +625,11 @@ private slots:
         QCOMPARE(dialog.entered(), std::vector<std::wstring> {target + L'\\'});
         QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));
         QVERIFY(dialog.notifications() >= 2); // the folder and the name put back both reached its own file name
+        // A file's name (GitHub #353): told to it as well, and not opened.
+        const int told = dialog.notifications();
+        QVERIFY(dn::putFileName(dialog.handle(), L"新图.dwg"));
+        QCOMPARE(dialog.fileName(), std::wstring(L"新图.dwg"));
+        QVERIFY(dialog.notifications() > told);
         QVERIFY(!dialog.accepted());
         QVERIFY(::IsWindow(dialog.handle()));
     }

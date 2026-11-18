@@ -746,10 +746,13 @@ void serveDialogNav(Server& server, Connection& conn, std::span<const std::byte>
     Reader r(payload);
     std::uint64_t window = 0;
     std::wstring folder;
+    std::wstring name; // a file's, for the file name box (minor 8, #353)
     // The folder is checked as a string only: an absolute path without quotes
     // or control characters, of a sane length. Whether it exists is the
     // helper's to check, as the user; the service never opens it as SYSTEM.
-    if (!r.u64(window) || !r.string(folder) || !r.done() || !window || !dialognav::isValidFolderRequest(folder)) {
+    // The name likewise: one name, no path.
+    if (!r.u64(window) || !r.string(folder) || (!r.done() && !r.string(name)) || !r.done() || !window
+        || !dialognav::isValidFolderRequest(folder) || (!name.empty() && !dialognav::isValidFileName(name))) {
         replyError(conn, ERROR_INVALID_PARAMETER, L"invalid dialog navigation request", 1000);
         return;
     }
@@ -776,7 +779,9 @@ void serveDialogNav(Server& server, Connection& conn, std::span<const std::byte>
     const wchar_t* operation = L"create navigator job";
     // Quoted by the CommandLineToArgvW rules, so a drive root ("C:\" ->
     // "C:\\") arrives intact; isValidFolderRequest has refused quotes anyway.
-    const std::wstring args = L"--navigate-dialog " + std::to_wstring(window) + L" " + dialognav::quoteArgument(folder);
+    std::wstring args = L"--navigate-dialog " + std::to_wstring(window) + L" " + dialognav::quoteArgument(folder);
+    if (!name.empty())
+        args += L" " + dialognav::quoteArgument(name);
     if (!server.options().keyListener || !job.valid()
         || !::SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation, &limits, sizeof limits)
         || !launchSessionHelper(conn, args, job.get(), child, childPid, operation)) {
@@ -913,7 +918,7 @@ int pasteInto(HWND window)
 
 // runDialogNav's checks and its one job. May throw: what it reads (a control's
 // text, a UI Automation name, a module's path) is sized by other programs.
-int navigateDialog(HWND dialog, const std::wstring& folder)
+int navigateDialog(HWND dialog, const std::wstring& folder, const std::wstring& name)
 {
     if (!isSessionHelper())
         return ERROR_ACCESS_DENIED;
@@ -940,14 +945,20 @@ int navigateDialog(HWND dialog, const std::wstring& folder)
         return ERROR_ACCESS_DENIED;
     // The folder: the service's string checks again, then that it exists; this
     // process runs as the user, so it is their view.
-    if (!dialognav::isValidFolderRequest(folder))
+    if (!dialognav::isValidFolderRequest(folder) || (!name.empty() && !dialognav::isValidFileName(name)))
         return ERROR_INVALID_PARAMETER;
     if (!dialognav::isExistingDirectory(folder.c_str()))
         return ERROR_PATH_NOT_FOUND;
     ::CoInitializeEx(nullptr, COINIT_MULTITHREADED); // UI Automation for SHBrowseForFolder
     const bool went = dialognav::navigateToFolder(dialog, folder);
     ::CoUninitialize();
-    return went ? 0 : static_cast<int>(ERROR_NOT_FOUND);
+    if (!went)
+        return ERROR_NOT_FOUND;
+    // Gone there: a file's name in the box for the user to open (#353). A
+    // window without one (a folder picker) is there all the same.
+    if (!name.empty())
+        dialognav::putFileName(dialog, name);
+    return 0;
 }
 } // namespace
 
@@ -962,12 +973,12 @@ int runPaste(HWND window)
     }
 }
 
-int runDialogNav(HWND dialog, const std::wstring& folder)
+int runDialogNav(HWND dialog, const std::wstring& folder, const std::wstring& name)
 {
     // Nothing escapes the helper's one job: a failed allocation (or any other
     // exception) ends it as not done, which the service reports as such.
     try {
-        return navigateDialog(dialog, folder);
+        return navigateDialog(dialog, folder, name);
     } catch (const std::bad_alloc&) {
         return ERROR_NOT_ENOUGH_MEMORY;
     } catch (...) {

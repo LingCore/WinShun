@@ -42,13 +42,16 @@ public:
     Reach reach() const { return m_reach.load(std::memory_order_relaxed); }
     bool available() const { return reach() == Reach::Available; }
     void refresh(); // re-probe soon (e.g. an elevated dialog just came up)
-    // Navigate `dialog` to `folder`; `done(ok)` is called on the worker thread.
-    void navigate(HWND dialog, std::wstring folder, Done done);
+    // Navigate `dialog` to `folder` and, given a file's `name`, put that in its
+    // file name box (a service before minor 8 goes to the folder only, #353);
+    // `done(ok)` is called on the worker thread: ok once it is in the folder.
+    void navigate(HWND dialog, std::wstring folder, std::wstring name, Done done);
 
 private:
     struct Request {
         HWND dialog;
         std::wstring folder;
+        std::wstring name;
         Done done;
     };
     void run();

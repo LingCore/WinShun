@@ -412,6 +412,7 @@ private slots:
         QVERIFY(decode(payload, ok));
         const bool helpers = ok.capabilities & volproto::kCapabilityKeyListener;
         QCOMPARE(bool(ok.capabilities & volproto::kCapabilityDialogNav), helpers);
+        QCOMPARE(bool(ok.capabilities & volproto::kCapabilityDialogNavName), helpers); // with a file's name (#353)
         QVERIFY(!(ok.capabilities & volproto::kCapabilityDialogNavBesideOnly));
         if (!helpers) {
             volproto::Writer w;
@@ -541,10 +542,13 @@ private slots:
     {
         // The folder is checked as a string before anything else, the caller
         // included: no helper command line is ever built from a relative,
-        // quoted, control-character, device or overlong path.
-        const std::wstring bad[] = {L"relative\\x", L"C:", L"C:\\a\"b", L"C:\\a\tb", L"\\\\.\\PhysicalDrive0",
-            L"C:\\a\\..\\b", std::wstring(L"C:\\") + std::wstring(300, L'a')};
-        for (const std::wstring& folder : bad) {
+        // quoted, control-character, device or overlong path. A file's name
+        // after it (#353) likewise: one name, no path; nothing after that.
+        const std::vector<std::vector<std::wstring>> bad = {{L"relative\\x"}, {L"C:"}, {L"C:\\a\"b"}, {L"C:\\a\tb"},
+            {L"\\\\.\\PhysicalDrive0"}, {L"C:\\a\\..\\b"}, {std::wstring(L"C:\\") + std::wstring(300, L'a')},
+            {L"C:\\", L"..\\a.txt"}, {L"C:\\", L"D:\\a.txt"}, {L"C:\\", L"a\"b.txt"}, {L"C:\\", L"*.txt"},
+            {L"C:\\", L"a.txt:x"}, {L"C:\\", L".."}, {L"C:\\", std::wstring(256, L'a')}, {L"C:\\", L"a.txt", L"more"}};
+        for (const std::vector<std::wstring>& request : bad) {
             RawClient raw;
             QVERIFY(raw.connect(m_pipe));
             volproto::Type reply {};
@@ -553,7 +557,8 @@ private slots:
             QCOMPARE(reply, volproto::Type::HelloOk);
             volproto::Writer w;
             w.u64(0x1234);
-            w.string(folder);
+            for (const std::wstring& part : request)
+                w.string(part);
             QVERIFY(raw.channel.write(w.finish(volproto::Type::OpenDialogNav), 5000));
             QVERIFY(raw.channel.read(reply, payload, 5000));
             QCOMPARE(reply, volproto::Type::Error);

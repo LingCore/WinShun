@@ -827,6 +827,19 @@ bool accept(HWND dialog)
     return ok && ::PostMessageW(dialog, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), reinterpret_cast<LPARAM>(ok));
 }
 
+bool goToFile(HWND dialog, const std::wstring& path, bool open)
+{
+    const std::size_t slash = path.find_last_of(L'\\');
+    bool named = false;
+    if (slash == std::wstring::npos || blenderdialog::isOne(dialog) || (open && byRule(dialog))) {
+        named = setFileName(dialog, path);
+    } else {
+        const std::wstring folder = path.substr(0, slash == 2 ? 3 : slash); // "C:\" for a file at the root
+        named = goTo(dialog, folder) ? setFileName(dialog, path.substr(slash + 1)) : setFileName(dialog, path);
+    }
+    return named && (!open || accept(dialog));
+}
+
 bool opensFiles(HWND dialog, Kind kind)
 {
     if (kind == Kind::Open)

@@ -2029,8 +2029,8 @@
         <translation>Administrator window: search, copy the path, then paste it.</translation>
     </message>
     <message>
-        <source>管理员窗口：直接跳转到文件夹</source>
-        <translation>Administrator window: jumps straight to the folder.</translation>
+        <source>管理员窗口：转过去并填好文件名，由你点打开</source>
+        <translation>Administrator window: goes there and fills in the name; you press Open.</translation>
     </message>
     <message>
         <source>Enter 复制路径</source>

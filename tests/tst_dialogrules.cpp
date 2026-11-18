@@ -312,6 +312,32 @@ private slots:
         QTRY_COMPARE(window.answers(), std::vector<std::wstring> {file});
     }
 
+    // A file found from the bar (GitHub #353): Ctrl+Enter goes to its folder
+    // and leaves its name in the box; Enter answers with its whole path.
+    void goesToAFile()
+    {
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const std::wstring folder = QDir::toNativeSeparators(root.path()).toStdWString();
+        const std::wstring file = folder + L"\\roads.shp";
+        QFile shp(QString::fromStdWString(file));
+        QVERIFY(shp.open(QIODevice::WriteOnly));
+        shp.close();
+        NativeWindow window;
+        rules::setRules({nativeRule(false)});
+        bringToFront(window.handle());
+        QTRY_COMPARE(::GetForegroundWindow(), window.handle());
+
+        QVERIFY(fd::goToFile(window.handle(), file, false));
+        QTRY_COMPARE(window.wentTo(), std::vector<std::wstring> {folder + L'\\'});
+        QCOMPARE(window.box(), std::wstring(L"roads.shp"));
+        QVERIFY(window.answers().empty());
+
+        QVERIFY(fd::goToFile(window.handle(), file, true));
+        QTRY_COMPARE(window.answers(), std::vector<std::wstring> {file});
+        QCOMPARE(window.wentTo().size(), std::size_t(1));
+    }
+
     void failsWithoutItsBox()
     {
         QTemporaryDir root;

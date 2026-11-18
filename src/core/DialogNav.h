@@ -16,7 +16,7 @@
 // helper drives the dialog here.
 //
 // Nothing in this module reads or writes another process's memory, injects
-// code, or types a file name: only window messages the system marshals
+// code, or presses Open or Save on a file: only window messages the system marshals
 // (WM_SETTEXT, a keyboard Enter in the address bar, an Up / Down arrow pair
 // to the folder tree; for a window with a folder box of its own, the edit
 // told to its owner and WinRAR's "Display" pressed: PathBoxDialog.h) and UI Automation (ExpandCollapse / SelectionItem on
@@ -32,6 +32,11 @@
 // before, OK goes once, and the name that was in the box is put back. A
 // window that takes OK for its answer all the same is gone by then, which is
 // told as not done. No other kind is ever sent OK, Open or Save.
+//
+// A file found from the bar under the dialog (GitHub #353): once the dialog
+// is in its folder, its name goes into the file name box (WM_SETTEXT, one
+// name and no path: isValidFileName) and the box gets the focus, as for a
+// dialog with normal rights; opening it is left to the user.
 //
 // This is a deliberately elevated-only variant of platform/FileDialog.cpp's
 // navigation; keep the classification and the address-bar paths in step
@@ -80,6 +85,15 @@ inline constexpr std::size_t kMaxFolderChars = MAX_PATH - 1;
 // fine), and no \\.\ device path.
 bool isValidFolderRequest(std::wstring_view folder);
 
+// The longest file name a request may carry: NTFS's longest name.
+inline constexpr std::size_t kMaxFileNameChars = 255;
+
+// A string-only check of a file's name sent along with a folder: one name of
+// at most kMaxFileNameChars, with no control characters, none of
+// \ / : * ? " < > |, not "." or "..", and not ending in a space or a dot
+// (which Windows drops). Nothing a dialog could take for a path.
+bool isValidFileName(std::wstring_view name);
+
 // `argument` quoted for a CreateProcess command line so that
 // CommandLineToArgvW (and the C runtime's argv) give it back unchanged: the
 // backslashes before a quote, the closing one included, are doubled ("C:\"
@@ -96,5 +110,11 @@ std::wstring quoteArgument(std::wstring_view argument);
 // file name box did not take the folder (or that closed on OK). The caller
 // keeps the copy-and-paste fallback then.
 bool navigateToFolder(HWND dialog, const std::wstring& folder);
+
+// Puts `name` (isValidFileName) in the file name box of an Open or Save
+// dialog, the Windows XP style's or AutoCAD's, and focuses the box; presses
+// nothing. False for any other kind (a folder picker names no file) and when
+// the box did not take it.
+bool putFileName(HWND dialog, const std::wstring& name);
 
 } // namespace ws::dialognav

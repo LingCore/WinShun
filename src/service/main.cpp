@@ -496,12 +496,12 @@ int wmain(int argc, wchar_t** argv)
             }
             return ws::service::runInputListener(pid, reinterpret_cast<HWND>(window), keys);
         }
-        if (option == L"--navigate-dialog" && argc == 4) {
+        if (option == L"--navigate-dialog" && (argc == 4 || argc == 5)) { // <window> <folder> [<file name>]
             wchar_t* end = nullptr;
             const auto window = std::wcstoull(argv[2], &end, 10);
             if (!window || !end || *end)
                 return ERROR_INVALID_PARAMETER;
-            return ws::service::runDialogNav(reinterpret_cast<HWND>(window), argv[3]);
+            return ws::service::runDialogNav(reinterpret_cast<HWND>(window), argv[3], argc == 5 ? argv[4] : L"");
         }
         if (option == L"--paste-keys" && argc == 3) {
             wchar_t* end = nullptr;

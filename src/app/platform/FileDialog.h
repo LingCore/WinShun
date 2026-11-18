@@ -81,6 +81,13 @@ bool setFileName(HWND dialog, const std::wstring& name);
 // for the program, which may take a while with the file.
 bool accept(HWND dialog);
 
+// A file found from the dialog's bar (GitHub #353): its folder gone to and
+// its name in the box, and, when `open`, Open pressed for it. Where the
+// dialog does not go, the whole path in the box does as well. Blender's
+// window takes folder and name in one request, and a window a user's rule
+// drives opens a file by its whole path in its one box. Waits as goTo.
+bool goToFile(HWND dialog, const std::wstring& path, bool open);
+
 // Pressing accept() opens the file: an Open dialog, or one of the Windows XP
 // style (AutoCAD's too) whose button says 打开 / Open, not 保存 / Save.
 // `kind` is kind(dialog).

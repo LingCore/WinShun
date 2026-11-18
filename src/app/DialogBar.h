@@ -163,8 +163,9 @@ public:
     void setResultOptions(bool showModified, bool thumbnails, const QString& numberKeys); // Settings: "ctrl", "alt", "off"
     void setAskAutoJump(bool on); // not answered yet (Settings::dialogAutoJumpAsked)
     // Whether the index service can navigate elevated dialogs for us (#104):
-    // when it can, an elevated dialog jumps (folder-only) instead of being
-    // copy-only. Follows ServiceDialogNav::available.
+    // when it can, an elevated dialog jumps (to the folder, a file's name in
+    // its box, never Open: #353) instead of being copy-only. Follows
+    // ServiceDialogNav::available.
     void setElevatedNavAvailable(bool on);
     void setCopyOnlyHint(const QString& hint); // copyOnlyHint, from ServiceDialogNav::reach
     // The service was asked to navigate an elevated dialog but could not after

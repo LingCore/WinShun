@@ -54,7 +54,11 @@ constexpr std::uint16_t kMajor = 1; // different on the two ends: they cannot ta
 // Minor 7 (GitHub #277): for Win顺's own UI again, the paste keys pressed in
 // a window run as administrator, where Windows drops the UI's own
 // (kCapabilityPasteRelay, OpenPaste).
-constexpr std::uint16_t kMinor = 7;
+// Minor 8 (GitHub #353): OpenDialogNav may end with a file's name, which the
+// navigator puts in the file name box once the dialog is in the folder; it
+// still never presses Open or Save (kCapabilityDialogNavName). An older
+// service is sent the folder alone.
+constexpr std::uint16_t kMinor = 8;
 constexpr std::uint16_t kMinorSizes = 2;
 constexpr std::uint16_t kMinorCreated = 3;
 constexpr std::uint32_t kCapabilityBulkRead = 1; // HelloOk::capabilities
@@ -64,6 +68,7 @@ constexpr std::uint32_t kCapabilityDialogNavBesideOnly = 8; // minor 4: has it, 
 constexpr std::uint32_t kCapabilityClipboardDisplay = 16; // minor 5: authenticated UIAccess display peer
 constexpr std::uint32_t kCapabilityHotkeyRelay = 32; // minor 6: the key listener relays the UI's plain hotkeys (#243)
 constexpr std::uint32_t kCapabilityPasteRelay = 64; // minor 7: presses the paste keys in an administrator's window (#277)
+constexpr std::uint32_t kCapabilityDialogNavName = 128; // minor 8: OpenDialogNav takes a file's name too (#353)
 constexpr std::size_t kMaxBulkWants = 4u << 20; // files one bulk session may ask about
 constexpr wchar_t kPipeName[] = L"WinShun.Volumes"; // one service for the whole machine
 constexpr wchar_t kPipeEnvironment[] = L"WINSHUN_PIPE"; // another pipe's name, for tests (--console --pipe)
@@ -105,7 +110,7 @@ enum class Type : std::uint16_t {
     OpenKeyListener = 80, // u64: caller's KeyListener HWND; minor 6: then optionally u32 n, n x u32 key to relay
     KeyListenerReady = 81, // u32: child PID; connection owns the child's lifetime
     KeyListenerPing = 82, // empty request and reply, once a second
-    OpenDialogNav = 83, // { u64 dialog HWND, string folder }: navigate a higher-integrity file dialog (#104)
+    OpenDialogNav = 83, // { u64 dialog HWND, string folder[, string name] }: navigate a higher-integrity file dialog (#104, #353)
     DialogNavDone = 84, // empty reply: the helper took the dialog to the folder (else Error)
     OpenClipboardDisplay = 85, // { u64 caller HWND, string private pipe name }; own protected WinShun.exe only
     ClipboardDisplayReady = 86, // u32 child PID; the connection leases the display process

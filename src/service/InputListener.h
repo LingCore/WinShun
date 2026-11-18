@@ -36,9 +36,10 @@ void servePaste(Server& server, Connection& conn, std::span<const std::byte> pay
 // `keys`: the UI's plain hotkeys to hold back over administrator windows and
 // tell of (keyproto::kHotkey, GitHub #243); none for any other client.
 int runInputListener(DWORD clientPid, HWND target, const std::vector<std::uint32_t>& keys = {});
-// The --navigate-dialog helper: validates the token, the window and the
-// folder, then navigates. 0 on success, else a Win32 error.
-int runDialogNav(HWND dialog, const std::wstring& folder);
+// The --navigate-dialog helper: validates the token, the window, the folder
+// and a file's name, if any; navigates, then puts that name in the file name
+// box (#353). 0 when the dialog is in the folder, else a Win32 error.
+int runDialogNav(HWND dialog, const std::wstring& folder, const std::wstring& name = {});
 // The --paste-keys helper: validates the token and the window, then presses
 // Ctrl+V (Shift+Insert where the window takes that). 0 on success, else a
 // Win32 error.

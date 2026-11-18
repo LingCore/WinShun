@@ -236,34 +236,69 @@ std::optional<std::wstring> wholeText(HWND hwnd)
 // told as not done. AutoCAD keeps a file name of its own, changed when the
 // box says it was edited (MFC's CBN_EDITCHANGE), which WM_SETTEXT alone does
 // not say.
+// The Windows XP style's file name box, or AutoCAD's (`cad`).
+struct NameBox {
+    HWND edit = nullptr;
+    bool cad = false;
+    explicit operator bool() const { return edit != nullptr; }
+};
+
+NameBox legacyBox(HWND dialog)
+{
+    if (const HWND cad = cadNameBox(dialog))
+        return {cad, true};
+    return {legacyNameBox(dialog), false};
+}
+
+bool putInBox(const NameBox& box, const std::wstring& text)
+{
+    if (!setText(box.edit, text))
+        return false;
+    if (!box.cad)
+        return true;
+    const HWND combo = ::GetParent(box.edit);
+    return send(::GetParent(combo), WM_COMMAND, MAKEWPARAM(::GetDlgCtrlID(combo), CBN_EDITCHANGE),
+        reinterpret_cast<LPARAM>(combo));
+}
+
+// The file name box of an Open dialog (a combo box with an edit field) or a
+// Save dialog (the first such box in its view): FileDialog.cpp's fileNameBox
+// without a folder picker's "Folder:" box.
+HWND nameBoxOf(HWND dialog)
+{
+    if (const HWND combo = ::GetDlgItem(dialog, kFileNameCombo)) {
+        const HWND list = hasClass(combo, L"ComboBoxEx32") ? ::FindWindowExW(combo, nullptr, L"ComboBox", nullptr) : combo;
+        if (const HWND edit = list ? ::FindWindowExW(list, nullptr, L"Edit", nullptr) : nullptr)
+            return edit;
+    }
+    if (const HWND view = descend(dialog, {L"DUIViewWndClassName", L"DirectUIHWND"})) {
+        for (HWND sink = ::FindWindowExW(view, nullptr, L"FloatNotifySink", nullptr); sink;
+            sink = ::FindWindowExW(view, sink, L"FloatNotifySink", nullptr)) {
+            if (const HWND edit = descend(sink, {L"ComboBox", L"Edit"}))
+                return edit;
+        }
+    }
+    return nullptr;
+}
+
 bool goByName(HWND dialog, const std::wstring& folder)
 {
-    const HWND cad = cadNameBox(dialog);
-    const HWND box = cad ? cad : legacyNameBox(dialog);
+    const NameBox box = legacyBox(dialog);
     const HWND ok = ::GetDlgItem(dialog, IDOK);
     if (!box || !ok || !::IsWindowEnabled(ok))
         return false;
-    const auto put = [&](const std::wstring& text) {
-        if (!setText(box, text))
-            return false;
-        if (!cad)
-            return true;
-        const HWND combo = ::GetParent(box);
-        return send(::GetParent(combo), WM_COMMAND, MAKEWPARAM(::GetDlgCtrlID(combo), CBN_EDITCHANGE),
-            reinterpret_cast<LPARAM>(combo));
-    };
-    const std::optional<std::wstring> typed = wholeText(box);
+    const std::optional<std::wstring> typed = wholeText(box.edit);
     if (!typed)
         return false;
     const std::wstring target = folder.ends_with(L'\\') ? folder : folder + L'\\';
     if (!isExistingDirectory(folder.c_str()))
         return false;
     // OK only over the folder just put there: never over what the box held.
-    const bool went = put(target) && controlText(box) == target
+    const bool went = putInBox(box, target) && controlText(box.edit) == target
         && send(dialog, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), reinterpret_cast<LPARAM>(ok));
     if (!::IsWindow(dialog))
         return false;
-    put(*typed);
+    putInBox(box, *typed);
     return went;
 }
 
@@ -786,6 +821,17 @@ bool isValidFolderRequest(std::wstring_view folder)
     return true;
 }
 
+bool isValidFileName(std::wstring_view name)
+{
+    if (name.empty() || name.size() > kMaxFileNameChars || name == L"." || name == L".." || name.back() == L' '
+        || name.back() == L'.')
+        return false;
+    constexpr std::wstring_view kRefused = L"\\/:*?\"<>|";
+    return std::ranges::none_of(name, [&](wchar_t c) {
+        return c < 0x20 || (c >= 0x7F && c <= 0x9F) || kRefused.find(c) != std::wstring_view::npos;
+    });
+}
+
 std::wstring quoteArgument(std::wstring_view argument)
 {
     // CommandLineToArgvW / the CRT: 2n backslashes then a quote are n
@@ -829,6 +875,30 @@ bool navigateToFolder(HWND dialog, const std::wstring& folder)
         return false;
     }
     return false;
+}
+
+bool putFileName(HWND dialog, const std::wstring& name)
+{
+    if (!dialog || !::IsWindow(dialog) || !isValidFileName(name))
+        return false;
+    NameBox box;
+    switch (classify(dialog)) {
+    case Kind::Open:
+    case Kind::Save:
+        box.edit = nameBoxOf(dialog);
+        break;
+    case Kind::Legacy:
+        box = legacyBox(dialog);
+        break;
+    case Kind::Folder:
+    case Kind::Browse:
+    case Kind::None:
+        return false;
+    }
+    if (!box || !putInBox(box, name) || controlText(box.edit) != name)
+        return false;
+    send(dialog, WM_NEXTDLGCTL, reinterpret_cast<WPARAM>(box.edit), TRUE); // which also selects the name
+    return true;
 }
 
 } // namespace ws::dialognav

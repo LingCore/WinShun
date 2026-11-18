@@ -1,5 +1,6 @@
 #include "ServiceDialogNav.h"
 
+#include "DialogNav.h"
 #include "VolumeProtocol.h"
 
 #include <algorithm>
@@ -24,8 +25,9 @@ Channel connect()
         FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr));
 }
 
-// Handshake; what the service offers this process.
-ServiceDialogNav::Reach handshake(Channel& channel, HANDLE abort)
+// Handshake; what the service offers this process (and all it offers, in
+// `capabilities`).
+ServiceDialogNav::Reach handshake(Channel& channel, HANDLE abort, std::uint32_t* capabilities = nullptr)
 {
     using Reach = ServiceDialogNav::Reach;
     Writer w;
@@ -39,6 +41,8 @@ ServiceDialogNav::Reach handshake(Channel& channel, HANDLE abort)
         || !channel.read(type, payload, kTimeout, abort) || type != Type::HelloOk || !decode(payload, ok)
         || ok.major != kMajor)
         return Reach::NoService;
+    if (capabilities)
+        *capabilities = ok.capabilities;
     return (ok.capabilities & kCapabilityDialogNav) ? Reach::Available
         : (ok.capabilities & kCapabilityDialogNavBesideOnly) ? Reach::OtherCopy
                                                              : Reach::NoNavigator;
@@ -76,14 +80,14 @@ void ServiceDialogNav::refresh()
     m_cv.notify_all();
 }
 
-void ServiceDialogNav::navigate(HWND dialog, std::wstring folder, Done done)
+void ServiceDialogNav::navigate(HWND dialog, std::wstring folder, std::wstring name, Done done)
 {
     // The service refuses '/' (it would hide a ".." from its check); some
     // file managers report folders with it.
     std::ranges::replace(folder, L'/', L'\\');
     {
         const std::lock_guard lock(m_mutex);
-        m_queue.push({dialog, std::move(folder), std::move(done)});
+        m_queue.push({dialog, std::move(folder), std::move(name), std::move(done)});
     }
     m_cv.notify_all();
 }
@@ -146,13 +150,18 @@ ServiceDialogNav::Reach ServiceDialogNav::probe()
 bool ServiceDialogNav::send(const Request& request)
 {
     Channel channel = connect();
-    const Reach reach = handshake(channel, m_stopEvent);
+    std::uint32_t capabilities = 0;
+    const Reach reach = handshake(channel, m_stopEvent, &capabilities);
     setReach(reach);
     if (reach != Reach::Available)
         return false;
     Writer w;
     w.u64(reinterpret_cast<std::uintptr_t>(request.dialog));
     w.string(request.folder);
+    // Only to a service that takes it (an older one would refuse the whole
+    // request), and only a name it takes: otherwise the folder alone.
+    if ((capabilities & kCapabilityDialogNavName) && dialognav::isValidFileName(request.name))
+        w.string(request.name);
     Type type {};
     std::vector<std::byte> payload;
     // The service launches the helper and waits for it, so allow more time.

@@ -446,25 +446,8 @@ void DialogJump::go(HWND dialog, std::wstring path, bool isFile, bool open)
                 qWarning() << "The file dialog did not go to a folder found in it";
             return;
         }
-        // The file's folder, then its name in the box: Enter opens it. Should
-        // the dialog not go there, the whole path in the box does as well.
-        const std::size_t slash = path.find_last_of(L'\\');
-        bool named = false;
-        if (blenderdialog::isOne(dialog) || filedialog::byRule(dialog)) {
-            // Blender's API selects directory and filename together: one
-            // refresh and one acknowledged request, without a separate state
-            // query. A window driven by a user's rule has one box, which
-            // takes the whole path.
-            named = filedialog::setFileName(dialog, path);
-        } else if (slash == std::wstring::npos) {
-            named = filedialog::setFileName(dialog, path);
-        } else {
-            const std::wstring folder = path.substr(0, slash == 2 ? 3 : slash); // "C:\" for a file at the root
-            named = filedialog::goTo(dialog, folder) ? filedialog::setFileName(dialog, path.substr(slash + 1))
-                                                     : filedialog::setFileName(dialog, path);
-        }
-        if (named && open)
-            filedialog::accept(dialog);
+        if (!filedialog::goToFile(dialog, path, open))
+            qWarning() << "The file dialog did not take a file found in it";
     });
 }
 

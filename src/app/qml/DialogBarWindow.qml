@@ -351,7 +351,7 @@ Window {
                       : window.bar.copyOnly ? (window.bar.copyOnlyHint === "other" ? qsTr("管理员窗口：搜索后复制路径再手动粘贴（服务属于另一份 Win顺）")
                                                : window.bar.copyOnlyHint === "service" ? qsTr("管理员窗口：搜索后复制路径再手动粘贴（装 Win顺 服务可直接跳转）")
                                                : qsTr("管理员窗口：搜索后复制路径再手动粘贴"))
-                      : window.bar.elevatedJump ? qsTr("管理员窗口：直接跳转到文件夹")
+                      : window.bar.elevatedJump ? qsTr("管理员窗口：转过去并填好文件名，由你点打开")
                       : window.bar.scopeName.length > 0 ? qsTr("只搜这个文件夹，Ctrl+Shift+D 搜索整个电脑")
                       : window.bar.foldersOnly ? qsTr("搜索文件夹，或输入路径") : qsTr("搜索文件或文件夹，或输入路径")
                 color: Theme.faint

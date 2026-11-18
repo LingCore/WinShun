@@ -377,7 +377,9 @@ bool Server::handshake(Connection& conn)
         ok.capabilities |= kCapabilityKeyListener;
         const bool own = mayNavigateDialogs(*this, conn.pid);
         // Pressing the paste keys there (#277) types into that window: its own UI only.
-        ok.capabilities |= own ? kCapabilityDialogNav | kCapabilityHotkeyRelay | kCapabilityPasteRelay : kCapabilityDialogNavBesideOnly;
+        ok.capabilities |= own
+            ? kCapabilityDialogNav | kCapabilityDialogNavName | kCapabilityHotkeyRelay | kCapabilityPasteRelay
+            : kCapabilityDialogNavBesideOnly;
         if (canStartClipboardDisplay(conn.pid))
             ok.capabilities |= kCapabilityClipboardDisplay;
     }
