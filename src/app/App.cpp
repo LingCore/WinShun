@@ -860,7 +860,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
             m_settingsEditor->setSettings(m_settings);
     };
     connect(m_launcher.get(), &Launcher::sortChanged, this, [this, remember] {
-        remember(&Settings::sort, kSortNames[m_launcher->sort()].toString());
+        remember(&Settings::sort, kSortNames[m_launcher->chosenSort()].toString()); // not a quick filter's own (#392)
     });
     connect(m_launcher.get(), &Launcher::startListChanged, this, [this, remember] {
         static constexpr QStringView kLists[] {u"opened", u"modified", u"none"};
@@ -1993,7 +1993,9 @@ void App::applySettings(bool initial)
     m_launcher->setPreferredTypes(m_settings.preferredTypes);
     m_launcher->setFolderKeyword(m_settings.folderKeyword);
     m_launcher->setExcludedFiles(m_settings.excludedTypes, m_settings.excludedFileNames);
-    m_launcher->setSort(static_cast<Launcher::Sort>(sortIndex(m_settings.sort)));
+    // Changed in the settings only: a quick filter's own order in force is not set aside by any other change.
+    if (const auto sort = static_cast<Launcher::Sort>(sortIndex(m_settings.sort)); sort != m_launcher->chosenSort())
+        m_launcher->setSort(sort);
     m_launcher->setStartList(m_settings.startList == u"modified" ? Launcher::RecentlyModified
             : m_settings.startList == u"none"                     ? Launcher::NoStartList
                                                                  : Launcher::RecentlyOpened);

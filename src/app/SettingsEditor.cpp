@@ -2401,7 +2401,8 @@ QVariantList SettingsEditor::quickFilters() const
 {
     QVariantList filters;
     for (const QuickFilter& f : m_settings.quickFilters)
-        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}, {u"keyword"_s, f.keyword}, {u"problem"_s, Settings::quickFilterProblem(f.query)}});
+        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}, {u"keyword"_s, f.keyword}, {u"sort"_s, f.sort},
+            {u"problem"_s, Settings::quickFilterProblem(f.query)}});
     return filters;
 }
 
@@ -2415,7 +2416,7 @@ QString SettingsEditor::addQuickFilter(const QString& name, const QString& query
     const QString text = query.trimmed();
     if (const QString problem = Settings::quickFilterProblem(text); !problem.isEmpty())
         return problem;
-    m_settings.quickFilters.append({named, text, {}});
+    m_settings.quickFilters.append({named, text, {}, {}});
     commit();
     return {};
 }
@@ -2474,6 +2475,16 @@ QString SettingsEditor::setQuickFilterKeyword(int index, const QString& text)
         commit();
     }
     return {};
+}
+
+void SettingsEditor::setQuickFilterSort(int index, const QString& sort)
+{
+    if (index < 0 || index >= m_settings.quickFilters.size() || (!sort.isEmpty() && !isSortName(sort)))
+        return;
+    if (m_settings.quickFilters[index].sort != sort) {
+        m_settings.quickFilters[index].sort = sort;
+        commit();
+    }
 }
 
 void SettingsEditor::removeQuickFilter(int index)

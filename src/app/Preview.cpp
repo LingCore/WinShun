@@ -6091,6 +6091,53 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     launcher.chooseFileType(-1);
     settings.fileTypes = Settings::defaultFileTypes();
     launcher.setFileTypes(settings.namedFileTypes());
+    // GitHub #392: a quick filter named alone (":pngq") is put in the order
+    // chosen; one with an order of its own is in it while it is on, the one
+    // chosen given back after and never taken for it (chosenSort).
+    {
+        const auto settle = [&] {
+            QElapsedTimer timeout;
+            timeout.start();
+            while (launcher.searching() && timeout.elapsed() < 2000)
+                pump(10);
+        };
+        const auto first = [&] {
+            const SearchResult* row = launcher.results()->at(0);
+            return row ? row->path : QString();
+        };
+        const QString big = u"T:\\报告图片.png"_s; // 1234567 bytes
+        const QString tiny = u"T:\\照片.png"_s; // none
+        launcher.setScope(Launcher::All);
+        query({});
+        launcher.setSort(Launcher::BestMatch);
+        launcher.setQuickFilters({{u"大图"_s, u"ext:png"_s, u"bigq"_s, u"largest"_s}, {u"图片"_s, u"ext:png"_s, u"pngq"_s, {}}});
+        query(u":pngq"_s);
+        check(launcher.results()->count() == 2 && launcher.sort() == Launcher::BestMatch, "a quick filter named alone did not list its own");
+        launcher.setSort(Launcher::LargestFirst);
+        settle();
+        check(first() == big, "#392: a sort chosen did not order a quick filter named alone (largest)");
+        launcher.setSort(Launcher::SmallestFirst);
+        settle();
+        check(first() == tiny, "#392: a sort chosen did not order a quick filter named alone (smallest)");
+        launcher.setSort(Launcher::BestMatch);
+        query(u":bigq"_s);
+        check(launcher.sort() == Launcher::LargestFirst && launcher.chosenSort() == Launcher::BestMatch && first() == big,
+            "#392: a quick filter's own order was not in force");
+        query(u":bigq 照片"_s); // typed on: still its order
+        check(launcher.sort() == Launcher::LargestFirst, "#392: a quick filter's own order went with a word typed");
+        query({});
+        check(launcher.sort() == Launcher::BestMatch, "#392: the order chosen was not given back after the quick filter");
+        query(u":bigq"_s);
+        launcher.setSort(Launcher::SmallestFirst); // chosen over it: kept, and remembered as chosen
+        settle();
+        check(launcher.chosenSort() == Launcher::SmallestFirst && first() == tiny, "#392: a sort chosen did not set the filter's aside");
+        query(u":bigq 图"_s);
+        check(launcher.sort() == Launcher::SmallestFirst, "#392: a filter's order set aside came back while it stayed on");
+        query({});
+        check(launcher.sort() == Launcher::SmallestFirst, "#392: the sort chosen over a filter's own was not kept");
+        launcher.setSort(Launcher::BestMatch);
+        launcher.setQuickFilters({});
+    }
     if (folderScopePassed)
         return; // 独立范围探针到此结束，不跑后面的网络、剪贴板等验证。
     query(u"regex:["_s);

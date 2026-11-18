@@ -550,7 +550,10 @@ public:
     // Files with these extensions, or so named (wildcards), are left out of
     // every list and search.
     void setExcludedFiles(const QStringList& types, const QStringList& names);
-    Sort sort() const { return m_sort; }
+    // The order in force: a quick filter's own while one is on (GitHub #392),
+    // else the one chosen. Choosing one sets the filter's aside.
+    Sort sort() const { return m_filterSort.value_or(m_sort); }
+    Sort chosenSort() const { return m_sort; } // remembered as the settings' (App)
     void setSort(Sort sort);
     StartList startList() const { return m_startList; }
     void setStartList(StartList list);
@@ -1413,6 +1416,12 @@ private:
     QuickFilters m_quickFilters;
     QStringList m_quickFiltersOn; // their names
     SortOrder m_panelSort;
+    // A quick filter's own order (followFilterSort): in force, or set aside by
+    // a choice; which filter and order it is; the panel's before it.
+    void followFilterSort();
+    std::optional<Sort> m_filterSort;
+    QString m_filterSortFrom;
+    SortOrder m_panelSortBeforeFilter;
 
     bool m_recordHistory = true;
     bool m_rememberAdmin = false;

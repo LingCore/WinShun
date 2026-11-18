@@ -1224,7 +1224,7 @@ private slots:
         ws::Settings::useProfile(profile.path());
         ws::Settings settings;
         QVERIFY(settings.quickFilters.isEmpty());
-        settings.quickFilters = {{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s, u"nobin"_s}, {u"大 PDF"_s, u"ext:pdf size:>10mb"_s}};
+        settings.quickFilters = {{u"排除回收站"_s, u"!$RECYCLE.BIN\\"_s, u"nobin"_s}, {u"大 PDF"_s, u"ext:pdf size:>10mb"_s, {}, u"largest"_s}};
         settings.save();
         ws::Settings loaded;
         loaded.load();
@@ -1257,9 +1257,14 @@ private slots:
             ini.setValue(u"QuickFilters/5/Name"_s, u"第五个"_s);
             ini.setValue(u"QuickFilters/5/Query"_s, u"ext:txt"_s);
             ini.setValue(u"QuickFilters/5/Keyword"_s, loaded.folderKeyword);
+            ini.setValue(u"QuickFilters/2/Sort"_s, u" Newest "_s); // GitHub #392: tidied as the settings' sort
+            ini.setValue(u"QuickFilters/4/Sort"_s, u"biggest"_s); // no such order: none
         }
         loaded.load();
         QCOMPARE(loaded.quickFilters.size(), 5);
+        QCOMPARE(loaded.quickFilters[1].sort, u"newest"_s);
+        QVERIFY(loaded.quickFilters[3].sort.isEmpty());
+        QVERIFY(loaded.quickFilters[0].sort.isEmpty());
         QCOMPARE(loaded.fileTypes.value(0).keyword, u"doc"_s);
         QCOMPARE(loaded.quickFilters[0].keyword, u"nobin"_s);
         for (int i = 1; i < 5; ++i)

@@ -66,6 +66,9 @@ struct QuickFilter {
     // search, in the box as in the panel; empty: by its chip only. No two
     // filters, kinds of file or the folders' share one (FileType::keyword).
     QString keyword;
+    // The order the list takes while it is on (GitHub #392): a name of
+    // Settings' kSortNames ("largest"); empty: the order as it is.
+    QString sort;
     bool operator==(const QuickFilter&) const = default;
 };
 using QuickFilters = QList<QuickFilter>;

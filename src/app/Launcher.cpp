@@ -80,6 +80,33 @@ static_assert(Launcher::BestMatch == static_cast<int>(RankBy::Match)
     && Launcher::OldestFirst == static_cast<int>(RankBy::Oldest));
 static_assert(Launcher::RecentlyOpened == static_cast<int>(ws::StartList::Opened)
     && Launcher::RecentlyModified == static_cast<int>(ws::StartList::Modified));
+static_assert(std::size(kSortNames) == Launcher::MostOpened + 1); // a quick filter's sort is one by name
+
+// A sort of the compact list as the panel's columns order it (setPanel, a
+// quick filter's own order); by best match or most opened: as ranked.
+static SortOrder columnOrder(Launcher::Sort sort)
+{
+    switch (sort) {
+    case Launcher::NewestFirst:
+        return {SortKey::Modified, true};
+    case Launcher::OldestFirst:
+        return {SortKey::Modified, false};
+    case Launcher::ByName:
+        return {SortKey::Name, false};
+    case Launcher::ByFolder:
+        return {SortKey::Path, false};
+    case Launcher::ByType:
+        return {SortKey::Type, false};
+    case Launcher::LargestFirst:
+        return {SortKey::Size, true};
+    case Launcher::SmallestFirst:
+        return {SortKey::Size, false};
+    case Launcher::BestMatch:
+    case Launcher::MostOpened:
+        break;
+    }
+    return {};
+}
 
 namespace {
 
@@ -788,6 +815,7 @@ void Launcher::setQuery(const QString& query)
         m_folderSteps.removeLast();
     updateQueryPrefix();
     emit queryChanged();
+    followFilterSort(); // a quick filter typed by its keyword, or taken away
     m_results.setSelection({});
     m_held.reset(); // typed on: a key held for the rows before is not for these
     search();
@@ -1858,11 +1886,17 @@ void Launcher::setNumberKeysLeft(unsigned digits)
 
 void Launcher::setSort(Sort sort)
 {
-    if (sort == m_sort)
-        return;
+    // Chosen: in force from now on, a quick filter's own set aside (GitHub #392).
+    const Sort before = this->sort();
+    const bool chosen = sort != m_sort;
+    m_filterSort.reset();
     m_sort = sort;
-    emit sortChanged();
-    if (!m_window || !m_window->isVisible() || searchText().isEmpty() || m_keyword)
+    if (chosen || sort != before)
+        emit sortChanged();
+    if (sort == before)
+        return;
+    // A quick filter named alone (":nobin") lists what it lets through, in this order too.
+    if (!m_window || !m_window->isVisible() || (searchText().isEmpty() && typedQuick().filters.isEmpty()) || m_keyword)
         return; // hidden: handleShown() searches
     // 内容, every match on screen: put in the other order, not searched again
     // (that would read the files once more).
@@ -1932,36 +1966,21 @@ RankBy Launcher::rankBy() const
     if (m_panel && m_panelSort.key == SortKey::Rank && searchText().isEmpty())
         return RankBy::Newest;
     // The sorts by a column are the names' (nameOrder); content matches stay as ranked.
-    return m_sort <= OldestFirst ? static_cast<RankBy>(m_sort) : RankBy::Match;
+    return sort() <= OldestFirst ? static_cast<RankBy>(sort()) : RankBy::Match;
 }
 
 SortOrder Launcher::nameOrder() const
 {
     if (m_panel)
         return m_panelSort; // its columns; the sorts below are the compact list's
-    switch (m_sort) {
-    case ByName:
-        return {SortKey::Name, false};
-    case ByFolder:
-        return {SortKey::Path, false};
-    case ByType:
-        return {SortKey::Type, false};
-    case LargestFirst:
-        return {SortKey::Size, true};
-    case SmallestFirst:
-        return {SortKey::Size, false};
-    case BestMatch:
-    case NewestFirst:
-    case OldestFirst:
-    case MostOpened:
-        break;
-    }
-    return {};
+    // By time: ranked so (rankBy), the names in no other order.
+    return sort() == NewestFirst || sort() == OldestFirst ? SortOrder {} : columnOrder(sort());
 }
 
 bool Launcher::showsStartList() const
 {
-    return m_scope != Content && m_scope != Apps && searchText().isEmpty() && !m_panel && !m_filePrefix;
+    return m_scope != Content && m_scope != Apps && searchText().isEmpty() && !m_panel && !m_filePrefix
+        && typedQuick().filters.isEmpty(); // a quick filter named alone lists its own (GitHub #392)
 }
 
 void Launcher::switchOrder()
@@ -1984,7 +2003,7 @@ void Launcher::switchOrder()
     else if (!m_keyword) // a command's list is in the plugin's order
         // Ctrl+S goes round the first three; the other sorts (#44) are chosen
         // from the menu, and from one of them it goes back to the best match.
-        setSort(m_sort <= OldestFirst ? static_cast<Sort>((m_sort + 1) % 3) : BestMatch);
+        setSort(sort() <= OldestFirst ? static_cast<Sort>((sort() + 1) % 3) : BestMatch);
 }
 
 void Launcher::setInTaskbarBox(bool on)
@@ -2467,7 +2486,7 @@ void Launcher::search(bool more)
     // The folder typed in, first or alone (typingKey), is a list of its own too.
     m_refresh = m_haveResults && !m_replacePending && text == m_shownText && m_scope == m_shownScope
         && fileExtensions() == m_shownExtensions && fileTypeFolders() == m_shownTypeFolders
-        && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && (m_panel || m_sort == m_shownSort)
+        && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && (m_panel || sort() == m_shownSort)
         && m_kindOrder == m_shownKindOrder
         && m_preferredTypes == m_shownPreferredTypes && keywordKey == m_shownKeyword
         && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick))
@@ -2624,7 +2643,7 @@ void Launcher::search(bool more)
             request.folders = {m_folderFilter};
         request.browse = true;
     }
-    if (m_panel || m_filePrefix || !text.isEmpty())
+    if (m_panel || m_filePrefix || !text.isEmpty() || !typedQuick().filters.isEmpty())
         request.order = nameOrder();
     // With no start list, nothing opened shows before something is typed.
     if (m_recordHistory && !(text.isEmpty() && m_startList == NoStartList)) {
@@ -2664,7 +2683,7 @@ void Launcher::search(bool more)
 // moves the selection back to the first one; a refresh keeps it.
 bool Launcher::byOpenCount() const
 {
-    return m_sort == MostOpened && !m_panel && !m_keyword && !searchText().isEmpty();
+    return sort() == MostOpened && !m_panel && !m_keyword && !searchText().isEmpty();
 }
 
 void Launcher::showRows(SearchResults rows, QStringList highlights)
@@ -2750,7 +2769,7 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
     m_shownTypeFolders = fileTypeFolders();
     m_shownRankBy = rankBy();
     m_shownOrder = nameOrder();
-    m_shownSort = m_sort;
+    m_shownSort = sort();
     m_shownStartList = m_startList;
     m_shownKindOrder = m_kindOrder;
     m_shownPreferredTypes = m_preferredTypes;
@@ -3472,11 +3491,11 @@ void Launcher::setPanel(bool on)
     if (on == m_panel)
         return;
     if (on) {
-        m_panelSort = m_sort == NewestFirst ? SortOrder{SortKey::Modified, true}
-            : m_sort == OldestFirst ? SortOrder{SortKey::Modified, false} : nameOrder();
+        m_panelSort = columnOrder(sort());
         emit panelSortChanged();
     }
     m_panel = on;
+    followFilterSort(); // the chips count in the panel only
     m_results.setFolderSizesEnabled(on);
     emit panelChanged();
     if (m_appsTabWanted)
@@ -3530,7 +3549,7 @@ QVariantList Launcher::quickFilters() const
 {
     QVariantList filters;
     for (const QuickFilter& f : m_quickFilters)
-        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}, {u"keyword"_s, f.keyword}});
+        filters.append(QVariantMap {{u"name"_s, f.name}, {u"query"_s, f.query}, {u"keyword"_s, f.keyword}, {u"sort"_s, f.sort}});
     return filters;
 }
 
@@ -3555,12 +3574,54 @@ const QuickFilterQuery& Launcher::typedQuick() const
     return m_typedQuick;
 }
 
+// GitHub #392: a quick filter with an order of its own ("大文件", largest
+// first) puts the list in that order while it is on: named in the box, or
+// its chip in the panel. The first one on that has an order decides. The
+// order chosen is kept as it was (chosenSort, the one remembered): with the
+// filter gone, it is in force again. Choosing another meanwhile (setSort, a
+// column of the panel) sets the filter's aside until another one comes.
+void Launcher::followFilterSort()
+{
+    QString from;
+    std::optional<Sort> wanted;
+    const QList<int>& typed = typedQuick().filters;
+    for (qsizetype i = 0; i < m_quickFilters.size() && !wanted; ++i) {
+        const QuickFilter& f = m_quickFilters[i];
+        if (isSortName(f.sort) && ((m_panel && m_quickFiltersOn.contains(f.name)) || typed.contains(int(i)))) {
+            from = f.sort + u'|' + f.name; // no '|' in a sort's name
+            wanted = static_cast<Sort>(sortIndex(f.sort));
+        }
+    }
+    if (from == m_filterSortFrom)
+        return; // the same: in force, or set aside
+    const std::optional<Sort> was = m_filterSort;
+    const Sort before = sort();
+    const SortOrder panelBefore = m_panelSort;
+    m_filterSortFrom = from;
+    m_filterSort = wanted;
+    // The panel's columns too: the filter's order, the one before given back
+    // after, unless a column was clicked meanwhile.
+    if (wanted) {
+        if (!was) // the panel's own, or the one it would open with
+            m_panelSortBeforeFilter = m_panel ? m_panelSort : columnOrder(m_sort);
+        m_panelSort = columnOrder(*wanted);
+    } else if (was && m_panelSort == columnOrder(*was)) {
+        m_panelSort = m_panelSortBeforeFilter;
+    }
+    if (sort() != before)
+        emit sortChanged();
+    if (m_panelSort != panelBefore)
+        emit panelSortChanged();
+}
+
 void Launcher::setQuickFilters(const QuickFilters& filters)
 {
     if (filters == m_quickFilters)
         return;
     const QStringList before = quickConditions();
     const QString words = searchText();
+    const SortOrder order = nameOrder();
+    const RankBy ranked = rankBy();
     m_quickFilters = filters;
     m_typedQuickRead = false; // a keyword given or taken away: what is typed reads otherwise
     updateQueryPrefix();
@@ -3570,7 +3631,9 @@ void Launcher::setQuickFilters(const QuickFilters& filters)
     });
     emit quickFiltersChanged();
     emit filtersChanged();
-    if ((quickConditions() != before || searchText() != words) && m_window && m_window->isVisible())
+    followFilterSort(); // its order changed, or it is no more
+    const bool reordered = nameOrder() != order || rankBy() != ranked;
+    if ((quickConditions() != before || searchText() != words || reordered) && m_window && m_window->isVisible())
         search(); // one that is on was edited: its rows, in place
 }
 
@@ -3582,6 +3645,7 @@ void Launcher::toggleQuickFilter(int index)
     if (!m_quickFiltersOn.removeOne(name))
         m_quickFiltersOn.append(name);
     emit filtersChanged();
+    followFilterSort();
     if (m_panel)
         search();
 }

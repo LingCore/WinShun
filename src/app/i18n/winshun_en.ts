@@ -4551,12 +4551,48 @@ Send suggestions and problems on our website</translation>
         <translation>filter;exclude;condition;saved search;recycle bin;panel;side bar;custom filter</translation>
     </message>
     <message>
-        <source>把常用的搜索条件存起来，在搜索面板的侧栏点一下就套用，再点一下取消；同时开几个就要全部满足。条件和搜索框里的写法一样：%1 排除回收站里的东西，%2 排除这类文件夹，%3 只看大 PDF。填了搜索前缀（例如 nobin），在搜索框里输入“:nobin 报告”也能套用，不用展开面板。</source>
-        <translation>Save searches you use often: a click in the search panel&apos;s side bar applies one, another click removes it, and with several on a file must fit them all. Written as in the search box: %1 leaves out what is in the Recycle Bin, %2 such folders, %3 shows large PDFs only. Give one a search prefix (say nobin) and &quot;:nobin report&quot; in the search box applies it too, without the panel.</translation>
-    </message>
-    <message>
         <source>名称</source>
         <translation>Name</translation>
+    </message>
+    <message>
+        <source>不指定</source>
+        <translation>None</translation>
+    </message>
+    <message>
+        <source>最匹配</source>
+        <translation>Best match</translation>
+    </message>
+    <message>
+        <source>最新在前</source>
+        <translation>Newest first</translation>
+    </message>
+    <message>
+        <source>最早在前</source>
+        <translation>Oldest first</translation>
+    </message>
+    <message>
+        <source>所在文件夹</source>
+        <translation>Folder</translation>
+    </message>
+    <message>
+        <source>类型</source>
+        <translation>Type</translation>
+    </message>
+    <message>
+        <source>大的在前</source>
+        <translation>Largest first</translation>
+    </message>
+    <message>
+        <source>小的在前</source>
+        <translation>Smallest first</translation>
+    </message>
+    <message>
+        <source>打开最多</source>
+        <translation>Most opened</translation>
+    </message>
+    <message>
+        <source>把常用的搜索条件存起来，在搜索面板的侧栏点一下就套用，再点一下取消；同时开几个就要全部满足。条件和搜索框里的写法一样：%1 排除回收站里的东西，%2 排除这类文件夹，%3 只看大 PDF。填了搜索前缀（例如 nobin），在搜索框里输入“:nobin 报告”也能套用，不用展开面板。还能给它定个排序，比如“大文件”按大的在前，开着它时列表就这样排。</source>
+        <translation>Save searches you use often: a click in the search panel&apos;s side bar applies one, another click removes it, and with several on a file must fit them all. Written as in the search box: %1 leaves out what is in the Recycle Bin, %2 such folders, %3 shows large PDFs only. Give one a search prefix (say nobin) and &quot;:nobin report&quot; in the search box applies it too, without the panel. It can have a sort of its own too, say largest first for &quot;Big files&quot;: the list is in that order while it is on.</translation>
     </message>
     <message>
         <source>条件</source>
@@ -4565,6 +4601,10 @@ Send suggestions and problems on our website</translation>
     <message>
         <source>搜索前缀（:）</source>
         <translation>Prefix (:)</translation>
+    </message>
+    <message>
+        <source>排序</source>
+        <translation>Sort</translation>
     </message>
     <message>
         <source>筛选名称</source>
@@ -4581,6 +4621,10 @@ Send suggestions and problems on our website</translation>
     <message>
         <source>%1的搜索前缀</source>
         <translation>Search prefix for %1</translation>
+    </message>
+    <message>
+        <source>%1的排序</source>
+        <translation>Sort of %1</translation>
     </message>
     <message>
         <source>上移</source>

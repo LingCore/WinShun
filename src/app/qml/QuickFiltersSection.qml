@@ -8,10 +8,16 @@ SettingsSection {
     id: section
     required property SettingsEditor editor
     property string problem
-    readonly property int nameWidth: width < 560 ? 110 : 140
+    readonly property bool narrow: width < 640
+    readonly property int nameWidth: narrow ? 100 : 130
     readonly property int actionsWidth: 108 // three icon buttons of 32 and the gaps between them
-    readonly property int keywordWidth: width < 560 ? 96 : 115
-    readonly property real queryWidth: Math.max(120, width - 36 - nameWidth - keywordWidth - actionsWidth - 18)
+    readonly property int keywordWidth: narrow ? 88 : 104
+    readonly property int sortWidth: narrow ? 108 : 120
+    readonly property real queryWidth: Math.max(120, width - 36 - nameWidth - keywordWidth - sortWidth - actionsWidth - 24)
+    // A filter's own order (GitHub #392): the settings' names of the orders, none first.
+    readonly property var sorts: ["", "match", "newest", "oldest", "name", "folder", "type", "largest", "smallest", "opened"]
+    readonly property var sortLabels: [qsTr("不指定"), qsTr("最匹配"), qsTr("最新在前"), qsTr("最早在前"), qsTr("名称"),
+        qsTr("所在文件夹"), qsTr("类型"), qsTr("大的在前"), qsTr("小的在前"), qsTr("打开最多")]
     // The row, gone to from the + of the panel's chips (SettingsWindow.showQuickFiltersPage).
     readonly property SettingRow filtersRow: quickFiltersRow
 
@@ -35,7 +41,7 @@ SettingsSection {
         title: qsTr("快捷筛选")
         keywords: qsTr("筛选器;过滤;排除;条件;保存;常用;回收站;面板;侧栏;filter;exclude;saved search").split(";")
         values: section.editor.quickFilters.map(f => f.name + " " + f.query + " :" + f.keyword)
-        description: qsTr("把常用的搜索条件存起来，在搜索面板的侧栏点一下就套用，再点一下取消；同时开几个就要全部满足。条件和搜索框里的写法一样：%1 排除回收站里的东西，%2 排除这类文件夹，%3 只看大 PDF。填了搜索前缀（例如 nobin），在搜索框里输入“:nobin 报告”也能套用，不用展开面板。").arg("!$RECYCLE.BIN\\").arg("!node_modules\\").arg("ext:pdf size:>10mb")
+        description: qsTr("把常用的搜索条件存起来，在搜索面板的侧栏点一下就套用，再点一下取消；同时开几个就要全部满足。条件和搜索框里的写法一样：%1 排除回收站里的东西，%2 排除这类文件夹，%3 只看大 PDF。填了搜索前缀（例如 nobin），在搜索框里输入“:nobin 报告”也能套用，不用展开面板。还能给它定个排序，比如“大文件”按大的在前，开着它时列表就这样排。").arg("!$RECYCLE.BIN\\").arg("!node_modules\\").arg("ext:pdf size:>10mb")
 
         body: [
             Row {
@@ -43,7 +49,8 @@ SettingsSection {
                 visible: section.editor.quickFilters.length > 0
                 Text { width: section.nameWidth; text: qsTr("名称"); color: Theme.subtext; font.pixelSize: Theme.fontCaption }
                 Text { width: section.queryWidth; text: qsTr("条件"); color: Theme.subtext; font.pixelSize: Theme.fontCaption }
-                Text { width: section.keywordWidth; text: qsTr("搜索前缀（:）"); color: Theme.subtext; font.pixelSize: Theme.fontCaption }
+                Text { width: section.keywordWidth; text: qsTr("搜索前缀（:）"); color: Theme.subtext; font.pixelSize: Theme.fontCaption; elide: Text.ElideRight }
+                Text { width: section.sortWidth; text: qsTr("排序"); color: Theme.subtext; font.pixelSize: Theme.fontCaption }
             },
             Column {
                 width: parent.width
@@ -92,6 +99,15 @@ SettingsSection {
                                     text = filterRow.modelData.keyword
                             }
                         }
+                        ChoiceBox {
+                            objectName: "quickFilterSort_" + filterRow.index
+                            width: section.sortWidth
+                            dpr: section.dpr
+                            model: section.sortLabels
+                            currentIndex: Math.max(0, section.sorts.indexOf(filterRow.modelData.sort))
+                            Accessible.name: qsTr("%1的排序").arg(filterRow.modelData.name)
+                            onActivated: (index) => section.editor.setQuickFilterSort(filterRow.index, section.sorts[index])
+                        }
                         FlatButton {
                             dpr: section.dpr
                             flat: true
@@ -134,7 +150,7 @@ SettingsSection {
                 InputBox {
                     id: newQuery
                     objectName: "quickFilterNewQuery"
-                    width: section.queryWidth + section.keywordWidth + 6
+                    width: section.queryWidth + section.keywordWidth + section.sortWidth + 12
                     placeholder: qsTr("条件，例如 %1").arg("!$RECYCLE.BIN\\")
                     Accessible.name: qsTr("新筛选的条件")
                     onAccepted: newName.text.trim().length > 0 ? addFilter.clicked() : newName.takeFocus()

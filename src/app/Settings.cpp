@@ -330,6 +330,8 @@ void writeQuickFilters(QSettings& s, const QuickFilters& filters)
         s.setValue(u"Query"_s, filters[i].query);
         if (!filters[i].keyword.isEmpty())
             s.setValue(u"Keyword"_s, filters[i].keyword);
+        if (!filters[i].sort.isEmpty())
+            s.setValue(u"Sort"_s, filters[i].sort);
     }
     s.endArray();
 }
@@ -338,7 +340,7 @@ void writeQuickFilters(QSettings& s, const QuickFilters& filters)
 // a second time (any case). A query that cannot be read stays, to be put
 // right in the settings; the search passes it over. A keyword that cannot
 // be one, or is taken (`keywords`: the kinds of file's and the folders',
-// and each filter's as it is read), is none.
+// and each filter's as it is read), is none; so is a sort not known.
 QuickFilters readQuickFilters(QSettings& s, QSet<QString> keywords)
 {
     QuickFilters filters;
@@ -346,9 +348,12 @@ QuickFilters readQuickFilters(QSettings& s, QSet<QString> keywords)
     for (int i = 0; i < size; ++i) {
         s.setArrayIndex(i);
         QuickFilter filter {s.value(u"Name"_s).toString().simplified(), s.value(u"Query"_s).toString().trimmed(),
-            normalizedTypeKeyword(s.value(u"Keyword"_s).toString()).value_or(QString())};
+            normalizedTypeKeyword(s.value(u"Keyword"_s).toString()).value_or(QString()),
+            s.value(u"Sort"_s).toString().trimmed().toLower()};
         if (keywords.contains(filter.keyword))
             filter.keyword.clear();
+        if (!isSortName(filter.sort))
+            filter.sort.clear();
         const bool named = std::ranges::any_of(filters, [&](const QuickFilter& f) { return f.name.compare(filter.name, Qt::CaseInsensitive) == 0; });
         if (!filter.name.isEmpty() && !filter.query.isEmpty() && !named) {
             filters.append(filter);
