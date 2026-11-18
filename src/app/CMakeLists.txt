@@ -357,6 +357,7 @@ qt_add_qml_module(WinShun
         ContentPane.cpp ContentPane.h
         PictureFile.cpp PictureFile.h
         FolderMenu.cpp FolderMenu.h
+        HostedExplorer.cpp HostedExplorer.h # 360文件夹's folder, told by what it shows
         DropPie.cpp DropPie.h # the favorite folders round the pointer while dragging files (DropPieWindow.qml)
         DropPieText.cpp DropPieText.h
         GleaningScene.cpp GleaningScene.h

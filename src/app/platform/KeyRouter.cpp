@@ -1,5 +1,6 @@
 #include "KeyRouter.h"
 
+#include "FolderViewHit.h"
 #include "QtKeys.h"
 
 #include <QtLogging>
@@ -405,7 +406,7 @@ bool KeyRouter::hooksDropped()
     if (!::GetLastInputInfo(&last) || !inputWentPast(last.dwTime, m_calledAt))
         return false;
     const HWND front = ::GetForegroundWindow();
-    if (!front || ::GetAncestor(front, GA_ROOT) != m_target) {
+    if (!front || folderview::frameOf(front) != m_target) {
         m_calledAt = last.dwTime;
         return false;
     }
@@ -415,7 +416,7 @@ bool KeyRouter::hooksDropped()
 void CALLBACK KeyRouter::foregroundProc(HWINEVENTHOOK, DWORD, HWND hwnd, LONG, LONG, DWORD, DWORD)
 {
     if (t_router && hwnd && !t_router->m_draining && t_router->m_callbacks.foregroundChanged)
-        t_router->m_callbacks.foregroundChanged(::GetAncestor(hwnd, GA_ROOT));
+        t_router->m_callbacks.foregroundChanged(folderview::frameOf(hwnd));
 }
 
 // A window other than the target is in front, and the window still shows:
@@ -428,7 +429,7 @@ void KeyRouter::tellOtherForeground(bool starting)
     if (!m_target || m_draining || !m_callbacks.foregroundChanged)
         return;
     const HWND front = ::GetForegroundWindow();
-    const HWND root = front ? ::GetAncestor(front, GA_ROOT) : nullptr;
+    const HWND root = front ? folderview::frameOf(front) : nullptr;
     if (!root || root == m_target || root == m_toldFront || (!starting && !::IsWindowVisible(m_window)))
         return;
     m_toldFront = root;
@@ -441,7 +442,7 @@ KeyRouter::Availability KeyRouter::availability() const
     // Not while the window is gone or hung (its thread has not answered for
     // five seconds): the keys would be lost.
     const HWND front = ::GetForegroundWindow();
-    if (!front || ::GetAncestor(front, GA_ROOT) != m_target)
+    if (!front || folderview::frameOf(front) != m_target)
         return Availability::OtherForeground;
     if (!::IsWindowVisible(m_window))
         return Availability::Hidden;

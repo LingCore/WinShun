@@ -668,7 +668,7 @@ std::vector<ExplorerTab> explorerTabs()
             continue;
         std::wstring path = folderPath(browser.Get());
         if (!path.empty())
-            tabs.push_back({::GetAncestor(tab, GA_ROOT), tab, std::move(path)});
+            tabs.push_back({folderview::frameOf(tab), tab, std::move(path)});
     }
     return tabs;
 }
@@ -1034,6 +1034,11 @@ std::vector<Folder> openFolders()
             return TRUE;
         },
         reinterpret_cast<LPARAM>(&search));
+    // Explorer windows held in another window's tabs (Clover: frameOf) are
+    // no top-level windows: theirs after all the others (the list drops the
+    // ones already in it).
+    for (const ExplorerTab& tab : search.explorer)
+        search.behind.push_back({tab.path, Kind::Explorer});
     // UI Automation can pump window messages. Ask after the User32
     // enumeration returns, retaining the captured windows' front-to-back order.
     for (const auto& [at, window] : search.oneCommander) {
@@ -1105,7 +1110,7 @@ bool selectInExplorer(HWND tab, const std::wstring& folder, const std::wstring& 
     const auto active = [&] {
         if (!current() || !::IsWindow(tab))
             return false;
-        const HWND root = ::GetAncestor(tab, GA_ROOT);
+        const HWND root = folderview::frameOf(tab);
         const HWND first = ::FindWindowExW(root, nullptr, L"ShellTabWindowClass", nullptr);
         return !first || first == tab;
     };
@@ -1143,7 +1148,7 @@ bool selectInExplorer(HWND tab, const std::wstring& folder, const std::wstring& 
 
 bool goToKeepingFocus(HWND tab, const std::wstring& folder, const std::wstring& select)
 {
-    const HWND root = ::GetAncestor(tab, GA_ROOT);
+    const HWND root = folderview::frameOf(tab);
     const auto inFront = [root] { return ::GetForegroundWindow() == root && filesFocused(root); };
     // Just handed the front, the window has not given its files the keyboard
     // back yet (docs/pitfalls.md: the file dialogs' "刚交还前台就操作"); gone

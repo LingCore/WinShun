@@ -286,18 +286,75 @@ Verdict automationVerdict(const Hit& hit, BlankTrace* trace)
 
 } // namespace
 
+namespace {
+
+bool explorerFrame(HWND window)
+{
+    return hasClass(window, L"CabinetWClass") || hasClass(window, L"ExploreWClass");
+}
+
+// 360文件夹's window: tabs of Windows' Explorer browser control
+// (360ExplorerView > ExplorerBrowserControl > … > SHELLDLL_DefView), measured
+// on 1.0.0.1220.
+bool hostFrame(HWND window)
+{
+    return hasClass(window, L"360ExplorerFrame");
+}
+
+// The browser control of a 360文件夹 tab: from the folder view up.
+HWND hostedControl(HWND view, HWND frame)
+{
+    for (HWND up = ::GetParent(view); up && up != frame; up = ::GetParent(up)) {
+        if (hasClass(up, L"ExplorerBrowserControl"))
+            return up;
+    }
+    return nullptr;
+}
+
+// The browser control of the tab 360文件夹 shows: its 360ExplorerView shown.
+HWND shownHostedControl(HWND frame)
+{
+    for (HWND view = ::FindWindowExW(frame, nullptr, L"360ExplorerView", nullptr); view;
+        view = ::FindWindowExW(frame, view, L"360ExplorerView", nullptr)) {
+        if (::IsWindowVisible(view))
+            return ::FindWindowExW(view, nullptr, L"ExplorerBrowserControl", nullptr);
+    }
+    return nullptr;
+}
+
+} // namespace
+
+HWND frameOf(HWND window)
+{
+    for (int level = 0; window && level < 64; ++level) {
+        if (!(::GetWindowLongPtrW(window, GWL_STYLE) & WS_CHILD))
+            return window;
+        const HWND parent = ::GetAncestor(window, GA_PARENT);
+        if (!parent || parent == ::GetDesktopWindow())
+            return window;
+        window = parent;
+    }
+    return window;
+}
+
 Hit classify(HWND window, POINT pt, bool classicList)
 {
     Hit hit;
     if (!window)
         return hit;
     const HWND parent = ::GetParent(window);
-    const HWND root = ::GetAncestor(window, GA_ROOT);
+    const HWND root = frameOf(window);
     if (!parent || !root || !hasClass(parent, L"SHELLDLL_DefView"))
         return hit;
     const bool list = hasClass(window, L"SysListView32");
-    if ((hasClass(window, L"DirectUIHWND") || (list && classicList))
-        && (hasClass(root, L"CabinetWClass") || hasClass(root, L"ExploreWClass"))) {
+    if (hasClass(window, L"DirectUIHWND") && hostFrame(root)) {
+        const HWND control = hostedControl(window, root);
+        if (!control)
+            return hit;
+        hit.surface = Surface::Explorer;
+        hit.hosted = true;
+        hit.tab = control;
+    } else if ((hasClass(window, L"DirectUIHWND") || (list && classicList)) && explorerFrame(root)) {
         // The items view; or the classic list view in its place, which
         // ExplorerPatcher ("Enable SysListView32 for Explorer views") and
         // Windhawk's syslistview32-enabler bring back (GitHub #45).
@@ -324,14 +381,21 @@ Hit classify(HWND window, POINT pt, bool classicList)
 Hit classifyWindow(HWND root)
 {
     Hit hit;
-    if (!root || ::GetAncestor(root, GA_ROOT) != root)
+    if (!root || frameOf(root) != root)
         return hit;
-    if (hasClass(root, L"CabinetWClass") || hasClass(root, L"ExploreWClass")) {
+    if (explorerFrame(root)) {
         hit.surface = Surface::Explorer;
         // A ShellTabWindowClass child per tab, the one on top first among
         // them (Windows 10 has one: the window's only tab).
         const HWND tab = ::FindWindowExW(root, nullptr, L"ShellTabWindowClass", nullptr);
         hit.tab = tab ? tab : root;
+    } else if (hostFrame(root)) {
+        const HWND control = shownHostedControl(root);
+        if (!control)
+            return hit;
+        hit.surface = Surface::Explorer;
+        hit.hosted = true;
+        hit.tab = control;
     } else if ((hasClass(root, L"Progman") || hasClass(root, L"WorkerW"))
         && ::FindWindowExW(root, nullptr, L"SHELLDLL_DefView", nullptr)) {
         hit.surface = Surface::Desktop;

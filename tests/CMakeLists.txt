@@ -977,9 +977,10 @@ target_compile_definitions(tst_keylistener PRIVATE WINSHUN_SERVICE_EXE="$<TARGET
 add_dependencies(tst_keylistener WinShunService)
 
 qt_add_executable(tst_keyrouter tst_keyrouter.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/KeyRouter.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/platform/HoldWatch.cpp ${PROJECT_SOURCE_DIR}/src/app/Diagnostics.cpp)
+    ${PROJECT_SOURCE_DIR}/src/app/platform/HoldWatch.cpp ${PROJECT_SOURCE_DIR}/src/app/Diagnostics.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FolderViewHit.cpp)
 target_include_directories(tst_keyrouter PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
-target_link_libraries(tst_keyrouter PRIVATE wscore miniz Qt6::Test user32 imm32)
+target_link_libraries(tst_keyrouter PRIVATE wscore miniz Qt6::Test user32 imm32 oleacc oleaut32 ole32)
 set_target_properties(tst_keyrouter PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_keyrouter COMMAND tst_keyrouter -o -,txt)
 set_tests_properties(tst_keyrouter PROPERTIES RUN_SERIAL TRUE

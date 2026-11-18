@@ -30,6 +30,7 @@
 #include "DropPie.h"
 #include "DropPieHelper.h"
 #include "FolderMenu.h"
+#include "HostedExplorer.h"
 #include "History.h"
 #include "Host.h"
 #include "TranslateText.h"
@@ -3317,6 +3318,20 @@ void App::restoreLauncherInputMode()
     win::restoreInputMode(std::exchange(m_lettersSwitch, {}));
 }
 
+// Any thread with COM: the folder 360文件夹's tab shows (folderview::Hit::hosted).
+std::optional<QString> App::hostedPlace(HWND frame, HWND control) const
+{
+    QElapsedTimer clock;
+    clock.start();
+    const hostedexplorer::Shown shown = hostedexplorer::shown(frame, control);
+    const std::shared_ptr<FileIndex> index = m_index ? m_index->index() : nullptr;
+    const std::optional<QString> place = hostedexplorer::place(shown, index.get());
+    qInfo().noquote() << u"360文件夹: %1 names listed, folder %2, %3 ms"_s.arg(shown.names.size())
+                             .arg(place ? (place->isEmpty() ? u"(the whole PC)"_s : u"known"_s) : u"not told"_s)
+                             .arg(clock.elapsed());
+    return place;
+}
+
 void App::folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request)
 {
     if (!m_typing || !m_typing->pending(request))
@@ -3330,8 +3345,16 @@ void App::folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request)
         clock.start();
         // Opus's tab without a folder on disk (This PC, a library, FTP): known
         // all the same, and searched as the whole PC (GitHub #82).
-        const std::optional<std::wstring> place
-            = opus ? filemanager::opusPlace(tab) : filemanager::explorerPlace(tab);
+        // 360文件夹's tab: told by what it shows (hostedexplorer::place).
+        std::optional<std::wstring> place;
+        if (opus) {
+            place = filemanager::opusPlace(tab);
+        } else if (folderview::classifyWindow(root).hosted) {
+            if (const std::optional<QString> hosted = hostedPlace(root, tab))
+                place = hosted->toStdWString();
+        } else {
+            place = filemanager::explorerPlace(tab);
+        }
         const QString folder = QString::fromStdWString(place.value_or({}));
         const bool known = place.has_value(); // with no folder: This PC and the like, the whole PC is searched (#82, #329)
         qInfo().noquote() << (opus ? u"Opus typing:" : u"Explorer typing:")
@@ -3477,7 +3500,7 @@ bool App::openInTypingTab(const QString& folder, const QString& select)
     const TypingOrigin from = std::exchange(m_typingOrigin, {});
     if (!from.tab)
         return false;
-    const HWND root = ::IsWindow(from.tab) ? ::GetAncestor(from.tab, GA_ROOT) : nullptr;
+    const HWND root = ::IsWindow(from.tab) ? folderview::frameOf(from.tab) : nullptr;
     if (!root || root != from.root) {
         qWarning() << "Folder typing: the tab typed in is gone; the folder opens in a new window";
         return false;
@@ -4639,6 +4662,7 @@ void App::applyFolderMenu()
             m_dialogJump->go(dialog, folder.toStdWString(), false);
             return true;
         });
+        menu->setHostedFolder([this](HWND frame, HWND control) { return hostedPlace(frame, control).value_or(QString()); });
         menu->setDialogOf([this](HWND window) -> HWND { // ... over the bar beside one: that dialog
             if (!m_dialogJump || !m_dialogJump->dialog() || !m_dialogJump->isCompanion(window))
                 return nullptr;

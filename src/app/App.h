@@ -412,6 +412,7 @@ private:
     // is asked for on a worker, then the launcher opens in that folder, on
     // that window's screen, and the keys follow; with no folder there, the
     // keys go back to Explorer.
+    std::optional<QString> hostedPlace(HWND frame, HWND control) const; // 360文件夹's tab: hostedexplorer::place
     void folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request);
     void desktopTyped(HWND desktop, std::uint64_t request); // typed on the desktop's icons: the launcher, for the whole PC
     void typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t request, bool known, const QString& folder);

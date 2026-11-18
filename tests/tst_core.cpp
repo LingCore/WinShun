@@ -57,6 +57,7 @@
 #include "WebSuggest.h"
 #include "Win32Util.h"
 #include "KnownFolderOverride.h"
+#include "ShownFolder.h"
 
 #include <QRegularExpression>
 #include "Writer.h"
@@ -14685,6 +14686,29 @@ private slots:
             DoubleTapDetector altOnly({.key = Key::Alt});
             QVERIFY(!tapTwice(altOnly, shift, 0));
         }
+    }
+
+    // 360文件夹's folder, told by its title's candidates and the names listed.
+    void shownFolderPick()
+    {
+        using shownfolder::Candidate;
+        QVERIFY(shownfolder::listedAs(u"report.txt"_s, u"report"_s)); // extension hidden
+        QVERIFY(shownfolder::listedAs(u"Report.TXT"_s, u"report.txt"_s));
+        QVERIFY(!shownfolder::listedAs(u"report.txt"_s, u"repo"_s));
+        QVERIFY(!shownfolder::listedAs(u".gitignore"_s, u""_s));
+        const Candidate work {u"D:\\work\\files"_s, {u"a.txt"_s, u"b.png"_s, u"notes"_s}};
+        const Candidate other {u"C:\\old\\files"_s, {u"a.txt"_s, u"zzz.doc"_s}};
+        QCOMPARE(shownfolder::pick({work, other}, {u"a"_s, u"b"_s, u"notes"_s}), std::optional(work.path));
+        QCOMPARE(shownfolder::pick({other, work}, {u"a"_s, u"b"_s}), std::optional(work.path)); // all of two
+        QCOMPARE(shownfolder::pick({other, work}, {u"a"_s}), std::nullopt); // both have it
+        QCOMPARE(shownfolder::pick({work}, {u"x"_s}), std::nullopt); // not listed there
+        QCOMPARE(shownfolder::pick({work}, {}), std::optional(work.path)); // empty: the only one
+        QCOMPARE(shownfolder::pick({work, other}, {}), std::nullopt);
+        QCOMPARE(shownfolder::pick({}, {u"a"_s}), std::nullopt);
+        // A profile lists Windows' folders by their own names: three in five do.
+        const Candidate profile {u"C:\\Users\\me"_s, {u"Documents"_s, u"Downloads"_s, u"Desktop"_s, u"go"_s, u"src"_s, u"x.txt"_s}};
+        QCOMPARE(shownfolder::pick({profile}, {u"文档"_s, u"下载"_s, u"go"_s, u"src"_s, u"x"_s}), std::optional(profile.path));
+        QCOMPARE(shownfolder::pick({profile}, {u"文档"_s, u"下载"_s, u"桌面"_s, u"src"_s, u"x"_s}), std::nullopt);
     }
 
     void doubleClick()

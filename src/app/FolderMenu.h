@@ -107,6 +107,10 @@ public:
     // The Open or Save dialog that `window`, one of Win顺's own beside it
     // (the search bar), stands in front of; null for any other window.
     void setDialogOf(std::function<HWND(HWND window)> dialogOf) { m_dialogOf = std::move(dialogOf); }
+    // The folder a hosted view shows (360文件夹, folderview::Hit::hosted;
+    // hostedexplorer::place): asked on the menu's worker; empty when not
+    // known, or no folder on disk. None set: never known.
+    void setHostedFolder(std::function<QString(HWND frame, HWND control)> folder) { m_hostedFolder = std::move(folder); }
 
     // From the listener thread (KeyListener): a double click there. Window
     // classes are looked at at once; what may be a folder's blank space is
@@ -173,6 +177,7 @@ signals:
     void openChanged(bool open);
 
 private:
+    QString explorerFolder(const folderview::Hit& hit) const;
     enum class Kind { Folder, Search, AddFavorite, RemoveFavorite, Terminal, PowerShell, Favorite, Settings, CopyPath };
     struct Entry {
         Kind kind = Kind::Folder;
@@ -205,6 +210,7 @@ private:
     std::function<void(const QString&)> m_opener;
     std::function<bool(HWND, const QString&)> m_dialogGo;
     std::function<HWND(HWND)> m_dialogOf;
+    std::function<QString(HWND, HWND)> m_hostedFolder;
     menuhotkey::Toggle m_toggle; // GUI thread: what a hotkey press means now
     bool m_recordHistory = true;
     std::atomic<bool> m_yieldToListary {true};

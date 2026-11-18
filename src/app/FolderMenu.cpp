@@ -92,6 +92,48 @@ bool listaryRuns()
     return found;
 }
 
+// A File Explorer window Clover holds as a tab, with Clover's own "双击文件夹
+// 空白处跳到上层目录" on (its default): Clover goes up on that same double
+// click, so the menu would come for a folder no longer shown. The switch is
+// kept in config.ini beside clover.exe ([Seting] IsDoubleClickToNavigateUp).
+bool cloverGoesUp(HWND frame)
+{
+    const HWND top = ::GetAncestor(frame, GA_ROOT);
+    wchar_t name[64] {};
+    if (!top || top == frame || !::GetClassNameW(top, name, 64) || std::wcsncmp(name, L"Clover_WidgetWin", 16) != 0)
+        return false;
+    DWORD pid = 0;
+    ::GetWindowThreadProcessId(top, &pid);
+    const HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process)
+        return true;
+    wchar_t path[MAX_PATH * 2] {};
+    DWORD size = MAX_PATH * 2;
+    const bool named = ::QueryFullProcessImageNameW(process, 0, path, &size);
+    ::CloseHandle(process);
+    if (!named)
+        return true;
+    std::wstring ini(path, size);
+    ini.resize(ini.find_last_of(L'\\') + 1);
+    ini += L"config.ini";
+    return ::GetPrivateProfileIntW(L"Seting", L"IsDoubleClickToNavigateUp", 1, ini.c_str()) != 0;
+}
+
+// 360文件夹's own "双击文件夹空白区域跳转上层目录", on until unticked:
+// HKCU\Software\360FileBrowser\Setting dbclick_to_parent (written at once).
+bool hostGoesUp()
+{
+    wchar_t text[16] {};
+    DWORD type = 0;
+    DWORD size = sizeof text - sizeof(wchar_t);
+    if (::RegGetValueW(HKEY_CURRENT_USER, L"Software\\360FileBrowser\\Setting", L"dbclick_to_parent",
+                       RRF_RT_REG_DWORD | RRF_RT_REG_SZ, &type, text, &size) != ERROR_SUCCESS)
+        return true;
+    if (type == REG_DWORD)
+        return *reinterpret_cast<const DWORD*>(text) != 0;
+    return std::wcstol(text, nullptr, 10) != 0;
+}
+
 // "D:\Projects\报告" -> "报告"; "D:\" -> "D:\".
 QString nameOf(const QString& folder)
 {
@@ -299,6 +341,11 @@ void FolderMenu::doubleClicked(HWND window, POINT pt)
                 journal(u"listary"_s, hit, {}, nullptr);
                 return;
             }
+            if (hit.surface == folderview::Surface::Explorer && (hit.hosted ? hostGoesUp() : cloverGoesUp(hit.root))) {
+                // The tab goes up itself on this double click (its own switch).
+                journal(u"goes-up"_s, hit, {}, nullptr);
+                return;
+            }
             QElapsedTimer clock;
             clock.start();
             folderview::BlankTrace trace;
@@ -312,9 +359,7 @@ void FolderMenu::doubleClicked(HWND window, POINT pt)
             // (A story not told yet costs one accessibility walk, once.)
             journal(u"blank"_s, hit, {}, &trace, {{u"ms"_s, blankMs}});
             clock.restart();
-            const QString folder = hit.surface == folderview::Surface::Explorer
-                ? QString::fromStdWString(filemanager::explorerFolder(hit.tab))
-                : QString();
+            const QString folder = hit.surface == folderview::Surface::Explorer ? explorerFolder(hit) : QString();
             qInfo().noquote() << u"Folder menu: blank %1 (%2), folder %3 ms"_s.arg(blankMs)
                                      .arg(QString::fromLatin1(trace.by))
                                      .arg(clock.elapsed());
@@ -348,6 +393,8 @@ void FolderMenu::journal(const QString& step, const folderview::Hit& hit, const 
         : hit.surface == folderview::Surface::Desktop                    ? u"desktop"_s
                                                                          : u"none"_s;
     details[u"classes"_s] = classes;
+    if (hit.hosted)
+        details[u"hosted"_s] = true; // 360文件夹's
     if (trace) {
         if (trace->msaa.empty() && std::string_view(trace->by) != "desktop-background")
             trace->msaa = folderview::accessibleTrace(hit); // what the walk alone would have said
@@ -416,7 +463,7 @@ void FolderMenu::hotkeyPressed()
     if (m_blocked && m_blocked())
         return;
     const HWND foreground = ::GetForegroundWindow();
-    HWND root = foreground ? ::GetAncestor(foreground, GA_ROOT) : nullptr;
+    HWND root = foreground ? folderview::frameOf(foreground) : nullptr;
     if (!root)
         return;
     // The search bar beside a file dialog has the keyboard: the menu is for
@@ -464,7 +511,7 @@ void FolderMenu::hotkeyPressed()
         QString folder;
         switch (hit.surface) {
         case folderview::Surface::Explorer:
-            folder = QString::fromStdWString(filemanager::explorerFolder(hit.tab));
+            folder = explorerFolder(hit);
             break;
         case folderview::Surface::Opus:
         case folderview::Surface::TotalCommander:
@@ -496,11 +543,11 @@ POINT FolderMenu::hotkeyAnchor(HWND root) const
     ::GetCursorPos(&cursor);
     // Asked on the GUI thread: only windows of this thread are sent anything by it.
     const HWND under = ::WindowFromPoint(cursor);
-    const bool over = under && ::GetAncestor(under, GA_ROOT) == root;
+    const bool over = under && folderview::frameOf(under) == root;
     GUITHREADINFO info {sizeof info};
     HWND focused = nullptr;
     if (::GetGUIThreadInfo(::GetWindowThreadProcessId(root, nullptr), &info) && info.hwndFocus
-        && ::GetAncestor(info.hwndFocus, GA_ROOT) == root)
+        && folderview::frameOf(info.hwndFocus) == root)
         focused = info.hwndFocus;
     POINT topLeft {};
     RECT rect {};
@@ -516,6 +563,15 @@ POINT FolderMenu::hotkeyAnchor(HWND root) const
     const int inset = static_cast<int>(std::lround(16.0 * dpiX / 96.0)); // 16 logical px
     const menuhotkey::Point at = menuhotkey::anchor(over, {cursor.x, cursor.y}, {topLeft.x, topLeft.y}, inset);
     return {at.x, at.y};
+}
+
+// On the worker: the folder a File Explorer view shows, a hosted one's
+// (360文件夹) as told by what it shows.
+QString FolderMenu::explorerFolder(const folderview::Hit& hit) const
+{
+    if (hit.hosted)
+        return m_hostedFolder ? m_hostedFolder(hit.root, hit.tab) : QString();
+    return QString::fromStdWString(filemanager::explorerFolder(hit.tab));
 }
 
 // On the worker: the rest of what the menu shows, then the menu.
@@ -559,7 +615,7 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
     // Still where it was double-clicked: the menu goes with that window. (A
     // dialog given the front back from its bar may not have it yet.)
     const HWND foreground = ::GetForegroundWindow();
-    const HWND front = foreground ? ::GetAncestor(foreground, GA_ROOT) : nullptr;
+    const HWND front = foreground ? folderview::frameOf(foreground) : nullptr;
     const bool desktop = hit.surface == folderview::Surface::Desktop && folderview::sameDesktop(front, hit.root);
     if (!front || (front != hit.root && !desktop && !(m_dialogOf && m_dialogOf(front) == hit.root))) {
         if (hit.view) // a double click's (the hotkey's have no view)
@@ -714,7 +770,7 @@ void FolderMenu::startKeys(HWND target)
             // File Explorer's own going to another folder says so too: by
             // what is in front now, not by the event.
             const HWND foreground = ::GetForegroundWindow();
-            if (window != m_hit.root && (!foreground || ::GetAncestor(foreground, GA_ROOT) != m_hit.root))
+            if (window != m_hit.root && (!foreground || folderview::frameOf(foreground) != m_hit.root))
                 dismiss();
         });
     };
@@ -863,7 +919,9 @@ void FolderMenu::goTo(const QString& folder)
         });
         return;
     }
-    if (m_hit.surface != folderview::Surface::Explorer) {
+    if (m_hit.surface != folderview::Surface::Explorer || m_hit.hosted) {
+        // A hosted view (360文件夹) cannot be sent elsewhere: opened as File
+        // Explorer would, it comes in a new tab of that program's.
         if (m_opener)
             m_opener(folder);
         else

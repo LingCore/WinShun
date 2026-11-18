@@ -26,6 +26,13 @@ enum class Surface {
 
 struct Hit {
     Surface surface = Surface::None;
+    // An Explorer folder view hosted by another program: 360文件夹's
+    // (360ExplorerFrame, Windows' Explorer browser control in its own
+    // process). Not among the shell's windows, so its folder is not asked of
+    // them (hostedexplorer::place) and no tab of it can be sent elsewhere:
+    // a folder chosen opens as File Explorer would, which 360文件夹 takes
+    // into a tab of its own. `tab` is then the browser control shown.
+    bool hosted = false;
     // The window clicked on: DirectUIHWND (File Explorer's items view), or
     // SysListView32 (the desktop's; File Explorer's own when ExplorerPatcher
     // or a Windhawk mod brings the classic list view back, GitHub #45).
@@ -56,7 +63,17 @@ bool sameDesktop(HWND first, HWND second);
 // Whether the top-level window `root` is a File Explorer folder window (the
 // tab on top is the Hit's) or the desktop, by window classes alone; None
 // for anything else. For the hotkey, which has no point: `pt` is left zero.
+// Also a File Explorer window Clover holds in a tab (see frameOf), and
+// 360文件夹's window (hosted).
 Hit classifyWindow(HWND root);
+
+// The window `window` is part of, as a window of its own: up its parents
+// while it is a child window. The top-level window, mostly; but Clover puts
+// File Explorer's whole window (CabinetWClass) in its tab, a parent given to
+// a window that is no child (no WS_CHILD): that one, which is what Windows
+// has in front (GetForegroundWindow) and what has the keyboard (measured on
+// Clover 3.5.6). Class and style reads only: any thread.
+HWND frameOf(HWND window);
 
 // Opus typing: exactly its file-display window, never an Edit/FAYT/path
 // field nested under it. Class queries only: safe on the keyboard hook.
