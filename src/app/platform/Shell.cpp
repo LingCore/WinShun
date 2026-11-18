@@ -11,6 +11,7 @@
 #include "SystemCatalog.h"
 #include "Win32Util.h"
 
+#include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
@@ -34,6 +35,7 @@
 #include <wrl/implements.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <mutex>
@@ -742,6 +744,99 @@ void openPowerShell(const QString& folder, std::function<void(bool)> done)
         }
         const bool ok = !program.isEmpty() && executeUnelevated(program.toStdWString(), L"-NoLogo -NoExit",
             QDir::toNativeSeparators(folder).toStdWString());
+        if (done)
+            done(ok);
+    });
+}
+
+namespace {
+
+QString systemFolder()
+{
+    wchar_t system[MAX_PATH] {};
+    const UINT length = ::GetSystemDirectoryW(system, MAX_PATH);
+    return length > 0 && length < MAX_PATH ? QString::fromWCharArray(system, length) : QString();
+}
+
+// Git for Windows' git-bash.exe: where its installer says, else beside the
+// git on PATH (<Git>\cmd\git.exe).
+QString gitBash()
+{
+    for (const QString& key : {u"HKEY_LOCAL_MACHINE\\SOFTWARE\\GitForWindows"_s, u"HKEY_CURRENT_USER\\SOFTWARE\\GitForWindows"_s}) {
+        const QString install = QSettings(key, QSettings::Registry64Format).value(u"InstallPath"_s).toString();
+        if (const QFileInfo bash(install + u"\\git-bash.exe"_s); !install.isEmpty() && bash.isFile())
+            return QDir::toNativeSeparators(bash.absoluteFilePath());
+    }
+    if (const QString git = commandlaunch::resolveProgram(u"git"_s); !git.isEmpty()) {
+        QDir root = QFileInfo(git).dir();
+        if (root.cdUp() && QFileInfo(root.filePath(u"git-bash.exe"_s)).isFile())
+            return QDir::toNativeSeparators(root.filePath(u"git-bash.exe"_s));
+    }
+    return {};
+}
+
+// wsl.exe, when a Linux distribution is registered for the user (Windows 11
+// has wsl.exe even without one: it would only offer to install).
+QString wslProgram()
+{
+    const QString program = systemFolder() + u"\\wsl.exe"_s;
+    QSettings distributions(u"HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Lxss"_s, QSettings::NativeFormat);
+    return QFileInfo(program).isFile() && !distributions.childGroups().isEmpty() ? program : QString();
+}
+
+QString terminalProgram(const QString& id)
+{
+    if (id == u"cmd")
+        return systemFolder() + u"\\cmd.exe"_s;
+    if (id == u"powershell")
+        return systemFolder() + u"\\WindowsPowerShell\\v1.0\\powershell.exe"_s;
+    if (id == u"pwsh")
+        return commandlaunch::resolveProgram(u"pwsh"_s);
+    if (id == u"wt")
+        return commandlaunch::resolveProgram(u"wt"_s);
+    if (id == u"gitbash")
+        return gitBash();
+    if (id == u"wsl")
+        return wslProgram();
+    return {};
+}
+
+} // namespace
+
+std::vector<TerminalChoice> installedTerminals()
+{
+    std::vector<TerminalChoice> found;
+    const std::array<std::pair<QString, QString>, 6> known {{
+        {u"cmd"_s, QCoreApplication::translate("Shell", "命令提示符")},
+        {u"powershell"_s, u"Windows PowerShell"_s},
+        {u"pwsh"_s, u"PowerShell 7"_s},
+        {u"wt"_s, QCoreApplication::translate("Shell", "Windows 终端（默认配置）")},
+        {u"gitbash"_s, u"Git Bash"_s},
+        {u"wsl"_s, u"WSL"_s},
+    }};
+    for (const auto& [id, name] : known) {
+        if (!terminalProgram(id).isEmpty())
+            found.push_back({id, name});
+    }
+    found.push_back({u"custom"_s, QCoreApplication::translate("Shell", "自定义命令")});
+    return found;
+}
+
+void openTerminalIn(const QString& choice, const QString& command, const QString& folder, std::function<void(bool)> done)
+{
+    if (choice == u"custom" && !command.trimmed().isEmpty()) { // {query} is the folder, which it also runs in
+        runCustom(command, folder, QDir::toNativeSeparators(folder), std::move(done));
+        return;
+    }
+    const QString program = choice == u"cmd" || choice == u"custom" ? QString() : terminalProgram(choice);
+    if (program.isEmpty()) { // cmd, and any no longer there: a share needs its pushd
+        openTerminal(folder, std::move(done));
+        return;
+    }
+    ::AllowSetForegroundWindow(ASFW_ANY);
+    runOnShellThread([program = program.toStdWString(), arguments = commandlaunch::terminalArguments(choice, folder).toStdWString(),
+                         dir = QDir::toNativeSeparators(folder).toStdWString(), done = std::move(done)] {
+        const bool ok = executeUnelevated(program, arguments, dir);
         if (done)
             done(ok);
     });

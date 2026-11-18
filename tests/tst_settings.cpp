@@ -701,6 +701,34 @@ private slots:
         QCOMPARE(unknown.clipboardOpenAt, u"caret"_s);
     }
 
+    // 在终端中打开 (GitHub #386): the command prompt unless chosen; a choice
+    // and its own command line kept; an unknown one is the command prompt.
+    void terminalChoice()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.terminal, u"cmd"_s);
+        QVERIFY(settings.terminalCommand.isEmpty());
+        settings.terminal = u"custom"_s;
+        settings.terminalCommand = uR"(C:\msys64\msys2_shell.cmd -ucrt64 -here)"_s;
+        settings.save();
+        ws::Settings restored;
+        restored.load();
+        QCOMPARE(restored.terminal, u"custom"_s);
+        QCOMPARE(restored.terminalCommand, uR"(C:\msys64\msys2_shell.cmd -ucrt64 -here)"_s);
+        QSettings(ws::Settings::filePath(), QSettings::IniFormat).setValue(u"Results/Terminal"_s, u"PWSH"_s);
+        ws::Settings cased;
+        cased.load();
+        QCOMPARE(cased.terminal, u"pwsh"_s);
+        QSettings(ws::Settings::filePath(), QSettings::IniFormat).setValue(u"Results/Terminal"_s, u"fish"_s);
+        ws::Settings unknown;
+        unknown.load();
+        QCOMPARE(unknown.terminal, u"cmd"_s);
+    }
+
     // 界面大小: four steps, kept as written (密集 is the one line per result, GitHub #352);
     // an unknown name is 标准.
     void uiSize()

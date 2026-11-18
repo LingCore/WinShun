@@ -447,6 +447,11 @@ qt_add_resources(WinShun "phosphor"
           "${PROJECT_SOURCE_DIR}/third_party/phosphor/Phosphor-Fill.ttf")
 
 target_include_directories(WinShun PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+# The QML compiler makes SettingsWindow.qml one C++ file with more sections
+# than an object file holds by default (C1128).
+if(MSVC)
+    target_compile_options(WinShun PRIVATE /bigobj)
+endif()
 target_link_libraries(WinShun PRIVATE
     wscore wsmcp wsplugin
     wscapture # the screen capture (src/capture)

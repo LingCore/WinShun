@@ -55,6 +55,7 @@
 #include "platform/SiteIcons.h"
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
+#include "platform/Shell.h"
 #include "platform/FolderViewHit.h"
 #include "platform/TypeToSearch.h"
 #include "platform/WindowEffects.h"
@@ -8467,6 +8468,20 @@ int runResults(const QStringList& args)
         return checkClipboardFilePreview(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-select"_s))
         return checkClipboardTextSelection(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (const qsizetype at = args.indexOf(u"--terminal-launch"_s); at >= 0 && at + 2 < args.size()) {
+        // 在终端中打开 for real (GitHub #386): <id> <folder> [command]. Only
+        // started here; the script that runs it finds the new shell, checks
+        // its folder and closes it.
+        const QString id = args[at + 1], folder = args[at + 2], command = args.value(at + 3);
+        auto result = std::make_shared<std::atomic<int>>(-1);
+        shell::openTerminalIn(id, command, folder, [result](bool ok) { *result = ok ? 1 : 0; });
+        QElapsedTimer waited;
+        waited.start();
+        while (*result < 0 && waited.elapsed() < 10000)
+            pump(50);
+        say(u"terminal %1 in %2: %3"_s.arg(id, folder, *result == 1 ? u"started"_s : *result == 0 ? u"failed"_s : u"no answer"_s));
+        return *result == 1 ? 0 : 4;
+    }
     if (args.contains(u"--navigation-workflows"_s))
         return checkNavigationWorkflows(&engine, out, args.contains(u"--flipped"_s)) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--search-experience"_s))

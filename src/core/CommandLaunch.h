@@ -63,6 +63,16 @@ struct Plan {
 // /c without /s mangles a quoted path with quoted arguments).
 Plan silentPlan(const QString& program, const QString& arguments, Kind kind, const Tools& tools, bool visible = false);
 
+// What follows the program on the command line that opens a terminal in
+// `folder` (在终端中打开, GitHub #386), by Settings::terminal's id: Windows
+// Terminal (wt) opens its default profile there, Git Bash (gitbash) and WSL
+// (wsl) change to it, PowerShell (powershell, pwsh) starts in it as its
+// working folder, as any other does ("" then). The folder goes as one quoted
+// argument with no backslash before the closing quote ("C:\" is "C:\.");
+// Windows Terminal reads ; as the end of its command, so it is escaped there;
+// WSL cannot change to a share and starts at home for one.
+QString terminalArguments(const QString& id, const QString& folder);
+
 // Whether text typed after the keyword may be an argument of a batch file.
 // cmd.exe reads & | < > ^ and %VARIABLES% even in an argument that is not
 // quoted, and its quotes are not the ones other programs use, so a word with

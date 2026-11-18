@@ -2052,6 +2052,36 @@ void SettingsEditor::setClipboardPasteElevated(bool on)
     commit();
 }
 
+void SettingsEditor::setTerminal(const QString& id)
+{
+    if (m_settings.terminal == id || id.isEmpty())
+        return;
+    m_settings.terminal = id;
+    commit();
+}
+
+void SettingsEditor::setTerminalCommand(const QString& command)
+{
+    if (m_settings.terminalCommand == command.trimmed())
+        return;
+    m_settings.terminalCommand = command.trimmed();
+    commit();
+}
+
+QVariantList SettingsEditor::terminals() const
+{
+    QVariantList list;
+    bool chosenListed = false;
+    for (const shell::TerminalChoice& t : shell::installedTerminals()) {
+        list.append(QVariantMap {{u"value"_s, t.id}, {u"text"_s, t.name}});
+        chosenListed = chosenListed || t.id == m_settings.terminal;
+    }
+    if (!chosenListed) // uninstalled since: said so, the command prompt opening meanwhile
+        list.insert(list.size() - 1, QVariantMap {{u"value"_s, m_settings.terminal},
+            {u"text"_s, tr("%1（没找到，现在开命令提示符）").arg(m_settings.terminal)}});
+    return list;
+}
+
 void SettingsEditor::setClipboardOpenAt(const QString& at)
 {
     if (m_settings.clipboardOpenAt == at || (at != u"caret" && at != u"pointer" && at != u"last"))

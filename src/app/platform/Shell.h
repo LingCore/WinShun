@@ -91,6 +91,19 @@ std::vector<InstalledBrowser> installedBrowsers();
 void openTerminal(const QString& folder, std::function<void(bool)> done = {});
 // PowerShell 7 when installed, otherwise Windows PowerShell, in this folder.
 void openPowerShell(const QString& folder, std::function<void(bool)> done = {});
+// What 在终端中打开 can start (GitHub #386), by the settings' ids: cmd,
+// powershell (Windows PowerShell), pwsh (PowerShell 7), wt (Windows
+// Terminal, its default profile), gitbash, wsl; those found here, in that
+// order, then custom (the user's command line).
+struct TerminalChoice {
+    QString id;
+    QString name;
+};
+std::vector<TerminalChoice> installedTerminals();
+// `folder` in the terminal chosen, with the user's normal rights; custom runs
+// `command` there, {query} the folder. One not found (uninstalled since), or
+// custom with no command: the command prompt.
+void openTerminalIn(const QString& choice, const QString& command, const QString& folder, std::function<void(bool)> done = {});
 // A command or shell location ("%windir%\system32\control.exe /name X",
 // "ms-settings:display"): a place in Windows (see SystemCatalog).
 void run(const QString& command, std::function<void(bool)> done = {});

@@ -4348,6 +4348,61 @@ Window {
                 }
 
                 SettingRow {
+                    // What a folder's or file's 在终端中打开 starts (GitHub #386):
+                    // only what is found here, then a command of the user's own.
+                    id: terminalRow
+                    readonly property bool custom: window.editor.terminal === "custom"
+                    title: qsTr("在终端中打开")
+                    keywords: qsTr("终端;命令行;命令提示符;PowerShell;pwsh;Windows Terminal;Git Bash;WSL;MSYS2;bash;shell;terminal").split(";")
+                    description: qsTr("结果上的“在终端中打开”用哪个。选“Windows 终端”就用它里面设的默认配置")
+                    bodyShown: custom
+
+                    ChoiceBox {
+                        id: terminalPicker
+                        objectName: "terminalPicker"
+                        implicitWidth: 240
+                        implicitHeight: 36
+                        model: window.editor.terminals
+                        textRole: "text"
+                        valueRole: "value"
+                        currentIndex: window.editor.terminals.findIndex(t => t.value === window.editor.terminal)
+                        onActivated: window.editor.terminal = currentValue
+                        Accessible.name: qsTr("在终端中打开")
+                        dpr: window.dpr
+                        leftPadding: 12
+                        contentItem: Text {
+                            text: terminalPicker.displayText
+                            font: terminalPicker.font
+                            color: terminalPicker.palette.buttonText
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        Connections {
+                            target: terminalPicker.popup
+                            function onOpened() { window.frame.addPopup(terminalPicker.popup.background) }
+                        }
+                    }
+
+                    body: [
+                        InputBox {
+                            dpr: window.dpr
+                            objectName: "terminalCommandBox"
+                            width: Math.min(parent.width, 420)
+                            text: window.editor.terminalCommand
+                            placeholder: qsTr("例如 %1").arg("C:\\msys64\\msys2_shell.cmd -ucrt64 -here")
+                            onEditingFinished: window.editor.terminalCommand = text
+                        },
+                        Text {
+                            width: parent.width
+                            text: qsTr("在那个文件夹里运行；要把文件夹路径当参数时写 {query}。没填命令时开命令提示符")
+                            color: Theme.subtext
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+                    ]
+                }
+
+                SettingRow {
                     title: qsTr("用数字键直接打开")
                     unlocks: [resultNumberHintsRow]
                     keywords: qsTr("快捷键;数字键;序号;Ctrl+1;Alt+1;冲突;hotkey").split(";")
@@ -4387,7 +4442,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("字母直达")
-                    description: qsTr("轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板里 Shift+字母是粘贴为纯文本。再按一下那个键或按 Esc 退出。启动器和剪贴板共用")
+                    description: qsTr("轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板和对话框旁的搜索栏里 Shift+字母是选中那一条，剪贴板里可以选几条一起粘贴。再按一下那个键或按 Esc 退出。启动器和剪贴板共用")
                     keywords: qsTr("快捷键;字母;单手;vim;vi;提示;跳转;直达;hint").split(";")
 
                     ToggleSwitch {

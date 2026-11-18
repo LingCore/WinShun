@@ -115,6 +115,7 @@ const QStringList kDefaultPreferredTypes {u"exe"_s, u"bat"_s, u"cmd"_s, u"ps1"_s
 // some defaults are the machine's at the first start (clipboard history,
 // renderer, low memory), which must stay as they were.
 const QString kPreferredTypesKey = u"Results/PreferredTypes"_s;
+const QStringList kTerminals {u"cmd"_s, u"powershell"_s, u"pwsh"_s, u"wt"_s, u"gitbash"_s, u"wsl"_s, u"custom"_s}; // Settings::terminal
 
 // Plain-text formats: the scanner reads their raw bytes. Documents (docx,
 // xlsx, pdf...) are read by WinShunExtract.exe instead, under their own
@@ -1031,6 +1032,10 @@ void Settings::load()
     openHotkey = previewkeys::normalizedOpen(readOrDefault(s, u"Results/OpenHotkey"_s, d.openHotkey).trimmed());
     if (openHotkey == previewHotkey)
         openHotkey.clear();
+    terminal = readOrDefault(s, u"Results/Terminal"_s, d.terminal).trimmed().toLower();
+    if (!kTerminals.contains(terminal))
+        terminal = d.terminal;
+    terminalCommand = readOrDefault(s, u"Results/TerminalCommand"_s, d.terminalCommand).trimmed();
 
     theme = readOrDefault(s, u"Appearance/Theme"_s, d.theme).trimmed().toLower();
     if (theme != u"light" && theme != u"dark")
@@ -1430,6 +1435,8 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
     s.setValue(u"Results/OpenHotkey"_s, openHotkey);
+    s.setValue(u"Results/Terminal"_s, terminal);
+    s.setValue(u"Results/TerminalCommand"_s, terminalCommand);
     s.setValue(u"Results/PreviewFollowsPointer"_s, previewFollowsPointer);
     s.setValue(u"Results/PreviewRestore"_s, previewRestore);
     s.setValue(u"Appearance/Theme"_s, theme);

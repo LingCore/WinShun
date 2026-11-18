@@ -2000,6 +2000,7 @@ void App::applySettings(bool initial)
     m_preview->setBuiltInOnly(m_settings.previewWith == u"builtin");
     m_launcher->setPreviewHotkey(m_settings.previewHotkey);
     m_launcher->setOpenHotkey(m_settings.openHotkey);
+    m_launcher->setTerminal(m_settings.terminal, m_settings.terminalCommand);
     m_launcher->setPreviewFollowsPointer(m_settings.previewFollowsPointer);
     m_launcher->setPreviewRestore(m_settings.previewRestore);
     m_launcher->setReopenWhereLeft(m_settings.reopenWhereLeft);

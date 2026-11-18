@@ -641,6 +641,22 @@ std::vector<Entry> buildCatalog()
         e.after = [](State& s) { s.settings.openHotkey = previewkeys::normalizedOpen(s.settings.openHotkey); };
         add(std::move(e));
     }
+    add(choice({"Results/Terminal", QT_TRANSLATE_NOOP("AiSettings", "在终端中打开"), "results", 2,
+                   "Which terminal a result's 在终端中打开 starts in its folder. One not installed opens the command prompt."},
+        &Settings::terminal,
+        {{u"cmd"_s, u"Command Prompt"_s, QT_TRANSLATE_NOOP("AiSettings", "命令提示符")},
+            {u"powershell"_s, u"Windows PowerShell"_s, QT_TRANSLATE_NOOP("AiSettings", "Windows PowerShell")},
+            {u"pwsh"_s, u"PowerShell 7"_s, QT_TRANSLATE_NOOP("AiSettings", "PowerShell 7")},
+            {u"wt"_s, u"Windows Terminal with its default profile"_s, QT_TRANSLATE_NOOP("AiSettings", "Windows 终端（默认配置）")},
+            {u"gitbash"_s, u"Git Bash"_s, QT_TRANSLATE_NOOP("AiSettings", "Git Bash")},
+            {u"wsl"_s, u"WSL, the default Linux distribution"_s, QT_TRANSLATE_NOOP("AiSettings", "WSL")},
+            {u"custom"_s, u"Results/TerminalCommand, run in the folder; {query} is the folder"_s, QT_TRANSLATE_NOOP("AiSettings", "自定义命令")}}));
+    {
+        Entry e = base({"Results/TerminalCommand", QT_TRANSLATE_NOOP("AiSettings", "自定义终端命令"), "results", 2,
+            "The command line Results/Terminal custom runs in the folder, {query} for the folder (quoted as one argument), e.g. C:\\msys64\\msys2_shell.cmd -ucrt64 -here."}, Type::Text);
+        e.field = &Settings::terminalCommand;
+        add(std::move(e));
+    }
     add(boolean({"Launcher/ClearOnOpen", QT_TRANSLATE_NOOP("AiSettings", "每次打开时清空搜索"), "results", 2,
                     "Each time the search box opens nothing is typed and the scope is 全部, instead of keeping the last words selected."},
         &Settings::clearOnOpen));

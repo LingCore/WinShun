@@ -189,4 +189,23 @@ bool safeForCmd(const QString& words)
         && !words.contains(u'\n') && !words.contains(u'\r');
 }
 
+QString terminalArguments(const QString& id, const QString& folder)
+{
+    QString dir = QDir::toNativeSeparators(folder);
+    const auto quoted = [](QString path) {
+        if (path.endsWith(u'\\'))
+            path += u'.';
+        return u'"' + path + u'"';
+    };
+    if (id == u"powershell" || id == u"pwsh")
+        return u"-NoLogo -NoExit"_s;
+    if (id == u"wt")
+        return u"-d "_s + quoted(dir.replace(u';', u"\\;"_s));
+    if (id == u"gitbash")
+        return u"--cd="_s + quoted(dir);
+    if (id == u"wsl" && !dir.startsWith(u"\\\\"_s))
+        return u"--cd "_s + quoted(dir);
+    return {};
+}
+
 } // namespace ws::commandlaunch

@@ -313,6 +313,11 @@ struct Settings {
     // A second key that opens the result as Enter does (GitHub #293); local,
     // empty: none. Never Space, nor the preview's (previewkeys::normalizedOpen).
     QString openHotkey;
+    // What 在终端中打开 starts (GitHub #386; shell::installedTerminals): cmd,
+    // powershell, pwsh, wt, gitbash, wsl, or custom: terminalCommand, run in
+    // the folder with {query} for it.
+    QString terminal = QStringLiteral("cmd");
+    QString terminalCommand;
     // An open preview shows the row the mouse rests on; off: only the current
     // row (big files are not opened one after another by a passing pointer,
     // GitHub #224).

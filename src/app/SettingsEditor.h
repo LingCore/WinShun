@@ -239,6 +239,11 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString previewHotkeyError READ previewHotkeyError NOTIFY changed FINAL)
     Q_PROPERTY(QString openHotkey READ openHotkey WRITE setOpenHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString openHotkeyError READ openHotkeyError NOTIFY changed FINAL)
+    Q_PROPERTY(QString terminal READ terminal WRITE setTerminal NOTIFY changed FINAL) // Settings::terminal
+    Q_PROPERTY(QString terminalCommand READ terminalCommand WRITE setTerminalCommand NOTIFY changed FINAL)
+    // {id, name}: the terminals found on this computer (shell::installedTerminals), and the one
+    // chosen if it is not among them any more. Read as the settings open.
+    Q_PROPERTY(QVariantList terminals READ terminals CONSTANT FINAL)
     Q_PROPERTY(bool previewFollowsPointer READ previewFollowsPointer WRITE setPreviewFollowsPointer NOTIFY changed FINAL)
     Q_PROPERTY(bool previewRestore READ previewRestore WRITE setPreviewRestore NOTIFY changed FINAL)
     // Which of the chosen number keys are other programs' hotkeys, or Win顺's
@@ -843,6 +848,11 @@ public:
     QString openHotkey() const { return m_settings.openHotkey; }
     void setOpenHotkey(const QString& shortcut);
     QString openHotkeyError() const { return m_openHotkeyError; }
+    QString terminal() const { return m_settings.terminal; }
+    void setTerminal(const QString& id);
+    QString terminalCommand() const { return m_settings.terminalCommand; }
+    void setTerminalCommand(const QString& command);
+    QVariantList terminals() const;
     bool previewFollowsPointer() const { return m_settings.previewFollowsPointer; }
     void setPreviewFollowsPointer(bool on);
     bool previewRestore() const { return m_settings.previewRestore; }

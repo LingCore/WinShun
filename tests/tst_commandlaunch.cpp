@@ -54,6 +54,22 @@ class TestCommandLaunch : public QObject {
     Q_OBJECT
 
 private slots:
+    // 在终端中打开 (GitHub #386): each terminal is told the folder its own way,
+    // as one argument even with spaces, a drive's root and a semicolon in it.
+    void terminalArgumentsPerTerminal()
+    {
+        QCOMPARE(terminalArguments(u"wt"_s, uR"(D:\dev\my project)"_s), uR"(-d "D:\dev\my project")"_s);
+        QCOMPARE(terminalArguments(u"wt"_s, u"C:/"_s), uR"(-d "C:\.")"_s); // no \" closing it
+        QCOMPARE(terminalArguments(u"wt"_s, uR"(D:\a;b)"_s), uR"(-d "D:\a\;b")"_s); // not two commands
+        QCOMPARE(terminalArguments(u"gitbash"_s, uR"(D:\dev\my project)"_s), uR"(--cd="D:\dev\my project")"_s);
+        QCOMPARE(terminalArguments(u"wsl"_s, uR"(D:\dev)"_s), uR"(--cd "D:\dev")"_s);
+        QCOMPARE(terminalArguments(u"wsl"_s, uR"(\\server\share\docs)"_s), QString()); // at home: no share there
+        QCOMPARE(terminalArguments(u"pwsh"_s, uR"(D:\dev)"_s), u"-NoLogo -NoExit"_s); // the folder is its working one
+        QCOMPARE(terminalArguments(u"powershell"_s, uR"(D:\dev)"_s), u"-NoLogo -NoExit"_s);
+        QCOMPARE(terminalArguments(u"cmd"_s, uR"(D:\dev)"_s), QString());
+        QCOMPARE(terminalArguments(u"custom"_s, uR"(D:\dev)"_s), QString());
+    }
+
     void kindsByExtensionAndSubsystem()
     {
         const Tools tools = systemTools();

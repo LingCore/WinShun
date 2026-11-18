@@ -301,7 +301,7 @@ public:
     // Alternate: Shift+Enter, a plugin row's third action (Open elsewhere).
     // FavoriteFolder: the folder a file is in into the favorites.
     // EditFavorite: the settings' 收藏夹 page, at the row's favorite.
-    // OpenTerminal: a command prompt in a folder, or in the folder a file is in.
+    // OpenTerminal: the terminal chosen (setTerminal) in a folder, or in the folder a file is in.
     // PluginAction + n: the nth of a plugin row's actions (its context menu).
     // PluginFileAction + n: the nth of the plugins' `files` commands for a
     // file's or folder's row, or the selection (Catalog::fileCommands; #113).
@@ -575,6 +575,12 @@ public:
     Q_INVOKABLE bool isPreviewKey(int key, int modifiers) const;
     QString openHotkey() const { return m_openHotkey; }
     void setOpenHotkey(const QString& shortcut);
+    // What OpenTerminal starts (Settings::terminal, terminalCommand; GitHub #386).
+    void setTerminal(const QString& id, const QString& command)
+    {
+        m_terminal = id;
+        m_terminalCommand = command;
+    }
     Q_INVOKABLE bool isOpenKey(int key, int modifiers) const;
     void setNumberHints(const QString& hints);
     bool letterJump() const { return m_letterJump; }
@@ -1485,6 +1491,8 @@ private:
     bool m_webSuggestions = true;
     bool m_webFallback = true;
     QString m_webBrowser;
+    QString m_terminal = QStringLiteral("cmd");
+    QString m_terminalCommand;
     void openWebAddress(const QString& url) const; // in m_webBrowser, or the default one
     std::optional<SearchResult> webFallbackRow() const;
     std::optional<SearchResult> webAddressRow() const;

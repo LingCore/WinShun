@@ -5459,7 +5459,7 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
     case RemoveFavorite:
     case OpenTerminal:
         remember(r.path, m_shownText);
-        shell::openTerminal(r.isDir ? r.path : folderOf(r.path), reportFailure(r.name));
+        shell::openTerminalIn(m_terminal, m_terminalCommand, r.isDir ? r.path : folderOf(r.path), reportFailure(r.name));
         emit dismissRequested();
         break;
     case FavoriteFolder:
