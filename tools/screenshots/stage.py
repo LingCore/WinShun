@@ -42,6 +42,7 @@ CHANGED = {
     "发给客户": 60 * 24 * 45, "发给客户/报价单 v2.md": 60 * 24 * 45,
     "下载": 60 * 24 * 30, "下载/安装说明.txt": 60 * 24 * 30,
     "2026年第三季度经营分析报告_终版": 60 * 24 * 20, "2026年第三季度经营分析报告_终版/摘要.md": 60 * 24 * 20,
+    "演示视频.mov": 60 * 24 * 40,  # release035.py makes it; old, so it stays out of "newest"
 }
 
 # The demo profile's favorites: kind, path in the demo folder, name, keyword.
