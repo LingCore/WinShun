@@ -2992,6 +2992,13 @@
 - **做法**：自己写 `visible`（面板里是 `panel.columnsWidth > list.width`）。以后给 Controls 的滚动条换外观时都要这样处理，或者用项目自己的 `ListScrollBar`。
 - **验证**：`WinShun.exe --preview-results <目录> --file-metadata` 的面板检查：列放得下时滚动条不可见、底部留白 4；把“名称”列拉到 2000 后可见、留白 14；存图 `panel-columns-fit.png`、`panel-columns-wide.png`。
 
+### Clover、360文件夹：顶层窗口不是 CabinetWClass，360 还不在 ShellWindows 里
+
+- **现象**：2026-11-18 用户反馈（反馈表）：装了 Clover 或 360文件夹后，双击空白处没有菜单、打字不弹搜索框。
+- **原因**：Clover 把每个资源管理器窗口（`CabinetWClass`）收进自己的 `Clover_WidgetWin_*` 里当标签，却不给它加 `WS_CHILD`：`GetForegroundWindow` 仍是 `CabinetWClass`，`GetAncestor(GA_ROOT)` 却是 Clover 的窗口，按 `GA_ROOT` 比的地方全对不上。360文件夹是自己的 `360ExplorerFrame` > `360ExplorerView`（每个标签一个，只有显示的那个可见）> `ExplorerBrowserControl` > 资源管理器同样的 `SHELLDLL_DefView`／`DirectUIHWND`；它的标签不在 `ShellWindows` 里（只有几条死项，`Quit` 都报 0x80004001），问不出路径；它打开 `explorer.exe <路径>` 时开一个新标签。两者还都自带“双击空白处跳到上层目录”（默认开），和菜单抢同一次双击。
+- **做法**：找窗口的“框”用 `folderview::frameOf`（沿 `GA_PARENT` 往上爬到第一个不带 `WS_CHILD` 的），普通窗口和 `GA_ROOT` 一样，Clover 里是 `CabinetWClass`；Clover 的标签在 `ShellWindows` 里，`findTab`／`goTo` 照用。360 的文件夹由 `hostedexplorer::place` 推断：标签标题（文件夹显示名）＋ UIA 列出的前 16 个名字，对索引里同名文件夹的子项（`shownfolder::pick`），盘符看“(X:)”，已知文件夹按显示名；选文件夹时走 `shell::open`（开新标签）。两者的上层开关：Clover 是 `clover.exe` 旁 `config.ini` 的 `[Seting] IsDoubleClickToNavigateUp`（**Clover 退出时才写**，运行中改了文件不变），360 是 `HKCU\Software\360FileBrowser\Setting\dbclick_to_parent`（REG_DWORD，取消勾选立刻写 0；没有这一项就是开）。开着时 `FolderMenu` 让出（日志步骤 `goes-up`）。
+- **验证**：Win10 虚拟机分别只装一个（两者同装会互相抢）：Clover 3.5.6 双击出菜单、打字带文件夹、开关开着时让出；360文件夹 双击出菜单（“在‘fm3’里搜索”）、打字日志 `360文件夹: 6 names listed, folder known`、菜单里选“最近的文件夹”切到已开的标签。Clover 捆绑广告程序（会抢焦点），只在虚拟机里装。
+
 ### Directory Opus 从外面看不出双击落在了空白处
 
 - **现象**：2026-10-14 用户反馈：在 Directory Opus 里双击空白处没有文件夹菜单（当时只做了资源管理器和桌面）。
