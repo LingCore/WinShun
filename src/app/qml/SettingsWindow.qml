@@ -3424,7 +3424,7 @@ Window {
                         onClicked: window.editor.addExcludedFolder()
                     }
 
-                    body: Rectangle {
+                    body: [Rectangle {
                         width: parent.width
                         height: Math.max(pathList.implicitHeight, 40)
                         radius: Theme.controlRadius
@@ -3496,7 +3496,23 @@ Window {
                                 }
                             }
                         }
-                    }
+                    }, Text { // some files only: by name, on the next tab (GitHub #374)
+                        text: qsTr("只想跳过某些文件？到“名称和类型”里按文件名（可用 *）或扩展名跳过") + "  ›"
+                        color: filesLink.pressed ? Theme.subtext : Theme.accent
+                        font.pixelSize: Theme.fontCaption
+                        font.underline: filesLink.containsMouse
+                        Accessible.role: Accessible.Link
+                        Accessible.name: text
+
+                        MouseArea {
+                            id: filesLink
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: window.showTab(1)
+                        }
+                    }]
                 }
             }
 

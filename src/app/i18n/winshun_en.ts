@@ -5705,6 +5705,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>No folders excluded</translation>
     </message>
     <message>
+        <source>只想跳过某些文件？到“名称和类型”里按文件名（可用 *）或扩展名跳过</source>
+        <translation>Only some files? Skip them by name (* works) or extension under “Names and types”</translation>
+    </message>
+    <message>
         <source>移除</source>
         <translation>Remove</translation>
     </message>
