@@ -1374,6 +1374,58 @@ private slots:
         QCOMPARE(store.payload(id).formats, newer);
     }
 
+    // Text copied in WPS (GitHub #367): its own document package, which holds
+    // a formula as one (its RTF only a picture of it), kept with the text and
+    // its HTML and RTF, through copying the same words elsewhere and a
+    // restart; dropped once the words are edited, which it would paste back.
+    void documentFormatsWithText()
+    {
+        const QByteArray packed = packClipFormats({{u"Kingsoft Data Descriptor"_s, QByteArray("<registry/>")},
+            {u"Kingsoft WPS 9.0 Format"_s, QByteArray("PK\x03\x04 m:oMath")}});
+        const auto fromWps = [&packed](const QString& words) {
+            ClipCapture c = text(words, u"WPS Office"_s);
+            c.html = "<p>x+1 over y</p>";
+            c.rtf = "{\\rtf1{\\pict x}}";
+            c.formats = packed;
+            return c;
+        };
+        QTemporaryDir dir;
+        qint64 formula = 0;
+        qint64 edited = 0;
+        {
+            ClipStore store(dir.path());
+            QVERIFY(store.open(kStart));
+            formula = store.add(fromWps(u"x+1y"_s), kStart);
+            QVERIFY(store.clip(formula)->formats);
+            ClipPayload payload = store.payload(formula);
+            QCOMPARE(payload.formats, packed);
+            QCOMPARE(payload.text, u"x+1y"_s);
+            QVERIFY(!payload.html.isEmpty() && !payload.rtf.isEmpty());
+            // The same words copied in Notepad: kept, as HTML and RTF are.
+            QCOMPARE(store.add(text(u"x+1y"_s), kStart + 1), formula);
+            QCOMPARE(store.payload(formula).formats, packed);
+            edited = store.add(fromWps(u"a+bc"_s), kStart + 2);
+            QCOMPARE(store.setText(edited, u"a+b+c"_s), ClipStore::TextChange::Changed);
+            QVERIFY(!store.clip(edited)->formats);
+            QVERIFY(store.payload(edited).formats.isEmpty());
+            // Files never keep any.
+            ClipCapture files;
+            files.kind = ClipKind::Files;
+            files.text = u"C:\\公式.docx"_s;
+            files.formats = packed;
+            const qint64 file = store.add(files, kStart + 3);
+            QVERIFY(!store.clip(file)->formats);
+            QVERIFY(store.payload(file).formats.isEmpty());
+        }
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart + 4));
+        QVERIFY(store.clip(formula)->formats);
+        QCOMPARE(store.payload(formula).formats, packed);
+        QVERIFY(!store.clip(edited)->formats);
+        QVERIFY(store.payload(edited).formats.isEmpty());
+        QCOMPARE(store.payload(edited).text, u"a+b+c"_s);
+    }
+
     // A history from before projects (and kept formats): the columns are
     // added, nothing is lost.
     void projectColumnAddedToAnOldHistory()

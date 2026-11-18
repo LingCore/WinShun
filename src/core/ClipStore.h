@@ -45,7 +45,8 @@ QByteArray clipHash(ClipKind kind, const QString& text);
 
 // A clipboard format as the program that copied it gave it, kept for what
 // text and a picture cannot paste back as it was: an equation, an embedded
-// object (GitHub #58). Registered formats by their name ("Embed Source");
+// object (GitHub #58), a formula in text copied in WPS (its own document
+// package, GitHub #367). Registered formats by their name ("Embed Source");
 // of the standard ones, "CF_UNICODETEXT" and "CF_ENHMETAFILE" (the
 // metafile's bits).
 struct ClipFormat {
@@ -106,8 +107,9 @@ struct Clip {
     // Image: it has a project (ClipStore::project), the annotated picture's
     // editable form, in a file of its own beside the PNG.
     bool project = false;
-    // Image: it is an equation or an embedded object, its picture what the
-    // list shows; the program's own formats paste it (ClipCapture::formats).
+    // The program's own formats paste it (ClipCapture::formats). Image: it is
+    // an equation or an embedded object, its picture what the list shows;
+    // text: WPS's copy of it goes before the text, RTF and HTML.
     bool formats = false;
 
     QStringList files() const; // Files, Path: the paths
@@ -148,8 +150,9 @@ struct ClipCapture {
     // the old one stays.
     QByteArray project;
     // Image: an equation or an embedded object's own formats, put on the
-    // clipboard before the picture when it is pasted (packClipFormats();
-    // empty: none). Replaced and kept like `project`.
+    // clipboard before the picture when it is pasted; text: WPS's own copy,
+    // before the text (packClipFormats(); empty: none). Not for files.
+    // Replaced and kept like `project`.
     QByteArray formats;
     // On the clipboard already when the history started: copied at some
     // earlier time, so an entry it matches stays where it is.
@@ -191,7 +194,7 @@ struct ClipPayload {
     QByteArray html;
     QByteArray rtf;
     QString imagePath; // Image: its original encoded file
-    QByteArray formats; // Image: packClipFormats(), if it has them
+    QByteArray formats; // packClipFormats(), if it has them (Clip::formats)
 };
 
 // A removed entry with everything needed to put it back (undo).

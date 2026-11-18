@@ -900,6 +900,7 @@ ClipWrite Clipboard::writeFor(
             if (!plainText) {
                 write.html = std::move(payload.html);
                 write.rtf = std::move(payload.rtf);
+                write.formats = std::move(payload.formats); // WPS's own copy (GitHub #367)
             }
             break;
         }

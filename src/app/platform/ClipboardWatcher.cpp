@@ -55,6 +55,8 @@ struct Formats {
     UINT objectDescriptor = ::RegisterClipboardFormatW(L"Object Descriptor");
     UINT embeddedObject = ::RegisterClipboardFormatW(L"Embedded Object");
     UINT embedSource = ::RegisterClipboardFormatW(L"Embed Source");
+    // WPS's own copy of what was copied (GitHub #367).
+    UINT wpsDocument = ::RegisterClipboardFormatW(L"Kingsoft WPS 9.0 Format");
     // Not for clipboard history (Windows' own documented formats).
     UINT excludeMonitoring = ::RegisterClipboardFormatW(L"ExcludeClipboardContentFromMonitorProcessing");
     UINT canIncludeInHistory = ::RegisterClipboardFormatW(L"CanIncludeInClipboardHistory");
@@ -92,7 +94,7 @@ QJsonArray diagnosticFormats(const Formats& f, bool& truncated, DWORD& error)
         {f.html, "HTML Format"}, {f.rtf, "Rich Text Format"}, {f.png, "PNG"}, {f.pngMime, "image/png"},
         {f.dropEffect, "Preferred DropEffect"}, {f.mathMl, "MathML"}, {f.objectDescriptor, "Object Descriptor"},
         {f.embeddedObject, "Embedded Object"}, {f.embedSource, "Embed Source"},
-        {f.excludeMonitoring, "ExcludeClipboardContentFromMonitorProcessing"},
+        {f.wpsDocument, "Kingsoft WPS 9.0 Format"}, {f.excludeMonitoring, "ExcludeClipboardContentFromMonitorProcessing"},
         {f.canIncludeInHistory, "CanIncludeInClipboardHistory"}, {f.viewerIgnore, "Clipboard Viewer Ignore"},
         {f.ours, "WinShun.ClipboardEntry"},
     };
@@ -263,6 +265,14 @@ bool isObject(const Formats& f)
         || (::IsClipboardFormatAvailable(f.embedSource) && equationClass(readBytes(f.objectDescriptor, 64 * 1024)));
 }
 
+// A registered format's name; empty for a standard one.
+QString registeredName(UINT format)
+{
+    wchar_t name[64];
+    const int length = format >= 0xC000 ? ::GetClipboardFormatNameW(format, name, 64) : 0;
+    return QString::fromWCharArray(name, std::max(length, 0));
+}
+
 // The name an equation's or an object's format is kept under
 // (ClipFormat::name); empty for the rest. Not kept: what links to the
 // document it came from (Link Source, ObjectLink ...), OLE's own (DataObject,
@@ -277,21 +287,31 @@ QString objectFormatName(UINT format)
         return u"CF_ENHMETAFILE"_s;
     static const QStringList kept {u"Object Descriptor"_s, u"Embedded Object"_s, u"Embed Source"_s,
         u"Rich Text Format"_s, u"HTML Format"_s, u"MathML"_s, u"MathML Presentation"_s};
-    wchar_t name[64];
-    const int length = format >= 0xC000 ? ::GetClipboardFormatNameW(format, name, 64) : 0;
-    const QString s = QString::fromWCharArray(name, std::max(length, 0));
-    return length > 0 && kept.contains(s) ? s : QString();
+    QString name = registeredName(format);
+    return kept.contains(name) ? name : QString();
 }
 
-// An equation's or an object's formats, in the order the program put them
-// (the clipboard is open); none if one is too big, or all of them more than
+// The name a word processor's own copy of copied text is kept under; empty
+// for the rest. WPS's RTF and HTML hold a formula only as a picture, its
+// document package the formula itself, which pastes back into WPS as one
+// (GitHub #367); its descriptor goes with it. The text, RTF and HTML are
+// kept as ever, for everything else.
+QString documentFormatName(UINT format)
+{
+    static const QStringList kept {u"Kingsoft Data Descriptor"_s, u"Kingsoft WPS 9.0 Format"_s};
+    QString name = registeredName(format);
+    return kept.contains(name) ? name : QString();
+}
+
+// The formats `nameOf` keeps, in the order the program put them (the
+// clipboard is open); none if one is too big, or all of them more than
 // kMaxObjectBytes: some of them might paste as something else.
-QList<ClipFormat> readObjectFormats()
+QList<ClipFormat> readKeptFormats(QString (*nameOf)(UINT))
 {
     QList<ClipFormat> formats;
     qsizetype total = 0;
     for (UINT format = ::EnumClipboardFormats(0); format != 0; format = ::EnumClipboardFormats(format)) {
-        QString name = objectFormatName(format);
+        QString name = nameOf(format);
         if (name.isEmpty())
             continue;
         bool tooBig = false;
@@ -763,6 +783,8 @@ void ClipboardWatcher::read()
                     capture.html = withoutTrailingNuls(readBytes(f.html, kMaxFormatBytes));
                 if (::IsClipboardFormatAvailable(f.rtf))
                     capture.rtf = withoutTrailingNuls(readBytes(f.rtf, kMaxFormatBytes));
+                if (::IsClipboardFormatAvailable(f.wpsDocument))
+                    capture.formats = packClipFormats(readKeptFormats(documentFormatName));
             }
         }
     }
@@ -770,7 +792,7 @@ void ClipboardWatcher::read()
     // back from (pictures are what the history lists it by).
     QList<ClipFormat> object;
     if (capture.kind != ClipKind::Files && tooBig == 0 && options.images && isObject(f))
-        object = readObjectFormats();
+        object = readKeptFormats(objectFormatName);
     // A picture only when there is no text (or it is an equation): Excel and
     // Word offer a picture of what was copied as well, which they draw only
     // when asked for it.
@@ -891,7 +913,8 @@ bool ClipboardWatcher::writeNow(const ClipWrite& data)
     };
     // An equation's or an embedded object's own formats first, as the
     // program that copied it put them: Word and WPS paste it from them, the
-    // picture after them is for the rest.
+    // picture after them is for the rest. So too WPS's own copy of text,
+    // before the text, RTF and HTML everything else pastes.
     for (const ClipFormat& format : unpackClipFormats(data.formats)) {
         if (format.name == u"CF_ENHMETAFILE"_s) {
             if (const HENHMETAFILE emf = ::SetEnhMetaFileBits(static_cast<UINT>(format.data.size()),
