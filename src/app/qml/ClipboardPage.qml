@@ -133,7 +133,7 @@ Item {
     }
     function windowHidden() {
         findingGroup = false
-        closePreview()
+        closePreview(clipboard.previewRestore) // kept for next time, if asked to (Settings::clipboardPreviewRestore)
         list.stopScrolling()
         numberHints.reset()
         closeContextMenu()
@@ -236,7 +236,8 @@ Item {
     }
 
     // The preview, of the row asked about; asked about the row it shows (or
-    // with nothing to show), it closes. Explicit previews last this opening.
+    // with nothing to show), it closes. Explicit previews last this opening,
+    // or come back the next time with clipboard.previewRestore.
     function togglePreview(index) {
         previewClickTimer.stop()
         if (previewOpen && (index === list.currentIndex || index < 0 || index >= list.count)) {
@@ -253,7 +254,8 @@ Item {
             previewOpening()
         previewOpen = true
     }
-    function closePreview() {
+    // `keepWanted`: closed with the window, it opens again with it (onPlaced).
+    function closePreview(keepWanted) {
         previewClickTimer.stop()
         clearHover()
         if (editingId > 0) { // closed over the words being changed: they are there the next time
@@ -263,7 +265,8 @@ Item {
             editOpenedPreview = false
         }
         previewOpen = false
-        clipboard.previewOpen = false
+        if (!keepWanted)
+            clipboard.previewOpen = false
     }
 
     function requestRowPreview(index) {
@@ -682,7 +685,7 @@ Item {
         target: page.clipboard
         enabled: page.controllerEventsEnabled
         function onShown() {
-            page.closePreview()
+            page.closePreview(page.clipboard.previewRestore)
             page.findingGroup = false
             input.text = ""
             page.pinyinHint = false
@@ -694,10 +697,12 @@ Item {
             page.selectFirst()
             page.focusSearch()
         }
-        function onPlaced() {
+        function onPlaced() { // ... then the preview, if it was left open and is to come back
             // Placed only now (over the caret, maybe upside down, its rows):
             // at the first row as it ends up.
             page.selectFirst()
+            if (page.clipboard.previewRestore && page.clipboard.previewOpen && list.count > 0)
+                page.showPreview()
         }
         function onListChanged() {
             page.selectionAnchor = -1

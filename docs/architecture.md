@@ -783,7 +783,7 @@ linux.do #188：“文件名都巨长显示不完，可以自行调整字体大�
 
 ## 预览（Alt+P）
 
-论坛 #157 / #225（从 Listary 来的用户：QuickLook 接管 Alt+P）、#162（Seer）、#165（开发者要看文档、图片，最好还有 DXF / 3D）。在结果上按 `Alt+P`（右键菜单“预览”也行）看一眼文件，启动器不关；再按 `Alt+P`（或点预览窗口的叉）关掉预览、键盘一直在启动器上；`Esc` 关的是启动器，不动预览：预览开着收起启动器，下次打开又回来（`state.ini` 的 `Launcher/PreviewOpen`，`Launcher::m_previewWanted`；GitHub #33）。剪贴板的预览本来就记着（`clipboard.previewOpen`），`Esc` 同样直接关窗口；↑ ↓ 换行，预览跟着换文件。剪贴板页里预览开着时，鼠标在一行上停稳 100 ms 才临时换成那一行（`ClipboardPage.hoverIndex`，`ClipRow.hoverMoved`；GitHub #47）：不动 `currentIndex`，所以回车粘贴的仍是键盘选中的行；只换内容，从不打开或关闭预览，窗口宽度不会在鼠标下跳；方向键、点击、鼠标移出列表和预览栏（移进预览栏要滚动、选字，不算离开）、行数变化都清掉它；滚轮让行在静止的鼠标下移动不算（比较上次的全局鼠标位置），拖动排序、按住 Ctrl / Shift 时也不算。
+论坛 #157 / #225（从 Listary 来的用户：QuickLook 接管 Alt+P）、#162（Seer）、#165（开发者要看文档、图片，最好还有 DXF / 3D）。在结果上按 `Alt+P`（右键菜单“预览”也行）看一眼文件，启动器不关；再按 `Alt+P`（或点预览窗口的叉）关掉预览、键盘一直在启动器上；`Esc` 关的是启动器，不动预览：预览开着收起启动器，下次打开又回来（`state.ini` 的 `Launcher/PreviewOpen`，`Launcher::m_previewWanted`；GitHub #33）。剪贴板的侧边预览从 0.22.0 起随窗口收起、下次从列表开始（GitHub #174）；打开 `Clipboard/PreviewRestore`（“再次打开时恢复预览”，PR #383）时关窗口只收起、保留 `clipboard.previewOpen`，`onPlaced` 放好位置后再 `showPreview()`；`Esc` 同样直接关窗口；↑ ↓ 换行，预览跟着换文件。剪贴板页里预览开着时，鼠标在一行上停稳 100 ms 才临时换成那一行（`ClipboardPage.hoverIndex`，`ClipRow.hoverMoved`；GitHub #47）：不动 `currentIndex`，所以回车粘贴的仍是键盘选中的行；只换内容，从不打开或关闭预览，窗口宽度不会在鼠标下跳；方向键、点击、鼠标移出列表和预览栏（移进预览栏要滚动、选字，不算离开）、行数变化都清掉它；滚轮让行在静止的鼠标下移动不算（比较上次的全局鼠标位置），拖动排序、按住 Ctrl / Shift 时也不算。
 
 - **哪一行**：键盘选中的行。鼠标停在另一行上、而且上次按方向键之后鼠标动过，才算鼠标那一行（它同时变成选中的行，`Launcher::pointerIfMoved` / `keyboardMoved`）：一边按方向键一边让鼠标停在列表上是常态，那时预览的应该是键盘走到的那行；特意把鼠标挪到某行再按 `Alt+P`，就是要看那一行。程序、网址、计算这类不是文件的行，`Alt+P` 提示“这一行没有可预览的文件”；预览开着时走到这种行，预览窗口里写同一句话，不关。
 - **为什么是 Alt+P 不是空格**：空格要打进搜索框。`Alt+P` 实测空闲（`RegisterHotKey` 探测；结果列表、搜索框都没有 Alt+字母 的访问键；剪贴板页本来就用 `Alt+P` 开关预览，一致）。在资源管理器里不接管 QuickLook 的空格。

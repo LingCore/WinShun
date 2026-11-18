@@ -68,8 +68,10 @@ class Clipboard : public QObject {
     // the hotkey is pressed again or the search field clicked (keysWanted),
     // up to the next paste or Esc. Not while it pastes into a field of Win顺's own.
     Q_PROPERTY(bool pinned READ pinned WRITE setPinned NOTIFY pinnedChanged FINAL)
-    // The preview beside the list (Alt+P, →): as it was left, next time too.
+    // The preview beside the list (Alt+P, →): as it was left, next time too
+    // when previewRestore is on (Settings::clipboardPreviewRestore).
     Q_PROPERTY(bool previewOpen READ previewOpen WRITE setPreviewOpen NOTIFY previewOpenChanged FINAL)
+    Q_PROPERTY(bool previewRestore READ previewRestore NOTIFY previewOpenChanged FINAL)
     // Its width as the user dragged it (logical pixels); 0: the default.
     Q_PROPERTY(int previewWidth READ previewWidth WRITE setPreviewWidth NOTIFY previewWidthChanged FINAL)
     Q_PROPERTY(int listWidth READ listWidth WRITE setListWidth NOTIFY listWidthChanged FINAL)
@@ -231,6 +233,8 @@ public:
     void setPinned(bool pinned);
     bool previewOpen() const { return m_previewOpen; }
     void setPreviewOpen(bool open);
+    bool previewRestore() const { return m_previewRestore; }
+    void setPreviewRestore(bool on);
     int previewWidth() const { return m_previewWidth; }
     void setPreviewWidth(int width);
     int listWidth() const { return m_listWidth; }
@@ -497,6 +501,7 @@ private:
     bool m_keysRouted = false;
     bool m_pinned = false;
     bool m_previewOpen = false;
+    bool m_previewRestore = false;
     int m_previewWidth = 0;
     int m_listWidth = 480;
     int m_windowHeight = 0;

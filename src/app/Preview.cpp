@@ -6966,7 +6966,7 @@ bool checkClipboardSizing(QQuickWindow* window, Clipboard& clipboard, Placement&
         && clipboard.listWidth() == beforeList + 30);
     check("preview_scrollbar_does_not_resize", scrollbarWorks(u"clipboardPreviewScrollBar"_s));
     check("preview_screenshot", saveGrab(window, output.filePath(u"clipboard-sizing-preview.png"_s)));
-    QMetaObject::invokeMethod(page, "closePreview");
+    QMetaObject::invokeMethod(page, "closePreview", Q_ARG(QVariant, QVariant(false))); // closePreview(keepWanted)
     settle(window);
     check("preview_close_keeps_list_size", window->width() == clipboard.listWidth() && window->height() == clipboard.windowHeight());
     clipboard.setWindowHeight(qRound(area.height() * 0.75));

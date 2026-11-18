@@ -1565,6 +1565,7 @@ private slots:
         QVERIFY(fresh.pinnedOnTop);
         QVERIFY(fresh.previewFollowsPointer);
         QVERIFY(fresh.previewRestore); // GitHub #258: a preview left open comes back, unless turned off
+        QVERIFY(!fresh.clipboardPreviewRestore); // the clipboard's closes with it (GitHub #174), unless turned on
         QCOMPARE(fresh.pluginMaxResident, 8); // GitHub #252
 
         for (const QStringView name : ws::kSortNames) {
@@ -1577,6 +1578,7 @@ private slots:
             s.pinnedOnTop = false;
             s.previewFollowsPointer = false;
             s.previewRestore = false;
+            s.clipboardPreviewRestore = true;
             s.pluginMaxResident = 0; // no limit
             s.save();
             ws::Settings back;
@@ -1588,6 +1590,7 @@ private slots:
             QVERIFY(!back.pinnedOnTop);
             QVERIFY(!back.previewFollowsPointer);
             QVERIFY(!back.previewRestore);
+            QVERIFY(back.clipboardPreviewRestore);
             QCOMPARE(back.pluginMaxResident, 0);
         }
         { // the cap is kept within reason, whatever the file says

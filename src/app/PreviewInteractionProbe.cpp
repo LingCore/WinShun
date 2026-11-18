@@ -128,9 +128,9 @@ bool checkPreviewInteractions(QQmlEngine* engine, const QDir& output)
     wait(80);
     check(!hoverWindow(), u"a quick pass does not open a preview"_s);
     hover(0, {132, 171});
-    wait(160);
+    wait(380); // counted from entering the row: 400 ms (ClipboardPage.qml hoverTimer, GitHub #324)
     auto* popup = hoverWindow();
-    check(popup, u"200ms dwell opens without requiring a click or a perfectly still hand"_s);
+    check(popup, u"a dwell opens without requiring a click or a perfectly still hand"_s);
     if (!popup) return false;
     wait(50);
     popup->grabWindow();
@@ -144,7 +144,7 @@ bool checkPreviewInteractions(QQmlEngine* engine, const QDir& output)
     check(popup->property("info").toMap().value(u"text"_s).toString() == u"短文本 / Short note", u"short entry content"_s);
     check(popup->grabWindow().save(output.filePath(u"clipboard-short.png"_s)), u"short preview screenshot"_s);
     hover(1, {132, 220});
-    wait(240);
+    wait(460);
     popup = hoverWindow();
     check(popup && popup->height() > shortHeight && popup->height() <= 480, u"long content grows within the height limit"_s);
     if (!popup) return false;
@@ -161,7 +161,7 @@ bool checkPreviewInteractions(QQmlEngine* engine, const QDir& output)
         check(window->geometry() == original, u"scrolling preview does not move or resize the clipboard list"_s);
     }
     hover(2, {132, 270});
-    wait(300);
+    wait(460);
     popup = hoverWindow();
     check(popup && popup->property("info").toMap().value(u"kind"_s).toInt() == 4, u"hover follows a real image entry"_s);
     if (!popup) return false;
@@ -185,7 +185,7 @@ bool checkPreviewInteractions(QQmlEngine* engine, const QDir& output)
         const QPointF at = row->mapToScene({row->width() / 2, row->height() / 2});
         QMouseEvent move(QEvent::MouseMove, at, window->mapToGlobal(at), Qt::NoButton, {}, {});
         QCoreApplication::sendEvent(window, &move);
-        wait(250);
+        wait(460);
         check(hoverWindow(), u"production row MouseArea forwards a real Qt pointer event"_s);
         QMouseEvent leaveRow(QEvent::MouseMove, QPointF(20, 10), window->mapToGlobal(QPointF(20, 10)), Qt::NoButton, {}, {});
         QCoreApplication::sendEvent(window, &leaveRow);
@@ -202,6 +202,28 @@ bool checkPreviewInteractions(QQmlEngine* engine, const QDir& output)
     clipboard.handlePlaced();
     wait(70);
     check(!page->property("previewOpen").toBool() && !hoverWindow(), u"reopening does not restore either preview"_s);
+    // 再次打开时恢复预览 on: the side preview left open comes back, the hover one does not.
+    clipboard.setPreviewRestore(true);
+    QMetaObject::invokeMethod(page, "togglePreview", Q_ARG(QVariant, 0));
+    wait(70);
+    window->hide();
+    clipboard.handleHidden();
+    check(!page->property("previewOpen").toBool() && clipboard.previewOpen(), u"closing keeps a preview to restore"_s);
+    window->show();
+    clipboard.handleShown();
+    clipboard.handlePlaced();
+    wait(70);
+    check(page->property("previewOpen").toBool() && !hoverWindow(), u"reopening restores the side preview when asked to"_s);
+    QMetaObject::invokeMethod(page, "togglePreview", Q_ARG(QVariant, 0)); // closed by hand: not back next time
+    wait(70);
+    window->hide();
+    clipboard.handleHidden();
+    window->show();
+    clipboard.handleShown();
+    clipboard.handlePlaced();
+    wait(70);
+    check(!page->property("previewOpen").toBool() && !clipboard.previewOpen(), u"a preview closed by hand stays closed"_s);
+    clipboard.setPreviewRestore(false);
     // A pinned row's handle, dragged onto the next row, moves it there in its
     // group's own order. The row's buttons are lent (RowActionsPool): they
     // stay on it while the handle is held, though the mouse leaves the row.

@@ -1196,6 +1196,7 @@ void Settings::load()
         s.value(u"Clipboard/AtPointer"_s, false).toBool() ? u"pointer"_s : d.clipboardOpenAt).trimmed().toLower();
     if (clipboardOpenAt != u"caret" && clipboardOpenAt != u"pointer" && clipboardOpenAt != u"last")
         clipboardOpenAt = d.clipboardOpenAt;
+    clipboardPreviewRestore = readOrDefault(s, u"Clipboard/PreviewRestore"_s, d.clipboardPreviewRestore);
     clipboardPauseInFullScreen = readOrDefault(s, u"Clipboard/PauseInFullScreen"_s, d.clipboardPauseInFullScreen);
     clipboardFlipAbove = readOrDefault(s, u"Clipboard/FlipAbove"_s, d.clipboardFlipAbove);
     clipboardHoldToStep = readOrDefault(s, u"Clipboard/HoldToStep"_s, d.clipboardHoldToStep);
@@ -1502,6 +1503,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/KeepPlace"_s, clipboardKeepPlace);
     s.setValue(u"Clipboard/OpenAt"_s, clipboardOpenAt);
     s.remove(u"Clipboard/AtPointer"_s); // said by OpenAt now
+    s.setValue(u"Clipboard/PreviewRestore"_s, clipboardPreviewRestore);
     s.setValue(u"Clipboard/PauseInFullScreen"_s, clipboardPauseInFullScreen);
     s.setValue(u"Clipboard/FlipAbove"_s, clipboardFlipAbove);
     s.setValue(u"Clipboard/HoldToStep"_s, clipboardHoldToStep);

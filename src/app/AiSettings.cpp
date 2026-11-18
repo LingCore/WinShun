@@ -759,6 +759,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Clipboard/KeepPlace", QT_TRANSLATE_NOOP("AiSettings", "粘贴后保持位置"), "clipboard", 0,
                     "Pasting an entry from the history leaves it where it is in the list; off: it moves to the top."},
         &Settings::clipboardKeepPlace));
+    add(boolean({"Clipboard/PreviewRestore", QT_TRANSLATE_NOOP("AiSettings", "剪贴板再次打开时恢复预览"), "clipboard", 0,
+                    "A side preview left open when the clipboard window closes opens again with it next time; off: it closes with the window."},
+        &Settings::clipboardPreviewRestore));
     add(integer({"Appearance/MaxRows", QT_TRANSLATE_NOOP("AiSettings", "搜索框显示行数"), "appearance", -1,
                     "The most result rows the search box shows before its list scrolls; fewer where the screen has no room below it."},
         &Settings::maxRows, 4, 20, QT_TRANSLATE_NOOP("AiSettings", "行"), "rows"));
@@ -917,6 +920,12 @@ std::vector<Entry> buildCatalog()
             e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "菜单里列出的内容");
         else if (e.key == u"Results/ShowModifiedTime")
             e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "较早的日期也显示具体时间");
+        else if (e.key == u"Clipboard/PreviewRestore") // titled as the search box's row of that name
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "再次打开时恢复预览");
+        else if (e.key == u"Launcher/FolderMenuFiles") // on the folder menu's page
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "文件夹的子列也列出文件");
+        else if (e.key == u"Results/TerminalCommand") // the box under the terminal's choice
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "在终端中打开");
     }
 
     // ---- never seen: paths and shares (what leaves the PC), AI's own switches, plugins, bookkeeping ----

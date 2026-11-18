@@ -487,6 +487,9 @@ struct Settings {
     // #105), "last" where its user last moved it (GitHub #376; Placement's
     // spot, kept per work area).
     QString clipboardOpenAt = QStringLiteral("caret");
+    // A side preview left open comes back with the window next time (as before
+    // GitHub #174); off: it closes with the window, as the hover preview does.
+    bool clipboardPreviewRestore = false;
     bool clipboardPauseInFullScreen = false; // only global opening hotkeys, not recording or menu actions (#121)
     // Opened over the caret (or a search box; Placement::above), the window
     // turned upside down: the newest entry by the caret, older ones upwards.
