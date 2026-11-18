@@ -328,6 +328,8 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 
 需要 Visual Studio 2022（“使用 C++ 的桌面开发”）、Qt 6.8 或更新版本（推荐 6.12，MSVC 2022 64 位套件）、CMake 3.25+ 和 Ninja。
 
+只想编译、不需要完整历史时，用 `git clone --filter=blob:none https://github.com/LingCore/WinShun.git`，历史里的截图等旧文件用到时才下载，克隆小很多。
+
 ```powershell
 ./scripts/build.ps1                                # 编译（不跑测试）
 ./scripts/build.ps1 -Tests 'tst_capture'           # 编译 + 只跑指定的单元测试
@@ -633,6 +635,8 @@ Free and MIT-licensed. Your files and index are never uploaded; the index and hi
 <summary>Needs Visual Studio 2022, Qt 6.8 or later, CMake and Ninja</summary>
 
 Needs Visual Studio 2022 (Desktop development with C++), Qt 6.8 or later (6.12 recommended, MSVC 2022 64-bit kit), CMake 3.25+ and Ninja.
+
+To build without the full history, clone with `git clone --filter=blob:none https://github.com/LingCore/WinShun.git`: old files such as past screenshots are fetched only when needed, so the clone is much smaller.
 
 ```powershell
 ./scripts/build.ps1                                # build (no tests)
