@@ -18,9 +18,10 @@ Popup {
     palette: control.palette
 
     contentItem: Item {
-        implicitHeight: list.contentHeight
+        readonly property alias list: rows // the rows, beside their scroll bar (as FontPicker's)
+        implicitHeight: rows.contentHeight
         ListView {
-            id: list
+            id: rows
             anchors.fill: parent
             clip: true
             model: popup.control.delegateModel
@@ -29,7 +30,7 @@ Popup {
             boundsBehavior: Flickable.StopAtBounds
         }
         ListScrollBar {
-            flickable: list
+            flickable: rows
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.right: parent.right

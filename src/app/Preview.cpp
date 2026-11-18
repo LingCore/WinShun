@@ -1990,7 +1990,7 @@ int runSettings(const QStringList& args)
                 const qreal gap = std::max(menuTop - picker->mapToScene(QPointF(0, picker->height())).y(),
                     picker->mapToScene(QPointF()).y() - menuBottom);
                 check(gap >= 4 - 1 / window->devicePixelRatio(), name + u" leaves a gap beside its control"_s);
-                // A menu with a search row holds its list one level down.
+                // The rows are one level down, beside a search row or their scroll bar.
                 if (auto* inner = list->property("list").value<QQuickItem*>())
                     list = inner;
             }
@@ -2004,7 +2004,8 @@ int runSettings(const QStringList& args)
                         name + u" has no rectangular overlay around the list"_s);
                 }
                 auto* row = list->property("currentItem").value<QQuickItem*>();
-                check(row && row->width() <= list->width(), name + u" fits its highlighted row"_s);
+                check(row && row->width() <= list->width(), name + u" fits its highlighted row (%1 in %2, index %3)"_s
+                    .arg(row ? row->width() : -1).arg(list->width()).arg(list->property("currentIndex").toInt()));
             }
             check(saveGrab(window, out.filePath(name + u".png")), name + u" captured"_s);
             QMetaObject::invokeMethod(popup, "close");
