@@ -8873,11 +8873,11 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
             waiting.restart();
             while ((launcher->searching() || launcher->results()->count() != 1) && waiting.elapsed() < 5000)
                 pump(20);
-            const QString found = launcher->results()->count() == 1 ? launcher->results()->pathAt(0) : QString();
+            const QString row = launcher->results()->count() == 1 ? launcher->results()->pathAt(0) : QString();
             kindElsewhere = !launcher->searching() && launcher->typingFolder() == u"child"_s
-                && QDir::toNativeSeparators(found).compare(folder + u"\\type-elsewhere.docx"_s, Qt::CaseInsensitive) == 0;
+                && QDir::toNativeSeparators(row).compare(folder + u"\\type-elsewhere.docx"_s, Qt::CaseInsensitive) == 0;
             report.insert(u"kind_elsewhere"_s, QJsonObject {{u"words"_s, words}, {u"rows"_s, launcher->results()->count()},
-                {u"first"_s, found}, {u"typing_folder"_s, launcher->typingFolder()}});
+                {u"first"_s, row}, {u"typing_folder"_s, launcher->typingFolder()}});
             if (!kindElsewhere)
                 break;
         }
