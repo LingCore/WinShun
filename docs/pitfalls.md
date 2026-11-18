@@ -1,5 +1,15 @@
 # 踩坑记录
 
+## 长截图预览框被截进长图：`visibleChanged` 比窗口真正显示早（2026-11-18，#378）
+
+- **现象**：选区几乎占满屏幕时，手动点开“长图预览”，预览框盖在选区上，被一起截进长图（越截越多层）；它还拖不动，只能挡着。
+- **原因**：Qt 6.12 的 `QWindowPrivate::setVisible` 先发 `visibleChanged(true)`，再让平台窗口 `ShowWindow`。`LongCapture::updateExclusion` 在这个信号里调 `excludeFromCapture`，而后者要求 `::IsWindowVisible()` 为真才设 `WDA_EXCLUDEFROMCAPTURE`。此时窗口还没显示，结果反而把设置清成了 `WDA_NONE`。本机探针里，显示之后紧接着还有一次几何变化，又把它设回来了，所以旧代码在常规流程下不出错；报告人那里（200%）没有这次变化，就一直被截进去。
+- **做法**：`excludeFromCapture` 只看“在截、窗口矩形（加阴影）碰到选区”，不再看是否可见，因为隐藏的窗口本来就不在画面里；`updateExclusion` 也不再跳过隐藏窗口。预览窗口整块都能拖（QML `DragHandler` → `startSystemMove()`），和面板拖标题一样，拖离选区后会自动恢复成可被截图。
+- **验证**：`WinShunCapture.exe --preview-long-capture <目录> --app-dir "C:\Program Files\WinShun" --renderer d3d11 --preview-over`（要先构建 `WinShunCaptureApp`，`--app-dir` 用 ASCII 路径）。探针先把预览放到选区上，再在 LongCapture 自己的处理函数之后接一个 `visibleChanged` 槽读取亲和性：旧代码在这里失败，新代码通过。之后用 `SendInput` 真实拖动标题，把预览拖到选区和阴影范围之外，检查拖动之后不再排除。
+- **别踩**：
+  - 阴影外扩量要按窗口自己的 DPI（`GetDpiForWindow`）算，探针进程的 `devicePixelRatio` 可能是 1。
+  - 系统拖动是从越过拖动阈值那一刻、指针所在的位置开始的，窗口会落后指针一步。探针先慢慢越过阈值，再大步拖动。
+
 ## Tab 进文件夹：刚打完字就按 Tab，屏幕上还是上一次的结果（2026-11-17，#361）
 
 - **现象**：路径后面打半个名字（`…\合同`）马上按 `Tab`，新结果还没出来，列表上还是上一次（`…\未`）的行。按“第一行的文件夹补全打着的路径”去判断，会进到 `未索引`（它也在那个文件夹里），或者没有可补全的就切了范围。

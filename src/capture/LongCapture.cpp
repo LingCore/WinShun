@@ -376,7 +376,7 @@ void LongCapture::updateExclusion()
     const bool running = m_run != nullptr;
     const QRect region = running ? m_run->region : QRect();
     for (QQuickWindow* window : {m_panel.data(), m_previewWindow.data()})
-        if (window && (!running || window->isVisible()))
+        if (window)
             excludeFromCapture(reinterpret_cast<HWND>(window->winId()), region, running);
     if (m_border)
         m_border->exclude(region, running);

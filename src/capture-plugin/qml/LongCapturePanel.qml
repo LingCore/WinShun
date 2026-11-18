@@ -159,6 +159,11 @@ Window {
         width: panel.capture.previewBox.width + 2 * panel.padding
         height: previewHeading.implicitHeight + panel.capture.previewBox.height + 3 * panel.padding
         onClosing: (event) => { event.accepted = false; panel.previewVisible = false }
+        // Dragged anywhere, as the panel by its heading: off the region when it covers it (GitHub #378).
+        DragHandler {
+            target: null
+            onActiveChanged: if (active) previewWindow.startSystemMove()
+        }
         Text {
             id: previewHeading
             x: panel.padding; y: panel.padding

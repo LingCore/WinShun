@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <memory>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 using namespace Qt::StringLiterals;
@@ -300,6 +301,103 @@ int runLongCapture(const QStringList& args)
     }
     auto* preview = panel->findChild<QQuickWindow*>(u"longCapturePreview"_s);
     check(preview, "preview must have its own window");
+    // --preview-over (GitHub #378): the preview opened by hand over the region,
+    // as when the selection fills the screen. Left out of the frames all the
+    // same (the picture is held against the page at the end); dragged off it
+    // later (dragPreviewOff).
+    const bool previewOver = preview && args.contains(u"--preview-over"_s);
+    const auto previewRect = [&] {
+        RECT r {};
+        ::GetWindowRect(reinterpret_cast<HWND>(preview->winId()), &r);
+        return QRect(r.left, r.top, r.right - r.left, r.bottom - r.top);
+    };
+    const auto previewLeftOut = [&] {
+        DWORD affinity = WDA_NONE;
+        return ::GetWindowDisplayAffinity(reinterpret_cast<HWND>(preview->winId()), &affinity) && affinity == WDA_EXCLUDEFROMCAPTURE;
+    };
+    if (previewOver) {
+        panel->setProperty("previewVisible", false);
+        pump(100);
+        // Its top left a little inside the region (logical px on its screen, as LongCapture::placePanel).
+        QScreen* on = fixture->screen();
+        MONITORINFO monitor {sizeof monitor};
+        ::GetMonitorInfoW(::MonitorFromPoint({region.center().x(), region.center().y()}, MONITOR_DEFAULTTONEAREST), &monitor);
+        const QPoint inside = region.topLeft() + QPoint(qRound(40 * dpr), qRound(60 * dpr));
+        preview->setPosition(on->geometry().topLeft() + (inside - QPoint(monitor.rcMonitor.left, monitor.rcMonitor.top)) / dpr);
+        // Left out as it is told to show (LongCapture's handler ran just before
+        // this one), before Windows has it up: nothing else may come to set it
+        // right later, as a move after showing did here and not on the
+        // reporter's screen.
+        bool leftOutAsShown = false;
+        const auto shown = QObject::connect(preview, &QWindow::visibleChanged, preview, [&](bool visible) {
+            if (visible)
+                leftOutAsShown = previewLeftOut();
+        });
+        panel->setProperty("previewVisible", true); // as the 预览 button does
+        QObject::disconnect(shown);
+        pump(300);
+        check(preview->isVisible() && previewRect().intersects(region), "the preview must be shown over the region for this check");
+        check(leftOutAsShown, "a preview opened over the region must be left out of the frames as it shows");
+        check(previewLeftOut(), "a preview shown over the region must stay left out of the frames");
+    }
+    // A real drag (SendInput, from another thread: the window's move loop
+    // holds this one until the button is let go) by the preview's heading,
+    // off the region; the pointer put back after.
+    const auto dragPreviewOff = [&] {
+        const HWND hwnd = reinterpret_cast<HWND>(preview->winId());
+        const QRect before = previewRect();
+        const POINT from {before.left() + qRound(24 * dpr), before.top() + qRound(14 * dpr)};
+        if (::GetAncestor(::WindowFromPoint(from), GA_ROOT) != hwnd) {
+            check(false, "the preview's heading must be on top where it is dragged by");
+            return;
+        }
+        MONITORINFO monitor {sizeof monitor};
+        ::GetMonitorInfoW(::MonitorFromPoint(from, MONITOR_DEFAULTTONEAREST), &monitor);
+        // Past the drag threshold slowly; the window moves from where the pointer is then.
+        const int start = qRound(32 * dpr);
+        // Right of the region and its shadow's reach (CaptureExclusion's, by the window's DPI), as far as the monitor allows.
+        const int reach = ::MulDiv(64, int(::GetDpiForWindow(hwnd)), 96);
+        const int wanted = region.right() + reach + start + 16 - before.left();
+        const int dx = std::min(wanted, int(monitor.rcWork.right) - before.right() - 1);
+        POINT was {};
+        ::GetCursorPos(&was);
+        std::thread hand([from, dx, start] {
+            const auto at = [](int x, int y) { ::SetCursorPos(x, y); ::Sleep(15); };
+            at(from.x, from.y);
+            INPUT press {};
+            press.type = INPUT_MOUSE;
+            press.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+            ::SendInput(1, &press, sizeof press);
+            ::Sleep(60);
+            for (int step = 1; step <= 16; ++step)
+                at(from.x + start * step / 16, from.y);
+            ::Sleep(150);
+            for (int step = 1; step <= 20; ++step)
+                at(from.x + start + (dx - start) * step / 20, from.y);
+            ::Sleep(120);
+            INPUT release {};
+            release.type = INPUT_MOUSE;
+            release.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+            ::SendInput(1, &release, sizeof release);
+        });
+        QElapsedTimer clock;
+        clock.start();
+        while (clock.elapsed() < 1500)
+            pump(10);
+        hand.join();
+        pump(200);
+        ::SetCursorPos(was.x, was.y);
+        const QRect after = previewRect();
+        qInfo("long capture: preview dragged by %d px (wanted %d), from %d,%d to %d,%d; region %d,%d %dx%d; left out %d",
+            after.left() - before.left(), dx, before.left(), before.top(), after.left(), after.top(), region.x(), region.y(),
+            region.width(), region.height(), int(previewLeftOut()));
+        // It trails the pointer by at most the slow start.
+        const int moved = after.left() - before.left();
+        check(moved >= dx - start - 2 && moved <= dx + 2 && std::abs(after.top() - before.top()) <= 2,
+            "the preview must follow a drag by its heading");
+        check(previewLeftOut() == after.adjusted(-reach, -reach, reach, reach).intersects(region),
+            "the preview must be left out of the frames only while over the region");
+    };
     const auto clickAction = [&](const char* name) {
         auto* button = panel->findChild<QQuickItem*>(QString::fromLatin1(name));
         if (!button) { check(false, "missing action button"); return; }
@@ -431,6 +529,8 @@ int runLongCapture(const QStringList& args)
         panel->grabWindow().save(out.filePath(u"panel.png"_s));
         if (preview && preview->isVisible()) preview->grabWindow().save(out.filePath(u"preview.png"_s));
         interfacePicture();
+        if (previewOver)
+            dragPreviewOff();
         check(panel->size() == controlSize, "status changes must not move or resize the action strip");
         controller->copyDiagnostics();
         if (args.contains(u"--cancel"_s)) clickAction("longCaptureCancel");

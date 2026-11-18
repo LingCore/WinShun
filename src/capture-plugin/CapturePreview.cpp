@@ -2900,7 +2900,7 @@ int run(const QStringList& args)
     if (valueAfter(args, presenterMode ? kPresenterFlag : settingsMode ? kSettingsFlag : ocrMode ? kOcrFlag : longCaptureMode ? kLongCaptureFlag : recordingMode ? kRecordingFlag : kCaptureToolsFlag).isEmpty()) {
         std::fprintf(stderr, "usage: WinShunCapture --preview-capture-tools <folder> [--toolbar-drag] [--scale 1.5] [--dark] [--renderer d3d11]\n"
                              "       WinShunCapture --preview-recording <folder> --renderer d3d11 --auto [--gif] [--clicks]\n"
-                             "       WinShunCapture --preview-long-capture <folder> --renderer d3d11 [--auto]\n"
+                             "       WinShunCapture --preview-long-capture <folder> --renderer d3d11 [--auto | --preview-over]\n"
                              "       WinShunCapture --preview-presenter <folder> [--laser] [--scale 2] [--renderer d3d11]\n"
                              "       (with --app-dir <Win顺's folder>, or WS_APP_DIR)\n");
         return 2;
