@@ -348,6 +348,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/FolderMenuItemSettings", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在菜单末尾显示 Win顺 设置”"), "files_and_dialogs", 1,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemSettings));
+    add(boolean({"Launcher/FolderMenuFiles", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的子列也列出文件"), "files_and_dialogs", 1,
+                    "A folder's column in the folder menu lists the files in it after its folders; a click or Enter opens one. Not in Open or Save dialogs. Off by default."},
+        &Settings::folderMenuFiles));
     add(boolean({"Favorites/DropPie", QT_TRANSLATE_NOOP("AiSettings", "拖文件时按 ` 键，弹出收藏圆盘"), "favorites", -1,
                     "While dragging files or folders (File Explorer, the desktop, file managers), pressing the key left of 1 (` and ~ on most keyboards, · in a Chinese input method; it is the key's place that counts, not what is printed on it) with them held (no need to move) brings up the first eight favorite folders round the pointer. Moving toward one and letting go drops the files there: moved within a drive, copied to another, Ctrl copies and Shift moves. Does nothing while Win顺 runs as administrator."},
         &Settings::dropPie));

@@ -957,6 +957,7 @@ void Settings::load()
     folderMenuItemPowerShell = readOrDefault(s, u"Launcher/FolderMenuItemPowerShell"_s, d.folderMenuItemPowerShell);
     folderMenuItemFavorite = readOrDefault(s, u"Launcher/FolderMenuItemFavorite"_s, d.folderMenuItemFavorite);
     folderMenuItemSettings = readOrDefault(s, u"Launcher/FolderMenuItemSettings"_s, d.folderMenuItemSettings);
+    folderMenuFiles = readOrDefault(s, u"Launcher/FolderMenuFiles"_s, d.folderMenuFiles);
     folderMenuHotkey = readOrDefault(s, u"Launcher/FolderMenuHotkey"_s, d.folderMenuHotkey).trimmed();
     folderMenuOpusBefore = readOrDefault(s, u"Launcher/FolderMenuOpusBefore"_s, d.folderMenuOpusBefore);
     dropPie = readOrDefault(s, u"Favorites/DropPie"_s, d.dropPie);
@@ -1385,6 +1386,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FolderMenuItemPowerShell"_s, folderMenuItemPowerShell);
     s.setValue(u"Launcher/FolderMenuItemFavorite"_s, folderMenuItemFavorite);
     s.setValue(u"Launcher/FolderMenuItemSettings"_s, folderMenuItemSettings);
+    s.setValue(u"Launcher/FolderMenuFiles"_s, folderMenuFiles);
     s.setValue(u"Launcher/FolderMenuHotkey"_s, folderMenuHotkey);
     s.setValue(u"Launcher/FolderMenuOpusBefore"_s, folderMenuOpusBefore);
     s.setValue(u"Favorites/DropPie"_s, dropPie);

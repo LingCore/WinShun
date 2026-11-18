@@ -189,6 +189,9 @@ struct Settings {
     bool folderMenuItemPowerShell = true;
     bool folderMenuItemFavorite = true;
     bool folderMenuItemSettings = true;
+    // A folder's column also lists the files in it, after its folders
+    // (GitHub #384); not in an Open or Save dialog, whose menu only moves it.
+    bool folderMenuFiles = false;
     // A hotkey that brings the menu up in whatever window is in front, for
     // when another program has the double click (GitHub #25); e.g.
     // "Ctrl+Alt+D", empty = none. Works with folderMenu off too.

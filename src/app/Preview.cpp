@@ -3174,6 +3174,7 @@ int runSettings(const QStringList& args)
         // Shown as 内置功能 cards too, the rows of their own page first (open_settings searches them by title).
         {QCoreApplication::translate("SettingsWindow", "在资源管理器或桌面弹出文件夹快捷菜单"), integrationPage, 1}, // 文件管理器
         {QCoreApplication::translate("SettingsWindow", "菜单里列出的内容"), integrationPage, 1},
+        {QCoreApplication::translate("SettingsWindow", "文件夹的子列也列出文件"), integrationPage, 1}, // GitHub #384
         {QCoreApplication::translate("SettingsWindow", "对话框旁的搜索框"), integrationPage, 2}, // 对话框
         {QCoreApplication::translate("SettingsWindow", "在 Directory Opus 里直接打字搜索"), integrationPage, 1},
         {u"AI"_s, aiPage, 0},

@@ -103,6 +103,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool folderMenuItemPowerShell READ folderMenuItemPowerShell WRITE setFolderMenuItemPowerShell NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuItemFavorite READ folderMenuItemFavorite WRITE setFolderMenuItemFavorite NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuItemSettings READ folderMenuItemSettings WRITE setFolderMenuItemSettings NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuFiles READ folderMenuFiles WRITE setFolderMenuFiles NOTIFY changed FINAL)
     // The folder menu in Directory Opus, which runs a command of its settings
     // on a double click on blank space (refreshOpusFolderMenu): on | stale
     // (another copy's WinShunSearch.exe) | off | taken (a command of the
@@ -498,7 +499,9 @@ public:
     bool folderMenuItemFavorite() const { return m_settings.folderMenuItemFavorite; }
     void setFolderMenuItemFavorite(bool on);
     bool folderMenuItemSettings() const { return m_settings.folderMenuItemSettings; }
+    bool folderMenuFiles() const { return m_settings.folderMenuFiles; }
     void setFolderMenuItemSettings(bool on);
+    void setFolderMenuFiles(bool on);
     QString folderMenuHotkey() const { return m_settings.folderMenuHotkey; }
     bool dropPie() const { return m_settings.dropPie; }
     void setDropPie(bool on);

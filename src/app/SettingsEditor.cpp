@@ -1730,6 +1730,14 @@ void SettingsEditor::setFolderMenuItemSettings(bool on)
     commit();
 }
 
+void SettingsEditor::setFolderMenuFiles(bool on)
+{
+    if (m_settings.folderMenuFiles == on)
+        return;
+    m_settings.folderMenuFiles = on;
+    commit();
+}
+
 void SettingsEditor::setFolderMenuHotkey(const QString& hotkey)
 {
     const QString value = hotkey.trimmed();

@@ -819,12 +819,13 @@ void FolderMenu::trigger(int index)
     const Entry entry = m_actions[static_cast<size_t>(index)];
     if (entry.path.isEmpty() && entry.kind != Kind::Settings)
         return;
-    const QString title = entry.title;
-    const auto done = [guard = QPointer(this), title](bool ok) {
+    const QString failed = entry.kind == Kind::File ? tr("无法打开“%1”").arg(entry.title)
+                                                    : tr("无法打开“%1”，请检查命令和工作目录").arg(entry.title);
+    const auto done = [guard = QPointer(this), failed](bool ok) {
         if (!ok) {
-            QMetaObject::invokeMethod(qApp, [guard, title] {
+            QMetaObject::invokeMethod(qApp, [guard, failed] {
                 if (guard)
-                    emit guard->notice(tr("无法打开“%1”，请检查命令和工作目录").arg(title));
+                    emit guard->notice(failed);
             }, Qt::QueuedConnection);
         }
     };
@@ -832,6 +833,14 @@ void FolderMenu::trigger(int index)
     switch (entry.kind) {
     case Kind::Folder:
         goTo(entry.path);
+        break;
+    case Kind::File:
+        if (m_recordHistory && m_history)
+            m_history->record(entry.path, QDateTime::currentMSecsSinceEpoch());
+        if (m_opener)
+            m_opener(entry.path);
+        else
+            shell::open(entry.path, false, done);
         break;
     case Kind::Search:
         emit searchRequested(entry.path);
@@ -938,61 +947,86 @@ void FolderMenu::goTo(const QString& folder)
     });
 }
 
-QStringList FolderMenu::subfolders(const QString& folder, qsizetype max)
+FolderMenu::Listing FolderMenu::listing(const QString& folder, bool files, qsizetype max)
 {
-    QStringList names;
+    Listing found;
     std::wstring pattern = QDir::toNativeSeparators(folder).toStdWString();
     if (pattern.empty())
-        return names;
+        return found;
     if (pattern.back() != L'\\')
         pattern += L'\\';
     pattern += L'*';
     WIN32_FIND_DATAW data;
-    const HANDLE find = ::FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &data, FindExSearchLimitToDirectories, nullptr,
-        FIND_FIRST_EX_LARGE_FETCH);
+    const HANDLE find = ::FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &data,
+        files ? FindExSearchNameMatch : FindExSearchLimitToDirectories, nullptr, FIND_FIRST_EX_LARGE_FETCH);
     if (find == INVALID_HANDLE_VALUE)
-        return names;
+        return found;
     do {
         // Hidden ones stay out, as in File Explorer's own default view.
-        if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN))
+        if (data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN)
             continue;
+        const bool isFolder = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
         const std::wstring_view name = data.cFileName;
-        if (name != L"." && name != L"..")
-            names.append(QString::fromWCharArray(name.data(), static_cast<qsizetype>(name.size())));
+        if ((isFolder || files) && name != L"." && name != L"..")
+            (isFolder ? found.folders : found.files).append(QString::fromWCharArray(name.data(), static_cast<qsizetype>(name.size())));
     } while (::FindNextFileW(find, &data));
     ::FindClose(find);
     QCollator order; // the user's own order, numbers by value: 2 before 10
     order.setNumericMode(true);
     order.setCaseSensitivity(Qt::CaseInsensitive);
-    std::ranges::sort(names, [&order](const QString& a, const QString& b) { return order.compare(a, b) < 0; });
-    if (names.size() > max)
-        names.resize(max);
-    return names;
+    // The first `max` in order, the rest left out unsorted: a folder of many
+    // thousand files is not all sorted for the 500 shown.
+    const auto firstInOrder = [&order, max](QStringList& names) {
+        const qsizetype kept = std::min(names.size(), max);
+        std::ranges::partial_sort(names, names.begin() + kept,
+            [&order](const QString& a, const QString& b) { return order.compare(a, b) < 0; });
+        const qsizetype left = names.size() - kept;
+        names.resize(kept);
+        return left;
+    };
+    firstInOrder(found.folders);
+    found.moreFiles = firstInOrder(found.files);
+    return found;
 }
 
 void FolderMenu::listFolder(const QString& folder)
 {
     if (folder.isEmpty() || !m_open)
         return;
+    const bool files = m_listFiles && m_hit.surface != folderview::Surface::Dialog;
     // Not on the menu's own worker: a share that does not answer would keep
     // the next menu waiting behind it.
-    QThreadPool::globalInstance()->start([guard = QPointer(this), folder, shown = m_shown] {
-        QStringList names = subfolders(folder);
-        QMetaObject::invokeMethod(qApp, [guard, folder, shown, names = std::move(names)] {
+    QThreadPool::globalInstance()->start([guard = QPointer(this), folder, files, shown = m_shown] {
+        Listing found = listing(folder, files);
+        QMetaObject::invokeMethod(qApp, [guard, folder, files, shown, found = std::move(found)] {
             FolderMenu* const menu = guard.data();
             if (!menu || !menu->m_open || menu->m_shown != shown)
                 return;
             const QDir parent(folder);
             QVariantList rows;
-            rows.reserve(names.size());
-            for (const QString& name : names) {
-                const QString path = QDir::toNativeSeparators(parent.filePath(name));
+            rows.reserve(found.folders.size() + found.files.size() + 1);
+            const auto add = [&](Kind kind, const QString& path, const QString& text, QVariantMap row) {
                 const int index = static_cast<int>(menu->m_actions.size());
-                menu->m_actions.push_back({Kind::Folder, path, name});
-                rows.append(QVariantMap {{u"text"_s, name}, {u"glyph"_s, QString(QChar(0xE8B7))},
-                    {u"icon"_s, FileIconProvider::iconUrl(path, true)}, {u"tooltip"_s, path}, {u"action"_s, index},
-                    {u"folder"_s, path}});
+                menu->m_actions.push_back({kind, path, text});
+                row.insert(u"text"_s, text);
+                row.insert(u"action"_s, index);
+                rows.append(row);
+            };
+            for (const QString& name : found.folders) {
+                const QString path = QDir::toNativeSeparators(parent.filePath(name));
+                add(Kind::Folder, path, name, {{u"glyph"_s, QString(QChar(0xE8B7))},
+                    {u"icon"_s, FileIconProvider::iconUrl(path, true)}, {u"tooltip"_s, path}, {u"folder"_s, path}});
             }
+            for (const QString& name : found.files) {
+                const QString path = QDir::toNativeSeparators(parent.filePath(name));
+                add(Kind::File, path, name, {{u"glyph"_s, QString(QChar(0xE8A5))},
+                    {u"icon"_s, FileIconProvider::iconUrl(path, false)}, {u"tooltip"_s, path}});
+            }
+            if (found.moreFiles > 0) // the rest where they all are
+                add(Kind::Folder, QDir::toNativeSeparators(folder), tr("还有 %n 个文件，打开文件夹查看", nullptr, static_cast<int>(found.moreFiles)),
+                    {{u"glyph"_s, QString(QChar(0xE712))}});
+            else if (files && rows.isEmpty())
+                rows.append(QVariantMap {{u"text"_s, tr("空文件夹")}, {u"disabled"_s, true}});
             emit menu->folderListed(folder, rows);
         }, Qt::QueuedConnection);
     });

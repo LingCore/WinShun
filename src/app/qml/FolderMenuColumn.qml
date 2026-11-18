@@ -20,7 +20,9 @@ Item {
     readonly property int itemHeight: Theme.menuItemHeight
     readonly property int sectionHeight: Theme.menuCaptionSize + 12
     readonly property real listHeight: entries.reduce((height, entry) => height + rowHeight(entry), 0)
-
+    // What its widest row wants (GitHub #384); the menu keeps the column
+    // between its narrowest and widest, a longer name cut short.
+    readonly property real naturalWidth: Math.ceil(entries.reduce((widest, entry) => Math.max(widest, rowWidth(entry)), 0) + 2 * padding)
     signal pointed(int index, Item row) // the pointer came onto a row, or moved on it
     signal unpointed(int index, Item row) // the pointer went off it
     signal gone(int index, Item row) // a row scrolled away (pooled)
@@ -30,6 +32,27 @@ Item {
 
     function rowHeight(entry: var): real {
         return entry.separator === true ? 9 : entry.heading === true ? sectionHeight : itemHeight
+    }
+    // As a row lays them out: the icon, its name, 26 around the detail
+    // (at most 96), 20 more for the arrow.
+    function rowWidth(entry: var): real {
+        if (entry.separator === true)
+            return 0
+        const detail = entry.detail ?? ""
+        const branch = entry.children !== undefined || entry.folder !== undefined
+        const trailing = (detail.length > 0 ? Math.min(Math.ceil(captionMetrics.advanceWidth(detail)), 96) : 0) + (branch ? 20 : 0)
+        const name = entry.heading === true ? 12 + captionMetrics.advanceWidth(entry.text ?? "")
+                                            : 42 + textMetrics.advanceWidth(entry.text ?? "")
+        return Math.ceil(name) + 26 + trailing
+    }
+
+    FontMetrics {
+        id: textMetrics
+        font.pixelSize: Theme.menuTextSize
+    }
+    FontMetrics {
+        id: captionMetrics
+        font.pixelSize: Theme.menuCaptionSize
     }
     // Where row i's top is on the screen, in Qt's pixels; inside the list
     // when it is scrolled out of sight.

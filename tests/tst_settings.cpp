@@ -1449,15 +1449,18 @@ private slots:
         fresh.load();
         QVERIFY(fresh.folderMenuItemSearch && fresh.folderMenuItemCopyPath && fresh.folderMenuItemCmd && fresh.folderMenuItemPowerShell
             && fresh.folderMenuItemFavorite && fresh.folderMenuItemSettings);
+        QVERIFY(!fresh.folderMenuFiles); // a folder's column: its folders only, until asked (#384)
 
         fresh.folderMenuItemCopyPath = false;
         fresh.folderMenuItemCmd = false;
         fresh.folderMenuItemSettings = false;
+        fresh.folderMenuFiles = true;
         fresh.save();
         ws::Settings again;
         again.load();
         QVERIFY(again.folderMenuItemSearch && !again.folderMenuItemCopyPath && !again.folderMenuItemCmd && again.folderMenuItemPowerShell
             && again.folderMenuItemFavorite && !again.folderMenuItemSettings);
+        QVERIFY(again.folderMenuFiles);
     }
 
     // What a new install has on, as Listary has it (GitHub #372): the folder

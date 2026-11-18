@@ -89,12 +89,14 @@ public:
     static QVariantList groupEntries(const QString& title, const QString& glyph, const QVariantList& children, int inlineCount = 0);
     // Which actions it offers under the lists (GitHub #200).
     void setItems(bool search, bool copyPath, bool cmd, bool powerShell, bool favorite, bool settings);
+    // Whether a folder's column also lists its files (GitHub #384).
+    void setListFiles(bool on) { m_listFiles = on; }
     // Whether something else has the keys now (the clipboard over File
     // Explorer): the menu does not come, the double click only closes that.
     // Where Copy path writes the text: the system clipboard unless a test says otherwise.
     void setClipboardWriter(std::function<void(const QString&)> writer) { m_clipboardWriter = std::move(writer); }
-    // How a folder chosen from a window that is no file manager's is opened:
-    // in the file manager unless a test says otherwise.
+    // How a file chosen, or a folder chosen from a window that is no file
+    // manager's, is opened: by the shell unless a test says otherwise.
     void setOpener(std::function<void(const QString&)> opener) { m_opener = std::move(opener); }
     void setBlocked(std::function<bool()> blocked) { m_blocked = std::move(blocked); }
     // Where the pointer is (cursorPos()): the system's unless a test says
@@ -156,13 +158,23 @@ public:
         QRectF area) const;
     Q_INVOKABLE void trigger(int index);
     // The folders inside `folder`, for the page a folder's row opens (GitHub
-    // #170): read off the GUI thread (a share may take its time), answered
-    // by folderListed() with rows as the menu's own, each to be opened in
-    // turn. Nothing comes for a menu closed meanwhile.
+    // #170), then its files with setListFiles (#384; not for a dialog, whose
+    // menu only takes it to a folder): read off the GUI thread (a share may
+    // take its time), answered by folderListed() with rows as the menu's
+    // own, each to be opened in turn. A row for an empty folder says so when
+    // files are listed; the menu says "no folders" itself for no rows. Nothing
+    // comes for a menu closed meanwhile.
     Q_INVOKABLE void listFolder(const QString& folder);
-    // The folders right inside `folder`, by name as File Explorer orders
-    // them (2 before 10), hidden ones left out; at most `max`.
-    static QStringList subfolders(const QString& folder, qsizetype max = 500);
+    // What is right inside `folder`, each by name as File Explorer orders them
+    // (2 before 10), hidden ones left out: its folders, and its files when
+    // asked; at most `max` of each, the first ones in that order.
+    struct Listing {
+        QStringList folders;
+        QStringList files;
+        qsizetype moreFiles = 0; // left out past `max`
+    };
+    static Listing listing(const QString& folder, bool files, qsizetype max = 500);
+    static QStringList subfolders(const QString& folder, qsizetype max = 500) { return listing(folder, false, max).folders; }
     Q_INVOKABLE void dismiss();
 
 signals:
@@ -178,7 +190,7 @@ signals:
 
 private:
     QString explorerFolder(const folderview::Hit& hit) const;
-    enum class Kind { Folder, Search, AddFavorite, RemoveFavorite, Terminal, PowerShell, Favorite, Settings, CopyPath };
+    enum class Kind { Folder, File, Search, AddFavorite, RemoveFavorite, Terminal, PowerShell, Favorite, Settings, CopyPath };
     struct Entry {
         Kind kind = Kind::Folder;
         QString path;
@@ -228,6 +240,7 @@ private:
     std::atomic<bool> m_itemPowerShell {true};
     std::atomic<bool> m_itemFavorite {true};
     std::atomic<bool> m_itemSettings {true};
+    bool m_listFiles = false; // GUI thread
     std::atomic<bool> m_open {false};
     std::atomic<int> m_asks {0}; // the latest double click's number: older answers are dropped
     int m_shown = 0; // which showing the entries are of: a folder listed for an older one is dropped

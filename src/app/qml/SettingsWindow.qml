@@ -5224,6 +5224,21 @@ Window {
                     }
                 }
 
+                SettingRow { // GitHub #384
+                    sub: true
+                    title: qsTr("文件夹的子列也列出文件")
+                    description: qsTr("文件夹在前、文件在后，点一下文件就打开；打开、保存对话框里仍只列文件夹")
+                    keywords: qsTr("文件夹菜单;文件;子列;子菜单;列出文件;打开文件;Listary;files").split(";")
+
+                    ToggleSwitch {
+                        objectName: "folderMenuFilesSwitch"
+                        dpr: window.dpr
+                        enabled: window.editor.folderMenu
+                        checked: window.editor.folderMenuFiles
+                        onToggled: (on) => window.editor.folderMenuFiles = on
+                    }
+                }
+
                 SettingRow { // GitHub #200
                     id: folderMenuActionsRow
                     sub: true

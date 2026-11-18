@@ -4710,6 +4710,7 @@ void App::applyFolderMenu()
         m_folderMenu->setInlineCounts(m_settings.folderMenuFavoritesInline, m_settings.folderMenuRecentInline, m_settings.folderMenuWindowsInline);
         m_folderMenu->setItems(m_settings.folderMenuItemSearch, m_settings.folderMenuItemCopyPath, m_settings.folderMenuItemCmd, m_settings.folderMenuItemPowerShell,
             m_settings.folderMenuItemFavorite, m_settings.folderMenuItemSettings);
+        m_folderMenu->setListFiles(m_settings.folderMenuFiles);
         m_folderMenu->setRecordHistory(m_settings.recordHistory);
     }
 }

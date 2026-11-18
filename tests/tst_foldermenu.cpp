@@ -732,7 +732,8 @@ private slots:
         QCOMPARE(window->position(), topLeft);
         QCOMPARE(favoritesColumn->transientParent(), window);
         QVERIFY(favoritesColumn->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
-        QCOMPARE(favoritesColumn->width(), window->width());
+        QVERIFY(favoritesColumn->width() >= object->property("minWidth").toInt());
+        QVERIFY(favoritesColumn->width() <= object->property("maxWidth").toInt());
         QVERIFY(!QFile::exists(output)); // browsing never executes a command
         QCOMPARE(::GetForegroundWindow(), sourceHandle);
         pointer.leave();
@@ -828,6 +829,25 @@ private slots:
         QCOMPARE(FolderMenu::subfolders(root.filePath(u"2月"_s)), QStringList());
         QCOMPARE(FolderMenu::subfolders(root.filePath(u"没有这个"_s)), QStringList());
         QCOMPARE(FolderMenu::subfolders({}), QStringList());
+
+        // With its files (GitHub #384): after the folders, in the same order,
+        // hidden ones left out; past `max`, how many more.
+        for (const QString& name : {u"10.txt"_s, u"2.txt"_s, u"藏起来.txt"_s}) {
+            QFile more(root.filePath(name));
+            QVERIFY(more.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(::SetFileAttributesW(reinterpret_cast<const wchar_t*>(
+                                         QDir::toNativeSeparators(root.filePath(u"藏起来.txt"_s)).utf16()),
+            FILE_ATTRIBUTE_HIDDEN));
+        FolderMenu::Listing found = FolderMenu::listing(temporary.path(), true);
+        QCOMPARE(found.folders, expected);
+        QCOMPARE(found.files, (QStringList {u"2.txt"_s, u"3月.txt"_s, u"10.txt"_s}));
+        QCOMPARE(found.moreFiles, 0);
+        found = FolderMenu::listing(temporary.path(), true, 2);
+        QCOMPARE(found.folders, expected.first(2));
+        QCOMPARE(found.files, (QStringList {u"2.txt"_s, u"3月.txt"_s}));
+        QCOMPARE(found.moreFiles, 1);
+        QCOMPARE(FolderMenu::listing(temporary.path(), false).files, QStringList());
     }
 
     // A folder's row leads to the folders inside it, column after column: by
@@ -1005,6 +1025,156 @@ private slots:
         QCOMPARE(warnings.count(), 0);
     }
 
+    // A folder's column with its files (GitHub #384): folders first, then
+    // files, a file chosen opened; an empty folder says so; past 500 files a
+    // row for the folder itself. Each column as wide as its names want,
+    // between the narrowest and widest a column goes.
+    void folderPageFiles()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QDir root(temporary.path());
+        const QString longName = u"c 一个名字很长很长很长很长很长很长很长很长很长很长很长的文件夹"_s;
+        for (const QString& name : {u"资料/b 子文件夹"_s, u"资料/a 子文件夹"_s, u"资料/"_s + longName, u"资料/a 子文件夹/空的"_s})
+            QVERIFY(root.mkpath(name));
+        for (const QString& name : {u"资料/说明.txt"_s, u"资料/10.txt"_s, u"资料/2.txt"_s}) {
+            QFile file(root.filePath(name));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(root.mkpath(u"很多"_s));
+        for (int i = 1; i <= 502; ++i) {
+            QFile file(root.filePath(u"很多/%1.txt"_s.arg(i)));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+        const QString data = QDir::toNativeSeparators(root.filePath(u"资料"_s));
+        const QString many = QDir::toNativeSeparators(root.filePath(u"很多"_s));
+        const HWND previous = ::GetForegroundWindow();
+        auto restore = qScopeGuard([previous] {
+            if (previous && ::IsWindow(previous))
+                ::SetForegroundWindow(previous);
+        });
+        QWindow source;
+        source.setTitle(u"WinShun folder files test"_s);
+        source.setGeometry(QRect(awayFromPointer(QSize(1200, 500)).topLeft(), QSize(320, 160)));
+        source.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&source));
+        win::bringToFront(&source);
+        const HWND sourceHandle = reinterpret_cast<HWND>(source.winId());
+        QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), sourceHandle, 3000);
+
+        Favorites favorites(temporary.filePath(u"favorites.json"_s));
+        QVERIFY(favorites.add({Favorite::Kind::Folder, data, u"资料"_s, {}}));
+        QVERIFY(favorites.add({Favorite::Kind::Folder, many, u"很多"_s, {}}));
+        FolderMenu menu(nullptr, &favorites);
+        menu.setRecordHistory(false);
+        menu.setGroups(true, false, false);
+        menu.setListFiles(true);
+        QStringList opened; // never the real programs
+        menu.setOpener([&](const QString& path) { opened.append(QDir::toNativeSeparators(path)); });
+        Pointer pointer;
+        menu.setCursorSource([&pointer] { return pointer.at; });
+        QQmlEngine engine;
+        engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        std::unique_ptr<QObject> object = load(engine, menu);
+        QVERIFY(object);
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        QVERIFY(window);
+        menu.setWindow(window);
+        QSignalSpy changed(&menu, &FolderMenu::entriesChanged);
+        const auto open = [&] {
+            changed.clear();
+            menu.hotkeyPressed();
+            return changed.wait(5000) && menu.isOpen();
+        };
+        const int narrowest = object->property("minWidth").toInt();
+        const int widest = object->property("maxWidth").toInt();
+        QVERIFY(narrowest > 0 && narrowest < widest);
+        const auto depth = [&] { return object->property("depth").toInt(); };
+        const auto highlighted = [&] { return object->property("highlighted").toInt(); };
+        const auto folder = [&] { return value(object.get(), u"page === null ? '' : (page.folder ?? '')"_s).toString(); };
+        const auto texts = [&] { return value(object.get(), u"entries.map(e => e.text ?? '').join('|')"_s).toString(); };
+        const auto key = [&](Qt::Key k) { emit menu.keyPressed(k, {}); };
+        const auto shot = [&](QQuickWindow* shown, const QString& name) {
+            const QString evidence = qEnvironmentVariable("WINSHUN_MENU_EVIDENCE");
+            return evidence.isEmpty() || (QDir().mkpath(evidence) && shown->grabWindow().save(evidence + u'/' + name + u".png"_s));
+        };
+
+        QVERIFY(open());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(window->width() >= narrowest && window->width() <= widest);
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QCOMPARE(texts(), u"资料|很多"_s);
+        QCOMPARE(column(object.get(), 1)->width(), narrowest); // short names
+        key(Qt::Key_Right);
+        QTRY_COMPARE(folder(), data);
+        QCOMPARE(texts(), u"a 子文件夹|b 子文件夹|"_s + longName + u"|2.txt|10.txt|说明.txt"_s);
+        auto* files = column(object.get(), 2);
+        QVERIFY(files);
+        QTRY_VERIFY(files->isVisible());
+        QCOMPARE(files->width(), widest); // the long name: cut short at the widest
+        QTest::qWait(150); // asynchronous shell icons before visual evidence
+        QVERIFY(shot(column(object.get(), 1), u"files-favorites"_s));
+        QVERIFY(shot(files, u"files-column"_s));
+        QVERIFY(files->contentItem()->childItems().first()->property("naturalWidth").toReal() > widest);
+        QVERIFY2(aligned(files->x(), column(object.get(), 1)->x() + column(object.get(), 1)->width() - 1),
+            qPrintable(u"x %1"_s.arg(files->x())));
+        // A file leads nowhere; Enter opens it.
+        key(Qt::Key_End);
+        QCOMPARE(highlighted(), 5);
+        key(Qt::Key_Right);
+        QTest::qWait(300);
+        QCOMPARE(depth(), 3);
+        key(Qt::Key_Return);
+        QCOMPARE(opened, QStringList {data + u"\\说明.txt"_s});
+        QVERIFY(!menu.isOpen());
+        opened.clear();
+
+        // An empty folder says so, nothing to choose.
+        QVERIFY(open());
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        key(Qt::Key_Right);
+        QTRY_COMPARE(folder(), data);
+        key(Qt::Key_Right);
+        QTRY_COMPARE(folder(), data + u"\\a 子文件夹"_s);
+        QCOMPARE(texts(), u"空的"_s);
+        key(Qt::Key_Right);
+        QTRY_COMPARE(folder(), data + u"\\a 子文件夹\\空的"_s);
+        QCOMPARE(texts(), u"空文件夹"_s);
+        QCOMPARE(highlighted(), -1);
+        menu.dismiss();
+
+        // 500 files, then a row that opens the folder for the rest.
+        QVERIFY(open());
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QTRY_COMPARE(folder(), many);
+        QCOMPARE(value(object.get(), u"entries.length"_s).toInt(), 501);
+        QCOMPARE(value(object.get(), u"entries[0].text + '|' + entries[499].text"_s).toString(), u"1.txt|500.txt"_s);
+        QCOMPARE(value(object.get(), u"entries[500].text"_s).toString(), u"还有 2 个文件，打开文件夹查看"_s);
+        key(Qt::Key_End);
+        key(Qt::Key_Return);
+        QCOMPARE(opened, QStringList {many});
+        QVERIFY(!menu.isOpen());
+
+        // Without files: only the folders, as before.
+        opened.clear();
+        menu.setListFiles(false);
+        QVERIFY(open());
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QTRY_COMPARE(folder(), many);
+        QCOMPARE(texts(), u"没有子文件夹"_s);
+        menu.dismiss();
+        QCOMPARE(warnings.count(), 0);
+    }
+
     void cascadeColumns_data()
     {
         QTest::addColumn<bool>("dark");
@@ -1045,7 +1215,7 @@ private slots:
         auto* window = qobject_cast<QQuickWindow*>(object.get());
         QVERIFY(window);
         const int width = window->width();
-        const QRect area = awayFromPointer(QSize(3 * width + 60, 460));
+        const QRect area = awayFromPointer(QSize(width + 2 * object->property("maxWidth").toInt() + 60, 460));
         const auto behind = backdrop(area, dark);
         const auto popup = [&](const QRect& within, QPoint at) {
             emit menu.popupRequested(QPointF(at));
@@ -1074,7 +1244,7 @@ private slots:
         QCOMPARE(::GetWindow(handle(first), GW_OWNER), handle(window)); // in front of the menu, always
         QVERIFY(first->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
         QVERIFY(!first->isActive());
-        QCOMPARE(first->width(), width);
+        QCOMPARE(first->width(), object->property("minWidth").toInt()); // short names: as narrow as a column goes
         QVERIFY2(aligned(first->x(), window->x() + width - 1), qPrintable(u"x %1"_s.arg(first->x())));
         QVERIFY2(aligned(topOf(first, 0), topOf(window, 1)), tops(topOf(first, 0), topOf(window, 1)).constData());
         QCOMPARE(highlighted(), 0);
@@ -1087,7 +1257,7 @@ private slots:
         QVERIFY(second);
         QVERIFY(second->isVisible());
         QTRY_VERIFY(rowItem(second, 0));
-        QVERIFY2(aligned(second->x(), first->x() + width - 1), qPrintable(u"x %1"_s.arg(second->x())));
+        QVERIFY2(aligned(second->x(), first->x() + first->width() - 1), qPrintable(u"x %1"_s.arg(second->x())));
         QVERIFY2(aligned(topOf(second, 0), topOf(first, 1)), tops(topOf(second, 0), topOf(first, 1)).constData());
         QCOMPARE(value(object.get(), u"rowShown(1)"_s).toInt(), 1);
         // On the screen's own pixels: each border the columns share one line,
@@ -1136,13 +1306,13 @@ private slots:
         key(Qt::Key_Down);
         key(Qt::Key_Right);
         QVERIFY(first->isVisible());
-        QVERIFY2(aligned(first->x(), window->x() - width + 1), qPrintable(u"x %1"_s.arg(first->x())));
+        QVERIFY2(aligned(first->x(), window->x() - first->width() + 1), qPrintable(u"x %1"_s.arg(first->x())));
         QCOMPARE(first->property("direction").toInt(), -1);
         QVERIFY2(aligned(topOf(first, 0), topOf(window, 1)), tops(topOf(first, 0), topOf(window, 1)).constData());
         key(Qt::Key_Down);
         key(Qt::Key_Right);
         QVERIFY(second->isVisible());
-        QVERIFY2(aligned(second->x(), first->x() - width + 1), qPrintable(u"x %1"_s.arg(second->x())));
+        QVERIFY2(aligned(second->x(), first->x() - second->width() + 1), qPrintable(u"x %1"_s.arg(second->x())));
         QVERIFY(inside(area, second));
         wrong = seam(window, first, -1);
         QVERIFY2(wrong.isEmpty(), wrong.constData());
@@ -1227,7 +1397,7 @@ private slots:
         auto* window = qobject_cast<QQuickWindow*>(object.get());
         QVERIFY(window);
         const int width = window->width();
-        const QRect area = awayFromPointer(QSize(3 * width + 60, 460));
+        const QRect area = awayFromPointer(QSize(width + 2 * object->property("maxWidth").toInt() + 60, 460));
         const auto popup = [&](const QRect& within, QPoint at) {
             emit menu.popupRequested(QPointF(at));
             object->setProperty("availableArea", QRectF(within));
