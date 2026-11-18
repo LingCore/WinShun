@@ -75,6 +75,8 @@ curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch
 curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch=x64&osVersion=10.0.22631&package=portable'
 ```
 
+两条都要查到新版本：安装版那条好了不代表便携版也好了。lcstp.com 每个平台和架构只认一个安装包、一个 zip，同类多出一个就两个都不用，这条又会退回上一个版本。所以 Release 上另外加的附件（离线安装包、OCR 组件、增量包）要在服务器里登记为“不用于自动更新”。0.36.0 第一次带增量包时，便携版就因此停在 0.35.0，直到服务器把 `-delta-from-` 的 zip 和 `-delta-setup.exe` 也算进去。以后再给 Release 加新种类的附件，先改服务器。
+
 ### 推送方式：立即推送 / 正常推送
 
 每次发布由开发者决定用哪一种。用户没说就用正常推送；用户说“立即推送”“马上推给大家”“这是重要更新”之类，就用立即推送。发布前给用户的汇报里写明这次用的是哪一种。
