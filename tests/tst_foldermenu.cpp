@@ -570,6 +570,14 @@ private slots:
         QCOMPARE(copied,
             QDir::toNativeSeparators(QStandardPaths::writableLocation(QStandardPaths::DesktopLocation)));
 
+        // Open folders other than this one only (GitHub #393): never an empty "0" group.
+        menu.setGroups(false, false, true);
+        menu.setInlineCounts(0, 0, 0);
+        QVERIFY(open());
+        if (const int windows = entry(menu, u"已打开的文件夹"_s); windows >= 0)
+            QVERIFY(!menu.entries().at(windows).toMap().value(u"children"_s).toList().isEmpty());
+        menu.setGroups(false, true, false);
+
         menu.setItems(true, false, true, true, true, true);
         QVERIFY(open());
         QCOMPARE(entry(menu, u"复制路径"_s), -1);

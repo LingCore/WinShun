@@ -689,7 +689,8 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
         }
         m_entries.append(groupEntries(tr("收藏夹"), u"\uE734"_s, favorites, m_favoritesInline));
     }
-    const auto addList = [&](const QString& text, const QStringList& folders, qsizetype max, const QString& glyph, int inlineCount) {
+    const auto addList = [&](const QString& text, const QStringList& folders, qsizetype max, const QString& glyph, int inlineCount,
+                             bool onlyWithSome) {
         QVariantList children;
         QStringList listed;
         if (!m_folder.isEmpty())
@@ -701,12 +702,16 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
                 FileIconProvider::iconUrl(folder, true), folder));
             listed.append(folder);
         }
+        if (children.isEmpty() && onlyWithSome)
+            return;
         m_entries.append(groupEntries(text, glyph, children, inlineCount));
     };
     if (m_listRecent && m_recordHistory)
-        addList(tr("最近的文件夹"), found.recent, kMaxRecent, u"\uE81C"_s, m_recentInline);
+        addList(tr("最近的文件夹"), found.recent, kMaxRecent, u"\uE81C"_s, m_recentInline, false);
+    // The folder it is in is not among them: with no other open, no "0" that
+    // reads as if none were found (GitHub #393).
     if (m_listWindows)
-        addList(tr("已打开的文件夹"), found.windows, found.windows.size(), u"\uE8A7"_s, m_windowsInline);
+        addList(tr("已打开的文件夹"), found.windows, found.windows.size(), u"\uE8A7"_s, m_windowsInline, true);
     if (!m_folder.isEmpty()) {
         separator();
         if (m_itemSearch)
