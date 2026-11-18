@@ -27,7 +27,7 @@ std::optional<bool> navigated(ServiceDialogNav& nav, HWND dialog, const std::wst
 {
     auto answer = std::make_shared<std::promise<bool>>();
     std::future<bool> done = answer->get_future();
-    nav.navigate(dialog, folder, [answer](bool ok) { answer->set_value(ok); });
+    nav.navigate(dialog, folder, {}, [answer](bool ok) { answer->set_value(ok); });
     if (done.wait_for(limit) != std::future_status::ready)
         return std::nullopt;
     return done.get();
