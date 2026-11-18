@@ -26,7 +26,7 @@
 
 ## 核心与插件的运行约定（2026-10-31）
 
-搜索和剪贴板是宿主的核心。截图与录屏、语义搜索、局域网传输、休息提醒、书签、翻译和系统开关已是可选的 C++ 进程插件。进程插件继续使用普通用户权限的 `normal` 模式，按清单申请独立窗口、快捷键、子进程、文件、网络及搜索／剪贴板工具能力；不把插件载入主进程。文件夹菜单、对话框集成和拖放圆盘目前仍有宿主实现，不能宣称全部辅助功能都已拆完。
+搜索和剪贴板是宿主的核心。截图与录屏、语义搜索、局域网传输、休息提醒、鼠标手势、书签、翻译和系统开关已是可选的 C++ 进程插件。进程插件继续使用普通用户权限的 `normal` 模式，按清单申请独立窗口、快捷键、子进程、文件、网络及搜索／剪贴板工具能力；不把插件载入主进程。文件夹菜单、对话框集成和拖放圆盘目前仍有宿主实现，不能宣称全部辅助功能都已拆完。
 
 剪贴板在原生 Start/Search 上显示时，可使用独立的 UIAccess 显示进程（#179，`WinShun.exe --clipboard-display`）。历史数据库、系统剪贴板监听、插件调用和粘贴操作仍由普通主进程负责；显示进程提前进入专用入口，只创建剪贴板 QML、预览和菜单，通过有长度上限的本地管道同步视图数据与明确允许的操作。文件图标由普通进程生成 PNG，显示进程不加载用户 Shell 图标提供器。
 
@@ -464,9 +464,10 @@ src/capture/         截图、标注、贴图、长截图、录屏（静态库�
 src/capture-plugin/  插件库里的 winshun.capture（0.16 是 WinShun.exe 的一部分）：stub/ 是不带 Qt 的 WinShunCapture.exe，载入用 Win顺 的 Qt 的 WinShunCaptureApp.dll；CaptureApp（协议、快捷键、托盘子菜单、图片）、CaptureSettings（capture.ini）、RawClicks（录屏点击高亮的 Raw Input）、CapturePreview（--preview-* 验证入口）、qml/（截图的界面）
 src/tools-plugin/    随包的 winshun.tools 插件（无 Qt，静态 C 运行库，用 winshun.h 写的）：Tools.cpp 的 tools::serve 编成静态库 wstools，平时在 WinShunPluginHost.exe 的线程上跑；WinShunTools.exe 只在 WINSHUN_PLUGINS_APART=1 时用，单独一个 strict 沙箱进程；Calc（算式）、Units（单位）、Color（颜色写法）、Codec（Base64、CNG 哈希、UUID、时间戳）是不依赖 Qt 的纯逻辑，tests/tst_tools.cpp 再编一遍
 src/break-plugin/    WinShunBreak.exe：插件库里的 winshun.break 插件（休息提醒，WinShun-plugins #7；无 Qt，静态 C 运行库，常驻 eager，只要 ui）；Schedule（纯时钟，tests/tst_break.cpp 再编一遍）、Sense（空闲、锁屏、全屏、勿扰）、Ui（Direct2D 分层窗口，自己的线程）
+src/gestures-plugin/ WinShunGestures.exe：插件库里的 winshun.gestures 插件（鼠标手势；无 Qt，静态 C 运行库，常驻 eager，要 ui、processes、winshun:open）；Gesture（纯规则：认方向、读动作，tests/tst_gestures.cpp 再编一遍）、Engine（WH_MOUSE_LL 钩子线程、GDI+ 分层窗口画轨迹、执行动作）
 src/translate-plugin/ WinShunTranslate.exe：插件库里的 winshun.translate 插件（翻译；0.7–0.17 是随包的 Python 插件；无 Qt，静态 C 运行库，常驻，debounceMs 300）；DeepL 或 OpenAI 兼容接口（WinHTTP，系统代理，整次请求一个时限），纯逻辑由 tests/tst_translate.cpp 再编一遍
 src/bookmarks-plugin/ WinShunBookmarks.exe：插件库里的 winshun.bookmarks 插件（浏览器书签；0.7–0.17 是随包的 Python 插件；无 Qt，静态 C 运行库，一次性）；读 Chrome、Edge 每个配置文件的 Bookmarks 和设置里指定的文件，纯逻辑由 tests/tst_bookmarks.cpp 再编一遍
-plugins/             随安装包的插件（docs/plugins.md）：winshun.go（零代码）、winshun.kill（PowerShell 常驻）、winshun.tools（C++）；构建时和 SDK、WinShunTools.exe 一起整理到 build\<preset>\plugins，build.ps1 -Deploy 放进 dist\WinShun\plugins，安装到 <安装目录>\plugins，默认全部停用。Win顺 自己的其余插件（截图、按意思找、局域网传输、休息提醒、翻译、浏览器书签、网页搜索）在 src\<名字>-plugin\package，构建时整理到 build\<preset>\library-plugins\<id>，release.ps1 打成 <id>-<版本>.wsplugin 给插件库；以前随包的由 MovedPlugins 在升级后自动装上
+plugins/             随安装包的插件（docs/plugins.md）：winshun.go（零代码）、winshun.kill（PowerShell 常驻）、winshun.tools（C++）；构建时和 SDK、WinShunTools.exe 一起整理到 build\<preset>\plugins，build.ps1 -Deploy 放进 dist\WinShun\plugins，安装到 <安装目录>\plugins，默认全部停用。Win顺 自己的其余插件（截图、按意思找、局域网传输、休息提醒、鼠标手势、翻译、浏览器书签、网页搜索）在 src\<名字>-plugin\package，构建时整理到 build\<preset>\library-plugins\<id>，release.ps1 打成 <id>-<版本>.wsplugin 给插件库；以前随包的由 MovedPlugins 在升级后自动装上
 tests/               单元测试（Qt Test）；tests/plugin_fake.cpp 是 tst_plugin、tst_mcp 和 wsbench --plugin 用的假插件（--once / --serve / --probe），tests/plugins/ 是 wsbench 用的 PowerShell、Python、exe 示例
 tools/wsbench.cpp    在真实索引上测内存和搜索耗时（--switches 只读地列出每个系统开关的状态和读取耗时；--stats 看各部分怎么构成，--check 把每个查询的结果和逐项匹配比对）；--mft 读各盘的 MFT 并与遍历比对，--mft-time 比较读 MFT 的几种做法，--service 照首次运行建一遍索引（--service --content 连内容索引一起，量要多久），--content-index 建一遍内容索引并核对（报出每个文件读和交给索引各花多久；--no-add 不交给索引，--grams-only 只量切片段，--merge-threads 定合并用几个线程，--merge-times 再用 16 / 8 / 4 / 1 个线程各合并一次），--service --documents 只建文档的那部分（报出几个副本没再读），--service --content --from 文件夹 从已有的索引文件开始（升级后的那次重建），--content-search 用程序自己的内容索引看一次内容搜索要读哪些文件，--extract 读一遍所有文档，--share 路径 读一个网络共享（--indexer 走一遍 ShareIndexer，--watch 秒 再看变更通知），--plugin 文件夹 --query 文字 按程序的方式跑一个插件（校验 manifest、经 runner 起进程、打印结果 JSON 和冷启动 / 首次往返 / 稳态往返的耗时）
 tools/plugin-probe.cpp 插件系统阶段 0 的探针（无 Qt，静态 C 运行库）：`--parent` 把自己当子进程按每条路起一遍（资源管理器令牌 + CreateProcessWithTokenW、自己的令牌降权、链接令牌、普通 CreateProcessW、不提权的 runner），报出子进程的令牌、作业、缓解策略、stdio、环境和起进程的耗时（提权和不提权各跑一次；结论见 pitfalls 的“插件系统”）
