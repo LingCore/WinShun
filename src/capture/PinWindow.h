@@ -121,6 +121,10 @@ public:
     // kept for the editing window of stage 4b.
     const QByteArray& project() const { return m_project; }
     void setProject(QByteArray project) { m_project = std::move(project); }
+    // A pin of copied words (GitHub #388): what Ctrl+C copies instead of the
+    // picture, until it is edited (setPicture); empty: a picture's pin.
+    const QString& copiedText() const { return m_copiedText; }
+    void setCopiedText(QString text) { m_copiedText = std::move(text); }
 
     // A new picture where this one is (the editing window's 完成): the top
     // left and the zoom stay, the window follows the new size. A null picture
@@ -244,6 +248,7 @@ private:
     bool m_clickThrough = false;
     bool m_reachable = false; // click-through, but Ctrl is held over it
     bool m_screenshot = true;
+    QString m_copiedText; // copiedText()
     bool m_shown = true;
     bool m_allHidden = false;
     QByteArray m_project;

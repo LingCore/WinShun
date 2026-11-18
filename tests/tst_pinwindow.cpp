@@ -157,6 +157,20 @@ private slots:
         QVERIFY(!pin.hasOtherSide());
     }
 
+    // Copied words pinned (GitHub #388) are copied as words until edited: a picture then.
+    void copiedWordsGoWithAnEdit()
+    {
+        QImage card(200, 60, QImage::Format_RGB32);
+        card.fill(Qt::white);
+        PinWindow pin(card, QPoint(40, 40), PinWindow::Host {});
+        QVERIFY(pin.copiedText().isEmpty());
+        pin.setCopiedText(QStringLiteral("原文"));
+        pin.rotate(true); // still the words, turned
+        QCOMPARE(pin.copiedText(), QStringLiteral("原文"));
+        pin.setPicture(card, {});
+        QVERIFY(pin.copiedText().isEmpty());
+    }
+
     // The card's rows: the user's keys in the menu's words; a row with no key left out.
     void keyCardRows()
     {

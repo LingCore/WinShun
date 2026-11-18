@@ -536,6 +536,7 @@ void PinWindow::setPicture(const QImage& image, QByteArray project)
     m_imageSize = m_image.size();
     m_scaled = {};
     m_project = std::move(project);
+    m_copiedText.clear(); // edited: a picture now, copied as one
     forgetOtherSide();
     render();
 }

@@ -24,6 +24,8 @@
 #include <oleacc.h>
 #include <wrl/client.h>
 
+#include <algorithm>
+#include <iterator>
 #include <string_view>
 
 using namespace ws;
@@ -311,6 +313,60 @@ private slots:
         QVERIFY(styled);
         QCOMPARE(copied, fixture); // a real menu choice reaches the pin's copy callback
         QCOMPARE(pins.count(), 1);
+    }
+
+    // Copied words pinned (GitHub #388): Ctrl+C copies the words, not the picture.
+    void copiedWordsPin()
+    {
+        QImage card(120, 40, QImage::Format_RGB32);
+        card.fill(Qt::white);
+        QImage copied;
+        QString copiedText;
+        capture::PinManager::Callbacks callbacks;
+        callbacks.copy = [&](const QImage& image, bool) { copied = image; };
+        callbacks.copyText = [&](const QString& text) { copiedText = text; };
+        capture::PinManager pins(std::move(callbacks));
+        const QString words = u"贴住的原文\n第二行"_s;
+        pins.pinFitted(card, QPoint(600, 200), QPoint(660, 220), false, words);
+        QCOMPARE(pins.count(), 1);
+        HWND pin = nullptr;
+        ::EnumThreadWindows(::GetCurrentThreadId(), [](HWND window, LPARAM data) -> BOOL {
+            wchar_t name[64] {};
+            ::GetClassNameW(window, name, 64);
+            if (std::wstring_view(name) == L"WinShun.Pin") {
+                *reinterpret_cast<HWND*>(data) = window;
+                return FALSE;
+            }
+            return TRUE;
+        }, reinterpret_cast<LPARAM>(&pin));
+        QVERIFY(pin);
+        BYTE keys[256] {};
+        QVERIFY(::GetKeyboardState(keys));
+        BYTE held[256] {};
+        std::copy(std::begin(keys), std::end(keys), std::begin(held));
+        held[VK_CONTROL] = 0x80; // this thread's state, as GetKeyState reads it
+        QVERIFY(::SetKeyboardState(held));
+        auto restore = qScopeGuard([&keys] { ::SetKeyboardState(keys); });
+        ::SendMessageW(pin, WM_KEYDOWN, 'C', 0);
+        QCOMPARE(copiedText, words);
+        QVERIFY(copied.isNull());
+        pins.closeAll();
+        pins.pinFitted(card, QPoint(600, 200), QPoint(660, 220), false); // a picture: copied as one
+        pin = nullptr;
+        ::EnumThreadWindows(::GetCurrentThreadId(), [](HWND window, LPARAM data) -> BOOL {
+            wchar_t name[64] {};
+            ::GetClassNameW(window, name, 64);
+            if (std::wstring_view(name) == L"WinShun.Pin" && ::IsWindowVisible(window)) {
+                *reinterpret_cast<HWND*>(data) = window;
+                return FALSE;
+            }
+            return TRUE;
+        }, reinterpret_cast<LPARAM>(&pin));
+        QVERIFY(pin);
+        copiedText.clear();
+        ::SendMessageW(pin, WM_KEYDOWN, 'C', 0);
+        QVERIFY(copiedText.isEmpty());
+        QCOMPARE(copied, card);
     }
 
     void keyboard_data()

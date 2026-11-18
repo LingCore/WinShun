@@ -62,8 +62,9 @@ public:
     // A picture not shown where it was taken (a long screenshot, a file, the
     // clipboard's): its own pixels kept, it starts within the work area of
     // the monitor at `anchor`, shown fitted when larger than 90% of it, its
-    // pixel at `anchor` kept in place (PinWindow).
-    void pinFitted(const QImage& image, QPoint origin, QPoint anchor, bool screenshot);
+    // pixel at `anchor` kept in place (PinWindow). `text`: the words the
+    // picture shows (copied text pinned, GitHub #388), copied by Ctrl+C.
+    void pinFitted(const QImage& image, QPoint origin, QPoint anchor, bool screenshot, QString text = {});
     int count() const { return static_cast<int>(m_pins.size()); }
     // `pin` is one of the pins on the screen (not closed since): for what
     // keeps a pointer to one meanwhile (the editing window).

@@ -18,6 +18,7 @@
 #include <QTest>
 
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <future>
 #include <thread>
@@ -431,8 +432,56 @@ private slots:
         const auto picture = read(last);
         QCOMPARE(picture.status, pin::ClipboardStatus::Image);
         QCOMPARE(picture.image.convertToFormat(QImage::Format_ARGB32), other.convertToFormat(QImage::Format_ARGB32));
-        write({.text = u"text has no picture"_s});
-        QCOMPARE(read(last).status, pin::ClipboardStatus::Empty); // caller may restore the capture
+        // Words copied since (GitHub #388): they are what is pinned, as they were copied.
+        write({.text = u"text has no picture\r\n第二行"_s});
+        const auto words = read(last);
+        QCOMPARE(words.status, pin::ClipboardStatus::Text);
+        QCOMPARE(words.text, u"text has no picture\r\n第二行"_s);
+        QVERIFY(words.image.isNull());
+        write({.text = u" \r\n\t"_s}); // only spaces: nothing to pin, the capture may be
+        QCOMPARE(read(last).status, pin::ClipboardStatus::Empty);
+        write({.text = u"words beside"_s, .imageData = encodeClipImage(m_image).data}); // a picture comes first
+        QCOMPARE(read(last).status, pin::ClipboardStatus::Image);
+    }
+
+    // Copied words drawn to pin (GitHub #388): a card of the panel's colour,
+    // at the monitor's scale, wrapped at a reading width, never endless.
+    void textCard()
+    {
+        const pin::TextLook light {QColor(250, 250, 250), QColor(20, 20, 20), QColor(128, 128, 128), false, {}};
+        const QImage one = pin::renderText(u"贴住这一段话 hello"_s, 96, light);
+        QVERIFY(!one.isNull());
+        QCOMPARE(one.format(), QImage::Format_RGB32);
+        QCOMPARE(one.pixelColor(1, 1), QColor(250, 250, 250));
+        int ink = 0;
+        for (int y = 0; y < one.height(); ++y) {
+            for (int x = 0; x < one.width(); ++x)
+                ink += one.pixelColor(x, y).lightness() < 120;
+        }
+        QVERIFY2(ink > 50, qPrintable(QString::number(ink))); // the words are there
+        const QImage larger = pin::renderText(u"贴住这一段话 hello"_s, 144, light);
+        QVERIFY(std::abs(larger.height() - one.height() * 1.5) <= 4);
+        QVERIFY(std::abs(larger.width() - one.width() * 1.5) <= 6);
+
+        const QImage wrapped = pin::renderText(QString(400, u'字'), 96, light);
+        QVERIFY(wrapped.width() <= 560 + 2 * 14 + 1);
+        QVERIFY(wrapped.height() > 4 * one.height());
+        QStringList many;
+        for (int i = 0; i < 500; ++i)
+            many.append(u"第 %1 行"_s.arg(i));
+        const QImage tall = pin::renderText(many.join(u'\n'), 96, light);
+        const QImage fifty = pin::renderText(many.mid(0, 50).join(u'\n'), 96, light);
+        QVERIFY(tall.height() > fifty.height()); // and the … below
+        QVERIFY(tall.height() < fifty.height() + 2 * one.height());
+        const QImage endless = pin::renderText(QString(200'000, u'a'), 96, light);
+        QVERIFY(!endless.isNull());
+        QVERIFY(endless.height() <= tall.height());
+
+        // A see-through panel (the glass style) on an opaque grey of the theme's.
+        const pin::TextLook glass {QColor(0, 0, 0, 0), QColor(240, 240, 240), QColor(160, 160, 160), true, {}};
+        QCOMPARE(pin::renderText(u"dark"_s, 96, glass).pixelColor(1, 1), QColor(0x2b, 0x2b, 0x2b));
+        QVERIFY(pin::renderText(u"  \n\t "_s, 96, light).isNull());
+        QVERIFY(pin::renderText({}, 96, light).isNull());
     }
 
     void qtFallbackCarriesTheSameOrigin()

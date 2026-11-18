@@ -2589,6 +2589,14 @@ click here to cancel</translation>
         <translation>Copy</translation>
     </message>
     <message>
+        <source>复制文字</source>
+        <translation>Copy text</translation>
+    </message>
+    <message>
+        <source>复制图片</source>
+        <translation>Copy picture</translation>
+    </message>
+    <message>
         <source>保存到“屏幕截图”</source>
         <translation>Save to Screenshots</translation>
     </message>
@@ -2927,6 +2935,14 @@ Original video kept at: %2</translation>
         <translation>This picture cannot be read.</translation>
     </message>
     <message>
+        <source>这段文字只有空白，没有可贴的内容。</source>
+        <translation>The text is only spaces: there is nothing to pin.</translation>
+    </message>
+    <message>
+        <source>剪贴板里没有可用图片或文字，也没有最近截图。请先复制，或截一张。</source>
+        <translation>There is no picture or text on the clipboard and no recent screenshot. Copy something, or take a screenshot, first.</translation>
+    </message>
+    <message>
         <source>延时截图</source>
         <translation>Delayed capture</translation>
     </message>
@@ -2969,10 +2985,6 @@ Original video kept at: %2</translation>
     <message>
         <source>截图设置…</source>
         <translation>Screenshot settings…</translation>
-    </message>
-    <message>
-        <source>剪贴板里没有可用图片，也没有最近截图。请先复制图片或截一张。</source>
-        <translation>No usable clipboard image or recent screenshot. Copy an image or take a screenshot first.</translation>
     </message>
     <message>
         <source>优先剪贴板图片，否则贴回最近截图并保留标注</source>

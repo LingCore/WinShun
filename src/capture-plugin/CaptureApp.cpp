@@ -380,7 +380,9 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
             pinPicture(file, params.value(u"screenshot"_s).toBool());
         else if (action == u"edit")
             editPicture(params.value(u"clipId"_s).toInteger(-1), file, params.value(u"project"_s).toString());
-        m_protocol.respond(id, QJsonObject {});
+        else if (action == u"pinText") // copied words (GitHub #388); "pinned": an older version says nothing
+            pinText(params.value(u"text"_s).toString().left(pinimage::kPinTextChars));
+        m_protocol.respond(id, QJsonObject {{u"pinned"_s, action == u"pinText"}});
     } else if (method == u"showSettings") {
         showSettings();
         m_protocol.respond(id, QJsonObject {});
@@ -824,6 +826,7 @@ void CaptureApp::applyAppearance(const QJsonObject& a)
     SystemTheme::setGlassAppearance(a.value(u"glassTransparency"_s).toInt(50), a.value(u"glassClarity"_s).toInt(50));
     SystemTheme::setBackdropOn(a.value(u"transparency"_s).toString(u"on"_s) == u"on");
     SystemTheme::setHoverTips(a.value(u"hoverTips"_s).toBool(true)); // 外观 › 悬停提示
+    m_uiFont = a.value(u"resolvedUiFont"_s).toString();
     const QString theme = a.value(u"themeSetting"_s).toString();
     QGuiApplication::styleHints()->setColorScheme(theme == u"dark" ? Qt::ColorScheme::Dark
             : theme == u"light"                                     ? Qt::ColorScheme::Light
@@ -1588,6 +1591,23 @@ void CaptureApp::pinPicture(const QString& path, bool screenshot)
     }).detach();
 }
 
+void CaptureApp::pinText(const QString& text)
+{
+    const auto placement = pinimage::cursorPlacement();
+    if (!placement)
+        return;
+    ensureTheme(); // the 界面风格's colours
+    const bool dark = isDarkMode();
+    const pinimage::TextLook look {SystemTheme::nativeColor("menuBackground", QColor()), SystemTheme::nativeColor("text", QColor()),
+        SystemTheme::nativeColor("subtext", QColor()), dark, m_uiFont};
+    auto prepared = pinimage::prepare(pinimage::renderText(text, placement->dpi, look), *placement);
+    if (prepared.image.isNull()) {
+        notify(tr("贴图"), tr("这段文字只有空白，没有可贴的内容。"));
+        return;
+    }
+    pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, false, text);
+}
+
 void CaptureApp::pinCurrentImage()
 {
     if (m_pinPending)
@@ -1602,7 +1622,8 @@ void CaptureApp::pinCurrentImage()
     std::thread([self, last, placement = *placement] {
         auto picture = pinimage::readClipboard(last);
         auto prepared = pinimage::prepare(std::move(picture.image), placement);
-        QMetaObject::invokeMethod(qApp, [self, last, status = picture.status, prepared = std::move(prepared)] {
+        QMetaObject::invokeMethod(qApp, [self, last, status = picture.status, text = std::move(picture.text),
+                                             prepared = std::move(prepared)] {
             if (!self)
                 return;
             self->m_pinPending = false;
@@ -1618,10 +1639,13 @@ void CaptureApp::pinCurrentImage()
                 else
                     self->notify(tr("贴图"), tr("剪贴板里的图片读不出来，请重新复制。"));
                 break;
+            case Status::Text:
+                self->pinText(text);
+                break;
             case Status::LastCapture:
             case Status::Empty:
                 if (!self->m_capture || !self->m_capture->hasLast())
-                    self->notify(tr("贴图"), tr("剪贴板里没有可用图片，也没有最近截图。请先复制图片或截一张。"));
+                    self->notify(tr("贴图"), tr("剪贴板里没有可用图片或文字，也没有最近截图。请先复制，或截一张。"));
                 else
                     self->m_capture->pinLast();
                 break;

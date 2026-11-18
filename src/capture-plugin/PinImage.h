@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QImage>
 #include <QPoint>
 #include <QRect>
@@ -12,6 +13,7 @@ namespace ws::captureplugin::pinimage {
 struct Placement {
     QPoint cursor;
     QRect work;
+    int dpi = 96; // the monitor's: copied words are drawn at its size (renderText)
 };
 
 struct Prepared {
@@ -25,12 +27,35 @@ struct LastCapture {
     quint32 clipboardSequence = 0;
 };
 
-enum class ClipboardStatus { Image, LastCapture, Empty, Busy, Unreadable };
+// Text: no picture, but words (GitHub #388), pinned as renderText draws them.
+enum class ClipboardStatus { Image, LastCapture, Text, Empty, Busy, Unreadable };
 
 struct ClipboardPicture {
     ClipboardStatus status = ClipboardStatus::Empty;
     QImage image;
+    QString text; // Text: what was copied, at most kPinTextChars
 };
+
+// The most of copied words a pin keeps to copy again (UTF-16 units); the
+// card shows fewer (renderText).
+inline constexpr qsizetype kPinTextChars = 256 * 1024;
+
+// How copied words look pinned: the 界面风格's floating panel.
+struct TextLook {
+    QColor background; // made opaque over a grey of the theme's
+    QColor text;
+    QColor subtext; // the … where the words go on past the card
+    bool dark = false;
+    QString font; // the family of Win顺's words; empty: the application's
+};
+
+// Copied words as a picture to pin (GitHub #388): on a card of the panel's
+// colour, wrapped at a reading width, in pixels of a monitor of `dpi` (so
+// they are sharp at 100% there). Lines keep their breaks and indents; text
+// indented as code is drawn in a monospaced font. The card shows the first
+// 2,000 characters and 50 lines, an … below when there is more. Null for
+// words that are only spaces.
+QImage renderText(const QString& text, int dpi, const TextLook& look);
 
 // Snapshot on invocation; decoding must not move a pin to wherever the mouse
 // happens to be when a large picture finishes loading. Coordinates are physical.

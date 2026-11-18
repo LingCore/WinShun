@@ -36,7 +36,8 @@ enum MenuCommand {
     AllTopmostCommand,
     OtherSideCommand,
     CopyTranslationCommand,
-    TranslateCommand
+    TranslateCommand,
+    CopyPictureCommand
 };
 
 shell::MenuItem command(int id, QString text, char16_t glyph, bool checked = false, bool enabled = true)
@@ -76,9 +77,10 @@ PinWindow* PinManager::pin(const QImage& image, QPoint origin, bool screenshot, 
     return add(image, origin, screenshot, std::move(project), std::nullopt);
 }
 
-void PinManager::pinFitted(const QImage& image, QPoint origin, QPoint anchor, bool screenshot)
+void PinManager::pinFitted(const QImage& image, QPoint origin, QPoint anchor, bool screenshot, QString text)
 {
-    add(image, origin, screenshot, {}, anchor);
+    if (PinWindow* pin = add(image, origin, screenshot, {}, anchor); pin && !text.isEmpty())
+        pin->setCopiedText(std::move(text));
 }
 
 PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, QByteArray project, std::optional<QPoint> fitAbout)
@@ -89,7 +91,9 @@ PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, 
     host.closed = [this](PinWindow* pin) { closed(pin); };
     host.menu = [this](PinWindow* pin, POINT at) { showMenu(pin, at); };
     host.copy = [this](PinWindow* pin) {
-        if (m_callbacks.copy)
+        if (!pin->copiedText().isEmpty() && m_callbacks.copyText)
+            m_callbacks.copyText(pin->copiedText()); // the words, as they were copied
+        else if (m_callbacks.copy)
             m_callbacks.copy(pin->image(), pin->screenshot());
     };
     host.save = [this](PinWindow* pin) {
@@ -392,12 +396,14 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         command(AllTopmostCommand, tr("全部置顶"), 0xE718, allTopmost()),
         command(CloseAllCommand, tr("关闭全部贴图"), 0xE8BB),
     };
-    std::vector<shell::MenuItem> items {
-        command(CopyCommand, tr("复制") + hint(KeyAction::PinCopy), 0xE8C8),
-        command(SaveCommand, tr("保存到“屏幕截图”") + hint(KeyAction::PinSave), 0xE74E),
-        command(SaveAsCommand, tr("另存为…"), 0xE74E),
-        shell::MenuItem::separator(),
-    };
+    // Copied words pinned (GitHub #388): 复制 is theirs, the picture a second choice.
+    const bool words = !pin->copiedText().isEmpty();
+    std::vector<shell::MenuItem> items {command(CopyCommand, (words ? tr("复制文字") : tr("复制")) + hint(KeyAction::PinCopy), 0xE8C8)};
+    if (words)
+        items.push_back(command(CopyPictureCommand, tr("复制图片"), 0xE8C8));
+    items.push_back(command(SaveCommand, tr("保存到“屏幕截图”") + hint(KeyAction::PinSave), 0xE74E));
+    items.push_back(command(SaveAsCommand, tr("另存为…"), 0xE74E));
+    items.push_back(shell::MenuItem::separator());
     if (full && pin->hasOtherSide()) { // 截图翻译 (#191): the translation is one side, the original the other
         items.push_back(command(OtherSideCommand, (pin->translationShown() ? tr("显示原文") : tr("显示译文")) + u"\tTab"_s, 0xE8C1));
         items.push_back(command(CopyTranslationCommand, tr("复制译文"), 0xE8C8));
@@ -434,6 +440,12 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         return;
     switch (chosen) {
     case CopyCommand:
+        if (words && m_callbacks.copyText)
+            m_callbacks.copyText(pin->copiedText());
+        else if (m_callbacks.copy)
+            m_callbacks.copy(pin->image(), pin->screenshot());
+        break;
+    case CopyPictureCommand:
         if (m_callbacks.copy)
             m_callbacks.copy(pin->image(), pin->screenshot());
         break;

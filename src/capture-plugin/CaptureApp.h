@@ -110,7 +110,9 @@ private:
     void placeNear(QQuickWindow* window, const QRect& where);
     void notifySaved(const QString& path, const QString& error);
     void pinPicture(const QString& path, bool screenshot);
-    void pinCurrentImage(); // clipboard picture first, otherwise the editable last capture
+    void pinCurrentImage(); // clipboard picture first, then copied words, otherwise the editable last capture
+    // Copied words as a card on the screen (GitHub #388), at the cursor; Ctrl+C on it copies them.
+    void pinText(const QString& text);
     void editPicture(qint64 clipId, const QString& file, const QString& projectFile);
     void editPin(capture::PinWindow* pin);
     void showSettings();
@@ -182,6 +184,7 @@ private:
     QTimer m_applyLater;
     bool m_started = false;
     bool m_pinPending = false;
+    QString m_uiFont; // the family of Win顺's words (its look's resolvedUiFont): copied words pinned
     bool m_themeMade = false; // ensureTheme
 };
 

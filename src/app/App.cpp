@@ -920,6 +920,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         showShortcutSettings();
     });
     connect(m_clipboard.get(), &Clipboard::pinRequested, this, [this](qint64 id) { pictureAction(u"pin"_s, id, {}, false); });
+    connect(m_clipboard.get(), &Clipboard::pinTextRequested, this, &App::pinText);
     connect(m_clipboard.get(), &Clipboard::editRequested, this, [this](qint64 id) { pictureAction(u"edit"_s, id, {}, false); });
     connect(m_clipboard.get(), &Clipboard::lanSendSetupRequested, this, [this](bool update) {
         hideClipboard(false);
@@ -2380,6 +2381,23 @@ void App::pictureAction(const QString& verb, qint64 clipId, const QString& path,
         params.insert(u"file"_s, QDir::toNativeSeparators(path));
     }
     if (!m_pluginHost->request(plugin, u"picture"_s, params, {}, true))
+        m_messages->showNotification(tr("截图插件还没准备好"), tr("请稍后再试。"));
+}
+
+// Copied words as a card on the screen (GitHub #388), by the plugin that
+// pins pictures. One from before 0.38.0 does not know words: it answers
+// without "pinned", and is to be updated.
+void App::pinText(const QString& text)
+{
+    const QString plugin = picturePlugin(u"pin"_s);
+    if (plugin.isEmpty() || text.trimmed().isEmpty())
+        return;
+    const QJsonObject params {{u"action"_s, u"pinText"_s}, {u"text"_s, text}};
+    const auto answered = [this](bool ok, const QJsonValue& result) {
+        if (ok && !result.toObject().value(u"pinned"_s).toBool())
+            m_messages->showNotification(tr("贴到屏幕"), tr("请把截图插件更新到最新版本，就能把文字贴到屏幕。"));
+    };
+    if (!m_pluginHost->request(plugin, u"picture"_s, params, answered, true))
         m_messages->showNotification(tr("截图插件还没准备好"), tr("请稍后再试。"));
 }
 

@@ -4,12 +4,17 @@
 #include "ImageOrigin.h"
 #include "PictureFile.h"
 
+#include <QFontMetricsF>
+#include <QGuiApplication>
+#include <QPainter>
 #include <QScopeGuard>
 #include <QStringList>
+#include <QTextLayout>
 
 #include <windows.h>
 #include <objbase.h>
 #include <shellapi.h>
+#include <shellscalingapi.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 
@@ -17,8 +22,12 @@
 #include <chrono>
 #include <climits>
 #include <cmath>
+#include <memory>
 #include <string>
 #include <thread>
+#include <vector>
+
+using namespace Qt::StringLiterals;
 
 namespace ws::captureplugin::pinimage {
 
@@ -65,6 +74,51 @@ QByteArray clipboardBytes(UINT format, SIZE_T limit)
     return bytes;
 }
 
+// CF_UNICODETEXT up to its end or `limit` units, never half a pair.
+QString clipboardText(qsizetype limit)
+{
+    const HANDLE handle = ::GetClipboardData(CF_UNICODETEXT);
+    if (!handle)
+        return {};
+    const SIZE_T units = ::GlobalSize(handle) / sizeof(wchar_t);
+    const auto* data = static_cast<const wchar_t*>(::GlobalLock(handle));
+    if (!data)
+        return {};
+    qsizetype length = 0;
+    while (static_cast<SIZE_T>(length) < units && length < limit && data[length])
+        ++length;
+    QString text = QString::fromWCharArray(data, length);
+    ::GlobalUnlock(handle);
+    if (!text.isEmpty() && text.back().isHighSurrogate())
+        text.chop(1);
+    return text;
+}
+
+// The card of renderText, in logical pixels.
+constexpr qsizetype kCardChars = 2000;
+constexpr int kCardLines = 50;
+constexpr qreal kCardWidth = 560; // where a line wraps
+constexpr qreal kCardPadX = 14;
+constexpr qreal kCardPadY = 10;
+constexpr qreal kCardFontPx = 14;
+constexpr qreal kCardLineGap = 5; // between lines, for reading
+
+// Two or more lines indented with a tab or spaces: code (or a table), whose
+// columns line up only in a monospaced font.
+bool indentedLines(const QStringList& lines)
+{
+    return std::ranges::count_if(lines, [](const QString& line) {
+        return line.startsWith(u'\t') || (line.startsWith(u"  ") && !line.trimmed().isEmpty());
+    }) >= 2;
+}
+
+QColor over(const QColor& color, const QColor& base)
+{
+    const qreal a = color.alphaF();
+    return QColor::fromRgbF(color.redF() * a + base.redF() * (1 - a), color.greenF() * a + base.greenF() * (1 - a),
+        color.blueF() * a + base.blueF() * (1 - a));
+}
+
 } // namespace
 
 std::optional<Placement> cursorPlacement()
@@ -72,11 +126,105 @@ std::optional<Placement> cursorPlacement()
     POINT cursor {};
     if (!::GetCursorPos(&cursor))
         return std::nullopt;
+    const HMONITOR monitor = ::MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
     MONITORINFO info {sizeof info};
-    if (!::GetMonitorInfoW(::MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST), &info))
+    if (!::GetMonitorInfoW(monitor, &info))
         return std::nullopt;
+    UINT dpiX = 96;
+    UINT dpiY = 96;
+    if (FAILED(::GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY)))
+        dpiX = 96;
     return Placement {{cursor.x, cursor.y},
-        QRect(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top)};
+        QRect(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top),
+        static_cast<int>(dpiX)};
+}
+
+QImage renderText(const QString& text, int dpi, const TextLook& look)
+{
+    QString shown = text.left(kCardChars + 1);
+    shown.replace(u"\r\n"_s, u"\n"_s);
+    shown.replace(u'\r', u'\n');
+    bool more = shown.size() > kCardChars || text.size() > kCardChars + 1;
+    if (shown.size() > kCardChars) {
+        shown.truncate(kCardChars);
+        if (shown.back().isHighSurrogate())
+            shown.chop(1);
+    }
+    while (shown.startsWith(u'\n')) // blank lines above and below show nothing
+        shown.remove(0, 1);
+    while (!shown.isEmpty() && shown.back().isSpace())
+        shown.chop(1);
+    if (shown.trimmed().isEmpty())
+        return {};
+    QStringList lines = shown.split(u'\n');
+    if (lines.size() > kCardLines) {
+        lines.resize(kCardLines);
+        more = true;
+    }
+    const bool code = indentedLines(lines);
+    for (QString& line : lines)
+        line.replace(u'\t', u"    "_s);
+
+    const qreal scale = std::max(dpi, 96) / 96.0;
+    QFont font;
+    const QString family = look.font.isEmpty() ? QGuiApplication::font().family() : look.font;
+    font.setFamilies(code ? QStringList {u"Cascadia Mono"_s, u"Consolas"_s, family} : QStringList {family});
+    font.setPixelSize(static_cast<int>(std::lround(kCardFontPx * scale)));
+    const QFontMetricsF metrics(font);
+    const qreal lineHeight = std::ceil(metrics.height() + kCardLineGap * scale);
+    const qreal width = std::round(kCardWidth * scale);
+    QTextOption option;
+    option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    std::vector<std::unique_ptr<QTextLayout>> layouts;
+    const qreal most = kCardLines * lineHeight; // of the rows, wrapped ones too
+    qreal y = 0;
+    qreal widest = 0;
+    for (const QString& line : lines) {
+        if (y >= most) {
+            more = true;
+            break;
+        }
+        auto layout = std::make_unique<QTextLayout>(line, font);
+        layout->setTextOption(option);
+        layout->beginLayout();
+        for (QTextLine row = layout->createLine(); row.isValid(); row = layout->createLine()) {
+            row.setLineWidth(width);
+            row.setPosition(QPointF(0, y + (lineHeight - row.height()) / 2));
+            if (y < most)
+                widest = std::max(widest, row.naturalTextWidth());
+            y += lineHeight;
+        }
+        layout->endLayout();
+        if (layout->lineCount() == 0) // a blank line
+            y += lineHeight;
+        layouts.push_back(std::move(layout));
+    }
+    if (y > most) { // the rest is cut off below (the clip)
+        y = most;
+        more = true;
+    }
+    const qreal ellipsis = more ? lineHeight : 0;
+    const int padX = static_cast<int>(std::lround(kCardPadX * scale));
+    const int padY = static_cast<int>(std::lround(kCardPadY * scale));
+    const QSize size(static_cast<int>(std::ceil(std::max(widest, metrics.horizontalAdvance(u"…"_s)))) + 2 * padX,
+        static_cast<int>(std::ceil(y + ellipsis)) + 2 * padY);
+    const QColor base = look.dark ? QColor(0x2b, 0x2b, 0x2b) : QColor(0xfb, 0xfb, 0xfb);
+    QImage image(size, QImage::Format_RGB32);
+    image.fill(look.background.isValid() ? over(look.background, base) : base);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    painter.setPen(look.text.isValid() ? look.text : (look.dark ? QColor(0xf0, 0xf0, 0xf0) : QColor(0x1a, 0x1a, 0x1a)));
+    painter.setClipRect(QRectF(0, padY, size.width(), y));
+    for (const auto& layout : layouts)
+        layout->draw(&painter, QPointF(padX, padY));
+    painter.setClipping(false);
+    if (more) {
+        painter.setPen(look.subtext.isValid() ? look.subtext : QColor(0x80, 0x80, 0x80));
+        painter.setFont(font);
+        painter.drawText(QRectF(padX, padY + y, size.width() - 2 * padX, lineHeight), Qt::AlignLeft | Qt::AlignVCenter, u"…"_s);
+    }
+    painter.end();
+    return image;
 }
 
 Prepared prepare(QImage image, const Placement& placement)
@@ -149,6 +297,7 @@ ClipboardPicture readClipboard(const LastCapture& last)
     offeredImage = offeredImage || ::IsClipboardFormatAvailable(CF_DIBV5) || ::IsClipboardFormatAvailable(CF_DIB);
     const QByteArray dibV5 = clipboardBytes(CF_DIBV5, kClipMaxImageBytes);
     const QByteArray dib = clipboardBytes(CF_DIB, kClipMaxImageBytes);
+    const QString text = clipboardText(kPinTextChars); // words, pinned when there is no picture (GitHub #388)
     QStringList files;
     if (const HDROP drop = static_cast<HDROP>(::GetClipboardData(CF_HDROP))) {
         const UINT count = ::DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
@@ -178,7 +327,11 @@ ClipboardPicture readClipboard(const LastCapture& last)
         if (QImage image = readFile(file); !image.isNull())
             return {ClipboardStatus::Image, std::move(image)};
     }
-    return {offeredImage ? ClipboardStatus::Unreadable : ClipboardStatus::Empty, {}};
+    if (offeredImage)
+        return {ClipboardStatus::Unreadable, {}};
+    if (files.isEmpty() && !text.trimmed().isEmpty())
+        return {ClipboardStatus::Text, {}, text};
+    return {ClipboardStatus::Empty, {}};
 }
 
 } // namespace ws::captureplugin::pinimage

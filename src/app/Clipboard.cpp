@@ -1873,6 +1873,9 @@ QVariantList Clipboard::menuItems(int row) const
             items.append(entry(Reveal, tr("打开所在位置"), QString(), u""_s));
         else if (c.kind == ClipKind::Image && m_pictureVerbs.pin) // the screenshot plugin's
             items.append(entry(PinImage, c.animated ? tr("贴首帧到屏幕") : tr("贴到屏幕"), u"F3"_s, u"\uE718"_s));
+        // Words as a card on the screen (GitHub #388), by the same plugin; not what is kept from view.
+        if (c.kind != ClipKind::Image && c.kind != ClipKind::Files && m_pictureVerbs.pin && !c.masked)
+            items.append(entry(PinImage, tr("贴到屏幕"), u"F3"_s, u"\uE718"_s));
         if (c.kind == ClipKind::Image && m_pictureVerbs.edit)
             items.append(entry(EditImage, c.animated ? tr("编辑首帧") : tr("编辑"), u"Ctrl+E"_s, u"\uE70F"_s));
         if (c.kind == ClipKind::Image)
@@ -2011,6 +2014,11 @@ void Clipboard::trigger(int row, int action)
         break;
     case PinImage: {
         const Clip* c = m_model.at(row);
+        if (c && c->kind != ClipKind::Image && c->kind != ClipKind::Files && !c->masked) { // words (GitHub #388)
+            // All of it, as Ctrl+C on the card copies it again (a long text is kept whole on disk only).
+            emit pinTextRequested(c->textLength > c->text.size() ? m_store->payload(c->id).text : c->text);
+            break;
+        }
         if (!c || c->kind != ClipKind::Image)
             break;
         if (m_store->imagePending(c->id)) { // just copied, its file not written yet

@@ -479,6 +479,7 @@ private:
     // and one of its commands run with the path chosen.
     void applyMenuCommands();
     void runMenuCommand(const QString& id, const QString& path);
+    void pinText(const QString& text); // copied words on the screen, by the screenshot plugin (GitHub #388)
     void showPluginSettings(const QString& pluginId); // ... on that plugin's card ("winshun:settings")
     void applyHotkey();
     void applyDialogs(); // Ctrl+G, the bar and going by themselves in file dialogs

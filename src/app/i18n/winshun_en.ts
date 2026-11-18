@@ -9042,8 +9042,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Edit the picture, or change the text</translation>
     </message>
     <message>
-        <source>图片贴到屏幕（截图插件）</source>
-        <translation>Pin the picture to the screen (Screenshot plugin)</translation>
+        <source>图片或文字贴到屏幕（截图插件）</source>
+        <translation>Pin a picture or text to the screen (screenshot plugin)</translation>
     </message>
     <message>
         <source>钉住窗口：一直显示在最上面，粘贴后也不收起</source>
@@ -9713,6 +9713,10 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>请稍后再试。</source>
         <translation>Please try again in a moment.</translation>
+    </message>
+    <message>
+        <source>请把截图插件更新到最新版本，就能把文字贴到屏幕。</source>
+        <translation>Update the Screenshot and recording plugin to its latest version to pin text to the screen.</translation>
     </message>
     <message>
         <source>、</source>

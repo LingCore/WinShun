@@ -149,7 +149,7 @@ public:
         OpenLink,
         Reveal,
         OpenImage,
-        PinImage, // a picture on the screen (贴到屏幕): pinRequested
+        PinImage, // a picture on the screen (贴到屏幕): pinRequested; words: pinTextRequested
         EditImage, // the editing window (编辑): editRequested
         Remove,
         MoveUp, // in its group's own order (ClipModel::movable)
@@ -408,6 +408,7 @@ signals:
     // 贴到屏幕 and 编辑 on a picture: the entry's id, for the plugin that
     // does them (App::pictureAction; the screenshot plugin).
     void pinRequested(qint64 id);
+    void pinTextRequested(const QString& text); // 贴到屏幕 on words (GitHub #388)
     void editRequested(qint64 id);
 
 private:
