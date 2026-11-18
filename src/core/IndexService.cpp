@@ -95,6 +95,24 @@ bool isDriveRoot(std::wstring_view path)
     return path.size() == 2 && path[1] == L':';
 }
 
+// Whether a folder above `path` is one the crawler ranks low (a dot-folder,
+// node_modules, a program folder...): its own rule, not a second list. The
+// drive and the last part, `path` itself, are not looked at.
+bool inLowPriorityFolder(std::wstring_view path, const Crawler& crawler)
+{
+    for (std::size_t slash = path.find(L'\\'); slash != std::wstring_view::npos;) {
+        const std::size_t next = path.find(L'\\', slash + 1);
+        if (next == std::wstring_view::npos)
+            break;
+        const std::wstring_view folder = path.substr(0, next);
+        const std::wstring_view name = path.substr(slash + 1, next - slash - 1);
+        if (!name.empty() && (crawler.dirPriorityFlags(folder, name) & EntryFlag::LowPriority))
+            return true;
+        slash = next;
+    }
+    return false;
+}
+
 int crawlThreads()
 {
     return std::clamp(static_cast<int>(std::thread::hardware_concurrency()), 2, 8);
@@ -2097,7 +2115,7 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
 
     // A disk-wide walk or MFT refresh intentionally skips directory links.
     // Explicit links are read afterwards, under their original visible paths,
-    // and those found leading to what is indexed nowhere else (GitHub #350).
+    // and those found that are worth their own path (GitHub #350, #364).
     if (completed && !linksRead.empty() && takeLinks(stop, linksRead, links, false))
         scope = this->scope();
     if (completed && scope->supplemental()) {
@@ -2276,18 +2294,39 @@ LinkCheck IndexService::checkLink(std::wstring_view link, const Crawler& crawler
         check.verdict = held ? LinkVerdict::ShareIndexed : LinkVerdict::Wanted;
         return check;
     }
-    // On a disk the index does not hold (removable, not chosen): with whole
-    // disks, what is on those it does is found where it is.
     const std::wstring_view root = volumeOf(target);
     if (root.empty()) {
         check.verdict = LinkVerdict::NoVolume;
         return check;
     }
-    std::lock_guard lock(m_journalMutex);
-    const bool held = std::any_of(m_volumes.begin(), m_volumes.end(), [&](const VolumeInfo& v) {
-        return win32::equalsIgnoreCase(v.root, root);
-    });
-    check.verdict = held ? LinkVerdict::VolumeIndexed : LinkVerdict::Wanted;
+    bool held = false;
+    {
+        std::lock_guard lock(m_journalMutex);
+        held = std::any_of(m_volumes.begin(), m_volumes.end(), [&](const VolumeInfo& v) {
+            return win32::equalsIgnoreCase(v.root, root);
+        });
+    }
+    if (!held) {
+        check.verdict = LinkVerdict::Wanted; // a disk the index does not hold (removable, not chosen)
+        return check;
+    }
+    // GitHub #364: a disk the index holds lists the target at its real path
+    // only, so the link's path finds nothing: walked under it, as when its
+    // folder is added by hand, unless it would only be noise. The names
+    // first; the link's attributes, a read of the disk, last (pnpm makes
+    // thousands of links, all in node_modules).
+    if (isDriveRoot(target)) {
+        check.verdict = LinkVerdict::WholeDisk; // the disk twice over
+    } else if (win32::equalsIgnoreCase(target, link) || isUnder(link, target) || isUnder(target, link)) {
+        check.verdict = LinkVerdict::Loop; // a folder above the link also covers one found while walking another link
+    } else if (inLowPriorityFolder(link, crawler)) {
+        check.verdict = LinkVerdict::ToolFolder;
+    } else if (const PathProbe own = probePath(std::wstring(link));
+               own.attributes != INVALID_FILE_ATTRIBUTES && (own.attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))) {
+        check.verdict = LinkVerdict::SystemLink; // the link's own attributes: C:\Documents and Settings and the like
+    } else {
+        check.verdict = LinkVerdict::Wanted;
+    }
     return check;
 }
 
@@ -2306,8 +2345,14 @@ QString verdictName(LinkVerdict verdict)
         return u"target-excluded"_s;
     case LinkVerdict::ShareIndexed:
         return u"share-indexed"_s;
-    case LinkVerdict::VolumeIndexed:
-        return u"disk-indexed"_s; // found where it is
+    case LinkVerdict::SystemLink:
+        return u"system-link"_s;
+    case LinkVerdict::WholeDisk:
+        return u"whole-disk"_s;
+    case LinkVerdict::Loop:
+        return u"loop"_s;
+    case LinkVerdict::ToolFolder:
+        return u"tool-folder"_s;
     case LinkVerdict::NoVolume:
         return u"no-volume"_s;
     }

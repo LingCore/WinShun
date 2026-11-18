@@ -113,7 +113,18 @@ bool passOver(std::atomic<bool>& running, const std::function<bool()>& owed);
 
 // Whether a directory link found is walked under its own path (GitHub #350),
 // and why not, for the diagnostics (#364).
-enum class LinkVerdict { Wanted, LinkExcluded, Unreadable, TargetExcluded, ShareIndexed, VolumeIndexed, NoVolume };
+enum class LinkVerdict {
+    Wanted,
+    LinkExcluded,
+    Unreadable,
+    TargetExcluded,
+    ShareIndexed,
+    WholeDisk, // leads to a volume's root
+    Loop, // leads to itself or a folder above it, or into itself
+    ToolFolder, // lies in a low-priority folder (node_modules, .git...)
+    SystemLink, // hidden or system: Windows' own compatibility junctions
+    NoVolume
+};
 struct LinkCheck {
     LinkVerdict verdict = LinkVerdict::Unreadable;
     std::wstring target;
@@ -371,11 +382,14 @@ private:
     // `links`: the paths of the directory links on it (GitHub #350).
     bool syncFromMft(const VolumeInfo& volume, EntryId root, const Crawler& crawler, bool lowPriority,
         std::stop_token stop, std::vector<std::wstring>& links);
-    // GitHub #350: whether the index holds a directory link's target nowhere
-    // else, so that it is walked under the link (m_autoLinks): a folder on a
-    // disk not indexed, a volume with no drive letter, a share not among the
-    // network shares. Never a folder excluded, nor the link in one. With why
-    // not, for the diagnostics (GitHub #364).
+    // GitHub #350: whether a directory link is walked under its own path
+    // (m_autoLinks), as when its folder is added by hand: what it leads to on
+    // a disk not indexed, a volume with no drive letter, a share not among the
+    // network shares, and (GitHub #364) a folder on a disk indexed, which is
+    // otherwise found only at its real path. Never a folder excluded, nor the
+    // link in one; nor, on an indexed disk, one to a whole disk, a loop, one
+    // in a tool folder, or a system link. With why not, for the diagnostics
+    // (GitHub #364).
     LinkCheck checkLink(std::wstring_view link, const Crawler& crawler) const;
     // Worker thread: the links found on the volumes `read` (roots) replace
     // what was known of them; those not seen before are walked (`walkNow`)
@@ -462,8 +476,8 @@ private:
     std::vector<std::wstring> m_scopedVolumes;
     std::vector<std::wstring> m_removedExtra; // descendants to discard when an explicit link is removed
     // GitHub #350: the directory links found on the volumes read from their
-    // MFT (or made since, as their journals tell) whose targets the index
-    // holds nowhere else; walked under their own paths as the explicit ones
+    // MFT (or made since, as their journals tell) that checkLink() wants;
+    // walked under their own paths as the explicit ones
     // (Options::extraFolders) are. Kept in scope.json; m_linksKnown false
     // until a read of every followed volume has looked for them.
     std::vector<std::wstring> m_autoLinks;
