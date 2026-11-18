@@ -3,9 +3,9 @@
 # plugin on the single-header SDK (src/plugins-sdk/winshun.h): new File
 # Explorer folder windows become tabs of a window already open. No Qt, the
 # C runtime linked in. The rules (Rules), the hidden windows and their
-# journal (Hider), the closing of spare tabs (Closer) and the tabs kept for
-# the next logon (Session) are plain C++ that
-# tests/tst_explorertabs.cpp builds in again.
+# journal (Hider), the closing of spare tabs (Closer), the tabs kept for
+# the next logon (Session) and the DLLs from elsewhere logged for #331
+# (Modules) are plain C++ that tests/tst_explorertabs.cpp builds in again.
 add_executable(WinShunExplorerTabs
     main.cpp
     Engine.cpp Engine.h Explorer.h
@@ -14,8 +14,9 @@ add_executable(WinShunExplorerTabs
     Rules.cpp Rules.h
     Hider.cpp Hider.h
     Closer.cpp Closer.h
+    Modules.cpp Modules.h
     ${PROJECT_SOURCE_DIR}/resources/WinShunExplorerTabs.rc
 )
 target_include_directories(WinShunExplorerTabs PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
-target_link_libraries(WinShunExplorerTabs PRIVATE winshun_options ole32 oleaut32 shell32 user32 dwmapi advapi32)
+target_link_libraries(WinShunExplorerTabs PRIVATE winshun_options ole32 oleaut32 shell32 user32 dwmapi advapi32 psapi)
 set_target_properties(WinShunExplorerTabs PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

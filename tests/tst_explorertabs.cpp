@@ -12,15 +12,19 @@
 
 #include "Closer.h"
 #include "Hider.h"
+#include "Modules.h"
 #include "Rules.h"
 #include "Session.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QTemporaryDir>
 #include <QTest>
 
 #include <cstdio>
 #include <set>
+
+#include <windows.h>
 
 using namespace tabs;
 
@@ -686,6 +690,27 @@ private slots:
         QCOMPARE(plan[0].window.tabs, (std::vector<std::wstring> {L"C:\\a", L"C:\\b"}));
         QCOMPARE(plan[0].window.active, 1);
         QVERIFY(planRestore({saved({L"::{21EC2020-3AEA-1069-A2DD-08002B30309D}"})}, {}).empty());
+    }
+
+    void foreignModulesNameOnlyOthers()
+    {
+        // GitHub #331's log line: Qt here is loaded from its own folder, so
+        // it is listed by its full path; nothing under Windows is, nor
+        // anything next to the program.
+        const QString list = QString::fromStdString(foreignModules());
+        QVERIFY(list != u"?");
+        const QStringList paths = list.split(QStringLiteral("; "), Qt::SkipEmptyParts);
+        const QString windows = QDir::toNativeSeparators(QDir::cleanPath(qEnvironmentVariable("SystemRoot"))) + u'\\';
+        const QString own = QDir::toNativeSeparators(QCoreApplication::applicationDirPath()) + u'\\';
+        wchar_t qt[MAX_PATH] {};
+        const DWORD n = ::GetModuleFileNameW(::GetModuleHandleW(L"Qt6Core.dll"), qt, MAX_PATH);
+        QVERIFY(n > 0 && n < MAX_PATH);
+        const QString qtCore = QString::fromWCharArray(qt, int(n));
+        for (const QString& path : paths) {
+            QVERIFY2(!path.startsWith(windows, Qt::CaseInsensitive), qPrintable(path));
+            QVERIFY2(!path.startsWith(own, Qt::CaseInsensitive), qPrintable(path));
+        }
+        QCOMPARE(paths.contains(qtCore, Qt::CaseInsensitive), !qtCore.startsWith(own, Qt::CaseInsensitive));
     }
 };
 

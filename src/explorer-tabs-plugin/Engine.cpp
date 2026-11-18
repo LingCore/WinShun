@@ -3,6 +3,7 @@
 #include "Closer.h"
 #include "Explorer.h"
 #include "Hider.h"
+#include "Modules.h"
 
 #include <windows.h>
 #include <dwmapi.h>
@@ -279,6 +280,7 @@ struct Engine::Impl {
     // The open windows are known (knownTops): until then no window counts as new.
     std::atomic<bool> connected {false};
     std::atomic<int> mergedCount {0};
+    std::atomic<bool> foreignModulesLogged {false}; // GitHub #331, once a run
     // The windows that came to the front lately, the newest last (under
     // mutex), and the one the plugin itself put there last.
     std::deque<HWND> foregrounds;
@@ -1096,6 +1098,12 @@ struct Engine::Impl {
                         web = known->web;
                     VARIANT_BOOL shown = VARIANT_FALSE;
                     why += !web ? " web=?" : FAILED(web->get_Visible(&shown)) ? " web=err" : shown ? " web=shown" : " web=hidden";
+                    // Unreadable here, though there: once, what else is loaded in this process.
+                    if (styleError == ERROR_INVALID_WINDOW_HANDLE && titleLength > 0 && !foreignModulesLogged.exchange(true)) {
+                        const std::string foreign = foreignModules();
+                        log("Explorer's windows cannot be read here (user32 says the handle is invalid, the title reads); DLLs in this "
+                            "process from elsewhere than Windows and the plugin: " + (foreign.empty() ? std::string("none") : foreign));
+                    }
                 }
                 if (!why.empty())
                     looked += ";" + why;
