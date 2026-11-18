@@ -1505,7 +1505,7 @@ void SearchEngine::runNameSearch(const Job& job)
     const bool foldersOnly = request.scope == Scope::Folders;
     // 文件 with a type chosen: only its files, whatever is typed or listed.
     const std::vector<std::string> types = foldersOnly ? std::vector<std::string>() : foldedExtensions(request.extensions);
-    const Hidden hidden = hiddenOf(request, query, types, m_index->hiddenFolders()); // skipped, and not asked for
+    const Hidden hidden = hiddenOf(request, query, types, m_index ? m_index->hiddenFolders() : nullptr); // skipped, and not asked for
     // Narrowed by when, how large or where (the panel's filters, size: and
     // dm: typed): files and folders alone, in the index's own terms. Nothing
     // typed in the panel lists them all the same (browse).
