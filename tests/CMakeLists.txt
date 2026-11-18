@@ -98,6 +98,17 @@ add_custom_command(OUTPUT "${ocr_app_stamp}"
     VERBATIM)
 add_custom_target(tst_ocrsearch_app DEPENDS "${ocr_app_stamp}")
 
+# winshun.devtools: the JSON reader and writer, the window's tree and tool
+# (compiled in: in the plugin they are its QML module's types), the search
+# box's rows, and that Win顺 takes its manifest.
+qt_add_executable(tst_devtools tst_devtools.cpp
+    ${PROJECT_SOURCE_DIR}/src/devtools-plugin/JsonTree.cpp ${PROJECT_SOURCE_DIR}/src/devtools-plugin/JsonTool.cpp)
+target_link_libraries(tst_devtools PRIVATE wsdevtools wsplugin Qt6::Gui Qt6::QmlIntegration Qt6::Test)
+target_compile_definitions(tst_devtools PRIVATE WINSHUN_DEVTOOLS_MANIFEST="${DEVTOOLS_PLUGIN_MANIFEST}")
+set_target_properties(tst_devtools PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_devtools COMMAND tst_devtools -o -,txt)
+set_tests_properties(tst_devtools PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_ocrsearch tst_ocrsearch.cpp)
 target_link_libraries(tst_ocrsearch PRIVATE wsocrsearch wsplugin miniz Qt6::Test)
 target_compile_definitions(tst_ocrsearch PRIVATE WINSHUN_OCR_MANIFEST="${OCR_PLUGIN_MANIFEST}"

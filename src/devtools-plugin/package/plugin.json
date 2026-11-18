@@ -1,0 +1,32 @@
+{
+  "manifest": 1,
+  "id": "winshun.devtools",
+  "name": {"zh": "开发工具", "en": "Developer tools"},
+  "version": "1.0.0",
+  "description": {"zh": "给开发的小工具，先有 JSON：格式化、压缩、转义，树形查看，搜索键名和值。日志里夹着的、转义过的、一行一段的 JSON 都能认出来。搜索框输入 json 加空格看剪贴板里的 JSON，也可以直接把 JSON 粘贴进搜索框；.json 文件右键「用 JSON 工具查看」。", "en": "Small tools for development, starting with JSON: format, minify, escape, a tree to browse and search names and values. Finds JSON inside log lines, escaped JSON and one-per-line JSON. Type json and a space for the JSON on the clipboard, or paste JSON straight into the search box; right-click a .json file for View in JSON tool."},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "minWinShun": "0.36.0",
+  "runtime": {"mode": "resident", "program": "WinShunDevTools.exe", "start": "lazy", "idleExitSec": 0, "sandbox": "normal", "timeoutMs": 5000, "memoryMB": 1024},
+  "permissions": ["ui", "clipboard:read", "clipboard:write", {"files:read": ["你选择用 JSON 工具查看的文件 / Files you open with the JSON tool"]}],
+  "commands": [{
+    "id": "json",
+    "keyword": "json",
+    "title": {"zh": "JSON 工具", "en": "JSON tool"},
+    "description": {"zh": "格式化、压缩、转义 JSON，打开窗口树形查看", "en": "Format, minify or escape JSON; a window to browse it as a tree"},
+    "hint": {"zh": "空格后粘贴 JSON；什么都不输入就用剪贴板里的", "en": "paste JSON after the space; nothing typed takes the clipboard's"},
+    "icon": "ph:brackets-curly",
+    "triggers": [
+      {"regex": "^(?!(?i)json\\s)(?:[\\s\\S]*?\\{\\s*\\\\?\"[^\"\\n]*\\\\?\"\\s*:|\\s*\\[\\s*[\\[{\"])", "minLength": 6, "maxLength": 4096},
+      {"files": {"kind": "file", "max": 1, "extensions": ["json", "jsonl", "ndjson", "jsonc", "json5", "geojson", "har", "log"], "title": {"zh": "用 JSON 工具查看", "en": "View in JSON tool"}}}
+    ]
+  }],
+  "settings": [
+    {"key": "indent", "type": "choice", "title": {"zh": "格式化时的缩进", "en": "Indent when formatting"}, "options": [
+      {"value": "2", "title": {"zh": "2 个空格", "en": "2 spaces"}},
+      {"value": "4", "title": {"zh": "4 个空格", "en": "4 spaces"}},
+      {"value": "tab", "title": {"zh": "Tab", "en": "Tab"}}
+    ], "default": "2"}
+  ]
+}

@@ -75,6 +75,7 @@ add_subdirectory(src/cloudbackup-plugin)
 add_subdirectory(src/capture)
 add_subdirectory(src/capture-plugin)
 add_subdirectory(src/ocr-search-plugin)
+add_subdirectory(src/devtools-plugin)
 add_subdirectory(src/app)
 add_subdirectory(src/stub)
 add_subdirectory(src/service)
@@ -127,6 +128,14 @@ file(READ "${tabs_plugin_source}" tabs_plugin_manifest)
 string(JSON tabs_plugin_manifest SET "${tabs_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
 set(TABS_PLUGIN_MANIFEST "${CMAKE_BINARY_DIR}/generated/explorer-tabs-plugin.json")
 file(GENERATE OUTPUT "${TABS_PLUGIN_MANIFEST}" CONTENT "${tabs_plugin_manifest}\n")
+# The developer tools' window is Qt Quick on Win顺's own Qt: built against
+# this version's, it needs at least this version of Win顺.
+set(devtools_plugin_source "${PROJECT_SOURCE_DIR}/src/devtools-plugin/package/plugin.json")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${devtools_plugin_source}")
+file(READ "${devtools_plugin_source}" devtools_plugin_manifest)
+string(JSON devtools_plugin_manifest SET "${devtools_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
+set(DEVTOOLS_PLUGIN_MANIFEST "${CMAKE_BINARY_DIR}/generated/devtools-plugin.json")
+file(GENERATE OUTPUT "${DEVTOOLS_PLUGIN_MANIFEST}" CONTENT "${devtools_plugin_manifest}\n")
 add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/web-plugin/package" "${library_plugins_dir}/winshun.web"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/generated/web-plugin.json" "${library_plugins_dir}/winshun.web/plugin.json"
@@ -136,6 +145,10 @@ add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunOcrSearchApp>" "${library_plugins_dir}/winshun.ocr-search/WinShunOcrSearchApp.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.ocr-search/licenses/miniz.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/opencc/LICENSE" "${library_plugins_dir}/winshun.ocr-search/licenses/opencc.txt"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/devtools-plugin/package" "${library_plugins_dir}/winshun.devtools"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DEVTOOLS_PLUGIN_MANIFEST}" "${library_plugins_dir}/winshun.devtools/plugin.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunDevTools>" "${library_plugins_dir}/winshun.devtools/WinShunDevTools.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunDevToolsApp>" "${library_plugins_dir}/winshun.devtools/WinShunDevToolsApp.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/semantic-plugin/package" "${library_plugins_dir}/winshun.semantic"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunSemantic>" "${library_plugins_dir}/winshun.semantic/WinShunSemantic.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/localsend-plugin/package" "${library_plugins_dir}/winshun.localsend"
@@ -160,6 +173,7 @@ add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
     DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunExplorerTabs WinShunGestures WinShunBookmarks WinShunTranslate WinShunCloudBackup WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
+        WinShunDevTools WinShunDevToolsApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
     VERBATIM)
 
