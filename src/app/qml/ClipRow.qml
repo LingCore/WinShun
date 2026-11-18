@@ -117,8 +117,12 @@ Item {
     signal actionRequested(int index, int action)
     signal hoverMoved(int index, point globalPos) // the mouse moved over it (not pressed)
 
-    // The window's, read once here (GitHub #111); text on whole device pixels (see ResultRow).
-    readonly property real dpr: Screen.devicePixelRatio
+    // The window's, passed by the list (GitHub #111): a row that read Screen.*
+    // would have a Screen attached object of its own, and each row the list
+    // frees (a resize drains its pool) then leaves the shared QScreen, a
+    // disconnect that walks every connection on it: rows x connections, 30 s
+    // on a user's PC. Text on whole device pixels (see ResultRow).
+    property real dpr: 1
     function onPixel(y) { return Math.round(y * dpr) / dpr }
     function upToPixel(y) { return Math.ceil(y * dpr - 1e-6) / dpr }
 
@@ -209,7 +213,7 @@ Item {
             id: fileIcon
             objectName: "clipboardFileIcon"
 
-            readonly property real dpr: Screen.devicePixelRatio
+            readonly property real dpr: row.dpr
             readonly property int pixels: Math.round(row.iconSize * dpr)
 
             visible: (row.kind === 2 || row.kind === 3) && !thumbnail.ready
@@ -240,7 +244,7 @@ Item {
                 id: thumbnail
                 objectName: "clipboardThumbnail"
 
-                readonly property real dpr: Screen.devicePixelRatio
+                readonly property real dpr: row.dpr
                 readonly property bool ready: status === Image.Ready && implicitWidth > 0
 
                 // Scaled once, when loaded, to fit the slot (sourceSize: both

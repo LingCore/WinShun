@@ -256,6 +256,7 @@
 - **现象**：双屏用户把设置窗口拖过两屏交界时卡一下；搜索框不明显。两屏缩放相同（都是 100%）也会卡。
 - **原因**：QML 里每个读 `Screen.xxx` 的项各有一个 `QQuickScreenAttached`，每个往共用的 `QScreen` 上接约 9 个连接。窗口换屏时（在 `WM_MOVE` 里同步处理），每个附加对象都先从旧 `QScreen` 断开（`QObject::disconnect` 要扫一遍这个屏幕上的全部连接），再接到新屏幕上，所以耗时随附加对象个数的平方增长。设置窗口所有页面一直都在，原来有约 1,550 个：本机模拟换屏一次 GUI 线程停约 135 ms，修改后约 300 个、约 7 ms。各窗口共用同一个 `QScreen`，设置窗口的连接多了，搜索框换屏也变慢（约 10 ms → 2 ms）。重新布局、`forcePolish` 都只占 1–3 ms。
 - **做法**：`Screen.devicePixelRatio` 在窗口或组件的根上读一次（`readonly property real dpr: Screen.devicePixelRatio`），子项用 `<根>.dpr`；设置窗口的分区和行读 `SettingsWindow.dpr`（`SettingsSection.dpr`、`SettingRow.dpr`），不要在每个子项里写 `Screen.devicePixelRatio`。`tst_settingsscreen`（`--preview-settings … --screen-objects`）数设置窗口里的附加对象，超过 500 就失败。单屏机器上的复现方法：对每个附加对象调用它的 `screenChanged(QScreen*)` 槽（先 `nullptr` 再原屏幕），再发 `QWindow::screenChanged`，量 GUI 线程耗时。
+- **列表的行也一样（2026-11-18，#111 再报）**：用户打开剪贴板历史卡 30 秒。卡顿记录的栈：窗口改大小 → `ListView` 清空复用池（`drainReusableItemsPool`）→ 每个被释放的行 `setParentItem(nullptr)` → 离开窗口时它的 `QQuickScreenAttached` 断开共用的 `QScreen`，每次断开都扫一遍屏幕上的全部连接。当时 `ClipRow` 的根和两张图片各读一次 `Screen.devicePixelRatio`，每行 3 个附加对象，几百行乘上几千个连接；同一时刻内存刚被 IdleTrim 收过，扫连接时缺页近 30 万次，更慢。行是列表随时创建、释放的，不能自己读 `Screen.*`：`dpr` 写成普通属性，由列表的委托传入窗口的值（`ClipRow { dpr: page.dpr }`、`DialogBarRow { dpr: window.dpr }`）。`tst_clipboardscreen`（`--clipboard-scroll --screen-objects`）在屏幕上另接 9,000 个连接，滚动并改 12 次窗口大小，附加对象超过 40 个或随行数增加就失败；改前从 59 个涨到 89 个，改后一直 16 个。
 
 ## 窗口：拖动、标题栏、最大化
 

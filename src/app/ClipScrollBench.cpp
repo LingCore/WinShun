@@ -51,6 +51,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <vector>
 
 using namespace Qt::StringLiterals;
@@ -732,6 +733,92 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
         }
         report(u"bench: grabs saved"_s + (button ? u""_s : u" (no button for the tip)"_s));
         return 0;
+    }
+
+    // --screen-objects (GitHub #111): an item that reads Screen.* has a Screen
+    // attached object of its own, joined to the shared QScreen by about nine
+    // connections. When the list frees a row (a resize drains its reuse pool),
+    // each of the row's objects leaves that QScreen, a disconnect that walks
+    // every connection on it: rows x connections. A user's clipboard took 30 s
+    // to open that way. The window's must stay a few, however many rows came
+    // and went; and a resize, with the connections a running app's other
+    // windows add to the screen (simulated), stays quick.
+    if (args.contains(u"--screen-objects"_s)) {
+        const auto attachedObjects = [&] {
+            QSet<const QObject*> found;
+            const std::function<void(QQuickItem*)> walk = [&](QQuickItem* item) {
+                for (const QObject* child : item->children()) {
+                    if (qstrcmp(child->metaObject()->className(), "QQuickScreenAttached") == 0)
+                        found.insert(child);
+                }
+                for (QQuickItem* child : item->childItems())
+                    walk(child);
+            };
+            walk(window->contentItem());
+            for (const QObject* child : window->findChildren<QObject*>()) {
+                if (qstrcmp(child->metaObject()->className(), "QQuickScreenAttached") == 0)
+                    found.insert(child);
+            }
+            return static_cast<int>(found.size());
+        };
+        const int before = attachedObjects();
+        // The other windows' share of the screen's connections (the settings
+        // window alone keeps some 350 attached objects, about 3,000 connections).
+        std::vector<std::unique_ptr<QObject>> others;
+        for (int i = 0; i < 1000; ++i) {
+            auto& other = others.emplace_back(std::make_unique<QObject>());
+            QObject::connect(screen, &QScreen::geometryChanged, other.get(), [] {});
+            QObject::connect(screen, &QScreen::availableGeometryChanged, other.get(), [] {});
+            QObject::connect(screen, &QScreen::physicalSizeChanged, other.get(), [] {});
+            QObject::connect(screen, &QScreen::physicalDotsPerInchChanged, other.get(), [] {});
+            QObject::connect(screen, &QScreen::logicalDotsPerInchChanged, other.get(), [] {});
+            QObject::connect(screen, &QScreen::virtualGeometryChanged, other.get(), [] {});
+            QObject::connect(screen, &QScreen::primaryOrientationChanged, other.get(), [] {});
+            QObject::connect(screen, &QScreen::orientationChanged, other.get(), [] {});
+            QObject::connect(screen, &QScreen::refreshRateChanged, other.get(), [] {});
+        }
+        // Down through the history: rows made, pooled, reused.
+        for (int i = 0; i < 150; ++i) {
+            wheel(-120);
+            pumpFor(16);
+        }
+        pumpFor(700);
+        const int rowsSeen = static_cast<int>(seenRows.size());
+        // Tall, short, tall...: each short one frees the rows that no longer fit.
+        double cyclesPerMs = 0;
+        {
+            QElapsedTimer spin;
+            const quint64 c0 = threadCycles();
+            spin.start();
+            while (spin.nsecsElapsed() < 100'000'000) {
+            }
+            cyclesPerMs = double(threadCycles() - c0) / (spin.nsecsElapsed() / 1e6);
+        }
+        const int tall = std::min(area.height() - 40, 1000);
+        const int low = window->minimumHeight();
+        std::vector<double> resizeMs;
+        int most = before;
+        for (int i = 0; i < 6; ++i) {
+            for (const int height : {tall, low}) {
+                const quint64 c0 = threadCycles();
+                window->setHeight(height);
+                pumpFor(400);
+                resizeMs.push_back(double(threadCycles() - c0) / cyclesPerMs);
+                most = std::max(most, attachedObjects());
+            }
+        }
+        const int after = attachedObjects();
+        constexpr int budget = 40; // the window's own; 3 a row before #111
+        const bool ok = most <= budget && after <= before + 5;
+        report(u"bench: Screen attached objects: %1 at first, %2 after %3 rows and 12 resizes, %4 at most (budget %5)"_s
+                   .arg(before).arg(after).arg(rowsSeen).arg(most).arg(budget));
+        report(u"bench: GUI thread CPU per resize (with 9,000 other connections on the screen): mean %1 ms, max %2 ms"_s
+                   .arg(std::accumulate(resizeMs.begin(), resizeMs.end(), 0.0) / double(resizeMs.size()), 0, 'f', 1)
+                   .arg(percentile(resizeMs, 1), 0, 'f', 1));
+        report(ok ? u"ok: the rows have no Screen attached objects of their own"_s
+                  : u"FAILED: Screen attached objects grow with the rows (each row read Screen.* itself)"_s);
+        window->hide();
+        return ok ? 0 : 1;
     }
 
     struct Phase {

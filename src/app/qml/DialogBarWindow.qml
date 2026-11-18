@@ -669,6 +669,7 @@ Window {
             id: rowItem
             width: list.width
             height: window.bar.rowHeight
+            dpr: window.dpr
             showModified: window.bar.showModified
             hint: window.numberOf(index)
             hintModifier: window.numberModifier

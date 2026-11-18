@@ -72,14 +72,15 @@ Item {
     Accessible.selected: current
     Accessible.onPressAction: clicked(index)
 
-    // Text on whole device pixels (see ResultRow).
-    function onPixel(y) { return Math.round(y * Screen.devicePixelRatio) / Screen.devicePixelRatio }
-    function upToPixel(y) { return Math.ceil(y * Screen.devicePixelRatio - 1e-6) / Screen.devicePixelRatio }
+    // The window's, passed by the list: no Screen attached object in every
+    // row (GitHub #111, see ClipRow). Text on whole device pixels (see ResultRow).
+    property real dpr: 1
+    function onPixel(y) { return Math.round(y * dpr) / dpr }
+    function upToPixel(y) { return Math.ceil(y * dpr - 1e-6) / dpr }
 
     // The style's highlight (Theme.rowHighlight). The current row's is the
     // list's own, one for all its rows (DialogBarWindow); here only the hover.
     // Made the first time it shows, then only hidden (docs/pitfalls.md, ClipRow).
-    readonly property real dpr: Screen.devicePixelRatio
     Hook {
         anchors.fill: parent
         anchors.leftMargin: Theme.rowInset
@@ -103,7 +104,7 @@ Item {
 
         Image { // exactly as many device pixels as the icon has (see ResultRow)
             visible: !thumbnailImage.ready
-            readonly property real dpr: Screen.devicePixelRatio
+            readonly property real dpr: row.dpr
             readonly property int pixels: Math.round(iconSlot.width * dpr)
 
             x: 1 / 64

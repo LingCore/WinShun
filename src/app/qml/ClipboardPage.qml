@@ -965,7 +965,7 @@ Item {
                 visible: !page.findingGroup
                 width: page.previewOpen ? page.listWidth : parent.width
                 height: parent.height
-                readonly property real scrollbarInset: page.previewOpen ? 0 : page.frame.resizeMargin(Screen.devicePixelRatio)
+                readonly property real scrollbarInset: page.previewOpen ? 0 : page.frame.resizeMargin(page.dpr)
 
                 // The rows' buttons: a few sets, lent to the rows that show them.
                 RowActionsPool {
@@ -1094,6 +1094,7 @@ Item {
                         clickToPaste: page.clipboard.clickToPaste
                         pictureSize: page.clipboard.pictureSize
                         metrics: page.metrics
+                        dpr: page.dpr
                         actionsPool: clipActions
                         onDragRequested: (index) => page.clipboard.dragOut(index)
                         onMoveHeld: (held) => {
@@ -1232,7 +1233,7 @@ Item {
                 width: parent.width - x
                 height: parent.height
                 parentTop: page.y + body.y
-                resizeMargin: page.frame.resizeMargin(Screen.devicePixelRatio)
+                resizeMargin: page.frame.resizeMargin(page.dpr)
                 // Re-read when the rows change. The revision is part of the
                 // condition: a bare read of it would be dropped by the QML
                 // compiler, and the binding would not depend on it.
