@@ -76,7 +76,11 @@ QtObject {
         { where: "clipboard", group: qsTr("移动与选择"), brief: true, keys: "→  Alt+P", text: qsTr("打开或关闭预览") },
         { where: "clipboard", group: qsTr("管理"), brief: true, keys: "Ctrl+P", text: qsTr("固定或取消固定") },
         { where: "clipboard", group: qsTr("管理"), brief: true, keys: "Delete", text: qsTr("删除，Ctrl+Z 撤销") },
-        { where: "clipboard", group: qsTr("管理"), keys: "Ctrl+C", text: qsTr("复制；预览里选中了图中的字时，复制那一段") },
+        { where: "clipboard", group: qsTr("管理"), keys: "Ctrl+C", text: qsTr("复制；预览里选中了文字时，复制那一段（Enter 粘贴那一段）") },
+        { where: "clipboard", group: qsTr("管理"), keys: "Ctrl+S", text: qsTr("保存为文件") },
+        { where: "clipboard", group: qsTr("管理"), keys: "Ctrl+E", text: qsTr("编辑图片，或修改文字") },
+        { where: "clipboard", group: qsTr("管理"), keys: "F3", text: qsTr("图片贴到屏幕（截图插件）") },
+        { where: "clipboard", group: qsTr("管理"), keys: "Ctrl+T", text: qsTr("钉住窗口：一直显示在最上面，粘贴后也不收起") },
         { where: "clipboard", group: qsTr("管理"), keys: "Shift+F10", text: qsTr("右键菜单") },
         { where: "clipboard", group: qsTr("管理"), keys: "Esc", text: qsTr("关闭；选中了多条时先取消选择") }
     ]

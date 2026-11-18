@@ -568,6 +568,8 @@ Item {
         case Qt.Key_Enter:
             if (!clipboard.recording)
                 clipboard.turnOn()
+            else if (previewOpen && selectedCount === 0 && preview.selectedText.length > 0)
+                clipboard.pasteText(preview.selectedText) // part of the entry, selected in the preview (GitHub #375)
             else if (list.count > 0)
                 clipboard.paste(targetRow(), shift)
             break
@@ -593,6 +595,11 @@ Item {
                 return
             clipboard.togglePin(targetRow())
             break
+        case Qt.Key_T: // the window's own pin, top right, as Ctrl+T pins the search box (GitHub #379)
+            if (!ctrl || shift || alt)
+                return
+            clipboard.pinned = !clipboard.pinned
+            break
         case Qt.Key_A:
             // The field's own first: Ctrl+A selects its text. With no text, or
             // all of it selected already, it picks the listed rows (not what
@@ -617,9 +624,28 @@ Item {
             clipboard.undo()
             break
         default:
-            return
+            if (!menuShortcut(event))
+                return
         }
         event.accepted = true
+    }
+
+    // F3, Ctrl+E, Ctrl+S…: what the row's menu shows that key beside, done
+    // without the menu (GitHub #379). The menu decides what applies (a
+    // picture is pinned or edited only with the screenshot plugin).
+    function menuShortcut(event): bool {
+        const modifiers = event.modifiers & ~Qt.KeypadModifier
+        const letter = event.key >= Qt.Key_A && event.key <= Qt.Key_Z
+        const function_ = event.key >= Qt.Key_F1 && event.key <= Qt.Key_F12
+        if (list.count === 0 || !((letter && modifiers === Qt.ControlModifier) || (function_ && modifiers === Qt.NoModifier)))
+            return false
+        const key = letter ? "Ctrl+" + String.fromCharCode(event.key) : "F" + (event.key - Qt.Key_F1 + 1)
+        const row = targetRow()
+        const item = clipboard.menuItems(row).find(i => i.shortcut === key)
+        if (!item)
+            return false
+        clipboard.trigger(row, item.action)
+        return true
     }
 
     // The preview follows the current row and any change to it.
@@ -865,7 +891,7 @@ Item {
                 glyph: page.clipboard.pinned ? "" : "" // PinnedFill, Pin
                 glyphOverlay: page.clipboard.pinned ? "" : "" // Pin: the needle (lines up with PinnedFill in Fluent and MDL2)
                 checked: page.clipboard.pinned
-                tip: page.clipboard.pinned ? qsTr("取消钉住") : qsTr("钉住：一直显示在最上面，粘贴后也不收起")
+                tip: page.clipboard.pinned ? qsTr("取消钉住（Ctrl+T）") : qsTr("钉住：一直显示在最上面，粘贴后也不收起（Ctrl+T）")
                 onClicked: page.clipboard.pinned = !page.clipboard.pinned
             }
 

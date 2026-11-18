@@ -271,6 +271,9 @@ public:
     // On a row; on all of them, when it is one of several picked.
     Q_INVOKABLE void paste(int row, bool plainText);
     Q_INVOKABLE void quickPaste(int row, bool plainText); // Alt+1 ... Alt+9: that row alone, as shown numbered (ShownRows.qml)
+    // Part of an entry, selected in the preview (GitHub #375): pasted where
+    // the entry would be, as plain text; the history keeps the entry whole.
+    Q_INVOKABLE void pasteText(const QString& text);
     Q_INVOKABLE void copy(int row);
     // Dragged out as files (clipfiles::plan): pictures as they were copied,
     // words made files, files and folders as they are. The entries stay.
@@ -431,6 +434,7 @@ private:
     void failPaste(const QString& message);
     static QString elevatedHint(); // the paste left to the user, into a program run as administrator
     void pasteThroughService(HWND target); // the index service presses the keys there (GitHub #277)
+    void aimAtFrontProgram(); // pinned, clicked: the paste goes to the program in front now
     std::vector<const Clip*> targets(int row) const; // the row, or the picked ones it is one of
     ClipWrite writeFor(
         const std::vector<const Clip*>& clips, bool plainText, QString* problem, HWND target = nullptr) const;

@@ -33,12 +33,22 @@ Item {
     // the files' list and the thumbnail are not shown.
     property bool fileShown: false
     readonly property real contentBottom: meta.y - 4
-    // Ctrl+C: a picture's words selected, copied; false: none are.
+    // Text selected with the mouse (GitHub #375): a picture's words, the
+    // entry's own text, a copied text file's. Only one of them is shown.
+    readonly property string selectedText: kind === 4 ? words.selectedText
+                                         : body.visible ? body.selectedText : fileText.selectedText
+    // Ctrl+C: what is selected, copied as a new entry; false: nothing is.
     function copySelection(): bool {
-        if (selectedWords.length === 0)
+        if (selectedText.length === 0)
             return false
-        copyWords()
+        copyRequested(selectedText, true)
+        deselect()
         return true
+    }
+    function deselect() {
+        words.deselect()
+        body.deselect()
+        fileText.deselect()
     }
 
     // A picture's words: those selected with the mouse, or all of them, copied
@@ -250,15 +260,27 @@ Item {
                 }
             }
 
-            Text {
+            // Selectable with the mouse, without the focus, as a picture's
+            // words are (below): Ctrl+C copies the part, Enter pastes it.
+            TextEdit {
+                id: body
+                objectName: "clipboardPreviewText"
                 visible: preview.hasText
                 width: parent.width
                 text: preview.info.text ?? ""
-                textFormat: Text.PlainText
-                wrapMode: Text.WrapAnywhere
+                textFormat: TextEdit.PlainText
+                wrapMode: TextEdit.WrapAnywhere
+                readOnly: true
+                selectByMouse: true
+                activeFocusOnPress: false
                 color: preview.kind === 1 ? Theme.accent : Theme.text
+                selectionColor: Theme.textSelection
+                selectedTextColor: Theme.text
                 font.pixelSize: preview.metrics.uiBody
-                lineHeight: 1.15
+                TextLineSpacing {
+                    textDocument: body.textDocument
+                    factor: 1.15
+                }
             }
 
             Text { // the rest of a very long text: pasted, not shown
@@ -461,17 +483,25 @@ Item {
                 height: 1
                 color: Theme.divider
             }
-            Text { // one copied text file: its own words, as the search's preview shows them (GitHub #324)
+            TextEdit { // one copied text file: its own words, as the search's preview shows them (GitHub #324)
                 id: fileText
                 objectName: "clipboardPreviewFileText"
                 visible: text.length > 0
                 width: parent.width
                 text: preview.kind === 3 || preview.kind === 2 ? (preview.info.fileText ?? "") : ""
-                textFormat: Text.PlainText
-                wrapMode: Text.WrapAnywhere
+                textFormat: TextEdit.PlainText
+                wrapMode: TextEdit.WrapAnywhere
+                readOnly: true
+                selectByMouse: true
+                activeFocusOnPress: false
                 color: Theme.text
+                selectionColor: Theme.textSelection
+                selectedTextColor: Theme.text
                 font.pixelSize: preview.metrics.uiBody
-                lineHeight: 1.15
+                TextLineSpacing {
+                    textDocument: fileText.textDocument
+                    factor: 1.15
+                }
             }
             Text {
                 visible: fileText.visible && (preview.info.fileCut ?? false)
@@ -556,14 +586,17 @@ Item {
         }
 
         Text {
+            readonly property bool picked: preview.selectedText.length > 0
+            objectName: "clipboardPreviewHint"
             width: parent.width
             visible: text.length > 0
-            text: [preview.info.formatted ? qsTr("带格式，Shift+Enter 粘贴为纯文本") : "",
-                   (preview.info.group ?? "").length > 0 ? qsTr("在“%1”里，不会过期").arg(preview.info.group) : ""]
-                  .filter(s => s.length > 0).join(" · ")
+            text: picked ? qsTr("已选 %Ln 字：Ctrl+C 复制，Enter 粘贴", "", preview.selectedText.length)
+                         : [preview.info.formatted ? qsTr("带格式，Shift+Enter 粘贴为纯文本") : "",
+                            (preview.info.group ?? "").length > 0 ? qsTr("在“%1”里，不会过期").arg(preview.info.group) : ""]
+                           .filter(s => s.length > 0).join(" · ")
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
-            color: Theme.faint
+            color: picked ? Theme.accent : Theme.faint
             font.pixelSize: preview.metrics.uiCaption
         }
     }

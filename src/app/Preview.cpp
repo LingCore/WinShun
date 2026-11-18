@@ -7361,6 +7361,125 @@ bool checkClipboardFilePreview(QQmlEngine* engine, const QDir& output)
     return ok;
 }
 
+// --clipboard-select (GitHub #375): part of a text entry, selected with the
+// mouse in the preview beside the list, without taking the keys from the
+// search field: the hint says Ctrl+C copies it and Enter pastes it, the lines
+// keep the 1.15 spacing they had as a Text, another entry drops the
+// selection. Nothing is copied or pasted here (that writes the real
+// clipboard): those keys are tried live. A temporary history.
+bool checkClipboardTextSelection(QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    ClipStore store(temporary.filePath(u"history"_s));
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
+        if (!condition) qWarning("clipboard text selection regression: %s", reason);
+    };
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) { check(false, "temporary history could not open"); return false; }
+    const QString text = u"账号：lingcore\n密码：在密码管理器里\n备注：周五前把年度报告发给财务，顺便确认销售图表的口径"_s;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    store.add(ClipCapture {.kind = ClipKind::Text, .text = u"另一段文字"_s, .source = u"记事本"_s}, now - 1000);
+    store.add(ClipCapture {.kind = ClipKind::Text, .text = text, .source = u"记事本"_s}, now);
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
+    clipboard.setActive(true);
+    clipboard.handleShown();
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Clipboard"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"ClipboardWindow"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { qWarning().noquote() << "clipboard text selection regression:" << component.errorString(); return false; }
+    window->create();
+    frame.setWindow(window);
+    placement.setWindow(window);
+    placement.enableWindowSizing();
+    showOffScreen(window);
+    clipboard.handlePlaced();
+    clipboard.setSeen(true);
+    settle(window);
+    auto* page = visualNamed(window->contentItem(), u"clipboardPage"_s);
+    auto* entries = visualNamed(window->contentItem(), u"clipboardEntries"_s);
+    if (!page || !entries) { check(false, "production clipboard page missing"); return false; }
+    QMetaObject::invokeMethod(page, "togglePreview", Q_ARG(QVariant, QVariant(0)));
+    settle(window);
+    auto* body = visualNamed(window->contentItem(), u"clipboardPreviewText"_s);
+    auto* hint = visualNamed(window->contentItem(), u"clipboardPreviewHint"_s);
+    if (!body || !hint || !body->isVisible()) { check(false, "the entry's text is not in the preview"); return false; }
+    check(body->property("text").toString() == text, "the preview does not show the whole entry");
+    const auto selected = [&] { return body->property("selectedText").toString(); };
+    // The lines as far apart as the Text's lineHeight 1.15 put them.
+    const int lines = body->property("lineCount").toInt();
+    const QFontMetricsF metrics(body->property("font").value<QFont>());
+    const double perLine = lines > 0 ? body->property("contentHeight").toDouble() / lines : 0;
+    check(lines >= 3 && perLine >= metrics.height() * 1.1 && perLine <= metrics.height() * 1.25,
+        "the selectable text lost its line spacing");
+    // Dragged across the second line: that part selected, the field keeping the keys.
+    const auto mouse = [&](QEvent::Type type, const QPointF& at, Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, at, window->mapToGlobal(at), button, buttons, {});
+        QCoreApplication::sendEvent(window, &event);
+        settle(window);
+    };
+    QQuickItem* field = visualNamed(window->contentItem(), u"clipboardSearchField"_s);
+    const double lineY = perLine * 1.5;
+    const QPointF from = body->mapToScene({1, lineY});
+    const QPointF to = body->mapToScene({metrics.horizontalAdvance(u"密码：在密码"_s), lineY});
+    mouse(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+    mouse(QEvent::MouseMove, (from + to) / 2, Qt::NoButton, Qt::LeftButton);
+    mouse(QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
+    mouse(QEvent::MouseButtonRelease, to, Qt::LeftButton, {});
+    const QString part = selected();
+    check(part.startsWith(u"密码"_s) && part.size() >= 4 && part.size() < 12 && !part.contains(u'\n'),
+        "a drag across a line did not select that part of it");
+    check(!body->hasFocus() && (!field || field->hasFocus()), "selecting took the keys from the search field");
+    const QString told = hint->property("text").toString();
+    check(hint->isVisible() && told.contains(u"Ctrl+C"_s) && told.contains(u"Enter"_s)
+            && told.contains(QString::number(part.size())),
+        "the hint does not say how to copy or paste the selected part");
+    check(saveGrab(window, output.filePath(u"clipboard-text-selected.png"_s)), "the selection did not render");
+    // Another entry: the selection gone, the hint back to the entry's own.
+    entries->setProperty("currentIndex", 1);
+    settle(window);
+    check(selected().isEmpty() && !hint->property("text").toString().contains(u"Ctrl+C"_s),
+        "another entry kept the selection");
+    // GitHub #379: the menu's keys, shown beside its entries, do them with
+    // the menu closed. Ctrl+E changes the words where the preview is;
+    // Ctrl+T pins the window as its button does.
+    const auto shortcutOf = [&](int row, int action) {
+        for (const QVariant& item : clipboard.menuItems(row))
+            if (item.toMap().value(u"action"_s).toInt() == action)
+                return item.toMap().value(u"shortcut"_s).toString();
+        return QString();
+    };
+    check(shortcutOf(1, Clipboard::EditText) == u"Ctrl+E"_s && shortcutOf(1, Clipboard::SaveFiles) == u"Ctrl+S"_s,
+        "the menu does not show Ctrl+E and Ctrl+S beside their entries");
+    const auto key = [&](int code, Qt::KeyboardModifiers modifiers) {
+        QKeyEvent press(QEvent::KeyPress, code, modifiers), release(QEvent::KeyRelease, code, modifiers);
+        QCoreApplication::sendEvent(window, &press);
+        QCoreApplication::sendEvent(window, &release);
+        settle(window);
+    };
+    if (field)
+        field->forceActiveFocus(Qt::OtherFocusReason);
+    key(Qt::Key_E, Qt::ControlModifier);
+    check(page->property("editingId").toLongLong() > 0, "Ctrl+E did not open the entry's words to change");
+    key(Qt::Key_Escape, Qt::NoModifier);
+    check(page->property("editingId").toLongLong() == 0, "Esc did not close the words being changed");
+    if (field)
+        field->forceActiveFocus(Qt::OtherFocusReason);
+    const bool pinned = clipboard.pinned();
+    key(Qt::Key_T, Qt::ControlModifier);
+    check(clipboard.pinned() != pinned, "Ctrl+T did not pin the window");
+    key(Qt::Key_T, Qt::ControlModifier);
+    check(clipboard.pinned() == pinned, "Ctrl+T again did not unpin it");
+    window->hide();
+    say(u"clipboard text selection and menu keys: real QML, temporary history; native clipboard untouched"_s);
+    return ok;
+}
+
 // --apps-grid (GitHub #296): 应用 as the settings bring it, with this PC's own
 // apps: the tab last among the scopes and gone with the setting, the grid in
 // place of the rows, the strip's three choices, words typed matched as 全部
@@ -8346,6 +8465,8 @@ int runResults(const QStringList& args)
         return checkClipboardInteractions(&engine, out, {}, true) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-file"_s))
         return checkClipboardFilePreview(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--clipboard-select"_s))
+        return checkClipboardTextSelection(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--navigation-workflows"_s))
         return checkNavigationWorkflows(&engine, out, args.contains(u"--flipped"_s)) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--search-experience"_s))

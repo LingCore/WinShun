@@ -1098,19 +1098,24 @@ void Clipboard::fillField()
     textfield::type(item, text);
 }
 
+void Clipboard::aimAtFrontProgram()
+{
+    // Pinned, clicked without the keys: into the program in front now, which
+    // kept the focus. (Its own window in front: where it was before.)
+    if (!m_pinned || m_keysRouted)
+        return;
+    DWORD process = 0;
+    const HWND foreground = ::GetForegroundWindow();
+    ::GetWindowThreadProcessId(foreground, &process);
+    if (foreground && process != ::GetCurrentProcessId())
+        m_target = foreground;
+}
+
 void Clipboard::paste(int row, bool plainText)
 {
     if (m_pasting)
         return;
-    // Pinned, clicked without the keys: into the program in front now, which
-    // kept the focus. (Its own window in front: where it was before.)
-    if (m_pinned && !m_keysRouted) {
-        DWORD process = 0;
-        const HWND foreground = ::GetForegroundWindow();
-        ::GetWindowThreadProcessId(foreground, &process);
-        if (foreground && process != ::GetCurrentProcessId())
-            m_target = foreground;
-    }
+    aimAtFrontProgram();
     const std::vector<const Clip*> clips = targets(row);
     if (clips.empty())
         return;
@@ -1142,6 +1147,23 @@ void Clipboard::paste(int row, bool plainText)
         return;
     }
     startPaste(std::move(write), Into::Program, std::move(touched), {});
+}
+
+void Clipboard::pasteText(const QString& text)
+{
+    if (m_pasting || text.isEmpty())
+        return;
+    aimAtFrontProgram();
+    ClipWrite write;
+    write.text = text;
+    if (m_field.item) {
+        m_fieldText = m_field.oneLine ? textfield::oneLine(text) : text;
+        if (m_fieldText.isEmpty())
+            return;
+        startPaste(std::move(write), Into::Field, {}, {});
+        return;
+    }
+    startPaste(std::move(write), Into::Program, {}, {});
 }
 
 void Clipboard::quickPaste(int row, bool plainText)
@@ -1827,6 +1849,9 @@ QVariantList Clipboard::menuItems(int row) const
             {u"glyph"_s, glyph},
         };
     };
+    // A key shown here also does what its entry does with the menu closed
+    // (ClipboardPage.menuShortcut, GitHub #379): F3 as the screenshot plugin
+    // pins, Ctrl+E, Ctrl+S.
     const QVariantMap separator {{u"separator"_s, true}};
     const auto n = static_cast<int>(clips.size());
     const bool many = n > 1;
@@ -1847,9 +1872,9 @@ QVariantList Clipboard::menuItems(int row) const
         else if (c.kind == ClipKind::Files || c.kind == ClipKind::Path)
             items.append(entry(Reveal, tr("打开所在位置"), QString(), u""_s));
         else if (c.kind == ClipKind::Image && m_pictureVerbs.pin) // the screenshot plugin's
-            items.append(entry(PinImage, c.animated ? tr("贴首帧到屏幕") : tr("贴到屏幕"), QString(), u"\uE718"_s));
+            items.append(entry(PinImage, c.animated ? tr("贴首帧到屏幕") : tr("贴到屏幕"), u"F3"_s, u"\uE718"_s));
         if (c.kind == ClipKind::Image && m_pictureVerbs.edit)
-            items.append(entry(EditImage, c.animated ? tr("编辑首帧") : tr("编辑"), QString(), u"\uE70F"_s));
+            items.append(entry(EditImage, c.animated ? tr("编辑首帧") : tr("编辑"), u"Ctrl+E"_s, u"\uE70F"_s));
         if (c.kind == ClipKind::Image)
             items.append(entry(OpenImage, tr("打开图片"), QString(), u""_s));
     }
@@ -1863,8 +1888,8 @@ QVariantList Clipboard::menuItems(int row) const
     // Its own words changed where the preview is: text all of which is listed, not kept from view.
     if (!many && clips.front()->kind != ClipKind::Files && clips.front()->kind != ClipKind::Image
         && !clips.front()->truncated() && !clips.front()->masked)
-        items.append(entry(EditText, tr("修改文字…"), QString(), u"\uE70F"_s)); // Edit
-    items.append(entry(SaveFiles, many ? tr("保存 %Ln 条为文件…", nullptr, n) : tr("保存为文件…"), QString(),
+        items.append(entry(EditText, tr("修改文字…"), u"Ctrl+E"_s, u"\uE70F"_s)); // Edit
+    items.append(entry(SaveFiles, many ? tr("保存 %Ln 条为文件…", nullptr, n) : tr("保存为文件…"), u"Ctrl+S"_s,
         u"\uE74E"_s));
     items.append(entry(SendLan, m_lanSendAvailable ? tr("用局域网发送…")
         : m_lanSendUpdate ? tr("更新局域网传输…") : tr("启用局域网传输…"), QString(), u"\uE724"_s));

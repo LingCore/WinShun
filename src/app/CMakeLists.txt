@@ -356,6 +356,7 @@ qt_add_qml_module(WinShun
         FilePreview.cpp FilePreview.h
         VideoView.cpp VideoView.h # a video in the preview, by Windows' media engine
         LineHighlighter.cpp LineHighlighter.h
+        TextLineSpacing.cpp TextLineSpacing.h # a TextEdit's lines spaced as a Text's lineHeight
         ContentPane.cpp ContentPane.h
         PictureFile.cpp PictureFile.h
         FolderMenu.cpp FolderMenu.h
