@@ -2506,9 +2506,9 @@ Window {
                     }
                 }
 
-                SettingRow { // GitHub #365
+                SettingRow { // GitHub #365, #377
                     title: qsTr("弹出动画")
-                    description: qsTr("搜索框打开时从任务栏一侧轻轻升起并淡入，关闭时淡出。关掉后立即出现、立即消失")
+                    description: qsTr("搜索框和剪贴板打开时轻轻滑入并淡入，关闭时淡出。关掉后立即出现、立即消失")
                     tip: qsTr("Windows 设置里关掉了“动画效果”时，始终没有动画")
                     keywords: qsTr("动画;动效;淡入;淡出;弹出;升起;过渡;拖沓;立即显示;animation;motion;fade").split(";")
                     ToggleSwitch {

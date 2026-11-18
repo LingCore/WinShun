@@ -408,8 +408,9 @@ std::vector<Entry> buildCatalog()
                     "Off: the tabs side by side."},
         &Settings::scopeButton));
     add(boolean({"Appearance/OpenAnimation", QT_TRANSLATE_NOOP("AiSettings", "弹出动画"), "appearance", -1,
-                    "true: the search box fades in rising a little from the taskbar's side, and fades out. "
-                    "false: it appears and disappears at once. Never animated while Windows' animation effects are off."},
+                    "true: the search box fades in rising a little from the taskbar's side, and the clipboard "
+                    "dropping a little from where it opens; both fade out. "
+                    "false: they appear and disappear at once. Never animated while Windows' animation effects are off."},
         &Settings::openAnimation));
     add(boolean({"Appearance/HoverTips", QT_TRANSLATE_NOOP("AiSettings", "悬停提示"), "appearance", -1,
                     "true: resting the mouse on an icon or button (the kinds of file under the search box, the +, a row's buttons) shows a line "

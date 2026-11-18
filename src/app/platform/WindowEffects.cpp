@@ -8,6 +8,7 @@
 #include <QScreen>
 #include <QOperatingSystemVersion>
 #include <QStyleHints>
+#include <QVariantAnimation>
 #include <QWindow>
 
 #include <dwmapi.h>
@@ -390,6 +391,99 @@ void disableTransitions(QWindow* window)
         const BOOL value = TRUE;
         ::DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &value, sizeof value);
     }
+}
+
+namespace {
+
+// fadeOutCopy's picture: layered, transparent to the mouse, never active,
+// over every window; its opacity stepped down by an animation it owns.
+class FadingCopy : public QVariantAnimation {
+public:
+    explicit FadingCopy(HWND window)
+        : QVariantAnimation(qApp)
+        , m_window(window)
+    {
+        setStartValue(255);
+        setEndValue(0);
+        connect(this, &QVariantAnimation::valueChanged, this, [this](const QVariant& alpha) {
+            BLENDFUNCTION blend {AC_SRC_OVER, 0, static_cast<BYTE>(alpha.toInt()), 0};
+            ::UpdateLayeredWindow(m_window, nullptr, nullptr, nullptr, nullptr, nullptr, 0, &blend, ULW_ALPHA);
+        });
+    }
+    ~FadingCopy() override { ::DestroyWindow(m_window); }
+
+private:
+    HWND m_window;
+};
+
+} // namespace
+
+bool fadeOutCopy(QWindow* window, std::chrono::milliseconds duration)
+{
+    const HWND hwnd = handleOf(window);
+    RECT bounds {};
+    DWORD cloaked = 0;
+    if (!hwnd || !::IsWindowVisible(hwnd) || ::IsIconic(hwnd) || !::GetWindowRect(hwnd, &bounds)
+        || (SUCCEEDED(::DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof cloaked)) && cloaked))
+        return false;
+    // With the shadow DWM draws outside GetWindowRect, on the screens only.
+    const int reach = ::MulDiv(40, static_cast<int>(::GetDpiForWindow(hwnd)), 96);
+    const RECT around {bounds.left - reach, bounds.top - reach, bounds.right + reach, bounds.bottom + reach};
+    const int left = ::GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const int top = ::GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const RECT screens {left, top, left + ::GetSystemMetrics(SM_CXVIRTUALSCREEN), top + ::GetSystemMetrics(SM_CYVIRTUALSCREEN)};
+    RECT area {};
+    if (!::IntersectRect(&area, &around, &screens))
+        return false;
+    static const wchar_t* const name = L"WinShun.FadingCopy";
+    static const bool registered = [] {
+        WNDCLASSEXW c {sizeof(WNDCLASSEXW)};
+        c.lpfnWndProc = ::DefWindowProcW;
+        c.hInstance = ::GetModuleHandleW(nullptr);
+        c.lpszClassName = name;
+        return ::RegisterClassExW(&c) != 0;
+    }();
+    if (!registered)
+        return false;
+    POINT at {area.left, area.top};
+    SIZE size {area.right - area.left, area.bottom - area.top};
+    const HWND copy = ::CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
+        name, L"", WS_POPUP, at.x, at.y, size.cx, size.cy, nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+    if (!copy)
+        return false;
+    BITMAPINFO info {};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = size.cx;
+    info.bmiHeader.biHeight = -size.cy;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+    const HDC screen = ::GetDC(nullptr);
+    const HDC memory = ::CreateCompatibleDC(screen);
+    void* bits = nullptr;
+    const HBITMAP bitmap = ::CreateDIBSection(screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+    bool shown = false;
+    if (bitmap && bits) {
+        const HGDIOBJ old = ::SelectObject(memory, bitmap);
+        POINT origin {};
+        BLENDFUNCTION blend {AC_SRC_OVER, 0, 255, 0}; // whole: the pixels' alpha is the screen's, meaningless
+        shown = ::BitBlt(memory, 0, 0, size.cx, size.cy, screen, at.x, at.y, SRCCOPY)
+            && ::UpdateLayeredWindow(copy, screen, &at, &size, memory, &origin, 0, &blend, ULW_ALPHA);
+        ::SelectObject(memory, old);
+    }
+    if (bitmap)
+        ::DeleteObject(bitmap);
+    ::DeleteDC(memory);
+    ::ReleaseDC(nullptr, screen);
+    if (!shown) {
+        ::DestroyWindow(copy);
+        return false;
+    }
+    ::ShowWindow(copy, SW_SHOWNOACTIVATE);
+    auto* fading = new FadingCopy(copy);
+    fading->setDuration(static_cast<int>(duration.count()));
+    fading->start(QAbstractAnimation::DeleteWhenStopped);
+    return true;
 }
 
 Front bringToFront(QWindow* window, ShellFlyout flyout)

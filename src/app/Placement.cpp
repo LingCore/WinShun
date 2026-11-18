@@ -1151,15 +1151,17 @@ void Placement::applyOffset()
             0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-// `logical` pixels off its place toward the taskbar it opens over (else down),
+// `logical` pixels off its place toward where it comes from (comingFrom),
 // never onto the taskbar: by it, no further than the gap between them. A
 // see-through taskbar (TranslucentTB's blur) showed the window behind it, and
 // kept the last of it in its blur once the window was hidden.
 QPoint Placement::nearOffset(int logical) const
 {
     const int full = qRound(logical * m_window->devicePixelRatio());
-    if (!m_taskbar || !m_hwnd)
-        return {0, full};
+    if (!m_taskbar || !m_hwnd) {
+        const QPointF from = comingFrom();
+        return {qRound(from.x() * full), qRound(from.y() * full)};
+    }
     RECT window {};
     ::GetWindowRect(reinterpret_cast<HWND>(m_hwnd), &window);
     ::OffsetRect(&window, m_rest.x() - window.left, m_rest.y() - window.top);
@@ -1178,11 +1180,13 @@ QPoint Placement::nearOffset(int logical) const
     return {};
 }
 
-// Which way the taskbar it opens over is (else down), one logical pixel.
-QPointF Placement::towardTaskbar() const
+// Which way it comes in from, one logical pixel: the taskbar it opens over;
+// the box or caret it is attached to, as a menu drops from what opened it
+// (the clipboard, GitHub #377); else from below.
+QPointF Placement::comingFrom() const
 {
     if (!m_taskbar)
-        return {0, 1};
+        return m_box && !m_above ? QPointF(0, -1) : QPointF(0, 1);
     switch (m_taskbar->edge) {
     case taskbar::Edge::Bottom:
         return {0, 1};
@@ -1249,11 +1253,12 @@ void Placement::slideIn(std::function<void()> done)
         return;
     }
     // Faded in, coming a little from the taskbar's side (rising, by one at the
-    // bottom), all of it over the taskbar.
+    // bottom), all of it over the taskbar; by a box or a caret, less far, from it.
     if (!wasSliding) {
-        slide.from = nearOffset(16);
+        const int distance = m_box ? 8 : 16;
+        slide.from = nearOffset(distance);
         slide.opacityFrom = 0;
-        slide.shiftFrom = towardTaskbar() * 8;
+        slide.shiftFrom = comingFrom() * (distance / 2);
     }
     slide.moveMs = 200;
     slide.fadeMs = 120;

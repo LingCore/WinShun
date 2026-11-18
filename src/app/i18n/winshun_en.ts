@@ -7565,8 +7565,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Open animation</translation>
     </message>
     <message>
-        <source>搜索框打开时从任务栏一侧轻轻升起并淡入，关闭时淡出。关掉后立即出现、立即消失</source>
-        <translation>The search bar rises a little from the taskbar side and fades in when it opens, and fades out when it closes. Off: it appears and disappears at once</translation>
+        <source>搜索框和剪贴板打开时轻轻滑入并淡入，关闭时淡出。关掉后立即出现、立即消失</source>
+        <translation>The search bar and the clipboard slide in a little and fade in when they open, and fade out when they close. Off: they appear and disappear at once</translation>
     </message>
     <message>
         <source>Windows 设置里关掉了“动画效果”时，始终没有动画</source>

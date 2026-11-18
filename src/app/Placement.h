@@ -53,7 +53,7 @@ namespace ws {
 //
 // Opening and closing are animated (slideIn, slideOut) unless the system's
 // animation effects or the user's 弹出动画 (setAnimated) are off: it fades in coming a little from the taskbar's
-// side (elsewhere: rising), and fades out where it is. By the taskbar it
+// side (elsewhere: rising; attached to a box or a caret, from it: GitHub #377), and fades out where it is. By the taskbar it
 // stays over it all the while, moving no further than the gap between them:
 // a see-through taskbar (TranslucentTB) showed a window that slid behind it,
 // and kept the last of it in its blur once the window was hidden. The window
@@ -167,6 +167,7 @@ public:
     // Out, then `done` (which hides it); back at its place after that.
     void slideOut(std::function<void()> done);
     bool sliding() const { return m_slide.state() == QAbstractAnimation::Running; }
+    void settleSlide(); // at its end, at once (hidden meanwhile: at its place for the next opening)
     QPointF contentShift() const { return m_contentShift; }
     static bool animationsOn(); // the system's "animation effects"
     // Off: slideIn and slideOut go straight there (弹出动画, GitHub #365).
@@ -295,11 +296,10 @@ private:
     void moveWindow(const QPoint& position); // to its place (logical pixels), keeping a slide's offset
     void beginSlide(); // where it rests now, unless it is on its way already
     void startSlide(Slide slide, std::function<void()> done);
-    void settleSlide(); // at its end, at once
     void stepSlide(int elapsed);
     void applyOffset(); // the window where its place and the offset put it
-    QPoint nearOffset(int logical) const; // toward the taskbar, not onto it (physical pixels)
-    QPointF towardTaskbar() const; // which way it is, one logical pixel
+    QPoint nearOffset(int logical) const; // toward where it comes from, not onto the taskbar (physical pixels)
+    QPointF comingFrom() const; // which way that is, one logical pixel
     bool layered() const; // the window can fade (it has an alpha channel)
 
     QString m_stateFile;

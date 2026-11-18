@@ -5,6 +5,7 @@
 
 #include <windows.h>
 
+#include <chrono>
 #include <cstdint>
 
 class QWindow;
@@ -85,6 +86,13 @@ void setCloaked(QWindow* window, bool cloaked);
 // not help (#301; measured on Windows 11 26200, reported on 26300). Such a
 // window is shown cloaked until its first frame instead (setCloaked).
 void disableTransitions(QWindow* window);
+// What `window` looks like on the screen now, its shadow too, faded out over
+// `duration` in a window of its own that takes no input and is never active,
+// gone after that; as Windows fades its menus out (a picture of them). The
+// window itself may go at once: its focus, its keys and whatever comes next
+// are as they would be without this. False, and nothing shown, when it is
+// not on the screen (hidden, minimized, cloaked) or the screen can't be read.
+bool fadeOutCopy(QWindow* window, std::chrono::milliseconds duration);
 // A window (hidden or not) put on the monitor that has `logicalPoint` (Qt's
 // coordinates), where it is not on it yet: only moved, at the size it has,
 // so that a change of scale reaches Qt as WM_DPICHANGED does for a window

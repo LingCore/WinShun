@@ -4,6 +4,7 @@
 #include "ForegroundMemoryProbe.h"
 #include "ForegroundUseProbe.h"
 #include "IdleOpenProbe.h"
+#include "ClipboardAnimationProbe.h"
 #include "platform/AllocationTrace.h"
 #include "InteractionOptimizationProbe.h"
 #include "UiFont.h"
@@ -11567,7 +11568,8 @@ int runRuntime(const QStringList& args)
         state.sync();
     }
     if (args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s) || live
-        || args.contains(u"--idle-open-check"_s) || args.contains(u"--foreground-use-check"_s)) {
+        || args.contains(u"--idle-open-check"_s) || args.contains(u"--foreground-use-check"_s)
+        || args.contains(u"--clipboard-animation-check"_s)) {
         ClipStore store(Settings::dataDir() + u"/clipboard"_s);
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (!store.open(now)) return 4;
@@ -11651,7 +11653,8 @@ int runRuntime(const QStringList& args)
         // the way out (15 MB a run, left in %TEMP%).
         const auto idleOpenProfile = qScopeGuard([&args] {
             const QFileInfo profile(Settings::profile());
-            if ((args.contains(u"--idle-open-check"_s) || args.contains(u"--foreground-use-check"_s))
+            if ((args.contains(u"--idle-open-check"_s) || args.contains(u"--foreground-use-check"_s)
+                    || args.contains(u"--clipboard-animation-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
                 QDir(profile.absoluteFilePath()).removeRecursively();
@@ -11712,6 +11715,8 @@ int runRuntime(const QStringList& args)
             return checkIdleOpen(app, args, out) ? 0 : 4; // its profile goes after the App (idleOpenProfile)
         if (args.contains(u"--foreground-use-check"_s))
             return checkForegroundUse(app, args, out) ? 0 : 4; // its profile likewise
+        if (args.contains(u"--clipboard-animation-check"_s))
+            return checkClipboardAnimation(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
         if (args.contains(u"--clipboard-shell-probe"_s)) {

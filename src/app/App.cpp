@@ -1437,6 +1437,7 @@ bool App::createWindow()
 bool App::createClipWindow()
 {
     m_clipPlacement = std::make_unique<Placement>(Settings::dataDir() + u"\\state.ini"_s, u"Clipboard"_s);
+    m_clipPlacement->setAnimated(m_settings.openAnimation); // 弹出动画, as the launcher's (applySettings came before it)
     m_textCaret = std::make_unique<win::TextCaret>();
     m_clipFrame = std::make_unique<WindowFrame>(false);
     QQmlComponent component(m_qml.get(), u"WinShun"_s, u"ClipboardWindow"_s);
@@ -2001,6 +2002,8 @@ void App::applySettings(bool initial)
     m_launcher->setScopeButton(m_settings.scopeButton);
     if (m_placement)
         m_placement->setAnimated(m_settings.openAnimation);
+    if (m_clipPlacement)
+        m_clipPlacement->setAnimated(m_settings.openAnimation); // the clipboard as the launcher (GitHub #377)
     m_launcher->setKeyboardHints(m_settings.shortcutHelp, m_settings.footerHints);
     m_launcher->setMaxRows(m_settings.maxRows);
     m_launcher->setPureSearch(m_settings.pureSearch && !m_launcherOverBox);
@@ -6421,6 +6424,10 @@ void App::uncloakClipboard()
         const bool keepFocus = startKeyRouting(target) || win::isShellFlyout(target);
         m_clipFrame->setNoActivate(keepFocus);
     }
+    // In as the launcher comes (弹出动画): faded in, a little from the box or
+    // the caret it drops from (GitHub #377). Before the cloak goes, as there.
+    if (m_clipWindow->isVisible() && !m_clipPrewarming.load())
+        m_clipPlacement->slideIn();
     win::setCloaked(m_clipWindow, false);
     if (m_clipWindow->isVisible() && !m_clipPrewarming.load()) {
         m_clipRevealedAt = ::GetTickCount64(); // there to be seen from now on (seenBy)
@@ -6445,7 +6452,14 @@ void App::hideClipboard(bool launcherToo)
     const bool underLauncher = clipboardUnderLauncher();
     if (m_clipDisplay) m_clipDisplay->hide();
     m_clipDisplayWanted = false;
+    // Out as the launcher goes (弹出动画): a picture of it fades where it was
+    // (GitHub #377); the window itself goes at once, so the focus, the keys
+    // and a paste go on as ever. Not when it was never seen, nor behind the
+    // display (cloaked: fadeOutCopy shows nothing).
+    if (m_clipRevealedAt && m_settings.openAnimation && Placement::animationsOn())
+        win::fadeOutCopy(m_clipWindow, 120ms);
     m_clipWindow->hide();
+    m_clipPlacement->settleSlide(); // caught coming in: at its place, its opacity whole
     m_clipRevealedAt.reset(); // only here: pinned, it stays up when it lets go of the keys
     stopKeyRouting(); // hidden first: no inactive backdrop on the way out
     m_clipReveal.cancel();
