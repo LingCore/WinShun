@@ -343,6 +343,14 @@ Window {
             enabled: !window.ocr.busy && words.text.trim().length > 0
             onClicked: window.ocr.webSearch(words.selectedText.length > 0 ? words.selectedText : words.text)
         }
+        FlatButton { // the words read stand as a table: tab between cells, so Excel and WPS paste them into cells
+            dpr: window.dpr
+            objectName: "copyTable"
+            visible: window.ocr.table.length > 0
+            text: qsTr("复制为表格")
+            enabled: !window.ocr.busy
+            onClicked: window.ocr.copyTable()
+        }
         FlatButton {
             dpr: window.dpr
             highlighted: window.ocr.link.length === 0

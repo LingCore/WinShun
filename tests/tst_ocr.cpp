@@ -584,6 +584,69 @@ private slots:
     }
 
     void nothing() { QCOMPARE(read(drawn({}, 14, Qt::black, Qt::white)), QString()); }
+
+    static ws::OcrPiece piece(double left, double top, double right, const QString& text, double height = 16)
+    {
+        ws::OcrPiece p;
+        p.quad = QPolygonF(QRectF(left, top, right - left, height));
+        p.text = text;
+        return p;
+    }
+
+    // Columns where the lines with pieces side by side leave a gap all the
+    // way down; a title across them goes in the first; two pieces close
+    // together are one cell.
+    void tableFromPieces()
+    {
+        const QList<ws::OcrPiece> pieces {
+            piece(100, 0, 400, u"2026 年销售表"_s),
+            piece(0, 30, 60, u"名称"_s), piece(200, 30, 260, u"数量"_s), piece(400, 30, 460, u"单价"_s),
+            piece(0, 60, 40, u"Apple"_s), piece(46, 60, 120, u"Pie"_s), piece(200, 60, 230, u"12"_s), piece(400, 60, 470, u"3.50"_s),
+            piece(0, 90, 80, u"香蕉"_s), piece(400, 91, 450, u"2.00"_s), // no quantity
+        };
+        const QList<QStringList> table = ws::ocrTable(pieces);
+        QCOMPARE(table.size(), 4);
+        QCOMPARE(table[0], (QStringList {u"2026 年销售表"_s, {}, {}}));
+        QCOMPARE(table[1], (QStringList {u"名称"_s, u"数量"_s, u"单价"_s}));
+        QCOMPARE(table[2], (QStringList {u"Apple Pie"_s, u"12"_s, u"3.50"_s}));
+        QCOMPARE(table[3], (QStringList {u"香蕉"_s, {}, u"2.00"_s}));
+    }
+
+    // Not a table: lines one piece each, or gaps that do not line up.
+    void noTableFromPieces()
+    {
+        QVERIFY(ws::ocrTable({piece(0, 0, 300, u"第一行"_s), piece(0, 30, 280, u"第二行"_s), piece(0, 60, 200, u"第三行"_s)}).isEmpty());
+        QVERIFY(ws::ocrTable({piece(0, 0, 50, u"a"_s), piece(60, 0, 200, u"b"_s), piece(0, 30, 120, u"c"_s), piece(130, 30, 200, u"d"_s)}).isEmpty());
+        QVERIFY(ws::ocrTable({piece(0, 0, 50, u"a"_s), piece(200, 0, 260, u"b"_s)}).isEmpty()); // one line
+    }
+
+    // A table drawn and read for real: its cells come back in place.
+    void tableRead()
+    {
+        const QList<QStringList> cells {{u"姓名"_s, u"部门"_s, u"工号"_s}, {u"张三"_s, u"研发部"_s, u"1024"_s},
+            {u"李四"_s, u"市场部"_s, u"2048"_s}, {u"Alice"_s, u"Sales"_s, u"4096"_s}};
+        QFont font(u"Microsoft YaHei UI"_s);
+        font.setPixelSize(16);
+        QImage image(520, 40 * static_cast<int>(cells.size()) + 20, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        {
+            QPainter painter(&image);
+            painter.setFont(font);
+            painter.setPen(Qt::black);
+            for (qsizetype r = 0; r < cells.size(); ++r) {
+                for (qsizetype c = 0; c < cells[r].size(); ++c)
+                    painter.drawText(20 + 170 * static_cast<int>(c), 40 * static_cast<int>(r + 1), cells[r][c]);
+            }
+        }
+        QString error;
+        const std::unique_ptr<ws::PaddleOcr> ocr = ws::PaddleOcr::load(QCoreApplication::applicationDirPath(), 2, &error);
+        QVERIFY2(ocr, qPrintable(error));
+        QStringList lines;
+        QList<QStringList> table;
+        QVERIFY2(ocr->read(image, &lines, &error, &table), qPrintable(error));
+        QCOMPARE(lines.size(), cells.size());
+        QCOMPARE(table, cells);
+    }
 };
 
 QTEST_MAIN(TestOcr)

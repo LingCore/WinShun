@@ -1696,6 +1696,10 @@
         <translation>Copy all</translation>
     </message>
     <message>
+        <source>复制为表格</source>
+        <translation>Copy as a table</translation>
+    </message>
+    <message>
         <source>关闭</source>
         <translation>Close</translation>
     </message>

@@ -50,6 +50,12 @@ struct OcrOptions {
     bool retryUpsideDown = false;
 };
 
+// The pieces as a table's rows of cells (top to bottom, left to right), when
+// they stand as one: columns where the lines with pieces side by side leave
+// a gap from top to bottom, at least two of them, and two such lines; else
+// none. Screenshots' "复制为表格".
+QList<QStringList> ocrTable(const QList<OcrPiece>& pieces);
+
 class PaddleOcr {
 public:
     // A larger picture is made smaller all over before it is read; OCR search
@@ -66,7 +72,9 @@ public:
     // side put together, with a space where there is a gap or Latin writing.
     // False when the recognition itself failed (`error`); a picture without
     // words is true with no lines.
-    bool read(const QImage& image, QStringList* lines, QString* error = nullptr);
+    // `table`: the same lines as a table's rows of cells, when they stand as
+    // one (ocrTable); else empty.
+    bool read(const QImage& image, QStringList* lines, QString* error = nullptr, QList<QStringList>* table = nullptr);
     // The lines as found, each with its corners and its characters' places,
     // in the picture's own pixels; the same reading as read(), in no order.
     bool readPieces(

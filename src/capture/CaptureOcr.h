@@ -44,6 +44,9 @@ class CaptureOcr : public QObject {
     Q_PROPERTY(QString title READ title NOTIFY changed FINAL)
     // The text as a web address (http or https) to offer 打开链接 for; empty when it is not one.
     Q_PROPERTY(QString link READ link NOTIFY changed FINAL)
+    // The words read as a table (ocrTable), tab between cells, a line a row,
+    // as Excel and WPS paste them into cells; empty when they are not one.
+    Q_PROPERTY(QString table READ table NOTIFY changed FINAL)
     Q_PROPERTY(bool needsPackage READ needsPackage NOTIFY changed FINAL)
     // 翻译 (GitHub #191): the words' translation, under them in the same
     // window. With a signal of its own: changed() puts the words read back
@@ -96,8 +99,12 @@ public:
     int round() const { return m_round; }
     QString title() const { return m_title; }
     QString link() const { return m_link; }
+    QString table() const { return m_table; }
+    // Cells with tabs, rows with line breaks; a tab or line break in a cell becomes a space.
+    static QString tabbed(const QList<QStringList>& table);
 
     Q_INVOKABLE void copyAll(const QString& text) { emit copyRequested(text); }
+    Q_INVOKABLE void copyTable() { if (!m_table.isEmpty()) emit copyRequested(m_table); }
     // The text (the selection, else all of it) as one line, for the search box.
     Q_INVOKABLE void search(const QString& text);
     // The same one line, for the default web search.
@@ -152,7 +159,7 @@ private:
     };
     void enqueueScan(const QImage& image, const QRect& region, double dpr, bool grayscale, std::function<void(RedactScan)> done);
     void work(const std::stop_token& stop);
-    void done(int round, const QString& text, const QString& error);
+    void done(int round, const QString& text, const QString& table, const QString& error);
     void clearTranslation();
     void scanDone(int ticket, RedactScan scan);
 
@@ -161,6 +168,7 @@ private:
     QString m_message;
     QString m_title;
     QString m_link;
+    QString m_table;
     int m_round = 0;
     QImage m_pendingImage;
     double m_pendingDpr = 1;

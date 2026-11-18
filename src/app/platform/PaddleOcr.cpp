@@ -390,15 +390,16 @@ struct Piece {
     QString text;
 };
 
-// The pieces as lines: those side by side (overlapping by half the height)
-// on one line, left to right.
-QStringList linesOf(std::vector<Piece> pieces)
+struct Line {
+    double top, bottom;
+    std::vector<const Piece*> pieces; // left to right
+};
+
+// The pieces' lines: those side by side (overlapping by half the height) on
+// one line; top to bottom. They point into `pieces`.
+std::vector<Line> linesOf(std::vector<Piece>& pieces)
 {
     std::ranges::sort(pieces, {}, [](const Piece& p) { return p.top + p.bottom; });
-    struct Line {
-        double top, bottom;
-        std::vector<const Piece*> pieces;
-    };
     std::vector<Line> lines;
     for (const Piece& p : pieces) {
         const double height = p.bottom - p.top;
@@ -417,24 +418,93 @@ QStringList linesOf(std::vector<Piece> pieces)
         }
     }
     std::ranges::sort(lines, {}, &Line::top);
-    QStringList out;
-    for (Line& line : lines) {
+    for (Line& line : lines)
         std::ranges::sort(line.pieces, {}, &Piece::left);
-        QString text;
-        const Piece* before = nullptr;
-        for (const Piece* p : line.pieces) {
-            if (before) {
-                const double gap = p->left - before->right;
-                const double height = std::min(p->bottom - p->top, before->bottom - before->top);
-                if (!(spaceless(text.back()) && spaceless(p->text.front()) && gap < height))
-                    text += u' ';
-            }
-            text += p->text;
-            before = p;
+    return lines;
+}
+
+// Pieces side by side put together, left to right: a space between them
+// where there is a gap or Latin writing.
+QString joined(const std::vector<const Piece*>& pieces)
+{
+    QString text;
+    const Piece* before = nullptr;
+    for (const Piece* p : pieces) {
+        if (before && !text.isEmpty() && !p->text.isEmpty()) {
+            const double gap = p->left - before->right;
+            const double height = std::min(p->bottom - p->top, before->bottom - before->top);
+            if (!(spaceless(text.back()) && spaceless(p->text.front()) && gap < height))
+                text += u' ';
         }
-        out.append(text);
+        text += p->text;
+        before = p;
     }
-    return out;
+    return text;
+}
+
+// The pieces as a table (GitHub feedback "截图 OCR 识别表格"): the lines
+// are its rows; its columns are where the lines with pieces side by side
+// leave a gap from top to bottom, wider than half the text's height (a
+// word's space is narrower). A table has at least two columns and two such
+// lines; else none. A piece across several columns (a title) goes in the
+// first of them.
+QList<QStringList> tableOf(std::vector<Piece> pieces)
+{
+    const std::vector<Line> lines = linesOf(pieces);
+    std::vector<double> heights;
+    std::vector<std::pair<double, double>> spans; // left, right of the pieces of lines with more than one
+    int sideBySide = 0;
+    for (const Line& line : lines) {
+        for (const Piece* p : line.pieces)
+            heights.push_back(p->bottom - p->top);
+        if (line.pieces.size() < 2)
+            continue;
+        ++sideBySide;
+        for (const Piece* p : line.pieces)
+            spans.emplace_back(p->left, p->right);
+    }
+    if (sideBySide < 2)
+        return {};
+    std::ranges::nth_element(heights, heights.begin() + heights.size() / 2);
+    const double gutter = 0.5 * heights[heights.size() / 2];
+    std::ranges::sort(spans);
+    std::vector<std::pair<double, double>> columns;
+    for (const auto& [left, right] : spans) {
+        if (!columns.empty() && left - columns.back().second < gutter)
+            columns.back().second = std::max(columns.back().second, right);
+        else
+            columns.emplace_back(left, right);
+    }
+    if (columns.size() < 2)
+        return {};
+    const auto columnOf = [&](const Piece& p) {
+        for (std::size_t i = 0; i < columns.size(); ++i) {
+            if (p.right > columns[i].first && p.left < columns[i].second)
+                return i; // the first it reaches into
+        }
+        // In none (a line by itself, outside them all): the nearest.
+        std::size_t best = 0;
+        double distance = std::numeric_limits<double>::max();
+        for (std::size_t i = 0; i < columns.size(); ++i) {
+            const double d = std::max(columns[i].first - p.right, p.left - columns[i].second);
+            if (d < distance) {
+                distance = d;
+                best = i;
+            }
+        }
+        return best;
+    };
+    QList<QStringList> table;
+    for (const Line& line : lines) {
+        std::vector<std::vector<const Piece*>> cells(columns.size());
+        for (const Piece* p : line.pieces)
+            cells[columnOf(*p)].push_back(p);
+        QStringList row;
+        for (const auto& cell : cells)
+            row.append(joined(cell));
+        table.append(std::move(row));
+    }
+    return table;
 }
 
 using Reading = std::vector<std::pair<QString, float>>;
@@ -649,9 +719,21 @@ void PaddleOcr::Impl::recognize(const std::vector<QImage>& lines, std::vector<st
     }
 }
 
-bool PaddleOcr::read(const QImage& image, QStringList* lines, QString* error)
+QList<QStringList> ocrTable(const QList<OcrPiece>& found)
+{
+    std::vector<Piece> pieces;
+    for (const OcrPiece& p : found) {
+        const QRectF box = p.quad.boundingRect();
+        pieces.push_back({box.left(), box.top(), box.right(), box.bottom(), p.text});
+    }
+    return tableOf(std::move(pieces));
+}
+
+bool PaddleOcr::read(const QImage& image, QStringList* lines, QString* error, QList<QStringList>* table)
 {
     lines->clear();
+    if (table)
+        table->clear();
     QList<OcrPiece> found;
     if (!find(image, &found, false, error, {}))
         return false;
@@ -660,7 +742,10 @@ bool PaddleOcr::read(const QImage& image, QStringList* lines, QString* error)
         const QRectF box = p.quad.boundingRect();
         pieces.push_back({box.left(), box.top(), box.right(), box.bottom(), p.text});
     }
-    *lines = linesOf(std::move(pieces));
+    for (const Line& line : linesOf(pieces))
+        lines->append(joined(line.pieces));
+    if (table)
+        *table = tableOf(std::move(pieces));
     return true;
 }
 

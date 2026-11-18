@@ -462,7 +462,11 @@ int runOcr(const QStringList& args)
     if (args.contains(u"--english"_s) && translator.load(u":/i18n/capture_en.qm"_s))
         QCoreApplication::installTranslator(&translator);
     ocr::setComponentsRoot(out.filePath(u"components"_s));
-    capture::CaptureOcr::setProgramFolder(out.filePath(u"no-bundled-copy"_s));
+    // --table reads for real: the reader's files in --ocr-dir, else --app-dir
+    // (its thread takes the folder when it starts, with the reader).
+    capture::CaptureOcr::setProgramFolder(args.contains(u"--table"_s)
+            ? valueAfter(args, u"--ocr-dir", valueAfter(args, u"--app-dir"))
+            : out.filePath(u"no-bundled-copy"_s));
     capture::CaptureOcr reader;
     WindowFrame frame(false);
     QQmlApplicationEngine engine;
@@ -494,6 +498,56 @@ int runOcr(const QStringList& args)
         {u"ocr"_s, QVariant::fromValue(&reader)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
     if (!window) { say(component.errorString()); return 3; }
     frame.setWindow(window);
+    // --table: a table drawn and read for real; 复制为表格 shown and copying
+    // its cells with tabs, ocr-table.png. Then plain lines: no such button,
+    // ocr-lines.png.
+    if (args.contains(u"--table"_s)) {
+        QString copied;
+        QObject::connect(&reader, &capture::CaptureOcr::copyRequested, &reader, [&](const QString& text) { copied = text; });
+        const QList<QStringList> cells {{u"姓名"_s, u"部门"_s, u"工号"_s}, {u"张三"_s, u"研发部"_s, u"1024"_s},
+            {u"李四"_s, u"市场部"_s, u"2048"_s}, {u"Alice"_s, u"Sales"_s, u"4096"_s}};
+        const auto drawn = [](const QList<QStringList>& rows) {
+            QFont font(u"Microsoft YaHei UI"_s);
+            font.setPixelSize(16);
+            QImage image(520, 40 * static_cast<int>(rows.size()) + 20, QImage::Format_RGB32);
+            image.fill(Qt::white);
+            QPainter painter(&image);
+            painter.setFont(font);
+            painter.setPen(Qt::black);
+            for (qsizetype r = 0; r < rows.size(); ++r) {
+                for (qsizetype c = 0; c < rows[r].size(); ++c)
+                    painter.drawText(20 + 170 * static_cast<int>(c), 40 * static_cast<int>(r + 1), rows[r][c]);
+            }
+            return image;
+        };
+        const auto readIt = [&](const QImage& image) {
+            reader.read(image, 2.0); // as at 200%: not made larger first
+            QElapsedTimer clock;
+            clock.start();
+            while (reader.busy() && clock.elapsed() < 20000)
+                pump(50);
+            settle(window);
+        };
+        showOffScreen(window);
+        readIt(drawn(cells));
+        QObject* button = window->findChild<QObject*>(u"copyTable"_s);
+        const bool shown = button && button->property("visible").toBool();
+        if (button)
+            QMetaObject::invokeMethod(button, "clicked");
+        QStringList expected;
+        for (const QStringList& row : cells)
+            expected.append(row.join(u'\t'));
+        const bool right = copied == expected.join(u'\n');
+        if (!reader.message().isEmpty())
+            say(u"table: message %1"_s.arg(reader.message()));
+        say(u"table: button %1, copied %2"_s.arg(shown ? u"shown"_s : u"missing"_s, right ? u"right"_s : u"WRONG: "_s + copied));
+        bool all = shown && right && saveGrab(window, out.filePath(u"ocr-table.png"_s));
+        readIt(drawn({{u"第一行文字，不是表格"_s}, {u"第二行也是一整句话"_s}}));
+        const bool hidden = button && !button->property("visible").toBool() && reader.table().isEmpty();
+        say(u"lines: button %1, text %2"_s.arg(hidden ? u"hidden"_s : u"SHOWN"_s, reader.text()));
+        all = hidden && saveGrab(window, out.filePath(u"ocr-lines.png"_s)) && all;
+        return finish(window, all);
+    }
     // --translation: 翻译's part under the words (#191) in its states, ocr-translation-<state>.png.
     if (args.contains(u"--translation"_s)) {
         using Translated = capture::CaptureOcr::Translated;
