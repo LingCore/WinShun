@@ -900,8 +900,7 @@ void Settings::load()
     if (logoRightClick != u"menu" && logoRightClick != u"top" && logoRightClick != u"center" && logoRightClick != u"restore")
         logoRightClick = d.logoRightClick;
     dialogJump = readOrDefault(s, u"Launcher/DialogJump"_s, d.dialogJump);
-    // Off for new installs; an ini from before without the key had it on.
-    dialogBar = readOrDefault(s, u"Launcher/DialogBar"_s, firstRun ? d.dialogBar : true);
+    dialogBar = readOrDefault(s, u"Launcher/DialogBar"_s, d.dialogBar);
     dialogBarPlace = readOrDefault(s, u"Launcher/DialogBarPlace"_s, d.dialogBarPlace).trimmed().toLower();
     if (dialogBarPlace != u"below" && dialogBarPlace != u"left" && dialogBarPlace != u"right")
         dialogBarPlace = d.dialogBarPlace;
@@ -921,7 +920,8 @@ void Settings::load()
     fileManagerRevealCommand = readOrDefault(s, u"Launcher/FileManagerRevealCommand"_s, d.fileManagerRevealCommand).trimmed();
     explorerMenu = readOrDefault(s, u"Launcher/ExplorerMenu"_s, d.explorerMenu);
     uriProtocol = readOrDefault(s, u"Launcher/UriProtocol"_s, d.uriProtocol);
-    explorerTyping = readOrDefault(s, u"Launcher/ExplorerTyping"_s, d.explorerTyping);
+    // On for new installs; an ini from before without the key had it off.
+    explorerTyping = readOrDefault(s, u"Launcher/ExplorerTyping"_s, firstRun ? d.explorerTyping : false);
     desktopTyping = readOrDefault(s, u"Launcher/DesktopTyping"_s, d.desktopTyping);
     opusTyping = readOrDefault(s, u"Launcher/OpusTyping"_s, d.opusTyping);
     everythingCompat = readOrDefault(s, u"Launcher/EverythingCompat"_s, d.everythingCompat);
@@ -931,11 +931,9 @@ void Settings::load()
     folderTyping = readOrDefault(s, u"Launcher/FolderTyping"_s, d.folderTyping).trimmed().toLower();
     if (folderTyping != u"only" && folderTyping != u"level")
         folderTyping = d.folderTyping; // the folder first (GitHub #110), for those who had nothing to set before too
-    // Off for new installs, auto before (as dialogBar).
-    const QString folderMenuBefore = firstRun ? d.folderMenu : u"auto"_s;
-    folderMenu = readOrDefault(s, u"Launcher/FolderMenu"_s, folderMenuBefore).trimmed().toLower();
+    folderMenu = readOrDefault(s, u"Launcher/FolderMenu"_s, d.folderMenu).trimmed().toLower();
     if (folderMenu != u"auto" && folderMenu != u"on" && folderMenu != u"off")
-        folderMenu = folderMenuBefore;
+        folderMenu = d.folderMenu;
     folderMenuExplorer = readOrDefault(s, u"Launcher/FolderMenuExplorer"_s, d.folderMenuExplorer);
     folderMenuDesktop = readOrDefault(s, u"Launcher/FolderMenuDesktop"_s, d.folderMenuDesktop);
     folderMenuDouble = readOrDefault(s, u"Launcher/FolderMenuDouble"_s, d.folderMenuDouble);

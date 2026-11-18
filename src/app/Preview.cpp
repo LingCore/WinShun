@@ -1577,7 +1577,7 @@ int runSettings(const QStringList& args)
     settings.mcpPlugins = true;
     settings.taskbarSearchBox = true; // its style row
     settings.pasteFileEnabled = true; // its card's two ways in
-    settings.dialogBar = true; // off for a new install: the rows they keep away
+    settings.dialogBar = true; // the rows they keep away when off, whatever the defaults
     settings.folderMenu = u"auto"_s;
     const QString shareOnline = u"\\\\192.168.1.10\\资料"_s;
     const QString shareSignIn = u"\\\\nas\\photos"_s;

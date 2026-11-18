@@ -1416,25 +1416,32 @@ private slots:
             && again.folderMenuItemFavorite && !again.folderMenuItemSettings);
     }
 
-    // What a new install leaves off until wanted: the folder menu, the dialog
-    // bar, 粘贴为文件. A file from before without their keys keeps the first
-    // two on, as they were; a choice written stays.
-    void offUntilWanted()
+    // What a new install has on, as Listary has it (GitHub #372): the folder
+    // menu, the dialog bar, typing in a folder window; and what it leaves off
+    // until wanted: 粘贴为文件. A file from before without their keys keeps
+    // the first two on and typing off, as they were; a choice written stays.
+    void newInstallDefaults()
     {
         QTemporaryDir profile;
         QVERIFY(profile.isValid());
         ws::Settings::useProfile(profile.path());
         ws::Settings fresh;
         fresh.load();
-        QVERIFY(!fresh.dialogBar);
-        QCOMPARE(fresh.folderMenu, u"off"_s);
+        QVERIFY(fresh.dialogBar);
+        QCOMPARE(fresh.folderMenu, u"auto"_s);
+        QVERIFY(fresh.explorerTyping);
+        QVERIFY(fresh.dialogJump);
         QVERIFY(!fresh.pasteFileEnabled);
         QVERIFY(fresh.pasteFileCtrlV && fresh.pasteFileMenu); // its ways, once it is on
+        fresh.dialogBar = false;
+        fresh.folderMenu = u"off"_s;
+        fresh.explorerTyping = false;
         fresh.save();
         ws::Settings again;
         again.load();
         QVERIFY(!again.dialogBar);
         QCOMPARE(again.folderMenu, u"off"_s);
+        QVERIFY(!again.explorerTyping);
 
         QTemporaryDir older;
         QVERIFY(older.isValid());
@@ -1447,6 +1454,7 @@ private slots:
         upgraded.load();
         QVERIFY(upgraded.dialogBar);
         QCOMPARE(upgraded.folderMenu, u"auto"_s);
+        QVERIFY(!upgraded.explorerTyping); // an upgrade changes nothing
         QVERIFY(!upgraded.pasteFileEnabled); // new: off, as 截图 is
 
         {

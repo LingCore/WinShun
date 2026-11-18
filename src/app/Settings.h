@@ -112,10 +112,10 @@ struct Settings {
     bool recordHistory = true; // remember what was opened: listed with nothing typed, first among matches
     bool rememberAdmin = false; // Enter runs as administrator what was last run so from here (GitHub #313)
     bool dialogJump = true; // Ctrl+G in an Open or Save dialog goes to the folder open in a file manager (filemanager::)
-    // A search bar under Open and Save dialogs (DialogBar). Off for new
-    // installs, a module turned on where wanted (the 插件 page's 内置功能);
-    // an ini from before without the key keeps it on.
-    bool dialogBar = false;
+    // A search bar under Open and Save dialogs (DialogBar), as Listary has
+    // one: on for new installs (GitHub #372), turned off on the 插件 page's
+    // 内置功能; an ini from before without the key keeps it on too.
+    bool dialogBar = true;
     QString dialogBarPlace = QStringLiteral("auto"); // auto | below | left | right: where it goes by the dialog
     // It searches only the folder the dialog shows (GitHub #286): turned on
     // and off in the bar itself (its menu, Ctrl+Shift+D), kept here.
@@ -142,8 +142,9 @@ struct Settings {
     bool uriProtocol = true;
     // Typing in a File Explorer folder window searches there with Win顺
     // (TypeToSearch), in place of Explorer's own jump to a name by its first
-    // letters: off unless asked for, so that an upgrade changes nothing.
-    bool explorerTyping = false;
+    // letters, as Listary does: on for new installs (GitHub #372); an ini
+    // from before without the key keeps it off, so an upgrade changes nothing.
+    bool explorerTyping = true;
     bool opusTyping = false; // opt in per manager: typing in an Opus file display (GitHub #82)
     // Win顺 answers where programs look for Everything (GitHub #40: Directory
     // Opus, Total Commander, es.exe): platform/EverythingServer.
@@ -164,9 +165,9 @@ struct Settings {
     // auto | on | off: a double click on the blank space of a File Explorer
     // folder or of the desktop brings up a menu of favorite and recent
     // folders (FolderMenu, GitHub #22); auto: not while Listary runs, which
-    // does the same. Off for new installs, like dialogBar; turned on, auto.
-    // An ini from before without the key has auto.
-    QString folderMenu = QStringLiteral("off");
+    // does the same. Auto for new installs too, as Listary's own menu is on
+    // (GitHub #372), and for an ini from before without the key.
+    QString folderMenu = QStringLiteral("auto");
     bool folderMenuDouble = true; // open it with a double click of the left button on blank space (#196; before, always)
     bool folderMenuMiddle = false; // also open it with the middle button on blank space (#137)
     bool folderMenuExplorer = true; // in File Explorer's folders
