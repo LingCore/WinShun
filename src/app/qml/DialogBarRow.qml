@@ -6,9 +6,10 @@ import WinShun
 // A row of the dialog bar's list (DialogBarWindow.qml): icon, highlighted name, the
 // folder it is in, and on the right where it comes from ("资源管理器", "固定",
 // "最近"…), or a key to press. Where there is room, when it was last written
-// at the end of its name's line. While the number keys' modifier is held,
-// its number on the right (Ctrl+1 goes to the first row shown). A long name
-// keeps its end; cut, the whole of it shows as the mouse rests on it (NameTip).
+// at the end of its name's line. On its left, as in the launcher and the
+// clipboard: its number (Ctrl+1 goes to the first row shown), or its letter
+// (字母直达). A long name keeps its end; cut, the whole of it shows as the
+// mouse rests on it (NameTip).
 Item {
     id: row
 
@@ -27,8 +28,10 @@ Item {
     required property bool offline
     property string tag
     property bool showModified: true
-    property int hint: 0 // the number keys' modifier held: this row's number, 0 for none
-    property string hintModifier: "Ctrl" // ... that modifier
+    property int hint: 0 // the number that goes to this row (Ctrl+1...); 0 for none
+    property string hintLetter // 字母直达: the letter that does, while the letters show
+    property real hintOpacity: 1 // the number's: shown as the settings say (NumberHints)
+    property bool reserveHintSpace: false // every row keeps the room, numbered or not: one left edge
     property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
     property NameTip nameTip: null // the window's tip for a name or folder cut short
 
@@ -96,8 +99,27 @@ Item {
     }
 
     Item {
+        id: numberSlot
+        objectName: "dialogResultNumber"
+        visible: row.reserveHintSpace && (row.hint > 0 || row.hintLetter.length > 0)
+        opacity: row.hintLetter.length > 0 ? 1 : row.hintOpacity
+        x: row.onPixel(Theme.tok("clipHintX", 14)) // the icon sits where the clipboard's does
+        width: 24
+        height: row.height
+
+        CenteredNumber {
+            text: row.hintLetter.length > 0 ? row.hintLetter : row.hint > 0 ? String(row.hint) : ""
+            font.pixelSize: Theme.uiTitle
+            font.weight: row.hintLetter.length > 0 ? Font.DemiBold : Font.Medium
+            font.strikeout: row.hintTaken && row.hintLetter.length === 0
+            color: row.hintLetter.length > 0 ? Theme.accent : row.hintTaken ? Theme.faint : row.current ? Theme.accent : Theme.subtext
+            Accessible.ignored: true
+        }
+    }
+
+    Item {
         id: iconSlot
-        x: 16
+        x: 16 + (row.reserveHintSpace ? 28 : 0)
         anchors.verticalCenter: parent.verticalCenter
         width: 32 // 48 device pixels at 150 %: a size icons are drawn for
         height: 32
@@ -131,7 +153,7 @@ Item {
         y: row.onPixel((row.height - height) / 2)
         anchors.left: iconSlot.right
         anchors.leftMargin: 12
-        anchors.right: keycap.visible ? keycap.left : tagText.left
+        anchors.right: tagText.left
         anchors.rightMargin: 10
         spacing: 2
 
@@ -181,20 +203,8 @@ Item {
         }
     }
 
-    KeyCap {
-        dpr: row.dpr
-        id: keycap
-        visible: row.hint > 0
-        anchors.right: parent.right
-        anchors.rightMargin: 14
-        anchors.verticalCenter: parent.verticalCenter
-        keys: row.hint > 0 ? row.hintModifier + "+" + row.hint : ""
-        taken: row.hintTaken
-    }
-
     Text {
         id: tagText
-        visible: !keycap.visible
         anchors.right: parent.right
         anchors.rightMargin: 18
         y: row.onPixel((row.height - height) / 2)

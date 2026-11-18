@@ -3879,6 +3879,37 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
             check(list->property("currentIndex").toInt() == expected && bar.query() == query && field->hasActiveFocus(),
                 u"dialog Ctrl+%1 matches the existing navigation key"_s.arg(int(alias)));
         }
+        // 字母直达 as in the launcher and the clipboard (GitHub #357): the
+        // numbers keep their column on the rows' left, the letters take it,
+        // Shift+letter only selects, Esc only puts the numbers back.
+        auto* hints = visualNamed(window->contentItem(), u"dialogNumberHints"_s);
+        bar.setLetterJump(true, u"auto"_s, u"ASDFGHJKLQWERTYUIOPZXCVBNM"_s);
+        settle(window);
+        const auto letterOf = [&](int row) {
+            QVariant letter;
+            QMetaObject::invokeMethod(window, "letterOf", Q_RETURN_ARG(QVariant, letter), Q_ARG(QVariant, row));
+            return letter.toString();
+        };
+        auto* number = visualNamed(list, u"dialogResultNumber"_s);
+        check(hints && number && number->isVisible() && number->x() < 30, u"dialog rows keep their number on the left"_s);
+        if (hints) {
+            hints->setProperty("jumping", true);
+            settle(window);
+            check(letterOf(0) == u"A" && letterOf(1) == u"S" && field->property("readOnly").toBool(),
+                u"dialog letters on the rows shown, the box read-only meanwhile"_s);
+            list->setProperty("currentIndex", 0);
+            key(Qt::Key_D, Qt::ShiftModifier);
+            check(list->property("currentIndex").toInt() == 2 && bar.query() == query && !hints->property("jumping").toBool()
+                    && !field->property("readOnly").toBool(),
+                u"dialog Shift+letter selects its row and leaves the letters"_s);
+            hints->setProperty("jumping", true);
+            key(Qt::Key_Escape);
+            check(!hints->property("jumping").toBool() && bar.query() == query, u"dialog Esc only puts the numbers back"_s);
+            hints->setProperty("jumping", true);
+            key(Qt::Key_X);
+            check(!hints->property("jumping").toBool() && bar.query() == query, u"dialog letter past the rows shown does nothing"_s);
+        }
+        bar.setLetterJump(false, u"auto"_s, u"ASDFGHJKLQWERTYUIOPZXCVBNM"_s);
         list->setProperty("currentIndex", 2);
         key(Qt::Key_Right);
         auto* menu = qobject_cast<QQuickWindow*>(window->property("contextMenu").value<QObject*>());

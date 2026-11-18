@@ -104,6 +104,12 @@ class DialogBar : public QObject {
     Q_PROPERTY(bool showModified READ showModified NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(int numberKeysLeft READ numberKeysLeft NOTIFY resultOptionsChanged FINAL)
+    // As the launcher's too: when the numbers show (Launcher::numberHints) and
+    // 字母直达 (GitHub #357: the same keys everywhere a list is).
+    Q_PROPERTY(QString numberHints READ numberHints NOTIFY resultOptionsChanged FINAL)
+    Q_PROPERTY(bool letterJump READ letterJump NOTIFY resultOptionsChanged FINAL)
+    Q_PROPERTY(QString letterJumpKey READ letterJumpKey NOTIFY resultOptionsChanged FINAL)
+    Q_PROPERTY(QString letterJumpKeys READ letterJumpKeys NOTIFY resultOptionsChanged FINAL)
 
 public:
     static constexpr int kListChrome = 9; // the divider and the list's margins (logical pixels)
@@ -161,6 +167,9 @@ public:
     QString scopeName() const;
     Q_INVOKABLE void toggleFolderOnly(); // and asks for it to be kept (folderOnlyRequested)
     void setResultOptions(bool showModified, bool thumbnails, const QString& numberKeys); // Settings: "ctrl", "alt", "off"
+    // Settings::numberHints, letterJump, letterJumpKey, letterJumpKeys.
+    void setNumberHints(const QString& hints);
+    void setLetterJump(bool on, const QString& key, const QString& keys);
     void setAskAutoJump(bool on); // not answered yet (Settings::dialogAutoJumpAsked)
     // Whether the index service can navigate elevated dialogs for us (#104):
     // when it can, an elevated dialog jumps (to the folder, a file's name in
@@ -176,6 +185,10 @@ public:
     QString numberKeys() const { return m_numberKeys; }
     int numberKeysLeft() const { return static_cast<int>(m_numberKeysLeft); }
     void setNumberKeysLeft(unsigned digits);
+    QString numberHints() const { return m_numberHints; }
+    bool letterJump() const { return m_letterJump; }
+    QString letterJumpKey() const { return m_letterJumpKey; }
+    QString letterJumpKeys() const { return m_letterJumpKeys; }
     // Ctrl+n (or Alt+n): the nth row shown takes the dialog there
     // (numberPressed), once the rows are those of what was typed.
     Q_INVOKABLE void pressNumber(int number);
@@ -326,6 +339,10 @@ private:
     bool m_showModified = true;
     QString m_numberKeys = QStringLiteral("ctrl");
     unsigned m_numberKeysLeft = 0;
+    QString m_numberHints = QStringLiteral("always");
+    bool m_letterJump = false;
+    QString m_letterJumpKey = QStringLiteral("auto");
+    QString m_letterJumpKeys = QStringLiteral("ASDFGHJKLQWERTYUIOPZXCVBNM");
     bool m_askAutoJump = false;
     bool m_asking = false;
     QString m_browsed; // see browsedFolder

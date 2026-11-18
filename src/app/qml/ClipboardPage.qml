@@ -189,20 +189,34 @@ Item {
         tracking: numberHints.hintOpacity > 0 || numberHints.jumping // not per frame of a scroll while nothing shows
         span: numberHints.jumping ? numberHints.letters.length : 9 // a letter each, past the ninth row too
     }
-    // A key while the letters show: a letter pastes its row (with Shift: as
-    // plain text), and is taken; anything else puts the numbers back and is
-    // that key as ever (Esc only puts them back).
+    // A key while the letters show: a letter pastes its row (a picked one:
+    // all the picked ones, as Enter or a click does), and is taken.
+    // Shift+letter picks its row or lets it go, as Ctrl+click, and the
+    // letters stay for the next one: rows put together with the keyboard
+    // alone (GitHub #357), then pasted with Enter. Anything else puts the
+    // numbers back and is that key as ever (Esc only puts them back).
     function letterKey(event) {
         if (!numberHints.jumping || [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta].includes(event.key))
             return false
         const offset = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0
             ? numberHints.offsetOf(event) : -1
         const row = offset >= 0 ? shownRows.rowOf(offset + 1) : -1
+        if (offset >= 0 && (event.modifiers & Qt.ShiftModifier)) {
+            if (row >= 0 && !event.isAutoRepeat)
+                toggleRow(row)
+            return true
+        }
         numberHints.leave()
         if (offset >= 0) {
             if (row >= 0 && !event.isAutoRepeat) {
                 list.currentIndex = row
-                clipboard.quickPaste(row, (event.modifiers & Qt.ShiftModifier) !== 0)
+                if (selectedCount > 0 && clipboard.items.isSelected(row)) {
+                    clipboard.paste(row, false)
+                } else {
+                    if (selectedCount > 0)
+                        clipboard.clearSelection()
+                    clipboard.quickPaste(row, false)
+                }
             }
             return true
         }

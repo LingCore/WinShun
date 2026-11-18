@@ -37,7 +37,6 @@ Window {
             input.forceActiveFocus() // clicked, or double Ctrl
         } else {
             closeMenu()
-            hideNumbers()
             nameTip.dismiss()
         }
     }
@@ -111,37 +110,63 @@ Window {
     }
 
     // Ctrl+1… (or Alt+1…) as in the launcher (see Main.qml): the nth row
-    // shown, its number up while the modifier is held.
+    // shown, its number on its left as the settings say (always, while the
+    // modifier is held, or never), and 字母直达 the same (GitHub #357).
     readonly property int numberKey: bar.numberKeys === "ctrl" ? Qt.Key_Control
                                    : bar.numberKeys === "alt" ? Qt.Key_Alt : -1
     readonly property int firstShownRow: Math.max(0, Math.floor((list.contentY + bar.rowHeight / 2) / bar.rowHeight))
-    readonly property int lastShownRow: Math.min(list.count - 1, firstShownRow + 8,
-                                                 Math.floor((list.contentY + list.height - bar.rowHeight / 2) / bar.rowHeight))
-    property bool showNumbers: false
-    Timer {
-        id: numbersDelay
-        interval: 200 // as in the launcher
-        onTriggered: window.showNumbers = true
+    readonly property int lastRowInView: Math.floor((list.contentY + list.height - bar.rowHeight / 2) / bar.rowHeight)
+    readonly property int lastShownRow: Math.min(list.count - 1, firstShownRow + 8, lastRowInView)
+    readonly property int lastLetterRow: Math.min(list.count - 1, firstShownRow + numberHints.letters.length - 1, lastRowInView)
+    NumberHints {
+        id: numberHints
+        objectName: "dialogNumberHints"
+        mode: window.bar.numberHints
+        key: window.numberKey
+        listening: window.active && !window.menuOpen
+        jumpEnabled: window.bar.letterJump && list.visible
+        trigger: window.bar.letterJumpKey
+        letters: window.bar.letterJumpKeys
     }
-    function hideNumbers() {
-        numbersDelay.stop()
-        showNumbers = false
+    function letterOf(index) {
+        return numberHints.jumping && index >= firstShownRow && index <= lastLetterRow
+            ? numberHints.letterOf(index - firstShownRow) : ""
     }
-    readonly property string numberModifier: numberKey === Qt.Key_Alt ? "Alt" : "Ctrl"
+    // A key while the letters show: a letter takes the dialog to its row, as
+    // Enter does; Shift+letter only makes it the current row (for Tab,
+    // Ctrl+Enter, the menu). The letter is taken; anything else puts the
+    // numbers back and is that key as ever (Esc only puts them back).
+    function letterKey(event) {
+        if (!numberHints.jumping || [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta].includes(event.key))
+            return false
+        const plain = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0
+        const offset = plain ? numberHints.offsetOf(event) : -1
+        const row = firstShownRow + offset
+        numberHints.leave()
+        if (offset >= 0) {
+            if (row <= lastLetterRow && !event.isAutoRepeat) {
+                list.currentIndex = row
+                if ((event.modifiers & Qt.ShiftModifier) === 0)
+                    window.bar.choose(row, true) // as Enter
+            }
+            return true
+        }
+        return event.key === Qt.Key_Escape
+    }
     // As the launcher's (Main.qml): a chord that is one of Win顺's own
     // shortcuts stays that, its row's chord struck through.
     function numberUsable(number) {
         return number >= 1 && (bar.numberKeysLeft & (1 << number)) === 0
     }
     function numberOf(index) {
-        return showNumbers && list.visible && index >= firstShownRow && index <= lastShownRow
+        return numberKey >= 0 && list.visible && index >= firstShownRow && index <= lastShownRow
             ? index - firstShownRow + 1 : 0
     }
     function openNumber(number) {
         const row = firstShownRow + number - 1
         if (!numberUsable(number) || row > lastShownRow || !list.visible)
             return
-        hideNumbers()
+        numberHints.reset()
         list.currentIndex = row
         window.bar.choose(row, true) // as Enter
     }
@@ -154,8 +179,7 @@ Window {
              : numberKey === Qt.Key_Alt ? modifiers === Qt.AltModifier && !keypad : false
     }
     function handleKeyRelease(event) {
-        if (event.key === numberKey)
-            hideNumbers()
+        numberHints.release(event)
     }
 
     function handleKey(event) {
@@ -164,18 +188,11 @@ Window {
             event.accepted = true
             return
         }
-        if (event.key === numberKey && numberKey >= 0) {
-            if (event.isAutoRepeat)
-                return
-            if (numberKey === Qt.Key_Alt) {
-                showNumbers = true
-                event.accepted = true // alone, it would open the window menu
-            } else if (event.modifiers === Qt.ControlModifier) {
-                numbersDelay.restart()
-            }
+        numberHints.press(event)
+        if (letterKey(event)) {
+            event.accepted = true
             return
         }
-        hideNumbers()
         if (event.key === Qt.Key_Alt) {
             event.accepted = true // alone, it would open the window menu (see Main.qml)
             return
@@ -336,6 +353,9 @@ Window {
             selectByMouse: true
             selectionColor: Theme.textSelection
             selectedTextColor: Theme.text
+            // The letters showing: a letter picks a row, not typed; read-only
+            // also keeps the input method from composing it (see ClipboardPage).
+            readOnly: numberHints.jumping
             onTextChanged: window.bar.query = text
             onPreeditTextChanged: if (preeditText.length > 0) window.closeMenu()
             Keys.onPressed: (event) => window.handleKey(event)
@@ -672,7 +692,9 @@ Window {
             dpr: window.dpr
             showModified: window.bar.showModified
             hint: window.numberOf(index)
-            hintModifier: window.numberModifier
+            hintLetter: window.letterOf(index)
+            hintOpacity: numberHints.hintOpacity
+            reserveHintSpace: (window.numberKey >= 0 && window.bar.numberHints !== "off") || window.bar.letterJump
             hintTaken: rowItem.hint > 0 && !window.numberUsable(rowItem.hint)
             nameTip: nameTip
             // On whole device pixels wherever the list has scrolled to (see

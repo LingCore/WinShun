@@ -4852,6 +4852,8 @@ void App::applyDialogs()
         m_dialogBar->setPlace(m_settings.dialogBarPlace);
         m_dialogBar->setFolderOnly(m_settings.dialogBarFolderOnly);
         m_dialogBar->setResultOptions(m_settings.showModified, m_settings.thumbnails, m_settings.numberKeys);
+        m_dialogBar->setNumberHints(m_settings.numberHints);
+        m_dialogBar->setLetterJump(m_settings.letterJump, m_settings.letterJumpKey, m_settings.letterJumpKeys);
         m_dialogBar->results()->setShowModifiedTime(m_settings.showModifiedTime);
         m_dialogBar->setAskAutoJump(!m_settings.dialogAutoJump && !m_settings.dialogAutoJumpAsked);
         m_dialogBar->setCopyOnlyHint(copyOnlyHint(m_serviceNav ? m_serviceNav->reach() : ServiceDialogNav::Reach::NoService));

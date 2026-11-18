@@ -587,7 +587,9 @@ Window {
         id: numberHints
         mode: window.launcher.numberHints
         key: window.numberKey
-        listening: window.visible && window.active && !window.menuOpen && !window.clipboardBelow
+        // Refused the front over the folder typed in, its keys come through
+        // its KeyRouter, Ctrl, Alt and Shift too (as the clipboard's do).
+        listening: window.visible && (window.active || window.launcher.keysRouted) && !window.menuOpen && !window.clipboardBelow
         // 字母直达 (GitHub #175): the plain list only (its rows have the room for a letter).
         jumpEnabled: window.launcher.letterJump && window.gridColumns === 1 && !window.panel
         trigger: window.launcher.letterJumpKey
@@ -632,7 +634,8 @@ Window {
                     window.launcher.keyboardMoved()
                     window.launcher.chooseRow(row)
                     view.positionViewAtIndex(row, ListView.Contain)
-                    numberHints.pick()
+                    if (!window.folderMode) // the box typed open in a folder: rows without buttons, only selected
+                        numberHints.pick()
                 } else {
                     window.launcher.trigger(row, Launcher.Open)
                 }

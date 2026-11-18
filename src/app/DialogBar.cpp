@@ -600,6 +600,24 @@ void DialogBar::setResultOptions(bool showModified, bool thumbnails, const QStri
     emit resultOptionsChanged();
 }
 
+void DialogBar::setNumberHints(const QString& hints)
+{
+    if (hints == m_numberHints)
+        return;
+    m_numberHints = hints;
+    emit resultOptionsChanged();
+}
+
+void DialogBar::setLetterJump(bool on, const QString& key, const QString& keys)
+{
+    if (on == m_letterJump && key == m_letterJumpKey && keys == m_letterJumpKeys)
+        return;
+    m_letterJump = on;
+    m_letterJumpKey = key;
+    m_letterJumpKeys = keys;
+    emit resultOptionsChanged();
+}
+
 void DialogBar::setNumberKeysLeft(unsigned digits)
 {
     if (digits == m_numberKeysLeft)
