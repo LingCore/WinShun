@@ -807,6 +807,16 @@ void SystemCatalog::setPlaces(std::shared_ptr<const PlaceList> places)
 
 void SystemCatalog::setOwnPlaces(PlaceList own)
 {
+    // Given again with every change of the settings: as they were, nothing
+    // is merged anew nor searched again.
+    const auto same = [](const PlaceInfo& a, const PlaceInfo& b) {
+        return a.key == b.key && a.name == b.name && a.command == b.command && a.icon == b.icon && a.ownKeywords == b.ownKeywords;
+    };
+    {
+        std::lock_guard lock(m_mutex);
+        if (std::ranges::equal(own, m_own, same))
+            return;
+    }
     for (PlaceInfo& place : own)
         place.prepare();
     {
@@ -827,6 +837,11 @@ void SystemCatalog::merge()
     auto both = m_read ? std::make_shared<PlaceList>(*m_read) : std::make_shared<PlaceList>();
     both->insert(both->end(), m_own.begin(), m_own.end());
     m_places = std::move(both);
+}
+
+bool windowsPlacesRead(const PlaceList& places) noexcept
+{
+    return std::ranges::any_of(places, [](const PlaceInfo& place) { return !isOwnPlace(place); });
 }
 
 PlaceInfo settingsPlace(const QString& name, const QString& icon)

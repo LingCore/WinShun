@@ -2477,6 +2477,12 @@ QString SettingsEditor::setQuickFilterKeyword(int index, const QString& text)
     return {};
 }
 
+void SettingsEditor::showPluginPage(const QString& pluginId)
+{
+    if (m_window)
+        QMetaObject::invokeMethod(m_window, "showPluginPage", Q_ARG(QVariant, QVariant(pluginId)));
+}
+
 void SettingsEditor::setQuickFilterSort(int index, const QString& sort)
 {
     if (index < 0 || index >= m_settings.quickFilters.size() || (!sort.isEmpty() && !isSortName(sort)))

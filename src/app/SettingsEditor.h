@@ -948,6 +948,7 @@ public:
 
     void setSettings(const Settings& settings); // the file was changed outside this editor
     void setWindow(QWindow* window) { m_window = window; }
+    void showPluginPage(const QString& pluginId); // the window's 插件 page at that plugin's card
     void setPlaces(SystemCatalog* places) { m_places = places; }
 
     // For a search of the settings that found nothing: the settings and

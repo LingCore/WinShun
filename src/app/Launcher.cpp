@@ -5950,7 +5950,12 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
             if (r.isPlace()) {
                 if (admin || drawsSwitch(r)) // a switch is not "opened" with the others
                     continue;
-                shell::run(r.target, reportFailure(r.name));
+                if (r.target == ws::kSettingsCommand) // Win顺's own (GitHub #389, #390): never the shell
+                    openSettings();
+                else if (r.target.startsWith(ws::kPluginSettingsCommand))
+                    emit pluginSettingsRequested(r.target.mid(ws::kPluginSettingsCommand.size()));
+                else
+                    shell::run(r.target, reportFailure(r.name));
             } else if (r.isApp()) {
                 if (admin && !r.elevatable)
                     continue;

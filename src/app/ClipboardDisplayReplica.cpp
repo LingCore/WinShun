@@ -261,7 +261,7 @@ QVariant DisplayReplica::invoke(const QString& name, const QVariantList& argumen
         return screen ? QRectF(screen->availableGeometry()) : QRectF();
     }
     static const QStringList returnsValue {u"heldRow"_s, u"canMove"_s, u"addGroup"_s, u"enterGroup"_s, u"selectAll"_s,
-        u"preview"_s, u"menuItems"_s, u"categoryMenuItems"_s};
+        u"preview"_s, u"menuItems"_s, u"categoryMenuItems"_s, u"setText"_s};
     if (!returnsValue.contains(name)) {
         send({{u"type"_s, u"call"_s}, {u"id"_s, 0}, {u"name"_s, name}, {u"args"_s, QJsonArray::fromVariantList(arguments)}});
         return {}; // drag/drop and native pickers can keep their ordinary-process modal loop

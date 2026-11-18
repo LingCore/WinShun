@@ -35,8 +35,9 @@ Item {
     readonly property real contentBottom: meta.y - 4
     // Text selected with the mouse (GitHub #375): a picture's words, the
     // entry's own text, a copied text file's. Only one of them is shown.
-    readonly property string selectedText: kind === 4 ? words.selectedText
+    readonly property string selectedText: masked ? "" : kind === 4 ? words.selectedText
                                          : body.visible ? body.selectedText : fileText.selectedText
+    readonly property bool masked: info.masked ?? false // kept from view: dots, nothing to select
     // Ctrl+C: what is selected, copied as a new entry; false: nothing is.
     function copySelection(): bool {
         if (selectedText.length === 0)
@@ -271,7 +272,7 @@ Item {
                 textFormat: TextEdit.PlainText
                 wrapMode: TextEdit.WrapAnywhere
                 readOnly: true
-                selectByMouse: true
+                selectByMouse: !preview.masked
                 activeFocusOnPress: false
                 color: preview.kind === 1 ? Theme.accent : Theme.text
                 selectionColor: Theme.textSelection

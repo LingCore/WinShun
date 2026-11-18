@@ -36,7 +36,7 @@ QVariant call(Clipboard* object, const QString& name, const QVariantList& values
         u"addGroup"_s, u"enterGroup"_s, u"renameGroup"_s, u"toggleSelected"_s, u"selectRange"_s, u"clearSelection"_s,
         u"selectAll"_s, u"cycleCategory"_s, u"cycleSeparator"_s, u"dismiss"_s, u"wantKeys"_s,
         u"turnOn"_s, u"preview"_s, u"menuItems"_s, u"categoryMenuItems"_s, u"trigger"_s,
-        u"triggerCategory"_s, u"groupNameRequested"_s};
+        u"triggerCategory"_s, u"groupNameRequested"_s, u"pasteText"_s, u"setNote"_s, u"setText"_s};
     ok = false;
     if (!allowed.contains(name) || values.size() > 3)
         return {};

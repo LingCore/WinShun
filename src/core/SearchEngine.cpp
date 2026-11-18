@@ -1137,7 +1137,7 @@ SearchResults favoriteRows(const QList<const Favorite*>& favorites, const AppLis
         } else if (f.kind == Favorite::Kind::Place) {
             if (const PlaceInfo* place = findPlace(places, f.path))
                 r = fromPlace(*place, false);
-            else if (places.empty())
+            else if (!windowsPlacesRead(places)) // not read yet (Win顺's own are there at once)
                 continue;
             else
                 r = {.path = f.path, .missing = true, .app = AppKind::Tool};

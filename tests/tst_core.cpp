@@ -11635,8 +11635,14 @@ private slots:
             place.ownKeywords = {id.section(u'.', -1), zh, en, u"设置"_s, u"配置"_s, u"settings"_s, u"config"_s};
             own.push_back(std::move(place));
         }
+        const PlaceList ownAgain = own;
         places.setOwnPlaces(std::move(own));
         QVERIFY(ws::isOwnPlace(places.places()->front()));
+        QVERIFY(!ws::windowsPlacesRead(*places.places())); // only Win顺's own so far
+        // Given again with every change of the settings: as they were, no new list.
+        QSignalSpy changed(&places, &SystemCatalog::changed);
+        places.setOwnPlaces(ownAgain);
+        QCOMPARE(changed.count(), 0);
         QVERIFY(ws::isOwnCommand(u"winshun:settings/plugin/winshun.capture"));
         QVERIFY(!ws::isOwnCommand(u"ms-settings:display"));
         SearchEngine engine(&service, &apps, &places);
@@ -11697,6 +11703,7 @@ private slots:
         places.setPlaces(std::make_shared<const PlaceList>(PlaceList {display}));
         QCOMPARE(places.places()->size(), std::size_t(4));
         QCOMPARE(places.places()->front().command, u"ms-settings:display"_s);
+        QVERIFY(ws::windowsPlacesRead(*places.places()));
         QVERIFY(search(u"WinShun"_s).value(0).isSettings());
     }
 

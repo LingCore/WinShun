@@ -1737,6 +1737,7 @@ QVariantMap Clipboard::preview(int row) const
         {u"swatch"_s, ClipModel::colorOf(*c)},
     };
     if (c->masked) { // dots in place of whatever it is, where it came from and when below them
+        map.insert(u"masked"_s, true); // nothing to select of them
         map.insert(u"kind"_s, static_cast<int>(ClipKind::Text));
         map.insert(u"formatted"_s, false);
         map.insert(u"swatch"_s, QString());
@@ -1957,6 +1958,12 @@ void Clipboard::trigger(int row, int action)
         moveToGroup(row, action - MoveToGroup);
         return;
     }
+    // What an action on one entry acts on: the row, or the one picked (row -1:
+    // the page's keys act on the picked rows when there are any).
+    const auto one = [&]() -> const Clip* {
+        const std::vector<const Clip*> clips = targets(row);
+        return clips.size() == 1 ? clips.front() : nullptr;
+    };
     switch (static_cast<Action>(action)) {
     case Paste:
         paste(row, false);
@@ -2013,9 +2020,9 @@ void Clipboard::trigger(int row, int action)
         sendLan(row);
         break;
     case PinImage: {
-        const Clip* c = m_model.at(row);
+        const Clip* c = one();
         if (c && c->kind != ClipKind::Image && c->kind != ClipKind::Files && !c->masked) { // words (GitHub #388)
-            // All of it, as Ctrl+C on the card copies it again (a long text is kept whole on disk only).
+            // All of it (a long text is kept whole on disk only); the plugin takes up to kPinTextChars.
             emit pinTextRequested(c->textLength > c->text.size() ? m_store->payload(c->id).text : c->text);
             break;
         }
@@ -2029,7 +2036,7 @@ void Clipboard::trigger(int row, int action)
         break;
     }
     case EditImage: {
-        const Clip* c = m_model.at(row);
+        const Clip* c = one();
         if (!c || c->kind != ClipKind::Image)
             break;
         if (m_store->imagePending(c->id)) { // just copied, its file not written yet
@@ -2045,7 +2052,7 @@ void Clipboard::trigger(int row, int action)
     case OpenLink:
     case Reveal:
     case OpenImage: {
-        const Clip* c = m_model.at(row);
+        const Clip* c = one();
         if (!c)
             break;
         // What opens may come to the front only from the program in front.

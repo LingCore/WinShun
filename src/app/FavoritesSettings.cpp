@@ -177,7 +177,7 @@ void FavoritesSettings::refresh()
                                                        : FileIconProvider::placeIconUrl(place->icon);
             }
             shownPath = tr("系统");
-            missing = places && !places->empty() && !place;
+            missing = places && windowsPlacesRead(*places) && !place; // not read yet: not known to be missing
         } else if (f.kind == Favorite::Kind::Command) {
             icon = FileIconProvider::commandIconUrl(f.command, f.workingDirectory, f.icon, dark());
             shownPath = f.command;
@@ -517,8 +517,13 @@ void FavoritesSettings::open(int index)
     case Favorite::Kind::Place:
         if (m_places) {
             if (const auto places = m_places->places(); places) {
-                if (const PlaceInfo* place = findPlace(*places, f.path))
-                    shell::run(place->command);
+                if (const PlaceInfo* place = findPlace(*places, f.path)) {
+                    // Win顺's own (GitHub #389, #390): this window, or a plugin's card in it.
+                    if (place->command.startsWith(kPluginSettingsCommand))
+                        m_editor->showPluginPage(place->command.mid(kPluginSettingsCommand.size()));
+                    else if (place->command != kSettingsCommand)
+                        shell::run(place->command);
+                }
             }
         }
         break;
