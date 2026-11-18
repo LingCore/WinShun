@@ -1562,6 +1562,26 @@
         <translation>Long screenshot</translation>
     </message>
     <message>
+        <source>宽 %1 像素</source>
+        <translation>%1 px wide</translation>
+    </message>
+    <message>
+        <source>横向</source>
+        <translation>Horizontal</translation>
+    </message>
+    <message>
+        <source>竖向</source>
+        <translation>Vertical</translation>
+    </message>
+    <message>
+        <source>横向长截图，点一下改成竖向</source>
+        <translation>Horizontal long screenshot; click for vertical</translation>
+    </message>
+    <message>
+        <source>竖向长截图，点一下改成横向</source>
+        <translation>Vertical long screenshot; click for horizontal</translation>
+    </message>
+    <message>
         <source>等第一帧…</source>
         <translation>Waiting for the first frame…</translation>
     </message>
@@ -2429,6 +2449,10 @@ click here to cancel</translation>
     <message>
         <source>正在自动滚动。Enter 完成，Esc 取消</source>
         <translation>Scrolling by itself. Enter finishes, Esc cancels</translation>
+    </message>
+    <message>
+        <source>在区域内向左或向右滚动（Shift+滚轮），滚完按 Enter 或点“完成”</source>
+        <translation>Scroll left or right in the region (Shift+wheel). Enter or “Done” finishes</translation>
     </message>
     <message>
         <source>在区域内向上或向下滚动，滚完按 Enter 或点“完成”</source>
