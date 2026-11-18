@@ -140,7 +140,7 @@ UiSize=standard          ; dense | compact | standard | roomy：启动器、剪�
 TaskbarIcon=color        ; color | mono：通知区域和任务栏搜索框里的图标；mono 是单色线条（platform/MonoLogo），随任务栏浅色、深色变黑或白
 
 [Update]
-Automatic=true           ; 启动时和之后每 12 小时到 GitHub 检查新版本
+Automatic=true           ; 启动时和之后每 10 分钟到 lcstp.com 检查新版本
 
 [Index]
 ExcludedPaths=...        ; 不建索引的文件夹，支持 %WINDIR% 这类环境变量，逗号分隔
@@ -336,7 +336,7 @@ cmake --build --preset release --target update_translations   # lupdate：把新
 
 ## 检查更新和发布
 
-新版本仍是 GitHub 上的 Release；检查更新问的是拾穗发布服务（lcstp.com），它每 10 分钟从 GitHub Releases 同步一次，回答 GitHub 兼容的格式，另外给出安装包的大小、`digest`（服务器从 GitHub API 读的 SHA-256）和镜像地址。`Updater` 用 WinHTTP（走系统代理设置，不用给 Qt Network 带 TLS 插件）请求 `https://lcstp.com/updates/winshun/stable.json?platform=windows&arch=x64&osVersion=10.0.x`，便携版再加 `&package=portable`；204（没有内容）算“已是最新”。比较 `tag_name` 和当前版本；有新版本时在托盘提示（设置窗口开着时直接弹对话框）。上次检查的时间、跳过的版本、上次提醒的时间存在 `update.ini`（安装版在 `%LOCALAPPDATA%\WinShun`，便携版在 `data`）；同一个版本自动提醒最多三天一次，跳过的版本只在手动检查时显示。测试时可以用环境变量 `WINSHUN_UPDATE_FEED` 指向一个假的接口地址（它是 `http://127.0.0.1` 或 `localhost` 时，安装包也可以从本机用 http 下载；正式地址只用 https）。“查看完整说明”只打开 `https://lcstp.com/` 开头的 `html_url`，否则打开固定的 `https://lcstp.com/projects/winshun`。
+新版本仍是 GitHub 上的 Release；检查更新问的是拾穗发布服务（lcstp.com），它每 10 分钟从 GitHub Releases 同步一次，回答 GitHub 兼容的格式，另外给出安装包的大小、`digest`（服务器从 GitHub API 读的 SHA-256）和镜像地址。`Updater` 用 WinHTTP（走系统代理设置，不用给 Qt Network 带 TLS 插件）请求 `https://lcstp.com/updates/winshun/stable.json?platform=windows&arch=x64&osVersion=10.0.x`，便携版再加 `&package=portable`；204（没有内容）算“已是最新”。比较 `tag_name` 和当前版本；有新版本时在托盘提示（设置窗口开着时直接弹对话框）。上次检查的时间、跳过的版本、上次提醒的时间存在 `update.ini`（安装版在 `%LOCALAPPDATA%\WinShun`，便携版在 `data`）；同一个版本自动提醒最多三天一次，跳过的版本只在手动检查时显示。启动 20 秒后查第一次，之后每 10 分钟一次（计时器每 5 分钟看一次，睡眠醒来后补上）；同一次运行里第二次起带上一次回答的 `ETag`（`If-None-Match`），没变时 lcstp.com 回 304、没有正文，所以频繁检查几乎不费流量，也不加重服务器负担（它对每个 IP 每分钟限 240 次）。**推送方式**（`release::push`、`release::announceDue`，发布时怎么选见 [releasing.md](releasing.md) “推送方式”）：发布说明里有隐藏行 `<!-- winshun-push now -->` 的是立即推送，查到就提示（标题“是重要更新”），没更新时每天再提醒一次；没有这行的是正常推送，每份 Win顺 在 `published_at` 之后、各自固定的随机时刻（`update.ini` 的 `RolloutSlot`，0–24 小时，第一次用时抽取）才自动提示，之后最多三天提醒一次；拿不到 `published_at` 时当场提示。设置页和手动检查不受推送方式影响，查到就显示。测试时可以用环境变量 `WINSHUN_UPDATE_FEED` 指向一个假的接口地址（它是 `http://127.0.0.1` 或 `localhost` 时，安装包也可以从本机用 http 下载；正式地址只用 https）。“查看完整说明”只打开 `https://lcstp.com/` 开头的 `html_url`，否则打开固定的 `https://lcstp.com/projects/winshun`。
 
 “下载并安装”（`Updater::install`，下载和校验在 `UpdatePackage`）：
 

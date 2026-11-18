@@ -75,6 +75,25 @@ curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch
 curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch=x64&osVersion=10.0.22631&package=portable'
 ```
 
+### 推送方式：立即推送 / 正常推送
+
+每次发布由开发者决定用哪一种。用户没说就用正常推送；用户说“立即推送”“马上推给大家”“这是重要更新”之类，就用立即推送。发布前给用户的汇报里写明这次用的是哪一种。
+
+| | 正常推送（默认，`-Push Normal`） | 立即推送（`-Push Now`） |
+|---|---|---|
+| 用户什么时候看到托盘提示 | 每份 Win顺 在发布后 24 小时内各自固定的一个随机时刻（`update.ini` 的 `RolloutSlot`，第一次用时随机抽取） | lcstp.com 同步到新版本后（最多 10 分钟），下一次检查（每 10 分钟一次）就提示 |
+| 提示的样子 | “Win顺 x.y.z 可以更新了” | “Win顺 x.y.z 是重要更新 / 建议尽快更新”，更新对话框标题也这样写 |
+| 没更新时再提醒 | 同一版本最多三天一次 | 每天一次，直到更新或跳过 |
+| 适合 | 平常的功能和修复。分批到达，万一新版本有问题只影响先到的一部分人，下载也分散 | 严重问题、安全问题、更新链路本身的问题 |
+
+两种方式下，用户自己点“检查更新”或打开设置里的更新页，都能马上看到新版本；跳过的版本两种都不再自动提醒。
+
+做法：`-Push Now` 让脚本在发布说明末尾加一行隐藏注释 `<!-- winshun-push now -->`（和 `winshun-delta` 那行一样，`docs/release-notes` 里的原文不改；原文里手写了这行，脚本会停下）。lcstp.com 原样转发说明正文，服务器不用改。发布后核对 lcstp.com 回答的 `body`：立即推送时应有这行，正常推送时没有。
+
+发布后改主意：正常推送改成立即推送，就把公开 Release 的说明下载下来（`gh release view vX.Y.Z --repo LingCore/WinShun --json body --jq .body > notes.md`），在末尾加上这行，再 `gh release edit vX.Y.Z --repo LingCore/WinShun --notes-file notes.md`。lcstp.com 10 分钟内同步，各客户端在下一次检查时按立即推送提示。去掉这行就回到正常推送，已经弹出的提示不会撤回。
+
+客户端从启动时起每 10 分钟查一次 lcstp.com（第二次起带上一次回答的 ETag，没变时服务器只回 304，没有正文）。只有带这套逻辑的版本才认这行（源码里 `src/core/Release.cpp` 有 `release::push`）；之前的版本仍是启动时和每 12 小时检查，不分推送方式。所以第一个带这功能的版本自己仍按旧版本的节奏到达用户；用户装上它之后，再往后的发布才能立即推到他们那里。实现见 [architecture.md](architecture.md) “检查更新和发布”，测试 `tst_updater` 的 `pushNowOrInTurn`；本机假服务 `tools/update-feed.py` 加 `--push-now` 模拟立即推送。
+
 Scoop：`scripts/release.ps1 -Publish` 在 Release 创建成功之后，把 `bucket/winshun.json` 的 `version`、`url`、`hash` 改成这次的便携包（只改这三处，保持 4 空格缩进和无 BOM 的 UTF-8），只提交这一个文件（`git commit --only`，工作区里可能有别人的修改）为 “Scoop: winshun <版本>” 并推送。用户用 `scoop bucket add winshun https://github.com/LingCore/WinShun` 加入的就是主仓库，所以推送要在 Release 之后，清单不能比 zip 先到。`checkver` / `autoupdate` 写好了（`$sha256\s+$basename` 只匹配便携包那一行），发布后可以用 Scoop 自带的 `bin\checkver.ps1 -App winshun -Dir bucket -Update`（先复制一份目录）核对：它会用公开的 SHA256SUMS.txt 算出同样的值。`tests/tst_scoopinstall.cpp` 检查清单是合法 JSON、正则能在样例校验文件里只匹配便携包。
 
 WinGet：包 `LingCore.WinShun` 在 `microsoft/winget-pkgs` 的 `manifests/l/LingCore/WinShun`，不归本仓库维护。Release 公开后会有自动提交的 “New version: LingCore.WinShun version <版本>” PR，由 winget 维护者审核合并后才上架，所以 `winget install` 拿到新版本通常比 Release 晚一两天；清单里的安装包是离线安装包 `WinShun-<版本>-x64-offline-setup.exe`（自带增强文字识别），`Scope: machine`，`winget install` 装成给所有用户的版本（`C:\Program Files\WinShun`，带索引服务）。发布后核对最新那个 PR 的 `InstallerUrl`、`InstallerSha256` 和公开的 `SHA256SUMS.txt` 一致即可，不用自己建清单；README 和[使用说明](使用说明.md#用-winget-安装更新卸载)只写命令、不写版本号，免得包还没跟上时对不上。清单还声明了 `Microsoft.VCRedist.2015+.x64` 依赖，而程序自己带着 C++ 运行库、用不上它，下一次提清单时可以去掉。
