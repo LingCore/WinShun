@@ -8,6 +8,8 @@
 #include <QStringList>
 #include <QUrl>
 
+#include <algorithm>
+
 using namespace Qt::StringLiterals;
 
 namespace ws::release {
@@ -96,6 +98,9 @@ std::optional<Info> parse(const QByteArray& json)
     info.version = normalized(tag);
     info.pageUrl = release.value(u"html_url"_s).toString();
     info.notes = release.value(u"body"_s).toString();
+    info.published = QDateTime::fromString(release.value(u"published_at"_s).toString(), Qt::ISODateWithMs);
+    if (info.published.isValid())
+        info.published = info.published.toUTC();
     for (const QJsonValue& value : release.value(u"assets"_s).toArray()) {
         const QJsonObject a = value.toObject();
         Asset asset;
@@ -112,6 +117,21 @@ std::optional<Info> parse(const QByteArray& json)
         info.assets.append(asset);
     }
     return info;
+}
+
+Push push(const QString& notes)
+{
+    static const QRegularExpression line(u"^[ \\t]*<!--[ \\t]*winshun-push[ \\t]+now[ \\t]*-->[ \\t]*\\r?$"_s,
+        QRegularExpression::MultilineOption | QRegularExpression::CaseInsensitiveOption);
+    return line.match(notes).hasMatch() ? Push::Now : Push::Normal;
+}
+
+bool announceDue(const Info& info, int slotSeconds, const QDateTime& now)
+{
+    if (push(info.notes) == Push::Now || !info.published.isValid())
+        return true;
+    const int slot = std::clamp(slotSeconds, 0, kRolloutSeconds);
+    return info.published.addSecs(slot) <= now;
 }
 
 Answer judge(int status, const QByteArray& body, const QString& current, std::optional<Info>* newer)

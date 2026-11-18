@@ -15,6 +15,7 @@
 .EXAMPLE
     ./scripts/release.ps1             # setup.exe and SHA256SUMS.txt in dist\
     ./scripts/release.ps1 -Publish    # and the GitHub release
+    ./scripts/release.ps1 -Publish -Push Now # an important one: every copy says so within minutes
     ./scripts/release.ps1 -OutputDir dist\release-preview # leave other deployed copies running
     ./scripts/release.ps1 -BuildDir build\release-preview -OutputDir dist\release-preview
 #>
@@ -25,7 +26,10 @@ param(
     [string] $OutputDir, # optional isolated deployment and package directory
     [string] $BuildDir, # optional isolated CMake binary directory
     [string] $Tests, # ctest -R regex of the tests this release's changes touch; none run otherwise
-    [int] $DeltaCount = 3 # delta packages from this many earlier releases (UpdateDelta.h)
+    [int] $DeltaCount = 3, # delta packages from this many earlier releases (UpdateDelta.h)
+    # How the app announces it (src/core/Release.h, release::Push): Normal,
+    # each copy at its own moment within a day; Now, every copy within minutes.
+    [ValidateSet('Normal', 'Now')] [string] $Push = 'Normal'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -39,7 +43,7 @@ $version = $Matches[1]
 $tag = "v$version"
 $notes = Join-Path $root "docs\release-notes\$tag.md"
 if ($Publish -and -not (Test-Path $notes)) { throw "Write the release notes first: $notes" }
-Write-Host "WinShun $version"
+Write-Host "WinShun $version (push: $Push)"
 if ($Publish) {
     $releaseCommit = (git -C $root rev-parse HEAD).Trim()
     if ($LASTEXITCODE) { throw 'Could not read the release commit.' }
@@ -235,9 +239,11 @@ if ($Publish) {
     git -C $root diff --quiet HEAD --
     if ($LASTEXITCODE) { throw 'Tracked source files changed during the build.' }
     $assets = @($setup, $portable, $offlineSetup, $ocrPackage) + $deltas + @($sums)
-    # The notes as written, and the delta packages' line after them.
+    # The notes as written, then the hidden lines: the push, the delta packages.
     $publishNotes = Join-Path $dist "release-notes-$tag.md"
     $notesText = [IO.File]::ReadAllText($notes).TrimEnd()
+    if ($notesText -match '(?m)^\s*<!--\s*winshun-push\b') { throw "Leave the push line out of $notes; use -Push." }
+    if ($Push -eq 'Now') { $notesText += "`n`n<!-- winshun-push now -->" }
     if ($deltaLine) { $notesText += "`n`n" + $deltaLine }
     [IO.File]::WriteAllText($publishNotes, $notesText + "`n", (New-Object Text.UTF8Encoding($false)))
     gh release create $tag @assets --repo LingCore/WinShun --title "Win顺 $version" --notes-file $publishNotes --target $releaseCommit --draft

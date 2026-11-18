@@ -16,6 +16,7 @@ struct Response {
     QString finalUrl; // where the redirects led
     QString contentType; // as sent ("text/javascript; charset=gbk"); empty when none
     qint64 contentLength = -1; // as sent; -1 when none
+    QString etag; // as sent, quotes included; for an If-None-Match next time
 };
 
 // Own: a WinHTTP session per call, which pays for its connection and TLS

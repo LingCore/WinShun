@@ -5045,8 +5045,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>upgrade;new version;plugin;update</translation>
     </message>
     <message>
-        <source>启动后和每隔 12 小时检查 Win顺 新版本，在托盘提示；插件每天检查一次，不要新权限的更新自动安装</source>
-        <translation>Checks for new versions of WinShun at startup and every 12 hours and shows them in the tray; checks plugins daily and installs updates that need no new permissions</translation>
+        <source>启动后和每隔 10 分钟检查 Win顺 新版本，在托盘提示；插件每天检查一次，不要新权限的更新自动安装</source>
+        <translation>Checks for new versions of WinShun at startup and every 10 minutes and shows them in the tray; checks plugins daily and installs updates that need no new permissions</translation>
     </message>
     <message>
         <source>在桌面上直接打字搜索</source>
@@ -8899,6 +8899,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>WinShun %1 is available</translation>
     </message>
     <message>
+        <source>Win顺 %1 是重要更新</source>
+        <translation>WinShun %1 is an important update</translation>
+    </message>
+    <message>
         <source>检查更新失败</source>
         <translation>Couldn’t check for updates</translation>
     </message>
@@ -9119,6 +9123,14 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>点这里查看更新内容</source>
         <translation>Click to see what’s new</translation>
+    </message>
+    <message>
+        <source>Win顺 %1 是重要更新</source>
+        <translation>WinShun %1 is an important update</translation>
+    </message>
+    <message>
+        <source>建议尽快更新，点这里查看更新内容</source>
+        <translation>Please update soon. Click to see what’s new</translation>
     </message>
     <message>
         <source>Win顺已在后台运行</source>

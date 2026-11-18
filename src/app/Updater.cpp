@@ -14,6 +14,7 @@
 #include <QFileInfo>
 #include <QOperatingSystemVersion>
 #include <QPointer>
+#include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
@@ -34,11 +35,18 @@ namespace ws {
 
 namespace {
 
-// Checked at every start, then every 12 hours (looked at hourly, so a
-// sleeping PC catches up when it wakes).
-constexpr auto kInterval = std::chrono::hours(12);
-// An automatic reminder for the same version, at most this often.
+// Checked at every start, then every 10 minutes (looked at every 5, so a
+// sleeping PC catches up when it wakes), so that a version the publisher
+// pushes at once (release::Push::Now) reaches everyone within minutes of
+// lcstp.com having it. Cheap: from the second check of a run on, the
+// request carries the last answer's ETag, and an unchanged answer is a 304
+// without a body.
+constexpr auto kInterval = std::chrono::minutes(10);
+constexpr auto kLook = std::chrono::minutes(5);
+// An automatic reminder for the same version, at most this often; daily
+// for a version pushed at once.
 constexpr auto kRemindInterval = std::chrono::days(3);
+constexpr auto kRemindIntervalNow = std::chrono::days(1);
 // The packages are 40-60 MB; a hundred times more is no update of ours.
 constexpr qint64 kMaxPackageBytes = 400LL << 20;
 // Where the downloads page is, for a copy that cannot update itself.
@@ -154,7 +162,7 @@ Updater::Updater(QObject* parent)
     m_kind = update::installKind(appDir(), !Settings::portableFolder().isEmpty());
     if (m_kind == update::Kind::Scoop)
         m_scoop = scoop::detect(appDir());
-    m_timer.setInterval(1h);
+    m_timer.setInterval(kLook);
     connect(&m_timer, &QTimer::timeout, this, &Updater::checkIfDue);
     m_reportTimer.setInterval(1h);
     connect(&m_reportTimer, &QTimer::timeout, this, &Updater::reportIfDue);
@@ -347,18 +355,31 @@ void Updater::check(bool manual)
 
     // Scoop installs the portable zip.
     const QString url = feedUrl(m_kind == update::Kind::Portable || m_kind == update::Kind::Scoop);
-    QThreadPool::globalInstance()->start([self = QPointer(this), url, manual] {
-        const http::Response response = http::get(url, {}, 20000, 1 << 20);
+    // The answer this run already has, unless the user asks: a 304 then.
+    QList<std::pair<QString, QString>> headers;
+    if (!manual && m_checkedThisRun && !m_etag.isEmpty())
+        headers.append({u"If-None-Match"_s, m_etag});
+    QThreadPool::globalInstance()->start([self = QPointer(this), url, headers, manual] {
+        const http::Response response = http::get(url, headers, 20000, 1 << 20);
         QMetaObject::invokeMethod(qApp, [self, response, manual] {
             if (self)
-                self->finishCheck(response.status, response.body, response.error, manual);
+                self->finishCheck(response.status, response.body, response.error, response.etag, manual);
         }, Qt::QueuedConnection);
     });
 }
 
-void Updater::finishCheck(int status, const QByteArray& body, unsigned long error, bool manual)
+void Updater::finishCheck(int status, const QByteArray& body, unsigned long error, const QString& etag, bool manual)
 {
     m_checking = false;
+    if (status == 304 && m_checkedThisRun) {
+        // Nothing new since the last answer; a normal version's turn
+        // (release::announceDue) may have come meanwhile.
+        m_lastChecked = QDateTime::currentDateTime();
+        state().setValue(u"LastChecked"_s, m_lastChecked);
+        emit changed();
+        announceIfDue();
+        return;
+    }
     std::optional<release::Info> latest;
     const release::Answer answer = release::judge(status, body, currentVersion(), &latest);
     if (answer == release::Answer::Invalid) {
@@ -381,6 +402,7 @@ void Updater::finishCheck(int status, const QByteArray& body, unsigned long erro
     }
 
     m_checkedThisRun = true;
+    m_etag = etag;
     m_lastChecked = QDateTime::currentDateTime();
     state().setValue(u"LastChecked"_s, m_lastChecked);
     m_problem.clear();
@@ -403,23 +425,62 @@ void Updater::finishCheck(int status, const QByteArray& body, unsigned long erro
         install();
         return;
     }
-    if (manual || shouldRemind(latest->version)) {
+    if (manual) {
         QSettings s = state();
         s.setValue(u"PromptedVersion"_s, latest->version);
         s.setValue(u"PromptedAt"_s, QDateTime::currentDateTime());
-        emit found(manual);
+        emit found(true);
+        return;
     }
+    announceIfDue();
 }
 
-// Skipped versions are not announced again; others at most every few days.
+bool Updater::urgent() const
+{
+    return m_release && release::push(m_release->notes) == release::Push::Now;
+}
+
+// This copy's moment within a day of a normal version's publishing
+// (release::announceDue): drawn once, kept beside the checks.
+int Updater::rolloutSlot()
+{
+    QSettings s = state();
+    bool ok = false;
+    const int kept = s.value(u"RolloutSlot"_s).toInt(&ok);
+    if (ok && kept >= 0 && kept < release::kRolloutSeconds)
+        return kept;
+    const int slot = static_cast<int>(QRandomGenerator::global()->bounded(release::kRolloutSeconds));
+    s.setValue(u"RolloutSlot"_s, slot);
+    return slot;
+}
+
+// The automatic notice (found(false)): when the version's push says its
+// turn has come here, and the reminders allow one.
+void Updater::announceIfDue()
+{
+    if (!m_release || m_stage != Stage::Idle)
+        return;
+    if (!release::announceDue(*m_release, rolloutSlot(), QDateTime::currentDateTimeUtc()))
+        return;
+    if (!shouldRemind(m_release->version))
+        return;
+    QSettings s = state();
+    s.setValue(u"PromptedVersion"_s, m_release->version);
+    s.setValue(u"PromptedAt"_s, QDateTime::currentDateTime());
+    emit found(false);
+}
+
+// Skipped versions are not announced again; others at most every few days
+// (daily when pushed at once).
 bool Updater::shouldRemind(const QString& version) const
 {
     const QSettings s = state();
     if (s.value(u"SkippedVersion"_s).toString() == version)
         return false;
+    const auto interval = urgent() ? std::chrono::seconds(kRemindIntervalNow) : std::chrono::seconds(kRemindInterval);
     const QDateTime promptedAt = s.value(u"PromptedAt"_s).toDateTime();
     return s.value(u"PromptedVersion"_s).toString() != version || !promptedAt.isValid()
-        || promptedAt.secsTo(QDateTime::currentDateTime()) >= std::chrono::seconds(kRemindInterval).count();
+        || promptedAt.secsTo(QDateTime::currentDateTime()) >= interval.count();
 }
 
 void Updater::openDownloadPage()

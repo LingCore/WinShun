@@ -162,6 +162,11 @@ Response perform(const QString& url, const QList<std::pair<QString, QString>>& h
                 &typeBytes, WINHTTP_NO_HEADER_INDEX))
             response.contentType = QString::fromWCharArray(type.c_str());
     }
+    wchar_t etagText[256] = {};
+    DWORD etagBytes = sizeof(etagText) - sizeof(wchar_t);
+    if (::WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_ETAG, WINHTTP_HEADER_NAME_BY_INDEX, etagText, &etagBytes,
+            WINHTTP_NO_HEADER_INDEX))
+        response.etag = QString::fromWCharArray(etagText, static_cast<qsizetype>(etagBytes / sizeof(wchar_t))).trimmed();
     wchar_t lengthText[32] = {};
     DWORD lengthBytes = sizeof(lengthText);
     if (::WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_CONTENT_LENGTH, WINHTTP_HEADER_NAME_BY_INDEX, lengthText,

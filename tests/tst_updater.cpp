@@ -19,6 +19,7 @@
 #include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimeZone>
 #include <QUuid>
 #include <QtEndian>
 
@@ -334,6 +335,41 @@ private slots:
         QCOMPARE(release::judge(200, "not json", u"0.14.0"_s, &newer), release::Answer::Invalid);
         QCOMPARE(release::judge(400, "{}", u"0.14.0"_s, &newer), release::Answer::Invalid);
         QCOMPARE(release::judge(0, {}, u"0.14.0"_s, &newer), release::Answer::Invalid);
+        // A 304 (the ETag of an answer already had) is nothing understood by
+        // itself; the Updater keeps what it has.
+        QCOMPARE(release::judge(304, {}, u"0.14.0"_s, &newer), release::Answer::Invalid);
+    }
+
+    // docs/releasing.md "推送方式": the hidden line, and each copy's slot.
+    void pushNowOrInTurn()
+    {
+        QCOMPARE(release::push(u"notes"_s), release::Push::Normal);
+        QCOMPARE(release::push(u"notes\n\n<!-- winshun-push now -->"_s), release::Push::Now);
+        QCOMPARE(release::push(u"notes\r\n\r\n<!-- winshun-push now -->\r\n\r\n<!-- winshun-delta 1 x -->"_s),
+            release::Push::Now);
+        QCOMPARE(release::push(u"say `<!-- winshun-push now -->` in a sentence"_s), release::Push::Normal);
+        QCOMPARE(release::push(u"<!-- winshun-push later -->"_s), release::Push::Normal);
+
+        QJsonObject feed = QJsonDocument::fromJson(kFeed).object();
+        QVERIFY(!release::parse(kFeed)->published.isValid());
+        feed.insert(u"published_at"_s, u"2026-11-17T08:45:01.000Z"_s);
+        release::Info info = *release::parse(QJsonDocument(feed).toJson());
+        const QDateTime published(QDate(2026, 11, 17), QTime(8, 45, 1), QTimeZone::UTC);
+        QCOMPARE(info.published, published);
+
+        // Normal: at the slot after publishing, not before.
+        QVERIFY(!release::announceDue(info, 3600, published.addSecs(3599)));
+        QVERIFY(release::announceDue(info, 3600, published.addSecs(3600)));
+        QVERIFY(release::announceDue(info, 0, published));
+        QVERIFY(!release::announceDue(info, release::kRolloutSeconds * 5, published.addSecs(release::kRolloutSeconds - 1)));
+        QVERIFY(release::announceDue(info, release::kRolloutSeconds * 5, published.addSecs(release::kRolloutSeconds)));
+        // Now: at once.
+        info.notes += u"\n\n<!-- winshun-push now -->"_s;
+        QVERIFY(release::announceDue(info, 3600, published));
+        // No time of publishing: at once too.
+        info.notes = u"notes"_s;
+        info.published = {};
+        QVERIFY(release::announceDue(info, 3600, published));
     }
 
     void releasePageOnlyOnLcstp()
@@ -771,6 +807,22 @@ private slots:
     // answer for both packages, the Setup straight from GitHub (whose
     // redirect goes to another host), the zip after a source that is not
     // there, then each checked as Updater checks it.
+    // The checks every 10 minutes (Updater::check): lcstp.com's answer has an
+    // ETag, a time of publishing, and an unchanged answer is a 304 without a body.
+    void liveServiceUnchanged()
+    {
+        if (qEnvironmentVariableIsEmpty("WINSHUN_UPDATE_LIVE"))
+            QSKIP("set WINSHUN_UPDATE_LIVE=1 to ask lcstp.com");
+        const QString feed = u"https://lcstp.com/updates/winshun/stable.json?platform=windows&arch=x64&osVersion=10.0.22631"_s;
+        const http::Response first = http::get(feed, {}, 20000, 1 << 20);
+        QCOMPARE(first.status, 200);
+        QVERIFY(first.etag.startsWith(u'"') && first.etag.endsWith(u'"'));
+        QVERIFY(release::parse(first.body)->published.isValid());
+        const http::Response again = http::get(feed, {{u"If-None-Match"_s, first.etag}}, 20000, 1 << 20);
+        QCOMPARE(again.status, 304);
+        QVERIFY(again.body.isEmpty());
+    }
+
     void liveService_data()
     {
         QTest::addColumn<bool>("portable");

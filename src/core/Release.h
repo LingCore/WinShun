@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -32,8 +33,25 @@ struct Info {
     QString pageUrl; // the release page
     QString notes; // Markdown, in the format of docs/release-notes
     QList<Asset> assets;
+    QDateTime published; // published_at, UTC; invalid when not sent
     bool operator==(const Info&) const = default;
 };
+
+// How the publisher wants a version announced (docs/releasing.md, "推送方式";
+// scripts/release.ps1 -Push). Now: a hidden line "<!-- winshun-push now -->"
+// in its notes; every copy says so at its next check (every 10 minutes),
+// and again daily until it is installed or skipped. Normal: without it; each
+// copy's turn comes at its own moment within a day of publishing (a random
+// slot it keeps, 0..kRolloutSeconds), so a bad version reaches a few first,
+// then the reminder every few days. Either way the settings page and a
+// manual check show the version as soon as the service has it.
+enum class Push { Normal, Now };
+Push push(const QString& notes);
+inline constexpr int kRolloutSeconds = 24 * 60 * 60;
+// Whether an automatic notice of `info` is due at `now` for a copy whose
+// slot is `slotSeconds`: always for Push::Now and when the time of
+// publishing is unknown.
+bool announceDue(const Info& info, int slotSeconds, const QDateTime& now);
 
 // The answer of the releases API; nothing if it is not one.
 std::optional<Info> parse(const QByteArray& json);

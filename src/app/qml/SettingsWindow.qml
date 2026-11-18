@@ -5763,7 +5763,7 @@ Window {
                 SettingRow {
                     title: qsTr("自动更新")
                     keywords: qsTr("升级;新版本;插件;update;plugin").split(";")
-                    description: qsTr("启动后和每隔 12 小时检查 Win顺 新版本，在托盘提示；插件每天检查一次，不要新权限的更新自动安装")
+                    description: qsTr("启动后和每隔 10 分钟检查 Win顺 新版本，在托盘提示；插件每天检查一次，不要新权限的更新自动安装")
 
                     ToggleSwitch {
                         dpr: window.dpr

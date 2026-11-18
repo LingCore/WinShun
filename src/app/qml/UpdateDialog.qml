@@ -99,6 +99,7 @@ Item {
                     Text {
                         width: parent.width
                         text: dialog.updater.checking ? qsTr("正在检查更新…")
+                            : card.newer && dialog.updater.urgent ? qsTr("Win顺 %1 是重要更新").arg(dialog.updater.availableVersion)
                             : card.newer ? qsTr("Win顺 %1 可以更新了").arg(dialog.updater.availableVersion)
                             : dialog.updater.problem.length > 0 ? qsTr("检查更新失败")
                             : qsTr("已经是最新版本")

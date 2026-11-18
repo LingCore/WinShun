@@ -53,6 +53,8 @@ class Updater : public QObject {
     Q_PROPERTY(bool available READ available NOTIFY changed FINAL) // a newer version is out
     Q_PROPERTY(QString availableVersion READ availableVersion NOTIFY changed FINAL)
     Q_PROPERTY(bool skipped READ skipped NOTIFY changed FINAL) // the user skipped that version
+    // The publisher pushed it at once (release::Push::Now): an important update.
+    Q_PROPERTY(bool urgent READ urgent NOTIFY changed FINAL)
     // From its release notes, in the UI language (see release::summary).
     Q_PROPERTY(QString summary READ summary NOTIFY changed FINAL)
     Q_PROPERTY(QVariantList highlights READ highlights NOTIFY changed FINAL) // [{symbol, text}]
@@ -82,6 +84,7 @@ public:
     bool available() const { return m_release.has_value(); }
     QString availableVersion() const { return m_release ? m_release->version : QString(); }
     bool skipped() const;
+    bool urgent() const;
     QString summary() const;
     QVariantList highlights() const;
     QString problem() const { return m_problem; }
@@ -133,7 +136,9 @@ private:
     struct Job; // a download and check under way
 
     void checkIfDue();
-    void finishCheck(int status, const QByteArray& body, unsigned long error, bool manual);
+    void finishCheck(int status, const QByteArray& body, unsigned long error, const QString& etag, bool manual);
+    void announceIfDue();
+    int rolloutSlot();
     bool shouldRemind(const QString& version) const;
     void setStage(Stage stage);
     void fail(const QString& problem);
@@ -155,6 +160,7 @@ private:
     std::optional<scoop::Install> m_scoop; // when m_kind is Scoop
     bool m_checking = false;
     bool m_checkedThisRun = false;
+    QString m_etag; // of this run's last answer from the service
     bool m_chinese = true;
     QString m_problem;
     QDateTime m_lastChecked;

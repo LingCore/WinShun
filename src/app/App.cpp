@@ -1013,8 +1013,12 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
             showUpdate();
             return;
         }
-        m_messages->showNotification(tr("Win顺 %1 可以更新了").arg(m_updater->availableVersion()),
-            tr("点这里查看更新内容"), [this] { showUpdate(); });
+        if (m_updater->urgent())
+            m_messages->showNotification(tr("Win顺 %1 是重要更新").arg(m_updater->availableVersion()),
+                tr("建议尽快更新，点这里查看更新内容"), [this] { showUpdate(); });
+        else
+            m_messages->showNotification(tr("Win顺 %1 可以更新了").arg(m_updater->availableVersion()),
+                tr("点这里查看更新内容"), [this] { showUpdate(); });
     });
     // After an update put in place from here: whether it came in.
     connect(m_updater.get(), &Updater::notice, this,
