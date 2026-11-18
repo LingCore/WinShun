@@ -195,6 +195,14 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.36.0**
+
+- 🧭 **新装默认像 Listary**：对话框旁的搜索框、文件夹菜单、资源管理器里打字搜索都默认开着（升级的保持原样）。
+- 🧮 **WPS 公式从剪贴板历史粘回去还能编辑**；🖼️ **WebP、HEIC 图片在剪贴板列表里有缩略图**；💬 **悬停提示可以关**。
+- ⬇️ 第一次**增量更新**：从 0.35.0 只下载变了的部分；文件夹里打字可以带类型，复制的图片文件也在“图片”分类里。
+
+详见 [0.36.0 发布说明](docs/release-notes/v0.36.0.md)。
+
 **0.35.0**
 
 - 🖱️ **鼠标手势**（新插件）：按住右键画一下就能后退、关窗口、叫出搜索框。
@@ -485,6 +493,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.36.0**
+
+- 🧭 **Listary-style from the start**: the dialog search bar, the folder menu and typing to search in File Explorer are on for new installs (upgrades keep what they had).
+- 🧮 **WPS formulas paste back editable from the clipboard history**; 🖼️ **WebP and HEIC thumbnails in the clipboard list**; 💬 **hover tips can be turned off**.
+- ⬇️ The first **delta update**: from 0.35.0 only what changed is downloaded; a kind while typing in a folder, and copied picture files under Pictures.
+
+See the [0.36.0 release notes](docs/release-notes/v0.36.0.md).
 
 **0.35.0**
 
