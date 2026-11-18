@@ -1,0 +1,43 @@
+{
+  "mode": "Setup",
+  "hold": false,
+  "before": {
+    "version": "0.38.0",
+    "exeSha": "c0e9758c98c6caa033870f6e47a299933fa6b7a42d798912cb010c8fa7a83180",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.38.0",
+    "iniBytes": 8676,
+    "historySha": "71b98c23719f60bec7548b7d1080a852168ef0901d8c8f572afb2da1353ea011",
+    "indexBytes": 22640458
+  },
+  "setupExit": 0,
+  "seconds": 12.3,
+  "after": {
+    "version": "0.38.0",
+    "exeSha": "f29e1d147821a96fc19959dce1a0d2532f2115c160dac7679ec1d974dd988e46",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.38.0",
+    "iniBytes": 8676,
+    "historySha": "71b98c23719f60bec7548b7d1080a852168ef0901d8c8f572afb2da1353ea011",
+    "indexBytes": 22641750
+  },
+  "setupLog": null
+}
