@@ -676,6 +676,30 @@ void ClipboardWatcher::read()
         return;
     }
     diagnostic[u"owner_pid_before"_s] = static_cast<qint64>(windowProcess(::GetClipboardOwner()));
+    // Where it came from: the clipboard's owner, else the program in front.
+    // Known before opening the clipboard: a program on the "not recorded"
+    // list has its clipboard left untouched, not opened, not even listed
+    // (some programs paste their own data only while nobody else read it).
+    DWORD pid = 0;
+    if (const HWND owner = ::GetClipboardOwner())
+        ::GetWindowThreadProcessId(owner, &pid);
+    const bool fromOwner = pid != 0;
+    if (pid == 0) {
+        if (const HWND foreground = ::GetForegroundWindow())
+            ::GetWindowThreadProcessId(foreground, &pid);
+    }
+    const std::wstring path = processPath(pid);
+    if (!ours && !path.empty() && !options.excludedApps.isEmpty()) {
+        QString exe = QFileInfo(QString::fromStdWString(path)).fileName().toLower();
+        if (exe.endsWith(u".exe"))
+            exe.chop(4);
+        if (options.excludedApps.contains(exe)) { // the outcome only: not what or whose it was
+            m_lastSequence = sequence;
+            diagnostic.remove(u"owner_pid_before"_s);
+            diagnostic[u"outcome"_s] = u"app-excluded"_s;
+            return;
+        }
+    }
     DWORD openError = ERROR_SUCCESS;
     int openAttempts = 0;
     const bool opened = openClipboard(&openError, &openAttempts);
@@ -735,28 +759,8 @@ void ClipboardWatcher::read()
     diagnostic[u"formats_truncated"_s] = formatsTruncated;
     diagnostic[u"formats_error"_s] = static_cast<qint64>(formatsError);
 
-    // Where it came from: the clipboard's owner, else the program in front.
-    DWORD pid = 0;
-    if (const HWND owner = ::GetClipboardOwner())
-        ::GetWindowThreadProcessId(owner, &pid);
-    diagnostic[u"owner_pid_read"_s] = static_cast<qint64>(pid);
-    diagnostic[u"foreground_fallback"_s] = pid == 0;
-    if (pid == 0) {
-        if (const HWND foreground = ::GetForegroundWindow())
-            ::GetWindowThreadProcessId(foreground, &pid);
-    }
-    const std::wstring path = processPath(pid);
-    if (!path.empty() && !options.excludedApps.isEmpty()) {
-        QString exe = QFileInfo(QString::fromStdWString(path)).fileName().toLower();
-        if (exe.endsWith(u".exe"))
-            exe.chop(4);
-        if (options.excludedApps.contains(exe)) { // the outcome only: not what or whose it was
-            for (const QString key : {u"formats"_s, u"formats_truncated"_s, u"formats_error"_s, u"owner_pid_read"_s, u"foreground_fallback"_s})
-                diagnostic.remove(key);
-            diagnostic[u"outcome"_s] = u"app-excluded"_s;
-            return;
-        }
-    }
+    diagnostic[u"owner_pid_read"_s] = static_cast<qint64>(fromOwner ? pid : 0);
+    diagnostic[u"foreground_fallback"_s] = !fromOwner;
     diagnostic[u"source_pid"_s] = static_cast<qint64>(pid);
     diagnostic[u"source_exe"_s] = executableName(path);
 

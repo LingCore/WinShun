@@ -169,6 +169,7 @@ install and enable Web search from the plugin library. `zhihu 显卡`, `baidu �
 - **Copied files that are gone**: their entry says “no longer there”, and can be hidden or cleaned out automatically (pinned and grouped entries stay; a pulled-out USB drive does not count).
 - **Import**: Settings › Clipboard › Keeping › Import clipboard history takes a Ditto database (one click if Ditto is installed), `.txt` text and `.csv` tables (GBK files saved by Chinese Excel are recognised); what is imported goes into a new group, is never cleaned out automatically, and entries you already have are skipped.
 - **Privacy**: passwords from password managers are not kept, and the history stays on your PC.
+- **Programs left out**: Settings › Clipboard › "Don’t keep copies from these programs". When one of them copies, WinShun does not even open the clipboard. If copy and paste misbehaves in a program while WinShun runs (someone reported ArcMap not pasting copied features), adding it there is the first thing to try.
 
 ## Screenshots and recording
 

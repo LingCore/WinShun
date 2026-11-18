@@ -86,12 +86,13 @@ class TestPinClipboard : public QObject {
         return std::async(std::launch::async, [this, last] { return pin::readClipboard(last); }).get();
     }
 
-    void writeFormats(const std::vector<std::pair<UINT, QByteArray>>& formats)
+    // With no `owner`, its window is gone by the time the watcher reads it.
+    void writeFormats(const std::vector<std::pair<UINT, QByteArray>>& formats, HWND owner = nullptr)
     {
-        const HWND window = ::CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0,
+        const HWND window = owner ? owner : ::CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0,
             HWND_MESSAGE, nullptr, ::GetModuleHandleW(nullptr), nullptr);
         QVERIFY(window);
-        const auto destroy = qScopeGuard([window] { ::DestroyWindow(window); });
+        const auto destroy = qScopeGuard([window, owner] { if (!owner) ::DestroyWindow(window); });
         QVERIFY(::OpenClipboard(window));
         const auto close = qScopeGuard([] { ::CloseClipboard(); });
         ::EmptyClipboard();
@@ -225,26 +226,21 @@ private slots:
 
     void watcherDiagnosticsKeepOnlyTheOutcomeForExcludedApps()
     {
-        // The writer's window is gone by the time it is read: the source is the program in front.
-        DWORD pid = 0;
-        if (const HWND foreground = ::GetForegroundWindow())
-            ::GetWindowThreadProcessId(foreground, &pid);
-        wchar_t path[MAX_PATH] = {};
-        DWORD size = MAX_PATH;
-        const HANDLE process = pid ? ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) : nullptr;
-        const bool known = process && ::QueryFullProcessImageNameW(process, 0, path, &size);
-        if (process)
-            ::CloseHandle(process);
-        if (!known)
-            QSKIP("no program in front to exclude");
+        // This test copies, from a window it keeps: it is the program excluded.
+        const HWND owner = ::CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0,
+            HWND_MESSAGE, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+        QVERIFY(owner);
+        const auto destroy = qScopeGuard([owner] { ::DestroyWindow(owner); });
         std::atomic<int> captures = 0;
         ClipboardWatcher watcher({}, {.captured = [&](ClipCapture) { ++captures; }});
-        watcher.setOptions({true, false, {QFileInfo(QString::fromWCharArray(path)).fileName()}});
+        watcher.setOptions({true, false, {QFileInfo(QCoreApplication::applicationFilePath()).completeBaseName().toLower()}});
         QTRY_VERIFY_WITH_TIMEOUT(watcher.listening(), 2000);
-        writeFormats({{CF_UNICODETEXT, unicodeBytes(u"EXCLUDED_APP_TEXT"_s)}});
+        writeFormats({{CF_UNICODETEXT, unicodeBytes(u"EXCLUDED_APP_TEXT"_s)}}, owner);
         QTRY_COMPARE_WITH_TIMEOUT(watcher.diagnosticStatus()[u"read_attempts"_s].toInteger(), 1, 3000);
         const auto event = watcher.diagnosticStatus()[u"recent_reads"_s].toArray().last().toObject();
         QCOMPARE(event[u"outcome"_s].toString(), u"app-excluded"_s);
+        QVERIFY(!event.contains(u"open_attempts"_s)); // its clipboard is not even opened
+        QVERIFY(!event.contains(u"owner_pid_before"_s));
         QVERIFY(!event.contains(u"formats"_s));
         QVERIFY(!event.contains(u"source_exe"_s));
         QVERIFY(!event.contains(u"source_pid"_s));
