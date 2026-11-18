@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.cloudbackup",
   "name": {"zh": "云备份", "en": "Cloud Backup"},
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": {"zh": "把 Win顺 的设置备份自动传到 WebDAV（坚果云、NAS 等）或 GitHub 私有仓库，换电脑时输入 cloud 一键恢复", "en": "Keeps Win顺's settings backup on a WebDAV server or in a private GitHub repository; type cloud to restore it on another PC"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",

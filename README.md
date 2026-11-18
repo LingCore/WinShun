@@ -97,6 +97,7 @@
 | 鼠标手势 | 按住右键画一下：← 后退、→ 前进、↓→ 关闭窗口、↑↓ 打开搜索框等，每个都能改，`手势` 暂停 | 插件库 |
 | 资源管理器标签页 | 新开的资源管理器窗口并成标签页，还能在下次登录后打开上次的标签页（Windows 11 22H2 起） | 插件库 |
 | [云备份](docs/使用说明.md#外观设置和备份) | 设置自动备份到 WebDAV（坚果云、NAS）或 GitHub 私有仓库，`cloud` 立即备份或恢复 | 插件库 |
+| 开发工具 | `json` 格式化、压缩、转义剪贴板里的 JSON，`Enter` 打开树形窗口查看、搜索键名和值；直接粘贴 JSON 也认 | 插件库 |
 
 想自己写插件：零代码的 `plugin.json`、任意语言的脚本都行，附 Python / PowerShell / C++ SDK，见 [插件文档](docs/plugins.md)。
 
@@ -194,6 +195,14 @@ winget install LingCore.WinShun
 </details>
 
 ### 最近更新
+
+**0.37.0**
+
+- 🧰 **开发工具**（新插件）：`json` 格式化、压缩、转义 JSON，树形查看、搜索键名和值。
+- 📊 **截图识别的表格可以“复制为表格”**，粘进 Excel、WPS 一格一格排好；📄 只装了 WPS 也能**预览 Word、Excel、PPT 里的文字**。
+- ⚙️ **设置分类更少更清楚**；📋 剪贴板跟着“弹出动画”滑入淡出，带公式的文字按原样显示，复制一个文件时侧边预览和搜索的预览一样；修好剪贴板打开卡住半分钟（#111）。
+
+详见 [0.37.0 发布说明](docs/release-notes/v0.37.0.md)。
 
 **0.36.0**
 
@@ -396,6 +405,7 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | Mouse gestures | Hold the right button and draw: ← back, → forward, ↓→ close the window, ↑↓ the search box and more, each one changeable; `gestures` pauses them | Plugin library |
 | Explorer tabs | New File Explorer windows open as tabs, and the tabs from last time come back after a logon (Windows 11 22H2 or newer) | Plugin library |
 | [Cloud backup](docs/features.en.md#looks-and-settings) | Keeps the settings backup on a WebDAV server or in a private GitHub repository; `cloud` backs up or restores | Plugin library |
+| Developer tools | `json` formats, minifies or escapes the JSON on the clipboard, `Enter` opens a tree to browse and search it; JSON pasted into the box works too | Plugin library |
 
 Write your own: a zero-code `plugin.json` or scripts in any language, with SDKs for Python, PowerShell and C++. See [docs/plugins.en.md](docs/plugins.en.md).
 
@@ -493,6 +503,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.37.0**
+
+- 🧰 **Developer tools** (new plugin): `json` formats, minifies and escapes JSON, with a tree to browse and search names and values.
+- 📊 **Copy as a table** for words a screenshot reads as a table, pasting cell by cell into Excel or WPS; 📄 **Word, Excel and PowerPoint previews as text** where only WPS is installed.
+- ⚙️ **Fewer, clearer settings categories**; 📋 the clipboard follows the open animation, shows text with a formula as it looked and previews one copied file as the search does; opening the clipboard no longer hangs for half a minute (#111).
+
+See the [0.37.0 release notes](docs/release-notes/v0.37.0.md).
 
 **0.36.0**
 
