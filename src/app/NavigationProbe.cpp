@@ -885,7 +885,7 @@ bool checkOptimizationSettings(QQuickWindow* window, SettingsEditor* editor, con
     access.administrator = access.portable = access.serviceInstalled = access.serviceInstallable = true;
     editor->setIndexAccessState(access);
     editor->setIndexAccess(u"direct"_s);
-    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 2), Q_ARG(QVariant, 2),
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, u"scope"_s), Q_ARG(QVariant, 2), // 搜索范围 › 磁盘
         Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "索引方式")));
     settle(window);
     auto* service = item(window->contentItem(), u"indexServiceRow"_s);
@@ -1283,7 +1283,7 @@ bool checkResultRowSpacing(QQmlEngine* engine, const QDir& output)
 bool checkPluginReviewSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output)
 {
     Checks check;
-    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 1), Q_ARG(QVariant, 0),
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, u"appearance"_s), Q_ARG(QVariant, 0),
         Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "纯净搜索模式")));
     settle(window);
     auto* toggle = item(window->contentItem(), u"pureSearchToggle"_s);
@@ -1730,7 +1730,7 @@ bool checkLogoPositionSettings(QQuickWindow* window, SettingsEditor* editor, con
 {
     Checks check;
     check(editor->logoRightClick() == u"menu", u"existing profiles keep the position menu by default"_s);
-    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 3), Q_ARG(QVariant, 2),
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, u"results"_s), Q_ARG(QVariant, 2), // 结果列表 › 操作习惯
         Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "右键 Logo 的行为")));
     settle(window);
     auto* choices = item(window->contentItem(), u"logoRightClickChoice"_s);
@@ -1780,7 +1780,7 @@ bool checkDialogRuleSettings(QQuickWindow* window, SettingsEditor* editor, const
         }
         return true;
     };
-    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 0), Q_ARG(QVariant, 2),
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, u"integration"_s), Q_ARG(QVariant, 2), // 系统整合 › 对话框
         Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "程序自己的选文件窗口")));
     settle(window);
     auto* row = item(window->contentItem(), u"dialogRulesRow"_s);
@@ -1895,7 +1895,7 @@ bool checkDialogRuleSettings(QQuickWindow* window, SettingsEditor* editor, const
 bool checkSearchExperienceSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output)
 {
     Checks check;
-    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 3), Q_ARG(QVariant, 1),
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, u"results"_s), Q_ARG(QVariant, 1), // 结果列表 › 显示与预览
         Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "合并“全部”和“文件”")));
     settle(window);
     auto* merge = item(window->contentItem(), u"mergeFileScopeToggle"_s);
@@ -1905,7 +1905,7 @@ bool checkSearchExperienceSettings(QQuickWindow* window, SettingsEditor* editor,
     Settings saved;
     saved.load();
     check(saved.mergeFileScope, u"merged-scope setting persists"_s);
-    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 0), Q_ARG(QVariant, 3),
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, u"results"_s), Q_ARG(QVariant, 2), // 结果列表 › 操作习惯 (使用记录)
         Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "搜索历史快捷键")));
     settle(window);
     auto* keys = item(window->contentItem(), u"queryHistoryKeys"_s);
@@ -1967,12 +1967,12 @@ bool checkSearchExperienceSettings(QQuickWindow* window, SettingsEditor* editor,
 bool checkNavigationSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output)
 {
     Checks check;
-    const auto reveal = [&](const char* title, int tab) {
-        QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 0), Q_ARG(QVariant, tab),
+    const auto reveal = [&](const QString& page, const char* title, int tab) {
+        QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, page), Q_ARG(QVariant, tab),
             Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", title)));
         settle(window);
     };
-    reveal("直接打开搜索面板", 0);
+    reveal(u"keys"_s, "直接打开搜索面板", 0); // 快捷键 › 打开 Win顺
     auto* recorder = item(window->contentItem(), u"panelHotkeyRecorder"_s);
     auto* favorites = item(window->contentItem(), u"folderMenuFavoritesInline"_s);
     auto* recent = item(window->contentItem(), u"folderMenuRecentInline"_s);
@@ -1993,7 +1993,7 @@ bool checkNavigationSettings(QQuickWindow* window, SettingsEditor* editor, const
     saved.load();
     check(editor->panelHotkey().isEmpty() && saved.panelHotkey.isEmpty() && saved.hotkey == u"Alt+Space",
         u"clearing the full-panel chord preserves the launcher shortcut"_s);
-    reveal("直接显示收藏夹", 2);
+    reveal(u"integration"_s, "直接显示收藏夹", 1); // 系统整合 › 文件管理器 (文件夹快捷菜单)
     favorites->setProperty("text", u"5"_s);
     QMetaObject::invokeMethod(favorites, "editingFinished");
     recent->setProperty("text", u"3"_s);

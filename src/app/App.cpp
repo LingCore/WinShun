@@ -793,7 +793,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     // Not a setting the AI settings know of: the section, by its row's title (SettingsWindow.qml).
     connect(m_launcher.get(), &Launcher::shareSettingsRequested, this, [this] {
         showSettings([](QQuickWindow* window) {
-            QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 2), Q_ARG(QVariant, 3),
+            QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, u"scope"_s), Q_ARG(QVariant, 3),
                 Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "网络与 WSL 文件夹")));
         });
     });
@@ -5135,7 +5135,7 @@ void App::onDoubleCtrl(const KeyListener::Tap& tap)
             if (!m_pluginHost || found == m_pluginTapActions.end() || !found->second.contains(action.key)
                 || !m_pluginHost->notify(action.plugin, u"hotkey"_s, {{u"key"_s, action.key}}, true)) {
                 m_messages->showNotification(tr("双击动作暂不可用"),
-                    tr("请启用对应插件，并在“打开 Win顺”的双击设置中重新选择动作。"));
+                    tr("请启用对应插件，并在“快捷键”的双击设置中重新选择动作。"));
             }
             return;
         }
@@ -8959,7 +8959,7 @@ QVariantMap App::undoSettingsBatch(quint64 batchId)
 // tab, its row found by its title (SettingsWindow.qml's showSetting).
 mcp::ToolResult App::openAiSettings(const QString& key, const QString& section)
 {
-    int page = 0;
+    QString page; // its id; none: the window as it is
     int tab = -1;
     QString rowTitle;
     QString where;
@@ -8975,7 +8975,7 @@ mcp::ToolResult App::openAiSettings(const QString& key, const QString& section)
                 return {{}, true, u"The settings window could not be opened."_s};
             return {{{u"opened"_s, true}, {u"where"_s, where}}};
         }
-        page = of ? of->page : 0;
+        page = of ? of->page : QString();
         tab = entry->tab;
         rowTitle = entry->rowTitleText();
     } else {
@@ -8988,8 +8988,8 @@ mcp::ToolResult App::openAiSettings(const QString& key, const QString& section)
         }
         page = of->page;
         where = of->titleText();
-        // A section that is one tab of its page (打开 Win顺: 快捷键, 任务栏, 对话框,
-        // 启动) opens on that tab; one spread over several keeps the page's first.
+        // A section that is one tab of its page (系统整合 › 任务栏, 搜索范围 › 文件内容)
+        // opens on that tab; one spread over several, on the tab the page was left on.
         std::optional<int> shared;
         for (const aisettings::Entry& entry : aisettings::catalog()) {
             if (entry.section.compare(of->id, Qt::CaseInsensitive) != 0)

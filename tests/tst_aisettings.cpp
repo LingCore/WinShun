@@ -133,9 +133,17 @@ private slots:
             if (e.writable())
                 QVERIFY2(e.bound(), qPrintable(e.key));
         }
-        // The settings window's pages are the sections'.
+        // Each section's page is one of the settings window's, by its id there.
+        QFile window(QStringLiteral(WINSHUN_QML_DIR) + u"/SettingsWindow.qml"_s);
+        QVERIFY(window.open(QIODevice::ReadOnly));
+        const QString qml = QString::fromUtf8(window.readAll());
         for (const Section& s : sections())
-            QVERIFY2(s.page >= 0 && s.page <= 10, qPrintable(s.id));
+            QVERIFY2(!s.page.isEmpty() && qml.contains(u"{ id: \"%1\", title: "_s.arg(s.page)), qPrintable(s.id));
+        // Ids of sections since merged still lead to one (winshun://settings/advanced).
+        QCOMPARE(sectionOf(u"advanced"_s), sectionOf(u"general"_s));
+        QCOMPARE(sectionOf(u"Startup"_s), sectionOf(u"general"_s));
+        QVERIFY(sectionOf(u"general"_s) != nullptr);
+        QVERIFY(sectionOf(u"nothing"_s) == nullptr);
     }
 
     // open_settings finds a row by its title (SettingsWindow.showSetting): the

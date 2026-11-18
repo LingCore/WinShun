@@ -26,7 +26,7 @@ struct Response {
 // a reused connection answers in tens of milliseconds instead of hundreds.
 enum class Session { Own, Shared };
 
-// Which proxy the requests go through (设置 › 高级 › 网络代理, GitHub #84).
+// Which proxy the requests go through (设置 › 常规 › 网络代理, GitHub #84).
 // System: what Windows has (the proxy of its settings, a PAC script, the
 // automatic detection: WinHTTP's automatic proxy). None: none, whatever the
 // system has. Named: `server` ("127.0.0.1:7890", see proxy::parse), an HTTP

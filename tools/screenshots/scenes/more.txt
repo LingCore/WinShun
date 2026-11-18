@@ -62,11 +62,9 @@ sleep 300
 tap 1B
 sleep 600
 
-# The appearance settings (the second page), closed with Alt+F4.
-settings
-sleep 1200
-clickfg 120 252
-sleep 1000
+# The appearance settings, closed with Alt+F4.
+settings appearance,0
+sleep 1500
 matte L-appearance
 chord 12 73
 sleep 500

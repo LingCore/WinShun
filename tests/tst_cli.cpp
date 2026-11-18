@@ -2642,7 +2642,7 @@ private slots:
         QVERIFY2(r.errors().contains(u"文件夹里）："_s + at(u"sub\\deep"_s) + u'\n'), qPrintable(r.errors()));
         r = ws({u"grep"_s, u"x"_s}, {}, name);
         QCOMPARE(r.code, 7);
-        QVERIFY2(r.errors().contains(u"设置 → 文件内容搜索"_s), qPrintable(r.errors()));
+        QVERIFY2(r.errors().contains(u"设置 → 搜索范围 → 文件内容"_s), qPrintable(r.errors()));
         r = ws({u"recent"_s, u"--in"_s, at(u"sub"_s)}, {}, name);
         QCOMPARE(r.code, 6);
         QVERIFY2(r.errors().contains(u"文件夹里）："_s + at(u"sub"_s) + u'\n'), qPrintable(r.errors()));

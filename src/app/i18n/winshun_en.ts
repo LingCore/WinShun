@@ -895,6 +895,10 @@
         <translation>Smallest first</translation>
     </message>
     <message>
+        <source>打开最多的在前</source>
+        <translation>Most opened first</translation>
+    </message>
+    <message>
         <source>文件夹排在文件前面</source>
         <translation>Folders before files</translation>
     </message>
@@ -919,8 +923,16 @@
         <translation>Recently modified</translation>
     </message>
     <message>
+        <source>收藏显示为图标</source>
+        <translation>Show favorites as icons</translation>
+    </message>
+    <message>
         <source>双击打开结果</source>
         <translation>Double-click to open results</translation>
+    </message>
+    <message>
+        <source>单击预览</source>
+        <translation>Click to preview</translation>
     </message>
     <message>
         <source>搜索应用</source>
@@ -993,6 +1005,14 @@
     <message>
         <source>按住修饰键时</source>
         <translation>While a modifier key is held</translation>
+    </message>
+    <message>
+        <source>回到上次的位置</source>
+        <translation>Return to where you left off</translation>
+    </message>
+    <message>
+        <source>钉住时在最前</source>
+        <translation>Stay on top when pinned</translation>
     </message>
     <message>
         <source>一直显示</source>
@@ -1160,11 +1180,11 @@
     </message>
     <message>
         <source>字母直达用的键</source>
-        <translation type="unfinished"></translation>
+        <translation>Key for letter jump</translation>
     </message>
     <message>
         <source>跟数字键一样</source>
-        <translation type="unfinished"></translation>
+        <translation>Same as number keys</translation>
     </message>
     <message>
         <source>截图历史的关键词</source>
@@ -1214,6 +1234,10 @@
         <translation>Home %1</translation>
     </message>
     <message>
+        <source>常规</source>
+        <translation>General</translation>
+    </message>
+    <message>
         <source>快捷键与双击 Ctrl、Alt 或 Shift</source>
         <translation>Shortcuts and Ctrl, Alt or Shift twice</translation>
     </message>
@@ -1224,10 +1248,6 @@
     <message>
         <source>文件管理器与对话框</source>
         <translation>File managers and dialogs</translation>
-    </message>
-    <message>
-        <source>启动与历史</source>
-        <translation>Startup and history</translation>
     </message>
     <message>
         <source>外观</source>
@@ -1252,10 +1272,6 @@
     <message>
         <source>剪贴板</source>
         <translation>Clipboard</translation>
-    </message>
-    <message>
-        <source>高级</source>
-        <translation>Advanced</translation>
     </message>
     <message>
         <source>索引哪些地方</source>
@@ -2227,6 +2243,13 @@
     </message>
 </context>
 <context>
+    <name>FavoriteTiles</name>
+    <message>
+        <source>收藏</source>
+        <translation>Favorites</translation>
+    </message>
+</context>
+<context>
     <name>FavoritesSection</name>
     <message>
         <source>什么都不输入时，收藏排在最前；只输入关键词再按 Enter 就打开。在搜索结果上右键可以加入收藏，也可以把文件或文件夹拖到这里。Tab 默认切换范围；在“结果列表”的“显示与预览”中可改为进入选中的收藏文件夹。</source>
@@ -2531,6 +2554,10 @@
         <translation>Smallest first</translation>
     </message>
     <message>
+        <source>打开最多</source>
+        <translation>Most opened</translation>
+    </message>
+    <message>
         <source>文件夹</source>
         <translation>Folder</translation>
     </message>
@@ -2541,6 +2568,10 @@
     <message>
         <source>小在前</source>
         <translation>Smallest</translation>
+    </message>
+    <message>
+        <source>常打开</source>
+        <translation>Frequent</translation>
     </message>
     <message>
         <source>清除最近使用记录</source>
@@ -2588,27 +2619,6 @@
     <message>
         <source>把 Windows 的顺手带到 Mac</source>
         <translation>Windows ease, now on the Mac</translation>
-    </message>
-</context>
-<context>
-    <name>QqGroupCard</name>
-    <message>
-        <source>QQ 群 · %1</source>
-        <translation>QQ group · %1</translation>
-    </message>
-    <message>
-        <source>群号 %1</source>
-        <translation>Group %1</translation>
-    </message>
-    <message>
-        <source>用手机 QQ 扫码，进群一起交流
-建议和问题请到官网反馈</source>
-        <translation>Scan with QQ on your phone to chat with others
-Send suggestions and problems on our website</translation>
-    </message>
-    <message>
-        <source>在电脑 QQ 中打开</source>
-        <translation>Open in QQ on this computer</translation>
     </message>
 </context>
 <context>
@@ -3906,6 +3916,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>Update now</translation>
     </message>
     <message>
+        <source>要 Win顺 %1 或更新的版本，可以在“常规”里检查更新</source>
+        <translation>Needs WinShun %1 or newer; you can check for updates under “General”</translation>
+    </message>
+    <message>
         <source>新版本要更多权限：%1，更新时会问你</source>
         <translation>The new version needs more permissions: %1. You will be asked when updating</translation>
     </message>
@@ -3936,10 +3950,6 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>正在下载… %1%</source>
         <translation>Downloading… %1%</translation>
-    </message>
-    <message>
-        <source>要 Win顺 %1 或更新的版本，可以在“高级”里检查更新</source>
-        <translation>Needs WinShun %1 or newer; you can check for updates under “Advanced”</translation>
     </message>
     <message>
         <source>主页</source>
@@ -4436,6 +4446,27 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     </message>
 </context>
 <context>
+    <name>QqGroupCard</name>
+    <message>
+        <source>QQ 群 · %1</source>
+        <translation>QQ group · %1</translation>
+    </message>
+    <message>
+        <source>群号 %1</source>
+        <translation>Group %1</translation>
+    </message>
+    <message>
+        <source>用手机 QQ 扫码，进群一起交流
+建议和问题请到官网反馈</source>
+        <translation>Scan with QQ on your phone to chat with others
+Send suggestions and problems on our website</translation>
+    </message>
+    <message>
+        <source>在电脑 QQ 中打开</source>
+        <translation>Open in QQ on this computer</translation>
+    </message>
+</context>
+<context>
     <name>QueryHistoryPicker</name>
     <message>
         <source>搜索历史 · %1</source>
@@ -4698,6 +4729,14 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>取消保持显示</source>
         <translation>Stop keeping visible</translation>
+    </message>
+    <message>
+        <source>还原大小</source>
+        <translation>Restore size</translation>
+    </message>
+    <message>
+        <source>铺满屏幕</source>
+        <translation>Fill the screen</translation>
     </message>
     <message>
         <source>隐藏筛选</source>
@@ -5145,20 +5184,12 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Favorites</translation>
     </message>
     <message>
-        <source>高级</source>
-        <translation>Advanced</translation>
-    </message>
-    <message>
         <source>AI 助手</source>
         <translation>AI assistants</translation>
     </message>
     <message>
         <source>插件</source>
         <translation>Plugins</translation>
-    </message>
-    <message>
-        <source>唤出;呼出;打开方式</source>
-        <translation>summon;bring up;launch</translation>
     </message>
     <message>
         <source>皮肤;颜色;界面;appearance</source>
@@ -5173,16 +5204,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>search results;results;list</translation>
     </message>
     <message>
-        <source>全文搜索;全文;文字;content</source>
-        <translation>full text;text inside;contents</translation>
-    </message>
-    <message>
         <source>剪切板;粘贴板;复制;粘贴;clipboard</source>
         <translation>copy;paste;copied;pasteboard</translation>
-    </message>
-    <message>
-        <source>其他;更多;advanced</source>
-        <translation>other;more</translation>
     </message>
     <message>
         <source>MCP;人工智能;大模型;Claude;Cursor;ai</source>
@@ -5647,10 +5670,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>清晰度;卡片;玻璃;clarity;surface;glass</source>
         <translation>clarity;card;surface;glass;清晰度;卡片</translation>
-    </message>
-    <message>
-        <source>需要把“高级”里的界面绘制方式设为“显卡加速”</source>
-        <translation>Needs the “GPU” drawing method under Advanced</translation>
     </message>
     <message>
         <source>当前界面风格的窗口不透明；可切换到精修原生、品牌色彩或液态玻璃</source>
@@ -6412,10 +6431,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Sort</translation>
     </message>
     <message>
-        <source>排序;修改时间;修改日期;最新;最早;名称;文件名;所在文件夹;目录;类型;扩展名;大小;升序;降序;sort;date;size;type</source>
-        <translation>sort;order;date modified;modified;newest;oldest;name;file name;folder;directory;type;extension;size;ascending;descending;date</translation>
-    </message>
-    <message>
         <source>文件和文件夹怎么排（“全部”里应用和设置仍在前面）；底栏左边也能切换（Ctrl+S 在前三种里轮换）</source>
         <translation>How files and folders are ordered (in All, apps and settings stay on top); also at the bottom left of the search box (Ctrl+S goes round the first three)</translation>
     </message>
@@ -6454,14 +6469,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>点击结果</source>
         <translation>Clicking a result</translation>
-    </message>
-    <message>
-        <source>单击;双击;点击;鼠标;误触;打开;选中;click;double</source>
-        <translation>click;double click;single click;mouse;mis-click;open;select</translation>
-    </message>
-    <message>
-        <source>单击就打开；或者单击只选中（高亮），双击或按 Enter 才打开，结果多时不怕点错</source>
-        <translation>A click opens the result; or a click only selects (highlights) it, and a double click or Enter opens it, so a stray click does no harm</translation>
     </message>
     <message>
         <source>单击打开</source>
@@ -6638,6 +6645,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>置顶</source>
         <translation>Move to top</translation>
+    </message>
+    <message>
+        <source>用哪个浏览器打开</source>
+        <translation>Open sites in</translation>
+    </message>
+    <message>
+        <source>浏览器;默认浏览器;Chrome;Edge;Firefox;火狐;browser</source>
+        <translation>browser;default browser;Chrome;Edge;Firefox</translation>
+    </message>
+    <message>
+        <source>这里的网站在这个浏览器里打开，可以和 Windows 的默认浏览器不同</source>
+        <translation>The sites here open in this browser, which can differ from the Windows default browser</translation>
+    </message>
+    <message>
+        <source>其他程序…</source>
+        <translation>Other program…</translation>
     </message>
     <message>
         <source>在网站关键词后输入文字时，列出这个网站的搜索建议。只有这时才会把输入的文字发给那个网站</source>
@@ -7146,10 +7169,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Kept on this PC only, never uploaded. Ctrl+click or Shift+click to pick several and paste them together.</translation>
     </message>
     <message>
-        <source>启动与历史</source>
-        <translation>Startup and history</translation>
-    </message>
-    <message>
         <source>在“打开”“另存为”旁搜文件夹和文件，选中后直接转过去</source>
         <translation>Search folders and files beside Open and Save As dialogs; the dialog goes to the one you pick</translation>
     </message>
@@ -7172,10 +7191,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>在搜索框的“更多”菜单里添加</source>
         <translation>Added from the search bar’s “More” menu</translation>
-    </message>
-    <message>
-        <source>大小上限</source>
-        <translation>Size limits</translation>
     </message>
     <message>
         <source>密码;隐私;排除;程序;exe;KeePass</source>
@@ -7476,6 +7491,40 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>All shortcuts are here; the ones with “Go to settings” can be changed.</translation>
     </message>
     <message>
+        <source>快捷键</source>
+        <comment>settings page</comment>
+        <translation>Shortcuts</translation>
+    </message>
+    <message>
+        <source>系统整合</source>
+        <translation>Integration</translation>
+    </message>
+    <message>
+        <source>通用;基本;关于;其他;更多;高级;general;advanced;about</source>
+        <translation>general;basic;about;other;more;advanced</translation>
+    </message>
+    <message>
+        <source>热键;唤出;呼出;打开方式;hotkey;keyboard</source>
+        <translation>hotkey;summon;bring up;launch;keyboard</translation>
+    </message>
+    <message>
+        <source>集成;系统;integration</source>
+        <translation>integration;system</translation>
+    </message>
+    <message>
+        <source>打开 Win顺</source>
+        <comment>settings tab</comment>
+        <translation>Open WinShun</translation>
+    </message>
+    <message>
+        <source>文件内容</source>
+        <translation>File contents</translation>
+    </message>
+    <message>
+        <source>文件管理器</source>
+        <translation>File managers</translation>
+    </message>
+    <message>
         <source>界面风格</source>
         <translation>Interface style</translation>
     </message>
@@ -7504,6 +7553,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Liquid glass</translation>
     </message>
     <message>
+        <source>需要把“常规”里的界面绘制方式设为“显卡加速”</source>
+        <translation>Needs the “GPU” drawing method under General</translation>
+    </message>
+    <message>
         <source>搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。密集是每条结果一行的小字。剪贴板可在“剪贴板”页单独设置</source>
         <translation>Text size and line height of the search bar, the clipboard and the search bar by file dialogs; the Settings window is unchanged. Dense is one small line per result. The clipboard can be set separately on the Clipboard page</translation>
     </message>
@@ -7517,7 +7570,7 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
         <source>Windows 设置里关掉了“动画效果”时，始终没有动画</source>
-        <translation>With "Animation effects" off in Windows Settings, there is never an animation</translation>
+        <translation>With &quot;Animation effects&quot; off in Windows Settings, there is never an animation</translation>
     </message>
     <message>
         <source>动画;动效;淡入;淡出;弹出;升起;过渡;拖沓;立即显示;animation;motion;fade</source>
@@ -7533,7 +7586,7 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
         <source>关掉后，设置里带“i”的说明照常显示；名字太长被截断时，停在行上仍会显示完整名字</source>
-        <translation>Off: the notes behind an "i" in the settings still show, and resting on a row whose name is cut off still shows the whole name</translation>
+        <translation>Off: the notes behind an &quot;i&quot; in the settings still show, and resting on a row whose name is cut off still shows the whole name</translation>
     </message>
     <message>
         <source>悬停;提示;气泡;工具提示;说明;遮挡;tooltip;hover;tip</source>
@@ -7639,48 +7692,124 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>You have no administrator rights on this computer, so the index service cannot be installed. WinShun indexes the folders you choose and checks them regularly</translation>
     </message>
     <message>
+        <source>排序;修改时间;修改日期;最新;最早;名称;文件名;所在文件夹;目录;类型;扩展名;大小;升序;降序;次数;打开次数;运行次数;最常用;sort;date;size;type;count</source>
+        <translation>sort;order;date modified;modified;newest;oldest;name;file name;folder;directory;type;extension;size;ascending;descending;date;count;times opened;times run;most used;most opened</translation>
+    </message>
+    <message>
+        <source>打开最多</source>
+        <translation>Most opened</translation>
+    </message>
+    <message>
         <source>如 ^IMG_d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:</source>
         <translation>For example ^IMG_d{4}; ext:, !exclude and “ | ” work as usual. Press Ctrl+R in the search bar to turn it on; while on, .* shows beside the search bar. When it is off, you can still put regex: before a single word</translation>
+    </message>
+    <message>
+        <source>收藏的样式</source>
+        <translation>Favorites style</translation>
+    </message>
+    <message>
+        <source>收藏;图标;平铺;网格;多行;排序;拖动;favorite;icon;grid</source>
+        <translation>favorites;icon;tile;grid;rows;sort;reorder;drag</translation>
+    </message>
+    <message>
+        <source>不输入时，收藏排成一格格图标，名称在下面，一屏放得更多；按住一个图标稍等再拖动，可以换位置</source>
+        <translation>With nothing typed, favorites are a grid of icons with their names underneath, so more fit on a screen; hold an icon a moment, then drag it to change its place</translation>
+    </message>
+    <message>
+        <source>不输入时，收藏和最近打开的一样一行一个</source>
+        <translation>With nothing typed, favorites are one per row, like the recently opened ones</translation>
+    </message>
+    <message>
+        <source>列表</source>
+        <translation>List</translation>
+    </message>
+    <message>
+        <source>图标</source>
+        <translation>Icons</translation>
+    </message>
+    <message>
+        <source>单击;双击;点击;鼠标;误触;打开;选中;预览;看内容;click;double;preview</source>
+        <translation>click;double click;single click;mouse;mis-click;open;select;preview;view contents</translation>
+    </message>
+    <message>
+        <source>单击就打开；也可以单击只选中，双击或按 Enter 才打开，结果多时不怕点错</source>
+        <translation>A click opens the result; or a click only selects it, and a double click or Enter opens it, so a stray click does no harm</translation>
+    </message>
+    <message>
+        <source>单击选中并预览，不用打开就能看内容；双击或按 Enter 打开</source>
+        <translation>A click selects the result and shows its preview, so you can see what is in it without opening it; a double click or Enter opens it</translation>
+    </message>
+    <message>
+        <source>单击只选中（高亮），双击或按 Enter 才打开，结果多时不怕点错</source>
+        <translation>A click only selects (highlights) the result, and a double click or Enter opens it, so a stray click does no harm</translation>
+    </message>
+    <message>
+        <source>单击预览</source>
+        <translation>Click to preview</translation>
     </message>
     <message>
         <source>仅在搜索结果中生效，再按一次关闭，鼠标中键点一行也行。可直接录制空格：刚输入完时空格照常输入，选过结果或打开预览后才开关预览；Shift+空格始终输入空格。Backspace 清除，Esc 取消。</source>
         <translation>Works only in search results; press again to turn it off, or middle-click a row. You can record Space itself: right after typing, Space types a space as usual, and it toggles the preview only after you have selected a result or opened the preview; Shift+Space always types a space. Backspace clears, Esc cancels.</translation>
     </message>
     <message>
+        <source>回到上次的位置</source>
+        <translation>Return to where you left off</translation>
+    </message>
+    <message>
+        <source>上次;位置;滚动;记住;选中;恢复;scroll;position;remember</source>
+        <translation>last time;position;scroll;remember;select;restore</translation>
+    </message>
+    <message>
+        <source>再打开时停在上次选中的那一行，列表也滚到那里；关掉时从第一行开始。开着“每次打开时清空搜索”时不起作用</source>
+        <translation>When it opens again it stops on the row you last selected and the list scrolls there; off: it starts at the first row. Has no effect while “Clear the search each time it opens” is on</translation>
+    </message>
+    <message>
+        <source>钉住时在最前</source>
+        <translation>Stay on top when pinned</translation>
+    </message>
+    <message>
+        <source>钉住;置顶;最前;盖住;遮挡;Ctrl+T;pin;topmost;always on top</source>
+        <translation>pin;stay on top;front;cover;obscure;Ctrl+T;topmost;always on top</translation>
+    </message>
+    <message>
+        <source>按 Ctrl+T 钉住后，搜索框一直盖在别的窗口上面；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面</source>
+        <translation>After you pin the search box with Ctrl+T, it stays over other windows; off: clicking another window covers it, and the shortcut that opens WinShun brings it back to the front</translation>
+    </message>
+    <message>
         <source>轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板里 Shift+字母是粘贴为纯文本。再按一下那个键或按 Esc 退出。启动器和剪贴板共用</source>
-        <translation type="unfinished"></translation>
+        <translation>Tap the key chosen below and let go: a letter appears in front of every row, and pressing it opens that row (pastes it, in the clipboard), also past the ninth row. In the search box, Shift+letter selects the row and puts letters on its buttons (open file location, open in Terminal, copy, copy path, delete); pressing a letter clicks that button, and delete takes two presses. In the clipboard, Shift+letter pastes as plain text. Tap the key again or press Esc to leave. Shared by the launcher and clipboard</translation>
     </message>
     <message>
         <source>字母直达用的键</source>
-        <translation type="unfinished"></translation>
+        <translation>Key for letter jump</translation>
     </message>
     <message>
         <source>搜索框里用中文输入法时，轻按 Shift 也会切换中英文</source>
-        <translation type="unfinished"></translation>
+        <translation>With a Chinese input method in the search box, tapping Shift also switches between Chinese and English</translation>
     </message>
     <message>
         <source>跟数字键一样：搜索框和剪贴板各用数字键设置里的那个键</source>
-        <translation type="unfinished"></translation>
+        <translation>Same as number keys: the search box and the clipboard each use the key from their own number key setting</translation>
     </message>
     <message>
         <source>字母直达;修饰键;Ctrl;Alt;Shift</source>
-        <translation type="unfinished"></translation>
+        <translation>letter jump;modifier key;Ctrl;Alt;Shift</translation>
     </message>
     <message>
         <source>跟数字键一样</source>
-        <translation type="unfinished"></translation>
+        <translation>Same as number keys</translation>
     </message>
     <message>
         <source>用哪些字母</source>
-        <translation type="unfinished"></translation>
+        <translation>Letters to use</translation>
     </message>
     <message>
         <source>按顺序给第一行、第二行……，可以有数字，例如左手用的 QWERTASDFGZXCVB12345</source>
-        <translation type="unfinished"></translation>
+        <translation>Handed out in order to the first row, the second row…; digits are allowed, for example for the left hand: QWERTASDFGZXCVB12345</translation>
     </message>
     <message>
         <source>字母直达;字母;数字;顺序;左手;单手</source>
-        <translation type="unfinished"></translation>
+        <translation>letter jump;letters;digits;order;left hand;one hand</translation>
     </message>
     <message>
         <source>剪贴板大小</source>
@@ -9028,6 +9157,37 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
 </context>
 <context>
+    <name>VideoPreview</name>
+    <message>
+        <source>播放不了这个视频：这台电脑没有它的解码器，或者文件已损坏</source>
+        <translation>Cannot play this video: this PC has no decoder for it, or the file is damaged</translation>
+    </message>
+    <message>
+        <source>暂停</source>
+        <translation>Pause</translation>
+    </message>
+    <message>
+        <source>播放</source>
+        <translation>Play</translation>
+    </message>
+    <message>
+        <source>播放进度</source>
+        <translation>Playback position</translation>
+    </message>
+    <message>
+        <source>取消静音</source>
+        <translation>Unmute</translation>
+    </message>
+    <message>
+        <source>静音</source>
+        <translation>Mute</translation>
+    </message>
+    <message>
+        <source>音量</source>
+        <translation>Volume</translation>
+    </message>
+</context>
+<context>
     <name>WebShortcutForm</name>
     <message>
         <source>添加网页搜索</source>
@@ -9435,6 +9595,10 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>文件夹菜单</source>
         <translation>Folder menu</translation>
+    </message>
+    <message>
+        <source>请启用对应插件，并在“快捷键”的双击设置中重新选择动作。</source>
+        <translation>Enable the plugin, then select its action again in Shortcuts → Double-tap.</translation>
     </message>
     <message>
         <source>它在最前面时，Win顺 收不到%1，可以改按 %2。点这里去装上索引服务，%1 就也能用了。</source>
@@ -9961,10 +10125,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>双击动作暂不可用</source>
         <translation>Double-tap action unavailable</translation>
-    </message>
-    <message>
-        <source>请启用对应插件，并在“打开 Win顺”的双击设置中重新选择动作。</source>
-        <translation>Enable the plugin, then select its action again in Open WinShun → Double-tap.</translation>
     </message>
 </context>
 <context>
@@ -14350,6 +14510,14 @@ Content index: %5</translation>
     <message>
         <source>，</source>
         <translation>, </translation>
+    </message>
+    <message>
+        <source>默认浏览器</source>
+        <translation>Default browser</translation>
+    </message>
+    <message>
+        <source>选择浏览器</source>
+        <translation>Choose a browser</translation>
     </message>
     <message>
         <source>%1 也是别的程序的快捷键：Win顺 的窗口在前面时按它选这里的行，其余时候仍归那个程序。</source>

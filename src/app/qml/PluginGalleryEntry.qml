@@ -362,7 +362,7 @@ Rectangle {
             visible: text.length > 0
             width: parent.width
             text: entry.problem.length > 0 ? entry.problem
-                : entry.stage === "app" ? qsTr("要 Win顺 %1 或更新的版本，可以在“高级”里检查更新").arg(entry.minWinShun)
+                : entry.stage === "app" ? qsTr("要 Win顺 %1 或更新的版本，可以在“常规”里检查更新").arg(entry.minWinShun)
                 : entry.stage === "update" && entry.morePermissions.length > 0 ? qsTr("新版本要更多权限：%1，更新时会问你").arg(entry.morePermissions)
                 : ""
             textFormat: Text.PlainText

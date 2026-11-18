@@ -1,6 +1,6 @@
 # 资源管理器右键「用 Win顺 搜索此处」设计（GitHub #20）
 
-**2026-10-14 定下并已实现：只做经典菜单。** 没有 DLL 和系统包：HKCU 下三个经典动词（`Directory`、`Directory\Background`、`Drive` 的 `shell\WinShun.SearchHere`）运行 `WinShunSearch.exe --search-here "%V"`，小程序把文件夹交给 `MessageWindow` 里只收文件夹路径的 `WinShun.SearchHere` 窗口（见 `platform/ShellMenu.cpp`、`src/stub/main.cpp`、pitfalls「资源管理器的右键动词不能直接指向 WinShun.exe」）。Win11 上在「显示更多选项」里。设置「打开 Win顺 → 资源管理器右键」可关，卸载时安装程序删掉指向本份的动词。
+**2026-10-14 定下并已实现：只做经典菜单。** 没有 DLL 和系统包：HKCU 下三个经典动词（`Directory`、`Directory\Background`、`Drive` 的 `shell\WinShun.SearchHere`）运行 `WinShunSearch.exe --search-here "%V"`，小程序把文件夹交给 `MessageWindow` 里只收文件夹路径的 `WinShun.SearchHere` 窗口（见 `platform/ShellMenu.cpp`、`src/stub/main.cpp`、pitfalls「资源管理器的右键动词不能直接指向 WinShun.exe」）。Win11 上在「显示更多选项」里。设置「系统整合 → 文件管理器 → 资源管理器右键」可关，卸载时安装程序删掉指向本份的动词。
 
 下面是当初比较过的完整方案（含 Win11 顶层菜单的未签名稀疏包），留作以后想上顶层菜单时参考。
 

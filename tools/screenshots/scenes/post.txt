@@ -112,12 +112,8 @@ sleep 1500
 matte L-setsearch
 chord 12 73
 sleep 500
-settings
-sleep 1200
-clickfg 120 780
-sleep 1000
-clickfg 526 177
-sleep 1200
+settings ai,1
+sleep 1500
 matte X-ai2
 chord 12 73
 sleep 500

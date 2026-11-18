@@ -92,7 +92,7 @@ bool checkDoubleTapSettings(QQuickWindow* window, SettingsEditor* editor, const 
     Checks check;
     const QString action = doubletap::encode(u"winshun.capture"_s, u"Win+Shift+S"_s);
     editor->setDoubleTapPluginActions({QVariantMap {{u"value"_s, action}, {u"text"_s, u"截图录屏 · Win+Shift+S"_s}}});
-    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 0), Q_ARG(QVariant, 0),
+    QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, u"keys"_s), Q_ARG(QVariant, 0), // 快捷键 › 打开 Win顺
         Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "双击后做什么")));
     settle();
     auto* picker = find(window->contentItem(), u"doubleTapActionPicker"_s);

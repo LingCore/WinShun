@@ -16,6 +16,7 @@ Column {
     property string note
     property int page: -1 // the index into the window's pages
     property int tab: 0 // the index into its page's tabs, on a page that has them
+    property bool shown: true // false: away on its tab too (nothing in it applies now)
     default property alias rows: card.data
 
     // The column of pages in the settings window (see above).
@@ -54,7 +55,7 @@ Column {
         section.forceLayout()
     }
 
-    visible: searching ? found > 0 : !!column && column.currentPage === page && column.currentTab === tab
+    visible: searching ? found > 0 : shown && !!column && column.currentPage === page && column.currentTab === tab
     spacing: 8
 
     Item { // the page's name over its results

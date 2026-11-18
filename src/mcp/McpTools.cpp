@@ -1891,8 +1891,8 @@ void ToolHost::addTools()
     settings.name = u"get_settings"_s;
     settings.title = u"Win顺's settings"_s;
     settings.description = u"The settings of Win顺 that AI may know, each with its key, current value, default, what it does and "
-                           "what values it takes, grouped in sections (shortcuts, taskbar, files_and_dialogs, startup, appearance, "
-                           "scope, results, content, web, clipboard, capture, advanced). Narrow it with sections, keys or query "
+                           "what values it takes, grouped in sections (general, shortcuts, appearance, scope, content, results, "
+                           "taskbar, files_and_dialogs, favorites, clipboard, web, paste_file). Narrow it with sections, keys or query "
                            "(words in Chinese or English), or changed_only for what differs from the defaults. facts=true adds "
                            "what Win顺 knows of this PC that bears on the settings. Settings that are not listed are not AI's to "
                            "know or change."_s;

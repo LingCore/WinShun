@@ -369,7 +369,9 @@ function RunLines($lines) {
             'run' { RunLines (Get-Content (Local $arg) -Encoding UTF8) }
             'let' { $p = $arg -split '\s+', 2; $vars[$p[0]] = $p[1] }
             'open' { Start-Process -FilePath $exe -ArgumentList '--query', $arg -WindowStyle Normal; WaitFront; Start-Sleep -Milliseconds 600 }
-            'settings' { Start-Process -FilePath $exe -ArgumentList '--settings' -WindowStyle Normal; WaitFront; Start-Sleep -Milliseconds 800 }
+            'settings' { # [<page id>,<tab>]: there (SettingsWindow.qml's page ids, e.g. "appearance,0"); else the first page
+                $settingsArgs = @('--settings'); if ($arg) { $settingsArgs += @('--settings-at', $arg) }
+                Start-Process -FilePath $exe -ArgumentList $settingsArgs -WindowStyle Normal; WaitFront; Start-Sleep -Milliseconds 800 }
             'allow' { $script:allowed += $arg }
             'tap' { Guard; $k = Vk $arg; [A]::Key($k, $false); [A]::Key($k, $true) }
             'ifseed' { # <command>: only when WinShun took the system clipboard's content into the demo history at its start (a row that isn't the demo's own): that is what the Delete after it is for; with nothing seeded the Delete would take the demo's picture

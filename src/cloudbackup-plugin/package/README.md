@@ -2,7 +2,7 @@
 
 在设置 → 插件 → 插件库安装（需要 Win顺 0.26.0 或更新）。它把 Win顺 的设置备份传到你自己的云端：WebDAV 服务器（坚果云、Nextcloud、群晖等 NAS、alist），或 GitHub 私有仓库，两种可以同时用。
 
-备份的内容和“设置 › 高级 › 备份 › 导出备份”一样：设置、收藏、对话框固定项、网页图标和装的插件。索引、剪贴板和搜索历史不在里面；密码和 API 密钥留在 Windows 凭据管理器，不进备份。
+备份的内容和“设置 › 常规 › 备份 › 导出备份”一样：设置、收藏、对话框固定项、网页图标和装的插件。索引、剪贴板和搜索历史不在里面；密码和 API 密钥留在 Windows 凭据管理器，不进备份。
 
 ## 怎么用
 
@@ -30,7 +30,7 @@
 
 Install from Settings → Plugins → Plugin library (Win顺 0.26.0 or later). It keeps Win顺's settings backup in your own cloud: a WebDAV server (Nextcloud, a NAS, alist, 坚果云) or a private GitHub repository, either or both.
 
-A backup holds what Settings › Advanced › Backup › Export holds: the settings, favorites, dialog pins, web shortcut pictures and the plugins you added. No indexes, no clipboard or search history; passwords and API keys stay in Windows Credential Manager.
+A backup holds what Settings › General › Backup › Export holds: the settings, favorites, dialog pins, web shortcut pictures and the plugins you added. No indexes, no clipboard or search history; passwords and API keys stay in Windows Credential Manager.
 
 Fill in the plugin's card; nothing is sent before that. Win顺 then checks two minutes after start and every half hour, and uploads only when the settings changed. The newest 10 backups are kept at each place. Type `cloud` and a space: the first rows show each place (Enter backs up now), the rows below are the backups there with their time and computer. Enter on one, and Enter again to confirm, restores it: the present settings are saved on this computer first (`backups` in the data folder), then Win顺 restarts with that backup.
 

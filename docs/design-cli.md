@@ -166,7 +166,7 @@ Win顺 拒绝时怎么定退出码（2026-10-24 实现）：
 - 新版 Win顺 对命令行会话在 `structuredContent.error` 里给出类别：`not_found` → 6，`off` → 4（并说在哪打开），`too_large` → 7（回答超过 16 MB：提示用 `-n` 少要一些或把查询写细；`ws text` 自己换成小段重读）。其余拒绝都是 7，原样转述 Win顺 的话。
 - `off` 时可能再带 `structuredContent.setting`，说是哪个开关关着（见第 9 节第 8 条）：剪贴板的工具有两个开关，ws 照它挑提示，不靠认话。没有这个字段的版本，`ws` 才退到认英文原话（“not keeping a clipboard history”）。
 - 旧版 Win顺 不给类别，ws 按它的英文原话归类（不在索引里、没有这个文件、是文件不是文件夹、内容搜索关着……），归不了类就是 7。
-- 内容搜索关着，新旧 Win顺 都只用话说（不给 `off`），ws 认出来指向 设置 → 文件内容搜索，退出码 7。`off` 对 ws 用到的工具只会来自剪贴板，退出码 4，有两个开关：AI 的“允许 AI 读取剪贴板历史”（`setting: "ai_clipboard"`）和 Win顺 自己的“记录剪贴板历史”（`setting: "clipboard_history"`）；搜索、列目录、读文本这几个工具没有开关。
+- 内容搜索关着，新旧 Win顺 都只用话说（不给 `off`），ws 认出来指向 设置 → 搜索范围 → 文件内容，退出码 7。`off` 对 ws 用到的工具只会来自剪贴板，退出码 4，有两个开关：AI 的“允许 AI 读取剪贴板历史”（`setting: "ai_clipboard"`）和 Win顺 自己的“记录剪贴板历史”（`setting: "clipboard_history"`）；搜索、列目录、读文本这几个工具没有开关。
 - 提示里说的路径：Win顺 的话末尾带路径就用它（几个 `--in` 里被拒的那一个），不带（`recent_files`、`list_folder`、`read_file_text` 有几处不带）才用 ws 自己问的那个。
 - “是文件夹”“是文件”这类用错了命令的，ws 在本地先看出来，退出码 2（见第 3 节）。
 

@@ -11,7 +11,8 @@ import QtQuick
 //   text     what the keys do
 //   brief    in the panel (else in the settings only)
 //   when     a function of the context; false hides the entry in the panel
-//   setting  {page, tab}: the settings can change the keys; where
+//   setting  {page, tab}: the settings can change the keys; where (page: the
+//            id of a SettingsWindow page, as its `pages` name them)
 //
 // The context (`c`) is what the entries depend on: launcher.previewHotkey as
 // `previewKey`; `numberModifier` ("Alt", "Ctrl", or "" for none) of the
@@ -23,14 +24,14 @@ import QtQuick
 QtObject {
     readonly property var table: [
         // what opens them (the settings only)
-        { where: "global", group: qsTr("打开"), keys: c => c.openKeys, text: qsTr("打开搜索框"), setting: { page: 0, tab: 0 } },
-        { where: "global", group: qsTr("打开"), keys: c => c.panelHotkey ?? "", text: qsTr("直接打开完整搜索面板"), setting: { page: 0, tab: 0 } },
-        { where: "global", group: qsTr("打开"), keys: c => c.clipboardHotkey, text: qsTr("打开剪贴板"), setting: { page: 6, tab: 1 } },
-        { where: "global", group: qsTr("打开"), keys: c => c.captureKeys, text: qsTr("截图"), setting: { page: 9, tab: 0 } },
+        { where: "global", group: qsTr("打开"), keys: c => c.openKeys, text: qsTr("打开搜索框"), setting: { page: "keys", tab: 0 } },
+        { where: "global", group: qsTr("打开"), keys: c => c.panelHotkey ?? "", text: qsTr("直接打开完整搜索面板"), setting: { page: "keys", tab: 0 } },
+        { where: "global", group: qsTr("打开"), keys: c => c.clipboardHotkey, text: qsTr("打开剪贴板"), setting: { page: "clipboard", tab: 1 } },
+        { where: "global", group: qsTr("打开"), keys: c => c.captureKeys, text: qsTr("截图"), setting: { page: "plugins", tab: 0 } },
         // the search box
         { where: "launcher", group: qsTr("移动"), brief: true, keys: "↑ ↓", text: qsTr("上下移动，PgUp PgDn 翻页") },
         { where: "launcher", group: qsTr("移动"), brief: true, keys: c => c.historyModifier ? c.historyModifier + "+↑/↓" : "",
-          text: qsTr("翻阅搜索历史，回到最新时恢复未完成输入"), when: c => !!c.historyModifier, setting: { page: 0, tab: 3 } },
+          text: qsTr("翻阅搜索历史，回到最新时恢复未完成输入"), when: c => !!c.historyModifier, setting: { page: "results", tab: 2 } },
         { where: "launcher", group: qsTr("移动"), keys: "Ctrl+J / N · Ctrl+K / P", text: qsTr("向下 / 向上移动") },
         { where: "launcher", group: qsTr("移动"), keys: "Ctrl+U / D", text: qsTr("向上 / 向下翻页") },
         { where: "launcher", group: qsTr("移动"), brief: true, keys: "Shift+↑ ↓", text: qsTr("选中多行，也可 Ctrl+单击、Shift+单击") },
@@ -45,11 +46,11 @@ QtObject {
         { where: "launcher", group: qsTr("打开与操作"), brief: true, keys: "→ / Ctrl+O", text: qsTr("打开操作菜单；→ 需光标在末尾且未选中文字") },
         { where: "launcher", group: qsTr("打开与操作"), keys: "← / Esc", text: qsTr("关闭操作菜单，返回结果列表") },
         { where: "launcher", group: qsTr("打开与操作"), brief: true, keys: c => c.previewKey, text: qsTr("预览文件（鼠标中键点一行也行）；再按一次关闭"),
-          when: c => c.previewKey.length > 0, setting: { page: 3, tab: 1 } },
+          when: c => c.previewKey.length > 0, setting: { page: "results", tab: 1 } },
         { where: "launcher", group: qsTr("打开与操作"), brief: true, keys: c => c.openKey ?? "", text: qsTr("打开选中的结果，和 Enter 一样"),
-          when: c => (c.openKey ?? "").length > 0, setting: { page: 3, tab: 2 } },
+          when: c => (c.openKey ?? "").length > 0, setting: { page: "results", tab: 2 } },
         { where: "launcher", group: qsTr("打开与操作"), brief: true, keys: c => c.numberModifier.length > 0 ? c.numberModifier + "+1…9" : "", text: qsTr("打开第几行（图标上标着快捷键）"),
-          when: c => c.numberModifier.length > 0, setting: { page: 3, tab: 2 } },
+          when: c => c.numberModifier.length > 0, setting: { page: "results", tab: 2 } },
         { where: "launcher", group: qsTr("打开与操作"), keys: "Ctrl+Shift+Enter", text: qsTr("以管理员身份运行") },
         { where: "launcher", group: qsTr("打开与操作"), keys: "Ctrl+C", text: qsTr("复制文件") },
         { where: "launcher", group: qsTr("打开与操作"), keys: "Ctrl+Shift+C", text: qsTr("复制路径") },
@@ -61,13 +62,13 @@ QtObject {
         { where: "launcher", group: qsTr("窗口"), keys: "Esc", text: qsTr("关闭；选中了多行时先取消选择") },
         // the clipboard
         { where: "clipboard", group: qsTr("粘贴"), brief: true, keys: c => c.numberModifier.length > 0 ? c.numberModifier + "+1…9" : "", text: qsTr("粘贴第几条"),
-          when: c => c.numberModifier.length > 0, setting: { page: 6, tab: 1 } },
+          when: c => c.numberModifier.length > 0, setting: { page: "clipboard", tab: 1 } },
         { where: "clipboard", group: qsTr("粘贴"), brief: true, keys: "Shift+Enter", text: qsTr("粘贴为纯文本"), when: c => !c.intoField },
         { where: "clipboard", group: qsTr("粘贴"), keys: c => c.numberModifier.length > 0 ? c.numberModifier + "+Shift+1…9" : "", text: qsTr("第几条粘贴为纯文本"),
           when: c => c.numberModifier.length > 0 },
         // Only where it works: a hotkey with something to hold (a lone F9 has not), over another program.
         { where: "clipboard", group: qsTr("粘贴"), brief: true, keys: c => c.holdKey, text: qsTr("按住连按往下选，松开粘贴"),
-          when: c => c.holdKey.includes("+") && !c.intoField, setting: { page: 6, tab: 1 } },
+          when: c => c.holdKey.includes("+") && !c.intoField, setting: { page: "clipboard", tab: 1 } },
         { where: "clipboard", group: qsTr("移动与选择"), brief: true, keys: "↑ ↓", text: qsTr("上下移动，PgUp PgDn 翻页") },
         { where: "clipboard", group: qsTr("移动与选择"), brief: true, keys: "Shift+Tab", text: qsTr("上一个分类") },
         { where: "clipboard", group: qsTr("移动与选择"), brief: true, keys: "Ctrl+G", text: qsTr("查找分组：输入名称，Enter 进入，Esc 返回内容搜索") },

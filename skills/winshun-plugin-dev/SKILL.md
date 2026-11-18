@@ -56,7 +56,7 @@ Work in a folder of its own that holds only the plugin's files (everything in it
 5. `%LOCALAPPDATA%\WinShun\plugins.log`: the plugin's stderr, protocol errors and crashes. Read it after every failed try.
 6. After a change, run `ws plugin install <folder>` again: it replaces the installed copy, and a plugin that was on stays on. A version that asks for more permissions waits for the user's yes again (`ws plugin enable <id>`).
 
-Without `ws` (an older WinShun): the user picks the folder in Settings > Plugins > Install from a folder. Settings > Plugins > Advanced > Developer mode shows every message between WinShun and the plugin and restarts a resident plugin when its script changes.
+Without `ws` (an older WinShun): the user picks the folder in Settings > Plugins > Install from a folder. Settings > Plugins > Installed > Developer mode (turning it on adds a Developer tab) shows every message between WinShun and the plugin and restarts a resident plugin when its script changes.
 
 ## Rules that keep a plugin correct
 

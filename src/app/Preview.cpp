@@ -920,15 +920,16 @@ QObject* named(QQuickWindow* window, const char* id)
 }
 
 // A row or section of a page of SettingsWindow.qml, by its name in that page's
-// parts (SettingsWindow.part): the page is made if it is not yet.
-QObject* partOf(QQuickWindow* window, int page, const char* name)
+// parts (SettingsWindow.part): the page is made if it is not yet. `page`: its
+// index (window->property("scopePage")) or its id ("scope").
+QObject* partOf(QQuickWindow* window, const QVariant& page, const char* name)
 {
     QVariant found;
-    QMetaObject::invokeMethod(window, "part", Q_RETURN_ARG(QVariant, found), Q_ARG(QVariant, QVariant(page)),
+    QMetaObject::invokeMethod(window, "part", Q_RETURN_ARG(QVariant, found), Q_ARG(QVariant, page),
         Q_ARG(QVariant, QVariant(QString::fromLatin1(name))));
     QObject* object = found.metaType() == QMetaType::fromType<QJSValue>() ? found.value<QJSValue>().toQObject() : found.value<QObject*>();
     if (!object)
-        qWarning("preview: no part '%s' on settings page %d", name, page);
+        qWarning("preview: no part '%s' on settings page %s", name, qUtf8Printable(page.toString()));
     return object;
 }
 
@@ -1201,13 +1202,17 @@ bool previewCommandIcons(QQuickWindow* window, SettingsEditor* editor, Favorites
 // taking the keyboard the rest one at a time (fillInBackground, fillTimer).
 // Nothing more after the first frame (refreshAfterOpen): pages cost memory.
 
-constexpr int kSettingsPages = 10; // SettingsWindow.pageSlots
+// The ids of SettingsWindow.pageSlots' PageSlots, in the order of the pages (the
+// page's index in `pages` is its place here); the last, 运行状况's, is not counted.
+constexpr const char* kSlotIds[] = {"generalSlot", "keysSlot", "appearanceSlot", "scopeSlot", "resultsSlot", "integrationSlot",
+    "favoritesSlot", "clipboardSlot", "pluginsSlot", "aiSlot", "healthSlot"};
+constexpr int kSettingsPages = 10; // the slots counted: all but healthSlot
 
 QList<int> madePages(QQuickWindow* window)
 {
     QList<int> pages;
     for (int i = 0; i < kSettingsPages; ++i) {
-        QObject* slot = named(window, (QByteArray("slot") + QByteArray::number(i)).constData());
+        QObject* slot = named(window, kSlotIds[i]);
         if (slot && slot->property("item").value<QObject*>())
             pages.append(i);
     }
@@ -1288,6 +1293,10 @@ bool previewLazyPages(QQuickWindow* window, const std::function<QQuickWindow*()>
     const int clipboardPage = window->property("clipboardPage").toInt();
     const int favoritesPage = window->property("favoritesPage").toInt();
     const int pluginsPage = window->property("pluginsPage").toInt();
+    const int keysPage = window->property("keysPage").toInt();
+    const int keysListTab = window->property("keysListTab").toInt();
+    const int scopePage = window->property("scopePage").toInt();
+    const int resultsPage = window->property("resultsPage").toInt();
     const QString rowTitle = QCoreApplication::translate("SettingsWindow", "每次打开时清空搜索"); // 结果列表 › 操作习惯
     struct Link {
         QString name;
@@ -1309,14 +1318,14 @@ bool previewLazyPages(QQuickWindow* window, const std::function<QQuickWindow*()>
     };
     const Link links[] = {
         {u"showClipboardPage"_s, call("showClipboardPage"), clipboardPage, 0, {clipboardPage}},
-        {u"showShortcutsPage"_s, call("showShortcutsPage"), 0, 4, {0}},
+        {u"showShortcutsPage"_s, call("showShortcutsPage"), keysPage, keysListTab, {keysPage}},
         {u"showWebPage"_s, call("showWebPage"), pluginsPage, -1, {pluginsPage}},
-        {u"showFileTypesPage"_s, call("showFileTypesPage"), 3, 3, {3}},
+        {u"showFileTypesPage"_s, call("showFileTypesPage"), resultsPage, 3, {resultsPage}},
         {u"showFavoritesPage"_s, call("showFavoritesPage", {favoritePath}), favoritesPage, 0, {favoritesPage}},
         {u"showPluginUpdates"_s, call("showPluginUpdates"), pluginsPage, 1, {pluginsPage}},
-        {u"showPlace indexAccess"_s, call("showPlace", {u"indexAccess"_s}), 2, -1, {2}},
-        {u"showPlace 3,2 (--settings-at)"_s, call("showPlace", {u"3,2"_s}), 3, 2, {3}},
-        {u"showSetting (open_settings)"_s, call("showSetting", {3, 2, rowTitle}), 3, 2, all},
+        {u"showPlace indexAccess"_s, call("showPlace", {u"indexAccess"_s}), scopePage, -1, {scopePage}},
+        {u"showPlace results,2 (--settings-at)"_s, call("showPlace", {u"results,2"_s}), resultsPage, 2, {resultsPage}},
+        {u"showSetting (open_settings)"_s, call("showSetting", {u"results"_s, 2, rowTitle}), resultsPage, 2, all},
         {u"showClipboardPage after show"_s, call("showClipboardPage"), clipboardPage, 0, {0, clipboardPage}, true},
     };
     for (const Link& link : links) {
@@ -1448,18 +1457,19 @@ bool previewLazyPages(QQuickWindow* window, const std::function<QQuickWindow*()>
         QQuickWindow* w = make();
         showOffScreen(w);
         settle(w);
-        QMetaObject::invokeMethod(w, "showPage", Q_ARG(QVariant, QVariant(4)), Q_ARG(QVariant, QVariant(0)));
+        QMetaObject::invokeMethod(w, "showPage", Q_ARG(QVariant, QVariant(u"scope"_s)), Q_ARG(QVariant, QVariant(0)));
         settle(w, 2);
         w->hide();
         pump(100);
-        check(madePages(w) == QList<int>({0, 4}) && w->property("currentPage").toInt() == 0 && g_warnings == warned,
-            u"hidden with pages 0 and 4 made: reset without warnings, back on page 0"_s);
+        const QList<int> twoMade {0, scopePage}; // 常规 (on show) and 搜索范围
+        check(madePages(w) == twoMade && w->property("currentPage").toInt() == 0 && g_warnings == warned,
+            u"hidden with pages 0 and %1 made: reset without warnings, back on page 0"_s.arg(scopePage));
         showOffScreen(w);
         settle(w);
-        check(madePages(w) == QList<int>({0, 4}) && g_warnings == warned, u"shown again: nothing more made"_s);
+        check(madePages(w) == twoMade && g_warnings == warned, u"shown again: nothing more made"_s);
         QMetaObject::invokeMethod(w, "refreshAfterOpen");
         pump(400);
-        check(madePages(w) == QList<int>({0, 4}) && g_warnings == warned, u"after the first frame: nothing more made"_s);
+        check(madePages(w) == twoMade && g_warnings == warned, u"after the first frame: nothing more made"_s);
         QMetaObject::invokeMethod(w, "fillInBackground");
         pump(250);
         const QList<int> partly = madePages(w);
@@ -1492,7 +1502,7 @@ bool previewLazyPages(QQuickWindow* window, const std::function<QQuickWindow*()>
         QStringList times;
         double slowest = 0;
         for (int i = 0; i < kSettingsPages; ++i) {
-            const double ms = named(w, (QByteArray("slot") + QByteArray::number(i)).constData())->property("loadMs").toDouble();
+            const double ms = named(w, kSlotIds[i])->property("loadMs").toDouble();
             times.append(u"%1: %2"_s.arg(i).arg(ms));
             if (i > 0)
                 slowest = std::max(slowest, ms);
@@ -1764,7 +1774,7 @@ int runSettings(const QStringList& args)
         editor->setUiStyle(u"liquid"_s);
         editor->setTransparency(u"on"_s);
         editor->resetGlassAppearance();
-        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, 1), Q_ARG(QVariant, 0));
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, u"appearance"_s), Q_ARG(QVariant, 0));
         settle(window);
         auto* transparencyRow = visualNamed(window->contentItem(), u"glassTransparencyRow"_s);
         auto* clarityRow = visualNamed(window->contentItem(), u"glassClarityRow"_s);
@@ -1873,7 +1883,7 @@ int runSettings(const QStringList& args)
             ok = condition && ok;
             if (!condition) qWarning().noquote() << "style picker:" << message;
         };
-        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, 1), Q_ARG(QVariant, 0));
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, u"appearance"_s), Q_ARG(QVariant, 0));
         settle(window);
         auto* liquid = visualNamed(window->contentItem(), u"styleCard_liquid"_s);
         auto* tactile = visualNamed(window->contentItem(), u"styleCard_tactile"_s);
@@ -1941,7 +1951,7 @@ int runSettings(const QStringList& args)
             say((condition ? u"ok: "_s : u"FAILED: "_s) + message);
             ok = condition && ok;
         };
-        const auto checkPicker = [&](const QString& name, int page) {
+        const auto checkPicker = [&](const QString& name, const QString& page) { // the page's id
             QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, page), Q_ARG(QVariant, 0));
             settle(window, 3);
             auto* picker = visualNamed(window->contentItem(), name);
@@ -2010,8 +2020,8 @@ int runSettings(const QStringList& args)
             check(saveGrab(window, out.filePath(name + u".png")), name + u" captured"_s);
             QMetaObject::invokeMethod(popup, "close");
         };
-        checkPicker(u"doubleTapActionPicker"_s, 0);
-        checkPicker(u"uiFontPicker"_s, 1);
+        checkPicker(u"doubleTapActionPicker"_s, u"keys"_s);
+        checkPicker(u"uiFontPicker"_s, u"appearance"_s);
         return finish(window, ok);
     }
 
@@ -2044,7 +2054,7 @@ int runSettings(const QStringList& args)
         check(monitor->now().value(u"total"_s).toDouble() > 0, "live memory reading is empty");
         check(saveGrab(window, out.filePath(u"health-live.png"_s)), "health page did not render");
         monitor->refreshMemory();
-        show(0); // leave while the delayed refresh may still be pending
+        show(window->property("generalPage").toInt()); // leave while the delayed refresh may still be pending
         const int hiddenUpdates = updates;
         monitor->poke();
         monitor->refreshMemory();
@@ -2058,7 +2068,7 @@ int runSettings(const QStringList& args)
         monitor->refreshMemory();
         pump(400);
         check(updates > beforeRefresh, "memory refresh did not publish a reading");
-        show(0);
+        show(window->property("generalPage").toInt());
         return finish(window, ok);
     }
 
@@ -2168,19 +2178,21 @@ int runSettings(const QStringList& args)
         };
         const QString deepTitle = u"删除，Ctrl+Z 撤销"_s;
 
-        show(0, 4); // 按键一览: many rows
+        const int keysPage = window->property("keysPage").toInt();
+        const int keysListTab = window->property("keysListTab").toInt();
+        show(keysPage, keysListTab); // 快捷键 › 按键一览: many rows
         const double headerTop = top(header);
         check(flick->property("contentHeight").toDouble() > window->height() + 400, u"the page is longer than the window"_s);
         flick->setProperty("contentY", 900.0);
         settle(window, 2);
         check(contentY() > 800 && qFuzzyCompare(top(header), headerTop) && header->isVisible(), u"scrolled, the page's name and tabs stay"_s);
         saveGrab(window, out.filePath(u"page-scrolled.png"_s));
-        QMetaObject::invokeMethod(window, "showTab", Q_ARG(QVariant, 3));
+        QMetaObject::invokeMethod(window, "showTab", Q_ARG(QVariant, 0)); // 快捷键 has two tabs: back to 打开 Win顺
         settle(window, 2);
-        check(contentY() == 0 && window->property("currentTab").toInt() == 3, u"another tab starts at the top"_s);
+        check(contentY() == 0 && window->property("currentTab").toInt() == 0, u"another tab starts at the top"_s);
 
         // The search: Enter goes to the row, in view whole below the header.
-        QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 0), Q_ARG(QVariant, 4), Q_ARG(QVariant, deepTitle));
+        QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, keysPage), Q_ARG(QVariant, keysListTab), Q_ARG(QVariant, deepTitle));
         pump(500);
         settle(window, 2);
         QQuickItem* deep = rowTitled(page, deepTitle);
@@ -2203,7 +2215,7 @@ int runSettings(const QStringList& args)
         }
 
         // Tab to controls out of view, below and then above.
-        show(6, 0); // 剪贴板 › 记录: switch after switch
+        show(window->property("clipboardPage").toInt(), 0); // 剪贴板 › 记录: switch after switch
         QList<QQuickItem*> tabbable;
         const std::function<void(QQuickItem*)> collect = [&](QQuickItem* item) {
             if (item->isVisible() && item->activeFocusOnTab() && item->isEnabled())
@@ -2259,7 +2271,7 @@ int runSettings(const QStringList& args)
         const double edgeAt = window->width() - (frame ? frame->resizeMargin(window->devicePixelRatio()) : 0.0);
         check(bar && frame && barRight <= edgeAt + 0.5,
             u"the scroll bar keeps clear of the window's resize edge (it ends at %1, the edge starts at %2)"_s.arg(barRight).arg(edgeAt));
-        show(0, 4); // 按键一览 again: long
+        show(keysPage, keysListTab); // 快捷键 › 按键一览 again: long
         check(bar && bar->isVisible() && bar->width() >= 10, u"the page has a scroll bar to grab"_s);
         if (bar && bar->isVisible()) {
             flick->setProperty("contentY", 0.0);
@@ -2418,7 +2430,7 @@ int runSettings(const QStringList& args)
         return finish(window, ok);
     }
 
-    // 常规's 截图的快捷键 row and the 按键一览 entry follow the capture plugin: not installed, off, on without
+    // 快捷键 › 打开 Win顺's 截图的快捷键 row and the 按键一览 entry follow the capture plugin: not installed, off, on without
     // and with shortcuts (App::updateScreenshotPlugin hands them over).
     if (args.contains(u"--capture-hotkey"_s)) {
         bool ok = true;
@@ -2540,7 +2552,7 @@ int runSettings(const QStringList& args)
             shareStatus(shareSignIn, ShareIndexer::State::Problem, share::Problem::NeedsSignIn, 0),
             shareStatus(shareWsl, ShareIndexer::State::Paused, share::Problem::None, 1230),
         });
-        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(2)), Q_ARG(QVariant, QVariant(3)));
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(u"scope"_s)), Q_ARG(QVariant, QVariant(3))); // 搜索范围 › 网络与 WSL
         window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
         settle(window, 3);
         std::function<QQuickItem*(QQuickItem*)> findControls = [&](QQuickItem* item) -> QQuickItem* {
@@ -2575,7 +2587,7 @@ int runSettings(const QStringList& args)
         QMetaObject::invokeMethod(depth, "editingFinished");
         const auto scan = editor->shares().front().toMap();
         check(scan.value(u"scanFrom"_s).toString() == u"23:45" && scan.value(u"scanDepth"_s).toInt() == 4, "QML edits did not reach settings");
-        QMetaObject::invokeMethod(window, "goTo", Q_ARG(QVariant, QVariant::fromValue(partOf(window, 2, "sharesRow"))));
+        QMetaObject::invokeMethod(window, "goTo", Q_ARG(QVariant, QVariant::fromValue(partOf(window, u"scope"_s, "sharesRow"))));
         settle(window, 3);
         if (auto* viewport = qobject_cast<QQuickItem*>(flick)) {
             const auto top = controls->parentItem()->mapToItem(viewport, QPointF());
@@ -2613,7 +2625,7 @@ int runSettings(const QStringList& args)
         editor->removeShare(count);
         const auto stopped = editor->shares().last().toMap();
         check(stopped.value(u"startable"_s).toBool() && !stopped.value(u"signIn"_s).toBool(), "a stopped WSL folder must offer Start, never Sign in");
-        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(2)), Q_ARG(QVariant, QVariant(3)));
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(u"scope"_s)), Q_ARG(QVariant, QVariant(3))); // 搜索范围 › 网络与 WSL
         window->setWidth(args.contains(u"--compact"_s) ? 760 : 920);
         window->setHeight(args.contains(u"--compact"_s) ? 420 : 780);
         settle(window, 3);
@@ -2650,7 +2662,7 @@ int runSettings(const QStringList& args)
         window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
         bool saved = true;
         const auto grab = [&](int tab, const QString& name) {
-            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(2)), Q_ARG(QVariant, QVariant(tab)));
+            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(u"scope"_s)), Q_ARG(QVariant, QVariant(tab))); // 搜索范围
             flick->setProperty("contentY", 0);
             settle(window, 3);
             saved = saveGrab(window, out.filePath(name + u"-top.png"_s)) && saved;
@@ -2703,7 +2715,7 @@ int runSettings(const QStringList& args)
         const int csv = static_cast<int>(editor->fileTypes().size()) - 1;
         check(editor->setFileTypeKeyword(csv, u"cw"_s).isEmpty(), "设置范围示例前缀失败");
         check(editor->setFileTypeFolder(csv, u"H:\\__work__"_s).isEmpty(), "设置范围示例目录失败");
-        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(3)), Q_ARG(QVariant, QVariant(3)));
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(u"results"_s)), Q_ARG(QVariant, QVariant(3))); // 结果列表 › 类型与筛选
         window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
         settle(window, 3);
         auto* scopeButton = visualNamed(window->contentItem(), u"fileTypeScope_0"_s);
@@ -2781,7 +2793,7 @@ int runSettings(const QStringList& args)
             say((condition ? u"ok: "_s : u"FAILED: "_s) + message);
             ok = condition && ok;
         };
-        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(1)), Q_ARG(QVariant, QVariant(0)));
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(u"appearance"_s)), Q_ARG(QVariant, QVariant(0)));
         settle(window, 3);
         auto* picker = visualNamed(window->contentItem(), u"uiFontPicker"_s);
         auto* sample = visualNamed(window->contentItem(), u"uiFontSample"_s);
@@ -2873,7 +2885,7 @@ int runSettings(const QStringList& args)
     bool onePage = false;
     const int wantedPage = valueAfter(args, u"--page").toInt(&onePage);
     if (args.contains(u"--preview-hotkeys"_s)) {
-        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(3)), Q_ARG(QVariant, QVariant(1)));
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(u"results"_s)), Q_ARG(QVariant, QVariant(1))); // 结果列表 › 显示与预览
         window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
         settle(window, 3);
         auto* recorder = visualNamed(window->contentItem(), u"previewHotkeyRecorder"_s);
@@ -2986,7 +2998,7 @@ int runSettings(const QStringList& args)
                 QCoreApplication::sendEvent(window, &away);
                 pump(400);
             }
-            if (page == 0 && tab == 2) {
+            if (page == window->property("integrationPage").toInt() && tab == 1) { // 系统整合 › 文件管理器
                 QObject* toggle = visualNamed(window->contentItem(), u"opusTypingToggle"_s);
                 const bool explorerBefore = editor->explorerTyping();
                 if (!toggle) {
@@ -3004,7 +3016,7 @@ int runSettings(const QStringList& args)
                     say(u"Opus typing setting: actual QML toggle, editor and isolated settings checked"_s);
                 }
             }
-            if (page == 3 && tab == 1) {
+            if (page == window->property("resultsPage").toInt() && tab == 1) { // 结果列表 › 显示与预览
                 QObject* choice = visualNamed(window->contentItem(), u"favoriteFolderTabChoice"_s);
                 if (!choice) {
                     qWarning("preview: favorite folder Tab choice missing");
@@ -3147,6 +3159,9 @@ int runSettings(const QStringList& args)
     };
     const QString quickPasteProbe = args.contains(u"--english"_s)
         ? QCoreApplication::translate("SettingsWindow", "不打开面板直接粘贴") : u"无需面板"_s;
+    const int scopePage = window->property("scopePage").toInt();
+    const int resultsPage = window->property("resultsPage").toInt();
+    const int integrationPage = window->property("integrationPage").toInt();
     const Probe probes[] = {
         {quickPasteProbe, window->property("clipboardPage").toInt(), 1},
         {QCoreApplication::translate("SettingsWindow", "插件"), pluginsPage, 0},
@@ -3155,10 +3170,10 @@ int runSettings(const QStringList& args)
         {PluginSettings::tr("API 密钥"), pluginsPage, 0}, // a plugin's own setting
         {QCoreApplication::translate("PasteFileCard", "粘贴为文件"), pluginsPage, 0}, // a built-in card
         // Shown as 内置功能 cards too, the rows of their own page first (open_settings searches them by title).
-        {QCoreApplication::translate("SettingsWindow", "在资源管理器或桌面弹出文件夹快捷菜单"), 0, 2},
-        {QCoreApplication::translate("SettingsWindow", "菜单里列出的内容"), 0, 2},
-        {QCoreApplication::translate("SettingsWindow", "对话框旁的搜索框"), 0, 2},
-        {QCoreApplication::translate("SettingsWindow", "在 Directory Opus 里直接打字搜索"), 0, 2},
+        {QCoreApplication::translate("SettingsWindow", "在资源管理器或桌面弹出文件夹快捷菜单"), integrationPage, 1}, // 文件管理器
+        {QCoreApplication::translate("SettingsWindow", "菜单里列出的内容"), integrationPage, 1},
+        {QCoreApplication::translate("SettingsWindow", "对话框旁的搜索框"), integrationPage, 2}, // 对话框
+        {QCoreApplication::translate("SettingsWindow", "在 Directory Opus 里直接打字搜索"), integrationPage, 1},
         {u"AI"_s, aiPage, 0},
         {u"命令行"_s, aiPage, 0},
         {u"ws"_s, aiPage, 0},
@@ -3166,16 +3181,16 @@ int runSettings(const QStringList& args)
         {u"终端"_s, aiPage, 0},
         // "Favorites" also matches the opening-menu option; use this page's exact setting title.
         {QCoreApplication::translate("FavoritesSection", "拖文件时按 ` 键，弹出收藏圆盘"), favoritesPage, 0},
-        {QCoreApplication::translate("SettingsWindow", "网络与 WSL 文件夹"), 2, 3},
-        {QCoreApplication::translate("SettingsWindow", "排序"), 3, 0},
-        {QCoreApplication::translate("SettingsWindow", "显示修改日期"), 3, 1},
-        {QCoreApplication::translate("SettingsWindow", "显示文件大小"), 3, 1},
-        {QCoreApplication::translate("SettingsWindow", "选中收藏文件夹时按 Tab"), 3, 1},
-        {QCoreApplication::translate("SettingsWindow", "每次打开时清空搜索"), 3, 2},
+        {QCoreApplication::translate("SettingsWindow", "网络与 WSL 文件夹"), scopePage, 3},
+        {QCoreApplication::translate("SettingsWindow", "排序"), resultsPage, 0},
+        {QCoreApplication::translate("SettingsWindow", "显示修改日期"), resultsPage, 1},
+        {QCoreApplication::translate("SettingsWindow", "显示文件大小"), resultsPage, 1},
+        {QCoreApplication::translate("SettingsWindow", "选中收藏文件夹时按 Tab"), resultsPage, 1},
+        {QCoreApplication::translate("SettingsWindow", "每次打开时清空搜索"), resultsPage, 2},
         // "File types" also matches preferred types in English; its visible prefix is unambiguous.
-        {args.contains(u"--english"_s) ? u":folder"_s : u"文件类型"_s, 3, 3},
+        {args.contains(u"--english"_s) ? u":folder"_s : u"文件类型"_s, resultsPage, 3},
     };
-    QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(0)), Q_ARG(QVariant, QVariant(0)));
+    QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(u"general"_s)), Q_ARG(QVariant, QVariant(0)));
     window->setHeight(baseHeight);
     settle(window, 2);
     for (const Probe& probe : probes) {
@@ -10975,7 +10990,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         QJsonArray times;
         double slowest = 0;
         for (int i = 0; i < kSettingsPages; ++i) {
-            const double ms = js(w, u"slot%1.loadMs"_s.arg(i)).toDouble();
+            const double ms = js(w, u"pageSlots[%1].loadMs"_s.arg(i)).toDouble();
             times.append(ms);
             if (i > 0)
                 slowest = std::max(slowest, ms);
@@ -11035,7 +11050,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         for (QWindow* other : QGuiApplication::allWindows())
             othersShown += other != window && other->isVisible();
         incubation.insert(u"other_windows_shown"_s, othersShown);
-        QQmlExpression start(qmlContext(window), window, u"slot2.content.incubateObject(slot2, {}, Qt.Asynchronous)"_s);
+        QQmlExpression start(qmlContext(window), window, u"scopeSlot.content.incubateObject(scopeSlot, {}, Qt.Asynchronous)"_s);
         const QJSValue incubator = start.evaluate().value<QJSValue>();
         const int atOnce = incubator.property(u"status"_s).toInt(); // Component.Ready 1, Loading 2
         qint64 took = 0;
@@ -11057,7 +11072,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
 
     // Left in a state: another page, scrolled, a search typed, dialogs and a
     // form open, a card unfolded, a field half filled, a hotkey being recorded.
-    js(window, u"showPage(3, 2)"_s);
+    js(window, u"showPage('results', 2)"_s);
     settle(window, 2);
     js(window, u"flick.contentY = 200"_s);
     js(window, u"searchBox.setText('主题')"_s);
@@ -11065,8 +11080,8 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
     js(window, u"updateDialog.show()"_s);
     js(window, u"pluginDialog.ask('uninstall', {id: 'zz.fixture', name: 'Fixture'})"_s);
     js(window, u"webEditing = -1"_s);
-    js(window, u"part(2, 'nameInput').text = '半截'"_s);
-    js(window, u"part(6, 'captureKeywordError').text = 'stale'"_s);
+    js(window, u"part('scope', 'nameInput').text = '半截'"_s);
+    js(window, u"part('clipboard', 'captureKeywordError').text = 'stale'"_s);
     js(window, u"part(pluginsPage, 'pluginsSection').expand('zz.fixture')"_s);
     js(window, u"editor.plugins.recordingHotkey = true"_s);
     pump(100);
@@ -11100,7 +11115,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         u"reopened_search_empty"_s);
     check(js(window, u"!updateDialog.open && !pluginDialog.open && !webDialog.active && webEditing === -2"_s).toBool(),
         u"reopened_no_dialogs"_s);
-    check(js(window, u"part(2, 'nameInput').text === '' && part(6, 'captureKeywordError').text === ''"
+    check(js(window, u"part('scope', 'nameInput').text === '' && part('clipboard', 'captureKeywordError').text === ''"
                      u" && part(pluginsPage, 'pluginsSection').expandedIds.length === 0"_s).toBool(),
         u"reopened_fields_cleared"_s);
     check(!js(window, u"editor.recordingHotkey || editor.plugins.recordingHotkey"_s).toBool(), u"reopened_not_recording"_s);
@@ -11111,8 +11126,8 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
     check(js(window, u"currentPage === clipboardPage"_s).toBool(), u"deep_link_clipboard_page"_s);
 
     close(window);
-    window = open([&] { showAt("showPlace", u"3,2"_s); }, u"place 3,2"_s);
-    check(js(window, u"currentPage === 3 && currentTab === 2"_s).toBool(), u"deep_link_place"_s);
+    window = open([&] { showAt("showPlace", u"results,2"_s); }, u"place results,2"_s);
+    check(js(window, u"currentPage === resultsPage && currentTab === 2"_s).toBool(), u"deep_link_place"_s);
 
     close(window);
     const QString key = u"Launcher/Autostart"_s;
@@ -11120,7 +11135,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
     const aisettings::Section* section = entry ? aisettings::sectionOf(entry->section) : nullptr;
     window = open([&] { app.showSettingsFor(key); }, u"setting "_s + key);
     pump(300); // showSetting finds the row after its search (Qt.callLater)
-    check(section && js(window, u"currentPage"_s).toInt() == section->page
+    check(section && js(window, u"pages[currentPage].id"_s).toString() == section->page
             && (entry->tab < 0 || js(window, u"currentTab"_s).toInt() == entry->tab)
             && js(window, u"!searching"_s).toBool(),
         u"deep_link_setting"_s);
@@ -11140,7 +11155,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
     }
 
     window = open([&] { app.showUpdate(); }, u"update dialog"_s);
-    check(js(window, u"updateDialog.open && currentPage === 0"_s).toBool(), u"deep_link_update_dialog"_s);
+    check(js(window, u"updateDialog.open && currentPage === generalPage"_s).toBool(), u"deep_link_update_dialog"_s);
     close(window);
 
     // Minimized, then closed (the taskbar's 关闭窗口): opens normal again.

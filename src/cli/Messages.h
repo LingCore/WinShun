@@ -73,12 +73,12 @@ inline constexpr Text kClipOff {L"剪贴板历史没有对命令行和 AI 开放
     L"Settings > AI assistants"};
 inline constexpr Text kClipUnavailable {L"Win顺 没有记录剪贴板历史：在 设置 → 剪贴板 里打开“记录剪贴板历史”",
     L"WinShun is not keeping a clipboard history: turn on \"Keep a clipboard history\" in Settings > Clipboard"};
-inline constexpr Text kContentOff {L"Win顺 的文件内容搜索关着：在 设置 → 文件内容搜索 里打开",
-    L"Content search is off in WinShun: turn it on in Settings > File contents"};
+inline constexpr Text kContentOff {L"Win顺 的文件内容搜索关着：在 设置 → 搜索范围 → 文件内容 里打开",
+    L"Content search is off in WinShun: turn it on in Settings > Search scope > File contents"};
 inline constexpr Text kUnknownTool {L"这个版本的 Win顺 没有 {}；请更新 Win顺", L"This WinShun has no {}; update it"};
 inline constexpr Text kNotText {L"这不是 Win顺 能读的文本文件或文档：{}", L"This is not a text file or a document WinShun can read: {}"};
-inline constexpr Text kTooLarge {L"文件超过了 Win顺 对这类文件的大小上限（设置 → 文件内容搜索）：{}",
-    L"The file is larger than WinShun's size limit for its kind (Settings > File contents): {}"};
+inline constexpr Text kTooLarge {L"文件超过了 Win顺 对这类文件的大小上限（设置 → 搜索范围 → 文件内容）：{}",
+    L"The file is larger than WinShun's size limit for its kind (Settings > Search scope > File contents): {}"};
 inline constexpr Text kCloudOnly {L"这是云端文件，不在这台电脑上，读它会先下载；先打开它下载下来：{}",
     L"This is a cloud file that is not on this PC; open it first to download it: {}"};
 inline constexpr Text kUnreadable {L"读不了这个文件（被占用、没有权限或已损坏）：{}", L"The file could not be read (in use, no access, or damaged): {}"};

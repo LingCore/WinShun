@@ -184,12 +184,12 @@ winget install LingCore.WinShun
 
 - **平时不用**：Win顺 以普通权限运行。安装版带一个很小的“Win顺 索引服务”，由它读 NTFS 主文件表（MFT）和 USN 变更日志，所以照样几秒建好索引、实时跟上改动。安装时要管理员同意一次，之后登录和打开都不弹 UAC。
 - **能看到哪些文件**：和 Everything 一样，索引里有整块盘的文件名，包括这台电脑上其他用户的；没有权限的文件照样打不开。
-- **便携版**：默认一个个文件夹走一遍来建索引，第一次慢一些，之后实时跟上改动。在设置 → 索引方式里可以装上索引服务，或以管理员身份重新启动。便携版装索引服务时，会把服务程序复制一份放进 `%ProgramFiles%\WinShun Service`，只有管理员能改，普通程序没法把它换掉；以前装过的，设置里会提醒并有“修复”按钮。
+- **便携版**：默认一个个文件夹走一遍来建索引，第一次慢一些，之后实时跟上改动。在设置 → 搜索范围 → 磁盘 → 索引方式里可以装上索引服务，或以管理员身份重新启动。便携版装索引服务时，会把服务程序复制一份放进 `%ProgramFiles%\WinShun Service`，只有管理员能改，普通程序没法把它换掉；以前装过的，设置里会提醒并有“修复”按钮。
 - **没有管理员权限（“只为我安装”）**：安装时选“只为我安装”，不装索引服务，也不用管理员同意。这时 Win顺 只索引你选的文件夹（设置 › 搜索范围 › 文件夹 里改，默认是桌面、文档、下载、图片这些常用位置），可以从资源管理器把文件夹直接拖进去；改动实时跟上，每天再整个核对一遍（也可以改成每小时、每 4 小时或只在启动时）。输入的文件夹不在索引范围里时，搜索框会提示，点“这次也搜它”只搜这一次，点“加入索引”就长期收录。内容搜索照样能用，只是慢一些。
-- **管理员直读**：管理员账户可以在设置 → 索引方式里选“管理员直读”，像旧版一样整个程序以管理员身份运行、直接读盘。
+- **管理员直读**：管理员账户可以在设置 → 搜索范围 → 磁盘 → 索引方式里选“管理员直读”，像旧版一样整个程序以管理员身份运行、直接读盘。
 - **以管理员身份运行的程序**：Windows 不让普通权限的程序往它们里面打字。往这样的窗口里粘贴时，装了索引服务的由服务替你按一次粘贴键（设置 › 剪贴板 › “粘贴到以管理员身份运行的程序”，默认开启）；没有索引服务或关掉这一项时，Win顺 只复制，提示你按 `Ctrl+V`。它们的“打开”“另存为”对话框旁也有搜索框：装了索引服务的安装版能像别的对话框一样直接转到选中的文件夹，`Ctrl+G` 也管用；便携版和“只为我安装”的版本只能复制选中的路径，要你自己粘贴到路径框里。
-- **它们在最前面时双击 Ctrl 没反应**：Windows 也不把发给它们的按键交给普通权限的程序，所以没装索引服务时，这种窗口在最前面，双击 Ctrl（Alt、Shift）没反应；带 Ctrl、Alt、Shift 或 Win 的组合键（比如 `Alt+Space`）照样能用。装了索引服务就没有这个问题（服务的助手听得到），Win顺 自己以管理员身份运行（管理员直读）时也没有。这种程序第一次在最前面停一会儿时，Win顺 会弹一次通知说明：设了组合键就提醒你改按它；便携版（含 Scoop 装的）能装索引服务时，点通知直接到 设置 › 索引方式，在下面一行装上。每个程序只说一次，最多说 3 个，一次运行只说一次。
-- **打开的东西是普通权限**：从 Win顺 打开的文件和应用都以普通权限运行，只有 `Ctrl+Shift+Enter` 才以管理员身份运行。常用管理员身份开的程序（比如终端），可以在 **设置 › 使用记录** 里打开“记住以管理员身份运行”（默认关闭）：这样运行过一次后，之后按 `Enter` 也以管理员身份运行，这一行会标出“管理员”；右键选“以普通权限运行”改回。
+- **它们在最前面时双击 Ctrl 没反应**：Windows 也不把发给它们的按键交给普通权限的程序，所以没装索引服务时，这种窗口在最前面，双击 Ctrl（Alt、Shift）没反应；带 Ctrl、Alt、Shift 或 Win 的组合键（比如 `Alt+Space`）照样能用。装了索引服务就没有这个问题（服务的助手听得到），Win顺 自己以管理员身份运行（管理员直读）时也没有。这种程序第一次在最前面停一会儿时，Win顺 会弹一次通知说明：设了组合键就提醒你改按它；便携版（含 Scoop 装的）能装索引服务时，点通知直接到 设置 › 搜索范围 › 磁盘 › 索引方式，在下面一行装上。每个程序只说一次，最多说 3 个，一次运行只说一次。
+- **打开的东西是普通权限**：从 Win顺 打开的文件和应用都以普通权限运行，只有 `Ctrl+Shift+Enter` 才以管理员身份运行。常用管理员身份开的程序（比如终端），可以在 **设置 › 结果列表 › 操作习惯** 里打开“记住以管理员身份运行”（默认关闭）：这样运行过一次后，之后按 `Enter` 也以管理员身份运行，这一行会标出“管理员”；右键选“以普通权限运行”改回。
 
 </details>
 
@@ -263,7 +263,7 @@ Win顺 自己建索引，不用装 Everything。文件名、拼音、应用和�
 <details>
 <summary><b>双击 Ctrl 和别的软件冲突？</b></summary>
 
-Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中一边就行，或者让 Win顺 改用双击 Alt 或 Shift、只认左边或右边的键（设置 › 打开 Win顺 › 双击哪个键、用哪一边；输入法用 Shift 切换中英文的，双击 Shift 会切换两次，最后回到原来的状态）。也可以在 Win顺 里改用别的组合键。游戏全屏、藏起鼠标时，Win顺 默认不响应双击 Ctrl。
+Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中一边就行，或者让 Win顺 改用双击 Alt 或 Shift、只认左边或右边的键（设置 › 快捷键 › 打开 Win顺 › 双击哪个键、用哪一边；输入法用 Shift 切换中英文的，双击 Shift 会切换两次，最后回到原来的状态）。也可以在 Win顺 里改用别的组合键。游戏全屏、藏起鼠标时，Win顺 默认不响应双击 Ctrl。
 
 </details>
 
@@ -278,14 +278,14 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 <summary><b>占多少内存？索引能不放 C 盘吗？</b></summary>
 
 - **内存**：用着的时候主要是文件索引，每 100 万个文件约 30 MB；三百万个文件的电脑上，搜索时整个程序约 150～230 MB。关掉搜索框约 20 秒后，Win顺 把用不着的内存还给系统，任务管理器里降到几 MB。想看内存花在哪，打开 **设置 › 运行状况**。
-- **索引位置**：在 **设置 › 高级 › 索引位置** 里，可以移到其他内置硬盘。
+- **索引位置**：在 **设置 › 常规 › 索引位置** 里，可以移到其他内置硬盘。
 
 </details>
 
 <details>
 <summary><b>索引很慢，或者出了问题？</b></summary>
 
-到 **设置 › 高级 › 诊断日志** 点“导出诊断日志”，把打开的文件夹里的 `WinShun-diagnostics.zip` 发到 GitHub Issues 或论坛。诊断包记的是版本、系统、磁盘、索引进度和错误，以及界面显示、字体和剪贴板按键转发的状态、已装插件的版本和插件日志末尾（字显示不对时先导出再重启），不含设置、剪贴板内容、搜索历史和文档正文。
+到 **设置 › 常规 › 诊断日志** 点“导出诊断日志”，把打开的文件夹里的 `WinShun-diagnostics.zip` 发到 GitHub Issues 或论坛。诊断包记的是版本、系统、磁盘、索引进度和错误，以及界面显示、字体和剪贴板按键转发的状态、已装插件的版本和插件日志末尾（字显示不对时先导出再重启），不含设置、剪贴板内容、搜索历史和文档正文。
 
 </details>
 
@@ -295,7 +295,7 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 完全免费，MIT 开源。不会上传你的文件和索引，索引和历史只存在本机（`%LOCALAPPDATA%\WinShun`）。只在这些时候联网：
 
 - **检查新版本**：连接 lcstp.com，只发送系统版本和安装方式，不带个人信息（可以关）。
-- **匿名统计**：每天最多一次告诉 lcstp.com 这台电脑在用 Win顺，用来统计用户数。只发送电脑标识的单向哈希（不能还原，也对不上作者的其他软件）、版本号和 Windows 版本（设置 › 高级 › 发送匿名统计，可以关）。打开“拾穗计划”页时从 lcstp.com 取各个作品的用户数。
+- **匿名统计**：每天最多一次告诉 lcstp.com 这台电脑在用 Win顺，用来统计用户数。只发送电脑标识的单向哈希（不能还原，也对不上作者的其他软件）、版本号和 Windows 版本（设置 › 常规 › 发送匿名统计，可以关）。打开“拾穗计划”页时从 lcstp.com 取各个作品的用户数。
 - **下载更新**：你点“下载并安装”后，经第三方镜像或 GitHub 下载安装包，并用 SHA-256 校验。
 - **网站图标**：第一次显示某个网页搜索或书签时，取一次那个网站的图标。
 - **插件库**：打开设置里的“插件库”页、点“刷新”或安装插件时，取列表和插件；开着“自动更新”时每天检查一次已装插件有没有新版（可以关）。从旧版升级时，以前开着、现在不再随 Win顺 自带的插件（截图与录屏、翻译等）也从插件库取一次。
@@ -464,7 +464,7 @@ scoop bucket add winshun https://github.com/LingCore/WinShun
 scoop install winshun
 ```
 
-This installs the portable package (settings and index live in Scoop's `persist\winshun\data`), adds “WinShun” to the Start menu and puts `ws` on the PATH. To update, click “Update with Scoop” in WinShun's update reminder (it opens a window that runs `scoop update`, then starts WinShun again) or run `scoop update winshun` yourself. `scoop uninstall winshun` first takes back what WinShun registered (autostart, Explorer menus ...) and keeps your settings and index; add `-p` to delete the data too. Scoop does not install the index service; to index whole disks turn it on in **Settings › Search scope › Disks › Index method**.
+This installs the portable package (settings and index live in Scoop's `persist\winshun\data`), adds “WinShun” to the Start menu and puts `ws` on the PATH. To update, click “Update with Scoop” in WinShun's update reminder (it opens a window that runs `scoop update`, then starts WinShun again) or run `scoop update winshun` yourself. `scoop uninstall winshun` first takes back what WinShun registered (autostart, Explorer menus ...) and keeps your settings and index; add `-p` to delete the data too. Scoop does not install the index service; to index whole disks turn it on in **Settings › Search scope › Drives › Index access**.
 
 With [WinGet](https://learn.microsoft.com/windows/package-manager/), one command does it:
 
@@ -483,11 +483,11 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 - **Not needed day to day**: WinShun runs with your normal rights. The installed version comes with a small “WinShun Index Service” that reads the NTFS master file table (MFT) and change journal (USN) for it, so millions of files are still indexed in seconds and changes followed live. An administrator approves the install once; after that there is no UAC prompt at login or when you open it.
 - **Which files you see**: as with Everything, the index holds the file names of whole drives, other users' on this PC included; files you have no rights to still won't open.
-- **Portable version**: by default it walks the folders one by one, so the first index is slower; changes are followed live after that. Settings → Index access can install the index service or restart it as administrator. When a portable copy installs the service, it puts a copy of the service program in `%ProgramFiles%\WinShun Service`, where only administrators can change it, so no ordinary program can swap it; an older registration gets a warning and a Repair button in the settings.
+- **Portable version**: by default it walks the folders one by one, so the first index is slower; changes are followed live after that. Settings → Search scope → Drives → Index access can install the index service or restart it as administrator. When a portable copy installs the service, it puts a copy of the service program in `%ProgramFiles%\WinShun Service`, where only administrators can change it, so no ordinary program can swap it; an older registration gets a warning and a Repair button in the settings.
 - **Without administrator rights (“for me only”)**: pick “for me only” in Setup: no index service, and no administrator needed. WinShun then indexes only the folders you choose (Settings › Search scope › Folders; the desktop, documents, downloads, pictures and the like to begin with), and you can drag folders in from File Explorer. Changes are followed live, and everything is checked again once a day (hourly, every 4 hours or only at start are options). When the folder you type is not indexed, the search box says so: “Search it this time” looks there once, “Add to the index” keeps it. Content search still works, only slower.
-- **Direct as administrator**: on an administrator account, Settings → Index access → “Direct (administrator)” runs the whole app as administrator and reads the drives itself, as earlier versions did.
+- **Direct as administrator**: on an administrator account, Settings → Search scope → Drives → Index access → “Direct (administrator)” runs the whole app as administrator and reads the drives itself, as earlier versions did.
 - **Programs running as administrator**: Windows doesn't let normal-rights programs type into them. Pasting into such a window, the index service presses the paste keys for you where it is installed (Settings › Clipboard › "Paste into programs run as administrator", on by default); without the service, or with that turned off, WinShun only copies and tells you to press `Ctrl+V`. The search bar beside their Open / Save dialogs appears too: the installed WinShun with the index service jumps to the chosen folder just as in other dialogs, and `Ctrl+G` works there; a portable copy, or one installed for you only, can only copy the chosen path for you to paste into the path box yourself.
-- **Double Ctrl does nothing while they are in front**: Windows doesn't give the keys typed into them to normal-rights programs either, so without the index service double Ctrl (Alt, Shift) does nothing while such a window is in front; a shortcut with Ctrl, Alt, Shift or Win (`Alt+Space`, say) still works. With the index service installed this doesn't happen (the service's helper hears the keys), nor when WinShun itself runs as administrator (Direct). The first time such a program stays in front for a moment, WinShun says why in one notification: it names your shortcut if you set one, and where a portable copy (Scoop's too) can install the index service, a click opens Settings › Index access, with the install button just below. Each program is mentioned once, three at most, and one per run.
+- **Double Ctrl does nothing while they are in front**: Windows doesn't give the keys typed into them to normal-rights programs either, so without the index service double Ctrl (Alt, Shift) does nothing while such a window is in front; a shortcut with Ctrl, Alt, Shift or Win (`Alt+Space`, say) still works. With the index service installed this doesn't happen (the service's helper hears the keys), nor when WinShun itself runs as administrator (Direct). The first time such a program stays in front for a moment, WinShun says why in one notification: it names your shortcut if you set one, and where a portable copy (Scoop's too) can install the index service, a click opens Settings › Search scope › Drives › Index access, with the install button just below. Each program is mentioned once, three at most, and one per run.
 - **What you open is not elevated**: files and apps you open from WinShun run with your normal rights; only `Ctrl+Shift+Enter` runs one as administrator. For programs you mostly run as administrator (a terminal, say), turn on "Remember “Run as administrator”" in the settings (off by default): once run that way, the program runs as administrator on `Enter` from then on and its row says Admin; right-click it and choose "Run with normal rights" to change it back.
 
 </details>
@@ -562,7 +562,7 @@ WinShun builds its own index, so Everything is not needed. File names, pinyin, a
 <details>
 <summary><b>Ctrl twice clashes with another program?</b></summary>
 
-Listary and PowerToys' Find My Mouse use it too: turn it off on one side, let WinShun use Alt or Shift twice instead, or count only the left or the right key (Settings › Open WinShun › Key to press twice / Which side), or give WinShun another shortcut. (An input method that switches language with Shift switches twice on a double Shift, so it ends where it began.) Full-screen games and games that hide the mouse are ignored by default.
+Listary and PowerToys' Find My Mouse use it too: turn it off on one side, let WinShun use Alt or Shift twice instead, or count only the left or the right key (Settings › Shortcuts › Open WinShun › Key to press twice / Which side), or give WinShun another shortcut. (An input method that switches language with Shift switches twice on a double Shift, so it ends where it began.) Full-screen games and games that hide the mouse are ignored by default.
 
 </details>
 
@@ -577,14 +577,14 @@ With “Direct (administrator)” chosen, WinShun runs as administrator, and Win
 <summary><b>How much memory? Can the index leave drive C?</b></summary>
 
 - **Memory**: mostly the file index while in use, about 30 MB per million files; on a PC with three million files the whole app uses about 150–230 MB while searching. About 20 seconds after the search box closes, WinShun gives what it no longer needs back to Windows, and Task Manager shows a few MB. **Settings › Health** shows where it goes.
-- **Index location**: the index can move to another built-in drive under **Settings › Advanced › Index location**.
+- **Index location**: the index can move to another built-in drive under **Settings › General › Index location**.
 
 </details>
 
 <details>
 <summary><b>Indexing is slow, or something is wrong?</b></summary>
 
-Under **Settings › Advanced › Diagnostic logs**, click “Export diagnostic logs” and attach the `WinShun-diagnostics.zip` from the folder that opens to a GitHub issue. It holds the version, system, disks, indexing progress and errors, the installed plugins' versions and the tail of the plugin log, not your settings, clipboard, search history or document text.
+Under **Settings › General › Diagnostic logs**, click “Export diagnostic logs” and attach the `WinShun-diagnostics.zip` from the folder that opens to a GitHub issue. It holds the version, system, disks, indexing progress and errors, the installed plugins' versions and the tail of the plugin log, not your settings, clipboard, search history or document text.
 
 </details>
 
@@ -594,7 +594,7 @@ Under **Settings › Advanced › Diagnostic logs**, click “Export diagnostic 
 Free and MIT-licensed. Your files and index are never uploaded; the index and history stay on your PC (`%LOCALAPPDATA%\WinShun`). It goes online only:
 
 - **to check for new versions** at lcstp.com, sending only the Windows version and the kind of install, nothing personal (you can turn it off);
-- **for anonymous usage statistics**: at most once a day it tells lcstp.com that this PC uses WinShun, to count the users. It sends a one-way hash of the computer's ID (it cannot be reversed or matched with the author's other apps), the version and the Windows version (Settings › Advanced › Send anonymous statistics; you can turn it off). The 拾穗计划 (Gleaning) page fetches each work's number of users from lcstp.com when it opens;
+- **for anonymous usage statistics**: at most once a day it tells lcstp.com that this PC uses WinShun, to count the users. It sends a one-way hash of the computer's ID (it cannot be reversed or matched with the author's other apps), the version and the Windows version (Settings › General › Send anonymous statistics; you can turn it off). The 拾穗计划 (Gleaning) page fetches each work's number of users from lcstp.com when it opens;
 - **to download an update** when you click “Download and install”, through third-party mirrors or GitHub, checked against its SHA-256;
 - **for site icons**: once, the first time a web search site or bookmark is shown;
 - **for the plugin library**: when you open its page in the settings, press Refresh or install a plugin, and once a day to check installed plugins for updates while Automatic updates is on (you can turn it off). After an upgrade, plugins you had on that no longer come with WinShun (Screenshot and recording, Translate and others) are fetched from it once;

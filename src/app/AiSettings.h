@@ -129,7 +129,7 @@ struct Entry {
 struct Section {
     QString id;
     const char* title; // Chinese, translated
-    int page; // of the settings window (SettingsWindow.qml's pages)
+    QString page; // the settings window's page, by its id (SettingsWindow.qml's pages)
 
     QString titleText() const; // translated
 };

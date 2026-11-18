@@ -8,7 +8,7 @@
 #include <system_error>
 #include <vector>
 
-// The folder the index service keeps its files in (设置 → 高级 → 索引位置):
+// The folder the index service keeps its files in (设置 → 常规 → 索引位置):
 // the snapshot, index.bin, the scope it was saved with, scope.json (GitHub
 // #52: which disks hold chosen folders only, and how each folder stood),
 // and the content index's segments, content\*.grams, and documents' texts,

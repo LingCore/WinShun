@@ -403,7 +403,7 @@ private:
             break;
         case Phase::NoContentIndex:
             items.push_back(Item("status", zh("要先打开文件内容搜索", "Turn on file content search first"),
-                zh("按意思找用的是 Win顺 已经读出来的文档文字：设置 → 文件内容搜索", "It uses the text Win顺 already read out of documents: Settings → File content search"))
+                zh("按意思找用的是 Win顺 已经读出来的文档文字：设置 → 搜索范围 → 文件内容", "It uses the text Win顺 already read out of documents: Settings → Search scope → File contents"))
                     .withIcon(icon).invalid());
             break;
         case Phase::WaitingForYes: {

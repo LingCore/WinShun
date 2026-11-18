@@ -22,52 +22,57 @@ Window {
     readonly property var languages: ["system", "zh", "en"]
     readonly property var transparencies: ["off", "on"]
     readonly property var dialogBarPlaces: ["auto", "below", "left", "right"]
+    // The categories, in the order listed. Each one's place is its index
+    // (generalPage …); its id names it where a number would go stale as the
+    // order changes (Shortcuts' 去设置, AiSettings, --settings-at: pageIndex).
+    // `group`: the first of a group, set a little apart from the one above.
     readonly property var pages: [
-        { title: qsTr("打开 Win顺"), glyph: "" }, // Keyboard
-        { title: qsTr("外观"), glyph: "\uE771" }, // Personalize
-        { title: qsTr("搜索范围"), glyph: "" }, // Folder
-        { title: qsTr("结果列表"), glyph: "\uE8FD" }, // BulletedList
-        { title: qsTr("文件内容搜索"), glyph: "" }, // Document
-        { title: qsTr("收藏夹"), glyph: "\uE734" }, // FavoriteStar
-        { title: qsTr("剪贴板"), glyph: "\uE77F" }, // Paste
-        { title: qsTr("高级"), glyph: "" }, // Settings
-        { title: qsTr("AI 助手"), glyph: "" }, // Robot
-        { title: qsTr("插件"), glyph: "" }, // Puzzle
-        { title: qsTr("运行状况"), glyph: "\uE9D9" }, // Diagnostic: pulse
-        { title: Gleaning.title, gleaning: true } // the author's works, set apart at the bottom of the list
+        { id: "general", title: qsTr("常规"), glyph: "" }, // Settings
+        { id: "keys", title: qsTr("快捷键", "settings page"), glyph: "" }, // Keyboard
+        { id: "appearance", title: qsTr("外观"), glyph: "\uE771" }, // Personalize
+        { id: "scope", title: qsTr("搜索范围"), glyph: "", group: true }, // Folder
+        { id: "results", title: qsTr("结果列表"), glyph: "\uE8FD" }, // BulletedList
+        { id: "integration", title: qsTr("系统整合"), glyph: "ph:app-window", group: true }, // the taskbar, file managers, file dialogs
+        { id: "favorites", title: qsTr("收藏夹"), glyph: "\uE734" }, // FavoriteStar
+        { id: "clipboard", title: qsTr("剪贴板"), glyph: "\uE77F" }, // Paste
+        { id: "plugins", title: qsTr("插件"), glyph: "" }, // Puzzle
+        { id: "ai", title: qsTr("AI 助手"), glyph: "" }, // Robot
+        { id: "health", title: qsTr("运行状况"), glyph: "\uE9D9", group: true }, // Diagnostic: pulse
+        { id: "gleaning", title: Gleaning.title, gleaning: true } // the author's works, set apart at the bottom of the list
     ]
     // Other names of each page, for the search; ";" between them. A word
     // here brings up the whole page, so never one of its options' words.
     readonly property var pageKeywords: [
-        qsTr("唤出;呼出;打开方式"),
+        qsTr("通用;基本;关于;其他;更多;高级;general;advanced;about"),
+        qsTr("热键;唤出;呼出;打开方式;hotkey;keyboard"),
         qsTr("皮肤;颜色;界面;appearance"),
         qsTr("搜索位置;磁盘;scope"),
         qsTr("搜索结果;结果;列表;results"),
-        qsTr("全文搜索;全文;文字;content"),
+        qsTr("集成;系统;integration"),
         qsTr("快捷访问;常去;quick access"),
         qsTr("剪切板;粘贴板;复制;粘贴;clipboard"),
-        qsTr("其他;更多;advanced"),
-        qsTr("MCP;人工智能;大模型;Claude;Cursor;ai"),
         qsTr("扩展;脚本;PowerShell;Python;内置功能;模块;网页搜索;搜索引擎;网址;web;plugin;extension;module"),
+        qsTr("MCP;人工智能;大模型;Claude;Cursor;ai"),
         qsTr("资源;性能;走势;图表;进程;health;performance"),
         ""
     ]
     // The tabs of the pages too long for one screen, each a few sections
     // (SettingsSection.tab); [] for a page without tabs.
     readonly property var pageTabs: [
-        [qsTr("快捷键", "settings tab"), qsTr("任务栏"), qsTr("对话框"), qsTr("启动与历史"), qsTr("按键一览")],
         [],
-        [qsTr("文件夹"), qsTr("名称和类型"), qsTr("磁盘"), qsTr("网络与 WSL")],
+        [qsTr("打开 Win顺", "settings tab"), qsTr("按键一览")],
+        [],
+        [qsTr("文件夹"), qsTr("名称和类型"), qsTr("磁盘"), qsTr("网络与 WSL"), qsTr("文件内容")],
         [qsTr("排序"), qsTr("显示与预览"), qsTr("操作习惯"), qsTr("类型与筛选")],
-        window.editor.contentSearch ? [qsTr("常规"), qsTr("大小上限")] : [], // 大小上限: nothing while off
+        [qsTr("任务栏"), qsTr("文件管理器"), qsTr("对话框")],
         [],
         [qsTr("记录"), qsTr("快捷键", "settings tab"), qsTr("保留")],
-        [],
-        window.editor.mcp ? [qsTr("权限"), qsTr("连接客户端"), qsTr("隐私与记录")] : [], // the others: nothing while off
         window.editor.plugins.developerMode ? [qsTr("已安装"), qsTr("插件库"), qsTr("开发者")] : [qsTr("已安装"), qsTr("插件库")], // 开发者: in developer mode only
+        window.editor.mcp ? [qsTr("权限"), qsTr("连接客户端"), qsTr("隐私与记录")] : [], // the others: nothing while off
         [],
         []
     ]
+    readonly property int keysListTab: 1 // 快捷键 › 按键一览
     // 按键一览: every shortcut of the search box and the clipboard (Shortcuts),
     // in sections [{title, note, rows: [{keys, text, setting}]}].
     readonly property var shortcutSections: {
@@ -103,14 +108,26 @@ Window {
         }
         return sections
     }
-    readonly property int gleaningPage: 11
+    // A page by its id ("scope") or its place; -1: no such page.
+    function pageIndex(which): int {
+        if (typeof which === "number")
+            return Number.isInteger(which) && which >= 0 && which < pages.length ? which : -1
+        return pages.findIndex(page => page.id === which)
+    }
+    readonly property int generalPage: pageIndex("general") // 常规: updates, starting with Windows, backups, diagnostics; where the updates are
+    readonly property int keysPage: pageIndex("keys") // 快捷键: opening Win顺, 按键一览
+    readonly property int appearancePage: pageIndex("appearance")
+    readonly property int scopePage: pageIndex("scope") // 搜索范围, file contents too
+    readonly property int resultsPage: pageIndex("results") // 结果列表, the usage history too
+    readonly property int integrationPage: pageIndex("integration") // 系统整合: the taskbar, file managers, folder menu, file dialogs
+    readonly property int favoritesPage: pageIndex("favorites") // 收藏夹 (FavoritesSection)
+    readonly property int clipboardPage: pageIndex("clipboard")
+    readonly property int pluginsPage: pageIndex("plugins") // 插件: 已安装 (PluginsSection), 插件库 (PluginGallerySection), 开发者 (PluginDevSection)
+    readonly property int aiPage: pageIndex("ai") // AI 助手: the MCP server and the command line (AiAccessSection, AiCommandLineSection, AiClientsSection, AiPrivacySection)
+    readonly property int healthPage: pageIndex("health") // 运行状况 (HealthPage)
+    readonly property int gleaningPage: pageIndex("gleaning")
+    readonly property int advancedPage: generalPage // compatibility for preview clients: where the updates are
     readonly property int webPage: pluginsPage // compatibility for preview clients
-    readonly property int favoritesPage: 5 // 收藏夹 (FavoritesSection)
-    readonly property int clipboardPage: 6
-    readonly property int advancedPage: 7 // where the updates are
-    readonly property int aiPage: 8 // AI 助手: the MCP server and the command line (AiAccessSection, AiCommandLineSection, AiClientsSection, AiPrivacySection)
-    readonly property int pluginsPage: 9 // 插件: 已安装 (PluginsSection), 插件库 (PluginGallerySection), 开发者 (PluginDevSection)
-    readonly property int healthPage: 10 // 运行状况 (HealthPage)
     readonly property string tapKey: editor.doubleTapKey === "alt" ? "Alt" : editor.doubleTapKey === "shift" ? "Shift" : "Ctrl" // the key tapped twice to open Win顺
     property int webEditing: -2
     property Item webReturnFocus: null
@@ -251,7 +268,8 @@ Window {
     // 按键一览's sections one by one; something typed makes the rest one per
     // turn (fillNow).
     property bool allPagesLoaded: false
-    readonly property list<PageSlot> pageSlots: [slot0, slot1, slot2, slot3, slot4, slot5, slot6, slot7, slot8, slot9, slot10]
+    readonly property list<PageSlot> pageSlots: [generalSlot, keysSlot, appearanceSlot, scopeSlot, resultsSlot, integrationSlot,
+        favoritesSlot, clipboardSlot, pluginsSlot, aiSlot, healthSlot] // in the order of `pages`
     // 按键一览's sections made so far (its Repeater's model, one element each).
     ListModel { id: shortcutModel }
     function makeShortcuts(count: int): void {
@@ -268,8 +286,8 @@ Window {
     // 按键一览 shown: its sections all made at once (else one at a time, filling).
     property bool shortcutsWanted: false
     onShortcutsWantedChanged: if (shortcutsWanted) makeShortcuts(shortcutSections.length)
-    onCurrentPageChanged: if (currentPage === 0 && currentTab === 4) shortcutsWanted = true
-    onCurrentTabChanged: if (currentPage === 0 && currentTab === 4) shortcutsWanted = true
+    onCurrentPageChanged: if (currentPage === keysPage && currentTab === keysListTab) shortcutsWanted = true
+    onCurrentTabChanged: if (currentPage === keysPage && currentTab === keysListTab) shortcutsWanted = true
 
     // The page if it has been made; null if not (or no such page).
     function pageItem(index: int): SettingsPage {
@@ -351,8 +369,9 @@ Window {
     }
     // Enter pressed before searchReady: done once the results are there.
     property bool activatePending: false
-    // A row or section of a page by name (SettingsPage.parts), its page made if need be.
-    function part(index, name) {
+    // A row or section of a page (its index or id) by name (SettingsPage.parts), its page made if need be.
+    function part(which, name) {
+        const index = pageIndex(which)
         const made = loadPage(index)
         const found = made ? made.parts[name] : undefined
         if (!found)
@@ -411,8 +430,13 @@ Window {
         }
     }
 
-    // To a page, on `tab` if given; else on the tab it was left on.
-    function showPage(index, tab) {
+    // To a page (its index or id), on `tab` if given; else on the tab it was left on.
+    function showPage(which, tab) {
+        const index = pageIndex(which)
+        if (index < 0) {
+            console.warn("settings: no page", which)
+            return
+        }
         if (index !== gleaningPage)
             loadPage(index) // made now if it is not yet: in this frame, not after it
         if (searching) {
@@ -662,40 +686,43 @@ Window {
     function showUpdateDialog() { updateDialog.show() } // App::showUpdate
     function showClipboardPage() { showPage(clipboardPage) } // App::showClipboardSettings
     function showWebPage() { showPluginPage("winshun.web") } // App::showWebSettings
-    function showShortcutsPage() { showPage(0, 4) } // App::showShortcutSettings: the shortcut panels' last row
+    function showShortcutsPage() { showPage(keysPage, keysListTab) } // App::showShortcutSettings: the shortcut panels' last row
     // App::showQuickFilterSettings: the + of the search panel's quick filters, what was typed there as a new one's query
     function showQuickFiltersPage(draft) {
-        const section = part(3, "quickFiltersSection")
+        const section = part(resultsPage, "quickFiltersSection")
         section.draft(draft)
         goTo(section.filtersRow)
     }
-    function showFileTypesPage() { goTo(part(3, "fileTypesSection").typesRow) } // App::showFileTypeSettings: the launcher strip's +
+    function showFileTypesPage() { goTo(part(resultsPage, "fileTypesSection").typesRow) } // App::showFileTypeSettings: the launcher strip's +
     // Win顺 restarted from here (App::restart, --settings-at): back where it
-    // was, "page,tab"; after 索引方式 changed the rights it runs with, that row.
-    function place() { return currentPage + "," + currentTab }
+    // was, "page,tab" (the page by its id; a number too, as older versions
+    // wrote it); after 索引方式 changed the rights it runs with, that row.
+    function place() { return pages[currentPage].id + "," + currentTab }
     function showPlace(where) {
         if (where === "indexAccess") {
-            goTo(part(2, "indexAccessRow"))
+            goTo(part(scopePage, "indexAccessRow"))
             return
         }
         if (where === "indexService") { // the portable copy's install button (App::adminTapCheck)
-            const service = part(2, "indexServiceRow")
-            const row = service && service.shown ? service : part(2, "indexAccessRow")
+            const service = part(scopePage, "indexServiceRow")
+            const row = service && service.shown ? service : part(scopePage, "indexAccessRow")
             goTo(row)
             // Opened just now, the page is not laid out to its full height
             // yet: scrolled there once more after a frame.
             scrollAfterFrame = row
             return
         }
-        const at = String(where).split(",").map(Number)
-        if (at.length === 2 && at.every(Number.isInteger) && at[0] >= 0 && at[0] < pageTabs.length)
-            showPage(at[0], at[1])
+        const at = String(where).split(",")
+        const index = pageIndex(/^\d+$/.test(at[0]) ? Number(at[0]) : at[0])
+        if (at.length === 2 && index >= 0 && /^\d+$/.test(at[1]))
+            showPage(index, Number(at[1]))
     }
     // open_settings (App::openAiSettings): that page and tab, then the row
     // whose title is given, found with the search box and gone to (its page,
     // the row in view and flashed). No row by that title: the page it is.
-    function showSetting(page, tab, title) {
-        showPage(page, tab >= 0 ? tab : undefined)
+    function showSetting(page, tab, title) { // page: its index or id; none (""): the page on show
+        if (pageIndex(page) >= 0)
+            showPage(page, tab >= 0 ? tab : undefined)
         if (!title)
             return
         loadAllPages() // searchReady now: the row is looked up right after
@@ -750,7 +777,7 @@ Window {
             window.scrollToRow(row)
         }
     }
-    // The capture's card, unfolded at its hotkeys (常规's 截图的快捷键 row); its library entry when it is not installed.
+    // The capture's card, unfolded at its hotkeys (快捷键 › 打开 Win顺's 截图的快捷键 row); its library entry when it is not installed.
     function showCaptureCard() {
         showPluginPage("winshun.capture")
     }
@@ -784,8 +811,8 @@ Window {
                 const pluginsSection = window.part(window.pluginsPage, "pluginsSection")
                 for (const url of urls)
                     pluginsSection.plugins.install(String(url))
-            } else if (window.currentPage === 2 && window.currentTab === 0) {
-                const foldersRow = window.part(2, "foldersRow")
+            } else if (window.currentPage === window.scopePage && window.currentTab === 0) {
+                const foldersRow = window.part(window.scopePage, "foldersRow")
                 let problem = ""
                 let networkPath = ""
                 for (const url of urls) {
@@ -820,7 +847,7 @@ Window {
     }
 
     function navItemAt(index) {
-        return index === gleaningPage ? gleaningNav : navItems.itemAt(index)
+        return index === gleaningPage ? gleaningNav : navItems.itemAt(index)?.item ?? null
     }
 
     // Theme and language change everything at once; the old look fades out
@@ -862,7 +889,8 @@ Window {
     Binding { // suspends the global hotkey and hands the recorder the keyboard (see ShortcutCapture)
         target: window.editor
         property: "recordingHotkey"
-        value: (slot0.item?.recordingHotkey ?? false) || (slot3.item?.recordingHotkey ?? false) || (slot6.item?.recordingHotkey ?? false)
+        value: (keysSlot.item?.recordingHotkey ?? false) || (resultsSlot.item?.recordingHotkey ?? false)
+               || (integrationSlot.item?.recordingHotkey ?? false) || (clipboardSlot.item?.recordingHotkey ?? false)
                || window.editor.plugins.recordingHotkey
     }
     Binding { // the plugin cards read their processes' memory only while on show
@@ -1105,12 +1133,30 @@ Window {
                     Repeater {
                         id: navItems
                         model: window.pages.slice(0, window.gleaningPage)
-                        delegate: NavItem {}
+                        // The first of a group (pages' `group`) a little apart from the one above.
+                        delegate: Item {
+                            id: navSlot
+
+                            required property int index
+                            required property var modelData
+                            readonly property alias item: slotItem
+
+                            width: navList.width
+                            // All twelve fit the window's first height (720) unscrolled, gaps included.
+                            height: slotItem.height + (modelData.group === true ? 6 : 0)
+
+                            NavItem {
+                                id: slotItem
+                                anchors.bottom: parent.bottom
+                                index: navSlot.index
+                                modelData: navSlot.modelData
+                            }
+                        }
                     }
 
-                    Item { // sets 拾穗计划 apart from the settings
+                    Item { // sets 拾穗计划 apart from the settings, a little more than a group
                         width: 1
-                        height: 12
+                        height: 8
                     }
 
                     NavItem {
@@ -1164,7 +1210,7 @@ Window {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     window.clearFocus()
-                    window.showPage(window.advancedPage)
+                    window.showPage(window.generalPage)
                 }
             }
         }
@@ -1428,25 +1474,425 @@ Window {
             }
 
             PageSlot {
-                id: slot0
-                index: 0
+                id: generalSlot
+                index: window.generalPage
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ explorerTypingRow: explorerTypingRow, folderMenuRow: folderMenuRow, dialogBarRow: dialogBarRow })
-                    recordingHotkey: hotkeyRecorder.recording || panelHotkeyRecorder.recording || folderMenuHotkeyRecorder.recording
+                    parts: ({ proxyRow: proxyRow })
+                    onResetForReopen: resetButton.confirming = false
+            // <page general>
+            SettingsSection {
+                page: window.generalPage
+                width: parent.width
+                title: qsTr("更新")
+                glyph: "\uE895"
+                note: qsTr("检查 Win顺 更新访问 lcstp.com，只发送 Windows 版本和安装方式；检查插件更新从 GitHub 或镜像下载插件库列表。匿名统计每天最多一次，只发送电脑标识的单向哈希（不能还原）、版本号和 Windows 版本，用来统计用户数。不发送文件、剪贴板或任何个人信息。")
+
+                SettingRow {
+                    title: qsTr("版本 %1").arg(window.updater.currentVersion)
+                    keywords: qsTr("升级;新版本;version;update").split(";")
+                    description: window.updater.checking ? qsTr("正在检查更新…")
+                               : window.updater.available ? qsTr("有新版本 %1").arg(window.updater.availableVersion)
+                               : window.updater.problem.length > 0 ? window.updater.problem
+                               : !isNaN(window.updater.lastChecked.getTime())
+                                 ? qsTr("已是最新版本 · %1检查").arg(window.sinceText(window.updater.lastChecked))
+                               : ""
+
+                    FlatButton {
+                        dpr: window.dpr
+                        visible: !window.updater.available
+                        enabled: !window.updater.checking
+                        text: qsTr("检查更新")
+                        glyph: "\uE895" // Sync
+                        onClicked: window.updater.check(true)
+                    }
+                    FlatButton {
+                        dpr: window.dpr
+                        visible: window.updater.available
+                        highlighted: true
+                        text: qsTr("查看 %1").arg(window.updater.availableVersion)
+                        onClicked: window.showUpdateDialog()
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("自动更新")
+                    keywords: qsTr("升级;新版本;插件;update;plugin").split(";")
+                    description: qsTr("启动后和每隔 10 分钟检查 Win顺 新版本，在托盘提示；插件每天检查一次，不要新权限的更新自动安装")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.autoUpdate
+                        onToggled: (on) => window.editor.autoUpdate = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("发送匿名统计")
+                    keywords: qsTr("统计;用户数;隐私;联网;usage;statistics;privacy;telemetry").split(";")
+                    description: qsTr("每天最多一次告诉 lcstp.com 这台电脑在用 Win顺，用来统计用户数")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.usageReport
+                        onToggled: (on) => window.editor.usageReport = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.generalPage
+                width: parent.width
+                title: qsTr("开机启动")
+                glyph: "\uE7E8"
+
+                SettingRow {
+                    title: qsTr("开机时自动启动")
+                    keywords: qsTr("自启;开机启动;启动;autostart;startup").split(";")
+                    description: qsTr("登录 Windows 后在后台运行")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.autostart
+                        onToggled: (on) => window.editor.autostart = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.generalPage
+                width: parent.width
+                title: qsTr("备份")
+                glyph: "\uE8F1"
+                note: qsTr("备份设置、收藏夹和添加的插件，不含索引和历史记录。选同步盘里的文件夹（OneDrive、坚果云，或用 alist、RaiDrive 挂载的 WebDAV 盘），备份就跟着同步到云上。")
+
+                SettingRow {
+                    objectName: "backupExportRow"
+                    title: qsTr("导出设置")
+                    keywords: qsTr("备份;导出;迁移;换电脑;ZIP;backup;export;transfer").split(";")
+                    description: qsTr("导出一份 ZIP，带到新电脑后从备份恢复；不用开启自动备份。文件夹路径按原样保留，插件密码需重新填写。")
+                    bodyShown: window.backup.busy || window.backup.problem.length > 0 || window.backup.message.length > 0
+
+                    FlatButton {
+                        dpr: window.dpr
+                        objectName: "backupExportButton"
+                        enabled: !window.backup.busy
+                        text: qsTr("导出备份…")
+                        onClicked: window.backup.exportBackup(window)
+                    }
+                    body: Text {
+                        objectName: "backupOperationStatus"
+                        width: parent.width
+                        text: window.backup.busy ? qsTr("正在处理备份…")
+                            : window.backup.problem.length > 0 ? qsTr("备份操作失败：%1").arg(window.backup.problem)
+                            : window.backup.message
+                        textFormat: Text.PlainText
+                        color: Theme.subtext
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                SettingRow {
+                    id: backupRow
+
+                    readonly property bool on: window.editor.backupFolder.length > 0
+
+                    title: qsTr("自动备份设置")
+                    keywords: qsTr("备份;同步;云;WebDAV;坚果云;OneDrive;网盘;导出;backup;sync").split(";")
+                    description: !on ? qsTr("设置有变化时自动备份到你选的文件夹，保留最近 10 份")
+                               : (window.backup.busy ? qsTr("正在备份…")
+                                  : window.backup.problem.length > 0 ? qsTr("没有备份成功：%1").arg(window.backup.problem)
+                                  : !isNaN(window.backup.last.getTime()) ? qsTr("上次备份：%1").arg(window.sinceText(window.backup.last))
+                                  : qsTr("还没有备份"))
+                                 + "\n" + window.editor.backupFolder
+
+                    FlatButton {
+                        dpr: window.dpr
+                        visible: backupRow.on
+                        text: qsTr("打开")
+                        glyph: "" // FolderOpen
+                        onClicked: window.backup.openFolder()
+                    }
+                    FlatButton {
+                        dpr: window.dpr
+                        visible: backupRow.on
+                        text: qsTr("更改")
+                        onClicked: window.editor.chooseBackupFolder()
+                    }
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: backupRow.on
+                        onToggled: (on) => {
+                            if (on)
+                                window.editor.chooseBackupFolder()
+                            else
+                                window.editor.stopBackups()
+                        }
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("恢复设置")
+                    keywords: qsTr("恢复;还原;导入;换电脑;restore;import").split(";")
+                    description: qsTr("选择 ZIP 备份，校验通过后恢复并重启；当前设置先存到本机数据文件夹的 backups 中。换机导出的备份保留本机的备份和索引位置。")
+
+                    FlatButton {
+                        dpr: window.dpr
+                        visible: window.editor.backupFolder.length > 0
+                        enabled: !window.backup.busy
+                        text: qsTr("立即备份")
+                        onClicked: window.backup.backUpNow()
+                    }
+                    FlatButton {
+                        dpr: window.dpr
+                        enabled: !window.backup.busy
+                        text: qsTr("从备份恢复…")
+                        onClicked: window.backup.restore(window)
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.generalPage
+                width: parent.width
+                title: qsTr("网络、存储与诊断")
+                glyph: "\uE713"
+
+                SettingRow {
+                    id: proxyRow
+
+                    // The address as typed and kept: its problem shows under it
+                    // while manual is chosen. The system's proxy is followed
+                    // while it is not a good one (App::applySettings).
+                    readonly property bool manual: window.editor.proxyMode === "manual"
+                    readonly property string problem: manual ? window.editor.proxyProblem(proxyBox.text) : ""
+                    readonly property var modes: ["system", "none", "manual"]
+
+                    title: qsTr("网络代理")
+                    keywords: qsTr("代理;翻墙;梯子;科学上网;Clash;v2ray;GitHub;连不上;超时;插件库;更新;网络;proxy;vpn;timeout").split(";")
+                    description: qsTr("插件库、检查更新等联网都走这里。“跟随系统”用 Windows 设置里的代理（包括自动检测和 PAC 脚本）；用代理软件时，打开它的“系统代理”就行，或者手动填地址")
+                    bodyShown: manual
+
+                    ScopeTabs {
+                        labels: [qsTr("跟随系统"), qsTr("不使用代理"), qsTr("手动")]
+                        current: Math.max(0, proxyRow.modes.indexOf(window.editor.proxyMode))
+                        onActivated: (index) => window.editor.proxyMode = proxyRow.modes[index]
+                    }
+
+                    body: [
+                        InputBox {
+                            dpr: window.dpr
+                            id: proxyBox
+                            width: Math.min(parent.width, 320)
+                            text: window.editor.proxyAddress
+                            placeholder: qsTr("代理地址，例如 %1").arg("127.0.0.1:7890")
+                            onEditingFinished: window.editor.proxyAddress = text
+                        },
+                        Text {
+                            visible: proxyRow.problem.length > 0
+                            width: parent.width
+                            text: proxyRow.problem
+                            textFormat: Text.PlainText
+                            color: Theme.danger
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        },
+                        Text {
+                            visible: proxyRow.problem.length === 0
+                            width: parent.width
+                            text: qsTr("HTTP 代理，地址写 127.0.0.1:7890 或 http://127.0.0.1:7890。改完马上生效，不用重启")
+                            color: Theme.subtext
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+                    ]
+                }
+
+                SettingRow {
+                    title: qsTr("界面绘制方式")
+                    keywords: qsTr("渲染;GPU;显卡;内存;模糊;清晰;renderer").split(";")
+                    description: window.editor.restartRequired
+                                 ? qsTr("重启 Win顺后生效")
+                                 : qsTr("“省内存”少占约 50 MB，但文字偏模糊")
+
+                    FlatButton { // sized like one of the tabs next to it
+                        dpr: window.dpr
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitHeight: 32
+                        radius: Theme.largeControlRadius
+                        visible: window.editor.restartRequired
+                        text: qsTr("立即重启")
+                        highlighted: true
+                        onClicked: window.editor.restart()
+                    }
+                    ScopeTabs {
+                        labels: [qsTr("省内存"), qsTr("显卡加速")]
+                        current: Math.max(0, window.renderers.indexOf(window.editor.renderer))
+                        onActivated: (index) => window.editor.renderer = window.renderers[index]
+                    }
+                }
+
+                SettingRow {
+                    id: indexFolderRow
+
+                    readonly property bool moving: window.editor.indexMoveProgress >= 0
+
+                    title: qsTr("索引位置")
+                    keywords: qsTr("移动索引;磁盘空间;C盘;D盘;index").split(";")
+                    description: (window.editor.indexSize.length > 0
+                                  ? qsTr("文件索引和内容索引，共 %1；可以移到其他内置硬盘").arg(window.editor.indexSize)
+                                  : qsTr("文件索引和内容索引；可以移到其他内置硬盘"))
+                                 + "\n" + window.editor.indexFolder
+                    bodyShown: moving || window.editor.indexFolderProblem.length > 0 || window.editor.indexFolderNote.length > 0
+
+                    FlatButton {
+                        dpr: window.dpr
+                        text: qsTr("打开")
+                        glyph: "" // FolderOpen
+                        enabled: !indexFolderRow.moving
+                        onClicked: window.editor.openIndexFolder()
+                    }
+                    FlatButton {
+                        dpr: window.dpr
+                        text: qsTr("更改")
+                        glyph: "" // MoveToFolder
+                        enabled: !indexFolderRow.moving
+                        onClicked: window.editor.chooseIndexFolder()
+                    }
+                    FlatButton {
+                        dpr: window.dpr
+                        visible: !window.editor.indexFolderIsDefault
+                        text: qsTr("恢复默认")
+                        enabled: !indexFolderRow.moving
+                        onClicked: window.editor.resetIndexFolder()
+                    }
+
+                    body: [
+                        Column {
+                            visible: indexFolderRow.moving
+                            width: parent.width
+                            spacing: 6
+
+                            Text {
+                                text: qsTr("正在移动… %1%，期间可以照常搜索").arg(Math.max(0, window.editor.indexMoveProgress))
+                                color: Theme.subtext
+                                font.pixelSize: Theme.fontCaption
+                            }
+                            Rectangle { // how far
+                                width: parent.width
+                                height: 4
+                                radius: Theme.progressRadius
+                                color: Theme.track
+
+                                Rectangle {
+                                    width: parent.width * Math.max(0, window.editor.indexMoveProgress) / 100
+                                    height: parent.height
+                                    radius: Theme.progressRadius
+                                    color: Theme.accent
+
+                                    Behavior on width { NumberAnimation { duration: 150 } }
+                                }
+                            }
+                        },
+                        Text {
+                            visible: !indexFolderRow.moving && window.editor.indexFolderProblem.length > 0
+                            width: parent.width
+                            text: window.editor.indexFolderProblem
+                            textFormat: Text.PlainText
+                            color: Theme.danger
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        },
+                        Text { // a hint, not a warning
+                            visible: !indexFolderRow.moving && window.editor.indexFolderNote.length > 0
+                            width: parent.width
+                            text: window.editor.indexFolderNote
+                            textFormat: Text.PlainText
+                            color: Theme.subtext
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+                    ]
+                }
+
+                SettingRow {
+                    title: qsTr("数据文件夹")
+                    keywords: qsTr("日志;记录;log;AppData").split(";")
+                    description: qsTr("搜索记录、剪贴板历史和日志") + "\n" + window.editor.dataFolder
+
+                    FlatButton {
+                        dpr: window.dpr
+                        text: qsTr("打开")
+                        glyph: "" // FolderOpen
+                        onClicked: window.editor.openDataFolder()
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("诊断日志")
+                    keywords: qsTr("诊断;日志;索引慢;排查;反馈;显示;字体;错字;乱码;截图;光标;指针;卡顿;diagnostics;log;capture;cursor").split(";")
+                    description: qsTr("导出后会打开文件夹，把 WinShun-diagnostics.zip 发给开发者即可。包含索引耗时和错误、截图的耗时和卡顿、鼠标指针设置、界面显示和字体的状态，可能含文件路径；不含设置、剪贴板或文档正文。界面显示不对时先导出再重启，重启后就查不到了。诊断记录最多 3 MB，过期自动清理；诊断包只保留一份")
+                                 + (window.editor.diagnosticsStatus.length > 0 ? "\n" + window.editor.diagnosticsStatus : "")
+
+                    FlatButton {
+                        dpr: window.dpr
+                        text: window.editor.diagnosticsBusy ? qsTr("正在导出…") : qsTr("导出诊断日志")
+                        enabled: !window.editor.diagnosticsBusy
+                        glyph: ""
+                        onClicked: window.editor.exportDiagnostics()
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("恢复默认设置")
+                    keywords: qsTr("重置;默认;reset").split(";")
+                    description: qsTr("所有设置回到刚安装时的样子")
+
+                    FlatButton {
+                        dpr: window.dpr
+                        id: resetButton
+
+                        property bool confirming: false
+
+                        text: confirming ? qsTr("确定要恢复吗？再点一次") : qsTr("恢复默认")
+                        enabled: !window.editor.isDefault
+                        onClicked: {
+                            if (confirming) {
+                                window.editor.restoreDefaults()
+                                confirming = false
+                            } else {
+                                confirming = true
+                                resetTimer.restart()
+                            }
+                        }
+
+                        Timer {
+                            id: resetTimer
+                            interval: 4000
+                            onTriggered: resetButton.confirming = false
+                        }
+                    }
+                }
+            }
+            // </page general>
+                } }
+            }
+
+            PageSlot {
+                id: keysSlot
+                index: window.keysPage
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    recordingHotkey: hotkeyRecorder.recording || panelHotkeyRecorder.recording
                     onResetForReopen: {
                         hotkeyRecorder.stop()
                         panelHotkeyRecorder.stop()
-                        folderMenuHotkeyRecorder.stop()
                         doubleCtrlAppInput.clear()
-                        taskbarButtonRow.chosen = -1
-                        opusMenuRow.confirming = false
-                        opusMenuRow.copied = false
-                        clearHistoryButton.confirming = false
                     }
-            // <page 0>
+            // <page keys>
             SettingsSection {
-                page: 0
+                page: window.keysPage
                 tab: 0
                 width: parent.width
                 title: qsTr("双击修饰键呼出")
@@ -1629,7 +2075,7 @@ Window {
             }
 
             SettingsSection {
-                page: 0
+                page: window.keysPage
                 tab: 0
                 width: parent.width
                 title: qsTr("全局组合键与连按行为")
@@ -1726,9 +2172,2410 @@ Window {
                 }
             }
 
+            Repeater { // 按键一览: the shortcuts, a section for each group of them
+                // Not made with the page: some 70 rows, a section at a time after the
+                // pages (fillStep), or all at once when that tab is shown (shortcutsWanted).
+                model: shortcutModel
+
+                delegate: SettingsSection {
+                    id: shortcutSection
+
+                    required property int index
+                    readonly property var group: window.shortcutSections[index] ?? null
+
+                    page: window.keysPage
+                    tab: 1
+                    width: parent.width
+                    title: group?.title ?? ""
+                    note: index === 0 ? qsTr("所有快捷键都在这里；带“去设置”的可以自己改。") : ""
+
+                    Repeater {
+                        model: shortcutSection.group?.rows ?? []
+
+                        delegate: SettingRow {
+                            id: shortcutRow
+
+                            required property var modelData
+
+                            title: modelData?.text ?? ""
+                            keywords: [modelData?.keys ?? ""]
+                            values: [modelData?.keys ?? ""]
+
+                            Item { // the keys, as a key cap
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: (shortcutRow.modelData?.keys.length ?? 0) > 0
+                                implicitWidth: capText.implicitWidth + 14
+                                implicitHeight: Theme.keycapHeight + 4
+
+                                Hook { // the style's key cap (Theme.keyHint): it only tells
+                                    id: capPart
+                                    anchors.fill: parent
+                                    part: Theme.keyHint
+                                    dpr: window.dpr
+                                }
+                                Text {
+                                    id: capText
+                                    anchors.centerIn: parent
+                                    anchors.verticalCenterOffset: capPart.out("contentOffsetY", 0)
+                                    text: shortcutRow.modelData?.keys ?? ""
+                                    color: capPart.out("foreground", Theme.subtext)
+                                    font.pixelSize: Theme.fontCaption
+                                }
+                            }
+                            Text { // nothing to press: off, or not set yet
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: shortcutRow.modelData?.keys.length === 0
+                                text: qsTr("未设置")
+                                color: Theme.faint
+                                font.pixelSize: Theme.fontCaption
+                            }
+                            FlatButton {
+                                dpr: window.dpr
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: (shortcutRow.modelData?.setting ?? null) !== null
+                                text: qsTr("去设置")
+                                onClicked: window.showSetting(shortcutRow.modelData.setting.page, shortcutRow.modelData.setting.tab)
+                            }
+                        }
+                    }
+                }
+            }
+            // </page keys>
+                } }
+            }
+
+            PageSlot {
+                id: appearanceSlot
+                index: window.appearancePage
+                content: Component { SettingsPage {
+                    host: settingsContext
+            // <page appearance>
             SettingsSection {
-                page: 0
+                page: window.appearancePage
+                width: parent.width
+                title: qsTr("主题与窗口质感")
+                glyph: "\uE790"
+
+                SettingRow {
+                    title: qsTr("主题")
+                    keywords: qsTr("跟随系统;浅色;深色;暗色;暗黑;夜间;黑色;白色;dark;light").split(";")
+                    description: qsTr("“跟随系统”时随 Windows 的浅色、深色模式切换")
+
+                    body: Row {
+                        id: themeCards
+
+                        readonly property var modes: ["system", "light", "dark"]
+                        readonly property var labels: [qsTr("跟随系统"), qsTr("浅色"), qsTr("深色")]
+
+                        width: parent.width
+                        spacing: 14
+
+                        Repeater {
+                            id: themeRepeater
+                            model: themeCards.modes
+
+                            delegate: ThemeCard {
+                                required property int index
+                                required property string modelData
+
+                                width: Math.min(196, (themeCards.width - themeCards.spacing * 2) / 3)
+                                mode: modelData
+                                label: themeCards.labels[index]
+                                selected: window.editor.theme === modelData
+                                onActivated: if (!selected) window.changeAppearance(() => window.editor.theme = modelData)
+                                Keys.onLeftPressed: themeRepeater.itemAt(Math.max(0, index - 1)).forceActiveFocus()
+                                Keys.onRightPressed: themeRepeater.itemAt(Math.min(2, index + 1)).forceActiveFocus()
+                            }
+                        }
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("界面风格")
+                    keywords: qsTr("风格;外观;样式;皮肤;精修原生;品牌色彩;轻拟物;拟物;质感;液态玻璃;玻璃;Fluent;Liquid Glass;style;skin;look").split(";")
+                    description: qsTr("所有窗口的样子；浅色、深色仍按上面的主题")
+
+                    body: Flow {
+                        id: styleCards
+
+                        readonly property var styles: ["fluent", "brand", "tactile", "liquid"]
+                        readonly property var labels: [qsTr("精修原生"), qsTr("品牌色彩"), qsTr("轻拟物质感"), qsTr("液态玻璃")]
+                        readonly property int columns: width >= 586 ? 4 : 2
+
+                        width: parent.width
+                        spacing: 14
+
+                        Repeater {
+                            id: styleRepeater
+                            model: styleCards.styles
+
+                            delegate: ThemeCard {
+                                required property int index
+                                required property string modelData
+
+                                objectName: "styleCard_" + modelData
+                                width: Math.min(196, (styleCards.width - styleCards.spacing * (styleCards.columns - 1)) / styleCards.columns)
+                                look: Theme.lookFor(modelData)
+                                label: styleCards.labels[index]
+                                selected: window.editor.uiStyle === modelData
+                                onActivated: if (!selected) window.changeAppearance(() => window.editor.uiStyle = modelData)
+                                Keys.onLeftPressed: styleRepeater.itemAt(Math.max(0, index - 1)).forceActiveFocus()
+                                Keys.onRightPressed: styleRepeater.itemAt(Math.min(styleCards.styles.length - 1, index + 1)).forceActiveFocus()
+                                Keys.onUpPressed: styleRepeater.itemAt(Math.max(0, index - styleCards.columns)).forceActiveFocus()
+                                Keys.onDownPressed: styleRepeater.itemAt(Math.min(styleCards.styles.length - 1, index + styleCards.columns)).forceActiveFocus()
+                            }
+                        }
+                    }
+                }
+
+                SettingRow {
+                    id: transparencyRow
+                    shown: SystemTheme.backdropSystem // not on Windows 10
+                    title: qsTr("透明效果")
+                    unlocks: [glassTransparencyRow, glassClarityRow]
+                    keywords: qsTr("云母;Mica;毛玻璃;亚克力;半透明;壁纸;transparency").split(";")
+                    description: !Theme.backdropCapable
+                                 ? qsTr("当前界面风格的窗口不透明；可切换到精修原生、品牌色彩或液态玻璃")
+                                 : !SystemTheme.backdropAvailable
+                                 ? qsTr("需要把“常规”里的界面绘制方式设为“显卡加速”")
+                                 : !SystemTheme.materials
+                                 ? qsTr("要先打开 Windows 设置里的“透明效果”")
+                                 : Theme.style === "liquid"
+                                 ? qsTr("使用系统亚克力模糊窗口背后的内容；关闭后保留实色玻璃质感")
+                                 : qsTr("窗口背景透出桌面壁纸的颜色（云母效果）")
+
+                    ScopeTabs {
+                        enabled: SystemTheme.backdropAvailable && Theme.backdropCapable
+                        opacity: enabled ? 1 : 0.4
+                        labels: [qsTr("关"), qsTr("开")]
+                        current: Math.max(0, window.transparencies.indexOf(window.editor.transparency))
+                        onActivated: (index) => window.editor.transparency = window.transparencies[index]
+                    }
+                    FlatButton {
+                        visible: window.editor.uiStyle === "liquid" && window.editor.transparency === "on"
+                        enabled: window.editor.glassTransparency !== 50 || window.editor.glassClarity !== 50
+                        text: qsTr("恢复默认")
+                        onClicked: window.editor.resetGlassAppearance()
+                    }
+                }
+
+                SettingRow {
+                    id: glassTransparencyRow
+                    objectName: "glassTransparencyRow"
+                    sub: true
+                    shown: SystemTheme.backdropSystem && window.editor.uiStyle === "liquid" && window.editor.transparency === "on"
+                    title: qsTr("透明程度")
+                    description: qsTr("越高，窗口背后的颜色越明显；文字和按钮保持清晰")
+                    keywords: qsTr("透明度;通透;玻璃;opacity;transparency;glass").split(";")
+                    SettingSlider {
+                        objectName: "glassTransparencyControl"
+                        label: glassTransparencyRow.title
+                        enabled: SystemTheme.backdropAvailable && SystemTheme.materials
+                        value: window.editor.glassTransparency
+                        onPreviewed: (value) => window.editor.previewGlassAppearance(value, window.editor.glassClarity)
+                        onCommitted: (value) => window.editor.glassTransparency = value
+                    }
+                }
+
+                SettingRow {
+                    id: glassClarityRow
+                    objectName: "glassClarityRow"
+                    sub: true
+                    shown: glassTransparencyRow.shown
+                    title: qsTr("卡片清晰度")
+                    description: qsTr("越高，卡片和工具栏的底色越实，更容易阅读")
+                    keywords: qsTr("清晰度;卡片;玻璃;clarity;surface;glass").split(";")
+                    SettingSlider {
+                        objectName: "glassClarityControl"
+                        label: glassClarityRow.title
+                        enabled: SystemTheme.backdropAvailable && SystemTheme.materials
+                        value: window.editor.glassClarity
+                        onPreviewed: (value) => window.editor.previewGlassAppearance(window.editor.glassTransparency, value)
+                        onCommitted: (value) => window.editor.glassClarity = value
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("圆角", "appearance setting")
+                    keywords: qsTr("圆角;直角;方角;尖角;Win10;Windows 10;win10风格;经典;corner;rounded;square").split(";")
+                    description: qsTr("直角时窗口、菜单、按钮和输入框都不带圆角，和 Windows 10 一样")
+
+                    ScopeTabs {
+                        readonly property var corners: ["round", "square"]
+                        labels: [qsTr("圆角"), qsTr("直角")]
+                        current: Math.max(0, corners.indexOf(window.editor.corners))
+                        onActivated: (index) => window.editor.corners = corners[index]
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.appearancePage
+                width: parent.width
+                title: qsTr("尺寸与布局")
+                glyph: "\uE740"
+
+                SettingRow {
+                    title: qsTr("界面字体")
+                    stackControl: width < 600
+                    keywords: qsTr("字体;雅黑;普惠体;清晰;font;typeface;YaHei").split(";")
+                    values: [window.editor.uiFont]
+                    description: window.editor.uiFontAvailable
+                        ? qsTr("可在列表里查找名称，示例即时预览；重启后应用")
+                        : qsTr("此电脑未安装“%1”，暂用默认字体").arg(window.editor.uiFont)
+                    FontPicker {
+                        frame: window.frame
+                        families: window.editor.uiFonts
+                        selectedFamily: window.editor.uiFont
+                        onChosen: family => window.editor.uiFont = family
+                    }
+                    body: Item {
+                        width: parent.width
+                        height: Math.max(fontSample.implicitHeight, fontRestart.visible ? fontRestart.height : 0)
+                        Text {
+                            id: fontSample
+                            objectName: "uiFontSample"
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - (fontRestart.visible ? fontRestart.width + 16 : 0)
+                            text: qsTr("文件搜索 · 剪贴板 · 设置  WinShun 0123456789")
+                            color: Theme.text
+                            font.pixelSize: Theme.fontBody
+                            font.family: window.editor.uiFontPreview
+                            wrapMode: Text.Wrap
+                        }
+                        FlatButton {
+                            id: fontRestart
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: window.editor.fontRestartRequired
+                            text: qsTr("重启后应用")
+                            onClicked: window.editor.restart()
+                        }
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("界面大小")
+                    keywords: qsTr("缩放;大小;字号;字体大小;行高;密集;紧凑;宽松;一行;小字;scale;size;zoom;font;dense;compact").split(";")
+                    description: qsTr("搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。密集是每条结果一行的小字。剪贴板可在“剪贴板”页单独设置")
+
+                    ScopeTabs {
+                        readonly property var sizes: ["dense", "compact", "standard", "roomy"]
+                        labels: [qsTr("密集"), qsTr("紧凑"), qsTr("标准"), qsTr("宽松")]
+                        current: Math.max(0, sizes.indexOf(window.editor.uiSize))
+                        onActivated: (index) => window.editor.uiSize = sizes[index]
+                    }
+
+                    body: AppearancePreview { width: parent.width }
+                }
+
+                SettingRow {
+                    title: qsTr("搜索框宽度")
+                    keywords: qsTr("宽度;加宽;拉宽;调宽;变宽;窄;文件名太长;显示不全;width;wide").split(";")
+                    description: qsTr("可拖动搜索框左右边缘调宽，双击边缘恢复默认")
+                    tip: qsTr("文件名仍显示不全时，鼠标悬停在该行上会显示完整名称和路径")
+
+                    FlatButton {
+                        dpr: window.dpr
+                        text: qsTr("恢复默认宽度")
+                        enabled: window.editor.launcherWidthSet
+                        onClicked: window.editor.resetLauncherWidth()
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("搜索框显示行数")
+                    keywords: qsTr("行数;高度;加高;变高;结果数;条数;显示更多;rows;height;results").split(";")
+                    description: qsTr("结果超过这个行数时滚动查看，可填 4–20 行，默认 8 行；屏幕下方放不下时自动减少")
+
+                    InputBox {
+                        objectName: "maxRowsInput"
+                        dpr: window.dpr
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 80
+                        horizontalAlignment: TextInput.AlignHCenter
+                        text: String(window.editor.maxRows)
+                        Accessible.name: qsTr("搜索框显示行数")
+                        validator: IntValidator { bottom: 1; top: 20 }
+                        onEditingFinished: {
+                            const rows = parseInt(text, 10)
+                            if (rows > 0)
+                                window.editor.maxRows = rows
+                            text = Qt.binding(() => String(window.editor.maxRows))
+                        }
+                    }
+                }
+
+                SettingRow { // GitHub #365
+                    title: qsTr("弹出动画")
+                    description: qsTr("搜索框打开时从任务栏一侧轻轻升起并淡入，关闭时淡出。关掉后立即出现、立即消失")
+                    tip: qsTr("Windows 设置里关掉了“动画效果”时，始终没有动画")
+                    keywords: qsTr("动画;动效;淡入;淡出;弹出;升起;过渡;拖沓;立即显示;animation;motion;fade").split(";")
+                    ToggleSwitch {
+                        objectName: "openAnimationToggle"
+                        dpr: window.dpr
+                        checked: window.editor.openAnimation
+                        Accessible.name: qsTr("弹出动画")
+                        onToggled: (on) => window.editor.openAnimation = on
+                    }
+                }
+
+                SettingRow { // GitHub #368
+                    title: qsTr("悬停提示")
+                    description: qsTr("鼠标停在图标或按钮上时，弹出一行说明，比如类型条上各类型的扩展名。熟悉以后可以关掉，图标和功能不变")
+                    tip: qsTr("关掉后，设置里带“i”的说明照常显示；名字太长被截断时，停在行上仍会显示完整名字")
+                    keywords: qsTr("悬停;提示;气泡;工具提示;说明;遮挡;tooltip;hover;tip").split(";")
+                    ToggleSwitch {
+                        objectName: "hoverTipsToggle"
+                        dpr: window.dpr
+                        checked: window.editor.hoverTips
+                        Accessible.name: qsTr("悬停提示")
+                        onToggled: (on) => window.editor.hoverTips = on
+                    }
+                }
+
+                SettingRow { // with what the box looks like, where it is looked for (GitHub #185)
+                    title: qsTr("纯净搜索模式")
+                    description: qsTr("搜索框空着时只保留输入栏，输入后恢复结果和范围标签；右上角的搜索历史和展开按钮一直隐藏，快捷键照常可用。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响")
+                    keywords: qsTr("纯净;极简;空白;底栏;最近;收藏;pure;minimal").split(";")
+                    ToggleSwitch {
+                        objectName: "pureSearchToggle"
+                        dpr: window.dpr
+                        checked: window.editor.pureSearch
+                        Accessible.name: qsTr("纯净搜索模式")
+                        onToggled: (on) => window.editor.pureSearch = on
+                    }
+                }
+
+                SettingRow { // GitHub #321
+                    title: qsTr("搜索面板空着时列出全部文件")
+                    description: qsTr("关掉后，搜索面板里没输入文字、也没选筛选条件时不列任何文件，输入后才显示结果")
+                    keywords: qsTr("面板;完整搜索窗口;空白;默认;全部文件;不显示结果;panel;empty;everything").split(";")
+                    ToggleSwitch {
+                        objectName: "panelListsAllToggle"
+                        dpr: window.dpr
+                        checked: window.editor.panelListsAll
+                        Accessible.name: qsTr("搜索面板空着时列出全部文件")
+                        onToggled: (on) => window.editor.panelListsAll = on
+                    }
+                }
+
+                SettingRow { // GitHub #185, #244
+                    title: qsTr("范围标签")
+                    keywords: qsTr("范围;全部;文件;内容;标签;合并;三合一;按钮;极简;scope;tabs").split(";")
+                    description: qsTr("搜索框右边的“全部 / 文件 / 内容”：拆分成几个标签，或合并成一个按钮，点一下切到下一个")
+                    tip: qsTr("两种样式下 Tab / Shift+Tab 都能切换；展开的搜索面板始终拆分显示")
+
+                    ScopeTabs {
+                        objectName: "scopeButtonChoice"
+                        labels: [qsTr("拆分"), qsTr("合并")]
+                        current: window.editor.scopeButton ? 1 : 0
+                        onActivated: (index) => window.editor.scopeButton = index === 1
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.appearancePage
+                width: parent.width
+                title: qsTr("图标与语言")
+                glyph: "\uE774"
+
+                SettingRow {
+                    title: qsTr("任务栏图标")
+                    keywords: qsTr("托盘;通知区域;单色;黑白;彩色;图标;tray;icon").split(";")
+                    description: qsTr("通知区域和任务栏搜索框里的图标。单色随任务栏的浅色、深色变成黑或白，和系统图标一致")
+
+                    ScopeTabs {
+                        labels: [qsTr("彩色"), qsTr("单色")]
+                        current: window.editor.taskbarIcon === "mono" ? 1 : 0
+                        onActivated: (index) => window.editor.taskbarIcon = index === 1 ? "mono" : "color"
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("语言")
+                    keywords: qsTr("中文;英文;简体;language").split(";")
+                    description: qsTr("“跟随系统”时按 Windows 的语言显示中文或英文")
+
+                    ScopeTabs { // each language in its own words
+                        labels: [qsTr("跟随系统"), "简体中文", "English"]
+                        current: Math.max(0, window.languages.indexOf(window.editor.language))
+                        onActivated: (index) => {
+                            if (index !== current)
+                                window.changeAppearance(() => window.editor.language = window.languages[index])
+                        }
+                    }
+                }
+            }
+            // </page appearance>
+                } }
+            }
+
+            PageSlot {
+                id: scopeSlot
+                index: window.scopePage
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    parts: ({ foldersRow: foldersRow, sharesRow: sharesRow, indexAccessRow: indexAccessRow, indexServiceRow: indexServiceRow, nameInput: nameInput })
+                    onResetForReopen: {
+                        for (const field of [nameInput, typeInput, fileNameInput, shareInput, extensionInput])
+                            field.clear()
+                        foldersRow.problem = ""
+                        foldersRow.networkPath = ""
+                        sharesRow.listedServer = ""
+                        sharesRow.listedShares = []
+                        sharesRow.listProblem = ""
+                        sharesRow.listSignIn = false
+                        sharesRow.listing = false
+                        shareProblem.text = ""
+                    }
+            // <page scope>
+            SettingsSection {
+                page: window.scopePage
+                tab: 0
+                width: parent.width
+                title: qsTr("索引范围与包含目录")
+                glyph: "\uE8B7"
+                note: qsTr("修改后在后台重新整理，不影响搜索。")
+
+                SettingRow {
+                    id: indexScopeRow
+
+                    // 索引哪些地方 (GitHub #52): the chosen folders only while the
+                    // disks are walked; with the index service or 管理员直读 they
+                    // are read whole, and the third choice waits.
+                    readonly property var scopes: ["auto", "drives", "folders"]
+
+                    title: qsTr("索引哪些地方")
+                    stackControl: width - 52 - indexScopeTabs.implicitWidth < 240
+                    keywords: qsTr("索引范围;范围;整个磁盘;选中的文件夹;工作文件夹;普通用户;没有管理员权限;scope").split(";")
+                    description: {
+                        let what
+                        switch (window.editor.indexScope) {
+                        case "drives":
+                            what = qsTr("索引所有固定磁盘上的文件")
+                            break
+                        case "folders":
+                            what = qsTr("只索引下面选中的文件夹，建索引和核对都快得多")
+                            break
+                        default:
+                            what = qsTr("没有索引服务、也没有以管理员身份运行时只索引选中的文件夹，否则索引整个磁盘")
+                        }
+                        return what + "\n" + window.editor.indexScopeStatus
+                    }
+
+                    ScopeTabs {
+                        id: indexScopeTabs
+                        labels: [qsTr("自动"), qsTr("整个磁盘"), qsTr("只索引选中的文件夹")]
+                        current: Math.max(0, indexScopeRow.scopes.indexOf(window.editor.indexScope))
+                        disabled: window.editor.foldersPossible ? [] : [2]
+                        onActivated: (index) => window.editor.indexScope = indexScopeRow.scopes[index]
+                    }
+                }
+
+                SettingRow {
+                    id: foldersRow
+
+                    // Why the last one could not be added, and the network place
+                    // it was (offered for 网络共享 instead).
+                    property string problem
+                    property string networkPath
+
+                    function add(text) {
+                        const path = window.editor.localPath(text)
+                        const problem = window.editor.addFolder(path)
+                        foldersRow.problem = problem
+                        foldersRow.networkPath = problem.length > 0 && window.editor.isNetworkFolder(path) ? path : ""
+                        return problem.length === 0
+                    }
+                    function addShare(path) {
+                        const problem = window.editor.addShare(path)
+                        foldersRow.problem = problem
+                        foldersRow.networkPath = ""
+                        if (problem.length === 0)
+                            window.showPage(window.scopePage, 3) // 网络共享, where it is now
+                    }
+
+                    title: qsTr("索引的文件夹")
+                    keywords: qsTr("文件夹;添加文件夹;工作文件夹;桌面;文档;下载;立即核对;folders").split(";")
+                    values: window.editor.folders.map(folder => folder.path)
+                    description: window.editor.foldersInEffect
+                                 ? qsTr("只有这些文件夹里的文件能搜到；也可以从资源管理器把文件夹拖到这里")
+                                 : qsTr("普通文件夹已包含在整盘索引中；mklink 创建的链接文件夹可在这里额外添加，管理员和索引服务模式也能用。")
+
+                    FlatButton {
+                        dpr: window.dpr
+                        text: qsTr("添加文件夹…")
+                        glyph: "" // Add
+                        onClicked: {
+                            const path = window.editor.pickFolder(qsTr("选择要索引的文件夹"))
+                            if (path.length > 0)
+                                foldersRow.add(path)
+                        }
+                    }
+
+                    body: [
+                        Text {
+                            visible: window.editor.foldersInEffect && window.editor.folders.length === 0
+                            width: parent.width
+                            text: qsTr("还没有选文件夹：本机磁盘上的文件都搜不到")
+                            color: Theme.caution
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        },
+                        Row {
+                            visible: foldersRow.problem.length > 0
+                            width: parent.width
+                            spacing: 8
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Math.min(implicitWidth, parent.width - (toShares.visible ? toShares.width + 8 : 0))
+                                text: foldersRow.problem
+                                textFormat: Text.PlainText
+                                color: Theme.danger
+                                font.pixelSize: Theme.fontCaption
+                                wrapMode: Text.Wrap
+                            }
+                            FlatButton {
+                                dpr: window.dpr
+                                id: toShares
+                                visible: foldersRow.networkPath.length > 0
+                                text: qsTr("加到网络共享")
+                                onClicked: foldersRow.addShare(foldersRow.networkPath)
+                            }
+                        },
+                        Column { // the known folders not chosen yet, a click away
+                            visible: window.editor.foldersInEffect && window.editor.commonFolders.length > 0
+                            width: parent.width
+                            spacing: 6
+
+                            Text {
+                                text: qsTr("常用位置，点一下添加：")
+                                color: Theme.subtext
+                                font.pixelSize: Theme.fontCaption
+                            }
+                            Flow {
+                                width: parent.width
+                                spacing: 6
+
+                                Repeater {
+                                    model: window.editor.commonFolders
+
+                                    delegate: FlatButton {
+                                        dpr: window.dpr
+                                        required property var modelData
+                                        glyph: "" // Add
+                                        // Redirected to a server, as companies do: 网络共享's.
+                                        text: modelData.network ? qsTr("%1（在服务器上：加到网络共享）").arg(modelData.name) : modelData.name
+                                        onClicked: modelData.network ? foldersRow.addShare(modelData.path) : foldersRow.add(modelData.path)
+                                    }
+                                }
+                            }
+                        },
+                        Column {
+                            width: parent.width
+                            spacing: 8
+
+                            Repeater {
+                                // By count: a card stays as its words change, while it is walked.
+                                model: window.editor.folders.length
+
+                                delegate: ShareCard {
+                                    required property int index
+                                    width: parent.width
+                                    kind: "folder"
+                                    share: window.editor.folders[index] ?? blank // gone, before the card goes
+                                    marked: foldersRow.valueFound(share.path)
+                                    onVerifyClicked: window.editor.verifyFolder(index)
+                                    onRemoveClicked: {
+                                        foldersRow.problem = ""
+                                        window.editor.removeFolder(index)
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+
+                SettingRow {
+                    id: folderVerifyRow
+                    sub: true
+
+                    readonly property var hours: [1, 4, 24, 0]
+
+                    shown: window.editor.foldersInEffect || window.editor.folders.some(folder => folder.linked)
+                    title: qsTr("定时核对")
+                    keywords: qsTr("核对;重新扫描;每天;每小时;定时;verify;rescan").split(";")
+                    description: qsTr("把选中的文件夹重新走一遍，补上没跟上的改动；到时间后等你离开电脑一会儿再核对")
+                    bodyShown: folderVerifyRow.hours.indexOf(window.editor.folderVerifyHours) < 0
+
+                    ScopeTabs {
+                        labels: [qsTr("每小时"), qsTr("每 4 小时"), qsTr("每天"), qsTr("只在启动时")]
+                        current: folderVerifyRow.hours.indexOf(window.editor.folderVerifyHours)
+                        onActivated: (index) => window.editor.folderVerifyHours = folderVerifyRow.hours[index]
+                    }
+
+                    body: Text { // another number, written in the file (or by AI)
+                        width: parent.width
+                        text: qsTr("现在是每 %n 小时一次", "", window.editor.folderVerifyHours)
+                        color: Theme.subtext
+                        font.pixelSize: Theme.fontCaption
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.scopePage
+                tab: 0
+                width: parent.width
+                title: qsTr("排除目录")
+                glyph: "\uE8F8"
+
+                SettingRow {
+                    id: excludedFoldersRow
+                    title: qsTr("不搜索的文件夹")
+                    keywords: qsTr("排除;忽略;隐藏;黑名单;exclude").split(";")
+                    values: window.editor.excludedPaths
+                    // GitHub #351: indexed all the same for the programs asking over the Everything interface.
+                    description: window.editor.everythingCompat
+                        ? qsTr("这些文件夹里的内容都不出现在结果里。“让其他软件把 Win顺 当作 Everything 搜索”开着时仍建索引，其他软件照样查得到（如 Total Commander 的文件夹大小）")
+                        : qsTr("这些文件夹里的内容都不出现在结果里")
+
+                    FlatButton {
+                        dpr: window.dpr
+                        text: qsTr("添加文件夹")
+                        glyph: "" // Add
+                        onClicked: window.editor.addExcludedFolder()
+                    }
+
+                    body: [Rectangle {
+                        width: parent.width
+                        height: Math.max(pathList.implicitHeight, 40)
+                        radius: Theme.controlRadius
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Theme.cardBorder
+
+                        Text {
+                            visible: window.editor.excludedPaths.length === 0
+                            anchors.centerIn: parent
+                            text: qsTr("没有排除任何文件夹")
+                            color: Theme.faint
+                            font.pixelSize: Theme.fontCaption
+                        }
+
+                        Column {
+                            id: pathList
+                            width: parent.width
+
+                            Repeater {
+                                model: window.editor.excludedPaths
+
+                                delegate: Item {
+                                    id: pathRow
+
+                                    required property int index
+                                    required property string modelData
+
+                                    width: pathList.width
+                                    height: 42
+
+                                    Rectangle {
+                                        visible: pathRow.index > 0
+                                        x: 12
+                                        width: parent.width - 24
+                                        height: Theme.edge(window.dpr)
+                                        color: Theme.divider
+                                    }
+                                    Glyph {
+                                        id: folderIcon
+                                        x: 12
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        glyph: "" // Folder
+                                        size: 16
+                                    }
+                                    Text {
+                                        anchors.left: folderIcon.right
+                                        anchors.leftMargin: 10
+                                        anchors.right: removePath.left
+                                        anchors.rightMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: pathRow.modelData
+                                        textFormat: Text.PlainText
+                                        color: Theme.text
+                                        font.pixelSize: Theme.fontBody
+                                        elide: Text.ElideMiddle
+                                    }
+                                    FlatButton {
+                                        dpr: window.dpr
+                                        id: removePath
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 6
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        implicitHeight: 32
+                                        flat: true
+                                        text: qsTr("移除")
+                                        onClicked: window.editor.removeExcludedPath(pathRow.index)
+                                    }
+                                }
+                            }
+                        }
+                    }, Text { // some files only: by name, on the next tab (GitHub #374)
+                        text: qsTr("只想跳过某些文件？到“名称和类型”里按文件名（可用 *）或扩展名跳过") + "  ›"
+                        color: filesLink.pressed ? Theme.subtext : Theme.accent
+                        font.pixelSize: Theme.fontCaption
+                        font.underline: filesLink.containsMouse
+                        Accessible.role: Accessible.Link
+                        Accessible.name: text
+
+                        MouseArea {
+                            id: filesLink
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: window.showTab(1)
+                        }
+                    }]
+                }
+            }
+
+            SettingsSection {
+                page: window.scopePage
                 tab: 1
+                width: parent.width
+                title: qsTr("按名称与扩展名跳过")
+                glyph: "\uE71C"
+                note: qsTr("修改后在后台重新整理，不影响搜索。")
+
+                SettingRow {
+                    id: excludedNamesRow
+                    title: qsTr("跳过的文件夹名称")
+                    keywords: qsTr("排除;忽略;文件夹名;exclude").split(";")
+                    values: window.editor.excludedNames
+                    description: qsTr("任何位置的同名文件夹都跳过，例如 node_modules")
+
+                    body: [
+                        Flow {
+                            width: parent.width
+                            spacing: 6
+
+                            Repeater {
+                                model: window.editor.excludedNames
+
+                                delegate: Chip {
+                                    required property int index
+                                    required property string modelData
+                                    text: modelData
+                                    marked: excludedNamesRow.valueFound(modelData)
+                                    onRemoveClicked: window.editor.removeExcludedName(index)
+                                }
+                            }
+                        },
+                        Row {
+                            spacing: 8
+
+                            InputBox {
+                                dpr: window.dpr
+                                id: nameInput
+                                width: 240
+                                placeholder: qsTr("输入文件夹名称，例如 build")
+                                onAccepted: if (window.editor.addExcludedName(text)) clear()
+                            }
+                            FlatButton {
+                                dpr: window.dpr
+                                text: qsTr("添加")
+                                enabled: nameInput.text.trim().length > 0
+                                onClicked: if (window.editor.addExcludedName(nameInput.text)) nameInput.clear()
+                            }
+                        }
+                    ]
+                }
+            }
+
+            SettingsSection {
+                page: window.scopePage
+                tab: 1
+                width: parent.width
+                note: qsTr("立即生效，不用重新整理。")
+
+                SettingRow {
+                    id: excludedTypesRow
+                    title: qsTr("跳过的文件类型")
+                    keywords: qsTr("排除;忽略;扩展名;后缀;格式;exclude").split(";")
+                    values: window.editor.excludedTypes
+                    description: qsTr("这些扩展名的文件不出现在搜索结果里，例如 wbk、bak")
+
+                    body: [
+                        Flow {
+                            width: parent.width
+                            spacing: 6
+
+                            Repeater {
+                                model: window.editor.excludedTypes
+
+                                delegate: Chip {
+                                    required property int index
+                                    required property string modelData
+                                    text: modelData
+                                    marked: excludedTypesRow.valueFound(modelData)
+                                    onRemoveClicked: window.editor.removeExcludedType(index)
+                                }
+                            }
+                        },
+                        Row {
+                            spacing: 8
+
+                            InputBox {
+                                dpr: window.dpr
+                                id: typeInput
+                                width: 240
+                                placeholder: qsTr("例如 wbk, bak")
+                                onAccepted: if (window.editor.addExcludedTypes(text)) clear()
+                            }
+                            FlatButton {
+                                dpr: window.dpr
+                                text: qsTr("添加")
+                                enabled: typeInput.text.trim().length > 0
+                                onClicked: if (window.editor.addExcludedTypes(typeInput.text)) typeInput.clear()
+                            }
+                        }
+                    ]
+                }
+
+                SettingRow {
+                    id: excludedFileNamesRow
+                    title: qsTr("跳过的文件名")
+                    keywords: qsTr("排除;忽略;文件名;通配符;临时文件;~$;exclude").split(";")
+                    values: window.editor.excludedFileNames
+                    description: qsTr("这些名字的文件不出现在结果里，* 代表任意几个字，例如 ~$*（Office、WPS 临时文件）")
+
+                    body: [
+                        Flow {
+                            width: parent.width
+                            spacing: 6
+
+                            Repeater {
+                                model: window.editor.excludedFileNames
+
+                                delegate: Chip {
+                                    required property int index
+                                    required property string modelData
+                                    text: modelData
+                                    marked: excludedFileNamesRow.valueFound(modelData)
+                                    onRemoveClicked: window.editor.removeExcludedFileName(index)
+                                }
+                            }
+                        },
+                        Row {
+                            spacing: 8
+
+                            InputBox {
+                                dpr: window.dpr
+                                id: fileNameInput
+                                width: 240
+                                placeholder: qsTr("例如 ~$*, Thumbs.db")
+                                onAccepted: if (window.editor.addExcludedFileNames(text)) clear()
+                            }
+                            FlatButton {
+                                dpr: window.dpr
+                                text: qsTr("添加")
+                                enabled: fileNameInput.text.trim().length > 0
+                                onClicked: if (window.editor.addExcludedFileNames(fileNameInput.text)) fileNameInput.clear()
+                            }
+                        }
+                    ]
+                }
+            }
+
+            SettingsSection {
+                page: window.scopePage
+                tab: 2
+                width: parent.width
+                title: qsTr("磁盘范围")
+                glyph: "\uEDA2"
+                note: qsTr("修改后在后台重新整理，不影响搜索。")
+
+                SettingRow {
+                    id: drivesRow
+                    title: qsTr("索引哪些磁盘")
+                    stackControl: width - 52 - driveScopeTabs.implicitWidth < 240
+                    keywords: qsTr("磁盘;硬盘;盘符;选择磁盘;索引范围;drive;disk;volume").split(";")
+                    description: window.editor.allDrives
+                                 ? qsTr("自动索引所有符合条件的本机磁盘")
+                                 : qsTr("只索引勾选的磁盘；取消勾选后，该盘的文件会从结果中移除。新接入的磁盘需要手动勾选。")
+                    bodyShown: !window.editor.allDrives
+                    ScopeTabs {
+                        id: driveScopeTabs
+                        labels: [qsTr("全部磁盘"), qsTr("自己选择")]
+                        current: window.editor.allDrives ? 0 : 1
+                        onActivated: index => window.editor.allDrives = index === 0
+                    }
+                    body: [
+                        Column {
+                            width: parent.width
+                            spacing: 6
+                            Repeater {
+                                model: window.editor.drives
+                                delegate: Row {
+                                    id: driveRow
+                                    required property var modelData
+                                    width: parent.width
+                                    spacing: 12
+                                    ToggleSwitch {
+                                        dpr: window.dpr
+                                        id: driveToggle
+                                        word: false
+                                        checked: driveRow.modelData.selected
+                                        enabled: driveRow.modelData.enabled
+                                        Accessible.name: qsTr("索引 %1 盘").arg(driveRow.modelData.root)
+                                        onToggled: on => window.editor.setDriveSelected(driveRow.modelData.root, on)
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Math.max(0, driveRow.width - driveToggle.width - driveRow.spacing)
+                                        wrapMode: Text.Wrap
+                                        text: driveRow.modelData.root + (driveRow.modelData.status.length > 0 ? "  ·  " + driveRow.modelData.status : "")
+                                        font.pixelSize: Theme.fontBody
+                                        color: driveRow.modelData.enabled ? Theme.text : Theme.subtext
+                                    }
+                                }
+                            }
+                            Text {
+                                visible: !window.editor.drives.some(drive => drive.selected && drive.enabled)
+                                width: parent.width
+                                text: qsTr("没有选择本机磁盘，只搜索你添加的网络和 WSL 位置")
+                                wrapMode: Text.Wrap
+                                color: Theme.caution
+                                font.pixelSize: Theme.fontCaption
+                            }
+                        },
+                        FlatButton {
+                            dpr: window.dpr
+                            text: qsTr("刷新磁盘列表")
+                            onClicked: window.editor.refreshDrives()
+                        }
+                    ]
+                }
+
+                SettingRow {
+                    title: qsTr("包括 U 盘和移动硬盘")
+                    keywords: qsTr("U盘;移动硬盘;外接;USB;removable").split(";")
+                    description: qsTr("默认只搜索电脑自带的硬盘")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.includeRemovableDrives
+                        onToggled: (on) => window.editor.includeRemovableDrives = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("启动时检查文件变化")
+                    keywords: qsTr("重新扫描;扫描;rescan").split(";")
+                    description: qsTr("补上 U 盘等非 NTFS 磁盘在 Win顺 关闭期间的改动")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.rescanOnStartup
+                        onToggled: (on) => window.editor.rescanOnStartup = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.scopePage
+                tab: 2
+                width: parent.width
+                title: qsTr("索引引擎与服务")
+                glyph: "\uE950"
+
+                SettingRow {
+                    id: indexAccessRow
+
+                    // How NTFS disks are read (GitHub #21): the choices, 管理员直读
+                    // only on an administrator's account (it means nothing elsewhere).
+                    readonly property var modes: window.editor.isAdministrator
+                                                 ? ["auto", "service", "direct", "walk"]
+                                                 : ["auto", "service", "walk"]
+                    readonly property var modeLabels: ({
+                        "auto": qsTr("自动（推荐）"),
+                        "service": qsTr("索引服务"),
+                        "direct": qsTr("管理员直读"),
+                        "walk": qsTr("遍历")
+                    })
+                    readonly property string chosen: window.editor.indexAccess
+
+                    title: qsTr("索引方式")
+                    keywords: qsTr("索引服务;管理员;权限;UAC;MFT;主文件表;遍历;服务;index service;administrator").split(";")
+                    description: {
+                        let what
+                        switch (chosen) {
+                        case "service":
+                            what = qsTr("通过索引服务读取磁盘的主文件表和变更日志，Win顺 以普通权限运行")
+                            break
+                        case "direct":
+                            what = qsTr("启动时请求管理员权限，直接读取主文件表和变更日志；取消后本次用普通权限，保留选择。开机自启也以管理员身份")
+                            break
+                        case "walk":
+                            what = qsTr("不需要任何权限，逐个文件夹遍历，建索引慢一些")
+                            break
+                        default:
+                            what = qsTr("以管理员身份运行时直接读取，否则通过索引服务；没有服务就遍历文件夹")
+                        }
+                        return what + "\n" + window.editor.indexAccessStatus
+                    }
+
+                    FlatButton {
+                        dpr: window.dpr
+                        // 管理员直读 asked for while running with normal rights, or a
+                        // portable copy wanting the MFT read this once: UAC asks once.
+                        visible: window.editor.isAdministrator && !window.editor.isElevated
+                                 && (window.editor.isPortable || indexAccessRow.chosen === "direct")
+                        text: qsTr("以管理员身份重新启动")
+                        onClicked: window.editor.restartAsAdministrator()
+                    }
+
+                    body: [
+                        ScopeTabs {
+                            labels: indexAccessRow.modes.map(mode => indexAccessRow.modeLabels[mode])
+                            current: Math.max(0, indexAccessRow.modes.indexOf(indexAccessRow.chosen))
+                            onActivated: (index) => window.editor.indexAccess = indexAccessRow.modes[index]
+                        },
+                        Text { // worth reading, nothing wrong
+                            visible: window.editor.indexAccessNote.length > 0
+                            width: parent.width
+                            text: window.editor.indexAccessNote
+                            textFormat: Text.PlainText
+                            color: Theme.subtext
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+                    ]
+                }
+
+                SettingRow {
+                    id: indexServiceRow
+                    objectName: "indexServiceRow"
+                    sub: true
+
+                    // A portable copy has no installer to register the service:
+                    // done from here, as administrator (UAC asks once).
+                    // An account that cannot install it (not an administrator's,
+                    // GitHub #52) gets the reason instead of the buttons.
+                    shown: window.editor.isPortable
+                    title: qsTr("索引服务")
+                    keywords: qsTr("便携;安装服务;更新服务;卸载服务;索引服务;没有管理员权限;装不了;portable;service").split(";")
+                    description: window.editor.indexServiceInstalled && window.editor.indexServiceUnsafeLocation
+                                 ? (window.editor.indexServiceInstallable
+                                    ? qsTr("索引服务装在一个别的程序能改动的位置，有安全风险。点“修复”把它移到受保护的位置（需要管理员权限一次）")
+                                    : qsTr("索引服务装在一个别的程序能改动的位置，有安全风险。请让管理员打开 Win顺 的设置，点“修复”。"))
+                                 : !window.editor.indexServiceInstallable
+                                 ? (window.editor.indexServiceInstalled
+                                    ? qsTr("已安装 Windows 服务“Win顺 索引服务”，它替普通权限的 Win顺 读取主文件表。这个账户不是管理员，不能卸载它")
+                                    : window.editor.foldersInEffect
+                                    ? qsTr("你在这台电脑上没有管理员权限，装不了索引服务。Win顺 会索引你选的文件夹，并定时核对")
+                                    : qsTr("你在这台电脑上没有管理员权限，装不了索引服务。Win顺 按文件夹遍历整个磁盘"))
+                                 : window.editor.indexServiceUpdatable
+                                 ? qsTr("索引服务还是 %1 版，比这份 Win顺 旧，有些功能用不上。点“更新索引服务”，Windows 会请你确认一次").arg(window.editor.indexServiceVersion)
+                                 : window.editor.indexServiceInstalled
+                                 ? qsTr("已安装 Windows 服务“Win顺 索引服务”，它替普通权限的 Win顺 读取主文件表")
+                                 : qsTr("安装一个 Windows 服务，替普通权限的 Win顺 读取主文件表，建索引快得多；需要管理员权限一次")
+                    bodyShown: window.editor.indexServiceMessage.length > 0
+
+                    FlatButton {
+                        dpr: window.dpr
+                        // Install, or, when the service is in a place a non-administrator
+                        // could change, repair it (reinstall into a protected folder).
+                        visible: window.editor.indexServiceInstallable
+                                 && (!window.editor.indexServiceInstalled || window.editor.indexServiceUnsafeLocation)
+                        text: window.editor.indexServiceInstalled && window.editor.indexServiceUnsafeLocation
+                              ? qsTr("修复") : qsTr("安装索引服务…")
+                        enabled: !window.editor.indexServiceBusy
+                        onClicked: window.editor.installIndexService()
+                    }
+                    FlatButton {
+                        dpr: window.dpr
+                        // This copy's own service, older than it: --install upgrades it in place.
+                        visible: window.editor.indexServiceUpdatable
+                        text: qsTr("更新索引服务")
+                        enabled: !window.editor.indexServiceBusy
+                        onClicked: window.editor.installIndexService()
+                    }
+                    FlatButton {
+                        dpr: window.dpr
+                        visible: window.editor.indexServiceInstallable && window.editor.indexServiceInstalled
+                                 && !window.editor.indexServiceUnsafeLocation
+                        text: qsTr("卸载索引服务")
+                        enabled: !window.editor.indexServiceBusy
+                        onClicked: window.editor.uninstallIndexService()
+                    }
+
+                    body: Text {
+                        width: parent.width
+                        text: window.editor.indexServiceMessage
+                        textFormat: Text.PlainText
+                        color: Theme.subtext
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.scopePage
+                tab: 3
+                width: parent.width
+                note: qsTr("默认只收录文件名和文件夹名；打开“搜索文件内容”的，会在电脑空闲时读取文件内容。服务器离线或 WSL 停止时，收录过的照样能搜到；恢复后自动更新。")
+
+                SettingRow {
+                    id: sharesRow
+                    title: qsTr("网络与 WSL 文件夹")
+                    keywords: qsTr("网络;共享;局域网;内网;NAS;服务器;SMB;映射;网络驱动器;WSL;Linux;Ubuntu;子系统;WebDAV;内容;全文;搜索文件内容;扫描;时段;时间;层数;深度;network;share;content;schedule;depth").split(";")
+                    values: window.editor.shares.map(share => share.path + " " + share.name)
+                    description: qsTr("添加 NAS、共享文件夹或 WSL 中的项目、用户目录，和本机文件一起搜索")
+
+                    // The shares of the server typed ("\\192.168.1.10"), once asked for.
+                    property string listedServer
+                    property var listedShares: []
+                    property string listProblem
+                    property bool listSignIn: false
+                    property bool listing: false
+                    readonly property string typedServer: window.editor.serverOf(shareInput.text)
+                    readonly property bool typedWsl: window.editor.isWslPath(shareInput.text)
+
+                    function add(text) {
+                        const problem = window.editor.addShare(text)
+                        shareProblem.text = problem
+                        if (problem.length === 0 && text === shareInput.text)
+                            shareInput.clear()
+                        return problem.length === 0
+                    }
+                    function listShares(server) {
+                        listedServer = server
+                        listedShares = []
+                        listProblem = ""
+                        listSignIn = false
+                        listing = true
+                        window.editor.listServerShares(server)
+                    }
+
+                    Connections {
+                        target: window.editor
+                        function onServerSharesListed(server, shares, problem, signIn) {
+                            if (server.toLowerCase() !== sharesRow.listedServer.toLowerCase())
+                                return
+                            sharesRow.listing = false
+                            sharesRow.listedShares = shares
+                            sharesRow.listProblem = problem
+                            sharesRow.listSignIn = signIn
+                        }
+                        function onSignedIn(path, problem) {
+                            if (problem.length > 0) {
+                                shareProblem.text = problem
+                                return
+                            }
+                            shareProblem.text = ""
+                            if (sharesRow.listSignIn && path.toLowerCase() === "\\\\" + sharesRow.listedServer.toLowerCase())
+                                sharesRow.listShares(sharesRow.listedServer) // signed in: now its shares show
+                        }
+                    }
+
+                    body: [
+                        Flow {
+                            width: parent.width
+                            spacing: 8
+
+                            InputBox {
+                                dpr: window.dpr
+                                id: shareInput
+                                width: Math.min(360, parent.width) // room for the placeholder
+                                placeholder: qsTr("粘贴网络路径、WebDAV 网址或 WSL 文件夹")
+                                onAccepted: {
+                                    if (sharesRow.typedServer.length > 0)
+                                        sharesRow.listShares(sharesRow.typedServer) // a server alone: what it shares
+                                    else
+                                        sharesRow.add(text)
+                                }
+                                onTextChanged: shareProblem.text = ""
+                            }
+                            FlatButton {
+                                dpr: window.dpr
+                                visible: sharesRow.typedServer.length === 0
+                                text: qsTr("添加")
+                                enabled: shareInput.text.trim().length > 0
+                                onClicked: sharesRow.add(shareInput.text)
+                            }
+                            FlatButton {
+                                dpr: window.dpr
+                                visible: sharesRow.typedServer.length > 0
+                                text: sharesRow.typedWsl ? qsTr("查看 WSL 发行版") : qsTr("查看共享的文件夹")
+                                onClicked: sharesRow.listShares(sharesRow.typedServer)
+                            }
+                            FlatButton {
+                                dpr: window.dpr
+                                text: qsTr("选择文件夹…")
+                                onClicked: {
+                                    const path = window.editor.pickFolder(qsTr("选择要搜索的网络或 WSL 文件夹"))
+                                    if (path.length > 0)
+                                        sharesRow.add(path)
+                                }
+                            }
+                        },
+                        Text {
+                            id: shareProblem
+                            visible: text.length > 0
+                            width: parent.width
+                            color: Theme.danger
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        },
+                        Column { // what the server listed shares, to add with a click
+                            visible: sharesRow.listedServer.length > 0
+                            width: parent.width
+                            spacing: 6
+
+                            Text {
+                                width: parent.width
+                                text: sharesRow.listing ? qsTr("正在连接 %1…").arg(sharesRow.listedServer)
+                                    : sharesRow.listProblem.length > 0 ? sharesRow.listProblem
+                                    : window.editor.isWslPath("\\\\" + sharesRow.listedServer)
+                                      ? qsTr("已安装的 WSL 发行版，点一下收录 Linux 文件：")
+                                      : qsTr("%1 上共享的文件夹，点一下添加：").arg(sharesRow.listedServer)
+                                color: Theme.subtext
+                                font.pixelSize: Theme.fontCaption
+                                wrapMode: Text.Wrap
+                            }
+                            Flow {
+                                width: parent.width
+                                spacing: 6
+
+                                FlatButton {
+                                    dpr: window.dpr
+                                    visible: sharesRow.listSignIn
+                                    highlighted: true
+                                    text: qsTr("登录")
+                                    onClicked: window.editor.signInToServer(sharesRow.listedServer)
+                                }
+                                Repeater {
+                                    model: sharesRow.listedShares
+
+                                    delegate: FlatButton {
+                                        dpr: window.dpr
+                                        required property string modelData
+                                        readonly property string path: "\\\\" + sharesRow.listedServer + "\\" + modelData
+                                        readonly property bool added: window.editor.shares.some(
+                                                                          share => share.path.toLowerCase() === path.toLowerCase())
+                                        glyph: added ? "" : "" // CheckMark, Add
+                                        text: modelData
+                                        enabled: !added
+                                        onClicked: sharesRow.add(path)
+                                    }
+                                }
+                            }
+                        },
+                        Column {
+                            visible: window.editor.wslFolders.length > 0
+                            width: parent.width
+                            spacing: 6
+
+                            Text {
+                                width: parent.width
+                                text: qsTr("检测到 WSL，点一下添加用户目录；也可以选择具体的项目文件夹：")
+                                color: Theme.subtext
+                                font.pixelSize: Theme.fontCaption
+                                wrapMode: Text.Wrap
+                            }
+                            Flow {
+                                width: parent.width
+                                spacing: 6
+
+                                Repeater {
+                                    model: window.editor.wslFolders
+
+                                    delegate: FlatButton {
+                                        dpr: window.dpr
+                                        required property var modelData
+                                        glyph: "\uE710"
+                                        text: modelData.name
+                                        onClicked: sharesRow.add(modelData.path)
+                                    }
+                                }
+                            }
+                        },
+                        Column { // opened in File Explorer or mapped before: a click away
+                            visible: window.editor.knownShares.length > 0 && sharesRow.listedServer.length === 0
+                            width: parent.width
+                            spacing: 6
+
+                            Text {
+                                text: qsTr("这台电脑访问过的：")
+                                color: Theme.subtext
+                                font.pixelSize: Theme.fontCaption
+                            }
+                            Flow {
+                                width: parent.width
+                                spacing: 6
+
+                                Repeater {
+                                    model: window.editor.knownShares
+
+                                    delegate: FlatButton {
+                                        dpr: window.dpr
+                                        required property var modelData
+                                        glyph: "" // Add
+                                        text: modelData.drive.length > 0 ? modelData.path + " (" + modelData.drive + ")" : modelData.path
+                                        onClicked: sharesRow.add(modelData.path)
+                                    }
+                                }
+                            }
+                        },
+                        Column {
+                            width: parent.width
+                            spacing: 8
+
+                            Repeater {
+                                // By count: a card stays as its words change, every few seconds while it is read.
+                                model: window.editor.shares.length
+
+                                delegate: ShareCard {
+                                    required property int index
+                                    width: parent.width
+                                    share: window.editor.shares[index] ?? blank // gone, before the card goes
+                                    marked: sharesRow.valueFound(share.path)
+                                    onVerifyClicked: window.editor.verifyShare(index)
+                                    onStartClicked: window.editor.startWslShare(index)
+                                    onSignInClicked: window.editor.signInToShare(index)
+                                    onAcceptClicked: window.editor.acceptShareMissing(index)
+                                    onRemoveClicked: window.editor.removeShare(index)
+                                    onContentToggled: (on) => window.editor.setShareContent(index, on)
+                                    onScanEdited: (scheduled, from, until, depth) => window.editor.setShareScan(index, scheduled, from, until, depth)
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+
+            SettingsSection {
+                page: window.scopePage
+                tab: 4
+                width: parent.width
+                title: qsTr("全文搜索与内容索引")
+                glyph: "\uE8A5"
+                note: qsTr("在搜索框按 Tab 切换到“内容”，可以查找文件里的文字。")
+
+                SettingRow {
+                    title: qsTr("文件内容搜索")
+                    keywords: qsTr("内容;全文;文字;开关;关闭;content").split(";")
+                    unlocks: [documentsRow, extensionsRow, lowPriorityRow, contentIndexRow]
+                    description: qsTr("关掉后搜索框里不再有“内容”，“全部”只按名字找；Win顺 不读取文件里的文字，内容索引也会清空")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.contentSearch
+                        onToggled: (on) => window.editor.contentSearch = on
+                    }
+                }
+
+                SettingRow {
+                    id: documentsRow
+                    sub: true
+                    shown: window.editor.contentSearch
+                    title: qsTr("搜索文档")
+                    keywords: qsTr("Word;Excel;PowerPoint;PPT;PDF;WPS;docx;xlsx").split(";")
+                    unlocks: sizeRows.count > 3 ? [sizeRows.itemAt(3)] : []
+                    description: qsTr("Word、Excel、PowerPoint、PDF 和 WPS 文件，图片里的文字除外")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.contentDocuments
+                        onToggled: (on) => window.editor.contentDocuments = on
+                    }
+                }
+
+                SettingRow {
+                    id: extensionsRow
+                    sub: true
+                    shown: window.editor.contentSearch
+                    title: qsTr("搜索这些类型的文本文件")
+                    keywords: qsTr("扩展名;后缀;文件类型;txt;md;extension").split(";")
+                    values: window.editor.contentExtensions
+                    description: qsTr("按扩展名列出；Word、PDF 等文档由“搜索文档”负责")
+
+                    body: [
+                        Flow {
+                            width: parent.width
+                            spacing: 6
+
+                            Repeater {
+                                model: window.editor.contentExtensions
+
+                                delegate: Chip {
+                                    required property int index
+                                    required property string modelData
+                                    text: "." + modelData
+                                    marked: extensionsRow.valueFound(modelData)
+                                    onRemoveClicked: window.editor.removeContentExtension(index)
+                                }
+                            }
+                        },
+                        Text {
+                            visible: window.editor.contentExtensions.length === 0
+                            text: qsTr("还没有选择任何类型，内容搜索将找不到结果")
+                            color: Theme.danger
+                            font.pixelSize: Theme.fontCaption
+                        },
+                        Row {
+                            spacing: 8
+
+                            InputBox {
+                                dpr: window.dpr
+                                id: extensionInput
+                                width: 240
+                                placeholder: qsTr("例如 md, log")
+                                onAccepted: if (window.editor.addContentExtensions(text)) clear()
+                            }
+                            FlatButton {
+                                dpr: window.dpr
+                                text: qsTr("添加")
+                                enabled: extensionInput.text.trim().length > 0
+                                onClicked: if (window.editor.addContentExtensions(extensionInput.text)) extensionInput.clear()
+                            }
+                        }
+                    ]
+                }
+
+                SettingRow {
+                    id: lowPriorityRow
+                    sub: true
+                    shown: window.editor.contentSearch
+                    title: qsTr("也搜索系统和程序文件夹")
+                    keywords: qsTr("系统文件夹;Program Files;AppData;Windows;node_modules").split(";")
+                    description: qsTr("Windows、Program Files、AppData 等；文件很多，搜索会变慢")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.contentInLowPriority
+                        onToggled: (on) => window.editor.contentInLowPriority = on
+                    }
+                }
+
+                SettingRow {
+                    id: contentIndexRow
+                    sub: true
+                    shown: window.editor.contentSearch
+                    title: qsTr("建立内容索引")
+                    keywords: qsTr("索引;加速;index").split(";")
+                    description: qsTr("在后台记下文件里的文字，搜索快得多。只用于 NTFS 磁盘，约占一两百 MB")
+                                 + (window.editor.contentIndexStatus.length > 0 ? "\n" + window.editor.contentIndexStatus : "")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.contentIndex
+                        onToggled: (on) => window.editor.contentIndex = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.scopePage
+                tab: 4
+                shown: window.editor.contentSearch
+                width: parent.width
+                title: qsTr("单文件读取上限")
+                glyph: "\uE74C"
+                note: qsTr("比上限大的文件不查找内容。")
+
+                // A size limit for each kind of file (ContentSizeLimits::Kind:
+                // text, code, data, documents).
+                Repeater {
+                    id: sizeRows
+                    model: [
+                        { title: qsTr("文本和日志的大小上限") },
+                        { title: qsTr("源代码的大小上限") },
+                        { title: qsTr("数据和网页的大小上限") },
+                        { title: qsTr("文档的大小上限"),
+                          files: qsTr("Word、Excel、PowerPoint、PDF 和 WPS 文件") }
+                    ]
+
+                    delegate: SettingRow {
+                        id: sizeRow
+
+                        required property int index
+                        required property var modelData
+                        readonly property real mb: window.editor.contentMaxSizeMB[index]
+                        // Under 1 MB in whole KB (Settings: roundedSizeMB), else MB to a hundredth.
+                        readonly property bool inKB: mb < 1
+                        readonly property real kb: Math.round(mb * 1024)
+                        readonly property string shownText: String(inKB ? kb : Math.round(mb * 100) / 100) // 512, 16, 1.25
+                        // − and +: halving and doubling under 1 MB (…, 256, 512 KB, 1 MB), by 1 under 16, by 16 above
+                        readonly property real down: mb > 16 ? Math.max(16, mb - 16) : mb > 1 ? Math.max(1, mb - 1)
+                                                   : Math.pow(2, Math.ceil(Math.log2(kb)) - 1) / 1024
+                        readonly property real up: mb >= 16 ? mb + 16 : mb >= 1 ? Math.min(16, Math.floor(mb) + 1)
+                                                 : Math.pow(2, Math.floor(Math.log2(kb)) + 1) / 1024
+
+                        // What was typed: a number in the unit shown, or with its own ("50k", "1.5 MB", "2g").
+                        function typedMB(text) {
+                            const m = /^\s*(\d*(?:\.\d*)?)\s*([kmg]?)b?\s*$/i.exec(text.replace("。", "."))
+                            const n = m ? parseFloat(m[1]) : NaN
+                            if (isNaN(n))
+                                return NaN
+                            const unit = m[2].toLowerCase() || (inKB ? "k" : "m")
+                            return unit === "k" ? n / 1024 : unit === "g" ? n * 1024 : n
+                        }
+                        readonly property string extensions: window.editor.contentKindExtensions[index]
+
+                        shown: window.editor.contentSearch && (modelData.files === undefined || window.editor.contentDocuments)
+                        title: modelData.title
+                        keywords: qsTr("大小;上限;文件大小;size").split(";")
+                        description: modelData.files ?? (extensions.length > 0 ? extensions : qsTr("列表里没有这类文件"))
+
+                        FlatButton {
+                            dpr: window.dpr
+                            glyph: "" // Remove (minus)
+                            enabled: !sizeRow.inKB || sizeRow.kb > 1
+                            onClicked: window.editor.setContentMaxSizeMB(sizeRow.index, sizeRow.down)
+                        }
+                        InputBox {
+                            dpr: window.dpr
+                            width: 80
+                            horizontalAlignment: TextInput.AlignHCenter
+                            text: sizeRow.shownText
+                            validator: RegularExpressionValidator { regularExpression: /\s*\d{0,4}([.。]\d{0,3})?\s*([kKmMgG][bB]?)?/ }
+                            onEditingFinished: {
+                                const mb = sizeRow.typedMB(text)
+                                if (!isNaN(mb) && mb > 0)
+                                    window.editor.setContentMaxSizeMB(sizeRow.index, mb)
+                                text = Qt.binding(() => sizeRow.shownText)
+                            }
+                        }
+                        FlatButton {
+                            dpr: window.dpr
+                            glyph: "" // Add
+                            enabled: sizeRow.mb < 4096
+                            onClicked: window.editor.setContentMaxSizeMB(sizeRow.index, sizeRow.up)
+                        }
+                        Text {
+                            id: unitText
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: unitMetrics.advanceWidth("MB") // KB takes the same room: the row stays put
+                            text: sizeRow.inKB ? "KB" : "MB"
+                            color: Theme.subtext
+                            font.pixelSize: Theme.fontBody
+
+                            FontMetrics { id: unitMetrics; font: unitText.font }
+                        }
+                    }
+                }
+            }
+            // </page scope>
+                } }
+            }
+
+            PageSlot {
+                id: resultsSlot
+                index: window.resultsPage
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    parts: ({ fileTypesSection: fileTypesSection, quickFiltersSection: quickFiltersSection })
+                    recordingHotkey: previewHotkeyRecorder.recording || openHotkeyRecorder.recording
+                    onResetForReopen: {
+                        previewHotkeyRecorder.stop()
+                        openHotkeyRecorder.stop()
+                        fileTypesSection.resetForReopen()
+                        quickFiltersSection.resetForReopen()
+                        clearHistoryButton.confirming = false
+                    }
+            // <page results>
+            SettingsSection {
+                page: window.resultsPage
+                tab: 0
+                width: parent.width
+                title: qsTr("排序与类型优先级")
+                glyph: "\uE8CB"
+
+                SettingRow {
+                    title: qsTr("文件和文件夹的顺序")
+                    keywords: qsTr("排序;顺序;文件夹在前;目录;sort;folder").split(";")
+                    description: qsTr("文件和文件夹分两组排，选哪组在前")
+
+                    ScopeTabs {
+                        labels: [qsTr("文件在前"), qsTr("文件夹在前")]
+                        current: window.editor.foldersFirst ? 1 : 0
+                        onActivated: (index) => window.editor.foldersFirst = index === 1
+                    }
+                }
+
+                SettingRow {
+                    id: sortRow
+                    title: qsTr("排序")
+                    keywords: qsTr("排序;修改时间;修改日期;最新;最早;名称;文件名;所在文件夹;目录;类型;扩展名;大小;升序;降序;次数;打开次数;运行次数;最常用;sort;date;size;type;count").split(";")
+                    description: qsTr("文件和文件夹怎么排（“全部”里应用和设置仍在前面）；底栏左边也能切换（Ctrl+S 在前三种里轮换）")
+
+                    readonly property var sorts: ["match", "newest", "oldest", "name", "folder", "type", "largest", "smallest", "opened"]
+                    readonly property int chosen: sorts.indexOf(window.editor.sort)
+
+                    ScopeTabs {
+                        labels: [qsTr("最匹配"), qsTr("最新在前"), qsTr("最早在前")]
+                        current: sortRow.chosen < 3 ? Math.max(0, sortRow.chosen) : -1
+                        onActivated: (index) => window.editor.sort = sortRow.sorts[index]
+                    }
+
+                    // Too many for one line (#44): the other orders under the first.
+                    body: [
+                        ScopeTabs {
+                            labels: [qsTr("名称"), qsTr("所在文件夹"), qsTr("类型"), qsTr("大的在前"), qsTr("小的在前"), qsTr("打开最多")]
+                            current: sortRow.chosen - 3 // below 0 while one of the three above is in force
+                            onActivated: (index) => window.editor.sort = sortRow.sorts[index + 3]
+                        }
+                    ]
+                }
+
+                SettingRow {
+                    title: qsTr("优先显示的文件类型")
+                    keywords: qsTr("可执行;程序;脚本;优先;排在前面;扩展名;exe;bat;cmd;ps1;msi;Listary").split(";")
+                    values: [window.editor.preferredTypes]
+                    description: qsTr("按“最匹配”排序时，名字差不多的结果里这些类型排在前面，例如搜 curl 时 curl.exe 排在文件夹 curl 和 curl.h 前面。用分号或逗号隔开，留空就不优先")
+
+                    FlatButton {
+                        dpr: window.dpr
+                        visible: !window.editor.preferredTypesDefault
+                        text: qsTr("恢复默认")
+                        onClicked: window.editor.resetPreferredTypes()
+                    }
+
+                    body: [
+                        InputBox {
+                            dpr: window.dpr
+                            width: Math.min(parent.width, 360)
+                            text: window.editor.preferredTypes
+                            placeholder: qsTr("例如 exe; bat; cmd")
+                            onEditingFinished: {
+                                window.editor.preferredTypes = text
+                                text = Qt.binding(() => window.editor.preferredTypes) // as kept: "EXE,.bat" shows "exe; bat"
+                            }
+                        }
+                    ]
+                }
+            }
+
+            SettingsSection {
+                page: window.resultsPage
+                tab: 1
+                width: parent.width
+                title: qsTr("附加搜索源与匹配模式")
+                glyph: "\uE721"
+
+                SettingRow {
+                    title: qsTr("搜索应用")
+                    keywords: qsTr("应用;程序;软件;开始菜单;启动;全部;关闭;app").split(";")
+                    description: qsTr("在“全部”里列出开始菜单里的程序和应用；关掉后只找文件和内容（收藏的应用仍会列出，在开始菜单里打字也一样）")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.searchApps
+                        Accessible.name: qsTr("搜索应用")
+                        onToggled: (on) => window.editor.searchApps = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("搜索系统设置")
+                    keywords: qsTr("设置;系统设置;控制面板;系统开关;蓝牙;音量;全部;关闭;settings").split(";")
+                    description: qsTr("在“全部”里列出 Windows 设置页、控制面板和系统开关（如“关蓝牙”“音量 30”）；关掉后只找文件和内容")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.searchSystem
+                        Accessible.name: qsTr("搜索系统设置")
+                        onToggled: (on) => window.editor.searchSystem = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("正则模式（Ctrl+R）")
+                    keywords: qsTr("正则;正则表达式;regex;Everything;Ctrl+R;匹配").split(";")
+                    description: qsTr("每个词都按正则表达式匹配：“全部”和“文件”里匹配名字，“内容”里匹配文件里的文字")
+                    tip: qsTr("如 ^IMG_\\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.regexMode
+                        Accessible.name: qsTr("正则模式")
+                        onToggled: (on) => window.editor.regexMode = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.resultsPage
+                tab: 1
+                width: parent.width
+                title: qsTr("未输入时的初始列表")
+                glyph: "\uE81C"
+
+                SettingRow {
+                    title: qsTr("合并“全部”和“文件”")
+                    description: qsTr("在“全部”下常驻文件类型筛选，应用仍优先显示；按住 Ctrl 查看类型关键词")
+                    keywords: qsTr("合并;全部;文件;类型;筛选;merge;scope").split(";")
+                    ToggleSwitch {
+                        objectName: "mergeFileScopeToggle"
+                        dpr: window.dpr
+                        checked: window.editor.mergeFileScope
+                        onToggled: (on) => window.editor.mergeFileScope = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("显示“应用”标签")
+                    description: qsTr("在范围标签的最后加一个“应用”：应用排成图标网格，可看常用的、收藏的或全部，点星标收藏")
+                    keywords: qsTr("程序;应用;图标;网格;启动台;apps;grid;launchpad").split(";")
+                    ToggleSwitch {
+                        objectName: "appsTabToggle"
+                        dpr: window.dpr
+                        checked: window.editor.appsTab
+                        onToggled: (on) => window.editor.appsTab = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("不输入时显示")
+                    unlocks: [recentItemsRow]
+                    keywords: qsTr("最近;最近打开;最近修改;最近使用;历史;recent").split(";")
+                    description: qsTr("打开搜索框还没输入时列出最近打开或最近修改的项目；底栏也能切换（Ctrl+S）。收藏由下面的开关单独控制")
+
+                    ScopeTabs {
+                        readonly property var lists: ["opened", "modified", "none"]
+                        labels: [qsTr("最近打开"), qsTr("最近修改"), qsTr("不显示")]
+                        current: Math.max(0, lists.indexOf(window.editor.startList))
+                        onActivated: (index) => window.editor.startList = lists[index]
+                    }
+                }
+
+                SettingRow {
+                    id: recentItemsRow
+                    sub: true
+                    shown: window.editor.startList === "opened"
+                    title: qsTr("最近打开的数量")
+                    keywords: qsTr("最近;历史;数量;条数;上限;自定义;recent").split(";")
+                    description: qsTr("可填 1–200 项，按最近打开的顺序显示；仅在上面选择“最近打开”时生效")
+
+                    InputBox {
+                        dpr: window.dpr
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 80
+                        enabled: window.editor.startList === "opened"
+                        horizontalAlignment: TextInput.AlignHCenter
+                        text: String(window.editor.recentItems)
+                        Accessible.name: qsTr("最近打开的数量")
+                        validator: IntValidator { bottom: 1; top: 200 }
+                        onEditingFinished: {
+                            const count = parseInt(text, 10)
+                            if (count > 0)
+                                window.editor.recentItems = Math.min(200, count)
+                            text = Qt.binding(() => String(window.editor.recentItems))
+                        }
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("不输入时显示收藏")
+                    keywords: qsTr("收藏;命令;显示;隐藏;关键词;空白;启动;favorite").split(";")
+                    description: qsTr("关闭后，收藏和自定义命令仍可通过名称或关键词找到")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.favoritesOnStart
+                        onToggled: (on) => window.editor.favoritesOnStart = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("收藏的样式")
+                    keywords: qsTr("收藏;图标;平铺;网格;多行;排序;拖动;favorite;icon;grid").split(";")
+                    description: window.editor.favoriteTiles
+                                 ? qsTr("不输入时，收藏排成一格格图标，名称在下面，一屏放得更多；按住一个图标稍等再拖动，可以换位置")
+                                 : qsTr("不输入时，收藏和最近打开的一样一行一个")
+
+                    ScopeTabs {
+                        objectName: "favoriteTilesChoice"
+                        enabled: window.editor.favoritesOnStart
+                        labels: [qsTr("列表"), qsTr("图标")]
+                        current: window.editor.favoriteTiles ? 1 : 0
+                        onActivated: (index) => window.editor.favoriteTiles = index === 1
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.resultsPage
+                tab: 1
+                width: parent.width
+                title: qsTr("键盘提示")
+
+                SettingRow {
+                    title: qsTr("显示快捷键帮助按钮")
+                    description: qsTr("在搜索框右下角显示入口，点击查看常用快捷键")
+                    keywords: qsTr("快捷键;帮助;提示;隐藏;极简").split(";")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        objectName: "shortcutHelpToggle"
+                        checked: window.editor.shortcutHelp
+                        Accessible.name: qsTr("显示快捷键帮助按钮")
+                        onToggled: (on) => window.editor.shortcutHelp = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("显示底栏按键提示")
+                    description: qsTr("显示 Enter、Ctrl+Enter、Tab 等操作提示；未输入时隐藏 Tab 切换范围提示")
+                    keywords: qsTr("快捷键;底栏;提示;隐藏;Tab;极简").split(";")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        objectName: "footerHintsToggle"
+                        checked: window.editor.footerHints
+                        Accessible.name: qsTr("显示底栏按键提示")
+                        onToggled: (on) => window.editor.footerHints = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.resultsPage
+                tab: 1
+                width: parent.width
+                title: qsTr("列表信息与交互")
+                glyph: "\uE8FD"
+
+                SettingRow {
+                    title: qsTr("显示修改日期")
+                    keywords: qsTr("修改时间;修改日期;日期;时间;date").split(";")
+                    description: qsTr("在搜索结果右侧显示修改日期；可与文件大小同时显示")
+                    unlocks: [showModifiedTimeRow]
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.showModified
+                        onToggled: (on) => window.editor.showModified = on
+                    }
+                }
+
+                SettingRow {
+                    id: showModifiedTimeRow
+                    sub: true
+                    shown: window.editor.showModified
+                    title: qsTr("较早的日期也显示具体时间")
+                    keywords: qsTr("修改时间;修改日期;具体时间;时分;time").split(";")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.showModifiedTime
+                        Accessible.name: qsTr("较早的日期也显示时间")
+                        onToggled: (on) => window.editor.showModifiedTime = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("显示文件大小")
+                    keywords: qsTr("文件大小;体积;精简;双击Ctrl;KB;MB;GB;size").split(";")
+                    description: qsTr("无需展开窗口，在搜索结果右侧显示文件大小；按大小排序时始终显示。文件夹不统计大小。")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        objectName: "showFileSizeToggle"
+                        checked: window.editor.showFileSize
+                        Accessible.name: qsTr("显示文件大小")
+                        onToggled: (on) => window.editor.showFileSize = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("显示图片缩略图")
+                    keywords: qsTr("缩略图;预览;图片;照片;视频;PDF;thumbnail;preview").split(";")
+                    description: qsTr("图片、视频、PDF 等显示缩略图，代替类型图标")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.thumbnails
+                        onToggled: (on) => window.editor.thumbnails = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("显示删除按钮")
+                    keywords: qsTr("删除;垃圾桶;回收站;误删;按钮;delete;trash;recycle").split(";")
+                    description: qsTr("文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后可在右键菜单的“更多选项”里删除")
+
+                    ToggleSwitch {
+                        objectName: "rowDeleteButtonToggle"
+                        dpr: window.dpr
+                        checked: window.editor.rowDeleteButton
+                        onToggled: (on) => window.editor.rowDeleteButton = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("点击结果")
+                    keywords: qsTr("单击;双击;点击;鼠标;误触;打开;选中;预览;看内容;click;double;preview").split(";")
+                    description: !window.editor.doubleClickToOpen
+                                 ? qsTr("单击就打开；也可以单击只选中，双击或按 Enter 才打开，结果多时不怕点错")
+                                 : window.editor.clickPreviews
+                                   ? qsTr("单击选中并预览，不用打开就能看内容；双击或按 Enter 打开")
+                                   : qsTr("单击只选中（高亮），双击或按 Enter 才打开，结果多时不怕点错")
+
+                    ScopeTabs {
+                        objectName: "clickActionChoice"
+                        labels: [qsTr("单击打开"), qsTr("双击打开"), qsTr("单击预览")]
+                        current: !window.editor.doubleClickToOpen ? 0 : window.editor.clickPreviews ? 2 : 1
+                        onActivated: (index) => {
+                            window.editor.clickPreviews = index === 2
+                            window.editor.doubleClickToOpen = index !== 0
+                        }
+                    }
+                }
+
+                SettingRow {
+                    objectName: "favoriteFolderTab"
+                    title: qsTr("选中收藏文件夹时按 Tab")
+                    keywords: qsTr("Tab;Shift+Tab;收藏;文件夹;范围;键盘;favorite;keyboard").split(";")
+                    description: qsTr("在“全部”范围中，列表自动选中的收藏文件夹（如第一行）默认切换搜索范围，也可改为进入它继续搜索。用 ↑ ↓ 或单击选中的文件夹，按 Tab 都会进入。Shift+Tab 仍反向切换范围。")
+
+                    ScopeTabs {
+                        objectName: "favoriteFolderTabChoice"
+                        labels: [qsTr("切换范围"), qsTr("进入文件夹")]
+                        current: window.editor.tabEntersFavoriteFolder ? 1 : 0
+                        onActivated: (index) => window.editor.tabEntersFavoriteFolder = index === 1
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.resultsPage
+                tab: 1
+                width: parent.width
+                title: qsTr("文件快速预览")
+                glyph: "\uE890"
+
+                SettingRow {
+                    title: qsTr("预览文件")
+                    keywords: qsTr("预览;快速查看;看一眼;QuickLook;Seer;空格;Alt+P;preview").split(";")
+                    description: window.editor.previewWith === "builtin"
+                                 ? qsTr("用 Win顺 自己的预览窗口看一眼")
+                                 : qsTr("QuickLook 或 Seer 在后台运行时交给它，否则用 Win顺 自己的预览")
+
+                    ScopeTabs {
+                        labels: [qsTr("自动"), qsTr("内置")]
+                        current: window.editor.previewWith === "builtin" ? 1 : 0
+                        onActivated: (index) => window.editor.previewWith = ["auto", "builtin"][index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("预览跟随")
+                    keywords: qsTr("预览;跟随;鼠标;悬停;指向;划过;选中;大文件;卡;hover;preview").split(";")
+                    description: window.editor.previewFollowsPointer
+                                 ? qsTr("预览开着时，鼠标停在哪一行就预览哪一行；Word、PPT、PDF 这类文件要停稳一下才打开")
+                                 : window.editor.doubleClickToOpen
+                                   ? qsTr("只预览选中的行：单击或用方向键选中。鼠标划过时不切换，大文件不会被一个个打开")
+                                   : qsTr("只预览选中的行：用方向键选中，或用鼠标中键点一行。鼠标划过时不切换，大文件不会被一个个打开")
+
+                    ScopeTabs {
+                        objectName: "previewFollowChoice"
+                        labels: [qsTr("鼠标所指"), qsTr("选中的行")]
+                        current: window.editor.previewFollowsPointer ? 0 : 1
+                        onActivated: (index) => window.editor.previewFollowsPointer = index === 0
+                    }
+                }
+
+                SettingRow { // whether a preview left open comes back with the launcher (GitHub #258: some want it gone)
+                    title: qsTr("再次打开时恢复预览")
+                    keywords: qsTr("预览;恢复;记住;保留;关闭;下次;再次;restore;preview").split(";")
+                    description: window.editor.previewRestore
+                                 ? qsTr("预览开着时收起搜索框，下次打开搜索框预览也跟着回来")
+                                 : qsTr("搜索框收起，预览就一起关掉；下次要看再按预览快捷键")
+
+                    ToggleSwitch {
+                        objectName: "previewRestoreSwitch"
+                        checked: window.editor.previewRestore
+                        onToggled: (on) => window.editor.previewRestore = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("预览快捷键")
+                    keywords: qsTr("预览;快捷键;空格;Space;Alt+P;QuickLook;preview;shortcut").split(";")
+                    values: [window.editor.previewHotkey]
+                    description: qsTr("仅在搜索结果中生效，再按一次关闭，鼠标中键点一行也行。可直接录制空格：刚输入完时空格照常输入，选过结果或打开预览后才开关预览；Shift+空格始终输入空格。Backspace 清除，Esc 取消。")
+
+                    FlatButton {
+                        dpr: window.dpr
+                        text: qsTr("恢复默认")
+                        enabled: window.editor.previewHotkey !== "Alt+P"
+                        onClicked: window.editor.previewHotkey = "Alt+P"
+                    }
+                    HotkeyRecorder {
+                        id: previewHotkeyRecorder
+                        objectName: "previewHotkeyRecorder"
+                        hotkey: window.editor.previewHotkey
+                        previewShortcut: true
+                        onRecorded: (hotkey) => window.editor.previewHotkey = hotkey
+                    }
+
+                    bodyShown: window.editor.previewHotkeyError.length > 0
+                    body: Text {
+                        width: parent.width
+                        text: window.editor.previewHotkeyError
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.resultsPage
+                tab: 2
+                width: parent.width
+                title: qsTr("搜索框与数字快捷键")
+                glyph: "\uE765"
+                note: qsTr("在搜索框按 Tab、Shift+Tab 切换“全部”“文件”“内容”；Ctrl+Tab 在“文件”里切换文件类型，在“内容”里切换文件夹。")
+
+                SettingRow {
+                    objectName: "logoRightClickRow"
+                    title: qsTr("右键 Logo 的行为")
+                    description: qsTr("“靠上”模式下，展开的搜索面板会居中")
+                    keywords: qsTr("右键;Logo;位置;归位;靠上;居中;拖动;logo;position").split(";")
+
+                    ScopeTabs {
+                        objectName: "logoRightClickChoice"
+                        readonly property var choices: ["menu", "top", "center", "restore"]
+                        labels: [qsTr("位置菜单"), qsTr("靠上"), qsTr("居中"), qsTr("上次拖动位置")]
+                        current: Math.max(0, choices.indexOf(window.editor.logoRightClick))
+                        onActivated: (index) => window.editor.logoRightClick = choices[index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("每次打开时清空搜索")
+                    keywords: qsTr("清空;清除;上次;保留;隐私;搜索框;clear;privacy").split(";")
+                    description: qsTr("打开时搜索框是空的，回到“全部”；关掉时保留上次的文字并选中，直接输入就会替换")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.clearOnOpen
+                        onToggled: (on) => window.editor.clearOnOpen = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("回到上次的位置")
+                    keywords: qsTr("上次;位置;滚动;记住;选中;恢复;scroll;position;remember").split(";")
+                    description: qsTr("再打开时停在上次选中的那一行，列表也滚到那里；关掉时从第一行开始。开着“每次打开时清空搜索”时不起作用")
+
+                    ToggleSwitch {
+                        objectName: "reopenWhereLeftSwitch"
+                        dpr: window.dpr
+                        enabled: !window.editor.clearOnOpen
+                        checked: window.editor.reopenWhereLeft
+                        onToggled: (on) => window.editor.reopenWhereLeft = on
+                    }
+                }
+
+                SettingRow { // feedback 2026-11-16
+                    title: qsTr("钉住时在最前")
+                    keywords: qsTr("钉住;置顶;最前;盖住;遮挡;Ctrl+T;pin;topmost;always on top").split(";")
+                    description: qsTr("按 Ctrl+T 钉住后，搜索框一直盖在别的窗口上面；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面")
+
+                    ToggleSwitch {
+                        objectName: "pinnedOnTopSwitch"
+                        dpr: window.dpr
+                        checked: window.editor.pinnedOnTop
+                        onToggled: (on) => window.editor.pinnedOnTop = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("打开时切换为英文输入")
+                    keywords: qsTr("输入法;英文;字母;中文;拼音首字母;IME;English").split(";")
+                    description: qsTr("中文输入法在搜索框里先用英文，直接打字母和拼音首字母；在框里切回中文照常可用，关掉后恢复原样")
+
+                    ToggleSwitch {
+                        checked: window.editor.englishOnOpen
+                        onToggled: (on) => window.editor.englishOnOpen = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("打开时填入刚复制的文字")
+                    keywords: qsTr("剪贴板;复制;自动;填入;粘贴;网址;clipboard;paste").split(";")
+                    description: qsTr("刚在别的程序里复制了一行文字，在这么多秒内打开搜索框，就直接搜它（全选着，打字即替换）；超过时间、复制的是多行或文件时不填。装了“网页搜索”插件，复制的是网址时第一行就是打开它")
+
+                    ScopeTabs {
+                        labels: [qsTr("关闭"), qsTr("3 秒"), qsTr("5 秒"), qsTr("10 秒")]
+                        current: [0, 3, 5, 10].indexOf(window.editor.clipboardFillSeconds) // another number of seconds (set in the file): none of them
+                        onActivated: (index) => window.editor.clipboardFillSeconds = [0, 3, 5, 10][index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("打开结果的备用键")
+                    keywords: qsTr("打开;回车;Enter;备用;左手;快捷键;空格;open;shortcut").split(";")
+                    values: [window.editor.openHotkey]
+                    description: qsTr("和 Enter 一样打开选中的结果，Enter 照常可用。录一个左手顺手的键，比如 Alt+Q 或 F1；空格不行，它要用来分开几个词。Backspace 清除，Esc 取消。")
+
+                    HotkeyRecorder {
+                        id: openHotkeyRecorder
+                        objectName: "openHotkeyRecorder"
+                        hotkey: window.editor.openHotkey
+                        previewShortcut: true
+                        placeholder: qsTr("未设置")
+                        onRecorded: (hotkey) => window.editor.openHotkey = hotkey
+                    }
+
+                    bodyShown: window.editor.openHotkeyError.length > 0
+                    body: Text {
+                        width: parent.width
+                        text: window.editor.openHotkeyError
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("用数字键直接打开")
+                    unlocks: [resultNumberHintsRow]
+                    keywords: qsTr("快捷键;数字键;序号;Ctrl+1;Alt+1;冲突;hotkey").split(";")
+                    description: qsTr("按 %1+1 打开第一行，依此类推到第九行")
+                                 .arg(window.editor.numberKeys === "alt" ? "Alt" : "Ctrl")
+
+                    ScopeTabs {
+                        labels: ["Ctrl+1–9", "Alt+1–9", qsTr("关闭")]
+                        current: Math.max(0, ["ctrl", "alt", "off"].indexOf(window.editor.numberKeys))
+                        onActivated: (index) => window.editor.numberKeys = ["ctrl", "alt", "off"][index]
+                    }
+
+                    body: Text {
+                        visible: window.editor.numberKeysNote.length > 0
+                        width: parent.width
+                        text: window.editor.numberKeysNote
+                        color: Theme.subtext
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                SettingRow {
+                    id: resultNumberHintsRow
+                    sub: true
+                    shown: window.editor.numberKeys !== "off"
+                    title: qsTr("序号提示")
+                    description: qsTr("启动器和剪贴板共用；隐藏提示不影响数字快捷键")
+                    keywords: qsTr("快捷键;数字键;图标;按住;显示;隐藏").split(";")
+
+                    ScopeTabs {
+                        labels: [qsTr("按住时显示"), qsTr("一直显示"), qsTr("不显示", "number hints")]
+                        current: Math.max(0, ["held", "always", "off"].indexOf(window.editor.numberHints))
+                        onActivated: (index) => window.editor.numberHints = ["held", "always", "off"][index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("字母直达")
+                    description: qsTr("轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板里 Shift+字母是粘贴为纯文本。再按一下那个键或按 Esc 退出。启动器和剪贴板共用")
+                    keywords: qsTr("快捷键;字母;单手;vim;vi;提示;跳转;直达;hint").split(";")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.letterJump
+                        onToggled: (on) => window.editor.letterJump = on
+                    }
+                }
+
+                SettingRow {
+                    sub: true
+                    shown: window.editor.letterJump
+                    title: qsTr("字母直达用的键")
+                    description: window.editor.letterJumpKey === "shift"
+                                 ? qsTr("搜索框里用中文输入法时，轻按 Shift 也会切换中英文")
+                                 : qsTr("跟数字键一样：搜索框和剪贴板各用数字键设置里的那个键")
+                    keywords: qsTr("字母直达;修饰键;Ctrl;Alt;Shift").split(";")
+
+                    ScopeTabs {
+                        labels: [qsTr("跟数字键一样"), "Ctrl", "Alt", "Shift"]
+                        current: Math.max(0, ["auto", "ctrl", "alt", "shift"].indexOf(window.editor.letterJumpKey))
+                        onActivated: (index) => window.editor.letterJumpKey = ["auto", "ctrl", "alt", "shift"][index]
+                    }
+                }
+
+                SettingRow {
+                    sub: true
+                    shown: window.editor.letterJump
+                    title: qsTr("用哪些字母")
+                    description: qsTr("按顺序给第一行、第二行……，可以有数字，例如左手用的 QWERTASDFGZXCVB12345")
+                    keywords: qsTr("字母直达;字母;数字;顺序;左手;单手").split(";")
+
+                    Row {
+                        spacing: 8
+
+                        InputBox {
+                            id: letterJumpKeysBox
+                            dpr: window.dpr
+                            width: 230
+                            text: window.editor.letterJumpKeys
+                            placeholder: window.editor.defaultLetterJumpKeys
+                            // Taken as cleaned up (upper case, A-Z and 0-9 once each): the box shows that.
+                            // Anything else in it (an input method's 汉字 for the letters typed) is not
+                            // taken: cleaned up, "阿斯顿a" would be the one letter A.
+                            function take() {
+                                error = !/^[A-Za-z0-9\s,;，；]*$/.test(text)
+                                if (error)
+                                    return
+                                window.editor.letterJumpKeys = text
+                                text = Qt.binding(() => window.editor.letterJumpKeys)
+                                showStart()
+                            }
+                            onEditingFinished: take()
+                            onAccepted: take()
+                            onTextChanged: if (error && /^[A-Za-z0-9\s,;，；]*$/.test(text)) error = false
+                        }
+                        FlatButton {
+                            dpr: window.dpr
+                            visible: window.editor.letterJumpKeys !== window.editor.defaultLetterJumpKeys
+                            text: qsTr("恢复默认")
+                            onClicked: {
+                                window.editor.letterJumpKeys = window.editor.defaultLetterJumpKeys
+                                letterJumpKeysBox.error = false
+                                letterJumpKeysBox.text = Qt.binding(() => window.editor.letterJumpKeys)
+                                letterJumpKeysBox.showStart()
+                            }
+                        }
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.resultsPage
+                tab: 2
+                width: parent.width
+                title: qsTr("使用记录")
+                glyph: "\uE81C"
+
+                SettingRow {
+                    title: qsTr("记住搜索和打开过的项目")
+                    keywords: qsTr("历史;最近;记录;history;recent").split(";")
+                    description: qsTr("记住打开过的项目和最近 100 条搜索词；同样的字常打开的项目排在前面。插件命令不记入搜索历史")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.recordHistory
+                        onToggled: (on) => window.editor.recordHistory = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("记住以管理员身份运行")
+                    keywords: qsTr("管理员;提权;权限;admin;administrator;elevate").split(";")
+                    description: qsTr("用 Ctrl+Shift+Enter 以管理员身份运行过的程序，之后按 Enter 也以管理员身份运行；右键选“以普通权限运行”可改回")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        enabled: window.editor.recordHistory
+                        checked: window.editor.rememberAdmin
+                        onToggled: (on) => window.editor.rememberAdmin = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("搜索历史快捷键")
+                    description: qsTr("在搜索框中翻阅；回到最新位置时恢复未完成的输入，也可点时钟图标浏览和删除")
+                    keywords: qsTr("历史;上一个;下一个;history;Ctrl;Alt").split(";")
+                    ScopeTabs {
+                        objectName: "queryHistoryKeys"
+                        enabled: window.editor.recordHistory
+                        readonly property var choices: ["ctrl", "alt", "off"]
+                        labels: ["Ctrl+↑/↓", "Alt+↑/↓", qsTr("关闭")]
+                        current: choices.indexOf(window.editor.queryHistoryKeys)
+                        onActivated: (index) => window.editor.queryHistoryKeys = choices[index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("清除搜索和最近使用记录")
+                    keywords: qsTr("历史;最近;删除;清空;history").split(";")
+                    description: window.editor.historyCount > 0
+                                 ? qsTr("共 %1 项；搜索词可在搜索历史中单独删除，打开记录可右键移除").arg(window.editor.historyCount)
+                                 : qsTr("没有记录")
+
+                    FlatButton {
+                        dpr: window.dpr
+                        id: clearHistoryButton
+
+                        property bool confirming: false
+
+                        text: confirming ? qsTr("确定清除？再点一次") : qsTr("清除")
+                        glyph: confirming ? "" : "\uE74D" // Delete
+                        enabled: window.editor.historyCount > 0
+                        onClicked: {
+                            if (confirming) {
+                                window.editor.clearHistory()
+                                confirming = false
+                            } else {
+                                confirming = true
+                                clearHistoryTimer.restart()
+                            }
+                        }
+
+                        Timer {
+                            id: clearHistoryTimer
+                            interval: 4000
+                            onTriggered: clearHistoryButton.confirming = false
+                        }
+                    }
+                }
+            }
+
+            FileTypesSection {
+                id: fileTypesSection
+                page: window.resultsPage
+                tab: 3
+                width: parent.width
+                editor: window.editor
+            }
+
+            QuickFiltersSection {
+                id: quickFiltersSection
+                page: window.resultsPage
+                tab: 3
+                width: parent.width
+                editor: window.editor
+            }
+            // </page results>
+                } }
+            }
+
+            PageSlot {
+                id: integrationSlot
+                index: window.integrationPage
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    parts: ({ explorerTypingRow: explorerTypingRow, folderMenuRow: folderMenuRow, dialogBarRow: dialogBarRow })
+                    recordingHotkey: folderMenuHotkeyRecorder.recording
+                    onResetForReopen: {
+                        folderMenuHotkeyRecorder.stop()
+                        taskbarButtonRow.chosen = -1
+                        opusMenuRow.confirming = false
+                        opusMenuRow.copied = false
+                    }
+            // <page integration>
+            SettingsSection {
+                page: window.integrationPage
+                tab: 0
                 width: parent.width
                 title: qsTr("任务栏入口")
                 glyph: "\uE75B"
@@ -1876,8 +4723,8 @@ Window {
             }
 
             SettingsSection {
-                page: 0
-                tab: 1
+                page: window.integrationPage
+                tab: 0
                 width: parent.width
                 title: qsTr("系统搜索接管")
                 glyph: "\uE721"
@@ -1956,8 +4803,8 @@ Window {
             }
 
             SettingsSection {
-                page: 0
-                tab: 2
+                page: window.integrationPage
+                tab: 1
                 width: parent.width
                 title: qsTr("文件管理器整合")
                 glyph: "\uEC50"
@@ -2191,8 +5038,8 @@ Window {
             }
 
             SettingsSection {
-                page: 0
-                tab: 2
+                page: window.integrationPage
+                tab: 1
                 width: parent.width
                 title: qsTr("文件夹快捷菜单")
                 glyph: "\uE8B7"
@@ -2517,7 +5364,7 @@ Window {
             }
 
             SettingsSection {
-                page: 0
+                page: window.integrationPage
                 tab: 2
                 width: parent.width
                 title: qsTr("对话框联动")
@@ -2644,2429 +5491,17 @@ Window {
                     }
                 }
             }
-
-            SettingsSection {
-                page: 0
-                tab: 3
-                width: parent.width
-                title: qsTr("开机启动")
-                glyph: "\uE7E8"
-
-                SettingRow {
-                    title: qsTr("开机时自动启动")
-                    keywords: qsTr("自启;开机启动;启动;autostart;startup").split(";")
-                    description: qsTr("登录 Windows 后在后台运行")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.autostart
-                        onToggled: (on) => window.editor.autostart = on
-                    }
-                }
-            }
-
-            Repeater { // 按键一览: the shortcuts, a section for each group of them
-                // Not made with the page: some 70 rows, a section at a time after the
-                // pages (fillStep), or all at once when that tab is shown (shortcutsWanted).
-                model: shortcutModel
-
-                delegate: SettingsSection {
-                    id: shortcutSection
-
-                    required property int index
-                    readonly property var group: window.shortcutSections[index] ?? null
-
-                    page: 0
-                    tab: 4
-                    width: parent.width
-                    title: group?.title ?? ""
-                    note: index === 0 ? qsTr("所有快捷键都在这里；带“去设置”的可以自己改。") : ""
-
-                    Repeater {
-                        model: shortcutSection.group?.rows ?? []
-
-                        delegate: SettingRow {
-                            id: shortcutRow
-
-                            required property var modelData
-
-                            title: modelData?.text ?? ""
-                            keywords: [modelData?.keys ?? ""]
-                            values: [modelData?.keys ?? ""]
-
-                            Item { // the keys, as a key cap
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: (shortcutRow.modelData?.keys.length ?? 0) > 0
-                                implicitWidth: capText.implicitWidth + 14
-                                implicitHeight: Theme.keycapHeight + 4
-
-                                Hook { // the style's key cap (Theme.keyHint): it only tells
-                                    id: capPart
-                                    anchors.fill: parent
-                                    part: Theme.keyHint
-                                    dpr: window.dpr
-                                }
-                                Text {
-                                    id: capText
-                                    anchors.centerIn: parent
-                                    anchors.verticalCenterOffset: capPart.out("contentOffsetY", 0)
-                                    text: shortcutRow.modelData?.keys ?? ""
-                                    color: capPart.out("foreground", Theme.subtext)
-                                    font.pixelSize: Theme.fontCaption
-                                }
-                            }
-                            Text { // nothing to press: off, or not set yet
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: shortcutRow.modelData?.keys.length === 0
-                                text: qsTr("未设置")
-                                color: Theme.faint
-                                font.pixelSize: Theme.fontCaption
-                            }
-                            FlatButton {
-                                dpr: window.dpr
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: (shortcutRow.modelData?.setting ?? null) !== null
-                                text: qsTr("去设置")
-                                onClicked: window.showSetting(shortcutRow.modelData.setting.page, shortcutRow.modelData.setting.tab)
-                            }
-                        }
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 0
-                tab: 3
-                width: parent.width
-                title: qsTr("使用记录")
-                glyph: "\uE81C"
-
-                SettingRow {
-                    title: qsTr("记住搜索和打开过的项目")
-                    keywords: qsTr("历史;最近;记录;history;recent").split(";")
-                    description: qsTr("记住打开过的项目和最近 100 条搜索词；同样的字常打开的项目排在前面。插件命令不记入搜索历史")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.recordHistory
-                        onToggled: (on) => window.editor.recordHistory = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("记住以管理员身份运行")
-                    keywords: qsTr("管理员;提权;权限;admin;administrator;elevate").split(";")
-                    description: qsTr("用 Ctrl+Shift+Enter 以管理员身份运行过的程序，之后按 Enter 也以管理员身份运行；右键选“以普通权限运行”可改回")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        enabled: window.editor.recordHistory
-                        checked: window.editor.rememberAdmin
-                        onToggled: (on) => window.editor.rememberAdmin = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("搜索历史快捷键")
-                    description: qsTr("在搜索框中翻阅；回到最新位置时恢复未完成的输入，也可点时钟图标浏览和删除")
-                    keywords: qsTr("历史;上一个;下一个;history;Ctrl;Alt").split(";")
-                    ScopeTabs {
-                        objectName: "queryHistoryKeys"
-                        enabled: window.editor.recordHistory
-                        readonly property var choices: ["ctrl", "alt", "off"]
-                        labels: ["Ctrl+↑/↓", "Alt+↑/↓", qsTr("关闭")]
-                        current: choices.indexOf(window.editor.queryHistoryKeys)
-                        onActivated: (index) => window.editor.queryHistoryKeys = choices[index]
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("清除搜索和最近使用记录")
-                    keywords: qsTr("历史;最近;删除;清空;history").split(";")
-                    description: window.editor.historyCount > 0
-                                 ? qsTr("共 %1 项；搜索词可在搜索历史中单独删除，打开记录可右键移除").arg(window.editor.historyCount)
-                                 : qsTr("没有记录")
-
-                    FlatButton {
-                        dpr: window.dpr
-                        id: clearHistoryButton
-
-                        property bool confirming: false
-
-                        text: confirming ? qsTr("确定清除？再点一次") : qsTr("清除")
-                        glyph: confirming ? "" : "\uE74D" // Delete
-                        enabled: window.editor.historyCount > 0
-                        onClicked: {
-                            if (confirming) {
-                                window.editor.clearHistory()
-                                confirming = false
-                            } else {
-                                confirming = true
-                                clearHistoryTimer.restart()
-                            }
-                        }
-
-                        Timer {
-                            id: clearHistoryTimer
-                            interval: 4000
-                            onTriggered: clearHistoryButton.confirming = false
-                        }
-                    }
-                }
-            }
-            // </page 0>
+            // </page integration>
                 } }
             }
 
             PageSlot {
-                id: slot1
-                index: 1
-                content: Component { SettingsPage {
-                    host: settingsContext
-            // <page 1>
-            SettingsSection {
-                page: 1
-                width: parent.width
-                title: qsTr("主题与窗口质感")
-                glyph: "\uE790"
-
-                SettingRow {
-                    title: qsTr("主题")
-                    keywords: qsTr("跟随系统;浅色;深色;暗色;暗黑;夜间;黑色;白色;dark;light").split(";")
-                    description: qsTr("“跟随系统”时随 Windows 的浅色、深色模式切换")
-
-                    body: Row {
-                        id: themeCards
-
-                        readonly property var modes: ["system", "light", "dark"]
-                        readonly property var labels: [qsTr("跟随系统"), qsTr("浅色"), qsTr("深色")]
-
-                        width: parent.width
-                        spacing: 14
-
-                        Repeater {
-                            id: themeRepeater
-                            model: themeCards.modes
-
-                            delegate: ThemeCard {
-                                required property int index
-                                required property string modelData
-
-                                width: Math.min(196, (themeCards.width - themeCards.spacing * 2) / 3)
-                                mode: modelData
-                                label: themeCards.labels[index]
-                                selected: window.editor.theme === modelData
-                                onActivated: if (!selected) window.changeAppearance(() => window.editor.theme = modelData)
-                                Keys.onLeftPressed: themeRepeater.itemAt(Math.max(0, index - 1)).forceActiveFocus()
-                                Keys.onRightPressed: themeRepeater.itemAt(Math.min(2, index + 1)).forceActiveFocus()
-                            }
-                        }
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("界面风格")
-                    keywords: qsTr("风格;外观;样式;皮肤;精修原生;品牌色彩;轻拟物;拟物;质感;液态玻璃;玻璃;Fluent;Liquid Glass;style;skin;look").split(";")
-                    description: qsTr("所有窗口的样子；浅色、深色仍按上面的主题")
-
-                    body: Flow {
-                        id: styleCards
-
-                        readonly property var styles: ["fluent", "brand", "tactile", "liquid"]
-                        readonly property var labels: [qsTr("精修原生"), qsTr("品牌色彩"), qsTr("轻拟物质感"), qsTr("液态玻璃")]
-                        readonly property int columns: width >= 586 ? 4 : 2
-
-                        width: parent.width
-                        spacing: 14
-
-                        Repeater {
-                            id: styleRepeater
-                            model: styleCards.styles
-
-                            delegate: ThemeCard {
-                                required property int index
-                                required property string modelData
-
-                                objectName: "styleCard_" + modelData
-                                width: Math.min(196, (styleCards.width - styleCards.spacing * (styleCards.columns - 1)) / styleCards.columns)
-                                look: Theme.lookFor(modelData)
-                                label: styleCards.labels[index]
-                                selected: window.editor.uiStyle === modelData
-                                onActivated: if (!selected) window.changeAppearance(() => window.editor.uiStyle = modelData)
-                                Keys.onLeftPressed: styleRepeater.itemAt(Math.max(0, index - 1)).forceActiveFocus()
-                                Keys.onRightPressed: styleRepeater.itemAt(Math.min(styleCards.styles.length - 1, index + 1)).forceActiveFocus()
-                                Keys.onUpPressed: styleRepeater.itemAt(Math.max(0, index - styleCards.columns)).forceActiveFocus()
-                                Keys.onDownPressed: styleRepeater.itemAt(Math.min(styleCards.styles.length - 1, index + styleCards.columns)).forceActiveFocus()
-                            }
-                        }
-                    }
-                }
-
-                SettingRow {
-                    id: transparencyRow
-                    shown: SystemTheme.backdropSystem // not on Windows 10
-                    title: qsTr("透明效果")
-                    unlocks: [glassTransparencyRow, glassClarityRow]
-                    keywords: qsTr("云母;Mica;毛玻璃;亚克力;半透明;壁纸;transparency").split(";")
-                    description: !Theme.backdropCapable
-                                 ? qsTr("当前界面风格的窗口不透明；可切换到精修原生、品牌色彩或液态玻璃")
-                                 : !SystemTheme.backdropAvailable
-                                 ? qsTr("需要把“高级”里的界面绘制方式设为“显卡加速”")
-                                 : !SystemTheme.materials
-                                 ? qsTr("要先打开 Windows 设置里的“透明效果”")
-                                 : Theme.style === "liquid"
-                                 ? qsTr("使用系统亚克力模糊窗口背后的内容；关闭后保留实色玻璃质感")
-                                 : qsTr("窗口背景透出桌面壁纸的颜色（云母效果）")
-
-                    ScopeTabs {
-                        enabled: SystemTheme.backdropAvailable && Theme.backdropCapable
-                        opacity: enabled ? 1 : 0.4
-                        labels: [qsTr("关"), qsTr("开")]
-                        current: Math.max(0, window.transparencies.indexOf(window.editor.transparency))
-                        onActivated: (index) => window.editor.transparency = window.transparencies[index]
-                    }
-                    FlatButton {
-                        visible: window.editor.uiStyle === "liquid" && window.editor.transparency === "on"
-                        enabled: window.editor.glassTransparency !== 50 || window.editor.glassClarity !== 50
-                        text: qsTr("恢复默认")
-                        onClicked: window.editor.resetGlassAppearance()
-                    }
-                }
-
-                SettingRow {
-                    id: glassTransparencyRow
-                    objectName: "glassTransparencyRow"
-                    sub: true
-                    shown: SystemTheme.backdropSystem && window.editor.uiStyle === "liquid" && window.editor.transparency === "on"
-                    title: qsTr("透明程度")
-                    description: qsTr("越高，窗口背后的颜色越明显；文字和按钮保持清晰")
-                    keywords: qsTr("透明度;通透;玻璃;opacity;transparency;glass").split(";")
-                    SettingSlider {
-                        objectName: "glassTransparencyControl"
-                        label: glassTransparencyRow.title
-                        enabled: SystemTheme.backdropAvailable && SystemTheme.materials
-                        value: window.editor.glassTransparency
-                        onPreviewed: (value) => window.editor.previewGlassAppearance(value, window.editor.glassClarity)
-                        onCommitted: (value) => window.editor.glassTransparency = value
-                    }
-                }
-
-                SettingRow {
-                    id: glassClarityRow
-                    objectName: "glassClarityRow"
-                    sub: true
-                    shown: glassTransparencyRow.shown
-                    title: qsTr("卡片清晰度")
-                    description: qsTr("越高，卡片和工具栏的底色越实，更容易阅读")
-                    keywords: qsTr("清晰度;卡片;玻璃;clarity;surface;glass").split(";")
-                    SettingSlider {
-                        objectName: "glassClarityControl"
-                        label: glassClarityRow.title
-                        enabled: SystemTheme.backdropAvailable && SystemTheme.materials
-                        value: window.editor.glassClarity
-                        onPreviewed: (value) => window.editor.previewGlassAppearance(window.editor.glassTransparency, value)
-                        onCommitted: (value) => window.editor.glassClarity = value
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("圆角", "appearance setting")
-                    keywords: qsTr("圆角;直角;方角;尖角;Win10;Windows 10;win10风格;经典;corner;rounded;square").split(";")
-                    description: qsTr("直角时窗口、菜单、按钮和输入框都不带圆角，和 Windows 10 一样")
-
-                    ScopeTabs {
-                        readonly property var corners: ["round", "square"]
-                        labels: [qsTr("圆角"), qsTr("直角")]
-                        current: Math.max(0, corners.indexOf(window.editor.corners))
-                        onActivated: (index) => window.editor.corners = corners[index]
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 1
-                width: parent.width
-                title: qsTr("尺寸与布局")
-                glyph: "\uE740"
-
-                SettingRow {
-                    title: qsTr("界面字体")
-                    stackControl: width < 600
-                    keywords: qsTr("字体;雅黑;普惠体;清晰;font;typeface;YaHei").split(";")
-                    values: [window.editor.uiFont]
-                    description: window.editor.uiFontAvailable
-                        ? qsTr("可在列表里查找名称，示例即时预览；重启后应用")
-                        : qsTr("此电脑未安装“%1”，暂用默认字体").arg(window.editor.uiFont)
-                    FontPicker {
-                        frame: window.frame
-                        families: window.editor.uiFonts
-                        selectedFamily: window.editor.uiFont
-                        onChosen: family => window.editor.uiFont = family
-                    }
-                    body: Item {
-                        width: parent.width
-                        height: Math.max(fontSample.implicitHeight, fontRestart.visible ? fontRestart.height : 0)
-                        Text {
-                            id: fontSample
-                            objectName: "uiFontSample"
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - (fontRestart.visible ? fontRestart.width + 16 : 0)
-                            text: qsTr("文件搜索 · 剪贴板 · 设置  WinShun 0123456789")
-                            color: Theme.text
-                            font.pixelSize: Theme.fontBody
-                            font.family: window.editor.uiFontPreview
-                            wrapMode: Text.Wrap
-                        }
-                        FlatButton {
-                            id: fontRestart
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: window.editor.fontRestartRequired
-                            text: qsTr("重启后应用")
-                            onClicked: window.editor.restart()
-                        }
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("界面大小")
-                    keywords: qsTr("缩放;大小;字号;字体大小;行高;密集;紧凑;宽松;一行;小字;scale;size;zoom;font;dense;compact").split(";")
-                    description: qsTr("搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。密集是每条结果一行的小字。剪贴板可在“剪贴板”页单独设置")
-
-                    ScopeTabs {
-                        readonly property var sizes: ["dense", "compact", "standard", "roomy"]
-                        labels: [qsTr("密集"), qsTr("紧凑"), qsTr("标准"), qsTr("宽松")]
-                        current: Math.max(0, sizes.indexOf(window.editor.uiSize))
-                        onActivated: (index) => window.editor.uiSize = sizes[index]
-                    }
-
-                    body: AppearancePreview { width: parent.width }
-                }
-
-                SettingRow {
-                    title: qsTr("搜索框宽度")
-                    keywords: qsTr("宽度;加宽;拉宽;调宽;变宽;窄;文件名太长;显示不全;width;wide").split(";")
-                    description: qsTr("可拖动搜索框左右边缘调宽，双击边缘恢复默认")
-                    tip: qsTr("文件名仍显示不全时，鼠标悬停在该行上会显示完整名称和路径")
-
-                    FlatButton {
-                        dpr: window.dpr
-                        text: qsTr("恢复默认宽度")
-                        enabled: window.editor.launcherWidthSet
-                        onClicked: window.editor.resetLauncherWidth()
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("搜索框显示行数")
-                    keywords: qsTr("行数;高度;加高;变高;结果数;条数;显示更多;rows;height;results").split(";")
-                    description: qsTr("结果超过这个行数时滚动查看，可填 4–20 行，默认 8 行；屏幕下方放不下时自动减少")
-
-                    InputBox {
-                        objectName: "maxRowsInput"
-                        dpr: window.dpr
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 80
-                        horizontalAlignment: TextInput.AlignHCenter
-                        text: String(window.editor.maxRows)
-                        Accessible.name: qsTr("搜索框显示行数")
-                        validator: IntValidator { bottom: 1; top: 20 }
-                        onEditingFinished: {
-                            const rows = parseInt(text, 10)
-                            if (rows > 0)
-                                window.editor.maxRows = rows
-                            text = Qt.binding(() => String(window.editor.maxRows))
-                        }
-                    }
-                }
-
-                SettingRow { // GitHub #365
-                    title: qsTr("弹出动画")
-                    description: qsTr("搜索框打开时从任务栏一侧轻轻升起并淡入，关闭时淡出。关掉后立即出现、立即消失")
-                    tip: qsTr("Windows 设置里关掉了“动画效果”时，始终没有动画")
-                    keywords: qsTr("动画;动效;淡入;淡出;弹出;升起;过渡;拖沓;立即显示;animation;motion;fade").split(";")
-                    ToggleSwitch {
-                        objectName: "openAnimationToggle"
-                        dpr: window.dpr
-                        checked: window.editor.openAnimation
-                        Accessible.name: qsTr("弹出动画")
-                        onToggled: (on) => window.editor.openAnimation = on
-                    }
-                }
-
-                SettingRow { // GitHub #368
-                    title: qsTr("悬停提示")
-                    description: qsTr("鼠标停在图标或按钮上时，弹出一行说明，比如类型条上各类型的扩展名。熟悉以后可以关掉，图标和功能不变")
-                    tip: qsTr("关掉后，设置里带“i”的说明照常显示；名字太长被截断时，停在行上仍会显示完整名字")
-                    keywords: qsTr("悬停;提示;气泡;工具提示;说明;遮挡;tooltip;hover;tip").split(";")
-                    ToggleSwitch {
-                        objectName: "hoverTipsToggle"
-                        dpr: window.dpr
-                        checked: window.editor.hoverTips
-                        Accessible.name: qsTr("悬停提示")
-                        onToggled: (on) => window.editor.hoverTips = on
-                    }
-                }
-
-                SettingRow { // with what the box looks like, where it is looked for (GitHub #185)
-                    title: qsTr("纯净搜索模式")
-                    description: qsTr("搜索框空着时只保留输入栏，输入后恢复结果和范围标签；右上角的搜索历史和展开按钮一直隐藏，快捷键照常可用。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响")
-                    keywords: qsTr("纯净;极简;空白;底栏;最近;收藏;pure;minimal").split(";")
-                    ToggleSwitch {
-                        objectName: "pureSearchToggle"
-                        dpr: window.dpr
-                        checked: window.editor.pureSearch
-                        Accessible.name: qsTr("纯净搜索模式")
-                        onToggled: (on) => window.editor.pureSearch = on
-                    }
-                }
-
-                SettingRow { // GitHub #321
-                    title: qsTr("搜索面板空着时列出全部文件")
-                    description: qsTr("关掉后，搜索面板里没输入文字、也没选筛选条件时不列任何文件，输入后才显示结果")
-                    keywords: qsTr("面板;完整搜索窗口;空白;默认;全部文件;不显示结果;panel;empty;everything").split(";")
-                    ToggleSwitch {
-                        objectName: "panelListsAllToggle"
-                        dpr: window.dpr
-                        checked: window.editor.panelListsAll
-                        Accessible.name: qsTr("搜索面板空着时列出全部文件")
-                        onToggled: (on) => window.editor.panelListsAll = on
-                    }
-                }
-
-                SettingRow { // GitHub #185, #244
-                    title: qsTr("范围标签")
-                    keywords: qsTr("范围;全部;文件;内容;标签;合并;三合一;按钮;极简;scope;tabs").split(";")
-                    description: qsTr("搜索框右边的“全部 / 文件 / 内容”：拆分成几个标签，或合并成一个按钮，点一下切到下一个")
-                    tip: qsTr("两种样式下 Tab / Shift+Tab 都能切换；展开的搜索面板始终拆分显示")
-
-                    ScopeTabs {
-                        objectName: "scopeButtonChoice"
-                        labels: [qsTr("拆分"), qsTr("合并")]
-                        current: window.editor.scopeButton ? 1 : 0
-                        onActivated: (index) => window.editor.scopeButton = index === 1
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 1
-                width: parent.width
-                title: qsTr("图标与语言")
-                glyph: "\uE774"
-
-                SettingRow {
-                    title: qsTr("任务栏图标")
-                    keywords: qsTr("托盘;通知区域;单色;黑白;彩色;图标;tray;icon").split(";")
-                    description: qsTr("通知区域和任务栏搜索框里的图标。单色随任务栏的浅色、深色变成黑或白，和系统图标一致")
-
-                    ScopeTabs {
-                        labels: [qsTr("彩色"), qsTr("单色")]
-                        current: window.editor.taskbarIcon === "mono" ? 1 : 0
-                        onActivated: (index) => window.editor.taskbarIcon = index === 1 ? "mono" : "color"
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("语言")
-                    keywords: qsTr("中文;英文;简体;language").split(";")
-                    description: qsTr("“跟随系统”时按 Windows 的语言显示中文或英文")
-
-                    ScopeTabs { // each language in its own words
-                        labels: [qsTr("跟随系统"), "简体中文", "English"]
-                        current: Math.max(0, window.languages.indexOf(window.editor.language))
-                        onActivated: (index) => {
-                            if (index !== current)
-                                window.changeAppearance(() => window.editor.language = window.languages[index])
-                        }
-                    }
-                }
-            }
-            // </page 1>
-                } }
-            }
-
-            PageSlot {
-                id: slot2
-                index: 2
-                content: Component { SettingsPage {
-                    host: settingsContext
-                    parts: ({ foldersRow: foldersRow, sharesRow: sharesRow, indexAccessRow: indexAccessRow, indexServiceRow: indexServiceRow, nameInput: nameInput })
-                    onResetForReopen: {
-                        for (const field of [nameInput, typeInput, fileNameInput, shareInput])
-                            field.clear()
-                        foldersRow.problem = ""
-                        foldersRow.networkPath = ""
-                        sharesRow.listedServer = ""
-                        sharesRow.listedShares = []
-                        sharesRow.listProblem = ""
-                        sharesRow.listSignIn = false
-                        sharesRow.listing = false
-                        shareProblem.text = ""
-                    }
-            // <page 2>
-            SettingsSection {
-                page: 2
-                tab: 0
-                width: parent.width
-                title: qsTr("索引范围与包含目录")
-                glyph: "\uE8B7"
-                note: qsTr("修改后在后台重新整理，不影响搜索。")
-
-                SettingRow {
-                    id: indexScopeRow
-
-                    // 索引哪些地方 (GitHub #52): the chosen folders only while the
-                    // disks are walked; with the index service or 管理员直读 they
-                    // are read whole, and the third choice waits.
-                    readonly property var scopes: ["auto", "drives", "folders"]
-
-                    title: qsTr("索引哪些地方")
-                    stackControl: width - 52 - indexScopeTabs.implicitWidth < 240
-                    keywords: qsTr("索引范围;范围;整个磁盘;选中的文件夹;工作文件夹;普通用户;没有管理员权限;scope").split(";")
-                    description: {
-                        let what
-                        switch (window.editor.indexScope) {
-                        case "drives":
-                            what = qsTr("索引所有固定磁盘上的文件")
-                            break
-                        case "folders":
-                            what = qsTr("只索引下面选中的文件夹，建索引和核对都快得多")
-                            break
-                        default:
-                            what = qsTr("没有索引服务、也没有以管理员身份运行时只索引选中的文件夹，否则索引整个磁盘")
-                        }
-                        return what + "\n" + window.editor.indexScopeStatus
-                    }
-
-                    ScopeTabs {
-                        id: indexScopeTabs
-                        labels: [qsTr("自动"), qsTr("整个磁盘"), qsTr("只索引选中的文件夹")]
-                        current: Math.max(0, indexScopeRow.scopes.indexOf(window.editor.indexScope))
-                        disabled: window.editor.foldersPossible ? [] : [2]
-                        onActivated: (index) => window.editor.indexScope = indexScopeRow.scopes[index]
-                    }
-                }
-
-                SettingRow {
-                    id: foldersRow
-
-                    // Why the last one could not be added, and the network place
-                    // it was (offered for 网络共享 instead).
-                    property string problem
-                    property string networkPath
-
-                    function add(text) {
-                        const path = window.editor.localPath(text)
-                        const problem = window.editor.addFolder(path)
-                        foldersRow.problem = problem
-                        foldersRow.networkPath = problem.length > 0 && window.editor.isNetworkFolder(path) ? path : ""
-                        return problem.length === 0
-                    }
-                    function addShare(path) {
-                        const problem = window.editor.addShare(path)
-                        foldersRow.problem = problem
-                        foldersRow.networkPath = ""
-                        if (problem.length === 0)
-                            window.showPage(2, 3) // 网络共享, where it is now
-                    }
-
-                    title: qsTr("索引的文件夹")
-                    keywords: qsTr("文件夹;添加文件夹;工作文件夹;桌面;文档;下载;立即核对;folders").split(";")
-                    values: window.editor.folders.map(folder => folder.path)
-                    description: window.editor.foldersInEffect
-                                 ? qsTr("只有这些文件夹里的文件能搜到；也可以从资源管理器把文件夹拖到这里")
-                                 : qsTr("普通文件夹已包含在整盘索引中；mklink 创建的链接文件夹可在这里额外添加，管理员和索引服务模式也能用。")
-
-                    FlatButton {
-                        dpr: window.dpr
-                        text: qsTr("添加文件夹…")
-                        glyph: "" // Add
-                        onClicked: {
-                            const path = window.editor.pickFolder(qsTr("选择要索引的文件夹"))
-                            if (path.length > 0)
-                                foldersRow.add(path)
-                        }
-                    }
-
-                    body: [
-                        Text {
-                            visible: window.editor.foldersInEffect && window.editor.folders.length === 0
-                            width: parent.width
-                            text: qsTr("还没有选文件夹：本机磁盘上的文件都搜不到")
-                            color: Theme.caution
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.Wrap
-                        },
-                        Row {
-                            visible: foldersRow.problem.length > 0
-                            width: parent.width
-                            spacing: 8
-
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: Math.min(implicitWidth, parent.width - (toShares.visible ? toShares.width + 8 : 0))
-                                text: foldersRow.problem
-                                textFormat: Text.PlainText
-                                color: Theme.danger
-                                font.pixelSize: Theme.fontCaption
-                                wrapMode: Text.Wrap
-                            }
-                            FlatButton {
-                                dpr: window.dpr
-                                id: toShares
-                                visible: foldersRow.networkPath.length > 0
-                                text: qsTr("加到网络共享")
-                                onClicked: foldersRow.addShare(foldersRow.networkPath)
-                            }
-                        },
-                        Column { // the known folders not chosen yet, a click away
-                            visible: window.editor.foldersInEffect && window.editor.commonFolders.length > 0
-                            width: parent.width
-                            spacing: 6
-
-                            Text {
-                                text: qsTr("常用位置，点一下添加：")
-                                color: Theme.subtext
-                                font.pixelSize: Theme.fontCaption
-                            }
-                            Flow {
-                                width: parent.width
-                                spacing: 6
-
-                                Repeater {
-                                    model: window.editor.commonFolders
-
-                                    delegate: FlatButton {
-                                        dpr: window.dpr
-                                        required property var modelData
-                                        glyph: "" // Add
-                                        // Redirected to a server, as companies do: 网络共享's.
-                                        text: modelData.network ? qsTr("%1（在服务器上：加到网络共享）").arg(modelData.name) : modelData.name
-                                        onClicked: modelData.network ? foldersRow.addShare(modelData.path) : foldersRow.add(modelData.path)
-                                    }
-                                }
-                            }
-                        },
-                        Column {
-                            width: parent.width
-                            spacing: 8
-
-                            Repeater {
-                                // By count: a card stays as its words change, while it is walked.
-                                model: window.editor.folders.length
-
-                                delegate: ShareCard {
-                                    required property int index
-                                    width: parent.width
-                                    kind: "folder"
-                                    share: window.editor.folders[index] ?? blank // gone, before the card goes
-                                    marked: foldersRow.valueFound(share.path)
-                                    onVerifyClicked: window.editor.verifyFolder(index)
-                                    onRemoveClicked: {
-                                        foldersRow.problem = ""
-                                        window.editor.removeFolder(index)
-                                    }
-                                }
-                            }
-                        }
-                    ]
-                }
-
-                SettingRow {
-                    id: folderVerifyRow
-                    sub: true
-
-                    readonly property var hours: [1, 4, 24, 0]
-
-                    shown: window.editor.foldersInEffect || window.editor.folders.some(folder => folder.linked)
-                    title: qsTr("定时核对")
-                    keywords: qsTr("核对;重新扫描;每天;每小时;定时;verify;rescan").split(";")
-                    description: qsTr("把选中的文件夹重新走一遍，补上没跟上的改动；到时间后等你离开电脑一会儿再核对")
-                    bodyShown: folderVerifyRow.hours.indexOf(window.editor.folderVerifyHours) < 0
-
-                    ScopeTabs {
-                        labels: [qsTr("每小时"), qsTr("每 4 小时"), qsTr("每天"), qsTr("只在启动时")]
-                        current: folderVerifyRow.hours.indexOf(window.editor.folderVerifyHours)
-                        onActivated: (index) => window.editor.folderVerifyHours = folderVerifyRow.hours[index]
-                    }
-
-                    body: Text { // another number, written in the file (or by AI)
-                        width: parent.width
-                        text: qsTr("现在是每 %n 小时一次", "", window.editor.folderVerifyHours)
-                        color: Theme.subtext
-                        font.pixelSize: Theme.fontCaption
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 2
-                tab: 0
-                width: parent.width
-                title: qsTr("排除目录")
-                glyph: "\uE8F8"
-
-                SettingRow {
-                    id: excludedFoldersRow
-                    title: qsTr("不搜索的文件夹")
-                    keywords: qsTr("排除;忽略;隐藏;黑名单;exclude").split(";")
-                    values: window.editor.excludedPaths
-                    // GitHub #351: indexed all the same for the programs asking over the Everything interface.
-                    description: window.editor.everythingCompat
-                        ? qsTr("这些文件夹里的内容都不出现在结果里。“让其他软件把 Win顺 当作 Everything 搜索”开着时仍建索引，其他软件照样查得到（如 Total Commander 的文件夹大小）")
-                        : qsTr("这些文件夹里的内容都不出现在结果里")
-
-                    FlatButton {
-                        dpr: window.dpr
-                        text: qsTr("添加文件夹")
-                        glyph: "" // Add
-                        onClicked: window.editor.addExcludedFolder()
-                    }
-
-                    body: [Rectangle {
-                        width: parent.width
-                        height: Math.max(pathList.implicitHeight, 40)
-                        radius: Theme.controlRadius
-                        color: "transparent"
-                        border.width: 1
-                        border.color: Theme.cardBorder
-
-                        Text {
-                            visible: window.editor.excludedPaths.length === 0
-                            anchors.centerIn: parent
-                            text: qsTr("没有排除任何文件夹")
-                            color: Theme.faint
-                            font.pixelSize: Theme.fontCaption
-                        }
-
-                        Column {
-                            id: pathList
-                            width: parent.width
-
-                            Repeater {
-                                model: window.editor.excludedPaths
-
-                                delegate: Item {
-                                    id: pathRow
-
-                                    required property int index
-                                    required property string modelData
-
-                                    width: pathList.width
-                                    height: 42
-
-                                    Rectangle {
-                                        visible: pathRow.index > 0
-                                        x: 12
-                                        width: parent.width - 24
-                                        height: Theme.edge(window.dpr)
-                                        color: Theme.divider
-                                    }
-                                    Glyph {
-                                        id: folderIcon
-                                        x: 12
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        glyph: "" // Folder
-                                        size: 16
-                                    }
-                                    Text {
-                                        anchors.left: folderIcon.right
-                                        anchors.leftMargin: 10
-                                        anchors.right: removePath.left
-                                        anchors.rightMargin: 8
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: pathRow.modelData
-                                        textFormat: Text.PlainText
-                                        color: Theme.text
-                                        font.pixelSize: Theme.fontBody
-                                        elide: Text.ElideMiddle
-                                    }
-                                    FlatButton {
-                                        dpr: window.dpr
-                                        id: removePath
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 6
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        implicitHeight: 32
-                                        flat: true
-                                        text: qsTr("移除")
-                                        onClicked: window.editor.removeExcludedPath(pathRow.index)
-                                    }
-                                }
-                            }
-                        }
-                    }, Text { // some files only: by name, on the next tab (GitHub #374)
-                        text: qsTr("只想跳过某些文件？到“名称和类型”里按文件名（可用 *）或扩展名跳过") + "  ›"
-                        color: filesLink.pressed ? Theme.subtext : Theme.accent
-                        font.pixelSize: Theme.fontCaption
-                        font.underline: filesLink.containsMouse
-                        Accessible.role: Accessible.Link
-                        Accessible.name: text
-
-                        MouseArea {
-                            id: filesLink
-                            anchors.fill: parent
-                            anchors.margins: -4
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: window.showTab(1)
-                        }
-                    }]
-                }
-            }
-
-            SettingsSection {
-                page: 2
-                tab: 1
-                width: parent.width
-                title: qsTr("按名称与扩展名跳过")
-                glyph: "\uE71C"
-                note: qsTr("修改后在后台重新整理，不影响搜索。")
-
-                SettingRow {
-                    id: excludedNamesRow
-                    title: qsTr("跳过的文件夹名称")
-                    keywords: qsTr("排除;忽略;文件夹名;exclude").split(";")
-                    values: window.editor.excludedNames
-                    description: qsTr("任何位置的同名文件夹都跳过，例如 node_modules")
-
-                    body: [
-                        Flow {
-                            width: parent.width
-                            spacing: 6
-
-                            Repeater {
-                                model: window.editor.excludedNames
-
-                                delegate: Chip {
-                                    required property int index
-                                    required property string modelData
-                                    text: modelData
-                                    marked: excludedNamesRow.valueFound(modelData)
-                                    onRemoveClicked: window.editor.removeExcludedName(index)
-                                }
-                            }
-                        },
-                        Row {
-                            spacing: 8
-
-                            InputBox {
-                                dpr: window.dpr
-                                id: nameInput
-                                width: 240
-                                placeholder: qsTr("输入文件夹名称，例如 build")
-                                onAccepted: if (window.editor.addExcludedName(text)) clear()
-                            }
-                            FlatButton {
-                                dpr: window.dpr
-                                text: qsTr("添加")
-                                enabled: nameInput.text.trim().length > 0
-                                onClicked: if (window.editor.addExcludedName(nameInput.text)) nameInput.clear()
-                            }
-                        }
-                    ]
-                }
-            }
-
-            SettingsSection {
-                page: 2
-                tab: 1
-                width: parent.width
-                note: qsTr("立即生效，不用重新整理。")
-
-                SettingRow {
-                    id: excludedTypesRow
-                    title: qsTr("跳过的文件类型")
-                    keywords: qsTr("排除;忽略;扩展名;后缀;格式;exclude").split(";")
-                    values: window.editor.excludedTypes
-                    description: qsTr("这些扩展名的文件不出现在搜索结果里，例如 wbk、bak")
-
-                    body: [
-                        Flow {
-                            width: parent.width
-                            spacing: 6
-
-                            Repeater {
-                                model: window.editor.excludedTypes
-
-                                delegate: Chip {
-                                    required property int index
-                                    required property string modelData
-                                    text: modelData
-                                    marked: excludedTypesRow.valueFound(modelData)
-                                    onRemoveClicked: window.editor.removeExcludedType(index)
-                                }
-                            }
-                        },
-                        Row {
-                            spacing: 8
-
-                            InputBox {
-                                dpr: window.dpr
-                                id: typeInput
-                                width: 240
-                                placeholder: qsTr("例如 wbk, bak")
-                                onAccepted: if (window.editor.addExcludedTypes(text)) clear()
-                            }
-                            FlatButton {
-                                dpr: window.dpr
-                                text: qsTr("添加")
-                                enabled: typeInput.text.trim().length > 0
-                                onClicked: if (window.editor.addExcludedTypes(typeInput.text)) typeInput.clear()
-                            }
-                        }
-                    ]
-                }
-
-                SettingRow {
-                    id: excludedFileNamesRow
-                    title: qsTr("跳过的文件名")
-                    keywords: qsTr("排除;忽略;文件名;通配符;临时文件;~$;exclude").split(";")
-                    values: window.editor.excludedFileNames
-                    description: qsTr("这些名字的文件不出现在结果里，* 代表任意几个字，例如 ~$*（Office、WPS 临时文件）")
-
-                    body: [
-                        Flow {
-                            width: parent.width
-                            spacing: 6
-
-                            Repeater {
-                                model: window.editor.excludedFileNames
-
-                                delegate: Chip {
-                                    required property int index
-                                    required property string modelData
-                                    text: modelData
-                                    marked: excludedFileNamesRow.valueFound(modelData)
-                                    onRemoveClicked: window.editor.removeExcludedFileName(index)
-                                }
-                            }
-                        },
-                        Row {
-                            spacing: 8
-
-                            InputBox {
-                                dpr: window.dpr
-                                id: fileNameInput
-                                width: 240
-                                placeholder: qsTr("例如 ~$*, Thumbs.db")
-                                onAccepted: if (window.editor.addExcludedFileNames(text)) clear()
-                            }
-                            FlatButton {
-                                dpr: window.dpr
-                                text: qsTr("添加")
-                                enabled: fileNameInput.text.trim().length > 0
-                                onClicked: if (window.editor.addExcludedFileNames(fileNameInput.text)) fileNameInput.clear()
-                            }
-                        }
-                    ]
-                }
-            }
-
-            SettingsSection {
-                page: 2
-                tab: 2
-                width: parent.width
-                title: qsTr("磁盘范围")
-                glyph: "\uEDA2"
-                note: qsTr("修改后在后台重新整理，不影响搜索。")
-
-                SettingRow {
-                    id: drivesRow
-                    title: qsTr("索引哪些磁盘")
-                    stackControl: width - 52 - driveScopeTabs.implicitWidth < 240
-                    keywords: qsTr("磁盘;硬盘;盘符;选择磁盘;索引范围;drive;disk;volume").split(";")
-                    description: window.editor.allDrives
-                                 ? qsTr("自动索引所有符合条件的本机磁盘")
-                                 : qsTr("只索引勾选的磁盘；取消勾选后，该盘的文件会从结果中移除。新接入的磁盘需要手动勾选。")
-                    bodyShown: !window.editor.allDrives
-                    ScopeTabs {
-                        id: driveScopeTabs
-                        labels: [qsTr("全部磁盘"), qsTr("自己选择")]
-                        current: window.editor.allDrives ? 0 : 1
-                        onActivated: index => window.editor.allDrives = index === 0
-                    }
-                    body: [
-                        Column {
-                            width: parent.width
-                            spacing: 6
-                            Repeater {
-                                model: window.editor.drives
-                                delegate: Row {
-                                    id: driveRow
-                                    required property var modelData
-                                    width: parent.width
-                                    spacing: 12
-                                    ToggleSwitch {
-                                        dpr: window.dpr
-                                        id: driveToggle
-                                        word: false
-                                        checked: driveRow.modelData.selected
-                                        enabled: driveRow.modelData.enabled
-                                        Accessible.name: qsTr("索引 %1 盘").arg(driveRow.modelData.root)
-                                        onToggled: on => window.editor.setDriveSelected(driveRow.modelData.root, on)
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: Math.max(0, driveRow.width - driveToggle.width - driveRow.spacing)
-                                        wrapMode: Text.Wrap
-                                        text: driveRow.modelData.root + (driveRow.modelData.status.length > 0 ? "  ·  " + driveRow.modelData.status : "")
-                                        font.pixelSize: Theme.fontBody
-                                        color: driveRow.modelData.enabled ? Theme.text : Theme.subtext
-                                    }
-                                }
-                            }
-                            Text {
-                                visible: !window.editor.drives.some(drive => drive.selected && drive.enabled)
-                                width: parent.width
-                                text: qsTr("没有选择本机磁盘，只搜索你添加的网络和 WSL 位置")
-                                wrapMode: Text.Wrap
-                                color: Theme.caution
-                                font.pixelSize: Theme.fontCaption
-                            }
-                        },
-                        FlatButton {
-                            dpr: window.dpr
-                            text: qsTr("刷新磁盘列表")
-                            onClicked: window.editor.refreshDrives()
-                        }
-                    ]
-                }
-
-                SettingRow {
-                    title: qsTr("包括 U 盘和移动硬盘")
-                    keywords: qsTr("U盘;移动硬盘;外接;USB;removable").split(";")
-                    description: qsTr("默认只搜索电脑自带的硬盘")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.includeRemovableDrives
-                        onToggled: (on) => window.editor.includeRemovableDrives = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("启动时检查文件变化")
-                    keywords: qsTr("重新扫描;扫描;rescan").split(";")
-                    description: qsTr("补上 U 盘等非 NTFS 磁盘在 Win顺 关闭期间的改动")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.rescanOnStartup
-                        onToggled: (on) => window.editor.rescanOnStartup = on
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 2
-                tab: 2
-                width: parent.width
-                title: qsTr("索引引擎与服务")
-                glyph: "\uE950"
-
-                SettingRow {
-                    id: indexAccessRow
-
-                    // How NTFS disks are read (GitHub #21): the choices, 管理员直读
-                    // only on an administrator's account (it means nothing elsewhere).
-                    readonly property var modes: window.editor.isAdministrator
-                                                 ? ["auto", "service", "direct", "walk"]
-                                                 : ["auto", "service", "walk"]
-                    readonly property var modeLabels: ({
-                        "auto": qsTr("自动（推荐）"),
-                        "service": qsTr("索引服务"),
-                        "direct": qsTr("管理员直读"),
-                        "walk": qsTr("遍历")
-                    })
-                    readonly property string chosen: window.editor.indexAccess
-
-                    title: qsTr("索引方式")
-                    keywords: qsTr("索引服务;管理员;权限;UAC;MFT;主文件表;遍历;服务;index service;administrator").split(";")
-                    description: {
-                        let what
-                        switch (chosen) {
-                        case "service":
-                            what = qsTr("通过索引服务读取磁盘的主文件表和变更日志，Win顺 以普通权限运行")
-                            break
-                        case "direct":
-                            what = qsTr("启动时请求管理员权限，直接读取主文件表和变更日志；取消后本次用普通权限，保留选择。开机自启也以管理员身份")
-                            break
-                        case "walk":
-                            what = qsTr("不需要任何权限，逐个文件夹遍历，建索引慢一些")
-                            break
-                        default:
-                            what = qsTr("以管理员身份运行时直接读取，否则通过索引服务；没有服务就遍历文件夹")
-                        }
-                        return what + "\n" + window.editor.indexAccessStatus
-                    }
-
-                    FlatButton {
-                        dpr: window.dpr
-                        // 管理员直读 asked for while running with normal rights, or a
-                        // portable copy wanting the MFT read this once: UAC asks once.
-                        visible: window.editor.isAdministrator && !window.editor.isElevated
-                                 && (window.editor.isPortable || indexAccessRow.chosen === "direct")
-                        text: qsTr("以管理员身份重新启动")
-                        onClicked: window.editor.restartAsAdministrator()
-                    }
-
-                    body: [
-                        ScopeTabs {
-                            labels: indexAccessRow.modes.map(mode => indexAccessRow.modeLabels[mode])
-                            current: Math.max(0, indexAccessRow.modes.indexOf(indexAccessRow.chosen))
-                            onActivated: (index) => window.editor.indexAccess = indexAccessRow.modes[index]
-                        },
-                        Text { // worth reading, nothing wrong
-                            visible: window.editor.indexAccessNote.length > 0
-                            width: parent.width
-                            text: window.editor.indexAccessNote
-                            textFormat: Text.PlainText
-                            color: Theme.subtext
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.Wrap
-                        }
-                    ]
-                }
-
-                SettingRow {
-                    id: indexServiceRow
-                    objectName: "indexServiceRow"
-                    sub: true
-
-                    // A portable copy has no installer to register the service:
-                    // done from here, as administrator (UAC asks once).
-                    // An account that cannot install it (not an administrator's,
-                    // GitHub #52) gets the reason instead of the buttons.
-                    shown: window.editor.isPortable
-                    title: qsTr("索引服务")
-                    keywords: qsTr("便携;安装服务;更新服务;卸载服务;索引服务;没有管理员权限;装不了;portable;service").split(";")
-                    description: window.editor.indexServiceInstalled && window.editor.indexServiceUnsafeLocation
-                                 ? (window.editor.indexServiceInstallable
-                                    ? qsTr("索引服务装在一个别的程序能改动的位置，有安全风险。点“修复”把它移到受保护的位置（需要管理员权限一次）")
-                                    : qsTr("索引服务装在一个别的程序能改动的位置，有安全风险。请让管理员打开 Win顺 的设置，点“修复”。"))
-                                 : !window.editor.indexServiceInstallable
-                                 ? (window.editor.indexServiceInstalled
-                                    ? qsTr("已安装 Windows 服务“Win顺 索引服务”，它替普通权限的 Win顺 读取主文件表。这个账户不是管理员，不能卸载它")
-                                    : window.editor.foldersInEffect
-                                    ? qsTr("你在这台电脑上没有管理员权限，装不了索引服务。Win顺 会索引你选的文件夹，并定时核对")
-                                    : qsTr("你在这台电脑上没有管理员权限，装不了索引服务。Win顺 按文件夹遍历整个磁盘"))
-                                 : window.editor.indexServiceUpdatable
-                                 ? qsTr("索引服务还是 %1 版，比这份 Win顺 旧，有些功能用不上。点“更新索引服务”，Windows 会请你确认一次").arg(window.editor.indexServiceVersion)
-                                 : window.editor.indexServiceInstalled
-                                 ? qsTr("已安装 Windows 服务“Win顺 索引服务”，它替普通权限的 Win顺 读取主文件表")
-                                 : qsTr("安装一个 Windows 服务，替普通权限的 Win顺 读取主文件表，建索引快得多；需要管理员权限一次")
-                    bodyShown: window.editor.indexServiceMessage.length > 0
-
-                    FlatButton {
-                        dpr: window.dpr
-                        // Install, or, when the service is in a place a non-administrator
-                        // could change, repair it (reinstall into a protected folder).
-                        visible: window.editor.indexServiceInstallable
-                                 && (!window.editor.indexServiceInstalled || window.editor.indexServiceUnsafeLocation)
-                        text: window.editor.indexServiceInstalled && window.editor.indexServiceUnsafeLocation
-                              ? qsTr("修复") : qsTr("安装索引服务…")
-                        enabled: !window.editor.indexServiceBusy
-                        onClicked: window.editor.installIndexService()
-                    }
-                    FlatButton {
-                        dpr: window.dpr
-                        // This copy's own service, older than it: --install upgrades it in place.
-                        visible: window.editor.indexServiceUpdatable
-                        text: qsTr("更新索引服务")
-                        enabled: !window.editor.indexServiceBusy
-                        onClicked: window.editor.installIndexService()
-                    }
-                    FlatButton {
-                        dpr: window.dpr
-                        visible: window.editor.indexServiceInstallable && window.editor.indexServiceInstalled
-                                 && !window.editor.indexServiceUnsafeLocation
-                        text: qsTr("卸载索引服务")
-                        enabled: !window.editor.indexServiceBusy
-                        onClicked: window.editor.uninstallIndexService()
-                    }
-
-                    body: Text {
-                        width: parent.width
-                        text: window.editor.indexServiceMessage
-                        textFormat: Text.PlainText
-                        color: Theme.subtext
-                        font.pixelSize: Theme.fontCaption
-                        wrapMode: Text.Wrap
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 2
-                tab: 3
-                width: parent.width
-                note: qsTr("默认只收录文件名和文件夹名；打开“搜索文件内容”的，会在电脑空闲时读取文件内容。服务器离线或 WSL 停止时，收录过的照样能搜到；恢复后自动更新。")
-
-                SettingRow {
-                    id: sharesRow
-                    title: qsTr("网络与 WSL 文件夹")
-                    keywords: qsTr("网络;共享;局域网;内网;NAS;服务器;SMB;映射;网络驱动器;WSL;Linux;Ubuntu;子系统;WebDAV;内容;全文;搜索文件内容;扫描;时段;时间;层数;深度;network;share;content;schedule;depth").split(";")
-                    values: window.editor.shares.map(share => share.path + " " + share.name)
-                    description: qsTr("添加 NAS、共享文件夹或 WSL 中的项目、用户目录，和本机文件一起搜索")
-
-                    // The shares of the server typed ("\\192.168.1.10"), once asked for.
-                    property string listedServer
-                    property var listedShares: []
-                    property string listProblem
-                    property bool listSignIn: false
-                    property bool listing: false
-                    readonly property string typedServer: window.editor.serverOf(shareInput.text)
-                    readonly property bool typedWsl: window.editor.isWslPath(shareInput.text)
-
-                    function add(text) {
-                        const problem = window.editor.addShare(text)
-                        shareProblem.text = problem
-                        if (problem.length === 0 && text === shareInput.text)
-                            shareInput.clear()
-                        return problem.length === 0
-                    }
-                    function listShares(server) {
-                        listedServer = server
-                        listedShares = []
-                        listProblem = ""
-                        listSignIn = false
-                        listing = true
-                        window.editor.listServerShares(server)
-                    }
-
-                    Connections {
-                        target: window.editor
-                        function onServerSharesListed(server, shares, problem, signIn) {
-                            if (server.toLowerCase() !== sharesRow.listedServer.toLowerCase())
-                                return
-                            sharesRow.listing = false
-                            sharesRow.listedShares = shares
-                            sharesRow.listProblem = problem
-                            sharesRow.listSignIn = signIn
-                        }
-                        function onSignedIn(path, problem) {
-                            if (problem.length > 0) {
-                                shareProblem.text = problem
-                                return
-                            }
-                            shareProblem.text = ""
-                            if (sharesRow.listSignIn && path.toLowerCase() === "\\\\" + sharesRow.listedServer.toLowerCase())
-                                sharesRow.listShares(sharesRow.listedServer) // signed in: now its shares show
-                        }
-                    }
-
-                    body: [
-                        Flow {
-                            width: parent.width
-                            spacing: 8
-
-                            InputBox {
-                                dpr: window.dpr
-                                id: shareInput
-                                width: Math.min(360, parent.width) // room for the placeholder
-                                placeholder: qsTr("粘贴网络路径、WebDAV 网址或 WSL 文件夹")
-                                onAccepted: {
-                                    if (sharesRow.typedServer.length > 0)
-                                        sharesRow.listShares(sharesRow.typedServer) // a server alone: what it shares
-                                    else
-                                        sharesRow.add(text)
-                                }
-                                onTextChanged: shareProblem.text = ""
-                            }
-                            FlatButton {
-                                dpr: window.dpr
-                                visible: sharesRow.typedServer.length === 0
-                                text: qsTr("添加")
-                                enabled: shareInput.text.trim().length > 0
-                                onClicked: sharesRow.add(shareInput.text)
-                            }
-                            FlatButton {
-                                dpr: window.dpr
-                                visible: sharesRow.typedServer.length > 0
-                                text: sharesRow.typedWsl ? qsTr("查看 WSL 发行版") : qsTr("查看共享的文件夹")
-                                onClicked: sharesRow.listShares(sharesRow.typedServer)
-                            }
-                            FlatButton {
-                                dpr: window.dpr
-                                text: qsTr("选择文件夹…")
-                                onClicked: {
-                                    const path = window.editor.pickFolder(qsTr("选择要搜索的网络或 WSL 文件夹"))
-                                    if (path.length > 0)
-                                        sharesRow.add(path)
-                                }
-                            }
-                        },
-                        Text {
-                            id: shareProblem
-                            visible: text.length > 0
-                            width: parent.width
-                            color: Theme.danger
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.Wrap
-                        },
-                        Column { // what the server listed shares, to add with a click
-                            visible: sharesRow.listedServer.length > 0
-                            width: parent.width
-                            spacing: 6
-
-                            Text {
-                                width: parent.width
-                                text: sharesRow.listing ? qsTr("正在连接 %1…").arg(sharesRow.listedServer)
-                                    : sharesRow.listProblem.length > 0 ? sharesRow.listProblem
-                                    : window.editor.isWslPath("\\\\" + sharesRow.listedServer)
-                                      ? qsTr("已安装的 WSL 发行版，点一下收录 Linux 文件：")
-                                      : qsTr("%1 上共享的文件夹，点一下添加：").arg(sharesRow.listedServer)
-                                color: Theme.subtext
-                                font.pixelSize: Theme.fontCaption
-                                wrapMode: Text.Wrap
-                            }
-                            Flow {
-                                width: parent.width
-                                spacing: 6
-
-                                FlatButton {
-                                    dpr: window.dpr
-                                    visible: sharesRow.listSignIn
-                                    highlighted: true
-                                    text: qsTr("登录")
-                                    onClicked: window.editor.signInToServer(sharesRow.listedServer)
-                                }
-                                Repeater {
-                                    model: sharesRow.listedShares
-
-                                    delegate: FlatButton {
-                                        dpr: window.dpr
-                                        required property string modelData
-                                        readonly property string path: "\\\\" + sharesRow.listedServer + "\\" + modelData
-                                        readonly property bool added: window.editor.shares.some(
-                                                                          share => share.path.toLowerCase() === path.toLowerCase())
-                                        glyph: added ? "" : "" // CheckMark, Add
-                                        text: modelData
-                                        enabled: !added
-                                        onClicked: sharesRow.add(path)
-                                    }
-                                }
-                            }
-                        },
-                        Column {
-                            visible: window.editor.wslFolders.length > 0
-                            width: parent.width
-                            spacing: 6
-
-                            Text {
-                                width: parent.width
-                                text: qsTr("检测到 WSL，点一下添加用户目录；也可以选择具体的项目文件夹：")
-                                color: Theme.subtext
-                                font.pixelSize: Theme.fontCaption
-                                wrapMode: Text.Wrap
-                            }
-                            Flow {
-                                width: parent.width
-                                spacing: 6
-
-                                Repeater {
-                                    model: window.editor.wslFolders
-
-                                    delegate: FlatButton {
-                                        dpr: window.dpr
-                                        required property var modelData
-                                        glyph: "\uE710"
-                                        text: modelData.name
-                                        onClicked: sharesRow.add(modelData.path)
-                                    }
-                                }
-                            }
-                        },
-                        Column { // opened in File Explorer or mapped before: a click away
-                            visible: window.editor.knownShares.length > 0 && sharesRow.listedServer.length === 0
-                            width: parent.width
-                            spacing: 6
-
-                            Text {
-                                text: qsTr("这台电脑访问过的：")
-                                color: Theme.subtext
-                                font.pixelSize: Theme.fontCaption
-                            }
-                            Flow {
-                                width: parent.width
-                                spacing: 6
-
-                                Repeater {
-                                    model: window.editor.knownShares
-
-                                    delegate: FlatButton {
-                                        dpr: window.dpr
-                                        required property var modelData
-                                        glyph: "" // Add
-                                        text: modelData.drive.length > 0 ? modelData.path + " (" + modelData.drive + ")" : modelData.path
-                                        onClicked: sharesRow.add(modelData.path)
-                                    }
-                                }
-                            }
-                        },
-                        Column {
-                            width: parent.width
-                            spacing: 8
-
-                            Repeater {
-                                // By count: a card stays as its words change, every few seconds while it is read.
-                                model: window.editor.shares.length
-
-                                delegate: ShareCard {
-                                    required property int index
-                                    width: parent.width
-                                    share: window.editor.shares[index] ?? blank // gone, before the card goes
-                                    marked: sharesRow.valueFound(share.path)
-                                    onVerifyClicked: window.editor.verifyShare(index)
-                                    onStartClicked: window.editor.startWslShare(index)
-                                    onSignInClicked: window.editor.signInToShare(index)
-                                    onAcceptClicked: window.editor.acceptShareMissing(index)
-                                    onRemoveClicked: window.editor.removeShare(index)
-                                    onContentToggled: (on) => window.editor.setShareContent(index, on)
-                                    onScanEdited: (scheduled, from, until, depth) => window.editor.setShareScan(index, scheduled, from, until, depth)
-                                }
-                            }
-                        }
-                    ]
-                }
-            }
-            // </page 2>
-                } }
-            }
-
-            PageSlot {
-                id: slot3
-                index: 3
-                content: Component { SettingsPage {
-                    host: settingsContext
-                    parts: ({ fileTypesSection: fileTypesSection, quickFiltersSection: quickFiltersSection })
-                    recordingHotkey: previewHotkeyRecorder.recording || openHotkeyRecorder.recording
-                    onResetForReopen: {
-                        previewHotkeyRecorder.stop()
-                        openHotkeyRecorder.stop()
-                        fileTypesSection.resetForReopen()
-                        quickFiltersSection.resetForReopen()
-                    }
-            // <page 3>
-            SettingsSection {
-                page: 3
-                tab: 0
-                width: parent.width
-                title: qsTr("排序与类型优先级")
-                glyph: "\uE8CB"
-
-                SettingRow {
-                    title: qsTr("文件和文件夹的顺序")
-                    keywords: qsTr("排序;顺序;文件夹在前;目录;sort;folder").split(";")
-                    description: qsTr("文件和文件夹分两组排，选哪组在前")
-
-                    ScopeTabs {
-                        labels: [qsTr("文件在前"), qsTr("文件夹在前")]
-                        current: window.editor.foldersFirst ? 1 : 0
-                        onActivated: (index) => window.editor.foldersFirst = index === 1
-                    }
-                }
-
-                SettingRow {
-                    id: sortRow
-                    title: qsTr("排序")
-                    keywords: qsTr("排序;修改时间;修改日期;最新;最早;名称;文件名;所在文件夹;目录;类型;扩展名;大小;升序;降序;次数;打开次数;运行次数;最常用;sort;date;size;type;count").split(";")
-                    description: qsTr("文件和文件夹怎么排（“全部”里应用和设置仍在前面）；底栏左边也能切换（Ctrl+S 在前三种里轮换）")
-
-                    readonly property var sorts: ["match", "newest", "oldest", "name", "folder", "type", "largest", "smallest", "opened"]
-                    readonly property int chosen: sorts.indexOf(window.editor.sort)
-
-                    ScopeTabs {
-                        labels: [qsTr("最匹配"), qsTr("最新在前"), qsTr("最早在前")]
-                        current: sortRow.chosen < 3 ? Math.max(0, sortRow.chosen) : -1
-                        onActivated: (index) => window.editor.sort = sortRow.sorts[index]
-                    }
-
-                    // Too many for one line (#44): the other orders under the first.
-                    body: [
-                        ScopeTabs {
-                            labels: [qsTr("名称"), qsTr("所在文件夹"), qsTr("类型"), qsTr("大的在前"), qsTr("小的在前"), qsTr("打开最多")]
-                            current: sortRow.chosen - 3 // below 0 while one of the three above is in force
-                            onActivated: (index) => window.editor.sort = sortRow.sorts[index + 3]
-                        }
-                    ]
-                }
-
-                SettingRow {
-                    title: qsTr("优先显示的文件类型")
-                    keywords: qsTr("可执行;程序;脚本;优先;排在前面;扩展名;exe;bat;cmd;ps1;msi;Listary").split(";")
-                    values: [window.editor.preferredTypes]
-                    description: qsTr("按“最匹配”排序时，名字差不多的结果里这些类型排在前面，例如搜 curl 时 curl.exe 排在文件夹 curl 和 curl.h 前面。用分号或逗号隔开，留空就不优先")
-
-                    FlatButton {
-                        dpr: window.dpr
-                        visible: !window.editor.preferredTypesDefault
-                        text: qsTr("恢复默认")
-                        onClicked: window.editor.resetPreferredTypes()
-                    }
-
-                    body: [
-                        InputBox {
-                            dpr: window.dpr
-                            width: Math.min(parent.width, 360)
-                            text: window.editor.preferredTypes
-                            placeholder: qsTr("例如 exe; bat; cmd")
-                            onEditingFinished: {
-                                window.editor.preferredTypes = text
-                                text = Qt.binding(() => window.editor.preferredTypes) // as kept: "EXE,.bat" shows "exe; bat"
-                            }
-                        }
-                    ]
-                }
-            }
-
-            SettingsSection {
-                page: 3
-                tab: 1
-                width: parent.width
-                title: qsTr("附加搜索源与匹配模式")
-                glyph: "\uE721"
-
-                SettingRow {
-                    title: qsTr("搜索应用")
-                    keywords: qsTr("应用;程序;软件;开始菜单;启动;全部;关闭;app").split(";")
-                    description: qsTr("在“全部”里列出开始菜单里的程序和应用；关掉后只找文件和内容（收藏的应用仍会列出，在开始菜单里打字也一样）")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.searchApps
-                        Accessible.name: qsTr("搜索应用")
-                        onToggled: (on) => window.editor.searchApps = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("搜索系统设置")
-                    keywords: qsTr("设置;系统设置;控制面板;系统开关;蓝牙;音量;全部;关闭;settings").split(";")
-                    description: qsTr("在“全部”里列出 Windows 设置页、控制面板和系统开关（如“关蓝牙”“音量 30”）；关掉后只找文件和内容")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.searchSystem
-                        Accessible.name: qsTr("搜索系统设置")
-                        onToggled: (on) => window.editor.searchSystem = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("正则模式（Ctrl+R）")
-                    keywords: qsTr("正则;正则表达式;regex;Everything;Ctrl+R;匹配").split(";")
-                    description: qsTr("每个词都按正则表达式匹配：“全部”和“文件”里匹配名字，“内容”里匹配文件里的文字")
-                    tip: qsTr("如 ^IMG_\\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.regexMode
-                        Accessible.name: qsTr("正则模式")
-                        onToggled: (on) => window.editor.regexMode = on
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 3
-                tab: 1
-                width: parent.width
-                title: qsTr("未输入时的初始列表")
-                glyph: "\uE81C"
-
-                SettingRow {
-                    title: qsTr("合并“全部”和“文件”")
-                    description: qsTr("在“全部”下常驻文件类型筛选，应用仍优先显示；按住 Ctrl 查看类型关键词")
-                    keywords: qsTr("合并;全部;文件;类型;筛选;merge;scope").split(";")
-                    ToggleSwitch {
-                        objectName: "mergeFileScopeToggle"
-                        dpr: window.dpr
-                        checked: window.editor.mergeFileScope
-                        onToggled: (on) => window.editor.mergeFileScope = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("显示“应用”标签")
-                    description: qsTr("在范围标签的最后加一个“应用”：应用排成图标网格，可看常用的、收藏的或全部，点星标收藏")
-                    keywords: qsTr("程序;应用;图标;网格;启动台;apps;grid;launchpad").split(";")
-                    ToggleSwitch {
-                        objectName: "appsTabToggle"
-                        dpr: window.dpr
-                        checked: window.editor.appsTab
-                        onToggled: (on) => window.editor.appsTab = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("不输入时显示")
-                    unlocks: [recentItemsRow]
-                    keywords: qsTr("最近;最近打开;最近修改;最近使用;历史;recent").split(";")
-                    description: qsTr("打开搜索框还没输入时列出最近打开或最近修改的项目；底栏也能切换（Ctrl+S）。收藏由下面的开关单独控制")
-
-                    ScopeTabs {
-                        readonly property var lists: ["opened", "modified", "none"]
-                        labels: [qsTr("最近打开"), qsTr("最近修改"), qsTr("不显示")]
-                        current: Math.max(0, lists.indexOf(window.editor.startList))
-                        onActivated: (index) => window.editor.startList = lists[index]
-                    }
-                }
-
-                SettingRow {
-                    id: recentItemsRow
-                    sub: true
-                    shown: window.editor.startList === "opened"
-                    title: qsTr("最近打开的数量")
-                    keywords: qsTr("最近;历史;数量;条数;上限;自定义;recent").split(";")
-                    description: qsTr("可填 1–200 项，按最近打开的顺序显示；仅在上面选择“最近打开”时生效")
-
-                    InputBox {
-                        dpr: window.dpr
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 80
-                        enabled: window.editor.startList === "opened"
-                        horizontalAlignment: TextInput.AlignHCenter
-                        text: String(window.editor.recentItems)
-                        Accessible.name: qsTr("最近打开的数量")
-                        validator: IntValidator { bottom: 1; top: 200 }
-                        onEditingFinished: {
-                            const count = parseInt(text, 10)
-                            if (count > 0)
-                                window.editor.recentItems = Math.min(200, count)
-                            text = Qt.binding(() => String(window.editor.recentItems))
-                        }
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("不输入时显示收藏")
-                    keywords: qsTr("收藏;命令;显示;隐藏;关键词;空白;启动;favorite").split(";")
-                    description: qsTr("关闭后，收藏和自定义命令仍可通过名称或关键词找到")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.favoritesOnStart
-                        onToggled: (on) => window.editor.favoritesOnStart = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("收藏的样式")
-                    keywords: qsTr("收藏;图标;平铺;网格;多行;排序;拖动;favorite;icon;grid").split(";")
-                    description: window.editor.favoriteTiles
-                                 ? qsTr("不输入时，收藏排成一格格图标，名称在下面，一屏放得更多；按住一个图标稍等再拖动，可以换位置")
-                                 : qsTr("不输入时，收藏和最近打开的一样一行一个")
-
-                    ScopeTabs {
-                        objectName: "favoriteTilesChoice"
-                        enabled: window.editor.favoritesOnStart
-                        labels: [qsTr("列表"), qsTr("图标")]
-                        current: window.editor.favoriteTiles ? 1 : 0
-                        onActivated: (index) => window.editor.favoriteTiles = index === 1
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 3
-                tab: 1
-                width: parent.width
-                title: qsTr("键盘提示")
-
-                SettingRow {
-                    title: qsTr("显示快捷键帮助按钮")
-                    description: qsTr("在搜索框右下角显示入口，点击查看常用快捷键")
-                    keywords: qsTr("快捷键;帮助;提示;隐藏;极简").split(";")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        objectName: "shortcutHelpToggle"
-                        checked: window.editor.shortcutHelp
-                        Accessible.name: qsTr("显示快捷键帮助按钮")
-                        onToggled: (on) => window.editor.shortcutHelp = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("显示底栏按键提示")
-                    description: qsTr("显示 Enter、Ctrl+Enter、Tab 等操作提示；未输入时隐藏 Tab 切换范围提示")
-                    keywords: qsTr("快捷键;底栏;提示;隐藏;Tab;极简").split(";")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        objectName: "footerHintsToggle"
-                        checked: window.editor.footerHints
-                        Accessible.name: qsTr("显示底栏按键提示")
-                        onToggled: (on) => window.editor.footerHints = on
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 3
-                tab: 1
-                width: parent.width
-                title: qsTr("列表信息与交互")
-                glyph: "\uE8FD"
-
-                SettingRow {
-                    title: qsTr("显示修改日期")
-                    keywords: qsTr("修改时间;修改日期;日期;时间;date").split(";")
-                    description: qsTr("在搜索结果右侧显示修改日期；可与文件大小同时显示")
-                    unlocks: [showModifiedTimeRow]
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.showModified
-                        onToggled: (on) => window.editor.showModified = on
-                    }
-                }
-
-                SettingRow {
-                    id: showModifiedTimeRow
-                    sub: true
-                    shown: window.editor.showModified
-                    title: qsTr("较早的日期也显示具体时间")
-                    keywords: qsTr("修改时间;修改日期;具体时间;时分;time").split(";")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.showModifiedTime
-                        Accessible.name: qsTr("较早的日期也显示时间")
-                        onToggled: (on) => window.editor.showModifiedTime = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("显示文件大小")
-                    keywords: qsTr("文件大小;体积;精简;双击Ctrl;KB;MB;GB;size").split(";")
-                    description: qsTr("无需展开窗口，在搜索结果右侧显示文件大小；按大小排序时始终显示。文件夹不统计大小。")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        objectName: "showFileSizeToggle"
-                        checked: window.editor.showFileSize
-                        Accessible.name: qsTr("显示文件大小")
-                        onToggled: (on) => window.editor.showFileSize = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("显示图片缩略图")
-                    keywords: qsTr("缩略图;预览;图片;照片;视频;PDF;thumbnail;preview").split(";")
-                    description: qsTr("图片、视频、PDF 等显示缩略图，代替类型图标")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.thumbnails
-                        onToggled: (on) => window.editor.thumbnails = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("显示删除按钮")
-                    keywords: qsTr("删除;垃圾桶;回收站;误删;按钮;delete;trash;recycle").split(";")
-                    description: qsTr("文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后可在右键菜单的“更多选项”里删除")
-
-                    ToggleSwitch {
-                        objectName: "rowDeleteButtonToggle"
-                        dpr: window.dpr
-                        checked: window.editor.rowDeleteButton
-                        onToggled: (on) => window.editor.rowDeleteButton = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("点击结果")
-                    keywords: qsTr("单击;双击;点击;鼠标;误触;打开;选中;预览;看内容;click;double;preview").split(";")
-                    description: !window.editor.doubleClickToOpen
-                                 ? qsTr("单击就打开；也可以单击只选中，双击或按 Enter 才打开，结果多时不怕点错")
-                                 : window.editor.clickPreviews
-                                   ? qsTr("单击选中并预览，不用打开就能看内容；双击或按 Enter 打开")
-                                   : qsTr("单击只选中（高亮），双击或按 Enter 才打开，结果多时不怕点错")
-
-                    ScopeTabs {
-                        objectName: "clickActionChoice"
-                        labels: [qsTr("单击打开"), qsTr("双击打开"), qsTr("单击预览")]
-                        current: !window.editor.doubleClickToOpen ? 0 : window.editor.clickPreviews ? 2 : 1
-                        onActivated: (index) => {
-                            window.editor.clickPreviews = index === 2
-                            window.editor.doubleClickToOpen = index !== 0
-                        }
-                    }
-                }
-
-                SettingRow {
-                    objectName: "favoriteFolderTab"
-                    title: qsTr("选中收藏文件夹时按 Tab")
-                    keywords: qsTr("Tab;Shift+Tab;收藏;文件夹;范围;键盘;favorite;keyboard").split(";")
-                    description: qsTr("在“全部”范围中，列表自动选中的收藏文件夹（如第一行）默认切换搜索范围，也可改为进入它继续搜索。用 ↑ ↓ 或单击选中的文件夹，按 Tab 都会进入。Shift+Tab 仍反向切换范围。")
-
-                    ScopeTabs {
-                        objectName: "favoriteFolderTabChoice"
-                        labels: [qsTr("切换范围"), qsTr("进入文件夹")]
-                        current: window.editor.tabEntersFavoriteFolder ? 1 : 0
-                        onActivated: (index) => window.editor.tabEntersFavoriteFolder = index === 1
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 3
-                tab: 1
-                width: parent.width
-                title: qsTr("文件快速预览")
-                glyph: "\uE890"
-
-                SettingRow {
-                    title: qsTr("预览文件")
-                    keywords: qsTr("预览;快速查看;看一眼;QuickLook;Seer;空格;Alt+P;preview").split(";")
-                    description: window.editor.previewWith === "builtin"
-                                 ? qsTr("用 Win顺 自己的预览窗口看一眼")
-                                 : qsTr("QuickLook 或 Seer 在后台运行时交给它，否则用 Win顺 自己的预览")
-
-                    ScopeTabs {
-                        labels: [qsTr("自动"), qsTr("内置")]
-                        current: window.editor.previewWith === "builtin" ? 1 : 0
-                        onActivated: (index) => window.editor.previewWith = ["auto", "builtin"][index]
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("预览跟随")
-                    keywords: qsTr("预览;跟随;鼠标;悬停;指向;划过;选中;大文件;卡;hover;preview").split(";")
-                    description: window.editor.previewFollowsPointer
-                                 ? qsTr("预览开着时，鼠标停在哪一行就预览哪一行；Word、PPT、PDF 这类文件要停稳一下才打开")
-                                 : window.editor.doubleClickToOpen
-                                   ? qsTr("只预览选中的行：单击或用方向键选中。鼠标划过时不切换，大文件不会被一个个打开")
-                                   : qsTr("只预览选中的行：用方向键选中，或用鼠标中键点一行。鼠标划过时不切换，大文件不会被一个个打开")
-
-                    ScopeTabs {
-                        objectName: "previewFollowChoice"
-                        labels: [qsTr("鼠标所指"), qsTr("选中的行")]
-                        current: window.editor.previewFollowsPointer ? 0 : 1
-                        onActivated: (index) => window.editor.previewFollowsPointer = index === 0
-                    }
-                }
-
-                SettingRow { // whether a preview left open comes back with the launcher (GitHub #258: some want it gone)
-                    title: qsTr("再次打开时恢复预览")
-                    keywords: qsTr("预览;恢复;记住;保留;关闭;下次;再次;restore;preview").split(";")
-                    description: window.editor.previewRestore
-                                 ? qsTr("预览开着时收起搜索框，下次打开搜索框预览也跟着回来")
-                                 : qsTr("搜索框收起，预览就一起关掉；下次要看再按预览快捷键")
-
-                    ToggleSwitch {
-                        objectName: "previewRestoreSwitch"
-                        checked: window.editor.previewRestore
-                        onToggled: (on) => window.editor.previewRestore = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("预览快捷键")
-                    keywords: qsTr("预览;快捷键;空格;Space;Alt+P;QuickLook;preview;shortcut").split(";")
-                    values: [window.editor.previewHotkey]
-                    description: qsTr("仅在搜索结果中生效，再按一次关闭，鼠标中键点一行也行。可直接录制空格：刚输入完时空格照常输入，选过结果或打开预览后才开关预览；Shift+空格始终输入空格。Backspace 清除，Esc 取消。")
-
-                    FlatButton {
-                        dpr: window.dpr
-                        text: qsTr("恢复默认")
-                        enabled: window.editor.previewHotkey !== "Alt+P"
-                        onClicked: window.editor.previewHotkey = "Alt+P"
-                    }
-                    HotkeyRecorder {
-                        id: previewHotkeyRecorder
-                        objectName: "previewHotkeyRecorder"
-                        hotkey: window.editor.previewHotkey
-                        previewShortcut: true
-                        onRecorded: (hotkey) => window.editor.previewHotkey = hotkey
-                    }
-
-                    bodyShown: window.editor.previewHotkeyError.length > 0
-                    body: Text {
-                        width: parent.width
-                        text: window.editor.previewHotkeyError
-                        color: Theme.danger
-                        font.pixelSize: Theme.fontCaption
-                        wrapMode: Text.Wrap
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 3
-                tab: 2
-                width: parent.width
-                title: qsTr("搜索框与数字快捷键")
-                glyph: "\uE765"
-                note: qsTr("在搜索框按 Tab、Shift+Tab 切换“全部”“文件”“内容”；Ctrl+Tab 在“文件”里切换文件类型，在“内容”里切换文件夹。")
-
-                SettingRow {
-                    objectName: "logoRightClickRow"
-                    title: qsTr("右键 Logo 的行为")
-                    description: qsTr("“靠上”模式下，展开的搜索面板会居中")
-                    keywords: qsTr("右键;Logo;位置;归位;靠上;居中;拖动;logo;position").split(";")
-
-                    ScopeTabs {
-                        objectName: "logoRightClickChoice"
-                        readonly property var choices: ["menu", "top", "center", "restore"]
-                        labels: [qsTr("位置菜单"), qsTr("靠上"), qsTr("居中"), qsTr("上次拖动位置")]
-                        current: Math.max(0, choices.indexOf(window.editor.logoRightClick))
-                        onActivated: (index) => window.editor.logoRightClick = choices[index]
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("每次打开时清空搜索")
-                    keywords: qsTr("清空;清除;上次;保留;隐私;搜索框;clear;privacy").split(";")
-                    description: qsTr("打开时搜索框是空的，回到“全部”；关掉时保留上次的文字并选中，直接输入就会替换")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.clearOnOpen
-                        onToggled: (on) => window.editor.clearOnOpen = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("回到上次的位置")
-                    keywords: qsTr("上次;位置;滚动;记住;选中;恢复;scroll;position;remember").split(";")
-                    description: qsTr("再打开时停在上次选中的那一行，列表也滚到那里；关掉时从第一行开始。开着“每次打开时清空搜索”时不起作用")
-
-                    ToggleSwitch {
-                        objectName: "reopenWhereLeftSwitch"
-                        dpr: window.dpr
-                        enabled: !window.editor.clearOnOpen
-                        checked: window.editor.reopenWhereLeft
-                        onToggled: (on) => window.editor.reopenWhereLeft = on
-                    }
-                }
-
-                SettingRow { // feedback 2026-11-16
-                    title: qsTr("钉住时在最前")
-                    keywords: qsTr("钉住;置顶;最前;盖住;遮挡;Ctrl+T;pin;topmost;always on top").split(";")
-                    description: qsTr("按 Ctrl+T 钉住后，搜索框一直盖在别的窗口上面；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面")
-
-                    ToggleSwitch {
-                        objectName: "pinnedOnTopSwitch"
-                        dpr: window.dpr
-                        checked: window.editor.pinnedOnTop
-                        onToggled: (on) => window.editor.pinnedOnTop = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("打开时切换为英文输入")
-                    keywords: qsTr("输入法;英文;字母;中文;拼音首字母;IME;English").split(";")
-                    description: qsTr("中文输入法在搜索框里先用英文，直接打字母和拼音首字母；在框里切回中文照常可用，关掉后恢复原样")
-
-                    ToggleSwitch {
-                        checked: window.editor.englishOnOpen
-                        onToggled: (on) => window.editor.englishOnOpen = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("打开时填入刚复制的文字")
-                    keywords: qsTr("剪贴板;复制;自动;填入;粘贴;网址;clipboard;paste").split(";")
-                    description: qsTr("刚在别的程序里复制了一行文字，在这么多秒内打开搜索框，就直接搜它（全选着，打字即替换）；超过时间、复制的是多行或文件时不填。装了“网页搜索”插件，复制的是网址时第一行就是打开它")
-
-                    ScopeTabs {
-                        labels: [qsTr("关闭"), qsTr("3 秒"), qsTr("5 秒"), qsTr("10 秒")]
-                        current: [0, 3, 5, 10].indexOf(window.editor.clipboardFillSeconds) // another number of seconds (set in the file): none of them
-                        onActivated: (index) => window.editor.clipboardFillSeconds = [0, 3, 5, 10][index]
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("打开结果的备用键")
-                    keywords: qsTr("打开;回车;Enter;备用;左手;快捷键;空格;open;shortcut").split(";")
-                    values: [window.editor.openHotkey]
-                    description: qsTr("和 Enter 一样打开选中的结果，Enter 照常可用。录一个左手顺手的键，比如 Alt+Q 或 F1；空格不行，它要用来分开几个词。Backspace 清除，Esc 取消。")
-
-                    HotkeyRecorder {
-                        id: openHotkeyRecorder
-                        objectName: "openHotkeyRecorder"
-                        hotkey: window.editor.openHotkey
-                        previewShortcut: true
-                        placeholder: qsTr("未设置")
-                        onRecorded: (hotkey) => window.editor.openHotkey = hotkey
-                    }
-
-                    bodyShown: window.editor.openHotkeyError.length > 0
-                    body: Text {
-                        width: parent.width
-                        text: window.editor.openHotkeyError
-                        color: Theme.danger
-                        font.pixelSize: Theme.fontCaption
-                        wrapMode: Text.Wrap
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("用数字键直接打开")
-                    unlocks: [resultNumberHintsRow]
-                    keywords: qsTr("快捷键;数字键;序号;Ctrl+1;Alt+1;冲突;hotkey").split(";")
-                    description: qsTr("按 %1+1 打开第一行，依此类推到第九行")
-                                 .arg(window.editor.numberKeys === "alt" ? "Alt" : "Ctrl")
-
-                    ScopeTabs {
-                        labels: ["Ctrl+1–9", "Alt+1–9", qsTr("关闭")]
-                        current: Math.max(0, ["ctrl", "alt", "off"].indexOf(window.editor.numberKeys))
-                        onActivated: (index) => window.editor.numberKeys = ["ctrl", "alt", "off"][index]
-                    }
-
-                    body: Text {
-                        visible: window.editor.numberKeysNote.length > 0
-                        width: parent.width
-                        text: window.editor.numberKeysNote
-                        color: Theme.subtext
-                        font.pixelSize: Theme.fontCaption
-                        wrapMode: Text.Wrap
-                    }
-                }
-
-                SettingRow {
-                    id: resultNumberHintsRow
-                    sub: true
-                    shown: window.editor.numberKeys !== "off"
-                    title: qsTr("序号提示")
-                    description: qsTr("启动器和剪贴板共用；隐藏提示不影响数字快捷键")
-                    keywords: qsTr("快捷键;数字键;图标;按住;显示;隐藏").split(";")
-
-                    ScopeTabs {
-                        labels: [qsTr("按住时显示"), qsTr("一直显示"), qsTr("不显示", "number hints")]
-                        current: Math.max(0, ["held", "always", "off"].indexOf(window.editor.numberHints))
-                        onActivated: (index) => window.editor.numberHints = ["held", "always", "off"][index]
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("字母直达")
-                    description: qsTr("轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板里 Shift+字母是粘贴为纯文本。再按一下那个键或按 Esc 退出。启动器和剪贴板共用")
-                    keywords: qsTr("快捷键;字母;单手;vim;vi;提示;跳转;直达;hint").split(";")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.letterJump
-                        onToggled: (on) => window.editor.letterJump = on
-                    }
-                }
-
-                SettingRow {
-                    sub: true
-                    shown: window.editor.letterJump
-                    title: qsTr("字母直达用的键")
-                    description: window.editor.letterJumpKey === "shift"
-                                 ? qsTr("搜索框里用中文输入法时，轻按 Shift 也会切换中英文")
-                                 : qsTr("跟数字键一样：搜索框和剪贴板各用数字键设置里的那个键")
-                    keywords: qsTr("字母直达;修饰键;Ctrl;Alt;Shift").split(";")
-
-                    ScopeTabs {
-                        labels: [qsTr("跟数字键一样"), "Ctrl", "Alt", "Shift"]
-                        current: Math.max(0, ["auto", "ctrl", "alt", "shift"].indexOf(window.editor.letterJumpKey))
-                        onActivated: (index) => window.editor.letterJumpKey = ["auto", "ctrl", "alt", "shift"][index]
-                    }
-                }
-
-                SettingRow {
-                    sub: true
-                    shown: window.editor.letterJump
-                    title: qsTr("用哪些字母")
-                    description: qsTr("按顺序给第一行、第二行……，可以有数字，例如左手用的 QWERTASDFGZXCVB12345")
-                    keywords: qsTr("字母直达;字母;数字;顺序;左手;单手").split(";")
-
-                    Row {
-                        spacing: 8
-
-                        InputBox {
-                            id: letterJumpKeysBox
-                            dpr: window.dpr
-                            width: 230
-                            text: window.editor.letterJumpKeys
-                            placeholder: window.editor.defaultLetterJumpKeys
-                            // Taken as cleaned up (upper case, A-Z and 0-9 once each): the box shows that.
-                            // Anything else in it (an input method's 汉字 for the letters typed) is not
-                            // taken: cleaned up, "阿斯顿a" would be the one letter A.
-                            function take() {
-                                error = !/^[A-Za-z0-9\s,;，；]*$/.test(text)
-                                if (error)
-                                    return
-                                window.editor.letterJumpKeys = text
-                                text = Qt.binding(() => window.editor.letterJumpKeys)
-                                showStart()
-                            }
-                            onEditingFinished: take()
-                            onAccepted: take()
-                            onTextChanged: if (error && /^[A-Za-z0-9\s,;，；]*$/.test(text)) error = false
-                        }
-                        FlatButton {
-                            dpr: window.dpr
-                            visible: window.editor.letterJumpKeys !== window.editor.defaultLetterJumpKeys
-                            text: qsTr("恢复默认")
-                            onClicked: {
-                                window.editor.letterJumpKeys = window.editor.defaultLetterJumpKeys
-                                letterJumpKeysBox.error = false
-                                letterJumpKeysBox.text = Qt.binding(() => window.editor.letterJumpKeys)
-                                letterJumpKeysBox.showStart()
-                            }
-                        }
-                    }
-                }
-            }
-
-            FileTypesSection {
-                id: fileTypesSection
-                page: 3
-                tab: 3
-                width: parent.width
-                editor: window.editor
-            }
-
-            QuickFiltersSection {
-                id: quickFiltersSection
-                page: 3
-                tab: 3
-                width: parent.width
-                editor: window.editor
-            }
-            // </page 3>
-                } }
-            }
-
-            PageSlot {
-                id: slot4
-                index: 4
-                content: Component { SettingsPage {
-                    host: settingsContext
-                    onResetForReopen: extensionInput.clear()
-            // <page 4>
-            SettingsSection {
-                page: 4
-                tab: 0
-                width: parent.width
-                title: qsTr("全文搜索与内容索引")
-                glyph: "\uE8A5"
-                note: qsTr("在搜索框按 Tab 切换到“内容”，可以查找文件里的文字。")
-
-                SettingRow {
-                    title: qsTr("文件内容搜索")
-                    keywords: qsTr("内容;全文;文字;开关;关闭;content").split(";")
-                    unlocks: [documentsRow, extensionsRow, lowPriorityRow, contentIndexRow]
-                    description: qsTr("关掉后搜索框里不再有“内容”，“全部”只按名字找；Win顺 不读取文件里的文字，内容索引也会清空")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.contentSearch
-                        onToggled: (on) => window.editor.contentSearch = on
-                    }
-                }
-
-                SettingRow {
-                    id: documentsRow
-                    sub: true
-                    shown: window.editor.contentSearch
-                    title: qsTr("搜索文档")
-                    keywords: qsTr("Word;Excel;PowerPoint;PPT;PDF;WPS;docx;xlsx").split(";")
-                    unlocks: sizeRows.count > 3 ? [sizeRows.itemAt(3)] : []
-                    description: qsTr("Word、Excel、PowerPoint、PDF 和 WPS 文件，图片里的文字除外")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.contentDocuments
-                        onToggled: (on) => window.editor.contentDocuments = on
-                    }
-                }
-
-                SettingRow {
-                    id: extensionsRow
-                    sub: true
-                    shown: window.editor.contentSearch
-                    title: qsTr("搜索这些类型的文本文件")
-                    keywords: qsTr("扩展名;后缀;文件类型;txt;md;extension").split(";")
-                    values: window.editor.contentExtensions
-                    description: qsTr("按扩展名列出；Word、PDF 等文档由“搜索文档”负责")
-
-                    body: [
-                        Flow {
-                            width: parent.width
-                            spacing: 6
-
-                            Repeater {
-                                model: window.editor.contentExtensions
-
-                                delegate: Chip {
-                                    required property int index
-                                    required property string modelData
-                                    text: "." + modelData
-                                    marked: extensionsRow.valueFound(modelData)
-                                    onRemoveClicked: window.editor.removeContentExtension(index)
-                                }
-                            }
-                        },
-                        Text {
-                            visible: window.editor.contentExtensions.length === 0
-                            text: qsTr("还没有选择任何类型，内容搜索将找不到结果")
-                            color: Theme.danger
-                            font.pixelSize: Theme.fontCaption
-                        },
-                        Row {
-                            spacing: 8
-
-                            InputBox {
-                                dpr: window.dpr
-                                id: extensionInput
-                                width: 240
-                                placeholder: qsTr("例如 md, log")
-                                onAccepted: if (window.editor.addContentExtensions(text)) clear()
-                            }
-                            FlatButton {
-                                dpr: window.dpr
-                                text: qsTr("添加")
-                                enabled: extensionInput.text.trim().length > 0
-                                onClicked: if (window.editor.addContentExtensions(extensionInput.text)) extensionInput.clear()
-                            }
-                        }
-                    ]
-                }
-
-                SettingRow {
-                    id: lowPriorityRow
-                    sub: true
-                    shown: window.editor.contentSearch
-                    title: qsTr("也搜索系统和程序文件夹")
-                    keywords: qsTr("系统文件夹;Program Files;AppData;Windows;node_modules").split(";")
-                    description: qsTr("Windows、Program Files、AppData 等；文件很多，搜索会变慢")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.contentInLowPriority
-                        onToggled: (on) => window.editor.contentInLowPriority = on
-                    }
-                }
-
-                SettingRow {
-                    id: contentIndexRow
-                    sub: true
-                    shown: window.editor.contentSearch
-                    title: qsTr("建立内容索引")
-                    keywords: qsTr("索引;加速;index").split(";")
-                    description: qsTr("在后台记下文件里的文字，搜索快得多。只用于 NTFS 磁盘，约占一两百 MB")
-                                 + (window.editor.contentIndexStatus.length > 0 ? "\n" + window.editor.contentIndexStatus : "")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.contentIndex
-                        onToggled: (on) => window.editor.contentIndex = on
-                    }
-                }
-            }
-
-            SettingsSection {
-                page: 4
-                tab: 1
-                width: parent.width
-                title: qsTr("单文件读取上限")
-                glyph: "\uE74C"
-                note: qsTr("比上限大的文件不查找内容。")
-
-                // A size limit for each kind of file (ContentSizeLimits::Kind:
-                // text, code, data, documents).
-                Repeater {
-                    id: sizeRows
-                    model: [
-                        { title: qsTr("文本和日志的大小上限") },
-                        { title: qsTr("源代码的大小上限") },
-                        { title: qsTr("数据和网页的大小上限") },
-                        { title: qsTr("文档的大小上限"),
-                          files: qsTr("Word、Excel、PowerPoint、PDF 和 WPS 文件") }
-                    ]
-
-                    delegate: SettingRow {
-                        id: sizeRow
-
-                        required property int index
-                        required property var modelData
-                        readonly property real mb: window.editor.contentMaxSizeMB[index]
-                        // Under 1 MB in whole KB (Settings: roundedSizeMB), else MB to a hundredth.
-                        readonly property bool inKB: mb < 1
-                        readonly property real kb: Math.round(mb * 1024)
-                        readonly property string shownText: String(inKB ? kb : Math.round(mb * 100) / 100) // 512, 16, 1.25
-                        // − and +: halving and doubling under 1 MB (…, 256, 512 KB, 1 MB), by 1 under 16, by 16 above
-                        readonly property real down: mb > 16 ? Math.max(16, mb - 16) : mb > 1 ? Math.max(1, mb - 1)
-                                                   : Math.pow(2, Math.ceil(Math.log2(kb)) - 1) / 1024
-                        readonly property real up: mb >= 16 ? mb + 16 : mb >= 1 ? Math.min(16, Math.floor(mb) + 1)
-                                                 : Math.pow(2, Math.floor(Math.log2(kb)) + 1) / 1024
-
-                        // What was typed: a number in the unit shown, or with its own ("50k", "1.5 MB", "2g").
-                        function typedMB(text) {
-                            const m = /^\s*(\d*(?:\.\d*)?)\s*([kmg]?)b?\s*$/i.exec(text.replace("。", "."))
-                            const n = m ? parseFloat(m[1]) : NaN
-                            if (isNaN(n))
-                                return NaN
-                            const unit = m[2].toLowerCase() || (inKB ? "k" : "m")
-                            return unit === "k" ? n / 1024 : unit === "g" ? n * 1024 : n
-                        }
-                        readonly property string extensions: window.editor.contentKindExtensions[index]
-
-                        shown: window.editor.contentSearch && (modelData.files === undefined || window.editor.contentDocuments)
-                        title: modelData.title
-                        keywords: qsTr("大小;上限;文件大小;size").split(";")
-                        description: modelData.files ?? (extensions.length > 0 ? extensions : qsTr("列表里没有这类文件"))
-
-                        FlatButton {
-                            dpr: window.dpr
-                            glyph: "" // Remove (minus)
-                            enabled: !sizeRow.inKB || sizeRow.kb > 1
-                            onClicked: window.editor.setContentMaxSizeMB(sizeRow.index, sizeRow.down)
-                        }
-                        InputBox {
-                            dpr: window.dpr
-                            width: 80
-                            horizontalAlignment: TextInput.AlignHCenter
-                            text: sizeRow.shownText
-                            validator: RegularExpressionValidator { regularExpression: /\s*\d{0,4}([.。]\d{0,3})?\s*([kKmMgG][bB]?)?/ }
-                            onEditingFinished: {
-                                const mb = sizeRow.typedMB(text)
-                                if (!isNaN(mb) && mb > 0)
-                                    window.editor.setContentMaxSizeMB(sizeRow.index, mb)
-                                text = Qt.binding(() => sizeRow.shownText)
-                            }
-                        }
-                        FlatButton {
-                            dpr: window.dpr
-                            glyph: "" // Add
-                            enabled: sizeRow.mb < 4096
-                            onClicked: window.editor.setContentMaxSizeMB(sizeRow.index, sizeRow.up)
-                        }
-                        Text {
-                            id: unitText
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: unitMetrics.advanceWidth("MB") // KB takes the same room: the row stays put
-                            text: sizeRow.inKB ? "KB" : "MB"
-                            color: Theme.subtext
-                            font.pixelSize: Theme.fontBody
-
-                            FontMetrics { id: unitMetrics; font: unitText.font }
-                        }
-                    }
-                }
-            }
-            // </page 4>
-                } }
-            }
-
-            PageSlot {
-                id: slot5
-                index: 5
+                id: favoritesSlot
+                index: window.favoritesPage
                 content: Component { SettingsPage {
                     host: settingsContext
                     parts: ({ favoritesSection: favoritesSection })
-            // <page 5>
+            // <page favorites>
             FavoritesSection {
                 id: favoritesSection
                 page: window.favoritesPage
@@ -5074,13 +5509,13 @@ Window {
                 favorites: window.editor.favorites
                 editor: window.editor
             }
-            // </page 5>
+            // </page favorites>
                 } }
             }
 
             PageSlot {
-                id: slot6
-                index: 6
+                id: clipboardSlot
+                index: window.clipboardPage
                 content: Component { SettingsPage {
                     host: settingsContext
                     parts: ({ captureKeywordError: captureKeywordError }) // the probe's (--settings-reopen-check)
@@ -5095,7 +5530,7 @@ Window {
                         clearClipboardButton.confirming = false
                     }
                     onOpened: clipImport.ditto = window.editor.dittoDatabase()
-            // <page 6>
+            // <page clipboard>
             SettingsSection {
                 page: window.clipboardPage
                 tab: 0
@@ -5744,403 +6179,63 @@ Window {
                     }
                 }
             }
-            // </page 6>
+            // </page clipboard>
                 } }
             }
 
             PageSlot {
-                id: slot7
-                index: 7
+                id: pluginsSlot
+                index: window.pluginsPage
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ proxyRow: proxyRow })
-                    onResetForReopen: resetButton.confirming = false
-            // <page 7>
-            SettingsSection {
-                page: window.advancedPage
+                    parts: ({ pluginsSection: pluginsSection, pluginDevSection: pluginDevSection })
+                    onResetForReopen: {
+                        pluginsSection.resetForReopen()
+                        pluginDevSection.resetForReopen()
+                    }
+            // <page plugins>
+            PluginsSection {
+                id: pluginsSection
+                onEditWebShortcut: (index, button) => window.editWebShortcut(index, button)
+                page: window.pluginsPage
                 width: parent.width
-                title: qsTr("更新")
-                glyph: "\uE895"
-                note: qsTr("检查 Win顺 更新访问 lcstp.com，只发送 Windows 版本和安装方式；检查插件更新从 GitHub 或镜像下载插件库列表。匿名统计每天最多一次，只发送电脑标识的单向哈希（不能还原）、版本号和 Windows 版本，用来统计用户数。不发送文件、剪贴板或任何个人信息。")
+                plugins: window.editor.plugins
+                editor: window.editor
+                lockedElsewhere: pluginDevSection.lockedRows
+                onSettingRequested: (which) => window.goTo(window.part(window.integrationPage, which === "folderMenu" ? "folderMenuRow"
+                                                                          : which === "dialogBar" ? "dialogBarRow" : "explorerTypingRow"))
+            }
 
-                SettingRow {
-                    title: qsTr("版本 %1").arg(window.updater.currentVersion)
-                    keywords: qsTr("升级;新版本;version;update").split(";")
-                    description: window.updater.checking ? qsTr("正在检查更新…")
-                               : window.updater.available ? qsTr("有新版本 %1").arg(window.updater.availableVersion)
-                               : window.updater.problem.length > 0 ? window.updater.problem
-                               : !isNaN(window.updater.lastChecked.getTime())
-                                 ? qsTr("已是最新版本 · %1检查").arg(window.sinceText(window.updater.lastChecked))
-                               : ""
-
-                    FlatButton {
-                        dpr: window.dpr
-                        visible: !window.updater.available
-                        enabled: !window.updater.checking
-                        text: qsTr("检查更新")
-                        glyph: "\uE895" // Sync
-                        onClicked: window.updater.check(true)
-                    }
-                    FlatButton {
-                        dpr: window.dpr
-                        visible: window.updater.available
-                        highlighted: true
-                        text: qsTr("查看 %1").arg(window.updater.availableVersion)
-                        onClicked: window.showUpdateDialog()
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("自动更新")
-                    keywords: qsTr("升级;新版本;插件;update;plugin").split(";")
-                    description: qsTr("启动后和每隔 10 分钟检查 Win顺 新版本，在托盘提示；插件每天检查一次，不要新权限的更新自动安装")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.autoUpdate
-                        onToggled: (on) => window.editor.autoUpdate = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("发送匿名统计")
-                    keywords: qsTr("统计;用户数;隐私;联网;usage;statistics;privacy;telemetry").split(";")
-                    description: qsTr("每天最多一次告诉 lcstp.com 这台电脑在用 Win顺，用来统计用户数")
-
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: window.editor.usageReport
-                        onToggled: (on) => window.editor.usageReport = on
-                    }
+            PluginGallerySection {
+                page: window.pluginsPage
+                tab: 1
+                width: parent.width
+                plugins: window.editor.plugins
+                onShowInstalled: (pluginId) => window.showPluginPage(pluginId)
+                onShowProxySettings: window.goTo(window.part(window.generalPage, "proxyRow"))
+                onShowDeveloper: {
+                    window.editor.plugins.developerMode = true
+                    window.showTab(2)
                 }
             }
 
-            SettingsSection {
-                page: window.advancedPage
+            PluginDevSection {
+                id: pluginDevSection
+                page: window.pluginsPage
+                tab: 2
                 width: parent.width
-                title: qsTr("备份")
-                glyph: "\uE8F1"
-                note: qsTr("备份设置、收藏夹和添加的插件，不含索引和历史记录。选同步盘里的文件夹（OneDrive、坚果云，或用 alist、RaiDrive 挂载的 WebDAV 盘），备份就跟着同步到云上。")
-
-                SettingRow {
-                    objectName: "backupExportRow"
-                    title: qsTr("导出设置")
-                    keywords: qsTr("备份;导出;迁移;换电脑;ZIP;backup;export;transfer").split(";")
-                    description: qsTr("导出一份 ZIP，带到新电脑后从备份恢复；不用开启自动备份。文件夹路径按原样保留，插件密码需重新填写。")
-                    bodyShown: window.backup.busy || window.backup.problem.length > 0 || window.backup.message.length > 0
-
-                    FlatButton {
-                        dpr: window.dpr
-                        objectName: "backupExportButton"
-                        enabled: !window.backup.busy
-                        text: qsTr("导出备份…")
-                        onClicked: window.backup.exportBackup(window)
-                    }
-                    body: Text {
-                        objectName: "backupOperationStatus"
-                        width: parent.width
-                        text: window.backup.busy ? qsTr("正在处理备份…")
-                            : window.backup.problem.length > 0 ? qsTr("备份操作失败：%1").arg(window.backup.problem)
-                            : window.backup.message
-                        textFormat: Text.PlainText
-                        color: Theme.subtext
-                        font.pixelSize: Theme.fontCaption
-                        wrapMode: Text.Wrap
-                    }
-                }
-
-                SettingRow {
-                    id: backupRow
-
-                    readonly property bool on: window.editor.backupFolder.length > 0
-
-                    title: qsTr("自动备份设置")
-                    keywords: qsTr("备份;同步;云;WebDAV;坚果云;OneDrive;网盘;导出;backup;sync").split(";")
-                    description: !on ? qsTr("设置有变化时自动备份到你选的文件夹，保留最近 10 份")
-                               : (window.backup.busy ? qsTr("正在备份…")
-                                  : window.backup.problem.length > 0 ? qsTr("没有备份成功：%1").arg(window.backup.problem)
-                                  : !isNaN(window.backup.last.getTime()) ? qsTr("上次备份：%1").arg(window.sinceText(window.backup.last))
-                                  : qsTr("还没有备份"))
-                                 + "\n" + window.editor.backupFolder
-
-                    FlatButton {
-                        dpr: window.dpr
-                        visible: backupRow.on
-                        text: qsTr("打开")
-                        glyph: "" // FolderOpen
-                        onClicked: window.backup.openFolder()
-                    }
-                    FlatButton {
-                        dpr: window.dpr
-                        visible: backupRow.on
-                        text: qsTr("更改")
-                        onClicked: window.editor.chooseBackupFolder()
-                    }
-                    ToggleSwitch {
-                        dpr: window.dpr
-                        checked: backupRow.on
-                        onToggled: (on) => {
-                            if (on)
-                                window.editor.chooseBackupFolder()
-                            else
-                                window.editor.stopBackups()
-                        }
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("恢复设置")
-                    keywords: qsTr("恢复;还原;导入;换电脑;restore;import").split(";")
-                    description: qsTr("选择 ZIP 备份，校验通过后恢复并重启；当前设置先存到本机数据文件夹的 backups 中。换机导出的备份保留本机的备份和索引位置。")
-
-                    FlatButton {
-                        dpr: window.dpr
-                        visible: window.editor.backupFolder.length > 0
-                        enabled: !window.backup.busy
-                        text: qsTr("立即备份")
-                        onClicked: window.backup.backUpNow()
-                    }
-                    FlatButton {
-                        dpr: window.dpr
-                        enabled: !window.backup.busy
-                        text: qsTr("从备份恢复…")
-                        onClicked: window.backup.restore(window)
-                    }
-                }
+                plugins: window.editor.plugins
             }
-
-            SettingsSection {
-                page: window.advancedPage
-                width: parent.width
-                title: qsTr("网络、存储与诊断")
-                glyph: "\uE713"
-
-                SettingRow {
-                    id: proxyRow
-
-                    // The address as typed and kept: its problem shows under it
-                    // while manual is chosen. The system's proxy is followed
-                    // while it is not a good one (App::applySettings).
-                    readonly property bool manual: window.editor.proxyMode === "manual"
-                    readonly property string problem: manual ? window.editor.proxyProblem(proxyBox.text) : ""
-                    readonly property var modes: ["system", "none", "manual"]
-
-                    title: qsTr("网络代理")
-                    keywords: qsTr("代理;翻墙;梯子;科学上网;Clash;v2ray;GitHub;连不上;超时;插件库;更新;网络;proxy;vpn;timeout").split(";")
-                    description: qsTr("插件库、检查更新等联网都走这里。“跟随系统”用 Windows 设置里的代理（包括自动检测和 PAC 脚本）；用代理软件时，打开它的“系统代理”就行，或者手动填地址")
-                    bodyShown: manual
-
-                    ScopeTabs {
-                        labels: [qsTr("跟随系统"), qsTr("不使用代理"), qsTr("手动")]
-                        current: Math.max(0, proxyRow.modes.indexOf(window.editor.proxyMode))
-                        onActivated: (index) => window.editor.proxyMode = proxyRow.modes[index]
-                    }
-
-                    body: [
-                        InputBox {
-                            dpr: window.dpr
-                            id: proxyBox
-                            width: Math.min(parent.width, 320)
-                            text: window.editor.proxyAddress
-                            placeholder: qsTr("代理地址，例如 %1").arg("127.0.0.1:7890")
-                            onEditingFinished: window.editor.proxyAddress = text
-                        },
-                        Text {
-                            visible: proxyRow.problem.length > 0
-                            width: parent.width
-                            text: proxyRow.problem
-                            textFormat: Text.PlainText
-                            color: Theme.danger
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.Wrap
-                        },
-                        Text {
-                            visible: proxyRow.problem.length === 0
-                            width: parent.width
-                            text: qsTr("HTTP 代理，地址写 127.0.0.1:7890 或 http://127.0.0.1:7890。改完马上生效，不用重启")
-                            color: Theme.subtext
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.Wrap
-                        }
-                    ]
-                }
-
-                SettingRow {
-                    title: qsTr("界面绘制方式")
-                    keywords: qsTr("渲染;GPU;显卡;内存;模糊;清晰;renderer").split(";")
-                    description: window.editor.restartRequired
-                                 ? qsTr("重启 Win顺后生效")
-                                 : qsTr("“省内存”少占约 50 MB，但文字偏模糊")
-
-                    FlatButton { // sized like one of the tabs next to it
-                        dpr: window.dpr
-                        anchors.verticalCenter: parent.verticalCenter
-                        implicitHeight: 32
-                        radius: Theme.largeControlRadius
-                        visible: window.editor.restartRequired
-                        text: qsTr("立即重启")
-                        highlighted: true
-                        onClicked: window.editor.restart()
-                    }
-                    ScopeTabs {
-                        labels: [qsTr("省内存"), qsTr("显卡加速")]
-                        current: Math.max(0, window.renderers.indexOf(window.editor.renderer))
-                        onActivated: (index) => window.editor.renderer = window.renderers[index]
-                    }
-                }
-
-                SettingRow {
-                    id: indexFolderRow
-
-                    readonly property bool moving: window.editor.indexMoveProgress >= 0
-
-                    title: qsTr("索引位置")
-                    keywords: qsTr("移动索引;磁盘空间;C盘;D盘;index").split(";")
-                    description: (window.editor.indexSize.length > 0
-                                  ? qsTr("文件索引和内容索引，共 %1；可以移到其他内置硬盘").arg(window.editor.indexSize)
-                                  : qsTr("文件索引和内容索引；可以移到其他内置硬盘"))
-                                 + "\n" + window.editor.indexFolder
-                    bodyShown: moving || window.editor.indexFolderProblem.length > 0 || window.editor.indexFolderNote.length > 0
-
-                    FlatButton {
-                        dpr: window.dpr
-                        text: qsTr("打开")
-                        glyph: "" // FolderOpen
-                        enabled: !indexFolderRow.moving
-                        onClicked: window.editor.openIndexFolder()
-                    }
-                    FlatButton {
-                        dpr: window.dpr
-                        text: qsTr("更改")
-                        glyph: "" // MoveToFolder
-                        enabled: !indexFolderRow.moving
-                        onClicked: window.editor.chooseIndexFolder()
-                    }
-                    FlatButton {
-                        dpr: window.dpr
-                        visible: !window.editor.indexFolderIsDefault
-                        text: qsTr("恢复默认")
-                        enabled: !indexFolderRow.moving
-                        onClicked: window.editor.resetIndexFolder()
-                    }
-
-                    body: [
-                        Column {
-                            visible: indexFolderRow.moving
-                            width: parent.width
-                            spacing: 6
-
-                            Text {
-                                text: qsTr("正在移动… %1%，期间可以照常搜索").arg(Math.max(0, window.editor.indexMoveProgress))
-                                color: Theme.subtext
-                                font.pixelSize: Theme.fontCaption
-                            }
-                            Rectangle { // how far
-                                width: parent.width
-                                height: 4
-                                radius: Theme.progressRadius
-                                color: Theme.track
-
-                                Rectangle {
-                                    width: parent.width * Math.max(0, window.editor.indexMoveProgress) / 100
-                                    height: parent.height
-                                    radius: Theme.progressRadius
-                                    color: Theme.accent
-
-                                    Behavior on width { NumberAnimation { duration: 150 } }
-                                }
-                            }
-                        },
-                        Text {
-                            visible: !indexFolderRow.moving && window.editor.indexFolderProblem.length > 0
-                            width: parent.width
-                            text: window.editor.indexFolderProblem
-                            textFormat: Text.PlainText
-                            color: Theme.danger
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.Wrap
-                        },
-                        Text { // a hint, not a warning
-                            visible: !indexFolderRow.moving && window.editor.indexFolderNote.length > 0
-                            width: parent.width
-                            text: window.editor.indexFolderNote
-                            textFormat: Text.PlainText
-                            color: Theme.subtext
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.Wrap
-                        }
-                    ]
-                }
-
-                SettingRow {
-                    title: qsTr("数据文件夹")
-                    keywords: qsTr("日志;记录;log;AppData").split(";")
-                    description: qsTr("搜索记录、剪贴板历史和日志") + "\n" + window.editor.dataFolder
-
-                    FlatButton {
-                        dpr: window.dpr
-                        text: qsTr("打开")
-                        glyph: "" // FolderOpen
-                        onClicked: window.editor.openDataFolder()
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("诊断日志")
-                    keywords: qsTr("诊断;日志;索引慢;排查;反馈;显示;字体;错字;乱码;截图;光标;指针;卡顿;diagnostics;log;capture;cursor").split(";")
-                    description: qsTr("导出后会打开文件夹，把 WinShun-diagnostics.zip 发给开发者即可。包含索引耗时和错误、截图的耗时和卡顿、鼠标指针设置、界面显示和字体的状态，可能含文件路径；不含设置、剪贴板或文档正文。界面显示不对时先导出再重启，重启后就查不到了。诊断记录最多 3 MB，过期自动清理；诊断包只保留一份")
-                                 + (window.editor.diagnosticsStatus.length > 0 ? "\n" + window.editor.diagnosticsStatus : "")
-
-                    FlatButton {
-                        dpr: window.dpr
-                        text: window.editor.diagnosticsBusy ? qsTr("正在导出…") : qsTr("导出诊断日志")
-                        enabled: !window.editor.diagnosticsBusy
-                        glyph: ""
-                        onClicked: window.editor.exportDiagnostics()
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("恢复默认设置")
-                    keywords: qsTr("重置;默认;reset").split(";")
-                    description: qsTr("所有设置回到刚安装时的样子")
-
-                    FlatButton {
-                        dpr: window.dpr
-                        id: resetButton
-
-                        property bool confirming: false
-
-                        text: confirming ? qsTr("确定要恢复吗？再点一次") : qsTr("恢复默认")
-                        enabled: !window.editor.isDefault
-                        onClicked: {
-                            if (confirming) {
-                                window.editor.restoreDefaults()
-                                confirming = false
-                            } else {
-                                confirming = true
-                                resetTimer.restart()
-                            }
-                        }
-
-                        Timer {
-                            id: resetTimer
-                            interval: 4000
-                            onTriggered: resetButton.confirming = false
-                        }
-                    }
-                }
-            }
-            // </page 7>
+            // </page plugins>
                 } }
             }
 
             PageSlot {
-                id: slot8
-                index: 8
+                id: aiSlot
+                index: window.aiPage
                 content: Component { SettingsPage {
                     host: settingsContext
-            // <page 8>
+            // <page ai>
             AiAccessSection {
                 page: window.aiPage
                 width: parent.width
@@ -6168,60 +6263,13 @@ Window {
                 width: parent.width
                 editor: window.editor
             }
-            // </page 8>
+            // </page ai>
                 } }
             }
 
             PageSlot {
-                id: slot9
-                index: 9
-                content: Component { SettingsPage {
-                    host: settingsContext
-                    parts: ({ pluginsSection: pluginsSection, pluginDevSection: pluginDevSection })
-                    onResetForReopen: {
-                        pluginsSection.resetForReopen()
-                        pluginDevSection.resetForReopen()
-                    }
-            // <page 9>
-            PluginsSection {
-                id: pluginsSection
-                onEditWebShortcut: (index, button) => window.editWebShortcut(index, button)
-                page: window.pluginsPage
-                width: parent.width
-                plugins: window.editor.plugins
-                editor: window.editor
-                lockedElsewhere: pluginDevSection.lockedRows
-                onSettingRequested: (which) => window.goTo(window.part(0, which === "folderMenu" ? "folderMenuRow"
-                                                                          : which === "dialogBar" ? "dialogBarRow" : "explorerTypingRow"))
-            }
-
-            PluginGallerySection {
-                page: window.pluginsPage
-                tab: 1
-                width: parent.width
-                plugins: window.editor.plugins
-                onShowInstalled: (pluginId) => window.showPluginPage(pluginId)
-                onShowProxySettings: window.goTo(window.part(window.advancedPage, "proxyRow"))
-                onShowDeveloper: {
-                    window.editor.plugins.developerMode = true
-                    window.showTab(2)
-                }
-            }
-
-            PluginDevSection {
-                id: pluginDevSection
-                page: window.pluginsPage
-                tab: 2
-                width: parent.width
-                plugins: window.editor.plugins
-            }
-            // </page 9>
-                } }
-            }
-
-            PageSlot {
-                id: slot10
-                index: 10
+                id: healthSlot
+                index: window.healthPage
                 content: Component { HealthPage {
                     host: settingsContext
                     editor: window.editor
@@ -6231,6 +6279,7 @@ Window {
                         && window.currentPage === window.healthPage && !window.searching
                 } }
             }
+
         }
     }
 

@@ -105,7 +105,7 @@ public:
     // what it left removed. (Not for a preview's Updater.)
     void afterStart();
     void setChinese(bool chinese); // which half of the release notes to show
-    // The daily usage report (设置 › 高级 › 发送匿名统计): 30 s after it is
+    // The daily usage report (设置 › 常规 › 发送匿名统计): 30 s after it is
     // turned on (at start), then hourly, the day's one report when it is
     // still due (usage::due). Off stops it; nothing more is sent.
     void setReporting(bool on);

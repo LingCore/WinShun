@@ -180,7 +180,7 @@ std::vector<Entry> buildCatalog()
     std::vector<Entry> t;
     const auto add = [&t](Entry e) -> Entry& { return t.emplace_back(std::move(e)); };
 
-    // ---- 打开 Win顺: 快捷键 ----
+    // ---- 快捷键 ----
     add(boolean({"Launcher/DoubleCtrl", QT_TRANSLATE_NOOP("AiSettings", "双击 Ctrl、Alt 或 Shift 打开"), "shortcuts", 0,
                     "Tapping Ctrl twice quickly (or Alt or Shift, Launcher/DoubleTapKey) opens the search window. Turn off if it fires by accident or clashes with another program."},
         &Settings::doubleCtrl));
@@ -212,32 +212,32 @@ std::vector<Entry> buildCatalog()
         {{u"close"_s, u"closes the window"_s, QT_TRANSLATE_NOOP("AiSettings", "关闭 Win顺")},
             {u"panel"_s, u"expands the window to the search panel"_s, QT_TRANSLATE_NOOP("AiSettings", "展开为搜索面板")}}));
 
-    // ---- 打开 Win顺: 任务栏 ----
-    add(boolean({"Taskbar/SearchBox", QT_TRANSLATE_NOOP("AiSettings", "在任务栏使用 Win顺"), "taskbar", 1,
+    // ---- 系统整合: 任务栏 ----
+    add(boolean({"Taskbar/SearchBox", QT_TRANSLATE_NOOP("AiSettings", "在任务栏使用 Win顺"), "taskbar", 0,
                     "Shows Win顺's own search box on the taskbar (Windows 11 only), in the place of Windows' search."},
         &Settings::taskbarSearchBox));
-    add(choice({"Taskbar/SearchBoxStyle", QT_TRANSLATE_NOOP("AiSettings", "搜索框样式"), "taskbar", 1,
+    add(choice({"Taskbar/SearchBoxStyle", QT_TRANSLATE_NOOP("AiSettings", "搜索框样式"), "taskbar", 0,
                    "The widest form the taskbar search box takes."},
         &Settings::taskbarSearchBoxStyle,
         {{u"box"_s, u"a search box you can type in"_s, QT_TRANSLATE_NOOP("AiSettings", "搜索框")},
             {u"label"_s, u"an icon with the word 搜索"_s, QT_TRANSLATE_NOOP("AiSettings", "图标和标签")},
             {u"icon"_s, u"a search icon only, like a taskbar button"_s, QT_TRANSLATE_NOOP("AiSettings", "仅图标")}}));
-    add(choice({"Taskbar/SearchBoxSide", QT_TRANSLATE_NOOP("AiSettings", "搜索框位置"), "taskbar", 1,
+    add(choice({"Taskbar/SearchBoxSide", QT_TRANSLATE_NOOP("AiSettings", "搜索框位置"), "taskbar", 0,
                    "Which end of the taskbar the search box goes to."},
         &Settings::taskbarSearchBoxSide,
         {{u"auto"_s, u"the taskbar's left end while its icons are centred, beside the tray while they are at the left"_s,
              QT_TRANSLATE_NOOP("AiSettings", "自动")},
             {u"tray"_s, u"always beside the tray, also with centred icons"_s, QT_TRANSLATE_NOOP("AiSettings", "托盘旁")}}));
-    add(boolean({"Taskbar/WinS", QT_TRANSLATE_NOOP("AiSettings", "用 Win+S 打开 Win顺"), "taskbar", 1,
+    add(boolean({"Taskbar/WinS", QT_TRANSLATE_NOOP("AiSettings", "用 Win+S 打开 Win顺"), "taskbar", 0,
                     "Win+S opens Win顺 over the taskbar instead of Windows' search. Takes effect when File Explorer restarts."},
         &Settings::taskbarWinS, Effect::ExplorerRestart));
-    add(boolean({"Taskbar/StartMenuTyping", QT_TRANSLATE_NOOP("AiSettings", "在开始菜单里打字，也用 Win顺 搜索"), "taskbar", 1,
+    add(boolean({"Taskbar/StartMenuTyping", QT_TRANSLATE_NOOP("AiSettings", "在开始菜单里打字，也用 Win顺 搜索"), "taskbar", 0,
                     "Typing in the Start menu searches with Win顺 instead of Windows."},
         &Settings::taskbarStartTyping));
 
-    // ---- 打开 Win顺: 文件管理器、资源管理器、对话框 ----
+    // ---- 系统整合: 文件管理器、资源管理器、对话框 ----
     {
-        Entry& e = add(choice({"Launcher/FileManager", QT_TRANSLATE_NOOP("AiSettings", "用哪个文件管理器打开文件夹"), "files_and_dialogs", 2,
+        Entry& e = add(choice({"Launcher/FileManager", QT_TRANSLATE_NOOP("AiSettings", "用哪个文件管理器打开文件夹"), "files_and_dialogs", 1,
                                   "The file manager that opens folders and shows a file in its folder. Only one installed on this PC can be chosen (see facts.file_managers); custom needs the user's own command lines, which only the user can set."},
             &Settings::fileManager,
             {{u"explorer"_s, u"Windows File Explorer"_s, QT_TRANSLATE_NOOP("AiSettings", "资源管理器")},
@@ -255,34 +255,34 @@ std::vector<Entry> buildCatalog()
             return {};
         };
     }
-    add(readOnlyText({"Launcher/FileManagerOpenCommand", QT_TRANSLATE_NOOP("AiSettings", "其他文件管理器的命令"), "files_and_dialogs", 2,
+    add(readOnlyText({"Launcher/FileManagerOpenCommand", QT_TRANSLATE_NOOP("AiSettings", "其他文件管理器的命令"), "files_and_dialogs", 1,
                          "The command line that opens a folder with the 'custom' file manager, {path} standing for the folder. A command is a program that runs: AI can read it and not change it."},
         &Settings::fileManagerOpenCommand));
-    add(readOnlyText({"Launcher/FileManagerRevealCommand", QT_TRANSLATE_NOOP("AiSettings", "其他文件管理器：显示所在位置的命令"), "files_and_dialogs", 2,
+    add(readOnlyText({"Launcher/FileManagerRevealCommand", QT_TRANSLATE_NOOP("AiSettings", "其他文件管理器：显示所在位置的命令"), "files_and_dialogs", 1,
                          "The command line that shows a file selected in its folder with the 'custom' file manager. AI can read it and not change it."},
         &Settings::fileManagerRevealCommand));
-    add(boolean({"Launcher/ExplorerMenu", QT_TRANSLATE_NOOP("AiSettings", "资源管理器右键“用 Win顺 搜索此处”"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/ExplorerMenu", QT_TRANSLATE_NOOP("AiSettings", "资源管理器右键“用 Win顺 搜索此处”"), "files_and_dialogs", 1,
                     "Adds 用 Win顺 搜索此处 to the right-click menu of folders in File Explorer."},
         &Settings::explorerMenu));
-    add(boolean({"Launcher/UriProtocol", QT_TRANSLATE_NOOP("AiSettings", "winshun:// 链接"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/UriProtocol", QT_TRANSLATE_NOOP("AiSettings", "winshun:// 链接"), "files_and_dialogs", 1,
                     "Lets winshun:// links open Win顺: winshun://search/<words> opens the search box with the words typed, "
                     "winshun://settings opens the settings. Links never open or run files."},
         &Settings::uriProtocol));
-    add(boolean({"Launcher/ExplorerTyping", QT_TRANSLATE_NOOP("AiSettings", "在资源管理器里直接打字搜索"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/ExplorerTyping", QT_TRANSLATE_NOOP("AiSettings", "在资源管理器里直接打字搜索"), "files_and_dialogs", 1,
                     "Typing in a File Explorer folder window searches that folder with Win顺, instead of Explorer's jump to a name by its first letters."},
         &Settings::explorerTyping));
-    add(boolean({"Launcher/DesktopTyping", QT_TRANSLATE_NOOP("AiSettings", "在桌面上直接打字搜索"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/DesktopTyping", QT_TRANSLATE_NOOP("AiSettings", "在桌面上直接打字搜索"), "files_and_dialogs", 1,
                     "Typing with the desktop in front (its icons focused) opens Win顺 to search the whole PC, instead of the "
                     "desktop's jump to an icon by its first letters. Off by default."},
         &Settings::desktopTyping));
     add(boolean({"Launcher/OpusTyping", QT_TRANSLATE_NOOP("AiSettings", "在 Directory Opus 里直接打字搜索"),
-                    "files_and_dialogs", 2,
+                    "files_and_dialogs", 1,
                     "In a Directory Opus file display, letters and digits open Win顺 to search that tab's folder. "
                     "Off by default and independent of Explorer typing. Punctuation, shortcuts, menus and edit fields "
                     "stay in Opus."},
         &Settings::opusTyping));
     add(boolean({"Launcher/EverythingCompat", QT_TRANSLATE_NOOP("AiSettings", "让其他软件把 Win顺 当作 Everything 搜索"),
-                    "files_and_dialogs", 2,
+                    "files_and_dialogs", 1,
                     "Win顺 answers the queries programs send to Everything (its IPC window): Directory Opus, Total "
                     "Commander, es.exe and tools built on the Everything SDK then search Win顺's index with Everything not "
                     "installed. Off by default. While Everything itself runs, it goes on answering. Any program on this "
@@ -290,68 +290,68 @@ std::vector<Entry> buildCatalog()
         &Settings::everythingCompat));
     {
         Entry& e = add(choice({"Launcher/OpusTypingScope", QT_TRANSLATE_NOOP("AiSettings", "Directory Opus 里打字搜索的范围"),
-                                  "files_and_dialogs", 2,
+                                  "files_and_dialogs", 1,
                                   "What typing in a Directory Opus file display searches: that tab's folder (the words go after its path, the folder's results first), or the whole PC with nothing before the words."},
             &Settings::opusTypingScope,
             {{u"folder"_s, u"the tab's folder first"_s, QT_TRANSLATE_NOOP("AiSettings", "当前文件夹")},
                 {u"all"_s, u"the whole PC, no folder before the words"_s, QT_TRANSLATE_NOOP("AiSettings", "整个电脑")}}));
         e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "在 Directory Opus 里搜索的范围");
     }
-    add(choice({"Launcher/FolderTyping", QT_TRANSLATE_NOOP("AiSettings", "在文件夹里打字时"), "files_and_dialogs", 2,
+    add(choice({"Launcher/FolderTyping", QT_TRANSLATE_NOOP("AiSettings", "在文件夹里打字时"), "files_and_dialogs", 1,
                    "What typing in a File Explorer or Directory Opus folder window lists. The folder and its subfolders come first and the rest of the PC under them (like Listary), only that folder with its subfolders, or only what lies directly in that folder (no subfolders). Ctrl+Shift+D goes through the three for one search."},
         &Settings::folderTyping,
         {{u"first"_s, u"that folder's results first, then everywhere else"_s, QT_TRANSLATE_NOOP("AiSettings", "当前文件夹优先")},
             {u"only"_s, u"only that folder and its subfolders"_s, QT_TRANSLATE_NOOP("AiSettings", "只搜当前文件夹")},
             {u"level"_s, u"only what lies directly in that folder, not its subfolders"_s, QT_TRANSLATE_NOOP("AiSettings", "只搜这一层")}}));
-    add(choice({"Launcher/FolderMenu", QT_TRANSLATE_NOOP("AiSettings", "双击空白处弹出文件夹菜单"), "files_and_dialogs", 2,
+    add(choice({"Launcher/FolderMenu", QT_TRANSLATE_NOOP("AiSettings", "双击空白处弹出文件夹菜单"), "files_and_dialogs", 1,
                    "A double click on blank space in a File Explorer folder or on the desktop brings up a menu of favorite and recent folders (like Listary's). 'auto' leaves it to Listary while Listary runs."},
         &Settings::folderMenu,
         {{u"auto"_s, u"on (not while Listary runs, which does the same)"_s, QT_TRANSLATE_NOOP("AiSettings", "开")},
             {u"on"_s, u"on always, also while Listary runs (both menus may come up)"_s, QT_TRANSLATE_NOOP("AiSettings", "一直开")},
             {u"off"_s, u"off"_s, QT_TRANSLATE_NOOP("AiSettings", "关")}}));
-    add(boolean({"Launcher/FolderMenuExplorer", QT_TRANSLATE_NOOP("AiSettings", "在资源管理器的空白处双击"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuExplorer", QT_TRANSLATE_NOOP("AiSettings", "在资源管理器的空白处双击"), "files_and_dialogs", 1,
                     "The folder menu comes up on a double click in File Explorer's folders."},
         &Settings::folderMenuExplorer));
-    add(boolean({"Launcher/FolderMenuDesktop", QT_TRANSLATE_NOOP("AiSettings", "在桌面的空白处双击"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuDesktop", QT_TRANSLATE_NOOP("AiSettings", "在桌面的空白处双击"), "files_and_dialogs", 1,
                     "The folder menu comes up on a double click on the desktop."},
         &Settings::folderMenuDesktop));
-    add(boolean({"Launcher/FolderMenuDouble", QT_TRANSLATE_NOOP("AiSettings", "用鼠标左键双击打开文件夹菜单"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuDouble", QT_TRANSLATE_NOOP("AiSettings", "用鼠标左键双击打开文件夹菜单"), "files_and_dialogs", 1,
                     "Open the enabled blank-space folder menu with a double click of the left mouse button. On by default; with it off the menu can still come from the middle button or the hotkey."},
         &Settings::folderMenuDouble));
-    add(boolean({"Launcher/FolderMenuMiddle", QT_TRANSLATE_NOOP("AiSettings", "同时用中键打开文件夹菜单"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuMiddle", QT_TRANSLATE_NOOP("AiSettings", "同时用中键打开文件夹菜单"), "files_and_dialogs", 1,
                     "Also open the enabled blank-space folder menu with the middle mouse button. Off by default."},
         &Settings::folderMenuMiddle));
-    add(boolean({"Launcher/FolderMenuFavorites", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出收藏的文件夹"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuFavorites", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出收藏的文件夹"), "files_and_dialogs", 1,
                     "The folder menu lists the favorite folders. At least one of the three groups stays on."},
         &Settings::folderMenuFavorites));
-    add(boolean({"Launcher/FolderMenuRecent", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出最近的文件夹"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuRecent", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出最近的文件夹"), "files_and_dialogs", 1,
                     "The folder menu lists recently opened folders. At least one of the three groups stays on."},
         &Settings::folderMenuRecent));
-    add(boolean({"Launcher/FolderMenuWindows", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出别的窗口里的文件夹"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuWindows", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出别的窗口里的文件夹"), "files_and_dialogs", 1,
                     "The folder menu lists the folders open in other file manager windows. At least one of the three groups stays on."},
         &Settings::folderMenuWindows));
-    add(boolean({"Launcher/FolderMenuItemSearch", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此搜索”"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuItemSearch", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此搜索”"), "files_and_dialogs", 1,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemSearch));
-    add(boolean({"Launcher/FolderMenuItemCopyPath", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“复制路径”"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuItemCopyPath", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“复制路径”"), "files_and_dialogs", 1,
                     "The folder menu offers Copy path under its lists: puts the folder's full path on the clipboard as plain text. Not shown where there is no folder path (This PC). On by default."},
         &Settings::folderMenuItemCopyPath));
-    add(boolean({"Launcher/FolderMenuItemCmd", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此打开命令提示符”"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuItemCmd", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此打开命令提示符”"), "files_and_dialogs", 1,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemCmd));
-    add(boolean({"Launcher/FolderMenuItemPowerShell", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此打开 PowerShell”"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuItemPowerShell", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此打开 PowerShell”"), "files_and_dialogs", 1,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemPowerShell));
-    add(boolean({"Launcher/FolderMenuItemFavorite", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“收藏这个文件夹”"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuItemFavorite", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“收藏这个文件夹”"), "files_and_dialogs", 1,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemFavorite));
-    add(boolean({"Launcher/FolderMenuItemSettings", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在菜单末尾显示 Win顺 设置”"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/FolderMenuItemSettings", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在菜单末尾显示 Win顺 设置”"), "files_and_dialogs", 1,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemSettings));
     add(boolean({"Favorites/DropPie", QT_TRANSLATE_NOOP("AiSettings", "拖文件时按 ` 键，弹出收藏圆盘"), "favorites", -1,
                     "While dragging files or folders (File Explorer, the desktop, file managers), pressing the key left of 1 (` and ~ on most keyboards, · in a Chinese input method; it is the key's place that counts, not what is printed on it) with them held (no need to move) brings up the first eight favorite folders round the pointer. Moving toward one and letting go drops the files there: moved within a drive, copied to another, Ctrl copies and Shift moves. Does nothing while Win顺 runs as administrator."},
         &Settings::dropPie));
-    add(hotkey({"Launcher/FolderMenuHotkey", QT_TRANSLATE_NOOP("AiSettings", "用快捷键弹出文件夹菜单"), "files_and_dialogs", 2,
+    add(hotkey({"Launcher/FolderMenuHotkey", QT_TRANSLATE_NOOP("AiSettings", "用快捷键弹出文件夹菜单"), "files_and_dialogs", 1,
                    "A shortcut that brings up the folder menu in whatever window is in front, like Ctrl+Alt+D. Empty: none."},
         &Settings::folderMenuHotkey));
     add(boolean({"Launcher/DialogJump", QT_TRANSLATE_NOOP("AiSettings", "Ctrl+G 转到文件管理器的文件夹"), "files_and_dialogs", 2,
@@ -385,19 +385,19 @@ std::vector<Entry> buildCatalog()
                  "Program files (like notepad.exe) whose file dialogs go without the search bar."},
         &Settings::dialogBarExcludedApps, ListKind::Programs));
 
-    // ---- 打开 Win顺: 启动与历史 ----
+    // ---- 常规: 开机启动; 结果列表: 使用记录 ----
     {
-        Entry e = base({"Launcher/Autostart", QT_TRANSLATE_NOOP("AiSettings", "开机时自动启动"), "startup", 3,
+        Entry e = base({"Launcher/Autostart", QT_TRANSLATE_NOOP("AiSettings", "开机时自动启动"), "general", -1,
                            "Starts Win顺 when the user signs in to Windows (a task in the Task Scheduler). Not a line of the settings file."},
             Type::Bool);
         e.access = Access::AlwaysAsk;
         e.field = &State::autostart;
         add(std::move(e));
     }
-    add(boolean({"Launcher/History", QT_TRANSLATE_NOOP("AiSettings", "记住搜索和打开过的项目"), "startup", 3,
+    add(boolean({"Launcher/History", QT_TRANSLATE_NOOP("AiSettings", "记住搜索和打开过的项目"), "results", 2,
                     "Remembers what was opened: listed when nothing is typed, and ranked first among matches."},
         &Settings::recordHistory));
-    add(boolean({"Launcher/RememberAdmin", QT_TRANSLATE_NOOP("AiSettings", "记住以管理员身份运行"), "startup", 3,
+    add(boolean({"Launcher/RememberAdmin", QT_TRANSLATE_NOOP("AiSettings", "记住以管理员身份运行"), "results", 2,
                     "A program last run as administrator from Win顺 (Ctrl+Shift+Enter) runs so again on Enter, until it is "
                     "run with normal rights from its menu. Needs Launcher/History."},
         &Settings::rememberAdmin));
@@ -681,32 +681,32 @@ std::vector<Entry> buildCatalog()
         {{u"auto"_s, u"same as the number keys"_s, QT_TRANSLATE_NOOP("AiSettings", "跟数字键一样")},
             {u"ctrl"_s, u"Ctrl"_s, "Ctrl"}, {u"alt"_s, u"Alt"_s, "Alt"}, {u"shift"_s, u"Shift"_s, "Shift"}}));
 
-    // ---- 文件内容搜索 ----
-    add(recording({"Content/Enabled", QT_TRANSLATE_NOOP("AiSettings", "文件内容搜索"), "content", 0,
+    // ---- 搜索范围 › 文件内容 ----
+    add(recording({"Content/Enabled", QT_TRANSLATE_NOOP("AiSettings", "文件内容搜索"), "content", 4,
                     "Searching inside files: the 内容 tab. Off: names only, and no file is read for its text. Turning it on lets the contents of files be searched (also by AI), so that asks the user."},
         &Settings::contentSearch));
-    add(recording({"Content/Documents", QT_TRANSLATE_NOOP("AiSettings", "搜索文档"), "content", 0,
+    add(recording({"Content/Documents", QT_TRANSLATE_NOOP("AiSettings", "搜索文档"), "content", 4,
                     "Content search also looks in Word, Excel, PowerPoint and PDF files. Turning it on makes their texts searchable, so that asks the user."},
         &Settings::contentDocuments));
-    add(list({"Content/Extensions", QT_TRANSLATE_NOOP("AiSettings", "搜索这些类型的文本文件"), "content", 0,
+    add(list({"Content/Extensions", QT_TRANSLATE_NOOP("AiSettings", "搜索这些类型的文本文件"), "content", 4,
                  "Extensions (without dot, like txt) of the text files content search reads."},
         &Settings::contentExtensions, ListKind::ContentExtensions));
-    add(recording({"Content/IncludeSystemFolders", QT_TRANSLATE_NOOP("AiSettings", "也搜索系统和程序文件夹"), "content", 0,
+    add(recording({"Content/IncludeSystemFolders", QT_TRANSLATE_NOOP("AiSettings", "也搜索系统和程序文件夹"), "content", 4,
                     "Content search also looks in system, program and tool folders (node_modules, .git…): slower and noisier. Turning it on asks the user."},
         &Settings::contentInLowPriority));
-    add(boolean({"Content/Index", QT_TRANSLATE_NOOP("AiSettings", "建立内容索引"), "content", 0,
+    add(boolean({"Content/Index", QT_TRANSLATE_NOOP("AiSettings", "建立内容索引"), "content", 4,
                     "Builds an index of the files' texts for faster content search. Reading every file takes minutes the first time and some disk space."},
         &Settings::contentIndex));
-    add(sizeMB({"Content/MaxFileSizeMB", QT_TRANSLATE_NOOP("AiSettings", "文本和日志的大小上限"), "content", 1,
+    add(sizeMB({"Content/MaxFileSizeMB", QT_TRANSLATE_NOOP("AiSettings", "文本和日志的大小上限"), "content", 4,
                    "Plain text and log files larger than this are not searched, in MB (1 KB is 0.001)."},
         ContentSizeLimits::Text));
-    add(sizeMB({"Content/MaxCodeFileSizeMB", QT_TRANSLATE_NOOP("AiSettings", "源代码的大小上限"), "content", 1,
+    add(sizeMB({"Content/MaxCodeFileSizeMB", QT_TRANSLATE_NOOP("AiSettings", "源代码的大小上限"), "content", 4,
                    "Source code files larger than this are not searched, in MB."},
         ContentSizeLimits::Code));
-    add(sizeMB({"Content/MaxDataFileSizeMB", QT_TRANSLATE_NOOP("AiSettings", "数据和网页的大小上限"), "content", 1,
+    add(sizeMB({"Content/MaxDataFileSizeMB", QT_TRANSLATE_NOOP("AiSettings", "数据和网页的大小上限"), "content", 4,
                    "Data files and web pages larger than this are not searched, in MB."},
         ContentSizeLimits::Data));
-    add(sizeMB({"Content/MaxDocumentFileSizeMB", QT_TRANSLATE_NOOP("AiSettings", "文档的大小上限"), "content", 1,
+    add(sizeMB({"Content/MaxDocumentFileSizeMB", QT_TRANSLATE_NOOP("AiSettings", "文档的大小上限"), "content", 4,
                    "Word, Excel, PowerPoint and PDF files larger than this are not searched, in MB."},
         ContentSizeLimits::Document));
 
@@ -862,15 +862,15 @@ std::vector<Entry> buildCatalog()
         menu.check = oneStaysOn(&Settings::pasteFileCtrlV);
     }
 
-    // ---- 高级 ----
-    add(boolean({"Update/Automatic", QT_TRANSLATE_NOOP("AiSettings", "自动更新"), "advanced", -1,
+    // ---- 常规 ----
+    add(boolean({"Update/Automatic", QT_TRANSLATE_NOOP("AiSettings", "自动更新"), "general", -1,
                     "Checks for new versions of Win顺 now and then, and installs plugin updates that ask for no new permissions."},
         &Settings::autoUpdate));
-    add(boolean({"Update/UsageReport", QT_TRANSLATE_NOOP("AiSettings", "发送匿名统计"), "advanced", -1,
+    add(boolean({"Update/UsageReport", QT_TRANSLATE_NOOP("AiSettings", "发送匿名统计"), "general", -1,
                     "Once a day tells lcstp.com that this computer still uses Win顺, to count the users: a one-way hash of the computer's ID, the version and the Windows version. No files or personal information."},
         &Settings::usageReport));
     {
-        add(choice({"Launcher/Renderer", QT_TRANSLATE_NOOP("AiSettings", "界面绘制方式"), "advanced", -1,
+        add(choice({"Launcher/Renderer", QT_TRANSLATE_NOOP("AiSettings", "界面绘制方式"), "general", -1,
                                   "How the windows are drawn. The graphics card (d3d11) is smoother and costs about 50 MB more memory; software is for machines with little memory. Needs Win顺 to restart."},
             &Settings::renderer,
             {{u"software"_s, u"drawn by the processor, less memory"_s, QT_TRANSLATE_NOOP("AiSettings", "处理器绘制")},
@@ -1556,27 +1556,34 @@ QString Section::titleText() const
 const std::vector<Section>& sections()
 {
     static const std::vector<Section> all {
-        {u"shortcuts"_s, QT_TRANSLATE_NOOP("AiSettings", "快捷键与双击 Ctrl、Alt 或 Shift"), 0},
-        {u"taskbar"_s, QT_TRANSLATE_NOOP("AiSettings", "任务栏"), 0},
-        {u"files_and_dialogs"_s, QT_TRANSLATE_NOOP("AiSettings", "文件管理器与对话框"), 0},
-        {u"startup"_s, QT_TRANSLATE_NOOP("AiSettings", "启动与历史"), 0},
-        {u"appearance"_s, QT_TRANSLATE_NOOP("AiSettings", "外观"), 1},
-        {u"scope"_s, QT_TRANSLATE_NOOP("AiSettings", "搜索范围"), 2},
-        {u"results"_s, QT_TRANSLATE_NOOP("AiSettings", "结果列表"), 3},
-        {u"content"_s, QT_TRANSLATE_NOOP("AiSettings", "文件内容搜索"), 4},
-        {u"web"_s, QT_TRANSLATE_NOOP("AiSettings", "网页搜索"), 9},
-        {u"favorites"_s, QT_TRANSLATE_NOOP("AiSettings", "收藏夹"), 5},
-        {u"clipboard"_s, QT_TRANSLATE_NOOP("AiSettings", "剪贴板"), 6},
-        {u"advanced"_s, QT_TRANSLATE_NOOP("AiSettings", "高级"), 7},
-        {u"paste_file"_s, QT_TRANSLATE_NOOP("AiSettings", "粘贴为文件"), 9},
+        {u"general"_s, QT_TRANSLATE_NOOP("AiSettings", "常规"), u"general"_s},
+        {u"shortcuts"_s, QT_TRANSLATE_NOOP("AiSettings", "快捷键与双击 Ctrl、Alt 或 Shift"), u"keys"_s},
+        {u"appearance"_s, QT_TRANSLATE_NOOP("AiSettings", "外观"), u"appearance"_s},
+        {u"scope"_s, QT_TRANSLATE_NOOP("AiSettings", "搜索范围"), u"scope"_s},
+        {u"content"_s, QT_TRANSLATE_NOOP("AiSettings", "文件内容搜索"), u"scope"_s},
+        {u"results"_s, QT_TRANSLATE_NOOP("AiSettings", "结果列表"), u"results"_s},
+        {u"taskbar"_s, QT_TRANSLATE_NOOP("AiSettings", "任务栏"), u"integration"_s},
+        {u"files_and_dialogs"_s, QT_TRANSLATE_NOOP("AiSettings", "文件管理器与对话框"), u"integration"_s},
+        {u"favorites"_s, QT_TRANSLATE_NOOP("AiSettings", "收藏夹"), u"favorites"_s},
+        {u"clipboard"_s, QT_TRANSLATE_NOOP("AiSettings", "剪贴板"), u"clipboard"_s},
+        {u"web"_s, QT_TRANSLATE_NOOP("AiSettings", "网页搜索"), u"plugins"_s},
+        {u"paste_file"_s, QT_TRANSLATE_NOOP("AiSettings", "粘贴为文件"), u"plugins"_s},
     };
     return all;
 }
 
 const Section* sectionOf(const QString& id)
 {
+    // Ids of sections merged into another since (winshun://settings/advanced
+    // links, AI clients that remember them): that one.
+    static constexpr std::pair<QStringView, QStringView> merged[] {{u"advanced", u"general"}, {u"startup", u"general"}};
+    QStringView wanted = id;
+    for (const auto& [was, now] : merged) {
+        if (wanted.compare(was, Qt::CaseInsensitive) == 0)
+            wanted = now;
+    }
     for (const Section& s : sections()) {
-        if (s.id.compare(id, Qt::CaseInsensitive) == 0)
+        if (s.id.compare(wanted, Qt::CaseInsensitive) == 0)
             return &s;
     }
     return nullptr;
@@ -1720,7 +1727,7 @@ bool inSections(const Entry& e, const QStringList& wanted)
     const Section* section = sectionOf(e.section);
     return std::ranges::any_of(wanted, [&](const QString& w) {
         const QString t = w.trimmed();
-        return e.section.compare(t, Qt::CaseInsensitive) == 0
+        return e.section.compare(t, Qt::CaseInsensitive) == 0 || (section && sectionOf(t) == section)
             || (section && (QString::fromUtf8(section->title).contains(t) || section->titleText().contains(t, Qt::CaseInsensitive)));
     });
 }
@@ -1781,7 +1788,7 @@ QJsonObject itemJson(const Item& item)
     const Entry& e = *item.entry;
     const Section* section = sectionOf(e.section);
     return {{u"key"_s, e.key}, {u"title"_s, e.titleText()}, {u"row_title"_s, e.rowTitleText()}, {u"section"_s, e.section},
-        {u"page"_s, section ? section->page : -1}, {u"tab"_s, e.tab}, {u"old"_s, item.oldValue}, {u"new"_s, item.newValue},
+        {u"page"_s, section ? QJsonValue(section->page) : QJsonValue()}, {u"tab"_s, e.tab}, {u"old"_s, item.oldValue}, {u"new"_s, item.newValue},
         {u"old_text"_s, item.oldText}, {u"new_text"_s, item.newText}, {u"removed_text"_s, item.removedText},
         {u"added_text"_s, item.addedText}, {u"diff_text"_s, item.diffText}, {u"changed"_s, item.changed},
         {u"ask_always"_s, item.askAlways}, {u"effect"_s, QString::fromLatin1(effectName(e.effect))},
