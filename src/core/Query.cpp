@@ -366,10 +366,7 @@ ContentQuery splitContentQuery(const QString& text, bool regexMode)
     return query;
 }
 
-namespace {
-
-// "10mb", "1.5 g", "200": bytes, or nothing.
-std::optional<std::uint64_t> parseSizeValue(QStringView s)
+std::optional<std::uint64_t> parseSizeValue(QStringView s, std::uint64_t bareUnit)
 {
     s = s.trimmed();
     qsizetype digits = 0;
@@ -383,7 +380,9 @@ std::optional<std::uint64_t> parseSizeValue(QStringView s)
         return std::nullopt;
     const QString unit = s.sliced(digits).trimmed().toString().toLower();
     double scale = 1;
-    if (unit.isEmpty() || unit == u"b")
+    if (unit.isEmpty())
+        scale = static_cast<double>(bareUnit);
+    else if (unit == u"b")
         scale = 1;
     else if (unit == u"k" || unit == u"kb")
         scale = 1024.0;
@@ -399,8 +398,6 @@ std::optional<std::uint64_t> parseSizeValue(QStringView s)
     return bytes >= 1.8e19 ? std::numeric_limits<std::uint64_t>::max() : static_cast<std::uint64_t>(bytes + 0.5);
 }
 
-// "2026", "2026-1", "2026-01-15" (or with / or .): the first moment of that
-// year, month or day, and the first moment after it.
 std::optional<std::pair<QDateTime, QDateTime>> parseDateValue(QStringView s)
 {
     const QStringList parts = s.trimmed().toString().split(QRegularExpression(u"[-/.]"_s), Qt::SkipEmptyParts);
@@ -421,6 +418,8 @@ std::optional<std::pair<QDateTime, QDateTime>> parseDateValue(QStringView s)
     const QDate end = parts.size() == 1 ? date.addYears(1) : parts.size() == 2 ? date.addMonths(1) : date.addDays(1);
     return std::pair {date.startOfDay(), end.startOfDay()};
 }
+
+namespace {
 
 FileTime fileTimeAt(const QDateTime& when)
 {
@@ -711,12 +710,12 @@ ParsedQuery parseQuery(const QString& text, bool regexTerms)
         term.wildcard = token.contains(u'*') || token.contains(u'?');
         term.text = foldedUtf8(token);
         if (term.wildcard) {
-            std::size_t start = 0;
+            std::size_t run = 0; // where the literal run between wildcards began
             for (std::size_t i = 0; i <= term.text.size(); ++i) {
                 if (i == term.text.size() || term.text[i] == '*' || term.text[i] == '?') {
-                    if (i - start > term.literal.size())
-                        term.literal = term.text.substr(start, i - start);
-                    start = i + 1;
+                    if (i - run > term.literal.size())
+                        term.literal = term.text.substr(run, i - run);
+                    run = i + 1;
                 }
             }
         }

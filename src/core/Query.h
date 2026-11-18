@@ -11,9 +11,12 @@
 #include <QStringList>
 #include <QRegularExpression>
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace ws {
@@ -96,6 +99,12 @@ struct ParsedQuery {
 // as a word). `now`: local time, for today, 7d and the like.
 bool parseSizeToken(QStringView token, EntryFilter& filter);
 bool parseDateToken(QStringView token, const QDateTime& now, EntryFilter& filter);
+// "10mb", "1.5 g", "40 KB", "200" (a bare number counted in bareUnit bytes):
+// bytes, or nothing. Also the search panel's own size boxes (bare: MB).
+std::optional<std::uint64_t> parseSizeValue(QStringView s, std::uint64_t bareUnit = 1);
+// "2026", "2026-1", "2026-01-15" (or with / or .): the first moment of that
+// year, month or day, and the first moment after it.
+std::optional<std::pair<QDateTime, QDateTime>> parseDateValue(QStringView s);
 // A size in bytes written briefly: "1.2 MB", "356 KB", "0 B".
 QString sizeText(std::uint64_t bytes);
 

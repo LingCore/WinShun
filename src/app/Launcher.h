@@ -863,6 +863,9 @@ public:
     Q_INVOKABLE void setDateRange(const QString& from, const QString& to); // 自定义
     Q_INVOKABLE void setSizeChoice(int choice);
     Q_INVOKABLE void setSizeRange(const QString& minMb, const QString& maxMb); // 自定义
+    // What a 自定义 box holds is taken as a bound (empty: none); else the box is marked.
+    Q_INVOKABLE bool readsAsSize(const QString& text) const; // "40 KB", "1.5 GB", MB when bare
+    Q_INVOKABLE bool readsAsDate(const QString& text) const; // "2026", "2026-3", "2026/3/15"
     Q_INVOKABLE void setFolderFilter(const QString& path);
     Q_INVOKABLE void pickFolderFilter(); // the folder dialog
     Q_INVOKABLE void clearFilters();

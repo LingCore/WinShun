@@ -3672,27 +3672,29 @@ QVariantList Launcher::favoriteFolders() const
 
 namespace {
 
-QDate dateOf(const QString& text)
-{
-    return QDate::fromString(text.trimmed(), Qt::ISODate);
-}
-
 FileTime fileTimeOf(const QDateTime& when)
 {
     const qint64 secs = when.toSecsSinceEpoch();
     return secs <= 0 ? 0 : secs >= 0xFFFF'FFFFll ? 0xFFFF'FFFFu : static_cast<FileTime>(secs);
 }
 
-std::optional<std::uint64_t> megabytesOf(const QString& text)
+// The panel's own size boxes: "40 KB", "1.5 GB", or a bare number of MB (GitHub #394).
+std::optional<std::uint64_t> sizeBoundOf(const QString& text)
 {
-    bool ok = false;
-    const double mb = text.trimmed().toDouble(&ok);
-    if (!ok || mb < 0 || mb > 1e9)
-        return std::nullopt;
-    return static_cast<std::uint64_t>(mb * 1048576.0 + 0.5);
+    return ws::parseSizeValue(text, std::uint64_t {1} << 20);
 }
 
 } // namespace
+
+bool Launcher::readsAsSize(const QString& text) const
+{
+    return text.trimmed().isEmpty() || sizeBoundOf(text).has_value();
+}
+
+bool Launcher::readsAsDate(const QString& text) const
+{
+    return text.trimmed().isEmpty() || ws::parseDateValue(text).has_value();
+}
 
 EntryFilter Launcher::panelFilter() const
 {
@@ -3713,13 +3715,14 @@ EntryFilter Launcher::panelFilter() const
         f.after = fileTimeOf(QDate(today.year(), 1, 1).startOfDay());
         break;
     case 5: {
-        const QDate from = dateOf(m_dateFrom);
-        const QDate to = dateOf(m_dateTo);
-        if (from.isValid())
-            f.after = fileTimeOf(from.startOfDay());
-        if (to.isValid())
-            f.before = fileTimeOf(to.addDays(1).startOfDay());
-        if (!from.isValid() && !to.isValid())
+        // "2026" or "2026-3" as well: from its first day, to its last.
+        const auto from = ws::parseDateValue(m_dateFrom);
+        const auto to = ws::parseDateValue(m_dateTo);
+        if (from)
+            f.after = fileTimeOf(from->first);
+        if (to)
+            f.before = fileTimeOf(to->second);
+        if (!from && !to)
             f.after = 1; // a bound all the same: times not known stay out, as the choice says
         break;
     }
@@ -3743,8 +3746,8 @@ EntryFilter Launcher::panelFilter() const
         f.minSize = packSize(1024 * mb + 1);
         break;
     case 5: {
-        const auto min = megabytesOf(m_sizeMin);
-        const auto max = megabytesOf(m_sizeMax);
+        const auto min = sizeBoundOf(m_sizeMin);
+        const auto max = sizeBoundOf(m_sizeMax);
         if (min)
             f.minSize = packSize(*min);
         if (max)

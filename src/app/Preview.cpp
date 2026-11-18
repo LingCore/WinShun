@@ -6568,6 +6568,17 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     launcher.setDateRange(u"2026-01-01"_s, u"2026-12-31"_s);
     pump(50);
     check(launcher.results()->count() == 3, "plugin date filtering or legacy compatibility failed");
+    // The boxes take a unit as well as a bare number of MB, and mark what they cannot read (GitHub #394).
+    check(launcher.readsAsSize(u"40 kb"_s) && launcher.readsAsSize(u"1.5"_s) && launcher.readsAsSize(u" "_s)
+            && !launcher.readsAsSize(u"40 kilo"_s) && launcher.readsAsDate(u"2026"_s) && launcher.readsAsDate(u"2026/3/5"_s)
+            && !launcher.readsAsDate(u"2026-13"_s),
+        "the panel's size or date boxes misread what was typed");
+    launcher.setSizeRange({}, u"1 KB"_s);
+    pump(50);
+    bool bigKept = false;
+    for (int i = 0; i < launcher.results()->count(); ++i)
+        bigKept = bigKept || (launcher.results()->at(i) && launcher.results()->at(i)->name == u"New.pdf");
+    check(!bigKept, "a size typed with its unit (1 KB) was not taken as the bound");
     launcher.setSizeRange(u"1"_s, {});
     pump(50);
     check(launcher.results()->count() == 2, "plugin size filtering or unknown sizes failed");
@@ -6623,6 +6634,13 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     pump(250);
     settle(panelWindow);
     check(saveGrab(panelWindow, output.filePath(u"panel-default.png"_s)), "could not render default panel");
+    // The 自定义 size boxes (GitHub #394): "40 kb" taken, what cannot be read marked.
+    launcher.setSizeRange(u"40 kb"_s, u"abc"_s);
+    settle(panelWindow);
+    check(saveGrab(panelWindow, output.filePath(u"panel-size-bounds.png"_s)), "could not render the size boxes");
+    launcher.setSizeRange({}, {});
+    launcher.setSizeChoice(0);
+    settle(panelWindow);
     bool sawFolderSize = false;
     for (int row = 0; row < launcher.results()->count(); ++row) {
         if (!launcher.results()->at(row)->isDir) continue;

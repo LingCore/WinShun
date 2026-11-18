@@ -2568,6 +2568,16 @@ private slots:
         q = ws::parseQuery(u"size:abc"_s); // not a size: a word
         QCOMPARE(q.terms.size(), std::size_t {1});
         QVERIFY(!q.filter.any());
+        // The search panel's own boxes: a bare number is MB there, a unit says itself (GitHub #394).
+        QCOMPARE(ws::parseSizeValue(u"40 kb", mb), std::optional<std::uint64_t> {40 * 1024});
+        QCOMPARE(ws::parseSizeValue(u"1.5", mb), std::optional<std::uint64_t> {mb + mb / 2});
+        QCOMPARE(ws::parseSizeValue(u"2 GB", mb), std::optional<std::uint64_t> {2048 * mb});
+        QCOMPARE(ws::parseSizeValue(u"200"), std::optional<std::uint64_t> {200}); // size:200 is bytes
+        QVERIFY(!ws::parseSizeValue(u"40 kilo", mb));
+        QVERIFY(!ws::parseSizeValue(u"-5", mb));
+        QCOMPARE(ws::parseDateValue(u"2026")->second, QDate(2027, 1, 1).startOfDay());
+        QCOMPARE(ws::parseDateValue(u"2026/3/5")->first, QDate(2026, 3, 5).startOfDay());
+        QVERIFY(!ws::parseDateValue(u"2026-13"));
 
         const QDateTime now(QDate(2026, 10, 15), QTime(14, 30));
         EntryFilter f;

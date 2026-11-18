@@ -594,6 +594,7 @@ Item {
                         next: dateTo
                         placeholder: qsTr("起 2026-01-01")
                         text: panel.launcher.dateFrom
+                        error: !panel.launcher.readsAsDate(text) // not taken: marked (GitHub #394)
                         onEditingFinished: panel.launcher.setDateRange(text, dateTo.text)
                         Component.onCompleted: panel.frame.addControl(dateFrom)
                     }
@@ -603,6 +604,7 @@ Item {
                         implicitWidth: 126
                         placeholder: qsTr("止")
                         text: panel.launcher.dateTo
+                        error: !panel.launcher.readsAsDate(text) // not taken: marked (GitHub #394)
                         onEditingFinished: panel.launcher.setDateRange(dateFrom.text, text)
                         Component.onCompleted: panel.frame.addControl(dateTo)
                     }
@@ -621,6 +623,7 @@ Item {
                         next: sizeMax
                         placeholder: qsTr("最小 MB")
                         text: panel.launcher.sizeMin
+                        error: !panel.launcher.readsAsSize(text) // "40 KB" as well as MB
                         onEditingFinished: panel.launcher.setSizeRange(text, sizeMax.text)
                         Component.onCompleted: panel.frame.addControl(sizeMin)
                     }
@@ -629,6 +632,7 @@ Item {
                         visible: panel.launcher.sizeChoice === 5
                         placeholder: qsTr("最大 MB")
                         text: panel.launcher.sizeMax
+                        error: !panel.launcher.readsAsSize(text) // "40 KB" as well as MB
                         onEditingFinished: panel.launcher.setSizeRange(sizeMin.text, text)
                         Component.onCompleted: panel.frame.addControl(sizeMax)
                     }
@@ -820,6 +824,7 @@ Item {
                             next: dateTo
                             placeholder: qsTr("起 2026-01-01")
                             text: panel.launcher.dateFrom
+                            error: !panel.launcher.readsAsDate(text) // not taken: marked (GitHub #394)
                             onEditingFinished: panel.launcher.setDateRange(text, dateTo.text)
                             Component.onCompleted: panel.frame.addControl(dateFrom)
                         }
@@ -828,6 +833,7 @@ Item {
                             width: filterColumn.width - 24
                             placeholder: qsTr("止")
                             text: panel.launcher.dateTo
+                            error: !panel.launcher.readsAsDate(text) // not taken: marked (GitHub #394)
                             onEditingFinished: panel.launcher.setDateRange(dateFrom.text, text)
                             Component.onCompleted: panel.frame.addControl(dateTo)
                         }
@@ -855,6 +861,7 @@ Item {
                             next: sizeMax
                             placeholder: qsTr("最小 MB")
                             text: panel.launcher.sizeMin
+                            error: !panel.launcher.readsAsSize(text) // "40 KB" as well as MB
                             onEditingFinished: panel.launcher.setSizeRange(text, sizeMax.text)
                             Component.onCompleted: panel.frame.addControl(sizeMin)
                         }
@@ -863,6 +870,7 @@ Item {
                             width: filterColumn.width - 24
                             placeholder: qsTr("最大 MB")
                             text: panel.launcher.sizeMax
+                            error: !panel.launcher.readsAsSize(text) // "40 KB" as well as MB
                             onEditingFinished: panel.launcher.setSizeRange(sizeMin.text, text)
                             Component.onCompleted: panel.frame.addControl(sizeMax)
                         }
