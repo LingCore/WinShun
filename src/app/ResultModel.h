@@ -80,6 +80,7 @@ public:
         FavoriteRole, // one of its user's favorites
         FavoriteKeywordRole, // ... its keyword; empty: none
         MissingRole, // a favorite no longer there
+        EmptyRole, // a folder with nothing in it, or a file of 0 bytes (GitHub #391)
         // Where the terms the name lacks are in its folder (found there, "弯管机" in
         // F:\模型\3轴弯管机模型): start, length, start, length...; none for a content match.
         FolderMatchesRole,

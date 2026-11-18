@@ -9136,6 +9136,57 @@ private slots:
     // GitHub #44: the folder typed lists what is in it from disk, and those
     // rows went above everything whatever order was chosen. Now, other than
     // best match, they are sorted with the rest, "folders first" or not.
+    // GitHub #391: a folder the index holds nothing in is marked; not one with
+    // anything in it, nor a hidden one (Windows' links in a profile), and
+    // never a file (a file of 0 bytes is told by its size, ResultModel).
+    void emptyFoldersMarked()
+    {
+        QTemporaryDir dir;
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.filePath(u"index"_s), options);
+        EntryId inFull = kNoEntry;
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId root = index->addRoot("T:");
+            index->add(root, "zqempty", EntryFlag::Directory);
+            const EntryId full = index->add(root, "zqfull", EntryFlag::Directory);
+            inFull = index->add(full, "inside.txt", 0);
+            index->add(root, "zqhidden", EntryFlag::Directory | EntryFlag::Hidden);
+            index->setSize(index->add(root, "zqzero.txt", 0), packSize(0));
+        }
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const auto marked = [&] {
+            SearchEngine::Request request;
+            request.text = u"zq"_s;
+            request.limit = 100;
+            spy.clear();
+            engine.submit(std::move(request));
+            QMap<QString, bool> rows;
+            if (!spy.wait(5000))
+                return rows;
+            for (const SearchResult& r : spy.at(0).at(1).value<SearchResults>())
+                rows.insert(r.name, r.emptyFolder);
+            return rows;
+        };
+        auto rows = marked();
+        QVERIFY2(rows.contains(u"zqempty"_s) && rows.contains(u"zqfull"_s) && rows.contains(u"zqzero.txt"_s),
+            qPrintable(rows.keys().join(u", ")));
+        QVERIFY(rows[u"zqempty"_s]);
+        QVERIFY(!rows[u"zqfull"_s]);
+        QVERIFY(!rows.value(u"zqhidden"_s)); // listed or not: never marked
+        QVERIFY(!rows[u"zqzero.txt"_s]);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            index->remove(inFull);
+        }
+        rows = marked();
+        QVERIFY(rows[u"zqfull"_s]); // its last file deleted
+    }
+
     void typedFolderRowsFollowTheSort()
     {
         QTemporaryDir dir;

@@ -79,6 +79,7 @@ Item {
     required property bool favorite // one of its user's favorites: tagged 收藏 (with its keyword)
     required property string favoriteKeyword
     required property bool missing // a favorite no longer there: dimmed, tagged
+    required property bool empty // a folder with nothing in it, a file of 0 bytes: tagged, not to be gone into for nothing (GitHub #391)
     required property string switchId // a system switch's row (SearchResult::switchId)
     required property int switchOn // -1 not known, 0 off, 1 on, 2 mixed
     required property int switchLevel // the volume, 0–100; -1 not known, or another switch
@@ -512,12 +513,15 @@ Item {
         y: row.onPixel((row.height - height) / 2)
         width: Math.min(implicitWidth, 200)
         elide: Text.ElideMiddle
+        readonly property string tag: row.adminRun ? qsTr("管理员")
+            : row.favorite ? (row.favoriteKeyword.length > 0 ? qsTr("收藏 · %1").arg(row.favoriteKeyword) : qsTr("收藏"))
+            : row.recent ? qsTr("最近") : ""
+        readonly property string emptyTag: !row.empty ? "" : row.isDir ? qsTr("空文件夹") : qsTr("空文件")
         text: row.contentMode ? row.location
             : row.offline ? qsTr("离线")
             : row.missing ? qsTr("已不存在")
-            : row.adminRun ? qsTr("管理员")
-            : row.favorite ? (row.favoriteKeyword.length > 0 ? qsTr("收藏 · %1").arg(row.favoriteKeyword) : qsTr("收藏"))
-            : row.recent ? qsTr("最近") : ""
+            : emptyTag.length > 0 && tag.length > 0 ? qsTr("%1 · %2").arg(emptyTag).arg(tag)
+            : emptyTag.length > 0 ? emptyTag : tag
         color: Theme.faint
         font.pixelSize: row.compact ? 12 : Theme.uiCaption
     }

@@ -4694,6 +4694,18 @@ Send suggestions and problems on our website</translation>
         <translation>Favorite</translation>
     </message>
     <message>
+        <source>空文件夹</source>
+        <translation>Empty folder</translation>
+    </message>
+    <message>
+        <source>空文件</source>
+        <translation>Empty file</translation>
+    </message>
+    <message>
+        <source>%1 · %2</source>
+        <translation>%1 · %2</translation>
+    </message>
+    <message>
         <source>建议</source>
         <translation>Suggestion</translation>
     </message>

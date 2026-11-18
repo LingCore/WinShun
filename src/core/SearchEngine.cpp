@@ -488,6 +488,18 @@ bool duplicatesApp(const SearchResult& file, const SearchResult& app)
         && file.path.contains(u"\\Start Menu\\Programs\\", Qt::CaseInsensitive);
 }
 
+// GitHub #391: a folder with nothing in it, as far as the index knows. Not
+// a hidden one: Windows' links in a profile (My Documents, Application
+// Data) and System Volume Information are hidden, and what is in them is
+// never read. Nor one on a share (read now and then, and maybe not that
+// deep), a drive, or a cloud placeholder. Caller holds index.readLock().
+bool emptyInIndex(const FileIndex& index, EntryId id)
+{
+    const Entry e = index.entry(id);
+    constexpr auto unsure = EntryFlag::Hidden | EntryFlag::Remote | EntryFlag::Root | EntryFlag::Offline | EntryFlag::Deleted;
+    return e.isDir() && !(e.flags & unsure) && e.firstChild() == kNoEntry;
+}
+
 SearchResult fromIndex(const FileIndex& index, EntryId id)
 {
     const EntryScan& e = index.scan(id);
@@ -498,6 +510,7 @@ SearchResult fromIndex(const FileIndex& index, EntryId id)
     r.isDir = e.isDir();
     if (const FileSize size = e.isDir() ? kUnknownSize : index.size(id); size != kUnknownSize)
         r.size = static_cast<std::int64_t>(unpackSize(size));
+    r.emptyFolder = e.isDir() && emptyInIndex(index, id);
     return r;
 }
 
@@ -1707,9 +1720,11 @@ void SearchEngine::runNameSearch(const Job& job)
             listed.reserve(rows.size());
             {
                 const auto lock = index->readLock();
-                for (const SearchResult& row : rows) {
+                for (SearchResult& row : rows) {
                     listed.insert(pathtext::pathKey(row.path));
                     const EntryId id = index->findPath(row.path.toStdWString());
+                    // Listed from the disk: empty as the index knows it (GitHub #391).
+                    row.emptyFolder = id != kNoEntry && row.isDir && emptyInIndex(*index, id);
                     // The count includes every index match, even those past
                     // this page. Only disk rows not counted there are new.
                     // Subtracting duplicates just from the visible page made
