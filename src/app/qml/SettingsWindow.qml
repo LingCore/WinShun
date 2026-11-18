@@ -5246,6 +5246,21 @@ Window {
                     }
                 }
 
+                SettingRow { // a side preview left open comes back with the window (GitHub #9; off since #174)
+                    title: qsTr("再次打开时恢复预览")
+                    keywords: qsTr("预览;恢复;记住;保留;保持;下次;再次;侧边;restore;preview").split(";")
+                    description: window.editor.clipboardPreviewRestore
+                                 ? qsTr("预览开着时关闭剪贴板，下次打开预览也跟着回来")
+                                 : qsTr("关闭剪贴板时预览一起收起，下次打开从列表开始")
+
+                    ToggleSwitch {
+                        objectName: "clipboardPreviewRestoreSwitch"
+                        dpr: window.dpr
+                        checked: window.editor.clipboardPreviewRestore
+                        onToggled: (on) => window.editor.clipboardPreviewRestore = on
+                    }
+                }
+
                 SettingRow {
                     title: qsTr("剪贴板大小")
                     keywords: qsTr("字体;字号;文字大小;行高;密集;紧凑;宽松;ditto;font size;dense").split(";")

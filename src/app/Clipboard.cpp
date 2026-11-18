@@ -281,6 +281,14 @@ void Clipboard::setPreviewOpen(bool open)
     emit previewOpenChanged();
 }
 
+void Clipboard::setPreviewRestore(bool on)
+{
+    if (m_previewRestore == on)
+        return;
+    m_previewRestore = on;
+    emit previewOpenChanged();
+}
+
 void Clipboard::setPreviewWidth(int width)
 {
     width = std::max(0, width);

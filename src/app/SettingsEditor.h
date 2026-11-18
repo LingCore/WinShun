@@ -262,6 +262,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString clipboardUiSize READ clipboardUiSize WRITE setClipboardUiSize NOTIFY changed FINAL) // follow | dense | compact | standard | roomy
     Q_PROPERTY(QString clipboardPictureSize READ clipboardPictureSize WRITE setClipboardPictureSize NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardKeepPlace READ clipboardKeepPlace WRITE setClipboardKeepPlace NOTIFY changed FINAL)
+    Q_PROPERTY(bool clipboardPreviewRestore READ clipboardPreviewRestore WRITE setClipboardPreviewRestore NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardAtPointer READ clipboardAtPointer WRITE setClipboardAtPointer NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardPauseInFullScreen READ clipboardPauseInFullScreen WRITE setClipboardPauseInFullScreen NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardFlipAbove READ clipboardFlipAbove WRITE setClipboardFlipAbove NOTIFY changed FINAL)
@@ -724,6 +725,8 @@ public:
     void setClipboardPictureSize(const QString& size);
     bool clipboardKeepPlace() const { return m_settings.clipboardKeepPlace; }
     void setClipboardKeepPlace(bool on);
+    bool clipboardPreviewRestore() const { return m_settings.clipboardPreviewRestore; }
+    void setClipboardPreviewRestore(bool on);
     bool clipboardAtPointer() const { return m_settings.clipboardAtPointer; }
     bool clipboardPauseInFullScreen() const { return m_settings.clipboardPauseInFullScreen; }
     void setClipboardPauseInFullScreen(bool on);

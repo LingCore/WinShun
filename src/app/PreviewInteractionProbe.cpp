@@ -202,6 +202,28 @@ bool checkPreviewInteractions(QQmlEngine* engine, const QDir& output)
     clipboard.handlePlaced();
     wait(70);
     check(!page->property("previewOpen").toBool() && !hoverWindow(), u"reopening does not restore either preview"_s);
+    // 再次打开时恢复预览 on: the side preview left open comes back, the hover one does not.
+    clipboard.setPreviewRestore(true);
+    QMetaObject::invokeMethod(page, "togglePreview", Q_ARG(QVariant, 0));
+    wait(70);
+    window->hide();
+    clipboard.handleHidden();
+    check(!page->property("previewOpen").toBool() && clipboard.previewOpen(), u"closing keeps a preview to restore"_s);
+    window->show();
+    clipboard.handleShown();
+    clipboard.handlePlaced();
+    wait(70);
+    check(page->property("previewOpen").toBool() && !hoverWindow(), u"reopening restores the side preview when asked to"_s);
+    QMetaObject::invokeMethod(page, "togglePreview", Q_ARG(QVariant, 0)); // closed by hand: not back next time
+    wait(70);
+    window->hide();
+    clipboard.handleHidden();
+    window->show();
+    clipboard.handleShown();
+    clipboard.handlePlaced();
+    wait(70);
+    check(!page->property("previewOpen").toBool() && !clipboard.previewOpen(), u"a preview closed by hand stays closed"_s);
+    clipboard.setPreviewRestore(false);
     // A pinned row's handle, dragged onto the next row, moves it there in its
     // group's own order. The row's buttons are lent (RowActionsPool): they
     // stay on it while the handle is held, though the mouse leaves the row.

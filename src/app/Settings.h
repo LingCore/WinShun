@@ -474,6 +474,9 @@ struct Settings {
     // "standard" on a taller one, "large" enough to make out its details (forum #137).
     QString clipboardPictureSize = QStringLiteral("standard");
     bool clipboardKeepPlace = false; // pasting from the history leaves the entry where it is (GitHub #122); off: it moves to the top
+    // A side preview left open comes back with the window next time (as before
+    // GitHub #174); off: it closes with the window, as the hover preview does.
+    bool clipboardPreviewRestore = false;
     bool clipboardAtPointer = false; // always open beside the mouse, including over our own fields (GitHub #105)
     bool clipboardPauseInFullScreen = false; // only global opening hotkeys, not recording or menu actions (#121)
     // Opened over the caret (or a search box; Placement::above), the window

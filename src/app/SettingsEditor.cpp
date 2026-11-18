@@ -2027,6 +2027,14 @@ void SettingsEditor::setClipboardKeepPlace(bool on)
     commit();
 }
 
+void SettingsEditor::setClipboardPreviewRestore(bool on)
+{
+    if (m_settings.clipboardPreviewRestore == on)
+        return;
+    m_settings.clipboardPreviewRestore = on;
+    commit();
+}
+
 void SettingsEditor::setClipboardUiSize(const QString& size)
 {
     if (m_settings.clipboardUiSize == size

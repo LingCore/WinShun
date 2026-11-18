@@ -1180,6 +1180,7 @@ void Settings::load()
     if (clipboardPictureSize != u"small" && clipboardPictureSize != u"standard" && clipboardPictureSize != u"large")
         clipboardPictureSize = d.clipboardPictureSize;
     clipboardKeepPlace = readOrDefault(s, u"Clipboard/KeepPlace"_s, d.clipboardKeepPlace);
+    clipboardPreviewRestore = readOrDefault(s, u"Clipboard/PreviewRestore"_s, d.clipboardPreviewRestore);
     clipboardAtPointer = readOrDefault(s, u"Clipboard/AtPointer"_s, d.clipboardAtPointer);
     clipboardPauseInFullScreen = readOrDefault(s, u"Clipboard/PauseInFullScreen"_s, d.clipboardPauseInFullScreen);
     clipboardFlipAbove = readOrDefault(s, u"Clipboard/FlipAbove"_s, d.clipboardFlipAbove);
@@ -1482,6 +1483,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/PictureSize"_s, clipboardPictureSize);
     s.remove(u"Clipboard/LargePictures"_s); // said by PictureSize now
     s.setValue(u"Clipboard/KeepPlace"_s, clipboardKeepPlace);
+    s.setValue(u"Clipboard/PreviewRestore"_s, clipboardPreviewRestore);
     s.setValue(u"Clipboard/AtPointer"_s, clipboardAtPointer);
     s.setValue(u"Clipboard/PauseInFullScreen"_s, clipboardPauseInFullScreen);
     s.setValue(u"Clipboard/FlipAbove"_s, clipboardFlipAbove);

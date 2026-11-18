@@ -1067,6 +1067,10 @@
         <translation>Keep place after pasting</translation>
     </message>
     <message>
+        <source>剪贴板再次打开时恢复预览</source>
+        <translation>Restore the clipboard preview on reopening</translation>
+    </message>
+    <message>
         <source>剪贴板大小</source>
         <translation>Clipboard size</translation>
     </message>
@@ -8261,6 +8265,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>从列表里粘贴一条后留在原来的位置，不跳到最前面</source>
         <translation>Keep the pasted item in its place instead of jumping to the top</translation>
+    </message>
+    <message>
+        <source>预览;恢复;记住;保留;保持;下次;再次;侧边;restore;preview</source>
+        <translation>preview;restore;remember;keep;next time;reopen;side</translation>
+    </message>
+    <message>
+        <source>预览开着时关闭剪贴板，下次打开预览也跟着回来</source>
+        <translation>Close the clipboard with the preview open, and the preview comes back with it next time</translation>
+    </message>
+    <message>
+        <source>关闭剪贴板时预览一起收起，下次打开从列表开始</source>
+        <translation>The preview closes with the clipboard; it opens on the list next time</translation>
     </message>
     <message>
         <source>重新复制同样的内容仍会排到最前。粘贴过的条目右下角带蓝色对勾，也不会因“保留天数”到期而被删</source>
