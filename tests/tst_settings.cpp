@@ -672,17 +672,33 @@ private slots:
         ws::Settings::useProfile(profile.path());
         ws::Settings settings;
         settings.load();
-        QVERIFY(!settings.clipboardAtPointer);
+        QCOMPARE(settings.clipboardOpenAt, u"caret"_s);
         QVERIFY(!settings.clipboardPauseInFullScreen);
-        for (const bool atPointer : {true, false}) {
-            settings.clipboardAtPointer = atPointer;
-            settings.clipboardPauseInFullScreen = atPointer;
+        for (const QString& at : {u"pointer"_s, u"last"_s, u"caret"_s}) {
+            settings.clipboardOpenAt = at;
+            settings.clipboardPauseInFullScreen = at != u"caret";
             settings.save();
             ws::Settings restored;
             restored.load();
-            QCOMPARE(restored.clipboardAtPointer, atPointer);
-            QCOMPARE(restored.clipboardPauseInFullScreen, atPointer);
+            QCOMPARE(restored.clipboardOpenAt, at);
+            QCOMPARE(restored.clipboardPauseInFullScreen, at != u"caret");
         }
+        // Clipboard/AtPointer, the switch until 0.37: on opens by the pointer;
+        // an unknown place is by the caret (GitHub #376).
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.remove(u"Clipboard/OpenAt"_s);
+            ini.setValue(u"Clipboard/AtPointer"_s, true);
+        }
+        ws::Settings migrated;
+        migrated.load();
+        QCOMPARE(migrated.clipboardOpenAt, u"pointer"_s);
+        migrated.save();
+        QVERIFY(!QSettings(ws::Settings::filePath(), QSettings::IniFormat).contains(u"Clipboard/AtPointer"_s));
+        QSettings(ws::Settings::filePath(), QSettings::IniFormat).setValue(u"Clipboard/OpenAt"_s, u"somewhere"_s);
+        ws::Settings unknown;
+        unknown.load();
+        QCOMPARE(unknown.clipboardOpenAt, u"caret"_s);
     }
 
     // 界面大小: four steps, kept as written (密集 is the one line per result, GitHub #352);

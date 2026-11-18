@@ -2052,11 +2052,11 @@ void SettingsEditor::setClipboardPasteElevated(bool on)
     commit();
 }
 
-void SettingsEditor::setClipboardAtPointer(bool on)
+void SettingsEditor::setClipboardOpenAt(const QString& at)
 {
-    if (m_settings.clipboardAtPointer == on)
+    if (m_settings.clipboardOpenAt == at || (at != u"caret" && at != u"pointer" && at != u"last"))
         return;
-    m_settings.clipboardAtPointer = on;
+    m_settings.clipboardOpenAt = at;
     commit();
 }
 

@@ -5717,20 +5717,26 @@ Window {
 
                 SettingRow {
                     title: qsTr("剪贴板打开位置")
-                    keywords: qsTr("位置;鼠标;指针;光标;跟随;弹出;输入框").split(";")
-                    description: qsTr("每次打开时放在所选位置旁边，空间不足时自动调整到屏幕内")
+                    id: clipboardOpenAtRow
+                    readonly property var places: ["caret", "pointer", "last"]
+                    keywords: qsTr("位置;鼠标;指针;光标;跟随;弹出;输入框;固定;上次;记住").split(";")
+                    description: window.editor.clipboardOpenAt === "last"
+                                 ? qsTr("开在上次拖到的地方，大小也不变；有鼠标的那块屏幕上")
+                                 : qsTr("每次打开时放在所选位置旁边，空间不足时自动调整到屏幕内")
 
                     ScopeTabs {
-                        labels: [qsTr("输入光标旁"), qsTr("鼠标指针旁")]
-                        current: window.editor.clipboardAtPointer ? 1 : 0
-                        onActivated: (index) => window.editor.clipboardAtPointer = index === 1
+                        labels: [qsTr("输入光标旁"), qsTr("鼠标指针旁"), qsTr("上次的位置")]
+                        current: Math.max(0, clipboardOpenAtRow.places.indexOf(window.editor.clipboardOpenAt))
+                        onActivated: (index) => window.editor.clipboardOpenAt = clipboardOpenAtRow.places[index]
                     }
                 }
 
                 SettingRow {
                     // By the caret it opens under it, or over it where more
-                    // rows fit there (GitHub #38, Placement.above).
+                    // rows fit there (GitHub #38, Placement.above). Never
+                    // where it was last put.
                     sub: true
+                    shown: window.editor.clipboardOpenAt !== "last"
                     title: qsTr("开在光标上方时翻转")
                     keywords: qsTr("布局;上方;下方;翻转;颠倒;倒序;顺序").split(";")
                     description: window.editor.clipboardSearchBoxSide === "far"

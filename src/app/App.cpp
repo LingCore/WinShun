@@ -5710,7 +5710,8 @@ void App::showClipboard()
         m_clipboard->setPinned(false); // as it opens, whatever closed it last (a close of Qt's own)
         m_clipboard->setActive(true); // under the launcher's search box, it folds its rows away (Main.qml)
         m_clipboard->handleShown(); // the list alone again: its width as it opens
-        if (field && !m_settings.clipboardAtPointer) {
+        const bool byCaret = m_settings.clipboardOpenAt == u"caret";
+        if (field && byCaret) {
             // Dropping down under the field's box (the launcher's search bar,
             // the bar by a file dialog, a box in the settings window).
             const QQuickItem* box = field->parentItem() ? field->parentItem() : field;
@@ -5718,11 +5719,15 @@ void App::showClipboard()
         } else {
             // By the text caret in the program it pastes into, as Windows'
             // own clipboard opens; else by the mouse pointer, its top left
-            // corner at the pointer's tip, as a menu.
+            // corner at the pointer's tip, as a menu. Or where its user last
+            // put it (GitHub #376), on the monitor with the mouse as the
+            // launcher: always the same place, the same size.
             const HWND target = paste::usableTarget(foreground);
-            const std::optional<QRect> caret = target && !m_settings.clipboardAtPointer
-                ? m_textCaret->find(target, kCaretWait) : std::nullopt;
-            if (caret)
+            const std::optional<QRect> caret = target && byCaret ? m_textCaret->find(target, kCaretWait) : std::nullopt;
+            if (m_settings.clipboardOpenAt == u"last") {
+                QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
+                m_clipPlacement->placeOn(screen ? screen : QGuiApplication::primaryScreen());
+            } else if (caret)
                 m_clipPlacement->attachNative(*caret);
             else
                 m_clipPlacement->attach(QRect(QCursor::pos(), QSize(1, 0)));

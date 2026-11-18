@@ -757,9 +757,12 @@ std::vector<Entry> buildCatalog()
         {{u"small"_s, u"on a row as high as any other entry's"_s, QT_TRANSLATE_NOOP("AiSettings", "小")},
             {u"standard"_s, u"on a taller row"_s, QT_TRANSLATE_NOOP("AiSettings", "标准")},
             {u"large"_s, u"large enough to make out the details"_s, QT_TRANSLATE_NOOP("AiSettings", "大")}}));
-    add(boolean({"Clipboard/AtPointer", QT_TRANSLATE_NOOP("AiSettings", "剪贴板打开位置"), "clipboard", 0,
-                    "Always open the clipboard beside the mouse pointer. Off: by the text caret or focused field."},
-        &Settings::clipboardAtPointer));
+    add(choice({"Clipboard/OpenAt", QT_TRANSLATE_NOOP("AiSettings", "剪贴板打开位置"), "clipboard", 0,
+                   "Where the clipboard window opens."},
+        &Settings::clipboardOpenAt,
+        {{u"caret"_s, u"by the text caret, or under the focused field of Win顺's"_s, QT_TRANSLATE_NOOP("AiSettings", "输入光标旁")},
+            {u"pointer"_s, u"beside the mouse pointer"_s, QT_TRANSLATE_NOOP("AiSettings", "鼠标指针旁")},
+            {u"last"_s, u"where it was last moved to, on the monitor with the mouse"_s, QT_TRANSLATE_NOOP("AiSettings", "上次的位置")}}));
     add(boolean({"Clipboard/PauseInFullScreen", QT_TRANSLATE_NOOP("AiSettings", "全屏时不响应剪贴板快捷键"), "clipboard", 0,
                     "Pause global clipboard opening hotkeys over a full-screen application. Recording and menu actions stay available."},
         &Settings::clipboardPauseInFullScreen));

@@ -141,7 +141,7 @@ struct ClipboardAnimationProbe {
             }
         };
         app.m_settings.openAnimation = animated;
-        app.m_settings.clipboardAtPointer = true; // by the pointer, not by another program's caret
+        app.m_settings.clipboardOpenAt = u"pointer"_s; // by the pointer, not by another program's caret
         if (app.m_clipPlacement)
             app.m_clipPlacement->setAnimated(animated);
         waitForQuietInput();

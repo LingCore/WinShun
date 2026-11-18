@@ -474,7 +474,11 @@ struct Settings {
     // "standard" on a taller one, "large" enough to make out its details (forum #137).
     QString clipboardPictureSize = QStringLiteral("standard");
     bool clipboardKeepPlace = false; // pasting from the history leaves the entry where it is (GitHub #122); off: it moves to the top
-    bool clipboardAtPointer = false; // always open beside the mouse, including over our own fields (GitHub #105)
+    // Where the window opens: "caret" by the text caret or under a field of
+    // ours, "pointer" always beside the mouse, over our fields too (GitHub
+    // #105), "last" where its user last moved it (GitHub #376; Placement's
+    // spot, kept per work area).
+    QString clipboardOpenAt = QStringLiteral("caret");
     bool clipboardPauseInFullScreen = false; // only global opening hotkeys, not recording or menu actions (#121)
     // Opened over the caret (or a search box; Placement::above), the window
     // turned upside down: the newest entry by the caret, older ones upwards.

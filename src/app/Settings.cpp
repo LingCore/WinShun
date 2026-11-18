@@ -1180,7 +1180,11 @@ void Settings::load()
     if (clipboardPictureSize != u"small" && clipboardPictureSize != u"standard" && clipboardPictureSize != u"large")
         clipboardPictureSize = d.clipboardPictureSize;
     clipboardKeepPlace = readOrDefault(s, u"Clipboard/KeepPlace"_s, d.clipboardKeepPlace);
-    clipboardAtPointer = readOrDefault(s, u"Clipboard/AtPointer"_s, d.clipboardAtPointer);
+    // Clipboard/AtPointer was a switch until 0.37: on is "pointer".
+    clipboardOpenAt = readOrDefault(s, u"Clipboard/OpenAt"_s,
+        s.value(u"Clipboard/AtPointer"_s, false).toBool() ? u"pointer"_s : d.clipboardOpenAt).trimmed().toLower();
+    if (clipboardOpenAt != u"caret" && clipboardOpenAt != u"pointer" && clipboardOpenAt != u"last")
+        clipboardOpenAt = d.clipboardOpenAt;
     clipboardPauseInFullScreen = readOrDefault(s, u"Clipboard/PauseInFullScreen"_s, d.clipboardPauseInFullScreen);
     clipboardFlipAbove = readOrDefault(s, u"Clipboard/FlipAbove"_s, d.clipboardFlipAbove);
     clipboardHoldToStep = readOrDefault(s, u"Clipboard/HoldToStep"_s, d.clipboardHoldToStep);
@@ -1482,7 +1486,8 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/PictureSize"_s, clipboardPictureSize);
     s.remove(u"Clipboard/LargePictures"_s); // said by PictureSize now
     s.setValue(u"Clipboard/KeepPlace"_s, clipboardKeepPlace);
-    s.setValue(u"Clipboard/AtPointer"_s, clipboardAtPointer);
+    s.setValue(u"Clipboard/OpenAt"_s, clipboardOpenAt);
+    s.remove(u"Clipboard/AtPointer"_s); // said by OpenAt now
     s.setValue(u"Clipboard/PauseInFullScreen"_s, clipboardPauseInFullScreen);
     s.setValue(u"Clipboard/FlipAbove"_s, clipboardFlipAbove);
     s.setValue(u"Clipboard/HoldToStep"_s, clipboardHoldToStep);
