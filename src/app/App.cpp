@@ -8604,16 +8604,7 @@ void App::applyOwnPlaces()
     if (!m_places)
         return;
     const QString logo = QCoreApplication::applicationFilePath();
-    PlaceList own;
-    PlaceInfo settings;
-    settings.name = tr("Win顺 设置");
-    settings.key = u"winshun/settings"_s;
-    settings.command = kSettingsCommand.toString();
-    settings.kind = AppKind::Tool;
-    settings.icon = logo;
-    settings.ownKeywords = {u"设置"_s, u"配置"_s, u"WinShun"_s, u"WinShun settings"_s, u"WinShun config"_s, u"settings"_s,
-        u"preferences"_s, u"config"_s};
-    own.push_back(std::move(settings));
+    PlaceList own {settingsPlace(tr("Win顺 设置"), logo)};
     static const std::vector<plugin::Entry> kNone;
     for (const plugin::Entry& e : m_pluginHost ? m_pluginHost->catalog().entries() : kNone) {
         if (!e.usable())

@@ -3293,7 +3293,7 @@ void checkPreviewPlacement(Launcher& launcher, QQuickWindow* window, FilePreview
     settle(window);
 }
 
-void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& preview, const QDir& output)
+void checkSearchMenuKeys(Launcher& launcher, SystemCatalog& places, QQuickWindow* window, FilePreview& preview, const QDir& output)
 {
     QJsonArray checks;
     bool passed = true;
@@ -3486,6 +3486,7 @@ void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& 
     const auto previousScope = launcher.scope();
     launcher.setScope(Launcher::All);
     launcher.setSearchKinds(false, false);
+    places.setOwnPlaces({settingsPlace(u"Win顺 设置"_s, {})}); // as App gives them (GitHub #389)
     launcher.setQuery(u"设置"_s);
     QElapsedTimer settingsWait;
     settingsWait.start();
@@ -3522,7 +3523,14 @@ void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& 
     launcher.setOpenHotkey({});
     key(Qt::Key_Q, Qt::AltModifier);
     check(settingsOpened == 4, u"clearing the open key disables it"_s);
-    check(launcher.menuItems(0).size() == 1, u"settings expose only their applicable Open action"_s);
+    // Its menu (GitHub #389, #390): open them, copy their link, keep them among the favorites; nothing of a file's.
+    const QVariantList settingsMenu = launcher.menuItems(0);
+    const auto said = [&](const QString& text) {
+        return std::ranges::any_of(settingsMenu, [&](const QVariant& item) { return item.toMap().value(u"text"_s).toString() == text; });
+    };
+    check(!settingsMenu.isEmpty() && settingsMenu.first().toMap().value(u"text"_s).toString() == u"打开设置"_s && said(u"复制链接"_s)
+            && !said(u"打开所在位置"_s) && !said(u"复制打开命令"_s),
+        u"settings' menu opens them and copies their link, nothing of a file's"_s);
     settle(window, 3);
     check(saveGrab(window, output.filePath(u"search-settings-entry.png"_s)), u"render the settings entry"_s);
     QObject::disconnect(settingsConnection);
@@ -4761,7 +4769,7 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
 
 // The production window, real temporary images, and local Qt input events;
 // no global shortcuts, external file opening, or user's profile involved.
-void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engine, const QDir& output)
+void checkFileGallery(Launcher& launcher, IndexService& index, SystemCatalog& places, QQmlEngine* engine, const QDir& output)
 {
     QTemporaryDir temporary;
     const auto check = [](bool okay, const char* reason) {
@@ -4841,7 +4849,7 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
     if (auto* field = visualNamed(window->contentItem(), u"panelSearchField"_s))
         field->setProperty("text", u"测试照片"_s);
     checkPreviewPlacement(launcher, window, filePreview);
-    checkSearchMenuKeys(launcher, window, filePreview, output);
+    checkSearchMenuKeys(launcher, places, window, filePreview, output);
     checkFolderSteps(launcher, index, window, output);
     checkDialogSearchKeys(index, engine, output);
     launcher.setGallery(true);
@@ -5977,7 +5985,7 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     launcher.setFileTypes(settings.namedFileTypes());
     launcher.setContentOptions(false, {u"txt"_s}, ContentSizeLimits{}, false, false);
     if (previewOnly) {
-        checkFileGallery(launcher, index, qmlEngine, output);
+        checkFileGallery(launcher, index, places, qmlEngine, output);
         return;
     }
     {
@@ -6763,7 +6771,7 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     query({});
     if (gallery) {
         launcher.setWindow(panelWindow);
-        checkFileGallery(launcher, index, qmlEngine, output);
+        checkFileGallery(launcher, index, places, qmlEngine, output);
         launcher.setWindow(window);
         query({});
     }

@@ -829,6 +829,19 @@ void SystemCatalog::merge()
     m_places = std::move(both);
 }
 
+PlaceInfo settingsPlace(const QString& name, const QString& icon)
+{
+    PlaceInfo settings;
+    settings.name = name;
+    settings.key = u"winshun/settings"_s;
+    settings.command = kSettingsCommand.toString();
+    settings.kind = AppKind::Tool;
+    settings.icon = icon;
+    settings.ownKeywords = {u"设置"_s, u"配置"_s, u"WinShun"_s, u"WinShun settings"_s, u"WinShun config"_s, u"settings"_s,
+        u"preferences"_s, u"config"_s};
+    return settings;
+}
+
 bool isOwnPlace(const PlaceInfo& place) noexcept
 {
     return place.key == u"winshun/settings" || place.key.startsWith(u"winshun/settings/");

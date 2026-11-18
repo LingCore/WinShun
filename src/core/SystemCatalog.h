@@ -78,6 +78,9 @@ inline constexpr QStringView kSettingsCommand = u"winshun:settings";
 inline constexpr QStringView kPluginSettingsCommand = u"winshun:settings/plugin/"; // + the plugin's id
 bool isOwnPlace(const PlaceInfo& place) noexcept;
 bool isOwnCommand(QStringView command) noexcept; // kSettingsCommand, or a plugin's
+// Win顺's settings as its own place: so named (in its language), with this
+// icon, found by the words for settings in either language.
+PlaceInfo settingsPlace(const QString& name, const QString& icon);
 
 // "winshun-place:<key>": stands for a place in History.
 QString placePath(const QString& key);
