@@ -1411,6 +1411,17 @@ add_test(NAME tst_explorertabs COMMAND tst_explorertabs)
 set_tests_properties(tst_explorertabs PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# winshun.gestures's rules (src/gestures-plugin/Gesture), built in again:
+# the directions a drag draws, the actions as written, the gestures of the
+# "more" setting and the programs left alone.
+qt_add_executable(tst_gestures tst_gestures.cpp ${PROJECT_SOURCE_DIR}/src/gestures-plugin/Gesture.cpp)
+target_include_directories(tst_gestures PRIVATE ${PROJECT_SOURCE_DIR}/src/gestures-plugin)
+target_link_libraries(tst_gestures PRIVATE winshun_options Qt6::Test)
+set_target_properties(tst_gestures PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_gestures COMMAND tst_gestures)
+set_tests_properties(tst_gestures PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # winshun.bookmarks (src/bookmarks-plugin/Bookmarks), built in again: reading
 # Bookmarks files, the folder text, percent-decoding, matching, scoring,
 # the 50-row cap and the "nothing found" rows.

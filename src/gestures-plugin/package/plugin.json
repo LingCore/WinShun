@@ -1,0 +1,34 @@
+{
+  "manifest": 1,
+  "id": "winshun.gestures",
+  "name": {"zh": "鼠标手势", "en": "Mouse gestures"},
+  "version": "1.0.0",
+  "description": {"zh": "按住右键画一下：后退、前进、回到顶部、关闭窗口、打开 Win顺 搜索框……每个手势都能改成按键或打开程序。管理员身份运行的窗口里用不了", "en": "Hold the right button and draw: back, forward, to the top, close the window, open WinShun's search… Each gesture can press keys or open a program instead. Not in windows run as administrator"},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "minWinShun": "0.33.0",
+  "runtime": {"mode": "resident", "program": "WinShunGestures.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 1500, "idleExitSec": 0, "memoryMB": 64},
+  "permissions": ["ui", "processes", "winshun:open"],
+  "commands": [{
+    "id": "gestures",
+    "keyword": ["手势", "gestures"],
+    "title": {"zh": "鼠标手势", "en": "Mouse gestures"},
+    "description": {"zh": "设好的手势；暂停、恢复", "en": "The gestures set; pause, resume"},
+    "icon": "ph:mouse-right-click",
+    "hint": {"zh": "Enter 暂停或恢复", "en": "Enter to pause or resume"}
+  }],
+  "settings": [
+    {"key": "left", "type": "text", "title": {"zh": "← 向左", "en": "← Left"}, "hint": {"zh": "每个手势填一个动作：后退、前进、回到顶部、到底部、刷新、关闭窗口、关闭标签页、最小化、最大化、搜索框（Win顺 的）；或按键，如 Ctrl+W、Alt+Left、F5；或要打开的程序、快捷方式、文件夹、网址。留空就不用这个手势", "en": "One action per gesture: back, forward, top, bottom, refresh, close, closetab, minimize, maximize, search (WinShun's); or keys such as Ctrl+W, Alt+Left, F5; or a program, shortcut, folder or web address to open. Empty: the gesture is off"}, "default": "后退"},
+    {"key": "right", "type": "text", "title": {"zh": "→ 向右", "en": "→ Right"}, "default": "前进"},
+    {"key": "up", "type": "text", "title": {"zh": "↑ 向上", "en": "↑ Up"}, "default": "回到顶部"},
+    {"key": "down", "type": "text", "title": {"zh": "↓ 向下", "en": "↓ Down"}, "default": "到底部"},
+    {"key": "downRight", "type": "text", "title": {"zh": "↓→ 先下后右", "en": "↓→ Down, then right"}, "default": "关闭窗口"},
+    {"key": "downLeft", "type": "text", "title": {"zh": "↓← 先下后左", "en": "↓← Down, then left"}, "default": "最小化"},
+    {"key": "upDown", "type": "text", "title": {"zh": "↑↓ 先上后下", "en": "↑↓ Up, then down"}, "hint": {"zh": "默认打开 Win顺 搜索框，再画一次收起", "en": "Opens WinShun's search box by default; draw it again to close it"}, "default": "搜索框"},
+    {"key": "more", "type": "text", "title": {"zh": "更多手势", "en": "More gestures"}, "hint": {"zh": "方向 = 动作，用分号隔开。方向写箭头或字母 L R U D（左右上下），最多 6 段。例如：↑← = Ctrl+Shift+T; RL = notepad.exe", "en": "directions = action, separated by semicolons. Directions as arrows or the letters L R U D, up to 6. For example: ↑← = Ctrl+Shift+T; RL = notepad.exe"}, "default": ""},
+    {"key": "exclude", "type": "text", "title": {"zh": "这些程序里不用手势", "en": "No gestures in these programs"}, "hint": {"zh": "程序名用分号隔开，例如 photoshop.exe;mstsc.exe。这些程序里右键和平常一样", "en": "Program names separated by semicolons, e.g. photoshop.exe;mstsc.exe. The right button is plain there"}, "default": ""},
+    {"key": "trail", "type": "bool", "title": {"zh": "画出轨迹和将要做的事", "en": "Draw the trail and what it will do"}, "default": true},
+    {"key": "fullScreen", "type": "bool", "title": {"zh": "全屏的程序里也用手势", "en": "Gestures in full-screen programs too"}, "hint": {"zh": "关着时，游戏、放幻灯片、全屏看视频时右键和平常一样", "en": "Off: in games, slide shows and full-screen video the right button is plain"}, "default": false}
+  ]
+}
