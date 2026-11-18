@@ -11,6 +11,9 @@ Item {
     property bool animate: true
     property int acceptedModifiers: Qt.KeyboardModifierMask
     property int scrollLines: Application.styleHints.wheelScrollLines
+    // One of those lines, in the view's pixels: a text's line; a menu's row
+    // where every row is one (the folder menu, GitHub #384).
+    property real lineHeight: 24
     // Variable-height ListView reflows round contentY during layout. Giving
     // those views integral coordinates leaves no layout fixup to interrupt
     // the glide; ScrollPixelAlignment still aligns the rendered rows.
@@ -130,7 +133,7 @@ Item {
             cancel()
             return
         }
-        const step = -angle / 120 * (lines > 0 ? lines * 24 : view.height)
+        const step = -angle / 120 * (lines > 0 ? lines * lineHeight : view.height)
         const nextDirection = Math.sign(step)
         const whole = Math.abs(angle) >= 120
         // Accumulate a burst, but discard its untravelled distance on reversal.

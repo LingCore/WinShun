@@ -1644,6 +1644,13 @@ private slots:
         // The wheel on until the row is out of sight: its column closes, the
         // row stays chosen, and nothing under the pointer opens.
         const QPoint local = first->mapFromGlobal(pointer.at);
+        // A notch moves as many rows as the system's wheel lines, not two rows'
+        // worth of 24-pixel lines (GitHub #384).
+        const qreal top = list->property("contentY").toReal();
+        const qreal step = std::max(1, QGuiApplication::styleHints()->wheelScrollLines()) * object->property("itemHeight").toReal();
+        wheel(first, local, -1);
+        QTRY_VERIFY2(list->property("contentY").toReal() - top >= step - 1,
+            qPrintable(u"one notch moved %1 of %2"_s.arg(list->property("contentY").toReal() - top).arg(step)));
         for (int i = 0; i < 12 && depth() == 3; ++i) {
             wheel(first, local, -1);
             QTest::qWait(200);

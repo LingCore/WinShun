@@ -83,6 +83,7 @@ Item {
 
     onHighlightedChanged: Qt.callLater(column.sync)
     onEntriesChanged: {
+        wheelScroll.cancel() // a glide over the rows that were there before
         flick.currentIndex = -1
         flick.contentY = 0
         Qt.callLater(column.sync)
@@ -120,6 +121,16 @@ Item {
         reuseItems: true
         model: column.entries
         onContentYChanged: column.scrolled()
+        // A notch moves as many rows as the system's wheel lines (3 unless set
+        // otherwise), edge to edge: two rows of 24-pixel lines were too few
+        // for a long column (GitHub #384).
+        ListWheelScroll {
+            id: wheelScroll
+            view: flick
+            animate: SystemTheme.animations
+            snapRows: true
+            lineHeight: column.itemHeight
+        }
         // One highlight for the list, under the item chosen or pointed at:
         // it jumps, or slides as the style says (Theme.rowSlide). Not
         // managed by the view's own current item: column.highlighted is.
