@@ -755,6 +755,10 @@
         <translation>Rounded</translation>
     </message>
     <message>
+        <source>文件夹菜单的子列也列出文件</source>
+        <translation>A folder's column in the folder menu also lists its files</translation>
+    </message>
+    <message>
         <source>弹出动画</source>
         <translation>Open animation</translation>
     </message>
@@ -1007,6 +1011,42 @@
         <translation>While a modifier key is held</translation>
     </message>
     <message>
+        <source>在终端中打开</source>
+        <translation>Open in Terminal</translation>
+    </message>
+    <message>
+        <source>命令提示符</source>
+        <translation>Command Prompt</translation>
+    </message>
+    <message>
+        <source>Windows PowerShell</source>
+        <translation>Windows PowerShell</translation>
+    </message>
+    <message>
+        <source>PowerShell 7</source>
+        <translation>PowerShell 7</translation>
+    </message>
+    <message>
+        <source>Windows 终端（默认配置）</source>
+        <translation>Windows Terminal (default profile)</translation>
+    </message>
+    <message>
+        <source>Git Bash</source>
+        <translation>Git Bash</translation>
+    </message>
+    <message>
+        <source>WSL</source>
+        <translation>WSL</translation>
+    </message>
+    <message>
+        <source>自定义命令</source>
+        <translation>Custom command</translation>
+    </message>
+    <message>
+        <source>自定义终端命令</source>
+        <translation>Custom terminal command</translation>
+    </message>
+    <message>
         <source>回到上次的位置</source>
         <translation>Return to where you left off</translation>
     </message>
@@ -1185,6 +1225,18 @@
     <message>
         <source>跟数字键一样</source>
         <translation>Same as number keys</translation>
+    </message>
+    <message>
+        <source>输入光标旁</source>
+        <translation>Beside the caret</translation>
+    </message>
+    <message>
+        <source>鼠标指针旁</source>
+        <translation>Beside the pointer</translation>
+    </message>
+    <message>
+        <source>上次的位置</source>
+        <translation>Where it was last</translation>
     </message>
     <message>
         <source>截图历史的关键词</source>
@@ -1517,6 +1569,13 @@
         <source>…只显示开头</source>
         <translation>… only the beginning is shown</translation>
     </message>
+    <message numerus="yes">
+        <source>已选 %Ln 字：Ctrl+C 复制，Enter 粘贴</source>
+        <translation>
+            <numerusform>%Ln character selected: Ctrl+C copies, Enter pastes</numerusform>
+            <numerusform>%Ln characters selected: Ctrl+C copies, Enter pastes</numerusform>
+        </translation>
+    </message>
     <message>
         <source>带格式，Shift+Enter 粘贴为纯文本</source>
         <translation>Formatted; Shift+Enter pastes plain text</translation>
@@ -1630,20 +1689,12 @@
         <translation>Cancel</translation>
     </message>
     <message>
-        <source>取消钉住</source>
-        <translation>Unpin</translation>
-    </message>
-    <message>
         <source>关闭预览（Alt+P）</source>
         <translation>Close the preview (Alt+P)</translation>
     </message>
     <message>
         <source>预览（Alt+P）</source>
         <translation>Preview (Alt+P)</translation>
-    </message>
-    <message>
-        <source>钉住：一直显示在最上面，粘贴后也不收起</source>
-        <translation>Pin: stays on top, and stays open after pasting</translation>
     </message>
     <message>
         <source>已暂停记录</source>
@@ -1708,6 +1759,14 @@
     <message>
         <source>粘贴到%1</source>
         <translation>Paste into %1</translation>
+    </message>
+    <message>
+        <source>取消钉住（Ctrl+T）</source>
+        <translation>Unpin (Ctrl+T)</translation>
+    </message>
+    <message>
+        <source>钉住：一直显示在最上面，粘贴后也不收起（Ctrl+T）</source>
+        <translation>Pin: stays on top and stays open after pasting (Ctrl+T)</translation>
     </message>
     <message numerus="yes">
         <source>已选 %Ln 条，合在一起，用</source>
@@ -5428,6 +5487,26 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Search box</translation>
     </message>
     <message>
+        <source>在终端中打开</source>
+        <translation>Open in Terminal</translation>
+    </message>
+    <message>
+        <source>终端;命令行;命令提示符;PowerShell;pwsh;Windows Terminal;Git Bash;WSL;MSYS2;bash;shell;terminal</source>
+        <translation>terminal;command line;command prompt;PowerShell;pwsh;Windows Terminal;Git Bash;WSL;MSYS2;bash;shell;console</translation>
+    </message>
+    <message>
+        <source>结果上的“在终端中打开”用哪个。选“Windows 终端”就用它里面设的默认配置</source>
+        <translation>Which terminal “Open in Terminal” on a result uses. Windows Terminal opens the default profile set in it</translation>
+    </message>
+    <message>
+        <source>在那个文件夹里运行；要把文件夹路径当参数时写 {query}。没填命令时开命令提示符</source>
+        <translation>Runs in that folder; write {query} where the folder path goes as an argument. With no command, Command Prompt opens</translation>
+    </message>
+    <message>
+        <source>轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板和对话框旁的搜索栏里 Shift+字母是选中那一条，剪贴板里可以选几条一起粘贴。再按一下那个键或按 Esc 退出。启动器和剪贴板共用</source>
+        <translation>Tap the key chosen below and let go: a letter appears in front of every row, and pressing it opens that row (pastes it, in the clipboard), also past the ninth row. In the search box, Shift+letter selects the row and puts letters on its buttons (open file location, open in Terminal, copy, copy path, delete); pressing a letter clicks that button, and delete takes two presses. In the clipboard and the search bar beside a dialog, Shift+letter selects that entry; in the clipboard several can be selected and pasted together. Tap the key again or press Esc to leave. Shared by the launcher and clipboard</translation>
+    </message>
+    <message>
         <source>图标和标签</source>
         <translation>Icon and label</translation>
     </message>
@@ -5470,6 +5549,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>双击;空白;空白处;收藏;收藏夹;最近;文件夹菜单;文件夹快捷菜单;资源管理器;桌面;Listary;double-click;folder menu</source>
         <translation>double click;blank;empty space;favorites;recent;folder menu;folder quick menu;File Explorer;desktop;Listary</translation>
+    </message>
+    <message>
+        <source>文件夹的子列也列出文件</source>
+        <translation>A folder's column also lists its files</translation>
+    </message>
+    <message>
+        <source>文件夹在前、文件在后，点一下文件就打开；打开、保存对话框里仍只列文件夹</source>
+        <translation>Folders first, then files; click a file to open it. Open and Save dialogs still list folders only</translation>
+    </message>
+    <message>
+        <source>文件夹菜单;文件;子列;子菜单;列出文件;打开文件;Listary;files</source>
+        <translation>folder menu;files;column;submenu;list files;open file;Listary;files</translation>
     </message>
     <message>
         <source>已在 Opus 的设置里加好</source>
@@ -5610,6 +5701,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>Windows 的 Win+S 和 Win+Shift+S 仍被禁用（可能是旧版 Win顺 或其他软件设置的）</source>
         <translation>Windows’ Win+S and Win+Shift+S are still switched off (maybe by an older WinShun or another program)</translation>
+    </message>
+    <message>
+        <source>位置;鼠标;指针;光标;跟随;弹出;输入框;固定;上次;记住</source>
+        <translation>position;mouse;pointer;caret;follow;popup;text field;fixed;last;remember</translation>
+    </message>
+    <message>
+        <source>开在上次拖到的地方，大小也不变；有鼠标的那块屏幕上</source>
+        <translation>Opens where you last dragged it, at the same size, on the screen with the pointer</translation>
+    </message>
+    <message>
+        <source>上次的位置</source>
+        <translation>Where it was last</translation>
     </message>
     <message>
         <source>Windows 的 Win+V 仍被禁用（可能是旧版 Win顺 或其他软件设置的）</source>
@@ -7776,10 +7879,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>After you pin the search box with Ctrl+T, it stays over other windows; off: clicking another window covers it, and the shortcut that opens WinShun brings it back to the front</translation>
     </message>
     <message>
-        <source>轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板里 Shift+字母是粘贴为纯文本。再按一下那个键或按 Esc 退出。启动器和剪贴板共用</source>
-        <translation>Tap the key chosen below and let go: a letter appears in front of every row, and pressing it opens that row (pastes it, in the clipboard), also past the ninth row. In the search box, Shift+letter selects the row and puts letters on its buttons (open file location, open in Terminal, copy, copy path, delete); pressing a letter clicks that button, and delete takes two presses. In the clipboard, Shift+letter pastes as plain text. Tap the key again or press Esc to leave. Shared by the launcher and clipboard</translation>
-    </message>
-    <message>
         <source>字母直达用的键</source>
         <translation>Key for letter jump</translation>
     </message>
@@ -8034,10 +8133,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>剪贴板打开位置</source>
         <translation>Clipboard position</translation>
-    </message>
-    <message>
-        <source>位置;鼠标;指针;光标;跟随;弹出;输入框</source>
-        <translation>position;mouse;pointer;caret;follow;popup;text field</translation>
     </message>
     <message>
         <source>每次打开时放在所选位置旁边，空间不足时自动调整到屏幕内</source>
@@ -8731,6 +8826,21 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
 </context>
 <context>
+    <name>Shell</name>
+    <message>
+        <source>命令提示符</source>
+        <translation>Command Prompt</translation>
+    </message>
+    <message>
+        <source>Windows 终端（默认配置）</source>
+        <translation>Windows Terminal (default profile)</translation>
+    </message>
+    <message>
+        <source>自定义命令</source>
+        <translation>Custom command</translation>
+    </message>
+</context>
+<context>
     <name>ShortcutTip</name>
     <message>
         <source>全部快捷键…</source>
@@ -8920,8 +9030,24 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Delete; Ctrl+Z undoes it</translation>
     </message>
     <message>
-        <source>复制；预览里选中了图中的字时，复制那一段</source>
-        <translation>Copy; with words of a picture selected in the preview, copy those</translation>
+        <source>复制；预览里选中了文字时，复制那一段（Enter 粘贴那一段）</source>
+        <translation>Copy; with text selected in the preview, copy that part (Enter pastes it)</translation>
+    </message>
+    <message>
+        <source>保存为文件</source>
+        <translation>Save as files</translation>
+    </message>
+    <message>
+        <source>编辑图片，或修改文字</source>
+        <translation>Edit the picture, or change the text</translation>
+    </message>
+    <message>
+        <source>图片贴到屏幕（截图插件）</source>
+        <translation>Pin the picture to the screen (Screenshot plugin)</translation>
+    </message>
+    <message>
+        <source>钉住窗口：一直显示在最上面，粘贴后也不收起</source>
+        <translation>Pin the window: stays on top and stays open after pasting</translation>
     </message>
     <message>
         <source>关闭；选中了多条时先取消选择</source>
@@ -11781,8 +11907,23 @@ Content index: %5</translation>
         <translation>WinShun settings…</translation>
     </message>
     <message>
+        <source>无法打开“%1”</source>
+        <translation>Could not open “%1”</translation>
+    </message>
+    <message>
         <source>无法打开“%1”，请检查命令和工作目录</source>
         <translation>Could not open “%1”. Check the command and working directory.</translation>
+    </message>
+    <message numerus="yes">
+        <source>还有 %n 个文件，打开文件夹查看</source>
+        <translation>
+            <numerusform>%n more file: open the folder to see it</numerusform>
+            <numerusform>%n more files: open the folder to see them</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>空文件夹</source>
+        <translation>Empty folder</translation>
     </message>
     <message>
         <source>收藏夹</source>
@@ -14526,6 +14667,10 @@ Content index: %5</translation>
     <message>
         <source>关键词“%1”已经给了截图历史（剪贴板页上可以改）</source>
         <translation>The keyword “%1” belongs to the screenshot history (it can be changed on the Clipboard page)</translation>
+    </message>
+    <message>
+        <source>%1（没找到，现在开命令提示符）</source>
+        <translation>%1 (not found; Command Prompt opens now)</translation>
     </message>
     <message>
         <source>导入剪贴板历史</source>
