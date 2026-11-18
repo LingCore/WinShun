@@ -644,7 +644,7 @@ void KeyRouter::handleMouse(WPARAM message, const MSLLHOOKSTRUCT& event)
     if (hit)
         ::GetWindowThreadProcessId(hit, &process);
     if (process != m_process && process != m_windowProcess && m_callbacks.clickedAway)
-        m_callbacks.clickedAway(); // the click goes on where it was meant to
+        m_callbacks.clickedAway(hit); // the click goes on where it was meant to
 }
 
 KeyRouter::Key KeyRouter::translate(const KBDLLHOOKSTRUCT& event, bool press, bool autoRepeat) const

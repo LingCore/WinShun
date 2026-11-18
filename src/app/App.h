@@ -314,6 +314,11 @@ private:
     void stopKeyRouting();
     void routedKey(const KeyRouter::Key& key);
     void routedForeground(HWND window);
+    // A copied file's preview beside the clipboard's list took the front (a
+    // document's handler clicked, Word as it starts) and the clipboard
+    // stayed: another window in front after that, it goes as it would have.
+    void clipboardFrontMoved();
+    bool m_clipFrontLent = false;
     // Windows refused the launcher the front over another program's window
     // (GitHub #203: every time over Explorer, on one Windows 10), and the
     // keys typed again too: that window keeps the focus, the launcher takes

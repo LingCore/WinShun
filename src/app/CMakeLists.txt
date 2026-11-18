@@ -181,6 +181,7 @@ set(qml_files
     qml/ClipTabs.qml
     qml/ClipRow.qml
     qml/ClipPreview.qml
+    qml/ClipFilePreview.qml
     qml/ClipTextEditor.qml
     qml/ClipHoverPreview.qml
     qml/RowAction.qml

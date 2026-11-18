@@ -90,7 +90,7 @@ public:
     };
     struct Callbacks {
         std::function<void(const Key&)> key; // taken, or Shift, Ctrl or Alt (seen, passed on)
-        std::function<void()> clickedAway; // a mouse button pressed outside Win顺's windows
+        std::function<void(HWND)> clickedAway; // a mouse button pressed outside Win顺's windows (on that one)
         std::function<void(HWND)> foregroundChanged; // the top-level window now in front
         std::function<void()> drained; // after drain(): the keys it took are all let go
         // Shift pressed with nothing else held and let go with no other key

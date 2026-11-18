@@ -267,6 +267,11 @@ add_test(NAME tst_clipboardsizing COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/clipboard-sizing" --clipboard-sizing --renderer d3d11)
 set_tests_properties(tst_clipboardsizing PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# #324: one copied file in the preview beside the list, as the search's preview.
+add_test(NAME tst_clipboardfile COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/clipboard-file" --clipboard-file --renderer d3d11)
+set_tests_properties(tst_clipboardfile PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 # #111: the clipboard rows have no Screen attached objects of their own; a
 # resize that frees rows then never walks the screen's connections per row.
 add_test(NAME tst_clipboardscreen COMMAND $<TARGET_FILE:WinShun>

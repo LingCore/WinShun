@@ -2,6 +2,7 @@
 
 #include "ClipModel.h"
 #include "ClipStore.h"
+#include "FilePreview.h"
 #include "platform/ClipboardWatcher.h"
 #include "platform/Paster.h"
 #include "platform/TextRecognizer.h"
@@ -131,6 +132,11 @@ class Clipboard : public QObject {
     // The field itself (Main.qml: the launcher folds its rows away while the
     // window is under its search box).
     Q_PROPERTY(QQuickItem* field READ field NOTIFY fieldChanged FINAL)
+    // One local file or folder copied, in the preview beside the list: shown
+    // as the search's preview shows it (GitHub #324), its pictures under
+    // "image://clippreview/". Not in the hover's light preview, nor in the
+    // display process (none there: ClipPreview keeps the light look).
+    Q_PROPERTY(ws::FilePreview* filePreview READ filePreview CONSTANT FINAL)
 
 public:
     enum Action {
@@ -245,6 +251,14 @@ public:
     void setField(QQuickItem* field, const QString& name);
     QString fieldName() const { return m_field.item ? m_field.name : QString(); }
     QQuickItem* field() const { return m_field.item; }
+    FilePreview* filePreview() const { return m_filePreview.get(); }
+    // ClipPreview.qml: the area the file goes in (null: gone), the file
+    // (Clipboard.preview's filePath; empty: none on this row), the colours.
+    Q_INVOKABLE void showFile(QQuickItem* area, const QString& path, bool isDir, bool dark);
+    // App: the window is on the screen from this process (not cloaked, not
+    // left behind the display process's): only then is a file shown, a
+    // document's handler being a window of its own over it.
+    void setSeen(bool seen);
     void handleShown();
     void handlePlaced() { emit placed(); } // after handleShown, put where it opens: the preview may widen it now
     void handleHidden();
@@ -436,6 +450,7 @@ private:
     // one); selected there afterwards.
     void saveAsFiles(int row, bool merged);
     void sendLan(int row);
+    void placeFile(); // showFile's, as things are now
 
     ClipStore* m_store;
     ClipboardWatcher* m_watcher;
@@ -452,6 +467,12 @@ private:
     };
     const FileHead* fileHead(qint64 clip, const QFileInfo& file) const; // null: being read, asked again then
     mutable std::vector<FileHead> m_fileHeads;
+    std::unique_ptr<FilePreview> m_filePreview;
+    QPointer<QQuickItem> m_fileArea;
+    QString m_filePath;
+    bool m_fileIsDir = false;
+    bool m_fileDark = false;
+    bool m_seen = false;
     TextRecognizer m_recognizer; // the words in pictures, for the search
     QTimer m_backlogTimer;
     bool m_refreshRecognition = false;

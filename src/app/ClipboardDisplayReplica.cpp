@@ -125,7 +125,8 @@ DisplayReplica::DisplayReplica(QQmlEngine* engine) : QQmlPropertyMap(this, nullp
     const QMetaObject& meta = Clipboard::staticMetaObject;
     for (int i = meta.propertyOffset(); i < meta.propertyCount(); ++i) {
         const auto property = meta.property(i);
-        if (QByteArrayView(property.name()) == "items" || QByteArrayView(property.name()) == "field") continue;
+        if (QByteArrayView(property.name()) == "items" || QByteArrayView(property.name()) == "field"
+            || QByteArrayView(property.name()) == "filePreview") continue;
         insert(QString::fromLatin1(property.name()), QVariant(property.metaType()));
     }
     insert(u"listWidth"_s, 480);
@@ -136,6 +137,7 @@ DisplayReplica::DisplayReplica(QQmlEngine* engine) : QQmlPropertyMap(this, nullp
     insert(u"letterJumpKeys"_s, u"ASDFGHJKLQWERTYUIOPZXCVBNM"_s);
     insert(u"items"_s, QVariant::fromValue<QObject*>(&m_rows));
     insert(u"field"_s, QVariant::fromValue<QObject*>(nullptr));
+    insert(u"filePreview"_s, QVariant::fromValue<QObject*>(nullptr)); // none here: a copied file keeps the light look
     // Callable values keep the existing QML interface; only the explicitly
     // allowed controller methods are accepted by the ordinary-process peer.
     const QJSValue bridge = engine->newQObject(this);

@@ -764,7 +764,7 @@ void FolderMenu::startKeys(HWND target)
         if (key.press)
             post([this, key] { emit keyPressed(key.key, key.text); });
     };
-    callbacks.clickedAway = [this, post] { post([this] { dismiss(); }); };
+    callbacks.clickedAway = [this, post](HWND) { post([this] { dismiss(); }); };
     callbacks.foregroundChanged = [this, post](HWND window) {
         post([this, window] {
             // File Explorer's own going to another folder says so too: by

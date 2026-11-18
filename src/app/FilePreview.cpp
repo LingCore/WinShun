@@ -634,14 +634,16 @@ bool FilePreview::foregroundIsOurs() const
 
 bool FilePreview::ownsForeground() const
 {
-    if (!m_open)
-        return false;
-    const HWND front = ::GetForegroundWindow();
-    if (!front)
+    return owns(::GetForegroundWindow());
+}
+
+bool FilePreview::owns(HWND window) const
+{
+    if (!m_open || !window)
         return false;
     if (m_external)
-        return extpreview::owns(*m_external, front);
-    return (m_window && front == reinterpret_cast<HWND>(m_window->winId())) || (m_host && m_host->owns(front));
+        return extpreview::owns(*m_external, window);
+    return (m_window && window == reinterpret_cast<HWND>(m_window->winId())) || (m_host && m_host->owns(window));
 }
 
 void FilePreview::openFile()

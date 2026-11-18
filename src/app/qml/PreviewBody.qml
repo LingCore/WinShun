@@ -63,6 +63,7 @@ Item {
 
         Image {
             id: image
+            objectName: "previewPicture"
             // On whole device pixels: at its own size, each of its pixels on one of the screen's.
             x: body.onPixel(Math.max(body.padding, (picture.contentWidth - width) / 2))
             y: body.onPixel(Math.max(body.padding, (picture.contentHeight - height) / 2))
@@ -149,7 +150,16 @@ Item {
             font: lineFont.font
             text: "0"
         }
-        Text { id: lineFont; visible: false; font.family: "Consolas"; font.pixelSize: Theme.uiCaption + 1 }
+        // Chinese and other words Consolas has no letters for: from one
+        // font for the whole line, not a different one now and then (a
+        // character's own fallback mixed two weights in a line).
+        Text {
+            id: lineFont
+            visible: false
+            font.family: "Consolas"
+            font.pixelSize: Theme.uiCaption + 1
+            font.contextFontMerging: true
+        }
 
         // The colours of code, data files and Markdown (GitHub #291), by
         // syntax::Kind: comment, string, number, keyword, type, key, tag;
@@ -287,7 +297,7 @@ Item {
     }
     ListScrollBar {
         dpr: body.dpr
-        visible: lines.shown
+        visible: lines.shown && lines.contentHeight > lines.height // none when it all fits
         flickable: lines
         anchors.right: parent.right
         anchors.top: lines.top

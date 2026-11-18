@@ -1298,6 +1298,7 @@ bool App::createWindow()
     m_qml->addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider); // clipboard rows' pictures
     m_qml->addImageProvider(u"preview"_s, m_preview->imageProvider()); // the picture in the preview (Alt+P)
     m_qml->addImageProvider(u"panepreview"_s, m_launcher->contentPane()->filePreview()->imageProvider()); // the search panel's 预览 tab
+    m_qml->addImageProvider(u"clippreview"_s, m_clipboard->filePreview()->imageProvider()); // a copied file, beside the clipboard's list
     m_placement = std::make_unique<Placement>(Settings::dataDir() + u"\\state.ini"_s, u"Launcher"_s);
     m_placement->setAnimated(m_settings.openAnimation); // 弹出动画 (applySettings came before it)
     m_frame = std::make_unique<WindowFrame>(false);
@@ -1490,8 +1491,18 @@ bool App::createClipWindow()
         // to), the focus may first go to none.
         if (m_clipWindow && !m_clipWindow->isActive())
             QMetaObject::invokeMethod(this, [this] {
-                if (m_clipWindow && !m_clipWindow->isActive())
-                    hideClipboard();
+                if (!m_clipWindow || m_clipWindow->isActive())
+                    return;
+                // Taken by a copied file's preview (as the launcher's, by
+                // its own): a window of ours gives it back at once; the
+                // handler's program, by itself.
+                if (const FilePreview* preview = m_clipboard->filePreview(); preview->ownsForeground()) {
+                    m_clipFrontLent = true;
+                    if (preview->foregroundIsOurs())
+                        win::bringToFront(m_clipWindow);
+                    return;
+                }
+                hideClipboard();
             }, Qt::QueuedConnection);
     });
     m_clipReveal.setWindow(window, 150ms, [this] { uncloakClipboard(); });
@@ -1994,6 +2005,7 @@ void App::applySettings(bool initial)
     m_launcher->setReopenWhereLeft(m_settings.reopenWhereLeft);
     applyLauncherTopmost();
     m_preview->setTextExtensions(m_settings.contentExtensions);
+    m_clipboard->filePreview()->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
     m_launcher->setLetterJump(m_settings.letterJump, m_settings.letterJumpKey, m_settings.letterJumpKeys);
@@ -5798,7 +5810,12 @@ bool App::startKeyRouting(HWND target)
     };
     KeyRouter::Callbacks callbacks;
     callbacks.key = [this, post](const KeyRouter::Key& key) { post([this, key] { routedKey(key); }); };
-    callbacks.clickedAway = [this, post] { post([this] { hideClipboard(); }); }; // as a menu
+    callbacks.clickedAway = [this, post](HWND hit) { // as a menu; not a click on a copied file's preview (a document's handler)
+        post([this, hit] {
+            if (!m_clipboard->filePreview()->owns(hit))
+                hideClipboard();
+        });
+    };
     callbacks.foregroundChanged = [this, post](HWND window) { post([this, window] { routedForeground(window); }); };
     callbacks.shiftTapped = [this, post] { post([this] { clipboardShiftTapped(); }); };
     callbacks.drained = [this, run] {
@@ -5899,6 +5916,14 @@ void App::routedForeground(HWND window)
             stopKeyRouting();
         return;
     }
+    // A copied file's preview took it (a document's handler clicked, Word as
+    // it starts): the program the keys come from, and a paste goes to, has
+    // it back.
+    if (m_clipboard->filePreview()->owns(window)) {
+        if (m_keyRouterTarget && ::GetForegroundWindow() == window)
+            ::SetForegroundWindow(m_keyRouterTarget);
+        return;
+    }
     hideClipboard(); // another program in front: as a menu
 }
 
@@ -5946,7 +5971,7 @@ bool App::startLauncherRouting()
     };
     KeyRouter::Callbacks callbacks;
     callbacks.key = [this, post](const KeyRouter::Key& key) { post([this, key] { launcherRoutedKey(key); }); };
-    callbacks.clickedAway = [this, post] { post([this] { launcherClickedAway(); }); };
+    callbacks.clickedAway = [this, post](HWND) { post([this] { launcherClickedAway(); }); };
     callbacks.foregroundChanged = [this, post](HWND) { post([this] { launcherRoutedForeground(); }); };
     callbacks.drained = [this, run] {
         QMetaObject::invokeMethod(this, [this, run] {
@@ -6409,6 +6434,7 @@ void App::uncloakClipboard()
     if (m_clipDisplayWanted && m_clipDisplay && m_clipDisplay->ready()) {
         m_clipWindow->setProperty("controllerEventsEnabled", false);
         if (m_clipDisplay->show()) {
+            m_clipboard->setSeen(false); // this process's window stays cloaked: no file shown over it
             m_clipRevealedAt = ::GetTickCount64();
             openingSeen(TriggerWindow::Clipboard);
             return; // the ordinary-process scene stays cloaked behind the peer
@@ -6431,8 +6457,24 @@ void App::uncloakClipboard()
     win::setCloaked(m_clipWindow, false);
     if (m_clipWindow->isVisible() && !m_clipPrewarming.load()) {
         m_clipRevealedAt = ::GetTickCount64(); // there to be seen from now on (seenBy)
+        m_clipboard->setSeen(true); // a copied file beside the list, a document's handler over it
         openingSeen(TriggerWindow::Clipboard);
     }
+}
+
+void App::clipboardFrontMoved()
+{
+    if (!m_clipFrontLent)
+        return;
+    const HWND front = ::GetForegroundWindow();
+    if (!m_clipWindow || !m_clipWindow->isVisible() || m_keyRouter || front == reinterpret_cast<HWND>(m_clipWindow->winId())) {
+        m_clipFrontLent = false; // gone, or in front again
+        return;
+    }
+    if (!front || m_clipboard->filePreview()->owns(front))
+        return; // none for a moment, or still the preview's
+    m_clipFrontLent = false;
+    hideClipboard();
 }
 
 void App::hideClipboard(bool launcherToo)
@@ -6464,6 +6506,7 @@ void App::hideClipboard(bool launcherToo)
     stopKeyRouting(); // hidden first: no inactive backdrop on the way out
     m_clipReveal.cancel();
     win::setCloaked(m_clipWindow, false);
+    m_clipFrontLent = false;
     m_clipboard->setActive(false); // the launcher's rows come back
     m_clipboard->handleHidden();
     // Gone without going back to the search box (pasted elsewhere, clicked
@@ -6732,6 +6775,8 @@ void CALLBACK App::foregroundChanged(HWINEVENTHOOK, DWORD, HWND window, LONG, LO
         App* app = g_launcherApp;
         if (app)
             app->adminTapFront(window);
+        if (app)
+            app->clipboardFrontMoved();
         // Another program's window in front while Qt still has one of ours
         // active (no focusWindowChanged comes): the digits are its again.
         if (app && app->quickPasteSuspended() != app->m_quickPasteSuspended)

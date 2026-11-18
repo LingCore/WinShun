@@ -28,6 +28,18 @@ Item {
     property bool compact: false
     readonly property real naturalHeight: content.implicitHeight + meta.implicitHeight + 34
     signal copyRequested(string text, bool remember) // one of a colour's notations, a picture's words
+    // One file copied, shown over the content as the search's preview shows
+    // it (the page's ClipFilePreview, GitHub #324): above `contentBottom`,
+    // the files' list and the thumbnail are not shown.
+    property bool fileShown: false
+    readonly property real contentBottom: meta.y - 4
+    // Ctrl+C: a picture's words selected, copied; false: none are.
+    function copySelection(): bool {
+        if (selectedWords.length === 0)
+            return false
+        copyWords()
+        return true
+    }
 
     // A picture's words: those selected with the mouse, or all of them, copied
     // as a copy of anyone's (into the history too).
@@ -47,6 +59,7 @@ Item {
     Flickable {
         id: flick
         objectName: "clipboardPreviewContent"
+        visible: !preview.fileShown
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
@@ -362,7 +375,7 @@ Item {
                 visible: shown
                 width: shown ? Math.round(naturalWidth * fit) : 0
                 height: shown ? Math.round(naturalHeight * fit) : 0
-                source: preview.kind === 3 || preview.kind === 2 ? (preview.info.thumbnail ?? "") : ""
+                source: (preview.kind === 3 || preview.kind === 2) && !preview.fileShown ? (preview.info.thumbnail ?? "") : ""
                 // An image provider's size is in logical pixels (Qt asks for it × the
                 // device pixel ratio); its pixels come back as the implicit size.
                 sourceSize.width: flick.width
@@ -481,6 +494,7 @@ Item {
         dpr: preview.dpr
         objectName: "clipboardPreviewScrollBar"
         flickable: flick
+        visible: !preview.fileShown && flick.contentHeight > flick.height
         anchors.right: parent.right
         anchors.rightMargin: preview.resizeMargin
         anchors.top: flick.top

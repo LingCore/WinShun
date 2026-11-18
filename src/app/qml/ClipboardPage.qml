@@ -566,13 +566,12 @@ Item {
         case Qt.Key_Tab: clipboard.cycleCategory(1); break
         case Qt.Key_Backtab: clipboard.cycleCategory(-1); break
         case Qt.Key_C:
-            // Ctrl+C copies text selected in the field, or a picture's words
-            // selected in the preview; otherwise the entry.
+            // Ctrl+C copies text selected in the field, or what is selected
+            // in the preview (a picture's words, a file's lines); otherwise
+            // the entry.
             if (!ctrl || (input.selectedText.length > 0 && selectedCount === 0))
                 return
-            if (previewOpen && selectedCount === 0 && preview.selectedWords.length > 0)
-                preview.copyWords()
-            else
+            if (!previewOpen || selectedCount > 0 || !(fileView.item?.copySelection() || preview.copySelection()))
                 clipboard.copy(targetRow())
             break
         case Qt.Key_P:
@@ -1229,6 +1228,7 @@ Item {
                 metrics: page.metrics
                 visible: page.previewOpen && !page.findingGroup
                 onCopyRequested: (text, remember) => page.clipboard.copyText(text, remember)
+                fileShown: fileView.shown
                 x: listArea.width + 1
                 width: parent.width - x
                 height: parent.height
@@ -1240,6 +1240,29 @@ Item {
                 info: page.previewOpen && page.previewRevision >= 0 && list.count > 0 && page.previewIndex >= 0
                       ? page.clipboard.preview(page.previewIndex) : ({})
                 opacity: textEditor.visible ? 0 : 1 // its place taken by the words being changed
+            }
+            // One local file or folder copied: as the search's preview shows
+            // it, over the preview's content (GitHub #324). Not in the display
+            // process (no FilePreview there): the list of files stays.
+            Loader {
+                id: fileView
+                readonly property bool shown: active && preview.visible && preview.opacity > 0
+                                              && (preview.info.filePath ?? "").length > 0
+                active: page.clipboard.filePreview ? true : false
+                visible: shown
+                x: preview.x
+                width: preview.width
+                height: preview.contentBottom
+                sourceComponent: ClipFilePreview {
+                    host: page.clipboard
+                    metrics: page.metrics
+                    file: (preview.info.files ?? [])[0] ?? ({})
+                    path: fileView.shown ? preview.info.filePath : ""
+                    isDir: preview.info.fileIsDir ?? false
+                    padding: preview.padding
+                    offsetX: fileView.x
+                    offsetY: preview.parentTop
+                }
             }
             ClipTextEditor {
                 id: textEditor

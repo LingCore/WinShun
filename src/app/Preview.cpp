@@ -7212,6 +7212,124 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
     return ok;
 }
 
+// --clipboard-file (GitHub #324): one copied text file, in the preview
+// beside the clipboard's list, shows as the search's preview shows it (its
+// lines, FilePreview) in place of the list of files; another row's entry
+// closes it, coming back shows it again, the window put away closes it. The
+// hover's light preview keeps the file's start (Clipboard.preview). A
+// temporary history and file; the native clipboard untouched.
+bool checkClipboardFilePreview(QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    ClipStore store(temporary.filePath(u"history"_s));
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
+        if (!condition) qWarning("clipboard file preview regression: %s", reason);
+    };
+    const auto waitFor = [](const auto& condition, int ms) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!condition() && timer.elapsed() < ms)
+            pump(50);
+        return condition();
+    };
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) { check(false, "temporary history could not open"); return false; }
+    const QString textFile = QDir::toNativeSeparators(temporary.filePath(u"会议纪要.md"_s));
+    {
+        QFile file(textFile);
+        check(file.open(QIODevice::WriteOnly) && file.write(u"# 会议纪要\n\n- 周五前确认年度报告\n- 补齐销售图表\n"_s.toUtf8()) > 0,
+            "the text file could not be written");
+    }
+    const QString pictureFile = QDir::toNativeSeparators(temporary.filePath(u"图表.png"_s));
+    {
+        QImage picture(240, 160, QImage::Format_RGB32);
+        picture.fill(QColor(0x2f, 0x7d, 0xd8));
+        check(picture.save(pictureFile), "the picture file could not be written");
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    store.add(ClipCapture {.kind = ClipKind::Files, .text = pictureFile, .source = u"资源管理器"_s}, now - 2000);
+    store.add(ClipCapture {.kind = ClipKind::Text, .text = u"一段文字"_s, .source = u"记事本"_s}, now - 1000);
+    store.add(ClipCapture {.kind = ClipKind::Files, .text = textFile, .source = u"资源管理器"_s}, now);
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    engine->addImageProvider(u"clippreview"_s, clipboard.filePreview()->imageProvider());
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
+    clipboard.setActive(true);
+    clipboard.handleShown();
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Clipboard"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"ClipboardWindow"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { qWarning().noquote() << "clipboard file preview regression:" << component.errorString(); return false; }
+    window->create();
+    frame.setWindow(window);
+    placement.setWindow(window);
+    placement.enableWindowSizing();
+    showOffScreen(window);
+    clipboard.handlePlaced();
+    clipboard.setSeen(true); // as App does once the window is uncloaked
+    settle(window);
+    auto* page = visualNamed(window->contentItem(), u"clipboardPage"_s);
+    auto* entries = visualNamed(window->contentItem(), u"clipboardEntries"_s);
+    if (!page || !entries) { check(false, "production clipboard page missing"); return false; }
+    FilePreview* preview = clipboard.filePreview();
+    const auto fileView = [&] { return visualNamed(window->contentItem(), u"clipboardPreviewFile"_s); };
+    const auto content = [&] { return visualNamed(window->contentItem(), u"clipboardPreviewContent"_s); };
+    const auto shownAsFile = [&] {
+        QQuickItem* view = fileView();
+        QQuickItem* list = content();
+        return view && view->isVisible() && list && !list->isVisible();
+    };
+    QMetaObject::invokeMethod(page, "togglePreview", Q_ARG(QVariant, QVariant(0)));
+    settle(window);
+    check(page->property("previewOpen").toBool() && entries->property("currentIndex").toInt() == 0,
+        "the copied file's row did not open the preview");
+    check(shownAsFile(), "one copied file does not show as the search's preview");
+    check(waitFor([&] { return preview->kind() == FilePreview::Text; }, 5000) && preview->lineCount() >= 4
+            && preview->lineAt(0) == u"# 会议纪要" && !preview->summary().isEmpty(),
+        "the copied text file's lines are not shown");
+    // Its lines picked with the mouse: what Ctrl+C copies (not copied here).
+    preview->setSelection(2, 2, 3, 4);
+    check(preview->selectedText() == u"周五前确认年度报告\n- 补齐", "the picked lines are not what Ctrl+C would copy");
+    preview->setSelection(0, 0, 0, 0);
+    settle(window);
+    check(saveGrab(window, output.filePath(u"clipboard-file-text.png"_s)), "the copied file's preview did not render");
+    // The hover's preview: still the light look, the file's start.
+    check(waitFor([&] { return !clipboard.preview(0).value(u"fileText"_s).toString().isEmpty(); }, 5000)
+            && clipboard.preview(0).value(u"filePath"_s).toString() == textFile,
+        "the entry no longer tells the file and its start");
+    // Another row's entry: the list's own look, the file closed.
+    entries->setProperty("currentIndex", 1);
+    settle(window);
+    check(!preview->isOpen() && fileView() && !fileView()->isVisible() && content() && content()->isVisible(),
+        "a text entry still shows the file's preview");
+    // A copied picture: its pixels, through this preview's own image provider.
+    entries->setProperty("currentIndex", 2);
+    settle(window);
+    check(shownAsFile() && waitFor([&] { return preview->kind() == FilePreview::Picture; }, 5000)
+            && preview->imageUrl().startsWith(u"image://clippreview/"),
+        "the copied picture is not shown as a picture");
+    settle(window);
+    auto* picture = visualNamed(window->contentItem(), u"previewPicture"_s);
+    check(picture && picture->property("status").toInt() == 1 && picture->property("sourceSize").toSize() == QSize(240, 160)
+            && picture->width() > 0,
+        "the copied picture's pixels did not load");
+    check(saveGrab(window, output.filePath(u"clipboard-file-picture.png"_s)), "the copied picture's preview did not render");
+    entries->setProperty("currentIndex", 0);
+    settle(window);
+    check(shownAsFile() && waitFor([&] { return preview->kind() == FilePreview::Text; }, 5000),
+        "the copied file did not show again");
+    clipboard.setSeen(false); // put away (or left behind the display process's window)
+    check(!preview->isOpen(), "the file stays open with the window away");
+    check(!watcher.running(), "fixture must never start the native clipboard writer");
+    window->hide();
+    say(u"clipboard file preview: a copied text file shows its lines beside the list, follows rows, closes with the window"_s);
+    return ok;
+}
+
 // --apps-grid (GitHub #296): 应用 as the settings bring it, with this PC's own
 // apps: the tab last among the scopes and gone with the setting, the grid in
 // place of the rows, the strip's three choices, words typed matched as 全部
@@ -8195,6 +8313,8 @@ int runResults(const QStringList& args)
         return checkStyleButtons(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-sizing"_s))
         return checkClipboardInteractions(&engine, out, {}, true) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--clipboard-file"_s))
+        return checkClipboardFilePreview(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--navigation-workflows"_s))
         return checkNavigationWorkflows(&engine, out, args.contains(u"--flipped"_s)) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--search-experience"_s))

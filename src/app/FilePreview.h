@@ -28,6 +28,7 @@
 
 class QQuickItem;
 class QWindow;
+using HWND = struct HWND__*;
 
 namespace ws {
 
@@ -146,6 +147,8 @@ public:
     // previewer's): the launcher is not to go for that.
     bool ownsForeground() const;
     bool foregroundIsOurs() const; // ...and it is a window of Win顺's own (handed back to the launcher)
+    // That window is the preview's (a click on it is not a click elsewhere).
+    bool owns(HWND window) const;
     QQuickWindow* window() const { return m_window; }
 
     Kind kind() const { return m_kind; }
@@ -169,7 +172,7 @@ public:
     // later row (the window draws it); selectedText: as in the file, pieces
     // of one long line joined again. Gone with the content.
     Q_INVOKABLE void setSelection(int fromRow, int fromPos, int toRow, int toPos);
-    QString selectedText() const;
+    Q_INVOKABLE QString selectedText() const;
     QStringList facts() const { return m_facts; }
     QString message() const { return m_message; }
     bool slow() const { return m_slow; }

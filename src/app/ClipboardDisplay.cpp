@@ -359,7 +359,7 @@ void ClipboardDisplay::synchronize()
     for (int i = Clipboard::staticMetaObject.propertyOffset(); i < meta->propertyCount(); ++i) {
         const auto property = meta->property(i);
         const QByteArray name = property.name();
-        if (name != "items" && name != "field")
+        if (name != "items" && name != "field" && name != "filePreview") // objects of this process
             properties.insert(QString::fromLatin1(name), jsonValue(property.read(m_clipboard)));
     }
     const QRect geometry = m_window->geometry();
