@@ -18,10 +18,16 @@ namespace ws {
 
 namespace {
 
+// At most `largest` pixels on the longer side: within a square that size.
+QSize square(int largest)
+{
+    return largest > 0 ? QSize(largest, largest) : QSize();
+}
+
 // The first frame, decoded by Windows Imaging Component and turned upright
-// as the camera says (EXIF orientation); at most `largest` pixels on its
-// longer side. `original`: its size as stored.
-QImage decodeFrame(IWICImagingFactory* wic, IWICBitmapDecoder* decoder, QSize* original, int largest, int number,
+// as the camera says (EXIF orientation); shrunk to fit within `bound` once
+// upright (a side of 0 or less: free). `original`: its size as stored.
+QImage decodeFrame(IWICImagingFactory* wic, IWICBitmapDecoder* decoder, QSize* original, QSize bound, int number,
     int* frames, qint64 maxPixels = 0)
 {
     UINT count = 0;
@@ -55,8 +61,14 @@ QImage decodeFrame(IWICImagingFactory* wic, IWICBitmapDecoder* decoder, QSize* o
     ComPtr<IWICBitmapSource> source = frame;
     UINT w = width;
     UINT h = height;
-    if (largest > 0 && std::max(width, height) > static_cast<UINT>(largest)) {
-        const double scale = static_cast<double>(largest) / std::max(width, height);
+    if (orientation >= 5 && orientation <= 8)
+        bound.transpose(); // stored on its side: its width is the upright height
+    double scale = 1;
+    if (bound.width() > 0)
+        scale = std::min(scale, static_cast<double>(bound.width()) / width);
+    if (bound.height() > 0)
+        scale = std::min(scale, static_cast<double>(bound.height()) / height);
+    if (scale < 1) {
         w = std::max(1u, static_cast<UINT>(width * scale + 0.5));
         h = std::max(1u, static_cast<UINT>(height * scale + 0.5));
         ComPtr<IWICBitmapScaler> scaler;
@@ -97,9 +109,7 @@ QImage decodeFrame(IWICImagingFactory* wic, IWICBitmapDecoder* decoder, QSize* o
     }
 }
 
-} // namespace
-
-QImage decodePictureFile(const QString& path, int largest, QSize* original, int number, int* frames)
+QImage decodeFile(const QString& path, QSize bound, QSize* original, int number, int* frames)
 {
     QString native = path;
     native.replace(u'/', u'\\');
@@ -110,7 +120,19 @@ QImage decodePictureFile(const QString& path, int largest, QSize* original, int 
     if (FAILED(wic->CreateDecoderFromFilename(
             native.toStdWString().c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder)))
         return {};
-    return decodeFrame(wic.Get(), decoder.Get(), original, largest, number, frames);
+    return decodeFrame(wic.Get(), decoder.Get(), original, bound, number, frames);
+}
+
+} // namespace
+
+QImage decodePictureFile(const QString& path, int largest, QSize* original, int number, int* frames)
+{
+    return decodeFile(path, square(largest), original, number, frames);
+}
+
+QImage decodePictureFile(const QString& path, QSize bound, QSize* original)
+{
+    return decodeFile(path, bound, original, 0, nullptr);
 }
 
 QImage decodePictureData(
@@ -129,7 +151,7 @@ QImage decodePictureData(
     ComPtr<IWICBitmapDecoder> decoder;
     if (FAILED(wic->CreateDecoderFromStream(stream.Get(), nullptr, WICDecodeMetadataCacheOnDemand, &decoder)))
         return {};
-    return decodeFrame(wic.Get(), decoder.Get(), original, largest, number, frames, maxPixels);
+    return decodeFrame(wic.Get(), decoder.Get(), original, square(largest), number, frames, maxPixels);
 }
 
 } // namespace ws

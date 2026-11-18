@@ -1,5 +1,7 @@
 #include "ClipThumbnailProvider.h"
 
+#include "PictureFile.h"
+
 #include <QCache>
 #include <QDir>
 #include <QFile>
@@ -10,6 +12,8 @@
 #include <QThread>
 #include <QThreadPool>
 #include <QUrl>
+
+#include <objbase.h>
 
 #include <algorithm>
 #include <atomic>
@@ -88,7 +92,23 @@ QSize fitted(QSize original, QSize requested)
     return {qRound(original.width() * ratio), qRound(original.height() * ratio)};
 }
 
-// On a pool thread.
+// COM for Windows Imaging Component, once on each pool thread.
+struct ComApartment {
+    ComApartment()
+        : hr(::CoInitializeEx(nullptr, COINIT_MULTITHREADED))
+    {
+    }
+    ~ComApartment()
+    {
+        if (SUCCEEDED(hr))
+            ::CoUninitialize();
+    }
+    HRESULT hr;
+};
+
+// On a pool thread. Qt's decoders first; what they cannot read (Win顺 ships
+// only Qt's GIF and JPEG ones: WebP, TIFF, HEIC, AVIF, an icon ...) by
+// Windows' own, as the preview beside the list shows it (GitHub #373).
 QImage decode(const QString& path, QSize requested, QString* error)
 {
     QImageReader reader(path);
@@ -96,7 +116,11 @@ QImage decode(const QString& path, QSize requested, QString* error)
     if (const QSize size = fitted(reader.size(), requested); size.isValid())
         reader.setScaledSize(size);
     QImage image;
-    if (!reader.read(&image))
+    if (reader.read(&image))
+        return image;
+    thread_local const ComApartment com;
+    image = decodePictureFile(path, requested);
+    if (image.isNull())
         *error = u"Error decoding: %1: %2"_s.arg(QUrl::fromLocalFile(path).toString(), reader.errorString());
     return image;
 }

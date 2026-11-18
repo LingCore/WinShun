@@ -26,14 +26,50 @@
 #include <QTest>
 #include <QUrl>
 
+#include <windows.h>
+#include <wincodec.h>
+#include <wrl/client.h>
+#undef small // rpcndr.h's, for MIDL: a name below
+
 #include <atomic>
 #include <cstring>
 #include <memory>
 
 using namespace ws;
 using namespace Qt::StringLiterals;
+using Microsoft::WRL::ComPtr;
 
 namespace {
+
+// A JPEG XR file of `image`, by Windows Imaging Component: a picture Windows
+// reads and no Qt image plugin does (as WebP is on a user's PC, where Win顺
+// ships none for it).
+bool writeJpegXr(const QImage& image, const QString& path)
+{
+    const HRESULT com = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const auto uninitialize = qScopeGuard([com] {
+        if (SUCCEEDED(com))
+            ::CoUninitialize();
+    });
+    const QImage pixels = image.convertToFormat(QImage::Format_ARGB32); // BGRA in memory
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICStream> stream;
+    ComPtr<IWICBitmapEncoder> encoder;
+    ComPtr<IWICBitmapFrameEncode> frame;
+    ComPtr<IPropertyBag2> options;
+    WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
+    return SUCCEEDED(::CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic)))
+        && SUCCEEDED(wic->CreateStream(&stream))
+        && SUCCEEDED(stream->InitializeFromFilename(path.toStdWString().c_str(), GENERIC_WRITE))
+        && SUCCEEDED(wic->CreateEncoder(GUID_ContainerFormatWmp, nullptr, &encoder))
+        && SUCCEEDED(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache))
+        && SUCCEEDED(encoder->CreateNewFrame(&frame, &options)) && SUCCEEDED(frame->Initialize(options.Get()))
+        && SUCCEEDED(frame->SetSize(static_cast<UINT>(pixels.width()), static_cast<UINT>(pixels.height())))
+        && SUCCEEDED(frame->SetPixelFormat(&format)) && format == GUID_WICPixelFormat32bppBGRA
+        && SUCCEEDED(frame->WritePixels(static_cast<UINT>(pixels.height()), static_cast<UINT>(pixels.bytesPerLine()),
+            static_cast<UINT>(pixels.sizeInBytes()), const_cast<BYTE*>(pixels.constBits())))
+        && SUCCEEDED(frame->Commit()) && SUCCEEDED(encoder->Commit());
+}
 
 QByteArray fixture(const QString& name)
 {
@@ -321,6 +357,39 @@ private slots:
         // The address: any path, and a file written again gets another one.
         QVERIFY(ClipThumbnailProvider::url(path, 1) != ClipThumbnailProvider::url(path, 2));
         QVERIFY(!url.contains(u'#') && !url.contains(u'%'));
+    }
+
+    // A picture copied as a file that no Qt decoder Win顺 ships reads (WebP,
+    // HEIC ... on a user's PC: GitHub #373): its thumbnail by Windows' own
+    // decoder, fitted to the slot as Qt's would be, not the file's icon.
+    void clipThumbnailsOfPicturesQtCannotRead()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(u"照片 1.jxr"_s);
+        QImage picture(400, 300, QImage::Format_ARGB32);
+        picture.fill(qRgb(30, 144, 255));
+        QVERIFY(writeJpegXr(picture, path));
+        QVERIFY(!QImageReader(path).canRead()); // what makes it a test of Windows' decoder
+
+        QQmlEngine engine;
+        engine.addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider);
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\nImage { asynchronous: true; sourceSize.width: 162; sourceSize.height: 102 }", QUrl());
+        std::unique_ptr<QQuickItem> image(qobject_cast<QQuickItem*>(component.create()));
+        QVERIFY(image);
+        image->setProperty("source", ClipThumbnailProvider::url(path, 3));
+        QTRY_COMPARE(image->property("status").toInt(), 1); // Image.Ready
+        QCOMPARE(QSizeF(image->implicitWidth(), image->implicitHeight()), QSizeF(136, 102)); // fits 102 high
+
+        ClipThumbnailProvider provider; // the pixels, kept from that request
+        std::unique_ptr<QQuickImageResponse> again(provider.requestImageResponse(
+            ClipThumbnailProvider::url(path, 3).mid(QStringLiteral("image://clipthumb/").size()), QSize(162, 102)));
+        std::unique_ptr<QQuickTextureFactory> factory(again->textureFactory());
+        QVERIFY(factory);
+        const QColor middle = factory->image().pixelColor(68, 51);
+        QVERIFY2(qAbs(middle.red() - 30) <= 8 && qAbs(middle.green() - 144) <= 8 && qAbs(middle.blue() - 255) <= 8,
+            qPrintable(middle.name()));
     }
 
     void imageFileRowLoadsAtBothSizesAndReusesItsDelegate()

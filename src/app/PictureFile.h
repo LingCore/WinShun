@@ -14,6 +14,9 @@ namespace ws {
 // plugins: QImage alone reads PNG and BMP only).
 QImage decodePictureFile(
     const QString& path, int largest, QSize* original = nullptr, int frame = 0, int* frames = nullptr);
+// The same, shrunk to fit within `bound` upright, the aspect kept (as an
+// Image's sourceSize: a side of 0 or less is free; never enlarged).
+QImage decodePictureFile(const QString& path, QSize bound, QSize* original = nullptr);
 // The same decoder for an embedded picture, with optional multi-frame access.
 // `maxPixels` > 0: a frame larger than that is refused from its header, before
 // any pixel is decoded (null image, `original` set to its stored size).

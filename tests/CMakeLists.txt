@@ -922,6 +922,7 @@ target_link_libraries(tst_clipboard PRIVATE wscore Qt6::Test)
 qt_add_executable(tst_clipimage tst_clipimage.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ClipImage.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ClipThumbnailProvider.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/PictureFile.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ClipFiles.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ColorSwatch.cpp
     ${PROJECT_SOURCE_DIR}/src/app/SystemTheme.cpp
@@ -934,7 +935,7 @@ target_include_directories(tst_clipimage PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_compile_definitions(tst_clipimage PRIVATE
     WINSHUN_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data"
     WINSHUN_QML_DIR="${PROJECT_SOURCE_DIR}/src/app/qml")
-target_link_libraries(tst_clipimage PRIVATE wscore Qt6::Quick Qt6::Test user32 gdi32 comctl32 shell32 ole32 version dwmapi)
+target_link_libraries(tst_clipimage PRIVATE wscore Qt6::Quick Qt6::Test user32 gdi32 comctl32 shell32 ole32 version dwmapi windowscodecs)
 set_target_properties(tst_clipimage PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_clipimage COMMAND tst_clipimage -o -,txt)
 set_tests_properties(tst_clipimage PROPERTIES
@@ -1588,9 +1589,10 @@ set_tests_properties(tst_clipfiles PROPERTIES
 
 # Picking the whole clipboard list (Ctrl+A, delete all): ClipModel with a real store.
 qt_add_executable(tst_clipselect tst_clipselect.cpp ${PROJECT_SOURCE_DIR}/src/app/ClipModel.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/ClipThumbnailProvider.cpp ${PROJECT_SOURCE_DIR}/src/app/ColorText.cpp)
+    ${PROJECT_SOURCE_DIR}/src/app/ClipThumbnailProvider.cpp ${PROJECT_SOURCE_DIR}/src/app/PictureFile.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/ColorText.cpp)
 target_include_directories(tst_clipselect PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
-target_link_libraries(tst_clipselect PRIVATE wscore Qt6::Quick Qt6::Test)
+target_link_libraries(tst_clipselect PRIVATE wscore Qt6::Quick Qt6::Test ole32 windowscodecs)
 set_target_properties(tst_clipselect PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_clipselect COMMAND tst_clipselect)
 set_tests_properties(tst_clipselect PROPERTIES
