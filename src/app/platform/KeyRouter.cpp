@@ -144,6 +144,9 @@ bool wanted(const KeyRouter::Key& key, Qt::KeyboardModifier numberKeys)
         case 'Y':
         case 'P':
         case 'G': // find a clipboard group
+        case 'E': // the menu's keys without the menu (GitHub #379): edit, save as files, the window's own pin
+        case 'S':
+        case 'T':
             return !shift; // Ctrl+Shift+V and the like stay free for other programs' hotkeys
         case 'Z':
             return true; // undo, redo
@@ -161,7 +164,7 @@ bool wanted(const KeyRouter::Key& key, Qt::KeyboardModifier numberKeys)
         case VK_RETURN:
             return true;
         default:
-            return false; // Ctrl+S, Ctrl+W, Ctrl+Tab…: the program's
+            return false; // Ctrl+W, Ctrl+Tab…: the program's
         }
     }
     switch (vk) {
@@ -183,6 +186,8 @@ bool wanted(const KeyRouter::Key& key, Qt::KeyboardModifier numberKeys)
         return true;
     case VK_F10:
         return shift; // the context menu
+    case VK_F3: // 贴到屏幕, as the menu says (GitHub #379, #388)
+        return !shift;
     default:
         return typesCharacter(vk);
     }

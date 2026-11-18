@@ -163,6 +163,20 @@ private slots:
         key.key = Qt::Key_W;
         key.vk = 'W';
         QVERIFY(!KeyRouter::wantsKey(key)); // unrelated app shortcuts still pass through
+        // The clipboard menu's keys, pressed without the menu (GitHub #379): theirs while it is open.
+        for (const auto& [qtKey, vk] : {std::pair {Qt::Key_E, UINT('E')}, std::pair {Qt::Key_S, UINT('S')}, std::pair {Qt::Key_T, UINT('T')}}) {
+            key = {.key = qtKey, .modifiers = Qt::ControlModifier, .vk = vk};
+            QVERIFY(KeyRouter::wantsKey(key));
+            key.modifiers |= Qt::ShiftModifier;
+            QVERIFY(!KeyRouter::wantsKey(key));
+        }
+        key = {.key = Qt::Key_F3, .modifiers = Qt::NoModifier, .vk = VK_F3};
+        QVERIFY(KeyRouter::wantsKey(key));
+        QVERIFY(!KeyRouter::wantsKey(key, Qt::AltModifier, KeyRouter::Policy::Menu));
+        key.modifiers = Qt::ShiftModifier;
+        QVERIFY(!KeyRouter::wantsKey(key));
+        key = {.key = Qt::Key_F5, .modifiers = Qt::NoModifier, .vk = VK_F5};
+        QVERIFY(!KeyRouter::wantsKey(key)); // the program's (refresh)
     }
 
     // The names of the keys routed, and of those TypeToSearch hands over to
