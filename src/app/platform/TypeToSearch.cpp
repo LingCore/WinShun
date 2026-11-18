@@ -570,8 +570,12 @@ bool TypeToSearch::handleKey(WPARAM message, const KBDLLHOOKSTRUCT& event)
     const bool press = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
     // Ours too: the clipboard panel's paste, an entry picked with a folder in
     // front, is a paste into it all the same. Not while the launcher's keys
-    // are routed to it over the folder: Ctrl+V pastes into its search box.
-    if (vk == 'V' && m_surfaces.pasteFile && !m_hold.holding() && !m_startInFront && !m_launcherRouted.load()
+    // are routed to it over the folder: Ctrl+V pastes into its search box;
+    // nor the user's Ctrl+V while the clipboard's or the menu's are.
+    const unsigned routed = m_routed.load();
+    const bool routedAway = (routed & static_cast<unsigned>(Router::Launcher)) != 0
+        || (routed != 0 && !isOwnInput(event.dwExtraInfo));
+    if (vk == 'V' && m_surfaces.pasteFile && !m_hold.holding() && !m_startInFront && (!routedAway || m_pasteTaken)
         && (m_pasteTaken
             || (press && held(VK_CONTROL) && !held(VK_SHIFT) && !held(VK_MENU) && !held(VK_LWIN) && !held(VK_RWIN)))
         && handlePaste(press))
@@ -605,11 +609,12 @@ bool TypeToSearch::handleKey(WPARAM message, const KBDLLHOOKSTRUCT& event)
 }
 
 // No hold on: whether the key starts one (begun then; handleKey takes the key).
-// None while the launcher's keys are routed to it: typed over that folder,
-// they are its (its KeyRouter, called first, asks the hooks after it first).
+// None while the keys of a window of Win顺's are routed to it (the launcher,
+// the clipboard, the folder menu): typed over that folder, they are its (its
+// KeyRouter, called first, asks the hooks after it first).
 bool TypeToSearch::startsHold(UINT vk, bool press)
 {
-    if (m_launcherRouted.load())
+    if (m_routed.load() != 0)
         return false;
     if (searchtyping::isModifier(vk)) {
         if (press && vk == VK_LMENU && m_startInFront)

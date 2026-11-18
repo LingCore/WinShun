@@ -2937,7 +2937,9 @@ void App::applyTypeToSearch()
         }, Qt::QueuedConnection);
     };
     m_typing = std::make_unique<TypeToSearch>(wanted, std::move(callbacks));
-    m_typing->setLauncherRouted(launcherRouted());
+    m_typing->setRouted(TypeToSearch::Router::Launcher, launcherRouted());
+    m_typing->setRouted(TypeToSearch::Router::Clipboard, m_keyRouter != nullptr);
+    m_typing->setRouted(TypeToSearch::Router::FolderMenu, m_folderMenu && m_folderMenu->isOpen());
 }
 
 void App::pasteAsFile(HWND view)
@@ -4688,6 +4690,8 @@ void App::applyFolderMenu()
         connect(menu.get(), &FolderMenu::openChanged, this, [this](bool open) {
             if (m_keyListener)
                 m_keyListener->setMenuOpen(open);
+            if (m_typing) // a letter typed in it is its own, not a search of the folder under it
+                m_typing->setRouted(TypeToSearch::Router::FolderMenu, open);
         });
         connect(menu.get(), &FolderMenu::searchRequested, this, [this](const QString& folder) {
             showLauncher(folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s);
@@ -5838,6 +5842,8 @@ bool App::startKeyRouting(HWND target)
     }
     m_keyRouter = std::move(router);
     m_keyRouterTarget = target;
+    if (m_typing)
+        m_typing->setRouted(TypeToSearch::Router::Clipboard, true); // its keys, typed over a folder too (GitHub #385)
     m_clipboard->setKeysRouted(true);
     return true;
 }
@@ -5856,6 +5862,8 @@ void App::stopKeyRouting()
             {{u"session"_s, static_cast<qint64>(m_keyRouterRun)}, {u"router"_s, m_keyRouter->diagnosticStatus()}});
         m_drainingRouter = std::move(m_keyRouter);
         m_drainingRun = m_keyRouterRun;
+        if (m_typing)
+            m_typing->setRouted(TypeToSearch::Router::Clipboard, false);
         QTimer::singleShot(2s, this, [this, run = m_drainingRun] {
             if (m_drainingRun == run)
                 m_drainingRouter.reset(); // a key held that long is the program's again
@@ -5995,7 +6003,7 @@ bool App::startLauncherRouting()
     m_launcherRouting.router = std::move(router);
     m_launcherRouting.target = target;
     if (m_typing)
-        m_typing->setLauncherRouted(true);
+        m_typing->setRouted(TypeToSearch::Router::Launcher, true);
     m_launcher->setKeysRouted(true);
     qWarning().noquote() << "Launcher: refused the front, its keys routed to it while" << program << "keeps the focus";
     return true;
@@ -6004,7 +6012,7 @@ bool App::startLauncherRouting()
 void App::stopLauncherRouting()
 {
     if (m_typing)
-        m_typing->setLauncherRouted(false);
+        m_typing->setRouted(TypeToSearch::Router::Launcher, false);
     m_launcherRouting.target = nullptr;
     if (!m_launcherRouting.router)
         return;

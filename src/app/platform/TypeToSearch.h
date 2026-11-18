@@ -72,7 +72,11 @@ namespace ws {
 // The launcher then takes its keys from a KeyRouter of its own while that
 // window keeps the focus (App's launcher routing): the keys held are handed
 // over to it instead (handOver, handedOver), and meanwhile no key starts a
-// hold, nor is Ctrl+V pasted as a file (setLauncherRouted): they are its.
+// hold, nor is Ctrl+V pasted as a file (setRouted): they are its. The same
+// goes for the clipboard and the folder menu shown over a folder: their
+// KeyRouter asks the hooks after it first, and the first digit or letter
+// typed for their search, or for a row's letter (字母直达), was taken here
+// for a search of the folder instead (GitHub #385).
 //
 // 粘贴为文件 (a third setting, off by default) takes Ctrl+V from the files
 // and folders of an Explorer folder window or the desktop's icons when the
@@ -133,9 +137,19 @@ public:
     // the keys held back go to it as they are (handedOver), and the hold
     // ends. Any thread.
     void handOver();
-    // While its keys are routed to it, the launcher's are all keys typed:
-    // none starts a hold, no Ctrl+V is pasted as a file. Any thread.
-    void setLauncherRouted(bool routed) noexcept { m_launcherRouted = routed; }
+    // The windows of Win顺's that take their keys through a KeyRouter over the
+    // program in front. While one does, the keys typed are all its: none
+    // starts a hold, and Ctrl+V is not pasted as a file (but for the
+    // clipboard's and the menu's own paste: input of Win顺's). Any thread.
+    enum class Router : unsigned { Launcher = 1, Clipboard = 2, FolderMenu = 4 };
+    void setRouted(Router router, bool routed) noexcept
+    {
+        const auto bit = static_cast<unsigned>(router);
+        if (routed)
+            m_routed.fetch_or(bit);
+        else
+            m_routed.fetch_and(~bit);
+    }
     // A delayed folder query belongs only to the hold that asked for it,
     // even after a timeout or a settings change made a new hook instance.
     bool pending(RequestId request) const noexcept { return request && m_pendingRequest.load() == request; }
@@ -178,7 +192,7 @@ private:
     Callbacks m_callbacks;
     std::atomic<DWORD> m_threadId = 0;
     std::atomic<RequestId> m_pendingRequest = 0;
-    std::atomic<bool> m_launcherRouted = false;
+    std::atomic<unsigned> m_routed = 0; // Router bits
     // timing(): steady_clock ticks, written on the hook's thread.
     std::atomic<std::chrono::steady_clock::rep> m_firstKeyAt = 0;
     std::atomic<std::chrono::steady_clock::rep> m_sentAt = 0;
