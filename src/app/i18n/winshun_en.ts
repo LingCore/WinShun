@@ -759,6 +759,10 @@
         <translation>Open animation</translation>
     </message>
     <message>
+        <source>悬停提示</source>
+        <translation>Hover tips</translation>
+    </message>
+    <message>
         <source>直角</source>
         <translation>Square</translation>
     </message>
@@ -7514,6 +7518,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>动画;动效;淡入;淡出;弹出;升起;过渡;拖沓;立即显示;animation;motion;fade</source>
         <translation>animation;motion;fade;transition;slide;popup;instant;sluggish</translation>
+    </message>
+    <message>
+        <source>悬停提示</source>
+        <translation>Hover tips</translation>
+    </message>
+    <message>
+        <source>鼠标停在图标或按钮上时，弹出一行说明，比如类型条上各类型的扩展名。熟悉以后可以关掉，图标和功能不变</source>
+        <translation>A line saying what an icon or button is comes up when the mouse rests on it, such as the extensions of each kind of file on the type strip. Once you know them, turn this off; the icons and what they do stay the same</translation>
+    </message>
+    <message>
+        <source>关掉后，设置里带“i”的说明照常显示；名字太长被截断时，停在行上仍会显示完整名字</source>
+        <translation>Off: the notes behind an "i" in the settings still show, and resting on a row whose name is cut off still shows the whole name</translation>
+    </message>
+    <message>
+        <source>悬停;提示;气泡;工具提示;说明;遮挡;tooltip;hover;tip</source>
+        <translation>tooltip;hover;tip;bubble;hint;covers</translation>
     </message>
     <message>
         <source>索引范围;范围;整个磁盘;选中的文件夹;工作文件夹;普通用户;没有管理员权限;scope</source>

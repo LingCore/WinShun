@@ -24,6 +24,10 @@ Item {
     property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
     property QtObject host: null // permits a non-activating window when the host is too short
     property bool detached: false
+    // Shown even with 外观 › 悬停提示 off (SystemTheme.hoverTips, GitHub #368):
+    // the tip is all the thing is there for (InfoDot's "i", a setting's note).
+    property bool essential: false
+    readonly property bool allowed: essential || SystemTheme.hoverTips
 
     property bool shown: false
 
@@ -47,6 +51,7 @@ Item {
     onTextChanged: Qt.callLater(sync)
     onShortcutChanged: Qt.callLater(sync)
     onFullWidthChanged: if (shown) place()
+    onAllowedChanged: if (!allowed) { timer.stop(); shown = false }
     Connections {
         target: tip.parent
         function onHeightChanged() { if (tip.shown) tip.place() }
@@ -126,7 +131,7 @@ Item {
                 tip.shown = false
                 return
             }
-            if (!tip.target)
+            if (!tip.target || !tip.allowed)
                 return
             tip.latch()
             tip.place()

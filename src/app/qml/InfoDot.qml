@@ -30,6 +30,7 @@ Item {
         hoverEnabled: true
     }
     HoverTip {
+        essential: true // the "i" says nothing else
         target: area.containsMouse ? dot : null
         text: dot.text
         delay: 150

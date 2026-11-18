@@ -3094,6 +3094,20 @@ Window {
                     }
                 }
 
+                SettingRow { // GitHub #368
+                    title: qsTr("悬停提示")
+                    description: qsTr("鼠标停在图标或按钮上时，弹出一行说明，比如类型条上各类型的扩展名。熟悉以后可以关掉，图标和功能不变")
+                    tip: qsTr("关掉后，设置里带“i”的说明照常显示；名字太长被截断时，停在行上仍会显示完整名字")
+                    keywords: qsTr("悬停;提示;气泡;工具提示;说明;遮挡;tooltip;hover;tip").split(";")
+                    ToggleSwitch {
+                        objectName: "hoverTipsToggle"
+                        dpr: window.dpr
+                        checked: window.editor.hoverTips
+                        Accessible.name: qsTr("悬停提示")
+                        onToggled: (on) => window.editor.hoverTips = on
+                    }
+                }
+
                 SettingRow { // with what the box looks like, where it is looked for (GitHub #185)
                     title: qsTr("纯净搜索模式")
                     description: qsTr("搜索框空着时只保留输入栏，输入后恢复结果和范围标签；右上角的搜索历史和展开按钮一直隐藏，快捷键照常可用。完整搜索窗口、文件夹内搜索和任务栏搜索不受影响")

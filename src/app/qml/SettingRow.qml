@@ -264,6 +264,7 @@ Item {
                             }
 
                             HoverTip {
+                                essential: true // the badge says nothing else
                                 target: tipArea.containsMouse ? tipBadge : null
                                 text: row.tip
                                 delay: 150

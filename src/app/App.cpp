@@ -1715,6 +1715,7 @@ void App::applyAppearance()
     SystemTheme::setRoundedCorners(m_settings.corners == u"round");
     SystemTheme::setUiStyle(m_settings.uiStyle);
     SystemTheme::setGlassAppearance(m_settings.glassTransparency, m_settings.glassClarity);
+    SystemTheme::setHoverTips(m_settings.hoverTips); // 悬停提示 (GitHub #368)
     updateSearchBoxLook(); // the native child redraws on its own thread
     // 界面大小: QML follows SystemTheme; the bar by file dialogs is placed by its heights.
     if (SystemTheme::uiSize() != m_settings.uiSize) {
@@ -2391,7 +2392,8 @@ QJsonObject App::pluginLook() const
         {u"uiStyle"_s, m_settings.uiStyle}, {u"uiSize"_s, m_settings.uiSize},
         {u"uiFont"_s, m_settings.uiFont}, {u"resolvedUiFont"_s, QGuiApplication::font().family()},
         {u"transparency"_s, m_settings.transparency}, {u"renderer"_s, m_settings.renderer},
-        {u"glassTransparency"_s, m_settings.glassTransparency}, {u"glassClarity"_s, m_settings.glassClarity}};
+        {u"glassTransparency"_s, m_settings.glassTransparency}, {u"glassClarity"_s, m_settings.glassClarity},
+        {u"hoverTips"_s, m_settings.hoverTips}};
     // The style's colours and radii, for plugins that draw without QML (see
     // docs/plugins.md, "外观"); none until the launcher's Theme is made.
     if (const QJsonObject native = SystemTheme::nativeLookJson(); !native.isEmpty())

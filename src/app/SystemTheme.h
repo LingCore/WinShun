@@ -52,6 +52,9 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     Q_PROPERTY(QString uiStyle READ uiStyle NOTIFY changed FINAL)
     // How long the mouse rests before a tip shows (SPI_GETMOUSEHOVERTIME, ms).
     Q_PROPERTY(int hoverTime READ hoverTime NOTIFY changed FINAL)
+    // Tips come up on the icons and buttons the mouse rests on (HoverTip;
+    // 外观 › 悬停提示, Settings::hoverTips, GitHub #368).
+    Q_PROPERTY(bool hoverTips READ hoverTips NOTIFY changed FINAL)
 
 public:
     explicit SystemTheme(QObject* parent = nullptr);
@@ -104,6 +107,8 @@ public:
     static void setUiSize(const QString& size);
     static QString uiStyle() { return s_uiStyle; }
     static void setUiStyle(const QString& style); // unknown names are fluent
+    static bool hoverTips() { return s_hoverTips; }
+    static void setHoverTips(bool on);
 
     // The look in effect for what C++ draws itself (the tray menu, the
     // taskbar box, pins, the countdown) and for plugins without QML: a few
@@ -137,6 +142,7 @@ private:
     static inline int s_glassClarity = 50;
     static inline QString s_uiSize = QStringLiteral("standard");
     static inline QString s_uiStyle = QStringLiteral("fluent");
+    static inline bool s_hoverTips = true;
     static inline QVariantMap s_nativeLook;
     static inline QPointer<SystemTheme> s_instance; // the QML singleton
     QString m_iconFont;

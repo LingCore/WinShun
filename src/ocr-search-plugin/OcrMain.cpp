@@ -170,6 +170,7 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
         ws::SystemTheme::setUiSize(look.value(u"uiSize"_s).toString(u"standard"_s));
         ws::SystemTheme::setUiStyle(look.value(u"uiStyle"_s).toString());
         ws::SystemTheme::setGlassAppearance(look.value(u"glassTransparency"_s).toInt(50), look.value(u"glassClarity"_s).toInt(50));
+        ws::SystemTheme::setHoverTips(look.value(u"hoverTips"_s).toBool(true)); // 外观 › 悬停提示
         QCoreApplication::removeTranslator(&translator);
         if (look.value(u"locale"_s).toString() == u"en" && translator.load(u":/i18n/ocr-search_en.qm"_s))
             QCoreApplication::installTranslator(&translator);

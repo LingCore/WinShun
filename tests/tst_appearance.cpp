@@ -119,6 +119,60 @@ private slots:
         }
     }
 
+    // GitHub #368: with 悬停提示 off, the tips on icons and buttons do not come
+    // up; an essential one (InfoDot's "i") still does; one that is up goes
+    // as the switch is turned off.
+    void hoverTipsSwitch()
+    {
+        const auto restore = qScopeGuard([] { SystemTheme::setHoverTips(true); });
+        SystemTheme::setHoverTips(true);
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData(R"(
+import QtQuick
+import WinShun
+Window {
+    width: 320; height: 220; visible: true
+    property QtObject plain: plainTip
+    property QtObject essential: essentialTip
+    property Item first: a
+    property Item second: b
+    Rectangle { id: a; x: 20; y: 150; width: 40; height: 30 }
+    Rectangle { id: b; x: 200; y: 150; width: 40; height: 30 }
+    HoverTip { id: plainTip; delay: 20; linger: 20; text: "plain" }
+    HoverTip { id: essentialTip; delay: 20; linger: 20; essential: true; text: "essential" }
+}
+)", qmlFolder().resolved(QUrl(u"HoverTipsTest.qml"_s)));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        QObject* plain = window->property("plain").value<QObject*>();
+        QObject* essential = window->property("essential").value<QObject*>();
+        const QVariant first = window->property("first");
+        const QVariant second = window->property("second");
+        QVERIFY(plain && essential);
+        const auto shown = [](QObject* tip) { return tip->property("shown").toBool(); };
+
+        plain->setProperty("target", first); // on: as ever
+        QTRY_VERIFY_WITH_TIMEOUT(shown(plain), 1000);
+        plain->setProperty("target", QVariant::fromValue<QQuickItem*>(nullptr));
+        QTRY_VERIFY_WITH_TIMEOUT(!shown(plain), 1000);
+
+        SystemTheme::setHoverTips(false); // off: the plain one stays down, the essential one comes
+        plain->setProperty("target", first);
+        essential->setProperty("target", second);
+        QTRY_VERIFY_WITH_TIMEOUT(shown(essential), 1000);
+        QTest::qWait(200);
+        QVERIFY(!shown(plain));
+
+        plain->setProperty("target", QVariant::fromValue<QQuickItem*>(nullptr));
+        SystemTheme::setHoverTips(true);
+        plain->setProperty("target", first);
+        QTRY_VERIFY_WITH_TIMEOUT(shown(plain), 1000);
+        SystemTheme::setHoverTips(false); // turned off while up: gone at once
+        QVERIFY(!shown(plain));
+        QVERIFY(shown(essential));
+    }
+
     void glassAppearance()
     {
         QTest::failOnWarning();

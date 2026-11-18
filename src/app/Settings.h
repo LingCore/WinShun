@@ -301,6 +301,10 @@ struct Settings {
     // fades out (Placement::slideIn, slideOut); off: there and gone at once
     // (GitHub #365). Windows' own "animation effects" off: never animated.
     bool openAnimation = true;
+    // A tip comes up on the icon or button the mouse rests on: the kinds of
+    // file, the +, the row's buttons (HoverTip, SystemTheme::hoverTips); off,
+    // only an "i" still says its words (GitHub #368).
+    bool hoverTips = true;
     // auto | builtin: what Alt+P on a row shows the file with. auto: QuickLook
     // or Seer when one is running in the background (FilePreview), else
     // Win顺's own preview window; builtin: always that.

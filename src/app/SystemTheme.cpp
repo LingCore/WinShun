@@ -119,6 +119,15 @@ void SystemTheme::setRoundedCorners(bool on)
         emit s_instance->changed();
 }
 
+void SystemTheme::setHoverTips(bool on)
+{
+    if (s_hoverTips == on)
+        return;
+    s_hoverTips = on;
+    if (s_instance)
+        emit s_instance->changed();
+}
+
 void SystemTheme::setBackdropOn(bool on)
 {
     if (s_backdropOn == on)

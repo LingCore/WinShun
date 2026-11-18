@@ -558,6 +558,14 @@ void SettingsEditor::setOpenAnimation(bool on)
     commit();
 }
 
+void SettingsEditor::setHoverTips(bool on)
+{
+    if (m_settings.hoverTips == on)
+        return;
+    m_settings.hoverTips = on;
+    commit();
+}
+
 void SettingsEditor::setPureSearch(bool on)
 {
     if (m_settings.pureSearch == on)

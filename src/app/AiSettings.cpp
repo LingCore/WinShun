@@ -411,6 +411,10 @@ std::vector<Entry> buildCatalog()
                     "true: the search box fades in rising a little from the taskbar's side, and fades out. "
                     "false: it appears and disappears at once. Never animated while Windows' animation effects are off."},
         &Settings::openAnimation));
+    add(boolean({"Appearance/HoverTips", QT_TRANSLATE_NOOP("AiSettings", "悬停提示"), "appearance", -1,
+                    "true: resting the mouse on an icon or button (the kinds of file under the search box, the +, a row's buttons) shows a line "
+                    "saying what it is. false: no such tips; an \"i\" in the settings still shows its words, and a cut-off name still shows in full."},
+        &Settings::hoverTips));
     add(choice({"Appearance/Theme", QT_TRANSLATE_NOOP("AiSettings", "主题"), "appearance", -1, "Light or dark windows."},
         &Settings::theme,
         {{u"system"_s, u"follow Windows' light or dark mode"_s, QT_TRANSLATE_NOOP("AiSettings", "跟随系统")},

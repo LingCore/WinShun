@@ -300,6 +300,7 @@ void DisplayReplica::applyState(const QJsonObject& object)
     SystemTheme::setUiStyle(object.value(u"uiStyle"_s).toString());
     SystemTheme::setGlassAppearance(object.value(u"glassTransparency"_s).toInt(50), object.value(u"glassClarity"_s).toInt(50));
     SystemTheme::setBackdropOn(object.value(u"backdrop"_s).toBool());
+    SystemTheme::setHoverTips(object.value(u"hoverTips"_s).toBool(true));
     const QString language = object.value(u"language"_s).toString();
     if (m_language != language) {
         m_language = language;

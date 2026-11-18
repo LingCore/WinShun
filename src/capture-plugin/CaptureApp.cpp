@@ -823,6 +823,7 @@ void CaptureApp::applyAppearance(const QJsonObject& a)
     SystemTheme::setUiStyle(a.value(u"uiStyle"_s).toString());
     SystemTheme::setGlassAppearance(a.value(u"glassTransparency"_s).toInt(50), a.value(u"glassClarity"_s).toInt(50));
     SystemTheme::setBackdropOn(a.value(u"transparency"_s).toString(u"on"_s) == u"on");
+    SystemTheme::setHoverTips(a.value(u"hoverTips"_s).toBool(true)); // 外观 › 悬停提示
     const QString theme = a.value(u"themeSetting"_s).toString();
     QGuiApplication::styleHints()->setColorScheme(theme == u"dark" ? Qt::ColorScheme::Dark
             : theme == u"light"                                     ? Qt::ColorScheme::Light

@@ -233,6 +233,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool panelListsAll READ panelListsAll WRITE setPanelListsAll NOTIFY changed FINAL)
     Q_PROPERTY(bool scopeButton READ scopeButton WRITE setScopeButton NOTIFY changed FINAL)
     Q_PROPERTY(bool openAnimation READ openAnimation WRITE setOpenAnimation NOTIFY changed FINAL)
+    Q_PROPERTY(bool hoverTips READ hoverTips WRITE setHoverTips NOTIFY changed FINAL)
     Q_PROPERTY(QString previewWith READ previewWith WRITE setPreviewWith NOTIFY changed FINAL) // auto | builtin
     Q_PROPERTY(QString previewHotkey READ previewHotkey WRITE setPreviewHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString previewHotkeyError READ previewHotkeyError NOTIFY changed FINAL)
@@ -828,6 +829,8 @@ public:
     void setScopeButton(bool on);
     bool openAnimation() const { return m_settings.openAnimation; }
     void setOpenAnimation(bool on);
+    bool hoverTips() const { return m_settings.hoverTips; }
+    void setHoverTips(bool on);
     void setPureSearch(bool on);
     bool panelListsAll() const { return m_settings.panelListsAll; }
     void setPanelListsAll(bool on);
