@@ -1041,15 +1041,24 @@ QString Launcher::typingFolder() const
     return m_typingPrefix.isEmpty() ? QString() : folderLabel(m_typingFolder);
 }
 
+const QString& Launcher::typedWithoutKind() const
+{
+    return m_filePrefix ? m_prefixWords : m_query;
+}
+
 bool Launcher::typedInFolder() const
 {
-    return !m_typingPrefix.isEmpty() && m_scope != Content && !m_panel && !m_filePrefix
-        && m_query.startsWith(m_typingPrefix, Qt::CaseInsensitive);
+    // A kind of file named after the folder ("D:\work\ doc: 报告") is taken
+    // out of the box's text (updateQueryPrefix); what is left still starts
+    // with the folder, and its words are looked for there first, then
+    // elsewhere, as without it (GitHub #366).
+    return !m_typingPrefix.isEmpty() && m_scope != Content && !m_panel
+        && typedWithoutKind().startsWith(m_typingPrefix, Qt::CaseInsensitive);
 }
 
 QString Launcher::typingWords() const
 {
-    return typedInFolder() ? m_query.mid(m_typingPrefix.size()).trimmed() : QString();
+    return typedInFolder() ? typedWithoutKind().mid(m_typingPrefix.size()).trimmed() : QString();
 }
 
 QString Launcher::nameText() const

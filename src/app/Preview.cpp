@@ -8860,6 +8860,32 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     }
     launcher->setTypingScope(Launcher::TypingScope::Everywhere); // as the setting (FolderTyping=first)
     check(search(u"follow_"_s, 3), "query restored after the scope bar");
+    {
+        // A kind of file named with the words (GitHub #366): the folder first,
+        // then elsewhere, as without it; not "nothing found" for a folder
+        // that holds none, and only the kind named.
+        const QString childPrefix = folder + u"\\child\\ "_s;
+        launcher->setTypingFolder(childPrefix);
+        launcher->setTypingScope(Launcher::TypingScope::Everywhere);
+        bool kindElsewhere = false;
+        for (const QString& words : {u"documents: type-elsewhere"_s, u"type-elsewhere :documents"_s}) {
+            launcher->setQuery(childPrefix + words);
+            waiting.restart();
+            while ((launcher->searching() || launcher->results()->count() != 1) && waiting.elapsed() < 5000)
+                pump(20);
+            const QString found = launcher->results()->count() == 1 ? launcher->results()->pathAt(0) : QString();
+            kindElsewhere = !launcher->searching() && launcher->typingFolder() == u"child"_s
+                && QDir::toNativeSeparators(found).compare(folder + u"\\type-elsewhere.docx"_s, Qt::CaseInsensitive) == 0;
+            report.insert(u"kind_elsewhere"_s, QJsonObject {{u"words"_s, words}, {u"rows"_s, launcher->results()->count()},
+                {u"first"_s, found}, {u"typing_folder"_s, launcher->typingFolder()}});
+            if (!kindElsewhere)
+                break;
+        }
+        check(kindElsewhere, "a kind of file typed in a folder still lists what is found elsewhere");
+        launcher->setTypingFolder(prefix);
+        launcher->setTypingScope(Launcher::TypingScope::Everywhere);
+        check(search(u"follow_"_s, 3), "query restored after the kind of file");
+    }
     settle(window, 3);
     check(search(u"follow_1"_s, 1) && launcher->currentRow() == 0 && follows(),
         "a unique result is selected in the source view");
@@ -11439,6 +11465,11 @@ int runRuntime(const QStringList& args)
         files.mkdir(u"child"_s);
         QFile nested(files.filePath(u"child/nested-only.txt"_s));
         if (!nested.open(QIODevice::WriteOnly)) return 4;
+        // Found only outside child\, and only one of them a document (GitHub #366).
+        for (const QString& name : {u"type-elsewhere.docx"_s, u"type-elsewhere.png"_s}) {
+            QFile file(files.filePath(name));
+            if (!file.open(QIODevice::WriteOnly)) return 4;
+        }
     }
     // Not into a folder of the user's (--idle-open-index).
     QDir().mkpath(Settings::profile());

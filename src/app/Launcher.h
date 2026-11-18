@@ -1317,6 +1317,8 @@ private:
     // list is the names' (not 内容, which takes the folder as a path typed;
     // not the panel, which has a folder filter of its own).
     bool typedInFolder() const;
+    // The box's text less a kind of file named in it ("doc: 报告" -> "报告").
+    const QString& typedWithoutKind() const;
     // What the name search looks for: typed in a folder, the words after it
     // (none: the folder's own listing, as the path typed); else searchText().
     QString nameText() const;
