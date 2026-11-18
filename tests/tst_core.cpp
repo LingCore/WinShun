@@ -25,6 +25,7 @@
 #include "TapTeller.h"
 #include "FileIndex.h"
 #include "FileText.h"
+#include "FolderSize.h"
 #include "History.h"
 #include "HotkeySteps.h"
 #include "PasteKeys.h"
@@ -768,6 +769,22 @@ bool indexedIn(const IndexService& service, const QString& path)
     const std::shared_ptr<FileIndex> index = service.index();
     const auto lock = index->readLock();
     return index->findPath(QDir::toNativeSeparators(path).toStdWString()) != kNoEntry;
+}
+
+// A folder's size from the index, as the Everything interface gives it
+// (Total Commander's folder sizes, GitHub #364); none: not known.
+std::optional<std::uint64_t> folderSizeIn(const IndexService& service, const QString& path)
+{
+    const std::shared_ptr<FileIndex> index = service.index();
+    const auto lock = index->readLock();
+    return indexedFolderSize(*index, index->findPath(QDir::toNativeSeparators(path).toStdWString()));
+}
+
+// `bytes` bytes in the file at `path` (made, or emptied first).
+bool writeBytes(const QString& path, qsizetype bytes)
+{
+    QFile file(path);
+    return file.open(QIODevice::WriteOnly) && file.write(QByteArray(bytes, 'x')) == bytes;
 }
 
 // T\docs\a.txt, T\docs\sub\b.txt, T\pics\p.png, T\other\o.txt
@@ -3609,6 +3626,7 @@ private slots:
         const QString alias = made << t + u"\\docs\\远处"_s;
         QVERIFY(makeJunction(alias, away));
         const QString nearby = made << t + u"\\docs\\近处"_s;
+        QVERIFY(writeBytes(t + u"\\other\\o.txt"_s, 1234)); // a size to add up (folderSizeIn)
         QVERIFY(makeJunction(nearby, t + u"\\other"_s));
         // The other disk is not chosen (and not excluded: a whole drive excluded
         // is not to be reached through a link either).
@@ -3629,6 +3647,8 @@ private slots:
             QVERIFY(indexedIn(service, alias + u"\\later\\later.txt"_s));
             QVERIFY(indexedIn(service, t + u"\\other\\o.txt"_s));
             QTRY_VERIFY_WITH_TIMEOUT(indexedIn(service, nearby + u"\\o.txt"_s), 20'000);
+            // Its size too, as its target's: the link's own entry is the MFT's (GitHub #364).
+            QCOMPARE(folderSizeIn(service, nearby), std::optional<std::uint64_t>(1234));
             // Followed live under the link, and a link made since.
             QFile added(away + u"\\new.txt"_s);
             QVERIFY(added.open(QIODevice::WriteOnly));
@@ -3706,6 +3726,7 @@ private slots:
         const QString alias = made << t + u"\\docs\\远处"_s;
         QVERIFY(makeJunction(alias, away));
         const QString nearby = made << t + u"\\docs\\近处"_s;
+        QVERIFY(writeBytes(t + u"\\other\\o.txt"_s, 1234)); // a size to add up (folderSizeIn)
         QVERIFY(makeJunction(nearby, t + u"\\other"_s)); // on the disk indexed: walked under its own path too (#364)
 
         QTemporaryDir profile;
@@ -3724,6 +3745,7 @@ private slots:
         QVERIFY(indexedIn(service, alias + u"\\later\\later.txt"_s));
         QVERIFY(!indexedIn(service, away + u"\\away.txt"_s));
         QTRY_VERIFY_WITH_TIMEOUT(indexedIn(service, nearby + u"\\o.txt"_s), 20'000);
+        QCOMPARE(folderSizeIn(service, nearby), std::optional<std::uint64_t>(1234)); // as its target's (GitHub #364)
         // One made since, seen by the volume's watcher.
         const QString later = made << t + u"\\pics\\后来"_s;
         QVERIFY(makeJunction(later, away + u"\\later"_s));
@@ -3767,6 +3789,7 @@ private slots:
         const QString t = QDir::toNativeSeparators(tree.path());
         const QString root = t.left(2);
         const QString other = t + u"\\other"_s;
+        QVERIFY(writeBytes(other + u"\\o.txt"_s, 1234)); // a size to add up (folderSizeIn)
 
         // Each registered before it is made: a failure in between leaves none behind.
         const QString ok = made << t + u"\\links\\近处"_s;
@@ -3804,6 +3827,9 @@ private slots:
             // What the link's path finds is what is in its target, as at the target.
             QTRY_VERIFY_WITH_TIMEOUT(indexedIn(service, ok + u"\\o.txt"_s), 20'000);
             QVERIFY(indexedIn(service, other + u"\\o.txt"_s));
+            // And its size, as its target's (GitHub #364).
+            QCOMPARE(folderSizeIn(service, ok), std::optional<std::uint64_t>(1234));
+            QCOMPARE(folderSizeIn(service, other), std::optional<std::uint64_t>(1234));
             QVERIFY(!indexedIn(service, hidden + u"\\o.txt"_s));
             QVERIFY(!indexedIn(service, system + u"\\o.txt"_s));
             QVERIFY(!indexedIn(service, whole + t.mid(2) + u"\\other\\o.txt"_s)); // the disk a second time
