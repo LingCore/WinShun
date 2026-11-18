@@ -11,6 +11,7 @@ into a fresh --work directory:
   python tools/screenshots/release038.py --exe C:/WinShun/WinShun.exe --work build/release038-shots --capture-only
   # look at <work>/style/style-foldermenu*.png and <work>/file-types/quick-filters.png, then
   python tools/screenshots/release038.py --exe C:/WinShun/WinShun.exe --work build/release038-shots --export-only
+  # --only quick-filters (or foldermenu) limits both steps to one poster.
 
 Two posters are redone. The folder menu: since #384 each column's width follows
 its names, so the columns are tighter; the preview grabs the menu and its first
@@ -20,9 +21,9 @@ width of style-foldermenu.png; the menu was 720 before #384). The quick
 filters: since #392 each filter row has a 排序 choice box after its 搜索前缀
 box (the probe sets the first filter's to 大的在前). The picture is
 file-types/quick-filters.png, which the probe grabs while its two filters
-exist (file-types-bottom.png, which 0.25.0 used, is grabbed after it removed
-them, so it shows no row); the page is scrolled to where the card stood
-without the rows, so the second row is cut by the window's lower edge. Without a poster, seen
+exist, the page scrolled to its end so the whole card shows (file-types-bottom.png,
+which 0.25.0 used, is grabbed after the probe removed them: no row; capture it with
+a build whose probe scrolls first, d8be55bc or later). Without a poster, seen
 live only: text pins on the screen, settings found from the search box, partial
 copy in the clipboard preview, where the clipboard opens, the terminal choice,
 empty folder and file marks, and letters everywhere.
@@ -68,14 +69,15 @@ RUNS = (
 )
 
 
-def capture(exe: Path, work: Path) -> None:
+def capture(exe: Path, work: Path, only=None) -> None:
+    runs = tuple(run for run in RUNS if not only or run[0] in only)
     work.mkdir(parents=True)
     temporary = work / "temp"
     temporary.mkdir()
     environment = {**os.environ, "TEMP": str(temporary), "TMP": str(temporary), "QT_FONT_DPI": "96",
                    "PYTHONDONTWRITEBYTECODE": "1", "__COMPAT_LAYER": "RunAsInvoker"}
     try:
-        for folder, flag, extra in RUNS:
+        for folder, flag, extra in runs:
             print("Capturing", folder, flush=True)
             result = subprocess.run([str(exe), flag, str(work / folder), "--scale", "2", "--renderer", "d3d11", *extra],
                                     env=environment, timeout=600)
@@ -123,16 +125,22 @@ def main():
     modes = parser.add_mutually_exclusive_group(required=True)
     modes.add_argument("--capture-only", action="store_true")
     modes.add_argument("--export-only", action="store_true")
+    parser.add_argument("--only", action="append", choices=sorted(SOURCES),
+                        help="only this poster's capture and export (repeatable), e.g. quick-filters")
     args = parser.parse_args()
     work = args.work.resolve()
+    sources = {name: entry for name, entry in SOURCES.items() if not args.only or name in args.only}
+    posters = tuple(entry for entry in POSTERS if entry[0] in sources)
     if args.capture_only:
         if work.exists():
             parser.error("--work must be a fresh directory")
-        capture(args.exe.resolve(strict=True), work)
+        # A poster's raw pictures are the folder of its source under --work.
+        capture(args.exe.resolve(strict=True), work, {entry[1].split("/")[0] for entry in sources.values()})
         return
-    columns(work)
-    release017.SOURCES = SOURCES
-    shots.README_ONLY = tuple(entry for entry in shots.README_ONLY if entry[0] not in dict(SOURCES)) + POSTERS
+    if "foldermenu" in sources:
+        columns(work)
+    release017.SOURCES = sources
+    shots.README_ONLY = tuple(entry for entry in shots.README_ONLY if entry[0] not in sources) + posters
     sys.argv = [sys.argv[0], "--exe", str(args.exe), "--work", str(args.work), "--export-only"]
     release017.main()
 
