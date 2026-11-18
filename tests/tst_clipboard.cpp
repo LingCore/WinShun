@@ -391,6 +391,39 @@ private slots:
         }
     }
 
+    // GitHub #369: files copied that are all pictures are listed under 图片
+    // too, and still under 文件 (they paste as files); others only there.
+    void picturesCopiedAsFiles()
+    {
+        QTemporaryDir dir;
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart));
+        const auto files = [&store](const QString& paths, qint64 at) {
+            ClipCapture c;
+            c.kind = ClipKind::Files;
+            c.text = paths;
+            c.hash = clipHash(c.kind, c.text);
+            return store.add(c, at);
+        };
+        const qint64 one = files(u"C:\\图片\\截图 1.PNG"_s, kStart);
+        const qint64 two = files(u"C:\\a.jpg\nD:\\相册\\b.webp"_s, kStart + 1);
+        const qint64 mixed = files(u"C:\\a.jpg\nC:\\notes.txt"_s, kStart + 2);
+        const qint64 folder = files(u"C:\\相册.png\\照片"_s, kStart + 3); // the dot is the folder's
+        const qint64 hidden = files(u"C:\\x\\.png"_s, kStart + 4); // a name, not an extension
+        QVERIFY(one > 0 && two > 0 && mixed > 0 && folder > 0 && hidden > 0);
+        const auto ids = [&store](ClipFilter::Category category) {
+            QList<qint64> out;
+            for (const int row : store.find({category, 0, {}}))
+                out.append(store.clips()[static_cast<std::size_t>(row)].id);
+            return out;
+        };
+        using Category = ClipFilter::Category;
+        QCOMPARE(ids(Category::Images), (QList<qint64> {two, one}));
+        QCOMPARE(ids(Category::Files), (QList<qint64> {hidden, folder, mixed, two, one}));
+        QVERIFY(store.clip(one)->picturesOnly());
+        QVERIFY(!store.clip(mixed)->picturesOnly());
+    }
+
     void find()
     {
         QTemporaryDir dir;

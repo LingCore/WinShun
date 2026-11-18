@@ -173,6 +173,22 @@ QList<ClipFormat> unpackClipFormats(const QByteArray& packed)
     return formats;
 }
 
+bool Clip::picturesOnly() const
+{
+    // The search's own 图片 (Settings' built-in kinds of file), so the two
+    // agree on what a picture is.
+    static const QSet<QString> kPictures {u"jpg"_s, u"jpeg"_s, u"jfif"_s, u"png"_s, u"gif"_s, u"bmp"_s, u"webp"_s,
+        u"heic"_s, u"heif"_s, u"avif"_s, u"tif"_s, u"tiff"_s, u"ico"_s, u"svg"_s, u"psd"_s, u"ai"_s, u"raw"_s, u"cr2"_s,
+        u"cr3"_s, u"nef"_s, u"arw"_s, u"dng"_s, u"orf"_s, u"rw2"_s};
+    if (kind != ClipKind::Files)
+        return false;
+    const QStringList paths = files();
+    return !paths.isEmpty() && std::ranges::all_of(paths, [](const QString& path) {
+        const qsizetype dot = path.lastIndexOf(u'.');
+        return dot > path.lastIndexOf(u'\\') + 1 && kPictures.contains(path.sliced(dot + 1).toLower());
+    });
+}
+
 QStringList Clip::files() const
 {
     if (kind != ClipKind::Files && kind != ClipKind::Path)
@@ -1609,7 +1625,7 @@ std::vector<int> ClipStore::find(const ClipFilter& filter) const
             shown = c.kind == ClipKind::Link;
             break;
         case Category::Images:
-            shown = c.kind == ClipKind::Image;
+            shown = c.kind == ClipKind::Image || c.picturesOnly();
             break;
         case Category::Files:
             shown = c.kind == ClipKind::Files || c.kind == ClipKind::Path;

@@ -111,6 +111,10 @@ struct Clip {
     bool formats = false;
 
     QStringList files() const; // Files, Path: the paths
+    // Files, every one a picture by its extension (a .png copied in
+    // Explorer): listed under 图片 as well as 文件, pasted as the files
+    // they are (GitHub #369).
+    bool picturesOnly() const;
     bool truncated() const { return textLength > text.size(); }
     // What the search finds it by: its text; a picture's words read from it,
     // or the text an equation or an object came with (which the reading
