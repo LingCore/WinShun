@@ -256,15 +256,17 @@ bool equationClass(const QByteArray& descriptor)
 
 // Whether what is on the (open) clipboard is an equation or an embedded
 // object, which pastes back as one only from its own formats (GitHub #58).
-// Word offers MathML for an equation copied alone (not for text with one in
-// it, which its RTF pastes back as it was); a container offers "Embedded
-// Object" for an object it holds; an equation editor may offer "Embed Source"
-// of a class of its own. Not "Embed Source" by itself: Word, Excel and
-// PowerPoint offer it with whatever they copy, and reading it has them
-// write a whole document.
+// A container offers "Embedded Object" for an object it holds; an equation
+// editor may offer "Embed Source" of a class of its own. Not "Embed Source"
+// by itself: Word, Excel and PowerPoint offer it with whatever they copy,
+// and reading it has them write a whole document. Word's equation copied
+// alone (MathML) comes with its text and RTF, which paste it back as one
+// (docs/pitfalls.md): text, with a picture of how it looked (GitHub #367),
+// as WPS's; an object only from a program that gives no RTF with it.
 bool isObject(const Formats& f)
 {
-    if (::IsClipboardFormatAvailable(f.mathMl) && ::IsClipboardFormatAvailable(CF_ENHMETAFILE))
+    if (::IsClipboardFormatAvailable(f.mathMl) && ::IsClipboardFormatAvailable(CF_ENHMETAFILE)
+        && !(::IsClipboardFormatAvailable(CF_UNICODETEXT) && ::IsClipboardFormatAvailable(f.rtf)))
         return true;
     if (!::IsClipboardFormatAvailable(f.objectDescriptor))
         return false;
@@ -301,11 +303,13 @@ QString objectFormatName(UINT format)
 // The name a word processor's own copy of copied text is kept under; empty
 // for the rest. WPS's RTF and HTML hold a formula only as a picture, its
 // document package the formula itself, which pastes back into WPS as one
-// (GitHub #367); its descriptor goes with it. The text, RTF and HTML are
+// (GitHub #367); its descriptor goes with it. Word's equation: its MathML,
+// for programs that read an equation from that. The text, RTF and HTML are
 // kept as ever, for everything else.
 QString documentFormatName(UINT format)
 {
-    static const QStringList kept {u"Kingsoft Data Descriptor"_s, u"Kingsoft WPS 9.0 Format"_s};
+    static const QStringList kept {u"Kingsoft Data Descriptor"_s, u"Kingsoft WPS 9.0 Format"_s, u"MathML"_s,
+        u"MathML Presentation"_s};
     QString name = registeredName(format);
     return kept.contains(name) ? name : QString();
 }
@@ -794,7 +798,7 @@ void ClipboardWatcher::read()
                     capture.html = withoutTrailingNuls(readBytes(f.html, kMaxFormatBytes));
                 if (::IsClipboardFormatAvailable(f.rtf))
                     capture.rtf = withoutTrailingNuls(readBytes(f.rtf, kMaxFormatBytes));
-                if (::IsClipboardFormatAvailable(f.wpsDocument))
+                if (::IsClipboardFormatAvailable(f.wpsDocument) || ::IsClipboardFormatAvailable(f.mathMl))
                     capture.formats = packClipFormats(readKeptFormats(documentFormatName));
             }
         }
