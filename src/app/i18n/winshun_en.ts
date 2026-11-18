@@ -11522,6 +11522,22 @@ Content index: %5</translation>
         <translation>Empty file</translation>
     </message>
     <message>
+        <source>第 %1 页</source>
+        <translation>Page %1</translation>
+    </message>
+    <message>
+        <source>第 %1 张幻灯片</source>
+        <translation>Slide %1</translation>
+    </message>
+    <message>
+        <source>工作表</source>
+        <translation>Sheet</translation>
+    </message>
+    <message>
+        <source>只显示文字</source>
+        <translation>Text only</translation>
+    </message>
+    <message>
         <source>前 %1 行</source>
         <translation>First %1 lines</translation>
     </message>

@@ -1,6 +1,7 @@
 #include "FilePreview.h"
 
 #include "DocExtractor.h"
+#include "Documents.h"
 #include "SyntaxSpans.h"
 #include "SystemTheme.h"
 
@@ -85,6 +86,65 @@ bool isPicture(const QString& suffix)
 bool isDrawn(const QString& suffix)
 {
     return suffix == u"ai" || suffix == u"psd" || suffix == u"psb";
+}
+
+// The document reader for the preview (one process at a time, started
+// when first asked): drawings (isDrawn) and documents' text. As m_lanes:
+// never deleted.
+DocExtractor& previewReader()
+{
+    static auto* const reader = new DocExtractor(1, DocExtractor::Priority::Normal);
+    return *reader;
+}
+
+constexpr std::int64_t kDocumentBytes = 64ll << 20; // a larger document is not read for its text
+
+// A document's text as the preview shows it, when nothing on this PC shows
+// the document itself (no Office, only WPS): its lines, a heading where a
+// page, a slide or a sheet begins, and the number beside each line (a
+// sheet's own row, else the count of the text's lines; 0 for a heading).
+struct DocumentLines {
+    QString text;
+    QVector<int> numbers;
+};
+
+DocumentLines documentLines(const doctext::DocText& doc, qsizetype maxChars)
+{
+    using doctext::PlaceKind;
+    DocumentLines out;
+    const auto heading = [&](const QString& title) {
+        out.text += u"—— "_s + title + u" ——\n"_s;
+        out.numbers.append(0);
+    };
+    std::string_view rest = doc.text;
+    std::size_t next = 0; // the next place
+    const doctext::Place* at = nullptr; // the place of this line
+    std::uint32_t line = 1;
+    int count = 0; // lines of text so far
+    while (!rest.empty() && out.text.size() < maxChars) {
+        const std::size_t end = rest.find('\n');
+        const std::string_view text = rest.substr(0, end);
+        rest.remove_prefix(end == std::string_view::npos ? rest.size() : end + 1);
+        for (; next < doc.places.size() && doc.places[next].line <= line; ++next) {
+            const doctext::Place& p = doc.places[next];
+            const bool same = at && at->kind == p.kind
+                && (p.kind == PlaceKind::Row ? at->sheet == p.sheet : at->number == p.number);
+            if (!same && p.kind == PlaceKind::Page)
+                heading(QCoreApplication::translate("ws::FilePreview", "第 %1 页").arg(p.number));
+            else if (!same && p.kind == PlaceKind::Slide)
+                heading(QCoreApplication::translate("ws::FilePreview", "第 %1 张幻灯片").arg(p.number));
+            else if (!same && p.kind == PlaceKind::Row)
+                heading(p.sheet < doc.sheets.size() ? QString::fromStdString(doc.sheets[p.sheet])
+                                                    : QCoreApplication::translate("ws::FilePreview", "工作表"));
+            at = &p;
+        }
+        ++count;
+        out.text += QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
+        out.text += u'\n';
+        out.numbers.append(at && at->kind == PlaceKind::Row ? static_cast<int>(at->number + (line - at->line)) : count);
+        ++line;
+    }
+    return out;
 }
 
 // Videos Media Foundation opens with what Windows has (MP4, MOV, MKV, AVI,
@@ -764,8 +824,7 @@ void FilePreview::load(const Item& item, bool followed)
                 // One that cannot be drawn (an old .ai without a PDF part, a
                 // 32-bit .psd) goes on to whatever handler it has.
                 step("drawing it (the document reader)");
-                static auto* const drawer = new DocExtractor(1, DocExtractor::Priority::Normal); // as m_lanes: never deleted
-                DocExtractor::Rendered drawn = drawer->renderFile(native, static_cast<std::uint32_t>(kLargestPicture), stale);
+                DocExtractor::Rendered drawn = previewReader().renderFile(native, static_cast<std::uint32_t>(kLargestPicture), stale);
                 if (drawn.status == extractproto::Status::Ok) {
                     // The picture keeps the bytes it came in (64 MB at the most: no second copy).
                     auto* pixels = new std::string(std::move(drawn.bgra));
@@ -819,6 +878,27 @@ void FilePreview::load(const Item& item, bool followed)
                     loaded->kind = Handler;
                     loaded->handler = *handler;
                     done = true;
+                }
+            }
+            // A document nothing here shows (no Office, only WPS; its handler
+            // failed; or it came from the internet): its text, read in the
+            // document reader's locked-down process.
+            if (!done && !isDir && !cloudOnly && !stale() && isDocumentPath(native)) {
+                step("reading its text (the document reader)");
+                const DocExtractor::Result read = previewReader().extractFile(native, kDocumentBytes, stale);
+                if (read.status == extractproto::Status::Ok) {
+                    const DocumentLines lines = documentLines(read.text, static_cast<qsizetype>(kTextBytes / 2));
+                    if (!lines.text.trimmed().isEmpty() && !stale()) {
+                        step("its lines and their colours");
+                        loaded->kind = Text;
+                        split(lines.text, *loaded);
+                        for (int& number : loaded->numbers) {
+                            if (number > 0)
+                                number = lines.numbers.value(number - 1);
+                        }
+                        summary.insert(1, QCoreApplication::translate("ws::FilePreview", "只显示文字"));
+                        done = true;
+                    }
                 }
             }
             if (!done) {
