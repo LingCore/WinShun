@@ -69,6 +69,16 @@ bool userIsAdministrator();
 // something: an administrator's account, Win顺 running with normal rights.
 inline constexpr QStringView kRestartElevatedCommand = u"winshun:restart-as-administrator";
 
+// Win顺's own places (SystemCatalog::setOwnPlaces, GitHub #389, #390): its
+// settings ("winshun/settings") and each plugin's ("winshun/settings/plugin/
+// <id>"), named in Win顺's language. Found, remembered and kept among the
+// favorites as any place is; their commands are carried out by Win顺, never
+// the shell, and they are no page of Windows.
+inline constexpr QStringView kSettingsCommand = u"winshun:settings";
+inline constexpr QStringView kPluginSettingsCommand = u"winshun:settings/plugin/"; // + the plugin's id
+bool isOwnPlace(const PlaceInfo& place) noexcept;
+bool isOwnCommand(QStringView command) noexcept; // kSettingsCommand, or a plugin's
+
 // "winshun-place:<key>": stands for a place in History.
 QString placePath(const QString& key);
 bool isPlacePath(QStringView path) noexcept;
@@ -153,10 +163,14 @@ public:
     explicit SystemCatalog(QObject* parent = nullptr);
     ~SystemCatalog() override;
 
-    // Empty until the first load finishes. Thread-safe.
+    // Empty until the first load finishes; then what was read and Win顺's
+    // own places (setOwnPlaces). Thread-safe.
     std::shared_ptr<const PlaceList> places() const;
     // Puts this list in as if it had been read (tests). Thread-safe.
     void setPlaces(std::shared_ptr<const PlaceList> places);
+    // Win顺's own places (isOwnPlace), in places() along with what is read;
+    // each prepared here. changed() follows. Call from the owner thread.
+    void setOwnPlaces(PlaceList own);
 
     // Reads the list again in the background if the index files or the
     // display language changed since the last read (a check of well under a
@@ -173,9 +187,12 @@ private:
     };
 
     void publish(const Outcome& outcome);
+    void merge(); // m_places from m_read and m_own; m_mutex held
 
     mutable std::mutex m_mutex;
-    std::shared_ptr<const PlaceList> m_places; // guarded by m_mutex
+    std::shared_ptr<const PlaceList> m_read; // guarded by m_mutex; null: not read
+    PlaceList m_own; // guarded by m_mutex
+    std::shared_ptr<const PlaceList> m_places; // guarded by m_mutex: both, null while there are neither
 
     // Owner thread only.
     quint64 m_fingerprint = 0;

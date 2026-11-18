@@ -801,7 +801,42 @@ std::shared_ptr<const PlaceList> SystemCatalog::places() const
 void SystemCatalog::setPlaces(std::shared_ptr<const PlaceList> places)
 {
     std::lock_guard lock(m_mutex);
-    m_places = std::move(places);
+    m_read = std::move(places);
+    merge();
+}
+
+void SystemCatalog::setOwnPlaces(PlaceList own)
+{
+    for (PlaceInfo& place : own)
+        place.prepare();
+    {
+        std::lock_guard lock(m_mutex);
+        m_own = std::move(own);
+        merge();
+    }
+    emit changed();
+}
+
+void SystemCatalog::merge()
+{
+    if (m_own.empty()) {
+        m_places = m_read;
+        return;
+    }
+    // Win顺's own also while Windows' are still being read (just started).
+    auto both = m_read ? std::make_shared<PlaceList>(*m_read) : std::make_shared<PlaceList>();
+    both->insert(both->end(), m_own.begin(), m_own.end());
+    m_places = std::move(both);
+}
+
+bool isOwnPlace(const PlaceInfo& place) noexcept
+{
+    return place.key == u"winshun/settings" || place.key.startsWith(u"winshun/settings/");
+}
+
+bool isOwnCommand(QStringView command) noexcept
+{
+    return command == kSettingsCommand || command.startsWith(kPluginSettingsCommand);
 }
 
 void SystemCatalog::refresh(bool force)
@@ -813,7 +848,7 @@ void SystemCatalog::refresh(bool force)
     m_busy = true;
     {
         std::lock_guard lock(m_mutex);
-        force = force || !m_places;
+        force = force || !m_read;
     }
     if (m_worker.joinable())
         m_worker.join(); // the previous read; it has posted its outcome, so it is done
@@ -838,7 +873,8 @@ void SystemCatalog::publish(const Outcome& outcome)
         m_fingerprint = outcome.fingerprint;
         {
             std::lock_guard lock(m_mutex);
-            m_places = outcome.places;
+            m_read = outcome.places;
+            merge();
         }
         emit changed();
     }

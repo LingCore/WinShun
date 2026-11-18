@@ -185,6 +185,7 @@ signals:
     void keyPressed(int key, const QString& text); // taken on its way to File Explorer
     void searchRequested(const QString& folder); // 在此搜索
     void settingsRequested();
+    void pluginSettingsRequested(const QString& pluginId); // a favorite that is a plugin's settings (GitHub #390)
     void notice(const QString& text);
     void openChanged(bool open);
 

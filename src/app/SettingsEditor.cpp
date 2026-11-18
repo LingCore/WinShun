@@ -4191,6 +4191,8 @@ QVariantList SettingsEditor::findWindowsSettings(const QString& query, int max) 
         if (found.size() >= max)
             break;
         const PlaceInfo& place = (*places)[hit.index];
+        if (isOwnPlace(place)) // these very settings
+            continue;
         // As the launcher shows them (ResultModel): the logo of Settings, or the place's own icon.
         const QString icon = place.icon.startsWith(u"app:") ? FileIconProvider::appIconUrl(place.icon.mid(4), true, dark)
                                                             : FileIconProvider::placeIconUrl(place.icon);

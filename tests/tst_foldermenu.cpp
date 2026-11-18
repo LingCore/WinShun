@@ -5,6 +5,7 @@
 #include "FileIconProvider.h"
 #include "Phosphor.h"
 #include "PhosphorGlyph.h"
+#include "SystemCatalog.h"
 #include "SystemTheme.h"
 #include "platform/WindowEffects.h"
 
@@ -459,6 +460,69 @@ private slots:
         menu.trigger(removedIndex);
         QCOMPARE(notice.size(), 1);
         QVERIFY(notice.first().first().toString().contains(u"已移除"));
+    }
+
+    // Win顺's settings and a plugin's kept among the favorites (GitHub #389,
+    // #390) open in Win顺, never through the shell.
+    void ownPlaceFavorites()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const HWND previous = ::GetForegroundWindow();
+        auto restore = qScopeGuard([previous] {
+            if (previous && ::IsWindow(previous))
+                ::SetForegroundWindow(previous);
+        });
+        QWindow source;
+        source.setTitle(u"WinShun folder menu test"_s);
+        source.resize(320, 160);
+        source.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&source));
+        win::bringToFront(&source);
+        QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), reinterpret_cast<HWND>(source.winId()), 3000);
+
+        SystemCatalog places;
+        PlaceList own;
+        PlaceInfo settings;
+        settings.name = u"Win顺 设置"_s;
+        settings.key = u"winshun/settings"_s;
+        settings.command = kSettingsCommand.toString();
+        settings.kind = AppKind::Tool;
+        own.push_back(settings);
+        PlaceInfo capture;
+        capture.name = u"截图录屏 设置"_s;
+        capture.key = u"winshun/settings/plugin/winshun.capture"_s;
+        capture.command = kPluginSettingsCommand.toString() + u"winshun.capture"_s;
+        capture.kind = AppKind::Tool;
+        own.push_back(capture);
+        places.setOwnPlaces(std::move(own));
+
+        Favorites favorites(temporary.filePath(u"favorites.json"_s));
+        QVERIFY(favorites.add({Favorite::Kind::Place, settings.path(), u"我的设置"_s, u"sz"_s}));
+        QVERIFY(favorites.add({Favorite::Kind::Place, capture.path(), u"截图设置"_s, u"jt"_s}));
+        QWindow menuWindow;
+        FolderMenu menu(nullptr, &favorites);
+        menu.setCatalogs(nullptr, &places);
+        menu.setWindow(&menuWindow);
+        menu.setRecordHistory(false);
+        menu.setGroups(true, false, false);
+        QSignalSpy changed(&menu, &FolderMenu::entriesChanged);
+        QSignalSpy opened(&menu, &FolderMenu::settingsRequested);
+        QSignalSpy plugin(&menu, &FolderMenu::pluginSettingsRequested);
+        QSignalSpy notice(&menu, &FolderMenu::notice);
+        const auto open = [&] {
+            changed.clear();
+            menu.hotkeyPressed();
+            return changed.wait(5000);
+        };
+        QVERIFY(open());
+        menu.trigger(entry(menu, u"截图设置"_s));
+        QCOMPARE(plugin.size(), 1);
+        QCOMPARE(plugin.first().first().toString(), u"winshun.capture"_s);
+        QVERIFY(open());
+        menu.trigger(entry(menu, u"我的设置"_s));
+        QCOMPARE(opened.size(), 1);
+        QCOMPARE(notice.size(), 0);
     }
 
     // Copy path (GitHub #137): on the desktop the folder is the Desktop

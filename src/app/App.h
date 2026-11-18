@@ -578,6 +578,7 @@ private:
     void moveCapture();
     void installMovedPlugins(); // the ones that came with 0.16.0, from the library (GitHub #138)
     void setPluginRecoveryState(const QString& message, bool busy = false);
+    void applyOwnPlaces(); // Win顺's settings and each plugin's as places (GitHub #389, #390)
     void pluginsChanged(); // the catalog's entries: the icon provider's folders
     // ws plugin (PluginCommands): what it has the app do. The switch of a
     // plugin that needs no answer from the user; the 插件 page in front of

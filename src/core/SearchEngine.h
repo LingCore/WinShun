@@ -192,9 +192,9 @@ public:
         int limit = 100;
         QStringList history; // newest first
         History::Affinities historyAffinity; // entity and query weights, copied on the GUI thread
-        // The GUI's internal settings action, also available with app/place
-        // searching disabled. Empty for callers that cannot execute it.
-        QString settingsName;
+        // Win顺's own places (its settings, a plugin's; isOwnPlace), also
+        // with places not searched: only for a caller that carries them out.
+        bool ownPlaces = false;
         // Optional desktop integration. Called on the name worker, only for
         // a plain 全部 query; the caller owns no mutable UI state here.
         std::function<SearchResults()> openWindows;

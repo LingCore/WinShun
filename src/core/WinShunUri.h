@@ -11,6 +11,7 @@
 //   winshun://search             just the search box
 //   winshun://settings           the settings window
 //   winshun://settings/<page>    ... at that page (one of the ids of AiSettings' sections)
+//   winshun://settings/plugin/<id>  ... at that plugin's card (its id, as "winshun.capture"; GitHub #390)
 //
 // The scheme and the words search and settings are read in any case; the text
 // is percent-decoded as UTF-8 (raw Unicode is read as it is). Anything else
@@ -34,6 +35,9 @@ struct Request {
     // and underscores, "-" read as "_"), "" for none; whether it is a page
     // is for the caller to say.
     QString page;
+    // Settings: the plugin whose card to show, as an id a plugin may have
+    // (lower case letters, digits, ".", "_" and "-"), "" for none.
+    QString plugin;
     friend bool operator==(const Request&, const Request&) = default;
 };
 

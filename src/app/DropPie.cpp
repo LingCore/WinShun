@@ -804,7 +804,7 @@ void DropPie::gatherFolders()
             const auto place = std::ranges::find_if(*places, [&](const PlaceInfo& p) {
                 return p.path().compare(f.path, Qt::CaseInsensitive) == 0;
             });
-            if (place != places->end())
+            if (place != places->end() && !isOwnPlace(*place)) // Win顺's settings are no place to drop on
                 candidates.push_back({place->command, f.name.isEmpty() ? place->name : f.name, true});
         }
     }

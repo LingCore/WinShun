@@ -101,9 +101,8 @@ Request search(QString text)
     return {Kind::Search, text, {}};
 }
 
-// "Clipboard", "files-and-dialogs" and "files_and_dialogs/" all name a page;
-// anything with other characters in it names none.
-QString pageId(QStringView text)
+// The rest of a path up to a form or an anchor, decoded, in lower case, without slashes at its end.
+QString lastPart(QStringView text)
 {
     const qsizetype stop = text.indexOf(u'?');
     if (stop >= 0)
@@ -111,9 +110,17 @@ QString pageId(QStringView text)
     const qsizetype hash = text.indexOf(u'#');
     if (hash >= 0)
         text = text.left(hash);
-    QString page = decode(text, false).trimmed().toLower();
-    while (page.endsWith(u'/'))
-        page.chop(1);
+    QString part = decode(text, false).trimmed().toLower();
+    while (part.endsWith(u'/'))
+        part.chop(1);
+    return part;
+}
+
+// "Clipboard", "files-and-dialogs" and "files_and_dialogs/" all name a page;
+// anything with other characters in it names none.
+QString pageId(QStringView text)
+{
+    QString page = lastPart(text);
     page.replace(u'-', u'_');
     if (page.isEmpty() || page.size() > kMaxPageChars)
         return {};
@@ -123,6 +130,20 @@ QString pageId(QStringView text)
             return {};
     }
     return page;
+}
+
+// "winshun.capture" and "WinShun.Capture/" name a plugin (as plugin::validPluginId reads ids); "a/b" none.
+QString pluginId(QStringView text)
+{
+    const QString id = lastPart(text);
+    if (id.isEmpty() || id.size() > kMaxPageChars || id.startsWith(u'.') || id.endsWith(u'.'))
+        return {};
+    for (const QChar c : id) {
+        const char16_t u = c.unicode();
+        if (!((u >= u'a' && u <= u'z') || (u >= u'0' && u <= u'9') || u == u'.' || u == u'_' || u == u'-'))
+            return {};
+    }
+    return id;
 }
 
 } // namespace
@@ -158,8 +179,14 @@ Request parse(const QString& link)
     if (word.compare(u"settings", Qt::CaseInsensitive) == 0) {
         Request request;
         request.kind = Kind::Settings;
-        if (tail.startsWith(u'/'))
-            request.page = pageId(tail.mid(1));
+        if (!tail.startsWith(u'/'))
+            return request;
+        const QStringView path = tail.mid(1);
+        constexpr QStringView plugin = u"plugin/";
+        if (path.startsWith(plugin, Qt::CaseInsensitive))
+            request.plugin = pluginId(path.mid(plugin.size()));
+        else
+            request.page = pageId(path);
         return request;
     }
     return {};

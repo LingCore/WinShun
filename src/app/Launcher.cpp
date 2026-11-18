@@ -2640,7 +2640,7 @@ void Launcher::search(bool more)
         };
     }
     request.places = m_searchPlaces;
-    request.settingsName = tr("Win顺 设置");
+    request.ownPlaces = true; // carried out here (performPlace)
     request.regex = regexTerms();
     if (m_favorites)
         request.favorites = m_favorites->items();
@@ -4030,7 +4030,7 @@ void Launcher::refreshKeyHints()
     } else if (r->isWeb()) {
         enter = r->words.isEmpty() ? tr("打开网站") : tr("搜索");
     } else if (r->isPlace()) {
-        enter = tr("打开");
+        enter = ws::isOwnCommand(r->target) ? tr("打开设置") : tr("打开");
         if (!r->switchId.isEmpty())
             switchKeyHints(*r, enter, secondKeys, second);
         if (steppable(*r)) {
@@ -5262,11 +5262,6 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         }
         return;
     }
-    if (r.isSettings()) {
-        if (action == Open || action == Alternate || action == Reveal || action == RunAsAdmin)
-            openSettings();
-        return;
-    }
     if (action == EditWebShortcuts) {
         emit webSettingsRequested();
         return;
@@ -5533,6 +5528,9 @@ void Launcher::performPlace(const SearchResult& place, Action action)
 {
     if (!place.switchId.isEmpty() && performSwitch(place, action))
         return;
+    const bool own = ws::isOwnCommand(place.target); // Win顺's settings, or a plugin's (GitHub #389, #390)
+    if (own && (action == Alternate || action == Reveal))
+        action = Open; // where else would it go
     switch (action) {
     case Open:
     case RunAsAdmin:
@@ -5541,7 +5539,15 @@ void Launcher::performPlace(const SearchResult& place, Action action)
             emit elevatedRestartRequested();
             return;
         }
-        remember(place.path, m_shownText);
+        remember(place.path, m_shownText); // the next time the same words put it first
+        if (own) {
+            if (place.target == ws::kSettingsCommand)
+                openSettings();
+            else
+                emit pluginSettingsRequested(place.target.mid(ws::kPluginSettingsCommand.size()));
+            emit dismissRequested();
+            return;
+        }
         if (place.isCommand())
             shell::runCustom(place.target, place.workingDirectory, place.words, reportFailure(place.name),
                 {place.silent, place.runAsAdmin || action == RunAsAdmin});
@@ -5554,6 +5560,11 @@ void Launcher::performPlace(const SearchResult& place, Action action)
         break;
     case CopyItem:
     case CopyPath:
+        if (own) { // as a winshun:// link opens it (WinShunUri)
+            shell::copyText(u"winshun://"_s + place.target.mid(place.target.indexOf(u':') + 1));
+            flash(tr("已复制链接"));
+            break;
+        }
         shell::copyText(place.target);
         flash(tr("已复制打开它的命令"));
         break;
@@ -6263,8 +6274,6 @@ QVariantList Launcher::menuItems(int row) const
             {u"glyph"_s, glyph},
         };
     };
-    if (r->isSettings())
-        return {entry(Open, tr("打开设置"), u"Enter"_s, u"\uE713"_s)};
     const QVariantMap separator {{u"separator"_s, true}};
     // The plugins' `files` commands (用局域网发送… and the like) for the row's
     // file or folder, or the whole selection: a group of their own.
@@ -6435,6 +6444,19 @@ QVariantList Launcher::menuItems(int row) const
         }
         items.append(separator);
         items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
+        if (r->recent) {
+            items.append(separator);
+            items.append(entry(ForgetRecent, tr("从最近使用中移除"), QString(), u"\uE711"_s));
+        }
+        return items;
+    }
+    if (r->isPlace() && ws::isOwnCommand(r->target)) { // Win顺's settings, a plugin's: kept like any place (GitHub #389)
+        items.append(entry(Open, tr("打开设置"), u"Enter"_s, u"\uE713"_s)); // Settings
+        items.append(separator);
+        // winshun://settings/plugin/<id>: for a desktop shortcut or a script (GitHub #390)
+        items.append(entry(CopyPath, tr("复制链接"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
+        items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
+        favoriteItems();
         if (r->recent) {
             items.append(separator);
             items.append(entry(ForgetRecent, tr("从最近使用中移除"), QString(), u"\uE711"_s));

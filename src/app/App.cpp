@@ -1766,6 +1766,7 @@ void App::applyAppearance()
 
     if (m_pluginHost)
         m_pluginHost->setAppearance(language, isDarkMode() ? u"dark"_s : u"light"_s, pluginLook());
+    applyOwnPlaces(); // their names
 
     if (!m_qml)
         return; // starting up: nothing shown yet
@@ -4549,8 +4550,11 @@ void App::openLink(const QString& link)
         showLauncher(request.text);
         break;
     case winshunuri::Kind::Settings:
-        // A page by the id open_settings knows (AiSettings' sections); another, or none: the window as it is.
-        if (!request.page.isEmpty() && aisettings::sectionOf(request.page))
+        // A plugin's card (GitHub #390); a page by the id open_settings knows (AiSettings' sections);
+        // another, or none: the window as it is.
+        if (!request.plugin.isEmpty())
+            showPluginSettings(request.plugin);
+        else if (!request.page.isEmpty() && aisettings::sectionOf(request.page))
             openAiSettings({}, request.page);
         else
             showSettings();
@@ -4698,6 +4702,7 @@ void App::applyFolderMenu()
             showLauncher(folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s);
         });
         connect(menu.get(), &FolderMenu::settingsRequested, this, [this] { showSettings(); });
+        connect(menu.get(), &FolderMenu::pluginSettingsRequested, this, &App::showPluginSettings);
         connect(menu.get(), &FolderMenu::notice, this, [this](const QString& text) {
             m_messages->showNotification(tr("文件夹菜单"), text);
         });
@@ -8571,8 +8576,50 @@ void App::applySwitches()
         m_messages->setTrayTooltip(trayTooltip());
 }
 
+// Win顺's own places (SystemCatalog::setOwnPlaces, GitHub #389, #390): its
+// settings, and each plugin's, found in the search box, remembered and kept
+// among the favorites (with a keyword: a word of one's own for them) as any
+// place is; in Win顺's language, so again when that changes or plugins come
+// and go.
+void App::applyOwnPlaces()
+{
+    if (!m_places)
+        return;
+    const QString logo = QCoreApplication::applicationFilePath();
+    PlaceList own;
+    PlaceInfo settings;
+    settings.name = tr("Win顺 设置");
+    settings.key = u"winshun/settings"_s;
+    settings.command = kSettingsCommand.toString();
+    settings.kind = AppKind::Tool;
+    settings.icon = logo;
+    settings.ownKeywords = {u"设置"_s, u"配置"_s, u"WinShun"_s, u"WinShun settings"_s, u"WinShun config"_s, u"settings"_s,
+        u"preferences"_s, u"config"_s};
+    own.push_back(std::move(settings));
+    static const std::vector<plugin::Entry> kNone;
+    for (const plugin::Entry& e : m_pluginHost ? m_pluginHost->catalog().entries() : kNone) {
+        if (!e.usable())
+            continue;
+        const QString name = e.manifest->name.pick(m_language);
+        PlaceInfo place;
+        place.name = tr("%1 设置").arg(name.isEmpty() ? e.id : name);
+        place.key = u"winshun/settings/plugin/"_s + e.id;
+        place.command = kPluginSettingsCommand.toString() + e.id;
+        place.kind = AppKind::Tool;
+        place.icon = logo;
+        // Found only with a word for settings (SearchEngine), so those may be keywords.
+        place.ownKeywords = {e.id, e.id.section(u'.', -1), e.manifest->name.zh, e.manifest->name.en, u"设置"_s, u"配置"_s,
+            u"settings"_s, u"config"_s};
+        place.ownKeywords.removeAll(QString());
+        place.ownKeywords.removeDuplicates();
+        own.push_back(std::move(place));
+    }
+    m_places->setOwnPlaces(std::move(own));
+}
+
 void App::pluginsChanged()
 {
+    applyOwnPlaces();
     applySwitches();
     applyWebSearch();
     QHash<QString, QString> folders;

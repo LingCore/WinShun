@@ -11556,38 +11556,92 @@ private slots:
         QVERIFY(history.affinities(u"xz"_s, now).isEmpty());
     }
 
+    // Win顺's settings and a plugin's as its own places (GitHub #389, #390),
+    // as App::applyOwnPlaces makes them.
     void launcherSettingsSearch()
     {
         QTemporaryDir dir;
         IndexService service(dir.filePath(u"index"_s), IndexService::Options{});
         AppCatalog apps;
         apps.setApps(std::make_shared<const AppList>());
-        SystemCatalog places;
-        places.setPlaces(std::make_shared<const PlaceList>());
+        SystemCatalog places; // Windows' not read yet: Win顺's own are there all the same
+        PlaceList own;
+        PlaceInfo settings;
+        settings.name = u"Win顺 设置"_s;
+        settings.key = u"winshun/settings"_s;
+        settings.command = ws::kSettingsCommand.toString();
+        settings.kind = AppKind::Tool;
+        settings.ownKeywords = {u"设置"_s, u"配置"_s, u"WinShun"_s, u"WinShun settings"_s, u"WinShun config"_s, u"settings"_s,
+            u"preferences"_s, u"config"_s};
+        own.push_back(settings);
+        for (const auto& [id, zh, en] : {std::tuple {u"winshun.capture"_s, u"截图录屏"_s, u"Capture"_s},
+                 std::tuple {u"winshun.translate"_s, u"翻译"_s, u"Translate"_s}}) {
+            PlaceInfo place;
+            place.name = zh + u" 设置"_s;
+            place.key = u"winshun/settings/plugin/"_s + id;
+            place.command = ws::kPluginSettingsCommand.toString() + id;
+            place.kind = AppKind::Tool;
+            place.ownKeywords = {id, id.section(u'.', -1), zh, en, u"设置"_s, u"配置"_s, u"settings"_s, u"config"_s};
+            own.push_back(std::move(place));
+        }
+        places.setOwnPlaces(std::move(own));
+        QVERIFY(ws::isOwnPlace(places.places()->front()));
+        QVERIFY(ws::isOwnCommand(u"winshun:settings/plugin/winshun.capture"));
+        QVERIFY(!ws::isOwnCommand(u"ms-settings:display"));
         SearchEngine engine(&service, &apps, &places);
         QSignalSpy spy(&engine, &SearchEngine::resultsReady);
-        for (const QString& text : {u"设置"_s, u"配置"_s, u"WinShun"_s, u"winshun settings"_s, u"settings"_s, u"sz"_s}) {
+        const auto search = [&](const QString& text, bool own = true, Scope scope = Scope::All) {
             SearchEngine::Request request;
             request.text = text;
-            request.settingsName = u"Win顺 设置"_s;
-            request.apps = false;
-            request.places = false;
-            spy.clear();
-            engine.submit(std::move(request));
-            QTRY_VERIFY_WITH_TIMEOUT(!spy.isEmpty(), 5000);
-            const auto rows = spy.first().at(1).value<SearchResults>();
-            QVERIFY2(!rows.isEmpty() && rows.first().isSettings(), qPrintable(text));
-        }
-        for (const auto scope : {Scope::Files, Scope::Folders, Scope::Content}) {
-            SearchEngine::Request request;
-            request.text = u"settings"_s;
-            request.settingsName = u"Win顺 设置"_s;
+            request.ownPlaces = own;
             request.scope = scope;
+            request.apps = false;
+            request.places = false; // Windows' places: Win顺's own are not among them
             spy.clear();
             engine.submit(std::move(request));
-            QTRY_VERIFY_WITH_TIMEOUT(!spy.isEmpty(), 5000);
-            QVERIFY(spy.first().at(1).value<SearchResults>().isEmpty());
+            [&] { QTRY_VERIFY_WITH_TIMEOUT(!spy.isEmpty(), 5000); }();
+            return spy.isEmpty() ? SearchResults() : spy.first().at(1).value<SearchResults>();
+        };
+        const auto plugins = [](const SearchResults& rows) {
+            QStringList out;
+            for (const SearchResult& r : rows) {
+                if (r.isPluginSettings())
+                    out.append(r.target);
+            }
+            return out;
+        };
+        // 设置 alone is Win顺's, never every plugin's.
+        for (const QString& text : {u"设置"_s, u"配置"_s, u"WinShun"_s, u"winshun settings"_s, u"settings"_s, u"sz"_s}) {
+            const SearchResults rows = search(text);
+            QVERIFY2(!rows.isEmpty() && rows.first().isSettings(), qPrintable(text));
+            QVERIFY2(plugins(rows).isEmpty(), qPrintable(text));
         }
+        // A plugin's name and a word for settings, joined or not, in either language.
+        const QString capture = u"winshun:settings/plugin/winshun.capture"_s;
+        const QString translate = u"winshun:settings/plugin/winshun.translate"_s;
+        for (const QString& text : {u"截图设置"_s, u"截图 设置"_s, u"截图录屏设置"_s, u"capture settings"_s, u"设置 截图"_s, u"capture config"_s})
+            QVERIFY2(plugins(search(text)) == QStringList {capture}, qPrintable(text));
+        QCOMPARE(plugins(search(u"翻译配置"_s)), QStringList {translate});
+        QCOMPARE(plugins(search(u"translate settings"_s)), QStringList {translate});
+        // The name alone, or a name of no plugin: none.
+        for (const QString& text : {u"截图"_s, u"capture"_s, u"天气设置"_s})
+            QVERIFY2(plugins(search(text)).isEmpty(), qPrintable(text));
+        // Not for a caller that cannot carry them out (AI, the command line).
+        QVERIFY(search(u"设置"_s, false).isEmpty());
+        QVERIFY(search(u"截图设置"_s, false).isEmpty());
+        for (const auto scope : {Scope::Files, Scope::Folders, Scope::Content})
+            QVERIFY(search(u"settings"_s, true, scope).isEmpty());
+        // Windows' places come in later, and Win顺's stay.
+        PlaceInfo display;
+        display.name = u"显示设置"_s;
+        display.key = u"display"_s;
+        display.command = u"ms-settings:display"_s;
+        display.kind = AppKind::Setting;
+        display.prepare();
+        places.setPlaces(std::make_shared<const PlaceList>(PlaceList {display}));
+        QCOMPARE(places.places()->size(), std::size_t(4));
+        QCOMPARE(places.places()->front().command, u"ms-settings:display"_s);
+        QVERIFY(search(u"WinShun"_s).value(0).isSettings());
     }
 
     void switchRowsInSearch()

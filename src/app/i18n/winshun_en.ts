@@ -756,7 +756,7 @@
     </message>
     <message>
         <source>文件夹菜单的子列也列出文件</source>
-        <translation>A folder's column in the folder menu also lists its files</translation>
+        <translation>A folder&apos;s column in the folder menu also lists its files</translation>
     </message>
     <message>
         <source>弹出动画</source>
@@ -5552,7 +5552,7 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
         <source>文件夹的子列也列出文件</source>
-        <translation>A folder's column also lists its files</translation>
+        <translation>A folder&apos;s column also lists its files</translation>
     </message>
     <message>
         <source>文件夹在前、文件在后，点一下文件就打开；打开、保存对话框里仍只列文件夹</source>
@@ -9891,6 +9891,14 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>%1 no longer comes with Win顺. It was installed for you from the plugin library, with your settings as they were.</translation>
     </message>
     <message>
+        <source>Win顺 设置</source>
+        <translation>WinShun Settings</translation>
+    </message>
+    <message>
+        <source>%1 设置</source>
+        <translation>%1 settings</translation>
+    </message>
+    <message>
         <source>%1（%2 次调用）</source>
         <translation>%1 (%2 calls)</translation>
     </message>
@@ -12698,6 +12706,10 @@ Content index: %5</translation>
         <translation>Waiting for %1…</translation>
     </message>
     <message>
+        <source>已复制链接</source>
+        <translation>Link copied</translation>
+    </message>
+    <message>
         <source>已清除搜索和最近使用记录</source>
         <translation>Searches and recent items cleared</translation>
     </message>
@@ -12728,6 +12740,10 @@ Content index: %5</translation>
     <message>
         <source>Delete</source>
         <translation>Delete</translation>
+    </message>
+    <message>
+        <source>复制链接</source>
+        <translation>Copy link</translation>
     </message>
     <message>
         <source>在此文件夹中搜内容</source>
@@ -13123,10 +13139,6 @@ Content index: %5</translation>
     <message>
         <source>设置…</source>
         <translation>Settings…</translation>
-    </message>
-    <message>
-        <source>Win顺 设置</source>
-        <translation>WinShun Settings</translation>
     </message>
     <message>
         <source>切换到窗口</source>
@@ -14192,6 +14204,10 @@ Content index: %5</translation>
     <message>
         <source>打开网址 · %1</source>
         <translation>Open the address · %1</translation>
+    </message>
+    <message>
+        <source>Win顺 设置 › 插件</source>
+        <translation>WinShun Settings › Plugins</translation>
     </message>
     <message>
         <source>%1 %2</source>

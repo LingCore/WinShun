@@ -878,10 +878,15 @@ void FolderMenu::trigger(int index)
             break;
         case Favorite::Kind::Place: {
             const auto places = m_places ? m_places->places() : nullptr;
-            if (const PlaceInfo* place = places ? findPlace(*places, favorite.path) : nullptr)
-                shell::run(place->command);
-            else
+            const PlaceInfo* place = places ? findPlace(*places, favorite.path) : nullptr;
+            if (!place)
                 emit notice(tr("这一项暂不可用，请稍后重试"));
+            else if (place->command == kSettingsCommand) // Win顺's own (GitHub #389)
+                emit settingsRequested();
+            else if (place->command.startsWith(kPluginSettingsCommand))
+                emit pluginSettingsRequested(place->command.mid(kPluginSettingsCommand.size()));
+            else
+                shell::run(place->command);
             break;
         }
         case Favorite::Kind::Command:

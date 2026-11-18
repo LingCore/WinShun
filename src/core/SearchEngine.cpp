@@ -425,6 +425,24 @@ SearchResult fromApp(const AppInfo& app, bool recent, int otherName = -1)
     return r;
 }
 
+// What asks for a plugin's settings (GitHub #390): the text with its word
+// for settings set apart ("截图设置" is "截图 设置"); empty without such a
+// word, or with nothing but such words.
+QString pluginSettingsQuery(const QString& text)
+{
+    using namespace Qt::StringLiterals;
+    static const QStringList kJoined {u"设置"_s, u"配置"_s}; // written right after the name
+    static const QStringList kWords {u"设置"_s, u"配置"_s, u"settings"_s, u"setting"_s, u"config"_s, u"sz"_s};
+    QString spaced = text;
+    for (const QString& word : kJoined)
+        spaced.replace(word, u' ' + word + u' ');
+    const QStringList words = spaced.split(u' ', Qt::SkipEmptyParts);
+    const auto forSettings = [](const QString& word) { return kWords.contains(word, Qt::CaseInsensitive); };
+    if (!std::ranges::any_of(words, forSettings) || std::ranges::all_of(words, forSettings))
+        return {};
+    return words.join(u' ');
+}
+
 SearchResult fromPlace(const PlaceInfo& place, bool recent)
 {
     SearchResult r;
@@ -1744,20 +1762,30 @@ void SearchEngine::runNameSearch(const Job& job)
                 bool guessedSwitch = false; // a switch found by a guess (PlaceHit::weak)
             };
             std::vector<Ranked> ranked;
-            if (!request.settingsName.isEmpty()) {
-                using namespace Qt::StringLiterals;
-                PlaceInfo settings;
-                settings.name = request.settingsName;
-                settings.key = u"winshun/settings"_s;
-                settings.command = u"winshun:settings"_s;
-                settings.kind = AppKind::Tool;
-                settings.icon = QCoreApplication::applicationFilePath();
-                settings.ownKeywords = {u"设置"_s, u"配置"_s, u"WinShun"_s, u"WinShun settings"_s,
-                    u"WinShun config"_s, u"settings"_s, u"preferences"_s, u"config"_s};
-                settings.prepare();
-                const PlaceList builtins {settings};
-                if (const auto hits = searchPlaces(builtins, query, matcher, {}); !hits.empty())
-                    ranked.push_back({hits.front().score + 50, fromPlace(settings, false)});
+            // Win顺's own places (GitHub #389, #390), whether or not places
+            // are searched, remembered as any place: its settings as a place
+            // is found; a plugin's only for its name with a word for settings
+            // ("截图设置", "translate settings"), so that 设置 alone does not
+            // list every plugin.
+            if (request.ownPlaces) {
+                PlaceList settings;
+                PlaceList plugins;
+                for (const PlaceInfo& place : *places) {
+                    if (isOwnPlace(place))
+                        (place.command == kSettingsCommand ? settings : plugins).push_back(place);
+                }
+                for (const PlaceHit& hit : searchPlaces(settings, query, matcher, request.history, request.historyAffinity))
+                    ranked.push_back({hit.score + 50, fromPlace(settings[hit.index], false)});
+                if (const QString asked = pluginSettingsQuery(request.text); !asked.isEmpty() && !plugins.empty()) {
+                    const ParsedQuery pluginQuery = parseQuery(asked);
+                    const NameMatcher pluginMatcher(pluginQuery);
+                    std::size_t shownPlugins = 0;
+                    for (const PlaceHit& hit : searchPlaces(plugins, pluginQuery, pluginMatcher, request.history, request.historyAffinity)) {
+                        if (shownPlugins++ >= kPlacesShown)
+                            break;
+                        ranked.push_back({hit.score + 50, fromPlace(plugins[hit.index], false)});
+                    }
+                }
             }
             for (const AppHit& hit : request.apps ? searchApps(*apps, query, matcher, request.history, request.historyAffinity) : std::vector<AppHit> {}) {
                 ranked.push_back({hit.score, fromApp((*apps)[hit.index], false, hit.otherName)});
@@ -1767,6 +1795,8 @@ void SearchEngine::runNameSearch(const Job& job)
             std::size_t shown = 0; // places other than switches (those are few, and each one a concept)
             for (const PlaceHit& hit : request.places ? searchPlaces(*places, query, matcher, request.history, request.historyAffinity) : std::vector<PlaceHit> {}) {
                 const PlaceInfo& place = (*places)[hit.index];
+                if (isOwnPlace(place)) // above
+                    continue;
                 const bool isSwitch = !place.switchId.isEmpty();
                 if (!isSwitch && shown >= kPlacesShown)
                     continue;

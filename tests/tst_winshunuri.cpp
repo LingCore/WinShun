@@ -24,11 +24,12 @@ private:
         QVERIFY(r.text.isEmpty());
         QVERIFY(r.page.isEmpty());
     }
-    static void expectSettings(const QString& link, const QString& page)
+    static void expectSettings(const QString& link, const QString& page, const QString& plugin = {})
     {
         const Request r = parse(link);
         QVERIFY2(r.kind == Kind::Settings, qPrintable(link));
         QCOMPARE(r.page, page);
+        QCOMPARE(r.plugin, plugin);
         QVERIFY(r.text.isEmpty());
     }
 
@@ -145,6 +146,23 @@ private slots:
         expectSettings(u"winshun://settings/%E5%89%AA%E8%B4%B4%E6%9D%BF"_s, {});
         expectSettings(u"winshun://settings/"_s + QString(kMaxPageChars + 1, u'a'), {});
         expectSettings(u"winshun://settings/"_s + QString(kMaxPageChars, u'a'), QString(kMaxPageChars, u'a'));
+    }
+
+    // GitHub #390: a plugin's card, as a desktop shortcut or a script asks for it.
+    void pluginSettings()
+    {
+        expectSettings(u"winshun://settings/plugin/winshun.capture"_s, {}, u"winshun.capture"_s);
+        expectSettings(u"winshun://settings/Plugin/WinShun.Capture/"_s, {}, u"winshun.capture"_s);
+        expectSettings(u"winshun://settings/plugin/my-plugin_2?x=1#top"_s, {}, u"my-plugin_2"_s);
+        expectSettings(u"winshun://settings/plugin/winshun%2Ecapture"_s, {}, u"winshun.capture"_s);
+        // No id a plugin can have: the settings as they are, never a page.
+        expectSettings(u"winshun://settings/plugin/"_s, {}, {});
+        expectSettings(u"winshun://settings/plugin/a/b"_s, {}, {});
+        expectSettings(u"winshun://settings/plugin/..%5Cx"_s, {}, {});
+        expectSettings(u"winshun://settings/plugin/.hidden"_s, {}, {});
+        expectSettings(u"winshun://settings/plugin/%E6%88%AA%E5%9B%BE"_s, {}, {});
+        expectSettings(u"winshun://settings/plugin/"_s + QString(kMaxPageChars + 1, u'a'), {}, {});
+        expectSettings(u"winshun://settings/plugin"_s, u"plugin"_s, {}); // a page's id (none such: the caller's to say)
     }
 
     void anythingElseOpensTheBox()

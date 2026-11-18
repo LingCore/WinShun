@@ -123,6 +123,8 @@ QString appOrigin(const SearchResult& r)
             ? ResultModel::tr("正在运行") : QFileInfo(r.target).completeBaseName());
     if (r.isSettings())
         return ResultModel::tr("外观、快捷键与插件");
+    if (r.isPluginSettings())
+        return ResultModel::tr("Win顺 设置 › 插件");
     if (r.isCommand())
         return ResultModel::tr("自定义命令 · %1").arg(r.words.isEmpty() ? r.target : r.words);
     switch (r.app) {
