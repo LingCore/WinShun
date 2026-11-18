@@ -115,6 +115,7 @@ README_ONLY = (
     ("backup", "L-backup", "设置和收藏，[带到新电脑]", "导出 ZIP · 校验后恢复 · 恢复前保存当前配置"),
     ("file-types", "L-file-types", "文件类型，[由你来定义]", "扩展名、搜索前缀、顺序，都能自己改"),
     ("search-scope", "L-search-scope", "只索引[你需要的文件夹]", "选择收录范围，按时核对，后台更新"),
+    ("exclude", "L-exclude", "不想搜的，[一处排除]", "不搜索的文件夹 · 按文件名、扩展名跳过，可用 *"),
     ("wsl", "L-wsl", "Linux 文件，[也能一起搜]", "发行版停止时，收录过的照样能搜到"),
 )
 PENDING = {"L-droppie", "L-longshot", "L-redact", "L-pins", "L-capture", "L-typing"}  # shot by scenes/release013.txt;
