@@ -43,8 +43,16 @@ QByteArray imagePixelHash(const QImage& image);
 QImage imageFromDib(const QByteArray& dib);
 
 // A picture of a metafile (CF_ENHMETAFILE's bits, as Word gives an
-// equation): drawn at twice its size (at 96 dpi) on white, without the blank
-// around it; null if it is not one or draws nothing.
-QImage imageFromEmf(const QByteArray& bits);
+// equation): drawn `scale` times its size at 96 dpi on white, without the
+// blank around it; null if it is not one or draws nothing. One too big for
+// that (more than 4096 pixels a side) is drawn smaller, or with `whole` not
+// at all.
+QImage imageFromEmf(const QByteArray& bits, double scale = 2, bool whole = false);
+
+// A text's look (Clip::look) is drawn kClipLookScale times its size at 96
+// dpi and shown kClipLookShown times (in logical pixels): a formula a
+// little larger than in the document, sharp up to 200 % scaling.
+inline constexpr double kClipLookScale = 3;
+inline constexpr double kClipLookShown = 1.5;
 
 } // namespace ws

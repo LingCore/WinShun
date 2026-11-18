@@ -492,6 +492,78 @@ private slots:
         QVERIFY(row->property("picture").toBool()); // an owned image being written still reserves its row
     }
 
+    // Text with a formula (GitHub #367): its look in the picture's place on
+    // a picture's taller row, the text's sign not showing around it; plain
+    // text keeps its sign.
+    void textLookRow()
+    {
+        QTest::failOnWarning(QRegularExpression(u"TypeError|ReferenceError|Cannot assign|Binding loop"_s));
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(u"7.png"_s);
+        QImage look(330, 96, QImage::Format_RGB32); // three times a formula of 110 x 32
+        look.fill(Qt::white);
+        for (int y = 30; y < 66; ++y)
+            std::fill_n(reinterpret_cast<QRgb*>(look.scanLine(y)) + 40, 250, qRgb(0, 0, 0));
+        QVERIFY(look.save(path, "PNG"));
+        const QUrl folder = QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR "/"));
+        QQmlEngine engine;
+        engine.addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider);
+        QQmlComponent component(&engine, folder.resolved(QUrl(u"ClipRow.qml"_s)));
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({
+            {u"index"_s, 0}, {u"clipId"_s, 7}, {u"kind"_s, 0},
+            {u"title"_s, u"E=mc2"_s}, {u"detail"_s, u"WPS Office · 刚刚 · 5 字"_s},
+            {u"icon"_s, QString()}, {u"image"_s, ClipThumbnailProvider::url(path, 1)}, {u"swatch"_s, QString()},
+            {u"order"_s, 0}, {u"groupName"_s, QString()}, {u"pinned"_s, false},
+            {u"missing"_s, false}, {u"movable"_s, false}, {u"afterPinned"_s, false}, {u"screenshot"_s, false}, {u"pasted"_s, false}, {u"fileCount"_s, 0},
+        }));
+        QVERIFY2(object, qPrintable(component.errorString()));
+        auto* row = qobject_cast<QQuickItem*>(object.get());
+        QVERIFY(row);
+        QQuickWindow window;
+        window.setFlags(Qt::Tool | Qt::WindowDoesNotAcceptFocus | Qt::WindowTransparentForInput);
+        window.setProperty("_q_showWithoutActivating", true);
+        const int themeType = qmlTypeId("WinShun", 1, 0, "Theme");
+        const QColor background = engine.singletonInstance<QObject*>(themeType)->property("background").value<QColor>();
+        window.setColor(background);
+        window.resize(760, 80);
+        row->setParentItem(window.contentItem());
+        row->setSize(QSizeF(760, 80));
+        window.show();
+        auto* thumbnail = row->findChild<QQuickItem*>(u"clipboardThumbnail"_s);
+        auto* tile = row->findChild<QQuickItem*>(u"clipboardTextTile"_s);
+        auto* slot = row->findChild<QQuickItem*>(u"clipboardIconSlot"_s);
+        QVERIFY(thumbnail && tile && slot);
+        QVERIFY(row->property("picture").toBool());
+        QTRY_COMPARE(thumbnail->property("status").toInt(), 1); // Image.Ready
+        QVERIFY(thumbnail->isVisible());
+        QVERIFY(!tile->isVisible());
+        QCOMPARE(slot->width(), 108.0); // a picture's slot ...
+        QVERIFY(thumbnail->width() <= 108 && thumbnail->height() < slot->height()); // ... the formula whole in it
+        // Above the formula, inside the slot: the row as it is beside the slot
+        // (its highlight, if any), no tile's tint.
+        const QImage rendered = window.grabWindow();
+        const qreal dpr = window.devicePixelRatio();
+        const QString screenshot = qEnvironmentVariable("WINSHUN_CLIP_ROW_SCREENSHOT");
+        if (!screenshot.isEmpty())
+            QVERIFY(rendered.save(screenshot + u".look.png"_s));
+        const auto at = [&](QPointF point) {
+            const QPointF scene = slot->mapToScene(point);
+            return rendered.pixelColor(qRound(scene.x() * dpr), qRound(scene.y() * dpr));
+        };
+        const QColor pixel = at(QPointF(slot->width() / 2, 2));
+        const QColor beside = at(QPointF(slot->width() + 8, 2));
+        QVERIFY2(qAbs(pixel.red() - beside.red()) <= 2 && qAbs(pixel.green() - beside.green()) <= 2
+                && qAbs(pixel.blue() - beside.blue()) <= 2,
+            qPrintable(pixel.name() + u" beside "_s + beside.name()));
+        // Plain text: the sign, in an icon's place.
+        row->setProperty("image", QString());
+        QVERIFY(!row->property("picture").toBool());
+        QVERIFY(tile->isVisible());
+        QCOMPARE(slot->width(), 32.0);
+    }
+
     void animatedPreviewCanPauseAndReleasesHiddenImages()
     {
         QTest::failOnWarning(QRegularExpression(u"TypeError|ReferenceError|Cannot assign|Binding loop"_s));

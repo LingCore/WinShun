@@ -138,11 +138,11 @@ QImage imageFromDib(const QByteArray& dib)
     return QImage::fromData(bmp, "BMP");
 }
 
-QImage imageFromEmf(const QByteArray& bits)
+QImage imageFromEmf(const QByteArray& bits, double times, bool whole)
 {
-    constexpr double kScale = 2 * 96 / 2540.0; // from hundredths of a millimetre (rclFrame)
+    const double kScale = times * 96 / 2540.0; // from hundredths of a millimetre (rclFrame)
     constexpr double kMaxSide = 4096; // pixels (64 MB drawn at most): a bigger frame is drawn smaller
-    constexpr int kMargin = 8; // pixels of white kept around what it draws
+    const int kMargin = static_cast<int>(4 * times + 0.5); // pixels of white kept around what it draws
     if (bits.size() < static_cast<qsizetype>(sizeof(ENHMETAHEADER)))
         return {};
     const HENHMETAFILE emf
@@ -154,7 +154,7 @@ QImage imageFromEmf(const QByteArray& bits)
     const double frameWidth = header.rclFrame.right - header.rclFrame.left;
     const double frameHeight = header.rclFrame.bottom - header.rclFrame.top;
     QImage image;
-    if (frameWidth > 0 && frameHeight > 0) {
+    if (frameWidth > 0 && frameHeight > 0 && (!whole || std::max(frameWidth, frameHeight) * kScale <= kMaxSide)) {
         const double scale = std::min(kScale, kMaxSide / std::max(frameWidth, frameHeight));
         const int width = std::max(1, static_cast<int>(frameWidth * scale + 0.5));
         const int height = std::max(1, static_cast<int>(frameHeight * scale + 0.5));

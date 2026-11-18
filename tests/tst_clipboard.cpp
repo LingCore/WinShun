@@ -1428,6 +1428,113 @@ private slots:
 
     // A history from before projects (and kept formats): the columns are
     // added, nothing is lost.
+    // Whether copied text shows more than its words (GitHub #367): WPS gives
+    // a formula as a picture in its RTF and HTML, Word its math, and the
+    // picture it keeps beside it; Word's math settings alone are in any RTF
+    // it writes, and a control word is no other that starts like it.
+    void formattedPictures()
+    {
+        QVERIFY(formattedHasPictures("{\\rtf1{\\*\\shppict {\\pict {\\*\\picprop}\\pngblip 89504e47}}}", {}));
+        QVERIFY(formattedHasPictures({}, "<p class=MsoNormal ><img width=\"47\" src=\"file:///C:/ksohtml/wps1.jpg\" ></p>"));
+        QVERIFY(formattedHasPictures("{\\rtf1{\\mmathPr\\mmathFont34}{\\mmath{\\*\\moMath{\\mr x}}}}", {}));
+        QVERIFY(formattedHasPictures({}, "<!--[if gte msEquation 12]><m:oMath><m:r>x</m:r></m:oMath><![endif]-->"));
+        QVERIFY(formattedHasPictures("{\\pict", {}));
+        QVERIFY(!formattedHasPictures("{\\rtf1{\\mmathPr\\mmathFont34\\mbrkBin0}\\pichgoal240 words \\pictures}", "<p>words</p>"));
+        QVERIFY(!formattedHasPictures({}, {}));
+    }
+
+    // How text with a formula looked (GitHub #367): a PNG where a picture's
+    // is, listed with the text before it is written; kept when the same words
+    // come again (added to an entry without one), back after undo and a
+    // restart, gone with edited words and with the entry. Never pasted.
+    void textLook()
+    {
+        const QByteArray png("look-png");
+        const auto withLook = [&png](const QString& words) {
+            ClipCapture c = text(words, u"WPS Office"_s);
+            c.rtf = "{\\rtf1{\\pict x}}";
+            c.look = png;
+            c.width = 120;
+            c.height = 30;
+            return c;
+        };
+        const auto lookFile = [](const ClipStore& store, qint64 id) {
+            QFile file(store.imagePath(id));
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        };
+        QTemporaryDir dir;
+        qint64 formula = 0;
+        qint64 plain = 0;
+        qint64 edited = 0;
+        {
+            ClipStore store(dir.path());
+            QVERIFY(store.open(kStart));
+            formula = store.add(withLook(u"E=mc2"_s), kStart);
+            QVERIFY(store.clip(formula)->look);
+            QCOMPARE(store.clip(formula)->kind, ClipKind::Text);
+            QCOMPARE(store.clip(formula)->width, 120);
+            QCOMPARE(store.clip(formula)->height, 30);
+            QVERIFY(store.imagePending(formula));
+            QTRY_VERIFY(!store.imagePending(formula));
+            QVERIFY(store.clip(formula)->look);
+            QCOMPARE(lookFile(store, formula), png);
+            const ClipPayload payload = store.payload(formula);
+            QCOMPARE(payload.text, u"E=mc2"_s);
+            QVERIFY(payload.formats.isEmpty() && payload.imagePath.isEmpty());
+
+            // Plain words have none; the same words copied with a look get it,
+            // and copied again without one keep it.
+            plain = store.add(text(u"plain"_s), kStart + 1);
+            QVERIFY(!store.clip(plain)->look);
+            QCOMPARE(store.clip(plain)->width, 0);
+            QCOMPARE(store.add(withLook(u"plain"_s), kStart + 2), plain);
+            QVERIFY(store.clip(plain)->look);
+            QTRY_VERIFY(!store.imagePending(plain));
+            QCOMPARE(lookFile(store, plain), png);
+            QCOMPARE(store.add(text(u"E=mc2"_s), kStart + 3), formula);
+            QVERIFY(store.clip(formula)->look);
+
+            // Files never have one.
+            ClipCapture files;
+            files.kind = ClipKind::Files;
+            files.text = u"C:\\公式.docx"_s;
+            files.look = png;
+            const qint64 file = store.add(files, kStart + 4);
+            QVERIFY(!store.clip(file)->look);
+            QVERIFY(!store.imagePending(file));
+
+            // Edited words: their look is gone with them.
+            edited = store.add(withLook(u"a+bc"_s), kStart + 5);
+            QTRY_VERIFY(!store.imagePending(edited));
+            QCOMPARE(store.setText(edited, u"a+b+c"_s), ClipStore::TextChange::Changed);
+            QVERIFY(!store.clip(edited)->look);
+            store.flush();
+            QVERIFY(!QFile::exists(store.imagePath(edited)));
+
+            // Removed: the file stays for undo, and comes back with the entry.
+            std::vector<ClipRecord> removed = store.remove(std::span(&formula, 1));
+            QVERIFY(removed.front().clip.look);
+            QVERIFY(QFile::exists(store.imagePath(formula)));
+            store.restore(std::move(removed));
+            QVERIFY(store.clip(formula)->look);
+            store.flush();
+        }
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart + 6));
+        store.flush(); // what nothing refers to is cleared away
+        QVERIFY(store.clip(formula)->look);
+        QCOMPARE(store.clip(formula)->width, 120);
+        QCOMPARE(lookFile(store, formula), png);
+        QVERIFY(store.clip(plain)->look);
+        QVERIFY(!store.clip(edited)->look);
+        QCOMPARE(store.clip(edited)->width, 0);
+        // Gone for good: the file with it.
+        const std::vector<ClipRecord> removed = store.remove(std::span(&formula, 1));
+        store.discardImages(std::span(&formula, 1));
+        store.flush();
+        QVERIFY(!QFile::exists(store.imagePath(formula)));
+    }
+
     void projectColumnAddedToAnOldHistory()
     {
         QTemporaryDir dir;

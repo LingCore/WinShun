@@ -184,9 +184,10 @@ Item {
         width: iconSized ? row.iconSize : row.pictureSize === "large" ? 208 : 108
         height: iconSized ? row.iconSize : row.pictureSize === "large" ? 130 : 68
 
-        Rectangle { // text and links: a sign on a soft tile
+        Rectangle { // text and links: a sign on a soft tile (not under a text's look, GitHub #367)
+            objectName: "clipboardTextTile"
             anchors.fill: parent
-            visible: row.kind <= 1 && row.swatch.length === 0
+            visible: row.kind <= 1 && row.swatch.length === 0 && !row.picture
             radius: Theme.largeControlRadius
             color: row.kind === 1 ? Theme.tok("clipLinkTint", Theme.badge) : Theme.tok("clipTextTint", Theme.badge) // a style may tint it as its file icons
 
@@ -233,9 +234,9 @@ Item {
             anchors.fill: parent
             visible: row.picture
 
-            Rectangle { // while it loads
+            Rectangle { // while it loads (a picture, or a text's look)
                 anchors.fill: parent
-                visible: row.kind === 4 && !thumbnail.ready
+                visible: (row.kind === 4 || row.kind <= 1) && !thumbnail.ready
                 radius: Theme.controlRadius
                 color: Theme.track
             }

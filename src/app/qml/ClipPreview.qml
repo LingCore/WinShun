@@ -41,6 +41,7 @@ Item {
     readonly property bool hasColors: (info.colors ?? []).length > 0
     // Paths show as files; a colour shows as its notations.
     readonly property bool hasText: info.text !== undefined && kind !== 3 && kind !== 2 && !hasColors
+    readonly property bool hasLook: (info.look ?? "").length > 0 // a text's look (Clipboard::preview)
     readonly property int padding: 16
 
     Flickable {
@@ -157,38 +158,22 @@ Item {
                 }
             }
 
-            Text {
-                visible: preview.hasText
-                width: parent.width
-                text: preview.info.text ?? ""
-                textFormat: Text.PlainText
-                wrapMode: Text.WrapAnywhere
-                color: preview.kind === 1 ? Theme.accent : Theme.text
-                font.pixelSize: preview.metrics.uiBody
-                lineHeight: 1.15
-            }
-
-            Text { // the rest of a very long text: pasted, not shown
-                visible: preview.kind <= 2 && (preview.info.more ?? 0) > 0
-                text: qsTr("…还有 %Ln 字", "", preview.info.more ?? 0)
-                color: Theme.faint
-                font.pixelSize: preview.metrics.uiCaption
-            }
-
-            Item { // only the selected preview decodes animation frames
+            // A picture, or how a text looked (a formula in it, GitHub #367)
+            // above its words. Only the selected preview decodes animation frames.
+            Item {
                 id: picture
 
                 readonly property real fit: Math.min(1, parent.width / Math.max(1, preview.info.width ?? 1),
                                                      (preview.compact ? 280 : flick.height - 4) / Math.max(1, preview.info.height ?? 1))
                 readonly property bool animated: preview.info.animated ?? false
-                readonly property string imageSource: preview.info.image ?? ""
+                readonly property string imageSource: preview.info.image ?? preview.info.look ?? ""
                 readonly property Image loadedImage: viewer.status === Loader.Ready ? viewer.item as Image : null
                 readonly property bool ready: loadedImage !== null && loadedImage.status === Image.Ready
                 readonly property bool failed: loadedImage !== null && loadedImage.status === Image.Error
                 readonly property bool inViewport: y + height > flick.contentY && y < flick.contentY + flick.height
                 property bool animationPaused: !SystemTheme.animations
 
-                visible: preview.kind === 4
+                visible: preview.kind === 4 || preview.hasLook
                 width: Math.max(1, Math.round((preview.info.width ?? 1) * fit))
                 height: Math.max(1, Math.round((preview.info.height ?? 1) * fit))
 
@@ -250,6 +235,24 @@ Item {
                     border.width: 1
                     border.color: Theme.divider
                 }
+            }
+
+            Text {
+                visible: preview.hasText
+                width: parent.width
+                text: preview.info.text ?? ""
+                textFormat: Text.PlainText
+                wrapMode: Text.WrapAnywhere
+                color: preview.kind === 1 ? Theme.accent : Theme.text
+                font.pixelSize: preview.metrics.uiBody
+                lineHeight: 1.15
+            }
+
+            Text { // the rest of a very long text: pasted, not shown
+                visible: preview.kind <= 2 && (preview.info.more ?? 0) > 0
+                text: qsTr("…还有 %Ln 字", "", preview.info.more ?? 0)
+                color: Theme.faint
+                font.pixelSize: preview.metrics.uiCaption
             }
 
             FlatButton {

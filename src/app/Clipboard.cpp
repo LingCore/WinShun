@@ -1,6 +1,7 @@
 #include "Clipboard.h"
 
 #include "ClipFiles.h"
+#include "ClipImage.h"
 #include "ColorText.h"
 #include "Diagnostics.h"
 #include "FileIconProvider.h"
@@ -84,7 +85,8 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
             if (!m_recording || m_paused || !m_store->isOpen())
                 return;
             m_model.pictureSaved(id); // the preview follows (dataChanged)
-            m_recognizer.read(id, m_store->imagePath(id), true);
+            if (const Clip* c = m_store->clip(id); c && c->kind == ClipKind::Image) // not a text's look
+                m_recognizer.read(id, m_store->imagePath(id), true);
         },
     });
     // The words in pictures: kept with them, found by the search.
@@ -1740,6 +1742,15 @@ QVariantMap Clipboard::preview(int row) const
         break;
     }
     default: {
+        // How it looked (a formula in it, GitHub #367), above its words;
+        // none while its file is being written, as a picture's.
+        if (c->look && !m_store->imagePending(c->id)) {
+            map.insert(u"look"_s, QUrl::fromLocalFile(m_store->imagePath(c->id)).toString());
+            // In logical pixels (a picture's are its own): a little larger
+            // than in the document, drawn from more pixels (kClipLookScale).
+            map.insert(u"width"_s, qRound(c->width * kClipLookShown / kClipLookScale));
+            map.insert(u"height"_s, qRound(c->height * kClipLookShown / kClipLookScale));
+        }
         const QString text = c->text.left(kPreviewChars);
         map.insert(u"text"_s, text);
         map.insert(u"more"_s, std::max<qint64>(0, c->textLength - text.size()));

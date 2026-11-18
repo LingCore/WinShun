@@ -19,7 +19,10 @@ Window {
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     color: Theme.background
     visible: host.visible
-    width: Math.ceil(Math.min(Math.max(280, Math.min(480, measure.advanceWidth + 32)), availableArea.width - 16))
+    // As wide as its text, or a text's look (a formula in it) wholly, within 280 to 480.
+    width: Math.ceil(Math.min(Math.max(280, Math.min(480, Math.max(measure.advanceWidth + 32,
+                                                                   info.look ? (info.width ?? 0) + 40 : 0))),
+                              availableArea.width - 16))
     height: Math.ceil(Math.min(Math.max(80, body.naturalHeight), 480, availableArea.height - 16))
     // Keep the list anchored. Prefer the right, then the left, and clamp on
     // narrow monitors. Vertical placement follows the hovered row.

@@ -140,6 +140,38 @@ QByteArray clipHash(ClipKind kind, const QString& text)
     return hash.result();
 }
 
+namespace {
+
+// Whether RTF has the control word `word` ("\pict"), not merely one that
+// starts with it ("\pictscaled" is no "\pict"; "\mmathPr" is no "\mmath").
+bool hasControlWord(QByteArrayView rtf, QByteArrayView word)
+{
+    for (qsizetype at = rtf.indexOf(word); at >= 0; at = rtf.indexOf(word, at + 1)) {
+        const qsizetype next = at + word.size();
+        const char c = next < rtf.size() ? static_cast<char>(rtf[next] | 0x20) : '\0';
+        if (c < 'a' || c > 'z')
+            return true;
+    }
+    return false;
+}
+
+// Entries that can have a look (Clip::look): text, links and paths.
+bool hasLook(ClipKind kind)
+{
+    return kind != ClipKind::Image && kind != ClipKind::Files;
+}
+
+} // namespace
+
+bool formattedHasPictures(QByteArrayView rtf, QByteArrayView html)
+{
+    // RTF: a picture (WPS's formula, the picture Word keeps beside its math
+    // for readers without it, any other), or Word's math itself. HTML, as
+    // WPS and Word write it: an <img>, or Word's math in a conditional comment.
+    return hasControlWord(rtf, "\\pict") || hasControlWord(rtf, "\\mmath")
+        || html.contains("<img") || html.contains("<IMG") || html.contains("msEquation");
+}
+
 QByteArray packClipFormats(const QList<ClipFormat>& formats)
 {
     if (formats.isEmpty())
@@ -447,6 +479,7 @@ bool ClipStore::open(qint64 now)
         bool hasPasted = false;
         bool hasNote = false;
         bool hasMasked = false;
+        bool hasLookColumn = false;
         QSqlQuery columns(db);
         columns.prepare(u"PRAGMA table_info(clips)"_s);
         if (!run(columns, "Reading the columns"))
@@ -462,6 +495,7 @@ bool ClipStore::open(qint64 now)
             hasPasted = hasPasted || columns.value(1).toString() == u"pasted"_s;
             hasNote = hasNote || columns.value(1).toString() == u"note"_s;
             hasMasked = hasMasked || columns.value(1).toString() == u"masked"_s;
+            hasLookColumn = hasLookColumn || columns.value(1).toString() == u"look"_s;
         }
         columns.finish();
         if (!hasOcr && !run(db, u"ALTER TABLE clips ADD COLUMN ocr TEXT"_s))
@@ -505,6 +539,10 @@ bool ClipStore::open(qint64 now)
             return loaded;
         if (!hasMasked && !run(db, u"ALTER TABLE clips ADD COLUMN masked INTEGER NOT NULL DEFAULT 0"_s))
             return loaded;
+        // A text's picture of how it looked (Clip::look, GitHub #367): a PNG
+        // where a picture's is, gone with its entry as a picture's is.
+        if (!hasLookColumn && !run(db, u"ALTER TABLE clips ADD COLUMN look INTEGER NOT NULL DEFAULT 0"_s))
+            return loaded;
         groups.prepare(u"SELECT id, name FROM groups ORDER BY position, id"_s);
         if (!run(groups, "Reading the groups"))
             return loaded;
@@ -515,7 +553,7 @@ bool ClipStore::open(qint64 now)
         clips.setForwardOnly(true);
         clips.prepare(u"SELECT id, kind, substr(text, 1, %1), length, hash, created, used, source, sourcePath, groupId, "
                       u"width, height, bytes, html IS NOT NULL, rtf IS NOT NULL, ocr, rank, screenshot, project, "
-                      u"formats IS NOT NULL, imageFormat, animated, pasted, note, masked FROM clips ORDER BY used DESC, id DESC"_s
+                      u"formats IS NOT NULL, imageFormat, animated, pasted, note, masked, look FROM clips ORDER BY used DESC, id DESC"_s
                 .arg(kTextInMemory));
         if (!run(clips, "Reading the history"))
             return loaded;
@@ -547,6 +585,7 @@ bool ClipStore::open(qint64 now)
             clip.pasted = clips.value(22).toLongLong();
             clip.note = clips.value(23).toString();
             clip.masked = clips.value(24).toInt() != 0;
+            clip.look = hasLook(clip.kind) && clips.value(25).toInt() != 0;
             loaded.clips.push_back(std::move(clip));
         }
         QSqlQuery last(db);
@@ -760,11 +799,23 @@ qint64 ClipStore::add(const ClipCapture& capture, qint64 now)
         // and RTF.
         const QByteArray formats = same->kind != ClipKind::Files ? capture.formats : QByteArray();
         same->formats = same->formats || !formats.isEmpty();
+        // A text's look: the one it has stays (the same words look the same
+        // again, and its thumbnail is kept by the time it was first copied).
+        const bool newLook = hasLook(same->kind) && !same->look && !capture.look.isEmpty();
+        if (newLook) {
+            same->look = true;
+            same->width = capture.width;
+            same->height = capture.height;
+            m_picturesPending.insert(id);
+        }
         moveToFront(static_cast<std::size_t>(same - m_clips.begin()));
-        m_writer->post([this, id, now, capture, screenshot, project, newProject, formats](QSqlDatabase& db) {
+        m_writer->post([this, context = m_context.get(), id, now, capture, screenshot, project, newProject, formats,
+                           newLook](QSqlDatabase& db) {
             bool projectSaved = true;
             if (newProject)
                 projectSaved = writeProject(id, capture.project);
+            if (newLook)
+                writeLook(db, context, id, capture);
             QSqlQuery query(db);
             query.prepare(u"UPDATE clips SET used = ?, source = ?, sourcePath = ?, html = COALESCE(?, html), "
                           u"rtf = COALESCE(?, rtf), screenshot = ?, project = ?, formats = COALESCE(?, formats) WHERE id = ?"_s);
@@ -803,16 +854,20 @@ qint64 ClipStore::add(const ClipCapture& capture, qint64 now)
     clip.screenshot = capture.kind == ClipKind::Image && capture.screenshot;
     clip.project = capture.kind == ClipKind::Image && !capture.project.isEmpty();
     clip.formats = capture.kind != ClipKind::Files && !capture.formats.isEmpty();
+    clip.look = hasLook(capture.kind) && !capture.look.isEmpty();
+    const bool look = clip.look;
+    if (!look && capture.kind != ClipKind::Image)
+        clip.width = clip.height = 0;
     m_clips.insert(m_clips.begin(), std::move(clip));
-    if (capture.kind == ClipKind::Image)
+    if (capture.kind == ClipKind::Image || look)
         m_picturesPending.insert(id);
     // The text, its formats and the picture can be megabytes: listed now,
     // written after.
-    m_writer->post([this, context = m_context.get(), id, hash, now, capture](QSqlDatabase& db) {
+    m_writer->post([this, context = m_context.get(), id, hash, now, capture, look](QSqlDatabase& db) {
         QSqlQuery query(db);
         query.prepare(u"INSERT INTO clips (id, kind, text, length, html, rtf, hash, created, used, source, sourcePath, "
-                      u"width, height, bytes, screenshot, project, formats, imageFormat, animated) "
-                      u"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"_s);
+                      u"width, height, bytes, screenshot, project, formats, imageFormat, animated, look) "
+                      u"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)"_s);
         query.addBindValue(id);
         query.addBindValue(static_cast<int>(capture.kind));
         query.addBindValue(text(capture.text));
@@ -824,8 +879,8 @@ qint64 ClipStore::add(const ClipCapture& capture, qint64 now)
         query.addBindValue(now);
         query.addBindValue(text(capture.source));
         query.addBindValue(text(capture.sourcePath));
-        query.addBindValue(capture.width);
-        query.addBindValue(capture.height);
+        query.addBindValue(capture.kind == ClipKind::Image || look ? capture.width : 0);
+        query.addBindValue(capture.kind == ClipKind::Image || look ? capture.height : 0);
         query.addBindValue(static_cast<qint64>(capture.imageData.size()));
         query.addBindValue(capture.kind == ClipKind::Image && capture.screenshot ? 1 : 0);
         query.addBindValue(capture.kind == ClipKind::Image && !capture.project.isEmpty() ? 1 : 0);
@@ -851,11 +906,36 @@ qint64 ClipStore::add(const ClipCapture& capture, qint64 now)
                 run(none, "Marking a lost project");
             }
         }
+        if (ok && look) {
+            writeLook(db, context, id, capture);
+            return;
+        }
         if (!ok || capture.kind == ClipKind::Image)
             QMetaObject::invokeMethod(context, [this, id, ok] { saved(id, ok); }, Qt::QueuedConnection);
     });
     prune(now);
     return id;
+}
+
+void ClipStore::writeLook(QSqlDatabase& db, QObject* context, qint64 id, const ClipCapture& capture)
+{
+    // The column says so only once the file is there: a crash in between
+    // leaves a file nothing shows (removed with its entry), never an entry
+    // listed with a picture it does not have.
+    QDir().mkpath(m_folder + u"/images"_s);
+    QSaveFile file(imagePath(id, ClipImageFormat::Png));
+    bool ok = file.open(QIODevice::WriteOnly) && file.write(capture.look) == capture.look.size() && file.commit();
+    if (!ok) {
+        qWarning().noquote() << "Clipboard history: cannot save how a text looked:" << file.errorString();
+    } else {
+        QSqlQuery query(db);
+        query.prepare(u"UPDATE clips SET look = 1, width = ?, height = ? WHERE id = ?"_s);
+        query.addBindValue(capture.width);
+        query.addBindValue(capture.height);
+        query.addBindValue(id);
+        ok = run(query, "Saving how a text looked");
+    }
+    QMetaObject::invokeMethod(context, [this, id, ok] { saved(id, ok); }, Qt::QueuedConnection);
 }
 
 bool ClipStore::writeProject(qint64 id, const QByteArray& bytes) const
@@ -873,6 +953,16 @@ bool ClipStore::writeProject(qint64 id, const QByteArray& bytes) const
 void ClipStore::saved(qint64 id, bool ok)
 {
     m_picturesPending.remove(id);
+    if (const auto it = std::ranges::find(m_clips, id, &Clip::id); it != m_clips.end() && it->kind != ClipKind::Image) {
+        // A text's look: without it, the text is the whole entry still.
+        if (!ok) {
+            it->look = false;
+            it->width = it->height = 0;
+        }
+        if (m_listener.pictureSaved)
+            m_listener.pictureSaved(id);
+        return;
+    }
     if (ok) {
         if (m_listener.pictureSaved)
             m_listener.pictureSaved(id);
@@ -960,8 +1050,8 @@ void ClipStore::restore(std::vector<ClipRecord> records)
         QSqlQuery query(db);
         query.prepare(u"INSERT OR REPLACE INTO clips (id, kind, text, length, html, rtf, hash, created, used, source, "
                       u"sourcePath, groupId, width, height, bytes, ocr, rank, screenshot, project, formats, imageFormat, animated, "
-                      u"pasted) "
-                      u"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"_s);
+                      u"pasted, look) "
+                      u"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"_s);
         for (const ClipRecord& record : records) {
             const Clip& c = record.clip;
             query.addBindValue(c.id);
@@ -987,6 +1077,7 @@ void ClipStore::restore(std::vector<ClipRecord> records)
             query.addBindValue(static_cast<int>(c.imageFormat));
             query.addBindValue(c.animated ? 1 : 0);
             query.addBindValue(c.pasted);
+            query.addBindValue(c.look ? 1 : 0); // its file kept until discardImages()
             written.push_back(run(query, "Restoring an entry"));
         }
         db.commit();
@@ -1194,20 +1285,27 @@ ClipStore::TextChange ClipStore::setText(qint64 id, const QString& edited)
     it->text = words.left(kTextInMemory);
     it->textLength = words.size();
     it->hash = hash;
-    // Its formatted versions (and WPS's own copy) would paste the old words.
+    // Its formatted versions (and WPS's own copy) would paste the old
+    // words, and its look show them.
     it->html = false;
     it->rtf = false;
     it->formats = false;
-    m_writer->post([id, kind, words, hash](QSqlDatabase& db) {
+    const bool look = it->look;
+    it->look = false;
+    it->width = it->height = 0;
+    m_picturesPending.remove(id);
+    m_writer->post([this, id, kind, words, hash, look](QSqlDatabase& db) {
         QSqlQuery query(db);
         query.prepare(u"UPDATE clips SET kind = ?, text = ?, length = ?, hash = ?, html = NULL, rtf = NULL, "
-                      u"formats = NULL WHERE id = ?"_s);
+                      u"formats = NULL, look = 0, width = 0, height = 0 WHERE id = ?"_s);
         query.addBindValue(static_cast<int>(kind));
         query.addBindValue(text(words));
         query.addBindValue(words.size());
         query.addBindValue(hash);
         query.addBindValue(id);
         run(query, "Saving an entry's edited text");
+        if (look)
+            removeImageFiles(id);
     });
     return TextChange::Changed;
 }

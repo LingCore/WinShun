@@ -4,6 +4,7 @@
 #include "ClipImage.h"
 #include "ClipMisread.h"
 
+#include <QBuffer>
 #include <QDebug>
 #include <QDateTime>
 #include <QFile>
@@ -38,6 +39,12 @@ constexpr qsizetype kMaxText = 2 * 1024 * 1024; // characters: 4 MB, Windows' ow
 constexpr qsizetype kFormattedUpTo = 1024 * 1024; // characters: longer text keeps no HTML / RTF
 constexpr SIZE_T kMaxFormatBytes = 16 * 1024 * 1024;
 constexpr qsizetype kMaxObjectBytes = 32 * 1024 * 1024; // an equation's or an object's formats all together
+// Text with a formula or a picture among its words keeps a picture of how it
+// looked (Clip::look) up to this many characters: a page or two. Longer, the
+// program would take a while drawing it, and the picture would be too small
+// to read anyway.
+constexpr qsizetype kLookUpTo = 4000;
+constexpr SIZE_T kMaxLookBytes = 8 * 1024 * 1024; // its metafile
 constexpr SIZE_T kMaxImageBytes = 256 * 1024 * 1024;
 constexpr qsizetype kMaxReadRecords = 16;
 constexpr qsizetype kMaxMisreadChars = 64 * 1024; // longer text is not kept to compare with
@@ -797,6 +804,18 @@ void ClipboardWatcher::read()
     QList<ClipFormat> object;
     if (capture.kind != ClipKind::Files && tooBig == 0 && options.images && isObject(f))
         object = readKeptFormats(objectFormatName);
+    // Text with a formula or a picture in it (GitHub #367): what the program
+    // draws of it (WPS and Word give a metafile of what was copied, which
+    // they draw only when asked), for a picture of how it looked. Its words
+    // read "a+bc" for a fraction, and a formula WPS gives only as a picture.
+    QByteArray lookBits;
+    if (object.isEmpty() && capture.kind != ClipKind::Files && !capture.text.isEmpty() && tooBig == 0 && options.images
+        && capture.text.size() <= kLookUpTo && formattedHasPictures(capture.rtf, capture.html)
+        && ::IsClipboardFormatAvailable(CF_ENHMETAFILE)) {
+        bool lookTooBig = false;
+        lookBits = metafileBits(kMaxLookBytes, &lookTooBig);
+        diagnostic[u"look_bytes"_s] = static_cast<qint64>(lookBits.size());
+    }
     // A picture only when there is no text (or it is an equation): Excel and
     // Word offer a picture of what was copied as well, which they draw only
     // when asked for it.
@@ -852,6 +871,20 @@ void ClipboardWatcher::read()
         } else {
             imageTooBig = imageTooBig && capture.text.isEmpty(); // else its text, as before
         }
+    }
+    if (!lookBits.isEmpty() && capture.kind != ClipKind::Image && object.isEmpty()) {
+        // Drawn whole or not at all: a picture shrunk to fit would be too
+        // small to read. PNG, as the history keeps pictures.
+        if (const QImage look = imageFromEmf(lookBits, kClipLookScale, true); !look.isNull()) {
+            QBuffer buffer(&capture.look);
+            if (buffer.open(QIODevice::WriteOnly) && look.save(&buffer, "PNG")) {
+                capture.width = look.width();
+                capture.height = look.height();
+            } else {
+                capture.look.clear();
+            }
+        }
+        diagnostic[u"look"_s] = !capture.look.isEmpty();
     }
     if (tooBig > 0 || (picture.firstFrame.isNull() && (imageTooBig || picture.tooBig))) {
         diagnostic[u"outcome"_s] = u"too-big"_s;

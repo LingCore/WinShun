@@ -18,6 +18,7 @@
 #include <vector>
 
 class QObject;
+class QSqlDatabase;
 
 namespace ws {
 
@@ -42,6 +43,13 @@ QString searchFillOf(const QString& copied);
 // What tells copied text (or files) from any other: the same again is the
 // same entry. Any thread.
 QByteArray clipHash(ClipKind kind, const QString& text);
+
+// Whether text copied with this RTF and HTML ("HTML Format", with its
+// header) shows more than its words: a formula (Word's math, which WPS
+// gives only as a picture) or a picture among them. Its plain text then
+// reads "a+bc" for a fraction, so the history keeps a picture of how it
+// looked as well (Clip::look, GitHub #367). Any thread.
+bool formattedHasPictures(QByteArrayView rtf, QByteArrayView html);
 
 // A clipboard format as the program that copied it gave it, kept for what
 // text and a picture cannot paste back as it was: an equation, an embedded
@@ -83,7 +91,7 @@ struct Clip {
     // Its place among its group's entries, smallest first (the user's order:
     // pasting or copying it again does not move it there). Unused out of groups.
     qint64 rank = 0;
-    int width = 0; // Image, in pixels
+    int width = 0; // Image (and a text's look), in pixels
     int height = 0;
     qint64 bytes = 0; // Image: of its original encoded file
     ClipImageFormat imageFormat = ClipImageFormat::Png;
@@ -111,6 +119,11 @@ struct Clip {
     // an equation or an embedded object, its picture what the list shows;
     // text: WPS's copy of it goes before the text, RTF and HTML.
     bool formats = false;
+    // Text: a picture of how it looked where it was copied (a formula in
+    // it, GitHub #367), in the picture's place (ClipStore::imagePath, a PNG
+    // of width x height): what the list and the preview show beside its
+    // words. Never pasted: the text and its formats are.
+    bool look = false;
 
     QStringList files() const; // Files, Path: the paths
     // Files, every one a picture by its extension (a .png copied in
@@ -154,6 +167,9 @@ struct ClipCapture {
     // before the text (packClipFormats(); empty: none). Not for files.
     // Replaced and kept like `project`.
     QByteArray formats;
+    // Text: how it looked (Clip::look), a PNG of `width` x `height`; empty:
+    // none. Copied again, an entry keeps the one it has.
+    QByteArray look;
     // On the clipboard already when the history started: copied at some
     // earlier time, so an entry it matches stays where it is.
     bool initial = false;
@@ -423,6 +439,8 @@ private:
     QString imagePath(qint64 id, ClipImageFormat format) const;
     void removeImageFiles(qint64 id) const; // also after an entry left memory
     bool writeProject(qint64 id, const QByteArray& bytes) const; // on the writer's thread
+    // A text's look (Clip::look) to its file, then the column; saved() after. On the writer's thread.
+    void writeLook(QSqlDatabase& db, QObject* context, qint64 id, const ClipCapture& capture);
 
     QString m_folder;
     QString m_connection; // name of this store's database connection

@@ -651,6 +651,37 @@ private slots:
         QVERIFY(imageFromEmf({}).isNull());
     }
 
+    // A text's look (GitHub #367): drawn larger, with a margin as large, and
+    // whole or not at all; a picture of an equation is drawn smaller instead.
+    void metafileLook()
+    {
+        const auto metafile = [](RECT frame, RECT box) {
+            HDC dc = ::CreateEnhMetaFileW(nullptr, nullptr, &frame, nullptr);
+            ::FillRect(dc, &box, static_cast<HBRUSH>(::GetStockObject(BLACK_BRUSH)));
+            HENHMETAFILE emf = ::CloseEnhMetaFile(dc);
+            QByteArray bits(static_cast<qsizetype>(::GetEnhMetaFileBits(emf, 0, nullptr)), Qt::Uninitialized);
+            ::GetEnhMetaFileBits(emf, static_cast<UINT>(bits.size()), reinterpret_cast<BYTE*>(bits.data()));
+            ::DeleteEnhMetaFile(emf);
+            return bits;
+        };
+        const QByteArray small = metafile({0, 0, 5000, 2000}, {100, 100, 200, 150});
+        const QImage twice = imageFromEmf(small);
+        const QImage look = imageFromEmf(small, kClipLookScale, true);
+        QVERIFY(!twice.isNull() && !look.isNull());
+        // The box 1.5 times as large, its margin 12 pixels in place of 8.
+        QVERIFY2(qAbs((look.width() - 24) - (twice.width() - 16) * 3 / 2) <= 2,
+            qPrintable(u"%1 and %2"_s.arg(look.width()).arg(twice.width())));
+        QCOMPARE(look.pixel(11, 11), qRgba(255, 255, 255, 255));
+        QCOMPARE(look.pixel(look.width() / 2, look.height() / 2), qRgba(0, 0, 0, 255));
+
+        // Two metres tall: too big to draw whole at three times its size.
+        const QByteArray tall = metafile({0, 0, 5000, 200000}, {0, 0, 5000, 200000});
+        QVERIFY(imageFromEmf(tall, kClipLookScale, true).isNull());
+        const QImage shrunk = imageFromEmf(tall);
+        QVERIFY(!shrunk.isNull());
+        QVERIFY(shrunk.height() <= 4096 + 16);
+    }
+
     void splitting()
     {
         const QString text = u"一\r\n二\r\n\r\n\r\n  三\n四\n\n五  \n"_s;

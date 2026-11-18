@@ -182,7 +182,7 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
         // None until its file is written (pictureSaved). Never rewritten, but
         // an entry restored from a backup can bring the same id back with
         // another picture: its copy time tells them apart.
-        if (c->kind == ClipKind::Image)
+        if (c->kind == ClipKind::Image || c->look) // a text's look: how it looked, a formula in it (GitHub #367)
             return m_store->imagePending(c->id) ? QString() : ClipThumbnailProvider::url(m_store->imagePath(c->id), c->created);
         if (c->kind != ClipKind::Files && c->kind != ClipKind::Path)
             return QString();
