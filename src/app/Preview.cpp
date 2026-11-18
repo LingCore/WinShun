@@ -2788,6 +2788,10 @@ int runSettings(const QStringList& args)
             check(sort->isVisible() && sort->property("currentIndex").toInt() == 7, "quick filters: the sort box does not show 大的在前");
         else
             check(false, "quick filters: the sort box is missing");
+        // The card whole, its rows and the drafted new one: the page scrolled to its end
+        // (an inactive preview never scrolls to the focused box by itself).
+        flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble() - flick->property("height").toDouble()));
+        settle(window, 3);
         saved = saveGrab(window, out.filePath(u"quick-filters.png"_s)) && saved;
         editor->removeQuickFilter(0);
         editor->removeQuickFilter(0);
