@@ -11581,7 +11581,7 @@ private slots:
             place.key = u"winshun/settings/plugin/"_s + id;
             place.command = ws::kPluginSettingsCommand.toString() + id;
             place.kind = AppKind::Tool;
-            place.ownKeywords = {id, id.section(u'.', -1), zh, en, u"设置"_s, u"配置"_s, u"settings"_s, u"config"_s};
+            place.ownKeywords = {id.section(u'.', -1), zh, en, u"设置"_s, u"配置"_s, u"settings"_s, u"config"_s};
             own.push_back(std::move(place));
         }
         places.setOwnPlaces(std::move(own));
@@ -11614,7 +11614,7 @@ private slots:
         for (const QString& text : {u"设置"_s, u"配置"_s, u"WinShun"_s, u"winshun settings"_s, u"settings"_s, u"sz"_s}) {
             const SearchResults rows = search(text);
             QVERIFY2(!rows.isEmpty() && rows.first().isSettings(), qPrintable(text));
-            QVERIFY2(plugins(rows).isEmpty(), qPrintable(text));
+            QVERIFY2(plugins(rows).isEmpty(), qPrintable(text + u": "_s + plugins(rows).join(u", ")));
         }
         // A plugin's name and a word for settings, joined or not, in either language.
         const QString capture = u"winshun:settings/plugin/winshun.capture"_s;
@@ -11623,6 +11623,11 @@ private slots:
             QVERIFY2(plugins(search(text)) == QStringList {capture}, qPrintable(text));
         QCOMPARE(plugins(search(u"翻译配置"_s)), QStringList {translate});
         QCOMPARE(plugins(search(u"translate settings"_s)), QStringList {translate});
+        // While "settings" is being typed: from "set" on ("conf" for config).
+        for (const QString& text : {u"capture set"_s, u"capture sett"_s, u"capture conf"_s, u"set capture"_s})
+            QVERIFY2(plugins(search(text)) == QStringList {capture}, qPrintable(text));
+        for (const QString& text : {u"capture se"_s, u"capture con"_s, u"capture setup"_s})
+            QVERIFY2(plugins(search(text)).isEmpty(), qPrintable(text));
         // The name alone, or a name of no plugin: none.
         for (const QString& text : {u"截图"_s, u"capture"_s, u"天气设置"_s})
             QVERIFY2(plugins(search(text)).isEmpty(), qPrintable(text));

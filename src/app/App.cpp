@@ -8607,8 +8607,9 @@ void App::applyOwnPlaces()
         place.command = kPluginSettingsCommand.toString() + e.id;
         place.kind = AppKind::Tool;
         place.icon = logo;
-        // Found only with a word for settings (SearchEngine), so those may be keywords.
-        place.ownKeywords = {e.id, e.id.section(u'.', -1), e.manifest->name.zh, e.manifest->name.en, u"设置"_s, u"配置"_s,
+        // Found only with a word for settings (SearchEngine), so those may be keywords. The id's
+        // last part only ("capture"): "winshun" begins every official one's, and would list them all.
+        place.ownKeywords = {e.id.section(u'.', -1), e.manifest->name.zh, e.manifest->name.en, u"设置"_s, u"配置"_s,
             u"settings"_s, u"config"_s};
         place.ownKeywords.removeAll(QString());
         place.ownKeywords.removeDuplicates();

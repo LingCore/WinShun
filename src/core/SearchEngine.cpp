@@ -427,17 +427,22 @@ SearchResult fromApp(const AppInfo& app, bool recent, int otherName = -1)
 
 // What asks for a plugin's settings (GitHub #390): the text with its word
 // for settings set apart ("截图设置" is "截图 设置"); empty without such a
-// word, or with nothing but such words.
+// word, or with nothing but such words. While it is being typed, "set" and
+// "conf" count already.
 QString pluginSettingsQuery(const QString& text)
 {
     using namespace Qt::StringLiterals;
     static const QStringList kJoined {u"设置"_s, u"配置"_s}; // written right after the name
-    static const QStringList kWords {u"设置"_s, u"配置"_s, u"settings"_s, u"setting"_s, u"config"_s, u"sz"_s};
+    static const QStringList kWords {u"设置"_s, u"配置"_s, u"sz"_s};
     QString spaced = text;
     for (const QString& word : kJoined)
         spaced.replace(word, u' ' + word + u' ');
     const QStringList words = spaced.split(u' ', Qt::SkipEmptyParts);
-    const auto forSettings = [](const QString& word) { return kWords.contains(word, Qt::CaseInsensitive); };
+    const auto forSettings = [](const QString& word) {
+        return kWords.contains(word, Qt::CaseInsensitive)
+            || (word.size() >= 3 && u"settings"_s.startsWith(word, Qt::CaseInsensitive))
+            || (word.size() >= 4 && u"config"_s.startsWith(word, Qt::CaseInsensitive));
+    };
     if (!std::ranges::any_of(words, forSettings) || std::ranges::all_of(words, forSettings))
         return {};
     return words.join(u' ');
