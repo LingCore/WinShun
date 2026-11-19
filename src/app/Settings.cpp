@@ -1205,6 +1205,7 @@ void Settings::load()
     clipboardSearchBoxSide = readOrDefault(s, u"Clipboard/SearchBoxSide"_s, d.clipboardSearchBoxSide).trimmed().toLower();
     if (clipboardSearchBoxSide != u"far")
         clipboardSearchBoxSide = d.clipboardSearchBoxSide;
+    clipboardSearchBox = readOrDefault(s, u"Clipboard/SearchBox"_s, d.clipboardSearchBox);
     clipboardExcludedApps = readOrDefault(s, u"Clipboard/ExcludedApps"_s, d.clipboardExcludedApps);
     clipboardNumberKeys = readOrDefault(s, u"Clipboard/NumberKeys"_s, d.clipboardNumberKeys).trimmed().toLower();
     if (clipboardNumberKeys != u"ctrl" && clipboardNumberKeys != u"off")
@@ -1511,6 +1512,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/HoldToStep"_s, clipboardHoldToStep);
     s.setValue(u"Clipboard/PasteElevated"_s, clipboardPasteElevated);
     s.setValue(u"Clipboard/SearchBoxSide"_s, clipboardSearchBoxSide);
+    s.setValue(u"Clipboard/SearchBox"_s, clipboardSearchBox);
     s.setValue(u"Clipboard/ExcludedApps"_s, clipboardExcludedApps);
     s.setValue(u"Clipboard/NumberKeys"_s, clipboardNumberKeys);
     s.setValue(u"Clipboard/QuickPaste"_s, clipboardQuickPaste);

@@ -393,12 +393,15 @@ void Clipboard::setRowOptions(bool clickToPaste, const QString& pictureSize, con
     refreshStatus(); // pinned, it says how to paste
 }
 
-void Clipboard::setLayoutOptions(bool flipAbove, bool searchFar)
+void Clipboard::setLayoutOptions(bool flipAbove, bool searchFar, bool searchBox)
 {
-    if (flipAbove == m_flipAbove && searchFar == m_searchFar)
+    if (flipAbove == m_flipAbove && searchFar == m_searchFar && searchBox == m_searchBox)
         return;
     m_flipAbove = flipAbove;
     m_searchFar = searchFar;
+    m_searchBox = searchBox;
+    if (!searchBox)
+        setQuery({}); // nothing left searched for with no box to see it in
     emit layoutOptionsChanged();
 }
 

@@ -2146,6 +2146,14 @@ void SettingsEditor::setClipboardSearchBoxSide(const QString& side)
     commit();
 }
 
+void SettingsEditor::setClipboardSearchBox(bool on)
+{
+    if (m_settings.clipboardSearchBox == on)
+        return;
+    m_settings.clipboardSearchBox = on;
+    commit();
+}
+
 void SettingsEditor::setClipboardImages(bool on)
 {
     if (m_settings.clipboardImages == on)
