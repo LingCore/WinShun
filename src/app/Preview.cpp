@@ -3348,7 +3348,8 @@ int runSettings(const QStringList& args)
         {u"命令行"_s, aiPage, 0},
         {u"ws"_s, aiPage, 0},
         {u"command line"_s, aiPage, 0},
-        {u"终端"_s, aiPage, 0},
+        // A setting titled with the word comes first: 在终端中打开 (GitHub #386), above the AI page's keyword.
+        {u"终端"_s, resultsPage, 2},
         // "Favorites" also matches the opening-menu option; use this page's exact setting title.
         {QCoreApplication::translate("FavoritesSection", "拖文件时按 ` 键，弹出收藏圆盘"), favoritesPage, 0},
         {QCoreApplication::translate("SettingsWindow", "网络与 WSL 文件夹"), scopePage, 3},
