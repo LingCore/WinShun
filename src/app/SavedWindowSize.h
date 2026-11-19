@@ -23,6 +23,7 @@ namespace ws {
 //
 // Opened (placeOn), it is centred on that screen's work area at that size, as
 // much of it as fits there; maximized again the first time if it was left so.
+// All of it only while remembering is on (setRemembering).
 class SavedWindowSize : public QObject {
     Q_OBJECT
 
@@ -42,6 +43,14 @@ public:
     QSize wanted() const { return m_wanted; } // its user's size, else the default
     bool maximizedWanted() const { return m_maximized; }
 
+    // 外观 › 记住窗口大小 (Settings::rememberWindowSize), for each of these
+    // windows in this process. Off: each run opens them at the size they were
+    // made with (one dragged out still lasts while it runs, as before #401),
+    // and what was saved is forgotten. On again: what its user has given each
+    // window by then is saved at once.
+    static void setRemembering(bool on);
+    static bool remembering();
+
     // `wanted` on a work area `area` large: kMargin of it left over across
     // and down, and no smaller than `minimum` where that fits.
     static QSize fit(QSize wanted, QSize minimum, QSize area);
@@ -55,6 +64,8 @@ private:
     friend struct Hook;
 
     void hook();
+    void forget(); // remembering turned off
+    void remember(); // ... and on again
     void sized(QSize from, QSize to); // a sizing loop ended (logical pixels)
     void reset(); // an edge double clicked
     void stateChanged(Qt::WindowState state);

@@ -2540,6 +2540,20 @@ Window {
                     }
                 }
 
+                SettingRow { // GitHub #401
+                    title: qsTr("记住窗口大小")
+                    description: qsTr("设置、截图设置和图片文字搜索窗口按你上次拖出的大小打开，上次最大化的仍然最大化。关掉后每次启动都用默认大小，已记住的大小会清除")
+                    tip: qsTr("双击这些窗口的边框，随时恢复默认大小")
+                    keywords: qsTr("记住;窗口大小;尺寸;大小;最大化;默认大小;设置窗口;remember;window size;size;maximize").split(";")
+                    ToggleSwitch {
+                        objectName: "rememberWindowSizeToggle"
+                        dpr: window.dpr
+                        checked: window.editor.rememberWindowSize
+                        Accessible.name: qsTr("记住窗口大小")
+                        onToggled: (on) => window.editor.rememberWindowSize = on
+                    }
+                }
+
                 SettingRow { // GitHub #365, #377
                     title: qsTr("弹出动画")
                     description: qsTr("搜索框和剪贴板打开时轻轻滑入并淡入，关闭时淡出。关掉后立即出现、立即消失")

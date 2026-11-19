@@ -767,6 +767,10 @@
         <translation>Hover tips</translation>
     </message>
     <message>
+        <source>记住窗口大小</source>
+        <translation>Remember window sizes</translation>
+    </message>
+    <message>
         <source>直角</source>
         <translation>Square</translation>
     </message>
@@ -7876,6 +7880,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。密集是每条结果一行的小字。剪贴板可在“剪贴板”页单独设置</source>
         <translation>Text size and line height of the search bar, the clipboard and the search bar by file dialogs; the Settings window is unchanged. Dense is one small line per result. The clipboard can be set separately on the Clipboard page</translation>
+    </message>
+    <message>
+        <source>记住窗口大小</source>
+        <translation>Remember window sizes</translation>
+    </message>
+    <message>
+        <source>设置、截图设置和图片文字搜索窗口按你上次拖出的大小打开，上次最大化的仍然最大化。关掉后每次启动都用默认大小，已记住的大小会清除</source>
+        <translation>Settings, Screenshot settings and Image text search open at the size you last dragged them to, maximized if you left them so. Off: they open at their default size each time WinShun starts, and the sizes remembered are cleared</translation>
+    </message>
+    <message>
+        <source>双击这些窗口的边框，随时恢复默认大小</source>
+        <translation>Double-click the edge of one of these windows to give it its default size at any time</translation>
+    </message>
+    <message>
+        <source>记住;窗口大小;尺寸;大小;最大化;默认大小;设置窗口;remember;window size;size;maximize</source>
+        <translation>remember;window size;size;maximize;default size;settings window;restore</translation>
     </message>
     <message>
         <source>弹出动画</source>

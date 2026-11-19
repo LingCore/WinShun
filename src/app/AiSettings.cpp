@@ -419,6 +419,12 @@ std::vector<Entry> buildCatalog()
                     "true: resting the mouse on an icon or button (the kinds of file under the search box, the +, a row's buttons) shows a line "
                     "saying what it is. false: no such tips; an \"i\" in the settings still shows its words, and a cut-off name still shows in full."},
         &Settings::hoverTips));
+    add(boolean({"Appearance/RememberWindowSize", QT_TRANSLATE_NOOP("AiSettings", "记住窗口大小"), "appearance", -1,
+                    "true: the settings window, the screenshot plugin's settings and picture text search open at the size their user last "
+                    "dragged them to, maximized if they were left so, the next run too. false: each run they open at their default size "
+                    "(a size dragged out lasts while it runs) and what was saved is forgotten. "
+                    "Either way a double click on such a window's edge gives it its default size."},
+        &Settings::rememberWindowSize));
     add(choice({"Appearance/Theme", QT_TRANSLATE_NOOP("AiSettings", "主题"), "appearance", -1, "Light or dark windows."},
         &Settings::theme,
         {{u"system"_s, u"follow Windows' light or dark mode"_s, QT_TRANSLATE_NOOP("AiSettings", "跟随系统")},

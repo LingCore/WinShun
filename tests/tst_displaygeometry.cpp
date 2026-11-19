@@ -6,6 +6,7 @@
 #include <QCoreApplication>
 #include <QEvent>
 #include <QGuiApplication>
+#include <QScopeGuard>
 #include <QScreen>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -18,6 +19,43 @@
 #include <memory>
 
 using namespace Qt::StringLiterals;
+
+namespace {
+
+// A window as ours (frameless: all of it client area), at the settings
+// window's size; hidden, so the user's desktop stays as it was.
+std::unique_ptr<QWindow> settingsLikeWindow()
+{
+    auto window = std::make_unique<QWindow>();
+    window->setFlags(Qt::Window | Qt::FramelessWindowHint);
+    window->resize(920, 720);
+    window->setMinimumSize({760, 420});
+    window->create();
+    return window;
+}
+
+void nativeResize(QWindow& window, QSize logical)
+{
+    const qreal dpr = window.devicePixelRatio();
+    ::SetWindowPos(reinterpret_cast<HWND>(window.winId()), nullptr, 0, 0, qRound(logical.width() * dpr),
+        qRound(logical.height() * dpr), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+// The system's sizing loop: an edge dragged sends WM_SIZING, a move does not.
+void sizingLoop(QWindow& window, QSize to, bool edge)
+{
+    const HWND hwnd = reinterpret_cast<HWND>(window.winId());
+    ::SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0);
+    nativeResize(window, to);
+    if (edge) {
+        RECT rect {};
+        ::GetWindowRect(hwnd, &rect);
+        ::SendMessageW(hwnd, WM_SIZING, WMSZ_BOTTOMRIGHT, reinterpret_cast<LPARAM>(&rect));
+    }
+    ::SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
+}
+
+} // namespace
 
 class DisplayGeometryTest : public QObject {
     Q_OBJECT
@@ -360,53 +398,28 @@ private slots:
         QTemporaryDir temporary;
         QVERIFY(temporary.isValid());
         const QString statePath = temporary.filePath(u"state.ini"_s);
-        const auto made = [] {
-            auto window = std::make_unique<QWindow>();
-            window->setFlags(Qt::Window | Qt::FramelessWindowHint); // as ours: all of it client area
-            window->resize(920, 720);
-            window->setMinimumSize({760, 420});
-            window->create(); // hidden: the user's desktop stays as it was
-            return window;
-        };
-        const auto nativeResize = [](QWindow& window, QSize logical) {
-            const qreal dpr = window.devicePixelRatio();
-            ::SetWindowPos(reinterpret_cast<HWND>(window.winId()), nullptr, 0, 0, qRound(logical.width() * dpr),
-                qRound(logical.height() * dpr), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-        };
-        // The system's sizing loop: an edge dragged sends WM_SIZING, a move does not.
-        const auto loop = [&](QWindow& window, QSize to, bool edge) {
-            const HWND hwnd = reinterpret_cast<HWND>(window.winId());
-            ::SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0);
-            nativeResize(window, to);
-            if (edge) {
-                RECT rect {};
-                ::GetWindowRect(hwnd, &rect);
-                ::SendMessageW(hwnd, WM_SIZING, WMSZ_BOTTOMRIGHT, reinterpret_cast<LPARAM>(&rect));
-            }
-            ::SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
-        };
         const auto saved = [&] {
             const QSettings state(statePath, QSettings::IniFormat);
             return state.contains(u"Settings/Width"_s)
                 ? QSize(state.value(u"Settings/Width"_s).toInt(), state.value(u"Settings/Height"_s).toInt()) : QSize();
         };
         {
-            const auto window = made();
+            const auto window = settingsLikeWindow();
             ws::SavedWindowSize size(statePath, u"Settings"_s);
             size.setWindow(window.get());
             QCOMPARE(size.wanted(), QSize(920, 720)); // nothing saved: as made
-            loop(*window, {1100, 900}, false); // snapped at the end of a move: not its user's size
+            sizingLoop(*window, {1100, 900}, false); // snapped at the end of a move: not its user's size
             QCOMPARE(saved(), QSize());
-            loop(*window, {1400, 1000}, true);
+            sizingLoop(*window, {1400, 1000}, true);
             QCOMPARE(saved(), QSize(1400, 1000));
             QCOMPARE(size.wanted(), QSize(1400, 1000));
             // Opened cut short by a smaller screen, then only widened: the height wished stays.
             nativeResize(*window, {1400, 830});
-            loop(*window, {1500, 830}, true);
+            sizingLoop(*window, {1500, 830}, true);
             QCOMPARE(saved(), QSize(1500, 1000));
         }
         {
-            const auto window = made();
+            const auto window = settingsLikeWindow();
             ws::SavedWindowSize size(statePath, u"Settings"_s);
             size.setWindow(window.get());
             QCOMPARE(size.wanted(), QSize(1500, 1000)); // the next run
@@ -424,7 +437,7 @@ private slots:
         // Junk in the file: as made.
         QSettings(statePath, QSettings::IniFormat).setValue(u"Settings/Width"_s, u"wide"_s);
         QSettings(statePath, QSettings::IniFormat).setValue(u"Settings/Height"_s, 99999);
-        const auto window = made();
+        const auto window = settingsLikeWindow();
         ws::SavedWindowSize size(statePath, u"Settings"_s);
         size.setWindow(window.get());
         QCOMPARE(size.wanted(), QSize(920, 720));
@@ -438,15 +451,10 @@ private slots:
         const auto maximized = [&] { return QSettings(statePath, QSettings::IniFormat).value(u"Settings/Maximized"_s).toBool(); };
         // Shown as Windows shows them, cloaked: nothing comes up on the screen.
         const auto made = [] {
-            auto window = std::make_unique<QWindow>();
-            window->setFlags(Qt::Window | Qt::FramelessWindowHint);
-            window->resize(920, 720);
-            window->setMinimumSize({760, 420});
-            window->create();
+            auto window = settingsLikeWindow();
             ws::win::setCloaked(window.get(), true);
             return window;
         };
-        const auto zoomed = [](QWindow& window) { return ::IsZoomed(reinterpret_cast<HWND>(window.winId())) != FALSE; };
         QScreen* screen = QGuiApplication::primaryScreen();
         {
             const auto window = made();
@@ -488,6 +496,63 @@ private slots:
             window->hide();
         }
     }
+
+    // 外观 › 记住窗口大小 off: nothing read or saved, what was saved is
+    // forgotten, and what its user gives the window lasts while it runs. On
+    // again: that is saved at once.
+    void rememberingCanBeTurnedOff()
+    {
+        using ws::SavedWindowSize;
+        const auto restore = qScopeGuard([] { SavedWindowSize::setRemembering(true); });
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString statePath = temporary.filePath(u"state.ini"_s);
+        const auto keys = [&] { return QSettings(statePath, QSettings::IniFormat).allKeys(); };
+        const QStringList others {u"Other/Kept"_s}; // not its own: left alone
+        {
+            QSettings state(statePath, QSettings::IniFormat);
+            state.setValue(u"Settings/Width"_s, 1400);
+            state.setValue(u"Settings/Height"_s, 1000);
+            state.setValue(u"Settings/Maximized"_s, true);
+            state.setValue(others.first(), 1);
+        }
+        SavedWindowSize::setRemembering(false);
+        QVERIFY(!SavedWindowSize::remembering());
+        const auto window = settingsLikeWindow();
+        ws::win::setCloaked(window.get(), true);
+        SavedWindowSize size(statePath, u"Settings"_s);
+        size.setWindow(window.get());
+        QCOMPARE(size.wanted(), QSize(920, 720)); // as made, each run
+        QVERIFY(!size.maximizedWanted());
+        QCOMPARE(keys(), others); // left from when it was on: gone
+        size.placeOn(QGuiApplication::primaryScreen());
+        window->show();
+        QVERIFY(!zoomed(*window));
+        sizingLoop(*window, {1000, 800}, true);
+        QCOMPARE(size.wanted(), QSize(1000, 800)); // for this run
+        window->setWindowStates(Qt::WindowMaximized);
+        QTRY_VERIFY(size.maximizedWanted());
+        QCOMPARE(keys(), others); // nothing saved
+        SavedWindowSize::setRemembering(true);
+        {
+            const QSettings state(statePath, QSettings::IniFormat);
+            QCOMPARE(state.value(u"Settings/Width"_s).toInt(), 1000);
+            QCOMPARE(state.value(u"Settings/Height"_s).toInt(), 800);
+            QVERIFY(state.value(u"Settings/Maximized"_s).toBool());
+        }
+        // Off while it is up: forgotten, and it keeps what it has for this run.
+        SavedWindowSize::setRemembering(false);
+        QCOMPARE(keys(), others);
+        window->setWindowStates(Qt::WindowNoState);
+        QTRY_VERIFY(!zoomed(*window));
+        QTRY_COMPARE(window->size(), QSize(1000, 800));
+        QCOMPARE(size.wanted(), QSize(1000, 800));
+        QCOMPARE(keys(), others);
+        window->hide();
+    }
+
+private:
+    static bool zoomed(QWindow& window) { return ::IsZoomed(reinterpret_cast<HWND>(window.winId())) != FALSE; }
 };
 
 QTEST_MAIN(DisplayGeometryTest)

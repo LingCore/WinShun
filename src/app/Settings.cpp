@@ -1023,6 +1023,7 @@ void Settings::load()
     panelListsAll = readOrDefault(s, u"Panel/ListAll"_s, d.panelListsAll);
     scopeButton = readOrDefault(s, u"Appearance/ScopeButton"_s, d.scopeButton);
     openAnimation = readOrDefault(s, u"Appearance/OpenAnimation"_s, d.openAnimation);
+    rememberWindowSize = readOrDefault(s, u"Appearance/RememberWindowSize"_s, d.rememberWindowSize);
     hoverTips = readOrDefault(s, u"Appearance/HoverTips"_s, d.hoverTips);
     previewWith = readOrDefault(s, u"Results/PreviewWith"_s, d.previewWith).trimmed().toLower();
     if (previewWith != u"builtin")
@@ -1439,6 +1440,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Panel/ListAll"_s, panelListsAll);
     s.setValue(u"Appearance/ScopeButton"_s, scopeButton);
     s.setValue(u"Appearance/OpenAnimation"_s, openAnimation);
+    s.setValue(u"Appearance/RememberWindowSize"_s, rememberWindowSize);
     s.setValue(u"Appearance/HoverTips"_s, hoverTips);
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);

@@ -558,6 +558,14 @@ void SettingsEditor::setOpenAnimation(bool on)
     commit();
 }
 
+void SettingsEditor::setRememberWindowSize(bool on)
+{
+    if (m_settings.rememberWindowSize == on)
+        return;
+    m_settings.rememberWindowSize = on;
+    commit();
+}
+
 void SettingsEditor::setHoverTips(bool on)
 {
     if (m_settings.hoverTips == on)

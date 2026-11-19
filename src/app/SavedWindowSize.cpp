@@ -5,6 +5,7 @@
 #include <QCursor>
 #include <QEvent>
 #include <QGuiApplication>
+#include <QList>
 #include <QPlatformSurfaceEvent>
 #include <QRect>
 #include <QScreen>
@@ -28,6 +29,10 @@ constexpr int kLeast = 100;
 constexpr int kMost = 20000;
 
 constexpr Qt::WindowStates kNotNormal = Qt::WindowMinimized | Qt::WindowMaximized | Qt::WindowFullScreen;
+
+// 外观 › 记住窗口大小, and every SavedWindowSize there is (GUI thread only).
+bool g_remembering = true;
+QList<SavedWindowSize*> g_all;
 
 // The window's size as Windows has it now, in Qt's logical pixels (rounded as
 // Qt rounds it). Qt hears of each size in the sizing loop a moment later, so
@@ -82,6 +87,11 @@ SavedWindowSize::SavedWindowSize(QString file, QString group, QObject* parent)
     , m_file(std::move(file))
     , m_group(std::move(group))
 {
+    g_all.append(this);
+    if (!g_remembering) {
+        forget(); // left from when it was on
+        return;
+    }
     const QSettings state(m_file, QSettings::IniFormat);
     bool wide = false;
     bool tall = false;
@@ -94,8 +104,56 @@ SavedWindowSize::SavedWindowSize(QString file, QString group, QObject* parent)
 
 SavedWindowSize::~SavedWindowSize()
 {
+    g_all.removeOne(this);
     if (m_hwnd)
         ::RemoveWindowSubclass(reinterpret_cast<HWND>(m_hwnd), &Hook::proc, 0);
+}
+
+void SavedWindowSize::setRemembering(bool on)
+{
+    if (std::exchange(g_remembering, on) == on)
+        return;
+    for (SavedWindowSize* each : std::as_const(g_all)) {
+        if (on)
+            each->remember();
+        else
+            each->forget();
+    }
+}
+
+bool SavedWindowSize::remembering()
+{
+    return g_remembering;
+}
+
+void SavedWindowSize::forget()
+{
+    {
+        QSettings state(m_file, QSettings::IniFormat);
+        for (const QString& key : {m_group + u"/Width"_s, m_group + u"/Height"_s, m_group + u"/Maximized"_s}) {
+            if (state.contains(key))
+                state.remove(key); // the file written only where there was something
+        }
+    }
+    m_saved = {};
+    if (m_shown)
+        return; // what it has now lasts while the program runs
+    if (!m_default.isEmpty())
+        m_wanted = m_default;
+    m_maximized = false;
+}
+
+void SavedWindowSize::remember()
+{
+    if (!m_window)
+        return;
+    QSettings state(m_file, QSettings::IniFormat);
+    if (m_wanted != m_default) {
+        state.setValue(m_group + u"/Width"_s, m_wanted.width());
+        state.setValue(m_group + u"/Height"_s, m_wanted.height());
+    }
+    if (m_maximized)
+        state.setValue(m_group + u"/Maximized"_s, true);
 }
 
 void SavedWindowSize::setWindow(QWindow* window)
@@ -178,6 +236,8 @@ void SavedWindowSize::sized(QSize from, QSize size)
     if (wanted == m_wanted)
         return;
     m_wanted = wanted;
+    if (!g_remembering)
+        return; // for this run only
     QSettings state(m_file, QSettings::IniFormat);
     state.setValue(m_group + u"/Width"_s, wanted.width());
     state.setValue(m_group + u"/Height"_s, wanted.height());
@@ -212,6 +272,8 @@ void SavedWindowSize::stateChanged(Qt::WindowState state)
     if (maximized == m_maximized)
         return;
     m_maximized = maximized;
+    if (!g_remembering)
+        return;
     QSettings file(m_file, QSettings::IniFormat);
     if (maximized)
         file.setValue(m_group + u"/Maximized"_s, true);

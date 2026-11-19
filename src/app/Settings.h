@@ -304,6 +304,11 @@ struct Settings {
     // fades out (Placement::slideIn, slideOut); off: there and gone at once
     // (GitHub #365). Windows' own "animation effects" off: never animated.
     bool openAnimation = true;
+    // The settings window, the screenshot plugin's settings and picture text
+    // search open at the size their user dragged them to, maximized if left
+    // so, the next run too (SavedWindowSize, state.ini; GitHub #401). Off:
+    // each run at their default size, and what was saved is forgotten.
+    bool rememberWindowSize = true;
     // A tip comes up on the icon or button the mouse rests on: the kinds of
     // file, the +, the row's buttons (HoverTip, SystemTheme::hoverTips); off,
     // only an "i" still says its words (GitHub #368).
