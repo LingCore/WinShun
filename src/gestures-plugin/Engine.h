@@ -53,6 +53,9 @@ struct EngineOptions {
     std::function<void(const std::wstring& words, std::function<void(Translation)> done)> translate;
     std::function<void()> translateSetup; // the translate plugin's card, or the library's entry
     std::function<void(const std::wstring& words)> copy;
+    // The words selected in `root` when it is the window in front, asked of
+    // Win顺 (SelectionReader); on the reader's thread, waiting for the answer.
+    std::function<std::wstring(HWND root)> selectedText;
     // "shutdown", "restart", "sleep": done by Win顺 (this plugin has no right
     // to). On a thread of its own; the error's words, empty when done.
     std::function<std::wstring(const std::string& what)> power;

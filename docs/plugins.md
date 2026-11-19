@@ -319,6 +319,7 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
 | `backup_export` | `winshun:backup` | `file`、`unless`（可选） | 把现在的设置做成一份备份（和“导出备份”一样，不含这台电脑的备份位置、索引位置），写到 `file`（要在插件的数据文件夹里）。回 `{hash, when, written}`：`hash` 只跟内容有关，和 `unless` 一样时不写文件、`written` 是 false。0.26.0 起 |
 | `backup_restore` | `winshun:backup` | `file` | 用 `file`（插件数据文件夹里的一份备份）恢复：先校验，把现在的设置在本机 `backups` 里存一份，然后 Win顺 重启换上它，和“从备份恢复”一样。校验不过或另一个备份正在进行时回错误，什么都不换。让用户确认之后再调。0.26.0 起 |
 | `power` | `system:power` | `action` | 让 Win顺 关机、重启、睡眠或休眠：`action` 是 `shutdown`、`restart`、`sleep`、`hibernate` 之一，别的值回错误。插件的令牌没有关机特权，所以由 Win顺 来做，而且不强制：有未保存内容的程序仍能拦住关机和重启，由用户在 Windows 的提示里决定。关机、重启在 Windows 接受后回 `{ok: true}`，不接受时回错误并带 Windows 的说明；休眠没开时回错误“这台电脑没开休眠”。睡眠和休眠要等电脑醒来才会返回，Win顺 不等：请求立刻失败就回错误，否则回 `{ok: true}`，电脑随即睡下去。只在用户明确要求时调用。0.41.0 起 |
+| `selected_text` | `selection:read` | `window`（可选） | 前台窗口里选中的文字，由 Win顺 用 UI 自动化读，不经过剪贴板：回 `{text, readable}`，`text` 最多 4000 字，没选中（或只选了空白）是空字符串。`window` 是插件说的那个顶层窗口的句柄（数字）；前台不是它时当没选中。浏览器、VS Code、Electron 等 Chromium 程序和 Firefox 的窗口不问（一问它们就打开整套无障碍功能并一直变慢，VS Code 还会进屏幕阅读器模式），回 `readable: false`；以管理员身份运行的窗口和 400 毫秒内没回话的程序也是 `readable: false`。插件自己读不了：作业的 UI 限制挡住了跨进程的 UI 自动化。0.41.0 起 |
 
 ### 系统开关提供者
 
@@ -424,6 +425,7 @@ manifest 的 `permissions` 是数组：`["processes", "clipboard:read", {"files:
 | `ui` | 开自己的窗口、找别的窗口 | 部分 | 没有时作业限制桌面和 USER 句柄，并禁用传统扩展点；有此权限的插件保留传统输入法扩展点，仍受其他进程缓解策略和作业限制 |
 | `system:settings` | 修改 Windows 用户设置（主题、资源管理器、无线电、音量、保持唤醒） | **否** | 普通用户权限，仅声明；用于系统开关提供者，不授予管理员权限 |
 | `system:power` | 关机、重启、睡眠、休眠（`power` 工具）。0.41.0 起，更早的 Win顺 不认识它，会拒绝整个插件，清单里同时写 `"minWinShun": "0.41.0"` | **是** | `winshun/tool` 按权限放行；插件的令牌没有关机特权，只能请 Win顺 来做，Win顺 也不强制关闭程序 |
+| `selection:read` | 读前台窗口里选中的文字（`selected_text` 工具）。0.41.0 起，更早的 Win顺 不认识它，会拒绝整个插件，清单里同时写 `"minWinShun": "0.41.0"` | **是** | `winshun/tool` 按权限放行；由 Win顺 读，插件的作业碰不到别的程序的窗口；Chromium 程序和 Firefox 不读 |
 | `winshun:search` / `winshun:open` / `winshun:history` | 调 Win顺 的工具 | **是** | `winshun/tool` 按权限放行 |
 | `winshun:backup` | 取得 Win顺 的设置备份，并用备份恢复设置（`backup_export`、`backup_restore`）。备份里有全部设置、收藏和装的插件；恢复会换掉现在的设置并重启 Win顺。0.26.0 起，更早的 Win顺 不认识它，会拒绝整个插件，清单里同时写 `"minWinShun": "0.26.0"` | **是** | `winshun/tool` 按权限放行；文件只能在插件自己的数据文件夹里 |
 | `winshun:content` | 读 Win顺 从文档和文本文件里取出的文字（`list_documents`、`read_file_text`） | **是** | `winshun/tool` 按权限放行；不用自己解析 Word、PDF，也不用再读一遍硬盘 |

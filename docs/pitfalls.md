@@ -2582,6 +2582,13 @@
 - **原因**：没有 `ui` 权限时作业带 `JOB_OBJECT_UILIMIT_HANDLES`（不许用作业外进程拥有的 USER 句柄）；剪贴板里的数据句柄正是别的进程的，所以被挡。
 - **做法**：`sandbox::makeJob` 只在既没有 `ui` 也没有任何剪贴板权限时才加 `UILIMIT_HANDLES`；桌面、退出 Windows、系统参数、显示设置这几项照旧。`tst_plugin::jobsAndPermissions` 提权跑时断言有权限的插件 `clipRead = true`，这一条就是它抓出来的。
 
+### 作业有任何 UI 限制，UI 自动化就不通（连只禁读剪贴板也算）
+
+- **现象**：鼠标手势在 Win10 记事本里选中文字后画 ↓，执行的是“到底部”不是“复制”。插件日志：`GetFocusedElement` 返回 `0x80131505`（`UIA_E_TIMEOUT`），16 毫秒就回来；同样的代码做成独立探针直接跑，15 毫秒读到选中的字。
+- **原因**：插件进程在作业里，没有 `clipboard:read` 时作业带 `JOB_OBJECT_UILIMIT_READCLIPBOARD`。探针放进只带这一项 UI 限制的作业，照样立刻超时，连 `SendMessage(EM_GETSEL)` 都只回 0..0；只带进程缓解策略、不带 UI 限制的作业里一切正常。也就是说作业有 UI 限制时，跨作业的窗口消息（UI 自动化靠它）被挡，`SendInput`、`PostMessage`、`OpenProcess` 不受影响（手势的按键、关窗口照常）。
+- **做法**：要读别的程序界面的事交给 Win顺 做：`selected_text` 工具（权限 `selection:read`，`app/platform/SelectedText.cpp`），插件经 `winshun/tool` 要结果。别为这个去掉作业的剪贴板限制。探针在 `F:\HyperV\Win10\selprobe*.ps1`（`selprobe.exe jobA` 只带剪贴板限制、`jobB` 只带缓解策略）。
+- **同时**：Win顺 读的时候照“Chromium 的界面自动化会让 VS Code 进入屏幕阅读器模式”一条，不问 Chromium 和 Firefox 的窗口（焦点窗口和它往上直到顶层窗口的类名）。
+
 ### moc 把原始字符串里的 `//` 当注释，整个测试类就没了
 
 - **现象**：`tst_plugin.cpp` 链接时报 `TestPlugin::metaObject` 等三个符号找不到；autogen 目录里的 `tst_plugin.moc` 是 0 字节，手工跑 moc 说 “No relevant classes found”。

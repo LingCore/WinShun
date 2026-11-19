@@ -128,6 +128,7 @@ qt_add_executable(WinShun WIN32
     platform/Paster.cpp platform/Paster.h
     platform/PointerWatch.cpp platform/PointerWatch.h
     platform/Power.cpp platform/Power.h
+    platform/SelectedText.cpp platform/SelectedText.h
     platform/PreviewHost.cpp platform/PreviewHost.h
     platform/Shell.cpp platform/Shell.h platform/ShellDialogs.cpp
     platform/ShellContextMenu.cpp platform/ShellContextMenu.h

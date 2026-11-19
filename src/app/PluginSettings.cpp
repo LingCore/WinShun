@@ -565,6 +565,8 @@ QVariantList PluginSettings::permissionRows(const plugin::Manifest& m) const
         row(u"system:settings"_s, permissionText(P::SystemSettings), false, tr("以普通用户权限更改；Win顺 不能阻止它直接改系统设置"));
     if (m.permissions.has(P::SystemPower))
         row(u"system:power"_s, permissionText(P::SystemPower), true, tr("只能通过 Win顺 关机、重启、睡眠，插件自己没有这个权限"));
+    if (m.permissions.has(P::SelectionRead))
+        row(u"selection:read"_s, permissionText(P::SelectionRead), true, tr("由 Win顺 读前台窗口里选中的字，不经过剪贴板；浏览器等 Chromium 程序不读"));
     return rows;
 }
 
@@ -589,6 +591,7 @@ QString PluginSettings::permissionText(plugin::Permission p)
     case P::Elevated: return tr("跟随 Win顺 的管理员权限");
     case P::WinshunBackup: return tr("取得 Win顺 的设置备份，并用备份恢复设置");
     case P::SystemPower: return tr("关机、重启、睡眠");
+    case P::SelectionRead: return tr("读取你在其他程序里选中的文字");
     }
     return plugin::permissionName(p);
 }

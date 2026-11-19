@@ -240,16 +240,21 @@ std::wstring fromUtf8(const std::string& s)
 // The first words of a selection, on one line, for the hint.
 std::wstring snippet(const std::wstring& words, std::size_t length = 10)
 {
+    // Spaces and line breaks become one space between words, none at the ends.
     std::wstring out;
+    bool gap = false;
     for (const wchar_t c : words) {
+        if (c == L' ' || c == L'\r' || c == L'\n' || c == L'\t' || c == 0x3000 || c == 0xA0) {
+            gap = !out.empty();
+            continue;
+        }
         if (out.size() >= length) {
             out += L"…";
             break;
         }
-        const bool space = c == L'\r' || c == L'\n' || c == L'\t';
-        if (space && (out.empty() || out.back() == L' '))
-            continue;
-        out += space ? L' ' : c;
+        if (std::exchange(gap, false))
+            out += L' ';
+        out += c;
     }
     return out;
 }
@@ -264,6 +269,7 @@ std::wstring titleOf(Builtin builtin, bool chinese)
 Engine::Engine(EngineOptions options)
     : m_options(std::move(options))
     , m_shared(std::make_shared<Shared>())
+    , m_reader(m_options.selectedText)
 {
 }
 

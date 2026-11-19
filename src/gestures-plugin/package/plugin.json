@@ -9,7 +9,7 @@
   "license": "MIT",
   "minWinShun": "0.41.0",
   "runtime": {"mode": "resident", "program": "WinShunGestures.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 1500, "idleExitSec": 0, "memoryMB": 896},
-  "permissions": ["ui", "processes", "winshun:open", "clipboard:write", "system:power"],
+  "permissions": ["ui", "processes", "winshun:open", "clipboard:write", "system:power", "selection:read"],
   "settingsWindow": true,
   "commands": [{
     "id": "gestures",

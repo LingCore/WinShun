@@ -14112,6 +14112,10 @@ Content index: %5</translation>
         <translation>Shut down, restart, sleep</translation>
     </message>
     <message>
+        <source>读取你在其他程序里选中的文字</source>
+        <translation>Read the words you select in other programs</translation>
+    </message>
+    <message>
         <source>读最近打开的项目</source>
         <translation>Read the recently opened items</translation>
     </message>
@@ -14162,6 +14166,10 @@ Content index: %5</translation>
     <message>
         <source>只能通过 Win顺 关机、重启、睡眠，插件自己没有这个权限</source>
         <translation>It can only ask WinShun to shut down, restart or sleep; the plugin itself has no such right</translation>
+    </message>
+    <message>
+        <source>由 Win顺 读前台窗口里选中的字，不经过剪贴板；浏览器等 Chromium 程序不读</source>
+        <translation>WinShun reads the words selected in the window in front, never through the clipboard; browsers and other Chromium programs are not read</translation>
     </message>
     <message>
         <source>在局域网上开端口，让别的设备连进来</source>

@@ -225,8 +225,8 @@
         <translation>Gestures drawn</translation>
     </message>
     <message>
-        <source>先选中一段文字，再按住右键画：只在有选中文字时生效，没选中时还是上一页的手势</source>
-        <translation>Select some words first, then draw with the right button: these count only while words are selected; with none selected the gestures of the Gestures page hold</translation>
+        <source>先选中一段文字，再按住右键画：只在有选中文字时生效，没选中时还是上一页的手势。浏览器、VS Code、微信等用 Chromium 做的程序和 Firefox 里读不到选中的字（读了会让它们变慢），在那里还是上一页的手势</source>
+        <translation>Select some words first, then draw with the right button: these count only while words are selected; with none selected the gestures of the Gestures page hold. Browsers, VS Code, WeChat and other programs made with Chromium, and Firefox, are not read (asking them makes them slower): the Gestures page holds there</translation>
     </message>
     <message>
         <source>这些手势只在这个程序里生效，并且优先于其它页上的同一个手势；设成“什么都不做”可以在这个程序里关掉某个手势</source>

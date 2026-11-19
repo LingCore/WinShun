@@ -95,6 +95,7 @@
 #include "platform/Paster.h"
 #include "platform/PointerWatch.h"
 #include "platform/Power.h"
+#include "platform/SelectedText.h"
 #include "platform/ServiceDialogNav.h"
 #include "platform/ServiceKeyListener.h"
 #include "platform/Shell.h"
@@ -2628,6 +2629,13 @@ void App::setUpAppTools()
     tools.push_back({u"power"_s, plugin::Permission::SystemPower,
         [](const QString& pluginId, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
             power::run(pluginId, arguments, std::move(done));
+        }});
+    // The words selected in the window in front (selection:read, 0.41.0; the
+    // gestures plugin): read by Win顺, as a plugin's job keeps it from other
+    // programs' windows; never asked of Chromium or Firefox.
+    tools.push_back({u"selected_text"_s, plugin::Permission::SelectionRead,
+        [](const QString&, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            selection::run(arguments, std::move(done));
         }});
     // GitHub #225: open_item opens files and folders only, so a link the
     // screenshot plugin read (a QR code) did nothing. Web and mail links,

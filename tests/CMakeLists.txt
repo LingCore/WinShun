@@ -1541,7 +1541,8 @@ target_link_libraries(tst_pluginsdk PRIVATE winshun_options Qt6::Test)
 target_compile_definitions(tst_pluginsdk PRIVATE WINSHUN_SDK_SETTINGS_DEMO="$<TARGET_FILE:sdk_settings_demo>")
 add_dependencies(tst_pluginsdk sdk_settings_demo)
 set_target_properties(tst_pluginsdk PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
-qt_add_executable(tst_plugin tst_plugin.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Power.cpp) # Power: the power tool, with the test's performer
+qt_add_executable(tst_plugin tst_plugin.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Power.cpp # Power: the power tool, with the test's performer
+    ${PROJECT_SOURCE_DIR}/src/app/platform/SelectedText.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/ComWorker.cpp) # the selected_text tool
 qt_add_executable(plugin_qt plugin_qt.cpp)
 target_link_libraries(plugin_qt PRIVATE winshun_options Qt6::Quick)
 set_target_properties(plugin_qt PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)

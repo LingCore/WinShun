@@ -27,6 +27,7 @@
 #include "Tools.h"
 #include "Updates.h"
 #include "platform/Power.h"
+#include "platform/SelectedText.h"
 #include "WebShortcut.h"
 #include "WebSearchProvider.h"
 #include "TranslateText.h"
@@ -1169,6 +1170,20 @@ private slots:
             "runtime":{"mode":"resident","program":"bin\\tool.exe"},"commands":[{"id":"c"}]})", &error);
         QVERIFY2(without.has_value(), qPrintable(error));
         QVERIFY(!without->permissions.has(Permission::SystemPower));
+    }
+
+    // selection:read (0.41.0, the selected_text tool): known by its name, asked for in a manifest.
+    void manifestSelectionPermission()
+    {
+        QCOMPARE(permissionName(Permission::SelectionRead), u"selection:read"_s);
+        QCOMPARE(permissionFromName(u"selection:read"), std::optional(Permission::SelectionRead));
+        QString error;
+        const auto m = Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","minWinShun":"0.41.0",
+            "permissions":["ui","selection:read"],"runtime":{"mode":"resident","program":"bin\\tool.exe"},"commands":[{"id":"c"}]})", &error);
+        QVERIFY2(m.has_value(), qPrintable(error));
+        QVERIFY(m->permissions.has(Permission::SelectionRead));
+        QVERIFY(!m->permissions.has(Permission::ClipboardRead)); // a permission of its own
+        QVERIFY(m->permissions.names().contains(u"selection:read"_s));
     }
 
     void manifestElevated()
@@ -5109,6 +5124,42 @@ private slots:
             QVERIFY2(!power::parseAction(other), qPrintable(other));
         for (const power::Action a : {power::Action::Shutdown, power::Action::Restart, power::Action::Sleep, power::Action::Hibernate})
             QCOMPARE(power::parseAction(power::actionName(a)), std::optional(a));
+    }
+
+    // The `selected_text` tool (0.41.0): held to selection:read. A window
+    // that is not the one in front has nothing selected: answered without
+    // asking any program (the test does not read what is on this screen).
+    void selectedTextRequiresSelectionRead()
+    {
+        Fixture f;
+        f.host->setAppTools({{u"selected_text"_s, Permission::SelectionRead,
+            [](const QString&, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+                selection::run(arguments, std::move(done));
+            }}});
+        Spec denied;
+        denied.id = u"test.selection-denied"_s;
+        denied.keywords = {u"sd"_s};
+        denied.args = {u"--tool"_s, u"selected_text"_s, u"--tool-key"_s, u"window"_s};
+        denied.permissions = {u"ui"_s, u"clipboard:read"_s}; // other permissions do not do
+        QVERIFY(!f.install(denied).isEmpty());
+        std::uint64_t id = 0;
+        const auto ask = [&](const QString& keyword, const QString& window) {
+            ++id;
+            if (!f.host->query(keyword + u' ' + window, Scope::All, id) || !f.waitFinal(id))
+                return QString(u"no answer: "_s + f.logs.join(u'\n'));
+            return f.finalFor(id)->items[0].subtitle;
+        };
+        QCOMPARE(ask(u"sd"_s, u"1"_s), u"tool error %1"_s.arg(kPermissionDenied));
+
+        Spec allowed = denied;
+        allowed.id = u"test.selection-allowed"_s;
+        allowed.keywords = {u"sa"_s};
+        allowed.permissions = {u"selection:read"_s};
+        QVERIFY(!f.install(allowed).isEmpty());
+        // Window 1 is never the one in front: nothing selected, and it could be told.
+        const QString answer = ask(u"sa"_s, u"1"_s);
+        QVERIFY2(answer.startsWith(u"tool ok "_s) && answer.contains(u"\"text\":\"\""_s) && answer.contains(u"\"readable\":true"_s),
+            qPrintable(answer));
     }
 
     void powerToolRequiresSystemPower()

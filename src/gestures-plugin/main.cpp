@@ -128,6 +128,14 @@ protected:
                     log("warning", "clipboard_copy: " + answer["error"]["message"].toString());
             }).detach();
         };
+        o.selectedText = [this](HWND root) -> std::wstring {
+            const Json answer = tool("selected_text", Json::Object {{"window", static_cast<double>(reinterpret_cast<std::uintptr_t>(root))}}, &m_stopping);
+            if (answer.has("error")) {
+                log("warning", "selected_text: " + answer["error"]["message"].toString());
+                return {};
+            }
+            return winshun::wide(answer["text"].toString());
+        };
         o.power = [this](const std::string& what) -> std::wstring {
             const Json answer = tool("power", Json::Object {{"action", what}}, &m_stopping);
             if (!answer.has("error"))

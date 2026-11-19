@@ -57,6 +57,10 @@ enum class Permission : std::uint32_t {
     // Shut down, restart, sleep or hibernate the computer (the `power` tool, 0.41.0).
     // Win顺 does it: a plugin's restricted token has no shutdown privilege.
     SystemPower = 1u << 16,
+    // The words selected in the window in front (the `selected_text` tool,
+    // 0.41.0). Win顺 reads them: a plugin's job keeps it from other programs'
+    // windows (app/platform/SelectedText.h).
+    SelectionRead = 1u << 17,
 };
 
 struct Permissions {

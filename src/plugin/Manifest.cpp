@@ -98,6 +98,7 @@ constexpr Named kPermissions[] = {
     {Permission::Elevated, u"elevated"},
     {Permission::WinshunBackup, u"winshun:backup"},
     {Permission::SystemPower, u"system:power"},
+    {Permission::SelectionRead, u"selection:read"},
 };
 
 // Collects the first error; every check after it is skipped.
