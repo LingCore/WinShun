@@ -3113,6 +3113,18 @@ int runSettings(const QStringList& args)
                 else
                     qWarning("preview: no 粘贴为文件 card on the 插件 page");
             }
+            // --favorites-by name|modified|type|size: 收藏夹 pictured sorted, its caret on (GitHub #397);
+            // back to the order of before once grabbed, for the checks after the pages.
+            const QString favoritesBy = page == favoritesPage ? valueAfter(args, u"--favorites-by") : QString();
+            if (!favoritesBy.isEmpty()) {
+                editor->favorites()->sortBy(favoritesBy);
+                QElapsedTimer waited;
+                waited.start();
+                while (favorites.sort() == FavoriteSort::None && waited.elapsed() < 5000)
+                    pump(50);
+                if (favorites.sort() == FavoriteSort::None)
+                    qWarning("preview: --favorites-by %s did not sort the favorites", qUtf8Printable(favoritesBy));
+            }
             window->setHeight(baseHeight);
             settle(window, 3);
             int height = baseHeight;
@@ -3136,6 +3148,8 @@ int runSettings(const QStringList& args)
             if (tree)
                 writeTree(window, file + u".tree.txt"_s);
             saved = saveGrab(window, file) && saved;
+            if (!favoritesBy.isEmpty())
+                favorites.restoreOrder();
             // --hover x,y (logical): the pointer resting there, as a second picture.
             if (const QStringList at = valueAfter(args, u"--hover").split(u','); at.size() == 2) {
                 const QPointF point(at[0].toDouble(), at[1].toDouble());
