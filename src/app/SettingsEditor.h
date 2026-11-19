@@ -271,6 +271,10 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool clipboardKeepPlace READ clipboardKeepPlace WRITE setClipboardKeepPlace NOTIFY changed FINAL)
     Q_PROPERTY(QString clipboardOpenAt READ clipboardOpenAt WRITE setClipboardOpenAt NOTIFY changed FINAL) // caret | pointer | last
     Q_PROPERTY(bool clipboardPreviewRestore READ clipboardPreviewRestore WRITE setClipboardPreviewRestore NOTIFY changed FINAL)
+    // The tab the clipboard opens on (GitHub #404, Settings::clipboardOpenTab),
+    // out of clipboardOpenTabs: [{value, text}] (Clipboard::openTabChoices, set by the app).
+    Q_PROPERTY(QString clipboardOpenTab READ clipboardOpenTab WRITE setClipboardOpenTab NOTIFY changed FINAL)
+    Q_PROPERTY(QVariantList clipboardOpenTabs READ clipboardOpenTabs NOTIFY clipboardOpenTabsChanged FINAL)
     Q_PROPERTY(bool clipboardPauseInFullScreen READ clipboardPauseInFullScreen WRITE setClipboardPauseInFullScreen NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardFlipAbove READ clipboardFlipAbove WRITE setClipboardFlipAbove NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardHoldToStep READ clipboardHoldToStep WRITE setClipboardHoldToStep NOTIFY changed FINAL)
@@ -738,6 +742,10 @@ public:
     QString clipboardOpenAt() const { return m_settings.clipboardOpenAt; }
     bool clipboardPreviewRestore() const { return m_settings.clipboardPreviewRestore; }
     void setClipboardPreviewRestore(bool on);
+    QString clipboardOpenTab() const { return m_settings.clipboardOpenTab; }
+    void setClipboardOpenTab(const QString& key);
+    QVariantList clipboardOpenTabs() const { return m_clipboardOpenTabs; }
+    void setClipboardOpenTabs(const QVariantList& tabs); // set by the app
     bool clipboardPauseInFullScreen() const { return m_settings.clipboardPauseInFullScreen; }
     void setClipboardPauseInFullScreen(bool on);
     void setClipboardOpenAt(const QString& at);
@@ -1151,6 +1159,7 @@ signals:
     void taskbarStateChanged();
     void fileManagersChanged();
     void clipboardCountChanged();
+    void clipboardOpenTabsChanged();
     void numberKeysNoteChanged();
     void doubleCtrlClashChanged();
     void doubleTapActionsChanged();
@@ -1234,6 +1243,7 @@ private:
     bool m_classicTaskbar = false;
     QString m_clipboardHotkeyError;
     int m_clipboardCount = 0;
+    QVariantList m_clipboardOpenTabs;
     bool m_clipboardImporting = false;
     QString m_clipboardImportMessage;
     QPointer<QWindow> m_window;

@@ -701,6 +701,35 @@ private slots:
         QCOMPARE(unknown.clipboardOpenAt, u"caret"_s);
     }
 
+    // The tab the clipboard opens on (GitHub #404): 全部 unless chosen; a
+    // tab's key kept, written in any case; anything else is 全部.
+    void clipboardOpenTab()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.clipboardOpenTab, u"all"_s);
+        for (const QString& tab : {u"last"_s, u"text"_s, u"pinned"_s, u"group:42"_s, u"all"_s}) {
+            settings.clipboardOpenTab = tab;
+            settings.save();
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.clipboardOpenTab, tab);
+        }
+        const auto read = [](const QString& written) {
+            QSettings(ws::Settings::filePath(), QSettings::IniFormat).setValue(u"Clipboard/OpenTab"_s, written);
+            ws::Settings s;
+            s.load();
+            return s.clipboardOpenTab;
+        };
+        QCOMPARE(read(u" Group:7 "_s), u"group:7"_s);
+        QCOMPARE(read(u"Links"_s), u"links"_s);
+        for (const QString& wrong : {u"group:"_s, u"group:0"_s, u"group:-3"_s, u"groups"_s, u"上次"_s, QString()})
+            QCOMPARE(read(wrong), u"all"_s);
+    }
+
     // 在终端中打开 (GitHub #386): the command prompt unless chosen; a choice
     // and its own command line kept; an unknown one is the command prompt.
     void terminalChoice()

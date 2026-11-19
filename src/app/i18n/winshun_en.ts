@@ -8749,6 +8749,18 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>The preview closes with the clipboard; it opens on the list next time</translation>
     </message>
     <message>
+        <source>打开时显示</source>
+        <translation>Opens on</translation>
+    </message>
+    <message>
+        <source>分组;默认;打开;标签;记住;上次;固定;文本;链接;图片;文件;tab;group</source>
+        <translation>group;default;open;tab;remember;last;pinned;text;links;images;files;tab;group</translation>
+    </message>
+    <message>
+        <source>每次打开剪贴板先显示哪一栏；在分组上点右键也能设</source>
+        <translation>The tab the clipboard shows each time it opens; right-click a tab to set it there too</translation>
+    </message>
+    <message>
         <source>重新复制同样的内容仍会排到最前。粘贴过的条目右下角带蓝色对勾，也不会因“保留天数”到期而被删</source>
         <translation>Recopying the same content will still bring it to the top. Pasted items show a blue checkmark in the bottom-right corner and will not be deleted when retention days expire</translation>
     </message>
@@ -11222,6 +11234,14 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>删除分组</source>
         <translation>Delete the group</translation>
+    </message>
+    <message>
+        <source>打开时显示这里</source>
+        <translation>Open on this tab</translation>
+    </message>
+    <message>
+        <source>上次看的</source>
+        <translation>The one left open</translation>
     </message>
     <message>
         <source>图片还在保存，请稍后再试</source>

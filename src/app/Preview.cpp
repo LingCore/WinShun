@@ -1680,6 +1680,14 @@ int runSettings(const QStringList& args)
         : HealthMonitor::demo(editor, args.contains(u"--health-idle"_s)));
     editor->setHistoryCount(128);
     editor->setClipboardCount(args.contains(u"--clipboard-disabled"_s) ? -1 : 57);
+    { // 打开时显示's list, as Clipboard::openTabChoices gives it with two groups of the user's
+        QVariantList tabs;
+        for (const auto& [value, text] : std::initializer_list<std::pair<QString, QString>> {{u"all"_s, u"全部"_s},
+                 {u"last"_s, u"上次看的"_s}, {u"text"_s, u"文本"_s}, {u"links"_s, u"链接"_s}, {u"images"_s, u"图片"_s},
+                 {u"files"_s, u"文件"_s}, {u"pinned"_s, u"固定"_s}, {u"group:2"_s, u"常用回复"_s}, {u"group:3"_s, u"地址"_s}})
+            tabs.append(QVariantMap {{u"value"_s, value}, {u"text"_s, text}});
+        editor->setClipboardOpenTabs(tabs);
+    }
     editor->setHotkeyError({});
     // What the app reads off this PC, read-only: the file managers
     // installed, the taskbar, the AI clients and their configurations.
@@ -7502,6 +7510,90 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
             clipboard.historyChanged();
             QMetaObject::invokeMethod(page, "focusSearch");
             settle(window);
+        }
+        // The tab it opens on (GitHub #404): 全部 as before, a group chosen in
+        // the settings or in its tab's menu, or the one it was left on.
+        {
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            const qint64 work = store.addGroup(u"常用回复"_s);
+            const qint64 entry = store.add(ClipCapture {.kind = ClipKind::Text, .text = u"收到，马上处理"_s}, now + 20);
+            store.setGroup(std::array {entry}, work);
+            clipboard.historyChanged();
+            const auto indexOf = [&](qint64 group) {
+                const QVariantList tabs = clipboard.categories();
+                for (int i = 0; i < tabs.size(); ++i)
+                    if (tabs[i].toMap().value(u"group"_s).toLongLong() == group)
+                        return i;
+                return -1;
+            };
+            const int workTab = indexOf(work);
+            const auto reopen = [&] {
+                clipboard.handleHidden();
+                clipboard.handleShown();
+                settle(window);
+            };
+            check(workTab > 0, "a new group must have a tab");
+            clipboard.setCategory(workTab);
+            reopen();
+            check(clipboard.category() == 0, "by default the clipboard must open on 全部 whatever tab it was left on");
+
+            const QString workKey = u"group:"_s + QString::number(work);
+            const QVariantList choices = clipboard.openTabChoices();
+            const auto choice = [&](int i, const char* field) { return choices.value(i).toMap().value(QString::fromLatin1(field)).toString(); };
+            check(choices.size() == clipboard.categories().size() + 1 && choice(0, "value") == u"all" && choice(1, "value") == u"last"
+                    && choice(1, "text") == u"上次看的" && choice(workTab + 1, "value") == workKey && choice(workTab + 1, "text") == u"常用回复",
+                "the settings must offer 全部, 上次看的 and then every tab, groups by their names");
+
+            clipboard.setOpenTab(workKey);
+            reopen();
+            check(clipboard.category() == workTab && clipboard.items()->count() == 1,
+                "a group chosen in the settings must be the tab the clipboard opens on");
+            check(saveGrab(window, output.filePath(u"clipboard-open-tab.png"_s)), "the clipboard opened on a group did not render");
+
+            clipboard.setOpenTab(u"last"_s);
+            clipboard.setCategory(1); // 文本
+            reopen();
+            store.flush();
+            check(clipboard.category() == 1 && store.value(u"lastTab"_s) == u"text",
+                "上次看的 must open on the tab it was left on, and keep it for the next run");
+
+            QString told;
+            const auto connection = QObject::connect(&clipboard, &Clipboard::openTabChosen, [&](const QString& key) { told = key; });
+            QVariantList menu = clipboard.categoryMenuItems(workTab);
+            check(!menu.isEmpty() && menu.first().toMap().value(u"action"_s).toInt() == Clipboard::OpenHere
+                    && !menu.first().toMap().value(u"checked"_s).toBool() && menu.size() == 4,
+                "a group's tab menu must start with 打开时显示这里, then rename and remove");
+            check(clipboard.categoryMenuItems(0).size() == 1 && clipboard.categoryMenuItems(indexOf(ClipStore::kPinned)).size() == 1,
+                "全部 and 固定 must have 打开时显示这里 alone in their menus");
+            // Through the tab's own menu, as a right click opens it and a click picks the entry.
+            const QPoint at = window->mapToGlobal(QPoint(200, 60));
+            check(QMetaObject::invokeMethod(page, "openCategoryMenu", Q_ARG(QVariant, QVariant(workTab)), Q_ARG(QVariant, QVariant(QPointF(at)))),
+                "a group's tab menu did not open");
+            if (auto* tabMenu = qobject_cast<QQuickWindow*>(page->property("contextMenu").value<QObject*>())) {
+                settle(tabMenu);
+                check(saveGrab(tabMenu, output.filePath(u"clipboard-tab-menu.png"_s)), "a group's tab menu did not render");
+                QMetaObject::invokeMethod(tabMenu, "triggered", Q_ARG(int, workTab), Q_ARG(int, Clipboard::OpenHere));
+                QMetaObject::invokeMethod(tabMenu, "dismiss");
+                settle(window);
+            } else {
+                check(false, "the production tab menu is missing");
+            }
+            menu = clipboard.categoryMenuItems(workTab);
+            check(told == workKey && clipboard.openTab() == workKey && menu.first().toMap().value(u"checked"_s).toBool(),
+                "打开时显示这里 must choose that tab, tell the settings and be checked afterwards");
+            clipboard.triggerCategory(workTab, Clipboard::OpenHere);
+            check(told == u"all" && clipboard.openTab() == u"all", "打开时显示这里 picked again must go back to 全部");
+            QObject::disconnect(connection);
+
+            clipboard.setOpenTab(workKey);
+            store.removeGroup(work);
+            clipboard.historyChanged();
+            reopen();
+            check(clipboard.category() == 0, "a chosen group since removed must open on 全部");
+            store.discardImages(std::array {entry});
+            clipboard.setOpenTab(u"all"_s);
+            reopen();
+            QMetaObject::invokeMethod(page, "focusSearch");
         }
         settle(window);
         say(u"clipboard search logo: shared SVG loaded; spacing, focus and both header positions checked"_s);

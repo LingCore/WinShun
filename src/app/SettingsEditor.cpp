@@ -2051,6 +2051,25 @@ void SettingsEditor::setClipboardPreviewRestore(bool on)
     commit();
 }
 
+void SettingsEditor::setClipboardOpenTab(const QString& key)
+{
+    const bool offered = std::ranges::any_of(m_clipboardOpenTabs, [&key](const QVariant& tab) {
+        return tab.toMap().value(u"value"_s).toString() == key;
+    });
+    if (m_settings.clipboardOpenTab == key || !offered)
+        return;
+    m_settings.clipboardOpenTab = key;
+    commit();
+}
+
+void SettingsEditor::setClipboardOpenTabs(const QVariantList& tabs)
+{
+    if (m_clipboardOpenTabs == tabs)
+        return;
+    m_clipboardOpenTabs = tabs;
+    emit clipboardOpenTabsChanged();
+}
+
 void SettingsEditor::setClipboardUiSize(const QString& size)
 {
     if (m_settings.clipboardUiSize == size

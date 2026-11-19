@@ -1198,6 +1198,10 @@ void Settings::load()
     if (clipboardOpenAt != u"caret" && clipboardOpenAt != u"pointer" && clipboardOpenAt != u"last")
         clipboardOpenAt = d.clipboardOpenAt;
     clipboardPreviewRestore = readOrDefault(s, u"Clipboard/PreviewRestore"_s, d.clipboardPreviewRestore);
+    clipboardOpenTab = readOrDefault(s, u"Clipboard/OpenTab"_s, d.clipboardOpenTab).trimmed().toLower();
+    static const QRegularExpression openTab(u"^(all|last|text|links|images|files|pinned|group:[1-9][0-9]{0,17})$"_s);
+    if (!openTab.match(clipboardOpenTab).hasMatch())
+        clipboardOpenTab = d.clipboardOpenTab;
     clipboardPauseInFullScreen = readOrDefault(s, u"Clipboard/PauseInFullScreen"_s, d.clipboardPauseInFullScreen);
     clipboardFlipAbove = readOrDefault(s, u"Clipboard/FlipAbove"_s, d.clipboardFlipAbove);
     clipboardHoldToStep = readOrDefault(s, u"Clipboard/HoldToStep"_s, d.clipboardHoldToStep);
@@ -1507,6 +1511,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/OpenAt"_s, clipboardOpenAt);
     s.remove(u"Clipboard/AtPointer"_s); // said by OpenAt now
     s.setValue(u"Clipboard/PreviewRestore"_s, clipboardPreviewRestore);
+    s.setValue(u"Clipboard/OpenTab"_s, clipboardOpenTab);
     s.setValue(u"Clipboard/PauseInFullScreen"_s, clipboardPauseInFullScreen);
     s.setValue(u"Clipboard/FlipAbove"_s, clipboardFlipAbove);
     s.setValue(u"Clipboard/HoldToStep"_s, clipboardHoldToStep);
