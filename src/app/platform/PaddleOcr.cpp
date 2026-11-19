@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <mutex>
@@ -61,6 +62,16 @@ QString filePath(const QString& folder, const wchar_t* name, bool model)
 }
 
 // ONNX Runtime from the resolved component/legacy folder, once.
+std::atomic<PaddleOcr::Trace> g_trace {nullptr};
+
+// A step for the OCR test (PaddleOcr::setTrace), made only when it listens.
+template <typename Make>
+void trace(Make&& make)
+{
+    if (const PaddleOcr::Trace to = g_trace.load(std::memory_order_relaxed))
+        to(make());
+}
+
 const OrtApi* loadApi(const QString& folder, QString* error)
 {
     static std::mutex mutex;
@@ -557,6 +568,11 @@ PaddleOcr::PaddleOcr()
 
 PaddleOcr::~PaddleOcr() = default;
 
+void PaddleOcr::setTrace(Trace trace)
+{
+    g_trace.store(trace);
+}
+
 bool PaddleOcr::installed(const QString& programFolder)
 {
     return !ocr::folder(programFolder).isEmpty();
@@ -622,6 +638,7 @@ std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int thr
 std::vector<Quad> PaddleOcr::Impl::detect(const QImage& strip)
 {
     const int w = round32(strip.width()), h = round32(strip.height());
+    trace([&] { return u"detect %1 x %2"_s.arg(w).arg(h); });
     const QImage input = scaledRgb(strip, w, h);
     std::vector<float> planes(3 * static_cast<std::size_t>(w) * h);
     toPlanes(input, planes.data(), w);
@@ -633,7 +650,9 @@ std::vector<Quad> PaddleOcr::Impl::detect(const QImage& strip)
     const std::vector<int64_t> dims = out[0].GetTensorTypeAndShapeInfo().GetShape();
     if (dims.size() != 4 || dims[2] != h || dims[3] != w)
         throw std::runtime_error("unexpected detection output");
-    return boxesFrom(out[0].GetTensorData<float>(), w, h, strip.width(), strip.height());
+    std::vector<Quad> boxes = boxesFrom(out[0].GetTensorData<float>(), w, h, strip.width(), strip.height());
+    trace([&] { return u"found %1 boxes"_s.arg(boxes.size()); });
+    return boxes;
 }
 
 void PaddleOcr::Impl::recognize(const std::vector<QImage>& lines, std::vector<std::pair<QString, float>>* read,
@@ -652,6 +671,8 @@ void PaddleOcr::Impl::recognize(const std::vector<QImage>& lines, std::vector<st
         for (std::size_t i = 0; i < count; ++i)
             widest = std::max(widest, ratio(order[first + i]));
         const int width = static_cast<int>(kLineHeight * widest);
+        trace([&] { return u"recognize %1 lines, %2 x %3 (batch %4 of %5)"_s.arg(count).arg(kLineHeight).arg(width)
+            .arg(first / kBatch + 1).arg((order.size() + kBatch - 1) / kBatch); });
         // Each line 48 px high, left-aligned; the rest 0 (mid grey).
         std::vector<float> planes(count * 3 * kLineHeight * static_cast<std::size_t>(width), 0.f);
         std::vector<int> used(count); // each line's width in the batch's, the rest being padding
@@ -784,6 +805,8 @@ bool PaddleOcr::find(
         QImage look = scale == 1 ? picture
                                  : scaledRgb(picture, std::max(1, static_cast<int>(picture.width() * scale)),
                                        std::max(1, static_cast<int>(picture.height() * scale)));
+        trace([&] { return u"picture %1 x %2, read at %3 x %4, lines looked for at %5 x %6"_s.arg(image.width())
+            .arg(image.height()).arg(picture.width()).arg(picture.height()).arg(look.width()).arg(look.height()); });
         // A thin strip gets black above and below: the model finds its text then.
         int padding = 0;
         if (look.height() <= kMinSide || look.width() > 8 * look.height()) {
@@ -833,10 +856,18 @@ bool PaddleOcr::find(
             cuts.push_back(std::move(line));
             quads.push_back(quad);
         }
+        trace([&] {
+            QSize widest;
+            for (const QImage& line : cuts)
+                if (line.height() > 0 && (widest.isEmpty() || line.width() * widest.height() > widest.width() * line.height()))
+                    widest = line.size();
+            return u"cut %1 lines, the longest %2 x %3"_s.arg(cuts.size()).arg(widest.width()).arg(widest.height());
+        });
         Reading read;
         std::vector<QList<QPair<int, float>>> places;
         d->recognize(cuts, &read, chars ? &places : nullptr, options.progress);
         if (options.retryUpsideDown && cuts.size() >= 2 && readsPoorly(read)) {
+            trace([] { return u"read again turned"_s; });
             std::vector<QImage> turned;
             turned.reserve(cuts.size());
             for (const QImage& line : cuts)

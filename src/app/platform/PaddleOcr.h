@@ -80,6 +80,12 @@ public:
     bool readPieces(
         const QImage& image, QList<OcrPiece>* pieces, QString* error = nullptr, const OcrOptions& options = {});
 
+    // Each step of every reading as it starts, for the OCR test a user runs
+    // (tools/ocrtest): "detect 2000 x 1316", "recognize 6 lines, 48 x 7412".
+    // Any thread; unset in the program, where nothing is made for it.
+    using Trace = void (*)(const QString& step);
+    static void setTrace(Trace trace);
+
 private:
     PaddleOcr();
     bool find(const QImage& image, QList<OcrPiece>* found, bool chars, QString* error, const OcrOptions& options);

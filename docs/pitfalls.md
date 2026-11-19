@@ -9,6 +9,7 @@
   - 读图线程（`TextRecognizer::work`）把每张图的识别整段包进 `try`，`std::exception` 和其他异常都只算这张图读不了（不再每次启动重试），不让异常飞出线程。
   - 读每张图时把编号写进 `reading-picture`，读完删掉；启动时还在就是读它时死了：第一次放到最后重读，第二次放弃并记 `clipboard-picture-not-read`。死循环最多再闪退一两次就断开。
   - `CrashRecord`：`SIGABRT` 和未处理异常时写 `crash.txt`（原因、线程、当时在做什么、模块+偏移的调用栈），下次启动记成 `app-crash`。下回再有人闪退，诊断包里就有停在哪。
+  - 以上只能让程序不再死循环。要找根因，就把读图测试 [tools/ocrtest](../tools/ocrtest/README.md) 发给用户：它在用户电脑上照 Win顺 的顺序读剪贴板历史里的图，记下每一步的内存，出问题时在限额内停下、找出是哪张图，并带回 dump。
 - **测试**：`tst_uistall` 起自己的子进程，分别 `abort()`、在另一个线程里抛没人接的异常、写空指针，检查留下的记录（原因、线程、activity、帧里有 `tst_uistall.exe+`、访问违规的异常码和位置）；`tst_cliplifecycle` 检查守卫文件只在读图时存在、两次才放弃；`WinShun --preview-results <目录> --clipboard-crashed-reading` 用真的 `Clipboard` 和临时历史走三次启动。
 - **别踩**：
   - 线程函数体里调到的任何会抛异常的代码（ONNX Runtime、ZXing、Qt 容器），都要在线程里接住；`std::jthread` 里漏掉一个，就是整个程序 `abort()`，日志里什么都没有。

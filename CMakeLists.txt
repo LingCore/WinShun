@@ -220,6 +220,24 @@ target_link_libraries(WinShunMemReport PRIVATE winshun_options advapi32 ole32 pd
 set_target_properties(WinShunMemReport PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+# What reading the clipboard history's pictures does on a user's PC
+# (tools/ocrtest/README.md): their pictures and OCR component, each reading
+# watched from outside. Qt beside it, deployed by scripts/ocrtest.ps1; its
+# own symbols kept, for the dumps it brings back.
+qt_add_executable(WinShunOcrTest tools/ocrtest/ocrtest.cpp
+    src/app/platform/PaddleOcr.cpp src/app/platform/OcrFiles.cpp
+    src/app/platform/CrashRecord.cpp src/app/platform/CodeAddress.cpp)
+target_include_directories(WinShunOcrTest PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/app/platform)
+# kernel32 and user32 ahead of wscapture's windowsapp umbrella: the console
+# calls come from kernel32 itself, not API sets an older Windows 10 may lack.
+target_link_libraries(WinShunOcrTest PRIVATE kernel32 user32 winshun_options wscapture miniz Qt6::Gui Qt6::Sql
+    onnxruntime_headers dbghelp psapi shell32 ole32 version advapi32)
+target_compile_options(WinShunOcrTest PRIVATE /Z7)
+target_link_options(WinShunOcrTest PRIVATE /DEBUG /OPT:REF /OPT:ICF)
+set_target_properties(WinShunOcrTest PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+qt_add_resources(WinShunOcrTest "ocrtest" PREFIX /ocrtest BASE ${PROJECT_SOURCE_DIR}
+    FILES resources/ocr/package.json docs/images/clipboard.jpg)
+
 qt_add_executable(recording-probe tools/recording-probe.cpp src/app/platform/KeyListener.cpp)
 target_include_directories(recording-probe PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(recording-probe PRIVATE wscapture wscore Qt6::Gui shcore)
