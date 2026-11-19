@@ -103,7 +103,11 @@ function Hold([string] $how, [string] $file) {
     $started.Add($process)
     for ($i = 0; $i -lt 100 -and -not (Test-Path -LiteralPath $ready); $i++) { Start-Sleep -Milliseconds 100 }
     if (-not (Test-Path -LiteralPath $ready)) { throw "the holder of $file did not start" }
-    Remove-Item -LiteralPath $ready
+    # Seen as soon as it is created: the holder may still be writing it.
+    for ($i = 0; ; $i++) {
+        try { Remove-Item -LiteralPath $ready -ErrorAction Stop; break }
+        catch [IO.IOException] { if ($i -ge 50) { throw } ; Start-Sleep -Milliseconds 100 }
+    }
     $process
 }
 function Release([Diagnostics.Process] $process) {
