@@ -2125,6 +2125,17 @@
     </message>
 </context>
 <context>
+    <name>DonateButton</name>
+    <message>
+        <source>捐赠</source>
+        <translation>Donate</translation>
+    </message>
+    <message>
+        <source>在爱发电支持 Win顺</source>
+        <translation>Support WinShun on Afdian</translation>
+    </message>
+</context>
+<context>
     <name>DropPieHelper</name>
     <message>
         <source>收藏圆盘未启动</source>

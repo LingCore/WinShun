@@ -21,6 +21,8 @@ Item {
     property bool maximizable: true
     // false: only the caption buttons, over a window that shows its own name (the first-run setup).
     property bool labelled: true
+    // The window's own buttons, left of the caption buttons (the settings' 捐赠): clicks, not the drag area.
+    property alias tools: toolRow.data
 
     signal closeRequested()
 
@@ -33,6 +35,7 @@ Item {
     Component.onCompleted: {
         frame.addDragArea(bar)
         frame.addControl(buttons)
+        frame.addControl(toolRow)
         if (maximizable)
             frame.setMaximizeButton(maximize)
     }
@@ -60,7 +63,7 @@ Item {
     Text {
         anchors.left: icon.right
         anchors.leftMargin: 16
-        anchors.right: buttons.left
+        anchors.right: toolRow.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
         visible: bar.labelled
@@ -104,6 +107,14 @@ Item {
             hoverEnabled: true
             onClicked: button.clicked()
         }
+    }
+
+    Row {
+        id: toolRow
+        anchors.right: buttons.left
+        anchors.rightMargin: width > 0 ? 8 : 0
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: 4
     }
 
     Row {

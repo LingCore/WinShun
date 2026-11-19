@@ -227,6 +227,7 @@ set(qml_files
     qml/OnboardingWindow.qml
     qml/SettingsSearchBox.qml
     qml/TitleBar.qml
+    qml/DonateButton.qml
     qml/SettingsSection.qml
     qml/SettingsContext.qml
     qml/SettingsPage.qml

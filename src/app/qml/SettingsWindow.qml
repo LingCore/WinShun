@@ -932,6 +932,11 @@ Window {
         title: window.title + " - " + Qt.application.displayName
         iconX: navList.x + 16 // over the categories' icons, the title over their names
         foreground: window.warm ? WarmPalette.ink : Theme.text
+        tools: DonateButton {
+            visible: Gleaning.donateUrl.length > 0
+            dpr: window.dpr
+            onClicked: window.editor.openUrl(Gleaning.donateUrl)
+        }
     }
 
     Item { // category list
