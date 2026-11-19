@@ -1,5 +1,16 @@
 # 踩坑记录
 
+## 软件内更新后没回到管理员身份，也没有任何提示（2026-11-19，#400）
+
+- **现象**：以管理员身份运行（管理员直读）的 0.37、0.38 两次软件内更新后都是普通权限，诊断日志里没有 `elevation-after-update`。日志里新版启动约 10 秒就有 `settings-open`（0.38 那次启动器还被弹了出来），之后用户自己点了“以管理员身份重新启动”。
+- **原因**：
+  - `App::elevateOnceUpdated` 先等升级助手结束（助手看着 Setup，Setup 退出后还要再等 8 秒），然后只要启动器、设置或剪贴板开着就一直等，等的时候不记日志、不提示。用户在助手结束前打开了设置，Win顺 就一直在等；用户看到插件是普通权限，自己重启了，等待随进程结束，那条记录始终没写出来。
+  - 覆盖安装时 `PrepareToInstall`（提权）删掉指向本安装目录的开机任务，[Run] 里普通权限的 `--take-autostart` 再写一个，管理员直读的 `HIGHEST` 任务就这样降成了 `LUA`；要等提权的那份下次启动才改回来，中间重启电脑，开机就是普通权限。
+- **做法**：
+  - 等待有上限（`update::ElevationWait`，纯逻辑、可测）：助手最多等 10 分钟；助手结束后没有窗口开着就直接重启；窗口刚关掉的话先等 2 秒，免得在用户手上关；窗口一直开着，1 分钟后改发通知“Win顺 已更新”，点一下就以管理员身份重启（设置开着就带 `--settings`，重启后接着打开）。开始等窗口时记 `elevation-after-update-waiting`（写明哪些窗口），结束时记 `elevation-after-update`（`restart`、`asked`、`waited_s`）。
+  - 安装程序覆盖安装时，开机任务如果是启动 Setup 的那个用户自己的（他用自己的权限 `schtasks /Query` 读得到），就原样留着；读不到的（别的管理员答 UAC 时注册的，#21）照旧删掉，卸载也照旧删。`--take-autostart` 遇到模式要求提权、任务也已经是提权的情况，就不再改写。
+- **测试**：`tst_updater::elevationAfterUpdateWaitsThenAsks` 覆盖每个分支。实机测试：从 Program Files 复制一份、换上新 exe，用 `--profile` 运行，测试进程拿着 `Local\WinShun.Updating`，并预先写好 `update.ini`。没开窗口时，助手结束 1.1 秒后以管理员身份重启（integrity high）；设置一直开着时，记下 waiting，60 秒后弹通知（`asked`），仍是普通权限；设置在 5 秒后关掉时，关掉后 1.3 秒重启。开机任务、右键菜单项前后一样。`verify-installer.ps1` 6 个情形全部通过；但测试版装在自己的目录里，“保留用户自己的任务”这个分支只编译过、没真正走到，装到 Program Files 上的完整升级要等发布时用 `verify-installed-upgrade.ps1 -Mode InApp` 实测。
+
 ## 卡片网格：卡片展开、收起时报绑定循环（2026-11-19，插件页改成网格）
 
 - **现象**：插件页的卡片改成网格（TileFlow）后，「内置功能」的卡片从小卡片展开成整行时，日志报 `Binding loop detected for property "width"`，预览因此退出码非 0。

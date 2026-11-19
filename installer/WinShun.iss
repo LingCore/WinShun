@@ -1040,15 +1040,30 @@ begin
     Log('The index service could not be started again: ' + SysErrorMessage(ResultCode));
 end;
 
+// Whether the user who started Setup can read the task WinShun with their
+// own rights: it is theirs then. Another user's (that of an administrator
+// who answered UAC for them, GitHub #21) is closed to them.
+function OriginalUserReadsTask(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := ExecAsOriginalUser(ExpandConstant('{sys}\schtasks.exe'), '/Query /TN WinShun', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
 // Its autostart: the logon task WinShun creates itself, or, where Task
 // Scheduler would not take one (GitHub #52), the value "WinShun" in the
 // Run key. Only when it starts this copy; a portable copy elsewhere keeps
-// its own. True when one went.
-function RemoveAutostart(): Boolean;
+// its own. With KeepOwnTask (an install over it), the task of the user who
+// started Setup stays as it is: 管理员直读's runs Win顺 elevated, which
+// --take-autostart, with normal rights, could only write back with those
+// (GitHub #400). True when one went.
+function RemoveAutostart(KeepOwnTask: Boolean): Boolean;
 var
   Listing: AnsiString;
   ListFile, RunCommand: String;
   ResultCode: Integer;
+  Kept: Boolean;
 begin
   Result := False;
   if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'WinShun', RunCommand) and
@@ -1058,8 +1073,16 @@ begin
   if Exec(ExpandConstant('{cmd}'), '/C schtasks /Query /TN WinShun /V /FO LIST > "' + ListFile + '"', '',
        SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) and LoadStringFromFile(ListFile, Listing) then
     if Pos(Lowercase(ExpandConstant('{app}\{#AppExe}')), Lowercase(String(Listing))) > 0 then
-      Result := (Exec(ExpandConstant('{sys}\schtasks.exe'), '/Delete /TN WinShun /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
-        and (ResultCode = 0)) or Result;
+    begin
+      Kept := False;
+      if KeepOwnTask then // not while uninstalling: ExecAsOriginalUser is Setup's alone
+        Kept := OriginalUserReadsTask();
+      if Kept then
+        Log('The autostart task is the user''s own: kept as it is')
+      else
+        Result := (Exec(ExpandConstant('{sys}\schtasks.exe'), '/Delete /TN WinShun /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+          and (ResultCode = 0)) or Result;
+    end;
   DeleteFile(ListFile);
 end;
 
@@ -1612,8 +1635,8 @@ begin
   // the version before, and by whoever answered UAC then, which for a
   // standard user was an administrator, whose task that user can neither
   // read nor replace. Removed here (elevated); [Run] has the user who
-  // started Setup write their own, with normal rights.
-  HadAutostart := RemoveAutostart();
+  // started Setup write their own, with normal rights. Their own is kept.
+  HadAutostart := RemoveAutostart(True);
   Result := '';
 end;
 
@@ -1791,7 +1814,7 @@ begin
     // The index service: stopped and removed (while its file is still there).
     if IsAdminInstallMode then
       Exec(ExpandConstant('{app}\WinShunService.exe'), '--uninstall', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    RemoveAutostart();
+    RemoveAutostart(False);
     RemoveExplorerMenu();
     RemoveUriProtocol();
     RemoveSendToEntry();

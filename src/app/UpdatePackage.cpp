@@ -120,6 +120,21 @@ bool elevatedBeforeUpdate(const QString& dataDir)
     return QSettings(dataDir + u"\\update.ini"_s, QSettings::IniFormat).value(u"ElevatedBeforeUpdate"_s).toBool();
 }
 
+ElevationStep ElevationWait::next(Clock::time_point now, bool helper, bool wanted, bool windowOpen)
+{
+    if (helper)
+        return now < started + kHelperGiven ? ElevationStep::Wait : ElevationStep::Done;
+    if (!wanted)
+        return ElevationStep::Done;
+    if (!helperEnded)
+        helperEnded = now;
+    if (windowOpen) {
+        windowSeen = now;
+        return now < *helperEnded + kWindowsGiven ? ElevationStep::Wait : ElevationStep::Ask;
+    }
+    return windowSeen && now < *windowSeen + kSettled ? ElevationStep::Wait : ElevationStep::Restart;
+}
+
 bool folderWritable(const QString& folder)
 {
     const QString probe = QDir(folder).filePath(u".winshun-write-test-"_s + QUuid::createUuid().toString(QUuid::Id128));

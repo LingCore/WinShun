@@ -261,6 +261,47 @@ private slots:
         QVERIFY(!update::elevatedBeforeUpdate(data));
     }
 
+    // GitHub #400: restarted as administrator once the helper is done and
+    // nothing is open; a window still in use a minute later gets a question,
+    // not an endless wait.
+    void elevationAfterUpdateWaitsThenAsks()
+    {
+        using update::ElevationStep;
+        using update::ElevationWait;
+        using namespace std::chrono_literals;
+        const ElevationWait::Clock::time_point t0 {};
+
+        { // nothing open: as soon as the helper is gone
+            ElevationWait wait {t0};
+            QCOMPARE(wait.next(t0 + 1s, true, true, false), ElevationStep::Wait);
+            QCOMPARE(wait.next(t0 + 9s, true, true, true), ElevationStep::Wait);
+            QCOMPARE(wait.next(t0 + 10s, false, true, false), ElevationStep::Restart);
+        }
+        { // not wanted (the mode changed meanwhile, raised by hand already): done, nothing asked
+            ElevationWait wait {t0};
+            QCOMPARE(wait.next(t0 + 10s, false, false, true), ElevationStep::Done);
+        }
+        { // a helper that never ends is left alone
+            ElevationWait wait {t0};
+            QCOMPARE(wait.next(t0 + ElevationWait::kHelperGiven - 1s, true, true, false), ElevationStep::Wait);
+            QCOMPARE(wait.next(t0 + ElevationWait::kHelperGiven, true, true, false), ElevationStep::Done);
+        }
+        { // the launcher put away: restarted once it has been away a moment
+            ElevationWait wait {t0};
+            QCOMPARE(wait.next(t0 + 10s, false, true, true), ElevationStep::Wait);
+            QCOMPARE(wait.next(t0 + 20s, false, true, true), ElevationStep::Wait);
+            QCOMPARE(wait.next(t0 + 21s, false, true, false), ElevationStep::Wait); // an Enter's paste may still be going on
+            QCOMPARE(wait.next(t0 + 20s + ElevationWait::kSettled, false, true, false), ElevationStep::Restart);
+        }
+        { // the reporter's case: the settings open on and on: asked a minute after the helper ended
+            ElevationWait wait {t0};
+            QCOMPARE(wait.next(t0 + 10s, false, true, true), ElevationStep::Wait);
+            QVERIFY(wait.windowSeen);
+            QCOMPARE(wait.next(t0 + 10s + ElevationWait::kWindowsGiven - 1s, false, true, true), ElevationStep::Wait);
+            QCOMPARE(wait.next(t0 + 10s + ElevationWait::kWindowsGiven, false, true, true), ElevationStep::Ask);
+        }
+    }
+
     void parsesMirrorsAndDigest()
     {
         const auto info = release::parse(kFeed);

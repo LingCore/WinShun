@@ -373,12 +373,18 @@ int main(int argc, char* argv[])
     // normal rights (GitHub #21): the task is theirs and runs Win顺 so (a
     // process without administrator rights may not register a task that has
     // them: writeTask). The 管理员直读 mode's elevated task is written again
-    // by the copy that runs as administrator, when it next starts.
+    // by the copy that runs as administrator, when it next starts. One that
+    // starts this copy elevated already, as the mode wants, is left as it
+    // is (GitHub #400): written here it would come down to normal rights,
+    // and a login before the elevated copy's next start would ask UAC.
     if (parser.isSet(takeAutostart)) {
         if (ws::autostart::isSetUp() || parser.isSet(hadAutostart)) {
             ws::Settings stored;
             stored.load();
-            ws::autostart::setElevated(stored.indexAccess == u"direct" && ws::userIsAdministrator());
+            const bool elevated = stored.indexAccess == u"direct" && ws::userIsAdministrator();
+            if (elevated && ws::autostart::taskElevated() == true)
+                return 0;
+            ws::autostart::setElevated(elevated);
             ws::autostart::setEnabled(true);
         }
         return 0;

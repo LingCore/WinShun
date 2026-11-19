@@ -6,6 +6,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <chrono>
+#include <cstdint>
 #include <functional>
 #include <optional>
 
@@ -41,6 +43,32 @@ bool helperRunning();
 // the new version raises itself once more after it (App::elevateOnceUpdated).
 void rememberElevation(const QString& dataDir, bool elevated);
 bool elevatedBeforeUpdate(const QString& dataDir);
+
+// What that copy does about it, asked once a second (GitHub #400). It waits
+// for the helper (it watches this copy come up, and would start another one
+// while this one is between its end and its elevated start), at most
+// kHelperGiven from its start. Then, with no window of ours open, it
+// restarts as administrator; while one is open it waits for it to be put
+// away (and kSettled more: an Enter that hid the launcher is still pasting
+// or opening), but no longer than kWindowsGiven after the helper ended:
+// someone at work in Win顺 is asked (a notification) rather than kept
+// waiting, unaware, with normal rights.
+enum class ElevationStep : std::uint8_t { Wait, Restart, Ask, Done };
+struct ElevationWait {
+    using Clock = std::chrono::steady_clock;
+    static constexpr std::chrono::seconds kHelperGiven {600};
+    static constexpr std::chrono::seconds kWindowsGiven {60};
+    static constexpr std::chrono::seconds kSettled {2};
+
+    Clock::time_point started; // the copy's start
+    std::optional<Clock::time_point> helperEnded;
+    std::optional<Clock::time_point> windowSeen; // last time one was open, after the helper ended
+
+    // `wanted`: administrator before the update (or 管理员直读) and not now,
+    // and the user may be. Done: not wanted, or the helper still at work
+    // after kHelperGiven (it is left as it is).
+    ElevationStep next(Clock::time_point now, bool helper, bool wanted, bool windowOpen);
+};
 
 // Something can be created in `folder` (a portable copy in Program Files,
 // on a read-only share: not). Tried with a file that is gone at once.

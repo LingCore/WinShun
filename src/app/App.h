@@ -495,6 +495,7 @@ private:
     void showTrayMenu();
     void restart(const QStringList& arguments, Elevation elevation = Elevation::Same);
     void elevateOnceUpdated(); // StartOptions::elevateAfterUpdate
+    void askToElevateAfterUpdate(); // ... when Win顺 was still in use a minute after it (GitHub #400)
     // 索引方式 (Settings::indexAccess, GitHub #21): where the volumes are
     // read from, the index service looked for again while it is wanted and
     // not there, the autostart task's run level kept with the mode.

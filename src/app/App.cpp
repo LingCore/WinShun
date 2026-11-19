@@ -7476,35 +7476,68 @@ void App::restart(const QStringList& arguments, Elevation elevation)
 // (#363: raised by hand for plugins that need it): restarted as
 // administrator, as a manual start would have been, once the helper is done
 // (it has seen this copy come up and cleared the old files away) and nothing
-// of ours is open under the user's hands. UAC asks; declined, Win顺 comes
-// back with normal rights (startAgain). Once: the mark is cleared.
+// of ours is open under the user's hands; someone still at work in Win顺 a
+// minute later is asked instead (#400: they had waited unaware, and raised
+// it by hand). UAC asks; declined, Win顺 comes back with normal rights
+// (startAgain). Once: the mark is cleared.
 void App::elevateOnceUpdated()
 {
     auto* timer = new QTimer(this);
     timer->setInterval(1s);
-    const auto given = std::chrono::steady_clock::now() + 10min;
-    connect(timer, &QTimer::timeout, this, [this, timer, given] {
+    auto wait = std::make_shared<update::ElevationWait>();
+    wait->started = update::ElevationWait::Clock::now();
+    connect(timer, &QTimer::timeout, this, [this, timer, wait] {
         const bool helper = update::helperRunning();
-        if (helper && std::chrono::steady_clock::now() < given)
-            return;
         // Still wanted: the mode may have been changed meanwhile.
         const bool direct = m_settings.indexAccess == u"direct";
         const bool raised = update::elevatedBeforeUpdate(Settings::dataDir());
-        const bool wanted = !helper && (direct || raised) && userIsAdministrator() && !integrity::processElevated();
-        if (wanted
-            && (launcherShown() || (m_settingsWindow && m_settingsWindow->isVisible())
-                || (m_clipWindow && m_clipWindow->isVisible())))
-            return; // once they are put away
+        const bool wanted = (direct || raised) && userIsAdministrator() && !integrity::processElevated();
+        QStringList open;
+        if (launcherShown())
+            open << u"launcher"_s;
+        if (m_settingsWindow && m_settingsWindow->isVisible())
+            open << u"settings"_s;
+        if (m_clipWindow && m_clipWindow->isVisible())
+            open << u"clipboard"_s;
+        const bool waitedBefore = wait->windowSeen.has_value();
+        const auto now = update::ElevationWait::Clock::now();
+        const update::ElevationStep step = wait->next(now, helper, wanted, !open.isEmpty());
+        if (!waitedBefore && wait->windowSeen) {
+            diagnostics::record(u"elevation-after-update-waiting"_s, {{u"windows"_s, open.join(u',')}});
+            qWarning().noquote() << "Update: back as administrator once these are put away:" << open.join(u", ");
+        }
+        if (step == update::ElevationStep::Wait)
+            return;
         timer->deleteLater();
         update::rememberElevation(Settings::dataDir(), false);
-        diagnostics::record(u"elevation-after-update"_s, {{u"restart"_s, wanted}, {u"helper_still_running"_s, helper},
-            {u"direct_read"_s, direct}, {u"elevated_before_update"_s, raised}});
-        qWarning() << "Update: back as administrator after the update:" << wanted << "(direct read" << direct
-                   << ", elevated before" << raised << ")";
-        if (wanted)
+        const auto waited = wait->helperEnded ? std::chrono::duration_cast<std::chrono::seconds>(now - *wait->helperEnded)
+                                              : std::chrono::seconds(0);
+        diagnostics::record(u"elevation-after-update"_s,
+            {{u"restart"_s, step == update::ElevationStep::Restart}, {u"asked"_s, step == update::ElevationStep::Ask},
+                {u"waited_s"_s, static_cast<qint64>(waited.count())}, {u"helper_still_running"_s, helper},
+                {u"direct_read"_s, direct}, {u"elevated_before_update"_s, raised}});
+        qWarning() << "Update: back as administrator after the update:" << static_cast<int>(step) << "(direct read"
+                   << direct << ", elevated before" << raised << ", waited" << waited.count() << "s )";
+        if (step == update::ElevationStep::Restart)
             restart({u"--background"_s}, Elevation::Elevated);
+        else if (step == update::ElevationStep::Ask)
+            askToElevateAfterUpdate();
     });
     timer->start();
+}
+
+// The windows were still in use a minute after the update: one click from
+// the notification, which also says why the plugins' cards show normal rights.
+void App::askToElevateAfterUpdate()
+{
+    if (!m_messages)
+        return;
+    m_messages->showNotification(tr("Win顺 已更新"),
+        tr("更新前它以管理员身份运行，现在是普通权限。点这里以管理员身份重新启动，Windows 会请你确认一次。"), [this] {
+            const bool settingsOpen = m_settingsWindow && m_settingsWindow->isVisible();
+            // The settings open again where they were (restart).
+            restart({settingsOpen ? u"--settings"_s : u"--background"_s}, Elevation::Elevated);
+        });
 }
 
 // ---- 索引方式: how the volumes are read (GitHub #21) --------------------------

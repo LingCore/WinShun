@@ -9957,6 +9957,14 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Loading the index…</translation>
     </message>
     <message>
+        <source>Win顺 已更新</source>
+        <translation>WinShun updated</translation>
+    </message>
+    <message>
+        <source>更新前它以管理员身份运行，现在是普通权限。点这里以管理员身份重新启动，Windows 会请你确认一次。</source>
+        <translation>It ran as administrator before the update and now runs with normal rights. Click here to restart it as administrator; Windows will ask you to confirm once.</translation>
+    </message>
+    <message>
         <source>开机自启没有关闭</source>
         <translation>Start with Windows is still on</translation>
     </message>
