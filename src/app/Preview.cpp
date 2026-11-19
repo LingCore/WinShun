@@ -5209,17 +5209,22 @@ void checkFileGallery(Launcher& launcher, IndexService& index, SystemCatalog& pl
                 check(drawings.isValid(), "could not create a folder for the drawings");
                 const auto showDrawn = [&](const QString& path, const char* grab) -> QSize {
                     // The launcher's selected row may take the preview back
-                    // once (the preview follows it): shown again then.
+                    // once (the preview follows it, and a row under the
+                    // pointer after 100 ms): shown again then, until it stays.
                     const QString native = QDir::toNativeSeparators(path);
                     timeout.restart();
                     for (;;) {
                         if (!filePreview.isShowing(native))
                             filePreview.show({.path = native, .name = QFileInfo(path).fileName()});
                         pump(10);
-                        if ((filePreview.isShowing(native) && filePreview.kind() != FilePreview::Loading) || timeout.elapsed() >= 15000)
+                        if (timeout.elapsed() >= 15000)
                             break;
+                        if (filePreview.isShowing(native) && filePreview.kind() != FilePreview::Loading) {
+                            pump(300);
+                            if (filePreview.isShowing(native))
+                                break;
+                        }
                     }
-                    pump(300);
                     if (filePreview.window())
                         check(saveGrab(filePreview.window(), output.filePath(QString::fromLatin1(grab))), "could not render a drawn preview");
                     return filePreview.kind() == FilePreview::Picture ? filePreview.imageSize() : QSize();
@@ -7591,6 +7596,33 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
         clipboard.handleShown();
         settle(window);
         check(saveGrab(window, output.filePath(u"clipboard-gallery.png"_s)), "could not render the clipboard gallery");
+        // Notes in colour (GitHub #398) for the poster: entries noted as the
+        // release notes tell, the newest one's box open on its colours.
+        std::vector<qint64> shown;
+        for (const auto& clip : store.clips()) shown.push_back(clip.id);
+        store.remove(shown);
+        struct Noted { ClipKind kind; QString text, source, note; int color; };
+        const Noted rows[] { // oldest first, as copied; colours 1 red … 7 grey
+            {ClipKind::Text, u"SELECT region, SUM(amount) FROM sales GROUP BY region;"_s, u"记事本"_s, u"常用查询"_s, 6},
+            {ClipKind::Link, u"https://github.com/LingCore/WinShun"_s, u"浏览器"_s, {}, 0},
+            {ClipKind::Text, u"下周一 10:00 前提交董事会汇报讲稿"_s, u"记事本"_s, u"待办"_s, 1},
+            {ClipKind::Files, QDir::toNativeSeparators(imageFile), u"资源管理器"_s, u"汇报用图"_s, 2},
+            {ClipKind::Text, u"demo@example.com"_s, u"浏览器"_s, u"测试账号"_s, 5},
+            {ClipKind::Text, u"上海市浦东新区张江路 88 号 3 号楼 502 室"_s, u"微信"_s, u"收件地址"_s, 4},
+        };
+        std::vector<std::pair<qint64, const Noted*>> added;
+        qint64 at = now - 600000;
+        for (const Noted& row : rows)
+            added.emplace_back(store.add(ClipCapture {.kind = row.kind, .text = row.text, .source = row.source}, at += 60000), &row);
+        clipboard.handleShown();
+        for (const auto& [id, row] : added)
+            if (!row->note.isEmpty()) clipboard.setNote(id, row->note, row->color);
+        settle(window);
+        clipboard.trigger(0, Clipboard::EditNote);
+        settle(window);
+        check(saveGrab(window, output.filePath(u"clipboard-notes.png"_s)), "could not render the notes in colour");
+        QMetaObject::invokeMethod(page, "focusSearch"); // the box done with, as a user leaves it
+        settle(window);
     }
     check(!watcher.running(), "fixture must never start the native clipboard writer");
     window->hide();
