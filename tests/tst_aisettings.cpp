@@ -184,6 +184,7 @@ private slots:
         QTest::addColumn<QString>("key");
         for (const char* key : {"Mcp/Enabled", "Mcp/AllowOpen", "Mcp/Clipboard", "Mcp/Screenshot", "Mcp/ExcludedPaths",
                  "Mcp/Plugins", "Mcp/PluginActions", "Mcp/Settings", "Plugin.winshun.tools/Enabled", "Plugin.x/Setting.token",
+                 "Plugin.winshun.gestures/Setting.layout", // a hidden setting (0.41.0) is no more AI's than a shown one
                  "Plugins/DeveloperMode", "Launcher/FileManagerOpenCommand", "Launcher/FileManagerRevealCommand", "Backup/Folder",
                  "Index/Folder", "Shares/size", "Shares/1\\Path", "Capture/PrintScreenBefore", "Launcher/FolderMenuOpusBefore",
                  "Launcher/DialogAutoJumpAsked", "Network/Threads", "Proxy/Mode", "Proxy/Address"})

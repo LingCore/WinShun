@@ -94,6 +94,7 @@
 #include "platform/NetworkNotifier.h"
 #include "platform/Paster.h"
 #include "platform/PointerWatch.h"
+#include "platform/Power.h"
 #include "platform/ServiceDialogNav.h"
 #include "platform/ServiceKeyListener.h"
 #include "platform/Shell.h"
@@ -2619,6 +2620,14 @@ void App::setUpAppTools()
                 done(toolError(tr("网页搜索插件未启用或没有可用的网站，请在设置 → 插件中安装并启用网页搜索")));
             } else
                 done({});
+        }});
+    // Shut down, restart, sleep or hibernate the computer (system:power, 0.41.0;
+    // the gestures plugin): `action` is shutdown, restart, sleep or hibernate.
+    // A plugin's token has no shutdown privilege, so Win顺 does it, and forces
+    // nothing: a program with unsaved work can still hold a shutdown up.
+    tools.push_back({u"power"_s, plugin::Permission::SystemPower,
+        [](const QString& pluginId, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            power::run(pluginId, arguments, std::move(done));
         }});
     // GitHub #225: open_item opens files and folders only, so a link the
     // screenshot plugin read (a QR code) did nothing. Web and mail links,

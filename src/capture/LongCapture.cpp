@@ -371,13 +371,19 @@ QQuickWindow* LongCapture::panel()
 // capture runs and they lie over its region; otherwise they show in a
 // screenshot. Running until ended(): after 完成 the engine still takes frames
 // (up to kMoveWaitMs), so a window hidden meanwhile keeps its setting until then.
+// After that the panel and the preview keep theirs, hidden: cleared on both
+// once both were hidden (the panel owns the preview), DWM left the preview's
+// edge and shadow on the screen, an empty frame over whatever lay below
+// (2026-11-19). A hidden window is in no picture; each start, move and
+// showing in a run sets it anew.
 void LongCapture::updateExclusion()
 {
     const bool running = m_run != nullptr;
     const QRect region = running ? m_run->region : QRect();
-    for (QQuickWindow* window : {m_panel.data(), m_previewWindow.data()})
-        if (window)
-            excludeFromCapture(reinterpret_cast<HWND>(window->winId()), region, running);
+    if (running)
+        for (QQuickWindow* window : {m_panel.data(), m_previewWindow.data()})
+            if (window)
+                excludeFromCapture(reinterpret_cast<HWND>(window->winId()), region, true);
     if (m_border)
         m_border->exclude(region, running);
 }
@@ -609,7 +615,7 @@ void LongCapture::ended(const QImage& picture, const QString& how)
     const QPoint origin = m_run->region.topLeft();
     wrapUp();
     m_run.reset();
-    updateExclusion(); // hidden by now
+    updateExclusion(); // the border's strips; the panel and the preview keep theirs, hidden
     qInfo().noquote() << u"Long screenshot: %1, %2x%3"_s.arg(how).arg(picture.width()).arg(picture.height());
     emit changed();
     if (!picture.isNull() && m_hooks.done)

@@ -1541,7 +1541,7 @@ target_link_libraries(tst_pluginsdk PRIVATE winshun_options Qt6::Test)
 target_compile_definitions(tst_pluginsdk PRIVATE WINSHUN_SDK_SETTINGS_DEMO="$<TARGET_FILE:sdk_settings_demo>")
 add_dependencies(tst_pluginsdk sdk_settings_demo)
 set_target_properties(tst_pluginsdk PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
-qt_add_executable(tst_plugin tst_plugin.cpp)
+qt_add_executable(tst_plugin tst_plugin.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Power.cpp) # Power: the power tool, with the test's performer
 qt_add_executable(plugin_qt plugin_qt.cpp)
 target_link_libraries(plugin_qt PRIVATE winshun_options Qt6::Quick)
 set_target_properties(plugin_qt PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
@@ -1563,7 +1563,7 @@ add_test(NAME tst_pluginreviewsettings COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_puresearch tst_pluginreviewsettings PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 target_include_directories(tst_plugin PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
-target_link_libraries(tst_plugin PRIVATE wsplugin miniz Qt6::Test) # miniz: the test writes zips to install
+target_link_libraries(tst_plugin PRIVATE wsplugin miniz Qt6::Test advapi32 powrprof) # miniz: the test writes zips to install; the others: Power
 target_compile_definitions(tst_plugin PRIVATE
     WINSHUN_PLUGIN_HOST="$<TARGET_FILE:WinShunPluginHost>"
     WINSHUN_PLUGIN_FAKE="$<TARGET_FILE:plugin_fake>"

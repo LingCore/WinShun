@@ -563,6 +563,8 @@ QVariantList PluginSettings::permissionRows(const plugin::Manifest& m) const
         row(u"notifications"_s, permissionText(P::Notifications), true, tr("经 Win顺 弹出，每 2 秒最多一条"));
     if (m.permissions.has(P::SystemSettings))
         row(u"system:settings"_s, permissionText(P::SystemSettings), false, tr("以普通用户权限更改；Win顺 不能阻止它直接改系统设置"));
+    if (m.permissions.has(P::SystemPower))
+        row(u"system:power"_s, permissionText(P::SystemPower), true, tr("只能通过 Win顺 关机、重启、睡眠，插件自己没有这个权限"));
     return rows;
 }
 
@@ -586,6 +588,7 @@ QString PluginSettings::permissionText(plugin::Permission p)
     case P::SystemSettings: return tr("更改 Windows 系统设置（主题、无线电、音量、资源管理器、保持唤醒）");
     case P::Elevated: return tr("跟随 Win顺 的管理员权限");
     case P::WinshunBackup: return tr("取得 Win顺 的设置备份，并用备份恢复设置");
+    case P::SystemPower: return tr("关机、重启、睡眠");
     }
     return plugin::permissionName(p);
 }
@@ -811,6 +814,8 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     // The declared settings and their values (a password's: whether one is kept).
     const QJsonObject values = m_host->pluginSettings(id);
     for (const plugin::Setting& s : m.settings) {
+        if (s.hidden) // the plugin's own window edits it: no row here, so nor in the settings search (searchTerms)
+            continue;
         QVariantMap row {{u"key"_s, s.key}, {u"type"_s, s.type}, {u"title"_s, s.title.pick(m_locale).isEmpty() ? s.key : s.title.pick(m_locale)},
             {u"hint"_s, s.hint.pick(m_locale)}};
         const QJsonValue value = values.value(s.key);

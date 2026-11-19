@@ -11,14 +11,15 @@
 //       after S seconds with --rerun.
 //
 // Started as python.exe is (-u -X utf8 main.py first), it skips those.
-//   --serve [--partial] [--slow MS] [--crash N] [--hang] [--tool NAME] [--error] [--chatty] [--rerun S] [--toast] [--late N]
+//   --serve [--partial] [--slow MS] [--crash N] [--hang] [--tool NAME [--tool-key KEY]] [--error] [--chatty] [--rerun S] [--toast] [--late N]
 //           [--translate | --needs-setup | --hang-settings | --slow-settings MS]
 //           [--refresh MS [--refresh-burst K] [--refresh-first]]
 //       A resident plugin: JSON-RPC on stdio. Answers initialize, query
 //       (two query/partial first with --partial; after MS; never with
 //       --hang; exits 3 on the Nth query with --crash; with an error with
 //       --error; after a winshun/tool call of NAME, whose outcome goes in
-//       the subtitle, with --tool; with winshun/log, notify and progress
+//       the subtitle, with --tool (the query's text is its argument "query",
+//       or KEY with --tool-key); with winshun/log, notify and progress
 //       before it with --chatty; with "rerun": S and the query's number in
 //       data.n with --rerun; after a toast "t:<text>" with --toast (its click
 //       asks for copy, two setQuery, a link, a folder, a notify); the
@@ -354,7 +355,8 @@ struct Server {
                 std::string subtitle = params["command"].toString() + "/" + params["trigger"].toString();
                 if (has(L"--tool")) {
                     const std::string tool = lite::utf8(value(L"--tool"));
-                    const json::Value reply = call("winshun/tool", {{"name", tool}, {"arguments", json::Value::Object {{"query", text}}}});
+                    const std::string key = has(L"--tool-key") ? lite::utf8(value(L"--tool-key")) : "query";
+                    const json::Value reply = call("winshun/tool", {{"name", tool}, {"arguments", json::Value::Object {{key, text}}}});
                     if (reply.has("error"))
                         subtitle = "tool error " + std::to_string(reply["error"]["code"].toInt());
                     else

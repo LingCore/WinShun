@@ -37,10 +37,13 @@ bool store(const QString& pluginId, const Manifest& manifest, const QString& key
 // be set this way: declared in its manifest; text, number, bool or choice (a
 // password stays the user's to type, a folder, a file and a hotkey the
 // user's to pick); of the JSON type the setting has; a choice one of its
-// options; text no longer than kSettingTextMost. Anything else is left out.
+// options; text no longer than kSettingTextMost (kHiddenTextMost for a
+// hidden one, a plugin's own data such as the gestures' rules). Anything
+// else is left out.
 // A number outside its range is taken, store() fits it.
 QList<std::pair<QString, QString>> acceptedUpdate(const Manifest& manifest, const QJsonObject& values);
 inline constexpr qsizetype kSettingTextMost = 4096;
+inline constexpr qsizetype kHiddenTextMost = 65536;
 
 // The plugin's settings as it reads them: the INI's text by the manifest's
 // types (bool, number, text; a number with a range fitted to it, left out

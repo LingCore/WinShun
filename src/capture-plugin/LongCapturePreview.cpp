@@ -546,6 +546,33 @@ int runLongCapture(const QStringList& args)
     check(!controller->running(), "capture must finish and release its stream");
     check(!panel->isVisible() && !controller->hasPreview(), "panel and preview must be released");
     check(!preview || !preview->isVisible(), "preview window must close with the controls");
+    // Hidden, the preview leaves nothing on the screen. With the capture
+    // setting cleared on both hidden windows (the panel owns the preview),
+    // DWM kept the preview's edge and shadow there (2026-11-19). Read where
+    // it was, over the fixture's plain background.
+    if (preview) {
+        pump(300);
+        const int margin = qRound(4 * dpr);
+        const QRect where = previewRect().adjusted(-margin, -margin, margin, margin);
+        const QRect plain(origin.x, origin.y, qRound(fixture->width() * dpr), qRound(fixture->height() * dpr));
+        if (plain.contains(where) && !where.intersects(region.adjusted(-margin, -margin, margin, margin))) {
+            const QImage desktop = fixture->screen()->grabWindow(0).toImage().convertToFormat(QImage::Format_RGB32);
+            const QRgb background = QColor(u"#f8f9fb"_s).rgb();
+            int marks = 0;
+            for (int y = where.top(); y <= where.bottom(); ++y)
+                for (int x = where.left(); x <= where.right(); ++x) {
+                    const QRgb seen = desktop.pixel(x, y);
+                    if (std::abs(qRed(seen) - qRed(background)) + std::abs(qGreen(seen) - qGreen(background))
+                            + std::abs(qBlue(seen) - qBlue(background)) > 6)
+                        ++marks;
+                }
+            qInfo("long capture: %d px marked where the hidden preview was (%d,%d %dx%d)", marks, where.x(), where.y(),
+                where.width(), where.height());
+            check(marks == 0, "the hidden preview must leave no edge or shadow on the screen");
+        } else {
+            qInfo("long capture: the preview ended off the fixture's plain background; its place not read");
+        }
+    }
     check(copied == args.contains(u"--copy"_s), "copy button must use the copy callback");
     check(edited == (!args.contains(u"--copy"_s) && !args.contains(u"--save"_s)
         && !args.contains(u"--pin"_s) && !args.contains(u"--cancel"_s)), "only Done opens the editor");

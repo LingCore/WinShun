@@ -14108,6 +14108,10 @@ Content index: %5</translation>
         <translation>Get WinShun&apos;s settings backup and restore the settings from one</translation>
     </message>
     <message>
+        <source>关机、重启、睡眠</source>
+        <translation>Shut down, restart, sleep</translation>
+    </message>
+    <message>
         <source>读最近打开的项目</source>
         <translation>Read the recently opened items</translation>
     </message>
@@ -14154,6 +14158,10 @@ Content index: %5</translation>
     <message>
         <source>经 Win顺 弹出，每 2 秒最多一条</source>
         <translation>Shown by WinShun, at most one every 2 seconds</translation>
+    </message>
+    <message>
+        <source>只能通过 Win顺 关机、重启、睡眠，插件自己没有这个权限</source>
+        <translation>It can only ask WinShun to shut down, restart or sleep; the plugin itself has no such right</translation>
     </message>
     <message>
         <source>在局域网上开端口，让别的设备连进来</source>
