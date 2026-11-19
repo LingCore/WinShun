@@ -4563,6 +4563,10 @@ private slots:
         // The plugin sends it: taken by the same rules as a shown one (a text, a bool).
         QCOMPARE(secrets::acceptedUpdate(*m, {{u"layout"_s, layout}, {u"on"_s, true}}), (Pairs {{u"layout"_s, layout}, {u"on"_s, u"true"_s}}));
         QVERIFY(secrets::acceptedUpdate(*m, {{u"layout"_s, 5}, {u"on"_s, u"yes"_s}}).isEmpty()); // not of its kind
+        // A hidden text holds a plugin's own data, longer than one typed on the card.
+        QCOMPARE(secrets::acceptedUpdate(*m, {{u"layout"_s, QString(secrets::kHiddenTextMost, u'x')}}).size(), 1);
+        QVERIFY(secrets::acceptedUpdate(*m, {{u"layout"_s, QString(secrets::kHiddenTextMost + 1, u'x')}}).isEmpty());
+        QVERIFY(secrets::acceptedUpdate(*m, {{u"note"_s, QString(secrets::kSettingTextMost + 1, u'x')}}).isEmpty());
         // Kept in the INI's lines, and read back as the plugin is told it.
         Pairs ini;
         QVERIFY(secrets::store(u"test.hidden"_s, *m, u"layout"_s, layout, ini));

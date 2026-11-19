@@ -458,7 +458,7 @@ manifest 的 `permissions` 是数组：`["processes", "clipboard:read", {"files:
 
 `text` 写 `"multiline": true` 是多行文本（0.41.0 起）：卡片上标题下面一个和卡片同宽的框，按 Enter 换行，内容多了框跟着长高，最多十来行，再多就在框里滚动。停下输入约一秒、或离开这个框时保存，Esc 撤回还没保存的修改。值里的换行就是 `\n`。更早的 Win顺 照旧显示单行输入框。
 
-设置项写 `"hidden": true`（0.41.0 起，只用于 `text`、`number`、`bool`、`choice`）时，卡片上不画它，设置页的搜索也找不到它，其余照旧：值存在 `WinShun.ini` 的 `[Plugin.<id>] Setting.<key>=`，插件在 `initialize` 和 `settingsChanged` 的 `settings` 里照常收到，也可以用 `winshun/settings/update` 改它（规则不变，`text` 最多 4096 个字符）。适合只由插件自己的设置窗口编辑的值，比如一大段 JSON。一张卡片上的设置项都是 `hidden` 时，看起来和没有设置项的插件一样。更早的 Win顺 不认识 `hidden`，照旧把它画成一行，所以这样的插件要写 `"minWinShun": "0.41.0"`，或者接受老版本多出这一行。
+设置项写 `"hidden": true`（0.41.0 起，只用于 `text`、`number`、`bool`、`choice`）时，卡片上不画它，设置页的搜索也找不到它，其余照旧：值存在 `WinShun.ini` 的 `[Plugin.<id>] Setting.<key>=`，插件在 `initialize` 和 `settingsChanged` 的 `settings` 里照常收到，也可以用 `winshun/settings/update` 改它（规则不变，只是隐藏的 `text` 最多 65536 个字符，平常的是 4096）。适合只由插件自己的设置窗口编辑的值，比如一大段 JSON。一张卡片上的设置项都是 `hidden` 时，看起来和没有设置项的插件一样。更早的 Win顺 不认识 `hidden`，照旧把它画成一行，所以这样的插件要写 `"minWinShun": "0.41.0"`，或者接受老版本多出这一行。
 
 `number` 可以再写 `min`、`max`、`step` 和 `unit`（0.33.0 起）：
 

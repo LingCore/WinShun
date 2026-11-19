@@ -165,7 +165,7 @@ QList<std::pair<QString, QString>> acceptedUpdate(const Manifest& manifest, cons
             if (offered)
                 accepted.append({setting.key, value.toString()});
         } else if (setting.type == u"text") {
-            if (value.isString() && value.toString().size() <= kSettingTextMost)
+            if (value.isString() && value.toString().size() <= (setting.hidden ? kHiddenTextMost : kSettingTextMost))
                 accepted.append({setting.key, value.toString()});
         }
     }
