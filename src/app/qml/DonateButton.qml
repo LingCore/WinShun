@@ -21,8 +21,20 @@ Item {
     readonly property bool lively: area.containsMouse && SystemTheme.animations
     readonly property color face: area.pressed ? "#B8224F" : area.containsMouse ? "#CC285A" : "#DB2E62"
     readonly property real nudge: Math.max(1, Math.round(2 * dpr)) / dpr // the site's 2 px, in whole device pixels
+    // The heart and the words, centred together by what is drawn (the words'
+    // ink, not their advance: 赠 ends short of it), also on a key made wider
+    // than they need (the dialog's, as wide as its 确认). The key is whole
+    // device pixels wide, with as many on either side: a fractional width
+    // put its edges on half pixels and the gaps came out unequal.
+    readonly property real inkWidth: heart.width + 6 + wordsInk.tightBoundingRect.x + wordsInk.tightBoundingRect.width
 
-    implicitWidth: heart.width + label.implicitWidth + 24
+    implicitWidth: (Math.ceil(inkWidth * dpr) + 2 * Math.round(9 * dpr)) / dpr
+
+    TextMetrics {
+        id: wordsInk
+        font: label.font
+        text: label.text
+    }
     implicitHeight: 28
 
     Accessible.role: Accessible.Button
@@ -79,7 +91,7 @@ Item {
             property bool big: false
             readonly property real cell: (cellPixels + (big ? 1 : 0)) / button.dpr
 
-            x: 8
+            x: Math.round((button.width - button.inkWidth) / 2 * button.dpr) / button.dpr // on whole device pixels
             anchors.verticalCenter: parent.verticalCenter
             width: 9 * cellPixels / button.dpr
             height: 8 * cellPixels / button.dpr

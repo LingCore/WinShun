@@ -2206,12 +2206,12 @@
         <translation>I&apos;ll keep putting my heart into WinShun.</translation>
     </message>
     <message>
-        <source>Win顺 免费又没有广告，维护它花了很多精力。</source>
-        <translation>WinShun is free and ad-free, and keeping it going takes a lot of work.</translation>
+        <source>用最用心的态度，做最好用的产品。</source>
+        <translation>The utmost care, for the most useful software.</translation>
     </message>
     <message>
-        <source>如果它帮到了你，欢迎请我喝瓶快乐水～</source>
-        <translation>If it has helped you, how about buying me a soda?</translation>
+        <source>如果 Win顺 帮到了你，欢迎请我喝瓶快乐水～</source>
+        <translation>If WinShun has helped you, how about buying me a soda?</translation>
     </message>
     <message>
         <source>点“确认”，它就挪到%1页，标题栏清爽一些。</source>

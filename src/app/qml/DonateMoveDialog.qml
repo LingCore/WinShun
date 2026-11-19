@@ -116,7 +116,7 @@ Item {
                         width: parent.width
                         // A sentence a line, as below: wrapped as one, a word broke over the lines.
                         text: dialog.thanked ? qsTr("谢谢你的心意！") + "\n" + qsTr("Win顺 会继续用心做下去。")
-                                             : qsTr("Win顺 免费又没有广告，维护它花了很多精力。") + "\n" + qsTr("如果它帮到了你，欢迎请我喝瓶快乐水～")
+                                             : qsTr("用最用心的态度，做最好用的产品。") + "\n" + qsTr("如果 Win顺 帮到了你，欢迎请我喝瓶快乐水～")
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
                         lineHeight: 1.15
