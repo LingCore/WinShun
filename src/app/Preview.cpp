@@ -11854,6 +11854,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
 //   show [text] | hide | clip | settings [place] | style <fluent|brand|tactile>
 //   | theme <light|dark|system> | set <SettingsEditor property> <value>
 //   | windows (their places into windows.json) | press <objectName> (its clicked())
+//   | profile (the profile folder into profile.txt)
 // Each batch done is counted in <folder>\ack.txt.
 int runLive(App& app, const QDir& out)
 {
@@ -11971,6 +11972,10 @@ int runLive(App& app, const QDir& out)
                 QFile json(out.filePath(u"windows.json"_s));
                 if (json.open(QIODevice::WriteOnly))
                     json.write(QJsonDocument(list).toJson());
+            } else if (verb == u"profile") { // profile.txt: this run's profile folder (its state.ini, between two runs)
+                QFile text(out.filePath(u"profile.txt"_s));
+                if (text.open(QIODevice::WriteOnly))
+                    text.write(QDir::toNativeSeparators(Settings::profile()).toUtf8());
             } else if (verb == u"press") { // press <objectName>: its clicked(), as a click would, to look at what it opens
                 // By the items on show (a list's rows are not QObject children of the list).
                 const std::function<QQuickItem*(QQuickItem*)> find = [&](QQuickItem* item) -> QQuickItem* {
@@ -12307,12 +12312,12 @@ int runRuntime(const QStringList& args)
         return passed && saved ? std::min(warnings, 100) : 4;
     }
     {
-        // --idle-open-check: its profile goes once the App is gone. Removed
-        // while the App lived, the folder came back as it saved its index on
-        // the way out (15 MB a run, left in %TEMP%).
-        const auto idleOpenProfile = qScopeGuard([&args] {
+        // --idle-open-check, --live …: its profile goes once the App is gone.
+        // Removed while the App lived, the folder came back as it saved its
+        // index or its clipboard on the way out (left in %TEMP%, a run each).
+        const auto probeProfile = qScopeGuard([&args] {
             const QFileInfo profile(Settings::profile());
-            if ((args.contains(u"--idle-open-check"_s) || args.contains(u"--foreground-use-check"_s)
+            if ((args.contains(u"--idle-open-check"_s) || args.contains(u"--foreground-use-check"_s) || args.contains(u"--live"_s)
                     || args.contains(u"--clipboard-animation-check"_s) || args.contains(u"--settings-motion-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
@@ -12329,11 +12334,8 @@ int runRuntime(const QStringList& args)
         if (!app.start({.background = true, .clipboardDisplayProbe = args.contains(u"--clipboard-display-probe"_s),
                 .settingsProbe = args.contains(u"--settings-reopen-check"_s) || args.contains(u"--settings-motion-check"_s)}))
             return 4;
-        if (args.contains(u"--live"_s)) {
-            const int code = runLive(app, out);
-            QDir(Settings::profile()).removeRecursively();
-            return code;
-        }
+        if (args.contains(u"--live"_s))
+            return runLive(app, out); // its profile: probeProfile
         if (args.contains(u"--capture-hotkey-probe"_s) && !probeCaptureHotkeys(app, args, out, report)) {
             QFile failed(out.filePath(u"capture-hotkey-failed.json"_s));
             if (failed.open(QIODevice::WriteOnly)) failed.write(QJsonDocument(report).toJson());
@@ -12373,7 +12375,7 @@ int runRuntime(const QStringList& args)
         if (args.contains(u"--double-tap-plugin"_s) && !checkDoubleTapPlugin(app, out))
             return 4;
         if (args.contains(u"--idle-open-check"_s))
-            return checkIdleOpen(app, args, out) ? 0 : 4; // its profile goes after the App (idleOpenProfile)
+            return checkIdleOpen(app, args, out) ? 0 : 4; // its profile goes after the App (probeProfile)
         if (args.contains(u"--foreground-use-check"_s))
             return checkForegroundUse(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--clipboard-animation-check"_s))
