@@ -169,6 +169,9 @@ struct Setting {
     std::optional<double> max;
     std::optional<double> step;
     Text unit;
+    // A text of several lines (0.41.0): a box the card's width under its
+    // title, Enter starts a new line. Older Win顺 show one line.
+    bool multiline = false;
     bool slider() const noexcept { return min && max; }
     bool bounded() const noexcept { return min || max || step; } // its values are fitted
     int decimals() const; // the digits after the point its steps need (step's, min's, max's)

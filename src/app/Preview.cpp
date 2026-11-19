@@ -386,7 +386,8 @@ int runPlugins(const QStringList& args)
                 {"key":"pause","type":"number","title":"停顿多久再翻译","default":400,"min":100,"max":2000,"step":50,"unit":"ms"},
                 {"key":"match","type":"number","title":"术语匹配的相似度","default":0.75,"min":0,"max":1,"step":0.05},
                 {"key":"edge","type":"number","title":"最后一步短一些","min":5,"max":99,"step":10,"unit":{"zh":"个","en":"items"}},
-                {"key":"limit","type":"number","title":"最多列出几项","min":1,"unit":{"zh":"项","en":"items"}}]})";
+                {"key":"limit","type":"number","title":"最多列出几项","min":1,"unit":{"zh":"项","en":"items"}},
+                {"key":"lines","type":"text","multiline":true,"title":"缩写","hint":"每行一条：缩写 = 换成的文字","default":"cmd = command"}]})";
         if (!manifest.open(QIODevice::WriteOnly) || manifest.write(json) < 0) {
             say(u"#359 sliders: the plugin could not be written"_s);
             return 3;
@@ -889,6 +890,87 @@ int runPlugins(const QStringList& args)
         say(u"#359 sliders, a minimum only: keys -3, Enter: kept as 1 %1; emptied %2, then left: 1 again %3: %4"_s
                 .arg(limited).arg(limitEmptied).arg(limitKept).arg(limited && limitEmptied && limitKept ? u"passed"_s : u"FAILED"_s));
         sliders = sliders && limited && limitEmptied && limitKept;
+        // A text of several lines (0.41.0, GitHub #403): the row's width
+        // under its title; typed into by keys, kept a second after the typing
+        // stops with the focus still there, Esc puts back what is kept,
+        // leaving keeps it at once, Tab goes on; as tall as its lines between
+        // 4 and 12. Each time the box, the INI and what the plugin is told.
+        {
+            QQuickItem* area = visualNamed(window->contentItem(), u"pluginSetting-"_s + rangesPlugin + u"/lines"_s);
+            QQuickItem* field = area ? visualNamed(area, u"settingTextArea"_s) : nullptr;
+            QQuickItem* row = area && area->parentItem() && area->parentItem()->parentItem() ? area->parentItem()->parentItem()->parentItem() : nullptr;
+            const bool wide = row && qFuzzyCompare(area->width(), row->width()) && area->mapToItem(row, QPointF(0, 0)).y() > 10;
+            say(u"multiline text: %1 wide of a row %2 wide, %3 down it: %4"_s.arg(area ? area->width() : -1).arg(row ? row->width() : -1)
+                    .arg(area && row ? area->mapToItem(row, QPointF(0, 0)).y() : -1).arg(wide ? u"under the title, passed"_s : u"FAILED"_s));
+            sliders = sliders && wide;
+            const auto typeKeys = [&](const QString& text) {
+                for (const QChar c : text) {
+                    const int code = c == u'\n' ? int(Qt::Key_Return) : int(c.toUpper().unicode()); // Qt's key codes are ASCII's
+                    const QString typed = c == u'\n' ? u"\r"_s : QString(c);
+                    QKeyEvent press(QEvent::KeyPress, code, {}, typed);
+                    QCoreApplication::sendEvent(window, &press);
+                    QKeyEvent release(QEvent::KeyRelease, code, {}, typed);
+                    QCoreApplication::sendEvent(window, &release);
+                }
+                pump(60);
+            };
+            const auto lines = [&](const char* what, const QString& shown, const QVariant& kept, const QString& told, bool focused) {
+                const QVariant k = ini(u"lines"_s);
+                const QString t = rangesHost->pluginSettings(rangesPlugin).value(u"lines"_s).toString();
+                const QString s = field ? field->property("text").toString() : u"?"_s;
+                const bool ok = field && s == shown && k.isValid() == kept.isValid() && (!kept.isValid() || k.toString() == kept.toString())
+                    && t == told && field->hasActiveFocus() == focused;
+                const auto oneLine = [](QString v) { return v.replace(u'\n', u'|'); };
+                say(u"multiline text, %1: box [%2], INI %3, told [%4], focus %5: %6"_s
+                        .arg(QString::fromUtf8(what), oneLine(s), k.isValid() ? u'[' + oneLine(k.toString()) + u']' : u"none"_s, oneLine(t))
+                        .arg(field && field->hasActiveFocus())
+                        .arg(ok ? u"passed"_s : u"FAILED"_s));
+                sliders = sliders && ok;
+            };
+            const QString first = u"cmd = command"_s;
+            const QString two = first + u"\nbtw = by the way"_s;
+            const QString three = two + u"\nok = okay"_s;
+            lines("as installed", first, {}, first, false);
+            const qreal shortHeight = area ? area->height() : -1;
+            if (field) {
+                field->forceActiveFocus(Qt::TabFocusReason);
+                field->setProperty("cursorPosition", first.size());
+            }
+            typeKeys(u"\nbtw = by the way"_s);
+            lines("typed, not kept yet", two, {}, first, true);
+            pump(1300);
+            lines("a second later, in the box still", two, two, two, true);
+            typeKeys(u"xyz"_s);
+            key(Qt::Key_Escape);
+            pump(1300);
+            lines("typed, then Esc: what is kept, and only that", two, two, two, true);
+            typeKeys(u"\nok = okay"_s);
+            unfocus();
+            lines("left: kept at once", three, three, three, false);
+            if (field)
+                field->forceActiveFocus(Qt::TabFocusReason);
+            key(Qt::Key_Tab);
+            lines("Tab: on to the next control, no tab typed", three, three, three, false);
+            // Its lines: 3 make the 4 at least, 30 the 12 at most, scrolled.
+            if (field) {
+                field->forceActiveFocus(Qt::TabFocusReason);
+                QStringList many;
+                for (int i = 1; i <= 30; ++i)
+                    many.append(u"a%1 = %1"_s.arg(i));
+                field->setProperty("text", many.join(u'\n'));
+            }
+            pump(100);
+            const qreal tallHeight = area ? area->height() : -1;
+            const qreal line = area ? (tallHeight - shortHeight) / 8 : 0; // 12 lines less 4
+            const bool grows = area && shortHeight > 0 && tallHeight > shortHeight && line > 10 && line < 40
+                && field && field->property("implicitHeight").toReal() > tallHeight;
+            say(u"multiline text: %1 high with 3 lines, %2 with 30 (a line %3, the text %4): %5"_s.arg(shortHeight).arg(tallHeight).arg(line)
+                    .arg(field ? field->property("implicitHeight").toReal() : -1).arg(grows ? u"4 to 12 lines, passed"_s : u"FAILED"_s));
+            sliders = sliders && grows;
+            key(Qt::Key_Escape);
+            unfocus();
+            lines("Esc again, for the picture", three, three, three, false);
+        }
         // For the picture: the values a user would leave, nothing focused.
         type(u"pause"_s, u"400"_s);
         type(u"match"_s, u"0.75"_s);

@@ -4449,6 +4449,39 @@ private slots:
         QVERIFY2(error.contains(expect), qPrintable(error));
     }
 
+    // A text of several lines (0.41.0): a text's alone, true or false.
+    void multilineText_data()
+    {
+        QTest::addColumn<QString>("type");
+        QTest::addColumn<QString>("fields");
+        QTest::addColumn<bool>("multiline");
+        QTest::addColumn<QString>("error");
+        QTest::newRow("text") << u"text"_s << uR"("multiline":true)"_s << true << QString();
+        QTest::newRow("text, false") << u"text"_s << uR"("multiline":false)"_s << false << QString();
+        QTest::newRow("not written") << u"text"_s << QString() << false << QString();
+        QTest::newRow("false on a number") << u"number"_s << uR"("multiline":false)"_s << false << QString();
+        QTest::newRow("not a bool") << u"text"_s << uR"("multiline":1)"_s << false << u"settings[0].multiline 要是 true 或 false"_s;
+        QTest::newRow("on a password") << u"password"_s << uR"("multiline":true)"_s << false << u"settings[0].multiline 只用于 text"_s;
+    }
+    void multilineText()
+    {
+        QFETCH(QString, type);
+        QFETCH(QString, fields);
+        QFETCH(bool, multiline);
+        QFETCH(QString, error);
+        const QString json = uR"({"manifest":1,"id":"a.b","name":"X","version":"1","settings":[{"key":"t","type":"%1","title":"T"%2}],"commands":[{"id":"c","run":{"folder":"C:\\"}}]})"_s
+                                 .arg(type, fields.isEmpty() ? QString() : u","_s + fields);
+        QString failed;
+        const std::optional<Manifest> m = Manifest::parse(json.toUtf8(), &failed);
+        if (!error.isEmpty()) {
+            QVERIFY(!m);
+            QVERIFY2(failed.contains(error), qPrintable(failed));
+            return;
+        }
+        QVERIFY2(m, qPrintable(failed));
+        QCOMPARE(m->settings.front().multiline, multiline);
+    }
+
     // Kept to the range whoever sets it: the card, the plugin, the file.
     void rangedSettingsAreKeptInRange()
     {

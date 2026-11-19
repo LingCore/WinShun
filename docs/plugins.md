@@ -454,6 +454,9 @@ manifest 的 `permissions` 是数组：`["processes", "clipboard:read", {"files:
 
 `settings[]`：`{"key", "type", "title", "hint", "default", "options"}`，`type` ∈ `text | password | bool | number | choice | folder | file | hotkey`。Win顺 用自己的控件画在卡片上，值存在 `WinShun.ini` 的 `[Plugin.<id>] Setting.<key>=`；**`password` 型存 Windows 凭据管理器**，不进 INI，不进日志（消息记录里打码）。`choice` 的 `options` 是字符串数组或 `[{"value": "deepl", "title": {"zh": …, "en": …}}]`。
 
+`text` 写 `"multiline": true` 是多行文本（0.41.0 起）：卡片上标题下面一个和卡片同宽的框，按 Enter 换行，内容多了框跟着长高，最多十来行，再多就在框里滚动。停下输入约一秒、或离开这个框时保存，Esc 撤回还没保存的修改。值里的换行就是 `
+`。更早的 Win顺 照旧显示单行输入框。
+
 `number` 可以再写 `min`、`max`、`step` 和 `unit`（0.33.0 起）：
 
 ```json

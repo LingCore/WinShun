@@ -732,16 +732,20 @@ Rectangle {
                         required property int index
                         readonly property var modelData: card.settings[index] ?? ({})
                         readonly property string kind: modelData.type ?? ""
+                        // A text of several lines: its box the row's width, under the title.
+                        readonly property bool wide: kind === "text" && modelData.multiline === true
+                        readonly property real titleHeight: wide ? Math.ceil(settingTitle.implicitHeight) + 6 : 0
 
                         width: settingsColumn.width
-                        height: Math.max(36, settingControl.implicitHeight) + (settingHint.visible ? settingHint.implicitHeight + 4 : 0)
+                        height: (wide ? titleHeight + settingControl.implicitHeight : Math.max(36, settingControl.implicitHeight))
+                                + (settingHint.visible ? settingHint.implicitHeight + 4 : 0)
 
                         Text {
                             id: settingTitle
                             anchors.left: parent.left
-                            anchors.right: settingControl.left
-                            anchors.rightMargin: 12
-                            y: Math.round((Math.max(36, settingControl.implicitHeight) - height) / 2)
+                            anchors.right: settingRow.wide ? parent.right : settingControl.left
+                            anchors.rightMargin: settingRow.wide ? 0 : 12
+                            y: settingRow.wide ? 0 : Math.round((Math.max(36, settingControl.implicitHeight) - height) / 2)
                             text: settingRow.modelData.title ?? ""
                             textFormat: Text.PlainText
                             color: Theme.text
@@ -768,14 +772,17 @@ Rectangle {
                             readonly property Item control: controlLoader.item as Item
 
                             anchors.right: parent.right
+                            y: settingRow.titleHeight
                             implicitWidth: control ? control.implicitWidth : 0
                             implicitHeight: control ? control.implicitHeight : 0
-                            width: implicitWidth
+                            width: settingRow.wide ? settingRow.width : implicitWidth
                             height: implicitHeight
 
                             Loader {
                                 id: controlLoader
-                                sourceComponent: settingRow.kind === "bool" ? boolControl
+                                width: settingRow.wide ? settingControl.width : undefined
+                                sourceComponent: settingRow.wide ? linesControl
+                                               : settingRow.kind === "bool" ? boolControl
                                                : settingRow.kind === "choice" ? choiceControl
                                                : settingRow.kind === "folder" || settingRow.kind === "file" ? pathControl
                                                : settingRow.kind === "hotkey" ? hotkeyControl
@@ -908,6 +915,16 @@ Rectangle {
                                             onActivated: (index) => choice.choose(index)
                                         }
                                     }
+                                }
+                            }
+                            Component {
+                                id: linesControl
+                                SettingTextArea {
+                                    objectName: "pluginSetting-" + card.pluginId + "/" + (settingRow.modelData.key ?? "")
+                                    dpr: card.dpr
+                                    value: String(settingRow.modelData.value ?? "")
+                                    label: settingRow.modelData.title ?? ""
+                                    onCommitted: (text) => card.plugins.setSettingValue(card.pluginId, settingRow.modelData.key, text)
                                 }
                             }
                             Component {

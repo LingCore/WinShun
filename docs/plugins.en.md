@@ -445,6 +445,9 @@ Install plugins only from sources you trust.
 
 `settings[]`: `{"key", "type", "title", "hint", "default", "options"}`, `type` ∈ `text | password | bool | number | choice | folder | file | hotkey`. Drawn with Win顺's own controls on the card; stored in `WinShun.ini` as `[Plugin.<id>] Setting.<key>=`; **`password` goes to Windows Credential Manager**, never into the INI or the logs (masked in the message log). `choice` options are strings or `[{"value": "deepl", "title": {"zh": …, "en": …}}]`.
 
+A `text` with `"multiline": true` takes several lines (since 0.41.0): a box as wide as the card under its title, Enter starts a new line, the box grows with its lines up to about a dozen and scrolls past them. It is saved about a second after typing stops and on leaving the box; Esc takes back what is not saved yet. Line breaks are `
+` in the value. Older Win顺 show a one-line box.
+
 A `number` can also have `min`, `max`, `step` and `unit` (since 0.33.0):
 
 ```json
