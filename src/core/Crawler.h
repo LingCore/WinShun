@@ -17,11 +17,17 @@ namespace ws {
 //   *Paths: absolute folder paths without a trailing backslash.
 //   *Names: a folder name matched at any depth, or a short tail such as
 //           ".svn\pristine" (that folder inside any ".svn").
+//   keptPaths: folders inside an excluded path that are indexed all the same
+//           (GitHub #406: the plugins in Win顺's own data folder). The excluded
+//           folders on the way to one hold nothing else in the index. Only
+//           while one excluded path alone takes it in: an exclusion of the
+//           user's around it (or of it) wins.
 struct CrawlRules {
     std::vector<std::wstring> excludedPaths;
     std::vector<std::wstring> excludedNames;
     std::vector<std::wstring> lowPriorityPaths;
     std::vector<std::wstring> lowPriorityNames;
+    std::vector<std::wstring> keptPaths;
 
     bool operator==(const CrawlRules&) const = default;
 };
@@ -175,6 +181,15 @@ public:
     bool isExcludedPath(std::wstring_view fullPath) const; // the path or one of its ancestors
     std::uint8_t dirPriorityFlags(std::wstring_view fullPath, std::wstring_view name) const;
 
+    // An excluded folder on the way to a kept one (CrawlRules::keptPaths),
+    // or one between the two: in the index, it holds only the way there.
+    bool holdsOnlyTheWay(std::wstring_view folder) const;
+    // Whether a folder of that name (its last part) may be one: spares
+    // building the path of every folder a file is made in.
+    bool mayHoldOnlyTheWay(std::wstring_view name) const;
+    // The kept folders that count (keptPaths no other exclusion takes in).
+    const std::vector<std::wstring>& keptFolders() const noexcept { return m_kept; }
+
     static std::uint8_t attributeFlags(unsigned long attributes) noexcept;
     static bool shouldDescend(unsigned long attributes, unsigned long reparseTag) noexcept;
     // A junction, symbolic link or mount folder: a folder standing for another
@@ -185,6 +200,8 @@ public:
 
 private:
     CrawlRules m_rules;
+    std::vector<std::wstring> m_kept; // see keptFolders()
+    std::vector<std::wstring> m_ways; // see holdsOnlyTheWay()
 };
 
 // A file or folder as it is on disk now.

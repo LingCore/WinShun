@@ -27,7 +27,7 @@ namespace {
 // Layout (little endian):
 //   magic[8] version:u32
 //   volumeCount:u32 { len:u16 root:wchar[len] serial:u32 journalId:u64 usn:i64 }*
-//   4 x { count:u32 { len:u16 text:wchar[len] }* }   crawl rules (version 3 on)
+//   4 x { count:u32 { len:u16 text:wchar[len] }* }   crawl rules (version 3 on; 5 lists, keptPaths last, version 10 on)
 //   nameCount:u32 { bytes:u32 { name:u8[] 0 }[kGroup] }*   (version 6 on; at the end, fewer)
 //   entryCount:u32 { backBytes:u32 back:leb[kGroup] flags:u8[kGroup] nameBytes:u32 name:leb[kGroup]
 //                    timeBytes:u32 time:leb[kGroup] (version 7 on)
@@ -63,7 +63,7 @@ namespace {
 // the index is walked or rebuilt. Files written before are read as they are.
 constexpr char kMagic[8] = {'Q', 'F', 'I', 'N', 'D', 'E', 'X', '\0'};
 constexpr char kPackedMagic[8] = {'Q', 'F', 'I', 'N', 'D', 'E', 'X', 'Z'};
-constexpr std::uint32_t kVersion = 9;
+constexpr std::uint32_t kVersion = 10;
 constexpr std::size_t kGroup = 1 << 16;
 constexpr std::uint32_t kOldestVersion = 2; // without the rules
 constexpr std::uint32_t kEndMarker = 0x21444E45; // "END!"
@@ -426,13 +426,15 @@ private:
     std::vector<std::uint32_t> m_numbers; // by rank
 };
 
-// The four lists of CrawlRules, in a fixed order.
-template <typename Rules, typename F> void forEachList(Rules& rules, F&& f)
+// The lists of CrawlRules, in a fixed order: four before version 10.
+template <typename Rules, typename F> void forEachList(Rules& rules, std::uint32_t version, F&& f)
 {
     f(rules.excludedPaths);
     f(rules.excludedNames);
     f(rules.lowPriorityPaths);
     f(rules.lowPriorityNames);
+    if (version >= 10)
+        f(rules.keptPaths);
 }
 
 } // namespace
@@ -459,7 +461,7 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
         w.put(journal.journalId);
         w.put(journal.usn);
     }
-    forEachList(rules, [&](const std::vector<std::wstring>& list) {
+    forEachList(rules, kVersion, [&](const std::vector<std::wstring>& list) {
         w.put(static_cast<std::uint32_t>(list.size()));
         for (const std::wstring& s : list) {
             const auto len = static_cast<std::uint16_t>(std::min<std::size_t>(s.size(), 0xFFFF));
@@ -666,7 +668,7 @@ std::optional<Contents> load(const QString& filePath)
     }
     if (version >= 3) {
         CrawlRules rules;
-        forEachList(rules, [&](std::vector<std::wstring>& list) {
+        forEachList(rules, version, [&](std::vector<std::wstring>& list) {
             const auto n = r.get<std::uint32_t>();
             for (std::uint32_t k = 0; k < n && r.ok(); ++k)
                 list.push_back(r.wide());

@@ -100,6 +100,9 @@ private:
     EntryId find(EntryId parent, std::string_view name);
     EntryId findItem(const Item& item);
     std::wstring childPath(EntryId parent, std::wstring_view name) const;
+    // A file there is left out: the folder holds only the way to a kept one
+    // (Crawler::holdsOnlyTheWay), as Win顺's data folder holds its plugins.
+    bool holdsNoFiles(EntryId folder) const;
     std::uint8_t flagsFor(EntryId parent, const Item& item, const std::wstring& path) const;
 
     FileIndex& m_index;

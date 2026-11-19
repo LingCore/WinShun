@@ -1606,6 +1606,12 @@ CrawlRules Settings::crawlRules() const
     ownFolder(dataDir());
     if (!indexFolder.isEmpty())
         ownFolder(indexDir());
+    // But not the plugins installed there (GitHub #406): found by name, as
+    // anything of the user's, ranked with the program folders. Each one's
+    // .data folder too: a plugin's own files, written now and then.
+    const std::wstring plugins = normalizePath(dataDir() + u"\\plugins"_s);
+    rules.keptPaths.push_back(plugins);
+    rules.lowPriorityPaths.push_back(plugins);
     for (const QString& n : excludedNames) {
         if (!n.trimmed().isEmpty() && !everythingCompat)
             rules.excludedNames.push_back(normalizeName(n));

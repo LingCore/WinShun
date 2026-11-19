@@ -984,6 +984,34 @@ private slots:
         QCOMPARE(hidden.excludedNames, std::vector<std::wstring> {L"node_modules"});
     }
 
+    // GitHub #406: Win顺's own data folder stays out of the index, the
+    // plugins installed in it do not (ranked with the program folders).
+    void ownFolderKeepsItsPlugins()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        settings.excludedPaths = {u"D:\\Work\\Skipped"_s}; // not %TEMP%, which the profile is in: that would win
+        const std::wstring data = QDir::toNativeSeparators(QDir(profile.path()).absolutePath()).toStdWString();
+        const ws::CrawlRules rules = settings.crawlRules();
+        const ws::Crawler crawler(rules);
+        QVERIFY(crawler.keptFolders() == std::vector<std::wstring> {data + L"\\plugins"});
+        QVERIFY(crawler.isExcludedPath(data + L"\\state.ini"));
+        QVERIFY(crawler.isExcludedPath(data + L"\\clipboard\\1.png"));
+        QVERIFY(!crawler.isExcludedPath(data + L"\\plugins\\crazy-zxx.yigengming\\main.ps1"));
+        QVERIFY(crawler.dirPriorityFlags(data + L"\\plugins", L"plugins") & ws::EntryFlag::LowPriority);
+
+        // A custom index folder elsewhere changes nothing of that; the user's
+        // own exclusion of the plugins wins.
+        QTemporaryDir indexes;
+        settings.indexFolder = indexes.path();
+        QCOMPARE(ws::Crawler(settings.crawlRules()).keptFolders().size(), std::size_t {1});
+        settings.excludedPaths.append(profile.path() + u"/plugins"_s);
+        QVERIFY(ws::Crawler(settings.crawlRules()).keptFolders().empty());
+    }
+
     void opusTyping()
     {
         QTemporaryDir profile;

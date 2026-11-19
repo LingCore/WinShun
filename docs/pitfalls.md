@@ -1,5 +1,12 @@
 # 踩坑记录
 
+## 搜不到装好的插件文件夹：Win顺 自己的数据文件夹整个不进索引（2026-11-19，#406）
+
+- **现象**：输入插件 ID（`crazy-zxx.yigengming`）搜不到它的文件夹；同名文件夹放在别处就搜得到，所以不是查询里的 `-`、`.` 的问题（解析和匹配都把它们当普通字符）。
+- **原因**：`Settings::crawlRules` 把数据文件夹（`%LOCALAPPDATA%\WinShun`，便携版是程序旁的 `data`）整个排除：里面的 `index.bin`、日志、`state.ini`、剪贴板一直在写，收进来既占“最近修改”，`index.bin` 还会让索引一存就脏、再存。可用户装的插件也在这里（`plugins\<id>`），一起被藏了。
+- **做法**：`CrawlRules::keptPaths`——排除的文件夹里仍要索引的子文件夹。被排除的文件夹（及它和保留文件夹之间的各级）在索引里只是“通路”：只收通往保留文件夹的那一项，自己的文件和别的子文件夹都不收（`Crawler::isExcludedDir` 管子文件夹，`addToListing` 管文件，日志应用里 `UsnApplier::holdsNoFiles` 管新建、移入的文件，先按名字筛再拼路径）。只在恰好一条排除规则包住它时才算：用户自己排除了上级或这个文件夹本身，就照用户的。`plugins` 同时进 `lowPriorityPaths`，排在程序文件夹一档。保留集合变了（升级后第一次运行、换了配置文件夹）就整盘重读一次（`applyRuleChanges`），重读会自然去掉不再允许的条目，所以 `removeExcluded` 不用管它。快照升到 v10，多存这一组；老快照读进来规则对不上，正好触发那次重读。
+- **测法**：`tst_core keptInsideExcluded`（规则、真实目录的遍历、日志应用）、`tst_core snapshotRoundTrip`、`tst_settings ownFolderKeepsItsPlugins`。现场：`WinShun.exe --query <插件 ID>` 后 `--dump <文件>` 看结果行。
+
 ## 设置窗口切分类不够快：第一次进的页现建，高亮也跟着等（2026-11-19，用户反馈）
 
 - **现象**：在设置窗口左侧切分类，感觉“不够快”。量下来（240 Hz、150%）：没建过的页点下去 40–120 ms 才出第一帧，这段时间连左边的选中高亮都不动；再次进入只要约 10 ms。另外分类是松开鼠标才切，又多了按下到松开那一段。

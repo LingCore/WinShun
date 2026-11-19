@@ -1628,9 +1628,13 @@ IndexService::RuleChange IndexService::applyRuleChanges(
 {
     const CrawlRules& after = crawler.rules();
     // A folder name no longer excluded could be anywhere, and other ranking
-    // rules change flags everywhere: read every volume again.
+    // rules change flags everywhere: read every volume again. So do folders
+    // kept inside an excluded one (GitHub #406), come or gone: rare (the
+    // first run after an update, a new profile), and the way to them is in
+    // no folder the index has.
     if (before.lowPriorityPaths != after.lowPriorityPaths || before.lowPriorityNames != after.lowPriorityNames
-        || !added(after.excludedNames, before.excludedNames).empty()) {
+        || !added(after.excludedNames, before.excludedNames).empty()
+        || Crawler(before).keptFolders() != crawler.keptFolders()) {
         std::lock_guard lock(m_journalMutex);
         m_rulesBefore.reset();
         return RuleChange::NeedsFullRead;

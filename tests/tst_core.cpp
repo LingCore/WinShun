@@ -4098,6 +4098,60 @@ private slots:
         third.shutdown();
     }
 
+    // GitHub #406, the whole way: walked, watched, and the rules changed
+    // between two runs (an update) read the disk again. Win顺's data folder
+    // holds only the way to its plugins, whatever is written in it later.
+    void keptFolderInIndexService()
+    {
+        QTemporaryDir tree;
+        QTemporaryDir store;
+        QVERIFY(tree.isValid() && store.isValid());
+        QDir base(tree.path());
+        const auto touch = [&](const QString& rel) {
+            QFile f(base.filePath(rel));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        };
+        QVERIFY(base.mkpath(u"WinShun/clipboard"_s));
+        QVERIFY(base.mkpath(u"WinShun/plugins/p"_s));
+        touch(u"WinShun/index.bin"_s);
+        touch(u"WinShun/clipboard/1.png"_s);
+        touch(u"WinShun/plugins/p/main.ps1"_s);
+        const QString t = QDir::toNativeSeparators(tree.path());
+        const std::wstring data = (t + u"\\WinShun"_s).toStdWString();
+        CrawlRules rules {.excludedPaths = {data}, .lowPriorityPaths = {data + L"\\plugins"}, .keptPaths = {data + L"\\plugins"}};
+        const std::vector folders {t.toStdWString()};
+        {
+            IndexService service(store.path(), walkedOptions(folders, rules));
+            service.start();
+            QTRY_VERIFY_WITH_TIMEOUT(allReady(service), 30'000);
+            QVERIFY(indexedIn(service, t + u"\\WinShun\\plugins\\p\\main.ps1"_s));
+            QVERIFY(!indexedIn(service, t + u"\\WinShun\\index.bin"_s));
+            QVERIFY(!indexedIn(service, t + u"\\WinShun\\clipboard"_s));
+
+            touch(u"WinShun/state.ini"_s);
+            QVERIFY(base.mkpath(u"WinShun/diagnostics"_s));
+            QVERIFY(base.mkpath(u"WinShun/plugins/q"_s));
+            touch(u"WinShun/plugins/q/plugin.json"_s); // after them: once it is in, they were seen too
+            QTRY_VERIFY_WITH_TIMEOUT(indexedIn(service, t + u"\\WinShun\\plugins\\q\\plugin.json"_s), 10'000);
+            QVERIFY(!indexedIn(service, t + u"\\WinShun\\state.ini"_s));
+            QVERIFY(!indexedIn(service, t + u"\\WinShun\\diagnostics"_s));
+            service.shutdown();
+        }
+        // A version without the kept folder (or a new profile): they go; back, they come again.
+        for (const bool kept : {false, true}) {
+            CrawlRules now = rules;
+            if (!kept)
+                now.keptPaths.clear();
+            IndexService service(store.path(), walkedOptions(folders, now));
+            service.start();
+            QTRY_VERIFY_WITH_TIMEOUT(
+                allReady(service) && indexedIn(service, t + u"\\WinShun\\plugins\\q\\plugin.json"_s) == kept, 60'000);
+            QCOMPARE(indexedIn(service, t + u"\\WinShun\\plugins\\p\\main.ps1"_s), kept);
+            QVERIFY(!indexedIn(service, t + u"\\WinShun\\state.ini"_s));
+            service.shutdown();
+        }
+    }
+
     // The volume's root is watched; what happens outside the chosen folders
     // is dropped, and what happens in them comes in at once. Half a rename
     // that leaves or enters one is a removal or an addition by itself.
@@ -5566,7 +5620,8 @@ private slots:
         const std::vector<JournalPosition> journals {{0xABCDEF, 123456789}};
         QTemporaryDir dir;
         const QString file = dir.filePath(u"index.bin"_s);
-        const CrawlRules rules {{L"C:\\skip"}, {L"node_modules", L".svn\\pristine"}, {L"C:\\Windows"}, {L"AppData"}};
+        const CrawlRules rules {
+            {L"C:\\skip"}, {L"node_modules", L".svn\\pristine"}, {L"C:\\Windows"}, {L"AppData"}, {L"C:\\skip\\kept"}};
         QVERIFY(snapshot::save(t.index, volumes, journals, rules, file));
 
         const auto contents = snapshot::load(file);
@@ -7362,6 +7417,120 @@ private slots:
         QVERIFY(crawler.isExcludedPath(L"\\\\nas\\docs\\#recycle\\b.txt"));
         QVERIFY(crawler.isExcludedPath(L"\\\\nas\\docs\\a\\docs\\b.txt"));
         QVERIFY(crawler.isExcludedPath(L"\\\\nas\\docs\\private\\b.txt"));
+    }
+
+    // GitHub #406: Win顺's data folder is left out, the plugins in it are not.
+    // The excluded folder holds only the way to the kept one; an exclusion of
+    // the user's around it, or of the kept folder itself, wins.
+    void keptInsideExcluded()
+    {
+        const std::wstring data = L"C:\\Users\\me\\AppData\\Local\\WinShun";
+        const std::wstring plugins = data + L"\\plugins";
+        const Crawler crawler(CrawlRules {.excludedPaths = {L"C:\\skip", data}, .keptPaths = {plugins}});
+        QVERIFY(crawler.keptFolders() == std::vector {plugins});
+        QVERIFY(crawler.holdsOnlyTheWay(data));
+        QVERIFY(crawler.holdsOnlyTheWay(L"c:\\users\\ME\\appdata\\local\\winshun")); // case
+        QVERIFY(!crawler.holdsOnlyTheWay(plugins));
+        QVERIFY(crawler.mayHoldOnlyTheWay(L"winshun"));
+        QVERIFY(!crawler.mayHoldOnlyTheWay(L"plugins"));
+        QVERIFY(!crawler.isExcludedDir(data, L"WinShun"));
+        QVERIFY(!crawler.isExcludedDir(plugins, L"plugins"));
+        QVERIFY(crawler.isExcludedDir(data + L"\\clipboard", L"clipboard"));
+        QVERIFY(!crawler.isExcludedPath(plugins + L"\\crazy-zxx.yigengming\\main.ps1"));
+        QVERIFY(!crawler.isExcludedPath(plugins + L"\\winshun.capture.data\\pins.json"));
+        QVERIFY(crawler.isExcludedPath(data + L"\\index.bin")); // a file beside the way
+        QVERIFY(crawler.isExcludedPath(data + L"\\clipboard\\1.png"));
+        QVERIFY(crawler.isExcludedPath(L"C:\\skip\\a.txt")); // other exclusions as before
+        QVERIFY(!crawler.isExcludedPath(L"C:\\Users\\me\\Documents\\a.txt"));
+
+        // Deeper: every folder on the way holds only the way.
+        const Crawler deep(CrawlRules {.excludedPaths = {L"D:\\a"}, .keptPaths = {L"D:\\a\\b\\c"}});
+        QVERIFY(deep.holdsOnlyTheWay(L"D:\\a") && deep.holdsOnlyTheWay(L"D:\\a\\b"));
+        QVERIFY(deep.isExcludedPath(L"D:\\a\\x") && deep.isExcludedPath(L"D:\\a\\b\\x.txt"));
+        QVERIFY(!deep.isExcludedPath(L"D:\\a\\b\\c\\x.txt"));
+
+        // The user's own exclusions win: around it, or of it. The same path
+        // listed twice (a custom index folder that is the data folder) is one.
+        for (const std::wstring& users : {std::wstring(L"C:\\Users\\me\\AppData"), plugins}) {
+            const Crawler theirs(CrawlRules {.excludedPaths = {data, users}, .keptPaths = {plugins}});
+            QVERIFY(theirs.keptFolders().empty());
+            QVERIFY(theirs.isExcludedPath(plugins + L"\\a\\main.ps1"));
+            QVERIFY(theirs.isExcludedPath(data));
+        }
+        QVERIFY(Crawler(CrawlRules {.excludedPaths = {data, L"c:\\users\\me\\appdata\\local\\winshun"}, .keptPaths = {plugins}})
+                    .keptFolders()
+                    .size()
+            == 1);
+        QVERIFY(Crawler(CrawlRules {.keptPaths = {plugins}}).keptFolders().empty()); // not excluded at all
+        QVERIFY(Crawler(CrawlRules {.excludedPaths = {data}, .keptPaths = {data}}).keptFolders().empty());
+
+        // On the disk: the walk goes through the data folder to its plugins.
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        QDir base(tmp.path());
+        const auto touch = [&](const QString& rel) {
+            QFile f(base.filePath(rel));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        };
+        QVERIFY(base.mkpath(u"WinShun/clipboard"_s));
+        QVERIFY(base.mkpath(u"WinShun/plugins/crazy-zxx.yigengming"_s));
+        QVERIFY(base.mkpath(u"WinShun/plugins/winshun.capture.data"_s));
+        touch(u"WinShun/index.bin"_s);
+        touch(u"WinShun/clipboard/1.png"_s);
+        touch(u"WinShun/plugins/crazy-zxx.yigengming/main.ps1"_s);
+        touch(u"WinShun/plugins/winshun.capture.data/pins.json"_s);
+        const std::wstring rootPath = QDir::toNativeSeparators(tmp.path()).toStdWString();
+        const Crawler onDisk(CrawlRules {
+            .excludedPaths = {rootPath + L"\\WinShun"}, .lowPriorityPaths = {rootPath + L"\\WinShun\\plugins"},
+            .keptPaths = {rootPath + L"\\WinShun\\plugins"}});
+        // The root named as the volume is (the journal's applier finds it by that name).
+        const std::string rootName = wtf8::fromUtf16(wtf8::view(rootPath));
+        FileIndex index;
+        const EntryId root = index.addRoot(rootName);
+        QVERIFY(onDisk.sync(index, {{root, rootPath, 0}}, 2, false, {}));
+        const auto at = [&](std::initializer_list<std::string_view> names) {
+            EntryId id = root;
+            for (const std::string_view name : names)
+                id = id == kNoEntry ? kNoEntry : index.findChild(id, name);
+            return id;
+        };
+        // WinShun, plugins, the plugin, main.ps1, its .data, pins.json (+ root)
+        QCOMPARE(index.liveCount(), std::size_t {7});
+        const EntryId script = at({"WinShun", "plugins", "crazy-zxx.yigengming", "main.ps1"});
+        QVERIFY(script != kNoEntry);
+        QVERIFY(index.entry(script).flags & EntryFlag::LowPriority);
+        QVERIFY(at({"WinShun", "plugins", "winshun.capture.data", "pins.json"}) != kNoEntry);
+        QCOMPARE(at({"WinShun", "index.bin"}), kNoEntry);
+        QCOMPARE(at({"WinShun", "clipboard"}), kNoEntry);
+
+        // The journal: a file or folder made in the data folder stays out, one
+        // in a plugin goes in; a plugin's file moved up into the data folder leaves.
+        const EntryId folder = at({"WinShun"});
+        const EntryId plugin = at({"WinShun", "plugins", "crazy-zxx.yigengming"});
+        index.setFolderRecord(root, ntfs::kRootRecord, root);
+        index.setFolderRecord(root, 100, folder);
+        index.setFolderRecord(root, 101, plugin);
+        std::int64_t usn = 0;
+        const auto ref = [](std::uint32_t record) { return std::uint64_t {record} | (std::uint64_t {1} << 48); };
+        const auto rec = [&](std::uint32_t file, std::uint32_t parent, std::uint32_t reason, DWORD attributes,
+                             std::u16string_view name) {
+            return ntfs::UsnRecord {ref(file), ref(parent), usn += 100, reason, attributes, name};
+        };
+        UsnApplier applier(index, onDisk, rootName);
+        applier.apply(std::vector {
+                          rec(1000, 100, USN_REASON_FILE_CREATE | USN_REASON_CLOSE, 0, u"state.ini"),
+                          rec(1001, 101, USN_REASON_FILE_CREATE | USN_REASON_CLOSE, 0, u"plugin.json"),
+                          rec(1002, 100, USN_REASON_FILE_CREATE | USN_REASON_CLOSE, FILE_ATTRIBUTE_DIRECTORY, u"diagnostics"),
+                      },
+            {});
+        QCOMPARE(index.findChild(folder, "state.ini"), kNoEntry);
+        QCOMPARE(index.findChild(folder, "diagnostics"), kNoEntry);
+        QVERIFY(index.findChild(plugin, "plugin.json") != kNoEntry);
+        applier.apply(std::vector {rec(1001, 101, USN_REASON_RENAME_OLD_NAME, 0, u"plugin.json"),
+                          rec(1001, 100, USN_REASON_RENAME_NEW_NAME | USN_REASON_CLOSE, 0, u"plugin.json")},
+            {});
+        QCOMPARE(index.findChild(plugin, "plugin.json"), kNoEntry);
+        QCOMPARE(index.findChild(folder, "plugin.json"), kNoEntry);
     }
 
     // A whole drive excluded (GitHub #17): "X:\" in the settings is "X:" here.

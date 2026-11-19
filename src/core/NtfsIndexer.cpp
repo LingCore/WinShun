@@ -437,6 +437,15 @@ std::wstring UsnApplier::childPath(EntryId parent, std::wstring_view name) const
     return path;
 }
 
+bool UsnApplier::holdsNoFiles(EntryId folder) const
+{
+    if (m_crawler.keptFolders().empty())
+        return false;
+    std::u16string name;
+    wtf8::decodeAppend(name, m_index.name(folder));
+    return m_crawler.mayHoldOnlyTheWay(wtf8::wview(name)) && m_crawler.holdsOnlyTheWay(m_index.wpath(folder));
+}
+
 std::uint8_t UsnApplier::flagsFor(EntryId parent, const Item& item, const std::wstring& path) const
 {
     auto flags = static_cast<std::uint8_t>(
@@ -470,7 +479,7 @@ void UsnApplier::move(const Item& item, const OldName* old, std::vector<Crawler:
         return;
     const EntryId parent = m_index.folderByRecord(m_root, item.parent);
     const std::wstring path = parent != kNoEntry && item.folder ? childPath(parent, item.wideName) : std::wstring();
-    if (parent == kNoEntry || (item.folder && m_crawler.isExcludedDir(path, item.wideName))) {
+    if (parent == kNoEntry || (item.folder ? m_crawler.isExcludedDir(path, item.wideName) : holdsNoFiles(parent))) {
         // Moved out of the index: into the recycle bin, an excluded folder, ...
         if (id != kNoEntry)
             m_index.remove(id);
@@ -514,6 +523,8 @@ void UsnApplier::add(EntryId parent, const Item& item, bool walk, std::vector<Cr
         path = childPath(parent, item.wideName);
         if (m_crawler.isExcludedDir(path, item.wideName))
             return;
+    } else if (holdsNoFiles(parent)) {
+        return;
     }
     const std::uint8_t flags = flagsFor(parent, item, path);
     const EntryId id = m_index.add(parent, item.name, flags);

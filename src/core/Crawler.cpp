@@ -306,9 +306,56 @@ std::vector<std::vector<std::size_t>> readingGroups(
     return groups;
 }
 
+namespace {
+
+// `path` is `dir` or something in it.
+bool atOrUnder(std::wstring_view path, std::wstring_view dir)
+{
+    return path.size() >= dir.size() && (path.size() == dir.size() || path[dir.size()] == L'\\')
+        && win32::equalsIgnoreCase(path.substr(0, dir.size()), dir);
+}
+
+bool listed(const std::vector<std::wstring>& folders, std::wstring_view path)
+{
+    return std::ranges::any_of(folders, [&](const std::wstring& f) {
+        return f.size() == path.size() && win32::equalsIgnoreCase(f, path);
+    });
+}
+
+} // namespace
+
 Crawler::Crawler(CrawlRules rules)
     : m_rules(std::move(rules))
 {
+    for (const std::wstring& kept : m_rules.keptPaths) {
+        std::vector<std::wstring> arounds; // the excluded folders it is in (a path listed twice is one)
+        for (const std::wstring& excluded : m_rules.excludedPaths) {
+            if (atOrUnder(kept, excluded) && !listed(arounds, excluded))
+                arounds.push_back(excluded);
+        }
+        if (arounds.size() != 1 || arounds.front().size() == kept.size() || listed(m_kept, kept))
+            continue; // not excluded, excluded by more than its own folder, or the excluded folder itself
+        m_kept.push_back(kept);
+        // The folders on the way: the excluded one, then each one down to the kept one's.
+        for (std::size_t end = arounds.front().size(); end != std::wstring::npos && end < kept.size();
+             end = kept.find(L'\\', end + 1)) {
+            if (const std::wstring_view way = std::wstring_view(kept).substr(0, end); !listed(m_ways, way))
+                m_ways.emplace_back(way);
+        }
+    }
+}
+
+bool Crawler::holdsOnlyTheWay(std::wstring_view folder) const
+{
+    return listed(m_ways, folder);
+}
+
+bool Crawler::mayHoldOnlyTheWay(std::wstring_view name) const
+{
+    return std::ranges::any_of(m_ways, [&](const std::wstring& way) {
+        return way.size() > name.size() && way[way.size() - name.size() - 1] == L'\\'
+            && win32::equalsIgnoreCase(std::wstring_view(way).substr(way.size() - name.size()), name);
+    });
 }
 
 std::uint8_t Crawler::attributeFlags(unsigned long attributes) noexcept
@@ -361,11 +408,15 @@ bool Crawler::isExcludedDir(std::wstring_view fullPath, std::wstring_view name) 
         if (matchesNameRule(n, fullPath, name))
             return true;
     }
-    for (const auto& p : m_rules.excludedPaths) {
-        if (win32::equalsIgnoreCase(p, fullPath))
-            return true;
-    }
-    return false;
+    if (holdsOnlyTheWay(fullPath))
+        return false; // excluded, but a kept folder is in it
+    if (std::ranges::any_of(m_rules.excludedPaths, [&](const std::wstring& p) { return win32::equalsIgnoreCase(p, fullPath); }))
+        return true;
+    if (m_ways.empty())
+        return false;
+    // In a folder that holds only the way to a kept one: the rest of the way, or the kept one.
+    const std::size_t slash = fullPath.find_last_of(L'\\');
+    return slash != std::wstring_view::npos && holdsOnlyTheWay(fullPath.substr(0, slash)) && !listed(m_kept, fullPath);
 }
 
 bool Crawler::isExcludedPath(std::wstring_view fullPath) const
@@ -432,6 +483,8 @@ void Crawler::addToListing(DirListing& out, const Root& dir, std::string_view na
             return;
         flags |= dirPriorityFlags(out.scratchPath, wideName);
     } else {
+        if (!m_ways.empty() && holdsOnlyTheWay(dir.path))
+            return; // its files are what the exclusion is for
         descend = false;
     }
     const auto offset = static_cast<std::uint32_t>(out.names.size());
