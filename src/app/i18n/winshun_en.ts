@@ -2206,8 +2206,8 @@
         <translation>I&apos;ll keep putting my heart into WinShun.</translation>
     </message>
     <message>
-        <source>用最用心的态度，做最好用的产品。</source>
-        <translation>The utmost care, for the most useful software.</translation>
+        <source>用最&lt;font color=&quot;%1&quot;&gt;&lt;b&gt;用心&lt;/b&gt;&lt;/font&gt;的态度，做最&lt;font color=&quot;%1&quot;&gt;&lt;b&gt;好用&lt;/b&gt;&lt;/font&gt;的产品。</source>
+        <translation>The utmost &lt;font color=&quot;%1&quot;&gt;&lt;b&gt;care&lt;/b&gt;&lt;/font&gt;, for the most &lt;font color=&quot;%1&quot;&gt;&lt;b&gt;useful&lt;/b&gt;&lt;/font&gt; software.</translation>
     </message>
     <message>
         <source>如果 Win顺 帮到了你，欢迎请我喝瓶快乐水～</source>

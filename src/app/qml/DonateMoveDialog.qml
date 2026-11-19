@@ -112,11 +112,17 @@ Item {
                         wrapMode: Text.Wrap
                     }
                     Text {
+                        // The rose of the 捐赠 key for the slogan's two words (用心, 好用), bold;
+                        // lighter on a dark card. Either reads at 4.6:1 or more on the style's cards.
+                        readonly property color mark: Theme.dark ? "#FF7A9C" : "#D1245A"
+
                         objectName: "donateMoveWord"
                         width: parent.width
+                        textFormat: Text.StyledText
                         // A sentence a line, as below: wrapped as one, a word broke over the lines.
-                        text: dialog.thanked ? qsTr("谢谢你的心意！") + "\n" + qsTr("Win顺 会继续用心做下去。")
-                                             : qsTr("用最用心的态度，做最好用的产品。") + "\n" + qsTr("如果 Win顺 帮到了你，欢迎请我喝瓶快乐水～")
+                        text: dialog.thanked ? qsTr("谢谢你的心意！") + "<br>" + qsTr("Win顺 会继续用心做下去。")
+                                             : qsTr("用最<font color=\"%1\"><b>用心</b></font>的态度，做最<font color=\"%1\"><b>好用</b></font>的产品。").arg(mark)
+                                               + "<br>" + qsTr("如果 Win顺 帮到了你，欢迎请我喝瓶快乐水～")
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
                         lineHeight: 1.15
