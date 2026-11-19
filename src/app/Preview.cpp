@@ -8852,6 +8852,120 @@ bool checkStyleButtons(QQmlEngine* engine, const QDir& output)
     return passed;
 }
 
+// --drop-pie-pages: the drop pie with more folders than a page holds (#405),
+// as DropPie and DropPieWindow.qml make it, off the screen: twenty favorites
+// (three pages: the first, the second with the pointer on a chip, the last of
+// four), a turn caught half way through its fade, and forty, forty-eight and
+// fifty-six (five and six pages: dots; seven: the middle says "4/7"), and eight
+// (one page: nothing of paging shows). `--scale` as for the others.
+bool checkDropPiePages(QQmlEngine* engine, const QDir& output)
+{
+    bool passed = true;
+    const auto check = [&](bool condition, const QString& what) {
+        if (!condition)
+            say(u"drop pie pages: %1 FAILED"_s.arg(what));
+        passed = passed && condition;
+    };
+    QTemporaryDir temporary;
+    const QStringList names {u"项目资料"_s, u"年度报告"_s, u"设计素材"_s, u"客户合同"_s, u"归档备份"_s, u"Downloads"_s,
+        u"Client Projects 2026"_s, u"财务报销单据与发票"_s, u"Invoices"_s, u"Meeting Notes and Minutes"_s, u"照片"_s,
+        u"Source Code"_s, u"学习资料"_s, u"Tax"_s, u"旅行计划与行程安排"_s, u"Music"_s, u"备份"_s, u"Screenshots"_s,
+        u"工作周报"_s, u"合同扫描件"_s};
+    // `count` favorites, the pie opened on the screen's middle, then each of `shots` taken:
+    // {page, sector the pointer is on, file name}.
+    struct Shot {
+        int page;
+        int hovered;
+        QString name;
+    };
+    const auto run = [&](int count, const QString& tag, const QList<Shot>& shots, bool fade) {
+        Favorites favorites(temporary.filePath(tag + u".json"_s));
+        for (int i = 0; i < count; ++i) {
+            const QString name = names.value(i % names.size()) + (i >= names.size() ? u" "_s + QString::number(i / names.size() + 1) : QString());
+            const QString folder = temporary.filePath(tag + u"/"_s + name);
+            QDir().mkpath(folder);
+            favorites.add({Favorite::Kind::Folder, QDir::toNativeSeparators(folder), name});
+        }
+        piedrop::FileOperations operations;
+        DropPie pie(&favorites, nullptr, &operations, {});
+        QQmlComponent component(engine, u"WinShun"_s, u"DropPieWindow"_s);
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"dropPie"_s, QVariant::fromValue(&pie)}}));
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        check(window, tag + u": "_s + component.errorString());
+        if (!window)
+            return;
+        pie.setWindow(window);
+        QElapsedTimer waiting;
+        waiting.start();
+        while (pie.folderCount() < count && waiting.elapsed() < 5000)
+            pump(20);
+        check(pie.folderCount() == count, tag + u": its folders"_s);
+        check(pie.pageCount() == (count + 7) / 8, tag + u": its pages"_s);
+        QScreen* primary = QGuiApplication::primaryScreen();
+        const QPoint centre = primary->geometry().center();
+        const qreal scale = primary->devicePixelRatio();
+        pie.preview(POINT {LONG(std::lround(centre.x() * scale)), LONG(std::lround(centre.y() * scale))}, -1);
+        const QSize size = window->size();
+        showOffScreen(window);
+        window->resize(size);
+        pump(400);
+        const auto shoot = [&](const QString& name) {
+            settle(window);
+            pump(300);
+            settle(window, 2);
+            check(saveGrab(window, output.filePath(name + u".png"_s)), name);
+            // Where the middle is in the picture (device pixels), for measuring the dots on its pixels.
+            const qreal dpr = window->devicePixelRatio();
+            say(u"%1: hub centre %2,%3 radius %4 (device pixels)"_s.arg(name).arg(window->property("cx").toReal() * dpr)
+                    .arg(window->property("cy").toReal() * dpr).arg(pie.hubRadius() * dpr));
+        };
+        for (const Shot& shot : shots) {
+            pie.previewPage(shot.page, shot.hovered);
+            pump(100);
+            check(pie.page() == shot.page, shot.name + u": the page"_s);
+            check(pie.sectors().size() == std::min(8, count - 8 * shot.page), shot.name + u": its chips"_s);
+            // The hint to turn the page is there with several pages and nothing chosen, and only then.
+            if (shot.hovered < 0)
+                check(pie.statusHint().isEmpty() == (pie.pageCount() == 1), shot.name + u": the page hint"_s);
+            shoot(shot.name);
+        }
+        if (fade) {
+            // Tab at the first page: the chips of both pages on the screen at once.
+            pie.previewPage(0);
+            pump(100);
+            pie.pageKey(false);
+            pump(50);
+            const qreal turn = window->property("turn").toReal();
+            check(pie.page() == 1 && !pie.leavingSectors().isEmpty(), tag + u": a turn"_s);
+            check(saveGrab(window, output.filePath(tag + u"-fade.png"_s)), tag + u"-fade"_s);
+            say(u"drop pie pages: the fade was at %1 when grabbed"_s.arg(turn));
+            pump(400);
+            check(window->property("turn").toReal() == 1, tag + u": the fade ends"_s);
+            // Shift+Tab back to the first, and round to the last.
+            pie.pageKey(true);
+            pump(50);
+            check(pie.page() == 0, tag + u": back"_s);
+            pie.pageKey(true);
+            pump(50);
+            check(pie.page() == pie.pageCount() - 1, tag + u": round to the last"_s);
+            pie.pageKey(false);
+            pump(50);
+            check(pie.page() == 0, tag + u": round to the first"_s);
+        }
+        window->hide();
+    };
+    run(20, u"droppie-pages"_s, {{0, -1, u"droppie-pages-1"_s}, {1, -1, u"droppie-pages-2"_s}, {1, 2, u"droppie-pages-2-hover"_s},
+        {2, 3, u"droppie-pages-3"_s}}, true);
+    run(56, u"droppie-pages-many"_s, {{3, -1, u"droppie-pages-many-4"_s}}, false);
+    run(48, u"droppie-pages-six"_s, {{5, -1, u"droppie-pages-six-6"_s}}, false);
+    run(40, u"droppie-pages-five"_s, {{2, -1, u"droppie-pages-five-3"_s}}, false);
+    run(12, u"droppie-pages-two"_s, {{0, 1, u"droppie-pages-two-1"_s}}, false);
+    // Eight or fewer: no pages, no dots, no hint, as before.
+    run(8, u"droppie-pages-single"_s, {{0, -1, u"droppie-pages-single-1"_s}}, false);
+    say(u"drop pie pages: %1"_s.arg(passed ? u"passed"_s : u"FAILED"_s));
+    return passed;
+}
+
 // --style-windows: the small windows of every 界面风格 (themes/README.md),
 // each as the app makes it, off the screen: a menu dropped from a button and
 // a field with its caret (style-controls), the screenshot question
@@ -9091,6 +9205,8 @@ int runResults(const QStringList& args)
         return checkPreviewInteractions(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--style-buttons"_s))
         return checkStyleButtons(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--drop-pie-pages"_s))
+        return checkDropPiePages(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-sizing"_s))
         return checkClipboardInteractions(&engine, out, {}, true) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-file"_s))

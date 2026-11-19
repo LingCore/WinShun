@@ -40,6 +40,11 @@ int DropPieText::folderCount() const
     return g_folderCount;
 }
 
+int DropPieText::pageSize() const noexcept
+{
+    return pie::kPageSize;
+}
+
 void DropPieText::setFolderCount(int count)
 {
     if (g_folderCount == count)

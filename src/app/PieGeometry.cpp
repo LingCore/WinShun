@@ -18,7 +18,7 @@ double distanceFromCentre(const QRectF& rect) noexcept
     return std::hypot(dx, dy);
 }
 
-// Straight up or down, or nearly (no number of folders up to eight puts one
+// Straight up or down, or nearly (no page of up to eight chips puts one
 // in between): centred there, not to a side.
 bool upright(double angle) noexcept
 {
@@ -74,6 +74,28 @@ bool clear(const std::vector<QRectF>& chips, const Metrics& m) noexcept
 Metrics Metrics::scaled(double k) const noexcept
 {
     return {hub * k, dead * k, chipHeight * k, chipGap * k, minRadius * k, reach * k};
+}
+
+int pageCount(int folders) noexcept
+{
+    return std::max(1, (std::max(0, folders) + kPageSize - 1) / kPageSize);
+}
+
+int clampPage(int page, int folders) noexcept
+{
+    return std::clamp(page, 0, pageCount(folders) - 1);
+}
+
+PageSlice pageSlice(int folders, int page) noexcept
+{
+    const int first = clampPage(page, folders) * kPageSize;
+    return {first, std::clamp(folders - first, 0, kPageSize)};
+}
+
+int turnedPage(int page, int folders, bool back) noexcept
+{
+    const int pages = pageCount(folders);
+    return (clampPage(page, folders) + (back ? pages - 1 : 1)) % pages;
 }
 
 double scaleForStep(int step) noexcept

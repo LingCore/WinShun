@@ -6,6 +6,7 @@
 #include <QtTest>
 
 #include <cmath>
+#include <utility>
 #include <vector>
 
 using namespace ws::pie;
@@ -254,6 +255,76 @@ private slots:
                 QVERIFY2(QRectF(rect).contains(extent.translated(centre).intersected(QRectF(monitor))), qPrintable(what));
             }
         }
+    }
+
+    // The folders by pages of eight, in the favorites' order.
+    void pageCounts()
+    {
+        QCOMPARE(kPageSize, 8);
+        // None still has the one page that says so.
+        for (const auto& [folders, pages] : std::vector<std::pair<int, int>> {{-3, 1}, {0, 1}, {1, 1}, {8, 1}, {9, 2},
+                 {16, 2}, {17, 3}, {23, 3}, {24, 3}, {25, 4}, {400, 50}}) {
+            QCOMPARE(pageCount(folders), pages);
+        }
+    }
+
+    void pageSlices()
+    {
+        const auto same = [](PageSlice a, int first, int count) { return a.first == first && a.count == count; };
+        QVERIFY(same(pageSlice(0, 0), 0, 0));
+        QVERIFY(same(pageSlice(5, 0), 0, 5));
+        QVERIFY(same(pageSlice(8, 0), 0, 8));
+        QVERIFY(same(pageSlice(9, 0), 0, 8));
+        QVERIFY(same(pageSlice(9, 1), 8, 1));
+        QVERIFY(same(pageSlice(16, 1), 8, 8));
+        // 23 favorites: 1-8, 9-16, 17-23.
+        QVERIFY(same(pageSlice(23, 0), 0, 8));
+        QVERIFY(same(pageSlice(23, 1), 8, 8));
+        QVERIFY(same(pageSlice(23, 2), 16, 7));
+        // A page that is not there is the nearest that is.
+        QVERIFY(same(pageSlice(23, 3), 16, 7));
+        QVERIFY(same(pageSlice(23, 99), 16, 7));
+        QVERIFY(same(pageSlice(23, -1), 0, 8));
+        QVERIFY(same(pageSlice(4, 2), 0, 4));
+        // Every favorite is on exactly one page.
+        for (int folders = 0; folders <= 40; ++folders) {
+            int next = 0;
+            for (int page = 0; page < pageCount(folders); ++page) {
+                const PageSlice slice = pageSlice(folders, page);
+                QCOMPARE(slice.first, next);
+                QVERIFY(slice.count <= kPageSize);
+                QVERIFY(slice.count > 0 || folders == 0);
+                next += slice.count;
+            }
+            QCOMPARE(next, folders);
+        }
+    }
+
+    void pagesTurnRound()
+    {
+        // One page: nowhere to go.
+        QCOMPARE(turnedPage(0, 8, false), 0);
+        QCOMPARE(turnedPage(0, 8, true), 0);
+        QCOMPARE(turnedPage(0, 0, false), 0);
+        // 23 favorites, 3 pages: forward round the end, back round the start.
+        QCOMPARE(turnedPage(0, 23, false), 1);
+        QCOMPARE(turnedPage(1, 23, false), 2);
+        QCOMPARE(turnedPage(2, 23, false), 0);
+        QCOMPARE(turnedPage(2, 23, true), 1);
+        QCOMPARE(turnedPage(1, 23, true), 0);
+        QCOMPARE(turnedPage(0, 23, true), 2);
+        // Two pages: either way is the other one.
+        QCOMPARE(turnedPage(0, 9, false), 1);
+        QCOMPARE(turnedPage(1, 9, false), 0);
+        QCOMPARE(turnedPage(0, 9, true), 1);
+        QCOMPARE(turnedPage(1, 9, true), 0);
+        // The favorites shrank under a page that was shown: it comes in range first.
+        QCOMPARE(clampPage(2, 23), 2);
+        QCOMPARE(clampPage(2, 9), 1);
+        QCOMPARE(clampPage(5, 3), 0);
+        QCOMPARE(clampPage(-1, 30), 0);
+        QCOMPARE(turnedPage(2, 9, false), 0); // clamped to the second (last), then round
+        QCOMPARE(turnedPage(7, 12, true), 0); // clamped to the second, back to the first
     }
 };
 

@@ -98,7 +98,7 @@ SettingsSection {
     onVisibleChanged: if (!visible) { editing = -1; addingCommand = false; draft = null; favorites.clearMessage() }
 
     // The drop pie (DropPie): the key under Esc, with files held or dragged,
-    // files brings up the first eight folders here round the pointer.
+    // brings up the folders here round the pointer, eight to a page.
     SettingRow {
         id: dropPieRow
 
@@ -106,8 +106,8 @@ SettingsSection {
 
         title: qsTr("拖文件时按 ` 键，弹出收藏圆盘")
         keywords: qsTr("拖放;拖动;拖拽;圆盘;按键;移动;复制;drag;drop;pie;key").split(";")
-        description: section.editor.dropPie && DropPieText.folderCount > DropPieText.maxFolders
-                     ? qsTr("%1。只放得下前 8 个文件夹收藏（现有 %2 个）").arg(how).arg(DropPieText.folderCount)
+        description: section.editor.dropPie && DropPieText.folderCount > DropPieText.pageSize
+                     ? qsTr("%1。文件夹收藏每 8 个一页（现有 %2 个）：按 Tab 翻到下一页，Shift+Tab 翻回上一页").arg(how).arg(DropPieText.folderCount)
                    : how
 
         ToggleSwitch {

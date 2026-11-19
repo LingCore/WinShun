@@ -352,7 +352,7 @@ std::vector<Entry> buildCatalog()
                     "A folder's column in the folder menu lists the files in it after its folders; a click or Enter opens one. Not in Open or Save dialogs. Off by default."},
         &Settings::folderMenuFiles));
     add(boolean({"Favorites/DropPie", QT_TRANSLATE_NOOP("AiSettings", "拖文件时按 ` 键，弹出收藏圆盘"), "favorites", -1,
-                    "While dragging files or folders (File Explorer, the desktop, file managers), pressing the key left of 1 (` and ~ on most keyboards, · in a Chinese input method; it is the key's place that counts, not what is printed on it) with them held (no need to move) brings up the first eight favorite folders round the pointer. Moving toward one and letting go drops the files there: moved within a drive, copied to another, Ctrl copies and Shift moves. Does nothing while Win顺 runs as administrator."},
+                    "While dragging files or folders (File Explorer, the desktop, file managers), pressing the key left of 1 (` and ~ on most keyboards, · in a Chinese input method; it is the key's place that counts, not what is printed on it) with them held (no need to move) brings up the favorite folders round the pointer, eight to a page (Tab turns to the next page, Shift+Tab to the one before). Moving toward one and letting go drops the files there: moved within a drive, copied to another, Ctrl copies and Shift moves. Does nothing while Win顺 runs as administrator."},
         &Settings::dropPie));
     add(hotkey({"Launcher/FolderMenuHotkey", QT_TRANSLATE_NOOP("AiSettings", "用快捷键弹出文件夹菜单"), "files_and_dialogs", 1,
                    "A shortcut that brings up the folder menu in whatever window is in front, like Ctrl+Alt+D. Empty: none."},

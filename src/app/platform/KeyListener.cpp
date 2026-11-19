@@ -33,6 +33,12 @@ constexpr USHORT kDragKeyScan = 0x29;
 // Its hotkeys while a drag is under way: alone, with Shift, Ctrl, both.
 constexpr int kDragKeyHotkey = 0x5750;
 constexpr std::array<UINT, 4> kDragKeyMods {0, MOD_SHIFT, MOD_CONTROL, MOD_CONTROL | MOD_SHIFT};
+// The pie's page keys while it shows more than one page: Tab and Shift+Tab,
+// and with Ctrl too (held to copy). Shift is the way back. Asked for from
+// the GUI thread (holdDragPages), since a hotkey belongs to the thread of its window.
+constexpr int kDragPageHotkey = 0x5760;
+constexpr std::array<UINT, 4> kDragPageMods {0, MOD_SHIFT, MOD_CONTROL, MOD_CONTROL | MOD_SHIFT};
+constexpr UINT kDragPages = WM_APP + 75; // wParam: 1 hold the page keys, 0 let go (71-74: KeyListenerProtocol.h, kHookedKey)
 constexpr std::uint32_t kDragLookMs = 30;
 // The key pressed on a file before it was dragged: the drag started for it,
 // looked for every 20 ms, for up to 300.
@@ -381,20 +387,30 @@ LRESULT CALLBACK KeyListener::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
     case WM_HOTKEY: // the drop pie's key during a drag; once a press (MOD_NOREPEAT)
         if (self && wParam >= WPARAM {kDragKeyHotkey} && wParam < kDragKeyHotkey + kDragKeyMods.size())
             self->onDragKeyPressed();
+        if (self && self->m_callbacks.dragMenuPage && wParam >= WPARAM {kDragPageHotkey}
+            && wParam < kDragPageHotkey + kDragPageMods.size())
+            self->m_callbacks.dragMenuPage((kDragPageMods[wParam - kDragPageHotkey] & MOD_SHIFT) != 0);
+        return 0;
+    case kDragPages:
+        if (self)
+            self->guardDragPages(wParam != 0);
         return 0;
     case WM_CLOSE: {
         if (self && self->m_foregroundHook) {
             ::UnhookWinEvent(self->m_foregroundHook);
             self->m_foregroundHook = nullptr;
         }
-        if (self)
+        if (self) {
             self->guardDragKey(false);
+            self->guardDragPages(false);
+        }
         if (self && self->keyboardWanted())
             self->removeKeyboard(hwnd);
         if (self) {
             self->m_callbacks.doubleClick = nullptr; // so the mouse goes too
             self->m_callbacks.middleClick = nullptr;
             self->m_callbacks.dragMenu = nullptr;
+            self->m_callbacks.dragMenuPage = nullptr;
             self->m_callbacks.leftButtonUp = nullptr;
             self->m_callbacks.mousePress = nullptr;
             self->listenToMouse(false);
@@ -861,12 +877,14 @@ void KeyListener::onDrag(const RAWMOUSE& mouse)
         } else if (flags & (kAnyButtonDown & ~down)) {
             m_pressed = false; // another button too: not a plain drag
             guardDragKey(false);
+            guardDragPages(false);
             m_starting = false;
         }
         if (flags & up) {
             const bool dragged = m_pressed && (m_dragging || m_dragFound);
             m_pressed = false;
             guardDragKey(false);
+            guardDragPages(false); // the pie lets go of them itself too; never left held
             m_starting = false;
             if (dragged && m_callbacks.leftButtonUp)
                 m_callbacks.leftButtonUp();
@@ -1012,6 +1030,36 @@ void KeyListener::guardDragKey(bool on)
     if (m_keyLog)
         log(std::format("Key log: a file list pressed or a drag begun: the drop pie's key (vk 0x{:02X}) held back as:{}", vk,
             held.empty() ? " nothing" : held));
+}
+
+void KeyListener::holdDragPages(bool on)
+{
+    if (const HWND window = m_window.load())
+        ::PostMessageW(window, kDragPages, on ? 1 : 0, 0);
+}
+
+// The drop pie's Tab and Shift+Tab as hotkeys of this window, the way
+// guardDragKey holds its own key: neither the drag's source nor the program in
+// front gets them, while the pie shows more than one page. On the listener
+// thread. One another program holds already stays its own (the pie then does
+// not turn pages with that one, and the log says so once).
+void KeyListener::guardDragPages(bool on)
+{
+    const HWND window = m_window.load();
+    if (on == m_dragPagesGuarded || !window)
+        return;
+    m_dragPagesGuarded = on;
+    for (int i = 0; i < static_cast<int>(kDragPageMods.size()); ++i) {
+        const UINT mods = kDragPageMods[static_cast<std::size_t>(i)];
+        if (!on) {
+            ::UnregisterHotKey(window, kDragPageHotkey + i);
+        } else if (!::RegisterHotKey(window, kDragPageHotkey + i, mods | MOD_NOREPEAT, VK_TAB)
+            && !std::exchange(m_dragPagesRefusedLogged, true)) {
+            log(std::format("Drop pie input: its page key (Tab{}{}) could not be registered (error {}); "
+                            "another hotkey owner may receive it instead",
+                (mods & MOD_CONTROL) ? " with Ctrl" : "", (mods & MOD_SHIFT) ? " with Shift" : "", ::GetLastError()));
+        }
+    }
 }
 
 // The key pressed while a file is held but not moved: the program has not

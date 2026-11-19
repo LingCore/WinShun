@@ -417,6 +417,7 @@ int runDropPieHelper(const QStringList& arguments)
     KeyListener::Callbacks callbacks;
     callbacks.dragMenu = [&pie](POINT pt, HWND capture, DWORD source) { pie.summoned(pt, capture, source); };
     callbacks.leftButtonUp = [&pie] { pie.buttonReleased(); };
+    callbacks.dragMenuPage = [&pie](bool back) { pie.pageKey(back); };
     callbacks.log = [](const std::string& text) { qWarning().noquote() << QString::fromStdString(text); };
     callbacks.dragKeyRefused = [&](unsigned, unsigned long error) {
         QMetaObject::invokeMethod(&engine, [&, error] {
@@ -428,6 +429,8 @@ int runDropPieHelper(const QStringList& arguments)
     };
     KeyListener listener(std::move(callbacks));
     if (!listener.isActive()) return NoListener;
+    // Tab and Shift+Tab: the listener's only while the pie shows several pages.
+    QObject::connect(&pie, &DropPie::pageKeysWanted, &engine, [&listener](bool on) { listener.holdDragPages(on); });
     if (qEnvironmentVariableIsSet("WINSHUN_LOG_INFO")) // a test, a user asked to: the relay has a line to show
         qInfo().noquote() << u"Drop pie helper: running, keyboard input %1"_s.arg(keyboardInput(listener.window()));
     // What the launcher reads to know it runs, with what. Written only when
@@ -435,7 +438,7 @@ int runDropPieHelper(const QStringList& arguments)
     QByteArray written;
     const auto ready = [&] {
         QJsonObject state {{u"pid"_s, qint64(::GetCurrentProcessId())},
-            {u"elevated"_s, integrity::processElevated()}, {u"folders"_s, pie.noFolders() ? 0 : pie.sectors().size()},
+            {u"elevated"_s, integrity::processElevated()}, {u"folders"_s, pie.folderCount()}, {u"pages"_s, pie.pageCount()},
             {u"theme"_s, settings.theme}, {u"keyboard_input"_s, keyboardInput(listener.window())}};
         if (keyRefused) state.insert(u"key_refused"_s, qint64(keyRefused));
         const QByteArray next = QJsonDocument(state).toJson(QJsonDocument::Compact);
@@ -458,6 +461,7 @@ int runDropPieHelper(const QStringList& arguments)
     });
     lifetime.start();
     QObject::connect(&pie, &DropPie::sectorsChanged, &engine, ready);
+    QObject::connect(&pie, &DropPie::pageChanged, &engine, ready);
     ready();
     return QCoreApplication::exec();
 }

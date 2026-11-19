@@ -32,12 +32,15 @@ class SystemCatalog;
 // 拖放圆盘: while files are dragged (File Explorer, the desktop, any file
 // manager that drags with OLE), or a file only held, the key under Esc
 // (` and ·) brings up the favorite folders round the pointer, as small
-// chips, the first eight. The direction the pointer goes from the middle
+// chips, eight to a page. The direction the pointer goes from the middle
 // chooses one (PieGeometry): let go and the files are moved there within a
 // drive, copied to another, Ctrl and Shift changing that as in File
 // Explorer. Let go in the middle, or press Esc, and nothing happens; leave
 // the chips and they go away, the drag carrying on as before; the key again
-// does the same.
+// does the same. With more than eight folders Tab turns to the next page
+// (Shift+Tab: the one before; they go round): KeyListener holds those keys
+// only while the pie shows several pages, and nothing is chosen on a new page
+// until the pointer has moved.
 //
 // KeyListener sees the key (Raw Input, or its hotkey) and that an OLE drag is
 // under way; this shows the window (DropPieWindow.qml, made once and kept)
@@ -60,11 +63,17 @@ class DropPie : public QObject, private piedrop::Handler {
     Q_OBJECT
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the application")
-    // The folders' chips: {name, label, hint, path, disabled, reason, x, y,
-    // width}: label the name as shown (shortened in its middle), hint its
-    // parent folder's name when another has the same name; x, y the chip's
-    // top left from the centre.
+    // The folders' chips of the page shown: {name, label, hint, path,
+    // disabled, reason, x, y, width}: label the name as shown (shortened in
+    // its middle), hint its parent folder's name when another on that page has
+    // the same name; x, y the chip's top left from the centre.
     Q_PROPERTY(QVariantList sectors READ sectors NOTIFY sectorsChanged FINAL)
+    // The pages (eight folders each, in the favorites' order): the one shown,
+    // from 0, and how many; the chips of the page just left, for the window to
+    // fade out as the new ones fade in (pageTurned).
+    Q_PROPERTY(int page READ page NOTIFY pageChanged FINAL)
+    Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged FINAL)
+    Q_PROPERTY(QVariantList leavingSectors READ leavingSectors NOTIFY pageChanged FINAL)
     Q_PROPERTY(bool noFolders READ noFolders NOTIFY sectorsChanged FINAL)
     Q_PROPERTY(QPointF centre READ centre NOTIFY layoutChanged FINAL) // in the window
     Q_PROPERTY(qreal sizeScale READ sizeScale NOTIFY layoutChanged FINAL) // 界面大小
@@ -103,6 +112,9 @@ public:
     // drag at `pt` opens it, revealed, the pointer in sector `hovered` (-1:
     // the middle); no drop site taken, the window left to the preview to show.
     void preview(POINT pt, int hovered);
+    // ... and turned to `page` at once (no fade), the pointer in sector
+    // `hovered` of it (-1: the middle).
+    void previewPage(int page, int hovered = -1);
     bool dropReady() const noexcept { return m_hwnd && m_target; }
 
     // From the listener thread (KeyListener::Callbacks): during an OLE drag
@@ -111,6 +123,9 @@ public:
     // button let go.
     void summoned(POINT pt, HWND captureWindow, DWORD sourcePid);
     void buttonReleased();
+    // Tab (back: Shift+Tab) pressed while the listener holds those keys for
+    // the pie (pageKeysWanted).
+    void pageKey(bool back);
     // The notice when another program's hotkey has the pie's key
     // (KeyListener::Callbacks::dragKeyRefused, GitHub #150).
     static QString keyTakenTitle();
@@ -120,7 +135,11 @@ public:
     bool inDrop() const noexcept { return m_inDrop; }
 
     QVariantList sectors() const { return m_sectorItems; }
+    int page() const noexcept { return m_page; }
+    int pageCount() const noexcept { return m_pages; }
+    QVariantList leavingSectors() const { return m_leaving; }
     bool noFolders() const noexcept { return m_folders.empty(); }
+    int folderCount() const noexcept { return static_cast<int>(m_folders.size()); }
     QPointF centre() const noexcept { return m_centre; }
     qreal sizeScale() const noexcept { return m_scale; }
     int labelPixelSize() const noexcept { return m_labelPixelSize; }
@@ -144,6 +163,11 @@ public:
 
 signals:
     void sectorsChanged();
+    void pageChanged(); // the page, how many there are, or the page just left
+    void pageTurned(); // by Tab: the chips fade from the page left to the new one
+    // The listener is to hold Tab and Shift+Tab (KeyListener::holdDragPages)
+    // while the pie shows several pages, and to let go of them when it does not.
+    void pageKeysWanted(bool on);
     void layoutChanged();
     void revealedChanged();
     void stateChanged();
@@ -183,6 +207,10 @@ private:
     DWORD track(DWORD keys, POINT pt); // DragOver's work: the state and the effect
     void updateTexts();
     void setRevealed(bool revealed);
+    void turnPage(bool back);
+    void syncPageKeys();
+    // The favorite a sector of the page shown stands for.
+    std::size_t folderOf(int sector) const noexcept { return static_cast<std::size_t>(m_pageFirst + sector); }
 
     Favorites* m_favorites;
     SystemCatalog* m_places;
@@ -190,11 +218,17 @@ private:
     HWND m_hwnd = nullptr; // the window's, as registered for drops
     Microsoft::WRL::ComPtr<piedrop::DropTarget> m_target;
 
-    std::vector<Folder> m_folders; // the sectors, at most eight
+    std::vector<Folder> m_folders; // every favorite folder, a page of eight at a time (pie::pageSlice)
     QSet<QString> m_missing; // case-folded paths of local folders found missing
-    QVariantList m_sectorItems;
+    QVariantList m_sectorItems; // the page shown
+    QVariantList m_leaving; // the page before the last turn
+    int m_page = 0;
+    int m_pageFirst = 0; // the first favorite on it
+    int m_pages = 1;
+    int m_pageNotified = 0; // what pageChanged last said
     pie::Metrics m_metrics;
-    pie::Layout m_layout;
+    pie::Layout m_layout; // the page shown, its reach that of every page
+    QRectF m_allBounds; // the chips and the middle of every page: where the window and the line go
     qreal m_scale = 0; // none yet: the first updateSectors sets it
     int m_labelPixelSize = 13;
     QPointF m_centre; // in the window
@@ -205,6 +239,13 @@ private:
     bool m_entered = false; // DragEnter came
     bool m_revealed = false;
     bool m_confirming = false;
+    bool m_pageKeys = false; // pageKeysWanted(true) was the last word
+    // A page was turned and the pointer has not moved since: its chips are not
+    // chosen yet. OLE asks again and again with the pointer still, so it is
+    // the point that counts, not the asking.
+    bool m_awaitMove = false;
+    POINT m_turnedAt {};
+    POINT m_lastAt {}; // the last DragOver's
     bool m_inDrop = false;
     DWORD m_allowed = 0; // what the source allows
     std::vector<std::wstring> m_items; // the file-system paths of what is dragged (piedrop::DragItems)
