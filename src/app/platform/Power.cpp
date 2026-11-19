@@ -132,12 +132,14 @@ void setPerformerForTest(Performer performer)
 
 void run(const QString& pluginId, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done)
 {
-    const std::optional<Action> action = parseAction(arguments.value(u"action"_s).toString());
+    // One line a call, whatever it asks for (a plugin's own words, cut short).
+    const QString asked = arguments.value(u"action"_s).toString();
+    qInfo().noquote() << u"Power: %1 asks for \"%2\""_s.arg(pluginId, asked.simplified().left(40));
+    const std::optional<Action> action = parseAction(asked);
     if (!action) {
         done(failure(u"action must be shutdown, restart, sleep or hibernate"_s));
         return;
     }
-    qInfo().noquote() << u"Power: %1 asks for %2"_s.arg(pluginId, actionName(*action));
     const Performer perform = testPerformer() ? testPerformer() : Performer(performForReal);
     const auto answer = [](const std::function<void(mcp::ToolResult)>& to, const QString& error) {
         to(error.isEmpty() ? mcp::ToolResult {QJsonObject {{u"ok"_s, true}}} : failure(error));
