@@ -2033,7 +2033,7 @@ void App::applySettings(bool initial)
     m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardPictureSize, clipboardSize);
     if (clipboardResized && m_clipPlacement)
         m_clipPlacement->resized(); // the rows have another height
-    m_clipboard->setLayoutOptions(m_settings.clipboardFlipAbove, m_settings.clipboardSearchBoxSide == u"far");
+    m_clipboard->setLayoutOptions(m_settings.clipboardFlipAbove, m_settings.clipboardSearchBoxSide == u"far", m_settings.clipboardSearchBox);
     m_clipboard->setHoldToStep(m_settings.clipboardHoldToStep);
     m_clipboard->setPasteElevated(m_settings.clipboardPasteElevated);
     m_clipboard->setPreviewRestore(m_settings.clipboardPreviewRestore);

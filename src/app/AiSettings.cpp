@@ -796,6 +796,9 @@ std::vector<Entry> buildCatalog()
         &Settings::clipboardSearchBoxSide,
         {{u"near"_s, u"by the caret"_s, QT_TRANSLATE_NOOP("AiSettings", "靠近光标")},
             {u"far"_s, u"away from the caret"_s, QT_TRANSLATE_NOOP("AiSettings", "远离光标")}}));
+    add(boolean({"Clipboard/SearchBox", QT_TRANSLATE_NOOP("AiSettings", "显示搜索框"), "clipboard", 0,
+                    "The clipboard window's search box. Off, typing searches nothing; the row keeps its buttons (pin, show/hide, groups)."},
+        &Settings::clipboardSearchBox));
     add(list({"Clipboard/ExcludedApps", QT_TRANSLATE_NOOP("AiSettings", "不记录这些程序复制的内容"), "clipboard", 0,
                  "Program files (like KeePass.exe) whose copies are never kept in the history. Taking one out starts recording its copies, so that asks the user every time."},
         &Settings::clipboardExcludedApps, ListKind::Programs, Widens::Shrink));

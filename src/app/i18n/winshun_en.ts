@@ -1171,6 +1171,10 @@
         <translation>Away from the cursor</translation>
     </message>
     <message>
+        <source>显示搜索框</source>
+        <translation>Show the search box</translation>
+    </message>
+    <message>
         <source>不记录这些程序复制的内容</source>
         <translation>Don’t keep copies from these programs</translation>
     </message>
@@ -7022,6 +7026,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>远离光标</source>
         <translation>Away from the cursor</translation>
+    </message>
+    <message>
+        <source>显示搜索框</source>
+        <translation>Show the search box</translation>
+    </message>
+    <message>
+        <source>搜索框;搜索;隐藏;关闭;输入框;打字</source>
+        <translation>search box;search;hide;off;field;typing</translation>
+    </message>
+    <message>
+        <source>关掉后窗口顶上只留按钮，打字不再搜索；方向键、Enter 和快捷键照常</source>
+        <translation>Off: only the buttons stay at the top and typing searches nothing; arrows, Enter and shortcuts work as ever</translation>
     </message>
     <message>
         <source>输入程序文件名，例如 KeePass.exe</source>

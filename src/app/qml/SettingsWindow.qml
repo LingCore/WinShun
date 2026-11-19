@@ -5870,6 +5870,21 @@ Window {
                 }
 
                 SettingRow {
+                    // Off: the row keeps its buttons (搜索框位置 still places
+                    // them); typed letters search nothing (ClipboardPage.fieldShown).
+                    sub: true
+                    title: qsTr("显示搜索框")
+                    keywords: qsTr("搜索框;搜索;隐藏;关闭;输入框;打字").split(";")
+                    description: qsTr("关掉后窗口顶上只留按钮，打字不再搜索；方向键、Enter 和快捷键照常")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.clipboardSearchBox
+                        onToggled: (on) => window.editor.clipboardSearchBox = on
+                    }
+                }
+
+                SettingRow {
                     // Not flipped, the window over the caret is laid out as
                     // under it, so "away" is then only "under the entries".
                     sub: true

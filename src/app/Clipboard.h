@@ -111,6 +111,9 @@ class Clipboard : public QObject {
     // The search box at the end away from the caret, the entries by it
     // (Settings::clipboardSearchBoxSide "far"); else the search box by it.
     Q_PROPERTY(bool searchFar READ searchFar NOTIFY layoutOptionsChanged FINAL)
+    // The search box shown (Settings::clipboardSearchBox); off, typed letters
+    // search nothing and the row keeps only its buttons.
+    Q_PROPERTY(bool searchBox READ searchBox NOTIFY layoutOptionsChanged FINAL)
     // Its hotkey held after it opened the window (GitHub #107, App,
     // Settings::clipboardHoldToStep): the key pressed again moves to the next
     // older row (stepped), letting go of the hotkey pastes that row as Enter
@@ -197,7 +200,8 @@ public:
     void setRowOptions(bool clickToPaste, const QString& pictureSize, const QString& uiSize);
     bool flipAbove() const { return m_flipAbove; }
     bool searchFar() const { return m_searchFar; }
-    void setLayoutOptions(bool flipAbove, bool searchFar);
+    bool searchBox() const { return m_searchBox; }
+    void setLayoutOptions(bool flipAbove, bool searchFar, bool searchBox = true);
     bool holdToStep() const { return m_holdToStep; }
     void setHoldToStep(bool on);
     // Into a program run as administrator, the index service presses the
@@ -525,6 +529,7 @@ private:
     QString m_uiSize = QStringLiteral("standard");
     bool m_flipAbove = true;
     bool m_searchFar = false;
+    bool m_searchBox = true;
     bool m_holdToStep = false;
     bool m_pasteElevated = true;
     bool m_holding = false; // beginSteps .. endSteps

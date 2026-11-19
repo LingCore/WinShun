@@ -275,6 +275,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool clipboardHoldToStep READ clipboardHoldToStep WRITE setClipboardHoldToStep NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardPasteElevated READ clipboardPasteElevated WRITE setClipboardPasteElevated NOTIFY changed FINAL)
     Q_PROPERTY(QString clipboardSearchBoxSide READ clipboardSearchBoxSide WRITE setClipboardSearchBoxSide NOTIFY changed FINAL) // near | far
+    Q_PROPERTY(bool clipboardSearchBox READ clipboardSearchBox WRITE setClipboardSearchBox NOTIFY changed FINAL)
     Q_PROPERTY(QStringList clipboardExcludedApps READ clipboardExcludedApps NOTIFY changed FINAL)
     Q_PROPERTY(int clipboardCount READ clipboardCount NOTIFY clipboardCountChanged FINAL)
     Q_PROPERTY(bool clipboardImporting READ clipboardImporting NOTIFY clipboardImportChanged FINAL)
@@ -747,6 +748,8 @@ public:
     void setClipboardHoldToStep(bool on);
     QString clipboardSearchBoxSide() const { return m_settings.clipboardSearchBoxSide; }
     void setClipboardSearchBoxSide(const QString& side);
+    bool clipboardSearchBox() const { return m_settings.clipboardSearchBox; }
+    void setClipboardSearchBox(bool on);
     QStringList clipboardExcludedApps() const { return m_settings.clipboardExcludedApps; }
     int clipboardCount() const { return m_clipboardCount; }
     void setClipboardCount(int count); // set by the app

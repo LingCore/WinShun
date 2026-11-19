@@ -7414,6 +7414,57 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
             QMetaObject::invokeMethod(page, "focusSearch");
             settle(window);
         }
+        // 显示搜索框 off (feedback 2026-11-08): the row keeps its buttons, the
+        // field is hidden yet still takes the keys; letters search nothing,
+        // arrows move through the list, and naming a group shows it again.
+        {
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            const std::vector<qint64> added {store.add(ClipCapture {.kind = ClipKind::Text, .text = u"第一条"_s}, now + 10),
+                store.add(ClipCapture {.kind = ClipKind::Text, .text = u"第二条"_s}, now + 11)};
+            clipboard.historyChanged();
+            clipboard.setLayoutOptions(true, false, false);
+            QMetaObject::invokeMethod(page, "focusSearch");
+            settle(window);
+            auto* list = visualNamed(window->contentItem(), u"clipboardEntries"_s);
+            const auto press = [&](int code, const QString& text = {}) {
+                QKeyEvent down(QEvent::KeyPress, code, {}, text);
+                QCoreApplication::sendEvent(window, &down);
+                QKeyEvent up(QEvent::KeyRelease, code, {}, text);
+                QCoreApplication::sendEvent(window, &up);
+            };
+            check(!page->property("fieldShown").toBool() && searchField->opacity() == 0
+                    && searchField->property("readOnly").toBool() && searchField->hasFocus(),
+                "with the search box off the field must be hidden, read-only and still take the keys");
+            for (const QChar c : u"abc"_s)
+                press(0, QString(c));
+            settle(window);
+            check(clipboard.query().isEmpty() && searchField->property("text").toString().isEmpty(),
+                "with the search box off typed letters must search nothing");
+            // From the middle row ↑ moves one way or the other (flipped or not).
+            if (list) list->setProperty("currentIndex", 1);
+            press(Qt::Key_Up);
+            settle(window);
+            check(list && qAbs(list->property("currentIndex").toInt() - 1) == 1,
+                "with the search box off the arrows must still move through the list");
+            check(saveGrab(window, output.filePath(u"clipboard-no-search.png"_s)), "the window without a search box did not render");
+            QMetaObject::invokeMethod(page, "beginGroupSearch");
+            settle(window);
+            check(page->property("fieldShown").toBool() && searchField->opacity() == 1 && !searchField->property("readOnly").toBool(),
+                "naming a group to find must show the field even with the search box off");
+            check(saveGrab(window, output.filePath(u"clipboard-no-search-group.png"_s)), "naming a group without a search box did not render");
+            QMetaObject::invokeMethod(page, "cancelGroupSearch");
+            settle(window);
+            check(!page->property("fieldShown").toBool(), "the field must hide again once the group is named");
+            clipboard.setLayoutOptions(true, false, true);
+            settle(window);
+            check(page->property("fieldShown").toBool() && searchField->opacity() == 1 && !searchField->property("readOnly").toBool(),
+                "the search box must come back when switched on");
+            std::vector<qint64> gone = added;
+            store.remove(gone);
+            clipboard.historyChanged();
+            QMetaObject::invokeMethod(page, "focusSearch");
+            settle(window);
+        }
         settle(window);
         say(u"clipboard search logo: shared SVG loaded; spacing, focus and both header positions checked"_s);
     } else {

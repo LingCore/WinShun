@@ -495,6 +495,8 @@ struct Settings {
     // turned upside down: the newest entry by the caret, older ones upwards.
     bool clipboardFlipAbove = true;
     QString clipboardSearchBoxSide = QStringLiteral("near"); // near | far: the search box's end, by the caret or away from it
+    // The window's search box; off, typing searches nothing and the row keeps only its buttons (feedback 2026-11-08).
+    bool clipboardSearchBox = true;
     // The clipboard's hotkey held after it opened the window, as Ditto's
     // "Move selection on open hot key" (GitHub #107, hotkeysteps): its key
     // again moves to the next older entry, letting go pastes it. Off: Win+V
