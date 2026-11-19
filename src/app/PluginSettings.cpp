@@ -814,6 +814,8 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
         QVariantMap row {{u"key"_s, s.key}, {u"type"_s, s.type}, {u"title"_s, s.title.pick(m_locale).isEmpty() ? s.key : s.title.pick(m_locale)},
             {u"hint"_s, s.hint.pick(m_locale)}};
         const QJsonValue value = values.value(s.key);
+        if (s.hidden) // the plugin's own window edits it: no row here, so nor in the settings search (searchTerms)
+            continue;
         if (s.type == u"password") {
             row.insert(u"value"_s, QString());
             row.insert(u"set"_s, !value.toString().isEmpty());

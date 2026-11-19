@@ -175,6 +175,10 @@ struct Setting {
     bool slider() const noexcept { return min && max; }
     bool bounded() const noexcept { return min || max || step; } // its values are fitted
     int decimals() const; // the digits after the point its steps need (step's, min's, max's)
+    // Kept and told to the plugin as any setting is, but with no row on its
+    // card and not found by the settings search (0.41.0): for a value the
+    // plugin's own settings window edits. Older Win顺 show it as a row.
+    bool hidden = false;
     // Within min and max; with a step, the nearest of min + n × step and
     // max (the last step may be shorter), rounded to decimals().
     double fit(double value) const;

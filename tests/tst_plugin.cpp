@@ -4504,6 +4504,91 @@ private slots:
         QCOMPARE(ini, (Pairs {{u"ratio"_s, u"0.3"_s}, {u"floor"_s, u"1"_s}}));
         // A number without them: as typed, as before.
         QVERIFY(secrets::store(id, *m, u"plain"_s, u"abc"_s, ini));
+    // A setting only the plugin's own window edits (0.41.0): "hidden", for the
+    // four types whose value the plugin may send; false is always fine.
+    void hiddenSetting_data()
+    {
+        QTest::addColumn<QString>("type");
+        QTest::addColumn<QString>("fields");
+        QTest::addColumn<bool>("hidden");
+        QTest::addColumn<QString>("error");
+        const QString options = uR"(,"options":["a","b"])"_s;
+        QTest::newRow("text") << u"text"_s << uR"("hidden":true)"_s << true << QString();
+        QTest::newRow("number") << u"number"_s << uR"("hidden":true)"_s << true << QString();
+        QTest::newRow("bool") << u"bool"_s << uR"("hidden":true)"_s << true << QString();
+        QTest::newRow("choice") << u"choice"_s << uR"("hidden":true)"_s + options << true << QString();
+        QTest::newRow("text, false") << u"text"_s << uR"("hidden":false)"_s << false << QString();
+        QTest::newRow("not written") << u"text"_s << QString() << false << QString();
+        QTest::newRow("false on a password") << u"password"_s << uR"("hidden":false)"_s << false << QString();
+        QTest::newRow("not a bool") << u"text"_s << uR"("hidden":1)"_s << false << u"settings[0].hidden 要是 true 或 false"_s;
+        QTest::newRow("a string") << u"text"_s << uR"("hidden":"true")"_s << false << u"settings[0].hidden 要是 true 或 false"_s;
+        QTest::newRow("on a password") << u"password"_s << uR"("hidden":true)"_s << false << u"settings[0].hidden 只用于 text、number、bool、choice"_s;
+        QTest::newRow("on a folder") << u"folder"_s << uR"("hidden":true)"_s << false << u"settings[0].hidden 只用于 text、number、bool、choice"_s;
+        QTest::newRow("on a file") << u"file"_s << uR"("hidden":true)"_s << false << u"settings[0].hidden 只用于 text、number、bool、choice"_s;
+        QTest::newRow("on a hotkey") << u"hotkey"_s << uR"("hidden":true)"_s << false << u"settings[0].hidden 只用于 text、number、bool、choice"_s;
+    }
+    void hiddenSetting()
+    {
+        QFETCH(QString, type);
+        QFETCH(QString, fields);
+        QFETCH(bool, hidden);
+        QFETCH(QString, error);
+        const QString json = uR"({"manifest":1,"id":"a.b","name":"X","version":"1","settings":[{"key":"t","type":"%1","title":"T"%2}],"commands":[{"id":"c","run":{"folder":"C:\\"}}]})"_s
+                                 .arg(type, fields.isEmpty() ? QString() : u","_s + fields);
+        QString failed;
+        const std::optional<Manifest> m = Manifest::parse(json.toUtf8(), &failed);
+        if (!error.isEmpty()) {
+            QVERIFY(!m);
+            QVERIFY2(failed.contains(error), qPrintable(failed));
+            return;
+        }
+        QVERIFY2(m, qPrintable(failed));
+        QCOMPARE(m->settings.front().hidden, hidden);
+    }
+
+    // Hidden is about the card alone: the value is kept, told to the plugin
+    // and changed by the plugin (winshun/settings/update) as any other.
+    void hiddenSettingIsKeptToldAndUpdated()
+    {
+        const SecretsCleanup cleanup {u"test.hidden"_s};
+        QString error;
+        const std::optional<Manifest> m = Manifest::parse(R"({"manifest":1,"id":"test.hidden","name":"H","version":"1",
+            "settings":[{"key":"layout","type":"text","hidden":true,"title":"L","default":"{}"},
+                {"key":"note","type":"text","title":"N"}, {"key":"on","type":"bool","hidden":true,"title":"O","default":false}],
+            "commands":[{"id":"c","keyword":"hd","run":{"folder":"C:\\"}}]})", &error);
+        QVERIFY2(m.has_value(), qPrintable(error));
+        QVERIFY(m->settings[0].hidden && !m->settings[1].hidden && m->settings[2].hidden);
+        using Pairs = QList<std::pair<QString, QString>>;
+        const QString layout = uR"({"gestures":[{"path":"RDL","action":"power"}],"note":"你好"})"_s;
+        // The plugin sends it: taken by the same rules as a shown one (a text, a bool).
+        QCOMPARE(secrets::acceptedUpdate(*m, {{u"layout"_s, layout}, {u"on"_s, true}}), (Pairs {{u"layout"_s, layout}, {u"on"_s, u"true"_s}}));
+        QVERIFY(secrets::acceptedUpdate(*m, {{u"layout"_s, 5}, {u"on"_s, u"yes"_s}}).isEmpty()); // not of its kind
+        // Kept in the INI's lines, and read back as the plugin is told it.
+        Pairs ini;
+        QVERIFY(secrets::store(u"test.hidden"_s, *m, u"layout"_s, layout, ini));
+        QVERIFY(!secrets::store(u"test.hidden"_s, *m, u"layout"_s, layout, ini)); // the same: nothing changed
+        QVERIFY(secrets::store(u"test.hidden"_s, *m, u"on"_s, u"true"_s, ini));
+        QCOMPARE(ini, (Pairs {{u"layout"_s, layout}, {u"on"_s, u"true"_s}}));
+        const QJsonObject told = secrets::settingsOf(u"test.hidden"_s, *m, ini);
+        QCOMPARE(told.value(u"layout"_s).toString(), layout);
+        QCOMPARE(told.value(u"on"_s).toBool(), true);
+        // And the plugin's process gets it, with the declared default before it is set.
+        Fixture f;
+        Spec spec;
+        spec.id = u"test.hidden"_s;
+        spec.keywords = {u"hd"_s};
+        spec.settings = QJsonArray {QJsonObject {{u"key"_s, u"layout"_s}, {u"type"_s, u"text"_s}, {u"hidden"_s, true}, {u"title"_s, u"L"_s}, {u"default"_s, u"{}"_s}}};
+        QVERIFY(!f.install(spec).isEmpty());
+        QVERIFY(f.host->query(u"hd x"_s, Scope::All, 1));
+        QVERIFY2(f.waitFinal(1), qPrintable(f.logs.join(u'\n')));
+        QCOMPARE(f.finalFor(1)->items[0].data.toObject().value(u"settings"_s).toObject().value(u"layout"_s).toString(), u"{}"_s);
+        f.host->setPluginSettings(u"test.hidden"_s, told);
+        QVERIFY(f.host->query(u"hd y"_s, Scope::All, 2));
+        QVERIFY2(f.waitFinal(2), qPrintable(f.logs.join(u'\n')));
+        QCOMPARE(f.finalFor(2)->items[0].data.toObject().value(u"settings"_s).toObject().value(u"layout"_s).toString(), layout);
+        f.host->shutdown();
+    }
+
         QCOMPARE(ini.last(), (std::pair {u"plain"_s, u"abc"_s}));
         // What the plugin sends (winshun/settings/update): taken, then fitted.
         const Pairs sent = secrets::acceptedUpdate(*m, {{u"pause"_s, 3333}, {u"ratio"_s, 0.27}, {u"count"_s, u"7"_s}});

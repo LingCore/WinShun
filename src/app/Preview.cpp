@@ -375,6 +375,7 @@ int runPlugins(const QStringList& args)
     // is told and the card read each time.
     const bool sliderCheck = args.contains(u"--slider-check"_s) && !keywordCheck;
     const QString rangesPlugin = u"test.ranges"_s;
+    const QString hiddenOnlyPlugin = u"test.hiddenonly"_s;
     std::unique_ptr<plugin::Host> rangesHost;
     if (sliderCheck) {
         const QString folder = Settings::profile() + u"/plugins/"_s + rangesPlugin;
@@ -387,19 +388,34 @@ int runPlugins(const QStringList& args)
                 {"key":"match","type":"number","title":"术语匹配的相似度","default":0.75,"min":0,"max":1,"step":0.05},
                 {"key":"edge","type":"number","title":"最后一步短一些","min":5,"max":99,"step":10,"unit":{"zh":"个","en":"items"}},
                 {"key":"limit","type":"number","title":"最多列出几项","min":1,"unit":{"zh":"项","en":"items"}},
-                {"key":"lines","type":"text","multiline":true,"title":"缩写","hint":"每行一条：缩写 = 换成的文字","default":"cmd = command"}]})";
+                {"key":"lines","type":"text","multiline":true,"title":"缩写","hint":"每行一条：缩写 = 换成的文字","default":"cmd = command"},
+                {"key":"layout","type":"text","hidden":true,"title":"手势布局","default":"{}"}]})";
         if (!manifest.open(QIODevice::WriteOnly) || manifest.write(json) < 0) {
             say(u"#359 sliders: the plugin could not be written"_s);
             return 3;
         }
         manifest.close();
+        // A plugin whose only setting is hidden (0.41.0): its card is one without settings.
+        const QString hiddenOnlyFolder = Settings::profile() + u"/plugins/"_s + hiddenOnlyPlugin;
+        QDir().mkpath(hiddenOnlyFolder);
+        QFile hiddenOnly(hiddenOnlyFolder + u"/plugin.json"_s);
+        const QByteArray hiddenJson = R"({"manifest":1,"id":"test.hiddenonly","name":{"zh":"只有隐藏项","en":"Hidden only"},"version":"1.0.0",
+            "commands":[{"id":"main","title":"隐藏","keyword":"hd","run":{"folder":"C:\\"}}],
+            "settings":[{"key":"layout","type":"text","hidden":true,"title":"手势布局","default":"{}"}]})";
+        if (!hiddenOnly.open(QIODevice::WriteOnly) || hiddenOnly.write(hiddenJson) < 0) {
+            say(u"hidden setting: the plugin could not be written"_s);
+            return 3;
+        }
+        hiddenOnly.close();
         settings.pluginConfig(rangesPlugin).enabled = true;
+        settings.pluginConfig(hiddenOnlyPlugin).enabled = true;
         plugin::Host::Options options;
         options.userPluginDir = Settings::profile() + u"/plugins"_s;
         options.version = QStringLiteral(WINSHUN_VERSION);
         rangesHost = std::make_unique<plugin::Host>(options);
         rangesHost->catalog().scan();
         rangesHost->setEnabled(rangesPlugin, true);
+        rangesHost->setEnabled(hiddenOnlyPlugin, true);
     }
     auto* editor = new SettingsEditor(settings, u"software"_s, &engine);
     editor->plugins()->setLocale(u"zh"_s);
@@ -970,6 +986,36 @@ int runPlugins(const QStringList& args)
             key(Qt::Key_Escape);
             unfocus();
             lines("Esc again, for the picture", three, three, three, false);
+        }
+        // A hidden setting (0.41.0): no row on the card and not found by the
+        // settings search, and a card with nothing else is one without
+        // settings; kept, told to the plugin and changed by it as any other.
+        {
+            PluginListModel* list = editor->plugins()->list();
+            const auto hasKey = [](const PluginListModel::Card* card, const QString& key) {
+                return card && std::ranges::any_of(card->settings, [&](const QVariant& s) { return s.toMap().value(u"key"_s).toString() == key; });
+            };
+            const PluginListModel::Card* card = list->card(rangesPlugin);
+            const PluginListModel::Card* only = list->card(hiddenOnlyPlugin);
+            bool searchable = false;
+            for (int row = 0; row < list->rowCount(); ++row) {
+                const QString id = list->data(list->index(row, 0), PluginListModel::IdRole).toString();
+                if ((id == rangesPlugin || id == hiddenOnlyPlugin) && editor->plugins()->searchTerms(row).contains(u"手势布局"_s))
+                    searchable = true;
+            }
+            const bool noRow = hasKey(card, u"lines"_s) && !hasKey(card, u"layout"_s)
+                && !visualNamed(window->contentItem(), u"pluginSetting-"_s + rangesPlugin + u"/layout"_s) && only && only->settings.isEmpty();
+            const QString first = rangesHost->pluginSettings(rangesPlugin).value(u"layout"_s).toString();
+            const QString sent = uR"({"gestures":[{"path":"RDL","action":"power"}],"note":"你好"})"_s;
+            emit rangesHost->settingsUpdateRequested(rangesPlugin, QJsonObject {{u"layout"_s, sent}});
+            pump(150);
+            const bool kept = ini(u"layout"_s).toString() == sent && rangesHost->pluginSettings(rangesPlugin).value(u"layout"_s).toString() == sent
+                && !hasKey(list->card(rangesPlugin), u"layout"_s);
+            say(u"hidden setting: no row on the card, and a card of hidden settings alone has none %1; found by the settings search %2; "
+                u"told %3 before, kept and told %4 after the plugin sent it: %5"_s
+                    .arg(noRow).arg(searchable).arg(first).arg(kept)
+                    .arg(noRow && !searchable && first == u"{}" && kept ? u"passed"_s : u"FAILED"_s));
+            sliders = sliders && noRow && !searchable && first == u"{}" && kept;
         }
         // For the picture: the values a user would leave, nothing focused.
         type(u"pause"_s, u"400"_s);

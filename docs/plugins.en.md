@@ -445,8 +445,9 @@ Install plugins only from sources you trust.
 
 `settings[]`: `{"key", "type", "title", "hint", "default", "options"}`, `type` ∈ `text | password | bool | number | choice | folder | file | hotkey`. Drawn with Win顺's own controls on the card; stored in `WinShun.ini` as `[Plugin.<id>] Setting.<key>=`; **`password` goes to Windows Credential Manager**, never into the INI or the logs (masked in the message log). `choice` options are strings or `[{"value": "deepl", "title": {"zh": …, "en": …}}]`.
 
-A `text` with `"multiline": true` takes several lines (since 0.41.0): a box as wide as the card under its title, Enter starts a new line, the box grows with its lines up to about a dozen and scrolls past them. It is saved about a second after typing stops and on leaving the box; Esc takes back what is not saved yet. Line breaks are `
-` in the value. Older Win顺 show a one-line box.
+A `text` with `"multiline": true` takes several lines (since 0.41.0): a box as wide as the card under its title, Enter starts a new line, the box grows with its lines up to about a dozen and scrolls past them. It is saved about a second after typing stops and on leaving the box; Esc takes back what is not saved yet. Line breaks are `\n` in the value. Older Win顺 show a one-line box.
+
+A setting with `"hidden": true` (since 0.41.0, for `text`, `number`, `bool` and `choice` only) gets no row on the card and is not found by the settings search; everything else stays as it was: the value is kept in `WinShun.ini` as `[Plugin.<id>] Setting.<key>=`, the plugin gets it in the `settings` of `initialize` and `settingsChanged`, and it can change it with `winshun/settings/update` (the same rules, a `text` of at most 4,096 characters). It is for a value only the plugin's own settings window edits, such as a large piece of JSON. A card whose settings are all `hidden` looks like one of a plugin without settings. Older Win顺 do not know `hidden` and still draw a row for it, so such a plugin writes `"minWinShun": "0.41.0"`, or accepts the extra row on older versions.
 
 A `number` can also have `min`, `max`, `step` and `unit` (since 0.33.0):
 
