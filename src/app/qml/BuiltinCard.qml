@@ -24,13 +24,23 @@ Rectangle {
     // when a card's button comes, goes or changes its words.
     property real buttonSlot: 0
     default property alias options: optionsColumn.data
-    readonly property bool narrow: body.width < 520
+    // A tile of the 内置功能 grid (TileFlow), drawn as a plugin's tile is
+    // (PluginTile): the name by the icon, the words under both, 设置 or the
+    // link at the foot on the left, the switch on the right; no 内置, which
+    // the grid's title says. Sized by the grid; unfolded it takes the whole
+    // width (`wide`), its options under the same face. What is placed across
+    // goes by `tile` alone, which never changes: a tile's words take its
+    // width, make its height, and must not come round to its width again.
+    property bool tile: false
+    readonly property bool wide: tile && expanded
+    readonly property bool tileFace: tile && !expanded
+    readonly property bool narrow: tile || body.width < 520
     readonly property bool hasOptions: optionsColumn.children.length > 0
 
     signal toggled(bool on)
     signal linkActivated()
 
-    implicitHeight: body.implicitHeight + 24
+    implicitHeight: body.y + (tileFace ? texts.implicitHeight + 12 + headerControls.implicitHeight : body.implicitHeight) + 12
     readonly property real dpr: Screen.devicePixelRatio // one Screen attached object for all its items (GitHub #111)
     radius: Theme.controlRadius
     color: "transparent"
@@ -53,20 +63,22 @@ Rectangle {
     Column {
         id: body
         x: 14
-        y: 12
+        y: card.tile ? 14 : 12 // a tile's name level with a plugin's (PluginTile)
         width: parent.width - 28
         spacing: 12
 
-        Item { // the header
+        Item { // the header; on a tile, all of it, the switch at its foot
+            id: header
             width: parent.width
-            height: card.narrow ? texts.implicitHeight + 12 + headerControls.implicitHeight
-                               : Math.max(texts.implicitHeight, headerControls.implicitHeight)
+            height: card.tileFace ? card.height - body.y - 12
+                  : card.narrow ? texts.implicitHeight + 12 + headerControls.implicitHeight
+                  : Math.max(texts.implicitHeight, headerControls.implicitHeight)
 
             Glyph {
                 id: icon
-                y: 2
-                width: 32
-                height: 32
+                y: card.tile ? 0 : 2
+                width: card.tile ? 36 : 32 // a tile's name where a plugin tile's is
+                height: width
                 glyph: card.glyph
                 size: 24
                 color: Theme.text
@@ -78,34 +90,48 @@ Rectangle {
                 anchors.leftMargin: 12
                 anchors.right: card.narrow ? parent.right : headerControls.left
                 anchors.rightMargin: card.narrow ? 0 : 12
-                spacing: 4
+                spacing: card.tile ? 10 : 4
 
-                Row {
+                // The name and 内置 after it; on a tile the name alone, beside
+                // the icon's middle, and the words below run under the icon
+                // too, the tile's width (a Column sets only y).
+                Item {
                     width: parent.width
-                    spacing: 8
+                    height: card.tile ? Math.max(icon.height, nameRow.height) : nameRow.height
 
-                    Text {
-                        width: Math.min(implicitWidth, Math.max(0, parent.width - builtinTag.width - parent.spacing))
-                        text: card.title
-                        color: Theme.text
-                        font.pixelSize: Theme.fontBody
-                        font.weight: Theme.fontStrong
-                        wrapMode: Text.Wrap
-                    }
-                    Tag {
-                        id: builtinTag
-                        text: qsTr("内置")
+                    Row {
+                        id: nameRow
+                        y: card.tile ? Theme.snap((parent.height - height) / 2, card.dpr) : 0
+                        width: parent.width
+                        spacing: 8
+
+                        Text {
+                            width: Math.min(implicitWidth, Math.max(0, parent.width - (card.tile ? 0 : builtinTag.width + parent.spacing)))
+                            text: card.title
+                            color: Theme.text
+                            font.pixelSize: Theme.fontBody
+                            font.weight: Theme.fontStrong
+                            wrapMode: Text.Wrap
+                        }
+                        Tag {
+                            id: builtinTag
+                            visible: !card.tile
+                            text: qsTr("内置")
+                        }
                     }
                 }
                 Text {
-                    width: parent.width
+                    x: card.tile ? -texts.x : 0
+                    width: card.tile ? header.width : parent.width
                     text: card.description
                     color: Theme.subtext
                     font.pixelSize: Theme.fontCaption
                     wrapMode: Text.Wrap
+                    lineHeight: card.tile ? 1.15 : 1 // as a plugin tile's
                 }
                 Text {
-                    width: parent.width
+                    x: card.tile ? -texts.x : 0
+                    width: card.tile ? header.width : parent.width
                     visible: text.length > 0
                     text: card.status
                     color: card.checked ? Theme.text : Theme.subtext
@@ -116,21 +142,28 @@ Rectangle {
 
             Row {
                 id: headerControls
-                y: card.narrow ? texts.implicitHeight + 12 : 0
+                y: card.tileFace ? parent.height - implicitHeight : card.narrow ? texts.implicitHeight + 12 : 0
                 anchors.right: parent.right
                 spacing: 12
 
-                Item { // the button, right-aligned in buttonSlot
+                // The button, right-aligned in buttonSlot; on a tile on the
+                // left, its words under the words above (a flat button's
+                // padding left out), as a plugin tile's 详情.
+                Item {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(card.buttonSlot, foldButton.visible ? foldButton.implicitWidth : 0,
+                    width: card.tile ? header.width - toggle.width - parent.spacing
+                         : Math.max(card.buttonSlot, foldButton.visible ? foldButton.implicitWidth : 0,
                                     linkButton.visible ? linkButton.implicitWidth : 0)
-                    height: 36
+                    height: card.tile ? 32 : 36
                     visible: width > 0
 
                     FlatButton {
                         dpr: card.dpr
                         id: foldButton
-                        anchors.right: parent.right
+                        anchors.right: card.tile ? undefined : parent.right
+                        anchors.left: card.tile ? parent.left : undefined
+                        anchors.leftMargin: -12
+                        anchors.verticalCenter: parent.verticalCenter
                         visible: card.checked && card.hasOptions
                         text: card.expanded ? qsTr("收起设置") : qsTr("设置")
                         trailingGlyph: String.fromCharCode(card.expanded ? 0xE70E : 0xE70D) // ChevronUp, ChevronDown
@@ -146,7 +179,10 @@ Rectangle {
                     FlatButton {
                         dpr: card.dpr
                         id: linkButton
-                        anchors.right: parent.right
+                        anchors.right: card.tile ? undefined : parent.right
+                        anchors.left: card.tile ? parent.left : undefined
+                        anchors.leftMargin: -12
+                        anchors.verticalCenter: parent.verticalCenter
                         visible: card.checked && card.linkText.length > 0
                         text: card.linkText
                         trailingGlyph: String.fromCharCode(0xE76C) // ChevronRight
@@ -158,8 +194,10 @@ Rectangle {
                     }
                 }
                 ToggleSwitch {
+                    id: toggle
                     dpr: card.dpr
                     anchors.verticalCenter: parent.verticalCenter
+                    word: !card.tile // as a plugin tile's: the track alone
                     enabled: card.available
                     opacity: enabled ? 1 : 0.5
                     checked: card.checked

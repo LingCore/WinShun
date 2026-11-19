@@ -17,6 +17,7 @@ Window {
     property bool allowShown: false // 更新并允许
     property bool asideShown: false // a folder of the id's name that is no plugin (GitHub #253)
     property bool aiPage: false
+    property bool opened: false // two plugins opened (--open): their cards in place of the tiles
 
     width: 900
     height: page.implicitHeight + 48
@@ -88,7 +89,7 @@ Window {
     }
 
     Component.onCompleted: {
-        if (!preview.aiPage) {
+        if (preview.opened && !preview.aiPage) {
             pluginsSection.expandAt(1) // one card unfolded, its permissions with it
             pluginsSection.expandAt(4) // ... and the strict-sandbox one: its first permission wraps
         }

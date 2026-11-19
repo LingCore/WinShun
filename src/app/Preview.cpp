@@ -436,6 +436,7 @@ int runPlugins(const QStringList& args)
         {u"allowShown"_s, allow},
         {u"asideShown"_s, aside},
         {u"aiPage"_s, aiPage},
+        {u"opened"_s, args.contains(u"--open"_s)},
     });
     auto* window = qobject_cast<QQuickWindow*>(object);
     if (!window) {
@@ -454,6 +455,12 @@ int runPlugins(const QStringList& args)
     // window's content item (the cards' are not QObject children of the
     // window: a Repeater's delegates have no QObject parent).
     if (const QString menu = valueAfter(args, u"--menu"); !menu.isEmpty()) {
+        if (menu == u"card") { // the first plugin opened: its card, with the "…", in place of the tiles
+            if (QQuickItem* section = visualNamed(window->contentItem(), u"pluginsSection"_s))
+                QMetaObject::invokeMethod(section, "expandAt", Q_ARG(QVariant, QVariant(0)));
+            pump(300);
+            settle(window);
+        }
         QObject* chosen = nullptr;
         for (QQuickItem* o : window->contentItem()->childItems()) {
             if (!QString::fromLatin1(o->metaObject()->className()).startsWith(u"DropMenu"))
@@ -1592,6 +1599,7 @@ int runSettings(const QStringList& args)
     settings.pasteFileEnabled = true; // its card's two ways in
     settings.dialogBar = true; // the rows they keep away when off, whatever the defaults
     settings.folderMenu = u"auto"_s;
+    settings.pluginBuiltinsExpanded = args.contains(u"--builtins"_s); // 内置功能's cards on show
     const QString shareOnline = u"\\\\192.168.1.10\\资料"_s;
     const QString shareSignIn = u"\\\\nas\\photos"_s;
     const QString shareWsl = u"\\\\wsl.localhost\\Ubuntu-24.04\\home\\me\\项目"_s;
@@ -2972,7 +2980,7 @@ int runSettings(const QStringList& args)
         for (int tab = 0; tab < count; ++tab) {
             const QString title = pages[page].toMap().value(u"title"_s).toString() + (pageTabs.isEmpty() ? QString() : u" / "_s + pageTabs[tab].toString());
             QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(page)), Q_ARG(QVariant, QVariant(tab)));
-            if (page == pluginsPage && tab == 0) { // the cards come folded: one unfolded too (翻译: settings, permissions)
+            if (page == pluginsPage && tab == 0 && args.contains(u"--open"_s)) { // one plugin opened (翻译: settings, permissions), 粘贴为文件's 设置 unfolded
                 if (QObject* section = partOf(window, pluginsPage, "pluginsSection"))
                     QMetaObject::invokeMethod(section, "expandAt", Q_ARG(QVariant, QVariant(1)));
                 if (auto* paste = window->findChild<QQuickItem*>(u"pasteFileSettingsCard"_s))
@@ -12479,8 +12487,8 @@ int run(const QStringList& args)
             QDir(profile).removeRecursively();
     });
     if (valueAfter(args, runtimeMode ? kRuntimeFlag : resultsMode ? kResultsFlag : cardsMode ? kAiCardsFlag : settingsMode ? kSettingsFlag : kFlag).isEmpty()) {
-        std::fprintf(stderr, "usage: WinShun --preview-plugins <file.png> [--dark] [--scale 1.5] [--dialog | --dialog-allow | --dialog-aside] [--updates] [--log-many] [--page ai] [--elevated]\n"
-                             "       WinShun --preview-settings <folder> [--dark] [--scale 1.5] [--tree] [--edges] [--renderer d3d11]\n");
+        std::fprintf(stderr, "usage: WinShun --preview-plugins <file.png> [--dark] [--scale 1.5] [--dialog | --dialog-allow | --dialog-aside] [--updates] [--log-many] [--page ai] [--elevated] [--open]\n"
+                             "       WinShun --preview-settings <folder> [--dark] [--scale 1.5] [--tree] [--edges] [--renderer d3d11] [--builtins] [--open]\n");
         return 2;
     }
     g_previous = qInstallMessageHandler(countWarnings);

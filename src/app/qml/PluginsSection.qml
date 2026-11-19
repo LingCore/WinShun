@@ -2,8 +2,11 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import WinShun
 
-// Settings → 插件 › 已安装: the plugins installed, each a card (PluginCard),
-// folded to three lines until asked for more; how to add one (a folder or
+// Settings → 插件 › 已安装: the plugins installed, each a tile of a grid
+// (PluginTile in a TileFlow); one opened (a click on it, SettingsWindow's
+// showPluginPage) shows alone as its whole card (PluginCard) in place of the
+// grid and of the other rows, with 全部插件 to go back; while the settings
+// are searched, the cards one under another as before. How to add one (a folder or
 // an archive picked, or dropped on the page; or the 插件库 tab,
 // PluginGallerySection), where they are, and the switch of developer
 // mode, whose rows are on the 开发者 tab (PluginDevSection, which
@@ -41,6 +44,25 @@ SettingsSection {
         const card = cardsRepeater.itemAt(index)
         if (card)
             setExpanded(card.pluginId, true)
+    }
+    // A tile clicked: that plugin alone, its card open.
+    function open(pluginId) {
+        expandedIds = [pluginId]
+    }
+    // A key pressed on a tile: opened, the cursor in that command's keyword box.
+    function openAtKeyword(pluginId, command) {
+        open(pluginId)
+        cardOf(pluginId)?.focusKeyword(command)
+    }
+    // A plugin opened in place of the grid (not while searching, which shows every card).
+    readonly property bool detailOpen: !listRow.searching && expandedIds.length > 0
+    signal detailToggled(bool open) // SettingsWindow: to the top, and back where the grid was
+    onDetailOpenChanged: detailToggled(detailOpen)
+    // A plugin removed while open: the grid again.
+    function pruneExpanded() {
+        const kept = expandedIds.filter(id => cardOf(id) !== null)
+        if (kept.length !== expandedIds.length)
+            expandedIds = kept
     }
 
     readonly property Item captureCardItem: cardOf("winshun.capture")
@@ -84,9 +106,9 @@ SettingsSection {
     property int listRevision: 0
     Connections {
         target: pluginsSection.plugins.list
-        function onModelReset() { pluginsSection.listRevision++ }
+        function onModelReset() { pluginsSection.listRevision++; Qt.callLater(pluginsSection.pruneExpanded) }
         function onRowsInserted() { pluginsSection.listRevision++ }
-        function onRowsRemoved() { pluginsSection.listRevision++ }
+        function onRowsRemoved() { pluginsSection.listRevision++; Qt.callLater(pluginsSection.pruneExpanded) }
         function onDataChanged() { pluginsSection.listRevision++ }
     }
 
@@ -130,7 +152,7 @@ SettingsSection {
                                                               : qsTr("自动更新已关，新版本等你点更新。")
         title: updating ? qsTr("正在更新插件…") : qsTr("%n 个插件有新版本", "", pluginsSection.plugins.gallery.updateCount)
         description: explanation
-        shown: pluginsSection.plugins.gallery.updateCount > 0 || pluginsSection.plugins.gallery.updatingAll
+        shown: (pluginsSection.plugins.gallery.updateCount > 0 || pluginsSection.plugins.gallery.updatingAll) && !pluginsSection.detailOpen
         onShownChanged: if (shown) pluginsSection.plugins.gallery.readList()
         Component.onCompleted: if (shown) pluginsSection.plugins.gallery.readList()
 
@@ -160,7 +182,7 @@ SettingsSection {
         title: qsTr("恢复升级前的功能")
         keywords: qsTr("升级;迁移;恢复;重试;离线;upgrade;restore;retry;offline").split(";")
         description: pluginsSection.plugins.recoveryMessage
-        shown: pluginsSection.plugins.recoveryMessage.length > 0
+        shown: pluginsSection.plugins.recoveryMessage.length > 0 && !pluginsSection.detailOpen
 
         FlatButton {
             dpr: pluginsSection.dpr
@@ -188,7 +210,7 @@ SettingsSection {
         title: qsTr("插件看不到你在资源管理器里登录的网络位置")
         keywords: qsTr("网络;共享;NAS;登录;令牌;plugin;network").split(";")
         description: pluginsSection.plugins.restrictedNote
-        shown: pluginsSection.plugins.restrictedNote.length > 0
+        shown: pluginsSection.plugins.restrictedNote.length > 0 && !pluginsSection.detailOpen
 
         Glyph {
             anchors.verticalCenter: parent.verticalCenter
@@ -262,7 +284,7 @@ SettingsSection {
         keywords: pasteTerms.concat([folderMenuTitle, dialogBarTitle, explorerTypingTitle, opusTypingTitle, dropPieTitle],
                                       folderMenuTerms, dialogBarTerms, explorerTypingTerms, opusTypingTerms, dropPieTerms)
         description: qsTr("用到哪个开哪个")
-        shown: pluginsSection.editor !== null
+        shown: pluginsSection.editor !== null && !pluginsSection.detailOpen
         onRevealRequested: {
             pluginsSection.builtinRevealed = true
             if (pasteFound && pasteCard.item && pluginsSection.editor.pasteFileEnabled)
@@ -284,11 +306,14 @@ SettingsSection {
             }
         }
 
-        body: Column {
+        // Tiles across (TileFlow); 粘贴为文件 unfolded to its 设置 takes the
+        // whole width, first in the list, the others go on below it.
+        body: TileFlow {
+            id: builtinTiles
             objectName: "pluginBuiltinCards"
             visible: builtinRow.expanded
             width: parent.width
-            spacing: 8
+            dpr: pluginsSection.dpr
 
             FlatButton {
                 dpr: pluginsSection.dpr
@@ -307,22 +332,22 @@ SettingsSection {
 
             Loader {
                 id: pasteCard
-                width: parent.width
                 active: pluginsSection.editor !== null
                 visible: builtinRow.kept(builtinRow.pasteFound)
                 sourceComponent: PasteFileCard {
                     editor: pluginsSection.editor
                     marked: builtinRow.pasteFound
+                    tile: true
                     buttonSlot: builtinRow.buttonSlot
                 }
             }
 
             // The others: their switch here, the rest of their settings on their own page.
             Loader {
-                width: parent.width
                 active: pluginsSection.editor !== null
                 visible: builtinRow.kept(builtinRow.folderMenuFound)
                 sourceComponent: BuiltinCard {
+                    tile: true
                     buttonSlot: builtinRow.buttonSlot
                     glyph: String.fromCharCode(0xE838) // FolderOpen
                     title: builtinRow.folderMenuTitle
@@ -335,10 +360,10 @@ SettingsSection {
                 }
             }
             Loader {
-                width: parent.width
                 active: pluginsSection.editor !== null
                 visible: builtinRow.kept(builtinRow.dialogBarFound)
                 sourceComponent: BuiltinCard {
+                    tile: true
                     buttonSlot: builtinRow.buttonSlot
                     glyph: String.fromCharCode(0xE721) // Search
                     title: builtinRow.dialogBarTitle
@@ -351,10 +376,10 @@ SettingsSection {
                 }
             }
             Loader {
-                width: parent.width
                 active: pluginsSection.editor !== null
                 visible: builtinRow.kept(builtinRow.explorerTypingFound)
                 sourceComponent: BuiltinCard {
+                    tile: true
                     buttonSlot: builtinRow.buttonSlot
                     glyph: String.fromCharCode(0xE765) // KeyboardClassic
                     title: builtinRow.explorerTypingTitle
@@ -367,10 +392,10 @@ SettingsSection {
                 }
             }
             Loader {
-                width: parent.width
                 active: pluginsSection.editor !== null
                 visible: builtinRow.kept(builtinRow.opusTypingFound)
                 sourceComponent: BuiltinCard {
+                    tile: true
                     buttonSlot: builtinRow.buttonSlot
                     glyph: String.fromCharCode(0xE765)
                     title: builtinRow.opusTypingTitle
@@ -381,10 +406,10 @@ SettingsSection {
                 }
             }
             Loader {
-                width: parent.width
                 active: pluginsSection.editor !== null
                 visible: builtinRow.kept(builtinRow.dropPieFound)
                 sourceComponent: BuiltinCard {
+                    tile: true
                     buttonSlot: builtinRow.buttonSlot
                     glyph: String.fromCharCode(0xE734) // FavoriteStar
                     title: builtinRow.dropPieTitle
@@ -457,9 +482,18 @@ SettingsSection {
         }
 
         body: [
+            FlatButton { // back from a plugin opened to the grid
+                objectName: "installedPluginsBack"
+                visible: pluginsSection.detailOpen
+                dpr: pluginsSection.dpr
+                flat: true
+                glyph: String.fromCharCode(0xE76B) // ChevronLeft
+                text: qsTr("全部插件")
+                onClicked: pluginsSection.expandedIds = []
+            },
             InputBox { // as the 插件库's (PluginGallerySection)
                 objectName: "installedPluginFilter"
-                visible: pluginsSection.filterShown
+                visible: pluginsSection.filterShown && !pluginsSection.detailOpen
                 width: Math.min(parent.width, 320)
                 implicitHeight: 32
                 placeholder: qsTr("筛选：名称、关键字、说明")
@@ -470,10 +504,35 @@ SettingsSection {
                 id: dropZone
 
                 width: parent.width
-                height: cards.implicitHeight + (dropHint.visible ? dropHint.height + 8 : 0)
+                height: pluginTiles.height + cards.implicitHeight + (dropHint.visible ? dropHint.height + 8 : 0)
 
-                Column {
+                TileFlow { // the plugins at a glance: a click opens one
+                    id: pluginTiles
+                    objectName: "installedPluginTiles"
+                    visible: !listRow.searching && !pluginsSection.detailOpen
+                    height: visible ? implicitHeight : 0
+                    width: parent.width
+                    dpr: pluginsSection.dpr
+
+                    Repeater {
+                        model: pluginsSection.plugins.list
+
+                        delegate: PluginTile {
+                            required property int index
+                            readonly property bool filterHit: pluginsSection.filterFits(index)
+
+                            visible: filterHit
+                            plugins: pluginsSection.plugins
+                            marked: pluginsSection.revealed.length > 0 && pluginId === pluginsSection.revealed
+                            onOpenRequested: pluginsSection.open(pluginId)
+                            onKeywordRequested: (command) => pluginsSection.openAtKeyword(pluginId, command)
+                        }
+                    }
+                }
+
+                Column { // every card while searching; the one opened otherwise
                     id: cards
+                    y: pluginTiles.height
                     width: parent.width
                     spacing: 8
 
@@ -495,7 +554,7 @@ SettingsSection {
                                         site => listRow.valueFound(site.name) || listRow.valueFound(site.keyword) || listRow.valueFound(site.shownUrl)))
                                     || (aiExpose && listRow.valueFound(qsTr("给 AI 用"))))
 
-                            visible: filterHit
+                            visible: filterHit && (listRow.searching || expanded)
                             width: cards.width
                             editor: pluginsSection.editor
                             onEditWebShortcut: (index, button) => pluginsSection.editWebShortcut(index, button)
@@ -554,6 +613,7 @@ SettingsSection {
     }
 
     SettingRow { // the cap on resident plugins, for those who keep many (GitHub #252)
+        shown: !pluginsSection.detailOpen
         title: qsTr("同时常驻的插件")
         keywords: qsTr("常驻;退出;上限;个数;内存;LRU;resident;limit").split(";")
         description: pluginsSection.plugins.residentLimit > 0
@@ -570,6 +630,7 @@ SettingsSection {
     }
 
     SettingRow {
+        shown: !pluginsSection.detailOpen
         title: qsTr("开发者模式")
         keywords: qsTr("开发;调试;日志;协议;模板;developer;debug;log").split(";")
         description: qsTr("记下每一条发给插件和插件回来的消息，改了脚本自动重新加载；打开后多一个“开发者”标签")

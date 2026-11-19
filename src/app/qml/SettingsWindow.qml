@@ -756,6 +756,19 @@ Window {
         // places only the sections): every card is still at y 0. Once more after a frame.
         revealAfterFrame = pluginId
     }
+    // 已安装的插件: a plugin opened in place of the grid shows from the top;
+    // back, the grid is where it was left.
+    property real pluginGridY: 0
+    function pluginDetailToggled(open) {
+        flick.stopScrolling()
+        if (open) {
+            pluginGridY = flick.contentY
+            flick.contentY = 0
+            return
+        }
+        layoutNow()
+        Qt.callLater(() => flick.contentY = Math.max(0, Math.min(window.pluginGridY, flick.contentHeight - flick.height)))
+    }
     function showPluginLibrary(pluginId) {
         window.editor.plugins.gallery.updatesOnly = false
         window.editor.plugins.gallery.filter = pluginId
@@ -6309,6 +6322,7 @@ Window {
                 plugins: window.editor.plugins
                 editor: window.editor
                 lockedElsewhere: pluginDevSection.lockedRows
+                onDetailToggled: (open) => window.pluginDetailToggled(open)
                 onSettingRequested: (which) => window.goTo(window.part(window.integrationPage, which === "folderMenu" ? "folderMenuRow"
                                                                           : which === "dialogBar" ? "dialogBarRow" : "explorerTypingRow"))
             }

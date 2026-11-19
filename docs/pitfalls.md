@@ -1,11 +1,20 @@
 # 踩坑记录
 
+## 卡片网格：卡片展开、收起时报绑定循环（2026-11-19，插件页改成网格）
+
+- **现象**：插件页的卡片改成网格（TileFlow）后，「内置功能」的卡片从小卡片展开成整行时，日志报 `Binding loop detected for property "width"`，预览因此退出码非 0。
+- **原因**：卡片里文字的宽度取决于 `tileFace`（小卡片还是展开），它和网格读的 `wide` 同时变。文字宽度重算时折行变了，卡片高度跟着变，网格在同一轮更新里又改了卡片宽度，又回到这段文字的宽度上。
+- **做法**：
+  - 卡片里横向的排布（宽度、x、对齐）只看建好后不再变的 `tile`；`tileFace` 只用于高度。展开后的卡片沿用小卡片的版式，设置项接在下面。
+  - TileFlow 的宽度和高度分两个属性算（`widths`、`heights`），高度变化不会再改宽度。
+- **验证**：`WinShun.exe --preview-settings <目录> --page 8 --builtins`（内置功能展开）和设置搜索「粘贴为文件」的截图都是 0 warning(s)。
+
 ## 设置窗口在前台时卡：无障碍树是平的，外部程序每读一遍几百毫秒（2026-11-19，用户反馈）
 
 - **现象**：设置 › 插件 里「已安装」「插件库」来回切，标签下的蓝线一顿一顿；插件库里上下滚动也卡。窗口不在前台时（探针里不激活）一切正常。
 - **原因**：有程序通过 UI Automation 读前台窗口（本机有 codex-computer-use、微信输入法、Tokline、DesktopAITaskCenter 等），Qt 在 GUI 线程上回答它们。Qt 6.12 的 `QAccessibleQuickItem` 列子元素时（`unignoredChildren`，qaccessiblequickitem.cpp）会穿过所有本身不是无障碍元素的 Item 往下找，不管可不可见；`QAccessibleQuickWindow::child(i)` 每调一次都重算 `rootItems()`；`QWindowsUiaMainProvider::Navigate` 找下一个兄弟时逐个 `child(i)` 跳过不可见的。设置窗口里原来只有文字、按钮是无障碍元素，各页（打开后会陆续全建好）的几百个元素全挂在窗口根下，走一遍是 O(N²)：所有页建好后，已安装 / 插件库分别是根下 189 / 345 个、一遍 82 / 305 ms。外部程序反复读，窗口在前台时空闲也会停 139 / 271 ms，切标签时帧间隔 130–260 ms。
 - **做法**：
-  - 容器设 `Accessible.role`：Qt 遇到无障碍元素就不再往下钻，不可见的容器被 Navigate 整个跳过。SettingsSection、SettingRow、PluginCard、PluginGalleryEntry 用 `Grouping`（新加的卡片类控件照此设置）；PageSlot、导航栏、页头、`flick`、拾穗页用 `Pane`；几个对话框用 `Dialog`（关着时根不可见）。根下剩 8 个，一遍 1.3 / 1.7 ms；前台空闲最长停顿 0 / 12 ms，切标签帧间隔 8–11 ms。
+  - 容器设 `Accessible.role`：Qt 遇到无障碍元素就不再往下钻，不可见的容器被 Navigate 整个跳过。SettingsSection、SettingRow、PluginCard、PluginTile、PluginGalleryEntry 用 `Grouping`（新加的卡片类控件照此设置）；PageSlot、导航栏、页头、`flick`、拾穗页用 `Pane`；几个对话框用 `Dialog`（关着时根不可见）。根下剩 8 个，一遍 1.3 / 1.7 ms；前台空闲最长停顿 0 / 12 ms，切标签帧间隔 8–11 ms。
   - 插件库的 39 个条目每个约 3–4 ms，原来第一次点「插件库」时一次建完，卡约 170 ms。现在停在「已安装」300 ms 后读本地保存的列表（不联网），条目放在 `Loader { asynchronous: !visible }` 里分帧建，GUI 线程最长停 6 ms。建到一半就点过去时 `asynchronous` 变 false，Qt 当场补完，不会显示空列表。
 - **验证**：
   - `WinShun.exe --probe-runtime <目录> --settings-motion-check --all-pages --activate --renderer d3d11 --scale 1.5`（SettingsMotionProbe）：按 Navigate 的走法走无障碍树，根下超过 20 个或一遍超过 20 ms 就失败；`--activate` 把窗口放到前台各停 3 s，记 GUI 线程最长停顿（本机的 UIA 客户端会来读）；每次切页、切标签、转滚轮都记下每一帧。`--gallery-early` 在条目建到一半时切到插件库，检查条目全在；`--other-windows` 也走搜索框和剪贴板（1.3 / 0.1 ms，没问题）。

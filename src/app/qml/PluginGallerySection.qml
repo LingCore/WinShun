@@ -115,14 +115,14 @@ SettingsSection {
                 active: gallerySection.gallery.count > 0
                 asynchronous: !gallerySection.visible
 
-                sourceComponent: Column {
-                    spacing: 8
+                sourceComponent: TileFlow {
+                    id: galleryTiles
+                    dpr: gallerySection.dpr
 
                     Repeater {
                         model: gallerySection.gallery.list
 
                         delegate: PluginGalleryEntry {
-                            width: parent.width
                             gallery: gallerySection.gallery
                             onShowInstalled: gallerySection.showInstalled(pluginId)
                         }
