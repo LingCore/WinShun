@@ -568,6 +568,13 @@ Setting readSetting(const QJsonValue& value, int index, Check& check)
             check.fail(where + u".options 要是数组"_s);
         s.options = o.value(u"options"_s).toArray();
     }
+    if (const QJsonValue multiline = o.value(u"multiline"_s); !multiline.isUndefined()) {
+        if (!multiline.isBool())
+            check.fail(where + u".multiline 要是 true 或 false"_s);
+        else if (s.type != u"text" && multiline.toBool())
+            check.fail(where + u".multiline 只用于 text"_s);
+        s.multiline = multiline.toBool();
+    }
     if (s.type == u"number") { // its range, step and unit (GitHub #359); on other types they mean nothing
         const auto number = [&](const QString& name) -> std::optional<double> {
             const QJsonValue v = o.value(name);

@@ -95,6 +95,7 @@
 | 局域网传输 | `传`，和开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件 | 插件库 |
 | 休息提醒 | 定时提醒休息，`休息` 看还有多久 | 插件库 |
 | 鼠标手势 | 按住右键画一下：← 后退、→ 前进、↓→ 关闭窗口、↑↓ 打开搜索框等，每个都能改，`手势` 暂停 | 插件库 |
+| 缩写展开 | 在任何地方打 `cmd` 再按空格就换成 `command`，缩写和内容自己设，紧接着按退格撤回；`缩写` 列出、暂停 | 插件库 |
 | 资源管理器标签页 | 新开的资源管理器窗口并成标签页，还能在下次登录后打开上次的标签页（Windows 11 22H2 起） | 插件库 |
 | [云备份](docs/使用说明.md#外观设置和备份) | 设置自动备份到 WebDAV（坚果云、NAS）或 GitHub 私有仓库，`cloud` 立即备份或恢复 | 插件库 |
 | 开发工具 | `json` 格式化、压缩、转义剪贴板里的 JSON，`Enter` 打开树形窗口查看、搜索键名和值；直接粘贴 JSON 也认 | 插件库 |
@@ -429,6 +430,7 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | LAN transfer | `ls ` to send files to and from phones and PCs running [LocalSend](https://localsend.org) | Plugin library |
 | Break reminder | Reminds you to take breaks; `break` shows the time left | Plugin library |
 | Mouse gestures | Hold the right button and draw: ← back, → forward, ↓→ close the window, ↑↓ the search box and more, each one changeable; `gestures` pauses them | Plugin library |
+| Text expander | Type `cmd` and a space anywhere and it becomes `command`, with abbreviations of your own; Backspace right after takes it back; `expander` lists and pauses them | Plugin library |
 | Explorer tabs | New File Explorer windows open as tabs, and the tabs from last time come back after a logon (Windows 11 22H2 or newer) | Plugin library |
 | [Cloud backup](docs/features.en.md#looks-and-settings) | Keeps the settings backup on a WebDAV server or in a private GitHub repository; `cloud` backs up or restores | Plugin library |
 | Developer tools | `json` formats, minifies or escapes the JSON on the clipboard, `Enter` opens a tree to browse and search it; JSON pasted into the box works too | Plugin library |

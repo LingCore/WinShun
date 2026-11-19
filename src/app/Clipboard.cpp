@@ -45,6 +45,8 @@ namespace {
 
 // The picture being read when the program last ended (Clipboard::takeCrashedReading).
 const QString kCrashedReading = QStringLiteral("crashedReading");
+// The tab the window was left on (Clipboard::tabKey), for 上次看的 (GitHub #404).
+const QString kLastTab = QStringLiteral("lastTab");
 
 constexpr qint64 kModifierWaitMs = 1500; // held longer than that, the paste goes ahead anyway
 constexpr qint64 kFocusWaitMs = 800;
@@ -549,40 +551,77 @@ std::vector<Clipboard::Category> Clipboard::categoryList() const
     return list;
 }
 
+QString Clipboard::categoryTitle(const Category& c) const
+{
+    switch (c.kind) {
+    case ClipFilter::Category::All:
+        return tr("全部");
+    case ClipFilter::Category::Text:
+        return tr("文本");
+    case ClipFilter::Category::Links:
+        return tr("链接");
+    case ClipFilter::Category::Images:
+        return tr("图片");
+    case ClipFilter::Category::Files:
+        return tr("文件");
+    case ClipFilter::Category::Group:
+        break;
+    }
+    const ClipGroup* g = m_store->group(c.group);
+    return c.group == ClipStore::kPinned ? tr("固定") : g ? g->name : QString();
+}
+
+QString Clipboard::tabKey(const Category& c)
+{
+    switch (c.kind) {
+    case ClipFilter::Category::All:
+        return u"all"_s;
+    case ClipFilter::Category::Text:
+        return u"text"_s;
+    case ClipFilter::Category::Links:
+        return u"links"_s;
+    case ClipFilter::Category::Images:
+        return u"images"_s;
+    case ClipFilter::Category::Files:
+        return u"files"_s;
+    case ClipFilter::Category::Group:
+        break;
+    }
+    return c.group == ClipStore::kPinned ? u"pinned"_s : u"group:"_s + QString::number(c.group);
+}
+
+int Clipboard::tabIndex(const QString& key) const
+{
+    const std::vector<Category> list = categoryList();
+    const auto found = std::ranges::find(list, key, [](const Category& c) { return tabKey(c); });
+    return found == list.end() ? -1 : static_cast<int>(found - list.begin());
+}
+
 QVariantList Clipboard::categories() const
 {
     QVariantList list;
     for (const Category& c : categoryList()) {
-        QString title;
-        switch (c.kind) {
-        case ClipFilter::Category::All:
-            title = tr("全部");
-            break;
-        case ClipFilter::Category::Text:
-            title = tr("文本");
-            break;
-        case ClipFilter::Category::Links:
-            title = tr("链接");
-            break;
-        case ClipFilter::Category::Images:
-            title = tr("图片");
-            break;
-        case ClipFilter::Category::Files:
-            title = tr("文件");
-            break;
-        case ClipFilter::Category::Group: {
-            const ClipGroup* g = m_store->group(c.group);
-            title = c.group == ClipStore::kPinned ? tr("固定") : g ? g->name : QString();
-            break;
-        }
-        }
         list.append(QVariantMap {
-            {u"title"_s, title},
+            {u"title"_s, categoryTitle(c)},
             {u"group"_s, c.group},
             {u"pinned"_s, c.group == ClipStore::kPinned},
             {u"size"_s, c.group != 0 ? m_store->groupSize(c.group) : 0},
         });
     }
+    return list;
+}
+
+QVariantList Clipboard::openTabChoices() const
+{
+    QVariantList list;
+    const auto add = [&list](const QString& value, const QString& text) {
+        list.append(QVariantMap {{u"value"_s, value}, {u"text"_s, text}});
+    };
+    const std::vector<Category> tabs = categoryList();
+    add(tabKey(tabs.front()), categoryTitle(tabs.front()));
+    add(u"last"_s, tr("上次看的"));
+    for (auto c = std::next(tabs.begin()); c != tabs.end(); ++c)
+        add(tabKey(*c), categoryTitle(*c));
     return list;
 }
 
@@ -700,6 +739,7 @@ void Clipboard::loadHistoryState()
     m_listWidth = savedWidth >= 360 && savedWidth <= 1600 ? savedWidth : 480;
     m_windowHeight = std::clamp(m_store->value(u"windowHeight"_s).toInt(), 0, 4320);
     m_pinnedFirst = m_store->value(u"order"_s) == u"pinnedFirst"_s;
+    m_lastTab = m_store->value(kLastTab);
 }
 
 void Clipboard::resumeHistory()
@@ -818,9 +858,12 @@ void Clipboard::handleShown()
         m_query.clear();
         emit queryChanged();
     }
-    if (m_category != 0) {
-        m_category = 0;
-        m_categoryGroup = 0;
+    // The tab it opens on (GitHub #404): 全部, the one it was left on, or the
+    // one chosen; 全部 when that group is gone.
+    const int open = std::max(0, tabIndex(m_openTab == u"last" ? m_lastTab : m_openTab));
+    if (open != m_category) {
+        m_category = open;
+        m_categoryGroup = categoryList()[static_cast<std::size_t>(open)].group;
         emit categoryChanged();
     }
     m_model.refreshTimes();
@@ -836,6 +879,13 @@ void Clipboard::handleShown()
 
 void Clipboard::handleHidden()
 {
+    // Where it was left, for 上次看的: kept whatever is chosen, so that choosing it is right at once.
+    const std::vector<Category> list = categoryList();
+    if (const QString left = tabKey(list[static_cast<std::size_t>(std::clamp(m_category, 0, static_cast<int>(list.size()) - 1))]);
+        left != m_lastTab && m_store->isOpen()) {
+        m_lastTab = left;
+        m_store->setValue(kLastTab, left);
+    }
     setSeen(false); // a document's handler unloaded
     setPinned(false);
     m_model.clearSelection();
@@ -1995,14 +2045,19 @@ QVariantList Clipboard::categoryMenuItems(int category) const
     const std::vector<Category> list = categoryList();
     if (category < 0 || category >= static_cast<int>(list.size()))
         return {};
-    const qint64 group = list[static_cast<std::size_t>(category)].group;
-    if (group == 0 || group == ClipStore::kPinned)
-        return {};
+    const Category& tab = list[static_cast<std::size_t>(category)];
     const auto entry = [](int action, const QString& text, const QString& glyph) {
         return QVariantMap {{u"action"_s, action}, {u"text"_s, text}, {u"glyph"_s, glyph}};
     };
-    const int size = m_store->groupSize(group);
+    // Every tab: the one the window opens on (GitHub #404), checked while it is.
+    QVariantMap openHere = entry(OpenHere, tr("打开时显示这里"), QString());
+    openHere.insert(u"checked"_s, m_openTab == tabKey(tab));
+    if (tab.group <= ClipStore::kPinned)
+        return {openHere};
+    const int size = m_store->groupSize(tab.group);
     return {
+        openHere,
+        QVariantMap {{u"separator"_s, true}},
         entry(RenameGroup, tr("重命名…"), u""_s),
         entry(RemoveGroup, size > 0 ? tr("删除分组和里面的 %Ln 条", nullptr, size) : tr("删除分组"), u""_s),
     };
@@ -2148,7 +2203,12 @@ void Clipboard::triggerCategory(int category, int action)
     if (category < 0 || category >= static_cast<int>(list.size()))
         return;
     const qint64 group = list[static_cast<std::size_t>(category)].group;
-    if (action == RenameGroup) {
+    if (action == OpenHere) {
+        // Checked already: back to 全部, as it was before there was a choice.
+        const QString key = tabKey(list[static_cast<std::size_t>(category)]);
+        setOpenTab(m_openTab == key ? u"all"_s : key);
+        emit openTabChosen(m_openTab); // into the settings (App)
+    } else if (action == RenameGroup) {
         emit groupNameRequested(-1, group);
     } else if (action == RemoveGroup && group > ClipStore::kPinned) {
         dropUndo();

@@ -499,6 +499,11 @@ struct Settings {
     // A side preview left open comes back with the window next time (as before
     // GitHub #174); off: it closes with the window, as the hover preview does.
     bool clipboardPreviewRestore = false;
+    // The tab the window opens on (GitHub #404): "all", "last" (the one it
+    // was left on), a kind ("text", "links", "images", "files"), "pinned"
+    // (固定) or a group of the user's, "group:<id>". A group since removed
+    // opens on 全部. Clipboard::tabKey.
+    QString clipboardOpenTab = QStringLiteral("all");
     bool clipboardPauseInFullScreen = false; // only global opening hotkeys, not recording or menu actions (#121)
     // Opened over the caret (or a search box; Placement::above), the window
     // turned upside down: the newest entry by the caret, older ones upwards.

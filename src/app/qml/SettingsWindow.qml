@@ -5900,6 +5900,39 @@ Window {
                     }
                 }
 
+                SettingRow { // the tab it opens on (GitHub #404); also a tab's own menu, 打开时显示这里
+                    title: qsTr("打开时显示")
+                    keywords: qsTr("分组;默认;打开;标签;记住;上次;固定;文本;链接;图片;文件;tab;group").split(";")
+                    description: qsTr("每次打开剪贴板先显示哪一栏；在分组上点右键也能设")
+
+                    ChoiceBox {
+                        id: clipboardOpenTabPicker
+                        objectName: "clipboardOpenTabPicker"
+                        implicitWidth: 180
+                        implicitHeight: 36
+                        model: window.editor.clipboardOpenTabs
+                        textRole: "text"
+                        valueRole: "value"
+                        // A group since removed opens on 全部, the first.
+                        currentIndex: Math.max(0, window.editor.clipboardOpenTabs.findIndex(t => t.value === window.editor.clipboardOpenTab))
+                        onActivated: window.editor.clipboardOpenTab = currentValue
+                        Accessible.name: qsTr("打开时显示")
+                        dpr: window.dpr
+                        leftPadding: 12
+                        contentItem: Text {
+                            text: clipboardOpenTabPicker.displayText
+                            font: clipboardOpenTabPicker.font
+                            color: clipboardOpenTabPicker.palette.buttonText
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        Connections {
+                            target: clipboardOpenTabPicker.popup
+                            function onOpened() { window.frame.addPopup(clipboardOpenTabPicker.popup.background) }
+                        }
+                    }
+                }
+
                 SettingRow {
                     title: qsTr("剪贴板大小")
                     keywords: qsTr("字体;字号;文字大小;行高;密集;紧凑;宽松;ditto;font size;dense").split(";")

@@ -840,8 +840,11 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
                 row.insert(u"step"_s, *s.step);
                 row.insert(u"decimals"_s, s.decimals());
             }
-        } else
+        } else {
             row.insert(u"value"_s, value.toVariant().toString());
+            if (s.multiline)
+                row.insert(u"multiline"_s, true);
+        }
         c.settings.push_back(row);
     }
     return c;
@@ -1832,6 +1835,9 @@ void PluginSettings::loadPreview(bool elevated, int logPlugins, bool hostNormal)
                 {u"options"_s, QStringList {u"直译（逐句对照，保留原文的句子结构和专有名词）"_s, u"意译（读起来像母语写的；长句会拆开重排）"_s, u"术语表优先（按你的术语表翻，其余意译）"_s}},
                 {u"optionValues"_s, QStringList {u"literal"_s, u"free"_s, u"glossary"_s}}, {u"optionIndex"_s, 1}},
             QVariantMap {{u"key"_s, u"target"_s}, {u"type"_s, u"text"_s}, {u"title"_s, tr("目标语言")}, {u"hint"_s, tr("例如 zh、en、ja")}, {u"value"_s, u"zh"_s}},
+            // A text of several lines (0.41.0): its box the card's width, under its title.
+            QVariantMap {{u"key"_s, u"glossary"_s}, {u"type"_s, u"text"_s}, {u"multiline"_s, true}, {u"title"_s, u"术语表"_s},
+                {u"hint"_s, u"每行一条：原文 = 译文"_s}, {u"value"_s, u"WinShun = Win顺\nLingCore = 灵核\nplugin library = 插件库"_s}},
             // Numbers with both ends (GitHub #359): a slider, the value beside it, the unit after it.
             QVariantMap {{u"key"_s, u"pause"_s}, {u"type"_s, u"number"_s}, {u"title"_s, u"停顿多久再翻译"_s}, {u"hint"_s, QString()}, {u"value"_s, u"400"_s},
                 {u"unit"_s, u"ms"_s}, {u"slider"_s, true}, {u"min"_s, 100}, {u"max"_s, 2000}, {u"step"_s, 50}, {u"decimals"_s, 0}},

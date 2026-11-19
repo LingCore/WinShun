@@ -26,7 +26,7 @@
 
 ## 核心与插件的运行约定（2026-10-31）
 
-搜索和剪贴板是宿主的核心。截图与录屏、语义搜索、局域网传输、休息提醒、鼠标手势、书签、翻译和系统开关已是可选的 C++ 进程插件。进程插件继续使用普通用户权限的 `normal` 模式，按清单申请独立窗口、快捷键、子进程、文件、网络及搜索／剪贴板工具能力；不把插件载入主进程。文件夹菜单、对话框集成和拖放圆盘目前仍有宿主实现，不能宣称全部辅助功能都已拆完。
+搜索和剪贴板是宿主的核心。截图与录屏、语义搜索、局域网传输、休息提醒、鼠标手势、缩写展开、书签、翻译和系统开关已是可选的 C++ 进程插件。进程插件继续使用普通用户权限的 `normal` 模式，按清单申请独立窗口、快捷键、子进程、文件、网络及搜索／剪贴板工具能力；不把插件载入主进程。文件夹菜单、对话框集成和拖放圆盘目前仍有宿主实现，不能宣称全部辅助功能都已拆完。
 
 剪贴板在原生 Start/Search 上显示时，可使用独立的 UIAccess 显示进程（#179，`WinShun.exe --clipboard-display`）。历史数据库、系统剪贴板监听、插件调用和粘贴操作仍由普通主进程负责；显示进程提前进入专用入口，只创建剪贴板 QML、预览和菜单，通过有长度上限的本地管道同步视图数据与明确允许的操作。文件图标由普通进程生成 PNG，显示进程不加载用户 Shell 图标提供器。
 
@@ -467,6 +467,7 @@ src/capture-plugin/  插件库里的 winshun.capture（0.16 是 WinShun.exe 的�
 src/tools-plugin/    随包的 winshun.tools 插件（无 Qt，静态 C 运行库，用 winshun.h 写的）：Tools.cpp 的 tools::serve 编成静态库 wstools，平时在 WinShunPluginHost.exe 的线程上跑；WinShunTools.exe 只在 WINSHUN_PLUGINS_APART=1 时用，单独一个 strict 沙箱进程；Calc（算式）、Units（单位）、Color（颜色写法）、Codec（Base64、CNG 哈希、UUID、时间戳）是不依赖 Qt 的纯逻辑，tests/tst_tools.cpp 再编一遍
 src/break-plugin/    WinShunBreak.exe：插件库里的 winshun.break 插件（休息提醒，WinShun-plugins #7；无 Qt，静态 C 运行库，常驻 eager，只要 ui）；Schedule（纯时钟，tests/tst_break.cpp 再编一遍）、Sense（空闲、锁屏、全屏、勿扰）、Ui（Direct2D 分层窗口，自己的线程）
 src/gestures-plugin/ WinShunGestures.exe：插件库里的 winshun.gestures 插件（鼠标手势；无 Qt，静态 C 运行库，常驻 eager，要 ui、processes、winshun:open）；Gesture（纯规则：认方向、读动作，tests/tst_gestures.cpp 再编一遍）、Engine（WH_MOUSE_LL 钩子线程、GDI+ 分层窗口画轨迹、执行动作）
+src/expander-plugin/ WinShunExpander.exe：插件库里的 winshun.expander 插件（缩写展开，GitHub #403；无 Qt，静态 C 运行库，常驻 eager，只要 ui）；Expander（纯规则：读缩写、找打出的缩写和大小写，tests/tst_expander.cpp 再编一遍）、Engine（WH_KEYBOARD_LL 和 WH_MOUSE_LL 钩子线程，ToUnicodeEx 按前台程序的键盘布局读字，问输入法是否在中文状态，SendInput 一次打出退格、内容和结束键）
 src/translate-plugin/ WinShunTranslate.exe：插件库里的 winshun.translate 插件（翻译；0.7–0.17 是随包的 Python 插件；无 Qt，静态 C 运行库，常驻，debounceMs 300）；DeepL 或 OpenAI 兼容接口（WinHTTP，系统代理，整次请求一个时限），纯逻辑由 tests/tst_translate.cpp 再编一遍
 src/bookmarks-plugin/ WinShunBookmarks.exe：插件库里的 winshun.bookmarks 插件（浏览器书签；0.7–0.17 是随包的 Python 插件；无 Qt，静态 C 运行库，一次性）；读 Chrome、Edge 每个配置文件的 Bookmarks 和设置里指定的文件，纯逻辑由 tests/tst_bookmarks.cpp 再编一遍
 plugins/             随安装包的插件（docs/plugins.md）：winshun.go（零代码）、winshun.kill（PowerShell 常驻）、winshun.tools（C++）；构建时和 SDK、WinShunTools.exe 一起整理到 build\<preset>\plugins，build.ps1 -Deploy 放进 dist\WinShun\plugins，安装到 <安装目录>\plugins，默认全部停用。Win顺 自己的其余插件（截图、按意思找、局域网传输、休息提醒、鼠标手势、翻译、浏览器书签、网页搜索）在 src\<名字>-plugin\package，构建时整理到 build\<preset>\library-plugins\<id>，release.ps1 打成 <id>-<版本>.wsplugin 给插件库；以前随包的由 MovedPlugins 在升级后自动装上

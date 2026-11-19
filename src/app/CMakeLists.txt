@@ -206,6 +206,7 @@ set(qml_files
     qml/FontPicker.qml
     qml/ChoiceBox.qml
     qml/SettingSlider.qml
+    qml/SettingTextArea.qml
     qml/ComboPopup.qml
     qml/ClipGroupPicker.qml
     qml/DropPieWindow.qml

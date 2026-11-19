@@ -920,6 +920,15 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         hideClipboard(false);
         showShortcutSettings();
     });
+    // 打开时显示这里 in a tab's menu (GitHub #404): the same setting as 设置 › 剪贴板 › 打开时显示.
+    connect(m_clipboard.get(), &Clipboard::openTabChosen, this, [this](const QString& key) {
+        if (m_settings.clipboardOpenTab == key)
+            return;
+        m_settings.clipboardOpenTab = key;
+        m_settings.save();
+        if (m_settingsEditor) // its copy must not bring the old value back with its next change
+            m_settingsEditor->setSettings(m_settings);
+    });
     connect(m_clipboard.get(), &Clipboard::pinRequested, this, [this](qint64 id) { pictureAction(u"pin"_s, id, {}, false); });
     connect(m_clipboard.get(), &Clipboard::pinTextRequested, this, &App::pinText);
     connect(m_clipboard.get(), &Clipboard::editRequested, this, [this](qint64 id) { pictureAction(u"edit"_s, id, {}, false); });
@@ -2039,6 +2048,7 @@ void App::applySettings(bool initial)
     m_clipboard->setHoldToStep(m_settings.clipboardHoldToStep);
     m_clipboard->setPasteElevated(m_settings.clipboardPasteElevated);
     m_clipboard->setPreviewRestore(m_settings.clipboardPreviewRestore);
+    m_clipboard->setOpenTab(m_settings.clipboardOpenTab);
     if (!m_settings.clipboardHoldToStep && (m_hold || m_browseHotkey))
         endClipboardHold("setting-off");
     updateNumberKeys();
@@ -3829,6 +3839,11 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         connect(editor, &SettingsEditor::explorerRestartRequested, this, &App::restartExplorer);
         connect(editor, &SettingsEditor::giveBackRequested, this, &App::giveBackWinKey);
         connect(editor, &SettingsEditor::autostartRequested, this, &App::setAutostart);
+        // 打开时显示's list: the tabs as the window has them, groups renamed, added or removed too.
+        editor->setClipboardOpenTabs(m_clipboard->openTabChoices());
+        connect(m_clipboard.get(), &Clipboard::categoriesChanged, editor, [this, editor] {
+            editor->setClipboardOpenTabs(m_clipboard->openTabChoices());
+        });
         connect(editor, &SettingsEditor::clipboardClearRequested, this, [this, editor] {
             if (!m_clipStore->isOpen() && !m_clipStore->open(QDateTime::currentMSecsSinceEpoch()))
                 return;

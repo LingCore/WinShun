@@ -386,7 +386,8 @@ int runPlugins(const QStringList& args)
                 {"key":"pause","type":"number","title":"停顿多久再翻译","default":400,"min":100,"max":2000,"step":50,"unit":"ms"},
                 {"key":"match","type":"number","title":"术语匹配的相似度","default":0.75,"min":0,"max":1,"step":0.05},
                 {"key":"edge","type":"number","title":"最后一步短一些","min":5,"max":99,"step":10,"unit":{"zh":"个","en":"items"}},
-                {"key":"limit","type":"number","title":"最多列出几项","min":1,"unit":{"zh":"项","en":"items"}}]})";
+                {"key":"limit","type":"number","title":"最多列出几项","min":1,"unit":{"zh":"项","en":"items"}},
+                {"key":"lines","type":"text","multiline":true,"title":"缩写","hint":"每行一条：缩写 = 换成的文字","default":"cmd = command"}]})";
         if (!manifest.open(QIODevice::WriteOnly) || manifest.write(json) < 0) {
             say(u"#359 sliders: the plugin could not be written"_s);
             return 3;
@@ -889,6 +890,87 @@ int runPlugins(const QStringList& args)
         say(u"#359 sliders, a minimum only: keys -3, Enter: kept as 1 %1; emptied %2, then left: 1 again %3: %4"_s
                 .arg(limited).arg(limitEmptied).arg(limitKept).arg(limited && limitEmptied && limitKept ? u"passed"_s : u"FAILED"_s));
         sliders = sliders && limited && limitEmptied && limitKept;
+        // A text of several lines (0.41.0, GitHub #403): the row's width
+        // under its title; typed into by keys, kept a second after the typing
+        // stops with the focus still there, Esc puts back what is kept,
+        // leaving keeps it at once, Tab goes on; as tall as its lines between
+        // 4 and 12. Each time the box, the INI and what the plugin is told.
+        {
+            QQuickItem* area = visualNamed(window->contentItem(), u"pluginSetting-"_s + rangesPlugin + u"/lines"_s);
+            QQuickItem* field = area ? visualNamed(area, u"settingTextArea"_s) : nullptr;
+            QQuickItem* row = area && area->parentItem() && area->parentItem()->parentItem() ? area->parentItem()->parentItem()->parentItem() : nullptr;
+            const bool wide = row && qFuzzyCompare(area->width(), row->width()) && area->mapToItem(row, QPointF(0, 0)).y() > 10;
+            say(u"multiline text: %1 wide of a row %2 wide, %3 down it: %4"_s.arg(area ? area->width() : -1).arg(row ? row->width() : -1)
+                    .arg(area && row ? area->mapToItem(row, QPointF(0, 0)).y() : -1).arg(wide ? u"under the title, passed"_s : u"FAILED"_s));
+            sliders = sliders && wide;
+            const auto typeKeys = [&](const QString& text) {
+                for (const QChar c : text) {
+                    const int code = c == u'\n' ? int(Qt::Key_Return) : int(c.toUpper().unicode()); // Qt's key codes are ASCII's
+                    const QString typed = c == u'\n' ? u"\r"_s : QString(c);
+                    QKeyEvent press(QEvent::KeyPress, code, {}, typed);
+                    QCoreApplication::sendEvent(window, &press);
+                    QKeyEvent release(QEvent::KeyRelease, code, {}, typed);
+                    QCoreApplication::sendEvent(window, &release);
+                }
+                pump(60);
+            };
+            const auto lines = [&](const char* what, const QString& shown, const QVariant& kept, const QString& told, bool focused) {
+                const QVariant k = ini(u"lines"_s);
+                const QString t = rangesHost->pluginSettings(rangesPlugin).value(u"lines"_s).toString();
+                const QString s = field ? field->property("text").toString() : u"?"_s;
+                const bool ok = field && s == shown && k.isValid() == kept.isValid() && (!kept.isValid() || k.toString() == kept.toString())
+                    && t == told && field->hasActiveFocus() == focused;
+                const auto oneLine = [](QString v) { return v.replace(u'\n', u'|'); };
+                say(u"multiline text, %1: box [%2], INI %3, told [%4], focus %5: %6"_s
+                        .arg(QString::fromUtf8(what), oneLine(s), k.isValid() ? u'[' + oneLine(k.toString()) + u']' : u"none"_s, oneLine(t))
+                        .arg(field && field->hasActiveFocus())
+                        .arg(ok ? u"passed"_s : u"FAILED"_s));
+                sliders = sliders && ok;
+            };
+            const QString first = u"cmd = command"_s;
+            const QString two = first + u"\nbtw = by the way"_s;
+            const QString three = two + u"\nok = okay"_s;
+            lines("as installed", first, {}, first, false);
+            const qreal shortHeight = area ? area->height() : -1;
+            if (field) {
+                field->forceActiveFocus(Qt::TabFocusReason);
+                field->setProperty("cursorPosition", first.size());
+            }
+            typeKeys(u"\nbtw = by the way"_s);
+            lines("typed, not kept yet", two, {}, first, true);
+            pump(1300);
+            lines("a second later, in the box still", two, two, two, true);
+            typeKeys(u"xyz"_s);
+            key(Qt::Key_Escape);
+            pump(1300);
+            lines("typed, then Esc: what is kept, and only that", two, two, two, true);
+            typeKeys(u"\nok = okay"_s);
+            unfocus();
+            lines("left: kept at once", three, three, three, false);
+            if (field)
+                field->forceActiveFocus(Qt::TabFocusReason);
+            key(Qt::Key_Tab);
+            lines("Tab: on to the next control, no tab typed", three, three, three, false);
+            // Its lines: 3 make the 4 at least, 30 the 12 at most, scrolled.
+            if (field) {
+                field->forceActiveFocus(Qt::TabFocusReason);
+                QStringList many;
+                for (int i = 1; i <= 30; ++i)
+                    many.append(u"a%1 = %1"_s.arg(i));
+                field->setProperty("text", many.join(u'\n'));
+            }
+            pump(100);
+            const qreal tallHeight = area ? area->height() : -1;
+            const qreal line = area ? (tallHeight - shortHeight) / 8 : 0; // 12 lines less 4
+            const bool grows = area && shortHeight > 0 && tallHeight > shortHeight && line > 10 && line < 40
+                && field && field->property("implicitHeight").toReal() > tallHeight;
+            say(u"multiline text: %1 high with 3 lines, %2 with 30 (a line %3, the text %4): %5"_s.arg(shortHeight).arg(tallHeight).arg(line)
+                    .arg(field ? field->property("implicitHeight").toReal() : -1).arg(grows ? u"4 to 12 lines, passed"_s : u"FAILED"_s));
+            sliders = sliders && grows;
+            key(Qt::Key_Escape);
+            unfocus();
+            lines("Esc again, for the picture", three, three, three, false);
+        }
         // For the picture: the values a user would leave, nothing focused.
         type(u"pause"_s, u"400"_s);
         type(u"match"_s, u"0.75"_s);
@@ -1680,6 +1762,14 @@ int runSettings(const QStringList& args)
         : HealthMonitor::demo(editor, args.contains(u"--health-idle"_s)));
     editor->setHistoryCount(128);
     editor->setClipboardCount(args.contains(u"--clipboard-disabled"_s) ? -1 : 57);
+    { // 打开时显示's list, as Clipboard::openTabChoices gives it with two groups of the user's
+        QVariantList tabs;
+        for (const auto& [value, text] : std::initializer_list<std::pair<QString, QString>> {{u"all"_s, u"全部"_s},
+                 {u"last"_s, u"上次看的"_s}, {u"text"_s, u"文本"_s}, {u"links"_s, u"链接"_s}, {u"images"_s, u"图片"_s},
+                 {u"files"_s, u"文件"_s}, {u"pinned"_s, u"固定"_s}, {u"group:2"_s, u"常用回复"_s}, {u"group:3"_s, u"地址"_s}})
+            tabs.append(QVariantMap {{u"value"_s, value}, {u"text"_s, text}});
+        editor->setClipboardOpenTabs(tabs);
+    }
     editor->setHotkeyError({});
     // What the app reads off this PC, read-only: the file managers
     // installed, the taskbar, the AI clients and their configurations.
@@ -7504,6 +7594,90 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
             clipboard.historyChanged();
             QMetaObject::invokeMethod(page, "focusSearch");
             settle(window);
+        }
+        // The tab it opens on (GitHub #404): 全部 as before, a group chosen in
+        // the settings or in its tab's menu, or the one it was left on.
+        {
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            const qint64 work = store.addGroup(u"常用回复"_s);
+            const qint64 entry = store.add(ClipCapture {.kind = ClipKind::Text, .text = u"收到，马上处理"_s}, now + 20);
+            store.setGroup(std::array {entry}, work);
+            clipboard.historyChanged();
+            const auto indexOf = [&](qint64 group) {
+                const QVariantList tabs = clipboard.categories();
+                for (int i = 0; i < tabs.size(); ++i)
+                    if (tabs[i].toMap().value(u"group"_s).toLongLong() == group)
+                        return i;
+                return -1;
+            };
+            const int workTab = indexOf(work);
+            const auto reopen = [&] {
+                clipboard.handleHidden();
+                clipboard.handleShown();
+                settle(window);
+            };
+            check(workTab > 0, "a new group must have a tab");
+            clipboard.setCategory(workTab);
+            reopen();
+            check(clipboard.category() == 0, "by default the clipboard must open on 全部 whatever tab it was left on");
+
+            const QString workKey = u"group:"_s + QString::number(work);
+            const QVariantList choices = clipboard.openTabChoices();
+            const auto choice = [&](int i, const char* field) { return choices.value(i).toMap().value(QString::fromLatin1(field)).toString(); };
+            check(choices.size() == clipboard.categories().size() + 1 && choice(0, "value") == u"all" && choice(1, "value") == u"last"
+                    && choice(1, "text") == u"上次看的" && choice(workTab + 1, "value") == workKey && choice(workTab + 1, "text") == u"常用回复",
+                "the settings must offer 全部, 上次看的 and then every tab, groups by their names");
+
+            clipboard.setOpenTab(workKey);
+            reopen();
+            check(clipboard.category() == workTab && clipboard.items()->count() == 1,
+                "a group chosen in the settings must be the tab the clipboard opens on");
+            check(saveGrab(window, output.filePath(u"clipboard-open-tab.png"_s)), "the clipboard opened on a group did not render");
+
+            clipboard.setOpenTab(u"last"_s);
+            clipboard.setCategory(1); // 文本
+            reopen();
+            store.flush();
+            check(clipboard.category() == 1 && store.value(u"lastTab"_s) == u"text",
+                "上次看的 must open on the tab it was left on, and keep it for the next run");
+
+            QString told;
+            const auto connection = QObject::connect(&clipboard, &Clipboard::openTabChosen, [&](const QString& key) { told = key; });
+            QVariantList menu = clipboard.categoryMenuItems(workTab);
+            check(!menu.isEmpty() && menu.first().toMap().value(u"action"_s).toInt() == Clipboard::OpenHere
+                    && !menu.first().toMap().value(u"checked"_s).toBool() && menu.size() == 4,
+                "a group's tab menu must start with 打开时显示这里, then rename and remove");
+            check(clipboard.categoryMenuItems(0).size() == 1 && clipboard.categoryMenuItems(indexOf(ClipStore::kPinned)).size() == 1,
+                "全部 and 固定 must have 打开时显示这里 alone in their menus");
+            // Through the tab's own menu, as a right click opens it and a click picks the entry.
+            const QPoint at = window->mapToGlobal(QPoint(200, 60));
+            check(QMetaObject::invokeMethod(page, "openCategoryMenu", Q_ARG(QVariant, QVariant(workTab)), Q_ARG(QVariant, QVariant(QPointF(at)))),
+                "a group's tab menu did not open");
+            if (auto* tabMenu = qobject_cast<QQuickWindow*>(page->property("contextMenu").value<QObject*>())) {
+                settle(tabMenu);
+                check(saveGrab(tabMenu, output.filePath(u"clipboard-tab-menu.png"_s)), "a group's tab menu did not render");
+                QMetaObject::invokeMethod(tabMenu, "triggered", Q_ARG(int, workTab), Q_ARG(int, Clipboard::OpenHere));
+                QMetaObject::invokeMethod(tabMenu, "dismiss");
+                settle(window);
+            } else {
+                check(false, "the production tab menu is missing");
+            }
+            menu = clipboard.categoryMenuItems(workTab);
+            check(told == workKey && clipboard.openTab() == workKey && menu.first().toMap().value(u"checked"_s).toBool(),
+                "打开时显示这里 must choose that tab, tell the settings and be checked afterwards");
+            clipboard.triggerCategory(workTab, Clipboard::OpenHere);
+            check(told == u"all" && clipboard.openTab() == u"all", "打开时显示这里 picked again must go back to 全部");
+            QObject::disconnect(connection);
+
+            clipboard.setOpenTab(workKey);
+            store.removeGroup(work);
+            clipboard.historyChanged();
+            reopen();
+            check(clipboard.category() == 0, "a chosen group since removed must open on 全部");
+            store.discardImages(std::array {entry});
+            clipboard.setOpenTab(u"all"_s);
+            reopen();
+            QMetaObject::invokeMethod(page, "focusSearch");
         }
         settle(window);
         say(u"clipboard search logo: shared SVG loaded; spacing, focus and both header positions checked"_s);

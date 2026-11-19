@@ -168,6 +168,7 @@ public:
         EditNote, // 备注: a line of the user's own for the entry (noteRequested), found by the search
         Mask, // 遮住内容 / 显示内容: dots in the list and the preview (Clip::masked)
         EditText, // 修改文字: the entry's own words changed in the preview's place (textEditRequested)
+        OpenHere, // on a tab: 打开时显示这里, the tab the window opens on (openTabChosen); again: 全部
         MoveToGroup = 1000, // + the group's id
     };
     Q_ENUM(Action)
@@ -227,6 +228,14 @@ public:
     int category() const { return m_category; }
     void setCategory(int category);
     QVariantList categories() const;
+    // The tab the window opens on (Settings::clipboardOpenTab, GitHub #404):
+    // "all", "last" (the one it was left on, kept in the history's database)
+    // or a tab's key (tabKey). One picked in a tab's menu is set here and
+    // told by openTabChosen, for the settings.
+    QString openTab() const { return m_openTab; }
+    void setOpenTab(const QString& key) { m_openTab = key; }
+    // For the settings' list: [{value, text}], 全部 and 上次看的 first, then the other tabs.
+    QVariantList openTabChoices() const;
     ClipModel* items() { return &m_model; }
     int total() const { return static_cast<int>(m_store->clips().size()) - m_store->hiddenCount(); }
     QString statusText() const { return m_flash.isEmpty() ? m_status : m_flash; }
@@ -394,6 +403,7 @@ signals:
     void stateChanged();
     void queryChanged();
     void categoryChanged();
+    void openTabChosen(const QString& key); // 打开时显示这里 in a tab's menu: into the settings (App)
     void groupSearchRequested();
     void categoriesChanged();
     void listChanged(); // rows replaced: select the first
@@ -438,6 +448,11 @@ private:
         bool oneLine = true; // a TextInput: line breaks go in as spaces
     };
     std::vector<Category> categoryList() const;
+    QString categoryTitle(const Category& category) const;
+    // A tab as Settings::clipboardOpenTab names it: "all", "text", "links",
+    // "images", "files", "pinned", "group:<id>".
+    static QString tabKey(const Category& category);
+    int tabIndex(const QString& key) const; // -1: no such tab (a group since removed)
     void refresh();
     void refreshStatus();
     void flash(const QString& message);
@@ -540,6 +555,8 @@ private:
     QString m_query;
     int m_category = 0;
     qint64 m_categoryGroup = 0; // the group the category tab is, kept when groups come and go
+    QString m_openTab = QStringLiteral("all");
+    QString m_lastTab; // the tab key it was left on (the database's lastTab), for 上次看的
     QString m_status;
     QString m_flash;
     QTimer m_flashTimer;

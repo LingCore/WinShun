@@ -1,0 +1,26 @@
+{
+  "manifest": 1,
+  "id": "winshun.expander",
+  "name": {"zh": "缩写展开", "en": "Text expander"},
+  "version": "1.0.0",
+  "description": {"zh": "在任何地方打出缩写，再按空格或标点，就换成设好的文字：cmd 变成 command，;addr 变成你的地址。紧接着按退格可以撤回。管理员身份运行的窗口里用不了", "en": "Type an abbreviation anywhere, then a space or punctuation, and it becomes the text you set: cmd becomes command, ;addr your address. Backspace right after takes it back. Not in windows run as administrator"},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "minWinShun": "0.41.0",
+  "runtime": {"mode": "resident", "program": "WinShunExpander.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 1500, "idleExitSec": 0, "memoryMB": 32},
+  "permissions": ["ui"],
+  "commands": [{
+    "id": "expander",
+    "keyword": ["缩写", "expander"],
+    "title": {"zh": "缩写展开", "en": "Text expander"},
+    "description": {"zh": "设好的缩写；暂停、恢复", "en": "The abbreviations set; pause, resume"},
+    "icon": "ph:textbox",
+    "hint": {"zh": "Enter 暂停或恢复", "en": "Enter to pause or resume"}
+  }],
+  "settings": [
+    {"key": "phrases", "type": "text", "multiline": true, "title": {"zh": "缩写", "en": "Abbreviations"}, "hint": {"zh": "每行一条：缩写 = 换成的文字，如 cmd = command。内容要分几行时，接着往下写（下一行不带“=”）。缩写首字母大写或全大写时，内容跟着变（Btw → By the way）。# 开头的行不算", "en": "One a line: abbreviation = text, such as cmd = command. For text of several lines, go on below (lines without “=”). Typed with a capital first letter or in capitals, the text follows (Btw → By the way). Lines starting with # do not count"}, "default": ""},
+    {"key": "instant", "type": "bool", "title": {"zh": "打完缩写立刻换，不等空格或标点", "en": "Expand as soon as it is typed, without a space or punctuation"}, "hint": {"zh": "适合以 ; 之类符号开头、不会是别的词一部分的缩写，如 ;sig", "en": "For abbreviations that start with a sign such as ; and are part of no other word, such as ;sig"}, "default": false},
+    {"key": "exclude", "type": "text", "title": {"zh": "这些程序里不展开", "en": "Not in these programs"}, "hint": {"zh": "程序名用分号隔开，例如 code.exe;mstsc.exe", "en": "Program names separated by semicolons, e.g. code.exe;mstsc.exe"}, "default": ""}
+  ]
+}
