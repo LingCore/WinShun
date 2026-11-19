@@ -33,8 +33,8 @@ class Grabber;
 // persistent action strip (LongCapturePanel.qml), with an optional preview
 // window beside it. These never take focus. The border lies outside the region
 // and stays in screenshots; the strip and the preview are left out of the
-// frames (WDA_EXCLUDEFROMCAPTURE) only while it runs and they cover the
-// region. Esc and
+// frames (WDA_EXCLUDEFROMCAPTURE) while it runs and they cover the region,
+// and hidden after it they keep that setting (updateExclusion). Esc and
 // Enter are global hotkeys for as long as it runs (cancel, finish), always
 // given back; the capture hotkey finishes too (Capture::trigger).
 //
