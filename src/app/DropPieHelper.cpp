@@ -438,7 +438,7 @@ int runDropPieHelper(const QStringList& arguments)
     QByteArray written;
     const auto ready = [&] {
         QJsonObject state {{u"pid"_s, qint64(::GetCurrentProcessId())},
-            {u"elevated"_s, integrity::processElevated()}, {u"folders"_s, pie.folderCount()}, {u"pages"_s, pie.pageCount()},
+            {u"elevated"_s, integrity::processElevated()}, {u"folders"_s, pie.noFolders() ? 0 : pie.sectors().size()},
             {u"theme"_s, settings.theme}, {u"keyboard_input"_s, keyboardInput(listener.window())}};
         if (keyRefused) state.insert(u"key_refused"_s, qint64(keyRefused));
         const QByteArray next = QJsonDocument(state).toJson(QJsonDocument::Compact);
@@ -461,7 +461,6 @@ int runDropPieHelper(const QStringList& arguments)
     });
     lifetime.start();
     QObject::connect(&pie, &DropPie::sectorsChanged, &engine, ready);
-    QObject::connect(&pie, &DropPie::pageChanged, &engine, ready);
     ready();
     return QCoreApplication::exec();
 }

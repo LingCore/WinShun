@@ -338,11 +338,14 @@ Window {
 
                     Text {
                         id: detail
-                        // Short of the hint's room, which is kept (a path is cut to fit already).
-                        width: Math.max(0, parent.width - (hint.text.length > 0 ? hint.implicitWidth + 12 * pie.k : 0))
+                        // The line for the middle ("Let go in the middle...") is cut short of the hint's room
+                        // (it is longer in English); a path is cut to fit already (DropPie::updateTexts).
+                        readonly property bool fitting: pie.dropPie.hovered < 0
+                        width: fitting ? Math.max(0, parent.width - (hint.text.length > 0 ? hint.implicitWidth + 12 * pie.k : 0))
+                                       : implicitWidth
                         text: pie.dropPie.statusDetail
                         textFormat: Text.PlainText
-                        elide: Text.ElideRight
+                        elide: fitting ? Text.ElideRight : Text.ElideNone
                         color: Theme.subtext
                         font.pixelSize: pie.smallSize
                     }
