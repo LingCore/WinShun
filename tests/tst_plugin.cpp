@@ -909,6 +909,7 @@ private slots:
         const Command& c = m->commands.first();
         QCOMPARE(c.keywords, (QStringList {u"kill"_s, u"jc"_s}));
         QCOMPARE(c.hint.pick(u"en"_s), u"Process name or PID"_s);
+        QVERIFY(c.history); // not said: in the search history (GitHub #395)
         QCOMPARE(c.actions.size(), 2);
         QCOMPARE(c.actions[1].title.pick(u"en"_s), u"连同子进程"_s); // a plain string serves both
         QCOMPARE(c.triggers.size(), 2);
@@ -1040,6 +1041,10 @@ private slots:
         QString error;
         QVERIFY(!Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","commands":[{"id":"c","keyword":"a b","run":{"folder":"C:\\"}}]})", &error));
         QVERIFY2(error.contains(u"commands[0].keyword 含空格"_s), qPrintable(error));
+        QVERIFY(!Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","commands":[{"id":"c","keyword":"c","history":"no","run":{"folder":"C:\\"}}]})", &error));
+        QVERIFY2(error.contains(u"commands[0].history 要是布尔值"_s), qPrintable(error));
+        const auto kept = Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","commands":[{"id":"c","keyword":"c","history":false,"run":{"folder":"C:\\"}}]})", &error);
+        QVERIFY2(kept && !kept->commands.first().history, qPrintable(error));
         QVERIFY(!Manifest::parse(R"({"manifest":2,"id":"a.b","name":"X","version":"1","commands":[{"id":"c","run":{"folder":"C:\\"}}]})", &error));
         QVERIFY2(error.contains(u"升级"_s), qPrintable(error));
         QVERIFY(!Manifest::parse(R"({"manifest":1,"id":"A B","name":"X","version":"1","commands":[{"id":"c","run":{"folder":"C:\\"}}]})", &error));

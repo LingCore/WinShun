@@ -478,6 +478,9 @@ Command readCommand(const QJsonValue& value, int index, bool hasRuntime, Check& 
     c.contentSearch = o.value(u"contentSearch"_s).toBool();
     if (c.contentSearch && !hasRuntime)
         check.fail(where + u".contentSearch 需要插件进程"_s);
+    if (o.contains(u"history"_s) && !o.value(u"history"_s).isBool())
+        check.fail(where + u".history 要是布尔值"_s);
+    c.history = o.value(u"history"_s).toBool(true);
     if (c.icon.endsWith(u".svg"_s, Qt::CaseInsensitive))
         check.fail(where + u".icon 是 SVG：Win顺 不带 SVG 支持，请用 PNG"_s);
     if (o.contains(u"keyword"_s)) {

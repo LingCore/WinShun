@@ -173,6 +173,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 | `triggers` | 关键字以外的触发方式：`{"regex": "…", "minLength": 1, "maxLength": 64}`（整个输入匹配时，结果推进"全部"；`match` 是捕获组）、`{"push": {"minLength": 2, "maxItems": 3}}`（每键都发，常驻 + eager 才合适）、`{"files": {"kind": "any", "max": 1000, "extensions": ["jpg"], "title": {"zh": "用局域网发送…", "en": "Send over LAN…"}}}`（文件、文件夹结果的右键菜单里多一项 `title`，多选时对整个选择；`kind` 是 `file` / `folder` / `any`，`max` 默认 20、最多 1000，`extensions` 只管文件；还可以有 `"if"`：一个 `bool` 设置项的 key，设置开着这项才出现在菜单里，见"设置项"。选了它：一次 `action`，`trigger` 是 `files`、`action` 是 `files`、`files` 是这些完整路径，没有 item） |
 | `mode` | `list`（默认）或 `instant`：单独输入关键字、不用加空格，就向插件发 `query`，它返回的结果排在列表最前面，后面照常是按这个词找到的文件和程序（关键字后面加了空格，列表才只剩这个命令的结果；GitHub #242）。打开窗口、改东西这类动作仍然放在 `action` 里（用户按 Enter 时）：`query` 在用户打字时就会来，他可能只是想找名字里有这几个字母的文件 |
 | `contentSearch` | `true`：作为内容检索提供者，必须有 `runtime`；收到 `trigger: "content"`，见下面“内容检索提供者” |
+| `history` | `false`：关键字后面输入的字不记入用户的搜索历史，给常有人输入密码、令牌的命令用（官方小工具的 `md5`、`b64` 就是）。不写就记入（0.39.0 起；之前的版本插件命令都不记） |
 | `actions` | `[{"id": "kill", "title": "结束", "key": "Enter"}, …]`：顺序决定 Enter / Ctrl+Enter / Shift+Enter；右键菜单列全部；不写就只有一个 `default` |
 | `run` | 零代码专用：`url`（`%s` 是输入的文字，按网址规则编码；`home` 是单独输入关键字时开的）、`program`（`%VAR%` 会展开；`args` 里 `%s`；`suggest`: `files | folders | paths` 时按输入的词找路径给它选）、`folder`、`search`（`{"query": "ext:pdf %s", "scope": "all | files | folders | content"}`）、`items`（item 数组，`open.path` 里的 `%VAR%` 会展开） |
 | `cache` | `{"seconds": 60}`：同一命令同一文字的结果缓存多久 |

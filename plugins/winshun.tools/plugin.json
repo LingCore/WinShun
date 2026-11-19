@@ -66,6 +66,7 @@
     {
       "id": "b64",
       "keyword": "b64",
+      "history": false,
       "title": "Base64",
       "description": {"zh": "Base64 编码、解码", "en": "Base64 encode and decode"},
       "icon": "ph:code",
@@ -75,6 +76,7 @@
     {
       "id": "hash",
       "keyword": ["md5", "sha1", "sha256", "sha384", "sha512"],
+      "history": false,
       "title": {"zh": "哈希", "en": "Hash"},
       "description": {"zh": "MD5、SHA-1、SHA-256/384/512，文字或文件", "en": "MD5, SHA-1, SHA-256/384/512 of text or a file"},
       "icon": "ph:fingerprint",

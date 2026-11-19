@@ -8671,8 +8671,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>A program you ran as administrator with Ctrl+Shift+Enter runs as administrator on Enter from then on; right-click it and choose “Run with normal rights” to change it back</translation>
     </message>
     <message>
-        <source>记住打开过的项目和最近 100 条搜索词；同样的字常打开的项目排在前面。插件命令不记入搜索历史</source>
-        <translation>Remember opened items and up to 100 search queries. Frequently opened matches rank higher. Plugin commands are excluded from query history.</translation>
+        <source>记住打开过的项目和最近 100 条搜索词；同样的字常打开的项目排在前面</source>
+        <translation>Remember opened items and up to 100 search queries. Frequently opened matches rank higher.</translation>
     </message>
     <message>
         <source>搜索历史快捷键</source>

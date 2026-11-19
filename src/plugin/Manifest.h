@@ -148,6 +148,7 @@ struct Command {
     Run run; // Kind::None: the plugin's process answers
     int cacheSeconds = 0;
     bool contentSearch = false; // optional provider of indexed content results
+    bool history = true; // what is typed after its keyword goes into the search history (GitHub #395)
     QJsonObject ai;
     bool zeroCode() const noexcept { return run.kind != Run::Kind::None; }
     friend bool operator==(const Command&, const Command&) = default;

@@ -6549,6 +6549,34 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         query({});
         launcher.setPluginHost(nullptr);
     }
+    // GitHub #395: what is typed after a plugin's keyword goes into the
+    // search history too, unless its command keeps it out ("history": false).
+    {
+        const QString folder = temporary.filePath(u"plugins/test.history"_s);
+        QDir().mkpath(folder);
+        QFile manifest(QDir(folder).filePath(u"plugin.json"_s));
+        check(manifest.open(QIODevice::WriteOnly), "could not create the isolated history plugin");
+        manifest.write(R"({"manifest":1,"id":"test.history","name":"History fixture","version":"1.0.0","commands":[
+            {"id":"sum","keyword":"sum","title":"Sum","run":{"items":[{"id":"r","title":"21"}]}},
+            {"id":"hide","keyword":"hide","title":"Hidden","history":false,"run":{"items":[{"id":"r","title":"x"}]}}]})");
+        manifest.close();
+        plugin::Host host({.userPluginDir = temporary.filePath(u"plugins"_s)});
+        host.catalog().scan();
+        host.setEnabled(u"test.history"_s, true);
+        launcher.setPluginHost(&host);
+        query(u"sum 3*7"_s);
+        launcher.rememberQuery();
+        check(launcher.pluginKeyword() == u"sum" && launcher.queryHistory().value(0) == u"sum 3*7",
+            "#395: a plugin keyword's search did not go into the search history");
+        query(u"hide p@ss"_s);
+        launcher.rememberQuery();
+        check(launcher.pluginKeyword() == u"hide" && launcher.queryHistory().value(0) == u"sum 3*7"
+                && !launcher.queryHistory().contains(u"hide p@ss"_s),
+            "#395: a command with \"history\": false was kept in the search history");
+        say(u"#395 search history after \"sum 3*7\" and \"hide p@ss\": %1"_s.arg(launcher.queryHistory().join(u" | "_s)));
+        query({});
+        launcher.setPluginHost(nullptr);
+    }
 
     const QString pluginFolder = temporary.filePath(u"plugins/test.columns"_s);
     QDir().mkpath(pluginFolder);

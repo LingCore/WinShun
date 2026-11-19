@@ -845,7 +845,9 @@ void Launcher::setLogoRightClick(const QString& action)
 
 void Launcher::rememberQuery()
 {
-    if (m_recordHistory && !m_queryRecorded && !m_keyword && !m_systemCommand && !m_folderSearch) {
+    // A plugin's keyword too ("= 3*7", GitHub #395), unless its command keeps
+    // what is typed to it out (hashes, Base64: passwords and tokens go there).
+    if (m_recordHistory && !m_queryRecorded && (!m_keyword || m_keyword->history) && !m_systemCommand && !m_folderSearch) {
         m_queryRecorded = true;
         if (m_queryHistory.record(m_query)) {
             emit queryHistoryChanged();
@@ -7169,7 +7171,7 @@ std::optional<Launcher::KeywordMode> Launcher::matchKeyword(const QString& text)
         return KeywordMode {m.entry->id, m.command->id, m.keyword, m.text,
             m.command->title.pick(locale).isEmpty() ? m.entry->manifest->name.pick(locale) : m.command->title.pick(locale),
             m.command->hint.pick(locale), FileIconProvider::pluginIconUrl(m.entry->id, icon, dark),
-            m.command->run.kind == plugin::Run::Kind::Program ? m.command->run.suggest : QString()};
+            m.command->run.kind == plugin::Run::Kind::Program ? m.command->run.suggest : QString(), m.command->history};
     }
     return std::nullopt;
 }

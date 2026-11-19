@@ -982,6 +982,7 @@ private:
         QString hint;
         QString icon; // an image URL
         QString suggest; // a program's: what its words are looked for as (Run::suggest, GitHub #344); empty: nothing
+        bool history = true; // goes into the search history (Command::history, GitHub #395)
     };
 
     void search(bool more = false); // more: a page more (loadMore)

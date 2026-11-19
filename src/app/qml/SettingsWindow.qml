@@ -4524,7 +4524,7 @@ Window {
                 SettingRow {
                     title: qsTr("记住搜索和打开过的项目")
                     keywords: qsTr("历史;最近;记录;history;recent").split(";")
-                    description: qsTr("记住打开过的项目和最近 100 条搜索词；同样的字常打开的项目排在前面。插件命令不记入搜索历史")
+                    description: qsTr("记住打开过的项目和最近 100 条搜索词；同样的字常打开的项目排在前面")
 
                     ToggleSwitch {
                         dpr: window.dpr
