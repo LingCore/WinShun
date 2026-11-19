@@ -106,17 +106,26 @@ SettingsSection {
                     onRemoveClicked: gallerySection.gallery.updatesOnly = false
                 }
             },
-            Column {
+            // The entries, some 4 ms each: made a few at a time between frames
+            // while the tab is away (SettingsWindow reads the list from 已安装);
+            // the rest at once when the tab comes on show meanwhile, or when the
+            // list first comes with the tab on show.
+            Loader {
                 width: parent.width
-                spacing: 8
+                active: gallerySection.gallery.count > 0
+                asynchronous: !gallerySection.visible
 
-                Repeater {
-                    model: gallerySection.gallery.list
+                sourceComponent: Column {
+                    spacing: 8
 
-                    delegate: PluginGalleryEntry {
-                        width: parent.width
-                        gallery: gallerySection.gallery
-                        onShowInstalled: gallerySection.showInstalled(pluginId)
+                    Repeater {
+                        model: gallerySection.gallery.list
+
+                        delegate: PluginGalleryEntry {
+                            width: parent.width
+                            gallery: gallerySection.gallery
+                            onShowInstalled: gallerySection.showInstalled(pluginId)
+                        }
                     }
                 }
             },

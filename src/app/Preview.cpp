@@ -5,6 +5,7 @@
 #include "ForegroundUseProbe.h"
 #include "IdleOpenProbe.h"
 #include "ClipboardAnimationProbe.h"
+#include "SettingsMotionProbe.h"
 #include "platform/AllocationTrace.h"
 #include "InteractionOptimizationProbe.h"
 #include "UiFont.h"
@@ -12125,7 +12126,7 @@ int runRuntime(const QStringList& args)
         const auto idleOpenProfile = qScopeGuard([&args] {
             const QFileInfo profile(Settings::profile());
             if ((args.contains(u"--idle-open-check"_s) || args.contains(u"--foreground-use-check"_s)
-                    || args.contains(u"--clipboard-animation-check"_s))
+                    || args.contains(u"--clipboard-animation-check"_s) || args.contains(u"--settings-motion-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
                 QDir(profile.absoluteFilePath()).removeRecursively();
@@ -12133,11 +12134,13 @@ int runRuntime(const QStringList& args)
         // Before the App is made, so that what it holds from its start is told too.
         if (args.contains(u"--foreground-use-trace"_s) && !(memory::allocationTrace::start() && checkAllocationTrace()))
             return 4;
+        if (args.contains(u"--settings-motion-check"_s))
+            copyGalleryCacheForMotionCheck();
         App app;
         QElapsedTimer since;
         since.start();
         if (!app.start({.background = true, .clipboardDisplayProbe = args.contains(u"--clipboard-display-probe"_s),
-                .settingsProbe = args.contains(u"--settings-reopen-check"_s)}))
+                .settingsProbe = args.contains(u"--settings-reopen-check"_s) || args.contains(u"--settings-motion-check"_s)}))
             return 4;
         if (args.contains(u"--live"_s)) {
             const int code = runLive(app, out);
@@ -12190,6 +12193,8 @@ int runRuntime(const QStringList& args)
             return checkClipboardAnimation(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
+        if (args.contains(u"--settings-motion-check"_s))
+            return checkSettingsMotion(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--clipboard-shell-probe"_s)) {
             const bool ok = probeClipboardShell(valueAfter(args, u"--clipboard-shell-probe"_s), out, report,
                 args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s),

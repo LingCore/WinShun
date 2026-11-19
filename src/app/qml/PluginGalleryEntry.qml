@@ -74,6 +74,9 @@ Rectangle {
 
     visible: shown
     implicitHeight: Theme.snapUp(body.implicitHeight + 2 * body.y, dpr)
+    // One element for UI Automation; one filtered away is skipped whole (see SettingsSection).
+    Accessible.role: Accessible.Grouping
+    Accessible.name: name
     radius: Theme.controlRadius
     color: "transparent"
 

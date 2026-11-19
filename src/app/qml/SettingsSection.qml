@@ -57,6 +57,12 @@ Column {
 
     visible: searching ? found > 0 : shown && !!column && column.currentPage === page && column.currentTab === tab
     spacing: 8
+    // One element for UI Automation (screen readers, input methods, assistants
+    // that read the window in front): a section away on another page or tab is
+    // then a single invisible one that Qt skips whole, not every text in it
+    // loose under the window, each walked past (docs/pitfalls.md, “设置窗口在前台时卡”).
+    Accessible.role: Accessible.Grouping
+    Accessible.name: title.length > 0 ? title : (pageInfo?.title ?? "")
 
     Item { // the page's name over its results
         visible: section.leads

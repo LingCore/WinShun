@@ -903,6 +903,13 @@ Window {
         property: "active"
         value: window.visible && !window.searching && window.currentPage === window.pluginsPage && window.currentTab === 1
     }
+    Timer { // the 插件库's entries made from the kept list while 已安装 is looked at, a few at a time between
+        // frames (PluginGallerySection): the first click on its tab held the window some 150 ms making them all,
+        // its line not moving meanwhile. After the page's own motion; once a run; nothing fetched (that waits for the tab).
+        interval: 300
+        running: window.visible && !window.searching && window.currentPage === window.pluginsPage && window.currentTab === 0
+        onTriggered: window.editor.plugins.gallery.readList()
+    }
 
     TitleBar {
         id: titleBar
@@ -919,6 +926,10 @@ Window {
         y: titleBar.height
         width: 248
         height: parent.height - y
+        // The window's parts each one element for UI Automation, so that a
+        // client (screen reader, input method, assistant) finds a handful
+        // under the window, not every text of every page (see SettingsSection).
+        Accessible.role: Accessible.Pane
 
         MouseArea { // clicking empty space finishes editing a field
             anchors.fill: parent
@@ -1233,6 +1244,8 @@ Window {
     GleaningPage {
         id: gleaningView
         visible: window.warm
+        Accessible.role: Accessible.Pane // hidden: one element skipped whole (see nav)
+        Accessible.name: Gleaning.title
         anchors.left: nav.right
         anchors.right: parent.right
         anchors.top: titleBar.bottom
@@ -1244,6 +1257,7 @@ Window {
     Item {
         id: pageHeader
         visible: !window.warm
+        Accessible.role: Accessible.Pane // see nav
         anchors.left: nav.right
         anchors.right: parent.right
         anchors.top: titleBar.bottom
@@ -1300,6 +1314,8 @@ Window {
     Flickable {
         id: flick
         visible: !window.warm
+        Accessible.role: Accessible.Pane // see nav; the pages under it (PageSlot)
+        Accessible.name: pageTitle.text
         anchors.left: nav.right
         anchors.right: parent.right
         anchors.top: pageHeader.bottom
@@ -6407,6 +6423,7 @@ Window {
     UpdateDialog {
         id: updateDialog
         z: 1
+        Accessible.role: Accessible.Dialog // closed: one element skipped whole (see nav)
         anchors.fill: parent
         updater: window.updater
         icon: window.frame.icon
@@ -6416,6 +6433,7 @@ Window {
     PluginReadmeDialog {
         id: readmeDialog
         z: 1
+        Accessible.role: Accessible.Dialog
         anchors.fill: parent
         plugins: window.editor.plugins
         frame: window.frame
@@ -6423,6 +6441,7 @@ Window {
 
     PluginNotesDialog {
         z: 1
+        Accessible.role: Accessible.Dialog
         anchors.fill: parent
         plugins: window.editor.plugins
         frame: window.frame
@@ -6431,6 +6450,7 @@ Window {
     PluginDialog { // the 插件 page's questions: permissions, versions, removal
         id: pluginDialog
         z: 1
+        Accessible.role: Accessible.Dialog
         anchors.fill: parent
         plugins: window.editor.plugins
         Component.onCompleted: window.frame.addPopup(pluginDialog)

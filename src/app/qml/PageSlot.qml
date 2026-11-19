@@ -76,4 +76,7 @@ Item {
     width: parent ? parent.width : 0
     implicitHeight: slot.item ? slot.item.implicitHeight : 0
     visible: slot.item !== null
+    // One element for UI Automation, its sections under it (see SettingsSection).
+    Accessible.role: Accessible.Pane
+    Accessible.name: slot.item ? (slot.item.pages[slot.index]?.title ?? "") : ""
 }

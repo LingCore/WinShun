@@ -31,6 +31,10 @@ Item {
     // Let nested settings reveal the matching group before search is cleared.
     signal revealRequested()
 
+    // Its title, controls and body one element for UI Automation (see SettingsSection).
+    Accessible.role: Accessible.Grouping
+    Accessible.name: title
+
     readonly property SettingsSection section: parent && parent.section !== undefined ? parent.section : null
     readonly property SettingsSearch search: section ? section.search : null
     readonly property bool searching: search !== null && search.active

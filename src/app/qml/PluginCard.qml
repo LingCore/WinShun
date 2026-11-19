@@ -107,6 +107,9 @@ Rectangle {
     implicitHeight: body.implicitHeight + 24
     radius: Theme.controlRadius
     color: "transparent"
+    // One element for UI Automation; one filtered away is skipped whole (see SettingsSection).
+    Accessible.role: Accessible.Grouping
+    Accessible.name: name
 
     Hook { // the style's card (Theme.cardPart), a plate inside the section's
         anchors.fill: parent

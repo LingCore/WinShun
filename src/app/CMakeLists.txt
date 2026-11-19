@@ -40,6 +40,7 @@ qt_add_executable(WinShun WIN32
     InteractionOptimizationProbe.cpp InteractionOptimizationProbe.h
     IdleOpenProbe.cpp IdleOpenProbe.h
     ClipboardAnimationProbe.cpp ClipboardAnimationProbe.h
+    SettingsMotionProbe.cpp SettingsMotionProbe.h
     ForegroundUseProbe.cpp ForegroundUseProbe.h
     main.cpp
     DropPieHelper.cpp DropPieHelper.h
