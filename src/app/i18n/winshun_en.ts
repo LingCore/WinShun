@@ -2134,6 +2134,10 @@
         <source>在爱发电支持 Win顺</source>
         <translation>Support WinShun on Afdian</translation>
     </message>
+    <message>
+        <source>wow~</source>
+        <translation>wow~</translation>
+    </message>
 </context>
 <context>
     <name>DropPieHelper</name>

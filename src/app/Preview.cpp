@@ -3018,6 +3018,12 @@ int runSettings(const QStringList& args)
                 QCoreApplication::sendEvent(window, &move);
                 pump(400); // past the hover fade
                 saved = saveGrab(window, out.filePath(u"p%1-t%2-hover.png"_s.arg(page, 2, 10, u'0').arg(tab))) && saved;
+                // --hover-frames N: N more pictures while it rests, 30 ms apart besides the grabbing,
+                // to see a hover's motion frame by frame (the 捐赠 button's).
+                for (int frame = 0, frames = valueAfter(args, u"--hover-frames").toInt(); frame < frames; ++frame) {
+                    pump(30);
+                    saved = saveGrab(window, out.filePath(u"p%1-t%2-hover-f%3.png"_s.arg(page, 2, 10, u'0').arg(tab).arg(frame, 2, 10, u'0'))) && saved;
+                }
                 QMouseEvent away(QEvent::MouseMove, QPointF(-50, -50), window->mapToGlobal(QPointF(-50, -50)), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
                 QCoreApplication::sendEvent(window, &away);
                 pump(400);
