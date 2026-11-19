@@ -15,6 +15,7 @@
 #include <chrono>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 
@@ -61,6 +62,18 @@ struct ClipWrite {
 // ClipWrite::id), and text a remote-desktop sync garbled into the ANSI bytes
 // read as UTF-16 right after a copy (ClipMisread.h, GitHub #181).
 //
+// Also skipped: a copy another program made in the one in front and then
+// undid. 有道词典's selection translation (划词) presses Ctrl+C in the
+// program in front; with no text among what that copied (files in Directory
+// Opus, a picture in 微信), it waits about a second for text that never
+// comes, then puts back what was on the clipboard before, as its own write.
+// The copy is the program's, so excluding 有道词典 cannot stop it. A copy with
+// no text is therefore held back for a moment (kHoldMs) before it goes into
+// the history, and dropped if a program other than the one that made it, and
+// not the one in front, changes the clipboard meanwhile. Text is never held:
+// 有道 reads it as soon as it is there and puts the old back at once, before
+// the read here (kSettleMs).
+//
 // An equation (Word offers MathML for one copied alone) or an embedded
 // object (Equation 3.0, MathType, WPS's 公式编辑器) is recorded as a
 // picture, drawn from its metafile if there is no other, together with the
@@ -95,11 +108,20 @@ public:
     // Puts `data` on the clipboard, on the watcher's thread; `done` runs
     // there with whether that worked.
     void write(ClipWrite data, std::function<void(bool)> done);
+    // The history is about to be looked at: a copy held back (see above)
+    // goes into it now. Any thread.
+    void recordHeldNow();
 
 private:
     struct WriteJob;
+    // A copy held back, and the process that made it.
+    struct Held {
+        ClipCapture capture;
+        DWORD writer = 0;
+    };
     static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     void read();
+    void releaseHeld(bool record); // the held copy into the history, or dropped
     bool writeNow(const ClipWrite& data);
     bool openClipboard(DWORD* lastError = nullptr, int* attempts = nullptr);
     void startWorker(bool captureInitial); // m_lifecycleMutex held
@@ -126,6 +148,7 @@ private:
     QString m_lastText; // the last text seen or written (empty if long), to tell a garbled copy of it
     std::chrono::steady_clock::time_point m_lastTextAt;
     std::unordered_map<std::wstring, QString> m_programNames;
+    std::optional<Held> m_held;
 };
 
 } // namespace ws

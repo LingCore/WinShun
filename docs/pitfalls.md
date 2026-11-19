@@ -1189,6 +1189,13 @@
 - **做法**：`main.cpp` 里 `QGuiApplication::clipboard()->blockSignals(true)`。我们没用 `canPaste`，也没有别的地方连 `QClipboard` 的信号；粘贴（`QQuickTextInputPrivate::paste`、`textfield::pasteOneLine`）都是按下时才读剪贴板，不受影响。以后要监听剪贴板变化，用 `ClipboardWatcher`，不要连 `QClipboard::dataChanged`，它收不到。
 - **实测**（2026-10-09）：测试脚本往剪贴板写一段文字，再占住剪贴板 80 ms，模拟别的剪贴板工具。旧版每复制一次重试 2 次（主线程卡约 100 ms），新版 0 次；Ctrl+V 往搜索框里粘贴照常。测试文字带 `ExcludeClipboardContentFromMonitorProcessing` 格式，Windows 和 Win顺 的剪贴板历史都不会记下它。
 
+### 划词翻译借剪贴板，排除了它也挡不住（有道词典）
+
+- **现象**：开着有道词典的划词，在 Directory Opus 里双击 pdf、png、md 文件（jpg 不会），或在微信里双击图片，剪贴板历史就多一条那个文件、那张图；排除了 `youdaodict.exe`、`youdaodicthelper.exe` 也一样。资源管理器、WPS、Notepad++ 里不出现。
+- **原因**（有道 11.3 实测，2026-11-19）：有道读得到文字的控件直接读，读不到就给前台窗口发一个模拟的右 Ctrl+C（钩子里带 `LLKHF_INJECTED`），等文字出现，读完再把原来的剪贴板整份放回（所有格式，包括“不记录”标记），放回时剪贴板的所有者是有道自己的窗口。Ctrl+C 是前台程序处理的，那次复制的所有者是 DOpus、微信，所以排除有道只拦得住放回那一下。复制的是文字时，有道马上读、马上放回（读的时候一直占着剪贴板），比 Win顺 的 40 ms 早，看不到；复制的是文件、图片（没有 CF_UNICODETEXT）时，有道要等约 1.1 秒才超时放回，Win顺 早就读到并记下了。jpg 是 DOpus 用自带看图器打开，焦点先走了，Ctrl+C 没进文件列表。
+- **做法**：`ClipboardWatcher` 照常在 40 ms 后读，但没有文字的复制先不交出去，最多压 1.5 s（`kHoldMs`）。这期间剪贴板被改，写的人（所有者进程）既不是做这次复制的程序、不是前台程序、也不是 Win顺 自己，就当是别人借完放回，压着的那条丢掉；否则（时间到、前台程序又复制、Win顺 自己写剪贴板）照常记下。打开剪贴板面板时立刻交出（`recordHeldNow`），最新一条不会晚到。只压“读完再记”，不压“读”：不然 1.5 s 内连续复制两张图，前一张还没读就被盖掉了。不靠键盘钩子认模拟按键：常驻钩子会拖慢全系统打字，Raw Input 的键盘登记一个进程只有一份，在 `KeyListener` 手里，而且只在开了双击按键时才有。
+- **测试**：`tst_clipimage` 的 `copyPutBackByAnotherProgramIsDropped`、`heldCopyIsKept`，在私有窗口站里用另一个进程模拟有道放回。非管理员跑时私有窗口站建不起来（错误 183），这两个会跳过，要用管理员身份跑。
+
 ### 剪贴板页里 Alt+1、Alt+2 没反应
 
 - **现象**：这台电脑上，剪贴板页里按 Alt+1、Alt+2 不粘贴，Alt+3 到 Alt+9 正常。

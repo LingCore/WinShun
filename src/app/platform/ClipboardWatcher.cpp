@@ -31,10 +31,15 @@ namespace {
 constexpr wchar_t kClassName[] = L"WinShun.ClipboardWatcher";
 constexpr UINT kWriteMessage = WM_APP + 1; // lParam: a WriteJob
 constexpr UINT kOptionsMessage = WM_APP + 2;
+constexpr UINT kRecordHeldMessage = WM_APP + 3;
 constexpr UINT_PTR kReadTimer = 1;
 constexpr UINT_PTR kIdleTimer = 2;
+constexpr UINT_PTR kHoldTimer = 3;
 constexpr UINT kIdleMs = 1000; // an off module needs a worker only while a copy is being written
 constexpr UINT kSettleMs = 40; // programs often put their formats up one after another
+// A copy with no text, before it goes into the history: 有道词典 puts the old
+// clipboard back about 1.1 s after its Ctrl+C (measured with 11.3).
+constexpr UINT kHoldMs = 1500;
 constexpr qsizetype kMaxText = 2 * 1024 * 1024; // characters: 4 MB, Windows' own limit for its history
 constexpr qsizetype kFormattedUpTo = 1024 * 1024; // characters: longer text keeps no HTML / RTF
 constexpr SIZE_T kMaxFormatBytes = 16 * 1024 * 1024;
@@ -457,6 +462,7 @@ void ClipboardWatcher::startWorker(bool captureInitial)
         if (::IsWindow(hwnd))
             ::SendMessageW(hwnd, WM_CLOSE, 0, 0);
         m_programNames = decltype(m_programNames){};
+        m_held.reset();
     });
     ready.wait();
 }
@@ -503,6 +509,7 @@ void ClipboardWatcher::configureWatching(HWND window)
     } else {
         if (m_listening.exchange(false))
             ::RemoveClipboardFormatListener(window);
+        releaseHeld(false); // copied before recording stopped, but not kept yet
         ::KillTimer(window, kReadTimer);
         ::SetTimer(window, kIdleTimer, kIdleMs, nullptr);
     }
@@ -525,6 +532,24 @@ void ClipboardWatcher::write(ClipWrite data, std::function<void(bool)> done)
         job->done(false);
 }
 
+void ClipboardWatcher::recordHeldNow()
+{
+    if (const HWND hwnd = m_window.load())
+        ::PostMessageW(hwnd, kRecordHeldMessage, 0, 0);
+}
+
+void ClipboardWatcher::releaseHeld(bool record)
+{
+    if (const HWND hwnd = m_window.load())
+        ::KillTimer(hwnd, kHoldTimer);
+    if (!m_held)
+        return;
+    ClipCapture capture = std::move(m_held->capture);
+    m_held.reset();
+    if (record && m_callbacks.captured)
+        m_callbacks.captured(std::move(capture));
+}
+
 LRESULT CALLBACK ClipboardWatcher::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_NCCREATE) {
@@ -537,6 +562,10 @@ LRESULT CALLBACK ClipboardWatcher::wndProc(HWND hwnd, UINT msg, WPARAM wParam, L
         if (self)
             self->configureWatching(hwnd);
         return 0;
+    case kRecordHeldMessage:
+        if (self)
+            self->releaseHeld(true);
+        return 0;
     case WM_CLIPBOARDUPDATE:
         if (self && self->m_listening)
             ::SetTimer(hwnd, kReadTimer, kSettleMs, nullptr); // read once they are done
@@ -546,6 +575,8 @@ LRESULT CALLBACK ClipboardWatcher::wndProc(HWND hwnd, UINT msg, WPARAM wParam, L
             ::KillTimer(hwnd, kReadTimer);
             if (self && self->m_listening)
                 self->read();
+        } else if (wParam == kHoldTimer && self) {
+            self->releaseHeld(true); // nobody put the clipboard back: the copy is the user's
         } else if (wParam == kIdleTimer && self) {
             std::unique_lock lock(self->m_lifecycleMutex, std::try_to_lock);
             if (lock.owns_lock() && !self->recordingEnabled() && self->m_pendingWrites == 0) {
@@ -677,6 +708,19 @@ void ClipboardWatcher::read()
     // Our own write, put back by another program (one that restores the
     // clipboard after using it). Our writes themselves are not read back.
     const bool ours = ::IsClipboardFormatAvailable(f.ours);
+    // The copy held back goes now, one way or the other: this is the next
+    // change. Made by a program in the background, neither the one that made
+    // that copy nor this one, it is a program putting back what it borrowed
+    // the clipboard from (有道词典's 划词, which owns its write): that copy was
+    // its, never the user's. Before the checks below: what it puts back may
+    // be marked or excluded, or Win顺's own (a paste from the history).
+    if (m_held) {
+        const DWORD writer = windowProcess(::GetClipboardOwner());
+        const bool putBack = writer != 0 && writer != m_held->writer && writer != ::GetCurrentProcessId()
+            && writer != windowProcess(::GetForegroundWindow());
+        diagnostic[u"held_copy"_s] = putBack ? u"dropped"_s : u"recorded"_s;
+        releaseHeld(!putBack);
+    }
     // Not for the history: passwords and the like. Known without opening
     // the clipboard, which would get in their way.
     if (!ours
@@ -779,6 +823,7 @@ void ClipboardWatcher::read()
     QList<QByteArray> encodedImages;
     QByteArray dib;
     qint64 tooBig = 0;
+    const bool hasText = ::IsClipboardFormatAvailable(CF_UNICODETEXT) != FALSE; // or ANSI text, which becomes it
     if (::IsClipboardFormatAvailable(CF_HDROP)) {
         const QStringList files = readFiles();
         if (!files.isEmpty()) {
@@ -926,6 +971,12 @@ void ClipboardWatcher::read()
     capture.sourcePath = QString::fromStdWString(path);
     capture.source = programName(path);
     capture.initial = initial;
+    if (!hasText && !initial) { // perhaps 有道词典's (see the class)
+        diagnostic[u"outcome"_s] = u"held"_s;
+        m_held = Held {std::move(capture), pid};
+        ::SetTimer(m_window.load(), kHoldTimer, kHoldMs, nullptr);
+        return;
+    }
     diagnostic[u"outcome"_s] = u"captured"_s;
     if (m_callbacks.captured)
         m_callbacks.captured(std::move(capture));
@@ -935,6 +986,10 @@ bool ClipboardWatcher::writeNow(const ClipWrite& data)
 {
     if (data.empty())
         return false; // an empty request must never erase the user's clipboard
+    // A copy held back was the user's (it is the user pasting now), and goes
+    // in first: what is pasted is the newer, and moves above it. This write is
+    // never read back to release it.
+    releaseHeld(true);
     const Formats& f = formats();
     std::vector<std::pair<UINT, HANDLE>> items; // memory, a metafile for CF_ENHMETAFILE
     const auto add = [&](UINT format, const void* bytes, std::size_t size) {

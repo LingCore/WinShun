@@ -7,6 +7,7 @@
 #include "platform/ClipboardWatcher.h"
 
 #include <QBuffer>
+#include <QDir>
 #include <QFile>
 #include <QFontDatabase>
 #include <QGuiApplication>
@@ -27,6 +28,7 @@
 #include <QUrl>
 
 #include <windows.h>
+#include <shlobj.h> // DROPFILES
 #include <wincodec.h>
 #include <wrl/client.h>
 #undef small // rpcndr.h's, for MIDL: a name below
@@ -85,6 +87,65 @@ QByteArray still(const char* format)
     QBuffer buffer(&bytes);
     buffer.open(QIODevice::WriteOnly);
     return image.save(&buffer, format) ? bytes : QByteArray();
+}
+
+bool putGlobal(UINT format, const void* bytes, std::size_t size)
+{
+    HGLOBAL handle = ::GlobalAlloc(GMEM_MOVEABLE, size);
+    void* data = handle ? ::GlobalLock(handle) : nullptr;
+    if (!data) {
+        if (handle)
+            ::GlobalFree(handle);
+        return false;
+    }
+    std::memcpy(data, bytes, size);
+    ::GlobalUnlock(handle);
+    if (::SetClipboardData(format, handle))
+        return true;
+    ::GlobalFree(handle);
+    return false;
+}
+
+// Files copied by `owner`, as a file manager copies them: CF_HDROP, no text.
+bool copyFiles(HWND owner, const QStringList& paths)
+{
+    QByteArray drop(sizeof(DROPFILES), '\0');
+    auto* header = reinterpret_cast<DROPFILES*>(drop.data());
+    header->pFiles = sizeof(DROPFILES);
+    header->fWide = TRUE;
+    for (const QString& path : paths) {
+        const QString native = QDir::toNativeSeparators(path);
+        drop.append(reinterpret_cast<const char*>(native.utf16()), (native.size() + 1) * 2);
+    }
+    drop.append(2, '\0');
+    if (!::OpenClipboard(owner))
+        return false;
+    ::EmptyClipboard();
+    const bool ok = putGlobal(CF_HDROP, drop.constData(), static_cast<std::size_t>(drop.size()));
+    ::CloseClipboard();
+    return ok;
+}
+
+// Another program putting back what it borrowed the clipboard from, as
+// 有道词典's 划词 does: its own window owns the write, and it stays running.
+int putBack(const QString& text)
+{
+    const HWND owner = ::CreateWindowExW(
+        0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+    bool opened = false;
+    for (int attempt = 0; owner && attempt < 50 && !opened; ++attempt) {
+        opened = ::OpenClipboard(owner);
+        if (!opened)
+            ::Sleep(20);
+    }
+    if (!opened)
+        return 2;
+    ::EmptyClipboard();
+    const bool ok = putGlobal(CF_UNICODETEXT, text.utf16(), static_cast<std::size_t>(text.size() + 1) * 2);
+    ::CloseClipboard();
+    ::Sleep(2000); // the owner stays while the watcher looks at it
+    ::DestroyWindow(owner);
+    return ok ? 0 : 3;
 }
 
 QByteArray clipboardBytes(const wchar_t* name)
@@ -295,6 +356,119 @@ private slots:
                                                                        : L"PNG";
         QCOMPARE(clipboardBytes(native), decoded.data);
         QVERIFY(!decodeClipImage(clipboardBytes(L"image/png")).firstFrame.isNull());
+    }
+
+    // 有道词典's 划词 presses Ctrl+C in the program in front; files copied
+    // there (no text) are the clipboard's for about a second, then 有道 puts
+    // back what was there before, as its own write. Only that is recorded.
+    void copyPutBackByAnotherProgramIsDropped()
+    {
+        if (!m_isolated)
+            QSKIP("Private clipboard unavailable; the user's clipboard is never used");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"borrowed.md"_s);
+        QVERIFY(QFile(file).open(QIODevice::WriteOnly));
+        const HWND owner = ::CreateWindowExW(
+            0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+        QVERIFY(owner);
+        const auto destroy = qScopeGuard([owner] { ::DestroyWindow(owner); });
+        QVERIFY(::OpenClipboard(owner));
+        ::EmptyClipboard();
+        ::CloseClipboard();
+        QList<ClipCapture> captures;
+        ClipboardWatcher watcher({.record = true}, {.captured = [this, &captures](ClipCapture capture) {
+            QMetaObject::invokeMethod(
+                this, [&captures, capture = std::move(capture)] { captures.append(capture); }, Qt::QueuedConnection);
+        }});
+        QVERIFY(watcher.listening());
+        QTest::qWait(200); // started: what it finds there already is not held (ClipCapture::initial)
+
+        QVERIFY(copyFiles(owner, {file}));
+        QTest::qWait(400); // read by now (40 ms), and held
+        QCOMPARE(captures.size(), 0);
+        QProcess other;
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(u"WINSHUN_TEST_CLIP_PUT_BACK"_s, u"what was there before"_s);
+        other.setProcessEnvironment(environment);
+        other.start(QCoreApplication::applicationFilePath(), {});
+        QVERIFY(other.waitForStarted(5000));
+        QTRY_COMPARE_WITH_TIMEOUT(captures.size(), 1, 3000);
+        QCOMPARE(captures.front().kind, ClipKind::Text);
+        QCOMPARE(captures.front().text, u"what was there before"_s);
+        QTest::qWait(1800); // past the hold: the files never come
+        QCOMPARE(captures.size(), 1);
+        QVERIFY(other.waitForFinished(5000));
+        QCOMPARE(other.exitCode(), 0);
+    }
+
+    // Files or a picture copied by the user: held a moment, then kept; at
+    // once when the program copies again, or the history is looked at.
+    void heldCopyIsKept()
+    {
+        if (!m_isolated)
+            QSKIP("Private clipboard unavailable; the user's clipboard is never used");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QStringList files;
+        for (const QString& name : {u"a.png"_s, u"b.pdf"_s, u"c.md"_s}) {
+            files.append(dir.filePath(name));
+            QVERIFY(QFile(files.back()).open(QIODevice::WriteOnly));
+        }
+        const HWND owner = ::CreateWindowExW(
+            0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+        QVERIFY(owner);
+        const auto destroy = qScopeGuard([owner] { ::DestroyWindow(owner); });
+        QVERIFY(::OpenClipboard(owner));
+        ::EmptyClipboard();
+        ::CloseClipboard();
+        QList<ClipCapture> captures;
+        ClipboardWatcher watcher({.record = true}, {.captured = [this, &captures](ClipCapture capture) {
+            QMetaObject::invokeMethod(
+                this, [&captures, capture = std::move(capture)] { captures.append(capture); }, Qt::QueuedConnection);
+        }});
+        QVERIFY(watcher.listening());
+        QTest::qWait(200); // started: what it finds there already is not held (ClipCapture::initial)
+
+        // Nobody puts it back: kept after the hold.
+        QVERIFY(copyFiles(owner, {files[0]}));
+        QTest::qWait(700);
+        QCOMPARE(captures.size(), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(captures.size(), 1, 3000);
+        QCOMPARE(captures[0].kind, ClipKind::Files);
+        QCOMPARE(captures[0].text, QDir::toNativeSeparators(files[0]));
+
+        // Copied again by the same program before the hold is over: the
+        // first is kept at once, the second held in its turn.
+        QVERIFY(copyFiles(owner, {files[1]}));
+        QTest::qWait(200);
+        QVERIFY(copyFiles(owner, {files[2]}));
+        QTRY_COMPARE_WITH_TIMEOUT(captures.size(), 2, 600);
+        QCOMPARE(captures[1].text, QDir::toNativeSeparators(files[1]));
+        // The history looked at: the held one goes in now.
+        watcher.recordHeldNow();
+        QTRY_COMPARE_WITH_TIMEOUT(captures.size(), 3, 600);
+        QCOMPARE(captures[2].text, QDir::toNativeSeparators(files[2]));
+        // Win顺 writing the clipboard (a paste from the history, never read
+        // back): the held one goes in first.
+        QVERIFY(copyFiles(owner, {files[0]}));
+        QTest::qWait(200);
+        std::atomic<int> written = -1;
+        watcher.write({.text = u"pasted from the history"_s}, [&](bool ok) { written = ok ? 1 : 0; });
+        QTRY_COMPARE_WITH_TIMEOUT(written.load(), 1, 3000);
+        QTRY_COMPARE_WITH_TIMEOUT(captures.size(), 4, 600);
+        QCOMPARE(captures[3].text, QDir::toNativeSeparators(files[0]));
+        QTest::qWait(300);
+        QCOMPARE(captures.size(), 4); // its own write is not recorded as a copy
+
+        // Text is never held.
+        QVERIFY(::OpenClipboard(owner));
+        ::EmptyClipboard();
+        const QString text = u"copied words"_s;
+        QVERIFY(putGlobal(CF_UNICODETEXT, text.utf16(), static_cast<std::size_t>(text.size() + 1) * 2));
+        ::CloseClipboard();
+        QTRY_COMPARE_WITH_TIMEOUT(captures.size(), 5, 600);
+        QCOMPARE(captures[4].text, text);
     }
 
     // The rows' thumbnails: the size and pixels Qt itself makes of a file
@@ -620,6 +794,10 @@ private:
 
 int main(int argc, char** argv)
 {
+    // copyPutBackByAnotherProgramIsDropped's other program, on the test's
+    // private desktop (inherited).
+    if (const QString text = qEnvironmentVariable("WINSHUN_TEST_CLIP_PUT_BACK"); !text.isEmpty())
+        return putBack(text);
     const QString requestedStation = qEnvironmentVariable("WINSHUN_TEST_CLIP_IMAGE_STATION");
     if (requestedStation.isEmpty()) {
         // The child starts on a private desktop before any DLL can create a
@@ -668,7 +846,12 @@ int main(int argc, char** argv)
             qCritical() << child.errorString();
             return 1;
         }
-        return child.exitStatus() == QProcess::NormalExit ? child.exitCode() : 1;
+        if (child.exitStatus() != QProcess::NormalExit) {
+            qCritical("The test process on the private desktop ended abnormally (code %#x)",
+                static_cast<unsigned>(child.exitCode()));
+            return 1;
+        }
+        return child.exitCode();
     }
 
     wchar_t actualStation[256] {};

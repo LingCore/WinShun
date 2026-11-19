@@ -273,6 +273,8 @@ void Clipboard::setActive(bool active)
     if (m_active == active)
         return;
     m_active = active;
+    if (active && m_watcher)
+        m_watcher->recordHeldNow(); // a picture or files just copied: listed at the top, not a moment late
     emit activeChanged();
 }
 
