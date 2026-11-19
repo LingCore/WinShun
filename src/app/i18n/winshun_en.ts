@@ -2218,7 +2218,7 @@
         <translation>Click Confirm and it moves to the %1 page, leaving the title bar tidier.</translation>
     </message>
     <message>
-        <source>来官网坐坐，那里很好玩</source>
+        <source>来官网坐坐，那里很有趣</source>
         <translation>Drop by our website, it&apos;s fun</translation>
     </message>
     <message>

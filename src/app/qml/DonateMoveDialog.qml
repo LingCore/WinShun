@@ -158,7 +158,7 @@ Item {
 
                     Text {
                         id: siteWords
-                        text: qsTr("来官网坐坐，那里很好玩")
+                        text: qsTr("来官网坐坐，那里很有趣")
                         color: Theme.accent
                         font.pixelSize: Theme.fontCaption
                         font.underline: siteArea.containsMouse
