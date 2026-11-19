@@ -49,6 +49,7 @@
 #include "PluginUpdates.h"
 #include "ProxyAddress.h"
 #include "SavedFile.h"
+#include "SavedWindowSize.h"
 #include "SearchEngine.h"
 #include "Secrets.h"
 #include "ServiceVolumeAccess.h"
@@ -3796,22 +3797,6 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         m_settingsOpening.reused = !created;
         m_settingsOpening.firstFrameMs = -1;
     }
-    // Centred on the screen under the mouse, as tall as it fits.
-    const auto place = [](QQuickWindow* window) {
-        QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
-        if (!screen)
-            screen = QGuiApplication::primaryScreen();
-        const QRect area = screen->availableGeometry();
-        // Onto that screen first, as a window dragged there arrives: Windows
-        // tells Qt of the other scale and Qt sizes the window for it. Sent
-        // there by setPosition alone, Qt takes the size for one it scaled
-        // itself: made at 200% and opened next at 150%, the window came out
-        // too wide for good, its contents laid out for another width
-        // (docs/pitfalls.md).
-        win::moveToMonitorOf(window, screen->geometry().center());
-        window->resize(window->width(), std::min(window->height(), area.height() - 40));
-        window->setPosition(area.center() - QPoint(window->width() / 2, window->height() / 2));
-    };
     if (!m_settingsWindow) {
         auto* editor = new SettingsEditor(m_settings, m_renderer);
         editor->useOcrPackage(m_ocrPackage.get());
@@ -4066,7 +4051,11 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         frame->setWindow(window);
         styleWindow(window, SystemTheme::backdropAvailable()); // applyTheme styles it again, hidden or not
         win::setDarkFrame(window, isDarkMode()); // likewise guardDarkFrames, every window of ours
-        place(window);
+        // Centred on the screen under the mouse, at the size its user left it,
+        // the last run too (GitHub #401); a double click on an edge: 920 × 720 again.
+        m_settingsSize = new SavedWindowSize(statePath(), u"Settings"_s, window);
+        m_settingsSize->setWindow(window);
+        m_settingsSize->placeOn();
         connect(window, &QWindow::visibleChanged, this, [this, window](bool visible) {
             if (!visible) {
                 win::setCloaked(window, true); // before the native window goes: no fade out either
@@ -4086,14 +4075,10 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
             applyFolderMenuHotkey();
         if (!m_settingsEditor->clipboardHotkeyError().isEmpty())
             applyClipboardHotkeys();
-        // The size the user gave it this session stays, within the screen it
-        // opens on; maximized it stays maximized, where it was (as Windows'
-        // own windows reopen), never minimized.
-        QQuickWindow* window = m_settingsWindow;
-        if (window->windowStates() & Qt::WindowMinimized)
-            window->setWindowStates(window->windowStates() & ~Qt::WindowMinimized);
-        if (!(window->windowStates() & (Qt::WindowMaximized | Qt::WindowFullScreen)))
-            place(window);
+        // On the screen under the mouse again, at its user's size within it;
+        // maximized it stays maximized, where it was (as Windows' own windows
+        // reopen), never minimized.
+        m_settingsSize->placeOn();
     }
     // Cheap, and on the first page or the next: before the first frame.
     m_settingsEditor->setHistoryCount(static_cast<int>(m_history->items().size()) + m_launcher->queryHistoryCount());

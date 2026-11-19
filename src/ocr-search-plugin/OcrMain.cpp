@@ -3,6 +3,7 @@
 #include "../capture-plugin/Protocol.h"
 #include "FontFile.h"
 #include "Phosphor.h"
+#include "SavedWindowSize.h"
 #include "SystemTheme.h"
 #include "WindowFrame.h"
 #include "platform/IdleTrim.h"
@@ -179,6 +180,7 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
     applyAppearance(appearance);
     ws::WindowFrame frame(true);
     QQuickWindow* window = nullptr;
+    ws::SavedWindowSize* savedSize = nullptr; // the window's
     // The scan's walk, recognition results and the search's pages stay in the
     // working set long after the work; given back to Windows while idle (the
     // recognition itself runs in a worker process of its own per pass, gone
@@ -204,6 +206,8 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
                 return false;
             }
             frame.setWindow(window);
+            savedSize = new ws::SavedWindowSize(QDir(dataDir).filePath(u"state.ini"_s), u"Window"_s, window);
+            savedSize->setWindow(window);
             QObject::connect(window, &QQuickWindow::visibleChanged, &app, [&] {
                 if (window->isVisible())
                     return;
@@ -217,6 +221,12 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
             });
         }
         editor.wake();
+        // Opened: on the screen under the mouse, at the size its user left
+        // it, the last run too (as Win顺's settings, GitHub #401).
+        if (!window->isVisible())
+            savedSize->placeOn();
+        else if (window->windowStates() & Qt::WindowMinimized)
+            window->setWindowStates(window->windowStates() & ~Qt::WindowMinimized);
         window->show();
         window->raise();
         window->requestActivate();

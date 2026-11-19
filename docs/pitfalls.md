@@ -1,5 +1,13 @@
 # 踩坑记录
 
+## 窗口记住大小：隐藏时设的最大化被 Qt 当成还原（2026-11-19，#401）
+
+- **现象**：设置窗口上次是最大化关的，重启后打开却是普通大小，state.ini 里的 `Maximized` 也被删掉了。
+- **原因**：窗口还隐藏时调用 `setWindowStates(Qt::WindowMaximized)`，Qt 只记下了状态，原生窗口仍是普通的。显示之前只要有一次 `SetWindowPos` 改到这个窗口（比如重设边框样式），就会收到 `WM_SIZE SIZE_RESTORED`，Qt 的 `handleResized` 据此把状态改回 `NoState`。随后 `show()` 用的是 `SW_SHOWNORMAL`，`windowStateChanged` 也把这次“还原”报了出来。
+- **做法**（`SavedWindowSize`）：放好位置时只记下“要最大化”，到窗口的 `QEvent::Show` 才设状态。Qt 发完这个事件就调用 `show_sys`，中间没有别的消息，于是以 `SW_SHOWMAXIMIZED` 显示。另外，窗口隐藏期间的状态变化一律不写进文件，那不是用户做的。
+- **验证**：`tst_displaygeometry` 的 `maximizedComesBackMaximized` 让窗口隐身后再真实显示，先给隐藏的窗口发一条 `SIZE_RESTORED`，再检查 `IsZoomed`。真实程序上用探针 `--live` 预置 `Maximized=true`，打开就是最大化。
+- **用真实鼠标测探针里的窗口，要带 `--renderer d3d11`**：探针默认用软件渲染，这时有 Mica 的活动窗口透明的像素会被点穿，`WindowFromPoint` 和鼠标都落到下面的窗口，拖边框没有反应。生产环境只在 d3d11 下才开背景材质，所以这只是探针的问题；测试脚本还要先 `SetThreadDpiAwarenessContext(-4)`，否则坐标差一个缩放倍数。
+
 ## 软件内更新后没回到管理员身份，也没有任何提示（2026-11-19，#400）
 
 - **现象**：以管理员身份运行（管理员直读）的 0.37、0.38 两次软件内更新后都是普通权限，诊断日志里没有 `elevation-after-update`。日志里新版启动约 10 秒就有 `settings-open`（0.38 那次启动器还被弹了出来），之后用户自己点了“以管理员身份重新启动”。

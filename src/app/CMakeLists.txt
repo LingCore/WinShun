@@ -374,6 +374,7 @@ qt_add_qml_module(WinShun
         IconBadge.cpp IconBadge.h
         Launcher.cpp Launcher.h LauncherNavigation.h
         Placement.cpp Placement.h
+        SavedWindowSize.cpp SavedWindowSize.h # the settings window's size, between runs (GitHub #401)
         PluginCommands.cpp PluginCommands.h
         PluginGallery.cpp PluginGallery.h
         PluginInstalled.h

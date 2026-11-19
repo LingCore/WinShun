@@ -428,6 +428,7 @@ set_tests_properties(tst_wsl PROPERTIES
 
 qt_add_executable(tst_displaygeometry tst_displaygeometry.cpp
     ${PROJECT_SOURCE_DIR}/src/app/Placement.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/SavedWindowSize.cpp
     ${PROJECT_SOURCE_DIR}/src/app/SystemTheme.cpp
     ${PROJECT_SOURCE_DIR}/src/app/Phosphor.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp

@@ -27,6 +27,7 @@
 #include "RecordingPointer.h"
 #include "platform/RegistryWatch.h"
 #include "SavedFile.h"
+#include "SavedWindowSize.h"
 #include "SystemTheme.h"
 #include "TrayMenu.h"
 #include "WindowFrame.h"
@@ -1680,9 +1681,18 @@ void CaptureApp::showSettings()
         m_settingsFrame->setWindow(window);
         m_settings.setWindow(window);
         window->installEventFilter(this);
+        m_settingsSize = new SavedWindowSize(m_dataDir + u"/state.ini"_s, u"SettingsWindow"_s, window);
+        m_settingsSize->setWindow(window);
         m_settingsWindow = window;
     }
-    m_settingsWindow->showNormal();
+    // Opened: on the screen under the mouse, at the size its user left it,
+    // the last run too, as Win顺's own settings (GitHub #401). Up already:
+    // only brought back if minimized.
+    if (!m_settingsWindow->isVisible())
+        m_settingsSize->placeOn();
+    else if (m_settingsWindow->windowStates() & Qt::WindowMinimized)
+        m_settingsWindow->setWindowStates(m_settingsWindow->windowStates() & ~Qt::WindowMinimized);
+    m_settingsWindow->show();
     m_settingsWindow->raise();
     win::bringToFront(m_settingsWindow);
     m_settingsWindow->requestActivate();

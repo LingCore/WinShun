@@ -26,6 +26,7 @@ namespace ws {
 class IdleTrim;
 class PresenterHost;
 class RegistryWatch;
+class SavedWindowSize;
 class WindowFrame;
 namespace capture {
 class Capture;
@@ -166,6 +167,7 @@ private:
     bool m_resumeOcr = false; // the original picture waits while the settings window installs OCR
     std::unique_ptr<WindowFrame> m_settingsFrame;
     QPointer<QQuickWindow> m_settingsWindow;
+    QPointer<SavedWindowSize> m_settingsSize; // owned by m_settingsWindow (state.ini [SettingsWindow])
     std::unique_ptr<RawClicks> m_clicks; // while a recording shows the clicks
     QStringList m_reportedHotkeys; // what Win顺 was told it holds (applyHotkeys)
     bool m_hostHotkeys = false;

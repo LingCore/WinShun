@@ -1,4 +1,7 @@
 #include "Placement.h"
+#include "SavedWindowSize.h"
+#include "WindowAvoidance.h"
+#include "platform/WindowEffects.h"
 
 #include <QCoreApplication>
 #include <QEvent>
@@ -249,10 +252,12 @@ private slots:
         placement.avoidNative(native(*centred), screen, false, {}, native(*centred), native(*list));
         QCoreApplication::processEvents();
         const QRect in = list->geometry();
+        // File Explorer's list (`orInto`): right in its corner since GitHub #234.
+        constexpr int gap = ws::windowavoidance::kExplorerListGap;
         const auto inCorner = [&] {
             const QRect box = window.geometry();
-            return source.contains(box) && std::abs(in.right() - 12 - box.right()) <= 2 && box.bottom() <= in.bottom() - 12 + 2
-                && box.bottom() >= in.bottom() - 12 - 2;
+            return source.contains(box) && std::abs(in.right() - gap - box.right()) <= 2 && box.bottom() <= in.bottom() - gap + 2
+                && box.bottom() >= in.bottom() - gap - 2;
         };
         // Over a file list it opens compact (GitHub #82), in the list's corner.
         QCOMPARE(window.width(), 460);
@@ -335,6 +340,153 @@ private slots:
         placement.enterPanel(window.screen());
         QCOMPARE(window.size(), panelSize);
         QVERIFY(!QSettings(statePath, QSettings::IniFormat).contains(u"Panel/Width"_s));
+    }
+
+    // GitHub #401: the settings window's size, between runs.
+    void savedSizeFitsTheWorkArea()
+    {
+        using ws::SavedWindowSize;
+        const QSize least(760, 420);
+        // 2048 × 1152 at 125 %: as wide as wanted, as tall as fits.
+        QCOMPARE(SavedWindowSize::fit({1400, 1000}, least, {1638, 870}), QSize(1400, 830));
+        QCOMPARE(SavedWindowSize::fit({1400, 1000}, least, {2560, 1392}), QSize(1400, 1000));
+        QCOMPARE(SavedWindowSize::fit({920, 720}, least, {800, 560}), QSize(760, 520));
+        QCOMPARE(SavedWindowSize::fit({500, 300}, least, {2560, 1392}), least); // saved under the least
+        QCOMPARE(SavedWindowSize::fit({920, 720}, least, {700, 400}), QSize(700, 400)); // a screen smaller than that
+    }
+
+    void draggedSizeOutlivesARestart()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString statePath = temporary.filePath(u"state.ini"_s);
+        const auto made = [] {
+            auto window = std::make_unique<QWindow>();
+            window->setFlags(Qt::Window | Qt::FramelessWindowHint); // as ours: all of it client area
+            window->resize(920, 720);
+            window->setMinimumSize({760, 420});
+            window->create(); // hidden: the user's desktop stays as it was
+            return window;
+        };
+        const auto nativeResize = [](QWindow& window, QSize logical) {
+            const qreal dpr = window.devicePixelRatio();
+            ::SetWindowPos(reinterpret_cast<HWND>(window.winId()), nullptr, 0, 0, qRound(logical.width() * dpr),
+                qRound(logical.height() * dpr), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        };
+        // The system's sizing loop: an edge dragged sends WM_SIZING, a move does not.
+        const auto loop = [&](QWindow& window, QSize to, bool edge) {
+            const HWND hwnd = reinterpret_cast<HWND>(window.winId());
+            ::SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0);
+            nativeResize(window, to);
+            if (edge) {
+                RECT rect {};
+                ::GetWindowRect(hwnd, &rect);
+                ::SendMessageW(hwnd, WM_SIZING, WMSZ_BOTTOMRIGHT, reinterpret_cast<LPARAM>(&rect));
+            }
+            ::SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
+        };
+        const auto saved = [&] {
+            const QSettings state(statePath, QSettings::IniFormat);
+            return state.contains(u"Settings/Width"_s)
+                ? QSize(state.value(u"Settings/Width"_s).toInt(), state.value(u"Settings/Height"_s).toInt()) : QSize();
+        };
+        {
+            const auto window = made();
+            ws::SavedWindowSize size(statePath, u"Settings"_s);
+            size.setWindow(window.get());
+            QCOMPARE(size.wanted(), QSize(920, 720)); // nothing saved: as made
+            loop(*window, {1100, 900}, false); // snapped at the end of a move: not its user's size
+            QCOMPARE(saved(), QSize());
+            loop(*window, {1400, 1000}, true);
+            QCOMPARE(saved(), QSize(1400, 1000));
+            QCOMPARE(size.wanted(), QSize(1400, 1000));
+            // Opened cut short by a smaller screen, then only widened: the height wished stays.
+            nativeResize(*window, {1400, 830});
+            loop(*window, {1500, 830}, true);
+            QCOMPARE(saved(), QSize(1500, 1000));
+        }
+        {
+            const auto window = made();
+            ws::SavedWindowSize size(statePath, u"Settings"_s);
+            size.setWindow(window.get());
+            QCOMPARE(size.wanted(), QSize(1500, 1000)); // the next run
+            QScreen* screen = QGuiApplication::primaryScreen();
+            size.placeOn(screen);
+            const QSize expected = ws::SavedWindowSize::fit({1500, 1000}, {760, 420}, screen->availableGeometry().size());
+            QTRY_COMPARE(window->size(), expected);
+            QVERIFY(screen->availableGeometry().contains(window->geometry()));
+            // A double click on an edge: as made again, and nothing saved.
+            ::SendMessageW(reinterpret_cast<HWND>(window->winId()), WM_NCLBUTTONDBLCLK, HTRIGHT, 0);
+            QCOMPARE(size.wanted(), QSize(920, 720));
+            QCOMPARE(saved(), QSize());
+            QTRY_COMPARE(window->size(), ws::SavedWindowSize::fit({920, 720}, {760, 420}, screen->availableGeometry().size()));
+        }
+        // Junk in the file: as made.
+        QSettings(statePath, QSettings::IniFormat).setValue(u"Settings/Width"_s, u"wide"_s);
+        QSettings(statePath, QSettings::IniFormat).setValue(u"Settings/Height"_s, 99999);
+        const auto window = made();
+        ws::SavedWindowSize size(statePath, u"Settings"_s);
+        size.setWindow(window.get());
+        QCOMPARE(size.wanted(), QSize(920, 720));
+    }
+
+    void maximizedComesBackMaximized()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString statePath = temporary.filePath(u"state.ini"_s);
+        const auto maximized = [&] { return QSettings(statePath, QSettings::IniFormat).value(u"Settings/Maximized"_s).toBool(); };
+        // Shown as Windows shows them, cloaked: nothing comes up on the screen.
+        const auto made = [] {
+            auto window = std::make_unique<QWindow>();
+            window->setFlags(Qt::Window | Qt::FramelessWindowHint);
+            window->resize(920, 720);
+            window->setMinimumSize({760, 420});
+            window->create();
+            ws::win::setCloaked(window.get(), true);
+            return window;
+        };
+        const auto zoomed = [](QWindow& window) { return ::IsZoomed(reinterpret_cast<HWND>(window.winId())) != FALSE; };
+        QScreen* screen = QGuiApplication::primaryScreen();
+        {
+            const auto window = made();
+            ws::SavedWindowSize size(statePath, u"Settings"_s);
+            size.setWindow(window.get());
+            size.placeOn(screen);
+            window->show();
+            QVERIFY(!zoomed(*window)); // nothing saved: as placed
+            window->setWindowStates(Qt::WindowMaximized); // its title bar's button
+            QTRY_VERIFY(maximized());
+            window->setWindowStates(Qt::WindowMinimized | Qt::WindowMaximized); // minimized from there: still so
+            QTRY_VERIFY(::IsIconic(reinterpret_cast<HWND>(window->winId())));
+            QVERIFY(maximized());
+            window->hide();
+            QVERIFY(maximized());
+        }
+        {
+            const auto window = made();
+            ws::SavedWindowSize size(statePath, u"Settings"_s);
+            size.setWindow(window.get());
+            QVERIFY(size.maximizedWanted());
+            size.placeOn(screen);
+            // Resized while still hidden (its frame restyled, say): Qt calls
+            // that restored, and the window opened at its normal size (#401).
+            const QSize physical = window->size() * window->devicePixelRatio();
+            ::SendMessageW(reinterpret_cast<HWND>(window->winId()), WM_SIZE, SIZE_RESTORED,
+                MAKELPARAM(physical.width(), physical.height()));
+            QCoreApplication::processEvents();
+            QVERIFY(maximized());
+            window->show();
+            QVERIFY(zoomed(*window));
+            QTRY_VERIFY(window->windowStates() & Qt::WindowMaximized);
+            QVERIFY(maximized());
+            // Restored: the size it was placed at, and maximized no more.
+            window->setWindowStates(Qt::WindowNoState);
+            QTRY_VERIFY(!zoomed(*window));
+            QTRY_COMPARE(window->size(), ws::SavedWindowSize::fit({920, 720}, {760, 420}, screen->availableGeometry().size()));
+            QTRY_VERIFY(!QSettings(statePath, QSettings::IniFormat).contains(u"Settings/Maximized"_s));
+            window->hide();
+        }
     }
 };
 

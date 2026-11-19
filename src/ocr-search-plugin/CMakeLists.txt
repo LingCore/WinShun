@@ -47,6 +47,7 @@ qt_add_library(WinShunOcrSearchApp SHARED OcrMain.cpp OcrController.cpp OcrContr
     ${app_dir}/SystemTheme.cpp ${app_dir}/SystemTheme.h
     ${app_dir}/PhosphorGlyph.cpp ${app_dir}/PhosphorGlyph.h
     ${app_dir}/WindowFrame.cpp ${app_dir}/WindowFrame.h
+    ${app_dir}/SavedWindowSize.cpp ${app_dir}/SavedWindowSize.h
     ${app_dir}/Phosphor.cpp ${app_dir}/platform/WindowEffects.cpp ${app_dir}/platform/ShellDialogs.cpp
     ${app_dir}/platform/Foreground.cpp ${app_dir}/platform/DragOut.cpp
     ${app_dir}/platform/HotPages.cpp ${app_dir}/platform/HotPages.h
