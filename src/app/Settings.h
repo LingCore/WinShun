@@ -309,6 +309,10 @@ struct Settings {
     // so, the next run too (SavedWindowSize, state.ini; GitHub #401). Off:
     // each run at their default size, and what was saved is forgotten.
     bool rememberWindowSize = true;
+    // The settings window's 捐赠 button stands on the 拾穗计划 page instead of
+    // in its title bar: moved there by the × beside it, after a word from the
+    // author (DonateMoveDialog), put back by the arrow beside it there (GitHub #402).
+    bool donateOnGleaningPage = false;
     // A tip comes up on the icon or button the mouse rests on: the kinds of
     // file, the +, the row's buttons (HoverTip, SystemTheme::hoverTips); off,
     // only an "i" still says its words (GitHub #368).

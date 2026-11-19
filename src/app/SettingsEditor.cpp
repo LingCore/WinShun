@@ -566,6 +566,14 @@ void SettingsEditor::setRememberWindowSize(bool on)
     commit();
 }
 
+void SettingsEditor::setDonateOnGleaningPage(bool on)
+{
+    if (m_settings.donateOnGleaningPage == on)
+        return;
+    m_settings.donateOnGleaningPage = on;
+    commit();
+}
+
 void SettingsEditor::setHoverTips(bool on)
 {
     if (m_settings.hoverTips == on)

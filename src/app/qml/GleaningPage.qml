@@ -292,36 +292,65 @@ Flickable {
                     font.weight: Font.Bold
                 }
             }
-            Rectangle { // homepage
-                visible: Gleaning.authorUrl.length > 0
+            Row { // at the row's end: 捐赠 (when moved here from the title bar), the homepage
                 anchors.right: parent.right
                 anchors.verticalCenter: avatar.verticalCenter
-                width: homepage.implicitWidth + 28
-                height: homepage.implicitHeight + 14
-                radius: Theme.pillRadius(height)
-                color: WarmPalette.chip
+                spacing: 10
 
-                Row {
-                    id: homepage
-                    anchors.centerIn: parent
-                    spacing: 6
-                    Text {
-                        text: qsTr("作者主页")
-                        color: WarmPalette.ink
-                        font.pixelSize: Theme.fontCaption
-                        font.weight: Theme.fontStrong
-                    }
-                    Glyph {
+                Row { // moved here from the title bar (GitHub #402); the arrow beside it puts it back
+                    objectName: "pageDonateButton"
+                    visible: Gleaning.donateUrl.length > 0 && page.editor.donateOnGleaningPage
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+
+                    DonateButton {
                         anchors.verticalCenter: parent.verticalCenter
-                        glyph: "" // OpenInNewWindow
-                        size: 12
-                        color: WarmPalette.ink
+                        height: 32
+                        dpr: Screen.devicePixelRatio
+                        onClicked: page.editor.openUrl(Gleaning.donateUrl)
+                    }
+                    DonateSideKey {
+                        objectName: "pageDonateBack"
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 32
+                        iconName: "arrow-line-up"
+                        tip: qsTr("放回标题栏")
+                        dpr: Screen.devicePixelRatio
+                        ink: WarmPalette.inkSoft
+                        strongInk: WarmPalette.ink
+                        onClicked: page.editor.donateOnGleaningPage = false
                     }
                 }
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: page.editor.openUrl(Gleaning.authorUrl)
+                Rectangle { // homepage
+                    visible: Gleaning.authorUrl.length > 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: homepage.implicitWidth + 28
+                    height: homepage.implicitHeight + 14
+                    radius: Theme.pillRadius(height)
+                    color: WarmPalette.chip
+
+                    Row {
+                        id: homepage
+                        anchors.centerIn: parent
+                        spacing: 6
+                        Text {
+                            text: qsTr("作者主页")
+                            color: WarmPalette.ink
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: Theme.fontStrong
+                        }
+                        Glyph {
+                            anchors.verticalCenter: parent.verticalCenter
+                            glyph: "" // OpenInNewWindow
+                            size: 12
+                            color: WarmPalette.ink
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: page.editor.openUrl(Gleaning.authorUrl)
+                    }
                 }
             }
         }

@@ -235,6 +235,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool scopeButton READ scopeButton WRITE setScopeButton NOTIFY changed FINAL)
     Q_PROPERTY(bool openAnimation READ openAnimation WRITE setOpenAnimation NOTIFY changed FINAL)
     Q_PROPERTY(bool rememberWindowSize READ rememberWindowSize WRITE setRememberWindowSize NOTIFY changed FINAL)
+    Q_PROPERTY(bool donateOnGleaningPage READ donateOnGleaningPage WRITE setDonateOnGleaningPage NOTIFY changed FINAL)
     Q_PROPERTY(bool hoverTips READ hoverTips WRITE setHoverTips NOTIFY changed FINAL)
     Q_PROPERTY(QString previewWith READ previewWith WRITE setPreviewWith NOTIFY changed FINAL) // auto | builtin
     Q_PROPERTY(QString previewHotkey READ previewHotkey WRITE setPreviewHotkey NOTIFY changed FINAL)
@@ -846,6 +847,8 @@ public:
     void setOpenAnimation(bool on);
     bool rememberWindowSize() const { return m_settings.rememberWindowSize; }
     void setRememberWindowSize(bool on);
+    bool donateOnGleaningPage() const { return m_settings.donateOnGleaningPage; }
+    void setDonateOnGleaningPage(bool on);
     bool hoverTips() const { return m_settings.hoverTips; }
     void setHoverTips(bool on);
     void setPureSearch(bool on);

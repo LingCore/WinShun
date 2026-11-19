@@ -228,6 +228,8 @@ set(qml_files
     qml/SettingsSearchBox.qml
     qml/TitleBar.qml
     qml/DonateButton.qml
+    qml/DonateMoveDialog.qml
+    qml/DonateSideKey.qml
     qml/SettingsSection.qml
     qml/SettingsContext.qml
     qml/SettingsPage.qml

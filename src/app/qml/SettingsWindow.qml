@@ -213,6 +213,7 @@ Window {
         readmeDialog.close()
         if (pluginDialog.open)
             pluginDialog.reject()
+        donateDialog.close()
         webEditing = -2
         webReturnFocus = null
         // Dropped menus and hover tips live on the content item (DropMenu, HoverTip).
@@ -667,19 +668,19 @@ Window {
 
     Shortcut { // Ctrl+F: to the search box
         sequences: [StandardKey.Find]
-        enabled: !window.editor.recordingHotkey && !updateDialog.open && !pluginDialog.open && !webDialog.active
+        enabled: !window.editor.recordingHotkey && !updateDialog.open && !pluginDialog.open && !donateDialog.open && !webDialog.active
         onActivated: searchBox.focusAll()
     }
     Shortcut { // Ctrl+Tab, Ctrl+Shift+Tab: through the page's tabs
         sequences: [StandardKey.NextChild]
-        enabled: !window.searching && !window.warm && !window.editor.recordingHotkey && !updateDialog.open && !webDialog.active
+        enabled: !window.searching && !window.warm && !window.editor.recordingHotkey && !updateDialog.open && !donateDialog.open && !webDialog.active
         onActivated: window.cycleTab(1)
     }
     Shortcut {
         // Not StandardKey.PreviousChild: its Ctrl+Shift+Backtab never matches
         // on Windows (Qt 6.12), the written-out keys do.
         sequences: ["Ctrl+Shift+Tab"]
-        enabled: !window.searching && !window.warm && !window.editor.recordingHotkey && !updateDialog.open && !webDialog.active
+        enabled: !window.searching && !window.warm && !window.editor.recordingHotkey && !updateDialog.open && !donateDialog.open && !webDialog.active
         onActivated: window.cycleTab(-1)
     }
 
@@ -932,10 +933,24 @@ Window {
         title: window.title + " - " + Qt.application.displayName
         iconX: navList.x + 16 // over the categories' icons, the title over their names
         foreground: window.warm ? WarmPalette.ink : Theme.text
-        tools: DonateButton {
-            visible: Gleaning.donateUrl.length > 0
-            dpr: window.dpr
-            onClicked: window.editor.openUrl(Gleaning.donateUrl)
+        tools: Row { // 捐赠, and the × that asks to move it to the 拾穗计划 page (GitHub #402)
+            objectName: "titleDonateButton"
+            visible: Gleaning.donateUrl.length > 0 && !window.editor.donateOnGleaningPage
+            spacing: 2
+
+            DonateButton {
+                anchors.verticalCenter: parent.verticalCenter
+                dpr: window.dpr
+                onClicked: window.editor.openUrl(Gleaning.donateUrl)
+            }
+            DonateSideKey {
+                objectName: "titleDonateTuck"
+                anchors.verticalCenter: parent.verticalCenter
+                iconName: "x"
+                tip: qsTr("挪到%1页").arg(Gleaning.title)
+                dpr: window.dpr
+                onClicked: donateDialog.ask()
+            }
         }
     }
 
@@ -6502,6 +6517,17 @@ Window {
         anchors.fill: parent
         plugins: window.editor.plugins
         Component.onCompleted: window.frame.addPopup(pluginDialog)
+    }
+
+    DonateMoveDialog { // before the 捐赠 button goes to the 拾穗计划 page (GitHub #402)
+        id: donateDialog
+        z: 1
+        Accessible.role: Accessible.Dialog
+        anchors.fill: parent
+        onDonate: window.editor.openUrl(Gleaning.donateUrl)
+        onVisitSite: window.editor.openUrl(Gleaning.siteUrl)
+        onConfirmed: window.editor.donateOnGleaningPage = true
+        Component.onCompleted: window.frame.addPopup(donateDialog)
     }
 
     Image { // the window as it looked before a theme or language change, fading out (see changeAppearance)

@@ -1760,6 +1760,108 @@ bool checkLogoPositionSettings(QQuickWindow* window, SettingsEditor* editor, con
     return check.passed;
 }
 
+// The 捐赠 button's two places (GitHub #402), by mouse events to the window
+// on the preview's own profile: the × beside it in the title bar asks first
+// (DonateMoveDialog), and Esc or a click beside the card leave it there;
+// 确认 moves it, saved; on the 拾穗计划 page the arrow beside it puts it
+// back. 捐赠 and the website are not clicked (they open the browser): the
+// thanks 捐赠 brings is set directly.
+bool checkDonatePlace(QQuickWindow* window, SettingsEditor* editor, const QDir& output)
+{
+    Checks check;
+    const auto wait = [window](int ms) {
+        QElapsedTimer clock;
+        clock.start();
+        while (clock.elapsed() < ms)
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        settle(window);
+    };
+    const auto clickAt = [window](QPointF at) {
+        const QPointF global = window->mapToGlobal(at);
+        QMouseEvent move(QEvent::MouseMove, at, global, Qt::NoButton, Qt::NoButton, {});
+        QCoreApplication::sendEvent(window, &move);
+        QMouseEvent press(QEvent::MouseButtonPress, at, global, Qt::LeftButton, Qt::LeftButton, {});
+        QCoreApplication::sendEvent(window, &press);
+        QMouseEvent release(QEvent::MouseButtonRelease, at, global, Qt::LeftButton, Qt::NoButton, {});
+        QCoreApplication::sendEvent(window, &release);
+    };
+    const auto click = [&](QQuickItem* target) {
+        clickAt(target->mapToScene({target->width() / 2, target->height() / 2}));
+        wait(250); // past the dialog's fade
+    };
+    const auto hover = [&](QQuickItem* target) {
+        const QPointF at = target->mapToScene({target->width() / 2, target->height() / 2});
+        QMouseEvent move(QEvent::MouseMove, at, window->mapToGlobal(at), Qt::NoButton, Qt::NoButton, {});
+        QCoreApplication::sendEvent(window, &move);
+        wait(700); // past the tip's delay
+    };
+    const auto saved = [] {
+        Settings settings;
+        settings.load();
+        return settings.donateOnGleaningPage;
+    };
+    QQuickItem* root = window->contentItem();
+    auto* titleButton = item(root, u"titleDonateButton"_s);
+    auto* tuck = item(root, u"titleDonateTuck"_s);
+    auto* card = item(root, u"donateMoveCard"_s);
+    auto* dialog = card ? card->parentItem() : nullptr;
+    auto* confirm = item(root, u"donateMoveConfirm"_s);
+    auto* word = item(root, u"donateMoveWord"_s);
+    auto* site = item(root, u"donateMoveSite"_s);
+    check(titleButton && tuck && dialog && confirm && word && site, u"the title bar's button, its × and the dialog are there"_s);
+    if (!titleButton || !tuck || !dialog || !confirm || !word || !site)
+        return false;
+    check(!editor->donateOnGleaningPage() && !saved() && titleButton->isVisible() && tuck->isVisible(),
+        u"a new profile has the button and its × in the title bar"_s);
+    hover(tuck);
+    check(window->grabWindow().save(output.filePath(u"donate-tuck.png"_s)), u"capture the × under the pointer"_s);
+
+    click(tuck);
+    check(dialog->property("open").toBool(), u"the × asks first"_s);
+    check(site->isVisible(), u"the question offers the website"_s);
+    check(window->grabWindow().save(output.filePath(u"donate-dialog.png"_s)), u"capture the question"_s);
+    key(card, Qt::Key_Escape);
+    wait(250);
+    check(!dialog->property("open").toBool() && !editor->donateOnGleaningPage() && titleButton->isVisible(),
+        u"Esc leaves the button where it is"_s);
+
+    click(tuck);
+    clickAt(QPointF(12, window->height() - 12));
+    wait(250);
+    check(!dialog->property("open").toBool() && !editor->donateOnGleaningPage(), u"a click beside the card leaves it there too"_s);
+
+    click(tuck);
+    const QString before = word->property("text").toString();
+    dialog->setProperty("thanked", true);
+    settle(window);
+    check(word->property("text").toString() != before && dialog->property("open").toBool(),
+        u"after 捐赠 the question stays up and thanks"_s);
+    check(window->grabWindow().save(output.filePath(u"donate-dialog-thanked.png"_s)), u"capture the thanks"_s);
+    click(confirm);
+    check(!dialog->property("open").toBool() && editor->donateOnGleaningPage() && saved() && !titleButton->isVisible(),
+        u"确认 moves it off the title bar, saved"_s);
+
+    QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, window->property("gleaningPage")), Q_ARG(QVariant, 0));
+    wait(3600); // the avatar's greeting (AuthorClock) has played out
+    auto* pageButton = item(root, u"pageDonateButton"_s);
+    auto* back = item(root, u"pageDonateBack"_s);
+    check(pageButton && pageButton->isVisible() && back && back->isVisible(), u"the 拾穗计划 page shows it, with the arrow back"_s);
+    check(window->grabWindow().save(output.filePath(u"donate-on-page.png"_s)), u"capture the page"_s);
+    if (pageButton && back) {
+        hover(back);
+        check(window->grabWindow().save(output.filePath(u"donate-page-back.png"_s)), u"capture the arrow under the pointer"_s);
+        click(back);
+        check(!editor->donateOnGleaningPage() && !saved() && titleButton->isVisible() && !pageButton->isVisible(),
+            u"the arrow puts it back in the title bar, saved"_s);
+    }
+    check(!window->isActive(), u"the probe leaves desktop focus untouched"_s);
+    QFile report(output.filePath(u"donate-place.json"_s));
+    if (!report.open(QIODevice::WriteOnly))
+        return false;
+    report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
+    return check.passed;
+}
+
 // The row 程序自己的选文件窗口 and what stands behind it (GitHub #272), with
 // a WPF window in another process standing in for a program's own file
 // window (`fixture`: tests/fixtures/wpf-file-window.ps1): 识别窗口 counts

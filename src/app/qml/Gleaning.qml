@@ -7,7 +7,7 @@ import QtQuick
 // work's number of users comes from lcstp.com (Updater.userCounts, keyed by
 // `id`, the work's name on that site), shown when the page opens.
 // To use the page in another program, change only `thisApp`, `works`,
-// `authorUrl`, `feedbackUrl`, `donateUrl`, `qqGroup` and `thanks`.
+// `authorUrl`, `feedbackUrl`, `donateUrl`, `siteUrl`, `qqGroup` and `thanks`.
 QtObject {
     readonly property string title: qsTr("拾穗计划")
 
@@ -20,6 +20,9 @@ QtObject {
     // Where the 捐赠 button in the settings' title bar leads: the author's
     // 爱发电 page, as lcstp.com's own 向我捐赠 button; "" shows no button.
     readonly property string donateUrl: "https://afdian.com/a/lingcore"
+    // The author's website, offered beside the 捐赠 button's question when it
+    // is moved off the title bar (DonateMoveDialog); "" offers none.
+    readonly property string siteUrl: "https://lcstp.com"
     // The users' QQ group, for talking together (feedback still goes to the
     // website); null shows no 加入 QQ 群 button.
     //   url: the group's join link, also drawn as the QR code (tools/make_qq_qr.py)

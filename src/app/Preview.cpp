@@ -2097,6 +2097,8 @@ int runSettings(const QStringList& args)
         return finish(window, checkDialogRuleSettings(window, editor, out, valueAfter(args, u"--fixture")));
     if (args.contains(u"--optimization-settings"_s))
         return finish(window, checkOptimizationSettings(window, editor, out));
+    if (args.contains(u"--donate-place"_s)) // the 捐赠 button to the 拾穗计划 page and back (GitHub #402)
+        return finish(window, checkDonatePlace(window, editor, out));
 
     // The three tables, side by side: a page without a keyword entry or a
     // tabs entry would read undefined.

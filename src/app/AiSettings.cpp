@@ -944,6 +944,8 @@ std::vector<Entry> buildCatalog()
              "Mcp/ExcludedPaths", "Mcp/Plugins", "Mcp/PluginActions", "Mcp/Settings", "Plugins/DeveloperMode",
              "Proxy/Mode", "Proxy/Address"}) // where every request goes: not for AI to turn
         add(hidden(key));
+    // Where the 捐赠 button stands: the user's to move, after the author's word that comes with it.
+    add(hidden("Appearance/DonateOnGleaningPage"));
     return t;
 }
 

@@ -2192,6 +2192,45 @@
     </message>
 </context>
 <context>
+    <name>DonateMoveDialog</name>
+    <message>
+        <source>把捐赠按钮挪到%1页？</source>
+        <translation>Move the Donate button to the %1 page?</translation>
+    </message>
+    <message>
+        <source>谢谢你的心意！</source>
+        <translation>Thank you!</translation>
+    </message>
+    <message>
+        <source>Win顺 会继续用心做下去。</source>
+        <translation>I&apos;ll keep putting my heart into WinShun.</translation>
+    </message>
+    <message>
+        <source>Win顺 免费又没有广告，维护它花了很多精力。</source>
+        <translation>WinShun is free and ad-free, and keeping it going takes a lot of work.</translation>
+    </message>
+    <message>
+        <source>如果它帮到了你，欢迎请我喝瓶快乐水～</source>
+        <translation>If it has helped you, how about buying me a soda?</translation>
+    </message>
+    <message>
+        <source>点“确认”，它就挪到%1页，标题栏清爽一些。</source>
+        <translation>Click Confirm and it moves to the %1 page, leaving the title bar tidier.</translation>
+    </message>
+    <message>
+        <source>想挪回来，点它旁边的箭头就行。</source>
+        <translation>To bring it back, click the arrow next to it.</translation>
+    </message>
+    <message>
+        <source>来官网坐坐，那里很好玩</source>
+        <translation>Drop by our website, it&apos;s fun</translation>
+    </message>
+    <message>
+        <source>确认</source>
+        <translation>Confirm</translation>
+    </message>
+</context>
+<context>
     <name>DropPieHelper</name>
     <message>
         <source>收藏圆盘未启动</source>
@@ -2841,6 +2880,10 @@
     <message>
         <source>作者</source>
         <translation>Author</translation>
+    </message>
+    <message>
+        <source>放回标题栏</source>
+        <translation>Put back in the title bar</translation>
     </message>
     <message>
         <source>作者主页</source>
@@ -7860,6 +7903,10 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>文件管理器</source>
         <translation>File managers</translation>
+    </message>
+    <message>
+        <source>挪到%1页</source>
+        <translation>Move to the %1 page</translation>
     </message>
     <message>
         <source>界面风格</source>

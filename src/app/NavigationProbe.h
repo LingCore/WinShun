@@ -24,4 +24,6 @@ bool checkSearchExperience(QQmlEngine* engine, const QDir& output);
 bool checkSearchExperienceSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
 bool checkLogoPositionSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
 bool checkDialogRuleSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output, const QString& fixture);
+// The 捐赠 button moved to the 拾穗计划 page and back (GitHub #402).
+bool checkDonatePlace(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
 }
