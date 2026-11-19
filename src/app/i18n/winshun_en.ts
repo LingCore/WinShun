@@ -2345,13 +2345,6 @@
         <source>收藏</source>
         <translation>Favorites</translation>
     </message>
-    <message numerus="yes">
-        <source>%n 项，拖动把手排序</source>
-        <translation>
-            <numerusform>%n item; drag the handle to reorder</numerusform>
-            <numerusform>%n items; drag the handles to reorder</numerusform>
-        </translation>
-    </message>
     <message>
         <source>还没有收藏</source>
         <translation>No favorites yet</translation>
@@ -2395,6 +2388,13 @@
     <message>
         <source>%1。只放得下前 8 个文件夹收藏（现有 %2 个）</source>
         <translation>%1. Only the first 8 favorite folders fit (you have %2)</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 项，拖动把手排序</source>
+        <translation>
+            <numerusform>%n item; drag the handle to reorder</numerusform>
+            <numerusform>%n items; drag the handles to reorder</numerusform>
+        </translation>
     </message>
     <message>
         <source>已不存在 · %1</source>
@@ -4183,6 +4183,65 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     </message>
 </context>
 <context>
+    <name>PluginTile</name>
+    <message>
+        <source>作者：%1</source>
+        <translation>Author: %1</translation>
+    </message>
+    <message>
+        <source>状态：%1</source>
+        <translation>Status: %1</translation>
+    </message>
+    <message>
+        <source>权限：</source>
+        <translation>Permissions:</translation>
+    </message>
+    <message>
+        <source>（仅声明）</source>
+        <translation> (declared only)</translation>
+    </message>
+    <message>
+        <source>随包</source>
+        <translation>Bundled</translation>
+    </message>
+    <message>
+        <source>再试一次</source>
+        <translation>Try again</translation>
+    </message>
+    <message>
+        <source>确认</source>
+        <translation>Confirm</translation>
+    </message>
+    <message>
+        <source>以管理员身份重新启动</source>
+        <translation>Restart as administrator</translation>
+    </message>
+    <message>
+        <source>新版本 %1 已下载</source>
+        <translation>Version %1 downloaded</translation>
+    </message>
+    <message>
+        <source>现在更新</source>
+        <translation>Update now</translation>
+    </message>
+    <message>
+        <source>新版本已经下载好。现在更新会先停一下这个插件；不点的话，下次启动 Win顺 时自动换上</source>
+        <translation>The new version is downloaded. Updating now stops this plugin for a moment; otherwise it is put in place the next time WinShun starts</translation>
+    </message>
+    <message>
+        <source>详情</source>
+        <translation>Details</translation>
+    </message>
+    <message>
+        <source>%1详情</source>
+        <translation>%1 details</translation>
+    </message>
+    <message>
+        <source>设置</source>
+        <translation>Settings</translation>
+    </message>
+</context>
+<context>
     <name>PluginsPreview</name>
     <message>
         <source>插件</source>
@@ -4468,6 +4527,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>展开内置功能</source>
         <translation>Expand built-in features</translation>
+    </message>
+    <message>
+        <source>全部插件</source>
+        <translation>All plugins</translation>
     </message>
     <message>
         <source>同时常驻的插件</source>

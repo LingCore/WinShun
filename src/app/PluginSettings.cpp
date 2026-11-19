@@ -1492,7 +1492,7 @@ void PluginSettings::showSettings(const QString& id)
         if (!self)
             return;
         if (!ok)
-            self->setMessage(error.isEmpty() ? self->tr("设置窗口打不开") : error);
+            self->setMessage(error.isEmpty() ? PluginSettings::tr("设置窗口打不开") : error);
     });
 }
 
