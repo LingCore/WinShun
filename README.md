@@ -68,7 +68,7 @@
 | 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找与悬停预览 |
 | 📂 | [“打开”“另存为”对话框](docs/使用说明.md#打开另存为对话框) ² | 对话框旁多一个搜索框；`Ctrl+G` 转到文件管理器正开着的文件夹 |
 | 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹，可一层层走进子文件夹；在文件列表里直接打字就搜 |
-| ⭐ | [收藏夹](docs/使用说明.md#收藏夹) | 给常用的文件、文件夹、应用起个关键词，一打就开；还能自定义命令，也可放进文件的右键菜单 |
+| ⭐ | [收藏夹](docs/使用说明.md#收藏夹) | 给常用的文件、文件夹、应用起个关键词，一打就开；点列头按名称、日期、类型、大小排好；还能自定义命令，也可放进文件的右键菜单 |
 | 🔎 | [任务栏搜索框](docs/使用说明.md#任务栏搜索框) ² | 在 Windows 11 任务栏上放一个 Win顺 的搜索框 |
 | 🤖 | [AI 助手和命令行](docs/使用说明.md#给-ai-助手用mcp) ² | 让 Claude、Cursor 等 AI 搜你的文件（默认只读）；终端里用 `ws` 命令搜 |
 | 🎨 | [外观和备份](docs/使用说明.md#外观设置和备份) | 四种界面风格（含液态玻璃），自选字体与界面大小；设置自动备份，换电脑一键迁移，也可以用云备份插件传到 WebDAV 或 GitHub 私有仓库 |
@@ -195,6 +195,14 @@ winget install LingCore.WinShun
 </details>
 
 ### 最近更新
+
+**0.39.0**
+
+- 🗂️ **收藏夹点列头排序**：名称、修改日期、类型、大小一点就排好，再点反过来，“恢复默认”随时回到原来的顺序。
+- 🧩 **插件页排成卡片**，点开看详情；🕘 插件关键词的搜索（比如算式）也进搜索历史；❤️ 设置窗口多了“捐赠”。
+- 🛠️ **修复** 很长很细的图片读字时占几个 GB、让 Win顺 闪退（截图与录屏 1.1.27、图片文字搜索 1.0.24）；万一闪退，下次启动会记下停在哪里。
+
+详见 [0.39.0 发布说明](docs/release-notes/v0.39.0.md)。
 
 **0.38.0**
 
@@ -386,7 +394,7 @@ No installer, or Scoop and WinGet? See [Download and install](#download-and-inst
 | 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search and hover previews |
 | 📂 | [Open / Save dialogs](docs/features.en.md#open-and-save-dialogs) ² | A search bar beside the dialog; `Ctrl+G` jumps to the folder open in your file manager |
 | 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders and the folders inside them; type in a file list to search |
-| ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; your own commands too, also in the right-click menu of files |
+| ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; sort them by name, date, type or size with a click; your own commands too, also in the right-click menu of files |
 | 🔎 | [Taskbar search box](docs/features.en.md#taskbar-search-box) ² | A WinShun search box on the Windows 11 taskbar |
 | 🤖 | [AI assistants and the command line](docs/features.en.md#ai-assistants-mcp) ² | Let Claude, Cursor and others search your files (read-only by default); `ws` searches from a terminal |
 | 🎨 | [Looks and backup](docs/features.en.md#looks-and-settings) | Three interface styles, your font and interface size; settings backups and migration, to WebDAV or a private GitHub repository with the Cloud Backup plugin |
@@ -513,6 +521,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.39.0**
+
+- 🗂️ **Sort favorites by a column**: name, date modified, type or size in one click, again for the other way; Restore order brings back the order you had.
+- 🧩 **Plugins as tiles** with a page each; 🕘 plugin keyword searches (sums, say) in the search history; ❤️ a Donate button in the settings window.
+- 🛠️ **Fixed**: reading the words in a long thin picture took several GB and could end WinShun (Screenshot and recording 1.1.27, Image text search 1.0.24); should it crash, the next start records where it stopped.
+
+See the [0.39.0 release notes](docs/release-notes/v0.39.0.md).
 
 **0.38.0**
 
