@@ -69,6 +69,7 @@ qt_add_library(WinShunCaptureApp SHARED
     ${app_dir}/platform/RegistryWatch.cpp ${app_dir}/platform/RegistryWatch.h
     ${app_dir}/platform/ShellDialogs.cpp
     ${app_dir}/platform/UiStall.cpp ${app_dir}/platform/UiStall.h
+    ${app_dir}/platform/CodeAddress.cpp ${app_dir}/platform/CodeAddress.h
     ${app_dir}/platform/WindowEffects.cpp ${app_dir}/platform/WindowEffects.h
     ${PROJECT_SOURCE_DIR}/src/core/DiagnosticLog.cpp
     ${PROJECT_SOURCE_DIR}/src/core/Win32Util.cpp
