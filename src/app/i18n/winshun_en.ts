@@ -2218,10 +2218,6 @@
         <translation>Click Confirm and it moves to the %1 page, leaving the title bar tidier.</translation>
     </message>
     <message>
-        <source>想挪回来，点它旁边的箭头就行。</source>
-        <translation>To bring it back, click the arrow next to it.</translation>
-    </message>
-    <message>
         <source>来官网坐坐，那里很好玩</source>
         <translation>Drop by our website, it&apos;s fun</translation>
     </message>

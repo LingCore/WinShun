@@ -131,9 +131,10 @@ Item {
                 }
             }
 
-            Text { // two sentences, a line each: wrapped as one, the second broke mid-word
+            Text { // what 确认 does, centred on the card (the arrow back, on the page, tells itself)
                 width: parent.width
-                text: qsTr("点“确认”，它就挪到%1页，标题栏清爽一些。").arg(Gleaning.title) + "\n" + qsTr("想挪回来，点它旁边的箭头就行。")
+                horizontalAlignment: Text.AlignHCenter
+                text: qsTr("点“确认”，它就挪到%1页，标题栏清爽一些。").arg(Gleaning.title)
                 color: Theme.subtext
                 font.pixelSize: Theme.fontCaption
                 lineHeight: 1.15
