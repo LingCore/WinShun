@@ -148,6 +148,11 @@ Window {
         function onWebSettingsRequested() { window.showWebPage() }
     }
     property int currentPage: 0
+    // A category chosen in the list whose page is not made yet: the list
+    // shows the choice at once, the page follows a frame later (navigate). -1: none.
+    property int navPending: -1
+    readonly property int navPage: navPending >= 0 ? navPending : currentPage
+    property int navHovered: -1 // the category under the pointer (hoverNav)
     property int currentTab: 0
     property var lastTabs: [] // by page: the tab it was left on, to come back to
     // A tab gone from the page on show (its switch turned off): the last one left.
@@ -205,6 +210,9 @@ Window {
     function resetForReopen() {
         clearFocus()
         fillTimer.stop()
+        navPrefetch.stop()
+        navPending = -1
+        navHovered = -1
         // Each page made so far its own (its recorders stopped, its fields cleared, …).
         for (let i = 0; i < pageSlots.length; ++i)
             pageSlots[i].item?.resetForReopen()
@@ -438,6 +446,7 @@ Window {
             console.warn("settings: no page", which)
             return
         }
+        navPending = -1
         if (index !== gleaningPage)
             loadPage(index) // made now if it is not yet: in this frame, not after it
         if (searching) {
@@ -452,6 +461,65 @@ Window {
         flick.stopScrolling()
         flick.contentY = 0
     }
+
+    // A category chosen in the list (a press, ↑ ↓, Enter). Its page at once
+    // if it is made. If not (20–120 ms to make one never shown, measured
+    // 2026-11-19), the list shows the choice in the next frame and the page
+    // is made right after, instead of nothing moving until it is there.
+    function navigate(index: int): void {
+        navPrefetch.stop()
+        if (index === gleaningPage || searching || pageItem(index) !== null) {
+            showPage(index)
+            return
+        }
+        navPending = index
+        navFrames.frames = 0
+    }
+    FrameAnimation { // navPending's page made on the second tick: a frame with the choice has been synced in between
+        id: navFrames
+        property int frames: 0
+        running: window.navPending >= 0
+        onTriggered: {
+            if (++frames < 2)
+                return
+            const index = window.navPending
+            window.navPending = -1
+            if (!window.searching) // typed into the box meanwhile: the search's
+                window.showPage(index)
+        }
+    }
+    // The pointer resting on a category whose page is not made: the page made
+    // meanwhile in the background (PageSlot.prefetch, a few ms a frame), so
+    // that the press finds it made, or nearly. Not while the pointer only
+    // passes over the list; only the pages pointed at (each ~20 MB).
+    function hoverNav(index: int, on: bool): void {
+        if (!on) {
+            if (navHovered === index) {
+                navHovered = -1
+                navPrefetch.stop()
+            }
+            return
+        }
+        navHovered = index
+        const slot = index < pageSlots.length ? pageSlots[index] : null
+        if (slot && !slot.item && !slot.incubator && index !== navPending)
+            navPrefetch.restart()
+        else
+            navPrefetch.stop()
+    }
+    Timer {
+        id: navPrefetch
+        interval: 60
+        onTriggered: {
+            const index = window.navHovered
+            if (window.visible && index >= 0 && index < window.pageSlots.length && index !== window.navPending)
+                window.pageSlots[index].prefetch(null)
+        }
+    }
+    // That page made faster than the window's own pace meanwhile.
+    readonly property bool navHurry: visible && navHovered >= 0 && navHovered < pageSlots.length
+                                     && pageSlots[navHovered].incubator !== null
+    onNavHurryChanged: editor.hurryIncubation(window, navHurry)
 
     function showTab(tab) {
         if (tab === currentTab)
@@ -974,7 +1042,7 @@ Window {
 
             required property int index
             required property var modelData
-            readonly property bool selected: index === window.currentPage && !window.searching
+            readonly property bool selected: index === window.navPage && !window.searching
             // While searching: its options on show.
             readonly property int found: window.searching ? settingsSearch.counts[index] ?? 0 : -1
             readonly property bool gleaning: modelData.gleaning === true
@@ -984,7 +1052,7 @@ Window {
                                               : navArea.pressed ? Theme.subtext : Theme.text
 
             function select(to) {
-                window.showPage(to)
+                window.navigate(to)
                 window.navItemAt(to).forceActiveFocus()
             }
 
@@ -996,9 +1064,9 @@ Window {
             color: window.warm && navArea.containsMouse && !selected ? WarmPalette.chip : "transparent"
             activeFocusOnTab: true
 
-            Keys.onSpacePressed: window.showPage(navItem.index)
-            Keys.onReturnPressed: window.showPage(navItem.index)
-            Keys.onEnterPressed: window.showPage(navItem.index)
+            Keys.onSpacePressed: window.navigate(navItem.index)
+            Keys.onReturnPressed: window.navigate(navItem.index)
+            Keys.onEnterPressed: window.navigate(navItem.index)
             Keys.onUpPressed: {
                 if (navItem.index === 0)
                     searchBox.focusAll()
@@ -1085,10 +1153,13 @@ Window {
                 id: navArea
                 anchors.fill: parent
                 hoverEnabled: true
-                onClicked: {
+                // Chosen on the press, as Windows' lists and Explorer's
+                // navigation pane choose: a click's ~100 ms sooner than on release.
+                onPressed: {
                     window.clearFocus()
-                    window.showPage(navItem.index)
+                    window.navigate(navItem.index)
                 }
+                onContainsMouseChanged: window.hoverNav(navItem.index, containsMouse)
             }
 
             HoverTip { // 插件: what the number is

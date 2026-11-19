@@ -17,6 +17,8 @@
 #include <memory>
 #include <vector>
 
+class QTimer;
+
 namespace ws {
 
 class CliSetup;
@@ -535,6 +537,12 @@ public:
     // Preferences > File Displays > Mouse > Background Events.
     Q_INVOKABLE QString opusFolderMenuCommand() const;
     Q_INVOKABLE void openOpusPreferences() const;
+    // While `on`: what `window`'s engine is making in the background (a
+    // settings page the pointer rests on: SettingsWindow.hoverNav) made on
+    // whenever the event loop is idle, 8 ms at a time, input and frames in
+    // between. The window's own pace, a third of a frame now and then, took
+    // ~450 ms for a page made in ~100 (2026-11-19). Stops by itself when nothing is left.
+    Q_INVOKABLE void hurryIncubation(QObject* window, bool on);
     QString opusFolderMenu() const { return m_opusFolderMenu; }
     QString opusFolderMenuTaken() const { return m_opusFolderMenuTaken; }
     QString opusFolderMenuProblem() const { return m_opusFolderMenuProblem; }
@@ -1189,6 +1197,8 @@ signals:
 private:
     friend class PluginSettings; // edits m_settings' plugin sections and commits
     friend class FavoritesSettings; // reads the web shortcuts' keywords and the window
+    QTimer* m_incubationHurry = nullptr; // hurryIncubation's, made on its first use
+    QPointer<QObject> m_incubationWindow;
     void commit();
     void refreshKnownPlaces(); // m_knownShares, m_knownWsl, m_knownFolders read again; told when they changed
     void refreshOnReturn(); // windowActivated()'s

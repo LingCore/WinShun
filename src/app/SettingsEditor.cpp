@@ -49,6 +49,8 @@
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QLocale>
+#include <QQmlEngine>
+#include <QQmlIncubator>
 #include <QRegularExpression>
 #include <QProcess>
 #include <QTimer>
@@ -1378,6 +1380,30 @@ void SettingsEditor::refreshFileManagers()
         return;
     m_fileManagers = managers;
     emit fileManagersChanged();
+}
+
+void SettingsEditor::hurryIncubation(QObject* window, bool on)
+{
+    if (!on) {
+        if (m_incubationHurry)
+            m_incubationHurry->stop();
+        return;
+    }
+    m_incubationWindow = window;
+    if (!m_incubationHurry) {
+        m_incubationHurry = new QTimer(this);
+        m_incubationHurry->setInterval(0); // when the event loop has nothing else to do
+        connect(m_incubationHurry, &QTimer::timeout, this, [this] {
+            QQmlEngine* engine = m_incubationWindow ? qmlEngine(m_incubationWindow) : nullptr;
+            QQmlIncubationController* controller = engine ? engine->incubationController() : nullptr;
+            if (!controller || controller->incubatingObjectCount() == 0) {
+                m_incubationHurry->stop();
+                return;
+            }
+            controller->incubateFor(8);
+        });
+    }
+    m_incubationHurry->start();
 }
 
 QString SettingsEditor::opusFolderMenuCommand() const

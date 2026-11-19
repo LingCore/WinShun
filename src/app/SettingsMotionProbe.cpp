@@ -484,11 +484,114 @@ bool checkSettingsMotion(App& app, const QStringList& args, const QDir& output)
     measure(u"插件: 插件库 → 已安装 (scrolled)"_s, tab(0), 500);
     scroll(u"wheel on 已安装"_s, 12, 60);
 
+    // The categories pressed as the list is (a Qt mouse press on the item:
+    // navigate). A page not made yet: the choice on screen in the next frame,
+    // the page right after (it held both for 40–120 ms before, 2026-11-19).
+    // `rest`: the pointer rests on the item first, which makes its page
+    // meanwhile (hoverNav), so that the press shows it at once.
+    QStringList pressed;
+    const auto mouse = [&](QEvent::Type type, const QPointF& at) {
+        QMouseEvent event(type, at, w->mapToGlobal(at), type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton,
+            type == QEvent::MouseButtonPress ? Qt::LeftButton : Qt::NoButton, {});
+        QCoreApplication::sendEvent(w, &event);
+    };
+    // The first frame presented whose sync began at or after `since` (ns); -1: none.
+    const auto presentedAfter = [&](qint64 since) -> qint64 {
+        QMutexLocker locked(&rec.lock);
+        const auto sync = std::find_if(rec.syncs.begin(), rec.syncs.end(), [&](const auto& s) { return s.first >= since; });
+        if (since < 0 || sync == rec.syncs.end())
+            return -1;
+        const auto swap = std::lower_bound(rec.swaps.begin(), rec.swaps.end(), sync->second);
+        return swap == rec.swaps.end() ? -1 : *swap;
+    };
+    const auto pressNav = [&](const QString& id, bool rest) {
+        pump(250);
+        const int want = js(w, u"pageIndex('%1')"_s.arg(id)).toInt();
+        const QString madeNow = u"pageSlots[%1].item !== null"_s.arg(want);
+        const QPointF at = js(w, u"navItemAt(%1).mapToItem(null, 60, navItemAt(%1).height / 2)"_s.arg(want)).toPointF();
+        const bool madeBefore = js(w, madeNow).toBool();
+        mouse(QEvent::MouseMove, at);
+        double madeAfterRest = -1;
+        if (rest) {
+            QElapsedTimer resting;
+            resting.start();
+            while (resting.elapsed() < 600) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 2);
+                if (madeAfterRest < 0 && js(w, madeNow).toBool())
+                    madeAfterRest = resting.elapsed();
+            }
+        }
+        const qint64 from = rec.now();
+        mouse(QEvent::MouseButtonPress, at);
+        const bool choiceAtPress = js(w, u"navPage"_s).toInt() == want;
+        qint64 shownAt = js(w, u"currentPage"_s).toInt() == want ? rec.now() : -1;
+        QElapsedTimer watching;
+        watching.start();
+        while (watching.elapsed() < 500) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 1);
+            if (shownAt < 0 && js(w, u"currentPage"_s).toInt() == want)
+                shownAt = rec.now();
+        }
+        mouse(QEvent::MouseButtonRelease, at);
+        const qint64 choiceFrame = presentedAfter(from);
+        const qint64 pageFrame = presentedAfter(shownAt);
+        const double choiceMs = choiceFrame >= 0 ? round1(ms(choiceFrame - from)) : -1;
+        const double pageMs = pageFrame >= 0 ? round1(ms(pageFrame - from)) : -1;
+        say(u"press → %1%2: made before %3%4; choice shown at the press %5, on screen %6 ms; page on screen %7 ms"_s
+                .arg(id, rest ? u" (pointer rested 600 ms)"_s : u""_s, madeBefore ? u"yes"_s : u"no"_s,
+                    rest ? u", made by the rest after %1 ms"_s.arg(madeAfterRest) : QString(),
+                    choiceAtPress ? u"yes"_s : u"no"_s).arg(choiceMs).arg(pageMs));
+        steps.append(QJsonObject {{u"step"_s, u"press → %1%2"_s.arg(id, rest ? u" (rested)"_s : u""_s)},
+            {u"made_before"_s, madeBefore}, {u"made_after_rest_ms"_s, madeAfterRest}, {u"choice_at_press"_s, choiceAtPress},
+            {u"choice_on_screen_ms"_s, choiceMs}, {u"page_on_screen_ms"_s, pageMs}});
+        if (!choiceAtPress || choiceMs < 0 || choiceMs > 50 || pageMs < 0) {
+            say(u"FAILED: press → %1: the choice not on screen within 50 ms, or the page never"_s.arg(id));
+            passed = false;
+        }
+        if (rest && madeAfterRest < 0) {
+            say(u"FAILED: press → %1: the pointer rested 600 ms and its page was not made"_s.arg(id));
+            passed = false;
+        }
+        pressed.append(id);
+    };
+
     // The other pages, each shown once (made then, if not yet), then again
     // with each of its tabs and the wheel. --plugins-only: not them.
     const QStringList ids = args.contains(u"--plugins-only"_s) ? QStringList() : js(w, u"pages.map(p => p.id)"_s).toStringList();
+    if (!ids.isEmpty()) {
+        pressNav(u"results"_s, true);
+        pressNav(u"scope"_s, true);
+        pressNav(u"appearance"_s, false);
+        pressNav(u"clipboard"_s, false);
+        pressNav(u"results"_s, false); // made: at once
+        const QPointF away = js(w, u"flick.mapToItem(null, flick.width / 2, flick.height / 2)"_s).toPointF();
+        mouse(QEvent::MouseMove, away);
+
+        // ↓ from 运行状况's neighbour above (AI 助手) onto 运行状况, not made yet:
+        // the choice and the keyboard there at once, the page after.
+        pump(250);
+        const int ai = js(w, u"pageIndex('ai')"_s).toInt();
+        const int health = js(w, u"pageIndex('health')"_s).toInt();
+        js(w, u"navItemAt(%1).forceActiveFocus()"_s.arg(ai));
+        const bool healthMade = js(w, u"pageSlots[%1].item !== null"_s.arg(health)).toBool();
+        QKeyEvent down(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
+        QCoreApplication::sendEvent(w, &down);
+        const bool choiceAtKey = js(w, u"navPage"_s).toInt() == health;
+        const bool focusMoved = js(w, u"navItemAt(%1).activeFocus"_s.arg(health)).toBool();
+        pump(300);
+        const bool shown = js(w, u"currentPage"_s).toInt() == health;
+        say(u"key ↓ → health: made before %1; choice at the key %2, keyboard moved %3, page shown %4"_s
+                .arg(healthMade ? u"yes"_s : u"no"_s, choiceAtKey ? u"yes"_s : u"no"_s, focusMoved ? u"yes"_s : u"no"_s,
+                    shown ? u"yes"_s : u"no"_s));
+        if (!choiceAtKey || !focusMoved || !shown) {
+            say(u"FAILED: key ↓ → health"_s);
+            passed = false;
+        }
+        js(w, u"clearFocus()"_s);
+        pressed.append(u"health"_s);
+    }
     for (const QString& id : ids) {
-        if (id == u"plugins" || id == u"gleaning")
+        if (id == u"plugins" || id == u"gleaning" || pressed.contains(id))
             continue;
         measure(u"page → %1 (first)"_s.arg(id), page(id, 0), 500);
     }
