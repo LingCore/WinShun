@@ -196,6 +196,14 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.40.0**
+
+- 🖍️ **剪贴板备注可以上色**，七种颜色一眼分开；🔍 不用搜索的话可以把剪贴板的搜索框藏起来。
+- 📐 **设置窗口记住大小**，重启后照样，上次最大化的仍然最大化；不想要在 设置 › 外观 › 记住窗口大小 关掉。
+- 🛠️ **修复** 管理员身份运行时软件内更新后回到管理员身份；有道词典划词复制的文件、图片不再进剪贴板历史；Everything SDK 程序按路径搜；缩略图没读完就关窗口偶尔会让程序退出。
+
+详见 [0.40.0 发布说明](docs/release-notes/v0.40.0.md)。
+
 **0.39.0**
 
 - 🗂️ **收藏夹点列头排序**：名称、修改日期、类型、大小一点就排好，再点反过来，“恢复默认”随时回到原来的顺序。
@@ -521,6 +529,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.40.0**
+
+- 🖍️ **Clipboard notes in colour**, seven to tell entries apart; 🔍 the clipboard's search box can be hidden.
+- 📐 **The settings window keeps its size** after a restart, maximized if you left it so; Settings › Appearance › Remember window sizes turns it off.
+- 🛠️ **Fixed**: back as administrator after an in-app update; Youdao's selection translation no longer fills the clipboard history; path searches from programs on the Everything SDK; a window closed while thumbnails were still loading could end the program.
+
+See the [0.40.0 release notes](docs/release-notes/v0.40.0.md).
 
 **0.39.0**
 
