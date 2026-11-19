@@ -97,6 +97,7 @@ constexpr Named kPermissions[] = {
     {Permission::SystemSettings, u"system:settings"},
     {Permission::Elevated, u"elevated"},
     {Permission::WinshunBackup, u"winshun:backup"},
+    {Permission::SystemPower, u"system:power"},
 };
 
 // Collects the first error; every check after it is skipped.
@@ -575,7 +576,6 @@ Setting readSetting(const QJsonValue& value, int index, Check& check)
             check.fail(where + u".multiline 只用于 text"_s);
         s.multiline = multiline.toBool();
     }
-    if (s.type == u"number") { // its range, step and unit (GitHub #359); on other types they mean nothing
     if (const QJsonValue hidden = o.value(u"hidden"_s); !hidden.isUndefined()) {
         if (!hidden.isBool())
             check.fail(where + u".hidden 要是 true 或 false"_s);
@@ -583,6 +583,7 @@ Setting readSetting(const QJsonValue& value, int index, Check& check)
             check.fail(where + u".hidden 只用于 text、number、bool、choice"_s);
         s.hidden = hidden.toBool();
     }
+    if (s.type == u"number") { // its range, step and unit (GitHub #359); on other types they mean nothing
         const auto number = [&](const QString& name) -> std::optional<double> {
             const QJsonValue v = o.value(name);
             if (v.isUndefined() || v.isNull())

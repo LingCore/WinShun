@@ -54,6 +54,9 @@ enum class Permission : std::uint32_t {
     // Win顺's own settings backup, made for it and restored from a file of its
     // (backup_export, backup_restore: the cloud backup plugin, GitHub #276).
     WinshunBackup = 1u << 15,
+    // Shut down, restart, sleep or hibernate the computer (the `power` tool, 0.41.0).
+    // Win顺 does it: a plugin's restricted token has no shutdown privilege.
+    SystemPower = 1u << 16,
 };
 
 struct Permissions {
@@ -172,13 +175,13 @@ struct Setting {
     // A text of several lines (0.41.0): a box the card's width under its
     // title, Enter starts a new line. Older Win顺 show one line.
     bool multiline = false;
-    bool slider() const noexcept { return min && max; }
-    bool bounded() const noexcept { return min || max || step; } // its values are fitted
-    int decimals() const; // the digits after the point its steps need (step's, min's, max's)
     // Kept and told to the plugin as any setting is, but with no row on its
     // card and not found by the settings search (0.41.0): for a value the
     // plugin's own settings window edits. Older Win顺 show it as a row.
     bool hidden = false;
+    bool slider() const noexcept { return min && max; }
+    bool bounded() const noexcept { return min || max || step; } // its values are fitted
+    int decimals() const; // the digits after the point its steps need (step's, min's, max's)
     // Within min and max; with a step, the nearest of min + n × step and
     // max (the last step may be shorter), rounded to decimals().
     double fit(double value) const;

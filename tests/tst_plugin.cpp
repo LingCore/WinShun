@@ -26,6 +26,7 @@
 #include "ToastPolicy.h"
 #include "Tools.h"
 #include "Updates.h"
+#include "platform/Power.h"
 #include "WebShortcut.h"
 #include "WebSearchProvider.h"
 #include "TranslateText.h"
@@ -43,6 +44,7 @@
 #include <QProcess>
 #include <QScopeGuard>
 #include <QSettings>
+#include <QThread>
 #include <QTemporaryDir>
 #include <QTimeZone>
 #include <QTest>
@@ -56,8 +58,10 @@
 #include <shlobj.h>
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -1147,6 +1151,24 @@ private slots:
         QVERIFY(shipped->runtime.has_value());
         QCOMPARE(shipped->runtime->start, StartWhen::Eager);
         QCOMPARE(shipped->runtime->idleExitSec, 0);
+    }
+
+    // system:power (0.41.0, the power tool): known by its name, asked for in a manifest.
+    void manifestPowerPermission()
+    {
+        QCOMPARE(permissionName(Permission::SystemPower), u"system:power"_s);
+        QCOMPARE(permissionFromName(u"system:power"), std::optional(Permission::SystemPower));
+        QString error;
+        const auto m = Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","minWinShun":"0.41.0",
+            "permissions":["ui","system:power"],"runtime":{"mode":"resident","program":"bin\\tool.exe"},"commands":[{"id":"c"}]})", &error);
+        QVERIFY2(m.has_value(), qPrintable(error));
+        QVERIFY(m->permissions.has(Permission::SystemPower));
+        QVERIFY(!m->permissions.has(Permission::SystemSettings)); // a permission of its own
+        QVERIFY(m->permissions.names().contains(u"system:power"_s));
+        const auto without = Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","permissions":["system:settings"],
+            "runtime":{"mode":"resident","program":"bin\\tool.exe"},"commands":[{"id":"c"}]})", &error);
+        QVERIFY2(without.has_value(), qPrintable(error));
+        QVERIFY(!without->permissions.has(Permission::SystemPower));
     }
 
     void manifestElevated()
@@ -4482,28 +4504,6 @@ private slots:
         QCOMPARE(m->settings.front().multiline, multiline);
     }
 
-    // Kept to the range whoever sets it: the card, the plugin, the file.
-    void rangedSettingsAreKeptInRange()
-    {
-        QString error;
-        const std::optional<Manifest> m = rangesManifest(&error);
-        QVERIFY2(m.has_value(), qPrintable(error));
-        using Pairs = QList<std::pair<QString, QString>>;
-        const QString id = u"test.ranges"_s;
-        Pairs ini;
-        QVERIFY(secrets::store(id, *m, u"pause"_s, u"1234"_s, ini));
-        QCOMPARE(ini, (Pairs {{u"pause"_s, u"1250"_s}}));
-        QVERIFY(!secrets::store(id, *m, u"pause"_s, u"1260"_s, ini)); // the same step: nothing changed
-        QVERIFY(secrets::store(id, *m, u"pause"_s, u" 99999 "_s, ini));
-        QVERIFY(secrets::store(id, *m, u"ratio"_s, u"0.30000000000000004"_s, ini));
-        QVERIFY(secrets::store(id, *m, u"floor"_s, u"-7"_s, ini));
-        QCOMPARE(ini, (Pairs {{u"pause"_s, u"2000"_s}, {u"ratio"_s, u"0.3"_s}, {u"floor"_s, u"1"_s}}));
-        // No number: the line goes, its default stands.
-        QVERIFY(secrets::store(id, *m, u"pause"_s, u"abc"_s, ini));
-        QVERIFY(!secrets::store(id, *m, u"pause"_s, QString(), ini));
-        QCOMPARE(ini, (Pairs {{u"ratio"_s, u"0.3"_s}, {u"floor"_s, u"1"_s}}));
-        // A number without them: as typed, as before.
-        QVERIFY(secrets::store(id, *m, u"plain"_s, u"abc"_s, ini));
     // A setting only the plugin's own window edits (0.41.0): "hidden", for the
     // four types whose value the plugin may send; false is always fine.
     void hiddenSetting_data()
@@ -4589,6 +4589,28 @@ private slots:
         f.host->shutdown();
     }
 
+    // Kept to the range whoever sets it: the card, the plugin, the file.
+    void rangedSettingsAreKeptInRange()
+    {
+        QString error;
+        const std::optional<Manifest> m = rangesManifest(&error);
+        QVERIFY2(m.has_value(), qPrintable(error));
+        using Pairs = QList<std::pair<QString, QString>>;
+        const QString id = u"test.ranges"_s;
+        Pairs ini;
+        QVERIFY(secrets::store(id, *m, u"pause"_s, u"1234"_s, ini));
+        QCOMPARE(ini, (Pairs {{u"pause"_s, u"1250"_s}}));
+        QVERIFY(!secrets::store(id, *m, u"pause"_s, u"1260"_s, ini)); // the same step: nothing changed
+        QVERIFY(secrets::store(id, *m, u"pause"_s, u" 99999 "_s, ini));
+        QVERIFY(secrets::store(id, *m, u"ratio"_s, u"0.30000000000000004"_s, ini));
+        QVERIFY(secrets::store(id, *m, u"floor"_s, u"-7"_s, ini));
+        QCOMPARE(ini, (Pairs {{u"pause"_s, u"2000"_s}, {u"ratio"_s, u"0.3"_s}, {u"floor"_s, u"1"_s}}));
+        // No number: the line goes, its default stands.
+        QVERIFY(secrets::store(id, *m, u"pause"_s, u"abc"_s, ini));
+        QVERIFY(!secrets::store(id, *m, u"pause"_s, QString(), ini));
+        QCOMPARE(ini, (Pairs {{u"ratio"_s, u"0.3"_s}, {u"floor"_s, u"1"_s}}));
+        // A number without them: as typed, as before.
+        QVERIFY(secrets::store(id, *m, u"plain"_s, u"abc"_s, ini));
         QCOMPARE(ini.last(), (std::pair {u"plain"_s, u"abc"_s}));
         // What the plugin sends (winshun/settings/update): taken, then fitted.
         const Pairs sent = secrets::acceptedUpdate(*m, {{u"pause"_s, 3333}, {u"ratio"_s, 0.27}, {u"count"_s, u"7"_s}});
@@ -5068,6 +5090,116 @@ private slots:
         QVERIFY(f.waitFinal(2));
         QCOMPARE(calls, 1);
         QVERIFY(f.finalFor(2)->items[0].subtitle.startsWith(u"tool ok"));
+    }
+
+    // The `power` tool (0.41.0): held to system:power, its action checked, each
+    // action handed to the performer that stands in for the computer here: the
+    // real one would shut this machine down.
+    void powerActionNames()
+    {
+        QCOMPARE(power::parseAction(u"shutdown"_s), std::optional(power::Action::Shutdown));
+        QCOMPARE(power::parseAction(u"restart"_s), std::optional(power::Action::Restart));
+        QCOMPARE(power::parseAction(u"sleep"_s), std::optional(power::Action::Sleep));
+        QCOMPARE(power::parseAction(u"hibernate"_s), std::optional(power::Action::Hibernate));
+        for (const QString& other : {QString(), u"Shutdown"_s, u"reboot"_s, u"suspend"_s, u"shutdown "_s, u"off"_s})
+            QVERIFY2(!power::parseAction(other), qPrintable(other));
+        for (const power::Action a : {power::Action::Shutdown, power::Action::Restart, power::Action::Sleep, power::Action::Hibernate})
+            QCOMPARE(power::parseAction(power::actionName(a)), std::optional(a));
+    }
+
+    void powerToolRequiresSystemPower()
+    {
+        // The performer runs on a thread of its own for sleep and hibernate.
+        struct Calls {
+            std::mutex lock; // all but `finished`: the test and the performer's thread both use them
+            std::vector<power::Action> actions;
+            QString answer; // what it says: empty, done
+            int blockMs = 0; // as a real sleep does, until the computer wakes
+            std::atomic<bool> finished {false};
+        };
+        const auto calls = std::make_shared<Calls>();
+        power::setPerformerForTest([calls](power::Action action) {
+            QString answer;
+            int blockMs = 0;
+            {
+                const std::lock_guard guard(calls->lock);
+                calls->actions.push_back(action);
+                answer = calls->answer;
+                blockMs = calls->blockMs;
+            }
+            if (blockMs > 0)
+                QThread::msleep(static_cast<unsigned long>(blockMs));
+            calls->finished = true;
+            return answer;
+        });
+        const auto reset = qScopeGuard([] { power::setPerformerForTest({}); });
+        const auto reached = [&] {
+            const std::lock_guard guard(calls->lock);
+            return calls->actions;
+        };
+        const auto script = [&](const QString& answer, int blockMs) {
+            const std::lock_guard guard(calls->lock);
+            calls->answer = answer;
+            calls->blockMs = blockMs;
+        };
+
+        Fixture f;
+        f.host->setAppTools({{u"power"_s, Permission::SystemPower,
+            [](const QString& pluginId, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+                power::run(pluginId, arguments, std::move(done));
+            }}});
+        Spec denied;
+        denied.id = u"test.power-denied"_s;
+        denied.keywords = {u"pd"_s};
+        denied.args = {u"--tool"_s, u"power"_s, u"--tool-key"_s, u"action"_s};
+        denied.permissions = {u"ui"_s, u"system:settings"_s}; // other permissions do not do
+        QVERIFY(!f.install(denied).isEmpty());
+        std::uint64_t id = 0;
+        const auto ask = [&](const QString& keyword, const QString& action) {
+            ++id;
+            if (!f.host->query(keyword + u' ' + action, Scope::All, id) || !f.waitFinal(id))
+                return QString(u"no answer: "_s + f.logs.join(u'\n'));
+            return f.finalFor(id)->items[0].subtitle;
+        };
+        QCOMPARE(ask(u"pd"_s, u"shutdown"_s), u"tool error %1"_s.arg(kPermissionDenied));
+        QCOMPARE(ask(u"pd"_s, u"sleep"_s), u"tool error %1"_s.arg(kPermissionDenied));
+        QVERIFY(reached().empty()); // nothing reached the performer
+
+        Spec allowed = denied;
+        allowed.id = u"test.power-allowed"_s;
+        allowed.keywords = {u"pa"_s};
+        allowed.permissions = {u"system:power"_s};
+        QVERIFY(!f.install(allowed).isEmpty());
+        // Each of the four, as it was asked for; the answer {ok: true}.
+        std::vector<power::Action> expected;
+        for (const power::Action a : {power::Action::Shutdown, power::Action::Restart, power::Action::Sleep, power::Action::Hibernate}) {
+            const QString answer = ask(u"pa"_s, power::actionName(a));
+            QVERIFY2(answer.startsWith(u"tool ok "_s) && answer.contains(u"\"ok\":true"_s), qPrintable(power::actionName(a) + u": "_s + answer));
+            expected.push_back(a);
+            QVERIFY(QTest::qWaitFor([&] { return reached().size() == expected.size(); }, 3000));
+            QVERIFY(reached() == expected);
+        }
+        // Any other action is an error, and nothing is done.
+        QCOMPARE(ask(u"pa"_s, u"reboot"_s), u"tool error %1"_s.arg(kToolFailed));
+        QCOMPARE(ask(u"pa"_s, u"Shutdown"_s), u"tool error %1"_s.arg(kToolFailed));
+        QCOMPARE(ask(u"pa"_s, u"x"_s), u"tool error %1"_s.arg(kToolFailed));
+        QCOMPARE(reached().size(), expected.size());
+        // What the performer says is not done is an error, for each of them.
+        script(u"这台电脑没开休眠"_s, 0);
+        QCOMPARE(ask(u"pa"_s, u"hibernate"_s), u"tool error %1"_s.arg(kToolFailed));
+        QCOMPARE(ask(u"pa"_s, u"shutdown"_s), u"tool error %1"_s.arg(kToolFailed));
+        QCOMPARE(reached().size(), expected.size() + 2);
+        // A sleep that comes back only at the wake-up: the tool answers without it.
+        script({}, 1500);
+        calls->finished = false;
+        QElapsedTimer timer;
+        timer.start();
+        const QString asleep = ask(u"pa"_s, u"sleep"_s);
+        QVERIFY2(asleep.startsWith(u"tool ok "_s) && asleep.contains(u"\"ok\":true"_s), qPrintable(asleep));
+        QVERIFY2(timer.elapsed() < 1300, qPrintable(QString::number(timer.elapsed())));
+        QVERIFY(!calls->finished); // the computer is still "asleep"
+        QVERIFY(QTest::qWaitFor([&] { return calls->finished.load(); }, 5000)); // not left running past the test
+        f.host->shutdown();
     }
 
     // ---- rerun, toasts, files (GitHub #113) ----------------------------------
