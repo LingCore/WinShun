@@ -510,6 +510,9 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
         std::optional<UnderAny> typeScope;
         if (!options.typeFolders.empty())
             typeScope.emplace(index, options.typeFolders);
+        std::optional<UnderAny> withinScope;
+        if (!options.within.empty())
+            withinScope.emplace(index, options.within);
         // Each worker its own, as `under`: their caches are written as they are asked.
         std::optional<UnderAny> inside;
         if (!insideOf.empty())
@@ -546,6 +549,8 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
                 if (!filter.folders.empty() && !under(e))
                     continue;
                 if (typeScope && !(*typeScope)(e))
+                    continue;
+                if (withinScope && !std::ranges::binary_search(options.within, id) && !(*withinScope)(e))
                     continue;
                 if (filter.directIn != kNoEntry && e.parent != filter.directIn)
                     continue;

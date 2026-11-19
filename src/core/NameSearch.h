@@ -74,6 +74,10 @@ struct NameSearchOptions {
     EntryFilter filter;
     // 类型范围的有序目录 ID；组内取并集，与 filter.folders 取交集。
     std::vector<EntryId> typeFolders;
+    // Only these entries themselves and what lies under them (sorted ids;
+    // empty: no such bound), as well as the bounds above: where a full path
+    // starts with what Everything was asked for (EverythingIpc, GitHub #399).
+    std::vector<EntryId> within;
     // Typed in a folder's window (GitHub #110): the hits that lie in this
     // folder, at any depth, go before all the others, each part in the
     // order asked for (NameHit::inside tells them apart), so that one pass

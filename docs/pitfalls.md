@@ -11,6 +11,13 @@
   - 安装程序覆盖安装时，开机任务如果是启动 Setup 的那个用户自己的（他用自己的权限 `schtasks /Query` 读得到），就原样留着；读不到的（别的管理员答 UAC 时注册的，#21）照旧删掉，卸载也照旧删。`--take-autostart` 遇到模式要求提权、任务也已经是提权的情况，就不再改写。
 - **测试**：`tst_updater::elevationAfterUpdateWaitsThenAsks` 覆盖每个分支。实机测试：从 Program Files 复制一份、换上新 exe，用 `--profile` 运行，测试进程拿着 `Local\WinShun.Updating`，并预先写好 `update.ini`。没开窗口时，助手结束 1.1 秒后以管理员身份重启（integrity high）；设置一直开着时，记下 waiting，60 秒后弹通知（`asked`），仍是普通权限；设置在 5 秒后关掉时，关掉后 1.3 秒重启。开机任务、右键菜单项前后一样。`verify-installer.ps1` 6 个情形全部通过；但测试版装在自己的目录里，“保留用户自己的任务”这个分支只编译过、没真正走到，装到 Program Files 上的完整升级要等发布时用 `verify-installed-upgrade.ps1 -Mode InApp` 实测。
 
+## Everything 的 SDK 程序按路径搜，结果跑到文件夹外面（2026-11-19，#399）
+
+- **现象**：用户关掉 Everything，让 Win顺 来回答 EverythingSearchClient（C# 库）发的 `file:"D:\images" ext:jpg;png`，结果里有一大堆不在 `D:\images` 里的 jpg、png。
+- **原因**：路径末尾不带 `\` 的词，Win顺 当作名字里的一个词：`"D:\images"` 只剩下名字要含 `images`，再加上 `ext:`，等于在全盘找 jpg、png。Everything 的规则是：词里有 `\`，就拿来和**完整路径**比。从盘符写起的词，比到的就是路径开头，所以 `D:\images2`、`D:\images.jpg` 也算（Everything 自己也这样）；末尾带 `\` 才是“这个文件夹里面”。
+- **做法**：`EverythingIpc::translate` 把从盘符或 `\\电脑\共享` 写起、不带通配符的词收进 `Search::pathStarts`。`find` 在索引里找它的上一级文件夹，取名字以末段开头的子项（不分大小写），作为 `NameSearchOptions::within` 交给 `NameSearch`（这些条目本身加上它们下面的全部）。几个开头只有互为前缀时才能同时满足，否则结果为空。只有最后一段带通配符的（`D:\images\*.jpg`），拆成“文件夹 + 名字通配”。排除（`!D:\x`）还是按原来的写法。
+- **测试**：`tst_everything` 新增 translate 的各种写法和 `findsByPathStart`（`images`、`images2`、`images.jpg`、别处的 `images` 文件夹）。实机测试：用自己写的 QUERY2W 客户端，发的请求和 EverythingSearchClient 0.9 的 `Search()` 完全一样（search_flags 0、全部结果、NAME|PATH|SIZE|日期|属性、sort 0）。`file:"<目录>\images" ext:jpg;png` 回 5 条（images 里的 3 条，加 `images2\e.jpg`、`images.jpg`），末尾带 `\` 的回 3 条，`<目录>\images\*.jpg` 回 2 条，`folder:<目录>\images` 回 3 个文件夹；别处的 `other\images` 一条都没有。不能直接加载下载来的库 DLL 来测（不运行下载的代码），所以按它的源码自己写了一个客户端。
+
 ## 卡片网格：卡片展开、收起时报绑定循环（2026-11-19，插件页改成网格）
 
 - **现象**：插件页的卡片改成网格（TileFlow）后，「内置功能」的卡片从小卡片展开成整行时，日志报 `Binding loop detected for property "width"`，预览因此退出码非 0。

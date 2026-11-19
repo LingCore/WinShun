@@ -26,8 +26,9 @@
 //
 // Not all of Everything: its query is read as far as Win顺's own search goes
 // (words, "quoted words", !not, a | b, wildcards, a folder's path to look
-// in, ext:, size:, dm:, regex:, file: / folder:, parent:, and root: alone,
-// which lists the drives, as Directory Opus asks first). A query that asks
+// in, the start of a full path, "D:\images\*.jpg", ext:, size:, dm:,
+// regex:, file: / folder:, parent:, and root: alone, which lists the
+// drives, as Directory Opus asks first). A query that asks
 // for more (attrib:, content:, dupe:, <groups> of words…) finds nothing
 // rather than something else. Match case and whole word are not honoured (more is found,
 // never less); what cannot be known from the index (date accessed, run
@@ -133,6 +134,10 @@ struct Search {
     bool regex = false; // ... with every term a regular expression
     Kind kind = Kind::Any;
     QStringList folders; // only under one of these ("C:\Work", "C:"); none: anywhere
+    // Only what a full path starts with (any case): a path from a drive or a
+    // share that does not end in \ ("D:\images": D:\images and all in it,
+    // and D:\images2 too, as Everything compares it, GitHub #399).
+    QStringList pathStarts;
     QString directIn; // only what lies right in this folder (parent:)
     bool roots = false; // root: alone: the drives and shares themselves
     std::optional<std::uint32_t> count; // count:

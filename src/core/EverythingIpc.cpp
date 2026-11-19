@@ -3,6 +3,7 @@
 #include "FolderSize.h"
 #include "NameSearch.h"
 #include "Query.h"
+#include "Wtf8.h"
 
 #include <QSet>
 
@@ -112,6 +113,43 @@ QString withoutEndSlash(QString path)
     while (path.endsWith(u'\\'))
         path.chop(1);
     return path;
+}
+
+bool hasWildcards(QStringView text)
+{
+    return text.contains(u'*') || text.contains(u'?');
+}
+
+// From a drive ("D:\images") or a share ("\\host\share\docs"), something
+// after the root: a full path's start, as Everything reads a word with a \.
+bool fromRoot(const QString& path)
+{
+    if (path.size() > 3 && path[0].isLetter() && path[1] == u':' && path[2] == u'\\')
+        return true;
+    return path.startsWith(u"\\\\") && path.indexOf(u'\\', 2) > 2;
+}
+
+// What a full path's start (Search::pathStarts) is in the index: the entries
+// in its folder whose names begin with its last part, which a search takes
+// with all under them (NameSearchOptions::within). Sorted; none when its
+// folder is not in the index. A share's root ("\\host\share") is itself.
+std::vector<EntryId> pathStartEntries(const FileIndex& index, const QString& start)
+{
+    std::vector<EntryId> within;
+    const qsizetype slash = start.lastIndexOf(u'\\');
+    const QStringView stem = QStringView(start).mid(slash + 1);
+    const EntryId folder = index.findPath(start.left(slash).toStdWString());
+    if (folder == kNoEntry || !index.scan(folder).isDir()) {
+        if (const EntryId self = index.findPath(start.toStdWString()); self != kNoEntry)
+            within.push_back(self);
+        return within;
+    }
+    for (EntryId child = index.entry(folder).firstChild(); child != kNoEntry; child = index.entry(child).nextSibling) {
+        if (!index.scan(child).isDeleted() && wtf8::toQString(index.name(child)).startsWith(stem, Qt::CaseInsensitive))
+            within.push_back(child);
+    }
+    std::ranges::sort(within);
+    return within;
 }
 
 // The folders of a group, <"C:\a\" | "D:\b\">: how Directory Opus names
@@ -488,10 +526,32 @@ Search translate(const QString& text, std::uint32_t searchFlags)
                 search.folders.append(folder);
             continue;
         }
+        // Without the \ at the end (GitHub #399: "D:\images" from the
+        // Everything SDK found every "images" anywhere): Everything compares
+        // a word with a \ in it with each whole full path, which one from a
+        // root can only start. Wildcards in its last part alone: the names in
+        // that folder, at any depth ("D:\images\*.jpg").
+        if (const QString path = unquoted(word); !negated && fromRoot(path)) {
+            const qsizetype slash = path.lastIndexOf(u'\\');
+            const QString folder = path.left(slash);
+            const QString last = path.mid(slash + 1);
+            if (!hasWildcards(folder) && !hasWildcards(last)) {
+                if (!search.pathStarts.contains(path, Qt::CaseInsensitive))
+                    search.pathStarts.append(path);
+                continue;
+            }
+            if (!hasWildcards(folder) && !last.isEmpty()) {
+                if (!search.folders.contains(folder, Qt::CaseInsensitive))
+                    search.folders.append(folder);
+                words.append(last.contains(u' ') ? u'"' + last + u'"' : last);
+                continue;
+            }
+        }
         words.append(negated ? u'!' + word : word);
     }
     search.query = words.join(u' ');
-    if (search.roots && (!search.query.isEmpty() || !search.folders.isEmpty() || !search.directIn.isEmpty()))
+    if (search.roots
+        && (!search.query.isEmpty() || !search.folders.isEmpty() || !search.pathStarts.isEmpty() || !search.directIn.isEmpty()))
         search.unsupported = u"root:"_s;
     return search;
 }
@@ -536,6 +596,18 @@ Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const st
         options.filter.folders.push_back(id);
     }
     std::ranges::sort(options.filter.folders);
+    if (!search.pathStarts.isEmpty()) {
+        // Each must hold (Everything's words all do): the longest, when the
+        // others start it; else nothing can.
+        const QString& longest
+            = *std::ranges::max_element(search.pathStarts, {}, [](const QString& start) { return start.size(); });
+        if (!std::ranges::all_of(search.pathStarts,
+                [&longest](const QString& start) { return longest.startsWith(start, Qt::CaseInsensitive); }))
+            return out;
+        options.within = pathStartEntries(index, longest);
+        if (options.within.empty())
+            return out;
+    }
     if (!search.directIn.isEmpty()) {
         const EntryId id = index.findPath(search.directIn.toStdWString());
         options.filter.directIn = id == kNoEntry ? kNoEntry - 1 : id;

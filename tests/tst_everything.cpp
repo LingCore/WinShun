@@ -165,9 +165,11 @@ private slots:
         QTest::addColumn<QStringList>("folders");
         QTest::addColumn<QString>("directIn");
         QTest::addColumn<QString>("unsupported");
+        QTest::addColumn<QStringList>("starts");
         const auto row = [](const char* name, const QString& text, const QString& query, ev::Kind kind = ev::Kind::Any,
-                             const QStringList& folders = {}, const QString& directIn = {}, const QString& unsupported = {}) {
-            QTest::newRow(name) << text << query << static_cast<int>(kind) << folders << directIn << unsupported;
+                             const QStringList& folders = {}, const QString& directIn = {}, const QString& unsupported = {},
+                             const QStringList& starts = {}) {
+            QTest::newRow(name) << text << query << static_cast<int>(kind) << folders << directIn << unsupported << starts;
         };
         row("words", u"年度 报告"_s, u"年度 报告"_s);
         row("quoted", u"\"annual report\" !draft"_s, u"\"annual report\" !draft"_s);
@@ -181,7 +183,15 @@ private slots:
         row("folder-share", u"\"\\\\nas\\docs\\\" abc"_s, u"abc"_s, ev::Kind::Any, {u"\\\\nas\\docs"_s});
         row("folder-path-modifier", u"path:\"C:\\Work\\\" abc"_s, u"abc"_s, ev::Kind::Any, {u"C:\\Work"_s});
         row("folder-alone", u"\"C:\\Work\\\""_s, QString(), ev::Kind::Any, {u"C:\\Work"_s});
-        row("path-not-folder", u"C:\\Work\\rep"_s, u"C:\\Work\\rep"_s);
+        // A path without the \ at the end: the start of a full path, as Everything reads it (GitHub #399).
+        row("path-start", u"C:\\Work\\rep"_s, QString(), ev::Kind::Any, {}, {}, {}, {u"C:\\Work\\rep"_s});
+        row("path-start-sdk", u"file:\"D:\\images\" ext:jpg;png"_s, u"ext:jpg,png"_s, ev::Kind::Files, {}, {}, {},
+            {u"D:\\images"_s});
+        row("path-start-share", u"\\\\nas\\docs\\2024 abc"_s, u"abc"_s, ev::Kind::Any, {}, {}, {}, {u"\\\\nas\\docs\\2024"_s});
+        row("path-start-not", u"!C:\\Work\\rep"_s, u"!C:\\Work\\rep"_s);
+        row("path-wildcards", u"D:\\images\\*.jpg"_s, u"*.jpg"_s, ev::Kind::Any, {u"D:\\images"_s});
+        row("path-wildcards-drive", u"\"D:\\a b*.jpg\""_s, u"\"a b*.jpg\""_s, ev::Kind::Any, {u"D:"_s});
+        row("path-wildcards-between", u"D:\\im*\\a.jpg"_s, u"D:\\im*\\a.jpg"_s);
         row("not-a-folder", u"!\"C:\\Temp\\\" abc"_s, u"!\"C:\\Temp\\\" abc"_s);
         row("parent", u"parent:\"C:\\Work\" abc"_s, u"abc"_s, ev::Kind::Any, {}, u"C:\\Work"_s);
         row("infolder-slash", u"infolder:C:\\Work\\"_s, QString(), ev::Kind::Any, {}, u"C:\\Work"_s);
@@ -215,6 +225,7 @@ private slots:
         QTEST(search.folders, "folders");
         QTEST(search.directIn, "directIn");
         QTEST(search.unsupported, "unsupported");
+        QTEST(search.pathStarts, "starts");
         QVERIFY(!search.regex);
         QVERIFY(!search.roots || !search.unsupported.isEmpty());
     }
@@ -339,6 +350,47 @@ private slots:
         ev::Query regex = ask(u"^report\\.(md|txt)$"_s);
         regex.searchFlags = ev::searchflag::Regex;
         QCOMPARE(found(regex).totalItems, 2u);
+    }
+
+    // GitHub #399: the Everything SDK's "file:\"D:\images\" ext:jpg;png" found
+    // jpg and png files anywhere under a folder called images. Everything
+    // compares such a path with each whole full path: what starts with it.
+    void findsByPathStart()
+    {
+        auto index = std::make_shared<FileIndex>();
+        const auto file = [&](EntryId parent, const char* name) { return index->add(parent, name, 0); };
+        const auto folder = [&](EntryId parent, const char* name) { return index->add(parent, name, EntryFlag::Directory); };
+        const EntryId d = index->addRoot("D:");
+        const EntryId images = folder(d, "Images");
+        file(images, "a.jpg");
+        file(images, "e.txt");
+        file(folder(images, "sub"), "b.png");
+        file(folder(d, "images2"), "c.jpg");
+        file(d, "images.jpg");
+        file(folder(folder(d, "other"), "images"), "d.jpg");
+        file(folder(index->addRoot("C:"), "images"), "g.jpg");
+        WorkerPool pool(2);
+        const auto found = [&](const QString& search) {
+            QStringList out = paths(ev::find(*index, pool, ask(search)));
+            out.sort(Qt::CaseInsensitive);
+            return out;
+        };
+
+        // The reporter's query, any case.
+        QCOMPARE(found(u"file:\"D:\\images\" ext:jpg;png"_s),
+            (QStringList {u"D:\\images.jpg"_s, u"D:\\images2\\c.jpg"_s, u"D:\\Images\\a.jpg"_s, u"D:\\Images\\sub\\b.png"_s}));
+        // Alone: the folders themselves too.
+        QCOMPARE(found(u"D:\\images\\s"_s), (QStringList {u"D:\\Images\\sub"_s, u"D:\\Images\\sub\\b.png"_s}));
+        // With the \ at the end, only what is in the folder, as before.
+        QCOMPARE(found(u"\"D:\\images\\\" file:"_s),
+            (QStringList {u"D:\\Images\\a.jpg"_s, u"D:\\Images\\e.txt"_s, u"D:\\Images\\sub\\b.png"_s}));
+        // Wildcards in the last part: the names in that folder, at any depth.
+        QCOMPARE(found(u"D:\\images\\*.png"_s), QStringList {u"D:\\Images\\sub\\b.png"_s});
+        // Every word holds: two starts, the longer one; two that differ, nothing.
+        QCOMPARE(found(u"D:\\images D:\\Images\\sub"_s), (QStringList {u"D:\\Images\\sub"_s, u"D:\\Images\\sub\\b.png"_s}));
+        QVERIFY(found(u"D:\\images2 D:\\images\\sub"_s).isEmpty());
+        QVERIFY(found(u"D:\\nothing ext:jpg"_s).isEmpty());
+        QVERIFY(found(u"E:\\images"_s).isEmpty());
     }
 
     void encodes()
