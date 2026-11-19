@@ -796,8 +796,22 @@ struct Run {
     QStringList dumps;
     QJsonObject crash;
     QString lastPicture; // the label of the one read when it ended
+    QStringList failedPictures; // those whose reading failed, in order
     std::map<QString, qint64> picturePeak; // label → the most committed while it was read
-    bool problem() const { return outcome != u"ok" || peakCommit > kProblemBytes; }
+    bool ok() const { return outcome.startsWith(u"ok"); } // also "ok (no memory limit)"
+    bool problem() const { return !ok() || peakCommit > kProblemBytes; }
+    // The picture that went wrong: the one being read when the child ended
+    // early; when it read them all, the one that took the most (if too much),
+    // else the first that failed.
+    QString culprit() const
+    {
+        if (!ok() && !outcome.startsWith(u"some-failed"))
+            return lastPicture;
+        const auto most = std::ranges::max_element(picturePeak, {}, [](const auto& p) { return p.second; });
+        if (most != picturePeak.end() && most->second > kProblemBytes)
+            return most->first;
+        return failedPictures.isEmpty() ? QString() : failedPictures.first();
+    }
 };
 
 QString label(const Picture& p)
@@ -912,6 +926,8 @@ Run runChild(const QString& title, const std::vector<Picture>& pictures, int thr
             carry.remove(0, end + 1);
             if (text.startsWith(u"reading picture "))
                 run.lastPicture = text.mid(16);
+            else if (text.startsWith(u"failed: ") && !run.lastPicture.isEmpty())
+                run.failedPictures.append(run.lastPicture);
             run.stages.push_back({clock.elapsed(), text, commit, commit});
         }
     };
@@ -1298,16 +1314,7 @@ int parent(const QStringList& args)
             Run together = runChild(u"history in order"_s, left, threads, context);
             noteRun(report, together);
             const bool problem = together.problem();
-            QString culprit = together.lastPicture;
-            if (problem && together.outcome == u"ok") { // finished, but one took too much
-                qint64 most = 0;
-                for (const auto& [name, peak] : together.picturePeak) {
-                    if (peak > most) {
-                        most = peak;
-                        culprit = name;
-                    }
-                }
-            }
+            const QString culprit = together.culprit();
             report.runs.push_back(std::move(together));
             writeZip(report, work.path());
             if (!problem)

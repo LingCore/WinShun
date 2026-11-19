@@ -6,7 +6,7 @@
 - 是哪张图，它多大，读到哪一步（找文字行、切行、按批识别、找二维码）时内存涨上去；
 - 程序停下时各线程的调用栈（dump）。
 
-读图代码就是 Win顺 的 `PaddleOcr` 和 `ws::capture::withQrCodes`（ZXing），编译进了这个 exe，不是另写的一套。识别组件（`onnxruntime.dll` 和两个模型）用用户电脑上已经装好的那份，所以 ONNX Runtime 的版本、文件也和用户的 Win顺 完全一样。
+读图代码就是 Win顺 的 `PaddleOcr` 和 `ws::capture::withQrCodes`（ZXing），编译进了这个 exe，不是另写的一套。用的是打包时的源码：修复之后重新打包，就能拿去让用户确认问题在他的电脑上已经解决。识别组件（`onnxruntime.dll` 和两个模型）用用户电脑上已经装好的那份，所以 ONNX Runtime 的版本、文件也和用户的 Win顺 完全一样。
 
 ## 构建与打包
 
@@ -37,7 +37,7 @@ exe 链接了 wscapture，它会带进 `windowsapp` 伞库。CMake 里把 `kerne
 2. **限额**：每次读图都在一个子进程里进行，子进程放进 Job 对象，提交内存的上限是 min(3 GB, 可提交余量 − 768 MB)，最少 1 GB。用户电脑不会因为测试被拖死。线程数和 Win顺 一样：逻辑处理器数的一半，在 1～4 之间。
 3. **示例图**：先读两张工具自带的图（1440 × 1440 的界面海报，6000 × 360 的长行表格）。这两张图在哪台电脑上都一样，用来区分是电脑环境的问题还是图片的问题。
 4. **剪贴板历史**：把 `clipboard.db` 复制到临时文件夹再读，不碰原文件。顺序和 Win顺 一样：`kind = 4`，按 `used DESC, id DESC` 排序。Win顺 启动时要补读的图（`ocr IS NULL`；识别器换过时是全部）排在前面，后面接着读已经读过的图，所以没有待读的图时也能测到用户自己的图。最多读 80 张，最长 20 分钟。
-5. **隔离**：一起读的过程中，子进程崩溃、超时、被限额停下，或者内存超过 1.5 GB（取峰值最高的那张），就把那张图单独再读一次，然后只用 1 个线程再读一次，再接着读剩下的图。
+5. **隔离**：一起读出了问题，先找出是哪张图。子进程中途停下（崩溃、超时、被限额停下、抛异常）时，取当时正在读的那张；读完了但内存超过 1.5 GB，取内存最高的那张；否则取第一张没读出来的。找到后把那张图单独再读一次，然后只用 1 个线程再读一次，再接着读剩下的图。
 6. **结论**：窗口最后会给出一句结论。如果找到了出问题的图，会告诉用户可以在剪贴板历史里删掉它，好让 Win顺 先不闪退；也可以把图发给开发者（这一步由用户自己决定）。
 
 子进程每做一步就向父进程报一行，同时父进程每 100 毫秒采样一次子进程的提交内存和工作集。`PaddleOcr::setTrace` 在识别过程中报告每一步：图片原尺寸、实际读的尺寸、找文字行的尺寸、每条检测带、找到几个框、切出几行和其中最长一行、每批识别几行以及这一批的输入宽度、倒过来重读。程序本身不设置 trace，所以这些代码在 Win顺 里不会构造任何字符串。
@@ -75,11 +75,13 @@ N 是第几次运行（1 是示例图）。子进程里同时装着 Win顺 的 `
    ```powershell
    $env:_NT_SYMBOL_PATH = 'F:\电脑便捷工具\dist\ocrtest\symbols;C:\Qt\6.12.0\msvc2022_64\bin;srv*C:\symbols*https://msdl.microsoft.com/download/symbols'
    $cdb = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
-   & $cdb -z run2-thrown1.dmp -c '.ecxr; kc 30; q'   # crash 和 thrown：带异常上下文
-   & $cdb -z run2-1GB.dmp -c '~*kc 25; q'           # 1GB、2GB、limit、timeout：看所有线程
+   # dump 里没有模块的映像：-i 给出同版本的 onnxruntime.dll（构建目录里那份，三个文件和发布时一致才算同版本），系统 DLL 从符号服务器取
+   $img = 'F:\电脑便捷工具\build\release;F:\电脑便捷工具\dist\ocrtest\symbols;srv*C:\symbols*https://msdl.microsoft.com/download/symbols'
+   & $cdb -i $img -z run2-thrown1.dmp -c '.ecxr; kc 30; q'        # crash 和 thrown：带异常上下文
+   & $cdb -i $img -z run2-1GB.dmp -c '~~[0x2d14]s; kc 30; q'      # 1GB、2GB、limit、timeout：读图线程（步骤里 thrown 那行有线程号）
    ```
 
-   ONNX Runtime 帧需要同版本的 `onnxruntime.pdb`（版本见 `results.json` 的 `component`）；找不到 pdb 时，cdb 只显示 `onnxruntime+偏移`，一般也够判断在跑哪类内核。
+   不加 `-i` 的话，回溯走到 `onnxruntime.dll` 就断了。微软的符号服务器上有官方 ONNX Runtime 的完整 `onnxruntime.pdb`（1.30.0 的约 420 MB，第一次会下载），所以能看到具体是哪个算子，比如 `NchwcMaxPool::Compute`、`MlasConvNchwFloatKernelSse`（SSE 内核说明这台电脑没有 AVX）。
 
 ## 本机参考值
 

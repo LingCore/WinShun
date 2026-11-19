@@ -355,6 +355,51 @@ private slots:
             QVERIFY2(words.count(u"第%1行"_s.arg(i)) == 1, qPrintable(u"line %1"_s.arg(i)));
     }
 
+    // A strip of text 35 px high and 33 000 wide, as a user copied one: it
+    // was looked at as 28 062 x 7014 (the width kept for the text's height,
+    // then padded to a quarter of it), several GB, and Win顺 ended. Now the
+    // reading takes no more than a 2000 x 2000 screenshot's: looked at in
+    // tiles across, read in parts, every piece of it once.
+    void veryWideStrip()
+    {
+        QFont font(u"Microsoft YaHei UI"_s);
+        font.setPixelSize(20);
+        const QFontMetrics metrics(font);
+        QString text;
+        int marks = 0;
+        while (metrics.horizontalAdvance(text) < 32700)
+            text += u"第%1段 WinShun 读图 "_s.arg(marks++);
+        QImage strip(metrics.horizontalAdvance(text) + 40, 35, QImage::Format_RGB32);
+        strip.fill(Qt::white);
+        {
+            QPainter painter(&strip);
+            painter.setFont(font);
+            painter.setPen(Qt::black);
+            painter.drawText(20, 25, text);
+        }
+        static QStringList steps;
+        steps.clear();
+        ws::PaddleOcr::setTrace([](const QString& step) { steps.append(step); });
+        const QString words = read(strip);
+        ws::PaddleOcr::setTrace(nullptr);
+        static const QRegularExpression detect(u"^detect (\\d+) x (\\d+)$"_s);
+        static const QRegularExpression recognize(u"^recognize (\\d+) lines, 48 x (\\d+)"_s);
+        int detections = 0;
+        for (const QString& step : std::as_const(steps)) {
+            if (const QRegularExpressionMatch m = detect.match(step); m.hasMatch()) {
+                ++detections;
+                QVERIFY2(m.captured(1).toInt() <= 2016 && m.captured(2).toInt() <= 2016, qPrintable(step));
+            }
+            if (const QRegularExpressionMatch m = recognize.match(step); m.hasMatch()) {
+                QVERIFY2(m.captured(2).toInt() <= 12000, qPrintable(step));
+                QVERIFY2(m.captured(1).toInt() * m.captured(2).toInt() <= 36000, qPrintable(step));
+            }
+        }
+        QVERIFY(detections > 1);
+        for (int i = 0; i < marks; ++i)
+            QVERIFY2(words.count(u"第%1段"_s.arg(i)) == 1, qPrintable(u"第%1段 in: %2"_s.arg(i).arg(words)));
+    }
+
     // OCR search's watchdog hears from a long read after each strip looked
     // at and each batch of lines read; the reading itself is the same, and a
     // progress callback that throws abandons the read with its message.

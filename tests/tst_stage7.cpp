@@ -763,6 +763,26 @@ private slots:
         QVERIFY(readQrCodes(text).isEmpty());
     }
 
+    // A long strip a user copied, 32 739 x 35: drawn three times larger to
+    // find a small code it was 98 217 wide, past the 65 535 the reader takes,
+    // which threw, and Win顺 ended. A side that long is never made larger,
+    // one already past it not looked at; the words stay.
+    void longStripReadsWithoutThrowing()
+    {
+        for (const QSize size : {QSize(32739, 35), QSize(70000, 20), QSize(20, 70000)}) {
+            QImage strip(size, QImage::Format_RGB32);
+            strip.fill(Qt::white);
+            QStringList found;
+            try {
+                found = readQrCodes(strip);
+            } catch (const std::exception& e) {
+                QFAIL(qPrintable(u"%1 x %2 threw: %3"_s.arg(size.width()).arg(size.height()).arg(QString::fromUtf8(e.what()))));
+            }
+            QVERIFY(found.isEmpty());
+            QCOMPARE(withQrCodes(u"the words"_s, strip), u"the words"_s);
+        }
+    }
+
     void onlyWebAddressesAreOfferedAsLinks()
     {
         QCOMPARE(qrLink(u"https://example.com"_s), u"https://example.com"_s);
