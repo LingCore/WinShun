@@ -586,6 +586,7 @@
 
 - **没有图**：`errorString()` 非空时 Qt 把 Image 置为 Error，并给每一行打一条 `QML Image: Failed to get image from provider` 警告（剪贴板预览里非图片的文件就会这样）。没有缩略图时 `textureFactory()` 返回 `nullptr`、`errorString()` 留空，Image 是 Ready、尺寸为 0，QML 里用 `status === Image.Ready && implicitWidth > 0` 判断有没有图。
 - **取消**：行滚走或复用时 Qt 调 `cancel()`，但不删响应对象；它只在收到 `finished` 后 `deleteLater`。所以取消了也要发一次 `finished`（不带图），否则每次取消漏一个对象。`finished` 可以在 `requestImageResponse` 返回之前就发（缓存命中时），Qt 返回后会查 `finished` 标志补上。
+- **引擎没了，响应先没了**（2026-11-19）：要图的引擎销毁时（窗口的、每个测试函数的、退出时），还没 `finished` 的响应被 Qt 直接删掉，不等线程池里的活干完。活里拿着裸指针就会往已释放的对象里写图，线程池线程上崩在 `QImage::operator=` / `~QImage`；`tst_clipimage` 因此时好时坏，崩在哪个测试函数也不固定。现在两个提供器都用 `PooledImageResponse`：活里只拿 `Handle`，经它在锁里够到响应，响应的析构也拿这把锁、把指针清掉。`tst_clipimage` 的 `clipThumbnailOutlivesItsResponse` 要了图马上删响应：旧代码 10 次崩 10 次。
 - **Qt 自己的图片缓存只留 2 MB 没人用的图**（`cache_limit`，写死，30 秒淘汰四分之一）：48 像素的缩略图约 220 张。滚回去、再打一遍同样的字要立即出来，提供器自己按字节留一份（`QCache`，48 MB），没有缩略图的也记下。
 - **sourceSize**：image:// 提供器按逻辑像素写，Qt 乘设备像素比再请求；返回的图带着这个比，`implicitWidth` 就是“像素数 / 设备像素比”，`width: implicitWidth` 正好一个像素对一个像素（150% 实测与系统给的位图逐像素相同）。
 

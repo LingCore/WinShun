@@ -4,6 +4,7 @@
 #include "ColorSwatch.h"
 #include "PhosphorGlyph.h"
 #include "SystemTheme.h"
+#include "TextLineSpacing.h"
 #include "platform/ClipboardWatcher.h"
 
 #include <QBuffer>
@@ -182,6 +183,7 @@ private slots:
         qmlRegisterSingletonType(folder.resolved(QUrl(u"Theme.qml"_s)), "WinShun", 1, 0, "Theme");
         qmlRegisterType<ColorSwatch>("WinShun", 1, 0, "ColorSwatch");
         qmlRegisterType<PhosphorGlyph>("WinShun", 1, 0, "PhosphorGlyph");
+        qmlRegisterType<TextLineSpacing>("WinShun", 1, 0, "TextLineSpacing"); // ClipPreview's selectable text
     }
 
     void codecsAndOriginals_data()
@@ -564,6 +566,37 @@ private slots:
         const QColor middle = factory->image().pixelColor(68, 51);
         QVERIFY2(qAbs(middle.red() - 30) <= 8 && qAbs(middle.green() - 144) <= 8 && qAbs(middle.blue() - 255) <= 8,
             qPrintable(middle.name()));
+    }
+
+    // Qt may delete a response before its job is done: the engine that asked
+    // is gone (a window's, each of these tests'), or it no longer wants the
+    // picture. The job then has no one to give it to and touches nothing of
+    // what was deleted (it wrote into it: a crash on a pool thread); it keeps
+    // the picture for the next time.
+    void clipThumbnailOutlivesItsResponse()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(u"大图.png"_s);
+        QImage picture(3000, 2000, QImage::Format_RGB32);
+        picture.fill(qRgb(200, 80, 40));
+        QVERIFY(picture.save(path, "PNG"));
+        ClipThumbnailProvider provider;
+        const auto id = [&](int stamp) {
+            return ClipThumbnailProvider::url(path, stamp).mid(QStringLiteral("image://clipthumb/").size());
+        };
+        constexpr int kFirst = 100, kAsked = 12;
+        for (int stamp = kFirst; stamp < kFirst + kAsked; ++stamp)
+            delete provider.requestImageResponse(id(stamp), QSize(162, 102)); // gone before its picture is read
+        const auto allKept = [&] {
+            for (int stamp = kFirst; stamp < kFirst + kAsked; ++stamp) {
+                std::unique_ptr<QQuickImageResponse> again(provider.requestImageResponse(id(stamp), QSize(162, 102)));
+                if (!std::unique_ptr<QQuickTextureFactory>(again->textureFactory()))
+                    return false;
+            }
+            return true;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(allKept(), 20000);
     }
 
     void imageFileRowLoadsAtBothSizesAndReusesItsDelegate()

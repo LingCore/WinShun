@@ -1,12 +1,12 @@
 #include "ThumbnailProvider.h"
 
 #include "FileIconProvider.h"
+#include "PooledImageResponse.h"
 
 #include <QCache>
 #include <QFileInfo>
 #include <QImage>
 #include <QMutex>
-#include <QQuickTextureFactory>
 #include <QRunnable>
 #include <QThread>
 #include <QThreadPool>
@@ -64,33 +64,12 @@ bool isVideo(const QString& suffix)
     return kTypes.contains(suffix);
 }
 
-class Response : public QQuickImageResponse {
-public:
-    QQuickTextureFactory* textureFactory() const override
-    {
-        return m_image.isNull() ? nullptr : QQuickTextureFactory::textureFactoryForImage(m_image);
-    }
-    void cancel() override { m_cancelled.store(true, std::memory_order_relaxed); }
-    bool cancelled() const { return m_cancelled.load(std::memory_order_relaxed); }
-
-    // Always, once, even when cancelled: Qt deletes the response only after this.
-    void finish(QImage image)
-    {
-        m_image = std::move(image);
-        emit finished();
-    }
-
-private:
-    QImage m_image;
-    std::atomic<bool> m_cancelled {false};
-};
-
 // Pictures larger than this are only taken from the cache: making a
 // thumbnail of a 2 GB TIFF reads all of it. Videos are read in part.
 constexpr qint64 kLargestMade = 512LL * 1024 * 1024;
 
 // On a pool thread.
-QImage makeThumbnail(const QString& path, int px, Response* response, bool* known)
+QImage makeThumbnail(const QString& path, int px, const PooledImageResponse::Handle& response, bool* known)
 {
     *known = true; // what is found out here holds until the file is written again
     // A network drive, before anything touches the file: as slow as a server
@@ -114,7 +93,7 @@ QImage makeThumbnail(const QString& path, int px, Response* response, bool* know
     // large preview: ask the handler for the new size instead of enlarging it.
     if (!image.isNull() && std::max(image.width(), image.height()) >= px)
         return image;
-    if (response->cancelled()) { // scrolled away meanwhile: not known yet
+    if (response.cancelled()) { // scrolled away meanwhile: not known yet
         *known = false;
         return {};
     }
@@ -165,7 +144,7 @@ QString ThumbnailProvider::url(const QString& path, std::uint32_t modified)
 // "<modified>/<path>"
 QQuickImageResponse* ThumbnailProvider::requestImageResponse(const QString& id, const QSize& requestedSize)
 {
-    auto* response = new Response;
+    auto* response = new PooledImageResponse;
     const qsizetype slash = id.indexOf(u'/');
     const QString path = slash > 0 ? decode(QStringView(id).mid(slash + 1)) : QString();
     if (path.isEmpty()) {
@@ -188,9 +167,9 @@ QQuickImageResponse* ThumbnailProvider::requestImageResponse(const QString& id, 
             return response;
         }
     }
-    s.pool.start(QRunnable::create([response, path, px, key] {
-                     if (response->cancelled()) {
-                         response->finish({});
+    s.pool.start(QRunnable::create([response = response->handle(), path, px, key] {
+                     if (response.cancelled()) {
+                         response.finish({});
                          return;
                      }
                      bool known = false;
@@ -203,7 +182,7 @@ QQuickImageResponse* ThumbnailProvider::requestImageResponse(const QString& id, 
                          else
                              s.images.insert(key, new QImage(image), std::max<qsizetype>(1, image.sizeInBytes()));
                      }
-                     response->finish(std::move(image));
+                     response.finish(std::move(image));
                  }),
         s.order.fetch_add(1, std::memory_order_relaxed));
     return response;

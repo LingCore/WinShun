@@ -1,13 +1,13 @@
 #include "ClipThumbnailProvider.h"
 
 #include "PictureFile.h"
+#include "PooledImageResponse.h"
 
 #include <QCache>
 #include <QDir>
 #include <QFile>
 #include <QImageReader>
 #include <QMutex>
-#include <QQuickTextureFactory>
 #include <QRunnable>
 #include <QThread>
 #include <QThreadPool>
@@ -48,30 +48,6 @@ Store& store()
     }();
     return *s;
 }
-
-class Response : public QQuickImageResponse {
-public:
-    QQuickTextureFactory* textureFactory() const override
-    {
-        return m_image.isNull() ? nullptr : QQuickTextureFactory::textureFactoryForImage(m_image);
-    }
-    QString errorString() const override { return m_error; }
-    void cancel() override { m_cancelled.store(true, std::memory_order_relaxed); }
-    bool cancelled() const { return m_cancelled.load(std::memory_order_relaxed); }
-
-    // Always, once, even when cancelled: Qt deletes the response only after this.
-    void finish(QImage image, QString error = {})
-    {
-        m_image = std::move(image);
-        m_error = std::move(error);
-        emit finished();
-    }
-
-private:
-    QImage m_image;
-    QString m_error;
-    std::atomic<bool> m_cancelled {false};
-};
 
 // The size Qt reads a file at for a sourceSize (QQuickImageProviderWithOptions::
 // loadSize, without a fill mode): shrunk to fit within it, the aspect kept,
@@ -150,7 +126,7 @@ QString ClipThumbnailProvider::url(const QString& path, qint64 stamp)
 // "<stamp>/<path>"
 QQuickImageResponse* ClipThumbnailProvider::requestImageResponse(const QString& id, const QSize& requestedSize)
 {
-    auto* response = new Response;
+    auto* response = new PooledImageResponse;
     const qsizetype slash = id.indexOf(u'/');
     const QString path = slash > 0
         ? QString::fromUtf8(QByteArray::fromBase64(QStringView(id).mid(slash + 1).toLatin1(), QByteArray::Base64UrlEncoding))
@@ -168,9 +144,9 @@ QQuickImageResponse* ClipThumbnailProvider::requestImageResponse(const QString& 
             return response;
         }
     }
-    s.pool.start(QRunnable::create([response, path, requestedSize, key] {
-                     if (response->cancelled()) {
-                         response->finish({});
+    s.pool.start(QRunnable::create([response = response->handle(), path, requestedSize, key] {
+                     if (response.cancelled()) {
+                         response.finish({});
                          return;
                      }
                      QString error;
@@ -180,7 +156,7 @@ QQuickImageResponse* ClipThumbnailProvider::requestImageResponse(const QString& 
                          QMutexLocker lock(&s.mutex);
                          s.images.insert(key, new QImage(image), std::max<qsizetype>(1, image.sizeInBytes()));
                      }
-                     response->finish(std::move(image), std::move(error));
+                     response.finish(std::move(image), std::move(error));
                  }),
         s.order.fetch_add(1, std::memory_order_relaxed));
     return response;
