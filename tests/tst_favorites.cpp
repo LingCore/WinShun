@@ -3,6 +3,7 @@
 #include "History.h"
 #include "AppCatalog.h"
 #include "IndexService.h"
+#include "PathText.h"
 #include "SearchEngine.h"
 
 #include <QDir>
@@ -467,6 +468,114 @@ private slots:
         again.load();
         QCOMPARE(again.items(), kept);
         QCOMPARE(changed.count(), 8); // load, 3 adds, move, update, addAll, remove
+    }
+
+    // GitHub #397: the column headers' orders. Names as Explorer ("2" before
+    // "10", case aside); types folders, files by extension, apps, places,
+    // commands; dates and sizes with those that have none last either way.
+    void sortedByColumns()
+    {
+        const Favorite a10 {Favorite::Kind::File, u"D:\\x\\a10.txt"_s, u"a10"_s};
+        const Favorite a2 {Favorite::Kind::File, u"D:\\x\\a2.pdf"_s, u"a2"_s};
+        const Favorite big = folder(u"D:\\B"_s, u"B"_s);
+        const Favorite app {Favorite::Kind::App, u"shell:AppsFolder\\x!App"_s, u"c"_s};
+        const Favorite place {Favorite::Kind::Place, u"winshun-place:settings"_s, u"d"_s};
+        const Favorite command {Favorite::Kind::Command, u"winshun-command:e"_s, u"e"_s, {}, u"wt.exe"_s};
+        const Favorite gone {Favorite::Kind::File, u"D:\\gone.zip"_s, u"f"_s};
+        const FavoriteList list {command, gone, a10, place, big, app, a2};
+        const auto names = [](const FavoriteList& sorted) {
+            QStringList out;
+            for (const Favorite& f : sorted)
+                out.append(f.name);
+            return out;
+        };
+
+        QCOMPARE(sortedFavorites(list, FavoriteSort::None, false), list);
+        QCOMPARE(names(sortedFavorites(list, FavoriteSort::Name, false)), (QStringList {u"a2"_s, u"a10"_s, u"B"_s, u"c"_s, u"d"_s, u"e"_s, u"f"_s}));
+        QCOMPARE(names(sortedFavorites(list, FavoriteSort::Name, true)), (QStringList {u"f"_s, u"e"_s, u"d"_s, u"c"_s, u"B"_s, u"a10"_s, u"a2"_s}));
+        QCOMPARE(names(sortedFavorites(list, FavoriteSort::Type, false)), (QStringList {u"B"_s, u"a2"_s, u"a10"_s, u"f"_s, u"c"_s, u"d"_s, u"e"_s}));
+        QCOMPARE(names(sortedFavorites(list, FavoriteSort::Type, true)), (QStringList {u"e"_s, u"d"_s, u"c"_s, u"f"_s, u"a10"_s, u"a2"_s, u"B"_s}));
+
+        FavoriteFactsMap facts;
+        facts.insert(pathtext::pathKey(a10.path), {100, 5});
+        facts.insert(pathtext::pathKey(a2.path), {300, 50});
+        facts.insert(pathtext::pathKey(u"d:\\b"_s), {200, 4096}); // a folder: its size not one
+        // The date: the newest first, or the oldest; the gone file, the app, the place and the command last.
+        QCOMPARE(names(sortedFavorites(list, FavoriteSort::Modified, true, facts)), (QStringList {u"a2"_s, u"B"_s, u"a10"_s, u"c"_s, u"d"_s, u"e"_s, u"f"_s}));
+        QCOMPARE(names(sortedFavorites(list, FavoriteSort::Modified, false, facts)), (QStringList {u"a10"_s, u"B"_s, u"a2"_s, u"c"_s, u"d"_s, u"e"_s, u"f"_s}));
+        QCOMPARE(names(sortedFavorites(list, FavoriteSort::Size, true, facts)), (QStringList {u"a2"_s, u"a10"_s, u"B"_s, u"c"_s, u"d"_s, u"e"_s, u"f"_s}));
+        QCOMPARE(names(sortedFavorites(list, FavoriteSort::Size, false, facts)), (QStringList {u"a10"_s, u"a2"_s, u"B"_s, u"c"_s, u"d"_s, u"e"_s, u"f"_s}));
+
+        for (const FavoriteSort sort : {FavoriteSort::Name, FavoriteSort::Modified, FavoriteSort::Type, FavoriteSort::Size})
+            QCOMPARE(favoriteSortNamed(favoriteSortName(sort)), sort);
+        QCOMPARE(favoriteSortNamed(u"date"), FavoriteSort::None);
+    }
+
+    // Sorted for real (the launcher's order too), and back to the order of
+    // before: kept in the file, never in an export; by name the new ones go
+    // into their place, by date they go last and the sort is over; a move
+    // by hand ends the sort and keeps the order to go back to.
+    void sortKeepsTheOrderOfBefore()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(u"favorites.json"_s);
+        Favorites store(path);
+        store.load();
+        for (const QString& name : {u"m"_s, u"b"_s, u"x"_s, u"a"_s})
+            QVERIFY(store.add(folder(u"D:\\"_s + name)));
+        const auto order = [&](const Favorites& favorites) {
+            QString out;
+            for (const Favorite& f : favorites.items())
+                out += f.name;
+            return out;
+        };
+        QVERIFY(!store.hasManualOrder());
+        QVERIFY(!store.restoreOrder());
+
+        QSignalSpy changed(&store, &Favorites::changed);
+        QVERIFY(store.sortBy(FavoriteSort::Name, false));
+        QCOMPARE(order(store), u"abmx"_s);
+        QVERIFY(store.hasManualOrder());
+        QVERIFY(!store.sortBy(FavoriteSort::Name, false)); // nothing to change
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(store.add(folder(u"D:\\c"_s)));
+        QCOMPARE(order(store), u"abcmx"_s); // into its place
+        Favorite renamed = store.items()[0];
+        renamed.name = u"z"_s;
+        QVERIFY(store.update(0, renamed));
+        QCOMPARE(order(store), u"bcmxz"_s);
+        QVERIFY(store.sortBy(FavoriteSort::Name, true));
+        QCOMPARE(order(store), u"zxmcb"_s);
+
+        Favorites again(path);
+        again.load();
+        QCOMPARE(again.items(), store.items());
+        QCOMPARE(again.sort(), FavoriteSort::Name);
+        QVERIFY(again.sortDescending());
+        QVERIFY(again.hasManualOrder());
+        QVERIFY(readAll(path).contains("\"manualOrder\""));
+        QVERIFY(!writeFavoritesFile(store.items()).contains("manualOrder")); // 导出: the favorites alone
+
+        QVERIFY(store.move(0, 4)); // by hand
+        QCOMPARE(store.sort(), FavoriteSort::None);
+        QVERIFY(store.hasManualOrder());
+        QVERIFY(store.restoreOrder());
+        QCOMPARE(order(store), u"mbxzc"_s); // as before (a renamed z), c added since after them
+        QVERIFY(!store.hasManualOrder());
+        QCOMPARE(store.sort(), FavoriteSort::None);
+        QVERIFY(!readAll(path).contains("manualOrder"));
+        QVERIFY(!readAll(path).contains("\"sort\""));
+
+        FavoriteFactsMap facts;
+        facts.insert(pathtext::pathKey(u"D:\\m"_s), {300, -1});
+        facts.insert(pathtext::pathKey(u"D:\\x"_s), {200, -1});
+        QVERIFY(store.sortBy(FavoriteSort::Modified, true, facts));
+        QCOMPARE(order(store), u"mxbcz"_s); // the newest first, then those not known by name
+        QVERIFY(store.add(folder(u"D:\\d"_s)));
+        QCOMPARE(order(store), u"mxbczd"_s); // last, and no longer by date
+        QCOMPARE(store.sort(), FavoriteSort::None);
+        QVERIFY(store.sortBy(FavoriteSort::None, false)); // as restoreOrder()
+        QCOMPARE(order(store), u"mbxzcd"_s);
     }
 
     // 导入: the new ones added, those there already given what they lack.

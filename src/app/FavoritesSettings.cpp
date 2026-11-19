@@ -1,5 +1,6 @@
 #include "FavoritesSettings.h"
 #include "PathText.h"
+#include "Query.h"
 
 #include "AppCatalog.h"
 #include "FileIconProvider.h"
@@ -13,6 +14,7 @@
 
 #include <QCoreApplication>
 #include <QBuffer>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -26,6 +28,7 @@
 #include <windows.h>
 
 #include <thread>
+#include <utility>
 
 using namespace Qt::StringLiterals;
 
@@ -87,15 +90,31 @@ Where whereIs(const QString& path)
     return type == DRIVE_REMOTE ? Where::Network : type == DRIVE_UNKNOWN ? Where::Unknown : Where::Local;
 }
 
-// Whether the disk says a path is not there: not when its server does not
-// answer, or it will not say (no access, no disk in the drive). As the
-// launcher tells (SearchEngine's RecentOnDisk).
-bool gone(const QString& path)
+// What the disk says of a path: whether it is not there (not when its
+// server does not answer, or it will not say: no access, no disk in the
+// drive; as the launcher tells, SearchEngine's RecentOnDisk), else its date
+// and a file's size, for the sorts (GitHub #397). The same one call.
+struct Seen {
+    bool gone = false;
+    bool known = false;
+    FavoriteFacts facts;
+};
+
+Seen seen(const QString& path)
 {
-    if (::GetFileAttributesW(reinterpret_cast<const wchar_t*>(path.utf16())) != INVALID_FILE_ATTRIBUTES)
-        return false;
+    WIN32_FILE_ATTRIBUTE_DATA data {};
+    if (::GetFileAttributesExW(reinterpret_cast<const wchar_t*>(path.utf16()), GetFileExInfoStandard, &data)) {
+        Seen s;
+        s.known = true;
+        const quint64 time = (quint64(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime;
+        if (time > 116444736000000000ULL)
+            s.facts.modified = static_cast<qint64>((time - 116444736000000000ULL) / 10000000ULL);
+        if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            s.facts.size = static_cast<qint64>((quint64(data.nFileSizeHigh) << 32) | data.nFileSizeLow);
+        return s;
+    }
     const DWORD error = ::GetLastError();
-    return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
+    return {error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND, false, {}};
 }
 
 bool dark()
@@ -120,11 +139,68 @@ void FavoritesSettings::setStore(Favorites* favorites)
     if (favorites) {
         connect(favorites, &Favorites::changed, this, [this] {
             refresh();
+            emit orderChanged();
             lookForMissing();
         });
     }
     refresh();
+    emit orderChanged();
     lookForMissing();
+}
+
+QString FavoritesSettings::sort() const
+{
+    if (m_pendingSort != FavoriteSort::None)
+        return favoriteSortName(m_pendingSort);
+    return m_store ? favoriteSortName(m_store->sort()) : QString();
+}
+
+bool FavoritesSettings::sortDescending() const
+{
+    if (m_pendingSort != FavoriteSort::None)
+        return m_pendingDescending;
+    return m_store && m_store->sortDescending();
+}
+
+void FavoritesSettings::sortBy(const QString& column)
+{
+    const FavoriteSort clicked = favoriteSortNamed(column);
+    if (!m_store || clicked == FavoriteSort::None)
+        return;
+    const bool newestFirst = clicked == FavoriteSort::Modified || clicked == FavoriteSort::Size; // as Explorer
+    const FavoriteSort now = m_pendingSort != FavoriteSort::None ? m_pendingSort : m_store->sort();
+    const bool descending = sortDescending();
+    if (now == clicked && descending != newestFirst) { // the third click: as before
+        restoreOrder();
+        return;
+    }
+    const bool way = now == clicked ? !descending : newestFirst;
+    if (clicked == FavoriteSort::Name || clicked == FavoriteSort::Type) {
+        m_pendingSort = FavoriteSort::None;
+        if (!m_store->sortBy(clicked, way))
+            emit orderChanged();
+        return;
+    }
+    m_pendingSort = clicked;
+    m_pendingDescending = way;
+    emit orderChanged();
+    lookForMissing(); // the dates and sizes as they are now; sorted when the disks have said
+}
+
+void FavoritesSettings::restoreOrder()
+{
+    m_pendingSort = FavoriteSort::None;
+    if (!m_store || !m_store->restoreOrder())
+        emit orderChanged();
+}
+
+void FavoritesSettings::applyPendingSort()
+{
+    if (m_pendingSort == FavoriteSort::None || !m_store)
+        return;
+    const FavoriteSort sort = std::exchange(m_pendingSort, FavoriteSort::None);
+    if (!m_store->sortBy(sort, m_pendingDescending, m_facts))
+        emit orderChanged(); // already in that order
 }
 
 void FavoritesSettings::setCatalogs(AppCatalog* apps, SystemCatalog* places)
@@ -185,6 +261,15 @@ void FavoritesSettings::refresh()
         } else {
             icon = FileIconProvider::iconUrl(f.path, f.kind == Favorite::Kind::Folder);
         }
+        QString modifiedText;
+        QString sizeText;
+        if (f.isFileOrFolder() && !missing) {
+            const FavoriteFacts facts = m_facts.value(pathtext::pathKey(f.path));
+            if (facts.modified > 0)
+                modifiedText = QDateTime::fromSecsSinceEpoch(facts.modified).toLocalTime().toString(u"yyyy-MM-dd HH:mm"_s);
+            if (f.kind == Favorite::Kind::File && facts.size >= 0)
+                sizeText = ws::sizeText(static_cast<std::uint64_t>(facts.size));
+        }
         items.append(QVariantMap {
             {u"path"_s, f.path},
             {u"name"_s, f.name},
@@ -201,6 +286,8 @@ void FavoritesSettings::refresh()
             {u"administrator"_s, f.runAsAdmin},
             {u"searchFiles"_s, f.searchFiles},
             {u"fileMenu"_s, f.fileMenu},
+            {u"modifiedText"_s, modifiedText},
+            {u"sizeText"_s, sizeText},
         });
     }
     if (items == m_items)
@@ -226,36 +313,47 @@ void FavoritesSettings::lookForMissing()
     // This PC's disks first, shown at once; then those on a network, which
     // may take long: until then they keep what was known of them.
     std::thread([self = QPointer(this), look, local, network] {
-        const auto tell = [&](QSet<QString> missing, bool final) {
-            QMetaObject::invokeMethod(qApp, [self, look, missing = std::move(missing), final, network]() mutable {
+        const auto tell = [&](QSet<QString> missing, FavoriteFactsMap facts, bool final) {
+            QMetaObject::invokeMethod(qApp, [self, look, missing = std::move(missing), facts = std::move(facts), final, network]() mutable {
                 if (!self || look != self->m_looks)
                     return;
                 if (!final) {
                     for (const QString& path : network) {
-                        if (self->m_missing.contains(pathtext::pathKey(path)))
-                            missing.insert(pathtext::pathKey(path));
+                        const QString key = pathtext::pathKey(path);
+                        if (self->m_missing.contains(key))
+                            missing.insert(key);
+                        if (const auto known = self->m_facts.constFind(key); known != self->m_facts.cend())
+                            facts.insert(key, *known);
                     }
                 }
                 self->m_missing = std::move(missing);
+                self->m_facts = std::move(facts);
                 self->refresh();
+                // Sorted once this PC's disks have said; those on a network as last known.
+                self->applyPendingSort();
             }, Qt::QueuedConnection);
         };
         QSet<QString> missing;
-        for (const QString& path : local) {
-            if (gone(path))
+        FavoriteFactsMap facts;
+        const auto lookAt = [&](const QString& path) {
+            const Seen s = seen(path);
+            if (s.gone)
                 missing.insert(pathtext::pathKey(path));
-        }
-        tell(missing, network.isEmpty());
+            else if (s.known)
+                facts.insert(pathtext::pathKey(path), s.facts);
+        };
+        for (const QString& path : local)
+            lookAt(path);
+        tell(missing, facts, network.isEmpty());
         if (network.isEmpty())
             return;
         for (const QString& path : network) {
             // A server that does not answer would take Windows half a minute to say so.
             if (path.startsWith(u"\\\\") && !share::reachablePath(path.toStdWString()))
                 continue;
-            if (gone(path))
-                missing.insert(pathtext::pathKey(path));
+            lookAt(path);
         }
-        tell(missing, true);
+        tell(missing, facts, true);
     }).detach();
 }
 

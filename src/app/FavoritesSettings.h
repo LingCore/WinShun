@@ -24,9 +24,15 @@ class FavoritesSettings : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the settings editor")
     // {path, name, keyword, kind ("folder", "file", "app", "place", "command"), icon,
-    // shownPath, missing}, in their order.
+    // shownPath, missing, modifiedText, sizeText}, in their order.
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged FINAL)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged FINAL) // what came of the last add, import or export
+    // GitHub #397: the column they are sorted by ("name", "modified", "type",
+    // "size"; "" none, by hand), which way, and whether the order from
+    // before the first sort is kept to go back to (恢复默认).
+    Q_PROPERTY(QString sort READ sort NOTIFY orderChanged FINAL)
+    Q_PROPERTY(bool sortDescending READ sortDescending NOTIFY orderChanged FINAL)
+    Q_PROPERTY(bool canRestoreOrder READ canRestoreOrder NOTIFY orderChanged FINAL)
 
 public:
     explicit FavoritesSettings(SettingsEditor* editor, QObject* parent = nullptr);
@@ -36,6 +42,16 @@ public:
 
     QVariantList items() const { return m_items; }
     QString message() const { return m_message; }
+    QString sort() const;
+    bool sortDescending() const;
+    bool canRestoreOrder() const { return m_store && m_store->hasManualOrder(); }
+
+    // A column header clicked: sorted by it (names and types A to Z, dates
+    // and sizes newest and largest first, as Explorer), the other way when
+    // clicked again, and the third time back to the order of before. By
+    // date or size once the disk has been asked, off the GUI thread.
+    Q_INVOKABLE void sortBy(const QString& column);
+    Q_INVOKABLE void restoreOrder();
 
     // The favorite's name and keyword: why they cannot be saved, or empty
     // once they are. An empty name: its own (the file's, the app's).
@@ -66,12 +82,16 @@ public:
 signals:
     void itemsChanged();
     void messageChanged();
+    void orderChanged();
     void commandIconReady(int request, const QString& icon, const QString& error);
 
 private:
     QString validateKeyword(int index, const QString& word) const;
     void refresh(); // m_items from the store as it is
-    void lookForMissing(); // in the background, then refresh()
+    // Which are gone, and the others' dates and sizes: in the background,
+    // then refresh() and the sort asked for meanwhile.
+    void lookForMissing();
+    void applyPendingSort();
     void setMessage(const QString& message);
     QString ownName(const Favorite& favorite) const; // the file's or folder's, the app's, the place's
     void addPicked(const QStringList& paths);
@@ -82,7 +102,11 @@ private:
     SystemCatalog* m_places = nullptr;
     QVariantList m_items;
     QSet<QString> m_missing; // case-folded paths known not to be there
+    FavoriteFactsMap m_facts; // the others' dates and sizes, as the disk last said
     int m_looks = 0; // the newest lookForMissing() wins
+    // By date or size, asked for and waiting for the disk: shown in the header meanwhile.
+    FavoriteSort m_pendingSort = FavoriteSort::None;
+    bool m_pendingDescending = false;
     int m_iconRequest = 0;
     QString m_message;
 };

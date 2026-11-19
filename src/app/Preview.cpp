@@ -2903,6 +2903,131 @@ int runSettings(const QStringList& args)
         return finish(window, ok);
     }
 
+    // GitHub #397: 收藏夹's column headers clicked as its user does: by name,
+    // the other way, by date (the disk asked off the GUI thread), by size,
+    // the third click back to the order of before, 恢复默认 too; each
+    // pictured (--favorites-sort, with --dark / --scale as ever).
+    if (args.contains(u"--favorites-sort"_s)) {
+        bool ok = true;
+        bool saved = true;
+        const auto check = [&](bool okay, const QString& what) {
+            if (!okay)
+                qWarning("favorites sort: %s", qUtf8Printable(what));
+            ok = okay && ok;
+            return okay;
+        };
+        // Files and a folder of known dates and sizes, beside the demo ones.
+        const QDir demo(favoritesDir.path());
+        const QDateTime now = QDateTime::currentDateTime();
+        struct Made {
+            QString name;
+            qint64 bytes;
+            int daysAgo;
+        };
+        for (const Made& m : {Made {u"季度报告 10.docx"_s, 48 << 10, 2}, Made {u"季度报告 2.docx"_s, 1200 << 10, 40},
+                 Made {u"Photos.zip"_s, 3 << 20, 9}, Made {u"notes.txt"_s, 900, 1}}) {
+            QFile file(demo.filePath(m.name));
+            if (!file.open(QIODevice::WriteOnly) || file.write(QByteArray(m.bytes, 'x')) != m.bytes)
+                return finish(window, check(false, u"demo file not written"_s));
+            file.setFileTime(now.addDays(-m.daysAgo), QFileDevice::FileModificationTime);
+            file.close();
+            favorites.add({Favorite::Kind::File, QDir::toNativeSeparators(file.fileName()), {}, {}});
+        }
+        demo.mkpath(u"项目资料"_s);
+        favorites.add({Favorite::Kind::Folder, QDir::toNativeSeparators(demo.filePath(u"项目资料"_s)), {}, u"xmzl"_s});
+        QStringList manual;
+        for (const Favorite& f : favorites.items())
+            manual.append(f.path);
+        const auto names = [&] {
+            QStringList out;
+            for (const Favorite& f : favorites.items())
+                out.append(f.name);
+            return out.join(u" | "_s);
+        };
+        const auto inOrder = [&](const QStringList& expected) {
+            QStringList paths;
+            for (const Favorite& f : favorites.items())
+                paths.append(f.path);
+            return paths == expected;
+        };
+
+        QMetaObject::invokeMethod(window, "showFavoritesPage", Q_ARG(QVariant, QVariant(QString())));
+        window->resize(920, 1080);
+        settle(window, 3);
+        pump(400); // the disks asked (lookForMissing)
+        QQuickItem* section = visualNamed(window->contentItem(), u"favoritesSection"_s);
+        const auto header = [&](const QString& key) { return section ? visualNamed(section, u"sortColumn-"_s + key) : nullptr; };
+        QQuickItem* restore = section ? visualNamed(section, u"restoreOrderButton"_s) : nullptr;
+        if (!check(section && header(u"name"_s) && header(u"modified"_s) && header(u"type"_s) && header(u"size"_s) && restore,
+                u"the headers or 恢复默认 missing"_s))
+            return finish(window, false);
+        // Down to the headers, a little room above them.
+        const qreal top = header(u"name"_s)->mapToItem(flick->property("contentItem").value<QQuickItem*>(), QPointF()).y();
+        flick->setProperty("contentY", std::max(0.0, top - 140));
+        settle(window, 3);
+        check(!restore->isVisible(), u"恢复默认 shown with nothing to go back to"_s);
+        saved = saveGrab(window, out.filePath(u"favorites-sort-0-manual.png"_s)) && saved;
+
+        const auto click = [&](QQuickItem* item) {
+            const QPointF at = item->mapToScene({item->width() / 2, item->height() / 2});
+            QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+            QCoreApplication::sendEvent(window, &press);
+            QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+            QCoreApplication::sendEvent(window, &release);
+        };
+        // Clicked, then waited for (by date or size: once the disk has said).
+        const auto sortedBy = [&](const QString& key, FavoriteSort sort, bool descending, const QString& picture) {
+            click(header(key));
+            QElapsedTimer waited;
+            waited.start();
+            while ((favorites.sort() != sort || favorites.sortDescending() != descending) && waited.elapsed() < 5000)
+                pump(50);
+            settle(window, 3);
+            const bool there = check(favorites.sort() == sort && favorites.sortDescending() == descending,
+                u"%1 clicked: not sorted so (%2)"_s.arg(key, names()));
+            check(header(key)->property("active").toBool(), key + u" header shows no caret"_s);
+            check(restore->isVisible(), u"恢复默认 hidden while sorted"_s);
+            saved = saveGrab(window, out.filePath(picture)) && saved;
+            say(u"%1%2: %3"_s.arg(key, descending ? u" ↓"_s : u" ↑"_s, names()));
+            return there;
+        };
+        sortedBy(u"name"_s, FavoriteSort::Name, false, u"favorites-sort-1-name.png"_s);
+        check(favorites.items().constFirst().name == u"notes.txt"_s, u"by name: notes.txt not first (%1)"_s.arg(names()));
+        sortedBy(u"name"_s, FavoriteSort::Name, true, u"favorites-sort-2-name-down.png"_s);
+        sortedBy(u"modified"_s, FavoriteSort::Modified, true, u"favorites-sort-3-modified.png"_s);
+        // The newest first: notes.txt (a day) or a folder made just now; the command and the gone one last.
+        check(favorites.items().constLast().kind == Favorite::Kind::Command || !QFileInfo::exists(favorites.items().constLast().path),
+            u"by date: one with no date not last (%1)"_s.arg(names()));
+        sortedBy(u"type"_s, FavoriteSort::Type, false, u"favorites-sort-4-type.png"_s);
+        check(favorites.items().constFirst().kind == Favorite::Kind::Folder && favorites.items().constLast().kind == Favorite::Kind::Command,
+            u"by type: not folders first and commands last (%1)"_s.arg(names()));
+        sortedBy(u"size"_s, FavoriteSort::Size, true, u"favorites-sort-5-size.png"_s);
+        check(QFileInfo(favorites.items().constFirst().path).fileName() == u"WinShun.exe"_s
+                || QFileInfo(favorites.items().constFirst().path).fileName() == u"Photos.zip"_s,
+            u"by size: not the largest first (%1)"_s.arg(names()));
+        sortedBy(u"size"_s, FavoriteSort::Size, false, u"favorites-sort-6-size-up.png"_s);
+        click(header(u"size"_s)); // the third time: as before
+        pump(100);
+        settle(window, 3);
+        check(favorites.sort() == FavoriteSort::None && !favorites.hasManualOrder() && inOrder(manual),
+            u"the third click did not bring back the order of before (%1)"_s.arg(names()));
+        check(!restore->isVisible(), u"恢复默认 still shown"_s);
+        saved = saveGrab(window, out.filePath(u"favorites-sort-7-back.png"_s)) && saved;
+        // 恢复默认 after a sort and a move by hand.
+        sortedBy(u"type"_s, FavoriteSort::Type, false, u"favorites-sort-8-type.png"_s);
+        favorites.move(0, 2);
+        settle(window, 3);
+        check(!header(u"type"_s)->property("active").toBool() && restore->isVisible(), u"a move by hand: caret kept or 恢复默认 gone"_s);
+        click(restore);
+        pump(100);
+        settle(window, 3);
+        check(favorites.sort() == FavoriteSort::None && !favorites.hasManualOrder() && inOrder(manual),
+            u"恢复默认 did not bring back the order of before (%1)"_s.arg(names()));
+        saved = saveGrab(window, out.filePath(u"favorites-sort-9-restored.png"_s)) && saved;
+        say(u"favorites sort: %1"_s.arg(ok && saved ? u"all checks passed"_s : u"FAILED"_s));
+        return finish(window, ok && saved);
+    }
+
     // Every page, every tab: the window as tall as the page, so the
     // picture has all of it.
     bool saved = true;

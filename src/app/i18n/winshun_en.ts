@@ -2390,11 +2390,35 @@
         <translation>%1. Only the first 8 favorite folders fit (you have %2)</translation>
     </message>
     <message numerus="yes">
-        <source>%n 项，拖动把手排序</source>
+        <source>%n 项，拖动把手或点列头排序</source>
         <translation>
-            <numerusform>%n item; drag the handle to reorder</numerusform>
-            <numerusform>%n items; drag the handles to reorder</numerusform>
+            <numerusform>%n item; drag the handle or click a column header to reorder</numerusform>
+            <numerusform>%n items; drag the handles or click a column header to reorder</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>名称</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <source>修改日期</source>
+        <translation>Date modified</translation>
+    </message>
+    <message>
+        <source>类型</source>
+        <translation>Type</translation>
+    </message>
+    <message>
+        <source>大小</source>
+        <translation>Size</translation>
+    </message>
+    <message>
+        <source>恢复默认</source>
+        <translation>Restore order</translation>
+    </message>
+    <message>
+        <source>回到第一次点列头排序之前的顺序，之后新加的收藏排在后面</source>
+        <translation>Back to the order from before the first sort by a column; favorites added since come after them</translation>
     </message>
     <message>
         <source>已不存在 · %1</source>

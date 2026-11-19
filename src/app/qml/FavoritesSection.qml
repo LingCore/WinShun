@@ -5,9 +5,11 @@ import WinShun
 // Settings → 收藏夹: the favorites (FavoritesSettings), in the order the
 // launcher lists them with nothing typed: each with its icon, its keyword as
 // keys to press, its name and where it is; dragged by the grip into another
-// place, changed in its row (FavoriteForm). Added with the buttons, by
-// dropping files or folders on the page (SettingsWindow's FileDropTarget),
-// or from the launcher's rows.
+// place, or put in order by a column header (GitHub #397: 名称, 修改日期,
+// 类型, 大小; again the other way, a third time as before; 恢复默认 brings
+// back the order from before the first sort), changed in its row
+// (FavoriteForm). Added with the buttons, by dropping files or folders on
+// the page (SettingsWindow's FileDropTarget), or from the launcher's rows.
 SettingsSection {
     id: section
     objectName: "favoritesSection"
@@ -28,6 +30,67 @@ SettingsSection {
     function edit(path) {
         draft = null
         editing = favorites.indexOf(path)
+    }
+
+    // A column header over the list (GitHub #397), as Explorer's: its name,
+    // a caret while the list is in its order (up: A to Z, oldest, smallest).
+    component SortColumn: Item {
+        id: column
+
+        required property string key
+        required property string label
+        readonly property bool active: section.favorites.sort === key
+
+        objectName: "sortColumn-" + key
+        implicitWidth: columnLabel.implicitWidth + 34 // the caret's room kept: the headers never shift
+        implicitHeight: 28
+        activeFocusOnTab: true
+        Accessible.role: Accessible.ColumnHeader
+        Accessible.name: label
+        Keys.onSpacePressed: section.favorites.sortBy(key)
+        Keys.onReturnPressed: section.favorites.sortBy(key)
+        Keys.onEnterPressed: section.favorites.sortBy(key)
+
+        Hook { // the style's key, flat: tinted under the pointer only
+            anchors.fill: parent
+            part: Theme.keySurface
+            hovered: columnArea.containsMouse
+            pressed: columnArea.pressed
+            flat: true
+            dpr: section.dpr
+        }
+        Text {
+            id: columnLabel
+            x: 10
+            anchors.verticalCenter: parent.verticalCenter
+            text: column.label
+            color: column.active ? Theme.text : Theme.subtext
+            font.pixelSize: Theme.fontCaption
+        }
+        Glyph {
+            visible: column.active
+            anchors.left: columnLabel.right
+            anchors.leftMargin: 5
+            anchors.verticalCenter: parent.verticalCenter
+            glyph: section.favorites.sortDescending ? "\uE70D" : "\uE70E" // caret-down : caret-up
+            size: 10
+            color: Theme.text
+        }
+        Rectangle { // keyboard focus
+            visible: column.activeFocus
+            anchors.fill: parent
+            anchors.margins: -3
+            radius: Theme.largeControlRadius
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.text
+        }
+        MouseArea {
+            id: columnArea
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: section.favorites.sortBy(column.key)
+        }
     }
 
     note: qsTr("什么都不输入时，收藏排在最前；只输入关键词再按 Enter 就打开。在搜索结果上右键可以加入收藏，也可以把文件或文件夹拖到这里。Tab 默认切换范围；在“结果列表”的“显示与预览”中可改为进入选中的收藏文件夹。")
@@ -65,7 +128,7 @@ SettingsSection {
             return words
         }
         description: section.favorites.items.length > 0
-                     ? qsTr("%n 项，拖动把手排序", "", section.favorites.items.length)
+                     ? qsTr("%n 项，拖动把手或点列头排序", "", section.favorites.items.length)
                      : qsTr("还没有收藏")
 
         FlatButton {
@@ -152,6 +215,54 @@ SettingsSection {
             Column {
                 id: favoriteList
                 width: parent.width
+
+                Item { // the column headers, and 恢复默认 while an order from before is kept
+                    id: sortHeader
+                    visible: section.favorites.items.length > 1
+                    width: favoriteList.width
+                    height: visible ? 36 : 0
+
+                    Row {
+                        // The first header's words over the names (grip 4 + 24, icon 4 + 24, 10).
+                        x: 66 - 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+
+                        SortColumn { key: "name"; label: qsTr("名称") }
+                        SortColumn { key: "modified"; label: qsTr("修改日期") }
+                        SortColumn { key: "type"; label: qsTr("类型") }
+                        SortColumn { key: "size"; label: qsTr("大小") }
+                    }
+                    FlatButton {
+                        id: restoreButton
+                        objectName: "restoreOrderButton"
+                        visible: section.favorites.canRestoreOrder
+                        anchors.right: parent.right
+                        anchors.rightMargin: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        dpr: section.dpr
+                        implicitHeight: 28
+                        flat: true
+                        glyph: "\uE777" // arrow-counter-clockwise
+                        text: qsTr("恢复默认")
+                        onClicked: section.favorites.restoreOrder()
+
+                        HoverHandler { id: restoreHover }
+                    }
+                    HoverTip {
+                        target: restoreHover.hovered ? restoreButton : null
+                        dpr: section.dpr
+                        maxWidth: 320
+                        text: qsTr("回到第一次点列头排序之前的顺序，之后新加的收藏排在后面")
+                    }
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        x: 12
+                        width: parent.width - 24
+                        height: Theme.edge(Screen.devicePixelRatio)
+                        color: Theme.divider
+                    }
+                }
 
                 Repeater {
                     model: section.favorites.items
@@ -320,14 +431,35 @@ SettingsSection {
                                 font.pixelSize: Theme.fontBody
                                 elide: Text.ElideRight
                             }
-                            Text {
+                            Item {
+                                // Sorted by date or size: that too, before where it is; whole,
+                                // the path shortened in its middle as ever.
+                                readonly property string fact: favRow.modelData.missing ? ""
+                                    : section.favorites.sort === "modified" ? favRow.modelData.modifiedText
+                                    : section.favorites.sort === "size" ? favRow.modelData.sizeText : ""
+
                                 width: parent.width
-                                text: favRow.modelData.missing ? qsTr("已不存在 · %1").arg(favRow.modelData.shownPath)
-                                                               : favRow.modelData.shownPath
-                                textFormat: Text.PlainText
-                                color: favRow.modelData.missing ? Theme.danger : Theme.subtext
-                                font.pixelSize: Theme.fontCaption
-                                elide: Text.ElideMiddle
+                                height: pathText.implicitHeight
+
+                                Text {
+                                    id: factText
+                                    visible: parent.fact.length > 0
+                                    text: parent.fact + " · "
+                                    textFormat: Text.PlainText
+                                    color: Theme.subtext
+                                    font.pixelSize: Theme.fontCaption
+                                }
+                                Text {
+                                    id: pathText
+                                    x: factText.visible ? factText.implicitWidth : 0
+                                    width: parent.width - x
+                                    text: favRow.modelData.missing ? qsTr("已不存在 · %1").arg(favRow.modelData.shownPath)
+                                                                   : favRow.modelData.shownPath
+                                    textFormat: Text.PlainText
+                                    color: favRow.modelData.missing ? Theme.danger : Theme.subtext
+                                    font.pixelSize: Theme.fontCaption
+                                    elide: Text.ElideMiddle
+                                }
                             }
                         }
                         Row {

@@ -6,6 +6,7 @@
 #include "SystemCatalog.h"
 #include "WebShortcut.h"
 
+#include <QCollator>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -196,6 +197,118 @@ qsizetype indexOfFavorite(const FavoriteList& favorites, QStringView path)
     return -1;
 }
 
+namespace {
+
+int kindRank(Favorite::Kind kind)
+{
+    switch (kind) {
+    case Favorite::Kind::Folder:
+        return 0;
+    case Favorite::Kind::File:
+        return 1;
+    case Favorite::Kind::App:
+        return 2;
+    case Favorite::Kind::Place:
+        return 3;
+    case Favorite::Kind::Command:
+        return 4;
+    }
+    return 5;
+}
+
+// A file's extension, lower case ("pdf", "gitignore"); empty for none and
+// for any other kind.
+QString extensionOf(const Favorite& f)
+{
+    if (f.kind != Favorite::Kind::File)
+        return {};
+    const qsizetype dot = f.path.lastIndexOf(u'.');
+    return dot > f.path.lastIndexOf(u'\\') ? f.path.mid(dot + 1).toLower() : QString();
+}
+
+} // namespace
+
+FavoriteList sortedFavorites(FavoriteList favorites, FavoriteSort sort, bool descending, const FavoriteFactsMap& facts)
+{
+    if (sort == FavoriteSort::None || favorites.size() < 2)
+        return favorites;
+    struct Keyed {
+        Favorite favorite;
+        qint64 value = -1; // the date or size; -1: none
+        QString extension;
+    };
+    QList<Keyed> keyed;
+    keyed.reserve(favorites.size());
+    for (Favorite& f : favorites) {
+        Keyed k;
+        if (f.isFileOrFolder() && (sort == FavoriteSort::Modified || sort == FavoriteSort::Size)) {
+            const FavoriteFacts known = facts.value(pathtext::pathKey(f.path));
+            k.value = sort == FavoriteSort::Modified ? known.modified : f.kind == Favorite::Kind::File ? known.size : -1;
+        }
+        k.extension = extensionOf(f);
+        k.favorite = std::move(f);
+        keyed.append(std::move(k));
+    }
+    QCollator collator; // Explorer's: "2" before "10", case aside; Chinese by pinyin on a Chinese system
+    collator.setNumericMode(true);
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    const auto byName = [&](const Keyed& a, const Keyed& b) { return collator.compare(a.favorite.name, b.favorite.name); };
+    std::ranges::stable_sort(keyed, [&](const Keyed& a, const Keyed& b) {
+        switch (sort) {
+        case FavoriteSort::Name: {
+            const int c = byName(a, b);
+            return descending ? c > 0 : c < 0;
+        }
+        case FavoriteSort::Type: {
+            const int ra = kindRank(a.favorite.kind);
+            const int rb = kindRank(b.favorite.kind);
+            if (ra != rb)
+                return descending ? ra > rb : ra < rb;
+            if (const int c = a.extension.compare(b.extension); c != 0)
+                return descending ? c > 0 : c < 0;
+            return byName(a, b) < 0;
+        }
+        default: // the date or the size: those with none last either way
+            if ((a.value < 0) != (b.value < 0))
+                return b.value < 0;
+            if (a.value != b.value)
+                return descending ? a.value > b.value : a.value < b.value;
+            return byName(a, b) < 0;
+        }
+    });
+    FavoriteList sorted;
+    sorted.reserve(keyed.size());
+    for (Keyed& k : keyed)
+        sorted.append(std::move(k.favorite));
+    return sorted;
+}
+
+QString favoriteSortName(FavoriteSort sort)
+{
+    switch (sort) {
+    case FavoriteSort::Name:
+        return u"name"_s;
+    case FavoriteSort::Modified:
+        return u"modified"_s;
+    case FavoriteSort::Type:
+        return u"type"_s;
+    case FavoriteSort::Size:
+        return u"size"_s;
+    case FavoriteSort::None:
+        break;
+    }
+    return {};
+}
+
+FavoriteSort favoriteSortNamed(QStringView name)
+{
+    for (const FavoriteSort sort : {FavoriteSort::Name, FavoriteSort::Modified, FavoriteSort::Type, FavoriteSort::Size}) {
+        if (name == favoriteSortName(sort))
+            return sort;
+    }
+    return FavoriteSort::None;
+}
+
 QByteArray favoriteIconPng(QStringView icon)
 {
     constexpr QStringView prefix = u"data:image/png;base64,";
@@ -212,7 +325,7 @@ QByteArray favoriteIconPng(QStringView icon)
     return width > 0 && height > 0 && width <= 128 && height <= 128 ? png : QByteArray();
 }
 
-QByteArray writeFavoritesFile(const FavoriteList& favorites)
+QByteArray writeFavoritesFile(const FavoriteList& favorites, const FavoritesOrder& order)
 {
     QJsonArray list;
     int version = 1;
@@ -248,11 +361,20 @@ QByteArray writeFavoritesFile(const FavoriteList& favorites)
         }
         list.append(entry);
     }
-    const QJsonObject file {
+    QJsonObject file {
         {u"format"_s, QLatin1StringView(kFileFormat)},
         {u"version"_s, version},
         {u"favorites"_s, list},
     };
+    // GitHub #397. No new version: an older copy reads the favorites as
+    // ever and drops these on its next save.
+    if (order.sort != FavoriteSort::None) {
+        file.insert(u"sort"_s, favoriteSortName(order.sort));
+        if (order.descending)
+            file.insert(u"descending"_s, true);
+    }
+    if (!order.manual.isEmpty())
+        file.insert(u"manualOrder"_s, QJsonArray::fromStringList(order.manual));
     return QJsonDocument(file).toJson(QJsonDocument::Indented);
 }
 
@@ -316,6 +438,12 @@ std::optional<FavoritesFile> readFavoritesFile(QByteArrayView json, bool* newer)
             f.keyword = keyword;
         result.favorites.append(f);
     }
+    result.order.sort = favoriteSortNamed(file.value(u"sort"_s).toString());
+    result.order.descending = result.order.sort != FavoriteSort::None && file.value(u"descending"_s).toBool();
+    for (const QJsonValue& value : file.value(u"manualOrder"_s).toArray()) {
+        if (const QString path = value.toString().trimmed(); !path.isEmpty())
+            result.order.manual.append(path);
+    }
     return result;
 }
 
@@ -344,6 +472,7 @@ Favorites::Favorites(QString filePath, QString pinsFile, QObject* parent)
 void Favorites::load()
 {
     m_items.clear();
+    m_order = {};
     m_readOnly = false;
     QFile file(m_filePath);
     if (file.open(QIODevice::ReadOnly)) {
@@ -352,6 +481,7 @@ void Favorites::load()
         bool newer = false;
         if (const std::optional<FavoritesFile> read = readFavoritesFile(bytes, &newer)) {
             m_items = read->favorites;
+            m_order = read->order;
         } else if (newer) {
             m_readOnly = true; // a newer Win顺's: kept as it is, for when that one runs again
             qWarning("WinShun: the favorites were saved by a newer WinShun, not changed meanwhile");
@@ -387,10 +517,29 @@ bool Favorites::insert(Favorite favorite, qsizetype at)
     return true;
 }
 
+void Favorites::keepSorted(bool added)
+{
+    switch (m_order.sort) {
+    case FavoriteSort::None:
+        return;
+    case FavoriteSort::Name:
+    case FavoriteSort::Type:
+        m_items = sortedFavorites(m_items, m_order.sort, m_order.descending);
+        return;
+    default:
+        // By what the disk said when sorted: those added are last, and the
+        // list no longer in that order (the column clicked again sorts anew).
+        if (added)
+            m_order.sort = FavoriteSort::None;
+        return;
+    }
+}
+
 bool Favorites::add(Favorite favorite, qsizetype at)
 {
     if (!insert(std::move(favorite), at))
         return false;
+    keepSorted(true);
     save();
     emit changed();
     return true;
@@ -404,6 +553,7 @@ int Favorites::addAll(const FavoriteList& favorites)
             ++added;
     }
     if (added > 0) {
+        keepSorted(true);
         save();
         emit changed();
     }
@@ -439,6 +589,7 @@ Favorites::Merged Favorites::merge(const FavoriteList& favorites)
             ++merged.completed;
     }
     if (merged.added > 0 || merged.completed > 0) {
+        keepSorted(merged.added > 0);
         save();
         emit changed();
     }
@@ -476,6 +627,7 @@ bool Favorites::update(qsizetype index, const Favorite& favorite)
     if (there >= 0 && there != index)
         return false;
     m_items[index] = favorite;
+    keepSorted(false);
     save();
     emit changed();
     return true;
@@ -486,6 +638,53 @@ bool Favorites::move(qsizetype from, qsizetype to)
     if (from < 0 || from >= m_items.size() || to < 0 || to >= m_items.size() || from == to)
         return false;
     m_items.move(from, to);
+    m_order.sort = FavoriteSort::None; // by hand now; the order before the first sort still kept
+    save();
+    emit changed();
+    return true;
+}
+
+bool Favorites::sortBy(FavoriteSort sort, bool descending, const FavoriteFactsMap& facts)
+{
+    if (sort == FavoriteSort::None)
+        return restoreOrder();
+    FavoritesOrder order = m_order;
+    if (order.manual.isEmpty()) {
+        for (const Favorite& f : m_items)
+            order.manual.append(f.path);
+    }
+    order.sort = sort;
+    order.descending = descending;
+    FavoriteList sorted = sortedFavorites(m_items, sort, descending, facts);
+    if (sorted == m_items && order == m_order)
+        return false;
+    m_items = std::move(sorted);
+    m_order = std::move(order);
+    save();
+    emit changed();
+    return true;
+}
+
+bool Favorites::restoreOrder()
+{
+    if (m_order.manual.isEmpty() && m_order.sort == FavoriteSort::None)
+        return false;
+    FavoriteList restored;
+    restored.reserve(m_items.size());
+    QList<bool> taken(m_items.size(), false);
+    for (const QString& path : std::as_const(m_order.manual)) {
+        const qsizetype i = indexOf(path);
+        if (i >= 0 && !taken[i]) {
+            restored.append(m_items[i]);
+            taken[i] = true;
+        }
+    }
+    for (qsizetype i = 0; i < m_items.size(); ++i) { // added since: after them, as they are now
+        if (!taken[i])
+            restored.append(m_items[i]);
+    }
+    m_items = std::move(restored);
+    m_order = {};
     save();
     emit changed();
     return true;
@@ -497,7 +696,7 @@ void Favorites::save()
         return;
     QDir().mkpath(QFileInfo(m_filePath).absolutePath());
     QSaveFile file(m_filePath);
-    if (!file.open(QIODevice::WriteOnly) || file.write(writeFavoritesFile(m_items)) < 0 || !file.commit())
+    if (!file.open(QIODevice::WriteOnly) || file.write(writeFavoritesFile(m_items, m_order)) < 0 || !file.commit())
         qWarning("WinShun: the favorites could not be saved to %ls", qUtf16Printable(m_filePath));
 }
 
