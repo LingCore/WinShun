@@ -627,9 +627,17 @@ private slots:
             QVERIFY(store.open(kStart));
             noted = store.add(text(u"张三 13800000000 北京市海淀区"_s), kStart);
             other = store.add(text(u"会议纪要：周五发版"_s), kStart + 1);
-            store.setNote(noted, u"  学校\n收件地址\t"_s);
+            store.setNote(noted, u"  学校\n收件地址\t"_s, 4); // in green (GitHub #398)
             QCOMPARE(store.clip(noted)->note, u"学校 收件地址"_s); // one line, no spaces around it
+            QCOMPARE(int(store.clip(noted)->noteColor), 4);
             QVERIFY(store.clip(other)->note.isEmpty());
+            // No colour without a note, nor one that is not among them.
+            store.setNote(other, QString(), 2);
+            QCOMPARE(int(store.clip(other)->noteColor), 0);
+            store.setNote(other, u"x"_s, ClipStore::kNoteColors + 1);
+            QCOMPARE(int(store.clip(other)->noteColor), 0);
+            store.setNote(other, u"x"_s, -1);
+            QCOMPARE(int(store.clip(other)->noteColor), 0);
             // Found by the note, by the text, by one word in each, by the note's pinyin; not by another entry's words.
             QVERIFY(ClipMatcher(u"学校"_s).matches(*store.clip(noted)));
             QVERIFY(ClipMatcher(u"海淀"_s).matches(*store.clip(noted)));
@@ -650,16 +658,58 @@ private slots:
         ClipStore store(dir.path());
         QVERIFY(store.open(kStart + 10));
         QCOMPARE(store.clip(noted)->note, u"学校 收件地址"_s);
+        QCOMPARE(int(store.clip(noted)->noteColor), 4);
         QVERIFY(store.clip(other)->note.isEmpty());
+        QCOMPARE(int(store.clip(other)->noteColor), 0);
         // Removed and put back (undo): with its note, after a restart too.
         std::vector<ClipRecord> removed = store.remove(std::span(&noted, 1));
         QVERIFY(!store.clip(noted));
         store.restore(std::move(removed));
         QCOMPARE(store.clip(noted)->note, u"学校 收件地址"_s);
+        QCOMPARE(int(store.clip(noted)->noteColor), 4);
         store.close();
         ClipStore again(dir.path());
         QVERIFY(again.open(kStart + 20));
         QCOMPARE(again.clip(noted)->note, u"学校 收件地址"_s);
+        QCOMPARE(int(again.clip(noted)->noteColor), 4);
+        // The colour alone changed is saved too.
+        again.setNote(noted, u"学校 收件地址"_s, 1);
+        again.close();
+        ClipStore third(dir.path());
+        QVERIFY(third.open(kStart + 30));
+        QCOMPARE(int(third.clip(noted)->noteColor), 1);
+    }
+
+    // A history from before the notes' colours (GitHub #398): the column is
+    // added, its notes stay, in no colour.
+    void notesFromBeforeColors()
+    {
+        QTemporaryDir dir;
+        qint64 noted = 0;
+        {
+            ClipStore store(dir.path());
+            QVERIFY(store.open(kStart));
+            noted = store.add(text(u"old entry"_s), kStart);
+            store.setNote(noted, u"旧备注"_s);
+        }
+        {
+            QSqlDatabase db = QSqlDatabase::addDatabase(u"QSQLITE"_s, u"old-history"_s);
+            db.setDatabaseName(QDir(dir.path()).filePath(u"clipboard.db"_s));
+            QVERIFY(db.open());
+            QSqlQuery drop(db);
+            QVERIFY(drop.exec(u"ALTER TABLE clips DROP COLUMN noteColor"_s));
+            db.close();
+        }
+        QSqlDatabase::removeDatabase(u"old-history"_s);
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart + 10));
+        QCOMPARE(store.clip(noted)->note, u"旧备注"_s);
+        QCOMPARE(int(store.clip(noted)->noteColor), 0);
+        store.setNote(noted, u"旧备注"_s, 6);
+        store.close();
+        ClipStore again(dir.path());
+        QVERIFY(again.open(kStart + 20));
+        QCOMPARE(int(again.clip(noted)->noteColor), 6);
     }
 
     // An entry kept from view (GitHub #260): not found by what it says, kept over a restart and an

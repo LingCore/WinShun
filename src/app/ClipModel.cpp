@@ -136,9 +136,7 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
             return static_cast<int>(ClipKind::Text);
         case TitleRole: {
             const QString dots = u"\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"_s;
-            return c->note.isEmpty() ? dots
-                : u"<b>"_s + highlighted(c->note, m_matcher.spans(c->note), m_highlightColor, m_highlightWeight >= 600)
-                      + u"</b>\u2002"_s + dots;
+            return c->note.isEmpty() ? dots : noteHtml(*c) + u"\u2002"_s + dots;
         }
         case IconRole:
         case ImageRole:
@@ -161,8 +159,7 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
     case TitleRole:
         // The user's note first, in bold (the words found in it marked as in the entry's own line).
         if (!c->note.isEmpty())
-            return u"<b>"_s + highlighted(c->note, m_matcher.spans(c->note), m_highlightColor, m_highlightWeight >= 600)
-                + u"</b>\u2002"_s + title(*c);
+            return noteHtml(*c) + u"\u2002"_s + title(*c);
         return title(*c);
     case DetailRole:
         return detail(*c);
@@ -623,6 +620,27 @@ void ClipModel::setHighlightColor(const QColor& color)
     emit highlightColorChanged();
     if (count() > 0)
         emit dataChanged(index(0), index(count() - 1), {TitleRole});
+}
+
+void ClipModel::setNotePalette(const QStringList& colors)
+{
+    if (colors == m_notePalette)
+        return;
+    m_notePalette = colors;
+    emit highlightColorChanged();
+    if (count() > 0)
+        emit dataChanged(index(0), index(count() - 1), {TitleRole});
+}
+
+QString ClipModel::noteHtml(const Clip& clip) const
+{
+    const QString words
+        = u"<b>"_s + highlighted(clip.note, m_matcher.spans(clip.note), m_highlightColor, m_highlightWeight >= 600) + u"</b>"_s;
+    // In its colour (GitHub #398); the words found in it keep the match colour.
+    if (clip.noteColor == 0 || clip.noteColor > m_notePalette.size())
+        return words;
+    const QColor color = QColor::fromString(m_notePalette.at(clip.noteColor - 1));
+    return color.isValid() ? u"<font color=\"%1\">%2</font>"_s.arg(color.name(), words) : words;
 }
 
 } // namespace ws

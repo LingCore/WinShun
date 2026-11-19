@@ -108,6 +108,9 @@ ClipboardDisplay::ClipboardDisplay(Clipboard* clipboard, QQuickWindow* window, P
     connect(clipboard, &Clipboard::groupNameRequested, this, [this](int row, qint64 group) {
         event(u"groupNameRequested"_s, {row, group});
     });
+    connect(clipboard, &Clipboard::noteRequested, this, [this](qint64 id, const QString& note, int color) {
+        event(u"noteRequested"_s, {id, note, color});
+    });
     connect(clipboard, &Clipboard::stepped, this, [this](int row) { event(u"stepped"_s, {row}); });
     connect(clipboard, &Clipboard::browseStepRequested, this, [this] { event(u"browseStepRequested"_s); });
     connect(clipboard, &Clipboard::listChanged, this, [this] { event(u"listChanged"_s); });
@@ -304,6 +307,8 @@ void ClipboardDisplay::dispatch(const QJsonObject& message)
     if (type == u"highlight") {
         m_clipboard->items()->setHighlightColor(QColor(message.value(u"color"_s).toString()));
         m_clipboard->items()->setHighlightWeight(message.value(u"weight"_s).toInt(700));
+        if (const QJsonValue notes = message.value(u"notes"_s); notes.isArray())
+            m_clipboard->items()->setNotePalette(notes.toVariant().toStringList());
         return;
     }
     if (type == u"image") {

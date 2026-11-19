@@ -1643,6 +1643,38 @@
         <translation>Group name</translation>
     </message>
     <message>
+        <source>红</source>
+        <translation>red</translation>
+    </message>
+    <message>
+        <source>橙</source>
+        <translation>orange</translation>
+    </message>
+    <message>
+        <source>黄</source>
+        <translation>yellow</translation>
+    </message>
+    <message>
+        <source>绿</source>
+        <translation>green</translation>
+    </message>
+    <message>
+        <source>蓝</source>
+        <translation>blue</translation>
+    </message>
+    <message>
+        <source>紫</source>
+        <translation>purple</translation>
+    </message>
+    <message>
+        <source>灰</source>
+        <translation>grey</translation>
+    </message>
+    <message>
+        <source>无颜色</source>
+        <translation>No colour</translation>
+    </message>
+    <message>
         <source>固定的排在最前（可拖动调整顺序）。点一下改为全部按时间</source>
         <translation>Pinned items first (drag to reorder). Click to list everything by time</translation>
     </message>
@@ -1653,6 +1685,18 @@
     <message>
         <source>新建分组：放进分组的内容不会过期</source>
         <translation>New group: what goes in a group is kept for good</translation>
+    </message>
+    <message>
+        <source>不用颜色</source>
+        <translation>No colour</translation>
+    </message>
+    <message>
+        <source>备注用%1色</source>
+        <translation>Note in %1</translation>
+    </message>
+    <message>
+        <source>（Tab 键也能切换）</source>
+        <translation> (Tab switches too)</translation>
     </message>
 </context>
 <context>

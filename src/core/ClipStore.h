@@ -104,6 +104,10 @@ struct Clip {
     // The user's own words for the entry (GitHub #267): shown before it, and
     // found by the search as its text is. Empty: none.
     QString note;
+    // The colour the note is shown in (GitHub #398): 0 none, else one of the
+    // ClipStore::kNoteColors presets, in Theme.noteColors' order (red,
+    // orange, yellow, green, blue, purple, grey). None without a note.
+    std::uint8_t noteColor = 0;
     // Kept from view (GitHub #260): the list and the preview show dots in its place, the search
     // finds it by its note and source only. Pasting it is as ever.
     bool masked = false;
@@ -349,9 +353,11 @@ public:
     void discardImages(std::span<const qint64> ids); // of entries no longer in the history
     void setGroup(std::span<const qint64> ids, qint64 group); // 0: out of any group; into one: at its top
     // The entry's note (Clip::note), one line of at most kNoteLength
-    // characters; empty takes it away.
+    // characters; empty takes it away. In `color` (Clip::noteColor; one
+    // out of range is none).
     static constexpr qsizetype kNoteLength = 60;
-    void setNote(qint64 id, const QString& note);
+    static constexpr int kNoteColors = 7;
+    void setNote(qint64 id, const QString& note, int color = 0);
     // The entry's own text replaced by what the user made of it (GitHub
     // #267): text, a link or paths, whole in memory. It is then what its
     // words say (kindOfText), its formatted versions are gone (they would

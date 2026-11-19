@@ -412,7 +412,7 @@ Item {
     function commitName(name) {
         tabs.stopNaming()
         if (notingId > 0) { // an empty one takes the note away
-            clipboard.setNote(notingId, name)
+            clipboard.setNote(notingId, name, tabs.noteColor)
             notingId = 0
             focusSearch()
             return
@@ -736,11 +736,12 @@ Item {
             else
                 pinyinHintTimer.restart()
         }
-        function onNoteRequested(id, note) {
+        function onNoteRequested(id, note, color) {
             page.notingId = id
             tabs.namePlaceholder = qsTr("备注，搜它也能找到这一条")
             tabs.nameLength = 60
-            tabs.startNaming(note)
+            tabs.noteColor = color // the one it has (GitHub #398)
+            tabs.startNaming(note, true)
         }
         function onTextEditRequested(id, text) { page.beginEdit(id, text) }
         function onGroupNameRequested(row, group) {
@@ -956,6 +957,7 @@ Item {
 
         ClipTabs {
             id: tabs
+            objectName: "clipTabs"
             visible: !page.findingGroup
             metrics: page.metrics
             y: page.placed(page.tabsFrom, height)

@@ -26,6 +26,7 @@ class DisplayRows : public QAbstractListModel {
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
     Q_PROPERTY(QColor highlightColor MEMBER m_highlight NOTIFY highlightColorChanged)
     Q_PROPERTY(int highlightWeight MEMBER m_highlightWeight NOTIFY highlightColorChanged)
+    Q_PROPERTY(QStringList notePalette MEMBER m_notePalette NOTIFY highlightColorChanged)
 public:
     explicit DisplayRows(QObject* parent = nullptr);
     int rowCount(const QModelIndex& parent = {}) const override;
@@ -47,6 +48,7 @@ private:
     std::vector<QJsonObject> m_rows, m_pending;
     QColor m_highlight;
     int m_highlightWeight = 700;
+    QStringList m_notePalette;
     int m_selected = 0, m_pendingSelected = 0, m_expected = -1;
 };
 
@@ -83,6 +85,7 @@ signals:
     void contextMenuKeyPressed();
     void pinyinHintRequested();
     void groupNameRequested(int row, qint64 group);
+    void noteRequested(qint64 id, const QString& note, int color);
     void pinnedChanged();
     void previewOpenChanged();
     void previewWidthChanged();

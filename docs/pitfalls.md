@@ -18,6 +18,12 @@
 - **做法**：`EverythingIpc::translate` 把从盘符或 `\\电脑\共享` 写起、不带通配符的词收进 `Search::pathStarts`。`find` 在索引里找它的上一级文件夹，取名字以末段开头的子项（不分大小写），作为 `NameSearchOptions::within` 交给 `NameSearch`（这些条目本身加上它们下面的全部）。几个开头只有互为前缀时才能同时满足，否则结果为空。只有最后一段带通配符的（`D:\images\*.jpg`），拆成“文件夹 + 名字通配”。排除（`!D:\x`）还是按原来的写法。
 - **测试**：`tst_everything` 新增 translate 的各种写法和 `findsByPathStart`（`images`、`images2`、`images.jpg`、别处的 `images` 文件夹）。实机测试：用自己写的 QUERY2W 客户端，发的请求和 EverythingSearchClient 0.9 的 `Search()` 完全一样（search_flags 0、全部结果、NAME|PATH|SIZE|日期|属性、sort 0）。`file:"<目录>\images" ext:jpg;png` 回 5 条（images 里的 3 条，加 `images2\e.jpg`、`images.jpg`），末尾带 `\` 的回 3 条，`<目录>\images\*.jpg` 回 2 条，`folder:<目录>\images` 回 3 个文件夹；别处的 `other\images` 一条都没有。不能直接加载下载来的库 DLL 来测（不运行下载的代码），所以按它的源码自己写了一个客户端。
 
+## 剪贴板备注颜色：两个容易漏的地方（2026-11-19，#398）
+
+- **显示进程**：剪贴板在开始菜单、搜索浮层上时由单独的显示进程画（`ClipboardDisplay` / `DisplayReplica`，JSON 消息）。给剪贴板加信号、加模型属性时，两边都要转：以前 `noteRequested` 就没转过去，在显示进程里点“加备注…”什么都不出来。这次连同颜色一起转了（`noteRequested` 带颜色、`highlight` 消息带 `notes` 调色板）。
+- **Theme.qml 里不放 `qsTr`**：截图录屏、开发者工具、图片文字搜索这些插件也编译了 Theme.qml，它里面的 `qsTr` 会出现在每个插件的翻译文件里。只有剪贴板用的颜色名放在 `ClipTabs.qml`，Theme 只放颜色值。
+- **颜色本身**：七种颜色分浅色、深色两套，都是对每种界面风格的列表底色（包括当前行的高亮）算过对比度，至少 4.5:1。备注是正文里的字，不能用风格自己的强调色。
+
 ## 卡片网格：卡片展开、收起时报绑定循环（2026-11-19，插件页改成网格）
 
 - **现象**：插件页的卡片改成网格（TileFlow）后，「内置功能」的卡片从小卡片展开成整行时，日志报 `Binding loop detected for property "width"`，预览因此退出码非 0。

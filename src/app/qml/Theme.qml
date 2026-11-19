@@ -145,6 +145,12 @@ QtObject {
     readonly property color dangerFill: pick("dangerFill") // under white words (an armed delete button)
     readonly property color success: pick("success") // Windows 11's status colours
     readonly property color caution: pick("caution")
+    // A clipboard note's colours (GitHub #398), Clip::noteColor 1–7 in this
+    // order: words on the list's rows, ≥ 4.5:1 on every style's list (its
+    // current row too) in either theme; no colour of a style's own.
+    readonly property list<string> noteColors: dark
+        ? ["#FF8F8F", "#FFA855", "#E8CB3C", "#6CCB5F", "#6CB4FF", "#C9A2FF", "#ABABAB"]
+        : ["#B8281A", "#A24600", "#7D6200", "#0C730C", "#0062B0", "#7A3EC0", "#5E5E5E"]
     readonly property color closeHover: pick("closeHover") // title bar close button, as in Windows 11
     readonly property color closePressed: pick("closePressed") // Type scale in pixels. Even sizes land on whole device pixels at 150 %.
     readonly property int fontDisplay: 28 // settings window title

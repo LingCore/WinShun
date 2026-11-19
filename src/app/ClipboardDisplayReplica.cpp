@@ -155,7 +155,8 @@ DisplayReplica::DisplayReplica(QQmlEngine* engine) : QQmlPropertyMap(this, nullp
     });
     connect(&m_rows, &DisplayRows::highlightColorChanged, this, [this] {
         send({{u"type"_s, u"highlight"_s}, {u"color"_s, m_rows.property("highlightColor").value<QColor>().name(QColor::HexArgb)},
-            {u"weight"_s, m_rows.property("highlightWeight").toInt()}});
+            {u"weight"_s, m_rows.property("highlightWeight").toInt()},
+            {u"notes"_s, QJsonArray::fromStringList(m_rows.property("notePalette").toStringList())}});
     });
     connect(this, &DisplayReplica::groupNameRequested, this, [this](int row, qint64 group) {
         if (!m_applying) invoke(u"groupNameRequested"_s, {row, group});
@@ -412,6 +413,8 @@ void DisplayReplica::dispatch(const QJsonObject& object)
         m_applying = true;
         const QJsonArray args = object.value(u"args"_s).toArray();
         if (name == u"groupNameRequested" && args.size() == 2) emit groupNameRequested(args[0].toInt(), args[1].toInteger());
+        else if (name == u"noteRequested" && args.size() == 3)
+            emit noteRequested(args[0].toInteger(), args[1].toString(), args[2].toInt());
         else if (name == u"stepped" && args.size() == 1) emit stepped(args[0].toInt());
         else if (QStringList {u"shown"_s, u"placed"_s, u"listChanged"_s, u"browseStepRequested"_s,
                      u"contextMenuKeyPressed"_s, u"groupSearchRequested"_s, u"pinyinHintRequested"_s}.contains(name))

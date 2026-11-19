@@ -6,7 +6,9 @@ import WinShun
 // The clipboard page's categories: 全部 / 文本 / 链接 / 图片 / 文件, then the
 // groups (固定 first) and a + that makes a new one. Tab and Shift+Tab switch
 // too. Naming a group (new or renamed) happens in a field at the end of the
-// row; Enter keeps the name, Esc drops it.
+// row; Enter keeps the name, Esc drops it. An entry's note is typed in the
+// same field, the categories put away meanwhile: the row is the box and its
+// colours alone.
 Item {
     id: tabs
 
@@ -17,13 +19,31 @@ Item {
     property int nameLength: 40
     property string nameText // what the field starts with
     property real parentLeft // where the parent's left is in the window: to draw on whole device pixels
+    // A note's colour (GitHub #398): picked beside the box, Clip::noteColor
+    // (0 none, else Theme.noteColors[noteColor - 1]); Tab and Shift+Tab go
+    // through them. Only while a note is typed (`colored`).
+    property bool colored: false
+    property int noteColor: 0
+    // Theme.noteColors' names, for the tip and screen readers.
+    readonly property list<string> colorNames: [qsTr("红"), qsTr("橙"), qsTr("黄"), qsTr("绿"), qsTr("蓝"), qsTr("紫"), qsTr("灰")]
+    readonly property bool noting: naming && colored
+    property real tabsX // where the categories were scrolled to: back there as the note is done
+    onNotingChanged: {
+        if (noting)
+            tabsX = flick.contentX
+        else
+            Qt.callLater(() => flick.contentX = Math.min(tabsX, Math.max(0, flick.contentWidth - flick.width)))
+    }
 
     signal nameCommitted(string name)
     signal nameCancelled()
     signal menuRequested(int category, point globalPos)
 
-    function startNaming(text) {
+    function startNaming(text, withColors = false) {
         nameText = text
+        colored = withColors
+        if (!withColors)
+            noteColor = 0
         naming = true
         field.text = text
         field.selectAll()
@@ -80,6 +100,7 @@ Item {
                     // Where the words start: after the lamp's room where the part has one (tactile's 全部), else 12.
                     readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : 12
 
+                    visible: !tabs.noting
                     width: Math.ceil(lead + content.implicitWidth) + 12
                     height: tabs.metrics.chipHeight + 2
                     onActiveChanged: if (active) Qt.callLater(() => tabs.ensureVisible(chip))
@@ -163,7 +184,8 @@ Item {
                     anchors.rightMargin: 12
                     verticalAlignment: TextInput.AlignVCenter
                     clip: true
-                    color: namePart.out("textColor", Theme.text)
+                    // A note in the colour picked: as the list will show it.
+                    color: tabs.colored && tabs.noteColor > 0 ? Theme.noteColors[tabs.noteColor - 1] : namePart.out("textColor", Theme.text)
                     font.pixelSize: tabs.metrics.uiTab
                     selectByMouse: true
                     selectionColor: Theme.textSelection
@@ -179,7 +201,11 @@ Item {
                                 event.accepted = true
                             }
                         } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-                            event.accepted = true // stays in the field
+                            event.accepted = true // stays in the field; a note's colour is the next one
+                            if (tabs.colored) {
+                                const count = Theme.noteColors.length + 1
+                                tabs.noteColor = (tabs.noteColor + (event.key === Qt.Key_Tab ? 1 : count - 1)) % count
+                            }
                         }
                     }
                     onActiveFocusChanged: if (!activeFocus && tabs.naming) tabs.nameCancelled()
@@ -191,6 +217,66 @@ Item {
                         text: tabs.namePlaceholder
                         color: namePart.out("placeholderColor", Theme.faint)
                         font: field.font
+                    }
+                }
+            }
+
+            Row { // a note's colour: none, then Theme.noteColors (GitHub #398)
+                id: swatches
+                visible: tabs.naming && tabs.colored
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 0
+                property int hovered: -1
+
+                Repeater {
+                    model: Theme.noteColors.length + 1
+
+                    delegate: Item {
+                        id: swatch
+                        required property int index
+                        readonly property bool none: index === 0
+                        readonly property color ink: none ? Theme.subtext : Theme.noteColors[index - 1]
+                        readonly property bool picked: tabs.noteColor === index
+                        // One logical px drawn on whole device pixels (Theme.edge), the dot inside it.
+                        readonly property real line: Theme.edge(tabs.dpr)
+                        width: 22
+                        height: tabs.metrics.chipHeight + 2
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.name: none ? qsTr("无颜色") : tabs.colorNames[index - 1]
+                        Accessible.checked: picked
+
+                        Rectangle { // picked (or under the mouse): a ring around it
+                            readonly property real size: Theme.snap(18, tabs.dpr)
+                            x: Theme.snap((swatch.width - size) / 2, tabs.dpr)
+                            y: Theme.snap((swatch.height - size) / 2, tabs.dpr)
+                            width: size
+                            height: size
+                            radius: size / 2
+                            color: "transparent"
+                            border.width: swatch.line
+                            border.color: swatch.ink
+                            visible: swatch.picked || swatchArea.containsMouse
+                            opacity: swatch.picked ? 1 : 0.45
+                        }
+                        Rectangle { // the colour; none: an empty circle
+                            readonly property real size: Theme.snap(12, tabs.dpr)
+                            x: Theme.snap((swatch.width - size) / 2, tabs.dpr)
+                            y: Theme.snap((swatch.height - size) / 2, tabs.dpr)
+                            width: size
+                            height: size
+                            radius: size / 2
+                            color: swatch.none ? "transparent" : swatch.ink
+                            border.width: swatch.none ? swatch.line : 0
+                            border.color: swatch.ink
+                        }
+                        MouseArea {
+                            id: swatchArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onContainsMouseChanged: swatches.hovered = containsMouse ? swatch.index : (swatches.hovered === swatch.index ? -1 : swatches.hovered)
+                            onClicked: tabs.noteColor = swatch.index // the box keeps the focus: a MouseArea takes none
+                        }
                     }
                 }
             }
@@ -291,5 +377,11 @@ Item {
     HoverTip {
         target: addArea.containsMouse ? addChip : null
         text: qsTr("新建分组：放进分组的内容不会过期")
+    }
+
+    HoverTip {
+        target: swatches.hovered >= 0 ? swatches : null
+        text: (swatches.hovered === 0 ? qsTr("不用颜色") : swatches.hovered > 0 ? qsTr("备注用%1色").arg(tabs.colorNames[swatches.hovered - 1]) : "")
+              + qsTr("（Tab 键也能切换）")
     }
 }

@@ -90,6 +90,11 @@ Window {
         property: "highlightWeight"
         value: Theme.matchWeight
     }
+    Binding { // the notes' colours (GitHub #398)
+        target: window.clipboard.items
+        property: "notePalette"
+        value: Theme.noteColors
+    }
     Binding { // with the fewest rows: kept room for below the window
         target: window.placement
         property: "roomNeeded"

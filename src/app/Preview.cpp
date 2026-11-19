@@ -7327,12 +7327,45 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
             QObject::disconnect(heard);
             check(asked == id, "备注 did not ask for the entry's note");
             check(saveGrab(window, output.filePath(u"clipboard-note-box.png"_s)), "the note's box did not render");
-            clipboard.setNote(id, u"学校 收件地址"_s);
+            // The box offers the colours (GitHub #398): Tab picks the next one.
+            QQuickItem* tabs = page->findChild<QQuickItem*>(u"clipTabs"_s);
+            check(tabs && tabs->property("colored").toBool(), "the note's box offers no colours");
+            if (tabs) {
+                const auto press = [&](int code, Qt::KeyboardModifiers modifiers = {}) {
+                    QKeyEvent down(QEvent::KeyPress, code, modifiers), up(QEvent::KeyRelease, code, modifiers);
+                    QCoreApplication::sendEvent(window, &down);
+                    QCoreApplication::sendEvent(window, &up);
+                };
+                press(Qt::Key_Tab);
+                press(Qt::Key_Tab);
+                check(tabs->property("noteColor").toInt() == 2, "Tab does not pick the next colour");
+                for (int i = 0; i < 3; ++i)
+                    press(Qt::Key_Backtab, Qt::ShiftModifier);
+                check(tabs->property("noteColor").toInt() == ClipStore::kNoteColors, "Shift+Tab does not go round to the last colour");
+                check(tabs->property("naming").toBool(), "Tab left the note's box");
+                tabs->setProperty("noteColor", 5);
+                settle(window);
+            }
+            check(saveGrab(window, output.filePath(u"clipboard-note-colors.png"_s)), "the note's colours did not render");
+            clipboard.setNote(id, u"学校 收件地址"_s, 0);
             QMetaObject::invokeMethod(page, "focusSearch");
             settle(window);
             const QString title = clipboard.items()->data(clipboard.items()->index(0), ClipModel::TitleRole).toString();
             check(title.startsWith(u"<b>学校 收件地址</b>"), "the note does not lead the entry's line");
             check(saveGrab(window, output.filePath(u"clipboard-note.png"_s)), "the noted entry did not render");
+            // In a colour of the theme's own (Theme.noteColors), the rest of the line as it was.
+            const QStringList palette = clipboard.items()->notePalette();
+            check(palette.size() == ClipStore::kNoteColors, "the clipboard has no note colours");
+            clipboard.setNote(id, u"学校 收件地址"_s, 5);
+            settle(window);
+            const QString blue = clipboard.items()->data(clipboard.items()->index(0), ClipModel::TitleRole).toString();
+            check(palette.size() == ClipStore::kNoteColors
+                    && blue.startsWith(u"<font color=\"%1\"><b>学校 收件地址</b></font>"_s.arg(QColor::fromString(palette.at(4)).name())),
+                "the note is not in its colour");
+            check(saveGrab(window, output.filePath(u"clipboard-note-blue.png"_s)), "the coloured note did not render");
+            clipboard.setNote(id, QString(), 5); // no note, no colour
+            check(store.clip(id) && store.clip(id)->noteColor == 0, "a colour stayed without its note");
+            clipboard.setNote(id, u"学校 收件地址"_s, 0);
         }
         // An entry's own words changed (GitHub #267): 修改文字 in its menu puts
         // an editor where the preview is; Ctrl+Enter saves, Esc does not, and

@@ -478,6 +478,7 @@ bool ClipStore::open(qint64 now)
         bool hasAnimated = false;
         bool hasPasted = false;
         bool hasNote = false;
+        bool hasNoteColor = false;
         bool hasMasked = false;
         bool hasLookColumn = false;
         QSqlQuery columns(db);
@@ -494,6 +495,7 @@ bool ClipStore::open(qint64 now)
             hasAnimated = hasAnimated || columns.value(1).toString() == u"animated"_s;
             hasPasted = hasPasted || columns.value(1).toString() == u"pasted"_s;
             hasNote = hasNote || columns.value(1).toString() == u"note"_s;
+            hasNoteColor = hasNoteColor || columns.value(1).toString() == u"noteColor"_s;
             hasMasked = hasMasked || columns.value(1).toString() == u"masked"_s;
             hasLookColumn = hasLookColumn || columns.value(1).toString() == u"look"_s;
         }
@@ -537,6 +539,9 @@ bool ClipStore::open(qint64 now)
         QSqlQuery groups(db);
         if (!hasNote && !run(db, u"ALTER TABLE clips ADD COLUMN note TEXT NOT NULL DEFAULT ''"_s))
             return loaded;
+        // The note's colour (Clip::noteColor, GitHub #398); 0 none.
+        if (!hasNoteColor && !run(db, u"ALTER TABLE clips ADD COLUMN noteColor INTEGER NOT NULL DEFAULT 0"_s))
+            return loaded;
         if (!hasMasked && !run(db, u"ALTER TABLE clips ADD COLUMN masked INTEGER NOT NULL DEFAULT 0"_s))
             return loaded;
         // A text's picture of how it looked (Clip::look, GitHub #367): a PNG
@@ -553,7 +558,8 @@ bool ClipStore::open(qint64 now)
         clips.setForwardOnly(true);
         clips.prepare(u"SELECT id, kind, substr(text, 1, %1), length, hash, created, used, source, sourcePath, groupId, "
                       u"width, height, bytes, html IS NOT NULL, rtf IS NOT NULL, ocr, rank, screenshot, project, "
-                      u"formats IS NOT NULL, imageFormat, animated, pasted, note, masked, look FROM clips ORDER BY used DESC, id DESC"_s
+                      u"formats IS NOT NULL, imageFormat, animated, pasted, note, masked, look, noteColor "
+                      u"FROM clips ORDER BY used DESC, id DESC"_s
                 .arg(kTextInMemory));
         if (!run(clips, "Reading the history"))
             return loaded;
@@ -586,6 +592,8 @@ bool ClipStore::open(qint64 now)
             clip.note = clips.value(23).toString();
             clip.masked = clips.value(24).toInt() != 0;
             clip.look = hasLook(clip.kind) && clips.value(25).toInt() != 0;
+            if (const int color = clips.value(26).toInt(); !clip.note.isEmpty() && color > 0 && color <= kNoteColors)
+                clip.noteColor = static_cast<std::uint8_t>(color);
             loaded.clips.push_back(std::move(clip));
         }
         QSqlQuery last(db);
@@ -1083,19 +1091,25 @@ void ClipStore::restore(std::vector<ClipRecord> records)
         db.commit();
         return written;
     });
-    // Their notes with them (the row written above has none yet).
-    std::vector<std::pair<qint64, QString>> notes;
+    // Their notes with them, in their colours (the row written above has none yet).
+    struct Note {
+        qint64 id;
+        QString words;
+        int color;
+    };
+    std::vector<Note> notes;
     for (std::size_t i = 0; i < records.size(); ++i) {
         if (written[i] && !records[i].clip.note.isEmpty())
-            notes.emplace_back(records[i].clip.id, records[i].clip.note);
+            notes.push_back({records[i].clip.id, records[i].clip.note, records[i].clip.noteColor});
     }
     if (!notes.empty()) {
         m_writer->post([notes](QSqlDatabase& db) {
             QSqlQuery query(db);
-            query.prepare(u"UPDATE clips SET note = ? WHERE id = ?"_s);
-            for (const auto& [id, note] : notes) {
-                query.addBindValue(text(note));
-                query.addBindValue(id);
+            query.prepare(u"UPDATE clips SET note = ?, noteColor = ? WHERE id = ?"_s);
+            for (const Note& note : notes) {
+                query.addBindValue(text(note.words));
+                query.addBindValue(note.color);
+                query.addBindValue(note.id);
                 run(query, "Restoring an entry's note");
             }
         });
@@ -1245,20 +1259,23 @@ void ClipStore::setMasked(std::span<const qint64> ids, bool masked)
     });
 }
 
-void ClipStore::setNote(qint64 id, const QString& note)
+void ClipStore::setNote(qint64 id, const QString& note, int color)
 {
     const auto it = std::ranges::find(m_clips, id, &Clip::id);
     if (!m_open || it == m_clips.end())
         return;
     // One line: what a line break or a tab was is a space.
     const QString words = note.simplified().left(kNoteLength);
-    if (it->note == words)
+    const auto hue = static_cast<std::uint8_t>(words.isEmpty() || color < 0 || color > kNoteColors ? 0 : color);
+    if (it->note == words && it->noteColor == hue)
         return;
     it->note = words;
-    m_writer->post([id, words](QSqlDatabase& db) {
+    it->noteColor = hue;
+    m_writer->post([id, words, hue](QSqlDatabase& db) {
         QSqlQuery query(db);
-        query.prepare(u"UPDATE clips SET note = ? WHERE id = ?"_s);
+        query.prepare(u"UPDATE clips SET note = ?, noteColor = ? WHERE id = ?"_s);
         query.addBindValue(text(words));
+        query.addBindValue(int {hue});
         query.addBindValue(id);
         run(query, "Saving an entry's note");
     });

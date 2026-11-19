@@ -6,6 +6,7 @@
 #include <QColor>
 #include <QHash>
 #include <QList>
+#include <QStringList>
 #include <QtQml/qqmlregistration.h>
 
 #include <vector>
@@ -24,6 +25,8 @@ class ClipModel : public QAbstractListModel {
     Q_PROPERTY(QColor highlightColor READ highlightColor WRITE setHighlightColor NOTIFY highlightColorChanged FINAL)
     // The style's match weight (Theme.matchWeight): bold from DemiBold up.
     Q_PROPERTY(int highlightWeight READ highlightWeight WRITE setHighlightWeight NOTIFY highlightColorChanged FINAL)
+    // The notes' colours in this theme (Theme.noteColors, "#rrggbb"), for Clip::noteColor 1, 2, ...
+    Q_PROPERTY(QStringList notePalette READ notePalette WRITE setNotePalette NOTIFY highlightColorChanged FINAL)
 
 public:
     enum Role {
@@ -99,6 +102,8 @@ public:
     void setHighlightColor(const QColor& color);
     int highlightWeight() const { return m_highlightWeight; }
     void setHighlightWeight(int weight);
+    QStringList notePalette() const { return m_notePalette; }
+    void setNotePalette(const QStringList& colors);
 
     // "刚刚", "3 分钟前", "昨天 14:32", "9月30日"
     static QString when(qint64 ms, qint64 now);
@@ -112,6 +117,7 @@ signals:
 
 private:
     QString title(const Clip& clip) const;
+    QString noteHtml(const Clip& clip) const; // the note leading the title: bold, in its colour
     QString detail(const Clip& clip) const;
     QString groupName(qint64 group) const;
     bool fileMissing(const Clip& clip) const;
@@ -126,6 +132,7 @@ private:
     QList<qint64> m_selected; // ids, in the order picked
     QColor m_highlightColor {0x00, 0x5F, 0xB8};
     int m_highlightWeight = 700; // QFont::Bold
+    QStringList m_notePalette;
     bool m_pinnedFirst = false;
     bool m_marksPasted = false;
     Movable m_movable = Movable::None;
