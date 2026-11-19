@@ -1,6 +1,6 @@
 # 演示与白板（GitHub #189）设计
 
-2026-11-03。只是设计和可行性核查，没有改产品代码。依据：SnowAir 源码（浅克隆在 `F:\wsref\snowair`，主要看 `Native/ARCHITECTURE.md` §10、`WinCap.*`、`LaserStroke.h`、`CommandKeys.*`）；本仓库 `bb9658d` 的 `src/capture`、`src/capture-plugin`；#187 分支 `issue-187`（`6296d10`）里的 `src/capture/CaptureKeys.h`；一个探针的实测结果（§4.2、附录 A）。
+2026-11-03。只是设计和可行性核查，没有改产品代码。依据：SnowAir 源码（<https://github.com/CM-idea/SnowAir>，当时浅克隆的是 2026-11-03 的版本，主要看 `Native/ARCHITECTURE.md` §10、`WinCap.*`、`LaserStroke.h`、`CommandKeys.*`）；本仓库 `bb9658d` 的 `src/capture`、`src/capture-plugin`；#187 分支 `issue-187`（`6296d10`）里的 `src/capture/CaptureKeys.h`；一个探针的实测结果（§4.2、附录 A）。
 
 - 代码以 `bb9658d` 为准。主工作区未提交的改动（2026-11-03 查）：`CaptureApp.cpp` +2 行、`CaptureSettings.*` +6 行，本文引用的接线点（`enum Hotkey`、`requested` 里的 `query`、`applyHotkeys`、`trayMenu`、`menuChosen`）都还在；`CaptureOptions.qml` 被 claude-8f 大改（约 1100 行），快捷键那一行要加在它的新版本里；`Capture.cpp` +20 行，和本文无关；`AnnotationRender.*`、`AnnotationCanvas.*`、`AnnotateStylePanel.qml` 没有改动。
 - 单位：“图像 px”= 某台显示器的物理像素，和截图遮罩里的一样；“逻辑 px”= Qt 的逻辑单位（图像 px ÷ 这台显示器的 DPR）。

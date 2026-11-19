@@ -166,7 +166,7 @@ B 输在两点：一是**速度**（热键要经过宿主转发，插件可能�
 
 ### 7.2 阶段 4 及以后（2026-10-21，用户：“按你的想法来”）
 
-路线和标注的详细设计在 [design-capture-roadmap.md](design-capture-roadmap.md)。那份文档汇总了 Snow Shot、ShareX、Flameshot、ksnip 和 QuickShot 五个项目的分析，分析报告和参考源码放在仓库外的 `F:\wsref\screenshot`。
+路线和标注的详细设计在 [design-capture-roadmap.md](design-capture-roadmap.md)。那份文档汇总了 Snow Shot、ShareX、Flameshot、ksnip 和 QuickShot 五个项目的分析，参考源码看各项目的公开仓库；当时的分析报告放在仓库外，已经不在了，结论都已收进那份文档。
 
 阶段顺序：
 - 4a：在遮罩里标注，并存成可再编辑的项目；
