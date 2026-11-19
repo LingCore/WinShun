@@ -25,6 +25,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QImageReader>
 #include <QGuiApplication>
 #include <QLocale>
 #include <QQuickWindow>
@@ -41,6 +42,9 @@ using namespace std::chrono_literals;
 namespace ws {
 
 namespace {
+
+// The picture being read when the program last ended (Clipboard::takeCrashedReading).
+const QString kCrashedReading = QStringLiteral("crashedReading");
 
 constexpr qint64 kModifierWaitMs = 1500; // held longer than that, the paste goes ahead anyway
 constexpr qint64 kFocusWaitMs = 800;
@@ -96,6 +100,10 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
             refreshRecognition();
     });
     connect(&m_recognizer, &TextRecognizer::done, this, [this](qint64 id, const QString& words, bool ok) {
+        if (id == m_crashedReading && m_store->isOpen()) { // lived through it this time
+            m_crashedReading = 0;
+            m_store->setValue(kCrashedReading, {});
+        }
         if (!m_recording || m_paused || !m_store->isOpen() || !ok)
             return; // no recognizer, or it failed: read when the app starts again
         m_store->setPictureText(id, words);
@@ -112,7 +120,15 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
         if (!m_recording || m_paused || !m_store->isOpen())
             return;
         const bool again = m_store->value(u"recognizer"_s) != m_recognizer.engine();
-        const std::vector<qint64> ids = m_store->unreadPictures(again);
+        std::vector<qint64> ids = m_store->unreadPictures(again);
+        if (m_crashedReading) { // last, so that the others are read should it end the program again
+            if (const auto at = std::ranges::find(ids, m_crashedReading); at != ids.end())
+                std::rotate(at, at + 1, ids.end());
+            else { // gone meanwhile, or read
+                m_crashedReading = 0;
+                m_store->setValue(kCrashedReading, {});
+            }
+        }
         if (again && ids.empty())
             m_store->setValue(u"recognizer"_s, m_recognizer.engine());
         for (const qint64 id : ids) {
@@ -128,8 +144,11 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
             m_store->setValue(u"codes"_s, u"1"_s);
         }
     });
-    if (m_store->isOpen())
+    m_recognizer.setGuardFile(m_store->folder() + u"/reading-picture"_s);
+    if (m_store->isOpen()) {
+        takeCrashedReading();
         m_backlogTimer.start();
+    }
     m_flashTimer.setSingleShot(true);
     m_flashTimer.setInterval(3s);
     connect(&m_flashTimer, &QTimer::timeout, this, [this] {
@@ -639,6 +658,30 @@ void Clipboard::historyChanged()
 {
     refresh();
     emit categoriesChanged(); // the sizes of the groups
+}
+
+void Clipboard::takeCrashedReading()
+{
+    const CrashedReading crashed = ws::takeCrashedReading(m_store->folder() + u"/reading-picture"_s, m_store->value(kCrashedReading));
+    if (!crashed.id)
+        return;
+    if (!crashed.giveUp) {
+        m_crashedReading = crashed.id; // once more, after the others
+        m_store->setValue(kCrashedReading, QString::number(crashed.id));
+        return;
+    }
+    // Twice: never again. Its size and kind for the diagnostics, not what it shows.
+    const QString file = m_store->imagePath(crashed.id);
+    QImageReader reader(file);
+    const QSize size = reader.size();
+    diagnostics::record(u"clipboard-picture-not-read"_s,
+        {{u"width"_s, size.width()}, {u"height"_s, size.height()}, {u"format"_s, QString::fromLatin1(reader.format())},
+            {u"kb"_s, QFileInfo(file).size() / 1024}});
+    qWarning("Clipboard: a picture (%d x %d) ended the program twice while its words were read; it is left without them",
+        size.width(), size.height());
+    m_store->setValue(kCrashedReading, {});
+    m_store->setPictureText(crashed.id, {});
+    m_model.pictureRead(crashed.id);
 }
 
 void Clipboard::loadHistoryState()

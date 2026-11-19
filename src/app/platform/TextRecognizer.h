@@ -10,6 +10,16 @@
 
 namespace ws {
 
+// The guard file a start finds (TextRecognizer::setGuardFile), taken away:
+// the picture the program did not live through reading last time, if any,
+// and whether it is the same one as the time before (`notedBefore`, its id as
+// text): read once more, after the others; twice, never again.
+struct CrashedReading {
+    qint64 id = 0; // 0: none
+    bool giveUp = false;
+};
+CrashedReading takeCrashedReading(const QString& guardFile, const QString& notedBefore);
+
 // The words in pictures, for searching the clipboard history by them
 // (GitHub #9). On a thread of its own below normal priority, one picture
 // after another; the recognizer is let go when nothing is left to read.
@@ -32,6 +42,10 @@ public:
     // ones after).
     void read(qint64 id, const QString& imageFile, bool next = false);
     void cancel(); // forget queued work; the current image finishes, then the worker releases its models and exits
+    // A file that holds the id of the picture being read while it is read,
+    // and is gone otherwise: there after a start, the program ended while
+    // reading that one (Clipboard::takeCrashedReading). Set before the first read.
+    void setGuardFile(const QString& file);
     bool running() const;
     bool refreshEngine(); // false: finish the current batch before switching engines
 
@@ -42,7 +56,8 @@ public:
 signals:
     // From the thread: queued to the receiver. `ok` false: no recognizer
     // (no language with one installed) or recognition failed, to be tried
-    // again another time. A file that cannot be loaded has no words.
+    // again another time. A file that cannot be loaded, or that makes the
+    // recognizer throw (out of memory), has no words.
     void done(qint64 id, const QString& words, bool ok);
     void idle();
 
@@ -55,6 +70,7 @@ private:
 
     mutable std::mutex m_mutex;
     std::deque<Job> m_jobs;
+    QString m_guardFile; // guarded by m_mutex
     bool m_running = false; // guarded by m_mutex; no OCR thread until the first image
     std::atomic<bool> m_paddle; // else Windows'
     std::jthread m_thread; // last: started once the rest is there

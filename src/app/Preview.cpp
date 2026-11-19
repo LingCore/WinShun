@@ -7359,6 +7359,73 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
     return ok;
 }
 
+// --clipboard-crashed-reading: a picture whose reading the program did not
+// live through (the recognizer's guard file, found at a start) is read once
+// more, after the others; the second time it is given up as a picture
+// without words, and later starts leave it alone. Three starts of the real
+// Clipboard over a temporary history; nothing is recognized.
+bool checkClipboardCrashedReading()
+{
+    bool ok = true;
+    const auto check = [&](bool passed, const char* what) {
+        if (!passed) {
+            say(u"crashed reading: "_s + QString::fromUtf8(what));
+            ok = false;
+        }
+    };
+    QTemporaryDir temporary;
+    const QString folder = temporary.filePath(u"clipboard"_s);
+    const QString guard = folder + u"/reading-picture"_s;
+    qint64 id = 0;
+    {
+        ClipStore store(folder);
+        check(store.open(QDateTime::currentMSecsSinceEpoch()), "could not open the temporary history");
+        QImage image(64, 32, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        const QString png = temporary.filePath(u"picture.png"_s);
+        QFile file(png);
+        check(image.save(png) && file.open(QIODevice::ReadOnly), "could not make the picture");
+        ClipCapture picture;
+        picture.kind = ClipKind::Image;
+        picture.imageData = file.readAll();
+        picture.hash = "crashed-reading";
+        picture.width = image.width();
+        picture.height = image.height();
+        id = store.add(picture, QDateTime::currentMSecsSinceEpoch());
+        store.close(); // its file written
+    }
+    check(id > 0, "the picture was not kept");
+    // A start after a run that ended while reading it (or not), then what it left.
+    const auto start = [&](bool endedWhileReading, const auto& look) {
+        if (endedWhileReading) {
+            QFile file(guard);
+            check(file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(QByteArray::number(id)) > 0,
+                "could not leave the guard file");
+        }
+        ClipStore store(folder);
+        check(store.open(QDateTime::currentMSecsSinceEpoch()), "could not open the history again");
+        ClipboardWatcher watcher({}, {});
+        Clipboard clipboard(&store, &watcher); // gone again long before its backlog's 20 s
+        const std::vector<qint64> unread = store.unreadPictures();
+        look(store.value(u"crashedReading"_s), std::ranges::find(unread, id) != unread.end());
+        check(!QFile::exists(guard), "the guard file was left behind");
+    };
+    start(true, [&](const QString& noted, bool unread) {
+        check(noted == QString::number(id), "the first time, the picture was not noted");
+        check(unread, "the first time, the picture was given up already");
+    });
+    start(true, [&](const QString& noted, bool unread) {
+        check(noted.isEmpty(), "the second time, the note stayed");
+        check(!unread, "the second time, the picture was still to be read");
+    });
+    start(false, [&](const QString& noted, bool unread) {
+        check(noted.isEmpty() && !unread, "a start after that went back to the picture");
+    });
+    say(u"crashed reading: read once more the first time, given up the second, left alone after: %1"_s
+            .arg(ok ? u"checked"_s : u"FAILED"_s));
+    return ok;
+}
+
 // --clipboard-file (GitHub #324): one copied text file, in the preview
 // beside the clipboard's list, shows as the search's preview shows it (its
 // lines, FilePreview) in place of the list of files; another row's entry
@@ -8583,6 +8650,8 @@ int runResults(const QStringList& args)
         return checkClipboardFilePreview(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-select"_s))
         return checkClipboardTextSelection(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--clipboard-crashed-reading"_s)) // its warning when it gives up is expected
+        return checkClipboardCrashedReading() ? 0 : 4;
     if (const qsizetype at = args.indexOf(u"--terminal-launch"_s); at >= 0 && at + 2 < args.size()) {
         // 在终端中打开 for real (GitHub #386): <id> <folder> [command]. Only
         // started here; the script that runs it finds the new shell, checks

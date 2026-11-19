@@ -1,5 +1,20 @@
 # 踩坑记录
 
+## 闪退什么都没留下：`abort()` 绕过了日志（2026-11-19，用户来信）
+
+- **现象**：Win10 LTSC 1809 云电脑，每次启动约两分钟就闪退，连续几天，跨 0.31–0.37 多个版本。日志和诊断事件只有一次次的 `app-start`，没有任何错误；Windows 的错误报告（Report.wer）是 `c0000409`、参数 7，出错模块 `ucrtbase.dll`。
+- **怎么读 WER**：`c0000409` 参数 7 是 `FAST_FAIL_FATAL_APP_EXIT`，出在 `ucrtbase.dll` 就是有人调了 `abort()`：最常见的是 `std::terminate`，比如 `std::thread`/`std::jthread` 的函数体里抛出没人接的异常，或者 Qt 容器分配失败抛 `std::bad_alloc`。`qFatal` 也是这个码，但出错模块是 `Qt6Core.dll`（Qt 自己 `__fastfail`，不走 `abort()`），而且它的消息会先进日志。
+- **线索**：空闲内存记录里，启动后 20 秒前工作集约 250 MB，21–27 秒涨到 2–5 GB，之后两分钟左右闪退；20 秒正好是剪贴板历史补读图片文字的时刻（`m_backlogTimer`），而进程里加载了只有读图才用的 `onnxruntime.dll`。闪退从某天起才开始，之前同一版本跑了好几天，说明是那天复制进历史的一张图。本机用各种合成大图都没复现出 GB 级内存（PP-OCRv6 峰值不到 900 MB，ZXing 读二维码 64 MP 约 130 MB），具体是哪一步没有定论。
+- **做法**：
+  - 读图线程（`TextRecognizer::work`）把每张图的识别整段包进 `try`，`std::exception` 和其他异常都只算这张图读不了（不再每次启动重试），不让异常飞出线程。
+  - 读每张图时把编号写进 `reading-picture`，读完删掉；启动时还在就是读它时死了：第一次放到最后重读，第二次放弃并记 `clipboard-picture-not-read`。死循环最多再闪退一两次就断开。
+  - `CrashRecord`：`SIGABRT` 和未处理异常时写 `crash.txt`（原因、线程、当时在做什么、模块+偏移的调用栈），下次启动记成 `app-crash`。下回再有人闪退，诊断包里就有停在哪。
+- **测试**：`tst_uistall` 起自己的子进程，分别 `abort()`、在另一个线程里抛没人接的异常、写空指针，检查留下的记录（原因、线程、activity、帧里有 `tst_uistall.exe+`、访问违规的异常码和位置）；`tst_cliplifecycle` 检查守卫文件只在读图时存在、两次才放弃；`WinShun --preview-results <目录> --clipboard-crashed-reading` 用真的 `Clipboard` 和临时历史走三次启动。
+- **别踩**：
+  - 线程函数体里调到的任何会抛异常的代码（ONNX Runtime、ZXing、Qt 容器），都要在线程里接住；`std::jthread` 里漏掉一个，就是整个程序 `abort()`，日志里什么都没有。
+  - 崩溃处理函数里不分配内存、不用 Qt：缓冲区放栈上，`CreateFileW`/`WriteFile` 直接写。模块名和偏移用 `codeaddress::describe`（`UiStall` 也用它）。
+  - 测试子进程里要 `_set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT)` 和 `SetErrorMode(SEM_NOGPFAULTERRORBOX)`，不然会弹窗、报给 Windows。
+
 ## 长截图预览框被截进长图：`visibleChanged` 比窗口真正显示早（2026-11-18，#378）
 
 - **现象**：选区几乎占满屏幕时，手动点开“长图预览”，预览框盖在选区上，被一起截进长图（越截越多层）；它还拖不动，只能挡着。

@@ -10,11 +10,13 @@
 
 #include "TextRecognizer.h"
 
+#include "CrashRecord.h"
 #include "PaddleOcr.h"
 #include "QrCode.h"
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFile>
 #include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
@@ -25,6 +27,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <exception>
 #include <string_view>
 
 using namespace Qt::StringLiterals;
@@ -133,7 +136,32 @@ SoftwareBitmap loadBitmap(const QString& file, int maxSide)
     return bitmap;
 }
 
+// What a crash while reading it would want to know: its size and kind, from its header.
+QString pictureActivity(const QString& file)
+{
+    QImageReader reader(file);
+    const QSize size = reader.size();
+    return u"clipboard text recognition: %1 x %2 %3 picture, %4 KB"_s.arg(size.width())
+        .arg(size.height())
+        .arg(QString::fromLatin1(reader.format()))
+        .arg(QFileInfo(file).size() / 1024);
+}
+
 } // namespace
+
+CrashedReading takeCrashedReading(const QString& guardFile, const QString& notedBefore)
+{
+    QFile guard(guardFile);
+    if (guardFile.isEmpty() || !guard.open(QIODevice::ReadOnly))
+        return {}; // the last run ended between pictures, or read none
+    bool number = false;
+    const qint64 id = guard.read(32).trimmed().toLongLong(&number);
+    guard.close();
+    guard.remove();
+    if (!number || id <= 0)
+        return {};
+    return {id, notedBefore == QString::number(id)};
+}
 
 TextRecognizer::TextRecognizer(QObject* parent)
     : QObject(parent)
@@ -166,6 +194,12 @@ void TextRecognizer::read(qint64 id, const QString& imageFile, bool next)
         m_running = true;
         m_thread = std::jthread([this](std::stop_token stop) { work(stop); });
     }
+}
+
+void TextRecognizer::setGuardFile(const QString& file)
+{
+    const std::lock_guard lock(m_mutex);
+    m_guardFile = file;
 }
 
 void TextRecognizer::cancel()
@@ -209,6 +243,7 @@ void TextRecognizer::work(const std::stop_token& stop)
         bool none = false; // no recognizer, found in this batch
         for (;;) {
             Job job;
+            QString guard;
             {
                 std::unique_lock lock(m_mutex);
                 if (m_jobs.empty() || stop.stop_requested()) {
@@ -218,64 +253,86 @@ void TextRecognizer::work(const std::stop_token& stop)
                 }
                 job = std::move(m_jobs.front());
                 m_jobs.pop_front();
+                guard = m_guardFile;
             }
             if (!QFileInfo::exists(job.file)) {
                 emit done(job.id, {}, false);
                 continue; // never load an OCR model for a missing history image
             }
+            // While it is read, its id in the guard file: should the program
+            // not live through it, it is not read at every start after.
+            QFile marker(guard);
+            if (!guard.isEmpty() && marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                marker.write(QByteArray::number(job.id));
+                marker.close();
+            }
+            const QString activity = pictureActivity(job.file); // made now: no memory may be left in a catch
+            crashrecord::setActivity(activity);
             QString words;
             bool ok = true;
-            if (m_paddle && !paddle) {
-                QString error;
-                paddle = PaddleOcr::load(folder, threads, &error);
-                if (!paddle) {
-                    qWarning().noquote() << "Text recognition: PP-OCRv6 did not load, Windows' instead:" << error;
-                    m_paddle = false;
-                }
-            }
-            if (paddle) {
-                QStringList lines;
-                QString error;
-                QImageReader reader(job.file);
-                reader.setAutoTransform(true);
-                const QImage image = reader.read();
-                if (paddle->read(image, &lines, &error)) {
-                    words = capture::withQrCodes(lines.join(u'\n'), image); // a code's content with the words (GitHub #305)
-                } else {
-                    qWarning().noquote() << "Text recognition failed:" << error;
-                    ok = false;
-                }
-                emit done(job.id, words, ok);
-                continue;
-            }
+            // Whatever is thrown in here (out of memory with a big picture)
+            // ends this picture's reading, not the program.
             try {
-                if (!engine && !none) {
-                    engine = pickEngine();
-                    none = !engine;
-                    if (engine)
-                        qInfo().noquote() << "Text recognition in" << toQString(engine.RecognizerLanguage().LanguageTag());
-                    else
-                        qInfo() << "Text recognition: no language with a recognizer";
-                }
-                if (!engine) {
-                    ok = false;
-                } else if (const SoftwareBitmap bitmap = loadBitmap(job.file, static_cast<int>(OcrEngine::MaxImageDimension()))) {
-                    QStringList lines;
-                    for (const OcrLine& line : engine.RecognizeAsync(bitmap).get().Lines()) {
-                        QString text = lineText(line);
-                        if (!text.isEmpty())
-                            lines.append(std::move(text));
+                if (m_paddle && !paddle) {
+                    QString error;
+                    paddle = PaddleOcr::load(folder, threads, &error);
+                    if (!paddle) {
+                        qWarning().noquote() << "Text recognition: PP-OCRv6 did not load, Windows' instead:" << error;
+                        m_paddle = false;
                     }
+                }
+                if (paddle) {
+                    QStringList lines;
+                    QString error;
                     QImageReader reader(job.file);
                     reader.setAutoTransform(true);
-                    words = capture::withQrCodes(lines.join(u'\n'), reader.read());
+                    const QImage image = reader.read();
+                    if (paddle->read(image, &lines, &error)) {
+                        words = capture::withQrCodes(lines.join(u'\n'), image); // a code's content with the words (GitHub #305)
+                    } else {
+                        qWarning().noquote() << "Text recognition failed:" << error;
+                        ok = false;
+                    }
+                } else {
+                    if (!engine && !none) {
+                        engine = pickEngine();
+                        none = !engine;
+                        if (engine)
+                            qInfo().noquote() << "Text recognition in" << toQString(engine.RecognizerLanguage().LanguageTag());
+                        else
+                            qInfo() << "Text recognition: no language with a recognizer";
+                    }
+                    if (!engine) {
+                        ok = false;
+                    } else if (const SoftwareBitmap bitmap = loadBitmap(job.file, static_cast<int>(OcrEngine::MaxImageDimension()))) {
+                        QStringList lines;
+                        for (const OcrLine& line : engine.RecognizeAsync(bitmap).get().Lines()) {
+                            QString text = lineText(line);
+                            if (!text.isEmpty())
+                                lines.append(std::move(text));
+                        }
+                        QImageReader reader(job.file);
+                        reader.setAutoTransform(true);
+                        words = capture::withQrCodes(lines.join(u'\n'), reader.read());
+                    }
                 }
             } catch (const winrt::hresult_error& e) {
                 // Not marked read: tried again at the next start, rather than
                 // every picture left without words for good.
                 qWarning().noquote() << "Text recognition failed:" << toQString(e.message());
                 ok = false;
+            } catch (const std::exception& e) {
+                // This picture's doing: left without words rather than tried,
+                // and run out of memory, at every start.
+                qWarning().noquote() << "Text recognition gave up a picture:" << e.what() << activity;
+                words.clear();
+            } catch (...) {
+                qWarning().noquote() << "Text recognition gave up a picture: an unknown exception," << activity;
+                words.clear();
             }
+            crashrecord::clearActivity();
+            if (!guard.isEmpty())
+                marker.remove();
             emit done(job.id, words, ok);
         }
     }

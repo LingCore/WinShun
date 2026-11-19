@@ -14,6 +14,7 @@
 #include "RepeatFilter.h"
 #include "Settings.h"
 #include "StartupAccess.h"
+#include "platform/CrashRecord.h"
 #include "platform/Integrity.h"
 #include "UninstallCleanup.h"
 #include "UpdatePackage.h"
@@ -439,6 +440,16 @@ int main(int argc, char* argv[])
     ws::diagnostics::initialize(ws::Settings::dataDir());
     ws::diagnostics::record(u"app-start"_s, ws::diagnostics::environment());
     g_defaultHandler = qInstallMessageHandler(logToFile); // the running copy only
+    // Where the last run was, should it have ended at once; then this run's record.
+    if (const auto journal = ws::diagnostics::current()) {
+        const QString crashFile = journal->folder() + u"/crash.txt"_s;
+        if (const QJsonObject left = ws::crashrecord::takeLeft(crashFile); !left.isEmpty()) {
+            ws::diagnostics::record(u"app-crash"_s, left);
+            qWarning().noquote() << "The last run ended at once:" << left.value(u"reason"_s).toString()
+                                 << left.value(u"activity"_s).toString();
+        }
+        ws::crashrecord::install(crashFile);
+    }
     logShutdown.armed = true;
     if (!manyStreams)
         qWarning("Fonts: only %d C runtime streams; with many fonts installed, text may turn into boxes", _getmaxstdio());

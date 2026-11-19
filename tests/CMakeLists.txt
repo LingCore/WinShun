@@ -973,6 +973,8 @@ qt_add_executable(tst_cliplifecycle tst_cliplifecycle.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/TextRecognizer.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/PaddleOcr.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/OcrFiles.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/CrashRecord.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/CodeAddress.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ClipImage.cpp)
 target_include_directories(tst_cliplifecycle PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_cliplifecycle PRIVATE winshun_options wscore wscapture Qt6::Gui Qt6::Test
@@ -1014,7 +1016,8 @@ set_tests_properties(tst_keyrouter PROPERTIES RUN_SERIAL TRUE
 
 # Where the interface was when it stopped answering (GitHub #111): the watch
 # on this test's own thread, made to compute and to wait.
-qt_add_executable(tst_uistall tst_uistall.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/UiStall.cpp)
+qt_add_executable(tst_uistall tst_uistall.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/UiStall.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/CodeAddress.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/CrashRecord.cpp)
 target_include_directories(tst_uistall PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_uistall PRIVATE Qt6::Core Qt6::Test user32)
 set_target_properties(tst_uistall PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)

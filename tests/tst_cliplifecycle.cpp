@@ -1,9 +1,14 @@
 #include "platform/ClipboardWatcher.h"
 #include "platform/TextRecognizer.h"
 
+#include <QElapsedTimer>
+#include <QFile>
+#include <QImage>
+#include <QPainter>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
 
 #include <atomic>
 
@@ -56,6 +61,74 @@ private slots:
         }
         recognizer.cancel();
         QVERIFY(!recognizer.running());
+    }
+
+    // A start that finds the guard file: the picture read when the last run
+    // ended is read once more; the same one twice is given up. The file goes.
+    void crashedReadingIsGivenUpTheSecondTime()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString guard = dir.filePath(u"reading-picture"_s);
+        const auto leave = [&](const QByteArray& text) {
+            QFile file(guard);
+            QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            file.write(text);
+        };
+        QCOMPARE(takeCrashedReading(guard, {}).id, qint64(0)); // none left
+        leave("42");
+        CrashedReading crashed = takeCrashedReading(guard, {});
+        QCOMPARE(crashed.id, qint64(42));
+        QVERIFY(!crashed.giveUp);
+        QVERIFY(!QFile::exists(guard));
+        leave("42");
+        crashed = takeCrashedReading(guard, u"42"_s);
+        QCOMPARE(crashed.id, qint64(42));
+        QVERIFY(crashed.giveUp);
+        leave("43"); // another one: once more
+        QVERIFY(!takeCrashedReading(guard, u"42"_s).giveUp);
+        leave("not a number");
+        QCOMPARE(takeCrashedReading(guard, {}).id, qint64(0));
+        QVERIFY(!QFile::exists(guard));
+    }
+
+    // The guard file holds the id of the picture being read, and only then.
+    void recognizerHoldsItsGuardOnlyWhileReading()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString guard = dir.filePath(u"reading-picture"_s);
+        const QString picture = dir.filePath(u"words.png"_s);
+        QImage image(1600, 900, QImage::Format_RGB32); // rows of bars, like lines of words
+        image.fill(Qt::white);
+        {
+            QPainter painter(&image);
+            for (int y = 40; y < 860; y += 60) {
+                for (int x = 40; x < 1500; x += 90)
+                    painter.fillRect(x, y, 30 + (x * 7 + y) % 50, 24, Qt::black);
+            }
+        }
+        QVERIFY(image.save(picture));
+        TextRecognizer recognizer;
+        recognizer.setGuardFile(guard);
+        QSignalSpy done(&recognizer, &TextRecognizer::done);
+        recognizer.read(7, dir.filePath(u"not-there.png"_s)); // nothing to read: no guard
+        QTRY_COMPARE_WITH_TIMEOUT(done.size(), 1, 2000);
+        QVERIFY(!QFile::exists(guard));
+        recognizer.read(8, picture);
+        QByteArray held; // looked at every millisecond: a quick read is not missed
+        QElapsedTimer waited;
+        waited.start();
+        while (held.isEmpty() && done.size() < 2 && waited.elapsed() < 60000) {
+            if (QFile file(guard); file.open(QIODevice::ReadOnly))
+                held = file.readAll();
+            QThread::msleep(1);
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(done.size(), 2, 60000);
+        QCOMPARE(held, QByteArray("8")); // seen while it was read
+        QCOMPARE(done.back().at(0).toLongLong(), 8);
+        QVERIFY(!QFile::exists(guard));
+        QTRY_VERIFY_WITH_TIMEOUT(!recognizer.running(), 5000);
     }
 
     // The whole way for a real picture, which loads the OCR models: only when

@@ -1,13 +1,22 @@
+#include "platform/CrashRecord.h"
 #include "platform/UiStall.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QProcess>
+#include <QTemporaryDir>
 #include <QTest>
 
+#include <windows.h>
+
 #include <atomic>
+#include <cstdlib>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -90,6 +99,53 @@ Q_NEVER_INLINE void heldUp(const std::atomic<bool>& go)
 {
     while (!go.load())
         ::Sleep(20);
+}
+
+// A child of the crash record's tests: ends as `kind` says, the record left
+// in `file`. No error box, and abort() ends it without Windows' report.
+Q_NEVER_INLINE int crashAsAsked(const QString& kind, const QString& file)
+{
+    ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    crashrecord::install(file);
+    crashrecord::setActivity(u"tests: ending on purpose"_s);
+    if (kind == u"abort")
+        std::abort();
+    if (kind == u"throw") // on another thread, caught by nobody: std::terminate
+        std::thread([] { throw std::runtime_error("nobody catches this"); }).join();
+    volatile int* nowhere = nullptr;
+    *nowhere = 1; // an access violation
+    return 0;
+}
+
+// What a child that ended as `kind` left.
+QJsonObject crashed(const QString& kind)
+{
+    QTemporaryDir dir;
+    const QString file = dir.filePath(u"crash.txt"_s);
+    QProcess child;
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(u"WS_CRASH_CHILD"_s, kind);
+    environment.insert(u"WS_CRASH_FILE"_s, QDir::toNativeSeparators(file));
+    child.setProcessEnvironment(environment);
+    child.start(QCoreApplication::applicationFilePath(), {});
+    if (!child.waitForFinished(30000))
+        return {};
+    if (child.exitStatus() == QProcess::NormalExit && child.exitCode() == 0)
+        return {};
+    QJsonObject left = crashrecord::takeLeft(file);
+    if (QFile::exists(file))
+        left.insert(u"notRemoved"_s, true);
+    return left;
+}
+
+bool hasFrame(const QJsonObject& left, const QString& part)
+{
+    for (const QJsonValue& frame : left.value(u"frames"_s).toArray()) {
+        if (frame.toString().contains(part, Qt::CaseInsensitive))
+            return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -263,8 +319,53 @@ private slots:
         QVERIFY(timer.elapsed() < 1000);
         QCOMPARE(notes.count(u"ui-stall-end"_s), 0);
     }
+
+    // The record a crash leaves (CrashRecord): why, which thread, what the
+    // program was doing, where, as "module+offset"; read once, then gone.
+    void aCrashLeavesWhereItWas_abort()
+    {
+        const QJsonObject left = crashed(u"abort"_s);
+        const QByteArray text = QJsonDocument(left).toJson();
+        QCOMPARE(left.value(u"reason"_s).toString(), u"abort"_s);
+        QCOMPARE(left.value(u"thread"_s).toString(), u"main"_s);
+        QCOMPARE(left.value(u"activity"_s).toString(), u"tests: ending on purpose"_s);
+        QVERIFY2(hasFrame(left, u"ucrtbase.dll+"_s) && hasFrame(left, u"abort"_s), text.constData()); // abort+…, named
+        QVERIFY2(hasFrame(left, u"tst_uistall.exe+"_s), text.constData());
+        QVERIFY(!left.contains(u"notRemoved"_s));
+    }
+
+    void aCrashLeavesWhereItWas_uncaughtOnAnotherThread()
+    {
+        const QJsonObject left = crashed(u"throw"_s);
+        const QByteArray text = QJsonDocument(left).toJson();
+        QCOMPARE(left.value(u"reason"_s).toString(), u"abort"_s); // std::terminate's
+        QVERIFY2(!left.value(u"thread"_s).toString().isEmpty() && left.value(u"thread"_s).toString() != u"main", text.constData());
+        QVERIFY2(hasFrame(left, u"tst_uistall.exe+"_s), text.constData());
+    }
+
+    void aCrashLeavesWhereItWas_accessViolation()
+    {
+        const QJsonObject left = crashed(u"access"_s);
+        const QByteArray text = QJsonDocument(left).toJson();
+        QCOMPARE(left.value(u"reason"_s).toString(), u"exception"_s);
+        QVERIFY2(left.value(u"exception"_s).toString().startsWith(u"c0000005 at tst_uistall.exe+"_s), text.constData());
+        QVERIFY2(hasFrame(left, u"tst_uistall.exe+"_s), text.constData());
+    }
+
+    void noCrashNoRecord()
+    {
+        QTemporaryDir dir;
+        QVERIFY(crashrecord::takeLeft(dir.filePath(u"crash.txt"_s)).isEmpty());
+    }
 };
 
-QTEST_GUILESS_MAIN(UiStallTest)
+int main(int argc, char** argv)
+{
+    if (const QString kind = qEnvironmentVariable("WS_CRASH_CHILD"); !kind.isEmpty())
+        return crashAsAsked(kind, qEnvironmentVariable("WS_CRASH_FILE"));
+    QCoreApplication app(argc, argv);
+    UiStallTest test;
+    return QTest::qExec(&test, argc, argv);
+}
 
 #include "tst_uistall.moc"

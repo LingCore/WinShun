@@ -104,6 +104,8 @@ qt_add_executable(WinShun WIN32
     platform/HotPages.cpp platform/HotPages.h
     platform/IdleTrim.cpp platform/IdleTrim.h
     platform/UiStall.cpp platform/UiStall.h
+    platform/CodeAddress.cpp platform/CodeAddress.h
+    platform/CrashRecord.cpp platform/CrashRecord.h
     platform/MemoryReport.cpp platform/MemoryReport.h
     ActivityText.cpp ActivityText.h
     BackgroundStatus.cpp BackgroundStatus.h

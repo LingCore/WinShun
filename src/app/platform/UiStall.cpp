@@ -1,5 +1,7 @@
 #include "UiStall.h"
 
+#include "CodeAddress.h"
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QStringList>
@@ -25,7 +27,6 @@ constexpr int kMaxFrames = 48;
 constexpr int kOtherFrames = 20; // of each other thread: what it waits in, and who asked
 constexpr int kMostOthers = 32; // different stacks written down
 constexpr qsizetype kPartBytes = 5000; // of the other threads' calls in one entry
-constexpr DWORD kNearExport = 0x1000; // further past a name than this: not that function
 
 // Milliseconds the PC was awake since it started: a wait it slept through is short by this clock.
 qint64 awakeMs()
@@ -47,91 +48,12 @@ bool away()
     return ::GetLastInputInfo(&last) && ::GetTickCount() - last.dwTime >= static_cast<DWORD>(std::chrono::milliseconds(kAway).count());
 }
 
-// The exported function of `module` that starts closest before `rva`, and how
-// far in. Windows' own modules have no symbols to hand for whichever build a
-// PC has, but what a thread waits in is nearly always an exported call
-// (NtUserMessageCall, NtWaitForSingleObject, NtGdiDdDDIPresent). Plain data
-// in and out, structured exceptions around it: the module may go meanwhile.
-bool exportBefore(HMODULE module, DWORD rva, char* name, std::size_t room, DWORD* into) noexcept
-{
-    __try {
-        const auto* base = reinterpret_cast<const BYTE*>(module);
-        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
-        if (dos->e_magic != IMAGE_DOS_SIGNATURE)
-            return false;
-        const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
-        if (nt->Signature != IMAGE_NT_SIGNATURE || nt->OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT)
-            return false;
-        const IMAGE_DATA_DIRECTORY& where = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-        if (!where.VirtualAddress || where.Size < sizeof(IMAGE_EXPORT_DIRECTORY))
-            return false;
-        const auto* exports = reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(base + where.VirtualAddress);
-        const auto* functions = reinterpret_cast<const DWORD*>(base + exports->AddressOfFunctions);
-        const auto* names = reinterpret_cast<const DWORD*>(base + exports->AddressOfNames);
-        const auto* ordinals = reinterpret_cast<const WORD*>(base + exports->AddressOfNameOrdinals);
-        DWORD best = 0;
-        const char* found = nullptr;
-        for (DWORD i = 0; i < exports->NumberOfNames; ++i) {
-            if (ordinals[i] >= exports->NumberOfFunctions)
-                continue;
-            const DWORD start = functions[ordinals[i]];
-            // In the export table itself: a forwarder's text, no code. Of two
-            // names for one address the first stays (Nt… before Zw…).
-            if (start > rva || (found && start <= best)
-                || (start >= where.VirtualAddress && start - where.VirtualAddress < where.Size))
-                continue;
-            best = start;
-            found = reinterpret_cast<const char*>(base + names[i]);
-        }
-        if (!found || rva - best > kNearExport)
-            return false;
-        std::size_t length = 0;
-        while (length + 1 < room && found[length]) {
-            name[length] = found[length];
-            ++length;
-        }
-        name[length] = 0;
-        *into = rva - best;
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
-
-// Windows' folder with the separator after it; empty when it cannot be told.
-const QString& windowsFolder()
-{
-    static const QString folder = [] {
-        std::array<wchar_t, MAX_PATH> path {};
-        const UINT length = ::GetSystemWindowsDirectoryW(path.data(), static_cast<UINT>(path.size()));
-        if (length == 0 || length >= path.size())
-            return QString();
-        return QString::fromWCharArray(path.data(), static_cast<qsizetype>(length)) + QLatin1Char('\\');
-    }();
-    return folder;
-}
-
-// "Qt6Core.dll+1a2b3c": the module an address is in and how far into it;
-// the address alone when it is in none (code made at run time). In one of
-// Windows' own modules the exported function comes after it:
-// "win32u.dll+1234 NtUserMessageCall+14".
+// "Qt6Core.dll+1a2b3c", "win32u.dll+1234 NtUserMessageCall+14" (codeaddress::describe).
 QString named(quintptr address)
 {
-    HMODULE module = nullptr;
-    std::array<wchar_t, MAX_PATH> path {};
-    if (!::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-            reinterpret_cast<LPCWSTR>(address), &module)
-        || !module || !::GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size())))
-        return QStringLiteral("0x") + QString::number(address, 16);
-    const QString file = QString::fromWCharArray(path.data());
-    const quintptr offset = address - reinterpret_cast<quintptr>(module);
-    QString text = file.mid(file.lastIndexOf(QLatin1Char('\\')) + 1) + QLatin1Char('+') + QString::number(offset, 16);
-    std::array<char, 96> function {};
-    DWORD into = 0;
-    if (!windowsFolder().isEmpty() && file.startsWith(windowsFolder(), Qt::CaseInsensitive) && offset <= MAXDWORD
-        && exportBefore(module, static_cast<DWORD>(offset), function.data(), function.size(), &into))
-        text += QLatin1Char(' ') + QLatin1StringView(function.data()) + QLatin1Char('+') + QString::number(into, 16);
-    return text;
+    std::array<char, 512> text {};
+    const std::size_t length = codeaddress::describe(address, text.data(), text.size());
+    return QString::fromUtf8(text.data(), static_cast<qsizetype>(length));
 }
 
 #if defined(_M_X64)

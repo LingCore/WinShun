@@ -454,6 +454,10 @@ private:
     void dropUndo();
     QString separator() const;
     void loadHistoryState();
+    // The picture the program did not live through reading last time (the
+    // recognizer's guard file): read again after the others, once; the
+    // second time given up, as a picture without words.
+    void takeCrashedReading();
     // The row (or the picked ones) as files in a folder asked for, starting
     // in the one shown by the file manager it was opened over (else the last
     // one); selected there afterwards.
@@ -486,6 +490,7 @@ private:
     QTimer m_backlogTimer;
     bool m_refreshRecognition = false;
     QSet<qint64> m_rereading; // read by another recognizer before: once all are back, it is noted
+    qint64 m_crashedReading = 0; // see takeCrashedReading; 0: none
     QPointer<QWindow> m_window;
     // Pictures dragged out, copied here first (a folder each, by id): kept
     // until the app ends, as the program dropped on may copy them later.

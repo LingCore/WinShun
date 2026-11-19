@@ -302,7 +302,7 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 <details>
 <summary><b>索引很慢，或者出了问题？</b></summary>
 
-到 **设置 › 常规 › 诊断日志** 点“导出诊断日志”，把打开的文件夹里的 `WinShun-diagnostics.zip` 发到 GitHub Issues 或论坛。诊断包记的是版本、系统、磁盘、索引进度和错误，以及界面显示、字体和剪贴板按键转发的状态、已装插件的版本和插件日志末尾（字显示不对时先导出再重启），不含设置、剪贴板内容、搜索历史和文档正文。
+到 **设置 › 常规 › 诊断日志** 点“导出诊断日志”，把打开的文件夹里的 `WinShun-diagnostics.zip` 发到 GitHub Issues 或论坛。诊断包记的是版本、系统、磁盘、索引进度和错误、闪退时停在程序的哪个位置，以及界面显示、字体和剪贴板按键转发的状态、已装插件的版本和插件日志末尾（字显示不对时先导出再重启），不含设置、剪贴板内容、搜索历史和文档正文。
 
 </details>
 
@@ -620,7 +620,7 @@ With “Direct (administrator)” chosen, WinShun runs as administrator, and Win
 <details>
 <summary><b>Indexing is slow, or something is wrong?</b></summary>
 
-Under **Settings › General › Diagnostic logs**, click “Export diagnostic logs” and attach the `WinShun-diagnostics.zip` from the folder that opens to a GitHub issue. It holds the version, system, disks, indexing progress and errors, the installed plugins' versions and the tail of the plugin log, not your settings, clipboard, search history or document text.
+Under **Settings › General › Diagnostic logs**, click “Export diagnostic logs” and attach the `WinShun-diagnostics.zip` from the folder that opens to a GitHub issue. It holds the version, system, disks, indexing progress and errors, where the program stopped if it crashed, the installed plugins' versions and the tail of the plugin log, not your settings, clipboard, search history or document text.
 
 </details>
 
