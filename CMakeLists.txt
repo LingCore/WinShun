@@ -68,6 +68,7 @@ add_subdirectory(src/localsend-plugin)
 add_subdirectory(src/break-plugin)
 add_subdirectory(src/explorer-tabs-plugin)
 add_subdirectory(src/gestures-plugin)
+add_subdirectory(src/expander-plugin)
 add_subdirectory(src/switches-plugin)
 add_subdirectory(src/bookmarks-plugin)
 add_subdirectory(src/translate-plugin)
@@ -160,6 +161,8 @@ add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunExplorerTabs>" "${library_plugins_dir}/winshun.explorer-tabs/WinShunExplorerTabs.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/gestures-plugin/package" "${library_plugins_dir}/winshun.gestures"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunGestures>" "${library_plugins_dir}/winshun.gestures/WinShunGestures.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/expander-plugin/package" "${library_plugins_dir}/winshun.expander"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunExpander>" "${library_plugins_dir}/winshun.expander/WinShunExpander.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/package" "${library_plugins_dir}/winshun.bookmarks"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBookmarks>" "${library_plugins_dir}/winshun.bookmarks/WinShunBookmarks.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/translate-plugin/package" "${library_plugins_dir}/winshun.translate"
@@ -172,7 +175,7 @@ add_custom_target(library_plugins ALL
     # What is compiled into WinShunCaptureApp.dll; Qt, ONNX Runtime and the OCR models are Win顺's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
-    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunExplorerTabs WinShunGestures WinShunBookmarks WinShunTranslate WinShunCloudBackup WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
+    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunExplorerTabs WinShunGestures WinShunExpander WinShunBookmarks WinShunTranslate WinShunCloudBackup WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
         WinShunDevTools WinShunDevToolsApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
     VERBATIM)

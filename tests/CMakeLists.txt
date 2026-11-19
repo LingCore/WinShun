@@ -1453,6 +1453,17 @@ add_test(NAME tst_gestures COMMAND tst_gestures)
 set_tests_properties(tst_gestures PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# winshun.expander's rules (src/expander-plugin/Expander), built in again:
+# the abbreviations its setting lists, the one typed text ends with (its
+# case, the longest, after a word or not) and the programs left alone.
+qt_add_executable(tst_expander tst_expander.cpp ${PROJECT_SOURCE_DIR}/src/expander-plugin/Expander.cpp)
+target_include_directories(tst_expander PRIVATE ${PROJECT_SOURCE_DIR}/src/expander-plugin)
+target_link_libraries(tst_expander PRIVATE winshun_options Qt6::Test user32)
+set_target_properties(tst_expander PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_expander COMMAND tst_expander)
+set_tests_properties(tst_expander PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # winshun.bookmarks (src/bookmarks-plugin/Bookmarks), built in again: reading
 # Bookmarks files, the folder text, percent-decoding, matching, scoring,
 # the 50-row cap and the "nothing found" rows.
