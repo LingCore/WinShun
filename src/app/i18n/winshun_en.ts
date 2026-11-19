@@ -14070,8 +14070,8 @@ Content index: %5</translation>
         <translation>Uninstalling %1: %2</translation>
     </message>
     <message>
-        <source>插件还没准备好，请稍后再试</source>
-        <translation>The plugin is not ready yet; please try again in a moment</translation>
+        <source>设置窗口打不开</source>
+        <translation>The settings window could not be opened</translation>
     </message>
     <message>
         <source>没有这种模板</source>

@@ -117,7 +117,9 @@ public:
     // no answer within its timeoutMs. `foreground`: for what the user just
     // chose, the plugin may bring a window of its own to the front.
     using Reply = std::function<void(bool ok, const QJsonValue& result)>;
+    using SettingsReply = std::function<void(bool ok, const QString& error)>;
     bool request(const QString& id, const QString& method, const QJsonObject& params, Reply reply, bool foreground = false);
+    bool requestSettings(const QString& id, SettingsReply reply);
     bool notify(const QString& id, const QString& method, const QJsonObject& params, bool foreground = false);
     // A plugin's data folder (<id>.data, WS_DATA_DIR), as it is told to it;
     // not made here.
@@ -220,6 +222,8 @@ public:
 
     // Tests: the backoff delays multiplied by this (1 = the real ones).
     void setBackoffScale(double scale) { m_backoffScale = scale; }
+    // Tests: requests still waiting for a reply in the resident session.
+    int pendingRequestsForTests(const QString& id) const;
     static int backoffDelayMs(int step); // 1000, 5000, 30000, 30000 …
     static constexpr int kToastGapMs = 2000;
     // A final answer's `rerun` (seconds): the same query is sent again then,
@@ -305,6 +309,10 @@ private:
 
     // Resident plugins.
     void startResident(Plugin& p);
+    bool hasQueuedWork(const Plugin& p) const;
+    void sendSettings(Plugin& p);
+    void finishSettingsRequest(Plugin& p, std::uint64_t requestId, bool ok, const QString& error);
+    void failSettings(Plugin& p, const QString& error);
     void sendOrHold(Plugin& p, const Pending& q); // now, or once the process is ready
     void sendQuery(Plugin& p, const Pending& q);
     void onQueryReply(const QString& id, std::uint64_t queryId, const jsonrpc::Message& response);

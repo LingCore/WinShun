@@ -5902,6 +5902,287 @@ private slots:
         QVERIFY(QTest::qWaitFor([&] { return f.startedPids.size() == 2; }, 5000));
     }
 
+    void settingsRequestStartsResidentAndCoalescesDuringInitialize()
+    {
+        int sent = 0;
+        int replies = 0;
+        Fixture f;
+        Spec spec;
+        spec.permissions = {u"ui"_s};
+        spec.extra = {{u"settingsWindow"_s, true}};
+        spec.args = {u"--slow-initialize"_s, u"100"_s};
+        spec.runtimeExtra = {{u"timeoutMs"_s, 1000}, {u"idleExitSec"_s, 0}};
+        QVERIFY(!f.install(spec).isEmpty());
+        f.host->setDeveloperMode(true);
+        QObject::connect(f.host.get(), &Host::traced, f.host.get(), [&](const QString&, const QString& direction,
+            const QString&, const QString& detail, int) {
+            if (direction == u"→" && detail.contains(u"\"method\":\"showSettings\""_s))
+                ++sent;
+        });
+        f.host->requestSettings(spec.id, [&](bool ok, const QString& error) { QVERIFY(ok); QVERIFY(error.isEmpty()); ++replies; });
+        f.host->requestSettings(spec.id, [&](bool ok, const QString& error) { QVERIFY(ok); QVERIFY(error.isEmpty()); ++replies; });
+        QVERIFY(QTest::qWaitFor([&] { return replies == 2; }, 5000));
+        QCOMPARE(f.startedPids.size(), 1u);
+        QCOMPARE(sent, 1);
+        QVERIFY(f.host->state(spec.id).status == Host::State::Status::Running);
+        f.host->requestSettings(spec.id, [&](bool ok, const QString&) { QVERIFY(ok); ++replies; });
+        f.host->requestSettings(spec.id, [&](bool ok, const QString&) { QVERIFY(ok); ++replies; });
+        QVERIFY(QTest::qWaitFor([&] { return replies == 4; }, 2000));
+        QCOMPARE(sent, 3);
+        f.host->shutdown(false);
+    }
+
+    void settingsRequestStartFailure_data()
+    {
+        QTest::addColumn<QString>("cause");
+        QTest::newRow("disabled") << u"off"_s;
+        QTest::newRow("unusable") << u"manifest"_s;
+        QTest::newRow("launch-spec") << u"program"_s;
+        QTest::newRow("runner-not-found") << u"runner"_s;
+    }
+
+    void settingsRequestStartFailure()
+    {
+        QFETCH(QString, cause);
+        int replies = 0;
+        QString error;
+        Fixture f([&](Host::Options& options) {
+            if (cause == u"runner")
+                options.runnerExe = options.dataRoot + u"/missing-runner.exe"_s;
+        });
+        Spec spec;
+        spec.permissions = {u"ui"_s};
+        spec.extra = {{u"settingsWindow"_s, true}};
+        const QString folder = f.install(spec);
+        QVERIFY(!folder.isEmpty());
+        if (cause == u"off") {
+            f.host->setEnabled(spec.id, false);
+        } else if (cause == u"manifest") {
+            QVERIFY(writeFile(folder + u"/plugin.json"_s, "invalid manifest"));
+            f.host->catalog().scan();
+        } else if (cause == u"program") {
+            QVERIFY(QFile::remove(folder + u"/fake.exe"_s));
+        }
+        f.host->requestSettings(spec.id, [&](bool ok, const QString& why) {
+            QVERIFY(!ok);
+            error = why;
+            ++replies;
+        });
+        QVERIFY(QTest::qWaitFor([&] { return replies == 1; }, 1000));
+        QVERIFY(!error.isEmpty());
+        if (cause == u"off")
+            QCOMPARE(error, u"插件已停用"_s);
+        if (cause == u"manifest")
+            QCOMPARE(error, f.host->state(spec.id).error);
+        QVERIFY(f.startedPids.empty());
+    }
+
+    void settingsRequestInitializationFailure_data()
+    {
+        QTest::addColumn<QString>("option");
+        QTest::addColumn<QString>("reason");
+        QTest::newRow("rejected") << u"--error-initialize"_s << u"initialize 失败"_s;
+        QTest::newRow("timeout") << u"--hang-initialize"_s << u"initialize 没有回应"_s;
+        QTest::newRow("crashes") << u"--crash-initialize"_s << u"插件连续崩溃，已停用"_s;
+    }
+
+    void settingsRequestReportsRpcError()
+    {
+        QString error;
+        Fixture f;
+        Spec spec;
+        spec.permissions = {u"ui"_s};
+        spec.extra = {{u"settingsWindow"_s, true}};
+        spec.args = {u"--error-settings"_s};
+        QVERIFY(!f.install(spec).isEmpty());
+        f.host->requestSettings(spec.id, [&](bool ok, const QString& why) { QVERIFY(!ok); error = why; });
+        QVERIFY(QTest::qWaitFor([&] { return !error.isEmpty(); }, 5000));
+        QCOMPARE(error, u"settings rejected"_s);
+        QCOMPARE(f.host->pendingRequestsForTests(spec.id), 0);
+    }
+
+    void settingsRequestInitializationFailure()
+    {
+        QFETCH(QString, option);
+        QFETCH(QString, reason);
+        int replies = 0;
+        QString error;
+        Fixture f;
+        Spec spec;
+        spec.permissions = {u"ui"_s};
+        spec.extra = {{u"settingsWindow"_s, true}};
+        spec.runtimeExtra = {{u"timeoutMs"_s, 200}};
+        spec.args = {option};
+        QVERIFY(!f.install(spec).isEmpty());
+        f.host->requestSettings(spec.id, [&](bool ok, const QString& why) { QVERIFY(!ok); error = why; ++replies; });
+        QVERIFY2(QTest::qWaitFor([&] { return replies == 1; }, 5000), qPrintable(f.logs.join(u'\n')));
+        QVERIFY2(error.contains(reason), qPrintable(error));
+        QVERIFY(QTest::qWaitFor([&] { return f.host->state(spec.id).pid == 0; }, 3000));
+        const auto starts = f.startedPids.size();
+        QTest::qWait(500);
+        QCOMPARE(f.startedPids.size(), starts);
+        QCOMPARE(replies, 1);
+        QCOMPARE(f.host->pendingRequestsForTests(spec.id), 0);
+        if (option == u"--crash-initialize") {
+            QCOMPARE(starts, 3u);
+            QVERIFY(!f.host->requestSettings(spec.id, [&](bool ok, const QString& why) {
+                QVERIFY(!ok);
+                QCOMPARE(why, u"插件连续崩溃，已停用"_s);
+                ++replies;
+            }));
+            QCOMPARE(replies, 2);
+        }
+        f.host->shutdown(false);
+    }
+
+    void settingsRequestStopLifecycle_data()
+    {
+        QTest::addColumn<QString>("operation");
+        QTest::addColumn<bool>("inflight");
+        for (const QString& operation : {u"stop"_s, u"disable"_s, u"reload"_s, u"shutdown"_s}) {
+            QTest::newRow(qPrintable(operation + u"-queued")) << operation << false;
+            QTest::newRow(qPrintable(operation + u"-inflight")) << operation << true;
+        }
+    }
+
+    void settingsRequestStopLifecycle()
+    {
+        QFETCH(QString, operation);
+        QFETCH(bool, inflight);
+        int replies = 0;
+        Fixture f;
+        Spec spec;
+        spec.permissions = {u"ui"_s};
+        spec.extra = {{u"settingsWindow"_s, true}};
+        spec.runtimeExtra = {{u"timeoutMs"_s, 1000}};
+        spec.args = {u"--hang-settings"_s, u"--slow-initialize"_s, u"100"_s};
+        QVERIFY(!f.install(spec).isEmpty());
+        f.host->requestSettings(spec.id, [&](bool ok, const QString& error) {
+            QVERIFY(!ok);
+            QCOMPARE(error, operation == u"shutdown" ? u"Win顺 正在退出"_s : u"插件已停止"_s);
+            ++replies;
+        });
+        if (inflight)
+            QVERIFY(QTest::qWaitFor([&] { return f.host->state(spec.id).status == Host::State::Status::Running; }, 5000));
+        if (operation == u"stop")
+            f.host->stop(spec.id);
+        else if (operation == u"disable")
+            f.host->setEnabled(spec.id, false);
+        else if (operation == u"reload")
+            f.host->reload(spec.id);
+        else
+            f.host->shutdown(false);
+        QCOMPARE(replies, 1);
+        QTest::qWait(1100);
+        QCOMPARE(replies, 1);
+        f.host->shutdown(false);
+    }
+
+    void settingsRequestRecovers_data()
+    {
+        QTest::addColumn<QString>("transition");
+        QTest::newRow("plugin-backoff") << u"plugin"_s;
+        QTest::newRow("runner-backoff") << u"runner"_s;
+        QTest::newRow("shutting-down") << u"shutdown"_s;
+        QTest::newRow("idle-exited") << u"idle"_s;
+    }
+
+    void settingsRequestRecovers()
+    {
+        QFETCH(QString, transition);
+        int replies = 0;
+        Fixture f;
+        f.host->setBackoffScale(0.2);
+        Spec spec;
+        spec.permissions = {u"ui"_s};
+        spec.extra = {{u"settingsWindow"_s, true}};
+        spec.runtimeExtra = {{u"timeoutMs"_s, 1000}, {u"idleExitSec"_s, transition == u"idle" ? 1 : 0}};
+        if (transition == u"plugin")
+            spec.args = {u"--crash"_s, u"1"_s};
+        if (transition == u"shutdown")
+            spec.args = {u"--slow-shutdown"_s, u"100"_s};
+        QVERIFY(!f.install(spec).isEmpty());
+        auto reply = [&](bool ok, const QString& error) { QVERIFY2(ok, qPrintable(error)); ++replies; };
+        f.host->requestSettings(spec.id, reply);
+        QVERIFY(QTest::qWaitFor([&] { return replies == 1; }, 5000));
+        if (transition == u"plugin") {
+            QVERIFY(f.host->query(u"fk crash"_s, Scope::All, 1));
+            QVERIFY(QTest::qWaitFor([&] { return f.host->state(spec.id).status == Host::State::Status::Backoff; }, 5000));
+        } else if (transition == u"runner") {
+            Spec other = spec;
+            other.id = u"test.other"_s;
+            QVERIFY(!f.install(other).isEmpty());
+            const DWORD pid = static_cast<DWORD>(f.host->runnerFacts().value(u"pid"_s).toDouble());
+            const HANDLE runner = ::OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+            QVERIFY(runner);
+            const bool ended = ::TerminateProcess(runner, 9);
+            ::CloseHandle(runner);
+            QVERIFY(ended);
+            QVERIFY(QTest::qWaitFor([&] { return !f.exitCodes.empty(); }, 3000));
+            spec.id = other.id;
+        } else if (transition == u"shutdown") {
+            f.host->stop(spec.id);
+        } else {
+            QVERIFY(QTest::qWaitFor([&] { return !f.exitCodes.empty(); }, 3000));
+        }
+        f.host->requestSettings(spec.id, reply);
+        QVERIFY2(QTest::qWaitFor([&] { return replies == 2; }, 5000), qPrintable(f.logs.join(u'\n')));
+        QCOMPARE(f.startedPids.size(), 2u);
+        f.host->shutdown(false);
+    }
+
+    void settingsRequestLateReplyAndEmptyCallback()
+    {
+        int replies = 0;
+        int lateReplies = 0;
+        Fixture f;
+        Spec spec;
+        spec.permissions = {u"ui"_s};
+        spec.extra = {{u"settingsWindow"_s, true}};
+        spec.runtimeExtra = {{u"timeoutMs"_s, 200}, {u"idleExitSec"_s, 0}};
+        spec.args = {u"--slow-settings"_s, u"500"_s};
+        QVERIFY(!f.install(spec).isEmpty());
+        f.host->setDeveloperMode(true);
+        QObject::connect(f.host.get(), &Host::traced, f.host.get(), [&](const QString&, const QString& direction,
+            const QString&, const QString& detail, int) {
+            if (direction == u"←" && parseObject(detail.toUtf8()).value(u"result"_s) == QJsonObject {})
+                ++lateReplies;
+        });
+        f.host->requestSettings(spec.id, [&](bool ok, const QString& error) {
+            QVERIFY(!ok);
+            QCOMPARE(error, u"设置请求超时"_s);
+            ++replies;
+        });
+        QVERIFY(QTest::qWaitFor([&] { return replies == 1; }, 5000));
+        QCOMPARE(f.host->pendingRequestsForTests(spec.id), 0);
+        QVERIFY(QTest::qWaitFor([&] { return lateReplies == 1; }, 1500));
+        QCOMPARE(replies, 1);
+        QVERIFY(f.host->request(spec.id, u"showSettings"_s, {}, {}));
+        QCOMPARE(f.host->pendingRequestsForTests(spec.id), 1);
+        QVERIFY(QTest::qWaitFor([&] { return f.host->pendingRequestsForTests(spec.id) == 0; }, 1000));
+        QVERIFY(QTest::qWaitFor([&] { return lateReplies == 2; }, 1500));
+        QCOMPARE(replies, 1);
+        f.host->shutdown(false);
+    }
+
+    void settingsRequestKeepsResidentUntilReply()
+    {
+        int replies = 0;
+        Fixture f;
+        Spec spec;
+        spec.permissions = {u"ui"_s};
+        spec.extra = {{u"settingsWindow"_s, true}};
+        spec.runtimeExtra = {{u"timeoutMs"_s, 3000}, {u"idleExitSec"_s, 1}};
+        spec.args = {u"--slow-settings"_s, u"1500"_s};
+        QVERIFY(!f.install(spec).isEmpty());
+        f.host->requestSettings(spec.id, [&](bool ok, const QString& error) { QVERIFY2(ok, qPrintable(error)); ++replies; });
+        QVERIFY(QTest::qWaitFor([&] { return replies == 1; }, 5000));
+        QVERIFY(f.exitCodes.empty());
+        QVERIFY(QTest::qWaitFor([&] { return f.exitCodes.size() == 1; }, 3000));
+        QCOMPARE(f.startedPids.size(), 1u);
+        f.host->shutdown(false);
+    }
+
     void eagerReenabledWhileItsPreviousProcessIsExiting()
     {
         Fixture f;

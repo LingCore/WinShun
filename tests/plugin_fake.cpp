@@ -12,7 +12,7 @@
 //
 // Started as python.exe is (-u -X utf8 main.py first), it skips those.
 //   --serve [--partial] [--slow MS] [--crash N] [--hang] [--tool NAME] [--error] [--chatty] [--rerun S] [--toast] [--late N]
-//           [--translate | --needs-setup]
+//           [--translate | --needs-setup | --hang-settings | --slow-settings MS]
 //           [--refresh MS [--refresh-burst K] [--refresh-first]]
 //       A resident plugin: JSON-RPC on stdio. Answers initialize, query
 //       (two query/partial first with --partial; after MS; never with
@@ -294,6 +294,16 @@ struct Server {
             const json::Value id = m["id"];
             const json::Value params = m["params"];
             if (method == "initialize") {
+                if (has(L"--crash-initialize"))
+                    return 3;
+                if (has(L"--hang-initialize"))
+                    continue;
+                if (has(L"--error-initialize")) {
+                    fail(id, -32000, "initialize rejected");
+                    continue;
+                }
+                if (has(L"--slow-initialize"))
+                    ::Sleep(static_cast<DWORD>(std::wcstoul(value(L"--slow-initialize").c_str(), nullptr, 10)));
                 settings = params["settings"];
                 appearance = params["appearance"];
                 detailsHost = params["capabilities"]["details"].toBool();
@@ -416,10 +426,22 @@ struct Server {
                         + (detailsHost ? "\nhost knows details" : "")}});
             } else if (method == "settingsChanged") {
                 settings = params["settings"];
+            } else if (method == "showSettings") {
+                if (has(L"--hang-settings"))
+                    continue;
+                if (has(L"--error-settings")) {
+                    fail(id, -32000, "settings rejected");
+                    continue;
+                }
+                if (has(L"--slow-settings"))
+                    ::Sleep(static_cast<DWORD>(std::wcstoul(value(L"--slow-settings").c_str(), nullptr, 10)));
+                respond(id, json::Value::Object {});
             } else if (method == "appearance") {
                 appearance = params;
                 ++looks;
             } else if (method == "shutdown") {
+                if (has(L"--slow-shutdown"))
+                    ::Sleep(static_cast<DWORD>(std::wcstoul(value(L"--slow-shutdown").c_str(), nullptr, 10)));
                 respond(id, json::Value::Object {});
                 return 0;
             } else if (!id.isNull()) {
