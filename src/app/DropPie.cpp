@@ -43,6 +43,8 @@ constexpr double kStatusGap = 12;
 constexpr double kStatusPad = 10;
 constexpr double kStatusMin = 280;
 constexpr double kStatusMax = 400;
+// After a page is turned, how far the pointer goes (logical pixels) before a chip of the new page is chosen.
+constexpr double kTurnSlop = 4;
 
 // The screen a physical point is on, as Qt knows it; the primary when none is.
 QScreen* screenAt(POINT pt)
@@ -273,8 +275,8 @@ bool DropPie::takeDropSite()
 void DropPie::prewarm()
 {
     const QScreen* screen = QGuiApplication::primaryScreen();
-    if (!m_window || !screen)
-        return;
+    if (!m_window || !screen || m_open)
+        return; // up already (a preview that took its time): its window is not to be made one pixel big
     const QRect area = screen->availableGeometry();
     m_window->setGeometry(QRect(area.bottomRight(), QSize(1, 1)));
     connect(m_window, &QQuickWindow::frameSwapped, this, [this] {
@@ -343,6 +345,9 @@ void DropPie::open(POINT pt)
     QScreen* screen = screenAt(pt);
     if (!screen || !m_window)
         return;
+    m_page = 0; // always at the first page
+    m_awaitMove = false;
+    m_leaving.clear();
     updateSectors(); // the size may have changed (界面大小)
     const QRect rect = place(screen, pt);
 
@@ -397,6 +402,9 @@ void DropPie::preview(POINT pt, int hovered)
     QScreen* screen = screenAt(pt);
     if (!screen || !m_window)
         return;
+    m_page = 0;
+    m_awaitMove = false;
+    m_leaving.clear();
     updateSectors();
     const QRect rect = place(screen, pt);
     m_open = true;
@@ -422,13 +430,26 @@ void DropPie::preview(POINT pt, int hovered)
     setRevealed(true);
 }
 
+void DropPie::previewPage(int page, int hovered)
+{
+    m_page = pie::clampPage(page, static_cast<int>(m_folders.size()));
+    m_awaitMove = false;
+    m_leaving.clear();
+    m_hovered = m_picked = hovered;
+    updateSectors();
+    updateTexts();
+    emit stateChanged();
+}
+
+// The window is for every page at once (m_allBounds), so a page of wider
+// names than the first is not cut off by it, and turning moves nothing.
 QRect DropPie::place(QScreen* screen, POINT pt)
 {
     const QPointF cursor = logicalOf(pt, screen);
-    const QRectF chips = m_layout.bounds.adjusted(-8 * m_scale, -8 * m_scale, 8 * m_scale, 8 * m_scale);
+    const QRectF chips = m_allBounds.adjusted(-8 * m_scale, -8 * m_scale, 8 * m_scale, 8 * m_scale);
     const QSizeF status = m_statusRect.size();
-    const QRectF below(-status.width() / 2, m_layout.bounds.bottom() + kStatusGap * m_scale, status.width(), status.height());
-    const QRectF above = below.translated(0, m_layout.bounds.top() - kStatusGap * m_scale - status.height() - below.top());
+    const QRectF below(-status.width() / 2, m_allBounds.bottom() + kStatusGap * m_scale, status.width(), status.height());
+    const QRectF above = below.translated(0, m_allBounds.top() - kStatusGap * m_scale - status.height() - below.top());
     const QRectF area(screen->availableGeometry());
     const double safe = m_metrics.dead - 4 * m_scale;
     const pie::Placement low = pie::placeCentre(cursor, area, chips.united(below), safe);
@@ -467,7 +488,14 @@ void DropPie::hide(const char* why)
     m_warp = false;
     m_hovered = m_picked = -1;
     m_hit = {};
+    m_awaitMove = false;
+    if (m_page != 0 || !m_leaving.isEmpty()) {
+        m_page = m_pageNotified = 0; // it opens on the first again; its chips are made then
+        m_leaving.clear();
+        emit pageChanged();
+    }
     setRevealed(false);
+    syncPageKeys(); // Tab is the system's again
     emit stateChanged();
     if (shown)
         qInfo() << "Drop pie: hidden," << why;
@@ -489,6 +517,54 @@ void DropPie::setRevealed(bool revealed)
         return;
     m_revealed = revealed;
     emit revealedChanged();
+    syncPageKeys();
+}
+
+// Tab and Shift+Tab are the pie's only while it is there to see, with more
+// than one page, and nothing is being dropped: never for a drag of text (it
+// is never revealed) or a pie of one page, and not a moment after.
+void DropPie::syncPageKeys()
+{
+    const bool wanted = m_open && m_revealed && !m_confirming && m_pages > 1;
+    if (wanted == m_pageKeys)
+        return;
+    m_pageKeys = wanted;
+    emit pageKeysWanted(wanted);
+}
+
+void DropPie::pageKey(bool back)
+{
+    QMetaObject::invokeMethod(this, [this, back] { turnPage(back); }, Qt::QueuedConnection);
+}
+
+// Tab (back: Shift+Tab): the next page of folders, round to the first after
+// the last. What was chosen on the page before is dropped with it (a chip
+// under the pointer then is not the one it was on), and nothing on the new one
+// is chosen until the pointer has moved a little (track).
+void DropPie::turnPage(bool back)
+{
+    const int total = static_cast<int>(m_folders.size());
+    if (!m_open || !m_revealed || m_confirming || pie::pageCount(total) < 2)
+        return;
+    const int page = pie::turnedPage(m_page, total, back);
+    if (page == m_page)
+        return;
+    POINT now {};
+    m_turnedAt = ::GetCursorPos(&now) ? now : m_lastAt;
+    m_leaving = m_sectorItems;
+    for (QVariant& chip : m_leaving) { // drawn fading out, never chosen (DropPieWindow)
+        QVariantMap map = chip.toMap();
+        map.insert(u"leaving"_s, true);
+        chip = map;
+    }
+    m_page = page;
+    m_awaitMove = true;
+    m_hovered = m_picked = -1;
+    updateSectors(); // tells of the page
+    updateTexts();
+    emit pageTurned();
+    emit stateChanged();
+    qInfo().noquote() << u"Drop pie: page %1 of %2"_s.arg(m_page + 1).arg(m_pages);
 }
 
 // ---- the drag over it ------------------------------------------------------
@@ -597,7 +673,7 @@ DWORD DropPie::drop(IDataObject* data, DWORD keys, POINT pt, DWORD /*allowed*/)
         hide(m_hit.zone == pie::Zone::Dead ? "let go in the middle: nothing done" : "let go off the folders");
         return DROPEFFECT_NONE;
     }
-    const Folder folder = m_folders[static_cast<std::size_t>(m_picked)];
+    const Folder folder = m_folders[folderOf(m_picked)];
     // Deleted since the pie opened: refused, and why shown a moment.
     if (!folder.network) {
         const DWORD attributes = ::GetFileAttributesW(reinterpret_cast<const wchar_t*>(folder.path.utf16()));
@@ -609,6 +685,7 @@ DWORD DropPie::drop(IDataObject* data, DWORD keys, POINT pt, DWORD /*allowed*/)
             updateSectors();
             updateTexts();
             m_confirming = true;
+            syncPageKeys();
             m_releaseWait.stop();
             emit stateChanged();
             m_confirmTimer.start(1200ms);
@@ -667,6 +744,7 @@ DWORD DropPie::drop(IDataObject* data, DWORD keys, POINT pt, DWORD /*allowed*/)
     }
     // The chip shown taken a moment, then gone.
     m_confirming = true;
+    syncPageKeys();
     m_releaseWait.stop();
     emit stateChanged();
     m_confirmTimer.start(150ms);
@@ -697,9 +775,9 @@ POINT DropPie::centreOnScreen() const
 
 pie::Mode DropPie::modeOf(int sector) const noexcept
 {
-    if (sector < 0 || static_cast<std::size_t>(sector) >= m_sameDrive.size())
+    if (sector < 0 || folderOf(sector) >= m_sameDrive.size())
         return pie::Mode::None;
-    return pie::modeFor(m_sameDrive[static_cast<std::size_t>(sector)], m_keys, allowed());
+    return pie::modeFor(m_sameDrive[folderOf(sector)], m_keys, allowed());
 }
 
 DWORD DropPie::track(DWORD keys, POINT pt)
@@ -714,8 +792,13 @@ DWORD DropPie::track(DWORD keys, POINT pt)
         return DROPEFFECT_NONE;
     }
     const pie::Keys held {.ctrl = bool(keys & MK_CONTROL), .shift = bool(keys & MK_SHIFT)};
-    const int hovered = hit.zone == pie::Zone::Sector && !m_folders.empty() ? hit.sector : -1;
-    const int picked = hovered >= 0 && m_blocks[static_cast<std::size_t>(hovered)] == Block::None ? hovered : -1;
+    m_lastAt = pt;
+    // A page was just turned: the chip the pointer is over is not the one it
+    // chose, so none is chosen until it has moved a little from where it was.
+    if (m_awaitMove && std::hypot(double(pt.x - m_turnedAt.x), double(pt.y - m_turnedAt.y)) >= kTurnSlop * m_dpr)
+        m_awaitMove = false;
+    const int hovered = hit.zone == pie::Zone::Sector && !m_folders.empty() && !m_awaitMove ? hit.sector : -1;
+    const int picked = hovered >= 0 && m_blocks[folderOf(hovered)] == Block::None ? hovered : -1;
     const bool changed = hit.zone != m_hit.zone || hovered != m_hovered || picked != m_picked || held.ctrl != m_keys.ctrl
         || held.shift != m_keys.shift;
     m_hit = hit;
@@ -761,11 +844,13 @@ void DropPie::updateTexts()
     if (m_hovered < 0) {
         m_statusName = tr("朝文件夹拖，松开就放进去");
         m_statusDetail = tr("在中间松开或按 Esc 取消");
+        if (m_pages > 1)
+            m_statusHint = tr("Tab 下一页");
         return;
     }
-    const Folder& folder = m_folders[static_cast<std::size_t>(m_hovered)];
+    const Folder& folder = m_folders[folderOf(m_hovered)];
     m_statusName = folder.name;
-    const Block block = m_blocks[static_cast<std::size_t>(m_hovered)];
+    const Block block = m_blocks[folderOf(m_hovered)];
     if (block != Block::None) {
         m_statusDetail = reasonOf(block);
         return;
@@ -820,8 +905,6 @@ void DropPie::gatherFolders()
         }
         QMetaObject::invokeMethod(this, [this, folders = std::move(folders)]() mutable {
             DropPieText::setFolderCount(static_cast<int>(folders.size()));
-            if (folders.size() > DropPieText::kMaxFolders)
-                folders.resize(DropPieText::kMaxFolders);
             if (m_open)
                 hide("the favorites changed");
             m_folders = std::move(folders);
@@ -863,7 +946,7 @@ void DropPie::checkFolders()
             for (std::size_t i = 0; i < m_folders.size(); ++i)
                 m_blocks[i] = blockOf(m_folders[i]);
             updateSectors();
-            if (m_hovered >= 0 && m_blocks[static_cast<std::size_t>(m_hovered)] != Block::None)
+            if (m_hovered >= 0 && m_blocks[folderOf(m_hovered)] != Block::None)
                 m_picked = -1;
             updateTexts();
             emit stateChanged();
@@ -906,7 +989,11 @@ QString DropPie::reasonOf(Block block) const
     return {};
 }
 
-// The chips' labels and sizes, and where they go round the middle.
+// The chips' labels and sizes, and where they go round the middle: those of
+// the page shown. Every page is laid out, for the window and the line under
+// the chips to be as big as the biggest of them: turning a page then moves and
+// cuts off nothing, and a pointer on the way to a chip of the next is still on
+// the pie.
 void DropPie::updateSectors()
 {
     const int step = DropPieText::uiStep();
@@ -922,51 +1009,82 @@ void DropPie::updateSectors()
     const QFontMetricsF label(DropPieText::labelFont());
     const QFontMetricsF hintFont(fontOf(std::max(12, m_labelPixelSize - 1)));
     const double nameWidth = DropPieText::nameWidth();
-    std::vector<double> widths;
-    QVariantList items;
-    const auto item = [&](const QString& name, const QString& path, const QString& parent, Block block) {
+    // One chip's words, and how wide it is.
+    const auto chipOf = [&](const QString& name, const QString& path, const QString& parent, Block block, double& width) {
         const QString shown = pielabels::elideMiddle(name.simplified(), label, nameWidth);
         const QString hint = parent.isEmpty() ? QString() : pielabels::elideMiddle(parent, hintFont, kHintWidth * m_scale);
-        double width = (kChipPadStart + kGlyph + kGlyphGap + kChipPadEnd) * m_scale + std::ceil(label.horizontalAdvance(shown));
+        width = (kChipPadStart + kGlyph + kGlyphGap + kChipPadEnd) * m_scale + std::ceil(label.horizontalAdvance(shown));
         if (!hint.isEmpty())
             width += kHintGap * m_scale + std::ceil(hintFont.horizontalAdvance(hint));
-        widths.push_back(std::max(width, kMinChip * m_scale));
-        items.append(QVariantMap {{u"name"_s, name}, {u"label"_s, shown}, {u"hint"_s, hint}, {u"path"_s, path},
-            {u"disabled"_s, block != Block::None}, {u"reason"_s, reasonOf(block)}});
+        width = std::max(width, kMinChip * m_scale);
+        return QVariantMap {{u"name"_s, name}, {u"label"_s, shown}, {u"hint"_s, hint}, {u"path"_s, path},
+            {u"disabled"_s, block != Block::None}, {u"reason"_s, reasonOf(block)}};
     };
-    if (m_folders.empty()) {
-        item(tr("还没有收藏文件夹"), QString(), QString(), Block::Missing);
-    } else {
-        QStringList names;
-        QStringList paths;
-        for (const Folder& f : m_folders) {
-            names.append(f.name);
-            paths.append(f.path);
+    const int total = static_cast<int>(m_folders.size());
+    m_page = pie::clampPage(m_page, total); // the favorites may have shrunk under it
+    const int pages = pie::pageCount(total);
+    QVariantList items;
+    QRectF allBounds;
+    QRectF allReach;
+    for (int page = 0; page < pages; ++page) {
+        const pie::PageSlice slice = pie::pageSlice(total, page);
+        std::vector<double> widths;
+        QVariantList pageItems;
+        if (m_folders.empty()) {
+            double width = 0;
+            pageItems.append(chipOf(tr("还没有收藏文件夹"), QString(), QString(), Block::Missing, width));
+            widths.push_back(width);
+        } else {
+            // A parent's name beside a name that another on the same page has.
+            QStringList names;
+            QStringList paths;
+            for (int i = 0; i < slice.count; ++i) {
+                names.append(m_folders[static_cast<std::size_t>(slice.first + i)].name);
+                paths.append(m_folders[static_cast<std::size_t>(slice.first + i)].path);
+            }
+            const QStringList hints = pielabels::parentHints(names, paths);
+            for (int i = 0; i < slice.count; ++i) {
+                const auto at = static_cast<std::size_t>(slice.first + i);
+                double width = 0;
+                pageItems.append(chipOf(m_folders[at].name, m_folders[at].path, hints.value(i),
+                    at < m_blocks.size() ? m_blocks[at] : Block::None, width));
+                widths.push_back(width);
+            }
         }
-        const QStringList hints = pielabels::parentHints(names, paths);
-        for (std::size_t i = 0; i < m_folders.size(); ++i) {
-            item(m_folders[i].name, m_folders[i].path, hints.value(static_cast<qsizetype>(i)),
-                i < m_blocks.size() ? m_blocks[i] : Block::None);
+        const pie::Layout layout = pie::layOut(widths, m_metrics);
+        allBounds = allBounds.united(layout.bounds);
+        allReach = allReach.united(layout.reach);
+        if (page != m_page)
+            continue;
+        m_layout = layout;
+        m_pageFirst = slice.first;
+        for (qsizetype i = 0; i < pageItems.size(); ++i) {
+            const QRectF& chip = layout.chips[static_cast<std::size_t>(i)];
+            QVariantMap map = pageItems[i].toMap();
+            map.insert(u"x"_s, chip.x());
+            map.insert(u"y"_s, chip.y());
+            map.insert(u"width"_s, chip.width());
+            pageItems[i] = map;
         }
+        items = std::move(pageItems);
     }
-    m_layout = pie::layOut(widths, m_metrics);
-    for (qsizetype i = 0; i < items.size(); ++i) {
-        const QRectF& chip = m_layout.chips[static_cast<std::size_t>(i)];
-        QVariantMap map = items[i].toMap();
-        map.insert(u"x"_s, chip.x());
-        map.insert(u"y"_s, chip.y());
-        map.insert(u"width"_s, chip.width());
-        items[i] = map;
-    }
-    const double statusWidth = std::clamp(m_layout.bounds.width(), kStatusMin * m_scale, kStatusMax * m_scale);
+    m_allBounds = allBounds;
+    m_layout.reach = allReach;
+    const double statusWidth = std::clamp(m_allBounds.width(), kStatusMin * m_scale, kStatusMax * m_scale);
     if (statusWidth != m_statusRect.width()) {
         m_statusRect.setWidth(statusWidth);
         emit layoutChanged();
     }
-    if (items == m_sectorItems)
-        return;
-    m_sectorItems = std::move(items);
-    emit sectorsChanged();
+    const bool itemsChanged = items != m_sectorItems;
+    if (itemsChanged) {
+        m_sectorItems = std::move(items);
+        emit sectorsChanged();
+    }
+    if (m_page != m_pageNotified || pages != m_pages) {
+        m_pageNotified = m_page;
+        m_pages = pages;
+        emit pageChanged();
+    }
 }
 
 } // namespace ws

@@ -6,9 +6,10 @@ import WinShun
 // The drop pie (DropPie): the favorite folders as chips round the pointer,
 // brought up by the key under Esc while files are held or dragged. The
 // direction the pointer goes from the middle chooses a folder; the line
-// under the chips says what letting go would do. The window is see-through
-// and never takes the focus; DropPie places it, is its drop target, and
-// hides it the moment the pointer leaves the chips' reach.
+// under the chips says what letting go would do. With more than eight
+// folders they go on pages, Tab turning them (the middle says which page).
+// The window is see-through and never takes the focus; DropPie places it, is
+// its drop target, and hides it the moment the pointer leaves the chips' reach.
 Window {
     id: pie
 
@@ -25,6 +26,9 @@ Window {
     readonly property real chipRadius: Theme.pillRadius(chipHeight)
     readonly property int count: Math.max(1, dropPie.sectors.length)
     property real reveal: 0 // 0 → 1 as it appears; 0 at once when it goes
+    // 0 → 1 as the chips of a page just turned to replace those it left: the
+    // new fade in as the old fade out (opacity only: nothing is scaled).
+    property real turn: 1
 
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     color: "transparent"
@@ -32,12 +36,17 @@ Window {
     Connections {
         target: pie.dropPie
         function onRevealedChanged() {
+            turnAnimation.stop()
+            pie.turn = 1
             if (pie.dropPie.revealed) {
                 revealAnimation.restart()
             } else {
                 revealAnimation.stop()
                 pie.reveal = 0
             }
+        }
+        function onPageTurned() {
+            turnAnimation.restart()
         }
     }
 
@@ -48,6 +57,16 @@ Window {
         from: 0
         to: 1 // exactly: the chips end on their whole pixels
         duration: SystemTheme.animations ? 140 : 0
+        easing.type: Easing.OutCubic
+    }
+
+    NumberAnimation {
+        id: turnAnimation
+        target: pie
+        property: "turn"
+        from: 0
+        to: 1
+        duration: SystemTheme.animations ? 120 : 0
         easing.type: Easing.OutCubic
     }
 
@@ -81,11 +100,12 @@ Window {
         anchors.fill: parent
         opacity: pie.reveal
 
-        // All the shadows first, so none falls on a neighbouring chip.
-        Repeater {
-            model: pie.dropPie.sectors
+        // The chips of the page shown, and for a moment those of the page
+        // just left (marked `leaving`: fading out, never chosen).
+        Component {
+            id: shadowDelegate
 
-            delegate: SoftShadow {
+            SoftShadow {
                 required property var modelData
 
                 x: pie.chipX(modelData)
@@ -93,7 +113,19 @@ Window {
                 width: Theme.snap(modelData.width, pie.dpr)
                 height: pie.chipHeight
                 radius: pie.chipRadius
+                opacity: modelData.leaving === true ? 1 - pie.turn : pie.turn
             }
+        }
+
+        // All the shadows first, so none falls on a neighbouring chip.
+        Repeater {
+            model: pie.dropPie.leavingSectors
+            delegate: shadowDelegate
+        }
+
+        Repeater {
+            model: pie.dropPie.sectors
+            delegate: shadowDelegate
         }
 
         SoftShadow {
@@ -121,11 +153,54 @@ Window {
             border.width: Theme.edge(pie.dpr)
             border.color: Theme.windowEdge
 
+            // With pages the cross moves up, and below it is the page the pie
+            // is on: dots (up to six pages), or "2/9". All of it inside the
+            // middle, which is still where letting go cancels.
+            readonly property bool paged: pie.dropPie.pageCount > 1
+            readonly property bool dots: pie.dropPie.pageCount <= 6
+            // The smaller cross, an even number of device pixels (150 %: 16, not 15), so its centre is the middle's.
+            readonly property real cross: Math.round(10 * pie.dpr / 2) * 2 / pie.dpr
+
             Glyph {
                 anchors.centerIn: parent
+                anchors.verticalCenterOffset: middle.paged ? -Theme.snap((middle.dots ? 3.5 : 6) * pie.k, pie.dpr) : 0
                 glyph: "\uE711" // Cancel
-                size: 12
+                size: middle.paged ? middle.cross : 12
                 color: Theme.subtext
+            }
+
+            Row {
+                // Even widths, so the row sits on the middle's centre line at 100 %: four pixels up to five pages, three for six.
+                readonly property real dot: Theme.snap((pie.dropPie.pageCount <= 5 ? 4 : 3) * pie.k, pie.dpr)
+
+                visible: middle.paged && middle.dots
+                spacing: Theme.snap(2 * pie.k, pie.dpr)
+                x: Theme.snap((middle.width - width) / 2, pie.dpr)
+                // Rounded down to a device pixel (150 %: 7, not 8): the cross and the row then sit centred together.
+                y: Math.floor((middle.height / 2 + 5 * pie.k) * pie.dpr) / pie.dpr
+
+                Repeater {
+                    model: middle.paged && middle.dots ? pie.dropPie.pageCount : 0
+
+                    delegate: Rectangle {
+                        required property int index
+
+                        width: parent.dot
+                        height: width
+                        radius: width / 2
+                        color: index === pie.dropPie.page ? Theme.accentFill : Theme.faint
+                    }
+                }
+            }
+
+            Text {
+                visible: middle.paged && !middle.dots
+                text: `${pie.dropPie.page + 1}/${pie.dropPie.pageCount}`
+                textFormat: Text.PlainText
+                color: Theme.subtext
+                font.pixelSize: pie.smallSize - 1
+                x: Theme.snap((middle.width - width) / 2, pie.dpr)
+                y: Theme.snap(middle.height / 2 - 0.5 * pie.k, pie.dpr)
             }
         }
 
@@ -143,16 +218,17 @@ Window {
         }
 
         // The folders
-        Repeater {
-            model: pie.dropPie.sectors
+        Component {
+            id: chipDelegate
 
-            delegate: Rectangle {
+            Rectangle {
                 id: chip
 
                 required property var modelData
                 required property int index
-                readonly property bool picked: index === pie.dropPie.picked
-                readonly property bool hovered: index === pie.dropPie.hovered
+                readonly property bool live: modelData.leaving !== true
+                readonly property bool picked: live && index === pie.dropPie.picked
+                readonly property bool hovered: live && index === pie.dropPie.hovered
                 readonly property color ink: picked ? Theme.accentText : modelData.disabled ? Theme.faint : Theme.text
 
                 x: pie.chipX(modelData)
@@ -160,6 +236,7 @@ Window {
                 width: Theme.snap(modelData.width, pie.dpr)
                 height: pie.chipHeight
                 radius: pie.chipRadius
+                opacity: live ? pie.turn : 1 - pie.turn
                 color: picked ? Theme.accentFill : hovered ? Theme.pieHover : Theme.menuBackground
                 border.width: picked ? 0 : Theme.edge(pie.dpr)
                 border.color: Theme.windowEdge
@@ -192,6 +269,16 @@ Window {
                     }
                 }
             }
+        }
+
+        Repeater {
+            model: pie.dropPie.leavingSectors
+            delegate: chipDelegate
+        }
+
+        Repeater {
+            model: pie.dropPie.sectors
+            delegate: chipDelegate
         }
 
         // What letting go would do, under the chips (above them by the
@@ -251,12 +338,19 @@ Window {
 
                     Text {
                         id: detail
+                        // The line for the middle ("Let go in the middle...") is cut short of the hint's room
+                        // (it is longer in English); a path is cut to fit already (DropPie::updateTexts).
+                        readonly property bool fitting: pie.dropPie.hovered < 0
+                        width: fitting ? Math.max(0, parent.width - (hint.text.length > 0 ? hint.implicitWidth + 12 * pie.k : 0))
+                                       : implicitWidth
                         text: pie.dropPie.statusDetail
                         textFormat: Text.PlainText
+                        elide: fitting ? Text.ElideRight : Text.ElideNone
                         color: Theme.subtext
                         font.pixelSize: pie.smallSize
                     }
                     Text {
+                        id: hint
                         anchors.right: parent.right
                         text: pie.dropPie.statusHint
                         textFormat: Text.PlainText

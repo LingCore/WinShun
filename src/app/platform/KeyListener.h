@@ -95,6 +95,10 @@ public:
         std::function<void(POINT pt, HWND captureWindow, DWORD sourcePid)> dragMenu;
         // The primary button let go (with dragMenu): the drag is over.
         std::function<void()> leftButtonUp;
+        // With dragMenu: Tab (back: Shift+Tab, with or without Ctrl, which is
+        // held to copy) pressed while the pie holds them (holdDragPages). On
+        // the listener thread.
+        std::function<void(bool back)> dragMenuPage;
         // With dragMenu: the key's plain hotkey refused (its virtual key and
         // Windows' error; ERROR_HOTKEY_ALREADY_REGISTERED: another program
         // has it, and it alone hears the key then). Once per listener, on
@@ -138,6 +142,13 @@ public:
     // Whether the folder menu is up (from any thread): a double click whose
     // first press closed it is not reported (DoubleClickDetector).
     void setMenuOpen(bool open) noexcept { m_menuOpen = open; }
+
+    // The drop pie's page keys: while `on` (the pie is up with more than one
+    // page) Tab and Shift+Tab are this listener's hotkeys, so the drag's
+    // source and the program in front never see them; let go when it is off.
+    // Registered on the listener's own thread (a hotkey belongs to the thread
+    // of its window), so this only asks. From any thread.
+    void holdDragPages(bool on);
 
     // Which key's double tap counts, and which of its two (from any thread);
     // the next press goes by them.
@@ -183,6 +194,7 @@ private:
     };
     DragSource oleDrag() const;
     void guardDragKey(bool on);
+    void guardDragPages(bool on);
     void startDrag();
     void onStartDragTimer();
     void replayDragKey();
@@ -222,6 +234,8 @@ private:
     bool m_dragKeyGuarded = false; // the drop pie's key held back from the drag's source
     bool m_dragConflictLogged = false; // at most one hotkey-conflict note per primary-button press
     bool m_dragKeyRefusedTold = false; // dragKeyRefused, once
+    bool m_dragPagesGuarded = false; // the pie's Tab and Shift+Tab are hotkeys of this window; listener thread only
+    bool m_dragPagesRefusedLogged = false; // at most one line in the log for a refused page key
     // The key pressed on a file still held, not dragged yet: the drag being
     // started for it (startDrag). Listener thread only.
     bool m_starting = false;

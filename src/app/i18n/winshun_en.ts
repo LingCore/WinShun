@@ -2473,8 +2473,8 @@
         <translation>drag;drop;drag and drop;pie;key;move;copy</translation>
     </message>
     <message>
-        <source>%1。只放得下前 8 个文件夹收藏（现有 %2 个）</source>
-        <translation>%1. Only the first 8 favorite folders fit (you have %2)</translation>
+        <source>%1。文件夹收藏每 8 个一页（现有 %2 个）：按 Tab 翻到下一页，Shift+Tab 翻回上一页</source>
+        <translation>%1. Folder favorites go 8 to a page (you have %2): Tab turns to the next page, Shift+Tab back to the one before</translation>
     </message>
     <message numerus="yes">
         <source>%n 项，拖动把手或点列头排序</source>
@@ -11822,6 +11822,10 @@ Content index: %5</translation>
     <message>
         <source>在中间松开或按 Esc 取消</source>
         <translation>Let go in the middle or press Esc to cancel</translation>
+    </message>
+    <message>
+        <source>Tab 下一页</source>
+        <translation>Tab next page</translation>
     </message>
     <message numerus="yes">
         <source>复制 %n 项到</source>

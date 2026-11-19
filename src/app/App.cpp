@@ -1872,6 +1872,7 @@ void App::applyKeyListener(bool force)
             if (DropPie* pie = m_dropPie.get()) {
                 callbacks.dragMenu = [pie](POINT pt, HWND capture, DWORD pid) { pie->summoned(pt, capture, pid); };
                 callbacks.leftButtonUp = [pie] { pie->buttonReleased(); };
+                callbacks.dragMenuPage = [pie](bool back) { pie->pageKey(back); };
                 // Another program's hotkey has the key: the pie never comes (GitHub #150).
                 callbacks.dragKeyRefused = [this](unsigned, unsigned long error) {
                     QMetaObject::invokeMethod(this, [this, error] {
@@ -4805,6 +4806,13 @@ void App::applyDropPie()
             return;
         }
         pie->setWindow(window);
+        // Tab and Shift+Tab turn its pages, held by the key listener only
+        // while it shows more than one (the listener is made anew at times:
+        // looked for when asked).
+        connect(pie.get(), &DropPie::pageKeysWanted, this, [this](bool on) {
+            if (m_keyListener)
+                m_keyListener->holdDragPages(on);
+        });
         m_dropPieWindow = window;
         m_dropPie = std::move(pie);
     }

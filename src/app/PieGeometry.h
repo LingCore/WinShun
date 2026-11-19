@@ -10,7 +10,7 @@
 namespace ws::pie {
 
 // The drop pie's shape (DropPie, DropPieWindow.qml): a small middle at the
-// pointer and up to eight folder chips round it, chip 0 above it and the
+// pointer and up to eight folder chips (a page) round it, chip 0 above it and the
 // rest clockwise. A folder is chosen by the direction the pointer went from
 // the middle, as in a marking menu, long before it reaches the chip, or by
 // being on the chip itself. Pure geometry in logical pixels, unit-tested
@@ -26,6 +26,19 @@ struct Metrics {
     // All of it times `k` (界面大小: the label type's size over 13 px).
     Metrics scaled(double k) const noexcept;
 };
+
+// More folders than a pie holds go on pages, kPageSize to a page in the
+// favorites' order (the first page: 1-8, the second: 9-16, ...). A turn goes
+// round: after the last page the first, before the first the last.
+inline constexpr int kPageSize = 8;
+struct PageSlice {
+    int first = 0; // the favorite the page starts at
+    int count = 0;
+};
+int pageCount(int folders) noexcept; // at least 1: with none, the page that says so
+int clampPage(int page, int folders) noexcept; // into 0 .. pageCount - 1
+PageSlice pageSlice(int folders, int page) noexcept; // `page` clamped
+int turnedPage(int page, int folders, bool back) noexcept;
 
 // The scale for a 界面大小 step (Theme.step: 0 dense and compact, 1 standard, 2 roomy):
 // the labels' type is 12, 13 or 14 px, the pie grows with it.
