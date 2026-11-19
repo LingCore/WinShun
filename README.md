@@ -94,7 +94,7 @@
 | 浏览器书签 | `bm 关键词`，搜 Chrome、Edge 的书签，拼音也行；打开开关后 `bh 关键词` 搜浏览历史 | 插件库 |
 | 局域网传输 | `传`，和开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件 | 插件库 |
 | 休息提醒 | 定时提醒休息，`休息` 看还有多久 | 插件库 |
-| 鼠标手势 | 按住右键画一下：← 后退、→ 前进、↓→ 关闭窗口、↑↓ 打开搜索框等，每个都能改，`手势` 暂停 | 插件库 |
+| [鼠标手势](src/gestures-plugin/package/README.md) | 按住右键画一下：后退、关窗口、切标签页；选中文字再画：复制、搜索、翻译；画圈、屏幕角落、屏幕边、右键+滚轮、按程序设置，关机重启先倒数；`手势` 暂停 | 插件库 |
 | 缩写展开 | 在任何地方打 `cmd` 再按空格就换成 `command`，缩写和内容自己设，紧接着按退格撤回；`缩写` 列出、暂停 | 插件库 |
 | 资源管理器标签页 | 新开的资源管理器窗口并成标签页，还能在下次登录后打开上次的标签页（Windows 11 22H2 起） | 插件库 |
 | [云备份](docs/使用说明.md#外观设置和备份) | 设置自动备份到 WebDAV（坚果云、NAS）或 GitHub 私有仓库，`cloud` 立即备份或恢复 | 插件库 |
@@ -196,6 +196,14 @@ winget install LingCore.WinShun
 </details>
 
 ### 最近更新
+
+**0.41.0**
+
+- 🖱️ **鼠标手势 2.0**：选中文字再画一下就复制、搜索、翻译；画圈、屏幕角落、屏幕边、右键+滚轮、按程序设置，关机重启先倒数 5 秒；新的设置窗口里画出来就能设。
+- ⌨️ **缩写展开**（新插件）：打 `cmd` 加空格就换成 `command`；📋 剪贴板可以选打开时显示哪一类；🗂️ 收藏圆盘按 `Tab` 翻页；❤️ 捐赠按钮可以挪到拾穗计划页。
+- 🛠️ **修复** 数据文件夹里的插件搜不到；设置换分类更快；长截图后不再留下空框。
+
+详见 [0.41.0 发布说明](docs/release-notes/v0.41.0.md)。
 
 **0.40.0**
 
@@ -429,7 +437,7 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | Browser bookmarks | `bm words` searches Chrome and Edge bookmarks, pinyin too; once turned on, `bh words` searches the browsing history | Plugin library |
 | LAN transfer | `ls ` to send files to and from phones and PCs running [LocalSend](https://localsend.org) | Plugin library |
 | Break reminder | Reminds you to take breaks; `break` shows the time left | Plugin library |
-| Mouse gestures | Hold the right button and draw: ← back, → forward, ↓→ close the window, ↑↓ the search box and more, each one changeable; `gestures` pauses them | Plugin library |
+| [Mouse gestures](src/gestures-plugin/package/README.md) | Hold the right button and draw: back, close the window, switch tabs; select text, then draw: copy, search, translate; circles, screen corners and edges, the wheel with the right button, rules per program, a countdown before shutting down; `gestures` pauses them | Plugin library |
 | Text expander | Type `cmd` and a space anywhere and it becomes `command`, with abbreviations of your own; Backspace right after takes it back; `expander` lists and pauses them | Plugin library |
 | Explorer tabs | New File Explorer windows open as tabs, and the tabs from last time come back after a logon (Windows 11 22H2 or newer) | Plugin library |
 | [Cloud backup](docs/features.en.md#looks-and-settings) | Keeps the settings backup on a WebDAV server or in a private GitHub repository; `cloud` backs up or restores | Plugin library |
@@ -531,6 +539,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.41.0**
+
+- 🖱️ **Mouse gestures 2.0**: select text and draw to copy, search or translate; circles, screen corners and edges, the wheel with the right button, rules per program, a 5-second countdown before shutting down; a new settings window where you draw a gesture to set it.
+- ⌨️ **Text expander** (new plugin): type `cmd` and a space for `command`; 📋 the clipboard opens on the tab you choose; 🗂️ pages on the favorites pie, turned with `Tab`; ❤️ the donate key can move to the Gleaning page.
+- 🛠️ **Fixed**: plugins in WinShun's data folder could not be found; switching settings categories is quicker; no empty frame left after a long screenshot.
+
+See the [0.41.0 release notes](docs/release-notes/v0.41.0.md).
 
 **0.40.0**
 
