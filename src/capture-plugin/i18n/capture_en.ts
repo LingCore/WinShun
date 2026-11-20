@@ -1829,6 +1829,10 @@
         <translation>Recording failed: %1 (0x%2)</translation>
     </message>
     <message>
+        <source>录屏失败：%1（0x%2，%3）</source>
+        <translation>Recording failed: %1 (0x%2, %3)</translation>
+    </message>
+    <message>
         <source>录屏失败：%1</source>
         <translation>Recording failed: %1</translation>
     </message>

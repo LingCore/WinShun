@@ -1,0 +1,4 @@
+Recording finished: encoder Media Foundation / software (no D3D11 video: NV12 on the CPU) hardware false screen GDI (Windows.Graphics.Capture: 0x80004002 不支持此接口) frames 95 elapsed ms 3181 stage finalize MP4
+recording: 录屏已保存; 00:03; 108.33 KiB; 
+Recording finished: encoder Media Foundation / software (no D3D11 video: NV12 on the CPU) hardware false screen GDI (Windows.Graphics.Capture: 0x80004002 不支持此接口) frames 22 elapsed ms 735 stage finalize MP4
+recording: 录屏已保存; 00:00; 49.54 KiB; 

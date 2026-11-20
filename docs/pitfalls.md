@@ -1,5 +1,15 @@
 # 踩坑记录
 
+## 录屏：Win10 LTSC 2019（1809）上“录屏失败：不支持此接口（0x80004002）”（2026-11-20，用户反馈）
+
+- **现象**：虚拟机里的 Win10 企业版 LTSC，Win顺 0.40.0、截图与录屏 1.1.28，一开始录屏就报这句，截图正常。在新装的 1809 虚拟机（17763）上用已发布的 1.1.29 照样复现，停在 `screen capture startup`，硬件、软件编码两次都一样。
+- **原因**：录屏用 Windows.Graphics.Capture 抓整块显示器，要先用 `IGraphicsCaptureItemInterop::CreateForMonitor` 拿到 capture item。这个互操作接口是 1903（18362）才有的，1809 只能让用户在系统的选取窗口（`GraphicsCapturePicker`）里自己点，程序拿不到显示器。C++/WinRT 取工厂接口时 `QueryInterface` 失败，抛 `hresult_no_interface`，界面上只有系统的那句“不支持此接口”。帧池的 `CreateFreeThreaded` 也是 1903 起才有，所以在 1809 上换帧池救不了。2026-11-17 那次排查只修了 `IsCursorCaptureEnabled`（2004 起），1903–1909 因此能录，1809 一直不能。截图在 Windows 10 上本来就用 BitBlt，所以不受影响。
+- **做法**：`openScreen` 先试 Windows.Graphics.Capture（`CaptureSource`），起不来就用 GDI（`ScreenDcSource`）。不只 1809，凡是它起不来的机器都这样。GDI 每个视频帧 BitBlt 一次选区，不带 `CAPTUREBLT`（一秒 30 次会让指针闪，DWM 合成后分层窗口本来就在屏幕像素里）。按 `GetCursorInfo` 用 `DrawIconEx` 把指针画上去，热点按指针形状缓存。把 alpha 补成 255（GDI 留 0），再 `UpdateSubresource` 进 BGRA 纹理，后面的编码流程不变。显示器的检查（`displayOf`）两条路共用。用的是哪条路、为什么，写在 `Progress::screen` 里，日志 `Recording finished: … screen GDI (Windows.Graphics.Capture: 0x80004002 不支持此接口)`。WinRT 的错误现在带上阶段名（“录屏失败：…（0x80004002，screen capture startup）”）。
+- **试错**：一开始只当成帧池的问题，在专用 DispatcherQueue 线程上用 `Create` 建帧池，Windows 11 上强制走这条路测试也过了，到了真 1809 才看到还是失败。强制走某条路只能说明那段代码对，说明不了旧系统缺什么；旧系统的问题要在旧系统上测。
+- **顺带**：同一个进程里录第二次会崩，访问违例出在 `AddRef` 上。`get_activation_factory` 把 `IGraphicsCaptureItemInterop` 这些工厂缓存在静态变量里，`uninit_apartment` 之后系统卸了 DLL，缓存的指针就悬空了。正式使用不受影响，因为每次录屏都是一个新的工作进程；是新测试在一个进程里录两次才撞到。现在 `uninit_apartment` 之前先 `winrt::clear_factory_cache()`。
+- **测法**：`tst_recording screenFrames` 真录屏幕上一个纯色窗口（320×180），分两行：`windows-graphics-capture`，和用 `Options::screenByGdi` 强制的 `gdi`。解码后至少 5 帧，中心颜色对得上。真机：1809 虚拟机里跑 `WinShunCapture --preview-recording`，结果见[验证记录](validation/recording-1809-20261120/README.md)。虚拟机的显示器要先关掉“关闭显示器”的计时，屏幕熄了 DWM 就不合成，录下来每帧都一样。
+- **以后**：用 WinRT 的新类、新方法、新接口前先查最低版本（1809 是 UniversalApiContract 7，`IGraphicsCaptureItemInterop` 这类互操作接口看文档的“最低客户端”）。比 1809 新的，要有退路。
+
 ## 搜不到装好的插件文件夹：Win顺 自己的数据文件夹整个不进索引（2026-11-19，#406）
 
 - **现象**：输入插件 ID（`crazy-zxx.yigengming`）搜不到它的文件夹；同名文件夹放在别处就搜得到，所以不是查询里的 `-`、`.` 的问题（解析和匹配都把它们当普通字符）。

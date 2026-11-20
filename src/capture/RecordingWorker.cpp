@@ -37,7 +37,8 @@ constexpr qsizetype kMaxMessage = 64 * 1024;
 QJsonObject progressJson(const Progress& p)
 {
     return {{u"elapsed"_s, p.elapsedMs}, {u"bytes"_s, p.bytes}, {u"frames"_s, qint64(p.frames)},
-        {u"encoder"_s, p.encoder}, {u"hardware"_s, p.hardware}, {u"percent"_s, p.percent}, {u"stage"_s, p.stage}};
+        {u"encoder"_s, p.encoder}, {u"hardware"_s, p.hardware}, {u"percent"_s, p.percent}, {u"stage"_s, p.stage},
+        {u"screen"_s, p.screen}};
 }
 
 Progress readProgress(const QJsonObject& json)
@@ -50,6 +51,7 @@ Progress readProgress(const QJsonObject& json)
     p.hardware = json.value(u"hardware"_s).toBool();
     p.percent = json.value(u"percent"_s).toInt(-1);
     p.stage = json.value(u"stage"_s).toString();
+    p.screen = json.value(u"screen"_s).toString();
     return p;
 }
 
@@ -254,7 +256,7 @@ Result recordIsolated(const WorkerProgram& program, const Options& options, Cont
             if (progress) progress(retry);
         }
     }
-    qInfo().noquote() << "Recording finished: encoder" << result.encoder << "hardware" << result.hardware
+    qInfo().noquote() << "Recording finished: encoder" << result.encoder << "hardware" << result.hardware << "screen" << result.screen
                      << "frames" << result.frames << "elapsed ms" << result.elapsedMs << "stage" << result.stage;
     if (!result.error.isEmpty()) qWarning().noquote() << result.error;
     return result;

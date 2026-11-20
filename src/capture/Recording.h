@@ -49,6 +49,7 @@ struct Options {
     double outputScale = 1; // a GIF scaled down: its size against the region's
     bool software = false; // the probe's deterministic software-encoder path
     bool noVideoDevice = false; // tests: as on a driver without D3D11 video (GitHub #214)
+    bool screenByGdi = false; // tests: the screen through GDI, as on Windows 10 1809
 };
 
 struct Control {
@@ -65,6 +66,7 @@ struct Progress {
     bool hardware = false;
     int percent = -1; // export progress; -1 while capturing or without a duration
     QString stage; // last media operation, for timeout diagnostics
+    QString screen; // how the screen is read: Windows.Graphics.Capture, or GDI and why
 };
 
 struct Result : Progress {

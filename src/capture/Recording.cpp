@@ -543,34 +543,56 @@ private:
     std::deque<Block> m_blocks;
 };
 
+// The display that holds the whole region.
+struct Display {
+    HMONITOR monitor = nullptr;
+    QRect bounds; // physical pixels, virtual desktop
+    DisplayColorMode color;
+};
+
+Display displayOf(const QRect& region)
+{
+    const RECT area {region.left(), region.top(), region.right() + 1, region.bottom() + 1};
+    Display display;
+    display.monitor = ::MonitorFromRect(&area, MONITOR_DEFAULTTONULL);
+    MONITORINFOEXW info {};
+    info.cbSize = sizeof info;
+    if (!display.monitor || !::GetMonitorInfoW(display.monitor, &info))
+        throw Failure {u"recording display"_s, E_INVALIDARG};
+    display.bounds = QRect(info.rcMonitor.left, info.rcMonitor.top,
+        info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top);
+    if (!display.bounds.contains(region))
+        throw Failure {u"recording region crosses displays"_s, E_INVALIDARG};
+    display.color = displayColorMode(info.szDevice);
+    return display;
+}
+
+// The region's pixels, read once per video frame.
 class Source {
 public:
-    Source(Graphics& graphics, const Options& options)
-        : m_graphics(graphics), m_region(options.region)
+    virtual ~Source() = default;
+    // The newest picture of the region; null until the first one.
+    virtual ID3D11Texture2D* next() = 0;
+};
+
+// Windows.Graphics.Capture: on the GPU, HDR included.
+class CaptureSource final : public Source {
+public:
+    CaptureSource(Graphics& graphics, const Options& options, const Display& display)
+        : m_graphics(graphics), m_region(options.region), m_bounds(display.bounds), m_color(display.color)
     {
-        const RECT area {m_region.left(), m_region.top(), m_region.right() + 1, m_region.bottom() + 1};
-        const HMONITOR monitor = ::MonitorFromRect(&area, MONITOR_DEFAULTTONULL);
-        MONITORINFOEXW info {};
-        info.cbSize = sizeof info;
-        if (!monitor || !::GetMonitorInfoW(monitor, &info))
-            throw Failure {u"recording display"_s, E_INVALIDARG};
-        m_bounds = QRect(info.rcMonitor.left, info.rcMonitor.top,
-            info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top);
-        if (!m_bounds.contains(m_region))
-            throw Failure {u"recording region crosses displays"_s, E_INVALIDARG};
-        m_color = displayColorMode(info.szDevice);
         m_image = graphics.texture(m_region.size(), DXGI_FORMAT_B8G8R8A8_UNORM);
         if (m_color.hdr)
             m_staging = graphics.texture(m_region.size(), DXGI_FORMAT_R16G16B16A16_FLOAT, true);
         winrt::com_ptr<IInspectable> inspectable;
         check(::CreateDirect3D11DeviceFromDXGIDevice(graphics.device.as<IDXGIDevice>().get(), inspectable.put()), "WinRT graphics device");
         auto item = winrt::get_activation_factory<wgc::GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
-        check(item->CreateForMonitor(monitor, winrt::guid_of<wgc::GraphicsCaptureItem>(), winrt::put_abi(m_item)), "capture display");
+        check(item->CreateForMonitor(display.monitor, winrt::guid_of<wgc::GraphicsCaptureItem>(), winrt::put_abi(m_item)), "capture display");
         const auto format = m_color.hdr ? wdx::DirectXPixelFormat::R16G16B16A16Float : wdx::DirectXPixelFormat::B8G8R8A8UIntNormalized;
         m_pool = wgc::Direct3D11CaptureFramePool::CreateFreeThreaded(inspectable.as<wd3d::IDirect3DDevice>(), format, 2, m_item.Size());
         m_session = m_pool.CreateCaptureSession(m_item);
         // From Windows 10 2004 (19041) on; before, the pointer is always in
-        // the frames, and asking for it threw: no recording at all on 1809–1909.
+        // the frames, and asking for it threw: no recording at all on 1903–1909.
         if (auto pointer = m_session.try_as<wgc::IGraphicsCaptureSession2>())
             pointer.IsCursorCaptureEnabled(options.cursor);
         // Borderless capture is optional. An unpackaged desktop program
@@ -600,7 +622,7 @@ public:
         m_session.StartCapture();
     }
 
-    ~Source()
+    ~CaptureSource() override
     {
         try {
             if (m_pool) m_pool.FrameArrived(m_token);
@@ -610,7 +632,7 @@ public:
         } catch (const winrt::hresult_error&) { }
     }
 
-    ID3D11Texture2D* next()
+    ID3D11Texture2D* next() override
     {
         wgc::Direct3D11CaptureFrame frame {nullptr};
         {
@@ -668,6 +690,122 @@ private:
     winrt::com_ptr<ID3D11Texture2D> m_staging;
 };
 
+// GDI, as screenshots on Windows 10 take the screen: for where
+// Windows.Graphics.Capture cannot record a display. Before Windows 10 1903
+// it has no item for one (IGraphicsCaptureItemInterop came with 1903), and
+// asking threw E_NOINTERFACE: no recording at all on 1809 (LTSC 2019). One
+// BitBlt per video frame, on the CPU; DWM hands an HDR display to GDI
+// already mapped to SDR.
+class ScreenDcSource final : public Source {
+public:
+    ScreenDcSource(Graphics& graphics, const Options& options)
+        : m_graphics(graphics), m_region(options.region), m_pointer(options.cursor)
+    {
+        m_screen = ::GetDC(nullptr);
+        if (!m_screen)
+            throw Failure {u"screen device context"_s, E_FAIL};
+        m_memory = ::CreateCompatibleDC(m_screen);
+        BITMAPINFO bitmap {};
+        bitmap.bmiHeader.biSize = sizeof bitmap.bmiHeader;
+        bitmap.bmiHeader.biWidth = m_region.width();
+        bitmap.bmiHeader.biHeight = -m_region.height(); // top row first, as the texture
+        bitmap.bmiHeader.biPlanes = 1;
+        bitmap.bmiHeader.biBitCount = 32;
+        bitmap.bmiHeader.biCompression = BI_RGB;
+        void* bits = nullptr;
+        m_bitmap = ::CreateDIBSection(m_screen, &bitmap, DIB_RGB_COLORS, &bits, nullptr, 0);
+        if (!m_memory || !m_bitmap)
+            throw Failure {u"screen copy bitmap"_s, E_OUTOFMEMORY};
+        m_bits = static_cast<std::uint32_t*>(bits);
+        m_previous = ::SelectObject(m_memory, m_bitmap);
+        m_image = graphics.texture(m_region.size(), DXGI_FORMAT_B8G8R8A8_UNORM);
+    }
+
+    ScreenDcSource(const ScreenDcSource&) = delete;
+    ScreenDcSource& operator=(const ScreenDcSource&) = delete;
+
+    ~ScreenDcSource() override
+    {
+        if (m_memory) {
+            if (m_previous) ::SelectObject(m_memory, m_previous);
+            ::DeleteDC(m_memory);
+        }
+        if (m_bitmap) ::DeleteObject(m_bitmap);
+        if (m_screen) ::ReleaseDC(nullptr, m_screen);
+    }
+
+    ID3D11Texture2D* next() override
+    {
+        // Without CAPTUREBLT: at 30 copies a second it makes the pointer
+        // flicker, and DWM puts layered windows in the screen's pixels anyway.
+        if (!::BitBlt(m_memory, 0, 0, m_region.width(), m_region.height(), m_screen, m_region.x(), m_region.y(), SRCCOPY))
+            return m_have ? m_image.get() : nullptr; // the secure desktop (UAC): the last picture stays
+        if (m_pointer)
+            drawPointer();
+        ::GdiFlush();
+        // GDI leaves alpha at 0; the video processor must not see the frame as transparent.
+        std::for_each(m_bits, m_bits + size_t(m_region.width()) * size_t(m_region.height()), [](std::uint32_t& pixel) { pixel |= 0xff000000u; });
+        m_graphics.context->UpdateSubresource(m_image.get(), 0, nullptr, m_bits, UINT(m_region.width()) * 4, 0);
+        m_have = true;
+        return m_image.get();
+    }
+
+private:
+    void drawPointer()
+    {
+        CURSORINFO cursor {};
+        cursor.cbSize = sizeof cursor;
+        if (!::GetCursorInfo(&cursor) || !(cursor.flags & CURSOR_SHOWING) || !cursor.hCursor)
+            return;
+        if (cursor.hCursor != m_shape) { // the hot spot, once per shape
+            ICONINFO icon {};
+            if (!::GetIconInfo(cursor.hCursor, &icon))
+                return;
+            if (icon.hbmMask) ::DeleteObject(icon.hbmMask);
+            if (icon.hbmColor) ::DeleteObject(icon.hbmColor);
+            m_shape = cursor.hCursor;
+            m_hotSpot = QPoint(int(icon.xHotspot), int(icon.yHotspot));
+        }
+        const QPoint at = QPoint(cursor.ptScreenPos.x, cursor.ptScreenPos.y) - m_hotSpot - m_region.topLeft();
+        ::DrawIconEx(m_memory, at.x(), at.y(), cursor.hCursor, 0, 0, 0, nullptr, DI_NORMAL);
+    }
+
+    Graphics& m_graphics;
+    QRect m_region;
+    bool m_pointer;
+    bool m_have = false;
+    HDC m_screen = nullptr;
+    HDC m_memory = nullptr;
+    HBITMAP m_bitmap = nullptr;
+    HGDIOBJ m_previous = nullptr;
+    std::uint32_t* m_bits = nullptr;
+    HCURSOR m_shape = nullptr;
+    QPoint m_hotSpot;
+    winrt::com_ptr<ID3D11Texture2D> m_image;
+};
+
+// Windows.Graphics.Capture where it can record the display, else GDI;
+// `screen` says which, and why not the first.
+std::unique_ptr<Source> openScreen(Graphics& graphics, const Options& options, QString& screen)
+{
+    const Display display = displayOf(options.region);
+    QString unavailable;
+    if (!options.screenByGdi) {
+        try {
+            auto source = std::make_unique<CaptureSource>(graphics, options, display);
+            screen = u"Windows.Graphics.Capture"_s;
+            return source;
+        } catch (const winrt::hresult_error& error) {
+            unavailable = u"0x%1 %2"_s.arg(quint32(error.code().value), 8, 16, QChar(u'0')).arg(QString::fromWCharArray(error.message().c_str()));
+        } catch (const Failure& failure) {
+            unavailable = u"0x%1 %2"_s.arg(quint32(failure.hr), 8, 16, QChar(u'0')).arg(failure.stage);
+        }
+    }
+    auto source = std::make_unique<ScreenDcSource>(graphics, options);
+    screen = unavailable.isEmpty() ? u"GDI"_s : u"GDI (Windows.Graphics.Capture: %1)"_s.arg(unavailable);
+    return source;
+}
+
 Result run(const Options& options, Control& control, const std::function<void(const Progress&)>& progress, int syntheticMs)
 {
     Result result;
@@ -704,7 +842,12 @@ Result run(const Options& options, Control& control, const std::function<void(co
         if (!platform || !readwrite)
             throw Failure {u"Windows media components are unavailable"_s, HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND)};
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
-        const auto apartment = qScopeGuard([] { winrt::uninit_apartment(); });
+        // The cached factories die with the apartment's DLLs: a later
+        // recording in this process must not reach them (an AV in AddRef).
+        const auto apartment = qScopeGuard([] {
+            winrt::clear_factory_cache();
+            winrt::uninit_apartment();
+        });
         check(::MFStartup(MF_VERSION), "Media Foundation startup");
         const auto shutdown = qScopeGuard([&] {
             if (writer && !finalized && result.frames && !control.discard)
@@ -749,7 +892,7 @@ Result run(const Options& options, Control& control, const std::function<void(co
         stage(u"screen capture startup"_s);
         winrt::com_ptr<ID3D11Texture2D> generated;
         if (syntheticMs < 0)
-            source = std::make_unique<Source>(graphics, options);
+            source = openScreen(graphics, options, result.screen);
         else
             generated = graphics.texture(options.region.size(), DXGI_FORMAT_B8G8R8A8_UNORM);
         const qint64 waiting = nowTicks();
@@ -969,8 +1112,9 @@ Result run(const Options& options, Control& control, const std::function<void(co
     } catch (const Failure& failure) {
         result.error = QCoreApplication::translate("Recording", "录屏失败：%1（0x%2）").arg(failure.stage).arg(quint32(failure.hr), 8, 16, QChar(u'0'));
     } catch (const winrt::hresult_error& failure) {
-        result.error = QCoreApplication::translate("Recording", "录屏失败：%1（0x%2）").arg(QString::fromWCharArray(failure.message().c_str()))
-            .arg(quint32(failure.code().value), 8, 16, QChar(u'0'));
+        // The system's words alone ("不支持此接口") did not say where it failed.
+        result.error = QCoreApplication::translate("Recording", "录屏失败：%1（0x%2，%3）").arg(QString::fromWCharArray(failure.message().c_str()))
+            .arg(quint32(failure.code().value), 8, 16, QChar(u'0')).arg(result.stage);
     } catch (const std::exception& failure) {
         result.error = QCoreApplication::translate("Recording", "录屏失败：%1").arg(QString::fromUtf8(failure.what()));
     }

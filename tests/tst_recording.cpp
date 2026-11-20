@@ -171,6 +171,91 @@ private slots:
         QVERIFY(cancelled.path.isEmpty());
     }
 
+    // The screen itself, read each way: Windows.Graphics.Capture, and GDI,
+    // which Windows 10 1809 (LTSC 2019) gets because the first cannot make a
+    // capture item for a display there (asking threw E_NOINTERFACE). A solid
+    // window under the region must come out in its colour; it is layered, as
+    // menus and translucent windows are, which GDI reads without CAPTUREBLT.
+    void screenFrames_data()
+    {
+        QTest::addColumn<bool>("gdi");
+        QTest::newRow("windows-graphics-capture") << false;
+        QTest::newRow("gdi") << true;
+    }
+
+    void screenFrames()
+    {
+        QFETCH(bool, gdi);
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        Options options;
+        options.path = temporary.filePath(u"screen.mp4"_s);
+        options.software = true;
+        options.cursor = false; // the pointer must not cover the sampled colour
+        options.screenByGdi = gdi;
+        Control control;
+        Result result;
+        HRESULT decoded = E_FAIL;
+        int frames = 0;
+        std::array<int, 3> bgr {};
+        std::jthread worker([&] {
+            // Physical pixels, as the recording's region and frames are.
+            ::SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            MONITORINFO info {};
+            info.cbSize = sizeof info;
+            if (!::GetMonitorInfoW(::MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY), &info)) return;
+            QRect block(info.rcWork.left + 100, info.rcWork.top + 100, 320, 180);
+            POINT pointer {};
+            if (::GetPhysicalCursorPos(&pointer) && block.adjusted(-40, -40, 40, 40).contains(pointer.x, pointer.y))
+                block.translate(420, 0);
+            const HBRUSH brush = ::CreateSolidBrush(RGB(40, 110, 200));
+            WNDCLASSW type {};
+            type.lpfnWndProc = ::DefWindowProcW;
+            type.hInstance = ::GetModuleHandleW(nullptr);
+            type.hbrBackground = brush;
+            type.lpszClassName = L"WinShunRecordingTestBlock";
+            ::RegisterClassW(&type);
+            const HWND window = ::CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED, type.lpszClassName, L"",
+                WS_POPUP, block.x(), block.y(), block.width(), block.height(), nullptr, nullptr, type.hInstance, nullptr);
+            const auto cleanup = qScopeGuard([&] {
+                if (window) ::DestroyWindow(window);
+                ::UnregisterClassW(type.lpszClassName, type.hInstance);
+                ::DeleteObject(brush);
+            });
+            if (!window) return;
+            ::SetLayeredWindowAttributes(window, 0, 255, LWA_ALPHA);
+            ::ShowWindow(window, SW_SHOWNOACTIVATE);
+            ::UpdateWindow(window);
+            for (int i = 0; i < 20; ++i) { // until DWM has shown it
+                MSG message;
+                while (::PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) ::DispatchMessageW(&message);
+                std::this_thread::sleep_for(std::chrono::milliseconds(15));
+            }
+            options.region = block;
+            std::jthread stop([&] { std::this_thread::sleep_for(std::chrono::milliseconds(800)); control.stop = true; });
+            result = record(options, control, {});
+            if (!result.error.isEmpty() || result.path.isEmpty()) return;
+            const HRESULT com = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            if (FAILED(com)) { decoded = com; return; }
+            const auto uninit = qScopeGuard([] { ::CoUninitialize(); });
+            decoded = forEachFrame(result.path, [&](qint64, const unsigned char* top, LONG pitch) {
+                ++frames;
+                const unsigned char* centre = top + qint64(block.height() / 2) * pitch + (block.width() / 2) * 4;
+                bgr = {centre[0], centre[1], centre[2]};
+            });
+        });
+        worker.join();
+        QVERIFY2(!options.region.isEmpty(), "no test window on the primary display");
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(result.path, options.path);
+        QVERIFY(result.screen.startsWith(gdi ? u"GDI"_s : u"Windows.Graphics.Capture"_s));
+        QVERIFY(SUCCEEDED(decoded));
+        QVERIFY2(frames >= 5, qPrintable(QString::number(frames)));
+        // BT.709 studio range there and back: a few levels either way.
+        QVERIFY2(std::abs(bgr[0] - 200) <= 12 && std::abs(bgr[1] - 110) <= 12 && std::abs(bgr[2] - 40) <= 12,
+            qPrintable(u"centre BGR %1 %2 %3"_s.arg(bgr[0]).arg(bgr[1]).arg(bgr[2])));
+    }
+
     void pauseClock()
     {
         Timeline clock(100);
