@@ -153,6 +153,124 @@ const QRegularExpression& separatorRegex()
     return re;
 }
 
+// The longest run of plain characters that every match of a regular
+// expression contains ("disk.*" → "disk", "^IMG_\d+" → "IMG_"), for the
+// quick look the plain words get before the expression itself runs (GitHub
+// #411: a regex alone over every name took 1 s for 3 million). Empty when
+// nothing is sure: an alternative outside parentheses, inline options, \Q,
+// a hex or property escape. Only what the ASCII-folded search finds as the
+// case-insensitive expression would: ASCII and letters without case (汉字).
+QString requiredLiteral(QStringView pattern)
+{
+    if (pattern.contains(u"(?") || pattern.contains(u"(*"))
+        return {}; // (?x) and the like change what is plain
+    QString best;
+    QString run;
+    const auto endRun = [&] {
+        if (run.size() > best.size())
+            best = run;
+        run.clear();
+    };
+    const auto isAsciiAlnum = [](QChar c) { return c.unicode() < 0x80 && c.isLetterOrNumber(); };
+    int depth = 0;
+    qsizetype i = 0;
+    while (i < pattern.size()) {
+        const QChar c = pattern[i];
+        std::optional<QChar> plain; // the atom's character, when it is one
+        if (c == u'\\') {
+            if (i + 1 >= pattern.size())
+                return {};
+            const QChar next = pattern[i + 1];
+            if (isAsciiAlnum(next)) {
+                // \d \w \b \A ... are no characters; \x41, \p{L}, \1 are, but not plainly.
+                if (next.isDigit() || QStringView(u"xpPNuocgkQE").contains(next))
+                    return {};
+            } else {
+                plain = next;
+            }
+            i += 2;
+        } else if (c == u'[') {
+            // A class: skipped to its end (a ] first in it is one of its characters).
+            qsizetype j = i + 1;
+            if (j < pattern.size() && pattern[j] == u'^')
+                ++j;
+            if (j < pattern.size() && pattern[j] == u']')
+                ++j;
+            for (; j < pattern.size() && pattern[j] != u']'; ++j) {
+                if (pattern[j] == u'\\')
+                    ++j;
+                else if (pattern[j] == u'[' && j + 1 < pattern.size() && pattern[j + 1] == u':')
+                    j = std::max(j, pattern.indexOf(u":]", j + 2) + 1);
+            }
+            if (j >= pattern.size())
+                return {};
+            i = j + 1;
+        } else if (c == u'(') {
+            ++depth; // what is inside may be optional or one of alternatives: not counted
+            endRun();
+            ++i;
+            continue;
+        } else if (c == u')') {
+            depth = std::max(0, depth - 1);
+            ++i;
+        } else if (c == u'|') {
+            if (depth == 0)
+                return {}; // either side: neither is sure
+            ++i;
+            continue;
+        } else if (c == u'.' || c == u'^' || c == u'$') {
+            ++i;
+        } else if (c == u'*' || c == u'+' || c == u'?' || c == u'{') {
+            return {}; // a quantifier with nothing before it: not a pattern to guess at
+        } else {
+            plain = c;
+            ++i;
+        }
+        // What follows the atom: none of it may be there, or more of it.
+        bool optional = false;
+        bool repeated = false;
+        if (i < pattern.size()) {
+            const QChar q = pattern[i];
+            if (q == u'*' || q == u'?' || q == u'+') {
+                optional = q != u'+';
+                repeated = true;
+                ++i;
+            } else if (q == u'{') {
+                const qsizetype close = pattern.indexOf(u'}', i);
+                const QStringView inside = close < 0 ? QStringView() : pattern.sliced(i + 1, close - i - 1);
+                const qsizetype comma = inside.indexOf(u',');
+                bool ok = false;
+                const int least = (comma < 0 ? inside : inside.first(comma)).toInt(&ok);
+                if (!ok)
+                    return {}; // a { PCRE reads as itself: not worth the guess
+                optional = least == 0;
+                repeated = true;
+                i = close + 1;
+            }
+            if (repeated && i < pattern.size() && (pattern[i] == u'?' || pattern[i] == u'+'))
+                ++i; // lazy or possessive
+        }
+        const bool sure = depth == 0 && plain && !optional
+            && (plain->unicode() < 0x80 || (!plain->isLower() && !plain->isUpper() && !plain->isTitleCase())) && !plain->isSurrogate();
+        if (sure)
+            run.append(*plain);
+        if (!sure || repeated)
+            endRun();
+    }
+    endRun();
+    return best;
+}
+
+// A regular expression on an index name, decoded into one buffer per
+// thread rather than two new strings a name.
+bool regexMatches(const QRegularExpression& expression, std::string_view name)
+{
+    thread_local std::u16string utf16;
+    utf16.clear();
+    wtf8::decodeAppend(utf16, name);
+    return expression.matchView(QStringView(utf16.data(), static_cast<qsizetype>(utf16.size()))).hasMatch();
+}
+
 } // namespace
 
 bool nameMatchesAny(std::string_view name, const std::vector<std::string>& foldedPatterns) noexcept
@@ -691,6 +809,7 @@ ParsedQuery parseQuery(const QString& text, bool regexTerms)
                 return q;
             }
             term.expression.optimize();
+            term.literal = foldedUtf8(regex ? requiredLiteral(pattern) : token);
             if (!regex && !term.negated && !token.isEmpty())
                 q.highlights.append(token);
             q.terms.push_back(std::move(term));
@@ -939,7 +1058,9 @@ int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t
         const QueryTerm& t = p.term;
         if (!t.text.empty() || t.regex) {
             if (t.regex) {
-                if (!t.expression.match(wtf8::toQString(name)).hasMatch())
+                if (!t.literal.empty() && find<Padded>(name, t.literal) == text::npos)
+                    return -1;
+                if (!regexMatches(t.expression, name))
                     return -1;
                 score += 20;
             } else if (t.wildcard) {
@@ -1001,7 +1122,7 @@ int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t
     // such a folder; "!tmp\*.log" only the .log files in one.
     for (const auto& t : m_negative) {
         const bool nameHit
-            = t.regex ? t.expression.match(wtf8::toQString(name)).hasMatch()
+            = t.regex ? (t.literal.empty() || find<Padded>(name, t.literal) != text::npos) && regexMatches(t.expression, name)
             : t.text.empty() || (t.wildcard ? text::globMatch(name, t.text) : find<Padded>(name, t.text) != text::npos);
         if (nameHit && (t.ancestors.empty() || ancestorsMatch(t.ancestors, nullptr)))
             return -1;

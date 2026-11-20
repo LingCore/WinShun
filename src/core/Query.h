@@ -60,7 +60,9 @@ struct QueryTerm {
     std::vector<std::string> ancestors; // folded folder segments, outermost first
     bool negated = false;
     bool wildcard = false;
-    std::string literal; // wildcard terms: longest part without * or ?, a cheap pre-filter
+    // A cheap pre-filter, folded: wildcard terms' longest part without * or ?;
+    // a regular expression's longest run every match has (may be empty).
+    std::string literal;
     bool regex = false;
     QRegularExpression expression; // compiled once; names only, no pinyin expansion
 };

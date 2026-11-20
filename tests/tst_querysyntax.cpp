@@ -94,6 +94,42 @@ private slots:
         QVERIFY(parseQuery(u"a["_s, true).error.size() > 0);
     }
 
+    // GitHub #411: what every match must contain, looked for before the
+    // expression runs; nothing when that is not sure.
+    void regexLiteral_data()
+    {
+        QTest::addColumn<QString>("pattern");
+        QTest::addColumn<QString>("literal");
+        QTest::newRow("tail") << u"disk.*"_s << u"disk"_s;
+        QTest::newRow("anchored") << u"^IMG_\\d+"_s << u"img_"_s;
+        QTest::newRow("escaped-dot") << u"\\.pdf$"_s << u".pdf"_s;
+        QTest::newRow("escaped-run") << u"file\\.txt"_s << u"file.txt"_s;
+        QTest::newRow("optional-char") << u"colou?r"_s << u"colo"_s;
+        QTest::newRow("optional-star") << u"abc*d"_s << u"ab"_s;
+        QTest::newRow("counted") << u"x{2}yz"_s << u"yz"_s;
+        QTest::newRow("counted-none") << u"ab{0,2}"_s << u"a"_s;
+        QTest::newRow("class") << u"[abc]+def"_s << u"def"_s;
+        QTest::newRow("class-bracket") << u"[]x]+def"_s << u"def"_s;
+        QTest::newRow("group-alternatives") << u"img(jpg|png)$"_s << u"img"_s;
+        QTest::newRow("han") << u"报告\\d+"_s << u"报告"_s;
+        QTest::newRow("top-alternative") << u"abc|def"_s << QString();
+        QTest::newRow("inline-option") << u"(?-i)^IMG"_s << QString();
+        QTest::newRow("hex") << u"\\x41bc"_s << QString();
+        QTest::newRow("backreference") << u"(a)\\1bc"_s << QString();
+        QTest::newRow("cased-not-ascii") << u"Ä\\w"_s << QString();
+        QTest::newRow("only-classes") << u"\\d{4}"_s << QString();
+    }
+
+    void regexLiteral()
+    {
+        QFETCH(QString, pattern);
+        QFETCH(QString, literal);
+        const auto parsed = parseQuery(pattern, true);
+        QVERIFY2(parsed.error.isEmpty(), qPrintable(parsed.error));
+        QCOMPARE(parsed.terms.size(), std::size_t(1));
+        QCOMPARE(QString::fromStdString(parsed.terms.front().literal), literal);
+    }
+
     void regexModeInIndex()
     {
         FileIndex index;
