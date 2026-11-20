@@ -393,6 +393,43 @@ private slots:
         QVERIFY(found(u"E:\\images"_s).isEmpty());
     }
 
+    // GitHub #399 again: a folder of more than 200 000 pictures came back cut
+    // at 200 000 rows, its total too. Now only the answer's bytes are capped,
+    // and the totals count what is left out.
+    void answersWholeFolders()
+    {
+        auto index = std::make_shared<FileIndex>();
+        const EntryId pictures = index->add(index->addRoot("E:"), "pictures", EntryFlag::Directory);
+        constexpr std::uint32_t kFiles = 250'000;
+        for (std::uint32_t i = 0; i < kFiles; ++i)
+            index->add(pictures, ("p" + std::to_string(i) + (i % 2 ? ".jpg" : ".png")).c_str(), 0);
+        WorkerPool pool(WorkerPool::defaultThreadCount());
+        ev::Query query = ask(u"file:\"E:\\pictures\\\" ext:jpg;png"_s);
+        ev::Rows rows = ev::find(*index, pool, query);
+        QCOMPARE(rows.rows.size(), std::size_t {kFiles});
+        QCOMPARE(rows.totalItems, kFiles);
+        QCOMPARE(rows.totalFiles, kFiles);
+        const QByteArray whole = ev::encode(query, rows);
+        QCOMPARE(u32(whole, 4), kFiles); // numitems
+
+        // Past the bytes allowed: the rows stop short of them, the totals stay.
+        const std::size_t most = std::size_t(whole.size() / 3);
+        rows = ev::find(*index, pool, query, {}, most);
+        QVERIFY(!rows.rows.empty() && rows.rows.size() < kFiles / 2);
+        QCOMPARE(rows.totalItems, kFiles);
+        const QByteArray cut = ev::encode(query, rows);
+        QVERIFY(std::size_t(cut.size()) <= most);
+        QVERIFY(std::size_t(cut.size()) > most - 200); // only the next row would not fit
+        QCOMPARE(u32(cut, 0), kFiles); // totitems
+        QCOMPARE(u32(cut, 4), std::uint32_t(rows.rows.size()));
+        // The old list, in the system's code page: within the bytes too.
+        query.version = 1;
+        query.wide = false;
+        rows = ev::find(*index, pool, query, {}, most);
+        QVERIFY(std::size_t(ev::encode(query, rows).size()) <= most);
+        QCOMPARE(rows.totalItems, kFiles);
+    }
+
     void encodes()
     {
         const auto index = sampleIndex();

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <limits>
 
 using namespace Qt::StringLiterals;
 
@@ -277,9 +278,10 @@ std::uint64_t ticksOf(FileTime time) noexcept
 
 class Writer {
 public:
-    explicit Writer(bool wide)
+    Writer(bool wide, qsizetype reserve)
         : m_wide(wide)
     {
+        m_bytes.reserve(reserve);
     }
     qsizetype size() const noexcept { return m_bytes.size(); }
     void u32(std::uint32_t value) { m_bytes.append(reinterpret_cast<const char*>(&value), sizeof value); }
@@ -343,9 +345,69 @@ std::wstring_view extensionOf(const Row& row) noexcept
     return dot == std::wstring::npos || dot == 0 ? std::wstring_view() : std::wstring_view(row.name).substr(dot + 1);
 }
 
+// The answer's bytes before the rows: LIST2's 5 numbers, LIST's 7.
+std::size_t headBytes(const Query& query) noexcept
+{
+    return query.version == 2 ? 5 * 4 : 7 * 4;
+}
+
+// At most how many bytes a row takes in the answer, its item and its data,
+// as encodeList / encodeList2 write them: UTF-16, or up to 3 bytes a
+// character in the system's code page (UTF-8 can be one).
+std::size_t rowBytes(const Query& query, const Row& row) noexcept
+{
+    const std::size_t zero = query.wide ? 2 : 1;
+    const std::size_t perChar = query.wide ? 2 : 3;
+    const auto text = [&](std::size_t length) { return length * perChar + zero; };
+    if (query.version != 2)
+        return 12 + text(row.name.size()) + text(row.path.size());
+    const std::size_t full = row.path.empty() ? row.name.size() : row.path.size() + 1 + row.name.size();
+    const std::uint32_t asked = query.requestFlags;
+    std::size_t bytes = 8;
+    const auto counted = [&](std::size_t length) { bytes += 4 + text(length); };
+    const auto number = [&](std::uint32_t flag, std::size_t size) {
+        if (asked & flag)
+            bytes += size;
+    };
+    if (asked & request::Name)
+        counted(row.name.size());
+    if (asked & request::Path)
+        counted(row.path.size());
+    if (asked & request::FullPath)
+        counted(full);
+    if (asked & request::Extension)
+        counted(extensionOf(row).size());
+    number(request::Size, 8);
+    number(request::Created, 8);
+    number(request::Modified, 8);
+    number(request::Accessed, 8);
+    number(request::Attributes, 4);
+    if (asked & request::FileListName)
+        counted(0);
+    number(request::RunCount, 4);
+    number(request::DateRun, 8);
+    number(request::RecentlyChanged, 8);
+    if (asked & request::HighlightedName)
+        counted(row.name.size());
+    if (asked & request::HighlightedPath)
+        counted(row.path.size());
+    if (asked & request::HighlightedFullPath)
+        counted(full);
+    return bytes;
+}
+
+// All of them at once: the bytes grow once, not by doubling up to hundreds of MB.
+qsizetype answerBytes(const Query& query, const Rows& rows) noexcept
+{
+    std::size_t bytes = headBytes(query);
+    for (const Row& row : rows.rows)
+        bytes += rowBytes(query, row);
+    return static_cast<qsizetype>(bytes);
+}
+
 QByteArray encodeList(const Query& query, const Rows& rows)
 {
-    Writer out(query.wide);
+    Writer out(query.wide, answerBytes(query, rows));
     const auto count = static_cast<std::uint32_t>(rows.rows.size());
     const auto folders = static_cast<std::uint32_t>(std::ranges::count_if(rows.rows, &Row::folder));
     for (const std::uint32_t value :
@@ -368,7 +430,7 @@ QByteArray encodeList(const Query& query, const Rows& rows)
 
 QByteArray encodeList2(const Query& query, const Rows& rows)
 {
-    Writer out(query.wide);
+    Writer out(query.wide, answerBytes(query, rows));
     const auto count = static_cast<std::uint32_t>(rows.rows.size());
     const std::uint32_t asked = query.requestFlags;
     for (const std::uint32_t value : {rows.totalItems, count, query.offset, asked, query.sortType})
@@ -556,7 +618,8 @@ Search translate(const QString& text, std::uint32_t searchFlags)
     return search;
 }
 
-Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const std::function<bool()>& cancelled)
+Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const std::function<bool()>& cancelled,
+    std::size_t mostBytes)
 {
     Rows out;
     const Search search = translate(query.search, query.searchFlags);
@@ -614,7 +677,7 @@ Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const st
     }
     options.foldersOnly = search.kind == Kind::Folders;
     options.order = orderOf(query.sortType);
-    const std::size_t most = std::min<std::size_t>(search.count.value_or(0xFFFF'FFFFu), kMostRows);
+    const std::size_t most = search.count ? std::size_t {*search.count} : std::numeric_limits<std::size_t>::max();
     const std::size_t wanted = std::min<std::size_t>(most, std::size_t {query.offset} + query.maxResults);
     // Files alone are picked from the hits afterwards: all of them are needed then.
     options.limit = std::max<std::size_t>(search.kind == Kind::Files ? most : wanted, 1);
@@ -632,7 +695,7 @@ Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const st
     const auto folders
         = static_cast<std::size_t>(std::ranges::count_if(hits, [&index](const NameHit& hit) { return index.scan(hit.id).isDir(); }));
     out.totalItems = static_cast<std::uint32_t>(std::min<std::size_t>(total, 0xFFFF'FFFFu));
-    // Of those kept: past kMostRows the two are not counted apart.
+    // Of the hits kept: all of them, unless count: or the window asked for ended the search sooner.
     out.totalFolders = static_cast<std::uint32_t>(folders);
     out.totalFiles = static_cast<std::uint32_t>(hits.size() - folders);
 
@@ -642,6 +705,7 @@ Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const st
     const auto deadline = std::chrono::steady_clock::now() + kFolderSizeBudget;
     const auto late = [&] { return stop() || std::chrono::steady_clock::now() > deadline; };
     out.rows.reserve(count);
+    std::size_t bytes = headBytes(query);
     for (std::size_t i = first; i < first + count; ++i) {
         const EntryId id = hits[i].id;
         const EntryScan& entry = index.scan(id);
@@ -664,6 +728,9 @@ Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const st
         }
         row.created = ticksOf(index.created(id));
         row.modified = ticksOf(index.modified(id));
+        bytes += rowBytes(query, row);
+        if (bytes > mostBytes)
+            break; // the rest left out, still in the totals
         out.rows.push_back(std::move(row));
     }
     if (stop())

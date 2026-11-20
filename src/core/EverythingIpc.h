@@ -107,9 +107,11 @@ inline constexpr std::uint32_t Attributes = 6;
 // A value the index does not know (a date never read, a folder too large to
 // add up in time), as Everything writes it.
 inline constexpr std::uint64_t kUnknown = 0xFFFF'FFFF'FFFF'FFFFull;
-// The most rows one query is answered with, whatever it asks for: a list of
-// every file on the disks is gigabytes (the totals still say how many).
-inline constexpr std::size_t kMostRows = 200'000;
+// The largest answer made, whatever the query asks for (WM_COPYDATA maps it
+// into the asker whole; a list of every file on the disks is gigabytes): the
+// rows that would go past it are left out, the totals still count them. No
+// cap on the rows themselves: a folder of millions comes whole (GitHub #399).
+inline constexpr std::size_t kMostAnswerBytes = std::size_t {512} << 20;
 
 struct Query {
     int version = 1; // 1: EVERYTHING_IPC_QUERY, 2: EVERYTHING_IPC_QUERY2
@@ -162,9 +164,10 @@ struct Rows {
     std::uint32_t totalFolders = 0;
     std::uint32_t totalFiles = 0;
 };
-// The query's answer from the index (takes its read lock). Empty when
-// cancelled.
-Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const std::function<bool()>& cancelled = {});
+// The query's answer from the index (takes its read lock), its bytes no
+// more than `mostBytes`. Empty when cancelled.
+Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const std::function<bool()>& cancelled = {},
+    std::size_t mostBytes = kMostAnswerBytes);
 // The bytes of the answer: EVERYTHING_IPC_LIST or LIST2, as the query asked.
 QByteArray encode(const Query& query, const Rows& rows);
 

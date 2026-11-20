@@ -19,9 +19,6 @@ namespace {
 constexpr UINT kReplyTimeoutMs = 10'000;
 // With Everything's own window up: looked for again this often.
 constexpr DWORD kLookAgainMs = 30'000;
-// Answers larger than this are not made (WM_COPYDATA maps them into the
-// asker): the rows are cut, the totals stay.
-constexpr qsizetype kMostBytes = 512 * 1024 * 1024;
 
 HWND windowOf(std::uint32_t handle) noexcept
 {
@@ -176,11 +173,11 @@ void EverythingServer::search(std::stop_token stop)
             continue;
         if (m_observer)
             m_observer(job.query, rows);
+        // No larger than kMostAnswerBytes: find() stopped the rows short of it.
         QByteArray bytes = everything::encode(job.query, rows);
-        while (bytes.size() > kMostBytes && !rows.rows.empty()) {
-            rows.rows.resize(rows.rows.size() / 2);
-            bytes = everything::encode(job.query, rows);
-        }
+        const std::size_t rowCount = rows.rows.size();
+        const std::uint32_t totalItems = rows.totalItems;
+        rows = {}; // let go of the strings before the asker copies the bytes
         const qint64 searched = clock.elapsed();
         COPYDATASTRUCT data {};
         data.dwData = job.query.replyMessage;
@@ -192,8 +189,8 @@ void EverythingServer::search(std::stop_token stop)
             kReplyTimeoutMs, &taken);
         // Never the words asked for: they are the user's.
         qInfo().noquote() << QStringLiteral("Everything queries: %1 of %2 rows, %3 KB, searched %4 ms, sent %5 ms%6")
-                                 .arg(rows.rows.size())
-                                 .arg(rows.totalItems)
+                                 .arg(rowCount)
+                                 .arg(totalItems)
                                  .arg(bytes.size() / 1024)
                                  .arg(searched)
                                  .arg(clock.elapsed() - searched)
