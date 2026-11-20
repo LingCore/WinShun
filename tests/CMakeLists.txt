@@ -1016,6 +1016,16 @@ add_test(NAME tst_keyrouter COMMAND tst_keyrouter -o -,txt)
 set_tests_properties(tst_keyrouter PROPERTIES RUN_SERIAL TRUE
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The screenshot's count of graphics thrown away under its overlays (a lost
+# device, TDR), on the real D3D11 renderer: a small window shown for a moment.
+qt_add_executable(tst_graphicsloss tst_graphicsloss.cpp)
+target_include_directories(tst_graphicsloss PRIVATE ${PROJECT_SOURCE_DIR}/src/capture)
+target_link_libraries(tst_graphicsloss PRIVATE winshun_options Qt6::Quick Qt6::Test)
+set_target_properties(tst_graphicsloss PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_graphicsloss COMMAND tst_graphicsloss -o -,txt)
+set_tests_properties(tst_graphicsloss PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Where the interface was when it stopped answering (GitHub #111): the watch
 # on this test's own thread, made to compute and to wait.
 qt_add_executable(tst_uistall tst_uistall.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/UiStall.cpp

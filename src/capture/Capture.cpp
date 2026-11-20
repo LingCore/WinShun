@@ -315,6 +315,7 @@ void Capture::buildOverlays()
         connect(window, &QWindow::heightChanged, model, follow);
         follow();
         connect(window, &QQuickWindow::frameSwapped, this, [this, window] { frameDrawn(window); }, Qt::QueuedConnection);
+        m_graphicsLoss.watch(window);
         window->create();
         // Its graphics set up now, out of sight: a first show costs 130–170 ms,
         // later ones 3–6 ms (stage 0).
@@ -580,6 +581,7 @@ void Capture::startWatch()
 {
     m_stalls.reset();
     m_ticks = 0;
+    m_graphicsLoss.begin();
     m_upClock.invalidate();
     m_cursorShown = {};
     m_cursorDragging = {};
@@ -623,7 +625,7 @@ void Capture::watchTick()
         diagnostics::record(u"capture-stall"_s, {{u"stall_ms"_s, stall->ms}, {u"ms_since_overlay_up"_s, sinceUp},
             {u"ms_since_show"_s, sinceShow}, {u"ms_since_release"_s, m_session.msSinceRelease()}, {u"phase"_s, phase},
             {u"selection"_s, sizeText(selected.size())}, {u"prescan_running"_s, m_scanRunning},
-            {u"first_since_start"_s, g_firstCapture}});
+            {u"first_since_start"_s, g_firstCapture}, {u"graphics_lost"_s, m_graphicsLoss.since()}});
     }
     CURSORINFO info {sizeof info};
     if (!::GetCursorInfo(&info))
@@ -698,6 +700,8 @@ void Capture::recordCapture(CaptureSession::Action action, const QRect& rect)
         details[u"gesture_frames"_s] = diag::frameStats(m_allGestureFrames);
     if (m_prescanMs >= 0)
         details[u"prescan_ms"_s] = m_prescanMs;
+    if (const int lost = m_graphicsLoss.since(); lost > 0)
+        details[u"graphics_lost"_s] = lost;
     if (!m_cursorDragging.isEmpty())
         details[u"cursor_dragging"_s] = m_cursorDragging;
     diagnostics::record(u"capture"_s, details);

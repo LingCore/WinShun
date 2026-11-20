@@ -7,6 +7,7 @@
 #include "CaptureTools.h"
 #include "CountdownWindow.h"
 #include "Grabber.h"
+#include "GraphicsLoss.h"
 #include "LongCapture.h"
 #include "PinManager.h"
 #include "Recorder.h"
@@ -344,6 +345,9 @@ private:
     QElapsedTimer m_upClock; // since the overlay was up (invalid: not yet)
     diag::StallWatch m_stalls;
     int m_ticks = 0;
+    // The overlays' graphics lost (a reset graphics card, TDR) since show():
+    // "graphics_lost" in "capture-stall" and "capture".
+    GraphicsLoss m_graphicsLoss;
     QJsonObject m_pointerFacts; // read at show()
     QJsonObject m_cursorShown; // the pointer over the overlay, the first time seen
     QJsonObject m_cursorDragging; // and the first time seen while dragging
