@@ -1,4 +1,5 @@
 #include "ClipboardWatcher.h"
+#include "ClipboardBorrow.h"
 #include "ImageOrigin.h"
 
 #include "ClipImage.h"
@@ -52,6 +53,7 @@ constexpr qsizetype kLookUpTo = 4000;
 constexpr SIZE_T kMaxLookBytes = 8 * 1024 * 1024; // its metafile
 constexpr SIZE_T kMaxImageBytes = 256 * 1024 * 1024;
 constexpr qsizetype kMaxReadRecords = 16;
+
 constexpr qsizetype kMaxMisreadChars = 64 * 1024; // longer text is not kept to compare with
 constexpr std::chrono::seconds kMisreadWindow {5};
 constexpr qsizetype kMaxDiagnosticFormats = 64;
@@ -699,6 +701,13 @@ void ClipboardWatcher::read()
             m_recentReads.removeFirst();
         m_recentReads.append(std::move(diagnostic));
     });
+    // Win顺's own borrow (selected_text): the words copied there and what was
+    // put back are not the user's copies. First: a copy held back stays held.
+    if (clipboard_borrow::borrowed(sequence)) {
+        m_lastSequence = sequence;
+        diagnostic[u"outcome"_s] = u"borrowed"_s;
+        return;
+    }
     Options options;
     {
         const std::lock_guard lock(m_mutex);

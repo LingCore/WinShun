@@ -2,7 +2,8 @@
 
 // The `selected_text` tool of a plugin with the selection:read permission
 // (0.41.0; the gestures plugin): the words selected in the window in front,
-// read with UI Automation, never through the clipboard. Win顺 reads them, not
+// read with UI Automation, through the clipboard only when asked to copy
+// (below). Win顺 reads them, not
 // the plugin: a plugin's job keeps it from the clipboard, and a job with any
 // such limit keeps it from talking to other programs' windows too (UI
 // Automation's calls time out at once, an EM_GETSEL comes back empty;
@@ -31,6 +32,15 @@ inline constexpr int kMostCharacters = 4000;
 // or could not be (an administrator's window, a program that did not answer
 // within 400 ms). On a thread of its own; `done` is called once, on the
 // calling thread.
+//
+// `arguments.copy` (0.42.0; a shortcut the user pressed, never a gesture):
+// where UI Automation cannot tell (those windows, a program it knows no text
+// of), Win顺 copies the words instead: it waits for the shortcut's keys to
+// be let go, keeps what is on the clipboard, presses Ctrl+C in the window
+// in front, reads the text that came, and puts what it kept back at once.
+// Its own clipboard history records none of it; Windows' (Win+V) keeps the
+// words copied (that copy is the program's), not what is put back. A
+// clipboard holding more than 64 MB is left alone (`readable` false).
 void run(const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done);
 
 } // namespace ws::selection
