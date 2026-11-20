@@ -1123,11 +1123,13 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         m_launcher->noteSearchHere(folder); // not indexed (GitHub #52): searched on the disk all the same
         showLauncher(folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s);
     };
-    // Directory Opus's double click on blank space (WinShunSearch.exe, put
-    // into Opus's settings by SettingsEditor::setOpusFolderMenu). Not with
-    // the double click turned off: the menu may be there for its hotkey alone.
-    callbacks.folderMenu = [this](const QString& folder) {
-        if (m_folderMenu && m_settings.folderMenu != u"off")
+    // Directory Opus's double or middle click on blank space (WinShunSearch.exe,
+    // put into Opus's settings by SettingsEditor::setOpusFolderMenu): Opus runs
+    // it for both, and these settings say which opens the menu. Not with the
+    // menu turned off: it may be there for its hotkey alone.
+    callbacks.folderMenu = [this](const QString& folder, bool middle) {
+        if (m_folderMenu && m_settings.folderMenu != u"off"
+            && (middle ? m_settings.folderMenuMiddle : m_settings.folderMenuDouble)) // as set for every window (触发方式)
             m_folderMenu->requested(folder);
     };
     // Windows ends us right after this returns, or a few seconds in: the

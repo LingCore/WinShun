@@ -179,22 +179,32 @@ CustomCommand customCommand(const QString& commandLine, const QString& path);
 // backslashes before the closing quote doubled ("C:\" would end in \").
 QString commandArgument(const QString& path);
 
-// What Directory Opus runs on a left double click on the blank space of a
-// file display ("Preferences › File Displays › Mouse › Background Events",
-// the line "Default"), as its prefs.oxc keeps it: <dblclk> … <bg_commands>
-// <event command="…" enable="yes" id="0" />.
+// What Directory Opus runs on a click on the blank space of a file display
+// ("Preferences › File Displays › Mouse › Background Events", the line
+// "Default"), as its prefs.oxc keeps it: <dblclk> … <bg_commands> <event
+// command="…" enable="yes" id="0" />. The event's id says which click: 0 a
+// left double click, 4 a middle one (measured, Opus 13.25), which a single
+// middle click runs too with <bg_commands single_middle_click="yes"> (items
+// keep theirs: a middle click still selects one).
+enum class OpusClick { LeftDouble = 0, Middle = 4 };
 struct OpusBlankClick {
     bool hasPlace = false; // there is a <dblclk> to keep it in
     QByteArray element; // the <event> as written; empty when there is none
     QString command;
     bool enabled = false;
 };
-OpusBlankClick opusBlankClick(const QByteArray& prefs);
+OpusBlankClick opusBlankClick(const QByteArray& prefs, OpusClick click = OpusClick::LeftDouble);
 // The <event> that runs `command`.
-QByteArray opusBlankClickEvent(const QString& command);
+QByteArray opusBlankClickEvent(const QString& command, OpusClick click = OpusClick::LeftDouble);
 // `prefs` with that <event> replaced by `element` (an empty one takes it
 // away), a <bg_commands> put in for it if need be; every other byte as it
 // was. Empty when there is no place for it.
-QByteArray withOpusBlankClick(const QByteArray& prefs, const QByteArray& element);
+QByteArray withOpusBlankClick(const QByteArray& prefs, const QByteArray& element,
+    OpusClick click = OpusClick::LeftDouble);
+// <bg_commands single_middle_click>: false where it is not there.
+bool opusSingleMiddleClick(const QByteArray& prefs);
+// `prefs` with it set so (a <bg_commands> there already); empty when there
+// is no <bg_commands>.
+QByteArray withOpusSingleMiddleClick(const QByteArray& prefs, bool on);
 
 } // namespace ws::pathtext

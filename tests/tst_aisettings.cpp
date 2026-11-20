@@ -187,6 +187,7 @@ private slots:
                  "Plugin.winshun.gestures/Setting.layout", // a hidden setting (0.41.0) is no more AI's than a shown one
                  "Plugins/DeveloperMode", "Launcher/FileManagerOpenCommand", "Launcher/FileManagerRevealCommand", "Backup/Folder",
                  "Index/Folder", "Shares/size", "Shares/1\\Path", "Capture/PrintScreenBefore", "Launcher/FolderMenuOpusBefore",
+                 "Launcher/FolderMenuOpusMiddleBefore", "Launcher/FolderMenuOpusSingleMiddleBefore",
                  "Launcher/DialogAutoJumpAsked", "Network/Threads", "Proxy/Mode", "Proxy/Address"})
             QTest::newRow(key) << QString::fromLatin1(key);
     }

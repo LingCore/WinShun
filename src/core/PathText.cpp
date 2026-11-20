@@ -588,12 +588,13 @@ Element findElement(QByteArrayView xml, QByteArrayView name, qsizetype from, qsi
 struct BlankClickPlace {
     Element dblclk;
     Element bgCommands; // in dblclk; maybe not there
-    Element event; // in bgCommands, id="0"; maybe not there
+    Element event; // in bgCommands, of the click's id; maybe not there
     QXmlStreamAttributes attributes; // the event's
 };
 
-BlankClickPlace findBlankClick(QByteArrayView prefs)
+BlankClickPlace findBlankClick(QByteArrayView prefs, OpusClick click)
 {
+    const QString id = QString::number(static_cast<int>(click));
     BlankClickPlace place;
     place.dblclk = findElement(prefs, "dblclk", 0, prefs.size());
     if (!place.dblclk.found() || place.dblclk.empty())
@@ -606,7 +607,7 @@ BlankClickPlace findBlankClick(QByteArrayView prefs)
         if (!e.found())
             break;
         QXmlStreamReader reader(prefs.sliced(e.begin, e.end - e.begin).toByteArray());
-        if (reader.readNextStartElement() && reader.attributes().value(u"id") == u"0") {
+        if (reader.readNextStartElement() && reader.attributes().value(u"id") == id) {
             place.event = e;
             place.attributes = reader.attributes();
             break;
@@ -618,9 +619,9 @@ BlankClickPlace findBlankClick(QByteArrayView prefs)
 
 } // namespace
 
-OpusBlankClick opusBlankClick(const QByteArray& prefs)
+OpusBlankClick opusBlankClick(const QByteArray& prefs, OpusClick which)
 {
-    const BlankClickPlace place = findBlankClick(prefs);
+    const BlankClickPlace place = findBlankClick(prefs, which);
     OpusBlankClick click;
     click.hasPlace = place.dblclk.found() && !place.dblclk.empty();
     if (place.event.found()) {
@@ -631,14 +632,15 @@ OpusBlankClick opusBlankClick(const QByteArray& prefs)
     return click;
 }
 
-QByteArray opusBlankClickEvent(const QString& command)
+QByteArray opusBlankClickEvent(const QString& command, OpusClick click)
 {
-    return "<event command=\"" + command.toHtmlEscaped().toUtf8() + "\" enable=\"yes\" id=\"0\" />";
+    return "<event command=\"" + command.toHtmlEscaped().toUtf8() + "\" enable=\"yes\" id=\""
+        + QByteArray::number(static_cast<int>(click)) + "\" />";
 }
 
-QByteArray withOpusBlankClick(const QByteArray& prefs, const QByteArray& element)
+QByteArray withOpusBlankClick(const QByteArray& prefs, const QByteArray& element, OpusClick click)
 {
-    const BlankClickPlace place = findBlankClick(prefs);
+    const BlankClickPlace place = findBlankClick(prefs, click);
     if (!place.dblclk.found() || place.dblclk.empty())
         return {};
     QByteArray result = prefs;
@@ -657,14 +659,54 @@ QByteArray withOpusBlankClick(const QByteArray& prefs, const QByteArray& element
     if (element.isEmpty())
         return result;
     if (const Element& bg = place.bgCommands; bg.found()) {
-        if (!bg.empty())
-            return result.insert(bg.contentEnd, element);
+        if (!bg.empty()) {
+            // After the last one: on a line of its own, indented as that one,
+            // when they are on lines (so it goes again with its line).
+            qsizetype at = bg.contentEnd;
+            while (at > bg.tagEnd && QByteArrayView(" \t\r\n").contains(prefs[at - 1]))
+                --at;
+            const qsizetype lineStart = prefs.lastIndexOf('\n', at - 1) + 1;
+            if (at == bg.tagEnd || lineStart <= bg.tagEnd)
+                return result.insert(bg.contentEnd, element);
+            qsizetype indentEnd = lineStart;
+            while (prefs[indentEnd] == ' ' || prefs[indentEnd] == '\t')
+                ++indentEnd;
+            const QByteArray newline = lineStart >= 2 && prefs[lineStart - 2] == '\r' ? "\r\n" : "\n";
+            return result.insert(at, newline + prefs.sliced(lineStart, indentEnd - lineStart) + element);
+        }
         // <bg_commands … />: opened up to hold it.
         return result.replace(bg.end - 2, 2, '>' + element + "</bg_commands>");
     }
     // Where Opus writes it: before <mouse_hook_delay>, else last.
     const Element delay = findElement(prefs, "mouse_hook_delay", place.dblclk.tagEnd, place.dblclk.contentEnd);
     return result.insert(delay.found() ? delay.begin : place.dblclk.contentEnd, "<bg_commands>" + element + "</bg_commands>");
+}
+
+bool opusSingleMiddleClick(const QByteArray& prefs)
+{
+    const BlankClickPlace place = findBlankClick(prefs, OpusClick::LeftDouble);
+    if (!place.bgCommands.found())
+        return false;
+    QXmlStreamReader reader(prefs.sliced(place.bgCommands.begin, place.bgCommands.tagEnd - place.bgCommands.begin)
+            + (place.bgCommands.empty() ? "" : "</bg_commands>"));
+    return reader.readNextStartElement() && reader.attributes().value(u"single_middle_click") == u"yes";
+}
+
+QByteArray withOpusSingleMiddleClick(const QByteArray& prefs, bool on)
+{
+    const BlankClickPlace place = findBlankClick(prefs, OpusClick::LeftDouble);
+    if (!place.bgCommands.found())
+        return {};
+    const QByteArray value = on ? "yes" : "no";
+    const QByteArray name = " single_middle_click=\"";
+    QByteArray result = prefs;
+    const qsizetype at = QByteArrayView(prefs).sliced(0, place.bgCommands.tagEnd).indexOf(name, place.bgCommands.begin);
+    if (at >= 0) {
+        const qsizetype from = at + name.size();
+        const qsizetype to = prefs.indexOf('"', from);
+        return to < 0 || to > place.bgCommands.tagEnd ? QByteArray() : result.replace(from, to - from, value);
+    }
+    return result.insert(place.bgCommands.begin + qsizetype(sizeof("<bg_commands") - 1), name + value + '"');
 }
 
 } // namespace ws::pathtext

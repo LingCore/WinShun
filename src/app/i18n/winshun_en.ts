@@ -823,6 +823,14 @@
         <translation>Type to search in OneCommander</translation>
     </message>
     <message>
+        <source>点进对话框旁的搜索框就列出常用位置</source>
+        <translation>List common places when clicking into the dialog search bar</translation>
+    </message>
+    <message>
+        <source>点进来就列出常用位置</source>
+        <translation>List common places on click</translation>
+    </message>
+    <message>
         <source>宽松</source>
         <translation>Roomy</translation>
     </message>
@@ -5906,14 +5914,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>folder menu;files;column;submenu;list files;open file;Listary;files</translation>
     </message>
     <message>
-        <source>已在 Opus 的设置里加好</source>
-        <translation>Set up in Opus</translation>
-    </message>
-    <message>
-        <source>Opus 里设的是别处的 Win顺，更新一下就好</source>
-        <translation>Opus runs WinShun from another folder: update it</translation>
-    </message>
-    <message>
         <source>要在 Opus 的设置里加一条命令，Win顺 可以替你加</source>
         <translation>Opus needs a command in its settings, which WinShun can add for you</translation>
     </message>
@@ -6659,14 +6659,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>只搜这一层</source>
         <translation>This level only</translation>
-    </message>
-    <message>
-        <source>在 Directory Opus 的空白处双击</source>
-        <translation>Double-click blank space in Directory Opus</translation>
-    </message>
-    <message>
-        <source>双击;空白;文件夹菜单;Directory Opus;Opus;dopus</source>
-        <translation>double-click;blank;folder menu;Directory Opus;Opus;dopus</translation>
     </message>
     <message>
         <source>更新</source>
@@ -8328,6 +8320,34 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>代替 OneCommander 自带的“按首字母筛选”；符号键、侧栏、重命名和地址栏输入不受影响</source>
         <translation>Replaces OneCommander&apos;s own filter by first letters; symbol keys, the sidebar, renaming and the address bar are not affected</translation>
+    </message>
+    <message>
+        <source>在 Directory Opus 的空白处也弹出</source>
+        <translation>Also on blank space in Directory Opus</translation>
+    </message>
+    <message>
+        <source>双击;中键;空白;此电脑;文件夹菜单;Directory Opus;Opus;dopus</source>
+        <translation>double-click;middle click;blank;This PC;folder menu;Directory Opus;Opus;dopus</translation>
+    </message>
+    <message>
+        <source>已在 Opus 的设置里加好，按“触发方式”弹出</source>
+        <translation>Set up in Opus; opens as chosen in “Trigger method”</translation>
+    </message>
+    <message>
+        <source>Opus 里设的是别处或旧版 Win顺 的命令（旧版的不支持中键，在“此电脑”里也不弹），更新一下就好</source>
+        <translation>Opus runs WinShun from another folder or an older version (no middle click, nothing in “This PC”): update it</translation>
+    </message>
+    <message>
+        <source>点进来就列出常用位置</source>
+        <translation>List common places on click</translation>
+    </message>
+    <message>
+        <source>最近;常用;隐私;建议;列表;对话框</source>
+        <translation>recent;common;privacy;suggestions;list;dialog</translation>
+    </message>
+    <message>
+        <source>文件管理器开着的、收藏的和最近用过的文件夹。关掉后打字才列出，按 ↓ 也能列出</source>
+        <translation>Folders open in file managers, favorites and recently used ones. Off: listed once you type, or with ↓</translation>
     </message>
     <message>
         <source>剪贴板大小</source>
@@ -11866,6 +11886,14 @@ Content index: %5</translation>
     <message>
         <source>收藏“%1”</source>
         <translation>Add “%1” to favorites</translation>
+    </message>
+    <message>
+        <source>点进来时不列出常用位置</source>
+        <translation>Don&apos;t list common places on click</translation>
+    </message>
+    <message>
+        <source>点进来就列出常用位置</source>
+        <translation>List common places on click</translation>
     </message>
     <message>
         <source>这次不显示</source>

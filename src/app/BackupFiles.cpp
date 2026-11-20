@@ -30,7 +30,8 @@ const QString kTimeFormat = u"yyyy-MM-dd-HHmmss"_s;
 const QString kManifest = u"backup.json"_s;
 const QString kSettingsName = u"WinShun.ini"_s;
 constexpr const char16_t* kLocalSettings[] {
-    u"Backup/Folder", u"Index/Folder", u"Index/Drives", u"Launcher/FolderMenuOpusBefore", u"Capture/PrintScreenBefore"};
+    u"Backup/Folder", u"Index/Folder", u"Index/Drives", u"Launcher/FolderMenuOpusBefore",
+    u"Launcher/FolderMenuOpusMiddleBefore", u"Launcher/FolderMenuOpusSingleMiddleBefore", u"Capture/PrintScreenBefore"};
 
 QString tr(const char* text)
 {

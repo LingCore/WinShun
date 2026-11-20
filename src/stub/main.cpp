@@ -173,7 +173,7 @@ void startWinShun()
 // The folder after `option` on our command line, as Explorer's verb passes
 // it ("%V" in quotes, ShellMenu.cpp). Read from the raw line: a drive's root
 // comes as "D:\", whose \" CommandLineToArgvW takes for a quote. Directory
-// Opus is told to leave the backslash off ({sourcepath$|noterm}): "D:".
+// Opus is told to leave the backslash off ({sourcepath|noterm}): "D:".
 // An --en before the folder (older verbs have it) is skipped.
 std::wstring folderAfter(std::wstring_view option, bool skipEnglish = false)
 {
@@ -243,6 +243,7 @@ std::wstring rawAfter(std::wstring_view option)
 constexpr ULONG_PTR kSearchHere = 0x57535348; // "WSSH"
 constexpr ULONG_PTR kUri = 0x57535552; // "WSUR": a winshun:// link, as it came (GitHub #358)
 constexpr ULONG_PTR kFolderMenu = 0x5753464D; // "WSFM"
+constexpr ULONG_PTR kFolderMenuMiddle = 0x57534D43; // "WSMC": ... on a middle click (GitHub #416)
 constexpr ULONG_PTR kRunCommand = 0x57535243; // "WSRC": a command's id, a new line, the path it is run with (GitHub #61)
 constexpr ULONG_PTR kPinPicture = 0x57535050; // "WSPP": a picture file to pin to the screen (GitHub #128)
 constexpr ULONG_PTR kLanSend = 0x57534C53; // "WSLS": files for the LAN transfer, a line each (GitHub #180)
@@ -257,7 +258,7 @@ void sendFolder(const std::wstring& folder, ULONG_PTR tag)
 {
     constexpr wchar_t kWindow[] = L"WinShun.SearchHere";
     HWND window = ::FindWindowExW(HWND_MESSAGE, nullptr, kWindow, nullptr);
-    if (!window && tag == kFolderMenu)
+    if (!window && (tag == kFolderMenu || tag == kFolderMenuMiddle))
         return;
     if (!window) {
         if (!runAutostartTask()) {
@@ -297,8 +298,8 @@ std::string utf8(std::wstring_view text)
     return bytes;
 }
 
-// The <event> Win顺's settings put into Opus's prefs.oxc for this copy
-// (pathtext::opusBlankClickEvent) gets enable="no"; every other byte stays.
+// The <event>s Win顺's settings put into Opus's prefs.oxc for this copy
+// (pathtext::opusBlankClickEvent) get enable="no"; every other byte stays.
 void opusMenuOff()
 {
     PWSTR roaming = nullptr;
@@ -309,9 +310,6 @@ void opusMenuOff()
     std::wstring stub = ownFolder() + L"\\WinShunSearch.exe";
     for (std::size_t at = stub.find(L'&'); at != std::wstring::npos; at = stub.find(L'&', at + 1))
         stub.insert(at + 1, L"amp;"); // as XML writes it; a path has no < > "
-    const std::string ours = utf8(L"<event command=\"&quot;" + stub
-        + L"&quot; --folder-menu &quot;{sourcepath$|noterm}&quot;\" enable=\"yes\" id=\"0\" />");
-
     std::string prefs;
     {
         const HANDLE in = ::CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
@@ -326,11 +324,26 @@ void opusMenuOff()
         }
         ::CloseHandle(in);
     }
-    const std::size_t at = prefs.find(ours);
-    if (at == std::string::npos)
+    // The double click's and the middle click's as settings put them now;
+    // the double click's as before GitHub #416 ({sourcepath$}: nothing run in This PC).
+    struct Ours {
+        const wchar_t* option;
+        const wchar_t* code;
+        const wchar_t* id;
+    };
+    bool changed = false;
+    for (const Ours& ours : {Ours {L"--folder-menu", L"{sourcepath|noterm}", L"0"},
+             Ours {L"--folder-menu", L"{sourcepath$|noterm}", L"0"},
+             Ours {L"--folder-menu-middle", L"{sourcepath|noterm}", L"4"}}) {
+        const std::size_t at = prefs.find(utf8(L"<event command=\"&quot;" + stub + L"&quot; " + ours.option + L" &quot;"
+            + ours.code + L"&quot;\" enable=\"yes\" id=\"" + ours.id + L"\" />"));
+        if (at == std::string::npos)
+            continue;
+        prefs.replace(prefs.find("enable=\"yes\"", at), 12, "enable=\"no\"");
+        changed = true;
+    }
+    if (!changed)
         return;
-    const std::size_t enable = prefs.find("enable=\"yes\"", at);
-    prefs.replace(enable, 12, "enable=\"no\"");
 
     const std::wstring temp = file + L".winshun";
     const HANDLE out = ::CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
@@ -522,8 +535,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         if (!files.empty())
             sendFolder(files, kLanSend);
     } else if (option == L"--folder-menu") {
-        if (const std::wstring folder = folderAfter(L"--folder-menu"); !folder.empty())
-            sendFolder(folder, kFolderMenu);
+        sendFolder(folderAfter(L"--folder-menu"), kFolderMenu); // none in This PC (GitHub #416): the menu all the same
+    } else if (option == L"--folder-menu-middle") {
+        sendFolder(folderAfter(L"--folder-menu-middle"), kFolderMenuMiddle);
     } else if (option == L"--paste-file") {
         if (std::wstring folder = folderAfter(L"--paste-file", true); !folder.empty())
             ws::pasteasfile::paste({.folder = std::move(folder)}, ws::explorerlang::windowsIsEnglish());

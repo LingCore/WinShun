@@ -205,6 +205,10 @@ struct Settings {
     // Directory Opus's <event> for a double click on blank space, as it was
     // before Win顺 put its own there (SettingsEditor::setOpusFolderMenu); "": none.
     QString folderMenuOpusBefore;
+    // ... for a middle click (GitHub #416), and whether a single one ran it
+    // (<bg_commands single_middle_click>), as they were.
+    QString folderMenuOpusMiddleBefore;
+    bool folderMenuOpusSingleMiddleBefore = false;
     // 拖放圆盘 (DropPie): the key under Esc, with files held or dragged,
     // brings up the favorite folders round the pointer to drop
     // them in. Does nothing while Win顺 runs as administrator (drops cannot

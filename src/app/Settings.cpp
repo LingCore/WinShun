@@ -967,6 +967,9 @@ void Settings::load()
     folderMenuFiles = readOrDefault(s, u"Launcher/FolderMenuFiles"_s, d.folderMenuFiles);
     folderMenuHotkey = readOrDefault(s, u"Launcher/FolderMenuHotkey"_s, d.folderMenuHotkey).trimmed();
     folderMenuOpusBefore = readOrDefault(s, u"Launcher/FolderMenuOpusBefore"_s, d.folderMenuOpusBefore);
+    folderMenuOpusMiddleBefore = readOrDefault(s, u"Launcher/FolderMenuOpusMiddleBefore"_s, d.folderMenuOpusMiddleBefore);
+    folderMenuOpusSingleMiddleBefore
+        = readOrDefault(s, u"Launcher/FolderMenuOpusSingleMiddleBefore"_s, d.folderMenuOpusSingleMiddleBefore);
     dropPie = readOrDefault(s, u"Favorites/DropPie"_s, d.dropPie);
     dropPieKeyTakenTold = readOrDefault(s, u"Favorites/DropPieKeyTakenTold"_s, d.dropPieKeyTakenTold);
 
@@ -1410,6 +1413,8 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FolderMenuFiles"_s, folderMenuFiles);
     s.setValue(u"Launcher/FolderMenuHotkey"_s, folderMenuHotkey);
     s.setValue(u"Launcher/FolderMenuOpusBefore"_s, folderMenuOpusBefore);
+    s.setValue(u"Launcher/FolderMenuOpusMiddleBefore"_s, folderMenuOpusMiddleBefore);
+    s.setValue(u"Launcher/FolderMenuOpusSingleMiddleBefore"_s, folderMenuOpusSingleMiddleBefore);
     s.setValue(u"Favorites/DropPie"_s, dropPie);
     s.setValue(u"Favorites/DropPieKeyTakenTold"_s, dropPieKeyTakenTold);
     s.setValue(u"Results/FoldersFirst"_s, foldersFirst);

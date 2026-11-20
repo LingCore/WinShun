@@ -28,6 +28,7 @@ constexpr ULONG_PTR kCopyDataTag = 0x5753484E; // "WSHN"
 constexpr wchar_t kSearchHereClass[] = L"WinShun.SearchHere";
 constexpr ULONG_PTR kSearchHereTag = 0x57535348; // "WSSH"
 constexpr ULONG_PTR kFolderMenuTag = 0x5753464D; // "WSFM"
+constexpr ULONG_PTR kFolderMenuMiddleTag = 0x57534D43; // "WSMC": the same on a middle click
 constexpr ULONG_PTR kLanSendTag = 0x57534C53; // "WSLS"
 constexpr ULONG_PTR kPinPictureTag = 0x57535050; // "WSPP"
 constexpr ULONG_PTR kRunCommandTag = 0x57535243; // "WSRC"
@@ -349,7 +350,8 @@ LRESULT CALLBACK MessageWindow::searchHereProc(HWND hwnd, UINT msg, WPARAM wPara
     auto* self = reinterpret_cast<MessageWindow*>(::GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     const auto* data = reinterpret_cast<const COPYDATASTRUCT*>(lParam);
     if (!self || !data
-        || (data->dwData != kSearchHereTag && data->dwData != kFolderMenuTag && data->dwData != kLanSendTag
+        || (data->dwData != kSearchHereTag && data->dwData != kFolderMenuTag && data->dwData != kFolderMenuMiddleTag
+            && data->dwData != kLanSendTag
             && data->dwData != kPinPictureTag && data->dwData != kRunCommandTag && data->dwData != kUriTag)
         || !data->lpData
         || data->cbData < sizeof(wchar_t) || data->cbData > 32768 * sizeof(wchar_t))
@@ -387,8 +389,14 @@ LRESULT CALLBACK MessageWindow::searchHereProc(HWND hwnd, UINT msg, WPARAM wPara
         self->m_callbacks.lanSend(files);
         return TRUE;
     }
-    const auto& callback = data->dwData == kFolderMenuTag ? self->m_callbacks.folderMenu
-        : data->dwData == kPinPictureTag                  ? self->m_callbacks.pinPicture // a file's full path
+    if (data->dwData == kFolderMenuTag || data->dwData == kFolderMenuMiddleTag) {
+        if (!self->m_callbacks.folderMenu)
+            return FALSE;
+        // The folder Opus shows; none in This PC, a collection, an FTP site (GitHub #416).
+        self->m_callbacks.folderMenu(isFolderPath(folder) ? folder : QString(), data->dwData == kFolderMenuMiddleTag);
+        return TRUE;
+    }
+    const auto& callback = data->dwData == kPinPictureTag ? self->m_callbacks.pinPicture // a file's full path
                                                           : self->m_callbacks.searchHere;
     if (!isFolderPath(folder) || !callback)
         return FALSE;

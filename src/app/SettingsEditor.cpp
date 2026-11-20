@@ -62,6 +62,7 @@
 #include <QWinEventNotifier>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <thread>
@@ -1420,13 +1421,15 @@ void SettingsEditor::hurryIncubation(QObject* window, bool on)
     m_incubationHurry->start();
 }
 
-QString SettingsEditor::opusFolderMenuCommand() const
+QString SettingsEditor::opusFolderMenuCommand(bool middle) const
 {
-    // {sourcepath$}: the folder shown, and nothing run for a non-folder
-    // (a collection, an FTP site); |noterm: "D:" for a drive, not "D:\",
-    // whose \" would read as a quote.
+    // {sourcepath}: the folder shown; for This PC, a collection or an FTP
+    // site no folder of the disk, and the menu has nothing for "here" (as the
+    // hotkey's there). Not {sourcepath$}, as before (GitHub #416): with that
+    // Opus ran nothing there. |noterm: "D:" for a drive, not "D:\", whose \"
+    // would read as a quote.
     const QString stub = scoop::stablePath(QCoreApplication::applicationDirPath() + u"/WinShunSearch.exe"_s); // Scoop: via "current"
-    return u"\"%1\" --folder-menu \"{sourcepath$|noterm}\""_s.arg(stub);
+    return u"\"%1\" %2 \"{sourcepath|noterm}\""_s.arg(stub, middle ? u"--folder-menu-middle"_s : u"--folder-menu"_s);
 }
 
 void SettingsEditor::openOpusPreferences() const
@@ -1436,11 +1439,13 @@ void SettingsEditor::openOpusPreferences() const
 
 namespace {
 
-// Win顺's command for Directory Opus: of this copy, or of another one.
+// Win顺's command for Directory Opus (either click's): of this copy, or of another one.
 bool isFolderMenuCommand(const QString& command)
 {
     return command.contains(u"WinShunSearch.exe\" --folder-menu"_s, Qt::CaseInsensitive);
 }
+
+using pathtext::OpusClick;
 
 } // namespace
 
@@ -1452,12 +1457,16 @@ void SettingsEditor::refreshOpusFolderMenu()
     QString taken;
     if (const std::wstring file = filemanager::opusPrefsFile(); !file.empty()) {
         QFile prefs(QString::fromStdWString(file));
-        const pathtext::OpusBlankClick click = prefs.open(QIODevice::ReadOnly)
-            ? pathtext::opusBlankClick(prefs.readAll()) : pathtext::OpusBlankClick {};
+        const QByteArray text = prefs.open(QIODevice::ReadOnly) ? prefs.readAll() : QByteArray();
+        const pathtext::OpusBlankClick click = pathtext::opusBlankClick(text);
         if (!click.hasPlace) {
             state = u"manual"_s;
         } else if (click.enabled && isFolderMenuCommand(click.command)) {
-            state = click.command.compare(opusFolderMenuCommand(), Qt::CaseInsensitive) == 0 ? u"on"_s : u"stale"_s;
+            const pathtext::OpusBlankClick middle = pathtext::opusBlankClick(text, OpusClick::Middle);
+            const bool current = click.command.compare(opusFolderMenuCommand(), Qt::CaseInsensitive) == 0
+                && middle.enabled && middle.command.compare(opusFolderMenuCommand(true), Qt::CaseInsensitive) == 0
+                && pathtext::opusSingleMiddleClick(text);
+            state = current ? u"on"_s : u"stale"_s;
         } else if (click.enabled && !click.command.trimmed().isEmpty()) {
             state = u"taken"_s;
             taken = click.command;
@@ -1483,25 +1492,53 @@ void SettingsEditor::setOpusFolderMenu(bool on)
     m_opusFolderMenu = u"busy"_s;
     m_opusFolderMenuProblem.clear();
     emit opusFolderMenuChanged();
-    const QByteArray event = on ? pathtext::opusBlankClickEvent(opusFolderMenuCommand())
-                                : m_settings.folderMenuOpusBefore.toUtf8(); // none: taken away
+    // What Opus had for each click before Win顺 put its own there: kept
+    // while Win顺's are there, back as they go.
+    struct Before {
+        QString leftDouble;
+        QString middle;
+        bool singleMiddle = false;
+    };
+    const std::array<QString, 2> commands {opusFolderMenuCommand(), opusFolderMenuCommand(true)};
     const QString backup = QDir(Settings::dataDir()).filePath(u"opus-prefs.oxc.bak"_s);
-    std::thread([guard = QPointer(this), on, event, backup, before = m_settings.folderMenuOpusBefore]() mutable {
+    std::thread([guard = QPointer(this), on, commands, backup,
+                    before = Before {m_settings.folderMenuOpusBefore, m_settings.folderMenuOpusMiddleBefore,
+                        m_settings.folderMenuOpusSingleMiddleBefore}]() mutable {
         bool understood = true;
         const bool restarts = filemanager::opusRunning();
         const filemanager::PrefsEdit result = filemanager::editOpusPrefs(
             [&](const QByteArray& prefs) -> std::optional<QByteArray> {
-                const pathtext::OpusBlankClick click = pathtext::opusBlankClick(prefs);
-                const bool ours = isFolderMenuCommand(click.command);
-                if (!on && !ours)
-                    return std::nullopt; // the user's own by now: it stays
-                QByteArray changed = pathtext::withOpusBlankClick(prefs, event);
+                QByteArray changed = prefs;
+                bool middleWasOurs = false;
+                for (const OpusClick click : {OpusClick::LeftDouble, OpusClick::Middle}) {
+                    const bool middle = click == OpusClick::Middle;
+                    QString& was = middle ? before.middle : before.leftDouble;
+                    const pathtext::OpusBlankClick now = pathtext::opusBlankClick(changed, click);
+                    const bool ours = isFolderMenuCommand(now.command);
+                    if (middle)
+                        middleWasOurs = ours;
+                    if (!on && !ours)
+                        continue; // the user's own by now: it stays
+                    if (on && !ours)
+                        was = QString::fromUtf8(now.element);
+                    changed = pathtext::withOpusBlankClick(changed,
+                        on ? pathtext::opusBlankClickEvent(commands[middle], click) : was.toUtf8(), click); // "": taken away
+                    if (changed.isEmpty())
+                        break;
+                }
+                if (!changed.isEmpty() && on) {
+                    if (!middleWasOurs)
+                        before.singleMiddle = pathtext::opusSingleMiddleClick(prefs);
+                    changed = pathtext::withOpusSingleMiddleClick(changed, true);
+                } else if (!changed.isEmpty() && middleWasOurs) {
+                    changed = pathtext::withOpusSingleMiddleClick(changed, before.singleMiddle);
+                }
                 if (changed.isEmpty()) {
                     understood = false;
                     return std::nullopt;
                 }
-                if (on && !ours)
-                    before = QString::fromUtf8(click.element);
+                if (changed == prefs)
+                    return std::nullopt; // as it is to be already
                 if (!QFile::exists(backup)) { // the file as it was before Win顺 first changed it
                     QSaveFile copy(backup);
                     if (copy.open(QIODevice::WriteOnly) && copy.write(prefs) == prefs.size())
@@ -1519,10 +1556,16 @@ void SettingsEditor::setOpusFolderMenu(bool on)
                 guard->m_opusFolderMenuProblem = tr("改不了 Opus 的设置文件，请照下面的步骤在 Opus 里设一次");
             else if (!understood)
                 guard->m_opusFolderMenuProblem = tr("认不出 Opus 的设置文件，请照下面的步骤在 Opus 里设一次");
-            if (result == filemanager::PrefsEdit::Done && understood
-                && guard->m_settings.folderMenuOpusBefore != (on ? before : QString())) {
-                guard->m_settings.folderMenuOpusBefore = on ? before : QString();
-                guard->commit();
+            if (result == filemanager::PrefsEdit::Done && understood) {
+                Settings& s = guard->m_settings;
+                const Before kept = on ? before : Before {};
+                if (s.folderMenuOpusBefore != kept.leftDouble || s.folderMenuOpusMiddleBefore != kept.middle
+                    || s.folderMenuOpusSingleMiddleBefore != kept.singleMiddle) {
+                    s.folderMenuOpusBefore = kept.leftDouble;
+                    s.folderMenuOpusMiddleBefore = kept.middle;
+                    s.folderMenuOpusSingleMiddleBefore = kept.singleMiddle;
+                    guard->commit();
+                }
             }
             guard->refreshOpusFolderMenu();
             emit guard->opusFolderMenuChanged(); // the problem, though the state may be as it was

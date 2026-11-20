@@ -36,9 +36,10 @@ public:
         std::function<void(int id, std::uint32_t time)> hotkeyPressed;
         std::function<void(const QString&)> commandReceived;
         std::function<void(const QString& folder)> searchHere; // "D:\Work", "\\nas\docs"
-        // A double click on blank space in Directory Opus showing `folder`
-        // (WinShunSearch.exe --folder-menu, run by Opus).
-        std::function<void(const QString& folder)> folderMenu;
+        // A double click (or with `middle` a middle click) on blank space in
+        // Directory Opus showing `folder`, empty for none (This PC):
+        // WinShunSearch.exe --folder-menu (--folder-menu-middle), run by Opus.
+        std::function<void(const QString& folder, bool middle)> folderMenu;
         // Files chosen in Explorer's 发送到 › 局域网传输 (WinShunSearch.exe --lan-send, GitHub #180).
         std::function<void(const QStringList& files)> lanSend;
         // Explorer's Win顺 命令 › on a file or a folder (GitHub #61): the command's id (what

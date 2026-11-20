@@ -5454,16 +5454,16 @@ Window {
                     property bool copied: false
                     property bool confirming: false // Opus runs: it restarts after a second click
                     shown: window.editor.folderMenu && window.editor.fileManagers.indexOf("dopus") >= 0
-                    title: qsTr("在 Directory Opus 的空白处双击")
-                    keywords: qsTr("双击;空白;文件夹菜单;Directory Opus;Opus;dopus").split(";")
+                    title: qsTr("在 Directory Opus 的空白处也弹出")
+                    keywords: qsTr("双击;中键;空白;此电脑;文件夹菜单;Directory Opus;Opus;dopus").split(";")
                     description: {
                         let text
                         switch (setup) {
                         case "on":
-                            text = qsTr("已在 Opus 的设置里加好")
+                            text = qsTr("已在 Opus 的设置里加好，按“触发方式”弹出")
                             break
                         case "stale":
-                            text = qsTr("Opus 里设的是别处的 Win顺，更新一下就好")
+                            text = qsTr("Opus 里设的是别处或旧版 Win顺 的命令（旧版的不支持中键，在“此电脑”里也不弹），更新一下就好")
                             break
                         case "off":
                             text = qsTr("要在 Opus 的设置里加一条命令，Win顺 可以替你加")

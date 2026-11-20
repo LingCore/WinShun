@@ -108,11 +108,12 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool folderMenuItemFavorite READ folderMenuItemFavorite WRITE setFolderMenuItemFavorite NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuItemSettings READ folderMenuItemSettings WRITE setFolderMenuItemSettings NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuFiles READ folderMenuFiles WRITE setFolderMenuFiles NOTIFY changed FINAL)
-    // The folder menu in Directory Opus, which runs a command of its settings
-    // on a double click on blank space (refreshOpusFolderMenu): on | stale
-    // (another copy's WinShunSearch.exe) | off | taken (a command of the
-    // user's own: opusFolderMenuTaken) | manual (no settings file, or one
-    // not understood: set up by hand) | busy (setOpusFolderMenu at work).
+    // The folder menu in Directory Opus, which runs commands of its settings
+    // on a double and a middle click on blank space (refreshOpusFolderMenu):
+    // on | stale (another copy's WinShunSearch.exe, or the command of before
+    // GitHub #416) | off | taken (a command of the user's own:
+    // opusFolderMenuTaken) | manual (no settings file, or one not understood:
+    // set up by hand) | busy (setOpusFolderMenu at work).
     Q_PROPERTY(QString opusFolderMenu READ opusFolderMenu NOTIFY opusFolderMenuChanged FINAL)
     Q_PROPERTY(QString opusFolderMenuTaken READ opusFolderMenuTaken NOTIFY opusFolderMenuChanged FINAL)
     Q_PROPERTY(QString opusFolderMenuProblem READ opusFolderMenuProblem NOTIFY opusFolderMenuChanged FINAL)
@@ -550,10 +551,11 @@ public:
     // search or a favorite given it is told; empty when it is free.
     QString captureKeywordTaken(const QString& keyword) const;
     Q_INVOKABLE void refreshFileManagers();
-    // The command Directory Opus runs for a double click on blank space, to
-    // bring up the folder menu there (FolderMenu::requested): for its
-    // Preferences > File Displays > Mouse > Background Events.
-    Q_INVOKABLE QString opusFolderMenuCommand() const;
+    // The command Directory Opus runs for a double click on blank space (or
+    // a middle click), to bring up the folder menu there
+    // (FolderMenu::requested): for its Preferences > File Displays > Mouse >
+    // Background Events.
+    Q_INVOKABLE QString opusFolderMenuCommand(bool middle = false) const;
     Q_INVOKABLE void openOpusPreferences() const;
     // While `on`: what `window`'s engine is making in the background (a
     // settings page the pointer rests on: SettingsWindow.hoverNav) made on
@@ -566,8 +568,9 @@ public:
     QString opusFolderMenuProblem() const { return m_opusFolderMenuProblem; }
     bool opusRunning() const { return m_opusRunning; }
     Q_INVOKABLE void refreshOpusFolderMenu();
-    // Puts that command into Opus's settings (what was there comes back with
-    // `on` false), closing and starting again an Opus that runs.
+    // Puts those commands into Opus's settings, a single middle click made
+    // to run its (what was there comes back with `on` false), closing and
+    // starting again an Opus that runs.
     Q_INVOKABLE void setOpusFolderMenu(bool on);
     bool includeRemovableDrives() const { return m_settings.includeRemovableDrives; }
     void setIncludeRemovableDrives(bool on);

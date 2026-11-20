@@ -121,8 +121,8 @@ bool endThisCopy(const QString& appDir)
     return false;
 }
 
-// Directory Opus's double click, when it runs this copy's WinShunSearch.exe:
-// back to what it was before (the Win顺 setting keeps that), as switching it
+// Directory Opus's double and middle click, when they run this copy's
+// WinShunSearch.exe: back to what they were before (the Win顺 setting keeps that), as switching it
 // off in the settings does, but as a plain edit of the file: Opus is not
 // closed and started again here, which would hold up whoever waits for this.
 // Opus reads the file when it starts.
@@ -136,13 +136,25 @@ bool opusMenuOff(const Settings& settings, bool* touched)
         return true;
     const QByteArray prefs = prefsFile.readAll();
     prefsFile.close();
-    const pathtext::OpusBlankClick click = pathtext::opusBlankClick(prefs);
-    if (!click.enabled || !click.command.contains(u"WinShunSearch.exe\" --folder-menu"_s, Qt::CaseInsensitive))
+    const auto ours = [&prefs](pathtext::OpusClick which) {
+        const pathtext::OpusBlankClick click = pathtext::opusBlankClick(prefs, which);
+        if (!click.enabled || !click.command.contains(u"WinShunSearch.exe\" --folder-menu"_s, Qt::CaseInsensitive))
+            return false;
+        const std::wstring program = autostart::runCommandProgram(click.command.toStdWString());
+        return scoop::sameCopy(QString::fromStdWString(program), QCoreApplication::applicationDirPath() + u"/WinShunSearch.exe"_s);
+    }; // else another copy's (or the user's own): it stays
+    const bool leftDouble = ours(pathtext::OpusClick::LeftDouble);
+    const bool middle = ours(pathtext::OpusClick::Middle);
+    if (!leftDouble && !middle)
         return true;
-    const std::wstring program = autostart::runCommandProgram(click.command.toStdWString());
-    if (!scoop::sameCopy(QString::fromStdWString(program), QCoreApplication::applicationDirPath() + u"/WinShunSearch.exe"_s))
-        return true; // another copy's (or the user's own): it stays
-    const QByteArray changed = pathtext::withOpusBlankClick(prefs, settings.folderMenuOpusBefore.toUtf8());
+    QByteArray changed = prefs;
+    if (leftDouble)
+        changed = pathtext::withOpusBlankClick(changed, settings.folderMenuOpusBefore.toUtf8());
+    if (middle && !changed.isEmpty()) {
+        changed = pathtext::withOpusBlankClick(changed, settings.folderMenuOpusMiddleBefore.toUtf8(), pathtext::OpusClick::Middle);
+        if (!changed.isEmpty())
+            changed = pathtext::withOpusSingleMiddleClick(changed, settings.folderMenuOpusSingleMiddleBefore);
+    }
     if (changed.isEmpty())
         return false;
     QSaveFile save(QString::fromStdWString(file));

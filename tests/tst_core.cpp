@@ -1850,9 +1850,9 @@ private slots:
         QVERIFY(!click.enabled);
 
         // Quotes, & and > in the command; only the element changes.
-        const QString ours = uR"("C:\A & B\WinShunSearch.exe" --folder-menu "{sourcepath$|noterm}" >x)"_s;
+        const QString ours = uR"("C:\A & B\WinShunSearch.exe" --folder-menu "{sourcepath|noterm}" >x)"_s;
         const QByteArray event = opusBlankClickEvent(ours);
-        QCOMPARE(event, R"(<event command="&quot;C:\A &amp; B\WinShunSearch.exe&quot; --folder-menu &quot;{sourcepath$|noterm}&quot; &gt;x" enable="yes" id="0" />)");
+        QCOMPARE(event, R"(<event command="&quot;C:\A &amp; B\WinShunSearch.exe&quot; --folder-menu &quot;{sourcepath|noterm}&quot; &gt;x" enable="yes" id="0" />)");
         const QByteArray set = withOpusBlankClick(before, event);
         QCOMPARE(QByteArray(set).replace(event, click.element), before);
         click = pathtext::opusBlankClick(set);
@@ -1885,6 +1885,38 @@ private slots:
         QVERIFY(withOpusBlankClick("<prefs><dblclk>", event).isEmpty());
         QVERIFY(!pathtext::opusBlankClick("<prefs/>").hasPlace);
         QVERIFY(withOpusBlankClick({}, event).isEmpty());
+
+        // The middle click's (id 4, GitHub #416) beside the double click's; each finds its own.
+        using pathtext::OpusClick;
+        const QString middle = uR"("C:\A\WinShunSearch.exe" --folder-menu-middle "{sourcepath|noterm}")"_s;
+        const QByteArray middleEvent = opusBlankClickEvent(middle, OpusClick::Middle);
+        QVERIFY(middleEvent.endsWith(" enable=\"yes\" id=\"4\" />"));
+        QVERIFY(pathtext::opusBlankClick(set, OpusClick::Middle).element.isEmpty());
+        const QByteArray both = withOpusBlankClick(set, middleEvent, OpusClick::Middle);
+        // Put in after the last one, on its own line.
+        QVERIFY(both.contains("id=\"0\" />\n\t\t\t" + middleEvent + "\n\t\t</bg_commands>"));
+        QCOMPARE(pathtext::opusBlankClick(both, OpusClick::Middle).command, middle);
+        QCOMPARE(pathtext::opusBlankClick(both).command, ours);
+        QCOMPARE(withOpusBlankClick(both, {}, OpusClick::Middle), set);
+        const QByteArray crlf = QByteArray(set).replace("\n", "\r\n");
+        QCOMPARE(withOpusBlankClick(withOpusBlankClick(crlf, middleEvent, OpusClick::Middle), {}, OpusClick::Middle), crlf);
+
+        // <bg_commands single_middle_click>: set in its tag, put in where it is not there.
+        using pathtext::opusSingleMiddleClick;
+        using pathtext::withOpusSingleMiddleClick;
+        QVERIFY(!opusSingleMiddleClick(both));
+        const QByteArray single = withOpusSingleMiddleClick(both, true);
+        QCOMPARE(QByteArray(single).replace("single_middle_click=\"yes\"", "single_middle_click=\"no\""), both);
+        QVERIFY(opusSingleMiddleClick(single));
+        QCOMPARE(withOpusSingleMiddleClick(single, false), both);
+        QCOMPARE(withOpusSingleMiddleClick(bare, true), QByteArray()); // no <bg_commands>
+        const QByteArray plain = "<prefs><dblclk><bg_commands><event command=\"x\" enable=\"yes\" id=\"4\" /></bg_commands></dblclk></prefs>";
+        QVERIFY(!opusSingleMiddleClick(plain));
+        QCOMPARE(withOpusSingleMiddleClick(plain, true),
+            "<prefs><dblclk><bg_commands single_middle_click=\"yes\"><event command=\"x\" enable=\"yes\" id=\"4\" /></bg_commands></dblclk></prefs>");
+        QVERIFY(opusSingleMiddleClick("<prefs><dblclk><bg_commands single_middle_click=\"yes\"/></dblclk></prefs>"));
+        // The one outside <dblclk> is not its.
+        QVERIFY(!opusSingleMiddleClick("<prefs><other><bg_commands single_middle_click=\"yes\"/></other><dblclk><text /></dblclk></prefs>"));
     }
 
     void splitTyped()
