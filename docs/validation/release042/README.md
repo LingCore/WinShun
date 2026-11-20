@@ -15,6 +15,8 @@
 - 正式发布（`release.ps1 -Publish -Push Normal`）：8 个附件（安装包、便携包、离线安装包、增强 OCR 组件、3 个增量包、SHA256SUMS.txt），GitHub 上每个附件的大小和 SHA256 与本地一致，标签 v0.42.0 指向 fed24d4f；CNB 镜像 8 个文件下载回来核对通过；Scoop 清单 0ad70426。正式版 `WinShun.exe`（f6c0cb78…）和拍海报用的程序逐字节相同。
 - `inapp-upgrade.json`：`tools/verify-installed-upgrade.ps1 -Mode InApp`。本机装着的 0.41.0 走软件内更新到 0.42.0，下载的是 `WinShun-0.42.0-x64-delta-from-0.41.0.zip`（7 315 984 字节），用时 76.9 秒；更新后服务在运行、开机任务指向 Program Files、剪贴板历史的 SHA256 不变，新版本以普通权限自己启动。用的是发布前那次打包（`dist\release042`）。之后只改了 `Preview.cpp` 里出海报用的预览分支（`--clipboard-picture-view --gallery-image`）和文档，更新链路的代码没动。
 
+- `setup-upgrade.json`：发布后（用户放行）用正式的 `WinShun-0.42.0-x64-setup.exe`（SHA256 与 Release 一致）跑 `tools/verify-installed-upgrade.ps1 -Mode Setup`，覆盖 InApp 实测装上的那份：退出码 0，用时 11.2 秒，装完自己重新运行；装好的 `WinShun.exe` 是正式版（f6c0cb78…），服务在运行、开机任务指向 Program Files、剪贴板历史的 SHA256 不变。
+
 ## 海报
 
 `tools/screenshots/release042.py`，正式版程序和正式 QML：
@@ -39,7 +41,6 @@
 
 ## 没有覆盖的
 
-- 用正式安装包覆盖本机（`verify-installed-upgrade.ps1 -Mode Setup`）：被自动模式拦下，等用户放行再做。本机现在装的是 InApp 实测时那次打包的 0.42.0（exe 0f57b286…，和正式版只差出海报用的预览分支）。
 
 - 剪贴板同步和 Mac顺 的真机互通：协议按同一份测试向量核对过（`tst_shunsync`），海报那次是两台 Windows 引擎在同一台电脑上互连。
 - 跨屏截图在用户的两块显示器上实测过（#409 那一轮），这次发布没有重测。
