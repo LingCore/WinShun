@@ -9,6 +9,7 @@
 #include <array>
 #include <optional>
 #include <span>
+#include <string_view>
 
 namespace ws::onecommander {
 
@@ -60,6 +61,42 @@ inline std::optional<QList<pathtext::XYplorerTab>> sessionTabs(
         }
     }
     return out;
+}
+
+// Typing in OneCommander (Settings::oneCommanderTyping): what has its
+// keyboard, as UI Automation tells it, from the focused element up to its
+// main window (the last step). Measured on 3.108: a pane's file list is a
+// ListBox "flb" (every view: details, content, thumbnails), the focus on it
+// or on one of its ListBoxItems; typing there opens its "起始:" filter. Its
+// rename and address fields are popups (windows of their own, never this
+// window in front); the sidebar's lists, the tabs and the toolbars are not
+// file lists. The window itself with the focus (after a rename, say): typing
+// does nothing there, the file list in sight, so it counts as the list.
+// UIA_*ControlTypeId values, kept here to keep this free of UI Automation.
+struct FocusStep {
+    long controlType = 0;
+    std::wstring_view automationId;
+    std::wstring_view className;
+};
+inline constexpr long kListItemControl = 50007;
+inline constexpr long kListControl = 50008;
+inline constexpr long kWindowControl = 50032;
+enum class TypingFocus { FileList, Window, Other };
+
+inline TypingFocus typingFocus(std::span<const FocusStep> chain)
+{
+    if (chain.empty() || chain.back().controlType != kWindowControl)
+        return TypingFocus::Other;
+    if (chain.size() == 1)
+        return TypingFocus::Window;
+    const auto isList = [](const FocusStep& step) {
+        return step.controlType == kListControl && step.automationId == L"flb";
+    };
+    if (isList(chain[0]))
+        return TypingFocus::FileList;
+    if (chain.size() > 2 && chain[0].controlType == kListItemControl && isList(chain[1]))
+        return TypingFocus::FileList;
+    return TypingFocus::Other;
 }
 
 } // namespace ws::onecommander

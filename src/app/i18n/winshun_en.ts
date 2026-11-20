@@ -819,6 +819,10 @@
         <translation>Standard</translation>
     </message>
     <message>
+        <source>在 OneCommander 里直接打字搜索</source>
+        <translation>Type to search in OneCommander</translation>
+    </message>
+    <message>
         <source>宽松</source>
         <translation>Roomy</translation>
     </message>
@@ -4509,6 +4513,14 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>just type;type to search</translation>
     </message>
     <message>
+        <source>OneCommander 里打字搜索</source>
+        <translation>Type to search in OneCommander</translation>
+    </message>
+    <message>
+        <source>OneCommander;One Commander;直接打字;双栏;type to search</source>
+        <translation>OneCommander;One Commander;just type;dual pane;type to search</translation>
+    </message>
+    <message>
         <source>收藏圆盘</source>
         <translation>Favorites pie</translation>
     </message>
@@ -4658,6 +4670,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>展开内置功能</source>
         <translation>Expand built-in features</translation>
+    </message>
+    <message>
+        <source>在文件列表中输入字母或数字，用 Win顺 搜索这一栏的文件夹，代替 OneCommander 的按首字母筛选</source>
+        <translation>Type letters or digits in a file list to search that pane&apos;s folder with WinShun, instead of OneCommander&apos;s filter by first letters</translation>
     </message>
     <message>
         <source>全部插件</source>
@@ -4921,10 +4937,6 @@ Send suggestions and problems on our website</translation>
     <message>
         <source>空文件</source>
         <translation>Empty file</translation>
-    </message>
-    <message>
-        <source>%1 · %2</source>
-        <translation>%1 · %2</translation>
     </message>
     <message>
         <source>建议</source>
@@ -8250,6 +8262,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>字母直达;字母;数字;顺序;左手;单手</source>
         <translation>letter jump;letters;digits;order;left hand;one hand</translation>
+    </message>
+    <message>
+        <source>在 OneCommander 里直接打字搜索</source>
+        <translation>Type to search in OneCommander</translation>
+    </message>
+    <message>
+        <source>OneCommander;One Commander;直接打字;输入;当前文件夹;双栏;type to search</source>
+        <translation>OneCommander;One Commander;just type;typing;current folder;dual pane;type to search</translation>
+    </message>
+    <message>
+        <source>代替 OneCommander 自带的“按首字母筛选”；符号键、侧栏、重命名和地址栏输入不受影响</source>
+        <translation>Replaces OneCommander&apos;s own filter by first letters; symbol keys, the sidebar, renaming and the address bar are not affected</translation>
     </message>
     <message>
         <source>剪贴板大小</source>

@@ -103,6 +103,18 @@ bool selectInExplorer(HWND tab, const std::wstring& folder, const std::wstring& 
 // PC, a library, a collection, FTP, inside an archive: GitHub #82); nothing
 // when Opus did not answer or the window is no Opus file display.
 std::optional<std::wstring> opusPlace(HWND tab);
+// Typing in OneCommander's main window `window` (TypeToSearch): its file list
+// has the keyboard (onecommander::typingFocus, by UI Automation): the folder of
+// its active pane (empty: none on disk, This PC) and where that list is on the
+// screen (empty when the window itself has the focus). nullopt: anything else
+// has it (its sidebar, a toolbar, a menu), or OneCommander did not answer.
+struct OneCommanderTyping {
+    std::wstring folder;
+    RECT list {};
+};
+std::optional<OneCommanderTyping> oneCommanderTyping(HWND window);
+// That window's active pane goes to `path`: a folder, or a file selected in its folder.
+bool goToInOneCommanderWindow(HWND window, const std::wstring& path);
 std::wstring opusFolder(HWND tab); // empty for both of those
 bool goToInOpusView(HWND root, HWND tab, const std::wstring& folder, const std::wstring& select = {});
 bool goTo(HWND tab, const std::wstring& folder);

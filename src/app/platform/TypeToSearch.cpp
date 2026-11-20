@@ -23,6 +23,7 @@
 #include <cwchar>
 #include <format>
 #include <latch>
+#include <string_view>
 #include <utility>
 
 namespace ws {
@@ -55,6 +56,20 @@ bool isStartMenu(HWND window)
 {
     return window && foreground::isSearchHost(foreground::programOf(window));
 }
+
+// OneCommander's main window, as filemanager::kindOf tells it: WPF's class,
+// no owner (its settings and other dialogs have one), its program.
+bool isOneCommander(HWND window)
+{
+    wchar_t name[16] {}; // "HwndWrapper[" and a little: the rest is cut off
+    return window && ::GetClassNameW(window, name, static_cast<int>(std::size(name))) > 0
+        && std::wstring_view(name).starts_with(L"HwndWrapper[") && !::GetWindow(window, GW_OWNER)
+        && foreground::programOf(window).compare(u"OneCommander.exe", Qt::CaseInsensitive) == 0;
+}
+
+// Keys typed in OneCommander outside its file lists go straight to it for
+// this long after the last of them, its focus not having moved meanwhile.
+constexpr DWORD kElsewhereMs = 2000;
 
 INPUT keyInput(WORD vk, WORD scanCode, DWORD flags, ULONG_PTR mark = kOwnInput)
 {
@@ -262,8 +277,16 @@ TypeToSearch::TypeToSearch(Surfaces surfaces, Callbacks callbacks)
             if (msg.hwnd == nullptr && msg.message == kDeliverMessage)
                 apply(m_hold.deliver(msg.wParam != 0, front(), ::GetTickCount()));
             else if (msg.hwnd == nullptr && msg.message == kGiveBackMessage) {
-                if (!msg.wParam || pending(static_cast<RequestId>(msg.wParam)))
+                if (!msg.wParam || pending(static_cast<RequestId>(msg.wParam))) {
+                    // Typed in OneCommander elsewhere than a file list: so
+                    // are the keys after them, until its focus moves.
+                    if (msg.lParam && m_oneCommander && m_sourceWindow == m_oneCommander
+                        && m_focusMoves == m_focusMovesAtHold) {
+                        m_elsewhereAt = m_focusMoves;
+                        m_elsewhereKey = ::GetTickCount();
+                    }
                     apply(m_hold.giveBack(front(), ::GetTickCount()));
+                }
             } else if (msg.hwnd == nullptr && msg.message == kPassedMessage)
                 apply(m_hold.passed(front(), ::GetTickCount()));
             else if (msg.hwnd == nullptr && msg.message == kHandOverMessage)
@@ -282,6 +305,7 @@ TypeToSearch::TypeToSearch(Surfaces surfaces, Callbacks callbacks)
         // the Raw Input put back after both.
         const searchtyping::Hold::Step last = m_hold.stop();
         setHooked(false);
+        watchOneCommander(nullptr);
         if (!last.send.empty())
             sendStrokes(last.send, false);
         m_rawInputAside.reset();
@@ -303,9 +327,9 @@ void TypeToSearch::deliver(bool ready)
     ::PostThreadMessageW(m_threadId.load(), kDeliverMessage, ready ? 1 : 0, 0);
 }
 
-void TypeToSearch::giveBack(RequestId request)
+void TypeToSearch::giveBack(RequestId request, bool notFileList)
 {
-    ::PostThreadMessageW(m_threadId.load(), kGiveBackMessage, static_cast<WPARAM>(request), 0);
+    ::PostThreadMessageW(m_threadId.load(), kGiveBackMessage, static_cast<WPARAM>(request), notFileList ? 1 : 0);
 }
 
 void TypeToSearch::handOver()
@@ -367,6 +391,31 @@ void CALLBACK TypeToSearch::foregroundProc(HWINEVENTHOOK, DWORD, HWND hwnd, LONG
         t_typing->foregroundChanged(::GetForegroundWindow(), hwnd);
 }
 
+// The keyboard focus moved inside OneCommander (WPF raises this for its
+// elements; the hook is for its process alone): counted, nothing asked.
+void CALLBACK TypeToSearch::focusProc(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD)
+{
+    if (t_typing)
+        ++t_typing->m_focusMoves;
+}
+
+void TypeToSearch::watchOneCommander(HWND window)
+{
+    DWORD process = 0;
+    if (window)
+        ::GetWindowThreadProcessId(window, &process);
+    if (process == m_oneCommanderProcess)
+        return;
+    if (m_focusHook)
+        ::UnhookWinEvent(m_focusHook);
+    m_focusHook = nullptr;
+    m_oneCommanderProcess = process;
+    m_elsewhereAt.reset();
+    if (process)
+        m_focusHook = ::SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_FOCUS, nullptr, &TypeToSearch::focusProc,
+            process, 0, WINEVENT_OUTOFCONTEXT);
+}
+
 // An Explorer folder window typing or pasting can count in: told by its
 // classes alone; whether it is elevated is asked here, once, not at every key.
 bool TypeToSearch::watchedExplorer(HWND window) const
@@ -426,11 +475,15 @@ void TypeToSearch::foregroundChanged(HWND window, HWND named)
     m_explorer = nullptr;
     m_explorerBehind = nullptr;
     m_opus = nullptr;
+    m_oneCommander = nullptr;
     m_desktop = nullptr;
     m_pasteTaken = false; // V's release goes where the front went
+    m_elsewhereAt.reset(); // OneCommander's keys straight to it: not after the front moved
     if (!m_startInFront) {
         if (m_surfaces.opus && folderview::isOpusLister(window) && !integrity::higherThanOurs(window))
             m_opus = window;
+        if (m_surfaces.oneCommander && isOneCommander(window) && !integrity::higherThanOurs(window))
+            m_oneCommander = window;
         if (watchedExplorer(window))
             m_explorer = window;
         if (named != window && watchedExplorer(named))
@@ -442,6 +495,15 @@ void TypeToSearch::foregroundChanged(HWND window, HWND named)
             && !integrity::higherThanOurs(window))
             m_desktop = window;
     }
+    // OneCommander's focus events while it is in front (counted from its
+    // popups too: the rename and address fields, which come and go).
+    DWORD process = 0;
+    if (window)
+        ::GetWindowThreadProcessId(window, &process);
+    if (m_oneCommander)
+        watchOneCommander(m_oneCommander);
+    else if (!process || process != m_oneCommanderProcess)
+        watchOneCommander(nullptr);
     setHooked(wantsHook());
     // Keys waiting for Win顺 to come to the front: maybe now. Looked at from
     // the loop, as the timer's are, not from here: the event can come while
@@ -454,7 +516,8 @@ void TypeToSearch::foregroundChanged(HWND window, HWND named)
 
 bool TypeToSearch::wantsHook() const
 {
-    return m_startInFront || m_explorer || m_explorerBehind || m_opus || m_desktop || m_hold.holding();
+    return m_startInFront || m_explorer || m_explorerBehind || m_opus || m_oneCommander || m_desktop
+        || m_hold.holding();
 }
 
 void TypeToSearch::setHooked(bool hooked)
@@ -500,6 +563,28 @@ bool TypeToSearch::opusFocused(HWND& tab) const
     if (!view)
         return false;
     tab = view;
+    return true;
+}
+
+// OneCommander's main window has the keyboard (not one of its popups: the
+// rename and address fields, the search) with no menu of its thread open;
+// what inside it has the focus is asked later (App). Not while keys typed
+// there were just found to be for something else (giveBack's notFileList):
+// those after them are let through, each one keeping that going.
+bool TypeToSearch::oneCommanderFocused()
+{
+    GUITHREADINFO info {sizeof info};
+    if (!m_oneCommander || ::GetForegroundWindow() != m_oneCommander
+        || !::GetGUIThreadInfo(::GetWindowThreadProcessId(m_oneCommander, nullptr), &info)
+        || searchtyping::focusOf(static_cast<unsigned>(info.flags), info.hwndFocus == m_oneCommander)
+            != searchtyping::Focus::ItemsView)
+        return false;
+    const DWORD now = ::GetTickCount();
+    if (m_elsewhereAt && *m_elsewhereAt == m_focusMoves && now - m_elsewhereKey < kElsewhereMs) {
+        m_elsewhereKey = now;
+        return false;
+    }
+    m_elsewhereAt.reset();
     return true;
 }
 
@@ -642,6 +727,7 @@ bool TypeToSearch::startsHold(UINT vk, bool press)
     HWND tab = nullptr;
     HWND source = nullptr;
     bool opus = false;
+    bool oneCommander = false;
     bool desktop = false;
     if (m_startInFront) {
         if (m_windowsSearch || !searchtyping::startsTyping(vk))
@@ -652,8 +738,15 @@ bool TypeToSearch::startsHold(UINT vk, bool press)
             return false;
         source = m_opus;
         opus = true;
-        source = m_opus;
-        opus = true;
+    } else if (m_oneCommander && ::GetForegroundWindow() == m_oneCommander) {
+        // As in Opus: letters and digits, which its own type-to-filter
+        // takes; symbols, Space and the rest stay its.
+        if (!searchtyping::opusStarts(vk, press, combination, held(VK_SHIFT), searchtyping::Focus::ItemsView, false)
+            || !oneCommanderFocused())
+            return false;
+        source = m_oneCommander;
+        oneCommander = true;
+        m_focusMovesAtHold = m_focusMoves;
     } else if (m_surfaces.desktop && m_desktop && ::GetForegroundWindow() == m_desktop) {
         // As in an Explorer folder: the keys that would jump to an icon by
         // its name, the icons having the keyboard (no name being renamed,
@@ -703,6 +796,9 @@ bool TypeToSearch::startsHold(UINT vk, bool press)
         if (desktop) {
             if (m_callbacks.typedOnDesktop)
                 m_callbacks.typedOnDesktop(source, vk, request);
+        } else if (oneCommander) {
+            if (m_callbacks.typedInOneCommander)
+                m_callbacks.typedInOneCommander(source, vk, request);
         } else if (const auto& callback = opus ? m_callbacks.typedInOpus : m_callbacks.typedInExplorer) {
             callback(source, tab, vk, request);
         }

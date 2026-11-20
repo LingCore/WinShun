@@ -9827,7 +9827,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         return result;
     };
     ::SetForegroundWindow(root);
-    app.showFolderSearch(root, tab, false, folder);
+    app.showFolderSearch(root, tab, App::TypingIn::Explorer, folder);
     QQuickWindow* window = nullptr;
     Launcher* launcher = nullptr;
     for (auto* candidate : QGuiApplication::allWindows()) {
@@ -10100,7 +10100,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     });
     shown = second.Get();
     ::SetForegroundWindow(root);
-    app.showFolderSearch(root, secondTab, false, folder);
+    app.showFolderSearch(root, secondTab, App::TypingIn::Explorer, folder);
     const bool again = search(u"follow_"_s, 3);
     check(again, "production search found the three children again for the second tab");
     if (!again)
@@ -10145,7 +10145,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         (area.right - area.left) * 3 / 4, (area.bottom - area.top) * 3 / 4, SWP_NOZORDER | SWP_NOACTIVATE);
     pump(500);
     ::SetForegroundWindow(root);
-    app.showFolderSearch(root, secondTab, false, QString::fromStdWString(filemanager::explorerFolder(secondTab)));
+    app.showFolderSearch(root, secondTab, App::TypingIn::Explorer, QString::fromStdWString(filemanager::explorerFolder(secondTab)));
     pump(600);
     settle(window, 3);
     {
@@ -10242,7 +10242,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         const bool both = !::IsRectEmpty(&bars.vertical) && !::IsRectEmpty(&bars.horizontal);
         check(both, "a folder of more rows and columns than fit: Explorer shows both scroll bars");
         ::SetForegroundWindow(root);
-        app.showFolderSearch(root, secondTab, false, folder);
+        app.showFolderSearch(root, secondTab, App::TypingIn::Explorer, folder);
         pump(600);
         settle(window, 3);
         RECT box {}, overlap {};
@@ -10278,7 +10278,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
             app.hideLauncher();
             pump(300);
             ::SetForegroundWindow(root);
-            app.showFolderSearch(root, secondTab, false, folder);
+            app.showFolderSearch(root, secondTab, App::TypingIn::Explorer, folder);
             const HWND own = reinterpret_cast<HWND>(window->winId());
             waiting.restart();
             while (window->height() == 0 && waiting.elapsed() < 200)
@@ -10351,7 +10351,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     if (!list)
         return false;
     pump(300);
-    app.showFolderSearch(lister, list, true, folder);
+    app.showFolderSearch(lister, list, App::TypingIn::Opus, folder);
     pump(600);
     settle(window, 3);
     RECT listRect {}, boxRect {};
@@ -10383,7 +10383,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     app.hideLauncher();
     pump(300);
     ::MoveWindow(list, 700, 120, qRound(540 * scale), client.bottom - 140, TRUE);
-    app.showFolderSearch(lister, list, true, folder);
+    app.showFolderSearch(lister, list, App::TypingIn::Opus, folder);
     pump(600);
     settle(window, 3);
     ::GetWindowRect(list, &listRect);

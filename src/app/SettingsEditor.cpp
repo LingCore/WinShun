@@ -1605,6 +1605,14 @@ void SettingsEditor::setOpusTyping(bool on)
     commit();
 }
 
+void SettingsEditor::setOneCommanderTyping(bool on)
+{
+    if (m_settings.oneCommanderTyping == on)
+        return;
+    m_settings.oneCommanderTyping = on;
+    commit();
+}
+
 void SettingsEditor::setEverythingCompat(bool on)
 {
     if (m_settings.everythingCompat == on)

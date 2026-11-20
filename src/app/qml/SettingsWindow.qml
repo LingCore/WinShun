@@ -5200,6 +5200,23 @@ Window {
                     }
                 }
 
+                SettingRow {
+                    id: oneCommanderTypingRow
+                    title: qsTr("在 OneCommander 里直接打字搜索")
+                    keywords: qsTr("OneCommander;One Commander;直接打字;输入;当前文件夹;双栏;type to search").split(";")
+                    description: qsTr("文件列表有焦点时，输入字母或数字即可搜索当前文件夹")
+                    tip: qsTr("代替 OneCommander 自带的“按首字母筛选”；符号键、侧栏、重命名和地址栏输入不受影响")
+                    unlocks: [folderTypingRow]
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        objectName: "oneCommanderTypingToggle"
+                        checked: window.editor.oneCommanderTyping
+                        Accessible.name: qsTr("在 OneCommander 里直接打字搜索")
+                        onToggled: (on) => window.editor.oneCommanderTyping = on
+                    }
+                }
+
                 SettingRow { // GitHub #82
                     id: opusScopeRow
                     sub: true
@@ -5219,7 +5236,7 @@ Window {
                 SettingRow { // GitHub #110
                     id: folderTypingRow
                     sub: true
-                    shown: window.editor.explorerTyping || window.editor.opusTyping
+                    shown: window.editor.explorerTyping || window.editor.opusTyping || window.editor.oneCommanderTyping
                     title: qsTr("在文件夹里打字时")
                     keywords: qsTr("打字;当前文件夹;优先;只搜;其他位置;子文件夹;Listary;Ctrl+Shift+D;current folder;type to search").split(";")
                     description: qsTr("搜索时可按 Ctrl+Shift+D 临时切换范围")

@@ -113,6 +113,7 @@ DialogBarFolderOnly=false ; 对话框旁的搜索框只搜对话框正显示的�
 ExplorerTyping=false     ; 在资源管理器的文件列表里直接打字，就用 Win顺 搜，这个窗口的文件夹优先（和 Listary 一样）；代替资源管理器自己的按首字母跳到文件，所以默认关
 EverythingCompat=false   ; 让找 Everything 的程序（Directory Opus、Total Commander、es.exe、Everything SDK）改由 Win顺 回答（GitHub #40）；Everything 自己在运行时仍由它回答
 OpusTyping=false         ; 独立开启 Directory Opus 文件列表中的字母／数字触发；符号键和编辑字段仍交给 Opus
+OneCommanderTyping=false ; 独立开启 OneCommander 文件列表中的字母／数字触发；侧栏、改名、地址栏和符号键仍交给它
 FolderTyping=first       ; first | only | level：在文件夹窗口里打字打开时，first 先列这个文件夹（含子文件夹）里的、再列其他位置的（和 Listary 一样，GitHub #110）；only 只搜这个文件夹（含子文件夹）；level 只搜直接放在这个文件夹里的，不含子文件夹（#182）。搜索时 Ctrl+Shift+D 按 first → only → level 轮流换，只换这一次；没有这一项（升级）时当 first
 FolderMenu=off           ; auto | on | off：在资源管理器或桌面的空白处双击弹出文件夹菜单（GitHub #22）；auto 时 Listary 在运行就不弹；新装默认 off，以前的设置文件里没有这一项时当 auto（升级不变）
 FolderMenuDouble=true    ; 空白处双击左键弹出（GitHub #196；以前一直是这样）
@@ -734,6 +735,15 @@ tools/plugin-probe.cpp 插件系统阶段 0 的探针（无 Qt，静态 C 运行
 `Launcher/OpusTyping=false` 独立于资源管理器开关，设置页和内置功能卡片共用 `SettingsEditor::opusTyping`。`TypeToSearch` 仍只用原有的短时键盘钩子；前台必须是 `dopus.lister`，键盘焦点必须恰好是 `dopus.filedisplaycontainer` 下的 `dopus.filedisplay`，不把其子 Edit、路径栏、FAYT、目录树和菜单当作文件列表。`searchtyping::opusStarts` 仅允许字母和未按 Shift 的数字／数字小键盘，保留 Opus 的符号查找模式和组合键。中文拼音仍通过原来的暂存、重放和输入法流程进入启动器。
 
 路径在 `ComWorker` 上通过已有的普通权限 `dopusrt /info …,paths` 获取；`OpusTab::tab` 保存 `dopus.filedisplaycontainer` 的 HWND，焦点在其 `dopus.filedisplay` 子窗口；`filemanager::opusFolder` 用父子关系匹配，只校验这个标签的真实目录，不遍历探测其他标签的磁盘／网络路径。没有磁盘文件夹的标签（此电脑、库、压缩包里；Opus 的应答里不列“此电脑”）由 `filemanager::opusPlace` 报成“已知、无文件夹”，搜索框照常弹出、不带前缀、搜整机（GitHub #82）；只有 Opus 没应答时才把按键还回去。每次输入持有独立请求号，超时、开关重建或另一轮输入后的旧结果丢弃；打开搜索前再核对前台、焦点和菜单状态。失败时只允许把暂存按键还给原窗口的原焦点，避免输入落入后来切换的应用或编辑框。Esc 回到来源窗口；目录打开与定位复用来源记录和查询 worker，在同一 Opus 文件显示仍有焦点时才发送 `/acmd Go`，查询队列等它切换后再读路径。
+
+## OneCommander 直接打字搜索
+
+`Launcher/OneCommanderTyping=false`，和 Opus 一样是独立开关，设置页和内置功能卡片共用 `SettingsEditor::oneCommanderTyping`。OneCommander 是 WPF 程序，整个窗口只有一个 HWND，键盘钩子看不出里面谁有焦点，所以分两步：
+
+- **钩子里只看窗口**（`TypeToSearch::oneCommanderFocused`）：前台是它的主窗口（类名 `HwndWrapper[` 开头、没有所有者、进程是 `OneCommander.exe`，不高于我们的权限），线程不在菜单模式，`hwndFocus` 是主窗口本身。它的改名框、地址栏、搜索框都是 WPF Popup，是另外的顶层窗口，在前台时自然不触发。按键和 Opus 一样用 `searchtyping::opusStarts`：字母和不带 Shift 的数字。
+- **按键暂存后，在 `ComWorker` 上用 UI Automation 问焦点**（`filemanager::oneCommanderTyping`）：从 `GetFocusedElement` 往上走到主窗口，交给纯函数 `onecommander::typingFocus` 判断（`tst_shelllaunch::oneCommanderTypingFocus` 用 3.108 上量到的元素链测）。文件列表是 AutomationId 为 `flb` 的 ListBox（详细、内容、缩略图各视图都是它），焦点在它或它的 ListBoxItem 上才算；焦点在主窗口自己（改名后按 Esc 会这样，这时它对字母没有反应）也算，只是没有列表位置，搜索框放到窗口旁边。文件夹读它公开的 `CurrentPathGet`（跟着有焦点的那一栏走）；列表的 `BoundingRectangle` 当作 Explorer 的文件列表角落传给 `showLauncher`。实测一次 7–17 ms。
+- **不是文件列表就还回去，并且接下来的键直接放行**：`giveBack(request, notFileList)` 记下当时 OneCommander 的焦点事件计数（`EVENT_OBJECT_FOCUS`，进程内、out-of-context，只在它在前台时挂），之后只要没有新的焦点事件、两次按键间隔不超过 2 秒，钩子直接放行，不再暂存和询问，侧栏里连续打字不会每个键都慢一下。切换前台、焦点变化或停顿 2 秒后重新判断。
+- 选中文件夹或 `Ctrl+Enter` 定位文件时，用 `CurrentPathSet` 让原来那一栏转过去（`filemanager::goToInOneCommanderWindow`，传文件路径就是在所在文件夹里选中它）；失败就按“用哪个文件管理器打开文件夹”打开。资源管理器那种跟着结果预选文件（`selectInExplorer`）不做。
 
 ## 搜索面板（Ctrl+E）
 

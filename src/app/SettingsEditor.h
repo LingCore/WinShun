@@ -83,6 +83,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool explorerTyping READ explorerTyping WRITE setExplorerTyping NOTIFY changed FINAL)
     Q_PROPERTY(bool desktopTyping READ desktopTyping WRITE setDesktopTyping NOTIFY changed FINAL)
     Q_PROPERTY(bool opusTyping READ opusTyping WRITE setOpusTyping NOTIFY changed FINAL)
+    Q_PROPERTY(bool oneCommanderTyping READ oneCommanderTyping WRITE setOneCommanderTyping NOTIFY changed FINAL)
     Q_PROPERTY(bool everythingCompat READ everythingCompat WRITE setEverythingCompat NOTIFY changed FINAL)
     Q_PROPERTY(QString opusTypingScope READ opusTypingScope WRITE setOpusTypingScope NOTIFY changed FINAL) // folder | all (GitHub #82)
     Q_PROPERTY(QString folderTyping READ folderTyping WRITE setFolderTyping NOTIFY changed FINAL) // first | only | level (GitHub #110, #182)
@@ -474,6 +475,8 @@ public:
     void setDesktopTyping(bool on);
     bool opusTyping() const { return m_settings.opusTyping; }
     void setOpusTyping(bool on);
+    bool oneCommanderTyping() const { return m_settings.oneCommanderTyping; }
+    void setOneCommanderTyping(bool on);
     bool everythingCompat() const { return m_settings.everythingCompat; }
     void setEverythingCompat(bool on);
     QString opusTypingScope() const { return m_settings.opusTypingScope; }

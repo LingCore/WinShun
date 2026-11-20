@@ -146,6 +146,7 @@ struct Settings {
     // from before without the key keeps it off, so an upgrade changes nothing.
     bool explorerTyping = true;
     bool opusTyping = false; // opt in per manager: typing in an Opus file display (GitHub #82)
+    bool oneCommanderTyping = false; // ... in a OneCommander file list
     // Win顺 answers where programs look for Everything (GitHub #40: Directory
     // Opus, Total Commander, es.exe): platform/EverythingServer.
     bool everythingCompat = false;

@@ -1020,6 +1020,7 @@ private slots:
         ws::Settings settings;
         settings.load();
         QVERIFY(!settings.opusTyping);
+        QVERIFY(!settings.oneCommanderTyping); // asked for, as Opus's
         QVERIFY(!settings.desktopTyping); // GitHub #314: asked for, as the others
         settings.desktopTyping = true;
         settings.save();
@@ -1032,11 +1033,13 @@ private slots:
             for (const bool opus : {true, false}) {
                 settings.explorerTyping = explorer;
                 settings.opusTyping = opus;
+                settings.oneCommanderTyping = !opus; // each on its own
                 settings.save();
                 ws::Settings read;
                 read.load();
                 QCOMPARE(read.explorerTyping, explorer);
                 QCOMPARE(read.opusTyping, opus);
+                QCOMPARE(read.oneCommanderTyping, !opus);
             }
         }
         QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);

@@ -388,6 +388,62 @@ public:
         return pattern && text && SUCCEEDED(pattern->SetValue(text.get()));
     }
 
+    // What has the keyboard (onecommander::typingFocus), its file list's
+    // place on the screen with it. Other: not in this window, or no answer.
+    std::pair<onecommander::TypingFocus, RECT> typingFocus(HWND window) const
+    {
+        constexpr std::pair<onecommander::TypingFocus, RECT> other {onecommander::TypingFocus::Other, RECT {}};
+        ComPtr<IUIAutomationElement> element;
+        ComPtr<IUIAutomationTreeWalker> walker;
+        DWORD process = 0;
+        int focusProcess = 0;
+        if (!m_root || !::GetWindowThreadProcessId(window, &process) || FAILED(m_uia->GetFocusedElement(&element))
+            || !element || FAILED(element->get_CurrentProcessId(&focusProcess))
+            || static_cast<DWORD>(focusProcess) != process || FAILED(m_uia->get_ControlViewWalker(&walker)))
+            return other;
+        struct Step {
+            ComPtr<IUIAutomationElement> element;
+            CONTROLTYPEID type = 0;
+            std::wstring id;
+            std::wstring className;
+        };
+        std::vector<Step> steps;
+        for (int i = 0; element && i < 16; ++i) {
+            Step step;
+            step.element = element;
+            BSTR text = nullptr;
+            element->get_CurrentControlType(&step.type);
+            if (SUCCEEDED(element->get_CurrentAutomationId(&text)) && text)
+                step.id.assign(text, ::SysStringLen(text));
+            ::SysFreeString(text);
+            text = nullptr;
+            if (SUCCEEDED(element->get_CurrentClassName(&text)) && text)
+                step.className.assign(text, ::SysStringLen(text));
+            ::SysFreeString(text);
+            UIA_HWND handle = nullptr;
+            const bool top = SUCCEEDED(element->get_CurrentNativeWindowHandle(&handle))
+                && static_cast<HWND>(handle) == window;
+            steps.push_back(std::move(step));
+            if (top) {
+                std::vector<onecommander::FocusStep> chain;
+                for (const Step& s : steps)
+                    chain.push_back({static_cast<long>(s.type), s.id, s.className});
+                const onecommander::TypingFocus focus = onecommander::typingFocus(chain);
+                RECT list {};
+                if (focus == onecommander::TypingFocus::FileList) {
+                    const Step& box = steps[0].type == onecommander::kListControl ? steps[0] : steps[1];
+                    box.element->get_CurrentBoundingRectangle(&list);
+                }
+                return {focus, list};
+            }
+            ComPtr<IUIAutomationElement> parent;
+            if (FAILED(walker->GetParentElement(element.Get(), &parent)))
+                break;
+            element = parent;
+        }
+        return other;
+    }
+
     QList<pathtext::XYplorerTab> tabs(HWND window, const std::wstring& active) const
     {
         const auto state = tabState();
@@ -508,6 +564,24 @@ HWND oneCommanderWindow(bool visibleOnly = true)
         reinterpret_cast<LPARAM>(&search));
     return search.found;
 }
+
+} // namespace
+
+std::optional<OneCommanderTyping> oneCommanderTyping(HWND window)
+{
+    const OneCommanderAutomation automation(window);
+    const auto [focus, list] = automation.typingFocus(window);
+    if (focus == onecommander::TypingFocus::Other)
+        return std::nullopt;
+    return OneCommanderTyping {automation.folder(), list};
+}
+
+bool goToInOneCommanderWindow(HWND window, const std::wstring& path)
+{
+    return OneCommanderAutomation(window).goTo(path);
+}
+
+namespace {
 
 std::wstring oneCommanderProgram()
 {

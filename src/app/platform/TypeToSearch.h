@@ -32,7 +32,16 @@ namespace ws {
 // open (its keys are the menu's: 属性(R), GitHub #37) is taken the same way,
 // and the launcher is asked for with that window's folder (typedInExplorer).
 // Opus uses the same handoff for a letter or digit in its file display
-// (typedInOpus); symbols keep its own find modes. On the desktop (one
+// (typedInOpus); symbols keep its own find modes. OneCommander likewise
+// (typedInOneCommander): a WPF window, one HWND for all of it, so the key
+// only tells that its main window is in front with no menu open; what has
+// the keyboard inside it is asked by UI Automation off this thread (App),
+// and keys typed elsewhere in it (its sidebar, a toolbar) are given back,
+// those after them then let through at once until its focus moves
+// (giveBack's notFileList, an out-of-context focus event of its process)
+// or two seconds pass without a key. Its rename and address fields are
+// windows of their own (WPF popups): never in front as its main window.
+// On the desktop (one
 // more setting, off by default, GitHub #314) a key typed while its icons
 // have the keyboard is taken likewise, and the launcher is asked for as its
 // hotkey would open it, to search the whole PC (typedOnDesktop). That
@@ -93,6 +102,7 @@ public:
         bool startMenu = false;
         bool explorer = false; // typing searches the folder
         bool opus = false; // independent opt-in for Directory Opus
+        bool oneCommander = false; // ... and for OneCommander
         bool desktop = false; // typing with the desktop's icons focused opens the launcher
         bool pasteFile = false; // Ctrl+V pastes the clipboard as a file
         bool operator==(const Surfaces&) const = default;
@@ -106,6 +116,8 @@ public:
         std::function<void(HWND root, HWND tab, unsigned vk, RequestId request)> typedInExplorer;
         // ... in Opus's focused file display; `tab` is its native window.
         std::function<void(HWND root, HWND tab, unsigned vk, RequestId request)> typedInOpus;
+        // ... in OneCommander's main window `root`, no menu of it open.
+        std::function<void(HWND root, unsigned vk, RequestId request)> typedInOneCommander;
         // ... with the icons of the desktop (`desktop`: Progman or WorkerW)
         // having the keyboard.
         std::function<void(HWND desktop, unsigned vk, RequestId request)> typedOnDesktop;
@@ -131,8 +143,10 @@ public:
     // Start menu; searchtyping::delivery). Any thread.
     void deliver(bool ready = true);
     // The launcher is not coming (no folder there): the keys held back go on
-    // to the window they were typed in. Any thread.
-    void giveBack(RequestId request = 0);
+    // to the window they were typed in. Any thread. `notFileList`: typed in
+    // OneCommander, something other than a file list has its keyboard; the
+    // keys after them go straight to it until its focus moves.
+    void giveBack(RequestId request = 0, bool notFileList = false);
     // The launcher is up, refused the front, its keys routed to it (App):
     // the keys held back go to it as they are (handedOver), and the hold
     // ends. Any thread.
@@ -167,6 +181,7 @@ public:
 private:
     static LRESULT CALLBACK keyboardProc(int code, WPARAM wParam, LPARAM lParam);
     static void CALLBACK foregroundProc(HWINEVENTHOOK, DWORD, HWND hwnd, LONG, LONG, DWORD, DWORD);
+    static void CALLBACK focusProc(HWINEVENTHOOK, DWORD, HWND hwnd, LONG, LONG, DWORD, DWORD); // OneCommander's
     bool handleKey(WPARAM message, const KBDLLHOOKSTRUCT& event); // true: taken
     bool startsHold(UINT vk, bool press);
     void passedOn(WPARAM message, const KBDLLHOOKSTRUCT& event, bool delivered); // delivered: no hook after took it
@@ -174,6 +189,8 @@ private:
     bool explorerInFront(); // m_explorer or m_explorerBehind is in front, m_explorer then
     bool explorerFocused(HWND& tab) const; // the view of m_explorer's folder has the focus: its tab
     bool opusFocused(HWND& tab) const;
+    bool oneCommanderFocused(); // its main window in front, no menu, not known to be typed in elsewhere
+    void watchOneCommander(HWND window); // its focus events while it is in front (null: none)
     bool sourceFocused() const; // keys returned only to their original file display
     bool desktopFocused() const; // m_desktop is in front, its icons have the focus
     void foregroundChanged(HWND window, HWND named); // window: in front now; named: the event's
@@ -207,6 +224,15 @@ private:
     // later events while it is still its thread's active window (activeBehind)
     HWND m_explorerBehind = nullptr;
     HWND m_opus = nullptr; // the Opus lister in front, if opted in
+    HWND m_oneCommander = nullptr; // OneCommander's main window in front, if opted in
+    DWORD m_oneCommanderProcess = 0; // ... whose focus events m_focusHook gets
+    HWINEVENTHOOK m_focusHook = nullptr;
+    unsigned m_focusMoves = 0; // its focus events so far
+    unsigned m_focusMovesAtHold = 0; // ... when the hold began
+    // Its keys go straight to it (giveBack's notFileList): while no focus
+    // event came since (m_focusMoves) and a key came in the last 2 s.
+    std::optional<unsigned> m_elsewhereAt;
+    DWORD m_elsewhereKey = 0; // GetTickCount of the last key let through so
     HWND m_sourceWindow = nullptr; // the hold's originating folder window and focus
     HWND m_sourceFocus = nullptr;
     HWND m_desktop = nullptr; // the desktop in front, when typing or pasting there counts

@@ -281,6 +281,13 @@ std::vector<Entry> buildCatalog()
                     "Off by default and independent of Explorer typing. Punctuation, shortcuts, menus and edit fields "
                     "stay in Opus."},
         &Settings::opusTyping));
+    add(boolean({"Launcher/OneCommanderTyping", QT_TRANSLATE_NOOP("AiSettings", "在 OneCommander 里直接打字搜索"),
+                    "files_and_dialogs", 1,
+                    "In a OneCommander file list, letters and digits open Win顺 to search the folder of that pane, "
+                    "instead of OneCommander's own filter by the first letters. Off by default and independent of "
+                    "Explorer and Opus typing. Punctuation, shortcuts, menus, the sidebar and edit fields stay in "
+                    "OneCommander."},
+        &Settings::oneCommanderTyping));
     add(boolean({"Launcher/EverythingCompat", QT_TRANSLATE_NOOP("AiSettings", "让其他软件把 Win顺 当作 Everything 搜索"),
                     "files_and_dialogs", 1,
                     "Win顺 answers the queries programs send to Everything (its IPC window): Directory Opus, Total "

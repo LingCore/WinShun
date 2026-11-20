@@ -930,6 +930,7 @@ void Settings::load()
     explorerTyping = readOrDefault(s, u"Launcher/ExplorerTyping"_s, firstRun ? d.explorerTyping : false);
     desktopTyping = readOrDefault(s, u"Launcher/DesktopTyping"_s, d.desktopTyping);
     opusTyping = readOrDefault(s, u"Launcher/OpusTyping"_s, d.opusTyping);
+    oneCommanderTyping = readOrDefault(s, u"Launcher/OneCommanderTyping"_s, d.oneCommanderTyping);
     everythingCompat = readOrDefault(s, u"Launcher/EverythingCompat"_s, d.everythingCompat);
     opusTypingScope = readOrDefault(s, u"Launcher/OpusTypingScope"_s, d.opusTypingScope).trimmed().toLower();
     if (opusTypingScope != u"all")
@@ -1383,6 +1384,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/ExplorerTyping"_s, explorerTyping);
     s.setValue(u"Launcher/DesktopTyping"_s, desktopTyping);
     s.setValue(u"Launcher/OpusTyping"_s, opusTyping);
+    s.setValue(u"Launcher/OneCommanderTyping"_s, oneCommanderTyping);
     s.setValue(u"Launcher/EverythingCompat"_s, everythingCompat);
     s.setValue(u"Launcher/OpusTypingScope"_s, opusTypingScope);
     s.setValue(u"Launcher/FolderTyping"_s, folderTyping);
@@ -1615,9 +1617,9 @@ CrawlRules Settings::crawlRules() const
     // But not the plugins installed there (GitHub #406): found by name, as
     // anything of the user's, ranked with the program folders. Each one's
     // .data folder too: a plugin's own files, written now and then.
-    const std::wstring plugins = normalizePath(dataDir() + u"\\plugins"_s);
-    rules.keptPaths.push_back(plugins);
-    rules.lowPriorityPaths.push_back(plugins);
+    const std::wstring pluginsDir = normalizePath(dataDir() + u"\\plugins"_s);
+    rules.keptPaths.push_back(pluginsDir);
+    rules.lowPriorityPaths.push_back(pluginsDir);
     for (const QString& n : excludedNames) {
         if (!n.trimmed().isEmpty() && !everythingCompat)
             rules.excludedNames.push_back(normalizeName(n));

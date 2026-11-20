@@ -261,6 +261,8 @@ SettingsSection {
         readonly property var explorerTypingTerms: qsTr("直接打字;type to search").split(";")
         readonly property string opusTypingTitle: qsTr("Directory Opus 里打字搜索")
         readonly property var opusTypingTerms: qsTr("Opus;DOpus;直接打字;双栏;type to search").split(";")
+        readonly property string oneCommanderTypingTitle: qsTr("OneCommander 里打字搜索")
+        readonly property var oneCommanderTypingTerms: qsTr("OneCommander;One Commander;直接打字;双栏;type to search").split(";")
         readonly property string dropPieTitle: qsTr("收藏圆盘")
         readonly property var dropPieTerms: qsTr("拖放;拖文件;drag;drop;pie").split(";")
         readonly property bool pasteFound: fits(qsTr("粘贴为文件"), pasteTerms)
@@ -268,9 +270,10 @@ SettingsSection {
         readonly property bool dialogBarFound: fits(dialogBarTitle, dialogBarTerms)
         readonly property bool explorerTypingFound: fits(explorerTypingTitle, explorerTypingTerms)
         readonly property bool opusTypingFound: fits(opusTypingTitle, opusTypingTerms)
+        readonly property bool oneCommanderTypingFound: fits(oneCommanderTypingTitle, oneCommanderTypingTerms)
         readonly property bool dropPieFound: fits(dropPieTitle, dropPieTerms)
         readonly property bool anyFound: pasteFound || folderMenuFound || dialogBarFound
-                                         || explorerTypingFound || opusTypingFound || dropPieFound
+                                         || explorerTypingFound || opusTypingFound || oneCommanderTypingFound || dropPieFound
         function fits(name, terms) {
             return searching && !!search.match(search.revision, { title: name, keywords: terms })
         }
@@ -281,8 +284,10 @@ SettingsSection {
 
         title: qsTr("内置功能")
         tip: qsTr("随 Win顺 一起提供；关闭后停止对应功能，暂不支持单独卸载")
-        keywords: pasteTerms.concat([folderMenuTitle, dialogBarTitle, explorerTypingTitle, opusTypingTitle, dropPieTitle],
-                                      folderMenuTerms, dialogBarTerms, explorerTypingTerms, opusTypingTerms, dropPieTerms)
+        keywords: pasteTerms.concat([folderMenuTitle, dialogBarTitle, explorerTypingTitle, opusTypingTitle, oneCommanderTypingTitle,
+                                       dropPieTitle],
+                                      folderMenuTerms, dialogBarTerms, explorerTypingTerms, opusTypingTerms, oneCommanderTypingTerms,
+                                      dropPieTerms)
         description: qsTr("用到哪个开哪个")
         shown: pluginsSection.editor !== null && !pluginsSection.detailOpen
         onRevealRequested: {
@@ -403,6 +408,20 @@ SettingsSection {
                     checked: pluginsSection.editor.opusTyping
                     marked: builtinRow.opusTypingFound
                     onToggled: (on) => pluginsSection.editor.opusTyping = on
+                }
+            }
+            Loader {
+                active: pluginsSection.editor !== null
+                visible: builtinRow.kept(builtinRow.oneCommanderTypingFound)
+                sourceComponent: BuiltinCard {
+                    tile: true
+                    buttonSlot: builtinRow.buttonSlot
+                    glyph: String.fromCharCode(0xE765)
+                    title: builtinRow.oneCommanderTypingTitle
+                    description: qsTr("在文件列表中输入字母或数字，用 Win顺 搜索这一栏的文件夹，代替 OneCommander 的按首字母筛选")
+                    checked: pluginsSection.editor.oneCommanderTyping
+                    marked: builtinRow.oneCommanderTypingFound
+                    onToggled: (on) => pluginsSection.editor.oneCommanderTyping = on
                 }
             }
             Loader {

@@ -31,6 +31,7 @@
 #include <cstdlib>
 #include <memory>
 #include <future>
+#include <vector>
 
 using namespace Qt::StringLiterals;
 
@@ -350,6 +351,48 @@ private slots:
         QCOMPARE(sessionTabs({panes[0], {}}, state, b)->size(), 2); // untouched second pane
         const QByteArray virtualTabs = R"([{"FullPath":"::{ThisPC}","IsFolder":true},{"FullPath":"C:\\Work","IsFolder":false}])";
         QVERIFY(!sessionTabs({virtualTabs, {}}, state, b));
+    }
+
+    // Chains from the focused element up to the main window, as UI
+    // Automation gave them on OneCommander 3.108 (2026-11-20).
+    void oneCommanderTypingFocus()
+    {
+        using ws::onecommander::FocusStep;
+        using ws::onecommander::TypingFocus;
+        using ws::onecommander::typingFocus;
+        constexpr long custom = 50025, group = 50026, pane = 50033, edit = 50004, listItem = 50007, list = 50008,
+                       window = 50032;
+        const FocusStep top {window, L"thisWindow", L"Window"};
+        const FocusStep columns {custom, L"columnsSingle", L"ColumnsUserControlSingle"};
+        const FocusStep browser {custom, L"BrowserUC", L"LayoutVertical"};
+        const FocusStep holder {custom, L"", L"BrowserHolderViewMultipanel"};
+        const FocusStep files {list, L"flb", L"ListBox"};
+        const FocusStep item {listItem, L"", L"ListBoxItem"};
+
+        const std::vector<FocusStep> onList {files, columns, browser, holder, top};
+        QCOMPARE(typingFocus(onList), TypingFocus::FileList);
+        const std::vector<FocusStep> onItem {item, files, columns, browser, holder, top};
+        QCOMPARE(typingFocus(onItem), TypingFocus::FileList);
+        const std::vector<FocusStep> onWindow {top};
+        QCOMPARE(typingFocus(onWindow), TypingFocus::Window);
+
+        // The sidebar's drives, the tabs, an edit field, a popup's list: theirs.
+        const std::vector<FocusStep> drive {item, {list, L"driveslistbox", L"ListBox"}, {group, L"", L"Expander"},
+            {pane, L"sidebarScrollViewer", L"ScrollViewer"}, top};
+        QCOMPARE(typingFocus(drive), TypingFocus::Other);
+        const std::vector<FocusStep> tab {item, {list, L"tabs", L"ListBox"}, browser, holder, top};
+        QCOMPARE(typingFocus(tab), TypingFocus::Other);
+        const std::vector<FocusStep> address {{edit, L"PathEditTextBox", L"TextBox"}, {custom, L"", L"PathEdit2"},
+            {window, L"", L"Popup"}, top};
+        QCOMPARE(typingFocus(address), TypingFocus::Other);
+        const std::vector<FocusStep> popupList {item, {list, L"flb", L"ListBox"}, {window, L"", L"Popup"}, top};
+        QCOMPARE(typingFocus(popupList), TypingFocus::FileList); // a list named flb is one wherever it is
+        const std::vector<FocusStep> deep {{custom, L"", L"TextBlock"}, item, files, columns, top};
+        QCOMPARE(typingFocus(deep), TypingFocus::Other); // inside an item: not the list's own keys
+        // Not up to the window (the walk stopped): nothing.
+        const std::vector<FocusStep> cut {item, files, columns};
+        QCOMPARE(typingFocus(cut), TypingFocus::Other);
+        QCOMPARE(typingFocus({}), TypingFocus::Other);
     }
 
     void oneCommanderOpenTabs()

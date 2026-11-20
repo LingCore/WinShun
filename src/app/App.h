@@ -201,7 +201,11 @@ public:
         QScreen* on = nullptr, HWND avoid = nullptr, bool inside = false, const RECT& orInto = {}, bool asPanel = false);
     void showSearchPanel();
     void panelHotkey(std::optional<std::uint64_t> pressedAt);
-    void showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder);
+    // Where folder typing came from (TypeToSearch): File Explorer (its
+    // tab), Directory Opus (its file display) or OneCommander (its window;
+    // `list`: its file list on the screen, empty when not known).
+    enum class TypingIn { Explorer, Opus, OneCommander };
+    void showFolderSearch(HWND root, HWND tab, TypingIn in, const QString& folder, const RECT& list = {});
     void hideLauncher();
     // The launcher as the search panel (Launcher::panel): the window sized
     // for it (Placement::enterPanel) and resizable, or back as the box at
@@ -421,9 +425,11 @@ private:
     // that window's screen, and the keys follow; with no folder there, the
     // keys go back to Explorer.
     std::optional<QString> hostedPlace(HWND frame, HWND control) const; // 360文件夹's tab: hostedexplorer::place
-    void folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request);
+    void folderTyped(HWND root, HWND tab, TypingIn in, std::uint64_t request);
     void desktopTyped(HWND desktop, std::uint64_t request); // typed on the desktop's icons: the launcher, for the whole PC
-    void typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t request, bool known, const QString& folder);
+    // notFileList: typed in OneCommander elsewhere than a file list (TypeToSearch::giveBack)
+    void typingFolderKnown(HWND root, HWND tab, TypingIn in, std::uint64_t request, bool known, const QString& folder,
+        const RECT& list = {}, bool notFileList = false);
     void followTypingSelection();
     void cancelTypingSelection();
     // A folder opened in the launcher (Launcher::setFolderOpener): up from
@@ -457,7 +463,7 @@ private:
     // was on hiding unless the user changed it meanwhile (GitHub #201).
     void lettersOnOpen();
     void restoreLauncherInputMode();
-    void beginHandoff(const QString& surface); // typed in "start", "explorer" or "opus": the launcher comes for the keys
+    void beginHandoff(const QString& surface); // typed in "start", "explorer", "opus", "onecommander" or "desktop": the launcher comes for the keys
     void endHandoff(); // its diagnostics recorded (one entry each, times alone), its watch over
     void explorerRestarted(bool back); // `back`: the taskbar is
     // Explorer registers its keys once, as it starts: ours with a Win+<letter>
@@ -804,7 +810,7 @@ private:
     struct TypingOrigin {
         HWND root = nullptr;
         HWND tab = nullptr;
-        bool opus = false;
+        TypingIn in = TypingIn::Explorer;
         QString folder;
     };
     TypingOrigin m_typingOrigin;
@@ -848,7 +854,7 @@ private:
     // The handoff of those keys, for its diagnostics (endHandoff): when each
     // part came, from App's side; the hook's and the window's are added then.
     struct TypingHandoff {
-        QString surface; // "start", "explorer", "opus"; empty: none
+        QString surface; // "start", "explorer", "opus", "onecommander", "desktop"; empty: none
         // routed: its keys routed to it, refused the front (GitHub #203)
         std::chrono::steady_clock::time_point asked, active, focused, revealed, delivered, routed;
         QString outcome; // ready, cap, routed, hidden, hidden-before-active, never-active, replaced
