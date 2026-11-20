@@ -172,12 +172,21 @@
   - 验证字重要比像素：同一句话，常规体的墨量比细体多约 10%（虚拟机里 786,671 对 714,818）。光看截图像不像楷体不够。
 - **没做**：可变字体的“字重家族”（Noto Sans SC Thin 之类）加载后具体落在哪个实例没有逐个验证；设置里的预览只换家族名，不带字重。
 
-## 截图：遮罩一出来固定卡约 2 秒，原因还不知道；日志现在会记调用栈（2026-11-15）
+## 截图：遮罩一出来固定卡约 2 秒：卡在 AMD 驱动的呈现（Present）里，它在等什么还不知道（2026-11-15，11-20）
 
 - **现象**（#325 的报告人，Win10 22H2、RX 6800 XT、4K 200%、144 Hz、Win顺 以管理员运行）：按截图键后“黑屏卡一两秒”，或者刚要拖选区时卡一两秒。两周的 `capture-stall` 一共 25 条，其中 15 条是同一个样子：最后一次正常的 tick 就在遮罩第一帧显示出来的那一刻（前后 50 ms 内），然后界面线程 2.06–2.17 秒不应答，恢复时离“遮罩显示”固定 2181–2206 ms；有两次是两段各约 1 秒。只出现在距上次截图 1 分钟以上（或进程启动后第一次）的截图上，连着截的从不卡。改成拷贝呈现（`QT_D3D_NO_FLIP`）之后照样有。
 - **排除了的**：UI Automation 探测（在自己的线程里）、PrtScn 的 `WM_SETTINGCHANGE` 广播（只在改设置时）、截图历史（默认关）、`HotPages` 的后台学习（11-02 还没有它时就有同样的卡顿）。本机（Win11、RTX 4060）和 Win10 虚拟机（WARP）都没复现。
 - **教训**：`capture-stall` 只量了“卡多久”，量了两周还是不知道卡在哪。固定时长说明是在等某个超时或某个固定耗时的东西，这种问题要的是卡住那一刻的调用栈，而且界面线程多半只是在等渲染线程，得连其他线程一起记。现在截图期间有 `ui-stall` / `ui-stall-threads`（architecture.md“运行诊断”）。
 - **拿到新日志后先看**：`ui-stall` 第一条的 `frames` 最里层是哪个系统调用；是 `NtWaitForSingleObject` 且上面是 `Qt6Quick` 的话，去 `ui-stall-threads` 里找名字是 `QSGRenderThread` 的线程和显卡驱动（`atidxx64.dll`、`amdxx64.dll`）的线程。
+- **卡在哪**（11-20，报告人 0.38.0、截图 1.1.26 的诊断包）：三次 `ui-stall-threads` 一模一样。界面线程在 Qt Quick 里等渲染线程（`NtWaitForSingleObject` ← `Qt6Quick`），`QSGRenderThread` 在交换链的 `Present` 里：`dxgi.dll` → `d3d11.dll` → `amdxx64.dll`（AMD 的 D3D11 驱动）→ `NtGdiDdDDIPresent`，进了内核就不回来。卡的 1.7 秒里整个进程只用了 15–31 ms 处理器。Win顺 自己没在算东西，是驱动的呈现在内核里等了约 2 秒。
+- **卡的时间点挪过一次**：11-14 以前卡顿从遮罩第一帧开始，约 2.2 秒结束，就是报告人说的“黑屏卡顿”。那时还是翻转呈现。之后改成拷贝呈现（`QT_D3D_NO_FLIP`，截图 1.1.12 起），第一帧正常了，卡顿改在遮罩出来后 1.93–2.05 秒开始、约 4.1 秒结束（之后 12 条里 11 条），正好赶上拖选框。报告人也说黑屏基本没了，拖选框时还卡。卡多久始终是 2.06–2.17 秒。
+- **和空闲多久有关，和交还内存无关**：进程启动后第一次截图 36 次卡了 12 次，距上次截图 5 分钟以上 51 次卡了 11 次，1–5 分钟 27 次卡了 4 次，20–60 秒 16 次卡了 1 次，15 秒内 39 次卡了 1 次。空闲 20 秒交还内存（`IdleTrim`）之后的那些截图几乎不卡，对不上。
+- **还不知道驱动在等什么**：固定约 2 秒，像 Windows 的显卡超时恢复（TDR，默认 2 秒），也像显示器换模式（FreeSync、多平面叠加 MPO）。没有 AMD 显卡复现不了。`capture-stall` 和 `capture` 现在多记 `graphics_lost`：遮罩的图形设备丢了、Qt Quick 重建了几次（`GraphicsLoss`，TDR 会让它是 1；只在 `capture` 里大于 0 时才写）。11-15 问过报告人显示器、线材、增强同步、FreeSync，只回了诊断包；这些事以后由日志自己记，不再问报告人（见下一条）。
+- **现在日志自己记下判断要的东西**（11-20）：
+  - 截图插件从遮罩出现到收起，另开两个线程跟着显示器和桌面的节拍（`DisplayPulse`）：一个等指针所在显示器的每次垂直消隐（`D3DKMTWaitForVerticalBlankEvent`），一个等桌面的每次合成（`DwmFlush`，桌面不动也照常返回，本机 4–17 ms 一次）。`capture-stall` 里多了 `vblank_gap_ms` 和 `dwm_gap_ms`：卡的这段时间里两者各自最长等了多久；`capture` 里是整次截图的最大值 `vblank_gap_max_ms` / `dwm_gap_max_ms`；等待出错时记 `vblank_error`（NTSTATUS）。
+  - 怎么读：`vblank_gap_ms` 也约 2000，说明屏幕自己停了（换模式、显卡重置），再看 `graphics_lost`、`vblank_error` 和下面的系统事件；只有 `dwm_gap_ms` 约 2000，是桌面合成（dwm.exe）整个停了，所有程序一起卡；两个都只有一帧左右，就只是 Win顺 这次的呈现在驱动里等，问题在我们的交换链用法上。本机把截图界面线程挂起 1 秒实测：`stall_ms` 979，`vblank_gap_ms` 16，`dwm_gap_ms` 4。
+  - 诊断包 `summary.json` 的 `display` 多了四项（`DisplaySetup`，在导出的后台线程里读，本机 70–80 ms）：`monitors`（每台显示器的名字、EDID 厂商和型号码、接口 DisplayPort/HDMI、分辨率、刷新率、HDR、是否主屏），`graphics_settings`（硬件加速 GPU 计划 `HwSchMode`、MPO 开关 `OverlayTestMode`、`TdrDelay`/`TdrLevel`、DirectX 的用户设置、游戏模式、Game DVR），`driver_settings`（每块显卡驱动键下和 `HKCU\Software\AMD\CN` 下名字像帧同步开关的值：FreeSync、TurboSync（增强同步）、Chill、Anti-Lag、Boost、HYPR-RX、AFMF、FlipQueueSize、ULPS、Stutter、MPO、TDR……），`display_events`（系统日志近 14 天显卡相关的警告和错误，Display 4101 就是一次 TDR）。
+- **试了不能用的**：想用 `DwmGetCompositionTimingInfo` 的刷新数和帧数看卡的时候桌面是否还在合成、显示器是否还在刷新。Windows 11 上桌面不动时 `cRefresh` 700 ms 只涨了 1；旁边一个窗口每 30 ms 变色，`cFrame` 也只涨了 1；`rateRefresh` 报 181 Hz。这两个数当不了时钟，没有采用。
 
 ## 前台内存：图标字体缺字形时 Qt 把所有字体加载一遍；`thread_local` 数组每个线程一份（2026-11-15）
 

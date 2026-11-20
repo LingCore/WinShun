@@ -6,7 +6,9 @@
 #include "CaptureSession.h"
 #include "CaptureTools.h"
 #include "CountdownWindow.h"
+#include "DisplayPulse.h"
 #include "Grabber.h"
+#include "GraphicsLoss.h"
 #include "LongCapture.h"
 #include "PinManager.h"
 #include "Recorder.h"
@@ -246,6 +248,7 @@ private:
     void afterUp(); // what can wait until the overlays are on the screen
     void warmed(); // every overlay's hidden first show is over
     void watchTick();
+    DisplayPulse::Gaps takePulse(); // since the last tick; the capture's longest kept
     bool isOverlay(HWND root) const;
     bool pointerOverOverlay(POINT at) const;
     void recordCapture(CaptureSession::Action action, const QRect& rect);
@@ -344,6 +347,14 @@ private:
     QElapsedTimer m_upClock; // since the overlay was up (invalid: not yet)
     diag::StallWatch m_stalls;
     int m_ticks = 0;
+    // The overlays' graphics lost (a reset graphics card, TDR) since show():
+    // "graphics_lost" in "capture-stall" and "capture".
+    GraphicsLoss m_graphicsLoss;
+    // Whether the screen (its vertical blanks) and the desktop (its
+    // compositions) went on beating through a stall: "vblank_gap_ms" and
+    // "dwm_gap_ms" in "capture-stall", the longest of the capture in "capture".
+    DisplayPulse m_pulse;
+    DisplayPulse::Gaps m_pulseLongest;
     QJsonObject m_pointerFacts; // read at show()
     QJsonObject m_cursorShown; // the pointer over the overlay, the first time seen
     QJsonObject m_cursorDragging; // and the first time seen while dragging

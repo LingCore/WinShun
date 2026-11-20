@@ -1021,6 +1021,37 @@ add_test(NAME tst_keyrouter COMMAND tst_keyrouter -o -,txt)
 set_tests_properties(tst_keyrouter PROPERTIES RUN_SERIAL TRUE
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The screenshot's count of graphics thrown away under its overlays (a lost
+# device, TDR), on the real D3D11 renderer: a small window shown for a moment.
+qt_add_executable(tst_graphicsloss tst_graphicsloss.cpp)
+target_include_directories(tst_graphicsloss PRIVATE ${PROJECT_SOURCE_DIR}/src/capture)
+target_link_libraries(tst_graphicsloss PRIVATE winshun_options Qt6::Quick Qt6::Test)
+set_target_properties(tst_graphicsloss PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_graphicsloss COMMAND tst_graphicsloss -o -,txt)
+set_tests_properties(tst_graphicsloss PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# The screen's vertical blanks and the desktop's compositions beside the
+# capture (DisplayPulse.h, GitHub #325), on this PC's monitors.
+qt_add_executable(tst_displaypulse tst_displaypulse.cpp ${PROJECT_SOURCE_DIR}/src/capture/DisplayPulse.cpp)
+target_include_directories(tst_displaypulse PRIVATE ${PROJECT_SOURCE_DIR}/src/capture)
+target_link_libraries(tst_displaypulse PRIVATE winshun_options Qt6::Core Qt6::Test dwmapi gdi32 user32)
+set_target_properties(tst_displaypulse PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_displaypulse COMMAND tst_displaypulse -o -,txt)
+set_tests_properties(tst_displaypulse PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# How this PC's displays are set up, for an export's summary (DisplaySetup.h,
+# GitHub #325): monitors, Windows' graphics switches, the drivers' frame
+# pacing switches, the System log's graphics events, read from this PC.
+qt_add_executable(tst_displaysetup tst_displaysetup.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/DisplaySetup.cpp)
+target_include_directories(tst_displaysetup PRIVATE ${PROJECT_SOURCE_DIR}/src/app/platform)
+target_link_libraries(tst_displaysetup PRIVATE winshun_options Qt6::Core Qt6::Test advapi32 setupapi user32 wevtapi)
+set_target_properties(tst_displaysetup PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_displaysetup COMMAND tst_displaysetup -o -,txt)
+set_tests_properties(tst_displaysetup PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Where the interface was when it stopped answering (GitHub #111): the watch
 # on this test's own thread, made to compute and to wait.
 qt_add_executable(tst_uistall tst_uistall.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/UiStall.cpp
