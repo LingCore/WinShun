@@ -22,6 +22,10 @@ Item {
     property real offsetY
     readonly property FilePreview filePreview: host.filePreview
     readonly property var hostWindow: Window.window
+    // A picture: the badge in its corner opens it large (ClipPictureViewer,
+    // GitHub #414); the wheel and a double click zoom it here as ever.
+    property bool pictureViewed: false
+    signal pictureClicked()
 
     function place() { host.showFile(view, path, isDir, Theme.dark) }
     function placeSoon() { Qt.callLater(place) }
@@ -106,7 +110,9 @@ Item {
         color: Theme.subtext
         font.pixelSize: view.metrics.uiCaption
     }
+    HoverHandler { id: pointer }
     PreviewBody {
+        id: body
         objectName: "clipboardPreviewFileBody"
         anchors.left: parent.left
         anchors.right: parent.right
@@ -116,5 +122,39 @@ Item {
         preview: view.filePreview
         dpr: Screen.devicePixelRatio
         padding: view.padding
+    }
+    Rectangle { // a picture's: shows it large
+        objectName: "clipboardFilePictureZoom"
+        visible: view.filePreview.kind === FilePreview.Picture && (pointer.hovered || view.pictureViewed)
+        anchors.right: body.right
+        anchors.top: body.top
+        anchors.margins: view.padding
+        width: 28
+        height: 28
+        radius: Theme.controlRadius
+        color: zoomArea.containsMouse ? Theme.background : Qt.alpha(Theme.background, 0.9)
+        border.width: 1
+        border.color: Theme.divider
+        Accessible.role: Accessible.Button
+        Accessible.name: view.pictureViewed ? qsTr("关闭大图") : qsTr("看大图")
+        Accessible.onPressAction: view.pictureClicked()
+        Glyph {
+            anchors.centerIn: parent
+            iconName: view.pictureViewed ? "magnifying-glass-minus" : "magnifying-glass-plus"
+            size: 16
+            color: Theme.text
+        }
+        MouseArea {
+            id: zoomArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: view.pictureClicked()
+        }
+        HoverTip {
+            dpr: Screen.devicePixelRatio
+            target: zoomArea.containsMouse ? zoomArea : null
+            text: view.pictureViewed ? qsTr("关闭大图") : qsTr("看大图")
+        }
     }
 }

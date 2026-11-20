@@ -1524,6 +1524,17 @@
     </message>
 </context>
 <context>
+    <name>ClipFilePreview</name>
+    <message>
+        <source>关闭大图</source>
+        <translation>Close the large view</translation>
+    </message>
+    <message>
+        <source>看大图</source>
+        <translation>View large</translation>
+    </message>
+</context>
+<context>
     <name>ClipGroupPicker</name>
     <message>
         <source>%1，%2 项</source>
@@ -1551,6 +1562,29 @@
     <message>
         <source>%1 导入</source>
         <translation>%1 import</translation>
+    </message>
+</context>
+<context>
+    <name>ClipPictureViewer</name>
+    <message>
+        <source>查看图片</source>
+        <translation>Picture</translation>
+    </message>
+    <message>
+        <source>图片加载失败</source>
+        <translation>The picture could not be loaded</translation>
+    </message>
+    <message>
+        <source>正在加载图片…</source>
+        <translation>Loading image…</translation>
+    </message>
+    <message>
+        <source>滚轮缩放 · 双击看原始大小 · Esc 关闭</source>
+        <translation>Wheel to zoom · Double-click for actual size · Esc to close</translation>
+    </message>
+    <message>
+        <source>关闭</source>
+        <translation>Close</translation>
     </message>
 </context>
 <context>
@@ -1585,6 +1619,26 @@
             <numerusform>…%Ln more character</numerusform>
             <numerusform>…%Ln more characters</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>关闭大图</source>
+        <translation>Close the large view</translation>
+    </message>
+    <message>
+        <source>看大图</source>
+        <translation>View large</translation>
+    </message>
+    <message>
+        <source>看大图，滚轮可以放大</source>
+        <translation>View large; the wheel zooms in</translation>
+    </message>
+    <message>
+        <source>收起图中的文字</source>
+        <translation>Fold the words in the picture</translation>
+    </message>
+    <message>
+        <source>展开图中的文字</source>
+        <translation>Show the words in the picture</translation>
     </message>
     <message>
         <source>图中的文字</source>

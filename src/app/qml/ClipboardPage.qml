@@ -137,6 +137,7 @@ Item {
     }
     function windowHidden() {
         findingGroup = false
+        pictureViewOpen = false
         closePreview(clipboard.previewRestore) // kept for next time, if asked to (Settings::clipboardPreviewRestore)
         list.stopScrolling()
         numberHints.reset()
@@ -273,6 +274,60 @@ Item {
             clipboard.previewOpen = false
     }
 
+    // A picture large beside the window (ClipPictureViewer, GitHub #414): the
+    // preview's (a copied picture, or one copied picture file's), else the
+    // current row's. It follows them, and goes on a row with none.
+    property bool pictureViewOpen: false
+    // Hidden at once by its binding; let go a turn later (a Loader only
+    // deletes a window later, and leaves it on the screen until then).
+    onPictureViewOpenChanged: {
+        if (pictureViewOpen)
+            pictureViewLoader.active = true
+        else
+            Qt.callLater(() => { if (!pictureViewOpen) pictureViewLoader.active = false })
+    }
+    readonly property var viewedInfo: pictureViewOpen && list.count > 0 && previewRevision >= 0
+        ? (previewOpen ? preview.info : clipboard.preview(list.currentIndex)) : ({})
+    readonly property FilePreview viewedFile: pictureViewOpen && fileView.shown ? clipboard.filePreview : null
+    readonly property bool viewedFilePicture: viewedFile !== null && viewedFile.kind === FilePreview.Picture
+    readonly property bool viewedFileLoading: viewedFile !== null && viewedFile.kind === FilePreview.Loading
+    readonly property string viewedSource: viewedFilePicture ? viewedFile.imageUrl
+        : (viewedInfo.kind ?? -1) === 4 && !(viewedInfo.masked ?? false) ? (viewedInfo.image ?? "") : ""
+    onViewedSourceChanged: Qt.callLater(() => {
+        if (pictureViewOpen && viewedSource.length === 0 && !viewedFileLoading)
+            pictureViewOpen = false
+    })
+    // Open or close it; false: there is no picture to show (the key goes on).
+    function togglePictureView(): bool {
+        if (pictureViewOpen) {
+            pictureViewOpen = false
+            return true
+        }
+        pictureViewOpen = true
+        if (viewedSource.length === 0 && !viewedFileLoading)
+            pictureViewOpen = false
+        return pictureViewOpen
+    }
+    Loader {
+        id: pictureViewLoader
+        active: false
+        sourceComponent: Component {
+            ClipPictureViewer {
+                readonly property Window clipWindow: page.Window.window
+                host: clipWindow
+                visible: page.pictureViewOpen && clipWindow !== null && clipWindow.visible
+                hostRect: clipWindow ? Qt.rect(clipWindow.x, clipWindow.y, clipWindow.width, clipWindow.height) : Qt.rect(0, 0, 0, 0)
+                availableArea: page.frame.availableArea(page)
+                source: page.viewedSource
+                pixels: page.viewedFilePicture ? page.viewedFile.imageSize
+                                               : Qt.size(page.viewedInfo.width ?? 0, page.viewedInfo.height ?? 0)
+                animated: !page.viewedFilePicture && (page.viewedInfo.animated ?? false)
+                caption: page.viewedFilePicture ? page.viewedFile.summary : (page.viewedInfo.size ?? "")
+                onCloseRequested: page.pictureViewOpen = false
+            }
+        }
+    }
+
     function requestRowPreview(index) {
         previewClickTimer.close = previewOpen && index === list.currentIndex
         list.currentIndex = index
@@ -362,6 +417,8 @@ Item {
                 info: page.previewRevision >= 0 ? page.clipboard.preview(page.previewIndex) : ({})
                 onCopyRequested: (text, remember) => page.clipboard.copyText(text, remember)
                 onHoveredChanged: if (!hovered) hoverLeaveTimer.restart()
+                wordsShown: page.clipboard.pictureWords
+                onWordsToggled: page.clipboard.pictureWords = !page.clipboard.pictureWords
             }
         }
     }
@@ -580,8 +637,16 @@ Item {
             else if (list.count > 0)
                 clipboard.paste(targetRow(), shift)
             break
+        case Qt.Key_Space:
+            // A picture large and away again, as QuickLook's Space, while
+            // nothing is typed; on a row with none, it is typed (GitHub #414).
+            if (ctrl || alt || shift || input.text.length > 0 || selectedCount > 0 || !togglePictureView())
+                return
+            break
         case Qt.Key_Escape:
-            if (selectedCount > 0)
+            if (pictureViewOpen)
+                pictureViewOpen = false
+            else if (selectedCount > 0)
                 clipboard.clearSelection()
             else
                 clipboard.dismiss()
@@ -1282,6 +1347,11 @@ Item {
                 metrics: page.metrics
                 visible: page.previewOpen && !page.findingGroup
                 onCopyRequested: (text, remember) => page.clipboard.copyText(text, remember)
+                pictureZoomable: true
+                pictureViewed: page.pictureViewOpen
+                onPictureClicked: page.togglePictureView()
+                wordsShown: page.clipboard.pictureWords
+                onWordsToggled: page.clipboard.pictureWords = !page.clipboard.pictureWords
                 fileShown: fileView.shown
                 x: listArea.width + 1
                 width: parent.width - x
@@ -1316,6 +1386,8 @@ Item {
                     padding: preview.padding
                     offsetX: fileView.x
                     offsetY: preview.parentTop
+                    pictureViewed: page.pictureViewOpen
+                    onPictureClicked: page.togglePictureView()
                 }
             }
             ClipTextEditor {

@@ -33,6 +33,15 @@ Item {
     // the files' list and the thumbnail are not shown.
     property bool fileShown: false
     readonly property real contentBottom: meta.y - 4
+    // A click on the picture opens it large (ClipPictureViewer, GitHub #414):
+    // in the preview beside the list, not in the hover's.
+    property bool pictureZoomable: false
+    property bool pictureViewed: false // it is open: the badge stays, the click closes it
+    signal pictureClicked()
+    // A picture's words under it, or only their heading (folded, GitHub #414).
+    property bool wordsShown: true
+    signal wordsToggled()
+    onWordsShownChanged: if (!wordsShown) words.deselect()
     // Text selected with the mouse (GitHub #375): a picture's words, the
     // entry's own text, a copied text file's. Only one of them is shown.
     readonly property string selectedText: masked ? "" : kind === 4 ? words.selectedText
@@ -259,6 +268,42 @@ Item {
                     border.width: 1
                     border.color: Theme.divider
                 }
+
+                MouseArea {
+                    id: pictureArea
+                    objectName: "clipboardPictureZoom"
+                    anchors.fill: parent
+                    enabled: preview.pictureZoomable && preview.kind === 4 && picture.ready
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    Accessible.role: Accessible.Button
+                    Accessible.name: preview.pictureViewed ? qsTr("关闭大图") : qsTr("看大图")
+                    Accessible.onPressAction: preview.pictureClicked()
+                    onClicked: preview.pictureClicked()
+                }
+                Rectangle { // the badge that says a click shows it large
+                    visible: pictureArea.enabled && (pictureArea.containsMouse || preview.pictureViewed)
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 6
+                    width: 28
+                    height: 28
+                    radius: Theme.controlRadius
+                    color: Qt.alpha(Theme.background, 0.9)
+                    border.width: 1
+                    border.color: Theme.divider
+                    Glyph {
+                        anchors.centerIn: parent
+                        iconName: preview.pictureViewed ? "magnifying-glass-minus" : "magnifying-glass-plus"
+                        size: 16
+                        color: Theme.text
+                    }
+                }
+                HoverTip {
+                    dpr: preview.dpr
+                    target: pictureArea.enabled && pictureArea.containsMouse ? pictureArea : null
+                    text: preview.pictureViewed ? qsTr("关闭大图") : qsTr("看大图，滚轮可以放大")
+                }
             }
 
             // Selectable with the mouse, without the focus, as a picture's
@@ -316,11 +361,49 @@ Item {
                     width: parent.width
                     height: copyWordsButton.height
 
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("图中的文字")
-                        color: Theme.faint
-                        font.pixelSize: preview.metrics.uiCaption
+                    Item { // the heading folds the words away and back (GitHub #414)
+                        id: wordsHeading
+                        objectName: "clipboardPictureWordsToggle"
+                        width: wordsHeadingRow.implicitWidth + 12
+                        height: parent.height
+                        x: -6
+                        Accessible.role: Accessible.Button
+                        Accessible.name: preview.wordsShown ? qsTr("收起图中的文字") : qsTr("展开图中的文字")
+                        Accessible.onPressAction: preview.wordsToggled()
+
+                        Hook {
+                            anchors.fill: parent
+                            part: Theme.keySurface
+                            hovered: wordsHeadingArea.containsMouse
+                            pressed: wordsHeadingArea.pressed
+                            flat: true
+                            role: "toolbar"
+                            dpr: preview.dpr
+                        }
+                        Row {
+                            id: wordsHeadingRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Glyph {
+                                anchors.verticalCenter: parent.verticalCenter
+                                iconName: preview.wordsShown ? "caret-down" : "caret-right"
+                                size: 12
+                                color: Theme.faint
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: qsTr("图中的文字")
+                                color: wordsHeadingArea.containsMouse ? Theme.subtext : Theme.faint
+                                font.pixelSize: preview.metrics.uiCaption
+                            }
+                        }
+                        MouseArea {
+                            id: wordsHeadingArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: preview.wordsToggled()
+                        }
                     }
                     Item { // copies the words selected, or all of them
                         id: copyWordsButton
@@ -372,6 +455,8 @@ Item {
                 // selected here (ClipboardPage), as the button does.
                 TextEdit {
                     id: words
+                    objectName: "clipboardPictureWords"
+                    visible: preview.wordsShown
                     width: parent.width
                     text: preview.info.words ?? ""
                     textFormat: TextEdit.PlainText

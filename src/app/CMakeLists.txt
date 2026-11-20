@@ -191,6 +191,7 @@ set(qml_files
     qml/ClipFilePreview.qml
     qml/ClipTextEditor.qml
     qml/ClipHoverPreview.qml
+    qml/ClipPictureViewer.qml
     qml/RowAction.qml
     qml/RowActionsPool.qml
     qml/ResultActions.qml

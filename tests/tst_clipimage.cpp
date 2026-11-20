@@ -23,6 +23,7 @@
 #include <QQuickWindow>
 #include <QRegularExpression>
 #include <QScopeGuard>
+#include <QSignalSpy>
 #include <QStyleHints>
 #include <QTemporaryDir>
 #include <QTest>
@@ -34,7 +35,9 @@
 #include <wrl/client.h>
 #undef small // rpcndr.h's, for MIDL: a name below
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <memory>
 
@@ -164,6 +167,18 @@ QByteArray clipboardBytes(const wchar_t* name)
 }
 
 } // namespace
+
+QQuickItem* itemNamed(QQuickItem* root, const QString& name)
+{
+    if (!root)
+        return nullptr;
+    if (root->objectName() == name)
+        return root;
+    for (QQuickItem* child : root->childItems())
+        if (QQuickItem* found = itemNamed(child, name))
+            return found;
+    return nullptr;
+}
 
 class ClipImageTest : public QObject {
     Q_OBJECT
@@ -819,6 +834,113 @@ private slots:
             QVERIFY(window.grabWindow().save(screenshot));
         window.hide();
         QTRY_VERIFY(!preview->findChild<QObject*>(u"clipboardAnimation"_s));
+    }
+
+    // GitHub #414: a picture's words are folded under their heading unless
+    // asked for, and a click on the picture asks for it large.
+    void pictureWordsFoldAndPictureClick()
+    {
+        QTest::failOnWarning(QRegularExpression(u"TypeError|ReferenceError|Cannot assign|Binding loop"_s));
+        const QUrl folder = QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR "/"));
+        QQmlEngine engine;
+        QQmlComponent component(&engine, folder.resolved(QUrl(u"ClipPreview.qml"_s)));
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"wordsShown"_s, false}}));
+        QVERIFY2(object, qPrintable(component.errorString()));
+        auto* preview = qobject_cast<QQuickItem*>(object.get());
+        QVERIFY(preview);
+        QQuickWindow window;
+        window.setFlags(Qt::Tool | Qt::WindowDoesNotAcceptFocus);
+        window.setProperty("_q_showWithoutActivating", true);
+        window.resize(360, 420);
+        preview->setParentItem(window.contentItem());
+        preview->setSize(QSizeF(360, 420));
+        const QString path = QStringLiteral(WINSHUN_TEST_DATA "/clipboard-oriented.jpg");
+        const QSize size = QImageReader(path).size();
+        preview->setProperty("info", QVariantMap {{u"id"_s, u"1"_s}, {u"kind"_s, 4}, {u"width"_s, size.width()},
+            {u"height"_s, size.height()}, {u"image"_s, QUrl::fromLocalFile(path).toString()},
+            {u"words"_s, u"图里的一行字"_s}});
+        window.show();
+        window.lower();
+
+        auto* words = preview->findChild<QQuickItem*>(u"clipboardPictureWords"_s);
+        auto* heading = preview->findChild<QQuickItem*>(u"clipboardPictureWordsToggle"_s);
+        QVERIFY(words && heading);
+        QVERIFY(heading->isVisible());
+        QVERIFY(!words->isVisible()); // folded: the heading and 复制文字 only
+        QSignalSpy toggled(preview, SIGNAL(wordsToggled()));
+        QVERIFY(QMetaObject::invokeMethod(object.get(), "wordsToggled"));
+        QCOMPARE(toggled.count(), 1);
+        preview->setProperty("wordsShown", true);
+        QVERIFY(words->isVisible());
+        QCOMPARE(words->property("text").toString(), u"图里的一行字"_s);
+
+        auto* zoom = preview->findChild<QQuickItem*>(u"clipboardPictureZoom"_s);
+        QVERIFY(zoom);
+        QVERIFY(!zoom->property("enabled").toBool()); // not in the hover's preview
+        preview->setProperty("pictureZoomable", true);
+        QTRY_VERIFY(zoom->property("enabled").toBool()); // once the picture is there
+        QSignalSpy clicked(preview, SIGNAL(pictureClicked()));
+        const QPoint middle = zoom->mapToScene(QPointF(zoom->width() / 2, zoom->height() / 2)).toPoint();
+        QTest::mouseClick(&window, Qt::LeftButton, {}, middle);
+        QTRY_COMPARE(clicked.count(), 1);
+        window.hide();
+    }
+
+    // GitHub #414: the picture large beside the clipboard window, fitted in
+    // the room there; the wheel's zoom and back to fitted with a new picture.
+    void pictureViewerBesideTheWindow()
+    {
+        QTest::failOnWarning(QRegularExpression(u"TypeError|ReferenceError|Cannot assign|Binding loop"_s));
+        const QUrl folder = QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR "/"));
+        QQmlEngine engine;
+        QQmlComponent hostComponent(&engine);
+        hostComponent.setData("import QtQuick; Window { x: 100; y: 100; width: 600; height: 500; visible: true; flags: Qt.Tool }",
+            QUrl(u"host.qml"_s));
+        std::unique_ptr<QObject> host(hostComponent.create());
+        QVERIFY2(host, qPrintable(hostComponent.errorString()));
+        const QString path = QStringLiteral(WINSHUN_TEST_DATA "/clipboard-oriented.jpg");
+        QQmlComponent component(&engine, folder.resolved(QUrl(u"ClipPictureViewer.qml"_s)));
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+        // A picture larger than the room on the right: fitted into it.
+        const QSize shown(2880, 1704);
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({
+            {u"host"_s, QVariant::fromValue(host.get())}, {u"hostRect"_s, QRectF(100, 100, 600, 500)},
+            {u"availableArea"_s, QRectF(0, 0, 1920, 1040)}, {u"source"_s, QUrl::fromLocalFile(path).toString()},
+            {u"pixels"_s, QSizeF(shown)}, {u"caption"_s, u"PNG"_s}}));
+        QVERIFY2(object, qPrintable(component.errorString()));
+        auto* viewer = qobject_cast<QQuickWindow*>(object.get());
+        QVERIFY(viewer);
+        QTRY_VERIFY(viewer->isVisible());
+        const qreal dpr = viewer->devicePixelRatio();
+        const qreal natural = shown.width() / dpr;
+        const qreal fit = std::min({1.0, (1920 - 700 - 16 - 24) / natural, (1040 - 16 - 24 - 36) / (shown.height() / dpr)});
+        QCOMPARE(viewer->x(), 708); // right of it, 8 apart
+        QVERIFY(viewer->x() + viewer->width() <= 1920 - 8);
+        QVERIFY(viewer->y() >= 8 && viewer->y() + viewer->height() <= 1040 - 8);
+        QCOMPARE(viewer->width(), int(std::ceil(std::min(1920.0 - 700 - 16, natural * fit + 24))));
+        const auto named = [viewer](const QString& name) { return itemNamed(viewer->contentItem(), name); };
+        auto* view = named(u"clipboardPictureViewerView"_s);
+        QVERIFY(view);
+        QVERIFY(std::abs(view->property("scale").toReal() - view->property("fitScale").toReal()) < 1e-6);
+        QQuickItem* image = nullptr;
+        QTRY_VERIFY((image = named(u"clipboardPictureViewerImage"_s)));
+        QVERIFY(image);
+        QTRY_COMPARE(image->property("status").toInt(), 1); // Image.Ready
+
+        const qreal fitted = view->property("scale").toReal();
+        QVERIFY(QMetaObject::invokeMethod(view, "zoomAt", Q_ARG(QVariant, 2.0), Q_ARG(QVariant, 50.0), Q_ARG(QVariant, 50.0)));
+        QVERIFY(std::abs(view->property("scale").toReal() - fitted * 2) < 1e-6);
+        auto* caption = named(u"clipboardPictureViewerCaption"_s);
+        QVERIFY(caption);
+        QVERIFY(caption->property("text").toString().endsWith(u"%1%"_s.arg(qRound(fitted * 2 * 100))));
+        object->setProperty("source", QUrl::fromLocalFile(QStringLiteral(WINSHUN_TEST_DATA "/clipboard-animated.gif")).toString());
+        QCOMPARE(view->property("zoom").toReal(), 0.0); // a new picture: fitted again
+
+        // No room beside it: over the middle of the screen.
+        object->setProperty("hostRect", QRectF(300, 100, 1320, 500));
+        QCOMPARE(viewer->x(), int(std::round((1920 - viewer->width()) / 2.0)));
+        viewer->close();
     }
 
 private:

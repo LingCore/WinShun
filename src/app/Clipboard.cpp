@@ -326,6 +326,15 @@ void Clipboard::setPreviewWidth(int width)
     emit previewWidthChanged();
 }
 
+void Clipboard::setPictureWords(bool shown)
+{
+    if (m_pictureWords == shown)
+        return;
+    m_pictureWords = shown;
+    m_store->setValue(u"pictureWords"_s, shown ? u"shown"_s : u"folded"_s);
+    emit pictureWordsChanged();
+}
+
 void Clipboard::setListWidth(int width)
 {
     width = std::clamp(width, 360, 1600);
@@ -736,6 +745,7 @@ void Clipboard::loadHistoryState()
         m_separator = kSeparators.constFirst();
     m_previewOpen = m_store->value(u"preview"_s) == u"open"_s;
     m_previewWidth = std::max(0, m_store->value(u"previewWidth"_s).toInt());
+    m_pictureWords = m_store->value(u"pictureWords"_s) == u"shown"_s;
     const int savedWidth = m_store->value(u"listWidth"_s).toInt();
     m_listWidth = savedWidth >= 360 && savedWidth <= 1600 ? savedWidth : 480;
     m_windowHeight = std::clamp(m_store->value(u"windowHeight"_s).toInt(), 0, 4320);
@@ -749,6 +759,7 @@ void Clipboard::resumeHistory()
     emit separatorChanged();
     emit previewOpenChanged();
     emit previewWidthChanged();
+    emit pictureWordsChanged();
     emit listWidthChanged();
     emit windowHeightChanged();
     emit pinnedFirstChanged();

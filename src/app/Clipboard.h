@@ -74,6 +74,9 @@ class Clipboard : public QObject {
     Q_PROPERTY(bool previewRestore READ previewRestore NOTIFY previewOpenChanged FINAL)
     // Its width as the user dragged it (logical pixels); 0: the default.
     Q_PROPERTY(int previewWidth READ previewWidth WRITE setPreviewWidth NOTIFY previewWidthChanged FINAL)
+    // A picture's words (what Windows read in it) shown under it in the
+    // preview; folded by default, as the user last left it (GitHub #414).
+    Q_PROPERTY(bool pictureWords READ pictureWords WRITE setPictureWords NOTIFY pictureWordsChanged FINAL)
     Q_PROPERTY(int listWidth READ listWidth WRITE setListWidth NOTIFY listWidthChanged FINAL)
     // 0 keeps the automatic height; a user resize remembers logical pixels.
     Q_PROPERTY(int windowHeight READ windowHeight WRITE setWindowHeight NOTIFY windowHeightChanged FINAL)
@@ -250,6 +253,8 @@ public:
     void setPreviewRestore(bool on);
     int previewWidth() const { return m_previewWidth; }
     void setPreviewWidth(int width);
+    bool pictureWords() const { return m_pictureWords; }
+    void setPictureWords(bool shown);
     int listWidth() const { return m_listWidth; }
     void setListWidth(int width);
     int windowHeight() const { return m_windowHeight; }
@@ -395,6 +400,7 @@ signals:
     void pinnedChanged();
     void previewOpenChanged();
     void previewWidthChanged();
+    void pictureWordsChanged();
     void listWidthChanged();
     void windowHeightChanged();
     void pinnedFirstChanged();
@@ -532,6 +538,7 @@ private:
     bool m_previewOpen = false;
     bool m_previewRestore = false;
     int m_previewWidth = 0;
+    bool m_pictureWords = false;
     int m_listWidth = 480;
     int m_windowHeight = 0;
     bool m_pinnedFirst = false;

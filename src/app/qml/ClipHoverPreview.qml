@@ -10,6 +10,8 @@ Window {
     required property var info
     required property UiScale metrics
     readonly property bool hovered: pointer.hovered
+    property bool wordsShown: true // a picture's words (Clipboard.pictureWords)
+    signal wordsToggled()
     readonly property real rightRoom: availableArea.x + availableArea.width - anchorRect.x - anchorRect.width - 16
     readonly property real leftRoom: anchorRect.x - availableArea.x - 16
     signal copyRequested(string text, bool remember)
@@ -47,6 +49,8 @@ Window {
         compact: true
         parentTop: 1
         onCopyRequested: (text, remember) => window.copyRequested(text, remember)
+        wordsShown: window.wordsShown
+        onWordsToggled: window.wordsToggled()
     }
     HoverHandler { id: pointer }
     WindowEdge { fill: Theme.background }
