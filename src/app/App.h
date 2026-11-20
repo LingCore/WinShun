@@ -218,9 +218,11 @@ public:
     // field comes back into the window and the box goes idle (as for the
     // panel): the window stays where it stands, a window of its own now.
     void launcherPinnedChanged();
-    // Over every window (its WindowStaysOnTopHint), but not while pinned
-    // with Settings::pinnedOnTop off.
-    void applyLauncherTopmost();
+    // Pinned, a window of its own (GitHub #418): on the taskbar and in
+    // Alt+Tab, minimized and back as any other (win::setTaskbarWindow), and
+    // topmost only with Settings::pinnedOnTop. Else over every window (its
+    // WindowStaysOnTopHint), and none of the rest.
+    void applyLauncherPin();
     // --dump <file> from another copy (tests): the launcher's state and rows as JSON.
     void dumpLauncher(const QString& file) const;
     void showClipboard();

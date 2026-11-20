@@ -2042,7 +2042,7 @@ void App::applySettings(bool initial)
     m_launcher->setPreviewFollowsPointer(m_settings.previewFollowsPointer);
     m_launcher->setPreviewRestore(m_settings.previewRestore);
     m_launcher->setReopenWhereLeft(m_settings.reopenWhereLeft);
-    applyLauncherTopmost();
+    applyLauncherPin();
     m_preview->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->filePreview()->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
@@ -5741,7 +5741,7 @@ void App::showLauncher(const QString& asked, const std::optional<taskbar::Spot>&
     m_boxPressGrace.stop();
     m_launcherShown.start();
     m_frontTakenBack = 0;
-    applyLauncherTopmost(); // left not topmost by a pin of before, perhaps
+    applyLauncherPin(); // left not topmost by a pin of before, perhaps
     m_idleTrim->used();
     m_index->shares().lookedAt(); // a WebDAV server stopped meanwhile shows as offline (GitHub #114)
     if (!launcherShown()) { // what a screenshot of the history pastes into (jt, Enter)
@@ -7256,6 +7256,15 @@ void App::hideLauncher()
     m_launcher->closePreview(); // at once, not after the slide
     if (clipboardUnderLauncher())
         hideClipboard(false);
+    // Pinned and minimized (GitHub #418), closed from its taskbar button: back
+    // to its size and place unseen and not made active, then hidden. Hidden
+    // minimized, it would come back so, and be placed where it is not.
+    if (const HWND hwnd = reinterpret_cast<HWND>(m_window->winId()); ::IsIconic(hwnd)) {
+        win::setCloaked(m_window, true); // dropped as it is hidden
+        ::ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        finishHidingLauncher();
+        return;
+    }
     // Slid out, unless it was never seen (still waiting for its first frame).
     if (m_launcherReveal.pending() || m_prewarming.load() || m_typedRows == TypedRows::Awaited) {
         finishHidingLauncher();
@@ -7330,10 +7339,11 @@ void App::togglePanel()
         setPanel(!m_launcher->panel());
 }
 
-void App::applyLauncherTopmost()
+void App::applyLauncherPin()
 {
     if (!m_window || !m_window->handle())
         return;
+    win::setTaskbarWindow(m_window, m_launcher->pinned() && !m_prewarming.load());
     const bool topmost = !m_launcher->pinned() || m_settings.pinnedOnTop;
     ::SetWindowPos(reinterpret_cast<HWND>(m_window->winId()), topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
@@ -7341,7 +7351,7 @@ void App::applyLauncherTopmost()
 
 void App::launcherPinnedChanged()
 {
-    applyLauncherTopmost();
+    applyLauncherPin();
     // Over the box, its field drawn there: pinned, the window is one of its
     // own (it stays while the user works elsewhere, and can be dragged
     // away), so the field comes back into it and the box goes idle. Where it

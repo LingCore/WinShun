@@ -93,6 +93,12 @@ bool materialsEnabled();
 // while it still gets focus and draws as usual.
 void setCloaked(QWindow* window, bool cloaked);
 
+// A window of its own to the shell (GitHub #418, the launcher pinned): a
+// button on the taskbar, in Alt+Tab, minimized by that button and Win+D as
+// any other, and back from them. Off: as Qt made it from its flags (a
+// Qt::Tool window: none of that). Kept while hidden and shown again.
+void setTaskbarWindow(QWindow* window, bool on);
+
 // No DWM fade as the window is shown or hidden: hidden, it is off the screen
 // in the next composition, not some 200 ms later (a capture must not catch it).
 // Not for a window that can be maximized or snapped: sized so with them off,

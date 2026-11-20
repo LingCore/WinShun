@@ -15,6 +15,8 @@
 #include <commctrl.h>
 #include <windows.h>
 #include <msctf.h>
+#include <shobjidl.h>
+#include <wrl/client.h>
 
 #include <atomic>
 #include <mutex>
@@ -404,6 +406,47 @@ void setCloaked(QWindow* window, bool cloaked)
         const BOOL value = cloaked;
         ::DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &value, sizeof value);
     }
+}
+
+void setTaskbarWindow(QWindow* window, bool on)
+{
+    const HWND hwnd = handleOf(window);
+    if (!hwnd)
+        return;
+    const Qt::WindowFlags flags = window->flags();
+    const LONG_PTR exStyle = ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    const LONG_PTR style = ::GetWindowLongPtrW(hwnd, GWL_STYLE);
+    LONG_PTR wantedEx = exStyle & ~(WS_EX_TOOLWINDOW | WS_EX_APPWINDOW);
+    if (on)
+        wantedEx |= WS_EX_APPWINDOW;
+    else if ((flags & Qt::WindowType_Mask) == Qt::Tool)
+        wantedEx |= WS_EX_TOOLWINDOW;
+    // The minimize box: what the taskbar's button and Win+D go by; the
+    // window menu with it, as their minimizing needs (none of it drawn: no
+    // caption, see nativeFrameProc).
+    LONG_PTR wanted = style & ~(WS_MINIMIZEBOX | WS_SYSMENU);
+    if (on || (flags & Qt::WindowMinimizeButtonHint))
+        wanted |= WS_MINIMIZEBOX;
+    if (on || (flags & Qt::WindowSystemMenuHint))
+        wanted |= WS_SYSMENU;
+    if (wantedEx == exStyle && wanted == style)
+        return;
+    ::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, wantedEx);
+    ::SetWindowLongPtrW(hwnd, GWL_STYLE, wanted);
+    ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+        SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+    // The taskbar looks at the styles as a window is shown; one on the
+    // screen already is added or taken away by hand.
+    if (!::IsWindowVisible(hwnd))
+        return;
+    Microsoft::WRL::ComPtr<ITaskbarList> taskbar;
+    if (FAILED(::CoCreateInstance(CLSID_TaskbarList, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&taskbar)))
+        || FAILED(taskbar->HrInit())) {
+        qWarning("Taskbar button: no ITaskbarList");
+        return;
+    }
+    if (FAILED(on ? taskbar->AddTab(hwnd) : taskbar->DeleteTab(hwnd)))
+        qWarning("Taskbar button: could not %s it", on ? "add" : "remove");
 }
 
 void expectActivation(QWindow* window)

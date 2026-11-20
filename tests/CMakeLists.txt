@@ -595,6 +595,18 @@ add_test(NAME tst_windowvisibility COMMAND tst_windowvisibility)
 set_tests_properties(tst_windowvisibility PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The launcher pinned as a window of its own (GitHub #418): real windows.
+qt_add_executable(tst_taskbarwindow tst_taskbarwindow.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Foreground.cpp)
+target_include_directories(tst_taskbarwindow PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_taskbarwindow PRIVATE winshun_options Qt6::Gui Qt6::Test comctl32 gdi32 dwmapi ole32 shell32 user32)
+set_target_properties(tst_taskbarwindow PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_taskbarwindow COMMAND tst_taskbarwindow)
+set_tests_properties(tst_taskbarwindow PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=windows"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # A frameless window's dark mode after Qt's palette changes (GitHub #120): real windows.
 qt_add_executable(tst_darkframe tst_darkframe.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp
