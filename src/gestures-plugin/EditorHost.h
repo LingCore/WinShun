@@ -3,10 +3,12 @@
 // front), hands it the settings and the look as JSON lines on its stdin, and
 // reads what it changes from its stdout. Lines, one JSON object each, UTF-8:
 //   plugin -> window  {"type":"init" | "settings", "rules":"<rules JSON>", "exclude":"a.exe;b.exe",
-//                      "trail":true, "fullScreen":false, "paused":false, "appearance":{…}}
+//                      "trail":true, "fullScreen":false, "paused":false, "taken":["key:Ctrl+Alt+T"], "appearance":{…}}
 //                     {"type":"appearance", "appearance":{…}}   {"type":"show"}   {"type":"quit"}
+//                     ("taken": the rules' shortcuts another program holds)
 //   window -> plugin  {"type":"save", "rules":"…"} / {"exclude":"…"} / {"trail":true} / {"fullScreen":false}
 //                     (any of them in one line)   {"type":"pause", "paused":true}
+//                     {"type":"recording", "recording":true}: a key is being recorded (the shortcuts let go)
 // The window saves each change at once; there is no OK or Cancel. Its
 // stderr is the plugin's own (plugins.log).
 #pragma once
@@ -29,6 +31,8 @@ public:
         std::function<void(bool paused)> pause;
         // The window's process, for the engine to leave its windows alone (0: it ended). Not on the serve thread.
         std::function<void(DWORD pid)> own;
+        // A key is being recorded in the window, or no longer (false too when the window ends). Not on the serve thread.
+        std::function<void(bool recording)> recording;
         std::function<void(const std::string&)> log;
     };
 
@@ -45,6 +49,8 @@ public:
     void appearance(const winshun::Json& appearance);
     // 暂停 changed outside the window (the launcher's row).
     void pausedChanged(bool paused);
+    // The rules' shortcuts another program holds changed (any thread).
+    void shortcutsTaken(winshun::Json taken);
     bool running();
     // Asks it to quit, waits up to 2 s, then ends it.
     void close();

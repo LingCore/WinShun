@@ -230,6 +230,7 @@ PickerPanel {
             hotkey: picker.current.kind === "keys" ? picker.current.id : ""
             prompt: qsTr("请按下按键…")
             placeholder: qsTr("点这里，再按键")
+            onRecordingChanged: picker.editor.setRecording(recording) // the plugin's shortcuts let go: they reach here too
             onKeyPressed: (key, modifiers, scanCode) => {
                 if (key === Qt.Key_Escape && modifiers === Qt.NoModifier) {
                     picker.open = false

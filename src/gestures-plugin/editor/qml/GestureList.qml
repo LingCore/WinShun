@@ -30,6 +30,11 @@ Column {
         mode: list.mode
         app: list.app
     }
+    RulesFilter { // the shortcuts, on the page of words selected
+        id: shortcutFilter
+        sourceModel: list.editor.rules
+        mode: 3
+    }
 
     function scrollTo(item: Item) {
         if (!list.flick)
@@ -60,6 +65,21 @@ Column {
                     item.askAction()
                 else
                     item.flash()
+            })
+        }
+
+        // A shortcut recorded: its row shown and flashed (a new one translates; its action can be changed there).
+        function onShortcutFocused(sourceRow: int) {
+            if (list.mode !== 1)
+                return
+            const at = shortcutFilter.proxyRow(sourceRow)
+            const item = at >= 0 ? shortcuts.itemAt(at) : null
+            if (!item)
+                return
+            Qt.callLater(() => {
+                shortcutsSection.layoutNow()
+                list.scrollTo(item)
+                item.flash()
             })
         }
     }
@@ -101,7 +121,7 @@ Column {
         Item { // nothing yet
             width: parent.width
             height: 56
-            visible: filter.count === 0
+            visible: rows.count === 0
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -110,6 +130,75 @@ Column {
                 text: qsTr("还没有手势：在上面的框里按住右键画一个")
                 color: Theme.subtext
                 font.pixelSize: Theme.fontBody
+                elide: Text.ElideRight
+            }
+        }
+    }
+
+    SettingsSection {
+        id: shortcutsSection
+        width: parent.width
+        visible: list.mode === 1
+        title: qsTr("选中文字后按快捷键")
+        glyph: "ph:keyboard"
+        note: qsTr("先选中一段文字，再按快捷键。浏览器、VS Code、微信这些程序里也能用：Win顺 替你按一下 Ctrl+C 读出选中的字，读完把剪贴板原样放回去，Win顺 的剪贴板历史里不会多一条")
+
+        Repeater {
+            id: shortcuts
+            model: shortcutFilter
+
+            delegate: ShortcutRow {
+                editor: list.editor
+                picker: list.picker
+                dpr: list.dpr
+            }
+        }
+        Item { // a new one: recorded here, it translates at first
+            id: addRow
+            width: parent.width
+            height: Theme.snap(Math.max(56, addHint.implicitHeight + 16), list.dpr)
+
+            property string problem
+
+            Hook { // the separator above, when there are rows
+                x: Theme.edge(list.dpr)
+                width: parent.width - 2 * Theme.edge(list.dpr)
+                height: Theme.edge(list.dpr)
+                part: shortcuts.count > 0 ? Theme.separator : null
+                extra: ({ card: true })
+                orientation: Qt.Horizontal
+                dpr: list.dpr
+            }
+            HotkeyRecorder {
+                id: addRecorder
+                objectName: "addShortcutRecorder"
+                x: 18
+                anchors.verticalCenter: parent.verticalCenter
+                placeholder: qsTr("点这里，再按快捷键")
+                onRecordingChanged: {
+                    list.editor.setRecording(recording)
+                    if (recording)
+                        addRow.problem = ""
+                }
+                onRecorded: (hotkey) => {
+                    if (hotkey.length > 0)
+                        addRow.problem = list.editor.addShortcut(hotkey)
+                }
+            }
+            Text {
+                id: addHint
+                anchors.left: addRecorder.right
+                anchors.leftMargin: 14
+                anchors.right: parent.right
+                anchors.rightMargin: 18
+                anchors.verticalCenter: parent.verticalCenter
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                text: addRow.problem.length > 0 ? addRow.problem
+                    : shortcuts.count > 0 ? qsTr("再加一个快捷键")
+                    : qsTr("加一个快捷键，选中文字后按它就翻译；动作可以再改")
+                color: addRow.problem.length > 0 ? Theme.danger : Theme.subtext
+                font.pixelSize: Theme.fontCaption
                 elide: Text.ElideRight
             }
         }

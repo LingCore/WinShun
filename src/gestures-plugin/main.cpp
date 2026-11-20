@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 
 using winshun::Item;
@@ -105,6 +106,14 @@ gestures::Settings settingsFrom(const Json& s)
 }
 
 class Gestures : public winshun::Plugin {
+public:
+    ~Gestures() override
+    {
+        // The editor goes before the engine (members): the engine's thread must not reach it then.
+        const std::lock_guard lock(m_editorMutex);
+        m_ending = true;
+    }
+
 protected:
     std::string name() const override { return "winshun.gestures"; }
 
@@ -128,13 +137,27 @@ protected:
                     log("warning", "clipboard_copy: " + answer["error"]["message"].toString());
             }).detach();
         };
-        o.selectedText = [this](HWND root) -> std::wstring {
-            const Json answer = tool("selected_text", Json::Object {{"window", static_cast<double>(reinterpret_cast<std::uintptr_t>(root))}}, &m_stopping);
+        o.selectedText = [this](HWND root, bool copy) -> gestures::Selected {
+            Json arguments = Json::Object {{"window", static_cast<double>(reinterpret_cast<std::uintptr_t>(root))}};
+            if (copy)
+                arguments.set("copy", true); // a Win顺 before 0.42.0 does not know it: UI Automation only
+            const Json answer = tool("selected_text", std::move(arguments), &m_stopping);
             if (answer.has("error")) {
                 log("warning", "selected_text: " + answer["error"]["message"].toString());
                 return {};
             }
-            return winshun::wide(answer["text"].toString());
+            return {winshun::wide(answer["text"].toString()), !answer["readable"].isBool() || answer["readable"].toBool()};
+        };
+        // Which of the rules' shortcuts another program holds (the engine's window thread): the
+        // settings window says so on their rows, the one open now and one opened later.
+        o.shortcutsRegistered = [this](const std::vector<std::string>& taken) {
+            Json list = Json::Array {};
+            for (const std::string& on : taken)
+                list.push(on);
+            const std::lock_guard lock(m_editorMutex);
+            m_taken = list;
+            if (m_editor && !m_ending)
+                m_editor->shortcutsTaken(std::move(list));
         };
         o.power = [this](const std::string& what) -> std::wstring {
             const Json answer = tool("power", Json::Object {{"action", what}}, &m_stopping);
@@ -165,7 +188,14 @@ protected:
             if (m_engine)
                 m_engine->setOwnWindowsOf(pid);
         };
-        m_editor = std::make_unique<gestures::EditorHost>(std::move(hooks));
+        // A key being recorded there: the shortcuts let go, so it reaches the window (and again when the window ends).
+        hooks.recording = [this](bool recording) {
+            if (m_engine)
+                m_engine->setRecording(recording);
+        };
+        auto editor = std::make_unique<gestures::EditorHost>(std::move(hooks));
+        const std::lock_guard lock(m_editorMutex); // the engine's thread may tell it of the shortcuts already
+        m_editor = std::move(editor);
     }
 
     void settingsChanged(const Json& s) override
@@ -274,6 +304,10 @@ private:
         state.set("fullScreen", g.fullScreen);
         state.set("paused", m_engine && m_engine->paused());
         state.set("appearance", appearance());
+        {
+            const std::lock_guard lock(m_editorMutex);
+            state.set("taken", m_taken);
+        }
         return state;
     }
 
@@ -428,6 +462,10 @@ private:
 
     std::unique_ptr<gestures::Engine> m_engine;
     std::unique_ptr<gestures::EditorHost> m_editor; // after the engine: gone before it
+    // The engine's window thread tells m_editor of the shortcuts taken: these keep that safe.
+    mutable std::mutex m_editorMutex;
+    Json m_taken = Json::Array {}; // the rules' shortcuts another program holds ("key:Ctrl+Alt+T")
+    bool m_ending = false;
     std::wstring m_pauseFile; // <dataDir>\paused: there while paused (survives a restart)
     std::atomic_bool m_stopping {false};
 };

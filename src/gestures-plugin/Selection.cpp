@@ -21,11 +21,12 @@ SelectionReader::~SelectionReader()
         m_thread.join();
 }
 
-void SelectionReader::ask(HWND root, std::function<void(std::wstring)> answer)
+void SelectionReader::ask(HWND root, std::function<void(Selected)> answer, bool copy)
 {
     {
         std::lock_guard lock(m_mutex);
         m_root = root;
+        m_copy = copy;
         m_answer = std::move(answer);
     }
     m_wake.notify_one();
@@ -35,16 +36,18 @@ void SelectionReader::run()
 {
     for (;;) {
         HWND root = nullptr;
-        std::function<void(std::wstring)> answer;
+        bool copy = false;
+        std::function<void(Selected)> answer;
         {
             std::unique_lock lock(m_mutex);
             m_wake.wait(lock, [this] { return m_quit || m_answer; });
             if (m_quit)
                 break;
             root = m_root;
+            copy = m_copy;
             answer = std::exchange(m_answer, nullptr);
         }
-        answer(m_read ? m_read(root) : std::wstring());
+        answer(m_read ? m_read(root, copy) : Selected {});
     }
 }
 

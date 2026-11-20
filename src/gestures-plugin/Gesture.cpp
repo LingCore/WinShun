@@ -585,7 +585,60 @@ TriggerKind triggerKind(std::string_view on)
         return TriggerKind::Edge;
     if (on == kWheelUp || on == kWheelDown)
         return TriggerKind::Wheel;
+    if (on.starts_with(kKeyPrefix)) // only as keyTrigger writes it
+        return keyTrigger(winshun::wide(std::string(on.substr(kKeyPrefix.size())))) == on ? TriggerKind::Key : TriggerKind::Unknown;
     return validGesture(on) ? TriggerKind::Gesture : TriggerKind::Unknown;
+}
+
+std::string keyTrigger(std::wstring_view keys)
+{
+    std::vector<std::uint16_t> vks;
+    if (!parseKeys(std::wstring(keys), vks))
+        return {};
+    const std::uint16_t key = vks.back();
+    const auto held = [&](std::uint16_t vk) { return std::find(vks.begin(), vks.end() - 1, vk) != vks.end() - 1; };
+    if (key == VK_CONTROL || key == VK_SHIFT || key == VK_MENU || key == VK_LWIN)
+        return {}; // a modifier alone
+    const bool function = key >= VK_F1 && key <= VK_F24;
+    if (!function && !held(VK_CONTROL) && !held(VK_MENU) && !held(VK_LWIN))
+        return {};
+    // The key as it was written (parseKeys read it), its first letter up: "T", "F5", "Space", "/".
+    const std::size_t plus = keys.size() > 1 && keys.back() == L'+' ? keys.size() - 1 : keys.find_last_of(L'+');
+    std::wstring name = trimmed(plus == std::wstring_view::npos ? keys : keys.substr(plus + 1));
+    if (name.empty())
+        name = L"+";
+    name = lowered(name);
+    if (!name.empty() && name[0] >= L'a' && name[0] <= L'z')
+        name[0] = static_cast<wchar_t>(name[0] - L'a' + L'A');
+    std::wstring out;
+    for (const auto& [vk, word] : {std::pair {std::uint16_t(VK_LWIN), L"Win"}, std::pair {std::uint16_t(VK_CONTROL), L"Ctrl"},
+             std::pair {std::uint16_t(VK_MENU), L"Alt"}, std::pair {std::uint16_t(VK_SHIFT), L"Shift"}}) {
+        if (held(vk))
+            out += std::wstring(word) + L"+";
+    }
+    return std::string(kKeyPrefix) + winshun::utf8(out + name);
+}
+
+bool hotkeyOf(std::string_view on, unsigned* modifiers, unsigned* vk)
+{
+    if (triggerKind(on) != TriggerKind::Key)
+        return false;
+    std::vector<std::uint16_t> vks;
+    if (!parseKeys(winshun::wide(std::string(on.substr(kKeyPrefix.size()))), vks))
+        return false;
+    unsigned mods = 0;
+    for (std::size_t i = 0; i + 1 < vks.size(); ++i) {
+        switch (vks[i]) {
+        case VK_CONTROL: mods |= MOD_CONTROL; break;
+        case VK_SHIFT: mods |= MOD_SHIFT; break;
+        case VK_MENU: mods |= MOD_ALT; break;
+        case VK_LWIN: mods |= MOD_WIN; break;
+        default: break;
+        }
+    }
+    *modifiers = mods;
+    *vk = vks.back();
+    return true;
 }
 
 std::wstring triggerTitle(std::string_view on, bool chinese)
@@ -606,6 +659,8 @@ std::wstring triggerTitle(std::string_view on, bool chinese)
         return chinese ? L"按住右键向上滚" : L"Right button + wheel up";
     if (on == kWheelDown)
         return chinese ? L"按住右键向下滚" : L"Right button + wheel down";
+    if (on.starts_with(kKeyPrefix))
+        return winshun::wide(std::string(on.substr(kKeyPrefix.size())));
     return winshun::wide(arrows(on));
 }
 
@@ -635,7 +690,7 @@ const Rule* match(const std::vector<Rule>& rules, std::string_view on, const Con
 bool selectionMatters(const std::vector<Rule>& rules, std::string_view prefix, std::wstring_view program)
 {
     return std::ranges::any_of(rules, [&](const Rule& r) {
-        if (!r.selection || r.action.kind == Action::Kind::Nothing)
+        if (!r.selection || r.action.kind == Action::Kind::Nothing || triggerKind(r.on) != TriggerKind::Gesture)
             return false;
         if (!r.apps.empty() && !listed(r.apps, program))
             return false;
@@ -703,14 +758,17 @@ std::optional<std::vector<Rule>> parseRules(std::string_view json)
             continue;
         Rule r;
         r.on = o["on"].toString();
+        // A shortcut as written by hand: "key:alt+ctrl+t" is "key:Ctrl+Alt+T".
+        if (std::string_view(r.on).starts_with(kKeyPrefix))
+            r.on = keyTrigger(winshun::wide(r.on.substr(kKeyPrefix.size())));
         const TriggerKind kind = triggerKind(r.on);
         if (kind == TriggerKind::Unknown)
             continue;
-        if (kind == TriggerKind::Gesture) {
+        if (kind == TriggerKind::Gesture)
             r.where = zoneById(o["where"].toString()).value_or(Zone::Anywhere);
+        if (kind == TriggerKind::Gesture || kind == TriggerKind::Key)
             r.selection = o["selection"].toBool();
-        }
-        if (kind == TriggerKind::Gesture || kind == TriggerKind::Wheel) {
+        if (kind == TriggerKind::Gesture || kind == TriggerKind::Wheel || kind == TriggerKind::Key) {
             for (const winshun::Json& app : o["apps"].toArray()) {
                 for (std::wstring& name : programList(winshun::wide(app.toString()))) {
                     if (std::ranges::find(r.apps, name) == r.apps.end())

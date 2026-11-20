@@ -128,11 +128,18 @@ QVariant RulesModel::data(const QModelIndex& index, int role) const
         return {};
     const gestures::Rule& rule = m_rules[static_cast<std::size_t>(index.row())];
     const gestures::Action& action = rule.action;
+    const bool key = gestures::triggerKind(rule.on) == gestures::TriggerKind::Key;
+    const bool takesWords = action.kind == gestures::Action::Kind::Builtin && gestures::takesSelection(action.builtin);
     switch (role) {
     case SourceRowRole: return index.row();
     case OnRole: return QString::fromStdString(rule.on);
-    case ArrowsRole: return QString::fromUtf8(gestures::arrows(rule.on));
-    case DescriptionRole: return directionWords(rule.on);
+    case ArrowsRole:
+        return key ? qstr(gestures::triggerTitle(rule.on, m_chinese)) : QString::fromUtf8(gestures::arrows(rule.on));
+    case DescriptionRole:
+        // A shortcut's section says it is for selected text: only one that is not says so.
+        if (key)
+            return rule.selection || takesWords ? QString() : Text::tr("不用选中文字");
+        return directionWords(rule.on);
     case WhereRole: return static_cast<int>(rule.where);
     case WhereTitleRole:
         return rule.where == gestures::Zone::Anywhere ? Text::tr("任何位置")
@@ -148,8 +155,8 @@ QVariant RulesModel::data(const QModelIndex& index, int role) const
     case ActionTitleRole: return qstr(gestures::actionTitle(action, m_chinese));
     case ActionNoteRole:
         if (action.kind == gestures::Action::Kind::Builtin) {
-            if (gestures::takesSelection(action.builtin))
-                return Text::tr("用选中的文字");
+            if (takesWords)
+                return key ? QString() : Text::tr("用选中的文字");
             if (gestures::asksFirst(action.builtin))
                 return Text::tr("会先倒数 5 秒，可取消");
         }
@@ -250,6 +257,16 @@ bool RulesModel::setWhere(int row, gestures::Zone zone)
     return true;
 }
 
+void RulesModel::setTrigger(int row, const std::string& on)
+{
+    if (row < 0 || row >= static_cast<int>(m_rules.size()) || m_rules[static_cast<std::size_t>(row)].on == on)
+        return;
+    m_rules[static_cast<std::size_t>(row)].on = on;
+    changed(row);
+    if (row != m_provisional)
+        emit edited();
+}
+
 void RulesModel::removeAt(int row)
 {
     if (row < 0 || row >= static_cast<int>(m_rules.size()))
@@ -343,7 +360,10 @@ bool RulesFilter::filterAcceptsRow(int sourceRow, const QModelIndex&) const
     if (!model || sourceRow < 0 || sourceRow >= static_cast<int>(model->rules().size()))
         return false;
     const gestures::Rule& rule = model->rules()[static_cast<std::size_t>(sourceRow)];
-    if (gestures::triggerKind(rule.on) != gestures::TriggerKind::Gesture)
+    const gestures::TriggerKind kind = gestures::triggerKind(rule.on);
+    if (m_mode == 3)
+        return kind == gestures::TriggerKind::Key && rule.apps.empty();
+    if (kind != gestures::TriggerKind::Gesture)
         return false;
     switch (m_mode) {
     case 0: return !rule.selection && rule.apps.empty();

@@ -237,6 +237,26 @@
         <translation>No gestures yet: hold the right button and draw one in the box above</translation>
     </message>
     <message>
+        <source>选中文字后按快捷键</source>
+        <translation>Shortcuts for selected text</translation>
+    </message>
+    <message>
+        <source>先选中一段文字，再按快捷键。浏览器、VS Code、微信这些程序里也能用：Win顺 替你按一下 Ctrl+C 读出选中的字，读完把剪贴板原样放回去，Win顺 的剪贴板历史里不会多一条</source>
+        <translation>Select some text, then press the shortcut. It works in browsers, VS Code and WeChat too: WinShun presses Ctrl+C for you to read the selection, then puts the clipboard back as it was, without a new entry in WinShun&apos;s clipboard history</translation>
+    </message>
+    <message>
+        <source>点这里，再按快捷键</source>
+        <translation>Click here, then press the keys</translation>
+    </message>
+    <message>
+        <source>再加一个快捷键</source>
+        <translation>Add another shortcut</translation>
+    </message>
+    <message>
+        <source>加一个快捷键，选中文字后按它就翻译；动作可以再改</source>
+        <translation>Add a shortcut that translates the selected text; you can change its action</translation>
+    </message>
+    <message>
         <source>按住右键滚滚轮</source>
         <translation>Right button + wheel</translation>
     </message>
@@ -303,6 +323,14 @@
         <translation>All files</translation>
     </message>
     <message>
+        <source>这个键不能用：同时按住 Ctrl、Alt 或 Win，或者用 F1–F24</source>
+        <translation>This key can&apos;t be used: hold Ctrl, Alt or Win with it, or use F1–F24</translation>
+    </message>
+    <message>
+        <source>%1 已经设过了</source>
+        <translation>%1 is already set</translation>
+    </message>
+    <message>
         <source>顺时针画圈</source>
         <translation>Circle, clockwise</translation>
     </message>
@@ -329,6 +357,10 @@
     <message>
         <source>，再</source>
         <translation>, then </translation>
+    </message>
+    <message>
+        <source>不用选中文字</source>
+        <translation>No selection needed</translation>
     </message>
 </context>
 <context>
@@ -501,6 +533,21 @@
     <message>
         <source>在“%1”中查看</source>
         <translation>See all in %1</translation>
+    </message>
+</context>
+<context>
+    <name>ShortcutRow</name>
+    <message>
+        <source>别的程序占用了这个快捷键，换一个试试</source>
+        <translation>Another program uses this shortcut; try another one</translation>
+    </message>
+    <message>
+        <source>什么都不做</source>
+        <translation>Do nothing</translation>
+    </message>
+    <message>
+        <source>删除这个快捷键</source>
+        <translation>Delete this shortcut</translation>
     </message>
 </context>
 <context>
