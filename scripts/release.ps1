@@ -273,6 +273,15 @@ if ($Publish) {
     }
     Write-Host "Published $tag"
 
+    # The mainland China mirror on CNB, which lcstp.com offers first: the
+    # same tag and files (scripts/cnb-mirror.ps1). The GitHub release is out
+    # whatever happens here, so a failure is reported, not thrown.
+    try {
+        & (Join-Path $PSScriptRoot 'cnb-mirror.ps1') -Tag $tag -From $dist
+    } catch {
+        Write-Warning "CNB mirror of $tag failed: $($_.Exception.Message) Run it again: ./scripts/cnb-mirror.ps1 -Tag $tag -From '$dist'"
+    }
+
     # The Scoop bucket (bucket\winshun.json, `scoop bucket add winshun
     # https://github.com/LingCore/WinShun`): the new version, the portable
     # zip's URL and the SHA-256 computed above, only once the release is out

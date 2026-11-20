@@ -77,6 +77,20 @@ curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch
 
 两条都要查到新版本：安装版那条好了不代表便携版也好了。lcstp.com 每个平台和架构只认一个安装包、一个 zip，同类多出一个就两个都不用，这条又会退回上一个版本。所以 Release 上另外加的附件（离线安装包、OCR 组件、增量包）要在服务器里登记为“不用于自动更新”。0.36.0 第一次带增量包时，便携版就因此停在 0.35.0，直到服务器把 `-delta-from-` 的 zip 和 `-delta-setup.exe` 也算进去。以后再给 Release 加新种类的附件，先改服务器。
 
+### 国内镜像（CNB）
+
+腾讯 CNB 上的 https://cnb.cool/lcstp/WinShun 是 GitHub Release 的国内镜像（#407）：同一个标签、同一个提交，附件同名同内容。组织 `lcstp` 用 lcstp.com 域名认证（Cloudflare 上 `cnb.lcstp.com` 的 TXT 记录，不要删）。
+
+- `release.ps1 -Publish` 在 GitHub 发布成功后自动运行 `scripts/cnb-mirror.ps1`：推送标签和 main，建 CNB Release（说明去掉 `winshun-` 开头的隐藏行），上传缺的附件，再不带令牌从 cnb.cool 把每个文件下载回来，核对 GitHub 给的 SHA256。这一步失败只警告、不中断（GitHub 已经发出去了），按提示单独重跑；重跑只补缺的。补传旧版本：`./scripts/cnb-mirror.ps1 -Tag vX.Y.Z`。
+- 下载地址 `https://cnb.cool/lcstp/WinShun/-/releases/download/<标签>/<文件名>`，302 到 `asset.cnb.cool`（不带参数），不用登录。软件内更新要走 CNB，lcstp.com 得把这个地址放在每个附件 `mirrors` 的最前面。客户端按顺序试、按 GitHub 的 SHA256 校验，增量包按“同目录换文件名”推出地址，所以已装的版本不用改；CNB 上缺文件只是多试一个源。发布后查 lcstp.com 时顺便看第一个镜像是不是 cnb.cool。
+- 令牌：CNB 个人设置 → 访问令牌 “WinShun 发布同步”，只限 lcstp/WinShun，`repo-code` 和 `repo-release` 读写，永久有效。存在 Windows 凭据管理器（git 对 https://cnb.cool、用户名 `cnb` 的凭据），脚本用 `git credential fill` 读；环境变量 `CNB_TOKEN` 优先。换令牌时在自己的终端运行（令牌不进命令历史）：
+
+  ```powershell
+  $t = Read-Host 'CNB 令牌'; "protocol=https`nhost=cnb.cool`nusername=cnb`npassword=$t`n" | git credential approve; Remove-Variable t
+  ```
+
+- 额度：附件算对象存储，免费 100 GiB；一个版本约 155 MB。软件内更新只用最新版本，CNB 上的旧版本 Release 可以删。
+
 ### 推送方式：立即推送 / 正常推送
 
 每次发布由开发者决定用哪一种。用户没说就用正常推送；用户说“立即推送”“马上推给大家”“这是重要更新”之类，就用立即推送。发布前给用户的汇报里写明这次用的是哪一种。

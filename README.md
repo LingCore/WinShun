@@ -23,6 +23,7 @@
 
 <p align="center">
   <a href="https://lcstp.com/projects/winshun#downloads"><b>⬇️ 国内下载</b></a> ·
+  <a href="https://cnb.cool/lcstp/WinShun/-/releases"><b>CNB 镜像</b></a> ·
   <a href="https://github.com/LingCore/WinShun/releases/latest"><b>GitHub 下载 Download</b></a> ·
   <a href="docs/使用说明.md">📖 使用说明</a> ·
   <a href="docs/截图.md">🖼️ 截图 Screenshots</a> ·
@@ -50,7 +51,7 @@
 
 ### 三步上手
 
-1. 到[官网下载页](https://lcstp.com/projects/winshun#downloads)（国内加速线路）或 [GitHub Releases](https://github.com/LingCore/WinShun/releases/latest) 下载 `WinShun-版本号-x64-setup.exe`，双击安装。Windows 提示“已保护你的电脑”时，点 **更多信息 → 仍要运行**（还没有代码签名证书）。
+1. 到[官网下载页](https://lcstp.com/projects/winshun#downloads)（国内加速线路）、[CNB 镜像](https://cnb.cool/lcstp/WinShun/-/releases)（腾讯云，国内快）或 [GitHub Releases](https://github.com/LingCore/WinShun/releases/latest) 下载 `WinShun-版本号-x64-setup.exe`，双击安装。Windows 提示“已保护你的电脑”时，点 **更多信息 → 仍要运行**（还没有代码签名证书）。
 2. 第一次启动有两页简单设置：内容索引、剪贴板历史、截图要不要开，用哪个键打开 Win顺。选好点 **开始使用**；不想选就点 **稍后设置**，以后在设置里随时改。
 3. 连按两下 `Ctrl`，打字，按 `Enter` 打开。再按两下 `Ctrl` 或按 `Esc` 关掉。
 
@@ -141,7 +142,7 @@
 
 ### 下载安装
 
-到[官网下载页](https://lcstp.com/projects/winshun#downloads)（走国内加速线路，和 GitHub 上的是同一份文件）或 [GitHub Releases](https://github.com/LingCore/WinShun/releases/latest) 下载。系统要求：Windows 10 或 11，64 位。
+到[官网下载页](https://lcstp.com/projects/winshun#downloads)（走国内加速线路）、[CNB 镜像](https://cnb.cool/lcstp/WinShun/-/releases)（腾讯云，国内快）或 [GitHub Releases]（三处是同一份文件）(https://github.com/LingCore/WinShun/releases/latest) 下载。系统要求：Windows 10 或 11，64 位。
 
 | 下载哪个 | 适合谁 |
 |---|---|
@@ -393,7 +394,7 @@ WinShun (Win顺, "Windows made smooth"): press `Ctrl` twice and a search box pop
 
 ### Get started
 
-1. Download `WinShun-<version>-x64-setup.exe` from the [Releases page](https://github.com/LingCore/WinShun/releases/latest) (or the [official site](https://lcstp.com/projects/winshun#downloads), faster from mainland China) and run it. If Windows says “Windows protected your PC”, click **More info → Run anyway**: the app is not code-signed yet.
+1. Download `WinShun-<version>-x64-setup.exe` from the [Releases page](https://github.com/LingCore/WinShun/releases/latest) (or, faster from mainland China, the [official site](https://lcstp.com/projects/winshun#downloads) or the [CNB mirror](https://cnb.cool/lcstp/WinShun/-/releases)) and run it. If Windows says “Windows protected your PC”, click **More info → Run anyway**: the app is not code-signed yet.
 2. The first start shows two short setup pages: the content index, clipboard history, screenshots, and the key that opens WinShun. Choose **Get started**, or **Set up later** and change anything in the settings whenever you like.
 3. Press `Ctrl` twice, type, press `Enter`. `Ctrl` twice again or `Esc` closes it.
 
@@ -484,7 +485,7 @@ Regex, kinds and more: [Query syntax](docs/features.en.md#file-search).
 
 ### Download and install
 
-Get it from the [Releases page](https://github.com/LingCore/WinShun/releases/latest), or from the [official site](https://lcstp.com/projects/winshun#downloads) (the same files, faster from mainland China). Requires Windows 10 or 11, 64-bit.
+Get it from the [Releases page](https://github.com/LingCore/WinShun/releases/latest), or, faster from mainland China, from the [official site](https://lcstp.com/projects/winshun#downloads) or the [CNB mirror](https://cnb.cool/lcstp/WinShun/-/releases) (the same files). Requires Windows 10 or 11, 64-bit.
 
 | Download | For |
 |---|---|
