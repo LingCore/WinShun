@@ -134,7 +134,7 @@ private:
     void textAction(Builtin builtin, const Target& target);
     void askFirst(Builtin builtin, const Target& target);
     void triggered(std::string_view on, POINT at);
-    void wheel(bool up, POINT at, HWND under);
+    void wheel(bool up, POINT at, HWND root);
     void performWithWords(const Rule& rule, const Target& target);
     void post(std::function<void()> work);
     bool bringToFront(HWND root);
@@ -162,6 +162,10 @@ private:
     State m_state = State::Idle;
     POINT m_down {};
     HWND m_under = nullptr;
+    // Its top-level window, as it was then: a browser moves the window of a
+    // tab's page to a hidden window of its own when the tab changes, so
+    // m_under's top-level window can be another one by the next notch.
+    HWND m_pressedRoot = nullptr;
     std::wstring m_program; // of the window pressed on, a file name in lower case
     int m_startDistance = 6;
     UINT_PTR m_holdTimer = 0;

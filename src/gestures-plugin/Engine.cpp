@@ -32,7 +32,7 @@ enum : UINT {
     kCancel,
     kClick, // the press held back and its release, sent again
     kPressThrough, // the press held back, sent again (the rest goes through)
-    kWheeledUp, // w: point, l: the window under it
+    kWheeledUp, // w: point, l: the top-level window pressed on
     kWheeledDown,
     kTrigger, // w: point, l: 0-3 a corner (kCorners), 4-7 an edge (kEdges)
     kPressed, // w: point: a button pressed anywhere while the bubble is up
@@ -459,6 +459,7 @@ bool Engine::onMouse(WPARAM message, const MSLLHOOKSTRUCT& info)
         m_state = State::Pressed;
         m_down = info.pt;
         m_under = under;
+        m_pressedRoot = ::GetAncestor(under, GA_ROOT);
         m_program = std::move(program);
         m_wheelDelta = 0;
         m_startDistance = static_cast<int>(std::lround(kStartDistance * scale));
@@ -511,7 +512,7 @@ bool Engine::onMouse(WPARAM message, const MSLLHOOKSTRUCT& info)
         m_wheelDelta += delta;
         // A notch at a time (smooth wheels send parts of one).
         while (std::abs(m_wheelDelta) >= WHEEL_DELTA) {
-            ::PostMessageW(m_window, up ? kWheeledUp : kWheeledDown, packPoint(info.pt), reinterpret_cast<LPARAM>(m_under));
+            ::PostMessageW(m_window, up ? kWheeledUp : kWheeledDown, packPoint(info.pt), reinterpret_cast<LPARAM>(m_pressedRoot));
             m_wheelDelta += up ? -WHEEL_DELTA : WHEEL_DELTA;
         }
         return true;
@@ -1278,11 +1279,16 @@ void Engine::performWithWords(const Rule& rule, const Target& target)
     });
 }
 
-void Engine::wheel(bool up, POINT at, HWND under)
+// A notch with the right button held: its rule over the window pressed on
+// (the top-level window it had then, m_pressedRoot), whatever the earlier
+// notches changed in it. The window under the pointer when it is still in
+// that one, else that one itself.
+void Engine::wheel(bool up, POINT at, HWND root)
 {
     Target t;
-    t.under = under;
-    t.root = under ? ::GetAncestor(under, GA_ROOT) : nullptr;
+    t.root = root && ::IsWindow(root) ? root : nullptr;
+    const HWND now = ::WindowFromPoint(at);
+    t.under = now && t.root && ::GetAncestor(now, GA_ROOT) == t.root ? now : t.root;
     t.at = at;
     t.context.program = programOfWindow(t.root);
     const std::shared_ptr<const Shared> s = shared();
