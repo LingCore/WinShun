@@ -2136,8 +2136,266 @@ int runPinKeys(const QStringList& args)
     return ok ? 0 : 1;
 }
 
+// GitHub #409, with the real mouse (SetCursorPos, SendInput) over the real
+// overlays at the monitors' own scales: a selection drawn from one monitor
+// onto another is over both and is taken from their pictures together, black
+// where neither is; a rectangle drawn over the seam is on both halves; the
+// wheel past the screen picks every monitor. A full-screen picture of known
+// colours on each monitor first, so that none of the user's windows is in
+// what is frozen; the copies go to this process only, not the clipboard. The
+// mouse pointer is put back where it was.
+int runSpan(const QStringList& args)
+{
+    using namespace capture;
+    const QDir out(valueAfter(args, kCaptureToolsFlag));
+    QDir().mkpath(out.path());
+    QList<QScreen*> screens = QGuiApplication::screens();
+    if (screens.size() < 2) {
+        say(u"FAIL: two monitors are needed"_s);
+        return 5;
+    }
+    std::ranges::sort(screens, [](QScreen* a, QScreen* b) { return a->geometry().x() < b->geometry().x(); });
+    QQmlApplicationEngine engine;
+    QQmlComponent fixtureComponent(&engine);
+    fixtureComponent.setData(R"(
+        import QtQuick
+        Window {
+            property string words
+            flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+            Text { x: 60; y: 60; text: parent.Window.window ? words : ""; color: "#253047"; font.pixelSize: 28 }
+        }
+    )", QUrl(u"qrc:/span-fixture.qml"_s));
+    const QColor fills[] {QColor(0xD8, 0xE4, 0xF8), QColor(0xF8, 0xE8, 0xD0), QColor(0xD8, 0xF0, 0xD8)};
+    std::vector<std::unique_ptr<QQuickWindow>> fixtures;
+    for (qsizetype i = 0; i < screens.size(); ++i) {
+        auto* window = qobject_cast<QQuickWindow*>(fixtureComponent.create());
+        if (!window) {
+            say(fixtureComponent.errorString());
+            return 3;
+        }
+        window->setColor(fills[i % 3]);
+        window->setProperty("words", u"跨屏截图验证 / GitHub #409 · %1"_s.arg(screens[i]->name()));
+        window->setScreen(screens[i]);
+        window->setGeometry(screens[i]->geometry());
+        window->showFullScreen();
+        fixtures.emplace_back(window);
+    }
+    pump(600);
+    QImage copied;
+    int copies = 0;
+    Capture::Callbacks callbacks;
+    callbacks.copy = [&](const QImage& image, const QByteArray&, const QString&) {
+        copied = image;
+        ++copies;
+    };
+    Capture capture(&engine, std::move(callbacks));
+    bool ok = true;
+    const auto check = [&](bool passed, const QString& what) {
+        say(u"%1: %2"_s.arg(passed ? u"PASS"_s : u"FAIL"_s, what));
+        ok = passed && ok;
+    };
+    const auto waitFor = [&](const std::function<bool()>& ready, int ms = 8000) {
+        QElapsedTimer clock;
+        clock.start();
+        while (!ready() && clock.elapsed() < ms)
+            pump(20);
+        return ready();
+    };
+    struct Shown {
+        QQuickWindow* window = nullptr;
+        CaptureScreen* model = nullptr;
+    };
+    const auto shownOverlays = [] {
+        std::vector<Shown> list;
+        for (QWindow* window : QGuiApplication::topLevelWindows()) {
+            auto* model = window->property("screenModel").value<CaptureScreen*>();
+            if (model && model->hasImage() && window->isVisible())
+                list.push_back({qobject_cast<QQuickWindow*>(window), model});
+        }
+        std::ranges::sort(list, [](const Shown& a, const Shown& b) { return a.model->rect().x() < b.model->rect().x(); });
+        return list;
+    };
+    CaptureSession* session = nullptr;
+    std::vector<Shown> overlays;
+    const auto begin = [&] {
+        capture.trigger();
+        const bool up = waitFor([&] {
+            overlays = shownOverlays();
+            session = overlays.empty() ? nullptr : overlays.front().window->property("session").value<CaptureSession*>();
+            return overlays.size() == std::size_t(screens.size()) && session && session->active();
+        });
+        pump(400); // uncloaked once drawn
+        return up;
+    };
+    POINT before {};
+    ::GetCursorPos(&before);
+    const auto moveTo = [](QPoint physical) {
+        ::SetCursorPos(physical.x(), physical.y());
+        pump(25);
+    };
+    const auto send = [](DWORD flags, int data = 0) {
+        INPUT input {};
+        input.type = INPUT_MOUSE;
+        input.mi.dwFlags = flags;
+        input.mi.mouseData = static_cast<DWORD>(data);
+        ::SendInput(1, &input, sizeof input);
+        pump(80);
+    };
+    // Keys to the overlay, not the system: were it not in front, they would
+    // reach the user's own window.
+    const auto key = [&](int code) {
+        QQuickWindow* target = overlays.front().window;
+        for (const Shown& o : overlays)
+            if (o.window->isActive())
+                target = o.window;
+        QKeyEvent press(QEvent::KeyPress, code, Qt::NoModifier);
+        QCoreApplication::sendEvent(target, &press);
+        QKeyEvent release(QEvent::KeyRelease, code, Qt::NoModifier);
+        QCoreApplication::sendEvent(target, &release);
+        pump(120);
+    };
+    const auto drag = [&](QPoint from, QPoint to) {
+        moveTo(from);
+        send(MOUSEEVENTF_LEFTDOWN);
+        for (int i = 1; i <= 16; ++i)
+            moveTo(from + (to - from) * i / 16);
+        send(MOUSEEVENTF_LEFTUP);
+    };
+    const auto closeTo = [](QRgb a, QColor b, int tolerance = 4) {
+        return std::abs(qRed(a) - b.red()) <= tolerance && std::abs(qGreen(a) - b.green()) <= tolerance
+            && std::abs(qBlue(a) - b.blue()) <= tolerance;
+    };
+    const auto rgb = [](QRgb c) { return u"#%1"_s.arg(c & 0xFFFFFF, 6, 16, QLatin1Char('0')); };
+
+    // 1. Drawn from the left monitor onto the right one, low enough to reach
+    // below the shorter of the two.
+    if (!begin()) {
+        check(false, u"the overlays came up on every monitor"_s);
+        return 4;
+    }
+    const QRect left = overlays.front().model->rect();
+    const QRect right = overlays[1].model->rect();
+    say(u"monitors (physical): %1,%2 %3x%4 at %5 · %6,%7 %8x%9 at %10"_s.arg(left.x()).arg(left.y()).arg(left.width())
+            .arg(left.height()).arg(overlays.front().model->dpr()).arg(right.x()).arg(right.y()).arg(right.width())
+            .arg(right.height()).arg(overlays[1].model->dpr()));
+    // The end on the taller monitor below the shorter one's bottom.
+    const bool leftTaller = left.bottom() >= right.bottom();
+    const QRect shorter = leftTaller ? right : left;
+    const bool gapBelow = left.bottom() != right.bottom();
+    const int midY = shorter.bottom() - 380;
+    const int lowY = gapBelow ? shorter.bottom() + (std::max(left.bottom(), right.bottom()) - shorter.bottom()) / 2 : midY + 300;
+    const QPoint from(left.right() - 299, leftTaller ? lowY : midY);
+    const QPoint to(right.left() + 300, leftTaller ? midY : lowY);
+    drag(from, to);
+    const QRect expected = QRect(QPoint(std::min(from.x(), to.x()), std::min(from.y(), to.y())),
+        QPoint(std::max(from.x(), to.x()), std::max(from.y(), to.y())));
+    const QRect selected = session->virtualRect(session->selectionScreen(), session->selectionRect());
+    check(session->selectionScreen() == CaptureSession::kDesktop && selected == expected,
+        u"a real drag over the seam selects both monitors' pixels: %1,%2 %3x%4 (expected %5,%6 %7x%8)"_s.arg(selected.x())
+            .arg(selected.y()).arg(selected.width()).arg(selected.height()).arg(expected.x()).arg(expected.y())
+            .arg(expected.width()).arg(expected.height()));
+    int homes = 0;
+    int toolbars = 0;
+    for (const Shown& o : overlays) {
+        homes += o.model->home() ? 1 : 0;
+        const auto* bar = o.window->findChild<QQuickItem*>(u"captureToolbar"_s);
+        toolbars += bar && bar->isVisible() ? 1 : 0;
+        check(!o.model->selection().isEmpty(), u"the selection shows on %1"_s.arg(o.window->screen()->name()));
+    }
+    check(homes == 1 && toolbars == 1, u"one toolbar, on one monitor (%1, %2)"_s.arg(homes).arg(toolbars));
+    for (const Shown& o : overlays) {
+        const auto* bar = o.window->findChild<QQuickItem*>(u"captureToolbarBar"_s);
+        const auto* size = o.window->findChild<QQuickItem*>(u"captureSizeBox"_s);
+        if (!o.model->home() || !bar || !size)
+            continue;
+        const QRectF b = bar->mapRectToScene(QRectF(0, 0, bar->width(), bar->height()));
+        const QRectF s = size->mapRectToScene(QRectF(0, 0, size->width(), size->height()));
+        check(size->isVisible() && !b.intersects(s), u"the size (%1,%2) is clear of the toolbar (%3,%4 %5x%6)"_s.arg(s.x())
+            .arg(s.y()).arg(b.x()).arg(b.y()).arg(b.width()).arg(b.height()));
+    }
+    for (std::size_t i = 0; i < overlays.size(); ++i)
+        saveGrab(overlays[i].window, out.filePath(u"span-%1.png"_s.arg(i)));
+    key(Qt::Key_Return);
+    check(waitFor([&] { return !capture.busy() && copies == 1; }), u"Enter took the picture"_s);
+    if (copies == 1) {
+        copied.save(out.filePath(u"span-copied.png"_s));
+        const QPoint l = QPoint(left.right() - 4, midY + 4) - expected.topLeft();
+        const QPoint r = QPoint(right.left() + 4, midY + 4) - expected.topLeft();
+        check(copied.size() == expected.size() && closeTo(copied.pixel(l), fills[0]) && closeTo(copied.pixel(r), fills[1]),
+            u"the picture is both monitors' pixels either side of the seam (%1 | %2)"_s.arg(rgb(copied.pixel(l)), rgb(copied.pixel(r))));
+        if (gapBelow) {
+            const QPoint g = QPoint(shorter == right ? right.left() + 4 : left.right() - 4, shorter.bottom() + 8) - expected.topLeft();
+            check(closeTo(copied.pixel(g), Qt::black, 0), u"black below the shorter monitor (%1)"_s.arg(rgb(copied.pixel(g))));
+        }
+    }
+
+    // 2. A rectangle drawn over the seam: on both halves of the picture.
+    if (!begin()) {
+        check(false, u"the overlays came up again"_s);
+        return 4;
+    }
+    const int top = std::max(left.top(), right.top()) + 200;
+    drag(QPoint(left.right() - 400, top), QPoint(right.left() + 400, top + 400));
+    check(session->selectionScreen() == CaptureSession::kDesktop, u"the second selection is over both"_s);
+    key(Qt::Key_1); // the rectangle tool
+    const QPoint boxFrom(left.right() - 200, top + 100);
+    const QPoint boxTo(right.left() + 200, top + 300);
+    drag(boxFrom, boxTo);
+    key(Qt::Key_1);
+    check(session->hasAnnotations() && session->annotationScreen() == CaptureSession::kDesktop,
+        u"the rectangle is on the picture of both monitors"_s);
+    for (std::size_t i = 0; i < overlays.size(); ++i)
+        saveGrab(overlays[i].window, out.filePath(u"span-annotated-%1.png"_s.arg(i)));
+    key(Qt::Key_Return);
+    check(waitFor([&] { return !capture.busy() && copies == 2; }), u"Enter took the annotated picture"_s);
+    if (copies == 2) {
+        copied.save(out.filePath(u"span-annotated-copied.png"_s));
+        const QPoint origin(left.right() - 400, top);
+        const auto inked = [&](int x) {
+            for (int dy = -3; dy <= 3; ++dy) {
+                const QPoint at = QPoint(x, boxFrom.y() + dy) - origin;
+                const QColor fill = x <= left.right() ? fills[0] : fills[1];
+                if (QRect(QPoint(), copied.size()).contains(at) && !closeTo(copied.pixel(at), fill, 40))
+                    return true;
+            }
+            return false;
+        };
+        check(inked(left.right() - 60) && inked(right.left() + 60), u"its top edge is in the picture on both monitors"_s);
+    }
+
+    // 3. The wheel past the whole screen: every monitor, as one picture.
+    if (!begin()) {
+        check(false, u"the overlays came up a third time"_s);
+        return 4;
+    }
+    moveTo(right.center());
+    moveTo(right.center() + QPoint(3, 3));
+    for (int i = 0; i < 4; ++i)
+        send(MOUSEEVENTF_WHEEL, WHEEL_DELTA);
+    const QRect all = left.united(right);
+    check(overlays.front().model->hover().size() == all.size() && overlays[1].model->hover().size() == all.size(),
+        u"the wheel out past the screen outlines every monitor"_s);
+    saveGrab(overlays[1].window, out.filePath(u"span-all.png"_s));
+    send(MOUSEEVENTF_LEFTDOWN);
+    send(MOUSEEVENTF_LEFTUP);
+    check(session->selectionScreen() == CaptureSession::kDesktop && session->selectionRect() == QRect(QPoint(), all.size()),
+        u"a click picks them all"_s);
+    key(Qt::Key_Return);
+    check(waitFor([&] { return !capture.busy() && copies == 3; }) && copied.size() == all.size(),
+        u"Enter took all of them: %1x%2"_s.arg(copied.width()).arg(copied.height()));
+
+    ::SetCursorPos(before.x, before.y);
+    for (auto& fixture : fixtures)
+        fixture->hide();
+    pump(200);
+    say(u"%1 · %2 warning(s)"_s.arg(ok ? u"all passed"_s : u"FAILED"_s).arg(g_warnings));
+    return ok ? std::min(g_warnings, 100) : 1;
+}
+
 int runCaptureTools(const QStringList& args)
 {
+    if (args.contains(u"--span"_s))
+        return runSpan(args);
     if (args.contains(u"--edit-window"_s) && args.contains(u"--pin"_s))
         return runEditPin(args);
     if (args.contains(u"--pin-keys"_s))
@@ -2877,9 +3135,12 @@ void prepare(const QStringList& args)
         QFile::remove(g_logPath);
     }
     say(u"preparing"_s);
-    // The scale asked for, exactly: not on top of the screen's own.
-    qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
-    qputenv("QT_SCALE_FACTOR", valueAfter(args, u"--scale", u"1"_s).toLatin1());
+    // The scale asked for, exactly: not on top of the screen's own. --span
+    // keeps each monitor's own, as the capture runs (GitHub #409).
+    if (!args.contains(u"--span"_s)) {
+        qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
+        qputenv("QT_SCALE_FACTOR", valueAfter(args, u"--scale", u"1"_s).toLatin1());
+    }
     // --renderer d3d11: the windows as the desktop shows them (for counting edge pixels), not the software renderer's.
     if (valueAfter(args, u"--renderer") == u"d3d11") {
         qputenv("QSG_RHI_BACKEND", "d3d11");

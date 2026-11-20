@@ -28,6 +28,10 @@ Item {
     // The window's size, logical px: the list opens where there is room.
     property real areaWidth: 0
     property real areaHeight: 0
+    // The toolbar, logical px in the window (empty when it is not shown):
+    // over the selection, a label that would meet it goes inside the
+    // selection's top instead.
+    property rect avoid: Qt.rect(0, 0, 0, 0)
 
     // ---- geometry, logical px ----
     readonly property int pad: 4 // round the panel's row, and the list's rows
@@ -56,9 +60,16 @@ Item {
                                    && !presets.some((p) => !p.ratio && p.width === typedWidth && p.height === typedHeight)
 
     readonly property Item face: editing ? panel : chip
+    readonly property point labelPlace: screenModel.placeSizeLabel(shown, face.width, face.height)
+    readonly property bool labelBlocked: avoid.width > 0 && avoid.height > 0
+                                         && labelPlace.x < avoid.x + avoid.width && avoid.x < labelPlace.x + face.width
+                                         && labelPlace.y < avoid.y + avoid.height && avoid.y < labelPlace.y + face.height
     readonly property point place: editing && !selectedHere
                                    ? screenModel.placeMagnifier(openedAt, face.width, face.height)
-                                   : screenModel.placeSizeLabel(shown, face.width, face.height)
+                                   : labelBlocked
+                                     ? Qt.point(labelPlace.x, Math.max(0, Math.min(shown.y * screenModel.scaleY + gap + 2,
+                                                                                   areaHeight - face.height)))
+                                     : labelPlace
 
     visible: (selectedHere || hoverHere || editing) && !session.ocrOnly // 识别屏幕文字: only the shade
     x: snap(place.x)

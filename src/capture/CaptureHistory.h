@@ -25,6 +25,10 @@ struct HistoryShot {
     std::vector<Screen> screens;
     int screen = -1; // the selection's, an index into screens
     QRect selection; // physical, that monitor's own
+    // The selection was over several monitors (GitHub #409): `screen` is -1,
+    // and `selection` and the annotations are on their picture together (the
+    // box round all of them, physical, 0,0 at its top left).
+    bool spans = false;
     QByteArray document; // the annotations' doc.json, on that monitor's whole picture; empty: none
 
     // Shown on monitors where `monitors` are now (physical, virtual desktop),

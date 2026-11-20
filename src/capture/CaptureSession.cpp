@@ -1,8 +1,10 @@
 #include "CaptureSession.h"
 
+#include <QColor>
 #include <QDateTime>
 #include <QDebug>
 #include <QGuiApplication>
+#include <QPainter>
 
 #include <algorithm>
 #include <cmath>
@@ -59,13 +61,16 @@ void CaptureScreen::setImage(const QImage& image)
     emit imageChanged();
 }
 
-void CaptureScreen::setState(const QRect& hover, const QRect& selection, bool dimmed, bool adjusting, bool magnifierShown)
+void CaptureScreen::setState(const QRect& hover, const QRect& selection, bool dimmed, bool adjusting, bool magnifierShown,
+    bool home, const QRect& annotationArea)
 {
     if (hover == m_hover && selection == m_selection && dimmed == m_dimmed && adjusting == m_adjusting
-        && magnifierShown == m_magnifierShown)
+        && magnifierShown == m_magnifierShown && home == m_home && annotationArea == m_annotationArea)
         return;
     m_hover = hover;
     m_selection = selection;
+    m_home = home;
+    m_annotationArea = annotationArea;
     m_dimmed = dimmed;
     m_adjusting = adjusting;
     m_magnifierShown = magnifierShown;
@@ -232,7 +237,8 @@ QStringList CaptureSession::keyHintRows() const
         rows.append({u"arrows"_s, u"size"_s});
         if (m_ocrAvailable)
             rows.append(u"ocr"_s);
-        rows.append(u"long"_s);
+        if (m_selection.screen != kDesktop) // a long screenshot scrolls one window
+            rows.append(u"long"_s);
         if (m_recalledSelection >= 0)
             rows.append(u"recalled"_s);
     }
@@ -302,6 +308,7 @@ void CaptureSession::setWindowsOnly(bool on)
     // control there, not a level the wheel stepped out to with the other kind.
     if (m_active && m_phase == Phase::Hover && m_cursorScreen >= 0) {
         m_hoverScreen = -1;
+        m_hoverAll = false;
         updateHover(m_cursorScreen, m_cursorAt);
         publish();
     }
@@ -351,7 +358,9 @@ void CaptureSession::setToolHintSeen(bool seen)
 // on, else the one the cursor is on.
 void CaptureSession::showNotice(const QString& text)
 {
-    const int target = m_selection.screen >= 0 ? m_selection.screen : m_parked ? m_parkedSelection.screen : m_cursorScreen;
+    const int target = m_selection.screen >= 0 ? homeOf(m_selection.screen, m_selection.rect)
+        : m_parked                             ? homeOf(m_parkedSelection.screen, m_parkedSelection.rect)
+                                               : m_cursorScreen;
     for (CaptureScreen* s : m_screens)
         s->setNotice(s->index() == target ? text : QString());
     m_noticeTimer.start();
@@ -367,9 +376,15 @@ void CaptureSession::syncAnnotation()
     if (settled) {
         CaptureScreen* s = screenAt(m_selection.screen);
         if (s && (!m_annot.active() || m_annotScreen != m_selection.screen)) {
+            // Onto another monitor or over several (#409, never with annotations):
+            // a picture of its own, the tool chosen kept.
+            const int tool = m_annot.active() ? m_annot.tool() : -1;
             retireAnnotation();
-            m_annot.begin(s->image(), s->dpr(), m_styles);
+            const CaptureScreen* home = screenAt(homeOf(m_selection.screen, m_selection.rect));
+            m_annot.begin(pictureOf(m_selection.screen), home ? home->dpr() : s->dpr(), m_styles);
             m_annotScreen = m_selection.screen;
+            if (tool >= 0)
+                m_annot.setTool(tool);
         }
         if (m_annot.active())
             m_annot.setSelection(m_selection.rect);
@@ -404,6 +419,12 @@ void CaptureSession::begin(std::vector<CaptureScreen*> screens, Windows windows)
     m_pendingButton = Qt::NoButton;
     m_screens = std::move(screens);
     m_windows = std::move(windows);
+    QRect all;
+    for (const CaptureScreen* s : m_screens)
+        all |= s->rect();
+    m_desktop.m_rect = all;
+    m_desktop.m_image = {}; // made from these monitors' pictures when asked for
+    m_hoverAll = false;
     m_flyout = {};
     m_phase = Phase::Hover;
     m_releaseClock.invalidate();
@@ -449,6 +470,8 @@ void CaptureSession::replaceShot(Windows windows, int screen, const QRect& rect,
     m_recalledSelection = -1;
     m_pendingButton = Qt::NoButton;
     m_windows = std::move(windows);
+    m_desktop.m_image = {}; // the monitors show other pictures now
+    m_hoverAll = false;
     m_flyout = {};
     m_selection = {};
     m_previous = {};
@@ -462,8 +485,8 @@ void CaptureSession::replaceShot(Windows windows, int screen, const QRect& rect,
     if (CaptureScreen* s = screenAt(screen); s && !rect.isEmpty() && s->bounds().contains(rect)) {
         m_selection = {screen, rect};
         m_phase = Phase::Selected;
-        if (doc && !doc->items.isEmpty() && doc->canvas == s->image().size()) {
-            m_annot.begin(s->image(), *doc, m_styles);
+        if (const QImage picture = pictureOf(screen); doc && !doc->items.isEmpty() && doc->canvas == picture.size()) {
+            m_annot.begin(picture, *doc, m_styles);
             m_annotScreen = screen;
         }
         syncAnnotation();
@@ -542,6 +565,8 @@ void CaptureSession::end()
     m_parked = false;
     m_parkedSelection = {};
     m_screens.clear();
+    m_desktop.m_image = {};
+    m_hoverAll = false;
     m_windows = {};
     m_flyout = {};
     m_chain.clear();
@@ -561,8 +586,117 @@ void CaptureSession::end()
 
 CaptureScreen* CaptureSession::screenAt(int index) const
 {
+    if (index == kDesktop)
+        return m_screens.size() > 1 ? &m_desktop : nullptr;
     const auto found = std::ranges::find(m_screens, index, &CaptureScreen::index);
     return found != m_screens.end() ? *found : nullptr;
+}
+
+// ---- over several monitors (GitHub #409) ----------------------------------------
+
+QImage CaptureSession::desktopPicture() const
+{
+    if (m_desktop.m_image.isNull() && m_screens.size() > 1) {
+        const QRect all = m_desktop.rect();
+        QImage::Format format = QImage::Format_RGB32;
+        for (const CaptureScreen* s : m_screens) {
+            if (s->hasImage()) {
+                format = s->image().format();
+                break;
+            }
+        }
+        QImage picture(all.size(), format);
+        picture.fill(QColor(Qt::black)); // between monitors of different sizes
+        QPainter painter(&picture);
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        for (const CaptureScreen* s : m_screens)
+            painter.drawImage(s->origin() - all.topLeft(), s->image());
+        painter.end();
+        m_desktop.m_image = picture;
+    }
+    return m_desktop.m_image;
+}
+
+QImage CaptureSession::pictureOf(int screen) const
+{
+    if (screen == kDesktop)
+        return desktopPicture();
+    const CaptureScreen* s = screenAt(screen);
+    return s ? s->image() : QImage();
+}
+
+QRect CaptureSession::virtualRect(int screen, const QRect& rect) const
+{
+    const CaptureScreen* s = screenAt(screen);
+    return s ? rect.translated(s->origin()) : QRect();
+}
+
+int CaptureSession::homeOf(int screen, const QRect& rect) const
+{
+    if (screen != kDesktop)
+        return screenAt(screen) ? screen : -1;
+    if (!screenAt(kDesktop))
+        return -1;
+    // The toolbar goes under the selection, right edges together: on the
+    // monitor of that corner; in a gap between monitors, on the one with most of it.
+    const QRect global = rect.translated(m_desktop.origin());
+    int best = -1;
+    qint64 most = 0;
+    for (const CaptureScreen* s : m_screens) {
+        if (s->rect().contains(global.bottomRight()))
+            return s->index();
+        const QRect common = s->rect().intersected(global);
+        const qint64 area = qint64(std::max(0, common.width())) * std::max(0, common.height());
+        if (area > most) {
+            most = area;
+            best = s->index();
+        }
+    }
+    return best;
+}
+
+bool CaptureSession::inSpace(int screen, int space) const
+{
+    return space >= 0 && screenAt(screen) && (space == screen || (space == kDesktop && screenAt(kDesktop)));
+}
+
+QPoint CaptureSession::toSpace(int screen, QPoint p, int space) const
+{
+    const CaptureScreen* from = screenAt(screen);
+    const CaptureScreen* to = screenAt(space);
+    return from && to ? p + from->origin() - to->origin() : p;
+}
+
+bool CaptureSession::onMonitor(QPoint global) const
+{
+    return std::ranges::any_of(m_screens, [global](const CaptureScreen* s) { return s->rect().contains(global); });
+}
+
+CaptureSession::Pick CaptureSession::fromDesktop(const QRect& rect) const
+{
+    const QRect global = rect.translated(m_desktop.origin());
+    for (const CaptureScreen* s : m_screens) {
+        if (s->rect().contains(global))
+            return {s->index(), global.translated(-s->origin())};
+    }
+    return {kDesktop, rect};
+}
+
+CaptureSession::Pick CaptureSession::settled(const Pick& pick) const
+{
+    // Annotations stay on the picture they were drawn on.
+    return pick.screen == kDesktop && !hasAnnotations() ? fromDesktop(pick.rect) : pick;
+}
+
+CaptureSession::Pick CaptureSession::drawn(int screen, QPoint from, QPoint to) const
+{
+    const CaptureScreen* s = screenAt(screen);
+    if (const CaptureScreen* desktop = screenAt(kDesktop);
+        desktop && !s->bounds().contains(to) && onMonitor(s->origin() + to)) {
+        const QPoint shift = s->origin() - desktop->origin();
+        return fromDesktop(spanRatio(from + shift, clampTo(kDesktop, to + shift), m_ratio, desktop->bounds()));
+    }
+    return {screen, spanRatio(from, clampTo(screen, to), m_ratio, s->bounds())};
 }
 
 QRect CaptureSession::hoverRect() const
@@ -643,12 +777,14 @@ void CaptureSession::updateHover(int screen, QPoint p)
 // selection's (Move inside it).
 int CaptureSession::cursorShapeAt(int screen, QPoint p) const
 {
-    const bool annotated = m_annot.active() && m_annotScreen == screen;
-    if (annotated && m_annot.onHandle(p))
-        return m_annot.cursorAt(p);
-    const Handle handle = handleAt(m_selection.rect, p, reach(screen));
+    // In the selection's pixels (the desktop picture's when it is over several monitors).
+    const QPoint at = toSpace(screen, p, m_selection.screen);
+    const bool annotated = m_annot.active() && m_annotScreen == m_selection.screen;
+    if (annotated && m_annot.onHandle(at))
+        return m_annot.cursorAt(at);
+    const Handle handle = handleAt(m_selection.rect, at, reach(screen));
     if (annotated && (handle == Handle::None || handle == Handle::Move)) {
-        if (const int shape = m_annot.cursorAt(p); shape >= 0)
+        if (const int shape = m_annot.cursorAt(at); shape >= 0)
             return shape;
     }
     return cursorFor(handle);
@@ -661,14 +797,15 @@ void CaptureSession::updateCursor(int screen, QPoint p)
     for (CaptureScreen* s : m_screens) {
         const bool here = s->index() == screen;
         int shape = Qt::CrossCursor;
-        if (here && (m_phase == Phase::Selected || m_phase == Phase::Annotating) && m_selection.screen == screen)
+        if (here && (m_phase == Phase::Selected || m_phase == Phase::Annotating) && inSpace(screen, m_selection.screen))
             shape = cursorShapeAt(screen, m_cursorAt);
         else if (here && m_phase == Phase::Adjusting)
             shape = cursorFor(m_handle);
         s->setCursor(here, here ? m_cursorAt : QPoint(-1, -1), shape);
     }
     // The redaction tool marks the line of text under the pointer (GitHub #129).
-    m_annot.pointerAt(m_annot.active() && m_annotScreen == screen ? m_cursorAt : QPoint(-1, -1));
+    m_annot.pointerAt(m_annot.active() && inSpace(screen, m_annotScreen) ? toSpace(screen, m_cursorAt, m_annotScreen)
+                                                                         : QPoint(-1, -1));
 }
 
 void CaptureSession::publish()
@@ -683,18 +820,37 @@ void CaptureSession::publish()
     // on the toolbar or on another monitor it was only in the way).
     const CaptureScreen* cursorScreen = screenAt(m_cursorScreen);
     const int line = std::max(1, static_cast<int>(std::lround(cursorScreen ? cursorScreen->dpr() : 1.0)));
-    const bool overShown = shown.screen == m_cursorScreen && shown.rect.adjusted(-line, -line, line, line).contains(m_cursorAt);
+    const bool overShown = inSpace(m_cursorScreen, shown.screen)
+        && shown.rect.adjusted(-line, -line, line, line).contains(toSpace(m_cursorScreen, m_cursorAt, shown.screen));
     const bool magnifier = m_magnifier && !m_cursorCovered && !m_sizeEditing && (hovering || adjusting || overShown);
+    const bool hoverAll = hovering && m_hoverAll && screenAt(kDesktop);
+    // Its size label and toolbar: on one monitor, also when it is over several (#409).
+    const int home = hovering ? (hoverAll ? m_cursorScreen : m_hoverScreen) : homeOf(shown.screen, shown.rect);
+    const bool desktopAnnotations = m_annot.active() && m_annotScreen == kDesktop;
     for (CaptureScreen* s : m_screens) {
-        const QRect hover = hovering && s->index() == m_hoverScreen ? hoverRect() : QRect();
-        const QRect selection = s->index() == shown.screen ? shown.rect : QRect();
-        s->setState(hover, selection, m_active, adjusting, magnifier && s->index() == m_cursorScreen);
+        const QPoint desktopHere = m_desktop.origin() - s->origin(); // the desktop picture's 0,0 in this monitor's pixels
+        const QRect hover = !hovering ? QRect()
+            : hoverAll                ? m_desktop.bounds().translated(desktopHere)
+            : s->index() == m_hoverScreen ? hoverRect()
+                                          : QRect();
+        QRect selection;
+        if (shown.screen == kDesktop) {
+            // Whole, in this monitor's pixels: the window cuts it at its edges.
+            if (const QRect here = shown.rect.translated(desktopHere); here.intersects(s->bounds()))
+                selection = here;
+        } else if (s->index() == shown.screen) {
+            selection = shown.rect;
+        }
+        s->setState(hover, selection, m_active, adjusting, magnifier && s->index() == m_cursorScreen, s->index() == home,
+            desktopAnnotations ? m_desktop.bounds().translated(desktopHere) : QRect());
     }
     refreshKeyHints();
 }
 
 CaptureSession::Pick CaptureSession::hovered() const
 {
+    if (m_hoverAll && screenAt(kDesktop)) // every monitor at once (#409)
+        return {kDesktop, m_desktop.bounds()};
     if (m_hoverScreen >= 0 && m_level < m_chain.size())
         return {m_hoverScreen, m_chain[m_level]};
     if (const CaptureScreen* s = m_cursorScreen >= 0 ? screenAt(m_cursorScreen) : nullptr)
@@ -731,29 +887,53 @@ void CaptureSession::pointerMove(int screen, QPoint p, Qt::KeyboardModifiers mod
         m_phase = Phase::Dragging;
         m_previous = {};
         dropParked();
-        m_selection = {m_pressScreen, spanRatio(m_pressAt, clampTo(m_pressScreen, here), m_ratio, screenAt(m_pressScreen)->bounds())};
+        m_selection = drawn(m_pressScreen, m_pressAt, here);
         emit selectionChanged();
         break;
     }
     case Phase::Dragging: {
+        // Onto another monitor, it is over both (#409); back, on the one again.
         const QPoint here = p + screenAt(screen)->rect().topLeft() - screenAt(m_pressScreen)->rect().topLeft();
-        m_selection.rect = spanRatio(m_pressAt, clampTo(m_pressScreen, here), m_ratio, screenAt(m_pressScreen)->bounds());
+        if (const Pick next = drawn(m_pressScreen, m_pressAt, here); next.screen != m_selection.screen) {
+            m_selection = next;
+            emit selectionChanged();
+        } else {
+            m_selection.rect = next.rect;
+        }
         break;
     }
     case Phase::Adjusting: {
         const QPoint here = p + screenAt(screen)->rect().topLeft() - screenAt(m_pressScreen)->rect().topLeft();
-        const QRect bounds = screenAt(m_pressScreen)->bounds();
-        m_selection.rect = keepRatio(dragHandle(m_startRect, m_handle, here - m_pressAt, bounds), m_startRect, m_handle, m_ratio, bounds);
+        const QPoint delta = here - m_pressAt;
+        const CaptureScreen* start = screenAt(m_startScreen);
+        const CaptureScreen* desktop = screenAt(kDesktop);
+        Pick next;
+        if (!desktop || hasAnnotations()) {
+            // Annotations stay on the picture they were drawn on: the selection too.
+            const QRect bounds = start->bounds();
+            next = {m_startScreen, keepRatio(dragHandle(m_startRect, m_handle, delta, bounds), m_startRect, m_handle, m_ratio, bounds)};
+        } else {
+            // An edge or the whole selection may go onto another monitor (#409).
+            const QRect from = m_startRect.translated(start->origin() - desktop->origin());
+            const QRect bounds = desktop->bounds();
+            next = fromDesktop(keepRatio(dragHandle(from, m_handle, delta, bounds), from, m_handle, m_ratio, bounds));
+            if (homeOf(next.screen, next.rect) < 0)
+                break; // all of it between monitors, on none: it stays where it was
+        }
+        if (next.screen != m_selection.screen) {
+            m_selection = next;
+            emit selectionChanged();
+        } else {
+            m_selection.rect = next.rect;
+        }
         break;
     }
-    case Phase::Annotating: {
-        const QPoint here = p + screenAt(screen)->rect().topLeft() - screenAt(m_pressScreen)->rect().topLeft();
-        m_annot.move(here, modifiers);
+    case Phase::Annotating:
+        m_annot.move(toSpace(screen, p, m_annotScreen), modifiers);
         break;
-    }
     case Phase::Selected:
-        if (m_annot.pathActive() && m_annotScreen == screen)
-            m_annot.move(p, modifiers);
+        if (m_annot.pathActive() && inSpace(screen, m_annotScreen))
+            m_annot.move(toSpace(screen, p, m_annotScreen), modifiers);
         break;
     }
     updateCursor(screen, p);
@@ -791,22 +971,26 @@ void CaptureSession::pointerPress(int screen, QPoint p, Qt::MouseButton button, 
         // the selected annotation; the selection's own handles; the tools and
         // the annotations under the press; the selection itself (Move); a new
         // selection. Whoever asks first and says yes has it.
-        const bool annotated = m_annot.active() && m_annotScreen == screen && m_selection.screen == screen;
+        // In the selection's pixels: a monitor's, or the desktop picture's over several (#409).
+        const bool onSelection = inSpace(screen, m_selection.screen);
+        const QPoint at = toSpace(screen, p, m_selection.screen);
+        const bool annotated = m_annot.active() && onSelection && m_annotScreen == m_selection.screen;
         const auto annotating = [this] {
             m_phase = m_annot.gestureActive() ? Phase::Annotating : Phase::Selected;
         };
-        if (annotated && m_annot.pressFirst(p, modifiers)) {
+        if (annotated && m_annot.pressFirst(at, modifiers)) {
             annotating();
             updateCursor(screen, p);
             publish();
             return;
         }
-        const Handle handle = m_selection.screen == screen ? handleAt(m_selection.rect, p, reach(screen)) : Handle::None;
+        const Handle handle = onSelection ? handleAt(m_selection.rect, at, reach(screen)) : Handle::None;
         if (handle != Handle::None && handle != Handle::Move) {
             m_phase = Phase::Adjusting;
             m_handle = handle;
             m_startRect = m_selection.rect;
-        } else if (annotated && m_annot.pressSecond(p, modifiers)) {
+            m_startScreen = m_selection.screen;
+        } else if (annotated && m_annot.pressSecond(at, modifiers)) {
             annotating();
             updateCursor(screen, p);
             publish();
@@ -815,6 +999,7 @@ void CaptureSession::pointerPress(int screen, QPoint p, Qt::MouseButton button, 
             m_phase = Phase::Adjusting;
             m_handle = handle;
             m_startRect = m_selection.rect;
+            m_startScreen = m_selection.screen;
         } else if (m_annot.active() && m_annot.hasItems()) {
             // Annotations stay on the content they were drawn on: no new
             // selection over them; the edge moves the selection.
@@ -885,15 +1070,11 @@ void CaptureSession::pointerRelease(int screen, QPoint p, Qt::MouseButton button
         m_phase = Phase::Selected;
         m_handle = Handle::None;
         break;
-    case Phase::Annotating: {
-        // The press screen's own pixels, beyond its edges too (Qt grabs the mouse there).
-        const CaptureScreen* from = screenAt(screen);
-        const CaptureScreen* pressed = screenAt(m_pressScreen);
-        const QPoint here = from && pressed ? p + from->rect().topLeft() - pressed->rect().topLeft() : p;
-        m_annot.release(here); // a text opens for typing here, when it was only a click
+    case Phase::Annotating:
+        // The annotations' own pixels, beyond the press screen's edges too (Qt grabs the mouse there).
+        m_annot.release(toSpace(screen, p, m_annotScreen)); // a text opens for typing here, when it was only a click
         m_phase = Phase::Selected;
         break;
-    }
     case Phase::Hover:
     case Phase::Selected:
         break;
@@ -907,7 +1088,7 @@ void CaptureSession::doubleClick(int screen, QPoint p)
 {
     if (!m_active)
         return;
-    if (m_annotScreen == screen && m_annot.finishPath()) {
+    if (inSpace(screen, m_annotScreen) && m_annot.finishPath()) {
         m_phase = Phase::Selected;
         publish();
         return;
@@ -917,25 +1098,25 @@ void CaptureSession::doubleClick(int screen, QPoint p)
     // Qt sends the second press of a double click as a press and then this,
     // so a gesture the press began (a move, a stroke) is still open: it was
     // only a click, drop it.
-    if (m_phase == Phase::Annotating && m_annot.active() && m_annotScreen == screen) {
+    if (m_phase == Phase::Annotating && m_annot.active() && inSpace(screen, m_annotScreen)) {
         m_annot.cancelGesture();
         m_phase = Phase::Selected;
         publish();
     }
-    if (m_annot.active() && m_annotScreen == screen && m_selection.screen == screen
+    if (m_annot.active() && inSpace(screen, m_annotScreen) && m_annotScreen == m_selection.screen
         && (m_phase == Phase::Selected || m_phase == Phase::Adjusting)
-        && m_annot.doubleClick(clampTo(screen, p))) {
+        && m_annot.doubleClick(toSpace(screen, clampTo(screen, p), m_annotScreen))) {
         if (m_phase == Phase::Adjusting) {
-            m_selection.rect = m_startRect; // the press began a move that did not happen
+            m_selection = {m_startScreen, m_startRect}; // the press began a move that did not happen
             m_phase = Phase::Selected;
             publish();
         }
         return;
     }
     // The first click picked (or kept) the selection: the second copies it.
-    if (m_selection.screen == screen && m_selection.rect.contains(clampTo(screen, p))) {
+    if (inSpace(screen, m_selection.screen) && m_selection.rect.contains(toSpace(screen, clampTo(screen, p), m_selection.screen))) {
         if (m_phase == Phase::Adjusting) {
-            m_selection.rect = m_startRect; // the press began a move that did not happen
+            m_selection = {m_startScreen, m_startRect}; // the press began a move that did not happen
             m_phase = Phase::Selected;
         }
         perform(m_actDoubleLeft);
@@ -1052,7 +1233,11 @@ void CaptureSession::wheel(int screen, QPoint p, int steps)
     if (m_chain.empty())
         return;
     const auto last = static_cast<long long>(m_chain.size()) - 1;
-    m_level = static_cast<std::size_t>(std::clamp(static_cast<long long>(m_level) + steps, 0LL, last));
+    // Past the whole screen, with several monitors: all of them at once (#409).
+    const long long top = screenAt(kDesktop) ? last + 1 : last;
+    const long long at = std::clamp((m_hoverAll ? last + 1 : static_cast<long long>(m_level)) + steps, 0LL, top);
+    m_hoverAll = at > last;
+    m_level = static_cast<std::size_t>(std::min(at, last));
     publish();
 }
 
@@ -1062,7 +1247,7 @@ void CaptureSession::wheelAngle(int screen, QPoint p, int angleDelta, qint64 now
         return;
     m_shiftAlone = false;
     hintInput();
-    if (m_annot.active() && m_annotScreen == screen && m_selection.screen == screen
+    if (m_annot.active() && inSpace(screen, m_annotScreen) && m_annotScreen == m_selection.screen
         && (m_phase == Phase::Selected || m_phase == Phase::Annotating) && m_annot.wheel(angleDelta, nowMs)) {
         publish();
         return;
@@ -1331,10 +1516,12 @@ void CaptureSession::movePointer(int dx, int dy)
 void CaptureSession::nudgeSelection(int dx, int dy, bool shift)
 {
     if (CaptureScreen* s = screenAt(m_selection.screen)) {
+        // A pixel at a time within its monitor (or the desktop when it is over several).
         const QRect moved = shift ? nudgeRatio(m_selection.rect, dx, dy, m_ratio, s->bounds())
                                    : nudge(m_selection.rect, dx, dy, false, s->bounds());
         if (moved != m_selection.rect) {
-            m_selection.rect = moved;
+            if (const Pick next = settled({m_selection.screen, moved}); homeOf(next.screen, next.rect) >= 0)
+                m_selection = next;
             emit selectionChanged();
             publish();
         }
@@ -1373,14 +1560,24 @@ void CaptureSession::recallSelection(bool previous)
     for (int step = 1; step <= count; ++step) {
         const int at = m_recalledSelection < 0 ? step - 1
             : (m_recalledSelection + (previous ? -step : step) + count) % count;
-        const auto last = lastSelectionOn(m_selectionHistory[static_cast<std::size_t>(at)], monitors);
-        if (!last)
+        const QRect remembered = m_selectionHistory[static_cast<std::size_t>(at)];
+        std::optional<Pick> pick;
+        // One over several monitors (#409) comes back over them while they are where they were.
+        if (const CaptureScreen* desktop = screenAt(kDesktop); desktop && desktop->rect().contains(remembered)) {
+            if (const Pick whole = fromDesktop(remembered.translated(-desktop->origin())); homeOf(whole.screen, whole.rect) >= 0)
+                pick = whole;
+        }
+        if (!pick) {
+            if (const auto last = lastSelectionOn(remembered, monitors))
+                pick = Pick {m_screens[static_cast<std::size_t>(last->monitor)]->index(), last->rect};
+        }
+        if (!pick)
             continue; // Its monitor may have been disconnected; try the next region.
         dropParked();
         retireAnnotation();
         setRatio({}); // the region as it was
         m_recalledSelection = at;
-        m_selection = {m_screens[static_cast<std::size_t>(last->monitor)]->index(), last->rect};
+        m_selection = *pick;
         m_previous = {};
         m_phase = Phase::Selected;
         emit selectionChanged();
@@ -1423,7 +1620,7 @@ void CaptureSession::back()
     case Phase::Adjusting:
         // A drag let go of: back to how it was before the press.
         if (m_phase == Phase::Adjusting)
-            m_selection.rect = m_startRect;
+            m_selection = {m_startScreen, m_startRect};
         else if (m_previous.screen >= 0)
             m_selection = std::exchange(m_previous, {});
         else
@@ -1537,7 +1734,7 @@ void CaptureSession::placeSize(QSize size)
         const QRect sized = resized(m_selection.rect, size, s->bounds());
         if (sized == m_selection.rect)
             return;
-        m_selection.rect = sized;
+        m_selection = settled({m_selection.screen, sized}); // smaller, it may fit on one monitor again (#409)
         m_recalledSelection = -1;
     } else if (CaptureScreen* under = screenAt(m_cursorScreen)) {
         // None yet: one of that size about the pointer, to be dragged into place.
@@ -1682,6 +1879,11 @@ void CaptureSession::act(int action)
             return;
         }
         const Pick pick = m_selection.screen >= 0 ? m_selection : hovered();
+        if (pick.screen == kDesktop) { // they follow one window, on one monitor
+            showNotice(action == static_cast<int>(Action::Record) ? tr("选区跨了多个屏幕，不能录屏")
+                                                                  : tr("选区跨了多个屏幕，不能长截图"));
+            return;
+        }
         if (pick.screen >= 0 && (pick.rect.width() < kLongMinimum || pick.rect.height() < kLongMinimum)) {
             showNotice(action == static_cast<int>(Action::Record) ? tr("选区太小，不能录屏") : tr("选区太小，不能长截图"));
             return;

@@ -2423,6 +2423,14 @@ The unfinished recording is kept at: %1</translation>
         <translation>The selection is too small for recording</translation>
     </message>
     <message>
+        <source>选区跨了多个屏幕，不能长截图</source>
+        <translation>The selection spans more than one screen, so a long screenshot can&apos;t be taken</translation>
+    </message>
+    <message>
+        <source>选区跨了多个屏幕，不能录屏</source>
+        <translation>The selection spans more than one screen, so it can&apos;t be recorded</translation>
+    </message>
+    <message>
         <source>已关闭快捷键提示 · 按 ? 临时显示，截图设置里可重新打开</source>
         <translation>Shortcut hints off · Press ? to show them for a moment, or turn them back on in the screenshot settings</translation>
     </message>

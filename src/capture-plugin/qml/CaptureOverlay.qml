@@ -28,9 +28,14 @@ Window {
     readonly property rect hover: screenModel.hover
     readonly property bool hoverHere: hover.width > 0 && !selectedHere
     readonly property rect shown: selectedHere ? selection : hover
+    // Its size, toolbar and words are here (one over several monitors, GitHub #409, has them on one).
+    readonly property bool home: screenModel.home
+    readonly property bool homeSelected: selectedHere && home
     // The annotations (one model for all monitors; drawn where the selection is).
     readonly property AnnotationModel annotation: session.annotation
-    onSelectedHereChanged: if (!selectedHere) toolbar.manuallyPlaced = false
+    // Their picture in this monitor's pixels: the monitor, or the whole desktop's.
+    readonly property rect annotationArea: screenModel.annotationArea
+    onHomeSelectedChanged: if (!homeSelected) toolbar.manuallyPlaced = false
 
     function px(v) { return v * sx }
     function py(v) { return v * sy }
@@ -53,10 +58,10 @@ Window {
         sparse: true
         scaleX: overlay.sx
         scaleY: overlay.sy
-        x: 0
-        y: 0
-        width: overlay.px(overlay.screenModel.pixels.width)
-        height: overlay.py(overlay.screenModel.pixels.height)
+        x: overlay.px(overlay.annotationArea.x)
+        y: overlay.py(overlay.annotationArea.y)
+        width: overlay.px(overlay.annotationArea.width)
+        height: overlay.py(overlay.annotationArea.height)
     }
 
     Item { // outside the hover or selection; all of the other monitors
@@ -64,10 +69,11 @@ Window {
 
         readonly property color tint: Qt.rgba(0, 0, 0, 0.45)
         readonly property bool clearHere: overlay.selectedHere || overlay.hoverHere
-        readonly property real edgeLeft: overlay.px(overlay.shown.x)
-        readonly property real edgeTop: overlay.py(overlay.shown.y)
-        readonly property real edgeRight: overlay.px(overlay.shown.x + overlay.shown.width)
-        readonly property real edgeBottom: overlay.py(overlay.shown.y + overlay.shown.height)
+        // Within the window: one over several monitors reaches beyond its edges.
+        readonly property real edgeLeft: Math.max(0, Math.min(width, overlay.px(overlay.shown.x)))
+        readonly property real edgeTop: Math.max(0, Math.min(height, overlay.py(overlay.shown.y)))
+        readonly property real edgeRight: Math.max(0, Math.min(width, overlay.px(overlay.shown.x + overlay.shown.width)))
+        readonly property real edgeBottom: Math.max(0, Math.min(height, overlay.py(overlay.shown.y + overlay.shown.height)))
 
         anchors.fill: parent
         visible: overlay.screenModel.dimmed
@@ -166,6 +172,8 @@ Window {
         annot: overlay.annotation
         keyTarget: keys
         here: overlay.selectedHere
+        home: overlay.homeSelected
+        area: overlay.annotationArea
         barRect: Qt.rect(toolbar.x + bar.x, toolbar.y + bar.y, bar.width, bar.height)
         blockRect: toolbar.visibleRows
         toolbarSide: toolbar.side
@@ -181,9 +189,9 @@ Window {
         keyTarget: keys
         dpr: overlay.dpr
         // With a selection, on its monitor; before one, where the pointer is.
-        here: overlay.session.hasSelection ? overlay.selectedHere : overlay.screenModel.cursorHere
+        here: overlay.session.hasSelection ? overlay.homeSelected : overlay.screenModel.cursorHere
         suppressed: bar.keysOpen
-        blockers: overlay.selectedHere
+        blockers: overlay.homeSelected
             ? [Qt.rect(overlay.px(overlay.selection.x), overlay.py(overlay.selection.y),
                        overlay.px(overlay.selection.width), overlay.py(overlay.selection.height)),
                toolbar.visible && smartHint.visible
@@ -266,7 +274,7 @@ Window {
             function onGeometryChanged() { toolbar.manuallyPlaced = false }
         }
 
-        visible: overlay.selectedHere && !overlay.screenModel.adjusting && !overlay.session.toolbarHidden && !overlay.session.ocrOnly
+        visible: overlay.homeSelected && !overlay.screenModel.adjusting && !overlay.session.toolbarHidden && !overlay.session.ocrOnly
         x: manuallyPlaced ? bounded(manualPosition.x, overlay.width, width) : Math.round(place.x * overlay.dpr) / overlay.dpr
         y: manuallyPlaced ? bounded(manualPosition.y, overlay.height, height) : Math.round(place.y * overlay.dpr) / overlay.dpr
         width: bar.width
@@ -325,10 +333,11 @@ Window {
         keyTarget: keys
         dpr: overlay.dpr
         shown: overlay.shown
-        selectedHere: overlay.selectedHere
-        hoverHere: overlay.hoverHere
+        selectedHere: overlay.homeSelected
+        hoverHere: overlay.hoverHere && overlay.home
         areaWidth: overlay.width
         areaHeight: overlay.height
+        avoid: toolbar.visible ? Qt.rect(toolbar.x, toolbar.y, toolbar.width, toolbar.height) : Qt.rect(0, 0, 0, 0)
     }
 
     Rectangle { // the magnifier: the pixels round the cursor, where it is, its colour
@@ -438,7 +447,7 @@ Window {
 
         readonly property real edge: Theme.edge(overlay.dpr)
 
-        visible: overlay.session.active && overlay.selectedHere && overlay.session.recalledSelection >= 0
+        visible: overlay.session.active && overlay.homeSelected && overlay.session.recalledSelection >= 0
                  && overlay.session.keyHints.length > 0 && !keyHints.showsRecalled
         x: Theme.snap((overlay.width - width) / 2, overlay.dpr)
         y: Theme.snap(overlay.height - 12 - height, overlay.dpr)

@@ -26,6 +26,15 @@ Item {
     // One device pixel, logical px: the scale itself when one image pixel is one.
     property real unitX: sx
     property real unitY: sy
+    // Image px: the text box and the number box open here only for a point in
+    // it (a capture over several monitors has one of these on each, GitHub
+    // #409). Empty: everywhere.
+    property rect editArea: Qt.rect(0, 0, 0, 0)
+
+    function owns(x, y) {
+        return editArea.width <= 0 || (x >= editArea.x && y >= editArea.y
+                                       && x < editArea.x + editArea.width && y < editArea.y + editArea.height)
+    }
 
     // The save or pin key (Ctrl+S, F3 by default) pressed in the text box, for whoever owns the keys.
     signal keyForwarded(int key, int modifiers)
@@ -136,7 +145,7 @@ Item {
         id: textBox
 
         readonly property var ed: over.annot ? over.annot.editing : ({})
-        readonly property bool active: over.here && ed.fontPx !== undefined
+        readonly property bool active: over.here && ed.fontPx !== undefined && over.owns(ed.x, ed.y)
         // A new edit: another text, or the same one again after it ended.
         readonly property string editKey: active ? ed.id + "," + ed.x + "," + ed.y : ""
         // Image px, as the compositor measures the text (annot::layoutText).
@@ -292,7 +301,7 @@ Item {
         id: numberBox
 
         readonly property var ne: over.annot ? over.annot.numberEdit : ({})
-        readonly property bool active: over.here && ne.id !== undefined
+        readonly property bool active: over.here && ne.id !== undefined && over.owns(ne.x, ne.y)
         readonly property string editKey: active ? String(ne.id) : ""
 
         visible: active

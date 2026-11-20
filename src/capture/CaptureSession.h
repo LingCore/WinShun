@@ -43,8 +43,19 @@ class CaptureScreen : public QObject {
     Q_PROPERTY(QPoint origin READ origin NOTIFY geometryChanged FINAL) // its top left, physical, virtual desktop
     // Without the taskbar: physical, its own (the whole monitor when unknown).
     Q_PROPERTY(QRect workArea READ workArea NOTIFY geometryChanged FINAL)
-    Q_PROPERTY(QRect hover READ hover NOTIFY changed FINAL) // what a click would pick; null when none here
-    Q_PROPERTY(QRect selection READ selection NOTIFY changed FINAL) // null when none here
+    // What a click would pick, and the selection; null when none here. One over
+    // several monitors (GitHub #409) is given whole, in this monitor's own
+    // pixels, beyond its edges: what lies elsewhere is cut by the window.
+    Q_PROPERTY(QRect hover READ hover NOTIFY changed FINAL)
+    Q_PROPERTY(QRect selection READ selection NOTIFY changed FINAL)
+    // The size, the toolbar and the words of what is picked or selected are on
+    // this monitor: its own, or for one over several monitors the monitor of
+    // its bottom right corner (the pointer's while picking).
+    Q_PROPERTY(bool home READ home NOTIFY changed FINAL)
+    // The annotations' picture in this monitor's own physical pixels: the
+    // monitor itself, or for a selection over several monitors the picture of
+    // the whole desktop, which reaches beyond it.
+    Q_PROPERTY(QRect annotationArea READ annotationArea NOTIFY changed FINAL)
     Q_PROPERTY(bool dimmed READ dimmed NOTIFY changed FINAL) // dim outside the hover/selection on every monitor
     Q_PROPERTY(bool adjusting READ adjusting NOTIFY changed FINAL) // being drawn, moved or resized: no toolbar
     // The magnifier by the cursor here: not beside a selection made, nor over the toolbar.
@@ -77,6 +88,8 @@ public:
     qreal scaleY() const { return m_scaleY; }
     QRect hover() const { return m_hover; }
     QRect selection() const { return m_selection; }
+    bool home() const { return m_home; }
+    QRect annotationArea() const { return m_annotationArea.isNull() ? bounds() : m_annotationArea; }
     bool dimmed() const { return m_dimmed; }
     bool adjusting() const { return m_adjusting; }
     bool magnifierShown() const { return m_magnifierShown; }
@@ -114,7 +127,8 @@ signals:
 
 private:
     friend class CaptureSession;
-    void setState(const QRect& hover, const QRect& selection, bool dimmed, bool adjusting, bool magnifierShown);
+    void setState(const QRect& hover, const QRect& selection, bool dimmed, bool adjusting, bool magnifierShown,
+        bool home = false, const QRect& annotationArea = {});
     void setCursor(bool here, QPoint at, int shape);
     void setFlash(const QString& text);
     void setNotice(const QString& text);
@@ -130,6 +144,8 @@ private:
     qreal m_scaleY = 1;
     QRect m_hover;
     QRect m_selection;
+    bool m_home = false;
+    QRect m_annotationArea; // null: the monitor itself
     bool m_dimmed = false;
     bool m_adjusting = false;
     bool m_magnifierShown = false;
@@ -158,8 +174,10 @@ private:
 // recent regions on this picture; ? (or F1) shows or hides the key hints.
 // Enter or a double click copies, Ctrl+S saves, F3 pins it
 // to the screen; Esc or a right click drops the selection, or with none ends
-// the capture; C copies the colour under the cursor. A selection stays on
-// one monitor. F opens the size panel (CaptureSizeBox.qml, GitHub #308): a
+// the capture; C copies the colour under the cursor. A selection is on one
+// monitor until a drag (drawing it, an edge, moving it) or the wheel (past the
+// whole screen) takes it over more than one (GitHub #409): it is then on the
+// whole desktop's picture (kDesktop), annotations and all. F opens the size panel (CaptureSizeBox.qml, GitHub #308): a
 // width and a height typed in, a shape the selection is then held to
 // (ratioLocked: drags, handles and Shift with the arrows keep it), and the
 // sizes and shapes kept to pick from, before a selection too. With a selection, the annotation tools (AnnotationModel) draw
@@ -230,6 +248,10 @@ public:
     Q_ENUM(Action)
     static constexpr int kLongMinimum = 48;
     static constexpr int kSelectionHistoryLimit = 10;
+    // The "screen" of a selection over more than one monitor (GitHub #409):
+    // its rectangle is in the pixels of the whole desktop's picture
+    // (desktopRect(), 0,0 at its top left). Only with two monitors or more.
+    static constexpr int kDesktop = 1000;
 
     // The windows at the freeze: top-level ones from the top of the Z order
     // down, physical, virtual desktop; children(i) gives window i's controls.
@@ -285,8 +307,19 @@ public:
     void setHiddenButtons(const QStringList& ids);
     bool active() const { return m_active; }
     bool hasSelection() const { return m_selection.screen >= 0; }
-    int selectionScreen() const { return m_selection.screen; }
-    QRect selectionRect() const { return m_selection.rect; } // physical, that monitor's own
+    int selectionScreen() const { return m_selection.screen; } // a monitor's index, or kDesktop
+    QRect selectionRect() const { return m_selection.rect; } // physical, that monitor's own (or the desktop picture's)
+    // The monitors' bounding box (physical, virtual desktop) and its picture:
+    // each monitor's frozen picture in its place, black where none is. Made
+    // the first time a capture asks for it; null with one monitor.
+    QRect desktopRect() const { return m_desktop.rect(); }
+    QImage desktopPicture() const;
+    // `rect` on `screen` (a monitor's index or kDesktop), physical, virtual
+    // desktop; null for no such screen.
+    QRect virtualRect(int screen, const QRect& rect) const;
+    // The monitor where the size, the toolbar and the words of `rect` on
+    // `screen` go (CaptureScreen::home); -1 when it is on none.
+    int homeOf(int screen, const QRect& rect) const;
     // For the diagnostics: where the gesture is (hover, dragging, selected,
     // adjusting, annotating), and the time since the left button was last let
     // go of in this capture (-1: not yet).
@@ -359,7 +392,7 @@ public:
 
     AnnotationModel* annotation() { return &m_annot; }
     // The monitor the annotations are on (the selection's, even while it is
-    // put down with Esc), -1 when there are none.
+    // put down with Esc; kDesktop over several), -1 when there are none.
     int annotationScreen() const { return m_annot.active() ? m_annotScreen : -1; }
     bool hasAnnotations() const { return m_annot.active() && m_annot.hasItems(); }
     // What the tools remember (annot::StyleMemory): set before a capture,
@@ -422,7 +455,7 @@ public:
 
 signals:
     // What to take: that monitor's pixels in `rect` (its own physical
-    // coordinates); nothing for Cancel.
+    // coordinates; for kDesktop the desktop picture's); nothing for Cancel.
     void finished(ws::capture::CaptureSession::Action action, int screen, const QRect& rect);
     void colorCopied(const QString& color);
     // , (or <): the capture before the one shown, 1; . (or >): the one after, -1.
@@ -454,8 +487,25 @@ private:
         QRect rect;
     };
 
-    CaptureScreen* screenAt(int index) const;
+    CaptureScreen* screenAt(int index) const; // kDesktop: the desktop's (with two monitors or more)
     QPoint clampTo(int screen, QPoint p) const;
+    // ---- over several monitors (GitHub #409) ----
+    // Input on monitor `screen` reaches what is in `space` (that monitor, or the desktop).
+    bool inSpace(int screen, int space) const;
+    // `p` on monitor `screen` in the pixels of `space` (a monitor or kDesktop).
+    QPoint toSpace(int screen, QPoint p, int space) const;
+    bool onMonitor(QPoint global) const; // physical, virtual desktop
+    // A rectangle of the desktop's picture: on the monitor that holds it
+    // whole, else on the desktop.
+    Pick fromDesktop(const QRect& rect) const;
+    // `pick` on its own monitor when one holds it whole: a selection with no
+    // annotations, after it was sized or moved.
+    Pick settled(const Pick& pick) const;
+    // A selection drawn on monitor `screen` from `from` to `to` (its pixels,
+    // `to` beyond its edges too): on it while the pointer is, else over the
+    // desktop when the pointer is on another monitor.
+    Pick drawn(int screen, QPoint from, QPoint to) const;
+    QImage pictureOf(int screen) const; // a monitor's frozen picture, or the desktop's
     void updateHover(int screen, QPoint p);
     void updateCursor(int screen, QPoint p);
     void publish(); // the state onto the screens
@@ -521,6 +571,11 @@ private:
     QPoint m_pressAt;
     Handle m_handle = Handle::None;
     QRect m_startRect;
+    int m_startScreen = -1; // m_startRect's (the selection's when the press began)
+    // The whole desktop (GitHub #409): its rectangle, set at begin(), and its
+    // picture, made when first asked for.
+    mutable CaptureScreen m_desktop {kDesktop};
+    bool m_hoverAll = false; // the wheel went past the whole screen: every monitor at once
     int m_cursorScreen = -1;
     QPoint m_cursorAt;
     bool m_cursorCovered = false; // over the toolbar, not the picture, since the last move

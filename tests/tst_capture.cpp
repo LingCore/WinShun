@@ -105,6 +105,16 @@ struct Rig {
         session.pointerPress(0, at, Qt::LeftButton);
         session.pointerRelease(0, at, Qt::LeftButton);
     }
+    // A second monitor to the right of the first, shorter and lower (GitHub
+    // #409): the desktop is 1800 x 800, with gaps above and below `other`.
+    void beginTwo(CaptureScreen& other)
+    {
+        other.setGeometry(QRect(1000, 100, 800, 600), 1.0, QSize(800, 600));
+        QImage image(800, 600, QImage::Format_RGB32);
+        image.fill(qRgb(0x20, 0x80, 0x20));
+        other.setImage(image);
+        session.begin({&screen, &other}, {});
+    }
 };
 
 } // namespace
@@ -2892,6 +2902,201 @@ private slots:
         rig.session.end();
         QVERIFY(!rig.screen.dimmed());
         QVERIFY(!other.dimmed());
+    }
+
+    // GitHub #409: a selection drawn onto another monitor is over both, on
+    // their picture together; back onto the first it is on that one again.
+    void selectionDrawnOntoAnotherMonitorSpansBoth()
+    {
+        Rig rig;
+        CaptureScreen other(1);
+        rig.beginTwo(other);
+        QCOMPARE(rig.session.desktopRect(), QRect(0, 0, 1800, 800));
+        // Qt sends the moves of a drag to the window pressed in, beyond its edges too.
+        rig.session.pointerMove(0, {900, 50});
+        rig.session.pointerPress(0, {900, 50}, Qt::LeftButton);
+        rig.session.pointerMove(0, {950, 100});
+        QCOMPARE(rig.session.selectionScreen(), 0);
+        rig.session.pointerMove(0, {1099, 249});
+        QCOMPARE(rig.session.selectionScreen(), CaptureSession::kDesktop);
+        QCOMPARE(rig.session.selectionRect(), QRect(900, 50, 200, 200));
+        rig.session.pointerMove(0, {999, 249});
+        QCOMPARE(rig.session.selectionScreen(), 0);
+        QCOMPARE(rig.session.selectionRect(), QRect(900, 50, 100, 200));
+        rig.session.pointerMove(0, {1099, 249});
+        rig.session.pointerRelease(0, {1099, 249}, Qt::LeftButton);
+        QCOMPARE(rig.session.selectionScreen(), CaptureSession::kDesktop);
+        // Each monitor has it whole in its own pixels; the toolbar goes to its bottom right corner's.
+        QCOMPARE(rig.screen.selection(), QRect(900, 50, 200, 200));
+        QCOMPARE(other.selection(), QRect(-100, -50, 200, 200));
+        QVERIFY(!rig.screen.home());
+        QVERIFY(other.home());
+        QVERIFY(!rig.session.keyHintRows().contains(u"long"_s));
+        // The picture: both monitors' pixels, black where neither is.
+        QSignalSpy finished(&rig.session, &CaptureSession::finished);
+        rig.session.key(Qt::Key_Return, Qt::NoModifier);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(finished[0][1].toInt(), CaptureSession::kDesktop);
+        const QRect rect = finished[0][2].toRect();
+        QCOMPARE(rig.session.virtualRect(CaptureSession::kDesktop, rect), QRect(900, 50, 200, 200));
+        const QImage picture = rig.session.desktopPicture().copy(rect);
+        QCOMPARE(picture.size(), QSize(200, 200));
+        QCOMPARE(picture.pixel(0, 0), qRgb(0x12, 0x34, 0x56));
+        QCOMPARE(picture.pixel(150, 20), qRgb(0, 0, 0)); // (1050, 70): above the second monitor
+        QCOMPARE(picture.pixel(150, 150), qRgb(0x20, 0x80, 0x20)); // (1050, 200)
+        // Remembered where it was, for R.
+        rig.session.end();
+        CaptureScreen again(1);
+        rig.beginTwo(again);
+        rig.session.pointerMove(0, {100, 100});
+        QVERIFY(rig.session.key(Qt::Key_R, Qt::NoModifier));
+        QCOMPARE(rig.session.selectionScreen(), CaptureSession::kDesktop);
+        QCOMPARE(rig.session.selectionRect(), QRect(900, 50, 200, 200));
+    }
+
+    void selectionMovedOntoAnotherMonitor()
+    {
+        Rig rig;
+        CaptureScreen other(1);
+        rig.beginTwo(other);
+        rig.drag({800, 300}, {899, 399});
+        QCOMPARE(rig.session.selectionScreen(), 0);
+        // Moved over the edge: over both.
+        rig.session.pointerPress(0, {850, 350}, Qt::LeftButton);
+        rig.session.pointerMove(0, {1000, 350});
+        rig.session.pointerRelease(0, {1000, 350}, Qt::LeftButton);
+        QCOMPARE(rig.session.selectionScreen(), CaptureSession::kDesktop);
+        QCOMPARE(rig.session.selectionRect(), QRect(950, 300, 100, 100));
+        // Moved on from the second monitor's overlay: wholly on it.
+        rig.session.pointerMove(1, {20, 250});
+        rig.session.pointerPress(1, {20, 250}, Qt::LeftButton);
+        rig.session.pointerMove(1, {120, 250});
+        rig.session.pointerRelease(1, {120, 250}, Qt::LeftButton);
+        QCOMPARE(rig.session.selectionScreen(), 1);
+        QCOMPARE(rig.session.selectionRect(), QRect(50, 200, 100, 100));
+        QVERIFY(rig.screen.selection().isEmpty());
+        QVERIFY(other.home());
+        // Its left edge dragged onto the first monitor, and Esc in the middle: as it was.
+        rig.session.pointerPress(1, {50, 250}, Qt::LeftButton); // the left edge
+        rig.session.pointerMove(1, {-60, 250});
+        QCOMPARE(rig.session.selectionScreen(), CaptureSession::kDesktop);
+        rig.session.key(Qt::Key_Escape, Qt::NoModifier);
+        QCOMPARE(rig.session.selectionScreen(), 1);
+        QCOMPARE(rig.session.selectionRect(), QRect(50, 200, 100, 100));
+    }
+
+    // The wheel past the whole screen: every monitor at once, as the click then picks.
+    void wheelPastTheScreenPicksEveryMonitor()
+    {
+        Rig rig;
+        CaptureScreen other(1);
+        rig.beginTwo(other);
+        rig.session.pointerMove(1, {100, 100});
+        QCOMPARE(other.hover(), QRect(0, 0, 800, 600)); // no windows: the screen
+        rig.session.wheel(1, {100, 100}, 1);
+        QCOMPARE(other.hover(), QRect(-1000, -100, 1800, 800));
+        QCOMPARE(rig.screen.hover(), QRect(0, 0, 1800, 800));
+        QVERIFY(other.home()); // the size by the pointer
+        QVERIFY(!rig.screen.home());
+        rig.session.wheel(1, {100, 100}, 1); // no further
+        rig.session.wheel(1, {100, 100}, -1);
+        QCOMPARE(other.hover(), QRect(0, 0, 800, 600));
+        QVERIFY(rig.screen.hover().isEmpty());
+        rig.session.wheel(1, {100, 100}, 1);
+        rig.session.pointerPress(1, {100, 100}, Qt::LeftButton);
+        rig.session.pointerRelease(1, {100, 100}, Qt::LeftButton);
+        QCOMPARE(rig.session.selectionScreen(), CaptureSession::kDesktop);
+        QCOMPARE(rig.session.selectionRect(), QRect(0, 0, 1800, 800));
+        // Its bottom right corner is in the gap below the second monitor: the
+        // toolbar on the first, which has most of it.
+        QVERIFY(rig.screen.home());
+        QVERIFY(!other.home());
+        // A long screenshot and a recording follow one window: not over several monitors.
+        QSignalSpy finished(&rig.session, &CaptureSession::finished);
+        rig.session.act(static_cast<int>(CaptureSession::Action::Long));
+        rig.session.act(static_cast<int>(CaptureSession::Action::Record));
+        QCOMPARE(finished.count(), 0);
+        QVERIFY(!rig.screen.notice().isEmpty());
+
+        // One monitor: the screen is as far as the wheel goes.
+        Rig one;
+        one.begin();
+        one.session.pointerMove(0, {100, 100});
+        one.session.wheel(0, {100, 100}, 3);
+        QCOMPARE(one.screen.hover(), QRect(0, 0, 1000, 800));
+        QVERIFY(one.session.desktopPicture().isNull());
+    }
+
+    // Annotations on a selection over two monitors are drawn on their picture
+    // together, from either overlay; they hold the selection to it.
+    void annotationsOverSeveralMonitors()
+    {
+        Rig rig;
+        CaptureScreen other(1);
+        rig.beginTwo(other);
+        rig.session.pointerMove(0, {900, 200});
+        rig.session.pointerPress(0, {900, 200}, Qt::LeftButton);
+        rig.session.pointerMove(0, {1199, 399});
+        rig.session.pointerRelease(0, {1199, 399}, Qt::LeftButton);
+        QCOMPARE(rig.session.annotationScreen(), CaptureSession::kDesktop);
+        QCOMPARE(rig.session.annotation()->document().canvas, QSize(1800, 800));
+        QCOMPARE(rig.screen.annotationArea(), QRect(0, 0, 1800, 800));
+        QCOMPARE(other.annotationArea(), QRect(-1000, -100, 1800, 800));
+        // A rectangle drawn on the second monitor's overlay, in the desktop picture's pixels.
+        rig.session.key(Qt::Key_1, Qt::NoModifier);
+        rig.session.pointerMove(1, {50, 150});
+        rig.session.pointerPress(1, {50, 150}, Qt::LeftButton);
+        rig.session.pointerMove(1, {100, 200});
+        rig.session.pointerMove(1, {150, 250});
+        rig.session.pointerRelease(1, {150, 250}, Qt::LeftButton);
+        rig.session.key(Qt::Key_1, Qt::NoModifier);
+        QVERIFY(rig.session.hasAnnotations());
+        const annot::Document& doc = rig.session.annotation()->document();
+        QCOMPARE(doc.items.size(), 1);
+        const QRectF box = annot::bounds(doc, doc.items.first());
+        QVERIFY2(std::abs(box.center().x() - 1100) < 4 && std::abs(box.center().y() - 300) < 4,
+            qPrintable(u"%1,%2"_s.arg(box.center().x()).arg(box.center().y())));
+        // With annotations it stays on their picture, even wholly on one monitor.
+        rig.session.pointerPress(0, {950, 300}, Qt::LeftButton); // inside, clear of the rectangle
+        rig.session.pointerMove(0, {1250, 300});
+        rig.session.pointerRelease(0, {1250, 300}, Qt::LeftButton);
+        QCOMPARE(rig.session.selectionScreen(), CaptureSession::kDesktop);
+        QCOMPARE(rig.session.selectionRect(), QRect(1200, 200, 300, 200));
+        // Kept and brought back (the history, Esc and Ctrl+Z) on the desktop picture.
+        const CaptureSession::Kept kept = rig.session.kept();
+        QCOMPARE(kept.screen, CaptureSession::kDesktop);
+        QVERIFY(kept.doc && kept.doc->items.size() == 1);
+        rig.session.replaceShot({}, -1, {}, std::nullopt);
+        QVERIFY(!rig.session.hasAnnotations());
+        rig.session.replaceShot({}, kept.screen, kept.rect, kept.doc);
+        QCOMPARE(rig.session.selectionScreen(), CaptureSession::kDesktop);
+        QCOMPARE(rig.session.annotation()->document().items.size(), 1);
+        QVERIFY(other.home());
+    }
+
+    void historyKeepsASelectionOverSeveralMonitors()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString folder = dir.filePath(u"capture-history"_s);
+        HistoryShot shot;
+        shot.id = u"2000"_s;
+        QImage left(64, 48, QImage::Format_RGB32);
+        left.fill(qRgb(1, 2, 3));
+        QImage right(32, 40, QImage::Format_RGB32);
+        right.fill(qRgb(4, 5, 6));
+        shot.screens = {{QRect(0, 0, 64, 48), 1.0, left}, {QRect(64, 8, 32, 40), 1.0, right}};
+        shot.spans = true;
+        shot.selection = QRect(50, 10, 30, 20);
+        CaptureHistory history;
+        history.setFolder(folder);
+        history.add(shot);
+        history.flush();
+        const std::optional<HistoryShot> read = CaptureHistory::read(folder, u"2000"_s);
+        QVERIFY(read);
+        QVERIFY(read->spans);
+        QCOMPARE(read->screen, -1);
+        QCOMPARE(read->selection, QRect(50, 10, 30, 20));
     }
 
     void copyAndPinActions()

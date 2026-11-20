@@ -129,8 +129,10 @@ void CaptureHistory::write(const QString& folder, const HistoryShot& shot)
         if (!doc.open(QIODevice::WriteOnly) || doc.write(shot.document) != shot.document.size() || !doc.commit())
             qWarning().noquote() << "Capture history: cannot write the annotations of" << shot.id;
     }
-    const QJsonObject meta {{u"version"_s, kVersion}, {u"screens"_s, screens}, {u"screen"_s, shot.screen},
+    QJsonObject meta {{u"version"_s, kVersion}, {u"screens"_s, screens}, {u"screen"_s, shot.screen},
         {u"selection"_s, rectJson(shot.selection)}};
+    if (shot.spans)
+        meta.insert(u"spans"_s, true);
     QSaveFile file(into.filePath(u"meta.json"_s));
     if (!file.open(QIODevice::WriteOnly) || file.write(QJsonDocument(meta).toJson(QJsonDocument::Compact)) < 0
         || !file.commit() || !dir.rename(part, shot.id)) {
@@ -166,6 +168,7 @@ std::optional<HistoryShot> CaptureHistory::read(const QString& folder, const QSt
     shot.id = id;
     shot.screen = meta.value(u"screen"_s).toInt(-1);
     shot.selection = rectFrom(meta.value(u"selection"_s));
+    shot.spans = meta.value(u"spans"_s).toBool();
     const QJsonArray screens = meta.value(u"screens"_s).toArray();
     std::vector<std::future<QImage>> decoded;
     for (const QJsonValue& value : screens) {
@@ -185,7 +188,7 @@ std::optional<HistoryShot> CaptureHistory::read(const QString& folder, const QSt
         if (shot.screens[i].image.size() != shot.screens[i].rect.size())
             return std::nullopt;
     }
-    if (shot.screens.empty() || shot.screen < 0 || shot.screen >= std::ssize(shot.screens))
+    if (shot.spans ? shot.screens.size() < 2 : shot.screens.empty() || shot.screen < 0 || shot.screen >= std::ssize(shot.screens))
         return std::nullopt;
     if (QFile doc(dir.filePath(u"doc.json"_s)); doc.open(QIODevice::ReadOnly))
         shot.document = doc.readAll();

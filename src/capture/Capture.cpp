@@ -806,7 +806,9 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     const OcrPurpose ocrPurpose = std::exchange(m_ocrPurpose, OcrPurpose::Read);
     QString savePath;
     if (action == CaptureSession::Action::Save) {
-        const auto selected = std::ranges::find(m_overlays, screen, [](const Overlay& o) { return o.model->index(); });
+        // The picker over the monitor of the toolbar (one over several monitors has it on one, #409).
+        const int home = m_session.homeOf(screen, rect);
+        const auto selected = std::ranges::find(m_overlays, home, [](const Overlay& o) { return o.model->index(); });
         if (selected == m_overlays.end() || !selected->window)
             return;
         const State before = std::exchange(m_state, State::ChoosingSave);
@@ -831,7 +833,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
             selected->window->requestActivate();
             return;
         }
-        m_session.rememberSelection(rect.translated(selected->model->origin()));
+        m_session.rememberSelection(m_session.virtualRect(screen, rect));
     }
     m_flyoutWait.stop();
     m_flyout = nullptr;
@@ -858,6 +860,17 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
                 qWarning() << "Long screenshot: the window under the region did not come to the front";
         }
     } else if (action != CaptureSession::Action::Cancel && action != CaptureSession::Action::Delay) {
+        if (screen == CaptureSession::kDesktop) {
+            // Over several monitors (#409): from their pictures put together, as
+            // the overlays show them; no HDR file (each monitor has its own).
+            picture = m_session.desktopPicture().copy(rect);
+            origin = m_session.virtualRect(screen, rect).topLeft();
+            const int home = m_session.homeOf(screen, rect);
+            for (const Overlay& overlay : m_overlays) {
+                if (overlay.model->index() == home)
+                    dpr = overlay.model->dpr();
+            }
+        }
         for (const Overlay& overlay : m_overlays) {
             if (overlay.model->index() == screen) {
                 picture = overlay.model->image().copy(rect);
@@ -892,17 +905,15 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
         if (m_session.hasAnnotations()) {
             // Ended with annotations on the screen (the hotkey, Esc, D): kept for a
             // while, to be found again from the tray menu.
-            const int draftScreen = m_session.annotationScreen();
-            for (const Overlay& overlay : m_overlays) {
-                if (overlay.model->index() == draftScreen) {
-                    annotation->commitPending();
-                    m_draft = Draft {annotation->project(), overlay.model->rect().topLeft() + annotation->selectionRect().topLeft()};
-                    m_draftTimer.start();
-                    qInfo().noquote() << u"Screen capture: annotations kept as a draft at %1,%2 (%3x%4)"_s.arg(m_draft->origin.x())
-                                             .arg(m_draft->origin.y())
-                                             .arg(m_draft->project.base.width())
-                                             .arg(m_draft->project.base.height());
-                }
+            if (const QRect where = m_session.virtualRect(m_session.annotationScreen(), annotation->selectionRect());
+                !where.isNull()) {
+                annotation->commitPending();
+                m_draft = Draft {annotation->project(), where.topLeft()};
+                m_draftTimer.start();
+                qInfo().noquote() << u"Screen capture: annotations kept as a draft at %1,%2 (%3x%4)"_s.arg(m_draft->origin.x())
+                                         .arg(m_draft->origin.y())
+                                         .arg(m_draft->project.base.width())
+                                         .arg(m_draft->project.base.height());
             }
         }
     }
@@ -919,9 +930,10 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
             shot.screens.push_back({overlay.model->rect(), overlay.model->dpr(), overlay.model->image()});
         }
         shot.selection = rect;
+        shot.spans = screen == CaptureSession::kDesktop; // over several monitors (#409): on their picture together
         if (m_session.hasAnnotations() && m_session.annotationScreen() == screen)
             shot.document = QJsonDocument(annot::toJson(annotation->committedDocument())).toJson(QJsonDocument::Compact);
-        if (shot.screen >= 0)
+        if (shot.screen >= 0 || (shot.spans && shot.screens.size() > 1))
             m_history.add(std::move(shot), m_historyAt >= 0 ? m_historyShown : QString());
     }
     forgetHistory();
@@ -1102,7 +1114,7 @@ void Capture::stepHistory(int step)
 
 void Capture::showHistoryShot(const HistoryShot& shot)
 {
-    int selectionScreen = -1;
+    int selectionScreen = shot.spans ? CaptureSession::kDesktop : -1;
     for (const Overlay& overlay : m_overlays) {
         if (!overlay.model->hasImage())
             continue;

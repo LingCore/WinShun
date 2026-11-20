@@ -18,8 +18,13 @@ Item {
     required property AnnotationModel annot
     // The overlay's key handler: focus goes back to it when typing ends.
     required property Item keyTarget
-    // The selection is on this monitor.
+    // The selection is on this monitor (or partly, when it is over several, GitHub #409).
     property bool here: false
+    // Its toolbar and words are on this monitor.
+    property bool home: here
+    // The annotations' picture in this monitor's own physical pixels (the
+    // whole desktop's over several monitors).
+    property rect area: Qt.rect(0, 0, width / sx, height / sy)
     // The toolbar's first row and its rows on the screen now (with the
     // style panel when it shows), logical px in this window, and where it
     // sits: "below", "above" or "inside" the selection. Shown:
@@ -55,7 +60,12 @@ Item {
     // ---- the selected object, the text box, the number box ----
 
     AnnotateObjects {
-        anchors.fill: parent
+        x: over.px(over.area.x)
+        y: over.py(over.area.y)
+        width: over.px(over.area.width)
+        height: over.py(over.area.height)
+        // The text and number boxes open on the monitor where they are.
+        editArea: Qt.rect(-over.area.x, -over.area.y, over.screenModel.pixels.width, over.screenModel.pixels.height)
         annot: over.annot
         keyTarget: over.keyTarget
         here: over.here
@@ -74,7 +84,7 @@ Item {
 
         readonly property bool leftRoom: over.barRect.x - over.hintGap - width >= over.margin
 
-        allowed: over.here && over.toolbarShown && !over.keyHintsShowing
+        allowed: over.home && over.toolbarShown && !over.keyHintsShowing
         words: qsTr("再按一次关掉 · [ ] 改粗细 · H 隐藏工具条")
         x: over.snap(leftRoom ? over.barRect.x - over.hintGap - width
                                : over.clampX(over.barRect.x + over.barRect.width - width, width))
@@ -93,7 +103,7 @@ Item {
     Connections {
         target: over.annot
         function onToolChanged() {
-            if (!over.here)
+            if (!over.home)
                 return
             if (over.annot.tool < 0) {
                 hintTimer.stop()
@@ -108,8 +118,8 @@ Item {
 
     // H hid the toolbar: where it was, a word on how to have it back.
     FadeBar {
-        allowed: over.here
-        shown: over.here && over.session.toolbarHidden && !over.screenModel.adjusting
+        allowed: over.home
+        shown: over.home && over.session.toolbarHidden && !over.screenModel.adjusting
         words: qsTr("按 H 显示工具条")
         x: over.snap(over.clampX(over.barRect.x + over.barRect.width - width, width))
         y: over.snap(over.clampY(over.toolbarSide === "below" ? over.barRect.y
@@ -128,9 +138,9 @@ Item {
         readonly property bool under: over.toolbarSide === "above"
 
         shown: notice.length > 0
-        x: over.snap(over.here ? over.clampX(over.px(over.selection.x + over.selection.width / 2) - width / 2, width)
+        x: over.snap(over.home ? over.clampX(over.px(over.selection.x + over.selection.width / 2) - width / 2, width)
                                  : (over.width - width) / 2)
-        y: over.snap(!over.here ? over.noticeTop
+        y: over.snap(!over.home ? over.noticeTop
                       : under ? (selBottom + over.hintGap + height <= over.height - over.margin ? selBottom + over.hintGap
                                                                                                    : selBottom - over.hintGap - height)
                       : (selTop - over.hintGap - height >= over.margin ? selTop - over.hintGap - height
