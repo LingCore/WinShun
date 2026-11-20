@@ -381,6 +381,12 @@ std::vector<Entry> buildCatalog()
         e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "搜索框的位置");
     }
     {
+        Entry& e = add(boolean({"Launcher/DialogBarSuggestions", QT_TRANSLATE_NOOP("AiSettings", "点进对话框旁的搜索框就列出常用位置"), "files_and_dialogs", 2,
+                                   "Clicked into with nothing typed, the dialog search bar lists the folders open in file managers, favorites and recent folders. Off: nothing until typing (or the Down key)."},
+            &Settings::dialogBarSuggestions));
+        e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "点进来就列出常用位置");
+    }
+    {
         Entry& e = add(boolean({"Launcher/DialogAutoJump", QT_TRANSLATE_NOOP("AiSettings", "对话框自动转到文件管理器的文件夹"), "files_and_dialogs", 2,
                                    "Open and Save dialogs go to the folder open in the file manager by themselves, without Ctrl+G."},
             &Settings::dialogAutoJump));

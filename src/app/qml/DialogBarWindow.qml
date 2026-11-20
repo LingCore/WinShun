@@ -207,7 +207,10 @@ Window {
         const row = list.count > 0 ? list.currentIndex : -1
         const key = SearchKeys.navigationKey(event.key, event.modifiers, input.preeditText.length > 0)
         switch (key) {
-        case Qt.Key_Down: move(1); break
+        case Qt.Key_Down: // with nothing typed and no list (#417): the suggestions
+            if (!window.bar.askSuggestions())
+                move(1)
+            break
         case Qt.Key_Up: move(-1); break
         case Qt.Key_PageDown: move(Math.max(1, window.bar.rows)); break
         case Qt.Key_PageUp: move(-Math.max(1, window.bar.rows)); break

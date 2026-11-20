@@ -5004,6 +5004,13 @@ void App::applyDialogs()
             if (m_settingsEditor)
                 m_settingsEditor->setSettings(m_settings);
         });
+        connect(m_dialogBar.get(), &DialogBar::suggestionsRequested, this, [this](bool on) {
+            if (std::exchange(m_settings.dialogBarSuggestions, on) == on)
+                return;
+            m_settings.save();
+            if (m_settingsEditor)
+                m_settingsEditor->setSettings(m_settings);
+        });
         connect(m_dialogBar.get(), &DialogBar::settingsRequested, this, [this] { showSettings(); });
         connect(m_dialogBar.get(), &DialogBar::autoJumpAnswered, this, &App::answerAutoJump);
     } else if (!m_settings.dialogBar && m_dialogBar) {
@@ -5017,6 +5024,7 @@ void App::applyDialogs()
         m_dialogBar->setExcludedApps(m_settings.dialogBarExcludedApps);
         m_dialogBar->setPlace(m_settings.dialogBarPlace);
         m_dialogBar->setFolderOnly(m_settings.dialogBarFolderOnly);
+        m_dialogBar->setSuggestOnFocus(m_settings.dialogBarSuggestions);
         m_dialogBar->setResultOptions(m_settings.showModified, m_settings.thumbnails, m_settings.numberKeys);
         m_dialogBar->setNumberHints(m_settings.numberHints);
         m_dialogBar->setLetterJump(m_settings.letterJump, m_settings.letterJumpKey, m_settings.letterJumpKeys);

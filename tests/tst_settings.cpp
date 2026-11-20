@@ -1540,18 +1540,21 @@ private slots:
         ws::Settings fresh;
         fresh.load();
         QVERIFY(fresh.dialogBar);
+        QVERIFY(fresh.dialogBarSuggestions); // listed as it is clicked into (GitHub #417: can be turned off)
         QCOMPARE(fresh.folderMenu, u"auto"_s);
         QVERIFY(fresh.explorerTyping);
         QVERIFY(fresh.dialogJump);
         QVERIFY(!fresh.pasteFileEnabled);
         QVERIFY(fresh.pasteFileCtrlV && fresh.pasteFileMenu); // its ways, once it is on
         fresh.dialogBar = false;
+        fresh.dialogBarSuggestions = false;
         fresh.folderMenu = u"off"_s;
         fresh.explorerTyping = false;
         fresh.save();
         ws::Settings again;
         again.load();
         QVERIFY(!again.dialogBar);
+        QVERIFY(!again.dialogBarSuggestions);
         QCOMPARE(again.folderMenu, u"off"_s);
         QVERIFY(!again.explorerTyping);
 
@@ -1565,6 +1568,7 @@ private slots:
         ws::Settings upgraded;
         upgraded.load();
         QVERIFY(upgraded.dialogBar);
+        QVERIFY(upgraded.dialogBarSuggestions); // as before the key
         QCOMPARE(upgraded.folderMenu, u"auto"_s);
         QVERIFY(!upgraded.explorerTyping); // an upgrade changes nothing
         QVERIFY(!upgraded.pasteFileEnabled); // new: off, as 截图 is

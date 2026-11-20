@@ -5629,7 +5629,7 @@ Window {
                     id: dialogBarRow
                     title: qsTr("对话框旁的搜索框")
                     keywords: qsTr("对话框;另存为;打开文件;保存").split(";")
-                    unlocks: [dialogBarPlaceRow]
+                    unlocks: [dialogBarPlaceRow, dialogBarSuggestionsRow]
                     description: qsTr("在“打开”“另存为”旁搜文件夹和文件，选中后直接转过去")
 
                     ToggleSwitch {
@@ -5651,6 +5651,21 @@ Window {
                         labels: [qsTr("自动"), qsTr("下方"), qsTr("左边"), qsTr("右边")]
                         current: Math.max(0, window.dialogBarPlaces.indexOf(window.editor.dialogBarPlace))
                         onActivated: (index) => window.editor.dialogBarPlace = window.dialogBarPlaces[index]
+                    }
+                }
+
+                SettingRow {
+                    id: dialogBarSuggestionsRow
+                    sub: true
+                    shown: window.editor.dialogBar
+                    title: qsTr("点进来就列出常用位置")
+                    keywords: qsTr("最近;常用;隐私;建议;列表;对话框").split(";")
+                    description: qsTr("文件管理器开着的、收藏的和最近用过的文件夹。关掉后打字才列出，按 ↓ 也能列出")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.dialogBarSuggestions
+                        onToggled: (on) => window.editor.dialogBarSuggestions = on
                     }
                 }
 

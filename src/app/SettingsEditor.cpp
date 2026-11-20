@@ -1316,6 +1316,14 @@ void SettingsEditor::setDialogBarPlace(const QString& place)
     commit();
 }
 
+void SettingsEditor::setDialogBarSuggestions(bool on)
+{
+    if (m_settings.dialogBarSuggestions == on)
+        return;
+    m_settings.dialogBarSuggestions = on;
+    commit();
+}
+
 void SettingsEditor::setDialogJump(bool on)
 {
     if (m_settings.dialogJump == on)

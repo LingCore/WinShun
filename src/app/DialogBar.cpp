@@ -286,6 +286,8 @@ void DialogBar::setWindow(QQuickWindow* window)
         // the window is active; without one, the list opens a moment later.
         m_listHeld = m_window->isActive();
         m_clickSeen = false;
+        if (!m_window->isActive())
+            m_suggestionsAsked = false; // asked for this time (↓), not the next
         if (m_listHeld)
             m_listHold.start();
         else
@@ -657,6 +659,24 @@ void DialogBar::toggleFolderOnly()
     emit folderOnlyRequested(m_folderOnly);
 }
 
+void DialogBar::setSuggestOnFocus(bool on)
+{
+    if (m_suggestOnFocus == on)
+        return;
+    m_suggestOnFocus = on;
+    if (m_window && m_window->isActive() && m_query.trimmed().isEmpty())
+        showSuggestions(); // the list as it is to be: up, or gone
+}
+
+bool DialogBar::askSuggestions()
+{
+    if (suggesting() || !m_query.trimmed().isEmpty())
+        return false;
+    m_suggestionsAsked = true;
+    showSuggestions();
+    return true;
+}
+
 QString DialogBar::scopeName() const
 {
     return m_scopeFolder.isEmpty() ? QString() : nameOf(m_scopeFolder);
@@ -802,6 +822,10 @@ void DialogBar::setRows(SearchResults rows, QStringList tags, const QStringList&
 void DialogBar::showSuggestions(bool refresh)
 {
     m_requestId = 0;
+    if (!suggesting()) { // until something is typed, or ↓ asks for them (GitHub #417)
+        setRows({}, {}, {}, refresh);
+        return;
+    }
     SearchResults rows;
     QStringList tags;
     QStringList seen;
@@ -1078,8 +1102,9 @@ QVariantList DialogBar::menuItems(int row) const
             items.append(entry(ToggleFolderOnly, tr("搜索整个电脑"), u"Ctrl+Shift+D"_s, u"\uE721"_s)); // Search
         else if (!current.isEmpty())
             items.append(entry(ToggleFolderOnly, tr("只搜“%1”里面").arg(nameOf(current)), u"Ctrl+Shift+D"_s, u"\uE8B7"_s)); // Folder
-        if (!items.isEmpty())
-            items.append(separator);
+        items.append(entry(ToggleSuggestions, m_suggestOnFocus ? tr("点进来时不列出常用位置") : tr("点进来就列出常用位置"), {},
+            u"\uE81C"_s)); // History
+        items.append(separator);
         items.append(entry(HideHere, tr("这次不显示"), {}, u"\uE711"_s)); // Cancel
         if (!m_dialogApp.isEmpty())
             items.append(entry(HideInApp, tr("在 %1 中不再显示").arg(m_dialogApp), {}, u"\uED1A"_s)); // Hide
@@ -1143,6 +1168,10 @@ void DialogBar::trigger(int row, int action)
         break;
     case ToggleFolderOnly:
         toggleFolderOnly();
+        break;
+    case ToggleSuggestions:
+        setSuggestOnFocus(!m_suggestOnFocus);
+        emit suggestionsRequested(m_suggestOnFocus);
         break;
     case HideHere:
         m_hiddenUnder = m_dialog;

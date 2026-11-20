@@ -911,6 +911,7 @@ void Settings::load()
     if (dialogBarPlace != u"below" && dialogBarPlace != u"left" && dialogBarPlace != u"right")
         dialogBarPlace = d.dialogBarPlace;
     dialogBarFolderOnly = readOrDefault(s, u"Launcher/DialogBarFolderOnly"_s, d.dialogBarFolderOnly);
+    dialogBarSuggestions = readOrDefault(s, u"Launcher/DialogBarSuggestions"_s, d.dialogBarSuggestions);
     dialogAutoJump = readOrDefault(s, u"Launcher/DialogAutoJump"_s, d.dialogAutoJump);
     dialogAutoJumpWhen = readOrDefault(s, u"Launcher/DialogAutoJumpWhen"_s, d.dialogAutoJumpWhen).trimmed().toLower();
     if (dialogAutoJumpWhen != u"back")
@@ -1372,6 +1373,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/DialogBar"_s, dialogBar);
     s.setValue(u"Launcher/DialogBarPlace"_s, dialogBarPlace);
     s.setValue(u"Launcher/DialogBarFolderOnly"_s, dialogBarFolderOnly);
+    s.setValue(u"Launcher/DialogBarSuggestions"_s, dialogBarSuggestions);
     s.setValue(u"Launcher/DialogAutoJump"_s, dialogAutoJump);
     s.setValue(u"Launcher/DialogAutoJumpWhen"_s, dialogAutoJumpWhen);
     s.setValue(u"Launcher/DialogAutoJumpAsked"_s, dialogAutoJumpAsked);

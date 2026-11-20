@@ -64,6 +64,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool dialogJump READ dialogJump WRITE setDialogJump NOTIFY changed FINAL)
     Q_PROPERTY(bool dialogBar READ dialogBar WRITE setDialogBar NOTIFY changed FINAL)
     Q_PROPERTY(QString dialogBarPlace READ dialogBarPlace WRITE setDialogBarPlace NOTIFY changed FINAL)
+    Q_PROPERTY(bool dialogBarSuggestions READ dialogBarSuggestions WRITE setDialogBarSuggestions NOTIFY changed FINAL)
     Q_PROPERTY(bool dialogAutoJump READ dialogAutoJump WRITE setDialogAutoJump NOTIFY changed FINAL)
     Q_PROPERTY(QString dialogAutoJumpWhen READ dialogAutoJumpWhen WRITE setDialogAutoJumpWhen NOTIFY changed FINAL)
     Q_PROPERTY(QStringList dialogBarExcludedApps READ dialogBarExcludedApps NOTIFY changed FINAL)
@@ -449,6 +450,8 @@ public:
     void setDialogBar(bool on);
     QString dialogBarPlace() const { return m_settings.dialogBarPlace; }
     void setDialogBarPlace(const QString& place);
+    bool dialogBarSuggestions() const { return m_settings.dialogBarSuggestions; }
+    void setDialogBarSuggestions(bool on);
     bool dialogAutoJump() const { return m_settings.dialogAutoJump; }
     void setDialogAutoJump(bool on);
     QString dialogAutoJumpWhen() const { return m_settings.dialogAutoJumpWhen; }

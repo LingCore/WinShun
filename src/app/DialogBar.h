@@ -42,7 +42,8 @@ class SearchEngine;
 // the list offers the folders open in file managers, a path on the clipboard (a
 // file copied in Explorer too), the favorites (Favorites, the launcher's too:
 // folders, and files but in a folder picker), and the folders used lately
-// (what Windows lists as recent, then what was opened through Win顺).
+// (what Windows lists as recent, then what was opened through Win顺); or,
+// set so (setSuggestOnFocus), nothing until ↓ asks for them.
 //
 // The view-model of DialogBarWindow.qml, and its window's placement: shown by
 // the dialog while that is in front (DialogJump tells), without taking the
@@ -135,6 +136,7 @@ public:
         HideHere, // not under this dialog again
         HideInApp, // not under this program's dialogs (Settings)
         OpenSettings,
+        ToggleSuggestions, // listed as the bar gets the focus with nothing typed, or not (Settings::dialogBarSuggestions)
     };
     Q_ENUM(Action)
 
@@ -166,6 +168,13 @@ public:
     void setFolderOnly(bool on); // Settings::dialogBarFolderOnly
     QString scopeName() const;
     Q_INVOKABLE void toggleFolderOnly(); // and asks for it to be kept (folderOnlyRequested)
+    // Settings::dialogBarSuggestions (GitHub #417). Off: with nothing typed,
+    // no list until asked for (askSuggestions).
+    void setSuggestOnFocus(bool on);
+    // ↓ with nothing typed and no list: the suggestions after all, until the
+    // bar loses the focus. False when they are up already (or something is
+    // typed): ↓ moves in the list.
+    Q_INVOKABLE bool askSuggestions();
     void setResultOptions(bool showModified, bool thumbnails, const QString& numberKeys); // Settings: "ctrl", "alt", "off"
     // Settings::numberHints, letterJump, letterJumpKey, letterJumpKeys.
     void setNumberHints(const QString& hints);
@@ -266,6 +275,7 @@ signals:
     void excludeAppRequested(const QString& app); // HideInApp
     void scopeChanged();
     void folderOnlyRequested(bool on); // ToggleFolderOnly: into the settings
+    void suggestionsRequested(bool on); // ToggleSuggestions: ... too
     void settingsRequested();
     void contextMenuKeyPressed(); // Menu key / Shift+F10 (arrive as a context-menu event, not a key)
     void resultOptionsChanged();
@@ -287,6 +297,7 @@ private:
     void search();
     void browse(const pathtext::TypedPath& typed); // in the background
     void showSuggestions(bool refresh = false); // nothing typed; `refresh`: the list was already up
+    bool suggesting() const { return m_suggestOnFocus || m_suggestionsAsked; }
     // The rows to show and the tag of each; `refresh`: keep the selection if nothing changed.
     void setRows(SearchResults rows, QStringList tags, const QStringList& highlights, bool refresh = false);
     void lookAround(); // the file managers' folders, the recent ones and the rest, in the background
@@ -359,6 +370,8 @@ private:
     QStringList m_extensions; // the Open dialog's file type: these first
     std::atomic<int> m_lookups {0}; // the newest lookAround() wins
 
+    bool m_suggestOnFocus = true; // see setSuggestOnFocus
+    bool m_suggestionsAsked = false; // ... and askSuggestions
     int m_rows = 0;
     bool m_listAbove = false;
     bool m_listHeld = false; // just made active: no list until a click is through
