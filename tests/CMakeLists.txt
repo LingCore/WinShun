@@ -1028,7 +1028,9 @@ target_include_directories(tst_graphicsloss PRIVATE ${PROJECT_SOURCE_DIR}/src/ca
 target_link_libraries(tst_graphicsloss PRIVATE winshun_options Qt6::Quick Qt6::Test)
 set_target_properties(tst_graphicsloss PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_graphicsloss COMMAND tst_graphicsloss -o -,txt)
+# A real window on D3D11: offscreen never gives its graphics up.
 set_tests_properties(tst_graphicsloss PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=windows;QT_QUICK_BACKEND="
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The screen's vertical blanks and the desktop's compositions beside the
