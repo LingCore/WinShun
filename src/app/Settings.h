@@ -320,8 +320,9 @@ struct Settings {
     // author (DonateMoveDialog), put back by the arrow beside it there (GitHub #402).
     bool donateOnGleaningPage = false;
     // A tip comes up on the icon or button the mouse rests on: the kinds of
-    // file, the +, the row's buttons (HoverTip, SystemTheme::hoverTips); off,
-    // only an "i" still says its words (GitHub #368).
+    // file, the +, the row's buttons (HoverTip, SystemTheme::hoverTips), the
+    // full path on a folder menu's row (MenuPathTip, GitHub #413); off, only
+    // an "i" and a cut-off name still say their words (GitHub #368).
     bool hoverTips = true;
     // auto | builtin: what Alt+P on a row shows the file with. auto: QuickLook
     // or Seer when one is running in the background (FilePreview), else

@@ -141,6 +141,7 @@ Item {
                         Accessible.onPressAction: content.activate(index)
                         Hook { anchors.fill: parent; part: Theme.rowHighlight; selected: list.currentIndex === row.index; hovered: mouse.containsMouse; role: "menu"; dpr: menu.dpr }
                         Text {
+                            id: query
                             x: 10; anchors.verticalCenter: parent.verticalCenter
                             width: parent.width - 56
                             text: row.modelData; textFormat: Text.PlainText
@@ -152,7 +153,7 @@ Item {
                             hoverEnabled: true
                             onClicked: content.activate(row.index)
                             onContainsMouseChanged: {
-                                if (containsMouse) { tip.target = row; tip.text = row.modelData }
+                                if (containsMouse) { tip.essential = query.truncated; tip.target = row; tip.text = row.modelData }
                                 else if (tip.target === row) tip.target = null
                             }
                         }

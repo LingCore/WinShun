@@ -52,6 +52,7 @@ Window {
     property int aimRow: -1
     property Item hoveredEntry: null
     property string hoveredText
+    property bool hoveredCut: false // its name does not fit (FolderMenuColumn's entry.cut)
     property int tipLevel: -1
     property point popupAnchor
     property rect availableArea
@@ -338,6 +339,7 @@ Window {
         if (row && hoveredEntry !== row) {
             hoveredEntry = row
             hoveredText = row.tooltip
+            hoveredCut = row.cut === true
             tipLevel = level
         }
         const at = folderMenu.cursorPos()
@@ -572,6 +574,7 @@ Window {
         availableArea: menu.availableArea
         target: menu.hoveredText.length > 0 ? menu.hoveredEntry : null
         text: menu.hoveredText
+        essential: menu.hoveredCut
     }
 
     WindowEdge { body: false } // the menu's colour is the window's

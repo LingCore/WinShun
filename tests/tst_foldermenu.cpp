@@ -688,6 +688,66 @@ private slots:
         QCOMPARE(warnings.count(), 0);
     }
 
+    // GitHub #413: a row's full path follows 外观 › 悬停提示 (#368). Off, it
+    // stays down on a row that shows its whole name and still comes up on one
+    // whose name is cut off; it goes as the switch is turned off.
+    void pathTipFollowsHoverTips()
+    {
+        const auto restore = qScopeGuard([] { SystemTheme::setHoverTips(true); });
+        SystemTheme::setHoverTips(false);
+        FolderMenu menu(nullptr, nullptr);
+        const QString shortPath = u"C:\\资料\\outputs"_s;
+        const QString longName = QString(80, u'长');
+        const QString longPath = u"C:\\资料\\"_s + longName;
+        menu.previewEntries({QVariantMap {{u"text"_s, u"outputs"_s}, {u"tooltip"_s, shortPath}},
+            QVariantMap {{u"text"_s, longName}, {u"tooltip"_s, longPath}}});
+        QQmlEngine engine;
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        QQmlComponent component(&engine,
+            QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR) + u"/FolderMenuWindow.qml"_s));
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({
+            {u"folderMenu"_s, QVariant::fromValue(&menu)}, {u"availableArea"_s, QRectF(0, 0, 800, 600)},
+            {u"popupAnchor"_s, QPoint(8, 8)}}));
+        QVERIFY2(object, qPrintable(component.errorString()));
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        QVERIFY(window);
+        window->setPosition(8, 8);
+        window->show();
+        QTRY_VERIFY(visualItem(window->contentItem(), u"folderMenuEntry1"_s));
+        auto* fits = visualItem(window->contentItem(), u"folderMenuEntry0"_s);
+        auto* cut = visualItem(window->contentItem(), u"folderMenuEntry1"_s);
+        QVERIFY(fits && cut);
+        QVERIFY(!fits->property("cut").toBool());
+        QVERIFY(cut->property("cut").toBool());
+        auto* tip = object->findChild<QQuickWindow*>(u"menuPathTip"_s);
+        QVERIFY(tip);
+        const auto point = [&](int i, QQuickItem* row) {
+            QVERIFY(QMetaObject::invokeMethod(object.get(), "pointed", Q_ARG(QVariant, 0), Q_ARG(QVariant, i),
+                Q_ARG(QVariant, QVariant::fromValue(row))));
+        };
+        const auto shownText = [&] {
+            const auto* label = visualItem(tip->contentItem(), u"menuPathLabel"_s);
+            return label ? label->property("text").toString() : QString();
+        };
+
+        point(0, fits); // off: the whole name is there, no path
+        QTest::qWait(500);
+        QVERIFY(!tip->isVisible());
+        point(1, cut); // off, the name cut off: its words come up
+        QTRY_VERIFY(tip->isVisible());
+        QCOMPARE(shownText(), longPath);
+        point(0, fits);
+        QTRY_VERIFY(!tip->isVisible());
+
+        SystemTheme::setHoverTips(true); // on: as ever, on the row it rests on
+        QTRY_VERIFY(tip->isVisible());
+        QCOMPARE(shownText(), shortPath);
+        SystemTheme::setHoverTips(false); // turned off while up: gone
+        QTRY_VERIFY(!tip->isVisible());
+        window->hide();
+        QCOMPARE(warnings.count(), 0);
+    }
+
     void pagesAndLongLists_data()
     {
         QTest::addColumn<bool>("dark");

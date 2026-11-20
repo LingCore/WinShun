@@ -156,6 +156,7 @@ Item {
             readonly property bool section: modelData.heading === true
             readonly property bool branch: modelData.children !== undefined || modelData.folder !== undefined
             readonly property string tooltip: modelData.tooltip ?? ""
+            readonly property bool cut: nameText.truncated
             readonly property real trailingWidth: Math.min(detail.implicitWidth, 96) + (branch ? 20 : 0)
             objectName: "folderMenuEntry" + index
             width: flick.width
@@ -197,6 +198,7 @@ Item {
                 color: entry.disabled ? Theme.faint : Theme.text
             }
             Text {
+                id: nameText
                 x: entry.section ? 12 : 42
                 width: Math.max(0, entry.width - x - 14 - entry.trailingWidth - 12)
                 anchors.verticalCenter: parent.verticalCenter

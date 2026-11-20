@@ -12,6 +12,10 @@ Window {
     property string text
     property string shownText
     property bool shown: false
+    // Shown with 外观 › 悬停提示 off too (SystemTheme.hoverTips, GitHub #368,
+    // #413) when the row's own name is cut off: then it is the name's words.
+    property bool essential: false
+    readonly property bool allowed: essential || SystemTheme.hoverTips
 
     objectName: "menuPathTip"
     transientParent: host
@@ -24,11 +28,12 @@ Window {
     function sync() {
         shown = false
         delay.stop()
-        if (target && text.length > 0 && host.visible)
+        if (allowed && target && text.length > 0 && host.visible)
             delay.start()
     }
     onTargetChanged: Qt.callLater(sync)
     onTextChanged: Qt.callLater(sync)
+    onAllowedChanged: Qt.callLater(sync)
     Connections {
         target: tip.host
         function onVisibleChanged() { tip.sync() }
