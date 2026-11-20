@@ -1026,6 +1026,16 @@ add_test(NAME tst_graphicsloss COMMAND tst_graphicsloss -o -,txt)
 set_tests_properties(tst_graphicsloss PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The screen's vertical blanks and the desktop's compositions beside the
+# capture (DisplayPulse.h, GitHub #325), on this PC's monitors.
+qt_add_executable(tst_displaypulse tst_displaypulse.cpp ${PROJECT_SOURCE_DIR}/src/capture/DisplayPulse.cpp)
+target_include_directories(tst_displaypulse PRIVATE ${PROJECT_SOURCE_DIR}/src/capture)
+target_link_libraries(tst_displaypulse PRIVATE winshun_options Qt6::Core Qt6::Test dwmapi gdi32 user32)
+set_target_properties(tst_displaypulse PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_displaypulse COMMAND tst_displaypulse -o -,txt)
+set_tests_properties(tst_displaypulse PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # How this PC's displays are set up, for an export's summary (DisplaySetup.h,
 # GitHub #325): monitors, Windows' graphics switches, the drivers' frame
 # pacing switches, the System log's graphics events, read from this PC.
