@@ -34,7 +34,7 @@
 
 - `installer-test.json`：发布时 `scripts/release.ps1 -Publish` 对正式包跑的 `tools/verify-installer.ps1`，6 项全过（普通升级、自己的程序在运行、DLL 被别的程序加载、文件被别的程序读着、文件谁都不许碰、增量安装程序）。发布时 13 个自动测试也再跑了一遍，全部通过。
 - `inapp-upgrade.json`：`tools/verify-installed-upgrade.ps1 -Mode InApp`。本机装着的 0.40.0 走软件内更新到 0.41.0，下载的是 `WinShun-0.41.0-x64-delta-from-0.40.0.zip`（约 7.2 MB），用时 50.9 秒；服务、计划任务、剪贴板历史都在。用的是发布前那次打包（`dist\release041`，打包时 `verify-installer.ps1` 6 项全过）。之后只改了 5 个插件的版本号、文档和海报，更新链路的代码没动。
-- 没做：用正式发布的安装包再覆盖一次本机（`-Mode Setup`），这一步被本机的权限设置拦下了。本机装着的是发布前那次打包的 0.41.0，代码和正式包是同一个提交。
+- `setup-upgrade.json`：发布后（11-20，用户放行）从 GitHub Release 下载正式的 `WinShun-0.41.0-x64-setup.exe`（SHA256 与 Release 一致），用 `tools/verify-installed-upgrade.ps1 -Mode Setup` 覆盖装到本机：退出码 0，用时 10.2 秒，装完自己重新运行；服务、计划任务、设置、历史都在。装好的 194 个文件与正式便携包逐个比对 SHA256 全部相同（便携包多一个 `data\README.txt`，是便携版专有的）。安装日志里唯一的非零退出码是删除 LocalSend 防火墙规则时规则本来就不存在，属正常。
 - 注意：这个测试要让装好的 Win顺 运行，而 Win顺 同一时间只能开一份，所以它会让当时在运行的另一份 Win顺（这次是 `dist\run-latest` 里的 0.40.0 开发版）正常退出。
 
 ## 插件库
