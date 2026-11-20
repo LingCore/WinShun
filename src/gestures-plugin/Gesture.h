@@ -149,26 +149,35 @@ const wchar_t* zoneTitle(Zone zone, bool chinese); // 左上角 …; empty for A
 // What sets a rule off ("on"): a gesture drawn ("DR", "cw"), the pointer
 // pushed into a corner ("corner:tl" …) or rubbed along an edge
 // ("edge:top" …), the wheel turned with the right button held
-// ("wheel:up" / "wheel:down").
-enum class TriggerKind { Gesture, Corner, Edge, Wheel, Unknown };
+// ("wheel:up" / "wheel:down"), a shortcut pressed ("key:Ctrl+Alt+T").
+enum class TriggerKind { Gesture, Corner, Edge, Wheel, Key, Unknown };
 TriggerKind triggerKind(std::string_view on);
 inline constexpr std::string_view kCorners[] = {"corner:tl", "corner:tr", "corner:bl", "corner:br"};
 inline constexpr std::string_view kEdges[] = {"edge:top", "edge:bottom", "edge:left", "edge:right"};
 inline constexpr std::string_view kWheelUp = "wheel:up";
 inline constexpr std::string_view kWheelDown = "wheel:down";
-// "↓→", "左上角", "上边", "按住右键向上滚" …: the trigger as the hint and the settings name it.
+inline constexpr std::string_view kKeyPrefix = "key:";
+// "↓→", "左上角", "上边", "按住右键向上滚", "Ctrl+Alt+T" …: the trigger as the hint and the settings name it.
 std::wstring triggerTitle(std::string_view on, bool chinese);
+// A shortcut as a trigger: "ctrl + alt+t" -> "key:Ctrl+Alt+T" (the modifiers
+// in Windows' order Win, Ctrl, Alt, Shift, as the shortcut recorder writes
+// them). Empty when it is no key, or one that would get in the way of
+// typing: Ctrl, Alt or Win held with it, or F1 to F24 alone.
+std::string keyTrigger(std::wstring_view keys);
+// What RegisterHotKey takes for a "key:" trigger (MOD_ALT … without
+// MOD_NOREPEAT, and the virtual key); false when it is none.
+bool hotkeyOf(std::string_view on, unsigned* modifiers, unsigned* vk);
 
 struct Rule {
     std::string on;
     // Only a gesture drawn: started in this corner of its screen (the
     // fifth of its width and height there).
     Zone where = Zone::Anywhere;
-    // Only a gesture drawn: while words are selected in the window under
-    // the pointer.
+    // Only a gesture drawn or a shortcut: while words are selected in the
+    // window under the pointer (a shortcut: in the window in front).
     bool selection = false;
-    // Only a gesture drawn or the wheel: in these programs (file names,
-    // lower case, ".exe" added); empty: in all of them.
+    // Only a gesture drawn, the wheel or a shortcut: in these programs (file
+    // names, lower case, ".exe" added); empty: in all of them.
     std::vector<std::wstring> apps;
     Action action;
     bool operator==(const Rule&) const = default;

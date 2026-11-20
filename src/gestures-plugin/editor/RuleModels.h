@@ -32,7 +32,7 @@ public:
     enum Role {
         SourceRowRole = Qt::UserRole + 1,
         OnRole,
-        ArrowsRole, // "↓→"
+        ArrowsRole, // "↓→"; a shortcut's keys: "Ctrl+Alt+T"
         DescriptionRole, // "向下，再向右"
         WhereRole, // gestures::Zone as a number
         WhereTitleRole, // "任何位置", "从右下角开始画"
@@ -66,6 +66,8 @@ public:
     void setAction(int row, const gestures::Action& action);
     // False when another rule is for the same thing there already.
     bool setWhere(int row, gestures::Zone zone);
+    // What sets it off ("key:Ctrl+Alt+T"); the caller has made sure no other rule is for it.
+    void setTrigger(int row, const std::string& on);
     void removeAt(int row);
     // A rule for several programs, shown under `app`: split, the one for `app` alone put right
     // after the rest. Its row; `row` itself when it was for `app` alone.
@@ -87,7 +89,8 @@ private:
     bool m_chinese = true;
 };
 
-// The rows a page shows: mode 0 the gestures drawn anywhere, 1 those with words selected, 2 a program's.
+// The rows a page shows: mode 0 the gestures drawn anywhere, 1 those with words selected, 2 a program's,
+// 3 the shortcuts (for all programs).
 class RulesFilter : public QSortFilterProxyModel {
     Q_OBJECT
     QML_ELEMENT

@@ -23,6 +23,7 @@ constexpr int kStroke = 24; // logical pixels along a direction: it counts
 constexpr UINT kSelectionWaitMs = 250; // let go before the selection is known: waited for this long at most
 constexpr int kAskSeconds = 5; // 关机 and the like: this long to change one's mind
 constexpr int kEscapeHotkey = 0x4753;
+constexpr std::size_t kMostShortcuts = 32; // the rules' shortcuts: hotkey ids 1 to this
 
 enum : UINT {
     // From the hook thread to the window thread.
@@ -40,12 +41,15 @@ enum : UINT {
     kSelected, // w: which gesture, l: new std::wstring, the words selected
     kRun, // l: new std::function<void()>
     kLook,
+    kShortcuts, // the rules, paused or recording changed: the shortcuts registered again
     // To the hook thread.
     kAbort, // Esc while drawing
 };
 constexpr UINT_PTR kFrameTimer = 1;
 constexpr UINT_PTR kPendingTimer = 2;
 constexpr UINT_PTR kScreenOffTimer = 3;
+constexpr UINT_PTR kShortcutTimer = 4;
+constexpr ULONGLONG kShortcutLetGoMs = 1000; // a shortcut's modifiers held longer: it acts all the same
 
 Engine* g_engine = nullptr;
 
@@ -296,8 +300,24 @@ void Engine::configure(Settings settings, Look look)
         std::lock_guard lock(m_mutex);
         m_shared = std::move(next);
     }
-    if (m_window)
+    if (m_window) {
         ::PostMessageW(m_window, kLook, 0, 0);
+        ::PostMessageW(m_window, kShortcuts, 0, 0);
+    }
+}
+
+void Engine::setPaused(bool paused)
+{
+    m_paused = paused;
+    if (m_window)
+        ::PostMessageW(m_window, kShortcuts, 0, 0);
+}
+
+void Engine::setRecording(bool recording)
+{
+    m_recording = recording;
+    if (m_window)
+        ::PostMessageW(m_window, kShortcuts, 0, 0);
 }
 
 void Engine::start()
@@ -637,6 +657,7 @@ void Engine::windowThread(std::promise<bool>* ready)
         m_cards.setLook(shared()->look);
     ready->set_value(m_window != nullptr);
     if (m_window) {
+        registerShortcuts(); // the rules configured before the start
         MSG msg;
         while (::GetMessageW(&msg, nullptr, 0, 0) > 0)
             ::DispatchMessageW(&msg);
@@ -695,6 +716,8 @@ LRESULT Engine::onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM
         } else if (wParam == kScreenOffTimer) {
             ::KillTimer(window, kScreenOffTimer);
             ::DefWindowProcW(window, WM_SYSCOMMAND, SC_MONITORPOWER, 2);
+        } else if (wParam == kShortcutTimer) {
+            shortcutLetGo();
         }
         return 0;
     case kEnd: {
@@ -760,17 +783,27 @@ LRESULT Engine::onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM
     case kLook:
         m_cards.setLook(shared()->look);
         return 0;
+    case kShortcuts:
+        registerShortcuts();
+        return 0;
     case WM_HOTKEY:
         if (wParam == kEscapeHotkey) {
             ::UnregisterHotKey(window, kEscapeHotkey);
             m_escape = false;
             ::PostThreadMessageW(m_hookThreadId, kAbort, 0, 0);
+        } else if (wParam >= 1 && wParam <= m_shortcuts.size()) {
+            m_shortcutHeld = m_shortcuts[wParam - 1];
+            m_shortcutAt = ::GetTickCount64();
+            shortcutLetGo();
         }
         return 0;
     case WM_CLOSE:
         ::DestroyWindow(window);
         return 0;
     case WM_DESTROY:
+        for (std::size_t i = 0; i < m_shortcuts.size(); ++i)
+            ::UnregisterHotKey(window, static_cast<int>(i + 1));
+        m_shortcuts.clear();
         ::PostQuitMessage(0);
         return 0;
     default:
@@ -812,8 +845,8 @@ void Engine::began(POINT down, HWND under)
     if (m_selectionAsked) {
         const HWND window = m_window;
         const int ask = m_ask;
-        m_reader.ask(m_target.root, [window, ask](std::wstring words) {
-            auto* carried = new std::wstring(std::move(words));
+        m_reader.ask(m_target.root, [window, ask](Selected selected) {
+            auto* carried = new std::wstring(std::move(selected.text));
             if (!::PostMessageW(window, kSelected, static_cast<WPARAM>(ask), reinterpret_cast<LPARAM>(carried)))
                 delete carried;
         });
@@ -1268,8 +1301,8 @@ void Engine::performWithWords(const Rule& rule, const Target& target)
     }
     const HWND window = m_window;
     ++m_ask; // a gesture's answer still on its way is dropped
-    m_reader.ask(root, [this, window, rule, target](std::wstring words) {
-        auto* work = new std::function<void()>([this, rule, target, words = std::move(words)] {
+    m_reader.ask(root, [this, window, rule, target](Selected selected) {
+        auto* work = new std::function<void()>([this, rule, target, words = std::move(selected.text)] {
             Target t = target;
             t.words = words;
             perform(rule, t);
@@ -1313,6 +1346,110 @@ void Engine::triggered(std::string_view on, POINT at)
     if (!asks)
         note(at, triggerIcon(on), actionTitle(rule->action, s->look.chinese), triggerTitle(on, s->look.chinese) + L" · ");
     performWithWords(*rule, t);
+}
+
+// The shortcuts of the rules that do something, as hotkeys of this window
+// (ids 1 …): all let go, then those wanted now taken again. None while
+// paused or while the settings window records a key. Those another program
+// (or Win顺) holds are told, for the settings window to say so.
+void Engine::registerShortcuts()
+{
+    for (std::size_t i = 0; i < m_shortcuts.size(); ++i)
+        ::UnregisterHotKey(m_window, static_cast<int>(i + 1));
+    m_shortcuts.clear();
+    std::vector<std::string> taken;
+    if (!m_paused && !m_recording) {
+        const std::shared_ptr<const Shared> s = shared();
+        for (const Rule& r : s->settings.rules) {
+            if (r.action.kind == Action::Kind::Nothing || triggerKind(r.on) != TriggerKind::Key)
+                continue;
+            if (std::ranges::find(m_shortcuts, r.on) != m_shortcuts.end() || std::ranges::find(taken, r.on) != taken.end())
+                continue;
+            unsigned modifiers = 0;
+            unsigned vk = 0;
+            if (m_shortcuts.size() >= kMostShortcuts || !hotkeyOf(r.on, &modifiers, &vk))
+                continue;
+            if (::RegisterHotKey(m_window, static_cast<int>(m_shortcuts.size() + 1), modifiers | MOD_NOREPEAT, vk))
+                m_shortcuts.push_back(r.on);
+            else
+                taken.push_back(r.on);
+        }
+    }
+    if (taken == m_shortcutsTaken)
+        return;
+    m_shortcutsTaken = taken;
+    std::string list;
+    for (const std::string& on : taken)
+        list += (list.empty() ? "" : ", ") + on;
+    if (!taken.empty())
+        m_options.log("shortcuts held by another program: " + list);
+    if (m_options.shortcutsRegistered)
+        m_options.shortcutsRegistered(taken);
+}
+
+// A shortcut pressed acts once its Ctrl, Alt, Shift and Win are let go (a
+// second at most): what it does may press keys, which those held would
+// change (复制's Ctrl+C under a held Alt), and a browser's words are copied
+// only then. Checked every 15 ms meanwhile.
+void Engine::shortcutLetGo()
+{
+    if (m_shortcutHeld.empty())
+        return;
+    const bool held = std::ranges::any_of(std::initializer_list<int> {VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN},
+        [](int vk) { return (::GetAsyncKeyState(vk) & 0x8000) != 0; });
+    if (held && ::GetTickCount64() - m_shortcutAt < kShortcutLetGoMs) {
+        ::SetTimer(m_window, kShortcutTimer, 15, nullptr);
+        return;
+    }
+    ::KillTimer(m_window, kShortcutTimer);
+    shortcutPressed(std::exchange(m_shortcutHeld, std::string()));
+}
+
+// A rule's shortcut pressed: over the window in front, at the pointer (where
+// the words were just selected, most likely). When a rule for it acts on
+// words, they are read first, Win顺 allowed to borrow the clipboard (a key
+// press is the user's own ask: a browser's selection is read too), and
+// they decide which rule holds: one for words selected, else a plain one.
+void Engine::shortcutPressed(const std::string& on)
+{
+    if (m_drawing)
+        return; // the right button held: the gesture's
+    Target t;
+    t.root = ::GetAncestor(::GetForegroundWindow(), GA_ROOT);
+    t.under = t.root;
+    ::GetCursorPos(&t.at);
+    t.context.program = programOfWindow(t.root);
+    const std::shared_ptr<const Shared> s = shared();
+    const bool wantsWords = std::ranges::any_of(s->settings.rules, [&](const Rule& r) {
+        return r.on == on && r.action.kind != Action::Kind::Nothing && (r.apps.empty() || listed(r.apps, t.context.program))
+            && (r.selection || (r.action.kind == Action::Kind::Builtin && takesSelection(r.action.builtin)));
+    });
+    if (!wantsWords || !t.root) {
+        if (const Rule* rule = match(s->settings.rules, on, t.context); rule && rule->action.kind != Action::Kind::Nothing)
+            perform(*rule, t);
+        else if (wantsWords)
+            note(t.at, NoteIcon::Info, s->look.chinese ? L"没有选中的文字" : L"Nothing selected");
+        return;
+    }
+    const HWND window = m_window;
+    ++m_ask; // a gesture's answer still on its way is dropped
+    m_reader.ask(t.root, [this, window, on, t](Selected selected) {
+        auto* work = new std::function<void()>([this, on, t, selected = std::move(selected)] {
+            Target target = t;
+            target.words = selected.text;
+            target.context.selection = !selected.text.empty();
+            const std::shared_ptr<const Shared> s = shared();
+            if (const Rule* rule = match(s->settings.rules, on, target.context); rule && rule->action.kind != Action::Kind::Nothing) {
+                perform(*rule, target);
+                return;
+            }
+            const bool zh = s->look.chinese;
+            note(target.at, NoteIcon::Info, selected.readable ? (zh ? L"没有选中的文字" : L"Nothing selected")
+                                                              : (zh ? L"读不到这个窗口里选中的文字" : L"The words selected here cannot be read"));
+        });
+        if (!::PostMessageW(window, kRun, 0, reinterpret_cast<LPARAM>(work)))
+            delete work;
+    }, true);
 }
 
 void Engine::perform(const Rule& rule, const Target& target)

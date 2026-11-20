@@ -46,8 +46,8 @@ foreach(name IN LISTS editor_shared_qml)
     list(APPEND editor_qml "${app_dir}/qml/${name}")
 endforeach()
 list(APPEND editor_qml "${PROJECT_SOURCE_DIR}/src/capture-plugin/qml/SettingsSearch.qml")
-foreach(name IN ITEMS GesturesWindow GestureList GesturePad RuleRow SlotRow ActionPicker ActionButton ZoneButton PickerPanel PickRow
-                      CornersPage ProgramsPage GeneralPage ProgramPicker)
+foreach(name IN ITEMS GesturesWindow GestureList GesturePad RuleRow ShortcutRow SlotRow ActionPicker ActionButton ZoneButton PickerPanel
+                      PickRow CornersPage ProgramsPage GeneralPage ProgramPicker)
     list(APPEND editor_qml "${editor_dir}/qml/${name}.qml")
 endforeach()
 set_source_files_properties("${app_dir}/qml/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)

@@ -370,6 +370,9 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
         QObject::connect(&editor, &GestureEditor::pauseRequested, link.get(), [&](bool paused) {
             link->send({{u"type"_s, u"pause"_s}, {u"paused"_s, paused}});
         });
+        QObject::connect(&editor, &GestureEditor::recordingRequested, link.get(), [&](bool recording) {
+            link->send({{u"type"_s, u"recording"_s}, {u"recording"_s, recording}});
+        });
     }
 
     int result = 0;

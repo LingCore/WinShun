@@ -1,6 +1,7 @@
 #include "GestureEditor.h"
 
 #include <QCoreApplication>
+#include <QJsonArray>
 #include <QWindow>
 
 #include <windows.h>
@@ -290,6 +291,16 @@ void GestureEditor::applyState(const QJsonObject& state, bool first)
     flag("trail", m_trail, m_pendingTrail, m_heardTrail, &GestureEditor::trailChanged);
     flag("fullScreen", m_fullScreen, m_pendingFullScreen, m_heardFullScreen, &GestureEditor::fullScreenChanged);
     flag("paused", m_paused, m_pendingPaused, m_heardPaused, &GestureEditor::pausedChanged);
+    // Only the plugin knows this one (nothing here saves it): taken as it comes.
+    if (state.value(u"taken"_s).isArray()) {
+        QStringList taken;
+        for (const QJsonValue& on : state.value(u"taken"_s).toArray())
+            taken << on.toString();
+        if (taken != m_taken) {
+            m_taken = taken;
+            emit takenChanged();
+        }
+    }
 }
 
 void GestureEditor::useSample()
@@ -313,6 +324,15 @@ void GestureEditor::useSample()
     add("corner:br", gestures::openAction(L"C:\\Windows\\System32\\notepad.exe"));
     add("edge:top", gestures::builtinAction(gestures::Builtin::Mute));
     add("edge:right", gestures::typeAction(L"Hello, world"));
+    for (const auto& [keys, builtin] : {std::pair {L"Ctrl+Alt+T", gestures::Builtin::Translate}, std::pair {L"Ctrl+Alt+G", gestures::Builtin::WebSearch}}) {
+        gestures::Rule rule;
+        rule.on = gestures::keyTrigger(keys);
+        rule.selection = true;
+        rule.action = gestures::builtinAction(builtin);
+        rules.push_back(std::move(rule));
+    }
+    m_taken = {u"key:Ctrl+Alt+G"_s}; // as if another program held it
+    emit takenChanged();
     m_rules.setRules(std::move(rules));
     m_excluded = {u"mstsc.exe"_s, u"vmware.exe"_s};
     ++m_revision;
@@ -628,6 +648,45 @@ QString GestureEditor::keyText(int key, int modifiers, quint32 scanCode) const
 bool GestureEditor::keysValid(const QString& text) const
 {
     return gestures::keysAction(wstr(text)).kind == gestures::Action::Kind::Keys;
+}
+
+QString GestureEditor::addShortcut(const QString& keys)
+{
+    gestures::Rule rule;
+    rule.on = gestures::keyTrigger(wstr(keys));
+    if (rule.on.empty())
+        return Text::tr("这个键不能用：同时按住 Ctrl、Alt 或 Win，或者用 F1–F24");
+    rule.selection = true;
+    if (const int row = m_rules.find(rule); row >= 0) {
+        emit shortcutFocused(row);
+        return {};
+    }
+    rule.action = gestures::builtinAction(gestures::Builtin::Translate);
+    emit shortcutFocused(m_rules.add(std::move(rule), false));
+    return {};
+}
+
+QString GestureEditor::setShortcut(int row, const QString& keys)
+{
+    const auto& rules = m_rules.rules();
+    if (row < 0 || row >= static_cast<int>(rules.size()))
+        return {};
+    gestures::Rule probe = rules[static_cast<std::size_t>(row)];
+    probe.on = gestures::keyTrigger(wstr(keys));
+    if (probe.on.empty())
+        return Text::tr("这个键不能用：同时按住 Ctrl、Alt 或 Win，或者用 F1–F24");
+    if (const int other = m_rules.find(probe); other >= 0 && other != row)
+        return Text::tr("%1 已经设过了").arg(keys);
+    m_rules.setTrigger(row, probe.on);
+    return {};
+}
+
+void GestureEditor::setRecording(bool recording)
+{
+    if (m_recording == recording)
+        return;
+    m_recording = recording;
+    emit recordingRequested(recording);
 }
 
 } // namespace ws::gestureseditor

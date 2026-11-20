@@ -95,6 +95,18 @@ void EditorHost::pausedChanged(bool paused)
         writeLocked(Json::Object {{"type", "settings"}, {"paused", paused}});
 }
 
+void EditorHost::shortcutsTaken(Json taken)
+{
+    const std::lock_guard lock(m_mutex);
+    Json state = Json::Object {};
+    for (const auto& [key, value] : m_state.toObject())
+        state.set(key, value);
+    state.set("taken", taken);
+    m_state = std::move(state);
+    if (m_alive)
+        writeLocked(Json::Object {{"type", "settings"}, {"taken", taken}});
+}
+
 void EditorHost::writeLocked(const Json& message)
 {
     if (m_stdin && !winshun::detail::writeLine(message.dump(), m_stdin) && m_hooks.log)
@@ -220,6 +232,9 @@ void EditorHost::readLoop(HANDLE read)
         } else if (type == "pause" && (*message)["paused"].isBool()) {
             if (m_hooks.pause)
                 m_hooks.pause((*message)["paused"].toBool());
+        } else if (type == "recording" && (*message)["recording"].isBool()) {
+            if (m_hooks.recording)
+                m_hooks.recording((*message)["recording"].toBool());
         }
     };
     while (::ReadFile(read, buffer, sizeof buffer, &got, nullptr) && got > 0) {
@@ -253,6 +268,8 @@ void EditorHost::finishLocked()
     m_pid = 0;
     if (m_hooks.own)
         m_hooks.own(0);
+    if (m_hooks.recording)
+        m_hooks.recording(false); // it may have ended while recording
 }
 
 void EditorHost::close()

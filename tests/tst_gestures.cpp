@@ -315,6 +315,61 @@ private slots:
         QCOMPARE(triggerTitle("DR", true), std::wstring(L"↓→"));
     }
 
+    void shortcuts()
+    {
+        // As the recorder writes them, as written by hand, and those that would get in the way of typing.
+        QCOMPARE(keyTrigger(L"Ctrl+Alt+T"), std::string("key:Ctrl+Alt+T"));
+        QCOMPARE(keyTrigger(L" alt + ctrl+t"), std::string("key:Ctrl+Alt+T"));
+        QCOMPARE(keyTrigger(L"Shift+Win+space"), std::string("key:Win+Shift+Space"));
+        QCOMPARE(keyTrigger(L"F8"), std::string("key:F8"));
+        QCOMPARE(keyTrigger(L"Ctrl+/"), std::string("key:Ctrl+/"));
+        QVERIFY(keyTrigger(L"T").empty());
+        QVERIFY(keyTrigger(L"Shift+T").empty());
+        QVERIFY(keyTrigger(L"Ctrl+Alt").empty());
+        QVERIFY(keyTrigger(L"Ctrl+Nope").empty());
+        QVERIFY(keyTrigger(L"").empty());
+
+        QCOMPARE(triggerKind("key:Ctrl+Alt+T"), TriggerKind::Key);
+        QCOMPARE(triggerKind("key:ctrl+alt+t"), TriggerKind::Unknown); // only as kept
+        QCOMPARE(triggerKind("key:T"), TriggerKind::Unknown);
+        QCOMPARE(triggerTitle("key:Ctrl+Alt+T", true), std::wstring(L"Ctrl+Alt+T"));
+        unsigned modifiers = 0;
+        unsigned vk = 0;
+        QVERIFY(hotkeyOf("key:Win+Shift+Space", &modifiers, &vk));
+        QCOMPARE(modifiers, unsigned(MOD_WIN | MOD_SHIFT));
+        QCOMPARE(vk, unsigned(VK_SPACE));
+        QVERIFY(hotkeyOf("key:F8", &modifiers, &vk));
+        QCOMPARE(modifiers, 0u);
+        QCOMPARE(vk, unsigned(VK_F8));
+        QVERIFY(!hotkeyOf("DR", &modifiers, &vk));
+
+        // Kept as JSON, the hand-written spelling read as kept; for words selected or not, per program.
+        const auto read = parseRules(R"({"version":2,"rules":[{"on":"key:alt+ctrl+t","selection":true,"where":"br","do":"translate"},
+            {"on":"key:Ctrl+Alt+T","do":"websearch"},{"on":"key:F9","apps":["code"],"keys":"Ctrl+S"},{"on":"key:Q","do":"copy"}]})");
+        QVERIFY(read.has_value());
+        QCOMPARE(read->size(), std::size_t(3));
+        QCOMPARE((*read)[0].on, std::string("key:Ctrl+Alt+T"));
+        QVERIFY((*read)[0].selection);
+        QCOMPARE((*read)[0].where, Zone::Anywhere);
+        QVERIFY(!(*read)[1].selection);
+        QCOMPARE((*read)[2].apps, std::vector<std::wstring> {L"code.exe"});
+        QVERIFY(parseRules(rulesJson(*read)).value() == *read);
+
+        // Words selected: the rule for them; none: the plain one; a gesture is never asked about words for a shortcut's rule.
+        std::vector<Rule> rules = *read;
+        Context selected;
+        selected.selection = true;
+        QCOMPARE(match(rules, "key:Ctrl+Alt+T", selected)->action.builtin, Builtin::Translate);
+        QCOMPARE(match(rules, "key:Ctrl+Alt+T", Context {})->action.builtin, Builtin::WebSearch);
+        Context code;
+        code.program = L"code.exe";
+        QCOMPARE(match(rules, "key:F9", code)->action.kind, Action::Kind::Keys);
+        QVERIFY(match(rules, "key:F9", Context {}) == nullptr);
+        QVERIFY(!selectionMatters({rules[0]}, "", L"notepad.exe"));
+        QVERIFY(anyFor(rules, TriggerKind::Key));
+        QVERIFY(!anyFor(defaultRules(), TriggerKind::Key));
+    }
+
     void oldSettingsRead()
     {
         std::vector<std::pair<std::string, std::wstring>> written;

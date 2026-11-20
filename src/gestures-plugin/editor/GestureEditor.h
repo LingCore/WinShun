@@ -37,6 +37,8 @@ class GestureEditor : public QObject {
     Q_PROPERTY(QVariantList programs READ programs NOTIFY programsChanged)
     // The builtin actions by category ({title, icon, items: [{id, title, note}]}), for the picker.
     Q_PROPERTY(QVariantList categories READ categories NOTIFY chineseChanged)
+    // The rules' shortcuts another program holds, as the rules write them ("key:Ctrl+Alt+T").
+    Q_PROPERTY(QStringList taken READ taken NOTIFY takenChanged)
 
 public:
     explicit GestureEditor(QObject* parent = nullptr);
@@ -50,6 +52,7 @@ public:
     QStringList excluded() const { return m_excluded; }
     QVariantList programs() const { return m_programs; }
     QVariantList categories() const;
+    QStringList taken() const { return m_taken; }
 
     void setTrail(bool on);
     void setFullScreen(bool on);
@@ -57,7 +60,7 @@ public:
     void setChinese(bool chinese);
     void setWindow(QWindow* window) { m_window = window; }
 
-    // What the plugin says: {rules, exclude, trail, fullScreen, paused}. `first`: the window was just
+    // What the plugin says: {rules, exclude, trail, fullScreen, paused, taken}. `first`: the window was just
     // opened, everything is taken as it is; later what differs from what this window saved is
     // taken (an edit made here is not undone by the answer to an earlier one).
     void applyState(const QJsonObject& state, bool first);
@@ -86,6 +89,14 @@ public:
     // A key pressed in the window, as the action's keys read it ("Ctrl+Shift+T"); "" when it cannot be one.
     Q_INVOKABLE QString keyText(int key, int modifiers, quint32 scanCode) const;
     Q_INVOKABLE bool keysValid(const QString& text) const;
+    // A shortcut recorded for words selected ("Ctrl+Alt+T"): a rule for it that translates them
+    // (what it is wanted for most), or the one there is already, flashed (shortcutFocused).
+    // "" when done, else what is wrong.
+    Q_INVOKABLE QString addShortcut(const QString& keys);
+    // Another shortcut for the rule in `row`: "" when done, else what is wrong.
+    Q_INVOKABLE QString setShortcut(int row, const QString& keys);
+    // A key is being recorded here (or no longer): the plugin lets its shortcuts go meanwhile.
+    Q_INVOKABLE void setRecording(bool recording);
 
 signals:
     void chineseChanged();
@@ -97,6 +108,10 @@ signals:
     void programsChanged();
     // A rule the pad drew: the one there was already (flash it) or a new one (ask for its action).
     void ruleFocused(int sourceRow, bool created);
+    // A shortcut's rule added or found (addShortcut): flash it.
+    void shortcutFocused(int sourceRow);
+    void takenChanged();
+    void recordingRequested(bool recording);
     // Values to keep, as the plugin's settings name them: rules, exclude, trail, fullScreen.
     void saveRequested(const QJsonObject& values);
     void pauseRequested(bool paused);
@@ -118,6 +133,8 @@ private:
     QStringList m_excluded;
     QStringList m_added; // programs added here that have no rule yet
     QVariantList m_programs;
+    QStringList m_taken;
+    bool m_recording = false;
     QTimer m_saveLater; // one "rules" line for the edits of a turn
     QPointer<QWindow> m_window;
     // What was saved and not yet heard back, per setting (the answers come in order).

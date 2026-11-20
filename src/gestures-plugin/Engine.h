@@ -15,6 +15,11 @@
 // anyway), a program in the exclusions, a full-screen window unless asked,
 // a press with Ctrl, Shift, Alt or Win held, touch and pen, and input other
 // programs send.
+//
+// The rules' shortcuts ("key:Ctrl+Alt+T") are hotkeys of the window thread
+// (RegisterHotKey): pressed, the rule acts on the window in front, at the
+// pointer, with the words selected there; let go while paused and while the
+// settings window records a key.
 #pragma once
 
 #include "Cards.h"
@@ -55,7 +60,12 @@ struct EngineOptions {
     std::function<void(const std::wstring& words)> copy;
     // The words selected in `root` when it is the window in front, asked of
     // Win顺 (SelectionReader); on the reader's thread, waiting for the answer.
-    std::function<std::wstring(HWND root)> selectedText;
+    // `copy`: Win顺 may press Ctrl+C there and put the clipboard back (a
+    // shortcut pressed, never a gesture).
+    std::function<Selected(HWND root, bool copy)> selectedText;
+    // The shortcuts of the rules were registered (on the window thread):
+    // those another program holds, as the rules write them ("key:Ctrl+Alt+T").
+    std::function<void(const std::vector<std::string>& taken)> shortcutsRegistered;
     // "shutdown", "restart", "sleep": done by Win顺 (this plugin has no right
     // to). On a thread of its own; the error's words, empty when done.
     std::function<std::wstring(const std::string& what)> power;
@@ -71,8 +81,12 @@ public:
     void start();
     void stop();
     void configure(Settings settings, Look look);
-    void setPaused(bool paused) { m_paused = paused; }
+    // Paused: the right button is plain again and the shortcuts are let go.
+    void setPaused(bool paused);
     bool paused() const { return m_paused; }
+    // The settings window records a key: the shortcuts are let go meanwhile,
+    // so the keys pressed reach it.
+    void setRecording(bool recording);
     int performed() const { return m_performed; }
     // A process whose windows keep their right button: the settings
     // window, where gestures are drawn to be set.
@@ -135,6 +149,9 @@ private:
     void askFirst(Builtin builtin, const Target& target);
     void triggered(std::string_view on, POINT at);
     void wheel(bool up, POINT at, HWND root);
+    void registerShortcuts();
+    void shortcutLetGo();
+    void shortcutPressed(const std::string& on);
     void performWithWords(const Rule& rule, const Target& target);
     void post(std::function<void()> work);
     bool bringToFront(HWND root);
@@ -148,6 +165,7 @@ private:
     mutable std::mutex m_mutex;
     std::shared_ptr<const Shared> m_shared;
     std::atomic_bool m_paused {false};
+    std::atomic_bool m_recording {false};
     std::atomic_int m_performed {0};
     std::atomic<DWORD> m_ownProcess {0};
     std::atomic_bool m_bubbleShown {false}; // the hook tells the window thread of presses then
@@ -179,6 +197,10 @@ private:
     double m_monitorScale = 1.0;
 
     // Window thread only.
+    std::vector<std::string> m_shortcuts; // registered: hotkey id - 1 -> its trigger ("key:Ctrl+Alt+T")
+    std::vector<std::string> m_shortcutsTaken; // told last (shortcutsRegistered)
+    std::string m_shortcutHeld; // pressed, its Ctrl, Alt, Shift or Win not let go yet (shortcutLetGo)
+    ULONGLONG m_shortcutAt = 0; // when (GetTickCount64)
     std::vector<POINT> m_points;
     std::string m_gesture; // what it reads as so far: directions or a circle
     Target m_target; // the gesture's, from its start
