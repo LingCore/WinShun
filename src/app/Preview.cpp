@@ -8055,7 +8055,8 @@ bool checkClipboardFilePreview(QQmlEngine* engine, const QDir& output)
 // (ClipPictureViewer), zoomed by the wheel; ↑ ↓ to a row without a picture,
 // Esc, the window put away close it. One copied picture file too, through
 // its file preview's pixels. A temporary history; the native clipboard untouched.
-bool checkClipboardPictureView(QQmlEngine* engine, const QDir& output)
+// With --gallery-image <picture>: the poster, clipboard-picture.png.
+bool checkClipboardPictureView(QQmlEngine* engine, const QDir& output, const QString& galleryImage = {})
 {
     QTemporaryDir temporary;
     ClipStore store(temporary.filePath(u"history"_s));
@@ -8246,6 +8247,76 @@ bool checkClipboardPictureView(QQmlEngine* engine, const QDir& output)
     if (QQuickWindow* large = viewer()) {
         settle(large);
         check(saveGrab(large, output.filePath(u"clipboard-picture-file-viewer.png"_s)), "the large picture file did not render");
+    }
+
+    // The poster (--gallery-image): a day's copies, the picture's row open
+    // and large beside the window, the two windows side by side as on the
+    // screen (their grabs put together: off the screen they are nowhere near
+    // each other). Its words are left folded, as they come.
+    if (!galleryImage.isEmpty() && ok) {
+        bool closed = false;
+        if (page->property("pictureViewOpen").toBool())
+            QMetaObject::invokeMethod(page, "togglePictureView", Q_RETURN_ARG(bool, closed));
+        waitFor([&] { return viewer() == nullptr; }, 2000);
+        std::vector<qint64> ids;
+        for (const auto& clip : store.clips()) ids.push_back(clip.id);
+        store.remove(ids);
+        QFile file(galleryImage);
+        const QImage chart(galleryImage);
+        check(file.open(QIODevice::ReadOnly) && !chart.isNull(), "the gallery picture could not be read");
+        const qint64 at = QDateTime::currentMSecsSinceEpoch();
+        store.add(ClipCapture {.kind = ClipKind::Text,
+            .text = u"会议纪要：周五前确认年度报告，补齐销售图表和项目验收记录。"_s, .source = u"记事本"_s}, at - 240000);
+        store.add(ClipCapture {.kind = ClipKind::Link, .text = u"https://github.com/LingCore/WinShun"_s, .source = u"浏览器"_s},
+            at - 180000);
+        store.add(ClipCapture {.kind = ClipKind::Text, // the chart's own figures
+            .text = u"第三季度销售额：华东 402 万，华南 371 万，华北 279 万，西南 208 万。"_s, .source = u"Excel"_s}, at - 60000);
+        ClipCapture copied;
+        copied.kind = ClipKind::Image;
+        copied.imageData = file.readAll();
+        copied.hash = "picture-view-gallery";
+        copied.width = chart.width();
+        copied.height = chart.height();
+        copied.source = u"PixPin"_s;
+        store.setPictureText(store.add(copied, at), u"区域销售额\n华东 华南 西南 华北"_s);
+        clipboard.handleShown();
+        settle(window);
+        entries->setProperty("currentIndex", 0);
+        if (!page->property("previewOpen").toBool())
+            QMetaObject::invokeMethod(page, "togglePreview", Q_ARG(QVariant, QVariant(0)));
+        settle(window);
+        zoom = named(u"clipboardPictureZoom"_s);
+        check(waitFor([&] { return zoom && zoom->property("enabled").toBool(); }, 5000), "the gallery picture is not in the preview");
+        bool large = false;
+        QMetaObject::invokeMethod(page, "togglePictureView", Q_RETURN_ARG(bool, large));
+        check(large && waitFor([&] {
+            image = viewerItem(u"clipboardPictureViewerImage"_s);
+            return image && image->property("status").toInt() == 1;
+        }, 5000), "the gallery picture did not show large");
+        if (QQuickWindow* beside = viewer()) {
+            settle(beside);
+            settle(window);
+            QImage host = window->grabWindow(), shown = beside->grabWindow();
+            const qreal dpr = window->devicePixelRatio();
+            host.setDevicePixelRatio(1);
+            shown.setDevicePixelRatio(1);
+            const int gap = qRound(beside->property("gap").toReal() * dpr);
+            const bool leftOfIt = beside->x() < window->x();
+            const int hostY = std::max(0, (shown.height() - host.height()) / 2);
+            const int shownY = std::max(0, (host.height() - shown.height()) / 2); // centred on the window, as with room
+            QImage both(host.width() + gap + shown.width(), std::max(host.height(), shown.height()),
+                QImage::Format_ARGB32_Premultiplied);
+            both.fill(Qt::transparent);
+            QPainter painter(&both);
+            painter.drawImage(leftOfIt ? shown.width() + gap : 0, hostY, host);
+            painter.drawImage(leftOfIt ? 0 : host.width() + gap, shownY, shown);
+            painter.end();
+            const bool saved = !host.isNull() && !shown.isNull() && both.save(output.filePath(u"clipboard-picture.png"_s), "PNG");
+            say(u"%1 clipboard-picture.png %2x%3 (window %4x%5, picture %6x%7)"_s.arg(saved ? u"saved"_s : u"NOT saved"_s)
+                    .arg(both.width()).arg(both.height()).arg(host.width()).arg(host.height())
+                    .arg(shown.width()).arg(shown.height()));
+            check(saved, "the poster of the large picture did not render");
+        }
     }
 
     // The window put away: the large picture with it.
@@ -9480,7 +9551,7 @@ int runResults(const QStringList& args)
     if (args.contains(u"--clipboard-file"_s))
         return checkClipboardFilePreview(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-picture-view"_s))
-        return checkClipboardPictureView(&engine, out) ? std::min(g_warnings, 100) : 4;
+        return checkClipboardPictureView(&engine, out, valueAfter(args, u"--gallery-image")) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-select"_s))
         return checkClipboardTextSelection(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-crashed-reading"_s)) // its warning when it gives up is expected
