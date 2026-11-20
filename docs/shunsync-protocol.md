@@ -14,7 +14,7 @@ ShunSync v1 是 **Mac顺（MacShun）** 与 **Win顺（WinShun）** 共用的跨
 
 每台设备本地持久化一份身份文件（macOS 存于 `~/Library/Application Support/MacShun/Sync/identity.json`，权限 `0600`；Windows 建议存于 `%LOCALAPPDATA%\WinShun\Sync\identity.json`）：
 
-- `deviceId`：小写 UUID 字符串（如 `"550e8400-e29b-41d4-a716-446655440000"`），每台电脑首次启用时随机生成。
+- `deviceId`：小写 UUID 字符串（不含大括号，如 `"550e8400-e29b-41d4-a716-446655440000"`；Qt 侧须使用 `QUuid::toString(QUuid::WithoutBraces)`），每台电脑首次启用时随机生成。
 - `groupKey`：32 字节随机根密钥（AES-256 级熵），同一同步组内的所有 Windows 与 Mac 共用。
 - `groupId`：群组公开标识（32 字符小写十六进制，不泄露根密钥）：
   ```text
@@ -143,7 +143,9 @@ shunsync://join?k=<base64url_nopad(groupKey)>[&p=<percent_encoded(host:port)>]
      ```
 
 4. **6 位确认码配对模式（`mode = "pair"`）**：
-   - 仅在 Server 显式开启配对窗口（默认 120 秒）时接受，否则返回 `hello_ack { accepted: false, error: "pairing_closed" }`。
+   - 开启共享后，Server 默认允许响应局域网或直连设备的 6 位码配对请求（内置防骚扰频控：同一来源 8 秒内最多 1 次，同时只处理 1 个会话；若用户在高级设置中关闭了配对响应，则仅在手动开启 120 秒临时窗口期间接受，否则返回 `hello_ack { accepted: false, error: "pairing_closed" }`）。
+   - 客户端主动直连某 IP（`mode="sync"`）收到 `wrong_group` 时，推荐无缝自动转入 `mode="pair"` 发起 6 位码配对，避免用户来回操作。
+   - 拒绝时 `hello_ack` 为 `{ "accepted": false, "error": "<code>" }`，两端使用的 `error` 取值：`wrong_group`（不在同一组，`mode="sync" | "file"`）、`revoked`（已被移除）、`pairing_closed`（不接受配对）、`pairing_busy`（已有一个配对在等确认）、`pairing_rate_limited`（同一来源 8 秒内又来）、`bad_hello`（hello 格式不对；Win顺 直接断开）。Win顺 另有 `paused`（本机暂停了同步）和 `self`（连到了自己）。
    - 双方计算一致的 6 位短认证码（SAS）与配对密钥：
      ```text
      raw32   = bigEndianUInt32(transcript[0..3])
@@ -250,11 +252,14 @@ shunsync://join?k=<base64url_nopad(groupKey)>[&p=<percent_encoded(host:port)>]
   }
   ```
   - `relativePath` 始终使用 POSIX `/` 分隔符，绝不含前导 `/`、`\`、盘符或 `..`。
-  - 接收端对 ≤ 阈值（默认 20 MB）的文件自动在后台通过 `mode="file"` 拉取并写入本机剪贴板；更大文件/文件夹保留清单条目，用户粘贴/点击时按需流式拉取。
+  - 接收端默认仅记录清单（`autoDownloadFileLimitMB = 0`，手动按需拉取），避免日常本地整理文件产生无谓流量；若用户调大自动预取上限，则对不超过上限的文件后台通过 `mode="file"` 预取并写入剪贴板。
 
-### 4.4 文件流拉取（`mode = "file"`）
+### 4.4 文件流拉取（`mode = "file"`，以及 NAT/二级路由下的 `mode = "sync"` 复用兜底）
 
-单条 `mode="file"` 连接可连续拉取一个批次内的多个文件，拉完发送 `bye` 关闭：
+优先使用独立 `mode="file"` 连接连续拉取一个批次内的多个文件，拉完发送 `bye` 关闭。
+
+**单向路由 / NAT 兜底（重要，适配如 Wi-Fi `192.168.x` 连有线 `172.16.x` 的二级路由）**：
+- 若接收端无法向发送端新开 `mode="file"` 连接（超时或被路由器/防火墙拒绝），但双方已存在一条活跃的 `mode="sync"` 连接，接收端可**直接在该 `mode="sync"` 连接上发送 `file_pull_req`**，发送端按完全相同的格式在同一连接上回传 `0x02` 分片与 `file_pull_done` / `file_pull_err`（按 `transferId` 区分，无需发 `bye` 断开控制通道）。
 
 1. 接收端发送请求（支持断点续传 `offset`）：
    ```json
@@ -266,7 +271,7 @@ shunsync://join?k=<base64url_nopad(groupKey)>[&p=<percent_encoded(host:port)>]
    { "type": "file_pull_done", "transferId": "uuid", "fileIndex": 1, "totalSent": 10485760, "sha256": "64-hex-chars" }
    ```
    若出错则发 `{ "type": "file_pull_err", "transferId": "...", "fileIndex": 1, "code": "not_found|invalid_offset|read_error", "message": "..." }`。
-4. **单连接复用兜底（NAT / 二级路由，2026-11-20 与 Mac顺 约定）**：接收端新开 `mode="file"` 连接失败（超时、被拒或被路由器挡住）时，自动改在已建立的 `mode="sync"` 连接上发送同样的 `file_pull_req`，按 `transferId` 接收 `0x02` 分片与 `file_pull_done` / `file_pull_err`；`mode="sync"` 连接收到 `file_pull_req` 时，也在同一连接上流式回传分片。分片和其他控制消息在同一条连接上按序交错，发送端应限制排队量（Win顺 每条连接排队不超过 4 MB），以免剪贴板消息被大文件堵住。
+4. 走 `mode="sync"` 兜底时，分片和其他控制消息在同一条连接上按序交错，发送端应限制排队量（Win顺 每条连接排队不超过 4 MB），以免剪贴板消息被大文件堵住。
 5. `transferId` 按清单里的原文回传；接收端按 `transferId` 匹配分片时不区分大小写（分片头里是 16 字节，还原成文本后是小写，而 Swift 的 `UUID().uuidString` 是大写）。
 
 ### 4.5 设备吊销与密钥轮换

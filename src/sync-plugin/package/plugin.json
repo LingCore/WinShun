@@ -14,15 +14,17 @@
     "id": "sync",
     "keyword": ["同步", "sync"],
     "title": {"zh": "剪贴板同步", "en": "Clipboard sync"},
-    "description": {"zh": "组里的设备、加入请求、别的设备复制的文件；允许新设备加入、复制邀请码", "en": "The group's devices, requests to join, files copied elsewhere; let a new device in, copy the invite code"},
+    "description": {"zh": "组里的设备、加入请求、别的设备复制的文件；附近的设备、复制邀请码", "en": "The group's devices, requests to join, files copied elsewhere; devices nearby, copy the invite code"},
     "icon": "ph:arrows-clockwise",
     "hint": {"zh": "可以粘贴邀请码或输入地址", "en": "paste an invite code or type an address"}
   }],
   "settings": [
     {"key": "name", "type": "text", "title": {"zh": "设备名", "en": "Device name"}, "hint": {"zh": "别的设备看到的名字；留空用这台电脑的名字", "en": "The name other devices see; empty for this PC's name"}, "default": ""},
+    {"key": "pairingRequests", "type": "bool", "title": {"zh": "别的设备可以请求加入", "en": "Other devices may ask to join"}, "hint": {"zh": "开着时，别的设备在「同步」里选这台电脑或输入它的地址就能请求加入，两边显示同一串 6 位数字时在这台上同意（和 Mac顺 一样）；关掉时要先在「同步」里选「允许新设备加入」", "en": "On: another device can ask to join from sync (this PC nearby, or its address), and you agree here when both show the same six digits (as on Mac顺); off: choose Let a new device in under sync first"}, "default": true},
     {"key": "autoWrite", "type": "bool", "title": {"zh": "收到就放进剪贴板", "en": "Put what comes on the clipboard"}, "hint": {"zh": "别的设备复制的东西直接出现在这台电脑的剪贴板；关掉时只在「同步」里列出，按 Enter 才放进来", "en": "What other devices copy lands on this PC's clipboard; off: it is only listed in sync, Enter puts it there"}, "default": true},
     {"key": "files", "type": "bool", "title": {"zh": "同步文件和文件夹", "en": "Share files and folders"}, "hint": {"zh": "在资源管理器里复制的文件，别的设备可以接收；收到的文件存在插件的数据文件夹里，7 天后或超过 2 GB 时清理", "en": "Files copied in Explorer can be received on the other devices; what comes is kept in the plugin's data folder for 7 days, at most 2 GB"}, "default": true},
-    {"key": "prefetchMB", "type": "number", "title": {"zh": "自动接收不超过", "en": "Receive by itself up to"}, "hint": {"zh": "别的设备复制的文件不超过这么大就自动收下、放进剪贴板；更大的在「同步」里按 Enter 接收", "en": "Files copied elsewhere up to this size come by themselves onto the clipboard; larger ones on Enter in sync"}, "default": 20, "min": 0, "max": 500, "step": 5, "unit": "MB"},
+    {"key": "fileNotice", "type": "bool", "title": {"zh": "别的设备复制文件时提示", "en": "Tell me when files are copied elsewhere"}, "hint": {"zh": "弹一条通知，点它打开「同步」：Enter 接收并复制，Ctrl+Enter 存到「下载」", "en": "A notification; click it for sync: Enter receives and copies them, Ctrl+Enter saves them to Downloads"}, "default": true},
+    {"key": "prefetchMB", "type": "number", "title": {"zh": "自动接收不超过", "en": "Receive by itself up to"}, "hint": {"zh": "0 表示都手动接收（默认，和 Mac顺 一样）；设了大小，别的设备复制的文件不超过这么大就自动收下、放进剪贴板", "en": "0: all received by hand (the default, as on Mac顺); with a size, files copied elsewhere up to it come by themselves onto the clipboard"}, "default": 0, "min": 0, "max": 500, "step": 5, "unit": "MB"},
     {"key": "addresses", "type": "text", "title": {"zh": "其他设备的地址", "en": "Other devices' addresses"}, "hint": {"zh": "不在同一个网段（比如用 Tailscale）时，填组里设备的地址，例如 100.64.0.2；多个用逗号隔开", "en": "For devices on another subnet (Tailscale, say): their addresses, like 100.64.0.2; several separated by commas"}, "default": ""},
     {"key": "networks", "type": "choice", "title": {"zh": "在哪些网络上广播自己", "en": "Announce this PC on"}, "options": [
       {"value": "private", "title": {"zh": "专用网络和域网络", "en": "Private and domain networks"}},

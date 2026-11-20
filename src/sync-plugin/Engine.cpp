@@ -29,7 +29,8 @@ constexpr std::size_t kMaxHandshakeFrame = 64 * 1024;
 constexpr std::size_t kMaxQueuedBytes = 96u * 1024 * 1024; // a member that takes no more is let go
 constexpr std::size_t kMaxText = 4u * 1024 * 1024; // UTF-8; a clip_text frame stays under 20 MB however it is escaped
 constexpr std::size_t kMaxEntries = 20000; // files and folders in one copy
-constexpr std::size_t kMaxPendingPairs = 3;
+constexpr std::size_t kMaxPendingPairs = 1; // one at a time, as Mac顺
+constexpr std::int64_t kPairAskMs = 8'000; // one request per device (or address) in this time, as Mac顺
 constexpr std::size_t kPacedBytes = 4u * 1024 * 1024; // a file served over a sync link: at most this much queued
 constexpr std::size_t kRelayBytes = 64u * 1024 * 1024; // a pull over a sync link this far behind: given up
 constexpr std::int64_t kStalledMs = 60'000; // a sender that stops sending
@@ -772,15 +773,24 @@ void Engine::serve(std::shared_ptr<Conn> conn)
         if (clientId == m_deviceId)
             refusal = "self";
         else if (mode == "pair") {
+            // Answered whenever sync is on (Mac顺's default, 别的设备可以请求加入), or
+            // only in the 2-minute window; one at a time, a device once in 8 s.
             std::size_t waiting = 0;
             for (const auto& [id, pair] : m_pairs)
                 waiting += pair.view.incoming && pair.view.stage == PairView::Stage::Confirm;
-            if (m_pairingUntil <= nowMs())
+            const std::int64_t now = nowMs();
+            std::erase_if(m_pairAsked, [&](const auto& asked) { return now - asked.second >= 60'000; });
+            const std::string asker = clientId.empty() ? conn->host : clientId;
+            if (!m_options.acceptPairing && m_pairingUntil <= now)
                 refusal = "pairing_closed";
             else if (waiting >= kMaxPendingPairs)
-                refusal = "busy";
+                refusal = "pairing_busy";
+            else if (const auto asked = m_pairAsked.find(asker); asked != m_pairAsked.end() && now - asked->second < kPairAskMs)
+                refusal = "pairing_rate_limited";
+            else
+                m_pairAsked[asker] = now;
         } else if ((*hello)["groupId"].toString() != m_groupId)
-            refusal = "unknown_group";
+            refusal = "wrong_group"; // Mac顺 then asks to pair instead
         else if (std::ranges::find(m_revoked, clientId) != m_revoked.end())
             refusal = "revoked";
         else if (m_options.paused && mode == "sync")
@@ -931,7 +941,7 @@ bool Engine::clientHandshake(Conn& conn, const std::string& mode, std::string* p
     const SyncKeys keys = syncKeys(shared, groupKey, transcript);
     const auto proof = fromBase64((*ack)["proof"].toString());
     if (!proof || !sameBytes(*proof, keys.serverProof)) {
-        *problem = "unknown_group"; // it does not hold our key
+        *problem = "wrong_group"; // it does not hold our key
         return false;
     }
     conn.sealer = std::make_unique<FrameSealer>(keys.c2s);
@@ -945,7 +955,7 @@ bool Engine::clientHandshake(Conn& conn, const std::string& mode, std::string* p
         ? parseJson(std::string_view(*okFrame).substr(1))
         : std::nullopt;
     if (!ok || (*ok)["type"].toString() != "auth_ok") {
-        *problem = "unknown_group";
+        *problem = "wrong_group";
         return false;
     }
     setTimeout(conn.socket, SO_RCVTIMEO, 0);
@@ -1217,7 +1227,7 @@ void Engine::onJson(const std::shared_ptr<Conn>& conn, const std::string& text)
         const std::string transferId = m["transferId"].toString();
         const std::int64_t ts = m["timestampMs"].toInt();
         std::string myId;
-        bool paused = false, autoWrite = true, shareFiles = true;
+        bool paused = false, autoWrite = true, shareFiles = true, notice = true;
         std::uint64_t prefetch = 0;
         {
             const std::lock_guard lock(m_mutex);
@@ -1226,6 +1236,7 @@ void Engine::onJson(const std::shared_ptr<Conn>& conn, const std::string& text)
             autoWrite = m_options.autoWrite;
             shareFiles = m_options.shareFiles;
             prefetch = m_options.prefetchBytes;
+            notice = m_options.fileNotice;
             const bool seen = std::ranges::any_of(m_seenEvents, [&](const auto& e) { return e.first == eventId; });
             if (seen || eventId.empty() || m_incoming.count(transferId))
                 return;
@@ -1263,7 +1274,7 @@ void Engine::onJson(const std::shared_ptr<Conn>& conn, const std::string& text)
         if (in.entries.empty())
             return;
         const bool latest = !target.empty() || newest(ts, origin);
-        const bool fewBytes = in.view.totalBytes <= prefetch;
+        const bool fewBytes = prefetch > 0 && in.view.totalBytes <= prefetch;
         const std::uint64_t totalBytes = in.view.totalBytes;
         in.writeWhenDone = autoWrite && latest;
         in.cancel = std::make_shared<std::atomic_bool>(false);
@@ -1288,12 +1299,12 @@ void Engine::onJson(const std::shared_ptr<Conn>& conn, const std::string& text)
         recordReceived(std::move(r));
         if (autoWrite && latest && fewBytes) {
             pullFiles(transferId);
-        } else if (autoWrite && latest) {
+        } else if (latest && notice) {
             const std::string who = localsend::cutUtf8(m["originDeviceName"].toString(), 64);
             if (zh())
-                toast(who + " 复制了文件（" + localsend::sizeText(totalBytes) + "）", "打开「同步」接收");
+                toast(who + " 复制了文件（" + localsend::sizeText(totalBytes) + "）", "点这里接收并复制，或存到「下载」");
             else
-                toast(who + " copied files (" + localsend::sizeText(totalBytes) + ")", "Open sync to receive them");
+                toast(who + " copied files (" + localsend::sizeText(totalBytes) + ")", "Click to receive and copy them, or save them to Downloads");
         }
         changed();
     }
@@ -1686,14 +1697,14 @@ void Engine::relayed(const std::string& transferId, Bytes plaintext)
     relay->cv.notify_all();
 }
 
-void Engine::pullFiles(const std::string& transferId)
+void Engine::pullFiles(const std::string& transferId, bool toClipboard)
 {
     {
         const std::lock_guard lock(m_mutex);
         const auto it = m_incoming.find(transferId);
         if (it == m_incoming.end() || it->second.view.stage == FilesView::Stage::Pulling)
             return;
-        it->second.writeWhenDone = true; // asked for (or small and the newest): onto the clipboard when here
+        it->second.writeWhenDone = toClipboard; // asked for (or small and the newest): onto the clipboard when here
         if (it->second.view.stage != FilesView::Stage::Ready) {
             it->second.view.stage = FilesView::Stage::Pulling;
             it->second.view.receivedBytes = 0;
@@ -2434,7 +2445,7 @@ void Engine::beaconLoop()
         std::string name;
         {
             const std::lock_guard lock(m_mutex);
-            open = m_pairingUntil > now;
+            open = m_options.acceptPairing || m_pairingUntil > now;
             name = m_options.deviceName;
         }
         if (now - lastSent >= kBeaconMs || open != lastOpen || name != lastName) {
@@ -2512,7 +2523,7 @@ void Engine::sendBeacons(SOCKET udp)
             return; // paused: not seen either
         const Json beacon = Json::Object {{"proto", kProtocol}, {"deviceId", m_deviceId}, {"deviceName", m_options.deviceName},
             {"platform", m_options.platform}, {"groupId", m_groupId}, {"tcpPort", static_cast<int>(m_port.load())},
-            {"pairingOpen", m_pairingUntil > nowMs()}};
+            {"pairingOpen", m_options.acceptPairing || m_pairingUntil > nowMs()}};
         text = beacon.dump();
         allNetworks = m_options.allNetworks;
     }
@@ -2649,6 +2660,7 @@ Snapshot Engine::snapshot() const
     s.port = m_port.load();
     s.paused = m_options.paused;
     s.pairingLeftMs = std::max<std::int64_t>(0, m_pairingUntil - nowMs());
+    s.acceptingPairing = m_options.acceptPairing || s.pairingLeftMs > 0;
     for (const auto& [id, peer] : m_peers) {
         MemberView v;
         v.deviceId = id;

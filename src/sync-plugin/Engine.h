@@ -73,7 +73,9 @@ struct Options {
     bool discovery = true; // UDP beacons (off in the tests)
     bool autoWrite = true; // what comes goes on the clipboard
     bool shareFiles = true;
-    std::uint64_t prefetchBytes = 20ull * 1024 * 1024; // files up to this come by themselves
+    std::uint64_t prefetchBytes = 0; // files up to this come by themselves (0: none, Mac顺's default)
+    bool fileNotice = true; // a notification when files copied elsewhere wait here
+    bool acceptPairing = true; // pairing asked for answered without the 2-minute window (Mac顺's default)
     bool paused = false; // nothing sent, nothing taken
     std::vector<std::string> addresses; // "host:port" typed in
     bool allNetworks = false; // beacons on public networks too
@@ -149,6 +151,7 @@ struct Snapshot {
     std::uint16_t port = 0;
     bool paused = false;
     std::int64_t pairingLeftMs = 0; // the window open for new devices: how long still
+    bool acceptingPairing = false; // pairing asked for is answered now (always, or the window)
     std::vector<MemberView> members;
     std::vector<NearbyView> nearby;
     std::vector<PairView> pairs;
@@ -185,7 +188,8 @@ public:
     std::string invite() const; // the code, with this PC's address
     bool joinWithInvite(const std::string& text);
     void removeDevice(const std::string& deviceId); // a new key for the others
-    void pullFiles(const std::string& transferId);
+    // Onto the clipboard when here, or (toClipboard false: 存到下载) only into SharedFiles.
+    void pullFiles(const std::string& transferId, bool toClipboard = true);
     void cancelPull(const std::string& transferId); // what came so far deleted
     // A received text or image put on the clipboard again (Enter in the list).
     bool rewrite(const std::string& eventId);
@@ -343,6 +347,7 @@ private:
     std::map<std::string, Nearby> m_nearby;
     std::map<std::string, std::int64_t> m_dialing; // "host:port" being dialed -> since
     std::int64_t m_pairingUntil = 0;
+    std::map<std::string, std::int64_t> m_pairAsked; // who asked to pair (device id, or address), when
     std::map<std::uint64_t, Pair> m_pairs;
     std::uint64_t m_nextPair = 1;
     std::map<std::string, Outgoing> m_outgoing;

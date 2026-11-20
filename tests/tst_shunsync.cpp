@@ -17,6 +17,7 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QtEndian>
 
 #include <mutex>
 
@@ -114,9 +115,12 @@ struct Device {
     RecordingSink sink;
     std::unique_ptr<Engine> engine;
 
-    Device(const char* label, const char* name, const char* platform, bool directFiles = true)
+    Device(const char* label, const char* name, const char* platform, bool directFiles = true,
+        std::uint64_t prefetch = 20ull * 1024 * 1024, bool acceptPairing = true)
     {
         Options options;
+        options.prefetchBytes = prefetch; // the plugin's default is 0 (asMacShun)
+        options.acceptPairing = acceptPairing;
         options.deviceName = name;
         options.platform = platform;
         options.dataDir = QDir::toNativeSeparators(dir.path()).toStdWString();
@@ -319,9 +323,94 @@ private slots:
         QVERIFY(!parseHostPort(":80"));
     }
 
+    // As Mac顺 (its reference, 2026-11-20): pairing asked for is answered
+    // without the 2-minute window, once per device in 8 s; a device of another
+    // group is told "wrong_group" (Mac顺 then asks to pair instead); files copied
+    // elsewhere wait to be received by hand, onto the clipboard or (存到下载) not.
+    void asMacShun()
+    {
+        Device a("A", "书房 PC", "windows", true, 0);
+        Device b("B", "MacBook", "macos", true, 0);
+        Device c("C", "笔记本", "windows", true, 0);
+        for (Device* d : {&a, &b, &c}) {
+            std::string problem;
+            QVERIFY2(d->engine->start(&problem), problem.c_str());
+        }
+        QVERIFY(a.engine->snapshot().acceptingPairing);
+        QCOMPARE(a.engine->snapshot().pairingLeftMs, std::int64_t(0));
+
+        // No window opened on A: B's request is answered, and declined there.
+        const std::uint64_t asked = b.engine->pairWith(a.address());
+        QTRY_VERIFY_WITH_TIMEOUT(a.asking().has_value(), 10000);
+        QCOMPARE(a.asking()->sas, b.pair(asked).sas);
+        a.engine->answerPair(a.asking()->id, false);
+        QTRY_VERIFY_WITH_TIMEOUT(b.pair(asked).stage == PairView::Stage::Failed, 10000);
+        // Asked again at once: too soon.
+        const std::uint64_t again = b.engine->pairWith(a.address());
+        QTRY_VERIFY_WITH_TIMEOUT(b.pair(again).stage == PairView::Stage::Failed, 10000);
+        QCOMPARE(b.pair(again).problem, std::string("pairing_rate_limited"));
+
+        // A device of another group dialing A to sync: "wrong_group".
+        WSADATA wsa;
+        QCOMPARE(::WSAStartup(MAKEWORD(2, 2), &wsa), 0);
+        const SOCKET s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        QVERIFY(s != INVALID_SOCKET);
+        sockaddr_in to {};
+        to.sin_family = AF_INET;
+        to.sin_port = ::htons(a.engine->port());
+        to.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
+        QCOMPARE(::connect(s, reinterpret_cast<const sockaddr*>(&to), sizeof to), 0);
+        QJsonObject helloJson;
+        helloJson.insert(QStringLiteral("type"), QStringLiteral("hello"));
+        helloJson.insert(QStringLiteral("proto"), 1);
+        helloJson.insert(QStringLiteral("mode"), QStringLiteral("sync"));
+        helloJson.insert(QStringLiteral("deviceId"), QStringLiteral("6f1c2a4e-2b7d-4c1e-9a3f-1d2e3f4a5b6c"));
+        helloJson.insert(QStringLiteral("deviceName"), QStringLiteral("外人"));
+        helloJson.insert(QStringLiteral("platform"), QStringLiteral("macos"));
+        helloJson.insert(QStringLiteral("groupId"), QString::fromStdString(groupIdOf(randomBytes(32))));
+        helloJson.insert(QStringLiteral("ephPub"), QString::fromStdString(base64(randomBytes(32))));
+        helloJson.insert(QStringLiteral("nonce"), QString::fromStdString(base64(randomBytes(16))));
+        helloJson.insert(QStringLiteral("listenPort"), 1);
+        const QByteArray hello = QJsonDocument(helloJson).toJson(QJsonDocument::Compact);
+        QByteArray framed(4, '\0');
+        qToBigEndian<quint32>(static_cast<quint32>(hello.size()), framed.data());
+        framed += hello;
+        QCOMPARE(::send(s, framed.constData(), static_cast<int>(framed.size()), 0), static_cast<int>(framed.size()));
+        QByteArray answer;
+        char buffer[4096];
+        for (int got = 0; (got = ::recv(s, buffer, sizeof buffer, 0)) > 0;)
+            answer.append(buffer, got);
+        ::closesocket(s);
+        ::WSACleanup();
+        QVERIFY(answer.size() > 4);
+        const QJsonObject ack = QJsonDocument::fromJson(answer.mid(4)).object();
+        QCOMPARE(ack.value(QStringLiteral("type")).toString(), QStringLiteral("hello_ack"));
+        QCOMPARE(ack.value(QStringLiteral("accepted")).toBool(true), false);
+        QCOMPARE(ack.value(QStringLiteral("error")).toString(), QStringLiteral("wrong_group"));
+
+        // Files: offered, not pulled; pulled without the clipboard (存到下载), then onto it.
+        QVERIFY(c.engine->joinWithInvite(a.engine->invite()));
+        QTRY_VERIFY_WITH_TIMEOUT(c.onlineWith(a.id()) && a.onlineWith(c.id()), 15000);
+        QTemporaryDir source;
+        QVERIFY(writeFile(source.filePath(QStringLiteral("小.txt")), "small"));
+        a.engine->localFiles({QDir::toNativeSeparators(source.filePath(QStringLiteral("小.txt"))).toStdWString()});
+        QTRY_COMPARE_WITH_TIMEOUT(c.engine->snapshot().files.size(), std::size_t(1), 10000);
+        const FilesView offered = c.engine->snapshot().files.front();
+        QVERIFY(offered.stage == FilesView::Stage::Offered);
+        QTest::qWait(500);
+        QCOMPARE(c.sink.files(), std::size_t(0));
+        c.engine->pullFiles(offered.transferId, false);
+        QTRY_VERIFY_WITH_TIMEOUT(c.engine->snapshot().files.front().stage == FilesView::Stage::Ready, 10000);
+        QTest::qWait(300);
+        QCOMPARE(c.sink.files(), std::size_t(0));
+        c.engine->pullFiles(offered.transferId);
+        QTRY_COMPARE_WITH_TIMEOUT(c.sink.files(), std::size_t(1), 10000);
+        QCOMPARE(readAll(c.sink.lastFiles().front()), QByteArray("small"));
+    }
+
     void threeDevices()
     {
-        Device a("A", "书房 PC", "windows");
+        Device a("A", "书房 PC", "windows", true, 20ull * 1024 * 1024, false); // only in its window
         Device b("B", "MacBook", "macos");
         Device c("C", "笔记本", "windows", false); // its pulls as when A is behind NAT: over the sync link
         for (Device* d : {&a, &b, &c}) {

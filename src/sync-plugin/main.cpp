@@ -5,19 +5,22 @@
 // ShunSync v1 (docs/shunsync-protocol.md; the engine in Engine.cpp), no
 // account and no server.
 //
-// The 同步 list: requests to join (the six digits to compare, Enter agrees),
-// files copied elsewhere (small ones come by themselves, larger ones on
-// Enter), the devices of the group (Enter sends what the clipboard holds to
-// that one; Ctrl+Enter removes it), devices nearby, "允许新设备加入" (two
-// minutes), the invite code, what came lately. An invite code or an
-// address typed after the keyword joins or asks to join. While it is open
-// the rows are asked for again now and then (rerun), and at once when
+// The 同步 list: requests to join (the six digits to compare, Enter agrees;
+// another device may ask whenever sync is on, as on Mac顺, unless 别的设备可以请求加入
+// is off: then only in the two minutes of "允许新设备加入"), files copied elsewhere
+// (offered: Enter receives them onto the clipboard, Ctrl+Enter saves them to
+// Downloads; none come by themselves unless 自动接收不超过 is set), the devices
+// of the group (Enter sends what the clipboard holds to that one; Ctrl+Enter
+// removes it), devices nearby, the invite code, what came lately. An invite
+// code or an address typed after the keyword joins or asks to join. While it
+// is open the rows are asked for again now and then (rerun), and at once when
 // something happens (refresh()).
 
 #include "ClipboardWin.h"
 #include "Engine.h"
 #include "Firewall.h"
 #include "Protocol.h"
+#include "Saver.h"
 #include "Util.h"
 
 #include "winshun.h"
@@ -27,13 +30,16 @@
 #include <windows.h>
 
 #include <objbase.h>
+#include <shlobj.h>
 
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -159,6 +165,9 @@ private:
     std::string filesProblem(const std::string& code) const;
     std::wstring sharedFolder(const std::string& transferId) const;
     Effects sendTo(const std::string& deviceId, const std::string& name);
+    void saveLoop();
+    void saveToDownloads(const std::string& transferId);
+    bool saving(const std::string& transferId) const;
 
     std::unique_ptr<Engine> m_engine;
     std::unique_ptr<ClipboardWin> m_clipboard;
@@ -176,6 +185,13 @@ private:
     std::mutex m_firewallMutex;
     std::condition_variable m_firewallWake;
     bool m_firewallStop = false;
+
+    // 存到下载: transfers to copy into Downloads once they are here.
+    std::thread m_saveThread;
+    mutable std::mutex m_saveMutex;
+    std::condition_variable m_saveWake;
+    std::set<std::string> m_saving;
+    bool m_saveStop = false;
 };
 
 // ---- start, stop, settings ---------------------------------------------------------
@@ -189,7 +205,9 @@ Options SyncPlugin::optionsOf(const Json& s) const
     o.dataDir = m_dataFolder;
     o.autoWrite = boolSetting(s["autoWrite"], true);
     o.shareFiles = boolSetting(s["files"], true);
-    const double megabytes = std::clamp(numberSetting(s["prefetchMB"], 20), 0.0, 2048.0);
+    o.fileNotice = boolSetting(s["fileNotice"], true);
+    o.acceptPairing = boolSetting(s["pairingRequests"], true);
+    const double megabytes = std::clamp(numberSetting(s["prefetchMB"], 0), 0.0, 2048.0);
     o.prefetchBytes = static_cast<std::uint64_t>(megabytes * 1024 * 1024);
     o.addresses = addressList(s["addresses"].toString());
     o.allNetworks = s["networks"].toString() == "all";
@@ -233,6 +251,7 @@ void SyncPlugin::start()
         m_startProblem = "clipboard";
     m_clipboard->setWatching(!options.paused);
     m_firewallThread = std::thread([this] { firewallLoop(); });
+    m_saveThread = std::thread([this] { saveLoop(); });
 }
 
 void SyncPlugin::stop()
@@ -244,6 +263,13 @@ void SyncPlugin::stop()
     m_firewallWake.notify_all();
     if (m_firewallThread.joinable())
         m_firewallThread.join();
+    {
+        const std::lock_guard lock(m_saveMutex);
+        m_saveStop = true;
+    }
+    m_saveWake.notify_all();
+    if (m_saveThread.joinable())
+        m_saveThread.join();
     if (m_clipboard)
         m_clipboard->setWatching(false);
     if (m_engine)
@@ -309,7 +335,11 @@ std::string SyncPlugin::ago(std::int64_t ms) const
 std::string SyncPlugin::pairProblem(const std::string& code) const
 {
     if (code == "pairing_closed")
-        return t("对方没有打开「允许新设备加入」，打开后再试", "It is not letting new devices in: turn that on there, then try again");
+        return t("对方没有开放加入：在对方的「同步」里选「允许新设备加入」后再试", "It is not letting new devices in: choose Let a new device in under sync there, then try again");
+    if (code == "pairing_rate_limited")
+        return t("请求太频繁，等几秒再试", "Asked too often; try again in a few seconds");
+    if (code == "wrong_group" || code == "unknown_group")
+        return t("对方不在这个组里", "It is not in this group");
     if (code == "declined")
         return t("对方没有同意", "It said no");
     if (code == "declined_here")
@@ -318,7 +348,7 @@ std::string SyncPlugin::pairProblem(const std::string& code) const
         return t("对方取消了", "Canceled on the other device");
     if (code == "canceled_here")
         return t("已取消", "Canceled");
-    if (code == "busy")
+    if (code == "pairing_busy" || code == "busy")
         return t("对方正有别的设备在请求，稍后再试", "Another device is asking it right now; try again in a moment");
     if (code == "timeout")
         return t("等太久没人确认，已取消", "Nobody agreed in time; canceled");
@@ -347,6 +377,93 @@ std::string SyncPlugin::filesProblem(const std::string& code) const
 std::wstring SyncPlugin::sharedFolder(const std::string& transferId) const
 {
     return m_dataFolder + L"\\SharedFiles\\" + localsend::wide(transferId);
+}
+
+bool SyncPlugin::saving(const std::string& transferId) const
+{
+    const std::lock_guard lock(m_saveMutex);
+    return m_saving.count(transferId) > 0;
+}
+
+// 存到下载 (Mac顺's 存到下载): once a transfer asked for so is here, its files and
+// folders are copied into Downloads (free names: "报告 (1).docx") and shown
+// selected in a File Explorer window.
+void SyncPlugin::saveLoop()
+{
+    const HRESULT com = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    std::unique_lock lock(m_saveMutex);
+    while (!m_saveStop) {
+        if (m_saving.empty() || !m_engine) {
+            m_saveWake.wait(lock, [this] { return m_saveStop || !m_saving.empty(); });
+            continue;
+        }
+        lock.unlock();
+        const Snapshot s = m_engine->snapshot();
+        std::vector<std::string> ready;
+        lock.lock();
+        std::erase_if(m_saving, [&](const std::string& id) {
+            const auto f = std::ranges::find(s.files, id, &FilesView::transferId);
+            if (f == s.files.end() || f->stage == FilesView::Stage::Failed)
+                return true; // gone, canceled or failed: its row says so
+            if (f->stage != FilesView::Stage::Ready)
+                return false;
+            ready.push_back(id);
+            return true;
+        });
+        lock.unlock();
+        for (const std::string& id : ready)
+            saveToDownloads(id);
+        lock.lock();
+        m_saveWake.wait_for(lock, std::chrono::milliseconds(300), [this] { return m_saveStop; });
+    }
+    lock.unlock();
+    if (SUCCEEDED(com))
+        ::CoUninitialize();
+}
+
+void SyncPlugin::saveToDownloads(const std::string& transferId)
+{
+    namespace fs = std::filesystem;
+    const std::wstring downloads = localsend::downloadsFolder();
+    std::vector<std::wstring> saved;
+    std::error_code error;
+    if (!downloads.empty() && localsend::ensureFolder(downloads)) {
+        localsend::Placement placement(downloads);
+        for (const auto& entry : fs::directory_iterator(sharedFolder(transferId), error)) {
+            const std::wstring target = placement.place(entry.path().filename().wstring());
+            std::error_code copied;
+            fs::copy(entry.path(), target, fs::copy_options::recursive, copied);
+            if (!copied)
+                saved.push_back(target);
+        }
+    }
+    if (saved.empty()) {
+        toast(t("没能存到「下载」", "Could not save to Downloads"),
+            t("文件还在「同步」里，可以按 Enter 放进剪贴板", "They are still in sync: Enter puts them on the clipboard"),
+            {effect::setQuery(keywordSpace())});
+        return;
+    }
+    // Selected in File Explorer (the shell does it: no program started here).
+    if (PIDLIST_ABSOLUTE folder = ::ILCreateFromPathW(downloads.c_str())) {
+        std::vector<PIDLIST_ABSOLUTE> items;
+        std::vector<PCUITEMID_CHILD> children;
+        for (const std::wstring& path : saved) {
+            if (PIDLIST_ABSOLUTE item = ::ILCreateFromPathW(path.c_str())) {
+                items.push_back(item);
+                children.push_back(::ILFindLastID(item));
+            }
+        }
+        if (!children.empty())
+            ::SHOpenFolderAndSelectItems(folder, static_cast<UINT>(children.size()), children.data(), 0);
+        for (PIDLIST_ABSOLUTE item : items)
+            ::ILFree(item);
+        ::ILFree(folder);
+    }
+    const std::string first = localsend::narrow(fs::path(saved.front()).filename().wstring());
+    const std::string what = saved.size() == 1 ? "「" + first + "」"
+                                               : (chinese() ? "「" + first + "」等 " + std::to_string(saved.size()) + " 项"
+                                                            : first + " and " + std::to_string(saved.size() - 1) + " more");
+    toast(t("已存到「下载」", "Saved to Downloads"), what, {effect::openPath(localsend::narrow(downloads))});
 }
 
 Items SyncPlugin::rows(const std::string& rawWords)
@@ -399,12 +516,12 @@ Items SyncPlugin::rows(const std::string& rawWords)
         if (p.stage == PairView::Stage::Connecting) {
             row.title = chinese() ? "正在联系「" + who + "」…" : "Reaching " + who + "…";
             row.subtitle = t("Ctrl+Enter 取消", "Ctrl+Enter cancels");
-            row.withActions({{"cancelPair", t("取消", "Cancel"), "Ctrl+Enter"}});
+            row.withActions({{"hide", t("在后台等", "Wait in the background"), "Enter"}, {"cancelPair", t("取消", "Cancel"), "Ctrl+Enter"}});
         } else if (p.stage == PairView::Stage::Confirm) {
             row.title = chinese() ? "确认码 " + spacedSas(p.sas) : "Code " + spacedSas(p.sas);
             row.subtitle = chinese() ? "在「" + who + "」上核对这串数字并同意 · Ctrl+Enter 取消"
                                      : "Compare it on " + who + " and agree there · Ctrl+Enter cancels";
-            row.withActions({{"cancelPair", t("取消", "Cancel"), "Ctrl+Enter"}});
+            row.withActions({{"hide", t("在后台等", "Wait in the background"), "Enter"}, {"cancelPair", t("取消", "Cancel"), "Ctrl+Enter"}});
         } else if (p.stage == PairView::Stage::Done) {
             row.title = chinese() ? "已加入「" + who + "」的剪贴板同步" : "Joined " + who + "'s clipboard sync";
             row.subtitle = t("复制的东西会出现在组里每台设备上 · Enter 关掉这行", "What you copy appears on every device of the group · Enter hides this");
@@ -462,24 +579,28 @@ Items SyncPlugin::rows(const std::string& rawWords)
         switch (f.stage) {
         case FilesView::Stage::Offered:
             row.title = chinese() ? who + " 复制了 " + what : who + " copied " + what;
-            row.subtitle = chinese() ? size + " · " + ago(f.timestampMs) + " · Enter 接收并放进剪贴板"
-                                     : size + " · " + ago(f.timestampMs) + " · Enter receives them onto the clipboard";
-            row.withIcon("ph:download-simple").withActions({{"pull", t("接收", "Receive"), "Enter"}});
+            row.subtitle = chinese() ? size + " · " + ago(f.timestampMs) + " · Enter 接收并复制，Ctrl+Enter 存到「下载」"
+                                     : size + " · " + ago(f.timestampMs) + " · Enter receives and copies them, Ctrl+Enter saves them to Downloads";
+            row.withIcon("ph:download-simple").withActions({{"pull", t("接收并复制", "Receive and copy"), "Enter"},
+                {"save", t("存到下载", "Save to Downloads"), "Ctrl+Enter"}});
             break;
         case FilesView::Stage::Pulling: {
             const int percent = f.totalBytes ? static_cast<int>(f.receivedBytes * 100 / std::max<std::uint64_t>(f.totalBytes, 1)) : 0;
             row.title = chinese() ? "正在接收 " + who + " 的 " + what + " · " + std::to_string(percent) + "%"
                                   : "Receiving " + who + "'s " + what + " · " + std::to_string(percent) + "%";
             row.subtitle = localsend::sizeText(f.receivedBytes) + " / " + size
-                + t(" · 收完自动放进剪贴板 · Ctrl+Enter 取消", " · onto the clipboard when done · Ctrl+Enter cancels");
+                + (saving(f.transferId) ? t(" · 收完存到「下载」 · Ctrl+Enter 取消", " · into Downloads when done · Ctrl+Enter cancels")
+                                        : t(" · 收完自动放进剪贴板 · Ctrl+Enter 取消", " · onto the clipboard when done · Ctrl+Enter cancels"));
             row.withActions({{"hide", t("后台接收", "In the background"), "Enter"}, {"cancelPull", t("取消", "Cancel"), "Ctrl+Enter"}});
             break;
         }
         case FilesView::Stage::Ready:
             row.title = chinese() ? "收到了 " + who + " 的 " + what : "Received " + who + "'s " + what;
-            row.subtitle = size + t(" · Enter 再放进剪贴板，Ctrl+Enter 打开文件夹", " · Enter puts them on the clipboard again, Ctrl+Enter opens the folder");
+            row.subtitle = size
+                + t(" · Enter 再放进剪贴板，Ctrl+Enter 存到「下载」，Shift+Enter 打开文件夹",
+                    " · Enter puts them on the clipboard again, Ctrl+Enter saves them to Downloads, Shift+Enter opens the folder");
             row.withIcon("ph:check-circle").withActions({{"pull", t("放进剪贴板", "Onto the clipboard"), "Enter"},
-                {"openFolder", t("打开文件夹", "Open folder"), "Ctrl+Enter"}});
+                {"save", t("存到下载", "Save to Downloads"), "Ctrl+Enter"}, {"openFolder", t("打开文件夹", "Open folder"), "Shift+Enter"}});
             break;
         case FilesView::Stage::Failed:
             row.title = chinese() ? "没收到 " + who + " 的 " + what : who + "'s " + what + " did not come";
@@ -519,7 +640,7 @@ Items SyncPlugin::rows(const std::string& rawWords)
         if (confirmRemove == m.deviceId) {
             row.title = chinese() ? "再按一次 Ctrl+Enter 移除「" + who + "」" : "Ctrl+Enter again removes " + who;
             row.subtitle = t("组会换一把新密钥，它拿不到；以后要再用就得重新加入", "The group gets a new key it does not have; to use it again it joins anew");
-            row.withIcon("ph:trash").withActions({{"remove", t("移除", "Remove"), "Ctrl+Enter"}});
+            row.withIcon("ph:trash").withActions({{"keepMember", t("不移除", "Keep it"), "Enter"}, {"remove", t("移除", "Remove"), "Ctrl+Enter"}});
         } else if (m.state == PeerState::Online) {
             row.subtitle = t("在线 · ", "Online · ") + where + t(" · Enter 把剪贴板发给它，Ctrl+Enter 移除", " · Enter sends it the clipboard, Ctrl+Enter removes");
             row.withActions({{"sendTo", t("发送剪贴板", "Send the clipboard"), "Enter"}, {"remove", t("移除", "Remove"), "Ctrl+Enter"}});
@@ -527,7 +648,7 @@ Items SyncPlugin::rows(const std::string& rawWords)
             const std::string when = m.lastSeenMs > 0 ? t(" · 上次在线 ", " · last seen ") + ago(m.lastSeenMs) : std::string();
             row.subtitle = (m.state == PeerState::Connecting ? t("正在连接", "Connecting") : t("离线", "Offline")) + when
                 + (where.empty() ? "" : " · " + where) + t(" · Ctrl+Enter 移除", " · Ctrl+Enter removes");
-            row.withActions({{"remove", t("移除", "Remove"), "Ctrl+Enter"}});
+            row.withActions({{"sendTo", t("发送剪贴板", "Send the clipboard"), "Enter"}, {"remove", t("移除", "Remove"), "Ctrl+Enter"}});
         }
         out.push_back(std::move(row));
     }
@@ -537,8 +658,8 @@ Items SyncPlugin::rows(const std::string& rawWords)
         const std::string who = n.name.empty() ? t("未命名设备", "Unnamed device") : shown(n.name);
         out.push_back(Item("nearby-" + n.deviceId, chinese() ? "附近的「" + who + "」" : who + " nearby",
             n.platform + " · " + n.host
-                + (n.pairingOpen ? t(" · 它正在等新设备，Enter 请求加入它的组", " · it lets new devices in: Enter asks to join its group")
-                                 : t(" · 先在它上面打开「允许新设备加入」，再按 Enter", " · let new devices in there first, then press Enter")))
+                + (n.pairingOpen ? t(" · Enter 请求加入它的组", " · Enter asks to join its group")
+                                 : t(" · 它没有开放加入：先在它上面选「允许新设备加入」，再按 Enter", " · it is not letting new devices in: choose that there first, then press Enter")))
                 .withIcon("ph:broadcast")
                 .withData(Json::Object {{"device", n.deviceId}})
                 .withActions({{"pairNearby", t("请求加入", "Ask to join"), "Enter"}}));
@@ -552,7 +673,7 @@ Items SyncPlugin::rows(const std::string& rawWords)
             t("在另一台设备上打开「同步」，选这台电脑请求加入 · Enter 停止", "On the other device open sync and ask to join this PC · Enter stops"))
                 .withIcon("ph:user-plus")
                 .withActions({{"closePairing", t("停止等待", "Stop"), "Enter"}}));
-    } else {
+    } else if (!s.acceptingPairing) {
         out.push_back(Item("pairing", t("允许新设备加入", "Let a new device in"),
             t("打开 2 分钟：另一台设备就能请求加入，两边显示同一串数字时同意", "For 2 minutes: another device can ask to join; agree when both show the same digits"))
                 .withIcon("ph:user-plus")
@@ -677,6 +798,21 @@ Effects SyncPlugin::action(const winshun::ActionRequest& a)
         m_engine->pullFiles(data["transfer"].toString());
         return refreshed(a.text);
     }
+    if (id == "save") {
+        const std::string transfer = data["transfer"].toString();
+        {
+            const std::lock_guard lock(m_saveMutex);
+            m_saving.insert(transfer);
+        }
+        const Snapshot s = m_engine->snapshot();
+        const auto f = std::ranges::find(s.files, transfer, &FilesView::transferId);
+        const bool here = f != s.files.end() && f->stage == FilesView::Stage::Ready;
+        if (!here)
+            m_engine->pullFiles(transfer, false);
+        m_saveWake.notify_all();
+        return refreshed(a.text, {effect::notify(here ? t("正在存到「下载」", "Saving to Downloads")
+                                                      : t("正在接收，收完存到「下载」", "Receiving; into Downloads when done"))});
+    }
     if (id == "cancelPull") {
         m_engine->cancelPull(data["transfer"].toString());
         return refreshed(a.text, {effect::notify(t("已取消，收到一半的文件已删除", "Canceled; what came so far was deleted"))});
@@ -702,8 +838,23 @@ Effects SyncPlugin::action(const winshun::ActionRequest& a)
         updateSettings(Json::Object {{"paused", paused}});
         return refreshed(a.text, {effect::notify(paused ? t("已暂停", "Paused") : t("已继续", "Resumed"))});
     }
-    if (id == "sendTo")
+    if (id == "sendTo") {
+        const Snapshot s = m_engine->snapshot();
+        const auto m = std::ranges::find(s.members, data["device"].toString(), &MemberView::deviceId);
+        if (m != s.members.end() && m->state != PeerState::Online)
+            return {effect::notify(chinese() ? "「" + data["name"].toString() + "」现在不在线，上线后会自动连上"
+                                             : data["name"].toString() + " is not online now; it is reached when it is"),
+                effect::keep()};
         return sendTo(data["device"].toString(), data["name"].toString());
+    }
+    if (id == "keepMember") {
+        {
+            const std::lock_guard lock(m_mutex);
+            m_confirmRemove.clear();
+            m_confirmRemoveAt = 0;
+        }
+        return refreshed(a.text);
+    }
     if (id == "remove") {
         const std::string device = data["device"].toString();
         bool confirmed = false;
