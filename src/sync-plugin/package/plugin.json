@@ -1,0 +1,33 @@
+{
+  "manifest": 1,
+  "id": "winshun.sync",
+  "name": {"zh": "剪贴板同步", "en": "Clipboard sync"},
+  "version": "1.0.0",
+  "description": {"zh": "在自己的几台 Windows 电脑和 Mac（Mac顺）之间同步剪贴板：文字、图片、文件，端到端加密，不用账号", "en": "Share the clipboard between your Windows PCs and Macs (Mac顺): text, pictures, files; end to end encrypted, no account"},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "minWinShun": "0.41.0",
+  "runtime": {"mode": "resident", "program": "WinShunSync.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 3000, "idleExitSec": 0, "memoryMB": 512},
+  "permissions": ["network", {"network:listen": ["TCP 37219", "UDP 37220"]}, "clipboard:read", "clipboard:write", "files:write", "notifications"],
+  "commands": [{
+    "id": "sync",
+    "keyword": ["同步", "sync"],
+    "title": {"zh": "剪贴板同步", "en": "Clipboard sync"},
+    "description": {"zh": "组里的设备、加入请求、别的设备复制的文件；允许新设备加入、复制邀请码", "en": "The group's devices, requests to join, files copied elsewhere; let a new device in, copy the invite code"},
+    "icon": "ph:arrows-clockwise",
+    "hint": {"zh": "可以粘贴邀请码或输入地址", "en": "paste an invite code or type an address"}
+  }],
+  "settings": [
+    {"key": "name", "type": "text", "title": {"zh": "设备名", "en": "Device name"}, "hint": {"zh": "别的设备看到的名字；留空用这台电脑的名字", "en": "The name other devices see; empty for this PC's name"}, "default": ""},
+    {"key": "autoWrite", "type": "bool", "title": {"zh": "收到就放进剪贴板", "en": "Put what comes on the clipboard"}, "hint": {"zh": "别的设备复制的东西直接出现在这台电脑的剪贴板；关掉时只在「同步」里列出，按 Enter 才放进来", "en": "What other devices copy lands on this PC's clipboard; off: it is only listed in sync, Enter puts it there"}, "default": true},
+    {"key": "files", "type": "bool", "title": {"zh": "同步文件和文件夹", "en": "Share files and folders"}, "hint": {"zh": "在资源管理器里复制的文件，别的设备可以接收；收到的文件存在插件的数据文件夹里，7 天后或超过 2 GB 时清理", "en": "Files copied in Explorer can be received on the other devices; what comes is kept in the plugin's data folder for 7 days, at most 2 GB"}, "default": true},
+    {"key": "prefetchMB", "type": "number", "title": {"zh": "自动接收不超过", "en": "Receive by itself up to"}, "hint": {"zh": "别的设备复制的文件不超过这么大就自动收下、放进剪贴板；更大的在「同步」里按 Enter 接收", "en": "Files copied elsewhere up to this size come by themselves onto the clipboard; larger ones on Enter in sync"}, "default": 20, "min": 0, "max": 500, "step": 5, "unit": "MB"},
+    {"key": "addresses", "type": "text", "title": {"zh": "其他设备的地址", "en": "Other devices' addresses"}, "hint": {"zh": "不在同一个网段（比如用 Tailscale）时，填组里设备的地址，例如 100.64.0.2；多个用逗号隔开", "en": "For devices on another subnet (Tailscale, say): their addresses, like 100.64.0.2; several separated by commas"}, "default": ""},
+    {"key": "networks", "type": "choice", "title": {"zh": "在哪些网络上广播自己", "en": "Announce this PC on"}, "options": [
+      {"value": "private", "title": {"zh": "专用网络和域网络", "en": "Private and domain networks"}},
+      {"value": "all", "title": {"zh": "所有网络，包括公用网络", "en": "All networks, public ones too"}}
+    ], "default": "private"},
+    {"key": "paused", "type": "bool", "hidden": true, "title": {"zh": "暂停", "en": "Paused"}, "default": false}
+  ]
+}

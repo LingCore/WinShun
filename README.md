@@ -94,6 +94,7 @@
 | [网页搜索](docs/使用说明.md#网页搜索) | `baidu 天气`、`zhihu 显卡` | 插件库 |
 | 浏览器书签 | `bm 关键词`，搜 Chrome、Edge 的书签，拼音也行；打开开关后 `bh 关键词` 搜浏览历史 | 插件库 |
 | 局域网传输 | `传`，和开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件 | 插件库 |
+| [剪贴板同步](src/sync-plugin/package/README.md) | 在自己的几台 Windows 电脑和 Mac（[Mac顺](https://github.com/LingCore/MacShun)）之间同步剪贴板：这边复制，那边直接粘贴文字、图片、文件；端到端加密，不用账号；`同步` 看设备、加新设备 | 插件库 |
 | 休息提醒 | 定时提醒休息，`休息` 看还有多久 | 插件库 |
 | [鼠标手势](src/gestures-plugin/package/README.md) | 按住右键画一下：后退、关窗口、切标签页；选中文字再画：复制、搜索、翻译；画圈、屏幕角落、屏幕边、右键+滚轮、按程序设置，关机重启先倒数；`手势` 暂停 | 插件库 |
 | 缩写展开 | 在任何地方打 `cmd` 再按空格就换成 `command`，缩写和内容自己设，紧接着按退格撤回；`缩写` 列出、暂停 | 插件库 |
@@ -437,6 +438,7 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | Web search | `baidu 天气`, `zhihu 显卡` | Plugin library |
 | Browser bookmarks | `bm words` searches Chrome and Edge bookmarks, pinyin too; once turned on, `bh words` searches the browsing history | Plugin library |
 | LAN transfer | `ls ` to send files to and from phones and PCs running [LocalSend](https://localsend.org) | Plugin library |
+| [Clipboard sync](src/sync-plugin/package/README.md) | Copy on one of your Windows PCs or Macs ([Mac顺](https://github.com/LingCore/MacShun)), paste on another: text, pictures, files; end to end encrypted, no account; `sync` lists the devices and lets a new one in | Plugin library |
 | Break reminder | Reminds you to take breaks; `break` shows the time left | Plugin library |
 | [Mouse gestures](src/gestures-plugin/package/README.md) | Hold the right button and draw: back, close the window, switch tabs; select text, then draw: copy, search, translate; circles, screen corners and edges, the wheel with the right button, rules per program, a countdown before shutting down; `gestures` pauses them | Plugin library |
 | Text expander | Type `cmd` and a space anywhere and it becomes `command`, with abbreviations of your own; Backspace right after takes it back; `expander` lists and pauses them | Plugin library |

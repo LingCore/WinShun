@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "inputs": {
+    "groupKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "clientEphPrivHex": "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+    "serverEphPrivHex": "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb",
+    "clientEphPubHex": "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
+    "serverEphPubHex": "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
+    "clientNonceHex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+    "serverNonceHex": "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+    "clientDeviceId": "11111111-1111-4111-8111-111111111111",
+    "serverDeviceId": "22222222-2222-4222-8222-222222222222"
+  },
+  "expected": {
+    "groupId": "58ef7ad3fb31bf4313b6bf5496ca0efe",
+    "inviteCode": "shunsync://join?k=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&p=192.168.1.10:37219",
+    "sharedSecretHex": "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742",
+    "sync": {
+      "transcriptHex": "2b9a6149e50c10e051a169deced1a58a565814771e62b94a90b1db0b003b44fd",
+      "serverProofHex": "d4d15a74c5dd97f1d157bf887b12f7d57435432dfc841a6e426eb5a54f63cb0a",
+      "clientProofHex": "995d7df9c426647ce70b3f2fc609591cc7792cf653e32998a32ed45f1bd00754",
+      "c2sKeyHex": "4e51896b988a3ae63b4fae18b14ecc99b0a11ae4ce7f9b75d387f116948a9049",
+      "s2cKeyHex": "fc385ee1e43a03b26f718440b3fb732661c510a22e3a60abb01e1759c2846e40"
+    },
+    "pair": {
+      "transcriptHex": "79f3a6f2cf55e11655b606e1fdf7f2da827a146382788260f66c8ce04f32e834",
+      "sasCode": "011122",
+      "c2sKeyHex": "4ef2e963f1290924c9a40639a41ae5b281ef977e46455d5ab71ff6e57d33e74f",
+      "s2cKeyHex": "52c01815d6fb5f42e385b443e0b415741a342de3e056676a6c6923612e110b7a"
+    },
+    "frames": [
+      {
+        "seq": 0,
+        "keyName": "sync.c2sKeyHex",
+        "plaintextHex": "017b2274797065223a2270696e67222c227473223a313733323036303030303030307d",
+        "ciphertextAndTagHex": "b565a875ebc9c1ae19ad895168e84fc18758d16fdfe8cdc6980af32ba40dbbe3177327b73ec2ec79d431e01cd54875763180a2"
+      },
+      {
+        "seq": 1,
+        "keyName": "sync.c2sKeyHex",
+        "plaintextHex": "017b2274797065223a22706f6e67222c227473223a313733323036303030303030307d",
+        "ciphertextAndTagHex": "87c73e11f81fe1eb88fff4c9278ec4fa13b96b754de2248443b716a47c137c706cba06939c3874f23e72cc8910f11904d85cf6"
+      }
+    ]
+  }
+}

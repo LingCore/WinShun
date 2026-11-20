@@ -1417,6 +1417,17 @@ add_test(NAME tst_localsend COMMAND tst_localsend)
 set_tests_properties(tst_localsend PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# winshun.sync's pieces (src/sync-plugin, the wsshunsync library): ShunSync v1
+# against the test vectors Mac顺 runs too (docs/shunsync-test-vectors.json),
+# then three engines on 127.0.0.1 pairing, sharing and revoking.
+qt_add_executable(tst_shunsync tst_shunsync.cpp)
+target_link_libraries(tst_shunsync PRIVATE wsshunsync Qt6::Test)
+target_compile_definitions(tst_shunsync PRIVATE SHUNSYNC_VECTORS="${PROJECT_SOURCE_DIR}/docs/shunsync-test-vectors.json")
+set_target_properties(tst_shunsync PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_shunsync COMMAND tst_shunsync)
+set_tests_properties(tst_shunsync PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # winshun.break's clock (src/break-plugin/Schedule), built in again: the
 # notice, the wait for a pause in typing, long breaks, time away, quiet
 # times, postpone, skip and strict, with made-up times.
