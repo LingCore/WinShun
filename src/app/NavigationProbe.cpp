@@ -1164,6 +1164,9 @@ bool checkResultRowSpacing(QQmlEngine* engine, const QDir& output)
             EntryFlag::Directory);
         for (const char* name : {"ok.jpg", "ocr.txt", "ok2.jpg", "ocr-apostrophe-hyphen.png", "ocr-highlight-test.png"})
             index.index()->add(samples, name, 0);
+        // GitHub #391: an empty folder and a file of 0 bytes, tagged after their names.
+        index.index()->add(samples, "zqempty-dir", EntryFlag::Directory);
+        index.index()->setSize(index.index()->add(samples, "zqempty-file.txt", 0), packSize(0));
     }
     AppCatalog apps;
     apps.setApps(std::make_shared<const AppList>());
@@ -1271,6 +1274,29 @@ bool checkResultRowSpacing(QQmlEngine* engine, const QDir& output)
         check(picture.save(output.filePath(folder ? u"rows-folder-box.png"_s : u"rows-launcher.png"_s)), mode + u": saved"_s);
     }
     launcher.setFolderSearch(false);
+
+    // GitHub #391: 空文件夹 / 空文件 right after the name, on the selected
+    // row (its buttons on the right) as on the others, clear of what is on the right.
+    launcher.setQuery(u"zqempty"_s);
+    settle(window);
+    check(launcher.results()->count() == 2, u"empty tag: the empty folder and file found"_s);
+    QJsonArray tags;
+    for (int i = 0; i < 2; ++i) {
+        auto* row = item(window->contentItem(), u"resultRow-%1"_s.arg(i));
+        auto* tag = row ? item(row, u"emptyTag"_s) : nullptr;
+        check(tag && tag->isVisible(), u"empty tag: row %1 shows it"_s.arg(i));
+        if (!row || !tag) continue;
+        const QRectF at = tag->mapRectToItem(row, QRectF(0, 0, tag->width(), tag->height()));
+        const qreal room = row->width() - row->property("trailingSpace").toReal();
+        const bool current = row->property("current").toBool();
+        check(at.left() > 0 && at.right() <= room, u"empty tag: row %1 (%2) at %3–%4, clear of the right side from %5"_s
+            .arg(i).arg(current ? u"selected"_s : u"not selected"_s).arg(at.left()).arg(at.right()).arg(room));
+        check(at.top() >= 0 && at.bottom() <= row->height(), u"empty tag: row %1 within the row"_s.arg(i));
+        tags.append(QJsonObject {{u"row"_s, i}, {u"selected"_s, current}, {u"left"_s, at.left()}, {u"right"_s, at.right()},
+            {u"room"_s, room}, {u"top"_s, at.top()}, {u"height"_s, at.height()}, {u"row_height"_s, row->height()}});
+    }
+    report.insert(u"empty_tags"_s, tags);
+    check(window->grabWindow().save(output.filePath(u"rows-empty-tag.png"_s)), u"empty tag: saved"_s);
     QFile file(output.filePath(u"result-row-spacing.json"_s));
     if (!file.open(QIODevice::WriteOnly)) return false;
     report.insert(u"font"_s, QGuiApplication::font().family());

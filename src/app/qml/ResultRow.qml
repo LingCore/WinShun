@@ -80,6 +80,7 @@ Item {
     required property string favoriteKeyword
     required property bool missing // a favorite no longer there: dimmed, tagged
     required property bool empty // a folder with nothing in it, a file of 0 bytes: tagged, not to be gone into for nothing (GitHub #391)
+    readonly property string emptyTag: !empty ? "" : isDir ? qsTr("空文件夹") : qsTr("空文件")
     required property string switchId // a system switch's row (SearchResult::switchId)
     required property int switchOn // -1 not known, 0 off, 1 on, 2 mixed
     required property int switchLevel // the volume, 0–100; -1 not known, or another switch
@@ -369,10 +370,12 @@ Item {
             height: row.upToPixel(title.implicitHeight) // the line below on a whole pixel too
             // 密集: with something after it the name keeps at least 60 % of the
             // line (cut around its matches); more where a short folder leaves
-            // it room. A content match's text always takes what is left.
-            readonly property real nameRoom: !row.dense || row.sideSource.length === 0 ? width
+            // it room. A content match's text always takes what is left. The
+            // empty tag goes after the name whatever its length.
+            readonly property real tagRoom: emptyChip.visible ? emptyChip.width + emptyChip.anchors.leftMargin : 0
+            readonly property real nameRoom: (!row.dense || row.sideSource.length === 0 ? width
                 : row.contentMode ? Math.floor(width * 0.6)
-                : Math.max(Math.floor(width * 0.6), Math.floor(width - sideText.anchors.leftMargin - Math.ceil(sideMetrics.advanceWidth)))
+                : Math.max(Math.floor(width * 0.6), Math.floor(width - sideText.anchors.leftMargin - Math.ceil(sideMetrics.advanceWidth)))) - tagRoom
 
             TextMetrics {
                 id: sideMetrics
@@ -402,11 +405,37 @@ Item {
                 font.preferTypoLineMetrics: true
             }
 
+            // 空文件夹 / 空文件 right after the name, where the eye reads, and
+            // on the selected row too, whose buttons take the right (GitHub #391).
+            Rectangle {
+                id: emptyChip
+                objectName: "emptyTag"
+                visible: row.emptyTag.length > 0
+                anchors.left: title.right
+                anchors.leftMargin: 8
+                y: row.onPixel((nameLine.height - height) / 2)
+                width: Math.ceil(emptyText.implicitWidth) + 12
+                height: row.upToPixel(emptyText.implicitHeight) + 2
+                radius: Theme.pillRadius(height)
+                color: Theme.tagFill
+
+                Text {
+                    id: emptyText
+                    x: 6
+                    y: row.onPixel((emptyChip.height - height) / 2)
+                    text: row.emptyTag
+                    textFormat: Text.PlainText
+                    color: Theme.subtext
+                    font.pixelSize: row.compact ? 12 : Theme.uiCaption
+                    font.preferTypoLineMetrics: true
+                }
+            }
+
             Text { // content search: where the file lives, next to its name
                 id: contentFolder
                 visible: row.contentMode && !row.dense
                 y: row.onPixel(title.baselineOffset - baselineOffset) // on the name's baseline
-                anchors.left: title.right
+                anchors.left: emptyChip.visible ? emptyChip.right : title.right
                 anchors.leftMargin: 8
                 anchors.right: parent.right
                 text: row.folder
@@ -420,7 +449,7 @@ Item {
                 id: sideText
                 visible: row.dense && row.sideSource.length > 0
                 y: row.onPixel(title.baselineOffset - baselineOffset)
-                anchors.left: title.right
+                anchors.left: emptyChip.visible ? emptyChip.right : title.right
                 anchors.leftMargin: 8
                 anchors.right: parent.right
                 text: !row.dense ? ""
@@ -516,12 +545,10 @@ Item {
         readonly property string tag: row.adminRun ? qsTr("管理员")
             : row.favorite ? (row.favoriteKeyword.length > 0 ? qsTr("收藏 · %1").arg(row.favoriteKeyword) : qsTr("收藏"))
             : row.recent ? qsTr("最近") : ""
-        readonly property string emptyTag: !row.empty ? "" : row.isDir ? qsTr("空文件夹") : qsTr("空文件")
         text: row.contentMode ? row.location
             : row.offline ? qsTr("离线")
             : row.missing ? qsTr("已不存在")
-            : emptyTag.length > 0 && tag.length > 0 ? qsTr("%1 · %2").arg(emptyTag).arg(tag)
-            : emptyTag.length > 0 ? emptyTag : tag
+            : tag // 空文件夹 / 空文件: after the name (emptyTag)
         color: Theme.faint
         font.pixelSize: row.compact ? 12 : Theme.uiCaption
     }
