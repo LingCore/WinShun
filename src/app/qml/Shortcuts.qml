@@ -28,6 +28,7 @@ QtObject {
         { where: "global", group: qsTr("打开"), keys: c => c.panelHotkey ?? "", text: qsTr("直接打开完整搜索面板"), setting: { page: "keys", tab: 0 } },
         { where: "global", group: qsTr("打开"), keys: c => c.clipboardHotkey, text: qsTr("打开剪贴板"), setting: { page: "clipboard", tab: 1 } },
         { where: "global", group: qsTr("打开"), keys: c => c.captureKeys, text: qsTr("截图"), setting: { page: "plugins", tab: 0 } },
+        { where: "global", group: qsTr("打开"), keys: c => c.pastePlainHotkey ?? "", text: qsTr("在任何程序里粘贴为纯文本"), setting: { page: "clipboard", tab: 1 } },
         // the search box
         { where: "launcher", group: qsTr("移动"), brief: true, keys: "↑ ↓", text: qsTr("上下移动，PgUp PgDn 翻页") },
         { where: "launcher", group: qsTr("移动"), brief: true, keys: c => c.historyModifier ? c.historyModifier + "+↑/↓" : "",

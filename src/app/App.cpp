@@ -173,6 +173,7 @@ constexpr int kWinSHotkeyId = 5; // Win+S: the launcher over the taskbar, once E
 constexpr int kScreenClipHotkeyId = 6; // Win+Shift+S, which Explorer gives up with Win+S: the screen capture
 constexpr int kFolderMenuHotkeyId = 7; // the folder menu in the window in front (GitHub #25)
 constexpr int kPanelHotkeyId = 8; // directly open the full search panel (#206)
+constexpr int kPastePlainHotkeyId = 9; // the clipboard pasted as plain text into the window in front (#408)
 constexpr int kQuickPasteHotkeyId = 20; // + 1…9: paste without opening the clipboard
 // For another program to tell where its text caret is: longer, and the
 // clipboard would open late; it opens by the mouse pointer then.
@@ -1083,6 +1084,8 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
             startScreenClip();
         else if (id == kFolderMenuHotkeyId)
             folderMenuHotkey();
+        else if (id == kPastePlainHotkeyId)
+            m_clipboard->pastePlainNow(::GetForegroundWindow());
         else if (id == kPanelHotkeyId) {
             beginTrigger(TriggerSource::Hotkey, pressedAt);
             panelHotkey(pressedAt);
@@ -1811,6 +1814,7 @@ void App::applyAppearance()
     m_messages->setTrayTooltip(trayTooltip());
     applyHotkey(); // its error message
     applyFolderMenuHotkey();
+    applyPastePlainHotkey();
     refreshContentIndexStatus();
 }
 
@@ -2071,6 +2075,7 @@ void App::applySettings(bool initial)
     updateNumberKeys();
     applyHotkey();
     applyFolderMenuHotkey(); // after applyFolderMenu: the menu it brings up
+    applyPastePlainHotkey();
     applyScreenshots();
     restorePrintScreen();
     m_launcher->setContentOptions(m_settings.contentSearch, m_settings.contentExtensions,
@@ -2173,6 +2178,28 @@ void App::applyFolderMenuHotkey()
     noteApplyProblem(u"Launcher/FolderMenuHotkey"_s, hotkeyError);
     if (m_settingsEditor)
         m_settingsEditor->setFolderMenuHotkeyError(hotkeyError); // shown next to the shortcut
+    if (!settingsShown() && !hotkeyError.isEmpty() && !m_aiApplying)
+        m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
+}
+
+// 粘贴为纯文本 anywhere (GitHub #408), with the history on or off.
+void App::applyPastePlainHotkey()
+{
+    m_messages->unregisterHotkey(kPastePlainHotkeyId);
+    if (m_settingsEditor && m_settingsEditor->recordingHotkey())
+        return; // the keys being pressed must reach the settings window
+    const QString hotkey = m_settings.pastePlainHotkey.trimmed();
+    QString hotkeyError;
+    if (!hotkey.isEmpty() && !m_messages->registerHotkey(kPastePlainHotkeyId, hotkey)) {
+        UINT modifiers = 0;
+        UINT vk = 0;
+        hotkeyError = MessageWindow::parseHotkey(hotkey, &modifiers, &vk)
+            ? tr("“%1” 已被其他程序或系统占用，请换一个。").arg(hotkey)
+            : tr("无法识别“%1”，请重新设置。").arg(hotkey);
+    }
+    noteApplyProblem(u"Clipboard/PastePlainHotkey"_s, hotkeyError);
+    if (m_settingsEditor)
+        m_settingsEditor->setPastePlainHotkeyError(hotkeyError); // shown next to the shortcut
     if (!settingsShown() && !hotkeyError.isEmpty() && !m_aiApplying)
         m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
 }
@@ -3725,6 +3752,7 @@ void App::releaseWinChordsForExplorer()
         {kPanelHotkeyId, m_settings.panelHotkey},
         {kFolderMenuHotkeyId, m_settings.folderMenuHotkey},
         {kClipboardHotkeyId, m_settings.clipboardHotkey},
+        {kPastePlainHotkeyId, m_settings.pastePlainHotkey},
         {kWinVHotkeyId, u"Win+V"_s},
         {kWinSHotkeyId, u"Win+S"_s},
         {kScreenClipHotkeyId, u"Win+Shift+S"_s},
@@ -3761,6 +3789,7 @@ void App::applyWinKeyedHotkeys()
 {
     applyHotkey();
     applyFolderMenuHotkey();
+    applyPastePlainHotkey();
 }
 
 void App::explorerRestarted(bool back)
@@ -3868,6 +3897,7 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyClipboardHotkeys);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyTaskbarHotkeys);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyFolderMenuHotkey);
+        connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyPastePlainHotkey);
         connect(editor, &SettingsEditor::explorerRestartRequested, this, &App::restartExplorer);
         connect(editor, &SettingsEditor::giveBackRequested, this, &App::giveBackWinKey);
         connect(editor, &SettingsEditor::autostartRequested, this, &App::setAutostart);
@@ -4090,6 +4120,7 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         applyClipboardHotkeys(); // ... and where Win+V stands
         applyTaskbarHotkeys(); // ... and Win+S
         applyFolderMenuHotkey(); // ... and the folder menu's
+        applyPastePlainHotkey(); // ... and 粘贴为纯文本's
         editor->setSearchBoxShown(searchBoxHiddenName(m_searchBoxHidden));
         editor->setClassicTaskbar(m_classicTaskbar);
 
@@ -4121,6 +4152,8 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
             applyHotkey();
         if (!m_settingsEditor->folderMenuHotkeyError().isEmpty())
             applyFolderMenuHotkey();
+        if (!m_settingsEditor->pastePlainHotkeyError().isEmpty())
+            applyPastePlainHotkey();
         if (!m_settingsEditor->clipboardHotkeyError().isEmpty())
             applyClipboardHotkeys();
         // On the screen under the mouse again, at its user's size within it;
@@ -5134,7 +5167,7 @@ unsigned App::ownNumberDigits(const QString& keys) const
 {
     if (keys != u"ctrl" && keys != u"alt")
         return 0;
-    QStringList own {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey};
+    QStringList own = m_settings.globalHotkeys();
     for (const auto& [plugin, shortcuts] : m_pluginHotkeys) // the screenshot's, say
         own << shortcuts;
     const QString modifier = keys == u"ctrl" ? u"Ctrl"_s : u"Alt"_s;

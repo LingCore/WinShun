@@ -217,7 +217,8 @@ void SettingsEditor::setSettings(const Settings& settings)
         || settings.panelHotkey != m_settings.panelHotkey
         || settings.clipboardNumberKeys != m_settings.clipboardNumberKeys
         || settings.clipboardHotkey != m_settings.clipboardHotkey
-        || settings.folderMenuHotkey != m_settings.folderMenuHotkey;
+        || settings.folderMenuHotkey != m_settings.folderMenuHotkey
+        || settings.pastePlainHotkey != m_settings.pastePlainHotkey;
     // The shares' cards say whether their contents are read, too (GitHub #114).
     const bool shares = settings.shares != m_settings.shares || settings.contentSearch != m_settings.contentSearch;
     const bool drives = settings.selectedDrives != m_settings.selectedDrives;
@@ -622,7 +623,7 @@ void SettingsEditor::setPreviewHotkey(const QString& shortcut)
     QString error;
     if (!shortcut.trimmed().isEmpty() && value.isEmpty())
         error = tr("这个快捷键用于输入或其他操作，请换一个");
-    if (previewkeys::usedGlobally(value, {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey}))
+    if (previewkeys::usedGlobally(value, m_settings.globalHotkeys()))
         error = tr("这个快捷键已用于全局操作，请换一个");
     if (error.isEmpty() && !value.isEmpty() && value == m_settings.openHotkey)
         error = tr("这个快捷键已用来打开结果，请换一个");
@@ -643,7 +644,7 @@ void SettingsEditor::setOpenHotkey(const QString& shortcut)
     if (!typed.isEmpty() && value.isEmpty()) {
         error = previewkeys::normalized(typed) == u"Space" ? tr("空格要用来分开几个词，请换一个")
                                                            : tr("这个快捷键用于输入或其他操作，请换一个");
-    } else if (previewkeys::usedGlobally(value, {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey})) {
+    } else if (previewkeys::usedGlobally(value, m_settings.globalHotkeys())) {
         error = tr("这个快捷键已用于全局操作，请换一个");
     } else if (!value.isEmpty() && value == m_settings.previewHotkey) {
         error = tr("这个快捷键已用于预览，请换一个");
@@ -675,7 +676,7 @@ void SettingsEditor::setPreviewRestore(bool on)
 
 QString SettingsEditor::previewHotkeyError() const
 {
-    if (previewkeys::usedGlobally(m_settings.previewHotkey, {m_settings.hotkey, m_settings.panelHotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey}))
+    if (previewkeys::usedGlobally(m_settings.previewHotkey, m_settings.globalHotkeys()))
         return tr("这个快捷键已用于全局操作，请换一个");
     return m_previewHotkeyError;
 }
@@ -724,10 +725,7 @@ QString describeNumberKeys(const QString& keys, const Settings& settings)
         = numberkeys::heldAsHotkeys(keys == u"alt" ? numberkeys::Modifier::Alt : numberkeys::Modifier::Ctrl);
     for (int n = 1; n <= 9; ++n) {
         const QString c = chord(n);
-        const bool mine = settings.hotkey.compare(c, Qt::CaseInsensitive) == 0
-            || settings.panelHotkey.compare(c, Qt::CaseInsensitive) == 0
-            || settings.clipboardHotkey.compare(c, Qt::CaseInsensitive) == 0
-            || settings.folderMenuHotkey.compare(c, Qt::CaseInsensitive) == 0;
+        const bool mine = settings.globalHotkeys().contains(c, Qt::CaseInsensitive);
         if (mine)
             own.append(c);
         else if (std::find(held.begin(), held.end(), n) != held.end())
@@ -1802,6 +1800,23 @@ void SettingsEditor::setFolderMenuHotkeyError(const QString& error)
     if (m_folderMenuHotkeyError == error)
         return;
     m_folderMenuHotkeyError = error;
+    emit hotkeyErrorChanged();
+}
+
+void SettingsEditor::setPastePlainHotkey(const QString& hotkey)
+{
+    const QString value = hotkey.trimmed();
+    if (m_settings.pastePlainHotkey == value)
+        return;
+    m_settings.pastePlainHotkey = value;
+    commit(); // the app registers it and says whether that worked (setPastePlainHotkeyError)
+}
+
+void SettingsEditor::setPastePlainHotkeyError(const QString& error)
+{
+    if (m_pastePlainHotkeyError == error)
+        return;
+    m_pastePlainHotkeyError = error;
     emit hotkeyErrorChanged();
 }
 

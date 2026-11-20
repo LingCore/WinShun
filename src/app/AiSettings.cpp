@@ -629,7 +629,7 @@ std::vector<Entry> buildCatalog()
                 return QString();
             if (!previewkeys::allowed(value))
                 return u"Use Space, a function key or an unused Ctrl/Alt chord; navigation and editing shortcuts are reserved."_s;
-            if (previewkeys::usedGlobally(value, {s.settings.hotkey, s.settings.clipboardHotkey, s.settings.folderMenuHotkey}))
+            if (previewkeys::usedGlobally(value, s.settings.globalHotkeys()))
                 return u"This shortcut is already used by a global action."_s;
             return QString();
         };
@@ -649,7 +649,7 @@ std::vector<Entry> buildCatalog()
             const QString normal = previewkeys::normalizedOpen(value);
             if (normal.isEmpty())
                 return u"Use a function key or an unused Ctrl/Alt chord; Space, navigation and editing shortcuts are reserved."_s;
-            if (previewkeys::usedGlobally(value, {s.settings.hotkey, s.settings.clipboardHotkey, s.settings.folderMenuHotkey}))
+            if (previewkeys::usedGlobally(value, s.settings.globalHotkeys()))
                 return u"This shortcut is already used by a global action."_s;
             if (normal == s.settings.previewHotkey)
                 return u"This shortcut is the preview's."_s;
@@ -822,6 +822,11 @@ std::vector<Entry> buildCatalog()
     add(hotkey({"Clipboard/Hotkey", QT_TRANSLATE_NOOP("AiSettings", "另设快捷键"), "clipboard", 1,
                    "Another shortcut that opens the clipboard history, written like Ctrl+Alt+V. Empty: none."},
         &Settings::clipboardHotkey));
+    add(hotkey({"Clipboard/PastePlainHotkey", QT_TRANSLATE_NOOP("AiSettings", "粘贴为纯文本的快捷键"), "clipboard", 1,
+                   "A shortcut that works in any program, as PureText: what the clipboard holds is pasted as plain text "
+                   "(no fonts, colours or links) into the window in front, and the clipboard keeps that plain text. "
+                   "Works with the clipboard history off too. Written like Ctrl+Alt+V; empty (the default): none."},
+        &Settings::pastePlainHotkey));
     add(boolean({"Clipboard/HoldToStep", QT_TRANSLATE_NOOP("AiSettings", "按住连按快捷键，松开粘贴"), "clipboard", 1,
                     "As Ditto: with the modifiers of the shortcut that opened the clipboard (Ctrl, Alt, Shift or Win) "
                     "still held, each further press of its key moves the selection one entry down, and letting go pastes "
@@ -1884,7 +1889,8 @@ namespace {
 // look set and do nothing.
 void checkHotkeysDiffer(Plan& plan)
 {
-    static const QStringList own {u"Launcher/Hotkey"_s, u"Launcher/FolderMenuHotkey"_s, u"Clipboard/Hotkey"_s};
+    static const QStringList own {u"Launcher/Hotkey"_s, u"Launcher/FolderMenuHotkey"_s, u"Clipboard/Hotkey"_s,
+        u"Clipboard/PastePlainHotkey"_s};
     for (const Item& item : plan.items) {
         const QString wanted = Settings::normalizedHotkey(item.newValue.toString());
         if (!item.changed || item.entry->type != Type::Hotkey || wanted.isEmpty())

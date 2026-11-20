@@ -1178,6 +1178,7 @@ void Settings::load()
     clipboard = readOrDefault(s, u"Clipboard/Enabled"_s, d.clipboard);
     clipboardWinV = readOrDefault(s, u"Clipboard/WinV"_s, d.clipboardWinV);
     clipboardHotkey = readOrDefault(s, u"Clipboard/Hotkey"_s, d.clipboardHotkey);
+    pastePlainHotkey = readOrDefault(s, u"Clipboard/PastePlainHotkey"_s, d.pastePlainHotkey).trimmed();
     clipboardMaxItems = readOrDefault(s, u"Clipboard/MaxItems"_s, d.clipboardMaxItems);
     if (clipboardMaxItems != 0) // 0 = no limit (GitHub #32)
         clipboardMaxItems = std::clamp(clipboardMaxItems, 10, 100000);
@@ -1505,6 +1506,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/Enabled"_s, clipboard);
     s.setValue(u"Clipboard/WinV"_s, clipboardWinV);
     s.setValue(u"Clipboard/Hotkey"_s, clipboardHotkey);
+    s.setValue(u"Clipboard/PastePlainHotkey"_s, pastePlainHotkey);
     s.setValue(u"Clipboard/MaxItems"_s, clipboardMaxItems);
     s.setValue(u"Clipboard/MaxDays"_s, clipboardMaxDays);
     s.setValue(u"Clipboard/MissingFiles"_s, clipboardMissingFiles);

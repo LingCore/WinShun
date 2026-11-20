@@ -1461,6 +1461,10 @@
         <source>全屏时不响应剪贴板快捷键</source>
         <translation>Pause clipboard hotkeys in full screen</translation>
     </message>
+    <message>
+        <source>粘贴为纯文本的快捷键</source>
+        <translation>Paste as plain text shortcut</translation>
+    </message>
 </context>
 <context>
     <name>AppearancePreview</name>
@@ -9095,6 +9099,22 @@ Double-click grip: expand/collapse search panel</translation>
         <source>搜索框收起，预览就一起关掉；下次要看再按预览快捷键</source>
         <translation>The preview closes with the search box; press the preview shortcut to see it again</translation>
     </message>
+    <message>
+        <source>粘贴为纯文本的快捷键</source>
+        <translation>Paste as plain text shortcut</translation>
+    </message>
+    <message>
+        <source>纯文本;去格式;无格式;清除格式;去掉格式;PureText;快捷键;热键;plain text;paste;hotkey</source>
+        <translation>plain text;unformatted;clear formatting;strip formatting;PureText;shortcut;hotkey;paste</translation>
+    </message>
+    <message>
+        <source>在任何程序里按下，把剪贴板里的文字去掉字体、颜色和链接后粘贴，例如 Ctrl+Alt+V</source>
+        <translation>Press it in any program to paste the clipboard&apos;s text without fonts, colours or links, e.g. Ctrl+Alt+V</translation>
+    </message>
+    <message>
+        <source>剪贴板里也换成纯文本。不记录剪贴板历史时也能用</source>
+        <translation>The clipboard keeps the plain text too. Works with the clipboard history off</translation>
+    </message>
 </context>
 <context>
     <name>ShareCard</name>
@@ -9425,6 +9445,10 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>翻阅搜索历史，回到最新时恢复未完成输入</source>
         <translation>Browse query history; return to the newest position to restore your draft</translation>
+    </message>
+    <message>
+        <source>在任何程序里粘贴为纯文本</source>
+        <translation>Paste as plain text, in any program</translation>
     </message>
 </context>
 <context>
@@ -11388,6 +11412,10 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>无法准备要粘贴的图片文件</source>
         <translation>Could not prepare the image files to paste</translation>
+    </message>
+    <message>
+        <source>剪贴板里没有文字，无法粘贴为纯文本</source>
+        <translation>There is no text on the clipboard to paste as plain text</translation>
     </message>
 </context>
 <context>

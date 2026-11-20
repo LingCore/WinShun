@@ -81,6 +81,7 @@ Window {
             openKeys: [window.editor.doubleCtrl && window.editor.doubleTapAction === "launcher" ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.hotkey].filter(keys => keys.length > 0).join(" / "),
             clipboardHotkey: [window.editor.doubleCtrl && window.editor.doubleTapAction === "clipboard" ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.clipboardHotkey].filter(keys => keys.length > 0).join(" / "),
             panelHotkey: window.editor.panelHotkey,
+            pastePlainHotkey: window.editor.pastePlainHotkey,
             previewKey: window.editor.previewHotkey,
             openKey: window.editor.openHotkey,
             historyModifier: !window.editor.recordHistory || window.editor.queryHistoryKeys === "off" ? "" : window.editor.queryHistoryKeys === "alt" ? "Alt" : "Ctrl",
@@ -5744,9 +5745,10 @@ Window {
                 content: Component { SettingsPage {
                     host: settingsContext
                     parts: ({ captureKeywordError: captureKeywordError }) // the probe's (--settings-reopen-check)
-                    recordingHotkey: clipHotkeyRecorder.recording
+                    recordingHotkey: clipHotkeyRecorder.recording || pastePlainHotkeyRecorder.recording
                     onResetForReopen: {
                         clipHotkeyRecorder.stop()
+                        pastePlainHotkeyRecorder.stop()
                         appInput.clear()
                         captureKeywordBox.text = Qt.binding(() => window.editor.captureKeyword)
                         captureKeywordError.text = ""
@@ -6175,6 +6177,37 @@ Window {
                         visible: window.editor.clipboardHotkeyError.length > 0
                         width: parent.width
                         text: window.editor.clipboardHotkeyError
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                SettingRow { // GitHub #408
+                    title: qsTr("粘贴为纯文本的快捷键")
+                    keywords: qsTr("纯文本;去格式;无格式;清除格式;去掉格式;PureText;快捷键;热键;plain text;paste;hotkey").split(";")
+                    values: [window.editor.pastePlainHotkey]
+                    description: qsTr("在任何程序里按下，把剪贴板里的文字去掉字体、颜色和链接后粘贴，例如 Ctrl+Alt+V")
+                    tip: qsTr("剪贴板里也换成纯文本。不记录剪贴板历史时也能用")
+
+                    FlatButton {
+                        dpr: window.dpr
+                        visible: window.editor.pastePlainHotkey.length > 0 && !pastePlainHotkeyRecorder.recording
+                        flat: true
+                        text: qsTr("清除")
+                        onClicked: window.editor.pastePlainHotkey = ""
+                    }
+                    HotkeyRecorder {
+                        id: pastePlainHotkeyRecorder
+                        objectName: "pastePlainHotkeyRecorder"
+                        hotkey: window.editor.pastePlainHotkey
+                        onRecorded: (hotkey) => window.editor.pastePlainHotkey = hotkey
+                    }
+
+                    body: Text {
+                        visible: window.editor.pastePlainHotkeyError.length > 0
+                        width: parent.width
+                        text: window.editor.pastePlainHotkeyError
                         color: Theme.danger
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.Wrap

@@ -323,6 +323,10 @@ public:
     // A global digit: keep the current program in front throughout. Never
     // activates it again if the user changes windows while letting go.
     void pasteDirect(qint64 id, HWND target);
+    // 粘贴为纯文本's global hotkey (GitHub #408), as PureText: the text the
+    // clipboard holds, its formatting left behind, pasted as pasteDirect
+    // pastes; the clipboard keeps the plain text. The history need not be on.
+    void pastePlainNow(HWND target);
     // Entries by their ids out of the history, as remove() takes rows: undo()
     // (Ctrl+Z, here or in the launcher) puts them back.
     void removeEntries(const std::vector<qint64>& ids);

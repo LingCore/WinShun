@@ -121,6 +121,9 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString folderMenuHotkey READ folderMenuHotkey WRITE setFolderMenuHotkey NOTIFY changed FINAL)
     Q_PROPERTY(bool dropPie READ dropPie WRITE setDropPie NOTIFY changed FINAL) // 拖放圆盘
     Q_PROPERTY(QString folderMenuHotkeyError READ folderMenuHotkeyError NOTIFY hotkeyErrorChanged FINAL)
+    // 粘贴为纯文本 anywhere (GitHub #408); empty = none.
+    Q_PROPERTY(QString pastePlainHotkey READ pastePlainHotkey WRITE setPastePlainHotkey NOTIFY changed FINAL)
+    Q_PROPERTY(QString pastePlainHotkeyError READ pastePlainHotkeyError NOTIFY hotkeyErrorChanged FINAL)
     // The screenshot history's keyword (jt): set through saveCaptureKeyword.
     Q_PROPERTY(QString captureKeyword READ captureKeyword NOTIFY changed FINAL)
     // The screenshot plugin, as App reads it: installed, on (the history works), and the shortcuts it holds.
@@ -519,6 +522,10 @@ public:
     void setFolderMenuHotkey(const QString& hotkey);
     QString folderMenuHotkeyError() const { return m_folderMenuHotkeyError; }
     void setFolderMenuHotkeyError(const QString& error);
+    QString pastePlainHotkey() const { return m_settings.pastePlainHotkey; }
+    void setPastePlainHotkey(const QString& hotkey);
+    QString pastePlainHotkeyError() const { return m_pastePlainHotkeyError; }
+    void setPastePlainHotkeyError(const QString& error);
     QString captureKeyword() const { return m_settings.captureKeyword; }
     bool screenshotInstalled() const { return m_screenshotInstalled; }
     bool screenshotHistory() const { return m_screenshotHistory; }
@@ -1234,6 +1241,7 @@ private:
     QString m_doubleCtrlClash;
     QVariantList m_doubleTapPluginActions;
     QString m_folderMenuHotkeyError;
+    QString m_pastePlainHotkeyError;
     bool m_screenshotInstalled = false;
     bool m_screenshotHistory = false;
     QStringList m_screenshotHotkeys;

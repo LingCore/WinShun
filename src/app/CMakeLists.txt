@@ -41,6 +41,7 @@ qt_add_executable(WinShun WIN32
     IdleOpenProbe.cpp IdleOpenProbe.h
     ClipboardAnimationProbe.cpp ClipboardAnimationProbe.h
     SearchShadowProbe.cpp SearchShadowProbe.h
+    PastePlainProbe.cpp PastePlainProbe.h
     SettingsMotionProbe.cpp SettingsMotionProbe.h
     ForegroundUseProbe.cpp ForegroundUseProbe.h
     main.cpp

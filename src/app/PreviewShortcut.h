@@ -3,8 +3,8 @@
 #include "platform/HotkeyText.h"
 
 #include <QKeySequence>
+#include <QStringList>
 #include <algorithm>
-#include <initializer_list>
 
 namespace ws::previewkeys {
 
@@ -60,7 +60,7 @@ inline bool matches(const QKeySequence& sequence, int key, int modifiers) noexce
     return !sequence.isEmpty() && sequence[0] == QKeyCombination(mods, Qt::Key(key));
 }
 
-inline bool usedGlobally(const QString& shortcut, std::initializer_list<QString> shortcuts)
+inline bool usedGlobally(const QString& shortcut, const QStringList& shortcuts)
 {
     const QString normal = hotkeys::normalized(shortcut);
     return !normal.isEmpty() && std::ranges::any_of(shortcuts, [&](const QString& other) {

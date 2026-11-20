@@ -6,6 +6,7 @@
 #include "IdleOpenProbe.h"
 #include "ClipboardAnimationProbe.h"
 #include "SearchShadowProbe.h"
+#include "PastePlainProbe.h"
 #include "SettingsMotionProbe.h"
 #include "platform/AllocationTrace.h"
 #include "InteractionOptimizationProbe.h"
@@ -12656,6 +12657,13 @@ int runRuntime(const QStringList& args)
     bool scopeRestoreOk = true;
     if (!scopeLeft.isEmpty() && args.contains(u"--clear-on-open"_s))
         settings.clearOnOpen = true;
+    if (args.contains(u"--paste-plain-check"_s)) { // GitHub #408: a chord nobody else has
+        if (!pastePlainChordFree()) {
+            qWarning("paste plain: %s is someone else's already", qPrintable(QString(kPastePlainProbeChord)));
+            return 4;
+        }
+        settings.pastePlainHotkey = QString(kPastePlainProbeChord);
+    }
     settings.save(); // prepared profiles normally skip onboarding
     if (!scopeLeft.isEmpty()) {
         QSettings state(Settings::dataDir() + u"/state.ini"_s, QSettings::IniFormat);
@@ -12750,7 +12758,7 @@ int runRuntime(const QStringList& args)
             const QFileInfo profile(Settings::profile());
             if ((args.contains(u"--idle-open-check"_s) || args.contains(u"--foreground-use-check"_s) || args.contains(u"--live"_s)
                     || args.contains(u"--clipboard-animation-check"_s) || args.contains(u"--settings-motion-check"_s)
-                    || args.contains(u"--search-shadow-check"_s))
+                    || args.contains(u"--search-shadow-check"_s) || args.contains(u"--paste-plain-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
                 QDir(profile.absoluteFilePath()).removeRecursively();
@@ -12814,6 +12822,8 @@ int runRuntime(const QStringList& args)
             return checkClipboardAnimation(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--search-shadow-check"_s))
             return checkSearchShadow(app, args, out) ? 0 : 4; // its profile likewise
+        if (args.contains(u"--paste-plain-check"_s))
+            return checkPastePlain(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
         if (args.contains(u"--settings-motion-check"_s))

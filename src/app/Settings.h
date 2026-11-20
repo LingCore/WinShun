@@ -375,6 +375,8 @@ struct Settings {
     // lower case, aliases folded ("Control" and "Meta" as ctrl and win); empty
     // for what is not a modifier or two and one key.
     static QString normalizedHotkey(const QString& shortcut);
+    // Win顺's own shortcuts that work anywhere (registered with Windows), set or not.
+    QStringList globalHotkeys() const { return {hotkey, panelHotkey, clipboardHotkey, folderMenuHotkey, pastePlainHotkey}; }
     // The rule for a shortcut a person (settings window) or AI sets: Ctrl, Alt
     // or Win held with its key, or a function key (F1 to F24) alone or with
     // Shift. A bare letter, Enter, Space, PrintScreen or Shift+letter would
@@ -481,6 +483,10 @@ struct Settings {
     bool clipboard = true; // keep a history of what is copied (Win+V page); at first as Windows' own clipboard history is
     bool clipboardWinV = false; // Win+V opens it, instead of Windows' clipboard history (see winv::)
     QString clipboardHotkey; // another shortcut for it; empty = none
+    // Anywhere: what the clipboard holds pasted as plain text into the window
+    // in front, as PureText (GitHub #408); the clipboard keeps the plain text.
+    // Works with the history off too. Empty = none (the default).
+    QString pastePlainHotkey;
     int clipboardMaxItems = 300; // entries kept outside groups, 0 = no limit
     int clipboardMaxDays = 30; // since last copied or pasted; 0 = no limit
     // keep | hide | clean: entries of copied files deleted or moved since,

@@ -26,6 +26,7 @@
 #include <QFileInfo>
 #include <QCoreApplication>
 #include <QImageReader>
+#include <QClipboard>
 #include <QGuiApplication>
 #include <QLocale>
 #include <QQuickWindow>
@@ -1566,6 +1567,25 @@ void Clipboard::pasteDirect(qint64 id, HWND target)
         emit quickPasteFailed(problem);
         return;
     }
+    m_target = window;
+    startPaste(std::move(write), Into::CurrentProgram, {}, {});
+}
+
+void Clipboard::pastePlainNow(HWND target)
+{
+    if (m_pasting)
+        return;
+    const HWND window = paste::usableTarget(target);
+    if (!window || !paste::isForeground(window))
+        return;
+    // The plain text a copy always carries beside its HTML or RTF (CF_UNICODETEXT).
+    const QString text = QGuiApplication::clipboard()->text();
+    if (text.isEmpty()) {
+        emit quickPasteFailed(tr("剪贴板里没有文字，无法粘贴为纯文本"));
+        return;
+    }
+    ClipWrite write;
+    write.text = text;
     m_target = window;
     startPaste(std::move(write), Into::CurrentProgram, {}, {});
 }
