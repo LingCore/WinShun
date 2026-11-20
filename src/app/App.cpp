@@ -1709,8 +1709,10 @@ void App::applyTheme()
     win::setMenuTheme(dark);
     if (m_pluginHost)
         m_pluginHost->setAppearance(m_language, dark ? u"dark"_s : u"light"_s, pluginLook());
-    if (m_window)
+    if (m_window) {
         styleWindow(m_window, SystemTheme::backdropAvailable());
+        applySearchShadow();
+    }
     if (m_clipWindow)
         styleWindow(m_clipWindow, SystemTheme::backdropAvailable());
     if (QQuickWindow* preview = m_preview ? m_preview->window() : nullptr)
@@ -1723,6 +1725,16 @@ void App::applyTheme()
         styleWindow(m_barWindow);
     updateSearchBoxLook(); // the accent
     guardDarkFrames();
+}
+
+// The box's shadow as set. The panel keeps the standard one: sized at its
+// edges, it has a sizing frame (WS_THICKFRAME), and DWM gives any such window
+// its full shadow (pitfalls: 搜索框阴影); Main.qml's WindowEdge likewise.
+void App::applySearchShadow()
+{
+    if (m_window)
+        win::setWindowShadow(m_window, m_launcher && m_launcher->panel()
+                ? win::WindowShadow::Standard : static_cast<win::WindowShadow>(SystemTheme::searchShadow()));
 }
 
 void App::guardDarkFrames()
@@ -1738,6 +1750,8 @@ void App::guardDarkFrames()
 void App::applyAppearance()
 {
     SystemTheme::setRoundedCorners(m_settings.corners == u"round");
+    SystemTheme::setSearchShadow(m_settings.searchShadow); // 搜索框阴影 (GitHub #412)
+    applySearchShadow(); // not made yet the first time: applyTheme sets it then
     SystemTheme::setUiStyle(m_settings.uiStyle);
     SystemTheme::setGlassAppearance(m_settings.glassTransparency, m_settings.glassClarity);
     SystemTheme::setHoverTips(m_settings.hoverTips); // 悬停提示 (GitHub #368)
@@ -7264,6 +7278,7 @@ void App::setPanel(bool on, bool opening)
         m_launcherOverBox = false;
         m_frame->setResizable(true);
         m_launcher->setPanel(true); // Main.qml lets go of the window's size and lays the panel out
+        applySearchShadow(); // the standard one
         m_placement->enterPanel(m_window->screen()); // one move and resize: the panel's size at its spot
         return;
     }
@@ -7287,6 +7302,7 @@ void App::setPanel(bool on, bool opening)
     m_placement->leavePanel();
     m_frame->setResizable(false);
     m_launcher->setPanel(false); // Main.qml: the box's size again, before it is placed
+    applySearchShadow();
     if (spot)
         m_placement->attachTaskbar(*spot);
     else

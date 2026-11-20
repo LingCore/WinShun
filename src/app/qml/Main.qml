@@ -2141,6 +2141,8 @@ Window {
 
     WindowEdge {
         id: windowEdge
+        objectName: "windowEdge"
         fill: Theme.background
+        nativeEdge: window.panel ? SystemTheme.nativeWindowBorder : SystemTheme.searchNativeBorder // 搜索框阴影 (GitHub #412): the box's
     }
 }

@@ -763,6 +763,18 @@
         <translation>Open animation</translation>
     </message>
     <message>
+        <source>搜索框阴影</source>
+        <translation>Search bar shadow</translation>
+    </message>
+    <message>
+        <source>浅</source>
+        <translation>Light</translation>
+    </message>
+    <message>
+        <source>无</source>
+        <translation>None</translation>
+    </message>
+    <message>
         <source>悬停提示</source>
         <translation>Hover tips</translation>
     </message>
@@ -7971,6 +7983,38 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>动画;动效;淡入;淡出;弹出;升起;过渡;拖沓;立即显示;animation;motion;fade</source>
         <translation>animation;motion;fade;transition;slide;popup;instant;sluggish</translation>
+    </message>
+    <message>
+        <source>搜索框阴影</source>
+        <translation>Search bar shadow</translation>
+    </message>
+    <message>
+        <source>“浅”阴影更小更淡；“无”不显示阴影，搜索框随之变成直角</source>
+        <translation>&quot;Light&quot; is a smaller, paler shadow; &quot;None&quot; shows no shadow, and the search bar turns square</translation>
+    </message>
+    <message>
+        <source>“无”时搜索框周围不显示阴影</source>
+        <translation>&quot;None&quot;: no shadow around the search bar</translation>
+    </message>
+    <message>
+        <source>Windows 只给带阴影的窗口画圆角。搜索面板和其他窗口照常有阴影</source>
+        <translation>Windows rounds only windows with a shadow. The search panel and other windows keep their shadow</translation>
+    </message>
+    <message>
+        <source>搜索面板和其他窗口照常有阴影</source>
+        <translation>The search panel and other windows keep their shadow</translation>
+    </message>
+    <message>
+        <source>阴影;投影;影子;黑边;发黑;搜索框;搜索窗口;shadow;drop shadow</source>
+        <translation>shadow;drop shadow;dark edge;search bar;search window</translation>
+    </message>
+    <message>
+        <source>浅</source>
+        <translation>Light</translation>
+    </message>
+    <message>
+        <source>无</source>
+        <translation>None</translation>
     </message>
     <message>
         <source>悬停提示</source>

@@ -2527,6 +2527,27 @@ Window {
                         onActivated: (index) => window.editor.corners = corners[index]
                     }
                 }
+
+                SettingRow { // GitHub #412
+                    id: searchShadowRow
+                    // 浅 is a rounded window's lighter shadow: a square one has none at all.
+                    readonly property bool light: SystemTheme.nativeWindowBorder && window.editor.corners === "round"
+                    title: qsTr("搜索框阴影")
+                    description: light ? qsTr("“浅”阴影更小更淡；“无”不显示阴影，搜索框随之变成直角")
+                                       : qsTr("“无”时搜索框周围不显示阴影")
+                    tip: light ? qsTr("Windows 只给带阴影的窗口画圆角。搜索面板和其他窗口照常有阴影") : qsTr("搜索面板和其他窗口照常有阴影")
+                    keywords: qsTr("阴影;投影;影子;黑边;发黑;搜索框;搜索窗口;shadow;drop shadow").split(";")
+
+                    ScopeTabs {
+                        objectName: "searchShadowTabs"
+                        readonly property var shadows: searchShadowRow.light ? ["standard", "light", "none"] : ["standard", "none"]
+                        readonly property string shown: window.editor.searchShadow === "light" && !searchShadowRow.light
+                            ? "none" : window.editor.searchShadow // the same as none here
+                        labels: searchShadowRow.light ? [qsTr("标准"), qsTr("浅"), qsTr("无")] : [qsTr("标准"), qsTr("无")]
+                        current: Math.max(0, shadows.indexOf(shown))
+                        onActivated: (index) => window.editor.searchShadow = shadows[index]
+                    }
+                }
             }
 
             SettingsSection {

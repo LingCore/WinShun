@@ -55,6 +55,9 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     // Tips come up on the icons and buttons the mouse rests on (HoverTip;
     // 外观 › 悬停提示, Settings::hoverTips, GitHub #368).
     Q_PROPERTY(bool hoverTips READ hoverTips NOTIFY changed FINAL)
+    // DWM draws the search box's border with its shadow as set (外观 ›
+    // 搜索框阴影, Settings::searchShadow, GitHub #412): WindowEdge.qml where not.
+    Q_PROPERTY(bool searchNativeBorder READ searchNativeBorder NOTIFY changed FINAL)
 
 public:
     explicit SystemTheme(QObject* parent = nullptr);
@@ -109,6 +112,10 @@ public:
     static void setUiStyle(const QString& style); // unknown names are fluent
     static bool hoverTips() { return s_hoverTips; }
     static void setHoverTips(bool on);
+    // standard | light | none, as Settings::searchShadow; for win::setWindowShadow.
+    static void setSearchShadow(const QString& shadow);
+    static int searchShadow() { return s_searchShadow; } // a win::WindowShadow
+    bool searchNativeBorder() const;
 
     // The look in effect for what C++ draws itself (the tray menu, the
     // taskbar box, pins, the countdown) and for plugins without QML: a few
@@ -143,6 +150,7 @@ private:
     static inline QString s_uiSize = QStringLiteral("standard");
     static inline QString s_uiStyle = QStringLiteral("fluent");
     static inline bool s_hoverTips = true;
+    static inline int s_searchShadow = 0; // win::WindowShadow::Standard
     static inline QVariantMap s_nativeLook;
     static inline QPointer<SystemTheme> s_instance; // the QML singleton
     QString m_iconFont;

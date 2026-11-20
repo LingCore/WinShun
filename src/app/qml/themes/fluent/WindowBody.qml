@@ -13,12 +13,15 @@ Item {
     property bool active: true
     property bool maximized: false
     property real dpr: 1
+    // DWM draws this window's edge: the Look's, or the window's own (Hook
+    // extra; WindowEdge.nativeEdge, the search box without its shadow).
+    property bool nativeEdge: look !== null && look.dwmEdge
 
     Rectangle {
         anchors.fill: parent
-        visible: part.paint !== "back" && !part.maximized && part.look !== null && !part.look.dwmEdge
-        radius: part.look ? part.look.windowRadius : 0
-        antialiasing: radius > 0
+        visible: part.paint !== "back" && !part.maximized && part.look !== null && !part.nativeEdge
+        // Square: drawn only where DWM rounds nothing (Windows 10, a window without its shadow).
+        radius: 0
         color: "transparent"
         border.width: Math.max(1, Math.round(part.dpr)) / part.dpr
         border.color: part.look ? part.look.windowEdge : "transparent"

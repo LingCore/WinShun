@@ -44,6 +44,21 @@ bool setRoundedCorners(bool on);
 // Native preview pages use smaller corners. Remember the choice for live updates.
 void setWindowCorners(HWND window, bool smallCorners = false);
 
+// A styled window's shadow (GitHub #412, the search box's). DWM shadows a
+// window by its kind, with no size or depth to ask for (measured on Windows 11):
+// Standard, with a caption (styleFramelessWindow's), the full shadow and
+// border; Light, a popup's: rounded, about half as deep and wide, the border
+// kept, and on a square popup (Windows 10's, the 直角 setting) none at all;
+// None, a popup made square: no shadow, no border (WindowEdge.qml draws it).
+// Windows rounds only what it shadows, so None is square. A window with a
+// sizing frame (WS_THICKFRAME) has the full shadow whatever is set here. The
+// backdrop is the same on all three. Any time after styleFramelessWindow,
+// which keeps it.
+enum class WindowShadow { Standard, Light, None };
+void setWindowShadow(QWindow* window, WindowShadow shadow);
+// Whether DWM draws a window's border with this shadow, its corners as they are now.
+bool nativeBorder(WindowShadow shadow);
+
 // Dark mode for the frame and its backdrop (DWMWA_USE_IMMERSIVE_DARK_MODE);
 // Mica follows it at once. Qt sets it too, a few milliseconds after a theme
 // change and after every change of the application palette (an accent

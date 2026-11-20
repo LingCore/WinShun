@@ -5,6 +5,7 @@
 #include "ForegroundUseProbe.h"
 #include "IdleOpenProbe.h"
 #include "ClipboardAnimationProbe.h"
+#include "SearchShadowProbe.h"
 #include "SettingsMotionProbe.h"
 #include "platform/AllocationTrace.h"
 #include "InteractionOptimizationProbe.h"
@@ -12748,7 +12749,8 @@ int runRuntime(const QStringList& args)
         const auto probeProfile = qScopeGuard([&args] {
             const QFileInfo profile(Settings::profile());
             if ((args.contains(u"--idle-open-check"_s) || args.contains(u"--foreground-use-check"_s) || args.contains(u"--live"_s)
-                    || args.contains(u"--clipboard-animation-check"_s) || args.contains(u"--settings-motion-check"_s))
+                    || args.contains(u"--clipboard-animation-check"_s) || args.contains(u"--settings-motion-check"_s)
+                    || args.contains(u"--search-shadow-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
                 QDir(profile.absoluteFilePath()).removeRecursively();
@@ -12810,6 +12812,8 @@ int runRuntime(const QStringList& args)
             return checkForegroundUse(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--clipboard-animation-check"_s))
             return checkClipboardAnimation(app, args, out) ? 0 : 4; // its profile likewise
+        if (args.contains(u"--search-shadow-check"_s))
+            return checkSearchShadow(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
         if (args.contains(u"--settings-motion-check"_s))

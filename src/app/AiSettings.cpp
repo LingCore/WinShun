@@ -415,6 +415,14 @@ std::vector<Entry> buildCatalog()
                     "dropping a little from where it opens; both fade out. "
                     "false: they appear and disappear at once. Never animated while Windows' animation effects are off."},
         &Settings::openAnimation));
+    add(choice({"Appearance/SearchShadow", QT_TRANSLATE_NOOP("AiSettings", "搜索框阴影"), "appearance", -1,
+                   "The shadow around the search box; the search panel and the other windows keep theirs. light: smaller and paler "
+                   "(Windows 11 with round corners; elsewhere none). none: no shadow, and the search box square: "
+                   "Windows rounds only the windows it shadows."},
+        &Settings::searchShadow,
+        {{u"standard"_s, u"standard shadow"_s, QT_TRANSLATE_NOOP("AiSettings", "标准")},
+            {u"light"_s, u"light shadow"_s, QT_TRANSLATE_NOOP("AiSettings", "浅")},
+            {u"none"_s, u"no shadow"_s, QT_TRANSLATE_NOOP("AiSettings", "无")}}));
     add(boolean({"Appearance/HoverTips", QT_TRANSLATE_NOOP("AiSettings", "悬停提示"), "appearance", -1,
                     "true: resting the mouse on an icon or button (the kinds of file under the search box, the +, a row's buttons) shows a line "
                     "saying what it is. false: no such tips; an \"i\" in the settings still shows its words, and a cut-off name still shows in full."},

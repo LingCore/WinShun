@@ -511,6 +511,22 @@ Window {
             settings.load();
             QCOMPARE(settings.corners, value == u" SQUARE " ? u"square"_s : expected);
         }
+        // 搜索框阴影 (GitHub #412): standard by default, unknown values back to it.
+        QCOMPARE(settings.searchShadow, u"standard"_s);
+        for (const QString& value : {u"light"_s, u"none"_s, u"standard"_s}) {
+            settings.searchShadow = value;
+            settings.save();
+            Settings loaded;
+            loaded.load();
+            QCOMPARE(loaded.searchShadow, value);
+        }
+        for (const QString& value : {u"dark"_s, u""_s, u" NONE "_s}) {
+            QSettings ini(Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Appearance/SearchShadow"_s, value);
+            ini.sync();
+            settings.load();
+            QCOMPARE(settings.searchShadow, value == u" NONE " ? u"none"_s : u"standard"_s);
+        }
     }
 
     void liveWindows()
@@ -538,6 +554,34 @@ Window {
             QCOMPARE(preference(reinterpret_cast<HWND>(createdAfter.winId())), round ? 2 : 1);
         }
         ::DestroyWindow(page);
+
+        // 搜索框阴影 (GitHub #412): the caption gives the full shadow; none is
+        // square whatever the 圆角 setting, and stays so through a restyle
+        // (applyTheme) and a change of that setting.
+        const auto hwnd = reinterpret_cast<HWND>(normal.winId());
+        const auto caption = [hwnd] { return (::GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_CAPTION) == WS_CAPTION; };
+        SystemTheme::setRoundedCorners(true);
+        win::setWindowShadow(&normal, win::WindowShadow::Light);
+        QVERIFY(!caption());
+        QCOMPARE(preference(hwnd), 2);
+        QVERIFY(win::nativeBorder(win::WindowShadow::Light));
+        win::setWindowShadow(&normal, win::WindowShadow::None);
+        QVERIFY(!caption());
+        QCOMPARE(preference(hwnd), 1);
+        QVERIFY(!win::nativeBorder(win::WindowShadow::None));
+        win::styleFramelessWindow(&normal); // sets the caption again: kept off
+        QVERIFY(!caption());
+        QCOMPARE(preference(hwnd), 1);
+        SystemTheme::setRoundedCorners(false);
+        SystemTheme::setRoundedCorners(true);
+        QCOMPARE(preference(hwnd), 1);
+        QVERIFY(win::nativeBorder(win::WindowShadow::Standard));
+        SystemTheme::setRoundedCorners(false);
+        QVERIFY(!win::nativeBorder(win::WindowShadow::Light)); // a square popup: no edge from DWM
+        SystemTheme::setRoundedCorners(true);
+        win::setWindowShadow(&normal, win::WindowShadow::Standard);
+        QVERIFY(caption());
+        QCOMPARE(preference(hwnd), 2);
     }
 
     void liveTokensAndSquarePixels()

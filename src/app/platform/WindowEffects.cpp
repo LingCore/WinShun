@@ -34,6 +34,7 @@ constexpr int kCornerRound = 2; // DWMWCP_ROUND
 constexpr int kCornerSquare = 1; // DWMWCP_DONOTROUND
 constexpr int kCornerSmall = 3; // DWMWCP_ROUNDSMALL
 constexpr wchar_t kCornerStyle[] = L"WinShun.CornerStyle";
+constexpr wchar_t kShadow[] = L"WinShun.Shadow"; // WindowShadow + 1; none for Standard
 bool g_compositedPreview = false;
 std::atomic<bool> g_round {true};
 std::mutex g_cornerMutex; // preview HWNDs are created on another thread
@@ -53,6 +54,14 @@ void applyBackdrop(HWND window)
             || (::GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_NOACTIVATE)), -1);
 }
 
+WindowShadow shadowOf(HWND window)
+{
+    const auto value = reinterpret_cast<INT_PTR>(::GetPropW(window, kShadow));
+    return value == INT_PTR(WindowShadow::Light) + 1 ? WindowShadow::Light
+        : value == INT_PTR(WindowShadow::None) + 1   ? WindowShadow::None
+                                                     : WindowShadow::Standard;
+}
+
 LRESULT CALLBACK nativeFrameProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR)
 {
     switch (message) {
@@ -63,8 +72,13 @@ LRESULT CALLBACK nativeFrameProc(HWND window, UINT message, WPARAM wParam, LPARA
     case WM_STYLECHANGING:
         if (static_cast<int>(wParam) == GWL_STYLE) {
             auto* styles = reinterpret_cast<STYLESTRUCT*>(lParam);
-            if (!(styles->styleNew & WS_CHILD))
+            // The caption is what gives the full shadow (setWindowShadow).
+            if (styles->styleNew & WS_CHILD)
+                break;
+            if (shadowOf(window) == WindowShadow::Standard)
                 styles->styleNew |= WS_CAPTION;
+            else
+                styles->styleNew &= ~WS_CAPTION;
         }
         break;
     case WM_NCDESTROY:
@@ -82,7 +96,7 @@ LRESULT CALLBACK nativeFrameProc(HWND window, UINT message, WPARAM wParam, LPARA
 // controls inside (Theme.qml).
 void applyWindowCorners(HWND window, int style)
 {
-    const int value = g_round.load() && nativeWindowCorners() ? style : kCornerSquare;
+    const int value = g_round.load() && nativeWindowCorners() && shadowOf(window) != WindowShadow::None ? style : kCornerSquare;
     ::DwmSetWindowAttribute(window, kCornerPreference, &value, sizeof value);
 }
 
@@ -310,6 +324,36 @@ void setWindowCorners(HWND window, bool smallCorners)
     const int style = smallCorners ? kCornerSmall : kCornerRound;
     ::SetPropW(window, kCornerStyle, reinterpret_cast<HANDLE>(static_cast<INT_PTR>(style)));
     applyWindowCorners(window, style);
+}
+
+void setWindowShadow(QWindow* window, WindowShadow shadow)
+{
+    const HWND hwnd = handleOf(window);
+    if (!hwnd)
+        return;
+    {
+        std::lock_guard lock(g_cornerMutex);
+        if (shadow == WindowShadow::Standard)
+            ::RemovePropW(hwnd, kShadow);
+        else
+            ::SetPropW(hwnd, kShadow, reinterpret_cast<HANDLE>(static_cast<INT_PTR>(shadow) + 1));
+        const auto corners = reinterpret_cast<INT_PTR>(::GetPropW(hwnd, kCornerStyle));
+        applyWindowCorners(hwnd, corners ? static_cast<int>(corners) : kCornerRound);
+    }
+    // nativeFrameProc adds the caption or takes it away, as the property says.
+    const LONG_PTR style = ::GetWindowLongPtrW(hwnd, GWL_STYLE);
+    const bool caption = (style & WS_CAPTION) == WS_CAPTION;
+    if (caption == (shadow == WindowShadow::Standard))
+        return;
+    ::SetWindowLongPtrW(hwnd, GWL_STYLE, caption ? style & ~WS_CAPTION : style | WS_CAPTION);
+    ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+        SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+}
+
+bool nativeBorder(WindowShadow shadow)
+{
+    return nativeWindowCorners()
+        && (shadow == WindowShadow::Standard || (shadow == WindowShadow::Light && g_round.load()));
 }
 
 bool setRoundedCorners(bool on)

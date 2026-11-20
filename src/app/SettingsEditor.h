@@ -236,6 +236,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool panelListsAll READ panelListsAll WRITE setPanelListsAll NOTIFY changed FINAL)
     Q_PROPERTY(bool scopeButton READ scopeButton WRITE setScopeButton NOTIFY changed FINAL)
     Q_PROPERTY(bool openAnimation READ openAnimation WRITE setOpenAnimation NOTIFY changed FINAL)
+    Q_PROPERTY(QString searchShadow READ searchShadow WRITE setSearchShadow NOTIFY changed FINAL) // standard | light | none
     Q_PROPERTY(bool rememberWindowSize READ rememberWindowSize WRITE setRememberWindowSize NOTIFY changed FINAL)
     Q_PROPERTY(bool donateOnGleaningPage READ donateOnGleaningPage WRITE setDonateOnGleaningPage NOTIFY changed FINAL)
     Q_PROPERTY(bool hoverTips READ hoverTips WRITE setHoverTips NOTIFY changed FINAL)
@@ -861,6 +862,8 @@ public:
     void setScopeButton(bool on);
     bool openAnimation() const { return m_settings.openAnimation; }
     void setOpenAnimation(bool on);
+    QString searchShadow() const { return m_settings.searchShadow; }
+    void setSearchShadow(const QString& shadow);
     bool rememberWindowSize() const { return m_settings.rememberWindowSize; }
     void setRememberWindowSize(bool on);
     bool donateOnGleaningPage() const { return m_settings.donateOnGleaningPage; }

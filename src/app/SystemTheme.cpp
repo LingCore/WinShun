@@ -119,6 +119,23 @@ void SystemTheme::setRoundedCorners(bool on)
         emit s_instance->changed();
 }
 
+void SystemTheme::setSearchShadow(const QString& shadow)
+{
+    const auto value = static_cast<int>(shadow == u"light" ? win::WindowShadow::Light
+            : shadow == u"none"                             ? win::WindowShadow::None
+                                                            : win::WindowShadow::Standard);
+    if (s_searchShadow == value)
+        return;
+    s_searchShadow = value;
+    if (s_instance)
+        emit s_instance->changed();
+}
+
+bool SystemTheme::searchNativeBorder() const
+{
+    return win::nativeBorder(static_cast<win::WindowShadow>(s_searchShadow));
+}
+
 void SystemTheme::setHoverTips(bool on)
 {
     if (s_hoverTips == on)

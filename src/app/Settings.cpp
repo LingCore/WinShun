@@ -1023,6 +1023,9 @@ void Settings::load()
     panelListsAll = readOrDefault(s, u"Panel/ListAll"_s, d.panelListsAll);
     scopeButton = readOrDefault(s, u"Appearance/ScopeButton"_s, d.scopeButton);
     openAnimation = readOrDefault(s, u"Appearance/OpenAnimation"_s, d.openAnimation);
+    searchShadow = readOrDefault(s, u"Appearance/SearchShadow"_s, d.searchShadow).trimmed().toLower();
+    if (searchShadow != u"standard" && searchShadow != u"light" && searchShadow != u"none")
+        searchShadow = d.searchShadow;
     rememberWindowSize = readOrDefault(s, u"Appearance/RememberWindowSize"_s, d.rememberWindowSize);
     donateOnGleaningPage = readOrDefault(s, u"Appearance/DonateOnGleaningPage"_s, d.donateOnGleaningPage);
     hoverTips = readOrDefault(s, u"Appearance/HoverTips"_s, d.hoverTips);
@@ -1446,6 +1449,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Panel/ListAll"_s, panelListsAll);
     s.setValue(u"Appearance/ScopeButton"_s, scopeButton);
     s.setValue(u"Appearance/OpenAnimation"_s, openAnimation);
+    s.setValue(u"Appearance/SearchShadow"_s, searchShadow);
     s.setValue(u"Appearance/RememberWindowSize"_s, rememberWindowSize);
     s.setValue(u"Appearance/DonateOnGleaningPage"_s, donateOnGleaningPage);
     s.setValue(u"Appearance/HoverTips"_s, hoverTips);

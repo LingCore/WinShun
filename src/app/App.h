@@ -50,7 +50,7 @@ class QWinEventNotifier;
 
 namespace ws {
 
-namespace preview { struct DoubleTapActionsProbe; struct IdleOpenProbe; struct ForegroundUseProbe; struct ClipboardAnimationProbe; }
+namespace preview { struct DoubleTapActionsProbe; struct IdleOpenProbe; struct ForegroundUseProbe; struct ClipboardAnimationProbe; struct SearchShadowProbe; }
 
 namespace piedrop {
 class FileOperations;
@@ -144,6 +144,7 @@ class App : public QObject {
     friend struct preview::IdleOpenProbe;
     friend struct preview::ForegroundUseProbe;
     friend struct preview::ClipboardAnimationProbe;
+    friend struct preview::SearchShadowProbe;
 
 public:
     struct StartOptions {
@@ -539,6 +540,7 @@ private:
     void applyTheme();
     void guardDarkFrames(); // the frames' dark mode back once Qt has set it light (theme or palette change)
     void applyAppearance(); // the chosen theme and language
+    void applySearchShadow(); // 搜索框阴影 on the launcher (GitHub #412)
     QString trayTooltip() const;
     QString doubleCtrlName() const;
     void updateDoubleTapActions();

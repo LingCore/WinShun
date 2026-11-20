@@ -288,6 +288,13 @@
 - **做法**：所有风格、所有窗口（菜单、提示、插件窗口）都用 DWM 的圆角、边、阴影和 Mica，自绘框整套删掉（`win::setOwnFrame`、`OwnFrame`、`Theme.ownFrame`、阴影窗口）。风格只改窗口里面：`windowRadius` 和 fluent 一样是 DWM 的 8，靠近窗口角的东西按“内圆角 = max(8 − 间距, 4)”同心（搜索框离边 10 → 4）。要不要透明由 Look 的 `backdrop` / `backdropCapable` 决定，不按风格名判断。
 - **规则**：永远不要自绘窗口圆角、窗口边或窗口阴影；要改的是窗口里的东西。详见 `src/app/qml/themes/README.md` 第 4 节。
 
+## 搜索框阴影：DWM 的阴影没有大小和深浅可调，只能换窗口种类（2026-11-20，#412）
+
+- **现象**：用户嫌搜索框四周的阴影太重，想关掉或调小。`DwmExtendFrameIntoClientArea` 改成 0、`DWMWA_NCRENDERING_POLICY` 设成 DISABLED，阴影都还在（后者只淡一点）；DWM 没有调阴影大小的属性。
+- **原因**：Windows 11 按窗口种类给阴影。实测（洋红底窗口上量窗口下方、右侧的平均变暗量）：带 `WS_CAPTION` 的（`styleFramelessWindow` 一直加着）是完整阴影，下方 49.7、右侧 19.5；纯 `WS_POPUP` 加 `DWMWCP_ROUND` 只有一半左右（31.7 / 10.0），圆角和 DWM 的边都在；`WS_POPUP` 加 `DWMWCP_DONOTROUND` 完全没有阴影，也没有边。方角的 popup 不给阴影，所以“没阴影的圆角窗口”做不出来（自己画圆角是禁止的，见上一节）。Windows 10 上 popup 一律没有阴影。Mica、亚克力在三种窗口上都一样。
+- **做法**：`win::setWindowShadow` 给窗口记一个属性，`nativeFrameProc` 的 `WM_STYLECHANGING` 按它加上或去掉 `WS_CAPTION`（Qt 改样式、再次 `styleFramelessWindow` 都保持）；“无”时 `applyWindowCorners` 一律给直角。没有 DWM 边时由 `WindowEdge.qml` 画（`nativeEdge`，经 Hook `extra` 传给 fluent 的 `WindowBody`）。设置 › 外观 › 搜索框阴影：标准 / 浅 / 无，只管搜索框（展开成面板时 `WS_THICKFRAME` 必然带完整阴影，`App::applySearchShadow` 让面板照常用标准）；“浅”只在 Windows 11 且圆角时出现。
+- **验证**：`WinShun.exe --probe-runtime <目录> --search-shadow-check --renderer d3d11`（SearchShadowProbe）：真实 App 和正在运行的 Win顺 并存，按快捷键的路径依次打开标准、浅、无、标准，量阴影、角上的像素、`WS_CAPTION` 和 WindowEdge，写 `search-shadow.json`。`tst_appearance` 的 `liveWindows` 查样式和圆角属性。
+
 ## 界面风格：列表行里的部件随悬停造、毁，滚动时掉帧（2026-11-05）
 
 - **现象**：三种界面风格下剪贴板滚动掉帧都比 main 多（3 次中位数：main 约 67，fluent 88，tactile 94，brand 117），帧时间 p50/p95 不变、没有超过 33 ms 的帧；内存多 6–15 MB。

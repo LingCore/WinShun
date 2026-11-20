@@ -304,6 +304,11 @@ struct Settings {
     // fades out (Placement::slideIn, slideOut); off: there and gone at once
     // (GitHub #365). Windows' own "animation effects" off: never animated.
     bool openAnimation = true;
+    // The shadow around the search box (GitHub #412): standard | light | none.
+    // light: smaller and paler, a popup's (Windows 11 with round corners; else
+    // none); none: no shadow, and square, as Windows rounds only the windows it
+    // shadows (win::setWindowShadow). Only the launcher's: the others keep theirs.
+    QString searchShadow = QStringLiteral("standard");
     // The settings window, the screenshot plugin's settings and picture text
     // search open at the size their user dragged them to, maximized if left
     // so, the next run too (SavedWindowSize, state.ini; GitHub #401). Off:

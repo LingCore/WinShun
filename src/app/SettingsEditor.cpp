@@ -560,6 +560,14 @@ void SettingsEditor::setOpenAnimation(bool on)
     commit();
 }
 
+void SettingsEditor::setSearchShadow(const QString& shadow)
+{
+    if (m_settings.searchShadow == shadow || (shadow != u"standard" && shadow != u"light" && shadow != u"none"))
+        return;
+    m_settings.searchShadow = shadow;
+    commit();
+}
+
 void SettingsEditor::setRememberWindowSize(bool on)
 {
     if (m_settings.rememberWindowSize == on)

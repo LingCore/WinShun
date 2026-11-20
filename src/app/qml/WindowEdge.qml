@@ -14,6 +14,9 @@ Item {
     property color fill: "transparent"
     // false: no style's body (a menu or a tip: its colour is all it has).
     property bool body: true
+    // DWM draws this window's edge (Windows 11). The search box without its
+    // shadow has none (SystemTheme.searchNativeBorder, GitHub #412).
+    property bool nativeEdge: SystemTheme.nativeWindowBorder
     readonly property bool maximized: Window.window !== null && (Window.window.visibility === Window.Maximized
                                                                 || Window.window.visibility === Window.FullScreen)
     readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
@@ -22,7 +25,7 @@ Item {
     z: 1000
     // Nothing to draw under DWM's edge on Windows 11, nor maximized (the body
     // Hook below is the window's child, not this one's).
-    visible: !SystemTheme.nativeWindowBorder && !maximized
+    visible: !nativeEdge && !maximized
 
     // A style's window body (fluent's is the window's colour itself: none).
     Hook {
@@ -43,6 +46,7 @@ Item {
         anchors.fill: parent
         part: Theme.base.windowFrame
         paint: "edge"
+        extra: ({nativeEdge: edge.nativeEdge})
         fill: edge.fill
         maximized: edge.maximized
         active: edge.Window.active
