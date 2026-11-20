@@ -96,7 +96,7 @@
 | 局域网传输 | `传`，和开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件 | 插件库 |
 | [剪贴板同步](src/sync-plugin/package/README.md) | 在自己的几台 Windows 电脑和 Mac（[Mac顺](https://github.com/LingCore/MacShun)）之间同步剪贴板：这边复制，那边直接粘贴文字、图片、文件；端到端加密，不用账号；`同步` 看设备、加新设备 | 插件库 |
 | 休息提醒 | 定时提醒休息，`休息` 看还有多久 | 插件库 |
-| [鼠标手势](src/gestures-plugin/package/README.md) | 按住右键画一下：后退、关窗口、切标签页；选中文字再画：复制、搜索、翻译；画圈、屏幕角落、屏幕边、右键+滚轮、按程序设置，关机重启先倒数；`手势` 暂停 | 插件库 |
+| [鼠标手势](src/gestures-plugin/package/README.md) | 按住右键画一下：后退、关窗口、切标签页；选中文字再画或按快捷键：复制、搜索、翻译；画圈、屏幕角落、屏幕边、右键+滚轮、按程序设置，关机重启先倒数；`手势` 暂停 | 插件库 |
 | 缩写展开 | 在任何地方打 `cmd` 再按空格就换成 `command`，缩写和内容自己设，紧接着按退格撤回；`缩写` 列出、暂停 | 插件库 |
 | 资源管理器标签页 | 新开的资源管理器窗口并成标签页，还能在下次登录后打开上次的标签页（Windows 11 22H2 起） | 插件库 |
 | [云备份](docs/使用说明.md#外观设置和备份) | 设置自动备份到 WebDAV（坚果云、NAS）或 GitHub 私有仓库，`cloud` 立即备份或恢复 | 插件库 |
@@ -198,6 +198,14 @@ winget install LingCore.WinShun
 </details>
 
 ### 最近更新
+
+**0.42.0**
+
+- 🔁 **剪贴板同步**（新插件）：在自己的几台 Windows 电脑和 Mac（Mac顺）之间，这边复制、那边粘贴文字、图片和文件，端到端加密，不用账号。
+- 📂 **OneCommander 里直接打字搜索**；🖥️ 截图可以**跨屏框选**；📋 **粘贴为纯文本**的快捷键；🔍 剪贴板**看大图**；🖱️ 鼠标手势**选中文字按快捷键翻译**；🌗 搜索框阴影可以调浅或关掉。
+- 🛠️ **改进** 正则搜索快多了；空文件夹的标记挨着名字；Windows 10 1809 上能录屏了；国内可以从 [CNB 镜像](https://cnb.cool/lcstp/WinShun/-/releases)下载。
+
+详见 [0.42.0 发布说明](docs/release-notes/v0.42.0.md)。
 
 **0.41.0**
 
@@ -440,7 +448,7 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | LAN transfer | `ls ` to send files to and from phones and PCs running [LocalSend](https://localsend.org) | Plugin library |
 | [Clipboard sync](src/sync-plugin/package/README.md) | Copy on one of your Windows PCs or Macs ([Mac顺](https://github.com/LingCore/MacShun)), paste on another: text, pictures, files; end to end encrypted, no account; `sync` lists the devices and lets a new one in | Plugin library |
 | Break reminder | Reminds you to take breaks; `break` shows the time left | Plugin library |
-| [Mouse gestures](src/gestures-plugin/package/README.md) | Hold the right button and draw: back, close the window, switch tabs; select text, then draw: copy, search, translate; circles, screen corners and edges, the wheel with the right button, rules per program, a countdown before shutting down; `gestures` pauses them | Plugin library |
+| [Mouse gestures](src/gestures-plugin/package/README.md) | Hold the right button and draw: back, close the window, switch tabs; select text, then draw or press a shortcut: copy, search, translate; circles, screen corners and edges, the wheel with the right button, rules per program, a countdown before shutting down; `gestures` pauses them | Plugin library |
 | Text expander | Type `cmd` and a space anywhere and it becomes `command`, with abbreviations of your own; Backspace right after takes it back; `expander` lists and pauses them | Plugin library |
 | Explorer tabs | New File Explorer windows open as tabs, and the tabs from last time come back after a logon (Windows 11 22H2 or newer) | Plugin library |
 | [Cloud backup](docs/features.en.md#looks-and-settings) | Keeps the settings backup on a WebDAV server or in a private GitHub repository; `cloud` backs up or restores | Plugin library |
@@ -542,6 +550,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.42.0**
+
+- 🔁 **Clipboard sync** (new plugin): copy on one of your Windows PCs or Macs (Mac顺), paste text, pictures and files on another; end to end encrypted, no account.
+- 📂 **Type to search in OneCommander**; 🖥️ **screenshots over several monitors**; 📋 a key to **paste as plain text**; 🔍 clipboard **pictures large**; 🖱️ mouse gestures: **a shortcut to translate selected text**; 🌗 a lighter search box shadow, or none.
+- 🛠️ **Improved**: regex search is much faster; the empty tag sits by the name; recording works on Windows 10 1809; downloads from the [CNB mirror](https://cnb.cool/lcstp/WinShun/-/releases) for mainland China.
+
+See the [0.42.0 release notes](docs/release-notes/v0.42.0.md).
 
 **0.41.0**
 
