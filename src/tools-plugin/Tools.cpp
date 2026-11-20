@@ -99,7 +99,7 @@ protected:
             Item confirm("clear-confirm", zh("再按一次 Enter 清空", "Press Enter again to clear"),
                 std::to_string(m_sums.records().size()) + zh(" 条，不能恢复", " sums; this cannot be undone"));
             confirm.withIcon(kClearIcon).withActions({{"confirm", zh("清空", "Clear"), "Enter"},
-                {"keep", zh("留着，不清", "Keep them"), "Shift+Enter"}});
+                {"keep", zh("留着，不清", "Keep them"), "Ctrl+Enter"}});
             return {winshun::effect::replace(Items {confirm}), winshun::effect::keep()};
         }
         if (id == "clear-confirm") {
