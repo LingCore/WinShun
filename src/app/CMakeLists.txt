@@ -397,6 +397,7 @@ qt_add_qml_module(WinShun
         SettingsEditor.cpp SettingsEditor.h
         Diagnostics.cpp Diagnostics.h
         DisplayDiagnostics.cpp DisplayDiagnostics.h # how Win顺 draws, for display problems (GitHub #70)
+        platform/DisplaySetup.cpp platform/DisplaySetup.h # monitors, graphics switches, display events (#325)
         TextCheck.cpp TextCheck.h
         SettingsSearch.cpp SettingsSearch.h
         SoundClip.cpp SoundClip.h
@@ -472,7 +473,7 @@ target_link_libraries(WinShun PRIVATE
     Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network
     Qt6::Svg # SvgIcon: web shortcuts' SVG icons, drawn once into the PNG kept
     comctl32 d2d1 d3d11 dwmapi dwrite dxgi imm32 oleacc oleaut32 shcore shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
-    credui iphlpapi mpr psapi userenv windowscodecs
+    credui iphlpapi mpr psapi setupapi userenv wevtapi windowscodecs
     mfplat mfreadwrite mfuuid delayimp dbghelp
     windowsapp # TextRecognizer: Windows.Media.Ocr, through C++/WinRT from the Windows SDK
     onnxruntime_headers) # PaddleOcr

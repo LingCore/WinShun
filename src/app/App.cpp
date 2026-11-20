@@ -73,6 +73,7 @@
 #include "platform/ComWorker.h"
 #include "platform/Credentials.h"
 #include "platform/DialogJump.h"
+#include "platform/DisplaySetup.h"
 #include "DialogRuleStore.h"
 #include "platform/ExternalPreview.h"
 #include "platform/EverythingServer.h"
@@ -4132,6 +4133,13 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
                         {u"type"_s, placement.seeks ? u"HDD-or-unknown"_s : u"SSD"_s}});
                 }
                 context[u"disks"_s] = disks;
+                // How the displays are set up, off the UI thread (the event log, the drivers' keys).
+                QJsonObject display = context[u"display"_s].toObject();
+                display[u"monitors"_s] = diagnostics::monitors();
+                display[u"graphics_settings"_s] = diagnostics::graphicsSettings();
+                display[u"driver_settings"_s] = diagnostics::driverSettings();
+                display[u"display_events"_s] = diagnostics::displayEvents();
+                context[u"display"_s] = display;
                 const auto exported = diagnostics::exportArchive(*log, dataFolder, serviceFolder, std::move(context));
                 QMetaObject::invokeMethod(this, [this, exported] {
                     m_diagnosticsExporting = false;
