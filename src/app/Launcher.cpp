@@ -4065,6 +4065,11 @@ void Launcher::refreshKeyHints()
         break;
     case navigation::TabAction::None: break;
     }
+    // A keyword took the list: Shift+Tab looks for the words as names (GitHub #411).
+    if (tab.isEmpty() && m_keyword) {
+        tabKeys = u"Shift+Tab"_s;
+        tab = tr("改搜文件名");
+    }
     const SearchResult* r = m_results.at(m_currentRow);
     if (!r) {
         // Without a row, a nonblank query can still offer scope switching.
@@ -6988,6 +6993,18 @@ void Launcher::leaveKeyword()
         setQuery({});
 }
 
+bool Launcher::searchKeywordAsWords()
+{
+    if (!m_keyword)
+        return false;
+    // Only the first word as typed is a keyword (Catalog::match): quoted, it
+    // is a word of the name, as any quoted word is.
+    const QString words = m_keyword->words.trimmed();
+    setQuery(u'"' + m_keyword->keyword + u'"' + (words.isEmpty() ? u" "_s : u' ' + words));
+    emit caretRequested(static_cast<int>(m_query.size()), false);
+    return true;
+}
+
 // ---- The screenshot history (jt) ----------------------------------------
 
 void Launcher::setScreenshots(const QString& keyword, ScreenshotHooks hooks)
@@ -7225,6 +7242,8 @@ void Launcher::startPluginQuery(const QString& text, std::optional<KeywordMode> 
         m_pluginWait.start();
     if (was || m_keyword)
         emit pluginChanged();
+    if (was != m_keyword.has_value())
+        refreshKeyHints(); // Shift+Tab's, before any row comes
 }
 
 void Launcher::onPluginTaken(std::uint64_t queryId, const QString& pluginId)

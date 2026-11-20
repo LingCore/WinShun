@@ -6872,6 +6872,15 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
                 && !launcher.queryHistory().contains(u"hide p@ss"_s),
             "#395: a command with \"history\": false was kept in the search history");
         say(u"#395 search history after \"sum 3*7\" and \"hide p@ss\": %1"_s.arg(launcher.queryHistory().join(u" | "_s)));
+        // GitHub #411: the keyword and its words looked for as names instead (Shift+Tab).
+        query(u"sum 3*7"_s);
+        check(launcher.keyHints().value(u"tabKeys"_s).toString() == u"Shift+Tab", "#411: keyword mode did not offer Shift+Tab");
+        check(launcher.searchKeywordAsWords(), "#411: Shift+Tab was refused in keyword mode");
+        query(launcher.query());
+        check(launcher.query() == u"\"sum\" 3*7" && launcher.pluginKeyword().isEmpty() && launcher.queryError().isEmpty(),
+            "#411: Shift+Tab did not turn the keyword into a quoted word of the name search");
+        check(!launcher.searchKeywordAsWords(), "#411: Shift+Tab claimed a keyword with none there");
+        say(u"#411 Shift+Tab on \"sum 3*7\": the box reads %1, keyword \"%2\""_s.arg(launcher.query(), launcher.pluginKeyword()));
         query({});
         launcher.setPluginHost(nullptr);
     }

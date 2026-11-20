@@ -377,6 +377,10 @@ public:
     // and the key edits the text as ever.
     Q_INVOKABLE bool stepOut();
     Q_INVOKABLE void leaveKeyword(); // the chip clicked: the box is emptied
+    // Shift+Tab in keyword mode (GitHub #411): the keyword and the words after
+    // it looked for as names instead, the keyword in quotes ("disk" ???), so
+    // it opens no plugin. False when no keyword has the list.
+    Q_INVOKABLE bool searchKeywordAsWords();
 
     // The screenshot history: the clipboard history's pictures Win顺's
     // capture took (ClipFilter::screenshots), listed after its keyword ("jt ")

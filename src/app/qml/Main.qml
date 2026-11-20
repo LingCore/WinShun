@@ -299,7 +299,7 @@ Window {
         : contentMode && launcher.folderChips.length > 1 ? qsTr("按 Ctrl+Tab 只搜某个文件夹，Tab 切换范围")
         : contentMode ? qsTr("按 Tab 回到文件名搜索")
         : typeStrip.shown ? qsTr("按 Ctrl+Tab 换个类型，Tab 切换范围")
-        : launcher.pluginKeyword.length > 0 ? qsTr("按 Esc 清空关键字后面的文字")
+        : launcher.pluginKeyword.length > 0 ? qsTr("按 Shift+Tab 改搜文件名，Esc 清空关键字后面的文字")
         : launcher.searchesContent ? qsTr("文件名和 %1的内容里都没有").arg(launcher.contentFilesLabel)
         : launcher.contentEnabled ? qsTr("按 Tab 切换范围，或搜索文件内容")
         : qsTr("按 Tab 切换范围")
@@ -1082,6 +1082,8 @@ Window {
                 stepStrip(-1)
             else if (window.launcher.pluginKeyword.length === 0)
                 window.launcher.cycleScope(-1)
+            else // a keyword has the list: the words looked for as names (GitHub #411)
+                window.launcher.searchKeywordAsWords()
             break
         case Qt.Key_Backspace:
             // Ctrl+Backspace at the end of a path: a level up, out of a folder

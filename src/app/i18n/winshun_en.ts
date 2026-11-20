@@ -3091,8 +3091,8 @@
         <translation>Press Tab to go back to searching names</translation>
     </message>
     <message>
-        <source>按 Esc 清空关键字后面的文字</source>
-        <translation>Press Esc to clear the words after the keyword</translation>
+        <source>按 Shift+Tab 改搜文件名，Esc 清空关键字后面的文字</source>
+        <translation>Press Shift+Tab to search names instead, Esc to clear the words after the keyword</translation>
     </message>
     <message>
         <source>文件名和 %1的内容里都没有</source>
@@ -9219,8 +9219,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Scope and filters</translation>
     </message>
     <message>
-        <source>切换到上一个范围</source>
-        <translation>Back to the previous scope</translation>
+        <source>切换到上一个范围；插件关键字后面：改搜文件名</source>
+        <translation>Back to the previous scope; after a plugin keyword: search names instead</translation>
     </message>
     <message>
         <source>在“文件”里切换类型，在“内容”里换个文件夹</source>
@@ -12867,6 +12867,10 @@ Content index: %5</translation>
     <message>
         <source>返回上一级</source>
         <translation>Up a level</translation>
+    </message>
+    <message>
+        <source>改搜文件名</source>
+        <translation>Search names</translation>
     </message>
     <message>
         <source>打开位置</source>
