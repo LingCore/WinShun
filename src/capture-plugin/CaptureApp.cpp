@@ -1363,6 +1363,9 @@ capture::PinManager& CaptureApp::pins()
                 [this](const QString& saved, const QString& error) { notifySaved(saved, error); }, m_settings.options().saveFolder);
         };
         callbacks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
+        callbacks.ocrCopy = [this](const QImage& image, double dpr, const QRect& where) {
+            captureOcrThen(image, dpr, where, OcrThen::Copy);
+        };
         callbacks.edit = [this](capture::PinWindow* pin) { editPin(pin); };
         callbacks.translate = [this](capture::PinWindow* pin) { translatePin(pin, false); };
         callbacks.closed = [this] { m_idleTrim->poke(); }; // its pixels can go back to Windows

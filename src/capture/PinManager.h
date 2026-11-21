@@ -34,6 +34,7 @@ public:
         std::function<void(const QImage&, bool screenshot)> copy; // screenshot: the pin came from a capture
         std::function<void(const QImage&, const QString& path)> save; // empty path: the Screenshots folder
         std::function<void(const QImage&, double dpr, const QRect& picture)> ocr;
+        std::function<void(const QImage&, double dpr, const QRect& picture)> ocrCopy; // Shift+C / 复制文字 (#423)
         std::function<void(PinWindow*)> translate; // 翻译: its words translated in place (#191); empty: not offered
         std::function<void(PinWindow*)> edit; // 编辑: the editing window opens on it
         std::function<void()> closed; // a pin closed: its memory can go back to Windows
@@ -100,6 +101,7 @@ private:
     void watch(); // one tick: Ctrl and the cursor against every click-through pin
     PinWindow* add(const QImage& image, QPoint origin, bool screenshot, QByteArray project, std::optional<QPoint> fitAbout);
     void showMenu(PinWindow* pin, POINT at);
+    void copyWords(PinWindow* pin);
     void closed(PinWindow* pin);
     // The key card: what the pins report (PinWindow::Host), and the card shown or taken away to match.
     void hintFocus(PinWindow* pin, bool focused, bool fromOwnWindow);

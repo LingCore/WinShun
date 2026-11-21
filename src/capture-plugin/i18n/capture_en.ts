@@ -2281,6 +2281,10 @@ The unfinished recording is kept at: %1</translation>
         <translation>Read text</translation>
     </message>
     <message>
+        <source>复制文字</source>
+        <translation>Copy text</translation>
+    </message>
+    <message>
         <source>收到屏幕顶边</source>
         <translation>To the top edge</translation>
     </message>

@@ -321,10 +321,21 @@ private slots:
         QImage card(120, 40, QImage::Format_RGB32);
         card.fill(Qt::white);
         QImage copied;
+        QImage ocrCopied;
         QString copiedText;
+        std::vector<shell::MenuItem> menuSeen;
         capture::PinManager::Callbacks callbacks;
         callbacks.copy = [&](const QImage& image, bool) { copied = image; };
         callbacks.copyText = [&](const QString& text) { copiedText = text; };
+        callbacks.ocrCopy = [&](const QImage& image, double, const QRect&) { ocrCopied = image; };
+        callbacks.popupMenu = [&](HWND, const std::vector<shell::MenuItem>& items, POINT) {
+            menuSeen = items;
+            for (const auto& item : items) {
+                if (item.text.startsWith(u"复制文字\tShift+C"_s))
+                    return item.id;
+            }
+            return 0;
+        };
         capture::PinManager pins(std::move(callbacks));
         const QString words = u"贴住的原文\n第二行"_s;
         pins.pinFitted(card, QPoint(600, 200), QPoint(660, 220), false, words);
@@ -350,6 +361,14 @@ private slots:
         ::SendMessageW(pin, WM_KEYDOWN, 'C', 0);
         QCOMPARE(copiedText, words);
         QVERIFY(copied.isNull());
+        // Shift+C on a text pin copies its text directly without OCR (#423).
+        copiedText.clear();
+        held[VK_CONTROL] = 0;
+        held[VK_SHIFT] = 0x80;
+        QVERIFY(::SetKeyboardState(held));
+        ::SendMessageW(pin, WM_KEYDOWN, 'C', 0);
+        QCOMPARE(copiedText, words);
+        QVERIFY(ocrCopied.isNull());
         pins.closeAll();
         pins.pinFitted(card, QPoint(600, 200), QPoint(660, 220), false); // a picture: copied as one
         pin = nullptr;
@@ -364,9 +383,25 @@ private slots:
         }, reinterpret_cast<LPARAM>(&pin));
         QVERIFY(pin);
         copiedText.clear();
+        held[VK_SHIFT] = 0;
+        held[VK_CONTROL] = 0x80;
+        QVERIFY(::SetKeyboardState(held));
         ::SendMessageW(pin, WM_KEYDOWN, 'C', 0);
         QVERIFY(copiedText.isEmpty());
         QCOMPARE(copied, card);
+        // Shift+C on a picture pin triggers ocrCopy (#423), and its menu offers 复制文字.
+        held[VK_CONTROL] = 0;
+        held[VK_SHIFT] = 0x80;
+        QVERIFY(::SetKeyboardState(held));
+        ::SendMessageW(pin, WM_KEYDOWN, 'C', 0);
+        QCOMPARE(ocrCopied, card);
+        ocrCopied = {};
+        held[VK_SHIFT] = 0;
+        QVERIFY(::SetKeyboardState(held));
+        ::SendMessageW(pin, WM_CONTEXTMENU, reinterpret_cast<WPARAM>(pin), MAKELPARAM(650, 220));
+        QVERIFY(std::any_of(menuSeen.begin(), menuSeen.end(),
+            [](const shell::MenuItem& m) { return m.text == u"复制文字\tShift+C"_s; }));
+        QCOMPARE(ocrCopied, card);
     }
 
     void keyboard_data()

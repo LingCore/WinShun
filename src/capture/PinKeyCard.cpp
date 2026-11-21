@@ -112,6 +112,7 @@ std::vector<PinKeyRow> pinKeyRows(const CaptureKeys& keys, bool ocr, bool otherS
     add({KeyAction::PinSave}, menu(QT_TRANSLATE_NOOP("ws::capture::PinManager", "保存到“屏幕截图”")));
     if (ocr) {
         add({KeyAction::PinOcr}, menu(QT_TRANSLATE_NOOP("ws::capture::PinManager", "识别文字")));
+        add({KeyAction::PinOcrCopy}, menu(QT_TRANSLATE_NOOP("ws::capture::PinManager", "复制文字")));
         add({KeyAction::PinTextPick}, menu(QT_TRANSLATE_NOOP("ws::capture::PinManager", "选择文字")));
     }
     if (otherSide) {

@@ -37,7 +37,8 @@ enum MenuCommand {
     OtherSideCommand,
     CopyTranslationCommand,
     TranslateCommand,
-    CopyPictureCommand
+    CopyPictureCommand,
+    OcrCopyCommand
 };
 
 shell::MenuItem command(int id, QString text, char16_t glyph, bool checked = false, bool enabled = true)
@@ -109,6 +110,7 @@ PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, 
         if (m_callbacks.ocr)
             m_callbacks.ocr(pin->image(), pin->dpr(), pin->pictureRect());
     };
+    host.ocrCopy = [this](PinWindow* pin) { copyWords(pin); };
     host.dark = m_callbacks.dark;
     host.accent = m_callbacks.accent;
     host.edge = m_callbacks.edge;
@@ -371,6 +373,20 @@ void PinManager::closed(PinWindow* pin)
     }, Qt::QueuedConnection);
 }
 
+void PinManager::copyWords(PinWindow* pin)
+{
+    if (!pin)
+        return;
+    // Copied text pinned (#388) or a translated pin currently showing its
+    // translation: copy the exact text directly without re-running OCR.
+    if (!pin->copiedText().isEmpty() && m_callbacks.copyText)
+        m_callbacks.copyText(pin->copiedText());
+    else if (pin->hasOtherSide() && pin->translationShown() && !pin->translatedWords().isEmpty() && m_callbacks.copyText)
+        m_callbacks.copyText(pin->translatedWords());
+    else if (m_callbacks.ocrCopy)
+        m_callbacks.ocrCopy(pin->image(), pin->dpr(), pin->pictureRect());
+}
+
 void PinManager::showMenu(PinWindow* pin, POINT at)
 {
     const bool ocrAvailable = m_callbacks.ocrAvailable && m_callbacks.ocrAvailable();
@@ -412,6 +428,8 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
     if (full) {
         items.push_back(command(EditCommand, tr("编辑") + hint(KeyAction::PinEdit), 0xE70F));
         items.push_back(command(OcrCommand, ocr + hint(KeyAction::PinOcr), 0xE8A5));
+        if (!words)
+            items.push_back(command(OcrCopyCommand, tr("复制文字") + hint(KeyAction::PinOcrCopy), 0xE8C8));
         if (m_callbacks.translate && !pin->hasOtherSide())
             items.push_back(command(TranslateCommand, tr("翻译"), 0xE8C1, false, ocrAvailable));
         items.push_back(command(PickTextCommand, tr("选择文字") + hint(KeyAction::PinTextPick), 0xE8D2,
@@ -468,6 +486,9 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
     case OcrCommand:
         if (m_callbacks.ocr)
             m_callbacks.ocr(pin->image(), pin->dpr(), pin->pictureRect());
+        break;
+    case OcrCopyCommand:
+        copyWords(pin);
         break;
     case OtherSideCommand:
         pin->showOtherSide();

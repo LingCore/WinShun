@@ -186,9 +186,10 @@ private slots:
         QCOMPARE(rows[6].keys, QStringList {keys.text(KeyAction::PinClose)});
 
         rows = pinKeyRows(keys, true, true, true); // text recognition there, a translated pin showing its translation
-        QCOMPARE(texts(rows), QStringList({u"编辑"_s, u"复制"_s, u"保存到“屏幕截图”"_s, u"识别文字"_s, u"选择文字"_s, u"显示原文"_s,
+        QCOMPARE(texts(rows), QStringList({u"编辑"_s, u"复制"_s, u"保存到“屏幕截图”"_s, u"识别文字"_s, u"复制文字"_s, u"选择文字"_s, u"显示原文"_s,
                                   u"旋转与翻转"_s, u"缩放 / 透明度"_s, u"收成小块"_s, u"关闭"_s}));
-        QCOMPARE(rows[5].keys, QStringList {u"Tab"_s});
+        QCOMPARE(rows[4].keys, QStringList {keys.text(KeyAction::PinOcrCopy)});
+        QCOMPARE(rows[6].keys, QStringList {u"Tab"_s});
         QCOMPARE(texts(pinKeyRows(keys, false, true, false))[3], u"显示译文"_s);
 
         keys.set(KeyAction::PinCopy, QKeyCombination()); // cleared in the settings

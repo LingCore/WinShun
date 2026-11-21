@@ -1120,6 +1120,10 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
                 if (m_form == PinForm::Full && m_host.ocr)
                     m_host.ocr(this);
                 break;
+            case KeyAction::PinOcrCopy:
+                if (m_form == PinForm::Full && m_host.ocrCopy)
+                    m_host.ocrCopy(this);
+                break;
             case KeyAction::PinCollapseEdge:
                 if (m_form == PinForm::Full)
                     collapse(PinForm::Edge);

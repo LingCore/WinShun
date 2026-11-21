@@ -502,6 +502,7 @@ Column {
                             { id: "PinSave", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "保存") },
                             { id: "PinEdit", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "编辑") },
                             { id: "PinOcr", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "识别文字") },
+                            { id: "PinOcrCopy", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "复制文字") },
                             { id: "PinCollapseEdge", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "收到屏幕顶边") },
                             { id: "PinCollapse", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "收起/展开") },
                             { id: "PinTextPick", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "选取文字") },
