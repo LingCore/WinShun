@@ -97,6 +97,11 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool folderMenuFavorites READ folderMenuFavorites WRITE setFolderMenuFavorites NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuRecent READ folderMenuRecent WRITE setFolderMenuRecent NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuWindows READ folderMenuWindows WRITE setFolderMenuWindows NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuFavoriteFolders READ folderMenuFavoriteFolders WRITE setFolderMenuFavoriteFolders NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuFavoriteFiles READ folderMenuFavoriteFiles WRITE setFolderMenuFavoriteFiles NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuFavoriteApps READ folderMenuFavoriteApps WRITE setFolderMenuFavoriteApps NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuFavoritePlaces READ folderMenuFavoritePlaces WRITE setFolderMenuFavoritePlaces NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuFavoriteCommands READ folderMenuFavoriteCommands WRITE setFolderMenuFavoriteCommands NOTIFY changed FINAL)
     Q_PROPERTY(int folderMenuFavoritesInline READ folderMenuFavoritesInline WRITE setFolderMenuFavoritesInline NOTIFY changed FINAL)
     Q_PROPERTY(int folderMenuRecentInline READ folderMenuRecentInline WRITE setFolderMenuRecentInline NOTIFY changed FINAL)
     Q_PROPERTY(int folderMenuWindowsInline READ folderMenuWindowsInline WRITE setFolderMenuWindowsInline NOTIFY changed FINAL)
@@ -505,6 +510,16 @@ public:
     void setFolderMenuRecent(bool on);
     bool folderMenuWindows() const { return m_settings.folderMenuWindows; }
     void setFolderMenuWindows(bool on);
+    bool folderMenuFavoriteFolders() const { return m_settings.folderMenuFavoriteFolders; }
+    void setFolderMenuFavoriteFolders(bool on);
+    bool folderMenuFavoriteFiles() const { return m_settings.folderMenuFavoriteFiles; }
+    void setFolderMenuFavoriteFiles(bool on);
+    bool folderMenuFavoriteApps() const { return m_settings.folderMenuFavoriteApps; }
+    void setFolderMenuFavoriteApps(bool on);
+    bool folderMenuFavoritePlaces() const { return m_settings.folderMenuFavoritePlaces; }
+    void setFolderMenuFavoritePlaces(bool on);
+    bool folderMenuFavoriteCommands() const { return m_settings.folderMenuFavoriteCommands; }
+    void setFolderMenuFavoriteCommands(bool on);
     int folderMenuFavoritesInline() const { return m_settings.folderMenuFavoritesInline; }
     int folderMenuRecentInline() const { return m_settings.folderMenuRecentInline; }
     int folderMenuWindowsInline() const { return m_settings.folderMenuWindowsInline; }

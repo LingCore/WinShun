@@ -54,6 +54,7 @@ Window {
     property string hoveredText
     property bool hoveredCut: false // its name does not fit (FolderMenuColumn's entry.cut)
     property int tipLevel: -1
+    property bool refreshing: false
     property point popupAnchor
     property rect availableArea
     readonly property int maxColumns: 8
@@ -79,6 +80,10 @@ Window {
     }
     width: columnWidth(first.naturalWidth)
     height: Math.min(first.listHeight + 2 * padding, maxHeight)
+    onWidthChanged: if (visible) {
+        x = withinX(x)
+        layout()
+    }
     onHeightChanged: if (visible) {
         y = within(popupTop)
         layout()
@@ -87,6 +92,10 @@ Window {
     // Where the first column went: beside the pointer, flipped where the
     // screen ends. It stays there while columns come and go (#349).
     property real popupTop
+    function withinX(x) {
+        const area = availableArea
+        return area.width > 0 ? Math.max(area.x + 8, Math.min(x, area.x + area.width - width - 8)) : x
+    }
     function within(y) {
         const area = availableArea
         return area.width > 0 ? Math.max(area.y + 8, Math.min(y, area.y + area.height - height - 8)) : y
@@ -273,7 +282,7 @@ Window {
         }
         const entry = rowsOf(level)[i]
         if (entry.children !== undefined) {
-            showPage(level, { text: entry.text, pageTitle: entry.pageTitle, children: entry.children, from: i }, byPointer)
+            showPage(level, { text: entry.text, pageTitle: entry.pageTitle, group: entry.group, children: entry.children, from: i }, byPointer)
             return
         }
         const asked = { level: level, from: i, folder: entry.folder, text: entry.text, byPointer: byPointer }
@@ -287,10 +296,81 @@ Window {
         slow.restart()
         folderMenu.listFolder(entry.folder)
     }
+    function findToggleRow(rows, toggleId) {
+        for (let k = 0; k < rows.length; ++k) {
+            if (rows[k].toggle === toggleId)
+                return k
+        }
+        return -1
+    }
+    function toggle(level, i) {
+        if (level >= depth || !selectable(level, i)) return
+        const entry = rowsOf(level)[i]
+        if (entry === undefined || entry.toggle === undefined) return
+        const toggleId = entry.toggle
+        dwell.stop()
+        aim.stop()
+        closeAfter(level, i)
+        refreshing = true
+        const shown = Math.min(depth, maxColumns)
+        for (let v = 0; v < shown; ++v) {
+            const col = columnAt(v)
+            if (col !== null) col.preserveScroll = true
+        }
+        try {
+            folderMenu.toggleSection(toggleId)
+            refreshOpenPages(level, toggleId)
+        } finally {
+            for (let v = 0; v < shown; ++v) {
+                const col = columnAt(v)
+                if (col !== null) col.preserveScroll = false
+            }
+            refreshing = false
+        }
+    }
+    function refreshOpenPages(targetLevel, toggleId) {
+        let parentRows = folderMenu.entries
+        const updated = []
+        for (let k = 0; k < pages.length; ++k) {
+            const oldPage = pages[k]
+            let matchedIndex = -1
+            if (oldPage.group !== undefined) {
+                for (let r = 0; r < parentRows.length; ++r) {
+                    if (parentRows[r].group === oldPage.group) {
+                        matchedIndex = r
+                        break
+                    }
+                }
+            } else if (oldPage.from >= 0 && oldPage.from < parentRows.length) {
+                matchedIndex = oldPage.from
+            }
+            if (matchedIndex < 0 || parentRows[matchedIndex].children === undefined)
+                break
+            const row = parentRows[matchedIndex]
+            updated.push({
+                text: row.text,
+                pageTitle: row.pageTitle,
+                group: row.group,
+                children: row.children,
+                from: matchedIndex,
+                byPointer: oldPage.byPointer
+            })
+            parentRows = row.children
+        }
+        pages = updated
+        const activeLevel = Math.min(targetLevel, depth - 1)
+        const found = findToggleRow(rowsOf(activeLevel), toggleId)
+        highlighted = found >= 0 ? found : step(activeLevel, -1, 1)
+        if (pointerLevel >= activeLevel)
+            pointerLevel = pointerRow = -1
+        rest()
+        layout()
+    }
     function activate(level, i, byPointer) {
         if (level >= depth || !selectable(level, i)) return
         const entry = rowsOf(level)[i]
-        if (entry.action !== undefined) folderMenu.trigger(entry.action)
+        if (entry.toggle !== undefined) toggle(level, i)
+        else if (entry.action !== undefined) folderMenu.trigger(entry.action)
         else open(level, i, byPointer)
     }
     function back() {
@@ -371,7 +451,7 @@ Window {
     // and close once it is not. What the list brings under a pointer at rest
     // opens nothing until the pointer moves (#348).
     function scrolled(level) {
-        if (level >= depth) return
+        if (refreshing || level >= depth) return
         rest()
         if (level === depth - 1) return
         const shown = columnAt(visualOf(level))
@@ -491,10 +571,30 @@ Window {
         case Qt.Key_End:
         case Qt.Key_PageDown: highlighted = step(level, 0, -1); return
         case Qt.Key_Right:
-            if (highlighted >= 0) open(level, highlighted, false)
+            if (highlighted >= 0) {
+                const entry = rowsOf(level)[highlighted]
+                if (entry !== undefined && entry.toggle !== undefined) {
+                    if (!entry.expanded) toggle(level, highlighted)
+                } else {
+                    open(level, highlighted, false)
+                }
+            }
             return
         case Qt.Key_Left:
+            if (highlighted >= 0) {
+                const entry = rowsOf(level)[highlighted]
+                if (entry !== undefined && entry.toggle !== undefined && entry.expanded) {
+                    toggle(level, highlighted)
+                    return
+                }
+            }
+            back()
+            return
         case Qt.Key_Backspace: back(); return
+        case Qt.Key_Space:
+            if (highlighted >= 0 && rowsOf(level)[highlighted]?.toggle !== undefined)
+                toggle(level, highlighted)
+            return
         case Qt.Key_Return:
         case Qt.Key_Enter:
             if (highlighted >= 0) activate(level, highlighted, false)
@@ -548,6 +648,8 @@ Window {
             color: Theme.menuBackground
             width: menu.columnWidth(rows.naturalWidth)
             height: Math.min(rows.listHeight + 2 * rows.padding, menu.maxHeight)
+            onWidthChanged: if (visible && page !== null) menu.placeColumn(next, next.visual)
+            onHeightChanged: if (visible && page !== null) menu.placeColumn(next, next.visual)
 
             FolderMenuColumn {
                 id: rows

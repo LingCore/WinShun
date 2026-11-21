@@ -271,10 +271,64 @@ void FolderMenu::setGroups(bool favorites, bool recent, bool windows)
     m_listWindows = windows;
 }
 
+void FolderMenu::setFavoriteKinds(FavoriteKinds kinds)
+{
+    m_favoriteKinds = kinds;
+}
+
+void FolderMenu::setAppsExpanded(bool expanded)
+{
+    if (m_appsExpanded == expanded)
+        return;
+    m_appsExpanded = expanded;
+    if (m_open && m_hasFavorites)
+        rebuildEntries();
+}
+
 namespace {
 constexpr int clampInline(int count) noexcept
 {
     return count == FolderMenu::kInlineAll ? FolderMenu::kInlineAll : std::clamp(count, 0, FolderMenu::kInlineMax);
+}
+
+bool includesKind(const FolderMenu::FavoriteKinds& kinds, Favorite::Kind kind) noexcept
+{
+    switch (kind) {
+    case Favorite::Kind::Folder:
+        return kinds.folders;
+    case Favorite::Kind::File:
+        return kinds.files;
+    case Favorite::Kind::App:
+        return kinds.apps;
+    case Favorite::Kind::Place:
+        return kinds.places;
+    case Favorite::Kind::Command:
+        return kinds.commands;
+    }
+    return false;
+}
+
+QVariantMap appsToggleRow(qsizetype count, bool expanded)
+{
+    return QVariantMap {
+        {u"text"_s, FolderMenu::tr("应用")},
+        {u"detail"_s, QString::number(count)},
+        {u"toggle"_s, u"apps"_s},
+        {u"expanded"_s, expanded},
+    };
+}
+
+QVariantList combineFavoriteRows(const QVariantList& primary, const QVariantList& apps, bool appsExpanded, bool leadingSeparator)
+{
+    QVariantList rows = primary;
+    if (!apps.isEmpty()) {
+        if (leadingSeparator && !primary.isEmpty())
+            rows.append(QVariantMap {{u"separator"_s, true}});
+        rows.append(appsToggleRow(apps.size(), appsExpanded));
+        if (appsExpanded)
+            rows.append(apps);
+    }
+    return rows;
 }
 } // namespace
 
@@ -304,6 +358,57 @@ QVariantList FolderMenu::groupEntries(const QString& title, const QString& glyph
         group[u"children"_s] = children.sliced(count);
         group[u"detail"_s] = QString::number(children.size() - count);
         rows.append(group);
+    }
+    return rows;
+}
+
+QVariantList FolderMenu::favoriteGroupEntries(const QString& title, const QString& glyph, const QVariantList& primary,
+    const QVariantList& apps, bool appsExpanded, int inlineCount)
+{
+    inlineCount = clampInline(inlineCount);
+    if (apps.isEmpty()) {
+        QVariantList rows = groupEntries(title, glyph, primary, inlineCount);
+        if (!rows.isEmpty()) {
+            QVariantMap first = rows.first().toMap();
+            if (first.contains(u"children"_s)) {
+                first.insert(u"group"_s, u"favorites"_s);
+                rows[0] = first;
+            }
+        }
+        return rows;
+    }
+    const qsizetype total = primary.size() + apps.size();
+    if (inlineCount == 0) {
+        return {QVariantMap {{u"text"_s, title}, {u"glyph"_s, glyph}, {u"group"_s, u"favorites"_s},
+            {u"children"_s, combineFavoriteRows(primary, apps, appsExpanded, true)},
+            {u"detail"_s, QString::number(total)}, {u"disabled"_s, false}}};
+    }
+    QVariantList rows {QVariantMap {{u"text"_s, title}, {u"detail"_s, QString::number(total)},
+        {u"heading"_s, true}, {u"disabled"_s, true}}};
+    if (inlineCount == kInlineAll) {
+        rows.append(combineFavoriteRows(primary, apps, appsExpanded, false));
+        return rows;
+    }
+    if (primary.size() >= inlineCount) {
+        rows.append(primary.first(inlineCount));
+        const QVariantList restPrimary = primary.sliced(inlineCount);
+        rows.append(QVariantMap {{u"text"_s, tr("更多…")}, {u"pageTitle"_s, title}, {u"glyph"_s, glyph},
+            {u"group"_s, u"favorites-more"_s},
+            {u"children"_s, combineFavoriteRows(restPrimary, apps, appsExpanded, true)},
+            {u"detail"_s, QString::number(restPrimary.size() + apps.size())}, {u"disabled"_s, false}});
+        return rows;
+    }
+    rows.append(primary);
+    rows.append(appsToggleRow(apps.size(), appsExpanded));
+    if (appsExpanded) {
+        const qsizetype directApps = std::min(inlineCount - primary.size(), apps.size());
+        rows.append(apps.first(directApps));
+        if (directApps < apps.size()) {
+            rows.append(QVariantMap {{u"text"_s, tr("更多…")}, {u"pageTitle"_s, tr("应用")}, {u"glyph"_s, glyph},
+                {u"group"_s, u"favorites-more"_s},
+                {u"children"_s, apps.sliced(directApps)},
+                {u"detail"_s, QString::number(apps.size() - directApps)}, {u"disabled"_s, false}});
+        }
     }
     return rows;
 }
@@ -654,8 +759,42 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
     m_folder = found.folder;
     if (m_folder.isEmpty() && hit.surface == folderview::Surface::Desktop)
         m_folder = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
+    populate(m_folder, found.recent, found.windows);
+
+    // Where the second press was (or the hotkey's anchor): its top-left
+    // corner there, as a context menu's. In Qt's pixels on the screen it is
+    // on (the same origin in both).
+    QScreen* screen = screenAt(hit.pt);
+    if (!screen)
+        return;
+    const QPoint origin = screen->geometry().topLeft();
+    const qreal scale = screen->devicePixelRatio();
+    const QPointF pos(origin.x() + (hit.pt.x - origin.x()) / scale, origin.y() + (hit.pt.y - origin.y()) / scale);
+    emit popupRequested(pos);
+    if (!m_window->isVisible())
+        return;
+    m_open = true;
+    emit openChanged(true);
+    startKeys(hit.root);
+}
+
+void FolderMenu::previewMenu(const QString& folder, const QStringList& recent, const QStringList& windows)
+{
+    m_hit = {};
+    m_folder = folder;
+    populate(m_folder, recent, windows);
+}
+
+void FolderMenu::populate(const QString& folder, const QStringList& recent, const QStringList& windows)
+{
     m_entries.clear();
     m_actions.clear();
+    m_hasFavorites = false;
+    m_favoritePrimary.clear();
+    m_favoriteApps.clear();
+    m_afterFavoriteGroups.clear();
+    m_folderActionEntries.clear();
+    m_settingsEntries.clear();
     ++m_shown;
     const auto action = [this](Kind kind, const QString& path, const QString& text, const QString& detail,
                             const QString& glyph, const QString& icon = QString(), const QString& tooltip = QString()) {
@@ -667,18 +806,14 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
             row.insert(u"folder"_s, path); // its row opens the folders inside it (#170)
         return row;
     };
-    const auto separator = [this] {
-        if (!m_entries.isEmpty() && !m_entries.last().toMap().value(u"separator"_s).toBool()) {
-            m_entries.append(QVariantMap {{u"separator"_s, true}});
-        }
-    };
-    QList<QVariantList> groups;
     if (m_listFavorites) {
-        QVariantList favorites;
+        m_hasFavorites = true;
         const auto apps = m_apps ? m_apps->apps() : nullptr;
         const auto places = m_places ? m_places->places() : nullptr;
         const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
         for (const Favorite& f : m_favorites ? m_favorites->items() : FavoriteList()) {
+            if (!includesKind(m_favoriteKinds, f.kind))
+                continue;
             QString icon;
             QString glyph = u"\uE734"_s;
             QString tooltip = f.path;
@@ -690,7 +825,7 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
             case Favorite::Kind::Command:
                 glyph = u"\uE756"_s;
                 tooltip = f.command;
-                icon = FileIconProvider::commandIconUrl(f.command, f.workingDirectory.isEmpty() ? m_folder : f.workingDirectory,
+                icon = FileIconProvider::commandIconUrl(f.command, f.workingDirectory.isEmpty() ? folder : f.workingDirectory,
                     f.icon, dark);
                 break;
             case Favorite::Kind::App: {
@@ -712,74 +847,84 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
                 glyph, icon, tooltip);
             if (f.kind == Favorite::Kind::Folder)
                 row.insert(u"folder"_s, f.path);
-            favorites.append(row);
+            if (f.kind == Favorite::Kind::App)
+                m_favoriteApps.append(row);
+            else
+                m_favoritePrimary.append(row);
         }
-        groups.append(groupEntries(tr("收藏夹"), u"\uE734"_s, favorites, m_favoritesInline));
     }
     const auto addList = [&](const QString& text, const QStringList& folders, qsizetype max, const QString& glyph, int inlineCount,
                              bool onlyWithSome) {
         QVariantList children;
         QStringList listed;
-        if (!m_folder.isEmpty())
-            listed.append(m_folder);
-        for (const QString& folder : folders) {
-            if (children.size() >= max || listed.contains(folder, Qt::CaseInsensitive))
-                continue;
-            children.append(action(Kind::Folder, folder, nameOf(folder), {}, u"\uE8B7"_s,
-                FileIconProvider::iconUrl(folder, true), folder));
+        if (!folder.isEmpty())
             listed.append(folder);
+        for (const QString& item : folders) {
+            if (children.size() >= max || listed.contains(item, Qt::CaseInsensitive))
+                continue;
+            children.append(action(Kind::Folder, item, nameOf(item), {}, u"\uE8B7"_s,
+                FileIconProvider::iconUrl(item, true), item));
+            listed.append(item);
         }
         if (children.isEmpty() && onlyWithSome)
             return;
-        groups.append(groupEntries(text, glyph, children, inlineCount));
+        m_afterFavoriteGroups.append(groupEntries(text, glyph, children, inlineCount));
     };
     if (m_listRecent && m_recordHistory)
-        addList(tr("最近的文件夹"), found.recent, kMaxRecent, u"\uE81C"_s, m_recentInline, false);
+        addList(tr("最近的文件夹"), recent, kMaxRecent, u"\uE81C"_s, m_recentInline, false);
     // The folder it is in is not among them: with no other open, no "0" that
     // reads as if none were found (GitHub #393).
     if (m_listWindows)
-        addList(tr("已打开的文件夹"), found.windows, found.windows.size(), u"\uE8A7"_s, m_windowsInline, true);
-    m_entries.append(assembleGroups(groups));
-    if (!m_folder.isEmpty()) {
-        separator();
+        addList(tr("已打开的文件夹"), windows, windows.size(), u"\uE8A7"_s, m_windowsInline, true);
+    if (!folder.isEmpty()) {
         if (m_itemSearch)
-            m_entries.append(action(Kind::Search, m_folder, tr("在“%1”里搜索").arg(nameOf(m_folder)), {}, u"\uE721"_s));
+            m_folderActionEntries.append(action(Kind::Search, folder, tr("在“%1”里搜索").arg(nameOf(folder)), {}, u"\uE721"_s));
         if (m_itemCopyPath) // plain text, no quotes (#137); not offered where there is no folder path
-            m_entries.append(action(Kind::CopyPath, m_folder, tr("复制路径"), {}, u"\uE8C8"_s));
+            m_folderActionEntries.append(action(Kind::CopyPath, folder, tr("复制路径"), {}, u"\uE8C8"_s));
         if (m_itemCmd)
-            m_entries.append(action(Kind::Terminal, m_folder, tr("在此打开命令提示符"), {}, u"\uE756"_s));
+            m_folderActionEntries.append(action(Kind::Terminal, folder, tr("在此打开命令提示符"), {}, u"\uE756"_s));
         if (m_itemPowerShell)
-            m_entries.append(action(Kind::PowerShell, m_folder, tr("在此打开 PowerShell"), {}, u"\uE756"_s));
+            m_folderActionEntries.append(action(Kind::PowerShell, folder, tr("在此打开 PowerShell"), {}, u"\uE756"_s));
         if (m_itemFavorite) {
-            if (m_favorites && m_favorites->contains(m_folder))
-                m_entries.append(action(Kind::RemoveFavorite, m_folder, tr("从收藏夹移除这个文件夹"), {}, u"\uE8D9"_s));
+            if (m_favorites && m_favorites->contains(folder))
+                m_folderActionEntries.append(action(Kind::RemoveFavorite, folder, tr("从收藏夹移除这个文件夹"), {}, u"\uE8D9"_s));
             else
-                m_entries.append(action(Kind::AddFavorite, m_folder, tr("收藏这个文件夹"), {}, u"\uE734"_s));
+                m_folderActionEntries.append(action(Kind::AddFavorite, folder, tr("收藏这个文件夹"), {}, u"\uE734"_s));
         }
     }
-    if (m_itemSettings) {
-        separator();
-        m_entries.append(action(Kind::Settings, {}, tr("Win顺 设置…"), {}, u"\uE713"_s));
-    } else if (!m_entries.isEmpty() && m_entries.last().toMap().value(u"separator"_s).toBool()) {
-        m_entries.removeLast(); // no action left to stand under it
-    }
-    emit entriesChanged();
+    if (m_itemSettings)
+        m_settingsEntries.append(action(Kind::Settings, {}, tr("Win顺 设置…"), {}, u"\uE713"_s));
+    rebuildEntries();
+}
 
-    // Where the second press was (or the hotkey's anchor): its top-left
-    // corner there, as a context menu's. In Qt's pixels on the screen it is
-    // on (the same origin in both).
-    QScreen* screen = screenAt(hit.pt);
-    if (!screen)
+void FolderMenu::rebuildEntries()
+{
+    m_entries.clear();
+    const auto appendSection = [this](const QVariantList& section) {
+        if (section.isEmpty())
+            return;
+        if (!m_entries.isEmpty())
+            m_entries.append(QVariantMap {{u"separator"_s, true}});
+        m_entries.append(section);
+    };
+    QList<QVariantList> groups;
+    if (m_hasFavorites)
+        groups.append(favoriteGroupEntries(tr("收藏夹"), u"\uE734"_s, m_favoritePrimary, m_favoriteApps, m_appsExpanded, m_favoritesInline));
+    groups.append(m_afterFavoriteGroups);
+    m_entries = assembleGroups(groups);
+    appendSection(m_folderActionEntries);
+    appendSection(m_settingsEntries);
+    emit entriesChanged();
+}
+
+void FolderMenu::toggleSection(const QString& id)
+{
+    if (id != u"apps")
         return;
-    const QPoint origin = screen->geometry().topLeft();
-    const qreal scale = screen->devicePixelRatio();
-    const QPointF pos(origin.x() + (hit.pt.x - origin.x()) / scale, origin.y() + (hit.pt.y - origin.y()) / scale);
-    emit popupRequested(pos);
-    if (!m_window->isVisible())
-        return;
-    m_open = true;
-    emit openChanged(true);
-    startKeys(hit.root);
+    m_appsExpanded = !m_appsExpanded;
+    emit appsExpandedRequested(m_appsExpanded);
+    if (m_hasFavorites)
+        rebuildEntries();
 }
 
 void FolderMenu::startKeys(HWND target)

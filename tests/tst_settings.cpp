@@ -1472,6 +1472,43 @@ private slots:
         QVERIFY(none.folderMenuFavorites && none.folderMenuRecent && none.folderMenuWindows);
     }
 
+    void folderMenuFavoriteKindsAndAppsExpanded()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings fresh;
+        fresh.load();
+        QVERIFY(fresh.folderMenuFavoriteFolders && fresh.folderMenuFavoriteFiles && fresh.folderMenuFavoriteApps
+            && fresh.folderMenuFavoritePlaces && fresh.folderMenuFavoriteCommands);
+        QVERIFY(fresh.folderMenuAppsExpanded);
+
+        fresh.folderMenuFavoriteApps = false;
+        fresh.folderMenuFavoritePlaces = false;
+        fresh.folderMenuAppsExpanded = false;
+        QVERIFY(fresh.saveChecked());
+
+        ws::Settings restored;
+        restored.load();
+        QVERIFY(restored.folderMenuFavoriteFolders && restored.folderMenuFavoriteFiles && !restored.folderMenuFavoriteApps
+            && !restored.folderMenuFavoritePlaces && restored.folderMenuFavoriteCommands);
+        QVERIFY(!restored.folderMenuAppsExpanded);
+
+        // A hand-edited file with all five kinds off restores all five.
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Launcher/FolderMenuFavoriteFolders"_s, false);
+            ini.setValue(u"Launcher/FolderMenuFavoriteFiles"_s, false);
+            ini.setValue(u"Launcher/FolderMenuFavoriteApps"_s, false);
+            ini.setValue(u"Launcher/FolderMenuFavoritePlaces"_s, false);
+            ini.setValue(u"Launcher/FolderMenuFavoriteCommands"_s, false);
+        }
+        ws::Settings recovered;
+        recovered.load();
+        QVERIFY(recovered.folderMenuFavoriteFolders && recovered.folderMenuFavoriteFiles && recovered.folderMenuFavoriteApps
+            && recovered.folderMenuFavoritePlaces && recovered.folderMenuFavoriteCommands);
+    }
+
     // The double click is a choice of its own (GitHub #196): on as it always
     // was, and off stays off with the middle button on.
     void folderMenuTriggers()

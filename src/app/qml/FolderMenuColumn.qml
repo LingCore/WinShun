@@ -16,9 +16,11 @@ Item {
     // are a column further on: drawn fainter.
     property bool faint: false
     property real dpr: 1
+    property bool preserveScroll: false
     readonly property real padding: Theme.menuPadding
     readonly property int itemHeight: Theme.menuItemHeight
     readonly property int sectionHeight: Theme.menuCaptionSize + 12
+    readonly property int toggleHeight: Math.min(itemHeight, sectionHeight + 6)
     readonly property real listHeight: entries.reduce((height, entry) => height + rowHeight(entry), 0)
     // What its widest row wants (GitHub #384); the menu keeps the column
     // between its narrowest and widest, a longer name cut short.
@@ -31,7 +33,10 @@ Item {
     signal scrolled() // the list moved: the wheel, its bar, or to show its highlighted row
 
     function rowHeight(entry: var): real {
-        return entry.separator === true ? 9 : entry.heading === true ? sectionHeight : itemHeight
+        return entry.separator === true ? 9
+             : entry.heading === true ? sectionHeight
+             : entry.toggle !== undefined ? toggleHeight
+             : itemHeight
     }
     // As a row lays them out: the icon, its name, 26 around the detail
     // (at most 96), 20 more for the arrow.
@@ -42,7 +47,8 @@ Item {
         const branch = entry.children !== undefined || entry.folder !== undefined
         const trailing = (detail.length > 0 ? Math.min(Math.ceil(captionMetrics.advanceWidth(detail)), 96) : 0) + (branch ? 20 : 0)
         const name = entry.heading === true ? 12 + captionMetrics.advanceWidth(entry.text ?? "")
-                                            : 42 + textMetrics.advanceWidth(entry.text ?? "")
+                   : entry.toggle !== undefined ? 34 + captionMetrics.advanceWidth(entry.text ?? "")
+                   : 42 + textMetrics.advanceWidth(entry.text ?? "")
         return Math.ceil(name) + 26 + trailing
     }
 
@@ -84,8 +90,14 @@ Item {
     onHighlightedChanged: Qt.callLater(column.sync)
     onEntriesChanged: {
         wheelScroll.cancel() // a glide over the rows that were there before
-        flick.currentIndex = -1
-        flick.contentY = 0
+        if (preserveScroll) {
+            const maxY = Math.max(0, listHeight - flick.height)
+            if (flick.contentY > maxY)
+                flick.contentY = maxY
+        } else {
+            flick.currentIndex = -1
+            flick.contentY = 0
+        }
         Qt.callLater(column.sync)
     }
 
@@ -154,6 +166,8 @@ Item {
             readonly property bool separator: modelData.separator === true
             readonly property bool disabled: modelData.disabled === true
             readonly property bool section: modelData.heading === true
+            readonly property bool toggle: modelData.toggle !== undefined
+            readonly property bool expanded: modelData.expanded === true
             readonly property bool branch: modelData.children !== undefined || modelData.folder !== undefined
             readonly property string tooltip: modelData.tooltip ?? ""
             readonly property bool cut: nameText.truncated
@@ -163,8 +177,11 @@ Item {
             height: column.rowHeight(modelData)
             enabled: !disabled
             ListView.onPooled: column.gone(entry.index, entry)
-            Accessible.role: section ? Accessible.Heading : Accessible.MenuItem
-            Accessible.name: modelData.text ?? ""
+            Accessible.role: toggle ? Accessible.Button : section ? Accessible.Heading : Accessible.MenuItem
+            Accessible.name: toggle
+                             ? (expanded ? qsTranslate("FolderMenuWindow", "收起%1")
+                                         : qsTranslate("FolderMenuWindow", "展开%1")).arg(modelData.text ?? "")
+                             : (modelData.text ?? "")
             Accessible.description: tooltip
             Accessible.ignored: separator
             Accessible.onPressAction: column.chosen(entry.index)
@@ -179,7 +196,7 @@ Item {
             }
             Image {
                 id: icon
-                visible: !entry.separator && status === Image.Ready
+                visible: !entry.separator && !entry.toggle && status === Image.Ready
                 x: 12
                 anchors.verticalCenter: parent.verticalCenter
                 width: 18
@@ -190,22 +207,22 @@ Item {
                 fillMode: Image.PreserveAspectFit
             }
             Glyph {
-                visible: !entry.separator && !entry.section && !icon.visible
-                x: 13
+                visible: !entry.separator && !entry.section && (entry.toggle || !icon.visible)
+                x: entry.toggle ? 15 : 13
                 anchors.verticalCenter: parent.verticalCenter
-                glyph: entry.modelData.glyph ?? ""
-                size: 16
-                color: entry.disabled ? Theme.faint : Theme.text
+                glyph: entry.toggle ? (entry.expanded ? "\uE70D" : "\uE76C") : (entry.modelData.glyph ?? "")
+                size: entry.toggle ? 12 : 16
+                color: entry.disabled ? Theme.faint : entry.toggle ? Theme.subtext : Theme.text
             }
             Text {
                 id: nameText
-                x: entry.section ? 12 : 42
+                x: entry.section ? 12 : entry.toggle ? 34 : 42
                 width: Math.max(0, entry.width - x - 14 - entry.trailingWidth - 12)
                 anchors.verticalCenter: parent.verticalCenter
                 text: entry.modelData.text ?? ""
                 elide: Text.ElideRight
-                color: entry.disabled ? Theme.faint : Theme.text
-                font.pixelSize: entry.section ? Theme.menuCaptionSize : Theme.menuTextSize
+                color: entry.disabled ? Theme.faint : entry.toggle ? Theme.subtext : Theme.text
+                font.pixelSize: entry.section || entry.toggle ? Theme.menuCaptionSize : Theme.menuTextSize
             }
             Text {
                 id: detail

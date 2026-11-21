@@ -1442,6 +1442,34 @@
         <translation>The folder menu has “Add this folder to favorites”</translation>
     </message>
     <message>
+        <source>收藏夹里显示的类型</source>
+        <translation>Favorite types shown</translation>
+    </message>
+    <message>
+        <source>文件夹菜单的收藏夹显示文件夹</source>
+        <translation>Show favorite folders in the folder menu</translation>
+    </message>
+    <message>
+        <source>文件夹菜单的收藏夹显示文件</source>
+        <translation>Show favorite files in the folder menu</translation>
+    </message>
+    <message>
+        <source>文件夹菜单的收藏夹显示应用</source>
+        <translation>Show favorite apps in the folder menu</translation>
+    </message>
+    <message>
+        <source>文件夹菜单的收藏夹显示系统设置</source>
+        <translation>Show favorite system settings in the folder menu</translation>
+    </message>
+    <message>
+        <source>文件夹菜单的收藏夹显示自定义命令</source>
+        <translation>Show favorite custom commands in the folder menu</translation>
+    </message>
+    <message>
+        <source>文件夹菜单里展开收藏的应用</source>
+        <translation>Expand favorite apps in the folder menu</translation>
+    </message>
+    <message>
         <source>收藏夹显示方式</source>
         <translation>Favorites display</translation>
     </message>
@@ -2781,6 +2809,14 @@
     <message>
         <source>展开“%1”</source>
         <translation>Show the folders in “%1”</translation>
+    </message>
+    <message>
+        <source>展开%1</source>
+        <translation>Expand %1</translation>
+    </message>
+    <message>
+        <source>收起%1</source>
+        <translation>Collapse %1</translation>
     </message>
 </context>
 <context>
@@ -9110,6 +9146,30 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>full window;panel;global;shortcut;full search;hotkey</translation>
     </message>
     <message>
+        <source>收藏夹里显示的类型</source>
+        <translation>Favorite types shown</translation>
+    </message>
+    <message>
+        <source>至少保留一项；未勾选的类型不再出现，应用也可在菜单里直接展开或折叠</source>
+        <translation>Keep at least one selected; unchecked types are hidden, and apps can also be expanded or collapsed right in the menu</translation>
+    </message>
+    <message>
+        <source>文件夹菜单;收藏夹;收藏;类型;隐藏;过滤;文件夹;文件;应用;系统设置;自定义命令;折叠;展开;favorites;apps;hide;fold;collapse</source>
+        <translation>folder menu;favorites;types;hide;filter;folders;files;apps;system settings;custom commands;collapse;expand;fold</translation>
+    </message>
+    <message>
+        <source>文件</source>
+        <translation>Files</translation>
+    </message>
+    <message>
+        <source>应用</source>
+        <translation>Apps</translation>
+    </message>
+    <message>
+        <source>系统设置</source>
+        <translation>System settings</translation>
+    </message>
+    <message>
         <source>收藏夹显示方式</source>
         <translation>Favorites display</translation>
     </message>
@@ -12587,6 +12647,10 @@ Content index: %5</translation>
     <message>
         <source>收藏夹</source>
         <translation>Favorites</translation>
+    </message>
+    <message>
+        <source>应用</source>
+        <translation>Apps</translation>
     </message>
     <message>
         <source>最近的文件夹</source>

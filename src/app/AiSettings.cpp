@@ -340,6 +340,24 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/FolderMenuWindows", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出别的窗口里的文件夹"), "files_and_dialogs", 1,
                     "The folder menu lists the folders open in other file manager windows. At least one of the three groups stays on."},
         &Settings::folderMenuWindows));
+    add(boolean({"Launcher/FolderMenuFavoriteFolders", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示文件夹"), "files_and_dialogs", 1,
+                    "Include favorite folders in the folder menu's Favorites group. At least one of the five favorite kinds stays on."},
+        &Settings::folderMenuFavoriteFolders));
+    add(boolean({"Launcher/FolderMenuFavoriteFiles", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示文件"), "files_and_dialogs", 1,
+                    "Include favorite files in the folder menu's Favorites group. At least one of the five favorite kinds stays on."},
+        &Settings::folderMenuFavoriteFiles));
+    add(boolean({"Launcher/FolderMenuFavoriteApps", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示应用"), "files_and_dialogs", 1,
+                    "Include favorite apps in the folder menu's Favorites group. Turn off to hide favorite apps completely from the folder menu; at least one of the five favorite kinds stays on."},
+        &Settings::folderMenuFavoriteApps));
+    add(boolean({"Launcher/FolderMenuFavoritePlaces", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示系统设置"), "files_and_dialogs", 1,
+                    "Include favorite Windows and Win顺 settings places in the folder menu's Favorites group. At least one of the five favorite kinds stays on."},
+        &Settings::folderMenuFavoritePlaces));
+    add(boolean({"Launcher/FolderMenuFavoriteCommands", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示自定义命令"), "files_and_dialogs", 1,
+                    "Include favorite custom commands in the folder menu's Favorites group. At least one of the five favorite kinds stays on."},
+        &Settings::folderMenuFavoriteCommands));
+    add(boolean({"Launcher/FolderMenuAppsExpanded", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里展开收藏的应用"), "files_and_dialogs", 1,
+                    "Whether the collapsible Apps section inside the folder menu's Favorites is expanded. Can also be toggled directly inside the folder menu."},
+        &Settings::folderMenuAppsExpanded));
     add(integer({"Launcher/FolderMenuFavoritesInline", QT_TRANSLATE_NOOP("AiSettings", "收藏夹显示方式"), "files_and_dialogs", 1,
                     "How the folder menu displays favorites: 0 keeps them in a submenu, 1..20 lists the first N directly at the top level with the rest under More, and -1 lists all of them directly (Listary-style)."},
         &Settings::folderMenuFavoritesInline, 1, Settings::kFolderMenuInlineMax,
@@ -971,6 +989,9 @@ std::vector<Entry> buildCatalog()
             e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "菜单里的操作");
         else if (e.key == u"Launcher/FolderMenuFavorites" || e.key == u"Launcher/FolderMenuRecent" || e.key == u"Launcher/FolderMenuWindows")
             e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "菜单里列出的内容");
+        else if ((e.key.startsWith(u"Launcher/FolderMenuFavorite") && e.key != u"Launcher/FolderMenuFavoritesInline")
+            || e.key == u"Launcher/FolderMenuAppsExpanded")
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "收藏夹里显示的类型");
         else if (e.key == u"Results/ShowModifiedTime")
             e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "较早的日期也显示具体时间");
         else if (e.key == u"Clipboard/PreviewRestore") // titled as the search box's row of that name
@@ -1963,6 +1984,15 @@ void checkFolderMenuOneLeft(Plan& plan)
         plan.problems.push_back(u"Launcher/FolderMenuDouble, Launcher/FolderMenuMiddle: at least one of them stays on."_s);
     if (!s.folderMenuExplorer && !s.folderMenuDesktop && (changed(u"Launcher/FolderMenuExplorer"_s) || changed(u"Launcher/FolderMenuDesktop"_s)))
         plan.problems.push_back(u"Launcher/FolderMenuExplorer, Launcher/FolderMenuDesktop: at least one of them stays on."_s);
+    if (!s.folderMenuFavoriteFolders && !s.folderMenuFavoriteFiles && !s.folderMenuFavoriteApps
+        && !s.folderMenuFavoritePlaces && !s.folderMenuFavoriteCommands
+        && (changed(u"Launcher/FolderMenuFavoriteFolders"_s) || changed(u"Launcher/FolderMenuFavoriteFiles"_s)
+            || changed(u"Launcher/FolderMenuFavoriteApps"_s) || changed(u"Launcher/FolderMenuFavoritePlaces"_s)
+            || changed(u"Launcher/FolderMenuFavoriteCommands"_s))) {
+        plan.problems.push_back(
+            u"Launcher/FolderMenuFavoriteFolders, Launcher/FolderMenuFavoriteFiles, Launcher/FolderMenuFavoriteApps, "
+            u"Launcher/FolderMenuFavoritePlaces, Launcher/FolderMenuFavoriteCommands: at least one of them stays on."_s);
+    }
 }
 
 } // namespace

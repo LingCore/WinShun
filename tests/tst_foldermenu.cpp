@@ -30,6 +30,7 @@
 #include <QStyleHints>
 #include <QFontDatabase>
 #include <QCursor>
+#include <QPainter>
 #include <QPixmap>
 #include <QPointer>
 #include <QWheelEvent>
@@ -705,6 +706,77 @@ private slots:
         QCOMPARE(emptyFavs.at(1).toMap().value(u"text"_s).toString(), u"最近的文件夹"_s);
     }
 
+    void favoriteGroupPresentation()
+    {
+        QVariantList primary;
+        for (int i = 0; i < 3; ++i)
+            primary.append(QVariantMap {{u"text"_s, u"Folder %1"_s.arg(i)}, {u"action"_s, i}});
+        QVariantList apps;
+        for (int i = 0; i < 6; ++i)
+            apps.append(QVariantMap {{u"text"_s, u"App %1"_s.arg(i)}, {u"action"_s, 10 + i}});
+
+        // Without apps: no separator or toggle row is added.
+        const auto noApps = FolderMenu::favoriteGroupEntries(u"收藏夹"_s, u"s"_s, primary, {}, false, 0);
+        QCOMPARE(noApps.size(), 1);
+        QCOMPARE(noApps.first().toMap().value(u"detail"_s).toString(), u"3"_s);
+        QCOMPARE(noApps.first().toMap().value(u"children"_s).toList().size(), 3);
+
+        // Submenu mode (0): badge counts actual favorites (9), not separator/toggle rows.
+        const auto subExpanded = FolderMenu::favoriteGroupEntries(u"收藏夹"_s, u"s"_s, primary, apps, true, 0);
+        QCOMPARE(subExpanded.size(), 1);
+        QCOMPARE(subExpanded.first().toMap().value(u"detail"_s).toString(), u"9"_s);
+        const auto subExpandedRows = subExpanded.first().toMap().value(u"children"_s).toList();
+        QCOMPARE(subExpandedRows.size(), 3 + 1 + 1 + 6);
+        QVERIFY(subExpandedRows[3].toMap().value(u"separator"_s).toBool());
+        QCOMPARE(subExpandedRows[4].toMap().value(u"toggle"_s).toString(), u"apps"_s);
+        QCOMPARE(subExpandedRows[4].toMap().value(u"expanded"_s).toBool(), true);
+        QCOMPARE(subExpandedRows[4].toMap().value(u"detail"_s).toString(), u"6"_s);
+
+        const auto subCollapsed = FolderMenu::favoriteGroupEntries(u"收藏夹"_s, u"s"_s, primary, apps, false, 0);
+        QCOMPARE(subCollapsed.first().toMap().value(u"detail"_s).toString(), u"9"_s);
+        const auto subCollapsedRows = subCollapsed.first().toMap().value(u"children"_s).toList();
+        QCOMPARE(subCollapsedRows.size(), 3 + 1 + 1);
+        QCOMPARE(subCollapsedRows[4].toMap().value(u"toggle"_s).toString(), u"apps"_s);
+        QCOMPARE(subCollapsedRows[4].toMap().value(u"expanded"_s).toBool(), false);
+
+        // Apps only: never disabled when collapsed, and no leading separator.
+        const auto appsOnly = FolderMenu::favoriteGroupEntries(u"收藏夹"_s, u"s"_s, {}, apps, false, 0);
+        QVERIFY(!appsOnly.first().toMap().value(u"disabled"_s).toBool());
+        const auto appsOnlyRows = appsOnly.first().toMap().value(u"children"_s).toList();
+        QCOMPARE(appsOnlyRows.size(), 1);
+        QCOMPARE(appsOnlyRows.first().toMap().value(u"toggle"_s).toString(), u"apps"_s);
+
+        // All-inline (-1): no inner separator before the toggle row.
+        const auto inlineCollapsed = FolderMenu::favoriteGroupEntries(u"收藏夹"_s, u"s"_s, primary, apps, false, FolderMenu::kInlineAll);
+        QCOMPARE(inlineCollapsed.size(), 1 + 3 + 1);
+        QVERIFY(inlineCollapsed[0].toMap().value(u"heading"_s).toBool());
+        QCOMPARE(inlineCollapsed[0].toMap().value(u"detail"_s).toString(), u"9"_s);
+        QCOMPARE(inlineCollapsed[4].toMap().value(u"toggle"_s).toString(), u"apps"_s);
+
+        const auto inlineExpanded = FolderMenu::favoriteGroupEntries(u"收藏夹"_s, u"s"_s, primary, apps, true, FolderMenu::kInlineAll);
+        QCOMPARE(inlineExpanded.size(), 1 + 3 + 1 + 6);
+        QCOMPARE(inlineExpanded[4].toMap().value(u"expanded"_s).toBool(), true);
+        QCOMPARE(inlineExpanded[5].toMap().value(u"action"_s).toInt(), 10);
+
+        // First-N inline (5) with 3 primary < 5: collapsed omits More; expanded shows 2 direct apps + More(4).
+        const auto topNCollapsed = FolderMenu::favoriteGroupEntries(u"收藏夹"_s, u"s"_s, primary, apps, false, 5);
+        QCOMPARE(topNCollapsed.size(), 1 + 3 + 1);
+        QCOMPARE(topNCollapsed.last().toMap().value(u"toggle"_s).toString(), u"apps"_s);
+
+        const auto topNExpanded = FolderMenu::favoriteGroupEntries(u"收藏夹"_s, u"s"_s, primary, apps, true, 5);
+        QCOMPARE(topNExpanded.size(), 1 + 3 + 1 + 2 + 1); // heading, 3 folders, toggle, 2 apps, More
+        QCOMPARE(topNExpanded.last().toMap().value(u"detail"_s).toString(), u"4"_s);
+        QCOMPARE(topNExpanded.last().toMap().value(u"children"_s).toList().size(), 4);
+
+        // First-N inline (2) with 3 primary >= 2: remaining primary + collapsible apps live in More.
+        const auto overflow = FolderMenu::favoriteGroupEntries(u"收藏夹"_s, u"s"_s, primary, apps, false, 2);
+        QCOMPARE(overflow.size(), 1 + 2 + 1); // heading, 2 folders, More
+        QCOMPARE(overflow.last().toMap().value(u"detail"_s).toString(), u"7"_s);
+        const auto moreRows = overflow.last().toMap().value(u"children"_s).toList();
+        QCOMPARE(moreRows.size(), 1 + 1 + 1); // 1 folder, sep, collapsed toggle
+        QCOMPARE(moreRows.last().toMap().value(u"toggle"_s).toString(), u"apps"_s);
+    }
+
     void shortPagePathTip_data()
     {
         QTest::addColumn<QPoint>("position");
@@ -915,12 +987,16 @@ private slots:
         QCOMPARE(::GetForegroundWindow(), sourceHandle);
         const auto root = menu.entries();
         QCOMPARE(root.first().toMap().value(u"text"_s).toString(), u"收藏夹"_s);
+        QCOMPARE(root.first().toMap().value(u"detail"_s).toString(), u"54"_s);
         const auto children = root.first().toMap().value(u"children"_s).toList();
-        QCOMPARE(children.size(), 54);
+        QCOMPARE(children.size(), 56); // 53 non-apps, separator, collapsible Apps header, 1 app
         QCOMPARE(children[50].toMap().value(u"detail"_s).toString(), u"verify"_s);
         QVERIFY(children[50].toMap().value(u"icon"_s).toString().startsWith(u"image://fileicon/command/"));
         QCOMPARE(children.first().toMap().value(u"detail"_s).toString(), QString());
         QVERIFY(!children.first().toMap().value(u"tooltip"_s).toString().isEmpty());
+        QVERIFY(children[53].toMap().value(u"separator"_s).toBool());
+        QCOMPARE(children[54].toMap().value(u"toggle"_s).toString(), u"apps"_s);
+        QCOMPARE(children[55].toMap().value(u"text"_s).toString(), u"记事本"_s);
         QVERIFY(shot(window, u"root"_s));
 
         // A click on a group's row opens its column beside the menu, which
@@ -963,10 +1039,10 @@ private slots:
         QTest::qWait(150); // asynchronous shell icons before visual evidence
         QVERIFY(shot(favoritesColumn, u"favorites"_s));
         key(Qt::Key_End);
-        QCOMPARE(highlighted(), 53);
+        QCOMPARE(highlighted(), 55);
         QTRY_VERIFY(scroll->property("contentY").toReal() > 0);
-        QTRY_VERIFY(visualItem(favoritesColumn->contentItem(), u"folderMenuEntry53"_s));
-        const auto* last = visualItem(favoritesColumn->contentItem(), u"folderMenuEntry53"_s);
+        QTRY_VERIFY(visualItem(favoritesColumn->contentItem(), u"folderMenuEntry55"_s));
+        const auto* last = visualItem(favoritesColumn->contentItem(), u"folderMenuEntry55"_s);
         const auto bottom = last->mapToItem(scroll, QPointF(0, last->height())).y();
         QVERIFY(bottom <= scroll->height() + 1);
         QVERIFY(shot(favoritesColumn, u"favorites-end"_s));
@@ -1800,6 +1876,217 @@ private slots:
         QVERIFY(from(1) > 8);
         key(Qt::Key_Escape);
         QVERIFY(!first->isVisible());
+        QCOMPARE(warnings.count(), 0);
+    }
+
+    // Favorite apps can be collapsed in place inside the menu (remembered) and
+    // any favorite kind can be hidden completely via setFavoriteKinds.
+    void favoriteKindsAndCollapsibleApps()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        Favorites favorites(temporary.filePath(u"favorites.json"_s));
+        for (const QString& name : {u"不忘初心"_s, u"教程"_s, u"项目"_s}) {
+            const QString dir = temporary.filePath(name);
+            QVERIFY(QDir().mkpath(dir));
+            QVERIFY(favorites.add({Favorite::Kind::Folder, QDir::toNativeSeparators(dir), name, {}}));
+        }
+        const QString output = temporary.filePath(u"toggle-cmd.txt"_s);
+        QString quoted = QDir::toNativeSeparators(output);
+        quoted.replace(u'\'', u"''"_s);
+        Favorite command {Favorite::Kind::Command, u"winshun-command:toggle-test"_s, u"运行检查"_s, u"chk"_s,
+            u"powershell.exe -NoProfile -NonInteractive -Command \"[IO.File]::WriteAllText('"_s + quoted + u"','ok')\""_s,
+            temporary.path()};
+        command.silent = true;
+        QVERIFY(favorites.add(command));
+        QVERIFY(favorites.add({Favorite::Kind::File, temporary.filePath(u"notes.txt"_s), u"笔记"_s, {}}));
+        QVERIFY(favorites.add({Favorite::Kind::Place, u"winshun-place:test"_s, u"蓝牙设置"_s, {}}));
+        for (int i = 1; i <= 12; ++i) {
+            QVERIFY(favorites.add({Favorite::Kind::App, u"shell:AppsFolder\\demo.app.%1"_s.arg(i),
+                u"示例应用 %1"_s.arg(i), {}}));
+        }
+
+        FolderMenu menu(nullptr, &favorites);
+        menu.setRecordHistory(false);
+        menu.setGroups(true, false, false);
+        Pointer pointer;
+        menu.setCursorSource([&pointer] { return pointer.at; });
+        QQmlEngine engine;
+        engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        std::unique_ptr<QObject> object = load(engine, menu);
+        QVERIFY(object);
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        QVERIFY(window);
+        menu.setWindow(window);
+
+        const QRect area = awayFromPointer(QSize(780, 560));
+        QSignalSpy expandedSpy(&menu, &FolderMenu::appsExpandedRequested);
+        const auto open = [&](QPoint anchor = {}) {
+            menu.previewMenu(temporary.path());
+            const QPoint at = anchor.isNull() ? area.topLeft() + QPoint(8, 8) : anchor;
+            emit menu.popupRequested(QPointF(at));
+            object->setProperty("availableArea", QRectF(area));
+            QMetaObject::invokeMethod(object.get(), "place");
+            return window->isVisible();
+        };
+        const auto depth = [&] { return object->property("depth").toInt(); };
+        const auto highlighted = [&] { return object->property("highlighted").toInt(); };
+        const auto key = [&](Qt::Key k) { emit menu.keyPressed(k, {}); };
+        const auto capture = [&](const QList<QQuickWindow*>& windows, const QString& name) {
+            const QString folder = qEnvironmentVariable("WINSHUN_MENU_EVIDENCE");
+            if (folder.isEmpty())
+                return true;
+            QTest::qWait(250);
+            QRect bounds;
+            for (const QQuickWindow* w : windows)
+                bounds |= w->geometry();
+            const qreal dpr = windows.first()->devicePixelRatio();
+            QImage canvas(bounds.size() * dpr, QImage::Format_ARGB32_Premultiplied);
+            canvas.fill(QColor(0xe3, 0xe8, 0xee));
+            QPainter painter(&canvas);
+            for (QQuickWindow* w : windows) {
+                QImage grab = w->grabWindow();
+                grab.setDevicePixelRatio(1);
+                painter.drawImage(QPointF((w->x() - bounds.x()) * dpr, (w->y() - bounds.y()) * dpr), grab);
+            }
+            painter.end();
+            return QDir().mkpath(folder) && canvas.save(folder + u'/' + name + u".png"_s);
+        };
+
+        // 1. Submenu mode: starts expanded, click collapses in place and emits persistence signal.
+        QVERIFY(open());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QCOMPARE(menu.entries().first().toMap().value(u"detail"_s).toString(), u"18"_s);
+        QTRY_VERIFY(rowItem(window, 0));
+        pointer.click(window, on(window, 0));
+        QCOMPARE(depth(), 2);
+        auto* favColumn = column(object.get(), 1);
+        QVERIFY(favColumn && favColumn->isVisible());
+        // 6 non-apps (0..5), separator (6), toggle row (7), 12 apps (8..19)
+        QTRY_VERIFY(rowItem(favColumn, 7));
+        const int expandedHeight = favColumn->height();
+        QCOMPARE(value(object.get(), u"pages[0].children.length"_s).toInt(), 20);
+        QVERIFY(capture({window, favColumn}, u"apps-expanded"_s));
+
+        pointer.click(favColumn, on(favColumn, 7));
+        QVERIFY(window->isVisible()); // clicking toggle never dismisses the menu
+        QCOMPARE(depth(), 2);
+        QVERIFY(favColumn->isVisible());
+        QCOMPARE(expandedSpy.size(), 1);
+        QCOMPARE(expandedSpy.last().first().toBool(), false);
+        QCOMPARE(menu.appsExpanded(), false);
+        QCOMPARE(value(object.get(), u"pages[0].children.length"_s).toInt(), 8); // 6 non-apps + sep + toggle
+        QCOMPARE(highlighted(), 7);
+        QTRY_VERIFY(favColumn->height() < expandedHeight);
+        QVERIFY(inside(area, favColumn));
+        QVERIFY(capture({window, favColumn}, u"apps-collapsed"_s));
+
+        // Keyboard: Right expands, Left collapses (staying in column 1), second Left closes column 1.
+        pointer.leave();
+        key(Qt::Key_End);
+        QCOMPARE(highlighted(), 7);
+        key(Qt::Key_Right);
+        QCOMPARE(menu.appsExpanded(), true);
+        QCOMPARE(value(object.get(), u"pages[0].children.length"_s).toInt(), 20);
+        QCOMPARE(highlighted(), 7);
+        QTRY_VERIFY(favColumn->height() == expandedHeight);
+        QVERIFY(inside(area, favColumn));
+        key(Qt::Key_Left);
+        QCOMPARE(depth(), 2);
+        QCOMPARE(menu.appsExpanded(), false);
+        QCOMPARE(value(object.get(), u"pages[0].children.length"_s).toInt(), 8);
+        key(Qt::Key_Space);
+        QCOMPARE(menu.appsExpanded(), true);
+        key(Qt::Key_Space);
+        QCOMPARE(menu.appsExpanded(), false);
+        key(Qt::Key_Left);
+        QCOMPARE(depth(), 1);
+        QVERIFY(!favColumn->isVisible());
+
+        // Action IDs stay intact after in-place toggling: triggering the command works.
+        key(Qt::Key_Right);
+        QCOMPARE(depth(), 2);
+        object->setProperty("highlighted", 3); // 运行检查
+        key(Qt::Key_Return);
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(output), 10000);
+        QVERIFY(!window->isVisible());
+
+        // Reopening remembers the collapsed state.
+        QVERIFY(open());
+        const auto reopenedChildren = menu.entries().first().toMap().value(u"children"_s).toList();
+        QCOMPARE(reopenedChildren.size(), 8);
+        QCOMPARE(reopenedChildren[7].toMap().value(u"expanded"_s).toBool(), false);
+        menu.dismiss();
+
+        // Expanding a collapsed submenu near the bottom of availableArea keeps it inside the work area.
+        QVERIFY(open(QPoint(area.x() + 8, area.y() + area.height() - 120)));
+        key(Qt::Key_Down);
+        key(Qt::Key_Right);
+        QCOMPARE(depth(), 2);
+        QTRY_VERIFY(favColumn->isVisible());
+        QVERIFY(inside(area, favColumn));
+        object->setProperty("highlighted", 7);
+        key(Qt::Key_Return);
+        QCOMPARE(menu.appsExpanded(), true);
+        QTRY_VERIFY(favColumn->height() >= expandedHeight - 1);
+        QVERIFY(inside(area, favColumn));
+        menu.dismiss();
+        menu.setAppsExpanded(false);
+
+        // 2. All-inline mode (-1): toggling right in the top column expands & collapses in place.
+        menu.setInlineCounts(FolderMenu::kInlineAll, 0, 0);
+        QVERIFY(open());
+        // heading(0), 6 non-apps(1..6), toggle(7), sep(8), 5 folder actions(9..13), sep(14), Settings(15)
+        QCOMPARE(menu.entries()[7].toMap().value(u"toggle"_s).toString(), u"apps"_s);
+        const int inlineCollapsedCount = menu.entries().size();
+        const int inlineCollapsedHeight = window->height();
+        QTRY_VERIFY(rowItem(window, 7));
+        QVERIFY(capture({window}, u"inline-collapsed"_s));
+        pointer.click(window, on(window, 7));
+        QVERIFY(window->isVisible());
+        QCOMPARE(menu.appsExpanded(), true);
+        QCOMPARE(menu.entries().size(), inlineCollapsedCount + 12);
+        QCOMPARE(highlighted(), 7);
+        QTRY_VERIFY(window->height() >= inlineCollapsedHeight);
+        QVERIFY(inside(area, window));
+        QVERIFY(capture({window}, u"inline-expanded"_s));
+        pointer.click(window, on(window, 7));
+        QCOMPARE(menu.appsExpanded(), false);
+        QCOMPARE(menu.entries().size(), inlineCollapsedCount);
+        menu.dismiss();
+
+        // 3. Top-N inline mode (8 > 6 non-apps): collapsed hides More, expanded adds 2 direct apps + More(10).
+        menu.setInlineCounts(8, 0, 0);
+        QVERIFY(open());
+        const int topNCollapsedCount = menu.entries().size();
+        QTRY_VERIFY(rowItem(window, 7));
+        pointer.click(window, on(window, 7));
+        QCOMPARE(menu.appsExpanded(), true);
+        QCOMPARE(menu.entries().size(), topNCollapsedCount + 3); // + 2 direct apps + More
+        QCOMPARE(menu.entries()[10].toMap().value(u"detail"_s).toString(), u"10"_s);
+        pointer.click(window, on(window, 7));
+        QCOMPARE(menu.appsExpanded(), false);
+        QCOMPARE(menu.entries().size(), topNCollapsedCount);
+        menu.dismiss();
+
+        // 4. Favorite kind filtering: hiding apps removes apps, toggle and separator completely.
+        menu.setInlineCounts(0, 0, 0);
+        menu.setFavoriteKinds({true, true, false, true, true});
+        QVERIFY(open());
+        QCOMPARE(menu.entries().first().toMap().value(u"detail"_s).toString(), u"6"_s);
+        QCOMPARE(menu.entries().first().toMap().value(u"children"_s).toList().size(), 6);
+        menu.dismiss();
+
+        // Folders only: badge shows 3 and only folders appear.
+        menu.setFavoriteKinds({true, false, false, false, false});
+        QVERIFY(open());
+        QCOMPARE(menu.entries().first().toMap().value(u"detail"_s).toString(), u"3"_s);
+        const auto folderOnly = menu.entries().first().toMap().value(u"children"_s).toList();
+        QCOMPARE(folderOnly.size(), 3);
+        QCOMPARE(folderOnly[0].toMap().value(u"text"_s).toString(), u"不忘初心"_s);
+        menu.dismiss();
+
         QCOMPARE(warnings.count(), 0);
     }
 };

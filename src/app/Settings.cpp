@@ -954,6 +954,17 @@ void Settings::load()
     folderMenuFavorites = readOrDefault(s, u"Launcher/FolderMenuFavorites"_s, d.folderMenuFavorites);
     folderMenuRecent = readOrDefault(s, u"Launcher/FolderMenuRecent"_s, d.folderMenuRecent);
     folderMenuWindows = readOrDefault(s, u"Launcher/FolderMenuWindows"_s, d.folderMenuWindows);
+    folderMenuFavoriteFolders = readOrDefault(s, u"Launcher/FolderMenuFavoriteFolders"_s, d.folderMenuFavoriteFolders);
+    folderMenuFavoriteFiles = readOrDefault(s, u"Launcher/FolderMenuFavoriteFiles"_s, d.folderMenuFavoriteFiles);
+    folderMenuFavoriteApps = readOrDefault(s, u"Launcher/FolderMenuFavoriteApps"_s, d.folderMenuFavoriteApps);
+    folderMenuFavoritePlaces = readOrDefault(s, u"Launcher/FolderMenuFavoritePlaces"_s, d.folderMenuFavoritePlaces);
+    folderMenuFavoriteCommands = readOrDefault(s, u"Launcher/FolderMenuFavoriteCommands"_s, d.folderMenuFavoriteCommands);
+    if (!folderMenuFavoriteFolders && !folderMenuFavoriteFiles && !folderMenuFavoriteApps
+        && !folderMenuFavoritePlaces && !folderMenuFavoriteCommands) {
+        folderMenuFavoriteFolders = folderMenuFavoriteFiles = folderMenuFavoriteApps
+            = folderMenuFavoritePlaces = folderMenuFavoriteCommands = true;
+    }
+    folderMenuAppsExpanded = readOrDefault(s, u"Launcher/FolderMenuAppsExpanded"_s, d.folderMenuAppsExpanded);
     const auto readInline = [&](const QString& key, int fallback) {
         if (s.contains(key) && s.value(key).toString().trimmed().compare(u"all"_s, Qt::CaseInsensitive) == 0)
             return kFolderMenuInlineAll;
@@ -1408,6 +1419,12 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FolderMenuFavorites"_s, folderMenuFavorites);
     s.setValue(u"Launcher/FolderMenuRecent"_s, folderMenuRecent);
     s.setValue(u"Launcher/FolderMenuWindows"_s, folderMenuWindows);
+    s.setValue(u"Launcher/FolderMenuFavoriteFolders"_s, folderMenuFavoriteFolders);
+    s.setValue(u"Launcher/FolderMenuFavoriteFiles"_s, folderMenuFavoriteFiles);
+    s.setValue(u"Launcher/FolderMenuFavoriteApps"_s, folderMenuFavoriteApps);
+    s.setValue(u"Launcher/FolderMenuFavoritePlaces"_s, folderMenuFavoritePlaces);
+    s.setValue(u"Launcher/FolderMenuFavoriteCommands"_s, folderMenuFavoriteCommands);
+    s.setValue(u"Launcher/FolderMenuAppsExpanded"_s, folderMenuAppsExpanded);
     s.setValue(u"Launcher/FolderMenuFavoritesInline"_s, folderMenuFavoritesInline);
     s.setValue(u"Launcher/FolderMenuRecentInline"_s, folderMenuRecentInline);
     s.setValue(u"Launcher/FolderMenuWindowsInline"_s, folderMenuWindowsInline);

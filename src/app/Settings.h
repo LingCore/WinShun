@@ -184,6 +184,17 @@ struct Settings {
     bool folderMenuFavorites = true;
     bool folderMenuRecent = true;
     bool folderMenuWindows = true; // folders open in other windows
+    // Which favorite kinds appear in the folder menu's 收藏夹: all on by
+    // default; at least one stays on (the editor refuses unchecking the last,
+    // load() turns all back on if a hand-edited file has none).
+    bool folderMenuFavoriteFolders = true;
+    bool folderMenuFavoriteFiles = true;
+    bool folderMenuFavoriteApps = true;
+    bool folderMenuFavoritePlaces = true;
+    bool folderMenuFavoriteCommands = true;
+    // Whether the collapsible "应用" section inside the folder menu's 收藏夹
+    // is expanded; toggled directly in the menu and remembered across runs.
+    bool folderMenuAppsExpanded = true;
     // Folder menu group presentation: -1 shows all items directly at top level,
     // 0 keeps them in a submenu, 1..20 shows the first N directly then "更多…".
     static constexpr int kFolderMenuInlineAll = -1;

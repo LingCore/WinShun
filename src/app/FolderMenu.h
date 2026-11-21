@@ -84,12 +84,29 @@ public:
     void setOptions(bool yieldToListary, bool explorer, bool desktop);
     // Which groups it lists (GitHub #51); one left out is not even gathered.
     void setGroups(bool favorites, bool recent, bool windows);
+    // Which favorite kinds appear in the menu's 收藏夹.
+    struct FavoriteKinds {
+        bool folders = true;
+        bool files = true;
+        bool apps = true;
+        bool places = true;
+        bool commands = true;
+        friend bool operator==(const FavoriteKinds&, const FavoriteKinds&) = default;
+    };
+    void setFavoriteKinds(FavoriteKinds kinds);
+    // Whether the collapsible "应用" section in 收藏夹 is expanded.
+    void setAppsExpanded(bool expanded);
+    bool appsExpanded() const noexcept { return m_appsExpanded; }
     // -1: all items directly in the top column; 0: submenu; 1..20: first N directly, then More.
     static constexpr int kInlineAll = -1;
     static constexpr int kInlineMax = 20;
     void setInlineCounts(int favorites, int recent, int windows);
     // Pure menu presentation: keeps action IDs intact across the direct rows and More page.
     static QVariantList groupEntries(const QString& title, const QString& glyph, const QVariantList& children, int inlineCount = 0);
+    // Pure menu presentation for favorites: places apps under a collapsible
+    // section ("apps") when present and counts actual favorites for badges.
+    static QVariantList favoriteGroupEntries(const QString& title, const QString& glyph,
+        const QVariantList& primary, const QVariantList& apps, bool appsExpanded, int inlineCount = 0);
     // Combines rendered group lists, adding a separator wherever an inline group
     // meets another group while keeping collapsed-only groups adjacent.
     static QVariantList assembleGroups(const QList<QVariantList>& groups);
@@ -138,9 +155,19 @@ public:
     // as a popup lists them; nothing to act on, nothing shown.
     void previewEntries(QVariantList entries)
     {
+        m_hasFavorites = false;
+        m_favoritePrimary.clear();
+        m_favoriteApps.clear();
+        m_afterFavoriteGroups.clear();
+        m_folderActionEntries.clear();
+        m_settingsEntries.clear();
         m_entries = std::move(entries);
         emit entriesChanged();
     }
+    // Builds the menu's real entries and actions from the current favorites,
+    // groups and options without querying the foreground window (for tests and
+    // previews).
+    void previewMenu(const QString& folder = {}, const QStringList& recent = {}, const QStringList& windows = {});
 
     Q_INVOKABLE QRectF screenArea(QPointF globalPos) const;
     // Where the system's pointer is: unlike a row's mapToGlobal, the same
@@ -163,6 +190,9 @@ public:
     Q_INVOKABLE void placeColumn(QWindow* column, QWindow* before, QPointF at, int side, qreal rowOffset, bool level,
         QRectF area) const;
     Q_INVOKABLE void trigger(int index);
+    // Toggles a collapsible section (e.g. "apps") in place without dismissing
+    // the menu, keeping action IDs intact and notifying to persist the choice.
+    Q_INVOKABLE void toggleSection(const QString& id);
     // The folders inside `folder`, for the page a folder's row opens (GitHub
     // #170), then its files with setListFiles (#384; not for a dialog, whose
     // menu only takes it to a folder): read off the GUI thread (a share may
@@ -194,8 +224,11 @@ signals:
     void pluginSettingsRequested(const QString& pluginId); // a favorite that is a plugin's settings (GitHub #390)
     void notice(const QString& text);
     void openChanged(bool open);
+    void appsExpandedRequested(bool expanded);
 
 private:
+    void populate(const QString& folder, const QStringList& recent, const QStringList& windows);
+    void rebuildEntries();
     QString explorerFolder(const folderview::Hit& hit) const;
     enum class Kind { Folder, File, Search, AddFavorite, RemoveFavorite, Terminal, PowerShell, Favorite, Settings, CopyPath };
     struct Entry {
@@ -238,6 +271,8 @@ private:
     std::atomic<bool> m_listFavorites {true};
     std::atomic<bool> m_listRecent {true};
     std::atomic<bool> m_listWindows {true};
+    FavoriteKinds m_favoriteKinds;
+    bool m_appsExpanded = true;
     int m_favoritesInline = 0;
     int m_recentInline = 0;
     int m_windowsInline = 0;
@@ -254,6 +289,14 @@ private:
     folderview::Hit m_hit; // where the menu is up
     QString m_folder; // the tab's folder or Desktop directory; empty in Home / This PC
     QVariantList m_entries;
+    // Snapshot of the shown menu's sections so toggleSection() rebuilds
+    // m_entries in place without invalidating m_actions or cached folder pages.
+    bool m_hasFavorites = false;
+    QVariantList m_favoritePrimary;
+    QVariantList m_favoriteApps;
+    QList<QVariantList> m_afterFavoriteGroups;
+    QVariantList m_folderActionEntries;
+    QVariantList m_settingsEntries;
     std::vector<Entry> m_actions; // by entry
     std::unique_ptr<KeyRouter> m_router;
     std::uint64_t m_routerRun = 0; // queued input belongs to this opening

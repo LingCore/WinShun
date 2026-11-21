@@ -1775,6 +1775,51 @@ void SettingsEditor::setFolderMenuWindows(bool on)
     commit();
 }
 
+namespace {
+bool updateFavoriteKind(Settings& settings, bool Settings::* field, bool on)
+{
+    if (settings.*field == on)
+        return false;
+    const int enabledCount = int(settings.folderMenuFavoriteFolders) + int(settings.folderMenuFavoriteFiles)
+        + int(settings.folderMenuFavoriteApps) + int(settings.folderMenuFavoritePlaces)
+        + int(settings.folderMenuFavoriteCommands);
+    if (!on && enabledCount <= 1)
+        return false; // at least one kind stays on
+    settings.*field = on;
+    return true;
+}
+} // namespace
+
+void SettingsEditor::setFolderMenuFavoriteFolders(bool on)
+{
+    if (updateFavoriteKind(m_settings, &Settings::folderMenuFavoriteFolders, on))
+        commit();
+}
+
+void SettingsEditor::setFolderMenuFavoriteFiles(bool on)
+{
+    if (updateFavoriteKind(m_settings, &Settings::folderMenuFavoriteFiles, on))
+        commit();
+}
+
+void SettingsEditor::setFolderMenuFavoriteApps(bool on)
+{
+    if (updateFavoriteKind(m_settings, &Settings::folderMenuFavoriteApps, on))
+        commit();
+}
+
+void SettingsEditor::setFolderMenuFavoritePlaces(bool on)
+{
+    if (updateFavoriteKind(m_settings, &Settings::folderMenuFavoritePlaces, on))
+        commit();
+}
+
+void SettingsEditor::setFolderMenuFavoriteCommands(bool on)
+{
+    if (updateFavoriteKind(m_settings, &Settings::folderMenuFavoriteCommands, on))
+        commit();
+}
+
 void SettingsEditor::setFolderMenuFavoritesInline(int count)
 {
     count = Settings::clampFolderMenuInline(count);

@@ -5471,6 +5471,41 @@ Window {
                     }
                 }
 
+                SettingRow {
+                    id: folderMenuFavoriteKindsRow
+                    sub: true
+                    readonly property bool active: window.editor.folderMenu && window.editor.folderMenuFavorites
+                    title: qsTr("收藏夹里显示的类型")
+                    description: qsTr("至少保留一项；未勾选的类型不再出现，应用也可在菜单里直接展开或折叠")
+                    keywords: qsTr("文件夹菜单;收藏夹;收藏;类型;隐藏;过滤;文件夹;文件;应用;系统设置;自定义命令;折叠;展开;favorites;apps;hide;fold;collapse").split(";")
+
+                    body: Flow {
+                        objectName: "folderMenuFavoriteKindChoices"
+                        width: parent.width
+                        spacing: 4
+                        Repeater {
+                            model: [
+                                { title: qsTr("文件夹"), setting: "folderMenuFavoriteFolders" },
+                                { title: qsTr("文件"), setting: "folderMenuFavoriteFiles" },
+                                { title: qsTr("应用"), setting: "folderMenuFavoriteApps" },
+                                { title: qsTr("系统设置"), setting: "folderMenuFavoritePlaces" },
+                                { title: qsTr("自定义命令"), setting: "folderMenuFavoriteCommands" }
+                            ]
+                            delegate: ScopeTabs {
+                                required property var modelData
+                                required property int index
+                                objectName: "folderMenuFavoriteKind" + index
+                                dpr: window.dpr
+                                multiSelect: true
+                                disabled: folderMenuFavoriteKindsRow.active ? [] : [0]
+                                labels: [modelData.title]
+                                checkedIndices: window.editor[modelData.setting] ? [0] : []
+                                onToggled: (index, on) => window.editor[modelData.setting] = on
+                            }
+                        }
+                    }
+                }
+
                 Repeater { // the menu's order: favorites, recent, open
                     model: [
                         { title: qsTr("收藏夹显示方式"), words: qsTr("文件夹菜单;直接显示收藏夹;直接显示;收藏;收藏夹;一级;二级;平铺;全部;数量;更多;展开;折叠;Listary;inline;favorites"),

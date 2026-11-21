@@ -4879,12 +4879,22 @@ void App::applyFolderMenu()
         connect(menu.get(), &FolderMenu::notice, this, [this](const QString& text) {
             m_messages->showNotification(tr("文件夹菜单"), text);
         });
+        connect(menu.get(), &FolderMenu::appsExpandedRequested, this, [this](bool expanded) {
+            if (std::exchange(m_settings.folderMenuAppsExpanded, expanded) == expanded)
+                return;
+            m_settings.save();
+            if (m_settingsEditor)
+                m_settingsEditor->setSettings(m_settings);
+        });
         m_folderMenuWindow = window;
         m_folderMenu = std::move(menu);
     }
     if (m_folderMenu) {
         m_folderMenu->setOptions(m_settings.folderMenu == u"auto", m_settings.folderMenuExplorer, m_settings.folderMenuDesktop);
         m_folderMenu->setGroups(m_settings.folderMenuFavorites, m_settings.folderMenuRecent, m_settings.folderMenuWindows);
+        m_folderMenu->setFavoriteKinds({m_settings.folderMenuFavoriteFolders, m_settings.folderMenuFavoriteFiles,
+            m_settings.folderMenuFavoriteApps, m_settings.folderMenuFavoritePlaces, m_settings.folderMenuFavoriteCommands});
+        m_folderMenu->setAppsExpanded(m_settings.folderMenuAppsExpanded);
         m_folderMenu->setInlineCounts(m_settings.folderMenuFavoritesInline, m_settings.folderMenuRecentInline, m_settings.folderMenuWindowsInline);
         m_folderMenu->setItems(m_settings.folderMenuItemSearch, m_settings.folderMenuItemCopyPath, m_settings.folderMenuItemCmd, m_settings.folderMenuItemPowerShell,
             m_settings.folderMenuItemFavorite, m_settings.folderMenuItemSettings);

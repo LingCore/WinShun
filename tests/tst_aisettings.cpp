@@ -908,6 +908,19 @@ private slots:
         QCOMPARE(plan.result.settings.folderMenuFavoritesInline, Settings::kFolderMenuInlineAll);
         QVERIFY(!makePlan(state, one(u"Launcher/FolderMenuFavoritesInline"_s, -2), {}).problems.isEmpty());
         QVERIFY(!makePlan(state, one(u"Launcher/FolderMenuFavoritesInline"_s, 21), {}).problems.isEmpty());
+        plan = makePlan(state, one(u"Launcher/FolderMenuFavoriteApps"_s, false), {});
+        QVERIFY2(plan.problems.isEmpty(), qPrintable(problemText(plan)));
+        QVERIFY(!plan.result.settings.folderMenuFavoriteApps);
+        plan = makePlan(state, one(u"Launcher/FolderMenuAppsExpanded"_s, false), {});
+        QVERIFY2(plan.problems.isEmpty(), qPrintable(problemText(plan)));
+        QVERIFY(!plan.result.settings.folderMenuAppsExpanded);
+        QJsonArray allKindsOff;
+        for (const QString& key : {u"Launcher/FolderMenuFavoriteFolders"_s, u"Launcher/FolderMenuFavoriteFiles"_s,
+                 u"Launcher/FolderMenuFavoriteApps"_s, u"Launcher/FolderMenuFavoritePlaces"_s,
+                 u"Launcher/FolderMenuFavoriteCommands"_s}) {
+            allKindsOff.append(QJsonObject {{u"key"_s, key}, {u"value"_s, false}});
+        }
+        QVERIFY(!makePlan(state, allKindsOff, {}).problems.isEmpty());
         plan = makePlan(state, one(u"Content/MaxFileSizeMB"_s, 0.5), {});
         QCOMPARE(plan.items.front().newText, u"512 KB"_s);
         state.settings.clipboardExcludedApps = {u"A.exe"_s, u"B.exe"_s};
