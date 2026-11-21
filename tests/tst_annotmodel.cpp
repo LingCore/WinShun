@@ -1143,7 +1143,12 @@ private slots:
         m.redo();
         QCOMPARE(m.itemCount(), 1);
         QCOMPARE(m.document().items[0].text, u"第一步 登录"_s);
-        QVERIFY(!m.escape()); // the second Esc is the session's: nothing left to end here
+        // The second Esc closes the active tool (and clears selection) so the
+        // user can immediately click another annotation to edit it (#415).
+        QVERIFY(m.escape());
+        QCOMPARE(m.tool(), -1);
+        QCOMPARE(m.selectedCount(), 0);
+        QVERIFY(!m.escape()); // nothing active now: Esc goes to the host
         // The words are in the project: a round trip keeps them.
         const annot::Project project = m.project();
         QCOMPARE(project.doc.items[0].text, u"第一步 登录"_s);
@@ -1540,7 +1545,31 @@ private slots:
         m.undo();
         QCOMPARE(m.itemCount(), 0);
         QVERIFY(!m.canUndo());
-        QVERIFY(!m.escape()); // nothing under way: the session's Esc
+        QVERIFY(m.escape()); // turns off the active Number tool (#415)
+        QCOMPARE(m.tool(), -1);
+        QVERIFY(!m.escape()); // nothing active: the host's Esc
+
+        // Secondary-editing workflow (#415): draw a rect, switch to text,
+        // type, Esc commits text, Esc exits text tool, click rect to re-select,
+        // Esc deselects rect, Esc hands off to host.
+        m.setTool(toolIndex(Kind::Rect));
+        drag(m, QPoint(40, 40), QPoint(120, 100));
+        const quint32 rectId = m.document().items.last().id;
+        m.setTool(toolIndex(Kind::Text));
+        click(m, QPoint(160, 60));
+        m.setEditingText(u"说明"_s);
+        QVERIFY(m.editingText());
+        QVERIFY(m.escape()); // commits text
+        QVERIFY(!m.editingText());
+        QCOMPARE(m.tool(), toolIndex(Kind::Text));
+        QVERIFY(m.escape()); // exits text tool into pointer/select mode
+        QCOMPARE(m.tool(), -1);
+        QCOMPARE(m.selectedCount(), 0);
+        click(m, pointOn(m, rectId)); // immediately re-selects the earlier rect
+        QCOMPARE(selectedId(m), rectId);
+        QVERIFY(m.escape()); // deselects the rect
+        QCOMPARE(m.selectedCount(), 0);
+        QVERIFY(!m.escape()); // neutral: hands off to host
     }
 
     void textCommitAndEdit()

@@ -2213,6 +2213,18 @@ bool AnnotationModel::escape()
         pickColor(false);
         return true;
     }
+    // Step back cleanly to neutral selection mode before handing Esc to the
+    // host (which parks/discards edits or closes the editor, GitHub #415).
+    if (m_tool >= 0) {
+        m_picked.clear();
+        setTool(-1);
+        return true;
+    }
+    if (!m_picked.isEmpty()) {
+        m_picked.clear();
+        sync();
+        return true;
+    }
     return false;
 }
 

@@ -353,13 +353,16 @@ private slots:
         QCOMPARE(rig.editor.viewportDevice(), QRect(2, 126, 300, 200));
         QCOMPARE(rig.editor.originDevice(), QPoint(0, 0));
         QCOMPARE(rig.editor.viewRect().top(), 84.0);
-        // E is the ellipse here, as in the capture; Esc leaves at once, the pin as it was.
+        // E switches to ellipse; Esc exits the active tool first (#415), next Esc leaves the pin as it was.
         rig.editor.model()->setTool(rig.toolIndex(Kind::Rect));
         rig.drag(QPoint(30, 30), QPoint(120, 90));
         QVERIFY(rig.editor.model()->modified());
         QVERIFY(rig.editor.keyPressed(Qt::Key_E, 0));
         QCOMPARE(rig.editor.model()->tool(), rig.toolIndex(Kind::Ellipse));
         QVERIFY(rig.editor.isOpen());
+        QVERIFY(rig.editor.keyPressed(Qt::Key_Escape, 0));
+        QVERIFY(rig.editor.isOpen());
+        QCOMPARE(rig.editor.model()->tool(), -1);
         QVERIFY(rig.editor.keyPressed(Qt::Key_Escape, 0));
         QVERIFY(!rig.editor.isOpen());
         QVERIFY(shown);
@@ -683,7 +686,10 @@ private slots:
         rig.drag(QPoint(210, 170), QPoint(300, 250));
         rig.editor.model()->setTool(-1);
         QCOMPARE(rig.editor.model()->document().items.size(), qsizetype(3));
-        // Esc with changes gives them all up, in one step, and says so.
+        // Esc deselects the drawn ellipse first (#415), then gives up the changes in one step.
+        QVERIFY(rig.editor.keyPressed(Qt::Key_Escape, 0));
+        QCOMPARE(rig.editor.model()->selectedCount(), 0);
+        QCOMPARE(rig.editor.model()->document().items.size(), qsizetype(3));
         QSignalSpy notice(&rig.editor, &CaptureEditor::noticeChanged);
         QVERIFY(rig.editor.keyPressed(Qt::Key_Escape, 0));
         QVERIFY(rig.editor.isOpen());

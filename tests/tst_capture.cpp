@@ -1462,6 +1462,11 @@ private slots:
         rig.drag({100, 100}, {499, 399});
         drawRect(rig, {150, 150}, {300, 250});
         QSignalSpy finished(&rig.session, &CaptureSession::finished);
+        // First Esc exits the active Rect tool into selection mode (#415);
+        // next Esc puts the selection and its annotations down together.
+        rig.session.key(Qt::Key_Escape, Qt::NoModifier);
+        QVERIFY(rig.session.hasSelection());
+        QCOMPARE(rig.session.annotation()->tool(), -1);
         rig.session.key(Qt::Key_Escape, Qt::NoModifier);
         QVERIFY(!rig.session.hasSelection());
         QVERIFY(rig.session.hasAnnotations()); // kept, waiting for Ctrl+Z
@@ -1588,7 +1593,10 @@ private slots:
         annot->setTool(-1);
         QCOMPARE(s.keyHints().first(), u"copy"_s);
 
-        // Esc (the selection and its rectangle put down), R: the recalled region says which.
+        // Esc deselects the rectangle first (#415), then puts the selection down; R recalls it.
+        QVERIFY(s.key(Qt::Key_Escape, Qt::NoModifier));
+        QVERIFY(s.hasSelection());
+        QCOMPARE(annot->selectedCount(), 0);
         QVERIFY(s.key(Qt::Key_Escape, Qt::NoModifier));
         QVERIFY(!s.hasSelection());
         QVERIFY(s.key(Qt::Key_R, Qt::NoModifier));
@@ -2695,6 +2703,7 @@ private slots:
         QCOMPARE(rig.session.annotation()->itemCount(), 1);
         QVERIFY(rig.screen.notice().contains(u"标注"));
         rig.session.annotation()->setTool(-1);
+        rig.session.key(Qt::Key_Escape, Qt::NoModifier); // deselects the drawn rect (#415)
         rig.session.key(Qt::Key_Escape, Qt::NoModifier); // Park the annotations, as when drawing a new selection.
         QVERIFY(!rig.session.hasSelection());
         rig.session.key(Qt::Key_R, Qt::NoModifier);

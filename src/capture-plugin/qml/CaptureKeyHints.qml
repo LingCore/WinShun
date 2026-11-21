@@ -100,7 +100,7 @@ Item {
                                                    : toolKind === 8 ? qsTr("格子小一档 / 大一档") : qsTr("细一档 / 粗一档") }
         case "undo": return { keys: ["Ctrl+Z", "Ctrl+Y"], text: qsTr("撤销 / 重做") }
         case "delete": return { keys: ["Delete"], text: qsTr("删除选中的对象") }
-        case "toolOff": return { keys: [toolKey], text: tool ? qsTr("关掉“%1”").arg(tool.name) : "" }
+        case "toolOff": return { keys: [toolKey, "Esc"], text: tool ? qsTr("关掉“%1”").arg(tool.name) : "" }
         case "hide": return { keys: ["H"], text: qsTr("隐藏工具条") }
         }
         return { keys: [], text: "" }
