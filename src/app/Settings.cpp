@@ -954,9 +954,14 @@ void Settings::load()
     folderMenuFavorites = readOrDefault(s, u"Launcher/FolderMenuFavorites"_s, d.folderMenuFavorites);
     folderMenuRecent = readOrDefault(s, u"Launcher/FolderMenuRecent"_s, d.folderMenuRecent);
     folderMenuWindows = readOrDefault(s, u"Launcher/FolderMenuWindows"_s, d.folderMenuWindows);
-    folderMenuFavoritesInline = std::clamp(readOrDefault(s, u"Launcher/FolderMenuFavoritesInline"_s, d.folderMenuFavoritesInline), 0, 10);
-    folderMenuRecentInline = std::clamp(readOrDefault(s, u"Launcher/FolderMenuRecentInline"_s, d.folderMenuRecentInline), 0, 10);
-    folderMenuWindowsInline = std::clamp(readOrDefault(s, u"Launcher/FolderMenuWindowsInline"_s, d.folderMenuWindowsInline), 0, 10);
+    const auto readInline = [&](const QString& key, int fallback) {
+        if (s.contains(key) && s.value(key).toString().trimmed().compare(u"all"_s, Qt::CaseInsensitive) == 0)
+            return kFolderMenuInlineAll;
+        return clampFolderMenuInline(readOrDefault(s, key, fallback));
+    };
+    folderMenuFavoritesInline = readInline(u"Launcher/FolderMenuFavoritesInline"_s, d.folderMenuFavoritesInline);
+    folderMenuRecentInline = readInline(u"Launcher/FolderMenuRecentInline"_s, d.folderMenuRecentInline);
+    folderMenuWindowsInline = readInline(u"Launcher/FolderMenuWindowsInline"_s, d.folderMenuWindowsInline);
     if (!folderMenuFavorites && !folderMenuRecent && !folderMenuWindows) // a menu of nothing: back to all (#51)
         folderMenuFavorites = folderMenuRecent = folderMenuWindows = true;
     folderMenuItemSearch = readOrDefault(s, u"Launcher/FolderMenuItemSearch"_s, d.folderMenuItemSearch);

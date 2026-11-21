@@ -901,6 +901,13 @@ private slots:
         QCOMPARE(plan.items.front().newText, u"深色"_s); // the label, never the id
         plan = makePlan(state, one(u"Clipboard/MaxItems"_s, 0), {});
         QCOMPARE(plan.items.front().newText, u"不限"_s);
+        plan = makePlan(state, one(u"Launcher/FolderMenuFavoritesInline"_s, -1), {});
+        QVERIFY2(plan.problems.isEmpty(), qPrintable(problemText(plan)));
+        QCOMPARE(plan.items.front().oldText, u"二级菜单"_s);
+        QCOMPARE(plan.items.front().newText, u"全部"_s);
+        QCOMPARE(plan.result.settings.folderMenuFavoritesInline, Settings::kFolderMenuInlineAll);
+        QVERIFY(!makePlan(state, one(u"Launcher/FolderMenuFavoritesInline"_s, -2), {}).problems.isEmpty());
+        QVERIFY(!makePlan(state, one(u"Launcher/FolderMenuFavoritesInline"_s, 21), {}).problems.isEmpty());
         plan = makePlan(state, one(u"Content/MaxFileSizeMB"_s, 0.5), {});
         QCOMPARE(plan.items.front().newText, u"512 KB"_s);
         state.settings.clipboardExcludedApps = {u"A.exe"_s, u"B.exe"_s};

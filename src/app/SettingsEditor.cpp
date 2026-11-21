@@ -1777,7 +1777,7 @@ void SettingsEditor::setFolderMenuWindows(bool on)
 
 void SettingsEditor::setFolderMenuFavoritesInline(int count)
 {
-    count = std::clamp(count, 0, 10);
+    count = Settings::clampFolderMenuInline(count);
     if (m_settings.folderMenuFavoritesInline == count)
         return;
     m_settings.folderMenuFavoritesInline = count;
@@ -1786,7 +1786,7 @@ void SettingsEditor::setFolderMenuFavoritesInline(int count)
 
 void SettingsEditor::setFolderMenuRecentInline(int count)
 {
-    count = std::clamp(count, 0, 10);
+    count = Settings::clampFolderMenuInline(count);
     if (m_settings.folderMenuRecentInline == count)
         return;
     m_settings.folderMenuRecentInline = count;
@@ -1795,7 +1795,7 @@ void SettingsEditor::setFolderMenuRecentInline(int count)
 
 void SettingsEditor::setFolderMenuWindowsInline(int count)
 {
-    count = std::clamp(count, 0, 10);
+    count = Settings::clampFolderMenuInline(count);
     if (m_settings.folderMenuWindowsInline == count)
         return;
     m_settings.folderMenuWindowsInline = count;

@@ -271,22 +271,32 @@ void FolderMenu::setGroups(bool favorites, bool recent, bool windows)
     m_listWindows = windows;
 }
 
+namespace {
+constexpr int clampInline(int count) noexcept
+{
+    return count == FolderMenu::kInlineAll ? FolderMenu::kInlineAll : std::clamp(count, 0, FolderMenu::kInlineMax);
+}
+} // namespace
+
 void FolderMenu::setInlineCounts(int favorites, int recent, int windows)
 {
-    m_favoritesInline = std::clamp(favorites, 0, 10);
-    m_recentInline = std::clamp(recent, 0, 10);
-    m_windowsInline = std::clamp(windows, 0, 10);
+    m_favoritesInline = clampInline(favorites);
+    m_recentInline = clampInline(recent);
+    m_windowsInline = clampInline(windows);
 }
 
 QVariantList FolderMenu::groupEntries(const QString& title, const QString& glyph, const QVariantList& children, int inlineCount)
 {
-    inlineCount = std::clamp(inlineCount, 0, 10);
+    inlineCount = clampInline(inlineCount);
     QVariantMap group {{u"text"_s, title}, {u"glyph"_s, glyph}, {u"children"_s, children},
         {u"detail"_s, QString::number(children.size())}, {u"disabled"_s, children.isEmpty()}};
     if (inlineCount == 0 || children.isEmpty())
         return {group};
-    QVariantList rows {QVariantMap {{u"text"_s, title}, {u"heading"_s, true}, {u"disabled"_s, true}}};
-    const qsizetype count = std::min<qsizetype>(inlineCount, children.size());
+    QVariantList rows {QVariantMap {{u"text"_s, title}, {u"detail"_s, QString::number(children.size())},
+        {u"heading"_s, true}, {u"disabled"_s, true}}};
+    const qsizetype count = inlineCount == kInlineAll
+        ? children.size()
+        : std::min<qsizetype>(inlineCount, children.size());
     rows.append(children.first(count));
     if (count < children.size()) {
         group[u"text"_s] = tr("更多…");
@@ -296,6 +306,22 @@ QVariantList FolderMenu::groupEntries(const QString& title, const QString& glyph
         rows.append(group);
     }
     return rows;
+}
+
+QVariantList FolderMenu::assembleGroups(const QList<QVariantList>& groups)
+{
+    QVariantList out;
+    bool prevInline = false;
+    for (const QVariantList& rows : groups) {
+        if (rows.isEmpty())
+            continue;
+        const bool isInline = rows.first().toMap().value(u"heading"_s).toBool();
+        if (!out.isEmpty() && (prevInline || isInline))
+            out.append(QVariantMap {{u"separator"_s, true}});
+        out.append(rows);
+        prevInline = isInline;
+    }
+    return out;
 }
 
 void FolderMenu::setItems(bool search, bool copyPath, bool cmd, bool powerShell, bool favorite, bool settings)
@@ -646,6 +672,7 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
             m_entries.append(QVariantMap {{u"separator"_s, true}});
         }
     };
+    QList<QVariantList> groups;
     if (m_listFavorites) {
         QVariantList favorites;
         const auto apps = m_apps ? m_apps->apps() : nullptr;
@@ -687,7 +714,7 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
                 row.insert(u"folder"_s, f.path);
             favorites.append(row);
         }
-        m_entries.append(groupEntries(tr("收藏夹"), u"\uE734"_s, favorites, m_favoritesInline));
+        groups.append(groupEntries(tr("收藏夹"), u"\uE734"_s, favorites, m_favoritesInline));
     }
     const auto addList = [&](const QString& text, const QStringList& folders, qsizetype max, const QString& glyph, int inlineCount,
                              bool onlyWithSome) {
@@ -704,7 +731,7 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
         }
         if (children.isEmpty() && onlyWithSome)
             return;
-        m_entries.append(groupEntries(text, glyph, children, inlineCount));
+        groups.append(groupEntries(text, glyph, children, inlineCount));
     };
     if (m_listRecent && m_recordHistory)
         addList(tr("最近的文件夹"), found.recent, kMaxRecent, u"\uE81C"_s, m_recentInline, false);
@@ -712,6 +739,7 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
     // reads as if none were found (GitHub #393).
     if (m_listWindows)
         addList(tr("已打开的文件夹"), found.windows, found.windows.size(), u"\uE8A7"_s, m_windowsInline, true);
+    m_entries.append(assembleGroups(groups));
     if (!m_folder.isEmpty()) {
         separator();
         if (m_itemSearch)

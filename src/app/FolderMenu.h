@@ -84,9 +84,15 @@ public:
     void setOptions(bool yieldToListary, bool explorer, bool desktop);
     // Which groups it lists (GitHub #51); one left out is not even gathered.
     void setGroups(bool favorites, bool recent, bool windows);
+    // -1: all items directly in the top column; 0: submenu; 1..20: first N directly, then More.
+    static constexpr int kInlineAll = -1;
+    static constexpr int kInlineMax = 20;
     void setInlineCounts(int favorites, int recent, int windows);
     // Pure menu presentation: keeps action IDs intact across the direct rows and More page.
     static QVariantList groupEntries(const QString& title, const QString& glyph, const QVariantList& children, int inlineCount = 0);
+    // Combines rendered group lists, adding a separator wherever an inline group
+    // meets another group while keeping collapsed-only groups adjacent.
+    static QVariantList assembleGroups(const QList<QVariantList>& groups);
     // Which actions it offers under the lists (GitHub #200).
     void setItems(bool search, bool copyPath, bool cmd, bool powerShell, bool favorite, bool settings);
     // Whether a folder's column also lists its files (GitHub #384).

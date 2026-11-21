@@ -5473,34 +5473,56 @@ Window {
 
                 Repeater { // the menu's order: favorites, recent, open
                     model: [
-                        { title: qsTr("直接显示收藏夹"), words: qsTr("文件夹菜单;收藏;收藏夹;数量;更多;展开;inline;favorites"),
+                        { title: qsTr("收藏夹显示方式"), words: qsTr("文件夹菜单;直接显示收藏夹;直接显示;收藏;收藏夹;一级;二级;平铺;全部;数量;更多;展开;折叠;Listary;inline;favorites"),
                           group: "folderMenuFavorites", setting: "folderMenuFavoritesInline" },
-                        { title: qsTr("直接显示最近的文件夹"), words: qsTr("文件夹菜单;最近;已打开;数量;更多;展开;inline;recent;folders"),
+                        { title: qsTr("最近的文件夹显示方式"), words: qsTr("文件夹菜单;直接显示最近的文件夹;直接显示;最近;一级;二级;平铺;全部;数量;更多;展开;折叠;Listary;inline;recent;folders"),
                           group: "folderMenuRecent", setting: "folderMenuRecentInline" },
-                        { title: qsTr("直接显示已打开的文件夹"), words: qsTr("文件夹菜单;最近;已打开;数量;更多;展开;inline;recent;folders"),
+                        { title: qsTr("已打开的文件夹显示方式"), words: qsTr("文件夹菜单;直接显示已打开的文件夹;直接显示;已打开;其他窗口;一级;二级;平铺;全部;数量;更多;展开;折叠;Listary;inline;open;windows;folders"),
                           group: "folderMenuWindows", setting: "folderMenuWindowsInline" }
                     ]
                     delegate: SettingRow {
                         id: inlineFoldersRow
                         required property var modelData
                         readonly property int count: window.editor[modelData.setting]
+                        readonly property bool active: window.editor.folderMenu && window.editor[modelData.group]
+                        property int lastLimit: count > 0 ? count : 5
+                        onCountChanged: if (count > 0) lastLimit = count
                         sub: true
                         title: modelData.title
-                        description: qsTr("0：收进二级菜单；1–10：直接显示前几个，其余放进“更多…”")
+                        description: count === 0
+                                     ? qsTr("收进二级菜单，保持顶层菜单紧凑")
+                                     : count < 0
+                                       ? qsTr("全部直接列在顶层菜单，过多时可滚动")
+                                       : qsTr("顶层直接显示前 %1 个，其余收进“更多…”").arg(count)
                         keywords: modelData.words.split(";")
+                        ScopeTabs {
+                            objectName: inlineFoldersRow.modelData.setting + "Mode"
+                            anchors.verticalCenter: parent.verticalCenter
+                            dpr: window.dpr
+                            disabled: inlineFoldersRow.active ? [] : [0, 1, 2]
+                            labels: [qsTr("二级菜单"), qsTr("前几个"), qsTr("全部")]
+                            current: inlineFoldersRow.count === 0 ? 0 : inlineFoldersRow.count < 0 ? 2 : 1
+                            onActivated: (index) => {
+                                if (index === 0) window.editor[inlineFoldersRow.modelData.setting] = 0
+                                else if (index === 2) window.editor[inlineFoldersRow.modelData.setting] = -1
+                                else window.editor[inlineFoldersRow.modelData.setting] = inlineFoldersRow.lastLimit
+                            }
+                        }
                         InputBox {
                             objectName: inlineFoldersRow.modelData.setting
-                            enabled: window.editor.folderMenu && window.editor[inlineFoldersRow.modelData.group]
-                            width: 72
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: inlineFoldersRow.count > 0
+                            enabled: inlineFoldersRow.active
+                            width: 56
                             dpr: window.dpr
                             horizontalAlignment: TextInput.AlignHCenter
-                            text: String(inlineFoldersRow.count)
-                            validator: IntValidator { bottom: 0; top: 10 }
+                            text: String(Math.max(1, inlineFoldersRow.count))
+                            validator: IntValidator { bottom: 1; top: 20 }
                             onEditingFinished: {
                                 const count = parseInt(text, 10)
-                                if (!isNaN(count) && count >= 0 && count <= 10)
+                                if (!isNaN(count) && count >= 1 && count <= 20)
                                     window.editor[inlineFoldersRow.modelData.setting] = count
-                                text = Qt.binding(() => String(inlineFoldersRow.count))
+                                text = Qt.binding(() => String(Math.max(1, inlineFoldersRow.count)))
                             }
                         }
                     }

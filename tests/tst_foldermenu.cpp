@@ -606,32 +606,103 @@ private slots:
     void directFolderGroups()
     {
         QVariantList children;
-        for (int i = 0; i < 12; ++i)
+        for (int i = 0; i < 24; ++i)
             children.append(QVariantMap {{u"text"_s, u"项目 %1"_s.arg(i)}, {u"action"_s, i}, {u"tooltip"_s, u"C:\\项目\\%1"_s.arg(i)}});
         const QString title = u"最近的文件夹"_s;
-        for (const int count : {-1, 0, 1, 3, 10, 50}) {
+        for (const int count : {-2, 0, 1, 3, 10, 20, 50}) {
             const auto rows = FolderMenu::groupEntries(title, u"folder"_s, children, count);
             if (count <= 0) {
                 QCOMPARE(rows.size(), 1);
                 QCOMPARE(rows.first().toMap().value(u"children"_s).toList(), children);
                 continue;
             }
-            const int shown = std::min(count, 10);
+            const int shown = std::min(count, FolderMenu::kInlineMax);
             QCOMPARE(rows.size(), shown + 2); // non-selectable heading, direct rows, More
             QVERIFY(rows.first().toMap().value(u"disabled"_s).toBool());
             QVERIFY(rows.first().toMap().value(u"heading"_s).toBool());
+            QCOMPARE(rows.first().toMap().value(u"detail"_s).toString(), QString::number(children.size()));
             QVariantList reconstructed = rows.sliced(1, shown);
             const auto more = rows.last().toMap();
             QCOMPARE(more.value(u"pageTitle"_s).toString(), title);
             reconstructed.append(more.value(u"children"_s).toList());
             QCOMPARE(reconstructed, children); // every action preserved once, in order
         }
+        // kInlineAll (-1): every item directly in the top column, no More page even past kInlineMax.
+        const auto all = FolderMenu::groupEntries(title, u"folder"_s, children, FolderMenu::kInlineAll);
+        QCOMPARE(all.size(), children.size() + 1);
+        QVERIFY(all.first().toMap().value(u"heading"_s).toBool());
+        QCOMPARE(all.first().toMap().value(u"detail"_s).toString(), QString::number(children.size()));
+        QCOMPARE(all.sliced(1), children);
         const auto exact = FolderMenu::groupEntries(title, {}, children.first(3), 3);
         QCOMPARE(exact.size(), 4); // no empty More page
         QVERIFY(!exact.last().toMap().contains(u"children"_s));
-        const auto empty = FolderMenu::groupEntries(title, {}, {}, 5);
+        const auto empty = FolderMenu::groupEntries(title, {}, {}, FolderMenu::kInlineAll);
         QCOMPARE(empty.size(), 1);
         QVERIFY(empty.first().toMap().value(u"disabled"_s).toBool());
+    }
+
+    // Expanding a group directly separates it from neighboring groups;
+    // when all groups stay collapsed, no separator is inserted between them.
+    void inlineGroupSeparator()
+    {
+        const QVariantList favs {
+            QVariantMap {{u"text"_s, u"Alpha"_s}, {u"action"_s, 0}},
+            QVariantMap {{u"text"_s, u"Beta"_s}, {u"action"_s, 1}},
+        };
+        const QVariantList recent {
+            QVariantMap {{u"text"_s, u"Docs"_s}, {u"action"_s, 2}},
+            QVariantMap {{u"text"_s, u"Downloads"_s}, {u"action"_s, 3}},
+        };
+        const QVariantList open {
+            QVariantMap {{u"text"_s, u"Work"_s}, {u"action"_s, 4}},
+        };
+
+        // 0 / 0 / 0: all collapsed -> no separators between groups.
+        const auto allCollapsed = FolderMenu::assembleGroups({
+            FolderMenu::groupEntries(u"收藏夹"_s, u"s"_s, favs, 0),
+            FolderMenu::groupEntries(u"最近的文件夹"_s, u"r"_s, recent, 0),
+            FolderMenu::groupEntries(u"已打开的文件夹"_s, u"w"_s, open, 0),
+        });
+        QCOMPARE(allCollapsed.size(), 3);
+        QCOMPARE(allCollapsed.at(0).toMap().value(u"text"_s).toString(), u"收藏夹"_s);
+        QCOMPARE(allCollapsed.at(1).toMap().value(u"text"_s).toString(), u"最近的文件夹"_s);
+        QCOMPARE(allCollapsed.at(2).toMap().value(u"text"_s).toString(), u"已打开的文件夹"_s);
+
+        // -1 / 0 / 0 (Listary style): separator after inline favorites, none between recent and open.
+        const auto favsInline = FolderMenu::assembleGroups({
+            FolderMenu::groupEntries(u"收藏夹"_s, u"s"_s, favs, FolderMenu::kInlineAll),
+            FolderMenu::groupEntries(u"最近的文件夹"_s, u"r"_s, recent, 0),
+            FolderMenu::groupEntries(u"已打开的文件夹"_s, u"w"_s, open, 0),
+        });
+        QCOMPARE(favsInline.size(), 6); // heading, Alpha, Beta, sep, Recent, Open
+        QVERIFY(favsInline.at(0).toMap().value(u"heading"_s).toBool());
+        QCOMPARE(favsInline.at(1).toMap().value(u"text"_s).toString(), u"Alpha"_s);
+        QCOMPARE(favsInline.at(2).toMap().value(u"text"_s).toString(), u"Beta"_s);
+        QVERIFY(favsInline.at(3).toMap().value(u"separator"_s).toBool());
+        QCOMPARE(favsInline.at(4).toMap().value(u"text"_s).toString(), u"最近的文件夹"_s);
+        QCOMPARE(favsInline.at(5).toMap().value(u"text"_s).toString(), u"已打开的文件夹"_s);
+
+        // 0 / -1 / 0: separator both before and after the middle inline group.
+        const auto middleInline = FolderMenu::assembleGroups({
+            FolderMenu::groupEntries(u"收藏夹"_s, u"s"_s, favs, 0),
+            FolderMenu::groupEntries(u"最近的文件夹"_s, u"r"_s, recent, FolderMenu::kInlineAll),
+            FolderMenu::groupEntries(u"已打开的文件夹"_s, u"w"_s, open, 0),
+        });
+        QCOMPARE(middleInline.size(), 7); // Favs, sep, heading, Docs, Downloads, sep, Open
+        QCOMPARE(middleInline.at(0).toMap().value(u"text"_s).toString(), u"收藏夹"_s);
+        QVERIFY(middleInline.at(1).toMap().value(u"separator"_s).toBool());
+        QVERIFY(middleInline.at(2).toMap().value(u"heading"_s).toBool());
+        QVERIFY(middleInline.at(5).toMap().value(u"separator"_s).toBool());
+        QCOMPARE(middleInline.at(6).toMap().value(u"text"_s).toString(), u"已打开的文件夹"_s);
+
+        // Empty favorites with kInlineAll stays a single disabled submenu row -> no separator before Recent.
+        const auto emptyFavs = FolderMenu::assembleGroups({
+            FolderMenu::groupEntries(u"收藏夹"_s, u"s"_s, {}, FolderMenu::kInlineAll),
+            FolderMenu::groupEntries(u"最近的文件夹"_s, u"r"_s, recent, 0),
+        });
+        QCOMPARE(emptyFavs.size(), 2);
+        QVERIFY(!emptyFavs.at(0).toMap().value(u"heading"_s).toBool());
+        QCOMPARE(emptyFavs.at(1).toMap().value(u"text"_s).toString(), u"最近的文件夹"_s);
     }
 
     void shortPagePathTip_data()

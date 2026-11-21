@@ -118,9 +118,9 @@ Entry choice(const Head& head, QString Settings::* field, std::vector<Choice> ch
 }
 
 // A whole number as `field` holds it, between `min` and `max`; with a
-// `zeroLabel`, 0 is allowed as well.
+// `zeroLabel`, 0 is allowed as well; with an `allLabel`, -1 is allowed too.
 Entry integer(const Head& head, int Settings::* field, int min, int max, const char* zeroLabel = nullptr,
-    const char* zeroMeaning = nullptr)
+    const char* zeroMeaning = nullptr, const char* allLabel = nullptr, const char* allMeaning = nullptr)
 {
     Entry e = base(head, Type::Int);
     e.min = min;
@@ -128,6 +128,9 @@ Entry integer(const Head& head, int Settings::* field, int min, int max, const c
     e.zeroLabel = zeroLabel;
     if (zeroMeaning)
         e.zeroMeaning = QString::fromUtf8(zeroMeaning); // "only when Win顺 starts"
+    e.allLabel = allLabel;
+    if (allMeaning)
+        e.allMeaning = QString::fromUtf8(allMeaning);
     e.field = field;
     return e;
 }
@@ -337,6 +340,18 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/FolderMenuWindows", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出别的窗口里的文件夹"), "files_and_dialogs", 1,
                     "The folder menu lists the folders open in other file manager windows. At least one of the three groups stays on."},
         &Settings::folderMenuWindows));
+    add(integer({"Launcher/FolderMenuFavoritesInline", QT_TRANSLATE_NOOP("AiSettings", "收藏夹显示方式"), "files_and_dialogs", 1,
+                    "How the folder menu displays favorites: 0 keeps them in a submenu, 1..20 lists the first N directly at the top level with the rest under More, and -1 lists all of them directly (Listary-style)."},
+        &Settings::folderMenuFavoritesInline, 1, Settings::kFolderMenuInlineMax,
+        QT_TRANSLATE_NOOP("AiSettings", "二级菜单"), "submenu", QT_TRANSLATE_NOOP("AiSettings", "全部"), "all directly"));
+    add(integer({"Launcher/FolderMenuRecentInline", QT_TRANSLATE_NOOP("AiSettings", "最近的文件夹显示方式"), "files_and_dialogs", 1,
+                    "How the folder menu displays recent folders: 0 keeps them in a submenu, 1..20 lists the first N directly at the top level with the rest under More, and -1 lists all of them directly."},
+        &Settings::folderMenuRecentInline, 1, Settings::kFolderMenuInlineMax,
+        QT_TRANSLATE_NOOP("AiSettings", "二级菜单"), "submenu", QT_TRANSLATE_NOOP("AiSettings", "全部"), "all directly"));
+    add(integer({"Launcher/FolderMenuWindowsInline", QT_TRANSLATE_NOOP("AiSettings", "已打开的文件夹显示方式"), "files_and_dialogs", 1,
+                    "How the folder menu displays folders open in other windows: 0 keeps them in a submenu, 1..20 lists the first N directly at the top level with the rest under More, and -1 lists all of them directly."},
+        &Settings::folderMenuWindowsInline, 1, Settings::kFolderMenuInlineMax,
+        QT_TRANSLATE_NOOP("AiSettings", "二级菜单"), "submenu", QT_TRANSLATE_NOOP("AiSettings", "全部"), "all directly"));
     add(boolean({"Launcher/FolderMenuItemSearch", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此搜索”"), "files_and_dialogs", 1,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemSearch));
@@ -1307,12 +1322,19 @@ QString applyChange(const Entry& e, State& s, const Change& c, const Env& env)
         break;
     }
     case Type::Int: {
-        const QString range = e.zeroLabel ? u"0 (%1) or a whole number from %2 to %3"_s.arg(e.zeroMeaning).arg(int(e.min)).arg(int(e.max))
-                                          : u"a whole number from %1 to %2"_s.arg(int(e.min)).arg(int(e.max));
+        QStringList allowed;
+        if (e.allLabel)
+            allowed << u"-1 (%1)"_s.arg(e.allMeaning);
+        if (e.zeroLabel)
+            allowed << u"0 (%1)"_s.arg(e.zeroMeaning);
+        allowed << u"a whole number from %1 to %2"_s.arg(int(e.min)).arg(int(e.max));
+        const QString range = allowed.size() == 1 ? allowed.first()
+            : allowed.size() == 2                 ? u"%1 or %2"_s.arg(allowed[0], allowed[1])
+                                                  : u"%1, %2 or %3"_s.arg(allowed[0], allowed[1], allowed[2]);
         if (!v.isDouble() || v.toDouble() != std::floor(v.toDouble()))
             return u"Must be %1."_s.arg(range);
         const double d = v.toDouble();
-        if (!((e.zeroLabel && d == 0) || (d >= e.min && d <= e.max)))
+        if (!((e.allLabel && d == -1) || (e.zeroLabel && d == 0) || (d >= e.min && d <= e.max)))
             return u"%1 is out of range: must be %2."_s.arg(d).arg(range);
         e.setInteger(s, static_cast<int>(d));
         break;
@@ -1374,6 +1396,8 @@ QString textOf(const Entry& e, const QJsonValue& v)
         return it != e.choices.end() ? translated(it->label) : v.toString();
     }
     case Type::Int:
+        if (e.allLabel && v.toInt() == -1)
+            return translated(e.allLabel);
         return e.zeroLabel && v.toInt() == 0 ? translated(e.zeroLabel) : QString::number(v.toInt());
     case Type::Number:
         return sizeText(v.toDouble());
@@ -1776,6 +1800,8 @@ QJsonObject entryJson(const Entry& e, const State& current, const State& default
             o.insert(u"unit"_s, u"MB"_s);
         if (!e.zeroMeaning.isEmpty())
             o.insert(u"zero_means"_s, e.zeroMeaning);
+        if (!e.allMeaning.isEmpty())
+            o.insert(u"minus_one_means"_s, e.allMeaning);
     }
     if (e.type == Type::List)
         o.insert(u"items_are"_s, listItemsName(e.list));

@@ -90,6 +90,8 @@ struct Entry {
     double max = 0;
     const char* zeroLabel = nullptr; // Int: 0 is allowed too, shown as this (translated)
     QString zeroMeaning; // ... and as this to the model ("no limit")
+    const char* allLabel = nullptr; // Int: -1 is allowed too, shown as this (translated)
+    QString allMeaning; // ... and as this to the model ("all directly")
     ListKind list = ListKind::Names; // List
     Widens widens = Widens::No;
 

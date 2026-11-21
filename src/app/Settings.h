@@ -184,7 +184,15 @@ struct Settings {
     bool folderMenuFavorites = true;
     bool folderMenuRecent = true;
     bool folderMenuWindows = true; // folders open in other windows
-    int folderMenuFavoritesInline = 0; // 0: submenu; 1..10: direct rows, then More
+    // Folder menu group presentation: -1 shows all items directly at top level,
+    // 0 keeps them in a submenu, 1..20 shows the first N directly then "更多…".
+    static constexpr int kFolderMenuInlineAll = -1;
+    static constexpr int kFolderMenuInlineMax = 20;
+    static constexpr int clampFolderMenuInline(int count) noexcept
+    {
+        return count == kFolderMenuInlineAll ? kFolderMenuInlineAll : std::clamp(count, 0, kFolderMenuInlineMax);
+    }
+    int folderMenuFavoritesInline = 0;
     int folderMenuRecentInline = 0;
     int folderMenuWindowsInline = 0;
     // Which actions the menu offers under the lists (GitHub #200): all on is

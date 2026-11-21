@@ -240,25 +240,25 @@ private slots:
         QCOMPARE(settings.folderMenuFavoritesInline, 0);
         QCOMPARE(settings.folderMenuRecentInline, 0);
         QCOMPARE(settings.folderMenuWindowsInline, 0);
-        settings.folderMenuFavoritesInline = 5;
+        settings.folderMenuFavoritesInline = ws::Settings::kFolderMenuInlineAll;
         settings.folderMenuRecentInline = 3;
-        settings.folderMenuWindowsInline = 10;
+        settings.folderMenuWindowsInline = 20;
         QVERIFY(settings.saveChecked());
         ws::Settings restored;
         restored.load();
-        QCOMPARE(restored.folderMenuFavoritesInline, 5);
+        QCOMPARE(restored.folderMenuFavoritesInline, ws::Settings::kFolderMenuInlineAll);
         QCOMPARE(restored.folderMenuRecentInline, 3);
-        QCOMPARE(restored.folderMenuWindowsInline, 10);
+        QCOMPARE(restored.folderMenuWindowsInline, 20);
         {
             QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
             ini.setValue(u"Launcher/FolderMenuFavoritesInline"_s, 99);
-            ini.setValue(u"Launcher/FolderMenuRecentInline"_s, -1);
-            ini.setValue(u"Launcher/FolderMenuWindowsInline"_s, 50);
+            ini.setValue(u"Launcher/FolderMenuRecentInline"_s, -2);
+            ini.setValue(u"Launcher/FolderMenuWindowsInline"_s, u"all"_s);
         }
         restored.load();
-        QCOMPARE(restored.folderMenuFavoritesInline, 10);
+        QCOMPARE(restored.folderMenuFavoritesInline, 20);
         QCOMPARE(restored.folderMenuRecentInline, 0);
-        QCOMPARE(restored.folderMenuWindowsInline, 10);
+        QCOMPARE(restored.folderMenuWindowsInline, ws::Settings::kFolderMenuInlineAll);
     }
 
     void garbledBackupFolder() // GitHub #346

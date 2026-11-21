@@ -64,7 +64,7 @@ Window {
     readonly property real padding: Theme.menuPadding
     readonly property int itemHeight: Theme.menuItemHeight
     readonly property real dpr: Screen.devicePixelRatio
-    readonly property real maxHeight: Math.min(600, availableArea.height > 0 ? availableArea.height - 16 : 600)
+    readonly property real maxHeight: Math.min(760, availableArea.height > 0 ? availableArea.height - 16 : 760)
     readonly property int direction: 1 // the side its next column opens to
 
     objectName: "folderMenuWindow"

@@ -1442,6 +1442,26 @@
         <translation>The folder menu has “Add this folder to favorites”</translation>
     </message>
     <message>
+        <source>收藏夹显示方式</source>
+        <translation>Favorites display</translation>
+    </message>
+    <message>
+        <source>最近的文件夹显示方式</source>
+        <translation>Recent folders display</translation>
+    </message>
+    <message>
+        <source>已打开的文件夹显示方式</source>
+        <translation>Open folders display</translation>
+    </message>
+    <message>
+        <source>二级菜单</source>
+        <translation>Submenu</translation>
+    </message>
+    <message>
+        <source>全部</source>
+        <translation>All</translation>
+    </message>
+    <message>
         <source>菜单里的操作</source>
         <translation>Actions in the menu</translation>
     </message>
@@ -9090,28 +9110,52 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>full window;panel;global;shortcut;full search;hotkey</translation>
     </message>
     <message>
-        <source>直接显示收藏夹</source>
-        <translation>Favorites shown directly</translation>
+        <source>收藏夹显示方式</source>
+        <translation>Favorites display</translation>
     </message>
     <message>
-        <source>直接显示最近的文件夹</source>
-        <translation>Recent folders shown directly</translation>
+        <source>最近的文件夹显示方式</source>
+        <translation>Recent folders display</translation>
     </message>
     <message>
-        <source>直接显示已打开的文件夹</source>
-        <translation>Open folders shown directly</translation>
+        <source>已打开的文件夹显示方式</source>
+        <translation>Open folders display</translation>
     </message>
     <message>
-        <source>0：收进二级菜单；1–10：直接显示前几个，其余放进“更多…”</source>
-        <translation>0: keep in a submenu. 1–10: show this many directly, with the rest under “More…”.</translation>
+        <source>收进二级菜单，保持顶层菜单紧凑</source>
+        <translation>Keep in a submenu so the top menu stays compact</translation>
     </message>
     <message>
-        <source>文件夹菜单;最近;已打开;数量;更多;展开;inline;recent;folders</source>
-        <translation>folder menu;recent;open;count;more;expand;inline;folders</translation>
+        <source>全部直接列在顶层菜单，过多时可滚动</source>
+        <translation>List all items directly in the top menu; scrolls when long</translation>
     </message>
     <message>
-        <source>文件夹菜单;收藏;收藏夹;数量;更多;展开;inline;favorites</source>
-        <translation>folder menu;favorite;favorites;count;more;expand;inline</translation>
+        <source>顶层直接显示前 %1 个，其余收进“更多…”</source>
+        <translation>Show the first %1 directly in the top menu, with the rest under “More…”</translation>
+    </message>
+    <message>
+        <source>二级菜单</source>
+        <translation>Submenu</translation>
+    </message>
+    <message>
+        <source>前几个</source>
+        <translation>First N</translation>
+    </message>
+    <message>
+        <source>全部</source>
+        <translation>All</translation>
+    </message>
+    <message>
+        <source>文件夹菜单;直接显示收藏夹;直接显示;收藏;收藏夹;一级;二级;平铺;全部;数量;更多;展开;折叠;Listary;inline;favorites</source>
+        <translation>folder menu;favorites shown directly;direct;favorite;favorites;top level;submenu;flat;all;count;more;expand;collapse;Listary;inline</translation>
+    </message>
+    <message>
+        <source>文件夹菜单;直接显示最近的文件夹;直接显示;最近;一级;二级;平铺;全部;数量;更多;展开;折叠;Listary;inline;recent;folders</source>
+        <translation>folder menu;recent folders shown directly;direct;recent;top level;submenu;flat;all;count;more;expand;collapse;Listary;inline;folders</translation>
+    </message>
+    <message>
+        <source>文件夹菜单;直接显示已打开的文件夹;直接显示;已打开;其他窗口;一级;二级;平铺;全部;数量;更多;展开;折叠;Listary;inline;open;windows;folders</source>
+        <translation>folder menu;open folders shown directly;direct;open;other windows;top level;submenu;flat;all;count;more;expand;collapse;Listary;inline;windows;folders</translation>
     </message>
     <message>
         <source>启动时请求管理员权限，直接读取主文件表和变更日志；取消后本次用普通权限，保留选择。开机自启也以管理员身份</source>
