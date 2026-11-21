@@ -489,8 +489,8 @@ App::~App()
     m_launcherRouting.router.reset();
     m_numberKeyHook.reset();
     m_drainingNumberKeyHook.reset();
-    m_drainingRouter.reset();
-    m_launcherRouting.draining.reset();
+    m_drainingRouters.clear();
+    m_launcherRouting.draining.clear();
     m_holdWatch.reset();
     m_drainingWatch.reset();
     m_keyListenerMode = -1; // recorder teardown must not recreate input listeners
@@ -6094,11 +6094,8 @@ bool App::startKeyRouting(HWND target)
     };
     callbacks.foregroundChanged = [this, post](HWND window) { post([this, window] { routedForeground(window); }); };
     callbacks.shiftTapped = [this, post] { post([this] { clipboardShiftTapped(); }); };
-    callbacks.drained = [this, run] {
-        QMetaObject::invokeMethod(this, [this, run] {
-            if (m_drainingRun == run)
-                m_drainingRouter.reset();
-        }, Qt::QueuedConnection);
+    callbacks.drained = [this] {
+        QMetaObject::invokeMethod(this, [this] { reapDrainingRouters(); }, Qt::QueuedConnection);
     };
     const Qt::KeyboardModifier numberKeys = m_settings.clipboardNumberKeys == u"ctrl" ? Qt::ControlModifier
         : m_settings.clipboardNumberKeys == u"off"                                    ? Qt::NoModifier
@@ -6112,6 +6109,8 @@ bool App::startKeyRouting(HWND target)
         qWarning() << "Clipboard: keyboard routing is unavailable";
         return false;
     }
+    if (m_keyRouter)
+        stopKeyRouting();
     m_keyRouter = std::move(router);
     m_keyRouterTarget = target;
     if (m_typing)
@@ -6128,24 +6127,33 @@ void App::stopKeyRouting()
         endClipboardHold("unrouted");
     if (m_keyRouter) {
         // No key is taken any more; the releases of those it took still are
-        // its own, for a moment.
+        // its own, for a moment. The router sheds mouse/foreground hooks and
+        // exits on its own thread before callbacks.drained asks to reap it,
+        // so the GUI thread (and the paste timer right after) never stalls.
         m_keyRouter->drain();
         diagnostics::record(u"clipboard-key-routing-stop"_s,
             {{u"session"_s, static_cast<qint64>(m_keyRouterRun)}, {u"router"_s, m_keyRouter->diagnosticStatus()}});
-        m_drainingRouter = std::move(m_keyRouter);
-        m_drainingRun = m_keyRouterRun;
+        m_drainingRouters.push_back(std::move(m_keyRouter));
+        reapDrainingRouters();
         if (m_typing)
             m_typing->setRouted(TypeToSearch::Router::Clipboard, false);
-        QTimer::singleShot(2s, this, [this, run = m_drainingRun] {
-            if (m_drainingRun == run)
-                m_drainingRouter.reset(); // a key held that long is the program's again
-        });
     }
     m_keyRouterTarget = nullptr;
     if (!m_clipboard->keysRouted())
         return;
     m_clipFrame->setNoActivate(false);
     m_clipboard->setKeysRouted(false);
+}
+
+void App::reapDrainingRouters()
+{
+    const auto reap = [](std::vector<std::unique_ptr<KeyRouter>>& routers) {
+        std::erase_if(routers, [](const std::unique_ptr<KeyRouter>& router) {
+            return !router || router->isFinished();
+        });
+    };
+    reap(m_drainingRouters);
+    reap(m_launcherRouting.draining);
 }
 
 // What the window's own focus would do with the key: to the item that has
@@ -6253,11 +6261,8 @@ bool App::startLauncherRouting()
     callbacks.key = [this, post](const KeyRouter::Key& key) { post([this, key] { launcherRoutedKey(key); }); };
     callbacks.clickedAway = [this, post](HWND) { post([this] { launcherClickedAway(); }); };
     callbacks.foregroundChanged = [this, post](HWND) { post([this] { launcherRoutedForeground(); }); };
-    callbacks.drained = [this, run] {
-        QMetaObject::invokeMethod(this, [this, run] {
-            if (m_launcherRouting.drainingRun == run)
-                m_launcherRouting.draining.reset();
-        }, Qt::QueuedConnection);
+    callbacks.drained = [this] {
+        QMetaObject::invokeMethod(this, [this] { reapDrainingRouters(); }, Qt::QueuedConnection);
     };
     const Qt::KeyboardModifier numberKeys = m_settings.numberKeys == u"ctrl" ? Qt::ControlModifier
         : m_settings.numberKeys == u"alt"                                     ? Qt::AltModifier
@@ -6294,12 +6299,8 @@ void App::stopLauncherRouting()
     diagnostics::record(u"launcher-key-routing-stop"_s,
         {{u"session"_s, static_cast<qint64>(m_launcherRouting.run)},
             {u"router"_s, m_launcherRouting.router->diagnosticStatus()}});
-    m_launcherRouting.draining = std::move(m_launcherRouting.router);
-    m_launcherRouting.drainingRun = m_launcherRouting.run;
-    QTimer::singleShot(2s, this, [this, run = m_launcherRouting.drainingRun] {
-        if (m_launcherRouting.drainingRun == run)
-            m_launcherRouting.draining.reset(); // a key held that long is the program's again
-    });
+    m_launcherRouting.draining.push_back(std::move(m_launcherRouting.router));
+    reapDrainingRouters();
     m_launcher->setKeysRouted(false);
 }
 

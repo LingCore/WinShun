@@ -5,8 +5,10 @@
 
 #include <QtLogging>
 
+#include <algorithm>
 #include <array>
 #include <latch>
+#include <utility>
 
 namespace ws {
 
@@ -15,9 +17,10 @@ namespace {
 // Low-level hooks and out-of-context events are called on the thread that set them.
 thread_local KeyRouter* t_router = nullptr;
 
-constexpr UINT kDrainMessage = WM_APP; // to the router's thread (drain)
+constexpr UINT kDrainMessage = WM_APP; // to the router's thread (drain); wParam: cap in ms
 constexpr UINT kRefreshMessage = WM_APP + 1; // the search field was clicked
 constexpr UINT kLoseHooksMessage = WM_APP + 2; // loseHooksForTest
+constexpr UINT kStopMessage = WM_APP + 3; // leave GetMessageW ahead of WM_QUIT / timers
 // A low-level hook that is no longer called says nothing: what is typed then
 // goes to the program in front, and no key of the window works (GitHub #86).
 // Windows is known to take out one that answers late (past
@@ -239,32 +242,34 @@ KeyRouter::KeyRouter(
         // Every key press and mouse move in the system waits for the hooks' answer.
         ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
         const HINSTANCE instance = ::GetModuleHandleW(nullptr);
-        HHOOK keyboard = ::SetWindowsHookExW(WH_KEYBOARD_LL, &KeyRouter::keyboardProc, instance, 0);
-        if (!keyboard) {
+        m_keyboard = ::SetWindowsHookExW(WH_KEYBOARD_LL, &KeyRouter::keyboardProc, instance, 0);
+        if (!m_keyboard) {
             m_setupStep = "keyboard";
             m_setupError = ::GetLastError();
         }
-        HHOOK mouse = keyboard ? ::SetWindowsHookExW(WH_MOUSE_LL, &KeyRouter::mouseProc, instance, 0) : nullptr;
-        if (keyboard && !mouse) {
+        m_mouse = m_keyboard ? ::SetWindowsHookExW(WH_MOUSE_LL, &KeyRouter::mouseProc, instance, 0) : nullptr;
+        if (m_keyboard && !m_mouse) {
             m_setupStep = "mouse";
             m_setupError = ::GetLastError();
         }
-        const HWINEVENTHOOK foreground = mouse
+        m_foreground = m_mouse
             ? ::SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr, &KeyRouter::foregroundProc,
                                 0, 0, WINEVENT_OUTOFCONTEXT)
             : nullptr;
-        if (mouse && !foreground) {
+        if (m_mouse && !m_foreground) {
             m_setupStep = "foreground";
             m_setupError = ::GetLastError();
         }
-        m_active = foreground != nullptr;
+        m_active = m_foreground != nullptr;
         m_calledAt = ::GetTickCount();
-        const UINT_PTR watch = m_active ? ::SetTimer(nullptr, 0, kWatchMs, nullptr) : 0;
+        m_watch = m_active ? ::SetTimer(nullptr, 0, kWatchMs, nullptr) : 0;
         // New hooks in, then the old ones out: no key goes by in between
         // (this thread is handed none meanwhile), and the old ones stay if
         // new ones cannot be had. Windows may have taken the old ones out
         // already; letting them go then fails, which is all it does.
         const auto putInAgain = [&] {
+            if (m_draining.load(std::memory_order_acquire) || m_quit.load(std::memory_order_acquire))
+                return false;
             const HHOOK newKeyboard = ::SetWindowsHookExW(WH_KEYBOARD_LL, &KeyRouter::keyboardProc, instance, 0);
             const HHOOK newMouse = newKeyboard ? ::SetWindowsHookExW(WH_MOUSE_LL, &KeyRouter::mouseProc, instance, 0) : nullptr;
             if (!newMouse) {
@@ -276,10 +281,11 @@ KeyRouter::KeyRouter(
                 return false;
             }
             m_refreshError = 0;
-            m_refreshUnhookError = ::UnhookWindowsHookEx(keyboard) ? 0 : ::GetLastError();
-            ::UnhookWindowsHookEx(mouse);
-            keyboard = newKeyboard;
-            mouse = newMouse;
+            m_refreshUnhookError = m_keyboard && ::UnhookWindowsHookEx(m_keyboard) ? 0 : ::GetLastError();
+            if (m_mouse)
+                ::UnhookWindowsHookEx(m_mouse);
+            m_keyboard = newKeyboard;
+            m_mouse = newMouse;
             m_calledAt = ::GetTickCount();
             return true;
         };
@@ -290,47 +296,74 @@ KeyRouter::KeyRouter(
             // window itself may not be up yet: the caller shows it next.)
             tellOtherForeground(true);
             // The hooks are called from inside GetMessage; the events too.
-            while (::GetMessageW(&msg, nullptr, 0, 0) > 0) {
+            while (!m_stopping && !m_quit.load(std::memory_order_acquire) && ::GetMessageW(&msg, nullptr, 0, 0) > 0) {
+                if (m_stopping || m_quit.load(std::memory_order_acquire))
+                    break;
+                if (msg.hwnd == nullptr && msg.message == kStopMessage)
+                    break;
                 if (msg.hwnd == nullptr && msg.message == kDrainMessage) {
-                    checkDrained(); // nothing held now: done at once
+                    // Mouse, foreground and hook-recovery timers are unused while
+                    // draining; shed them now so slow downstream mouse hooks
+                    // cannot stall teardown. With no taken keys held, leave the
+                    // loop and drop the keyboard hook at once.
+                    unhookPassive();
+                    if (m_taken.none())
+                        break;
+                    if (!m_drainCap) {
+                        const UINT capMs = msg.wParam ? static_cast<UINT>(msg.wParam) : 2000u;
+                        m_drainCap = ::SetTimer(nullptr, 0, capMs, nullptr);
+                    }
                     continue;
                 }
                 if (msg.hwnd == nullptr && msg.message == kRefreshMessage) {
-                    if (!m_draining) {
+                    if (!m_draining.load(std::memory_order_acquire)) {
                         count(Refreshes);
                         putInAgain();
                     }
                     continue;
                 }
                 if (msg.hwnd == nullptr && msg.message == kLoseHooksMessage) {
-                    ::UnhookWindowsHookEx(keyboard); // as Windows does: the handles stay, nothing is called
-                    ::UnhookWindowsHookEx(mouse);
+                    if (m_keyboard)
+                        ::UnhookWindowsHookEx(m_keyboard); // as Windows does: the handles stay, nothing is called
+                    if (m_mouse)
+                        ::UnhookWindowsHookEx(m_mouse);
                     continue;
                 }
-                if (msg.hwnd == nullptr && msg.message == WM_TIMER && msg.wParam == watch) {
-                    // While it drains too: the releases of the keys it took are still its own.
-                    if (hooksDropped() && putInAgain())
+                if (msg.hwnd == nullptr && msg.message == WM_TIMER && m_drainCap && msg.wParam == m_drainCap) {
+                    break; // a taken key held that long is the program's again
+                }
+                if (msg.hwnd == nullptr && msg.message == WM_TIMER && m_watch && msg.wParam == m_watch) {
+                    if (!m_draining.load(std::memory_order_acquire) && hooksDropped() && putInAgain())
                         count(Recovered);
                     continue;
                 }
                 ::DispatchMessageW(&msg);
             }
         }
-        if (watch)
-            ::KillTimer(nullptr, watch);
-        if (foreground)
-            ::UnhookWinEvent(foreground);
-        if (mouse)
-            ::UnhookWindowsHookEx(mouse);
-        if (keyboard)
-            ::UnhookWindowsHookEx(keyboard);
+        if (const UINT_PTR cap = std::exchange(m_drainCap, 0))
+            ::KillTimer(nullptr, cap);
+        unhookAll();
+        t_router = nullptr;
+        // All hooks are off and the loop is done: joining this thread from now
+        // on only waits for the thread epilogue, never for another hook chain.
+        m_finished.store(true, std::memory_order_release);
+        if (m_draining.load(std::memory_order_acquire) && !m_quit.load(std::memory_order_acquire)
+            && !m_drainedTold.exchange(true, std::memory_order_acq_rel) && m_callbacks.drained) {
+            m_callbacks.drained();
+        }
     });
     ready.wait();
 }
 
 KeyRouter::~KeyRouter()
 {
-    ::PostThreadMessageW(m_threadId.load(), WM_QUIT, 0, 0); // ends the message loop
+    m_quit.store(true, std::memory_order_release);
+    if (!m_finished.load(std::memory_order_acquire)) {
+        if (const DWORD thread = m_threadId.load()) {
+            ::PostThreadMessageW(thread, kStopMessage, 0, 0);
+            ::PostThreadMessageW(thread, WM_QUIT, 0, 0); // ends the message loop
+        }
+    }
     if (m_thread.joinable())
         m_thread.join();
 }
@@ -364,16 +397,59 @@ void KeyRouter::loseHooksForTest()
     ::PostThreadMessageW(m_threadId.load(), kLoseHooksMessage, 0, 0);
 }
 
-void KeyRouter::drain()
+void KeyRouter::drain(std::chrono::milliseconds cap)
 {
-    m_draining = true;
-    ::PostThreadMessageW(m_threadId.load(), kDrainMessage, 0, 0);
+    if (m_draining.exchange(true, std::memory_order_acq_rel))
+        return;
+    if (!m_active.load(std::memory_order_acquire)) {
+        if (!m_drainedTold.exchange(true, std::memory_order_acq_rel) && m_callbacks.drained)
+            m_callbacks.drained();
+        return;
+    }
+    const auto clamped = std::clamp<long long>(cap.count(), 1, 60'000);
+    if (!::PostThreadMessageW(m_threadId.load(), kDrainMessage, static_cast<WPARAM>(clamped), 0)) {
+        if (!m_drainedTold.exchange(true, std::memory_order_acq_rel) && m_callbacks.drained)
+            m_callbacks.drained();
+    }
+}
+
+void KeyRouter::unhookPassive()
+{
+    if (const UINT_PTR watch = std::exchange(m_watch, 0))
+        ::KillTimer(nullptr, watch);
+    if (const HWINEVENTHOOK foreground = std::exchange(m_foreground, nullptr))
+        ::UnhookWinEvent(foreground);
+    if (const HHOOK mouse = std::exchange(m_mouse, nullptr))
+        ::UnhookWindowsHookEx(mouse);
+}
+
+void KeyRouter::unhookAll()
+{
+    unhookPassive();
+    if (const HHOOK keyboard = std::exchange(m_keyboard, nullptr))
+        ::UnhookWindowsHookEx(keyboard);
+}
+
+void KeyRouter::stopNow()
+{
+    unhookAll();
+    if (!std::exchange(m_stopping, true)) {
+        if (const DWORD thread = m_threadId.load())
+            ::PostThreadMessageW(thread, kStopMessage, 0, 0);
+    }
+}
+
+void KeyRouter::onDrainingInHook()
+{
+    unhookPassive();
+    if (m_taken.none())
+        stopNow();
 }
 
 void KeyRouter::checkDrained()
 {
-    if (m_draining && m_taken.none() && m_callbacks.drained)
-        m_callbacks.drained();
+    if (m_draining.load(std::memory_order_acquire) && m_taken.none())
+        stopNow();
 }
 
 // Both stamp the time as they are called and as they answer (hooksDropped):
@@ -383,8 +459,20 @@ LRESULT CALLBACK KeyRouter::keyboardProc(int code, WPARAM wParam, LPARAM lParam)
     if (code != HC_ACTION || !t_router)
         return ::CallNextHookEx(nullptr, code, wParam, lParam);
     t_router->m_calledAt = ::GetTickCount();
+    if (t_router->m_quit.load(std::memory_order_acquire)) {
+        const LRESULT answer = ::CallNextHookEx(nullptr, code, wParam, lParam);
+        if (t_router)
+            t_router->stopNow();
+        return answer;
+    }
     const LRESULT taken = t_router->handleKey(code, wParam, lParam);
-    t_router->m_calledAt = ::GetTickCount();
+    if (t_router) {
+        t_router->m_calledAt = ::GetTickCount();
+        if (t_router->m_quit.load(std::memory_order_acquire))
+            t_router->stopNow();
+        else if (t_router->m_draining.load(std::memory_order_acquire))
+            t_router->onDrainingInHook();
+    }
     return taken;
 }
 
@@ -392,11 +480,17 @@ LRESULT CALLBACK KeyRouter::mouseProc(int code, WPARAM wParam, LPARAM lParam)
 {
     if (code == HC_ACTION && t_router) {
         t_router->m_calledAt = ::GetTickCount();
-        t_router->handleMouse(wParam, *reinterpret_cast<const MSLLHOOKSTRUCT*>(lParam));
+        if (!t_router->m_quit.load(std::memory_order_acquire))
+            t_router->handleMouse(wParam, *reinterpret_cast<const MSLLHOOKSTRUCT*>(lParam));
     }
     const LRESULT answer = ::CallNextHookEx(nullptr, code, wParam, lParam);
-    if (t_router)
+    if (t_router) {
         t_router->m_calledAt = ::GetTickCount();
+        if (t_router->m_quit.load(std::memory_order_acquire))
+            t_router->stopNow();
+        else if (t_router->m_draining.load(std::memory_order_acquire))
+            t_router->onDrainingInHook();
+    }
     return answer;
 }
 
@@ -420,7 +514,17 @@ bool KeyRouter::hooksDropped()
 
 void CALLBACK KeyRouter::foregroundProc(HWINEVENTHOOK, DWORD, HWND hwnd, LONG, LONG, DWORD, DWORD)
 {
-    if (t_router && hwnd && !t_router->m_draining && t_router->m_callbacks.foregroundChanged)
+    if (!t_router)
+        return;
+    if (t_router->m_quit.load(std::memory_order_acquire)) {
+        t_router->stopNow();
+        return;
+    }
+    if (t_router->m_draining.load(std::memory_order_acquire)) {
+        t_router->onDrainingInHook();
+        return;
+    }
+    if (hwnd && t_router->m_callbacks.foregroundChanged)
         t_router->m_callbacks.foregroundChanged(folderview::frameOf(hwnd));
 }
 

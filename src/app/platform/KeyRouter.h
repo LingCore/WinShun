@@ -11,6 +11,7 @@
 #include <array>
 #include <atomic>
 #include <bitset>
+#include <chrono>
 #include <functional>
 #include <thread>
 #include <unordered_map>
@@ -118,6 +119,9 @@ public:
     KeyRouter& operator=(const KeyRouter&) = delete;
 
     bool isActive() const noexcept { return m_active.load(); }
+    // True once the hook thread has unhooked everything and exited its loop, so
+    // destroying this router joins an exiting thread without blocking on hooks.
+    bool isFinished() const noexcept { return m_finished.load(std::memory_order_acquire); }
     // Approximate session totals, readable from the GUI thread. No keys,
     // text, window titles or identifiers; never writes logs from a hook.
     QJsonObject diagnosticStatus() const;
@@ -126,7 +130,11 @@ public:
     // answer come back on their own (hooks_recovered counts them), within
     // a second of the next key.
     void refresh();
-    void drain(); // no more keys taken, no more callbacks but `drained`
+    // No more keys taken, no more callbacks but `drained`. Mouse and foreground
+    // hooks come off at once; the keyboard hook stays until every taken key is
+    // let go (or `cap` elapses), then comes off and the hook thread exits
+    // before `drained` is called.
+    void drain(std::chrono::milliseconds cap = std::chrono::seconds(2));
     // Takes the hooks out with nothing said, as Windows may a late one.
     void loseHooksForTest();
 
@@ -146,6 +154,10 @@ private:
         NotWanted, GlobalHotkey, OtherHook, Refreshes, RefreshFailed, Recovered, ForegroundMissed, LateAnswers, CounterCount
     };
     void count(Counter counter) { m_counts[counter].fetch_add(1, std::memory_order_relaxed); }
+    void unhookPassive(); // router thread: mouse, foreground, recovery timer
+    void unhookAll(); // router thread: passive hooks + keyboard
+    void stopNow(); // router thread: unhook everything and leave the loop
+    void onDrainingInHook(); // router thread: shed unused hooks while draining
     void checkDrained();
     bool hooksDropped(); // router thread
     void tellOtherForeground(bool starting); // router thread
@@ -165,7 +177,16 @@ private:
     HWND m_toldFront = nullptr; // the window in front last said by tellOtherForeground; router thread
     DWORD m_calledAt = 0; // GetTickCount as a hook was last called or answered; router thread
     UINT m_lonelyShift = 0; // the Shift down with nothing else so far (its key), else 0; router thread
+    HHOOK m_keyboard = nullptr; // router thread only
+    HHOOK m_mouse = nullptr; // router thread only
+    HWINEVENTHOOK m_foreground = nullptr; // router thread only
+    UINT_PTR m_watch = 0; // router thread only
+    UINT_PTR m_drainCap = 0; // router thread only: caps how long drain waits for held keys
+    bool m_stopping = false; // router thread only
     std::atomic<bool> m_draining {false}; // takes effect at once, from the GUI thread
+    std::atomic<bool> m_quit {false}; // destructor in progress: leave the loop without firing `drained`
+    std::atomic<bool> m_finished {false}; // hook thread has unhooked everything and left its loop
+    std::atomic<bool> m_drainedTold {false};
     std::atomic<DWORD> m_threadId {0};
     std::atomic<bool> m_active {false};
     std::array<std::atomic<quint64>, CounterCount> m_counts {};

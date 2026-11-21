@@ -234,8 +234,8 @@ FolderMenu::FolderMenu(History* history, Favorites* favorites, QObject* parent)
 
 FolderMenu::~FolderMenu()
 {
-    if (m_router)
-        m_router->drain();
+    m_router.reset();
+    m_draining.clear();
 }
 
 void FolderMenu::setWindow(QWindow* window)
@@ -952,11 +952,8 @@ void FolderMenu::startKeys(HWND target)
                 dismiss();
         });
     };
-    callbacks.drained = [this, run] {
-        QMetaObject::invokeMethod(this, [this, run] {
-            if (m_drainingRun == run)
-                m_draining.reset();
-        }, Qt::QueuedConnection);
+    callbacks.drained = [this] {
+        QMetaObject::invokeMethod(this, [this] { reapDrainingKeys(); }, Qt::QueuedConnection);
     };
     auto router = std::make_unique<KeyRouter>(target, reinterpret_cast<HWND>(m_window->winId()), std::move(callbacks),
         Qt::NoModifier, 0, KeyRouter::Policy::Menu);
@@ -974,11 +971,14 @@ void FolderMenu::stopKeys()
     // No key is taken any more; the releases of those it took still are its
     // own, for a moment.
     m_router->drain();
-    m_draining = std::move(m_router);
-    m_drainingRun = m_routerRun;
-    QTimer::singleShot(2s, this, [this, run = m_drainingRun] {
-        if (m_drainingRun == run)
-            m_draining.reset(); // a key held that long is the program's again
+    m_draining.push_back(std::move(m_router));
+    reapDrainingKeys();
+}
+
+void FolderMenu::reapDrainingKeys()
+{
+    std::erase_if(m_draining, [](const std::unique_ptr<KeyRouter>& router) {
+        return !router || router->isFinished();
     });
 }
 

@@ -16,10 +16,13 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdio>
+#include <memory>
 
 using namespace ws;
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -213,6 +216,41 @@ private slots:
         QCOMPARE(::GetForegroundWindow(), foreground);
         QVERIFY(!::IsWindowVisible(passive.hwnd));
         QCOMPARE(keys.load(), 0);
+    }
+
+    void drainFinishesBeforeCallbackAndIsIdempotent()
+    {
+        PassiveWindow passive;
+        QVERIFY(passive.hwnd);
+        std::atomic<int> drained {0};
+        std::atomic<bool> finishedInCallback {false};
+        std::unique_ptr<KeyRouter> router;
+        router = std::make_unique<KeyRouter>(nullptr, passive.hwnd, KeyRouter::Callbacks {.drained = [&] {
+            finishedInCallback = router->isFinished();
+            ++drained;
+        }});
+        QVERIFY(router->isActive());
+        QVERIFY(!router->isFinished());
+        router->drain();
+        router->drain(); // hideClipboard + stopKeyRouting call drain() twice
+        QTRY_COMPARE_WITH_TIMEOUT(drained.load(), 1, 2000);
+        QVERIFY(finishedInCallback.load());
+        QVERIFY(router->isFinished());
+        const auto start = std::chrono::steady_clock::now();
+        router.reset();
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start);
+        QVERIFY2(elapsed.count() < 500, qPrintable(u"join after finished took %1 ms"_s.arg(elapsed.count())));
+        QCOMPARE(drained.load(), 1);
+
+        // Destroying without drain() exits cleanly and never invokes drained.
+        std::atomic<int> undrained {0};
+        {
+            KeyRouter plain(nullptr, passive.hwnd, {.drained = [&] { ++undrained; }});
+            QVERIFY(plain.isActive());
+            QVERIFY(!plain.isFinished());
+        }
+        QCOMPARE(undrained.load(), 0);
     }
 
     // The clipboard hotkey's hold watch (GitHub #107), its keys not down:
@@ -552,6 +590,81 @@ private slots:
         const QJsonObject status = router.diagnosticStatus();
         QCOMPARE(status.value(u"already_held"_s).toInteger(), 0);
         QVERIFY(status.value(u"late_answers"_s).toInteger() <= 1);
+    }
+
+    // Draining while a taken key is held keeps eating that key's release,
+    // exits as soon as it is let go, and caps out on its own thread if held
+    // past the limit.
+    void liveDrainWaitsForHeldKeyAndRespectsCap()
+    {
+        if (qEnvironmentVariableIntValue("WINSHUN_KEYROUTER_LIVE") != 1)
+            QSKIP("Opt-in desktop test: uses guarded keys in its own temporary receiver only.");
+        Receiver receiver;
+        QVERIFY(receiver.start());
+        PassiveWindow passive;
+        QVERIFY(passive.hwnd);
+        ::ShowWindow(passive.hwnd, SW_SHOWNOACTIVATE);
+
+        const auto releaseIfHeld = [](WORD vk) {
+            if (::GetAsyncKeyState(vk) & 0x8000) {
+                INPUT up {};
+                up.type = INPUT_KEYBOARD;
+                up.ki.wVk = vk;
+                up.ki.wScan = static_cast<WORD>(::MapVirtualKeyW(vk, MAPVK_VK_TO_VSC));
+                up.ki.dwFlags = KEYEVENTF_KEYUP;
+                up.ki.dwExtraInfo = kOwnInput;
+                ::SendInput(1, &up, sizeof up);
+            }
+        };
+        const auto cleanup = qScopeGuard([&] {
+            releaseIfHeld('J');
+            releaseIfHeld('K');
+        });
+
+        // Case 1: release arrives before the drain cap.
+        {
+            std::atomic<int> presses {0};
+            std::atomic<int> drained {0};
+            KeyRouter router(receiver.window, passive.hwnd, {
+                .key = [&](const KeyRouter::Key& key) {
+                    if (key.press && key.vk == 'J')
+                        ++presses;
+                },
+                .drained = [&] { ++drained; },
+            });
+            QVERIFY(router.isActive());
+            QVERIFY(send(receiver.window, 'J', false));
+            QTRY_COMPARE_WITH_TIMEOUT(presses.load(), 1, 2000);
+            router.drain(2000ms);
+            QTest::qWait(80);
+            QCOMPARE(drained.load(), 0);
+            QVERIFY(!router.isFinished());
+            QVERIFY(send(receiver.window, 'J', true));
+            QTRY_COMPARE_WITH_TIMEOUT(drained.load(), 1, 1000);
+            QVERIFY(router.isFinished());
+            QTest::qWait(50);
+            QVERIFY2(!receiver.read().contains("up:74"), receiver.output.constData());
+        }
+
+        // Case 2: key stays held past the cap; router finishes on its own thread.
+        {
+            std::atomic<int> presses {0};
+            std::atomic<int> drained {0};
+            KeyRouter router(receiver.window, passive.hwnd, {
+                .key = [&](const KeyRouter::Key& key) {
+                    if (key.press && key.vk == 'K')
+                        ++presses;
+                },
+                .drained = [&] { ++drained; },
+            });
+            QVERIFY(router.isActive());
+            QVERIFY(send(receiver.window, 'K', false));
+            QTRY_COMPARE_WITH_TIMEOUT(presses.load(), 1, 2000);
+            router.drain(150ms);
+            QTRY_COMPARE_WITH_TIMEOUT(drained.load(), 1, 1500);
+            QVERIFY(router.isFinished());
+            releaseIfHeld('K');
+        }
     }
 };
 

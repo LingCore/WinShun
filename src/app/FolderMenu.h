@@ -243,6 +243,7 @@ private:
     void show(const folderview::Hit& hit, const Found& found);
     void startKeys(HWND target);
     void stopKeys();
+    void reapDrainingKeys();
     void goTo(const QString& folder);
     POINT hotkeyAnchor(HWND root) const; // where the menu goes for the hotkey (physical pixels)
     // The double click's way, for the diagnostics journal (GitHub #45). On
@@ -300,8 +301,7 @@ private:
     std::vector<Entry> m_actions; // by entry
     std::unique_ptr<KeyRouter> m_router;
     std::uint64_t m_routerRun = 0; // queued input belongs to this opening
-    std::unique_ptr<KeyRouter> m_draining; // done, until the keys it took are let go
-    std::uint64_t m_drainingRun = 0;
+    std::vector<std::unique_ptr<KeyRouter>> m_draining; // kept until their hook thread exits
     // The recent folders as last gathered (worker thread only): reading
     // Windows' list takes a good part of a second the first time, so the
     // menu comes with these, and they are gathered again after it.

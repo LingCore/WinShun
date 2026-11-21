@@ -323,6 +323,7 @@ private:
     bool startKeyRouting(HWND target);
     void avoidClipboardShellFlyout(HWND foreground);
     void stopKeyRouting();
+    void reapDrainingRouters();
     void routedKey(const KeyRouter::Key& key);
     void routedForeground(HWND window);
     // A copied file's preview beside the clipboard's list took the front (a
@@ -932,17 +933,17 @@ private:
     std::uint64_t m_drainingNumberKeyRun = 0;
     HWND m_keyRouterTarget = nullptr; // that program's window
     std::uint64_t m_keyRouterRun = 0; // which routing its posted keys belong to
-    std::unique_ptr<KeyRouter> m_drainingRouter; // done, until the keys it took are let go (KeyRouter::drain)
-    std::uint64_t m_drainingRun = 0;
+    // Draining routers kept until their hook thread has unhooked and exited
+    // (KeyRouter::isFinished), so the GUI thread never blocks in join().
+    std::vector<std::unique_ptr<KeyRouter>> m_drainingRouters;
     // The launcher's (startLauncherRouting): its router, the window that
-    // keeps the focus, which routing posted keys belong to; one done, until
-    // the keys it took are let go.
+    // keeps the focus, which routing posted keys belong to; draining ones
+    // kept until their hook thread has exited.
     struct LauncherRouting {
         std::unique_ptr<KeyRouter> router;
         HWND target = nullptr;
         std::uint64_t run = 0;
-        std::unique_ptr<KeyRouter> draining;
-        std::uint64_t drainingRun = 0;
+        std::vector<std::unique_ptr<KeyRouter>> draining;
     };
     LauncherRouting m_launcherRouting;
     // The clipboard's hotkey held (armClipboardHold): the watch, what its
