@@ -161,6 +161,7 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
     engine.addImageProvider(u"ocrpreview"_s, editor.imageProvider());
     engine.addImageProvider(u"ocrappicon"_s, new AppIcon(QDir(appDir).filePath(u"WinShun.exe"_s)));
     ws::WindowFrame::setIcon(u"image://ocrappicon/app"_s);
+    QQuickWindow* window = nullptr;
     const auto applyAppearance = [&](const QJsonObject& look) {
         qputenv("WS_LOCALE", look.value(u"locale"_s).toString(u"zh"_s).toUtf8());
         const QString theme = look.value(u"themeSetting"_s).toString();
@@ -177,10 +178,11 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
         if (look.value(u"locale"_s).toString() == u"en" && translator.load(u":/i18n/ocr-search_en.qm"_s))
             QCoreApplication::installTranslator(&translator);
         engine.retranslate();
+        if (window)
+            ws::win::setDarkFrame(window, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
     };
     applyAppearance(appearance);
     ws::WindowFrame frame(true);
-    QQuickWindow* window = nullptr;
     ws::SavedWindowSize* savedSize = nullptr; // the window's
     // The scan's walk, recognition results and the search's pages stay in the
     // working set long after the work; given back to Windows while idle (the
@@ -206,7 +208,10 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
                 delete object;
                 return false;
             }
+            window->create();
             frame.setWindow(window);
+            ws::win::styleFramelessWindow(window, false);
+            ws::win::setDarkFrame(window, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
             savedSize = new ws::SavedWindowSize(QDir(dataDir).filePath(u"state.ini"_s), u"Window"_s, window);
             savedSize->setWindow(window);
             QObject::connect(window, &QQuickWindow::visibleChanged, &app, [&] {

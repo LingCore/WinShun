@@ -7,6 +7,7 @@
 #include <QWindow>
 
 #include <windows.h>
+#include <dwmapi.h>
 
 namespace {
 
@@ -73,6 +74,33 @@ private slots:
         ws::win::setTaskbarWindow(&window, false); // nothing to change
         QCOMPARE(stylesOf(window).exStyle, made.exStyle);
         window.hide();
+    }
+
+    // Standalone plugin windows (GesturesWindow, JsonWindow, OcrSearchWindow,
+    // GitHub #419): styleFramelessWindow gives them the native DWM border,
+    // shadow and corner style that WindowEdge relies on under Windows 11.
+    void framelessStandaloneWindowGetsNativeFrame()
+    {
+        QWindow window;
+        window.setFlags(Qt::Window | Qt::FramelessWindowHint);
+        window.setTitle(QStringLiteral("WinShun standalone frame test"));
+        window.setGeometry(220, 220, 480, 320);
+        window.create();
+        const HWND hwnd = reinterpret_cast<HWND>(window.winId());
+        QVERIFY(::GetPropW(hwnd, L"WinShun.CornerStyle") == nullptr);
+
+        ws::win::styleFramelessWindow(&window, false);
+        QVERIFY(stylesOf(window).style & WS_CAPTION);
+        QVERIFY(::GetPropW(hwnd, L"WinShun.CornerStyle") != nullptr);
+        if (ws::win::nativeWindowCorners()) {
+            int corner = 0;
+            QCOMPARE(::DwmGetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &corner, sizeof corner), S_OK);
+            QCOMPARE(corner, 2 /* DWMWCP_ROUND */);
+        }
+        ws::win::setDarkFrame(&window, true);
+        QVERIFY(ws::win::isDarkFrame(&window));
+        ws::win::setDarkFrame(&window, false);
+        QVERIFY(!ws::win::isDarkFrame(&window));
     }
 };
 

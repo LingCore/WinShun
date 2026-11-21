@@ -17,6 +17,7 @@
 #include "Phosphor.h"
 #include "SystemTheme.h"
 #include "WindowFrame.h"
+#include "platform/WindowEffects.h"
 
 #include <QCoreApplication>
 #include <QCursor>
@@ -264,6 +265,7 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
     engine.addImportPath(appDir + u"/qml"_s);
     engine.addImageProvider(u"gesturesappicon"_s, new AppIcon(QDir(appDir).filePath(u"WinShun.exe"_s)));
     ws::WindowFrame::setIcon(u"image://gesturesappicon/app"_s);
+    QQuickWindow* window = nullptr;
     // Win顺's look, as it says it (init, then appearance as it changes).
     const auto applyAppearance = [&](const QJsonObject& look) {
         const QString locale = look.value(u"locale"_s).toString(u"zh"_s);
@@ -285,6 +287,8 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
         QGuiApplication::setApplicationDisplayName(english ? u"WinShun"_s : u"Win顺"_s);
         editor.setChinese(!english);
         engine.retranslate();
+        if (window && !preview)
+            ws::win::setDarkFrame(window, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
     };
     applyAppearance(appearance);
 
@@ -295,7 +299,6 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
     }
 
     ws::WindowFrame frame(!preview);
-    QQuickWindow* window = nullptr;
     const auto makeWindow = [&](bool offscreen = false) {
         QQmlComponent component(&engine, QUrl(u"qrc:/qt/qml/WinShun/GesturesWindow.qml"_s));
         QObject* object = component.createWithInitialProperties({{u"editor"_s, QVariant::fromValue(&editor)}, {u"frame"_s, QVariant::fromValue(&frame)}});
@@ -310,7 +313,13 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
             window->setFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
             window->setProperty("_q_showWithoutActivating", true);
         }
+        window->create();
         frame.setWindow(window);
+        if (!offscreen) {
+            // DWM corners, native 1px border (Windows 11) and drop shadow (#419).
+            ws::win::styleFramelessWindow(window, false);
+            ws::win::setDarkFrame(window, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
+        }
         editor.setWindow(window);
         return true;
     };

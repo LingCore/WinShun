@@ -10,6 +10,7 @@
 #include "SystemTheme.h"
 #include "WindowFrame.h"
 #include "platform/IdleTrim.h"
+#include "platform/WindowEffects.h"
 
 #include <QClipboard>
 #include <QCursor>
@@ -231,6 +232,7 @@ extern "C" __declspec(dllexport) int winshunDevToolsMain(const wchar_t* host, in
     engine.addImportPath(appDir + u"/qml"_s);
     engine.addImageProvider(u"devappicon"_s, new AppIcon(QDir(appDir).filePath(u"WinShun.exe"_s)));
     ws::WindowFrame::setIcon(u"image://devappicon/app"_s);
+    QQuickWindow* window = nullptr;
     const auto applyAppearance = [&](const QJsonObject& look) {
         qputenv("WS_LOCALE", look.value(u"locale"_s).toString(u"zh"_s).toUtf8());
         const QString theme = look.value(u"themeSetting"_s).toString();
@@ -246,11 +248,12 @@ extern "C" __declspec(dllexport) int winshunDevToolsMain(const wchar_t* host, in
         if (look.value(u"locale"_s).toString() == u"en" && translator.load(u":/i18n/devtools_en.qm"_s))
             QCoreApplication::installTranslator(&translator);
         engine.retranslate();
+        if (window)
+            ws::win::setDarkFrame(window, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
     };
     applyAppearance(appearance);
 
     ws::WindowFrame frame(true);
-    QQuickWindow* window = nullptr;
     const QString geometryFile = dataDir.isEmpty() ? QString() : QDir(dataDir).filePath(u"window.ini"_s);
     // The text and the tree of a closed window, and the window's graphics,
     // given back to Windows while it stays closed (not in the preview).
@@ -309,7 +312,10 @@ extern "C" __declspec(dllexport) int winshunDevToolsMain(const wchar_t* host, in
                 delete object;
                 return false;
             }
+            window->create();
             frame.setWindow(window);
+            ws::win::styleFramelessWindow(window, false);
+            ws::win::setDarkFrame(window, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
             QObject::connect(window, &QQuickWindow::visibleChanged, &app, [&] {
                 if (window->isVisible())
                     return;
