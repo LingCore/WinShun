@@ -1147,11 +1147,11 @@ Item {
                     property bool rowDragging: false
                     onRowDraggingChanged: if (rowDragging) page.clearHover()
                     move: Transition {
-                        enabled: SystemTheme.animations && !list.rowDragging
+                        enabled: SystemTheme.animations && !list.rowDragging && (page.Window.window?.visible ?? false)
                         NumberAnimation { property: "y"; duration: 150; easing.type: Easing.OutCubic }
                     }
                     moveDisplaced: Transition {
-                        enabled: SystemTheme.animations && !list.rowDragging
+                        enabled: SystemTheme.animations && !list.rowDragging && (page.Window.window?.visible ?? false)
                         NumberAnimation { property: "y"; duration: 150; easing.type: Easing.OutCubic }
                     }
                     onCurrentIndexChanged: {
@@ -1640,7 +1640,7 @@ Item {
                 width: Math.min(implicitWidth, footer.width - hints.reserved)
                 opacity: shown ? 1 : 0
                 visible: opacity > 0
-                Behavior on opacity { enabled: SystemTheme.animations; NumberAnimation { duration: 150 } }
+                Behavior on opacity { enabled: SystemTheme.animations && (page.Window.window?.visible ?? false); NumberAnimation { duration: 150 } }
                 text: page.pinyinHintText
                 textFormat: Text.PlainText
                 color: Theme.faint
@@ -1663,7 +1663,7 @@ Item {
                 spacing: 14
                 opacity: shown ? 1 : 0
                 visible: opacity > 0
-                Behavior on opacity { enabled: SystemTheme.animations; NumberAnimation { id: holdFade; duration: 150 } }
+                Behavior on opacity { enabled: SystemTheme.animations && (page.Window.window?.visible ?? false); NumberAnimation { id: holdFade; duration: 150 } }
 
                 KeyHint { dpr: page.dpr; id: holdReleaseHint; metrics: page.metrics; keys: page.clipboard.holdKeys; label: qsTr("松开粘贴") }
                 KeyHint { dpr: page.dpr; id: holdEscHint; metrics: page.metrics; keys: "Esc"; label: qsTr("取消"); visible: holdNote.escFits }

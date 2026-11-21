@@ -40,6 +40,7 @@ qt_add_executable(WinShun WIN32
     InteractionOptimizationProbe.cpp InteractionOptimizationProbe.h
     IdleOpenProbe.cpp IdleOpenProbe.h
     ClipboardAnimationProbe.cpp ClipboardAnimationProbe.h
+    LauncherSettingsProbe.cpp LauncherSettingsProbe.h
     SearchShadowProbe.cpp SearchShadowProbe.h
     PastePlainProbe.cpp PastePlainProbe.h
     SettingsMotionProbe.cpp SettingsMotionProbe.h

@@ -43,6 +43,7 @@ Rectangle {
     // Where it stands, for the style's segmented part (Hook.role): "scope" in
     // the launcher's search field; "" elsewhere (the settings' choices).
     property string role
+    readonly property bool animate: SystemTheme.animations && (tabs.Window.window?.visible ?? false)
     // One choice: the style's segmented part draws all but the words (the
     // checkboxes of multiSelect keep their own chips).
     readonly property bool segmentedPart: !multiSelect
@@ -143,7 +144,7 @@ Rectangle {
                 color: tabs.segmentedPart ? "transparent" : active ? Theme.chipActive : area.containsMouse ? Theme.chipHover : "transparent"
                 border.width: active && !tabs.segmentedPart ? Theme.edge(tabs.dpr) : 0
                 border.color: Theme.chipBorder
-                Behavior on width { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                Behavior on width { enabled: tabs.animate; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
                 onWidthChanged: tabs.placeSegments()
                 onXChanged: tabs.placeSegments()
 
@@ -202,7 +203,7 @@ Rectangle {
                     width: fullWidth
                     height: parent.height
                     opacity: tab.open ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 150 } }
+                    Behavior on opacity { enabled: tabs.animate; NumberAnimation { duration: 150 } }
 
                     Glyph {
                         id: chevron
@@ -256,7 +257,7 @@ Rectangle {
                     width: fullWidth
                     height: parent.height
                     opacity: tab.pluginOpen ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 150 } }
+                    Behavior on opacity { enabled: tabs.animate; NumberAnimation { duration: 150 } }
 
                     Glyph {
                         id: pluginChevron

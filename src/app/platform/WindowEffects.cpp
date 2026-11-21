@@ -486,26 +486,40 @@ namespace {
 // over every window; its opacity stepped down by an animation it owns.
 class FadingCopy : public QVariantAnimation {
 public:
-    explicit FadingCopy(HWND window)
+    FadingCopy(HWND window, std::function<void()> done)
         : QVariantAnimation(qApp)
         , m_window(window)
+        , m_done(std::move(done))
     {
         setStartValue(255);
         setEndValue(0);
         connect(this, &QVariantAnimation::valueChanged, this, [this](const QVariant& alpha) {
+            if (!m_window)
+                return;
             BLENDFUNCTION blend {AC_SRC_OVER, 0, static_cast<BYTE>(alpha.toInt()), 0};
             ::UpdateLayeredWindow(m_window, nullptr, nullptr, nullptr, nullptr, nullptr, 0, &blend, ULW_ALPHA);
         });
+        connect(this, &QVariantAnimation::finished, this, [this] {
+            if (const HWND w = std::exchange(m_window, nullptr))
+                ::DestroyWindow(w);
+            if (auto done = std::exchange(m_done, {}))
+                done();
+        });
     }
-    ~FadingCopy() override { ::DestroyWindow(m_window); }
+    ~FadingCopy() override
+    {
+        if (m_window)
+            ::DestroyWindow(m_window);
+    }
 
 private:
     HWND m_window;
+    std::function<void()> m_done;
 };
 
 } // namespace
 
-bool fadeOutCopy(QWindow* window, std::chrono::milliseconds duration)
+bool fadeOutCopy(QWindow* window, std::chrono::milliseconds duration, std::function<void()> done)
 {
     const HWND hwnd = handleOf(window);
     RECT bounds {};
@@ -567,7 +581,7 @@ bool fadeOutCopy(QWindow* window, std::chrono::milliseconds duration)
         return false;
     }
     ::ShowWindow(copy, SW_SHOWNOACTIVATE);
-    auto* fading = new FadingCopy(copy);
+    auto* fading = new FadingCopy(copy, std::move(done));
     fading->setDuration(static_cast<int>(duration.count()));
     fading->start(QAbstractAnimation::DeleteWhenStopped);
     return true;

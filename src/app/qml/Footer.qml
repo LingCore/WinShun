@@ -97,6 +97,7 @@ Item {
             anchors.fill: parent
             opacity: progressLine.running ? 1 : 0
             Behavior on opacity {
+                enabled: SystemTheme.animations && (footer.Window.window?.visible ?? false)
                 NumberAnimation { duration: progressLine.running ? 150 : 500; easing.type: Easing.OutCubic }
             }
 
@@ -106,7 +107,7 @@ Item {
                 height: parent.height
                 color: Theme.accent
                 Behavior on width {
-                    enabled: bar.opacity > 0.99 // appearing: at once, not back from the last scan's end
+                    enabled: SystemTheme.animations && (footer.Window.window?.visible ?? false) && bar.opacity > 0.99 // appearing: at once, not back from the last scan's end
                     NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
                 }
             }

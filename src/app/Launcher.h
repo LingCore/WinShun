@@ -239,6 +239,8 @@ class Launcher : public QObject {
     // Ctrl while it is in front) hides it. Kept while hidden, until turned
     // off or the program restarts. The app does the rest (App.cpp).
     Q_PROPERTY(bool pinned READ pinned WRITE setPinned NOTIFY pinnedChanged FINAL)
+    // Fading out (App::hideLauncher): tooltips and menus dismiss at once.
+    Q_PROPERTY(bool closing READ closing NOTIFY closingChanged FINAL)
     // Regex mode (Ctrl+R, as Everything's): every word typed is a regular
     // expression on names (parseQuery's regexTerms), in 全部 and 文件; 内容
     // is as ever. Kept in the settings (regexModeChanged).
@@ -850,6 +852,8 @@ public:
     bool pinned() const { return m_pinned; }
     void setPinned(bool on);
     Q_INVOKABLE void togglePin() { setPinned(!m_pinned); } // Ctrl+T
+    bool closing() const { return m_closing; }
+    void setClosing(bool on);
     bool regexMode() const { return m_regexMode; }
     void setRegexMode(bool on);
     Q_INVOKABLE void toggleRegexMode(); // Ctrl+R: says so in the footer
@@ -962,6 +966,7 @@ signals:
     void panelFiltersOnTopChanged();
     void panelToggleRequested();
     void pinnedChanged();
+    void closingChanged();
     void settingsRequested();
     void shortcutSettingsRequested(); // the settings' overview of all shortcuts
     void folderSettingsRequested(); // the settings' page of the chosen folders
@@ -1417,6 +1422,7 @@ private:
     bool m_panelFiltersOnTop = false;
     PanelColumns m_columns;
     bool m_pinned = false;
+    bool m_closing = false;
     int m_dateChoice = 0;
     QString m_dateFrom;
     QString m_dateTo;

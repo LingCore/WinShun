@@ -3550,6 +3550,14 @@ void Launcher::setPinned(bool on)
         flash(on ? tr("已钉住") : tr("已取消钉住")); // what pinning means is in the pin button's tip
 }
 
+void Launcher::setClosing(bool on)
+{
+    if (on == m_closing)
+        return;
+    m_closing = on;
+    emit closingChanged();
+}
+
 bool Launcher::filtersActive() const
 {
     return m_dateChoice != 0 || m_sizeChoice != 0 || !m_folderFilter.isEmpty() || !m_quickFiltersOn.isEmpty();

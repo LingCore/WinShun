@@ -29,7 +29,11 @@ Window {
     height: Math.min(wantedHeight, roomHeight)
     title: qsTr("欢迎使用 Win顺")
     flags: Qt.Window | Qt.FramelessWindowHint
-    color: Theme.backdrop && SystemTheme.materials && (active || SystemTheme.uiStyle === "liquid") ? "transparent" : Theme.page
+    property bool arriving: false
+    Timer { interval: 1000; running: window.arriving; onTriggered: window.arriving = false }
+    color: Theme.backdrop && SystemTheme.materials && (active || arriving || SystemTheme.uiStyle === "liquid") ? "transparent" : Theme.page
+    onActiveChanged: if (active) arriving = false
+    onVisibleChanged: if (!visible) arriving = false
 
     Component.onCompleted: {
         const area = frame.availableArea(contentItem)

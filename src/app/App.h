@@ -50,7 +50,7 @@ class QWinEventNotifier;
 
 namespace ws {
 
-namespace preview { struct DoubleTapActionsProbe; struct IdleOpenProbe; struct ForegroundUseProbe; struct ClipboardAnimationProbe; struct SearchShadowProbe; }
+namespace preview { struct DoubleTapActionsProbe; struct IdleOpenProbe; struct ForegroundUseProbe; struct ClipboardAnimationProbe; struct SearchShadowProbe; struct LauncherSettingsProbe; }
 
 namespace piedrop {
 class FileOperations;
@@ -145,6 +145,7 @@ class App : public QObject {
     friend struct preview::ForegroundUseProbe;
     friend struct preview::ClipboardAnimationProbe;
     friend struct preview::SearchShadowProbe;
+    friend struct preview::LauncherSettingsProbe;
 
 public:
     struct StartOptions {
@@ -254,6 +255,7 @@ protected:
 
 private:
     bool startRuntime(const StartOptions& options, bool firstRun, bool clipboardIsNew, bool fromOnboarding = false);
+    void showSettingsNow(const std::function<void(QQuickWindow*)>& at = {});
     bool settingsShown() const; // the settings window on show (it is kept, hidden, once made)
     void settingsFirstFrame(int opening); // after the first frame of an opening: what waited for it
     bool showOnboarding(const StartOptions& options);
@@ -299,7 +301,8 @@ private:
     // (the diagnostics journal's "trigger", TriggerJournal); a double tap's
     // also says which listener told of it, and when.
     void beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optional<TriggerJournal::Told> told = {});
-    void openingSeen(TriggerWindow window); // m_triggers->seen, and HotPages
+    void openingSeen(TriggerWindow window, bool deferWarmup = false); // m_triggers->seen; warmup runs now or after slideIn
+    void finishOpeningWarmup(TriggerWindow window); // IdleTrim index warm + HotPages learning, deferred past slideIn
     void journalTapNote(const KeyListener::Note& note);
     // win::bringToFront for a window a press asked for: how, and how long, to the journal.
     win::Front toFront(QWindow* window);
@@ -792,6 +795,12 @@ private:
     // with double tap and its pause in games).
     std::unique_ptr<PointerWatch> m_pointerWatch;
     bool m_launcherClosing = false; // sliding out (hideLauncher)
+    bool m_clipClosing = false; // fading out via win::fadeOutCopy (hideClipboard)
+    quint64 m_clipFadeSeq = 0;
+    quint64 m_revealArmSeq = 0; // invalidates queued armReveal() across begin/cancel
+    // Settings requested while the launcher or clipboard fades out (showSettings):
+    // opened once the fade finishes, cleared if either window reopens.
+    std::optional<std::function<void(QQuickWindow*)>> m_pendingSettings;
     bool m_launcherOpening = false; // query/focus/caret still being prepared; no typing replay yet (#140)
     bool m_lettersPending = false; // opened with englishOnOpen, its field not yet switched (lettersOnOpen)
     // 打开时填入刚复制的文字 (Settings::clipboardFillSeconds): since another

@@ -243,12 +243,21 @@ Item {
 
     function onPixel(v) { return Math.round(v * panel.dpr) / panel.dpr }
 
-    // Fades in as the window grows into it (the window is resized once;
-    // the rows then come in over it).
-    onVisibleChanged: {
-        if (visible) {
+    // Fades in when expanding an already-visible box into the panel (called
+    // from Main.qml's onPanelChanged while the window is visible). Skipped when
+    // opening straight into the panel, where Placement::slideIn fades the window.
+    function playFadeIn() {
+        if (SystemTheme.animations) {
             fadeIn.restart()
-        } else { // also free the menu window until it is needed again
+        } else {
+            fadeIn.stop()
+            panel.opacity = 1
+        }
+    }
+    onVisibleChanged: {
+        if (!visible) { // also free the menu window until it is needed again
+            fadeIn.stop()
+            panel.opacity = 1
             closeColumns()
             columnLoader.active = false
         }
@@ -1170,7 +1179,7 @@ Item {
         bottomMargin: horizontalScroll.visible ? 14 : 4
         clip: true
         opacity: panel.dimmed ? 0.45 : 1
-        Behavior on opacity { NumberAnimation { duration: 150 } }
+        Behavior on opacity { enabled: SystemTheme.animations && (panel.Window.window?.visible ?? false); NumberAnimation { duration: 150 } }
         model: visible ? panel.launcher.results : null
         boundsBehavior: Flickable.StopAtBounds
         // One highlight for the current row, the list's own (the others the

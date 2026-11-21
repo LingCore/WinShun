@@ -1148,7 +1148,7 @@ void Placement::applyOffset()
 {
     if (m_hwnd)
         ::SetWindowPos(reinterpret_cast<HWND>(m_hwnd), nullptr, m_rest.x() + m_offset.x(), m_rest.y() + m_offset.y(), 0,
-            0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE | SWP_NOSENDCHANGING);
 }
 
 // `logical` pixels off its place toward where it comes from (comingFrom),
@@ -1200,26 +1200,6 @@ QPointF Placement::comingFrom() const
     return {0, 1};
 }
 
-namespace {
-
-// As CSS's cubic-bezier().
-QEasingCurve bezier(qreal x1, qreal y1, qreal x2, qreal y2)
-{
-    QEasingCurve curve(QEasingCurve::BezierSpline);
-    curve.addCubicBezierSegment(QPointF(x1, y1), QPointF(x2, y2), QPointF(1, 1));
-    return curve;
-}
-
-// Entrances: Windows 11's own
-// (learn.microsoft.com/windows/apps/design/signature-experiences/motion).
-const QEasingCurve& fastIn()
-{
-    static const QEasingCurve curve = bezier(0, 0, 0, 1);
-    return curve;
-}
-
-} // namespace
-
 void Placement::beginSlide()
 {
     if (sliding())
@@ -1244,7 +1224,6 @@ void Placement::slideIn(std::function<void()> done)
     Slide slide;
     slide.from = m_offset;
     slide.opacityFrom = m_opacity;
-    slide.shiftFrom = m_contentShift;
     if (!m_animated || !animationsOn() || !layered()) { // straight there
         m_slideSpec = slide;
         stepSlide(0);
@@ -1254,17 +1233,17 @@ void Placement::slideIn(std::function<void()> done)
     }
     // Faded in, coming a little from the taskbar's side (rising, by one at the
     // bottom), all of it over the taskbar; by a box or a caret, less far, from it.
+    // Whole window in DWM only (no separate QML contentShift): SetWindowPos and
+    // D3D11 Present are not atomic across DWM frames, and OutQuad avoids slow
+    // 1-pixel stair-stepping after opacity reaches 1.
     if (!wasSliding) {
-        const int distance = m_box ? 8 : 16;
+        const int distance = m_box ? 8 : 12;
         slide.from = nearOffset(distance);
         slide.opacityFrom = 0;
-        slide.shiftFrom = comingFrom() * (distance / 2);
     }
-    slide.moveMs = 200;
+    slide.moveMs = 140;
     slide.fadeMs = 120;
-    slide.shiftMs = 240;
-    slide.moveCurve = fastIn();
-    slide.shiftCurve = fastIn();
+    slide.moveCurve = QEasingCurve::OutQuad;
     startSlide(std::move(slide), std::move(done));
 }
 

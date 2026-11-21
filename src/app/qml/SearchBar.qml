@@ -76,6 +76,12 @@ Item {
     Connections {
         target: bar.launcher
         function onLogoRightClickChanged() { bar.closeMenu() }
+        function onClosingChanged() {
+            if (bar.launcher.closing) {
+                historyPicker.close()
+                bar.closeMenu()
+            }
+        }
     }
     Connections {
         target: bar.Window.window
@@ -252,9 +258,9 @@ Item {
             radius: Theme.progressRadius
             color: grip.held ? Theme.accent : grip.pointed ? Theme.subtext : Theme.faint
             opacity: grip.held || grip.pointed ? 1 : 0.5
-            Behavior on width { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-            Behavior on color { ColorAnimation { duration: 150 } }
-            Behavior on opacity { NumberAnimation { duration: 150 } }
+            Behavior on width { enabled: SystemTheme.animations && (bar.Window.window?.visible ?? false); NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            Behavior on color { enabled: SystemTheme.animations && (bar.Window.window?.visible ?? false); ColorAnimation { duration: 150 } }
+            Behavior on opacity { enabled: SystemTheme.animations && (bar.Window.window?.visible ?? false); NumberAnimation { duration: 150 } }
         }
     }
 
@@ -283,7 +289,7 @@ Item {
         color: checked ? Theme.chipActive : pointed && !bar.placement.moving ? Theme.chipHover : "transparent"
         border.width: checked || activeFocus ? Theme.edge(bar.dpr) : 0
         border.color: activeFocus ? Theme.accent : Theme.chipBorder
-        Behavior on color { ColorAnimation { duration: 100 } }
+        Behavior on color { enabled: SystemTheme.animations && (bar.Window.window?.visible ?? false); ColorAnimation { duration: 100 } }
         activeFocusOnTab: true
         Accessible.role: Accessible.Button
         Accessible.name: qsTr("Win顺：设置")
@@ -330,7 +336,7 @@ Item {
 
     HoverTip {
         objectName: bar.panelMode ? "panelSearchLogoHint" : "searchLogoHint"
-        target: handle.pointed && !bar.placement.moving && !bar.menuOpen ? handle : null
+        target: handle.pointed && !bar.placement.moving && !bar.menuOpen && !bar.launcher.closing ? handle : null
         text: handle.help
         shortcut: "Ctrl+, · Ctrl+T"
         host: bar.launcher

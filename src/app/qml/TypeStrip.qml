@@ -130,7 +130,7 @@ Item {
             cancelReveal()
     }
     Behavior on opening {
-        enabled: strip.animated && SystemTheme.animations
+        enabled: strip.animated && SystemTheme.animations && strip.Window.window !== null && strip.Window.window.visible
         NumberAnimation { duration: 200; easing.type: Easing.OutCubic } // as fast as Windows' own
     }
     height: Math.round(opening)
@@ -298,7 +298,7 @@ Item {
         onWidthChanged: Qt.callLater(() => strip.scrollTo(strip.firstChip, false))
         opacity: strip.shown ? 1 : 0
         Behavior on opacity {
-            enabled: strip.animated && SystemTheme.animations
+            enabled: strip.animated && SystemTheme.animations && strip.Window.window !== null && strip.Window.window.visible
             NumberAnimation { duration: 150 }
         }
         Row {

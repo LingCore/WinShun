@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 
 class QWindow;
 
@@ -113,7 +114,7 @@ void disableTransitions(QWindow* window);
 // window itself may go at once: its focus, its keys and whatever comes next
 // are as they would be without this. False, and nothing shown, when it is
 // not on the screen (hidden, minimized, cloaked) or the screen can't be read.
-bool fadeOutCopy(QWindow* window, std::chrono::milliseconds duration);
+bool fadeOutCopy(QWindow* window, std::chrono::milliseconds duration, std::function<void()> done = {});
 // A window (hidden or not) put on the monitor that has `logicalPoint` (Qt's
 // coordinates), where it is not on it yet: only moved, at the size it has,
 // so that a change of scale reaches Qt as WM_DPICHANGED does for a window

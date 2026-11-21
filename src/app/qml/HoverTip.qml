@@ -58,6 +58,11 @@ Item {
         function onWidthChanged() { if (tip.shown) tip.place() }
     }
 
+    function dismiss() {
+        timer.stop()
+        shown = false
+    }
+
     function sync() {
         if (target) {
             if (timer.hiding)

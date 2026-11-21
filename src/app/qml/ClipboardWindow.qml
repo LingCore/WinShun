@@ -72,10 +72,15 @@ Window {
         property: "contentSize"
         value: Qt.size(window.listWidth + window.previewExtent, window.fittedHeight)
     }
+    // Opened to be put in front (App::showClipboard): drawn as an active window
+    // from its first frame, not one frame opaque and then faded to Mica.
+    // Until it is active, or for a second should another window keep the front.
+    property bool arriving: false
+    Timer { interval: 1000; running: window.arriving; onTriggered: window.arriving = false }
     // See-through to Mica, as the launcher; drawn as active also while the
     // program it pastes into keeps the focus (WindowFrame::setNoActivate),
     // routed or pinned.
-    color: Theme.backdrop && SystemTheme.materials && (window.active || clipboard.keysRouted || clipboard.pinned || SystemTheme.uiStyle === "liquid")
+    color: Theme.backdrop && SystemTheme.materials && (window.active || window.arriving || clipboard.keysRouted || clipboard.pinned || SystemTheme.uiStyle === "liquid")
            ? "transparent" : Theme.background
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     title: qsTr("剪贴板") // Qt adds " - Win顺"
@@ -127,9 +132,12 @@ Window {
 
     // Hidden: also free the menu window until it is needed again.
     onVisibleChanged: {
-        if (!visible)
+        if (!visible) {
+            arriving = false
             page.windowHidden()
+        }
     }
+    onActiveChanged: if (active) arriving = false
     onXChanged: page.clearHover()
     onYChanged: page.clearHover()
     onWidthChanged: page.clearHover()
