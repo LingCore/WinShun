@@ -865,8 +865,20 @@
         <translation>A translated pin: show the original / the translation</translation>
     </message>
     <message>
-        <source>退出选择文字（关闭贴图的键改了也是）</source>
-        <translation>Stop picking text (also when another key closes a pin)</translation>
+        <source>全选已识别的文字</source>
+        <translation>Select all recognized text</translation>
+    </message>
+    <message>
+        <source>取消选中文字或退出选择文字（关闭贴图的键改了也是）</source>
+        <translation>Clear selected text or stop picking text (also when another key closes a pin)</translation>
+    </message>
+    <message>
+        <source>按住 Alt 拖动</source>
+        <translation>Alt + drag</translation>
+    </message>
+    <message>
+        <source>文字上也可直接移动贴图</source>
+        <translation>Move the pin even when dragging over text</translation>
     </message>
     <message>
         <source>按住 Ctrl</source>
@@ -883,6 +895,14 @@
 </context>
 <context>
     <name>CaptureOptions</name>
+    <message>
+        <source>贴图后自动识别文字</source>
+        <translation>Recognize text automatically on pins</translation>
+    </message>
+    <message>
+        <source>贴图出现后在后台识别图里的文字，鼠标移到文字上可直接拖选，按复制键复制选中文字；拖空白处或按住 Alt 仍可移动贴图。关闭后仍可按选取文字键或从右键菜单开启</source>
+        <translation>Reads text on pinned pictures in the background so you can drag-select text directly and press Copy; dragging blank space or holding Alt still moves the pin. Turn off to read text only on demand</translation>
+    </message>
     <message>
         <source>识别后显示结果卡片</source>
         <translation>Show a card with the result</translation>
@@ -2281,8 +2301,8 @@ The unfinished recording is kept at: %1</translation>
         <translation>Read text</translation>
     </message>
     <message>
-        <source>复制文字</source>
-        <translation>Copy text</translation>
+        <source>复制全部文字</source>
+        <translation>Copy all text</translation>
     </message>
     <message>
         <source>收到屏幕顶边</source>
@@ -2609,6 +2629,14 @@ click here to cancel</translation>
         <translation>Copy text</translation>
     </message>
     <message>
+        <source>复制选中文字</source>
+        <translation>Copy selected text</translation>
+    </message>
+    <message>
+        <source>复制全部文字</source>
+        <translation>Copy all text</translation>
+    </message>
+    <message>
         <source>复制图片</source>
         <translation>Copy picture</translation>
     </message>
@@ -2655,6 +2683,30 @@ click here to cancel</translation>
 </context>
 <context>
     <name>ws::capture::PinWindow</name>
+    <message>
+        <source>已识别文字，可拖选</source>
+        <translation>Text ready — drag to select</translation>
+    </message>
+    <message>
+        <source>%1 复制文字</source>
+        <translation>%1 to copy text</translation>
+    </message>
+    <message>
+        <source>右键复制选中文字</source>
+        <translation>Right-click to copy selected text</translation>
+    </message>
+    <message>
+        <source>已复制选中文字</source>
+        <translation>Selected text copied</translation>
+    </message>
+    <message>
+        <source>已复制全部文字</source>
+        <translation>All text copied</translation>
+    </message>
+    <message>
+        <source>图片里没有找到文字</source>
+        <translation>No text found in this picture</translation>
+    </message>
     <message>
         <source>已复制文字 · Esc 退出</source>
         <translation>Text copied · Esc to leave</translation>

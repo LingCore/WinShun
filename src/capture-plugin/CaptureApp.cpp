@@ -588,6 +588,7 @@ void CaptureApp::apply()
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(o.pinDoubleClick));
         m_pins->setKeys(o.keys);
         m_pins->setKeyHints(o.keyHints);
+        m_pins->setAutoOcr(o.pinAutoOcr);
     }
     if (m_editor) {
         m_editor->setKeys(o.keys);
@@ -1392,8 +1393,9 @@ capture::PinManager& CaptureApp::pins()
                 copyText(text);
         };
         callbacks.ocrAvailable = capture::CaptureOcr::available;
-        callbacks.readLines = [this](const QImage& image, double dpr, std::function<void(QList<capture::RedactLine>)> done) {
-            captureOcr().scan(image, dpr, std::move(done));
+        callbacks.readLines = [this](const QImage& image, double dpr, std::function<void(QList<capture::RedactLine>)> done,
+                                  std::shared_ptr<const std::atomic<bool>> cancelled) {
+            captureOcr().scan(image, dpr, std::move(done), std::move(cancelled));
         };
         // The key card (#343) in the capture card's colours.
         callbacks.keyCardLook = [this] {
@@ -1404,6 +1406,7 @@ capture::PinManager& CaptureApp::pins()
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(m_settings.options().pinDoubleClick));
         m_pins->setKeys(m_settings.options().keys);
         m_pins->setKeyHints(m_settings.options().keyHints);
+        m_pins->setAutoOcr(m_settings.options().pinAutoOcr);
     }
     return *m_pins;
 }
@@ -1605,12 +1608,13 @@ void CaptureApp::pinText(const QString& text)
     const bool dark = isDarkMode();
     const pinimage::TextLook look {SystemTheme::nativeColor("menuBackground", QColor()), SystemTheme::nativeColor("text", QColor()),
         SystemTheme::nativeColor("subtext", QColor()), dark, m_uiFont};
-    auto prepared = pinimage::prepare(pinimage::renderText(text, placement->dpi, look), *placement);
+    pinimage::RenderedText rendered = pinimage::renderTextWithLines(text, placement->dpi, look);
+    auto prepared = pinimage::prepare(std::move(rendered.image), *placement);
     if (prepared.image.isNull()) {
         notify(tr("贴图"), tr("这段文字只有空白，没有可贴的内容。"));
         return;
     }
-    pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, false, text);
+    pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, false, text, std::move(rendered.lines));
 }
 
 void CaptureApp::pinCurrentImage()

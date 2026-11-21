@@ -926,6 +926,29 @@ private slots:
         QVERIFY(!m.canUndo());
     }
 
+    void prescannedLinesAvailableOnlyWhenUnannotatedAndMatchingRect()
+    {
+        FakeReader reader;
+        AnnotationModel m;
+        m.setSmartHooks(reader.hooks());
+        m.begin(noiseImage(QSize(400, 300), 3), 1.0, StyleMemory());
+        const QRect selection(30, 40, 200, 160);
+        m.setSelection(selection);
+        QVERIFY(!m.prescannedLines(selection).has_value()); // not ready yet
+        QTRY_COMPARE_WITH_TIMEOUT(reader.scans, 1, 1500);
+        reader.answer(phoneLines());
+        const auto ready = m.prescannedLines(selection);
+        QVERIFY(ready.has_value());
+        QCOMPARE(ready->size(), phoneLines().size());
+        QVERIFY(!m.prescannedLines(selection.adjusted(0, 0, -1, 0)).has_value()); // different rect
+        // Once annotated or redacted, pre-redaction lines must NOT be handed off to a pin!
+        m.smartRedact();
+        QVERIFY(m.itemCount() > 0);
+        QVERIFY(!m.prescannedLines(selection).has_value());
+        m.undo();
+        QVERIFY(m.prescannedLines(selection).has_value());
+    }
+
     // ---- the redaction tool on a line of read text (GitHub #129) ----
 
     void textLineClickHidesAndShowsAgain()

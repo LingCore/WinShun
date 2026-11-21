@@ -175,6 +175,8 @@ public:
     void setSmartHooks(SmartHooks hooks);
     int smartFound() const;
     bool smartBusy() const;
+    // The lines already scanned for `rect` (in `rect`'s pixels), when ready and unmodified by annotations.
+    std::optional<QList<RedactLine>> prescannedLines(const QRect& rect) const;
     // 智能打码: every place found becomes a redaction, in the tool's remembered
     // style, as one undo step. Reads the text first when that has not been done.
     Q_INVOKABLE void smartRedact();

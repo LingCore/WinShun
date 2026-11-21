@@ -27,6 +27,11 @@ constexpr UINT_PTR kHintTimer = 1;
 constexpr qint64 kHintHoldMs = 900; // the zoom stays this long after the last notch ...
 constexpr qint64 kHintFadeMs = 240; // ... then fades out in this
 constexpr qint64 kPillHoldMs = 2200; // the text pick's pill: long enough to read, then off the words (GitHub #258)
+constexpr qint64 kAutoReadyHoldMs = 1600;
+constexpr qint64 kSelectionHintHoldMs = 1800;
+constexpr qint64 kCopiedHoldMs = 1500;
+// Skip automatic background OCR on tiny swatches or giant stitched pictures (> 4K*4K); manual T / Shift+C still reads them.
+constexpr qint64 kAutoOcrMaxPixels = 16'000'000;
 
 // 255 through `hold` ms of `age`, then down to 0 over kHintFadeMs.
 int fadedAlpha(qint64 age, qint64 hold)
@@ -128,6 +133,7 @@ PinWindow::PinWindow(const QImage& image, QPoint origin, Host host, std::optiona
 PinWindow::~PinWindow()
 {
     *m_alive = false;
+    cancelPendingScan();
     if (m_encode)
         m_encode->cancelled = true;
     if (m_hwnd) {
@@ -297,7 +303,9 @@ void PinWindow::render()
         }
         copyOpaque(m_scaled, canvas, picture.topLeft());
     }
-    if (m_text != Text::Off)
+    if (m_form == PinForm::Full
+        && (!m_picked.isEmpty() || (m_picking && !m_pickDirect && !m_pickBand.isEmpty())
+            || (m_pillAlpha > 0 && m_pillKind != PillKind::None)))
         drawTextLayer(canvas, picture);
     if (m_hintAlpha > 0 && m_form == PinForm::Full)
         drawHint(canvas, picture);
@@ -308,7 +316,7 @@ void PinWindow::render()
 
 QRect PinWindow::closeButton() const
 {
-    if (m_form != PinForm::Full || m_text != Text::Off || m_closeCorner == Corner::None
+    if (m_form != PinForm::Full || m_textMode || m_picking || m_closeCorner == Corner::None
         || (m_clickThrough && !m_reachable))
         return {};
     return closeButtonRect(pictureRect(), m_closeCorner, dpr());
@@ -392,26 +400,92 @@ void PinWindow::showHint(const QString& text)
     ::SetTimer(m_hwnd, kHintTimer, 40, nullptr); // restarts the count while it runs
 }
 
-void PinWindow::showTextPill()
+void PinWindow::showPill(PillKind kind)
 {
     if (!m_hwnd)
         return;
+    m_pillKind = kind;
+    if (kind == PillKind::None) {
+        m_pillSince = 0;
+        m_pillAlpha = 0;
+        return;
+    }
     m_pillSince = QDateTime::currentMSecsSinceEpoch();
     m_pillAlpha = 255;
     ::SetTimer(m_hwnd, kHintTimer, 40, nullptr);
+}
+
+void PinWindow::dismissAutoReadyPill()
+{
+    if (m_pillKind != PillKind::AutoReady || m_pillAlpha <= 0)
+        return;
+    m_pillKind = PillKind::None;
+    m_pillSince = 0;
+    m_pillAlpha = 0;
+    render();
+}
+
+QString PinWindow::textPillText() const
+{
+    switch (m_pillKind) {
+    case PillKind::None:
+        return {};
+    case PillKind::AutoReady:
+        return QCoreApplication::translate("ws::capture::PinWindow", "已识别文字，可拖选");
+    case PillKind::Reading:
+        return QCoreApplication::translate("ws::capture::PinWindow", "识别文字中…");
+    case PillKind::PickHint:
+        return QCoreApplication::translate("ws::capture::PinWindow", "拖选文字 · Esc 退出");
+    case PillKind::SelectionHint:
+        return m_keys.has(KeyAction::PinCopy)
+            ? QCoreApplication::translate("ws::capture::PinWindow", "%1 复制文字").arg(m_keys.text(KeyAction::PinCopy))
+            : QCoreApplication::translate("ws::capture::PinWindow", "右键复制选中文字");
+    case PillKind::Copied:
+        return m_textMode ? QCoreApplication::translate("ws::capture::PinWindow", "已复制文字 · Esc 退出")
+                          : QCoreApplication::translate("ws::capture::PinWindow", "已复制选中文字");
+    case PillKind::CopiedAll:
+        return QCoreApplication::translate("ws::capture::PinWindow", "已复制全部文字");
+    case PillKind::NoText:
+        return QCoreApplication::translate("ws::capture::PinWindow", "图片里没有找到文字");
+    }
+    return {};
 }
 
 void PinWindow::hintTick()
 {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     const int hint = m_hintStays ? 255 : m_hintSince ? fadedAlpha(now - m_hintSince, kHintHoldMs) : 0;
+    qint64 hold = kPillHoldMs;
+    switch (m_pillKind) {
+    case PillKind::AutoReady:
+    case PillKind::NoText:
+        hold = kAutoReadyHoldMs;
+        break;
+    case PillKind::SelectionHint:
+        hold = kSelectionHintHoldMs;
+        break;
+    case PillKind::Copied:
+        hold = m_textMode ? kPillHoldMs : kCopiedHoldMs;
+        break;
+    case PillKind::CopiedAll:
+        hold = kCopiedHoldMs;
+        break;
+    case PillKind::PickHint:
+    case PillKind::Reading:
+    case PillKind::None:
+        break;
+    }
     // The pill stays while the words are still being read: it says so.
-    const int pill = m_text == Text::Reading ? 255 : m_pillSince ? fadedAlpha(now - m_pillSince, kPillHoldMs) : 0;
+    const int pill = m_pillKind == PillKind::Reading
+        ? 255
+        : (m_pillSince && m_pillKind != PillKind::None) ? fadedAlpha(now - m_pillSince, hold) : 0;
     if (hint <= 0 && pill <= 0)
         ::KillTimer(m_hwnd, kHintTimer);
     if (hint != m_hintAlpha || pill != m_pillAlpha) {
         m_hintAlpha = hint;
         m_pillAlpha = pill;
+        if (m_pillAlpha == 0 && m_pillKind != PillKind::Reading)
+            m_pillKind = PillKind::None;
         render(); // at 0 the picture is as it was: at 100% its own pixels
     }
 }
@@ -422,17 +496,19 @@ void PinWindow::drawTextLayer(QImage& canvas, const QRect& picture)
     painter.setRenderHint(QPainter::Antialiasing, false);
     const QColor accent = m_host.accent ? m_host.accent() : QColor(0x0F, 0x6C, 0xBD);
     const double z = m_zoom;
-    // The lines picked: a veil of the accent over them.
+    // The lines picked: a veil of the accent over them, clipped to the picture.
     QColor veil = accent;
     veil.setAlpha(110);
     for (const PickedLine& line : std::as_const(m_picked)) {
-        const QRect box(picture.left() + static_cast<int>(std::floor(line.box.left() * z)),
+        const QRect box = QRect(picture.left() + static_cast<int>(std::floor(line.box.left() * z)),
             picture.top() + static_cast<int>(std::floor(line.box.top() * z)),
             std::max(1, static_cast<int>(std::ceil(line.box.width() * z))),
-            std::max(1, static_cast<int>(std::ceil(line.box.height() * z))));
-        painter.fillRect(box, veil);
+            std::max(1, static_cast<int>(std::ceil(line.box.height() * z))))
+            & picture;
+        if (!box.isEmpty())
+            painter.fillRect(box, veil);
     }
-    if (m_picking && !m_pickBand.isEmpty()) {
+    if (m_picking && !m_pickDirect && !m_pickBand.isEmpty()) {
         const QRect band(picture.left() + static_cast<int>(std::lround(m_pickBand.left() * z)),
             picture.top() + static_cast<int>(std::lround(m_pickBand.top() * z)),
             static_cast<int>(std::lround(m_pickBand.width() * z)), static_cast<int>(std::lround(m_pickBand.height() * z)));
@@ -441,15 +517,13 @@ void PinWindow::drawTextLayer(QImage& canvas, const QRect& picture)
         painter.drawRect(band.adjusted(0, 0, -1, -1));
     }
     // What the pin is doing, in a pill at the lower left (white on the accent
-    // fill), for a moment (showTextPill): it sat over the bottom line of the
+    // fill), for a moment (showPill): it sat over the bottom line of the
     // words, in the way of picking them (GitHub #258). Not during a drag.
-    if (picture.width() < 150 * dpr() || picture.height() < 44 * dpr() || m_pillAlpha <= 0 || m_picking)
+    if (m_pillAlpha <= 0 || m_pillKind == PillKind::None || m_picking)
         return;
-    painter.setOpacity(m_pillAlpha / 255.0);
-    const QString text = m_text == Text::Reading
-        ? QCoreApplication::translate("ws::capture::PinWindow", "识别文字中…")
-        : m_picked.isEmpty() ? QCoreApplication::translate("ws::capture::PinWindow", "拖选文字 · Esc 退出")
-                             : QCoreApplication::translate("ws::capture::PinWindow", "已复制文字 · Esc 退出");
+    const QString text = textPillText();
+    if (text.isEmpty())
+        return;
     QFont font = QGuiApplication::font();
     font.setPixelSize(static_cast<int>(std::lround(13 * dpr())));
     painter.setFont(font);
@@ -458,7 +532,13 @@ void PinWindow::drawTextLayer(QImage& canvas, const QRect& picture)
     const int padY = static_cast<int>(std::lround(4 * dpr()));
     const int gap = static_cast<int>(std::lround(8 * dpr()));
     const QSize size(metrics.horizontalAdvance(text) + 2 * padX, metrics.height() + 2 * padY);
-    const QRect pill(picture.left() + gap, picture.bottom() + 1 - gap - size.height(), size.width(), size.height());
+    const QRect button = closeButton();
+    const int left = m_closeCorner == Corner::BottomLeft && !button.isEmpty() ? button.width() + gap : 0;
+    if (picture.width() < size.width() + 2 * gap + left || picture.height() < size.height() + 2 * gap)
+        return;
+    painter.setOpacity(m_pillAlpha / 255.0);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    const QRect pill(picture.left() + gap + left, picture.bottom() + 1 - gap - size.height(), size.width(), size.height());
     painter.setPen(Qt::NoPen);
     painter.setBrush(accent);
     const qreal radius = std::max(0.0, m_host.pillRadius ? m_host.pillRadius() : 4.0) * dpr();
@@ -507,6 +587,11 @@ void PinWindow::setZoom(double zoom, QPoint cursor)
     if (m_form != PinForm::Full)
         return;
     zoom = std::clamp(zoom, minZoom(), maxZoom(fullSize(), kZoomBudget));
+    if (m_pillKind == PillKind::AutoReady) {
+        m_pillKind = PillKind::None;
+        m_pillSince = 0;
+        m_pillAlpha = 0;
+    }
     // The percent shows at the ends too, where the notch changes nothing.
     showHint(QString::number(static_cast<int>(std::lround(zoom * 100))) + u'%');
     if (std::abs(zoom - m_zoom) >= 1e-9) {
@@ -531,7 +616,7 @@ void PinWindow::setPicture(const QImage& image, QByteArray project)
         return;
     if (m_form != PinForm::Full)
         expand();
-    endTextPick();
+    invalidateLines();
     m_image = image.convertToFormat(QImage::Format_RGB32);
     m_imageSize = m_image.size();
     m_scaled = {};
@@ -539,19 +624,31 @@ void PinWindow::setPicture(const QImage& image, QByteArray project)
     m_copiedText.clear(); // edited: a picture now, copied as one
     forgetOtherSide();
     render();
+    maybeStartAutoOcr();
 }
 
 bool PinWindow::setTranslation(const QImage& translated, const QString& words, int revision)
 {
     if (!m_hwnd || m_form != PinForm::Full || m_image.isNull() || revision != m_revision || translated.size() != m_imageSize)
         return false;
-    endTextPick();
+    cancelPendingScan();
+    if (m_readState == ReadState::Reading)
+        m_readState = ReadState::Unread;
+    m_copyAllWhenReady = false;
+    m_autoScan = false;
+    resetTextInteraction();
+    // Keep the original side's cached lines so Tab back to it is instant.
+    m_otherLines = std::move(m_lines);
+    m_otherReadState = m_readState;
+    m_lines.clear();
+    m_readState = ReadState::Unread;
     m_other = std::exchange(m_image, translated.convertToFormat(QImage::Format_RGB32));
     m_translatedWords = words;
     m_translationShown = true;
     m_scaled = {};
     m_project.clear(); // the annotations are in the picture now, under the new words or beside them
     render();
+    maybeStartAutoOcr();
     return true;
 }
 
@@ -559,17 +656,28 @@ void PinWindow::showOtherSide()
 {
     if (!m_hwnd || m_form != PinForm::Full || m_image.isNull() || m_other.isNull())
         return;
-    endTextPick();
+    cancelPendingScan();
+    if (m_readState == ReadState::Reading)
+        m_readState = ReadState::Unread;
+    m_copyAllWhenReady = false;
+    m_autoScan = false;
+    resetTextInteraction();
     std::swap(m_image, m_other);
+    std::swap(m_lines, m_otherLines);
+    std::swap(m_readState, m_otherReadState);
     m_translationShown = !m_translationShown;
     m_scaled = {};
     render();
+    maybeStartAutoOcr();
+    refreshCursor();
 }
 
 void PinWindow::forgetOtherSide()
 {
     ++m_revision;
     m_other = {};
+    m_otherLines.clear();
+    m_otherReadState = ReadState::Unread;
     m_translatedWords.clear();
     m_translationShown = false;
 }
@@ -594,8 +702,8 @@ void PinWindow::setShown(bool shown)
 
 void PinWindow::restyle()
 {
-    if (m_text != Text::Off)
-        render(); // the text pill too
+    if (m_textMode || !m_picked.isEmpty() || (m_pillAlpha > 0 && m_pillKind != PillKind::None))
+        render(); // the text highlight and pill too
     else
         paintBorder();
 }
@@ -670,7 +778,7 @@ void PinWindow::rotate(bool clockwise)
 {
     if (!m_hwnd || m_form != PinForm::Full || m_image.isNull())
         return;
-    endTextPick();
+    invalidateLines();
     const QRect before = pictureRect();
     m_image = turnedImage(m_image, clockwise);
     m_imageSize = m_image.size();
@@ -679,18 +787,20 @@ void PinWindow::rotate(bool clockwise)
     m_project.clear(); // the annotations were drawn on the other way up
     forgetOtherSide();
     render();
+    maybeStartAutoOcr();
 }
 
 void PinWindow::flip(bool horizontal)
 {
     if (!m_hwnd || m_form != PinForm::Full || m_image.isNull())
         return;
-    endTextPick();
+    invalidateLines();
     m_image = flippedImage(m_image, horizontal);
     m_scaled = {};
     m_project.clear();
     forgetOtherSide();
     render();
+    maybeStartAutoOcr();
 }
 
 // ---- collapsing ------------------------------------------------------------------------------
@@ -699,7 +809,14 @@ void PinWindow::collapse(PinForm to)
 {
     if (!m_hwnd || to == PinForm::Full || m_form != PinForm::Full || m_image.isNull())
         return;
-    endTextPick();
+    // Keep already-recognized lines across collapse/expand; only stop an active read/selection.
+    if (m_readState == ReadState::Reading) {
+        cancelPendingScan();
+        m_readState = ReadState::Unread;
+        m_autoScan = false;
+        m_copyAllWhenReady = false;
+    }
+    resetTextInteraction();
     const QRect work = workArea();
     const QRect before = pictureRect();
     QRect tab;
@@ -773,56 +890,337 @@ void PinWindow::expand()
     m_zoom = m_savedZoom;
     m_scaled = {};
     render();
+    maybeStartAutoOcr();
+    refreshCursor();
 }
 
 // ---- picking text -----------------------------------------------------------------------------
 
 QPoint PinWindow::toImage(QPoint screen) const
 {
-    const QPointF p = QPointF(screen - m_origin) / m_zoom;
+    const QPointF p = toImageF(screen);
     return QPoint(static_cast<int>(std::lround(p.x())), static_cast<int>(std::lround(p.y())));
+}
+
+QPointF PinWindow::toImageF(QPoint screen) const
+{
+    return QPointF(screen - m_origin) / m_zoom;
+}
+
+bool PinWindow::ocrAvailable() const
+{
+    return m_host.readLines != nullptr && (!m_host.ocrAvailable || m_host.ocrAvailable());
+}
+
+bool PinWindow::canDirectSelect() const
+{
+    return m_autoOcr && m_form == PinForm::Full && !m_textMode && !m_clickThrough
+        && m_readState == ReadState::Ready && !m_lines.isEmpty();
+}
+
+double PinWindow::textHitPadding() const
+{
+    return std::clamp(2.0 / std::max(0.05, m_zoom), 1.0, 4.0);
+}
+
+bool PinWindow::hitText(QPoint screen) const
+{
+    return hasTextAt(m_lines, toImageF(screen), textHitPadding());
+}
+
+void PinWindow::refreshCursor()
+{
+    if (!m_hwnd || m_form != PinForm::Full)
+        return;
+    POINT pt {};
+    if (!::GetCursorPos(&pt) || ::WindowFromPoint(pt) != m_hwnd)
+        return;
+    ::SendMessageW(m_hwnd, WM_SETCURSOR, reinterpret_cast<WPARAM>(m_hwnd), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
+}
+
+void PinWindow::cancelPendingScan()
+{
+    if (m_scanCancel) {
+        m_scanCancel->store(true, std::memory_order_release);
+        m_scanCancel.reset();
+    }
+}
+
+void PinWindow::resetTextInteraction()
+{
+    m_textMode = false;
+    m_picking = false;
+    m_pickDirect = false;
+    m_pickDragged = false;
+    m_picked.clear();
+    m_pickBand = {};
+    m_pillKind = PillKind::None;
+    m_pillSince = 0;
+    m_pillAlpha = 0;
+    if (m_hwnd && ::GetCapture() == m_hwnd)
+        ::ReleaseCapture();
+}
+
+void PinWindow::invalidateLines()
+{
+    cancelPendingScan();
+    m_readState = ReadState::Unread;
+    m_autoScan = false;
+    m_copyAllWhenReady = false;
+    m_lines.clear();
+    resetTextInteraction();
+}
+
+void PinWindow::setAutoOcr(bool on)
+{
+    if (m_autoOcr == on)
+        return;
+    m_autoOcr = on;
+    if (on) {
+        maybeStartAutoOcr();
+    } else {
+        if (m_readState == ReadState::Reading && m_autoScan && !m_textMode && !m_copyAllWhenReady) {
+            cancelPendingScan();
+            m_readState = ReadState::Unread;
+            m_autoScan = false;
+        }
+        if (!m_textMode && (!m_picked.isEmpty() || m_pillKind == PillKind::AutoReady || m_pillKind == PillKind::SelectionHint)) {
+            m_picking = false;
+            m_pickDirect = false;
+            m_pickDragged = false;
+            m_picked.clear();
+            if (m_pillKind == PillKind::AutoReady || m_pillKind == PillKind::SelectionHint) {
+                m_pillKind = PillKind::None;
+                m_pillSince = 0;
+                m_pillAlpha = 0;
+            }
+            if (m_hwnd && ::GetCapture() == m_hwnd)
+                ::ReleaseCapture();
+            render();
+        }
+    }
+    refreshCursor();
+}
+
+void PinWindow::setRecognizedLines(QList<RedactLine> lines, bool announce)
+{
+    cancelPendingScan();
+    m_lines = std::move(lines);
+    m_readState = ReadState::Ready;
+    m_autoScan = false;
+    if (std::exchange(m_copyAllWhenReady, false)) {
+        copyAllRecognizedText();
+        return;
+    }
+    if (m_textMode) {
+        showPill(PillKind::PickHint);
+        render();
+    } else if (announce && !m_lines.isEmpty() && !m_dragging && !m_picking && m_form == PinForm::Full) {
+        showPill(PillKind::AutoReady);
+        render();
+    }
+    refreshCursor();
+}
+
+void PinWindow::maybeStartAutoOcr()
+{
+    if (!m_autoOcr || m_readState != ReadState::Unread || m_form != PinForm::Full || !m_hwnd || m_image.isNull()
+        || !ocrAvailable())
+        return;
+    const qint64 pixels = static_cast<qint64>(m_image.width()) * m_image.height();
+    if (m_image.width() < 16 || m_image.height() < 10 || pixels > kAutoOcrMaxPixels)
+        return;
+    startReadLines(true);
+}
+
+void PinWindow::startReadLines(bool background)
+{
+    if (!m_hwnd || m_form != PinForm::Full || m_image.isNull() || !ocrAvailable())
+        return;
+    cancelPendingScan();
+    m_readState = ReadState::Reading;
+    m_autoScan = background;
+    m_scanCancel = std::make_shared<std::atomic<bool>>(false);
+    if (!background) {
+        showPill(PillKind::Reading); // 识别文字中…, for as long as that takes
+        render();
+    }
+    const std::weak_ptr<bool> alive = m_alive;
+    const std::shared_ptr<std::atomic<bool>> cancel = m_scanCancel;
+    m_host.readLines(
+        m_image, dpr(),
+        [this, alive, cancel](QList<RedactLine> lines) {
+            const auto token = alive.lock();
+            if (!token || !*token || cancel->load(std::memory_order_acquire) || m_scanCancel != cancel)
+                return;
+            m_scanCancel.reset();
+            m_lines = std::move(lines);
+            m_readState = ReadState::Ready;
+            const bool wasAuto = std::exchange(m_autoScan, false);
+            if (std::exchange(m_copyAllWhenReady, false)) {
+                const QString all = ws::capture::pickedText(allPickedLines(m_lines));
+                if (!all.isEmpty() && m_host.copyText) {
+                    m_host.copyText(all);
+                    showPill(PillKind::CopiedAll);
+                } else {
+                    showPill(PillKind::NoText);
+                }
+                render();
+                refreshCursor();
+                return;
+            }
+            if (m_textMode) {
+                showPill(PillKind::PickHint); // 拖选文字 · Esc 退出, for a moment
+                render();
+                refreshCursor();
+                return;
+            }
+            if (wasAuto && m_autoOcr && !m_lines.isEmpty() && !m_dragging && !m_picking && m_form == PinForm::Full) {
+                showPill(PillKind::AutoReady);
+                render();
+            }
+            refreshCursor();
+        },
+        cancel);
 }
 
 void PinWindow::beginTextPick()
 {
-    if (!m_hwnd || m_form != PinForm::Full || m_text != Text::Off || !m_host.readLines || m_image.isNull())
+    if (!m_hwnd || m_form != PinForm::Full || m_textMode || m_image.isNull())
         return;
-    m_text = Text::Reading;
-    m_lines.clear();
-    m_picked.clear();
-    showTextPill(); // 识别文字中…, for as long as that takes
-    render();
-    const std::weak_ptr<bool> alive = m_alive;
-    m_host.readLines(m_image, dpr(), [this, alive](QList<RedactLine> lines) {
-        const auto token = alive.lock();
-        if (!token || !*token || m_text != Text::Reading)
-            return;
-        m_lines = std::move(lines);
-        m_text = Text::Ready;
-        showTextPill(); // 拖选文字 · Esc 退出, for a moment
+    if (m_readState == ReadState::Ready) {
+        m_textMode = true;
+        m_picked.clear();
+        showPill(PillKind::PickHint);
         render();
-    });
+        refreshCursor();
+        return;
+    }
+    if (m_readState == ReadState::Reading) {
+        m_textMode = true;
+        m_autoScan = false; // promote background scan to interactive
+        m_picked.clear();
+        showPill(PillKind::Reading);
+        render();
+        refreshCursor();
+        return;
+    }
+    if (!ocrAvailable())
+        return;
+    m_textMode = true;
+    m_picked.clear();
+    startReadLines(false);
 }
 
 void PinWindow::endTextPick()
 {
-    if (m_text == Text::Off)
+    if (!m_textMode)
         return;
-    m_text = Text::Off;
+    m_textMode = false;
     m_picking = false;
-    m_lines.clear();
+    m_pickDirect = false;
+    m_pickDragged = false;
     m_picked.clear();
     m_pickBand = {};
-    m_pillSince = 0;
-    m_pillAlpha = 0;
+    if (m_readState == ReadState::Reading && !m_autoOcr && !m_copyAllWhenReady) {
+        cancelPendingScan();
+        m_readState = ReadState::Unread;
+        m_autoScan = false;
+    } else if (m_readState == ReadState::Reading && m_autoOcr && !m_copyAllWhenReady) {
+        m_autoScan = true; // let the in-flight scan finish quietly for direct selection
+    }
+    if (!m_copyAllWhenReady) {
+        m_pillKind = PillKind::None;
+        m_pillSince = 0;
+        m_pillAlpha = 0;
+    }
+    if (m_hwnd && ::GetCapture() == m_hwnd)
+        ::ReleaseCapture();
+    render();
+    refreshCursor();
+}
+
+void PinWindow::clearSelection()
+{
+    if (m_picked.isEmpty() && !m_picking)
+        return;
+    m_picking = false;
+    m_pickDirect = false;
+    m_pickDragged = false;
+    m_picked.clear();
+    m_pickBand = {};
+    if (m_pillKind == PillKind::SelectionHint || m_pillKind == PillKind::AutoReady) {
+        m_pillKind = PillKind::None;
+        m_pillSince = 0;
+        m_pillAlpha = 0;
+    }
     if (m_hwnd && ::GetCapture() == m_hwnd)
         ::ReleaseCapture();
     render();
 }
 
+void PinWindow::selectAllText()
+{
+    if (!m_hwnd || m_form != PinForm::Full || m_readState != ReadState::Ready || m_lines.isEmpty())
+        return;
+    m_picked = allPickedLines(m_lines);
+    if (!m_picked.isEmpty()) {
+        showPill(PillKind::SelectionHint);
+        render();
+    }
+}
+
 QString PinWindow::pickedText() const
 {
     return ws::capture::pickedText(m_picked);
+}
+
+bool PinWindow::copyPickedText()
+{
+    const QString text = pickedText();
+    if (text.isEmpty() || !m_host.copyText)
+        return false;
+    m_host.copyText(text);
+    showPill(PillKind::Copied);
+    render();
+    return true;
+}
+
+bool PinWindow::copyAllRecognizedText()
+{
+    if (!m_hwnd || m_form != PinForm::Full || m_image.isNull() || !m_host.copyText)
+        return false;
+    if (m_readState == ReadState::Ready) {
+        const QString all = ws::capture::pickedText(allPickedLines(m_lines));
+        if (!all.isEmpty()) {
+            m_host.copyText(all);
+            showPill(PillKind::CopiedAll);
+        } else {
+            showPill(PillKind::NoText);
+        }
+        render();
+        return true;
+    }
+    if (m_readState == ReadState::Reading) {
+        m_copyAllWhenReady = true;
+        m_autoScan = false;
+        showPill(PillKind::Reading);
+        render();
+        return true;
+    }
+    if (!ocrAvailable())
+        return false;
+    m_copyAllWhenReady = true;
+    startReadLines(false);
+    return true;
+}
+
+void PinWindow::showCopiedAllPill()
+{
+    if (!m_hwnd || m_form != PinForm::Full)
+        return;
+    showPill(PillKind::CopiedAll);
+    render();
 }
 
 void PinWindow::updatePicked(QPoint cursor)
@@ -831,6 +1229,12 @@ void PinWindow::updatePicked(QPoint cursor)
     const QPoint b = toImage(cursor);
     m_pickBand = QRect(QPoint(std::min(a.x(), b.x()), std::min(a.y(), b.y())), QPoint(std::max(a.x(), b.x()), std::max(a.y(), b.y())));
     m_picked = pickedLines(m_lines, QRectF(m_pickBand));
+    render();
+}
+
+void PinWindow::updatePickedFlow(QPoint cursor)
+{
+    m_picked = pickedLinesFlow(m_lines, toImageF(m_pickStart), toImageF(cursor));
     render();
 }
 
@@ -883,16 +1287,20 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         LPCWSTR shape = nullptr;
         if (m_form != PinForm::Full) {
             shape = IDC_HAND;
-        } else if (m_text == Text::Ready) {
-            shape = IDC_IBEAM;
+        } else if (m_textMode) {
+            shape = m_readState == ReadState::Ready ? IDC_IBEAM : IDC_ARROW;
         } else if (m_closePressed || (m_corner == Corner::None && closeButton().contains(at))) {
             shape = IDC_ARROW;
-        } else if (m_text == Text::Off || m_corner != Corner::None) {
+        } else if (m_picking) {
+            shape = IDC_IBEAM;
+        } else {
             const Corner corner = m_corner != Corner::None ? m_corner : cornerAt(pictureRect(), at, reach);
             if (corner == Corner::TopLeft || corner == Corner::BottomRight)
                 shape = IDC_SIZENWSE;
             else if (corner == Corner::TopRight || corner == Corner::BottomLeft)
                 shape = IDC_SIZENESW;
+            else if (!m_dragging && canDirectSelect() && ::GetKeyState(VK_MENU) >= 0 && hitText(at))
+                shape = IDC_IBEAM;
         }
         if (!shape)
             break;
@@ -902,13 +1310,16 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
     case WM_LBUTTONDOWN: {
         if (m_host.input)
             m_host.input(this, PinInput::Press);
+        dismissAutoReadyPill();
         const QPoint at = cursorNow();
         m_press = at;
         m_moved = false;
         m_clickOpened = false;
         m_swallowUp = false;
-        if (m_form == PinForm::Full && m_text == Text::Ready) {
+        if (m_form == PinForm::Full && m_textMode && m_readState == ReadState::Ready) {
             m_picking = true;
+            m_pickDirect = false;
+            m_pickDragged = true;
             m_pickStart = at;
             m_picked.clear();
             updatePicked(at);
@@ -924,6 +1335,25 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         }
         if (m_form == PinForm::Full) {
             m_corner = cornerAt(pictureRect(), at, reach);
+            if (m_corner == Corner::None && canDirectSelect() && ::GetKeyState(VK_MENU) >= 0 && hitText(at)) {
+                m_picking = true;
+                m_pickDirect = true;
+                m_pickDragged = false;
+                m_pickStart = at;
+                if (!m_picked.isEmpty() || m_pillKind == PillKind::SelectionHint) {
+                    m_picked.clear();
+                    if (m_pillKind == PillKind::SelectionHint) {
+                        m_pillKind = PillKind::None;
+                        m_pillSince = 0;
+                        m_pillAlpha = 0;
+                    }
+                    render();
+                }
+                ::SetCapture(hwnd);
+                return 0;
+            }
+            if (!m_picked.isEmpty())
+                clearSelection();
             m_resizeStart = pictureRect();
         }
         m_grab = at - m_origin;
@@ -936,7 +1366,17 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         if (m_closePressed) {
             // The button stays down on the close button; nothing moves.
         } else if (m_picking && ::GetCapture() == hwnd) {
-            updatePicked(cursorNow());
+            const QPoint at = cursorNow();
+            if (m_pickDirect) {
+                if (!m_pickDragged) {
+                    if ((at - m_pickStart).manhattanLength() <= std::max(3, static_cast<int>(std::lround(3 * dpr()))))
+                        return 0;
+                    m_pickDragged = true;
+                }
+                updatePickedFlow(at);
+            } else {
+                updatePicked(at);
+            }
         } else if (m_dragging && ::GetCapture() == hwnd) {
             const QPoint at = cursorNow();
             if (!m_moved && (at - m_press).manhattanLength() > std::max(3, static_cast<int>(std::lround(3 * dpr()))))
@@ -978,13 +1418,34 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             return 0;
         }
         if (m_picking) {
+            const bool direct = m_pickDirect;
+            const bool dragged = m_pickDragged;
             m_picking = false;
+            m_pickDirect = false;
+            m_pickDragged = false;
             m_pickBand = {};
-            const QString text = pickedText();
-            if (!text.isEmpty() && m_host.copyText)
-                m_host.copyText(text);
-            showTextPill(); // 已复制文字, or the instruction again when nothing was under the drag
-            render();
+            if (::GetCapture() == hwnd)
+                ::ReleaseCapture();
+            if (direct) {
+                if (dragged && !m_picked.isEmpty()) {
+                    showPill(PillKind::SelectionHint);
+                } else if (m_pillKind == PillKind::SelectionHint) {
+                    m_pillKind = PillKind::None;
+                    m_pillSince = 0;
+                    m_pillAlpha = 0;
+                }
+                render();
+            } else {
+                const QString text = pickedText();
+                if (!text.isEmpty() && m_host.copyText) {
+                    m_host.copyText(text);
+                    showPill(PillKind::Copied);
+                } else {
+                    showPill(PillKind::PickHint);
+                }
+                render();
+            }
+            return 0;
         }
         m_dragging = false;
         m_corner = Corner::None;
@@ -1023,14 +1484,39 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         m_corner = Corner::None;
         if (m_picking) {
             m_picking = false;
+            m_pickDirect = false;
+            m_pickDragged = false;
             m_pickBand = {};
             render();
         }
         return 0;
     case WM_LBUTTONDBLCLK:
         // A tile double-clicked opened on the first click: that is all it does.
-        if (m_form != PinForm::Full || m_text != Text::Off || m_clickOpened)
+        if (m_form != PinForm::Full || m_clickOpened)
             return 0;
+        if (m_textMode) {
+            if (m_readState == ReadState::Ready) {
+                if (const auto line = pickedLineAt(m_lines, toImageF(cursorNow()), textHitPadding())) {
+                    m_picked = {*line};
+                    if (m_host.copyText) {
+                        m_host.copyText(line->text);
+                        showPill(PillKind::Copied);
+                    }
+                    render();
+                }
+            }
+            return 0;
+        }
+        if (m_doubleClick == PinDoubleClick::None) {
+            if (canDirectSelect()) {
+                if (const auto line = pickedLineAt(m_lines, toImageF(cursorNow()), textHitPadding())) {
+                    m_picked = {*line};
+                    showPill(PillKind::SelectionHint);
+                    render();
+                }
+            }
+            return 0;
+        }
         switch (m_doubleClick) {
         case PinDoubleClick::Reset: setZoom(m_fitZoom, cursorNow()); break; // the size it was pinned at
         case PinDoubleClick::Close: close(); break;
@@ -1068,8 +1554,15 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         }
         return 0;
     }
+    case WM_SYSKEYUP:
+    case WM_KEYUP:
+        if (wParam == VK_MENU)
+            refreshCursor();
+        break;
     case WM_SYSKEYDOWN: // Alt chords and F10 come here; what is not ours goes to Windows (Alt+F4)
     case WM_KEYDOWN: {
+        if (wParam == VK_MENU)
+            refreshCursor();
         const bool ctrl = ::GetKeyState(VK_CONTROL) < 0;
         const bool shift = ::GetKeyState(VK_SHIFT) < 0;
         const bool alt = ::GetKeyState(VK_MENU) < 0;
@@ -1082,19 +1575,24 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             return 0;
         }
         // Any other key takes the card away; Shift, Ctrl and Alt alone do not (Shift+/ is ?, Ctrl+wheel the opacity).
-        if (m_host.input && wParam != VK_SHIFT && wParam != VK_CONTROL && wParam != VK_MENU)
-            m_host.input(this, PinInput::Key);
+        if (wParam != VK_SHIFT && wParam != VK_CONTROL && wParam != VK_MENU) {
+            dismissAutoReadyPill();
+            if (m_host.input)
+                m_host.input(this, PinInput::Key);
+        }
         if (action) {
             switch (*action) {
             case KeyAction::PinClose:
-                if (m_text != Text::Off)
+                if (m_textMode)
                     endTextPick();
+                else if (!m_picked.isEmpty())
+                    clearSelection();
                 else
                     close();
                 break;
             case KeyAction::PinCopy:
-                if (m_text == Text::Ready && !m_picked.isEmpty() && m_host.copyText)
-                    m_host.copyText(pickedText());
+                if (!m_picked.isEmpty() && m_host.copyText)
+                    copyPickedText();
                 else if (m_host.copy)
                     m_host.copy(this);
                 break;
@@ -1107,10 +1605,12 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             case KeyAction::PinFlipHorizontal: flip(true); break;
             case KeyAction::PinFlipVertical: flip(false); break;
             case KeyAction::PinTextPick:
-                if (m_text == Text::Off)
-                    beginTextPick();
-                else
+                if (m_textMode)
                     endTextPick();
+                else if (!m_picked.isEmpty() && m_host.copyText)
+                    copyPickedText();
+                else
+                    beginTextPick();
                 break;
             case KeyAction::PinEdit: // as the menu: a whole picture only
                 if (m_form == PinForm::Full && m_host.edit)
@@ -1141,14 +1641,25 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             }
             return 0;
         }
-        // Esc is the way out of picking text whatever key closes the pin (unless
-        // the user gave Esc to another action above).
-        if (wParam == VK_ESCAPE && !ctrl && !shift && !alt && m_text != Text::Off) {
-            endTextPick();
-            return 0;
+        // Esc exits text-pick mode or clears direct selection whatever key closes the pin
+        // (unless the user gave Esc to another action above).
+        if (wParam == VK_ESCAPE && !ctrl && !shift && !alt) {
+            if (m_textMode) {
+                endTextPick();
+                return 0;
+            }
+            if (!m_picked.isEmpty()) {
+                clearSelection();
+                return 0;
+            }
         }
         if (message == WM_SYSKEYDOWN)
             break;
+        if (ctrl && !shift && !alt && wParam == 'A' && m_form == PinForm::Full
+            && m_readState == ReadState::Ready && !m_lines.isEmpty()) {
+            selectAllText();
+            return 0;
+        }
         if (ctrl)
             break;
         if (wParam == VK_TAB && !shift && hasOtherSide()) { // the original under its translation, and back
@@ -1205,6 +1716,7 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         ::SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         m_hwnd = nullptr;
         *m_alive = false;
+        cancelPendingScan();
         if (m_encode) {
             m_encode->cancelled = true;
             m_encode.reset();

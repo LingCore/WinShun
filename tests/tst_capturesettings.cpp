@@ -167,6 +167,28 @@ private slots:
         QVERIFY(CaptureOptions::load(file).windowsOnly);
     }
 
+    // 贴图后自动识别文字: on by default, saved at once, respects manual INI edit.
+    void pinAutoOcr()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"capture.ini"_s);
+        QVERIFY(CaptureOptions::load(file).pinAutoOcr);
+        ws::captureplugin::CaptureSettings settings(file);
+        QVERIFY(settings.capturePinAutoOcr());
+        QSignalSpy changed(&settings, &ws::captureplugin::CaptureSettings::changed);
+        settings.setCapturePinAutoOcr(false);
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(!CaptureOptions::load(file).pinAutoOcr);
+        settings.setCapturePinAutoOcr(false);
+        QCOMPARE(changed.count(), 1);
+        settings.setProperty("capturePinAutoOcr", true);
+        QCOMPARE(changed.count(), 2);
+        QVERIFY(CaptureOptions::load(file).pinAutoOcr);
+        writeByHand(file, "PinAutoOcr", "false");
+        QVERIFY(!CaptureOptions::load(file).pinAutoOcr);
+    }
+
     // The capture's and the pins' keys (#187), Capture/Keys/<id>: missing is
     // the default, empty is none, garbage (or a key the rules refuse) is the
     // default; only the keys changed are written, and a reset removes one.

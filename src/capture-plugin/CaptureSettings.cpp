@@ -198,6 +198,7 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.recordingMouseButtons = readOrDefault(s, u"Capture/RecordingMouseButtons"_s, d.recordingMouseButtons);
     const QString action = readOrDefault(s, u"Capture/PinDoubleClick"_s, d.pinDoubleClick).trimmed().toLower();
     o.pinDoubleClick = action == u"close" || action == u"collapse" || action == u"none" ? action : u"reset"_s;
+    o.pinAutoOcr = readOrDefault(s, u"Capture/PinAutoOcr"_s, d.pinAutoOcr);
     // The keys (#187): missing or unreadable, the default; empty, none. One
     // written by hand that the settings window would refuse (a key the capture
     // uses, one an action before it has): the default, or none when that is
@@ -265,6 +266,7 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/RecordingKeys"_s, recordingKeys);
     s.setValue(u"Capture/RecordingMouseButtons"_s, recordingMouseButtons);
     s.setValue(u"Capture/PinDoubleClick"_s, pinDoubleClick);
+    s.setValue(u"Capture/PinAutoOcr"_s, pinAutoOcr);
     // Only the keys changed: a default changed later reaches whoever never set one.
     for (const capture::keys::ActionInfo& a : capture::keys::kActions) {
         if (keys.key(a.action) == a.key)

@@ -502,7 +502,7 @@ Column {
                             { id: "PinSave", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "保存") },
                             { id: "PinEdit", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "编辑") },
                             { id: "PinOcr", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "识别文字") },
-                            { id: "PinOcrCopy", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "复制文字") },
+                            { id: "PinOcrCopy", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "复制全部文字") },
                             { id: "PinCollapseEdge", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "收到屏幕顶边") },
                             { id: "PinCollapse", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "收起/展开") },
                             { id: "PinTextPick", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "选取文字") },
@@ -783,6 +783,13 @@ Column {
                             current: values.indexOf(card.editor.capturePinDoubleClick)
                             onActivated: (index) => card.editor.capturePinDoubleClick = values[index]
                         }
+                    }
+
+                    ToggleRow {
+                        key: "capturePinAutoOcr"
+                        objectName: "capturePinAutoOcrSwitch"
+                        title: qsTr("贴图后自动识别文字")
+                        description: qsTr("贴图出现后在后台识别图里的文字，鼠标移到文字上可直接拖选，按复制键复制选中文字；拖空白处或按住 Alt 仍可移动贴图。关闭后仍可按选取文字键或从右键菜单开启")
                     }
                 }
 

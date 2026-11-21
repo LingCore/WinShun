@@ -7,11 +7,15 @@
 
 #include "SmartRedact.h"
 
+#include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <unordered_map>
 
 namespace ws::capture {
 
@@ -78,11 +82,14 @@ public:
     Q_INVOKABLE void setupRecognition() { emit setupRequested(); }
 
     // The lines of `image` with their corners and characters' places, in its
-    // own pixels (SmartRedact.h); `done` is called on the GUI thread, once,
-    // unless a newer scan() or cancelScan() came first. Nothing the picture
+    // own pixels (SmartRedact.h); queued independently of smart redaction so
+    // multiple pins can scan without dropping one another. `done` is called on
+    // the GUI thread unless `cancelled` turns true first. Nothing the picture
     // says is kept or logged.
-    void scan(const QImage& image, double dpr, std::function<void(QList<RedactLine>)> done);
-    // Crop and grayscale conversion run on the reader thread, too.
+    void scan(const QImage& image, double dpr, std::function<void(QList<RedactLine>)> done,
+        std::shared_ptr<const std::atomic<bool>> cancelled = {});
+    // Crop and grayscale conversion run on the reader thread, too (single-slot
+    // smart redaction: a newer scan() or cancelScan() drops the previous one).
     void scan(const QImage& image, const QRect& region, double dpr, std::function<void(RedactScan)> done);
     void cancelScan();
 
@@ -157,11 +164,22 @@ private:
         double dpr = 1.0;
         bool grayscale = true;
     };
+    struct LineJob {
+        int ticket = 0;
+        QImage image;
+        double dpr = 1.0;
+        std::shared_ptr<const std::atomic<bool>> cancelled;
+    };
+    struct LineCallback {
+        std::function<void(QList<RedactLine>)> done;
+        std::shared_ptr<const std::atomic<bool>> cancelled;
+    };
     void enqueueScan(const QImage& image, const QRect& region, double dpr, bool grayscale, std::function<void(RedactScan)> done);
     void work(const std::stop_token& stop);
     void done(int round, const QString& text, const QString& table, const QString& error);
     void clearTranslation();
     void scanDone(int ticket, RedactScan scan);
+    void lineScanDone(int ticket, QList<RedactLine> lines);
 
     bool m_busy = false;
     QString m_text;
@@ -183,8 +201,11 @@ private:
     std::condition_variable_any m_wake;
     std::optional<Job> m_job;
     std::optional<ScanJob> m_scan;
+    std::deque<LineJob> m_lineQueue;
     int m_scanTicket = 0; // the GUI thread's: the scan whose result is wanted
     std::function<void(RedactScan)> m_scanDone;
+    int m_lineTicket = 0;
+    std::unordered_map<int, LineCallback> m_lineDone;
     std::jthread m_thread; // last: started once the rest is there
 };
 

@@ -376,6 +376,50 @@ private slots:
             line(u"left"_s, QRectF(10, 11, 80, 20)),
         };
         QCOMPARE(pickedText(pickedLines(lines, QRectF(0, 0, 400, 100))), u"left right\nlower"_s);
+        QCOMPARE(pickedText(allPickedLines(lines)), u"left right\nlower"_s);
+    }
+
+    void directTextHitAndFlowSelection()
+    {
+        const QList<RedactLine> lines {
+            line(u"0123456789"_s, QRectF(200, 10, 100, 20)),
+            line(u"abcdefghij"_s, QRectF(200, 40, 100, 20)),
+            line(u"ABCDEFGHIJ"_s, QRectF(200, 70, 100, 20)),
+            // Separate left sidebar column
+            line(u"Nav1"_s, QRectF(10, 10, 60, 20)),
+            line(u"Nav2"_s, QRectF(10, 40, 60, 20)),
+            line(u"Nav3"_s, QRectF(10, 70, 60, 20)),
+        };
+        QVERIFY(hasTextAt(lines, QPointF(250, 20)));
+        QVERIFY(hasTextAt(lines, QPointF(199, 20), 2.0));
+        QVERIFY(!hasTextAt(lines, QPointF(140, 20), 2.0)); // gutter between sidebar and main
+        const auto hit = pickedLineAt(lines, QPointF(250, 50));
+        QVERIFY(hit.has_value());
+        QCOMPARE(hit->text, u"abcdefghij"_s);
+        QVERIFY(!pickedLineAt(lines, QPointF(140, 50)).has_value());
+
+        // Single-line forward and backward drag (including slight vertical drift below the line).
+        QCOMPARE(pickedText(pickedLinesFlow(lines, QPointF(230, 18), QPointF(270, 22))), u"3456"_s);
+        QCOMPARE(pickedText(pickedLinesFlow(lines, QPointF(270, 22), QPointF(230, 18))), u"3456"_s);
+        QCOMPARE(pickedText(pickedLinesFlow(lines, QPointF(230, 80), QPointF(270, 95))), u"DEFG"_s);
+
+        // Multi-line flowing selection in main column: partial first, full middle, partial last;
+        // does NOT sweep in the separate sidebar column on intermediate rows!
+        QCOMPARE(pickedText(pickedLinesFlow(lines, QPointF(260, 20), QPointF(240, 80))), u"6789\nabcdefghij\nABCD"_s);
+        // Same drag in reverse (bottom-up): identical flowing result.
+        QCOMPARE(pickedText(pickedLinesFlow(lines, QPointF(240, 80), QPointF(260, 20))), u"6789\nabcdefghij\nABCD"_s);
+        // Dragging clearly past the bottom takes to the end of the last line.
+        QCOMPARE(pickedText(pickedLinesFlow(lines, QPointF(260, 50), QPointF(250, 150))), u"ghij\nABCDEFGHIJ"_s);
+        // Dragging across both columns includes both columns.
+        QCOMPARE(pickedText(pickedLinesFlow(lines, QPointF(20, 20), QPointF(240, 50))), u"av1 0123456789\nNav2 abcd"_s);
+
+        // Surrogate pair (emoji) is never split in half when slicing.
+        RedactLine emoji;
+        emoji.text = u"a\U0001F600b"_s; // indices: 0='a', 1-2=emoji, 3='b'
+        emoji.quad = QPolygonF(QRectF(0, 0, 90, 20));
+        emoji.quad.removeLast();
+        emoji.chars = {{0, 0.15f}, {1, 0.5f}, {3, 0.85f}};
+        QCOMPARE(pickedText(pickedLinesFlow({emoji}, QPointF(30, 10), QPointF(60, 10))), u"\U0001F600"_s);
     }
 
     // ---- the colour formats ---------------------------------------------------------------

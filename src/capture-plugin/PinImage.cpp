@@ -141,6 +141,11 @@ std::optional<Placement> cursorPlacement()
 
 QImage renderText(const QString& text, int dpi, const TextLook& look)
 {
+    return renderTextWithLines(text, dpi, look).image;
+}
+
+RenderedText renderTextWithLines(const QString& text, int dpi, const TextLook& look)
+{
     QString shown = text.left(kCardChars + 1);
     shown.replace(u"\r\n"_s, u"\n"_s);
     shown.replace(u'\r', u'\n');
@@ -215,8 +220,46 @@ QImage renderText(const QString& text, int dpi, const TextLook& look)
     painter.setRenderHint(QPainter::TextAntialiasing);
     painter.setPen(look.text.isValid() ? look.text : (look.dark ? QColor(0xf0, 0xf0, 0xf0) : QColor(0x1a, 0x1a, 0x1a)));
     painter.setClipRect(QRectF(0, padY, size.width(), y));
-    for (const auto& layout : layouts)
+    QList<capture::RedactLine> textLines;
+    for (const auto& layout : layouts) {
         layout->draw(&painter, QPointF(padX, padY));
+        const QString lineText = layout->text();
+        for (int r = 0; r < layout->lineCount(); ++r) {
+            const QTextLine row = layout->lineAt(r);
+            if (row.y() >= y)
+                break;
+            const int rawStart = row.textStart();
+            int first = 0;
+            int end = row.textLength();
+            while (first < end && lineText[rawStart + first].isSpace())
+                ++first;
+            while (end > first && lineText[rawStart + end - 1].isSpace())
+                --end;
+            if (first >= end)
+                continue;
+            const QString visible = lineText.mid(rawStart + first, end - first);
+            const qreal x0 = row.cursorToX(rawStart + first);
+            const qreal x1 = row.cursorToX(rawStart + end);
+            const qreal left = std::min(x0, x1);
+            const qreal right = std::max(x0, x1);
+            if (right <= left || row.height() <= 0)
+                continue;
+            const QRectF box(padX + left, padY + row.y(), right - left, row.height());
+            capture::RedactLine rl;
+            rl.text = visible;
+            rl.quad = {box.topLeft(), box.topRight(), box.bottomRight(), box.bottomLeft()};
+            for (int c = 0; c < visible.size(); ++c) {
+                if (visible[c].isLowSurrogate())
+                    continue;
+                const int next = (c + 1 < visible.size() && visible[c].isHighSurrogate() && visible[c + 1].isLowSurrogate()) ? c + 2 : c + 1;
+                const qreal c0 = row.cursorToX(rawStart + first + c);
+                const qreal c1 = row.cursorToX(rawStart + first + next);
+                const float t = static_cast<float>(std::clamp(((c0 + c1) * 0.5 - left) / (right - left), 0.0, 1.0));
+                rl.chars.append({c, t});
+            }
+            textLines.append(std::move(rl));
+        }
+    }
     painter.setClipping(false);
     if (more) {
         painter.setPen(look.subtext.isValid() ? look.subtext : QColor(0x80, 0x80, 0x80));
@@ -224,7 +267,7 @@ QImage renderText(const QString& text, int dpi, const TextLook& look)
         painter.drawText(QRectF(padX, padY + y, size.width() - 2 * padX, lineHeight), Qt::AlignLeft | Qt::AlignVCenter, u"…"_s);
     }
     painter.end();
-    return image;
+    return {std::move(image), std::move(textLines)};
 }
 
 Prepared prepare(QImage image, const Placement& placement)

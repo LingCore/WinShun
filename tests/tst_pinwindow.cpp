@@ -39,7 +39,8 @@ private slots:
         image.fill(Qt::white);
         std::function<void(QList<RedactLine>)> wordsRead; // the reading, answered when the test says
         PinWindow::Host host;
-        host.readLines = [&](const QImage&, double, std::function<void(QList<RedactLine>)> done) { wordsRead = std::move(done); };
+        host.readLines = [&](const QImage&, double, std::function<void(QList<RedactLine>)> done,
+                             std::shared_ptr<const std::atomic<bool>>) { wordsRead = std::move(done); };
         PinWindow pin(image, QPoint(40, 40), std::move(host));
         QVERIFY(pin.hwnd());
         QCOMPARE(pin.textHintAlpha(), 0); // nothing said while no text is picked
@@ -57,6 +58,177 @@ private slots:
         pin.endTextPick();
         QVERIFY(!pin.textMode());
         QCOMPARE(pin.textHintAlpha(), 0);
+    }
+
+    // Auto-OCR on pin: quiet background scan, brief ready pill when text exists,
+    // direct I-beam cursor (Alt overrides to move), Ctrl+A / Ctrl+C / T / Esc /
+    // Shift+C instant cached copy, and cache lifecycle across rotate/collapse/Tab.
+    void autoOcrDirectSelectionAndCache()
+    {
+        const DPI_AWARENESS_CONTEXT was = ::SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        const auto restoreDpi = qScopeGuard([was] { ::SetThreadDpiAwarenessContext(was); });
+        auto makeLine = [](const QString& text, QRectF box) {
+            RedactLine l;
+            l.text = text;
+            l.quad = QPolygonF(box);
+            l.quad.removeLast();
+            for (int i = 0; i < text.size(); ++i)
+                l.chars.append({i, static_cast<float>((i + 0.5) / text.size())});
+            return l;
+        };
+        const QList<RedactLine> sample {
+            makeLine(u"第一行"_s, QRectF(40, 40, 120, 24)),
+            makeLine(u"第二行"_s, QRectF(40, 80, 120, 24)),
+        };
+
+        // 1. Quiet background scan; empty result shows no pill.
+        {
+            QImage img(320, 200, QImage::Format_RGB32);
+            img.fill(Qt::white);
+            std::function<void(QList<RedactLine>)> reply;
+            PinWindow::Host host;
+            host.readLines = [&](const QImage&, double, std::function<void(QList<RedactLine>)> done,
+                                 std::shared_ptr<const std::atomic<bool>>) { reply = std::move(done); };
+            PinWindow pin(img, QPoint(40, 40), std::move(host));
+            pin.setAutoOcr(true);
+            QVERIFY(reply);
+            QCOMPARE(pin.textHintAlpha(), 0); // silent while scanning in background
+            reply({});
+            QVERIFY(pin.hasRecognizedLines());
+            QCOMPARE(pin.recognizedLineCount(), 0);
+            QCOMPARE(pin.textHintAlpha(), 0); // no pill when picture has no text
+        }
+
+        // 2. Auto-OCR with text: ready pill, cursor I-beam / Alt override, Ctrl+A, Ctrl+C, T, Esc, Shift+C, cache.
+        {
+            POINT at {};
+            const bool hasCursor = ::GetCursorPos(&at) != FALSE;
+            const QPoint cursor(at.x, at.y);
+            QImage img(400, 260, QImage::Format_RGB32);
+            img.fill(Qt::white);
+            int scans = 0;
+            std::function<void(QList<RedactLine>)> reply;
+            std::shared_ptr<const std::atomic<bool>> lastCancel;
+            QString copiedText;
+            bool copiedImage = false;
+            bool closed = false;
+            PinWindow::Host host;
+            host.readLines = [&](const QImage&, double, std::function<void(QList<RedactLine>)> done,
+                                 std::shared_ptr<const std::atomic<bool>> cancel) {
+                ++scans;
+                reply = std::move(done);
+                lastCancel = std::move(cancel);
+            };
+            host.copyText = [&](const QString& text) { copiedText = text; };
+            host.copy = [&](PinWindow*) { copiedImage = true; };
+            host.closed = [&](PinWindow*) { closed = true; };
+            // Place pin so real cursor sits inside line 0 (40..160, 40..64) -> offset (80, 52).
+            const QPoint origin = hasCursor ? cursor - QPoint(80, 52) : QPoint(40, 40);
+            PinWindow pin(img, origin, std::move(host));
+            pin.setAutoOcr(true);
+            QCOMPARE(scans, 1);
+            QVERIFY(reply);
+            reply(sample);
+            QVERIFY(pin.hasRecognizedLines());
+            QCOMPARE(pin.recognizedLineCount(), 2);
+            QCOMPARE(pin.textHintAlpha(), 255);
+            QCOMPARE(pin.textPillText(), u"已识别文字，可拖选"_s);
+
+            // Cursor hit-test: I-beam on text, Move when Alt held (only when desktop cursor is readable).
+            BYTE keys[256] {};
+            QVERIFY(::GetKeyboardState(keys));
+            BYTE held[256] {};
+            std::copy(std::begin(keys), std::end(keys), std::begin(held));
+            const auto restoreKeys = qScopeGuard([&keys] { ::SetKeyboardState(keys); });
+            if (hasCursor && pin.pictureRect().topLeft() == cursor - QPoint(80, 52)) {
+                held[VK_MENU] = 0;
+                QVERIFY(::SetKeyboardState(held));
+                QCOMPARE(::SendMessageW(pin.hwnd(), WM_SETCURSOR, reinterpret_cast<WPARAM>(pin.hwnd()),
+                             MAKELPARAM(HTCLIENT, WM_MOUSEMOVE)),
+                    LRESULT(TRUE)); // I-beam over recognized text
+                held[VK_MENU] = 0x80; // Alt held: fall through to IDC_SIZEALL move cursor
+                QVERIFY(::SetKeyboardState(held));
+                QCOMPARE(::SendMessageW(pin.hwnd(), WM_SETCURSOR, reinterpret_cast<WPARAM>(pin.hwnd()),
+                             MAKELPARAM(HTCLIENT, WM_MOUSEMOVE)),
+                    LRESULT(FALSE));
+                held[VK_MENU] = 0;
+                QVERIFY(::SetKeyboardState(held));
+            }
+
+            // Ctrl+A selects all text; Ctrl+C copies selected text (not image).
+            held[VK_CONTROL] = 0x80;
+            QVERIFY(::SetKeyboardState(held));
+            ::SendMessageW(pin.hwnd(), WM_KEYDOWN, 'A', 0);
+            QVERIFY(pin.hasPickedText());
+            QCOMPARE(pin.pickedText(), u"第一行\n第二行"_s);
+            QCOMPARE(pin.textPillText(), u"Ctrl+C 复制文字"_s);
+            ::SendMessageW(pin.hwnd(), WM_KEYDOWN, 'C', 0);
+            QCOMPARE(copiedText, u"第一行\n第二行"_s);
+            QVERIFY(!copiedImage);
+            QCOMPARE(pin.textPillText(), u"已复制选中文字"_s);
+
+            // Pressing T while text is directly selected also copies selected text without entering box mode.
+            copiedText.clear();
+            held[VK_CONTROL] = 0;
+            QVERIFY(::SetKeyboardState(held));
+            ::SendMessageW(pin.hwnd(), WM_KEYDOWN, 'T', 0);
+            QCOMPARE(copiedText, u"第一行\n第二行"_s);
+            QVERIFY(!pin.textMode());
+
+            // First Esc clears direct selection without closing the pin.
+            ::SendMessageW(pin.hwnd(), WM_KEYDOWN, VK_ESCAPE, 0);
+            QVERIFY(!pin.hasPickedText());
+            QVERIFY(!closed && pin.hwnd());
+
+            // Pressing T with nothing selected enters explicit box mode immediately (no re-OCR!).
+            ::SendMessageW(pin.hwnd(), WM_KEYDOWN, 'T', 0);
+            QVERIFY(pin.textMode());
+            QCOMPARE(scans, 1);
+            QCOMPARE(pin.textPillText(), u"拖选文字 · Esc 退出"_s);
+            ::SendMessageW(pin.hwnd(), WM_KEYDOWN, VK_ESCAPE, 0);
+            QVERIFY(!pin.textMode());
+            QVERIFY(pin.hasRecognizedLines()); // cache survives endTextPick()
+
+            // copyAllRecognizedText() copies instantly from cache without re-running OCR.
+            copiedText.clear();
+            QVERIFY(pin.copyAllRecognizedText());
+            QCOMPARE(scans, 1);
+            QCOMPARE(copiedText, u"第一行\n第二行"_s);
+            QCOMPARE(pin.textPillText(), u"已复制全部文字"_s);
+
+            // Collapse + expand preserves cached lines (no extra OCR).
+            pin.collapse(PinForm::Tile);
+            pin.expand();
+            QVERIFY(pin.hasRecognizedLines());
+            QCOMPARE(scans, 1);
+
+            // Translation preserves original side's lines when flipping back with Tab.
+            QImage translated(400, 260, QImage::Format_RGB32);
+            translated.fill(Qt::yellow);
+            QVERIFY(pin.setTranslation(translated, u"Line 1\nLine 2"_s, pin.revision()));
+            QCOMPARE(scans, 2); // auto-OCR started for the translated side
+            QVERIFY(lastCancel && !lastCancel->load());
+            pin.showOtherSide(); // Tab back to original: cancels translated scan & restores original cache!
+            QVERIFY(lastCancel->load());
+            QVERIFY(pin.hasRecognizedLines());
+            QCOMPARE(pin.recognizedLineCount(), 2);
+            QCOMPARE(scans, 2);
+
+            // Rotate invalidates cache and triggers a fresh scan; copyAll joins in-flight scan.
+            pin.rotate(true);
+            QVERIFY(!pin.hasRecognizedLines());
+            QCOMPARE(scans, 3);
+            copiedText.clear();
+            QVERIFY(pin.copyAllRecognizedText());
+            QCOMPARE(pin.textPillText(), u"识别文字中…"_s);
+            reply({makeLine(u"旋转后"_s, QRectF(10, 10, 80, 20))});
+            QCOMPARE(copiedText, u"旋转后"_s);
+            QCOMPARE(pin.textPillText(), u"已复制全部文字"_s);
+
+            // Second Esc (no selection, no text mode) closes the pin.
+            ::SendMessageW(pin.hwnd(), WM_KEYDOWN, VK_ESCAPE, 0);
+            QVERIFY(closed);
+        }
     }
 
     // The cursor comes onto a pin: a close button in the corner it came in
@@ -186,7 +358,7 @@ private slots:
         QCOMPARE(rows[6].keys, QStringList {keys.text(KeyAction::PinClose)});
 
         rows = pinKeyRows(keys, true, true, true); // text recognition there, a translated pin showing its translation
-        QCOMPARE(texts(rows), QStringList({u"编辑"_s, u"复制"_s, u"保存到“屏幕截图”"_s, u"识别文字"_s, u"复制文字"_s, u"选择文字"_s, u"显示原文"_s,
+        QCOMPARE(texts(rows), QStringList({u"编辑"_s, u"复制"_s, u"保存到“屏幕截图”"_s, u"识别文字"_s, u"复制全部文字"_s, u"选择文字"_s, u"显示原文"_s,
                                   u"旋转与翻转"_s, u"缩放 / 透明度"_s, u"收成小块"_s, u"关闭"_s}));
         QCOMPARE(rows[4].keys, QStringList {keys.text(KeyAction::PinOcrCopy)});
         QCOMPARE(rows[6].keys, QStringList {u"Tab"_s});

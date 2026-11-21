@@ -123,9 +123,44 @@ void CaptureOcr::showText(const QString& text)
     emit changed();
 }
 
-void CaptureOcr::scan(const QImage& image, double dpr, std::function<void(QList<RedactLine>)> done)
+void CaptureOcr::scan(const QImage& image, double dpr, std::function<void(QList<RedactLine>)> done,
+    std::shared_ptr<const std::atomic<bool>> cancelled)
 {
-    enqueueScan(image, image.rect(), dpr, false, [done = std::move(done)](RedactScan scan) { done(std::move(scan.lines)); });
+    // Reap callbacks of already-cancelled jobs on the GUI thread.
+    std::erase_if(m_lineDone, [](const auto& pair) {
+        return pair.second.cancelled && pair.second.cancelled->load(std::memory_order_acquire);
+    });
+    if (cancelled && cancelled->load(std::memory_order_acquire))
+        return;
+    const int ticket = ++m_lineTicket;
+    if (image.isNull() || !available()) {
+        if (done) {
+            m_lineDone.emplace(ticket, LineCallback {std::move(done), std::move(cancelled)});
+            QMetaObject::invokeMethod(this, [this, ticket] { lineScanDone(ticket, {}); }, Qt::QueuedConnection);
+        }
+        return;
+    }
+    if (done)
+        m_lineDone.emplace(ticket, LineCallback {std::move(done), cancelled});
+    {
+        std::lock_guard lock(m_mutex);
+        std::erase_if(m_lineQueue, [](const LineJob& j) { return j.cancelled && j.cancelled->load(std::memory_order_acquire); });
+        m_lineQueue.push_back(LineJob {ticket, image, dpr, std::move(cancelled)});
+    }
+    m_wake.notify_all();
+}
+
+void CaptureOcr::lineScanDone(int ticket, QList<RedactLine> lines)
+{
+    const auto it = m_lineDone.find(ticket);
+    if (it == m_lineDone.end())
+        return;
+    LineCallback entry = std::move(it->second);
+    m_lineDone.erase(it);
+    if (entry.cancelled && entry.cancelled->load(std::memory_order_acquire))
+        return;
+    if (entry.done)
+        entry.done(std::move(lines));
 }
 
 void CaptureOcr::scan(const QImage& image, const QRect& region, double dpr, std::function<void(RedactScan)> done)
@@ -280,9 +315,11 @@ void CaptureOcr::work(const std::stop_token& stop)
     for (;;) {
         Job job;
         std::optional<ScanJob> scan;
+        std::optional<LineJob> lineJob;
         {
             std::unique_lock lock(m_mutex);
-            const bool woke = m_wake.wait_for(lock, stop, kKeepLoaded, [this] { return m_job.has_value() || m_scan.has_value(); });
+            const bool woke = m_wake.wait_for(lock, stop, kKeepLoaded,
+                [this] { return m_job.has_value() || m_scan.has_value() || !m_lineQueue.empty(); });
             if (stop.stop_requested())
                 break;
             if (!woke) {
@@ -292,10 +329,17 @@ void CaptureOcr::work(const std::stop_token& stop)
             if (m_job) {
                 job = std::move(*m_job);
                 m_job.reset();
-            } else {
+            } else if (m_scan) {
                 scan = std::move(m_scan);
                 m_scan.reset();
+            } else {
+                lineJob = std::move(m_lineQueue.front());
+                m_lineQueue.pop_front();
             }
+        }
+        if (lineJob && lineJob->cancelled && lineJob->cancelled->load(std::memory_order_acquire)) {
+            QMetaObject::invokeMethod(this, [this, ticket = lineJob->ticket] { lineScanDone(ticket, {}); }, Qt::QueuedConnection);
+            continue;
         }
         QElapsedTimer clock;
         clock.start();
@@ -304,6 +348,45 @@ void CaptureOcr::work(const std::stop_token& stop)
         if (!reader) {
             reader = PaddleOcr::load(folder, threads, &error);
             loadMs = clock.elapsed();
+        }
+        if (lineJob) {
+            if (lineJob->cancelled && lineJob->cancelled->load(std::memory_order_acquire)) {
+                QMetaObject::invokeMethod(this, [this, ticket = lineJob->ticket] { lineScanDone(ticket, {}); }, Qt::QueuedConnection);
+                continue;
+            }
+            const double scale = ocrUpscale(lineJob->image.size(), lineJob->dpr);
+            QList<RedactLine> lines;
+            if (reader) {
+                QImage picture = lineJob->image;
+                if (scale > 1.0)
+                    picture = picture.scaled(std::max(1, static_cast<int>(std::lround(picture.width() * scale))),
+                        std::max(1, static_cast<int>(std::lround(picture.height() * scale))), Qt::IgnoreAspectRatio,
+                        Qt::SmoothTransformation);
+                QList<OcrPiece> pieces;
+                if (reader->readPieces(picture, &pieces, &error)) {
+                    lines.reserve(pieces.size());
+                    for (const OcrPiece& p : std::as_const(pieces)) {
+                        RedactLine line;
+                        line.text = p.text;
+                        for (const QPointF& corner : p.quad)
+                            line.quad.append(corner / scale);
+                        line.chars = p.chars;
+                        lines.append(std::move(line));
+                    }
+                }
+            }
+            qInfo().noquote() << u"Screen capture: pin text scan read in %1 ms (loading %2 ms), %3x%4 at %5x, %6 lines"_s.arg(clock.elapsed())
+                                     .arg(loadMs)
+                                     .arg(lineJob->image.width())
+                                     .arg(lineJob->image.height())
+                                     .arg(scale, 0, 'f', 2)
+                                     .arg(lines.size());
+            if (!error.isEmpty())
+                qWarning().noquote() << "Screen capture: pin text scan failed:" << error;
+            QMetaObject::invokeMethod(this,
+                [this, ticket = lineJob->ticket, lines = std::move(lines)]() mutable { lineScanDone(ticket, std::move(lines)); },
+                Qt::QueuedConnection);
+            continue;
         }
         if (scan) {
             const QImage region = scan->region == scan->image.rect() ? scan->image : scan->image.copy(scan->region);

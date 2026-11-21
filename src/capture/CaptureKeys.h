@@ -77,7 +77,7 @@ inline constexpr std::array kActions {
     ActionInfo {KeyAction::PinCollapseEdge, "PinCollapseEdge", KeyContext::PinWindow, QKeyCombination(Qt::Key_U),
         QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "收到屏幕顶边")},
     ActionInfo {KeyAction::PinOcrCopy, "PinOcrCopy", KeyContext::PinWindow,
-        QKeyCombination(Qt::ShiftModifier, Qt::Key_C), QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "复制文字")},
+        QKeyCombination(Qt::ShiftModifier, Qt::Key_C), QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "复制全部文字")},
 };
 
 inline constexpr std::size_t kCount = kActions.size();

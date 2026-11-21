@@ -482,6 +482,18 @@ private slots:
         QCOMPARE(pin::renderText(u"dark"_s, 96, glass).pixelColor(1, 1), QColor(0x2b, 0x2b, 0x2b));
         QVERIFY(pin::renderText(u"  \n\t "_s, 96, light).isNull());
         QVERIFY(pin::renderText({}, 96, light).isNull());
+
+        // renderTextWithLines produces exact selectable line geometry with zero OCR.
+        const pin::RenderedText rendered = pin::renderTextWithLines(u"第一行 hello\n  indented world"_s, 96, light);
+        QVERIFY(!rendered.image.isNull());
+        QCOMPARE(rendered.lines.size(), 2);
+        QCOMPARE(rendered.lines[0].text, u"第一行 hello"_s);
+        QCOMPARE(rendered.lines[1].text, u"indented world"_s);
+        for (const auto& rl : rendered.lines) {
+            QCOMPARE(rl.quad.size(), 4);
+            QVERIFY(rendered.image.rect().contains(rl.quad.boundingRect().toAlignedRect()));
+            QCOMPARE(rl.chars.size(), rl.text.size());
+        }
     }
 
     void qtFallbackCarriesTheSameOrigin()

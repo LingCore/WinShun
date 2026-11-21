@@ -2743,6 +2743,13 @@ void AnnotationModel::setSmartHooks(SmartHooks hooks)
     d->smart.hooks = std::move(hooks);
 }
 
+std::optional<QList<RedactLine>> AnnotationModel::prescannedLines(const QRect& rect) const
+{
+    if (!d->smart.ready || d->smart.rect != rect || !m_document.items.isEmpty() || m_editing.has_value())
+        return std::nullopt;
+    return d->smart.lines;
+}
+
 // The selection (the crop, in the editor) changed: whatever was read is of
 // something else now. Read again once it has held still for 300 ms, if the
 // settings let the scan start on its own.

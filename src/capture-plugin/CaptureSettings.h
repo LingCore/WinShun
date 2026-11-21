@@ -72,6 +72,8 @@ struct CaptureOptions {
     QString recordingKeys = QStringLiteral("off");
     bool recordingMouseButtons = false;
     QString pinDoubleClick = QStringLiteral("reset");
+    // Quietly OCR pinned pictures in the background so text can be drag-selected directly.
+    bool pinAutoOcr = true;
     // The pin and save keys and the pin window's keys (#187): Capture/Keys/<id>,
     // only those not at their default; an empty value is no key.
     capture::CaptureKeys keys;
@@ -123,6 +125,7 @@ class CaptureSettings : public QObject {
     Q_PROPERTY(QString captureTranslateHotkey READ captureTranslateHotkey WRITE setCaptureTranslateHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString captureSaveFolder READ captureSaveFolder WRITE setCaptureSaveFolder NOTIFY changed FINAL)
     Q_PROPERTY(QString capturePinDoubleClick READ capturePinDoubleClick WRITE setCapturePinDoubleClick NOTIFY changed FINAL)
+    Q_PROPERTY(bool capturePinAutoOcr READ capturePinAutoOcr WRITE setCapturePinAutoOcr NOTIFY changed FINAL)
     Q_PROPERTY(QString captureHotkeyError READ captureHotkeyError NOTIFY problemsChanged FINAL)
     Q_PROPERTY(QString capturePinsHotkeyError READ capturePinsHotkeyError NOTIFY problemsChanged FINAL)
     Q_PROPERTY(QString capturePinsRestoreHotkeyError READ capturePinsRestoreHotkeyError NOTIFY problemsChanged FINAL)
@@ -210,6 +213,8 @@ public:
     void setCaptureSaveFolder(const QString& v) { change(m_options.saveFolder, v.trimmed()); }
     QString capturePinDoubleClick() const { return m_options.pinDoubleClick; }
     void setCapturePinDoubleClick(const QString& v);
+    bool capturePinAutoOcr() const { return m_options.pinAutoOcr; }
+    void setCapturePinAutoOcr(bool v) { change(m_options.pinAutoOcr, v); }
 
     QString captureHotkeyError() const { return m_hotkeyError; }
     QString capturePinsHotkeyError() const { return m_pinsHotkeyError; }

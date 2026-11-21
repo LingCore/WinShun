@@ -90,6 +90,29 @@ private slots:
         reader.cancelScan();
         QTest::qWait(500);
         QVERIFY(!done);
+
+        // Multiple pin line-scans are queued independently (none dropped), cancelled ones are
+        // skipped, and smart-redaction cancelScan() does not cancel queued pin scans.
+        const QImage firstImg = drawn({u"PinOne111"_s}, 24, Qt::black, Qt::white);
+        const QImage skippedImg = drawn({u"Skipped222"_s}, 24, Qt::black, Qt::white);
+        const QImage secondImg = drawn({u"PinTwo333"_s}, 24, Qt::black, Qt::white);
+        QString firstText;
+        QString secondText;
+        bool skippedCalled = false;
+        auto cancelMid = std::make_shared<std::atomic<bool>>(false);
+        reader.scan(firstImg, 1.5, [&](QList<RedactLine> lines) {
+            firstText = lines.isEmpty() ? u"<empty>"_s : lines.first().text;
+        });
+        reader.scan(skippedImg, 1.5, [&](QList<RedactLine>) { skippedCalled = true; }, cancelMid);
+        cancelMid->store(true, std::memory_order_release);
+        reader.scan(secondImg, 1.5, [&](QList<RedactLine> lines) {
+            secondText = lines.isEmpty() ? u"<empty>"_s : lines.first().text;
+        });
+        reader.cancelScan(); // only cancels smart redaction, not queued pin scans
+        QTRY_VERIFY_WITH_TIMEOUT(!firstText.isEmpty() && !secondText.isEmpty(), 15000);
+        QVERIFY(firstText.contains(u"PinOne111"_s));
+        QVERIFY(secondText.contains(u"PinTwo333"_s));
+        QVERIFY(!skippedCalled);
     }
 
     // 翻译 (GitHub #191): asked with a ticket, answered once; an answer for

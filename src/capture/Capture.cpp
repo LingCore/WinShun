@@ -874,6 +874,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     m_flyout = nullptr;
     QImage picture;
     QByteArray project;
+    std::optional<QList<RedactLine>> prescanned;
     std::shared_ptr<HdrPixels> hdr; // saved from an HDR monitor: the picture as it showed it
     QPoint origin; // the picture's top left on the screen, physical
     double dpr = 1.0;
@@ -920,7 +921,8 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
             }
         }
         // Annotated: the picture is the composition, and the project goes with
-        // it. Not annotated: the plain copy above, as fast as before.
+        // it. Not annotated: the plain copy above, as fast as before; reuse any
+        // completed smart-redaction prescan so pinning needs no duplicate OCR.
         if (!picture.isNull() && m_session.hasAnnotations() && m_session.annotationScreen() == screen
             && annotation->selectionRect() == rect) {
             const QImage composed = annotation->composed();
@@ -931,6 +933,8 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
                 const annot::Project packed = annotation->project();
                 project = annot::writeProject(packed.doc, packed.base);
             }
+        } else if (!picture.isNull() && !m_session.hasAnnotations() && m_session.annotationScreen() == screen) {
+            prescanned = annotation->prescannedLines(rect);
         }
     } else {
         // Ended on a capture brought back from the history: that one stays in
@@ -1025,7 +1029,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     switch (action) {
     case CaptureSession::Action::CopyPin:
         if (PinManager* pins = m_callbacks.pins ? m_callbacks.pins() : nullptr)
-            pins->pin(picture, origin, true, project);
+            pins->pin(picture, origin, true, project, std::move(prescanned));
         [[fallthrough]]; // copying records the picture once, including its editable project
     case CaptureSession::Action::Copy:
         if (m_callbacks.copy)
@@ -1039,7 +1043,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
         break;
     case CaptureSession::Action::Pin:
         if (PinManager* pins = m_callbacks.pins ? m_callbacks.pins() : nullptr)
-            pins->pin(picture, origin, true, project);
+            pins->pin(picture, origin, true, project, std::move(prescanned));
         if (m_callbacks.record)
             m_callbacks.record(picture, project);
         break;

@@ -1,7 +1,10 @@
 #pragma once
 
+#include "SmartRedact.h"
+
 #include <QColor>
 #include <QImage>
+#include <QList>
 #include <QPoint>
 #include <QRect>
 #include <QString>
@@ -55,7 +58,13 @@ struct TextLook {
 // indented as code is drawn in a monospaced font. The card shows the first
 // 2,000 characters and 50 lines, an … below when there is more. Null for
 // words that are only spaces.
+struct RenderedText {
+    QImage image;
+    QList<capture::RedactLine> lines;
+};
+
 QImage renderText(const QString& text, int dpi, const TextLook& look);
+RenderedText renderTextWithLines(const QString& text, int dpi, const TextLook& look);
 
 // Snapshot on invocation; decoding must not move a pin to wherever the mouse
 // happens to be when a large picture finishes loading. Coordinates are physical.

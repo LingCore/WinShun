@@ -77,9 +77,13 @@ public:
         std::function<qreal()> pillRadius;
         std::function<void(const QString&)> copyText; // the text picked
         // Reads the lines of the picture (their corners and characters' places,
-        // in its pixels); `done` is called on the GUI thread, once, or never.
-        // Empty: no text recognition.
-        std::function<void(const QImage&, double dpr, std::function<void(QList<RedactLine>)> done)> readLines;
+        // in its pixels); `done` is called on the GUI thread, once, or never
+        // (skipped when `cancelled` turns true). Empty: no text recognition.
+        std::function<void(const QImage&, double dpr, std::function<void(QList<RedactLine>)> done,
+            std::shared_ptr<const std::atomic<bool>> cancelled)>
+            readLines;
+        // Whether the OCR reader is installed; empty: assumed available whenever readLines is set.
+        std::function<bool()> ocrAvailable;
         // The edge tabs of the other pins on `monitorWork` (physical), so a new one goes beside them.
         std::function<std::vector<QRect>(const PinWindow* self)> takenTabs;
         std::function<void(PinWindow*)> released; // its picture was let go of (collapsed): memory can go back
@@ -185,19 +189,35 @@ public:
     std::optional<QRect> edgeTab() const;
 
     // ---- picking text ----
-    bool textMode() const { return m_text != Text::Off; }
+    bool autoOcr() const { return m_autoOcr; }
+    void setAutoOcr(bool on); // quietly reads lines for direct mouse selection and instant copy-all
+    // Supplies already-known lines (copied-text card layout or capture prescan) without re-running OCR.
+    void setRecognizedLines(QList<RedactLine> lines, bool announce = false);
+    bool hasRecognizedLines() const { return m_readState == ReadState::Ready; }
+    int recognizedLineCount() const { return static_cast<int>(m_lines.size()); }
+    bool textMode() const { return m_textMode; }
     bool canPickText() const { return m_host.readLines != nullptr; }
-    void beginTextPick(); // reads the picture's words, then a drag picks lines
+    void beginTextPick(); // explicit box-select mode (reuses cached lines if already read)
     void endTextPick();
+    void clearSelection(); // clears direct text highlight without closing the pin
+    void selectAllText(); // highlights all recognized lines (Ctrl+A)
+    bool hasPickedText() const { return !m_picked.isEmpty(); }
     QString pickedText() const; // the lines picked now
+    bool copyPickedText(); // copies pickedText() and shows confirmation pill
+    // Copies all recognized text directly from cached lines (or runs/joins a scan);
+    // returns false only when OCR is unavailable/unwired so the caller can show OCR setup.
+    bool copyAllRecognizedText();
+    void showCopiedAllPill();
     // The pill saying what the pick is doing: 255 while shown, 0 once it has
     // faded off the words (GitHub #258). For tests.
     int textHintAlpha() const { return m_pillAlpha; }
+    QString textPillText() const;
     // The close button shown while the cursor is on it (physical, virtual desktop); empty: none now.
     QRect closeButton() const;
 
 private:
-    enum class Text { Off, Reading, Ready };
+    enum class ReadState { Unread, Reading, Ready };
+    enum class PillKind { None, AutoReady, Reading, PickHint, SelectionHint, Copied, CopiedAll, NoText };
     struct EncodeJob {
         std::atomic<bool> cancelled {false};
         QByteArray bytes;
@@ -228,11 +248,24 @@ private:
     void drawHint(QImage& canvas, const QRect& picture); // the zoom or opacity, a moment after it changes
     void showHint(const QString& text); // (re)starts the moment
     void forgetOtherSide(); // the picture is another now: one side, the next revision
-    void showTextPill(); // the text pick's pill (drawTextLayer): (re)starts its moment
+    void showPill(PillKind kind); // the text pill (drawTextLayer): (re)starts its moment
+    void dismissAutoReadyPill();
     void hintTick(); // the moments' timer: fades the hint and the pill out
+    void startReadLines(bool background);
+    void maybeStartAutoOcr();
+    void cancelPendingScan();
+    void resetTextInteraction();
+    void invalidateLines();
+    bool ocrAvailable() const;
+    bool canDirectSelect() const;
+    double textHitPadding() const;
+    bool hitText(QPoint screen) const;
+    void refreshCursor();
     void updatePicked(QPoint cursor);
+    void updatePickedFlow(QPoint cursor);
     void finishEncode(const EncodeJob* job);
     QPoint toImage(QPoint screen) const; // a screen point in the picture's pixels
+    QPointF toImageF(QPoint screen) const;
 
     HWND m_hwnd = nullptr;
     Host m_host;
@@ -265,9 +298,9 @@ private:
     QString m_hint;
     qint64 m_hintSince = 0; // steady clock, ms
     int m_hintAlpha = 0; // 0: not drawn
-    // The text pick's pill ("拖选文字 · Esc 退出"): shown for a moment when the
-    // words are ready and after each pick, then out of the way of the words
-    // under it (GitHub #258); never while a drag is under way.
+    // The text pill (lower left): auto-ready, reading, pick/selection hint, or copy feedback.
+    // Fades off the words after a moment (GitHub #258); never drawn while a drag is under way.
+    PillKind m_pillKind = PillKind::None;
     qint64 m_pillSince = 0;
     int m_pillAlpha = 0;
     // The close button while the cursor is on the picture: in the corner on
@@ -296,13 +329,22 @@ private:
     QPoint m_press; // where the left button went down (a click on a tile opens it)
     bool m_moved = false;
     std::shared_ptr<EncodeJob> m_encode;
-    // Picking text.
-    Text m_text = Text::Off;
+    // Picking text & cached OCR layer.
+    bool m_autoOcr = false;
+    bool m_textMode = false; // explicit box-select mode (T)
+    bool m_autoScan = false; // current scan started silently in background
+    bool m_copyAllWhenReady = false; // Shift+C asked while scan was in flight
+    ReadState m_readState = ReadState::Unread;
     QList<RedactLine> m_lines;
+    ReadState m_otherReadState = ReadState::Unread;
+    QList<RedactLine> m_otherLines;
     QList<PickedLine> m_picked;
     bool m_picking = false; // a drag under way
+    bool m_pickDirect = false; // direct flowing drag on text (not explicit box mode)
+    bool m_pickDragged = false; // direct drag moved past threshold
     QPoint m_pickStart; // screen, physical
-    QRect m_pickBand; // the drag, in picture pixels
+    QRect m_pickBand; // the drag, in picture pixels (explicit box mode)
+    std::shared_ptr<std::atomic<bool>> m_scanCancel;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // the reading's answer finds this pin gone
     // The DIB the window is drawn from, selected into m_dc.
     HDC m_dc = nullptr;

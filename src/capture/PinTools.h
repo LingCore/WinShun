@@ -5,11 +5,13 @@
 #include <QImage>
 #include <QList>
 #include <QPoint>
+#include <QPointF>
 #include <QRect>
 #include <QRectF>
 #include <QSize>
 #include <QString>
 
+#include <optional>
 #include <vector>
 
 // What the pins' extra actions (stage 7) need that asks nothing of a window:
@@ -89,10 +91,20 @@ struct PickedLine {
     QRectF box; // image px
     QString text;
 };
+// Every recognized line of `lines` (image px), top to bottom and left to right on one row.
+QList<PickedLine> allPickedLines(const QList<RedactLine>& lines);
+// Whether `point` (image px) sits on any recognized line (within `padding` image px).
+bool hasTextAt(const QList<RedactLine>& lines, QPointF point, double padding = 2.0);
+// The recognized line under `point` (image px, within `padding`), if any.
+std::optional<PickedLine> pickedLineAt(const QList<RedactLine>& lines, QPointF point, double padding = 2.0);
 // The lines of `lines` (image px) that `selection` touches, each cut to the
 // characters the selection covers when it covers only part of the line along
 // its length. Top to bottom, left to right on one row.
 QList<PickedLine> pickedLines(const QList<RedactLine>& lines, const QRectF& selection);
+// Flowing selection from `from` to `to` (image px), as in a document: partial
+// start and end lines, full lines in between (keeping to the column spanned by
+// the drag so a separate sidebar column is not swept in).
+QList<PickedLine> pickedLinesFlow(const QList<RedactLine>& lines, QPointF from, QPointF to);
 // Their text: pieces on one row joined by a space, rows by a line break.
 QString pickedText(const QList<PickedLine>& picked);
 
