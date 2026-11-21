@@ -1,0 +1,27 @@
+# WinShun.exe --probe-runtime <dir> --settings-motion-check --nav-check --renderer d3d11 (0.44.0 batch, build/release, isolated profile, 2026-11-21)
+nav-check PASS: initial open on general has empty back/forward
+nav-check PASS: navigated 4 places; back enabled, forward disabled
+nav-check PASS: WindowFrame hitTest: Back/Forward are HTCLIENT, adjacent titlebar is HTCAPTION
+nav-check PASS: WM_XBUTTON1 goes back to keys tab 1
+nav-check PASS: WM_NCXBUTTON1 on title bar goes back to keys tab 0
+nav-check PASS: Back button click returns to general with preserved scrollY (260)
+nav-check PASS: WM_APPCOMMAND forward returns to keys tab 0
+nav-check PASS: right-click on Forward opens dropdown listing 2 entries
+nav-check PASS: history dropdown jump lands on appearance
+nav-check PASS: searching enables Back
+nav-check PASS: goToCurrent jumps to proxy row on general
+nav-check PASS: Back #1 restores search results
+nav-check PASS: Back #2 returns to appearance
+nav-check PASS: fast wheel burst at bottom of general does not flip or arm
+nav-check PASS: settled notch 1 at bottom of general arms edge hint
+nav-check PASS: notch 2 switches from general bottom to keys tab 0 at top
+nav-check PASS: trailing downward notch right after switch stays pinned at top
+nav-check PASS: overscroll up from keys tab 0 lands at bottom of general (1031 / 1031)
+nav-check PASS: overscroll down crosses from keys tab 0 to keys tab 1
+nav-check PASS: overscroll down crosses from keys tab 1 to appearance
+nav-check PASS: overscroll down from health enters gleaning
+nav-check PASS: overscroll up notch 1 on gleaning arms warm edge hint
+nav-check PASS: overscroll up notch 2 on gleaning returns to health
+nav-check PASS: reopen directly to clipboard starts fresh with empty back/forward
+nav-check UIA: 0.5 ms, root_children 12
+nav-check PASS: UIA tree remains compact and fast
