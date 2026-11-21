@@ -599,6 +599,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Results/ClickPreviews", QT_TRANSLATE_NOOP("AiSettings", "单击预览"), "results", 1,
                     "With Results/DoubleClickToOpen on: a click on a result also shows its preview (as a middle click does); a double click or Enter still opens it."},
         &Settings::clickPreviews));
+    add(boolean({"Results/DefaultSystemMenu", QT_TRANSLATE_NOOP("AiSettings", "默认使用系统右键菜单"), "results", 1,
+                    "Right-clicking a file or folder opens the Windows shell context menu directly, and Shift+right-click opens WinShun's menu; rows without a shell menu (apps, plugins) still open WinShun's menu."},
+        &Settings::defaultSystemMenu));
     add(boolean({"Results/TabEntersFavoriteFolder", QT_TRANSLATE_NOOP("AiSettings", "Tab 进入收藏文件夹"), "results", 1,
                     "In All, Tab browses a favorite folder the list selected by itself (such as the first row). Off by default: Tab switches search scopes there. A folder the user moved to with the arrow keys or clicked is always browsed by Tab, Ctrl+Backspace goes back. Shift+Tab and plugin/web completion keep their usual behavior."},
         &Settings::tabEntersFavoriteFolder));

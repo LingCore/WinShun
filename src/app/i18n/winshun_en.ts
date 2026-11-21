@@ -967,6 +967,10 @@
         <translation>Click to preview</translation>
     </message>
     <message>
+        <source>默认使用系统右键菜单</source>
+        <translation>Use system context menu by default</translation>
+    </message>
+    <message>
         <source>搜索应用</source>
         <translation>Search applications</translation>
     </message>
@@ -6917,6 +6921,22 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Double-click to open</translation>
     </message>
     <message>
+        <source>默认使用系统右键菜单</source>
+        <translation>Use system context menu by default</translation>
+    </message>
+    <message>
+        <source>右键;系统菜单;右键菜单;比较文件;更多选项;Shift;context menu;shell</source>
+        <translation>right-click;system menu;context menu;compare;more options;Shift;shell</translation>
+    </message>
+    <message>
+        <source>在文件或文件夹上右键直接打开系统菜单，Shift+右键 打开 Win顺 菜单；应用、插件等仍打开 Win顺 菜单</source>
+        <translation>Right-clicking a file or folder opens the Windows context menu directly, and Shift+right-click opens WinShun&apos;s menu; apps and plugins still open WinShun&apos;s menu</translation>
+    </message>
+    <message>
+        <source>在文件或文件夹上右键打开 Win顺 菜单，Shift+右键 打开系统菜单；开启后互换</source>
+        <translation>Right-clicking a file or folder opens WinShun&apos;s menu, and Shift+right-click opens the Windows context menu; turn on to swap them</translation>
+    </message>
+    <message>
         <source>优先显示的文件类型</source>
         <translation>File types shown first</translation>
     </message>
@@ -12752,6 +12772,10 @@ Content index: %5</translation>
     <message>
         <source>Shift+右键</source>
         <translation>Shift+right-click</translation>
+    </message>
+    <message>
+        <source>右键</source>
+        <translation>Right-click</translation>
     </message>
     <message>
         <source>已剪切，可在资源管理器中粘贴</source>

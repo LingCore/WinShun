@@ -235,6 +235,9 @@ struct Settings {
     // With doubleClickToOpen: the click also shows the row's preview, as the
     // middle click does (feedback 2026-11-10: a look inside without opening).
     bool clickPreviews = false;
+    // Right-clicking a file or folder opens the Windows shell context menu by
+    // default, and Shift+right-click opens Win顺's own menu (GitHub #420).
+    bool defaultSystemMenu = false;
     // GitHub #81: Tab switches scopes by default, including on favorites.
     // Opt in to the former behavior: in 全部, Tab browses a favorite folder.
     bool tabEntersFavoriteFolder = false;

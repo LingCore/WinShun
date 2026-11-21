@@ -1740,6 +1740,14 @@ void Launcher::setDoubleClickToOpen(bool on)
     emit resultOptionsChanged();
 }
 
+void Launcher::setDefaultSystemMenu(bool on)
+{
+    if (on == m_defaultSystemMenu)
+        return;
+    m_defaultSystemMenu = on;
+    emit resultOptionsChanged();
+}
+
 void Launcher::setClickPreviews(bool on)
 {
     if (on == m_clickPreviews)
@@ -6423,7 +6431,7 @@ QVariantList Launcher::menuItems(int row) const
         }
         if (any([](const SearchResult& r) { return !r.isApp() && !r.missing && !r.offline; })) {
             items.append(separator);
-            items.append(entry(SystemMenu, tr("更多选项"), tr("Shift+右键"), u"\uE712"_s)); // More
+            items.append(entry(SystemMenu, tr("更多选项"), m_defaultSystemMenu ? tr("右键") : tr("Shift+右键"), u"\uE712"_s)); // More
         }
         return items;
     }
@@ -6609,7 +6617,7 @@ QVariantList Launcher::menuItems(int row) const
     }
     if (!r->missing && !r->offline) { // the shell's menu for it, for whom Shift+right-click is news
         items.append(separator);
-        items.append(entry(SystemMenu, tr("更多选项"), tr("Shift+右键"), u"\uE712"_s)); // More
+        items.append(entry(SystemMenu, tr("更多选项"), m_defaultSystemMenu ? tr("右键") : tr("Shift+右键"), u"\uE712"_s)); // More
     }
     return items;
 }

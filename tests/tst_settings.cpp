@@ -1625,6 +1625,7 @@ private slots:
         QCOMPARE(fresh.sort, u"match"_s);
         QVERIFY(!fresh.doubleClickToOpen);
         QVERIFY(!fresh.clickPreviews);
+        QVERIFY(!fresh.defaultSystemMenu);
         QVERIFY(!fresh.favoriteTiles);
         QVERIFY(fresh.pinnedOnTop);
         QVERIFY(fresh.previewFollowsPointer);
@@ -1638,6 +1639,7 @@ private slots:
             s.sort = name.toString();
             s.doubleClickToOpen = true;
             s.clickPreviews = true;
+            s.defaultSystemMenu = true;
             s.favoriteTiles = true;
             s.pinnedOnTop = false;
             s.previewFollowsPointer = false;
@@ -1650,6 +1652,7 @@ private slots:
             QCOMPARE(back.sort, name.toString());
             QVERIFY(back.doubleClickToOpen);
             QVERIFY(back.clickPreviews);
+            QVERIFY(back.defaultSystemMenu);
             QVERIFY(back.favoriteTiles);
             QVERIFY(!back.pinnedOnTop);
             QVERIFY(!back.previewFollowsPointer);

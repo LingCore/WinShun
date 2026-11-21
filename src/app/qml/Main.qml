@@ -761,6 +761,16 @@ Window {
     // (logical): where to put it; none: at the pointer. False for a row that
     // has none (an app, a place, a web page, a plugin's): the caller shows
     // Win顺's menu instead.
+    function openKeyboardContextMenu(system) {
+        if (clipboardBelow || homeIndex >= 0 || hintIndex >= 0 || searchBar.composition.length > 0
+                || view.currentIndex < 0 || view.currentIndex >= view.count)
+            return false
+        const wantSystem = window.launcher.defaultSystemMenu ? !system : system
+        if (wantSystem && openSystemMenu(view.currentIndex, rowPoint(view.currentIndex)))
+            return true
+        openContextMenu(view.currentIndex)
+        return true
+    }
     function openSystemMenu(index, globalPos) {
         if (index < 0 || index >= view.count || !window.launcher.hasSystemMenu(index))
             return false
@@ -1067,12 +1077,12 @@ Window {
             if ((event.modifiers & ~Qt.KeypadModifier) !== Qt.ControlModifier || !openKeyboardMenu(event.isAutoRepeat))
                 return
             break
-        case Qt.Key_Menu: // Shift+Menu: the system's menu for the row; the Menu key alone comes back as a context-menu event (Win顺's menu)
-            if (!shift || view.currentIndex < 0 || !openSystemMenu(view.currentIndex, rowPoint(view.currentIndex)))
+        case Qt.Key_Menu: // Shift+Menu: swaps with Menu (system menu by default, or Win顺's when defaultSystemMenu is on)
+            if (!shift || !openKeyboardContextMenu(true))
                 return
             break
-        case Qt.Key_F10: // Ctrl+Shift+F10 the same (Shift+F10 is Win顺's menu, as the Menu key)
-            if (!ctrl || !shift || view.currentIndex < 0 || !openSystemMenu(view.currentIndex, rowPoint(view.currentIndex)))
+        case Qt.Key_F10: // Ctrl+Shift+F10 the same (Shift+F10 is the default menu, as the Menu key)
+            if (!ctrl || !shift || !openKeyboardContextMenu(true))
                 return
             break
         case Qt.Key_Backtab:
@@ -1212,10 +1222,7 @@ Window {
                 view.currentIndex = index
         }
         function onContextMenuKeyPressed(system) { // Menu key, Shift+F10; Shift+Menu when an IME kept the key itself
-            const row = view.currentIndex
-            if (system && row >= 0 && row < view.count && window.openSystemMenu(row, window.rowPoint(row)))
-                return
-            window.openContextMenu(row)
+            window.openKeyboardContextMenu(system)
         }
         function onQueryChanged() {
             window.galleryNavigation = false
@@ -1404,7 +1411,9 @@ Window {
         launcher.clickRow(index, true)
     }
     function rowMenuRequested(index, globalPos, modifiers) {
-        if (!(modifiers & Qt.ShiftModifier) || !openSystemMenu(index))
+        const shift = Boolean(modifiers & Qt.ShiftModifier)
+        const wantSystem = window.launcher.defaultSystemMenu ? !shift : shift
+        if (!wantSystem || !openSystemMenu(index))
             openContextMenu(index, globalPos)
     }
 

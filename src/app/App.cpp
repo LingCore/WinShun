@@ -2022,6 +2022,7 @@ void App::applySettings(bool initial)
         m_settings.showModified, m_settings.showFileSize, m_settings.thumbnails, m_settings.numberKeys);
     m_launcher->setDoubleClickToOpen(m_settings.doubleClickToOpen);
     m_launcher->setClickPreviews(m_settings.clickPreviews);
+    m_launcher->setDefaultSystemMenu(m_settings.defaultSystemMenu);
     m_launcher->setTabEntersFavoriteFolder(m_settings.tabEntersFavoriteFolder);
     m_launcher->setSearchKinds(m_settings.searchApps, m_settings.searchSystem);
     m_launcher->setRegexMode(m_settings.regexMode);

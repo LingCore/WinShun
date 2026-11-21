@@ -291,6 +291,14 @@ void SettingsEditor::setDoubleClickToOpen(bool on)
     commit();
 }
 
+void SettingsEditor::setDefaultSystemMenu(bool on)
+{
+    if (m_settings.defaultSystemMenu == on)
+        return;
+    m_settings.defaultSystemMenu = on;
+    commit();
+}
+
 void SettingsEditor::setClickPreviews(bool on)
 {
     if (m_settings.clickPreviews == on)

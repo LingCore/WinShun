@@ -4296,6 +4296,22 @@ Window {
                 }
 
                 SettingRow {
+                    objectName: "defaultSystemMenuRow"
+                    title: qsTr("默认使用系统右键菜单")
+                    keywords: qsTr("右键;系统菜单;右键菜单;比较文件;更多选项;Shift;context menu;shell").split(";")
+                    description: window.editor.defaultSystemMenu
+                                 ? qsTr("在文件或文件夹上右键直接打开系统菜单，Shift+右键 打开 Win顺 菜单；应用、插件等仍打开 Win顺 菜单")
+                                 : qsTr("在文件或文件夹上右键打开 Win顺 菜单，Shift+右键 打开系统菜单；开启后互换")
+
+                    ToggleSwitch {
+                        objectName: "defaultSystemMenuToggle"
+                        dpr: window.dpr
+                        checked: window.editor.defaultSystemMenu
+                        onToggled: (on) => window.editor.defaultSystemMenu = on
+                    }
+                }
+
+                SettingRow {
                     objectName: "favoriteFolderTab"
                     title: qsTr("选中收藏文件夹时按 Tab")
                     keywords: qsTr("Tab;Shift+Tab;收藏;文件夹;范围;键盘;favorite;keyboard").split(";")
