@@ -4,6 +4,7 @@
 // it back for a moment. And its key card (GitHub #343, PinKeyCard): the
 // rows, when it shows, where, its picture, and what the pin tells about it.
 #include "PinKeyCard.h"
+#include "PinPill.h"
 #include "PinWindow.h"
 
 #include <QGuiApplication>
@@ -632,6 +633,248 @@ private slots:
         ::SendMessageW(pin.hwnd(), WM_KEYDOWN, VK_F1, 0);
         QCOMPARE(told, QStringList {u"key"_s});
         QCOMPARE(pin.image().size(), before.transposed());
+    }
+
+    // Floating status/text pill geometry: outside the pin whenever there is
+    // room on any edge, never overlapping the picture or another pill, falling
+    // back inside only when the pin spans the whole work area.
+    void pillPlace()
+    {
+        const QRect work(0, 0, 1920, 1040);
+        const QSize pill(100, 26);
+        constexpr int border = 1;
+        constexpr int gap = 6;
+        constexpr int inset = 8;
+
+        // Small strip pin in the middle of the screen: top pill sits above, bottom sits below.
+        const QRect strip(300, 300, 480, 64);
+        const PinPillPlace top = placePinPill(strip, border, pill, work, PinPillEdge::Top, gap, inset);
+        QVERIFY(!top.inside);
+        QCOMPARE(top.rect, QRect(299, 267, 100, 26));
+        QVERIFY(!top.rect.intersects(strip));
+
+        const PinPillPlace bottom = placePinPill(strip, border, pill, work, PinPillEdge::Bottom, gap, inset, top.rect);
+        QVERIFY(!bottom.inside);
+        QCOMPARE(bottom.rect, QRect(299, 371, 100, 26));
+        QVERIFY(!bottom.rect.intersects(strip));
+        QVERIFY(!bottom.rect.intersects(top.rect));
+
+        // Tiny pin smaller than the pill itself: still floats cleanly above without clipping or dropping.
+        const QRect tiny(500, 400, 48, 24);
+        const PinPillPlace tinyTop = placePinPill(tiny, border, pill, work, PinPillEdge::Top, gap, inset);
+        QVERIFY(!tinyTop.inside);
+        QCOMPARE(tinyTop.rect, QRect(499, 367, 100, 26));
+        QVERIFY(!tinyTop.rect.intersects(tiny));
+
+        // Flush against the top edge: top pill flips below, and a bottom pill slides right beside it.
+        const QRect atTop(300, 0, 480, 64);
+        const PinPillPlace topFlipped = placePinPill(atTop, border, pill, work, PinPillEdge::Top, gap, inset);
+        QVERIFY(!topFlipped.inside);
+        QCOMPARE(topFlipped.rect, QRect(299, 71, 100, 26));
+        const PinPillPlace bottomBeside = placePinPill(atTop, border, QSize(140, 26), work, PinPillEdge::Bottom, gap, inset, topFlipped.rect);
+        QVERIFY(!bottomBeside.inside);
+        QCOMPARE(bottomBeside.rect.top(), topFlipped.rect.top());
+        QCOMPARE(bottomBeside.rect.left(), topFlipped.rect.left() + topFlipped.rect.width() + gap);
+        QVERIFY(!bottomBeside.rect.intersects(atTop));
+        QVERIFY(!bottomBeside.rect.intersects(topFlipped.rect));
+
+        // Flush against the bottom edge: bottom pill flips above.
+        const QRect atBottom(300, 976, 480, 64);
+        const PinPillPlace bottomFlipped = placePinPill(atBottom, border, pill, work, PinPillEdge::Bottom, gap, inset);
+        QVERIFY(!bottomFlipped.inside);
+        QCOMPARE(bottomFlipped.rect, QRect(299, 943, 100, 26));
+
+        // Near the right edge: clamped horizontally inside the work area.
+        const QRect nearRight(1870, 300, 40, 40);
+        const PinPillPlace clamped = placePinPill(nearRight, border, pill, work, PinPillEdge::Top, gap, inset);
+        QVERIFY(!clamped.inside);
+        QCOMPARE(clamped.rect.right(), work.right());
+        QVERIFY(!clamped.rect.intersects(nearRight));
+
+        // Tall full-height sidebar pin: no room above or below, so it floats beside on the right.
+        const QRect tall(400, 0, 300, 1040);
+        const PinPillPlace tallRight = placePinPill(tall, border, pill, work, PinPillEdge::Top, gap, inset);
+        QVERIFY(!tallRight.inside);
+        QCOMPARE(tallRight.rect, QRect(707, 0, 100, 26));
+        QVERIFY(!tallRight.rect.intersects(tall));
+
+        // Tall full-height pin flush with right edge: floats beside on the left.
+        const QRect tallAtRight(1620, 0, 300, 1040);
+        const PinPillPlace tallLeft = placePinPill(tallAtRight, border, pill, work, PinPillEdge::Top, gap, inset);
+        QVERIFY(!tallLeft.inside);
+        QCOMPARE(tallLeft.rect, QRect(1513, 0, 100, 26));
+        QVERIFY(!tallLeft.rect.intersects(tallAtRight));
+
+        // Fullscreen pin: falls back inside and clears the top-left close button.
+        const QRect close(8, 8, 24, 24);
+        const PinPillPlace inside = placePinPill(work, border, pill, work, PinPillEdge::Top, gap, inset, {}, close);
+        QVERIFY(inside.inside);
+        QCOMPARE(inside.rect, QRect(40, 8, 100, 26));
+        QVERIFY(!inside.rect.intersects(close));
+
+        // Oversized zoomed pin extending off-screen: inside fallback stays within the visible work area.
+        const QRect huge(-400, -300, 2800, 1800);
+        const PinPillPlace hugePlace = placePinPill(huge, border, pill, work, PinPillEdge::Top, gap, inset);
+        QVERIFY(hugePlace.inside);
+        QVERIFY(work.contains(hugePlace.rect));
+        QCOMPARE(hugePlace.rect.topLeft(), QPoint(8, 8));
+
+        // Negative-coordinate secondary monitor.
+        const QRect leftMonitor(-1920, 40, 1920, 1000);
+        const PinPillPlace neg = placePinPill(QRect(-1900, 44, 300, 60), border, pill, leftMonitor, PinPillEdge::Top, gap, inset);
+        QVERIFY(!neg.inside);
+        QVERIFY(leftMonitor.contains(neg.rect));
+        QCOMPARE(neg.rect.top(), 111); // top edge blocked: flipped below
+    }
+
+    // Offscreen pill picture at Windows' DPI scales: whole device pixels, opaque body, soft shadow.
+    void pillPicture()
+    {
+        for (const qreal radius : {0.0, 4.0}) {
+            const PinPill::Look look {QColor(0x25, 0x29, 0x32), radius};
+            for (const double dpr : {1.0, 1.25, 1.5, 2.0}) {
+                const QSize body = PinPill::pillSize(u"Tab 看原文"_s, dpr);
+                const int s = PinPill::shadowMargin(dpr);
+                const QImage picture = PinPill::picture(u"Tab 看原文"_s, dpr, look);
+                QCOMPARE(picture.size(), body + QSize(2 * s, 2 * s));
+                const int edge = std::max(1, static_cast<int>(std::lround(dpr)));
+                const int midY = s + body.height() / 2;
+                QCOMPARE(picture.pixelColor(s + edge + 1, midY).rgba(), look.fill.rgba());
+                QCOMPARE(picture.pixelColor(s, midY).alpha(), 255); // subtle rim on opaque fill
+                QVERIFY(picture.pixelColor(s - 1, midY).alpha() < 255); // soft shadow outside body
+                QCOMPARE(picture.pixelColor(0, 0).alpha(), 0); // clean transparent outer corner
+            }
+        }
+    }
+
+    // Real Win32 PinWindow + PinPill: translation/status, zoom/opacity, and
+    // text/auto-OCR pills float outside small pins without covering content,
+    // track movement/visibility/topmost, clear on Tab or edit/rotate, fade out,
+    // and clean up owned HWNDs on close.
+    void floatingPillsOutsideSmallPin()
+    {
+        QImage original(320, 48, QImage::Format_RGB32);
+        original.fill(Qt::white);
+        QImage translated(320, 48, QImage::Format_RGB32);
+        translated.fill(Qt::yellow);
+
+        std::function<void(QList<RedactLine>)> wordsRead;
+        PinWindow::Host host;
+        host.accent = [] { return QColor(0x25, 0x29, 0x32); };
+        host.pillRadius = [] { return 4.0; };
+        host.readLines = [&](const QImage&, double, std::function<void(QList<RedactLine>)> done,
+                             std::shared_ptr<const std::atomic<bool>>) { wordsRead = std::move(done); };
+
+        PinWindow pin(original, QPoint(240, 240), std::move(host));
+        QVERIFY(pin.hwnd());
+        QVERIFY(pin.hintPillRect().isEmpty());
+        QVERIFY(pin.textPillRect().isEmpty());
+
+        // "正在翻译…" floats outside the small strip pin and never steals focus or mouse input.
+        const HWND foregroundBefore = ::GetForegroundWindow();
+        pin.note(u"正在翻译…"_s, true);
+        QCOMPARE(pin.hintAlpha(), 255);
+        const QRect translatingRect = pin.hintPillRect();
+        QVERIFY(!translatingRect.isEmpty());
+        QVERIFY(!translatingRect.intersects(pin.pictureRect()));
+        QCOMPARE(::GetForegroundWindow(), foregroundBefore);
+
+        const HWND hintHwnd = pin.hintPillHwnd();
+        QVERIFY(hintHwnd && ::IsWindowVisible(hintHwnd));
+        QCOMPARE(::GetWindow(hintHwnd, GW_OWNER), pin.hwnd());
+        const LONG_PTR exStyle = ::GetWindowLongPtrW(hintHwnd, GWL_EXSTYLE);
+        for (const LONG_PTR bit : std::initializer_list<LONG_PTR> {
+                 WS_EX_LAYERED, WS_EX_TRANSPARENT, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST})
+            QVERIFY(exStyle & bit);
+        QVERIFY(::AreDpiAwarenessContextsEqual(::GetWindowDpiAwarenessContext(hintHwnd),
+            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2));
+
+        // Nudging the pin moves the floating pill along with it.
+        const QPoint originBefore = pin.pictureRect().topLeft();
+        ::SendMessageW(pin.hwnd(), WM_KEYDOWN, VK_RIGHT, 0);
+        QCOMPARE(pin.pictureRect().topLeft(), originBefore + QPoint(1, 0));
+        QCOMPARE(pin.hintPillRect().topLeft(), translatingRect.topLeft() + QPoint(1, 0));
+
+        // Topmost flag propagates cleanly to owned pills.
+        pin.setTopmost(false);
+        QVERIFY((::GetWindowLongPtrW(hintHwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0);
+        pin.setTopmost(true);
+        QVERIFY((::GetWindowLongPtrW(hintHwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+
+        // Hiding or collapsing the pin hides its pills; restoring brings a staying pill back.
+        pin.setShown(false);
+        QVERIFY(pin.hintPillRect().isEmpty());
+        pin.setShown(true);
+        QVERIFY(!pin.hintPillRect().isEmpty());
+        pin.setAllHidden(true);
+        QVERIFY(pin.hintPillRect().isEmpty());
+        pin.setAllHidden(false);
+        QVERIFY(!pin.hintPillRect().isEmpty());
+        pin.collapse(PinForm::Tile);
+        QVERIFY(pin.hintPillRect().isEmpty());
+        pin.expand();
+        QVERIFY(!pin.hintPillRect().isEmpty());
+
+        // Translation finishes with auto-OCR ready: "Tab 看原文" floats above and
+        // "已识别文字，可拖选" floats below — neither covers the translated strip.
+        QVERIFY(pin.setTranslation(translated, u"译文"_s, pin.revision()));
+        pin.note(u"Tab 看原文"_s);
+        RedactLine line;
+        line.text = u"译文"_s;
+        line.quad = QPolygonF({QPointF(10, 10), QPointF(120, 10), QPointF(120, 34), QPointF(10, 34)});
+        pin.setRecognizedLines({line}, true);
+        QCOMPARE(pin.hintAlpha(), 255);
+        QCOMPARE(pin.textHintAlpha(), 255);
+        QVERIFY(!pin.hintPillRect().isEmpty());
+        QVERIFY(!pin.textPillRect().isEmpty());
+        QVERIFY(!pin.hintPillRect().intersects(pin.pictureRect()));
+        QVERIFY(!pin.textPillRect().intersects(pin.pictureRect()));
+        QVERIFY(!pin.hintPillRect().intersects(pin.textPillRect()));
+
+        // Pressing Tab flips side and dismisses the stale "Tab 看原文" hint immediately.
+        ::SendMessageW(pin.hwnd(), WM_KEYDOWN, VK_TAB, 0);
+        QVERIFY(!pin.translationShown());
+        QCOMPARE(pin.hintAlpha(), 0);
+        QVERIFY(pin.hintPillRect().isEmpty());
+
+        // Zoom and opacity pills also float outside the pin and fade out cleanly.
+        ::SendMessageW(pin.hwnd(), WM_KEYDOWN, VK_ADD, 0);
+        QCOMPARE(pin.hintAlpha(), 255);
+        QVERIFY(!pin.hintPillRect().isEmpty());
+        QVERIFY(!pin.hintPillRect().intersects(pin.pictureRect()));
+        ::SendMessageW(pin.hwnd(), WM_MOUSEWHEEL, MAKEWPARAM(MK_CONTROL, -WHEEL_DELTA), MAKELPARAM(260, 260));
+        QCOMPARE(pin.hintAlpha(), 255);
+        QVERIFY(!pin.hintPillRect().isEmpty());
+        QVERIFY(!pin.hintPillRect().intersects(pin.pictureRect()));
+        QTRY_COMPARE_WITH_TIMEOUT(pin.hintAlpha(), 0, 2500);
+        QVERIFY(pin.hintPillRect().isEmpty());
+
+        // Rotating while a staying translation note is active clears it so it never gets stuck.
+        pin.note(u"正在翻译…"_s, true);
+        QCOMPARE(pin.hintAlpha(), 255);
+        pin.rotate(true);
+        QCOMPARE(pin.hintAlpha(), 0);
+        QVERIFY(pin.hintPillRect().isEmpty());
+
+        // Tiny pin with BOTH status pill and text-pick pill: neither is dropped, neither covers the pin or each other.
+        QImage tiny(50, 24, QImage::Format_RGB32);
+        tiny.fill(Qt::white);
+        pin.setPicture(tiny, {});
+        pin.note(u"正在翻译…"_s, true);
+        pin.beginTextPick();
+        const QRect tinyHint = pin.hintPillRect();
+        const QRect tinyText = pin.textPillRect();
+        QVERIFY(!tinyHint.isEmpty());
+        QVERIFY(!tinyText.isEmpty());
+        QVERIFY(!tinyHint.intersects(pin.pictureRect()));
+        QVERIFY(!tinyText.intersects(pin.pictureRect()));
+        QVERIFY(!tinyHint.intersects(tinyText));
+
+        const HWND textHwnd = pin.textPillHwnd();
+        QVERIFY(textHwnd && ::IsWindowVisible(textHwnd));
+        pin.close();
+        QVERIFY(!::IsWindow(hintHwnd));
+        QVERIFY(!::IsWindow(textHwnd));
     }
 };
 

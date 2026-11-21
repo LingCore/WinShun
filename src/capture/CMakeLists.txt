@@ -69,6 +69,7 @@ add_library(wscapture STATIC
     UiaProbe.cpp UiaProbe.h
     CountdownWindow.cpp CountdownWindow.h
     PinKeyCard.cpp PinKeyCard.h
+    PinPill.cpp PinPill.h
     CaptureDiagnostics.cpp CaptureDiagnostics.h
     LaserTrail.cpp LaserTrail.h
     LiveStroke.cpp LiveStroke.h
