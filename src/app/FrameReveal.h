@@ -23,16 +23,21 @@ public:
     void arm();
     void cancel();
     bool pending() const { return m_pending != 0; }
+    // True when the last reveal fired from the fallback timeout rather than a
+    // swapped frame (for diagnostics).
+    bool timedOut() const noexcept { return m_timedOut; }
 
 private:
-    void finish(quint64 generation);
+    void finish(quint64 generation, bool timedOut);
 
     QPointer<QQuickWindow> m_window;
     std::function<void()> m_reveal;
     QTimer m_timeout;
     std::chrono::milliseconds m_defaultTimeout {};
+    std::chrono::milliseconds m_activeTimeout {};
     quint64 m_generation = 0;
     quint64 m_pending = 0; // GUI thread: stays pending until it actually reveals
+    bool m_timedOut = false;
     std::atomic<quint64> m_armed {0};
     std::atomic<quint64> m_synchronized {0}; // render thread: the opening this frame belongs to
 };

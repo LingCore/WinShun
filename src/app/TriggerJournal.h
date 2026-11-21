@@ -3,6 +3,7 @@
 #include "JournalBudget.h"
 #include "platform/WindowEffects.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -42,6 +43,7 @@ public:
         bool helper = false; // the service's key helper tells of double taps
         bool trimmed = false; // IdleTrim handed the memory back since the last opening
         int hotMb = -1; // the pages read back ahead for it (HotPages), MB; 0: none recorded yet
+        std::int64_t idleSec = -1; // seconds since this window was last used; -1 on the first opening
         const char* rawInput = "off"; // ok, none, other, unknown; off without double tap
         std::optional<Told> told; // double taps only
     };
@@ -59,7 +61,11 @@ public:
     static constexpr std::uint8_t kCovers = 1, kExclusive = 2, kHidden = 4, kConfined = 8, kCaptured = 16, kTyping = 32;
     void ignored(const char* reason, std::uint8_t facts);
     void front(win::Front how, double ms);
-    void seen(Window window);
+    // Synchronous GUI show setup finished (showLauncher / showClipboard).
+    void showDone();
+    // FrameReveal::arm() invoked for `window` (results/layout ready, waiting on render thread).
+    void armed(Window window);
+    void seen(Window window, bool timedOut = false);
     void end(); // written now, if still open
     bool open() const noexcept { return m_entry.has_value(); }
 
@@ -78,8 +84,13 @@ private:
         std::optional<Window> coming;
         std::optional<win::Front> front;
         double frontMs = 0;
+        std::optional<std::uint64_t> showDoneAt;
+        std::optional<std::uint64_t> armedAt;
         std::optional<std::uint64_t> seenAt;
+        bool timedOut = false;
         std::uint32_t faults = 0; // the process's count at the press
+        std::size_t privateBytes = 0; // private working set at the press (0 if unavailable)
+        std::size_t workingBytes = 0; // total working set at the press (shared DLLs + private)
     };
     std::optional<Entry> m_entry;
     std::optional<Entry> m_waiting; // decided, its window still coming, a later press begun

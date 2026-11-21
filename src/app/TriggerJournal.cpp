@@ -18,11 +18,29 @@ namespace ws {
 
 namespace {
 
-std::uint32_t pageFaults()
+struct MemorySnapshot {
+    std::uint32_t faults = 0;
+    std::size_t privateBytes = 0;
+    std::size_t workingBytes = 0;
+};
+
+MemorySnapshot memorySnapshot()
 {
-    PROCESS_MEMORY_COUNTERS counters {};
+    PROCESS_MEMORY_COUNTERS_EX2 counters {};
     counters.cb = sizeof counters;
-    return ::GetProcessMemoryInfo(::GetCurrentProcess(), &counters, sizeof counters) ? counters.PageFaultCount : 0;
+    if (!::GetProcessMemoryInfo(::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof counters)) {
+        counters = {};
+        counters.cb = sizeof(PROCESS_MEMORY_COUNTERS);
+        if (!::GetProcessMemoryInfo(::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
+                sizeof(PROCESS_MEMORY_COUNTERS)))
+            return {};
+    }
+    return {counters.PageFaultCount, counters.PrivateWorkingSetSize, counters.WorkingSetSize};
+}
+
+double megabytes(std::int64_t bytes)
+{
+    return qRound(static_cast<double>(bytes) / 104857.6) / 10.0;
 }
 
 const char* sourceName(TriggerJournal::Source source)
@@ -83,7 +101,10 @@ void TriggerJournal::begin(Source source, std::uint64_t pressedAt, const Context
     entry.pressedAt = pressedAt;
     entry.receivedAt = ::GetTickCount64();
     entry.context = context;
-    entry.faults = pageFaults();
+    const MemorySnapshot mem = memorySnapshot();
+    entry.faults = mem.faults;
+    entry.privateBytes = mem.privateBytes;
+    entry.workingBytes = mem.workingBytes;
     m_entry = entry;
 }
 
@@ -115,12 +136,31 @@ void TriggerJournal::front(win::Front how, double ms)
     m_entry->frontMs = ms;
 }
 
-void TriggerJournal::seen(Window window)
+void TriggerJournal::showDone()
+{
+    if (!m_entry || m_entry->showDoneAt)
+        return;
+    m_entry->showDoneAt = ::GetTickCount64();
+}
+
+void TriggerJournal::armed(Window window)
+{
+    const std::uint64_t now = ::GetTickCount64();
+    for (std::optional<Entry>* waiting : {&m_entry, &m_waiting}) {
+        if (*waiting && (*waiting)->coming == window && !(*waiting)->armedAt) {
+            (*waiting)->armedAt = now;
+            return;
+        }
+    }
+}
+
+void TriggerJournal::seen(Window window, bool timedOut)
 {
     const std::uint64_t now = ::GetTickCount64();
     for (std::optional<Entry>* waiting : {&m_waiting, &m_entry}) { // the older first
         if (*waiting && (*waiting)->coming == window) {
             (*waiting)->seenAt = now;
+            (*waiting)->timedOut = timedOut;
             write(*std::exchange(*waiting, std::nullopt));
         }
     }
@@ -143,22 +183,34 @@ void TriggerJournal::write(const Entry& entry)
     // Raw Input "off" (no double tap set) is how it should be, not a fault.
     // The helper's word late, this process's own stood in for it.
     const std::string_view rawInput(entry.context.rawInput);
-    const bool notable = queueMs > kSlowQueueMs || (seenMs && *seenMs > kSlowSeenMs)
+    const bool notable = queueMs > kSlowQueueMs || (seenMs && *seenMs > kSlowSeenMs) || entry.timedOut
         || (entry.coming && !seenMs) || entry.ignored || entry.front == win::Front::Refused
         || entry.frontMs > kSlowFrontMs || (rawInput != "ok" && rawInput != "off")
         || (entry.context.told
             && (std::string_view(entry.context.told->from) == "own-backup" || entry.context.told->queuedMs > 0));
     if (!m_budget.take(notable, ::GetTickCount64()))
         return;
+    const MemorySnapshot memAfter = memorySnapshot();
     QJsonObject details {
         {u"source"_s, QString::fromLatin1(sourceName(entry.source))},
         {u"queue_ms"_s, static_cast<qint64>(queueMs)},
         {u"action"_s, QString::fromLatin1(entry.action ? entry.action : "none")},
         {u"trimmed"_s, entry.context.trimmed},
-        {u"faults"_s, static_cast<qint64>(pageFaults() - entry.faults)},
+        {u"faults"_s, static_cast<qint64>(memAfter.faults - entry.faults)},
         {u"helper"_s, entry.context.helper},
         {u"raw_input"_s, QString::fromLatin1(entry.context.rawInput)},
     };
+    if (entry.context.idleSec >= 0)
+        details.insert(u"idle_s"_s, static_cast<qint64>(entry.context.idleSec));
+    if (entry.privateBytes > 0)
+        details.insert(u"private_mb"_s, megabytes(static_cast<std::int64_t>(entry.privateBytes)));
+    if (entry.workingBytes > 0) {
+        details.insert(u"working_mb"_s, megabytes(static_cast<std::int64_t>(entry.workingBytes)));
+        if (memAfter.workingBytes > 0) {
+            details.insert(u"ws_delta_mb"_s,
+                megabytes(static_cast<std::int64_t>(memAfter.workingBytes) - static_cast<std::int64_t>(entry.workingBytes)));
+        }
+    }
     if (entry.context.hotMb >= 0)
         details.insert(u"hot_mb"_s, static_cast<qint64>(entry.context.hotMb));
     if (const std::optional<Told>& told = entry.context.told) {
@@ -182,9 +234,17 @@ void TriggerJournal::write(const Entry& entry)
         details.insert(u"front"_s, QString::fromLatin1(frontName(*entry.front)));
         details.insert(u"front_ms"_s, qRound(entry.frontMs * 10) / 10.0);
     }
-    if (seenMs)
+    if (entry.showDoneAt)
+        details.insert(u"show_ms"_s, static_cast<qint64>(*entry.showDoneAt - entry.receivedAt));
+    if (entry.armedAt)
+        details.insert(u"arm_ms"_s, static_cast<qint64>(*entry.armedAt - entry.receivedAt));
+    if (seenMs) {
         details.insert(u"seen_ms"_s, static_cast<qint64>(*seenMs));
-    else if (entry.coming)
+        if (entry.armedAt && *entry.seenAt >= *entry.armedAt)
+            details.insert(u"frame_ms"_s, static_cast<qint64>(*entry.seenAt - *entry.armedAt));
+        if (entry.timedOut)
+            details.insert(u"timeout"_s, true);
+    } else if (entry.coming)
         details.insert(u"seen_ms"_s, QJsonValue()); // never came: hidden first, or another press
     if (m_budget.skipped() > 0)
         details.insert(u"skipped"_s, m_budget.skipped());
