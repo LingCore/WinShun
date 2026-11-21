@@ -10326,6 +10326,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Installing the index service failed (error %1)</translation>
     </message>
     <message>
+        <source>无法安装索引服务：系统保护目录（%1）允许普通用户修改，出于安全考虑不能将服务放进去。请恢复目录默认权限后再试。</source>
+        <translation>Cannot install the index service: the protected system folder (%1) can be modified by non-administrators, so placing the service there is blocked for security. Restore its default permissions and try again.</translation>
+    </message>
+    <message>
         <source>更新索引服务失败（错误 %1）</source>
         <translation>Updating the index service failed (error %1)</translation>
     </message>

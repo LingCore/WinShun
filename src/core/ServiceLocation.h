@@ -4,6 +4,7 @@
 
 #include <string>
 #include <string_view>
+#include <vector>
 
 // Where the index service's executable must live before it is registered as a
 // LocalSystem service (a local privilege-escalation fix). A portable copy of
@@ -61,20 +62,46 @@ bool pathProtected(const std::wstring& path, std::wstring* why = nullptr);
 // to it — and every directory above it as an Ancestor.
 bool folderProtected(const std::wstring& dir, std::wstring* why = nullptr);
 
-// The fixed protected folder a portable --install copies the service into:
-// %ProgramFiles%\WinShun Service (SHGetKnownFolderPath, not the %ProgramFiles%
-// environment variable, which a caller could spoof). Deliberately not under
-// the installer's {app}: uninstalling the Program Files copy must not take a
-// portable service's folder with it. Empty if Program Files cannot be found.
+// Checks every directory strictly above `path` as an Ancestor, without
+// requiring `path` itself to exist yet (used before creating a protected folder
+// and by the UI to diagnose why no protected location was usable).
+bool ancestorsProtected(const std::wstring& path, std::wstring* why = nullptr);
+
+// The fixed protected folders a portable --install may copy the service into,
+// in preference order: %ProgramFiles%\WinShun Service, %ProgramData%\WinShun
+// Service, %ProgramFiles(x86)%\WinShun Service (all via SHGetKnownFolderPath,
+// never spoofable environment variables). Deliberately not under the
+// installer's {app}: uninstalling the Program Files copy must not take a
+// portable service's folder with it.
+std::vector<std::wstring> protectedServiceDirs();
+
+// The primary protected service folder (the first entry of protectedServiceDirs),
+// or empty if none can be found.
 std::wstring protectedServiceDir();
+
+// True when `path`'s parent directory is one of protectedServiceDirs().
+bool inProtectedServiceDir(const std::wstring& path);
+
+// Read-only check: true if at least one candidate in `candidates` either exists
+// and passes folderProtected(), or does not exist yet while its parent exists
+// and every ancestor passes ancestorsProtected(). Otherwise writes the first
+// offending path to `firstBadPath` (if given) and returns false.
+bool anyProtectedDirUsable(const std::vector<std::wstring>& candidates, std::wstring* firstBadPath = nullptr);
 
 // Ensures `dir` exists and only administrators / SYSTEM can write to it:
 // creates it (Administrators as owner, Administrators & SYSTEM full control,
 // Users read/execute, nothing inherited) when it is absent, or, when it
 // already exists, verifies it with folderProtected and refuses an unsafe folder
 // — a folder someone else made is never trusted. Needs administrator rights
-// to create under Program Files. On failure `error`, if given, says why.
+// to create under Program Files / ProgramData. On failure `error`, if given,
+// says why.
 bool ensureProtectedDir(const std::wstring& dir, std::wstring* error);
+
+// Tries `candidates` in order with ensureProtectedDir(), placing the first
+// usable directory into `chosen`. If none are usable, combines their errors
+// into `error` and returns false.
+bool ensureAnyProtectedDir(
+    const std::vector<std::wstring>& candidates, std::wstring& chosen, std::wstring* error);
 
 // Copies `sourceExe` into `dir` as `name`, atomically and verified: reads the
 // source once into memory, writes a CREATE_NEW temp file inside `dir` (which

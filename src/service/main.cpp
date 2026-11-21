@@ -249,8 +249,22 @@ struct ScHandle {
 int fail(const wchar_t* what)
 {
     const DWORD error = ::GetLastError();
+    ws::service::log::write(L"%ls failed (error %lu)", what, error);
     std::fwprintf(stderr, L"%ls failed (error %lu)\n", what, error);
     return static_cast<int>(error ? error : 1);
+}
+
+void removePlacedCopy(const std::wstring& imagePath)
+{
+    for (const std::wstring& dir : ws::svcloc::protectedServiceDirs()) {
+        if (!ws::svcloc::parentIs(imagePath, dir))
+            continue;
+        if (!::DeleteFileW(imagePath.c_str()) && ::GetLastError() != ERROR_FILE_NOT_FOUND)
+            ::MoveFileExW(imagePath.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
+        if (!::RemoveDirectoryW(dir.c_str()))
+            ::MoveFileExW(dir.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
+        return;
+    }
 }
 
 // Waits for the service to reach `state`, `limitMs` at most.
@@ -390,27 +404,33 @@ int install()
     if (std::wstring why; ws::svcloc::pathProtected(own, &why))
         return registerService(own);
     // A portable copy, in a user-writable folder (Downloads, Desktop,
-    // D:\tools...): copy it into the protected folder and register that copy,
+    // D:\tools...): copy it into a protected folder and register that copy,
     // or a program with the user's normal rights could replace this SYSTEM
     // service's executable and run as SYSTEM at the next start.
-    const std::wstring dir = ws::svcloc::protectedServiceDir();
-    if (dir.empty()) {
-        std::fwprintf(stderr, L"could not locate Program Files\n");
+    const std::vector<std::wstring> candidates = ws::svcloc::protectedServiceDirs();
+    if (candidates.empty()) {
+        ws::service::log::write(L"install: could not locate any protected system folder");
+        std::fwprintf(stderr, L"could not locate any protected system folder\n");
         return static_cast<int>(ERROR_PATH_NOT_FOUND);
     }
+    std::wstring dir;
     std::wstring error;
-    if (!ws::svcloc::ensureProtectedDir(dir, &error)) {
+    if (!ws::svcloc::ensureAnyProtectedDir(candidates, dir, &error)) {
+        ws::service::log::write(L"install: no protected folder is usable: %ls", error.c_str());
         std::fwprintf(stderr, L"the protected folder is not usable: %ls\n", error.c_str());
         return static_cast<int>(ERROR_ACCESS_DENIED);
     }
-    // Stop a copy a previous portable install registered here, so its file can
-    // be replaced; then put this one in place and register it.
+    // Stop a copy a previous portable install registered, so its file can be
+    // replaced (or removed if it lived in a different protected candidate).
+    const std::wstring previousImage = registeredImagePath();
     stopServiceByName();
     std::wstring placed;
     if (!ws::svcloc::copyExeInto(dir, L"WinShunService.exe", own, &placed, &error)) {
+        ws::service::log::write(L"install: could not place the service in %ls: %ls", dir.c_str(), error.c_str());
         std::fwprintf(stderr, L"could not place the service in %ls: %ls\n", dir.c_str(), error.c_str());
         return static_cast<int>(ERROR_ACCESS_DENIED);
     }
+    ws::service::log::write(L"install: copied portable service to %ls", placed.c_str());
     std::fwprintf(stdout, L"copied the service to %ls\n", placed.c_str());
     // Its own WinShun.exe stays where it is, not beside the service: named
     // to it, so dialog navigation still serves that copy (GitHub #104). In
@@ -420,13 +440,16 @@ int install()
     wchar_t full[MAX_PATH * 2] {};
     if (const DWORD n = ::GetLongPathNameW(ui.c_str(), full, static_cast<DWORD>(std::size(full))); n && n < std::size(full))
         ui.assign(full, n);
-    return registerService(placed, ui);
+    const int registered = registerService(placed, ui);
+    if (registered == 0 && !previousImage.empty() && !ws::svcloc::parentIs(previousImage, dir))
+        removePlacedCopy(previousImage);
+    return registered;
 }
 
 int uninstall()
 {
     // Where the service runs from, before it is removed: a copy this code
-    // placed in the protected folder is deleted with it; the installer's {app}
+    // placed in a protected folder is deleted with it; the installer's {app}
     // copy (or any other) is left to whoever put it there.
     const std::wstring imagePath = registeredImagePath();
     ScHandle manager {::OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT)};
@@ -446,13 +469,8 @@ int uninstall()
         return fail(L"DeleteService");
     // Our placed copy and its folder (only when the service ran from there);
     // if the file is still held, it goes at the next restart.
-    if (const std::wstring dir = ws::svcloc::protectedServiceDir();
-        !dir.empty() && ws::svcloc::parentIs(imagePath, dir)) {
-        if (!::DeleteFileW(imagePath.c_str()) && ::GetLastError() != ERROR_FILE_NOT_FOUND)
-            ::MoveFileExW(imagePath.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
-        if (!::RemoveDirectoryW(dir.c_str()))
-            ::MoveFileExW(dir.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
-    }
+    if (ws::svcloc::inProtectedServiceDir(imagePath))
+        removePlacedCopy(imagePath);
     std::fwprintf(stdout, L"removed\n");
     return 0;
 }

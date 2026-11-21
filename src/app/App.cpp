@@ -13,6 +13,7 @@
 #include "Grabber.h" // take_screenshot (MCP)
 #include "CliSetup.h"
 #include "ScoopInstall.h"
+#include "ServiceLocation.h"
 #include "ServiceUpdate.h"
 #include "ClipImportJob.h"
 #include "ClipStore.h"
@@ -8102,19 +8103,29 @@ void App::installIndexService(bool install)
     m_serviceMessage = update ? tr("正在更新索引服务…") : install ? tr("正在安装索引服务…") : tr("正在卸载索引服务…");
     refreshIndexAccess();
     // Registered from where this copy is: moved, it has to be installed again.
-    shell::runElevated(exe.toStdWString(), install ? L"--install" : L"--uninstall",
-        [this, install, update](std::optional<unsigned long> code) {
+    // SW_HIDE: WinShunService.exe is a console binary, so hide its window and
+    // surface any failure here (and in service.log) instead of flashing stderr.
+    shell::runElevated(
+        exe.toStdWString(), install ? L"--install" : L"--uninstall",
+        [this, install, update, exe](std::optional<unsigned long> code) {
             QMetaObject::invokeMethod(
                 this,
-                [this, install, update, code] {
+                [this, install, update, exe, code] {
                     m_serviceBusy = false;
                     if (!code) {
                         m_serviceMessage = tr("没有进行：需要管理员权限（在 UAC 里选“是”）");
                     } else if (*code != 0) {
-                        m_serviceMessage = (update ? tr("更新索引服务失败（错误 %1）")
-                                : install          ? tr("安装索引服务失败（错误 %1）")
-                                                   : tr("卸载索引服务失败（错误 %1）"))
-                                               .arg(*code);
+                        std::wstring badFolder;
+                        if (install && *code == ERROR_ACCESS_DENIED && !svcloc::pathProtected(exe.toStdWString())
+                            && !svcloc::anyProtectedDirUsable(svcloc::protectedServiceDirs(), &badFolder)) {
+                            m_serviceMessage = tr("无法安装索引服务：系统保护目录（%1）允许普通用户修改，出于安全考虑不能将服务放进去。请恢复目录默认权限后再试。")
+                                                   .arg(QString::fromStdWString(badFolder));
+                        } else {
+                            m_serviceMessage = (update ? tr("更新索引服务失败（错误 %1）")
+                                    : install          ? tr("安装索引服务失败（错误 %1）")
+                                                       : tr("卸载索引服务失败（错误 %1）"))
+                                                   .arg(*code);
+                        }
                     } else if (install) {
                         m_serviceMessage = update ? tr("索引服务已更新。")
                                                   : tr("索引服务已安装并启动。以后换了新版本的 Win顺，会提醒你点一下更新它。");
@@ -8131,7 +8142,8 @@ void App::installIndexService(bool install)
                     refreshIndexAccess();
                 },
                 Qt::QueuedConnection);
-        });
+        },
+        SW_HIDE);
 }
 
 // ---- AI 助手: the MCP server --------------------------------------------------

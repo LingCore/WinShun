@@ -5,6 +5,7 @@
 #include <shlobj.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -137,6 +138,59 @@ bool writableByNonAdmin(PSID owner, PACL dacl, Role role) noexcept
 
 namespace {
 
+std::wstring sidText(PSID sid)
+{
+    if (!sid || !::IsValidSid(sid))
+        return L"<invalid SID>";
+    LPWSTR raw = nullptr;
+    if (!::ConvertSidToStringSidW(sid, &raw) || !raw)
+        return L"<unknown SID>";
+    std::wstring out(raw);
+    ::LocalFree(raw);
+    return out;
+}
+
+// Human-readable detail for logs when a path failed `checkOne(..., role)`.
+std::wstring describeUnsafe(const std::wstring& path, Role role)
+{
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    PSID owner = nullptr;
+    PACL dacl = nullptr;
+    const DWORD error = ::GetNamedSecurityInfoW(path.c_str(), SE_FILE_OBJECT,
+        OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, &owner, nullptr, &dacl, nullptr, &descriptor);
+    if (error != ERROR_SUCCESS)
+        return L"cannot read security (error " + std::to_wstring(error) + L")";
+    std::wstring detail;
+    if (!isAdministrativeSid(owner)) {
+        detail = L"owner " + sidText(owner);
+    } else if (!dacl) {
+        detail = L"null DACL";
+    } else {
+        const DWORD watched = role == Role::Object ? kObjectWrite : role == Role::Parent ? kParentWrite : kAncestorWrite;
+        for (WORD i = 0; i < dacl->AceCount; ++i) {
+            void* raw = nullptr;
+            if (!::GetAce(dacl, i, &raw)) {
+                detail = L"unreadable ACE";
+                break;
+            }
+            auto* header = static_cast<ACE_HEADER*>(raw);
+            if (header->AceType != ACCESS_ALLOWED_ACE_TYPE && header->AceType != ACCESS_ALLOWED_CALLBACK_ACE_TYPE)
+                continue;
+            if (header->AceFlags & INHERIT_ONLY_ACE)
+                continue;
+            auto* ace = static_cast<ACCESS_ALLOWED_ACE*>(raw);
+            if ((ace->Mask & watched) && !isAdministrativeSid(&ace->SidStart)) {
+                wchar_t mask[16] {};
+                ::swprintf_s(mask, L"0x%08lX", static_cast<unsigned long>(ace->Mask));
+                detail = L"ACE " + sidText(&ace->SidStart) + L" mask " + mask;
+                break;
+            }
+        }
+    }
+    ::LocalFree(descriptor);
+    return detail;
+}
+
 // `path` as an Object, the folder it is in as `parentRole`, and every
 // directory above that as an Ancestor.
 bool chainProtected(const std::wstring& path, Role parentRole, std::wstring* why)
@@ -158,6 +212,17 @@ bool chainProtected(const std::wstring& path, Role parentRole, std::wstring* why
     return true;
 }
 
+std::wstring knownServiceDir(REFKNOWNFOLDERID id)
+{
+    PWSTR folder = nullptr;
+    std::wstring dir;
+    if (SUCCEEDED(::SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &folder)) && folder)
+        dir = std::wstring(folder) + L"\\WinShun Service";
+    if (folder)
+        ::CoTaskMemFree(folder);
+    return dir;
+}
+
 } // namespace
 
 bool pathProtected(const std::wstring& path, std::wstring* why)
@@ -170,15 +235,88 @@ bool folderProtected(const std::wstring& dir, std::wstring* why)
     return chainProtected(dir, Role::Ancestor, why);
 }
 
+bool ancestorsProtected(const std::wstring& path, std::wstring* why)
+{
+    if (path.empty()) {
+        if (why)
+            *why = L"(empty path)";
+        return false;
+    }
+    const std::wstring full = fullPath(path);
+    std::wstring dir = parentOf(full);
+    if (dir.empty()) {
+        if (why)
+            *why = full;
+        return false;
+    }
+    for (; !dir.empty(); dir = parentOf(dir)) {
+        if (!checkOne(dir, Role::Ancestor, why))
+            return false;
+    }
+    return true;
+}
+
+std::vector<std::wstring> protectedServiceDirs()
+{
+    std::vector<std::wstring> dirs;
+    const auto add = [&](REFKNOWNFOLDERID id) {
+        std::wstring dir = knownServiceDir(id);
+        if (dir.empty())
+            return;
+        const bool seen = std::any_of(dirs.begin(), dirs.end(), [&](const std::wstring& existing) {
+            return existing.size() == dir.size()
+                && ::CompareStringOrdinal(existing.c_str(), -1, dir.c_str(), -1, TRUE) == CSTR_EQUAL;
+        });
+        if (!seen)
+            dirs.push_back(std::move(dir));
+    };
+    add(FOLDERID_ProgramFiles);
+    add(FOLDERID_ProgramData);
+    add(FOLDERID_ProgramFilesX86);
+    return dirs;
+}
+
 std::wstring protectedServiceDir()
 {
-    PWSTR programFiles = nullptr;
-    std::wstring dir;
-    if (SUCCEEDED(::SHGetKnownFolderPath(FOLDERID_ProgramFiles, KF_FLAG_DEFAULT, nullptr, &programFiles)) && programFiles)
-        dir = std::wstring(programFiles) + L"\\WinShun Service";
-    if (programFiles)
-        ::CoTaskMemFree(programFiles);
-    return dir;
+    const std::vector<std::wstring> dirs = protectedServiceDirs();
+    return dirs.empty() ? std::wstring() : dirs.front();
+}
+
+bool inProtectedServiceDir(const std::wstring& path)
+{
+    for (const std::wstring& dir : protectedServiceDirs()) {
+        if (parentIs(path, dir))
+            return true;
+    }
+    return false;
+}
+
+bool anyProtectedDirUsable(const std::vector<std::wstring>& candidates, std::wstring* firstBadPath)
+{
+    std::wstring firstBad;
+    for (const std::wstring& dir : candidates) {
+        if (dir.empty())
+            continue;
+        std::wstring why;
+        const DWORD attributes = ::GetFileAttributesW(dir.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES) {
+            if ((attributes & FILE_ATTRIBUTE_DIRECTORY) && folderProtected(dir, &why))
+                return true;
+            if (firstBad.empty())
+                firstBad = why.empty() ? dir : why;
+            continue;
+        }
+        const std::wstring parent = parentOf(fullPath(dir));
+        const DWORD parentAttrs = parent.empty() ? INVALID_FILE_ATTRIBUTES : ::GetFileAttributesW(parent.c_str());
+        if (parentAttrs != INVALID_FILE_ATTRIBUTES && (parentAttrs & FILE_ATTRIBUTE_DIRECTORY)
+            && ancestorsProtected(dir, &why))
+            return true;
+        if (firstBad.empty())
+            firstBad = why.empty() ? parent : why;
+    }
+    if (firstBadPath)
+        *firstBadPath = firstBad;
+    return false;
 }
 
 bool ensureProtectedDir(const std::wstring& dir, std::wstring* error)
@@ -188,6 +326,12 @@ bool ensureProtectedDir(const std::wstring& dir, std::wstring* error)
             *error = L"no folder was given";
         return false;
     }
+    const auto formatUnsafe = [&](const std::wstring& why, Role role, const wchar_t* verb) {
+        std::wstring text = why + L" " + verb;
+        if (const std::wstring detail = describeUnsafe(why, role); !detail.empty())
+            text += L" (" + detail + L")";
+        return text;
+    };
     const DWORD attributes = ::GetFileAttributesW(dir.c_str());
     if (attributes != INVALID_FILE_ATTRIBUTES) {
         if (!(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
@@ -198,23 +342,43 @@ bool ensureProtectedDir(const std::wstring& dir, std::wstring* error)
         // It was there already: trust it only if it is actually protected.
         std::wstring why;
         if (!folderProtected(dir, &why)) {
-            if (error)
-                *error = why + L" can be changed by a non-administrator";
+            if (error) {
+                const Role role = ::CompareStringOrdinal(why.c_str(), -1, fullPath(dir).c_str(), -1, TRUE) == CSTR_EQUAL
+                    ? Role::Object
+                    : Role::Ancestor;
+                *error = formatUnsafe(why, role, L"can be changed by a non-administrator");
+            }
             return false;
         }
         return true;
     }
-    if (!::CreateDirectoryW(dir.c_str(), nullptr) && ::GetLastError() != ERROR_ALREADY_EXISTS) {
+    // Check ancestors first so we never create a stray folder under an unsafe
+    // parent (e.g. a tweaked C:\Program Files).
+    std::wstring why;
+    if (!ancestorsProtected(dir, &why)) {
         if (error)
-            *error = dir + L" could not be created (error " + std::to_wstring(::GetLastError()) + L")";
+            *error = formatUnsafe(why, Role::Ancestor, L"can be changed by a non-administrator");
         return false;
     }
+    bool created = false;
+    if (::CreateDirectoryW(dir.c_str(), nullptr)) {
+        created = true;
+    } else if (const DWORD err = ::GetLastError(); err != ERROR_ALREADY_EXISTS) {
+        if (error)
+            *error = dir + L" could not be created (error " + std::to_wstring(err) + L")";
+        return false;
+    }
+    const auto cleanupIfCreated = [&] {
+        if (created)
+            ::RemoveDirectoryW(dir.c_str());
+    };
     // Set the owner (Administrators) and a protected DACL in one step, rather
     // than trusting what the directory inherited.
     PSECURITY_DESCRIPTOR descriptor = nullptr;
     if (!::ConvertStringSecurityDescriptorToSecurityDescriptorW(kProtectedSddl, SDDL_REVISION_1, &descriptor, nullptr)) {
         if (error)
             *error = L"could not build the protected descriptor (error " + std::to_wstring(::GetLastError()) + L")";
+        cleanupIfCreated();
         return false;
     }
     BOOL ownerDefaulted = FALSE;
@@ -231,15 +395,46 @@ bool ensureProtectedDir(const std::wstring& dir, std::wstring* error)
     if (set != ERROR_SUCCESS) {
         if (error)
             *error = dir + L": could not set its security (error " + std::to_wstring(set) + L")";
+        cleanupIfCreated();
         return false;
     }
-    std::wstring why;
+    why.clear();
     if (!folderProtected(dir, &why)) {
-        if (error)
-            *error = why + L" is still not protected after creating the folder";
+        if (error) {
+            const Role role = ::CompareStringOrdinal(why.c_str(), -1, fullPath(dir).c_str(), -1, TRUE) == CSTR_EQUAL
+                ? Role::Object
+                : Role::Ancestor;
+            *error = formatUnsafe(why, role, L"is still not protected after creating the folder");
+        }
+        cleanupIfCreated();
         return false;
     }
     return true;
+}
+
+bool ensureAnyProtectedDir(
+    const std::vector<std::wstring>& candidates, std::wstring& chosen, std::wstring* error)
+{
+    chosen.clear();
+    if (candidates.empty()) {
+        if (error)
+            *error = L"no protected folder candidates were given";
+        return false;
+    }
+    std::wstring combined;
+    for (const std::wstring& dir : candidates) {
+        std::wstring oneError;
+        if (ensureProtectedDir(dir, &oneError)) {
+            chosen = dir;
+            return true;
+        }
+        if (!combined.empty())
+            combined += L"; ";
+        combined += oneError;
+    }
+    if (error)
+        *error = std::move(combined);
+    return false;
 }
 
 namespace {

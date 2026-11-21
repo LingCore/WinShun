@@ -18154,12 +18154,45 @@ private slots:
         QVERIFY(!svcloc::pathProtected(QDir::toNativeSeparators(file).toStdWString()));
         QVERIFY(!svcloc::folderProtected(QDir::toNativeSeparators(temp.path()).toStdWString()));
 
-        // The dedicated folder, and the parent test.
+        // The dedicated folders (with fallback candidates) and the parent tests.
+        const std::vector<std::wstring> dirs = svcloc::protectedServiceDirs();
+        QVERIFY(dirs.size() >= 2);
         const std::wstring dir = svcloc::protectedServiceDir();
-        QVERIFY(dir.ends_with(L"\\WinShun Service"));
+        QCOMPARE(dir, dirs.front());
+        for (const std::wstring& candidate : dirs) {
+            QVERIFY(candidate.ends_with(L"\\WinShun Service"));
+            QVERIFY(svcloc::inProtectedServiceDir(candidate + L"\\WinShunService.exe"));
+        }
         QVERIFY(svcloc::parentIs(dir + L"\\WinShunService.exe", dir));
         QVERIFY(svcloc::parentIs(dir + L"\\winshunservice.exe", dir)); // paths ignore case
         QVERIFY(!svcloc::parentIs(dir + L"\\sub\\WinShunService.exe", dir));
+        QVERIFY(!svcloc::inProtectedServiceDir(dir + L"\\sub\\WinShunService.exe"));
+        QVERIFY(!svcloc::inProtectedServiceDir(QDir::toNativeSeparators(file).toStdWString()));
+
+        // Fallback check & ancestor pre-check (GitHub #424): a non-existent
+        // subfolder under a protected ancestor (such as ProgramData or
+        // System32) passes ancestorsProtected without creating anything, while
+        // a subfolder under user temp fails without creating a stray directory.
+        QVERIFY(svcloc::ancestorsProtected(LR"(C:\ProgramData\WinShun Service)"));
+        QVERIFY(svcloc::ancestorsProtected(LR"(C:\Windows\System32\WinShunProbeNonExistent)"));
+        const std::wstring unsafeChild = QDir::toNativeSeparators(temp.filePath(u"WinShun Service"_s)).toStdWString();
+        std::wstring why;
+        QVERIFY(!svcloc::ancestorsProtected(unsafeChild, &why));
+        QVERIFY(!why.empty());
+        std::wstring err;
+        QVERIFY(!svcloc::ensureProtectedDir(unsafeChild, &err));
+        QVERIFY(!QFileInfo::exists(QString::fromStdWString(unsafeChild))); // never leaves an empty folder behind
+        QVERIFY(err.find(L"can be changed by a non-administrator") != std::wstring::npos);
+        QVERIFY(err.find(L"owner ") != std::wstring::npos || err.find(L"ACE ") != std::wstring::npos);
+
+        // anyProtectedDirUsable & ensureAnyProtectedDir fall back past an unsafe candidate.
+        std::wstring firstBad;
+        QVERIFY(!svcloc::anyProtectedDirUsable({unsafeChild}, &firstBad));
+        QVERIFY(!firstBad.empty());
+        QVERIFY(svcloc::anyProtectedDirUsable({unsafeChild, LR"(C:\Windows\System32\WinShunProbeNonExistent)"}));
+        std::wstring chosen;
+        QVERIFY(svcloc::ensureAnyProtectedDir({unsafeChild, LR"(C:\Windows\System32)"}, chosen, &err));
+        QCOMPARE(chosen, std::wstring(LR"(C:\Windows\System32)"));
     }
 };
 
