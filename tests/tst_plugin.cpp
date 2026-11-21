@@ -5162,6 +5162,56 @@ private slots:
             qPrintable(answer));
     }
 
+    void selectedTextCopyFallbackPolicy()
+    {
+        using selection::CopyPlan;
+        using selection::isTerminalClass;
+        using selection::planCopyFallback;
+
+        // Gesture (allowCopy = false) or UIA already read text: never touch clipboard.
+        QCOMPARE(planCopyFallback(false, false, false, false, false, L"Chrome_WidgetWin_1"), (CopyPlan {false, false, false}));
+        QCOMPARE(planCopyFallback(true, true, true, true, true, L"TXGuiFoundation"), (CopyPlan {false, false, true}));
+
+        // Classic QQ chat bubble (TXGuiFoundation): UIA focused the input box and returned empty
+        // (readable=true, known=true), yet shortcut `copy` must still fall back to Ctrl+C.
+        QCOMPARE(planCopyFallback(true, false, true, true, true, L"TXGuiFoundation"), (CopyPlan {true, false, true}));
+        // Same for browsers (Chrome/Edge/Firefox) where UIA is skipped (askable=false).
+        QCOMPARE(planCopyFallback(true, false, false, true, false, L"Chrome_WidgetWin_1"), (CopyPlan {true, false, true}));
+        QCOMPARE(planCopyFallback(true, false, false, true, false, L"MozillaWindowClass"), (CopyPlan {true, false, true}));
+        // Elevated window (askable=true, readable=false, known=true): tries copy, keeps readableIfNothing=false.
+        QCOMPARE(planCopyFallback(true, false, false, true, true, L"Notepad"), (CopyPlan {true, false, false}));
+
+        // Terminals: never send Ctrl+C (SIGINT); mintty/PuTTY copy safely via Ctrl+Insert.
+        for (const std::wstring_view cls : {std::wstring_view(L"ConsoleWindowClass"),
+                 std::wstring_view(L"CASCADIA_HOSTING_WINDOW_CLASS"), std::wstring_view(L"Alacritty"),
+                 std::wstring_view(L"org.wezfurlong.wezterm"), std::wstring_view(L"Ghostty")}) {
+            QVERIFY(isTerminalClass(cls));
+            QCOMPARE(planCopyFallback(true, false, true, true, true, cls), (CopyPlan {false, false, true}));
+        }
+        for (const std::wstring_view cls : {std::wstring_view(L"mintty"), std::wstring_view(L"PuTTY")}) {
+            QVERIFY(isTerminalClass(cls));
+            QCOMPARE(planCopyFallback(true, false, true, false, true, cls), (CopyPlan {true, true, true}));
+        }
+        QVERIFY(!isTerminalClass(L"TXGuiFoundation"));
+        QVERIFY(!isTerminalClass(L"Chrome_WidgetWin_1"));
+
+        // `copy: true` with a non-foreground window returns immediately without blocking on keys or clipboard.
+        QEventLoop loop;
+        mcp::ToolResult got;
+        bool answered = false;
+        selection::run(QJsonObject {{u"window"_s, 1}, {u"copy"_s, true}}, [&](mcp::ToolResult result) {
+            got = std::move(result);
+            answered = true;
+            loop.quit();
+        });
+        QTimer::singleShot(1500, &loop, &QEventLoop::quit);
+        loop.exec();
+        QVERIFY(answered);
+        QVERIFY(!got.isError);
+        QCOMPARE(got.structured.value(u"text"_s).toString(), QString());
+        QCOMPARE(got.structured.value(u"readable"_s).toBool(), true);
+    }
+
     void powerToolRequiresSystemPower()
     {
         // The performer runs on a thread of its own for sleep and hibernate.

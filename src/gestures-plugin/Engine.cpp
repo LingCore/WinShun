@@ -15,6 +15,8 @@ namespace gestures {
 namespace {
 
 constexpr ULONG_PTR kOwnInput = 0x57534753; // "WSGS": input this plugin sends
+constexpr ULONG_PTR kWinShunOwnInput = 0x57534B52; // "WSKR": matches src/core/OwnInput.h (ignored by Win顺's double-tap listeners)
+constexpr WORD kMaskKey = 0xE8; // unassigned VK: breaks bare Alt/Win/Shift release without side effects (#175)
 constexpr ULONG_PTR kTouchMask = 0xFFFFFF00; // mouse messages made from touch or a pen
 constexpr ULONG_PTR kTouchSignature = 0xFF515700;
 constexpr UINT kHoldMs = 350; // held still this long: the press goes through
@@ -792,7 +794,31 @@ LRESULT Engine::onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM
             m_escape = false;
             ::PostThreadMessageW(m_hookThreadId, kAbort, 0, 0);
         } else if (wParam >= 1 && wParam <= m_shortcuts.size()) {
-            m_shortcutHeld = m_shortcuts[wParam - 1];
+            const std::string& on = m_shortcuts[wParam - 1];
+            unsigned mods = 0;
+            unsigned vk = 0;
+            if (hotkeyOf(on, &mods, &vk) && shortcutNeedsMask(mods)) {
+                const bool held = ((mods & MOD_ALT) && (::GetAsyncKeyState(VK_MENU) & 0x8000))
+                    || ((mods & MOD_WIN) && ((::GetAsyncKeyState(VK_LWIN) & 0x8000) || (::GetAsyncKeyState(VK_RWIN) & 0x8000)))
+                    || ((mods & MOD_SHIFT) && (::GetAsyncKeyState(VK_SHIFT) & 0x8000));
+                if (held) {
+                    // RegisterHotKey swallowed the main key, leaving the foreground window
+                    // with only the modifier press/release. Masking while held prevents
+                    // Chrome/Edge from focusing the three-dots menu button on Alt release,
+                    // Win32 apps from opening the menu bar, Win from opening Start, and
+                    // Shift from switching the input method.
+                    INPUT mask[2] {};
+                    mask[0].type = INPUT_KEYBOARD;
+                    mask[0].ki.wVk = kMaskKey;
+                    mask[0].ki.dwExtraInfo = kWinShunOwnInput;
+                    mask[1].type = INPUT_KEYBOARD;
+                    mask[1].ki.wVk = kMaskKey;
+                    mask[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                    mask[1].ki.dwExtraInfo = kWinShunOwnInput;
+                    ::SendInput(2, mask, sizeof(INPUT));
+                }
+            }
+            m_shortcutHeld = on;
             m_shortcutAt = ::GetTickCount64();
             shortcutLetGo();
         }
@@ -1395,8 +1421,12 @@ void Engine::shortcutLetGo()
 {
     if (m_shortcutHeld.empty())
         return;
+    unsigned mods = 0;
+    unsigned vk = 0;
+    const bool hasKey = hotkeyOf(m_shortcutHeld, &mods, &vk) && vk != 0;
     const bool held = std::ranges::any_of(std::initializer_list<int> {VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN},
-        [](int vk) { return (::GetAsyncKeyState(vk) & 0x8000) != 0; });
+        [](int key) { return (::GetAsyncKeyState(key) & 0x8000) != 0; })
+        || (hasKey && (::GetAsyncKeyState(static_cast<int>(vk)) & 0x8000) != 0);
     if (held && ::GetTickCount64() - m_shortcutAt < kShortcutLetGoMs) {
         ::SetTimer(m_window, kShortcutTimer, 15, nullptr);
         return;

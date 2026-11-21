@@ -476,6 +476,25 @@ private slots:
             QCOMPARE(parseDirections(std::wstring(entry.directions, entry.directions + std::strlen(entry.directions))), std::string(entry.directions));
         }
     }
+
+    void shortcutMaskPolicy()
+    {
+        const auto check = [](std::string_view trigger, bool expected) {
+            unsigned mods = 0;
+            unsigned vk = 0;
+            QVERIFY2(hotkeyOf(trigger, &mods, &vk), trigger.data());
+            QCOMPARE(shortcutNeedsMask(mods), expected);
+        };
+        // Alt, Win and Shift chords need a mask key so releasing the modifier does not
+        // focus Chrome/Edge's menu button, activate a menu bar, open Start, or toggle IME.
+        check("key:Alt+D", true);
+        check("key:Ctrl+Alt+T", true);
+        check("key:Win+T", true);
+        check("key:Ctrl+Shift+T", true);
+        // Plain Ctrl chords and standalone function keys do not trigger menu/Start/IME on release.
+        check("key:Ctrl+T", false);
+        check("key:F8", false);
+    }
 };
 
 QTEST_GUILESS_MAIN(GesturesTest)

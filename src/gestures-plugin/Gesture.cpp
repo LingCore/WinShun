@@ -641,6 +641,11 @@ bool hotkeyOf(std::string_view on, unsigned* modifiers, unsigned* vk)
     return true;
 }
 
+bool shortcutNeedsMask(unsigned modifiers) noexcept
+{
+    return (modifiers & (MOD_ALT | MOD_WIN | MOD_SHIFT)) != 0;
+}
+
 std::wstring triggerTitle(std::string_view on, bool chinese)
 {
     static constexpr const wchar_t* kCornerTitles[2][4] = {

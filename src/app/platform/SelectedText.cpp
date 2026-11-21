@@ -2,6 +2,7 @@
 
 #include "ClipboardBorrow.h"
 #include "ComWorker.h"
+#include "OwnInput.h"
 
 #include <QCoreApplication>
 #include <QMetaObject>
@@ -15,6 +16,7 @@
 #include <cstring>
 #include <cwchar>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -38,8 +40,8 @@ constexpr int kLevelsUp = 8;
 // clipboard may hold to be put back as it was.
 constexpr DWORD kKeysUpMs = 1000;
 constexpr DWORD kCopyWaitMs = 600;
+constexpr DWORD kSecondWriteWaitMs = 120; // follow-up SetClipboardData after EmptyClipboard in a two-step copy
 constexpr SIZE_T kMostKeptBytes = 64 * 1024 * 1024;
-constexpr ULONG_PTR kOwnInput = 0x57534343; // "WSCC": the Ctrl+C pressed here
 
 struct Answer {
     QString text;
@@ -47,14 +49,24 @@ struct Answer {
     bool known = true; // false: no text found to ask (a program UI Automation tells nothing of)
 };
 
+std::wstring windowClassName(HWND window)
+{
+    wchar_t name[96] = {};
+    const int n = window ? ::GetClassNameW(window, name, static_cast<int>(std::size(name))) : 0;
+    return n > 0 ? std::wstring(name, static_cast<std::size_t>(n)) : std::wstring();
+}
+
+bool usesCtrlInsert(std::wstring_view className) noexcept
+{
+    return className == L"mintty" || className == L"PuTTY";
+}
+
 // Windows that must not be asked (see the header): Chromium's frames, its
 // page, its GPU surface, CEF's, and Firefox's. The same names as
 // WindowSnapshot::isChromiumClass, plus Firefox.
 bool neverAsked(HWND window)
 {
-    wchar_t name[96] = {};
-    if (!::GetClassNameW(window, name, static_cast<int>(std::size(name))))
-        return false;
+    const std::wstring name = windowClassName(window);
     const std::wstring_view c(name);
     return c.starts_with(L"Chrome_WidgetWin_") || c == L"Chrome_RenderWidgetHostHWND" || c == L"Intermediate D3D Window"
         || c == L"CefBrowserWindow" || c == L"MozillaWindowClass";
@@ -109,7 +121,7 @@ Answer read(IUIAutomation* automation, HWND wanted)
         return {QString(), true, false}; // no text there (a list, a button), or none UI Automation knows of
     ComPtr<IUIAutomationTextRangeArray> ranges;
     if (FAILED(pattern->GetSelection(&ranges)) || !ranges)
-        return {};
+        return {QString(), true, false};
     int count = 0;
     ranges->get_Length(&count);
     QString text;
@@ -301,7 +313,7 @@ bool modifiersHeld()
     return false;
 }
 
-void pressCopy()
+void pressCopy(bool ctrlInsert)
 {
     INPUT in[4] = {};
     const auto key = [&](int i, WORD vk, DWORD flags) {
@@ -309,22 +321,24 @@ void pressCopy()
         in[i].ki.wVk = vk;
         in[i].ki.wScan = static_cast<WORD>(::MapVirtualKeyW(vk, MAPVK_VK_TO_VSC));
         in[i].ki.dwFlags = flags;
-        in[i].ki.dwExtraInfo = kOwnInput;
+        in[i].ki.dwExtraInfo = ws::kOwnInput;
     };
+    const WORD target = ctrlInsert ? VK_INSERT : 'C';
+    const DWORD extended = ctrlInsert ? KEYEVENTF_EXTENDEDKEY : 0;
     key(0, VK_CONTROL, 0);
-    key(1, 'C', 0);
-    key(2, 'C', KEYEVENTF_KEYUP);
+    key(1, target, extended);
+    key(2, target, extended | KEYEVENTF_KEYUP);
     key(3, VK_CONTROL, KEYEVENTF_KEYUP);
     ::SendInput(4, in, sizeof(INPUT));
 }
 
 // The words selected in the window in front read by copying them: what is
-// on the clipboard kept, Ctrl+C pressed there, the text it copied read, and
-// what was kept put back at once. Win顺's clipboard history records none of
-// it (ClipboardBorrow.h). Nothing copied: nothing selected;
-// `readable` then says whether that can be believed (a window of an
-// administrator's program takes no keys from Win顺 either).
-Answer copied(HWND wanted, bool readableIfNothing)
+// on the clipboard kept, Ctrl+C (or Ctrl+Insert in mintty/PuTTY) pressed there,
+// the text it copied read, and what was kept put back at once. Win顺's
+// clipboard history records none of it (ClipboardBorrow.h). Nothing copied:
+// nothing selected; `readable` then says whether that can be believed (a window
+// of an administrator's program takes no keys from Win顺 either).
+Answer copied(HWND wanted, bool ctrlInsert, bool readableIfNothing)
 {
     // By the clock: a Sleep lasts a tick of Windows' timer (15.6 ms), not what it is asked.
     for (const ULONGLONG until = ::GetTickCount64() + kKeysUpMs; modifiersHeld(); ::Sleep(5)) {
@@ -341,16 +355,30 @@ Answer copied(HWND wanted, bool readableIfNothing)
     DWORD through = ::GetClipboardSequenceNumber();
     const auto end = qScopeGuard([&through] { clipboard_borrow::end(through); });
     const DWORD before = through;
-    pressCopy();
-    bool changed = false;
-    for (const ULONGLONG until = ::GetTickCount64() + kCopyWaitMs; !changed && ::GetTickCount64() < until;) {
-        changed = ::GetClipboardSequenceNumber() != before;
-        if (!changed)
+    pressCopy(ctrlInsert);
+    DWORD seq = before;
+    for (const ULONGLONG until = ::GetTickCount64() + kCopyWaitMs; seq == before && ::GetTickCount64() < until;) {
+        seq = ::GetClipboardSequenceNumber();
+        if (seq == before)
             ::Sleep(5);
     }
-    if (!changed)
+    if (seq == before)
         return {QString(), readableIfNothing};
-    const QString text = clipboardText(); // opens once the program has written it all
+    QString text = clipboardText(); // opens once the program has written it all
+    // Some programs empty the clipboard in one lock and write CF_UNICODETEXT in a
+    // second lock right after: wait briefly for a follow-up sequence bump if empty.
+    if (text.trimmed().isEmpty()) {
+        for (const ULONGLONG until = ::GetTickCount64() + kSecondWriteWaitMs; ::GetTickCount64() < until;) {
+            const DWORD now = ::GetClipboardSequenceNumber();
+            if (now != seq) {
+                seq = now;
+                text = clipboardText();
+                if (!text.trimmed().isEmpty())
+                    break;
+            }
+            ::Sleep(5);
+        }
+    }
     putBack(*kept);
     through = ::GetClipboardSequenceNumber();
     if (text.trimmed().isEmpty())
@@ -387,6 +415,26 @@ Reader& reader()
 
 } // namespace
 
+bool isTerminalClass(std::wstring_view className) noexcept
+{
+    return className == L"ConsoleWindowClass" || className == L"CASCADIA_HOSTING_WINDOW_CLASS"
+        || className == L"mintty" || className == L"PuTTY" || className == L"VirtualConsoleClass"
+        || className == L"org.wezfurlong.wezterm" || className == L"Alacritty" || className == L"Ghostty";
+}
+
+CopyPlan planCopyFallback(bool allowCopy, bool hasText, bool readable, bool known, bool askableWindow,
+    std::wstring_view windowClass) noexcept
+{
+    if (!allowCopy || hasText)
+        return {false, false, readable};
+    if (isTerminalClass(windowClass)) {
+        if (usesCtrlInsert(windowClass))
+            return {true, true, true};
+        return {false, false, readable};
+    }
+    return {true, false, readable || !known || !askableWindow};
+}
+
 void run(const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done)
 {
     // The words never go into the log: they are the user's.
@@ -395,11 +443,18 @@ void run(const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done
     const bool copy = arguments.value(u"copy"_s).toBool();
     reader().worker.post([wanted, copy, done = std::move(done)]() mutable {
         Answer answer = read(reader().get(), wanted);
-        // UI Automation could not tell (a browser, Firefox, a program it knows nothing of, one
-        // that did not answer): copied, when the plugin may (a shortcut the user pressed).
-        if (copy && answer.text.isEmpty() && (!answer.readable || !answer.known)) {
+        // When invoked by a user shortcut (`copy`), fall back to copying whenever UI Automation
+        // yielded no text — covering browsers, Firefox, custom controls, and chat windows like QQ
+        // where focus stays on the edit box while a message bubble is selected (skipping Ctrl+C
+        // in terminals so an empty selection never sends SIGINT).
+        if (copy && answer.text.isEmpty()) {
             const HWND front = ::GetAncestor(::GetForegroundWindow(), GA_ROOT);
-            answer = copied(wanted, !answer.known || (front && !askable(front)));
+            if (front && (!wanted || front == wanted)) {
+                const CopyPlan plan = planCopyFallback(copy, !answer.text.isEmpty(), answer.readable, answer.known,
+                    askable(front), windowClassName(front));
+                if (plan.copy)
+                    answer = copied(wanted, plan.ctrlInsert, plan.readableIfNothing);
+            }
         }
         QCoreApplication* app = QCoreApplication::instance();
         if (!app)

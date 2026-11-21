@@ -19,11 +19,28 @@
 #include <QJsonObject>
 
 #include <functional>
+#include <string_view>
 
 namespace ws::selection {
 
 // The longest text answered, in characters.
 inline constexpr int kMostCharacters = 4000;
+
+// Decision for falling back to a clipboard copy chord when UI Automation yields
+// no selected text (tested directly in tst_plugin).
+struct CopyPlan {
+    bool copy = false;
+    bool ctrlInsert = false; // mintty / PuTTY: Ctrl+Insert copies without sending SIGINT
+    bool readableIfNothing = true;
+    bool operator==(const CopyPlan&) const = default;
+};
+
+// Terminal windows where an unguarded Ctrl+C would send SIGINT to the running job.
+bool isTerminalClass(std::wstring_view className) noexcept;
+
+// Whether `run()` should borrow the clipboard after UI Automation returned no text.
+CopyPlan planCopyFallback(bool allowCopy, bool hasText, bool readable, bool known, bool askable,
+    std::wstring_view windowClass) noexcept;
 
 // `arguments.window` (optional): the top-level window the plugin means, as a
 // number; when another window is in front, nothing is selected there. The
@@ -34,12 +51,15 @@ inline constexpr int kMostCharacters = 4000;
 // calling thread.
 //
 // `arguments.copy` (0.42.0; a shortcut the user pressed, never a gesture):
-// where UI Automation cannot tell (those windows, a program it knows no text
-// of), Win顺 copies the words instead: it waits for the shortcut's keys to
-// be let go, keeps what is on the clipboard, presses Ctrl+C in the window
-// in front, reads the text that came, and puts what it kept back at once.
-// Its own clipboard history records none of it; Windows' (Win+V) keeps the
-// words copied (that copy is the program's), not what is put back. A
+// whenever UI Automation yields no selected text on a non-terminal window
+// (browsers, Firefox, custom controls, or chat windows like QQ where focus stays
+// on the input box while a message bubble is selected), Win顺 waits for the
+// shortcut's keys to be let go, keeps what is on the clipboard, presses Ctrl+C
+// (or Ctrl+Insert in mintty/PuTTY) in the window in front, reads the text that
+// came, and puts what it kept back at once. Terminals with UI Automation (Windows
+// Terminal, conhost) are never sent Ctrl+C so an empty selection cannot send
+// SIGINT. Win顺's own clipboard history records none of it; Windows' (Win+V)
+// keeps the words copied (that copy is the program's), not what is put back. A
 // clipboard holding more than 64 MB is left alone (`readable` false).
 void run(const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done);
 

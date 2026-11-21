@@ -167,6 +167,10 @@ std::string keyTrigger(std::wstring_view keys);
 // What RegisterHotKey takes for a "key:" trigger (MOD_ALT … without
 // MOD_NOREPEAT, and the virtual key); false when it is none.
 bool hotkeyOf(std::string_view on, unsigned* modifiers, unsigned* vk);
+// Whether releasing the modifiers of a RegisterHotKey chord (whose main key
+// Windows swallowed) could trigger a bare-modifier action in the foreground
+// window (Alt menu bar / browser menu button, Win Start menu, Shift IME switch).
+bool shortcutNeedsMask(unsigned modifiers) noexcept;
 
 struct Rule {
     std::string on;
