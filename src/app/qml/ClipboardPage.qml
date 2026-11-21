@@ -179,6 +179,7 @@ Item {
                                    : clipboard.numberKeys === "ctrl" ? Qt.Key_Control : -1
     NumberHints {
         id: numberHints
+        objectName: "clipboardNumberHints"
         mode: page.clipboard.numberHints
         key: page.numberKey
         // Over another app the existing KeyRouter delivers modifier keys too.
@@ -192,7 +193,7 @@ Item {
         id: shownRows
         view: list
         tracking: numberHints.hintOpacity > 0 || numberHints.jumping // not per frame of a scroll while nothing shows
-        span: numberHints.jumping ? numberHints.letters.length : 9 // a letter each, past the ninth row too
+        span: numberHints.lettersShown ? numberHints.letters.length : 9 // a letter each, past the ninth row too
     }
     // A key while the letters show: a letter pastes its row (a picked one:
     // all the picked ones, as Enter or a click does), and is taken.
@@ -1206,6 +1207,8 @@ Item {
                         height: clipRow.picture ? page.pictureRowHeight : page.rowHeight
                         hint: page.numberKey >= 0 && !numberHints.jumping ? shownRows.numberOf(index) : 0
                         hintLetter: numberHints.letterOf(shownRows.numberOf(index) - 1)
+                        hintArmed: numberHints.jumping
+                        hintJumpKey: numberHints.jumpKeyName
                         reserveHintSpace: (page.numberKey >= 0 && page.clipboard.numberHints !== "off") || page.clipboard.letterJump
                         hintOpacity: numberHints.hintOpacity
                         hintModifier: page.numberKey === Qt.Key_Control ? "Ctrl" : "Alt"

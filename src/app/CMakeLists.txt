@@ -263,6 +263,7 @@ set(qml_files
     qml/ShareCard.qml
     qml/ShareScanControls.qml
     qml/CenteredNumber.qml
+    qml/RowHintSlot.qml
     qml/IconNumber.qml
     qml/NumberHints.qml
     qml/ShownRows.qml

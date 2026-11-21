@@ -1837,6 +1837,10 @@
         <source>粘贴这一条</source>
         <translation>Paste this item</translation>
     </message>
+    <message>
+        <source>轻按 %1 后按 %2</source>
+        <translation>Tap %1, then %2</translation>
+    </message>
 </context>
 <context>
     <name>ClipTabs</name>
@@ -2292,6 +2296,10 @@
     <message>
         <source>转到这一行</source>
         <translation>Go to this row</translation>
+    </message>
+    <message>
+        <source>轻按 %1 后按 %2</source>
+        <translation>Tap %1, then %2</translation>
     </message>
 </context>
 <context>
@@ -5290,6 +5298,10 @@ Send suggestions and problems on our website</translation>
     <message>
         <source>打开这一行</source>
         <translation>Open this row</translation>
+    </message>
+    <message>
+        <source>轻按 %1 后按 %2</source>
+        <translation>Tap %1, then %2</translation>
     </message>
     <message>
         <source>确认删除 %1 项</source>
@@ -8306,12 +8318,16 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>shortcut;letter;one hand;vim;vi;hint;jump</translation>
     </message>
     <message>
-        <source>启动器、剪贴板和对话框搜索栏共用；隐藏提示不影响数字快捷键</source>
-        <translation>Shared by the launcher, clipboard, and dialog search bar; shortcuts still work when hints are hidden</translation>
+        <source>启动器、剪贴板和对话框搜索栏共用；关闭数字键时提前预览各行字母，轻按直达键后高亮触发</source>
+        <translation>Shared by the launcher, clipboard, and dialog search bar; when number keys are off, previews each row&apos;s letter and highlights them after tapping the jump key</translation>
     </message>
     <message>
-        <source>快捷键;数字键;图标;按住;显示;隐藏</source>
-        <translation>shortcut;number key;icon;hold;show;hide</translation>
+        <source>启动器、剪贴板和对话框搜索栏共用；隐藏提示不影响数字快捷键，关闭数字键时也用于预览字母直达</source>
+        <translation>Shared by the launcher, clipboard, and dialog search bar; number shortcuts still work when hints are hidden, and when number keys are off this also previews letter jump</translation>
+    </message>
+    <message>
+        <source>快捷键;数字键;字母;字母直达;图标;按住;显示;隐藏</source>
+        <translation>shortcut;number key;letter;letter jump;icon;hold;show;hide</translation>
     </message>
     <message>
         <source>按住时显示</source>
@@ -8780,8 +8796,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>With a Chinese input method in the search box, tapping Shift also switches between Chinese and English</translation>
     </message>
     <message>
-        <source>跟数字键一样：搜索框和剪贴板各用数字键设置里的那个键</source>
-        <translation>Same as number keys: the search box and the clipboard each use the key from their own number key setting</translation>
+        <source>跟数字键一样：搜索框和剪贴板各用数字键设置里的那个键；关闭数字键时默认用 Ctrl</source>
+        <translation>Same as number keys: the search box and the clipboard each use the key from their own number key setting (defaults to Ctrl when number keys are off)</translation>
     </message>
     <message>
         <source>字母直达;修饰键;Ctrl;Alt;Shift</source>

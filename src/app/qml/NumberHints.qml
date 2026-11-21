@@ -17,17 +17,29 @@ Item {
     property bool listening: false
     property bool held: false
     property bool ready: false
-    readonly property bool shown: key >= 0 && !jumping && !picking && (mode === "always" || (mode === "held" && listening && ready))
-    property real hintOpacity: shown ? 1 : 0
+    // When number keys are off and letter jump is enabled, `mode` ("always" |
+    // "held" | "off") previews the rows' letters calmly before the jump key is
+    // tapped; tapping `jumpKey` arms `jumping` and switches them to keycaps.
+    readonly property int hintKey: key >= 0 ? key : jumpEnabled ? jumpKey : -1
+    readonly property bool shown: hintKey >= 0 && !jumping && !picking
+                                  && (mode === "always" || (mode === "held" && listening && ready))
+    // Keep opacity warm across armed <-> passive letter toggle in "always" mode
+    // so cancelling jump mode swaps badge -> plain letter without blinking out.
+    property real hintOpacity: shown || (key < 0 && jumpEnabled && mode === "always" && jumping) ? 1 : 0
 
     property bool jumpEnabled: false
     property string trigger: "auto" // auto: the number keys' modifier | ctrl | alt | shift
     readonly property int jumpKey: trigger === "ctrl" ? Qt.Key_Control : trigger === "alt" ? Qt.Key_Alt
                                  : trigger === "shift" ? Qt.Key_Shift : key >= 0 ? key : Qt.Key_Control
+    readonly property string jumpKeyName: jumpKey === Qt.Key_Alt ? "Alt"
+                                        : jumpKey === Qt.Key_Shift ? "Shift" : "Ctrl"
     property bool jumping: false
     // Shift+letter in the search box (GitHub #357): the letters are on the
     // buttons of the row it picked (the current one), not on the rows.
     property bool picking: false
+    readonly property bool letterPreview: key < 0 && jumpEnabled && mode !== "off"
+                                          && !jumping && !picking && (shown || hintOpacity > 0)
+    readonly property bool lettersShown: jumping || letterPreview
     property bool tapArmed: false
     property double tapAt: 0
     readonly property int tapMs: 350
@@ -43,7 +55,7 @@ Item {
     }
     // The letter of the row that many rows after the first in view; "" for none.
     function letterOf(offset: int): string {
-        return jumping && offset >= 0 && offset < letters.length ? letters[offset] : ""
+        return lettersShown && offset >= 0 && offset < letters.length ? letters[offset] : ""
     }
     // The letter or digit of a key event ("" for none): by its virtual key,
     // so that Shift (or a layout) does not make 1 a "!"; by Qt's key for a
@@ -70,13 +82,14 @@ Item {
             if (tapArmed)
                 tapAt = Date.now()
         }
-        if (!listening || mode !== "held" || key < 0 || event.isAutoRepeat)
+        if (!listening || mode !== "held" || hintKey < 0 || event.isAutoRepeat)
             return
-        if (event.key !== key) {
+        if (event.key !== hintKey) {
             reset()
             return
         }
-        const modifier = key === Qt.Key_Control ? Qt.ControlModifier : Qt.AltModifier
+        const modifier = hintKey === Qt.Key_Control ? Qt.ControlModifier
+                       : hintKey === Qt.Key_Shift ? Qt.ShiftModifier : Qt.AltModifier
         if ((event.modifiers & ~modifier) !== 0)
             return
         if (!held) {
@@ -96,7 +109,7 @@ Item {
             }
             tapArmed = false
         }
-        if (event.key === key)
+        if (event.key === hintKey)
             reset()
     }
     function leave() {
@@ -112,9 +125,9 @@ Item {
     onListeningChanged: { reset(); leave() }
     onModeChanged: reset()
     onKeyChanged: { reset(); leave() }
-    onTriggerChanged: leave()
+    onTriggerChanged: { reset(); leave() }
     onLettersChanged: leave()
-    onJumpEnabledChanged: leave()
+    onJumpEnabledChanged: { reset(); leave() }
 
     Timer {
         id: delay

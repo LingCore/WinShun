@@ -5401,23 +5401,9 @@ Window {
                 }
 
                 SettingRow {
-                    id: resultNumberHintsRow
-                    sub: true
-                    shown: window.editor.numberKeys !== "off"
-                    title: qsTr("序号提示")
-                    description: qsTr("启动器、剪贴板和对话框搜索栏共用；隐藏提示不影响数字快捷键")
-                    keywords: qsTr("快捷键;数字键;图标;按住;显示;隐藏").split(";")
-
-                    ScopeTabs {
-                        labels: [qsTr("按住时显示"), qsTr("一直显示"), qsTr("不显示", "number hints")]
-                        current: Math.max(0, ["held", "always", "off"].indexOf(window.editor.numberHints))
-                        onActivated: (index) => window.editor.numberHints = ["held", "always", "off"][index]
-                    }
-                }
-
-                SettingRow {
                     id: letterJumpRow
                     title: qsTr("字母直达")
+                    unlocks: [letterJumpKeyRow, letterJumpKeysRow, resultNumberHintsRow]
                     description: qsTr("轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板和对话框旁的搜索栏里 Shift+字母是选中那一条，剪贴板里可以选几条一起粘贴。再按一下那个键或按 Esc 退出。启动器和剪贴板共用")
                     keywords: qsTr("快捷键;字母;单手;vim;vi;提示;跳转;直达;hint").split(";")
 
@@ -5429,12 +5415,13 @@ Window {
                 }
 
                 SettingRow {
+                    id: letterJumpKeyRow
                     sub: true
                     shown: window.editor.letterJump
                     title: qsTr("字母直达用的键")
                     description: window.editor.letterJumpKey === "shift"
                                  ? qsTr("搜索框里用中文输入法时，轻按 Shift 也会切换中英文")
-                                 : qsTr("跟数字键一样：搜索框和剪贴板各用数字键设置里的那个键")
+                                 : qsTr("跟数字键一样：搜索框和剪贴板各用数字键设置里的那个键；关闭数字键时默认用 Ctrl")
                     keywords: qsTr("字母直达;修饰键;Ctrl;Alt;Shift").split(";")
 
                     ScopeTabs {
@@ -5445,6 +5432,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: letterJumpKeysRow
                     sub: true
                     shown: window.editor.letterJump
                     title: qsTr("用哪些字母")
@@ -5486,6 +5474,23 @@ Window {
                                 letterJumpKeysBox.showStart()
                             }
                         }
+                    }
+                }
+
+                SettingRow {
+                    id: resultNumberHintsRow
+                    objectName: "resultNumberHintsRow"
+                    shown: window.editor.numberKeys !== "off" || window.editor.letterJump
+                    title: qsTr("序号提示")
+                    description: window.editor.numberKeys === "off"
+                                 ? qsTr("启动器、剪贴板和对话框搜索栏共用；关闭数字键时提前预览各行字母，轻按直达键后高亮触发")
+                                 : qsTr("启动器、剪贴板和对话框搜索栏共用；隐藏提示不影响数字快捷键，关闭数字键时也用于预览字母直达")
+                    keywords: qsTr("快捷键;数字键;字母;字母直达;图标;按住;显示;隐藏").split(";")
+
+                    ScopeTabs {
+                        labels: [qsTr("按住时显示"), qsTr("一直显示"), qsTr("不显示", "number hints")]
+                        current: Math.max(0, ["held", "always", "off"].indexOf(window.editor.numberHints))
+                        onActivated: (index) => window.editor.numberHints = ["held", "always", "off"][index]
                     }
                 }
             }
@@ -7339,11 +7344,14 @@ Window {
 
                 SettingRow {
                     id: clipNumberHintsRow
-                    sub: true
-                    shown: window.editor.clipboardNumberKeys !== "off"
+                    objectName: "clipNumberHintsRow"
+                    sub: window.editor.clipboardNumberKeys !== "off"
+                    shown: window.editor.clipboardNumberKeys !== "off" || window.editor.letterJump
                     title: qsTr("序号提示")
-                    description: qsTr("启动器、剪贴板和对话框搜索栏共用；隐藏提示不影响数字快捷键")
-                    keywords: qsTr("快捷键;数字键;图标;按住;显示;隐藏").split(";")
+                    description: window.editor.clipboardNumberKeys === "off"
+                                 ? qsTr("启动器、剪贴板和对话框搜索栏共用；关闭数字键时提前预览各行字母，轻按直达键后高亮触发")
+                                 : qsTr("启动器、剪贴板和对话框搜索栏共用；隐藏提示不影响数字快捷键，关闭数字键时也用于预览字母直达")
+                    keywords: qsTr("快捷键;数字键;字母;字母直达;图标;按住;显示;隐藏").split(";")
 
                     ScopeTabs {
                         labels: [qsTr("按住时显示"), qsTr("一直显示"), qsTr("不显示", "number hints")]
@@ -7383,6 +7391,7 @@ Window {
                         const key = window.editor.letterJumpKey === "ctrl" ? "Ctrl"
                                   : window.editor.letterJumpKey === "alt" ? "Alt"
                                   : window.editor.letterJumpKey === "shift" ? "Shift"
+                                  : window.editor.clipboardNumberKeys === "off" ? "Ctrl"
                                   : qsTr("跟随数字键")
                         return qsTr("已开启（%1）· 启动器和剪贴板共用").arg(key)
                     }

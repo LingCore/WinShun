@@ -30,6 +30,8 @@ Item {
     property bool showModified: true
     property int hint: 0 // the number that goes to this row (Ctrl+1...); 0 for none
     property string hintLetter // 字母直达: the letter that does, while the letters show
+    property bool hintArmed: false // true after tapping the jump key (renders keycap); false while previewing passively
+    property string hintJumpKey: "Ctrl" // modifier tapped to arm letter jump, for the HoverTip
     property real hintOpacity: 1 // the number's: shown as the settings say (NumberHints)
     property real hintOffsetY: 0 // counter-scrolls numberSlot during smooth wheel gliding so 1–9 stay visually steady
     property bool reserveHintSpace: false // every row keeps the room, numbered or not: one left edge
@@ -104,24 +106,21 @@ Item {
         dpr: row.dpr
     }
 
-    Item {
+    RowHintSlot {
         id: numberSlot
         objectName: "dialogResultNumber"
+        glyphObjectName: "dialogResultNumberGlyph"
         visible: row.reserveHintSpace && (row.hint > 0 || row.hintLetter.length > 0)
-        opacity: row.hintLetter.length > 0 ? 1 : row.hintOpacity
+        opacity: row.hintArmed && row.hintLetter.length > 0 ? 1 : row.hintOpacity
         x: row.onPixel(Theme.tok("clipHintX", 14)) // the icon sits where the clipboard's does
         y: row.hintOffsetY !== 0 ? -Math.round(-row.hintOffsetY * row.dpr) / row.dpr : 0
-        width: 24
         height: row.height
-
-        CenteredNumber {
-            text: row.hintLetter.length > 0 ? row.hintLetter : row.hint > 0 ? String(row.hint) : ""
-            font.pixelSize: Theme.uiTitle
-            font.weight: row.hintLetter.length > 0 ? Font.DemiBold : Font.Medium
-            font.strikeout: row.hintTaken && row.hintLetter.length === 0
-            color: row.hintLetter.length > 0 ? Theme.accent : row.hintTaken ? Theme.faint : row.current ? Theme.accent : Theme.subtext
-            Accessible.ignored: true
-        }
+        hint: row.hint
+        hintLetter: row.hintLetter
+        armed: row.hintArmed
+        taken: row.hintTaken
+        current: row.current
+        dpr: row.dpr
     }
 
     Item {
@@ -256,15 +255,19 @@ Item {
         dpr: row.dpr
         host: row.tipHost
         readonly property bool onKeys: numberSlot.visible && numberSlot.opacity > 0
-                                       && row.hint > 0 && row.hintLetter.length === 0
+                                       && (row.hint > 0 || row.hintLetter.length > 0)
                                        && area.containsMouse && !area.pressed
                                        && numberSlot.contains(numberSlot.mapFromItem(area, area.mouseX, area.mouseY))
         target: onKeys ? numberSlot : null
         text: !onKeys ? ""
-            : row.hintTaken ? qsTr("%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置的“结果列表”里改用 %2")
-                              .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
+            : row.hintLetter.length === 0 && row.hintTaken
+                ? qsTr("%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置的“结果列表”里改用 %2")
+                  .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
             : row.copyOnly ? qsTr("复制这一行路径")
             : !row.isDir && row.canOpen ? qsTr("打开这一行") : qsTr("转到这一行")
-        shortcut: onKeys && !row.hintTaken ? row.hintModifier + "+" + row.hint : ""
+        shortcut: !onKeys ? ""
+                : row.hintLetter.length > 0
+                    ? (row.hintArmed ? row.hintLetter : qsTr("轻按 %1 后按 %2").arg(row.hintJumpKey).arg(row.hintLetter))
+                : !row.hintTaken ? row.hintModifier + "+" + row.hint : ""
     }
 }

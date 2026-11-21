@@ -630,6 +630,7 @@ Window {
     }
     NumberHints {
         id: numberHints
+        objectName: "launcherNumberHints"
         mode: window.launcher.numberHints
         key: window.numberKey
         // Refused the front over the folder typed in, its keys come through
@@ -644,7 +645,7 @@ Window {
     readonly property int lastLetterRow: Math.min(view.count - 1, firstShownRow + numberHints.letters.length - 1,
                                                   rowAtY(view.contentY + view.height - view.bottomMargin - viewRowHeight / 2, false))
     function letterOf(index) {
-        return numberHints.jumping && index >= firstShownRow && index <= lastLetterRow
+        return numberHints.lettersShown && index >= firstShownRow && index <= lastLetterRow
             ? numberHints.letterOf(index - firstShownRow) : ""
     }
     // A key while the letters show: a letter opens its row; Shift+letter
@@ -1926,13 +1927,17 @@ Window {
                     showSize: window.launcher.showFileSize || window.launcher.sort === Launcher.LargestFirst || window.launcher.sort === Launcher.SmallestFirst
                     hint: window.numberOf(index)
                     hintLetter: window.letterOf(index)
+                    hintArmed: numberHints.jumping
+                    hintJumpKey: numberHints.jumpKeyName
                     actionLetters: numberHints.picking && index === view.currentIndex ? numberHints.letters : ""
                     reserveHintSpace: (window.numberKey >= 0 && window.launcher.numberHints !== "off") || window.launcher.letterJump
                     hintOpacity: numberHints.hintOpacity
                     hintOffsetY: window.hintOffsetY
                     hintModifier: window.numberModifier
                     hintTaken: resultRow.hint > 0 && !window.numberUsable(resultRow.hint)
-                    z: window.hintOffsetY !== 0 && (resultRow.hint > 0 || resultRow.hintLetter.length > 0) ? 1 : 0
+                    // ListView's default delegate z is 1 (above highlightItem at z 0);
+                    // raise active-hint rows to 2 during smooth gliding so hints stay on top.
+                    z: window.hintOffsetY !== 0 && (resultRow.hint > 0 || resultRow.hintLetter.length > 0) ? 2 : 1
                     nameTip: nameTip
                     dpr: window.dpr
                     actionsPool: resultActions

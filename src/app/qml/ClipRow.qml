@@ -36,6 +36,8 @@ Item {
     property real hintOpacity: 1
     // 字母直达: the letter that opens (pastes) this row while the letters show, in the number's place; "" for none.
     property string hintLetter
+    property bool hintArmed: false // true after tapping the jump key (renders keycap); false while previewing passively
+    property string hintJumpKey: "Ctrl" // modifier tapped to arm letter jump, for the HoverTip
     property string pasteTip: qsTr("粘贴") // where the paste button pastes ("粘贴到搜索框")
     property bool clickToPaste: false // a click pastes (Clipboard::clickToPaste)
     property string pictureSize: "standard" // a picture's thumbnail: "small", "standard", "large" (Clipboard::pictureSize)
@@ -406,24 +408,21 @@ Item {
         }
     }
 
-    Item {
+    RowHintSlot {
         id: numberSlot
         objectName: "clipboardNumberSlot"
+        glyphObjectName: "clipboardNumber"
         visible: row.reserveHintSpace && (row.hint > 0 || row.hintLetter.length > 0)
-        opacity: row.hintLetter.length > 0 ? 1 : row.hintOpacity
+        opacity: row.hintArmed && row.hintLetter.length > 0 ? 1 : row.hintOpacity
         x: row.onPixel(Theme.tok("clipHintX", 14))
-        width: 24
         height: row.height
-
-        CenteredNumber {
-            objectName: "clipboardNumber"
-            text: row.hintLetter.length > 0 ? row.hintLetter : row.hint > 0 ? String(row.hint) : ""
-            font.pixelSize: row.metrics.uiTitle
-            font.weight: row.hintLetter.length > 0 ? Font.DemiBold : Font.Medium
-            font.strikeout: row.hintTaken && row.hintLetter.length === 0
-            color: row.hintLetter.length > 0 ? Theme.accent : row.hintTaken ? Theme.faint : row.current ? Theme.accent : Theme.subtext
-            Accessible.ignored: true
-        }
+        hint: row.hint
+        hintLetter: row.hintLetter
+        armed: row.hintArmed
+        taken: row.hintTaken
+        current: row.current
+        metrics: row.metrics
+        dpr: row.dpr
     }
 
     MouseArea {
@@ -482,7 +481,7 @@ Item {
         dpr: row.dpr
         readonly property RowAction hovered: row.actions !== null ? row.actions.hovered : null
         readonly property bool onKeys: !hovered && numberSlot.visible && numberSlot.opacity > 0
-                                       && row.hint > 0 && row.hintLetter.length === 0 && area.containsMouse && !area.pressed // (a hover handler under the area gets no hover)
+                                       && (row.hint > 0 || row.hintLetter.length > 0) && area.containsMouse && !area.pressed // (a hover handler under the area gets no hover)
                                        && numberSlot.contains(numberSlot.mapFromItem(area, area.mouseX, area.mouseY))
         readonly property bool onMark: !hovered && !onKeys && pastedMark.visible && area.containsMouse && !area.pressed
                                        && pastedMark.contains(pastedMark.mapFromItem(area, area.mouseX, area.mouseY))
@@ -490,10 +489,14 @@ Item {
         text: hovered ? hovered.tip
             : onMark ? qsTr("已粘贴过")
             : !onKeys ? ""
-            : row.hintTaken ? qsTr("%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置里改用 %2")
-                              .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
+            : row.hintLetter.length === 0 && row.hintTaken
+                ? qsTr("%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置里改用 %2")
+                  .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
             : qsTr("粘贴这一条")
         shortcut: hovered ? hovered.tipShortcut
-                : onKeys && !row.hintTaken ? row.hintModifier + "+" + row.hint : ""
+                : !onKeys ? ""
+                : row.hintLetter.length > 0
+                    ? (row.hintArmed ? row.hintLetter : qsTr("轻按 %1 后按 %2").arg(row.hintJumpKey).arg(row.hintLetter))
+                : !row.hintTaken ? row.hintModifier + "+" + row.hint : ""
     }
 }

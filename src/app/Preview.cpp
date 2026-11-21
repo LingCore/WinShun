@@ -3709,6 +3709,37 @@ int runSettings(const QStringList& args)
         editor->setClipboardWinV(winVBefore);
         editor->setTaskbarWinS(winSBefore);
         editor->setFolderMenuHotkey(fmKeyBefore);
+        // 序号提示 stays accessible whenever either number keys or 字母直达 is enabled.
+        {
+            const QString numKeysBefore = editor->numberKeys();
+            const QString clipNumKeysBefore = editor->clipboardNumberKeys();
+            const bool jumpBefore = editor->letterJump();
+            editor->setNumberKeys(u"off"_s);
+            editor->setClipboardNumberKeys(u"off"_s);
+            editor->setLetterJump(true);
+            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(resultsPage)), Q_ARG(QVariant, QVariant(2)));
+            settle(window, 2);
+            QQuickItem* resultHintsRow = visualNamed(window->contentItem(), u"resultNumberHintsRow"_s);
+            if (!resultHintsRow || !resultHintsRow->property("shown").toBool())
+                qWarning("preview: resultNumberHintsRow hidden when numberKeys=off and letterJump=true");
+            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(clipboardPage)), Q_ARG(QVariant, QVariant(1)));
+            settle(window, 2);
+            QQuickItem* clipHintsRow = visualNamed(window->contentItem(), u"clipNumberHintsRow"_s);
+            if (!clipHintsRow || !clipHintsRow->property("shown").toBool())
+                qWarning("preview: clipNumberHintsRow hidden when clipboardNumberKeys=off and letterJump=true");
+            editor->setLetterJump(false);
+            settle(window, 2);
+            if (clipHintsRow && clipHintsRow->property("shown").toBool())
+                qWarning("preview: clipNumberHintsRow still shown when both clipboardNumberKeys=off and letterJump=false");
+            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(resultsPage)), Q_ARG(QVariant, QVariant(2)));
+            settle(window, 2);
+            if (resultHintsRow && resultHintsRow->property("shown").toBool())
+                qWarning("preview: resultNumberHintsRow still shown when both numberKeys=off and letterJump=false");
+            editor->setNumberKeys(numKeysBefore);
+            editor->setClipboardNumberKeys(clipNumKeysBefore);
+            editor->setLetterJump(jumpBefore);
+            settle(window, 2);
+        }
         say(u"cross-page settings links & global shortcuts list checked"_s);
     }
     return finish(window, saved);
@@ -4481,6 +4512,26 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
             hints->setProperty("jumping", true);
             key(Qt::Key_X);
             check(!hints->property("jumping").toBool() && bar.query() == query, u"dialog letter past the rows shown does nothing"_s);
+            // With number keys off and numberHints = always, passive letters preview
+            // calmly (editable box, no keycap) and pop into keycaps once armed.
+            bar.setResultOptions(true, true, u"off"_s);
+            bar.setNumberHints(u"always"_s);
+            settle(window);
+            auto* slot0 = visualNamed(list, u"dialogResultNumber"_s);
+            auto* cap0 = slot0 ? visualNamed(slot0, u"hintKeyCap"_s) : nullptr;
+            auto* hl = list->property("highlightItem").value<QQuickItem*>();
+            check(!hl || !slot0 || !slot0->parentItem() || slot0->parentItem()->z() > hl->z(),
+                u"dialog delegate stays above ListView highlightItem"_s);
+            check(letterOf(0) == u"A" && letterOf(1) == u"S" && !field->property("readOnly").toBool()
+                    && cap0 && !cap0->isVisible(),
+                u"dialog passive letter preview shows calm letters without arming the box"_s);
+            hints->setProperty("jumping", true);
+            settle(window);
+            check(letterOf(0) == u"A" && field->property("readOnly").toBool() && cap0 && cap0->isVisible(),
+                u"arming dialog letter jump switches passive preview into accent keycaps"_s);
+            hints->setProperty("jumping", false);
+            bar.setResultOptions(true, true, u"ctrl"_s);
+            settle(window);
         }
         bar.setLetterJump(false, u"auto"_s, u"ASDFGHJKLQWERTYUIOPZXCVBNM"_s);
         list->setProperty("currentIndex", 2);
@@ -7526,6 +7577,23 @@ bool checkClipboardSizing(QQuickWindow* window, Clipboard& clipboard, Placement&
         && numberedRow->property("hintModifier").toString() == u"Ctrl"
         && number->property("font").value<QFont>().strikeOut());
     clipboard.setNumberKeysLeft(0);
+    // With clipboard number keys off and 字母直达 on, passive letters preview calmly and arm into keycaps.
+    clipboard.setNumberKeys(u"off"_s);
+    clipboard.setLetterJump(true, u"auto"_s, u"ASDFGHJKLQWERTYUIOPZXCVBNM"_s);
+    settle(window);
+    auto* clipHints = visualNamed(page, u"clipboardNumberHints"_s);
+    auto* clipCap = numberSlot ? visualNamed(numberSlot, u"hintKeyCap"_s) : nullptr;
+    check("clipboard_passive_letter_preview", number && numberSlot && clipCap
+        && numberSlot->isVisible() && number->property("text").toString() == u"A" && !clipCap->isVisible());
+    if (clipHints) {
+        clipHints->setProperty("jumping", true);
+        settle(window);
+        check("clipboard_armed_letter_keycap", number && clipCap
+            && number->property("text").toString() == u"A" && clipCap->isVisible());
+        clipHints->setProperty("jumping", false);
+        settle(window);
+    }
+    clipboard.setLetterJump(false, u"auto"_s, u"ASDFGHJKLQWERTYUIOPZXCVBNM"_s);
     clipboard.setNumberKeys(u"alt"_s);
     settle(window);
     const auto resize = [&](int edge, int dw, int dh, bool cancel = false) {
@@ -9207,6 +9275,87 @@ bool checkNumberColumn(QQmlEngine* qmlEngine, const QDir& output, int width)
         }
         launcher.setScope(Launcher::Folders);
         query(u"编号"_s);
+    }
+    // 字母直达 with number keys off: passive preview follows numberHints ("always" | "held" | "off"),
+    // stays distinct from armed mode (no keycap, editable search box), and pops into accent keycaps on tap.
+    {
+        auto* hints = visualNamed(window->contentItem(), u"launcherNumberHints"_s);
+        auto* bar = window->property("searchBar").value<QObject*>();
+        check(hints && bar, "launcher numberHints or searchBar missing");
+        if (hints && bar) {
+            launcher.setResultOptions(KindOrder::FilesFirst, true, false, false, u"off"_s);
+            launcher.setNumberHints(u"always"_s);
+            launcher.setLetterJump(true, u"auto"_s, u"ASDFGHJKLQWERTYUIOPZXCVBNM"_s);
+            settle(window, 2);
+            auto* row0 = visualNamed(window->contentItem(), u"resultRow-0"_s);
+            auto* row1 = visualNamed(window->contentItem(), u"resultRow-1"_s);
+            auto* slot0 = row0 ? visualNamed(row0, u"resultNumberSlot"_s) : nullptr;
+            auto* num0 = row0 ? visualNamed(row0, u"resultNumber"_s) : nullptr;
+            auto* num1 = row1 ? visualNamed(row1, u"resultNumber"_s) : nullptr;
+            auto* cap0 = slot0 ? visualNamed(slot0, u"hintKeyCap"_s) : nullptr;
+            auto* row0Icon = row0 ? visualNamed(row0, u"resultIcon"_s) : nullptr;
+            auto* tip0 = row0 ? row0->findChild<QObject*>(u"resultRowTip"_s) : nullptr;
+            check(slot0 && num0 && num1 && cap0 && row0Icon && tip0,
+                "letter preview row slot/cap/tip missing");
+            if (auto* hl = view->property("highlightItem").value<QQuickItem*>())
+                check(row0 && row0->z() > hl->z(), "result delegate fell behind ListView highlightItem");
+            if (slot0 && num0 && num1 && cap0 && row0Icon && tip0) {
+                check(slot0->isVisible() && slot0->opacity() > 0.99
+                        && num0->property("text").toString() == u"A"
+                        && num1->property("text").toString() == u"S"
+                        && !cap0->isVisible()
+                        && !bar->property("keysOnly").toBool(),
+                    "passive letter preview shows calm letters without arming search box");
+                const QPointF at = slot0->mapToScene(QPointF(slot0->width() / 2, slot0->height() / 2));
+                QMouseEvent move(QEvent::MouseMove, at, window->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &move);
+                settle(window);
+                check(tip0->property("target").value<QObject*>() == slot0
+                        && tip0->property("shortcut").toString().contains(u"Ctrl"_s)
+                        && tip0->property("shortcut").toString().contains(u"A"_s),
+                    "hovering passive letter explains how to tap jump key then letter");
+                QMouseEvent away(QEvent::MouseMove, QPointF(window->width() - 4, 4),
+                    window->mapToGlobal(QPointF(window->width() - 4, 4)), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &away);
+                settle(window);
+                check(saveGrab(window, output.filePath(u"number-column-letter-preview.png"_s)),
+                    "passive letter preview did not render");
+
+                // Arm letter jump: accent keycaps appear, search box becomes read-only, letter opens row.
+                hints->setProperty("jumping", true);
+                settle(window, 2);
+                check(cap0->isVisible() && bar->property("keysOnly").toBool()
+                        && num0->property("text").toString() == u"A",
+                    "arming letter jump switches passive letters into accent keycaps");
+                check(saveGrab(window, output.filePath(u"number-column-letter-armed.png"_s)),
+                    "armed letter jump did not render");
+                opened.clear();
+                const QString expectedD = launcher.results()->at(2)->path;
+                QMetaObject::invokeMethod(bar, "focusAtEnd");
+                QKeyEvent pressD(QEvent::KeyPress, Qt::Key_D, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &pressD);
+                settle(window, 2);
+                check(opened == expectedD && !hints->property("jumping").toBool()
+                        && !cap0->isVisible() && num0->property("text").toString() == u"A",
+                    "pressing D while armed opens row 3 and returns to calm passive preview");
+
+                // With numberHints = off: passive letters hide, gutter stays reserved, arming still shows keycaps.
+                launcher.setNumberHints(u"off"_s);
+                settle(window, 2);
+                check(!slot0->isVisible() && row0Icon->x() == iconX,
+                    "numberHints=off hides passive letters while keeping letter-jump gutter");
+                hints->setProperty("jumping", true);
+                settle(window, 2);
+                check(slot0->isVisible() && cap0->isVisible() && num0->property("text").toString() == u"A",
+                    "arming letter jump still shows accent keycaps when numberHints=off");
+                hints->setProperty("jumping", false);
+                settle(window);
+            }
+            launcher.setLetterJump(false, u"auto"_s, u"ASDFGHJKLQWERTYUIOPZXCVBNM"_s);
+            launcher.setNumberHints(u"always"_s);
+            launcher.setResultOptions(KindOrder::FilesFirst, true, false, false, u"alt"_s);
+            settle(window, 2);
+        }
     }
     launcher.setMaxRows(5);
     query(u"编号_0"_s);

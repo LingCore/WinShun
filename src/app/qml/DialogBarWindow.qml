@@ -155,7 +155,7 @@ Window {
         letters: window.bar.letterJumpKeys
     }
     function letterOf(index) {
-        return numberHints.jumping && index >= firstShownRow && index <= lastLetterRow
+        return numberHints.lettersShown && index >= firstShownRow && index <= lastLetterRow
             ? numberHints.letterOf(index - firstShownRow) : ""
     }
     // A key while the letters show: a letter takes the dialog to its row, as
@@ -741,12 +741,16 @@ Window {
             showModified: window.bar.showModified
             hint: window.numberOf(index)
             hintLetter: window.letterOf(index)
+            hintArmed: numberHints.jumping
+            hintJumpKey: numberHints.jumpKeyName
             hintOpacity: numberHints.hintOpacity
             hintOffsetY: window.hintOffsetY
             reserveHintSpace: (window.numberKey >= 0 && window.bar.numberHints !== "off") || window.bar.letterJump
             hintModifier: window.numberModifier
             hintTaken: rowItem.hint > 0 && !window.numberUsable(rowItem.hint)
-            z: window.hintOffsetY !== 0 && (rowItem.hint > 0 || rowItem.hintLetter.length > 0) ? 1 : 0
+            // ListView's default delegate z is 1 (above highlightItem at z 0);
+            // raise active-hint rows to 2 during smooth gliding so hints stay on top.
+            z: window.hintOffsetY !== 0 && (rowItem.hint > 0 || rowItem.hintLetter.length > 0) ? 2 : 1
             canOpen: window.bar.canOpen
             copyOnly: window.bar.copyOnly
             nameTip: nameTip

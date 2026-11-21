@@ -270,6 +270,163 @@ private slots:
         QVERIFY(!hints->property("picking").toBool());
     }
 
+    // When number keys are off and 字母直达 is on, `mode` ("always" | "held" | "off")
+    // controls passive letter preview while typing; tapping the jump key still arms
+    // jumping (high-contrast keycaps, search input read-only) so typing vs jump mode
+    // stays unmistakable.
+    void letterPreviewWhenNumberKeysOff()
+    {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import "../src/app/qml"
+            Item {
+                width: 200; height: 60
+                property alias hints: hints
+                property alias field: field
+                NumberHints {
+                    id: hints
+                    listening: true
+                    key: -1
+                    mode: "always"
+                    jumpEnabled: true
+                }
+                TextInput {
+                    id: field
+                    anchors.fill: parent
+                    focus: true
+                    readOnly: hints.jumping
+                    Keys.onPressed: event => hints.press(event)
+                    Keys.onReleased: event => hints.release(event)
+                }
+            }
+        )", QUrl::fromLocalFile(QStringLiteral(WINSHUN_TEST_SOURCE) + u"/hints-preview.qml"_s));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        QQuickWindow window;
+        qobject_cast<QQuickItem*>(root.get())->setParentItem(window.contentItem());
+        auto* hints = root->property("hints").value<QObject*>();
+        auto* field = root->property("field").value<QObject*>();
+        const auto send = [&](QEvent::Type type, int code, Qt::KeyboardModifiers modifiers) {
+            QKeyEvent event(type, code, modifiers);
+            QCoreApplication::sendEvent(field, &event);
+        };
+        const auto tap = [&](int code, Qt::KeyboardModifiers mod, int waitMs = 30) {
+            send(QEvent::KeyPress, code, mod);
+            QTest::qWait(waitMs);
+            send(QEvent::KeyRelease, code, Qt::NoModifier);
+        };
+        const auto letter = [&](int offset) {
+            QString out;
+            QMetaObject::invokeMethod(hints, "letterOf", Q_RETURN_ARG(QString, out), Q_ARG(int, offset));
+            return out;
+        };
+
+        // 1. "always" mode with number keys off: passive preview active, input still editable.
+        QVERIFY(hints->property("shown").toBool());
+        QVERIFY(hints->property("letterPreview").toBool());
+        QVERIFY(hints->property("lettersShown").toBool());
+        QVERIFY(!hints->property("jumping").toBool());
+        QVERIFY(!field->property("readOnly").toBool());
+        QCOMPARE(hints->property("jumpKeyName").toString(), u"Ctrl"_s);
+        QCOMPARE(letter(0), u"A"_s);
+        QCOMPARE(letter(1), u"S"_s);
+        QCOMPARE(letter(9), u"Q"_s);
+
+        // Tap Ctrl: arms jumping (read-only) while keeping hintOpacity warm (no blink on cancel).
+        tap(Qt::Key_Control, Qt::ControlModifier);
+        QVERIFY(hints->property("jumping").toBool());
+        QVERIFY(!hints->property("shown").toBool());
+        QVERIFY(!hints->property("letterPreview").toBool());
+        QVERIFY(hints->property("lettersShown").toBool());
+        QVERIFY(field->property("readOnly").toBool());
+        QCOMPARE(hints->property("hintOpacity").toReal(), 1.0);
+        QCOMPARE(letter(0), u"A"_s);
+
+        // Tap Ctrl again: cancels back to passive preview with zero blink.
+        tap(Qt::Key_Control, Qt::ControlModifier);
+        QVERIFY(!hints->property("jumping").toBool());
+        QVERIFY(hints->property("shown").toBool());
+        QVERIFY(hints->property("letterPreview").toBool());
+        QVERIFY(!field->property("readOnly").toBool());
+        QCOMPARE(hints->property("hintOpacity").toReal(), 1.0);
+        QCOMPARE(letter(0), u"A"_s);
+
+        // Picking action buttons clears row letters immediately; leaving restores passive preview.
+        QMetaObject::invokeMethod(hints, "pick");
+        QVERIFY(hints->property("picking").toBool());
+        QVERIFY(!hints->property("lettersShown").toBool());
+        QCOMPARE(letter(0), QString());
+        QMetaObject::invokeMethod(hints, "leave");
+        QVERIFY(hints->property("letterPreview").toBool());
+        QCOMPARE(letter(0), u"A"_s);
+
+        // 2. "held" mode with number keys off (including Shift trigger): silent at rest,
+        // holding >=180 ms previews letters, holding >350 ms releases cleanly without arming,
+        // typing a Shift+A chord cancels the hold without flashing, quick tap arms.
+        hints->setProperty("mode", u"held"_s);
+        QTRY_COMPARE_WITH_TIMEOUT(hints->property("hintOpacity").toReal(), 0.0, 200);
+        QVERIFY(!hints->property("letterPreview").toBool());
+        QCOMPARE(letter(0), QString());
+
+        hints->setProperty("trigger", u"shift"_s);
+        QCOMPARE(hints->property("jumpKeyName").toString(), u"Shift"_s);
+        send(QEvent::KeyPress, Qt::Key_Shift, Qt::ShiftModifier);
+        send(QEvent::KeyPress, Qt::Key_A, Qt::ShiftModifier);
+        QTest::qWait(220);
+        QVERIFY(!hints->property("letterPreview").toBool()); // typing Shift+A never flashes preview
+        send(QEvent::KeyRelease, Qt::Key_A, Qt::ShiftModifier);
+        send(QEvent::KeyRelease, Qt::Key_Shift, Qt::NoModifier);
+        QVERIFY(!hints->property("jumping").toBool());
+
+        send(QEvent::KeyPress, Qt::Key_Shift, Qt::ShiftModifier);
+        QTest::qWait(220);
+        QVERIFY(hints->property("shown").toBool());
+        QVERIFY(hints->property("letterPreview").toBool());
+        QCOMPARE(letter(0), u"A"_s);
+        QTest::qWait(200); // total hold > 350 ms: not a tap
+        send(QEvent::KeyRelease, Qt::Key_Shift, Qt::NoModifier);
+        QVERIFY(!hints->property("jumping").toBool());
+        QTRY_COMPARE_WITH_TIMEOUT(hints->property("hintOpacity").toReal(), 0.0, 200);
+        QVERIFY(!hints->property("letterPreview").toBool());
+        QCOMPARE(letter(0), QString());
+
+        tap(Qt::Key_Shift, Qt::ShiftModifier);
+        QVERIFY(hints->property("jumping").toBool());
+        QCOMPARE(letter(0), u"A"_s);
+        QMetaObject::invokeMethod(hints, "leave");
+        QVERIFY(!hints->property("lettersShown").toBool());
+        QCOMPARE(letter(0), QString());
+
+        // 3. "off" mode with number keys off: no passive preview even when held, tap still arms.
+        hints->setProperty("trigger", u"auto"_s);
+        hints->setProperty("mode", u"off"_s);
+        send(QEvent::KeyPress, Qt::Key_Control, Qt::ControlModifier);
+        QTest::qWait(220);
+        QVERIFY(!hints->property("letterPreview").toBool());
+        QCOMPARE(letter(0), QString());
+        QTest::qWait(200);
+        send(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
+        QVERIFY(!hints->property("jumping").toBool());
+        tap(Qt::Key_Control, Qt::ControlModifier);
+        QVERIFY(hints->property("jumping").toBool());
+        QCOMPARE(letter(0), u"A"_s);
+        QMetaObject::invokeMethod(hints, "leave");
+        QVERIFY(!hints->property("lettersShown").toBool());
+        QCOMPARE(letter(0), QString());
+
+        // 4. Number keys enabled again: numbers keep priority at rest (no passive letters).
+        hints->setProperty("mode", u"always"_s);
+        hints->setProperty("key", int(Qt::Key_Control));
+        QVERIFY(hints->property("shown").toBool());
+        QVERIFY(!hints->property("letterPreview").toBool());
+        QCOMPARE(letter(0), QString());
+        tap(Qt::Key_Control, Qt::ControlModifier);
+        QVERIFY(hints->property("jumping").toBool());
+        QCOMPARE(letter(0), u"A"_s);
+    }
+
     void letterJumpSetting()
     {
         QTemporaryDir profile;

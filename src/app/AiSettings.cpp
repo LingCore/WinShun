@@ -769,7 +769,8 @@ std::vector<Entry> buildCatalog()
         {{u"ctrl"_s, u"Ctrl+1…9"_s, "Ctrl+1…9"}, {u"alt"_s, u"Alt+1…9"_s, "Alt+1…9"},
             {u"off"_s, u"none"_s, QT_TRANSLATE_NOOP("AiSettings", "不用")}}));
     add(choice({"Results/NumberHints", QT_TRANSLATE_NOOP("AiSettings", "序号提示"), "results", 2,
-                   "When the numbers 1…9 show on the rows of the search box and the clipboard."},
+                   "When the row shortcut hints show in the search box, clipboard, and dialog bar: 1…9 when number keys "
+                   "are on, or passive letter previews when number keys are off and 字母直达 is on."},
         &Settings::numberHints,
         {{u"held"_s, u"while the modifier key is held"_s, QT_TRANSLATE_NOOP("AiSettings", "按住修饰键时")},
             {u"always"_s, u"always"_s, QT_TRANSLATE_NOOP("AiSettings", "一直显示")},
