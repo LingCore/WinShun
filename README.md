@@ -199,6 +199,14 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.44.0**
+
+- ⬅️ **设置窗口能后退、前进**：标题栏箭头、`Alt+←/→`、鼠标侧键都行，回去还在原来的位置；⏬ 滚到底再滚就到下一页；🔗 相关的设置之间能直接跳过去。
+- 🖱️ **托盘图标左键、中键自己选**做什么；⌨️ 一个快捷键**打开设置**；📸 Win顺 截图记不记进剪贴板历史**单独设**；🔍 搜不到时提示**排除目录、已跳过的文件里**有没有，点一下这次也搜；🛡️ **以管理员身份在终端中打开**（#425）；🔢 1–9 编号跟着滚动走。
+- 🛠️ **改进** 钉住的搜索框在任务栏上有图标了；剪贴板的预览和看大图窗口有了边框和阴影。
+
+详见 [0.44.0 发布说明](docs/release-notes/v0.44.0.md)。
+
 **0.43.0**
 
 - 📌 **钉住的搜索框是个普通窗口了**：任务栏上有按钮，`Alt+Tab` 能切到，能最小化；📋 **贴图里的字直接拖选复制**，`Shift+C` 复制全部文字。
@@ -558,6 +566,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.44.0**
+
+- ⬅️ **Back and Forward in Settings**: the title bar arrows, `Alt+←/→` or the mouse's side buttons, back to the same spot; ⏬ scroll past the end for the next page; 🔗 links between related settings.
+- 🖱️ **Choose what the tray icon's left and middle clicks do**; ⌨️ a key to **open Settings**; 📸 WinShun screenshots in the clipboard history **set on their own**; 🔍 nothing found? it says what sits **in excluded folders or skipped files**, one click to search them too; 🛡️ **open in Terminal as administrator** (#425); 🔢 the 1–9 numbers follow the scroll.
+- 🛠️ **Improved**: the pinned search box has its icon on the taskbar; the clipboard's preview and picture viewer have a frame and shadow.
+
+See the [0.44.0 release notes](docs/release-notes/v0.44.0.md).
 
 **0.43.0**
 
