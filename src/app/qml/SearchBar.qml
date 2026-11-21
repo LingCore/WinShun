@@ -346,8 +346,8 @@ Item {
         readonly property real styleStart: fieldPart.out("leadingInset", 0)
         anchors.left: handle.right
         anchors.leftMargin: styleStart > 0 ? Theme.snap(Math.max(6, Theme.fieldInset + styleStart - handle.x - handle.width), bar.dpr) : 8
-        anchors.right: bar.minimal ? bar.right : regexChip.visible ? regexChip.left : bar.scopeKey ? compactScope.left : tabs.left
-        anchors.rightMargin: regexChip.visible ? 8 : 12
+        anchors.right: bar.minimal ? bar.right : regexChip.visible ? regexChip.left : fuzzyChip.visible ? fuzzyChip.left : bar.scopeKey ? compactScope.left : tabs.left
+        anchors.rightMargin: regexChip.visible || fuzzyChip.visible ? 8 : 12
         height: bar.height - grip.y - 2 * grip.height
         y: grip.y + grip.height
         verticalAlignment: TextInput.AlignVCenter
@@ -562,6 +562,55 @@ Item {
             text: bar.launcher.scope === Launcher.Content ? qsTr("正则模式：每个词都按正则表达式匹配文件里的文字 · 点击关闭")
                                                           : qsTr("正则模式：每个词都按正则表达式匹配名字 · 点击关闭")
             shortcut: "Ctrl+R"
+        }
+    }
+
+    // Always-on FZF fuzzy mode (Launcher.fuzzyMode === "on"): compact "fz" chip
+    // before the tabs; hidden in fallback/off modes and while regex mode or 内容
+    // scope is active. Clicking turns always-on fuzzy mode back off.
+    Item {
+        id: fuzzyChip
+
+        objectName: "fuzzyChip"
+        visible: !bar.minimal && !bar.inBox && !bar.launcher.regexMode
+                 && bar.launcher.fuzzyMode === "on" && bar.launcher.scope !== Launcher.Content
+        anchors.right: bar.scopeKey ? compactScope.left : tabs.left
+        anchors.rightMargin: 6
+        y: bar.onPixel((bar.height - height) / 2)
+        width: Math.max(height, fuzzyText.implicitWidth + 16)
+        height: bar.keyHeight
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: qsTr("模糊匹配")
+        Accessible.checked: true
+
+        FieldKey {
+            id: fuzzyKey
+            dpr: bar.dpr
+            checked: true
+            flat: false
+            hovered: fuzzyArea.containsMouse
+            pressed: fuzzyArea.pressed
+        }
+
+        Text {
+            id: fuzzyText
+            anchors.centerIn: parent
+            anchors.verticalCenterOffset: fuzzyKey.out("contentOffsetY", 0)
+            text: "fz"
+            color: fuzzyKey.out("foreground", Theme.accentText)
+            font.pixelSize: Theme.uiBody
+            font.bold: true
+        }
+        MouseArea {
+            id: fuzzyArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: bar.launcher.toggleFuzzyMode()
+        }
+        HoverTip {
+            target: fuzzyArea.containsMouse ? fuzzyChip : null
+            text: qsTr("模糊匹配（FZF）已始终开启：常规结果优先，模糊结果排后 · 点击退出始终开启")
         }
     }
 

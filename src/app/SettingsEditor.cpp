@@ -344,6 +344,15 @@ void SettingsEditor::setRegexMode(bool on)
     commit();
 }
 
+void SettingsEditor::setFuzzyMode(const QString& mode)
+{
+    const QString clean = fuzzyModeName(fuzzyModeFromName(mode));
+    if (m_settings.fuzzyMode == clean)
+        return;
+    m_settings.fuzzyMode = clean;
+    commit();
+}
+
 void SettingsEditor::setThumbnails(bool on)
 {
     if (m_settings.thumbnails == on)

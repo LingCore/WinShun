@@ -423,6 +423,18 @@
 <context>
     <name>AiSettings</name>
     <message>
+        <source>模糊匹配（FZF）</source>
+        <translation>Fuzzy matching (FZF)</translation>
+    </message>
+    <message>
+        <source>无结果时</source>
+        <translation>On no results</translation>
+    </message>
+    <message>
+        <source>始终开启</source>
+        <translation>Always on</translation>
+    </message>
+    <message>
         <source>打开结果的备用键</source>
         <translation>Second key to open a result</translation>
     </message>
@@ -5145,6 +5157,14 @@ Send suggestions and problems on our website</translation>
 <context>
     <name>SearchBar</name>
     <message>
+        <source>模糊匹配</source>
+        <translation>Fuzzy matching</translation>
+    </message>
+    <message>
+        <source>模糊匹配（FZF）已始终开启：常规结果优先，模糊结果排后 · 点击退出始终开启</source>
+        <translation>Fuzzy matching (FZF) is always on: exact matches rank first, fuzzy matches after · Click to exit always-on</translation>
+    </message>
+    <message>
         <source>靠上</source>
         <translation>Near top</translation>
     </message>
@@ -7143,6 +7163,30 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>正则模式</source>
         <translation>Regular expressions</translation>
+    </message>
+    <message>
+        <source>模糊匹配（FZF）</source>
+        <translation>Fuzzy matching (FZF)</translation>
+    </message>
+    <message>
+        <source>模糊;跳字;fzf;fuzzy;subsequence;缩写;匹配;关闭</source>
+        <translation>fuzzy;fzf;subsequence;abbreviation;match;off</translation>
+    </message>
+    <message>
+        <source>按字符顺序跳字查找（如 nsrch 找 NameSearch.cpp、vcode 找 Visual Studio Code）；与现有搜索语法独立，可随时关闭</source>
+        <translation>Match non-contiguous characters in order (e.g. nsrch for NameSearch.cpp, vcode for Visual Studio Code). Independent of existing search syntax and can be turned off anytime.</translation>
+    </message>
+    <message>
+        <source>无结果时：常规搜索完全不变，仅在无匹配时自动兜底（≥3 字符），零额外开销；始终开启：常规结果优先，模糊结果排后，搜索框旁显示 fz。关闭后仍可用 fz: 前缀按需触发（如 fz:rpt）</source>
+        <translation>On no results: normal search stays unchanged with zero overhead and only falls back to FZF (&gt;=3 chars) when nothing matches. Always on: normal hits rank first, fuzzy hits after, showing an fz badge beside the search box. Even when off, you can opt in per term with fz: (e.g. fz:rpt).</translation>
+    </message>
+    <message>
+        <source>无结果时</source>
+        <translation>On no results</translation>
+    </message>
+    <message>
+        <source>始终开启</source>
+        <translation>Always on</translation>
     </message>
     <message>
         <source>预览;快速查看;看一眼;QuickLook;Seer;空格;Alt+P;preview</source>
@@ -13030,6 +13074,22 @@ Content index: %5</translation>
     <message>
         <source>没有叫“%1”的，按读音找到：</source>
         <translation>Nothing is named “%1”; found by how it sounds:</translation>
+    </message>
+    <message>
+        <source>没有直接匹配“%1”的结果，按模糊匹配找到：</source>
+        <translation>No direct match for “%1”; found with fuzzy matching:</translation>
+    </message>
+    <message>
+        <source>已始终开启模糊匹配（常规结果仍排在前面）</source>
+        <translation>Fuzzy matching always on (normal matches still rank first)</translation>
+    </message>
+    <message>
+        <source>已关闭模糊匹配（仍可用 fz: 按需触发）</source>
+        <translation>Fuzzy matching turned off (fz: prefix still works on demand)</translation>
+    </message>
+    <message>
+        <source>已切回无结果时自动模糊兜底</source>
+        <translation>Switched back to fuzzy fallback on no results</translation>
     </message>
     <message numerus="yes">
         <source>已停止，找到 %Ln 条</source>

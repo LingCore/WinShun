@@ -243,6 +243,9 @@ class Launcher : public QObject {
     // expression on names (parseQuery's regexTerms), in 全部 and 文件; 内容
     // is as ever. Kept in the settings (regexModeChanged).
     Q_PROPERTY(bool regexMode READ regexMode WRITE setRegexMode NOTIFY regexModeChanged FINAL)
+    // Independent FZF subsequence matching policy: "off" | "fallback" | "on".
+    // Kept in the settings (fuzzyModeChanged).
+    Q_PROPERTY(QString fuzzyMode READ fuzzyMode WRITE setFuzzyMode NOTIFY fuzzyModeChanged FINAL)
     // Its filters, applied in the panel alone (the box is the plain quick
     // search): when written (dateChoice: 0 不限, 1 今天, 2 最近 7 天, 3 最近
     // 30 天, 4 今年, 5 自定义 with dateFrom and dateTo as "yyyy-MM-dd", either
@@ -853,6 +856,9 @@ public:
     bool regexMode() const { return m_regexMode; }
     void setRegexMode(bool on);
     Q_INVOKABLE void toggleRegexMode(); // Ctrl+R: says so in the footer
+    QString fuzzyMode() const { return m_fuzzyMode; }
+    void setFuzzyMode(const QString& mode);
+    Q_INVOKABLE void toggleFuzzyMode(); // turns off always-on mode (chip click) or toggles on
     // The search logo left-clicked (not dragged, WindowFrame::handleClicked):
     // the settings window (settingsRequested).
     Q_INVOKABLE void openSettings() { emit settingsRequested(); }
@@ -936,6 +942,7 @@ signals:
     void sortChanged();
     void startListChanged();
     void regexModeChanged();
+    void fuzzyModeChanged();
     void resultOptionsChanged();
     void inTaskbarBoxChanged();
     void keysRoutedChanged();
@@ -1073,7 +1080,7 @@ private:
     void startContentSearch();
     SearchEngine::Request contentRequest() const;
     void syncContentPane();
-    void showRows(SearchResults rows, QStringList highlights);
+    void showRows(SearchResults rows, QStringList highlights, QStringList fuzzyHighlights = {});
     // Web suggestions (WebSuggester). Part of search(): the site's asked for
     // the words typed after its keyword, or the rows go (another site, no
     // words, a plugin's keyword, another scope, the panel). The answer's rows
@@ -1365,7 +1372,8 @@ private:
     mutable bool m_outsideKnown = false;
     bool m_walkRunning = false; // ... it is a walk of a drive (SearchEngine::driveProgress ends it)
     int m_walkSeen = 0; // files and folders it has looked at
-    bool m_approximate = false; // the rows were found by reading (approximateHeading)
+    bool m_approximate = false; // the rows were found by reading or fuzzy fallback (approximateHeading)
+    bool m_approximateFuzzy = false; // specifically FZF fuzzy fallback (not homophone reading)
     int m_currentRow = -1;
     QVariantMap m_keyHints; // see keyHints
     FileTypes m_fileTypes;
@@ -1374,6 +1382,9 @@ private:
     bool m_searchPlaces = true;
     bool m_regexMode = false;
     bool m_shownRegex = false; // of the rows on screen, as m_shownText
+    QString m_fuzzyMode = QStringLiteral("fallback"); // off | fallback | on
+    QString m_fuzzyBeforeOn = QStringLiteral("fallback"); // restored when turning off always-on chip
+    QString m_shownFuzzyMode = QStringLiteral("fallback");
     // What is typed is parsed as regexes on names (regexMode, and not 内容:
     // there the words are expressions on the files' text, m_regexMode as it is).
     bool regexTerms() const { return m_regexMode && m_scope != Content; }

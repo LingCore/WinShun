@@ -794,6 +794,30 @@ void Launcher::toggleRegexMode()
             : tr("正则模式：每个词都按正则表达式匹配名字"));
 }
 
+void Launcher::setFuzzyMode(const QString& mode)
+{
+    const QString clean = fuzzyModeName(fuzzyModeFromName(mode));
+    if (clean == m_fuzzyMode)
+        return;
+    if (clean != u"on")
+        m_fuzzyBeforeOn = clean;
+    m_fuzzyMode = clean;
+    emit fuzzyModeChanged();
+    if (m_window && m_window->isVisible())
+        search();
+}
+
+void Launcher::toggleFuzzyMode()
+{
+    const bool turningOff = m_fuzzyMode == u"on";
+    setFuzzyMode(turningOff ? m_fuzzyBeforeOn : u"on"_s);
+    if (m_window && m_window->isVisible()) {
+        flash(m_fuzzyMode == u"on" ? tr("已始终开启模糊匹配（常规结果仍排在前面）")
+            : m_fuzzyMode == u"off" ? tr("已关闭模糊匹配（仍可用 fz: 按需触发）")
+            : tr("已切回无结果时自动模糊兜底"));
+    }
+}
+
 void Launcher::setQuery(const QString& query)
 {
     if (query == m_query)
@@ -1308,7 +1332,10 @@ QString Launcher::approximateHeading() const
         return {};
     // What was typed, on one line (as Main.qml shows it when nothing is found).
     static const QRegularExpression kSpaces(u"\\s+"_s);
-    return tr("没有叫“%1”的，按读音找到：").arg(QString(m_shownText).replace(kSpaces, u" "_s));
+    const QString shown = QString(m_shownText).replace(kSpaces, u" "_s);
+    return m_approximateFuzzy
+        ? tr("没有直接匹配“%1”的结果，按模糊匹配找到：").arg(shown)
+        : tr("没有叫“%1”的，按读音找到：").arg(shown);
 }
 
 // A hint taken up: the same query over that part alone. The content parts
@@ -1385,6 +1412,7 @@ void Launcher::searchLeftOut(const QString& kind)
         request.limit = kPage;
         request.walkFolder = walkedPath(kind);
         request.regex = regexTerms();
+        request.fuzzyMode = fuzzyModeFromName(m_fuzzyMode);
         m_walkRunning = true;
         m_walkSeen = 0;
     } else {
@@ -2263,6 +2291,7 @@ void Launcher::showApps()
 
     SearchResults rows;
     QStringList highlights;
+    QStringList fuzzyHighlights;
     QList<int> counts {0, 0, 0, 0};
     const QString text = searchText();
     const SearchResults running = windowsearch::snapshot(windowsearch::Own::Included); // 运行: the windows open on this desktop
@@ -2313,18 +2342,21 @@ void Launcher::showApps()
                 for (const std::size_t i : chosen)
                     rows.push_back(ws::appResult((*apps)[i]));
             } else if (const ParsedQuery query = parseQuery(text, regexTerms()); query.error.isEmpty()) {
-                const NameMatcher matcher(query);
+                const FuzzyMode appFuzzy = regexTerms() ? FuzzyMode::Off : fuzzyModeFromName(m_fuzzyMode);
+                const NameMatcher matcher(query, appFuzzy == FuzzyMode::On);
                 const QSet<std::size_t> among(chosen.cbegin(), chosen.cend());
                 const QStringList history = m_recordHistory ? m_history->ranked(text, now) : QStringList();
                 const History::Affinities affinities
                     = m_recordHistory ? m_history->affinities(text, now) : History::Affinities();
-                for (const AppHit& hit : searchApps(*apps, query, matcher, history, affinities)) {
+                for (const AppHit& hit : searchApps(*apps, query, matcher, history, affinities, appFuzzy)) {
                     if (!among.contains(hit.index))
                         continue;
                     rows.push_back(ws::appResult((*apps)[hit.index], false, hit.otherName));
                     rows.back().exact = hit.exact;
+                    rows.back().fuzzy = hit.fuzzy;
                 }
                 highlights = query.highlights;
+                fuzzyHighlights = query.fuzzyHighlights;
             }
             if (m_favorites) { // the tiles' stars
                 for (SearchResult& r : rows) {
@@ -2342,7 +2374,7 @@ void Launcher::showApps()
     }
     m_totalMatches = rows.size();
     m_shownAppsView = m_appsView;
-    showRows(std::move(rows), std::move(highlights));
+    showRows(std::move(rows), std::move(highlights), std::move(fuzzyHighlights));
     refreshStatus();
     // 运行 follows the windows while it is looked at: one opened or closed
     // meanwhile, or named anew, is in the grid within the tick.
@@ -2501,7 +2533,7 @@ void Launcher::search(bool more)
         && m_preferredTypes == m_shownPreferredTypes && keywordKey == m_shownKeyword
         && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick))
         && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey
-        && typingKey() == m_shownTyping && regexTerms() == m_shownRegex
+        && typingKey() == m_shownTyping && regexTerms() == m_shownRegex && m_fuzzyMode == m_shownFuzzyMode
         && (m_scope != Apps || m_appsView == m_shownAppsView);
     m_replacePending = !m_refresh;
     if (m_replacePending) {
@@ -2533,6 +2565,7 @@ void Launcher::search(bool more)
         m_hintsTaken.clear();
         m_leftOutFound.clear();
         m_approximate = false;
+        m_approximateFuzzy = false;
     }
     if (m_scope == Apps) {
         showApps();
@@ -2671,6 +2704,7 @@ void Launcher::search(bool more)
     request.places = m_searchPlaces;
     request.ownPlaces = true; // carried out here (performPlace)
     request.regex = regexTerms();
+    request.fuzzyMode = fuzzyModeFromName(m_fuzzyMode);
     if (m_favorites)
         request.favorites = m_favorites->items();
     // Keep awake is Win顺's own state: while it is on it is listed first, to be seen and ended.
@@ -2696,7 +2730,7 @@ bool Launcher::byOpenCount() const
     return sort() == MostOpened && !m_panel && !m_keyword && !searchText().isEmpty();
 }
 
-void Launcher::showRows(SearchResults rows, QStringList highlights)
+void Launcher::showRows(SearchResults rows, QStringList highlights, QStringList fuzzyHighlights)
 {
     // 打开最多: the rows opened most often first, each by its own count; a
     // status row and a keyword typed (a site's) stay first, the rest
@@ -2772,7 +2806,7 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
         m_tileRows = tileRows;
         emit tileRowsChanged(); // before the rows: the list counts them out as it takes these
     }
-    m_results.assign(std::move(rows), std::move(highlights));
+    m_results.assign(std::move(rows), std::move(highlights), std::move(fuzzyHighlights));
     m_shownText = searchText();
     m_shownScope = m_scope;
     m_shownExtensions = fileExtensions();
@@ -2789,6 +2823,7 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
     m_shownPanelKey = panelKey();
     m_shownTyping = typingKey();
     m_shownRegex = regexTerms();
+    m_shownFuzzyMode = m_fuzzyMode;
     m_haveResults = true;
     if (m_replacePending) {
         if (m_replaceClock.isValid() && m_replaceClock.elapsed() >= 300) {
@@ -2865,6 +2900,7 @@ void Launcher::searchSuggestedPaths()
     request.limit = kPage;
     request.order = nameOrder();
     request.regex = regexTerms();
+    request.fuzzyMode = fuzzyModeFromName(m_fuzzyMode);
     if (m_recordHistory) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         request.history = m_history->ranked(request.text, now);
@@ -3045,7 +3081,7 @@ QString Launcher::contentNeedle() const
         || typedCommandKeyword(m_favorites->items(), text) >= 0))
         return {};
     const bool nameSyntax = std::ranges::any_of(parts, [](const ParsedQuery& q) { return !q.extensions.empty(); })
-        || anyTerm([](const QueryTerm& t) { return t.negated || t.wildcard; });
+        || anyTerm([](const QueryTerm& t) { return t.negated || t.wildcard || t.fuzzy; });
     if (nameSyntax && !ws::looksLikeCode(text))
         return {};
     return text;
@@ -3301,14 +3337,18 @@ void Launcher::onResults(quint64 id, const SearchResults& results, qint64 total,
         else
             m_contentDebounce.start();
     }
-    // Rows found by how their names read (nothing is named as typed): the
-    // heading says so (approximateHeading), and the names are highlighted by
-    // the pinyin, as the result list reads "bg" back into 报告.
+    // Rows found by how their names read (homophone) or by automatic FZF fuzzy
+    // fallback: the heading says so (approximateHeading). Homophone highlights
+    // are expanded to pinyin; fuzzy fallback keeps the typed query terms for
+    // discrete FZF character highlighting.
     m_approximate = std::ranges::any_of(results, [](const SearchResult& r) { return r.approximate; });
+    m_approximateFuzzy = std::ranges::any_of(results, [](const SearchResult& r) { return r.approximate && r.fuzzy; });
     const ParsedQuery query = ws::parseQuery(nameText(), regexTerms()); // typed in a folder, its words each (GitHub #110)
     QStringList highlights = query.highlights;
-    if (m_approximate) {
+    QStringList fuzzyHighlights = query.fuzzyHighlights;
+    if (m_approximate && !m_approximateFuzzy) {
         highlights.clear();
+        fuzzyHighlights.clear();
         for (const ParsedQuery& reading : ws::homophoneQueries(query)) {
             for (const QString& word : reading.highlights) {
                 if (!highlights.contains(word))
@@ -3316,7 +3356,7 @@ void Launcher::onResults(quint64 id, const SearchResults& results, qint64 total,
             }
         }
     }
-    showRows(std::move(rows), std::move(highlights));
+    showRows(std::move(rows), std::move(highlights), std::move(fuzzyHighlights));
     refreshStatus();
     emit namesShown();
 }

@@ -158,6 +158,7 @@ public:
     QQuickWindow* window() const { return m_window; }
     // Off: what was opened lately is neither offered nor ranks first.
     void setRecordHistory(bool on) { m_recordHistory = on; }
+    void setFuzzyMode(const QString& mode) { m_fuzzyMode = fuzzyModeFromName(mode); }
     void setExcludedFiles(const QStringList& types, const QStringList& names) // Settings::excludedTypes, excludedFileNames
     {
         m_excludedTypes = types;
@@ -299,7 +300,8 @@ private:
     void showSuggestions(bool refresh = false); // nothing typed; `refresh`: the list was already up
     bool suggesting() const { return m_suggestOnFocus || m_suggestionsAsked; }
     // The rows to show and the tag of each; `refresh`: keep the selection if nothing changed.
-    void setRows(SearchResults rows, QStringList tags, const QStringList& highlights, bool refresh = false);
+    void setRows(SearchResults rows, QStringList tags, const QStringList& highlights, bool refresh = false,
+        const QStringList& fuzzyHighlights = {});
     void lookAround(); // the file managers' folders, the recent ones and the rest, in the background
     void onResults(quint64 id, const SearchResults& results);
     bool ofFileType(const SearchResult& r) const; // one the Open dialog shows
@@ -326,6 +328,7 @@ private:
     bool m_inFront = false; // m_dialog (or the bar) is in front
     bool m_dragged = false; // m_dialog is being moved or sized by its frame
     bool m_recordHistory = true;
+    FuzzyMode m_fuzzyMode = FuzzyMode::Fallback;
     QStringList m_excludedTypes;
     QStringList m_excludedFileNames;
     QStringList m_excludedApps;

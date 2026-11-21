@@ -56,6 +56,26 @@ private slots:
         settings.load();
         QVERIFY(!settings.pureSearch);
     }
+    void fuzzyModePreference()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.fuzzyMode, u"fallback"_s);
+        for (const QString& mode : {u"off"_s, u"on"_s, u"fallback"_s}) {
+            settings.fuzzyMode = mode;
+            QVERIFY(settings.saveChecked());
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.fuzzyMode, mode);
+        }
+        settings.fuzzyMode = u"invalid"_s;
+        QVERIFY(settings.saveChecked());
+        settings.load();
+        QCOMPARE(settings.fuzzyMode, u"fallback"_s);
+    }
     void doubleTapActionPreference()
     {
         QTemporaryDir profile;

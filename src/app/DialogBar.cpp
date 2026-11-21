@@ -726,6 +726,7 @@ void DialogBar::search()
     request.kindOrder = m_kind == filedialog::Kind::Save ? KindOrder::FoldersFirst : KindOrder::FilesFirst;
     request.excludedTypes = m_excludedTypes;
     request.excludedFileNames = m_excludedFileNames;
+    request.fuzzyMode = m_fuzzyMode;
     if (m_recordHistory)
         request.history = m_history->items();
     if (m_favorites)
@@ -761,7 +762,8 @@ void DialogBar::onResults(quint64 id, const SearchResults& results)
     QStringList tags;
     for (const SearchResult& r : std::as_const(rows))
         tags.append(r.favorite ? tr("收藏") : QString());
-    setRows(std::move(rows), std::move(tags), parseQuery(m_query).highlights);
+    const ParsedQuery parsed = parseQuery(m_query);
+    setRows(std::move(rows), std::move(tags), parsed.highlights, false, parsed.fuzzyHighlights);
 }
 
 void DialogBar::browse(const pathtext::TypedPath& typed)
@@ -787,7 +789,8 @@ void DialogBar::browse(const pathtext::TypedPath& typed)
     });
 }
 
-void DialogBar::setRows(SearchResults rows, QStringList tags, const QStringList& highlights, bool refresh)
+void DialogBar::setRows(SearchResults rows, QStringList tags, const QStringList& highlights, bool refresh,
+    const QStringList& fuzzyHighlights)
 {
     m_listPending = false;
     // Then a key pressed for these rows: once the view has them (resultsReplaced).
@@ -813,7 +816,7 @@ void DialogBar::setRows(SearchResults rows, QStringList tags, const QStringList&
         return;
     m_nothingFound = rows.isEmpty();
     m_tags = std::move(tags);
-    m_results.assign(std::move(rows), highlights);
+    m_results.assign(std::move(rows), highlights, fuzzyHighlights);
     emit resultsReplaced();
     if (m_window && m_window->isVisible())
         place();

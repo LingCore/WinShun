@@ -256,6 +256,10 @@ struct Settings {
     bool searchApps = true;
     bool searchSystem = true;
     bool regexMode = false; // the search box's (Launcher::regexMode, Ctrl+R)
+    // Independent FZF subsequence matching policy: off | fallback | on.
+    // fallback (default): normal search untouched; falls back to FZF (>=3 chars)
+    // when nothing matches, plus word-boundary FZF for installed apps.
+    QString fuzzyMode = QStringLiteral("fallback");
     // match | newest | oldest | name | folder | type | largest | smallest
     // (kSortNames): how 文件 and 文件夹 order what they find, by best match,
     // by when last written, or (#44) by name, folder, type or size (the

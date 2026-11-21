@@ -91,6 +91,28 @@ private slots:
         QCOMPARE(shown.at(dots + 1), u'\\');
     }
 
+    void discreteFuzzyRanges()
+    {
+        // Discrete FZF ranges (e.g. "nsrch" -> N, S, rch in NameSearch.cpp)
+        // highlight cleanly both when full text fits and when elided.
+        const QString name = u"NameSearch.cpp"_s;
+        const elide::Ranges ranges {{0, 1}, {4, 1}, {7, 3}};
+        const QString fit = elide::shortenedHtml(name, ranges, 400, rowFont(), Qt::blue);
+        QCOMPARE(plainOf(fit), name);
+        QVERIFY(fit.contains(u"<b>N</b>"_s));
+        QVERIFY(fit.contains(u"<b>S</b>"_s));
+        QVERIFY(fit.contains(u"<b>rch</b>"_s));
+
+        const QString longName = u"prefix_folder_segment_NameSearch_implementation_final_v3.cpp"_s;
+        const qsizetype base = longName.indexOf(u"NameSearch"_s);
+        const elide::Ranges longRanges {{base, 1}, {base + 4, 1}, {base + 7, 3}};
+        const QString elided = elide::shortenedHtml(longName, longRanges, 260, rowFont(), Qt::blue);
+        const QString shown = plainOf(elided);
+        QVERIFY2(shown.contains(u"NameSearch"_s), qPrintable(shown));
+        QVERIFY2(elided.contains(u"<b>N</b>"_s) && elided.contains(u"<b>S</b>"_s) && elided.contains(u"<b>rch</b>"_s),
+            qPrintable(elided));
+    }
+
     void surrogatesNotSplit()
     {
         QString name;
