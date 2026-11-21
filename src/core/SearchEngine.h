@@ -246,6 +246,11 @@ public:
         // Every term of `text` is a regex (parseQuery's regexTerms for names,
         // contentPattern's regexMode for a content search).
         bool regex = false;
+        // Independent FZF subsequence matching policy (Settings::fuzzyMode).
+        // Off by default so CLI/MCP/tests stay strictly deterministic; Launcher
+        // and DialogBar pass the user's setting. Explicit fz:/fuzzy: terms still
+        // work regardless of this mode (except in regex mode).
+        FuzzyMode fuzzyMode = FuzzyMode::Off;
     };
 
     explicit SearchEngine(
