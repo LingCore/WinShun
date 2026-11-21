@@ -27,10 +27,12 @@
 #include <QWindow>
 #include <QtQml/qqmlregistration.h>
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -664,7 +666,11 @@ public:
     // Nothing typed, 全部, no folder chosen in 内容: as at the first opening
     // (Settings::clearOnOpen); the search follows in handleShown.
     void startOver();
-    void handleShown();
+    // `deferBackgroundWork`: when the window is cloaked waiting for its first
+    // frame, keep catalog/registry refreshes and same-query re-searches off
+    // the critical reveal path until finishShownRefresh() runs after reveal.
+    void handleShown(bool deferBackgroundWork = false);
+    void finishShownRefresh();
     void handleHidden();
     void retranslate(); // the language changed: status, placeholder, rows
     // A few words in the footer for a moment ("已复制"); longer for one that
@@ -1183,7 +1189,8 @@ private:
     void walkHereSoon(); // noteSearchHere: its folder walked as soon as the search ends
     void finishLeftOut(bool stopped); // the one running is over: the hint goes, the footer says what came of it
     void refreshStatus();
-    void refreshFrequentApps();
+    void refreshFrequentApps(bool refreshWindows = true);
+    bool matchesShownRows() const;
     void followPreview(); // the current row's file into the open preview
     // The search panel's details on show (内容, the panel, the pane open):
     // their 预览 tab is the preview there, never a window beside them (GitHub #224).
@@ -1508,9 +1515,15 @@ private:
     bool m_appsLeft = false; // 程序 was left because its tab went for a while (the panel, a dialog's bar)
     void showApps(); // search() in 程序
     void appsTabMoved();
-    void readWindowsUses();
-    std::vector<AppUse> m_windowsUses; // Windows' record of what was started, read at most every minute
+    void refreshWindowsUsesAsync();
+    std::vector<AppUse> m_windowsUses; // Windows' record of what was started, read off the GUI thread at most every minute
     QElapsedTimer m_windowsUsesAge;
+    std::atomic<bool> m_windowsUsesLoading {false};
+    std::jthread m_windowsUsesWorker;
+    bool m_shownStale = false; // rows need a fresh search before reveal (settings/favorites changed while hidden)
+    bool m_historyDirty = false; // history changed since rows were last shown (matters for empty RecentlyOpened)
+    bool m_deferredCatalogRefresh = false; // finishShownRefresh() runs catalog/switch/UserAssist refreshes
+    bool m_deferredSearchRefresh = false; // finishShownRefresh() refreshes the same-query rows in place
     QStringList m_contentExtensions {QStringLiteral("txt")};
     ContentSizeLimits m_contentSizeLimits;
     bool m_contentInLowPriority = false; // 内容 also looks in system, program and tool folders
