@@ -199,6 +199,14 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.43.0**
+
+- 📌 **钉住的搜索框是个普通窗口了**：任务栏上有按钮，`Alt+Tab` 能切到，能最小化；📋 **贴图里的字直接拖选复制**，`Shift+C` 复制全部文字。
+- 🖱️ 结果里右键可以**默认弹出系统菜单**；📁 索引和不搜索的文件夹可以**直接输入路径**（支持 `%USERPROFILE%`）；🗂️ 文件夹菜单可以把收藏夹、最近和已打开的文件夹**直接列在第一层**；✏️ 截图编辑时 `Esc` 先放下工具，方便回去改标注。
+- 🛠️ **修复** 索引服务装不上（错误 5）；插件窗口没有边框；Directory Opus 的“此电脑”里弹不出文件夹菜单。
+
+详见 [0.43.0 发布说明](docs/release-notes/v0.43.0.md)。
+
 **0.42.0**
 
 - 🔁 **剪贴板同步**（新插件）：在自己的几台 Windows 电脑和 Mac（Mac顺）之间，这边复制、那边粘贴文字、图片和文件，端到端加密，不用账号。
@@ -550,6 +558,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.43.0**
+
+- 📌 **The pinned search box is a window of its own**: a taskbar button, `Alt+Tab`, minimize; 📋 **select and copy the words in a pin**, `Shift+C` copies them all.
+- 🖱️ **The system context menu by default** on results, if you like; 📁 **type or paste folders** to index or skip (`%USERPROFILE%` too); 🗂️ the folder menu can list favorites, recent and open folders **at its first level**; ✏️ `Esc` puts a screenshot tool down first, so earlier annotations are easy to change.
+- 🛠️ **Fixed**: the index service would not install (error 5); plugin windows without a frame; no folder menu in Directory Opus's This PC.
+
+See the [0.43.0 release notes](docs/release-notes/v0.43.0.md).
 
 **0.42.0**
 
