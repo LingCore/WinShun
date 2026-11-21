@@ -3071,6 +3071,14 @@ static QString searchBoxHiddenName(taskbar::SearchBox::Hidden why)
     return QString::fromLatin1(names[static_cast<int>(why)]);
 }
 
+static QString searchBoxFormName(std::optional<taskbar::Form> form)
+{
+    if (!form)
+        return {};
+    static const char* const names[] = {"box", "label", "icon"};
+    return QString::fromLatin1(names[static_cast<int>(*form)]);
+}
+
 void App::applySearchBox()
 {
     const bool wanted = m_settings.taskbarSearchBox && taskbar::SearchBox::supported();
@@ -3095,8 +3103,8 @@ void App::applySearchBox()
                     QGuiApplication::inputMethod()->update(Qt::ImCursorRectangle);
             }, Qt::QueuedConnection);
         };
-        callbacks.wideChanged = [this](bool wide) {
-            QMetaObject::invokeMethod(this, [this, wide] { setSearchBoxWide(wide); }, Qt::QueuedConnection);
+        callbacks.formChanged = [this](std::optional<taskbar::Form> form) {
+            QMetaObject::invokeMethod(this, [this, form] { setSearchBoxForm(form); }, Qt::QueuedConnection);
         };
         callbacks.classicChanged = [this](bool classic) {
             QMetaObject::invokeMethod(this, [this, classic] { setClassicTaskbar(classic); }, Qt::QueuedConnection);
@@ -3107,12 +3115,14 @@ void App::applySearchBox()
         if (m_settingsEditor)
             m_settingsEditor->setClassicTaskbar(m_classicTaskbar);
         setSearchBoxShown(taskbar::SearchBox::Hidden::Pending);
+        setSearchBoxForm(std::nullopt);
         updateSearchBoxLook();
     } else if (!wanted && m_searchBox) {
         if (m_launcher->inTaskbarBox())
             hideLauncher();
         m_searchBox.reset();
         setSearchBoxShown(taskbar::SearchBox::Hidden::Pending);
+        setSearchBoxForm(std::nullopt);
     }
 }
 
@@ -3139,8 +3149,14 @@ void App::setSearchBoxShown(taskbar::SearchBox::Hidden why)
         hideLauncher(); // what is typed there would be out of sight
 }
 
-void App::setSearchBoxWide(bool wide)
+void App::setSearchBoxForm(std::optional<taskbar::Form> form)
 {
+    if (!m_searchBox)
+        form.reset(); // a late word from a box gone since
+    m_searchBoxForm = form;
+    if (m_settingsEditor)
+        m_settingsEditor->setSearchBoxForm(searchBoxFormName(form));
+    const bool wide = form == taskbar::Form::Box;
     // Narrowed under what is being typed (the taskbar filled up): on in the
     // launcher's own field, the box looking open. Not back the other way
     // while it is open, under the user's hands.
@@ -4188,6 +4204,7 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         applyFolderMenuHotkey(); // ... and the folder menu's
         applyPastePlainHotkey(); // ... and 粘贴为纯文本's
         editor->setSearchBoxShown(searchBoxHiddenName(m_searchBoxHidden));
+        editor->setSearchBoxForm(searchBoxFormName(m_searchBoxForm));
         editor->setClassicTaskbar(m_classicTaskbar);
 
         prepareBackdrop(window); // once: the format is the window's for good

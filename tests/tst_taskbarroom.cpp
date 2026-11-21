@@ -79,6 +79,41 @@ private slots:
         QVERIFY(!stretch.leftOfIcons);
         QCOMPARE(stretch.to - stretch.from, 0.0);
     }
+
+    void fitShapeTiers()
+    {
+        // At 100% DPI: full box 240, compact box 168, label 78, icon button 44 with 8 px gap reclaimed per end.
+        constexpr ShapeLimits limits {240, 168, 78, 44, 8};
+
+        // Wide stretch: full box; moderate stretch: compact typing box; tight stretch: label; very tight: icon.
+        const auto full = fitShape(260, Form::Box, Form::Box, limits);
+        QVERIFY(full && full->form == Form::Box && full->width == 240);
+
+        const auto compact = fitShape(200, Form::Box, Form::Box, limits);
+        QVERIFY(compact && compact->form == Form::Box && compact->width == 168);
+
+        const auto label = fitShape(140, Form::Box, Form::Box, limits);
+        QVERIFY(label && label->form == Form::Label && label->width == 78);
+
+        // 32 px between gaps + 2 * 8 px reclaimed = 48 >= 44 -> icon fits.
+        const auto icon = fitShape(32, Form::Box, Form::Box, limits);
+        QVERIFY(icon && icon->form == Form::Icon && icon->width == 44);
+
+        const auto none = fitShape(20, Form::Box, Form::Box, limits);
+        QVERIFY(!none.has_value());
+
+        // User's style caps the widest form even with abundant space.
+        const auto styledLabel = fitShape(300, Form::Label, Form::Box, limits);
+        QVERIFY(styledLabel && styledLabel->form == Form::Label && styledLabel->width == 78);
+        const auto styledIcon = fitShape(300, Form::Icon, Form::Box, limits);
+        QVERIFY(styledIcon && styledIcon->form == Form::Icon && styledIcon->width == 44);
+
+        // Provisional crowded cap: never widen from compact 168 to full 240 before a settled reading.
+        const auto cappedCompact = fitShape(300, Form::Box, Form::Box, limits, 168);
+        QVERIFY(cappedCompact && cappedCompact->form == Form::Box && cappedCompact->width == 168);
+        const auto cappedLabel = fitShape(300, Form::Box, Form::Label, limits);
+        QVERIFY(cappedLabel && cappedLabel->form == Form::Label && cappedLabel->width == 78);
+    }
 };
 
 QTEST_APPLESS_MAIN(TaskbarRoomTest)

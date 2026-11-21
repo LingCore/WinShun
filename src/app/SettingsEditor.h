@@ -313,6 +313,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool searchBoxSupported READ searchBoxSupported CONSTANT FINAL)
     Q_PROPERTY(bool searchBoxShown READ searchBoxShown NOTIFY searchBoxShownChanged FINAL)
     Q_PROPERTY(QString searchBoxHidden READ searchBoxHidden NOTIFY searchBoxShownChanged FINAL)
+    Q_PROPERTY(QString searchBoxForm READ searchBoxForm NOTIFY searchBoxFormChanged FINAL) // "" | box | label | icon
     // Read again as the window comes to the front (refreshTaskbarState): the
     // user pins the button and hides Windows' search outside Win顺.
     Q_PROPERTY(bool taskbarButtonPinned READ taskbarButtonPinned NOTIFY taskbarStateChanged FINAL)
@@ -933,6 +934,8 @@ public:
     bool searchBoxShown() const { return m_searchBoxHidden.isEmpty(); }
     QString searchBoxHidden() const { return m_searchBoxHidden; } // why not: "pending", "noroom"... (App)
     void setSearchBoxShown(const QString& hidden); // set by the app: empty when shown
+    QString searchBoxForm() const { return m_searchBoxForm; } // "" | "box" | "label" | "icon"
+    void setSearchBoxForm(const QString& form); // set by the app
     // Set by the app: the box measured Windows 10's taskbar (StartAllBack,
     // ExplorerPatcher), where Windows' search is another thing (refreshTaskbarState).
     void setClassicTaskbar(bool classic);
@@ -1196,6 +1199,7 @@ signals:
     void winVStateChanged();
     void winSStateChanged();
     void searchBoxShownChanged();
+    void searchBoxFormChanged();
     void taskbarStateChanged();
     void fileManagersChanged();
     void clipboardCountChanged();
@@ -1283,6 +1287,7 @@ private:
     bool m_taskbarButtonPinned = false;
     bool m_windowsSearchShown = true;
     QString m_searchBoxHidden = QStringLiteral("pending");
+    QString m_searchBoxForm;
     bool m_classicTaskbar = false;
     QString m_clipboardHotkeyError;
     int m_clipboardCount = 0;

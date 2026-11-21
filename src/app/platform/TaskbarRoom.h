@@ -54,4 +54,44 @@ constexpr Stretch stretchFor(const RECT& bar, const std::optional<RECT>& icons, 
     return stretch;
 }
 
+// The widest form the user lets the taskbar search box take, and the form it
+// actually fits into. Narrower ones still where a wider one does not fit.
+enum class Form { Box, Label, Icon };
+
+struct Shape {
+    Form form = Form::Box;
+    double width = 0; // physical pixels
+};
+
+struct ShapeLimits {
+    double fullBox = 0; // preferred box width, physical pixels
+    double compactBox = 0; // narrower typing box before falling back to Label (0: none)
+    double label = 0; // icon and short label (0: none)
+    double button = 0; // icon-only taskbar button slot
+    double buttonGap = 0; // gap reclaimed at each end by the icon-only slot
+};
+
+// The widest form a stretch `width` wide takes (no wider than the user's
+// `style`, `widest`, or `maxBoxWidth` when > 0): the full box, else a compact
+// typing box, else icon + label, else the icon alone.
+constexpr std::optional<Shape> fitShape(double width, Form style, Form widest, const ShapeLimits& limits,
+    double maxBoxWidth = 0) noexcept
+{
+    const auto may = [&](Form f) {
+        return static_cast<int>(f) >= static_cast<int>(style) && static_cast<int>(f) >= static_cast<int>(widest);
+    };
+    if (may(Form::Box)) {
+        const auto boxFits = [&](double w) { return w > 0 && width >= w && (maxBoxWidth <= 0 || w <= maxBoxWidth); };
+        if (boxFits(limits.fullBox))
+            return Shape {Form::Box, limits.fullBox};
+        if (boxFits(limits.compactBox))
+            return Shape {Form::Box, limits.compactBox};
+    }
+    if (may(Form::Label) && limits.label > 0 && width >= limits.label)
+        return Shape {Form::Label, limits.label};
+    if (limits.button > 0 && width + 2 * limits.buttonGap >= limits.button)
+        return Shape {Form::Icon, limits.button};
+    return std::nullopt;
+}
+
 } // namespace ws::taskbar

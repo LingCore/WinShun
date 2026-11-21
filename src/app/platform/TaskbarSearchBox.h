@@ -81,7 +81,7 @@ public:
         std::function<void(int anchor, int at)> dragged; // the button held down, moved: select from anchor
         std::function<void(Hidden why)> shownChanged; // on the taskbar (None), or why not
         std::function<void()> caretMoved; // caret() is somewhere else
-        std::function<void(bool wide)> wideChanged; // see wide()
+        std::function<void(std::optional<Form> form)> formChanged; // actual rendered form (none while hidden)
         std::function<void(bool classic)> classicChanged; // measured a classic taskbar (classicTaskList), or no longer
     };
     // What the launcher's field has while it is open over the box.
@@ -96,7 +96,7 @@ public:
     // The widest form the user lets it take, as Windows' own search has it
     // (Settings › Personalisation › Taskbar › Search): the box, its icon and
     // label, its icon alone. Narrower ones still where that one does not fit.
-    enum class Style { Box, Label, Icon };
+    using Style = taskbar::Form;
     using Side = taskbar::Side; // which end of the taskbar it goes to (TaskbarRoom.h)
     struct Look {
         std::wstring name; // for screen readers and the tooltip: "Win顺 搜索"
@@ -136,6 +136,7 @@ public:
     void setText(Text text);
     void reattach(); // Explorer started again (TaskbarCreated)
     std::optional<RECT> rect() const; // where it is, on the screen, physical pixels; none while not shown
+    std::optional<Form> form() const; // actual form on the taskbar; none while not shown
     bool wide() const; // ... as the whole box, which shows what is typed (else its label or icon alone)
     std::optional<RECT> caret() const; // ... the caret while active
     bool underPointer() const; // the mouse pointer is on it

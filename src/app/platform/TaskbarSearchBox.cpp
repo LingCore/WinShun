@@ -49,7 +49,8 @@ constexpr UINT_PTR kAttachTimer = 2;
 constexpr UINT_PTR kCaretTimer = 3;
 
 // Logical pixels, at the taskbar's scale.
-constexpr double kMaxWidth = 240; // the whole box: this wide or not at all, a narrower form then
+constexpr double kMaxWidth = 240; // preferred box width
+constexpr double kCompactBoxWidth = 168; // narrower typing box before falling back to icon + label
 constexpr double kGap = 8; // from the icons, the tray, the widgets
 constexpr double kPadding = 12; // inside, at either end
 constexpr double kIconSize = 16;
@@ -605,6 +606,7 @@ struct SearchBox::Impl {
     Look look;
     Text text;
     std::optional<RECT> shownRect;
+    std::optional<Form> shownForm;
     bool shownWide = false; // ... the whole box, not its label or icon alone
     std::optional<RECT> caretRect;
     std::atomic<HWND> helper {nullptr};
@@ -650,10 +652,6 @@ struct SearchBox::Impl {
     bool decided = false; // ... since it went onto this taskbar (else the next is placed by as it is)
     RECT placedBar {}; // ... the taskbar then: moved, resized or rescaled since, the next likewise
 
-    // As wide as the stretch at its end of the taskbar allows: the whole
-    // box, which what is typed goes into; its icon and a short label; its
-    // icon alone.
-    enum class Form { Box, Label, Icon };
     // Where the box is: its pill (the window has a margin round it), on the
     // screen, physical pixels.
     struct Target {
@@ -662,10 +660,6 @@ struct SearchBox::Impl {
         LONG y = 0;
         LONG h = 0;
         Form form = Form::Box;
-    };
-    struct Shape {
-        Form form;
-        double width; // physical pixels
     };
     // The stretch the box goes in (measureRoom), physical pixels.
     struct Room {
@@ -724,7 +718,7 @@ struct SearchBox::Impl {
     double labelWidth = 0; // the label form's, physical pixels (labelForm)
     std::wstring labelMeasured;
     UINT labelDpi = 0;
-    bool wideShown = false; // as told (wideChanged)
+    std::optional<Form> formShown; // as told (formChanged)
 
     ComPtr<ID2D1Factory> d2d;
     ComPtr<IDWriteFactory> dwrite;
@@ -1121,7 +1115,7 @@ struct SearchBox::Impl {
         else if (next.settled)
             placeFrom(next, room, Why::Settled);
         else if (crowded(next))
-            placeFrom(next, room, Why::Crowded, target->form); // no wider: that waits for a settled reading
+            placeFrom(next, room, Why::Crowded, target->form, target->w); // no wider: that waits for a settled reading
         // Over the taskbar's own content (its XAML island, a sibling).
         if (placed && ::GetWindow(window, GW_HWNDPREV))
             ::SetWindowPos(window, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -1142,8 +1136,8 @@ struct SearchBox::Impl {
     }
 
     // The box by `layout` (`room` measured from it), at once: shown, moved,
-    // another form, or hidden. `widest`: no wider a form than that.
-    void placeFrom(const Layout& layout, const Room& room, Why why, Form widest = Form::Box)
+    // another form, or hidden. `widest` / `maxBoxWidth`: no wider than that.
+    void placeFrom(const Layout& layout, const Room& room, Why why, Form widest = Form::Box, double maxBoxWidth = 0)
     {
         taskbarLayout = layout;
         if (why != Why::Look)
@@ -1157,7 +1151,7 @@ struct SearchBox::Impl {
         barH = room.bar.bottom - room.bar.top;
         marginX = static_cast<int>(std::lround(kMargin * scale()));
         const std::wstring because = whyText(why, layout);
-        if (const std::optional<Target> t = targetIn(room, widest))
+        if (const std::optional<Target> t = targetIn(room, widest, maxBoxWidth))
             setTarget(*t, because);
         else
             hide(Hidden::NoRoom,
@@ -1182,8 +1176,10 @@ struct SearchBox::Impl {
     void refit()
     {
         Room room;
-        if (box.load() && taskbarLayout.measured && measureRoom(taskbarLayout, room) == Fit::Fits)
-            placeFrom(taskbarLayout, room, Why::Look, provisional && target ? target->form : Form::Box);
+        if (box.load() && taskbarLayout.measured && measureRoom(taskbarLayout, room) == Fit::Fits) {
+            const bool capped = provisional && target;
+            placeFrom(taskbarLayout, room, Why::Look, capped ? target->form : Form::Box, capped ? target->w : 0);
+        }
     }
 
     // The stretch the box goes in by `layout`, at an end of the taskbar out
@@ -1230,19 +1226,19 @@ struct SearchBox::Impl {
     }
 
     // The widest form a stretch `width` wide takes (no wider than the user's
-    // style, nor `widest`), and its width: the whole box at kMaxWidth, else
-    // the label form as wide as its label needs, else the icon alone, a
-    // taskbar button's slot.
-    std::optional<Shape> shapeFor(double width, const Room& room, Form widest)
+    // style, `widest`, or `maxBoxWidth`): the full box at kMaxWidth, else a
+    // compact typing box at kCompactBoxWidth, else the label form as wide as
+    // its label needs, else the icon alone, a taskbar button's slot.
+    std::optional<Shape> shapeFor(double width, const Room& room, Form widest, double maxBoxWidth)
     {
-        const auto may = [&](Form f) { return allowed(f) && static_cast<int>(f) >= static_cast<int>(widest); };
-        if (const double whole = std::lround(kMaxWidth * scale()); may(Form::Box) && width >= whole)
-            return Shape {Form::Box, whole};
-        if (const double label = labelForm(); may(Form::Label) && label > 0 && width >= label)
-            return Shape {Form::Label, label};
-        if (width + 2 * ends(Form::Icon, room) >= room.buttonW)
-            return Shape {Form::Icon, room.buttonW};
-        return std::nullopt;
+        const ShapeLimits limits {
+            .fullBox = static_cast<double>(std::lround(kMaxWidth * scale())),
+            .compactBox = static_cast<double>(std::lround(kCompactBoxWidth * scale())),
+            .label = labelForm(),
+            .button = room.buttonW,
+            .buttonGap = ends(Form::Icon, room),
+        };
+        return fitShape(width, drawnLook.style, widest, limits, maxBoxWidth);
     }
 
     // The icon form's plate, as high as the taskbar's own buttons: 4 DIPs off
@@ -1260,9 +1256,6 @@ struct SearchBox::Impl {
         const long full = std::lround(kButtonGlyph * scale());
         return static_cast<int>(barH > 0 ? std::min(full, std::lround(buttonPlate(barH, scale()) * 0.6)) : full);
     }
-
-    // The user's style lets the box take this form.
-    bool allowed(Form f) const { return static_cast<int>(f) >= static_cast<int>(drawnLook.style); }
 
     // How far into the gaps kept at a stretch's ends a form goes: a button's
     // slot right up to the icons and the ends, as the taskbar's own buttons
@@ -1292,11 +1285,11 @@ struct SearchBox::Impl {
     }
 
     // The box in `room`: at the stretch's end away from the icons, the
-    // widest form that fits (none wider than `widest`); none where not even
-    // the icon does.
-    std::optional<Target> targetIn(const Room& room, Form widest)
+    // widest form that fits (none wider than `widest` / `maxBoxWidth`); none
+    // where not even the icon does.
+    std::optional<Target> targetIn(const Room& room, Form widest, double maxBoxWidth = 0)
     {
-        const std::optional<Shape> shape = shapeFor(room.to - room.from, room, widest);
+        const std::optional<Shape> shape = shapeFor(room.to - room.from, room, widest, maxBoxWidth);
         if (!shape)
             return std::nullopt;
         const double into = ends(shape->form, room);
@@ -1403,13 +1396,22 @@ struct SearchBox::Impl {
     void setShown(Hidden why, const std::wstring& detail = {})
     {
         const bool on = why == Hidden::None;
+        bool clearedForm = false;
         if (!on) {
-            std::lock_guard lock(mutex);
-            shownRect.reset();
-            shownWide = false;
-            caretRect.reset();
-            wideShown = false;
+            {
+                std::lock_guard lock(mutex);
+                shownRect.reset();
+                shownForm.reset();
+                shownWide = false;
+                caretRect.reset();
+            }
+            if (formShown.has_value()) {
+                formShown.reset();
+                clearedForm = true;
+            }
         }
+        if (clearedForm)
+            call(callbacks.formChanged, std::optional<Form> {});
         if (hidden == why)
             return;
         hidden = why;
@@ -1427,15 +1429,17 @@ struct SearchBox::Impl {
         if (!target || hidden != Hidden::None)
             return;
         const RECT r = rectOf(*target);
-        const bool wide = target->form == Form::Box;
+        const Form f = target->form;
+        const bool wide = f == Form::Box;
         {
             std::lock_guard lock(mutex);
             shownRect = r;
+            shownForm = f;
             shownWide = wide;
         }
-        if (wide != wideShown) {
-            wideShown = wide;
-            call(callbacks.wideChanged, wide);
+        if (formShown != f) {
+            formShown = f;
+            call(callbacks.formChanged, formShown);
         }
     }
 
@@ -2358,6 +2362,12 @@ std::optional<RECT> SearchBox::rect() const
 {
     std::lock_guard lock(m_impl->mutex);
     return m_impl->shownRect;
+}
+
+std::optional<Form> SearchBox::form() const
+{
+    std::lock_guard lock(m_impl->mutex);
+    return m_impl->shownForm;
 }
 
 bool SearchBox::wide() const

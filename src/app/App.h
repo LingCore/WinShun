@@ -447,7 +447,7 @@ private:
     // Win顺's own search box on the taskbar ([Taskbar] SearchBox, taskbar::SearchBox).
     void applySearchBox();
     void setSearchBoxShown(taskbar::SearchBox::Hidden why); // it is on the taskbar (None), or why not
-    void setSearchBoxWide(bool wide); // the whole box, or its label or icon alone (SearchBox::wide)
+    void setSearchBoxForm(std::optional<taskbar::Form> form); // actual rendered form (none while hidden)
     void setClassicTaskbar(bool classic); // SearchBox::Callbacks::classicChanged
     void updateSearchBoxLook(); // placeholder, accent
     void searchBoxPressed(const taskbar::SearchBox::Press& press);
@@ -821,6 +821,7 @@ private:
     std::unique_ptr<taskbar::SearchBox> m_searchBox; // while [Taskbar] SearchBox is on (Windows 11)
     bool m_searchBoxShown = false; // ... and it is on the taskbar
     taskbar::SearchBox::Hidden m_searchBoxHidden = taskbar::SearchBox::Hidden::Pending; // ... or why not
+    std::optional<taskbar::Form> m_searchBoxForm; // ... actual rendered form (box | label | icon)
     bool m_classicTaskbar = false; // ... measured on Windows 10's taskbar (StartAllBack, ExplorerPatcher)
     // The launcher is open over the box: typing in it when the box is wide
     // (Launcher::inTaskbarBox), else with its own field, the box looking open.

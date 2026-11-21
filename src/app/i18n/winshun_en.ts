@@ -5802,6 +5802,30 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Going onto the taskbar…</translation>
     </message>
     <message>
+        <source>已放到托盘图标左边，点它直接打字</source>
+        <translation>Placed left of the tray icons; click it to type</translation>
+    </message>
+    <message>
+        <source>已放到任务栏上，点它直接打字</source>
+        <translation>Placed on the taskbar; click it to type</translation>
+    </message>
+    <message>
+        <source>已放到托盘图标左边，点它打开搜索</source>
+        <translation>Placed left of the tray icons; click it to search</translation>
+    </message>
+    <message>
+        <source>已放到任务栏上，点它打开搜索</source>
+        <translation>Placed on the taskbar; click it to search</translation>
+    </message>
+    <message>
+        <source>当前托盘旁空隙不够，已自动收窄为“%1”；可改选“自动”位置或减少任务栏图标</source>
+        <translation>Not enough space beside the tray, so it narrowed to “%1”; switch Position to Auto or unpin a few taskbar icons</translation>
+    </message>
+    <message>
+        <source>当前任务栏空隙不够，已自动收窄为“%1”；减少几个任务栏图标后会自动展开</source>
+        <translation>Not enough space on the taskbar, so it narrowed to “%1”; unpin a few icons to let it widen</translation>
+    </message>
+    <message>
         <source>搜索框样式</source>
         <translation>Search box style</translation>
     </message>

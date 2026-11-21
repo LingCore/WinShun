@@ -4921,7 +4921,13 @@ Window {
                             return qsTr("任务栏上不放 Win顺，用快捷键打开")
                         switch (window.editor.searchBoxHidden) {
                         case "":
-                            return qsTr("图标居中时在任务栏最左边，靠左时在托盘图标左边；点它直接打字")
+                            if (window.editor.searchBoxForm === "box")
+                                return window.editor.taskbarSearchBoxSide === "tray"
+                                    ? qsTr("已放到托盘图标左边，点它直接打字")
+                                    : qsTr("已放到任务栏上，点它直接打字")
+                            return window.editor.taskbarSearchBoxSide === "tray"
+                                ? qsTr("已放到托盘图标左边，点它打开搜索")
+                                : qsTr("已放到任务栏上，点它打开搜索")
                         case "noroom":
                             return qsTr("任务栏太挤，放不下：取消固定几个图标，或改用“固定图标”")
                         case "unreadable":
@@ -4969,20 +4975,32 @@ Window {
                     // Under 搜索框 chosen above: how wide it may be, as
                     // Windows' own search has it (Settings › Taskbar ›
                     // Search). Narrower ones still where that does not fit.
+                    readonly property var styles: ["box", "label", "icon"]
+                    readonly property int chosenRank: Math.max(0, styles.indexOf(window.editor.taskbarSearchBoxStyle))
+                    readonly property int actualRank: styles.indexOf(window.editor.searchBoxForm)
+                    readonly property bool narrowed: window.editor.searchBoxShown && actualRank > chosenRank
                     shown: taskbarButtonRow.boxes && taskbarButtonRow.boxOn
                     title: qsTr("搜索框样式")
                     keywords: qsTr("样式;仅图标;只显示图标;图标和标签;标签;放大镜;按钮;搜索框;icon;label").split(";")
-                    description: window.editor.taskbarSearchBoxStyle === "icon"
-                                 ? qsTr("一个搜索图标，像任务栏上的按钮")
-                                 : window.editor.taskbarSearchBoxStyle === "label"
-                                   ? qsTr("图标加“搜索”两个字，点它打开搜索")
-                                   : qsTr("点它直接打字；任务栏挤时自动变窄")
+                    description: {
+                        if (narrowed) {
+                            const shownName = window.editor.searchBoxForm === "icon" ? qsTr("仅图标") : qsTr("图标和标签")
+                            return window.editor.taskbarSearchBoxSide === "tray"
+                                ? qsTr("当前托盘旁空隙不够，已自动收窄为“%1”；可改选“自动”位置或减少任务栏图标").arg(shownName)
+                                : qsTr("当前任务栏空隙不够，已自动收窄为“%1”；减少几个任务栏图标后会自动展开").arg(shownName)
+                        }
+                        return window.editor.taskbarSearchBoxStyle === "icon"
+                               ? qsTr("一个搜索图标，像任务栏上的按钮")
+                               : window.editor.taskbarSearchBoxStyle === "label"
+                                 ? qsTr("图标加“搜索”两个字，点它打开搜索")
+                                 : qsTr("点它直接打字；任务栏挤时自动变窄")
+                    }
 
                     ScopeTabs {
-                        readonly property var styles: ["box", "label", "icon"]
+                        dpr: window.dpr
                         labels: [qsTr("搜索框"), qsTr("图标和标签"), qsTr("仅图标")]
-                        current: Math.max(0, styles.indexOf(window.editor.taskbarSearchBoxStyle))
-                        onActivated: (index) => window.editor.taskbarSearchBoxStyle = styles[index]
+                        current: taskbarStyleRow.chosenRank
+                        onActivated: (index) => window.editor.taskbarSearchBoxStyle = taskbarStyleRow.styles[index]
                     }
                 }
 
@@ -5001,6 +5019,7 @@ Window {
                                  : qsTr("任务栏图标居中时在任务栏最左边，靠左时在托盘图标左边")
 
                     ScopeTabs {
+                        dpr: window.dpr
                         readonly property var sides: ["auto", "tray"]
                         labels: [qsTr("自动"), qsTr("托盘旁")]
                         current: Math.max(0, sides.indexOf(window.editor.taskbarSearchBoxSide))

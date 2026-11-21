@@ -2048,6 +2048,14 @@ void SettingsEditor::setSearchBoxShown(const QString& hidden)
     emit searchBoxShownChanged();
 }
 
+void SettingsEditor::setSearchBoxForm(const QString& form)
+{
+    if (m_searchBoxForm == form)
+        return;
+    m_searchBoxForm = form;
+    emit searchBoxFormChanged();
+}
+
 void SettingsEditor::setClassicTaskbar(bool classic)
 {
     if (m_classicTaskbar == classic)
