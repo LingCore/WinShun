@@ -6,6 +6,7 @@
 #include <QDebug>
 #include <QGuiApplication>
 #include <QJsonObject>
+#include <QScopeGuard>
 #include <QWindow>
 
 #include <algorithm>
@@ -89,12 +90,19 @@ IdleTrim::IdleTrim(std::function<const char*()> busy, std::function<bool()> up, 
     connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
         if (state == Qt::ApplicationActive) {
             m_heldAfterResume = false; // used: emptied a while after, as ever
+            m_worker.request_stop(); // do not keep evicting pages while a window wakes up
         } else {
             m_inactive.restart();
             m_timer.start(m_afterUseMs);
         }
     });
     m_timer.start(m_afterUseMs);
+}
+
+IdleTrim::~IdleTrim()
+{
+    m_timer.stop();
+    m_worker.request_stop();
 }
 
 bool IdleTrim::inUse() const
@@ -139,12 +147,14 @@ void IdleTrim::startAfter(int ms)
 void IdleTrim::used()
 {
     m_heldAfterResume = false;
+    m_worker.request_stop();
     m_inactive.restart();
     m_timer.start(m_afterUseMs);
 }
 
 void IdleTrim::resumed()
 {
+    m_worker.request_stop();
     takeSlept(); // told of: the next check does not find that sleep again
     if (std::exchange(m_heldAfterResume, true))
         return;
@@ -213,6 +223,10 @@ void IdleTrim::check()
         return;
     }
     m_waitingFor = nullptr;
+    if (m_trimming.load(std::memory_order_acquire)) {
+        m_timer.start(kRecheckMs);
+        return;
+    }
     if (const WorkingSet now = privateWorkingSet(); now.bytes > m_floor.load() + kTrimAbove) {
         const SIZE_T bytes = now.bytes;
         PageSet keep = m_keep ? m_keep() : PageSet();
@@ -223,17 +237,28 @@ void IdleTrim::check()
             details.insert(u"keep_mb"_s, static_cast<qint64>(keep.bytes() >> 20));
         journal(details, false);
         // ~10 ms per 100 MB: not on the GUI thread, so a hotkey pressed
-        // meanwhile is not held up.
+        // meanwhile is not held up, and stoppable if the user wakes the app
+        // mid-pass.
         m_trimmed = true;
-        std::thread([this, bytes, keep = std::move(keep)] {
-            if (keep.empty()) // all of it, in one call
+        m_trimming.store(true, std::memory_order_release);
+        m_worker = std::jthread([this, bytes, keep = std::move(keep)](std::stop_token stop) {
+            const auto finished = qScopeGuard([this] { m_trimming.store(false, std::memory_order_release); });
+            if (stop.stop_requested())
+                return;
+            if (keep.empty()) { // all of it, in one call
                 ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
-            else
-                PageSet::resident().without(keep).release();
+            } else {
+                const PageSet cold = PageSet::resident().without(keep);
+                if (stop.stop_requested())
+                    return;
+                cold.release(stop);
+            }
+            if (stop.stop_requested())
+                return; // woken mid-trim: do not record the active working set as m_floor
             const SIZE_T after = privateWorkingSet().bytes;
             m_floor = keep.empty() || after == SIZE_MAX ? 0 : after;
             gaveBack(static_cast<qint64>((bytes > after ? bytes - after : 0) / (1024 * 1024)));
-        }).detach();
+        });
     }
     m_timer.start(kRecheckMs);
 }

@@ -23,6 +23,7 @@
 #include "SystemCatalog.h"
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
+#include "platform/ThreadQos.h"
 #include "platform/WinV.h"
 
 #include <QClipboard>
@@ -470,6 +471,7 @@ int main(int argc, char* argv[])
     int code = 1;
     std::optional<QStringList> restart;
     ws::App::Elevation elevation = ws::App::Elevation::Same;
+    ws::qos::keepCurrentThreadResponsive(); // resident tray GUI thread: stay off EcoQoS after long idle
     {
         ws::App application;
         ws::App::StartOptions options;

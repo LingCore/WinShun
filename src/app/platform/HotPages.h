@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <mutex>
 #include <span>
+#include <stop_token>
 #include <utility>
 #include <vector>
 
@@ -42,10 +43,14 @@ public:
     bool empty() const noexcept { return m_ranges.empty(); }
     friend bool operator==(const PageSet& a, const PageSet& b) noexcept { return a.m_ranges == b.m_ranges; }
 
+    // The subset of ranges that are still committed and readable in this process.
+    PageSet committed() const;
+
     // Out of the working set, each keeping what it holds: to the standby
     // list, counted as available memory, and back by a soft fault when next
     // used. Pages locked in memory (VirtualLock) stay, locked. ~10 ms per 100 MB.
-    void release() const;
+    // Stops between batches when `stop` is requested (e.g. user woke the app).
+    void release(std::stop_token stop = {}) const;
     // Has Windows read back those of them it wrote to the disk, in large
     // reads side by side (PrefetchVirtualMemory), instead of one page fault
     // at a time. Those freed since are left out; those in memory cost next
@@ -95,14 +100,24 @@ public:
     // `used`: in the working set as the window was seen, the first time
     // since the memory was given back, and not among those kept. Any thread.
     void learn(const PageSet& used);
+    // Drop tracked pages no longer in `live` (pure; for tests and pruning).
+    // If the baseline `m_first` lost over half its bytes, re-anchors it to
+    // the surviving tracked pages so long-uptime churn does not reset to an
+    // obsolete snapshot.
+    void prune(const PageSet& live);
+    // Drop tracked pages that have since been freed or decommitted in this process.
+    void pruneUncommitted();
     PageSet pages() const;
     std::size_t bytes() const;
 
 private:
+    void dropLocked(const PageSet& gone);
+
     mutable std::mutex m_mutex;
     PageSet m_pages;
     PageSet m_once; // used at the last such opening, for the first time
-    PageSet m_first; // m_pages as first taken
+    PageSet m_first; // m_pages as first taken (re-anchored if largely freed)
+    std::size_t m_firstBytes = 0; // bytes of m_first when it was established
     bool m_whole = true; // all that was used then, not just kMostBytes of it
 };
 

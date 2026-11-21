@@ -489,8 +489,13 @@ void CaptureApp::apply()
                 ::DwmFlush();
         };
         callbacks.shown = [this] {
-            if (std::exchange(m_recordPages, false))
-                std::thread([pages = m_hotPages] { pages->learn(PageSet::resident().without(pages->pages())); }).detach();
+            if (std::exchange(m_recordPages, false)) {
+                std::thread([pages = m_hotPages] {
+                    const PageSet resident = PageSet::resident();
+                    pages->pruneUncommitted();
+                    pages->learn(resident.without(pages->pages()));
+                }).detach();
+            }
         };
         callbacks.pins = [this] { return &pins(); };
         callbacks.smart = smartHooks();

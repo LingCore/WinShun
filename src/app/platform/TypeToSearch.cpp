@@ -8,6 +8,7 @@
 #include "PasteOffer.h"
 #include "QtKeys.h"
 #include "SearchTyping.h"
+#include "ThreadQos.h"
 
 #include <commctrl.h>
 #include <dwmapi.h>
@@ -256,9 +257,7 @@ TypeToSearch::TypeToSearch(Surfaces surfaces, Callbacks callbacks)
         // it: at once, and not slowed down when the system saves power
         // (Windows drops a hook that keeps it waiting too long).
         ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
-        THREAD_POWER_THROTTLING_STATE throttling {THREAD_POWER_THROTTLING_CURRENT_VERSION,
-            THREAD_POWER_THROTTLING_EXECUTION_SPEED, 0};
-        ::SetThreadInformation(::GetCurrentThread(), ThreadPowerThrottling, &throttling, sizeof throttling);
+        qos::keepCurrentThreadResponsive();
         const HWINEVENTHOOK foreground = ::SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
             &TypeToSearch::foregroundProc, 0, 0, WINEVENT_OUTOFCONTEXT);
         ready.count_down();
