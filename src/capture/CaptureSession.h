@@ -508,6 +508,7 @@ private:
     QImage pictureOf(int screen) const; // a monitor's frozen picture, or the desktop's
     void updateHover(int screen, QPoint p);
     void updateCursor(int screen, QPoint p);
+    void refreshCursor();
     void publish(); // the state onto the screens
     void finish(Action action);
     void recallSelection(bool previous); // R: older; Shift+R: newer

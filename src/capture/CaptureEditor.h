@@ -257,6 +257,7 @@ public:
     Q_INVOKABLE void mouseMoved(qreal x, qreal y, int modifiers);
     Q_INVOKABLE void mouseReleased(qreal x, qreal y, int button);
     Q_INVOKABLE void mouseDoubleClicked(qreal x, qreal y);
+    Q_INVOKABLE void mouseLeft();
     Q_INVOKABLE void wheeled(qreal x, qreal y, int angleDeltaY, int angleDeltaX, int modifiers);
     Q_INVOKABLE bool keyPressed(int key, int modifiers);
     // The save and pin keys (#187); the text box asks the model, which gets them too.
@@ -327,6 +328,7 @@ private:
     QPoint imageAt(QPoint viewportDevice) const;
     void setCursor(int shape);
     void hoverAt(QPoint image);
+    void refreshCursor();
     QByteArray packProject();
     QRect canvasOnScreen() const;
     void end();
@@ -387,6 +389,7 @@ private:
     QPoint m_panOrigin;
     int m_wheelZoom = 0; // wheel not yet a whole notch (touchpads)
     int m_cursor = Qt::ArrowCursor;
+    std::optional<QPoint> m_hoverImage;
     QElapsedTimer m_clock;
     QString m_notice;
     QTimer m_noticeTimer;

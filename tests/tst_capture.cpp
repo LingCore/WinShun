@@ -3273,6 +3273,37 @@ private slots:
         rig.begin();
         QCOMPARE(rig.session.msSinceRelease(), qint64(-1));
     }
+
+    void toolToggleAndGestureRefreshCursor()
+    {
+        Rig rig;
+        rig.begin();
+        rig.drag({100, 100}, {499, 399});
+        AnnotationModel* annot = rig.session.annotation();
+        QVERIFY(annot);
+        // Hover inside the selection: cursor is SizeAllCursor (selection move).
+        rig.session.pointerMove(0, {250, 250});
+        QCOMPARE(rig.screen.cursorShape(), int(Qt::SizeAllCursor));
+        // Enabling Rect tool via key '1' immediately refreshes cursorShape to CrossCursor without mouse motion.
+        QVERIFY(rig.session.key(Qt::Key_1, Qt::NoModifier));
+        QCOMPARE(rig.screen.cursorShape(), int(Qt::CrossCursor));
+        // Draw a rectangle, then drag its edge body (clear of the midpoint resize handle) right onto
+        // the selection's left edge: active annotation gesture keeps SizeAllCursor instead of flickering.
+        rig.drag({120, 150}, {220, 220});
+        const QPoint edge(120, 165);
+        rig.session.pointerMove(0, edge);
+        QCOMPARE(rig.screen.cursorShape(), int(Qt::SizeAllCursor));
+        rig.session.pointerPress(0, edge, Qt::LeftButton);
+        rig.session.pointerMove(0, {100, 165}); // directly on the selection's left border!
+        QCOMPARE(rig.screen.cursorShape(), int(Qt::SizeAllCursor));
+        rig.session.pointerRelease(0, {100, 165}, Qt::LeftButton);
+        // Turning off Rect tool via Esc refreshes cursor immediately.
+        rig.session.pointerMove(0, {350, 300});
+        QCOMPARE(rig.screen.cursorShape(), int(Qt::CrossCursor));
+        QVERIFY(rig.session.key(Qt::Key_Escape, Qt::NoModifier));
+        QCOMPARE(annot->tool(), -1);
+        QCOMPARE(rig.screen.cursorShape(), int(Qt::SizeAllCursor));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestCapture)

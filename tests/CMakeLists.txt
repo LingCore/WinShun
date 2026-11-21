@@ -854,6 +854,8 @@ qt_add_executable(tst_annotmodel tst_annotmodel.cpp
     ${PROJECT_SOURCE_DIR}/src/capture/AnnotationModel.cpp
     ${PROJECT_SOURCE_DIR}/src/capture/AnnotationCanvas.cpp)
 target_link_libraries(tst_annotmodel PRIVATE wscapture Qt6::Qml Qt6::Quick Qt6::Test)
+target_compile_definitions(tst_annotmodel PRIVATE
+    WINSHUN_CAPTURE_QML="${PROJECT_SOURCE_DIR}/src/capture-plugin/qml")
 # Qt6::Qml only for QML_ELEMENT's macros: no QML imports to look for.
 set_target_properties(tst_annotmodel PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_annotmodel COMMAND tst_annotmodel)

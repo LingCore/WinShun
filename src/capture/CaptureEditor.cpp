@@ -83,6 +83,9 @@ CaptureEditor::CaptureEditor(QObject* parent)
         if (!m_model.gestureActive())
             m_pressed = false;
     });
+    for (const auto change : {&AnnotationModel::toolChanged, &AnnotationModel::gestureChanged,
+             &AnnotationModel::editingChanged, &AnnotationModel::selectionChanged, &AnnotationModel::pickingChanged})
+        connect(&m_model, change, this, &CaptureEditor::refreshCursor);
     setMetrics(m_windowLogical, m_dpr);
 }
 
@@ -705,6 +708,7 @@ QPoint CaptureEditor::imageAt(QPoint viewportDevice) const
 
 void CaptureEditor::hoverAt(QPoint image)
 {
+    m_hoverImage = image;
     if (m_panning) {
         setCursor(Qt::ClosedHandCursor);
         return;
@@ -716,6 +720,23 @@ void CaptureEditor::hoverAt(QPoint image)
     m_model.pointerAt(image);
     const int shape = m_model.cursorAt(image);
     setCursor(shape >= 0 ? shape : Qt::ArrowCursor);
+}
+
+void CaptureEditor::refreshCursor()
+{
+    if (!m_open)
+        return;
+    if (const QPoint p = m_model.pointer(); p.x() >= 0)
+        hoverAt(p);
+    else if (m_hoverImage)
+        hoverAt(*m_hoverImage);
+}
+
+void CaptureEditor::mouseLeft()
+{
+    m_hoverImage.reset();
+    if (m_open)
+        m_model.pointerAt(QPoint(-1, -1));
 }
 
 void CaptureEditor::mousePressed(qreal x, qreal y, int button, int modifiers)
@@ -800,7 +821,12 @@ void CaptureEditor::spaceHeld(bool held)
     m_space = held;
     if (!held && m_panning)
         m_panning = false;
-    setCursor(held ? Qt::OpenHandCursor : Qt::ArrowCursor);
+    if (held)
+        setCursor(Qt::OpenHandCursor);
+    else if (m_hoverImage)
+        hoverAt(*m_hoverImage);
+    else
+        setCursor(Qt::ArrowCursor);
 }
 
 // The plain wheel scrolls (a picture of 30000 px has to be scrolled; the
@@ -1208,6 +1234,7 @@ void CaptureEditor::end()
         m_model.end();
         m_open = false;
         m_pressed = m_panning = m_space = false;
+        m_hoverImage.reset();
         m_settle.stop();
         if (std::exchange(m_revealing, false)) { // closed before it was shown: hideWindow() uncloaks a shown one
             disconnect(m_revealConnection);

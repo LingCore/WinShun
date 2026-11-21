@@ -146,18 +146,38 @@ Item {
 
         readonly property var ed: over.annot ? over.annot.editing : ({})
         readonly property bool active: over.here && ed.fontPx !== undefined && over.owns(ed.x, ed.y)
-        // A new edit: another text, or the same one again after it ended.
-        readonly property string editKey: active ? ed.id + "," + ed.x + "," + ed.y : ""
+        readonly property bool isNumber: ed.number === true
+        readonly property bool borderHot: ed.borderHot === true
+        // A new edit: another text, or the same one again after it ended. Moving the
+        // live box changes x/y while keeping the same token, caret and IME session.
+        readonly property string editKey: active ? String(ed.token ?? "") : ""
         // Image px, as the compositor measures the text (annot::layoutText).
         readonly property real descent: ed.descent !== undefined ? ed.descent : (ed.pitch ?? 0) - (ed.ascent ?? 0)
         readonly property int lines: Math.max(1, edit.lineCount)
         readonly property int inkWidth: Math.ceil(edit.contentWidth / over.sx - 0.01)
+        readonly property real minEditWidth: active ? Math.max(1, Math.round(over.px(Math.max(1, (ed.fontPx ?? 18) / 2)))) : 0
+        readonly property real minEditHeight: active ? Math.max(1, Math.round(over.py((ed.ascent ?? 0) + descent))) : 0
+        readonly property real contentW: edit.width
+        readonly property real contentH: Math.max(edit.height,
+                                                  over.py((ed.ascent ?? 0) + descent + (lines - 1) * (ed.pitch ?? 0)))
+        readonly property real framePadX: active ? (ed.boxed === true ? over.px(ed.pad ?? 0) + 4 : over.px(ed.stroke ?? 0) + 6) : 0
+        readonly property real framePadY: active ? (ed.boxed === true ? over.py(ed.pad ?? 0) + 4 : over.py(ed.stroke ?? 0) + 6) : 0
+        readonly property real frameX: Math.floor((over.px(ed.x ?? 0) - framePadX) / over.unitX) * over.unitX
+        readonly property real frameY: Math.floor((over.py(ed.y ?? 0) - framePadY) / over.unitY) * over.unitY
+        readonly property real frameR: Math.ceil((over.px(ed.x ?? 0) + contentW + framePadX) / over.unitX) * over.unitX
+        readonly property real frameB: Math.ceil((over.py(ed.y ?? 0) + contentH + framePadY) / over.unitY) * over.unitY
+
+        function syncMeasured() {
+            if (active && !isNumber && over.annot && over.sx > 0 && over.sy > 0)
+                over.annot.setEditingContentSize(Math.ceil(contentW / over.sx), Math.ceil(contentH / over.sy))
+        }
 
         function start() {
             // Set once: the model's map changes again while typing (a style
-            // change on the panel), and setting the words again would move
-            // the caret and drop what the input method is composing.
+            // change on the panel, or dragging the box), and setting the words
+            // again would move the caret and drop what the input method is composing.
             edit.text = ed.text ?? ""
+            syncMeasured()
             Qt.callLater(textBox.focusCaret) // once the font and the layout follow the new map
         }
 
@@ -166,6 +186,7 @@ Item {
         function focusCaret() {
             if (!active)
                 return
+            syncMeasured()
             const w = over.Window.window
             if (w)
                 w.requestActivate()
@@ -184,6 +205,41 @@ Item {
         anchors.fill: parent
         visible: active
         onEditKeyChanged: editKey.length > 0 ? start() : end()
+        onContentWChanged: syncMeasured()
+        onContentHChanged: syncMeasured()
+
+        Connections {
+            target: over.annot
+            function onGestureChanged() {
+                // Keep typing seamless after dragging the live edit frame border.
+                if (over.annot && !over.annot.gestureActive && textBox.active && !edit.activeFocus)
+                    edit.forceActiveFocus()
+            }
+        }
+
+        Rectangle { // subtle outer halo so the edit frame stays legible on dark, light and accent backgrounds
+            visible: textBox.active && !textBox.isNumber
+            x: textBox.frameX - over.unitX
+            y: textBox.frameY - over.unitY
+            width: (textBox.frameR - textBox.frameX) + 2 * over.unitX
+            height: (textBox.frameB - textBox.frameY) + 2 * over.unitY
+            radius: 2
+            color: "transparent"
+            border.width: over.unitX
+            border.color: Qt.rgba(1, 1, 1, 0.55)
+        }
+
+        Rectangle { // draggable edit frame around the live text box
+            visible: textBox.active && !textBox.isNumber
+            x: textBox.frameX
+            y: textBox.frameY
+            width: textBox.frameR - textBox.frameX
+            height: textBox.frameB - textBox.frameY
+            radius: 2
+            color: textBox.borderHot ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.08) : "transparent"
+            border.width: (textBox.borderHot ? Math.max(2, Math.round(1.5 * over.dpr)) : 1) * over.unitX
+            border.color: Theme.accent
+        }
 
         Rectangle { // the box behind boxed words, as the compositor will draw it
             visible: textBox.ed.boxed === true
@@ -234,9 +290,12 @@ Item {
             // from the model's pitch by a fraction of a pixel per line.
             x: over.px(textBox.ed.x ?? 0)
             y: over.py((textBox.ed.y ?? 0) + (textBox.ed.ascent ?? 0)) - metrics.ascent
+            width: Math.max(Math.ceil(contentWidth), textBox.minEditWidth)
+            height: Math.max(Math.ceil(contentHeight), textBox.minEditHeight)
             textFormat: TextEdit.PlainText
             renderType: TextEdit.NativeRendering
             wrapMode: TextEdit.NoWrap
+            selectByMouse: true
             font.family: over.annot ? over.annot.fontFamily : ""
             // In points: font.pixelSize takes whole logical px only (3.8).
             // Not followed while nothing is typed: at each zoom of the editing window the
@@ -252,6 +311,20 @@ Item {
             // them (a press outside, another tool, the save or pin key, the hotkey).
             onTextChanged: if (textBox.active && over.annot) over.annot.setEditingText(text)
 
+            HoverHandler { // TextEdit eats hover from the canvas MouseArea beneath: keep pointer synced inside it
+                function syncPointer() {
+                    if (!over.annot)
+                        return
+                    if (hovered && textBox.active && !textBox.isNumber && over.sx > 0 && over.sy > 0)
+                        over.annot.setEditingPointer(Qt.point(Math.round((edit.x + point.position.x) / over.sx),
+                                                              Math.round((edit.y + point.position.y) / over.sy)))
+                    else
+                        over.annot.setEditingPointer(Qt.point(-1, -1))
+                }
+                onHoveredChanged: syncPointer()
+                onPointChanged: if (hovered) syncPointer()
+            }
+
             Keys.onPressed: (event) => {
                 const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
                 const shift = (event.modifiers & Qt.ShiftModifier) !== 0
@@ -265,7 +338,10 @@ Item {
                 } else if (event.key === Qt.Key_Escape) {
                     if (edit.inputMethodComposing)
                         return // the input method's: it drops the pinyin
-                    over.annot.commitText(edit.text)
+                    if (over.annot.gestureActive)
+                        over.annot.cancelGesture()
+                    else
+                        over.annot.commitText(edit.text)
                     event.accepted = true
                 } else if (over.annot.isFinishKey(event.key, event.modifiers)) {
                     const key = event.key

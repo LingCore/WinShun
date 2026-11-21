@@ -1105,6 +1105,56 @@ private slots:
         rig.key('Q');
         QCOMPARE(rig.closes, 1);
     }
+
+    void textToolLiveBorderAndCursorRefresh()
+    {
+        Rig rig(QSize(400, 300), false); // 1000 x 700 at 150 %, empty document
+        QVERIFY(rig.editor.openHistory(1));
+        AnnotationModel* m = rig.editor.model();
+        const int textTool = rig.toolIndex(Kind::Text);
+        m->setTool(textTool);
+        const auto hover = [&](QPoint pixel) {
+            const QPointF p = rig.at(pixel);
+            rig.editor.mouseMoved(p.x(), p.y(), 0);
+        };
+
+        // Click to open a new text box and type.
+        const QPoint start(120, 100);
+        rig.click(start);
+        QVERIFY(m->editingText());
+        m->setEditingText(u"编辑窗口文字"_s);
+
+        // Hover the live edit border -> SizeAllCursor immediately, drag moves without committing.
+        const QPoint border(start.x() - 6, start.y() + 8);
+        hover(border);
+        QCOMPARE(rig.editor.cursorShape(), int(Qt::SizeAllCursor));
+        QVERIFY(m->editing().value(u"borderHot"_s).toBool());
+        rig.drag(border, border + QPoint(45, 25));
+        QVERIFY(m->editingText());
+        QCOMPARE(m->editing().value(u"x"_s).toInt(), start.x() + 45);
+        QCOMPARE(m->editing().value(u"y"_s).toInt(), start.y() + 25);
+
+        // Esc commits while pointer sits inside the text -> cursorShape refreshes immediately to SizeAllCursor.
+        const QPoint inside(start.x() + 55, start.y() + 33);
+        hover(inside);
+        QCOMPARE(rig.editor.cursorShape(), int(Qt::IBeamCursor));
+        QVERIFY(rig.editor.keyPressed(Qt::Key_Escape, 0));
+        QVERIFY(!m->editingText());
+        QCOMPARE(m->itemCount(), 1);
+        QCOMPARE(rig.editor.cursorShape(), int(Qt::SizeAllCursor));
+
+        // Add a second text so the first becomes unselected; hovering & dragging the unselected
+        // first text while Text tool is active shows SizeAllCursor and moves it cleanly.
+        rig.click(QPoint(120, 220));
+        m->setEditingText(u"第二行"_s);
+        QVERIFY(rig.editor.keyPressed(Qt::Key_Escape, 0));
+        QCOMPARE(m->itemCount(), 2);
+        hover(inside);
+        QCOMPARE(rig.editor.cursorShape(), int(Qt::SizeAllCursor));
+        rig.drag(inside, inside + QPoint(-20, 15));
+        QCOMPARE(m->document().items[0].points[0], QPointF(start.x() + 25, start.y() + 40));
+        QCOMPARE(m->tool(), textTool);
+    }
 };
 
 int main(int argc, char** argv)

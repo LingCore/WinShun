@@ -181,8 +181,12 @@ public:
     // style, as one undo step. Reads the text first when that has not been done.
     Q_INVOKABLE void smartRedact();
     // Where the pointer is (image px; (-1, -1) for nowhere), no button held:
-    // the hosts tell it with every move, for textTarget.
+    // the hosts tell it with every move, for textTarget and edit border hover.
     void pointerAt(QPoint p);
+    // Where the pointer is inside the live TextEdit ((-1, -1) when outside it):
+    // tracked separately from the canvas MouseArea so Enter/Exit order never drops it.
+    Q_INVOKABLE void setEditingPointer(QPoint p);
+    QPoint pointer() const;
     QRectF textTarget() const;
     bool textTargetHidden() const;
     // The composed picture of the selection (annot::Compositor::exportImage)
@@ -323,7 +327,7 @@ public:
     bool escape();
     bool editingText() const { return m_editing.has_value(); }
     bool editingNumber() const { return m_numberEdit.has_value(); }
-    void cancelGesture();
+    Q_INVOKABLE void cancelGesture();
     // Commits a text under way (for Ctrl+S / F3 / Enter, and the hotkey).
     void commitPending();
 
@@ -337,6 +341,9 @@ public:
     // those come from the session, not from the box. No signal: the box
     // has the words already (editing.text follows them).
     Q_INVOKABLE void setEditingText(const QString& text);
+    // The live TextEdit's measured content size (image px), keeping the
+    // draggable edit border aligned with Qt's actual multi-line / IME layout.
+    Q_INVOKABLE void setEditingContentSize(int width, int height);
     // A change on the panel: any of color ("#RRGGBB"), width, fill, size,
     // bold, boxed, stroke (0: none; logical px), strokeColor ("#RRGGBB", or "auto"), mode, cell (logical units). Goes to the selected object
     // when there is one, and is remembered as the tool's style either way.
@@ -384,7 +391,7 @@ signals:
     void notice(const QString& text);
 
 private:
-    enum class Gesture { None, Draw, Move, Reshape, Crop, Marquee };
+    enum class Gesture { None, Draw, Move, MoveEditing, Reshape, Crop, Marquee };
     // What a style change goes to (3.5): the text being typed, else the
     // selected object, else the tool.
     struct Target {
@@ -396,11 +403,13 @@ private:
     };
     struct Editing {
         quint32 id = 0; // 0: a new text, in the document only once committed
+        int token = 0; // monotonic per edit session: dragging `at` keeps the same TextEdit session
         QPoint at; // the text's top left
         QString text; // the words as typed so far
         QPoint click {-1, -1};
         annot::Style style; // a new text's (an old one keeps its own in the document)
         bool words = false; // the words of the Number `id` (in the document), not a Text
+        QSize measured; // live TextEdit content size in image px when attached; empty falls back to textMetrics
     };
     // The gesture's command and where it began, the wheel's sum, the clock
     // the undo merges go by, what the change signals were last sent for.
@@ -426,11 +435,16 @@ private:
     std::optional<Target> styleTarget() const;
     annot::Style targetStyle(const Target& target) const;
     annot::Style editingStyle() const;
-    QRect editingBox() const;
+    QRect editingContentRect() const;
+    QRect editingFrameRect() const;
+    QRect editingGrabRect() const;
+    bool editingBorderAt(QPoint p) const;
+    bool editingBorderHot() const;
     annot::Document committed() const;
     std::unique_ptr<annot::Command> textCommand(const annot::Document& doc, const QString& text) const;
     void startDraw(annot::Kind kind, QPoint p, Qt::KeyboardModifiers modifiers);
     void startMove(const QList<quint32>& ids, QPoint p, Qt::KeyboardModifiers modifiers);
+    void startMoveEditing(QPoint p, Qt::KeyboardModifiers modifiers);
     void startCrop(int handle, QPoint p);
     void startMarquee(QPoint p, Qt::KeyboardModifiers modifiers);
     void startReshape(int handle, QPoint p, Qt::KeyboardModifiers modifiers);

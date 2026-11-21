@@ -131,6 +131,8 @@ Window {
             onPressed: (m) => window.editor.mousePressed(view.x + m.x, view.y + m.y, m.button, m.modifiers)
             onPositionChanged: (m) => window.editor.mouseMoved(view.x + m.x, view.y + m.y, m.modifiers)
             onReleased: (m) => window.editor.mouseReleased(view.x + m.x, view.y + m.y, m.button)
+            onEntered: window.editor.mouseMoved(view.x + mouseX, view.y + mouseY, Qt.NoModifier)
+            onExited: window.editor.mouseLeft()
             onDoubleClicked: (m) => {
                 if (m.button === Qt.LeftButton)
                     window.editor.mouseDoubleClicked(view.x + m.x, view.y + m.y)

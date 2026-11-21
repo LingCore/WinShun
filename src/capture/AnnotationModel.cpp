@@ -375,6 +375,9 @@ struct AnnotationModel::Private {
     std::unique_ptr<annot::AddItems> placing;
     bool reopenWords = false; // Move: the number pressed was the only one selected already
     QList<quint32> moveIds; // Move: what moves together
+    int editToken = 0; // monotonic per live text edit session
+    QPoint editOrigin; // MoveEditing: editing.at as the press found it
+    QPoint editPointer {-1, -1}; // pointer inside the live TextEdit, independent of canvas MouseArea exit order
     QRect cropStart; // Crop: the crop as the press found it
     QList<quint32> marqueeBase; // Marquee: the selected ones before it (Shift keeps them)
     QRect marqueeBox; // Marquee: the pixels spanned from the press to the mouse
@@ -496,6 +499,9 @@ void AnnotationModel::setView(qreal devicePerLogical, qreal zoom)
 {
     m_devicePerLogical = devicePerLogical > 0 ? devicePerLogical : 0;
     m_zoom = zoom > 0 ? zoom : 1;
+    if (m_editing && !m_editing->words && d->smart.pointer.x() >= 0
+        && editingBorderHot() != d->shown.editing.value(u"borderHot"_s).toBool())
+        sync();
 }
 
 bool AnnotationModel::modified() const
@@ -546,6 +552,7 @@ void AnnotationModel::reset()
     m_tool = -1;
     m_picked.clear();
     m_editing.reset();
+    d->editPointer = QPoint(-1, -1);
     m_numberEdit.reset();
     m_editor = false;
     m_loaded = annot::Document {};
@@ -868,11 +875,11 @@ QVariantMap AnnotationModel::editing() const
         const annot::TextMetrics metrics = annot::textMetrics(QString(), f, false);
         const QPoint at = geometryOf(*item).wordsOrigin;
         const QString color = colorHex(annot::numberWordsColor(*item));
-        return QVariantMap {{u"id"_s, int(m_editing->id)}, {u"x"_s, at.x()}, {u"y"_s, at.y()}, {u"fontPx"_s, f},
-            {u"bold"_s, false}, {u"boxed"_s, false}, {u"color"_s, color}, {u"fill"_s, color},
-            {u"text"_s, m_editing->text}, {u"pad"_s, 0}, {u"radius"_s, 0}, {u"pitch"_s, metrics.pitch},
-            {u"ascent"_s, metrics.ascent}, {u"clickX"_s, m_editing->click.x()}, {u"clickY"_s, m_editing->click.y()},
-            {u"number"_s, true}};
+        return QVariantMap {{u"id"_s, int(m_editing->id)}, {u"token"_s, m_editing->token}, {u"x"_s, at.x()},
+            {u"y"_s, at.y()}, {u"fontPx"_s, f}, {u"bold"_s, false}, {u"boxed"_s, false}, {u"color"_s, color},
+            {u"fill"_s, color}, {u"text"_s, m_editing->text}, {u"pad"_s, 0}, {u"radius"_s, 0},
+            {u"pitch"_s, metrics.pitch}, {u"ascent"_s, metrics.ascent}, {u"clickX"_s, m_editing->click.x()},
+            {u"clickY"_s, m_editing->click.y()}, {u"number"_s, true}};
     }
     const annot::Style style = editingStyle();
     const int f = std::max(1, style.fontPx);
@@ -886,12 +893,13 @@ QVariantMap AnnotationModel::editing() const
     outlined.style = style;
     const int stroke = annot::textStrokeWidth(outlined);
     const QString strokeColor = colorHex(annot::textStrokeColorOf(outlined));
-    return QVariantMap {{u"id"_s, int(m_editing->id)}, {u"x"_s, m_editing->at.x()}, {u"y"_s, m_editing->at.y()},
-        {u"fontPx"_s, f}, {u"bold"_s, style.bold}, {u"boxed"_s, style.boxed},
+    return QVariantMap {{u"id"_s, int(m_editing->id)}, {u"token"_s, m_editing->token}, {u"x"_s, m_editing->at.x()},
+        {u"y"_s, m_editing->at.y()}, {u"fontPx"_s, f}, {u"bold"_s, style.bold}, {u"boxed"_s, style.boxed},
         {u"color"_s, colorHex(style.boxed ? annot::inkOn(style.color) : style.color)},
         {u"fill"_s, colorHex(style.color)}, {u"text"_s, m_editing->text}, {u"pad"_s, pad}, {u"radius"_s, radius},
         {u"pitch"_s, metrics.pitch}, {u"ascent"_s, metrics.ascent}, {u"clickX"_s, m_editing->click.x()},
-        {u"clickY"_s, m_editing->click.y()}, {u"stroke"_s, stroke}, {u"strokeColor"_s, strokeColor}};
+        {u"clickY"_s, m_editing->click.y()}, {u"stroke"_s, stroke}, {u"strokeColor"_s, strokeColor},
+        {u"borderHot"_s, editingBorderHot()}};
 }
 
 QVariantMap AnnotationModel::numberEdit() const
@@ -907,7 +915,16 @@ QVariantMap AnnotationModel::numberEdit() const
 QRectF AnnotationModel::gestureBounds() const
 {
     // Cropping and selecting in the editor are far from any toolbar.
-    if (m_gesture == Gesture::None || m_gesture == Gesture::Crop || m_gesture == Gesture::Marquee || !d->command)
+    if (m_gesture == Gesture::None || m_gesture == Gesture::Crop || m_gesture == Gesture::Marquee)
+        return {};
+    if (m_gesture == Gesture::MoveEditing) {
+        const QRectF r(editingFrameRect());
+        if (r.isEmpty())
+            return {};
+        const qreal m = 16 * dpr();
+        return r.adjusted(-m, -m, m, m);
+    }
+    if (!d->command)
         return {};
     QRectF r;
     if (m_gesture == Gesture::Draw) {
@@ -1063,7 +1080,8 @@ QRgb AnnotationModel::colorAt(QPoint p) const
 
 bool AnnotationModel::onHandle(QPoint p) const
 {
-    return active() && m_gesture == Gesture::None && (handleAt(p) >= 0 || cropHandleAt(p) != 0);
+    return active() && m_gesture == Gesture::None
+        && (editingBorderAt(p) || handleAt(p) >= 0 || cropHandleAt(p) != 0);
 }
 
 std::optional<AnnotationModel::Target> AnnotationModel::styleTarget() const
@@ -1121,8 +1139,9 @@ annot::Style AnnotationModel::editingStyle() const
     return m_editing->style;
 }
 
-// The box of the text being typed, its padding included.
-QRect AnnotationModel::editingBox() const
+// The text's own typing area (image px): inside it, clicks place the caret;
+// outside it (within editingGrabRect), drags reposition the live text box.
+QRect AnnotationModel::editingContentRect() const
 {
     if (!m_editing)
         return {};
@@ -1136,22 +1155,67 @@ QRect AnnotationModel::editingBox() const
         box.setHeight(std::max(box.height(), 1));
         return box;
     }
+    const annot::Style style = editingStyle();
+    const int f = std::max(1, style.fontPx);
+    const int minW = std::max(1, f / 2);
+    QSize size = m_editing->measured;
+    if (size.isEmpty())
+        size = annot::textMetrics(m_editing->text, f, style.bold).size;
+    return QRect(m_editing->at, QSize(std::max(size.width(), minW), std::max(size.height(), 1)));
+}
+
+// The visible edit frame around a live Text box (image px): outside the text
+// (and its outline or boxed pill), sized in screen pixels via factor().
+QRect AnnotationModel::editingFrameRect() const
+{
+    if (!m_editing)
+        return {};
+    const QRect content = editingContentRect();
+    if (m_editing->words)
+        return content;
+    const annot::Style style = editingStyle();
+    const int f = std::max(1, style.fontPx);
     annot::Item probe;
     probe.kind = Kind::Text;
-    probe.points = {QPointF(m_editing->at)};
-    probe.style = editingStyle();
-    probe.text = m_editing->text;
-    QRect box = annot::textGeometry(probe).box;
-    // A new text has no width yet; the caret's place still counts as inside
-    // (a double click's second press lands there).
-    box.setWidth(std::max(box.width(), std::max(1, probe.style.fontPx / 2)));
-    box.setHeight(std::max(box.height(), 1));
-    return box;
+    probe.style = style;
+    const int pad = style.boxed ? qRound(0.3 * f) : annot::textStrokeWidth(probe);
+    const int frameMargin = std::max(2, int(std::lround((style.boxed ? 4 : 6) * factor())));
+    const int expand = pad + frameMargin;
+    return content.adjusted(-expand, -expand, expand, expand);
+}
+
+// Outer reach of the live Text box's draggable border ring (image px).
+QRect AnnotationModel::editingGrabRect() const
+{
+    if (!m_editing)
+        return {};
+    const QRect frame = editingFrameRect();
+    if (m_editing->words)
+        return frame;
+    const int r = reach();
+    return frame.adjusted(-r, -r, r, r);
+}
+
+bool AnnotationModel::editingBorderAt(QPoint p) const
+{
+    if (!m_editing || m_editing->words)
+        return false;
+    return editingGrabRect().contains(p) && !editingContentRect().contains(p);
+}
+
+bool AnnotationModel::editingBorderHot() const
+{
+    if (!m_editing || m_editing->words)
+        return false;
+    if (m_gesture == Gesture::MoveEditing)
+        return true;
+    const QPoint p = pointer();
+    return p.x() >= 0 && editingBorderAt(p);
 }
 
 // The step that committing `text` is (3.8): a new text with words is added,
 // a new one without is nothing; an old one without words is removed, a
-// changed one retyped, an unchanged one nothing.
+// changed or moved one updated in one step, an unchanged one nothing.
 std::unique_ptr<annot::Command> AnnotationModel::textCommand(const annot::Document& doc, const QString& text) const
 {
     if (!m_editing)
@@ -1180,9 +1244,21 @@ std::unique_ptr<annot::Command> AnnotationModel::textCommand(const annot::Docume
         return nullptr;
     if (!words)
         return std::make_unique<annot::RemoveItems>(QList<quint32> {item->id});
-    if (text == item->text)
+    const QPoint delta = m_editing->at - annot::pixelAt(item->points.value(0));
+    const bool moved = !delta.isNull();
+    const bool retyped = text != item->text;
+    if (!moved && !retyped)
         return nullptr;
-    return std::make_unique<annot::Retext>(doc, item->id, text);
+    if (!moved)
+        return std::make_unique<annot::Retext>(doc, item->id, text);
+    auto move = std::make_unique<annot::MoveItems>(QList<quint32> {item->id}, delta);
+    move->merge = false;
+    if (!retyped)
+        return move;
+    std::vector<std::unique_ptr<annot::Command>> steps;
+    steps.push_back(std::make_unique<annot::Retext>(doc, item->id, text));
+    steps.push_back(std::move(move));
+    return std::make_unique<annot::Batch>(std::move(steps));
 }
 
 void AnnotationModel::push(std::unique_ptr<annot::Command> command)
@@ -1330,18 +1406,6 @@ bool AnnotationModel::pressFirst(QPoint p, Qt::KeyboardModifiers modifiers)
     if (m_gesture != Gesture::None)
         finishGesture(); // a release that never came
     m_numberEdit.reset();
-    if (m_editing) {
-        // The text box takes the presses inside it; one that reaches here
-        // only commits the text, and does nothing else (3.6, step 1). One on
-        // the box's padding counts as inside.
-        const bool words = m_editing->words;
-        if (!editingBox().contains(p))
-            commitPending();
-        sync();
-        // A Number's words end with the press, which goes on to put the next
-        // number down (or whatever it was for): one click a number.
-        return !(words && !m_editing);
-    }
     if (m_picking) {
         // The eyedropper: the pixel as drawn, annotations included.
         m_picking = false;
@@ -1349,6 +1413,22 @@ bool AnnotationModel::pressFirst(QPoint p, Qt::KeyboardModifiers modifiers)
             setPanel(QVariantMap {{u"color"_s, colorHex(colorAt(p))}});
         sync();
         return true;
+    }
+    if (m_editing) {
+        if (editingBorderAt(p)) {
+            startMoveEditing(p, modifiers);
+            sync();
+            return true;
+        }
+        // The text box takes the presses inside it; one outside its frame
+        // commits the text and does nothing else (3.6, step 1).
+        const bool words = m_editing->words;
+        if (!editingContentRect().contains(p))
+            commitPending();
+        sync();
+        // A Number's words end with the press, which goes on to put the next
+        // number down (or whatever it was for): one click a number.
+        return !(words && !m_editing);
     }
     const int handle = handleAt(p);
     if (handle >= 0) {
@@ -1525,6 +1605,20 @@ void AnnotationModel::startMove(const QList<quint32>& ids, QPoint p, Qt::Keyboar
     m_gesture = Gesture::Move;
 }
 
+void AnnotationModel::startMoveEditing(QPoint p, Qt::KeyboardModifiers modifiers)
+{
+    if (!m_editing || m_editing->words)
+        return;
+    d->command.reset();
+    d->applied = false;
+    d->dragging = false;
+    d->editOrigin = m_editing->at;
+    d->pressAt = p;
+    d->last = p;
+    d->modifiers = modifiers;
+    m_gesture = Gesture::MoveEditing;
+}
+
 void AnnotationModel::startCrop(int handle, QPoint p)
 {
     auto crop = std::make_unique<annot::SetCrop>(m_document, m_document.crop);
@@ -1622,7 +1716,8 @@ annot::Item AnnotationModel::strokeTo(const annot::Item& stroke, QPoint p, bool 
 
 void AnnotationModel::move(QPoint p, Qt::KeyboardModifiers modifiers)
 {
-    if (m_gesture == Gesture::None || (!d->command && m_gesture != Gesture::Marquee))
+    if (m_gesture == Gesture::None
+        || (!d->command && m_gesture != Gesture::Marquee && m_gesture != Gesture::MoveEditing))
         return;
     d->last = p;
     d->modifiers = modifiers;
@@ -1636,7 +1731,7 @@ void AnnotationModel::move(QPoint p, Qt::KeyboardModifiers modifiers)
 // and applied again, the old place and the new one drawn again (3.7).
 void AnnotationModel::updateGesture()
 {
-    if (!d->command && m_gesture != Gesture::Marquee)
+    if (!d->command && m_gesture != Gesture::Marquee && m_gesture != Gesture::MoveEditing)
         return;
     const bool constrain = d->modifiers & Qt::ShiftModifier;
     switch (m_gesture) {
@@ -1717,6 +1812,12 @@ void AnnotationModel::updateGesture()
         move->delta = delta;
         change.merge(move->apply(m_document));
         touched(change);
+        break;
+    }
+    case Gesture::MoveEditing: {
+        if (!d->dragging || !m_editing)
+            return;
+        m_editing->at = d->editOrigin + (d->last - d->pressAt);
         break;
     }
     case Gesture::Reshape: {
@@ -1889,6 +1990,7 @@ void AnnotationModel::finishGesture()
         break;
     }
     case Gesture::Marquee:
+    case Gesture::MoveEditing:
     case Gesture::None:
         break;
     }
@@ -1903,6 +2005,8 @@ void AnnotationModel::cancelGesture()
     if (m_gesture == Gesture::Marquee) {
         m_picked = d->marqueeBase;
         d->marqueeBox = QRect();
+    } else if (m_gesture == Gesture::MoveEditing && m_editing) {
+        m_editing->at = d->editOrigin;
     }
     m_gesture = Gesture::None;
     if (command && d->applied)
@@ -1919,6 +2023,7 @@ int AnnotationModel::cursorAt(QPoint p) const
         return -1;
     switch (m_gesture) {
     case Gesture::Move:
+    case Gesture::MoveEditing:
         return Qt::SizeAllCursor;
     case Gesture::Reshape:
         return handleCursor(d->before, d->handle);
@@ -1932,6 +2037,18 @@ int AnnotationModel::cursorAt(QPoint p) const
     }
     if (m_picking)
         return Qt::CrossCursor;
+    if (m_editing) {
+        if (m_editing->words) {
+            if (editingContentRect().contains(p))
+                return Qt::IBeamCursor;
+        } else {
+            if (editingBorderAt(p))
+                return Qt::SizeAllCursor;
+            if (editingContentRect().contains(p))
+                return Qt::IBeamCursor;
+            return room().contains(p) && toolKind() == Kind::Text ? Qt::IBeamCursor : -1;
+        }
+    }
     if (const int handle = handleAt(p); handle >= 0)
         return handleCursor(*find(single()), handle);
     if (const int crop = cropHandleAt(p); crop != 0)
@@ -1940,9 +2057,8 @@ int AnnotationModel::cursorAt(QPoint p) const
         if (onSelected(p))
             return Qt::SizeAllCursor;
         if (const annot::Item* under = find(itemAt(p))) {
-            if (*kind == Kind::Text && under->kind == Kind::Text)
-                return Qt::IBeamCursor;
-            if (*kind == Kind::Number && under->kind == Kind::Number)
+            if ((*kind == Kind::Text && under->kind == Kind::Text)
+                || (*kind == Kind::Number && under->kind == Kind::Number))
                 return Qt::SizeAllCursor;
         }
         if (room().contains(p))
@@ -2201,12 +2317,12 @@ bool AnnotationModel::escape()
         sync();
         return true;
     }
-    if (m_editing) {
-        commitPending();
-        return true;
-    }
     if (m_gesture != Gesture::None) {
         cancelGesture();
+        return true;
+    }
+    if (m_editing) {
+        commitPending();
         return true;
     }
     if (m_picking) {
@@ -2240,6 +2356,7 @@ void AnnotationModel::commitPending()
 void AnnotationModel::beginNewText(QPoint p)
 {
     Editing editing;
+    editing.token = ++d->editToken;
     editing.at = clampToSelection(p);
     editing.style = m_styles.forTool(Kind::Text, dpr());
     m_editing = editing;
@@ -2251,6 +2368,7 @@ void AnnotationModel::beginEdit(const annot::Item& item, QPoint p)
 {
     Editing editing;
     editing.id = item.id;
+    editing.token = ++d->editToken;
     editing.at = annot::pixelAt(item.points.value(0));
     editing.text = item.text;
     editing.click = p - editing.at;
@@ -2280,6 +2398,7 @@ void AnnotationModel::beginWordsEdit(const annot::Item& item, QPoint click)
 {
     Editing editing;
     editing.id = item.id;
+    editing.token = ++d->editToken;
     editing.words = true;
     editing.at = geometryOf(item).wordsOrigin;
     editing.text = item.text;
@@ -2301,10 +2420,28 @@ void AnnotationModel::setEditingText(const QString& text)
     d->shown.editing[u"text"_s] = m_editing->text;
 }
 
+void AnnotationModel::setEditingContentSize(int width, int height)
+{
+    if (!m_editing || m_editing->words)
+        return;
+    const QSize next = width > 0 && height > 0 ? QSize(width, height) : QSize();
+    if (m_editing->measured == next)
+        return;
+    m_editing->measured = next;
+    if (d->smart.pointer.x() >= 0 && editingBorderHot() != d->shown.editing.value(u"borderHot"_s).toBool())
+        sync();
+}
+
 void AnnotationModel::commitText(const QString& typed)
 {
     if (!m_editing)
         return;
+    if (m_gesture == Gesture::MoveEditing) {
+        m_gesture = Gesture::None;
+        d->dragging = false;
+    }
+    if (d->editPointer.x() >= 0)
+        d->smart.pointer = std::exchange(d->editPointer, QPoint(-1, -1));
     const QString text = plainText(typed);
     if (m_editing->words) {
         commitWords(text);
@@ -2932,9 +3069,29 @@ void AnnotationModel::pointerAt(QPoint p)
 {
     if (d->smart.pointer == p)
         return;
+    const bool wasBorder = d->shown.editing.value(u"borderHot"_s).toBool();
     d->smart.pointer = p;
-    if (toolKind() == Kind::Redact)
+    if (toolKind() == Kind::Redact) {
         sync();
+        return;
+    }
+    if (m_editing && !m_editing->words && editingBorderHot() != wasBorder)
+        sync();
+}
+
+void AnnotationModel::setEditingPointer(QPoint p)
+{
+    if (d->editPointer == p)
+        return;
+    const bool wasBorder = d->shown.editing.value(u"borderHot"_s).toBool();
+    d->editPointer = p;
+    if (m_editing && !m_editing->words && editingBorderHot() != wasBorder)
+        sync();
+}
+
+QPoint AnnotationModel::pointer() const
+{
+    return m_editing && d->editPointer.x() >= 0 ? d->editPointer : d->smart.pointer;
 }
 
 // The box that hides the line of read text at `p`: the line and a margin

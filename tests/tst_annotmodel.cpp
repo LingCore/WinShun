@@ -21,12 +21,16 @@
 #include <QGuiApplication>
 #include <QImageReader>
 #include <QJsonDocument>
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QRegion>
 #include <QSGRendererInterface>
 #include <QSignalSpy>
 #include <QTest>
+#include <QUrl>
 #include <QtMath>
 
 #include <algorithm>
@@ -2808,7 +2812,462 @@ private slots:
         QCOMPARE(canvas.tilesShown(), 0);
         QCOMPARE(got.pixel(10, 10) | 0xff000000u, kMagenta);
     }
+
+    void textLiveEditBorderDragAndUndo()
+    {
+        Rig rig;
+        AnnotationModel& m = rig.model;
+        Screen screen(m);
+        m.setTool(toolIndex(Kind::Text));
+        click(m, QPoint(100, 100));
+        QVERIFY(m.editingText());
+        const int token1 = m.editing().value(u"token"_s).toInt();
+        QVERIFY(token1 > 0);
+        m.setEditingText(u"你好世界"_s);
+
+        // Inside the typing area: IBeamCursor, not on border handle, borderHot stays false.
+        const QPoint inside(108, 108);
+        m.pointerAt(inside);
+        QCOMPARE(m.cursorAt(inside), int(Qt::IBeamCursor));
+        QVERIFY(!m.onHandle(inside));
+        QVERIFY(!m.editing().value(u"borderHot"_s).toBool());
+
+        // On the live edit border ring (both inner padding and outer reach): SizeAllCursor + onHandle + borderHot.
+        for (const QPoint border : {QPoint(95, 108), QPoint(91, 108), QPoint(110, 95), QPoint(110, 91)}) {
+            m.pointerAt(border);
+            QCOMPARE(m.cursorAt(border), int(Qt::SizeAllCursor));
+            QVERIFY(m.onHandle(border));
+            QVERIFY(m.editing().value(u"borderHot"_s).toBool());
+        }
+
+        // Far outside the edit frame: IBeamCursor, not on border handle, borderHot turns off.
+        m.pointerAt(QPoint(300, 250));
+        QCOMPARE(m.cursorAt(QPoint(300, 250)), int(Qt::IBeamCursor));
+        QVERIFY(!m.onHandle(QPoint(300, 250)));
+        QVERIFY(!m.editing().value(u"borderHot"_s).toBool());
+
+        // Drag the live text box by its border without committing or resetting its edit token.
+        const QPoint grab(95, 108);
+        press(m, grab);
+        QVERIFY(m.gestureActive());
+        QCOMPARE(m.cursorAt(grab), int(Qt::SizeAllCursor));
+        QVERIFY(!m.gestureBounds().isEmpty());
+        m.move(grab + QPoint(45, 30), {});
+        QCOMPARE(m.editing().value(u"token"_s).toInt(), token1);
+        QCOMPARE(m.editing().value(u"x"_s).toInt(), 145);
+        QCOMPARE(m.editing().value(u"y"_s).toInt(), 130);
+        m.release(grab + QPoint(45, 30));
+        QVERIFY(!m.gestureActive());
+        QVERIFY(m.editingText());
+        QCOMPARE(m.itemCount(), 0);
+        QCOMPARE(m.editing().value(u"token"_s).toInt(), token1);
+        QCOMPARE(m.editing().value(u"text"_s).toString(), u"你好世界"_s);
+
+        // Esc mid-drag snaps the live text box back and keeps editing open.
+        const QPoint grab2(140, 138);
+        press(m, grab2);
+        m.move(grab2 + QPoint(35, -20), {});
+        QCOMPARE(m.editing().value(u"x"_s).toInt(), 180);
+        QCOMPARE(m.editing().value(u"y"_s).toInt(), 110);
+        QVERIFY(m.escape());
+        QVERIFY(!m.gestureActive());
+        QVERIFY(m.editingText());
+        QCOMPARE(m.editing().value(u"x"_s).toInt(), 145);
+        QCOMPARE(m.editing().value(u"y"_s).toInt(), 130);
+
+        // Commit creates the item at the dragged position in one undo step.
+        m.commitText(u"你好世界"_s);
+        QVERIFY(!m.editingText());
+        QCOMPARE(m.itemCount(), 1);
+        const quint32 id = m.document().items[0].id;
+        QCOMPARE(m.document().items[0].points[0], QPointF(145, 130));
+        CHECK_SCREEN(screen);
+        m.undo();
+        QCOMPARE(m.itemCount(), 0);
+        CHECK_SCREEN(screen);
+        m.redo();
+        QCOMPARE(m.itemCount(), 1);
+        QCOMPARE(m.document().items[0].points[0], QPointF(145, 130));
+
+        // Re-edit existing text and move-only via its live border: commits as MoveItems, undoable.
+        click(m, QPoint(155, 138));
+        QVERIFY(m.editingText());
+        const int token2 = m.editing().value(u"token"_s).toInt();
+        QVERIFY(token2 > token1);
+        drag(m, QPoint(140, 138), QPoint(120, 153));
+        QVERIFY(m.editingText());
+        QCOMPARE(m.editing().value(u"token"_s).toInt(), token2);
+        QCOMPARE(m.editing().value(u"x"_s).toInt(), 125);
+        QCOMPARE(m.editing().value(u"y"_s).toInt(), 145);
+        m.commitText(u"你好世界"_s);
+        QCOMPARE(m.document().items[0].points[0], QPointF(125, 145));
+        QCOMPARE(m.undoLabel(), u"移动"_s);
+        CHECK_SCREEN(screen);
+        m.undo();
+        QCOMPARE(m.document().items[0].points[0], QPointF(145, 130));
+        CHECK_SCREEN(screen);
+        m.redo();
+        QCOMPARE(m.document().items[0].points[0], QPointF(125, 145));
+
+        // Re-edit existing text: BOTH retype and drag live border -> single atomic undo/redo step.
+        click(m, QPoint(135, 153));
+        QVERIFY(m.editingText());
+        m.setEditingText(u"已更新"_s);
+        drag(m, QPoint(120, 153), QPoint(130, 128));
+        QVERIFY(m.editingText());
+        QCOMPARE(m.editing().value(u"x"_s).toInt(), 135);
+        QCOMPARE(m.editing().value(u"y"_s).toInt(), 120);
+        m.commitPending();
+        QCOMPARE(findItem(m.document(), id)->text, u"已更新"_s);
+        QCOMPARE(findItem(m.document(), id)->points[0], QPointF(135, 120));
+        CHECK_SCREEN(screen);
+        m.undo();
+        QCOMPARE(findItem(m.document(), id)->text, u"你好世界"_s);
+        QCOMPARE(findItem(m.document(), id)->points[0], QPointF(125, 145));
+        CHECK_SCREEN(screen);
+        m.redo();
+        QCOMPARE(findItem(m.document(), id)->text, u"已更新"_s);
+        QCOMPARE(findItem(m.document(), id)->points[0], QPointF(135, 120));
+        CHECK_SCREEN(screen);
+
+        // Live measured size & zoomed view: border follows measured size and zoom factor.
+        click(m, QPoint(145, 128));
+        QVERIFY(m.editingText());
+        m.setEditingContentSize(180, 50);
+        QCOMPARE(m.cursorAt(QPoint(135 + 170, 120 + 25)), int(Qt::IBeamCursor));
+        QCOMPARE(m.cursorAt(QPoint(135 + 184, 120 + 25)), int(Qt::SizeAllCursor));
+        m.setView(1.5, 0.5); // factor = 3.0 -> grab reach expands in image px to stay constant on screen
+        QCOMPARE(m.cursorAt(QPoint(135 - 24, 120 + 25)), int(Qt::SizeAllCursor));
+        m.commitPending();
+    }
+
+    void textToolHoverAndDragCommitted()
+    {
+        Rig rig;
+        AnnotationModel& m = rig.model;
+        m.setTool(toolIndex(Kind::Text));
+
+        // Create two committed text items; after committing B, A is unselected while Text tool stays active.
+        click(m, QPoint(60, 60));
+        m.commitText(u"第一段"_s);
+        const quint32 a = m.document().items[0].id;
+        click(m, QPoint(60, 160));
+        m.commitText(u"第二段"_s);
+        const quint32 b = m.document().items[1].id;
+        QCOMPARE(selectedId(m), b);
+
+        const QRect boxA = textGeometry(*findItem(m.document(), a)).box;
+        const QRect boxB = textGeometry(*findItem(m.document(), b)).box;
+
+        // Hovering UNSELECTED A (both inside and on its outer selection border) shows SizeAllCursor.
+        QCOMPARE(m.cursorAt(boxA.center()), int(Qt::SizeAllCursor));
+        const QPoint borderA(boxA.left() - 2, boxA.center().y());
+        QCOMPARE(m.cursorAt(borderA), int(Qt::SizeAllCursor));
+
+        // Hovering SELECTED B right on its blue selection border (2px outside box) also shows SizeAllCursor.
+        const QPoint borderB(boxB.right() + 2, boxB.center().y());
+        QCOMPARE(m.cursorAt(borderB), int(Qt::SizeAllCursor));
+
+        // Dragging unselected A directly from its outer border moves A without spawning a new text box
+        // and without exiting the Text tool.
+        drag(m, borderA, borderA + QPoint(50, 20));
+        QVERIFY(!m.editingText());
+        QCOMPARE(m.itemCount(), 2);
+        QCOMPARE(selectedId(m), a);
+        QCOMPARE(findItem(m.document(), a)->points[0], QPointF(110, 80));
+        QCOMPARE(m.tool(), toolIndex(Kind::Text));
+
+        // Dragging B from its outer border moves B too.
+        drag(m, borderB, borderB + QPoint(25, -15));
+        QVERIFY(!m.editingText());
+        QCOMPARE(m.itemCount(), 2);
+        QCOMPARE(selectedId(m), b);
+        QCOMPARE(findItem(m.document(), b)->points[0], QPointF(85, 145));
+
+        // Clicking A without dragging still enters edit mode cleanly.
+        click(m, QPoint(118, 88));
+        QVERIFY(m.editingText());
+        QCOMPARE(m.editing().value(u"id"_s).toUInt(), a);
+        m.commitPending();
+    }
+
+    void qmlAnnotateObjectsLiveTextBorderDrag();
 };
+
+class StubTheme : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QColor accent READ accent CONSTANT)
+    Q_PROPERTY(QColor accentFill READ accent CONSTANT)
+    Q_PROPERTY(QColor accentText READ accentText CONSTANT)
+    Q_PROPERTY(QColor danger READ danger CONSTANT)
+    Q_PROPERTY(QColor background READ background CONSTANT)
+    Q_PROPERTY(QColor textSelection READ textSelection CONSTANT)
+    Q_PROPERTY(QColor subtext READ subtext CONSTANT)
+    Q_PROPERTY(QColor text READ text CONSTANT)
+    Q_PROPERTY(int fontBody READ fontBody CONSTANT)
+    Q_PROPERTY(int inputField READ inputField CONSTANT)
+public:
+    QColor accent() const { return QColor(u"#1E88E5"_s); }
+    QColor accentText() const { return QColor(u"#FFFFFF"_s); }
+    QColor danger() const { return QColor(u"#E53935"_s); }
+    QColor background() const { return QColor(u"#FFFFFF"_s); }
+    QColor textSelection() const { return QColor(u"#BBDEFB"_s); }
+    QColor subtext() const { return QColor(u"#757575"_s); }
+    QColor text() const { return QColor(u"#212121"_s); }
+    int fontBody() const { return 14; }
+    int inputField() const { return 1; }
+};
+
+class StubHook : public QQuickItem {
+    Q_OBJECT
+    Q_PROPERTY(int part MEMBER part)
+    Q_PROPERTY(bool focused MEMBER focused)
+    Q_PROPERTY(bool hovered MEMBER hovered)
+    Q_PROPERTY(qreal dpr MEMBER dpr)
+public:
+    int part = 0;
+    bool focused = false;
+    bool hovered = false;
+    qreal dpr = 1.0;
+    Q_INVOKABLE QVariant out(const QString&, const QVariant& fallback) const { return fallback; }
+};
+
+class StubHost : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(int cursorShape READ cursorShape NOTIFY cursorChanged)
+public:
+    explicit StubHost(AnnotationModel* model)
+        : m_model(model)
+    {
+        for (const auto change : {&AnnotationModel::toolChanged, &AnnotationModel::gestureChanged,
+                 &AnnotationModel::editingChanged, &AnnotationModel::selectionChanged})
+            connect(m_model, change, this, &StubHost::refreshCursor);
+    }
+    int cursorShape() const { return m_cursor; }
+    Q_INVOKABLE void pressed(qreal x, qreal y, int mods)
+    {
+        const QPoint p(qRound(x), qRound(y));
+        m_pressed = true;
+        if (!m_model->pressFirst(p, Qt::KeyboardModifiers(mods)))
+            m_model->pressSecond(p, Qt::KeyboardModifiers(mods));
+        hoverAt(p);
+    }
+    Q_INVOKABLE void moved(qreal x, qreal y, int mods)
+    {
+        const QPoint p(qRound(x), qRound(y));
+        if (m_pressed || m_model->gestureActive())
+            m_model->move(p, Qt::KeyboardModifiers(mods));
+        hoverAt(p);
+    }
+    Q_INVOKABLE void released(qreal x, qreal y)
+    {
+        const QPoint p(qRound(x), qRound(y));
+        m_pressed = false;
+        m_model->release(p);
+        hoverAt(p);
+    }
+    Q_INVOKABLE void exited()
+    {
+        m_hover.reset();
+        m_model->pointerAt(QPoint(-1, -1));
+    }
+signals:
+    void cursorChanged();
+private:
+    void hoverAt(QPoint p)
+    {
+        m_hover = p;
+        m_model->pointerAt(p);
+        const int s = m_model->cursorAt(p);
+        const int next = s >= 0 ? s : int(Qt::ArrowCursor);
+        if (next != m_cursor) {
+            m_cursor = next;
+            emit cursorChanged();
+        }
+    }
+    void refreshCursor()
+    {
+        if (const QPoint p = m_model->pointer(); p.x() >= 0)
+            hoverAt(p);
+        else if (m_hover)
+            hoverAt(*m_hover);
+    }
+    AnnotationModel* m_model = nullptr;
+    bool m_pressed = false;
+    int m_cursor = Qt::ArrowCursor;
+    std::optional<QPoint> m_hover;
+};
+
+void TestAnnotModel::qmlAnnotateObjectsLiveTextBorderDrag()
+{
+    static StubTheme theme;
+    qmlRegisterSingletonInstance("WinShun", 1, 0, "Theme", &theme);
+    qmlRegisterType<StubHook>("WinShun", 1, 0, "Hook");
+    qmlRegisterUncreatableType<AnnotationModel>("WinShun", 1, 0, "AnnotationModel", u"test"_s);
+
+    Rig rig(QSize(480, 360), 1.0, QRect(0, 0, 480, 360));
+    AnnotationModel& m = rig.model;
+    m.setTool(toolIndex(Kind::Text));
+    StubHost host(&m);
+
+    QStringList warnings;
+    static QStringList* sink = nullptr;
+    sink = &warnings;
+    const QtMessageHandler prev = qInstallMessageHandler([](QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
+        if ((type == QtWarningMsg || type == QtCriticalMsg) && sink)
+            sink->append(msg);
+        Q_UNUSED(ctx);
+    });
+    auto restore = qScopeGuard([prev] {
+        sink = nullptr;
+        qInstallMessageHandler(prev);
+    });
+
+    QQmlEngine engine;
+    const QUrl objectsUrl = QUrl::fromLocalFile(QStringLiteral(WINSHUN_CAPTURE_QML) + u"/AnnotateObjects.qml"_s);
+    engine.rootContext()->setContextProperty(u"testModel"_s, &m);
+    engine.rootContext()->setContextProperty(u"testHost"_s, &host);
+    engine.rootContext()->setContextProperty(u"objectsUrl"_s, objectsUrl);
+
+    QQmlComponent comp(&engine);
+    comp.setData(R"(
+        import QtQuick
+        import WinShun
+        Window {
+            id: win
+            width: 480; height: 360
+            Item { id: keys; focus: true }
+            MouseArea {
+                id: canvasMouse
+                objectName: "canvasMouse"
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton
+                cursorShape: testHost.cursorShape
+                onPositionChanged: (ev) => testHost.moved(ev.x, ev.y, ev.modifiers)
+                onPressed: (ev) => testHost.pressed(ev.x, ev.y, ev.modifiers)
+                onReleased: (ev) => testHost.released(ev.x, ev.y)
+                onEntered: testHost.moved(mouseX, mouseY, 0)
+                onExited: testHost.exited()
+            }
+            Loader {
+                id: loader
+                objectName: "objectsLoader"
+                anchors.fill: parent
+                Component.onCompleted: setSource(objectsUrl, {
+                    annot: testModel,
+                    keyTarget: keys,
+                    sx: 1,
+                    sy: 1,
+                    dpr: 1
+                })
+                onLoaded: item.anchors.fill = loader
+            }
+        }
+    )", QUrl());
+    QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));
+    std::unique_ptr<QQuickWindow> win(qobject_cast<QQuickWindow*>(comp.create()));
+    QVERIFY(win);
+    win->show();
+    QVERIFY(QTest::qWaitForWindowExposed(win.get()));
+    QCoreApplication::processEvents();
+    QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(u'\n')));
+    QQuickItem* loader = win->findChild<QQuickItem*>(u"objectsLoader"_s);
+    QVERIFY(loader);
+    QVERIFY2(loader->property("item").value<QObject*>() != nullptr, qPrintable(warnings.join(u'\n')));
+
+    // Click to create a new live TextEdit inside AnnotateObjects.qml.
+    QTest::mouseClick(win.get(), Qt::LeftButton, Qt::NoModifier, QPoint(120, 100));
+    QTRY_VERIFY(m.editingText());
+    QCoreApplication::processEvents();
+
+    // Locate the real TextEdit inside AnnotateObjects.qml (loaded via Loader's visual tree).
+    QQuickItem* objects = loader->property("item").value<QQuickItem*>();
+    QVERIFY(objects);
+    QQuickItem* edit = nullptr;
+    std::function<void(QQuickItem*)> walk = [&](QQuickItem* node) {
+        if (edit || !node)
+            return;
+        if (QString::fromLatin1(node->metaObject()->className()).contains(u"TextEdit"_s)) {
+            edit = node;
+            return;
+        }
+        for (QQuickItem* child : node->childItems())
+            walk(child);
+    };
+    walk(objects);
+    QVERIFY(edit);
+    QVERIFY(edit->property("selectByMouse").toBool());
+    edit->setProperty("text", u"拖拽测试"_s);
+    QCoreApplication::processEvents();
+    edit->setProperty("cursorPosition", 2);
+    QTRY_COMPARE(m.editing().value(u"text"_s).toString(), u"拖拽测试"_s);
+    const int token = m.editing().value(u"token"_s).toInt();
+    QVERIFY(token > 0);
+
+    // Move real mouse onto the live edit frame border just outside TextEdit (left side).
+    const QPoint border(114, 108);
+    QTest::mouseMove(win.get(), border);
+    QCoreApplication::processEvents();
+    QCOMPARE(host.cursorShape(), int(Qt::SizeAllCursor));
+    QVERIFY(m.editing().value(u"borderHot"_s).toBool());
+
+    // Drag the border by (+55, +40): live TextEdit moves without losing text, caret, or token!
+    QTest::mousePress(win.get(), Qt::LeftButton, Qt::NoModifier, border);
+    QTest::mouseMove(win.get(), border + QPoint(25, 20));
+    QTest::mouseMove(win.get(), border + QPoint(55, 40));
+    QTest::mouseRelease(win.get(), Qt::LeftButton, Qt::NoModifier, border + QPoint(55, 40));
+    QCoreApplication::processEvents();
+
+    QVERIFY(m.editingText());
+    QCOMPARE(m.editing().value(u"token"_s).toInt(), token);
+    QCOMPARE(m.editing().value(u"x"_s).toInt(), 175);
+    QCOMPARE(m.editing().value(u"y"_s).toInt(), 140);
+    QCOMPARE(edit->property("text").toString(), u"拖拽测试"_s);
+    QCOMPARE(edit->property("cursorPosition").toInt(), 2);
+
+    // Start a second border drag and hit Esc mid-drag: drag cancels, TextEdit stays open.
+    const QPoint border2(169, 148);
+    QTest::mousePress(win.get(), Qt::LeftButton, Qt::NoModifier, border2);
+    QTest::mouseMove(win.get(), border2 + QPoint(30, 30));
+    QCoreApplication::processEvents();
+    QCOMPARE(m.editing().value(u"x"_s).toInt(), 205);
+    QTest::keyClick(win.get(), Qt::Key_Escape);
+    QCoreApplication::processEvents();
+    QVERIFY(m.editingText());
+    QCOMPARE(m.editing().value(u"x"_s).toInt(), 175);
+    QCOMPARE(m.editing().value(u"y"_s).toInt(), 140);
+    QTest::mouseRelease(win.get(), Qt::LeftButton, Qt::NoModifier, border2 + QPoint(30, 30));
+
+    // Move onto border (borderHot = true), then into TextEdit: borderHot turns off and pointer stays fresh.
+    QTest::mouseMove(win.get(), border2);
+    QCoreApplication::processEvents();
+    QVERIFY(m.editing().value(u"borderHot"_s).toBool());
+    QTest::mouseMove(win.get(), QPoint(185, 148));
+    QCoreApplication::processEvents();
+    QCOMPARE(m.pointer(), QPoint(185, 148));
+    QVERIFY(!m.editing().value(u"borderHot"_s).toBool());
+    QTest::keyClick(win.get(), Qt::Key_Escape);
+    QCoreApplication::processEvents();
+    QVERIFY(!m.editingText());
+    QCOMPARE(m.itemCount(), 1);
+    QCOMPARE(m.document().items[0].points[0], QPointF(175, 140));
+    QCOMPARE(host.cursorShape(), int(Qt::SizeAllCursor));
+
+    // Drag the committed text box directly from its outer border while Text tool is still active.
+    const QPoint committedBorder(173, 148);
+    QTest::mouseMove(win.get(), committedBorder);
+    QCoreApplication::processEvents();
+    QCOMPARE(host.cursorShape(), int(Qt::SizeAllCursor));
+    QTest::mousePress(win.get(), Qt::LeftButton, Qt::NoModifier, committedBorder);
+    QTest::mouseMove(win.get(), committedBorder + QPoint(-25, 20));
+    QTest::mouseRelease(win.get(), Qt::LeftButton, Qt::NoModifier, committedBorder + QPoint(-25, 20));
+    QCoreApplication::processEvents();
+    QVERIFY(!m.editingText());
+    QCOMPARE(m.document().items[0].points[0], QPointF(150, 160));
+
+    QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(u'\n')));
+}
 
 int main(int argc, char** argv)
 {

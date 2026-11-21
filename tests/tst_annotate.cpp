@@ -1433,13 +1433,15 @@ private slots:
         QCOMPARE(findItem(doc, id)->style.textStroke, 3);
         QVERIFY(change.dirty.contains(bounds(doc, *findItem(doc, id)))); // the grown outline is redrawn
         QVERIFY(bounds(doc, *findItem(doc, id)).width() > plainBounds.width());
-        // The ring is part of the text for a click.
+        // The ring is part of the text for a click; non-zero tolerance also reaches the selection border.
         const TextGeometry g = textGeometry(*findItem(doc, id));
         const QPoint justOutside(g.content.left() - 2, g.content.center().y());
         QVERIFY(hitTest(doc, justOutside, 0).has_value());
         QVERIFY(!hitTest(doc, QPoint(g.content.left() - 4, g.content.center().y()), 0).has_value());
+        QVERIFY(hitTest(doc, QPoint(g.content.left() - 6, g.content.center().y()), 4).has_value());
         change = command.revert(doc);
         QVERIFY(!hitTest(doc, justOutside, 0).has_value());
+        QVERIFY(hitTest(doc, justOutside, 4).has_value());
         QCOMPARE(doc, before);
         QVERIFY(change.dirty.contains(bounds(doc, *findItem(doc, id))));
         command.apply(doc);

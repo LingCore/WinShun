@@ -200,6 +200,7 @@ void PresenterScreen::mouseMoved(qreal x, qreal y, int modifiers)
     const QPoint p = imageAt(x, y);
     if (m_pressed || m->gestureActive())
         m->move(p, Qt::KeyboardModifiers(modifiers));
+    m->pointerAt(p);
     showCursor(p);
 }
 

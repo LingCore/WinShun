@@ -193,6 +193,9 @@ CaptureSession::CaptureSession(QObject* parent)
     // The toolbar sets the tool on the model itself, not through publish():
     // a tool chosen counts as input (KeyHintPolicy rule 3).
     connect(&m_annot, &AnnotationModel::toolChanged, this, &CaptureSession::hintInput);
+    for (const auto change : {&AnnotationModel::toolChanged, &AnnotationModel::gestureChanged,
+             &AnnotationModel::editingChanged, &AnnotationModel::selectionChanged, &AnnotationModel::pickingChanged})
+        connect(&m_annot, change, this, &CaptureSession::refreshCursor);
     for (const auto change : {&AnnotationModel::gestureChanged, &AnnotationModel::editingChanged,
              &AnnotationModel::numberEditChanged, &AnnotationModel::pickingChanged})
         connect(&m_annot, change, this, &CaptureSession::refreshKeyHints);
@@ -780,7 +783,7 @@ int CaptureSession::cursorShapeAt(int screen, QPoint p) const
     // In the selection's pixels (the desktop picture's when it is over several monitors).
     const QPoint at = toSpace(screen, p, m_selection.screen);
     const bool annotated = m_annot.active() && m_annotScreen == m_selection.screen;
-    if (annotated && m_annot.onHandle(at))
+    if (annotated && (m_annot.gestureActive() || m_annot.onHandle(at)))
         return m_annot.cursorAt(at);
     const Handle handle = handleAt(m_selection.rect, at, reach(screen));
     if (annotated && (handle == Handle::None || handle == Handle::Move)) {
@@ -788,6 +791,20 @@ int CaptureSession::cursorShapeAt(int screen, QPoint p) const
             return shape;
     }
     return cursorFor(handle);
+}
+
+void CaptureSession::refreshCursor()
+{
+    if (!m_active || m_cursorCovered || !screenAt(m_cursorScreen))
+        return;
+    if (m_phase == Phase::Selected || m_phase == Phase::Annotating) {
+        QPoint at = m_cursorAt;
+        if (m_annot.active() && inSpace(m_cursorScreen, m_annotScreen)) {
+            if (const QPoint p = m_annot.pointer(); p.x() >= 0)
+                at = toSpace(m_annotScreen, p, m_cursorScreen);
+        }
+        updateCursor(m_cursorScreen, at);
+    }
 }
 
 void CaptureSession::updateCursor(int screen, QPoint p)
@@ -1834,6 +1851,7 @@ void CaptureSession::mouseLeft(int screen)
     if (!m_active || screen != m_cursorScreen || (m_phase != Phase::Hover && m_phase != Phase::Selected))
         return;
     m_cursorCovered = true;
+    m_annot.pointerAt(QPoint(-1, -1));
     publish();
 }
 

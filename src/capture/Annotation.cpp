@@ -174,9 +174,9 @@ bool hits(const Item& item, QPointF q, qreal tolerance, qreal dpr, int number, N
     case Kind::Text: {
         if (item.text.isEmpty())
             return false;
-        // The outline is part of the text: a click on it picks the text.
-        const int stroke = textStrokeWidth(item);
-        return QRectF(textGeometry(item).box).adjusted(-stroke, -stroke, stroke, stroke).contains(q);
+        // The outline is part of the text; tolerance covers the selection border around it too.
+        const qreal reach = textStrokeWidth(item) + tolerance;
+        return QRectF(textGeometry(item).box).adjusted(-reach, -reach, reach, reach).contains(q);
     }
     case Kind::Number: {
         const NumberGeometry g = numberGeometry(item, number, dpr, format);
