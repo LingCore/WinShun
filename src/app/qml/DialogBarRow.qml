@@ -31,6 +31,7 @@ Item {
     property int hint: 0 // the number that goes to this row (Ctrl+1...); 0 for none
     property string hintLetter // 字母直达: the letter that does, while the letters show
     property real hintOpacity: 1 // the number's: shown as the settings say (NumberHints)
+    property real hintOffsetY: 0 // counter-scrolls numberSlot during smooth wheel gliding so 1–9 stay visually steady
     property bool reserveHintSpace: false // every row keeps the room, numbered or not: one left edge
     property string hintModifier: "Ctrl" // ... with this held
     property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
@@ -109,6 +110,7 @@ Item {
         visible: row.reserveHintSpace && (row.hint > 0 || row.hintLetter.length > 0)
         opacity: row.hintLetter.length > 0 ? 1 : row.hintOpacity
         x: row.onPixel(Theme.tok("clipHintX", 14)) // the icon sits where the clipboard's does
+        y: row.hintOffsetY !== 0 ? -Math.round(-row.hintOffsetY * row.dpr) / row.dpr : 0
         width: 24
         height: row.height
 

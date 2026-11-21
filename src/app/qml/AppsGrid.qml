@@ -45,12 +45,12 @@ GridView {
         if (index < 0 || index >= count)
             return
         const row = Math.floor(index / columns)
-        const first = Math.round((contentY + topMargin) / tileHeight)
+        const first = Math.round((contentY - originY + topMargin) / tileHeight)
         const whole = Math.max(1, Math.floor((height - topMargin) / tileHeight))
         if (row < first)
-            contentY = row * tileHeight - topMargin
+            contentY = originY + row * tileHeight - topMargin
         else if (row >= first + whole)
-            contentY = (row - whole + 1) * tileHeight - topMargin
+            contentY = originY + (row - whole + 1) * tileHeight - topMargin
     }
     onCurrentIndexChanged: reveal(currentIndex)
     onCountChanged: {
@@ -71,8 +71,8 @@ GridView {
             if (steps === 0)
                 return
             grid.wheelRest -= steps * 120
-            const top = -grid.topMargin
-            const end = Math.max(top, grid.contentHeight + grid.bottomMargin - grid.height)
+            const top = grid.originY - grid.topMargin
+            const end = Math.max(top, grid.originY + grid.contentHeight + grid.bottomMargin - grid.height)
             grid.contentY = Math.max(top, Math.min(end, grid.contentY - steps * grid.tileHeight))
         }
     }

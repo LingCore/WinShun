@@ -16,9 +16,9 @@ Item {
     readonly property bool scrollable: flickable.height > 0 && flickable.contentHeight > 0 && maxY > minY + 0.5
     readonly property real position: maxY > minY ? Math.max(0, Math.min(1, (flickable.contentY - minY) / (maxY - minY))) : 0
 
-    // Baseline of the last observed viewport position and scrollable range so
-    // initial layout or model-reset jumps to an edge do not flash the bar.
-    property real lastContentY: NaN
+    // Baseline of the last observed relative scroll offset and range so
+    // initial layout, originY shifts or model-reset jumps to an edge do not flash the bar.
+    property real lastOffset: NaN
     property real lastExtent: NaN
 
     // A size in logical pixels as whole device pixels (3 is 4.5 at 150 %).
@@ -44,11 +44,11 @@ Item {
     function syncBaseline() {
         if (!bar.visible || !bar.scrollable) {
             scrollHold.stop()
-            lastContentY = NaN
+            lastOffset = NaN
             lastExtent = NaN
             return
         }
-        lastContentY = bar.flickable.contentY
+        lastOffset = bar.flickable.contentY - bar.minY
         lastExtent = bar.maxY - bar.minY
     }
 
@@ -57,12 +57,12 @@ Item {
     onScrollableChanged: {
         if (!scrollable)
             syncBaseline()
-        else if (isNaN(lastContentY))
+        else if (isNaN(lastOffset))
             syncBaseline()
     }
     onFlickableChanged: {
         scrollHold.stop()
-        lastContentY = NaN
+        lastOffset = NaN
         lastExtent = NaN
         syncBaseline()
     }
@@ -70,23 +70,23 @@ Item {
     Connections {
         target: bar.flickable
         function onContentYChanged() {
-            const y = bar.flickable.contentY
+            const offset = bar.flickable.contentY - bar.minY
             const extent = bar.maxY - bar.minY
             if (!bar.visible || !bar.scrollable) {
-                bar.lastContentY = y
+                bar.lastOffset = offset
                 bar.lastExtent = extent
                 scrollHold.stop()
                 return
             }
-            if (isNaN(bar.lastContentY)) {
-                bar.lastContentY = y
+            if (isNaN(bar.lastOffset)) {
+                bar.lastOffset = offset
                 bar.lastExtent = extent
                 return
             }
-            const moved = Math.abs(y - bar.lastContentY) >= 1
-            const atEdge = Math.abs(y - bar.minY) < 1 || Math.abs(y - bar.maxY) < 1
+            const moved = Math.abs(offset - bar.lastOffset) >= 1
+            const atEdge = Math.abs(offset) < 1 || Math.abs(offset - extent) < 1
             const resetToEdge = atEdge && Math.abs(extent - bar.lastExtent) > 1
-            bar.lastContentY = y
+            bar.lastOffset = offset
             bar.lastExtent = extent
             if (moved && !resetToEdge)
                 scrollHold.restart()

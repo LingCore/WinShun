@@ -34,13 +34,15 @@ GridView {
     function preserveViewport() {
         if (reflowQueued)
             return
-        const row = Math.max(0, contentY) / previousCellHeight
+        const row = Math.max(0, contentY - originY) / previousCellHeight
         const index = Math.floor(row) * previousColumns
         const fraction = row - Math.floor(row)
         reflowQueued = true
         Qt.callLater(() => {
-            contentY = Math.max(0, Math.min(contentHeight - height,
-                Math.floor(index / columns) * cellHeight + fraction * cellHeight))
+            const top = originY - topMargin
+            const end = Math.max(top, originY + contentHeight + bottomMargin - height)
+            contentY = Math.max(top, Math.min(end,
+                originY + Math.floor(index / columns) * cellHeight + fraction * cellHeight))
             previousColumns = columns
             previousCellHeight = cellHeight
             reflowQueued = false

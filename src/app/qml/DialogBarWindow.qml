@@ -115,10 +115,27 @@ Window {
     readonly property int numberKey: bar.numberKeys === "ctrl" ? Qt.Key_Control
                                    : bar.numberKeys === "alt" ? Qt.Key_Alt : -1
     readonly property string numberModifier: numberKey === Qt.Key_Alt ? "Alt" : "Ctrl"
-    readonly property int firstShownRow: Math.max(0, Math.floor((list.contentY + bar.rowHeight / 2) / bar.rowHeight))
-    readonly property int lastRowInView: Math.floor((list.contentY + list.height - bar.rowHeight / 2) / bar.rowHeight)
+    // Subtract list.originY so model resets after scrolling never drift the
+    // shortcut numbers or visible range, and exclude the top/bottom margins so
+    // firstShownRow and lastRowInView step symmetrically without flashing an extra row.
+    readonly property int firstShownRow: bar.rowHeight > 0
+        ? Math.max(0, Math.floor((list.contentY + list.topMargin - list.originY + bar.rowHeight / 2) / bar.rowHeight)) : 0
+    readonly property int lastRowInView: bar.rowHeight > 0
+        ? Math.floor((list.contentY + list.height - list.bottomMargin - list.originY - bar.rowHeight / 2) / bar.rowHeight) : -1
     readonly property int lastShownRow: Math.min(list.count - 1, firstShownRow + 8, lastRowInView)
     readonly property int lastLetterRow: Math.min(list.count - 1, firstShownRow + numberHints.letters.length - 1, lastRowInView)
+    readonly property real hintOffsetY: {
+        if (bar.rowHeight <= 0 || !wheelScroll.running)
+            return 0
+        const innerHeight = list.height - list.topMargin - list.bottomMargin
+        if (innerHeight <= 0)
+            return 0
+        const rem = innerHeight % bar.rowHeight
+        if (Math.min(rem, bar.rowHeight - rem) >= 1)
+            return 0
+        const scroll = list.contentY + list.topMargin - list.originY
+        return scroll - firstShownRow * bar.rowHeight
+    }
     // Where the viewport stands in an overflowing list (e.g. "14–19 / 28"):
     // keeps scrolling oriented while the left 1–9 hints stay shortcut keys.
     readonly property int shownFrom: list.count > 0 ? Math.min(list.count, Math.max(1, firstShownRow + 1)) : 0
@@ -705,6 +722,7 @@ Window {
             id: wheelScroll
             view: list
             animate: SystemTheme.animations
+            snapRows: true
         }
         onCurrentIndexChanged: {
             positionViewAtIndex(currentIndex, ListView.Contain)
@@ -724,9 +742,11 @@ Window {
             hint: window.numberOf(index)
             hintLetter: window.letterOf(index)
             hintOpacity: numberHints.hintOpacity
+            hintOffsetY: window.hintOffsetY
             reserveHintSpace: (window.numberKey >= 0 && window.bar.numberHints !== "off") || window.bar.letterJump
             hintModifier: window.numberModifier
             hintTaken: rowItem.hint > 0 && !window.numberUsable(rowItem.hint)
+            z: window.hintOffsetY !== 0 && (rowItem.hint > 0 || rowItem.hintLetter.length > 0) ? 1 : 0
             canOpen: window.bar.canOpen
             copyOnly: window.bar.copyOnly
             nameTip: nameTip
