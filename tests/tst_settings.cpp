@@ -1970,6 +1970,122 @@ private slots:
             QCOMPARE(place, at);
         }
     }
+
+    void clipboardScreenshotsPreferenceAndPolicy()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+
+        // Fresh install: both copied images and Win顺 screenshots default on ("all").
+        ws::Settings fresh;
+        fresh.load();
+        QVERIFY(fresh.clipboardImages);
+        QCOMPARE(fresh.clipboardScreenshots, u"all"_s);
+
+        // Independent round-trip of all valid modes, even when Clipboard/Images is off.
+        fresh.clipboardImages = false;
+        for (const QString& mode : {u"all"_s, u"copied"_s, u"off"_s}) {
+            fresh.clipboardScreenshots = mode;
+            QVERIFY(fresh.saveChecked());
+            ws::Settings restored;
+            restored.load();
+            QVERIFY(!restored.clipboardImages);
+            QCOMPARE(restored.clipboardScreenshots, mode);
+        }
+
+        // Legacy INI without Clipboard/Screenshots: follows Clipboard/Images so users who had
+        // images off do not suddenly start recording screenshots on upgrade.
+        {
+            QSettings raw(ws::Settings::filePath(), QSettings::IniFormat);
+            raw.setValue(u"Clipboard/Images"_s, false);
+            raw.remove(u"Clipboard/Screenshots"_s);
+            raw.sync();
+        }
+        ws::Settings migratedOff;
+        migratedOff.load();
+        QVERIFY(!migratedOff.clipboardImages);
+        QCOMPARE(migratedOff.clipboardScreenshots, u"off"_s);
+
+        {
+            QSettings raw(ws::Settings::filePath(), QSettings::IniFormat);
+            raw.setValue(u"Clipboard/Images"_s, true);
+            raw.remove(u"Clipboard/Screenshots"_s);
+            raw.sync();
+        }
+        ws::Settings migratedOn;
+        migratedOn.load();
+        QVERIFY(migratedOn.clipboardImages);
+        QCOMPARE(migratedOn.clipboardScreenshots, u"all"_s);
+
+        // Corrupt values fall back to the same default (respecting Clipboard/Images).
+        {
+            QSettings raw(ws::Settings::filePath(), QSettings::IniFormat);
+            raw.setValue(u"Clipboard/Images"_s, false);
+            raw.setValue(u"Clipboard/Screenshots"_s, u"bogus"_s);
+            raw.sync();
+        }
+        ws::Settings invalidOff;
+        invalidOff.load();
+        QCOMPARE(invalidOff.clipboardScreenshots, u"off"_s);
+
+        {
+            QSettings raw(ws::Settings::filePath(), QSettings::IniFormat);
+            raw.setValue(u"Clipboard/Images"_s, true);
+            raw.setValue(u"Clipboard/Screenshots"_s, u"  COPIED  "_s);
+            raw.sync();
+        }
+        ws::Settings normalized;
+        normalized.load();
+        QCOMPARE(normalized.clipboardScreenshots, u"copied"_s);
+
+        // Recording decision matrix: clipboardImages governs non-screenshot images,
+        // clipboardScreenshots governs Win顺 screenshots independently.
+        ws::Settings s = ws::Settings::defaults();
+        s.clipboard = true;
+
+        // Master switch off or paused blocks everything.
+        s.clipboard = false;
+        s.clipboardImages = true;
+        s.clipboardScreenshots = u"all"_s;
+        for (bool copy : {false, true}) {
+            for (bool shot : {false, true})
+                QVERIFY(!s.shouldRecordClipboardImage(copy, shot, false));
+        }
+        s.clipboard = true;
+        for (bool copy : {false, true}) {
+            for (bool shot : {false, true})
+                QVERIFY(!s.shouldRecordClipboardImage(copy, shot, true));
+        }
+
+        // Images on, screenshots = copied: copied pictures & copied screenshots recorded;
+        // pin/save screenshots (copy=false) are NOT recorded.
+        s.clipboardImages = true;
+        s.clipboardScreenshots = u"copied"_s;
+        QVERIFY(s.shouldRecordClipboardImage(true, false));
+        QVERIFY(s.shouldRecordClipboardImage(false, false));
+        QVERIFY(s.shouldRecordClipboardImage(true, true));
+        QVERIFY(!s.shouldRecordClipboardImage(false, true));
+
+        // Images on, screenshots = off: copied pictures recorded, screenshots never recorded.
+        s.clipboardScreenshots = u"off"_s;
+        QVERIFY(s.shouldRecordClipboardImage(true, false));
+        QVERIFY(!s.shouldRecordClipboardImage(true, true));
+        QVERIFY(!s.shouldRecordClipboardImage(false, true));
+
+        // Images off, screenshots = all / copied: screenshots still recorded independently!
+        s.clipboardImages = false;
+        s.clipboardScreenshots = u"all"_s;
+        QVERIFY(!s.shouldRecordClipboardImage(true, false));
+        QVERIFY(!s.shouldRecordClipboardImage(false, false));
+        QVERIFY(s.shouldRecordClipboardImage(true, true));
+        QVERIFY(s.shouldRecordClipboardImage(false, true));
+
+        s.clipboardScreenshots = u"copied"_s;
+        QVERIFY(!s.shouldRecordClipboardImage(true, false));
+        QVERIFY(s.shouldRecordClipboardImage(true, true));
+        QVERIFY(!s.shouldRecordClipboardImage(false, true));
+    }
 };
 
 QTEST_GUILESS_MAIN(SettingsTest)

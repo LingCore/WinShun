@@ -1210,6 +1210,11 @@ void Settings::load()
     if (clipboardMissingFiles != u"hide" && clipboardMissingFiles != u"clean")
         clipboardMissingFiles = d.clipboardMissingFiles;
     clipboardImages = readOrDefault(s, u"Clipboard/Images"_s, d.clipboardImages);
+    // Clipboard/Images used to gate Win顺 screenshots too; an upgrade with it off keeps them off.
+    const QString screenshotDefault = clipboardImages ? d.clipboardScreenshots : u"off"_s;
+    clipboardScreenshots = readOrDefault(s, u"Clipboard/Screenshots"_s, screenshotDefault).trimmed().toLower();
+    if (clipboardScreenshots != u"all" && clipboardScreenshots != u"copied" && clipboardScreenshots != u"off")
+        clipboardScreenshots = screenshotDefault;
     clipboardClickToPaste = readOrDefault(s, u"Clipboard/ClickToPaste"_s, d.clipboardClickToPaste);
     clipboardUiSize = readOrDefault(s, u"Clipboard/UiSize"_s, d.clipboardUiSize).trimmed().toLower();
     if (clipboardUiSize != u"dense" && clipboardUiSize != u"compact" && clipboardUiSize != u"standard" && clipboardUiSize != u"roomy")
@@ -1545,6 +1550,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/MaxDays"_s, clipboardMaxDays);
     s.setValue(u"Clipboard/MissingFiles"_s, clipboardMissingFiles);
     s.setValue(u"Clipboard/Images"_s, clipboardImages);
+    s.setValue(u"Clipboard/Screenshots"_s, clipboardScreenshots);
     s.setValue(u"Clipboard/ClickToPaste"_s, clipboardClickToPaste);
     s.setValue(u"Clipboard/UiSize"_s, clipboardUiSize);
     s.setValue(u"Clipboard/PictureSize"_s, clipboardPictureSize);

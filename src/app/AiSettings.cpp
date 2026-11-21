@@ -108,10 +108,12 @@ Entry recording(const Head& head, bool Settings::* field)
     return boolean(head, field, Effect::Now, Widens::TurnOn);
 }
 
-Entry choice(const Head& head, QString Settings::* field, std::vector<Choice> choices, Effect effect = Effect::Now)
+Entry choice(const Head& head, QString Settings::* field, std::vector<Choice> choices, Effect effect = Effect::Now,
+    Widens widens = Widens::No)
 {
     Entry e = base(head, Type::Choice);
     e.effect = effect;
+    e.widens = widens;
     e.choices = std::move(choices);
     e.field = field;
     return e;
@@ -814,8 +816,17 @@ std::vector<Entry> buildCatalog()
                     "Keeps a history of what is copied (the Win+V page). Turning it on starts recording what the user copies, so that asks the user."},
         &Settings::clipboard));
     add(recording({"Clipboard/Images", QT_TRANSLATE_NOOP("AiSettings", "记录图片"), "clipboard", 0,
-                    "The clipboard history keeps copied pictures too. Turning it on starts recording them, so that asks the user."},
+                    "The clipboard history keeps copied pictures too (independent of Win顺 screenshots when the screenshot plugin is on). Turning it on starts recording them, so that asks the user."},
         &Settings::clipboardImages));
+    add(choice({"Clipboard/Screenshots", QT_TRANSLATE_NOOP("AiSettings", "记录截图"), "clipboard", 0,
+                   "Which Win顺 screenshots (from the winshun.capture plugin) are recorded in the clipboard history (and screenshot history). Independent of Clipboard/Images. Recording more than before asks the user."},
+        &Settings::clipboardScreenshots,
+        {{u"all"_s, u"copied, pinned and saved screenshots are all recorded"_s, QT_TRANSLATE_NOOP("AiSettings", "全部")},
+            {u"copied"_s, u"only screenshots explicitly copied are recorded; pinning or saving does not record them"_s,
+                QT_TRANSLATE_NOOP("AiSettings", "仅复制时")},
+            {u"off"_s, u"Win顺 screenshots are not recorded in clipboard history (copying still writes the system clipboard)"_s,
+                QT_TRANSLATE_NOOP("AiSettings", "不记录")}},
+        Effect::Now, Widens::More));
     add(boolean({"Clipboard/ClickToPaste", QT_TRANSLATE_NOOP("AiSettings", "单击粘贴"), "clipboard", 0,
                     "A click pastes the row (Windows' way); off: a click picks it and a double click pastes."},
         &Settings::clipboardClickToPaste));
@@ -1533,6 +1544,19 @@ bool widensAccess(const Entry& e, const QJsonValue& before, const QJsonValue& af
         const QStringList now = stringsOf(after);
         return std::ranges::any_of(now, [&](const QString& item) { return !containsItem(was, item, e.list); });
     }
+    case Widens::More: {
+        const auto indexOf = [&](const QJsonValue& value) {
+            const QString s = value.toString();
+            for (std::size_t i = 0; i < e.choices.size(); ++i) {
+                if (e.choices[i].value == s)
+                    return static_cast<int>(i);
+            }
+            return -1;
+        };
+        const int was = indexOf(before);
+        const int now = indexOf(after);
+        return was >= 0 && now >= 0 && now < was;
+    }
     case Widens::No:
         break;
     }
@@ -1806,6 +1830,7 @@ QJsonObject entryJson(const Entry& e, const State& current, const State& default
         o.insert(u"ask_always"_s, e.access == Access::AlwaysAsk ? u"every change asks the user, even when AI may change settings by itself"_s
                 : e.widens == Widens::Shrink                    ? u"taking items out asks the user, even when AI may change settings by itself"_s
                 : e.widens == Widens::Grow                      ? u"putting items in asks the user, even when AI may change settings by itself"_s
+                : e.widens == Widens::More                      ? u"recording more than before asks the user, even when AI may change settings by itself"_s
                                                                 : u"turning it on asks the user, even when AI may change settings by itself"_s);
     }
     if (e.type == Type::Choice) {

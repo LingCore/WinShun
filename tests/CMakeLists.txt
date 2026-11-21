@@ -231,6 +231,10 @@ add_test(NAME tst_settingscapturehotkey COMMAND $<TARGET_FILE:WinShun>
     --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/settings-capture-hotkey" --capture-hotkey --scale 1.5)
 set_tests_properties(tst_settingscapturehotkey PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+add_test(NAME tst_settingsclipboardscreenshots COMMAND $<TARGET_FILE:WinShun>
+    --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/settings-clipboard-screenshots" --clipboard-screenshots --scale 1.5)
+set_tests_properties(tst_settingsclipboardscreenshots PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The settings window is kept once made: closed, it hides and comes back as new
 # (first page, no search, no dialogs, no recording, nothing running while

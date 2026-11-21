@@ -175,7 +175,8 @@ Hotkey=                  ; 另一个打开剪贴板的组合键，例如 Win+Alt
 QuickPaste=off           ; off | ctrl | alt：不呼出面板，直接粘贴“全部”的前九条（沿用固定优先）
 MaxItems=300             ; 分组以外最多保留几条（10–100000，0 = 不限，只按 MaxDays 删；GitHub #32）。设置里选 300 / 500 / 无限，或在旁边的框里填条数
 MaxDays=30               ; 多少天没再复制或粘贴过就删除；0 = 一直保留（分组里的都一直保留）
-Images=true              ; 也记录图片
+Images=true              ; 也记录复制的图片（截图插件开着时，Win顺 截图由下面的 Screenshots 单独管）
+Screenshots=all          ; all | copied | off：Win顺 截图进不进剪贴板历史（和 jt 截图历史），与 Images 独立。all 复制、贴图、保存都记；copied 只记显式复制的，仅贴图对比或保存成文件的不记；off 不记入历史（复制仍写系统剪贴板）。旧配置缺此键时，Images 为 false 则读成 off，否则 all
 ClickToPaste=false       ; 单击就粘贴（和 Windows 自带的一样；论坛 #137）；关时单击选中、双击粘贴。开着时行上的“粘贴”按钮换成“预览”，Ctrl/Shift+单击仍是多选
 KeepPlace=false          ; 从历史里粘贴一条后它留在原位（不动 used，重启后顺序也不变；只写 clips.pasted，过期按 used 和 pasted 里较晚的算；行上显示“已粘贴过”对勾）；关时粘贴把它移到最前（GitHub #122）。重新复制同样的内容仍移到最前
 PictureSize=standard     ; 图片缩略图：small 和别的行一样高（缩略图在图标的位置，GitHub #328）、standard 行高 80（108×68）、large 行高 142（208×130，看得清细节）。0.28 及以前是开关 LargePictures，开着的读成 large

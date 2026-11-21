@@ -526,6 +526,10 @@ struct Settings {
     // left as they are, hidden from the list, or cleaned out (MissingFiles, GitHub #54)
     QString clipboardMissingFiles = QStringLiteral("keep");
     bool clipboardImages = true;
+    // Win顺 screenshots handed over via clipboard_add_image (winshun.capture):
+    // "all" (copy, pin and save), "copied" (only screenshots explicitly copied),
+    // or "off" (never recorded into clipboard history; copying still writes the system clipboard).
+    QString clipboardScreenshots = QStringLiteral("all");
     QStringList clipboardExcludedApps; // program files whose copies are not kept, "KeePass.exe"
     QString clipboardNumberKeys = QStringLiteral("alt"); // alt | ctrl | off: Alt+1…9 pastes the nth row
     QString clipboardQuickPaste = QStringLiteral("off"); // off | ctrl | alt: the first nine of All, without opening the window
@@ -728,6 +732,22 @@ struct Settings {
     static std::vector<KnownFolder> knownFolders();
     // A share's place, not one of this PC's disks: "\\host\..." or on a mapped drive.
     static bool isNetworkPath(const QString& path);
+
+    // Whether a picture handed to clipboard_add_image goes into the clipboard history.
+    // Non-screenshot pictures follow clipboardImages; Win顺 screenshots follow
+    // clipboardScreenshots ("all", "copied", "off") independently.
+    bool shouldRecordClipboardImage(bool copy, bool screenshot, bool paused = false) const noexcept
+    {
+        if (!clipboard || paused)
+            return false;
+        if (!screenshot)
+            return clipboardImages;
+        if (clipboardScreenshots == QLatin1StringView("all"))
+            return true;
+        if (clipboardScreenshots == QLatin1StringView("copied"))
+            return copy;
+        return false;
+    }
 
     static QString filePath();
     static QString storedRenderer(); // just [Launcher] Renderer; works before QGuiApplication exists

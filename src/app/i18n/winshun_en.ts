@@ -1151,6 +1151,18 @@
         <translation>Keep pictures</translation>
     </message>
     <message>
+        <source>记录截图</source>
+        <translation>Keep screenshots</translation>
+    </message>
+    <message>
+        <source>仅复制时</source>
+        <translation>Copied only</translation>
+    </message>
+    <message>
+        <source>不记录</source>
+        <translation>Off</translation>
+    </message>
+    <message>
         <source>单击粘贴</source>
         <translation>Click to paste</translation>
     </message>
@@ -6670,6 +6682,18 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Keep pictures</translation>
     </message>
     <message>
+        <source>记录截图</source>
+        <translation>Keep screenshots</translation>
+    </message>
+    <message>
+        <source>仅复制时</source>
+        <translation>Copied only</translation>
+    </message>
+    <message>
+        <source>不记录</source>
+        <translation>Off</translation>
+    </message>
+    <message>
         <source>截图;图片;照片;image</source>
         <translation>screenshot;picture;photo;image</translation>
     </message>
@@ -7253,6 +7277,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Type “%1” and a space in the search box to list your screenshots, then words to filter by the text recognized in them; Enter copies and pastes, Ctrl+Enter pins to the screen, Delete removes</translation>
     </message>
     <message>
+        <source>在搜索框输入“%1”加空格，列出已有截图（“记录截图”已关闭，新截图不再加入）；Enter 复制并粘贴，Ctrl+Enter 贴到屏幕，Delete 删除</source>
+        <translation>Type “%1” and a space in the search box to list existing screenshots (“Keep screenshots” is off, so new ones are not added); Enter copies and pastes, Ctrl+Enter pins to the screen, Delete removes</translation>
+    </message>
+    <message>
         <source>单击粘贴</source>
         <translation>Click to paste</translation>
     </message>
@@ -7779,8 +7807,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Added from the search bar’s “More” menu</translation>
     </message>
     <message>
-        <source>密码;隐私;排除;程序;exe;KeePass</source>
-        <translation>password;privacy;exclude;programs;exe;KeePass</translation>
+        <source>密码;隐私;排除;程序;截图;exe;KeePass</source>
+        <translation>password;privacy;exclude;programs;screenshot;exe;KeePass</translation>
     </message>
     <message>
         <source>对话框</source>
@@ -7810,6 +7838,26 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>截图和复制的图片也记下来</source>
         <translation>Screenshots and copied pictures too</translation>
+    </message>
+    <message>
+        <source>复制的图片也记下来；Win顺 截图在下方单独控制</source>
+        <translation>Copied pictures too; WinShun screenshots are controlled separately below</translation>
+    </message>
+    <message>
+        <source>截图;截屏;贴图;保存;复制;历史;screenshot;pin</source>
+        <translation>screenshot;capture;pin;save;copy;history</translation>
+    </message>
+    <message>
+        <source>复制、贴图、保存的 Win顺 截图都记进剪贴板历史</source>
+        <translation>WinShun screenshots copied, pinned, or saved all go into clipboard history</translation>
+    </message>
+    <message>
+        <source>只有点“复制”的 Win顺 截图记进剪贴板历史，只贴图或保存的不记</source>
+        <translation>Only WinShun screenshots you copy go into clipboard history; pinning or saving alone is not recorded</translation>
+    </message>
+    <message>
+        <source>Win顺 截图不记进剪贴板历史；复制仍写入系统剪贴板，可直接粘贴</source>
+        <translation>WinShun screenshots are not kept in clipboard history; copying still puts them on the clipboard to paste</translation>
     </message>
     <message>
         <source>所有设置回到刚安装时的样子</source>
@@ -7900,8 +7948,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>system folders;Program Files;AppData;Windows;node_modules</translation>
     </message>
     <message>
-        <source>给密码管理器等再加一层保险</source>
-        <translation>An extra safeguard for password managers and the like</translation>
+        <source>给密码管理器、外部截图工具等再加一层保险</source>
+        <translation>An extra safeguard for password managers, external screenshot tools, and the like</translation>
     </message>
     <message>
         <source>补上 U 盘等非 NTFS 磁盘在 Win顺 关闭期间的改动</source>

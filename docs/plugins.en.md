@@ -300,7 +300,7 @@ When `initialize.capabilities.hostHotkeys` is true, a resident plugin with `ui` 
 | Tool | Permission | Arguments | What it does |
 |---|---|---|---|
 | `register_hotkeys` | `ui` | `keys` | replaces this plugin's global shortcuts, accepting recorder-supported shortcuts and PrintScreen; returns per-key registration errors |
-| `clipboard_add_image` | `clipboard:write` | `file`, `project` (optional), `copy` (default true), `screenshot` | puts a picture in the plugin's data folder (and its annotation project) into the clipboard history; with `copy` false it is recorded but not put on the clipboard. Win顺 deletes both files once read. Answers `{kept}`: false while the clipboard history or its pictures are off or paused |
+| `clipboard_add_image` | `clipboard:write` | `file`, `project` (optional), `copy` (default true), `screenshot`, `origin` (optional) | puts a picture in the plugin's data folder (and its annotation project) into the clipboard history; with `copy` false it is recorded but not put on the clipboard. Win顺 deletes both files once read. Answers `{kept}`: false while the clipboard history is off or paused; for `screenshot: true`, governed independently by `[Clipboard] Screenshots` (`all` / `copied` / `off`), and otherwise by `[Clipboard] Images` |
 | `clipboard_copy` | `clipboard:write` | `text` | text onto the clipboard (at most a million characters), into the history as any copy |
 | `clipboard_copy_entry` | `clipboard:write` | `id` | an entry of the clipboard history onto the clipboard again, moved to the top |
 | `show_launcher` | `ui` | `text` | opens the search box with this text |

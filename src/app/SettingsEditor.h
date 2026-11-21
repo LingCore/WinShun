@@ -281,6 +281,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(int clipboardMaxDays READ clipboardMaxDays WRITE setClipboardMaxDays NOTIFY changed FINAL)
     Q_PROPERTY(QString clipboardMissingFiles READ clipboardMissingFiles WRITE setClipboardMissingFiles NOTIFY changed FINAL) // keep | hide | clean
     Q_PROPERTY(bool clipboardImages READ clipboardImages WRITE setClipboardImages NOTIFY changed FINAL)
+    Q_PROPERTY(QString clipboardScreenshots READ clipboardScreenshots WRITE setClipboardScreenshots NOTIFY changed FINAL) // all | copied | off
     Q_PROPERTY(bool clipboardClickToPaste READ clipboardClickToPaste WRITE setClipboardClickToPaste NOTIFY changed FINAL)
     Q_PROPERTY(QString clipboardUiSize READ clipboardUiSize WRITE setClipboardUiSize NOTIFY changed FINAL) // follow | dense | compact | standard | roomy
     Q_PROPERTY(QString clipboardPictureSize READ clipboardPictureSize WRITE setClipboardPictureSize NOTIFY changed FINAL)
@@ -777,6 +778,8 @@ public:
     void setClipboardMissingFiles(const QString& mode);
     bool clipboardImages() const { return m_settings.clipboardImages; }
     void setClipboardImages(bool on);
+    QString clipboardScreenshots() const { return m_settings.clipboardScreenshots; }
+    void setClipboardScreenshots(const QString& mode);
     bool clipboardClickToPaste() const { return m_settings.clipboardClickToPaste; }
     void setClipboardClickToPaste(bool on);
     QString clipboardUiSize() const { return m_settings.clipboardUiSize; }

@@ -42,6 +42,7 @@ enum class Widens {
     Shrink, // a list of what is kept out: taking items out widens
     TurnOn, // a switch: turning it on widens
     Grow, // a list of what is let in: putting items in widens
+    More, // a choice ordered broadest-first: picking an earlier choice widens
 };
 // What the user still has to do before the change shows.
 enum class Effect { Now, ExplorerRestart, AppRestart };

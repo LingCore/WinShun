@@ -5980,12 +5980,35 @@ Window {
                     sub: true
                     title: qsTr("记录图片")
                     keywords: qsTr("截图;图片;照片;image").split(";")
-                    description: qsTr("截图和复制的图片也记下来")
+                    description: window.editor.screenshotHistory
+                                 ? qsTr("复制的图片也记下来；Win顺 截图在下方单独控制")
+                                 : qsTr("截图和复制的图片也记下来")
 
                     ToggleSwitch {
                         dpr: window.dpr
                         checked: window.editor.clipboardImages
                         onToggled: (on) => window.editor.clipboardImages = on
+                    }
+                }
+
+                SettingRow {
+                    sub: true
+                    objectName: "clipboardScreenshotsRow"
+                    title: qsTr("记录截图")
+                    keywords: qsTr("截图;截屏;贴图;保存;复制;历史;screenshot;pin").split(";")
+                    description: window.editor.clipboardScreenshots === "all"
+                                 ? qsTr("复制、贴图、保存的 Win顺 截图都记进剪贴板历史")
+                                 : window.editor.clipboardScreenshots === "copied"
+                                 ? qsTr("只有点“复制”的 Win顺 截图记进剪贴板历史，只贴图或保存的不记")
+                                 : qsTr("Win顺 截图不记进剪贴板历史；复制仍写入系统剪贴板，可直接粘贴")
+                    shown: window.editor.screenshotHistory
+
+                    ScopeTabs {
+                        objectName: "clipboardScreenshotsTabs"
+                        readonly property var modes: ["all", "copied", "off"]
+                        labels: [qsTr("全部"), qsTr("仅复制时"), qsTr("不记录")]
+                        current: Math.max(0, modes.indexOf(window.editor.clipboardScreenshots))
+                        onActivated: (index) => window.editor.clipboardScreenshots = modes[index]
                     }
                 }
 
@@ -6001,7 +6024,9 @@ Window {
                     title: qsTr("截图历史关键词")
                     keywords: qsTr("截图;截图历史;截屏;关键词;screenshot").split(";")
                     values: [window.editor.captureKeyword]
-                    description: qsTr("在搜索框输入“%1”加空格，列出截过的图，再输入文字按图里识别出的文字筛选；Enter 复制并粘贴，Ctrl+Enter 贴到屏幕，Delete 删除").arg(window.editor.captureKeyword)
+                    description: window.editor.clipboardScreenshots === "off"
+                                 ? qsTr("在搜索框输入“%1”加空格，列出已有截图（“记录截图”已关闭，新截图不再加入）；Enter 复制并粘贴，Ctrl+Enter 贴到屏幕，Delete 删除").arg(window.editor.captureKeyword)
+                                 : qsTr("在搜索框输入“%1”加空格，列出截过的图，再输入文字按图里识别出的文字筛选；Enter 复制并粘贴，Ctrl+Enter 贴到屏幕，Delete 删除").arg(window.editor.captureKeyword)
                     shown: window.editor.screenshotHistory
                     bodyShown: captureKeywordError.text.length > 0
 
@@ -6032,9 +6057,9 @@ Window {
                 SettingRow {
                     id: clipboardAppsRow
                     title: qsTr("不记录这些程序复制的内容")
-                    keywords: qsTr("密码;隐私;排除;程序;exe;KeePass").split(";")
+                    keywords: qsTr("密码;隐私;排除;程序;截图;exe;KeePass").split(";")
                     values: window.editor.clipboardExcludedApps
-                    description: qsTr("给密码管理器等再加一层保险")
+                    description: qsTr("给密码管理器、外部截图工具等再加一层保险")
 
                     body: [
                         Flow {

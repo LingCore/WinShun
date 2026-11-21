@@ -2629,6 +2629,72 @@ int runSettings(const QStringList& args)
         return finish(window, ok);
     }
 
+    if (args.contains(u"--clipboard-screenshots"_s)) {
+        bool ok = true;
+        const auto check = [&](bool condition, const char* message) {
+            if (!condition) {
+                qWarning("clipboard screenshots: %s", message);
+                ok = false;
+            }
+        };
+        window->resize(QSize(920, 720));
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, window->property("clipboardPage")), Q_ARG(QVariant, QVariant(0)));
+        settle(window, 3);
+        auto* row = visualNamed(window->contentItem(), u"clipboardScreenshotsRow"_s);
+        auto* tabs = visualNamed(window->contentItem(), u"clipboardScreenshotsTabs"_s);
+        check(row && tabs, "clipboardScreenshotsRow or clipboardScreenshotsTabs not found");
+        if (!row || !tabs)
+            return finish(window, false);
+
+        // Hidden while the screenshot plugin is off.
+        editor->setScreenshotPlugin(true, false, {});
+        settle(window, 3);
+        check(!row->isVisible(), "row should stay hidden when screenshot plugin is off");
+
+        // Shown once the screenshot plugin is on; clicking each segment updates state and persists.
+        editor->setScreenshotPlugin(true, true, {u"F1"_s});
+        settle(window, 3);
+        check(row->isVisible(), "row should be visible when screenshot plugin is on");
+        check(editor->clipboardScreenshots() == u"all"_s, "initial mode should be all");
+        check(tabs->property("current").toInt() == 0, "initial tab should be 0");
+        ok = saveGrab(window, out.filePath(u"clipboard-screenshots-all.png"_s)) && ok;
+
+        const auto clickTab = [&](int index) {
+            const QPointF center = tabs->mapToScene(QPointF(tabs->width() * (index + 0.5) / 3.0, tabs->height() * 0.5));
+            QMouseEvent press(QEvent::MouseButtonPress, center, center, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QMouseEvent release(QEvent::MouseButtonRelease, center, center, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(window, &press);
+            QCoreApplication::sendEvent(window, &release);
+            settle(window, 3);
+        };
+
+        clickTab(1);
+        check(editor->clipboardScreenshots() == u"copied"_s, "clicking second tab should select copied");
+        check(tabs->property("current").toInt() == 1, "tab index should be 1");
+        {
+            Settings persisted;
+            persisted.load();
+            check(persisted.clipboardScreenshots == u"copied"_s, "copied mode should persist to Settings");
+        }
+        ok = saveGrab(window, out.filePath(u"clipboard-screenshots-copied.png"_s)) && ok;
+
+        clickTab(2);
+        check(editor->clipboardScreenshots() == u"off"_s, "clicking third tab should select off");
+        check(tabs->property("current").toInt() == 2, "tab index should be 2");
+        {
+            Settings persisted;
+            persisted.load();
+            check(persisted.clipboardScreenshots == u"off"_s, "off mode should persist to Settings");
+        }
+        ok = saveGrab(window, out.filePath(u"clipboard-screenshots-off.png"_s)) && ok;
+
+        // Invalid setter value is ignored.
+        editor->setClipboardScreenshots(u"invalid"_s);
+        check(editor->clipboardScreenshots() == u"off"_s, "invalid mode should be ignored");
+
+        return finish(window, ok);
+    }
+
     if (args.contains(u"--backup-settings"_s)) {
         bool ok = true;
         const auto check = [&](bool condition, const char* message) {

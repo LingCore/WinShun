@@ -1499,11 +1499,11 @@ void Clipboard::copyImage(const QImage& image, bool remember, bool screenshot, Q
     encodeImage(image, remember, screenshot, std::move(project), true, std::move(imageOrigin));
 }
 
-void Clipboard::recordImage(const QImage& image, QByteArray project)
+void Clipboard::recordImage(const QImage& image, QByteArray project, bool screenshot)
 {
     if (!m_recording || m_paused)
         return; // nothing to keep: no need to encode it either
-    encodeImage(image, true, true, std::move(project), false);
+    encodeImage(image, true, screenshot, std::move(project), false);
 }
 
 void Clipboard::encodeImage(const QImage& image, bool remember, bool screenshot, QByteArray project, bool toClipboard, QString imageOrigin)

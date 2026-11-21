@@ -2363,6 +2363,14 @@ void SettingsEditor::setClipboardImages(bool on)
     commit();
 }
 
+void SettingsEditor::setClipboardScreenshots(const QString& mode)
+{
+    if (m_settings.clipboardScreenshots == mode || (mode != u"all" && mode != u"copied" && mode != u"off"))
+        return;
+    m_settings.clipboardScreenshots = mode;
+    commit();
+}
+
 void SettingsEditor::setClipboardCount(int count)
 {
     if (m_clipboardCount == count)

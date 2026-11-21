@@ -315,11 +315,10 @@ public:
     // off the GUI thread. `project`: the annotated picture's editable form
     // (opaque bytes, empty: none), kept with the history entry.
     void copyImage(const QImage& image, bool remember, bool screenshot = false, QByteArray project = {}, QString imageOrigin = {});
-    // A picture (saved, pinned) as a screenshot entry in the history only:
+    // A picture (saved, pinned) as an entry in the history only:
     // the system clipboard is left alone and nothing is announced. Subject to
-    // the same switch and pause as copyImage's `remember`; the same pixels
-    // again move that entry to the top.
-    void recordImage(const QImage& image, QByteArray project);
+    // the same recording switch and pause; the same pixels again move that entry to the top.
+    void recordImage(const QImage& image, QByteArray project, bool screenshot = true);
     // An entry by its id, from outside the window (the launcher's screenshot
     // history, jt): onto the clipboard and pasted into `target`, the window
     // in front before the launcher, as the window pastes; only copied when

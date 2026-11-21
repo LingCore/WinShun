@@ -2541,8 +2541,9 @@ void App::setUpAppTools()
     // A picture into the clipboard history: the plugin's file in its own
     // data folder (and the annotations beside it), read off the GUI thread
     // and deleted. `copy`: onto the clipboard too (else recorded only, as
-    // Ctrl+S and F3 do); `screenshot`: for 截图历史. Nothing kept while the
-    // history or its pictures are off, or paused, as the clipboard's own.
+    // Ctrl+S and F3 do); `screenshot`: for 截图历史, gated by
+    // Clipboard/Screenshots ("all", "copied", "off") independently of
+    // Clipboard/Images. Nothing kept while the history is off or paused.
     tools.push_back({u"clipboard_add_image"_s, plugin::Permission::ClipboardWrite,
         [this](const QString&, const QString& dataDir, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
             const QString file = arguments.value(u"file"_s).toString();
@@ -2559,6 +2560,20 @@ void App::setUpAppTools()
                 return;
             }
             QPointer<App> self(this);
+            // Record-only handoff that settings will not keep: remove temp files without decoding pixels.
+            if (!copy && !m_settings.shouldRecordClipboardImage(false, screenshot, m_clipboardPaused)) {
+                std::thread([self, file, project, done = std::move(done)]() mutable {
+                    QFile::remove(file);
+                    if (!project.isEmpty())
+                        QFile::remove(project);
+                    QMetaObject::invokeMethod(qApp, [self, done = std::move(done)]() mutable {
+                        if (!self)
+                            return;
+                        done({{{u"kept"_s, false}}});
+                    }, Qt::QueuedConnection);
+                }).detach();
+                return;
+            }
             std::thread([self, file, project, copy, screenshot, imageOrigin, done = std::move(done)]() mutable {
                 QImage image = readHandedPicture(file);
                 QByteArray bytes;
@@ -2578,11 +2593,11 @@ void App::setUpAppTools()
                         done(toolError(u"Not a picture Win顺 can read"_s));
                         return;
                     }
-                    const bool remember = self->m_settings.clipboard && self->m_settings.clipboardImages && !self->m_clipboardPaused;
+                    const bool remember = self->m_settings.shouldRecordClipboardImage(copy, screenshot, self->m_clipboardPaused);
                     if (copy)
                         self->m_clipboard->copyImage(image, remember, screenshot, std::move(bytes), imageOrigin);
                     else if (remember)
-                        self->m_clipboard->recordImage(image, std::move(bytes));
+                        self->m_clipboard->recordImage(image, std::move(bytes), screenshot);
                     done({{{u"kept"_s, remember}}});
                 }, Qt::QueuedConnection);
             }).detach();
